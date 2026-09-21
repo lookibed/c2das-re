@@ -1,0 +1,23 @@
+# Project-local Codex MCP setup. Copy to .codex/config.toml (gitignored) and adjust the
+# checkout path if daScript lives elsewhere than /root/daScript.
+
+[mcp_servers.daslang]
+command = "/root/daScript/bin/watchdog"
+args = ["--stdio", "--name", "daslang-mcp", "--cwd", "/root/c2das-re", "--program", "/root/daScript/bin/daslang", "--", "-ignore-manifest", "/root/daScript/utils/mcp/main.das"]
+cwd = "/root/c2das-re"
+enabled = true
+required = true
+startup_timeout_sec = 20
+tool_timeout_sec = 120
+
+[mcp_servers.daslang.env]
+DAS_LINT_CONFIG_PATH = "/root/c2das-re/.lint_config"
+
+[mcp_servers.daslang-dap]
+command = "/root/daScript/bin/watchdog"
+args = ["--stdio", "--name", "daslang-dap", "--cwd", "/root/c2das-re", "--program", "/root/daScript/bin/daslang", "--", "/root/daScript/utils/dap/main.das", "--", "--repo-root", "/root/c2das-re", "--executable", "/root/daScript/bin/daslang"]
+cwd = "/root/c2das-re"
+enabled = true
+required = true
+startup_timeout_sec = 20
+tool_timeout_sec = 120

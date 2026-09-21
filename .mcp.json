@@ -1,0 +1,42 @@
+{
+  "mcpServers": {
+    "daslang": {
+      "command": "/root/daScript/bin/watchdog",
+      "args": [
+        "--stdio",
+        "--name",
+        "daslang-mcp",
+        "--cwd",
+        "/root/c2das-re",
+        "--program",
+        "/root/daScript/bin/daslang",
+        "--",
+        "-ignore-manifest",
+        "/root/daScript/utils/mcp/main.das"
+      ],
+      "env": {
+        "DAS_LINT_CONFIG_PATH": "/root/c2das-re/.lint_config"
+      },
+      "defer_loading": false
+    },
+    "daslang-dap": {
+      "command": "/root/daScript/bin/watchdog",
+      "args": [
+        "--stdio",
+        "--name",
+        "daslang-dap",
+        "--cwd",
+        "/root/c2das-re",
+        "--program",
+        "/root/daScript/bin/daslang",
+        "--",
+        "/root/daScript/utils/dap/main.das",
+        "--",
+        "--repo-root",
+        "/root/c2das-re",
+        "--executable",
+        "/root/daScript/bin/daslang"
+      ]
+    }
+  }
+}

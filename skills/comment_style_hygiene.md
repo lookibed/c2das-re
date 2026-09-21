@@ -1,0 +1,175 @@
+# Comment and style hygiene
+
+Read this before writing or reviewing comments, names, or local code shape - in any
+language. The rules are language-agnostic: examples lean C-family, but the shapes they
+name appear in C++, das, JS, Python, and build scripts alike.
+
+## Before everything
+
+**Keep rules simple.** One rule here is one short paragraph. An entry that needs more
+is describing an essay, not a shape - split it or drop it.
+
+**This guide reviews itself: a rule a reviewer cannot apply as written is a defect of
+this guide.** Mark it like any other finding - a guide defect blocks nothing, but its
+fix (a rewrite or a removal, never silent tolerance) lands with the round's other
+fixes.
+
+**DON'T PROPOSE MINOR CHANGES TO THIS ONE.** A defect in this guide that changes what a
+reviewer checks or concludes is a finding; wording, ordering and coverage you would like
+added are not.
+
+## How this guide is applied
+
+- **Findings speak plain.** A review finding - and the commit fixing one - states the
+  problem and the fix in its own words ("this comment narrates the assignment below
+  it"), never by citing this guide. The guide teaches writing; it is not an authority
+  to invoke.
+- **Exceptions justify themselves.** There is no exception marker; a rule's own text
+  carries the boundary for when a departure stands.
+- **The audit is not a gate.** Style review runs on every PR; findings persuade, lint
+  compels. Fix or consciously decline - there is no re-run-until-clean loop.
+- **Third-party libraries go as is.** A file this repo syncs from an upstream project
+  rather than authors answers to that project, not to this guide - editing it to these
+  rules is fork drift. A folder is vendored when it is a `3rdparty/` tree or its own
+  `CLAUDE.md` names an upstream and records the synced revision; inside one, the files
+  that `CLAUDE.md` marks as written or maintained here - fork-local hooks, this repo's
+  own docs - answer to these rules, and every file it leaves to upstream does not.
+- **Code contributed upstream keeps the upstream's shape.** A folder whose `CLAUDE.md` names
+  the project its files are contributed to, and states the comment shape they keep there,
+  answers to that shape for those files; the deletion test settles anything the stated shape
+  does not cover.
+
+Rules marked *(lintable)* are mechanical enough for a lint to enforce; where a rule notes
+an existing lint, the lint compels - an unnoted rule is the reviewer's.
+
+## Comments
+
+**.das in a folder whose `.lint_config` arms `force_clean_comments`: ABSOLUTELY NO comments
+that are not documentation or lint suppression.** The kept set is exactly: `//!` docs on a
+contract a CALLER must know - public API always, a private helper only when callers inside
+the module need the contract (narration of an implementation goes to a name, a test, or the
+module's `.md`), and only where the contract is not reachable from the declaration's own
+`[arch]` citation: a `//!` that restates the section its citation names is a duplicate and
+goes - the one-line `//!` site contract above a top-level definition (the rule below),
+`// nolint:CODE` / `@nolint` suppressions carrying their one-line why,
+`//fmt:` formatter directives, license comments (Copyright / SPDX), and the file's leading
+header block (which may sit below the `options` / `module` / `require` preamble). Everything
+else - narration, banners, section dividers, commented-out code - does not exist. The
+formatter enforces this per folder, fail-closed (a strip must compile or the file is
+restored); the policy mechanics are `skills/das_formatting.md`. A `//` comment outside the
+kept set is therefore EPHEMERAL: anything worth preserving becomes code (a name, a `//!`
+doc, an assert) or lands in an `.md` beside the code. The ban is on what survives to a
+commit, not on writing - scaffold freely while working; the PR gate drains what remains.
+Where the key is unset or false, the kept set above still holds and every other `//` comment
+answers to the deletion test instead; in teaching folders (tutorials, examples) and
+fixture corpora (directories of files the code under test reads as input, not tests that
+execute) the prose carrying the lesson passes that test, and a comment that adds nothing
+to its line still goes.
+
+**A `//!` has two homes. Where one attaches - the file's header block, anywhere inside a `def`
+body, anywhere in a `struct` / `class` body outside its methods (it lands on the struct), or
+trailing on a struct field - it is a doc and lands in the generated reference. Above a
+top-level `def` or a global it attaches to nothing and is the SITE CONTRACT spelling: one line
+(a private one caps at three under STYLE015) stating a constraint the site needs and the code
+cannot say - a bar's derivation, a guard's reason, a layout a caller relies on - which the
+comment harvest keeps and the deletion test passes as a kept-set line.** A top-level `//!`
+that narrates goes like any `//`, its spelling no reason to keep it; a reviewer who reads one
+asks whether the line states a constraint, never whether it attaches. On an `options` /
+`require` line a `//!` documents nothing; above a method inside a class body it lands on the
+class, not the method. Inside a function body every `//!` attaches to that function, wherever it sits -
+a mid-body or lambda-body `//!` lands in the function's generated reference page, so it stays
+only when it states a contract a caller must know; otherwise respell it `//` and apply the
+deletion test. The formatter keeps every comment spelled `//!` wherever it sits, so the
+spelling is no evidence the comment is a doc.
+
+**The header block - the comments above the first declaration - describes the FILE.** A
+comment there that describes the next declaration moves onto that declaration: as a `//!`
+doc when it states a contract a caller must know, otherwise it goes, like any other
+narration. The formatter keeps every full-line comment above the first declaration and
+cannot tell the two apart, so this boundary is the reviewer's to hold.
+
+**C and C++: no NEW comments.** Comments go stale, code does not - new C-family code says
+it in a name, a shape, or a test, or documents itself in the module's `.md`. Kept when one
+is earned: `//!` and `/** */` docs on a contract a CALLER must know - public API always, a
+non-public helper when callers inside the module need the contract - `NOLINT` /
+`clang-format` suppressions, the leading header block, and the bare section pointer
+`// <folder>/ARCHITECTURE.md#<anchor>` on the function that implements the section (C++ has no
+`[arch]` annotation, so the pointer is its citation; LINT026 resolves it exactly as a .das
+citation - the path is root-relative, walked up from the citing file, so a header under
+`include/` reaches the `src/` document that owns its mechanism - and a `sec.N` spelling is a
+number nothing checks). Existing comments answer to the
+deletion test; editing one so it stays true is not a new comment, and the edited comment
+answers to that test as a whole.
+
+**The deletion test settles any comment no kept set covers: remove it and re-read.** If
+the WHY goes dark it was load-bearing - restore it, rewritten in present tense; otherwise
+it was noise. 1-2 lines is the default, not a limit - "why is this long?" is the finding.
+The leading header block (license, provenance) stays.
+
+**Other languages keep only their own documentation form - a Python docstring, a JSDoc block -
+on the `//!` terms, a contract a caller must know; every other comment answers to the deletion
+test.**
+
+**No incident citations in a comment** - no PR numbers, no dates, no "used to crash". Name
+the failure mode in present tense at the code that guards it.
+
+## Names
+
+**A name beats a comment.** When a reader has to ask what a symbol is (`cfg` - member?
+local? whose config?), fix the name (`moduleCfg` vs `callerCfg`), not the doc. Applies
+double to members read inside long methods, where member-ness is invisible at the use
+site.
+
+**Magic numbers are comments in the wrong place.** A value whose meanings live in a
+comment (`kind: 0 = eager, 1 = conditional, 2 = ...`, a `vector<bool>` whose true and
+false need explaining) is an enum refusing to be written - name the values, and the
+meaning-list dissolves into them at every use site.
+
+**`can` / `is` / `has` document a lot.** `can` = would the operation succeed, `is` =
+property of the thing, `has` = containment scan. A predicate named as its question
+needs no header; a vague name (`fragile`, `worthIt`) is what forces the essay on top -
+rename first, then see what's left to say.
+
+**One name per concept** - in identifiers, comments, and messages alike. Three
+synonyms for one idea ("timeout" / "deadline" / "budget") are three chances to
+misread; pick the accurate one and sweep the rest.
+
+**One mechanism, one family word.** When one mechanism surfaces as several public
+names - a verb and its variants, a flag and the helpers that set it for one call -
+one word runs through every member (`push` / `push_clone` / `push_from`). A member
+named out of a second vocabulary makes the reader hunt for a difference that isn't
+there.
+
+**Diagnostics name the concrete thing.** If the code knows which one - which operator,
+which type, which file - the message says which one; a category without an instance
+reads as "trust us". User-facing messages carry no vocabulary that exists only inside
+the implementation.
+
+## Shape
+
+**A flag set-then-returned is a return in disguise** *(partly lintable - STYLE041; a set
+that keeps looping and the walk-abort-in-callback form stay the reviewer's)*. A bool
+initialized false, set on failure paths, then immediately consumed by a single
+`if (flag) return/error` - collapse to a direct return at each set site. The flag form
+often keeps looping after the answer is known and reports repeatedly. When the set site is
+inside a callback or visitor that cannot return through its caller, the collapse is a
+walk-abort instead: guard the callback's first line on the flag.
+
+**One guard style per function.** Message-setting early-outs are one-liners:
+`if (cond) { why = "..."; return false; }` - never a *gratuitous* mix of one-liners
+and expanded blocks in the same function. A guard whose message needs a local to
+build it stays expanded, and that's not a mix.
+
+**Declarations don't promise.** Declare at first use, not in an up-front batch - a
+block of aliases computed long before their consumers is a list of promises the
+reader must carry. When the values live in a struct already in scope, reading them at
+the use site beats aliasing them at all.
+
+**Member-assembly is a constructor written inline.** `Thing t; t.x = ...; t.y = ...;`
+at every call site is a ctor the type refused to write - write it, and the null-checks
+on "optional" members usually die with it.
+
+**Class bodies are dense** *(lintable)*. No blank lines between data members - blank
+separation is for top-level declarations; inline member-function bodies separate
+normally. A one-line section marker may subdivide a large class body in languages whose
+comments survive; in `.das` the kept set governs - a divider comment is not in it.

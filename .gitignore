@@ -1,0 +1,36 @@
+# daslang run artifacts: the JIT cache lands in the working directory of whatever ran
+.jitted_scripts/
+*.aot.cpp
+*.aot.h
+
+# converted output and suite scratch never enter the tree (LAWS.md: repeatable pipeline)
+/out/
+/suites/*/fetch/
+/suites/*/work/
+
+# native glue module build dirs
+/dasCRuntime/_build/
+/dasCRuntime/build/
+**/compile_commands.json
+
+# machine-local agent wiring (the tracked *.example files are the templates)
+/.codex/*
+!/.codex/config.toml.example
+/opencode.json
+/.env
+/.claude/worktrees/
+
+# diagnostics and benchmark scratch
+/logs/
+/libhv.*.log
+__pycache__/
+
+# editor and OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*Zone.Identifier
+
+# user-supplied game data: never committed
+/doom/wads/doom2.wad

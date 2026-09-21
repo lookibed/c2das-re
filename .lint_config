@@ -1,0 +1,9 @@
+# Repo lint policy for c2das-re (TOML), read by daScript's utils/lint/main.das, the MCP
+# `lint` tool and the LSP through DAS_LINT_CONFIG_PATH. The converter, c_runtime and the
+# probes are house code: every rule stays on. Converted output never lives in this tree, so
+# nothing here relaxes a rule for it; an "as-if-converted" fixture folder that needs the C
+# shapes lint flags carries its own .lint_config (keys cascade per folder, nearest wins).
+
+[rules]
+# an argument reading what a sibling call writes by reference is a defect here, as in daScript
+LINT030 = true
