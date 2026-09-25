@@ -25,7 +25,10 @@ rebuild of daScript that changes a requirement here (a module, a flag, a pin) up
 `VERSIONS.md` in the same change.
 
 Run a script: `$DASLANG_ROOT/bin/daslang converter/main.das -- <args>`. Run a suite:
-`$DASLANG_ROOT/bin/daslang $DASLANG_ROOT/dastest/dastest.das -- --test probes`.
+`$DASLANG_ROOT/bin/daslang $DASLANG_ROOT/dastest/dastest.das -- --test probes`. Anything that
+`require crt` (the native module under `dasCRuntime/`, built by `scripts/build_crt.sh`) needs
+`-load_module $PWD/dasCRuntime` before the script path; `scripts/preflight.sh` and `.mcp.json`
+pass it.
 
 ## The document system
 
@@ -61,8 +64,8 @@ cited from the code; `docs/` is never edited to match the code.
 The daslang MCP server runs from `DASLANG_ROOT` with this repository as its served tree
 (`.mcp.json`): a relative path in any tool resolves against this repository, the `cpp_*`
 tools index this tree (the C inputs under `suites/`, `dasCRuntime/`), and `lint` reads
-`.lint_config` here. `cpp_compile_check` and `cpp_build_info` need `build_dir` pointing at
-`dasCRuntime/_build` once that module exists. Before reaching for `Bash`/`Grep`/`Read` to
+`.lint_config` here. `cpp_compile_check` and `cpp_build_info` take `build_dir` =
+`dasCRuntime/_build` (`scripts/build_crt.sh` writes its `compile_commands.json`). Before reaching for `Bash`/`Grep`/`Read` to
 find a symbol or trace usages, call the tool that answers the question:
 
 | Question | Tool |

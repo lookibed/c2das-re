@@ -8,3 +8,4 @@ libclang: LLVM 22.1.8 Linux x86_64 release archive, extracted at PATH_TO_LIBCLAN
 ast-grep: 0.44.1 (`sg` on PATH; sgconfig.yml maps `.das` to daScript's tree-sitter grammar and `.c/.h/.hpp` to C++)
 clang-format: 22.1.8 (the libclang archive's `bin/clang-format`)
 vendored skills: `skills/DASLANG_SKILLS_PIN` (the daScript commit `scripts/sync_daslang_skills.sh` last copied from)
+dasCRuntime: built by `scripts/build_crt.sh` (cmake 3.16+, a C++17 compiler) against `DASLANG_ROOT/include` and `lib/liblibDaScriptDyn*`, with the checkout's ABI: no RTTI, `DAS_ENABLE_DYN_INCLUDES=1`, `DAS_FUSION=2`, `SIZE_OF_VOID_P` = the pointer width

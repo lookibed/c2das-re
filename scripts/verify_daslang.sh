@@ -13,6 +13,9 @@ need "$DASLANG_ROOT/utils/das-fmt/dasfmt.das" "the formatter"
 need "$DASLANG_ROOT/utils/internal/review-md/main.das" "the REVIEW.das walker"
 need "$DASLANG_ROOT/bin/watchdog" "the watchdog front: configure with -DDAS_STDDLG_DISABLED=OFF"
 need "$DASLANG_ROOT/modules/dasClangBind/dasModuleClangBind.shared_module" "dasClangBind: configure with -DDAS_CLANG_BIND_DISABLED=OFF and PATH_TO_LIBCLANG"
+need "$DASLANG_ROOT/include/daScript/daScript.h" "the daScript headers; dasCRuntime compiles against them"
+ls "$DASLANG_ROOT"/lib/liblibDaScriptDyn* >/dev/null 2>&1 || ls "$DASLANG_ROOT"/lib/libDaScriptDyn* >/dev/null 2>&1 || { echo "verify: missing $DASLANG_ROOT/lib/libDaScriptDyn* (the DLL runtime dasCRuntime links)"; fail=1; }
+command -v cmake >/dev/null 2>&1 || { echo "verify: cmake is not on PATH (dasCRuntime builds with it)"; fail=1; }
 [ $fail = 0 ] || exit 1
 "$DASLANG" -version >/dev/null 2>&1 || { echo "verify: $DASLANG does not run"; exit 1; }
 pin=$(sed -n 's/^daScript commit: *\([0-9a-f]*\).*/\1/p' "$(dirname "${BASH_SOURCE[0]}")/../VERSIONS.md" | head -1)

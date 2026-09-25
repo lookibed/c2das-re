@@ -8,6 +8,8 @@ set -uo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 . scripts/env.sh
+# every daslang run sees the crt module: it lives here, not under DASLANG_ROOT/modules
+das() { "$DASLANG" -load_module "$repo_root/dasCRuntime" "$@"; }
 base="${PREFLIGHT_BASE:-origin/main}"
 git rev-parse --verify -q "$base" >/dev/null 2>&1 || base="$(git rev-list --max-parents=0 HEAD 2>/dev/null | tail -1)"
 full=0; only=(); skip=()
@@ -19,6 +21,7 @@ while [ $# -gt 0 ]; do
         --list-gates)
             cat <<'TABLE'
 env          fast   DASLANG_ROOT is a built daScript with dastest, lint, das-fmt, the review-md walker, the watchdog and dasClangBind, at or past the VERSIONS.md pin
+native       fast   scripts/build_crt.sh builds dasCRuntime (the crt module) against DASLANG_ROOT
 untracked    fast   `git ls-files --others --exclude-standard` prints nothing
 format       fast   das-fmt --verify over every .das folder (mirrors daScript's CI format gate)
 lint         fast   lint of every .das folder, zero findings under .lint_config
@@ -26,7 +29,7 @@ compile      fast   -compile-only of every .das outside fixtures/
 ast-verify   fast   -dry-run --ast-verify of every changed .das (a verify line or a crash fails)
 md-ascii     fast   no em-dash, arrow or ellipsis added to a rule document (docs/ is exempt: authored elsewhere)
 review-md    fast   the REVIEW.das gates of every folder the diff touches
-tests        lane   every dastest suite: probes/, c_runtime/tests, converter/tests, tests/
+tests        lane   every dastest suite: probes/, dasCRuntime/tests, c_runtime/tests, converter/tests, tests/
 TABLE
             exit 0 ;;
         *) echo "preflight: unknown flag $1" >&2; exit 2 ;;
@@ -34,22 +37,23 @@ TABLE
     shift
 done
 wants() { local g="$1"; for s in "${skip[@]:-}"; do [ "$s" = "$g" ] && return 1; done; [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$g" ] && return 0; done; return 1; }
-das_dirs=(); for d in converter c_runtime probes suites tests; do [ -d "$d" ] && das_dirs+=("$d"); done
+das_dirs=(); for d in converter c_runtime dasCRuntime probes suites tests; do [ -d "$d" ] && das_dirs+=("$d"); done
 das_files() { [ ${#das_dirs[@]} -gt 0 ] && find "${das_dirs[@]}" -type f -name '*.das' | sort; }
 changed_das() { git diff --name-only "$base" -- '*.das' 2>/dev/null; git ls-files --others --exclude-standard -- '*.das'; }
 pass() { echo "[PASS] $1"; }
 fail() { echo "[FAIL] $1 - $2"; return 1; }
 skipped() { echo "[SKIP] $1 - $2"; }
 gate_env() { scripts/verify_daslang.sh >/dev/null && pass env || fail env "scripts/verify_daslang.sh names what is missing"; }
+gate_native() { local out; out=$(scripts/build_crt.sh 2>&1) && pass native || { echo "$out" | tail -20; fail native "dasCRuntime does not build"; }; }
 gate_untracked() { local u; u=$(git ls-files --others --exclude-standard); [ -z "$u" ] && pass untracked || fail untracked "$(echo "$u" | tr '\n' ' ')"; }
 gate_format() {
     [ ${#das_dirs[@]} -gt 0 ] || { skipped format "no .das folders"; return 0; }
-    for d in "${das_dirs[@]}"; do "$DASLANG" "$DASLANG_ROOT/utils/das-fmt/dasfmt.das" -- --path "$d" --verify >/dev/null 2>&1 || { fail format "unformatted file under $d (run the formatter)"; return 1; }; done
+    for d in "${das_dirs[@]}"; do das "$DASLANG_ROOT/utils/das-fmt/dasfmt.das" -- --path "$d" --verify >/dev/null 2>&1 || { fail format "unformatted file under $d (run the formatter)"; return 1; }; done
     pass format
 }
 gate_lint() {
     [ ${#das_dirs[@]} -gt 0 ] || { skipped lint "no .das folders"; return 0; }
-    local out; out=$("$DASLANG" "$DASLANG_ROOT/utils/lint/main.das" -- "${das_dirs[@]}" --quiet --disable LINT019 2>&1) || { echo "$out" | tail -20; fail lint "findings above"; return 1; }
+    local out; out=$(das "$DASLANG_ROOT/utils/lint/main.das" -- "${das_dirs[@]}" --quiet --disable LINT019 2>&1) || { echo "$out" | tail -20; fail lint "findings above"; return 1; }
     echo "$out" | grep -q " 0 issue(s)" && pass lint || { echo "$out" | tail -20; fail lint "findings above"; }
 }
 gate_compile() {
@@ -57,7 +61,7 @@ gate_compile() {
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         case "$f" in */fixtures/*) continue ;; esac
-        "$DASLANG" -compile-only "$f" >/dev/null 2>&1 || { fail compile "$f does not compile"; return 1; }
+        das -compile-only "$f" >/dev/null 2>&1 || { fail compile "$f does not compile"; return 1; }
         n=$((n + 1))
     done < <(das_files)
     pass "compile ($n files)"
@@ -67,7 +71,7 @@ gate_ast_verify() {
     while IFS= read -r f; do
         [ -n "$f" ] && [ -f "$f" ] || continue
         case "$f" in */fixtures/*) continue ;; esac
-        local out; out=$("$DASLANG" -dry-run --ast-verify "$f" 2>&1) || true
+        local out; out=$(das -dry-run --ast-verify "$f" 2>&1) || true
         echo "$out" | grep -q "AST verify" && { echo "$out" | grep "AST verify" | head -5; fail ast-verify "$f"; return 1; }
         n=$((n + 1))
     done < <(changed_das | sort -u)
@@ -78,18 +82,18 @@ gate_md_ascii() {
     [ -z "$bad" ] && pass md-ascii || { echo "$bad" | head -5; fail md-ascii "smart punctuation added to a rule document"; }
 }
 gate_review_md() {
-    local out; out=$("$DASLANG" "$DASLANG_ROOT/utils/internal/review-md/main.das" -- --base "$base" 2>&1) || { echo "$out" | tail -20; fail review-md "a REVIEW.das gate fired"; return 1; }
+    local out; out=$(das "$DASLANG_ROOT/utils/internal/review-md/main.das" -- --base "$base" 2>&1) || { echo "$out" | tail -20; fail review-md "a REVIEW.das gate fired"; return 1; }
     pass review-md
 }
 gate_tests() {
     local d rc=0
-    for d in probes c_runtime/tests converter/tests tests; do
+    for d in probes dasCRuntime/tests c_runtime/tests converter/tests tests; do
         [ -d "$d" ] || continue
-        "$DASLANG" "$DASLANG_ROOT/dastest/dastest.das" -- --test "$d" --failures-only || rc=1
+        das "$DASLANG_ROOT/dastest/dastest.das" -- --test "$d" --failures-only || rc=1
     done
     [ $rc = 0 ] && pass tests || fail tests "a suite is red"
 }
-fast=(env untracked format lint compile ast-verify md-ascii review-md)
+fast=(env native untracked format lint compile ast-verify md-ascii review-md)
 red=0
 for g in "${fast[@]}"; do
     wants "$g" || continue

@@ -8,10 +8,12 @@
 /suites/*/fetch/
 /suites/*/work/
 
-# native glue module build dirs
+# native glue module: build dirs, the built DLL and the descriptor manifest daslang writes
 /dasCRuntime/_build/
 /dasCRuntime/build/
 **/compile_commands.json
+*.shared_module
+.das_module.manifest
 
 # machine-local agent wiring (the tracked *.example files are the templates)
 /.codex/*

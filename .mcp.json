@@ -12,6 +12,8 @@
         "/root/daScript/bin/daslang",
         "--",
         "-ignore-manifest",
+        "-load_module",
+        "/root/c2das-re/dasCRuntime",
         "/root/daScript/utils/mcp/main.das"
       ],
       "env": {
