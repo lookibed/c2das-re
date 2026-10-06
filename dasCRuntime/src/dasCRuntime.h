@@ -90,6 +90,9 @@ inline int32_t c_iscntrl(int32_t c) { return ::iscntrl(c); }
 inline int32_t c_toupper(int32_t c) { return ::toupper(c); }
 inline int32_t c_tolower(int32_t c) { return ::tolower(c); }
 
+inline uint64_t c_fwrite_stdout(const void * data, uint64_t n) { return ::fwrite(data, 1, size_t(n), stdout); }
+inline int32_t c_fflush_stdout() { return ::fflush(stdout); }
+
 //! snprintf, one conversion per call: `fmt` holds one directive of the value's C type, or none.
 #if defined(__GNUC__)
 #pragma GCC diagnostic push

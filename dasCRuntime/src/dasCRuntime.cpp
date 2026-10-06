@@ -50,6 +50,9 @@ public:
         addExtern<DAS_BIND_FUN(c_set_errno)>(*this, lib, "c_set_errno", SideEffects::modifyExternal, "crt::c_set_errno")->args({"value"});
         addExtern<DAS_BIND_FUN(c_time)>(*this, lib, "time", SideEffects::modifyExternal, "crt::c_time");
         addExtern<DAS_BIND_FUN(c_clock)>(*this, lib, "clock", SideEffects::modifyExternal, "crt::c_clock");
+        addExtern<DAS_BIND_FUN(c_fwrite_stdout)>(*this, lib, "fwrite_stdout", SideEffects::modifyExternal, "crt::c_fwrite_stdout")->args({"data", "n"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_fflush_stdout)>(*this, lib, "fflush_stdout", SideEffects::modifyExternal, "crt::c_fflush_stdout");
+        addConstant(*this, "LONG_BITS", int32_t(sizeof(long) * 8));
         addConstant(*this, "CLOCKS_PER_SEC", int64_t(CLOCKS_PER_SEC));
         addConstant(*this, "RAND_MAX", int32_t(RAND_MAX));
         addConstant(*this, "EDOM", int32_t(EDOM));

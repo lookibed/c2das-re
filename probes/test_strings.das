@@ -16,6 +16,12 @@ def test_strings(t : T?) {
             t |> equal(intptr(msg) == intptr(again), true)
         }
     }
+    t |> run("the empty das literal is a null pointer, not a pointer to a NUL") @(t : T?) {
+        unsafe {
+            t |> equal(reinterpret<uint8?>("") == null, true)
+            t |> equal(reinterpret<uint8?>("x") != null, true)
+        }
+    }
     t |> run("reinterpret<string> bridges a NUL-terminated buffer as an alias") @(t : T?) {
         var buf : uint8[8]
         buf[0] = uint8('a')

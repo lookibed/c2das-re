@@ -38,6 +38,16 @@ as-if-converted fixture test landing first.
   macro, so a requirer's call sites are intercepted too. The registration goes through
   `compiling_module()`, never `this_module()`, which is unreachable once the macro module
   has compiled.
+- `c_runtime/printf.das` - the printf family over a `CVaList`: `c_vformat` splits the C
+  format at its directives, resolves `*` widths and precisions from the list, and renders
+  each directive through the one `crt::snprintf_*` matching its conversion and length
+  modifier (`l` is wide only where `crt::LONG_BITS` is 64, so the CRT sees its own `long`),
+  retrying into a CRT buffer when the 512-byte scratch is short; `c_vsnprintf` and
+  `c_vprintf` (bytes through `crt::fwrite_stdout`, so they order with every other CRT write)
+  are the fronts, and `printf`, `sprintf`, `snprintf` are `[variadic]` over them. An
+  argument of the wrong class for its directive panics, which is the C undefined behavior
+  made visible; a null format renders nothing. The bytes are the CRT's by construction,
+  which `tests/test_printf.das` proves against a native battery compiled by the pinned clang.
 - `tests/` - one dastest file per piece, written as the converter will emit the code,
   including a control that the same code without the piece is rejected or wrong.
 

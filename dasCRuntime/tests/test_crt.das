@@ -114,6 +114,9 @@ def test_crt_environment(t : T?) {
         t |> equal(crt::time() > 1700000000l, true)
         t |> equal(crt::clock() >= 0l, true)
         t |> equal(crt::CLOCKS_PER_SEC > 0l, true)
+        t |> equal(crt::LONG_BITS == 32 || crt::LONG_BITS == 64, true)
+        t |> equal(crt::fflush_stdout(), 0)
+        t |> equal(unsafe(crt::fwrite_stdout(cstr(""), 0ul)), 0ul)
     }
 }
 
