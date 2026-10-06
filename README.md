@@ -47,12 +47,14 @@ under every daslang tier; `scripts/run_perf.sh --readme` refreshes this table fr
 `perf/results_linux.json`.
 
 <!-- perf-table:begin -->
-Captured on 2026-10-06 21:33 UTC, linux x86_64, AMD Ryzen 7 7435HS; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
+Captured on 2026-10-06 22:15 UTC, linux x86_64, AMD Ryzen 7 7435HS; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
 
 | Test | C (clang -O2) | DAS interpreter | DAS JIT | DAS exe | DAS AOT |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| fib_loop | **0.001579s ±1%** | 0.174647s ±5% | 0.001586s ±1% | 0.001716s ±5% | 0.001660s ±7% |
-| fib_recursive | 0.003553s ±2% | 0.028583s ±3% | 0.003727s ±3% | 0.003650s ±1% | **0.001883s ±5%** |
-| fixed_mandel | 0.000300s ±2% | 0.017507s ±6% | 0.000230s ±2% | **0.000212s ±1%** | 0.001428s ±1% |
-| primes | 0.015877s ±0% | 0.162655s ±5% | 0.015991s ±0% | 0.015788s ±1% | **0.011704s ±1%** |
+| fib_loop | 0.001578s ±1% | 0.219282s ±8% | 0.001568s ±4% | **0.001522s ±4%** | 0.001577s ±5% |
+| fib_recursive | 0.003240s ±2% | 0.026546s ±1% | 0.003174s ±1% | 0.003553s ±6% | **0.001809s ±4%** |
+| fixed_mandel | 0.000283s ±1% | 0.016079s ±3% | 0.000218s ±0% | **0.000206s ±1%** | 0.001343s ±1% |
+| matmul | 0.000243s ±7% | 0.024571s ±9% | **0.000137s ±3%** | 0.000229s ±2% | 0.001064s ±3% |
+| primes | 0.015130s ±1% | 0.167253s ±4% | 0.015234s ±1% | 0.015067s ±1% | **0.011649s ±5%** |
+| sieve | 0.001889s ±4% | 0.083223s ±4% | 0.002133s ±5% | **0.001878s ±4%** | 0.014352s ±3% |
 <!-- perf-table:end -->

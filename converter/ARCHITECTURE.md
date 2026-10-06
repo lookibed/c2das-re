@@ -63,7 +63,9 @@ order, starting from the main file. Types are interned by a structural key
 (`int:32:true:int`, `ptr:3`, `func:0:1,2:false`) in first-use order, which is the spec's
 order. Type spellings come from `desugaredQualType` when clang gives one, else `qualType`,
 with `const`, `volatile`, `restrict` and `__attribute__` text stripped: the C99 scalar names,
-`_Bool`, `T *`, `T[N]`, `R (P, ...)` function types and `R (*)(P)` pointers to functions.
+`_Bool`, `T *`, `T[N]` (the first bracket is the outer dimension: `T[2][3]` is two `T[3]`),
+`T (*)[N]` pointers to arrays, `R (P, ...)` function types and `R (*)(P)` pointers to
+functions.
 Widths follow the selected dialect (`msvc`: int 32, long 32, long long 64; `linux`: long
 64); plain `char` is unsigned in both (`docs/probe-findings.md` F17), which the dumper
 enforces with `-funsigned-char`. The dump desugars only the top level of a spelling, so a
@@ -88,12 +90,14 @@ Statements: compound, `DeclStmt` (one `decl` per variable), expression statement
 hex-float through the CRT) and string literals (C escapes decoded, the NUL appended),
 `DeclRefExpr`, every pinned cast, the unary, binary, compound-assignment, conditional and
 comma operators, calls, subscripts, `sizeof`, `MemberExpr` (the field by index into the
-record's fields, `arrow` kept), `InitListExpr` of a record (clang's semantic form, one
-child per field, an `ImplicitValueInitExpr` left to the positional zero) and `OffsetOfExpr`,
+record's fields, `arrow` kept), `InitListExpr` of a record or an array (clang's semantic form,
+one child per field or element, an `ImplicitValueInitExpr` left to the positional zero;
+an array with a trailing run of zeros lists its filler first under `array_filler`, then the
+elements up to the last one written) and `OffsetOfExpr`,
 whose components the dump omits: the dumper reads `T, f` from the macro's own text at its
 `expansionLoc` (F20). A location with an `expansionLoc` is that location. Anything else is
-an error naming the node kind and its location: array initializers, enums, compound
-literals, `goto`, `switch` are the next phases' rows.
+an error naming the node kind and its location: enums, compound literals, `goto`, `switch`
+are the next phases' rows.
 
 ## 4. What the emitter spells
 
@@ -106,7 +110,9 @@ one per field against its offset, the layout law checked at compile time where i
 (`docs/implementation_order.md` P2.1). A union, a bitfield and a record clang lays out
 unnaturally fail closed until their rows (P4.2, P4.1, P2.7). Globals follow (`var`, `var
 private` for a C `static`, the initializer inline and under `unsafe(...)` when it takes an
-address), then the functions. A function is
+address; an unsafe operation inside a global initializer wraps itself, one `unsafe(...)` per
+operation, since no annotation covers a global), then `[init] def private
+c2das_init_globals` when a global array is filled sparsely, then the functions. A function is
 `def name(p : T; ...) : ret` with `private` for a C `static`; a parameter the body writes
 is declared `p_in` with `var p = p_in` as the first statement, the callee copy C's by-value
 rule needs, since a das parameter is a reference; a store that reaches the parameter through
@@ -121,7 +127,14 @@ prefix.
 
 A member is `a.f`, and `p.f` for `p->f` and `(*p).f` alike, which das reads through a
 pointer without `deref` or unsafe; a record initializer is `S(f = v, ...)` naming the filled
-slots; `sizeof` and `offsetof` are `T(typeinfo sizeof(type<S>))` and
+slots. An array is `T[2][3]` with the dimensions in C's order and `T? [N]` for an array of
+pointers, since `?[` lexes as the safe-index operator; its initializer is one `fixed_array`
+holding every element, the unwritten ones as zero literals, except an array past 32
+elements the source fills sparsely, which is the bare declaration followed by one store per
+written element (at module init for a global); a `char[N]` from a string literal is
+`cstr_array("...", N)`. A subscript of an array is the das index, range-checked (the
+documents' safety oracle); a subscript of a pointer is `deref(p + i)`; a row pointer is
+`T[N]?` and reads as `deref(row)[i]`; decay is `addr(a[0])`; `sizeof` and `offsetof` are `T(typeinfo sizeof(type<S>))` and
 `T(typeinfo offsetof<f>(type<S>))`, never clang's constants, with the cast to the C result
 type. Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
 cast, `IntegralToBoolean` is `x != 0` (`!= null` for a pointer), `BooleanToSignedIntegral`
@@ -144,8 +157,8 @@ but also on `break`, and the `_f` increment-first flag otherwise; `if` chains sp
 when the nested condition is pure. The split is measured: `benchmarks/bench_for_shapes.das`
 times one body under the three spellings, and under the interpreter the `finally` form costs
 10.6 ns per iteration against the flag's 14.2 and the native `range` loop's 4.9 (the O1
-rewrite's target), while the JIT compiles all three alike. Function pointers, arrays beyond
-subscripts, string literals outside a pointer context (the empty literal included, F10) and
+rewrite's target), while the JIT compiles all three alike. Function pointers, compound literals,
+string literals outside a pointer or `char[N]` context (the empty literal included, F10) and
 calls to external functions without a `c_runtime` mapping are errors until their lowering
 lands (`docs/implementation_order.md`, P2 onward).
 

@@ -28,4 +28,4 @@ static void kernel_run(void) {
     }
     result = sum;
 }
-static int kernel_check(void) { return result == 102833; }
+static int kernel_result(void) { return result; }

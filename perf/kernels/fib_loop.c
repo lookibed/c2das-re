@@ -12,4 +12,4 @@ static int fibI(int n) {
 static int result;
 static volatile int count = 6511134;
 static void kernel_run(void) { result = fibI(count); }
-static int kernel_check(void) { return result == 1781508648; }
+static int kernel_result(void) { return result; }

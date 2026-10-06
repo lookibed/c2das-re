@@ -29,6 +29,8 @@ struct Emitter {
     first_counter : int
     for_counter : int
     requires : table<string>
+    global_stores : array<string>
+    in_global_init : bool
     written : table<string>
     written_through : table<string>
     renames : table<string; string>
@@ -99,6 +101,14 @@ def private das_name(em : Emitter; c_name : string) : string {
     return key_exists(DAS_KEYWORDS, c_name) ? "_c_{c_name}" : c_name
 }
 
+// an unsafe operation's spelling: inside a function it counts toward `[c_function]`; in a
+// global initializer, which no annotation covers, it wraps itself, one operation per
+// `unsafe(...)` (docs/probe-findings.md F9)
+def private unsafe_value(var em : Emitter; text : string; prec : int) : Em {
+    em.unsafe_used = true
+    return em.in_global_init ? value("unsafe({text})", PREC_PRIMARY) : value(text, prec)
+}
+
 def private value(text : string; prec : int) : Em {
     return Em(text = text, prec = prec, is_bool = false)
 }
@@ -149,8 +159,16 @@ def das_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
         return empty(to) ? "" : to + "?"
     }
     if (k == "array") {
-        let elem = das_type(em, tu, tu.types[t].elem, loc)
-        return empty(elem) ? "" : "{elem}[{tu.types[t].count}]"
+        // dimensions read outermost first, as in C; `? [` keeps a pointer element from
+        // lexing as the safe-index operator
+        var dims : array<string>
+        var elem = t
+        while (kind_of(tu, elem) == "array") {
+            dims |> push("[{tu.types[elem].count}]")
+            elem = tu.types[elem].elem
+        }
+        let base = das_type(em, tu, elem, loc)
+        return empty(base) ? "" : base + (base |> ends_with("?") ? " " : "") + join(dims, "")
     }
     if (k == "struct") {
         return record_name(em, tu, t)
@@ -222,12 +240,17 @@ def private literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : E
 }
 
 def private string_literal(var em : Emitter; x : CirExpr; loc : CirLoc) : Em {
-    let n = length(x.bytes)
-    if (n <= 1) {
+    if (length(x.bytes) <= 1) {
         fail(em, "the empty string literal has no das spelling yet (probe-findings F10)", loc)
         return value("", PREC_PRIMARY)
     }
-    let text = build_string() $(var w) {
+    return unsafe_value(em, "reinterpret<uint8?>({quoted_literal(em, x, loc)})", PREC_PRIMARY)
+}
+
+// the das literal spelling of the bytes before the NUL
+def private quoted_literal(var em : Emitter; x : CirExpr; loc : CirLoc) : string {
+    let n = length(x.bytes)
+    return build_string() $(var w) {
         w |> write("\"")
         for (idx in range(n - 1)) {
             let b = int(x.bytes[idx])
@@ -257,8 +280,6 @@ def private string_literal(var em : Emitter; x : CirExpr; loc : CirLoc) : Em {
         }
         w |> write("\"")
     }
-    em.unsafe_used = true
-    return value("reinterpret<uint8?>({text})", PREC_PRIMARY)
 }
 
 def private assignment_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
@@ -354,22 +375,19 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return value("{target}({source.text})", PREC_PRIMARY)
     }
     if (k == "BitCast") {
-        em.unsafe_used = true
-        return value("reinterpret<{target}>({inner.text})", PREC_PRIMARY)
+        return unsafe_value(em, "reinterpret<{target}>({inner.text})", PREC_PRIMARY)
     }
     if (k == "PointerToIntegral") {
         return value("{target}(intptr({inner.text}))", PREC_PRIMARY)
     }
     if (k == "IntegralToPointer") {
-        em.unsafe_used = true
-        return value("reinterpret<{target}>(uint64({to_int(inner).text}))", PREC_PRIMARY)
+        return unsafe_value(em, "reinterpret<{target}>(uint64({to_int(inner).text}))", PREC_PRIMARY)
     }
     if (k == "FunctionToPointerDecay") {
         return value("@@{das_name(em, x.a.name)}", PREC_PRIMARY)
     }
     if (k == "ArrayToPointerDecay") {
-        em.unsafe_used = true
-        return value("addr({inner.text}[0])", PREC_PRIMARY)
+        return unsafe_value(em, "addr({inner.text}[0])", PREC_PRIMARY)
     }
     fail(em, "cast `{k}` is not lowered yet", loc)
     return inner
@@ -410,7 +428,7 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
         rhs = value(x.b.e == "int_lit" ? x.b.v + "u" : "uint({rhs.text})", PREC_PRIMARY)
     }
     if (pointer_lhs || pointer_rhs) {
-        em.unsafe_used = true
+        return unsafe_value(em, "{wrap(lhs, prec)} {spelled} {wrap(rhs, prec + 1)}", prec)
     }
     return value("{wrap(lhs, prec)} {spelled} {wrap(rhs, prec + 1)}", prec)
 }
@@ -466,12 +484,10 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
         return value("~{wrap(a, PREC_UNARY)}", PREC_UNARY)
     }
     if (x.op == "addr") {
-        em.unsafe_used = true
-        return value("addr({a.text})", PREC_PRIMARY)
+        return unsafe_value(em, "addr({a.text})", PREC_PRIMARY)
     }
     if (x.op == "deref") {
-        em.unsafe_used = true
-        return value("deref({a.text})", PREC_PRIMARY)
+        return unsafe_value(em, "deref({a.text})", PREC_PRIMARY)
     }
     fail(em, "unary `{x.op}` is not lowered yet", loc)
     return a
@@ -528,11 +544,15 @@ def emit_expr(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc) : Em {
         return emit_init_list(em, tu, *x, loc)
     }
     if (x.e == "index") {
+        if (x.base.e == "cast" && x.base.cast_kind == "ArrayToPointerDecay" && kind_of(tu, x.base.a.t) == "array") {
+            let arr = emit_expr(em, tu, x.base.a, loc)
+            let at = to_int(emit_expr(em, tu, x.i, loc))
+            return value("{wrap(arr, PREC_PRIMARY)}[{at.text}]", PREC_PRIMARY)
+        }
         let base = emit_expr(em, tu, x.base, loc)
         let i = to_int(emit_expr(em, tu, x.i, loc))
         if (kind_of(tu, x.base.t) == "ptr") {
-            em.unsafe_used = true
-            return value("deref({wrap(base, PREC_ADD)} + {wrap(i, PREC_ADD + 1)})", PREC_PRIMARY)
+            return unsafe_value(em, "deref({wrap(base, PREC_ADD)} + {wrap(i, PREC_ADD + 1)})", PREC_PRIMARY)
         }
         return value("{wrap(base, PREC_PRIMARY)}[{i.text}]", PREC_PRIMARY)
     }
@@ -549,11 +569,47 @@ def private emit_member(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
     return value("{wrap(base, PREC_PRIMARY)}.{field_name(em, tu, rec, x.field)}", PREC_PRIMARY)
 }
 
-// `S(f = v, ...)` naming the slots the source filled; the rest take the struct's zeros
+let SPARSE_ARRAY_LIMIT = 32
+
+// a literal of the type's zero: what C's static zeroing and das's default agree on
+def private zero_literal(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
+    let k = kind_of(tu, t)
+    if (k == "array") {
+        let one = zero_literal(em, tu, tu.types[t].elem, loc)
+        return "fixed_array(" + join([for (_i in range(tu.types[t].count)); one], ", ") + ")"
+    }
+    return zero_of(tu, t, das_type(em, tu, t, loc))
+}
+
+// whether an array initializer spells as one `fixed_array` literal: the literal must hold
+// every element, so a large array the source fills sparsely is a declaration plus stores
+def private literal_array(tu : CirTu; x : CirExpr) : bool {
+    return kind_of(tu, x.t) != "array" || length(x.init_items) == tu.types[x.t].count || tu.types[x.t].count <= SPARSE_ARRAY_LIMIT
+}
+
+// `S(f = v, ...)` naming the slots the source filled, the rest the struct's zeros;
+// `fixed_array(...)` with every element, the unwritten ones as zero literals
 def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
-    if (kind_of(tu, x.t) != "struct") {
-        fail(em, "`{kind_of(tu, x.t)}` initializer lists are not lowered yet", loc)
+    let k = kind_of(tu, x.t)
+    if (k != "struct" && k != "array") {
+        fail(em, "`{k}` initializer lists are not lowered yet", loc)
         return value("", PREC_PRIMARY)
+    }
+    if (k == "array") {
+        if (!literal_array(tu, x)) {
+            fail(em, "an array of {tu.types[x.t].count} filled sparsely inside an initializer is not lowered yet", loc)
+            return value("", PREC_PRIMARY)
+        }
+        var elems <- [for (_i in range(tu.types[x.t].count)); ""]
+        for (item in x.init_items) {
+            elems[item.pos] = to_int(emit_expr(em, tu, item.v, loc)).text
+        }
+        for (e in elems) {
+            if (empty(e)) {
+                e = zero_literal(em, tu, tu.types[x.t].elem, loc)
+            }
+        }
+        return value("fixed_array({join(elems, ", ")})", PREC_PRIMARY)
     }
     var items : array<string>
     items |> reserve(length(x.init_items))
@@ -562,6 +618,30 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
         items |> push("{field_name(em, tu, x.t, item.pos)} = {v.text}")
     }
     return value("{record_name(em, tu, x.t)}({join(items, ", ")})", PREC_PRIMARY)
+}
+
+// the stores of a sparsely filled large array: `name[pos] = value` per written element
+def private sparse_stores(var em : Emitter; tu : CirTu; name : string; x : CirExpr; loc : CirLoc; var out : array<string>) {
+    out |> reserve(length(out) + length(x.init_items))
+    for (item in x.init_items) {
+        let v = to_int(emit_expr(em, tu, item.v, loc))
+        out |> push("{name}[{item.pos}] = {v.text}")
+    }
+}
+
+// the initializer of a declared variable: a `char[N]` from a string literal is
+// `cstr_array`, an array filled sparsely is the bare declaration (stores follow), anything
+// else the expression; "" with `stores` set means the declaration carries no `=`
+def private decl_init(var em : Emitter; tu : CirTu; name : string; t : int; init : CirExpr?; loc : CirLoc; var stores : array<string>) : string {
+    if (kind_of(tu, t) == "array" && init.e == "str_lit") {
+        em.requires |> insert("c_runtime/cstr_array")
+        return "cstr_array({quoted_literal(em, *init, loc)}, {tu.types[t].count})"
+    }
+    if (init.e == "init_list" && !literal_array(tu, *init)) {
+        sparse_stores(em, tu, name, *init, loc, stores)
+        return ""
+    }
+    return to_int(emit_expr(em, tu, init, loc)).text
 }
 
 // an expression evaluated for its effect alone: the statement forms of assignment, the
@@ -782,12 +862,17 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt?) {
         close_block(em)
     } elif (st.s == "decl") {
         let spelled = das_type(em, tu, st.t, st.loc)
+        let name = das_name(em, st.name)
         if (st.init == null) {
-            line(em, "var {das_name(em, st.name)} : {spelled}")
+            line(em, "var {name} : {spelled}")
         } else {
-            let init = to_int(emit_expr(em, tu, st.init, st.loc))
+            var stores : array<string>
+            let init = decl_init(em, tu, name, st.t, st.init, st.loc, stores)
             flush_pre(em)
-            line(em, "var {das_name(em, st.name)} : {spelled} = {init.text}")
+            line(em, empty(init) ? "var {name} : {spelled}" : "var {name} : {spelled} = {init}")
+            for (store in stores) {
+                line(em, store)
+            }
         }
     } elif (st.s == "expr") {
         emit_effect(em, tu, st.e, st.loc)
@@ -1055,14 +1140,22 @@ def private emit_global(var em : Emitter; tu : CirTu; d : CirDecl) {
         return
     }
     em.unsafe_used = false
-    let init = to_int(emit_expr(em, tu, d.init, d.loc))
+    em.in_global_init = true
+    var stores : array<string>
+    let init = decl_init(em, tu, das_name(em, d.name), d.t, d.init, d.loc, stores)
+    em.in_global_init = false
     if (!empty(em.pre)) {
         em.pre |> clear()
         fail(em, "a global initializer with side effects is not lowered yet", d.loc)
         return
     }
-    let init_text = em.unsafe_used ? "unsafe({init.text})" : init.text
-    line(em, "{head} = {init_text}")
+    if (empty(init)) {
+        // the stores run at module init, which is C's static initialization
+        line(em, head)
+        em.global_stores |> push_from(stores)
+        return
+    }
+    line(em, "{head} = {init}")
 }
 
 //! The whole module: banner, options, requires, every declaration, and the `main` wrapper
@@ -1094,6 +1187,15 @@ def emit_tu(tu : CirTu) : Emitter {
         break if (!empty(em.error))
     }
     if (globals_done) {
+        line(em, "")
+    }
+    if (!empty(em.global_stores)) {
+        line(em, "[init]")
+        open_block(em, "def private c2das_init_globals")
+        for (store in em.global_stores) {
+            line(em, store)
+        }
+        close_block(em)
         line(em, "")
     }
     for (d in tu.decls) {

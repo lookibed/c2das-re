@@ -391,14 +391,26 @@ def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
         var t = CirType(k = "ptr", to = to)
         return intern(d, "ptr:{to}", t)
     }
+    // a pointer to an array, `T (*)[N]`: the pointee is the array `T[N]`
+    let row = find(qt, "(*)")
+    if (row > 0 && qt |> ends_with("]")) {
+        let to = type_from_qual(d, strip(slice(qt, 0, row)) + slice(qt, row + 3), at)
+        if (to < 0) {
+            return -1
+        }
+        var t = CirType(k = "ptr", to = to)
+        return intern(d, "ptr:{to}", t)
+    }
+    // `T[2][3]` is two arrays of `T[3]`: the first dimension is the outer one
     if (qt |> ends_with("]")) {
-        let open = rfind(qt, "[")
-        if (open > 0) {
-            let elem = type_from_qual(d, slice(qt, 0, open), at)
+        let open = find(qt, "[")
+        let close = find(qt, "]")
+        if (open > 0 && close > open) {
+            let elem = type_from_qual(d, strip(slice(qt, 0, open)) + slice(qt, close + 1), at)
             if (elem < 0) {
                 return -1
             }
-            let dim = strip(slice(qt, open + 1, length(qt) - 1))
+            let dim = strip(slice(qt, open + 1, close))
             let count = empty(dim) ? -1 : to_int(dim)
             var t = CirType(k = "array", elem = elem, count = count)
             return intern(d, "array:{elem}:{count}", t)
@@ -840,25 +852,31 @@ def private dump_member(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
     return new CirExpr(e = "member", t = t, base = base, field = field, arrow = arrow)
 }
 
-// clang's semantic form: one child per field in order, `ImplicitValueInitExpr` for a slot the
-// source left out, which the positional form leaves to its zero
+// clang's semantic form: one child per field or element in order, `ImplicitValueInitExpr`
+// for a slot the source left out, which the positional form leaves to its zero; an array
+// with a trailing run of zeros lists the filler first under `array_filler`, then the
+// elements up to the last one written
 def private dump_init_list(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
     let k = d.tu.types[t].k
-    if (k != "struct") {
-        fail(d, k == "array" ? "array initializers are not dumped yet" : "`{k}` initializer lists are not dumped yet", at)
+    if (k != "struct" && k != "array") {
+        fail(d, "`{k}` initializer lists are not dumped yet", at)
         return null
     }
+    let filled = is_present(js?["array_filler"])
+    let entries = filled ? js?["array_filler"] : js?["inner"]
+    let count = entries != null && entries is _array ? length(entries as _array) : 0
+    let first = filled ? 1 : 0
     var x = new CirExpr(e = "init_list", t = t)
-    x.init_items |> reserve(child_count(js))
-    for (idx in range(child_count(js))) {
-        let kid = (js?["inner"] as _array)[idx]
+    x.init_items |> reserve(count)
+    for (idx in range(first, count)) {
+        let kid = (entries as _array)[idx]
         continue if (node_kind(kid) == "ImplicitValueInitExpr")
         var v = dump_expr(d, kid)
         if (v == null) {
             delete_expr(x)
             return null
         }
-        x.init_items |> push(CirInitItem(pos = idx, v = v))
+        x.init_items |> push(CirInitItem(pos = idx - first, v = v))
     }
     return x
 }

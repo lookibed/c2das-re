@@ -103,5 +103,19 @@ def test_lowerings(t : T?) {
         t |> equal(text |> find("[init]\ndef private c2das_layout_check") >= 0, true, text)
         t |> equal(text |> find("typeinfo sizeof(type<P>) == 16 && typeinfo alignof(type<P>) == 8") >= 0, true, text)
     }
+    t |> run("arrays: padded fixed_array literals, sparse stores at init, cstr_array, multi-dim and row pointers, decay, direct subscripts") @(t : T?) {
+        var text : string
+        check_fixture(t, "p2_arrays", text)
+        t |> equal(text |> find("var part : int[6] = fixed_array(1, 2, 0, 0, 0, 0)") >= 0, true, text)
+        t |> equal(text |> find("var sparse : int[40]\n") >= 0, true, text)
+        t |> equal(text |> find("def private c2das_init_globals \{\n    sparse[5] = 9") >= 0, true, text)
+        t |> equal(text |> find("var name : uint8[8] = cstr_array(\"abc\", 8)") >= 0, true, text)
+        t |> equal(text |> find("var m : int[2][3] = fixed_array(fixed_array(1, 2, 3), fixed_array(4, 5, 6))") >= 0, true, text)
+        t |> equal(text |> find("var ptrs : int? [2] = fixed_array(unsafe(addr(full[1])), null)") >= 0, true, text)
+        t |> equal(text |> find("var row : int[3]? = addr(m[1])") >= 0, true, text)
+        t |> equal(text |> find("deref(row)[2]") >= 0, true, text)
+        t |> equal(text |> find("m[0][i] *= 2") >= 0, true, text)
+        t |> equal(text |> find("total(addr(full[0]), 3)") >= 0, true, text)
+    }
     rmdir_rec(work_root)
 }

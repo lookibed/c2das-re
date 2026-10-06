@@ -7,8 +7,10 @@ doc: `perf/ARCHITECTURE.md`. Planned work: `docs/implementation_order.md`.
 `kernels/` exercising what the item lowers, or names the kernel that already covers it, and
 re-records `results_linux.json` from a full run in the same change.**
 
-**A kernel is `kernel_run`, `kernel_check` and file-scope statics; a diff that adds a
-`main`, a prototype or an include to a kernel is a defect.** The harness composes the rest.
+**A kernel is `kernel_run`, `kernel_result` and file-scope statics; a diff that adds a
+`main`, a prototype, an include or an expected value to a kernel is a defect.** The harness
+composes the rest, and the native build of the kernel is the oracle for its result: a
+number written into the source is a number nobody measured.
 
 **A kernel's parameter is a `volatile` static read inside `kernel_run`; a diff that passes a
 literal to the kernel's function is a defect.** A literal lets clang hoist the call out of

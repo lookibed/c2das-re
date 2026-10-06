@@ -6,4 +6,4 @@ static int fibR(int n) {
 static int result;
 static volatile int depth = 31;
 static void kernel_run(void) { result = fibR(depth); }
-static int kernel_check(void) { return result == 1346269; }
+static int kernel_result(void) { return result; }

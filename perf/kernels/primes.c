@@ -15,4 +15,4 @@ static int primes(int n) {
 static int result;
 static volatile int limit = 14000;
 static void kernel_run(void) { result = primes(limit); }
-static int kernel_check(void) { return result == 1652; }
+static int kernel_result(void) { return result; }

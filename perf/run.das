@@ -15,7 +15,8 @@ require ../converter/tiers.das
 //! the profile prologue and epilogue into one C file, built natively by the pinned clang at
 //! -O2 and converted by the pipeline, and each lane runs it as its own process SAMPLES times;
 //! the program itself runs the kernel as many times as fit the budget and prints the per-run
-//! seconds, so startup never enters a cell. A cell is the median, ± half the range as a share
+//! seconds, so startup never enters a cell, and its result, which the native lane sets as the
+//! oracle every das lane must reproduce. A cell is the median, ± half the range as a share
 //! of it. Run from the repository root through scripts/run_perf.sh.
 
 let KERNELS = "perf/kernels"
@@ -48,6 +49,7 @@ struct Cell {
     time : double
     spread : double
     count : int64
+    result : int
     samples : array<double>
 }
 
@@ -85,10 +87,11 @@ def captured(args : array<string>) : string {
 }
 
 //! The profile protocol around a kernel: dastest's budget loop in C, timed by the CRT clock
-//! the kernel's converted form also reaches, one line `<seconds per run> <runs>` at the end.
+//! the kernel's converted form also reaches, one line `<seconds per run> <runs> <result>` at
+//! the end; the result is what the lanes are compared on.
 def composed_source(kernel : string) : string {
     let prologue = "int printf(const char *, ...);\nlong clock(void);\n#define C2DAS_CLOCKS_PER_SEC {crt::CLOCKS_PER_SEC}L\n#define C2DAS_BUDGET (C2DAS_CLOCKS_PER_SEC / 2)\n\n"
-    let epilogue = "\nint main(void) \{\n    long reps = 1;\n    long total = 0;\n    for (;;) \{\n        long start = clock();\n        for (long i = 0; i < reps; i++) kernel_run();\n        total = clock() - start;\n        if (total >= C2DAS_BUDGET || reps >= 1000000000L) break;\n        long next = total <= 0 ? 100 * reps : (long) ((double) reps * (double) C2DAS_BUDGET / (double) total * 1.2);\n        if (next > 100 * reps) next = 100 * reps;\n        if (next < reps + 1) next = reps + 1;\n        reps = next;\n    \}\n    if (!kernel_check()) \{\n        printf(\"FAIL\\n\");\n        return 1;\n    \}\n    printf(\"%.9f %ld\\n\", (double) total / (double) C2DAS_CLOCKS_PER_SEC / (double) reps, reps);\n    return 0;\n\}\n"
+    let epilogue = "\nint main(void) \{\n    long reps = 1;\n    long total = 0;\n    for (;;) \{\n        long start = clock();\n        for (long i = 0; i < reps; i++) kernel_run();\n        total = clock() - start;\n        if (total >= C2DAS_BUDGET || reps >= 1000000000L) break;\n        long next = total <= 0 ? 100 * reps : (long) ((double) reps * (double) C2DAS_BUDGET / (double) total * 1.2);\n        if (next > 100 * reps) next = 100 * reps;\n        if (next < reps + 1) next = reps + 1;\n        reps = next;\n    \}\n    printf(\"%.9f %ld %d\\n\", (double) total / (double) C2DAS_CLOCKS_PER_SEC / (double) reps, reps, kernel_result());\n    return 0;\n\}\n"
     return prologue + kernel + epilogue
 }
 
@@ -98,14 +101,15 @@ def last_line(text : string) : string {
     return empty(lines) ? "" : lines[length(lines) - 1]
 }
 
-def parse_sample(out : string; var seconds : double&; var reps : int64&) : bool {
+def parse_sample(out : string; var seconds : double&; var reps : int64&; var result : int&) : bool {
     let fields <- split(last_line(out), " ")
-    if (length(fields) != 2) {
+    if (length(fields) != 3) {
         return false
     }
     let digits = unsafe(reinterpret<uint8?>(fields[0]))
     seconds = unsafe(crt::strtod(digits, null))
     reps = to_int64(fields[1], false)
+    result = to_int(fields[2], false)
     return seconds > 0.0lf
 }
 
@@ -116,8 +120,8 @@ def median_of(values : array<double>) : double {
     return n == 0 ? 0.0lf : (n & 1) == 1 ? sorted[n / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) * 0.5lf
 }
 
-def cell_of(samples : array<double>; count : int64) : Cell {
-    var c = Cell(time = median_of(samples), count = count)
+def cell_of(samples : array<double>; count : int64; result : int) : Cell {
+    var c = Cell(time = median_of(samples), count = count, result = result)
     if (!empty(samples)) {
         var lo = samples[0]
         var hi = samples[0]
@@ -135,17 +139,36 @@ def cell_of(samples : array<double>; count : int64) : Cell {
 def measure(argv : array<string>; samples : int; var error : string&) : Cell {
     var times : array<double>
     var count = 0l
+    var result = 0
+    times |> reserve(samples)
     for (_s in range(samples)) {
         var out : string
         let rc = run_and_capture(argv, out, 600.0)
         var seconds = 0.0lf
-        if (rc != 0 || !parse_sample(out, seconds, count)) {
+        var sample_result = 0
+        if (rc != 0 || !parse_sample(out, seconds, count, sample_result)) {
             error = "exited {rc}: {first_line(out)}"
             break
         }
+        if (!empty(times) && sample_result != result) {
+            error = "result {sample_result} differs from the first sample's {result}"
+            break
+        }
+        result = sample_result
         times |> push(seconds)
     }
-    return <- cell_of(times, count)
+    return <- cell_of(times, count, result)
+}
+
+// a das lane's cell stands only with the native result: a kernel that computes something
+// else measures something else
+def accept_lane(var cells : table<string; Cell>; lane : string; var cell : Cell; oracle : int; var err : string&) {
+    if (empty(err) && cell.result != oracle) {
+        err = "result {cell.result} differs from the native {oracle}"
+    }
+    if (empty(err)) {
+        cells[lane] <- cell
+    }
 }
 
 def module_dirs : array<string> {
@@ -163,13 +186,16 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
     var build_out : string
     if (run_and_capture([clang_bin(), "-O2", "-w", "-funsigned-char", "-o", native_bin, c_path], build_out, 600.0) != 0) {
         errors |> push("{name}/native: {first_line(build_out)}")
-    } else {
-        var err : string
-        cells["native"] <- measure([native_bin], samples, err)
-        if (!empty(err)) {
-            errors |> push("{name}/native: {err}")
-        }
+        return <- cells
     }
+    var native_err : string
+    var native <- measure([native_bin], samples, native_err)
+    if (!empty(native_err)) {
+        errors |> push("{name}/native: {native_err}")
+        return <- cells
+    }
+    let oracle = native.result
+    cells["native"] <- native
     let res <- convert(c_path, work, "linux")
     if (!res.ok) {
         errors |> push("{name}/convert: {first_line(res.error)}")
@@ -183,12 +209,14 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
         loader |> push(dir)
     }
     var err : string
-    cells["interp"] <- measure(with_binary_first(daslang, loader, "", res.das_path), samples, err)
+    var interp <- measure(with_binary_first(daslang, loader, "", res.das_path), samples, err)
+    accept_lane(cells, "interp", interp, oracle, err)
     if (!empty(err)) {
         errors |> push("{name}/interp: {err}")
     }
     err = ""
-    cells["jit"] <- measure(with_binary_first(daslang, loader, "-jit", res.das_path), samples, err)
+    var jit <- measure(with_binary_first(daslang, loader, "-jit", res.das_path), samples, err)
+    accept_lane(cells, "jit", jit, oracle, err)
     if (!empty(err)) {
         errors |> push("{name}/jit: {err}")
     }
@@ -197,7 +225,8 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
         let exe = path_join(work, "{name}_exe")
         let built = fexist(exe + ".exe") ? exe + ".exe" : exe
         err = ""
-        cells["exe"] <- measure([built], samples, err)
+        var exe_cell <- measure([built], samples, err)
+        accept_lane(cells, "exe", exe_cell, oracle, err)
         if (!empty(err)) {
             errors |> push("{name}/exe: {err}")
         }
@@ -208,7 +237,8 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
     if (run_tier(res.das_path, "aot", work, tier_out, module_dirs()) >= 0) {
         let bin = path_join(path_join(work, "ctx"), "{name}_aot")
         err = ""
-        cells["aot"] <- measure([bin], samples, err)
+        var aot_cell <- measure([bin], samples, err)
+        accept_lane(cells, "aot", aot_cell, oracle, err)
         if (!empty(err)) {
             errors |> push("{name}/aot: {err}")
         }
@@ -335,7 +365,7 @@ def main : int {
     var tests : table<string; JsonValue?>
     for (name in names) {
         let cells <- run_kernel(name, args.samples, errors)
-        var row <- {for (lane, cell in keys(cells), values(cells)); lane => JV((time = cell.time, spread = cell.spread, count = cell.count, samples = JV(cell.samples)))}
+        var row <- {for (lane, cell in keys(cells), values(cells)); lane => JV((time = cell.time, spread = cell.spread, count = cell.count, result = cell.result, samples = JV(cell.samples)))}
         tests[name] = JV(row)
         to_log(LOG_INFO, "{name}: " + join([for (lane in LANES); "{lane} {lane_text(cells, lane)}"], ", ") + "\n")
     }
