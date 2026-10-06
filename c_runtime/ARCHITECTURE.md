@@ -27,6 +27,17 @@ as-if-converted fixture test landing first.
   as a `uint8[N]` literal built at compile time from the decoded string bytes, a NUL and zero
   padding; an exact fit carries no NUL, a longer string is a compile error. The das literal
   does the escape decoding, so the macro only spells bytes.
+- `c_runtime/variadic.das` - C varargs: `CVal` (`i : int64`, `d : double`, `p : void?`),
+  `CVaList`, `to_cvalist` (the `apply` walk over a tuple with C's default promotions, `bool`
+  dispatched on `stripped_typename` because no bool trait exists), and the `[variadic]`
+  annotation. Its `apply` runs before the gen2 parser decides generic-or-not, so it turns the
+  trailing `va : va_args` parameter into `_va_tuple : auto`, prepends `let va <- to_cvalist(_va_tuple)`
+  to the body, renames the function `<name>`va`, and registers into the compiling module a
+  call macro under the C name that tuples every argument past the fixed ones (`VaNone()` when
+  there are none). `Program::makeCall` searches every module of the program for a call
+  macro, so a requirer's call sites are intercepted too. The registration goes through
+  `compiling_module()`, never `this_module()`, which is unreachable once the macro module
+  has compiled.
 - `tests/` - one dastest file per piece, written as the converter will emit the code,
   including a control that the same code without the piece is rejected or wrong.
 
