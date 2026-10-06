@@ -1,0 +1,2 @@
+# c-testsuite tests never run, one per line: id, feature, reason, the phase that unblocks it,
+# tab-separated. A test that merely does not pass yet is not listed; the ratchet reports it.

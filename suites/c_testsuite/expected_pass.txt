@@ -1,0 +1,12 @@
+# c-testsuite single-exec tests that pass under the interpreter; the ratchet, kept sorted
+00001
+00060
+00061
+00071
+00075
+00097
+00108
+00114
+00122
+00145
+00152

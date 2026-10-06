@@ -297,16 +297,19 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
                 let pat = loc_of(d, child)
                 let pt = node_type(d, child, pat)
                 if (pt < 0) {
+                    delete_decl(fn)
                     return null
                 }
                 fn.params |> push(CirParam(name = child?["name"] ?? "", t = pt))
             } elif (ck == "CompoundStmt") {
                 fn.body = dump_stmt(d, child)
                 if (fn.body == null) {
+                    delete_decl(fn)
                     return null
                 }
             } else {
                 fail(d, "unsupported child `{ck}` of function `{c_name}`", loc_of(d, child))
+                delete_decl(fn)
                 return null
             }
         }
@@ -348,7 +351,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string) : Dumper {
     d.tu_prefix = ident_of(slice(d.tu.tu, 0, max(find(d.tu.tu, "."), 0)))
     d.tu.producer = "c2das-dumper-a 0.1 / clang {clang_version(clang)}"
     var out : string
-    let rc = run_and_capture([clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-target", target.triple, c_path], out, 120.0)
+    let rc = run_and_capture([clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-target", target.triple, c_path], out, 120.0)
     if (rc != 0) {
         d.error = "clang exited {rc}:\n{out}"
         return <- d

@@ -11,7 +11,9 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `cir.das` - the C-IR of `docs/c-ir-spec.md` as das values (`CirTu`, `CirType`, `CirDecl`,
   `CirStmt`, `CirExpr`, one struct per spec table), the canonical writer `write_cir`, the
   reader `read_cir`, the pinned `CAST_KINDS`, the two dialects. Nothing here knows clang or
-  daslang syntax.
+  daslang syntax. A tree is owned through plain pointers and freed by one `delete` of its
+  root: the generated finalizer recurses through pointer fields and arrays of pointers
+  (`probes/test_delete.das`), so no hand-written walk frees a child.
 - `dumper_a.das` - Dumper A: runs `clang -Xclang -ast-dump=json -fsyntax-only -target
   <triple>` on one file and normalizes the JSON into a `CirTu`. Fails closed: the first
   construct outside what it represents sets `Dumper.error` with `file:line:col`. Layout facts
@@ -23,8 +25,9 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `pipeline.das` - `convert(c_path, out_dir, target)`: dump, write the C-IR, read it back and
   rewrite it (the bytes must match), emit, format with `daslib/das_source_formatter`,
   compile-check with `compile_file`. Every artifact lands under `out_dir`.
-- `tiers.das` - `run_tier(das_path, tier, work_dir, output)`: the process exit code of the
-  module under `interp`, `jit`, `exe` or `aot` (section 5).
+- `tiers.das` - `run_tier(das_path, tier, work_dir, output[, module_dirs])`: the process exit
+  code of the module under `interp`, `jit`, `exe` or `aot` (section 5); `module_dirs` are
+  passed as `-load_module` to the interpreter and the JIT.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c> [--out] [--target] [--run]`.
 - `tests/test_pipeline.das` - the P0 gate: `tests/fixtures/ret42.c` converts, the C-IR and the
   das text hash to their golden values, and the module exits 42 under all four tiers.
@@ -78,9 +81,9 @@ formatter, so spacing is the formatter's; indentation is the emitter's, four spa
 and compiles the generated context with a seven-line C host (`<stem>_create`, `<stem>_main`,
 `<stem>_destroy` from the generated header) against the static runtime: `liblibDaScript.a`,
 `liblibDaScript_runtime.a`, `liblibUriParser.a`, with the checkout's ABI flags (no RTTI,
-`DAS_FUSION=2`, `SIZE_OF_VOID_P=8`). The AOT tier links no C++ module; when converted code
-requires `crt`, its static archive joins the link and the interpreter tiers add
-`-load_module`. The exit code is the program's own on every tier, which is why the wrapper
+`DAS_FUSION=2`, `SIZE_OF_VOID_P=8`). The AOT tier links no C++ module yet; when converted code
+requires `crt`, its static archive joins the link. The interpreter and JIT tiers take the
+module folders to load from the caller (`suites/c_testsuite/run.das` passes both). The exit code is the program's own on every tier, which is why the wrapper
 returns from `main`.
 
 ## 6. Exception ledger

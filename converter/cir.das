@@ -155,60 +155,31 @@ def target_by_name(name : string) : CirTarget {
     return name == "linux" ? target_lp64_linux() : target_llp64_msvc()
 }
 
+//! Frees a node and everything under it: the generated finalizer of a struct already recurses
+//! through its pointer fields and its arrays of pointers, so one `delete` is the whole walk and
+//! a hand-written walk would free every child twice.
 def delete_expr(var x : CirExpr?) {
-    if (x == null) {
-        return
-    }
-    delete_expr(x.a)
-    delete_expr(x.b)
-    delete_expr(x.c)
-    delete_expr(x.fn)
-    for (arg in x.args) {
-        delete_expr(arg)
-    }
-    delete_expr(x.base)
-    delete_expr(x.i)
-    for (it in x.init_items) {
-        delete_expr(it.v)
-    }
-    delete_expr(x.list)
-    delete_expr(x.init)
     unsafe {
         delete x
     }
 }
 
 def delete_stmt(var x : CirStmt?) {
-    if (x == null) {
-        return
-    }
-    for (child in x.body) {
-        delete_stmt(child)
-    }
-    delete_expr(x.init)
-    delete_expr(x.e)
-    delete_expr(x.cond)
-    delete_stmt(x.then_s)
-    delete_stmt(x.else_s)
-    delete_stmt(x.body_s)
-    delete_stmt(x.init_s)
-    delete_expr(x.inc)
     unsafe {
         delete x
     }
 }
 
-def delete_tu(var tu : CirTu) {
-    for (d in tu.decls) {
-        if (d != null) {
-            delete_expr(d.init)
-            delete_stmt(d.body)
-            unsafe {
-                delete d
-            }
-        }
+def delete_decl(var d : CirDecl?) {
+    unsafe {
+        delete d
     }
-    tu.decls |> clear()
+}
+
+def delete_tu(var tu : CirTu) {
+    unsafe {
+        delete tu.decls
+    }
 }
 
 // canonical writer: one member per line at one space per depth, scalar arrays on one line
