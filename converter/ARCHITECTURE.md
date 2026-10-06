@@ -29,6 +29,11 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   code of the module under `interp`, `jit`, `exe` or `aot` (section 5); `module_dirs` are
   passed as `-load_module` to the interpreter and the JIT.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c> [--out] [--target] [--run]`.
+- `benchmarks/bench_for_shapes.das` - the loop-shape race behind section 4, run with
+  `dastest -- --bench` under the interpreter and under `-jit`.
+- `tests/test_lowerings.das` - the P1 fixtures under `tests/fixtures/p1_*.c`, each converted
+  and run against the native build of the same file by the pinned clang (output and exit
+  code), plus the lowering shapes the text must carry.
 - `tests/test_pipeline.das` - the P0 gate: `tests/fixtures/ret42.c` converts, the C-IR and the
   das text hash to their golden values, and the module exits 42 under all four tiers.
   Fixtures under `tests/fixtures/` are C inputs, never das.
@@ -102,8 +107,14 @@ carries hoisted statements becomes `var _tN : T` and an `if`/`else`, while a ter
 pure arms stays inline since das `?:` evaluates only the taken arm (F18). Loops follow the
 documents: `while` is `while`, with a side-effecting condition spelled `while (true)` plus
 the test and `break`; `do` is the `_first` flag; `for` is a bare block holding the
-initializer, the `_f` flag and `while (true)` with the increment first; `if` chains spell
-`elif` when the nested condition is pure. Function pointers, records, arrays beyond
+initializer and one of three loops: `while (cond) { body }` when there is no increment,
+`while (cond) { { body } finally { inc } }` when the body never leaves the loop (no `break`
+at its level, no `return`, no `goto`), since `finally` runs on `continue` and on every pass
+but also on `break`, and the `_f` increment-first flag otherwise; `if` chains spell `elif`
+when the nested condition is pure. The split is measured: `benchmarks/bench_for_shapes.das`
+times one body under the three spellings, and under the interpreter the `finally` form costs
+10.6 ns per iteration against the flag's 14.2 and the native `range` loop's 4.9 (the O1
+rewrite's target), while the JIT compiles all three alike. Function pointers, records, arrays beyond
 subscripts, string literals outside a pointer context (the empty literal included, F10) and
 calls to external functions without a `c_runtime` mapping are errors until their lowering
 lands (`docs/implementation_order.md`, P2 onward).

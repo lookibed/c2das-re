@@ -80,6 +80,7 @@ def test_lowerings(t : T?) {
         t |> equal(text |> find("var _first = true") >= 0, true, text)
         t |> equal(text |> find("while (_first || ") >= 0, true, text)
         t |> equal(text |> find("var _f = false") >= 0, true, text)
+        t |> equal(text |> find("\} finally \{") >= 0, true, text)
         t |> equal(text |> find("} elif (") >= 0, true, text)
     }
     t |> run("functions: callee copies of written parameters, statics, globals, exit") @(t : T?) {

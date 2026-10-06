@@ -628,21 +628,36 @@ def private emit_do(var em : Emitter; tu : CirTu; st : CirStmt) {
     close_block(em)
 }
 
-def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
-    open_block(em, "")
-    if (st.init_s != null) {
-        emit_body(em, tu, st.init_s)
+// true when the body can leave the loop in a way C's increment must not follow: a `break` at
+// this loop's level, a `return` or a `goto` anywhere inside
+def private leaves_loop(st : CirStmt?; nested : bool) : bool {
+    if (st == null) {
+        return false
     }
+    if (st.s == "return" || st.s == "goto") {
+        return true
+    }
+    if (st.s == "break") {
+        return !nested
+    }
+    let inner = nested || st.s == "while" || st.s == "do" || st.s == "for"
+    for (child in st.body) {
+        if (leaves_loop(child, inner)) {
+            return true
+        }
+    }
+    return leaves_loop(st.then_s, inner) || leaves_loop(st.else_s, inner) || leaves_loop(st.body_s, inner)
+}
+
+def private emit_for_flag(var em : Emitter; tu : CirTu; st : CirStmt) {
     em.for_counter++
     let flag = numbered("_f", em.for_counter)
     line(em, "var {flag} = false")
     open_block(em, "while (true)")
-    if (st.inc != null) {
-        open_block(em, "if ({flag})")
-        emit_effect(em, tu, st.inc, st.loc)
-        flush_pre(em)
-        close_block(em)
-    }
+    open_block(em, "if ({flag})")
+    emit_effect(em, tu, st.inc, st.loc)
+    flush_pre(em)
+    close_block(em)
     line(em, "{flag} = true")
     if (st.cond != null) {
         let c = to_bool(emit_expr(em, tu, st.cond, st.loc), tu, st.cond.t)
@@ -653,6 +668,54 @@ def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
     }
     emit_body(em, tu, st.body_s)
     close_block(em)
+}
+
+// the loop head: `while (cond)`, or `while (true)` plus the test when the condition
+// carries hoisted statements or is absent
+def private open_for_head(var em : Emitter; tu : CirTu; st : CirStmt) {
+    if (st.cond == null) {
+        open_block(em, "while (true)")
+        return
+    }
+    let mark = length(em.pre)
+    let c = to_bool(emit_expr(em, tu, st.cond, st.loc), tu, st.cond.t)
+    if (length(em.pre) == mark) {
+        open_block(em, "while ({c.text})")
+        return
+    }
+    let cond_pre <- [for (idx in range(mark, length(em.pre))); em.pre[idx]]
+    em.pre |> resize(mark)
+    open_block(em, "while (true)")
+    for (stmt in cond_pre) {
+        line(em, stmt)
+    }
+    open_block(em, "if (!({c.text}))")
+    line(em, "break")
+    close_block(em)
+}
+
+def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
+    open_block(em, "")
+    if (st.init_s != null) {
+        emit_body(em, tu, st.init_s)
+    }
+    if (st.inc != null && leaves_loop(st.body_s, false)) {
+        emit_for_flag(em, tu, st)
+    } else {
+        open_for_head(em, tu, st)
+        if (st.inc == null) {
+            emit_body(em, tu, st.body_s)
+        } else {
+            open_block(em, "")
+            emit_body(em, tu, st.body_s)
+            em.depth--
+            open_block(em, "\} finally")
+            emit_effect(em, tu, st.inc, st.loc)
+            flush_pre(em)
+            close_block(em)
+        }
+        close_block(em)
+    }
     close_block(em)
 }
 
