@@ -57,9 +57,10 @@ let BIN_SPELLING <- {"add" => "+", "sub" => "-", "mul" => "*", "div" => "/", "re
 
 let BIN_PREC <- {"add" => 11, "sub" => 11, "mul" => 12, "div" => 12, "rem" => 12, "shl" => 10, "shr" => 10, "lt" => 9, "gt" => 9, "le" => 9, "ge" => 9, "eq" => 8, "ne" => 8, "band" => 7, "bor" => 5, "bxor" => 6, "land" => 4, "lor" => 3}
 
-let LIBC_CALLS <- {"printf" => "printf", "exit" => "c_exit", "abort" => "c_abort"}
+// C name -> das spelling, and the module it needs: the c_runtime pieces and the crt binds
+let LIBC_CALLS <- {"printf" => "printf", "exit" => "c_exit", "abort" => "c_abort", "clock" => "crt::clock", "time" => "crt::time", "rand" => "crt::rand", "srand" => "crt::srand"}
 
-let LIBC_MODULES <- {"printf" => "printf", "exit" => "c_exit", "abort" => "c_exit"}
+let LIBC_MODULES <- {"printf" => "c_runtime/printf", "exit" => "c_runtime/c_exit", "abort" => "c_runtime/c_exit", "clock" => "crt", "time" => "crt", "rand" => "crt", "srand" => "crt"}
 
 def private fail(var em : Emitter; what : string; loc : CirLoc) {
     if (empty(em.error)) {
@@ -900,7 +901,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     line(em, "")
     if (em.unsafe_used) {
         em.out[header_at] = "[c_function]\n" + em.out[header_at]
-        em.requires |> insert("c_function")
+        em.requires |> insert("c_runtime/c_function")
     }
 }
 
@@ -959,7 +960,7 @@ def emit_tu(tu : CirTu) : Emitter {
     }
     var required <- [for (name in keys(em.requires)); name]
     required |> sort()
-    let header = join([for (name in required); "require c_runtime/{name}\n"], "")
+    let header = join([for (name in required); "require {name}\n"], "")
     em.text = GENERATED_BANNER + "\noptions gen2\noptions indenting = 4\n" + header + "\n" + join(em.out, "")
     return <- em
 }

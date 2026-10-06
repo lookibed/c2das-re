@@ -48,9 +48,11 @@ def private run(args : array<string>; var output : string&) : int {
     return rc
 }
 
-def private run_exe(das_path, work_dir : string; var output : string&) : int {
+def private run_exe(das_path, work_dir : string; var output : string&; module_dirs : array<string>) : int {
     let exe = path_join(work_dir, file_stem(das_path) + "_exe")
-    let rc = run([daslang_bin(), "-exe", "{das_path}", "-output", "{exe}"], output)
+    var cmd <- daslang_cmd(module_dirs)
+    cmd |> push_from(["-exe", "{das_path}", "-output", "{exe}"])
+    let rc = run(cmd, output)
     if (rc != 0) {
         return rc
     }
@@ -58,10 +60,32 @@ def private run_exe(das_path, work_dir : string; var output : string&) : int {
     return run(["{built}"], output)
 }
 
-def private run_aot(das_path, work_dir : string; var output : string&) : int {
+// a native module folder (one holding src/*.cpp) joins the AOT host's compile: the generated
+// context declares the module and includes its header, so the sources link in statically
+def private native_module_sources(module_dirs : array<string>) : array<string> {
+    var args : array<string>
+    for (dir in module_dirs) {
+        let src = path_join(dir, "src")
+        if (!stat(src).is_dir) {
+            continue
+        }
+        args |> push("-I")
+        args |> push(src)
+        dir(src) $(name) {
+            if (name |> ends_with(".cpp")) {
+                args |> push(path_join(src, name))
+            }
+        }
+    }
+    return <- args
+}
+
+def private run_aot(das_path, work_dir : string; var output : string&; module_dirs : array<string>) : int {
     let ctx_dir = path_join(work_dir, "ctx")
     mkdir_rec(ctx_dir)
-    let rc = run([daslang_bin(), get_das_root() + "/utils/aot/main.das", "--", "-ctx", "{das_path}", ctx_dir + "/"], output)
+    var cmd <- daslang_cmd(module_dirs)
+    cmd |> push_from([get_das_root() + "/utils/aot/main.das", "--", "-ctx", "{das_path}", ctx_dir + "/"])
+    let rc = run(cmd, output)
     if (rc != 0) {
         return rc
     }
@@ -74,7 +98,9 @@ def private run_aot(das_path, work_dir : string; var output : string&) : int {
     }
     let root = get_das_root()
     let bin = path_join(ctx_dir, prefix + "_aot")
-    let crc = run(["c++", "-std=gnu++17", "-O2", "-fno-rtti", "-fwrapv", "-fno-strict-aliasing", "-Wno-invalid-offsetof", "-DDAS_FUSION=2", "-DSIZE_OF_VOID_P=8", "-DDAS_NO_ASSERTIONS", "-DNDEBUG", "-I", "{ctx_dir}", "-I", root + "/include", "-I", root + "/3rdparty/fmt/include", "-I", root + "/build/include", "{host}", path_join(ctx_dir, base_name(das_path) + ".cpp"), root + "/lib/liblibDaScript.a", root + "/lib/liblibDaScript_runtime.a", root + "/lib/liblibUriParser.a", "-lpthread", "-ldl", "-o", "{bin}"], output)
+    var link <- ["c++", "-std=gnu++17", "-O2", "-fno-rtti", "-fwrapv", "-fno-strict-aliasing", "-Wno-invalid-offsetof", "-DDAS_FUSION=2", "-DSIZE_OF_VOID_P=8", "-DDAS_NO_ASSERTIONS", "-DNDEBUG", "-I", "{ctx_dir}", "-I", root + "/include", "-I", root + "/3rdparty/fmt/include", "-I", root + "/build/include", "{host}", path_join(ctx_dir, base_name(das_path) + ".cpp")]
+    link |> push_from(native_module_sources(module_dirs), [root + "/lib/liblibDaScript.a", root + "/lib/liblibDaScript_runtime.a", root + "/lib/liblibUriParser.a", "-lpthread", "-ldl", "-o", "{bin}"])
+    let crc = run(link, output)
     if (crc != 0) {
         return crc
     }
@@ -101,10 +127,10 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
         return run(cmd, output)
     }
     if (tier == "exe") {
-        return run_exe(das_path, work_dir, output)
+        return run_exe(das_path, work_dir, output, module_dirs)
     }
     if (tier == "aot") {
-        return run_aot(das_path, work_dir, output)
+        return run_aot(das_path, work_dir, output, module_dirs)
     }
     output += "unknown tier `{tier}`; one of interp, jit, exe, aot\n"
     return -1

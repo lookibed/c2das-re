@@ -37,3 +37,21 @@ missing; `scripts/preflight.sh` is the gate a change clears before it is pushed.
 
 See `ARCHITECTURE.md` for the folder charters: `converter/`, `c_runtime/`, `dasCRuntime/`,
 `probes/`, `suites/`, `docs/`, `skills/`, `scripts/`.
+
+## Performance
+
+The comparison `docs/very-detailed-plan.md` section 2 asks for, measured the way
+[dasProfile](https://github.com/borisbat/dasProfile) measures: each kernel under `perf/kernels/`
+is a C program built natively by the pinned clang at `-O2` and converted by the pipeline, run
+under every daslang tier; `scripts/run_perf.sh --readme` refreshes this table from
+`perf/results_linux.json`.
+
+<!-- perf-table:begin -->
+Captured on 2026-10-06 21:06 UTC, linux x86_64, AMD Ryzen 7 7435HS; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
+
+| Test | C (clang -O2) | DAS interpreter | DAS JIT | DAS exe | DAS AOT |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| fib_loop | 0.001490s ±0% | 0.160682s ±4% | **0.001484s ±1%** | 0.001863s ±16% | 0.001611s ±7% |
+| fib_recursive | 0.003516s ±6% | 0.027144s ±5% | 0.003720s ±5% | 0.003730s ±5% | **0.001795s ±16%** |
+| primes | 0.015050s ±1% | 0.165399s ±4% | 0.015057s ±0% | 0.015016s ±0% | **0.011606s ±1%** |
+<!-- perf-table:end -->
