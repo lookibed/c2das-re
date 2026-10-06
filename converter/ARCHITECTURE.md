@@ -48,30 +48,69 @@ JSON spelling; the pipeline proves the pair by rewriting what it read and compar
 ## 3. Dumper A's subset
 
 The dumper walks `TranslationUnitDecl.inner`, skipping `isImplicit` nodes (clang's builtin
-typedefs and `_GUID`). Locations come from `loc`, else `range.begin`; clang omits `file` and
-`line` when they repeat the previous node's, so the dumper carries the last seen values forward
-in tree order. Types are interned by a structural key (`int:32:true:int`, `ptr:3`,
-`func:0:1,2:false`) in first-use order, which is the spec's order. Type spellings come from
-`qualType` strings: the C99 integer and floating names, `_Bool`, `T *`, and `R (P, ...)`
-function types; widths follow the selected dialect (`msvc`: int 32, long 32, long long 64;
-`linux`: long 64). A file-scope `static` gets the TU-qualified name `<stem>__<name>` with
-`c_name` keeping the C spelling. Declarations: `FunctionDecl` with `ParmVarDecl` and a
-`CompoundStmt` body. Statements: `CompoundStmt`, `ReturnStmt`. Expressions: `IntegerLiteral`,
-`ImplicitCastExpr` and `CStyleCastExpr` with a pinned `castKind`, `ParenExpr` (dropped, C-IR
-has no parentheses). Anything else is an error naming the node kind and its location.
+typedefs and `_GUID`) and every declaration whose location is another file (a header's).
+Locations come from `loc`, else `range.begin`; clang omits `file` and `line` when they
+repeat the previous node's, so the dumper carries the last seen values forward in tree
+order, starting from the main file. Types are interned by a structural key
+(`int:32:true:int`, `ptr:3`, `func:0:1,2:false`) in first-use order, which is the spec's
+order. Type spellings come from `desugaredQualType` when clang gives one, else `qualType`,
+with `const`, `volatile`, `restrict` and `__attribute__` text stripped: the C99 scalar names,
+`_Bool`, `T *`, `T[N]`, `R (P, ...)` function types and `R (*)(P)` pointers to functions.
+Widths follow the selected dialect (`msvc`: int 32, long 32, long long 64; `linux`: long
+64); plain `char` is unsigned in both (`docs/probe-findings.md` F17), which the dumper
+enforces with `-funsigned-char`. A file-scope `static` gets the TU-qualified name
+`<stem>__<name>` and a local `static` is hoisted into `decls` as `<fn>_<name>` with
+`from_func`; references use the hoisted name. Tentative definitions of one object merge
+into the declaration carrying the initializer.
+
+Declarations: `FunctionDecl` with `ParmVarDecl` and a `CompoundStmt` body, `VarDecl`.
+Statements: compound, `DeclStmt` (one `decl` per variable), expression statements,
+`if`, `while`, `do`, `for` (its five slots, an absent one spelled `{}`), `break`,
+`continue`, `return`, the null statement. Expressions: integer, character, floating (as a
+hex-float through the CRT) and string literals (C escapes decoded, the NUL appended),
+`DeclRefExpr`, every pinned cast, the unary, binary, compound-assignment, conditional and
+comma operators, calls, subscripts, `sizeof`. Anything else is an error naming the node
+kind and its location: records, typedefs, enums, initializer lists, `goto`, `switch` are
+the next phases' rows.
 
 ## 4. What the emitter spells
 
-The module opens with the generated banner, `options gen2` and `options indenting = 4`. A
-function is `def name : ret {` with `private` for a C `static`; C `main` becomes `c_main`
-and the module ends with the wrapper `[export] def main : int { return c_main() }`, whose
-`return` is the CLI's exit-code contract (`docs/probe-findings.md` F1: `exit()` cannot carry
-it). Integer literals carry their das suffix from the C-IR type (`u`, `l`, `ul`), small
-integers wrap in a cast (`int8(1)`), `_Bool` literals are `true`/`false`. `LValueToRValue`
-and `NoOp` casts emit their operand; `IntegralCast` emits the workhorse cast. Parameters,
-globals, every other statement and expression, and the other cast kinds are errors until
-their lowering lands (`docs/implementation_order.md`, P1 onward). The text goes through the
-formatter, so spacing is the formatter's; indentation is the emitter's, four spaces per depth.
+The module opens with the generated banner, `options gen2`, `options indenting = 4` and one
+`require c_runtime/<name>` per piece the body reached (`printf`, `c_exit`, `c_function`).
+Globals come first (`var`, `var private` for a C `static`, the initializer inline and under
+`unsafe(...)` when it takes an address), then the functions. A function is
+`def name(p : T; ...) : ret` with `private` for a C `static`; a parameter the body writes
+is declared `p_in` with `var p = p_in` as the first statement, the callee copy C's by-value
+rule needs, since a das parameter is a reference. A body that used an unsafe operation
+(pointer arithmetic, `deref`, `addr`, a `reinterpret`, a string literal) gets
+`[c_function]`. C `main` becomes `c_main` and the module ends with
+`[export] def main : int { return c_main() }`, whose `return` is the CLI's exit-code
+contract (`docs/probe-findings.md` F1). A C name that is a das keyword takes the `_c_`
+prefix.
+
+Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
+cast, `IntegralToBoolean` is `x != 0` (`!= null` for a pointer), `BooleanToSignedIntegral`
+is `b ? 1 : 0`, a comparison or `!` is spelled as the das bool it is and becomes `? 1 : 0`
+only where C reads it as an int. Literals carry their suffix from the C-IR type (`u`, `l`,
+`ul`, `lf`, `f`), small integers wrap in a cast. A compound assignment whose operand types
+differ expands to `lhs = T_lhs(T_rhs(lhs) op rhs)`, which is C's small-int rule
+(`b = int8(int(b) + 1)`). Statement-ification happens at emission: an assignment, a step
+or a call met inside an expression is hoisted into the statements before the current one
+(`let _t0 = x` then `x++` for a postfix step), left to right; a comma is two statements;
+`&&` and `||` with a hoisted right side become a flag and an `if`; a ternary whose arm
+carries hoisted statements becomes `var _tN : T` and an `if`/`else`, while a ternary of
+pure arms stays inline since das `?:` evaluates only the taken arm (F18). Loops follow the
+documents: `while` is `while`, with a side-effecting condition spelled `while (true)` plus
+the test and `break`; `do` is the `_first` flag; `for` is a bare block holding the
+initializer, the `_f` flag and `while (true)` with the increment first; `if` chains spell
+`elif` when the nested condition is pure. Function pointers, records, arrays beyond
+subscripts, string literals outside a pointer context (the empty literal included, F10) and
+calls to external functions without a `c_runtime` mapping are errors until their lowering
+lands (`docs/implementation_order.md`, P2 onward).
+
+Output is assembled as an array of lines joined once (`docs/probe-findings.md` F19); the
+text then goes through the formatter, so spacing is the formatter's and indentation is the
+emitter's, four spaces per depth.
 
 ## 5. The four tiers
 

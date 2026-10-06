@@ -38,7 +38,8 @@ TABLE
 done
 wants() { local g="$1"; for s in "${skip[@]:-}"; do [ "$s" = "$g" ] && return 1; done; [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$g" ] && return 0; done; return 1; }
 das_dirs=(); for d in converter c_runtime dasCRuntime probes suites tests; do [ -d "$d" ] && das_dirs+=("$d"); done
-das_files() { [ ${#das_dirs[@]} -gt 0 ] && find "${das_dirs[@]}" -type f -name '*.das' | sort; }
+# a suite's fetch/ and work/ hold inputs and converted output, never house code
+das_files() { [ ${#das_dirs[@]} -gt 0 ] && find "${das_dirs[@]}" -type d \( -name fetch -o -name work \) -prune -o -type f -name '*.das' -print | sort; }
 changed_das() { git diff --name-only "$base" -- '*.das' 2>/dev/null; git ls-files --others --exclude-standard -- '*.das'; }
 pass() { echo "[PASS] $1"; }
 fail() { echo "[FAIL] $1 - $2"; return 1; }
@@ -48,12 +49,17 @@ gate_native() { local out; out=$(scripts/build_crt.sh 2>&1) && pass native || { 
 gate_untracked() { local u; u=$(git ls-files --others --exclude-standard); [ -z "$u" ] && pass untracked || fail untracked "$(echo "$u" | tr '\n' ' ')"; }
 gate_format() {
     [ ${#das_dirs[@]} -gt 0 ] || { skipped format "no .das folders"; return 0; }
-    for d in "${das_dirs[@]}"; do das "$DASLANG_ROOT/utils/das-fmt/dasfmt.das" -- --path "$d" --verify >/dev/null 2>&1 || { fail format "unformatted file under $d (run the formatter)"; return 1; }; done
+    local f
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        das "$DASLANG_ROOT/utils/das-fmt/dasfmt.das" -- --path "$f" --verify >/dev/null 2>&1 || { fail format "unformatted $f (run the formatter)"; return 1; }
+    done < <(das_files)
     pass format
 }
 gate_lint() {
     [ ${#das_dirs[@]} -gt 0 ] || { skipped lint "no .das folders"; return 0; }
-    local out; out=$(das "$DASLANG_ROOT/utils/lint/main.das" -- "${das_dirs[@]}" --quiet --disable LINT019 2>&1) || { echo "$out" | tail -20; fail lint "findings above"; return 1; }
+    local files; mapfile -t files < <(das_files)
+    local out; out=$(das "$DASLANG_ROOT/utils/lint/main.das" -- "${files[@]}" --quiet --disable LINT019 2>&1) || { echo "$out" | tail -20; fail lint "findings above"; return 1; }
     echo "$out" | grep -q " 0 issue(s)" && pass lint || { echo "$out" | tail -20; fail lint "findings above"; }
 }
 gate_compile() {

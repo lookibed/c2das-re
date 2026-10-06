@@ -8,7 +8,7 @@ require ../emit.das
 require ../tiers.das
 
 let FIXTURE = "converter/tests/fixtures/ret42.c"
-let CIR_SHA = "19e0e9c8d07e50f17ddd02cd2eafcf04bb23aed21c7e0e96db120b99493ec35a"
+let CIR_SHA = "0fc98ecbfd57f8acb5f340ca4b934f85c84b624ec962c1262aaf488bb92e9bca"
 let DAS_SHA = "ee045546585d90de8cf1390a244e10065430cacdca9f586f3d61ba0c6f8608ad"
 
 var res : ConvertResult
@@ -55,4 +55,5 @@ def test_pipeline_ret42(t : T?) {
             t |> equal(run_tier(res.das_path, tier, out, output), 42, output)
         }
     }
+    rmdir_rec(out)
 }

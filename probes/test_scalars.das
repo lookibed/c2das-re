@@ -1,6 +1,11 @@
 options gen2
 require dastest/testing_boost public
 
+def record(var trace : array<int>; v : int) : int {
+    trace |> push(v)
+    return v
+}
+
 [test]
 def test_scalars(t : T?) {
     t |> run("small-int arithmetic computes in int and truncates on store") @(t : T?) {
@@ -59,6 +64,13 @@ def test_scalars(t : T?) {
         let a = 3
         let b = 9
         t |> equal(a > b ? "gt" : "le", "le")
+    }
+    t |> run("a ternary evaluates only the taken arm") @(t : T?) {
+        var trace : array<int>
+        let pick = true
+        let v = pick ? record(trace, 1) : record(trace, 2)
+        t |> equal(v, 1)
+        t |> equal("{trace}", "[ 1]")
     }
     t |> run("statement-only ++ and ||= on bool") @(t : T?) {
         var i = 0

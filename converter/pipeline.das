@@ -99,7 +99,7 @@ def convert(c_path : string; out_dir : string; target_name : string; clang : str
         res.error = "emitter: {em.error}"
         return <- res
     }
-    res.das_text = format_source_string(em.out)
+    res.das_text = format_source_string(em.text)
     res.das_path = path_join(out_dir, "{file_stem(c_path)}.das")
     if (!write_text(res.das_path, res.das_text)) {
         res.error = "cannot write {res.das_path}"

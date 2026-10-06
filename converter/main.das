@@ -1,5 +1,6 @@
 options gen2
 
+require daslib/fio
 require daslib/clargs
 require pipeline
 require tiers
@@ -50,7 +51,9 @@ def main : int {
         return 0
     }
     var output : string
-    let rc = run_tier(res.das_path, args.run, args.out, output)
+    let script = get_command_line_arguments()[1]
+    let repo = dir_name(dir_name(script))
+    let rc = run_tier(res.das_path, args.run, args.out, output, [path_join(repo, "c_runtime"), path_join(repo, "dasCRuntime")])
     to_log(LOG_INFO, "c2das: {args.run} exited {rc}\n{output}")
     return rc
 }

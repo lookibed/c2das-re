@@ -142,11 +142,11 @@ let CIR_VERSION = "0.1"
 let CAST_KINDS <- {"LValueToRValue", "NoOp", "IntegralCast", "IntegralToFloating", "FloatingToIntegral", "FloatingCast", "IntegralToBoolean", "FloatingToBoolean", "PointerToBoolean", "ArrayToPointerDecay", "FunctionToPointerDecay", "NullToPointer", "BitCast", "PointerToIntegral", "IntegralToPointer", "ToVoid", "BooleanToSignedIntegral"}
 
 def target_llp64_msvc : CirTarget {
-    return CirTarget(triple = "x86_64-pc-windows-msvc", int_w = 32, long_w = 32, llong_w = 64, ptr_w = 64, char_signed = true)
+    return CirTarget(triple = "x86_64-pc-windows-msvc", int_w = 32, long_w = 32, llong_w = 64, ptr_w = 64, char_signed = false)
 }
 
 def target_lp64_linux : CirTarget {
-    return CirTarget(triple = "x86_64-unknown-linux-gnu", int_w = 32, long_w = 64, llong_w = 64, ptr_w = 64, char_signed = true)
+    return CirTarget(triple = "x86_64-unknown-linux-gnu", int_w = 32, long_w = 64, llong_w = 64, ptr_w = 64, char_signed = false)
 }
 
 //! The dialect a `--target` word names: `msvc` (the documents' LLP64 default) or `linux` (the
@@ -184,13 +184,15 @@ def delete_tu(var tu : CirTu) {
 
 // canonical writer: one member per line at one space per depth, scalar arrays on one line
 
+// fragments, joined once at the end: a string appended in place would copy the whole text
+// into a fresh allocation on every member
 struct private Writer {
-    out : string
+    out : array<string>
     depth : int
 }
 
 def private indent(var w : Writer) {
-    w.out += repeat(" ", w.depth)
+    w.out |> push(repeat(" ", w.depth))
 }
 
 def private json_str(s : string) : string {
@@ -198,163 +200,165 @@ def private json_str(s : string) : string {
 }
 
 def private open_object(var w : Writer) {
-    w.out += "\{\n"
+    w.out |> push("\{\n")
     w.depth++
 }
 
 def private close_object(var w : Writer) {
     w.depth--
-    w.out += "\n"
+    w.out |> push("\n")
     indent(w)
-    w.out += "\}"
+    w.out |> push("\}")
 }
 
 def private member(var w : Writer; key : string; first : bool) {
     if (!first) {
-        w.out += ",\n"
+        w.out |> push(",\n")
     }
     indent(w)
-    w.out += "{json_str(key)}: "
+    w.out |> push("{json_str(key)}: ")
 }
 
 def private write_int_array(var w : Writer; arr : array<int>) {
-    w.out += "[" + join([for (x in arr); "{x}"], ", ") + "]"
+    w.out |> push("[" + join([for (x in arr); "{x}"], ", ") + "]")
 }
 
 def private write_type(var w : Writer; t : CirType) {
     open_object(w)
     member(w, "k", true)
-    w.out += json_str(t.k)
+    w.out |> push(json_str(t.k))
     if (t.k == "int") {
         member(w, "w", false)
-        w.out += "{t.w}"
+        w.out |> push("{t.w}")
         member(w, "signed", false)
-        w.out += "{t.is_signed}"
+        w.out |> push("{t.is_signed}")
         member(w, "spell", false)
-        w.out += json_str(t.spell)
+        w.out |> push(json_str(t.spell))
     } elif (t.k == "float") {
         member(w, "w", false)
-        w.out += "{t.w}"
+        w.out |> push("{t.w}")
         member(w, "spell", false)
-        w.out += json_str(t.spell)
+        w.out |> push(json_str(t.spell))
     } elif (t.k == "ptr") {
         member(w, "to", false)
-        w.out += "{t.to}"
+        w.out |> push("{t.to}")
     } elif (t.k == "array") {
         member(w, "elem", false)
-        w.out += "{t.elem}"
+        w.out |> push("{t.elem}")
         member(w, "count", false)
-        w.out += "{t.count}"
+        w.out |> push("{t.count}")
     } elif (t.k == "func") {
         member(w, "ret", false)
-        w.out += "{t.ret}"
+        w.out |> push("{t.ret}")
         member(w, "params", false)
         write_int_array(w, t.params)
         member(w, "variadic", false)
-        w.out += "{t.variadic}"
+        w.out |> push("{t.variadic}")
     } elif (t.k == "struct" || t.k == "union") {
         member(w, "name", false)
-        w.out += json_str(t.name)
+        w.out |> push(json_str(t.name))
         member(w, "size", false)
-        w.out += "{t.size}"
+        w.out |> push("{t.size}")
         member(w, "align", false)
-        w.out += "{t.align}"
+        w.out |> push("{t.align}")
         member(w, "packed", false)
-        w.out += "{t.packed}"
+        w.out |> push("{t.packed}")
         member(w, "fields", false)
         write_fields(w, t.fields)
     } elif (t.k == "enum") {
         member(w, "name", false)
-        w.out += json_str(t.name)
+        w.out |> push(json_str(t.name))
         member(w, "spell", false)
-        w.out += json_str(t.spell)
+        w.out |> push(json_str(t.spell))
         member(w, "items", false)
         write_enum_items(w, t.items)
     } elif (t.k == "typedef") {
         member(w, "name", false)
-        w.out += json_str(t.name)
+        w.out |> push(json_str(t.name))
         member(w, "to", false)
-        w.out += "{t.to}"
+        w.out |> push("{t.to}")
     }
     close_object(w)
 }
 
 def private write_fields(var w : Writer; fields : array<CirField>) {
     if (empty(fields)) {
-        w.out += "[]"
+        w.out |> push("[]")
         return
     }
-    w.out += "[\n"
+    w.out |> push("[\n")
     w.depth++
+    w.out |> reserve(length(w.out) + 16 * length(fields))
     var first = true
     for (f in fields) {
         if (!first) {
-            w.out += ",\n"
+            w.out |> push(",\n")
         }
         first = false
         indent(w)
         open_object(w)
         member(w, "name", true)
-        w.out += json_str(f.name)
+        w.out |> push(json_str(f.name))
         member(w, "t", false)
-        w.out += "{f.t}"
+        w.out |> push("{f.t}")
         member(w, "off", false)
-        w.out += "{f.off}"
+        w.out |> push("{f.off}")
         if (f.is_bitfield) {
             member(w, "bit_off", false)
-            w.out += "{f.bit_off}"
+            w.out |> push("{f.bit_off}")
             member(w, "bit_w", false)
-            w.out += "{f.bit_w}"
+            w.out |> push("{f.bit_w}")
         }
         close_object(w)
     }
     w.depth--
-    w.out += "\n"
+    w.out |> push("\n")
     indent(w)
-    w.out += "]"
+    w.out |> push("]")
 }
 
 def private write_enum_items(var w : Writer; items : array<CirEnumItem>) {
     if (empty(items)) {
-        w.out += "[]"
+        w.out |> push("[]")
         return
     }
-    w.out += "[\n"
+    w.out |> push("[\n")
     w.depth++
+    w.out |> reserve(length(w.out) + 8 * length(items))
     var first = true
     for (it in items) {
         if (!first) {
-            w.out += ",\n"
+            w.out |> push(",\n")
         }
         first = false
         indent(w)
         open_object(w)
         member(w, "name", true)
-        w.out += json_str(it.name)
+        w.out |> push(json_str(it.name))
         member(w, "v", false)
-        w.out += "{it.v}"
+        w.out |> push("{it.v}")
         close_object(w)
     }
     w.depth--
-    w.out += "\n"
+    w.out |> push("\n")
     indent(w)
-    w.out += "]"
+    w.out |> push("]")
 }
 
 def private write_loc(var w : Writer; loc : CirLoc) {
     open_object(w)
     member(w, "file", true)
-    w.out += json_str(loc.file)
+    w.out |> push(json_str(loc.file))
     member(w, "line", false)
-    w.out += "{loc.line}"
+    w.out |> push("{loc.line}")
     member(w, "col", false)
-    w.out += "{loc.col}"
+    w.out |> push("{loc.col}")
     close_object(w)
 }
 
 def private write_expr_or_null(var w : Writer; x : CirExpr?) {
     if (x == null) {
-        w.out += "null"
+        w.out |> push("null")
     } else {
         write_expr(w, *x)
     }
@@ -362,24 +366,25 @@ def private write_expr_or_null(var w : Writer; x : CirExpr?) {
 
 def private write_expr_array(var w : Writer; xs : array<CirExpr?>) {
     if (empty(xs)) {
-        w.out += "[]"
+        w.out |> push("[]")
         return
     }
-    w.out += "[\n"
+    w.out |> push("[\n")
     w.depth++
+    w.out |> reserve(length(w.out) + 3 * length(xs))
     var first = true
     for (x in xs) {
         if (!first) {
-            w.out += ",\n"
+            w.out |> push(",\n")
         }
         first = false
         indent(w)
         write_expr_or_null(w, x)
     }
     w.depth--
-    w.out += "\n"
+    w.out |> push("\n")
     indent(w)
-    w.out += "]"
+    w.out |> push("]")
 }
 
 def private write_expr_composite(var w : Writer; x : CirExpr) {
@@ -392,9 +397,9 @@ def private write_expr_composite(var w : Writer; x : CirExpr) {
         member(w, "base", false)
         write_expr_or_null(w, x.base)
         member(w, "field", false)
-        w.out += "{x.field}"
+        w.out |> push("{x.field}")
         member(w, "arrow", false)
-        w.out += "{x.arrow}"
+        w.out |> push("{x.arrow}")
     } elif (x.e == "index") {
         member(w, "base", false)
         write_expr_or_null(w, x.base)
@@ -402,9 +407,9 @@ def private write_expr_composite(var w : Writer; x : CirExpr) {
         write_expr_or_null(w, x.i)
     } elif (x.e == "cast") {
         member(w, "kind", false)
-        w.out += json_str(x.cast_kind)
+        w.out |> push(json_str(x.cast_kind))
         member(w, "explicit", false)
-        w.out += "{x.explicit_cast}"
+        w.out |> push("{x.explicit_cast}")
         member(w, "a", false)
         write_expr_or_null(w, x.a)
     } elif (x.e == "init_list") {
@@ -412,14 +417,14 @@ def private write_expr_composite(var w : Writer; x : CirExpr) {
         write_init_items(w, x.init_items)
     } elif (x.e == "sizeof_v") {
         member(w, "v", false)
-        w.out += "{x.sizeof_v}"
+        w.out |> push("{int64(x.sizeof_v)}")
         member(w, "of_t", false)
-        w.out += "{x.of_t}"
+        w.out |> push("{x.of_t}")
     } elif (x.e == "va_arg") {
         member(w, "list", false)
         write_expr_or_null(w, x.list)
         member(w, "arg_t", false)
-        w.out += "{x.arg_t}"
+        w.out |> push("{x.arg_t}")
     } elif (x.e == "compound_lit") {
         member(w, "init", false)
         write_expr_or_null(w, x.init)
@@ -429,38 +434,38 @@ def private write_expr_composite(var w : Writer; x : CirExpr) {
 def private write_expr(var w : Writer; x : CirExpr) {
     open_object(w)
     member(w, "e", true)
-    w.out += json_str(x.e)
+    w.out |> push(json_str(x.e))
     member(w, "t", false)
-    w.out += "{x.t}"
+    w.out |> push("{x.t}")
     if (x.e == "int_lit" || x.e == "float_lit") {
         member(w, "v", false)
-        w.out += json_str(x.v)
+        w.out |> push(json_str(x.v))
     } elif (x.e == "str_lit") {
         member(w, "bytes", false)
-        w.out += "[" + join([for (bt in x.bytes); "{int(bt)}"], ", ") + "]"
+        w.out |> push("[" + join([for (bt in x.bytes); "{int(bt)}"], ", ") + "]")
     } elif (x.e == "ref") {
         member(w, "name", false)
-        w.out += json_str(x.name)
+        w.out |> push(json_str(x.name))
     } elif (x.e == "enum_ref") {
         member(w, "enum_t", false)
-        w.out += "{x.enum_t}"
+        w.out |> push("{x.enum_t}")
         member(w, "item", false)
-        w.out += json_str(x.item)
+        w.out |> push(json_str(x.item))
     } elif (x.e == "un") {
         member(w, "op", false)
-        w.out += json_str(x.op)
+        w.out |> push(json_str(x.op))
         member(w, "a", false)
         write_expr_or_null(w, x.a)
     } elif (x.e == "bin") {
         member(w, "op", false)
-        w.out += json_str(x.op)
+        w.out |> push(json_str(x.op))
         member(w, "a", false)
         write_expr_or_null(w, x.a)
         member(w, "b", false)
         write_expr_or_null(w, x.b)
     } elif (x.e == "assign") {
         member(w, "op", false)
-        w.out += json_str(x.op)
+        w.out |> push(json_str(x.op))
         member(w, "lhs", false)
         write_expr_or_null(w, x.a)
         member(w, "rhs", false)
@@ -482,41 +487,42 @@ def private write_expr(var w : Writer; x : CirExpr) {
     }
     if (!empty(x.macro)) {
         member(w, "macro", false)
-        w.out += json_str(x.macro)
+        w.out |> push(json_str(x.macro))
     }
     close_object(w)
 }
 
 def private write_init_items(var w : Writer; items : array<CirInitItem>) {
     if (empty(items)) {
-        w.out += "[]"
+        w.out |> push("[]")
         return
     }
-    w.out += "[\n"
+    w.out |> push("[\n")
     w.depth++
+    w.out |> reserve(length(w.out) + 8 * length(items))
     var first = true
     for (it in items) {
         if (!first) {
-            w.out += ",\n"
+            w.out |> push(",\n")
         }
         first = false
         indent(w)
         open_object(w)
         member(w, "pos", true)
-        w.out += "{it.pos}"
+        w.out |> push("{it.pos}")
         member(w, "v", false)
         write_expr_or_null(w, it.v)
         close_object(w)
     }
     w.depth--
-    w.out += "\n"
+    w.out |> push("\n")
     indent(w)
-    w.out += "]"
+    w.out |> push("]")
 }
 
 def private write_stmt_or_null(var w : Writer; x : CirStmt?) {
     if (x == null) {
-        w.out += "null"
+        w.out |> push("null")
     } else {
         write_stmt(w, *x)
     }
@@ -524,38 +530,39 @@ def private write_stmt_or_null(var w : Writer; x : CirStmt?) {
 
 def private write_stmt_array(var w : Writer; xs : array<CirStmt?>) {
     if (empty(xs)) {
-        w.out += "[]"
+        w.out |> push("[]")
         return
     }
-    w.out += "[\n"
+    w.out |> push("[\n")
     w.depth++
+    w.out |> reserve(length(w.out) + 3 * length(xs))
     var first = true
     for (x in xs) {
         if (!first) {
-            w.out += ",\n"
+            w.out |> push(",\n")
         }
         first = false
         indent(w)
         write_stmt_or_null(w, x)
     }
     w.depth--
-    w.out += "\n"
+    w.out |> push("\n")
     indent(w)
-    w.out += "]"
+    w.out |> push("]")
 }
 
 def private write_stmt(var w : Writer; x : CirStmt) {
     open_object(w)
     member(w, "s", true)
-    w.out += json_str(x.s)
+    w.out |> push(json_str(x.s))
     if (x.s == "compound") {
         member(w, "body", false)
         write_stmt_array(w, x.body)
     } elif (x.s == "decl") {
         member(w, "name", false)
-        w.out += json_str(x.name)
+        w.out |> push(json_str(x.name))
         member(w, "t", false)
-        w.out += "{x.t}"
+        w.out |> push("{x.t}")
         member(w, "init", false)
         write_expr_or_null(w, x.init)
     } elif (x.s == "expr") {
@@ -594,13 +601,13 @@ def private write_stmt(var w : Writer; x : CirStmt) {
         write_stmt_or_null(w, x.body_s)
     } elif (x.s == "case") {
         member(w, "v", false)
-        w.out += "{x.v}"
+        w.out |> push("{x.v}")
     } elif (x.s == "return") {
         member(w, "e", false)
         write_expr_or_null(w, x.e)
     } elif (x.s == "goto" || x.s == "label") {
         member(w, x.s == "goto" ? "label" : "name", false)
-        w.out += json_str(x.label_name)
+        w.out |> push(json_str(x.label_name))
     }
     member(w, "loc", false)
     write_loc(w, x.loc)
@@ -610,40 +617,40 @@ def private write_stmt(var w : Writer; x : CirStmt) {
 def private write_decl(var w : Writer; d : CirDecl) {
     open_object(w)
     member(w, "k", true)
-    w.out += json_str(d.k)
+    w.out |> push(json_str(d.k))
     if (d.k == "global") {
         member(w, "name", false)
-        w.out += json_str(d.name)
+        w.out |> push(json_str(d.name))
         member(w, "c_name", false)
-        w.out += json_str(d.c_name)
+        w.out |> push(json_str(d.c_name))
         member(w, "t", false)
-        w.out += "{d.t}"
+        w.out |> push("{d.t}")
         member(w, "static", false)
-        w.out += "{d.is_static}"
+        w.out |> push("{d.is_static}")
         member(w, "extern", false)
-        w.out += "{d.is_extern}"
+        w.out |> push("{d.is_extern}")
         member(w, "init", false)
         write_expr_or_null(w, d.init)
         if (!empty(d.from_func)) {
             member(w, "from_func", false)
-            w.out += json_str(d.from_func)
+            w.out |> push(json_str(d.from_func))
         }
     } elif (d.k == "func") {
         member(w, "name", false)
-        w.out += json_str(d.name)
+        w.out |> push(json_str(d.name))
         member(w, "c_name", false)
-        w.out += json_str(d.c_name)
+        w.out |> push(json_str(d.c_name))
         member(w, "t", false)
-        w.out += "{d.t}"
+        w.out |> push("{d.t}")
         member(w, "static", false)
-        w.out += "{d.is_static}"
+        w.out |> push("{d.is_static}")
         member(w, "params", false)
         write_params(w, d.params)
         member(w, "body", false)
         write_stmt_or_null(w, d.body)
     } else {
         member(w, "t", false)
-        w.out += "{d.t}"
+        w.out |> push("{d.t}")
     }
     member(w, "loc", false)
     write_loc(w, d.loc)
@@ -652,29 +659,30 @@ def private write_decl(var w : Writer; d : CirDecl) {
 
 def private write_params(var w : Writer; params : array<CirParam>) {
     if (empty(params)) {
-        w.out += "[]"
+        w.out |> push("[]")
         return
     }
-    w.out += "[\n"
+    w.out |> push("[\n")
     w.depth++
+    w.out |> reserve(length(w.out) + 8 * length(params))
     var first = true
     for (p in params) {
         if (!first) {
-            w.out += ",\n"
+            w.out |> push(",\n")
         }
         first = false
         indent(w)
         open_object(w)
         member(w, "name", true)
-        w.out += json_str(p.name)
+        w.out |> push(json_str(p.name))
         member(w, "t", false)
-        w.out += "{p.t}"
+        w.out |> push("{p.t}")
         close_object(w)
     }
     w.depth--
-    w.out += "\n"
+    w.out |> push("\n")
     indent(w)
-    w.out += "]"
+    w.out |> push("]")
 }
 
 //! The canonical bytes of a TU (docs/c-ir-spec.md section 8): every key in spec order, one
@@ -683,69 +691,71 @@ def write_cir(tu : CirTu) : string {
     var w : Writer
     open_object(w)
     member(w, "cir", true)
-    w.out += json_str(tu.cir)
+    w.out |> push(json_str(tu.cir))
     member(w, "producer", false)
-    w.out += json_str(tu.producer)
+    w.out |> push(json_str(tu.producer))
     member(w, "target", false)
     open_object(w)
     member(w, "triple", true)
-    w.out += json_str(tu.target.triple)
+    w.out |> push(json_str(tu.target.triple))
     member(w, "int", false)
-    w.out += "{tu.target.int_w}"
+    w.out |> push("{tu.target.int_w}")
     member(w, "long", false)
-    w.out += "{tu.target.long_w}"
+    w.out |> push("{tu.target.long_w}")
     member(w, "llong", false)
-    w.out += "{tu.target.llong_w}"
+    w.out |> push("{tu.target.llong_w}")
     member(w, "ptr", false)
-    w.out += "{tu.target.ptr_w}"
+    w.out |> push("{tu.target.ptr_w}")
     member(w, "char_signed", false)
-    w.out += "{tu.target.char_signed}"
+    w.out |> push("{tu.target.char_signed}")
     close_object(w)
     member(w, "tu", false)
-    w.out += json_str(tu.tu)
+    w.out |> push(json_str(tu.tu))
     member(w, "types", false)
     if (empty(tu.types)) {
-        w.out += "[]"
+        w.out |> push("[]")
     } else {
-        w.out += "[\n"
+        w.out |> push("[\n")
         w.depth++
+        w.out |> reserve(length(w.out) + 16 * length(tu.types))
         var first = true
         for (t in tu.types) {
             if (!first) {
-                w.out += ",\n"
+                w.out |> push(",\n")
             }
             first = false
             indent(w)
             write_type(w, t)
         }
         w.depth--
-        w.out += "\n"
+        w.out |> push("\n")
         indent(w)
-        w.out += "]"
+        w.out |> push("]")
     }
     member(w, "decls", false)
     if (empty(tu.decls)) {
-        w.out += "[]"
+        w.out |> push("[]")
     } else {
-        w.out += "[\n"
+        w.out |> push("[\n")
         w.depth++
+        w.out |> reserve(length(w.out) + 64 * length(tu.decls))
         var first = true
         for (d in tu.decls) {
             if (!first) {
-                w.out += ",\n"
+                w.out |> push(",\n")
             }
             first = false
             indent(w)
             write_decl(w, *d)
         }
         w.depth--
-        w.out += "\n"
+        w.out |> push("\n")
         indent(w)
-        w.out += "]"
+        w.out |> push("]")
     }
     close_object(w)
-    w.out += "\n"
-    return w.out
+    w.out |> push("\n")
+    return join(w.out, "")
 }
 
 // reader
@@ -987,6 +997,7 @@ def read_cir(text : string; var error : string&) : CirTu {
     tu.cir = js_str(js, "cir")
     if (tu.cir != CIR_VERSION) {
         error = "c-ir version {tu.cir}, expected {CIR_VERSION}"
+        delete_json(js)
         return <- tu
     }
     tu.producer = js_str(js, "producer")
@@ -1007,5 +1018,6 @@ def read_cir(text : string; var error : string&) : CirTu {
             tu.decls |> push(read_decl(d))
         }
     }
+    delete_json(js)
     return <- tu
 }
