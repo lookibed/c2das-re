@@ -15,7 +15,8 @@ harness that times them under every lane, and the stored results.
   Each ledger item adds a kernel exercising the constructs it lowers: `fixed_mandel` is
   P2.1's, a 16.16 fixed-point Mandelbrot over struct vectors passed and returned by value;
   `sieve` and `matmul` are P2.2's, a sieve over a fixed byte array and a 96x96 product over
-  two-dimensional arrays. The kernel's
+  two-dimensional arrays; `blit` is P2.3's, a byte copy through walking pointers over
+  malloc'd buffers. The kernel's
   parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
   argument clang hoists the idempotent call out of the rep loop (the native lane reports
   zero), and daslang's optimizer evaluates a pure call with constant arguments at compile
@@ -26,8 +27,9 @@ harness that times them under every lane, and the stored results.
   `clock` prototypes, the CRT's `CLOCKS_PER_SEC` as a constant) and epilogue (dastest's budget
   loop in C: a 0.5 s budget, reps regrown from the measured rate as `reps * budget / total
   * 1.2`, at most a hundredfold and at least one more per round, so a sub-tick kernel still
-  converges, then one line `<seconds per run> <runs> <result>`), builds the native lane with the pinned clang at `-O2
-  -funsigned-char`, converts the same file through `converter/pipeline.das`, and runs each
+  converges, then one line `<seconds per run> <runs> <result>`), builds the native lane with the pinned clang at `-O3
+  -funsigned-char` (dasProfile's Release build gives its C++ kernels `-O3`, and the lane
+  follows its method), converts the same file through `converter/pipeline.das`, and runs each
   lane as its own process `--samples` times (five by default). A cell is the median, with ±
   half the sample range as a share of it; startup never enters a cell because the program
   times itself. The run writes `results_linux.json` and prints the table; `--table` renders
@@ -50,7 +52,7 @@ with the same clock.
 
 ## 3. What the table says
 
-The JIT, exe and AOT lanes sit at clang `-O2` on the scalar kernels, and AOT is ahead on
+The JIT, exe and AOT lanes sit at clang on the scalar kernels, and AOT is ahead on
 `primes` and `fib_recursive` (the host compiles the generated C++ with its own inliner).
 The interpreter lane is the loop shape the emitter writes, not the optimizer: the das
 profiler shows `primes` inlined into `c_main` with nothing else to charge, and the same

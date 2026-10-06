@@ -64,8 +64,11 @@ order, starting from the main file. Types are interned by a structural key
 order. Type spellings come from `desugaredQualType` when clang gives one, else `qualType`,
 with `const`, `volatile`, `restrict` and `__attribute__` text stripped: the C99 scalar names,
 `_Bool`, `T *`, `T[N]` (the first bracket is the outer dimension: `T[2][3]` is two `T[3]`),
-`T (*)[N]` pointers to arrays, `R (P, ...)` function types and `R (*)(P)` pointers to
-functions.
+`T (*)[N]` pointers to arrays, `R (P, ...)` function types (`R *(P)` when the return is a
+pointer, which clang writes without a space), `R (*)(P)` pointers to functions, `R (**)(P)`
+pointers to those and `R (*[N])(P)` arrays of them. A builtin typedef in a builtin's
+prototype (`__size_t`, `__ptrdiff_t`) has no cursor and is the dialect's pointer-wide
+integer.
 Widths follow the selected dialect (`msvc`: int 32, long 32, long long 64; `linux`: long
 64); plain `char` is unsigned in both (`docs/probe-findings.md` F17), which the dumper
 enforces with `-funsigned-char`. The dump desugars only the top level of a spelling, so a
@@ -134,7 +137,15 @@ elements the source fills sparsely, which is the bare declaration followed by on
 written element (at module init for a global); a `char[N]` from a string literal is
 `cstr_array("...", N)`. A subscript of an array is the das index, range-checked (the
 documents' safety oracle); a subscript of a pointer is `deref(p + i)`; a row pointer is
-`T[N]?` and reads as `deref(row)[i]`; decay is `addr(a[0])`; `sizeof` and `offsetof` are `T(typeinfo sizeof(type<S>))` and
+`T[N]?` and reads as `deref(row)[i]`; decay is `addr(a[0])`. A function pointer is a das
+function value, `function<(a0 : T; ...) : R>` with the parameters named by position, a
+function's name decays to `@@name`, and a call through a pointer, `fp(...)` or `(*fp)(...)`,
+is `invoke(fp, ...)`. A pointer difference is `int64(p - q)`, in elements as C counts
+them; a pointer relation goes through `intptr`; `malloc`, `calloc`, `realloc`, `free` and
+the `mem*` family are the CRT's through `crt`, with C's implicit `void *` conversions as
+explicit `reinterpret`. `[c_function]` lands only on a body with an unsafe operation, and
+the emitter counts those bodies against all the unit defines: the port-progress metric
+`main.das` reports; `sizeof` and `offsetof` are `T(typeinfo sizeof(type<S>))` and
 `T(typeinfo offsetof<f>(type<S>))`, never clang's constants, with the cast to the C result
 type. Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
 cast, `IntegralToBoolean` is `x != 0` (`!= null` for a pointer), `BooleanToSignedIntegral`

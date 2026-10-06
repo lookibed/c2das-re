@@ -308,17 +308,47 @@ def private without_attributes(qual : string) : string {
 
 // `R (*)(params)`: the pointer-to-function spelling, with the parameter list in the last
 // parentheses and the result before the ` (*)`
+// `R (*)(P)` is a pointer to the function `R (P)`; `R (*[N])(P)` is an array of N of them
 def private function_pointer(var d : Dumper; qt : string; at : CirLoc) : int {
-    let star = find(qt, " (*)(")
-    if (star < 0 || !(qt |> ends_with(")"))) {
+    // clang writes `void *(*)(P)` with no space after a pointer return
+    let star = find(qt, "(*")
+    if (star <= 0 || !(qt |> ends_with(")"))) {
         return -2
     }
-    let fn = type_from_qual(d, slice(qt, 0, star) + " (" + slice(qt, star + 5), at)
+    let close = find(qt, ")(")
+    if (close < star) {
+        return -2
+    }
+    // `(**)` is a pointer to the pointer, one level per extra star
+    let between = slice(qt, star + 2, close)
+    let extra = length([for (ch in between); ch; where ch == '*'])
+    let dims = slice(between, extra)
+    if (!(between |> starts_with(repeat("*", extra))) || (!empty(dims) && !(dims |> starts_with("[")))) {
+        return -2
+    }
+    let ret_text = strip(slice(qt, 0, star))
+    let fn = type_from_qual(d, ret_text + " (" + slice(qt, close + 2), at)
     if (fn < 0) {
         return -1
     }
-    var t = CirType(k = "ptr", to = fn)
-    return intern(d, "ptr:{fn}", t)
+    var ptr = CirType(k = "ptr", to = fn)
+    var p = intern(d, "ptr:{fn}", ptr)
+    for (_level in range(extra)) {
+        var outer = CirType(k = "ptr", to = p)
+        p = intern(d, "ptr:{p}", outer)
+    }
+    if (empty(dims)) {
+        return p
+    }
+    // the dimensions wrap the pointer, outermost first, as for any array
+    let count = to_int(slice(dims, 1, find(dims, "]")))
+    let rest = slice(dims, find(dims, "]") + 1)
+    let elem = empty(rest) ? p : type_from_qual(d, "{ret_text} (*{rest})({slice(qt, close + 2)}", at)
+    if (elem < 0) {
+        return -1
+    }
+    var arr = CirType(k = "array", elem = elem, count = count)
+    return intern(d, "array:{elem}:{count}", arr)
 }
 
 // an unnamed record is spelled with its location in parentheses, which the attribute
@@ -342,11 +372,11 @@ def private unnamed_record_type(var d : Dumper; qual : string; at : CirLoc) : in
 
 // `R (P, ...)`: the return type before the paren, the parameters split at the top level
 def private function_type(var d : Dumper; qt : string; paren : int; at : CirLoc) : int {
-    let ret = type_from_qual(d, slice(qt, 0, paren), at)
+    let ret = type_from_qual(d, strip(slice(qt, 0, paren)), at)
     if (ret < 0) {
         return -1
     }
-    let inside = slice(qt, paren + 2, length(qt) - 1)
+    let inside = strip(slice(qt, paren + 1, length(qt) - 1))
     var params : array<int>
     var variadic = false
     if (inside != "void" && !empty(inside)) {
@@ -416,7 +446,9 @@ def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
             return intern(d, "array:{elem}:{count}", t)
         }
     }
-    let paren = find(qt, " (")
+    // `R (P, ...)`, and `R *(P)` when the return type is a pointer: clang puts no space
+    // after a `*`
+    let paren = find(qt, "(")
     if (paren > 0 && qt |> ends_with(")")) {
         return function_type(d, qt, paren, at)
     }
@@ -428,6 +460,15 @@ def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
     let canonical = d.typedef_spellings?[qt] ?? ""
     if (!empty(canonical) && canonical != qt) {
         return type_from_qual(d, canonical, at)
+    }
+    // clang's implicit builtin typedefs (`__size_t` in a builtin's prototype) have no
+    // cursor: they are the pointer-wide integers of the dialect
+    let pointer_wide = d.tu.target.long_w == d.tu.target.ptr_w ? "long" : "long long"
+    if (qt == "__size_t" || qt == "__uintptr_t") {
+        return type_from_qual(d, "unsigned {pointer_wide}", at)
+    }
+    if (qt == "__ssize_t" || qt == "__ptrdiff_t" || qt == "__intptr_t") {
+        return type_from_qual(d, pointer_wide, at)
     }
     fail(d, "unsupported type spelling `{qt}`", at)
     return -1

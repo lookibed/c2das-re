@@ -13,7 +13,7 @@ require ../converter/tiers.das
 //! The performance comparison of docs/very-detailed-plan.md section 2, measured the way
 //! borisbat/dasProfile measures: every kernel under perf/kernels/<name>.c is composed with
 //! the profile prologue and epilogue into one C file, built natively by the pinned clang at
-//! -O2 and converted by the pipeline, and each lane runs it as its own process SAMPLES times;
+//! -O3, the optimization dasProfile's Release build gives its C++ kernels, and converted by the pipeline, and each lane runs it as its own process SAMPLES times;
 //! the program itself runs the kernel as many times as fit the budget and prints the per-run
 //! seconds, so startup never enters a cell, and its result, which the native lane sets as the
 //! oracle every das lane must reproduce. A cell is the median, ± half the range as a share
@@ -26,7 +26,7 @@ let README = "README.md"
 let README_BEGIN = "<!-- perf-table:begin -->"
 let README_END = "<!-- perf-table:end -->"
 let LANES <- ["native", "interp", "jit", "exe", "aot"]
-let LANE_TITLES <- {"native" => "C (clang -O2)", "interp" => "DAS interpreter", "jit" => "DAS JIT", "exe" => "DAS exe", "aot" => "DAS AOT"}
+let LANE_TITLES <- {"native" => "C (clang -O3)", "interp" => "DAS interpreter", "jit" => "DAS JIT", "exe" => "DAS exe", "aot" => "DAS AOT"}
 
 [CommandLineArgs]
 struct Args {
@@ -184,7 +184,7 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
     write_text(c_path, composed_source(fread_text("{KERNELS}/{name}.c")))
     let native_bin = path_join(work, "{name}_native")
     var build_out : string
-    if (run_and_capture([clang_bin(), "-O2", "-w", "-funsigned-char", "-o", native_bin, c_path], build_out, 600.0) != 0) {
+    if (run_and_capture([clang_bin(), "-O3", "-w", "-funsigned-char", "-o", native_bin, c_path], build_out, 600.0) != 0) {
         errors |> push("{name}/native: {first_line(build_out)}")
         return <- cells
     }

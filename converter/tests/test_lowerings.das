@@ -117,5 +117,19 @@ def test_lowerings(t : T?) {
         t |> equal(text |> find("m[0][i] *= 2") >= 0, true, text)
         t |> equal(text |> find("total(addr(full[0]), 3)") >= 0, true, text)
     }
+    t |> run("pointers: the blit shape, function values and invoke, pointer differences, the CRT memory functions, [c_function] only where unsafe") @(t : T?) {
+        var text : string
+        check_fixture(t, "p2_pointers", text)
+        t |> equal(text |> find("def private p2_pointers__blit(src_in : uint8?; var dst_in : uint8?; n_in : int)") >= 0, true, text)
+        t |> equal(text |> find("deref(_t1) = deref(_t2)") >= 0, true, text)
+        t |> equal(text |> find("f : function<(a0 : int) : int>") >= 0, true, text)
+        t |> equal(text |> find("invoke(f, x) + invoke(f, 1)") >= 0, true, text)
+        t |> equal(text |> find("fixed_array(@@p2_pointers__twice, @@p2_pointers__thrice)") >= 0, true, text)
+        t |> equal(text |> find("invoke(p2_pointers__table[1], 4)") >= 0, true, text)
+        t |> equal(text |> find("return int64(hi - lo)") >= 0, true, text)
+        t |> equal(text |> find("var raw : void? = crt::malloc(uint64(16))") >= 0 && text |> find("reinterpret<int?>(raw)") >= 0, true, text)
+        t |> equal(text |> find("intptr(p) > intptr(q)") >= 0, true, text)
+        t |> equal(text |> find("[c_function]\ndef private p2_pointers__twice") < 0, true, text)
+    }
     rmdir_rec(work_root)
 }

@@ -42,19 +42,20 @@ See `ARCHITECTURE.md` for the folder charters: `converter/`, `c_runtime/`, `dasC
 
 The comparison `docs/very-detailed-plan.md` section 2 asks for, measured the way
 [dasProfile](https://github.com/borisbat/dasProfile) measures: each kernel under `perf/kernels/`
-is a C program built natively by the pinned clang at `-O2` and converted by the pipeline, run
+is a C program built natively by the pinned clang at `-O3`, dasProfile's level for its C++ kernels, and converted by the pipeline, run
 under every daslang tier; `scripts/run_perf.sh --readme` refreshes this table from
 `perf/results_linux.json`.
 
 <!-- perf-table:begin -->
-Captured on 2026-10-06 22:15 UTC, linux x86_64, AMD Ryzen 7 7435HS; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
+Captured on 2026-10-06 22:57 UTC, linux x86_64, AMD Ryzen 7 7435HS; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
 
-| Test | C (clang -O2) | DAS interpreter | DAS JIT | DAS exe | DAS AOT |
+| Test | C (clang -O3) | DAS interpreter | DAS JIT | DAS exe | DAS AOT |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| fib_loop | 0.001578s ±1% | 0.219282s ±8% | 0.001568s ±4% | **0.001522s ±4%** | 0.001577s ±5% |
-| fib_recursive | 0.003240s ±2% | 0.026546s ±1% | 0.003174s ±1% | 0.003553s ±6% | **0.001809s ±4%** |
-| fixed_mandel | 0.000283s ±1% | 0.016079s ±3% | 0.000218s ±0% | **0.000206s ±1%** | 0.001343s ±1% |
-| matmul | 0.000243s ±7% | 0.024571s ±9% | **0.000137s ±3%** | 0.000229s ±2% | 0.001064s ±3% |
-| primes | 0.015130s ±1% | 0.167253s ±4% | 0.015234s ±1% | 0.015067s ±1% | **0.011649s ±5%** |
-| sieve | 0.001889s ±4% | 0.083223s ±4% | 0.002133s ±5% | **0.001878s ±4%** | 0.014352s ±3% |
+| blit | **0.000387s ±1%** | 0.015691s ±2% | 0.000456s ±0% | 0.000866s ±2% | 0.000560s ±2% |
+| fib_loop | **0.001484s ±0%** | 0.167980s ±3% | 0.001518s ±1% | 0.001575s ±3% | 0.001499s ±1% |
+| fib_recursive | 0.003050s ±0% | 0.026555s ±2% | 0.003035s ±1% | 0.003430s ±2% | **0.002682s ±2%** |
+| fixed_mandel | 0.000336s ±2% | 0.021544s ±4% | 0.000226s ±2% | **0.000201s ±1%** | 0.001336s ±1% |
+| matmul | 0.000229s ±1% | 0.023499s ±4% | **0.000134s ±2%** | 0.000222s ±1% | 0.001199s ±6% |
+| primes | 0.015142s ±1% | 0.153345s ±2% | 0.014973s ±1% | 0.015017s ±1% | **0.011350s ±0%** |
+| sieve | **0.001767s ±3%** | 0.079244s ±3% | 0.002032s ±1% | 0.001935s ±3% | 0.017751s ±2% |
 <!-- perf-table:end -->

@@ -23,6 +23,10 @@ struct ConvertResult {
     das_path : string
     cir_text : string
     das_text : string
+    // the port-progress metric of docs/lowering-examples.md "Pointers": how many
+    // function bodies needed [c_function], out of all the unit defines
+    c_functions : int
+    function_count : int
 }
 
 def private write_text(path : string; text : string) : bool {
@@ -99,6 +103,8 @@ def convert(c_path : string; out_dir : string; target_name : string; clang : str
         res.error = "emitter: {em.error}"
         return <- res
     }
+    res.c_functions = em.c_functions
+    res.function_count = em.function_count
     res.das_text = format_source_string(em.text)
     res.das_path = path_join(out_dir, "{file_stem(c_path)}.das")
     if (!write_text(res.das_path, res.das_text)) {

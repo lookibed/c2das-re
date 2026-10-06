@@ -46,7 +46,7 @@ def main : int {
         to_log(LOG_ERROR, "c2das: {res.error}\n")
         return 1
     }
-    to_log(LOG_INFO, "c2das: {res.cir_path}, {res.das_path}\n")
+    to_log(LOG_INFO, "c2das: {res.cir_path}, {res.das_path}; [c_function] on {res.c_functions} of {res.function_count} functions\n")
     if (empty(args.run)) {
         return 0
     }

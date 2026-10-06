@@ -31,6 +31,8 @@ struct Emitter {
     requires : table<string>
     global_stores : array<string>
     in_global_init : bool
+    c_functions : int
+    function_count : int
     written : table<string>
     written_through : table<string>
     renames : table<string; string>
@@ -61,9 +63,9 @@ let BIN_SPELLING <- {"add" => "+", "sub" => "-", "mul" => "*", "div" => "/", "re
 let BIN_PREC <- {"add" => 11, "sub" => 11, "mul" => 12, "div" => 12, "rem" => 12, "shl" => 10, "shr" => 10, "lt" => 9, "gt" => 9, "le" => 9, "ge" => 9, "eq" => 8, "ne" => 8, "band" => 7, "bor" => 5, "bxor" => 6, "land" => 4, "lor" => 3}
 
 // C name -> das spelling, and the module it needs: the c_runtime pieces and the crt binds
-let LIBC_CALLS <- {"printf" => "printf", "exit" => "c_exit", "abort" => "c_abort", "clock" => "crt::clock", "time" => "crt::time", "rand" => "crt::rand", "srand" => "crt::srand"}
+let LIBC_CALLS <- {"printf" => "printf", "exit" => "c_exit", "abort" => "c_abort", "clock" => "crt::clock", "time" => "crt::time", "rand" => "crt::rand", "srand" => "crt::srand", "malloc" => "crt::malloc", "calloc" => "crt::calloc", "realloc" => "crt::realloc", "free" => "crt::free", "memcpy" => "crt::memcpy", "memmove" => "crt::memmove", "memset" => "crt::memset", "memcmp" => "crt::memcmp"}
 
-let LIBC_MODULES <- {"printf" => "c_runtime/printf", "exit" => "c_runtime/c_exit", "abort" => "c_runtime/c_exit", "clock" => "crt", "time" => "crt", "rand" => "crt", "srand" => "crt"}
+let LIBC_MODULES <- {"printf" => "c_runtime/printf", "exit" => "c_runtime/c_exit", "abort" => "c_runtime/c_exit", "clock" => "crt", "time" => "crt", "rand" => "crt", "srand" => "crt", "malloc" => "crt", "calloc" => "crt", "realloc" => "crt", "free" => "crt", "memcpy" => "crt", "memmove" => "crt", "memset" => "crt", "memcmp" => "crt"}
 
 def private fail(var em : Emitter; what : string; loc : CirLoc) {
     if (empty(em.error)) {
@@ -155,20 +157,17 @@ def das_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
         return tu.types[t].w == 32 ? "float" : "double"
     }
     if (k == "ptr") {
+        if (kind_of(tu, tu.types[t].to) == "func") {
+            return das_type(em, tu, tu.types[t].to, loc)
+        }
         let to = das_type(em, tu, tu.types[t].to, loc)
         return empty(to) ? "" : to + "?"
     }
+    if (k == "func") {
+        return function_value_type(em, tu, t, loc)
+    }
     if (k == "array") {
-        // dimensions read outermost first, as in C; `? [` keeps a pointer element from
-        // lexing as the safe-index operator
-        var dims : array<string>
-        var elem = t
-        while (kind_of(tu, elem) == "array") {
-            dims |> push("[{tu.types[elem].count}]")
-            elem = tu.types[elem].elem
-        }
-        let base = das_type(em, tu, elem, loc)
-        return empty(base) ? "" : base + (base |> ends_with("?") ? " " : "") + join(dims, "")
+        return array_type(em, tu, t, loc)
     }
     if (k == "struct") {
         return record_name(em, tu, t)
@@ -179,6 +178,35 @@ def das_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
     }
     fail(em, "type kind `{k}` is not lowered yet", loc)
     return ""
+}
+
+// dimensions read outermost first, as in C; `? [` keeps a pointer element from lexing as
+// the safe-index operator
+def private array_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
+    var dims : array<string>
+    var elem = t
+    while (kind_of(tu, elem) == "array") {
+        dims |> push("[{tu.types[elem].count}]")
+        elem = tu.types[elem].elem
+    }
+    let base = das_type(em, tu, elem, loc)
+    return empty(base) ? "" : base + (base |> ends_with("?") ? " " : "") + join(dims, "")
+}
+
+// a C function pointer is a das function value: `function<(a0 : T; ...) : R>`, the
+// parameters named by position since the C type carries no names
+def private function_value_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
+    if (tu.types[t].variadic) {
+        fail(em, "a pointer to a variadic function is not lowered yet", loc)
+        return ""
+    }
+    var params : array<string>
+    params |> reserve(length(tu.types[t].params))
+    for (idx in range(length(tu.types[t].params))) {
+        params |> push("a{idx} : {das_type(em, tu, tu.types[t].params[idx], loc)}")
+    }
+    let ret = das_type(em, tu, tu.types[t].ret, loc)
+    return "function<({join(params, "; ")}) : {ret}>"
 }
 
 // a tagged record keeps its C name; an unnamed one is named by its type slot
@@ -317,13 +345,14 @@ def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     return "{operand.text}{up ? "++" : "--"}"
 }
 
+// the callee's das spelling: a function of this unit by name, a libc function by its
+// mapping, and "" for a call through a pointer, which `emit_call` spells as `invoke`
 def private callee_name(var em : Emitter; fn : CirExpr?; loc : CirLoc) : string {
     var target = fn
     if (target != null && target.e == "cast" && target.cast_kind == "FunctionToPointerDecay") {
         target = target.a
     }
-    if (target == null || target.e != "ref") {
-        fail(em, "calls through pointers are not lowered yet", loc)
+    if (target == null || target.e != "ref" || (!key_exists(em.functions, target.name) && !key_exists(LIBC_CALLS, target.name))) {
         return ""
     }
     if (key_exists(em.functions, target.name)) {
@@ -341,11 +370,16 @@ def private callee_name(var em : Emitter; fn : CirExpr?; loc : CirLoc) : string 
 def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let name = callee_name(em, x.fn, loc)
     var args : array<string>
-    args |> reserve(length(x.args))
+    args |> reserve(length(x.args) + 1)
+    if (empty(name)) {
+        // a call through a pointer: `invoke` on the function value, which `fp(...)` and
+        // `(*fp)(...)` both spell once the casts and the deref fall away
+        args |> push(emit_expr(em, tu, x.fn, loc).text)
+    }
     for (arg in x.args) {
         args |> push(to_int(emit_expr(em, tu, arg, loc)).text)
     }
-    return value("{name}({join(args, ", ")})", PREC_PRIMARY)
+    return value(empty(name) ? "invoke({join(args, ", ")})" : "{name}({join(args, ", ")})", PREC_PRIMARY)
 }
 
 def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
@@ -384,7 +418,9 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return unsafe_value(em, "reinterpret<{target}>(uint64({to_int(inner).text}))", PREC_PRIMARY)
     }
     if (k == "FunctionToPointerDecay") {
-        return value("@@{das_name(em, x.a.name)}", PREC_PRIMARY)
+        // a function's name decays to its `@@` value; a function designator reached
+        // through a pointer (`*fp`) is that pointer's value already
+        return x.a.e == "ref" && key_exists(em.functions, x.a.name) ? value("@@{das_name(em, x.a.name)}", PREC_PRIMARY) : inner
     }
     if (k == "ArrayToPointerDecay") {
         return unsafe_value(em, "addr({inner.text}[0])", PREC_PRIMARY)
@@ -426,6 +462,10 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
     }
     if ((x.op == "shl" || x.op == "shr") && is_unsigned(tu, x.a.t) && !is_unsigned(tu, x.b.t)) {
         rhs = value(x.b.e == "int_lit" ? x.b.v + "u" : "uint({rhs.text})", PREC_PRIMARY)
+    }
+    if (pointer_lhs && pointer_rhs && x.op == "sub") {
+        // das gives the difference in elements, as C does, as int64
+        return unsafe_value(em, "{das_type(em, tu, x.t, loc)}({lhs.text} - {rhs.text})", PREC_PRIMARY)
     }
     if (pointer_lhs || pointer_rhs) {
         return unsafe_value(em, "{wrap(lhs, prec)} {spelled} {wrap(rhs, prec + 1)}", prec)
@@ -470,7 +510,10 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     if (x.op == "postinc" || x.op == "postdec") {
         let tmp = temp_name(em)
         let before = emit_expr(em, tu, x.a, loc)
-        hoist(em, ["let {tmp} = {before.text}", step_line(em, tu, x, loc)])
+        // a `let` copy of a pointer takes a const pointee (F3): the old value of a stepped
+        // pointer that `*p++ = v` writes through is a `var`
+        let keep = kind_of(tu, x.a.t) == "ptr" ? "var" : "let"
+        hoist(em, ["{keep} {tmp} = {before.text}", step_line(em, tu, x, loc)])
         return value(tmp, PREC_PRIMARY)
     }
     let a = to_int(emit_expr(em, tu, x.a, loc))
@@ -487,6 +530,9 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
         return unsafe_value(em, "addr({a.text})", PREC_PRIMARY)
     }
     if (x.op == "deref") {
+        if (kind_of(tu, x.t) == "func") {
+            return a
+        }
         return unsafe_value(em, "deref({a.text})", PREC_PRIMARY)
     }
     fail(em, "unary `{x.op}` is not lowered yet", loc)
@@ -928,6 +974,12 @@ def private collect_written(tu : CirTu; x : CirExpr?; var names : table<string>;
             } elif (target.e == "un" && target.op == "deref") {
                 crossed = true
                 target = target.a
+            } elif (target.e == "un" && (target.op == "preinc" || target.op == "predec" || target.op == "postinc" || target.op == "postdec")) {
+                // `*p++ = v` steps the pointer and writes through it
+                target = target.a
+            } elif (target.e == "bin" && (target.op == "add" || target.op == "sub") && kind_of(tu, target.a.t) == "ptr") {
+                // `*(p + i) = v` writes through the pointer the sum starts from
+                target = target.a
             } else {
                 target = null
             }
@@ -1065,7 +1117,9 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     }
     close_block(em)
     line(em, "")
+    em.function_count++
     if (em.unsafe_used) {
+        em.c_functions++
         em.out[header_at] = "[c_function]\n" + em.out[header_at]
         em.requires |> insert("c_runtime/c_function")
     }
