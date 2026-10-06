@@ -14,6 +14,8 @@
         "-ignore-manifest",
         "-load_module",
         "/root/c2das-re/dasCRuntime",
+        "-load_module",
+        "/root/c2das-re/c_runtime",
         "/root/daScript/utils/mcp/main.das"
       ],
       "env": {

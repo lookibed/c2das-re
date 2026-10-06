@@ -3,7 +3,7 @@
 
 [mcp_servers.daslang]
 command = "/root/daScript/bin/watchdog"
-args = ["--stdio", "--name", "daslang-mcp", "--cwd", "/root/c2das-re", "--program", "/root/daScript/bin/daslang", "--", "-ignore-manifest", "-load_module", "/root/c2das-re/dasCRuntime", "/root/daScript/utils/mcp/main.das"]
+args = ["--stdio", "--name", "daslang-mcp", "--cwd", "/root/c2das-re", "--program", "/root/daScript/bin/daslang", "--", "-ignore-manifest", "-load_module", "/root/c2das-re/dasCRuntime", "-load_module", "/root/c2das-re/c_runtime", "/root/daScript/utils/mcp/main.das"]
 cwd = "/root/c2das-re"
 enabled = true
 required = true

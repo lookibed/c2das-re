@@ -26,9 +26,9 @@ rebuild of daScript that changes a requirement here (a module, a flag, a pin) up
 
 Run a script: `$DASLANG_ROOT/bin/daslang converter/main.das -- <args>`. Run a suite:
 `$DASLANG_ROOT/bin/daslang $DASLANG_ROOT/dastest/dastest.das -- --test probes`. Anything that
-`require crt` (the native module under `dasCRuntime/`, built by `scripts/build_crt.sh`) needs
-`-load_module $PWD/dasCRuntime` before the script path; `scripts/preflight.sh` and `.mcp.json`
-pass it.
+`require crt` (the native module under `dasCRuntime/`, built by `scripts/build_crt.sh`) or
+`require c_runtime/<name>` needs `-load_module $PWD/dasCRuntime -load_module $PWD/c_runtime`
+before the script path; `scripts/preflight.sh` and `.mcp.json` pass both.
 
 ## The document system
 

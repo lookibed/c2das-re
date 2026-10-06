@@ -8,8 +8,8 @@ set -uo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 . scripts/env.sh
-# every daslang run sees the crt module: it lives here, not under DASLANG_ROOT/modules
-das() { "$DASLANG" -load_module "$repo_root/dasCRuntime" "$@"; }
+# every daslang run sees the crt and c_runtime modules: they live here, not under DASLANG_ROOT/modules
+das() { "$DASLANG" -load_module "$repo_root/dasCRuntime" -load_module "$repo_root/c_runtime" "$@"; }
 base="${PREFLIGHT_BASE:-origin/main}"
 git rev-parse --verify -q "$base" >/dev/null 2>&1 || base="$(git rev-list --max-parents=0 HEAD 2>/dev/null | tail -1)"
 full=0; only=(); skip=()
