@@ -63,9 +63,9 @@ let BIN_SPELLING <- {"add" => "+", "sub" => "-", "mul" => "*", "div" => "/", "re
 let BIN_PREC <- {"add" => 11, "sub" => 11, "mul" => 12, "div" => 12, "rem" => 12, "shl" => 10, "shr" => 10, "lt" => 9, "gt" => 9, "le" => 9, "ge" => 9, "eq" => 8, "ne" => 8, "band" => 7, "bor" => 5, "bxor" => 6, "land" => 4, "lor" => 3}
 
 // C name -> das spelling, and the module it needs: the c_runtime pieces and the crt binds
-let LIBC_CALLS <- {"printf" => "printf", "exit" => "c_exit", "abort" => "c_abort", "clock" => "crt::clock", "time" => "crt::time", "rand" => "crt::rand", "srand" => "crt::srand", "malloc" => "crt::malloc", "calloc" => "crt::calloc", "realloc" => "crt::realloc", "free" => "crt::free", "memcpy" => "crt::memcpy", "memmove" => "crt::memmove", "memset" => "crt::memset", "memcmp" => "crt::memcmp"}
+let LIBC_CALLS <- {"printf" => "printf", "exit" => "c_exit", "abort" => "c_abort", "clock" => "crt::clock", "time" => "crt::time", "rand" => "crt::rand", "srand" => "crt::srand", "malloc" => "crt::malloc", "calloc" => "crt::calloc", "realloc" => "crt::realloc", "free" => "crt::free", "memcpy" => "crt::memcpy", "memmove" => "crt::memmove", "memset" => "crt::memset", "memcmp" => "crt::memcmp", "abs" => "crt::abs", "llabs" => "crt::llabs"}
 
-let LIBC_MODULES <- {"printf" => "c_runtime/printf", "exit" => "c_runtime/c_exit", "abort" => "c_runtime/c_exit", "clock" => "crt", "time" => "crt", "rand" => "crt", "srand" => "crt", "malloc" => "crt", "calloc" => "crt", "realloc" => "crt", "free" => "crt", "memcpy" => "crt", "memmove" => "crt", "memset" => "crt", "memcmp" => "crt"}
+let LIBC_MODULES <- {"printf" => "c_runtime/printf", "exit" => "c_runtime/c_exit", "abort" => "c_runtime/c_exit", "clock" => "crt", "time" => "crt", "rand" => "crt", "srand" => "crt", "malloc" => "crt", "calloc" => "crt", "realloc" => "crt", "free" => "crt", "memcpy" => "crt", "memmove" => "crt", "memset" => "crt", "memcmp" => "crt", "abs" => "crt", "llabs" => "crt"}
 
 def private fail(var em : Emitter; what : string; loc : CirLoc) {
     if (empty(em.error)) {
@@ -347,12 +347,20 @@ def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
 
 // the callee's das spelling: a function of this unit by name, a libc function by its
 // mapping, and "" for a call through a pointer, which `emit_call` spells as `invoke`
-def private callee_name(var em : Emitter; fn : CirExpr?; loc : CirLoc) : string {
+def private callee_name(var em : Emitter; tu : CirTu; fn : CirExpr?; loc : CirLoc) : string {
     var target = fn
     if (target != null && target.e == "cast" && target.cast_kind == "FunctionToPointerDecay") {
         target = target.a
     }
-    if (target == null || target.e != "ref" || (!key_exists(em.functions, target.name) && !key_exists(LIBC_CALLS, target.name))) {
+    if (target == null || target.e != "ref") {
+        return ""
+    }
+    if (!key_exists(em.functions, target.name) && !key_exists(LIBC_CALLS, target.name)) {
+        // a name of function type is an external function; a pointer-typed one is a call
+        // through the pointer
+        if (kind_of(tu, target.t) == "func") {
+            fail(em, "external function `{target.name}` has no c_runtime mapping", loc)
+        }
         return ""
     }
     if (key_exists(em.functions, target.name)) {
@@ -368,7 +376,7 @@ def private callee_name(var em : Emitter; fn : CirExpr?; loc : CirLoc) : string 
 }
 
 def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
-    let name = callee_name(em, x.fn, loc)
+    let name = callee_name(em, tu, x.fn, loc)
     var args : array<string>
     args |> reserve(length(x.args) + 1)
     if (empty(name)) {
