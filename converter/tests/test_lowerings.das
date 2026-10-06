@@ -92,5 +92,16 @@ def test_lowerings(t : T?) {
         t |> equal(text |> find("c_exit(42)") >= 0, true, text)
         t |> equal(text |> find("require c_runtime/c_exit") >= 0, true, text)
     }
+    t |> run("structs: records with grouped fields, initializer lists, by-value copies, writes through a pointer, sizeof and offsetof as typeinfo, the layout assertion") @(t : T?) {
+        var text : string
+        check_fixture(t, "p2_structs", text)
+        t |> equal(text |> find("struct mobj_t \{\n    thinker : thinker_t\n    x, y : int\n\}") >= 0, true, text)
+        t |> equal(text |> find("mobj_t(thinker = thinker_t(fn = 7), x = 1)") >= 0, true, text)
+        t |> equal(text |> find("scale(p_in : P; k : int) : P \{\n    var p = p_in") >= 0, true, text)
+        t |> equal(text |> find("bump(var m : mobj_t?)") >= 0, true, text)
+        t |> equal(text |> find("typeinfo offsetof < x > (type<mobj_t>)") >= 0, true, text)
+        t |> equal(text |> find("[init]\ndef private c2das_layout_check") >= 0, true, text)
+        t |> equal(text |> find("typeinfo sizeof(type<P>) == 16 && typeinfo alignof(type<P>) == 8") >= 0, true, text)
+    }
     rmdir_rec(work_root)
 }

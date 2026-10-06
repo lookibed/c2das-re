@@ -10,7 +10,8 @@ harness that times them under every lane, and the stored results.
   `static int kernel_check(void)` over file-scope statics, nothing else. The first three are
   dasProfile's scalar kernels with its parameters (`primes` 14000, `fib_loop` 6511134,
   `fib_recursive` 31), so a cell here compares with the same row of dasProfile's table.
-  Each ledger item adds a kernel exercising the constructs it lowers. The kernel's
+  Each ledger item adds a kernel exercising the constructs it lowers: `fixed_mandel` is
+  P2.1's, a 16.16 fixed-point Mandelbrot over struct vectors passed and returned by value. The kernel's
   parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
   argument clang hoists the idempotent call out of the rep loop (the native lane reports
   zero), and daslang's optimizer evaluates a pure call with constant arguments at compile

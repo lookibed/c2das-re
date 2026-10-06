@@ -48,7 +48,10 @@ of scalars is one line `[1, 2, 3]`; an array of objects opens with `[` and a new
 one object per line at the inner depth, and closes with `]` at the parent's depth; an empty
 array is `[]`; keys follow the spec's table order; `null` spells an absent optional node; a
 string is JSON-escaped by `write_json`; the file ends with one LF. The reader accepts any
-JSON spelling; the pipeline proves the pair by rewriting what it read and comparing.
+JSON spelling; the pipeline proves the pair by rewriting what it read and comparing. One
+node is this repository's addition to the spec's table: `offsetof` with `of_t` and `field`
+(the record type and the field index), since the lowering spells `offsetof` as
+`typeinfo offsetof` and the spec has no node for it (`docs/probe-findings.md` F20).
 
 ## 3. Dumper A's subset
 
@@ -63,7 +66,17 @@ with `const`, `volatile`, `restrict` and `__attribute__` text stripped: the C99 
 `_Bool`, `T *`, `T[N]`, `R (P, ...)` function types and `R (*)(P)` pointers to functions.
 Widths follow the selected dialect (`msvc`: int 32, long 32, long long 64; `linux`: long
 64); plain `char` is unsigned in both (`docs/probe-findings.md` F17), which the dumper
-enforces with `-funsigned-char`. A file-scope `static` gets the TU-qualified name
+enforces with `-funsigned-char`. The dump desugars only the top level of a spelling, so a
+typedef name inside `P_t *` or `P_t (P_t, int)` resolves through the canonical spelling
+libclang gives the typedef. Records come from a libclang pass over the same file under the
+same flags, run before the JSON walk: every `struct` and `union` definition of the main
+file, nested ones included, with clang's size, alignment and field offsets, keyed by the
+canonical spelling the JSON desugars to (`struct X`, `struct thinker_t` for a typedef-named
+anonymous record, which libclang spells bare and the pass re-tags) and by its location, which
+is how a `RecordDecl` of the walk finds its layout. A record is interned in its own slot
+before its fields, so a self-referential pointer resolves; `packed` is set when clang's
+offsets are not the natural layout das would compute, and a record libclang never saw
+defined has size -1. A typedef is a `typedef` type and a `typedefdecl` anchor, nothing more. A file-scope `static` gets the TU-qualified name
 `<stem>__<name>` and a local `static` is hoisted into `decls` as `<fn>_<name>` with
 `from_func`; references use the hoisted name. Tentative definitions of one object merge
 into the declaration carrying the initializer.
@@ -74,26 +87,43 @@ Statements: compound, `DeclStmt` (one `decl` per variable), expression statement
 `continue`, `return`, the null statement. Expressions: integer, character, floating (as a
 hex-float through the CRT) and string literals (C escapes decoded, the NUL appended),
 `DeclRefExpr`, every pinned cast, the unary, binary, compound-assignment, conditional and
-comma operators, calls, subscripts, `sizeof`. Anything else is an error naming the node
-kind and its location: records, typedefs, enums, initializer lists, `goto`, `switch` are
-the next phases' rows.
+comma operators, calls, subscripts, `sizeof`, `MemberExpr` (the field by index into the
+record's fields, `arrow` kept), `InitListExpr` of a record (clang's semantic form, one
+child per field, an `ImplicitValueInitExpr` left to the positional zero) and `OffsetOfExpr`,
+whose components the dump omits: the dumper reads `T, f` from the macro's own text at its
+`expansionLoc` (F20). A location with an `expansionLoc` is that location. Anything else is
+an error naming the node kind and its location: array initializers, enums, compound
+literals, `goto`, `switch` are the next phases' rows.
 
 ## 4. What the emitter spells
 
 The module opens with the generated banner, `options gen2`, `options indenting = 4` and one
 `require c_runtime/<name>` per piece the body reached (`printf`, `c_exit`, `c_function`).
-Globals come first (`var`, `var private` for a C `static`, the initializer inline and under
-`unsafe(...)` when it takes an address), then the functions. A function is
+Records come first: `struct Name` with adjacent fields of one type on one line, an unnamed
+record named `anon_<slot>`, in declaration order; then `[init] def private
+c2das_layout_check`, one `static_assert` per record against clang's size and alignment and
+one per field against its offset, the layout law checked at compile time where it is claimed
+(`docs/implementation_order.md` P2.1). A union, a bitfield and a record clang lays out
+unnaturally fail closed until their rows (P4.2, P4.1, P2.7). Globals follow (`var`, `var
+private` for a C `static`, the initializer inline and under `unsafe(...)` when it takes an
+address), then the functions. A function is
 `def name(p : T; ...) : ret` with `private` for a C `static`; a parameter the body writes
 is declared `p_in` with `var p = p_in` as the first statement, the callee copy C's by-value
-rule needs, since a das parameter is a reference. A body that used an unsafe operation
+rule needs, since a das parameter is a reference; a store that reaches the parameter through
+`.f` or an array's `[i]` is a write to it, while one that crosses `->`, `*p` or a pointer's
+`[i]` writes what it points at and makes the parameter `var`, the one spelling whose pointee
+stays writable (F3). A body that used an unsafe operation
 (pointer arithmetic, `deref`, `addr`, a `reinterpret`, a string literal) gets
 `[c_function]`. C `main` becomes `c_main` and the module ends with
 `[export] def main : int { return c_main() }`, whose `return` is the CLI's exit-code
 contract (`docs/probe-findings.md` F1). A C name that is a das keyword takes the `_c_`
 prefix.
 
-Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
+A member is `a.f`, and `p.f` for `p->f` and `(*p).f` alike, which das reads through a
+pointer without `deref` or unsafe; a record initializer is `S(f = v, ...)` naming the filled
+slots; `sizeof` and `offsetof` are `T(typeinfo sizeof(type<S>))` and
+`T(typeinfo offsetof<f>(type<S>))`, never clang's constants, with the cast to the C result
+type. Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
 cast, `IntegralToBoolean` is `x != 0` (`!= null` for a pointer), `BooleanToSignedIntegral`
 is `b ? 1 : 0`, a comparison or `!` is spelled as the das bool it is and becomes `? 1 : 0`
 only where C reads it as an int. Literals carry their suffix from the C-IR type (`u`, `l`,
@@ -114,7 +144,7 @@ but also on `break`, and the `_f` increment-first flag otherwise; `if` chains sp
 when the nested condition is pure. The split is measured: `benchmarks/bench_for_shapes.das`
 times one body under the three spellings, and under the interpreter the `finally` form costs
 10.6 ns per iteration against the flag's 14.2 and the native `range` loop's 4.9 (the O1
-rewrite's target), while the JIT compiles all three alike. Function pointers, records, arrays beyond
+rewrite's target), while the JIT compiles all three alike. Function pointers, arrays beyond
 subscripts, string literals outside a pointer context (the empty literal included, F10) and
 calls to external functions without a `c_runtime` mapping are errors until their lowering
 lands (`docs/implementation_order.md`, P2 onward).

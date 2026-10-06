@@ -30,6 +30,7 @@ struct Emitter {
     for_counter : int
     requires : table<string>
     written : table<string>
+    written_through : table<string>
     renames : table<string; string>
     functions : table<string>
     unsafe_used : bool
@@ -151,8 +152,24 @@ def das_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
         let elem = das_type(em, tu, tu.types[t].elem, loc)
         return empty(elem) ? "" : "{elem}[{tu.types[t].count}]"
     }
+    if (k == "struct") {
+        return record_name(em, tu, t)
+    }
+    if (k == "union") {
+        fail(em, "unions are not lowered yet", loc)
+        return ""
+    }
     fail(em, "type kind `{k}` is not lowered yet", loc)
     return ""
+}
+
+// a tagged record keeps its C name; an unnamed one is named by its type slot
+def private record_name(em : Emitter; tu : CirTu; t : int) : string {
+    return empty(tu.types[t].name) ? "anon_{t}" : das_name(em, tu.types[t].name)
+}
+
+def private field_name(em : Emitter; tu : CirTu; rec : int; field : int) : string {
+    return das_name(em, tu.types[rec].fields[field].name)
 }
 
 // the bool view of a C scalar: a comparison stays one, a pointer tests against null, an
@@ -501,6 +518,15 @@ def emit_expr(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc) : Em {
     if (x.e == "sizeof_v") {
         return value("{das_type(em, tu, x.t, loc)}(typeinfo sizeof(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
     }
+    if (x.e == "offsetof") {
+        return value("{das_type(em, tu, x.t, loc)}(typeinfo offsetof<{field_name(em, tu, x.of_t, x.field)}>(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
+    }
+    if (x.e == "member") {
+        return emit_member(em, tu, *x, loc)
+    }
+    if (x.e == "init_list") {
+        return emit_init_list(em, tu, *x, loc)
+    }
     if (x.e == "index") {
         let base = emit_expr(em, tu, x.base, loc)
         let i = to_int(emit_expr(em, tu, x.i, loc))
@@ -512,6 +538,30 @@ def emit_expr(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc) : Em {
     }
     fail(em, "expression `{x.e}` is not lowered yet", loc)
     return value("", PREC_PRIMARY)
+}
+
+// `a.f`, and `p.f` for `p->f` and `(*p).f` alike: das reads a field through a pointer
+// without a `deref`, and without unsafe
+def private emit_member(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    let rec = x.arrow ? tu.types[x.base.t].to : x.base.t
+    let through_deref = !x.arrow && x.base.e == "un" && x.base.op == "deref"
+    let base = emit_expr(em, tu, through_deref ? x.base.a : x.base, loc)
+    return value("{wrap(base, PREC_PRIMARY)}.{field_name(em, tu, rec, x.field)}", PREC_PRIMARY)
+}
+
+// `S(f = v, ...)` naming the slots the source filled; the rest take the struct's zeros
+def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    if (kind_of(tu, x.t) != "struct") {
+        fail(em, "`{kind_of(tu, x.t)}` initializer lists are not lowered yet", loc)
+        return value("", PREC_PRIMARY)
+    }
+    var items : array<string>
+    items |> reserve(length(x.init_items))
+    for (item in x.init_items) {
+        let v = to_int(emit_expr(em, tu, item.v, loc))
+        items |> push("{field_name(em, tu, x.t, item.pos)} = {v.text}")
+    }
+    return value("{record_name(em, tu, x.t)}({join(items, ", ")})", PREC_PRIMARY)
 }
 
 // an expression evaluated for its effect alone: the statement forms of assignment, the
@@ -771,46 +821,70 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt?) {
 
 // the names a body assigns, steps or takes the address of: a parameter among them needs the
 // callee-side copy C's by-value semantics give it
-def private collect_written(x : CirExpr?; var names : table<string>) {
+def private collect_written(tu : CirTu; x : CirExpr?; var names : table<string>; var through : table<string>) {
     if (x == null) {
         return
     }
     if (x.e == "assign" || (x.e == "un" && (x.op == "preinc" || x.op == "predec" || x.op == "postinc" || x.op == "postdec" || x.op == "addr"))) {
+        // the variable a store reaches: through casts, `.f` and `[i]` of an array it is the
+        // variable itself; past `->`, `*p` or `p[i]` it is what the pointer points at, and
+        // the pointer is then `written_through` (docs/probe-findings.md F3)
         var target = x.a
-        while (target != null && target.e == "cast") {
-            target = target.a
+        var crossed = false
+        while (target != null && target.e != "ref") {
+            if (target.e == "cast") {
+                target = target.a
+            } elif (target.e == "member") {
+                crossed = crossed || target.arrow
+                target = target.base
+            } elif (target.e == "index") {
+                crossed = crossed || kind_of(tu, target.base.t) != "array"
+                target = target.base
+            } elif (target.e == "un" && target.op == "deref") {
+                crossed = true
+                target = target.a
+            } else {
+                target = null
+            }
         }
-        if (target != null && target.e == "ref") {
-            names |> insert(target.name)
+        if (target != null) {
+            if (crossed) {
+                through |> insert(target.name)
+            } else {
+                names |> insert(target.name)
+            }
         }
     }
-    collect_written(x.a, names)
-    collect_written(x.b, names)
-    collect_written(x.c, names)
-    collect_written(x.fn, names)
+    collect_written(tu, x.a, names, through)
+    collect_written(tu, x.b, names, through)
+    collect_written(tu, x.c, names, through)
+    collect_written(tu, x.fn, names, through)
     for (arg in x.args) {
-        collect_written(arg, names)
+        collect_written(tu, arg, names, through)
     }
-    collect_written(x.base, names)
-    collect_written(x.i, names)
-    collect_written(x.init, names)
+    collect_written(tu, x.base, names, through)
+    collect_written(tu, x.i, names, through)
+    collect_written(tu, x.init, names, through)
+    for (item in x.init_items) {
+        collect_written(tu, item.v, names, through)
+    }
 }
 
-def private collect_written_stmt(st : CirStmt?; var names : table<string>) {
+def private collect_written_stmt(tu : CirTu; st : CirStmt?; var names : table<string>; var through : table<string>) {
     if (st == null) {
         return
     }
     for (child in st.body) {
-        collect_written_stmt(child, names)
+        collect_written_stmt(tu, child, names, through)
     }
-    collect_written(st.init, names)
-    collect_written(st.e, names)
-    collect_written(st.cond, names)
-    collect_written(st.inc, names)
-    collect_written_stmt(st.then_s, names)
-    collect_written_stmt(st.else_s, names)
-    collect_written_stmt(st.body_s, names)
-    collect_written_stmt(st.init_s, names)
+    collect_written(tu, st.init, names, through)
+    collect_written(tu, st.e, names, through)
+    collect_written(tu, st.cond, names, through)
+    collect_written(tu, st.inc, names, through)
+    collect_written_stmt(tu, st.then_s, names, through)
+    collect_written_stmt(tu, st.else_s, names, through)
+    collect_written_stmt(tu, st.body_s, names, through)
+    collect_written_stmt(tu, st.init_s, names, through)
 }
 
 // C lets a non-void function fall off its end (the value is then unspecified, and main's is
@@ -831,7 +905,10 @@ def private ends_in_return(st : CirStmt?) : bool {
     return false
 }
 
-def private zero_of(spelled : string) : string {
+def private zero_of(tu : CirTu; t : int; spelled : string) : string {
+    if (kind_of(tu, t) == "struct") {
+        return "{spelled}()"
+    }
     if (spelled == "bool") {
         return "false"
     }
@@ -868,22 +945,26 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
         return
     }
     em.written |> clear()
+    em.written_through |> clear()
     em.renames |> clear()
     em.temp_counter = 0
     em.first_counter = 0
     em.for_counter = 0
     em.unsafe_used = false
-    collect_written_stmt(d.body, em.written)
+    collect_written_stmt(tu, d.body, em.written, em.written_through)
     var params : array<string>
     var copies : array<string>
     for (p in d.params) {
         let spelled = das_type(em, tu, p.t, d.loc)
         let name = das_name(em, p.name)
+        // a pointer the body writes through is a `var` parameter, the one spelling whose
+        // pointee stays writable (F3); a parameter the body assigns gets the callee copy
+        let through = key_exists(em.written_through, p.name) ? "var " : ""
         if (key_exists(em.written, p.name)) {
-            params |> push("{name}_in : {spelled}")
+            params |> push("{through}{name}_in : {spelled}")
             copies |> push("var {name} = {name}_in")
         } else {
-            params |> push("{name} : {spelled}")
+            params |> push("{through}{name} : {spelled}")
         }
     }
     let ret = das_type(em, tu, tu.types[d.t].ret, d.loc)
@@ -895,7 +976,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     }
     emit_body(em, tu, d.body)
     if (ret != "void" && !ends_in_return(d.body)) {
-        line(em, "return {zero_of(ret)}")
+        line(em, "return {zero_of(tu, tu.types[d.t].ret, ret)}")
     }
     close_block(em)
     line(em, "")
@@ -903,6 +984,64 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
         em.out[header_at] = "[c_function]\n" + em.out[header_at]
         em.requires |> insert("c_runtime/c_function")
     }
+}
+
+// `struct Name { fields }`, adjacent fields of one type on one line; a union, a bitfield
+// and a record clang lays out unnaturally wait for their own rows (P4.2, P4.1, P2.7)
+def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
+    let t = d.t
+    let name = record_name(em, tu, t)
+    if (tu.types[t].k == "union") {
+        fail(em, "union `{name}` is not lowered yet", d.loc)
+        return
+    }
+    if (tu.types[t].packed) {
+        fail(em, "record `{name}` is not laid out naturally; packed records are marshal-only and not lowered yet", d.loc)
+        return
+    }
+    var lines : array<string>
+    var names : array<string>
+    lines |> reserve(length(tu.types[t].fields))
+    names |> reserve(length(tu.types[t].fields))
+    var spelled = ""
+    for (f in tu.types[t].fields) {
+        if (f.is_bitfield) {
+            fail(em, "bitfield `{name}.{f.name}` is not lowered yet", d.loc)
+            return
+        }
+        let ft = das_type(em, tu, f.t, d.loc)
+        if (!empty(names) && ft != spelled) {
+            lines |> push("{join(names, ", ")} : {spelled}")
+            names |> clear()
+        }
+        spelled = ft
+        names |> push(das_name(em, f.name))
+    }
+    if (!empty(names)) {
+        lines |> push("{join(names, ", ")} : {spelled}")
+    }
+    open_block(em, "struct {name}")
+    for (l in lines) {
+        line(em, l)
+    }
+    close_block(em)
+    line(em, "")
+}
+
+// the layout law checked where it is claimed: every emitted record's das layout against
+// clang's, at compile time, zero cost at run time
+def private emit_layout_check(var em : Emitter; tu : CirTu; records : array<int>) {
+    line(em, "[init]")
+    open_block(em, "def private c2das_layout_check")
+    for (t in records) {
+        let name = record_name(em, tu, t)
+        line(em, "static_assert(typeinfo sizeof(type<{name}>) == {tu.types[t].size} && typeinfo alignof(type<{name}>) == {tu.types[t].align}, \"{name}: clang lays it out as size {tu.types[t].size}, align {tu.types[t].align}\")")
+        for (f in tu.types[t].fields) {
+            line(em, "static_assert(typeinfo offsetof<{das_name(em, f.name)}>(type<{name}>) == {f.off}, \"{name}.{f.name}: clang puts it at {f.off}\")")
+        }
+    }
+    close_block(em)
+    line(em, "")
 }
 
 def private emit_global(var em : Emitter; tu : CirTu; d : CirDecl) {
@@ -934,6 +1073,17 @@ def emit_tu(tu : CirTu) : Emitter {
         if (d.k == "func" && d.body != null) {
             em.functions |> insert(d.name)
         }
+    }
+    var records : array<int>
+    for (d in tu.decls) {
+        if (d.k == "record" && tu.types[d.t].size >= 0) {
+            emit_record(em, tu, *d)
+            records |> push(d.t)
+        }
+        break if (!empty(em.error))
+    }
+    if (!empty(records) && empty(em.error)) {
+        emit_layout_check(em, tu, records)
     }
     var globals_done = false
     for (d in tu.decls) {

@@ -420,6 +420,11 @@ def private write_expr_composite(var w : Writer; x : CirExpr) {
         w.out |> push("{int64(x.sizeof_v)}")
         member(w, "of_t", false)
         w.out |> push("{x.of_t}")
+    } elif (x.e == "offsetof") {
+        member(w, "of_t", false)
+        w.out |> push("{x.of_t}")
+        member(w, "field", false)
+        w.out |> push("{x.field}")
     } elif (x.e == "va_arg") {
         member(w, "list", false)
         write_expr_or_null(w, x.list)
@@ -863,6 +868,9 @@ def private read_expr_composite(js : JsonValue?; var x : CirExpr?) {
     } elif (x.e == "sizeof_v") {
         x.sizeof_v = uint64(js?["v"] ?? 0l)
         x.of_t = js_int(js, "of_t")
+    } elif (x.e == "offsetof") {
+        x.of_t = js_int(js, "of_t")
+        x.field = js_int(js, "field")
     } elif (x.e == "va_arg") {
         x.list = read_expr(js?["list"])
         x.arg_t = js_int(js, "arg_t")

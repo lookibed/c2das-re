@@ -50,6 +50,14 @@ def sq(x : int) : int {
     return x * x
 }
 
+// the layout law checked at compile time from an [init] body: the converter's generated
+// modules assert clang's layout this way at zero run-time cost
+[init]
+def private layout_at_init {
+    static_assert(typeinfo sizeof(type<Mobj>) == 24 && typeinfo alignof(type<Mobj>) == 8, "Mobj: size 24, align 8")
+    static_assert(typeinfo offsetof < x > (type<Mobj>) == 16, "Mobj.x at 16")
+}
+
 [test]
 def test_structs(t : T?) {
     t |> run("plain = deep-copies POD including fixed-array and nested members") @(t : T?) {
