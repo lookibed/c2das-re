@@ -3,7 +3,7 @@
 # suites/gcc_torture/filter.das over the fetched tree. A test that merely does not pass yet
 # is not listed; the ratchet reports it.
 20000223-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
-20000511-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
+20000511-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
 20001009-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 20001229-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 20010119-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
@@ -31,7 +31,7 @@
 20031020-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20031201-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20040218-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20040302-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
+20040302-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
 20040308-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20040625-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20040709-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
@@ -44,7 +44,7 @@
 20041201-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 20041212-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20041213-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20041214-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
+20041214-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
 20041218-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20050107-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20050119-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -77,7 +77,7 @@
 20071108-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20071120-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20071202-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20071210-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
+20071210-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
 20071211-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 20071216-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20071219-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -137,23 +137,23 @@
 20230630-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20230630-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20230802-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-920302-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-920415-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-920428-2	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-920501-3	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-920501-5	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-920501-7	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-920721-4	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-930406-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
+920302-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
+920415-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
+920428-2	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
+920501-3	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
+920501-5	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
+920501-7	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
+920721-4	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
+930406-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
 930930-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
 960117-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 960312-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 960512-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 960830-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 980505-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-980526-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
+980526-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
 990130-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-990208-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
+990208-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
 990326-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 991228-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
 alias-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -185,8 +185,8 @@ builtin-prefetch-5	__builtin_* calls	a builtin maps through a shim list that the
 builtin-prefetch-6	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 builtin-types-compatible-p	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 cbrt	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-comp-goto-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-comp-goto-2	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
+comp-goto-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
+comp-goto-2	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
 complex-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 complex-2	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 complex-4	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
@@ -210,8 +210,8 @@ memcpy-bi	__attribute__	an attribute reaches the dialect through the sidecar (pa
 memset-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 mul-sext	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 nest-align-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-nestfunc-5	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-nestfunc-6	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
+nestfunc-5	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
+nestfunc-6	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
 packed-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 packed-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 postmod-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -260,7 +260,7 @@ pr22141-1	__attribute__	an attribute reaches the dialect through the sidecar (pa
 pr22141-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr23135	GNU vector extension	SIMD vector types are outside the dialect	never
 pr23467	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr24135	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
+pr24135	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
 pr25125	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr27073	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr27285	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -464,12 +464,12 @@ pr70127	__attribute__	an attribute reaches the dialect through the sidecar (pack
 pr70222-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr70222-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr70429	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr70460	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
+pr70460	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
 pr70566	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr70602	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr70903	GNU vector extension	SIMD vector types are outside the dialect	never
 pr71083	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr71494	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
+pr71494	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
 pr71554	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr71626-1	GNU vector extension	SIMD vector types are outside the dialect	never
 pr77718	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4

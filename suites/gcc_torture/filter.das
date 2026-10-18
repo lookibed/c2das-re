@@ -29,7 +29,7 @@ let RULES <- [
     Rule(pattern = "_Float[0-9]|__float128|__fp16|_Decimal", feature = "non-standard floating types", reason = "float and double are the dialect's floating types", phase = "never"),
     Rule(pattern = "vector_size", feature = "GNU vector extension", reason = "SIMD vector types are outside the dialect", phase = "never"),
     Rule(pattern = "__sync_|__atomic_|__thread|_Thread_local", feature = "atomics and thread-local storage", reason = "single-threaded dialect", phase = "never"),
-    Rule(pattern = "__label__|&&[A-Za-z_]", feature = "computed goto and local labels", reason = "the goto row lowers labels, and computed goto rides on das's integer labels", phase = "P3"),
+    Rule(pattern = "__label__|&&[A-Za-z_]", feature = "address of a label and local labels", reason = "`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address", phase = "never"),
     Rule(pattern = "__builtin_", feature = "__builtin_* calls", reason = "a builtin maps through a shim list that the punning tier grows", phase = "P4"),
     Rule(pattern = "__attribute__", feature = "__attribute__", reason = "an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet", phase = "P4"),
     Rule(pattern = "__typeof|\\btypeof *\\(|__extension__|__alignof", feature = "GNU keywords", reason = "typeof, __extension__ and __alignof__ have no row", phase = "never"),
