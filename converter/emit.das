@@ -46,6 +46,10 @@ struct Emitter {
     globals_seen : int
     marshal : table<int>
     switch_counter : int
+    // the function's C labels by das number, and the blocks emitted without braces so a goto
+    // into them finds its label in an enclosing scope
+    labels : table<string; int>
+    flatten : table<uint64>
     // what a C `continue` spells at the current nesting: "" inside a loop body, the `_cont`
     // flag inside a matched-flag switch loop whose `continue` reaches the loop around it
     cont_flags : array<string>
@@ -1328,6 +1332,78 @@ def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
     close_block(em)
 }
 
+// where a label or a goto sits: the compound blocks above it, outermost first, and whether
+// each is a bare block (one that is its parent's statement, not an `if`, loop or switch body)
+struct LabelSite {
+    path : array<uint64>
+    bare : array<bool>
+}
+
+struct LabelPlan {
+    labels : table<string; LabelSite>
+    gotos : array<CirStmt const?>
+    goto_sites : array<LabelSite>
+}
+
+// das resolves a label lexically upward, so a goto reaches a label in its own block or an
+// enclosing one; the C labels are numbered in order of appearance, and every bare block
+// between a goto and a deeper label is flattened, while an `if`, loop or switch body on
+// that way is Duff's device (P3.3) and fails closed
+def private plan_labels(var em : Emitter; body : CirStmt const?) {
+    var plan : LabelPlan
+    var site : LabelSite
+    walk_labels(em, body, true, site, plan)
+    for (idx, g in range(length(plan.gotos)), plan.gotos) {
+        if (!key_exists(plan.labels, g.label_name)) {
+            fail(em, "goto to a label the function does not declare", g.loc)
+            return
+        }
+        var target : LabelSite
+        target := plan.labels[g.label_name]
+        var common = 0
+        while (common < length(target.path) && common < length(plan.goto_sites[idx].path) && target.path[common] == plan.goto_sites[idx].path[common]) {
+            common++
+        }
+        for (depth in range(common, length(target.path))) {
+            if (!target.bare[depth]) {
+                fail(em, "goto into a loop, branch or switch body (Duff's device) is not lowered yet (docs/implementation_order.md P3.3)", g.loc)
+                return
+            }
+            em.flatten |> insert(target.path[depth])
+        }
+    }
+}
+
+def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; var site : LabelSite; var plan : LabelPlan) {
+    if (st == null) {
+        return
+    }
+    if (st.s == "label") {
+        if (!key_exists(em.labels, st.label_name)) {
+            em.labels[st.label_name] = length(em.labels) + 1
+        }
+        plan.labels[st.label_name] := site
+    } elif (st.s == "goto") {
+        plan.gotos |> push(st)
+        var copy : LabelSite
+        copy := site
+        plan.goto_sites |> emplace(copy)
+    } elif (st.s == "compound") {
+        site.path |> push(intptr(st))
+        site.bare |> push(bare)
+        for (child in st.body) {
+            walk_labels(em, child, true, site, plan)
+        }
+        site.path |> pop()
+        site.bare |> pop()
+    } else {
+        walk_labels(em, st.then_s, false, site, plan)
+        walk_labels(em, st.else_s, false, site, plan)
+        walk_labels(em, st.body_s, false, site, plan)
+        walk_labels(em, st.init_s, false, site, plan)
+    }
+}
+
 // one run of labels and the statements under them, up to the next label
 struct CaseGroup {
     values : array<int64>
@@ -1632,30 +1708,49 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
     }
 }
 
+// a block a goto enters from outside loses its braces (docs/lowering-examples.md "goto /
+// labels"), so the label sits in the scope the goto sees
+def private emit_compound(var em : Emitter; tu : CirTu; st : CirStmt const?) {
+    let flat = key_exists(em.flatten, intptr(st))
+    if (!flat) {
+        open_block(em, "")
+    }
+    for (child in st.body) {
+        emit_stmt(em, tu, child)
+    }
+    if (!flat) {
+        close_block(em)
+    }
+}
+
+def private emit_decl(var em : Emitter; tu : CirTu; st : CirStmt) {
+    let spelled = das_type_dims(em, tu, st.t, st.loc, st.dims)
+    let name = das_name(em, st.name)
+    if (st.init == null) {
+        line(em, "var {name} : {spelled}")
+        return
+    }
+    var stores : array<string>
+    let init = decl_init(em, tu, name, st.t, st.init, st.loc, stores)
+    flush_pre(em)
+    line(em, empty(init) ? "var {name} : {spelled}" : "var {name} : {spelled} = {init}")
+    for (store in stores) {
+        line(em, store)
+    }
+}
+
 def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (st == null) {
         return
     }
     if (st.s == "compound") {
-        open_block(em, "")
-        for (child in st.body) {
-            emit_stmt(em, tu, child)
-        }
-        close_block(em)
+        emit_compound(em, tu, st)
+    } elif (st.s == "label") {
+        line(em, "label {em.labels?[st.label_name] ?? 0}:  // {st.label_name}")
+    } elif (st.s == "goto") {
+        line(em, "goto label {em.labels?[st.label_name] ?? 0}")
     } elif (st.s == "decl") {
-        let spelled = das_type_dims(em, tu, st.t, st.loc, st.dims)
-        let name = das_name(em, st.name)
-        if (st.init == null) {
-            line(em, "var {name} : {spelled}")
-        } else {
-            var stores : array<string>
-            let init = decl_init(em, tu, name, st.t, st.init, st.loc, stores)
-            flush_pre(em)
-            line(em, empty(init) ? "var {name} : {spelled}" : "var {name} : {spelled} = {init}")
-            for (store in stores) {
-                line(em, store)
-            }
-        }
+        emit_decl(em, tu, *st)
     } elif (st.s == "expr") {
         emit_effect(em, tu, st.e, st.loc)
         flush_pre(em)
@@ -1869,6 +1964,9 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     em.for_counter = 0
     em.switch_counter = 0
     em.cont_flags |> clear()
+    em.labels |> clear()
+    em.flatten |> clear()
+    plan_labels(em, d.body)
     em.unsafe_used = false
     collect_written_stmt(em, tu, d.body)
     var params, copies : array<string>

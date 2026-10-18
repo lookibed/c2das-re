@@ -83,5 +83,9 @@ under the other, which the dumper flattens into `case` and `default` marker stat
 by the statement, wherever in the body they sit (Duff's device keeps its nesting). A case value
 is folded here, since the JSON writes a `ConstantExpr` without its value: literals, characters,
 the arithmetic and bitwise operators, parentheses, casts and enumerators; a GNU case range (`case
-1 ... 3`) fails closed. Anything else is an error naming the node kind and its location: compound
-literals and `goto` are the next rows.
+1 ... 3`) fails closed. A function's labels are read before its body (a `GotoStmt` names its
+label by declaration id, and the label may follow the goto): a `LabelStmt` is a `label` marker
+followed by its statement, flattened like a case, a `GotoStmt` is a `goto` naming the label, and
+an `IndirectGotoStmt` (a computed goto through a label address) is outside the dialect.
+Anything else is an error naming the node kind and its location: compound literals are the
+next row.

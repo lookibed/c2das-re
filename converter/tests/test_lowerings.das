@@ -185,21 +185,7 @@ def p2_fixtures(t : T?) {
         has_text(t, text, "require crt\n")
     }
     p2_memory_fixtures(t)
-    t |> run("switch: the if-chain where no case falls through and breaks are tail-only, the matched-flag loop otherwise, enum compares, the cont epilogue, nested switches") @(t : T?) {
-        var text : string
-        check_fixture(t, "p3_switch", text)
-        has_text(t, text, "let _cond = x\n    if (_cond == 1) \{\n        r = 10\n    \} elif (_cond == 2 || _cond == 3) \{\n        r = 20\n    \} elif (_cond == -4) \{")
-        has_text(t, text, "if (_cond == 1u) \{\n        return 1\n    \} elif (_cond == 7u) \{\n        return 7\n    \} else \{\n        return 99")
-        has_text(t, text, "let _cond = t\n    if (_cond == mobjtype_t.MT_PLAYER) \{")
-        has_text(t, text, "_flag ||= _cond == 5\n        if (_flag) \{\n            let _t1 = n\n            n++\n            deref(trace + _t1) = 5\n        \}\n        _flag ||= _cond == 9")
-        has_text(t, text, "_flag ||= !(_cond == 1 || _cond == 5 || _cond == 9)")
-        has_text(t, text, "var _cont = false\n                while (true) \{")
-        has_text(t, text, "_cont = true\n                        break")
-        has_text(t, text, "if (_cont) \{\n                    continue\n                \}")
-        has_text(t, text, "let _cond2 = b\n        if (_cond2 == 1) \{")
-        has_text(t, text, "if (_cond == 8589934592l) \{")
-        has_text(t, text, "if (b == 2) \{\n                break\n            \}")
-    }
+    p3_fixtures(t)
 }
 
 def p2_enum_fixtures(t : T?) {
@@ -291,5 +277,36 @@ def p2_memory_fixtures(t : T?) {
         rejects(t, "packed_unlisted", packed, "listed under `marshal`")
         rejects(t, "marshal_addr", "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nint main(void) \{ disk_t d; disk_t *p = &d; return p->w; \}\n", "address of a value of the marshal-only record", "\{ \"marshal\": [\"disk_t\"] \}\n")
         rejects(t, "marshal_array", "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nstatic disk_t table[3];\nint main(void) \{ return table[1].w; \}\n", "array of the marshal-only record", "\{ \"marshal\": [\"disk_t\"] \}\n")
+    }
+}
+
+def p3_fixtures(t : T?) {
+    t |> run("switch: the if-chain where no case falls through and breaks are tail-only, the matched-flag loop otherwise, enum compares, the cont epilogue, nested switches") @(t : T?) {
+        var text : string
+        check_fixture(t, "p3_switch", text)
+        has_text(t, text, "let _cond = x\n    if (_cond == 1) \{\n        r = 10\n    \} elif (_cond == 2 || _cond == 3) \{\n        r = 20\n    \} elif (_cond == -4) \{")
+        has_text(t, text, "if (_cond == 1u) \{\n        return 1\n    \} elif (_cond == 7u) \{\n        return 7\n    \} else \{\n        return 99")
+        has_text(t, text, "let _cond = t\n    if (_cond == mobjtype_t.MT_PLAYER) \{")
+        has_text(t, text, "_flag ||= _cond == 5\n        if (_flag) \{\n            let _t1 = n\n            n++\n            deref(trace + _t1) = 5\n        \}\n        _flag ||= _cond == 9")
+        has_text(t, text, "_flag ||= !(_cond == 1 || _cond == 5 || _cond == 9)")
+        has_text(t, text, "var _cont = false\n                while (true) \{")
+        has_text(t, text, "_cont = true\n                        break")
+        has_text(t, text, "if (_cont) \{\n                    continue\n                \}")
+        has_text(t, text, "let _cond2 = b\n        if (_cond2 == 1) \{")
+        has_text(t, text, "if (_cond == 8589934592l) \{")
+        has_text(t, text, "if (b == 2) \{\n                break\n            \}")
+    }
+    t |> run("goto: labels numbered per function with the C name as a comment, forward and backward jumps, a jump out of nested loops, a block flattened for a goto into it") @(t : T?) {
+        var text : string
+        check_fixture(t, "p3_goto", text)
+        has_text(t, text, "label 1:  // retry\n    if (!(p3_goto__try_lock() != 0)) \{\n        n++\n        goto label 1\n    \}")
+        has_text(t, text, "return n\n    label 2:  // fail\n    n = -n")
+        has_text(t, text, "found = i * 10 + j\n                        goto label 1\n")
+        has_text(t, text, "    label 1:  // done\n    return found")
+        has_text(t, text, "r += 1\n    r += 10\n    label 1:  // inside\n    r += 100")
+        has_text(t, text, "r = 2\n    \{\n        var unused : int = 7\n        r += unused\n    \}\n    label 1:  // skip")
+        has_text(t, text, "label 1:  // again\n    n += 2\n    if (n < 7) \{\n        goto label 1")
+        rejects(t, "goto_into_loop", "int main(void) \{ int i = 0, n = 0; goto in; while (i < 3) \{ in: n++; i++; \} return n; \}\n", "Duff's device")
+        rejects(t, "goto_into_if", "int main(void) \{ int n = 0; goto in; if (n == 0) \{ in: n = 5; \} return n; \}\n", "Duff's device")
     }
 }

@@ -151,6 +151,14 @@ das's. A C `continue` under such a loop would restart the switch, so it spells
 the same translation when the switch sits in an outer flag loop; a real loop body resets the
 translation. Computed goto (O6) is the optimization tier's.
 
+A C label is `label N:  // name`, numbered per function in order of appearance, and a goto
+is `goto label N` (`docs/lowering-examples.md` "goto / labels"); das resolves a label lexically
+upward, so a goto reaches a label in its own block or an enclosing one, and a goto into a
+deeper block has every bare block between them (a block that is its parent's statement)
+emitted without braces, so the label lands in a scope the goto sees; an `if`, loop or switch
+body on that way is Duff's device (P3.3) and fails closed. A goto over a declaration skips its
+initializer, which is C's rule too (`probes/test_goto.das`).
+
 Output is assembled as an array of lines joined once (`docs/probe-findings.md` F19); the
 text then goes through the formatter, so spacing is the formatter's and indentation is the
 emitter's, four spaces per depth.

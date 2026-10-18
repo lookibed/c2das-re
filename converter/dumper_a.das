@@ -77,6 +77,8 @@ struct Dumper {
     enum_by_loc : table<string; int>
     enum_ref_by_loc : table<string; ClangEnumRef>
     enum_dims_by_loc : table<string; array<ClangEnumRef>>
+    // the labels of the function being dumped, by the id a GotoStmt names
+    label_names : table<string; string>
 }
 
 def private fail(var d : Dumper; what : string; at : CirLoc) {
@@ -1345,6 +1347,17 @@ def private dump_var(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
     return st
 }
 
+// a GotoStmt names its label by declaration id, and a label may follow its goto, so a
+// function's labels are read before its body
+def private collect_labels(var d : Dumper; js : JsonValue?) {
+    if (node_kind(js) == "LabelStmt") {
+        d.label_names[js?["declId"] ?? ""] = js?["name"] ?? ""
+    }
+    for (idx in range(child_count(js))) {
+        collect_labels(d, (js?["inner"] as _array)[idx])
+    }
+}
+
 // the variables of one DeclStmt, each as its own `decl` (or hoisted when static)
 def private dump_decl_stmt(var d : Dumper; js : JsonValue?; var into : array<CirStmt?>) : bool {
     loc_of(d, js)
@@ -1385,7 +1398,7 @@ def private dump_compound(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStm
             }
             continue
         }
-        if (node_kind(child) == "CaseStmt" || node_kind(child) == "DefaultStmt") {
+        if (key_exists(MARKER_KINDS, node_kind(child))) {
             if (!dump_case(d, child, st.body)) {
                 delete_stmt(st)
                 return null
@@ -1542,14 +1555,19 @@ def private fold_binary(var d : Dumper; js : JsonValue?; at : CirLoc; var v : in
     return true
 }
 
-// `case v:` and `default:` are markers in the switch body, each followed by the statement clang
-// nests under it; clang nests shared labels (`case 2: case 3: s`) one under the other
+let MARKER_KINDS <- {"CaseStmt", "DefaultStmt", "LabelStmt"}
+
+// `case v:`, `default:` and `name:` are markers in the statement list, each followed by the
+// statement clang nests under it; clang nests shared labels (`case 2: case 3: s`) one under
+// the other
 def private dump_case(var d : Dumper; js : JsonValue?; var into : array<CirStmt?>) : bool {
     let at = loc_of(d, js)
     let kind = node_kind(js)
     let kids = js?["inner"]
     let nkids = child_count(js)
-    if (kind == "CaseStmt") {
+    if (kind == "LabelStmt") {
+        into |> push(new CirStmt(s = "label", label_name = js?["name"] ?? "", loc = at))
+    } elif (kind == "CaseStmt") {
         if (js?["isGNURange"] ?? false) {
             fail(d, "a GNU case range is outside the dialect", at)
             return false
@@ -1564,7 +1582,7 @@ def private dump_case(var d : Dumper; js : JsonValue?; var into : array<CirStmt?
     }
     let sub = (kids as _array)[nkids - 1]
     let sub_kind = node_kind(sub)
-    if (sub_kind == "CaseStmt" || sub_kind == "DefaultStmt") {
+    if (key_exists(MARKER_KINDS, sub_kind)) {
         return dump_case(d, sub, into)
     }
     if (sub_kind == "DeclStmt") {
@@ -1615,8 +1633,20 @@ def dump_stmt(var d : Dumper; js : JsonValue?) : CirStmt? {
         }
         return st
     }
-    if (kind == "CaseStmt" || kind == "DefaultStmt") {
-        // a case directly as the switch body, `switch (x) case 1: s;`
+    if (kind == "GotoStmt") {
+        let target = d.label_names?[js?["targetLabelDeclId"] ?? ""] ?? ""
+        if (empty(target)) {
+            fail(d, "goto to a label the function does not declare", at)
+            return null
+        }
+        return new CirStmt(s = "goto", label_name = target, loc = at)
+    }
+    if (kind == "IndirectGotoStmt") {
+        fail(d, "a computed goto through a label address is outside the dialect", at)
+        return null
+    }
+    if (key_exists(MARKER_KINDS, kind)) {
+        // a marker directly as a body, `switch (x) case 1: s;` or `if (c) name: s;`
         var wrapped = new CirStmt(s = "compound", loc = at)
         if (!dump_case(d, js, wrapped.body)) {
             delete_stmt(wrapped)
@@ -1739,6 +1769,8 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
                 }
                 fn.params |> push(CirParam(name = child?["name"] ?? "", t = pt))
             } elif (ck == "CompoundStmt") {
+                d.label_names |> clear()
+                collect_labels(d, child)
                 fn.body = dump_stmt(d, child)
                 if (fn.body == null) {
                     delete_decl(fn)
