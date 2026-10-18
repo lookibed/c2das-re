@@ -49,15 +49,23 @@ def has_text(t : T?; text : string; needle : string) {
     t |> equal(text |> find(needle) >= 0, true, "missing `{needle}` in:\n{text}")
 }
 
-// a C source the converter must refuse, with the error naming the construct
-def rejects(t : T?; name : string; source : string; needle : string) {
+def write_file(path : string; text : string) {
+    fopen(path, "wb") $(f) {
+        if (f != null) {
+            fwrite(f, text)
+        }
+    }
+}
+
+// a C source the converter must refuse, with the error naming the construct; `sidecar` is
+// the `.c2das` text beside it, when the shape needs one
+def rejects(t : T?; name : string; source : string; needle : string; sidecar : string = "") {
     let dir = path_join(work_root, "rejected")
     mkdir(dir)
     let c_path = path_join(dir, "{name}.c")
-    fopen(c_path, "wb") $(f) {
-        if (f != null) {
-            fwrite(f, source)
-        }
+    write_file(c_path, source)
+    if (!empty(sidecar)) {
+        write_file(path_join(dir, "{name}.c2das"), sidecar)
     }
     let res <- convert(c_path, path_join(dir, name), "linux")
     t |> equal(res.ok, false, "{name} converted:\n{res.das_text}")
@@ -176,23 +184,7 @@ def p2_fixtures(t : T?) {
         has_text(t, text, "crt::isdigit(int(num[0])) != 0")
         has_text(t, text, "require crt\n")
     }
-    t |> run("globals: zero-init pass-through, value inits, address inits inline where legal else [init], function values, statics") @(t : T?) {
-        var text : string
-        check_fixture(t, "p2_globals", text)
-        has_text(t, text, "var leveltime : int\n")
-        has_text(t, text, "var private p2_globals__p : int?\n")
-        has_text(t, text, "var private p2_globals__q : int? = unsafe(addr(p2_globals__ready))")
-        has_text(t, text, "var later : int = 5\nvar private p2_globals__r : int? = unsafe(addr(later))")
-        has_text(t, text, "def private c2das_init_globals \{\n    p2_globals__p = unsafe(addr(p2_globals__data[1]))\n    p2_globals__s = S(fn = @@p2_globals__zero, at = unsafe(addr(p2_globals__data[2])))")
-        has_text(t, text, "var private p2_globals__fptr : function<() : int> = default<function<() : int>>")
-        has_text(t, text, "fixed_array(@@p2_globals__zero, @@p2_globals__one)")
-        has_text(t, text, "var x : int = 3\n")
-        has_text(t, text, "var private tick_count : int = 4567")
-        has_text(t, text, "def private p2_globals__sum(var a : int?; n : int) : int")
-        has_text(t, text, "p2_globals__fptr = default<function<() : int>>")
-        has_text(t, text, "p2_globals__fptr != null ? 1 : 0")
-        has_text(t, text, "return p2_globals__fptr == null ? 3 : 4")
-    }
+    p2_memory_fixtures(t)
 }
 
 def p2_enum_fixtures(t : T?) {
@@ -239,5 +231,50 @@ def p2_enum_fixtures(t : T?) {
         rejects(t, "packed", "enum __attribute__((packed)) P \{ P1 = 1 \};\nint main(void) \{ enum P p = P1; return p; \}\n", "bits wide")
         rejects(t, "in_sizeof", "int main(void) \{ return (int) sizeof(enum Q \{ Q1 = 5 \}); \}\n", "defined inside an expression")
         rejects(t, "macro_constant", "enum E \{ A = 1, B = 2 \};\n#define BOTH (A + B)\nint main(void) \{ return BOTH; \}\n", "libclang reports no reference")
+    }
+}
+
+def p2_memory_fixtures(t : T?) {
+    t |> run("globals: zero-init pass-through, value inits, address inits inline where legal else [init], function values, statics") @(t : T?) {
+        var text : string
+        check_fixture(t, "p2_globals", text)
+        has_text(t, text, "var leveltime : int\n")
+        has_text(t, text, "var private p2_globals__p : int?\n")
+        has_text(t, text, "var private p2_globals__q : int? = unsafe(addr(p2_globals__ready))")
+        has_text(t, text, "var later : int = 5\nvar private p2_globals__r : int? = unsafe(addr(later))")
+        has_text(t, text, "def private c2das_init_globals \{\n    p2_globals__p = unsafe(addr(p2_globals__data[1]))\n    p2_globals__s = S(fn = @@p2_globals__zero, at = unsafe(addr(p2_globals__data[2])))")
+        has_text(t, text, "var private p2_globals__fptr : function<() : int> = default<function<() : int>>")
+        has_text(t, text, "fixed_array(@@p2_globals__zero, @@p2_globals__one)")
+        has_text(t, text, "var x : int = 3\n")
+        has_text(t, text, "var private tick_count : int = 4567")
+        has_text(t, text, "def private p2_globals__sum(var a : int?; n : int) : int")
+        has_text(t, text, "p2_globals__fptr = default<function<() : int>>")
+        has_text(t, text, "p2_globals__fptr != null ? 1 : 0")
+        has_text(t, text, "return p2_globals__fptr == null ? 3 : 4")
+    }
+    t |> run("marshal: a sidecar-flagged packed record is bytes in C memory, a natural struct as a value, with generated readers and writers at clang's offsets") @(t : T?) {
+        var text : string
+        check_fixture(t, "p2_marshal", text)
+        has_text(t, text, "struct disk_t \{\n    width : int16\n    ofs : int\n    tag : uint8\n\}")
+        has_text(t, text, "def read_disk_t(bytes : uint8?; ofs : int) : disk_t \{\n    var r : disk_t\n    crt::memcpy(reinterpret<void?>(addr(r.width)), reinterpret<void?>(bytes + (ofs + 0)), uint64(2))")
+        has_text(t, text, "def write_disk_t_ofs(bytes : uint8?; ofs : int; v : int)")
+        has_text(t, text, "typeinfo sizeof(type<natural_t>) == 8")
+        t |> equal(text |> find("type<disk_t>") < 0, true, "disk_t carries a layout assertion:\n{text}")
+        has_text(t, text, "var first : uint8? = reinterpret<uint8?>(addr(p2_marshal__lump[0]) + 2)")
+        has_text(t, text, "write_disk_t(first, 0, local)")
+        has_text(t, text, "write_disk_t_width(w, 0, int16(300 + i))")
+        has_text(t, text, "write_disk_t_width(first + 1 * 7, 0, int16(9))")
+        has_text(t, text, "write_disk_t_ofs(first + 2 * 7, 0, read_disk_t_ofs(first + 2 * 7, 0) + 5)")
+        has_text(t, text, "var copy : disk_t = read_disk_t(first, 0)")
+        has_text(t, text, "int(uint64(7)), int(uint64(7)), int(uint64(typeinfo sizeof(type<natural_t>)))")
+        has_text(t, text, "var end : uint8? = entries + n * 7")
+        has_text(t, text, "entries = entries + 7")
+        has_text(t, text, "read_disk_t_width(entries, 0)")
+    }
+    t |> run("marshal: the shapes the emitter refuses, each naming the record") @(t : T?) {
+        let packed = "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nint main(void) \{ disk_t d; d.w = 1; return d.w; \}\n"
+        rejects(t, "packed_unlisted", packed, "listed under `marshal`")
+        rejects(t, "marshal_addr", "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nint main(void) \{ disk_t d; disk_t *p = &d; return p->w; \}\n", "address of a value of the marshal-only record", "\{ \"marshal\": [\"disk_t\"] \}\n")
+        rejects(t, "marshal_array", "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nstatic disk_t table[3];\nint main(void) \{ return table[1].w; \}\n", "array of the marshal-only record", "\{ \"marshal\": [\"disk_t\"] \}\n")
     }
 }

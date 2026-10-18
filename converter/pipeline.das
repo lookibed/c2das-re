@@ -11,6 +11,7 @@ require daslib/das_source_formatter
 require cir
 require dumper_a
 require emit
+require sidecar
 
 //! One C file through the whole chain: clang dump, C-IR (written, read back, rewritten and
 //! compared byte for byte), das emission, the formatter, a compile check. Nothing is
@@ -64,10 +65,16 @@ def private file_stem(c_path : string) : string {
     return dot < 0 ? name : slice(name, 0, dot)
 }
 
-def convert(c_path : string; out_dir : string; target_name : string; clang : string = "") : ConvertResult {
+def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = "") : ConvertResult {
     var res : ConvertResult
     if (!mkdir_rec(out_dir) && !stat(out_dir).is_dir) {
         res.error = "cannot create {out_dir}"
+        return <- res
+    }
+    var side_error : string
+    let side <- read_sidecar(find_sidecar(c_path, sidecar_path), side_error)
+    if (!empty(side_error)) {
+        res.error = "sidecar: {side_error}"
         return <- res
     }
     var d <- dump_tu(c_path, target_by_name(target_name), empty(clang) ? default_clang() : clang)
@@ -97,7 +104,7 @@ def convert(c_path : string; out_dir : string; target_name : string; clang : str
         delete_tu(d.tu)
         return <- res
     }
-    let em <- emit_tu(d.tu)
+    let em <- emit_tu(d.tu, side)
     delete_tu(d.tu)
     if (!empty(em.error)) {
         res.error = "emitter: {em.error}"

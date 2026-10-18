@@ -8,7 +8,7 @@ require daslib/clargs
 require pipeline
 require tiers
 
-//! c2das: `daslang converter/main.das -- <file.c> [--out <dir>] [--target msvc|linux] [--run <tier>]`.
+//! c2das: `daslang converter/main.das -- <file.c> [--out <dir>] [--target msvc|linux] [--run <tier>] [--sidecar <file>]`.
 //! Converts one C file into `<dir>/<stem>.das` (default `out/`); with `--run` executes the
 //! result under a tier and exits with the program's exit code.
 
@@ -23,6 +23,8 @@ struct Args {
     target : string = "msvc"
     @clarg_doc = "run the converted module under interp, jit, exe or aot and exit with its code"
     run : string = ""
+    @clarg_doc = "the .c2das sidecar (default: <stem>.c2das beside the file, else .c2das in its folder)"
+    sidecar : string = ""
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -44,7 +46,7 @@ def main : int {
         to_log(LOG_ERROR, "c2das: no input file; -? for help\n")
         return 2
     }
-    let res <- convert(args.input, args.out, args.target)
+    let res <- convert(args.input, args.out, args.target, "", args.sidecar)
     if (!res.ok) {
         to_log(LOG_ERROR, "c2das: {res.error}\n")
         return 1
