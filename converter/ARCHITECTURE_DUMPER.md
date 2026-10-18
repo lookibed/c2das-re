@@ -87,5 +87,8 @@ the arithmetic and bitwise operators, parentheses, casts and enumerators; a GNU 
 label by declaration id, and the label may follow the goto): a `LabelStmt` is a `label` marker
 followed by its statement, flattened like a case, a `GotoStmt` is a `goto` naming the label, and
 an `IndirectGotoStmt` (a computed goto through a label address) is outside the dialect.
-Anything else is an error naming the node kind and its location: compound literals are the
-next row.
+Every type spelling that carries `__jmp_buf_tag` (glibc's `jmp_buf`, `struct
+__jmp_buf_tag[1]`; its decay and a pointer to it, `struct __jmp_buf_tag *`; a pointer to the
+array, `(*)[1]`) is the one opaque record `jmp_buf` of one `int` field, or a pointer to it,
+which the lowering spells as the protocol's `CJmpBuf`. Anything else is an error naming the
+node kind and its location: compound literals are the next row.

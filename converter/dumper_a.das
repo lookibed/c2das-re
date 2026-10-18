@@ -541,7 +541,25 @@ def private function_type(var d : Dumper; qt : string; paren : int; at : CirLoc)
     return intern(d, key, t)
 }
 
+// glibc spells `jmp_buf` as `struct __jmp_buf_tag[1]`, and its decay and a pointer to it as
+// `struct __jmp_buf_tag *`: every such spelling is the one opaque `jmp_buf` record, which the
+// lowering fills with its own protocol (docs/lowering-examples.md "setjmp / longjmp")
+def private jmp_buf_type(var d : Dumper; qual : string) : int {
+    var rec = CirType(k = "struct", name = "jmp_buf", spell = "jmp_buf", size = 4, align = 4)
+    var val = CirField(name = "val", t = int_type(d, 32, true, "int"))
+    rec.fields |> emplace(val)
+    let r = intern(d, "record:jmp_buf", rec)
+    if (qual |> ends_with("*") || find(qual, "(*)") >= 0) {
+        var p = CirType(k = "ptr", to = r)
+        return intern(d, "ptr:{r}", p)
+    }
+    return r
+}
+
 def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
+    if (find(qual, "__jmp_buf_tag") >= 0) {
+        return jmp_buf_type(d, unqualified(qual))
+    }
     if (find(qual, "(unnamed ") >= 0 || find(qual, "(anonymous ") >= 0) {
         return unnamed_record_type(d, qual, at)
     }

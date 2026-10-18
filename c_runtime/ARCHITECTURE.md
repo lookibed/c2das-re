@@ -31,7 +31,8 @@ as-if-converted fixture test landing first.
   `CVaList`, `to_cvalist` (the `apply` walk over a tuple with C's default promotions, `bool`
   dispatched on `stripped_typename` because no bool trait exists), and the `[variadic]`
   annotation. Its `apply` runs before the gen2 parser decides generic-or-not, so it turns the
-  trailing `va : va_args` parameter into `_va_tuple : auto`, prepends `let va <- to_cvalist(_va_tuple)`
+  trailing `va : va_args` parameter into `_va_tuple : auto`, prepends `let va <-
+  to_cvalist(_va_tuple)`
   to the body, renames the function `<name>`va`, and registers into the compiling module a
   call macro under the C name that tuples every argument past the fixed ones (`VaNone()` when
   there are none). `Program::makeCall` searches every module of the program for a call
@@ -48,6 +49,14 @@ as-if-converted fixture test landing first.
   argument of the wrong class for its directive panics, which is the C undefined behavior
   made visible; a null format renders nothing. The bytes are the CRT's by construction,
   which `tests/test_printf.das` proves against a native battery compiled by the pinned clang.
+- `c_runtime/setjmp.das` - the setjmp/longjmp protocol over das's own unwinding
+  (`docs/lowering-examples.md` "setjmp / longjmp"): `CJmpBuf` holds the longjmp value,
+  `c_jmp_target` the buffer a longjmp in flight targets, and `c_longjmp(buf, v)` records both
+  (a zero value as 1, as C says) and panics; the `recover` of every setjmp site the unwind
+  passes compares `c_jmp_target` with its own buffer, rethrows another's or a genuine panic
+  (a null target), and clears its own. das skips `finally` on a panic, which is C's
+  no-cleanup-on-longjmp rule. The buffer arrives as C passes it, through a pointer a `let`
+  parameter may hold, so the write goes through a pointer re-made from its address.
 - `tests/` - one dastest file per piece, written as the converter will emit the code,
   including a control that the same code without the piece is rejected or wrong.
 

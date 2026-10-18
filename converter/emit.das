@@ -46,6 +46,7 @@ struct Emitter {
     globals_seen : int
     marshal : table<int>
     switch_counter : int
+    setjmp_counter : int
     // the function's C labels by das number, and the blocks emitted without braces so a goto
     // into them finds its label in an enclosing scope
     labels : table<string; int>
@@ -79,7 +80,11 @@ let BIN_PREC <- {"add" => 11, "sub" => 11, "mul" => 12, "div" => 12, "rem" => 12
 
 // the libc functions a c_runtime piece lowers, by the module that holds the piece; the C name
 // is the das name
-let C_RUNTIME_CALLS <- {"printf" => "c_runtime/printf", "sprintf" => "c_runtime/printf", "snprintf" => "c_runtime/printf", "exit" => "c_runtime/c_exit", "abort" => "c_runtime/c_exit"}
+let C_RUNTIME_CALLS <- {"printf" => "c_runtime/printf", "sprintf" => "c_runtime/printf", "snprintf" => "c_runtime/printf", "exit" => "c_runtime/c_exit", "abort" => "c_runtime/c_exit", "longjmp" => "c_runtime/setjmp", "_longjmp" => "c_runtime/setjmp"}
+
+let SETJMP_NAMES <- {"setjmp", "_setjmp", "__sigsetjmp"}
+
+let JMP_BUF = "jmp_buf"
 
 // the libc functions the crt module binds under their C names (dasCRuntime/ARCHITECTURE.md)
 let CRT_CALLS <- {"clock", "time", "rand", "srand", "getenv", "malloc", "calloc", "realloc", "free", "memcpy", "memmove", "memset", "memcmp", "memchr", "strlen", "strcpy", "strncpy", "strcat", "strncat", "strcmp", "strncmp", "strchr", "strrchr", "strstr", "strerror", "strtol", "strtoul", "strtoll", "strtoull", "strtod", "atoi", "atol", "atof", "abs", "llabs", "isalpha", "isdigit", "isalnum", "isspace", "isupper", "islower", "isxdigit", "ispunct", "isprint", "iscntrl", "toupper", "tolower"}
@@ -87,7 +92,7 @@ let CRT_CALLS <- {"clock", "time", "rand", "srand", "getenv", "malloc", "calloc"
 // C name -> das spelling, and the module it needs
 def private libc_call(name : string) : string {
     if (key_exists(C_RUNTIME_CALLS, name)) {
-        return name == "exit" ? "c_exit" : name == "abort" ? "c_abort" : name
+        return name == "exit" ? "c_exit" : name == "abort" ? "c_abort" : (name == "longjmp" || name == "_longjmp") ? "c_longjmp" : name
     }
     return key_exists(CRT_CALLS, name) ? "crt::{name}" : ""
 }
@@ -190,6 +195,10 @@ def das_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
     if (k == "array") {
         let bare : array<CirDim>
         return array_type(em, tu, t, loc, bare)
+    }
+    if (k == "struct" && tu.types[t].name == JMP_BUF) {
+        em.requires |> insert("c_runtime/setjmp")
+        return "CJmpBuf"
     }
     if (k == "struct" || k == "enum") {
         return tag_name(em, tu, t)
@@ -481,6 +490,10 @@ def private callee_name(var em : Emitter; tu : CirTu; fn : CirExpr?; loc : CirLo
     if (target == null || target.e != "ref") {
         return ""
     }
+    if (key_exists(SETJMP_NAMES, target.name)) {
+        fail(em, "setjmp whose value is not tested against zero by the `if` around it (the general trampoline form) is not lowered yet", loc)
+        return ""
+    }
     if (!key_exists(em.functions, target.name) && empty(libc_call(target.name))) {
         // a name of function type is an external function; a pointer-typed one is a call
         // through the pointer
@@ -564,6 +577,11 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return x.a.e == "ref" && key_exists(em.functions, x.a.name) ? function_value(em, x.a.name) : inner
     }
     if (k == "ArrayToPointerDecay") {
+        // a `jmp_buf` is one record here, not glibc's one-element array: its decay is its
+        // address, or the pointer a `*p` read it through
+        if (kind_of(tu, x.a.t) == "struct" && tu.types[x.a.t].name == JMP_BUF) {
+            return x.a.e == "un" && x.a.op == "deref" ? emit_expr(em, tu, x.a.a, loc) : unsafe_value(em, "addr({inner.text})", PREC_PRIMARY)
+        }
         return unsafe_value(em, "addr({inner.text}[0])", PREC_PRIMARY)
     }
     fail(em, "cast `{k}` is not lowered yet", loc)
@@ -1139,12 +1157,70 @@ def private emit_body(var em : Emitter; tu : CirTu; st : CirStmt const?) {
         return
     }
     if (st.s == "compound") {
-        for (child in st.body) {
-            emit_stmt(em, tu, child)
-        }
+        emit_statements(em, tu, st, 0)
     } else {
         emit_stmt(em, tu, st)
     }
+}
+
+// the statements of a block from `first` on; a single-branch setjmp `if` takes the rest of
+// the block as its tail, the trampoline of docs/lowering-examples.md "setjmp / longjmp"
+def private emit_statements(var em : Emitter; tu : CirTu; owner : CirStmt const?; first : int) {
+    for (idx in range(first, length(owner.body))) {
+        let child = owner.body[idx]
+        var first_in_then = false
+        if (child.s == "if" && child.else_s == null && setjmp_site(child.cond, first_in_then) != null) {
+            emit_trampoline(em, tu, owner, idx, first_in_then)
+            return
+        }
+        emit_stmt(em, tu, child)
+    }
+}
+
+// `if (setjmp(buf)) { B } tail`: C re-enters at the setjmp with longjmp's value and runs on,
+// so the branch and the tail live in a loop that reruns once per longjmp caught; a tail that
+// leaves an outer loop would leave this one instead and fails closed
+def private emit_trampoline(var em : Emitter; tu : CirTu; owner : CirStmt const?; site : int; first_in_then : bool) {
+    let st = owner.body[site]
+    for (idx in range(site + 1, length(owner.body))) {
+        if (breaks_switch(owner.body[idx]) || continues_out(owner.body[idx])) {
+            fail(em, "a setjmp site whose tail leaves an enclosing loop is not lowered yet", st.loc)
+            return
+        }
+    }
+    var first_in_then_again = false
+    let buf = setjmp_site(st.cond, first_in_then_again)
+    em.requires |> insert("c_runtime/setjmp")
+    em.setjmp_counter++
+    let run = numbered("_sj_run", em.setjmp_counter)
+    let val = numbered("_sj_val", em.setjmp_counter)
+    let target = emit_expr(em, tu, buf, st.loc)
+    flush_pre(em)
+    line(em, "var {run} = true")
+    line(em, "var {val} = 0")
+    open_block(em, "while ({run})")
+    line(em, "{run} = false")
+    open_block(em, "try")
+    open_block(em, "if ({val} {first_in_then ? "==" : "!="} 0)")
+    emit_body(em, tu, st.then_s)
+    close_block(em)
+    em.cont_flags |> push("")
+    emit_statements(em, tu, owner, site + 1)
+    em.cont_flags |> pop()
+    em.depth--
+    open_block(em, "\} recover")
+    open_block(em, "if (c_jmp_target != {target.text})")
+    line(em, "panic(\"longjmp\")")
+    close_block(em)
+    line(em, "c_jmp_target = null")
+    // the value through the buffer the site named: `buf.val` for a buffer in reach, which
+    // arrives as the decay of the `jmp_buf`, `deref(p).val` for one behind a pointer
+    let direct = buf.e == "cast" && buf.cast_kind == "ArrayToPointerDecay" && !(buf.a.e == "un" && buf.a.op == "deref")
+    let held = direct ? emit_expr(em, tu, buf.a, st.loc).text : "deref({target.text})"
+    line(em, "{val} = {held}.val")
+    line(em, "{run} = true")
+    close_block(em)
+    close_block(em)
 }
 
 def private open_block(var em : Emitter; head : string) {
@@ -1157,7 +1233,64 @@ def private close_block(var em : Emitter) {
     line(em, "\}")
 }
 
+// `setjmp(buf)` tested against zero as an `if` condition: the call below the casts, `!` and
+// `== 0` / `!= 0`, and whether the then-branch is the first run (zero) or the longjmp return
+def private setjmp_site(x : CirExpr const?; var first_in_then : bool&) : CirExpr const? {
+    var at = x
+    first_in_then = false
+    while (at != null) {
+        if (at.e == "cast" && (at.cast_kind == "IntegralToBoolean" || at.cast_kind == "LValueToRValue" || at.cast_kind == "NoOp" || at.cast_kind == "IntegralCast")) {
+            at = at.a
+        } elif (at.e == "un" && at.op == "not") {
+            first_in_then = !first_in_then
+            at = at.a
+        } elif (at.e == "bin" && (at.op == "eq" || at.op == "ne") && at.b.e == "int_lit" && at.b.v == "0") {
+            first_in_then = at.op == "eq" ? !first_in_then : first_in_then
+            at = at.a
+        } else {
+            break
+        }
+    }
+    if (at == null || at.e != "call" || at.fn == null || length(at.args) != 1) {
+        return null
+    }
+    var callee = at.fn
+    if (callee.e == "cast" && callee.cast_kind == "FunctionToPointerDecay") {
+        callee = callee.a
+    }
+    return callee.e == "ref" && key_exists(SETJMP_NAMES, callee.name) ? at.args[0] : null
+}
+
+// the contained setjmp site of docs/lowering-examples.md: the first run is the `try`, the
+// longjmp return the `recover`, which rethrows a longjmp to another buffer or a genuine
+// panic (a null target) and clears its own
+def private emit_setjmp_site(var em : Emitter; tu : CirTu; st : CirStmt; buf : CirExpr const?; first_in_then : bool) {
+    em.requires |> insert("c_runtime/setjmp")
+    let target = emit_expr(em, tu, buf, st.loc)
+    flush_pre(em)
+    open_block(em, "try")
+    emit_body(em, tu, first_in_then ? st.then_s : st.else_s)
+    em.depth--
+    open_block(em, "\} recover")
+    open_block(em, "if (c_jmp_target != {target.text})")
+    line(em, "panic(\"longjmp\")")
+    close_block(em)
+    line(em, "c_jmp_target = null")
+    emit_body(em, tu, first_in_then ? st.else_s : st.then_s)
+    close_block(em)
+}
+
 def private emit_if(var em : Emitter; tu : CirTu; st : CirStmt; head : string) {
+    var first_in_then = false
+    let buf = setjmp_site(st.cond, first_in_then)
+    if (buf != null) {
+        if (head == "if" && st.else_s != null) {
+            emit_setjmp_site(em, tu, st, buf, first_in_then)
+        } else {
+            fail(em, "a setjmp site must be an `if` at a block's statement level, with both branches or the block's tail as its continuation", st.loc)
+        }
+        return
+    }
     let c = to_bool(emit_expr(em, tu, st.cond, st.loc), tu, st.cond.t)
     flush_pre(em)
     open_block(em, "{head} ({c.text})")
@@ -1715,9 +1848,7 @@ def private emit_compound(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (!flat) {
         open_block(em, "")
     }
-    for (child in st.body) {
-        emit_stmt(em, tu, child)
-    }
+    emit_statements(em, tu, st, 0)
     if (!flat) {
         close_block(em)
     }
@@ -1796,10 +1927,7 @@ def private collect_written(var em : Emitter; tu : CirTu; x : CirExpr?) {
         mark_copied_pointer(tu, x.b, em.written_through)
     }
     if (x.e == "call") {
-        // a pointer passed on: its callee copy, when it has one, must keep a writable pointee
-        for (arg in x.args) {
-            mark_copied_pointer(tu, arg, em.passed)
-        }
+        collect_call_pointers(em, tu, *x)
     }
     // a marshal-only record's reader takes the byte pointer as an argument
     if ((x.e == "member" && x.arrow && marshal_pointee(em, tu, x.base.t) >= 0) || (x.e == "index" && marshal_pointee(em, tu, x.base.t) >= 0)) {
@@ -1859,9 +1987,33 @@ def private collect_written(var em : Emitter; tu : CirTu; x : CirExpr?) {
     }
 }
 
+// the pointers a call passes on: each needs a writable pointee in its callee copy, when it
+// has one; `longjmp` writes the value into its buffer, so that pointer is written through
+def private collect_call_pointers(var em : Emitter; tu : CirTu; x : CirExpr) {
+    for (arg in x.args) {
+        mark_copied_pointer(tu, arg, em.passed)
+    }
+    var callee = x.fn
+    if (callee != null && callee.e == "cast") {
+        callee = callee.a
+    }
+    if (callee != null && callee.e == "ref" && (callee.name == "longjmp" || callee.name == "_longjmp") && !empty(x.args)) {
+        // the buffer arrives as the decay of `*p` when it sits behind a pointer
+        var buf = x.args[0]
+        while (buf != null && buf.e == "cast") {
+            buf = buf.a
+        }
+        if (buf != null && buf.e == "un" && buf.op == "deref") {
+            mark_copied_pointer(tu, buf.a, em.written_through)
+        } else {
+            mark_copied_pointer(tu, buf, em.written_through)
+        }
+    }
+}
+
 // the parameter a pointer copy reads, below its casts: `p = a`, `int *it = a` make `a` `var`,
 // since a `let` parameter's copy would carry a const pointee (F3)
-def private mark_copied_pointer(tu : CirTu; x : CirExpr?; var through : table<string>) {
+def private mark_copied_pointer(tu : CirTu; x : CirExpr const?; var through : table<string>) {
     var at = x
     // through casts, and through `p + n` to the pointer the sum starts from
     while (at != null && (at.e == "cast" || (at.e == "bin" && (at.op == "add" || at.op == "sub") && kind_of(tu, at.a.t) == "ptr"))) {
@@ -1902,6 +2054,14 @@ def private ends_in_return(st : CirStmt?) : bool {
         return true
     }
     if (st.s == "compound") {
+        // a single-branch setjmp site turns the rest of the block into a loop, whose end das
+        // does not read as a return
+        for (child in st.body) {
+            var first_in_then = false
+            if (child.s == "if" && child.else_s == null && setjmp_site(child.cond, first_in_then) != null) {
+                return false
+            }
+        }
         return !empty(st.body) && ends_in_return(st.body[length(st.body) - 1])
     }
     if (st.s == "if") {
@@ -1963,6 +2123,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     em.first_counter = 0
     em.for_counter = 0
     em.switch_counter = 0
+    em.setjmp_counter = 0
     em.cont_flags |> clear()
     em.labels |> clear()
     em.flatten |> clear()

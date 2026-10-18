@@ -159,6 +159,19 @@ emitted without braces, so the label lands in a scope the goto sees; an `if`, lo
 body on that way is Duff's device (P3.3) and fails closed. A goto over a declaration skips its
 initializer, which is C's rule too (`probes/test_goto.das`).
 
+A `jmp_buf` is `CJmpBuf` (`c_runtime/setjmp`), its decay `addr(buf)` (or the pointer a `*p`
+read it through), and `longjmp` is `c_longjmp`. A setjmp site is an `if` whose condition is
+`setjmp(buf)` tested against zero, below casts, `!` and `== 0` / `!= 0`. With both branches it
+is the contained site of `docs/lowering-examples.md` "setjmp / longjmp": the first run is the
+`try`, the longjmp return the `recover`, which rethrows a longjmp to another buffer or a
+genuine panic (a null `c_jmp_target`) and clears its own. With one branch, met in a block's
+statement walk, it is the trampoline: `_sj_runN`/`_sj_valN`, a `while` that reruns the
+branch, under `if (_sj_val != 0)` (or `== 0` for `!setjmp`), and the rest of the block as its
+tail once per longjmp caught, the `recover` storing `buf.val` into `_sj_val`; such a block
+cannot end in a return das reads, so the function gets its trailing zero. A tail that leaves
+an enclosing loop, a site that is not an `if` at a block's statement level and a `setjmp`
+whose value is read any other way fail closed.
+
 Output is assembled as an array of lines joined once (`docs/probe-findings.md` F19); the
 text then goes through the formatter, so spacing is the formatter's and indentation is the
 emitter's, four spaces per depth.
