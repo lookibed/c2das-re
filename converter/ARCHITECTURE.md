@@ -213,7 +213,20 @@ explicit `reinterpret`. `[c_function]` lands only on a body with an unsafe opera
 the emitter counts those bodies against all the unit defines: the port-progress metric
 `main.das` reports; `sizeof` and `offsetof` are `T(typeinfo sizeof(type<S>))` and
 `T(typeinfo offsetof<f>(type<S>))`, never clang's constants, with the cast to the C result
-type. Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
+type. A string literal in a pointer context stays a das literal, `reinterpret<uint8?>("...")`,
+which is a NUL-terminated interned byte array (`probes/test_strings.das`); the empty literal
+is the one exception, since das's `""` is a null pointer (`docs/probe-findings.md` F10): it
+is `addr(c2das_empty[0])`, a one-byte private array the module declares right after its
+requires, before any global whose initializer takes the address. A `char[N]` initialized from
+a literal is `cstr_array("...", N)`, the empty literal included. A literal indexed in place
+(`"abcdef"[2]`) is read through its pointer, `deref(p + i)`; a literal under `sizeof` is its
+array type. A call to a libc function the C program declares resolves through two tables:
+`C_RUNTIME_CALLS`, the functions a `c_runtime` piece lowers (`printf`, `sprintf`, `snprintf`,
+`exit`, `abort`) by the module that holds the piece, and `CRT_CALLS`, the functions the `crt`
+module binds under their C names (the memory, string.h, ctype, conversion, time and random
+families of `dasCRuntime/ARCHITECTURE.md`), spelled `crt::name`; a function in neither fails
+closed. A `size_t` result is `uint64`, so an index or a count it feeds carries the cast C
+gives it. Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
 cast, `IntegralToBoolean` is `x != 0` (`!= null` for a pointer), `BooleanToSignedIntegral`
 is `b ? 1 : 0`, a comparison or `!` is spelled as the das bool it is and becomes `? 1 : 0`
 only where C reads it as an int. Literals carry their suffix from the C-IR type (`u`, `l`,

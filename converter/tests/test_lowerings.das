@@ -157,6 +157,25 @@ def p2_fixtures(t : T?) {
         t |> equal(text |> find("[c_function]\ndef private p2_pointers__twice") < 0, true, text)
     }
     p2_enum_fixtures(t)
+    t |> run("strings: literals stay literals, the empty literal has its byte, char arrays are cstr_array, string.h and ctype through crt, sprintf through c_runtime") @(t : T?) {
+        var text : string
+        check_fixture(t, "p2_strings", text)
+        has_text(t, text, "var private c2das_empty : uint8[1] = fixed_array(uint8(0))")
+        has_text(t, text, "var private p2_strings__greeting : uint8? = unsafe(reinterpret<uint8?>(\"hello\"))")
+        has_text(t, text, "var private p2_strings__buf : uint8[16] = cstr_array(\"abc\", 16)")
+        has_text(t, text, "unsafe(addr(c2das_empty[0])), unsafe(reinterpret<uint8?>(\"three\"))")
+        has_text(t, text, "var private p2_strings__empty : uint8[1] = cstr_array(\"\", 1)")
+        has_text(t, text, "crt::strcpy(addr(local[0]), p2_strings__greeting)")
+        has_text(t, text, "crt::strncpy(addr(local[0]) + crt::strlen(addr(local[0])), p2_strings__names[1], uint64(3))")
+        has_text(t, text, "int64(crt::strchr(addr(local[0]), 44) - addr(local[0]))")
+        has_text(t, text, "deref(reinterpret<uint8?>(crt::memchr(reinterpret<void?>(p2_strings__greeting), 101, uint64(5))))")
+        has_text(t, text, "crt::atoi(addr(num[0])) + int(crt::atol(reinterpret<uint8?>(\"100\")))")
+        has_text(t, text, "deref(reinterpret<uint8?>(\"abcdef\") + 2)")
+        has_text(t, text, "typeinfo sizeof(type<uint8[4]>)")
+        has_text(t, text, "sprintf(addr(local[0]), reinterpret<uint8?>(\"%d-%s\"), 7, addr(p2_strings__buf[0]))")
+        has_text(t, text, "crt::isdigit(int(num[0])) != 0")
+        has_text(t, text, "require crt\n")
+    }
 }
 
 def p2_enum_fixtures(t : T?) {

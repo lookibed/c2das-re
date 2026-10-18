@@ -130,6 +130,9 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   address temporary.
 - **P2.5 Strings.** Literal policy (das literal reinterpret for `char*`, `cstr_array`
   for mutable `char[]`), interning, the `reinterpret<string>` bridge at logging sites.
+  Ledger: a C character literal reaches the das text as its number (`44`, not `','`),
+  since the C-IR `int_lit` carries no character provenance - a readability row for the
+  spec (an additive `char` marker) when the follow-up story asks for it.
 - **P2.6 Globals & statics.** Zero-init pass-through, value inits at declaration,
   address-carrying inits inline-where-legal else `[init]`, statics naming, `var private`.
 - **P2.7 Marshal-reader generator.** For packed/disk types from clang's packed layout
