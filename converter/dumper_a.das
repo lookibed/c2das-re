@@ -1613,12 +1613,15 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
     return null
 }
 
+// a file stem as an identifier: every other character an underscore, a leading digit kept
+// behind one, since `00099__f` is not a name
 def private ident_of(name : string) : string {
-    return build_string() $(var w) {
+    let ident = build_string() $(var w) {
         for (ch in name) {
             w |> write(is_alnum(ch) ? to_char(ch) : "_")
         }
     }
+    return !empty(ident) && is_number(first_character(ident)) ? "_" + ident : ident
 }
 
 def private clang_version(clang : string) : string {

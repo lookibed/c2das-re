@@ -92,6 +92,8 @@ def test_process(t : T?) {
         t |> equal(bracket.rc != 0, true)
         let relational = compile_child("enum", "options gen2\nenum E \{\n    A\n    B\n\}\n[export]\ndef main \{\n    let e = E.A\n    if (e < E.B) \{\n    \}\n\}\n")
         t |> equal(relational.rc != 0, true)
+        let fn_null = compile_child("fnnull", "options gen2\n[export]\ndef main \{\n    var f : function<() : int>\n    f = null\n\}\n")
+        t |> equal(fn_null.rc != 0, true)
         let no_zero = compile_child("enum0", "options gen2\nenum E \{\n    A = 3\n\}\n[export]\ndef main \{\n    let e = default<E>\n\}\n")
         t |> equal(no_zero.rc != 0, true)
         t |> equal(no_zero.out |> find("missing 0 value") >= 0, true)

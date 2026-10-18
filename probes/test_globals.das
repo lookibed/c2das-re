@@ -29,6 +29,8 @@ def _c2das_init_pointers {
 
 def private helper : int => hidden
 
+def forty_two : int => 42
+
 [test]
 def test_globals(t : T?) {
     t |> run("globals zero-init and an explicitly initialized global can be addressed inline") @(t : T?) {
@@ -43,6 +45,15 @@ def test_globals(t : T?) {
     t |> run("function-pointer tables initialize inline and a missing member is null") @(t : T?) {
         t |> equal(states[0].action != null, true)
         t |> equal(states[1].action == null, true)
+    }
+    t |> run("a function value's zero is default<function<...>>, compared with null; `= null` is not a function value") @(t : T?) {
+        var f : function<() : int> = default<function<() : int>>
+        t |> equal(f == null, true)
+        f = @@forty_two
+        t |> equal(f != null, true)
+        t |> equal(invoke(f), 42)
+        f = default<function<() : int>>
+        t |> equal(f == null, true)
     }
     t |> run("var private and def private compile and resolve inside the module") @(t : T?) {
         t |> equal(helper(), 3)

@@ -176,6 +176,23 @@ def p2_fixtures(t : T?) {
         has_text(t, text, "crt::isdigit(int(num[0])) != 0")
         has_text(t, text, "require crt\n")
     }
+    t |> run("globals: zero-init pass-through, value inits, address inits inline where legal else [init], function values, statics") @(t : T?) {
+        var text : string
+        check_fixture(t, "p2_globals", text)
+        has_text(t, text, "var leveltime : int\n")
+        has_text(t, text, "var private p2_globals__p : int?\n")
+        has_text(t, text, "var private p2_globals__q : int? = unsafe(addr(p2_globals__ready))")
+        has_text(t, text, "var later : int = 5\nvar private p2_globals__r : int? = unsafe(addr(later))")
+        has_text(t, text, "def private c2das_init_globals \{\n    p2_globals__p = unsafe(addr(p2_globals__data[1]))\n    p2_globals__s = S(fn = @@p2_globals__zero, at = unsafe(addr(p2_globals__data[2])))")
+        has_text(t, text, "var private p2_globals__fptr : function<() : int> = default<function<() : int>>")
+        has_text(t, text, "fixed_array(@@p2_globals__zero, @@p2_globals__one)")
+        has_text(t, text, "var x : int = 3\n")
+        has_text(t, text, "var private tick_count : int = 4567")
+        has_text(t, text, "def private p2_globals__sum(var a : int?; n : int) : int")
+        has_text(t, text, "p2_globals__fptr = default<function<() : int>>")
+        has_text(t, text, "p2_globals__fptr != null ? 1 : 0")
+        has_text(t, text, "return p2_globals__fptr == null ? 3 : 4")
+    }
 }
 
 def p2_enum_fixtures(t : T?) {

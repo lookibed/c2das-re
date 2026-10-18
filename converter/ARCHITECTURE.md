@@ -90,8 +90,9 @@ is how a `RecordDecl` of the walk finds its layout. A record is interned in its 
 before its fields, so a self-referential pointer resolves; `packed` is set when clang's
 offsets are not the natural layout das would compute, and a record libclang never saw
 defined has size -1. A typedef is a `typedef` type and a `typedefdecl` anchor, nothing more. A file-scope `static` gets the TU-qualified name
-`<stem>__<name>` and a local `static` is hoisted into `decls` as `<fn>_<name>` with
-`from_func`; references use the hoisted name. Tentative definitions of one object merge
+`<stem>__<name>` (a stem that starts with a digit, as the c-testsuite's do, takes a leading
+underscore, since `00099__f` is not a name) and a local `static` is hoisted into `decls` as
+`<fn>_<name>` with `from_func`; references use the hoisted name. Tentative definitions of one object merge
 into the declaration carrying the initializer.
 
 Declarations: `FunctionDecl` with `ParmVarDecl` and a `CompoundStmt` body, `VarDecl`.
@@ -153,13 +154,21 @@ unnaturally fail closed until their rows (P4.2, P4.1, P2.7). Globals follow (`va
 private` for a C `static`, the initializer inline and under `unsafe(...)` when it takes an
 address; an unsafe operation inside a global initializer wraps itself, one `unsafe(...)` per
 operation, since no annotation covers a global), then `[init] def private
-c2das_init_globals` when a global array is filled sparsely, then the functions. A function is
+c2das_init_globals`, then the functions. das orders global initialization, so an initializer
+stays inline only while every global whose address it takes has an explicit initializer and
+precedes it (`probes/test_globals.das`); an address of a zero-initialized or later global
+moves the whole initializer into `c2das_init_globals` as an assignment, which also holds the
+stores of a sparsely filled array (`docs/lowering-examples.md` "Globals & initializers"). A
+function's value (`@@f`, from a decay or from `&f`; C `main` is `@@c_main`) and a literal's
+address need no order. A null function pointer is `default<function<...>>`, since das takes
+no `null` for a function value (`probes/test_globals.das`). A function is
 `def name(p : T; ...) : ret` with `private` for a C `static`; a parameter the body writes
 is declared `p_in` with `var p = p_in` as the first statement, the callee copy C's by-value
 rule needs, since a das parameter is a reference; a store that reaches the parameter through
 `.f` or an array's `[i]` is a write to it, while one that crosses `->`, `*p` or a pointer's
 `[i]` writes what it points at and makes the parameter `var`, the one spelling whose pointee
-stays writable (F3). A body that used an unsafe operation
+stays writable (F3); a pointer parameter copied into a pointer local or variable (`int *it =
+a`) is `var` for the same reason, since the copy of a `let` parameter carries a const pointee. A body that used an unsafe operation
 (pointer arithmetic, `deref`, `addr`, a `reinterpret`, a string literal) gets
 `[c_function]`. C `main` becomes `c_main` and the module ends with
 `[export] def main : int { return c_main() }`, whose `return` is the CLI's exit-code
