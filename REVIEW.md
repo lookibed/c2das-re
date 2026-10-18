@@ -1,29 +1,37 @@
 # c2das-re Code Review Checklist
 
 **Read `REVIEW_COMMON.md` (repo root) first - its contract binds this checklist.** Architecture
-doc: `ARCHITECTURE.md` (repo root). Planned work: `docs/implementation_order.md`.
+doc: `ARCHITECTURE.md`. Planned work: `docs/implementation_order.md`.
 
-**A diff whose code disagrees with a document under `docs/` resolves the disagreement in the
-same change: a probe that settles it, then either the code changes or the finding is reported
-to the documents' authoring repository - never a silent divergence.**
+A file of these kinds, wherever the diff puts it, also answers to that folder's checklist: an
+`addExtern` CRT binding - `dasCRuntime/`; a das implementation of a libc function, or an
+annotation macro, that converted programs require - `c_runtime/`; a benchmark kernel -
+`perf/`; a suite's `skip.txt` or `expected_pass.txt` - `suites/`.
 
-**A das-fact a diff relies on - a layout, a promotion rule, a `goto` shape, a copy semantics -
-has a probe under `probes/` that fails when the fact stops holding, added in the same
+**A diff whose code disagrees with a document under `docs/`, under any dialect the converter's
+`--target` flag selects, changes the code to match or adds a row for the disagreement to `docs/probe-findings.md` in
+the same change.**
+
+**A diff that adds a row to `docs/probe-findings.md` adds the probe under `probes/` or the
+fixture under `converter/tests/fixtures/` that shows the disagreement.**
+
+**A diff that makes the converter emit, or `c_runtime/` use, a kind of daslang expression or
+declaration that no probe under `probes/` compiles and checks adds that probe in the same
 change.**
 
-**A diff that lowers a suite's pass count, or skips a suite test, adds the ledger line for it
-under `suites/` - the feature, the reason, the phase that unblocks it - in the same change.**
+**Never commit converted output - a test that compares against it records its hash.**
 
-**Never commit or hand-edit converted output - regenerate it, and put per-project judgment in
-the sidecar.** Converted `.das` lives under `out/` or a suite work folder; the tree records
-golden output as hashes.
+**A diff that adds a choice for one C project that the converter cannot derive from the C
+source puts it in that project's `.c2das` sidecar, never in converter code.**
 
 **A diff that adds C code under GPL-2 keeps it under `doom/`; C code anywhere else ships
 under a permissive license.**
 
-**A diff that changes what the toolchain must provide - a daScript module, a configure flag,
-the libclang or ast-grep version - updates `VERSIONS.md` and `scripts/verify_daslang.sh` in the
-same change.**
+**A diff that makes this repository need a daScript module, configure flag, libclang version
+or ast-grep version that `VERSIONS.md` does not record records it there and makes
+`scripts/verify_daslang.sh` check it, in the same change.**
 
-**Never edit a vendored skill under `skills/` - fix it in daScript and run
-`scripts/sync_daslang_skills.sh`.** A skill written here lives under `skills/internal/`.
+**Never edit a skill under `skills/` outside `skills/internal/` - fix it in daScript and run
+`scripts/sync_daslang_skills.sh`.**
+
+**A diff that adds a skill written for this repository puts it under `skills/internal/`.**

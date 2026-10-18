@@ -4,14 +4,18 @@
 doc: `suites/ARCHITECTURE.md`. Planned work: `docs/implementation_order.md` (sec. P1.5, P2.8,
 P4.5).
 
-**A diff that removes an id from a suite's `expected_pass.txt` is a defect unless the same
-diff adds that id to `skip.txt` with its feature, reason and phase.** A pass count only goes up.
+**A diff that removes from a suite's `expected_pass.txt` an id the suite still contains at the
+commit `VERSIONS.md` pins adds that id to `skip.txt` in the same change.**
 
-**A diff that adds a test to `skip.txt` names a feature the converter cannot carry, never a
-test that merely fails today; weakening `REVIEW.das`, which checks the line shape, is a
-defect.**
+**A diff adds an id to `skip.txt` only for a test that fails because it uses a C feature the
+converter does not support - any other failing test stays unlisted, a count in the runner's
+summary.**
+
+**Never weaken a check in `REVIEW.das` - a `skip.txt` or `expected_pass.txt` line the gate
+rejects is fixed in that line.**
 
 **A diff that changes a suite's pin updates `VERSIONS.md` and re-records
 `expected_pass.txt` from a full run in the same change.**
 
-**Never commit anything under `<suite>/fetch/` or `<suite>/work/`.**
+**Never commit anything under `<suite>/fetch/` or `<suite>/work/` - `fetch.sh` and the runner
+regenerate them; they stay gitignored.**

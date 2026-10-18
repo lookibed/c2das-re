@@ -47,8 +47,21 @@ def private check_suite(suite : string) {
     }
 }
 
+// a suite's fetched inputs and work tree are regenerated, never tracked: `.gitignore` keeps
+// them out of `git add`, and this check catches a forced add
+def private check_untracked_folders {
+    var listed : string
+    run_and_capture(["git", "ls-files", "suites/*/fetch", "suites/*/work"], listed, 60.0)
+    for (path in split(strip(listed), "\n")) {
+        if (!empty(path)) {
+            gate_finding(path, "a suite's fetch/ or work/ folder is never committed")
+        }
+    }
+}
+
 [export]
 def main : int {
     check_suite("c_testsuite")
+    check_untracked_folders()
     return gate_verdict("suites")
 }
