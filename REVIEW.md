@@ -8,9 +8,11 @@ A file of these kinds, wherever the diff puts it, also answers to that folder's 
 annotation macro, that converted programs require - `c_runtime/`; a benchmark kernel -
 `perf/`; a suite's `skip.txt` or `expected_pass.txt` - `suites/`.
 
-**A diff whose code disagrees with a document under `docs/`, under any dialect the converter's
-`--target` flag selects, changes the code to match or adds a row for the disagreement to `docs/probe-findings.md` in
-the same change.**
+**A diff whose code disagrees with a design document under `docs/` - a file that specifies what
+the converter does, which a file recording findings or planned work (`probe-findings.md`,
+`implementation_order.md`, `sidequest.md`) does not - under any dialect the converter's
+`--target` flag selects, changes the code to match or adds a row for the disagreement to
+`docs/probe-findings.md` in the same change.**
 
 **A diff that adds a row to `docs/probe-findings.md` adds the probe under `probes/` or the
 fixture under `converter/tests/fixtures/` that shows the disagreement.**
