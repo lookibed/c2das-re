@@ -12,7 +12,27 @@ struct Info {
     speed : int
 }
 
+enum NoZero {
+    A = 3
+    B = 7
+}
+
+// the int32 edges the emitter spells into an enum
+enum Edge {
+    NEG = -1
+    LO = -2147483647 - 1
+    HI = 2147483647
+}
+
+struct Holder {
+    e : NoZero
+    n : int
+}
+
 var mobjinfo : Info[int(mobjtype_t.NUMMOBJTYPES)]
+var zero_scalar : NoZero
+var zero_array : NoZero[4]
+var zero_holder : Holder
 
 [test]
 def test_enums(t : T?) {
@@ -36,6 +56,22 @@ def test_enums(t : T?) {
             t |> equal("{bad}", "enum 99")
             t |> equal(bad == reinterpret<mobjtype_t>(99), true)
         }
+    }
+    t |> run("an enum without a zero enumerator still zero-initializes as a global, an array element and a struct field") @(t : T?) {
+        t |> equal(int(zero_scalar), 0)
+        t |> equal(int(zero_array[1]), 0)
+        t |> equal(int(zero_holder.e), 0)
+        let literal = Holder()
+        t |> equal(int(literal.e), 0)
+        t |> equal(zero_holder.e == unsafe(reinterpret<NoZero>(0)), true)
+    }
+    t |> run("an enum holds INT_MIN spelled `-2147483647 - 1`, negative enumerators, and is 4 bytes, 4-aligned") @(t : T?) {
+        t |> equal(int(Edge.LO), -2147483647 - 1)
+        t |> equal(int(Edge.NEG), -1)
+        t |> equal(int(Edge.HI), 2147483647)
+        t |> equal(uint(int(Edge.LO)), 0x80000000)
+        t |> equal(typeinfo sizeof(type<Edge>), 4)
+        t |> equal(typeinfo alignof(type<Edge>), 4)
     }
     t |> run("duplicate enumerator values alias and print the first-declared name") @(t : T?) {
         t |> equal(mobjtype_t.MT_ALIAS == mobjtype_t.MT_SHOTGUN, true)

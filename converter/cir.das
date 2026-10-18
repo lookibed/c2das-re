@@ -24,6 +24,13 @@ struct CirLoc {
     col : int
 }
 
+// one array dimension of a declarator as the source spells it: the enum constant when the
+// dimension is that constant alone, an empty item for any other spelling
+struct CirDim {
+    enum_t : int
+    item : string
+}
+
 struct CirField {
     name : string
     t : int
@@ -31,6 +38,7 @@ struct CirField {
     bit_off : int
     bit_w : int
     is_bitfield : bool
+    dims : array<CirDim>
 }
 
 struct CirEnumItem {
@@ -106,6 +114,7 @@ struct CirStmt {
     inc : CirExpr?
     v : int64
     label_name : string
+    dims : array<CirDim>
     loc : CirLoc
 }
 
@@ -125,6 +134,7 @@ struct CirDecl {
     params : array<CirParam>
     body : CirStmt?
     from_func : string
+    dims : array<CirDim>
     loc : CirLoc
 }
 
@@ -266,6 +276,10 @@ def private write_type(var w : Writer; t : CirType) {
         w.out |> push(json_str(t.spell))
         member(w, "items", false)
         write_enum_items(w, t.items)
+        if (!t.is_signed) {
+            member(w, "signed", false)
+            w.out |> push("false")
+        }
     } elif (t.k == "typedef") {
         member(w, "name", false)
         w.out |> push(json_str(t.name))
@@ -303,6 +317,36 @@ def private write_fields(var w : Writer; fields : array<CirField>) {
             member(w, "bit_w", false)
             w.out |> push("{f.bit_w}")
         }
+        write_dims(w, f.dims)
+        close_object(w)
+    }
+    w.depth--
+    w.out |> push("\n")
+    indent(w)
+    w.out |> push("]")
+}
+
+// the `dims` member, present only on a declarator whose dimensions name enum constants
+def private write_dims(var w : Writer; dims : array<CirDim>) {
+    if (empty(dims)) {
+        return
+    }
+    member(w, "dims", false)
+    w.out |> push("[\n")
+    w.depth++
+    w.out |> reserve(length(w.out) + 8 * length(dims))
+    var first = true
+    for (dim in dims) {
+        if (!first) {
+            w.out |> push(",\n")
+        }
+        first = false
+        indent(w)
+        open_object(w)
+        member(w, "enum_t", true)
+        w.out |> push("{dim.enum_t}")
+        member(w, "item", false)
+        w.out |> push(json_str(dim.item))
         close_object(w)
     }
     w.depth--
@@ -564,6 +608,7 @@ def private write_stmt(var w : Writer; x : CirStmt) {
         w.out |> push("{x.t}")
         member(w, "init", false)
         write_expr_or_null(w, x.init)
+        write_dims(w, x.dims)
     } elif (x.s == "expr") {
         member(w, "e", false)
         write_expr_or_null(w, x.e)
@@ -630,6 +675,7 @@ def private write_decl(var w : Writer; d : CirDecl) {
         w.out |> push("{d.is_extern}")
         member(w, "init", false)
         write_expr_or_null(w, d.init)
+        write_dims(w, d.dims)
         if (!empty(d.from_func)) {
             member(w, "from_func", false)
             w.out |> push(json_str(d.from_func))
@@ -768,6 +814,17 @@ def private js_bool(js : JsonValue?; key : string) : bool => js?[key] ?? false
 def private read_loc(js : JsonValue?) : CirLoc =>
     CirLoc(file = js_str(js, "file"), line = js_int(js, "line"), col = js_int(js, "col"))
 
+def private read_dims(js : JsonValue?) : array<CirDim> {
+    var dims : array<CirDim>
+    if (js != null && js is _array) {
+        dims |> reserve(length(js as _array))
+        for (dim in js as _array) {
+            dims |> push(CirDim(enum_t = js_int(dim, "enum_t"), item = js_str(dim, "item")))
+        }
+    }
+    return <- dims
+}
+
 def private read_type(js : JsonValue?) : CirType {
     var t = CirType(k = js_str(js, "k"))
     if (t.k == "int") {
@@ -803,7 +860,9 @@ def private read_type(js : JsonValue?) : CirType {
             for (f in fields as _array) {
                 let bw = f?["bit_w"]
                 let is_bf = bw != null && !(bw is _null)
-                t.fields |> push(CirField(name = js_str(f, "name"), t = js_int(f, "t"), off = js_int(f, "off"), bit_off = js_int(f, "bit_off"), bit_w = js_int(f, "bit_w"), is_bitfield = is_bf))
+                var fld = CirField(name = js_str(f, "name"), t = js_int(f, "t"), off = js_int(f, "off"), bit_off = js_int(f, "bit_off"), bit_w = js_int(f, "bit_w"), is_bitfield = is_bf)
+                fld.dims <- read_dims(f?["dims"])
+                t.fields |> emplace(fld)
             }
         }
     } elif (t.k == "enum") {
@@ -816,6 +875,7 @@ def private read_type(js : JsonValue?) : CirType {
                 t.items |> push(CirEnumItem(name = js_str(it, "name"), v = it?["v"] ?? 0l))
             }
         }
+        t.is_signed = js?["signed"] ?? true
     } elif (t.k == "typedef") {
         t.name = js_str(js, "name")
         t.to = js_int(js, "to")
@@ -928,6 +988,7 @@ def private read_stmt(js : JsonValue?) : CirStmt? {
         x.name = js_str(js, "name")
         x.t = js_int(js, "t")
         x.init = read_expr(js?["init"])
+        x.dims <- read_dims(js?["dims"])
     } elif (x.s == "expr") {
         x.e = read_expr(js?["e"])
     } elif (x.s == "if") {
@@ -963,6 +1024,7 @@ def private read_decl(js : JsonValue?) : CirDecl? {
         d.is_static = js_bool(js, "static")
         d.is_extern = js_bool(js, "extern")
         d.init = read_expr(js?["init"])
+        d.dims <- read_dims(js?["dims"])
         d.from_func = js_str(js, "from_func")
     } elif (d.k == "func") {
         d.name = js_str(js, "name")

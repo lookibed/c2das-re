@@ -10,6 +10,7 @@ require daslib/json_boost
 require crt
 require cbind
 require daslib/safe_addr
+require daslib/algorithm
 require cir
 
 //! Dumper A: `clang -ast-dump=json` normalized into C-IR. Fails closed: the first construct it
@@ -19,6 +20,7 @@ require cir
 // the same text the JSON dump desugars the field's type to
 struct ClangField {
     name : string
+    loc_key : string
     spelling : string
     bit_off : int64
     bit_w : int
@@ -34,6 +36,24 @@ struct ClangRecord {
     align : int64
     fields : array<ClangField>
 }
+
+// one enum definition of the translation unit, keyed like a record; `underlying_*` describe
+// the integer type clang chose for it
+struct ClangEnum {
+    spelling : string
+    items : array<CirEnumItem>
+    underlying_w : int64
+    underlying_signed : bool
+    spelling_shared : bool
+}
+
+// an enum constant the source spells, by its enum's spelling
+struct ClangEnumRef {
+    item : string
+    enum_spelling : string
+}
+
+def private is_constant(r : ClangEnumRef) : bool => !empty(r.item)
 
 struct Dumper {
     tu : CirTu
@@ -52,6 +72,11 @@ struct Dumper {
     typedef_spellings : table<string; string>
     source_lines : array<string>
     anon_spellings : table<string; string>
+    enums : array<ClangEnum>
+    enum_by_spelling : table<string; int>
+    enum_by_loc : table<string; int>
+    enum_ref_by_loc : table<string; ClangEnumRef>
+    enum_dims_by_loc : table<string; array<ClangEnumRef>>
 }
 
 def private fail(var d : Dumper; what : string; at : CirLoc) {
@@ -113,22 +138,110 @@ def private register_record(var d : Dumper; var c : CXCursor) {
     }
     clang_visitChildren(c) $(var fc, _fp) {
         let fk = clang_getCursorKind(fc)
-        if (fk == CXCursorKind.StructDecl || fk == CXCursorKind.UnionDecl) {
+        if ((fk == CXCursorKind.StructDecl || fk == CXCursorKind.UnionDecl) && clang_isCursorDefinition(fc) != 0u) {
             register_record(d, fc)
+        } elif (fk == CXCursorKind.EnumDecl && clang_isCursorDefinition(fc) != 0u) {
+            register_enum(d, fc)
         } elif (fk == CXCursorKind.FieldDecl) {
+            register_dims(d, fc)
             var canonical = clang_getCanonicalType(clang_getCursorType(fc))
             let is_bf = clang_Cursor_isBitField(fc) != 0u
-            rec.fields |> push(ClangField(name = string(clang_getCursorSpelling(fc)), spelling = string(clang_getTypeSpelling(canonical)), bit_off = clang_Cursor_getOffsetOfField(fc), bit_w = is_bf ? clang_getFieldDeclBitWidth(fc) : 0, is_bitfield = is_bf))
+            rec.fields |> push(ClangField(name = string(clang_getCursorSpelling(fc)), loc_key = cursor_key(fc), spelling = string(clang_getTypeSpelling(canonical)), bit_off = clang_Cursor_getOffsetOfField(fc), bit_w = is_bf ? clang_getFieldDeclBitWidth(fc) : 0, is_bitfield = is_bf))
         }
         return CXChildVisitResult.Continue
     }
-    var file : CXFile
-    var line, column, offset : uint
-    clang_getSpellingLocation(clang_getCursorLocation(c), safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
     let idx = length(d.records)
     d.record_by_spelling[rec.spelling] = idx
-    d.record_by_loc["{int(line)}:{int(column)}"] = idx
+    d.record_by_loc[cursor_key(c)] = idx
     d.records |> emplace(rec)
+}
+
+// the key that joins a libclang cursor to the JSON dump's node for it: the byte offset of the
+// expansion site (a macro-produced token) or of the token itself; the offset, unlike the
+// line, is on every JSON location, where clang omits a line that repeats its last one
+def private cursor_key(var c : CXCursor) : string {
+    var file : CXFile
+    var line, column, offset : uint
+    clang_getExpansionLocation(clang_getCursorLocation(c), safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
+    return "{int(offset)}"
+}
+
+def private node_key(js : JsonValue?) : string {
+    let given = has_loc(js) ? js?["loc"] : js?["range"]?["begin"]
+    let at = is_present(given?["expansionLoc"]) ? given?["expansionLoc"] : given
+    return "{int(at?["offset"] ?? -1l)}"
+}
+
+// an enum definition with clang's evaluated values; a typedef-named anonymous enum takes its
+// tag back the way a record does
+def private register_enum(var d : Dumper; var c : CXCursor) {
+    // a block-scoped enum is visited under its statement and again under the variable's type
+    if (key_exists(d.enum_by_loc, cursor_key(c))) {
+        return
+    }
+    var underlying = clang_getEnumDeclIntegerType(c)
+    var en = ClangEnum(spelling = own_spelling(d, c, "enum"), underlying_w = clang_Type_getSizeOf(underlying) * 8l, underlying_signed = !(string(clang_getTypeSpelling(underlying)) |> starts_with("unsigned ")))
+    clang_visitChildren(c) $(var ic, _ip) {
+        if (clang_getCursorKind(ic) == CXCursorKind.EnumConstantDecl) {
+            // the value as C reads it: past INT_MAX for an unsigned underlying type
+            let v = en.underlying_signed ? clang_getEnumConstantDeclValue(ic) : int64(clang_getEnumConstantDeclUnsignedValue(ic))
+            en.items |> push(CirEnumItem(name = string(clang_getCursorSpelling(ic)), v = v))
+        }
+        return CXChildVisitResult.Continue
+    }
+    let idx = length(d.enums)
+    // block-scoped enums of one tag cannot be told apart by the dump's spelling
+    let earlier = d.enum_by_spelling?[en.spelling] ?? -1
+    if (earlier >= 0) {
+        d.enums[earlier].spelling_shared = true
+        en.spelling_shared = true
+    }
+    d.enum_by_spelling[en.spelling] = idx
+    d.enum_by_loc[cursor_key(c)] = idx
+    d.enums |> emplace(en)
+}
+
+// the dump's spelling of a tagged type: libclang spells a typedef-named anonymous one by the
+// typedef name alone, where the dump keeps the tag
+def private own_spelling(var d : Dumper; var c : CXCursor; tag : string) : string {
+    let raw = unscoped_spelling(string(clang_getTypeSpelling(clang_getCursorType(c))))
+    if (raw |> starts_with(tag + " ")) {
+        return raw
+    }
+    d.anon_spellings[raw] = tag + " " + raw
+    return tag + " " + raw
+}
+
+// the enum constant a `DeclRefExpr` names, with its enum's spelling; empty for any other cursor
+def private enum_constant_of(var c : CXCursor) : ClangEnumRef {
+    var ref = clang_getCursorReferenced(c)
+    if (clang_getCursorKind(ref) != CXCursorKind.EnumConstantDecl) {
+        return ClangEnumRef()
+    }
+    var owner = clang_getCursorSemanticParent(ref)
+    return ClangEnumRef(item = string(clang_getCursorSpelling(ref)), enum_spelling = unscoped_spelling(string(clang_getTypeSpelling(clang_getCursorType(owner)))))
+}
+
+// the dimensions of an array declarator, outermost first: libclang lists the size expressions
+// as children innermost first, and a variable's initializer after them
+def private register_dims(var d : Dumper; var c : CXCursor) {
+    var init = clang_getCursorKind(c) == CXCursorKind.VarDecl ? clang_Cursor_getVarDeclInitializer(c) : clang_getNullCursor()
+    var dims : array<ClangEnumRef>
+    var named = false
+    clang_visitChildren(c) $(var kid, _kp) {
+        let kk = clang_getCursorKind(kid)
+        if (clang_isExpression(kk) == 0u || clang_equalCursors(kid, init) != 0u) {
+            return CXChildVisitResult.Continue
+        }
+        let ref = enum_constant_of(kid)
+        dims |> push(ref)
+        named = named || is_constant(ref)
+        return CXChildVisitResult.Continue
+    }
+    if (named) {
+        dims |> reverse()
+        d.enum_dims_by_loc[cursor_key(c)] <- dims
+    }
 }
 
 def private walk_records(var d : Dumper; var c : CXCursor) {
@@ -139,6 +252,18 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
         }
         if ((kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl) && clang_isCursorDefinition(kid) != 0u) {
             register_record(d, kid)
+        } elif (kind == CXCursorKind.EnumDecl && clang_isCursorDefinition(kid) != 0u) {
+            register_enum(d, kid)
+        } elif (kind == CXCursorKind.VarDecl) {
+            register_dims(d, kid)
+            walk_records(d, kid)
+        } elif (kind == CXCursorKind.DeclRefExpr) {
+            // a reference to an enum constant resolves by its location, since C scopes let
+            // two enums of one file spell the same constant name
+            let ref = enum_constant_of(kid)
+            if (is_constant(ref)) {
+                d.enum_ref_by_loc[cursor_key(kid)] = ref
+            }
         } elif (kind == CXCursorKind.TypedefDecl) {
             var canonical = clang_getCanonicalType(clang_getTypedefDeclUnderlyingType(kid))
             d.typedef_spellings[string(clang_getCursorSpelling(kid))] = string(clang_getTypeSpelling(canonical))
@@ -357,8 +482,9 @@ def private unnamed_record_type(var d : Dumper; qual : string; at : CirLoc) : in
         var t = CirType(k = "ptr", to = to)
         return intern(d, "ptr:{to}", t)
     }
-    if (bare |> starts_with("struct ") || bare |> starts_with("union ")) {
-        return record_type(d, bare, at)
+    let tagged = tagged_type(d, bare, at)
+    if (tagged != -2) {
+        return tagged
     }
     fail(d, "unsupported type spelling `{qual}`", at)
     return -1
@@ -446,8 +572,9 @@ def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
     if (paren > 0 && qt |> ends_with(")")) {
         return function_type(d, qt, paren, at)
     }
-    if (qt |> starts_with("struct ") || qt |> starts_with("union ")) {
-        return record_type(d, qt, at)
+    let tagged = tagged_type(d, qt, at)
+    if (tagged != -2) {
+        return tagged
     }
     // the dump desugars only the top level of a spelling: a typedef name inside `P_t *` or
     // `P_t (P_t, int)` resolves through libclang's canonical spelling of the typedef
@@ -475,6 +602,9 @@ def private align_of_type(d : Dumper; t : int) : int {
     }
     if (k == "ptr" || k == "func") {
         return d.tu.target.ptr_w / 8
+    }
+    if (k == "enum") {
+        return 4
     }
     if (k == "array") {
         return align_of_type(d, d.tu.types[t].elem)
@@ -505,6 +635,20 @@ def private natural_layout(d : Dumper; fields : array<CirField>; is_union : bool
     return (end + max_align - 1) / max_align * max_align == size && max_align == align
 }
 
+// a `struct`, `union` or `enum` spelling to its type; -2 for a spelling with no such tag
+def private tagged_type(var d : Dumper; qt : string; at : CirLoc) : int {
+    if (qt |> starts_with("struct ") || qt |> starts_with("union ")) {
+        return record_type(d, qt, at)
+    }
+    if (qt |> starts_with("enum ")) {
+        return enum_type(d, qt, at)
+    }
+    return -2
+}
+
+// clang spells an unnamed tag by its location, `(unnamed at f:l:c)`
+def private is_unnamed_tag(tag : string) : bool => tag |> starts_with("(")
+
 // a record type: its own slot first so a self-referential pointer field finds it, then the
 // fields interned depth-first; a record libclang never saw defined stays incomplete (size -1)
 def private record_type(var d : Dumper; qt : string; at : CirLoc) : int {
@@ -516,7 +660,7 @@ def private record_type(var d : Dumper; qt : string; at : CirLoc) : int {
     let is_union = qt |> starts_with("union ")
     let tag = slice(qt, is_union ? 6 : 7)
     let ridx = d.record_by_spelling?[qt] ?? -1
-    var t = CirType(k = is_union ? "union" : "struct", name = tag |> starts_with("(") ? "" : tag, spell = qt, size = -1, align = -1)
+    var t = CirType(k = is_union ? "union" : "struct", name = is_unnamed_tag(tag) ? "" : tag, spell = qt, size = -1, align = -1)
     if (ridx >= 0) {
         t.size = int(d.records[ridx].size)
         t.align = int(d.records[ridx].align)
@@ -532,11 +676,76 @@ def private record_type(var d : Dumper; qt : string; at : CirLoc) : int {
         if (ft < 0) {
             return -1
         }
-        fields |> push(CirField(name = f.name, t = ft, off = int(f.bit_off / 8l), bit_off = int(f.bit_off), bit_w = f.bit_w, is_bitfield = f.is_bitfield))
+        var fld = CirField(name = f.name, t = ft, off = int(f.bit_off / 8l), bit_off = int(f.bit_off), bit_w = f.bit_w, is_bitfield = f.is_bitfield)
+        if (!enum_dims(d, f.loc_key, ft, at, fld.dims)) {
+            return -1
+        }
+        fields |> emplace(fld)
     }
     d.tu.types[idx].packed = !natural_layout(d, fields, is_union, d.tu.types[idx].size, d.tu.types[idx].align)
     d.tu.types[idx].fields <- fields
     return idx
+}
+
+// an enum type from its definition's libclang entry: the C-IR's enum is the dialect's `int`
+// wide, signed or not as clang chose, so an enum of another width fails closed
+def private enum_type(var d : Dumper; qt : string; at : CirLoc) : int {
+    let key = "enum:{qt}"
+    let known = d.type_index?[key] ?? -1
+    if (known >= 0) {
+        return known
+    }
+    let eidx = d.enum_by_spelling?[qt] ?? -1
+    if (eidx < 0) {
+        fail(d, "`{qt}` has no definition in this file", at)
+        return -1
+    }
+    if (d.enums[eidx].spelling_shared) {
+        fail(d, "`{qt}` is defined more than once in this file; same-tag block-scoped enums are not lowered yet", at)
+        return -1
+    }
+    if (d.enums[eidx].underlying_w != int64(d.tu.target.int_w)) {
+        fail(d, "`{qt}` is {d.enums[eidx].underlying_w} bits wide; the C-IR's enum is the dialect's int of {d.tu.target.int_w}", at)
+        return -1
+    }
+    let tag = slice(qt, length("enum "))
+    var t = CirType(k = "enum", name = is_unnamed_tag(tag) ? "" : tag, spell = qt, is_signed = d.enums[eidx].underlying_signed)
+    t.items := d.enums[eidx].items
+    return intern(d, key, t)
+}
+
+// the enum constants a declarator spells its array dimensions by, one slot per dimension of
+// type `t`, outermost first; a dimension spelled otherwise, or by a constant whose value is
+// not the count (two declarators of one macro expansion share a key), keeps an empty item.
+// Nothing when no dimension names a constant; false with `error` set on an unresolved enum
+def private enum_dims(var d : Dumper; key : string; t : int; at : CirLoc; var out : array<CirDim>) : bool {
+    if (!key_exists(d.enum_dims_by_loc, key)) {
+        return true
+    }
+    var level = t
+    var named = false
+    for (ref in d.enum_dims_by_loc[key]) {
+        break if (d.tu.types[level].k != "array")
+        var dim : CirDim
+        if (is_constant(ref)) {
+            let enum_t = enum_type(d, tagged_spelling(d, ref.enum_spelling), at)
+            if (enum_t < 0) {
+                return false
+            }
+            for (it in d.tu.types[enum_t].items) {
+                if (it.name == ref.item && it.v == int64(d.tu.types[level].count)) {
+                    dim = CirDim(enum_t = enum_t, item = ref.item)
+                    named = true
+                }
+            }
+        }
+        out |> push(dim)
+        level = d.tu.types[level].elem
+    }
+    if (!named) {
+        out |> clear()
+    }
+    return true
 }
 
 def private field_index(d : Dumper; rec : int; name : string) : int {
@@ -677,6 +886,9 @@ def private size_of_type(d : Dumper; t : int) : int64 {
     }
     if (k == "ptr" || k == "func") {
         return int64(d.tu.target.ptr_w / 8)
+    }
+    if (k == "enum") {
+        return 4l
     }
     if (k == "array") {
         let n = d.tu.types[t].count
@@ -991,8 +1203,17 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
     }
     if (kind == "DeclRefExpr") {
         if ((js?["referencedDecl"]?["kind"] ?? "") == "EnumConstantDecl") {
-            fail(d, "enum constants are not dumped yet", at)
-            return null
+            let item = js?["referencedDecl"]?["name"] ?? ""
+            let ref = d.enum_ref_by_loc?[node_key(js)] ?? ClangEnumRef()
+            if (ref.item != item) {
+                fail(d, "enum constant `{item}`: libclang reports no reference at this location", at)
+                return null
+            }
+            let owner = enum_type(d, tagged_spelling(d, ref.enum_spelling), at)
+            if (owner < 0) {
+                return null
+            }
+            return new CirExpr(e = "enum_ref", t = t, enum_t = owner, item = item)
         }
         return new CirExpr(e = "ref", t = t, name = linkage_name(d, js?["referencedDecl"]?["name"] ?? ""))
     }
@@ -1063,6 +1284,10 @@ def private hoist_static(var d : Dumper; js : JsonValue?; at : CirLoc; t : int) 
     let c_name = js?["name"] ?? ""
     let hoisted = "{d.current_fn}_{c_name}"
     var g = new CirDecl(k = "global", name = hoisted, c_name = c_name, t = t, is_static = true, from_func = d.current_fn, loc = at)
+    if (!enum_dims(d, node_key(js), t, at, g.dims)) {
+        delete_decl(g)
+        return false
+    }
     if (child_count(js) > 0) {
         g.init = dump_expr(d, (js?["inner"] as _array)[child_count(js) - 1])
         if (g.init == null) {
@@ -1087,6 +1312,10 @@ def private dump_var(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
         return new CirStmt(s = "null", loc = at)
     }
     var st = new CirStmt(s = "decl", name = js?["name"] ?? "", t = t, loc = at)
+    if (!enum_dims(d, node_key(js), t, at, st.dims)) {
+        delete_stmt(st)
+        return null
+    }
     if (child_count(js) > 0) {
         st.init = dump_expr(d, (js?["inner"] as _array)[child_count(js) - 1])
         if (st.init == null) {
@@ -1099,11 +1328,12 @@ def private dump_var(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
 
 // the variables of one DeclStmt, each as its own `decl` (or hoisted when static)
 def private dump_decl_stmt(var d : Dumper; js : JsonValue?; var into : array<CirStmt?>) : bool {
+    loc_of(d, js)
     let vars = js?["inner"]
     into |> reserve(length(into) + child_count(js))
     for (vidx in range(child_count(js))) {
         let v = (vars as _array)[vidx]
-        if (node_kind(v) == "RecordDecl" || node_kind(v) == "TypedefDecl") {
+        if (node_kind(v) == "RecordDecl" || node_kind(v) == "EnumDecl" || node_kind(v) == "TypedefDecl") {
             if (!dump_type_decl(d, v)) {
                 return false
             }
@@ -1253,8 +1483,8 @@ def private dump_record_decl(var d : Dumper; js : JsonValue?) : bool {
     }
     for (idx in range(child_count(js))) {
         let kid = (js?["inner"] as _array)[idx]
-        if (node_kind(kid) == "RecordDecl") {
-            if (!dump_record_decl(d, kid)) {
+        if (node_kind(kid) == "RecordDecl" || node_kind(kid) == "EnumDecl") {
+            if (!dump_type_decl(d, kid)) {
                 return false
             }
         } else {
@@ -1262,16 +1492,23 @@ def private dump_record_decl(var d : Dumper; js : JsonValue?) : bool {
             touch_locs(d, kid)
         }
     }
-    let ridx = d.record_by_loc?["{at.line}:{at.col}"] ?? -1
-    if (ridx < 0) {
-        fail(d, "libclang reports no record definition at this location", at)
+    return anchor_type(d, js, at, false)
+}
+
+// the anchor of a record or enum definition: the type from the libclang entry at the node's
+// location, pushed as its `record` or `enumdef` declaration
+def private anchor_type(var d : Dumper; js : JsonValue?; at : CirLoc; is_enum : bool) : bool {
+    let key = node_key(js)
+    let idx = is_enum ? (d.enum_by_loc?[key] ?? -1) : (d.record_by_loc?[key] ?? -1)
+    if (idx < 0) {
+        fail(d, "libclang reports no {is_enum ? "enum" : "record"} definition at this location", at)
         return false
     }
-    let t = record_type(d, d.records[ridx].spelling, at)
+    let t = is_enum ? enum_type(d, d.enums[idx].spelling, at) : record_type(d, d.records[idx].spelling, at)
     if (t < 0) {
         return false
     }
-    d.tu.decls |> push(new CirDecl(k = "record", name = d.tu.types[t].name, c_name = d.tu.types[t].name, t = t, loc = at))
+    d.tu.decls |> push(new CirDecl(k = is_enum ? "enumdef" : "record", name = d.tu.types[t].name, c_name = d.tu.types[t].name, t = t, loc = at))
     return true
 }
 
@@ -1291,8 +1528,21 @@ def private dump_typedef_decl(var d : Dumper; js : JsonValue?) : bool {
     return true
 }
 
-def private dump_type_decl(var d : Dumper; js : JsonValue?) : bool =>
-    node_kind(js) == "RecordDecl" ? dump_record_decl(d, js) : dump_typedef_decl(d, js)
+// an enum's definition: the type from the libclang entry at this location, and its anchor; a
+// forward declaration (`enum E;`, no enumerators) adds nothing
+def private dump_enum_decl(var d : Dumper; js : JsonValue?) : bool {
+    let at = loc_of(d, js)
+    touch_locs(d, js)
+    if (child_count(js) == 0) {
+        return true
+    }
+    return anchor_type(d, js, at, true)
+}
+
+def private dump_type_decl(var d : Dumper; js : JsonValue?) : bool {
+    let kind = node_kind(js)
+    return kind == "RecordDecl" ? dump_record_decl(d, js) : kind == "EnumDecl" ? dump_enum_decl(d, js) : dump_typedef_decl(d, js)
+}
 
 def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
     let at = loc_of(d, js)
@@ -1346,6 +1596,10 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
             return null
         }
         var g = new CirDecl(k = "global", name = name, c_name = c_name, t = t, is_static = is_static, is_extern = storage == "extern" && child_count(js) == 0, loc = at)
+        if (!enum_dims(d, node_key(js), t, at, g.dims)) {
+            delete_decl(g)
+            return null
+        }
         if (child_count(js) > 0) {
             g.init = dump_expr(d, (js?["inner"] as _array)[child_count(js) - 1])
             if (g.init == null) {
@@ -1430,7 +1684,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string) : Dumper {
             continue
         }
         let kind = node_kind(decl)
-        if (kind == "RecordDecl" || kind == "TypedefDecl") {
+        if (kind == "RecordDecl" || kind == "EnumDecl" || kind == "TypedefDecl") {
             break if (!dump_type_decl(d, decl))
             continue
         }
@@ -1445,5 +1699,24 @@ def dump_tu(c_path : string; target : CirTarget; clang : string) : Dumper {
         d.tu.decls |> push(cd)
     }
     delete_json(js)
+    if (empty(d.error)) {
+        check_enum_anchors(d)
+    }
     return <- d
+}
+
+// an enum the walk never anchored was defined inside an expression (a `sizeof` or cast
+// operand), where the dump's walk does not go: it would reach the text undeclared
+def private check_enum_anchors(var d : Dumper) {
+    var anchored : table<int>
+    for (decl in d.tu.decls) {
+        if (decl.k == "enumdef") {
+            anchored |> insert(decl.t)
+        }
+    }
+    for (idx in range(length(d.tu.types))) {
+        if (d.tu.types[idx].k == "enum" && !key_exists(anchored, idx)) {
+            fail(d, "`{d.tu.types[idx].spell}` is defined inside an expression; such an enum is not lowered yet", CirLoc(file = d.c_path))
+        }
+    }
 }

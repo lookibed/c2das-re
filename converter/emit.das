@@ -156,10 +156,11 @@ def das_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
         return function_value_type(em, tu, t, loc)
     }
     if (k == "array") {
-        return array_type(em, tu, t, loc)
+        let bare : array<CirDim>
+        return array_type(em, tu, t, loc, bare)
     }
-    if (k == "struct") {
-        return record_name(em, tu, t)
+    if (k == "struct" || k == "enum") {
+        return tag_name(em, tu, t)
     }
     if (k == "union") {
         fail(em, "unions are not lowered yet", loc)
@@ -170,17 +171,24 @@ def das_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
 }
 
 // dimensions read outermost first, as in C; `? [` keeps a pointer element from lexing as
-// the safe-index operator
-def private array_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
+// the safe-index operator; a dimension the declarator spells by an enum constant keeps it
+// (`[int(E.COUNT)]`, which das folds), one `spelled` slot per dimension
+def private array_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc; spelled : array<CirDim>) : string {
     var dims : array<string>
     var elem = t
     while (kind_of(tu, elem) == "array") {
-        dims |> push("[{tu.types[elem].count}]")
+        let level = length(dims)
+        let named = level < length(spelled) && !empty(spelled[level].item)
+        dims |> push(named ? "[int({enum_item(em, tu, spelled[level].enum_t, spelled[level].item)})]" : "[{tu.types[elem].count}]")
         elem = tu.types[elem].elem
     }
     let base = das_type(em, tu, elem, loc)
     return empty(base) ? "" : base + (base |> ends_with("?") ? " " : "") + join(dims, "")
 }
+
+//! The das spelling of a declarator of type `t` whose array dimensions `dims` spells.
+def das_type_dims(var em : Emitter; tu : CirTu; t : int; loc : CirLoc; dims : array<CirDim>) : string =>
+    kind_of(tu, t) == "array" ? array_type(em, tu, t, loc, dims) : das_type(em, tu, t, loc)
 
 // a C function pointer is a das function value: `function<(a0 : T; ...) : R>`, the
 // parameters named by position since the C type carries no names
@@ -198,8 +206,11 @@ def private function_value_type(var em : Emitter; tu : CirTu; t : int; loc : Cir
     return "function<({join(params, "; ")}) : {ret}>"
 }
 
-// a tagged record keeps its C name; an unnamed one is named by its type slot
-def private record_name(em : Emitter; tu : CirTu; t : int) : string =>
+// `E.X`: an enumerator through its enum's das name
+def private enum_item(em : Emitter; tu : CirTu; t : int; item : string) : string => "{tag_name(em, tu, t)}.{das_name(em, item)}"
+
+// a tagged type keeps its C name; an unnamed one is named by its type slot
+def private tag_name(em : Emitter; tu : CirTu; t : int) : string =>
     empty(tu.types[t].name) ? "anon_{t}" : das_name(em, tu.types[t].name)
 
 def private field_name(em : Emitter; tu : CirTu; rec : int; field : int) : string =>
@@ -207,12 +218,35 @@ def private field_name(em : Emitter; tu : CirTu; rec : int; field : int) : strin
 
 // the bool view of a C scalar: a comparison stays one, a pointer tests against null, an
 // integer against zero
-def private to_bool(e : Em; tu : CirTu; t : int) : Em {
-    if (e.is_bool) {
-        return e
+def private to_bool(e_in : Em; tu : CirTu; t : int) : Em {
+    if (e_in.is_bool) {
+        return e_in
     }
+    let e = enum_as_int(e_in, tu, t)
     let zero = kind_of(tu, t) == "ptr" ? "null" : kind_of(tu, t) == "float" ? (tu.types[t].w == 32 ? "0.0f" : "0.0lf") : "0"
     return truth("{wrap(e, PREC_EQ + 1)} != {zero}", PREC_EQ)
+}
+
+// an enum operand where C reads an integer (an index, a pointer step, a truth test): das
+// enums have no arithmetic, so the value goes through `int`
+def private enum_as_int(e : Em; tu : CirTu; t : int) : Em => kind_of(tu, t) == "enum" ? value(enum_to_integer(tu, t, e.text, "int"), PREC_PRIMARY) : e
+
+// the integer type C promotes enum `t` to: `int`, or `uint` when clang chose an unsigned
+// underlying type (the linux dialect does for an enum without a negative enumerator)
+def private enum_promoted(tu : CirTu; t : int) : string => tu.types[t].is_signed ? "int" : "uint"
+
+// an enum value as the integer type `target`: `int(e)`, the one integer conversion das
+// enums have (bit-exact for every 32-bit target), through `uint` first where a wider or a
+// floating target would otherwise read an unsigned-underlying enum's high bit as a sign
+def private enum_to_integer(tu : CirTu; t : int; text : string; target : string) : string {
+    let promoted = enum_promoted(tu, t)
+    if (target == "int") {
+        return "int({text})"
+    }
+    if (target == "uint" || (promoted == "uint" && (target == "int64" || target == "uint64" || target == "float" || target == "double"))) {
+        return target == "uint" ? "uint(int({text}))" : "{target}(uint(int({text})))"
+    }
+    return "{target}(int({text}))"
 }
 
 // the int view of a C expression das spelled as a bool
@@ -297,7 +331,7 @@ def private quoted_literal(var em : Emitter; x : CirExpr; loc : CirLoc) : string
 
 def private assignment_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
     let lhs = emit_expr(em, tu, x.a, loc)
-    let rhs = to_int(emit_expr(em, tu, x.b, loc))
+    var rhs = to_int(emit_expr(em, tu, x.b, loc))
     if (empty(x.op)) {
         return "{lhs.text} = {rhs.text}"
     }
@@ -307,12 +341,36 @@ def private assignment_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
         em.unsafe_used = true
         return "{lhs.text} = {lhs.text} {spelled} {wrap(rhs, prec + 1)}"
     }
-    if (x.a.t != x.b.t) {
-        let narrow = das_type(em, tu, x.a.t, loc)
-        let wide = das_type(em, tu, x.b.t, loc)
+    // C computes `a op= b` in the common type of the converted operands, which clang gives
+    // the right side; a shift computes in the promoted left side alone, and das shifts an
+    // unsigned value by an unsigned count
+    let shift = x.op == "shl" || x.op == "shr"
+    let wide = shift ? promoted_type(em, tu, x.a.t, loc) : das_type(em, tu, x.b.t, loc)
+    if (shift && wide == "uint" && !is_unsigned(tu, x.b.t)) {
+        rhs = value(x.b.e == "int_lit" ? x.b.v + "u" : "uint({rhs.text})", PREC_PRIMARY)
+    }
+    if (kind_of(tu, x.a.t) == "enum") {
+        let sum = "{enum_to_integer(tu, x.a.t, lhs.text, wide)} {spelled} {wrap(rhs, prec + 1)}"
+        let as_int = wide == "int" ? sum : "int({sum})"
+        return "{lhs.text} = {int_to_enum(em, tu, x.a.t, as_int)}"
+    }
+    let narrow = das_type(em, tu, x.a.t, loc)
+    if (narrow != wide) {
         return "{lhs.text} = {narrow}({wide}({lhs.text}) {spelled} {wrap(rhs, prec + 1)})"
     }
     return "{lhs.text} {spelled}= {rhs.text}"
+}
+
+// the type C's integer promotion gives a value of type `t`: `int` or `uint` for the small
+// integers and the enums, the type itself otherwise
+def private promoted_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
+    if (is_small_int(tu, t)) {
+        return is_unsigned(tu, t) ? "uint" : "int"
+    }
+    if (kind_of(tu, t) == "enum") {
+        return enum_promoted(tu, t)
+    }
+    return das_type(em, tu, t, loc)
 }
 
 def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
@@ -326,6 +384,10 @@ def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     if (kind_of(tu, x.a.t) == "ptr") {
         em.unsafe_used = true
         return "{operand.text} = {operand.text} {up ? "+" : "-"} 1"
+    }
+    if (kind_of(tu, x.a.t) == "enum") {
+        let stepped = "int({operand.text}) {up ? "+" : "-"} 1"
+        return "{operand.text} = {int_to_enum(em, tu, x.a.t, stepped)}"
     }
     return "{operand.text}{up ? "++" : "--"}"
 }
@@ -380,6 +442,9 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     if (k == "ArrayToPointerDecay" && x.a != null && x.a.e == "str_lit") {
         return string_literal(em, *x.a, loc)
     }
+    if ((k == "IntegralCast" || k == "FloatingToIntegral") && kind_of(tu, x.t) == "enum") {
+        return emit_enum_cast(em, tu, x, loc)
+    }
     let inner = emit_expr(em, tu, x.a, loc)
     if (k == "LValueToRValue" || k == "NoOp" || k == "ToVoid") {
         return inner
@@ -398,6 +463,9 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         let source = to_int(inner)
         if (target == "bool") {
             return to_bool(source, tu, x.a.t)
+        }
+        if (kind_of(tu, x.a.t) == "enum") {
+            return value(enum_to_integer(tu, x.a.t, source.text, target), PREC_PRIMARY)
         }
         return value("{target}({source.text})", PREC_PRIMARY)
     }
@@ -422,6 +490,127 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     return inner
 }
 
+// `enum_from_int(type<E>, i)` over an int-typed spelling, C's implicit int-to-enum conversion
+def private int_to_enum(var em : Emitter; tu : CirTu; t : int; i : string) : string {
+    em.requires |> insert("c_runtime/enum_from_int")
+    return "enum_from_int(type<{tag_name(em, tu, t)}>, {i})"
+}
+
+// the enumerator of enum `t` with value `v`, "" when none has it
+def private enumerator_of(tu : CirTu; t : int; v : string) : string {
+    for (it in tu.types[t].items) {
+        if ("{it.v}" == v) {
+            return it.name
+        }
+    }
+    return ""
+}
+
+// a conversion into enum `x.t`: its own enumerator is `E.X`, a value of the same enum stays, a
+// literal with an enumerator's value is that enumerator, a ternary of two of its values
+// stays one; anything else is `enum_from_int` over its int value
+def private emit_enum_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    let operand = enum_operand(tu, x.a, x.t)
+    if (operand != null) {
+        return enum_operand_text(em, tu, operand, loc, PREC_PRIMARY)
+    }
+    var arms = x.a
+    while (arms != null && arms.e != "cond" && arms.e == "cast" && is_value_preserving_cast(tu, arms, tu.types[x.t].is_signed)) {
+        arms = arms.a
+    }
+    if (arms != null && arms.e == "cond") {
+        let a = enum_operand(tu, arms.a, x.t)
+        let b = enum_operand(tu, arms.b, x.t)
+        if (a != null && b != null) {
+            // the shortcut holds only for pure arms: an arm with hoisted statements needs
+            // `emit_cond`'s if-chain, which the generic path below reaches
+            let mark = length(em.pre)
+            let c = to_bool(emit_expr(em, tu, arms.c, loc), tu, arms.c.t)
+            let a_text = enum_operand_text(em, tu, a, loc, PREC_COND + 1)
+            let b_text = enum_operand_text(em, tu, b, loc, PREC_COND + 1)
+            if (length(em.pre) == mark) {
+                return value("{wrap(c, PREC_COND + 1)} ? {a_text.text} : {b_text.text}", PREC_COND)
+            }
+            em.pre |> resize(mark)
+        }
+    }
+    if (x.a.e == "int_lit") {
+        let named = enumerator_of(tu, x.t, x.a.v)
+        if (!empty(named)) {
+            return value(enum_item(em, tu, x.t, named), PREC_PRIMARY)
+        }
+    }
+    let source = enum_as_int(to_int(emit_expr(em, tu, x.a, loc)), tu, x.a.t)
+    let i = das_type(em, tu, x.a.t, loc) == "int" || kind_of(tu, x.a.t) == "enum" ? source.text : "int({source.text})"
+    return value(int_to_enum(em, tu, x.t, i), PREC_PRIMARY)
+}
+
+// whether cast `x` keeps the value of an enum whose promoted type is signed or not: C's
+// promotion of the enum and a widening that keeps its sign do, a narrowing or a sign change
+// does not
+def private is_value_preserving_cast(tu : CirTu; x : CirExpr const?; enum_signed : bool) : bool {
+    if (x.cast_kind == "LValueToRValue" || x.cast_kind == "NoOp") {
+        return true
+    }
+    if (x.cast_kind != "IntegralCast" || kind_of(tu, x.t) != "int" || tu.types[x.t].spell == "_Bool") {
+        return false
+    }
+    let w = tu.types[x.t].w
+    return tu.types[x.t].is_signed ? (w > 32 || enum_signed) : (w >= 32 && !enum_signed)
+}
+
+// the value of enum `want` under C's conversions of it: the node of that enum type, or its
+// enumerator, below casts that keep its value; null for anything else
+def private enum_operand(tu : CirTu; x : CirExpr?; want : int) : CirExpr const? {
+    let enum_signed = tu.types[want].is_signed
+    var at = x
+    while (at != null && kind_of(tu, at.t) != "enum" && at.e == "cast" && is_value_preserving_cast(tu, at, enum_signed)) {
+        at = at.a
+    }
+    if (at != null && enum_of(at) == want && (kind_of(tu, at.t) == "enum" || at.e == "enum_ref")) {
+        return at
+    }
+    return null
+}
+
+def private enum_of(x : CirExpr const?) : int => x.e == "enum_ref" ? x.enum_t : x.t
+
+// the enum both sides of `==`/`!=` are values of, when they are: the innermost enum node of
+// the left side names it; -1 otherwise
+def private common_enum(tu : CirTu; x : CirExpr?) : int {
+    var at = x
+    while (at != null && kind_of(tu, at.t) != "enum" && at.e == "cast") {
+        at = at.a
+    }
+    return at != null && (kind_of(tu, at.t) == "enum" || at.e == "enum_ref") ? enum_of(at) : -1
+}
+
+// `e == E.X` for two values of one enum, which das compares directly: C converts both sides to
+// an integer first, and the readable form drops the conversions (docs/lowering-examples.md)
+def private enum_equality(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
+    let want = common_enum(tu, x.a)
+    if (want < 0) {
+        return ""
+    }
+    let lhs = enum_operand(tu, x.a, want)
+    let rhs = enum_operand(tu, x.b, want)
+    if (lhs == null || rhs == null) {
+        return ""
+    }
+    let spelled = BIN_SPELLING?[x.op] ?? ""
+    return "{enum_operand_text(em, tu, lhs, loc, PREC_EQ + 1).text} {spelled} {enum_operand_text(em, tu, rhs, loc, PREC_EQ + 1).text}"
+}
+
+// an enum operand spelled symbolically: `E.X` for an enumerator, the value's own text
+// otherwise, wrapped for precedence `need`
+def private enum_operand_text(var em : Emitter; tu : CirTu; side : CirExpr const?; loc : CirLoc; need : int) : Em {
+    if (side.e == "enum_ref") {
+        return value(enum_item(em, tu, side.enum_t, side.item), PREC_PRIMARY)
+    }
+    let e = emit_expr(em, tu, side, loc)
+    return value(wrap(e, need), PREC_PRIMARY)
+}
+
 def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let prec = BIN_PREC?[x.op] ?? 0
     let spelled = BIN_SPELLING?[x.op] ?? ""
@@ -439,6 +628,12 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
         hoist(em, [for (stmt in rhs_pre); "    {stmt}"])
         hoist(em, ["    {tmp} = {rhs.text}", "\}"])
         return truth(tmp, PREC_PRIMARY)
+    }
+    if (x.op == "eq" || x.op == "ne") {
+        let direct = enum_equality(em, tu, x, loc)
+        if (!empty(direct)) {
+            return truth(direct, prec)
+        }
     }
     let lhs = to_int(emit_expr(em, tu, x.a, loc))
     var rhs = to_int(emit_expr(em, tu, x.b, loc))
@@ -532,7 +727,7 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     return a
 }
 
-def emit_expr(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc) : Em {
+def emit_expr(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
     if (x == null) {
         fail(em, "missing expression", loc)
         return value("", PREC_PRIMARY)
@@ -546,6 +741,12 @@ def emit_expr(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc) : Em {
     }
     if (x.e == "ref") {
         return value(das_name(em, x.name), PREC_PRIMARY)
+    }
+    if (x.e == "enum_ref") {
+        // an enumerator is an integer in C (`unsigned int` when one of its enum exceeds
+        // INT_MAX); `emit_enum_cast` and `enum_equality` keep it symbolic
+        let as_type = das_type(em, tu, x.t, loc)
+        return value(enum_to_integer(tu, x.enum_t, enum_item(em, tu, x.enum_t, x.item), as_type), PREC_PRIMARY)
     }
     if (x.e == "cast") {
         return emit_cast(em, tu, *x, loc)
@@ -585,11 +786,11 @@ def emit_expr(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc) : Em {
     if (x.e == "index") {
         if (x.base.e == "cast" && x.base.cast_kind == "ArrayToPointerDecay" && kind_of(tu, x.base.a.t) == "array") {
             let arr = emit_expr(em, tu, x.base.a, loc)
-            let at = to_int(emit_expr(em, tu, x.i, loc))
+            let at = enum_as_int(to_int(emit_expr(em, tu, x.i, loc)), tu, x.i.t)
             return value("{wrap(arr, PREC_PRIMARY)}[{at.text}]", PREC_PRIMARY)
         }
         let base = emit_expr(em, tu, x.base, loc)
-        let i = to_int(emit_expr(em, tu, x.i, loc))
+        let i = enum_as_int(to_int(emit_expr(em, tu, x.i, loc)), tu, x.i.t)
         if (kind_of(tu, x.base.t) == "ptr") {
             return unsafe_value(em, "deref({wrap(base, PREC_ADD)} + {wrap(i, PREC_ADD + 1)})", PREC_PRIMARY)
         }
@@ -617,7 +818,7 @@ def private zero_literal(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : 
         let one = zero_literal(em, tu, tu.types[t].elem, loc)
         return "fixed_array(" + join([for (_i in range(tu.types[t].count)); one], ", ") + ")"
     }
-    return zero_of(tu, t, das_type(em, tu, t, loc))
+    return zero_of(em, tu, t, das_type(em, tu, t, loc))
 }
 
 // whether an array initializer spells as one `fixed_array` literal: the literal must hold
@@ -655,7 +856,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
         let v = to_int(emit_expr(em, tu, item.v, loc))
         items |> push("{field_name(em, tu, x.t, item.pos)} = {v.text}")
     }
-    return value("{record_name(em, tu, x.t)}({join(items, ", ")})", PREC_PRIMARY)
+    return value("{tag_name(em, tu, x.t)}({join(items, ", ")})", PREC_PRIMARY)
 }
 
 // the stores of a sparsely filled large array: `name[pos] = value` per written element
@@ -897,7 +1098,7 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt?) {
         }
         close_block(em)
     } elif (st.s == "decl") {
-        let spelled = das_type(em, tu, st.t, st.loc)
+        let spelled = das_type_dims(em, tu, st.t, st.loc, st.dims)
         let name = das_name(em, st.name)
         if (st.init == null) {
             line(em, "var {name} : {spelled}")
@@ -1032,9 +1233,15 @@ def private ends_in_return(st : CirStmt?) : bool {
     return false
 }
 
-def private zero_of(tu : CirTu; t : int; spelled : string) : string {
+def private zero_of(var em : Emitter; tu : CirTu; t : int; spelled : string) : string {
     if (kind_of(tu, t) == "struct") {
         return "{spelled}()"
+    }
+    if (kind_of(tu, t) == "enum") {
+        // the enumerator of value zero when the enum has one; `default<E>` is rejected for an
+        // enum without one (probes/test_process.das), so its zero is the conversion of 0
+        let named = enumerator_of(tu, t, "0")
+        return empty(named) ? int_to_enum(em, tu, t, "0") : enum_item(em, tu, t, named)
     }
     if (spelled == "bool") {
         return "false"
@@ -1102,7 +1309,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     }
     emit_body(em, tu, d.body)
     if (ret != "void" && !ends_in_return(d.body)) {
-        line(em, "return {zero_of(tu, tu.types[d.t].ret, ret)}")
+        line(em, "return {zero_of(em, tu, tu.types[d.t].ret, ret)}")
     }
     close_block(em)
     line(em, "")
@@ -1118,7 +1325,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
 // and a record clang lays out unnaturally wait for their own rows (P4.2, P4.1, P2.7)
 def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
     let t = d.t
-    let name = record_name(em, tu, t)
+    let name = tag_name(em, tu, t)
     if (tu.types[t].k == "union") {
         fail(em, "union `{name}` is not lowered yet", d.loc)
         return
@@ -1136,7 +1343,7 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
             fail(em, "bitfield `{name}.{f.name}` is not lowered yet", d.loc)
             return
         }
-        let ft = das_type(em, tu, f.t, d.loc)
+        let ft = das_type_dims(em, tu, f.t, d.loc, f.dims)
         if (!empty(names) && ft != spelled) {
             lines |> push("{join(names, ", ")} : {spelled}")
             names |> clear()
@@ -1155,13 +1362,34 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
     line(em, "")
 }
 
+// `enum Name { items }` with das's default int base; an item states its value only where C's
+// counting from the previous one would not give it
+def private emit_enum(var em : Emitter; tu : CirTu; d : CirDecl) {
+    open_block(em, "enum {tag_name(em, tu, d.t)}")
+    var next = 0l
+    for (it in tu.types[d.t].items) {
+        line(em, it.v == next ? das_name(em, it.name) : "{das_name(em, it.name)} = {enumerator_value(it.v)}")
+        next = it.v + 1l
+    }
+    close_block(em)
+    line(em, "")
+}
+
+// an enumerator's value as an `int`-based das enum holds it: a value past INT_MAX (an unsigned
+// underlying type) wrapped to the negative int of the same bits, and INT_MIN as
+// `-2147483647 - 1`, since das reads `-2147483648` as a negated out-of-range constant
+def private enumerator_value(v : int64) : string {
+    let held = v > 2147483647l ? v - 4294967296l : v
+    return held == -2147483648l ? "-2147483647 - 1" : "{held}"
+}
+
 // the layout law checked where it is claimed: every emitted record's das layout against
 // clang's, at compile time, zero cost at run time
 def private emit_layout_check(var em : Emitter; tu : CirTu; records : array<int>) {
     line(em, "[init]")
     open_block(em, "def private c2das_layout_check")
     for (t in records) {
-        let name = record_name(em, tu, t)
+        let name = tag_name(em, tu, t)
         line(em, "static_assert(typeinfo sizeof(type<{name}>) == {tu.types[t].size} && typeinfo alignof(type<{name}>) == {tu.types[t].align}, \"{name}: clang lays it out as size {tu.types[t].size}, align {tu.types[t].align}\")")
         for (f in tu.types[t].fields) {
             line(em, "static_assert(typeinfo offsetof<{das_name(em, f.name)}>(type<{name}>) == {f.off}, \"{name}.{f.name}: clang puts it at {f.off}\")")
@@ -1175,7 +1403,7 @@ def private emit_global(var em : Emitter; tu : CirTu; d : CirDecl) {
     if (d.is_extern) {
         return
     }
-    let spelled = das_type(em, tu, d.t, d.loc)
+    let spelled = das_type_dims(em, tu, d.t, d.loc, d.dims)
     let head = "var {d.is_static ? "private " : ""}{das_name(em, d.name)} : {spelled}"
     if (d.init == null) {
         line(em, head)
@@ -1200,13 +1428,10 @@ def private emit_global(var em : Emitter; tu : CirTu; d : CirDecl) {
     line(em, "{head} = {init}")
 }
 
-//! The whole module: banner, options, requires, every declaration, and the `main` wrapper
-//! when the C program has one. Empty with `error` set when a node is outside the subset.
-def emit_tu(tu : CirTu) : Emitter {
-    var em : Emitter
+def private emit_types(var em : Emitter; tu : CirTu) {
     for (d in tu.decls) {
-        if (d.k == "func" && d.body != null) {
-            em.functions |> insert(d.name)
+        if (d.k == "enumdef") {
+            emit_enum(em, tu, *d)
         }
     }
     var records : array<int>
@@ -1220,6 +1445,18 @@ def emit_tu(tu : CirTu) : Emitter {
     if (!empty(records) && empty(em.error)) {
         emit_layout_check(em, tu, records)
     }
+}
+
+//! The whole module: banner, options, requires, every declaration, and the `main` wrapper
+//! when the C program has one. Empty with `error` set when a node is outside the subset.
+def emit_tu(tu : CirTu) : Emitter {
+    var em : Emitter
+    for (d in tu.decls) {
+        if (d.k == "func" && d.body != null) {
+            em.functions |> insert(d.name)
+        }
+    }
+    emit_types(em, tu)
     var globals_done = false
     for (d in tu.decls) {
         if (d.k == "global") {

@@ -44,6 +44,26 @@ def converted(t : T?; name : string; var das_text : string&) : Expectation {
     return Expectation(rc = rc, out = out)
 }
 
+// a substring the converted text must carry, reported by the needle when it is missing
+def has_text(t : T?; text : string; needle : string) {
+    t |> equal(text |> find(needle) >= 0, true, "missing `{needle}` in:\n{text}")
+}
+
+// a C source the converter must refuse, with the error naming the construct
+def rejects(t : T?; name : string; source : string; needle : string) {
+    let dir = path_join(work_root, "rejected")
+    mkdir(dir)
+    let c_path = path_join(dir, "{name}.c")
+    fopen(c_path, "wb") $(f) {
+        if (f != null) {
+            fwrite(f, source)
+        }
+    }
+    let res <- convert(c_path, path_join(dir, name), "linux")
+    t |> equal(res.ok, false, "{name} converted:\n{res.das_text}")
+    t |> equal(res.error |> find(needle) >= 0, true, "{name}: `{needle}` not in `{res.error}`")
+}
+
 def check_fixture(t : T?; name : string; var das_text : string&) {
     let want = native(name)
     t |> equal(want.rc >= 0, true, want.out)
@@ -92,6 +112,11 @@ def test_lowerings(t : T?) {
         t |> equal(text |> find("c_exit(42)") >= 0, true, text)
         t |> equal(text |> find("require c_runtime/c_exit") >= 0, true, text)
     }
+    p2_fixtures(t)
+    rmdir_rec(work_root)
+}
+
+def p2_fixtures(t : T?) {
     t |> run("structs: records with grouped fields, initializer lists, by-value copies, writes through a pointer, sizeof and offsetof as typeinfo, the layout assertion") @(t : T?) {
         var text : string
         check_fixture(t, "p2_structs", text)
@@ -131,5 +156,52 @@ def test_lowerings(t : T?) {
         t |> equal(text |> find("intptr(p) > intptr(q)") >= 0, true, text)
         t |> equal(text |> find("[c_function]\ndef private p2_pointers__twice") < 0, true, text)
     }
-    rmdir_rec(work_root)
+    p2_enum_fixtures(t)
+}
+
+def p2_enum_fixtures(t : T?) {
+    t |> run("enums: das enums with default base, symbolic enumerators, int() at relational and index sites, enum_from_int at int-to-enum sites, the count as a dimension") @(t : T?) {
+        var text : string
+        check_fixture(t, "p2_enums", text)
+        t |> equal(text |> find("enum mobjtype_t \{\n    MT_PLAYER\n    MT_SHOTGUN = 5\n    NUMMOBJTYPES\n\}") >= 0, true, text)
+        t |> equal(text |> find("enum color \{\n    RED = -1\n    GREEN = 8\n    BLUE\n    CYAN = 8\n\}") >= 0, true, text)
+        t |> equal(text |> find("var private p2_enums__mobjinfo : mobjinfo_t[int(mobjtype_t.NUMMOBJTYPES)]") >= 0, true, text)
+        t |> equal(text |> find("hits : int[int(color.BLUE)]") >= 0, true, text)
+        t |> equal(text |> find("if (t == mobjtype_t.MT_SHOTGUN)") >= 0, true, text)
+        t |> equal(text |> find("if (c == color.RED)") >= 0, true, text)
+        t |> equal(text |> find("uint(int(t)) < uint(int(mobjtype_t.MT_SHOTGUN))") >= 0, true, text)
+        t |> equal(text |> find("p2_enums__mobjinfo[int(t)].speed = 3") >= 0, true, text)
+        t |> equal(text |> find("p._c_type = mobjtype_t.MT_PLAYER") >= 0, true, text)
+        t |> equal(text |> find("t = enum_from_int(type<mobjtype_t>, int(t) + 1)") >= 0, true, text)
+        t |> equal(text |> find("return i > 0 ? color.GREEN : color.RED") >= 0, true, text)
+        t |> equal(text |> find("mobj(_c_type = mobjtype_t.MT_SHOTGUN, c = color.BLUE, hp = 7)") >= 0, true, text)
+        t |> equal(text |> find("var inner : anon_") >= 0 && text |> find(".INNER_Y\n") >= 0, true, text)
+        t |> equal(text |> find("require c_runtime/enum_from_int") >= 0, true, text)
+        has_text(t, text, "var local : anon_")
+        has_text(t, text, "return int(uint(int(local)) + uint(int(anon_")
+        has_text(t, text, "int(uint8(int(w))) == int(wide.W_LOW)")
+        has_text(t, text, "enum_from_int(type<wide>, int(uint8(int(w))))")
+        has_text(t, text, "F_TOP = -2147483647 - 1")
+        has_text(t, text, "var x : uint64 = uint64(uint(int(f)))")
+        has_text(t, text, "var d : double = double(uint(int(f)))")
+        has_text(t, text, "g = enum_from_int(type<flags>, int(uint(int(g)) >> 4u))")
+        has_text(t, text, "w >>= 28u")
+        has_text(t, text, "int64(int(c)) == int64(uint(int(color.RED)))")
+        has_text(t, text, "u = wide.W_LOW\n        _t0 = uint(int(u))")
+        has_text(t, text, "enum_from_int(type<wide>, int(uint8(c != 0 ? int(wide.W_LOW) : int(wide.W_HIGH))))")
+        has_text(t, text, "var b : int[int(color.BLUE)]")
+        has_text(t, text, "var grid : int[int(wide.W_LOW)][int(color.BLUE)]")
+        has_text(t, text, "var private lines_filled : int[int(color.BLUE)] = fixed_array(5, 0, 0, 0, 0, 0, 0, 0, 0)")
+        has_text(t, text, "int(anon_18.L_A)\n}")
+        has_text(t, text, "var same : color = c")
+        has_text(t, text, "var fromd : color = enum_from_int(type<color>, int(d))")
+        has_text(t, text, "deref(p + int(t))")
+        has_text(t, text, "fixed_array(neg.N_HIGH, enum_from_int(type<neg>, 0))")
+    }
+    t |> run("enums the dumper refuses, each with a located message naming the construct") @(t : T?) {
+        rejects(t, "same_tag", "static int f(void) \{ enum e \{ A = 1 \}; return A; \}\nstatic int g(void) \{ enum e \{ B = 2 \}; return B; \}\nint main(void) \{ return f() + g(); \}\n", "defined more than once")
+        rejects(t, "packed", "enum __attribute__((packed)) P \{ P1 = 1 \};\nint main(void) \{ enum P p = P1; return p; \}\n", "bits wide")
+        rejects(t, "in_sizeof", "int main(void) \{ return (int) sizeof(enum Q \{ Q1 = 5 \}); \}\n", "defined inside an expression")
+        rejects(t, "macro_constant", "enum E \{ A = 1, B = 2 \};\n#define BOTH (A + B)\nint main(void) \{ return BOTH; \}\n", "libclang reports no reference")
+    }
 }

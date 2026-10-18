@@ -119,6 +119,15 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   functions containing unsafe ops (the count is the port-progress metric — report it).
 - **P2.4 Enums.** das enums per spec (casts at arithmetic/relational/index sites,
   `enum_from_int`, count-as-dim).
+  Ledger (fail closed or loud today, each a later row): an enumerator reached through a
+  macro expansion (no main-file cursor; two constants of one expansion share a location),
+  an enum defined in a header, an enum tag that is also an object name in scope
+  (`enum color color`: das has one namespace, so `color.GREEN` resolves to the variable),
+  an anonymous enum or record nested two levels deep, a typedef name shared by a record and
+  an enum across scopes, a definition inside a `sizeof` or cast operand; and one silent
+  divergence shared with the small-integer path since P1.6: `++`/`op=` on an lvalue with
+  side effects (`(*next())++`) evaluates the lvalue twice, to be settled by a single
+  address temporary.
 - **P2.5 Strings.** Literal policy (das literal reinterpret for `char*`, `cstr_array`
   for mutable `char[]`), interning, the `reinterpret<string>` bridge at logging sites.
 - **P2.6 Globals & statics.** Zero-init pass-through, value inits at declaration,

@@ -51,7 +51,15 @@ string is JSON-escaped by `write_json`; the file ends with one LF. The reader ac
 JSON spelling; the pipeline proves the pair by rewriting what it read and comparing. One
 node is this repository's addition to the spec's table: `offsetof` with `of_t` and `field`
 (the record type and the field index), since the lowering spells `offsetof` as
-`typeinfo offsetof` and the spec has no node for it (`docs/probe-findings.md` F20).
+`typeinfo offsetof` and the spec has no node for it (`docs/probe-findings.md` F20). The other
+addition is `dims` on a `global`, a `decl` statement and a record field: one `{enum_t, item}`
+per array dimension of the declarator, outermost first, the item empty for a dimension not
+spelled as one enum constant, the member absent when none is, since the lowering keeps the
+constant as the dimension and the spec's `count` is the folded integer (F21). The spelling is
+a fact about the declarator, not the type, so the type table interns `T[6]` once however the
+source wrote it. An `enum` type carries `"signed": false` when clang gave it an unsigned
+underlying type (F22); the member is absent for a signed one, which is every enum of the
+`msvc` dialect.
 
 ## 3. Dumper A's subset
 
@@ -98,9 +106,39 @@ one child per field or element, an `ImplicitValueInitExpr` left to the positiona
 an array with a trailing run of zeros lists its filler first under `array_filler`, then the
 elements up to the last one written) and `OffsetOfExpr`,
 whose components the dump omits: the dumper reads `T, f` from the macro's own text at its
-`expansionLoc` (F20). A location with an `expansionLoc` is that location. Anything else is
-an error naming the node kind and its location: enums, compound literals, `goto`, `switch`
-are the next phases' rows.
+`expansionLoc` (F20). A location with an `expansionLoc` is that location.
+
+The libclang pass and the JSON walk meet on one key: the byte offset of a node's expansion
+location (`clang_getExpansionLocation`; the JSON `loc`, or its `expansionLoc`, always carries
+`offset`, where clang omits a `line` that repeats the last one it printed, its last-line state
+also moving on a `range.end` the dumper never sees). Every record, enum, enumerator reference
+and dimensioned declarator the pass records is keyed that way; the location carry (`loc_of`)
+serves the C-IR's `loc` alone.
+
+Enums come from the same libclang pass as records: every `enum` definition of the main file,
+nested and block-scoped ones included, with the enumerator values as C reads them
+(`clang_getEnumConstantDeclUnsignedValue` for an unsigned underlying type, which the linux
+dialect gives an enum without a negative enumerator; past INT_MAX such a value is possible)
+and the width and signedness of the integer type clang chose, keyed by spelling (`enum color`,
+`enum mobjtype_t` for a typedef-named anonymous enum, re-tagged the way a record is) and by
+offset, which is how an `EnumDecl` of the walk finds its entry and pushes its `enumdef` anchor;
+a forward declaration (`enum E;`, no enumerators) adds nothing, and a nested `EnumDecl` or
+`RecordDecl` that is not a definition (`struct S { enum K *p; }`) is not registered. An enum
+whose width is not the dialect's `int` fails closed, and so does a spelling two block-scoped
+enums of one tag share, since the dump resolves types by spelling alone; an enum the walk
+never anchored (one defined inside a `sizeof` or cast operand) fails closed at the end of the
+dump. The pass also records, per declarator whose array dimensions the source spells by enum
+constants, the constant of each dimension (`clang_getCursorReferenced` on the size expression,
+a lone `DeclRefExpr` to an `EnumConstantDecl`; any other expression keeps the bare count),
+and the `VarDecl` or `FieldDecl` at that offset gets its `dims`, a constant kept only when its
+value is the dimension's count, since two declarators of one macro expansion share an offset.
+A `DeclRefExpr` to an `EnumConstantDecl` resolves by its offset too, since C scopes let two
+enums of one file spell one constant name: the `enum_ref` carries the enum the constant belongs
+to, and the node's type is what clang gave the reference (`int`, or `unsigned int` for an enum
+with a value past INT_MAX). An enumerator reached through a macro has no main-file cursor and
+fails closed (`docs/implementation_order.md`, the P2.4 ledger). Anything else is an error
+naming the node kind and its location: compound literals, `goto`, `switch` are the next
+phases' rows.
 
 ## 4. What the emitter spells
 
@@ -128,7 +166,35 @@ stays writable (F3). A body that used an unsafe operation
 contract (`docs/probe-findings.md` F1). A C name that is a das keyword takes the `_c_`
 prefix.
 
-A member is `a.f`, and `p.f` for `p->f` and `(*p).f` alike, which das reads through a
+An enum is `enum Name { items }` with das's default `int` base, emitted before the records, an
+item stating `= v` only where C's count-from-the-previous rule would not give its value, a
+value past INT_MAX wrapped to the negative `int` of the same bits and INT_MIN as
+`-2147483647 - 1` (das reads `-2147483648` as a negated out-of-range constant;
+`probes/test_enums.das`), and an unnamed enum named `anon_<slot>` like a record. An enumerator
+reaches the text as `Name.ITEM` and the emitter keeps it symbolic where das can take the enum:
+a conversion into its own enum (`t = MT_SHOTGUN`, an initializer slot, an argument), a literal
+whose value an enumerator has (`(E) 0` is `E.ZERO`), `==`/`!=` between two values of one enum,
+which das compares directly, and a ternary of two values of one enum whose arms hoist nothing
+(an arm with a hoisted statement takes `emit_cond`'s if-chain). C's conversions between the
+enum and those sites are looked through only while they keep the value: its promotion, and a
+widening that keeps its sign; a narrowing or a sign change (`(unsigned) e` of an enum with a
+negative enumerator) stops the look-through, since C compares the converted values. Where C
+reads the enum as an integer the value goes through `int(e)`, bit-exact for every 32-bit type
+- a relational operator, an index, arithmetic, a `printf` argument - the workhorse cast
+following when C computes in another type (`uint(int(e))`), and through `uint(int(e))` before
+a 64-bit or floating target when the enum's underlying type is unsigned, where `int(e)` would
+read a value past INT_MAX as a sign. An enumerator C types `unsigned int` (one of its enum
+exceeds INT_MAX) is spelled `uint(int(E.X))`. A conversion into an enum from anything else is
+`enum_from_int(type<E>, i)` over the `int` value, which `++`, `+= 1` and `t = t + 1` all take
+(`t = enum_from_int(type<E>, int(t) + 1)`); a compound assignment computes in the type clang
+gave its right side, except a shift, which computes in the promoted left side, `uint` for an
+unsigned-underlying enum (and for `unsigned w >>= n`), with an unsigned count. An enum's truth
+is `int(e) != 0`; its zero is the enumerator of value zero when it has one, else
+`enum_from_int(type<E>, 0)`, since das rejects `default<E>` for an enum without a zero
+enumerator (`probes/test_process.das`; aggregates and globals of such an enum still zero,
+`probes/test_enums.das`). A dimension the declarator spells by an enum constant stays
+`[int(E.COUNT)]`, which das folds (`probes/test_enums.das`). A member is
+`a.f`, and `p.f` for `p->f` and `(*p).f` alike, which das reads through a
 pointer without `deref` or unsafe; a record initializer is `S(f = v, ...)` naming the filled
 slots. An array is `T[2][3]` with the dimensions in C's order and `T? [N]` for an array of
 pointers, since `?[` lexes as the safe-index operator; its initializer is one `fixed_array`
