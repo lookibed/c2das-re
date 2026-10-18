@@ -30,9 +30,10 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   read it back and rewrite it (the bytes must match), read the sidecar, emit, format with
   `daslib/das_source_formatter`, compile-check with `compile_file`. Every artifact lands under
   `out_dir`.
-- `tiers.das` - `run_tier(das_path, tier, work_dir, output[, module_dirs])`: the process exit
-  code of the module under `interp`, `jit`, `exe` or `aot` (section 5); `module_dirs` are
-  passed as `-load_module` to the interpreter and the JIT.
+- `tiers.das` - `run_tier(das_path, tier, work_dir, output[, module_dirs[, timeout]])`: the
+  process exit code of the module under `interp`, `jit`, `exe` or `aot` (section 5);
+  `module_dirs` are passed as `-load_module` to the interpreter and the JIT, and a run past
+  `timeout` seconds (600 by default) is killed and reported as a failure.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c> [--out] [--target] [--run] [--sidecar]`.
 - `benchmarks/bench_for_shapes.das` - the loop-shape race behind section 4
   (`ARCHITECTURE_EMITTER.md`), run with `dastest -- --bench` under the interpreter and

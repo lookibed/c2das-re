@@ -241,8 +241,15 @@ def private enum_item(em : Emitter; tu : CirTu; t : int; item : string) : string
 def private tag_name(em : Emitter; tu : CirTu; t : int) : string =>
     empty(tu.types[t].name) ? "anon_{t}" : das_name(em, tu.types[t].name)
 
-def private field_name(em : Emitter; tu : CirTu; rec : int; field : int) : string =>
-    das_name(em, tu.types[rec].fields[field].name)
+// a field by index; a record libclang never saw defined (size -1) has none, and a member of
+// one is the dumper's error to raise, so here it is a fault
+def private field_name(var em : Emitter; tu : CirTu; rec : int; field : int) : string {
+    if (field < 0 || field >= length(tu.types[rec].fields)) {
+        fail(em, "record `{tag_name(em, tu, rec)}` has no field {field}: the dump and libclang disagree on its definition", CirLoc())
+        return "_"
+    }
+    return das_name(em, tu.types[rec].fields[field].name)
+}
 
 // the bool view of a C scalar: a comparison stays one, a pointer tests against null, an
 // integer against zero
@@ -327,6 +334,12 @@ def private string_literal(var em : Emitter; x : CirExpr; loc : CirLoc) : Em {
     return unsafe_value(em, "reinterpret<uint8?>({quoted_literal(em, x, loc)})", PREC_PRIMARY)
 }
 
+// one hex digit of a value below 16
+def private hex_digit(v : int) : string => to_char(v < 10 ? '0' + v : 'a' + v - 10)
+
+// two hex digits of a byte, spelled without `fmt`, whose format parsing rejects a zero
+def private hex_byte(b : int) : string => "{hex_digit(b >> 4)}{hex_digit(b & 15)}"
+
 // the das literal spelling of the bytes before the NUL
 def private quoted_literal(var em : Emitter; x : CirExpr; loc : CirLoc) : string {
     let n = length(x.bytes)
@@ -353,7 +366,7 @@ def private quoted_literal(var em : Emitter; x : CirExpr; loc : CirLoc) : string
             } elif (b == 13) {
                 w |> write("\\r")
             } elif (b < 32 || b >= 127) {
-                w |> write("\\x{fmt("%02x", b)}")
+                w |> write("\\x{hex_byte(b)}")
             } else {
                 w |> write(to_char(b))
             }
@@ -472,6 +485,11 @@ def private callee_name(var em : Emitter; tu : CirTu; fn : CirExpr?; loc : CirLo
         return target.name == "main" ? "c_main" : das_name(em, target.name)
     }
     em.requires |> insert(libc_module(target.name))
+    // every crt bind is an unsafe operation (dasCRuntime/ARCHITECTURE.md): the body takes
+    // [c_function] for it
+    if (key_exists(CRT_CALLS, target.name)) {
+        em.unsafe_used = true
+    }
     return libc_call(target.name)
 }
 
@@ -949,10 +967,10 @@ def private marshal_field(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLo
     return x.arrow ? -1 : marshal_site(em, tu, x.base, loc, bytes)
 }
 
-def private reader_name(em : Emitter; tu : CirTu; rec : int; field : int) : string =>
+def private reader_name(var em : Emitter; tu : CirTu; rec : int; field : int) : string =>
     field < 0 ? "read_{tag_name(em, tu, rec)}" : "read_{tag_name(em, tu, rec)}_{field_name(em, tu, rec, field)}"
 
-def private writer_name(em : Emitter; tu : CirTu; rec : int; field : int) : string =>
+def private writer_name(var em : Emitter; tu : CirTu; rec : int; field : int) : string =>
     field < 0 ? "write_{tag_name(em, tu, rec)}" : "write_{tag_name(em, tu, rec)}_{field_name(em, tu, rec, field)}"
 
 // `a[i]` of an array is the das index, range-checked; of a pointer it is `deref(p + i)`; of a

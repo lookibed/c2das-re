@@ -39,9 +39,9 @@ def private file_stem(path : string) : string {
     return dot < 0 ? name : slice(name, 0, dot)
 }
 
-def private run(args : array<string>; var output : string&) : int {
+def private run(args : array<string>; var output : string&; timeout : float = 600.0) : int {
     var out : string
-    let rc = run_and_capture(args, out, 600.0)
+    let rc = run_and_capture(args, out, timeout)
     output = "{output}{out}"
     return rc
 }
@@ -112,17 +112,17 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
     return run_tier(das_path, tier, work_dir, output, no_modules)
 }
 
-def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>) : int {
+def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>; timeout : float = 600.0) : int {
     if (tier == "interp") {
         var cmd <- daslang_cmd(module_dirs)
         cmd |> push(das_path)
-        return run(cmd, output)
+        return run(cmd, output, timeout)
     }
     if (tier == "jit") {
         var cmd <- daslang_cmd(module_dirs)
         cmd |> push("-jit")
         cmd |> push(das_path)
-        return run(cmd, output)
+        return run(cmd, output, timeout)
     }
     if (tier == "exe") {
         return run_exe(das_path, work_dir, output, module_dirs)

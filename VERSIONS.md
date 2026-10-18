@@ -9,4 +9,5 @@ ast-grep: 0.44.1 (`sg` on PATH; sgconfig.yml maps `.das` to daScript's tree-sitt
 clang-format: 22.1.8 (the libclang archive's `bin/clang-format`)
 vendored skills: `skills/DASLANG_SKILLS_PIN` (the daScript commit `scripts/sync_daslang_skills.sh` last copied from)
 dasCRuntime: built by `scripts/build_crt.sh` (cmake 3.16+, a C++17 compiler) against `DASLANG_ROOT/include` and `lib/liblibDaScriptDyn*`, with the checkout's ABI: no RTTI, `DAS_ENABLE_DYN_INCLUDES=1`, `DAS_FUSION=2`, `SIZE_OF_VOID_P` = the pointer width
+gcc-torture: 04696df09633baf97cdbbdd6e9929b9d472161d3 (gcc-mirror/gcc releases/gcc-14.2.0, the subtree `gcc/testsuite/gcc.c-torture/execute`; `suites/gcc_torture/fetch.sh` sparse-clones it)
 c-testsuite: 5c7275656d751de0e68b2d340a95b5681858ed07 (c-testsuite/c-testsuite master of 2020-03-09, the single-exec suite; `suites/c_testsuite/fetch.sh` checks it out)

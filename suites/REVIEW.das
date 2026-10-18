@@ -37,8 +37,8 @@ def private check_suite(suite : string) {
     }
     for (line in lines_of(skip_path)) {
         var inscope fields <- split(line, "\t")
-        if (length(fields) != 4 || !(fields[3] |> starts_with("P"))) {
-            gate_finding(skip_path, "`{line}`: a skip line is id, feature, reason, phase (P<n>), tab-separated")
+        if (length(fields) != 4 || !(fields[3] |> starts_with("P") || fields[3] == "never")) {
+            gate_finding(skip_path, "`{line}`: a skip line is id, feature, reason, phase (P<n>, or never for a feature outside the dialect), tab-separated")
             continue
         }
         if (key_exists(passing, fields[0])) {
@@ -62,6 +62,7 @@ def private check_untracked_folders {
 [export]
 def main : int {
     check_suite("c_testsuite")
+    check_suite("gcc_torture")
     check_untracked_folders()
     return gate_verdict("suites")
 }

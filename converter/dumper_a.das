@@ -126,6 +126,10 @@ def private touch_locs(var d : Dumper; js : JsonValue?) {
 // same target and dialect flags as the JSON dump; the pass is the layout read-out of
 // docs/very-detailed-plan.md section 4.1
 def private register_record(var d : Dumper; var c : CXCursor) {
+    // a block-scoped record is visited under its statement and again under the variable's type
+    if (key_exists(d.record_by_loc, cursor_key(c))) {
+        return
+    }
     var ct = clang_getCursorType(c)
     let is_union = clang_getCursorKind(c) == CXCursorKind.UnionDecl
     // libclang spells an anonymous record by its typedef name alone (`thinker_t`) where the
@@ -471,7 +475,7 @@ def private function_pointer(var d : Dumper; qt : string; at : CirLoc) : int {
 }
 
 // an unnamed record is spelled with its location in parentheses, which the attribute
-// stripping would eat: it and a pointer to it resolve before the normal walk
+// stripping would eat: it, a pointer to it and an array of it resolve before the normal walk
 def private unnamed_record_type(var d : Dumper; qual : string; at : CirLoc) : int {
     let bare = strip(qual |> replace("const ", "") |> replace("volatile ", ""))
     if (bare |> ends_with("*")) {
@@ -481,6 +485,21 @@ def private unnamed_record_type(var d : Dumper; qual : string; at : CirLoc) : in
         }
         var t = CirType(k = "ptr", to = to)
         return intern(d, "ptr:{to}", t)
+    }
+    if (bare |> ends_with("]")) {
+        // the first bracket is the outer dimension, as in `type_from_qual`
+        let open = find(bare, ")[") + 1
+        let close = find(bare, "]", open)
+        if (open > 0 && close > open) {
+            let elem = unnamed_record_type(d, slice(bare, 0, open) + slice(bare, close + 1), at)
+            if (elem < 0) {
+                return -1
+            }
+            let dim = strip(slice(bare, open + 1, close))
+            let count = empty(dim) ? -1 : to_int(dim)
+            var t = CirType(k = "array", elem = elem, count = count)
+            return intern(d, "array:{elem}:{count}", t)
+        }
     }
     let tagged = tagged_type(d, bare, at)
     if (tagged != -2) {
