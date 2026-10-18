@@ -4,11 +4,7 @@
 # is not listed; the ratchet reports it.
 20000223-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
 20000511-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-20000703-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20000815-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20001009-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20001026-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20001111-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20001229-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 20010119-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20010122-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
@@ -16,40 +12,27 @@
 20010605-2	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 20010904-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20010904-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20010915-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20011024-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20011121-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20020107-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 20020108-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20020227-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-20020406-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20020411-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 20020412-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
 20020418-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20020619-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20021011-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20021113-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20021120-3	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 20030105-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20030125-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20030221-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20030222-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 20030224-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20030323-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20030330-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20030408-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20030606-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20030717-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20030811-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20031010-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20031012-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20031020-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20031201-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20040218-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20040302-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
 20040308-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20040411-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20040423-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20040625-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20040709-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20040709-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
@@ -62,7 +45,6 @@
 20041212-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20041213-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20041214-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-20041218-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20041218-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20050107-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20050119-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -83,18 +65,17 @@
 20051215-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20060420-1	GNU vector extension	SIMD vector types are outside the dialect	never
 20060930-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20060930-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20060930-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20061031-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 20061220-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 20070517-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20070614-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 20070623-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20070824-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20070919-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20071018-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20071018-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20071029-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20071108-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20071120-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20071108-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+20071120-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20071202-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20071210-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
 20071211-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
@@ -109,11 +90,9 @@
 20080519-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20080522-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20080604-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20080719-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20081103-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20081112-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20081117-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20081218-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20081218-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20090113-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20090113-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20090711-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -125,92 +104,75 @@
 20101011-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20101013-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20101025-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20110418-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20110418-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20111208-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20111212-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20111212-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20111227-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20120105-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20120105-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20120111-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20120207-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20120615-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20120817-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20120919-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20121108-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20140212-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20121108-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+20140212-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20140425-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20140622-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20140828-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20141022-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20141107-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20141125-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20140622-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+20140828-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+20141022-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+20141107-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+20141125-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20170111-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20170401-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20170419-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20171008-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20171008-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20180112-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20180131-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20180226-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20180921-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20181120-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20190228-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20190820-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20190901-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20191023-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20180921-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+20190820-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+20190901-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+20191023-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20230509-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20230510-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20230630-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20230630-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20230630-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20230630-4	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20230802-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20230510-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+20230630-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+20230630-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+20230802-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 920302-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
 920415-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
 920428-2	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
 920501-3	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
 920501-5	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
 920501-7	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-920501-8	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 920721-4	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-920726-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-921006-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-921007-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-921117-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 930406-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-930725-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 930930-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
-950221-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 960117-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 960312-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 960512-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 960830-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 980505-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-980506-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 980526-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
 990130-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 990208-1	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
 990326-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-990628-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 991228-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
-alias-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-alias-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-alias-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-alias-4	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-alias-access-path-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-alias-access-path-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+alias-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+alias-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+alias-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+alias-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 align-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 align-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 align-nest	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-alloca-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+alloca-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 bcp-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 bf-pack-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-bitfld-10	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+bitfld-10	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 bitfld-5	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-bitfld-8	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-bitfld-9	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-bitfld-signed1-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-bitops-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+bitfld-8	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+bitfld-9	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+bitops-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 bswap-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-bswap-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+bswap-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 bswap-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 built-in-setjmp	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 builtin-bitops-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
@@ -240,120 +202,82 @@ ifcvt-onecmpl-abs-1	__attribute__	an attribute reaches the dialect through the s
 ipa-sra-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 ipa-sra-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 loop-12	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-loop-2f	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-loop-2g	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-lto-tbaa-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+lto-tbaa-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 mayalias-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-mayalias-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-mayalias-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-memchr-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+mayalias-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+mayalias-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 memcpy-bi	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-memset-4	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-minmaxcmp-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-mul-sext	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-multi-ix	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+memset-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+mul-sext	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 nest-align-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 nestfunc-5	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
 nestfunc-6	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
 packed-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 packed-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 postmod-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr101188	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr101335	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr102134	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr103052	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr103209	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr101188	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr103255	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr103376	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr103405	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr103417	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr10352-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr104196	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr104604	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-pr104814	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr104839	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr104839	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr105613	__int128	no 128-bit integer in das or the dialect	never
-pr105777	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr105984	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr106032	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr106523	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr107131	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr107879	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr107881-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr108064	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr106032	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr106523	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr107131	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr107879	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr108064	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr108292	GNU vector extension	SIMD vector types are outside the dialect	never
 pr108498-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr108498-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr108498-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr108789	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr109040	GNU vector extension	SIMD vector types are outside the dialect	never
-pr109778	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr109925	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr109938	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr109986	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr110165-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr110166-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr110252-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr110165-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr110166-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr110252-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr110252-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr110252-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr110252-4	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr110666-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr110252-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr110666-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr110817-1	GNU vector extension	SIMD vector types are outside the dialect	never
 pr110817-2	GNU vector extension	SIMD vector types are outside the dialect	never
 pr110817-3	GNU vector extension	SIMD vector types are outside the dialect	never
-pr110914	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr110954-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr111151	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr111331-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr111331-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr111331-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr111408	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr111422	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr111431-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr110914	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr111431-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr111469-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr111863-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr112758	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr113010	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr113787	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr114207	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr114396	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr111863-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr113787	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr114207	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr114396	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr114552	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr114965	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr115033	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr15262-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr15296	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr17377	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr19449	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr20466-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr20527-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr20601-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr22141-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr22141-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr22141-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr22141-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr23135	GNU vector extension	SIMD vector types are outside the dialect	never
 pr23467	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr24135	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
 pr25125	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr27073	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr27285	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr27364	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr27671-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr28289	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr28403	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr28651	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr28865	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr28865	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr28982a	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr28982b	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr29006	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr30314	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr30778	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr31072	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr31448	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr31448-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr32500	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr33142	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr33870	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr33870-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr33870	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr33870-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr33992	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr34130	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr34154	GNU case range	`case a ... b` is a GNU extension; the dialect's switch takes one value per label	never
 pr34176	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr34415	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -365,34 +289,30 @@ pr35456	__builtin_* calls	a builtin maps through a shim list that the punning ti
 pr35472	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr36034-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr36034-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr36038	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr36321	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr36339	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr36343	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr36765	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr36765	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr37102	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr37573	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr37573	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr37780	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr37882	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr38051	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr38051	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr38151	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 pr38212	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr38236	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr38533	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr38819	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr38969	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-pr39100	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr39100	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr39120	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr39228	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr39233	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr39240	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr39339	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr39339	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr39501	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr40022	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr40057	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr40579	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr40657	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr40668	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr41239	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr41395-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr41395-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -404,12 +324,12 @@ pr42154	__attribute__	an attribute reaches the dialect through the sidecar (pack
 pr42231	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr42248	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 pr42269-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr42614	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr43008	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr42614	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr43008	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr43269	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr43385	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr43560	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr43784	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr43784	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr43835	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr43987	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr44164	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -418,7 +338,6 @@ pr44468	__attribute__	an attribute reaches the dialect through the sidecar (pack
 pr44683	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr44852	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr44858	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr44942	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr45034	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr45070	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr45695	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
@@ -426,12 +345,9 @@ pr46309	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr46316	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr46909-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr46909-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr47148	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr47155	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr47237	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr47299	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr47337	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr47538	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr47538	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr47925	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr48571-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr48814-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -443,7 +359,6 @@ pr49281	__attribute__	an attribute reaches the dialect through the sidecar (pack
 pr49390	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr49644	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 pr49886	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr50865	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr51323	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr51447	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr51466	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -453,13 +368,13 @@ pr51877	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr51933	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr52129	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr52286	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr52760	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr52760	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr52979-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr52979-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr53084	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr53645	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr53645-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr53688	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr53688	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr54471	__int128	no 128-bit integer in das or the dialect	never
 pr54937	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr54985	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -469,170 +384,124 @@ pr56205	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr56799	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr56837	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 pr56866	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr56899	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr56899	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr56962	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr56982	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr57124	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr57130	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr57130	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr57144	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr57344-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr57344-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr57344-3	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr57344-4	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr57829	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr57829	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr58277-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr58364	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr58419	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr58431	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr58570	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr58574	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr58726	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr58831	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr58943	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr58984	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr59014	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr59014-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr59101	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr59221	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr59229	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr59358	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr59413	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr59643	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr59014-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr59101	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr59229	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr59358	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr59643	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr59747	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr60003	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr60062	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr60062	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr60072	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr60454	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr60822	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr60454	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr60822	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr60960	GNU vector extension	SIMD vector types are outside the dialect	never
-pr61306-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr61306-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr61306-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr61306-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr61306-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr61375	__int128	no 128-bit integer in das or the dialect	never
-pr61517	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr61673	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr61682	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr61673	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr61725	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr62151	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr63209	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr63302	__int128	no 128-bit integer in das or the dialect	never
 pr63641	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr63659	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr63843	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr63843	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr64006	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr64242	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr64255	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr64260	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr64682	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr64718	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr64756	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr64957	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr64979	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr64255	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr64682	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr64718	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr64957	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr64979	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr65053-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr65053-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr65170	__int128	no 128-bit integer in das or the dialect	never
-pr65215-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr65215-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr65215-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr65215-4	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr65215-5	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr65216	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr65369	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr65401	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr65418-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr65418-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr65215-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr65215-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr65215-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr65215-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr65215-5	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr65369	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr65401	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr65418-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr65418-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr65427	GNU vector extension	SIMD vector types are outside the dialect	never
 pr65648	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr65956	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr66187	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr66233	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr66757	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr66940	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr66233	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr66940	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr67037	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr67226	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr67714	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr67781	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr67929_1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr68143_1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr68185	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr68249	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr68250	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr68321	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr67226	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr67929_1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr68143_1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr68250	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr68328	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr68376-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr68376-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr68381	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr68390	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr68532	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr68624	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr68648	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr68841	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr69097-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr68390	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr68532	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr68648	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr69097-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr69320-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr69403	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr69447	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr69403	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr69447	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr69691	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr70005	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr70127	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr70222-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr70222-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr70429	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr70127	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr70222-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr70222-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr70429	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr70460	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-pr70566	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr70566	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr70602	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr70903	GNU vector extension	SIMD vector types are outside the dialect	never
 pr71083	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr71494	computed goto and local labels	the goto row lowers labels, and computed goto rides on das's integer labels	P3
-pr71550	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr71554	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr71626-1	GNU vector extension	SIMD vector types are outside the dialect	never
-pr71631	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr71700	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr77718	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr77767	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr78170	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr78378	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr78436	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr77718	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr78378	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr78436	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr78438	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr78477	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr78559	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr78586	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr78617	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr78622	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr78675	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr78720	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr78675	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr78720	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr78726	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr78791	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr79043	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr78791	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr79043	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr79121	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr79286	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr79327	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr79354	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr79388	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr79450	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr79737-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr79388	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr79737-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
 pr79737-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr80153	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr80153	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr80421	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr80501	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr80501	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr80692	non-standard floating types	float and double are the dialect's floating types	never
 pr81281	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr81423	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr81555	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr81556	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr81588	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr81913	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr82192	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr82210	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr82524	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr81556	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr81588	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr82192	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr82210	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr82524	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr82954	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr83269	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr83298	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr83362	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr83383	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr83477	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr83362	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr84169	__int128	no 128-bit integer in das or the dialect	never
-pr84339	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr84339	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr84478	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr84521	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr84524	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
@@ -641,99 +510,73 @@ pr85095	__builtin_* calls	a builtin maps through a shim list that the punning ti
 pr85156	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr85169	GNU vector extension	SIMD vector types are outside the dialect	never
 pr85331	GNU vector extension	SIMD vector types are outside the dialect	never
-pr85529-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr85529-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr85529-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr85582-2	__int128	no 128-bit integer in das or the dialect	never
 pr85582-3	__int128	no 128-bit integer in das or the dialect	never
 pr85756	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr86231	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr86492	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr86528	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr86659-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr86659-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr86714	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr86844	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr87053	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr87290	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr87623	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr88693	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr88714	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr88739	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr86231	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr86492	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr86528	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr86844	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr87290	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr87623	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr88693	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr88714	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr88739	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr88904	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr89195	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr89369	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr89195	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr89369	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr89434	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr89634	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr89826	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr89634	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr90025	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr90311	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr90348	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr90348	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr90949	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr91137	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr91137	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr91450-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr91450-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr91597	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr91632	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr91632	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr91635	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr92140	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr92140	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr92618	GNU vector extension	SIMD vector types are outside the dialect	never
 pr92904	__int128	no 128-bit integer in das or the dialect	never
 pr93213	__int128	no 128-bit integer in das or the dialect	never
-pr93249	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr93402	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr93434	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr93402	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr93494	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr93582	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr93744-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr93744-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr93744-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr93908	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr93582	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr93908	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr93945	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr94130	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr94134	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr94412	GNU vector extension	SIMD vector types are outside the dialect	never
 pr94524-1	GNU vector extension	SIMD vector types are outside the dialect	never
 pr94524-2	GNU vector extension	SIMD vector types are outside the dialect	never
-pr94567	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr94591	GNU vector extension	SIMD vector types are outside the dialect	never
-pr94724	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr94734	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr94809	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr95731	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr96549	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr97073	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr94734	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr95731	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr97073	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr97325	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr97386-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr97386-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr97404	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr97421-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr97421-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr97421-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr97764	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr97836	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr97386-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr97421-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr97888-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr97888-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr98304-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr98366	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr98474	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr98681	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr98727	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr98736	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr98853-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr98853-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr99079	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr99751	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr97888-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr98474	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr98681	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr98727	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr98853-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr98853-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr99079	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 printf-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 printf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pta-field-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pta-field-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pure-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-return-addr	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+return-addr	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 scal-to-vec1	GNU vector extension	SIMD vector types are outside the dialect	never
 scal-to-vec2	GNU vector extension	SIMD vector types are outside the dialect	never
 scal-to-vec3	GNU vector extension	SIMD vector types are outside the dialect	never
-shiftdi-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-signed1bitfield-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+signed1bitfield-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 simd-1	GNU vector extension	SIMD vector types are outside the dialect	never
 simd-2	GNU vector extension	SIMD vector types are outside the dialect	never
 simd-4	GNU vector extension	SIMD vector types are outside the dialect	never
@@ -742,16 +585,11 @@ simd-6	GNU vector extension	SIMD vector types are outside the dialect	never
 ssad-run	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 stdarg-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 stkalign	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-strcpy-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+strcpy-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 strct-pack-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 strct-pack-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 strct-pack-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 strct-pack-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-strlen-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-strlen-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-strlen-4	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-strlen-5	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-strlen-6	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 strlen-7	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 struct-aliasing-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 struct-cpy-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -765,5 +603,4 @@ va-arg-pack-1	__builtin_* calls	a builtin maps through a shim list that the punn
 vfprintf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 vprintf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 vrp-7	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-widechar-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 zerolen-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4

@@ -90,5 +90,8 @@ an `IndirectGotoStmt` (a computed goto through a label address) is outside the d
 Every type spelling that carries `__jmp_buf_tag` (glibc's `jmp_buf`, `struct
 __jmp_buf_tag[1]`; its decay and a pointer to it, `struct __jmp_buf_tag *`; a pointer to the
 array, `(*)[1]`) is the one opaque record `jmp_buf` of one `int` field, or a pointer to it,
-which the lowering spells as the protocol's `CJmpBuf`. Anything else is an error naming the
-node kind and its location: compound literals are the next row.
+which the lowering spells as the protocol's `CJmpBuf`. A `__builtin_*` reference has no
+prototype in the dump (`<builtin fn type>`), so it is a variadic function type read only
+through its decay, which clang spells `BuiltinFnToFnPtr` and the dumper as the pinned
+`FunctionToPointerDecay` (F23); the emitter resolves the callee by name. Anything else is an
+error naming the node kind and its location: compound literals are the next row.

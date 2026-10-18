@@ -321,4 +321,15 @@ def p3_fixtures(t : T?) {
         rejects(t, "setjmp_value", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int r = setjmp(b); return r; \}\n", "trampoline form")
         rejects(t, "setjmp_tail_break", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int i = 0; while (i < 3) \{ if (setjmp(b)) \{ i = 9; \} i++; if (i > 1) break; \} return i; \}\n", "tail leaves an enclosing loop")
     }
+    t |> run("alloca: the per-function arena with its guard, allocations accumulating to the function's exit, __builtin_ names through the shim list, options stack") @(t : T?) {
+        var text : string
+        check_fixture(t, "p3_alloca", text)
+        has_text(t, text, "options indenting = 4\noptions stack = 1048576\n")
+        has_text(t, text, "def private p3_alloca__variable(n : int) : int \{\n    var _c_astack : uint8[65536]\n    var _c_aoff = 0")
+        has_text(t, text, "if (_c_aoff + int(uint64(n)) > 65536) \{\n        panic(\"alloca past the function's 65536 byte arena\")\n    \}\n    let _t0 = reinterpret<void?>(addr(_c_astack[_c_aoff]))\n    _c_aoff += (int(uint64(n)) + 15) & ~15")
+        has_text(t, text, "crt::memset(reinterpret<void?>(buf), 3, uint64(n))")
+        has_text(t, text, "var slot : int? = reinterpret<int?>(_t0)")
+        t |> equal(text |> find("__builtin_alloca") < 0, true, "a builtin name survived:\n{text}")
+        t |> equal(text |> find("def private p3_alloca__sum_bytes(p : uint8?; n : int) : int \{\n    var s : int = 0") >= 0, true, text)
+    }
 }

@@ -172,6 +172,18 @@ cannot end in a return das reads, so the function gets its trailing zero. A tail
 an enclosing loop, a site that is not an `if` at a block's statement level and a `setjmp`
 whose value is read any other way fail closed.
 
+`alloca(n)` is a bump on a per-function arena (`docs/stdlib-examples.md` "alloca"): a function
+whose body calls it opens with `var _c_astack : uint8[limit]` and `var _c_aoff = 0`, each site
+hoists a guard that panics past the limit (das's `assert` is a debug check, so the guard is a
+panic), takes `addr(_c_astack[_c_aoff])` as its value and advances the offset rounded to 16,
+so allocations in a loop accumulate to the function's exit as C's do and a longjmp past the
+frame frees them with it. Every alloca goes through the arena, a constant size included, since
+a fixed array hoisted inside a loop body would die with the iteration (F24). The limit is the
+sidecar's `alloca_limit`, 65536 by default; a module holding an arena opens with
+`options stack`, the sidecar's `stack` or 1048576. A `__builtin_` name whose libc twin the call
+tables carry is that twin (the shim list), so `__builtin_alloca`, `__builtin_memcpy` and
+`__builtin_abort` lower like their plain names.
+
 Output is assembled as an array of lines joined once (`docs/probe-findings.md` F19); the
 text then goes through the formatter, so spacing is the formatter's and indentation is the
 emitter's, four spaces per depth.

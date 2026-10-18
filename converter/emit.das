@@ -47,6 +47,11 @@ struct Emitter {
     marshal : table<int>
     switch_counter : int
     setjmp_counter : int
+    // the alloca arena: its bytes per function (the sidecar's `alloca_limit`), the module's
+    // `options stack` (the sidecar's `stack`), and whether any function used it
+    alloca_limit : int
+    stack_option : int
+    alloca_used : bool
     // the function's C labels by das number, and the blocks emitted without braces so a goto
     // into them finds its label in an enclosing scope
     labels : table<string; int>
@@ -83,6 +88,16 @@ let BIN_PREC <- {"add" => 11, "sub" => 11, "mul" => 12, "div" => 12, "rem" => 12
 let C_RUNTIME_CALLS <- {"printf" => "c_runtime/printf", "sprintf" => "c_runtime/printf", "snprintf" => "c_runtime/printf", "exit" => "c_runtime/c_exit", "abort" => "c_runtime/c_exit", "longjmp" => "c_runtime/setjmp", "_longjmp" => "c_runtime/setjmp"}
 
 let SETJMP_NAMES <- {"setjmp", "_setjmp", "__sigsetjmp"}
+
+let ALLOCA_NAMES <- {"alloca", "__builtin_alloca"}
+
+let ALLOCA_LIMIT = 65536
+
+let ALLOCA_STACK = 1048576
+
+// a `__builtin_` name whose libc twin the tables carry is that twin (the shim list)
+def private libc_name(name : string) : string =>
+    name |> starts_with("__builtin_") && !empty(libc_call(slice(name, length("__builtin_")))) ? slice(name, length("__builtin_")) : name
 
 let JMP_BUF = "jmp_buf"
 
@@ -494,7 +509,8 @@ def private callee_name(var em : Emitter; tu : CirTu; fn : CirExpr?; loc : CirLo
         fail(em, "setjmp whose value is not tested against zero by the `if` around it (the general trampoline form) is not lowered yet", loc)
         return ""
     }
-    if (!key_exists(em.functions, target.name) && empty(libc_call(target.name))) {
+    let libc = libc_name(target.name)
+    if (!key_exists(em.functions, target.name) && empty(libc_call(libc))) {
         // a name of function type is an external function; a pointer-typed one is a call
         // through the pointer
         if (kind_of(tu, target.t) == "func") {
@@ -505,16 +521,44 @@ def private callee_name(var em : Emitter; tu : CirTu; fn : CirExpr?; loc : CirLo
     if (key_exists(em.functions, target.name)) {
         return target.name == "main" ? "c_main" : das_name(em, target.name)
     }
-    em.requires |> insert(libc_module(target.name))
+    em.requires |> insert(libc_module(libc))
     // every crt bind is an unsafe operation (dasCRuntime/ARCHITECTURE.md): the body takes
     // [c_function] for it
-    if (key_exists(CRT_CALLS, target.name)) {
+    if (key_exists(CRT_CALLS, libc)) {
         em.unsafe_used = true
     }
-    return libc_call(target.name)
+    return libc_call(libc)
+}
+
+// the C name a call's callee spells, "" for a call through a pointer
+def private called_name(x : CirExpr) : string {
+    var target = x.fn
+    if (target != null && target.e == "cast" && target.cast_kind == "FunctionToPointerDecay") {
+        target = target.a
+    }
+    return target != null && target.e == "ref" ? target.name : ""
+}
+
+// `alloca(n)`: a bump on the function's arena (docs/stdlib-examples.md "alloca"): the guard
+// panics past the limit, since das's `assert` is a debug check; the offset rounds to 16
+def private emit_alloca(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    if (length(x.args) != 1) {
+        fail(em, "alloca takes one size", loc)
+        return value("", PREC_PRIMARY)
+    }
+    let n = to_int(emit_expr(em, tu, x.args[0], loc))
+    let size = das_type(em, tu, x.args[0].t, loc) == "int" ? n.text : "int({n.text})"
+    let tmp = temp_name(em)
+    em.unsafe_used = true
+    em.alloca_used = true
+    hoist(em, ["if (_c_aoff + {size} > {em.alloca_limit}) \{", "    panic(\"alloca past the function's {em.alloca_limit} byte arena\")", "\}", "let {tmp} = reinterpret<void?>(addr(_c_astack[_c_aoff]))", "_c_aoff += ({size} + 15) & ~15"])
+    return value(tmp, PREC_PRIMARY)
 }
 
 def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    if (key_exists(ALLOCA_NAMES, called_name(x))) {
+        return emit_alloca(em, tu, x, loc)
+    }
     let name = callee_name(em, tu, x.fn, loc)
     var args : array<string>
     args |> reserve(length(x.args) + 1)
@@ -1987,6 +2031,39 @@ def private collect_written(var em : Emitter; tu : CirTu; x : CirExpr?) {
     }
 }
 
+// whether a statement tree calls alloca anywhere
+def private calls_alloca(st : CirStmt const?) : bool {
+    if (st == null) {
+        return false
+    }
+    for (child in st.body) {
+        if (calls_alloca(child)) {
+            return true
+        }
+    }
+    return expr_calls_alloca(st.init) || expr_calls_alloca(st.e) || expr_calls_alloca(st.cond) || expr_calls_alloca(st.inc) || calls_alloca(st.then_s) || calls_alloca(st.else_s) || calls_alloca(st.body_s) || calls_alloca(st.init_s)
+}
+
+def private expr_calls_alloca(x : CirExpr const?) : bool {
+    if (x == null) {
+        return false
+    }
+    if (x.e == "call" && key_exists(ALLOCA_NAMES, called_name(*x))) {
+        return true
+    }
+    for (arg in x.args) {
+        if (expr_calls_alloca(arg)) {
+            return true
+        }
+    }
+    for (item in x.init_items) {
+        if (expr_calls_alloca(item.v)) {
+            return true
+        }
+    }
+    return expr_calls_alloca(x.a) || expr_calls_alloca(x.b) || expr_calls_alloca(x.c) || expr_calls_alloca(x.fn) || expr_calls_alloca(x.base) || expr_calls_alloca(x.i) || expr_calls_alloca(x.init)
+}
+
 // the pointers a call passes on: each needs a writable pointee in its callee copy, when it
 // has one; `longjmp` writes the value into its buffer, so that pointer is written through
 def private collect_call_pointers(var em : Emitter; tu : CirTu; x : CirExpr) {
@@ -2153,6 +2230,11 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     open_block(em, header)
     for (copy in copies) {
         line(em, copy)
+    }
+    if (calls_alloca(d.body)) {
+        // the per-function arena every alloca of the body bumps, freed with the frame
+        line(em, "var _c_astack : uint8[{em.alloca_limit}]")
+        line(em, "var _c_aoff = 0")
     }
     emit_body(em, tu, d.body)
     if (ret != "void" && !ends_in_return(d.body)) {
@@ -2407,6 +2489,8 @@ def emit_tu(tu : CirTu; side : Sidecar) : Emitter {
         }
     }
     flag_marshal(em, tu, side)
+    em.alloca_limit = side.alloca_limit > 0 ? side.alloca_limit : ALLOCA_LIMIT
+    em.stack_option = side.stack
     emit_types(em, tu)
     for (d in tu.decls) {
         if (d.k == "global" && !d.is_extern) {
@@ -2449,11 +2533,19 @@ def emit_tu(tu : CirTu; side : Sidecar) : Emitter {
         line(em, "return c_main()")
         close_block(em)
     }
+    assemble_module(em)
+    return <- em
+}
+
+// the module text: banner, options, requires, the empty literal's byte (which precedes every
+// global whose initializer takes its address), then everything emitted
+def private assemble_module(var em : Emitter) {
     var required <- [for (name in keys(em.requires)); name]
     required |> sort()
     let header = join([for (name in required); "require {name}\n"], "")
-    // the empty literal's byte precedes every global whose initializer takes its address
     let empty = em.empty_literal ? "var private {EMPTY_LITERAL} : uint8[1] = fixed_array(uint8(0))\n\n" : ""
-    em.text = GENERATED_BANNER + "\noptions gen2\noptions indenting = 4\n" + header + "\n" + empty + join(em.out, "")
-    return <- em
+    // the arenas live on the das stack, so a module holding one raises it (the sidecar sizes it)
+    let stack = em.stack_option > 0 ? em.stack_option : (em.alloca_used ? ALLOCA_STACK : 0)
+    let stack_line = stack > 0 ? "options stack = {stack}\n" : ""
+    em.text = GENERATED_BANNER + "\noptions gen2\noptions indenting = 4\n" + stack_line + header + "\n" + empty + join(em.out, "")
 }

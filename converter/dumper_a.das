@@ -556,12 +556,29 @@ def private jmp_buf_type(var d : Dumper; qual : string) : int {
     return r
 }
 
-def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
+// the spellings that are not C types: glibc's `jmp_buf`, a builtin's prototype-less function
+// type (read only through its decay, since the emitter resolves the callee by name), and an
+// unnamed record, whose location in parentheses the attribute stripping would eat; -2 for a
+// spelling that is none of these
+def private special_type(var d : Dumper; qual : string; at : CirLoc) : int {
     if (find(qual, "__jmp_buf_tag") >= 0) {
         return jmp_buf_type(d, unqualified(qual))
     }
+    if (qual == "<builtin fn type>") {
+        var void_t = CirType(k = "void")
+        var t = CirType(k = "func", ret = intern(d, "void", void_t), variadic = true)
+        return intern(d, "func:builtin", t)
+    }
     if (find(qual, "(unnamed ") >= 0 || find(qual, "(anonymous ") >= 0) {
         return unnamed_record_type(d, qual, at)
+    }
+    return -2
+}
+
+def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
+    let special = special_type(d, qual, at)
+    if (special != -2) {
+        return special
     }
     let qt = unqualified(without_attributes(qual))
     let scalar = scalar_from_qual(d, qt)
@@ -963,7 +980,10 @@ def private child_expr(var d : Dumper; kids : JsonValue?; idx : int) : CirExpr? 
     dump_expr(d, (kids as _array)[idx])
 
 def private dump_cast(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
-    let ck = js?["castKind"] ?? ""
+    // a `__builtin_*` reference decays by clang's own kind, which the pinned list spells as the
+    // plain decay (docs/probe-findings.md F23)
+    let raw = js?["castKind"] ?? ""
+    let ck = raw == "BuiltinFnToFnPtr" ? "FunctionToPointerDecay" : raw
     if (!key_exists(CAST_KINDS, ck)) {
         fail(d, "unknown castKind `{ck}`", at)
         return null

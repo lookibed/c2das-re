@@ -46,6 +46,20 @@ def file_text(path : string) : string {
     return text
 }
 
+// the builtins with a plain libc twin the emitter maps by name (converter/ARCHITECTURE_EMITTER.md,
+// the shim list); a test using only these is not a `__builtin_*` skip
+let BUILTIN_SHIMS <- ["alloca", "abort", "exit", "memcpy", "memmove", "memset", "memcmp", "strlen", "strcpy", "strncpy", "strcmp", "strncmp", "strchr", "printf", "sprintf", "malloc", "calloc", "free", "abs"]
+
+// the text with the shimmed builtins spelled as their libc twins, so the `__builtin_` rule
+// sees only the builtins without one
+def without_shims(text : string) : string {
+    var out = text
+    for (name in BUILTIN_SHIMS) {
+        out = out |> replace("__builtin_{name}", name)
+    }
+    return out
+}
+
 [export]
 def main : int {
     if (!fexist(TESTS_DIR)) {
@@ -67,7 +81,7 @@ def main : int {
     ids |> sort()
     var lines : array<string>
     for (id in ids) {
-        let text = file_text("{TESTS_DIR}/{id}.c")
+        let text = without_shims(file_text("{TESTS_DIR}/{id}.c"))
         for (idx, rule in range(length(RULES)), RULES) {
             if (regex_search(compiled[idx], text).x >= 0) {
                 lines |> push("{id}\t{rule.feature}\t{rule.reason}\t{rule.phase}")

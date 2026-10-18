@@ -13,6 +13,10 @@ struct Sidecar {
     // records read and written as bytes at clang's offsets, never laid out by das: the packed
     // disk types, by tag or typedef name
     marshal : table<string>
+    // the module's `options stack` when a function calls alloca (0: the default), and the bytes
+    // of each such function's arena (0: the default)
+    stack : int
+    alloca_limit : int
 }
 
 //! The sidecar a C file converts under: `given` when it is not empty, else `<stem>.c2das` beside the
@@ -57,6 +61,8 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
             side.marshal |> insert(name ?? "")
         }
     }
+    side.stack = int(js?["stack"] ?? 0l)
+    side.alloca_limit = int(js?["alloca_limit"] ?? 0l)
     delete_json(js)
     return <- side
 }
