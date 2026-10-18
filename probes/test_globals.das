@@ -27,9 +27,7 @@ def _c2das_init_pointers {
     }
 }
 
-def private helper : int {
-    return hidden
-}
+def private helper : int => hidden
 
 [test]
 def test_globals(t : T?) {

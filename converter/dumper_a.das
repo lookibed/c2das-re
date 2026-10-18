@@ -60,22 +60,16 @@ def private fail(var d : Dumper; what : string; at : CirLoc) {
     }
 }
 
-def private node_kind(js : JsonValue?) : string {
-    return js?["kind"] ?? ""
-}
+def private node_kind(js : JsonValue?) : string => js?["kind"] ?? ""
 
-def private is_present(v : JsonValue?) : bool {
-    return v != null && !(v is _null)
-}
+def private is_present(v : JsonValue?) : bool => v != null && !(v is _null)
 
 def private child_count(js : JsonValue?) : int {
     let inner = js?["inner"]
     return inner != null && inner is _array ? length(inner as _array) : 0
 }
 
-def private has_loc(js : JsonValue?) : bool {
-    return is_present(js?["loc"])
-}
+def private has_loc(js : JsonValue?) : bool => is_present(js?["loc"])
 
 // clang omits `file` and `line` from a location that repeats the previous node's: the dumper
 // carries them forward in tree order, which is the order clang assigned them in
@@ -563,9 +557,8 @@ def private qual_of(js : JsonValue?) : string {
     return is_present(desugared) ? (desugared ?? "") : (js?["qualType"] ?? "")
 }
 
-def private node_type(var d : Dumper; js : JsonValue?; at : CirLoc) : int {
-    return type_from_qual(d, qual_of(js?["type"]), at)
-}
+def private node_type(var d : Dumper; js : JsonValue?; at : CirLoc) : int =>
+    type_from_qual(d, qual_of(js?["type"]), at)
 
 // C qualifiers carry no meaning for the das type (docs/c-feature-matrix.md section 1)
 def private unqualified(qual : string) : string {
@@ -715,9 +708,8 @@ def private dump_args(var d : Dumper; kids : JsonValue?; from : int; count : int
     return true
 }
 
-def private child_expr(var d : Dumper; kids : JsonValue?; idx : int) : CirExpr? {
-    return dump_expr(d, (kids as _array)[idx])
-}
+def private child_expr(var d : Dumper; kids : JsonValue?; idx : int) : CirExpr? =>
+    dump_expr(d, (kids as _array)[idx])
 
 def private dump_cast(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
     let ck = js?["castKind"] ?? ""
@@ -1299,9 +1291,8 @@ def private dump_typedef_decl(var d : Dumper; js : JsonValue?) : bool {
     return true
 }
 
-def private dump_type_decl(var d : Dumper; js : JsonValue?) : bool {
-    return node_kind(js) == "RecordDecl" ? dump_record_decl(d, js) : dump_typedef_decl(d, js)
-}
+def private dump_type_decl(var d : Dumper; js : JsonValue?) : bool =>
+    node_kind(js) == "RecordDecl" ? dump_record_decl(d, js) : dump_typedef_decl(d, js)
 
 def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
     let at = loc_of(d, js)
@@ -1403,9 +1394,8 @@ def private merge_tentative(var d : Dumper; var cd : CirDecl?) : bool {
 
 //! The pinned clang: the libclang archive's own binary when `PATH_TO_LIBCLANG` is set
 //! (`scripts/env.sh`), else whatever `clang` is on PATH.
-def default_clang : string {
-    return has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
-}
+def default_clang : string =>
+    has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
 
 //! Runs clang on `c_path` under the dialect `target` and normalizes the dump; `d.error` names
 //! the first unsupported construct, and the dump is then partial.

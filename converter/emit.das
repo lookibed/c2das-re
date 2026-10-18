@@ -111,29 +111,18 @@ def private unsafe_value(var em : Emitter; text : string; prec : int) : Em {
     return em.in_global_init ? value("unsafe({text})", PREC_PRIMARY) : value(text, prec)
 }
 
-def private value(text : string; prec : int) : Em {
-    return Em(text = text, prec = prec, is_bool = false)
-}
+def private value(text : string; prec : int) : Em => Em(text = text, prec = prec, is_bool = false)
 
-def private truth(text : string; prec : int) : Em {
-    return Em(text = text, prec = prec, is_bool = true)
-}
+def private truth(text : string; prec : int) : Em => Em(text = text, prec = prec, is_bool = true)
 
-def private wrap(e : Em; need : int) : string {
-    return e.prec < need ? "({e.text})" : e.text
-}
+def private wrap(e : Em; need : int) : string => e.prec < need ? "({e.text})" : e.text
 
-def private kind_of(tu : CirTu; t : int) : string {
-    return t >= 0 && t < length(tu.types) ? tu.types[t].k : ""
-}
+def private kind_of(tu : CirTu; t : int) : string => t >= 0 && t < length(tu.types) ? tu.types[t].k : ""
 
-def private is_small_int(tu : CirTu; t : int) : bool {
-    return kind_of(tu, t) == "int" && tu.types[t].w < 32 && tu.types[t].spell != "_Bool"
-}
+def private is_small_int(tu : CirTu; t : int) : bool =>
+    kind_of(tu, t) == "int" && tu.types[t].w < 32 && tu.types[t].spell != "_Bool"
 
-def private is_unsigned(tu : CirTu; t : int) : bool {
-    return kind_of(tu, t) == "int" && !tu.types[t].is_signed
-}
+def private is_unsigned(tu : CirTu; t : int) : bool => kind_of(tu, t) == "int" && !tu.types[t].is_signed
 
 //! The das spelling of type `t`, or "" with `error` set.
 def das_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
@@ -210,13 +199,11 @@ def private function_value_type(var em : Emitter; tu : CirTu; t : int; loc : Cir
 }
 
 // a tagged record keeps its C name; an unnamed one is named by its type slot
-def private record_name(em : Emitter; tu : CirTu; t : int) : string {
-    return empty(tu.types[t].name) ? "anon_{t}" : das_name(em, tu.types[t].name)
-}
+def private record_name(em : Emitter; tu : CirTu; t : int) : string =>
+    empty(tu.types[t].name) ? "anon_{t}" : das_name(em, tu.types[t].name)
 
-def private field_name(em : Emitter; tu : CirTu; rec : int; field : int) : string {
-    return das_name(em, tu.types[rec].fields[field].name)
-}
+def private field_name(em : Emitter; tu : CirTu; rec : int; field : int) : string =>
+    das_name(em, tu.types[rec].fields[field].name)
 
 // the bool view of a C scalar: a comparison stays one, a pointer tests against null, an
 // integer against zero
@@ -229,9 +216,7 @@ def private to_bool(e : Em; tu : CirTu; t : int) : Em {
 }
 
 // the int view of a C expression das spelled as a bool
-def private to_int(e : Em) : Em {
-    return e.is_bool ? value("{wrap(e, PREC_COND + 1)} ? 1 : 0", PREC_COND) : e
-}
+def private to_int(e : Em) : Em => e.is_bool ? value("{wrap(e, PREC_COND + 1)} ? 1 : 0", PREC_COND) : e
 
 def private literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let spelled = das_type(em, tu, x.t, loc)
@@ -637,9 +622,8 @@ def private zero_literal(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : 
 
 // whether an array initializer spells as one `fixed_array` literal: the literal must hold
 // every element, so a large array the source fills sparsely is a declaration plus stores
-def private literal_array(tu : CirTu; x : CirExpr) : bool {
-    return kind_of(tu, x.t) != "array" || length(x.init_items) == tu.types[x.t].count || tu.types[x.t].count <= SPARSE_ARRAY_LIMIT
-}
+def private literal_array(tu : CirTu; x : CirExpr) : bool =>
+    kind_of(tu, x.t) != "array" || length(x.init_items) == tu.types[x.t].count || tu.types[x.t].count <= SPARSE_ARRAY_LIMIT
 
 // `S(f = v, ...)` naming the slots the source filled, the rest the struct's zeros;
 // `fixed_array(...)` with every element, the unwritten ones as zero literals
@@ -792,9 +776,7 @@ def private emit_while(var em : Emitter; tu : CirTu; st : CirStmt) {
     close_block(em)
 }
 
-def private numbered(base : string; count : int) : string {
-    return count == 1 ? base : "{base}{count}"
-}
+def private numbered(base : string; count : int) : string => count == 1 ? base : "{base}{count}"
 
 def private emit_do(var em : Emitter; tu : CirTu; st : CirStmt) {
     let mark = length(em.pre)
@@ -1097,8 +1079,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     em.for_counter = 0
     em.unsafe_used = false
     collect_written_stmt(tu, d.body, em.written, em.written_through)
-    var params : array<string>
-    var copies : array<string>
+    var params, copies : array<string>
     for (p in d.params) {
         let spelled = das_type(em, tu, p.t, d.loc)
         let name = das_name(em, p.name)
@@ -1146,8 +1127,7 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
         fail(em, "record `{name}` is not laid out naturally; packed records are marshal-only and not lowered yet", d.loc)
         return
     }
-    var lines : array<string>
-    var names : array<string>
+    var lines, names : array<string>
     lines |> reserve(length(tu.types[t].fields))
     names |> reserve(length(tu.types[t].fields))
     var spelled = ""

@@ -80,9 +80,8 @@ class VariadicCallMacro : AstCallMacro {
     }
 }
 
-def private is_va_args(t : TypeDeclPtr) : bool {
-    return t != null && t.baseType == Type.tStructure && t.structType != null && t.structType.name == "va_args"
-}
+def private is_va_args(t : TypeDeclPtr) : bool =>
+    t != null && t.baseType == Type.tStructure && t.structType != null && t.structType.name == "va_args"
 
 [function_macro(name = "variadic")]
 class VariadicAnnotation : AstFunctionAnnotation {

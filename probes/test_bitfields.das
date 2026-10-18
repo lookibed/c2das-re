@@ -6,17 +6,13 @@ struct BF {
     e : int16
 }
 
-def operator . a(s : BF) : uint {
-    return s._bits0 & 7u
-}
+def operator . a(s : BF) : uint => s._bits0 & 7u
 
 def operator . a :=(var s : BF; v : uint) {
     s._bits0 = (s._bits0 & ~7u) | (v & 7u)
 }
 
-def operator . b(s : BF) : int {
-    return int(s._bits0 << 24u) >> 27
-}
+def operator . b(s : BF) : int => int(s._bits0 << 24u) >> 27
 
 def operator . b :=(var s : BF; v : int) {
     s._bits0 = (s._bits0 & ~(31u << 3u)) | ((uint(v) & 31u) << 3u)

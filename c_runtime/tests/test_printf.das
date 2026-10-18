@@ -11,21 +11,13 @@ struct Case {
     va : CVaList
 }
 
-def cstr(s : string) : uint8? {
-    return unsafe(reinterpret<uint8?>(s))
-}
+def cstr(s : string) : uint8? => unsafe(reinterpret<uint8?>(s))
 
-def iv(v : int64) : CVal {
-    return CVal(i = v)
-}
+def iv(v : int64) : CVal => CVal(i = v)
 
-def dv(v : double) : CVal {
-    return CVal(d = v)
-}
+def dv(v : double) : CVal => CVal(d = v)
 
-def sv(s : string) : CVal {
-    return CVal(p = unsafe(reinterpret<void?>(s)))
-}
+def sv(s : string) : CVal => CVal(p = unsafe(reinterpret<void?>(s)))
 
 //! The conversion battery: one line per case, the C argument list spelled for clang and the
 //! same values as a CVaList for the das side.
@@ -41,9 +33,8 @@ def battery : array<Case> {
     ]
 }
 
-def c_escaped(s : string) : string {
-    return s |> replace("\\", "\\\\") |> replace("\"", "\\\"") |> replace("\n", "\\n")
-}
+def c_escaped(s : string) : string =>
+    s |> replace("\\", "\\\\") |> replace("\"", "\\\"") |> replace("\n", "\\n")
 
 def native_output(cases : array<Case>) : string {
     let dir = "{temp_directory_result() as value}"
@@ -72,7 +63,7 @@ def native_output(cases : array<Case>) : string {
 def das_output(cases : array<Case>) : string {
     return build_string() $(var w) {
         for (c in cases) {
-            let bytes <- c_vformat(cstr(c.fmt), c.va)
+            var inscope bytes <- c_vformat(cstr(c.fmt), c.va)
             for (b in bytes) {
                 w |> write(to_char(int(b)))
             }

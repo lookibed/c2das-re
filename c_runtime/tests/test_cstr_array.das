@@ -7,9 +7,7 @@ require c_runtime/cstr_array
 
 var name : uint8[8] = cstr_array("abc", 8)
 
-def bytes_of(arr : uint8[8]) : string {
-    return join([for (b in arr); "{int(b)}"], " ")
-}
+def bytes_of(arr : uint8[8]) : string => join([for (b in arr); "{int(b)}"], " ")
 
 [test]
 def test_cstr_array(t : T?) {

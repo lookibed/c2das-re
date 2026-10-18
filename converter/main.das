@@ -1,4 +1,7 @@
 options gen2
+// the pipeline parses clang's JSON dump below its own frames: a deep expression tree overflows
+// the default 16 KB context stack, and dastest gives its tests this much
+options stack = 1048576
 
 require daslib/fio
 require daslib/clargs

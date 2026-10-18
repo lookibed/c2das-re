@@ -13,9 +13,8 @@ def run_child(name, source : string) : tuple<rc : int; out : string> {
     return (rc, out)
 }
 
-def program(tail : string) : string {
-    return "options gen2\nrequire c_runtime/c_exit\ndef first \{\n    print(\"first\\n\")\n\}\ndef second \{\n    print(\"second\\n\")\n\}\n[export]\ndef main : int \{\n    c_atexit(@@first)\n    c_atexit(@@second)\n    print(\"main\\n\")\n" + tail + "\}\n"
-}
+def program(tail : string) : string =>
+    "options gen2\nrequire c_runtime/c_exit\ndef first \{\n    print(\"first\\n\")\n\}\ndef second \{\n    print(\"second\\n\")\n\}\n[export]\ndef main : int \{\n    c_atexit(@@first)\n    c_atexit(@@second)\n    print(\"main\\n\")\n" + tail + "\}\n"
 
 [test]
 def test_c_exit(t : T?) {

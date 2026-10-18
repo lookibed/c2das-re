@@ -154,7 +154,8 @@ Language, runtime and stdlib truth is `skills/daslang/`. Two lists daScript keep
 "daslang Language": the shapes that **fail silently** (a `+`/`-` continuation line, `delete`
 on `array<T?>`, `:=` on a string, `is`/`as` on handled types, `tab[k]` inserting on read,
 `to_int` on garbage, argument evaluation order) and the **idiom table** the lint suite
-enforces. `print` is for user-facing scripts only; tools and tests use `to_log`.
+enforces. `print` is for user-facing scripts only; tools and tests use `to_log`, whose `LOG_INFO` lines show
+only under `DAS_LOG_LEVEL=info` (daslang's floor is `warning`; `scripts/env.sh` sets it).
 
 Converter-specific: the converter emits `struct`, never `class`; generated modules carry the
 generated banner and relaxed lint options; C strings are `uint8` bytes, never das `string`;

@@ -22,13 +22,9 @@ struct private Directive {
     end : int
 }
 
-def private is_flag(b : int) : bool {
-    return b == '-' || b == '+' || b == ' ' || b == '#' || b == '0'
-}
+def private is_flag(b : int) : bool => b == '-' || b == '+' || b == ' ' || b == '#' || b == '0'
 
-def private is_length(b : int) : bool {
-    return b == 'h' || b == 'l' || b == 'j' || b == 'z' || b == 't' || b == 'L'
-}
+def private is_length(b : int) : bool => b == 'h' || b == 'l' || b == 'j' || b == 'z' || b == 't' || b == 'L'
 
 // the directive starting at fmt[at] == '%': its text with `*` kept, its conversion and the
 // index just past it
@@ -75,13 +71,10 @@ def private is_int_class(d : Directive) : bool {
     return c == 'd' || c == 'i' || c == 'u' || c == 'o' || c == 'x' || c == 'X' || c == 'c'
 }
 
-def private is_signed_conv(d : Directive) : bool {
-    return d.conv == 'd' || d.conv == 'i' || d.conv == 'c'
-}
+def private is_signed_conv(d : Directive) : bool => d.conv == 'd' || d.conv == 'i' || d.conv == 'c'
 
-def private is_wide_mod(mod : string) : bool {
-    return mod == "ll" || mod == "j" || mod == "z" || mod == "t" || (mod == "l" && crt::LONG_BITS == 64)
-}
+def private is_wide_mod(mod : string) : bool =>
+    mod == "ll" || mod == "j" || mod == "z" || mod == "t" || (mod == "l" && crt::LONG_BITS == 64)
 
 def private is_float_class(d : Directive) : bool {
     let c = d.conv

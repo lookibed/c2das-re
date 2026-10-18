@@ -1,5 +1,7 @@
-# daslang run artifacts: the JIT cache lands in the working directory of whatever ran
+# daslang run artifacts: the JIT cache and the module cache land in the working directory of
+# whatever ran (daScript ignores its own .cache/ the same way)
 .jitted_scripts/
+.cache/
 *.aot.cpp
 *.aot.h
 
@@ -19,6 +21,7 @@
 # machine-local agent wiring (the tracked *.example files are the templates)
 /.codex/*
 !/.codex/config.toml.example
+/.claude/settings.local.json
 /opencode.json
 /.env
 /.claude/worktrees/

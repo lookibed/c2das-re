@@ -12,9 +12,7 @@ require daslib/fio
 
 let TIERS <- {"interp", "jit", "exe", "aot"}
 
-def private daslang_bin : string {
-    return get_das_root() + "/bin/daslang"
-}
+def private daslang_bin : string => get_das_root() + "/bin/daslang"
 
 // the daslang invocation prefix: the binary plus one -load_module per module folder
 def private daslang_cmd(module_dirs : array<string>) : array<string> {

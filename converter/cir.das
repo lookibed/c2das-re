@@ -141,19 +141,15 @@ let CIR_VERSION = "0.1"
 
 let CAST_KINDS <- {"LValueToRValue", "NoOp", "IntegralCast", "IntegralToFloating", "FloatingToIntegral", "FloatingCast", "IntegralToBoolean", "FloatingToBoolean", "PointerToBoolean", "ArrayToPointerDecay", "FunctionToPointerDecay", "NullToPointer", "BitCast", "PointerToIntegral", "IntegralToPointer", "ToVoid", "BooleanToSignedIntegral"}
 
-def target_llp64_msvc : CirTarget {
-    return CirTarget(triple = "x86_64-pc-windows-msvc", int_w = 32, long_w = 32, llong_w = 64, ptr_w = 64, char_signed = false)
-}
+def target_llp64_msvc : CirTarget =>
+    CirTarget(triple = "x86_64-pc-windows-msvc", int_w = 32, long_w = 32, llong_w = 64, ptr_w = 64, char_signed = false)
 
-def target_lp64_linux : CirTarget {
-    return CirTarget(triple = "x86_64-unknown-linux-gnu", int_w = 32, long_w = 64, llong_w = 64, ptr_w = 64, char_signed = false)
-}
+def target_lp64_linux : CirTarget =>
+    CirTarget(triple = "x86_64-unknown-linux-gnu", int_w = 32, long_w = 64, llong_w = 64, ptr_w = 64, char_signed = false)
 
 //! The dialect a `--target` word names: `msvc` (the documents' LLP64 default) or `linux` (the
 //! host's LP64, for differential runs against a native build on this box).
-def target_by_name(name : string) : CirTarget {
-    return name == "linux" ? target_lp64_linux() : target_llp64_msvc()
-}
+def target_by_name(name : string) : CirTarget => name == "linux" ? target_lp64_linux() : target_llp64_msvc()
 
 //! Frees a node and everything under it: the generated finalizer of a struct already recurses
 //! through its pointer fields and its arrays of pointers, so one `delete` is the whole walk and
@@ -195,9 +191,7 @@ def private indent(var w : Writer) {
     w.out |> push(repeat(" ", w.depth))
 }
 
-def private json_str(s : string) : string {
-    return write_json(JV(s))
-}
+def private json_str(s : string) : string => write_json(JV(s))
 
 def private open_object(var w : Writer) {
     w.out |> push("\{\n")
@@ -765,21 +759,14 @@ def write_cir(tu : CirTu) : string {
 
 // reader
 
-def private js_int(js : JsonValue?; key : string) : int {
-    return int(js?[key] ?? 0l)
-}
+def private js_int(js : JsonValue?; key : string) : int => int(js?[key] ?? 0l)
 
-def private js_str(js : JsonValue?; key : string) : string {
-    return js?[key] ?? ""
-}
+def private js_str(js : JsonValue?; key : string) : string => js?[key] ?? ""
 
-def private js_bool(js : JsonValue?; key : string) : bool {
-    return js?[key] ?? false
-}
+def private js_bool(js : JsonValue?; key : string) : bool => js?[key] ?? false
 
-def private read_loc(js : JsonValue?) : CirLoc {
-    return CirLoc(file = js_str(js, "file"), line = js_int(js, "line"), col = js_int(js, "col"))
-}
+def private read_loc(js : JsonValue?) : CirLoc =>
+    CirLoc(file = js_str(js, "file"), line = js_int(js, "line"), col = js_int(js, "col"))
 
 def private read_type(js : JsonValue?) : CirType {
     var t = CirType(k = js_str(js, "k"))

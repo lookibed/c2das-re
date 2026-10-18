@@ -36,7 +36,7 @@ def private check_suite(suite : string) {
         passing |> insert(id)
     }
     for (line in lines_of(skip_path)) {
-        let fields <- split(line, "\t")
+        var inscope fields <- split(line, "\t")
         if (length(fields) != 4 || !(fields[3] |> starts_with("P"))) {
             gate_finding(skip_path, "`{line}`: a skip line is id, feature, reason, phase (P<n>), tab-separated")
             continue

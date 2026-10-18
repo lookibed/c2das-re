@@ -3,9 +3,7 @@ require dastest/testing_boost public
 require daslib/fio
 require strings
 
-def child_path(name : string) : string {
-    return "{temp_directory_result() as value}/c2das_probe_{name}.das"
-}
+def child_path(name : string) : string => "{temp_directory_result() as value}/c2das_probe_{name}.das"
 
 def run_child(name, source : string) : tuple<rc : int; out : string> {
     let path = child_path(name)

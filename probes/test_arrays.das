@@ -3,9 +3,7 @@ require dastest/testing_boost public
 
 var g_idx : int
 
-def read_idx : int {
-    return g_idx
-}
+def read_idx : int => g_idx
 
 [test]
 def test_arrays(t : T?) {

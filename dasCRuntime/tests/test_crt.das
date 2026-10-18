@@ -3,13 +3,9 @@ require dastest/testing_boost public
 require crt
 require math
 
-def cstr(s : string) : uint8? {
-    return unsafe(reinterpret<uint8?>(s))
-}
+def cstr(s : string) : uint8? => unsafe(reinterpret<uint8?>(s))
 
-def as_string(p : uint8?) : string {
-    return unsafe(reinterpret<string>(p))
-}
+def as_string(p : uint8?) : string => unsafe(reinterpret<string>(p))
 
 [test]
 def test_crt_memory(t : T?) {

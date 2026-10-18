@@ -1,4 +1,7 @@
 options gen2
+// the pipeline parses clang's JSON dump below its own frames: a deep expression tree overflows
+// the default 16 KB context stack, and dastest gives its tests this much
+options stack = 1048576
 
 require strings
 require daslib/strings_boost
@@ -129,8 +132,7 @@ def main : int {
     }
     var passed : array<string>
     var counts : table<string; int>
-    var regressions : array<string>
-    var gained : array<string>
+    var regressions, gained : array<string>
     for (id in test_ids(args.filter)) {
         if (key_exists(skips, id)) {
             counts["skip"] = (counts?["skip"] ?? 0) + 1

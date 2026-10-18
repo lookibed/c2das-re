@@ -41,8 +41,7 @@ def test_macros(t : T?) {
         t |> equal(int(b[3]), 4)
     }
     t |> run("a pointer written through must be a var parameter: a const pointer copies as const pointee") @(t : T?) {
-        var a : uint8[1]
-        var b : uint8[1]
+        var a, b : uint8[1]
         unsafe {
             t |> equal(param_copy_types(addr(a[0]), addr(b[0])), "uint8? const|uint8 const?|uint8?|uint8?")
         }

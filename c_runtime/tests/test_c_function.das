@@ -38,9 +38,8 @@ def scratch_square(v : int) : int {
     return out
 }
 
-def blit_without_annotation_source : string {
-    return "options gen2\ndef blit(src_in : uint8 const?; var dst_in : uint8?; n_in : int) \{\n    var src = src_in\n    var dst = dst_in\n    var n = n_in\n    while (n != 0) \{\n        n = n - 1\n        deref(dst) = deref(src)\n        dst = dst + 1\n        src = src + 1\n    \}\n\}\n[export]\ndef main \{\n\}\n"
-}
+def blit_without_annotation_source : string =>
+    "options gen2\ndef blit(src_in : uint8 const?; var dst_in : uint8?; n_in : int) \{\n    var src = src_in\n    var dst = dst_in\n    var n = n_in\n    while (n != 0) \{\n        n = n - 1\n        deref(dst) = deref(src)\n        dst = dst + 1\n        src = src + 1\n    \}\n\}\n[export]\ndef main \{\n\}\n"
 
 [test]
 def test_c_function(t : T?) {

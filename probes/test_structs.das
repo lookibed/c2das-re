@@ -46,9 +46,7 @@ def make() : WithArr {
     return r
 }
 
-def sq(x : int) : int {
-    return x * x
-}
+def sq(x : int) : int => x * x
 
 // the layout law checked at compile time from an [init] body: the converter's generated
 // modules assert clang's layout this way at zero run-time cost
@@ -96,8 +94,7 @@ def test_structs(t : T?) {
         t |> equal(g_tab[0].vals[3], 0)
     }
     t |> run("self-referential struct and function-pointer invoke") @(t : T?) {
-        var n1 : Node
-        var n2 : Node
+        var n1, n2 : Node
         n2.v = 2
         n1.next = unsafe(addr(n2))
         t |> equal(n1.next.v, 2)
