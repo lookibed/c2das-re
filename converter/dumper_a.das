@@ -12,6 +12,7 @@ require cbind
 require daslib/safe_addr
 require daslib/algorithm
 require cir
+require bit_units
 
 //! Dumper A: `clang -ast-dump=json` normalized into C-IR. Fails closed: the first construct it
 //! cannot represent exactly stops the dump with a location in `error`.
@@ -57,6 +58,7 @@ def private is_constant(r : ClangEnumRef) : bool => !empty(r.item)
 
 struct Dumper {
     tu : CirTu
+    layout : LayoutMemo
     error : string
     cur_file : string
     cur_line : int
@@ -651,46 +653,6 @@ def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
     return -1
 }
 
-def private align_of_type(d : Dumper; t : int) : int {
-    let k = d.tu.types[t].k
-    if (k == "int" || k == "float") {
-        return d.tu.types[t].w / 8
-    }
-    if (k == "ptr" || k == "func") {
-        return d.tu.target.ptr_w / 8
-    }
-    if (k == "enum") {
-        return 4
-    }
-    if (k == "array") {
-        return align_of_type(d, d.tu.types[t].elem)
-    }
-    return max(d.tu.types[t].align, 1)
-}
-
-// whether clang's layout is the natural one das computes for the same fields (the layout
-// law, docs/lowering-examples.md "Structs & layout"); a record it is not for is `packed`
-def private natural_layout(d : Dumper; fields : array<CirField>; is_union : bool; size, align : int) : bool {
-    var off = 0
-    var end = 0
-    var max_align = 1
-    for (f in fields) {
-        if (f.is_bitfield) {
-            return true
-        }
-        let a = align_of_type(d, f.t)
-        let sz = int(size_of_type(d, f.t))
-        off = is_union ? 0 : (off + a - 1) / a * a
-        if (off != f.off) {
-            return false
-        }
-        off += sz
-        end = max(end, off)
-        max_align = max(max_align, a)
-    }
-    return (end + max_align - 1) / max_align * max_align == size && max_align == align
-}
-
 // a `struct`, `union` or `enum` spelling to its type; -2 for a spelling with no such tag
 def private tagged_type(var d : Dumper; qt : string; at : CirLoc) : int {
     if (qt |> starts_with("struct ") || qt |> starts_with("union ")) {
@@ -738,8 +700,8 @@ def private record_type(var d : Dumper; qt : string; at : CirLoc) : int {
         }
         fields |> emplace(fld)
     }
-    d.tu.types[idx].packed = !natural_layout(d, fields, is_union, d.tu.types[idx].size, d.tu.types[idx].align)
     d.tu.types[idx].fields <- fields
+    d.tu.types[idx].packed = !natural_layout(d.tu, d.layout, idx)
     return idx
 }
 
@@ -935,27 +897,6 @@ def private hex_float(decimal : string) : string {
     return slice(rendered, 0, n)
 }
 
-def private size_of_type(d : Dumper; t : int) : int64 {
-    let k = d.tu.types[t].k
-    if (k == "int" || k == "float") {
-        return int64(d.tu.types[t].w / 8)
-    }
-    if (k == "ptr" || k == "func") {
-        return int64(d.tu.target.ptr_w / 8)
-    }
-    if (k == "enum") {
-        return 4l
-    }
-    if (k == "array") {
-        let n = d.tu.types[t].count
-        return n < 0 ? -1l : int64(n) * size_of_type(d, d.tu.types[t].elem)
-    }
-    if (k == "struct" || k == "union") {
-        return int64(d.tu.types[t].size)
-    }
-    return -1l
-}
-
 def private linkage_name(d : Dumper; c_name : string) : string {
     let hoisted = d.local_statics?[c_name] ?? ""
     if (!empty(hoisted)) {
@@ -1131,7 +1072,7 @@ def private dump_sizeof(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
     if (of_t < 0) {
         return null
     }
-    let size = size_of_type(d, of_t)
+    let size = type_size(d.tu, of_t)
     if (size < 0l) {
         fail(d, "sizeof of a type without a size", at)
         return null
@@ -1156,10 +1097,10 @@ def private dump_member(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
     return new CirExpr(e = "member", t = t, base = base, field = field, arrow = arrow)
 }
 
-// clang's semantic form: one child per field or element in order, `ImplicitValueInitExpr`
-// for a slot the source left out, which the positional form leaves to its zero; an array
-// with a trailing run of zeros lists the filler first under `array_filler`, then the
-// elements up to the last one written
+// clang's semantic form: one child per field (an unnamed bitfield has none) or element in
+// order, `ImplicitValueInitExpr` for a slot the source left out, which the positional form
+// leaves to its zero; an array with a trailing run of zeros lists the filler first under
+// `array_filler`, then the elements up to the last one written
 def private dump_init_list(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
     let k = d.tu.types[t].k
     if (k != "struct" && k != "array") {
@@ -1180,9 +1121,25 @@ def private dump_init_list(var d : Dumper; js : JsonValue?; t : int; at : CirLoc
             delete_expr(x)
             return null
         }
-        x.init_items |> push(CirInitItem(pos = idx - first, v = v))
+        let pos = k == "struct" ? initialized_field(d.tu.types[t], idx - first) : idx - first
+        x.init_items |> push(CirInitItem(pos = pos, v = v))
     }
     return x
+}
+
+// the field index of a record initializer's `slot`-th child: clang initializes every field but
+// an unnamed bitfield, which is padding
+def private initialized_field(rec : CirType; slot : int) : int {
+    var seen = 0
+    for (idx, f in range(length(rec.fields)), rec.fields) {
+        if (!(f.is_bitfield && empty(f.name))) {
+            if (seen == slot) {
+                return idx
+            }
+            seen++
+        }
+    }
+    return slot
 }
 
 def private source_line(var d : Dumper; line : int) : string {

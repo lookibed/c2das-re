@@ -2,7 +2,7 @@ options gen2
 options _nolint = "STYLE025"
 require dastest/testing_boost public
 require strings
-require daslib/fio
+require _daslang_child
 require c_runtime/c_function
 
 [c_function]
@@ -56,14 +56,8 @@ def test_c_function(t : T?) {
         t |> equal(scratch_square(7), 49)
     }
     t |> run("the same body without the annotation is rejected by the compiler") @(t : T?) {
-        let path = "{temp_directory_result() as value}/c2das_c_function_control.das"
-        fopen(path, "wb") $(f) {
-            fwrite(f, blit_without_annotation_source())
-        }
-        var out : string
-        let rc = run_and_capture([get_das_root() + "/bin/daslang", "-compile-only", path], out, 60.0)
-        remove(path)
-        t |> equal(rc != 0, true)
-        t |> equal(out |> find("unsafe") >= 0, true, out)
+        let r = daslang_child("c_function_control", blit_without_annotation_source(), true)
+        t |> equal(r.rc != 0, true)
+        t |> equal(r.out |> find("unsafe") >= 0, true, r.out)
     }
 }

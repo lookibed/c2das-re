@@ -7,6 +7,7 @@ require daslib/strings_boost
 require crt
 require cir
 require sidecar
+require bit_units
 
 //! The das emitter: C-IR in, gen2 source text out, one pass that spells nodes and lowers the
 //! shapes `docs/lowering-examples.md` names as it meets them (statement-ification, the loop
@@ -45,6 +46,7 @@ struct Emitter {
     global_initialized : table<string>
     globals_seen : int
     marshal : table<int>
+    layout : LayoutMemo
     switch_counter : int
     setjmp_counter : int
     // the alloca arena: its bytes per function (the sidecar's `alloca_limit`), the module's
@@ -319,6 +321,12 @@ def private enum_to_integer(tu : CirTu; t : int; text : string; target : string)
 // the int view of a C expression das spelled as a bool
 def private to_int(e : Em) : Em => e.is_bool ? value("{wrap(e, PREC_COND + 1)} ? 1 : 0", PREC_COND) : e
 
+def private is_c_bool(tu : CirTu; t : int) : bool => kind_of(tu, t) == "int" && tu.types[t].spell == "_Bool"
+
+// a value stored into a slot of type `t`: a `_Bool` slot is a das `bool` and takes the truth
+// as it is, every other slot its integer
+def private stored(e : Em; tu : CirTu; t : int) : Em => is_c_bool(tu, t) ? e : to_int(e)
+
 def private literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let spelled = das_type(em, tu, x.t, loc)
     if (x.e == "float_lit") {
@@ -335,22 +343,29 @@ def private literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : E
     }
     let negative = x.v |> starts_with("-")
     let prec = negative ? PREC_UNARY : PREC_PRIMARY
-    if (spelled == "int") {
-        return value(x.v, prec)
-    }
-    if (spelled == "uint") {
-        return value(x.v + "u", prec)
-    }
-    if (spelled == "int64") {
-        return value(x.v + "l", prec)
-    }
-    if (spelled == "uint64") {
-        return value(x.v + "ul", prec)
+    let suffixed = int_literal(spelled, x.v)
+    if (!empty(suffixed)) {
+        return value(suffixed, prec)
     }
     if (spelled == "bool") {
         return value(x.v != "0" ? "true" : "false", PREC_PRIMARY)
     }
     return value("{spelled}({x.v})", PREC_PRIMARY)
+}
+
+// `digits` as a literal of the das integer type `spelled` by its suffix; "" for a type that has
+// no literal of its own (the small integers, `bool`)
+def private int_literal(spelled, digits : string) : string {
+    if (spelled == "int") {
+        return digits
+    }
+    if (spelled == "uint") {
+        return digits + "u"
+    }
+    if (spelled == "int64") {
+        return digits + "l"
+    }
+    return spelled == "uint64" ? digits + "ul" : ""
 }
 
 let EMPTY_LITERAL = "c2das_empty"
@@ -413,7 +428,7 @@ def private assignment_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
     let of_field = marshal_field(em, tu, *x.a, loc, bytes)
     let whole = of_field < 0 && empty(x.op) ? marshal_site(em, tu, x.a, loc, bytes) : -1
     let lhs = of_field < 0 && whole < 0 ? emit_expr(em, tu, x.a, loc) : value("", PREC_PRIMARY)
-    var rhs = to_int(emit_expr(em, tu, x.b, loc))
+    var rhs = stored(emit_expr(em, tu, x.b, loc), tu, x.a.t)
     if (of_field >= 0) {
         return marshal_store(em, tu, x, of_field, x.a.field, bytes, rhs, loc)
     }
@@ -445,6 +460,10 @@ def private assignment_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
         let sum = "{enum_to_integer(tu, x.a.t, lhs.text, wide)} {spelled} {wrap(rhs, prec + 1)}"
         let as_int = wide == "int" ? sum : "int({sum})"
         return "{lhs.text} = {int_to_enum(em, tu, x.a.t, as_int)}"
+    }
+    if (is_c_bool(tu, x.a.t)) {
+        // C computes `b op= v` in the promoted type and stores the truth of the result
+        return "{lhs.text} = ({wide}({to_int(lhs).text}) {spelled} {wrap(rhs, prec + 1)}) != 0"
     }
     let narrow = das_type(em, tu, x.a.t, loc)
     if (narrow != wide) {
@@ -491,6 +510,20 @@ def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     if (kind_of(tu, x.a.t) == "enum") {
         let stepped = "int({operand.text}) {up ? "+" : "-"} 1"
         return "{operand.text} = {int_to_enum(em, tu, x.a.t, stepped)}"
+    }
+    if (is_c_bool(tu, x.a.t)) {
+        fail(em, "a `_Bool` step (`b++`, `s.f++`) is not lowered yet", loc)
+        return ""
+    }
+    if (is_bitfield_member(tu, x.a)) {
+        // das has no `++` on a property; a bitfield steps through its getter and setter
+        let spelled = das_type(em, tu, x.a.t, loc)
+        let one = int_literal(spelled, "1")
+        if (empty(one)) {
+            fail(em, "a step of a `{spelled}` bitfield is not lowered yet", loc)
+            return ""
+        }
+        return "{operand.text} {up ? "+=" : "-="} {one}"
     }
     return "{operand.text}{up ? "++" : "--"}"
 }
@@ -568,7 +601,7 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         args |> push(emit_expr(em, tu, x.fn, loc).text)
     }
     for (arg in x.args) {
-        args |> push(to_int(emit_expr(em, tu, arg, loc)).text)
+        args |> push(stored(emit_expr(em, tu, arg, loc), tu, arg.t).text)
     }
     return value(empty(name) ? "invoke({join(args, ", ")})" : "{name}({join(args, ", ")})", PREC_PRIMARY)
 }
@@ -854,9 +887,9 @@ def private emit_cond(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     let spelled = das_type(em, tu, x.t, loc)
     hoist(em, ["var {tmp} : {spelled}", "if ({c.text}) \{"])
     hoist(em, [for (stmt in a_pre); "    {stmt}"])
-    hoist(em, ["    {tmp} = {to_int(a).text}", "\} else \{"])
+    hoist(em, ["    {tmp} = {stored(a, tu, x.t).text}", "\} else \{"])
     hoist(em, [for (stmt in b_pre); "    {stmt}"])
-    hoist(em, ["    {tmp} = {to_int(b).text}", "\}"])
+    hoist(em, ["    {tmp} = {stored(b, tu, x.t).text}", "\}"])
     return value(tmp, PREC_PRIMARY)
 }
 
@@ -878,7 +911,9 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
         hoist(em, ["{keep} {tmp} = {before.text}", step_line(em, tu, x, loc)])
         return value(tmp, PREC_PRIMARY)
     }
-    let a = to_int(emit_expr(em, tu, x.a, loc))
+    // the arithmetic operators read a number; `&` and `*` take the operand as it is
+    let operand = emit_expr(em, tu, x.a, loc)
+    let a = x.op == "addr" || x.op == "deref" ? operand : to_int(operand)
     if (x.op == "neg") {
         return value("-{wrap(a, PREC_UNARY)}", PREC_UNARY)
     }
@@ -912,7 +947,17 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     return a
 }
 
+//! The das text of expression `x`; a `_Bool` expression is a das `bool` (`is_bool`), so a truth
+//! test takes it as it is and a sink that wants a number spells `b ? 1 : 0`.
 def emit_expr(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
+    var e = emit_node(em, tu, x, loc)
+    if (x != null && is_c_bool(tu, x.t)) {
+        e.is_bool = true
+    }
+    return e
+}
+
+def private emit_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
     if (x == null) {
         fail(em, "missing expression", loc)
         return value("", PREC_PRIMARY)
@@ -1129,7 +1174,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
         }
         var elems <- [for (_i in range(tu.types[x.t].count)); ""]
         for (item in x.init_items) {
-            elems[item.pos] = to_int(emit_expr(em, tu, item.v, loc)).text
+            elems[item.pos] = stored(emit_expr(em, tu, item.v, loc), tu, tu.types[x.t].elem).text
         }
         for (e in elems) {
             if (empty(e)) {
@@ -1138,11 +1183,36 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
         }
         return value("fixed_array({join(elems, ", ")})", PREC_PRIMARY)
     }
+    var units : array<BitUnit>
+    if (has_named_bitfield(tu, x.t) && !bit_units(tu, em.layout, x.t, units)) {
+        // the dumper marks such a record packed, so only a C-IR from elsewhere reaches this
+        fail(em, "record `{tag_name(em, tu, x.t)}`: no bitfield units reproduce clang's layout", loc)
+        return value("", PREC_PRIMARY)
+    }
+    // a unit's bitfields fold into one `_bits<N>` item, at the place of the first one written
+    var unit_parts : array<array<tuple<field : int; v : Em; spelled : string>>>
+    unit_parts |> resize(length(units))
     var items : array<string>
+    var item_units : array<int>
     items |> reserve(length(x.init_items))
     for (item in x.init_items) {
-        let v = to_int(emit_expr(em, tu, item.v, loc))
-        items |> push("{field_name(em, tu, x.t, item.pos)} = {v.text}")
+        let v = stored(emit_expr(em, tu, item.v, loc), tu, tu.types[x.t].fields[item.pos].t)
+        let n = tu.types[x.t].fields[item.pos].is_bitfield ? unit_of(units, item.pos) : -1
+        if (n < 0) {
+            items |> push("{field_name(em, tu, x.t, item.pos)} = {v.text}")
+            item_units |> push(-1)
+        } else {
+            if (empty(unit_parts[n])) {
+                items |> push("_bits{n} = ")
+                item_units |> push(n)
+            }
+            unit_parts[n] |> push((field = item.pos, v = v, spelled = das_type(em, tu, tu.types[x.t].fields[item.pos].t, loc)))
+        }
+    }
+    for (idx, n in range(length(items)), item_units) {
+        if (n >= 0) {
+            items[idx] += unit_init(tu, x.t, units[n], unit_parts[n])
+        }
     }
     return value("{tag_name(em, tu, x.t)}({join(items, ", ")})", PREC_PRIMARY)
 }
@@ -1151,7 +1221,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
 def private sparse_stores(var em : Emitter; tu : CirTu; name : string; x : CirExpr; loc : CirLoc; var out : array<string>) {
     out |> reserve(length(out) + length(x.init_items))
     for (item in x.init_items) {
-        let v = to_int(emit_expr(em, tu, item.v, loc))
+        let v = stored(emit_expr(em, tu, item.v, loc), tu, item.v.t)
         out |> push("{name}[{item.pos}] = {v.text}")
     }
 }
@@ -1168,7 +1238,7 @@ def private decl_init(var em : Emitter; tu : CirTu; name : string; t : int; init
         sparse_stores(em, tu, name, *init, loc, stores)
         return ""
     }
-    return to_int(emit_expr(em, tu, init, loc)).text
+    return stored(emit_expr(em, tu, init, loc), tu, t).text
 }
 
 // an expression evaluated for its effect alone: the statement forms of assignment, the
@@ -1735,9 +1805,8 @@ def private case_compare(var em : Emitter; tu : CirTu; cond : string; cond_t : i
         return empty(named) ? "int({cond}) == {v}" : "{cond} == {enum_item(em, tu, cond_t, named)}"
     }
     let spelled = das_type(em, tu, cond_t, CirLoc())
-    let suffix = spelled == "uint" ? "u" : spelled == "int64" ? "l" : spelled == "uint64" ? "ul" : ""
-    let text = v == -2147483648l && spelled == "int" ? "-2147483647 - 1" : "{v}{suffix}"
-    let literal = spelled == "int" || !empty(suffix) ? text : "{spelled}({v})"
+    let suffixed = int_literal(spelled, "{v}")
+    let literal = v == -2147483648l && spelled == "int" ? "-2147483647 - 1" : (!empty(suffixed) ? suffixed : "{spelled}({v})")
     return "{cond} == {literal}"
 }
 
@@ -1933,7 +2002,7 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt const?) {
         if (st.e == null) {
             line(em, "return")
         } else {
-            let e = to_int(emit_expr(em, tu, st.e, st.loc))
+            let e = stored(emit_expr(em, tu, st.e, st.loc), tu, st.e.t)
             flush_pre(em)
             line(em, "return {e.text}")
         }
@@ -2250,8 +2319,8 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     }
 }
 
-// `struct Name { fields }`, adjacent fields of one type on one line; a union, a bitfield
-// and a record clang lays out unnaturally wait for their own rows (P4.2, P4.1, P2.7)
+// `struct Name { fields }`, adjacent fields of one type on one line, under `[c_bitfields(...)]`
+// when it has bitfields
 def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
     let t = d.t
     let name = tag_name(em, tu, t)
@@ -2259,19 +2328,39 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
         fail(em, "union `{name}` is not lowered yet", d.loc)
         return
     }
+    let bitfields = has_named_bitfield(tu, t)
+    if (tu.types[t].packed && bitfields) {
+        fail(em, "record `{name}` has bitfields and das cannot lay it out as clang does; not lowered yet", d.loc)
+        return
+    }
     if (tu.types[t].packed && !is_marshal(em, tu, t)) {
         fail(em, "record `{name}` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar", d.loc)
         return
+    }
+    for (f in tu.types[t].fields) {
+        if (kind_of(tu, f.t) == "array" && tu.types[f.t].count < 0) {
+            fail(em, "flexible array member `{name}.{f.name}` is not lowered yet", d.loc)
+            return
+        }
+    }
+    if (bitfields) {
+        if (is_marshal(em, tu, t)) {
+            fail(em, "bitfields of the marshal-only record `{name}` are not lowered yet", d.loc)
+            return
+        }
+        let annotation = bitfields_annotation(em, tu, t, d.loc)
+        if (!empty(em.error)) {
+            return
+        }
+        em.requires |> insert("c_runtime/c_bitfields")
+        line(em, annotation)
     }
     var lines, names : array<string>
     lines |> reserve(length(tu.types[t].fields))
     names |> reserve(length(tu.types[t].fields))
     var spelled = ""
     for (f in tu.types[t].fields) {
-        if (f.is_bitfield) {
-            fail(em, "bitfield `{name}.{f.name}` is not lowered yet", d.loc)
-            return
-        }
+        continue if (f.is_bitfield && empty(f.name))
         let ft = das_type_dims(em, tu, f.t, d.loc, f.dims)
         if (!empty(names) && ft != spelled) {
             lines |> push("{join(names, ", ")} : {spelled}")
@@ -2292,6 +2381,122 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
     if (is_marshal(em, tu, t)) {
         emit_marshal_readers(em, tu, t, d.loc)
     }
+}
+
+def private is_bitfield_member(tu : CirTu; x : CirExpr const?) : bool {
+    if (x == null || x.e != "member") {
+        return false
+    }
+    let rec = x.arrow ? tu.types[x.base.t].to : x.base.t
+    return x.field >= 0 && x.field < length(tu.types[rec].fields) && tu.types[rec].fields[x.field].is_bitfield
+}
+
+def private unit_storage(size : int) : string => size == 1 ? "uint8" : size == 2 ? "uint16" : size == 4 ? "uint" : "uint64"
+
+// the number in `name` after `prefix` when the rest is all digits, else -1
+def private numbered_after(name, prefix : string) : int {
+    if (!(name |> starts_with(prefix)) || length(name) == length(prefix)) {
+        return -1
+    }
+    var digits = true
+    peek_data(name) $(bytes) {
+        for (idx in range(length(prefix), length(bytes))) {
+            digits = digits && is_number(int(bytes[idx]))
+        }
+    }
+    return digits ? to_int(slice(name, length(prefix))) : -1
+}
+
+// a C field `[c_bitfields]` would misread: a bitfield named like an opener (`_bits<N>`) or a
+// padding argument (`_<K>`), or another field named like one of the `units` storage fields
+def private clashes_with_annotation(em : Emitter; f : CirField; units : int) : bool {
+    let spelled = das_name(em, f.name)
+    let opener = numbered_after(spelled, "_bits")
+    if (f.is_bitfield) {
+        return opener >= 0 || numbered_after(spelled, "_") >= 0
+    }
+    return opener >= 0 && opener < units
+}
+
+// `[c_bitfields(...)]` for record `t`, one unit after another: `_bits<N> = "storage"` opens the
+// unit, left out for the first unit when its storage is the one the annotation's default rule
+// gives its first field and that field starts the unit; `_<K> = gap` covers the bits clang
+// leaves before a field; then `name = width` per bitfield in order
+def private bitfields_annotation(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
+    let name = tag_name(em, tu, t)
+    for (f in tu.types[t].fields) {
+        if (is_storage_bitfield(f) && kind_of(tu, f.t) != "int") {
+            fail(em, "bitfield `{name}.{f.name}` of {kind_of(tu, f.t)} type is not lowered yet", loc)
+            return ""
+        }
+    }
+    var units : array<BitUnit>
+    if (!bit_units(tu, em.layout, t, units)) {
+        // the dumper marks such a record packed, so only a C-IR from elsewhere reaches this
+        fail(em, "record `{name}`: no bitfield units reproduce clang's layout", loc)
+        return ""
+    }
+    for (f in tu.types[t].fields) {
+        if (!empty(f.name) && clashes_with_annotation(em, f, length(units))) {
+            fail(em, "field `{name}.{f.name}` is spelled like a storage or padding name of `[c_bitfields]`", loc)
+            return ""
+        }
+    }
+    var args : array<string>
+    var pad_index = 0
+    for (n, u in range(length(units)), units) {
+        let storage = unit_storage(u.size)
+        let base = u.off * 8
+        assume first = tu.types[t].fields[u.first]
+        if (n != 0 || first.bit_off != base || storage != unit_storage(int(type_size(tu, first.t)))) {
+            args |> push("_bits{n} = \"{storage}\"")
+        }
+        var cursor = 0
+        for (idx in range(u.first, u.last + 1)) {
+            assume f = tu.types[t].fields[idx]
+            continue if (!is_storage_bitfield(f))
+            if (f.bit_off - base > cursor) {
+                args |> push("_{pad_index} = {f.bit_off - base - cursor}")
+                pad_index++
+            }
+            args |> push("{das_name(em, f.name)} = {f.bit_w}")
+            cursor = f.bit_off - base + f.bit_w
+        }
+    }
+    return "[c_bitfields({join(args, ", ")})]"
+}
+
+// the unit holding bitfield `field`, -1 when none holds it
+def private unit_of(units : array<BitUnit>; field : int) : int {
+    for (n, u in range(length(units)), units) {
+        if (field >= u.first && field <= u.last) {
+            return n
+        }
+    }
+    return -1
+}
+
+// one unit's initializer: every initialized bitfield of it as `(W(v) & mask) << bit`, or-ed in
+// the unit's arithmetic type (`uint`, `uint64` for an 8-byte unit; das shifts no narrower
+// type) and narrowed to the storage, the conversions `[c_bitfields]`'s setter makes
+def private unit_init(tu : CirTu; t : int; u : BitUnit; parts : array<tuple<field : int; v : Em; spelled : string>>) : string {
+    let arith_type = u.size == 8 ? "uint64" : "uint"
+    let suffix = u.size == 8 ? "ul" : "u"
+    let bits = u.size == 8 ? 64 : 32
+    var terms : array<string>
+    terms |> reserve(length(parts))
+    for (p in parts) {
+        assume f = tu.types[t].fields[p.field]
+        let shift = f.bit_off - u.off * 8
+        var v = p.spelled == "bool" ? value("({wrap(p.v, PREC_COND + 1)} ? 1{suffix} : 0{suffix})", PREC_PRIMARY) : (p.spelled == arith_type ? p.v : value("{arith_type}({p.v.text})", PREC_PRIMARY))
+        if (f.bit_w < bits) {
+            v = value("{wrap(v, PREC_BAND + 1)} & {(1ul << uint64(f.bit_w)) - 1ul}{suffix}", PREC_BAND)
+        }
+        terms |> push(shift > 0 ? "({v.text}) << {shift}{suffix}" : v.text)
+    }
+    let joined = length(terms) == 1 ? terms[0] : join([for (term in terms); "({term})"], " | ")
+    let storage = unit_storage(u.size)
+    return storage == arith_type ? joined : "{storage}({joined})"
 }
 
 // the readers and writers of a marshal-only record: the whole record and each field, over
@@ -2364,16 +2569,29 @@ def private enumerator_value(v : int64) : string {
     return held == -2147483648l ? "-2147483647 - 1" : "{held}"
 }
 
-// the layout law checked where it is claimed: every emitted record's das layout against
-// clang's, at compile time, zero cost at run time
+// the layout law checked where it is claimed: every emitted record's das size, alignment and
+// field offsets (each bitfield unit's included) against clang's, at compile time, zero cost at
+// run time
 def private emit_layout_check(var em : Emitter; tu : CirTu; records : array<int>) {
     line(em, "[init]")
     open_block(em, "def private c2das_layout_check")
     for (t in records) {
         let name = tag_name(em, tu, t)
-        line(em, "static_assert(typeinfo sizeof(type<{name}>) == {tu.types[t].size} && typeinfo alignof(type<{name}>) == {tu.types[t].align}, \"{name}: clang lays it out as size {tu.types[t].size}, align {tu.types[t].align}\")")
+        // a record holding bitfield units can align below clang (docs/probe-findings.md F5)
+        let align = natural_align(tu, em.layout, t)
+        let bitfields = has_named_bitfield(tu, t)
+        let below = align == tu.types[t].align ? "" : (bitfields ? ", its bitfield units align {align}" : ", its das alignment is {align}")
+        line(em, "static_assert(typeinfo sizeof(type<{name}>) == {tu.types[t].size} && typeinfo alignof(type<{name}>) == {align}, \"{name}: clang lays it out as size {tu.types[t].size}, align {tu.types[t].align}{below}\")")
         for (f in tu.types[t].fields) {
-            line(em, "static_assert(typeinfo offsetof<{das_name(em, f.name)}>(type<{name}>) == {f.off}, \"{name}.{f.name}: clang puts it at {f.off}\")")
+            if (!f.is_bitfield) {
+                line(em, "static_assert(typeinfo offsetof<{das_name(em, f.name)}>(type<{name}>) == {f.off}, \"{name}.{f.name}: clang puts it at {f.off}\")")
+            }
+        }
+        var inscope units : array<BitUnit>
+        if (bitfields && bit_units(tu, em.layout, t, units)) {
+            for (n, u in range(length(units)), units) {
+                line(em, "static_assert(typeinfo offsetof<_bits{n}>(type<{name}>) == {u.off}, \"{name}._bits{n}: the bitfield unit sits at {u.off}\")")
+            }
         }
     }
     close_block(em)

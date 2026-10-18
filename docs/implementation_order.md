@@ -166,8 +166,21 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 - **P4.1 `[c_bitfields]` macro.** Generates the probed backing-unit + property-operator
   layer from clang bit offsets; fixtures replicate the probe battery (signed sign-extend,
   truncation, compound assign, layout).
+  Ledger (fail closed today, each a later row): a bitfield of enum type (the property pair
+  would convert through `enum_from_int`); a bitfield of a marshal-only record (the bits read
+  and written through `memcpy` of the unit); a record no unit assignment reproduces under the
+  `linux` dialect (`struct { unsigned a : 3; char c; }`: clang's size 4 needs the declared
+  type's alignment, F5), which the sidecar can mark marshal-only once the previous line lands;
+  a record whose only bitfields are unnamed padding (`struct { char a; int : 20; }`: no das
+  spelling fits both dialects, `uint8[N]` for `linux`, an empty `uint` unit for `msvc`); a
+  record holding an F5 record that clang's size refuses with no escape (`struct { struct BF bf;
+  short y; }` is size 8 under clang, 6 under the mirror's alignment 2); a flexible array member;
+  `aligned(N)` on a record with bitfields; and a `_Bool` step, plain or bitfield (`b++`,
+  `s.f++`).
 - **P4.2 `[c_union]` macro.** One ref-returning operator per member (probed); storage
   alignment via max-align member type; anonymous-union flattening.
+  Ledger: the `packed` verdict of a union measures its members by das alignment with no target
+  below clang's, and `natural_align` of a union is clang's; both settle when unions are lowered.
 - **P4.3 Function-pointer shims.** The sidecar-declared dispatch groups (`actionf_t`
   class); qsort/bsearch typed generics land here too.
 - **P4.4 va_list completeness.** `va_copy`, forwarding, non-constant printf formats,

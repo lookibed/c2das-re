@@ -22,6 +22,13 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   lowering passes of the plan (type resolve and rename, promotion insertion,
   statement-ification, control flow) happen as it spells nodes (`ARCHITECTURE_EMITTER.md`,
   section 4); no pass transforms the `CirTu` before emission.
+- `bit_units.das` - the layout law over the C-IR (section 2, `packed`): `type_size`,
+  `natural_align` (a record's is its das mirror's, which can be below clang's, F5),
+  `natural_layout` (the dumper's `packed` verdict), `bit_units` (the allocation units that cover
+  a record's bitfields) and `is_storage_bitfield`. Every answer about a record lands in a
+  `LayoutMemo` the dumper and the emitter each own, so a nest of records is measured once per
+  record; a unit search never retries a failed state (field, offset, alignment so far). Nothing
+  here knows clang or das syntax.
 - `sidecar.das` - the per-project `.c2das` file as a `Sidecar` value: `find_sidecar` (the
   path given, else `<stem>.c2das` beside the C file, else `.c2das` in its folder) and
   `read_sidecar` (JSON; a key the row that needs it adds - `marshal`, the records read and
@@ -67,6 +74,26 @@ a fact about the declarator, not the type, so the type table interns `T[6]` once
 source wrote it. An `enum` type carries `"signed": false` when clang gave it an unsigned
 underlying type (F22); the member is absent for a signed one, which is every enum of the
 `msvc` dialect.
+
+A record's `packed` is false exactly when das's natural layout reproduces clang's, by this law
+(`bit_units.das`), which a Dumper B applies to the same facts to write the same byte. Fields go
+in declaration order, each at its offset rounded up to its das alignment (a scalar's size, an
+array's element's, a nested record's das alignment as this law found it, or clang's for a
+record it finds packed); a flexible array member (an array of count -1 that ends the record)
+adds no bytes. An unnamed or zero-width bitfield never opens a storage unit. The first named
+bitfield not yet covered opens an unsigned unit of its declared type's size first, then of 1,
+2, 4 and 8 bytes in that order, at the next offset that size divides; every following bitfield
+whose bits lie inside the unit joins it, and when the rest of the record then misses a clang
+offset or clang's size the search backtracks to the next size. The end, rounded up to the
+largest alignment met, must be clang's size, and that alignment must be the target: clang's
+alignment first, then each power of two below it, the first target that works winning. A target
+below clang's is tried only when the record has a named bitfield of nonzero width or a field
+whose record (through arrays) won below its clang alignment, and when clang's alignment is the
+one the record would have without an alignment attribute: the largest of its named bitfields'
+declared types, its other fields' das alignments and a nested record's clang alignment. A union
+is natural when every member sits at offset 0 and its size and alignment are clang's, its
+members measured by their das alignment, with no target below clang's. In an `init_list` of a
+record, `pos` is the field index; an unnamed bitfield is never an item.
 
 Section 3, Dumper A's subset (what the dumper reads from clang and libclang), is in
 `ARCHITECTURE_DUMPER.md`.

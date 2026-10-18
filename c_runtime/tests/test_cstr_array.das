@@ -2,7 +2,7 @@ options gen2
 require dastest/testing_boost public
 require strings
 require daslib/strings_boost
-require daslib/fio
+require _daslang_child
 require c_runtime/cstr_array
 
 var name : uint8[8] = cstr_array("abc", 8)
@@ -24,14 +24,8 @@ def test_cstr_array(t : T?) {
         t |> equal(int(empty_buf[0]), 0)
     }
     t |> run("a string longer than the dimension is a compile error") @(t : T?) {
-        let path = "{temp_directory_result() as value}/c2das_cstr_array_control.das"
-        fopen(path, "wb") $(f) {
-            fwrite(f, "options gen2\nrequire c_runtime/cstr_array\nvar buf : uint8[2] = cstr_array(\"abc\", 2)\n[export]\ndef main \{\n\}\n")
-        }
-        var out : string
-        let rc = run_and_capture([get_das_root() + "/bin/daslang", "-load_module", "c_runtime", "-compile-only", path], out, 60.0)
-        remove(path)
-        t |> equal(rc != 0, true)
-        t |> equal(out |> find("does not fit 2 bytes") >= 0, true, out)
+        let r = daslang_child("cstr_array_control", "options gen2\nrequire c_runtime/cstr_array\nvar buf : uint8[2] = cstr_array(\"abc\", 2)\n[export]\ndef main \{\n\}\n", true)
+        t |> equal(r.rc != 0, true)
+        t |> equal(r.out |> find("does not fit 2 bytes") >= 0, true, r.out)
     }
 }

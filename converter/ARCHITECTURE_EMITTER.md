@@ -10,9 +10,10 @@ Records come first: `struct Name` with adjacent fields of one type on one line, 
 record named `anon_<slot>`, in declaration order; then `[init] def private c2das_layout_check`,
 one `static_assert` per record against clang's size and alignment and one per field against its
 offset, the layout law checked at compile time where it is claimed
-(`docs/implementation_order.md` P2.1). A union and a bitfield fail closed until their rows
-(P4.2, P4.1); a record clang lays out unnaturally fails closed unless the sidecar lists it
-under `marshal` (section 4, marshal-only records). Globals follow (`var`, `var private` for a C
+(`docs/implementation_order.md` P2.1); a record holding bitfields asserts its das alignment,
+which can be below clang's (F5), and each unit's offset. A union fails closed until its row
+(P4.2); a record clang lays out unnaturally fails closed unless the sidecar lists it under
+`marshal` (section 4, marshal-only records). Globals follow (`var`, `var private` for a C
 `static`, the initializer inline and under `unsafe(...)` when it takes an address; an unsafe
 operation inside a global initializer wraps itself, one `unsafe(...)` per operation, since no
 annotation covers a global), then `[init] def private c2das_init_globals`, then the functions.
@@ -98,7 +99,12 @@ closed. A `size_t` result is `uint64`, so an index or a count it feeds carries t
 it. Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
 cast, `IntegralToBoolean` is `x != 0` (`!= null` for a pointer), `BooleanToSignedIntegral` is
 `b ? 1 : 0`, a comparison or `!` is spelled as the das bool it is and becomes `? 1 : 0` only
-where C reads it as an int. Literals carry their suffix from the C-IR type (`u`, `l`, `ul`,
+where C reads it as an int. Every expression of C type `_Bool` is a das `bool`: a truth test
+takes it as it is (`if (b)`), a number is `b ? 1 : 0` wherever the emitter reads one (a cast,
+an index, a pointer step, an operand of arithmetic), a store, an argument, an initializer and a
+`return` keep the truth when their own C type is `_Bool`, and `b op= v` computes in the
+promoted type and stores the truth of the result, `b = (int(b ? 1 : 0) + 1) != 0`; a `_Bool`
+step fails closed. Literals carry their suffix from the C-IR type (`u`, `l`, `ul`,
 `lf`, `f`), small integers wrap in a cast. A compound assignment whose operand types differ
 expands to `lhs = T_lhs(T_rhs(lhs) op rhs)`, which is C's small-int rule (`b = int8(int(b) +
 1)`). Statement-ification happens at emission: an assignment, a step or a call met inside an
@@ -187,3 +193,28 @@ tables carry is that twin (the shim list), so `__builtin_alloca`, `__builtin_mem
 Output is assembled as an array of lines joined once (`docs/probe-findings.md` F19); the
 text then goes through the formatter, so spacing is the formatter's and indentation is the
 emitter's, four spaces per depth.
+
+### Bitfields
+
+A record with bitfields is the C-shaped struct under `[c_bitfields(...)]` (`c_runtime/c_bitfields`,
+`docs/lowering-examples.md` "Bitfields"): each named bitfield is a field of its declared das
+type, an unnamed one is no field, and the annotation lists the allocation units `bit_units`
+finds, in order. A unit opens with `_bits<N> = "uint8"` (`"uint16"`, `"uint"`, `"uint64"`),
+left out for the first unit when its storage is the one the macro opens by default for its
+first field (the unsigned type of its declared type's width) and that
+field starts the unit; then each bitfield of the unit as `name = width`, preceded by a padding
+argument `_<K> = gap` (K counting across the record) when clang leaves bits before it. Under
+the `msvc` dialect the documents' `[c_bitfields(a = 3, b = 5)]` comes out as written; under
+`linux` the same struct packs into a byte, which takes the opener (F25). A member reads and
+writes as a field, `s.a` and `p.a` alike, through the generated property pair; das has no `++`
+on a property, so a bitfield step is `s.a += 1u` (`probes/test_bitfields.das`). A record
+initializer folds each unit's initialized bitfields into one `_bits<N>` item, `U((W(v1) & m1)
+| ((W(v2) & m2) << o2))` with `W` the unit's arithmetic type (`uint`, `uint64` for an 8-byte
+unit) and `U` its storage, the setter's own conversions, since a global `fixed_array` of struct
+literals naming a property crashes the program before `main` (`probes/test_bitfields.das`). A
+record with only unnamed bitfields is a plain struct. A bitfield of enum type, a bitfield of a
+marshal-only record, a record with bitfields no unit assignment reproduces (`packed`, with its
+own message, never pointing at the sidecar), a flexible array member, a bitfield named like an
+opener or a padding argument (`_bits0`, `_3`) and another field named like a storage field the
+record emits fail closed. The layout check asserts the das alignment a record ends with, which
+for a record holding bitfield units, or a record holding such a record, can be below clang's.

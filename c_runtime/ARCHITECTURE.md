@@ -57,6 +57,20 @@ as-if-converted fixture test landing first.
   (a null target), and clears its own. das skips `finally` on a panic, which is C's
   no-cleanup-on-longjmp rule. The buffer arrives as C passes it, through a pointer a `let`
   parameter may hold, so the write goes through a pointer re-made from its address.
+- `c_runtime/c_bitfields.das` - the `[c_bitfields(...)]` structure annotation over a struct
+  written C-shaped (`docs/lowering-examples.md` "Bitfields"). `apply` reads the argument list in
+  order: `_bits<N> = "uint8"` (or `"uint16"`, `"uint"`, `"uint64"`) opens an allocation unit
+  with its bit cursor at 0, `_<K> = n` advances the cursor by `n` padding bits, any other `name =
+  width` places the field `name` at the cursor; a bitfield with no unit open opens `_bits<K>`
+  sized by the field's own type. The opener's value is a string because the storage type names
+  are keywords the argument grammar does not take as identifiers. A unit's fields must be
+  adjacent and of an integer or `bool` type, and must fit; a unit's name, opened or implied,
+  must be no field of the struct and no other unit's, so the storage never replaces a field. Each unit's fields become one
+  `_bits<N>` field at the place of its first, and each bitfield gets `operator . name` and
+  `operator . name :=`: the getter shifts and masks (a signed field shifts its top bit to the
+  word's top and back, which sign-extends), the setter clears the field's bits and ors the
+  masked value in. The arithmetic runs in `uint`, or `uint64` for an 8-byte unit, since das
+  defines no shift on `uint8` and `uint16`; the value narrows on store.
 - `tests/` - one dastest file per piece, written as the converter will emit the code,
   including a control that the same code without the piece is rejected or wrong.
 

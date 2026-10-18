@@ -186,6 +186,7 @@ def p2_fixtures(t : T?) {
     }
     p2_memory_fixtures(t)
     p3_fixtures(t)
+    p4_fixtures(t)
 }
 
 def p2_enum_fixtures(t : T?) {
@@ -331,5 +332,85 @@ def p3_fixtures(t : T?) {
         has_text(t, text, "var slot : int? = reinterpret<int?>(_t0)")
         t |> equal(text |> find("__builtin_alloca") < 0, true, "a builtin name survived:\n{text}")
         t |> equal(text |> find("def private p3_alloca__sum_bytes(p : uint8?; n : int) : int \{\n    var s : int = 0") >= 0, true, text)
+    }
+}
+
+def p4_fixtures(t : T?) {
+    t |> run("bitfields: [c_bitfields] with clang's units, openers and padding, folded initializers, steps through += 1, F5's alignment") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_bitfields", text)
+        has_text(t, text, "require c_runtime/c_bitfields")
+        has_text(t, text, "[c_bitfields(_bits0 = \"uint8\", a = 3, b = 5)]\nstruct BF \{\n    a : uint\n    b : int\n    e : int16\n\}")
+        has_text(t, text, "[c_bitfields(lo = 3, _0 = 2, mid = 4, _bits1 = \"uint\", hi = 6)]\nstruct Pad \{\n    lo, mid, hi : uint\n\}")
+        has_text(t, text, "[c_bitfields(_bits0 = \"uint64\", a = 3, b = 5, wide = 40, flag = 1, neg = 1)]")
+        has_text(t, text, "typeinfo alignof(type<BF>) == 2, \"BF: clang lays it out as size 4, align 4, its bitfield units align 2\")")
+        has_text(t, text, "static_assert(typeinfo offsetof < _bits1 > (type<Pad>) == 4")
+        has_text(t, text, "var private p4_bitfields__g : BF = BF(_bits0 = uint8((uint(9) & 0x7u) | ((uint(-3) & 0x1fu) << 3u)), e = int16(7))")
+        has_text(t, text, "BF(_bits0 = uint8((uint(-1) & 0x1fu) << 3u))")
+        has_text(t, text, "var r : BF = BF(_bits0 = uint8((uint(v) & 0x7u) | ((uint(v - 20) & 0x1fu) << 3u)), e = int16(v))")
+        has_text(t, text, "Mixed(_bits0 = (uint64(uint8(6)) & 0x7ul) | ((uint64(3) & 0x1ful) << 3ul) | ((uint64(int64(-5)) & 0xfffffffffful) << 8ul))")
+        has_text(t, text, "p.a += 1u\n    p.b += 1\n")
+        has_text(t, text, "let _t0 = s.a\n    s.a += 1u\n")
+        has_text(t, text, "m.flag = 1 != 0\n")
+        has_text(t, text, "[c_bitfields(_bits0 = \"uint16\", a = 8, b = 8)]\nstruct R \{")
+        has_text(t, text, "\"W: clang lays it out as size 8, align 4, its das alignment is 2\")")
+        has_text(t, text, "\n\nstruct T \{\n    x, y : int\n\}")
+        has_text(t, text, "Full(_bits0 = 18364758544493064720ul, _bits1 = (uint64(100) & 0x7ful) | (((1 != 0 ? 1ul : 0ul) & 0x1ul) << 7ul))")
+        has_text(t, text, "f.all += 1ul\n    f.top -= 1ul\n")
+        has_text(t, text, "ll.q -= 1l\n")
+        has_text(t, text, "[c_bitfields(_bits0 = \"uint8\", a = 3)]\nstruct Narrow")
+        has_text(t, text, "[c_bitfields(_bits0 = \"uint8\", q = 4)]\nstruct LL")
+        has_text(t, text, "[c_bitfields(f = 3)]\nstruct Names \{\n    _1, _bits9 : int\n    f : uint\n\}")
+        let msvc <- convert("{FIXTURES}/p4_bitfields.c", path_join(work_root, "p4_bitfields_msvc"), "msvc")
+        t |> equal(msvc.ok, true, msvc.error)
+        has_text(t, msvc.das_text, "[c_bitfields(a = 3, b = 5)]\nstruct BF \{")
+        has_text(t, msvc.das_text, "[c_bitfields(lo = 3, _0 = 2, mid = 4, _bits1 = \"uint\", hi = 6)]\nstruct Pad \{")
+        rejects(t, "bitfield_packed", "struct S \{ unsigned a : 3; char c; \};\nint main(void) \{ struct S s = \{ 1, 2 \}; return s.a + s.c; \}\n", "record `S` has bitfields and das cannot lay it out as clang does; not lowered yet")
+        rejects(t, "bitfield_enum", "enum E \{ A, B \};\nstruct S \{ enum E k : 2; int n; \};\nint main(void) \{ struct S s = \{ B, 2 \}; return s.k + s.n; \}\n", "bitfield `S.k` of enum type is not lowered yet")
+        rejects(t, "bitfield_opener_name", "struct S \{ unsigned _bits0 : 3; int n; \};\nint main(void) \{ struct S s = \{ 1, 2 \}; return s._bits0 + s.n; \}\n", "field `S._bits0` is spelled like a storage or padding name")
+        rejects(t, "bitfield_padding_name", "struct S \{ unsigned _1 : 3; int n; \};\nint main(void) \{ struct S s = \{ 1, 2 \}; return s._1 + s.n; \}\n", "field `S._1` is spelled like a storage or padding name")
+        rejects(t, "bitfield_unit_name", "struct S \{ unsigned a : 3; int _bits0; \};\nint main(void) \{ struct S s = \{ 1, 2 \}; return s.a + s._bits0; \}\n", "field `S._bits0` is spelled like a storage or padding name")
+        rejects(t, "bitfield_marshal", "struct S \{ unsigned a : 3; int n; \};\nint main(void) \{ struct S s = \{ 1, 2 \}; return s.a + s.n; \}\n", "bitfields of the marshal-only record `S`", "\{\"marshal\": [\"S\"]\}\n")
+        rejects(t, "bitfield_padding_only", "struct U1 \{ char a; int : 20; \};\nint main(void) \{ struct U1 u = \{ 1 \}; return u.a; \}\n", "record `U1` is not laid out naturally")
+        rejects(t, "bitfield_aligned", "struct A16 \{ int a : 3; char pad[15]; \} __attribute__((aligned(16)));\nint main(void) \{ struct A16 s = \{ 1 \}; return s.a; \}\n", "record `A16` has bitfields and das cannot lay it out as clang does")
+        rejects(t, "aligned_container", "struct P8 \{ int x; int y; \} __attribute__((aligned(8)));\nstruct C3 \{ char c; struct P8 p; \};\nint main(void) \{ struct C3 s = \{ 1, \{ 2, 3 \} \}; return s.p.y; \}\n", "record `P8` is not laid out naturally")
+        rejects(t, "flexible_array", "struct V \{ int n; int data[]; \};\nint main(void) \{ return (int) sizeof(struct V); \}\n", "flexible array member `V.data` is not lowered yet")
+    }
+    t |> run("bitfields: the layout law measures each record once, so a 20-deep nest and a 12-deep F5 chain convert within 30 s (HEAD before the memo: 20 s for the plain nest alone)") @(t : T?) {
+        let nest = build_string() $(var w) {
+            w |> write("struct D0 \{ int k; \};\n")
+            for (i in range(1, 20)) {
+                w |> write("struct D{i} \{ struct D{i - 1} a; struct D{i - 1} b; int k; \};\n")
+            }
+            w |> write("struct L0 \{ unsigned a : 3; int b : 5; short e; \};\n")
+            for (i in range(1, 12)) {
+                w |> write("struct L{i} \{ struct L{i - 1} a; struct L{i - 1} b; \};\n")
+            }
+            w |> write("int main(void) \{ return (int) (sizeof(struct D19) > sizeof(struct L11)); \}\n")
+        }
+        let dir = path_join(work_root, "nest")
+        mkdir(dir)
+        let c_path = path_join(dir, "nest.c")
+        write_file(c_path, nest)
+        let started = ref_time_ticks()
+        let res <- convert(c_path, path_join(dir, "out"), "linux")
+        let seconds = get_time_usec(started) / 1000000
+        t |> equal(res.ok, true, res.error)
+        t |> equal(seconds < 30, true, "{seconds} s")
+        has_text(t, res.das_text, "typeinfo alignof(type<L11>) == 2, \"L11: clang lays it out as size 8192, align 4, its das alignment is 2\")")
+    }
+    t |> run("_Bool: a das bool everywhere, `? 1 : 0` where C reads a number, the truth of the result on a compound store") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_bool", text)
+        has_text(t, text, "    if (b) \{\n        x += 100\n")
+        has_text(t, text, "b = (int(b ? 1 : 0) + 1) != 0\n")
+        has_text(t, text, "c = (int(c ? 1 : 0) | 0) != 0\n")
+        has_text(t, text, "p4_bool__take(b), p4_bool__take(x > 9), p4_bool__take(x != 0)")
+        has_text(t, text, "arr[b ? 1 : 0]")
+        has_text(t, text, "return int(b ? 1 : 0)\n")
+        has_text(t, text, "var p : bool? = addr(b)")
+        has_text(t, text, "if (!f.on) \{")
+        rejects(t, "bool_step", "int main(void) \{ _Bool b = 0; b++; return b; \}\n", "a `_Bool` step (`b++`, `s.f++`) is not lowered yet")
+        rejects(t, "bool_bitfield_step", "struct F \{ _Bool on : 1; \};\nint main(void) \{ struct F f = \{ 0 \}; f.on++; return f.on; \}\n", "a `_Bool` step (`b++`, `s.f++`) is not lowered yet")
     }
 }

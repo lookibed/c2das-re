@@ -27,8 +27,14 @@ field offsets, keyed by the canonical spelling the JSON desugars to (`struct X`,
 thinker_t` for a typedef-named anonymous record, which libclang spells bare and the pass
 re-tags) and by its location, which is how a `RecordDecl` of the walk finds its layout. A
 record is interned in its own slot before its fields, so a self-referential pointer resolves;
-`packed` is set when clang's offsets are not the natural layout das would compute, and a record
-libclang never saw defined has size -1. A typedef is a `typedef` type and a `typedefdecl`
+`packed` is set when clang's offsets are not the natural layout das would compute (the law of
+`ARCHITECTURE.md` section 2, `bit_units.das`), and a record libclang never saw defined has size
+-1. A record with bitfields can be natural with an alignment below clang's (under the `linux`
+dialect `struct { unsigned a : 3; int b : 5; short e; }` is a `uint8` unit and `e` at 2, size
+4, align 2 against clang's 4, `docs/probe-findings.md` F5), so a record holding one is placed
+by that smaller alignment. Every field, an unnamed bitfield included (`"name": ""`), is a C-IR
+field; clang's record initializer has no child for an unnamed bitfield, so the dumper maps the
+n-th child to the n-th field that is not one. A typedef is a `typedef` type and a `typedefdecl`
 anchor, nothing more. A file-scope `static` gets the TU-qualified name `<stem>__<name>` (a stem
 that starts with a digit, as the c-testsuite's do, takes a leading underscore, since `00099__f`
 is not a name) and a local `static` is hoisted into `decls` as `<fn>_<name>` with `from_func`;
