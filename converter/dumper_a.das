@@ -1385,6 +1385,13 @@ def private dump_compound(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStm
             }
             continue
         }
+        if (node_kind(child) == "CaseStmt" || node_kind(child) == "DefaultStmt") {
+            if (!dump_case(d, child, st.body)) {
+                delete_stmt(st)
+                return null
+            }
+            continue
+        }
         var cs = dump_stmt(d, child)
         if (cs == null) {
             delete_stmt(st)
@@ -1455,6 +1462,122 @@ def private dump_for(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
 
 let LEAF_STMTS <- {"NullStmt" => "null", "BreakStmt" => "break", "ContinueStmt" => "continue"}
 
+// a decimal integer as clang's JSON spells one, optionally negative
+def private parse_int64(text : string) : int64 {
+    var v = 0l
+    var negative = false
+    for (ch in text) {
+        if (ch == '-') {
+            negative = true
+        } elif (is_number(ch)) {
+            v = v * 10l + int64(ch - '0')
+        }
+    }
+    return negative ? -v : v
+}
+
+let FOLD_BINARY <- {"+" => 0, "-" => 1, "*" => 2, "/" => 3, "%" => 4, "<<" => 5, ">>" => 6, "&" => 7, "|" => 8, "^" => 9}
+
+// the value of a constant expression as the dump spells it, folded here since clang's JSON
+// writes a `ConstantExpr` without its value: the literals, the arithmetic and bitwise
+// operators, parentheses, casts and enumerators; false with `error` set for anything else
+def private fold_constant(var d : Dumper; js : JsonValue?; var v : int64&) : bool {
+    let at = loc_of(d, js)
+    let kind = node_kind(js)
+    if (kind == "IntegerLiteral") {
+        v = parse_int64(js?["value"] ?? "0")
+        return true
+    }
+    if (kind == "CharacterLiteral") {
+        v = js?["value"] ?? 0l
+        return true
+    }
+    if (kind == "ConstantExpr" || kind == "ParenExpr" || kind == "ImplicitCastExpr" || kind == "CStyleCastExpr") {
+        return child_count(js) > 0 && fold_constant(d, (js?["inner"] as _array)[0], v)
+    }
+    if (kind == "DeclRefExpr" && (js?["referencedDecl"]?["kind"] ?? "") == "EnumConstantDecl") {
+        var ref = dump_expr(d, js)
+        if (ref == null) {
+            return false
+        }
+        for (it in d.tu.types[ref.enum_t].items) {
+            if (it.name == ref.item) {
+                v = it.v
+            }
+        }
+        delete_expr(ref)
+        return true
+    }
+    if (kind == "UnaryOperator" && child_count(js) > 0) {
+        return fold_unary(d, js, v)
+    }
+    if (kind == "BinaryOperator" && child_count(js) == 2) {
+        return fold_binary(d, js, at, v)
+    }
+    fail(d, "a case value spelled by `{kind}` is not folded", at)
+    return false
+}
+
+def private fold_unary(var d : Dumper; js : JsonValue?; var v : int64&) : bool {
+    var a = 0l
+    if (!fold_constant(d, (js?["inner"] as _array)[0], a)) {
+        return false
+    }
+    let opcode = js?["opcode"] ?? ""
+    v = opcode == "-" ? -a : opcode == "~" ? ~a : opcode == "!" ? (a == 0l ? 1l : 0l) : a
+    return opcode == "-" || opcode == "~" || opcode == "!" || opcode == "+"
+}
+
+def private fold_binary(var d : Dumper; js : JsonValue?; at : CirLoc; var v : int64&) : bool {
+    var a, b : int64
+    if (!fold_constant(d, (js?["inner"] as _array)[0], a) || !fold_constant(d, (js?["inner"] as _array)[1], b)) {
+        return false
+    }
+    let op = FOLD_BINARY?[js?["opcode"] ?? ""] ?? -1
+    if (op < 0 || ((op == 3 || op == 4) && b == 0l)) {
+        fail(d, "a case value with `{js?["opcode"] ?? ""}` is not folded", at)
+        return false
+    }
+    v = op == 0 ? a + b : op == 1 ? a - b : op == 2 ? a * b : op == 3 ? a / b : op == 4 ? a % b : op == 5 ? a << b : op == 6 ? a >> b : op == 7 ? (a & b) : op == 8 ? (a | b) : (a ^ b)
+    return true
+}
+
+// `case v:` and `default:` are markers in the switch body, each followed by the statement clang
+// nests under it; clang nests shared labels (`case 2: case 3: s`) one under the other
+def private dump_case(var d : Dumper; js : JsonValue?; var into : array<CirStmt?>) : bool {
+    let at = loc_of(d, js)
+    let kind = node_kind(js)
+    let kids = js?["inner"]
+    let nkids = child_count(js)
+    if (kind == "CaseStmt") {
+        if (js?["isGNURange"] ?? false) {
+            fail(d, "a GNU case range is outside the dialect", at)
+            return false
+        }
+        var v = 0l
+        if (nkids < 1 || !fold_constant(d, (kids as _array)[0], v)) {
+            return false
+        }
+        into |> push(new CirStmt(s = "case", v = v, loc = at))
+    } else {
+        into |> push(new CirStmt(s = "default", loc = at))
+    }
+    let sub = (kids as _array)[nkids - 1]
+    let sub_kind = node_kind(sub)
+    if (sub_kind == "CaseStmt" || sub_kind == "DefaultStmt") {
+        return dump_case(d, sub, into)
+    }
+    if (sub_kind == "DeclStmt") {
+        return dump_decl_stmt(d, sub, into)
+    }
+    var st = dump_stmt(d, sub)
+    if (st == null) {
+        return false
+    }
+    into |> push(st)
+    return true
+}
+
 def dump_stmt(var d : Dumper; js : JsonValue?) : CirStmt? {
     let at = loc_of(d, js)
     let kind = node_kind(js)
@@ -1478,6 +1601,28 @@ def dump_stmt(var d : Dumper; js : JsonValue?) : CirStmt? {
     }
     if (kind == "IfStmt" || kind == "WhileStmt" || kind == "DoStmt") {
         return dump_loop_or_if(d, js, kind, at)
+    }
+    if (kind == "SwitchStmt") {
+        let kids = js?["inner"]
+        var ok = true
+        var st = new CirStmt(s = "switch", loc = at)
+        st.cond = child_count(js) > 1 ? slot_expr(d, kids, 0, ok) : null
+        st.body_s = child_count(js) > 1 ? slot_stmt(d, kids, 1, ok) : null
+        if (!ok || st.cond == null || st.body_s == null) {
+            fail(d, "switch without a condition or a body", at)
+            delete_stmt(st)
+            return null
+        }
+        return st
+    }
+    if (kind == "CaseStmt" || kind == "DefaultStmt") {
+        // a case directly as the switch body, `switch (x) case 1: s;`
+        var wrapped = new CirStmt(s = "compound", loc = at)
+        if (!dump_case(d, js, wrapped.body)) {
+            delete_stmt(wrapped)
+            return null
+        }
+        return wrapped
     }
     if (kind == "ForStmt") {
         return dump_for(d, js, at)

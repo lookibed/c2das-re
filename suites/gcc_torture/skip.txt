@@ -354,6 +354,7 @@ pr33870	__builtin_* calls	a builtin maps through a shim list that the punning ti
 pr33870-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 pr33992	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr34130	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr34154	GNU case range	`case a ... b` is a GNU extension; the dialect's switch takes one value per label	never
 pr34176	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr34415	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr34456	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4

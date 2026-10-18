@@ -32,7 +32,8 @@ let RULES <- [
     Rule(pattern = "__label__|&&[A-Za-z_]", feature = "computed goto and local labels", reason = "the goto row lowers labels, and computed goto rides on das's integer labels", phase = "P3"),
     Rule(pattern = "__builtin_", feature = "__builtin_* calls", reason = "a builtin maps through a shim list that the punning tier grows", phase = "P4"),
     Rule(pattern = "__attribute__", feature = "__attribute__", reason = "an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet", phase = "P4"),
-    Rule(pattern = "__typeof|\\btypeof *\\(|__extension__|__alignof", feature = "GNU keywords", reason = "typeof, __extension__ and __alignof__ have no row", phase = "never")
+    Rule(pattern = "__typeof|\\btypeof *\\(|__extension__|__alignof", feature = "GNU keywords", reason = "typeof, __extension__ and __alignof__ have no row", phase = "never"),
+    Rule(pattern = "case [^:\n]*\\.\\.\\.", feature = "GNU case range", reason = "`case a ... b` is a GNU extension; the dialect's switch takes one value per label", phase = "never")
 ]
 
 def file_text(path : string) : string {

@@ -16,8 +16,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   (`probes/test_delete.das`), so no hand-written walk frees a child.
 - `dumper_a.das` - Dumper A: runs `clang -Xclang -ast-dump=json -fsyntax-only -target
   <triple>` on one file and normalizes the JSON into a `CirTu`. Fails closed: the first
-  construct outside what it represents sets `Dumper.error` with `file:line:col`. Layout facts come from
-  a libclang pass over the same file (`ARCHITECTURE_DUMPER.md`, section 3).
+  construct outside what it represents sets `Dumper.error` with `file:line:col`. Layout facts
+  come from a libclang pass over the same file (`ARCHITECTURE_DUMPER.md`, section 3).
 - `emit.das` - the emitter: `CirTu` in, gen2 text out, fails closed the same way. The
   lowering passes of the plan (type resolve and rename, promotion insertion,
   statement-ification, control flow) happen as it spells nodes (`ARCHITECTURE_EMITTER.md`,
@@ -83,9 +83,10 @@ the generated context with a seven-line C host (`<stem>_create`, `<stem>_main`,
 `<stem>_destroy` from the generated header) against the static runtime: `liblibDaScript.a`,
 `liblibDaScript_runtime.a`, `liblibUriParser.a`, with the checkout's ABI flags (no RTTI,
 `DAS_FUSION=2`, `SIZE_OF_VOID_P=8`). The AOT tier links no C++ module, so a module that
-requires `crt` runs under the interpreter and the JIT (`docs/implementation_order.md`, P7.3). The interpreter and JIT tiers take the
-module folders to load from the caller (`suites/c_testsuite/run.das` passes both). The exit
-code is the program's own on every tier, which is why the wrapper returns from `main`.
+requires `crt` runs under the interpreter and the JIT (`docs/implementation_order.md`, P7.3).
+The interpreter and JIT tiers take the module folders to load from the caller
+(`suites/c_testsuite/run.das` passes both). The exit code is the program's own on every tier,
+which is why the wrapper returns from `main`.
 
 ## 6. Exception ledger
 

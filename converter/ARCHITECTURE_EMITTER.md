@@ -133,6 +133,24 @@ step into them writes through `write_T_f` around the read, `*p` is `read_T(p, 0)
 marshal-only value, an array of the record and a record or array-of-records field inside one
 fail closed.
 
+A `switch` follows the three-tier ladder of `docs/lowering-examples.md`. Its body is read as
+groups, one run of labels and the statements under them; a statement before the first label
+or a label below the switch's own level (Duff's device, P3.3) fails closed, a nested switch's
+labels being its own. The condition is evaluated once into `_condN` (numbered per switch
+within a function), the enum below C's promotion when there is one, so a case compares as
+`_cond == E.X` (`int(_cond) == v` for a value no enumerator has) and otherwise against a
+literal in the condition's type. The if-chain holds when no group falls into the next (each
+ends in `break`, `return`, `goto` or `continue`, a trailing block looked through) and every
+`break` that leaves the switch is that tail - a `break` inside a nested loop or switch is that
+construct's own; the tail `break` is dropped, the groups become `if`/`elif` and the default
+group `else`, wherever it stood. Otherwise the matched-flag loop: `while (true)` holding
+`var _flagN = false`, one `_flag ||= _cond == v` per label and `_flag ||= !(every case value)`
+for `default`, each group's statements under `if (_flag)`, a trailing `break`; C `break` is
+das's. A C `continue` under such a loop would restart the switch, so it spells
+`_contN = true` and `break`, with `if (_contN) { continue }` after the loop - itself through
+the same translation when the switch sits in an outer flag loop; a real loop body resets the
+translation. Computed goto (O6) is the optimization tier's.
+
 Output is assembled as an array of lines joined once (`docs/probe-findings.md` F19); the
 text then goes through the formatter, so spacing is the formatter's and indentation is the
 emitter's, four spaces per depth.

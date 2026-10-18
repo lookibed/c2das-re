@@ -59,24 +59,29 @@ serves the C-IR's `loc` alone.
 Enums come from the same libclang pass as records: every `enum` definition of the main file,
 nested and block-scoped ones included, with the enumerator values as C reads them
 (`clang_getEnumConstantDeclUnsignedValue` for an unsigned underlying type, which the linux
-dialect gives an enum without a negative enumerator; past INT_MAX such a value is possible)
-and the width and signedness of the integer type clang chose, keyed by spelling (`enum color`,
-`enum mobjtype_t` for a typedef-named anonymous enum, re-tagged the way a record is) and by
-offset, which is how an `EnumDecl` of the walk finds its entry and pushes its `enumdef` anchor;
-a forward declaration (`enum E;`, no enumerators) adds nothing, and a nested `EnumDecl` or
-`RecordDecl` that is not a definition (`struct S { enum K *p; }`) is not registered. An enum
-whose width is not the dialect's `int` fails closed, and so does a spelling two block-scoped
-enums of one tag share, since the dump resolves types by spelling alone; an enum the walk
-never anchored (one defined inside a `sizeof` or cast operand) fails closed at the end of the
-dump. The pass also records, per declarator whose array dimensions the source spells by enum
-constants, the constant of each dimension (`clang_getCursorReferenced` on the size expression,
-a lone `DeclRefExpr` to an `EnumConstantDecl`; any other expression keeps the bare count),
-and the `VarDecl` or `FieldDecl` at that offset gets its `dims`, a constant kept only when its
-value is the dimension's count, since two declarators of one macro expansion share an offset.
-A `DeclRefExpr` to an `EnumConstantDecl` resolves by its offset too, since C scopes let two
-enums of one file spell one constant name: the `enum_ref` carries the enum the constant belongs
-to, and the node's type is what clang gave the reference (`int`, or `unsigned int` for an enum
-with a value past INT_MAX). An enumerator reached through a macro has no main-file cursor and
-fails closed (`docs/implementation_order.md`, the P2.4 ledger). Anything else is an error
-naming the node kind and its location: compound literals, `goto`, `switch` are the next
-phases' rows.
+dialect gives an enum without a negative enumerator; past INT_MAX such a value is possible) and
+the width and signedness of the integer type clang chose, keyed by spelling (`enum color`, `enum
+mobjtype_t` for a typedef-named anonymous enum, re-tagged the way a record is) and by offset,
+which is how an `EnumDecl` of the walk finds its entry and pushes its `enumdef` anchor; a forward
+declaration (`enum E;`, no enumerators) adds nothing, and a nested `EnumDecl` or `RecordDecl`
+that is not a definition (`struct S { enum K *p; }`) is not registered. An enum whose width is
+not the dialect's `int` fails closed, and so does a spelling two block-scoped enums of one tag
+share, since the dump resolves types by spelling alone; an enum the walk never anchored (one
+defined inside a `sizeof` or cast operand) fails closed at the end of the dump. The pass also
+records, per declarator whose array dimensions the source spells by enum constants, the constant
+of each dimension (`clang_getCursorReferenced` on the size expression, a lone `DeclRefExpr` to an
+`EnumConstantDecl`; any other expression keeps the bare count), and the `VarDecl` or `FieldDecl`
+at that offset gets its `dims`, a constant kept only when its value is the dimension's count,
+since two declarators of one macro expansion share an offset. A `DeclRefExpr` to an
+`EnumConstantDecl` resolves by its offset too, since C scopes let two enums of one file spell one
+constant name: the `enum_ref` carries the enum the constant belongs to, and the node's type is
+what clang gave the reference (`int`, or `unsigned int` for an enum with a value past INT_MAX).
+An enumerator reached through a macro has no main-file cursor and fails closed
+(`docs/implementation_order.md`, the P2.4 ledger). A `SwitchStmt` is a `switch` with its
+condition and body; clang nests each case's statement under its `CaseStmt`, and shared labels one
+under the other, which the dumper flattens into `case` and `default` marker statements followed
+by the statement, wherever in the body they sit (Duff's device keeps its nesting). A case value
+is folded here, since the JSON writes a `ConstantExpr` without its value: literals, characters,
+the arithmetic and bitwise operators, parentheses, casts and enumerators; a GNU case range (`case
+1 ... 3`) fails closed. Anything else is an error naming the node kind and its location: compound
+literals and `goto` are the next rows.

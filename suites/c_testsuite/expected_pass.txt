@@ -1,4 +1,4 @@
-# c-testsuite single-exec tests that pass under the interpreter; the ratchet, kept sorted
+# c_testsuite tests that pass under the interpreter; the ratchet, kept sorted
 00001
 00002
 00003
@@ -140,6 +140,7 @@
 00155
 00156
 00157
+00158
 00159
 00160
 00161
@@ -160,6 +161,7 @@
 00178
 00179
 00180
+00182
 00183
 00184
 00185
@@ -168,6 +170,7 @@
 00190
 00191
 00192
+00193
 00194
 00195
 00196

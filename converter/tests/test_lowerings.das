@@ -185,6 +185,21 @@ def p2_fixtures(t : T?) {
         has_text(t, text, "require crt\n")
     }
     p2_memory_fixtures(t)
+    t |> run("switch: the if-chain where no case falls through and breaks are tail-only, the matched-flag loop otherwise, enum compares, the cont epilogue, nested switches") @(t : T?) {
+        var text : string
+        check_fixture(t, "p3_switch", text)
+        has_text(t, text, "let _cond = x\n    if (_cond == 1) \{\n        r = 10\n    \} elif (_cond == 2 || _cond == 3) \{\n        r = 20\n    \} elif (_cond == -4) \{")
+        has_text(t, text, "if (_cond == 1u) \{\n        return 1\n    \} elif (_cond == 7u) \{\n        return 7\n    \} else \{\n        return 99")
+        has_text(t, text, "let _cond = t\n    if (_cond == mobjtype_t.MT_PLAYER) \{")
+        has_text(t, text, "_flag ||= _cond == 5\n        if (_flag) \{\n            let _t1 = n\n            n++\n            deref(trace + _t1) = 5\n        \}\n        _flag ||= _cond == 9")
+        has_text(t, text, "_flag ||= !(_cond == 1 || _cond == 5 || _cond == 9)")
+        has_text(t, text, "var _cont = false\n                while (true) \{")
+        has_text(t, text, "_cont = true\n                        break")
+        has_text(t, text, "if (_cont) \{\n                    continue\n                \}")
+        has_text(t, text, "let _cond2 = b\n        if (_cond2 == 1) \{")
+        has_text(t, text, "if (_cond == 8589934592l) \{")
+        has_text(t, text, "if (b == 2) \{\n                break\n            \}")
+    }
 }
 
 def p2_enum_fixtures(t : T?) {
