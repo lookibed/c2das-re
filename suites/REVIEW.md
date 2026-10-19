@@ -1,8 +1,7 @@
 # suites Code Review Checklist
 
 **Read `REVIEW_COMMON.md` (repo root) first - its contract binds this checklist.** Architecture
-doc: `suites/ARCHITECTURE.md`. Planned work: `docs/implementation_order.md` (sec. P1.5, P2.8,
-P4.5).
+doc: `ARCHITECTURE.md` (beside this file). Planned work: `docs/implementation_order.md`.
 
 **A diff that removes from a suite's `expected_pass.txt` an id the suite still contains at the
 commit `VERSIONS.md` pins adds that id to `skip.txt` in the same change.**
