@@ -2,7 +2,7 @@ options gen2
 require dastest/testing_boost public
 require strings
 require daslib/strings_boost
-require _daslang_child
+require ../../probes/_daslang_child.das
 require c_runtime/cstr_array
 
 var name : uint8[8] = cstr_array("abc", 8)
@@ -24,7 +24,7 @@ def test_cstr_array(t : T?) {
         t |> equal(int(empty_buf[0]), 0)
     }
     t |> run("a string longer than the dimension is a compile error") @(t : T?) {
-        let r = daslang_child("cstr_array_control", "options gen2\nrequire c_runtime/cstr_array\nvar buf : uint8[2] = cstr_array(\"abc\", 2)\n[export]\ndef main \{\n\}\n", true)
+        let r = runtime_child("cstr_array_control", "options gen2\nrequire c_runtime/cstr_array\nvar buf : uint8[2] = cstr_array(\"abc\", 2)\n[export]\ndef main \{\n\}\n", true)
         t |> equal(r.rc != 0, true)
         t |> equal(r.out |> find("does not fit 2 bytes") >= 0, true, r.out)
     }

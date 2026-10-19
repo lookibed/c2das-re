@@ -91,14 +91,30 @@ as-if-converted fixture test landing first.
   zero-length dimension has no size; a pointer or a function value is pointer-sized whatever it
   points at. `patch` cannot take the derivation later, since it runs only once the whole program
   infers without error (`probes/test_unions.das`). An inference-time `static_assert` in each
-  operator checks the member fits the storage. A class, a struct with no member, a member named
-  `_storage`, one with an initializer, one of function type, a lone `size` or `align`, a
+  operator checks the member fits the storage. A function-typed member is pointer-sized like any
+  other, so a union of function pointers (Doom's `actionf_t`) is one 8-byte storage and a
+  call through any member calls the function last stored, with the arguments that call passes
+  (`docs/probe-findings.md` F32). A class, a struct with no member, a member named
+  `_storage`, one with an initializer, a lone `size` or `align`, a
   non-integer one, an alignment past 8 and a size that is not a positive multiple of the
   alignment are compile errors. Another annotation on the same struct is not visible to `apply`
   (the parser attaches the list after every `apply` ran), so a bitfield member is the
   converter's to refuse.
+- `c_runtime/c_sort.das` - C's `qsort` and `bsearch` as `c_qsort(base, n, size, cmp)` and
+  `c_bsearch(key, base, n, size, cmp)`, over raw bytes in C's own signatures, since the
+  element type is not at C's call site, whose `n` and `size` are run-time values
+  (`docs/probe-findings.md` F33). The CRT's `qsort` is not bound: it cannot call back
+  into das. The comparator is `CCompare`, `function<(a : void?; b : void?) : int>`, the
+  converter's spelling of C's `int (*)(const void *, const void *)` with no `var` position (a
+  comparator whose type has one arrives cast to it). `qsort` is the runtime's byte sort,
+  `__builtin_sort_any_cblock` (the engine under daslib's `sort`: median-of-three Hoare
+  partitions over the bytes, its own pivot copy, no das value), with the comparator in a block
+  testing `< 0`; it is unstable, as C allows, and counts elements and bytes in `int`, so a call
+  past that panics. `bsearch` is a binary search calling `cmp(key, element)` in C's order.
 - `tests/` - one dastest file per piece, written as the converter will emit the code,
-  including a control that the same code without the piece is rejected or wrong.
+  including a control that the same code without the piece is rejected or wrong. A test that
+  compiles or runs a child program does so through `probes/_daslang_child.das`, the one child
+  helper of the repository (`runtime_child` loads both modules), required by relative path.
 
 ## 2. Loading
 

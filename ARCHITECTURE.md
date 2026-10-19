@@ -53,7 +53,7 @@ Two dumpers produce it; their outputs for one TU are byte-identical, which makes
 disagreement a frontend bug with a repro attached. Emission is whole-program: one das module
 per C program, split by strongly connected component when a module grows past what the
 daslang compiler handles comfortably. All per-project judgment (union policies, marshal
-markers, shim groups, renames, entry points) lives in the sidecar, so the output is
+markers, renames, entry points) lives in the sidecar, so the output is
 regenerable at will and never hand-edited.
 
 ## 3. Definitions

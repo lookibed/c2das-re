@@ -8,6 +8,7 @@
 20001229-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 20010119-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20010122-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+20010325-1	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it (implementation_order P4.3 ledger)	P4
 20010518-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20010605-2	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 20010904-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -206,6 +207,7 @@ lto-tbaa-1	__attribute__	an attribute reaches the dialect through the sidecar (p
 mayalias-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 mayalias-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 mayalias-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+memchr-1	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it (implementation_order P4.3 ledger)	P4
 memcpy-bi	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 memset-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 mul-sext	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -603,4 +605,7 @@ va-arg-pack-1	__builtin_* calls	a builtin maps through a shim list that the punn
 vfprintf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 vprintf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 vrp-7	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+wchar_t-1	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it (implementation_order P4.3 ledger)	P4
+widechar-2	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it (implementation_order P4.3 ledger)	P4
+widechar-3	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it (implementation_order P4.3 ledger)	P4
 zerolen-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4

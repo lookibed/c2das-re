@@ -12,7 +12,7 @@ one `static_assert` per record against clang's size and alignment and one per fi
 offset, the layout law checked at compile time where it is claimed
 (`docs/implementation_order.md` P2.1); a record holding bitfields asserts its das alignment,
 which can be below clang's (F5), and each unit's offset; a union asserts its storage at 0
-(section 4, Unions). A record clang lays out unnaturally fails closed unless the sidecar lists
+(`ARCHITECTURE_EMITTER_AGGREGATES.md`, Unions). A record clang lays out unnaturally fails closed unless the sidecar lists
 it under `marshal` (section 4, marshal-only records). Globals follow (`var`, `var private` for a C
 `static`, the initializer inline and under `unsafe(...)` when it takes an address; an unsafe
 operation inside a global initializer wraps itself, one `unsafe(...)` per operation, since no
@@ -26,15 +26,21 @@ or from `&f`; C `main` is `@@c_main`) and a literal's address need no order. A n
 pointer is `default<function<...>>`, since das takes no `null` for a function value
 (`probes/test_globals.das`). A function is `def name(p : T; ...) : ret` with `private` for a C
 `static`; a parameter the body writes is declared `p_in` with `var p = p_in` as the first
-statement, the callee copy C's by-value rule needs, since a das parameter is a reference; a
-store that reaches the parameter through `.f` or an array's `[i]` is a write to it, and so is
-an array's decay that is not indexed in place (`unsigned char *p = u.b`, `f(s.b)`), whose
-pointer could otherwise write the caller's object or read the copy a const union's operator
-returns, while one
-that crosses `->`, `*p` or a pointer's `[i]` writes what it points at and makes the parameter
-`var`, the one spelling whose pointee stays writable (F3); a pointer parameter copied into a
-pointer local or variable (`int *it = a`) is `var` for the same reason, since the copy of a
-`let` parameter carries a const pointee. A body that used an unsafe operation (pointer
+statement, the callee copy C's by-value rule needs, since a das parameter is a reference, the
+copy's parameter taking `p_in`, else `p_in1` and up, whichever no parameter, local or name the
+body reads already spells; a store that reaches the parameter through `.f` or an array's `[i]`
+is a write to it, and so is an array's decay that is not indexed in place (`unsigned char *p =
+u.b`, `f(s.b)`), whose pointer could otherwise write the caller's object or read the copy a
+const union's operator returns, while one that crosses `->`, `*p` or a pointer's `[i]` writes
+what it points at and makes the parameter `var`, the one spelling whose pointee stays writable
+(F3); a pointer parameter copied into a pointer local or variable (`int *it = a`) is `var` for
+the same reason, since the copy of a `let` parameter carries a const pointee, and so is one the
+body assigns and passes on. A function pointer parameter is never `var`, since a function value
+has no pointee. Every function's `var` parameters are planned before any is emitted, so a call
+knows its callee's: a `let` pointer the caller holds (its own parameter, or a field of a record
+parameter it never writes) passed into a `var` parameter, directly or through a function value,
+fails closed, since das takes no `let` pointer there and the uniform pointer policy is a later
+row (`docs/implementation_order.md`, P4.6). A body that used an unsafe operation (pointer
 arithmetic, `deref`, `addr`, a `reinterpret`, a string literal) gets `[c_function]`. C `main`
 becomes `c_main` and the module ends with `[export] def main : int { return c_main() }`, whose
 `return` is the CLI's exit-code contract (`docs/probe-findings.md` F1). A C name that is a das
@@ -79,7 +85,7 @@ index, range-checked (the documents' safety oracle); a subscript of a pointer is
 i)`; a row pointer is `T[N]?` and reads as `deref(row)[i]`; decay is `addr(a[0])`. A function
 pointer is a das function value, `function<(a0 : T; ...) : R>` with the parameters named by
 position, a function's name decays to `@@name`, and a call through a pointer, `fp(...)` or
-`(*fp)(...)`, is `invoke(fp, ...)`. A pointer difference is `int64(p - q)`, in elements as C
+`(*fp)(...)`, is `invoke(fp, ...)` (`ARCHITECTURE_EMITTER_AGGREGATES.md`, Function pointers). A pointer difference is `int64(p - q)`, in elements as C
 counts them; a pointer relation goes through `intptr`; `malloc`, `calloc`, `realloc`, `free`
 and the `mem*` family are the CRT's through `crt`, with C's implicit `void *` conversions as
 explicit `reinterpret`. `[c_function]` lands only on a body with an unsafe operation, and the
@@ -95,7 +101,7 @@ is `cstr_array("...", N)`, the empty literal included. A literal indexed in plac
 (`"abcdef"[2]`) is read through its pointer, `deref(p + i)`; a literal under `sizeof` is its
 array type. A call to a libc function the C program declares resolves through two tables:
 `C_RUNTIME_CALLS`, the functions a `c_runtime` piece lowers (`printf`, `sprintf`, `snprintf`,
-`exit`, `abort`) by the module that holds the piece, and `CRT_CALLS`, the functions the `crt`
+`exit`, `abort`, `qsort`, `bsearch`) by the module that holds the piece, and `CRT_CALLS`, the functions the `crt`
 module binds under their C names (the memory, string.h, ctype, conversion, time and random
 families of `dasCRuntime/ARCHITECTURE.md`), spelled `crt::name`; a function in neither fails
 closed. A `size_t` result is `uint64`, so an index or a count it feeds carries the cast C gives
@@ -197,60 +203,5 @@ Output is assembled as an array of lines joined once (`docs/probe-findings.md` F
 text then goes through the formatter, so spacing is the formatter's and indentation is the
 emitter's, four spaces per depth.
 
-### Bitfields
-
-A record with bitfields is the C-shaped struct under `[c_bitfields(...)]` (`c_runtime/c_bitfields`,
-`docs/lowering-examples.md` "Bitfields"): each named bitfield is a field of its declared das
-type, an unnamed one is no field, and the annotation lists the allocation units `bit_units`
-finds, in order. A unit opens with `_bits<N> = "uint8"` (`"uint16"`, `"uint"`, `"uint64"`),
-left out for the first unit when its storage is the one the macro opens by default for its
-first field (the unsigned type of its declared type's width) and that
-field starts the unit; then each bitfield of the unit as `name = width`, preceded by a padding
-argument `_<K> = gap` (K counting across the record) when clang leaves bits before it. Under
-the `msvc` dialect the documents' `[c_bitfields(a = 3, b = 5)]` comes out as written; under
-`linux` the same struct packs into a byte, which takes the opener (F25). A member reads and
-writes as a field, `s.a` and `p.a` alike, through the generated property pair; das has no `++`
-on a property, so a bitfield step is `s.a += 1u` (`probes/test_bitfields.das`). A record
-initializer folds each unit's initialized bitfields into one `_bits<N>` item, `U((W(v1) & m1)
-| ((W(v2) & m2) << o2))` with `W` the unit's arithmetic type (`uint`, `uint64` for an 8-byte
-unit) and `U` its storage, the setter's own conversions, since a global `fixed_array` of struct
-literals naming a property crashes the program before `main` (`probes/test_bitfields.das`). A
-record with only unnamed bitfields is a plain struct. A bitfield of enum type, a bitfield of a
-marshal-only record, a record with bitfields no unit assignment reproduces (`packed`, with its
-own message, never pointing at the sidecar), a flexible array member, a bitfield named like an
-opener or a padding argument (`_bits0`, `_3`) and another field named like a storage field the
-record emits fail closed. The layout check asserts the das alignment a record ends with, which
-for a record holding bitfield units, or a record holding such a record, can be below clang's.
-
-### Unions
-
-A union is the C-shaped struct under `[c_union]` (`c_runtime/c_union`, `docs/lowering-examples.md`
-"Unions"): each member a field of its das type, the annotation turning them into one storage
-field and a pair of `operator .` per member. The bare annotation derives the size and alignment
-from the members, so it stands when the members, each measured by its das alignment, give
-clang's (`union_member_layout`) and no member's type spells a dimension by an enum constant,
-which das folds only after the annotation has read the member types; otherwise the annotation
-states clang's numbers, `[c_union(size = 4, align = 4)]` (a member record whose das alignment
-is below clang's, F5; an `aligned` attribute up to 8). A member reads, stores, steps (`u.i++`),
-takes compound stores and its address (`addr(u.i)`) and reaches a nested field (`u.pt.x = 7`)
-as a field does, `u.f` and `p.f` alike, through the ref-returning operator; a const base reads
-through the value one. `offsetof` of a member is `T(0)`, `sizeof` the type's
-`typeinfo sizeof`. A struct literal cannot name a member, so an initializer never puts a union
-in a literal: a union's list is the bare declaration and one store into the member it names
-(`var u : U` then `u.d = 2.5lf`; `{0}` and `{}` store nothing, the storage starting at zero), a
-union's list inside a record's or an array's list is left at the record's or array's zero and
-stored after the literal (`var t : Tagged = Tagged(tag = 5)` then `t.m.i = 9`, `arr[1].pt =
-Point(x = 5, y = 6)`), and for a global those stores run in `c2das_init_globals`. Since the
-stores come after the literal, an initializer holding a union's list whose items have an effect
-(a call, an assignment, a step) evaluates every item into a temporary first, in source order
-(`let _t0 = side()`), and the literal and the stores read the temporaries, which keeps C's
-left-to-right order. A global whose declaration carries no `=` (its value is stores) counts as
-zero-initialized, so a later global taking its address is stored in `c2das_init_globals` too.
-An anonymous member (a struct or union member with no declarator) is the field `_anon<N>`, `N`
-its index, of the record type `anon_<slot>`, so `s.i` through an anonymous union is
-`s._anon1.i`. Fail closed: a function-pointer member or a bitfield member of a union; a union
-the layout law finds unnatural, with its reason (no member, an alignment that is not 1, 2, 4 or
-8 or does not divide the size, an alignment below a member's, a member that does not fit, a
-member record das cannot lay out); a union holding a marshal-only record; a member named
-`_storage`; a field spelled `_anon<N>` in a record with an anonymous member; a zero-length
-array (`char z[0]`, GNU) anywhere; and a union's list anywhere but an initializer.
+The aggregates and function pointers (bitfields, unions, function pointers) are in
+`ARCHITECTURE_EMITTER_AGGREGATES.md`.

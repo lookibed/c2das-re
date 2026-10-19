@@ -15,13 +15,19 @@ and `__attribute__` text stripped: the C99 scalar names, `_Bool`, `T *`, `T[N]` 
 bracket is the outer dimension: `T[2][3]` is two `T[3]`), `T (*)[N]` pointers to arrays, `R (P,
 ...)` function types (`R *(P)` when the return is a pointer, which clang writes without a
 space), `R (*)(P)` pointers to functions, `R (**)(P)` pointers to those and `R (*[N])(P)`
-arrays of them. A builtin typedef in a builtin's prototype (`__size_t`, `__ptrdiff_t`) has no
+arrays of them, the `(*` read as the pointer only outside every parenthesis (a function whose
+parameter is a function pointer, `void (void (*)(int), int)`, is a function type) and a `const`
+on the pointer (`R (* const)(P)`, a member read through a const record) dropped, since das
+spells none. A builtin typedef in a builtin's prototype (`__size_t`, `__ptrdiff_t`) has no
 cursor and is the dialect's pointer-wide integer. Widths follow the selected dialect (`msvc`:
 int 32, long 32, long long 64; `linux`: long 64); plain `char` is unsigned in both
 (`docs/probe-findings.md` F17), which the dumper enforces with `-funsigned-char`. The dump
 desugars only the top level of a spelling, so a typedef name inside `P_t *` or `P_t (P_t, int)`
 resolves through the canonical spelling libclang gives the typedef. Records come from a
-libclang pass over the same file under the same flags, run before the JSON walk: every `struct`
+libclang pass over the same file under the same flags and the pinned clang's resource directory
+(`clang -print-resource-dir`; libclang finds none of its own, and without it `stddef.h` and the
+`size_t` a libc prototype spells are missing; an error the pass reports fails the dump with its
+text, since a missing header leaves records and typedefs out), run before the JSON walk: every `struct`
 and `union` definition of the main file, nested ones included, with clang's size, alignment and
 field offsets, keyed by the canonical spelling the JSON desugars to (`struct X`, `struct
 thinker_t` for a typedef-named anonymous record, which libclang spells bare and the pass

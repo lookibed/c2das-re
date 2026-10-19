@@ -1,6 +1,6 @@
 options gen2
 require dastest/testing_boost public
-require _daslang_child
+require ../../probes/_daslang_child.das
 require c_runtime/c_bitfields
 
 //! `[c_bitfields]` as the converter emits it: the struct written C-shaped, the annotation

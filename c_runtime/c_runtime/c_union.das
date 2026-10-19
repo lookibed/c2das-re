@@ -71,7 +71,7 @@ def private int_arg(args : AnnotationArgumentList; name : string; var value : in
 }
 
 // the shape the annotation takes: a struct with at least one member, none named `_storage`,
-// none with an initializer, none of function type; false with `errors` set
+// none with an initializer; false with `errors` set
 def private check_shape(st : StructurePtr; var errors : das_string) : bool {
     if (st.flags.isClass) {
         errors := "c_union: {st.name} is a class; a union is a struct"
@@ -88,10 +88,6 @@ def private check_shape(st : StructurePtr; var errors : das_string) : bool {
         }
         if (f.init != null) {
             errors := "c_union: member `{f.name}` has an initializer; a union starts at zero"
-            return false
-        }
-        if (f._type.isFunction) {
-            errors := "c_union: function-pointer member `{f.name}` of a union is not lowered yet"
             return false
         }
     }

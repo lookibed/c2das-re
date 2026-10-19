@@ -359,11 +359,23 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
     }
 }
 
-def private collect_records(var d : Dumper; triple : string) {
-    var args <- ["-target", triple, "-funsigned-char", "-w"]
+def private collect_records(var d : Dumper; triple : string; resource_dir : string) {
+    // libclang finds no resource directory of its own, so the builtin headers (`stddef.h`, whose
+    // `size_t` a libc prototype spells) come from the pinned clang's
+    var args <- ["-target", triple, "-funsigned-char", "-w", "-resource-dir", resource_dir]
     var idx = clang_createIndex(0, 0)
     var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, 0u)
     if (unit != null) {
+        // an error libclang meets (a header the resource directory lacks) leaves records and
+        // typedefs out of what the pass collects
+        for (i in urange(clang_getNumDiagnostics(unit))) {
+            var diag = clang_getDiagnostic(unit, i)
+            let severity = clang_getDiagnosticSeverity(diag)
+            if (empty(d.error) && (severity == CXDiagnosticSeverity.Error || severity == CXDiagnosticSeverity.Fatal)) {
+                d.error = "libclang: {string(clang_formatDiagnostic(diag, clang_defaultDiagnosticDisplayOptions()))}"
+            }
+            clang_disposeDiagnostic(diag)
+        }
         var root = clang_getTranslationUnitCursor(unit)
         walk_records(d, root)
         clang_disposeTranslationUnit(unit)
@@ -517,17 +529,20 @@ def private without_attributes(qual : string) : string {
 // parentheses and the result before the ` (*)`
 // `R (*)(P)` is a pointer to the function `R (P)`; `R (*[N])(P)` is an array of N of them
 def private function_pointer(var d : Dumper; qt : string; at : CirLoc) : int {
-    // clang writes `void *(*)(P)` with no space after a pointer return
+    // clang writes `void *(*)(P)` with no space after a pointer return. A `(*` with a `(` before
+    // it sits inside a parameter list: `void (void (*)(int), int)` is a function taking a
+    // function pointer, not a pointer
     let star = find(qt, "(*")
-    if (star <= 0 || !(qt |> ends_with(")"))) {
+    if (star <= 0 || !(qt |> ends_with(")")) || find(slice(qt, 0, star), "(") >= 0) {
         return -2
     }
     let close = find(qt, ")(")
     if (close < star) {
         return -2
     }
-    // `(**)` is a pointer to the pointer, one level per extra star
-    let between = slice(qt, star + 2, close)
+    // `(**)` is a pointer to the pointer, one level per extra star; a `const` on the pointer
+    // (`(* const)`, a member read through a const record) changes nothing das spells
+    let between = strip(slice(qt, star + 2, close) |> replace("const", "")) |> replace(" ", "")
     let extra = length([for (ch in between); ch; where ch == '*'])
     let dims = slice(between, extra)
     if (!(between |> starts_with(repeat("*", extra))) || (!empty(dims) && !(dims |> starts_with("[")))) {
@@ -1939,6 +1954,13 @@ def private clang_version(clang : string) : string {
     return at < 0 ? first : split(slice(first, at + length("clang version ")), " ")[0]
 }
 
+// the pinned clang's resource directory, "" when it reports none
+def private clang_resource_dir(clang : string) : string {
+    var out : string
+    let rc = run_and_capture([clang, "-print-resource-dir"], out, 30.0)
+    return rc == 0 ? strip(out) : ""
+}
+
 // C allows several file-scope declarations of one object (tentative definitions); the one
 // with the initializer wins and the others add nothing
 def private merge_tentative(var d : Dumper; var cd : CirDecl?) : bool {
@@ -1972,7 +1994,12 @@ def dump_tu(c_path : string; target : CirTarget; clang : string) : Dumper {
     d.cur_file = c_path
     d.tu_prefix = ident_of(slice(d.tu.tu, 0, max(find(d.tu.tu, "."), 0)))
     d.tu.producer = "c2das-dumper-a 0.1 / clang {clang_version(clang)}"
-    collect_records(d, target.triple)
+    let resource_dir = clang_resource_dir(clang)
+    if (empty(resource_dir)) {
+        d.error = "`{clang} -print-resource-dir` gave no resource directory; libclang needs it for the builtin headers"
+        return <- d
+    }
+    collect_records(d, target.triple, resource_dir)
     if (!empty(d.error)) {
         return <- d
     }

@@ -72,6 +72,17 @@ def rejects(t : T?; name : string; source : string; needle : string; sidecar : s
     t |> equal(res.error |> find(needle) >= 0, true, "{name}: `{needle}` not in `{res.error}`")
 }
 
+// a C source the converter must take: its das text, "" with a failure when it refuses
+def converts(t : T?; name : string; source : string) : string {
+    let dir = path_join(work_root, "converted")
+    mkdir(dir)
+    let c_path = path_join(dir, "{name}.c")
+    write_file(c_path, source)
+    let res <- convert(c_path, path_join(dir, name), "linux")
+    t |> equal(res.ok, true, "{name}: {res.error}")
+    return res.das_text
+}
+
 def check_fixture(t : T?; name : string; var das_text : string&) {
     let want = native(name)
     t |> equal(want.rc >= 0, true, want.out)
@@ -188,6 +199,7 @@ def p2_fixtures(t : T?) {
     p3_fixtures(t)
     p4_fixtures(t)
     p4_union_fixtures(t)
+    p4_function_fixtures(t)
 }
 
 def p2_enum_fixtures(t : T?) {
@@ -460,8 +472,6 @@ def p4_union_fixtures(t : T?) {
 
 def p4_union_rejects(t : T?) {
     t |> run("unions: what the union lowering refuses, each with its reason") @(t : T?) {
-        rejects(t, "union_function_pointer", "union F \{ int (*fn)(int); long n; \};\nint main(void) \{ union F f; f.n = 0; return (int) f.n; \}\n", "function-pointer member `F.fn` of a union is not lowered yet")
-        rejects(t, "union_function_pointer_array", "union F \{ void (*fns[2])(void); long n[2]; \};\nint main(void) \{ union F f; f.n[0] = 0; return (int) f.n[0]; \}\n", "function-pointer member `F.fns` of a union is not lowered yet")
         rejects(t, "union_bitfield", "union B \{ unsigned a : 3; int n; \};\nint main(void) \{ union B b; b.n = 1; return b.a; \}\n", "bitfield `B.a` of the union `B` is not lowered yet")
         rejects(t, "union_aligned", "union A \{ int i; char c; \} __attribute__((aligned(16)));\nint main(void) \{ union A a; a.i = 1; return a.c; \}\n", "union `A` of size 16 and alignment 16 is not laid out naturally")
         rejects(t, "union_packed", "union __attribute__((packed)) P \{ char c; int i; \};\nint main(void) \{ union P p; p.i = 1; return p.c - 1; \}\n", "union `P` aligns to 1, below member `i`'s alignment 4; not lowered yet")
@@ -474,5 +484,84 @@ def p4_union_rejects(t : T?) {
         rejects(t, "anon_macro_two", "#define REC(n) union \{ int n; \}\n#define TWO REC(a); REC(b)\nstruct S \{ TWO; \};\nint main(void) \{ struct S s; s.a = 1; return s.a - 1; \}\n", "anonymous records from one macro expansion are not dumped yet")
         rejects(t, "anon_macro_twou", "#define TWOU union \{ int a; \} u1; union \{ int b; \} u2\nstruct S \{ TWOU; \};\nint main(void) \{ struct S s; s.u1.a = 1; s.u2.b = 2; return s.u1.a - 1; \}\n", "anonymous records from one macro expansion are not dumped yet")
         rejects(t, "zero_length", "struct Z \{ int n; char z[0]; \};\nint main(void) \{ struct Z s; s.n = 0; return s.n; \}\n", "a zero-length array (a GNU extension) is not lowered yet")
+    }
+}
+
+def p4_function_fixtures(t : T?) {
+    t |> run("function pointers: qsort and bsearch through c_sort, a type's `var` positions, casts as reinterpret, a union of function pointers as one storage") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_fnptr", text)
+        has_text(t, text, "require c_runtime/c_sort\n")
+        // a function type takes the `var` positions of the value-taken functions of its
+        // signature, each of which declares them; a library call takes the plain type
+        has_text(t, text, "def private p4_fnptr__cmp_int(var a : void?; var b : void?) : int")
+        has_text(t, text, "def private p4_fnptr__cmp_desc(var a : void?; var b : void?) : int")
+        has_text(t, text, "c_qsort(reinterpret<void?>(addr(arr[0])), uint64(n), uint64(typeinfo sizeof(type<int>)), reinterpret<function<(a0 : void?; a1 : void?) : int>>(@@p4_fnptr__cmp_int))")
+        has_text(t, text, "reinterpret<int?>(c_bsearch(reinterpret<void?>(addr(key)), reinterpret<void?>(addr(arr[0])), uint64(n), uint64(typeinfo sizeof(type<int>)), reinterpret<function<(a0 : void?; a1 : void?) : int>>(@@p4_fnptr__cmp_int)))")
+        has_text(t, text, "def private p4_fnptr__apply_to(f : function<(var a0 : Counter?) : void>; var c : Counter?) \{")
+        has_text(t, text, "def private p4_fnptr__twice(v : int) : int")
+        has_text(t, text, "invoke(pc.step, pc)")
+        // a reading chain keeps every parameter `let`
+        has_text(t, text, "def private p4_fnptr__leaf(p : int?) : int")
+        has_text(t, text, "def private p4_fnptr__mid(p : int?; q : int?; c : int) : int \{\n    return p4_fnptr__leaf(c != 0 ? p : q)\n")
+        has_text(t, text, "def private p4_fnptr__field(s : Holder) : int")
+        // the callee copy takes a name the body leaves free
+        has_text(t, text, "def private p4_fnptr__put(var p_in1 : int?; p_in : int) \{\n    var p = p_in1\n")
+        has_text(t, text, "def private p4_fnptr__put_local(var q_in1 : int?) : int \{\n    var q = q_in1\n    var q_in : int = 4\n")
+        has_text(t, text, "var erased : function<() : void> = reinterpret<function<() : void>>(@@p4_fnptr__add3)")
+        has_text(t, text, "[c_union]\nstruct handler_t \{\n    h1 : function<(a0 : void?) : void>\n    h0 : function<() : void>\n    h2 : function<(a0 : void?; a1 : void?) : void>\n\}")
+        has_text(t, text, "[c_union]\nstruct Slots \{\n    fns : function<(var a0 : Counter?) : void>[2]\n")
+        has_text(t, text, "static_assert(typeinfo offsetof < run > (type<task>) == 8")
+        has_text(t, text, "p4_fnptr__steps[0].action.h1 = unsafe(reinterpret<function<(a0 : void?) : void>>(@@p4_fnptr__gun_fire))")
+        has_text(t, text, "invoke(p4_fnptr__steps[s].action.h2, reinterpret<void?>(addr(gn)), reinterpret<void?>(addr(fr)))")
+        has_text(t, text, "un.task.run.h0 = reinterpret<function<() : void>>(uint64(-1))")
+        // a zero function pointer is `default<...>`, in an array's fill and a fall-off return
+        has_text(t, text, "var zeros : function<(a0 : int) : int>[3] = fixed_array(default<function<(a0 : int) : int>>, default<function<(a0 : int) : int>>, default<function<(a0 : int) : int>>)")
+        has_text(t, text, "var sparse : function<(a0 : int) : int>[3] = fixed_array(default<function<(a0 : int) : int>>, default<function<(a0 : int) : int>>, @@p4_fnptr__inc)")
+        has_text(t, text, "var pair2 : function<(a0 : int) : int>[2] = fixed_array(@@p4_fnptr__inc, default<function<(a0 : int) : int>>)")
+        has_text(t, text, "    return default<function<(a0 : int) : int>>\n")
+        // an invoke of an invoke goes through a temporary (the JIT crash)
+        has_text(t, text, "let _t0 = invoke(getter, 1)")
+        has_text(t, text, "invoke(_t0, 5)")
+        has_text(t, text, "if (un.task.run.h0 != null)")
+        // a function pointer parameter has no pointee: copied or reassigned, it stays `let`
+        has_text(t, text, "def private p4_fnptr__call_copy(g : function<(a0 : int) : int>; v : int) : int")
+        has_text(t, text, "def private p4_fnptr__call_default(f_in : function<(a0 : int) : int>; v : int) : int \{\n    var f = f_in\n")
+    }
+    t |> run("the library renames: `_longjmp` is `c_longjmp`") @(t : T?) {
+        let text = converts(t, "underscore_longjmp", "#include <setjmp.h>\nstatic jmp_buf env;\nint main(void) \{ if (setjmp(env) == 0) \{ _longjmp(env, 1); \} return 0; \}\n")
+        has_text(t, text, "c_longjmp(addr(")
+    }
+    t |> run("function pointers: what the lowering refuses, each with its reason") @(t : T?) {
+        rejects(t, "external_function_value", "#include <string.h>\nint main(void) \{ int (*c)(const char *, const char *) = strcmp; return c(\"a\", \"a\"); \}\n", "the value of external function `strcmp` (a pointer to a function this file does not define) is not lowered yet")
+        rejects(t, "external_function_address", "#include <string.h>\nint main(void) \{ int (*c)(const char *, const char *) = &strcmp; return c(\"a\", \"a\"); \}\n", "the value of external function `strcmp`")
+        rejects(t, "variadic_function_pointer", "int main(void) \{ int (*f)(int, ...) = 0; return f == 0 ? 0 : 1; \}\n", "a pointer to a variadic function is not lowered yet")
+        rejects(t, "unprototyped_call", "static int one(int v) \{ return v; \}\nint main(void) \{ int (*f)() = (int (*)()) one; return f(0); \}\n", "a call with 1 arguments through a function pointer whose type takes 0")
+        let gap = "a pointer the callee writes through arrives through const parameter"
+        rejects(t, "chain_direct", "static void deep(int *p) \{ *p = 1; \}\nstatic void leaf(int *p) \{ deep(p); \}\nint main(void) \{ int x = 0; leaf(&x); return x - 1; \}\n", "{gap} `p` of `leaf`")
+        rejects(t, "chain_ternary", "static void deep(int *p) \{ *p = 1; \}\nstatic void mid(int *p, int *q, int c) \{ deep(c ? p : q); \}\nint main(void) \{ int x = 0; mid(&x, &x, 1); return x - 1; \}\n", "{gap} `p` of `mid`")
+        rejects(t, "chain_field", "struct S \{ int *p; \};\nstatic void deep(int *p) \{ *p = 1; \}\nstatic void field(struct S s) \{ deep(s.p); \}\nint main(void) \{ int x = 0; struct S s = \{ &x \}; field(s); return x - 1; \}\n", "{gap} `s` of `field`")
+        rejects(t, "chain_arithmetic", "static void w(int *p) \{ *p = 1; \}\nstatic void f(int *p) \{ w(p + 1); \}\nint main(void) \{ int a[2] = \{ 0, 0 \}; f(a); return a[1] - 1; \}\n", "{gap} `p` of `f`")
+        rejects(t, "chain_deref", "static void w(int *p) \{ *p = 1; \}\nstatic void f(int **pp) \{ w(*pp); \}\nint main(void) \{ int x = 0; int *p = &x; f(&p); return x - 1; \}\n", "{gap} `pp` of `f`")
+        rejects(t, "chain_index", "static void w(int *p) \{ *p = 1; \}\nstatic void f(int **pp) \{ w(pp[0]); \}\nint main(void) \{ int x = 0; int *p = &x; f(&p); return x - 1; \}\n", "{gap} `pp` of `f`")
+        rejects(t, "chain_arrow", "struct S \{ int *q; \};\nstatic void w(int *p) \{ *p = 1; \}\nstatic void f(struct S *sp) \{ w(sp->q); \}\nint main(void) \{ int x = 0; struct S s = \{ &x \}; f(&s); return x - 1; \}\n", "{gap} `sp` of `f`")
+        rejects(t, "chain_invoke", "static void deep(int *p) \{ *p = 1; \}\nstatic void (*sink)(int *) = deep;\nstatic void leaf(int *p) \{ sink(p); \}\nint main(void) \{ int x = 0; leaf(&x); return x - 1; \}\n", "{gap} `p` of `leaf`")
+    }
+    t |> run("the dumper's libclang pass: a clang reporting no resource directory, and an error libclang meets") @(t : T?) {
+        var fake_out : string
+        let no_resources <- convert("{FIXTURES}/ret42.c", path_join(work_root, "no_resources"), "linux", "/bin/false")
+        t |> equal(no_resources.ok, false, no_resources.das_text)
+        t |> equal(no_resources.error |> find("-print-resource-dir` gave no resource directory") >= 0, true, no_resources.error)
+        // a clang that prints a path but fails is no resource directory either
+        let fake = path_join(work_root, "fake_clang.sh")
+        write_file(fake, "#!/bin/sh\necho /usr\nexit 3\n")
+        let mode = run_and_capture(["chmod", "+x", fake], fake_out, 10.0)
+        t |> equal(mode, 0, fake_out)
+        let failing <- convert("{FIXTURES}/ret42.c", path_join(work_root, "fake_resources"), "linux", fake)
+        t |> equal(failing.error |> find("-print-resource-dir` gave no resource directory") >= 0, true, failing.error)
+        rejects(t, "libclang_error", "#include \"c2das_no_such_header.h\"\nint main(void) \{ return 0; \}\n", "libclang: ")
+    }
+    t |> run("a wide string literal fails closed") @(t : T?) {
+        rejects(t, "wide_literal", "int main(void) \{ const int *w = (const int *) L\"ab\"; return w[1] == 98 ? 0 : 1; \}\n", "a wide string literal")
     }
 }

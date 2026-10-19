@@ -179,8 +179,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `s.f++`).
 - **P4.2 `[c_union]` macro.** One ref-returning operator per member (probed); storage
   alignment via max-align member type; anonymous-union flattening.
-  Ledger (fail closed today, each a later row): a union with a function-pointer member (P4.3);
-  a bitfield member of a union; a union the layout law finds unnatural - clang's alignment past
+  Ledger (fail closed today, each a later row): a bitfield member of a union; a union the layout law finds unnatural - clang's alignment past
   8 (`aligned(16)`: no unsigned storage type aligns there) or below a member's (`packed`) - which
   waits for marshal to cover unions; a union holding a marshal-only record, and a marshal-only
   record holding a union; a union initializer outside a declaration (compound literals); an
@@ -194,12 +193,35 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   (`char z[0]`, gcc-torture zerolen-1) and GNU's cast to a union type (`ToUnion`, 960416-1).
 - **P4.3 Function-pointer shims.** The sidecar-declared dispatch groups (`actionf_t`
   class); qsort/bsearch typed generics land here too.
+  Landed instead of the shim (`docs/probe-findings.md` F32): a union of function pointers is a
+  `[c_union]` over one 8-byte storage and a cast between function types a `reinterpret`, which
+  a call through any member or type takes as x86-64 C does, so no sidecar entry; `qsort` is the
+  runtime's byte sort and `bsearch` a binary search in `c_runtime/c_sort` (F33); a function
+  type's `var` positions are those of the value-taken functions of its signature (F34).
+  Ledger (fail closed today): the value of a function the unit does not define (`strcmp` as a
+  comparator), which needs a das function of C's type per libc function; a pointer to a
+  variadic function (c-testsuite 00189, `fprintf`); a function returning a function pointer,
+  whose spelling `int (*(int, int))(int)` the dumper does not parse (c-testsuite 00124); a call
+  with arguments through an unprototyped function pointer `T (*)()`, which the C-IR spells as
+  `T (*)(void)` until it marks it; a wide string literal (`L"ab"`; the torture filter skips its tests, 20010325-1 among
+  them, which passed only because the narrow bytes indexed alike), whose bytes the dump gives
+  narrow; and a `let` pointer passed into a `var` pointer parameter (P4.6).
 - **P4.4 va_list completeness.** `va_copy`, forwarding, non-constant printf formats,
   scanf-family split.
 - **P4.5 csmith differential.** Nightly N=1000 seeds vs `gcc -O0 -fwrapv`; any
   divergence is a converter bug by construction; creduce harness for minimization.
   Ledger: an address one past an array's end formed by indexing (`&a[N]`, gcc-torture
   strlen-5) trips das's range check; spell `&a[k]` as `addr(a[0]) + k` where `k` can reach `N`.
+- **P4.6 Pointer constness: the uniform `var` policy.** A pointer parameter is `var` only where
+  the body writes through it (F3), and das takes no `let` pointer for a `var` parameter, so a
+  `let` pointer a caller holds - its own parameter that it never writes through, a field of a
+  by-value record parameter, reached through `?:` or a cast - cannot flow into a callee's `var`
+  parameter, by a direct call or through a function value whose type has a `var` position; the
+  emitter fails closed there ("a pointer the callee writes through arrives through const
+  parameter"). Making every pointer parameter `var` closes the gap but meets a const record
+  lvalue: `var copy = s` of a by-value record parameter holding a pointer is "can't assign
+  'S const.p: int? = int? const'", so the row is the redesign of F3, not a flag. c-testsuite
+  00181 and gcc-torture 990128-1 wait for it.
 - **Exit criterion:** csmith runs clean at 1000/night for a week; torture ≥ target with
   ledger; matrix has no row without a green fixture.
 
@@ -223,7 +245,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 **Goal: the metric.**
 
 - **P6.1 PureDOOM import.** Vendored, sidecar authored (defines, marshal types for WAD
-  structs, `actionf_t` shim group, alloca/stack sizing). Instrumentation patch: per-tic
+  structs, alloca/stack sizing; `actionf_t` needs no entry, F32). Instrumentation patch: per-tic
   checksum (players[0].mo x/y/z/angle/health + P_Random index) — applied to the C
   source, so the native build and the converted build share it by construction.
 - **P6.2 Native baseline build** (MSVC /O2) with instrumentation; record reference

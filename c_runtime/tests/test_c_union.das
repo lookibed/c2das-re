@@ -1,7 +1,8 @@
 options gen2
 require dastest/testing_boost public
-require _daslang_child
+require ../../probes/_daslang_child.das
 require c_runtime/c_union
+require strings
 
 //! `[c_union]` as the converter emits it: the union written C-shaped, bare when the members give
 //! clang's size and alignment, `size` and `align` stated when they do not.
@@ -58,6 +59,47 @@ def bits_of(v : Value) : int64 => v.i
 def bump(var p : int?) {
     *p += 100
 }
+
+// `typedef union { handler_p1 h1; handler_v h0; handler_p2 h2; } handler_t;`
+[c_union]
+struct handler_t {
+    h1 : function<(a0 : void?) : void>
+    h0 : function<() : void>
+    h2 : function<(a0 : void?; a1 : void?) : void>
+}
+
+// `void fire(int *ammo, int *tics)`, stored through `h1` and called through `h2`; its pointer
+// parameters are `var` (F3) while the union's member types spell none
+def fire(var ammo : int?; var tics : int?) {
+    (*ammo)--
+    *tics = 4
+}
+
+// the same union and calls as a program, run under the JIT
+let FN_UNION_SOURCE = "options gen2
+require c_runtime/c_union
+[c_union]
+struct handler_t \{
+    h1 : function<(a0 : void?) : void>
+    h0 : function<() : void>
+    h2 : function<(a0 : void?; a1 : void?) : void>
+\}
+def fire(var ammo : int?; var tics : int?) \{
+    *ammo -= 1
+    *tics = 4
+\}
+[export]
+def main \{
+    var u : handler_t
+    var ammo = 5
+    var tics = 0
+    unsafe \{
+        u.h1 = reinterpret<function<(a0 : void?) : void>>(@@fire)
+        invoke(u.h2, reinterpret<void?>(addr(ammo)), reinterpret<void?>(addr(tics)))
+    \}
+    print(\"\{typeinfo sizeof(u)\} \{ammo\} \{tics\} \{u.h0 != null\}\\n\")
+\}
+"
 
 let U_FIELDS = "    i : int\n    d : double\n"
 
@@ -147,19 +189,44 @@ def test_c_union(t : T?) {
 }
 
 [test]
+def test_c_union_functions(t : T?) {
+    t |> run("function members share one pointer-sized storage: a call through another member calls the stored function") @(t : T?) {
+        t |> equal(typeinfo sizeof(type<handler_t>), 8)
+        var u : handler_t
+        t |> equal(u.h1 == null && u.h0 == null, true)
+        var ammo = 5
+        var tics = 0
+        unsafe {
+            u.h1 = reinterpret<function<(a0 : void?) : void>>(@@fire)
+            invoke(u.h2, addr<void?>(ammo), addr<void?>(tics))
+            t |> equal(u.h0 == reinterpret<function<() : void>>(@@fire), true)
+            u.h0 = reinterpret<function<() : void>>(uint64(-1))
+            t |> equal(u.h1 == reinterpret<function<(a0 : void?) : void>>(uint64(-1)), true)
+        }
+        t |> equal(ammo, 4)
+        t |> equal(tics, 4)
+        let r = runtime_child_flags("fn_union_jit", FN_UNION_SOURCE, jit_flags())
+        t |> equal(r.rc, 0, r.out)
+        t |> equal(jit_ran(r.out), true, r.out)
+        t |> equal(r.out |> find("8 4 4 true") >= 0, true, r.out)
+    }
+}
+
+[test]
 def test_c_union_shapes(t : T?) {
     t |> run("the compiler takes the emitted shapes") @(t : T?) {
         let bare = compile_shape("bare", "[c_union]")
         t |> equal(bare.rc, 0, bare.out)
         let stated = compile_shape("stated", "[c_union(size = 16, align = 8)]")
         t |> equal(stated.rc, 0, stated.out)
+        let fn_member = compile_shape("function", "[c_union]", "    f : function<(a : int) : int>\n    n : int64\n")
+        t |> equal(fn_member.rc, 0, fn_member.out)
     }
     t |> run("the compiler rejects a union the annotation does not lower") @(t : T?) {
         rejects(t, "class", "[c_union]", "U is a class", U_FIELDS, "", "class")
         rejects(t, "empty", "[c_union]", "U has no member", "")
         rejects(t, "storage", "[c_union]", "U has a member named `_storage`", "    _storage : int\n")
         rejects(t, "init", "[c_union]", "member `i` has an initializer", "    i : int = 1\n")
-        rejects(t, "function", "[c_union]", "function-pointer member `f` of a union is not lowered yet", "    f : function<(a : int) : int>\n    n : int64\n")
     }
     t |> run("an operator the source spells beside the union is the parser's error, before the annotation runs") @(t : T?) {
         rejects(t, "operator", "[c_union]", "function is already defined .`i", U_FIELDS, "def operator . i(s : U) : int => 0\n")

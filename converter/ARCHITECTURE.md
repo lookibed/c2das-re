@@ -110,7 +110,8 @@ Section 3, Dumper A's subset (what the dumper reads from clang and libclang), is
 `ARCHITECTURE_DUMPER.md`.
 
 Section 4, what the emitter spells (the das text of every construct), is in
-`ARCHITECTURE_EMITTER.md`.
+`ARCHITECTURE_EMITTER.md`, with bitfields, unions and function pointers in
+`ARCHITECTURE_EMITTER_AGGREGATES.md`.
 
 ## 5. The four tiers
 
