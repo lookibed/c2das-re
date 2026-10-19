@@ -219,8 +219,9 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `va_list` is an opaque C-IR record (F39). gcc-torture: 27 of the 67 `va_start` tests pass
   (none before), and 20030914-2, a variadic definition reading no argument (652 to 680);
   c-testsuite holds at 192.
-  Upstream (daScript): a failed module-cache write fails the compile, and the serializer
-  refuses a same-module call macro inside a generic body, so a cold run of a `[variadic]` body
+  Upstream (daScript): a failed module-cache write fails the compile
+  (https://github.com/lookibed/daScript/issues/16), and the serializer refuses a same-module
+  call macro inside a generic body (https://github.com/lookibed/daScript/issues/15), so a cold run of a `[variadic]` body
   calling its module's own macro exits 1 before `main` (F37); the converter spells the call as
   the macro expands it instead.
   Ledger (fail closed today): `va_arg` of a record and a record passed through `...`, for
