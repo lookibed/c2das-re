@@ -187,6 +187,7 @@ def p2_fixtures(t : T?) {
     p2_memory_fixtures(t)
     p3_fixtures(t)
     p4_fixtures(t)
+    p4_union_fixtures(t)
 }
 
 def p2_enum_fixtures(t : T?) {
@@ -412,5 +413,66 @@ def p4_fixtures(t : T?) {
         has_text(t, text, "if (!f.on) \{")
         rejects(t, "bool_step", "int main(void) \{ _Bool b = 0; b++; return b; \}\n", "a `_Bool` step (`b++`, `s.f++`) is not lowered yet")
         rejects(t, "bool_bitfield_step", "struct F \{ _Bool on : 1; \};\nint main(void) \{ struct F f = \{ 0 \}; f.on++; return f.on; \}\n", "a `_Bool` step (`b++`, `s.f++`) is not lowered yet")
+    }
+}
+
+def p4_union_fixtures(t : T?) {
+    t |> run("unions: [c_union] over one storage, members through ref operators, initializers as stores, anonymous members as `_anon<N>`") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_unions", text)
+        has_text(t, text, "require c_runtime/c_union")
+        has_text(t, text, "[c_union]\nstruct Value \{\n    gc : GCObject?\n    p : void?\n    n : double\n    i : int64\n\}")
+        has_text(t, text, "[c_union]\nstruct Mix \{\n    pt : Point\n    bytes : uint8[12]\n    i : int\n\}")
+        has_text(t, text, "[c_union(size = 4, align = 4)]\nstruct Wrap \{")
+        has_text(t, text, "[c_union(size = 12, align = 4)]\nstruct Slots \{\n    slot : int[int(anon_26.SLOTS)]")
+        has_text(t, text, "[c_union(size = 12, align = 4)]\nstruct Nested \{")
+        has_text(t, text, "[c_union]\nstruct Ragged \{")
+        has_text(t, text, "static_assert(typeinfo offsetof < _storage > (type<Mix>) == 0, \"Mix: every member sits at 0\")")
+        has_text(t, text, "var m : Mix\n    m.pt = Point(x = 1, y = 2)\n")
+        has_text(t, text, "m.i++\n")
+        has_text(t, text, "p4_unions__bump(addr(m.i))")
+        has_text(t, text, "var h : Half\n    p4_unions__fill(")
+        has_text(t, text, "var gtags : Tagged[2] = fixed_array(Tagged(tag = 1), Tagged(tag = 2))")
+        has_text(t, text, "    p4_unions__gmix.i = 16909060\n    gtags[0].m.i = 7\n    gtags[1].m.pt = Point(x = 3, y = 4)\n")
+        has_text(t, text, "    pbits = unsafe(addr(p4_unions__gbits.u))\n")
+        has_text(t, text, "    pbig = unsafe(addr(big[5]))\n")
+        has_text(t, text, "    later = Later(p = unsafe(addr(later_target)))\n    later.u.u = uint(3)\n")
+        has_text(t, text, "var t : Tagged = Tagged(tag = 5)\n    t.m.i = 9\n")
+        has_text(t, text, "var arr : Mix[2] = fixed_array(Mix(), Mix())\n    arr[0].i = 1\n    arr[1].pt = Point(x = 5, y = 6)\n")
+        has_text(t, text, "var o1 : Order = Order(a = _t")
+        has_text(t, text, "var out : Out\n    out._c_in.s = int16(5)\n")
+        has_text(t, text, "var sparse : Bits[40]\n    sparse[3].u = uint(4)\n")
+        has_text(t, text, "def private p4_unions__decay_read(h_in : Half) : int \{\n    var h = h_in\n")
+        has_text(t, text, "def private p4_unions__store_struct(q_in : Q) : int \{\n    var q = q_in\n")
+        has_text(t, text, "def private p4_unions__step_union(h_in : Half) : int \{\n    var h = h_in\n")
+        has_text(t, text, "var zero : Mix\n")
+        has_text(t, text, "int(uint64(0))")
+        has_text(t, text, "struct Shape \{\n    kind : int\n    _anon1 : anon_29\n    _anon2 : anon_30\n\}")
+        has_text(t, text, "var sh : Shape = Shape(kind = 1, _anon2 = anon_30(w = int16(3), h = int16(4)))\n    sh._anon1.radius = 2.5lf\n")
+        let msvc <- convert("{FIXTURES}/p4_unions.c", path_join(work_root, "p4_unions_msvc"), "msvc")
+        t |> equal(msvc.ok, true, msvc.error)
+        has_text(t, msvc.das_text, "[c_union]\nstruct Value \{")
+        has_text(t, msvc.das_text, "[c_union]\nstruct Wrap \{")
+        has_text(t, msvc.das_text, "static_assert(typeinfo sizeof(type<Wrap>) == 8 && typeinfo alignof(type<Wrap>) == 4")
+    }
+    p4_union_rejects(t)
+}
+
+def p4_union_rejects(t : T?) {
+    t |> run("unions: what the union lowering refuses, each with its reason") @(t : T?) {
+        rejects(t, "union_function_pointer", "union F \{ int (*fn)(int); long n; \};\nint main(void) \{ union F f; f.n = 0; return (int) f.n; \}\n", "function-pointer member `F.fn` of a union is not lowered yet")
+        rejects(t, "union_function_pointer_array", "union F \{ void (*fns[2])(void); long n[2]; \};\nint main(void) \{ union F f; f.n[0] = 0; return (int) f.n[0]; \}\n", "function-pointer member `F.fns` of a union is not lowered yet")
+        rejects(t, "union_bitfield", "union B \{ unsigned a : 3; int n; \};\nint main(void) \{ union B b; b.n = 1; return b.a; \}\n", "bitfield `B.a` of the union `B` is not lowered yet")
+        rejects(t, "union_aligned", "union A \{ int i; char c; \} __attribute__((aligned(16)));\nint main(void) \{ union A a; a.i = 1; return a.c; \}\n", "union `A` of size 16 and alignment 16 is not laid out naturally")
+        rejects(t, "union_packed", "union __attribute__((packed)) P \{ char c; int i; \};\nint main(void) \{ union P p; p.i = 1; return p.c - 1; \}\n", "union `P` aligns to 1, below member `i`'s alignment 4; not lowered yet")
+        rejects(t, "union_empty", "union E \{\};\nint main(void) \{ union E e; return (int) sizeof e; \}\n", "union `E` has no member; not lowered yet")
+        rejects(t, "union_marshal", "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\n#pragma pack()\nunion DU \{ disk_t d; char c; \};\nint main(void) \{ union DU u; u.c = 0; return u.c; \}\n", "union `DU` holds the marshal-only record `disk_t`; not lowered yet", "\{ \"marshal\": [\"disk_t\"] \}\n")
+        rejects(t, "union_storage_name", "union S \{ int _storage; char c; \};\nint main(void) \{ union S s; s.c = 1; return s.c; \}\n", "member `S._storage` is spelled like the storage field of `[c_union]`")
+        rejects(t, "anon_name", "struct S \{ int _anon1; union \{ int i; \}; \};\nint main(void) \{ struct S s; s.i = 1; return s.i - 1; \}\n", "field `S._anon1` is spelled like the name of an anonymous member")
+        rejects(t, "anon_no_name", "struct S \{ int t; struct \{ int : 4; \}; \};\nint main(void) \{ struct S s; s.t = 0; return s.t; \}\n", "anonymous member of `struct S` exposes no field name; not dumped yet")
+        rejects(t, "anon_init", "union U \{ struct \{ int a; \}; int b; \};\nint main(void) \{ union U u = \{ \{ 1 \} \}; return u.a - 1; \}\n", "an initializer of an anonymous member of a union is not dumped yet")
+        rejects(t, "anon_macro_two", "#define REC(n) union \{ int n; \}\n#define TWO REC(a); REC(b)\nstruct S \{ TWO; \};\nint main(void) \{ struct S s; s.a = 1; return s.a - 1; \}\n", "anonymous records from one macro expansion are not dumped yet")
+        rejects(t, "anon_macro_twou", "#define TWOU union \{ int a; \} u1; union \{ int b; \} u2\nstruct S \{ TWOU; \};\nint main(void) \{ struct S s; s.u1.a = 1; s.u2.b = 2; return s.u1.a - 1; \}\n", "anonymous records from one macro expansion are not dumped yet")
+        rejects(t, "zero_length", "struct Z \{ int n; char z[0]; \};\nint main(void) \{ struct Z s; s.n = 0; return s.n; \}\n", "a zero-length array (a GNU extension) is not lowered yet")
     }
 }

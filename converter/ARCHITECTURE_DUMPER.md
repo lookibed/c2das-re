@@ -34,7 +34,15 @@ dialect `struct { unsigned a : 3; int b : 5; short e; }` is a `uint8` unit and `
 4, align 2 against clang's 4, `docs/probe-findings.md` F5), so a record holding one is placed
 by that smaller alignment. Every field, an unnamed bitfield included (`"name": ""`), is a C-IR
 field; clang's record initializer has no child for an unnamed bitfield, so the dumper maps the
-n-th child to the n-th field that is not one. A typedef is a `typedef` type and a `typedefdecl`
+n-th child to the n-th field that is not one. An anonymous member (a struct or union member
+with no declarator) is a field named `""` that is no bitfield, of the anonymous record's type:
+libclang visits that record but never the implicit field, so the pass adds the field where the
+record stands, at the offset `clang_Type_getOffsetOf` gives a name the member makes visible
+(through nested anonymous members) less that name's offset inside it; a member that makes no
+name visible (`struct { int : 4; }`) fails closed, since libclang offers no other way to its
+offset. Both the dump and libclang can scope such a record by its owner (`union
+S::(anonymous at f:l:c)`, nested `union N::(anonymous struct)::(anonymous at f:l:c)`), so a
+record spelling is keyed with the scope dropped. A typedef is a `typedef` type and a `typedefdecl`
 anchor, nothing more. A file-scope `static` gets the TU-qualified name `<stem>__<name>` (a stem
 that starts with a digit, as the c-testsuite's do, takes a leading underscore, since `00099__f`
 is not a name) and a local `static` is hoisted into `decls` as `<fn>_<name>` with `from_func`;
@@ -48,17 +56,26 @@ Statements: compound, `DeclStmt` (one `decl` per variable), expression statement
 hex-float through the CRT) and string literals (C escapes decoded, the NUL appended),
 `DeclRefExpr`, every pinned cast, the unary, binary, compound-assignment, conditional and
 comma operators, calls, subscripts, `sizeof`, `MemberExpr` (the field by index into the
-record's fields, `arrow` kept), `InitListExpr` of a record or an array (clang's semantic form,
+record's fields, `arrow` kept; a member named `""` is the anonymous member whose record is the
+node's type), `InitListExpr` of a record or an array (clang's semantic form,
 one child per field or element, an `ImplicitValueInitExpr` left to the positional zero;
 an array with a trailing run of zeros lists its filler first under `array_filler`, then the
-elements up to the last one written) and `OffsetOfExpr`,
+elements up to the last one written) or of a union (at most one child, the member it
+initializes named under `field`: one item at that member's index, none for `{}`, and a member
+`field` names `""` fails closed) and `OffsetOfExpr`,
 whose components the dump omits: the dumper reads `T, f` from the macro's own text at its
 `expansionLoc` (F20). A location with an `expansionLoc` is that location.
 
-The libclang pass and the JSON walk meet on one key: the byte offset of a node's expansion
-location (`clang_getExpansionLocation`; the JSON `loc`, or its `expansionLoc`, always carries
-`offset`, where clang omits a `line` that repeats the last one it printed, its last-line state
-also moving on a `range.end` the dumper never sees). Every record, enum, enumerator reference
+The libclang pass and the JSON walk meet on one key: the byte offsets of a node's expansion
+location and of its spelling location (`clang_getExpansionLocation`,
+`clang_getSpellingLocation`; the JSON `expansionLoc` and `spellingLoc` of a macro-produced node,
+its flat `loc` for both otherwise), since every node one macro expansion produces shares the
+expansion offset. The JSON always carries `offset`, where clang omits a `line` (and a `file`)
+that repeats the last one it printed, its last-line state also moving on a `range.end` the
+dumper never sees, so the file is no part of the key. Two records one expansion still makes
+indistinguishable (one key, or one `(anonymous at f:l:c)` spelling, which is the expansion
+location) fail closed when the second is registered; the same record met twice (a block-scoped
+record under its statement and its variable's type) is recognized by `clang_hashCursor`. Every record, enum, enumerator reference
 and dimensioned declarator the pass records is keyed that way; the location carry (`loc_of`)
 serves the C-IR's `loc` alone.
 

@@ -1,5 +1,13 @@
 options gen2
 require dastest/testing_boost public
+require strings
+require _probe_macros
+require _daslang_child
+require daslib/fio
+
+//! The `[c_union]` mechanism by hand: one storage field, one ref-returning `operator .` per
+//! member over a `var` union and one value-returning over a const one, and what a structure
+//! annotation's `apply` knows about the member types before inference.
 
 struct Point {
     x, y : int
@@ -27,6 +35,66 @@ def operator . pt(var s : Value) : Point& {
     }
 }
 
+// the storage the annotation makes: an array of the unsigned type of the union's alignment
+struct Mix {
+    _storage : uint[3]
+}
+
+def operator . i(var s : Mix) : int& {
+    unsafe {
+        return *addr<int?>(s._storage)
+    }
+}
+
+def operator . i(s : Mix) : int {
+    unsafe {
+        return *addr<int?>(s._storage)
+    }
+}
+
+def operator . bytes(var s : Mix) : uint8[12]& {
+    unsafe {
+        return *addr<uint8[12]?>(s._storage)
+    }
+}
+
+def operator . bytes(s : Mix) : uint8[12] {
+    unsafe {
+        return *addr<uint8[12]?>(s._storage)
+    }
+}
+
+def read_let(m : Mix) : int => m.i + int(m.bytes[0])
+
+let N = 3
+
+enum Count {
+    Three = 3
+}
+
+[probe_apply_types, probe_count_annotations]
+struct Seen {
+    pt : Point
+    later : Later
+    p : Later?
+    n : double
+    arr : int[3]
+    by_const : int[N]
+    by_enum : int[int(Count.Three)]
+}
+
+// a structure annotation whose `patch` reports itself as an error, so a compile shows whether
+// it ran
+let PATCH_MODULE = "options gen2\nmodule probe_patch_mod public\nrequire daslib/ast\nrequire daslib/ast_boost\n[structure_macro(name = \"loud_patch\")]\nclass LoudPatch : AstStructureAnnotation \{\n    def override patch(var st : StructurePtr; var group : ModuleGroup; var args : AnnotationArgumentList; var errors : das_string; var astChanged : bool&) : bool \{\n        errors := \"PATCH RAN\"\n        return false\n    \}\n\}\n"
+
+def patch_source(body : string) : string => "options gen2\nrequire probe_patch_mod\n[loud_patch]\nstruct P \{\n    x : int\n\}\n[export]\ndef main \{\n{body}\}\n"
+
+struct Later {
+    x : int
+}
+
+let VAR_ONLY = "options gen2\nstruct U \{\n    _storage : uint\n\}\ndef operator . i(var s : U) : int& \{\n    unsafe \{\n        return *addr<int?>(s._storage)\n    \}\n\}\ndef read(u : U) : int => u.i\n[export]\ndef main \{\n\}\n"
+
 [test]
 def test_unions(t : T?) {
     t |> run("members alias one storage: writing a double reads back as its bits") @(t : T?) {
@@ -48,5 +116,59 @@ def test_unions(t : T?) {
         var pp = unsafe(addr(v.pt))
         pp.y = 100
         t |> equal(v.pt.y, 100)
+    }
+    t |> run("an array storage reinterprets as any member, the array member included") @(t : T?) {
+        var m : Mix
+        m.i = 258
+        t |> equal(int(m.bytes[0]), 2)
+        m.bytes[0] = 9u8
+        t |> equal(m.i, 265)
+        t |> equal(typeinfo sizeof(type<Mix>), 12)
+        t |> equal(typeinfo alignof(type<Mix>), 4)
+    }
+    t |> run("a var base takes the ref operator, a const base the value one, without ambiguity") @(t : T?) {
+        var m : Mix
+        m.i = 7
+        t |> equal(read_let(m), 14)
+        let c = m
+        t |> equal(c.i, 7)
+        let cp : Mix const? = unsafe(addr(m))
+        t |> equal(cp.i, 7)
+    }
+    t |> run("a const base finds no ref operator over a var parameter") @(t : T?) {
+        let r = daslang_child("union_var_only", VAR_ONLY, true)
+        t |> equal(r.rc != 0, true, r.out)
+        t |> equal(r.out |> find("field 'i' not found in U const") >= 0, true, r.out)
+    }
+    t |> run("++ and -- apply to a ref-returning operator, unlike a property pair") @(t : T?) {
+        var m : Mix
+        m.i = 5
+        m.i++
+        ++m.i
+        m.i--
+        t |> equal(m.i, 6)
+        var p = unsafe(addr(m))
+        p.i++
+        t |> equal(m.i, 7)
+    }
+    t |> run("apply sees a struct declared earlier resolved and sized, a later one as an alias, a pointer to it sized yet isAutoOrAlias, a constant dimension unfolded") @(t : T?) {
+        t |> equal(apply_types_Seen(), "pt:tStructure:8 later:alias:-:alias p:tPointer:8:alias n:tDouble:8 arr:tFixedArray:12:dim3 by_const:tFixedArray:-:dim-2 by_enum:tFixedArray:-:dim-2")
+    }
+    t |> run("apply sees no annotation list: the parser attaches it after every apply ran") @(t : T?) {
+        t |> equal(annotations_Seen(), 0)
+    }
+    t |> run("patch runs only once the whole program infers without error") @(t : T?) {
+        let dir = temp_directory_result() as value
+        let module_path = "{dir}/probe_patch_mod.das"
+        fopen(module_path, "wb") $(f) {
+            fwrite(f, PATCH_MODULE)
+        }
+        let clean = daslang_child("patch_clean", patch_source("    var p : P\n    p.x = 1\n"), true)
+        t |> equal(clean.out |> find("PATCH RAN") >= 0, true, clean.out)
+        let broken = daslang_child("patch_broken", patch_source("    var p : P\n    p.y = 1\n"), true)
+        t |> equal(broken.rc != 0, true, broken.out)
+        t |> equal(broken.out |> find("field 'y' not found") >= 0, true, broken.out)
+        t |> equal(broken.out |> find("PATCH RAN") < 0, true, broken.out)
+        remove(module_path)
     }
 }

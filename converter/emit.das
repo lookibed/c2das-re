@@ -44,6 +44,8 @@ struct Emitter {
     empty_literal : bool
     global_order : table<string; int>
     global_initialized : table<string>
+    // initializer values already evaluated into temporaries, by node (`hoist_items`)
+    hoisted : table<uint64; Em>
     globals_seen : int
     marshal : table<int>
     layout : LayoutMemo
@@ -217,12 +219,8 @@ def das_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
         em.requires |> insert("c_runtime/setjmp")
         return "CJmpBuf"
     }
-    if (k == "struct" || k == "enum") {
+    if (k == "struct" || k == "union" || k == "enum") {
         return tag_name(em, tu, t)
-    }
-    if (k == "union") {
-        fail(em, "unions are not lowered yet", loc)
-        return ""
     }
     fail(em, "type kind `{k}` is not lowered yet", loc)
     return ""
@@ -237,6 +235,10 @@ def private array_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc; spel
     while (kind_of(tu, elem) == "array") {
         if (is_marshal(em, tu, tu.types[elem].elem)) {
             fail(em, "an array of the marshal-only record `{tag_name(em, tu, tu.types[elem].elem)}` is not lowered yet", loc)
+            return ""
+        }
+        if (tu.types[elem].count == 0) {
+            fail(em, "a zero-length array (a GNU extension) is not lowered yet", loc)
             return ""
         }
         let level = length(dims)
@@ -282,8 +284,22 @@ def private field_name(var em : Emitter; tu : CirTu; rec : int; field : int) : s
         fail(em, "record `{tag_name(em, tu, rec)}` has no field {field}: the dump and libclang disagree on its definition", CirLoc())
         return "_"
     }
-    return das_name(em, tu.types[rec].fields[field].name)
+    return member_name(em, tu.types[rec].fields[field], field)
 }
+
+// whether record `t` has an anonymous member, an unnamed field that is no bitfield
+def private has_anonymous_member(tu : CirTu; t : int) : bool {
+    for (f in tu.types[t].fields) {
+        if (empty(f.name) && !f.is_bitfield) {
+            return true
+        }
+    }
+    return false
+}
+
+// a field's das name; an anonymous member (an unnamed field that is no bitfield) is named by
+// its index, `_anon<N>`
+def private member_name(em : Emitter; f : CirField; idx : int) : string => empty(f.name) ? "_anon{idx}" : das_name(em, f.name)
 
 // the bool view of a C scalar: a comparison stays one, a pointer tests against null, an
 // integer against zero
@@ -950,6 +966,9 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
 //! The das text of expression `x`; a `_Bool` expression is a das `bool` (`is_bool`), so a truth
 //! test takes it as it is and a sink that wants a number spells `b ? 1 : 0`.
 def emit_expr(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
+    if (x != null && key_exists(em.hoisted, intptr(x))) {
+        return em.hoisted?[intptr(x)] ?? Em()
+    }
     var e = emit_node(em, tu, x, loc)
     if (x != null && is_c_bool(tu, x.t)) {
         e.is_bool = true
@@ -1009,6 +1028,10 @@ def private emit_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : Ci
         return value("{das_type(em, tu, x.t, loc)}(typeinfo sizeof(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
     }
     if (x.e == "offsetof") {
+        if (kind_of(tu, x.of_t) == "union") {
+            // a union's members are operators over one storage at 0
+            return value("{das_type(em, tu, x.t, loc)}(0)", PREC_PRIMARY)
+        }
         return value("{das_type(em, tu, x.t, loc)}(typeinfo offsetof<{field_name(em, tu, x.of_t, x.field)}>(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
     }
     if (x.e == "member") {
@@ -1160,9 +1183,15 @@ def private literal_array(tu : CirTu; x : CirExpr) : bool =>
     kind_of(tu, x.t) != "array" || length(x.init_items) == tu.types[x.t].count || tu.types[x.t].count <= SPARSE_ARRAY_LIMIT
 
 // `S(f = v, ...)` naming the slots the source filled, the rest the struct's zeros;
-// `fixed_array(...)` with every element, the unwritten ones as zero literals
+// `fixed_array(...)` with every element, the unwritten ones as zero literals; a union's list
+// in either is left at its zero for the stores that follow (`union_stores`), since a struct
+// literal cannot name a `[c_union]` member
 def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let k = kind_of(tu, x.t)
+    if (k == "union") {
+        fail(em, "a union initializer list outside a declaration is not lowered yet", loc)
+        return value("", PREC_PRIMARY)
+    }
     if (k != "struct" && k != "array") {
         fail(em, "`{k}` initializer lists are not lowered yet", loc)
         return value("", PREC_PRIMARY)
@@ -1174,6 +1203,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
         }
         var elems <- [for (_i in range(tu.types[x.t].count)); ""]
         for (item in x.init_items) {
+            continue if (is_union_list(tu, item.v))
             elems[item.pos] = stored(emit_expr(em, tu, item.v, loc), tu, tu.types[x.t].elem).text
         }
         for (e in elems) {
@@ -1196,6 +1226,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
     var item_units : array<int>
     items |> reserve(length(x.init_items))
     for (item in x.init_items) {
+        continue if (is_union_list(tu, item.v))
         let v = stored(emit_expr(em, tu, item.v, loc), tu, tu.types[x.t].fields[item.pos].t)
         let n = tu.types[x.t].fields[item.pos].is_bitfield ? unit_of(units, item.pos) : -1
         if (n < 0) {
@@ -1221,8 +1252,102 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
 def private sparse_stores(var em : Emitter; tu : CirTu; name : string; x : CirExpr; loc : CirLoc; var out : array<string>) {
     out |> reserve(length(out) + length(x.init_items))
     for (item in x.init_items) {
-        let v = stored(emit_expr(em, tu, item.v, loc), tu, item.v.t)
-        out |> push("{name}[{item.pos}] = {v.text}")
+        init_stores(em, tu, "{name}[{item.pos}]", item.v, loc, out)
+    }
+}
+
+// whether `x` is the integer literal 0, through C's implicit conversions
+def private is_zero_literal(x : CirExpr const?) : bool {
+    var v = x
+    while (v != null && v.e == "cast") {
+        v = v.a
+    }
+    return v != null && v.e == "int_lit" && v.v == "0"
+}
+
+// whether initializer `x` holds a union's list, itself or in an item at any depth
+def private holds_union_list(tu : CirTu; x : CirExpr const?) : bool {
+    if (is_union_list(tu, x)) {
+        return true
+    }
+    if (x != null && x.e == "init_list") {
+        for (item in x.init_items) {
+            if (holds_union_list(tu, item.v)) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+// whether evaluating `x` has an effect: a call, an assignment, a step or a comma anywhere in it
+def private has_effects(x : CirExpr const?) : bool {
+    if (x == null) {
+        return false
+    }
+    let own = x.e == "call" || x.e == "assign" || x.e == "comma" || (x.e == "un" && (x.op == "preinc" || x.op == "predec" || x.op == "postinc" || x.op == "postdec"))
+    if (own || has_effects(x.a) || has_effects(x.b) || has_effects(x.c) || has_effects(x.base) || has_effects(x.i)) {
+        return true
+    }
+    for (arg in x.args) {
+        if (has_effects(arg)) {
+            return true
+        }
+    }
+    for (item in x.init_items) {
+        if (has_effects(item.v)) {
+            return true
+        }
+    }
+    return false
+}
+
+// every value of initializer `x` evaluated into a temporary, in source order, before the
+// declaration: the literal and the union stores after it then read the temporaries, so C's
+// left-to-right order of the items holds
+def private hoist_items(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) {
+    for (item in x.init_items) {
+        if (item.v.e == "init_list") {
+            hoist_items(em, tu, item.v, loc)
+        } else {
+            let e = emit_expr(em, tu, item.v, loc)
+            let name = temp_name(em)
+            em.pre |> push("let {name} = {e.text}")
+            em.hoisted[intptr(item.v)] = Em(text = name, prec = PREC_PRIMARY, is_bool = e.is_bool)
+        }
+    }
+}
+
+def private is_union_list(tu : CirTu; x : CirExpr const?) : bool => x != null && x.e == "init_list" && kind_of(tu, x.t) == "union"
+
+// the stores that make lvalue `path` hold initializer `v`: `path = v`, a union's list left out
+// of it, then the stores of every union's list `v` holds
+def private init_stores(var em : Emitter; tu : CirTu; path : string; v : CirExpr const?; loc : CirLoc; var out : array<string>) {
+    if (!is_union_list(tu, v)) {
+        out |> push("{path} = {stored(emit_expr(em, tu, v, loc), tu, v.t).text}")
+    }
+    union_stores(em, tu, path, v, loc, out)
+}
+
+// the stores of the union lists inside initializer `x` of lvalue `path`: a union's list stores
+// the one member it names (`{}` stores nothing, the union is zero), a record's or an array's
+// list the union lists of its items
+def private union_stores(var em : Emitter; tu : CirTu; path : string; x : CirExpr const?; loc : CirLoc; var out : array<string>) {
+    if (x == null || x.e != "init_list") {
+        return
+    }
+    if (kind_of(tu, x.t) == "union") {
+        for (item in x.init_items) {
+            // the storage starts at zero, so `{0}` stores nothing
+            if (!is_zero_literal(item.v)) {
+                init_stores(em, tu, "{path}.{field_name(em, tu, x.t, item.pos)}", item.v, loc, out)
+            }
+        }
+        return
+    }
+    for (item in x.init_items) {
+        let at = kind_of(tu, x.t) == "array" ? "{path}[{item.pos}]" : "{path}.{field_name(em, tu, x.t, item.pos)}"
+        union_stores(em, tu, at, item.v, loc, out)
     }
 }
 
@@ -1230,15 +1355,32 @@ def private sparse_stores(var em : Emitter; tu : CirTu; name : string; x : CirEx
 // `cstr_array`, an array filled sparsely is the bare declaration (stores follow), anything
 // else the expression; "" with `stores` set means the declaration carries no `=`
 def private decl_init(var em : Emitter; tu : CirTu; name : string; t : int; init : CirExpr?; loc : CirLoc; var stores : array<string>) : string {
+    let text = decl_init_text(em, tu, name, t, init, loc, stores)
+    em.hoisted |> clear()
+    return text
+}
+
+// the text of `decl_init`, which may read temporaries `hoist_items` made
+def private decl_init_text(var em : Emitter; tu : CirTu; name : string; t : int; init : CirExpr?; loc : CirLoc; var stores : array<string>) : string {
     if (kind_of(tu, t) == "array" && init.e == "str_lit") {
         em.requires |> insert("c_runtime/cstr_array")
         return "cstr_array({quoted_literal(em, *init, loc)}, {tu.types[t].count})"
+    }
+    if (init.e == "init_list" && !is_union_list(tu, init) && holds_union_list(tu, init) && has_effects(init)) {
+        // the union stores follow the literal, so every item is evaluated first, in order
+        hoist_items(em, tu, init, loc)
+    }
+    if (is_union_list(tu, init)) {
+        union_stores(em, tu, name, init, loc, stores)
+        return ""
     }
     if (init.e == "init_list" && !literal_array(tu, *init)) {
         sparse_stores(em, tu, name, *init, loc, stores)
         return ""
     }
-    return stored(emit_expr(em, tu, init, loc), tu, t).text
+    let text = stored(emit_expr(em, tu, init, loc), tu, t).text
+    union_stores(em, tu, name, init, loc, stores)
+    return text
 }
 
 // an expression evaluated for its effect alone: the statement forms of assignment, the
@@ -2049,41 +2191,17 @@ def private collect_written(var em : Emitter; tu : CirTu; x : CirExpr?) {
     if (x.e == "un" && x.op == "deref" && marshal_pointee(em, tu, x.a.t) >= 0) {
         mark_copied_pointer(tu, x.a, em.passed)
     }
-    if (x.e == "assign" || (x.e == "un" && (x.op == "preinc" || x.op == "predec" || x.op == "postinc" || x.op == "postdec" || x.op == "addr"))) {
-        // the variable a store reaches: through casts, `.f` and `[i]` of an array it is the
-        // variable itself; past `->`, `*p` or `p[i]` it is what the pointer points at, and
-        // the pointer is then `written_through` (docs/probe-findings.md F3)
-        var target = x.a
-        var crossed = false
-        while (target != null && target.e != "ref") {
-            if (target.e == "cast") {
-                target = target.a
-            } elif (target.e == "member") {
-                crossed = crossed || target.arrow
-                target = target.base
-            } elif (target.e == "index") {
-                crossed = crossed || kind_of(tu, target.base.t) != "array"
-                target = target.base
-            } elif (target.e == "un" && target.op == "deref") {
-                crossed = true
-                target = target.a
-            } elif (target.e == "un" && (target.op == "preinc" || target.op == "predec" || target.op == "postinc" || target.op == "postdec")) {
-                // `*p++ = v` steps the pointer and writes through it
-                target = target.a
-            } elif (target.e == "bin" && (target.op == "add" || target.op == "sub") && kind_of(tu, target.a.t) == "ptr") {
-                // `*(p + i) = v` writes through the pointer the sum starts from
-                target = target.a
-            } else {
-                target = null
-            }
-        }
-        if (target != null) {
-            if (crossed) {
-                em.written_through |> insert(target.name)
-            } else {
-                em.written |> insert(target.name)
-            }
-        }
+    if (x.e == "index" && x.base.e == "cast" && x.base.cast_kind == "ArrayToPointerDecay") {
+        // `a[i]` indexes the array itself: its decay is no address that escapes
+        collect_written(em, tu, x.base.a)
+        collect_written(em, tu, x.i)
+        return
+    }
+    let decay = x.e == "cast" && x.cast_kind == "ArrayToPointerDecay"
+    if (decay || x.e == "assign" || (x.e == "un" && (x.op == "preinc" || x.op == "predec" || x.op == "postinc" || x.op == "postdec" || x.op == "addr"))) {
+        // a decay is an address too: through the pointer it gives, the array can be written,
+        // and over a by-value parameter only the callee copy's array is writable
+        mark_store_root(em, tu, x.a)
     }
     collect_written(em, tu, x.a)
     collect_written(em, tu, x.b)
@@ -2097,6 +2215,45 @@ def private collect_written(var em : Emitter; tu : CirTu; x : CirExpr?) {
     collect_written(em, tu, x.init)
     for (item in x.init_items) {
         collect_written(em, tu, item.v)
+    }
+}
+
+// the variable a store into `x` reaches: through casts, `.f` and `[i]` of an array (an
+// array's decay included) it is the variable itself, which is then `written`; past `->`, `*p`
+// or a pointer's `[i]` it is what the pointer points at, and the pointer is then
+// `written_through` (docs/probe-findings.md F3)
+def private mark_store_root(var em : Emitter; tu : CirTu; x : CirExpr?) {
+    var target = x
+    var crossed = false
+    while (target != null && target.e != "ref") {
+        if (target.e == "cast") {
+            target = target.a
+        } elif (target.e == "member") {
+            crossed = crossed || target.arrow
+            target = target.base
+        } elif (target.e == "index") {
+            let decayed = target.base.e == "cast" && target.base.cast_kind == "ArrayToPointerDecay"
+            crossed = crossed || (kind_of(tu, target.base.t) != "array" && !decayed)
+            target = target.base
+        } elif (target.e == "un" && target.op == "deref") {
+            crossed = true
+            target = target.a
+        } elif (target.e == "un" && (target.op == "preinc" || target.op == "predec" || target.op == "postinc" || target.op == "postdec")) {
+            // `*p++ = v` steps the pointer and writes through it
+            target = target.a
+        } elif (target.e == "bin" && (target.op == "add" || target.op == "sub") && kind_of(tu, target.a.t) == "ptr") {
+            // `*(p + i) = v` writes through the pointer the sum starts from
+            target = target.a
+        } else {
+            target = null
+        }
+    }
+    if (target != null) {
+        if (crossed) {
+            em.written_through |> insert(target.name)
+        } else {
+            em.written |> insert(target.name)
+        }
     }
 }
 
@@ -2217,7 +2374,7 @@ def private ends_in_return(st : CirStmt?) : bool {
 }
 
 def private zero_of(var em : Emitter; tu : CirTu; t : int; spelled : string) : string {
-    if (kind_of(tu, t) == "struct") {
+    if (kind_of(tu, t) == "struct" || kind_of(tu, t) == "union") {
         return "{spelled}()"
     }
     if (kind_of(tu, t) == "enum") {
@@ -2320,13 +2477,17 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
 }
 
 // `struct Name { fields }`, adjacent fields of one type on one line, under `[c_bitfields(...)]`
-// when it has bitfields
+// when it has bitfields and under `[c_union]` when it is a union
 def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
     let t = d.t
     let name = tag_name(em, tu, t)
     if (tu.types[t].k == "union") {
-        fail(em, "union `{name}` is not lowered yet", d.loc)
-        return
+        let annotation = union_annotation(em, tu, t, d.loc)
+        if (empty(annotation)) {
+            return
+        }
+        em.requires |> insert("c_runtime/c_union")
+        line(em, annotation)
     }
     let bitfields = has_named_bitfield(tu, t)
     if (tu.types[t].packed && bitfields) {
@@ -2336,6 +2497,14 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
     if (tu.types[t].packed && !is_marshal(em, tu, t)) {
         fail(em, "record `{name}` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar", d.loc)
         return
+    }
+    if (has_anonymous_member(tu, t)) {
+        for (f in tu.types[t].fields) {
+            if (numbered_after(das_name(em, f.name), "_anon") >= 0) {
+                fail(em, "field `{name}.{f.name}` is spelled like the name of an anonymous member", d.loc)
+                return
+            }
+        }
     }
     for (f in tu.types[t].fields) {
         if (kind_of(tu, f.t) == "array" && tu.types[f.t].count < 0) {
@@ -2359,7 +2528,7 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
     lines |> reserve(length(tu.types[t].fields))
     names |> reserve(length(tu.types[t].fields))
     var spelled = ""
-    for (f in tu.types[t].fields) {
+    for (idx, f in range(length(tu.types[t].fields)), tu.types[t].fields) {
         continue if (f.is_bitfield && empty(f.name))
         let ft = das_type_dims(em, tu, f.t, d.loc, f.dims)
         if (!empty(names) && ft != spelled) {
@@ -2367,7 +2536,7 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
             names |> clear()
         }
         spelled = ft
-        names |> push(das_name(em, f.name))
+        names |> push(member_name(em, f, idx))
     }
     if (!empty(names)) {
         lines |> push("{join(names, ", ")} : {spelled}")
@@ -2381,6 +2550,63 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
     if (is_marshal(em, tu, t)) {
         emit_marshal_readers(em, tu, t, d.loc)
     }
+}
+
+// `[c_union]` for union `t`, or `[c_union(size = N, align = A)]` when the members alone do not
+// give clang's size and alignment, or when a member's type spells a dimension by an enum
+// constant, which das folds only after the annotation has read the members; "" with the error
+// set on a union the annotation does not lower
+def private union_annotation(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
+    let name = tag_name(em, tu, t)
+    var bare = true
+    for (f in tu.types[t].fields) {
+        let member = empty(f.name) ? "an anonymous member" : "`{name}.{f.name}`"
+        if (f.is_bitfield) {
+            fail(em, "bitfield {empty(f.name) ? "padding" : member} of the union `{name}` is not lowered yet", loc)
+            return ""
+        }
+        let elem = element_under(tu, f.t)
+        if (kind_of(tu, elem) == "ptr" && kind_of(tu, tu.types[elem].to) == "func") {
+            fail(em, "function-pointer member {member} of a union is not lowered yet", loc)
+            return ""
+        }
+        if (is_marshal(em, tu, elem)) {
+            fail(em, "union `{name}` holds the marshal-only record `{tag_name(em, tu, elem)}`; not lowered yet", loc)
+            return ""
+        }
+        if (das_name(em, f.name) == "_storage") {
+            fail(em, "member {member} is spelled like the storage field of `[c_union]`", loc)
+            return ""
+        }
+        bare = bare && !spells_enum_dim(tu, f.t, f.dims)
+    }
+    let flaw = union_flaw(tu, em.layout, t)
+    if (!empty(flaw)) {
+        fail(em, "union `{name}` {flaw}; not lowered yet", loc)
+        return ""
+    }
+    let derived = union_member_layout(tu, em.layout, t)
+    if (bare && derived.size == int64(tu.types[t].size) && derived.align == tu.types[t].align) {
+        return "[c_union]"
+    }
+    return "[c_union(size = {tu.types[t].size}, align = {tu.types[t].align})]"
+}
+
+// whether a declarator of type `t` with dimensions `dims` spells a dimension by an enum
+// constant, in itself or in a record it holds by value
+def private spells_enum_dim(tu : CirTu; t : int; dims : array<CirDim>) : bool {
+    if (!empty(dims)) {
+        return true
+    }
+    let rec = record_under(tu, t)
+    if (rec >= 0) {
+        for (f in tu.types[rec].fields) {
+            if (spells_enum_dim(tu, f.t, f.dims)) {
+                return true
+            }
+        }
+    }
+    return false
 }
 
 def private is_bitfield_member(tu : CirTu; x : CirExpr const?) : bool {
@@ -2582,9 +2808,13 @@ def private emit_layout_check(var em : Emitter; tu : CirTu; records : array<int>
         let bitfields = has_named_bitfield(tu, t)
         let below = align == tu.types[t].align ? "" : (bitfields ? ", its bitfield units align {align}" : ", its das alignment is {align}")
         line(em, "static_assert(typeinfo sizeof(type<{name}>) == {tu.types[t].size} && typeinfo alignof(type<{name}>) == {align}, \"{name}: clang lays it out as size {tu.types[t].size}, align {tu.types[t].align}{below}\")")
-        for (f in tu.types[t].fields) {
-            if (!f.is_bitfield) {
-                line(em, "static_assert(typeinfo offsetof<{das_name(em, f.name)}>(type<{name}>) == {f.off}, \"{name}.{f.name}: clang puts it at {f.off}\")")
+        if (kind_of(tu, t) == "union") {
+            line(em, "static_assert(typeinfo offsetof<_storage>(type<{name}>) == 0, \"{name}: every member sits at 0\")")
+        }
+        for (idx, f in range(length(tu.types[t].fields)), tu.types[t].fields) {
+            if (!f.is_bitfield && kind_of(tu, t) != "union") {
+                let member = member_name(em, f, idx)
+                line(em, "static_assert(typeinfo offsetof<{member}>(type<{name}>) == {f.off}, \"{name}.{member}: clang puts it at {f.off}\")")
             }
         }
         var inscope units : array<BitUnit>
@@ -2629,9 +2859,12 @@ def private emit_global(var em : Emitter; tu : CirTu; d : CirDecl) {
         // or declared later is taken at module init (docs/lowering-examples.md "Globals")
         line(em, head)
         em.global_stores |> push("{das_name(em, d.name)} = {init}")
-        return
+    } else {
+        // only a declaration that carries its initializer has its value before module init
+        line(em, "{head} = {init}")
+        em.global_initialized |> insert(d.name)
     }
-    line(em, "{head} = {init}")
+    em.global_stores |> push_from(stores)
 }
 
 // whether a global initializer may stay inline: every global whose address it takes has an
@@ -2713,9 +2946,6 @@ def emit_tu(tu : CirTu; side : Sidecar) : Emitter {
     for (d in tu.decls) {
         if (d.k == "global" && !d.is_extern) {
             em.global_order[d.name] = length(em.global_order)
-            if (d.init != null) {
-                em.global_initialized |> insert(d.name)
-            }
         }
     }
     var globals_done = false

@@ -179,14 +179,27 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `s.f++`).
 - **P4.2 `[c_union]` macro.** One ref-returning operator per member (probed); storage
   alignment via max-align member type; anonymous-union flattening.
-  Ledger: the `packed` verdict of a union measures its members by das alignment with no target
-  below clang's, and `natural_align` of a union is clang's; both settle when unions are lowered.
+  Ledger (fail closed today, each a later row): a union with a function-pointer member (P4.3);
+  a bitfield member of a union; a union the layout law finds unnatural - clang's alignment past
+  8 (`aligned(16)`: no unsigned storage type aligns there) or below a member's (`packed`) - which
+  waits for marshal to cover unions; a union holding a marshal-only record, and a marshal-only
+  record holding a union; a union initializer outside a declaration (compound literals); an
+  initializer of a union naming an anonymous member (`field` names `""`); an anonymous member
+  that makes no field name visible (`struct { int : 4; }`), whose offset libclang gives only
+  through `clang_Type_visitFields`, which dasClangBind does not bind yet; two anonymous records
+  one macro expansion makes indistinguishable (`#define TWO REC(a); REC(b)`, one key or one
+  `(anonymous at f:l:c)` spelling); a C tag spelled `anon_<N>` beside an untagged record whose
+  slot is `N` (both spell `anon_<N>`, which predates unions); and the forwarding operators that
+  would spell `s._anon1.i` as `s.i` (F29). Outside the dialect: a GNU zero-length array
+  (`char z[0]`, gcc-torture zerolen-1) and GNU's cast to a union type (`ToUnion`, 960416-1).
 - **P4.3 Function-pointer shims.** The sidecar-declared dispatch groups (`actionf_t`
   class); qsort/bsearch typed generics land here too.
 - **P4.4 va_list completeness.** `va_copy`, forwarding, non-constant printf formats,
   scanf-family split.
 - **P4.5 csmith differential.** Nightly N=1000 seeds vs `gcc -O0 -fwrapv`; any
   divergence is a converter bug by construction; creduce harness for minimization.
+  Ledger: an address one past an array's end formed by indexing (`&a[N]`, gcc-torture
+  strlen-5) trips das's range check; spell `&a[k]` as `addr(a[0]) + k` where `k` can reach `N`.
 - **Exit criterion:** csmith runs clean at 1000/night for a week; torture ≥ target with
   ledger; matrix has no row without a green fixture.
 

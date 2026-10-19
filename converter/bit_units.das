@@ -65,7 +65,8 @@ def type_size(tu : CirTu; t : int) : int64 {
 
 //! The alignment das gives a value of type `t`: a record's is its das mirror's, which for a
 //! record holding bitfields can be below clang's (`docs/probe-findings.md` F5), so a record
-//! nested in another is placed by the alignment its mirror has.
+//! nested in another is placed by the alignment its mirror has; a union's is clang's, which
+//! `[c_union]` gives its storage.
 def natural_align(tu : CirTu; var memo : LayoutMemo; t : int) : int {
     let scalar = scalar_bytes(tu, t)
     if (scalar >= 0) {
@@ -80,6 +81,65 @@ def natural_align(tu : CirTu; var memo : LayoutMemo; t : int) : int {
         return memo.align[t]
     }
     return max(tu.types[t].align, 1)
+}
+
+//! The size and alignment union `t`'s members give under das's natural layout: the largest
+//! member size rounded up to the largest member alignment, each member by the alignment its das
+//! mirror has; what a bare `[c_union]` derives.
+def union_member_layout(tu : CirTu; var memo : LayoutMemo; t : int) : tuple<size : int64; align : int> {
+    var size = 0l
+    var align = 1
+    for (f in tu.types[t].fields) {
+        size = max(size, type_size(tu, f.t))
+        align = max(align, natural_align(tu, memo, f.t))
+    }
+    return (size = round_up(size, int64(align)), align = align)
+}
+
+//! The sizes an unsigned storage type has, which are its alignments too: a bitfield unit's and
+//! `[c_union]`'s storage.
+let STORAGE_SIZES = fixed_array(1, 2, 4, 8)
+
+// whether an unsigned storage type has alignment `align`
+def private storage_spells_align(align : int) : bool {
+    for (size in STORAGE_SIZES) {
+        if (size == align) {
+            return true
+        }
+    }
+    return false
+}
+
+//! Why union `t` is not natural, "" when it is: `[c_union]` gives its storage clang's size and
+//! alignment, so every member must sit at 0 and fit them, measured by its das alignment, and a
+//! member record must itself be natural.
+def union_flaw(tu : CirTu; var memo : LayoutMemo; t : int) : string {
+    let size = tu.types[t].size
+    let align = max(tu.types[t].align, 1)
+    if (empty(tu.types[t].fields)) {
+        return "has no member"
+    }
+    if (!storage_spells_align(align) || size <= 0 || size % align != 0) {
+        return "of size {size} and alignment {align} is not laid out naturally: das storage is a positive multiple of an alignment of 1, 2, 4 or 8"
+    }
+    for (f in tu.types[t].fields) {
+        let name = empty(f.name) ? "an anonymous member" : "member `{f.name}`"
+        if (f.off != 0) {
+            return "puts {name} at {f.off}, not 0"
+        }
+        let rec = record_under(tu, f.t)
+        if (rec >= 0 && !natural_layout(tu, memo, rec)) {
+            return "holds {name}, a record das cannot lay out as clang does"
+        }
+        let member_align = natural_align(tu, memo, f.t)
+        if (member_align > align) {
+            return "aligns to {align}, below {name}'s alignment {member_align}"
+        }
+        if (type_size(tu, f.t) > int64(size) || type_size(tu, f.t) < 0l) {
+            return "of size {size} does not fit {name}"
+        }
+    }
+    return ""
 }
 
 //! Whether record `t` has a bitfield that needs storage: a named one of nonzero width.
@@ -181,7 +241,7 @@ def private place_from(tu : CirTu; var memo : LayoutMemo; t, idx, off, max_align
 // allocates, and the storage `[c_bitfields]` opens by default), then the others ascending
 def private sizes_from(declared : int) : array<int> {
     var sizes <- [declared]
-    for (size in fixed_array(1, 2, 4, 8)) {
+    for (size in STORAGE_SIZES) {
         if (size != declared) {
             sizes |> push(size)
         }
@@ -215,13 +275,21 @@ def private has_underaligned_record_field(tu : CirTu; var memo : LayoutMemo; t :
     return false
 }
 
-// the struct an array type holds at its bottom, or the type itself when it is a struct; -1 else
-def private record_under(tu : CirTu; t : int) : int {
+//! The type an array type holds at its bottom, through every dimension; the type itself when it
+//! is no array.
+def element_under(tu : CirTu; t : int) : int {
     var ft = t
     while (tu.types[ft].k == "array") {
         ft = tu.types[ft].elem
     }
-    return tu.types[ft].k == "struct" ? ft : -1
+    return ft
+}
+
+//! The record (a struct or a union) an array type holds at its bottom, or the type itself when
+//! it is a record; -1 else.
+def record_under(tu : CirTu; t : int) : int {
+    let ft = element_under(tu, t)
+    return tu.types[ft].k == "struct" || tu.types[ft].k == "union" ? ft : -1
 }
 
 // the alignment clang would give record `t` with no alignment attribute: the largest of its
@@ -239,10 +307,11 @@ def private attribute_free_align(tu : CirTu; var memo : LayoutMemo; t : int) : i
     return a
 }
 
-// the layout law on record `t`, once: a union by its members at offset 0; a struct by the
-// alignment targets from clang's downward in powers of two, the first whose units reproduce
-// clang's offsets and size winning; a target below clang's only for a record with bitfields
-// (its own or a nested record's) whose clang alignment carries no attribute
+// the layout law on record `t`, once: a union by its members at offset 0 and an alignment a
+// storage type has; a struct by the alignment targets from clang's downward in powers of two,
+// the first whose units reproduce clang's offsets and size winning; a target below clang's only
+// for a record with bitfields (its own or a nested record's) whose clang alignment carries no
+// attribute
 def private measure(tu : CirTu; var memo : LayoutMemo; t : int) {
     if (t < length(memo.known) && memo.known[t]) {
         return
@@ -258,15 +327,7 @@ def private measure(tu : CirTu; var memo : LayoutMemo; t : int) {
     let clang_align = max(tu.types[t].align, 1)
     memo.align[t] = clang_align
     if (tu.types[t].k == "union") {
-        var end = 0
-        var max_align = 1
-        var at_zero = true
-        for (f in tu.types[t].fields) {
-            at_zero = at_zero && f.off == 0
-            end = max(end, int(type_size(tu, f.t)))
-            max_align = max(max_align, natural_align(tu, memo, f.t))
-        }
-        memo.natural[t] = at_zero && round_up(end, max_align) == tu.types[t].size && max_align == clang_align
+        memo.natural[t] = empty(union_flaw(tu, memo, t))
         memo.known[t] = true
         return
     }

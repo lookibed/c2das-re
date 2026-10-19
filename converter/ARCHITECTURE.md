@@ -25,7 +25,9 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `bit_units.das` - the layout law over the C-IR (section 2, `packed`): `type_size`,
   `natural_align` (a record's is its das mirror's, which can be below clang's, F5),
   `natural_layout` (the dumper's `packed` verdict), `bit_units` (the allocation units that cover
-  a record's bitfields) and `is_storage_bitfield`. Every answer about a record lands in a
+  a record's bitfields), `union_flaw` (why a union is not natural), `union_member_layout` (the
+  size and alignment a bare `[c_union]` derives), `record_under`/`element_under` (the type at
+  an array's bottom) and `is_storage_bitfield`. Every answer about a record lands in a
   `LayoutMemo` the dumper and the emitter each own, so a nest of records is measured once per
   record; a unit search never retries a failed state (field, offset, alignment so far). Nothing
   here knows clang or das syntax.
@@ -91,9 +93,18 @@ below clang's is tried only when the record has a named bitfield of nonzero widt
 whose record (through arrays) won below its clang alignment, and when clang's alignment is the
 one the record would have without an alignment attribute: the largest of its named bitfields'
 declared types, its other fields' das alignments and a nested record's clang alignment. A union
-is natural when every member sits at offset 0 and its size and alignment are clang's, its
-members measured by their das alignment, with no target below clang's. In an `init_list` of a
-record, `pos` is the field index; an unnamed bitfield is never an item.
+is natural when it has a member, every member sits at offset 0, clang's alignment is 1, 2, 4 or
+8 and divides its positive size, and every member fits it: a member's das alignment (as this
+law finds it) at most clang's alignment, its size at most clang's size, and a member record
+(through arrays) natural itself; `[c_union]` then gives the storage clang's size and alignment,
+so a natural union's das alignment is clang's even where its members align lower (a member
+record below its clang alignment, F5; an `aligned` attribute up to 8). An anonymous member (a
+struct or union member with no declarator) is a field named `""` that is not a bitfield: its
+`t` is the anonymous record, its `off` the byte offset clang gives it, and it carries no
+`bit_w`. In an `init_list` of a record, `pos` is the field index; an unnamed bitfield is never
+an item, and a union's list holds at most one item, `pos` the member it initializes (none for
+`{}`). A record spelling carries no owner scope: `union S::(anonymous at f:l:c)` interns as
+`union (anonymous at f:l:c)`, the spelling libclang and the dump share.
 
 Section 3, Dumper A's subset (what the dumper reads from clang and libclang), is in
 `ARCHITECTURE_DUMPER.md`.

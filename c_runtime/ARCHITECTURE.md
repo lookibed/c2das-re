@@ -70,7 +70,33 @@ as-if-converted fixture test landing first.
   `operator . name :=`: the getter shifts and masks (a signed field shifts its top bit to the
   word's top and back, which sign-extends), the setter clears the field's bits and ors the
   masked value in. The arithmetic runs in `uint`, or `uint64` for an 8-byte unit, since das
-  defines no shift on `uint8` and `uint16`; the value narrows on store.
+  defines no shift on `uint8` and `uint16`; the value narrows on store. The storage types are
+  `c_storage`'s.
+- `c_runtime/c_storage.das` - the unsigned storage types the layout annotations share:
+  `C_STORAGES` (`uint8`, `uint16`, `uint`, `uint64`, each with its size in bytes, which is its
+  alignment, its width in bits and its das base type), found by name or width (`storage_of`)
+  or by size (`storage_of_bytes`).
+- `c_runtime/c_union.das` - the `[c_union]` structure annotation over a union written as a
+  C-shaped struct (`docs/lowering-examples.md` "Unions"). `apply` replaces the members with one
+  field `_storage : U[k]`, `U` the `c_storage` type of the union's alignment and `k` its size
+  over that alignment, so das lays the union out at its C size and alignment, and gives each
+  member two `operator . name`: over a `var` union a reference into the storage,
+  `*addr<T?>(s._storage)`, which serves reads, stores, compound stores, `++`, a nested field and
+  `addr`; over a const union the value, so a `let` parameter reads (`probes/test_unions.das`).
+  Punning is memcpy semantics by construction. `[c_union(size = N, align = A)]` states the size
+  and alignment; the bare form derives them from the members, the largest size rounded up to the
+  largest alignment, which takes every member type known when the struct is parsed: `apply` runs
+  before inference, where a struct declared earlier is resolved and a later one is an alias, a
+  dimension spelled by a constant (`int[N]`, `int[int(E.A)]`) is not folded yet, and a
+  zero-length dimension has no size; a pointer or a function value is pointer-sized whatever it
+  points at. `patch` cannot take the derivation later, since it runs only once the whole program
+  infers without error (`probes/test_unions.das`). An inference-time `static_assert` in each
+  operator checks the member fits the storage. A class, a struct with no member, a member named
+  `_storage`, one with an initializer, one of function type, a lone `size` or `align`, a
+  non-integer one, an alignment past 8 and a size that is not a positive multiple of the
+  alignment are compile errors. Another annotation on the same struct is not visible to `apply`
+  (the parser attaches the list after every `apply` ran), so a bitfield member is the
+  converter's to refuse.
 - `tests/` - one dastest file per piece, written as the converter will emit the code,
   including a control that the same code without the piece is rejected or wrong.
 

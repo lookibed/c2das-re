@@ -1,6 +1,5 @@
 options gen2
 require dastest/testing_boost public
-require strings
 require _daslang_child
 require c_runtime/c_bitfields
 
@@ -42,22 +41,14 @@ struct Wide {
     flag : bool
 }
 
-let SHAPE = "options gen2\nrequire c_runtime/c_bitfields\nenum Color \{\n    Red\n\}\nANNOTATION\nKIND S \{\nFIELDS\}\nAFTER\n[export]\ndef main \{\n\}\n"
-
 let BF_FIELDS = "    a : uint\n    b : int\n    c : int\n    e : int16\n"
 
-// the compiler's verdict on `SHAPE` with the annotation, the fields, the declarations after the
-// struct and the keyword (`struct`, `class`) filled in
-def compile_shape(name, annotation : string; fields : string = BF_FIELDS; after : string = ""; kind : string = "struct") : tuple<rc : int; out : string> {
-    let source = SHAPE |> replace("ANNOTATION", annotation) |> replace("FIELDS", fields) |> replace("AFTER", after) |> replace("KIND", kind)
-    return daslang_child("c_bitfields_{name}", source, true)
-}
+let SOURCE = StructSource(prefix = "c_bitfields", text = "options gen2\nrequire c_runtime/c_bitfields\nenum Color \{\n    Red\n\}\nANNOTATION\nKIND S \{\nFIELDS\}\nAFTER\n[export]\ndef main \{\n\}\n")
 
-// a control: the shape is rejected and the compiler's message carries `needle`
+def compile_shape(name, annotation : string; fields : string = BF_FIELDS; after : string = ""; kind : string = "struct") : tuple<rc : int; out : string> => compile_struct(SOURCE, name, annotation, fields, after, kind)
+
 def rejects(t : T?; name, annotation, needle : string; fields : string = BF_FIELDS; after : string = ""; kind : string = "struct") {
-    let r = compile_shape(name, annotation, fields, after, kind)
-    t |> equal(r.rc != 0, true, "{name} compiled")
-    t |> equal(r.out |> find(needle) >= 0, true, "{name}: {r.out}")
+    struct_rejected(t, SOURCE, name, annotation, needle, fields, after, kind)
 }
 
 [test]

@@ -71,6 +71,7 @@ struct Dumper {
     records : array<ClangRecord>
     record_by_spelling : table<string; int>
     record_by_loc : table<string; int>
+    record_hash : table<string; uint>
     typedef_spellings : table<string; string>
     source_lines : array<string>
     anon_spellings : table<string; string>
@@ -130,8 +131,13 @@ def private touch_locs(var d : Dumper; js : JsonValue?) {
 // same target and dialect flags as the JSON dump; the pass is the layout read-out of
 // docs/very-detailed-plan.md section 4.1
 def private register_record(var d : Dumper; var c : CXCursor) {
-    // a block-scoped record is visited under its statement and again under the variable's type
-    if (key_exists(d.record_by_loc, cursor_key(c))) {
+    let key = cursor_key(c)
+    if (key_exists(d.record_by_loc, key)) {
+        // a block-scoped record is visited under its statement and again under the variable's
+        // type; another cursor at the same key is a second record one macro expansion made
+        if ((d.record_hash?[key] ?? 0u) != clang_hashCursor(c)) {
+            fail(d, "anonymous records from one macro expansion are not dumped yet", cursor_loc(d, c))
+        }
         return
     }
     var ct = clang_getCursorType(c)
@@ -141,6 +147,12 @@ def private register_record(var d : Dumper; var c : CXCursor) {
     let raw = unscoped_spelling(string(clang_getTypeSpelling(ct)))
     let tagged = raw |> starts_with("struct ") || raw |> starts_with("union ")
     var rec = ClangRecord(spelling = tagged ? raw : (is_union ? "union " : "struct ") + raw, is_union = is_union, size = clang_Type_getSizeOf(ct), align = clang_Type_getAlignOf(ct))
+    if (key_exists(d.record_by_spelling, rec.spelling)) {
+        // an unnamed record is spelled by its expansion location, which a macro shares
+        let unnamed = find(rec.spelling, "(anonymous ") >= 0 || find(rec.spelling, "(unnamed ") >= 0
+        fail(d, unnamed ? "anonymous records from one macro expansion are not dumped yet" : "`{rec.spelling}` is defined more than once in this file; same-tag block-scoped records are not dumped yet", cursor_loc(d, c))
+        return
+    }
     if (!tagged) {
         d.anon_spellings[raw] = rec.spelling
     }
@@ -148,6 +160,16 @@ def private register_record(var d : Dumper; var c : CXCursor) {
         let fk = clang_getCursorKind(fc)
         if ((fk == CXCursorKind.StructDecl || fk == CXCursorKind.UnionDecl) && clang_isCursorDefinition(fc) != 0u) {
             register_record(d, fc)
+            let inner = d.record_by_loc?[cursor_key(fc)] ?? -1
+            if (inner >= 0 && clang_Cursor_isAnonymousRecordDecl(fc) != 0u) {
+                // an anonymous member: libclang visits its record, never the implicit field
+                let bit_off = anonymous_offset(d, ct, inner)
+                if (bit_off < 0l) {
+                    fail(d, "anonymous member of `{rec.spelling}` exposes no field name; not dumped yet", cursor_loc(d, fc))
+                }
+                var canonical = clang_getCanonicalType(clang_getCursorType(fc))
+                rec.fields |> push(ClangField(loc_key = cursor_key(fc), spelling = string(clang_getTypeSpelling(canonical)), bit_off = bit_off))
+            }
         } elif (fk == CXCursorKind.EnumDecl && clang_isCursorDefinition(fc) != 0u) {
             register_enum(d, fc)
         } elif (fk == CXCursorKind.FieldDecl) {
@@ -160,24 +182,79 @@ def private register_record(var d : Dumper; var c : CXCursor) {
     }
     let idx = length(d.records)
     d.record_by_spelling[rec.spelling] = idx
-    d.record_by_loc[cursor_key(c)] = idx
+    d.record_by_loc[key] = idx
+    d.record_hash[key] = clang_hashCursor(c)
     d.records |> emplace(rec)
 }
 
-// the key that joins a libclang cursor to the JSON dump's node for it: the byte offset of the
-// expansion site (a macro-produced token) or of the token itself; the offset, unlike the
-// line, is on every JSON location, where clang omits a line that repeats its last one
-def private cursor_key(var c : CXCursor) : string {
+// the bit offset of anonymous member record `inner` inside the record of type `ct`: clang
+// answers by a name the member makes visible, less that name's offset inside the member; -1
+// when it makes none visible
+def private anonymous_offset(d : Dumper; var ct : CXType; inner : int) : int64 {
+    var name_bit_off = 0l
+    let name = visible_name(d, inner, 0, name_bit_off)
+    if (empty(name)) {
+        return -1l
+    }
+    let at = clang_Type_getOffsetOf(ct, name)
+    return at < 0l ? -1l : at - name_bit_off
+}
+
+// a named field record `idx` makes visible, through its own anonymous members (at most
+// `MAX_ANONYMOUS_DEPTH` deep), and its bit offset inside the record (into `bit_off`); "" when
+// there is none
+def private visible_name(d : Dumper; idx, depth : int; var bit_off : int64&) : string {
+    if (depth > MAX_ANONYMOUS_DEPTH) {
+        return ""
+    }
+    for (f in d.records[idx].fields) {
+        if (!empty(f.name)) {
+            bit_off = f.bit_off
+            return f.name
+        }
+        let inner = f.is_bitfield ? -1 : d.record_by_loc?[f.loc_key] ?? -1
+        if (inner >= 0 && inner != idx && f.bit_off >= 0l) {
+            var name_bit_off = 0l
+            let name = visible_name(d, inner, depth + 1, name_bit_off)
+            if (!empty(name)) {
+                bit_off = f.bit_off + name_bit_off
+                return name
+            }
+        }
+    }
+    return ""
+}
+
+// how deep `visible_name` follows anonymous members inside anonymous members
+let private MAX_ANONYMOUS_DEPTH = 64
+
+// a cursor's location as the dump reports it: the main file, the expansion line and column
+def private cursor_loc(d : Dumper; var c : CXCursor) : CirLoc {
     var file : CXFile
     var line, column, offset : uint
     clang_getExpansionLocation(clang_getCursorLocation(c), safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
-    return "{int(offset)}"
+    return CirLoc(file = d.c_path, line = int(line), col = int(column))
+}
+
+// the key that joins a libclang cursor to the JSON dump's node for it: the byte offsets of the
+// expansion site and of the spelling (the two differ for a macro-produced token, and are the
+// token's own otherwise); the offset, unlike the line, is on every JSON location, where clang
+// omits a line that repeats its last one. The file is left out: the dump omits a `file` that
+// repeats the last one, and every keyed cursor is the main file's
+def private cursor_key(var c : CXCursor) : string {
+    var file : CXFile
+    var line, column, offset, spelled : uint
+    var loc = clang_getCursorLocation(c)
+    clang_getExpansionLocation(loc, safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
+    clang_getSpellingLocation(loc, safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(spelled))
+    return "{int(offset)}:{int(spelled)}"
 }
 
 def private node_key(js : JsonValue?) : string {
     let given = has_loc(js) ? js?["loc"] : js?["range"]?["begin"]
     let at = is_present(given?["expansionLoc"]) ? given?["expansionLoc"] : given
-    return "{int(at?["offset"] ?? -1l)}"
+    let spelled = is_present(given?["spellingLoc"]) ? given?["spellingLoc"] : given
+    return "{int(at?["offset"] ?? -1l)}:{int(spelled?["offset"] ?? -1l)}"
 }
 
 // an enum definition with clang's evaluated values; a typedef-named anonymous enum takes its
@@ -303,14 +380,17 @@ def private collect_records(var d : Dumper; triple : string) {
     }
 }
 
-// libclang qualifies an unnamed nested record by its owner, `struct Q::(unnamed at ...)`,
-// where the dump spells `struct (unnamed at ...)`
+// a record spelling without its owner's scope: libclang qualifies an unnamed nested record by
+// its owner, `struct Q::(unnamed at ...)`, and the dump does so for an anonymous member,
+// `union S::(anonymous at ...)`; both key the record as `struct (unnamed at ...)`
 def private unscoped_spelling(spelling : string) : string {
     let scope = rfind(spelling, "::(")
     if (scope < 0) {
         return spelling
     }
-    let start = rfind(slice(spelling, 0, scope), " ") + 1
+    // the scope starts at the first `::`; an anonymous member's own scope is parenthesized
+    // (`union N::(anonymous struct)::(anonymous at f:l:c)`)
+    let start = rfind(slice(spelling, 0, find(spelling, "::")), " ") + 1
     return slice(spelling, 0, start) + slice(spelling, scope + 2)
 }
 
@@ -656,7 +736,9 @@ def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
 // a `struct`, `union` or `enum` spelling to its type; -2 for a spelling with no such tag
 def private tagged_type(var d : Dumper; qt : string; at : CirLoc) : int {
     if (qt |> starts_with("struct ") || qt |> starts_with("union ")) {
-        return record_type(d, qt, at)
+        // the dump scopes an anonymous member's record by its owner too (`union S::(anonymous
+        // at f:l:c)`), and libclang's records are keyed unscoped
+        return record_type(d, unscoped_spelling(qt), at)
     }
     if (qt |> starts_with("enum ")) {
         return enum_type(d, qt, at)
@@ -766,12 +848,14 @@ def private enum_dims(var d : Dumper; key : string; t : int; at : CirLoc; var ou
     return true
 }
 
-def private field_index(d : Dumper; rec : int; name : string) : int {
+// the index of record `rec`'s field `name`, or for an empty name its anonymous member whose
+// record type is `t`; -1 when there is none or `rec` is no record
+def private member_index(d : Dumper; rec : int; name : string; t : int) : int {
     if (rec < 0 || rec >= length(d.tu.types) || (d.tu.types[rec].k != "struct" && d.tu.types[rec].k != "union")) {
         return -1
     }
-    for (idx in range(length(d.tu.types[rec].fields))) {
-        if (d.tu.types[rec].fields[idx].name == name) {
+    for (idx, f in range(length(d.tu.types[rec].fields)), d.tu.types[rec].fields) {
+        if (empty(name) ? empty(f.name) && !f.is_bitfield && f.t == t : f.name == name) {
             return idx
         }
     }
@@ -1088,7 +1172,8 @@ def private dump_member(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
     let arrow = js?["isArrow"] ?? false
     let rec = arrow ? (d.tu.types[base.t].k == "ptr" ? d.tu.types[base.t].to : -1) : base.t
     let name = js?["name"] ?? ""
-    let field = field_index(d, rec, name)
+    // an anonymous member is the unnamed field of the member's own record type
+    let field = member_index(d, rec, name, t)
     if (field < 0) {
         fail(d, "member `{name}` is not a direct field of the base's type", at)
         delete_expr(base)
@@ -1103,6 +1188,9 @@ def private dump_member(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
 // `array_filler`, then the elements up to the last one written
 def private dump_init_list(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
     let k = d.tu.types[t].k
+    if (k == "union") {
+        return dump_union_init(d, js, t, at)
+    }
     if (k != "struct" && k != "array") {
         fail(d, "`{k}` initializer lists are not dumped yet", at)
         return null
@@ -1124,6 +1212,34 @@ def private dump_init_list(var d : Dumper; js : JsonValue?; t : int; at : CirLoc
         let pos = k == "struct" ? initialized_field(d.tu.types[t], idx - first) : idx - first
         x.init_items |> push(CirInitItem(pos = pos, v = v))
     }
+    return x
+}
+
+// a union's initializer: clang names the member it initializes under `field` and gives at
+// most one child, none for `{}`, which leaves the union zero
+def private dump_union_init(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
+    var x = new CirExpr(e = "init_list", t = t)
+    if (child_count(js) == 0) {
+        return x
+    }
+    let name = js?["field"]?["name"] ?? ""
+    if (empty(name)) {
+        fail(d, "an initializer of an anonymous member of a union is not dumped yet", at)
+        delete_expr(x)
+        return null
+    }
+    let pos = member_index(d, t, name, -1)
+    if (pos < 0 || child_count(js) != 1) {
+        fail(d, "a union initializer of {child_count(js)} values for member `{name}` is not dumped yet", at)
+        delete_expr(x)
+        return null
+    }
+    var v = child_expr(d, js?["inner"], 0)
+    if (v == null) {
+        delete_expr(x)
+        return null
+    }
+    x.init_items |> push(CirInitItem(pos = pos, v = v))
     return x
 }
 
@@ -1173,7 +1289,7 @@ def private dump_offsetof(var d : Dumper; t : int; at : CirLoc) : CirExpr? {
     if (of_t < 0) {
         return null
     }
-    let field = field_index(d, of_t, member)
+    let field = member_index(d, of_t, member, -1)
     if (field < 0) {
         fail(d, "offsetof: `{member}` is not a direct field of `{type_text}`", at)
         return null
@@ -1857,6 +1973,9 @@ def dump_tu(c_path : string; target : CirTarget; clang : string) : Dumper {
     d.tu_prefix = ident_of(slice(d.tu.tu, 0, max(find(d.tu.tu, "."), 0)))
     d.tu.producer = "c2das-dumper-a 0.1 / clang {clang_version(clang)}"
     collect_records(d, target.triple)
+    if (!empty(d.error)) {
+        return <- d
+    }
     var out : string
     let rc = run_and_capture([clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", "-target", target.triple, c_path], out, 120.0)
     if (rc != 0) {

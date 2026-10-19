@@ -2,6 +2,7 @@ options gen2
 
 module _probe_macros public
 
+require daslib/strings_boost
 require daslib/ast
 require daslib/ast_boost
 require daslib/templates_boost
@@ -59,5 +60,39 @@ class ProbeReshape : AstStructureAnnotation {
             s._store = v
         }
         return compiling_module() |> add_function(getter) && compiling_module() |> add_function(setter)
+    }
+}
+
+// `[probe_apply_types]`: adds `def apply_types_<Struct> : string` naming each field's base type
+// and size as `apply` saw them, before inference, `name:base:size`, a fixed array's dimension
+// as `:dim<N>`, `:alias` after a type `isAutoOrAlias` holds for, joined by spaces
+[structure_macro(name = "probe_apply_types")]
+class ProbeApplyTypes : AstStructureAnnotation {
+    def override apply(var st : StructurePtr; var group : ModuleGroup; var args : AnnotationArgumentList; var errors : das_string) : bool {
+        var seen : array<string>
+        for (f in st.fields) {
+            let unfolded = f._type.baseType == Type.tFixedArray && f._type.fixedDim <= 0
+            let size = f._type.baseType == Type.alias || unfolded ? "-" : "{f._type.sizeOf}"
+            let dim = f._type.baseType == Type.tFixedArray ? ":dim{f._type.fixedDim}" : ""
+            seen |> push("{f.name}:{f._type.baseType}:{size}{dim}{f._type.isAutoOrAlias ? ":alias" : ""}")
+        }
+        let text = join(seen, " ")
+        var fn <- qmacro_function("apply_types_{st.name}") $() : string {
+            return $v(text)
+        }
+        return compiling_module() |> add_function(fn)
+    }
+}
+
+// `[probe_count_annotations]`: adds `def annotations_<Struct> : int`, the length of the struct's
+// annotation list as `apply` saw it
+[structure_macro(name = "probe_count_annotations")]
+class ProbeCountAnnotations : AstStructureAnnotation {
+    def override apply(var st : StructurePtr; var group : ModuleGroup; var args : AnnotationArgumentList; var errors : das_string) : bool {
+        let count = length(st.annotations)
+        var fn <- qmacro_function("annotations_{st.name}") $() : int {
+            return $v(count)
+        }
+        return compiling_module() |> add_function(fn)
     }
 }

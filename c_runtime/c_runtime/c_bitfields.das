@@ -7,6 +7,7 @@ require daslib/ast
 require daslib/ast_boost
 require daslib/templates_boost
 require daslib/macro_boost
+require c_runtime/c_storage
 
 //! C bitfields over das storage. `[c_bitfields(a = 3, b = 5)] struct BF { a : uint; b : int; e : int16 }`
 //! is written C-shaped; the annotation replaces each allocation unit's fields with one unsigned
@@ -33,28 +34,9 @@ struct private BitUnit {
     members : array<BitMember>
 }
 
-// one storage type a unit can have: its name, its width in bits and its das type
-struct private Storage {
-    name : string
-    bits : int
-    base : Type
-}
-
-let private STORAGES = fixed_array(Storage(name = "uint8", bits = 8, base = Type.tUInt8), Storage(name = "uint16", bits = 16, base = Type.tUInt16), Storage(name = "uint", bits = 32, base = Type.tUInt), Storage(name = "uint64", bits = 64, base = Type.tUInt64))
-
-// the storage named `name`, or the one `bits` wide when `name` is empty; an empty name if none
-def private storage_of(name : string; bits : int) : Storage {
-    for (st in STORAGES) {
-        if (empty(name) ? st.bits == bits : st.name == name) {
-            return st
-        }
-    }
-    return Storage()
-}
-
 // the storage a bitfield of type `t` opens by default: the unsigned type of its width; an empty
 // name for a type that cannot hold a bitfield
-def private default_storage(t : TypeDeclPtr) : Storage => t.isInteger || t.isBool ? storage_of("", t.sizeOf * 8) : Storage()
+def private default_storage(t : TypeDeclPtr) : CStorage => t.isInteger || t.isBool ? storage_of("", t.sizeOf * 8) : CStorage()
 
 def private all_digits(s : string; from : int) : bool {
     var digits = length(s) > from
@@ -164,7 +146,7 @@ def private make_setter(var st : StructurePtr; u : BitUnit; m : BitMember) : Fun
 }
 
 // opens unit `name` of `storage`, which must not be a field of the struct or another unit
-def private open_unit(st : StructurePtr; var units : array<BitUnit>; name : string; storage : Storage; var errors : das_string) : bool {
+def private open_unit(st : StructurePtr; var units : array<BitUnit>; name : string; storage : CStorage; var errors : das_string) : bool {
     if (field_index(st, name) >= 0) {
         errors := "c_bitfields: unit `{name}` collides with a field of {st.name}"
         return false
