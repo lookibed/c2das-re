@@ -242,6 +242,32 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   divergence is a converter bug by construction; creduce harness for minimization.
   Ledger: an address one past an array's end formed by indexing (`&a[N]`, gcc-torture
   strlen-5) trips das's range check; spell `&a[k]` as `addr(a[0]) + k` where `k` can reach `N`.
+- **P4.5a Perf tracking.** `perf/results_linux.json` is re-recorded on the current tree (the
+  capture of 2026-10-06 predates every item since P2.4, which `perf/REVIEW.md` already
+  forbids) and from then on after every finished ledger item. `perf/run.das` gains the ratio
+  table, lane time over native per kernel and lane, and the delta against the previous
+  capture (the committed file before the run, or `--baseline <json>`); the ratio table and
+  the delta go into the progress log entry and the commit message of the item. A lane that
+  got slower by more than 10 percent on any kernel is flagged in both and explained or
+  fixed before the commit.
+- **P4.5b AOT anomaly.** The `aot` lane is 4x to 10x native on `sieve`, `matmul` and
+  `fixed_mandel` while `jit` and `exe` sit at about 1x. Find the root cause: profile the
+  AOT host, read the generated C++ for the three kernels, compare with the JIT over the same
+  module (`perf/ARCHITECTURE.md` section 3 names the `das_copy` lambdas of struct-returning
+  calls as the lead). A cause in the emitted shape, the tiers host or its compile flags is
+  fixed here; a cause in daScript's AOT gets a minimal standalone repro and an issue in
+  lookibed/daScript, the way #15 and #16 were filed. Either way a `docs/probe-findings.md`
+  row records the finding and the capture is re-recorded.
+- **P4.5c Readability metric.** `metrics/readability.das` (run by
+  `scripts/run_readability.sh`) converts the suites' tests and the perf kernels and counts,
+  per converted module and in total: `[c_function]` functions, `unsafe` blocks and
+  `unsafe(...)` expressions, pointer-arithmetic sites, `reinterpret` casts, goto and label
+  lowering sites, numeric literals where the C source has an enum or a named constant for
+  the value, and raw `while` loops a `range` loop could spell. The totals are committed as
+  `metrics/readability_linux.json` and ratchet like the suite pass lists: a count only goes
+  down, and a commit that raises one says why in its message; `metrics/REVIEW.das` gates
+  the file's shape. Every item's progress log entry prints the totals beside the test and
+  perf numbers.
 - **P4.6 Pointer constness: the uniform `var` policy.** A pointer parameter is `var` only where
   the body writes through it (F3), and das takes no `let` pointer for a `var` parameter, so a
   `let` pointer a caller holds - its own parameter that it never writes through, a field of a
