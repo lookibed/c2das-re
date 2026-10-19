@@ -1,5 +1,6 @@
 options gen2
 require dastest/testing_boost public
+require _daslang_child
 
 def record(var trace : array<int>; v : int) : int {
     trace |> push(v)
@@ -81,5 +82,26 @@ def test_scalars(t : T?) {
         t |> equal(flag, true)
         flag ||= false
         t |> equal(flag, true)
+    }
+}
+
+// the das facts the csmith differential found (docs/probe-findings.md F40 to F46)
+[test]
+def test_csmith_scalars(t : T?) {
+    t |> run("a shift takes a count of its value's own type alone; the count converted shifts") @(t : T?) {
+        child_rejects(t, "shift_int_uint", daslang_child("shift_int_uint", "options gen2\n[export]\ndef main \{\n    let a = 5\n    let n = 1u\n    assert(a << n == 10)\n\}\n", true), "int << uint is not defined")
+        child_rejects(t, "shift_int64_int", daslang_child("shift_int64_int", "options gen2\n[export]\ndef main \{\n    let a = 5l\n    let n = 1\n    assert(a >> n == 2l)\n\}\n", true), "int64 >> int is not defined")
+        let a = 5
+        let n = 1u
+        t |> equal(a << int(n), 10)
+        t |> equal(127 >> int(3u), 15)
+        t |> equal(5l << int64(n), 10l)
+        t |> equal(0xFFFFul >> uint64(n), 0x7FFFul)
+    }
+    t |> run("a local that shadows an enclosing local is refused, `_` included; sibling blocks reuse a name") @(t : T?) {
+        child_rejects(t, "shadow_nested", daslang_child("shadow_nested", "options gen2\n[export]\ndef main \{\n    var i = 1\n    \{\n        var i = 2\n        assert(i == 2)\n    \}\n    assert(i == 1)\n\}\n", true), "local variable i is shadowed by another local variable")
+        child_rejects(t, "shadow_discard", daslang_child("shadow_discard", "options gen2\n[export]\ndef main \{\n    let _ = 1\n    \{\n        let _ = 2\n    \}\n\}\n", true), "local variable _ is shadowed by another local variable")
+        let siblings = daslang_child("shadow_siblings", "options gen2\n[export]\ndef main \{\n    \{\n        var i = 1\n        assert(i == 1)\n    \}\n    \{\n        var i = 2\n        assert(i == 2)\n    \}\n\}\n", false)
+        t |> equal(siblings.rc, 0, siblings.out)
     }
 }

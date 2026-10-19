@@ -51,8 +51,15 @@ S::(anonymous at f:l:c)`, nested `union N::(anonymous struct)::(anonymous at f:l
 record spelling is keyed with the scope dropped. A typedef is a `typedef` type and a `typedefdecl`
 anchor, nothing more. A file-scope `static` gets the TU-qualified name `<stem>__<name>` (a stem
 that starts with a digit, as the c-testsuite's do, takes a leading underscore, since `00099__f`
-is not a name) and a local `static` is hoisted into `decls` as `<fn>_<name>` with `from_func`;
-references use the hoisted name. Tentative definitions of one object merge into the declaration
+is not a name) and a local `static` is hoisted into `decls` as `<fn>_<name>` with `from_func`
+(`<fn>_<name>1` and up for a second one of the name in the function). A reference binds by the
+declaration id clang resolved it to (`referencedDecl.id`), never by its spelling, so a local
+that hides a static, or a later block's local named like an earlier block's static, keeps its
+own binding (`docs/probe-findings.md` F47); an id outside the main file (a libc function,
+`stderr`) binds by its file-scope name. A block-scope `extern` declares nothing: its id binds to
+the declaration its `previousDecl` names, and it fails closed with no file-scope declaration
+before it, or when a local of the function spells the same name, since a non-static global and
+that local share the C-IR name and the reference would bind to the local. Tentative definitions of one object merge into the declaration
 carrying the initializer.
 
 Declarations: `FunctionDecl` with `ParmVarDecl` and a `CompoundStmt` body, `VarDecl`.

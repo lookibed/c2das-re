@@ -35,10 +35,16 @@ is a write to it, and so is an array's decay that is not indexed in place (`unsi
 u.b`, `f(s.b)`), whose pointer could otherwise write the caller's object or read the copy a
 const union's operator returns, while one that crosses `->`, `*p` or a pointer's `[i]` writes
 what it points at and makes the parameter `var`, the one spelling whose pointee stays writable
-(F3); a pointer parameter copied into a pointer local or variable (`int *it = a`) is `var` for
-the same reason, since the copy of a `let` parameter carries a const pointee, and so is one the
-body assigns and passes on. A function pointer parameter is never `var`, since a function value
-has no pointee. Every function's `var` parameters are planned before any is emitted, so a call
+(F3); a pointer parameter copied into a pointer local or variable (`int *it = a`), a pointer
+slot of an initializer list (`int *l[2] = {p, 0}`) or returned, below casts, `p + n`, a step's
+value, an assignment's value, a comma's right side and either arm of a `?:`, and through a
+pointer read out of it (`*pp`, `pp[i]`, `sp->q`) or an address into it (`&p`, `&sp->y`), is
+`var` for the same reason, since the copy of a `let` parameter carries a const pointee (F46); a
+value read through it that is no pointer (`*s` of a `char *s`) copies nothing. So is one the
+body assigns and passes on. A pointer field of a by-value record parameter returned
+(`return s.p`) fails closed, since the record's copy is const and F3's rule has no `var` to
+give it (P4.6). A function pointer
+parameter is never `var`, since a function value has no pointee. Every function's `var` parameters are planned before any is emitted, so a call
 knows its callee's: a `let` pointer the caller holds (its own parameter, or a field of a record
 parameter it never writes) passed into a `var` parameter, directly or through a function value,
 fails closed, since das takes no `let` pointer there and the uniform pointer policy is a later
@@ -46,7 +52,12 @@ row (`docs/implementation_order.md`, P4.6). A body that used an unsafe operation
 arithmetic, `deref`, `addr`, a `reinterpret`, a string literal) gets `[c_function]`. C `main`
 becomes `c_main` and the module ends with `[export] def main : int { return c_main() }`, whose
 `return` is the CLI's exit-code contract (`docs/probe-findings.md` F1). A C name that is a das
-keyword takes the `_c_` prefix.
+keyword takes the `_c_` prefix. A local that hides one of an enclosing block or a parameter
+takes the first numbered name the function leaves free (`i1`), and so does every reference C
+resolves to it, since das refuses a local that shadows another (`docs/probe-findings.md` F42);
+`emit_tu` renames over the C-IR in place before anything reads a name, a `for`'s declarations
+scoped to the whole `for`. A temporary (`_tN`) skips every name the function spells, a C local
+`_t0` included.
 
 An enum is `enum Name { items }` with das's default `int` base, emitted before the records, an
 item stating `= v` only where C's count-from-the-previous rule would not give its value, a
@@ -70,7 +81,9 @@ is spelled `uint(int(E.X))`. A conversion into an enum from anything else is
 `enum_from_int(type<E>, i)` over the `int` value, which `++`, `+= 1` and `t = t + 1` all take
 (`t = enum_from_int(type<E>, int(t) + 1)`); a compound assignment computes in the type clang
 gave its right side, except a shift, which computes in the promoted left side, `uint` for an
-unsigned-underlying enum (and for `unsigned w >>= n`), with an unsigned count. An enum's truth
+unsigned-underlying enum (and for `unsigned w >>= n`) and `int` for a `_Bool`. A shift's count, compound or not, takes
+the spelling of the left side (`int(right)`, a literal its suffix), since das shifts a value
+only by a count of its own type while C promotes the count apart (F40). An enum's truth
 is `int(e) != 0`; its zero is the enumerator of value zero when it has one, else
 `enum_from_int(type<E>, 0)`, since das rejects `default<E>` for an enum without a zero
 enumerator (`probes/test_process.das`; aggregates and globals of such an enum still zero,
@@ -80,15 +93,26 @@ enumerator (`probes/test_process.das`; aggregates and globals of such an enum st
 record initializer is `S(f = v, ...)` naming the filled slots. An array is `T[2][3]` with the
 dimensions in C's order and `T? [N]` for an array of pointers, since `?[` lexes as the
 safe-index operator; its initializer is one `fixed_array` holding every element, the unwritten
-ones as zero literals, except an array past 32 elements the source fills sparsely, which is the
+ones as zero literals (`fixed_array<T?>` for an array of pointers, since an all-null literal is
+a `void?` array no pointer array takes, F41), except an array past 32 elements the source fills sparsely, which is the
 bare declaration followed by one store per written element (at module init for a global); a
 `char[N]` from a string literal is `cstr_array("...", N)`. A subscript of an array is the das
 index, range-checked (the documents' safety oracle); a subscript of a pointer is `deref(p +
-i)`; a row pointer is `T[N]?` and reads as `deref(row)[i]`; decay is `addr(a[0])`. A function
+i)`; an index of a small integer type widens to `int`, since das indexes by `int`, `int64`,
+`uint` and `uint64` alone and C does not promote a subscript (F43); `&a[k]` of an array whose
+index can reach the length is `addr(a[0]) + end_index(k, N)` (`c_runtime/c_bounds`, which
+panics past `N` with das's own range-check wording), and a constant `N` is `addr(a[0]) + N`,
+since C may form the address one past the end and das range-checks `addr(a[N])` (F45); a
+constant below the length keeps `addr(a[k])`, and so does a constant past it, whose range
+check stands for C's undefined behaviour, while a literal past `int64` counts as no constant.
+In a global initializer the decay and the sum each wrap themselves, `unsafe(unsafe(addr(a[0]))
++ k)` (F48). An array of unknown length (`extern int a[];`) fails closed; a row pointer is `T[N]?` and reads as `deref(row)[i]`; decay is `addr(a[0])`. A function
 pointer is a das function value, `function<(a0 : T; ...) : R>` with the parameters named by
 position, a function's name decays to `@@name`, and a call through a pointer, `fp(...)` or
 `(*fp)(...)`, is `invoke(fp, ...)` (`ARCHITECTURE_EMITTER_AGGREGATES.md`, Function pointers). A pointer difference is `int64(p - q)`, in elements as C
-counts them; a pointer relation goes through `intptr`; `malloc`, `calloc`, `realloc`, `free`
+counts them; a pointer relation goes through `intptr`, and so does `==` or `!=` between two
+data pointers, since das compares only pointers of one constness and a `let` pointer's pointee
+is const (F44), while a null constant on either side compares with `null`; `malloc`, `calloc`, `realloc`, `free`
 and the `mem*` family are the CRT's through `crt`, with C's implicit `void *` conversions as
 explicit `reinterpret`. `[c_function]` lands only on a body with an unsafe operation, and the
 emitter counts those bodies against all the unit defines: the port-progress metric `main.das`
@@ -125,7 +149,9 @@ step fails closed. Literals carry their suffix from the C-IR type (`u`, `l`, `ul
 expands to `lhs = T_lhs(T_rhs(lhs) op rhs)`, which is C's small-int rule (`b = int8(int(b) +
 1)`). Statement-ification happens at emission: an assignment, a step or a call met inside an
 expression is hoisted into the statements before the current one (`let _t0 = x` then `x++` for
-a postfix step), left to right; a comma is two statements; `&&` and `||` with a hoisted right
+a postfix step), left to right; an expression whose value C discards binds a fresh temporary
+(`let _t3 = g[0]`), since a second `_` in a nested block would shadow the first (F42); a comma
+is two statements; `&&` and `||` with a hoisted right
 side become a flag and an `if`; a ternary whose arm carries hoisted statements becomes `var _tN
 : T` and an `if`/`else`, while a ternary of pure arms stays inline since das `?:` evaluates
 only the taken arm (F18). Loops follow the documents: `while` is `while`, with a side-effecting

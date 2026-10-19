@@ -67,7 +67,14 @@ struct Dumper {
     c_path : string
     linkage_names : table<string; string>
     current_fn : string
-    local_statics : table<string; string>
+    // the C-IR name of every declaration of the main file by clang's declaration id: a reference
+    // binds by the id clang resolved, never by its spelling, so a local hiding a static keeps
+    // its own binding (`docs/probe-findings.md` F47)
+    decl_names : table<string; string>
+    // the hoisted names of static locals taken so far
+    hoisted_names : table<string>
+    // the names of the current function's locals declared so far
+    fn_locals : table<string>
     records : array<ClangRecord>
     record_by_spelling : table<string; int>
     record_by_loc : table<string; int>
@@ -1182,12 +1189,13 @@ def private hex_float(decimal : string) : string {
     return slice(rendered, 0, n)
 }
 
-def private linkage_name(d : Dumper; c_name : string) : string {
-    let hoisted = d.local_statics?[c_name] ?? ""
-    if (!empty(hoisted)) {
-        return hoisted
-    }
-    return d.linkage_names?[c_name] ?? c_name
+def private linkage_name(d : Dumper; c_name : string) : string => d.linkage_names?[c_name] ?? c_name
+
+// the name a reference binds to: the declaration clang resolved, by its id; a declaration
+// outside the main file (a libc function, `stderr`) by its file-scope name
+def private bound_name(d : Dumper; referenced : JsonValue?) : string {
+    let bound = d.decl_names?[referenced?["id"] ?? ""] ?? ""
+    return empty(bound) ? linkage_name(d, referenced?["name"] ?? "") : bound
 }
 
 def private dump_args(var d : Dumper; kids : JsonValue?; from : int; count : int; var x : CirExpr?) : bool {
@@ -1548,7 +1556,7 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
             }
             return new CirExpr(e = "enum_ref", t = t, enum_t = owner, item = item)
         }
-        return new CirExpr(e = "ref", t = t, name = linkage_name(d, js?["referencedDecl"]?["name"] ?? ""))
+        return new CirExpr(e = "ref", t = t, name = bound_name(d, js?["referencedDecl"]))
     }
     if (kind == "ImplicitCastExpr" || kind == "CStyleCastExpr") {
         return dump_cast(d, js, t, at)
@@ -1630,7 +1638,15 @@ def private slot_expr(var d : Dumper; kids : JsonValue?; idx : int; var ok : boo
 // the dumper hoists it into `decls` with `from_func` and the body refers to the hoisted name
 def private hoist_static(var d : Dumper; js : JsonValue?; at : CirLoc; t : int) : bool {
     let c_name = js?["name"] ?? ""
-    let hoisted = "{d.current_fn}_{c_name}"
+    // two static locals of one name in one function take numbered names
+    var hoisted = "{d.current_fn}_{c_name}"
+    var n = 1
+    while (key_exists(d.hoisted_names, hoisted)) {
+        hoisted = "{d.current_fn}_{c_name}{n}"
+        n++
+    }
+    d.hoisted_names |> insert(hoisted)
+    d.decl_names[js?["id"] ?? ""] = hoisted
     var g = new CirDecl(k = "global", name = hoisted, c_name = c_name, t = t, is_static = true, from_func = d.current_fn, loc = at)
     if (!enum_dims(d, node_key(js), t, at, g.dims)) {
         delete_decl(g)
@@ -1644,7 +1660,6 @@ def private hoist_static(var d : Dumper; js : JsonValue?; at : CirLoc; t : int) 
         }
     }
     d.tu.decls |> push(g)
-    d.local_statics[c_name] = hoisted
     return true
 }
 
@@ -1659,7 +1674,26 @@ def private dump_var(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
         }
         return new CirStmt(s = "null", loc = at)
     }
+    if ((js?["storageClass"] ?? "") == "extern") {
+        // a block-scope `extern` declares no object: its references bind to the file-scope
+        // entity it redeclares
+        let bound = d.decl_names?[js?["previousDecl"] ?? ""] ?? ""
+        if (key_exists(d.fn_locals, bound)) {
+            // the C-IR names the file-scope entity and the local alike, so the reference
+            // would bind to the local
+            fail(d, "a block-scope `extern` declaration of `{bound}`, which a local of the function also names, is not lowered yet", at)
+            return null
+        }
+        if (empty(bound)) {
+            fail(d, "a block-scope `extern` declaration of `{js?["name"] ?? ""}` with no file-scope declaration before it is not lowered yet", at)
+            return null
+        }
+        d.decl_names[js?["id"] ?? ""] = bound
+        return new CirStmt(s = "null", loc = at)
+    }
     var st = new CirStmt(s = "decl", name = js?["name"] ?? "", t = t, loc = at)
+    d.decl_names[js?["id"] ?? ""] = st.name
+    d.fn_locals |> insert(st.name)
     if (!enum_dims(d, node_key(js), t, at, st.dims)) {
         delete_stmt(st)
         return null
@@ -2075,6 +2109,7 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
         d.linkage_names[c_name] = "{d.tu_prefix}__{c_name}"
     }
     let name = linkage_name(d, c_name)
+    d.decl_names[js?["id"] ?? ""] = name
     if (kind == "FunctionDecl") {
         let t = node_type(d, js, at)
         if (t < 0) {
@@ -2082,7 +2117,7 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
         }
         var fn = new CirDecl(k = "func", name = name, c_name = c_name, t = t, is_static = is_static, loc = at)
         d.current_fn = c_name
-        d.local_statics |> clear()
+        d.fn_locals |> clear()
         let kids = js?["inner"]
         for (idx in range(child_count(js))) {
             let child = (kids as _array)[idx]
@@ -2095,6 +2130,8 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
                     return null
                 }
                 fn.params |> push(CirParam(name = child?["name"] ?? "", t = pt))
+                d.decl_names[child?["id"] ?? ""] = child?["name"] ?? ""
+                d.fn_locals |> insert(child?["name"] ?? "")
             } elif (ck == "CompoundStmt") {
                 d.label_names |> clear()
                 collect_labels(d, child)

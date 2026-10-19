@@ -5,6 +5,7 @@ module tiers public
 require strings
 require daslib/strings_boost
 require daslib/fio
+require pipeline
 
 //! Runs a converted module under one execution tier and returns the process exit code:
 //! `interp` (the interpreter), `jit` (the LLVM JIT), `exe` (a native executable the JIT
@@ -12,10 +13,14 @@ require daslib/fio
 
 let TIERS <- {"interp", "jit", "exe", "aot"}
 
+//! The module folders a converted program requires, as `-load_module` takes them from the
+//! repository root.
+let CONVERTED_MODULES <- ["c_runtime", "dasCRuntime"]
+
 def private daslang_bin : string => get_das_root() + "/bin/daslang"
 
-// the daslang invocation prefix: the binary plus one -load_module per module folder
-def private daslang_cmd(module_dirs : array<string>) : array<string> {
+//! The daslang invocation prefix: the binary plus one `-load_module` per module folder.
+def daslang_cmd(module_dirs : array<string>) : array<string> {
     var cmd <- [daslang_bin()]
     cmd |> reserve(1 + 2 * length(module_dirs) + 2)
     for (dir in module_dirs) {
@@ -31,12 +36,6 @@ def private ident_of(name : string) : string {
             w |> write(is_alnum(ch) ? to_char(ch) : "_")
         }
     }
-}
-
-def private file_stem(path : string) : string {
-    let name = base_name(path)
-    let dot = find(name, ".")
-    return dot < 0 ? name : slice(name, 0, dot)
 }
 
 def private run(args : array<string>; var output : string&; timeout : float = 600.0) : int {
@@ -113,14 +112,20 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
 }
 
 def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>; timeout : float = 600.0) : int {
+    let no_flags : array<string>
+    return run_tier(das_path, tier, work_dir, output, module_dirs, timeout, no_flags)
+}
+
+//! `flags` go to the interpreter and the JIT before the script (`-no-module-cache`).
+def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>; timeout : float; flags : array<string>) : int {
     if (tier == "interp") {
         var cmd <- daslang_cmd(module_dirs)
-        cmd |> push(das_path)
+        cmd |> push_from(flags, [das_path])
         return run(cmd, output, timeout)
     }
     if (tier == "jit") {
         var cmd <- daslang_cmd(module_dirs)
-        cmd |> push_from(["-jit", das_path])
+        cmd |> push_from(flags, ["-jit", das_path])
         return run(cmd, output, timeout)
     }
     if (tier == "exe") {
@@ -132,3 +137,28 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
     output += "unknown tier `{tier}`; one of interp, jit, exe, aot\n"
     return -1
 }
+
+//! A C program built natively and run once: `built` false with the compiler's text in `output`,
+//! else the run's exit code (`popen_timed_out` past `timeout`) and merged output.
+struct NativeRun {
+    built : bool
+    rc : int
+    output : string
+}
+
+//! `c_path` built by `compiler` with `flags` into `bin`, run with `timeout` seconds, the binary
+//! removed afterwards: the native side of a differential test.
+def native_run(compiler : string; flags : array<string>; c_path, bin : string; timeout : float) : NativeRun {
+    var res : NativeRun
+    var args <- [compiler]
+    args |> push_from(flags, ["-o", bin, c_path])
+    if (run_and_capture(args, res.output, 120.0) != 0) {
+        return res
+    }
+    res.built = true
+    res.output = ""
+    res.rc = run_and_capture([bin], res.output, timeout)
+    remove(bin)
+    return res
+}
+

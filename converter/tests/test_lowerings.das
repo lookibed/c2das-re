@@ -21,16 +21,8 @@ struct Expectation {
 var work_root : string
 
 def native(name : string) : Expectation {
-    let bin = path_join(work_root, "{name}_native")
-    let clang = default_clang()
-    var out : string
-    let crc = run_and_capture([clang, "-w", CLANG_DIALECT, "-o", bin, "{FIXTURES}/{name}.c"], out, 120.0)
-    if (crc != 0) {
-        return Expectation(rc = -1, out = "clang failed:\n{out}")
-    }
-    var program_out : string
-    let rc = run_and_capture([bin], program_out, 60.0)
-    return Expectation(rc = rc, out = program_out)
+    let run = native_run(default_clang(), ["-w", CLANG_DIALECT], "{FIXTURES}/{name}.c", path_join(work_root, "{name}_native"), 60.0)
+    return run.built ? Expectation(rc = run.rc, out = run.output) : Expectation(rc = -1, out = "clang failed:\n{run.output}")
 }
 
 def converted(t : T?; name : string; var das_text : string&) : Expectation {
@@ -41,7 +33,7 @@ def converted(t : T?; name : string; var das_text : string&) : Expectation {
     }
     das_text = res.das_text
     var out : string
-    let rc = run_tier(res.das_path, "interp", path_join(work_root, name), out, ["c_runtime", "dasCRuntime"])
+    let rc = run_tier(res.das_path, "interp", path_join(work_root, name), out, CONVERTED_MODULES)
     return Expectation(rc = rc, out = out)
 }
 
@@ -50,13 +42,6 @@ def has_text(t : T?; text : string; needle : string) {
     t |> equal(text |> find(needle) >= 0, true, "missing `{needle}` in:\n{text}")
 }
 
-def write_file(path : string; text : string) {
-    fopen(path, "wb") $(f) {
-        if (f != null) {
-            fwrite(f, text)
-        }
-    }
-}
 
 // a C source the converter must refuse, with the error naming the construct; `sidecar` is
 // the `.c2das` text beside it, when the shape needs one
@@ -64,24 +49,15 @@ def rejects(t : T?; name : string; source : string; needle : string; sidecar : s
     let dir = path_join(work_root, "rejected")
     mkdir(dir)
     let c_path = path_join(dir, "{name}.c")
-    write_file(c_path, source)
+    fwrite(c_path, source)
     if (!empty(sidecar)) {
-        write_file(path_join(dir, "{name}.c2das"), sidecar)
+        fwrite(path_join(dir, "{name}.c2das"), sidecar)
     }
     let res <- convert(c_path, path_join(dir, name), "linux")
     t |> equal(res.ok, false, "{name} converted:\n{res.das_text}")
     t |> equal(res.error |> find(needle) >= 0, true, "{name}: `{needle}` not in `{res.error}`")
 }
 
-def fread_text(path : string) : string {
-    var text = ""
-    fopen(path, "rb") $(f) {
-        if (f != null) {
-            text = fread(f)
-        }
-    }
-    return text
-}
 
 // how many times `needle` occurs in `text`
 def count_of(text, needle : string) : int {
@@ -99,7 +75,7 @@ def converts(t : T?; name : string; source : string) : string {
     let dir = path_join(work_root, "converted")
     mkdir(dir)
     let c_path = path_join(dir, "{name}.c")
-    write_file(c_path, source)
+    fwrite(c_path, source)
     let res <- convert(c_path, path_join(dir, name), "linux")
     t |> equal(res.ok, true, "{name}: {res.error}")
     return res.das_text
@@ -154,6 +130,8 @@ def test_lowerings(t : T?) {
         t |> equal(text |> find("require c_runtime/c_exit") >= 0, true, text)
     }
     p2_fixtures(t)
+    p4_csmith_fixtures(t)
+    p4_csmith_more_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -177,9 +155,18 @@ def p2_fixtures(t : T?) {
         t |> equal(text |> find("def private c2das_init_globals \{\n    sparse[5] = 9") >= 0, true, text)
         t |> equal(text |> find("var name : uint8[8] = cstr_array(\"abc\", 8)") >= 0, true, text)
         t |> equal(text |> find("var m : int[2][3] = fixed_array(fixed_array(1, 2, 3), fixed_array(4, 5, 6))") >= 0, true, text)
-        t |> equal(text |> find("var ptrs : int? [2] = fixed_array(unsafe(addr(full[1])), null)") >= 0, true, text)
+        t |> equal(text |> find("var ptrs : int? [2] = fixed_array<int?>(unsafe(addr(full[1])), null)") >= 0, true, text)
         t |> equal(text |> find("var row : int[3]? = addr(m[1])") >= 0, true, text)
         t |> equal(text |> find("deref(row)[2]") >= 0, true, text)
+        // an address that may be one past the end is the decayed array plus the checked index (F45)
+        has_text(t, text, "addr(full[0]) + 3")
+        has_text(t, text, "addr(local[1]), addr(local[0]) + end_index(n, 4)")
+        has_text(t, text, "require c_runtime/c_bounds")
+        // in a global initializer the decay and the sum each take their own unsafe (F48)
+        has_text(t, text, "var gend : int? = unsafe(unsafe(addr(full[0])) + 3)")
+        has_text(t, text, "var ends : int? [2] = fixed_array<int?>(unsafe(addr(full[0])), unsafe(unsafe(addr(full[0])) + 3))")
+        has_text(t, text, "addr(m[1][0]) + 3")
+        has_text(t, text, "int64(addr(m[0]) + 2 - addr(m[0]))")
         t |> equal(text |> find("m[0][i] *= 2") >= 0, true, text)
         t |> equal(text |> find("total(addr(full[0]), 3)") >= 0, true, text)
     }
@@ -427,7 +414,7 @@ def p4_fixtures(t : T?) {
         let dir = path_join(work_root, "nest")
         mkdir(dir)
         let c_path = path_join(dir, "nest.c")
-        write_file(c_path, nest)
+        fwrite(c_path, nest)
         let started = ref_time_ticks()
         let res <- convert(c_path, path_join(dir, "out"), "linux")
         let seconds = get_time_usec(started) / 1000000
@@ -577,7 +564,7 @@ def p4_function_fixtures(t : T?) {
         t |> equal(no_resources.error |> find("-print-resource-dir` gave no resource directory") >= 0, true, no_resources.error)
         // a clang that prints a path but fails is no resource directory either
         let fake = path_join(work_root, "fake_clang.sh")
-        write_file(fake, "#!/bin/sh\necho /usr\nexit 3\n")
+        fwrite(fake, "#!/bin/sh\necho /usr\nexit 3\n")
         let mode = run_and_capture(["chmod", "+x", fake], fake_out, 10.0)
         t |> equal(mode, 0, fake_out)
         let failing <- convert("{FIXTURES}/ret42.c", path_join(work_root, "fake_resources"), "linux", fake)
@@ -611,13 +598,13 @@ def p4_varargs_fixtures(t : T?) {
         has_text(t, text, "n = c_vsprintf(buf, fmt, va_rest(ap))")
         // the library writes through the buffer, so the parameter is `var` (F3)
         has_text(t, text, "def private p4_varargs__bounded(var buf : uint8?; size : uint64; fmt : uint8?; va : va_args) : int")
-        has_text(t, text, "let _ = int(va_i(ap))")
+        has_text(t, text, "let _t0 = int(va_i(ap))")
         has_text(t, text, "ok = int(va_i(ap)) == 7 || int(va_i(ap)) == 8 ? 1 : 0")
         // `sizeof(va_list)` is clang's size: the cursor is never laid out
         has_text(t, text, "int(uint64(24))")
         has_text(t, text, "sscanf(reinterpret<uint8?>(\"  12,-7 2.5e1 hello\")")
         // `va_end` is no statement: the text starts a cursor exactly where C calls `va_start`
-        let c_source = fread_text("{FIXTURES}/p4_varargs.c")
+        let c_source = fread("{FIXTURES}/p4_varargs.c")
         t |> equal(count_of(text, "= va_begin("), count_of(c_source, "va_start("), text)
         // a `va_list` parameter reassigned and passed on stays the caller's `var` cursor
         has_text(t, text, "def private p4_varargs__relay(var ap : CVaCursor) : int \{\n    var mine : CVaCursor\n    mine = ap\n    ap = mine\n")
@@ -689,7 +676,7 @@ def p4_varargs_shapes(t : T?) {
         mkdir(dir)
         for (shape in shapes) {
             let c_path = path_join(dir, "{shape._0}.c")
-            write_file(c_path, shape._1)
+            fwrite(c_path, shape._1)
             for (target in ["linux", "msvc"]) {
                 let res <- convert(c_path, path_join(dir, "{shape._0}_{target}"), target)
                 t |> equal(res.ok, true, "{shape._0} {target}: {res.error}")
@@ -701,17 +688,17 @@ def p4_varargs_shapes(t : T?) {
         let dir = path_join(work_root, "converted")
         mkdir(dir)
         let c_path = path_join(dir, "va_msvc_typedef.c")
-        write_file(c_path, "#include <stdarg.h>\ntypedef va_list my_list;\nstatic int f(int n, ...) \{ my_list ap; va_start(ap, n); int v = va_arg(ap, int); va_end(ap); return v + n; \}\nint main(void) \{ return f(1, 2) - 3; \}\n")
+        fwrite(c_path, "#include <stdarg.h>\ntypedef va_list my_list;\nstatic int f(int n, ...) \{ my_list ap; va_start(ap, n); int v = va_arg(ap, int); va_end(ap); return v + n; \}\nint main(void) \{ return f(1, 2) - 3; \}\n")
         let res <- convert(c_path, path_join(dir, "va_msvc_typedef"), "msvc")
         t |> equal(res.ok, true, res.error)
         has_text(t, res.das_text, "var ap : CVaCursor")
         let field_path = path_join(dir, "va_msvc_field.c")
-        write_file(field_path, "#include <stdarg.h>\nstruct S \{ va_list ap; int n; \};\nint main(void) \{ struct S s; s.n = 0; return s.n; \}\n")
+        fwrite(field_path, "#include <stdarg.h>\nstruct S \{ va_list ap; int n; \};\nint main(void) \{ struct S s; s.n = 0; return s.n; \}\n")
         let field <- convert(field_path, path_join(dir, "va_msvc_field"), "msvc")
         t |> equal(field.error |> find("a `va_list` field (`S.ap`) is not lowered yet") >= 0, true, field.error)
         // msvc's `va_list` is a `char *`, so C reads one through `...`
         let nested_path = path_join(dir, "va_msvc_nested.c")
-        write_file(nested_path, "#include <stdarg.h>\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); va_list inner = va_arg(ap, va_list); (void) inner; va_end(ap); return n; \}\nint main(void) \{ return f(0); \}\n")
+        fwrite(nested_path, "#include <stdarg.h>\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); va_list inner = va_arg(ap, va_list); (void) inner; va_end(ap); return n; \}\nint main(void) \{ return f(0); \}\n")
         let nested <- convert(nested_path, path_join(dir, "va_msvc_nested"), "msvc")
         t |> equal(nested.error |> find("va_arg of a `va_list` is not lowered yet") >= 0, true, nested.error)
     }
@@ -731,8 +718,111 @@ def p4_varargs_rejects(t : T?) {
         rejects(t, "va_end_value", "#include <stdarg.h>\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); n ? va_end(ap) : (void) 0; return n; \}\nint main(void) \{ return f(0); \}\n", "`va_end` used as a value is not lowered yet")
         rejects(t, "va_tuple_param", "#include <stdarg.h>\nstatic int f(int _va_tuple, ...) \{ return _va_tuple; \}\nint main(void) \{ return f(0); \}\n", "a C name `_va_tuple` in variadic function `f`")
         rejects(t, "va_tuple_local", "#include <stdarg.h>\nstatic int f(int n, ...) \{ int _va_tuple = n; return _va_tuple; \}\nint main(void) \{ return f(0); \}\n", "a C name `_va_tuple` in variadic function `f`")
-        rejects(t, "sprintf_const_buffer", "int sprintf(char *, const char *, ...);\nstatic void put(char *b, char *e, int k) \{ char *t = k ? b : e; (void) t; \}\nstatic int w(char *b, char *e, int k) \{ return sprintf(k ? b : e, \"%d\", k); \}\nint main(void) \{ char x[8], y[8]; put(x, y, 1); return w(x, y, 1) - 1; \}\n", "a pointer the callee writes through arrives through const parameter `b` of `w`")
         rejects(t, "scanf_stdin", "int scanf(const char *, ...);\nint main(void) \{ int x = 0; scanf(\"%d\", &x); return x; \}\n", "external function `scanf` has no c_runtime mapping")
         rejects(t, "fprintf_stream", "typedef struct F F;\nextern F *stderr;\nint fprintf(F *, const char *, ...);\nint main(void) \{ fprintf(stderr, \"x\"); return 0; \}\n", "external function `fprintf` has no c_runtime mapping")
+    }
+}
+
+// the shapes the csmith differential found (docs/implementation_order.md P4.5)
+def p4_csmith_fixtures(t : T?) {
+    t |> run("csmith shapes: a shift's count takes the type of its left side") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_csmith_shifts", text)
+        // das shifts a value only by a count of its own type (F40)
+        has_text(t, text, "int(left) > 127 >> int(right) ? int(left) : int(left) << int(right)")
+        has_text(t, text, "return v << int64(n) >> int64(n / 2)")
+        has_text(t, text, "return v >> uint64(int(n))")
+        has_text(t, text, "    a <<= int(b)\n    u >>= uint(int(uint8(1)))\n    b <<= int64(u)\n    b >>= 1l\n")
+        has_text(t, text, "b << 2l")
+    }
+    t |> run("csmith shapes: pointers returned, copied out, compared across constness, null arrays") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_csmith_pointers", text)
+        // a returned or copied-out pointer parameter is `var` (F3), through `*pp` and `?:` arms
+        has_text(t, text, "def private p4_csmith_pointers__pass_back(var p : int?) : int?")
+        has_text(t, text, "def private p4_csmith_pointers__pick(k : int; var p : int?; var q : int?) : int?")
+        has_text(t, text, "def private p4_csmith_pointers__keep(var pp : int ??; var out : int ??)")
+        has_text(t, text, "def private p4_csmith_pointers__write_either(var b : uint8?; var e : uint8?; k : int) : int")
+        has_text(t, text, "def private p4_csmith_pointers__via_alias(var p_in : int?) : int \{\n    var p = p_in\n")
+        has_text(t, text, "def private p4_csmith_pointers__chained(var p_in : int?) : int")
+        // pointers compare as addresses, a null constant as `null` on either side (F44)
+        has_text(t, text, "return intptr(p) == intptr(reinterpret<int?>(q)) ? 1 : 0")
+        has_text(t, text, "return reinterpret<int?>(p) == null ? 1 : 0")
+        has_text(t, text, "local[0] == null ? 1 : 0")
+        // an array of pointers names its element type (F41)
+        has_text(t, text, "var private p4_csmith_pointers__table : int? [3] = fixed_array<int?>(null, null, null)")
+        has_text(t, text, "= fixed_array(fixed_array<int?>(null, null), fixed_array<int?>(unsafe(addr(p4_csmith_pointers__g)), null))")
+        // a row the initializer leaves out is a typed zero literal
+        has_text(t, text, "var private p4_csmith_pointers__partial : int? [2][2] = fixed_array(fixed_array<int?>(unsafe(addr(p4_csmith_pointers__g)), null), fixed_array<int?>(null, null))")
+        has_text(t, text, "var local : int? [2] = fixed_array<int?>(null, null)")
+    }
+    t |> run("csmith shapes: a local hiding another takes a free name, discards are fresh, small subscripts widen") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_csmith_scopes", text)
+        // das refuses a local that shadows another (F42), `_` included
+        has_text(t, text, "var i1 : int = 5")
+        has_text(t, text, "var i2 : int = 7")
+        has_text(t, text, "let _t0 = p4_csmith_scopes__g[0]")
+        has_text(t, text, "var p1 : int = 3")
+        has_text(t, text, "var v1 : int = 100")
+        has_text(t, text, "var i3 : int = 1\n        while (i3 < 3) \{")
+        // das indexes by `int`, `int64`, `uint` or `uint64` alone (F43)
+        has_text(t, text, "p4_csmith_scopes__g[int(k)] + p4_csmith_scopes__g[int(m)] + p4_csmith_scopes__g[int(n)]")
+        has_text(t, text, "def private p4_csmith_scopes__at(p : int?; c : uint8) : int \{\n    return deref(p + int(c))")
+    }
+}
+
+// the csmith shapes of the fix round: bindings, pointer walks and the refusals
+def p4_csmith_more_fixtures(t : T?) {
+    t |> run("csmith shapes: a reference binds to the declaration clang resolved, never to its spelling") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_csmith_bindings", text)
+        // a local hiding a static keeps its own binding (F47)
+        has_text(t, text, "var g1 : int = 5\n            n += g1\n        \}\n    \}\n    return n + p4_csmith_bindings__g")
+        // two static locals of one name hoist under two names; a later block's local is its own
+        has_text(t, text, "var private static_then_local_s : int = 5\nvar private static_then_local_s1 : int = 9")
+        has_text(t, text, "var s : int = 1")
+        // a block-scope extern declares nothing and binds to the global
+        has_text(t, text, "    \{\n        return x\n    \}")
+        // a temporary skips a name the function spells
+        has_text(t, text, "var _t0 : int = 7")
+        has_text(t, text, "let _t1 = a[0]")
+    }
+    t |> run("csmith shapes: a pointer read out of a parameter is a copy only when it is a pointer or an address") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_csmith_walks", text)
+        // `*s` of a `char *s` copies a `char`: the stepped parameter stays `let` with its copy (F46)
+        has_text(t, text, "def private p4_csmith_walks__say(s_in : uint8?) : int")
+        has_text(t, text, "def private p4_csmith_walks__say2(s : uint8?) : int")
+        has_text(t, text, "def private p4_csmith_walks__show(p_in : int?; n_in : int)")
+        has_text(t, text, "def private p4_csmith_walks__outer(q : int?)")
+        has_text(t, text, "def private p4_csmith_walks__walk(sp_in : S?; n_in : int) : int")
+        has_text(t, text, "def private p4_csmith_walks__idx(p_in : int?; n_in : int) : int")
+        // an initializer list's pointer slot, a step's value, a comma's right side, a pointer
+        // index, an arrow and an address into the pointee copy the parameter
+        has_text(t, text, "def private p4_csmith_walks__first(var p : int?) : int")
+        has_text(t, text, "def private p4_csmith_walks__field(var p : int?) : int")
+        has_text(t, text, "def private p4_csmith_walks__nxt(var p_in : int?) : int?")
+        has_text(t, text, "def private p4_csmith_walks__pre(var p_in : int?) : int")
+        has_text(t, text, "def private p4_csmith_walks__comma(k_in : int; var p : int?) : int?")
+        has_text(t, text, "def private p4_csmith_walks__row(var pp : int ??) : int?")
+        has_text(t, text, "def private p4_csmith_walks__arrow(var qp : Q?) : int?")
+        has_text(t, text, "def private p4_csmith_walks__addr_y(var sp : S?) : int?")
+        // a `_Bool` shift computes in `int`
+        has_text(t, text, "b = (int(b ? 1 : 0) << n) != 0")
+    }
+    t |> run("csmith shapes: what the lowering refuses, and the addresses it keeps checked") @(t : T?) {
+        rejects(t, "extern_unknown_length", "extern int arr[];\nstatic int *at(int k) \{ return &arr[k]; \}\nint arr[3] = \{1, 2, 3\};\nint main(void) \{ return (int) (at(3) - at(0)); \}\n", "an array of unknown length (`extern int a[];`) is not lowered yet")
+        rejects(t, "return_widening", "static const int *ident(const int *p) \{ return p; \}\nstatic int use(const int *q) \{ return *ident(q) + *q; \}\nint main(void) \{ int a = 1; return use(&a) - 2; \}\n", "a pointer the callee writes through arrives through const parameter `q` of `use`")
+        rejects(t, "return_record_field", "struct S \{ int *p; \};\nstatic int *fld(struct S s) \{ return s.p; \}\nint g = 7;\nint main(void) \{ struct S s = \{&g\}; return *fld(s) - 7; \}\n", "a pointer the caller may write through leaves through const parameter `s` of `fld`")
+        rejects(t, "hidden_block_extern", "int x = 40;\nint main(void) \{ int x = 1; \{ extern int x; return x; \} \}\n", "a block-scope `extern` declaration of `x`, which a local of the function also names, is not lowered yet")
+        rejects(t, "flattened_hides_global", "int g = 40;\nint main(void) \{\n    int n = 0;\n    if (n == 0) goto in;\n    \{\n        int g = 3;\n        n += g;\n    in:\n        n += 1;\n    \}\n    return n + g - 41;\n\}\n", "a block a goto enters declares `g`, which hides a global of that name")
+        rejects(t, "late_block_extern", "int main(void) \{ \{ extern int y; return y; \} \}\nint y = 3;\n", "a block-scope `extern` declaration of `y` with no file-scope declaration before it is not lowered yet")
+        // a literal past `int64` is no constant below the length: it takes the checked form
+        let huge = converts(t, "past_int64_index", "static int a[3];\nstatic int *far(void) \{ return &a[18446744073709551615ULL]; \}\nint main(void) \{ return far() == 0; \}\n")
+        has_text(t, huge, "addr(past_int64_index__a[0]) + end_index(18446744073709551615ul, 3)")
+        // a string literal's address is through its pointer, never the decayed array
+        let literal = converts(t, "literal_address", "static const char *at(int k) \{ return &\"abcdef\"[k]; \}\nint main(void) \{ return at(6) - at(0) - 6; \}\n")
+        has_text(t, literal, "return addr(deref(reinterpret<uint8?>(\"abcdef\") + k))")
     }
 }

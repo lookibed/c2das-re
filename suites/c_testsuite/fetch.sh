@@ -4,14 +4,11 @@
 set -euo pipefail
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$here/../.." && pwd)"
-pin=$(sed -n 's/^c-testsuite: *\([0-9a-f]*\).*/\1/p' "$repo_root/VERSIONS.md" | head -1)
+. "$repo_root/suites/fetch_common.sh"
+pin=$(pin_of c-testsuite)
 [ -n "$pin" ] || { echo "fetch: VERSIONS.md names no c-testsuite pin" >&2; exit 1; }
-dest="$here/fetch/c-testsuite"
-if [ -d "$dest/.git" ] && [ "$(git -C "$dest" rev-parse HEAD)" = "$pin" ]; then
-    exit 0
-fi
-rm -rf "$dest"
 mkdir -p "$here/fetch"
-git clone -q https://github.com/c-testsuite/c-testsuite "$dest"
-git -C "$dest" checkout -q "$pin"
-echo "fetch: c-testsuite at $pin"
+dest="$here/fetch/c-testsuite"
+if checkout_if_stale https://github.com/c-testsuite/c-testsuite "$dest" "$pin" "$dest/.git"; then
+    echo "fetch: c-testsuite at $pin"
+fi

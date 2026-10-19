@@ -28,6 +28,8 @@ struct Emitter {
     has_c_main : bool
     pre : array<string>
     temp_counter : int
+    // the names the function being emitted spells, which a temporary never takes
+    spelled : table<string>
     first_counter : int
     for_counter : int
     requires : table<string>
@@ -196,8 +198,12 @@ def private hoist(var em : Emitter; stmts : array<string>) {
 }
 
 def private temp_name(var em : Emitter) : string {
-    let name = "_t{em.temp_counter}"
+    var name = "_t{em.temp_counter}"
     em.temp_counter++
+    while (key_exists(em.spelled, name)) {
+        name = "_t{em.temp_counter}"
+        em.temp_counter++
+    }
     return name
 }
 
@@ -311,6 +317,10 @@ def private array_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc; spel
         }
         if (tu.types[elem].count == 0) {
             fail(em, "a zero-length array (a GNU extension) is not lowered yet", loc)
+            return ""
+        }
+        if (tu.types[elem].count < 0) {
+            fail(em, "an array of unknown length (`extern int a[];`) is not lowered yet", loc)
             return ""
         }
         let level = length(dims)
@@ -547,12 +557,11 @@ def private assignment_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
         return "{lhs.text} = {lhs.text} {spelled} {wrap(rhs, prec + 1)}"
     }
     // C computes `a op= b` in the common type of the converted operands, which clang gives
-    // the right side; a shift computes in the promoted left side alone, and das shifts an
-    // unsigned value by an unsigned count
+    // the right side; a shift computes in the promoted left side alone
     let shift = x.op == "shl" || x.op == "shr"
     let wide = shift ? promoted_type(em, tu, x.a.t, loc) : das_type(em, tu, x.b.t, loc)
-    if (shift && wide == "uint" && !is_unsigned(tu, x.b.t)) {
-        rhs = value(x.b.e == "int_lit" ? x.b.v + "u" : "uint({rhs.text})", PREC_PRIMARY)
+    if (shift) {
+        rhs = shift_count(em, tu, *x.b, rhs, wide, loc)
     }
     if (kind_of(tu, x.a.t) == "enum") {
         let sum = "{enum_to_integer(tu, x.a.t, lhs.text, wide)} {spelled} {wrap(rhs, prec + 1)}"
@@ -570,9 +579,23 @@ def private assignment_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
     return "{lhs.text} {spelled}= {rhs.text}"
 }
 
+// C promotes a shift's count apart from its left side, and das shifts a value only by a count
+// of its own type (`docs/probe-findings.md` F40): the count takes the left side's spelling
+def private shift_count(var em : Emitter; tu : CirTu; count : CirExpr; rhs : Em; left_type : string; loc : CirLoc) : Em {
+    if (das_type(em, tu, count.t, loc) == left_type) {
+        return rhs
+    }
+    let literal = count.e == "int_lit" ? int_literal(left_type, count.v) : ""
+    return value(empty(literal) ? "{left_type}({rhs.text})" : literal, PREC_PRIMARY)
+}
+
 // the type C's integer promotion gives a value of type `t`: `int` or `uint` for the small
 // integers and the enums, the type itself otherwise
 def private promoted_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
+    // a `_Bool` promotes to `int`, as C reads every `_Bool` as a number
+    if (is_c_bool(tu, t)) {
+        return "int"
+    }
     if (is_small_int(tu, t)) {
         return is_unsigned(tu, t) ? "uint" : "int"
     }
@@ -1061,20 +1084,24 @@ def private function_value(var em : Emitter; f : CirExpr; loc : CirLoc) : Em {
     return value(f.name == "main" ? "@@c_main" : "@@{das_name(em, f.name)}", PREC_PRIMARY)
 }
 
-// a null function pointer: `0` converted, or a null data pointer (`NULL` as `(void *)0`) cast
-def private is_null_function(tu : CirTu; x : CirExpr?) : bool {
-    if (x == null || x.e != "cast" || !is_function_pointer(tu, x.t)) {
-        return false
-    }
-    if (x.cast_kind == "NullToPointer") {
-        return true
-    }
-    var at = x.a
-    while (at != null && at.e == "cast" && at.cast_kind != "NullToPointer") {
+// whether `x` is a null pointer constant below its casts: `0` or `(void *)0` converted
+def private reaches_null(x : CirExpr?) : bool {
+    var at = x
+    while (at != null && at.e == "cast") {
+        if (at.cast_kind == "NullToPointer") {
+            return true
+        }
         at = at.a
     }
-    return x.cast_kind == "BitCast" && at != null && at.e == "cast" && at.cast_kind == "NullToPointer"
+    return false
 }
+
+// a null function pointer: `0` converted, or a null data pointer (`NULL` as `(void *)0`) cast
+def private is_null_function(tu : CirTu; x : CirExpr?) : bool =>
+    x != null && x.e == "cast" && is_function_pointer(tu, x.t) && (x.cast_kind == "NullToPointer" || (x.cast_kind == "BitCast" && reaches_null(x.a)))
+
+// `e == null` or `e != null`: a comparison with a null constant on either side of C's operator
+def private null_compare(e : Em; spelled : string; prec : int) : Em => truth("{wrap(e, prec + 1)} {spelled} null", prec)
 
 def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let prec = BIN_PREC?[x.op] ?? 0
@@ -1101,10 +1128,10 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
         }
         // a function value compares with `null`, though it is not initialized from one
         if (is_null_function(tu, x.b)) {
-            return truth("{wrap(emit_expr(em, tu, x.a, loc), prec + 1)} {spelled} null", prec)
+            return null_compare(emit_expr(em, tu, x.a, loc), spelled, prec)
         }
         if (is_null_function(tu, x.a)) {
-            return truth("null {spelled} {wrap(emit_expr(em, tu, x.b, loc), prec + 1)}", prec)
+            return null_compare(emit_expr(em, tu, x.b, loc), spelled, prec)
         }
     }
     let lhs = to_int(emit_expr(em, tu, x.a, loc))
@@ -1118,10 +1145,22 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
         return truth("{wrap(lhs, prec + 1)} {spelled} {wrap(rhs, prec + 1)}", prec)
     }
     if (x.op == "eq" || x.op == "ne") {
+        if (pointer_lhs && pointer_rhs && is_data_pointer(tu, x.a.t)) {
+            // das compares only pointers of one constness, and a `let` pointer's pointee is
+            // const (`docs/probe-findings.md` F44): a null constant compares with `null`, any
+            // other pair as addresses
+            if (reaches_null(x.b)) {
+                return null_compare(lhs, spelled, prec)
+            }
+            if (reaches_null(x.a)) {
+                return null_compare(rhs, spelled, prec)
+            }
+            return truth("intptr({lhs.text}) {spelled} intptr({rhs.text})", prec)
+        }
         return truth("{wrap(lhs, prec + 1)} {spelled} {wrap(rhs, prec + 1)}", prec)
     }
-    if ((x.op == "shl" || x.op == "shr") && is_unsigned(tu, x.a.t) && !is_unsigned(tu, x.b.t)) {
-        rhs = value(x.b.e == "int_lit" ? x.b.v + "u" : "uint({rhs.text})", PREC_PRIMARY)
+    if (x.op == "shl" || x.op == "shr") {
+        rhs = shift_count(em, tu, *x.b, rhs, das_type(em, tu, x.t, loc), loc)
     }
     if (pointer_lhs || pointer_rhs) {
         return pointer_arithmetic(em, tu, x, lhs, rhs, loc)
@@ -1192,6 +1231,10 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
         hoist(em, ["{keep} {tmp} = {before.text}", step_line(em, tu, x, loc)])
         return value(tmp, PREC_PRIMARY)
     }
+    let past_end = one_past_end_address(em, tu, x, loc)
+    if (!empty(past_end.text)) {
+        return past_end
+    }
     // the arithmetic operators read a number; `&` and `*` take the operand as it is
     let operand = emit_expr(em, tu, x.a, loc)
     let a = x.op == "addr" || x.op == "deref" ? operand : to_int(operand)
@@ -1226,6 +1269,48 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     }
     fail(em, "unary `{x.op}` is not lowered yet", loc)
     return a
+}
+
+// the value of a subscript that is a plain decimal literal within `int64`, -1 for any other
+// subscript, a literal past `int64` (`18446744073709551615u`) included, which then takes the
+// checked form
+def private literal_index(i : CirExpr?) : int64 {
+    if (i == null || i.e != "int_lit" || empty(i.v) || length(i.v) > 18) {
+        return -1l
+    }
+    for (ch in i.v) {
+        if (!is_number(ch)) {
+            return -1l
+        }
+    }
+    return to_int64(i.v)
+}
+
+// `&a[k]` of an array (`x` the `&`): C may form the address one past the end, and das
+// range-checks `addr(a[N])` (`docs/probe-findings.md` F45), so an index that can reach the
+// length is the decayed array plus `end_index(k, N)` (`c_runtime/c_bounds`), and the length
+// itself is the decayed array plus `N`; a constant index below or past the length keeps
+// `addr(a[k])`, das's range check standing for C's undefined behaviour past the end. In a
+// global initializer the decay and the sum each wrap themselves (F48). An empty text for any
+// other operand.
+def private one_past_end_address(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    let at = x.a
+    if (x.op != "addr" || at.e != "index" || at.base.e != "cast" || at.base.cast_kind != "ArrayToPointerDecay" || kind_of(tu, at.base.a.t) != "array" || at.base.a.e == "str_lit") {
+        return Em()
+    }
+    let count = tu.types[at.base.a.t].count
+    let k = literal_index(at.i)
+    if (count <= 0 || (k >= 0l && k != int64(count))) {
+        return Em()
+    }
+    let arr = emit_expr(em, tu, at.base.a, loc)
+    let decay = unsafe_value(em, "addr({wrap(arr, PREC_PRIMARY)}[0])", PREC_PRIMARY)
+    var offset = "{count}"
+    if (k < 0l) {
+        em.requires |> insert("c_runtime/c_bounds")
+        offset = "end_index({index_value(em, tu, at.i, loc).text}, {count})"
+    }
+    return unsafe_value(em, "{decay.text} + {offset}", PREC_ADD)
 }
 
 //! The das text of expression `x`; a `_Bool` expression is a das `bool` (`is_bool`), so a truth
@@ -1423,12 +1508,20 @@ def private reader_name(var em : Emitter; tu : CirTu; rec : int; field : int) : 
 def private writer_name(var em : Emitter; tu : CirTu; rec : int; field : int) : string =>
     field < 0 ? "write_{tag_name(em, tu, rec)}" : "write_{tag_name(em, tu, rec)}_{field_name(em, tu, rec, field)}"
 
+// a subscript as das takes it: C subscripts by any integer as it is, never promoted, and das
+// indexes by `int`, `int64`, `uint` or `uint64` alone (`docs/probe-findings.md` F43), so an enum
+// goes through `int` and a small integer widens to `int`
+def private index_value(var em : Emitter; tu : CirTu; i : CirExpr?; loc : CirLoc) : Em {
+    let at = enum_as_int(to_int(emit_expr(em, tu, i, loc)), tu, i.t)
+    return is_small_int(tu, i.t) ? value("int({at.text})", PREC_PRIMARY) : at
+}
+
 // `a[i]` of an array is the das index, range-checked; of a pointer it is `deref(p + i)`; of a
 // byte pointer to a marshal-only record it is the record read at the scaled offset
 def private emit_index(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     if (x.base.e == "cast" && x.base.cast_kind == "ArrayToPointerDecay" && kind_of(tu, x.base.a.t) == "array" && x.base.a.e != "str_lit") {
         let arr = emit_expr(em, tu, x.base.a, loc)
-        let at = enum_as_int(to_int(emit_expr(em, tu, x.i, loc)), tu, x.i.t)
+        let at = index_value(em, tu, x.i, loc)
         return value("{wrap(arr, PREC_PRIMARY)}[{at.text}]", PREC_PRIMARY)
     }
     var bytes : Em
@@ -1437,7 +1530,7 @@ def private emit_index(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
         return value("{reader_name(em, tu, marshal, -1)}({bytes.text}, 0)", PREC_PRIMARY)
     }
     let base = emit_expr(em, tu, x.base, loc)
-    let i = enum_as_int(to_int(emit_expr(em, tu, x.i, loc)), tu, x.i.t)
+    let i = index_value(em, tu, x.i, loc)
     if (kind_of(tu, x.base.t) == "ptr") {
         return unsafe_value(em, "deref({wrap(base, PREC_ADD)} + {wrap(i, PREC_ADD + 1)})", PREC_PRIMARY)
     }
@@ -1479,12 +1572,21 @@ def private marshal_store(var em : Emitter; tu : CirTu; x : CirExpr; rec, field 
 
 let SPARSE_ARRAY_LIMIT = 32
 
+// the literal of array type `t` holding `elems`; an array of pointers names its element type,
+// since `fixed_array(null, null)` is a `void?` array no other pointer array takes
+// (`docs/probe-findings.md` F41)
+def private array_literal(var em : Emitter; tu : CirTu; t : int; elems : array<string>; loc : CirLoc) : string {
+    let elem = das_type(em, tu, tu.types[t].elem, loc)
+    let elem_arg = elem |> ends_with("?") ? "<{elem}>" : ""
+    return "fixed_array{elem_arg}({join(elems, ", ")})"
+}
+
 // a literal of the type's zero: what C's static zeroing and das's default agree on
 def private zero_literal(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
     let k = kind_of(tu, t)
     if (k == "array") {
         let one = zero_literal(em, tu, tu.types[t].elem, loc)
-        return "fixed_array(" + join([for (_i in range(tu.types[t].count)); one], ", ") + ")"
+        return array_literal(em, tu, t, [for (_i in range(tu.types[t].count)); one], loc)
     }
     return zero_of(em, tu, t, das_type(em, tu, t, loc))
 }
@@ -1523,7 +1625,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
                 e = zero_literal(em, tu, tu.types[x.t].elem, loc)
             }
         }
-        return value("fixed_array({join(elems, ", ")})", PREC_PRIMARY)
+        return value(array_literal(em, tu, x.t, elems, loc), PREC_PRIMARY)
     }
     var units : array<BitUnit>
     if (has_named_bitfield(tu, x.t) && !bit_units(tu, em.layout, x.t, units)) {
@@ -1597,7 +1699,7 @@ def private has_effects(x : CirExpr const?) : bool {
     if (x == null) {
         return false
     }
-    let own = x.e == "call" || x.e == "va_arg" || x.e == "assign" || x.e == "comma" || (x.e == "un" && (x.op == "preinc" || x.op == "predec" || x.op == "postinc" || x.op == "postdec"))
+    let own = x.e == "call" || x.e == "va_arg" || x.e == "assign" || x.e == "comma" || (x.e == "un" && is_step(x.op))
     if (own || has_effects(x.a) || has_effects(x.b) || has_effects(x.c) || has_effects(x.base) || has_effects(x.i) || has_effects(x.list)) {
         return true
     }
@@ -1703,7 +1805,7 @@ def private emit_effect(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc
     }
     if (x.e == "assign") {
         em.pre |> push(assignment_line(em, tu, *x, loc))
-    } elif (x.e == "un" && (x.op == "preinc" || x.op == "predec" || x.op == "postinc" || x.op == "postdec")) {
+    } elif (x.e == "un" && is_step(x.op)) {
         em.pre |> push(step_line(em, tu, *x, loc))
     } elif (x.e == "call" && is_va_builtin(*x)) {
         // `va_end` dissolves into no statement
@@ -1721,7 +1823,8 @@ def private emit_effect(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc
     } else {
         let e = emit_expr(em, tu, x, loc)
         if (x.e != "ref" && x.e != "int_lit" && x.e != "float_lit") {
-            em.pre |> push("let _ = {e.text}")
+            // a discard takes a fresh name, since das refuses a `_` that shadows an outer one
+            em.pre |> push("let {temp_name(em)} = {e.text}")
         }
     }
 }
@@ -2421,6 +2524,12 @@ def private emit_compound(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (!flat) {
         open_block(em, "")
     }
+    for (child in st.body) {
+        // without its braces the block's local would also capture the global's later reads
+        if (flat && child.s == "decl" && key_exists(em.global_order, child.name)) {
+            fail(em, "a block a goto enters declares `{child.name}`, which hides a global of that name; not lowered yet (docs/implementation_order.md P4.8)", child.loc)
+        }
+    }
     emit_statements(em, tu, st, 0)
     if (!flat) {
         close_block(em)
@@ -2459,7 +2568,11 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt const?) {
         emit_effect(em, tu, st.e, st.loc)
         flush_pre(em)
     } elif (st.s == "return") {
-        if (st.e == null) {
+        let root = st.e != null && kind_of(tu, st.e.t) == "ptr" ? const_pointer_root(em, tu, st.e) : ""
+        if (!empty(root)) {
+            // a pointer field of a by-value record parameter, which F3's copy rule cannot make `var`
+            fail(em, "a pointer the caller may write through leaves through const parameter `{root}` of `{em.fn_c_name}`; the uniform pointer policy is a later row (F3)", st.loc)
+        } elif (st.e == null) {
             line(em, "return")
         } else {
             let e = stored(emit_expr(em, tu, st.e, st.loc), tu, st.e.t)
@@ -2516,7 +2629,7 @@ def private collect_written(var em : Emitter; tu : CirTu; x : CirExpr?) {
         return
     }
     let decay = x.e == "cast" && x.cast_kind == "ArrayToPointerDecay"
-    if (decay || x.e == "assign" || (x.e == "un" && (x.op == "preinc" || x.op == "predec" || x.op == "postinc" || x.op == "postdec" || x.op == "addr"))) {
+    if (decay || x.e == "assign" || (x.e == "un" && (is_step(x.op) || x.op == "addr"))) {
         // a decay is an address too: through the pointer it gives, the array can be written,
         // and over a by-value parameter only the callee copy's array is writable
         mark_store_root(em, tu, x.a)
@@ -2556,7 +2669,7 @@ def private mark_store_root(var em : Emitter; tu : CirTu; x : CirExpr?) {
         } elif (target.e == "un" && target.op == "deref") {
             crossed = true
             target = target.a
-        } elif (target.e == "un" && (target.op == "preinc" || target.op == "predec" || target.op == "postinc" || target.op == "postdec")) {
+        } elif (target.e == "un" && is_step(target.op)) {
             // `*p++ = v` steps the pointer and writes through it
             target = target.a
         } elif (target.e == "bin" && (target.op == "add" || target.op == "sub") && kind_of(tu, target.a.t) == "ptr") {
@@ -2605,6 +2718,23 @@ def private each_subexpr(x : CirExpr const?; blk : block<(x : CirExpr const?) : 
     }
     for (sub in fixed_array<CirExpr const?>(x.a, x.b, x.c, x.fn, x.base, x.i, x.init, x.list)) {
         each_subexpr(sub, blk)
+    }
+}
+
+// `each_subexpr` over a tree the block may change
+def private each_subexpr_mut(var x : CirExpr?; blk : block<(var x : CirExpr?) : void>) {
+    if (x == null) {
+        return
+    }
+    invoke(blk, x)
+    for (arg in x.args) {
+        each_subexpr_mut(arg, blk)
+    }
+    for (item in x.init_items) {
+        each_subexpr_mut(item.v, blk)
+    }
+    for (sub in fixed_array(x.a, x.b, x.c, x.fn, x.base, x.i, x.init, x.list)) {
+        each_subexpr_mut(sub, blk)
     }
 }
 
@@ -2686,31 +2816,119 @@ def private plan_var_params(var em : Emitter; tu : CirTu) {
 
 // the names a function's parameters, locals and references take
 def private body_names(em : Emitter; d : CirDecl) : table<string> {
+    var spelled : table<string>
+    collect_spelled_names(d.body, spelled)
     var names : table<string>
     for (p in d.params) {
         names |> insert(das_name(em, p.name))
     }
-    collect_body_names(em, d.body, names)
+    for (name in keys(spelled)) {
+        names |> insert(das_name(em, name))
+    }
     return <- names
 }
 
-def private collect_body_names(em : Emitter; st : CirStmt const?; var names : table<string>) {
+// C lets a block's local hide a local or parameter of an enclosing scope, and das refuses a local
+// that shadows another (`docs/probe-findings.md` F42): a hiding local takes a free name, and so
+// does every reference C resolves to it. `scopes` maps each C name to its das name, innermost
+// scope last; `taken` holds every name the function spells.
+struct ScopeWalk {
+    scopes : array<table<string; string>>
+    taken : table<string>
+}
+
+def private scoped_name(w : ScopeWalk; name : string) : string {
+    for (idx in range(length(w.scopes))) {
+        let found = w.scopes[length(w.scopes) - 1 - idx]?[name] ?? ""
+        if (!empty(found)) {
+            return found
+        }
+    }
+    return ""
+}
+
+def private unshadow_expr(w : ScopeWalk; var x : CirExpr?) {
+    each_subexpr_mut(x) $(var sub) {
+        if (sub.e == "ref") {
+            let renamed = scoped_name(w, sub.name)
+            if (!empty(renamed)) {
+                sub.name = renamed
+            }
+        }
+    }
+}
+
+def private unshadow_stmt(var w : ScopeWalk; var st : CirStmt?) {
+    if (st == null) {
+        return
+    }
+    // a block, and a `for` whose first clause declares, open a scope
+    let opens = st.s == "compound" || st.s == "for"
+    if (opens) {
+        w.scopes |> emplace(table<string; string>())
+    }
+    if (st.s == "decl") {
+        // C's scope of a local starts at its declarator, so its own initializer sees it
+        let hides = !empty(scoped_name(w, st.name))
+        let name = hides ? free_name(w.taken, st.name) : st.name
+        w.scopes[length(w.scopes) - 1][st.name] = name
+        st.name = name
+    }
+    if (st.init_s != null && st.init_s.s == "compound") {
+        for (child in st.init_s.body) {
+            unshadow_stmt(w, child)
+        }
+    } else {
+        unshadow_stmt(w, st.init_s)
+    }
+    for (x in fixed_array(st.init, st.e, st.cond, st.inc)) {
+        unshadow_expr(w, x)
+    }
+    for (child in st.body) {
+        unshadow_stmt(w, child)
+    }
+    for (child in fixed_array(st.then_s, st.else_s, st.body_s)) {
+        unshadow_stmt(w, child)
+    }
+    if (opens) {
+        delete w.scopes[length(w.scopes) - 1]
+        w.scopes |> pop()
+    }
+}
+
+// every function body of the unit with its hiding locals renamed, before anything reads a name
+def private unshadow_locals(var tu : CirTu) {
+    for (d in tu.decls) {
+        continue if (d.k != "func" || d.body == null)
+        var inscope w : ScopeWalk
+        collect_spelled_names(d.body, w.taken)
+        w.scopes |> resize(1)
+        for (p in d.params) {
+            w.scopes[0][p.name] = p.name
+            w.taken |> insert(p.name)
+        }
+        unshadow_stmt(w, d.body)
+    }
+}
+
+// every C name a statement tree declares or references
+def private collect_spelled_names(st : CirStmt const?; var names : table<string>) {
     if (st == null) {
         return
     }
     if (st.s == "decl") {
-        names |> insert(das_name(em, st.name))
+        names |> insert(st.name)
     }
     for (child in st.body) {
-        collect_body_names(em, child, names)
+        collect_spelled_names(child, names)
     }
     for (child in fixed_array<CirStmt const?>(st.then_s, st.else_s, st.body_s, st.init_s)) {
-        collect_body_names(em, child, names)
+        collect_spelled_names(child, names)
     }
     for (x in fixed_array<CirExpr const?>(st.init, st.e, st.cond, st.inc)) {
         each_subexpr(x) $(sub) {
             if (sub.e == "ref") {
-                names |> insert(das_name(em, sub.name))
+                names |> insert(sub.name)
             }
         }
     }
@@ -2805,25 +3023,68 @@ def private collect_call_pointers(var em : Emitter; tu : CirTu; x : CirExpr) {
     }
 }
 
-// the parameter a pointer copy reads, below its casts: `p = a`, `int *it = a` make `a` `var`,
-// since a `let` parameter's copy would carry a const pointee (F3)
+// the parameter a pointer copy reads: `p = a`, `int *it = a` make `a` `var`, since a `let`
+// parameter's copy would carry a const pointee (F3, F46). The walk goes below casts, `p + n`, a
+// step (`p++`), an assignment's value (`q = (p = v)`), a comma's right side and both arms of a
+// `?:`, and through a pointer read out of a pointer (`*pp`, `pp[i]`, `sp->q`) or an address
+// into one (`&p`, `&sp->y`, `&p[1]`) to that pointer
 def private mark_copied_pointer(tu : CirTu; x : CirExpr const?; var through : table<string>) {
     var at = x
-    // through casts, and through `p + n` to the pointer the sum starts from
-    while (at != null && (at.e == "cast" || (at.e == "bin" && (at.op == "add" || at.op == "sub") && kind_of(tu, at.a.t) == "ptr"))) {
-        at = at.a
+    var addressed = false
+    while (at != null) {
+        // a value read through a pointer copies that pointer only when it is a pointer itself
+        // or its address is taken; `*s` of a `char *s` copies a `char`
+        let reaches = addressed || kind_of(tu, at.t) == "ptr"
+        if (at.e == "cond") {
+            mark_copied_pointer(tu, at.a, through)
+            at = at.b
+        } elif (at.e == "un" && at.op == "addr") {
+            addressed = true
+            at = at.a
+        } elif (at.e == "cast" || at.e == "assign" || (at.e == "un" && is_step(at.op)) || (at.e == "bin" && (at.op == "add" || at.op == "sub") && kind_of(tu, at.a.t) == "ptr")) {
+            at = at.a
+        } elif (at.e == "comma") {
+            at = at.b
+        } elif (reaches && at.e == "un" && at.op == "deref") {
+            at = at.a
+        } elif (reaches && ((at.e == "index" && kind_of(tu, at.base.t) == "ptr") || (at.e == "member" && at.arrow))) {
+            at = at.base
+        } else {
+            break
+        }
     }
     if (at != null && at.e == "ref" && kind_of(tu, at.t) == "ptr") {
         through |> insert(at.name)
     }
 }
 
+// the pointers an initializer copies: the value itself when it is a pointer, and every pointer
+// slot of an initializer list (`int *l[2] = {p, 0}`, `struct Q q = {p, 1}`)
+def private mark_copied_items(tu : CirTu; x : CirExpr const?; var through : table<string>) {
+    if (x == null) {
+        return
+    }
+    if (x.e == "init_list") {
+        for (item in x.init_items) {
+            mark_copied_items(tu, item.v, through)
+        }
+    } elif (kind_of(tu, x.t) == "ptr") {
+        mark_copied_pointer(tu, x, through)
+    }
+}
+
+def private is_step(op : string) : bool => op == "preinc" || op == "predec" || op == "postinc" || op == "postdec"
+
 def private collect_written_stmt(var em : Emitter; tu : CirTu; st : CirStmt?) {
     if (st == null) {
         return
     }
-    if (st.s == "decl" && kind_of(tu, st.t) == "ptr") {
-        mark_copied_pointer(tu, st.init, em.written_through)
+    if (st.s == "decl") {
+        mark_copied_items(tu, st.init, em.written_through)
+    }
+    // a returned pointer is copied out to the caller, who may write through it
+    if (st.s == "return" && st.e != null && kind_of(tu, st.e.t) == "ptr") {
+        mark_copied_pointer(tu, st.e, em.written_through)
     }
     for (child in st.body) {
         collect_written_stmt(em, tu, child)
@@ -2907,6 +3168,7 @@ def private reset_function_state(var em : Emitter; tu : CirTu; d : CirDecl) {
     em.written_through |> clear()
     em.passed |> clear()
     em.renames |> clear()
+    em.spelled |> clear()
     em.temp_counter = 0
     em.first_counter = 0
     em.for_counter = 0
@@ -2965,6 +3227,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     var params, copies : array<string>
     var taken <- body_names(em, d)
     function_params(em, tu, d, taken, params, copies)
+    em.spelled := taken
     // the trailing arguments arrive as the list the `[variadic]` prologue binds, under a name
     // the body leaves free
     if (variadic && key_exists(taken, VA_TUPLE)) {
@@ -3468,9 +3731,11 @@ def private flag_marshal(var em : Emitter; tu : CirTu; side : Sidecar) {
 }
 
 //! The whole module: banner, options, requires, every declaration, and the `main` wrapper
-//! when the C program has one. Empty with `error` set when a node is outside the subset.
-def emit_tu(tu : CirTu; side : Sidecar) : Emitter {
+//! when the C program has one. Empty with `error` set when a node is outside the subset. A
+//! local that hides another is renamed in `tu` itself first (`unshadow_locals`).
+def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
     var em : Emitter
+    unshadow_locals(tu)
     for (d in tu.decls) {
         if (d.k == "func" && d.body != null) {
             em.functions |> insert(d.name)

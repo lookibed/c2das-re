@@ -1,5 +1,6 @@
 options gen2
 require dastest/testing_boost public
+require _daslang_child
 
 [test]
 def test_pointers(t : T?) {
@@ -42,5 +43,26 @@ def test_pointers(t : T?) {
             caught = true
         }
         t |> equal(caught, true)
+    }
+}
+
+// the das facts the csmith differential found (docs/probe-findings.md F40 to F46)
+[test]
+def test_csmith_pointers(t : T?) {
+    t |> run("pointers of two constnesses do not compare; their addresses do") @(t : T?) {
+        child_rejects(t, "compare_const", daslang_child("compare_const", "options gen2\ndef same(p : int const?; q : int?) : bool => p == q\n[export]\ndef main \{\n    var x = 1\n    unsafe \{\n        assert(same(addr(x), addr(x)))\n    \}\n\}\n", true), "operations on incompatible pointers are prohibited")
+        var x = 1
+        unsafe {
+            let p : int const? = addr(x)
+            let q : int? = addr(x)
+            t |> equal(intptr(p) == intptr(q), true)
+            t |> equal(p != null, true)
+        }
+    }
+    t |> run("a `let` pointer parameter neither returns as a pointer nor copies its pointee pointer out") @(t : T?) {
+        child_rejects(t, "return_let", daslang_child("return_let", "options gen2\ndef pass_back(p : int?) : int? \{\n    return p\n\}\n", true), "incompatible return type")
+        child_rejects(t, "copy_through_let", daslang_child("copy_through_let", "options gen2\nvar g : int?\ndef keep(pp : int??) \{\n    unsafe \{\n        g = deref(pp)\n    \}\n\}\n", true), "can only copy compatible type")
+        let as_var = daslang_child("return_var", "options gen2\ndef pass_back(var p : int?) : int? \{\n    return p\n\}\nvar g : int?\ndef keep(var pp : int??) \{\n    unsafe \{\n        g = deref(pp)\n    \}\n\}\n", true)
+        t |> equal(as_var.rc, 0, as_var.out)
     }
 }

@@ -47,6 +47,28 @@ def private check_suite(suite : string) {
     }
 }
 
+def private is_decimal(text : string) : bool {
+    for (ch in text) {
+        if (!is_number(ch)) {
+            return false
+        }
+    }
+    return !empty(text)
+}
+
+// a csmith id is the seed csmith takes, a decimal number, in the ratchet and the ledger alike
+def private check_seeds(suite : string) {
+    for (file in fixed_array("expected_pass.txt", "skip.txt")) {
+        let path = "suites/{suite}/{file}"
+        for (line in lines_of(path)) {
+            let seed = split(line, "\t")[0]
+            if (!is_decimal(seed)) {
+                gate_finding(path, "`{seed}`: a csmith id is a decimal seed")
+            }
+        }
+    }
+}
+
 // a suite's fetched inputs and work tree are regenerated, never tracked: `.gitignore` keeps
 // them out of `git add`, and this check catches a forced add
 def private check_untracked_folders {
@@ -63,6 +85,8 @@ def private check_untracked_folders {
 def main : int {
     check_suite("c_testsuite")
     check_suite("gcc_torture")
+    check_suite("csmith")
+    check_seeds("csmith")
     check_untracked_folders()
     return gate_verdict("suites")
 }

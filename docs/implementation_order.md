@@ -242,6 +242,30 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   divergence is a converter bug by construction; creduce harness for minimization.
   Ledger: an address one past an array's end formed by indexing (`&a[N]`, gcc-torture
   strlen-5) trips das's range check; spell `&a[k]` as `addr(a[0]) + k` where `k` can reach `N`.
+  Landed, run on demand (`scripts/run_suite.sh csmith`): `suites/csmith/fetch.sh` builds csmith
+  at `0cdc710` and, with `--cvise`, cvise 2.12.0 at `134d6f6` against the pinned libclang
+  (creduce is the alternative `reduce.sh` takes as its second argument); `run.das` judges each
+  seed against the pinned gcc 14.2.0 at `-O0 -fwrapv -w -funsigned-char` in one worker process
+  per seed, csmith run with `--no-argc --no-packed-struct` over its defaults, the seeds known
+  clean the ratchet (`expected_pass.txt`), an `output` or `exit` verdict failing the run;
+  `reduce.sh` minimizes a seed while it keeps its verdict. The ledger item: `&a[k]` whose `k`
+  can reach `N` is `addr(a[0]) + end_index(k, N)` (`c_runtime/c_bounds`), a constant `N`
+  `addr(a[0]) + N` (`docs/probe-findings.md` F45, F48). The classes csmith found, each fixed
+  with its probe and a `p4_csmith_*` fixture: a shift's count in another type (F40), an all-null
+  pointer array (F41), a local hiding an enclosing one and nested discards (F42), a
+  small-integer subscript (F43), pointer equality across constness (F44), a pointer parameter
+  returned or copied out (F46), and references rebound by spelling in the dumper (F47). Two
+  samples of 200: seeds 1 to 200 while the row was built (114 pass, 25 native, 61 convert, every
+  convert class fixed above or skipped below) and 200 random seeds after the fixes (126 pass, 24
+  native, 50 convert, none diverging in output or exit). The ratchet holds the second sample's
+  126 and seed 1; the 52 skipped seeds are other rows' fail-closed features: Duff-class gotos
+  (24, P3.3), union bitfields and F5 layouts (26, P4.7) and a `let` pointer into a `var`
+  parameter (2, P4.6). gcc-torture 680 to 732 (strlen-5, the shift family and 960116-1
+  among them), c-testsuite 192 to 193 (00129).
+  Open under the P4 exit criterion: the nightly N=1000 schedule, blocked on this box by the
+  dumper's parse of clang's JSON dump (about 170 MB per csmith program, most of a seed's 5 to
+  60 s). A coverage item: csmith's `--binary-constant` (GNU `0b` literals) stays off until the
+  dialect reads them.
 - **P4.5a Perf tracking.** `perf/results_linux.json` is re-recorded on the current tree (the
   capture of 2026-10-06 predates every item since P2.4, which `perf/REVIEW.md` already
   forbids) and from then on after every finished ledger item. `perf/run.das` gains the ratio
@@ -277,7 +301,20 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   parameter"). Making every pointer parameter `var` closes the gap but meets a const record
   lvalue: `var copy = s` of a by-value record parameter holding a pointer is "can't assign
   'S const.p: int? = int? const'", so the row is the redesign of F3, not a flag. c-testsuite
-  00181 and gcc-torture 990128-1 wait for it.
+  00181 and gcc-torture 990128-1 wait for it, and csmith seeds 127 and 86922302 (a `let`
+  parameter passed to a callee that returns its own pointer parameter). A pointer field of a
+  by-value record parameter returned or copied out (`return s.p`) fails closed the same way.
+  The redesign folds the emitter's three pointer walks - `mark_copied_pointer` (what a copy
+  reads), `const_pointer_root` (what a call passes) and `mark_store_root` (what a store writes
+  through) - into one.
+- **P4.7 Layout leftovers.** Bitfield members of unions, named or padding (the P4.2 ledger), and
+  records outside the layout law (F5, the P4.1 ledger). csmith generates both in about one seed
+  in eight; their seeds are skipped under this row.
+- **P4.8 Scope fidelity.** A block flattened for a goto into it whose local hides a same-named
+  global (`int g = 40; ... goto in; { int g = 3; in: ... } printf(g)`: the flattened local
+  captures the later reads of the global, which the emitter refuses), and a local declared under one case label and
+  used in later cases (`case 0:; int v = 1; ... case 1: v = 7;`), which the switch lowering
+  scopes to its own case, so the compile check fails.
 - **Exit criterion:** csmith runs clean at 1000/night for a week; torture ≥ target with
   ledger; matrix has no row without a green fixture.
 

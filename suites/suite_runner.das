@@ -52,7 +52,7 @@ def read_lines(path : string) : array<string> {
     if (!fexist(path)) {
         return <- lines
     }
-    for (line in split(fread_text(path), "\n")) {
+    for (line in split(fread(path), "\n")) {
         let trimmed = strip(line)
         if (!empty(trimmed) && !(trimmed |> starts_with("#"))) {
             lines |> push(trimmed)
@@ -61,22 +61,118 @@ def read_lines(path : string) : array<string> {
     return <- lines
 }
 
-def fread_text(path : string) : string {
-    var text = ""
-    fopen(path, "rb") $(f) {
-        if (f != null) {
-            text = fread(f)
-        }
-    }
-    return text
+//! The ratchet and the ledger as a run reads them: the ids `expected_pass.txt` lists, as read and
+//! as a set, and the ids `skip.txt` lists.
+struct Ratchet {
+    expected : array<string>
+    expected_set : table<string>
+    skips : table<string>
 }
 
-def private skip_ids(spec : SuiteSpec) : table<string> {
-    var ids : table<string>
-    for (line in read_lines(spec.skip_ledger)) {
-        ids |> insert(split(line, "\t")[0])
+def read_ratchet(expected_pass, skip_ledger : string) : Ratchet {
+    var r : Ratchet
+    for (line in read_lines(skip_ledger)) {
+        r.skips |> insert(split(line, "\t")[0])
     }
-    return <- ids
+    r.expected <- read_lines(expected_pass)
+    for (id in r.expected) {
+        r.expected_set |> insert(id)
+    }
+    return <- r
+}
+
+//! What a run found: the ids that passed, the count per status, the listed ids that stopped
+//! passing and the unlisted ones that pass.
+struct Tally {
+    passed : array<string>
+    counts : table<string; int>
+    regressions : array<string>
+    gained : array<string>
+}
+
+def count_status(var tally : Tally; status : string) {
+    tally.counts[status] = (tally.counts?[status] ?? 0) + 1
+}
+
+//! One outcome against the ratchet; the reason of a listed id that does not pass is logged, and
+//! under `verbose` that of every id that does not pass.
+def record(var tally : Tally; ratchet : Ratchet; out : Outcome; verbose : bool) {
+    count_status(tally, out.status)
+    if (out.status == "pass") {
+        tally.passed |> push(out.id)
+        if (!key_exists(ratchet.expected_set, out.id)) {
+            tally.gained |> push(out.id)
+        }
+        return
+    }
+    if (key_exists(ratchet.expected_set, out.id)) {
+        tally.regressions |> push(out.id)
+    }
+    if (verbose || key_exists(ratchet.expected_set, out.id)) {
+        to_log(LOG_INFO, "{out.id}: {out.status}: {out.reason}\n")
+    }
+}
+
+//! The end of a run: the summary and the newly passing ids are logged, `ratchet_ids` (which
+//! arrive sorted) become `expected_pass` under `update` unless the run was `filtered`, and the
+//! exit code is 1 when a listed id stopped passing.
+def finish_run(name, expected_pass : string; tally : Tally; update, filtered : bool; ratchet_ids : array<string>) : int {
+    let summary = join([for (k, v in keys(tally.counts), values(tally.counts)); "{k} {v}"], ", ")
+    to_log(LOG_INFO, "{name}: {summary}\n")
+    let write = update && !filtered
+    if (!empty(tally.gained)) {
+        let how = write ? "recorded" : update ? "a --filter run does not record" : "run with --update to record"
+        to_log(LOG_INFO, "newly passing: {join(tally.gained, " ")} ({how})\n")
+    }
+    if (write) {
+        let lines <- [for (id in ratchet_ids); "{id}\n"]
+        fwrite(expected_pass, "# {name} tests that pass under the interpreter; the ratchet, kept sorted\n{join(lines, "")}")
+    }
+    if (!empty(tally.regressions)) {
+        to_log(LOG_ERROR, "ratchet broken, these passed before: {join(tally.regressions, " ")}\n")
+        return 1
+    }
+    return 0
+}
+
+//! A C file converted into `work` under `target` and, when it converts, run under the
+//! interpreter with both module folders loaded: `converted` false with the error's first line,
+//! or the exit code and merged output of the run.
+struct ConvertedRun {
+    converted : bool
+    error : string
+    rc : int
+    output : string
+}
+
+def convert_and_run(c_path, work, target : string; timeout : float) : ConvertedRun {
+    let no_flags : array<string>
+    return convert_and_run(c_path, work, target, timeout, no_flags)
+}
+
+//! `flags` go to the interpreter before the module (`-no-module-cache`).
+def convert_and_run(c_path, work, target : string; timeout : float; flags : array<string>) : ConvertedRun {
+    var run : ConvertedRun
+    let res <- convert(c_path, work, target)
+    if (!res.ok) {
+        run.error = first_line(res.error)
+        return run
+    }
+    run.converted = true
+    run.rc = run_tier(res.das_path, "interp", work, run.output, CONVERTED_MODULES, timeout, flags)
+    return run
+}
+
+//! A run's verdict against the output it must give: `exit` for a non-zero exit, `output` for
+//! any other output, `pass` otherwise.
+def compare_output(id : string; rc : int; output, expected : string) : Outcome {
+    if (rc != 0) {
+        return Outcome(id = id, status = "exit", reason = "exited {rc}: {first_line(output)}")
+    }
+    if (output != expected) {
+        return Outcome(id = id, status = "output", reason = "got `{first_line(output)}`, expected `{first_line(expected)}`")
+    }
+    return Outcome(id = id, status = "pass", reason = "")
 }
 
 // the `.c` files directly under the tests folder, by id, sorted
@@ -99,14 +195,11 @@ def first_line(text : string) : string {
 // convert and run one test; the suite's verdict judges a module that ran
 def private run_one(spec : SuiteSpec; id : string; target : string; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : Outcome {
     let c_path = "{spec.tests_dir}/{id}.c"
-    let work = "{spec.work_dir}/{id}"
-    let res <- convert(c_path, work, target)
-    if (!res.ok) {
-        return Outcome(id = id, status = "convert", reason = first_line(res.error))
+    let run = convert_and_run(c_path, "{spec.work_dir}/{id}", target, spec.run_timeout)
+    if (!run.converted) {
+        return Outcome(id = id, status = "convert", reason = run.error)
     }
-    var output : string
-    let rc = run_tier(res.das_path, "interp", work, output, ["c_runtime", "dasCRuntime"], spec.run_timeout)
-    return invoke(verdict, id, c_path, rc, output)
+    return invoke(verdict, id, c_path, run.rc, run.output)
 }
 
 //! The whole run from the command line: exit 0 when the ratchet holds, 1 when a listed id
@@ -125,54 +218,14 @@ def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : s
         to_log(LOG_ERROR, "{spec.tests_dir} is missing: run suites/{spec.name}/fetch.sh\n")
         return 2
     }
-    let skips <- skip_ids(spec)
-    let expected <- read_lines(spec.expected_pass)
-    var expected_set : table<string>
-    for (id in expected) {
-        expected_set |> insert(id)
-    }
-    var passed : array<string>
-    var counts : table<string; int>
-    var regressions, gained : array<string>
+    let ratchet <- read_ratchet(spec.expected_pass, spec.skip_ledger)
+    var tally : Tally
     for (id in test_ids(spec, args.filter)) {
-        if (key_exists(skips, id)) {
-            counts["skip"] = (counts?["skip"] ?? 0) + 1
+        if (key_exists(ratchet.skips, id)) {
+            count_status(tally, "skip")
             continue
         }
-        let out = run_one(spec, id, args.target, verdict)
-        counts[out.status] = (counts?[out.status] ?? 0) + 1
-        if (out.status == "pass") {
-            passed |> push(id)
-            if (!key_exists(expected_set, id)) {
-                gained |> push(id)
-            }
-        } else {
-            if (key_exists(expected_set, id)) {
-                regressions |> push(id)
-            }
-            if (args.verbose || key_exists(expected_set, id)) {
-                to_log(LOG_INFO, "{id}: {out.status}: {out.reason}\n")
-            }
-        }
+        record(tally, ratchet, run_one(spec, id, args.target, verdict), args.verbose)
     }
-    let summary = join([for (k, v in keys(counts), values(counts)); "{k} {v}"], ", ")
-    to_log(LOG_INFO, "{spec.name}: {summary}\n")
-    if (!empty(gained)) {
-        to_log(LOG_INFO, "newly passing: {join(gained, " ")}{args.update ? " (recorded)" : " (run with --update to record)"}\n")
-    }
-    if (args.update && empty(args.filter)) {
-        fopen(spec.expected_pass, "wb") $(f) {
-            if (f != null) {
-                fwrite(f, "# {spec.name} tests that pass under the interpreter; the ratchet, kept sorted\n")
-                for (id in passed) {
-                    fwrite(f, "{id}\n")
-                }
-            }
-        }
-    }
-    if (!empty(regressions)) {
-        to_log(LOG_ERROR, "ratchet broken, these passed before: {join(regressions, " ")}\n")
-        return 1
-    }
-    return 0
+    return finish_run(spec.name, spec.expected_pass, tally, args.update, !empty(args.filter), tally.passed)
 }

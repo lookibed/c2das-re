@@ -30,16 +30,6 @@ struct ConvertResult {
     function_count : int
 }
 
-def private write_text(path : string; text : string) : bool {
-    var ok = false
-    fopen(path, "wb") $(f) {
-        if (f != null) {
-            fwrite(f, text)
-            ok = true
-        }
-    }
-    return ok
-}
 
 def private compile_errors(das_path : string) : string {
     var report = ""
@@ -59,7 +49,8 @@ def private compile_errors(das_path : string) : string {
     return report
 }
 
-def private file_stem(c_path : string) : string {
+//! The file name of `c_path` up to its first dot: the stem every artifact of the file is named by.
+def file_stem(c_path : string) : string {
     let name = base_name(c_path)
     let dot = find(name, ".")
     return dot < 0 ? name : slice(name, 0, dot)
@@ -85,7 +76,7 @@ def convert(c_path : string; out_dir : string; target_name : string; clang : str
     }
     res.cir_text = write_cir(d.tu)
     res.cir_path = path_join(out_dir, "{file_stem(c_path)}.cir.json")
-    if (!write_text(res.cir_path, res.cir_text)) {
+    if (!fwrite(res.cir_path, res.cir_text)) {
         res.error = "cannot write {res.cir_path}"
         delete_tu(d.tu)
         return <- res
@@ -114,7 +105,7 @@ def convert(c_path : string; out_dir : string; target_name : string; clang : str
     res.function_count = em.function_count
     res.das_text = format_source_string(em.text)
     res.das_path = path_join(out_dir, "{file_stem(c_path)}.das")
-    if (!write_text(res.das_path, res.das_text)) {
+    if (!fwrite(res.das_path, res.das_text)) {
         res.error = "cannot write {res.das_path}"
         return <- res
     }

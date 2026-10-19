@@ -130,6 +130,11 @@ as-if-converted fixture test landing first.
   alignment are compile errors. Another annotation on the same struct is not visible to `apply`
   (the parser attaches the list after every `apply` ran), so a bitfield member is the
   converter's to refuse.
+- `c_runtime/c_bounds.das` - `end_index(k, n)`, the index of C's `&a[k]` into an array of `n`
+  elements: the converter spells that address `addr(a[0]) + end_index(k, n)`, since `addr(a[n])`
+  trips das's range check while C forms the address one past the end (`docs/probe-findings.md`
+  F45). It panics with das's own wording past `n` or below zero (an unsigned compare) and
+  returns `k` in its own type.
 - `c_runtime/c_sort.das` - C's `qsort` and `bsearch` as `c_qsort(base, n, size, cmp)` and
   `c_bsearch(key, base, n, size, cmp)`, over raw bytes in C's own signatures, since the
   element type is not at C's call site, whose `n` and `size` are run-time values

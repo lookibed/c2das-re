@@ -38,11 +38,14 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar])`: dump, write the C-IR,
   read it back and rewrite it (the bytes must match), read the sidecar, emit, format with
   `daslib/das_source_formatter`, compile-check with `compile_file`. Every artifact lands under
-  `out_dir`.
-- `tiers.das` - `run_tier(das_path, tier, work_dir, output[, module_dirs[, timeout]])`: the
-  process exit code of the module under `interp`, `jit`, `exe` or `aot` (section 5);
-  `module_dirs` are passed as `-load_module` to the interpreter and the JIT, and a run past
-  `timeout` seconds (600 by default) is killed and reported as a failure.
+  `out_dir`; `file_stem` is the name every artifact of a C file carries.
+- `tiers.das` - `run_tier(das_path, tier, work_dir, output[, module_dirs[, timeout[,
+  flags]]])`: the process exit code of the module under `interp`, `jit`, `exe` or `aot`
+  (section 5); `module_dirs` are passed as `-load_module` to the interpreter and the JIT, `flags`
+  before the script, and a run past `timeout` seconds (600 by default) is killed and reported
+  as a failure. `CONVERTED_MODULES` names the module folders a converted program requires and
+  `daslang_cmd` spells the prefix; `native_run` builds a C file with a given compiler and flags
+  and runs it once, the native side every differential test compares against.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c> [--out] [--target] [--run] [--sidecar]`.
 - `benchmarks/bench_for_shapes.das` - the loop-shape race behind section 4
   (`ARCHITECTURE_EMITTER.md`), run with `dastest -- --bench` under the interpreter and
@@ -50,6 +53,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `tests/test_lowerings.das` - the P1 fixtures under `tests/fixtures/p1_*.c`, each converted
   and run against the native build of the same file by the pinned clang (output and exit
   code), plus the lowering shapes the text must carry.
+- `tests/test_csmith_verdict.das` - the csmith driver's classification of a worker that ended
+  (`suites/csmith/verdict.das`), the one piece of the driver testable without a process.
 - `tests/test_pipeline.das` - the P0 gate: `tests/fixtures/ret42.c` converts, the C-IR and the
   das text hash to their golden values, and the module exits 42 under all four tiers.
   Fixtures under `tests/fixtures/` are C inputs, never das.

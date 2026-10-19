@@ -5,14 +5,15 @@
 set -euo pipefail
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$here/../.." && pwd)"
-pin=$(sed -n 's/^gcc-torture: *\([0-9a-f]*\).*/\1/p' "$repo_root/VERSIONS.md" | head -1)
+. "$repo_root/suites/fetch_common.sh"
+pin=$(pin_of gcc-torture)
 tag=$(sed -n 's/^gcc-torture: *[0-9a-f]* *(gcc-mirror\/gcc \([^,]*\),.*/\1/p' "$repo_root/VERSIONS.md" | head -1)
 [ -n "$pin" ] && [ -n "$tag" ] || { echo "fetch: VERSIONS.md names no gcc-torture pin" >&2; exit 1; }
 dest="$here/fetch/gcc"
-if [ -d "$dest/.git" ] && [ "$(git -C "$dest" rev-parse HEAD)" = "$pin" ]; then
+if at_pin "$dest" "$pin" "$dest/.git"; then
     exit 0
 fi
-rm -rf "$dest"
+rm -rf "${dest:?}"
 mkdir -p "$here/fetch"
 git clone -q --filter=blob:none --no-checkout --depth 1 --branch "$tag" https://github.com/gcc-mirror/gcc "$dest"
 git -C "$dest" sparse-checkout set --no-cone gcc/testsuite/gcc.c-torture/execute
