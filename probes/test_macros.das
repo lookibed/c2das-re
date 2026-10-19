@@ -1,6 +1,8 @@
 options gen2
 require dastest/testing_boost public
 require _probe_macros
+require _daslang_child
+require strings
 require daslib/apply
 
 def vsum_impl(n : int; va : auto) : int {
@@ -50,5 +52,13 @@ def test_macros(t : T?) {
         t |> equal(vsum(100, 1, 2, 3), 106)
         t |> equal(vsum(100, 5), 105)
         t |> equal(vsum(100), 100)
+    }
+    t |> run("[c_function] and [variadic] stack in one annotation list, in either order") @(t : T?) {
+        for (order in ["c_function, variadic", "variadic, c_function"]) {
+            let src = "options gen2\nrequire c_runtime/variadic\nrequire c_runtime/c_function\n[{order}]\ndef first(n : int; va : va_args) : int \{\n    var v = va_begin(va)\n    let q = reinterpret<int?>(va_p(v))\n    return deref(q) + n\n\}\n[export]\ndef main \{\n    var a = 3\n    print(\"\{first(1, unsafe(addr(a)))\}\\n\")\n\}\n"
+            let r = runtime_child("stacked_annotations", src, false)
+            t |> equal(r.rc, 0, r.out)
+            t |> equal(program_output(r.out) |> find("4") >= 0, true, r.out)
+        }
     }
 }

@@ -101,3 +101,33 @@ def compile_struct(src : StructSource; name, annotation, fields, after, kind : s
 def struct_rejected(t : T?; src : StructSource; name, annotation, needle, fields, after, kind : string) {
     child_rejects(t, name, compile_struct(src, name, annotation, fields, after, kind), needle)
 }
+
+//! The pinned clang for a child C program: the libclang archive's own binary when
+//! `PATH_TO_LIBCLANG` is set (`scripts/env.sh`), else whatever `clang` is on PATH. The converter
+//! has its own, `default_clang` in `converter/dumper_a.das`, which this folder does not require.
+def battery_clang : string =>
+    has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
+
+//! The output of the C program `source`, built by the pinned clang with `-w` and `flags` and
+//! run once: the native side of a byte-for-byte battery. A build failure returns the compiler's
+//! text after `clang failed:`.
+def native_battery(stem : string; flags : array<string>; source : string) : string {
+    let dir = "{temp_directory_result() as value}"
+    let c_path = "{dir}/{stem}.c"
+    let bin = "{dir}/{stem}"
+    fopen(c_path, "wb") $(f) {
+        fwrite(f, source)
+    }
+    var args <- [battery_clang(), "-w"]
+    args |> push_from(flags, ["-o", bin, c_path])
+    var out : string
+    let crc = run_and_capture(args, out, 120.0)
+    remove(c_path)
+    if (crc != 0) {
+        return "clang failed:\n{out}"
+    }
+    var native : string
+    run_and_capture([bin], native, 60.0)
+    remove(bin)
+    return native
+}

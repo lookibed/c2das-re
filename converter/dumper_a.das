@@ -82,6 +82,14 @@ struct Dumper {
     enum_dims_by_loc : table<string; array<ClangEnumRef>>
     // the labels of the function being dumped, by the id a GotoStmt names
     label_names : table<string; string>
+    // the typedef names whose declaration reaches clang's implicit `__builtin_va_list`, and the
+    // names of every other typedef, from the libclang pass; a name in both is declared each way
+    // in some scope (`va_word`)
+    va_names : table<string>
+    other_names : table<string>
+    // the JSON ids of the typedef declarations that reach the builtin, which a node's type
+    // names as `typeAliasDeclId`
+    va_ids : table<string>
 }
 
 def private fail(var d : Dumper; what : string; at : CirLoc) {
@@ -174,9 +182,17 @@ def private register_record(var d : Dumper; var c : CXCursor) {
             register_enum(d, fc)
         } elif (fk == CXCursorKind.FieldDecl) {
             register_dims(d, fc)
-            var canonical = clang_getCanonicalType(clang_getCursorType(fc))
+            var declared = clang_getCursorType(fc)
+            var canonical = clang_getCanonicalType(declared)
             let is_bf = clang_Cursor_isBitField(fc) != 0u
-            rec.fields |> push(ClangField(name = string(clang_getCursorSpelling(fc)), loc_key = cursor_key(fc), spelling = string(clang_getTypeSpelling(canonical)), bit_off = clang_Cursor_getOffsetOfField(fc), bit_w = is_bf ? clang_getFieldDeclBitWidth(fc) : 0, is_bitfield = is_bf))
+            // a `va_list` field is known by its declaration chain, which the msvc canonical
+            // `char *` loses
+            let va = type_holds_va(declared)
+            let spelling = va == VA_EXACT ? VA_BUILTIN : string(clang_getTypeSpelling(canonical))
+            if (va == VA_INSIDE) {
+                fail(d, "`{string(clang_getTypeSpelling(declared))}`: a pointer to a `va_list` or an array of them is not lowered yet", cursor_loc(d, fc))
+            }
+            rec.fields |> push(ClangField(name = string(clang_getCursorSpelling(fc)), loc_key = cursor_key(fc), spelling = spelling, bit_off = clang_Cursor_getOffsetOfField(fc), bit_w = is_bf ? clang_getFieldDeclBitWidth(fc) : 0, is_bitfield = is_bf))
         }
         return CXChildVisitResult.Continue
     }
@@ -350,8 +366,17 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
                 d.enum_ref_by_loc[cursor_key(kid)] = ref
             }
         } elif (kind == CXCursorKind.TypedefDecl) {
-            var canonical = clang_getCanonicalType(clang_getTypedefDeclUnderlyingType(kid))
-            d.typedef_spellings[string(clang_getCursorSpelling(kid))] = string(clang_getTypeSpelling(canonical))
+            var under = clang_getTypedefDeclUnderlyingType(kid)
+            var canonical = clang_getCanonicalType(under)
+            let name = string(clang_getCursorSpelling(kid))
+            d.typedef_spellings[name] = string(clang_getTypeSpelling(canonical))
+            // the msvc `va_list` is canonically a `char *`, so a typedef is one by its
+            // declaration chain
+            if (typedef_reaches_va(kid)) {
+                d.va_names |> insert(name)
+            } else {
+                d.other_names |> insert(name)
+            }
         } else {
             walk_records(d, kid)
         }
@@ -638,26 +663,177 @@ def private function_type(var d : Dumper; qt : string; paren : int; at : CirLoc)
     return intern(d, key, t)
 }
 
+// an opaque record of this repository's (`ARCHITECTURE.md` section 2): one field of type
+// `field_t`, at clang's size and alignment, interned under its name
+def private opaque_record(var d : Dumper; name : string; size, align : int; field_name : string; field_t : int) : int {
+    var rec = CirType(k = "struct", name = name, spell = name, size = size, align = align)
+    var field = CirField(name = field_name, t = field_t)
+    rec.fields |> emplace(field)
+    return intern(d, "record:{name}", rec)
+}
+
+def private pointer_to(var d : Dumper; to : int) : int {
+    var p = CirType(k = "ptr", to = to)
+    return intern(d, "ptr:{to}", p)
+}
+
 // glibc spells `jmp_buf` as `struct __jmp_buf_tag[1]`, and its decay and a pointer to it as
 // `struct __jmp_buf_tag *`: every such spelling is the one opaque `jmp_buf` record, which the
 // lowering fills with its own protocol (docs/lowering-examples.md "setjmp / longjmp")
 def private jmp_buf_type(var d : Dumper; qual : string) : int {
-    var rec = CirType(k = "struct", name = "jmp_buf", spell = "jmp_buf", size = 4, align = 4)
-    var val = CirField(name = "val", t = int_type(d, 32, true, "int"))
-    rec.fields |> emplace(val)
-    let r = intern(d, "record:jmp_buf", rec)
-    if (qual |> ends_with("*") || find(qual, "(*)") >= 0) {
-        var p = CirType(k = "ptr", to = r)
-        return intern(d, "ptr:{r}", p)
-    }
-    return r
+    let r = opaque_record(d, "jmp_buf", 4, 4, "val", int_type(d, 32, true, "int"))
+    return qual |> ends_with("*") || find(qual, "(*)") >= 0 ? pointer_to(d, r) : r
 }
 
-// the spellings that are not C types: glibc's `jmp_buf`, a builtin's prototype-less function
+// the name of clang's own `va_list` declaration, implicit in every unit; the headers' `va_list`
+// and `__gnuc_va_list` are typedefs over it
+let VA_BUILTIN = "__builtin_va_list"
+
+// whether typedef declaration `decl` reaches clang's implicit `__builtin_va_list` through its
+// chain of typedefs: the declaration, not the name, decides, so a program's own
+// `typedef char *va_list` is none
+def private typedef_reaches_va(decl : CXCursor) : bool {
+    var at = decl
+    for (_depth in range(64)) {
+        if (clang_getCursorKind(at) != CXCursorKind.TypedefDecl) {
+            return false
+        }
+        if (string(clang_getCursorSpelling(at)) == VA_BUILTIN) {
+            var file : CXFile
+            var line, column, offset : uint
+            clang_getFileLocation(clang_getCursorLocation(at), safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
+            return file == null
+        }
+        var under = clang_getTypedefDeclUnderlyingType(at)
+        if (under.kind == CXTypeKind.Elaborated) {
+            under = clang_Type_getNamedType(under)
+        }
+        if (under.kind != CXTypeKind.Typedef) {
+            return false
+        }
+        at = clang_getTypeDeclaration(under)
+    }
+    return false
+}
+
+// a libclang type as a `va_list` sees it: none, exactly one, or one inside a pointer or array
+let VA_NONE = 0
+
+let VA_EXACT = 1
+
+let VA_INSIDE = 2
+
+def private type_holds_va(t : CXType) : int {
+    var at = t
+    var depth = 0
+    while (depth < 64) {
+        if (at.kind == CXTypeKind.Elaborated) {
+            at = clang_Type_getNamedType(at)
+        }
+        if (at.kind == CXTypeKind.Typedef) {
+            var decl = clang_getTypeDeclaration(at)
+            if (typedef_reaches_va(decl)) {
+                return depth == 0 ? VA_EXACT : VA_INSIDE
+            }
+            at = clang_getTypedefDeclUnderlyingType(decl)
+        } elif (at.kind == CXTypeKind.Pointer) {
+            at = clang_getPointeeType(at)
+            depth++
+        } elif (at.kind == CXTypeKind.ConstantArray || at.kind == CXTypeKind.IncompleteArray) {
+            at = clang_getArrayElementType(at)
+            depth++
+        } else {
+            return VA_NONE
+        }
+    }
+    return VA_NONE
+}
+
+// what the words of a spelling with no declaration to follow (a function type's parameters, a
+// pointer's pointee) say of a `va_list`: linux's `struct __va_list_tag` is one; a typedef name
+// is one when every typedef of that name reaches the builtin, and undecidable when some do and
+// some do not (`VA_AMBIGUOUS`); `struct va_list` is a C record of that tag
+let VA_AMBIGUOUS = 3
+
+def private va_word(d : Dumper; qual : string) : int {
+    if (find(qual, "__va_list_tag") >= 0) {
+        return VA_EXACT
+    }
+    let words <- split_by_chars(qual, " *&()[],")
+    for (idx, word in range(length(words)), words) {
+        let tagged = idx > 0 && (words[idx - 1] == "struct" || words[idx - 1] == "union" || words[idx - 1] == "enum")
+        if (!tagged && (key_exists(d.va_names, word) || word == VA_BUILTIN)) {
+            return key_exists(d.other_names, word) ? VA_AMBIGUOUS : VA_EXACT
+        }
+    }
+    return VA_NONE
+}
+
+// the JSON ids of the typedef declarations that reach clang's implicit `__builtin_va_list`, in
+// tree order, so a typedef's own chain is known before the typedefs over it
+def private collect_va_ids(var d : Dumper; js : JsonValue?) {
+    if (node_kind(js) == "TypedefDecl") {
+        let root = (js?["isImplicit"] ?? false) && (js?["name"] ?? "") == VA_BUILTIN
+        if (root || key_exists(d.va_ids, js?["type"]?["typeAliasDeclId"] ?? "")) {
+            d.va_ids |> insert(js?["id"] ?? "")
+        }
+    }
+    for (idx in range(child_count(js))) {
+        collect_va_ids(d, (js?["inner"] as _array)[idx])
+    }
+}
+
+// a C `va_list` is the one opaque record `va_list` of clang's size and alignment (24 and 8 on
+// linux, where it is `struct __va_list_tag[1]`; 8 and 8 on msvc, where it is a `char *`), which
+// the lowering spells as the runtime's cursor; linux's decay and parameter, `struct
+// __va_list_tag *`, is a pointer to it. A function type naming one in its parameters goes
+// through the usual parse; a pointer to one or an array of them fails closed.
+def private va_list_type(var d : Dumper; qual : string; at : CirLoc) : int {
+    var bare = unqualified(qual)
+    if (bare |> ends_with(")")) {
+        return NOT_SPECIAL
+    }
+    if (bare |> ends_with(" &")) {
+        // msvc's builtins take the list by reference
+        bare = slice(bare, 0, length(bare) - 2)
+    }
+    let words = find(d.tu.target.triple, "windows") >= 0 ? 1 : 3
+    var words_array = CirType(k = "array", elem = int_type(d, 64, false, "unsigned long long"), count = words)
+    let words_t = intern(d, "array:{words_array.elem}:{words}", words_array)
+    let r = opaque_record(d, "va_list", 8 * words, 8, "words", words_t)
+    if (key_exists(d.va_names, bare) || bare == VA_BUILTIN || bare == "struct __va_list_tag[1]") {
+        return r
+    }
+    if (bare == "struct __va_list_tag *") {
+        return pointer_to(d, r)
+    }
+    if (find(bare, "*") >= 0 || find(bare, "[") >= 0) {
+        fail(d, "`{qual}`: a pointer to a `va_list` or an array of them is not lowered yet", at)
+    } else {
+        fail(d, "`{qual}`: a spelling of `va_list` the dumper does not know", at)
+    }
+    return -1
+}
+
+// the result of a spelling reader that does not take the spelling, so the next one may
+let NOT_SPECIAL = -2
+
+// the spellings that are not C types: a `va_list`, glibc's `jmp_buf`, a builtin's prototype-less function
 // type (read only through its decay, since the emitter resolves the callee by name), and an
 // unnamed record, whose location in parentheses the attribute stripping would eat; -2 for a
 // spelling that is none of these
 def private special_type(var d : Dumper; qual : string; at : CirLoc) : int {
+    let va_kind = va_word(d, qual)
+    if (va_kind == VA_AMBIGUOUS && !(unqualified(qual) |> ends_with(")"))) {
+        fail(d, "`{qual}`: a typedef name that is a `va_list` in one scope and another type in another, reached without its declaration; not lowered yet", at)
+        return -1
+    }
+    if (va_kind != VA_NONE) {
+        let va = va_list_type(d, qual, at)
+        if (va != NOT_SPECIAL) {
+            return va
+        }
+    }
     if (find(qual, "__jmp_buf_tag") >= 0) {
         return jmp_buf_type(d, unqualified(qual))
     }
@@ -877,14 +1053,24 @@ def private member_index(d : Dumper; rec : int; name : string; t : int) : int {
     return -1
 }
 
-// clang spells a typedef by its name and adds the resolved spelling beside it
-def private qual_of(js : JsonValue?) : string {
-    let desugared = js?["desugaredQualType"]
-    return is_present(desugared) ? (desugared ?? "") : (js?["qualType"] ?? "")
+// the spelling of a JSON type: clang spells a typedef by its name and adds the resolved
+// spelling beside it, which is the one read; a typedef whose declaration reaches the builtin is
+// a `va_list`, which the msvc desugaring to `char *` loses, and a spelling with no declaration
+// beside it (`va_list *`) is read by its words
+def private type_spelling(d : Dumper; type_js : JsonValue?) : string {
+    let alias = type_js?["typeAliasDeclId"] ?? ""
+    if (key_exists(d.va_ids, alias)) {
+        return VA_BUILTIN
+    }
+    let named = type_js?["qualType"] ?? ""
+    let desugared = type_js?["desugaredQualType"]
+    if (!is_present(desugared) || (empty(alias) && va_word(d, named) != VA_NONE)) {
+        return named
+    }
+    return desugared ?? named
 }
 
-def private node_type(var d : Dumper; js : JsonValue?; at : CirLoc) : int =>
-    type_from_qual(d, qual_of(js?["type"]), at)
+def private node_type(var d : Dumper; js : JsonValue?; at : CirLoc) : int => type_from_qual(d, type_spelling(d, js?["type"]), at)
 
 // C qualifiers carry no meaning for the das type (docs/c-feature-matrix.md section 1)
 def private unqualified(qual : string) : string {
@@ -1159,7 +1345,7 @@ def private dump_sizeof(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
     var of_t = -1
     let arg_type = js?["argType"]
     if (is_present(arg_type)) {
-        of_t = type_from_qual(d, qual_of(arg_type), at)
+        of_t = type_from_qual(d, type_spelling(d, arg_type), at)
     } elif (child_count(js) > 0) {
         var operand = child_expr(d, js?["inner"], 0)
         if (operand == null) {
@@ -1382,23 +1568,38 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
     if (kind == "ArraySubscriptExpr") {
         return dump_subscript(d, js, t, at)
     }
-    if (kind == "UnaryExprOrTypeTraitExpr") {
-        return dump_sizeof(d, js, t, at)
-    }
     if (kind == "MemberExpr") {
         return dump_member(d, js, t, at)
     }
     if (kind == "InitListExpr") {
         return dump_init_list(d, js, t, at)
     }
-    if (kind == "OffsetOfExpr") {
-        return dump_offsetof(d, t, at)
+    if (key_exists(TYPE_OPERATOR_KINDS, kind)) {
+        return dump_type_operator(d, js, kind, t, at)
     }
     fail(d, "unsupported expression `{kind}`", at)
     return null
 }
 
-let EXPR_KINDS <- {"IntegerLiteral", "CharacterLiteral", "FloatingLiteral", "StringLiteral", "DeclRefExpr", "ImplicitCastExpr", "CStyleCastExpr", "UnaryOperator", "BinaryOperator", "CompoundAssignOperator", "ConditionalOperator", "CallExpr", "ArraySubscriptExpr", "UnaryExprOrTypeTraitExpr", "ParenExpr", "MemberExpr", "InitListExpr", "OffsetOfExpr"}
+let TYPE_OPERATOR_KINDS <- {"UnaryExprOrTypeTraitExpr", "OffsetOfExpr", "VAArgExpr"}
+
+// the expressions the language spells as operators over a type: `sizeof`, `offsetof`, `va_arg`
+def private dump_type_operator(var d : Dumper; js : JsonValue?; kind : string; t : int; at : CirLoc) : CirExpr? {
+    if (kind == "UnaryExprOrTypeTraitExpr") {
+        return dump_sizeof(d, js, t, at)
+    }
+    if (kind == "OffsetOfExpr") {
+        return dump_offsetof(d, t, at)
+    }
+    // clang gives a `VAArgExpr` its list as the one child
+    var list = child_expr(d, js?["inner"], 0)
+    if (list == null) {
+        return null
+    }
+    return new CirExpr(e = "va_arg", t = t, list = list, arg_t = t)
+}
+
+let EXPR_KINDS <- {"IntegerLiteral", "CharacterLiteral", "FloatingLiteral", "StringLiteral", "DeclRefExpr", "ImplicitCastExpr", "CStyleCastExpr", "UnaryOperator", "BinaryOperator", "CompoundAssignOperator", "ConditionalOperator", "CallExpr", "ArraySubscriptExpr", "UnaryExprOrTypeTraitExpr", "ParenExpr", "MemberExpr", "InitListExpr", "OffsetOfExpr", "VAArgExpr"}
 
 // an optional slot of a statement: clang spells an absent one as `{}`
 def private slot_stmt(var d : Dumper; kids : JsonValue?; idx : int; var ok : bool&) : CirStmt? {
@@ -1992,6 +2193,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string) : Dumper {
     d.tu.tu = base_name(c_path)
     d.c_path = c_path
     d.cur_file = c_path
+    d.va_names |> insert(VA_BUILTIN)
     d.tu_prefix = ident_of(slice(d.tu.tu, 0, max(find(d.tu.tu, "."), 0)))
     d.tu.producer = "c2das-dumper-a 0.1 / clang {clang_version(clang)}"
     let resource_dir = clang_resource_dir(clang)
@@ -2015,6 +2217,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string) : Dumper {
         d.error = "clang dump is not JSON: {err}"
         return <- d
     }
+    collect_va_ids(d, js)
     let top = js?["inner"]
     for (idx in range(child_count(js))) {
         let decl = (top as _array)[idx]

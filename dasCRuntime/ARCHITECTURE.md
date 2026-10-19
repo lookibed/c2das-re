@@ -59,7 +59,7 @@ entries (libm, ctype, `abs`) are `SideEffects::none` and safe. Anything that wri
 reads or writes CRT state (`errno`, the `rand` seed, the environment, the clock, the
 `strerror` buffer) is `modifyExternal`: the optimizer may not fold or drop it.
 
-## 5. `snprintf` as a per-directive family
+## 5. `snprintf` and `sscanf` as per-directive families
 
 C `snprintf` is variadic and cannot be bound. The family `snprintf_none`, `snprintf_int`,
 `snprintf_uint`, `snprintf_int64`, `snprintf_uint64`, `snprintf_double`, `snprintf_str`,
@@ -68,6 +68,12 @@ value's C type (or none). The printf lowering (`docs/lowering-examples.md`, Vari
 a C format at its directives and issues one call per piece, so the rendering is the CRT's
 byte for byte and no conversion engine is written in das. `snprintf_int64` and
 `snprintf_uint64` pass `long long`, so their directives are the `ll` spellings.
+
+C `sscanf` is variadic too and binds the same way, one directive per call: `sscanf_one(src,
+fmt, out, consumed)` passes the C program's out-pointer as `void *`, so the CRT writes it at the
+width `fmt`'s directive names, and `sscanf_none(src, fmt, consumed)` serves a directive that
+assigns nothing; `fmt` ends in `%n`, whose `consumed` tells the scanf lowering
+(`c_runtime/scanf.das`) how far the input moved.
 
 ## 6. Build and loading
 

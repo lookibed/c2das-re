@@ -12,6 +12,7 @@ require daslib/json_boost
 require crt
 require ../converter/pipeline.das
 require ../converter/tiers.das
+require ../converter/dumper_a.das
 
 //! The performance comparison of docs/very-detailed-plan.md section 2, measured the way
 //! borisbat/dasProfile measures: every kernel under perf/kernels/<name>.c is composed with
@@ -77,10 +78,6 @@ def write_text(path : string; text : string) {
 def first_line(text : string) : string {
     let nl = find(text, "\n")
     return nl < 0 ? text : slice(text, 0, nl)
-}
-
-def clang_bin : string {
-    return has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
 }
 
 def captured(args : array<string>) : string {
@@ -187,7 +184,7 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
     write_text(c_path, composed_source(fread_text("{KERNELS}/{name}.c")))
     let native_bin = path_join(work, "{name}_native")
     var build_out : string
-    if (run_and_capture([clang_bin(), "-O3", "-w", "-funsigned-char", "-o", native_bin, c_path], build_out, 600.0) != 0) {
+    if (run_and_capture([default_clang(), "-O3", "-w", "-funsigned-char", "-o", native_bin, c_path], build_out, 600.0) != 0) {
         errors |> push("{name}/native: {first_line(build_out)}")
         return <- cells
     }
@@ -377,7 +374,7 @@ def main : int {
         "platform" => JV("{get_platform_name()} {strip(captured(["uname", "-m"]))}"),
         "timestamp" => JV(strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))),
         "samples" => JV(args.samples),
-        "versions" => JV({"clang" => JV(first_line(captured([clang_bin(), "--version"]))), "daslang" => JV(first_line(captured([get_das_root() + "/bin/daslang", "-version"])))}),
+        "versions" => JV({"clang" => JV(first_line(captured([default_clang(), "--version"]))), "daslang" => JV(first_line(captured([get_das_root() + "/bin/daslang", "-version"])))}),
         "lanes" => JV(LANES),
         "tests" => JV(tests)
     }

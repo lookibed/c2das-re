@@ -2,8 +2,9 @@ options gen2
 require dastest/testing_boost public
 require strings
 require daslib/strings_boost
-require daslib/fio
 require c_runtime/printf
+require crt
+require ../../probes/_daslang_child.das
 
 struct Case {
     fmt : string
@@ -29,7 +30,10 @@ def battery : array<Case> {
         Case(fmt = "%f|%.2f|%10.3f|%-10.1f|%e|%E|%g|%G|%.0f|%#.0f", c_args = "3.14159, 3.14159, 3.14159, 3.14159, 12345.678, 12345.678, 0.0001, 1e20, 2.5, 2.5", va <- [dv(3.14159lf), dv(3.14159lf), dv(3.14159lf), dv(3.14159lf), dv(12345.678lf), dv(12345.678lf), dv(0.0001lf), dv(1e20lf), dv(2.5lf), dv(2.5lf)]),
         Case(fmt = "%s|%10s|%-10s|%.2s|%%|%5.1s|", c_args = "\"hello\", \"hi\", \"hi\", \"hello\", \"xyz\"", va <- [sv("hello"), sv("hi"), sv("hi"), sv("hello"), sv("xyz")]),
         Case(fmt = "%*d|%-*d|%.*f|%*.*f", c_args = "6, 42, 6, 42, 3, 2.0, 8, 2, 2.0", va <- [iv(6l), iv(42l), iv(6l), iv(42l), iv(3l), dv(2.0lf), iv(8l), iv(2l), dv(2.0lf)]),
-        Case(fmt = "%a|%A|%ld|%lu|%lx", c_args = "1.0, 0.5, (long)-9, (unsigned long)9, (unsigned long)255", va <- [dv(1.0lf), dv(0.5lf), iv(-9l), iv(9l), iv(255l)])
+        Case(fmt = "%a|%A|%ld|%lu|%lx", c_args = "1.0, 0.5, (long)-9, (unsigned long)9, (unsigned long)255", va <- [dv(1.0lf), dv(0.5lf), iv(-9l), iv(9l), iv(255l)]),
+        // the dialect's `long double` is a `double`: the C side passes a `long double`, the
+        // converted side the `double` it lowers to
+        Case(fmt = "%Lf|%.3Le|%Lg", c_args = "2.5L, 12345.678L, 0.25L", va <- [dv(2.5lf), dv(12345.678lf), dv(0.25lf)])
     ]
 }
 
@@ -37,36 +41,21 @@ def c_escaped(s : string) : string =>
     s |> replace("\\", "\\\\") |> replace("\"", "\\\"") |> replace("\n", "\\n")
 
 def native_output(cases : array<Case>) : string {
-    let dir = "{temp_directory_result() as value}"
-    let c_path = "{dir}/c2das_printf_battery.c"
-    let bin = "{dir}/c2das_printf_battery"
-    fopen(c_path, "wb") $(f) {
-        fwrite(f, "#include <stdio.h>\nint main(void) \{\n")
+    let body = build_string() $(var w) {
+        w |> write("#include <stdio.h>\nint main(void) \{\n")
         for (c in cases) {
-            fwrite(f, "    printf(\"{c_escaped(c.fmt)}\\n\", {c.c_args});\n")
+            w |> write("    printf(\"{c_escaped(c.fmt)}\\n\", {c.c_args});\n")
         }
-        fwrite(f, "    return 0;\n\}\n")
+        w |> write("    return 0;\n\}\n")
     }
-    let clang = has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
-    var out : string
-    let crc = run_and_capture([clang, "-w", "-o", bin, c_path], out, 120.0)
-    if (crc != 0) {
-        return "clang failed:\n{out}"
-    }
-    var native : string
-    run_and_capture([bin], native, 60.0)
-    remove(c_path)
-    remove(bin)
-    return native
+    let no_flags : array<string>
+    return native_battery("c2das_printf_battery", no_flags, body)
 }
 
 def das_output(cases : array<Case>) : string {
     return build_string() $(var w) {
         for (c in cases) {
-            var inscope bytes <- c_vformat(cstr(c.fmt), c.va)
-            for (b in bytes) {
-                w |> write(to_char(int(b)))
-            }
+            w |> write(string(c_vformat(cstr(c.fmt), c.va)))
             w |> write("\n")
         }
     }
@@ -91,6 +80,47 @@ def test_printf(t : T?) {
             t |> equal(reinterpret<string>(p), "hey!")
             t |> equal(snprintf(p, 0ul, cstr("x")), 1)
             t |> equal(reinterpret<string>(p), "hey!")
+        }
+    }
+    t |> run("an `l` conversion has the dialect's `long` width whatever the host's: 32 bits under msvc, 64 under linux") @(t : T?) {
+        let saved = c_long_bits
+        let lst <- [CVal(i = -1l), CVal(i = -5l), CVal(i = -1l), CVal(i = 4294967303l), CVal(i = -1l)]
+        c_long_bits = 32
+        let msvc = string(c_vformat(cstr("%lx|%ld|%lu|%ld|%Lx"), lst))
+        c_long_bits = 64
+        let linux = string(c_vformat(cstr("%lx|%ld|%lu|%ld|%Lx"), lst))
+        c_long_bits = 32
+        var wide_caught = false
+        try {
+            c_vformat(cstr("%lc"), lst)
+        } recover {
+            wide_caught = true
+        }
+        c_long_bits = saved
+        t |> equal(msvc, "ffffffff|-5|4294967295|7|ffffffffffffffff")
+        t |> equal(linux, "ffffffffffffffff|-5|18446744073709551615|4294967303|ffffffffffffffff")
+        t |> equal(wide_caught, crt::LONG_BITS != 32)
+    }
+    t |> run("a printf `*` takes the width's place, so `%*5d` is no directive printf knows") @(t : T?) {
+        var caught = false
+        try {
+            c_vformat(cstr("%*5d"), [CVal(i = 1l), CVal(i = 2l)])
+        } recover {
+            caught = true
+        }
+        t |> equal(caught, true)
+    }
+    t |> run("the CVaList fronts take a forwarded va_list: c_vsprintf and c_vsnprintf over va_rest of a cursor") @(t : T?) {
+        var buf : uint8[16]
+        let lst <- [CVal(i = 9l), CVal(i = 42l), CVal(p = unsafe(reinterpret<void?>("go")))]
+        var v = va_begin(lst)
+        va_i(v)
+        unsafe {
+            var p = addr(buf[0])
+            t |> equal(c_vsprintf(p, cstr("%d-%s"), va_rest(v)), 5)
+            t |> equal(reinterpret<string>(p), "42-go")
+            t |> equal(c_vsnprintf(p, 3ul, cstr("%d-%s"), va_rest(v)), 5)
+            t |> equal(reinterpret<string>(p), "42")
         }
     }
     t |> run("printf writes the bytes to the CRT stdout and returns their count") @(t : T?) {

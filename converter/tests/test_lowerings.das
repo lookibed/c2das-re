@@ -4,6 +4,7 @@ require strings
 require daslib/fio
 require ../pipeline.das
 require ../tiers.das
+require ../dumper_a.das
 
 //! Every P1 lowering fixture is a C program whose output and exit code the converted module
 //! must reproduce; the expectation is the native build of the same file by the pinned clang
@@ -21,7 +22,7 @@ var work_root : string
 
 def native(name : string) : Expectation {
     let bin = path_join(work_root, "{name}_native")
-    let clang = has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
+    let clang = default_clang()
     var out : string
     let crc = run_and_capture([clang, "-w", CLANG_DIALECT, "-o", bin, "{FIXTURES}/{name}.c"], out, 120.0)
     if (crc != 0) {
@@ -70,6 +71,27 @@ def rejects(t : T?; name : string; source : string; needle : string; sidecar : s
     let res <- convert(c_path, path_join(dir, name), "linux")
     t |> equal(res.ok, false, "{name} converted:\n{res.das_text}")
     t |> equal(res.error |> find(needle) >= 0, true, "{name}: `{needle}` not in `{res.error}`")
+}
+
+def fread_text(path : string) : string {
+    var text = ""
+    fopen(path, "rb") $(f) {
+        if (f != null) {
+            text = fread(f)
+        }
+    }
+    return text
+}
+
+// how many times `needle` occurs in `text`
+def count_of(text, needle : string) : int {
+    var n = 0
+    var at = find(text, needle)
+    while (at >= 0) {
+        n++
+        at = find(text, needle, at + length(needle))
+    }
+    return n
 }
 
 // a C source the converter must take: its das text, "" with a failure when it refuses
@@ -200,6 +222,7 @@ def p2_fixtures(t : T?) {
     p4_fixtures(t)
     p4_union_fixtures(t)
     p4_function_fixtures(t)
+    p4_varargs_fixtures(t)
 }
 
 def p2_enum_fixtures(t : T?) {
@@ -563,5 +586,153 @@ def p4_function_fixtures(t : T?) {
     }
     t |> run("a wide string literal fails closed") @(t : T?) {
         rejects(t, "wide_literal", "int main(void) \{ const int *w = (const int *) L\"ab\"; return w[1] == 98 ? 0 : 1; \}\n", "a wide string literal")
+    }
+}
+
+def p4_varargs_fixtures(t : T?) {
+    t |> run("varargs: [variadic] definitions, the va_list cursor, va_copy, forwarding to the printf family, sscanf") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_varargs", text)
+        has_text(t, text, "require c_runtime/variadic\n")
+        has_text(t, text, "require c_runtime/scanf\n")
+        has_text(t, text, "[variadic]\ndef sum(n_in : int; va : va_args) : double \{")
+        has_text(t, text, "[c_function, variadic]\ndef private p4_varargs__mix(kinds : uint8?; va : va_args) : double \{\n    var ap : CVaCursor\n")
+        has_text(t, text, "    ap = va_begin(va)\n")
+        has_text(t, text, "acc += double(int(va_i(ap)))")
+        has_text(t, text, "acc += va_d(ap)")
+        has_text(t, text, "acc += double(uint(va_i(ap)))")
+        has_text(t, text, "var s : uint8? = reinterpret<uint8?>(va_p(ap))")
+        has_text(t, text, "var c : color = enum_from_int(type<color>, int(va_i(ap)))")
+        // va_copy is the cursor's assignment, va_end no statement
+        has_text(t, text, "    b = a\n")
+        has_text(t, text, "def private p4_varargs__take_two(var ap : CVaCursor) : int")
+        has_text(t, text, "c_vprintf(fmt, va_rest(ap))")
+        has_text(t, text, "n = c_vsnprintf(buf, size, fmt, va_rest(ap))")
+        has_text(t, text, "n = c_vsprintf(buf, fmt, va_rest(ap))")
+        // the library writes through the buffer, so the parameter is `var` (F3)
+        has_text(t, text, "def private p4_varargs__bounded(var buf : uint8?; size : uint64; fmt : uint8?; va : va_args) : int")
+        has_text(t, text, "let _ = int(va_i(ap))")
+        has_text(t, text, "ok = int(va_i(ap)) == 7 || int(va_i(ap)) == 8 ? 1 : 0")
+        // `sizeof(va_list)` is clang's size: the cursor is never laid out
+        has_text(t, text, "int(uint64(24))")
+        has_text(t, text, "sscanf(reinterpret<uint8?>(\"  12,-7 2.5e1 hello\")")
+        // `va_end` is no statement: the text starts a cursor exactly where C calls `va_start`
+        let c_source = fread_text("{FIXTURES}/p4_varargs.c")
+        t |> equal(count_of(text, "= va_begin("), count_of(c_source, "va_start("), text)
+        // a `va_list` parameter reassigned and passed on stays the caller's `var` cursor
+        has_text(t, text, "def private p4_varargs__relay(var ap : CVaCursor) : int \{\n    var mine : CVaCursor\n    mine = ap\n    ap = mine\n")
+        // a pop is an effect: an initializer holding a union evaluates its items first
+        has_text(t, text, "    let _t0 = int(va_i(ap))\n    let _t1 = int(va_i(ap))\n    var t : tagged = tagged(tag = _t0)\n    t.u.i = _t1\n")
+        // the printf family's buffer parameter is written through
+        has_text(t, text, "def private p4_varargs__put_number(var buf : uint8?; v : int)")
+        has_text(t, text, "n = c_vsscanf(src, fmt, va_rest(ap))")
+        // a call of the module's own variadic is the macro's expansion, the library's keeps C's
+        has_text(t, text, "return p4_varargs__late`va(2, (first, n))")
+        has_text(t, text, "return p4_varargs__shared_third`va(1, (n,))")
+        has_text(t, text, "sum`va(0, VaNone())")
+        // the spelled call resolves at inference: above its definition and inside it
+        has_text(t, text, "return n > 0 ? n + p4_varargs__countdown`va(n - 1, VaNone()) : 0")
+        has_text(t, text, "p4_varargs__ping`va(n - 1, VaNone())")
+        has_text(t, text, "printf(reinterpret<uint8?>(\"pairs %d\\n\"), p4_varargs__pairs`va(1, (4, 2, 9)))")
+        // a `va_list` position is `var` in a function type as in the function
+        has_text(t, text, "var t : function<(var a0 : CVaCursor) : int> = @@p4_varargs__take_two")
+        has_text(t, text, "first = invoke(t, ap)")
+        has_text(t, text, "[init]\ndef private c2das_dialect \{\n    c_long_bits = 64\n")
+        // the module's first `[init]`
+        t |> equal(text |> find("def private c2das_dialect") < text |> find("[init]\ndef private c2das_layout_check"), true, text)
+        let msvc <- convert("{FIXTURES}/p4_varargs.c", path_join(work_root, "p4_varargs_msvc"), "msvc")
+        t |> equal(msvc.ok, true, msvc.error)
+        has_text(t, msvc.das_text, "def private p4_varargs__take_two(var ap : CVaCursor) : int")
+        has_text(t, msvc.das_text, "    b = a\n")
+        has_text(t, msvc.das_text, "    c_long_bits = 32\n")
+        has_text(t, msvc.das_text, "int(uint64(8))")
+    }
+    t |> run("varargs: the converted module runs from a cold module cache under the interpreter and the JIT") @(t : T?) {
+        let res <- convert("{FIXTURES}/p4_varargs.c", path_join(work_root, "p4_varargs_cold"), "linux")
+        t |> equal(res.ok, true, res.error)
+        for (tier_flags in [["-module-cache"], ["-jit", "-module-cache"]]) {
+            let cache = path_join(work_root, "p4_varargs_cold.dascache")
+            remove(cache)
+            var inscope args <- [get_das_root() + "/bin/daslang", "-load_module", "dasCRuntime", "-load_module", "c_runtime"]
+            args |> push_from(tier_flags, [cache, res.das_path])
+            var out : string
+            let rc = run_and_capture(args, out, 600.0)
+            t |> equal(rc, 0, out)
+            t |> equal(out |> find("outer 42") >= 0, true, out)
+            remove(cache)
+        }
+    }
+    p4_varargs_shapes(t)
+}
+
+def p4_varargs_shapes(t : T?) {
+    t |> run("varargs: the undefined reads of a promoted type pop the promoted class and narrow") @(t : T?) {
+        let text = converts(t, "va_narrow", "#include <stdarg.h>\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); char c = va_arg(ap, char); short s = va_arg(ap, short); float x = va_arg(ap, float); _Bool b = va_arg(ap, _Bool); va_end(ap); return c + s + (int) x + b; \}\nint main(void) \{ return f(0, 1, 2, 3.0, 1) - 7; \}\n")
+        has_text(t, text, "var c : uint8 = uint8(va_i(ap))")
+        has_text(t, text, "var s : int16 = int16(va_i(ap))")
+        has_text(t, text, "var x : float = float(va_d(ap))")
+        has_text(t, text, "var b : bool = va_i(ap) != 0l")
+        // a function pointer pops as a pointer; a body that takes `va` binds the list as `va1`
+        let named = converts(t, "va_fn_and_name", "#include <stdarg.h>\nstatic int twice(int v) \{ return 2 * v; \}\nstatic int f(int n, ...) \{ va_list va; va_start(va, n); int (*g)(int) = va_arg(va, int (*)(int)); va_end(va); return g(n); \}\nint main(void) \{ return f(3, twice) - 6; \}\n")
+        has_text(t, named, "def private va_fn_and_name__f(n : int; va1 : va_args) : int")
+        has_text(t, named, "va = va_begin(va1)")
+        has_text(t, named, "var g : function<(a0 : int) : int> = reinterpret<function<(a0 : int) : int>>(va_p(va))")
+    }
+    t |> run("varargs: a name that is no `va_list` converts as before, under both dialects") @(t : T?) {
+        let shapes <- [
+            ("user_va_list_typedef", "typedef int va_list;\nint main(void) \{ va_list v = 3; return v - 3; \}\n", "var v : int = 3"),
+            ("user_va_list_tag", "#include <stdarg.h>\nstruct va_list \{ int a, b; \};\nint main(void) \{ struct va_list s = \{ 1, 2 \}; return s.a + s.b - 3; \}\n", "struct va_list \{"),
+            ("local_typedef_char", "#include <stdarg.h>\nstatic int f(int n, ...) \{ typedef va_list L; L ap; va_start(ap, n); int v = va_arg(ap, int); va_end(ap); return v; \}\nstatic int g(void) \{ typedef char *L; L x = 0; return x == 0; \}\nint main(void) \{ return f(1, 4) + g() - 5; \}\n", "var x : uint8? = null"),
+            ("local_typedef_shadow", "#include <stdarg.h>\nstatic int f(int n, ...) \{ typedef va_list L; L ap; va_start(ap, n); int v = va_arg(ap, int); va_end(ap); return v; \}\nstatic int g(void) \{ typedef int L; L x = 3; return x; \}\nint main(void) \{ return f(1, 4) + g() - 7; \}\n", "var x : int = 3")
+        ]
+        let dir = path_join(work_root, "converted")
+        mkdir(dir)
+        for (shape in shapes) {
+            let c_path = path_join(dir, "{shape._0}.c")
+            write_file(c_path, shape._1)
+            for (target in ["linux", "msvc"]) {
+                let res <- convert(c_path, path_join(dir, "{shape._0}_{target}"), target)
+                t |> equal(res.ok, true, "{shape._0} {target}: {res.error}")
+                has_text(t, res.das_text, shape._2)
+            }
+        }
+    }
+    t |> run("varargs under msvc: a `va_list` is known by its name, a typedef of it included, where the type is a `char *`") @(t : T?) {
+        let dir = path_join(work_root, "converted")
+        mkdir(dir)
+        let c_path = path_join(dir, "va_msvc_typedef.c")
+        write_file(c_path, "#include <stdarg.h>\ntypedef va_list my_list;\nstatic int f(int n, ...) \{ my_list ap; va_start(ap, n); int v = va_arg(ap, int); va_end(ap); return v + n; \}\nint main(void) \{ return f(1, 2) - 3; \}\n")
+        let res <- convert(c_path, path_join(dir, "va_msvc_typedef"), "msvc")
+        t |> equal(res.ok, true, res.error)
+        has_text(t, res.das_text, "var ap : CVaCursor")
+        let field_path = path_join(dir, "va_msvc_field.c")
+        write_file(field_path, "#include <stdarg.h>\nstruct S \{ va_list ap; int n; \};\nint main(void) \{ struct S s; s.n = 0; return s.n; \}\n")
+        let field <- convert(field_path, path_join(dir, "va_msvc_field"), "msvc")
+        t |> equal(field.error |> find("a `va_list` field (`S.ap`) is not lowered yet") >= 0, true, field.error)
+        // msvc's `va_list` is a `char *`, so C reads one through `...`
+        let nested_path = path_join(dir, "va_msvc_nested.c")
+        write_file(nested_path, "#include <stdarg.h>\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); va_list inner = va_arg(ap, va_list); (void) inner; va_end(ap); return n; \}\nint main(void) \{ return f(0); \}\n")
+        let nested <- convert(nested_path, path_join(dir, "va_msvc_nested"), "msvc")
+        t |> equal(nested.error |> find("va_arg of a `va_list` is not lowered yet") >= 0, true, nested.error)
+    }
+    p4_varargs_rejects(t)
+}
+
+def p4_varargs_rejects(t : T?) {
+    t |> run("varargs: what the lowering refuses, each with its reason") @(t : T?) {
+        rejects(t, "va_arg_record", "#include <stdarg.h>\nstruct P \{ int x; \};\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); struct P p = va_arg(ap, struct P); va_end(ap); return p.x; \}\nint main(void) \{ struct P p = \{ 0 \}; return f(1, p); \}\n", "va_arg of a record type is not lowered yet")
+        rejects(t, "va_record_argument", "int printf(const char *, ...);\nstruct P \{ int x; \};\nint main(void) \{ struct P p = \{ 0 \}; return printf(\"%d\", p); \}\n", "a record passed through `...` (argument 1 of `printf`) is not lowered yet")
+        rejects(t, "va_list_field", "#include <stdarg.h>\nstruct S \{ va_list ap; int n; \};\nint main(void) \{ struct S s; s.n = 0; return s.n; \}\n", "a `va_list` field (`S.ap`) is not lowered yet")
+        rejects(t, "va_list_global", "#include <stdarg.h>\nva_list g;\nint main(void) \{ return 0; \}\n", "a `va_list` global (`g`) is not lowered yet")
+        rejects(t, "va_list_array", "#include <stdarg.h>\nint main(void) \{ va_list two[2]; (void) two; return 0; \}\n", "a pointer to a `va_list` or an array of them is not lowered yet")
+        rejects(t, "va_list_pointer", "#include <stdarg.h>\nstatic int f(int n, ...) \{ va_list ap; va_list *p = &ap; va_start(*p, n); int v = va_arg(*p, int); va_end(ap); return v; \}\nint main(void) \{ return f(1, 0); \}\n", "a pointer to a `va_list` or an array of them is not lowered yet")
+        rejects(t, "va_arg_array", "#include <stdarg.h>\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); int x = va_arg(ap, int[2])[0]; va_end(ap); return x; \}\nint main(void) \{ return f(0); \}\n", "va_arg of type kind `array` is not lowered yet")
+        rejects(t, "va_list_through_dots", "#include <stdarg.h>\nstatic int g(int n, ...) \{ return n; \}\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); int r = g(1, ap); va_end(ap); return r; \}\nint main(void) \{ return f(1, 2) - 1; \}\n", "a `va_list` passed through `...` (argument 1 of `g`) is not lowered yet")
+        rejects(t, "va_end_value", "#include <stdarg.h>\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); n ? va_end(ap) : (void) 0; return n; \}\nint main(void) \{ return f(0); \}\n", "`va_end` used as a value is not lowered yet")
+        rejects(t, "va_tuple_param", "#include <stdarg.h>\nstatic int f(int _va_tuple, ...) \{ return _va_tuple; \}\nint main(void) \{ return f(0); \}\n", "a C name `_va_tuple` in variadic function `f`")
+        rejects(t, "va_tuple_local", "#include <stdarg.h>\nstatic int f(int n, ...) \{ int _va_tuple = n; return _va_tuple; \}\nint main(void) \{ return f(0); \}\n", "a C name `_va_tuple` in variadic function `f`")
+        rejects(t, "sprintf_const_buffer", "int sprintf(char *, const char *, ...);\nstatic void put(char *b, char *e, int k) \{ char *t = k ? b : e; (void) t; \}\nstatic int w(char *b, char *e, int k) \{ return sprintf(k ? b : e, \"%d\", k); \}\nint main(void) \{ char x[8], y[8]; put(x, y, 1); return w(x, y, 1) - 1; \}\n", "a pointer the callee writes through arrives through const parameter `b` of `w`")
+        rejects(t, "scanf_stdin", "int scanf(const char *, ...);\nint main(void) \{ int x = 0; scanf(\"%d\", &x); return x; \}\n", "external function `scanf` has no c_runtime mapping")
+        rejects(t, "fprintf_stream", "typedef struct F F;\nextern F *stderr;\nint fprintf(F *, const char *, ...);\nint main(void) \{ fprintf(stderr, \"x\"); return 0; \}\n", "external function `fprintf` has no c_runtime mapping")
     }
 }

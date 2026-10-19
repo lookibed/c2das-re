@@ -1,4 +1,4 @@
-# converter Architecture - the emitter's aggregates and function pointers
+# converter Architecture - the emitter's aggregates, function pointers and variadics
 
 Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITECTURE_EMITTER.md`.
 
@@ -97,3 +97,39 @@ sidecar entry; an array of function pointers is a member like any other.
 arguments as C gives them and the converted comparator's `@@` value; the CRT binds neither,
 since its `qsort` cannot call back into das (F33). The value of a function the unit does not
 define (`strcmp` passed as a comparator) and a pointer to a variadic function fail closed.
+
+### Variadics
+
+A C variadic definition is `[variadic] def f(fixed...; va : va_args)` (`c_runtime/variadic`,
+`docs/lowering-examples.md` "Variadics & printf"), the trailing parameter named `va` unless the
+body takes that name (then `va1` and up), its annotation list merged with `[c_function]`
+(`[c_function, variadic]`). The annotation renames the function `f`va`, makes it a generic over
+the trailing tuple and registers a call macro under the C name, which tuples the trailing
+arguments. A call of a variadic function of this module is spelled as that macro expands it,
+`sum`va(3, (1.5lf, 2))`, `(a,)` for one trailing argument and `VaNone()` for none: a generic
+body keeps a macro call uninferred, daScript's module cache refuses to write a macro the module
+itself owns, and the spelled call resolves at inference, above its definition and inside it
+(`docs/probe-findings.md` F37), so definitions stay in C's order and recursion, direct or
+mutual, lowers. A call of the library's variadics (`printf`, `sscanf`) keeps C's spelling,
+`printf(fmt, x)`. A `va_list` is `CVaCursor`, the list's
+address and a position (F35): `va_start(v, last)` is `v = va_begin(va)`, `va_copy(w, v)` is
+`w = v`, and `va_end` is no statement. `va_arg(v, T)` pops the class C's default promotions
+gave the argument: `va_i(v)` narrowed to an integer `T` (`int(va_i(v))`, `va_i(v) != 0l` for
+`_Bool`), `enum_from_int` of its `int` for an enum, `va_d(v)` for `double`,
+`reinterpret<T>(va_p(v))` for a pointer, a function pointer included, which makes the body
+`[c_function]`. A read at `char`, `short`, `_Bool` or `float` is undefined in C, since no
+argument arrives as one, and reads the promoted value (`float(va_d(v))`). A pop is an effect
+for statement-ification. A `va_list` parameter is `var ap : CVaCursor` and never takes the
+callee copy: the callee's pops advance the caller's cursor, as linux's decayed array does
+(msvc copies its `char *`, after which C leaves the caller's list indeterminate, so the two
+agree on every defined program); a function type's `va_list` position is `var` alike, so
+`int (*)(va_list)` holds such a function. A library function taking a `va_list` takes
+`va_rest(v)`, the arguments from the cursor on (F36): `vprintf`, `vsprintf`, `vsnprintf` and
+`vsscanf` are `c_vprintf`, `c_vsprintf`, `c_vsnprintf` and `c_vsscanf`, and `sscanf` is the
+`[variadic]` front of `c_runtime/scanf`. A module reaching the printf or the scanf family opens
+with `[init] def private c2das_dialect`, its first `[init]`, setting `c_long_bits` to the
+dialect's `long` width, which every `l` directive then reads. `sizeof(va_list)` is clang's size. Fail closed: `va_arg` of a
+record or of a `va_list`; a record or a `va_list` passed through `...`, naming the argument and
+the callee; a `va_list` global or field; a pointer to a `va_list` and an array of them (the
+dumper's); `va_start`, `va_end` or `va_copy` read as a value; a C name `_va_tuple` in a
+variadic function, the annotation's own; and a pointer to a variadic function.

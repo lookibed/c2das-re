@@ -106,11 +106,24 @@ an item, and a union's list holds at most one item, `pos` the member it initiali
 `{}`). A record spelling carries no owner scope: `union S::(anonymous at f:l:c)` interns as
 `union (anonymous at f:l:c)`, the spelling libclang and the dump share.
 
+A C `va_list` is one opaque record named `va_list`, this repository's choice as `jmp_buf` is
+(the spec has no type for it, `docs/probe-findings.md` F39), and Dumper B writes the same bytes:
+one field `words`, an `unsigned long long[N]`, at clang's size and alignment, `N` 3 under
+`linux` (`struct __va_list_tag[1]`, 24 and 8) and 1 under `msvc` (a `char *`, 8 and 8),
+`packed` false, `spell` `va_list` (a C record tagged `va_list` spells `struct va_list`, which is
+how the two are told apart). A `va_list` parameter is clang's type for it: the record under
+`msvc`, a pointer to the record under `linux`, whose `struct __va_list_tag *` is the decayed
+array. The lowering never lays the record out (`sizeof(va_list)` is clang's size). The
+`va_arg` node is the spec's: `list` the list's expression (the decay under `linux`, the
+variable under `msvc`) and `arg_t` the type read, which is also the node's `t`. `va_start`,
+`va_end` and `va_copy` stay calls to the builtins they expand to (`__builtin_va_start`,
+`__builtin_va_end`, `__builtin_va_copy`), as every `__builtin_*` call does (F23).
+
 Section 3, Dumper A's subset (what the dumper reads from clang and libclang), is in
 `ARCHITECTURE_DUMPER.md`.
 
 Section 4, what the emitter spells (the das text of every construct), is in
-`ARCHITECTURE_EMITTER.md`, with bitfields, unions and function pointers in
+`ARCHITECTURE_EMITTER.md`, with bitfields, unions, function pointers and variadics in
 `ARCHITECTURE_EMITTER_AGGREGATES.md`.
 
 ## 5. The four tiers

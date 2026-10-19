@@ -208,6 +208,35 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   narrow; and a `let` pointer passed into a `var` pointer parameter (P4.6).
 - **P4.4 va_list completeness.** `va_copy`, forwarding, non-constant printf formats,
   scanf-family split.
+  Landed: a variadic definition is `[variadic]`, and a call of one the module defines is
+  spelled as the macro expands it, `f`va(…)` (`docs/probe-findings.md` F37); a `va_list` is the
+  runtime's `CVaCursor`, the list's address and a position, `va_copy` its assignment and a
+  `va_list` parameter the caller's cursor (F35); forwarding passes `va_rest` of the cursor to
+  `c_vprintf`, `c_vsprintf`, `c_vsnprintf` and `c_vsscanf` (F36); a non-constant printf format
+  takes `c_vprintf`'s run-time split as before; `sscanf` is `c_runtime/scanf`, one CRT `sscanf`
+  per directive (`crt::sscanf_one`, `crt::sscanf_none`); an `l` directive of either family takes
+  the dialect's `long` width (`c_long_bits`, set by the converted module), never the host CRT's;
+  `va_list` is an opaque C-IR record (F39). gcc-torture: 27 of the 67 `va_start` tests pass
+  (none before), and 20030914-2, a variadic definition reading no argument (652 to 680);
+  c-testsuite holds at 192.
+  Upstream (daScript): a failed module-cache write fails the compile, and the serializer
+  refuses a same-module call macro inside a generic body, so a cold run of a `[variadic]` body
+  calling its module's own macro exits 1 before `main` (F37); the converter spells the call as
+  the macro expands it instead.
+  Ledger (fail closed today): `va_arg` of a record and a record passed through `...`, for
+  which `CVal` gains a bytes arm (gcc-torture 920625-1, 920908-1, 931004-2, -4, -6, -8, -10,
+  -12, -14, pr44575, strct-stdarg-1, strct-varg-1); a `va_list` global, field, array or pointer
+  (stdarg-1, stdarg-2, stdarg-3, va-arg-13, va-arg-14, va-arg-trap-1); `va_arg` of a `va_list`
+  and a `va_list` passed through `...`; a pointer to a variadic function, which the tuple ABI
+  gives no function-value form;
+  `fprintf` and `vfprintf` to any stream, since `crt` writes stdout alone (vfprintf-1), and the
+  stream scanf family (`scanf`, `fscanf`); a wide `%lc`/`%ls` under a dialect whose `wchar_t` is
+  not the host's. Waiting on other rows: va-arg-9 and va-arg-10 (P4.6, a `let` pointer into a
+  `var` parameter), va-arg-4 (a `char[N]` member initialized from a string literal), 20041113-1
+  (`main` with arguments), multi-ix (forty `int[500]` locals overflow the default context
+  stack, which only a sidecar's `stack` raises). Outside the dialect: GNU nested functions
+  (nest-stdar-1) and GCC's `__builtin_va_arg_pack` and `__builtin_apply`, which clang does not
+  know (va-arg-pack-1, pr47237; `filter.das` phase `never`).
 - **P4.5 csmith differential.** Nightly N=1000 seeds vs `gcc -O0 -fwrapv`; any
   divergence is a converter bug by construction; creduce harness for minimization.
   Ledger: an address one past an array's end formed by indexing (`&a[N]`, gcc-torture

@@ -119,7 +119,23 @@ an `IndirectGotoStmt` (a computed goto through a label address) is outside the d
 Every type spelling that carries `__jmp_buf_tag` (glibc's `jmp_buf`, `struct
 __jmp_buf_tag[1]`; its decay and a pointer to it, `struct __jmp_buf_tag *`; a pointer to the
 array, `(*)[1]`) is the one opaque record `jmp_buf` of one `int` field, or a pointer to it,
-which the lowering spells as the protocol's `CJmpBuf`. A `__builtin_*` reference has no
+which the lowering spells as the protocol's `CJmpBuf`. A `va_list` is known by its declaration, since
+msvc's desugaring to `char *` loses it and a program's own `typedef char *va_list` desugars
+alike: a typedef is one when its chain of typedefs reaches clang's implicit `__builtin_va_list`
+declaration, which the `va_list` and `__gnuc_va_list` of clang's `stdarg.h` do. The JSON walk
+follows a node type's `typeAliasDeclId` to the typedef declarations that reach it (collected
+in tree order before the walk); the libclang pass follows a typedef's and a record field's
+declared type through `clang_getTypeDeclaration`, so a field of a pointer to a `va_list` fails
+closed. Under `linux` the spellings `struct __va_list_tag[1]` and `struct __va_list_tag *` are
+one too, the decayed parameter having lost its alias. A spelling with no declaration beside it
+(a function type's parameters, `va_list *`) is read by its words: a typedef name every typedef
+of that name reaching the builtin is a `va_list`, a name some typedefs give a `va_list` and
+others another type fails closed, and `struct va_list` is a C record. Such a spelling is the
+opaque record `va_list` of `ARCHITECTURE.md` section 2 (`struct __va_list_tag[1]`, a name, and
+msvc's builtins' `__builtin_va_list &`), linux's `struct __va_list_tag *` a pointer to it; a
+function type naming one among its parameters parses as usual, a pointer to one or an array of
+them (`va_list *`, `va_list[2]`) fails closed, and so does a spelling the dumper does not know.
+A `VAArgExpr` is the `va_arg` node. A `__builtin_*` reference has no
 prototype in the dump (`<builtin fn type>`), so it is a variadic function type read only
 through its decay, which clang spells `BuiltinFnToFnPtr` and the dumper as the pinned
 `FunctionToPointerDecay` (F23); the emitter resolves the callee by name. Anything else is an

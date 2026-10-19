@@ -1,6 +1,9 @@
 options gen2
 require dastest/testing_boost public
 require daslib/apply
+require _daslang_child
+require strings
+require daslib/fio
 
 enum Kind {
     KA
@@ -64,6 +67,32 @@ def field_names_var(var va : auto) : string {
     return s
 }
 
+// the cursor shape of a C `va_list`: the address of a list and a position
+struct Cursor {
+    list : CVaList const?
+    at : int
+}
+
+def begin(va : CVaList) : Cursor => Cursor(list = unsafe(addr(va)), at = 0)
+
+def pop_i(var c : Cursor) : int64 {
+    let v = deref(c.list)[c.at] as i
+    c.at++
+    return v
+}
+
+def pops_two(var c : Cursor) : int64 => pop_i(c) + pop_i(c)
+
+def nine(a : int) : int => a + 9
+
+def as_void(f : auto) : void? {
+    static_if (typeinfo is_function(f)) {
+        return unsafe(reinterpret<void?>(f))
+    } else {
+        return null
+    }
+}
+
 [test]
 def test_variadics(t : T?) {
     t |> run("a tuple literal instantiates the generic per shape and the CVaList pops in order") @(t : T?) {
@@ -89,5 +118,53 @@ def test_variadics(t : T?) {
         t |> equal(field_names_var(tup), "float;int;")
         let _one = (7,)
         t |> equal(typeinfo typename(_one), "tuple<int> const")
+    }
+    t |> run("a cursor: addr of a let array is a const pointer, a typed pop reads through deref, a var parameter is the caller's cursor, assignment copies it") @(t : T?) {
+        let lst <- [CVal(i = 10l), CVal(i = 20l), CVal(i = 30l)]
+        var c = begin(lst)
+        t |> equal(typeinfo typename(c.list), "array<variant<i:int64;d:double;p:void?>> const?")
+        var copy = c
+        t |> equal(pops_two(c), 30l)
+        t |> equal(c.at, 2)
+        t |> equal(copy.at, 0)
+        t |> equal(pop_i(copy), 10l)
+        t |> equal(pop_i(c), 30l)
+    }
+    t |> run("as on the wrong variant arm panics") @(t : T?) {
+        let v = CVal(d = 1.5lf)
+        var caught = false
+        try {
+            let n = v as i
+            t |> equal(n, 0l)
+        } recover {
+            caught = true
+        }
+        t |> equal(caught, true)
+    }
+    t |> run("is_function folds in static_if and a function value round-trips through void?") @(t : T?) {
+        let p = as_void(@@nine)
+        t |> equal(as_void(3) == null, true)
+        let f = unsafe(reinterpret<function<(a : int) : int>>(p))
+        t |> equal(invoke(f, 1), 10)
+    }
+    t |> run("is_pointer does not take a function value, so a to_cvalist without an is_function arm fails to instantiate on one") @(t : T?) {
+        t |> equal(typeinfo is_pointer(@@nine), false)
+        let src = "options gen2\nrequire daslib/apply\nvariant CVal \{\n    i : int64\n    p : void?\n\}\ndef to_list(va : auto) : array<CVal> \{\n    var lst : array<CVal>\n    apply(va) $(name, field) \{\n        static_if (typeinfo is_pointer(field)) \{\n            lst |> push(CVal(p = unsafe(reinterpret<void?>(field))))\n        \} else \{\n            lst |> push(CVal(i = int64(field)))\n        \}\n    \}\n    return <- lst\n\}\ndef nine(a : int) : int => a + 9\n[export]\ndef main \{\n    let lst <- to_list((@@nine, 1))\n\}\n"
+        child_rejects(t, "cvalist_function", daslang_child("cvalist_function", src, true), "no matching functions or generics: int64")
+    }
+    t |> run("a module cache write refuses a same-module [variadic] call macro inside a generic body; the macro's own `va spelling writes cold") @(t : T?) {
+        let head = "options gen2\nrequire c_runtime/variadic\n[variadic]\ndef inner(n : int; va : va_args) : int \{\n    var v = va_begin(va)\n    return n + int(va_i(v))\n\}\n[variadic]\ndef outer(n : int; va : va_args) : int \{\n    return "
+        let tail = "\n\}\n[export]\ndef main \{\n    print(\"outer=\{outer`va(1, VaNone())\}\\n\")\n\}\n"
+        let cache = "{temp_directory_result() as value}/c2das_probe_cold_cache"
+        remove(cache)
+        let by_macro = runtime_child_flags("cold_cache_macro", "{head}inner(n, 5){tail}", ["-module-cache", cache])
+        remove(cache)
+        t |> equal(by_macro.rc, 1, by_macro.out)
+        t |> equal(by_macro.out |> find("did not expect to find macro from the current module") >= 0, true, by_macro.out)
+        t |> equal(by_macro.out |> find("outer=6") < 0, true, by_macro.out)
+        let spelled = runtime_child_flags("cold_cache_spelled", "{head}inner`va(n, (5,)){tail}", ["-module-cache", cache])
+        remove(cache)
+        t |> equal(spelled.rc, 0, spelled.out)
+        t |> equal(spelled.out |> find("outer=6") >= 0, true, spelled.out)
     }
 }

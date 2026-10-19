@@ -36,19 +36,49 @@ as-if-converted fixture test landing first.
   to the body, renames the function `<name>`va`, and registers into the compiling module a
   call macro under the C name that tuples every argument past the fixed ones (`VaNone()` when
   there are none). `Program::makeCall` searches every module of the program for a call
-  macro, so a requirer's call sites are intercepted too. The registration goes through
-  `compiling_module()`, never `this_module()`, which is unreachable once the macro module
-  has compiled.
+  macro, so a requirer's call sites are intercepted too; a call the parser meets before the
+  definition has no macro yet and does not resolve (`docs/probe-findings.md` F37). The
+  registration goes through `compiling_module()`, never `this_module()`, which is unreachable
+  once the macro module has compiled. A function value travels as `void?` like a pointer. A C
+  `va_list` is `CVaCursor`, the address of the function's list and the position of the next
+  argument (F35): `va_begin(va)` starts one, `va_i`, `va_d` and `va_p` pop an `int64`, a
+  `double` and a `void?`, assignment copies one (`va_copy`), and `va_rest(v)` is the list from
+  the cursor on, which a `CVaList` callee takes (F36). A `var CVaCursor` parameter is the
+  caller's cursor. An integer pop reads a pointer's bits and a pointer pop reads an integer
+  zero as null, as one x86-64 register carries either; any other class, a pop past the
+  arguments passed and a pop of a cursor no `va_begin` started panic, each message naming the
+  trailing argument by its index from 0 and the class found.
 - `c_runtime/printf.das` - the printf family over a `CVaList`: `c_vformat` splits the C
-  format at its directives, resolves `*` widths and precisions from the list, and renders
-  each directive through the one `crt::snprintf_*` matching its conversion and length
-  modifier (`l` is wide only where `crt::LONG_BITS` is 64, so the CRT sees its own `long`),
-  retrying into a CRT buffer when the 512-byte scratch is short; `c_vsnprintf` and
+  format at its directives, pops through a `CVaCursor`, resolves `*` widths and precisions
+  from the list, and renders each directive through the one `crt::snprintf_*` matching its
+  conversion and length modifier, retrying from the same argument into a CRT buffer when the
+  512-byte scratch is short. `c_long_bits` is the dialect's `long` width (the host CRT's until
+  a converted module's `[init]` sets it), and `c_dialect_spec` hands the CRT a directive with
+  no `long` left in it: an integer `l` becomes nothing (32) or `ll` (64), an integer `L` `ll`
+  (glibc reads it so), a floating `L` `l`, since the dialect's `long double` is a `double`; a
+  wide `%lc`, `%ls` or `%l[` panics where the dialect's `wchar_t` is not the host's, which is
+  where the two `long`s differ; `c_vsnprintf` and
   `c_vprintf` (bytes through `crt::fwrite_stdout`, so they order with every other CRT write)
-  are the fronts, and `printf`, `sprintf`, `snprintf` are `[variadic]` over them. An
+  are the fronts with `c_vsprintf` (`c_vsnprintf` with no bound), and `printf`, `sprintf`,
+  `snprintf` are `[variadic]` over them. The directive parser, `c_parse_directive` and its
+  `CFormatDirective`, serves the scanf family too: a `*` before the width (a scanf
+  suppression, parsed in scanf mode, where a printf `*` takes the width's place) and a scanf
+  set running to its `]` parse alike. An
   argument of the wrong class for its directive panics, which is the C undefined behavior
   made visible; a null format renders nothing. The bytes are the CRT's by construction,
   which `tests/test_printf.das` proves against a native battery compiled by the pinned clang.
+- `c_runtime/scanf.das` - the scanf family over a `CVaList`: `c_vsscanf` walks the C format,
+  matching its whitespace (any run of input whitespace) and its ordinary characters in das,
+  and hands every other directive with a trailing `%n` (after `c_dialect_spec`) to `crt::sscanf_one` (the C program's
+  out-pointer passed as it is, so the CRT writes at the width the directive names) or, for a
+  directive that assigns nothing (`%*d`, `%%`), to `crt::sscanf_none`, moving on by the bytes
+  the `%n` reports; `%n` itself stores the count at the dialect's width its length modifier
+  names, in das. A directive C's scanf does not define (glibc's `%m`, `%q`, `%1$d`, a `%` ending
+  the format) panics before it takes an argument. The scan stops at the first directive that
+  does not match and returns the assignments made, or `C_EOF` when the input ends before the
+  first; an out-argument that is no pointer panics. `sscanf` is the `[variadic]` front; a
+  stream scanf is not here. The behavior is the CRT's by construction, which
+  `tests/test_scanf.das` proves against a native battery.
 - `c_runtime/setjmp.das` - the setjmp/longjmp protocol over das's own unwinding
   (`docs/lowering-examples.md` "setjmp / longjmp"): `CJmpBuf` holds the longjmp value,
   `c_jmp_target` the buffer a longjmp in flight targets, and `c_longjmp(buf, v)` records both
@@ -124,4 +154,8 @@ the same way `dasCRuntime/` is loaded.
 
 ## 3. Exception ledger
 
-Empty.
+- `REVIEW.md`, the GC rule: `printf.das` and `scanf.das` build each directive's format text as
+  a das string (`resolve_stars`, `c_dialect_spec`, `crt_piece`) and pass its bytes to one CRT
+  call. The string is the runtime's transient argument to that call, never C data the program
+  addresses or keeps, and it dies with the call; the rendered and scanned bytes themselves
+  stay in the program's own buffers or in `c_vformat`'s result array.

@@ -97,6 +97,8 @@ public:
         addExtern<DAS_BIND_FUN(c_snprintf_double)>(*this, lib, "snprintf_double", SideEffects::modifyExternal, "crt::c_snprintf_double")->args({"buf", "size", "fmt", "v"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_snprintf_str)>(*this, lib, "snprintf_str", SideEffects::modifyExternal, "crt::c_snprintf_str")->args({"buf", "size", "fmt", "v"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_snprintf_ptr)>(*this, lib, "snprintf_ptr", SideEffects::modifyExternal, "crt::c_snprintf_ptr")->args({"buf", "size", "fmt", "v"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_sscanf_one)>(*this, lib, "sscanf_one", SideEffects::modifyExternal, "crt::c_sscanf_one")->args({"src", "fmt", "out", "consumed"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_sscanf_none)>(*this, lib, "sscanf_none", SideEffects::modifyExternal, "crt::c_sscanf_none")->args({"src", "fmt", "consumed"})->unsafeOperation = true;
     }
     virtual ModuleAotType aotRequire(TextWriter & tw) const override {
         tw << "#include \"dasCRuntime.h\"\n";

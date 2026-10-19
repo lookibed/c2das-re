@@ -347,7 +347,7 @@ pr46309	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr46316	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr46909-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr46909-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr47237	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+pr47237	GNU argument forwarding builtins	`__builtin_va_arg_pack` and `__builtin_apply` are GCC builtins clang does not know (`use of unknown builtin`)	never
 pr47299	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr47538	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr47925	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
@@ -601,7 +601,7 @@ user-printf	__attribute__	an attribute reaches the dialect through the sidecar (
 usmul	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 va-arg-21	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 va-arg-22	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
-va-arg-pack-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
+va-arg-pack-1	GNU argument forwarding builtins	`__builtin_va_arg_pack` and `__builtin_apply` are GCC builtins clang does not know (`use of unknown builtin`)	never
 vfprintf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 vprintf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 vrp-7	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4

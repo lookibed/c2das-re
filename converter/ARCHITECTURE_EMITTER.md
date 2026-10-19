@@ -20,8 +20,10 @@ annotation covers a global), then `[init] def private c2das_init_globals`, then 
 das orders global initialization, so an initializer stays inline only while every global whose
 address it takes has an explicit initializer and precedes it (`probes/test_globals.das`); an
 address of a zero-initialized or later global moves the whole initializer into
-`c2das_init_globals` as an assignment, which also holds the stores of a sparsely filled array
-(`docs/lowering-examples.md` "Globals & initializers"). A function's value (`@@f`, from a decay
+`c2das_init_globals` as an assignment, which also holds the stores of a sparsely filled
+array (`docs/lowering-examples.md` "Globals & initializers"). A module reaching the printf or
+the scanf family puts `[init] def private c2das_dialect` (`c_long_bits`, the dialect's `long`
+width) before every other `[init]`, so no initializer that formats runs ahead of it. A function's value (`@@f`, from a decay
 or from `&f`; C `main` is `@@c_main`) and a literal's address need no order. A null function
 pointer is `default<function<...>>`, since das takes no `null` for a function value
 (`probes/test_globals.das`). A function is `def name(p : T; ...) : ret` with `private` for a C
@@ -101,10 +103,15 @@ is `cstr_array("...", N)`, the empty literal included. A literal indexed in plac
 (`"abcdef"[2]`) is read through its pointer, `deref(p + i)`; a literal under `sizeof` is its
 array type. A call to a libc function the C program declares resolves through two tables:
 `C_RUNTIME_CALLS`, the functions a `c_runtime` piece lowers (`printf`, `sprintf`, `snprintf`,
-`exit`, `abort`, `qsort`, `bsearch`) by the module that holds the piece, and `CRT_CALLS`, the functions the `crt`
-module binds under their C names (the memory, string.h, ctype, conversion, time and random
-families of `dasCRuntime/ARCHITECTURE.md`), spelled `crt::name`; a function in neither fails
-closed. A `size_t` result is `uint64`, so an index or a count it feeds carries the cast C gives
+`vprintf`, `vsprintf`, `vsnprintf`, `sscanf`, `vsscanf`, `exit`, `abort`, `qsort`, `bsearch`),
+one row each naming the module that holds the piece, the das name and the pointer argument the
+piece writes through (the buffer of `sprintf`, `snprintf`, `vsprintf`, `vsnprintf`), which its
+das spelling takes `var`, so the caller's pointer there is planned like a `var` parameter's (a
+`let` pointer reaching it fails closed, F3), and `CRT_CALLS`, the functions the `crt` module
+binds under their C names (the memory, string.h, ctype, conversion, time and random families of
+`dasCRuntime/ARCHITECTURE.md`), spelled `crt::name`, which take every pointer `let` (`strcpy`'s,
+`memcpy`'s and `memset`'s destination included), since a C++ binding's parameter carries no das
+constness; a function in neither fails closed. A `size_t` result is `uint64`, so an index or a count it feeds carries the cast C gives
 it. Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
 cast, `IntegralToBoolean` is `x != 0` (`!= null` for a pointer), `BooleanToSignedIntegral` is
 `b ? 1 : 0`, a comparison or `!` is spelled as the das bool it is and becomes `? 1 : 0` only
@@ -203,5 +210,5 @@ Output is assembled as an array of lines joined once (`docs/probe-findings.md` F
 text then goes through the formatter, so spacing is the formatter's and indentation is the
 emitter's, four spaces per depth.
 
-The aggregates and function pointers (bitfields, unions, function pointers) are in
-`ARCHITECTURE_EMITTER_AGGREGATES.md`.
+The aggregates, function pointers and variadics (bitfields, unions, function pointers,
+`[variadic]` definitions and the `va_list` cursor) are in `ARCHITECTURE_EMITTER_AGGREGATES.md`.

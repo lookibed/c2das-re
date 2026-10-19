@@ -120,8 +120,7 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
     }
     if (tier == "jit") {
         var cmd <- daslang_cmd(module_dirs)
-        cmd |> push("-jit")
-        cmd |> push(das_path)
+        cmd |> push_from(["-jit", das_path])
         return run(cmd, output, timeout)
     }
     if (tier == "exe") {

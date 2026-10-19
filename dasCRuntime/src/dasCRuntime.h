@@ -107,6 +107,9 @@ inline int32_t c_snprintf_uint64(uint8_t * buf, uint64_t size, const uint8_t * f
 inline int32_t c_snprintf_double(uint8_t * buf, uint64_t size, const uint8_t * fmt, double v) { return ::snprintf((char *) buf, size_t(size), (const char *) fmt, v); }
 inline int32_t c_snprintf_str(uint8_t * buf, uint64_t size, const uint8_t * fmt, const uint8_t * v) { return ::snprintf((char *) buf, size_t(size), (const char *) fmt, (const char *) v); }
 inline int32_t c_snprintf_ptr(uint8_t * buf, uint64_t size, const uint8_t * fmt, const void * v) { return ::snprintf((char *) buf, size_t(size), (const char *) fmt, v); }
+//! sscanf, one directive and a trailing `%n` per call, the out-pointer passed as the program gave it.
+inline int32_t c_sscanf_one(const uint8_t * src, const uint8_t * fmt, void * out, int32_t * consumed) { return ::sscanf((const char *) src, (const char *) fmt, out, consumed); }
+inline int32_t c_sscanf_none(const uint8_t * src, const uint8_t * fmt, int32_t * consumed) { return ::sscanf((const char *) src, (const char *) fmt, consumed); }
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif

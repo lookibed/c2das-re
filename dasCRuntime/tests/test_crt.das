@@ -201,3 +201,30 @@ def test_crt_snprintf(t : T?) {
         }
     }
 }
+
+[test]
+def test_crt_sscanf(t : T?) {
+    t |> run("sscanf reads one directive per call through the C out-pointer, %n giving the bytes consumed") @(t : T?) {
+        unsafe {
+            var n = 0
+            var consumed = -1
+            t |> equal(crt::sscanf_one(cstr("  -42xyz"), cstr("%d%n"), addr<void?>(n), addr(consumed)), 1)
+            t |> equal(n, -42)
+            t |> equal(consumed, 5)
+            var d = 0.0lf
+            consumed = -1
+            t |> equal(crt::sscanf_one(cstr("2.5e1"), cstr("%lf%n"), addr<void?>(d), addr(consumed)), 1)
+            t |> equal(d, 25.0lf)
+            t |> equal(consumed, 5)
+            consumed = -1
+            t |> equal(crt::sscanf_one(cstr("abc"), cstr("%d%n"), addr<void?>(n), addr(consumed)), 0)
+            t |> equal(consumed, -1)
+            // das's "" is a null pointer (docs/probe-findings.md F10): the empty input is a NUL byte
+            var nul : uint8[1]
+            t |> equal(crt::sscanf_one(addr(nul[0]), cstr("%d%n"), addr<void?>(n), addr(consumed)), -1)
+            consumed = -1
+            t |> equal(crt::sscanf_none(cstr(" 77 rest"), cstr("%*d%n"), addr(consumed)), 0)
+            t |> equal(consumed, 3)
+        }
+    }
+}
