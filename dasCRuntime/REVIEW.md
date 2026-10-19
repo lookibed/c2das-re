@@ -21,4 +21,4 @@ checks the name appears there, is a defect.**
 
 **A diff that changes a compile flag or define in `CMakeLists.txt` that the daScript headers
 read - RTTI, `DAS_FUSION`, `DAS_ENABLE_DYN_INCLUDES`, `SIZE_OF_VOID_P` - updates
-`VERSIONS.md` in the same change.**
+`VERSIONS.md` (repo root) in the same change.**
