@@ -276,6 +276,10 @@ def main : int {
     if (parsed >= 0) {
         return parsed
     }
+    if (args.show_help) {
+        print_help(get_command_info(type<Args>), "run_perf")
+        return 0
+    }
     var baseline_name, error : string
     let baseline = baseline_capture(args.baseline, RESULTS, baseline_name, error)
     if (!empty(error)) {

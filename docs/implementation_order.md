@@ -286,11 +286,9 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   turns the second recursive call into a loop and unrolls levels, so the cell is a real time
   of a cheaper program than clang's `-O3` native build, not a kernel time; decide whether the
   AOT host compiles with the pinned clang at the native lane's flags so the two lanes
-  compare, and record the decision in `perf/ARCHITECTURE.md`. One more cell for the same
-  look: the `exe` lane on `fib_recursive` is 12.8 percent slower than the P2.3 tree on the
-  same CPU while its converted kernel and the JIT cell are unchanged; the gap follows the
-  module folders (`c_runtime/`, `dasCRuntime/`) the executable links, which grew since
-  P2.3, so the mechanism (code layout is the candidate) is open.
+  compare, and record the decision in `perf/ARCHITECTURE.md`. The `exe` cell of
+  `fib_recursive` (12.8 percent slower than the P2.3 tree on the same CPU with the converted
+  kernel unchanged) is carried to P7.3.
 - **P4.5c Readability metric.** `metrics/readability.das` (run by
   `scripts/run_readability.sh`) converts the suites' tests and the perf kernels and counts,
   per converted module and in total: `[c_function]` functions, `unsafe` blocks and
@@ -374,7 +372,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   after demo-sync green, re-verify sync after enabling.
 - **P7.2 Profile** the renderer inner loops (R_DrawColumn/R_DrawSpan expected); apply
   O4/O5/O6 only where the profile demands.
-- **P7.3 JIT + AOT lanes** green across suites, Lua, Doom; timedemo columns filled.
+- **P7.3 JIT + AOT lanes** green across suites, Lua, Doom; timedemo columns filled. Two
+  perf cells carried here from P4.5b: the `exe` lane on `fib_recursive` runs the JIT's own
+  LLVM code 5.7 percent slower than the JIT and 12.8 percent slower than the P2.3 tree's
+  executable on the same CPU (the binary grew with `c_runtime/` and `dasCRuntime/`; layout is
+  the candidate, the executable carries no symbols to check it); and the AOT cells of `sieve`
+  and `matmul` (5.4x and 1.4x native) wait for daScript to address a module global by offset
+  instead of a hash probe per access (lookibed/daScript#5, F49).
 - **P7.4 The bar:** interp ≥ 35 fps at 320×200 (30 accepted floor). Then the writeup.
 - **Exit criterion:** the §2 metric sentence of the plan is true, all four columns
   published.

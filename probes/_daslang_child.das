@@ -17,6 +17,12 @@ let RUNTIME_MODULES = fixed_array("dasCRuntime", "c_runtime")
 //! The exit code and output of `daslang -load_module <m>... <flags> <source>`; the source is
 //! written to a temporary file named after `prefix` and `name`.
 def daslang_run(name, source : string; flags : array<string>; modules : array<string>; prefix : string) : tuple<rc : int; out : string> {
+    let no_args : array<string>
+    return daslang_run(name, source, flags, modules, prefix, no_args)
+}
+
+//! The same with `args` after the source path (`utils/aot/main.das -- -ctx <in> <out>`).
+def daslang_run(name, source : string; flags : array<string>; modules : array<string>; prefix : string; args_after : array<string>) : tuple<rc : int; out : string> {
     let path = "{temp_directory_result() as value}/{prefix}_{name}.das"
     fopen(path, "wb") $(f) {
         fwrite(f, source)
@@ -29,13 +35,14 @@ def daslang_run(name, source : string; flags : array<string>; modules : array<st
         set_env_variable("DAS_LOG_LEVEL", "info")
     }
     var args <- [get_das_root() + "/bin/daslang"]
-    args |> reserve(2 + 2 * length(modules) + length(flags))
+    args |> reserve(2 + 2 * length(modules) + length(flags) + length(args_after))
     for (m in modules) {
         args |> push("-load_module")
         args |> push(m)
     }
     args |> push_from(flags)
     args |> push(path)
+    args |> push_from(args_after)
     let rc = run_and_capture(args, out, 60.0)
     if (jit) {
         set_env_variable("DAS_LOG_LEVEL", level)

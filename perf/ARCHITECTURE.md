@@ -59,7 +59,15 @@ harness that times them under every lane, and the stored results.
 converted module with `-load_module` for `c_runtime` and `dasCRuntime`; `exe` is the
 JIT-linked executable; `aot` is the `-ctx` context compiled with the seven-line host of
 `converter/tiers.das`, which links `dasCRuntime/src/*.cpp` into the host because the
-generated context declares `Module_CRT` and includes its header. The kernels reach the CRT
+generated context declares `Module_CRT` and includes its header. The host compiles with the
+pinned clang's `clang++` at `-O3`, the native lane's compiler and level, so the two lanes
+differ only in the program: under the system GCC 14 at `-O2` the inliner's struct temporaries
+stay in memory, where a two-field store read back as one eight-byte load stalls on
+store-to-load forwarding (`fixed_mandel` 5.1 times native, 0.9 under clang), and GCC turns
+the second recursive call of `fib_recursive` into a loop, so the cell times a cheaper program
+than the kernel (0.01 times native, 0.9 under clang). `-funsigned-char` stays native-only:
+the C++ spells every byte type as `uint8_t` or `int8_t`, and the static runtime it links is
+built with the platform's `char`. The kernels reach the CRT
 clock through the converter's libc map (`clock` is `crt::clock`), so every lane times itself
 with the same clock.
 
@@ -67,29 +75,31 @@ with the same clock.
 
 The ratio table reads across machines where the times do not. The JIT and exe lanes sit
 within 8 percent of clang on `primes`, `fib_recursive` and `sieve`, and ahead of it on
-`fixed_mandel` and `matmul`. The JIT, exe and AOT lanes run `fib_loop` at 2.2 to 2.3 times
-native, and the JIT and exe lanes run `blit` at 9.4 and 10.7 times. Those rows are the
-machine's, not the tree's: the P2.3 tree on the same FX-6300 gives `fib_loop` 2.29, 2.30
-and 2.22 and `blit` 9.18 and 9.69.
+`fixed_mandel` and `matmul`; the AOT lane sits within 1 percent of clang on `blit` and
+`fib_loop` and ahead of it on `fib_recursive`, `fixed_mandel` and `primes`. The JIT and
+exe lanes run `fib_loop` at 2.3 times native and `blit` at 9.4 and 10.6 times. Those rows
+are the machine's, not the tree's: the P2.3 tree on the same FX-6300 gives `fib_loop` 2.29
+and 2.30 and `blit` 9.18 and 9.69.
 The interpreter lane is the loop shape the emitter writes, not the optimizer: the das
 profiler shows `primes` inlined into `c_main` with nothing else to charge, and the same
 module with its two loops rewritten by hand as `for (i in range(...))` runs 4 times faster
 under the interpreter, which is the gap to dasProfile's hand-written das on the same
 kernel; the `range` rewrite of a canonical `for` is the O1 row of
-`docs/implementation_order.md`. The AOT lane trails at 5 to 6.5 times native on
-`fixed_mandel`, `matmul` and `sieve`, the anomaly the P4.5b row owns; the generated C++
-spells every struct-returning call as a lambda building the value through `das_copy` into
-memset locals. The AOT `fib_recursive` cell is ledgered in section 4.
+`docs/implementation_order.md`. The AOT `sieve` and `matmul` cells are ledgered in
+section 4.
 
 ## 4. Exception ledger
 
-- `fib_recursive` / `aot`: the cell is a real time of a cheaper program, not of the kernel.
-  The host's GCC 14 at `-O2` turns the second recursive call of the converted kernel into a
-  loop and unrolls levels into a `.part.0` clone, so its work grows about 1.38 times per
-  depth level where native's grows by phi: 13.96, 51.1 and 186.6 us at depth 27, 31 and 35
-  against native's 1.23, 8.45 and 57.8 ms. `depth` is re-read on every call and nothing is
-  hoisted. The row is not comparable with the native or JIT cells; the P4.5b row of
-  `docs/implementation_order.md` owns it.
+- `sieve` and `matmul` / `aot`: 5.4 and 1.4 times native. The generated C++ finds a module
+  global through the context's mangled-name lookup at every access (`das_global<T, mnh>`),
+  and a C file-scope array is a module global. In `sieve` every iteration stores into the
+  array, and the host compiles with `-fno-strict-aliasing`, so any store may alias the
+  lookup table and clang keeps the probe inside the loop. `matmul`'s inner loop stores
+  nothing, yet the probes stay in it too: hoisting the three lookups by hand in the generated
+  C++ with the bounds checks kept takes the cell from 0.864 to 0.599 ms (native 0.600), while
+  keeping the lookups and indexing raw without the bounds check leaves it at 0.84 ms; the
+  lookup is the cost, the bounds check is not (`docs/probe-findings.md` F49,
+  lookibed/daScript#5).
 
 ## 5. Tracking
 

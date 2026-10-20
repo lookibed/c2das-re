@@ -6,6 +6,7 @@ require strings
 require daslib/strings_boost
 require daslib/fio
 require pipeline
+require dumper_a
 
 //! Runs a converted module under one execution tier and returns the process exit code:
 //! `interp` (the interpreter), `jit` (the LLVM JIT), `exe` (a native executable the JIT
@@ -77,6 +78,16 @@ def private native_module_sources(module_dirs : array<string>) : array<string> {
     return <- args
 }
 
+//! The AOT host's compile and link command: `host` and the context generated in `ctx_dir` for
+//! `das_path`, the module folders' native sources, the static runtime, out to `bin`.
+def aot_link_command(ctx_dir, das_path, host, bin : string; module_dirs : array<string>) : array<string> {
+    let root = get_das_root()
+    // clang++ -O3 like the native perf lane, so the two lanes differ only in the program (perf/ARCHITECTURE.md section 2)
+    var link <- [default_clang() + "++", "-std=gnu++17", "-O3", "-fno-rtti", "-fwrapv", "-fno-strict-aliasing", "-Wno-invalid-offsetof", "-DDAS_FUSION=2", "-DSIZE_OF_VOID_P=8", "-DDAS_NO_ASSERTIONS", "-DNDEBUG", "-I", "{ctx_dir}", "-I", root + "/include", "-I", root + "/3rdparty/fmt/include", "-I", root + "/build/include", "{host}", path_join(ctx_dir, base_name(das_path) + ".cpp")]
+    link |> push_from(native_module_sources(module_dirs), [root + "/lib/liblibDaScript.a", root + "/lib/liblibDaScript_runtime.a", root + "/lib/liblibUriParser.a", "-lpthread", "-ldl", "-o", "{bin}"])
+    return <- link
+}
+
 def private run_aot(das_path, work_dir : string; var output : string&; module_dirs : array<string>) : int {
     let ctx_dir = path_join(work_dir, "ctx")
     mkdir_rec(ctx_dir)
@@ -93,11 +104,8 @@ def private run_aot(das_path, work_dir : string; var output : string&; module_di
             fwrite(f, "#include \"{base_name(das_path)}.h\"\nint main() \{\n    {prefix}_ctx * ctx = {prefix}_create();\n    if (!ctx) return 125;\n    const int rc = {prefix}_main(ctx);\n    {prefix}_destroy(ctx);\n    return rc;\n\}\n")
         }
     }
-    let root = get_das_root()
     let bin = path_join(ctx_dir, prefix + "_aot")
-    var link <- ["c++", "-std=gnu++17", "-O2", "-fno-rtti", "-fwrapv", "-fno-strict-aliasing", "-Wno-invalid-offsetof", "-DDAS_FUSION=2", "-DSIZE_OF_VOID_P=8", "-DDAS_NO_ASSERTIONS", "-DNDEBUG", "-I", "{ctx_dir}", "-I", root + "/include", "-I", root + "/3rdparty/fmt/include", "-I", root + "/build/include", "{host}", path_join(ctx_dir, base_name(das_path) + ".cpp")]
-    link |> push_from(native_module_sources(module_dirs), [root + "/lib/liblibDaScript.a", root + "/lib/liblibDaScript_runtime.a", root + "/lib/liblibUriParser.a", "-lpthread", "-ldl", "-o", "{bin}"])
-    let crc = run(link, output)
+    let crc = run(aot_link_command(ctx_dir, das_path, host, bin, module_dirs), output)
     if (crc != 0) {
         return crc
     }

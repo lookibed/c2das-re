@@ -6,6 +6,8 @@ require daslib/sha_256
 require ../pipeline.das
 require ../emit.das
 require ../tiers.das
+require ../dumper_a.das
+require daslib/strings_boost
 
 let FIXTURE = "converter/tests/fixtures/ret42.c"
 let CIR_SHA = "0fc98ecbfd57f8acb5f340ca4b934f85c84b624ec962c1262aaf488bb92e9bca"
@@ -56,4 +58,15 @@ def test_pipeline_ret42(t : T?) {
         }
     }
     rmdir_rec(out)
+}
+
+[test]
+def test_aot_host_command(t : T?) {
+    t |> run("the AOT host compiles with the pinned clang++ at -O3, the native perf lane's compiler and level") @(t : T?) {
+        let dirs : array<string>
+        let cmd <- aot_link_command("ctx", "m.das", "ctx/host.cpp", "ctx/m_aot", dirs)
+        t |> equal(cmd[0], default_clang() + "++")
+        t |> success(cmd |> has_value("-O3"), join(cmd, " "))
+        t |> success(!(cmd |> has_value("-O2")), join(cmd, " "))
+    }
 }
