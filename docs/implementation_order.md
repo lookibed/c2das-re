@@ -232,10 +232,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   gives no function-value form;
   `fprintf` and `vfprintf` to any stream, since `crt` writes stdout alone (vfprintf-1), and the
   stream scanf family (`scanf`, `fscanf`); a wide `%lc`/`%ls` under a dialect whose `wchar_t` is
-  not the host's. Waiting on other rows: va-arg-9 and va-arg-10 (P4.6, a `let` pointer into a
-  `var` parameter), va-arg-4 (a `char[N]` member initialized from a string literal), 20041113-1
-  (`main` with arguments), multi-ix (forty `int[500]` locals overflow the default context
-  stack, which only a sidecar's `stack` raises). Outside the dialect: GNU nested functions
+  not the host's. Waiting on other rows: va-arg-4 (a `char[N]` member initialized from a string
+  literal), 20041113-1 (`main` with arguments); va-arg-9, va-arg-10 (a `let` pointer into a
+  `var` parameter) and multi-ix (forty `int[500]` locals past the 16 KiB default context stack)
+  passed with P4.6's uniform `var` policy and 8 MiB module stack. Outside the dialect: GNU nested functions
   (nest-stdar-1) and GCC's `__builtin_va_arg_pack` and `__builtin_apply`, which clang does not
   know (va-arg-pack-1, pr47237; `filter.das` phase `never`).
 - **P4.5 csmith differential.** Nightly N=1000 seeds vs `gcc -O0 -fwrapv`; any
