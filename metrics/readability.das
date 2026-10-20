@@ -177,7 +177,7 @@ def main : int {
     }
     let raised <- raised_metrics(committed, now)
     if (!empty(raised)) {
-        to_log(LOG_ERROR, "raised: {join(raised, " ")}; a commit that raises a total says which and why\n")
+        to_log(LOG_ERROR, "raised: {join(raised, " ")}; the commit that records a raise says each raised metric, the keys it rose in and why\n")
     }
     for (k in dropped) {
         to_log(LOG_ERROR, "dropped: {k} is in {CAPTURE} but no ratchet lists it now\n")

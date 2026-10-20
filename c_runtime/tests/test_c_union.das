@@ -51,7 +51,7 @@ struct Tagged {
     m : Mix
 }
 
-// a union read through a parameter the body never writes, which the converter leaves `let`
+// a union holding no pointer, read through a `let` parameter
 def first_byte(m : Mix) : int => int(m.bytes[0])
 
 def bits_of(v : Value) : int64 => v.i
@@ -63,13 +63,13 @@ def bump(var p : int?) {
 // `typedef union { handler_p1 h1; handler_v h0; handler_p2 h2; } handler_t;`
 [c_union]
 struct handler_t {
-    h1 : function<(a0 : void?) : void>
+    h1 : function<(var a0 : void?) : void>
     h0 : function<() : void>
-    h2 : function<(a0 : void?; a1 : void?) : void>
+    h2 : function<(var a0 : void?; var a1 : void?) : void>
 }
 
-// `void fire(int *ammo, int *tics)`, stored through `h1` and called through `h2`; its pointer
-// parameters are `var` (F3) while the union's member types spell none
+// `void fire(int *ammo, int *tics)`, stored through `h1` and called through `h2`: every pointer
+// position is `var` (F3), the members' over `void?`, so `fire` is stored through a reinterpret
 def fire(var ammo : int?; var tics : int?) {
     (*ammo)--
     *tics = 4
@@ -80,9 +80,9 @@ let FN_UNION_SOURCE = "options gen2
 require c_runtime/c_union
 [c_union]
 struct handler_t \{
-    h1 : function<(a0 : void?) : void>
+    h1 : function<(var a0 : void?) : void>
     h0 : function<() : void>
-    h2 : function<(a0 : void?; a1 : void?) : void>
+    h2 : function<(var a0 : void?; var a1 : void?) : void>
 \}
 def fire(var ammo : int?; var tics : int?) \{
     *ammo -= 1
@@ -94,7 +94,7 @@ def main \{
     var ammo = 5
     var tics = 0
     unsafe \{
-        u.h1 = reinterpret<function<(a0 : void?) : void>>(@@fire)
+        u.h1 = reinterpret<function<(var a0 : void?) : void>>(@@fire)
         invoke(u.h2, reinterpret<void?>(addr(ammo)), reinterpret<void?>(addr(tics)))
     \}
     print(\"\{typeinfo sizeof(u)\} \{ammo\} \{tics\} \{u.h0 != null\}\\n\")
@@ -197,11 +197,11 @@ def test_c_union_functions(t : T?) {
         var ammo = 5
         var tics = 0
         unsafe {
-            u.h1 = reinterpret<function<(a0 : void?) : void>>(@@fire)
+            u.h1 = reinterpret<function<(var a0 : void?) : void>>(@@fire)
             invoke(u.h2, addr<void?>(ammo), addr<void?>(tics))
             t |> equal(u.h0 == reinterpret<function<() : void>>(@@fire), true)
             u.h0 = reinterpret<function<() : void>>(uint64(-1))
-            t |> equal(u.h1 == reinterpret<function<(a0 : void?) : void>>(uint64(-1)), true)
+            t |> equal(u.h1 == reinterpret<function<(var a0 : void?) : void>>(uint64(-1)), true)
         }
         t |> equal(ammo, 4)
         t |> equal(tics, 4)

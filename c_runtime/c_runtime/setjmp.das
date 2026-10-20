@@ -16,8 +16,8 @@ struct CJmpBuf {
 //! The buffer a longjmp in flight targets; null when no longjmp is in flight.
 var c_jmp_target : CJmpBuf?
 
-//! C `longjmp(buf, v)`: never returns; a zero value arrives as 1, as C says. The buffer is
-//! written through, so a pointer parameter that reaches here is `var` (the converter's F3 rule).
+//! C `longjmp(buf, v)`: never returns; a zero value arrives as 1, as C says. Every converted
+//! pointer parameter is `var` (F3), so the buffer arrives writable.
 def c_longjmp(var buf : CJmpBuf?; v : int) {
     buf.val = v == 0 ? 1 : v
     c_jmp_target = buf

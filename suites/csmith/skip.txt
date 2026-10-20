@@ -5,7 +5,6 @@
 1060825193	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
 115991202	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 119343972	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
-127	a let pointer passed into a var pointer parameter	the uniform var pointer policy (implementation_order P4.6)	P4.6
 128025372	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
 128116041	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 165335526	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
@@ -43,7 +42,6 @@
 798831476	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
 827196574	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 846872037	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-86922302	a let pointer passed into a var pointer parameter	the uniform var pointer policy (implementation_order P4.6)	P4.6
 874389118	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 879712864	a record no bitfield unit assignment reproduces	das cannot lay the record out at clang's offsets under the linux dialect, F5 (implementation_order P4.7)	P4.7
 899659462	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3

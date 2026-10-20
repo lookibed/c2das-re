@@ -314,6 +314,26 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   The redesign folds the emitter's three pointer walks - `mark_copied_pointer` (what a copy
   reads), `const_pointer_root` (what a call passes) and `mark_store_root` (what a store writes
   through) - into one.
+  Landed: every data pointer parameter is `var`, and so is every by-value record parameter whose
+  type holds a data pointer in a field or an array; a record holding no pointer stays `let`
+  (`probes/test_param_constness.das`; F3, F46). A function type's positions follow the parameter
+  rule, so every function of a C type fits it and `c_runtime`'s `CCompare` takes `var` pointers,
+  a comparator arriving with no cast (F34, F33); a cast between two function pointer types that
+  spell one das type is no cast. Every record parameter is copied on entry, `let` and `var`
+  alike, which also fixes a by-value record reading the caller's object when the callee writes
+  it through another pointer during the call (`f(a, &a)` returned 5 where C returns 1, F50); a
+  scalar or pointer parameter the body writes is `var` and written in place, since das passes it
+  by value. Every converted module spells `options stack = 8388608`, C's linux default, unless
+  the sidecar sets `stack`, since das's 16 KiB default overflows on a record copy
+  (gcc-torture pr20621-1's 64 KiB record, a recursion of 4000-byte ones). A hoisted temporary
+  holding a pointer (an initializer list's item, an alloca's address) is `var`, and so is a
+  marshal-only record writer's parameter holding one. The three walks fold into one pass over
+  `each_expr` naming the scalar parameters the body writes; both refusals of a `let` pointer go,
+  the shapes they refused now `converter/tests/fixtures/p4_pointer_policy.c`. c-testsuite 193
+  to 194 (00181); gcc-torture 732 to 743 (990128-1, va-arg-9, va-arg-10, 20000314-3,
+  20020406-1, pr99751, and 980223, a written record parameter holding a pointer; 920410-1,
+  memcpy-1, multi-ix and nestfunc-4 under the 8 MiB stack); csmith seeds 127 and 86922302 leave
+  `skip.txt` and join the ratchet.
 - **P4.7 Layout leftovers.** Bitfield members of unions, named or padding (the P4.2 ledger), and
   records outside the layout law (F5, the P4.1 ledger). csmith generates both in about one seed
   in eight; their seeds are skipped under this row.

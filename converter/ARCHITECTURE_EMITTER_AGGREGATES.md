@@ -66,18 +66,17 @@ array (`char z[0]`, GNU) anywhere; and a union's list anywhere but an initialize
 A C function pointer is a das function value, 8 bytes like C's, so a record or union holding
 one keeps clang's layout. das types a parameter's constness into a function type
 (`probes/test_functions.das`), so one C pointer type has one spelling for every function
-stored in it: a position of a function type is `var` exactly where a function of this unit
-with that signature (the same C-IR type) whose value is taken (a decay that is no call's
-callee, or `&f`) is `var` there by the parameter rule of `ARCHITECTURE_EMITTER.md` section 4,
-and every value-taken function of the signature then declares `var` at all of those positions
-(`docs/probe-findings.md` F34); with no such function the type spells no `var`. A call into a
-library function (`c_qsort`'s comparator) passes such a value as
-`reinterpret<function<...>>(f)` to the type with no `var`, the library's spelling. A cast
-between two function pointer types is `reinterpret<function<...>>(f)`, whatever the two
+stored in it: a position of a function type is `var` exactly where a parameter of its type is
+by the parameter rule of `ARCHITECTURE_EMITTER.md` section 4 (a data pointer, a record holding
+one, a `va_list`), so every function of the signature fits it as it is
+(`docs/probe-findings.md` F34), `c_qsort`'s and `c_bsearch`'s comparator `CCompare` included. A
+cast between two function pointer types is `reinterpret<function<...>>(f)`, whatever the two
 signatures: C defines the cast and the cast back for every pair and leaves only a call through
 an incompatible type undefined, a das function value round-trips through any function type,
 and a call through one passes the arguments it is given to the function itself, under the
-interpreter and the JIT, as x86-64 C does, extra arguments ignored. An integer cast to a
+interpreter and the JIT, as x86-64 C does, extra arguments ignored. Two types that spell one
+das type (they differ in a pointee's `const` alone, which the emitter never spells) need no
+cast, and the value passes as it is. An integer cast to a
 function pointer is `reinterpret<function<...>>(uint64(n))`, which compares as C's does (a
 `(handler_v)(-1)` sentinel); calling it is C's crash. A null function pointer reads `null` in a
 comparison and is `default<function<...>>` as a value, an array's fill and a function's

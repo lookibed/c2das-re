@@ -51,13 +51,21 @@ def test_process(t : T?) {
         let skipped = daslang_child("finalize_exit", "options gen2\nrequire daslib/fio\n[finalize]\ndef shut \{\n    print(\"finalize ran\\n\")\n\}\n[export]\ndef main \{\n    unsafe \{\n        exit(3)\n    \}\n\}\n", false)
         t |> equal(skipped.out |> find("finalize ran") < 0, true)
     }
-    t |> run("options stack in the main module carries 128KB frames; without it the recursion overflows") @(t : T?) {
+    t |> run("options stack in the main module carries 128KB frames and a 1.2 MB record copy; without it the 16 KiB default overflows") @(t : T?) {
         let ok = daslang_child("stack", "options gen2\noptions stack = 400000\n" + recursion_arena, false)
         t |> equal(ok.rc, 0)
         t |> equal(ok.out, "rec=3\n")
         let overflow = daslang_child("nostack", "options gen2\n" + recursion_arena, false)
         t |> equal(overflow.rc != 0, true)
         t |> equal(overflow.out |> find("stack overflow") >= 0, true)
+        // the default context stack is 16 KiB: a record parameter's 20000-byte copy overflows it,
+        // and the converter's 8 MiB carries a 1.2 MB one
+        let copy = "struct Big \{\n    i : int[SIZE]\n\}\nvar g : Big\ndef rd(b_in : Big) : int \{\n    var b = b_in\n    return b.i[3]\n\}\n[export]\ndef main \{\n    g.i[3] = 7\n    print(\"\{rd(g)\}\\n\")\n\}\n"
+        let small_default = daslang_child("copy_default", "options gen2\n" + (copy |> replace("SIZE", "5000")), false)
+        t |> equal(small_default.out |> find("stack overflow") >= 0, true, small_default.out)
+        let big_raised = daslang_child("copy_raised", "options gen2\noptions stack = 8388608\n" + (copy |> replace("SIZE", "300000")), false)
+        t |> equal(big_raised.rc, 0, big_raised.out)
+        t |> equal(big_raised.out, "7\n")
     }
     t |> run("shapes the converter must never emit are compile errors") @(t : T?) {
         let control = daslang_child("ok", "options gen2\n[export]\ndef main \{\n    var a : int[3] = fixed_array(1, 2, 3)\n\}\n", true)

@@ -1,6 +1,6 @@
 #include <stdio.h>
-/* which pointer parameters a copy makes `var`: a pointer read out of one or an address into
-   one is copied, a non-pointer value read through one (`*s` of a `char *s`) is not */
+/* pointer parameters read, stepped and copied out: a pointer read out of one, an address into
+   one, a non-pointer value read through one (`*s` of a `char *s`), each passed on */
 struct S { int x; int y; };
 struct Q { int *p; int k; };
 static int sink(int c) { return c; }

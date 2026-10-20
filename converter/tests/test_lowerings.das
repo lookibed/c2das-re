@@ -120,11 +120,10 @@ def test_lowerings(t : T?) {
         t |> equal(text |> find("\} finally \{") >= 0, true, text)
         t |> equal(text |> find("} elif (") >= 0, true, text)
     }
-    t |> run("functions: callee copies of written parameters, statics, globals, exit") @(t : T?) {
+    t |> run("functions: written parameters in place, statics, globals, exit") @(t : T?) {
         var text : string
         check_fixture(t, "p1_functions", text)
-        t |> equal(text |> find("def twice(v_in : int) : int") >= 0, true, text)
-        t |> equal(text |> find("var v = v_in") >= 0, true, text)
+        has_text(t, text, "def twice(var v : int) : int \{\n    v = v * 2\n")
         t |> equal(text |> find("def private p1_functions__bump(") >= 0, true, text)
         t |> equal(text |> find("c_exit(42)") >= 0, true, text)
         t |> equal(text |> find("require c_runtime/c_exit") >= 0, true, text)
@@ -173,7 +172,7 @@ def p2_fixtures(t : T?) {
     t |> run("pointers: the blit shape, function values and invoke, pointer differences, the CRT memory functions, [c_function] only where unsafe") @(t : T?) {
         var text : string
         check_fixture(t, "p2_pointers", text)
-        t |> equal(text |> find("def private p2_pointers__blit(src_in : uint8?; var dst_in : uint8?; n_in : int)") >= 0, true, text)
+        t |> equal(text |> find("def private p2_pointers__blit(var src : uint8?; var dst : uint8?; var n : int)") >= 0, true, text)
         t |> equal(text |> find("deref(_t1) = deref(_t2)") >= 0, true, text)
         t |> equal(text |> find("f : function<(a0 : int) : int>") >= 0, true, text)
         t |> equal(text |> find("invoke(f, x) + invoke(f, 1)") >= 0, true, text)
@@ -209,6 +208,7 @@ def p2_fixtures(t : T?) {
     p4_fixtures(t)
     p4_union_fixtures(t)
     p4_function_fixtures(t)
+    p4_pointer_policy_fixtures(t)
     p4_varargs_fixtures(t)
 }
 
@@ -283,6 +283,9 @@ def p2_memory_fixtures(t : T?) {
         has_text(t, text, "struct disk_t \{\n    width : int16\n    ofs : int\n    tag : uint8\n\}")
         has_text(t, text, "def read_disk_t(bytes : uint8?; ofs : int) : disk_t \{\n    var r : disk_t\n    crt::memcpy(reinterpret<void?>(addr(r.width)), reinterpret<void?>(bytes + (ofs + 0)), uint64(2))")
         has_text(t, text, "def write_disk_t_ofs(bytes : uint8?; ofs : int; v : int)")
+        // a packed record holding a pointer is a `var` record parameter of its writer (F3)
+        has_text(t, text, "def write_pref_t(bytes : uint8?; ofs : int; var v : pref_t)")
+        has_text(t, text, "def write_pref_t_p(bytes : uint8?; ofs : int; var v : int?)")
         has_text(t, text, "typeinfo sizeof(type<natural_t>) == 8")
         t |> equal(text |> find("type<disk_t>") < 0, true, "disk_t carries a layout assertion:\n{text}")
         has_text(t, text, "var first : uint8? = reinterpret<uint8?>(addr(p2_marshal__lump[0]) + 2)")
@@ -348,13 +351,13 @@ def p3_fixtures(t : T?) {
     t |> run("alloca: the per-function arena with its guard, allocations accumulating to the function's exit, __builtin_ names through the shim list, options stack") @(t : T?) {
         var text : string
         check_fixture(t, "p3_alloca", text)
-        has_text(t, text, "options indenting = 4\noptions stack = 1048576\n")
+        has_text(t, text, "options indenting = 4\noptions stack = 8388608\n")
         has_text(t, text, "def private p3_alloca__variable(n : int) : int \{\n    var _c_astack : uint8[65536]\n    var _c_aoff = 0")
-        has_text(t, text, "if (_c_aoff + int(uint64(n)) > 65536) \{\n        panic(\"alloca past the function's 65536 byte arena\")\n    \}\n    let _t0 = reinterpret<void?>(addr(_c_astack[_c_aoff]))\n    _c_aoff += (int(uint64(n)) + 15) & ~15")
+        has_text(t, text, "if (_c_aoff + int(uint64(n)) > 65536) \{\n        panic(\"alloca past the function's 65536 byte arena\")\n    \}\n    var _t0 = reinterpret<void?>(addr(_c_astack[_c_aoff]))\n    _c_aoff += (int(uint64(n)) + 15) & ~15")
         has_text(t, text, "crt::memset(reinterpret<void?>(buf), 3, uint64(n))")
         has_text(t, text, "var slot : int? = reinterpret<int?>(_t0)")
         t |> equal(text |> find("__builtin_alloca") < 0, true, "a builtin name survived:\n{text}")
-        t |> equal(text |> find("def private p3_alloca__sum_bytes(p : uint8?; n : int) : int \{\n    var s : int = 0") >= 0, true, text)
+        t |> equal(text |> find("def private p3_alloca__sum_bytes(var p : uint8?; n : int) : int \{\n    var s : int = 0") >= 0, true, text)
     }
 }
 
@@ -502,27 +505,26 @@ def p4_function_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p4_fnptr", text)
         has_text(t, text, "require c_runtime/c_sort\n")
-        // a function type takes the `var` positions of the value-taken functions of its
-        // signature, each of which declares them; a library call takes the plain type
+        // every data pointer position of a function type is `var`, c_sort's comparator's too
         has_text(t, text, "def private p4_fnptr__cmp_int(var a : void?; var b : void?) : int")
         has_text(t, text, "def private p4_fnptr__cmp_desc(var a : void?; var b : void?) : int")
-        has_text(t, text, "c_qsort(reinterpret<void?>(addr(arr[0])), uint64(n), uint64(typeinfo sizeof(type<int>)), reinterpret<function<(a0 : void?; a1 : void?) : int>>(@@p4_fnptr__cmp_int))")
-        has_text(t, text, "reinterpret<int?>(c_bsearch(reinterpret<void?>(addr(key)), reinterpret<void?>(addr(arr[0])), uint64(n), uint64(typeinfo sizeof(type<int>)), reinterpret<function<(a0 : void?; a1 : void?) : int>>(@@p4_fnptr__cmp_int)))")
+        has_text(t, text, "c_qsort(reinterpret<void?>(addr(arr[0])), uint64(n), uint64(typeinfo sizeof(type<int>)), @@p4_fnptr__cmp_int)")
+        has_text(t, text, "reinterpret<int?>(c_bsearch(reinterpret<void?>(addr(key)), reinterpret<void?>(addr(arr[0])), uint64(n), uint64(typeinfo sizeof(type<int>)), @@p4_fnptr__cmp_int))")
         has_text(t, text, "def private p4_fnptr__apply_to(f : function<(var a0 : Counter?) : void>; var c : Counter?) \{")
         has_text(t, text, "def private p4_fnptr__twice(v : int) : int")
         has_text(t, text, "invoke(pc.step, pc)")
-        // a reading chain keeps every parameter `let`
-        has_text(t, text, "def private p4_fnptr__leaf(p : int?) : int")
-        has_text(t, text, "def private p4_fnptr__mid(p : int?; q : int?; c : int) : int \{\n    return p4_fnptr__leaf(c != 0 ? p : q)\n")
-        has_text(t, text, "def private p4_fnptr__field(s : Holder) : int")
-        // the callee copy takes a name the body leaves free
-        has_text(t, text, "def private p4_fnptr__put(var p_in1 : int?; p_in : int) \{\n    var p = p_in1\n")
-        has_text(t, text, "def private p4_fnptr__put_local(var q_in1 : int?) : int \{\n    var q = q_in1\n    var q_in : int = 4\n")
+        // a reading chain passes `var` pointers on; a record parameter is copied on entry
+        has_text(t, text, "def private p4_fnptr__leaf(var p : int?) : int")
+        has_text(t, text, "def private p4_fnptr__mid(var p : int?; var q : int?; c : int) : int \{\n    return p4_fnptr__leaf(c != 0 ? p : q)\n")
+        has_text(t, text, "def private p4_fnptr__field(var s_in : Holder) : int \{\n    var s = s_in\n")
+        // a stepped pointer parameter is written in place, whatever names the body spells
+        has_text(t, text, "def private p4_fnptr__put(var p : int?; p_in : int) \{\n    var _t0 = p\n")
+        has_text(t, text, "def private p4_fnptr__put_local(var q : int?) : int \{\n    var q_in : int = 4\n")
         has_text(t, text, "var erased : function<() : void> = reinterpret<function<() : void>>(@@p4_fnptr__add3)")
-        has_text(t, text, "[c_union]\nstruct handler_t \{\n    h1 : function<(a0 : void?) : void>\n    h0 : function<() : void>\n    h2 : function<(a0 : void?; a1 : void?) : void>\n\}")
+        has_text(t, text, "[c_union]\nstruct handler_t \{\n    h1 : function<(var a0 : void?) : void>\n    h0 : function<() : void>\n    h2 : function<(var a0 : void?; var a1 : void?) : void>\n\}")
         has_text(t, text, "[c_union]\nstruct Slots \{\n    fns : function<(var a0 : Counter?) : void>[2]\n")
         has_text(t, text, "static_assert(typeinfo offsetof < run > (type<task>) == 8")
-        has_text(t, text, "p4_fnptr__steps[0].action.h1 = unsafe(reinterpret<function<(a0 : void?) : void>>(@@p4_fnptr__gun_fire))")
+        has_text(t, text, "p4_fnptr__steps[0].action.h1 = unsafe(reinterpret<function<(var a0 : void?) : void>>(@@p4_fnptr__gun_fire))")
         has_text(t, text, "invoke(p4_fnptr__steps[s].action.h2, reinterpret<void?>(addr(gn)), reinterpret<void?>(addr(fr)))")
         has_text(t, text, "un.task.run.h0 = reinterpret<function<() : void>>(uint64(-1))")
         // a zero function pointer is `default<...>`, in an array's fill and a fall-off return
@@ -534,9 +536,10 @@ def p4_function_fixtures(t : T?) {
         has_text(t, text, "let _t0 = invoke(getter, 1)")
         has_text(t, text, "invoke(_t0, 5)")
         has_text(t, text, "if (un.task.run.h0 != null)")
-        // a function pointer parameter has no pointee: copied or reassigned, it stays `let`
+        // a function pointer parameter has no pointee: copied it stays `let`, reassigned it is
+        // `var` in place
         has_text(t, text, "def private p4_fnptr__call_copy(g : function<(a0 : int) : int>; v : int) : int")
-        has_text(t, text, "def private p4_fnptr__call_default(f_in : function<(a0 : int) : int>; v : int) : int \{\n    var f = f_in\n")
+        has_text(t, text, "def private p4_fnptr__call_default(var f : function<(a0 : int) : int>; v : int) : int \{\n    if (!(f != null)) \{\n")
     }
     t |> run("the library renames: `_longjmp` is `c_longjmp`") @(t : T?) {
         let text = converts(t, "underscore_longjmp", "#include <setjmp.h>\nstatic jmp_buf env;\nint main(void) \{ if (setjmp(env) == 0) \{ _longjmp(env, 1); \} return 0; \}\n")
@@ -547,15 +550,6 @@ def p4_function_fixtures(t : T?) {
         rejects(t, "external_function_address", "#include <string.h>\nint main(void) \{ int (*c)(const char *, const char *) = &strcmp; return c(\"a\", \"a\"); \}\n", "the value of external function `strcmp`")
         rejects(t, "variadic_function_pointer", "int main(void) \{ int (*f)(int, ...) = 0; return f == 0 ? 0 : 1; \}\n", "a pointer to a variadic function is not lowered yet")
         rejects(t, "unprototyped_call", "static int one(int v) \{ return v; \}\nint main(void) \{ int (*f)() = (int (*)()) one; return f(0); \}\n", "a call with 1 arguments through a function pointer whose type takes 0")
-        let gap = "a pointer the callee writes through arrives through const parameter"
-        rejects(t, "chain_direct", "static void deep(int *p) \{ *p = 1; \}\nstatic void leaf(int *p) \{ deep(p); \}\nint main(void) \{ int x = 0; leaf(&x); return x - 1; \}\n", "{gap} `p` of `leaf`")
-        rejects(t, "chain_ternary", "static void deep(int *p) \{ *p = 1; \}\nstatic void mid(int *p, int *q, int c) \{ deep(c ? p : q); \}\nint main(void) \{ int x = 0; mid(&x, &x, 1); return x - 1; \}\n", "{gap} `p` of `mid`")
-        rejects(t, "chain_field", "struct S \{ int *p; \};\nstatic void deep(int *p) \{ *p = 1; \}\nstatic void field(struct S s) \{ deep(s.p); \}\nint main(void) \{ int x = 0; struct S s = \{ &x \}; field(s); return x - 1; \}\n", "{gap} `s` of `field`")
-        rejects(t, "chain_arithmetic", "static void w(int *p) \{ *p = 1; \}\nstatic void f(int *p) \{ w(p + 1); \}\nint main(void) \{ int a[2] = \{ 0, 0 \}; f(a); return a[1] - 1; \}\n", "{gap} `p` of `f`")
-        rejects(t, "chain_deref", "static void w(int *p) \{ *p = 1; \}\nstatic void f(int **pp) \{ w(*pp); \}\nint main(void) \{ int x = 0; int *p = &x; f(&p); return x - 1; \}\n", "{gap} `pp` of `f`")
-        rejects(t, "chain_index", "static void w(int *p) \{ *p = 1; \}\nstatic void f(int **pp) \{ w(pp[0]); \}\nint main(void) \{ int x = 0; int *p = &x; f(&p); return x - 1; \}\n", "{gap} `pp` of `f`")
-        rejects(t, "chain_arrow", "struct S \{ int *q; \};\nstatic void w(int *p) \{ *p = 1; \}\nstatic void f(struct S *sp) \{ w(sp->q); \}\nint main(void) \{ int x = 0; struct S s = \{ &x \}; f(&s); return x - 1; \}\n", "{gap} `sp` of `f`")
-        rejects(t, "chain_invoke", "static void deep(int *p) \{ *p = 1; \}\nstatic void (*sink)(int *) = deep;\nstatic void leaf(int *p) \{ sink(p); \}\nint main(void) \{ int x = 0; leaf(&x); return x - 1; \}\n", "{gap} `p` of `leaf`")
     }
     t |> run("the dumper's libclang pass: a clang reporting no resource directory, and an error libclang meets") @(t : T?) {
         var fake_out : string
@@ -576,14 +570,42 @@ def p4_function_fixtures(t : T?) {
     }
 }
 
+def p4_pointer_policy_fixtures(t : T?) {
+    t |> run("pointer constness: every data pointer and pointer-holding record parameter is `var`, every record parameter copied on entry") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_pointer_policy", text)
+        // a pointer the function only reads is `var` and passes on to one that writes through it
+        has_text(t, text, "def private p4_pointer_policy__chain(var p : int?) \{\n    p4_pointer_policy__deep(p)\n")
+        has_text(t, text, "def private p4_pointer_policy__ident(var p : int?) : int? \{\n    return p\n")
+        has_text(t, text, "def private p4_pointer_policy__through(var pp : int ??)")
+        has_text(t, text, "def private p4_pointer_policy__arrow(var hp : H?)")
+        has_text(t, text, "var private p4_pointer_policy__sink : function<(var a0 : int?) : void> = @@p4_pointer_policy__deep")
+        // a record holding a pointer is `var`, one holding none `let`, and both are copied
+        has_text(t, text, "def private p4_pointer_policy__fld(var s_in : S) : int? \{\n    var s = s_in\n    return s.p\n")
+        has_text(t, text, "def private p4_pointer_policy__alias_plain(s_in : P; var q : P?) : int \{\n    var s = s_in\n")
+        has_text(t, text, "var private p4_pointer_policy__rec_sink : function<(var a0 : S) : void> = @@p4_pointer_policy__bump_rec")
+        // a record holding a pointer in an array field or a nested record is `var`, and the
+        // copy's parameter takes a name the body leaves free
+        has_text(t, text, "def private p4_pointer_policy__arr_field(var a_in : A) : int")
+        has_text(t, text, "def private p4_pointer_policy__nested(var n_in : N) : int")
+        has_text(t, text, "def private p4_pointer_policy__renamed(var s_in1 : S; s_in : int) : int \{\n    var s = s_in1\n")
+        // a cast between function pointer types that spell one das type is the value itself
+        has_text(t, text, "var same : function<(var a0 : int?) : int> = @@p4_pointer_policy__read_const\n")
+        has_text(t, text, "var other : function<(var a0 : uint8?) : int> = reinterpret<function<(var a0 : uint8?) : int>>(@@p4_pointer_policy__read_const)")
+        // a hoisted temporary holding a pointer is `var`
+        has_text(t, text, "var _t0 = p4_pointer_policy__next_pick(addr(a[0]))")
+        has_text(t, text, "var _t2 = reinterpret<void?>(addr(_c_astack[_c_aoff]))")
+    }
+}
+
 def p4_varargs_fixtures(t : T?) {
     t |> run("varargs: [variadic] definitions, the va_list cursor, va_copy, forwarding to the printf family, sscanf") @(t : T?) {
         var text : string
         check_fixture(t, "p4_varargs", text)
         has_text(t, text, "require c_runtime/variadic\n")
         has_text(t, text, "require c_runtime/scanf\n")
-        has_text(t, text, "[variadic]\ndef sum(n_in : int; va : va_args) : double \{")
-        has_text(t, text, "[c_function, variadic]\ndef private p4_varargs__mix(kinds : uint8?; va : va_args) : double \{\n    var ap : CVaCursor\n")
+        has_text(t, text, "[variadic]\ndef sum(var n : int; va : va_args) : double \{")
+        has_text(t, text, "[c_function, variadic]\ndef private p4_varargs__mix(var kinds : uint8?; va : va_args) : double \{\n    var ap : CVaCursor\n")
         has_text(t, text, "    ap = va_begin(va)\n")
         has_text(t, text, "acc += double(int(va_i(ap)))")
         has_text(t, text, "acc += va_d(ap)")
@@ -596,8 +618,8 @@ def p4_varargs_fixtures(t : T?) {
         has_text(t, text, "c_vprintf(fmt, va_rest(ap))")
         has_text(t, text, "n = c_vsnprintf(buf, size, fmt, va_rest(ap))")
         has_text(t, text, "n = c_vsprintf(buf, fmt, va_rest(ap))")
-        // the library writes through the buffer, so the parameter is `var` (F3)
-        has_text(t, text, "def private p4_varargs__bounded(var buf : uint8?; size : uint64; fmt : uint8?; va : va_args) : int")
+        // every data pointer parameter is `var` (F3)
+        has_text(t, text, "def private p4_varargs__bounded(var buf : uint8?; size : uint64; var fmt : uint8?; va : va_args) : int")
         has_text(t, text, "let _t0 = int(va_i(ap))")
         has_text(t, text, "ok = int(va_i(ap)) == 7 || int(va_i(ap)) == 8 ? 1 : 0")
         // `sizeof(va_list)` is clang's size: the cursor is never laid out
@@ -610,7 +632,6 @@ def p4_varargs_fixtures(t : T?) {
         has_text(t, text, "def private p4_varargs__relay(var ap : CVaCursor) : int \{\n    var mine : CVaCursor\n    mine = ap\n    ap = mine\n")
         // a pop is an effect: an initializer holding a union evaluates its items first
         has_text(t, text, "    let _t0 = int(va_i(ap))\n    let _t1 = int(va_i(ap))\n    var t : tagged = tagged(tag = _t0)\n    t.u.i = _t1\n")
-        // the printf family's buffer parameter is written through
         has_text(t, text, "def private p4_varargs__put_number(var buf : uint8?; v : int)")
         has_text(t, text, "n = c_vsscanf(src, fmt, va_rest(ap))")
         // a call of the module's own variadic is the macro's expansion, the library's keeps C's
@@ -743,8 +764,8 @@ def p4_csmith_fixtures(t : T?) {
         has_text(t, text, "def private p4_csmith_pointers__pick(k : int; var p : int?; var q : int?) : int?")
         has_text(t, text, "def private p4_csmith_pointers__keep(var pp : int ??; var out : int ??)")
         has_text(t, text, "def private p4_csmith_pointers__write_either(var b : uint8?; var e : uint8?; k : int) : int")
-        has_text(t, text, "def private p4_csmith_pointers__via_alias(var p_in : int?) : int \{\n    var p = p_in\n")
-        has_text(t, text, "def private p4_csmith_pointers__chained(var p_in : int?) : int")
+        has_text(t, text, "def private p4_csmith_pointers__via_alias(var p : int?) : int")
+        has_text(t, text, "def private p4_csmith_pointers__chained(var p : int?) : int")
         // pointers compare as addresses, a null constant as `null` on either side (F44)
         has_text(t, text, "return intptr(p) == intptr(reinterpret<int?>(q)) ? 1 : 0")
         has_text(t, text, "return reinterpret<int?>(p) == null ? 1 : 0")
@@ -768,7 +789,7 @@ def p4_csmith_fixtures(t : T?) {
         has_text(t, text, "var i3 : int = 1\n        while (i3 < 3) \{")
         // das indexes by `int`, `int64`, `uint` or `uint64` alone (F43)
         has_text(t, text, "p4_csmith_scopes__g[int(k)] + p4_csmith_scopes__g[int(m)] + p4_csmith_scopes__g[int(n)]")
-        has_text(t, text, "def private p4_csmith_scopes__at(p : int?; c : uint8) : int \{\n    return deref(p + int(c))")
+        has_text(t, text, "def private p4_csmith_scopes__at(var p : int?; c : uint8) : int \{\n    return deref(p + int(c))")
     }
 }
 
@@ -788,33 +809,18 @@ def p4_csmith_more_fixtures(t : T?) {
         has_text(t, text, "var _t0 : int = 7")
         has_text(t, text, "let _t1 = a[0]")
     }
-    t |> run("csmith shapes: a pointer read out of a parameter is a copy only when it is a pointer or an address") @(t : T?) {
+    t |> run("csmith shapes: every pointer parameter is `var`, a stepped scalar or pointer written in place") @(t : T?) {
         var text : string
         check_fixture(t, "p4_csmith_walks", text)
-        // `*s` of a `char *s` copies a `char`: the stepped parameter stays `let` with its copy (F46)
-        has_text(t, text, "def private p4_csmith_walks__say(s_in : uint8?) : int")
-        has_text(t, text, "def private p4_csmith_walks__say2(s : uint8?) : int")
-        has_text(t, text, "def private p4_csmith_walks__show(p_in : int?; n_in : int)")
-        has_text(t, text, "def private p4_csmith_walks__outer(q : int?)")
-        has_text(t, text, "def private p4_csmith_walks__walk(sp_in : S?; n_in : int) : int")
-        has_text(t, text, "def private p4_csmith_walks__idx(p_in : int?; n_in : int) : int")
-        // an initializer list's pointer slot, a step's value, a comma's right side, a pointer
-        // index, an arrow and an address into the pointee copy the parameter
-        has_text(t, text, "def private p4_csmith_walks__first(var p : int?) : int")
-        has_text(t, text, "def private p4_csmith_walks__field(var p : int?) : int")
-        has_text(t, text, "def private p4_csmith_walks__nxt(var p_in : int?) : int?")
-        has_text(t, text, "def private p4_csmith_walks__pre(var p_in : int?) : int")
-        has_text(t, text, "def private p4_csmith_walks__comma(k_in : int; var p : int?) : int?")
-        has_text(t, text, "def private p4_csmith_walks__row(var pp : int ??) : int?")
-        has_text(t, text, "def private p4_csmith_walks__arrow(var qp : Q?) : int?")
-        has_text(t, text, "def private p4_csmith_walks__addr_y(var sp : S?) : int?")
+        has_text(t, text, "def private p4_csmith_walks__say(var s : uint8?) : int")
+        has_text(t, text, "def private p4_csmith_walks__say2(var s : uint8?) : int")
+        has_text(t, text, "def private p4_csmith_walks__show(var p : int?; var n : int)")
+        has_text(t, text, "def private p4_csmith_walks__comma(var k : int; var p : int?) : int?")
         // a `_Bool` shift computes in `int`
         has_text(t, text, "b = (int(b ? 1 : 0) << n) != 0")
     }
     t |> run("csmith shapes: what the lowering refuses, and the addresses it keeps checked") @(t : T?) {
         rejects(t, "extern_unknown_length", "extern int arr[];\nstatic int *at(int k) \{ return &arr[k]; \}\nint arr[3] = \{1, 2, 3\};\nint main(void) \{ return (int) (at(3) - at(0)); \}\n", "an array of unknown length (`extern int a[];`) is not lowered yet")
-        rejects(t, "return_widening", "static const int *ident(const int *p) \{ return p; \}\nstatic int use(const int *q) \{ return *ident(q) + *q; \}\nint main(void) \{ int a = 1; return use(&a) - 2; \}\n", "a pointer the callee writes through arrives through const parameter `q` of `use`")
-        rejects(t, "return_record_field", "struct S \{ int *p; \};\nstatic int *fld(struct S s) \{ return s.p; \}\nint g = 7;\nint main(void) \{ struct S s = \{&g\}; return *fld(s) - 7; \}\n", "a pointer the caller may write through leaves through const parameter `s` of `fld`")
         rejects(t, "hidden_block_extern", "int x = 40;\nint main(void) \{ int x = 1; \{ extern int x; return x; \} \}\n", "a block-scope `extern` declaration of `x`, which a local of the function also names, is not lowered yet")
         rejects(t, "flattened_hides_global", "int g = 40;\nint main(void) \{\n    int n = 0;\n    if (n == 0) goto in;\n    \{\n        int g = 3;\n        n += g;\n    in:\n        n += 1;\n    \}\n    return n + g - 41;\n\}\n", "a block a goto enters declares `g`, which hides a global of that name")
         rejects(t, "late_block_extern", "int main(void) \{ \{ extern int y; return y; \} \}\nint y = 3;\n", "a block-scope `extern` declaration of `y` with no file-scope declaration before it is not lowered yet")

@@ -24,12 +24,12 @@ var strays : int
 
 // `int cmp_int(const void *a, const void *b) { return *(const int *)a - *(const int *)b; }`
 [c_function]
-def cmp_int(a : void?; b : void?) : int {
+def cmp_int(var a : void?; var b : void?) : int {
     return deref(reinterpret<int?>(a)) - deref(reinterpret<int?>(b))
 }
 
 [c_function]
-def cmp_rec(a : void?; b : void?) : int {
+def cmp_rec(var a : void?; var b : void?) : int {
     var x : Rec? = reinterpret<Rec?>(a)
     var y : Rec? = reinterpret<Rec?>(b)
     return x.key < y.key ? -1 : x.key > y.key ? 1 : 0
@@ -37,13 +37,13 @@ def cmp_rec(a : void?; b : void?) : int {
 
 // `int cmp_str(const void *a, const void *b) { return strcmp(*(char **)a, *(char **)b); }`
 [c_function]
-def cmp_str(a : void?; b : void?) : int {
+def cmp_str(var a : void?; var b : void?) : int {
     return crt::strcmp(deref(reinterpret<uint8 ??>(a)), deref(reinterpret<uint8 ??>(b)))
 }
 
 // orders elements of any size by their first byte
 [c_function]
-def cmp_first_byte(a : void?; b : void?) : int {
+def cmp_first_byte(var a : void?; var b : void?) : int {
     return int(deref(reinterpret<uint8?>(a))) - int(deref(reinterpret<uint8?>(b)))
 }
 
@@ -56,19 +56,19 @@ def note(a, b : void?) {
 }
 
 // comparators inconsistent with themselves: always less, always greater
-def cmp_less(a : void?; b : void?) : int {
+def cmp_less(var a : void?; var b : void?) : int {
     note(a, b)
     return -1
 }
 
-def cmp_greater(a : void?; b : void?) : int {
+def cmp_greater(var a : void?; var b : void?) : int {
     note(a, b)
     return 1
 }
 
 // a comparator that sorts a small array of its own on every call
 [c_function]
-def cmp_reentrant(a : void?; b : void?) : int {
+def cmp_reentrant(var a : void?; var b : void?) : int {
     var inner = fixed_array(3, 1, 2)
     c_qsort(addr<void?>(inner[0]), 3ul, 4ul, @@cmp_int)
     return inner[0] == 1 ? cmp_int(a, b) : 99
@@ -191,7 +191,7 @@ def test_c_qsort(t : T?) {
             message = "panicked"
         }
         t |> equal(message, "panicked")
-        let r = runtime_child("sort_limit", "options gen2\nrequire c_runtime/c_sort\ndef cmp(a : void?; b : void?) : int => 0\n[export]\ndef main \{\n    var x = 1\n    unsafe \{\n        c_qsort(addr<void?>(x), 2ul, 4294967296ul, @@cmp)\n    \}\n\}\n", false)
+        let r = runtime_child("sort_limit", "options gen2\nrequire c_runtime/c_sort\ndef cmp(var a : void?; var b : void?) : int => 0\n[export]\ndef main \{\n    var x = 1\n    unsafe \{\n        c_qsort(addr<void?>(x), 2ul, 4294967296ul, @@cmp)\n    \}\n\}\n", false)
         t |> equal(r.out |> find("2 elements of 4294967296 bytes") >= 0, true, r.out)
     }
     t |> run("a comparator may sort an array of its own") @(t : T?) {
@@ -233,9 +233,9 @@ def test_c_bsearch(t : T?) {
 
 [test]
 def test_c_sort_controls(t : T?) {
-    t |> run("a comparator with a `var` pointer parameter does not type against qsort") @(t : T?) {
-        let r = runtime_child("sort_var_cmp", "options gen2\nrequire c_runtime/c_sort\ndef cmp(var a : void?; b : void?) : int => 0\n[export]\ndef main \{\n    var x = 1\n    unsafe \{\n        c_qsort(addr<void?>(x), 1ul, 4ul, @@cmp)\n    \}\n\}\n", true)
-        child_rejects(t, "sort_var_cmp", r, "no matching functions or generics: c_qsort")
+    t |> run("a comparator with `let` pointer parameters does not type against qsort") @(t : T?) {
+        let r = runtime_child("sort_let_cmp", "options gen2\nrequire c_runtime/c_sort\ndef cmp(a : void?; b : void?) : int => 0\n[export]\ndef main \{\n    var x = 1\n    unsafe \{\n        c_qsort(addr<void?>(x), 1ul, 4ul, @@cmp)\n    \}\n\}\n", true)
+        child_rejects(t, "sort_let_cmp", r, "no matching functions or generics: c_qsort")
     }
     t |> run("the CRT binds no qsort, since it cannot call back into das") @(t : T?) {
         let r = runtime_child("sort_crt", "options gen2\nrequire crt\ndef cmp(a : void?; b : void?) : int => 0\n[export]\ndef main \{\n    var x = 1\n    unsafe \{\n        crt::qsort(addr<void?>(x), 1ul, 4ul, @@cmp)\n    \}\n\}\n", true)

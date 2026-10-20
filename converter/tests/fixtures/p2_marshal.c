@@ -1,9 +1,11 @@
 int printf(const char *, ...);
 #pragma pack(push, 1)
 typedef struct { short width; int ofs; char tag; } disk_t;
+typedef struct { char c; int *p; } pref_t;
 #pragma pack(pop)
 typedef struct { int ofs; short width; } natural_t;
 static unsigned char lump[3 * 7 + 2];
+static pref_t gp;
 static int sum_widths(const disk_t *entries, int n) {
     int total = 0;
     const disk_t *end = entries + n;
@@ -34,5 +36,10 @@ int main(void) {
     printf("%d %d %d %d\n", (int) sizeof(disk_t), (int) sizeof(local), (int) sizeof(natural_t), (int) sizeof lump);
     printf("%d %d %c %d %d\n", copy.width, copy.ofs, copy.tag, first[1].width, first[2].ofs);
     printf("%d %d %d %d\n", sum_widths(first, 3), lump[2], lump[9], nat.ofs + nat.width);
+    int x = 0;
+    gp.c = 1;
+    gp.p = &x;
+    *gp.p += 1;
+    printf("%d %d\n", x, (int) sizeof(pref_t));
     return (int) (lump[3] + lump[16]);
 }

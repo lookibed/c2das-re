@@ -4,8 +4,11 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 
 ## 4. What the emitter spells
 
-The module opens with the generated banner, `options gen2`, `options indenting = 4` and one
-`require c_runtime/<name>` per piece the body reached (`printf`, `c_exit`, `c_function`).
+The module opens with the generated banner, `options gen2`, `options indenting = 4`, `options
+stack` and one `require c_runtime/<name>` per piece the body reached (`printf`, `c_exit`,
+`c_function`). The stack is the sidecar's `stack`, else 8388608, C's 8 MiB default on linux:
+das's own context stack is 16 KiB (`probes/test_process.das`), which a record parameter's copy
+on entry or an alloca arena outgrows, and a recursion multiplies.
 Records come first: `struct Name` with adjacent fields of one type on one line, an unnamed
 record named `anon_<slot>`, in declaration order; then `[init] def private c2das_layout_check`,
 one `static_assert` per record against clang's size and alignment and one per field against its
@@ -27,28 +30,27 @@ width) before every other `[init]`, so no initializer that formats runs ahead of
 or from `&f`; C `main` is `@@c_main`) and a literal's address need no order. A null function
 pointer is `default<function<...>>`, since das takes no `null` for a function value
 (`probes/test_globals.das`). A function is `def name(p : T; ...) : ret` with `private` for a C
-`static`; a parameter the body writes is declared `p_in` with `var p = p_in` as the first
-statement, the callee copy C's by-value rule needs, since a das parameter is a reference, the
-copy's parameter taking `p_in`, else `p_in1` and up, whichever no parameter, local or name the
-body reads already spells; a store that reaches the parameter through `.f` or an array's `[i]`
-is a write to it, and so is an array's decay that is not indexed in place (`unsigned char *p =
-u.b`, `f(s.b)`), whose pointer could otherwise write the caller's object or read the copy a
-const union's operator returns, while one that crosses `->`, `*p` or a pointer's `[i]` writes
-what it points at and makes the parameter `var`, the one spelling whose pointee stays writable
-(F3); a pointer parameter copied into a pointer local or variable (`int *it = a`), a pointer
-slot of an initializer list (`int *l[2] = {p, 0}`) or returned, below casts, `p + n`, a step's
-value, an assignment's value, a comma's right side and either arm of a `?:`, and through a
-pointer read out of it (`*pp`, `pp[i]`, `sp->q`) or an address into it (`&p`, `&sp->y`), is
-`var` for the same reason, since the copy of a `let` parameter carries a const pointee (F46); a
-value read through it that is no pointer (`*s` of a `char *s`) copies nothing. So is one the
-body assigns and passes on. A pointer field of a by-value record parameter returned
-(`return s.p`) fails closed, since the record's copy is const and F3's rule has no `var` to
-give it (P4.6). A function pointer
-parameter is never `var`, since a function value has no pointee. Every function's `var` parameters are planned before any is emitted, so a call
-knows its callee's: a `let` pointer the caller holds (its own parameter, or a field of a record
-parameter it never writes) passed into a `var` parameter, directly or through a function value,
-fails closed, since das takes no `let` pointer there and the uniform pointer policy is a later
-row (`docs/implementation_order.md`, P4.6). A body that used an unsafe operation (pointer
+`static`. Every data pointer parameter is `var`, and so is every record parameter whose type
+holds a data pointer in a field or an array at any depth (F3). das reads every pointer reached
+through a `let` parameter as a const pointee, which no `var` parameter, `var` local, returned
+pointer or record copy takes (`probes/test_param_constness.das`), and the emitter never spells
+C's `const`. So the one rule carries a caller's pointer to any callee that writes through it,
+by a call, through `?:`, a sum, `*pp`, `->`, a record's field or a function value. A record
+holding no pointer stays `let`: nothing reached through it is a pointer, and a `var` record
+parameter the body never writes is a LINT014 finding, which a pointer-holding record escapes
+because its copy into `var s` is a `var` slot. A record parameter, `let` or `var`, is a
+reference to the caller's object in das, so the function copies it on entry, `s_in` the
+parameter and `var s = s_in` its first statement, C's by-value copy, which a write the callee
+makes to the caller's object through another pointer during the call does not reach
+(`converter/tests/fixtures/p4_pointer_policy.c`, `alias_plain` and `alias_ptr`, F50); the
+copy's parameter takes `s_in`, else `s_in1` and up, whichever no parameter, local or name the
+body reads already spells. das passes a scalar, a pointer and a function value by value, so a
+parameter of those the body assigns, steps or takes the address of is `var` and written in
+place (`probes/test_param_constness.das`). A function type's positions follow the parameter
+rule, so every function of one C type fits one das type (F34); a function pointer position is
+never `var`, since a function value has no pointee. A temporary the emitter hoists holding a
+pointer (an initializer list's item, an alloca's address, a stepped pointer's old value) is
+`var` for the same reason as a parameter. A body that used an unsafe operation (pointer
 arithmetic, `deref`, `addr`, a `reinterpret`, a string literal) gets `[c_function]`. C `main`
 becomes `c_main` and the module ends with `[export] def main : int { return c_main() }`, whose
 `return` is the CLI's exit-code contract (`docs/probe-findings.md` F1). A C name that is a das
@@ -128,14 +130,12 @@ is `cstr_array("...", N)`, the empty literal included. A literal indexed in plac
 array type. A call to a libc function the C program declares resolves through two tables:
 `C_RUNTIME_CALLS`, the functions a `c_runtime` piece lowers (`printf`, `sprintf`, `snprintf`,
 `vprintf`, `vsprintf`, `vsnprintf`, `sscanf`, `vsscanf`, `exit`, `abort`, `qsort`, `bsearch`),
-one row each naming the module that holds the piece, the das name and the pointer argument the
-piece writes through (the buffer of `sprintf`, `snprintf`, `vsprintf`, `vsnprintf`), which its
-das spelling takes `var`, so the caller's pointer there is planned like a `var` parameter's (a
-`let` pointer reaching it fails closed, F3), and `CRT_CALLS`, the functions the `crt` module
-binds under their C names (the memory, string.h, ctype, conversion, time and random families of
+one row each naming the module that holds the piece and the das name, and `CRT_CALLS`, the
+functions the `crt` module binds under their C names (the memory, string.h, ctype, conversion, time and random families of
 `dasCRuntime/ARCHITECTURE.md`), spelled `crt::name`, which take every pointer `let` (`strcpy`'s,
 `memcpy`'s and `memset`'s destination included), since a C++ binding's parameter carries no das
-constness; a function in neither fails closed. A `size_t` result is `uint64`, so an index or a count it feeds carries the cast C gives
+constness; a function in neither fails closed. A caller's `var` pointer reaches a piece's
+pointer argument as it reaches a converted function's. A `size_t` result is `uint64`, so an index or a count it feeds carries the cast C gives
 it. Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
 cast, `IntegralToBoolean` is `x != 0` (`!= null` for a pointer), `BooleanToSignedIntegral` is
 `b ? 1 : 0`, a comparison or `!` is spelled as the das bool it is and becomes `? 1 : 0` only
@@ -227,8 +227,7 @@ panic), takes `addr(_c_astack[_c_aoff])` as its value and advances the offset ro
 so allocations in a loop accumulate to the function's exit as C's do and a longjmp past the
 frame frees them with it. Every alloca goes through the arena, a constant size included, since
 a fixed array hoisted inside a loop body would die with the iteration (F24). The limit is the
-sidecar's `alloca_limit`, 65536 by default; a module holding an arena opens with
-`options stack`, the sidecar's `stack` or 1048576. A `__builtin_` name whose libc twin the call
+sidecar's `alloca_limit`, 65536 by default, which the module's 8 MiB stack holds. A `__builtin_` name whose libc twin the call
 tables carry is that twin (the shim list), so `__builtin_alloca`, `__builtin_memcpy` and
 `__builtin_abort` lower like their plain names.
 

@@ -16,7 +16,8 @@ harness that times them under every lane, and the stored results.
   P2.1's, a 16.16 fixed-point Mandelbrot over struct vectors passed and returned by value;
   `sieve` and `matmul` are P2.2's, a sieve over a fixed byte array and a 96x96 product over
   two-dimensional arrays; `blit` is P2.3's, a byte copy through walking pointers over
-  malloc'd buffers. The kernel's
+  malloc'd buffers; `qsort_cmp` is P4.6's, an array of records sorted by `qsort` through a
+  converted comparator, a function value with `var` pointer positions. The kernel's
   parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
   argument clang hoists the idempotent call out of the rep loop (the native lane reports
   zero), and daslang's optimizer evaluates a pure call with constant arguments at compile

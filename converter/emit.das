@@ -37,22 +37,10 @@ struct Emitter {
     in_global_init : bool
     c_functions : int
     function_count : int
+    // the names the body assigns, steps or takes the address of
     written : table<string>
-    written_through : table<string>
-    passed : table<string>
     renames : table<string; string>
     functions : table<string>
-    // the functions of this unit whose value C takes (`f` not called, `&f`)
-    function_values : table<string>
-    // the `var` pointer parameters, `<function>/<index>` by C name, every function's planned
-    // before any is emitted; and the `var` positions of a function type, `<type>/<index>`
-    var_params : table<string>
-    var_positions : table<string>
-    // the function being emitted, and its parameters' types by C name
-    fn_name : string
-    fn_c_name : string
-    param_types : table<string; int>
-    param_index : table<string; int>
     unsafe_used : bool
     empty_literal : bool
     global_order : table<string; int>
@@ -64,11 +52,10 @@ struct Emitter {
     layout : LayoutMemo
     switch_counter : int
     setjmp_counter : int
-    // the alloca arena: its bytes per function (the sidecar's `alloca_limit`), the module's
-    // `options stack` (the sidecar's `stack`), and whether any function used it
+    // the alloca arena's bytes per function (the sidecar's `alloca_limit`) and the module's
+    // `options stack` (the sidecar's `stack`)
     alloca_limit : int
     stack_option : int
-    alloca_used : bool
     // the function's C labels by das number, and the blocks emitted without braces so a goto
     // into them finds its label in an enclosing scope
     labels : table<string; int>
@@ -103,30 +90,27 @@ let BIN_SPELLING <- {"add" => "+", "sub" => "-", "mul" => "*", "div" => "/", "re
 
 let BIN_PREC <- {"add" => 11, "sub" => 11, "mul" => 12, "div" => 12, "rem" => 12, "shl" => 10, "shr" => 10, "lt" => 9, "gt" => 9, "le" => 9, "ge" => 9, "eq" => 8, "ne" => 8, "band" => 7, "bor" => 5, "bxor" => 6, "land" => 4, "lor" => 3}
 
-// a libc function a c_runtime piece lowers: the module that holds the piece, its das name,
-// and the index of the pointer argument its das spelling takes `var` because it writes
-// through it (`c_vsnprintf(var buf : uint8?; ...)`, F3), -1 for none
+// a libc function a c_runtime piece lowers: the module that holds the piece and its das name
 struct RuntimeCall {
     piece : string
     das_name : string
-    writes : int
 }
 
 let C_RUNTIME_CALLS <- {
-    "printf" => RuntimeCall(piece = "c_runtime/printf", das_name = "printf", writes = -1),
-    "sprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "sprintf", writes = 0),
-    "snprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "snprintf", writes = 0),
-    "vprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "c_vprintf", writes = -1),
-    "vsprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "c_vsprintf", writes = 0),
-    "vsnprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "c_vsnprintf", writes = 0),
-    "sscanf" => RuntimeCall(piece = "c_runtime/scanf", das_name = "sscanf", writes = -1),
-    "vsscanf" => RuntimeCall(piece = "c_runtime/scanf", das_name = "c_vsscanf", writes = -1),
-    "exit" => RuntimeCall(piece = "c_runtime/c_exit", das_name = "c_exit", writes = -1),
-    "abort" => RuntimeCall(piece = "c_runtime/c_exit", das_name = "c_abort", writes = -1),
-    "longjmp" => RuntimeCall(piece = "c_runtime/setjmp", das_name = "c_longjmp", writes = -1),
-    "_longjmp" => RuntimeCall(piece = "c_runtime/setjmp", das_name = "c_longjmp", writes = -1),
-    "qsort" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_qsort", writes = -1),
-    "bsearch" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_bsearch", writes = -1)
+    "printf" => RuntimeCall(piece = "c_runtime/printf", das_name = "printf"),
+    "sprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "sprintf"),
+    "snprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "snprintf"),
+    "vprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "c_vprintf"),
+    "vsprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "c_vsprintf"),
+    "vsnprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "c_vsnprintf"),
+    "sscanf" => RuntimeCall(piece = "c_runtime/scanf", das_name = "sscanf"),
+    "vsscanf" => RuntimeCall(piece = "c_runtime/scanf", das_name = "c_vsscanf"),
+    "exit" => RuntimeCall(piece = "c_runtime/c_exit", das_name = "c_exit"),
+    "abort" => RuntimeCall(piece = "c_runtime/c_exit", das_name = "c_abort"),
+    "longjmp" => RuntimeCall(piece = "c_runtime/setjmp", das_name = "c_longjmp"),
+    "_longjmp" => RuntimeCall(piece = "c_runtime/setjmp", das_name = "c_longjmp"),
+    "qsort" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_qsort"),
+    "bsearch" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_bsearch")
 }
 
 let SETJMP_NAMES <- {"setjmp", "_setjmp", "__sigsetjmp"}
@@ -135,7 +119,9 @@ let ALLOCA_NAMES <- {"alloca", "__builtin_alloca"}
 
 let ALLOCA_LIMIT = 65536
 
-let ALLOCA_STACK = 1048576
+// the context stack every converted module asks for, C's default on linux (8 MiB): das's own
+// is 16 KiB, which a record parameter's copy or an alloca arena outgrows
+let MODULE_STACK = 8388608
 
 // a `__builtin_` name whose libc twin the tables carry is that twin (the shim list)
 def private libc_name(name : string) : string =>
@@ -171,9 +157,6 @@ def private libc_call(name : string) : string {
 }
 
 def private libc_module(name : string) : string => C_RUNTIME_CALLS?[name]?.piece ?? (key_exists(CRT_CALLS, name) ? "crt" : "")
-
-// the index of the pointer argument library function `name` writes through, -1 for none
-def private library_writes(name : string) : int => C_RUNTIME_CALLS?[name]?.writes ?? -1
 
 def private fail(var em : Emitter; what : string; loc : CirLoc) {
     if (empty(em.error)) {
@@ -248,6 +231,30 @@ def private is_va_list(tu : CirTu; t : int) : bool {
 
 // a pointer to an object, which das spells `T?`; a function pointer is a function value
 def private is_data_pointer(tu : CirTu; t : int) : bool => kind_of(tu, t) == "ptr" && !is_function_pointer(tu, t)
+
+def private is_record(tu : CirTu; t : int) : bool => kind_of(tu, t) == "struct" || kind_of(tu, t) == "union"
+
+// whether a value of type `t` holds a data pointer
+def private holds_data_pointer(tu : CirTu; t : int) : bool {
+    if (is_data_pointer(tu, element_under(tu, t))) {
+        return true
+    }
+    let rec = record_under(tu, t)
+    if (rec >= 0) {
+        for (f in tu.types[rec].fields) {
+            if (holds_data_pointer(tu, f.t)) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+// whether a parameter of type `t` is `var` (F3): a data pointer, and a record holding one,
+// since das takes no `let` pointer where a `var` one is expected and reads every pointer
+// reached through a `let` parameter as a const pointee; a `va_list` is the caller's cursor
+def private is_var_parameter(tu : CirTu; t : int) : bool =>
+    is_va_list(tu, t) || ((is_data_pointer(tu, t) || is_record(tu, t)) && holds_data_pointer(tu, t))
 
 //! The das spelling of type `t`, or "" with `error` set.
 def das_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
@@ -337,10 +344,9 @@ def das_type_dims(var em : Emitter; tu : CirTu; t : int; loc : CirLoc; dims : ar
     kind_of(tu, t) == "array" ? array_type(em, tu, t, loc, dims) : das_type(em, tu, t, loc)
 
 // a C function pointer is a das function value: `function<(a0 : T; ...) : R>`, the
-// parameters named by position since the C type carries no names; a position is `var` where a
-// function of that type whose value is taken declares it so, since das types a parameter's
-// constness (F34)
-def private function_value_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc; plain : bool = false) : string {
+// parameters named by position since the C type carries no names; a position is `var` where
+// a parameter of its type is, since das types a parameter's constness (F34)
+def private function_value_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
     if (tu.types[t].variadic) {
         fail(em, "a pointer to a variadic function is not lowered yet", loc)
         return ""
@@ -348,9 +354,7 @@ def private function_value_type(var em : Emitter; tu : CirTu; t : int; loc : Cir
     var params : array<string>
     params |> reserve(length(tu.types[t].params))
     for (idx in range(length(tu.types[t].params))) {
-        // a `va_list` position is the caller's cursor, `var` in every function that takes one
-        let va = is_va_list(tu, tu.types[t].params[idx])
-        let mode = va || (!plain && key_exists(em.var_positions, "{t}/{idx}")) ? "var " : ""
+        let mode = is_var_parameter(tu, tu.types[t].params[idx]) ? "var " : ""
         params |> push("{mode}a{idx} : {das_type(em, tu, tu.types[t].params[idx], loc)}")
     }
     let ret = das_type(em, tu, tu.types[t].ret, loc)
@@ -704,19 +708,8 @@ def private emit_alloca(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
     let size = das_type(em, tu, x.args[0].t, loc) == "int" ? n.text : "int({n.text})"
     let tmp = temp_name(em)
     em.unsafe_used = true
-    em.alloca_used = true
-    hoist(em, ["if (_c_aoff + {size} > {em.alloca_limit}) \{", "    panic(\"alloca past the function's {em.alloca_limit} byte arena\")", "\}", "let {tmp} = reinterpret<void?>(addr(_c_astack[_c_aoff]))", "_c_aoff += ({size} + 15) & ~15"])
+    hoist(em, ["if (_c_aoff + {size} > {em.alloca_limit}) \{", "    panic(\"alloca past the function's {em.alloca_limit} byte arena\")", "\}", "var {tmp} = reinterpret<void?>(addr(_c_astack[_c_aoff]))", "_c_aoff += ({size} + 15) & ~15"])
     return value(tmp, PREC_PRIMARY)
-}
-
-// whether function type `t` spells a `var` position
-def private has_var_position(em : Emitter; tu : CirTu; t : int) : bool {
-    for (idx in range(length(tu.types[t].params))) {
-        if (key_exists(em.var_positions, "{t}/{idx}")) {
-            return true
-        }
-    }
-    return false
 }
 
 // whether `x`, below casts and a deref, is a call
@@ -736,25 +729,13 @@ def private called_type(tu : CirTu; fn : CirExpr const?) : int {
     return is_function_pointer(tu, fn.t) ? tu.types[fn.t].to : kind_of(tu, fn.t) == "func" ? fn.t : -1
 }
 
-// false with the error set when a call passes what das cannot: a const pointer into a `var`
-// pointer parameter, which the callee writes through (F3), or through a pointer whose type
-// says another number of arguments (an unprototyped `T (*)()`, which the C-IR spells as
-// `T (*)(void)`)
-def private check_var_arguments(var em : Emitter; tu : CirTu; x : CirExpr; through_pointer : bool; loc : CirLoc) : bool {
+// false with the error set when a call goes through a pointer whose type says another number
+// of arguments (an unprototyped `T (*)()`, which the C-IR spells as `T (*)(void)`)
+def private check_call_arity(var em : Emitter; tu : CirTu; x : CirExpr; through_pointer : bool; loc : CirLoc) : bool {
     let ft = through_pointer ? called_type(tu, x.fn) : -1
     if (ft >= 0 && !tu.types[ft].variadic && length(tu.types[ft].params) != length(x.args)) {
         fail(em, "a call with {length(x.args)} arguments through a function pointer whose type takes {length(tu.types[ft].params)} (an unprototyped `T (*)()`) is not lowered yet", loc)
         return false
-    }
-    let callee = called_name(x)
-    for (idx, arg in range(length(x.args)), x.args) {
-        continue if (is_va_list(tu, arg.t))
-        let writes = ft >= 0 ? key_exists(em.var_positions, "{ft}/{idx}") : key_exists(em.var_params, "{callee}/{idx}")
-        let root = writes ? const_pointer_root(em, tu, arg) : ""
-        if (!empty(root)) {
-            fail(em, "a pointer the callee writes through arrives through const parameter `{root}` of `{em.fn_c_name}`; the uniform pointer policy is a later row (F3)", loc)
-            return false
-        }
     }
     return true
 }
@@ -797,8 +778,7 @@ def private check_trailing_arguments(var em : Emitter; tu : CirTu; x : CirExpr; 
     }
     let fixed = length(tu.types[ft].params)
     for (idx in range(fixed, length(x.args))) {
-        let k = kind_of(tu, x.args[idx].t)
-        let what = is_va_list(tu, x.args[idx].t) ? "a `va_list`" : (k == "struct" || k == "union") ? "a record" : ""
+        let what = is_va_list(tu, x.args[idx].t) ? "a `va_list`" : is_record(tu, x.args[idx].t) ? "a record" : ""
         if (!empty(what)) {
             fail(em, "{what} passed through `...` (argument {idx} of `{c_name_of(tu, called_name(x))}`) is not lowered yet", loc)
             return false
@@ -842,7 +822,7 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return value("", PREC_PRIMARY)
     }
     let name = callee_name(em, tu, x.fn, loc)
-    if (!check_var_arguments(em, tu, x, empty(name), loc)) {
+    if (!check_call_arity(em, tu, x, empty(name), loc)) {
         return value("", PREC_PRIMARY)
     }
     var args : array<string>
@@ -868,10 +848,6 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
             // a library function taking a `va_list` takes the list from the cursor on, as a
             // `CVaList` (`c_vprintf`): the forwarding of a `va_list`
             args |> push("va_rest({text})")
-        } elif (library && is_function_pointer(tu, arg.t) && has_var_position(em, tu, tu.types[arg.t].to)) {
-            // a library function takes C's function type as das spells it with no `var`
-            // (`c_qsort`'s comparator), so a value of a type with a `var` position is cast to it
-            args |> push(unsafe_value(em, "reinterpret<{function_value_type(em, tu, tu.types[arg.t].to, loc, true)}>({text})", PREC_PRIMARY).text)
         } else {
             args |> push(text)
         }
@@ -884,6 +860,16 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return value(variadic_call(name, length(tu.types[ft].params), args), PREC_PRIMARY)
     }
     return value("{name}({join(args, ", ")})", PREC_PRIMARY)
+}
+
+// a `BitCast` is a `reinterpret`, except between two C function pointer types that spell one
+// das type (they differ in a pointee's `const`), which is the value itself; the operand comes
+// as its text, since a caller returning this result may hold its own operand in the result slot
+def private bit_cast(var em : Emitter; tu : CirTu; x : CirExpr; text : string; prec : int; target : string; loc : CirLoc) : Em {
+    if (is_function_pointer(tu, x.t) && is_function_pointer(tu, x.a.t) && das_type(em, tu, x.a.t, loc) == target) {
+        return value(text, prec)
+    }
+    return unsafe_value(em, "reinterpret<{target}>({text})", PREC_PRIMARY)
 }
 
 def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
@@ -920,7 +906,7 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return value("{target}({source.text})", PREC_PRIMARY)
     }
     if (k == "BitCast") {
-        return unsafe_value(em, "reinterpret<{target}>({inner.text})", PREC_PRIMARY)
+        return bit_cast(em, tu, x, inner.text, inner.prec, target, loc)
     }
     if (k == "PointerToIntegral") {
         return value("{target}(intptr({inner.text}))", PREC_PRIMARY)
@@ -1225,9 +1211,9 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     if (x.op == "postinc" || x.op == "postdec") {
         let tmp = temp_name(em)
         let before = emit_expr(em, tu, x.a, loc)
-        // a `let` copy of a pointer takes a const pointee (F3): the old value of a stepped
-        // pointer that `*p++ = v` writes through is a `var`
-        let keep = kind_of(tu, x.a.t) == "ptr" ? "var" : "let"
+        // a `let` copy of a value holding a pointer takes a const pointee (F3): the old value of
+        // a stepped pointer that `*p++ = v` writes through is a `var`
+        let keep = holds_data_pointer(tu, x.a.t) ? "var" : "let"
         hoist(em, ["{keep} {tmp} = {before.text}", step_line(em, tu, x, loc)])
         return value(tmp, PREC_PRIMARY)
     }
@@ -1418,7 +1404,7 @@ def private emit_va_arg(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
         fail(em, "va_arg of a `va_list` is not lowered yet", loc)
         return value("", PREC_PRIMARY)
     }
-    if (k == "struct" || k == "union") {
+    if (is_record(tu, t)) {
         fail(em, "va_arg of a record type is not lowered yet", loc)
         return value("", PREC_PRIMARY)
     }
@@ -1726,7 +1712,9 @@ def private hoist_items(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : 
         } else {
             let e = emit_expr(em, tu, item.v, loc)
             let name = temp_name(em)
-            em.pre |> push("let {name} = {e.text}")
+            // a `let` copy of a value holding a pointer takes a const pointee, which no `var` slot
+            // takes (F3)
+            em.pre |> push("{holds_data_pointer(tu, item.v.t) ? "var" : "let"} {name} = {e.text}")
             em.hoisted[intptr(item.v)] = Em(text = name, prec = PREC_PRIMARY, is_bool = e.is_bool)
         }
     }
@@ -2568,11 +2556,7 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt const?) {
         emit_effect(em, tu, st.e, st.loc)
         flush_pre(em)
     } elif (st.s == "return") {
-        let root = st.e != null && kind_of(tu, st.e.t) == "ptr" ? const_pointer_root(em, tu, st.e) : ""
-        if (!empty(root)) {
-            // a pointer field of a by-value record parameter, which F3's copy rule cannot make `var`
-            fail(em, "a pointer the caller may write through leaves through const parameter `{root}` of `{em.fn_c_name}`; the uniform pointer policy is a later row (F3)", st.loc)
-        } elif (st.e == null) {
+        if (st.e == null) {
             line(em, "return")
         } else {
             let e = stored(emit_expr(em, tu, st.e, st.loc), tu, st.e.t)
@@ -2602,89 +2586,15 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     }
 }
 
-// the names a body assigns, steps or takes the address of: a parameter among them needs the
-// callee-side copy C's by-value semantics give it
-def private collect_written(var em : Emitter; tu : CirTu; x : CirExpr?) {
-    if (x == null) {
-        return
-    }
-    if (x.e == "assign" && empty(x.op) && kind_of(tu, x.a.t) == "ptr") {
-        // a pointer copied out of a parameter needs a non-const pointee at the source (F3)
-        mark_copied_pointer(tu, x.b, em.written_through)
-    }
-    if (x.e == "call") {
-        collect_call_pointers(em, tu, *x)
-    }
-    // a marshal-only record's reader takes the byte pointer as an argument
-    if ((x.e == "member" && x.arrow && marshal_pointee(em, tu, x.base.t) >= 0) || (x.e == "index" && marshal_pointee(em, tu, x.base.t) >= 0)) {
-        mark_copied_pointer(tu, x.base, em.passed)
-    }
-    if (x.e == "un" && x.op == "deref" && marshal_pointee(em, tu, x.a.t) >= 0) {
-        mark_copied_pointer(tu, x.a, em.passed)
-    }
-    if (x.e == "index" && x.base.e == "cast" && x.base.cast_kind == "ArrayToPointerDecay") {
-        // `a[i]` indexes the array itself: its decay is no address that escapes
-        collect_written(em, tu, x.base.a)
-        collect_written(em, tu, x.i)
-        return
-    }
-    let decay = x.e == "cast" && x.cast_kind == "ArrayToPointerDecay"
-    if (decay || x.e == "assign" || (x.e == "un" && (is_step(x.op) || x.op == "addr"))) {
-        // a decay is an address too: through the pointer it gives, the array can be written,
-        // and over a by-value parameter only the callee copy's array is writable
-        mark_store_root(em, tu, x.a)
-    }
-    collect_written(em, tu, x.a)
-    collect_written(em, tu, x.b)
-    collect_written(em, tu, x.c)
-    collect_written(em, tu, x.fn)
-    for (arg in x.args) {
-        collect_written(em, tu, arg)
-    }
-    collect_written(em, tu, x.base)
-    collect_written(em, tu, x.i)
-    collect_written(em, tu, x.init)
-    for (item in x.init_items) {
-        collect_written(em, tu, item.v)
-    }
-}
-
-// the variable a store into `x` reaches: through casts, `.f` and `[i]` of an array (an
-// array's decay included) it is the variable itself, which is then `written`; past `->`, `*p`
-// or a pointer's `[i]` it is what the pointer points at, and the pointer is then
-// `written_through` (docs/probe-findings.md F3)
-def private mark_store_root(var em : Emitter; tu : CirTu; x : CirExpr?) {
+// the variable a store into `x` writes, below casts; none when the store goes through a pointer
+// or into a field or element, which writes no parameter the copy rule spells in place
+def private mark_store_root(var em : Emitter; x : CirExpr const?) {
     var target = x
-    var crossed = false
-    while (target != null && target.e != "ref") {
-        if (target.e == "cast") {
-            target = target.a
-        } elif (target.e == "member") {
-            crossed = crossed || target.arrow
-            target = target.base
-        } elif (target.e == "index") {
-            let decayed = target.base.e == "cast" && target.base.cast_kind == "ArrayToPointerDecay"
-            crossed = crossed || (kind_of(tu, target.base.t) != "array" && !decayed)
-            target = target.base
-        } elif (target.e == "un" && target.op == "deref") {
-            crossed = true
-            target = target.a
-        } elif (target.e == "un" && is_step(target.op)) {
-            // `*p++ = v` steps the pointer and writes through it
-            target = target.a
-        } elif (target.e == "bin" && (target.op == "add" || target.op == "sub") && kind_of(tu, target.a.t) == "ptr") {
-            // `*(p + i) = v` writes through the pointer the sum starts from
-            target = target.a
-        } else {
-            target = null
-        }
+    while (target != null && target.e == "cast") {
+        target = target.a
     }
-    if (target != null) {
-        if (crossed) {
-            em.written_through |> insert(target.name)
-        } else {
-            em.written |> insert(target.name)
-        }
+    if (target != null && target.e == "ref") {
+        em.written |> insert(target.name)
     }
 }
 
@@ -2745,73 +2655,6 @@ def private calls_alloca(st : CirStmt const?) : bool {
         found = found || (x.e == "call" && key_exists(ALLOCA_NAMES, called_name(*x)))
     }
     return found
-}
-
-// the functions of this unit whose value C takes: a decay that is no call's callee, or `&f`,
-// in a body or a global's initializer
-def private collect_function_values(var em : Emitter; tu : CirTu) {
-    var callees : table<uint64>
-    let note = $(x : CirExpr const?) {
-        if (x.e == "call" && x.fn != null) {
-            callees |> insert(intptr(x.fn))
-        }
-        let decayed = x.e == "cast" && x.cast_kind == "FunctionToPointerDecay" && !key_exists(callees, intptr(x))
-        let addressed = x.e == "un" && x.op == "addr"
-        if ((decayed || addressed) && x.a != null && x.a.e == "ref" && key_exists(em.functions, x.a.name)) {
-            em.function_values |> insert(x.a.name)
-        }
-    }
-    for (d in tu.decls) {
-        if (d.k == "func") {
-            each_expr(d.body, note)
-        } elif (d.k == "global") {
-            each_subexpr(d.init, note)
-        }
-    }
-}
-
-// every function's `var` pointer parameters before any is emitted (F3): one the body writes
-// through or copies, or assigns and then passes on, since the callee copy of a `let` parameter
-// carries a const pointee. A function type takes the `var` positions of the functions of its
-// signature whose value is taken, and each of those then declares all of them, so one C
-// function pointer type holds every such function (F34)
-def private plan_var_params(var em : Emitter; tu : CirTu) {
-    collect_function_values(em, tu)
-    // a library function's `var` pointer parameter takes no `let` pointer either
-    for (name, call in keys(C_RUNTIME_CALLS), values(C_RUNTIME_CALLS)) {
-        if (call.writes >= 0) {
-            em.var_params |> insert("{name}/{call.writes}")
-        }
-    }
-    for (d in tu.decls) {
-        if (d.k != "func" || d.body == null) {
-            continue
-        }
-        em.written |> clear()
-        em.written_through |> clear()
-        em.passed |> clear()
-        collect_written_stmt(em, tu, d.body)
-        for (idx, p in range(length(d.params)), d.params) {
-            // a function value has no pointee, so a function pointer parameter stays `let`
-            let stepped_and_passed = is_data_pointer(tu, p.t) && key_exists(em.written, p.name) && key_exists(em.passed, p.name)
-            // a `va_list` parameter is always the caller's cursor, `var` on its own terms
-            if (!is_function_pointer(tu, p.t) && !is_va_list(tu, p.t) && (key_exists(em.written_through, p.name) || stepped_and_passed)) {
-                em.var_params |> insert("{d.name}/{idx}")
-                if (key_exists(em.function_values, d.name)) {
-                    em.var_positions |> insert("{d.t}/{idx}")
-                }
-            }
-        }
-    }
-    for (d in tu.decls) {
-        if (d.k == "func" && d.body != null && key_exists(em.function_values, d.name)) {
-            for (idx in range(length(d.params))) {
-                if (key_exists(em.var_positions, "{d.t}/{idx}")) {
-                    em.var_params |> insert("{d.name}/{idx}")
-                }
-            }
-        }
-    }
 }
 
 // the names a function's parameters, locals and references take
@@ -2947,157 +2790,8 @@ def private free_name(var taken : table<string>; want : string) : string {
     return name
 }
 
-// the parameter of the function being emitted a pointer argument is read from while it is
-// const, "" when it is not: below casts, a `?:`'s arms, a comma's right side and pointer
-// arithmetic, either a non-`var` pointer parameter the body never assigns, or what is reached
-// through one (`*pp`, `pp[i]`, `sp->q`), or a field of a by-value record parameter the body never
-// writes (`s.p`, `s.a[i]`)
-def private const_pointer_root(em : Emitter; tu : CirTu; x : CirExpr const?) : string {
-    var at = x
-    var through_pointer = false
-    var through_field = false
-    while (at != null && at.e != "ref") {
-        if (at.e == "cond") {
-            let a = const_pointer_root(em, tu, at.a)
-            return empty(a) ? const_pointer_root(em, tu, at.b) : a
-        }
-        if (at.e == "cast" || (at.e == "bin" && (at.op == "add" || at.op == "sub") && kind_of(tu, at.a.t) == "ptr")) {
-            at = at.a
-        } elif (at.e == "comma") {
-            at = at.b
-        } elif (at.e == "un" && at.op == "deref") {
-            through_pointer = true
-            at = at.a
-        } elif (at.e == "member") {
-            through_pointer = through_pointer || at.arrow
-            through_field = through_field || !at.arrow
-            at = at.base
-        } elif (at.e == "index") {
-            let decayed = at.base.e == "cast" && at.base.cast_kind == "ArrayToPointerDecay"
-            if (kind_of(tu, at.base.t) == "array" || decayed) {
-                through_field = true
-            } else {
-                through_pointer = true
-            }
-            at = at.base
-        } else {
-            return ""
-        }
-    }
-    if (at == null || !key_exists(em.param_index, at.name) || key_exists(em.written, at.name)) {
-        return ""
-    }
-    let pt = em.param_types?[at.name] ?? -1
-    let is_var = key_exists(em.var_params, "{em.fn_name}/{em.param_index?[at.name] ?? -1}")
-    if (is_data_pointer(tu, pt)) {
-        return is_var ? "" : at.name
-    }
-    return through_field && !through_pointer && kind_of(tu, pt) == "struct" && !is_var ? at.name : ""
-}
-
-// the pointers a call passes on: each needs a writable pointee in its callee copy, when it
-// has one; `longjmp` writes the value into its buffer, so that pointer is written through
-def private collect_call_pointers(var em : Emitter; tu : CirTu; x : CirExpr) {
-    for (arg in x.args) {
-        mark_copied_pointer(tu, arg, em.passed)
-    }
-    let written = library_writes(called_name(x))
-    if (written >= 0 && written < length(x.args)) {
-        mark_copied_pointer(tu, x.args[written], em.written_through)
-    }
-    var callee = x.fn
-    if (callee != null && callee.e == "cast") {
-        callee = callee.a
-    }
-    if (callee != null && callee.e == "ref" && (callee.name == "longjmp" || callee.name == "_longjmp") && !empty(x.args)) {
-        // the buffer arrives as the decay of `*p` when it sits behind a pointer
-        var buf = x.args[0]
-        while (buf != null && buf.e == "cast") {
-            buf = buf.a
-        }
-        if (buf != null && buf.e == "un" && buf.op == "deref") {
-            mark_copied_pointer(tu, buf.a, em.written_through)
-        } else {
-            mark_copied_pointer(tu, buf, em.written_through)
-        }
-    }
-}
-
-// the parameter a pointer copy reads: `p = a`, `int *it = a` make `a` `var`, since a `let`
-// parameter's copy would carry a const pointee (F3, F46). The walk goes below casts, `p + n`, a
-// step (`p++`), an assignment's value (`q = (p = v)`), a comma's right side and both arms of a
-// `?:`, and through a pointer read out of a pointer (`*pp`, `pp[i]`, `sp->q`) or an address
-// into one (`&p`, `&sp->y`, `&p[1]`) to that pointer
-def private mark_copied_pointer(tu : CirTu; x : CirExpr const?; var through : table<string>) {
-    var at = x
-    var addressed = false
-    while (at != null) {
-        // a value read through a pointer copies that pointer only when it is a pointer itself
-        // or its address is taken; `*s` of a `char *s` copies a `char`
-        let reaches = addressed || kind_of(tu, at.t) == "ptr"
-        if (at.e == "cond") {
-            mark_copied_pointer(tu, at.a, through)
-            at = at.b
-        } elif (at.e == "un" && at.op == "addr") {
-            addressed = true
-            at = at.a
-        } elif (at.e == "cast" || at.e == "assign" || (at.e == "un" && is_step(at.op)) || (at.e == "bin" && (at.op == "add" || at.op == "sub") && kind_of(tu, at.a.t) == "ptr")) {
-            at = at.a
-        } elif (at.e == "comma") {
-            at = at.b
-        } elif (reaches && at.e == "un" && at.op == "deref") {
-            at = at.a
-        } elif (reaches && ((at.e == "index" && kind_of(tu, at.base.t) == "ptr") || (at.e == "member" && at.arrow))) {
-            at = at.base
-        } else {
-            break
-        }
-    }
-    if (at != null && at.e == "ref" && kind_of(tu, at.t) == "ptr") {
-        through |> insert(at.name)
-    }
-}
-
-// the pointers an initializer copies: the value itself when it is a pointer, and every pointer
-// slot of an initializer list (`int *l[2] = {p, 0}`, `struct Q q = {p, 1}`)
-def private mark_copied_items(tu : CirTu; x : CirExpr const?; var through : table<string>) {
-    if (x == null) {
-        return
-    }
-    if (x.e == "init_list") {
-        for (item in x.init_items) {
-            mark_copied_items(tu, item.v, through)
-        }
-    } elif (kind_of(tu, x.t) == "ptr") {
-        mark_copied_pointer(tu, x, through)
-    }
-}
-
 def private is_step(op : string) : bool => op == "preinc" || op == "predec" || op == "postinc" || op == "postdec"
 
-def private collect_written_stmt(var em : Emitter; tu : CirTu; st : CirStmt?) {
-    if (st == null) {
-        return
-    }
-    if (st.s == "decl") {
-        mark_copied_items(tu, st.init, em.written_through)
-    }
-    // a returned pointer is copied out to the caller, who may write through it
-    if (st.s == "return" && st.e != null && kind_of(tu, st.e.t) == "ptr") {
-        mark_copied_pointer(tu, st.e, em.written_through)
-    }
-    for (child in st.body) {
-        collect_written_stmt(em, tu, child)
-    }
-    collect_written(em, tu, st.init)
-    collect_written(em, tu, st.e)
-    collect_written(em, tu, st.cond)
-    collect_written(em, tu, st.inc)
-    collect_written_stmt(em, tu, st.then_s)
-    collect_written_stmt(em, tu, st.else_s)
-    collect_written_stmt(em, tu, st.body_s)
-    collect_written_stmt(em, tu, st.init_s)
-}
 
 // C lets a non-void function fall off its end (the value is then unspecified, and main's is
 // 0); das wants every path to return, so the body gets a trailing zero
@@ -3126,7 +2820,7 @@ def private ends_in_return(st : CirStmt?) : bool {
 }
 
 def private zero_of(var em : Emitter; tu : CirTu; t : int; spelled : string) : string {
-    if (kind_of(tu, t) == "struct" || kind_of(tu, t) == "union") {
+    if (is_record(tu, t)) {
         return "{spelled}()"
     }
     if (kind_of(tu, t) == "enum") {
@@ -3163,10 +2857,8 @@ def private das_func_name(var em : Emitter; d : CirDecl) : string {
 }
 
 // the per-function state of the emitter, set for function `d` before its body is spelled
-def private reset_function_state(var em : Emitter; tu : CirTu; d : CirDecl) {
+def private reset_function_state(var em : Emitter; d : CirDecl) {
     em.written |> clear()
-    em.written_through |> clear()
-    em.passed |> clear()
     em.renames |> clear()
     em.spelled |> clear()
     em.temp_counter = 0
@@ -3179,20 +2871,16 @@ def private reset_function_state(var em : Emitter; tu : CirTu; d : CirDecl) {
     em.flatten |> clear()
     plan_labels(em, d.body)
     em.unsafe_used = false
-    collect_written_stmt(em, tu, d.body)
-    em.fn_name = d.name
-    em.fn_c_name = d.c_name
-    em.param_types |> clear()
-    em.param_index |> clear()
-    for (idx, p in range(length(d.params)), d.params) {
-        em.param_types[p.name] = p.t
-        em.param_index[p.name] = idx
+    each_expr(d.body) $(x) {
+        if (x.e == "assign" || (x.e == "un" && (is_step(x.op) || x.op == "addr"))) {
+            mark_store_root(em, x.a)
+        }
     }
 }
 
 // the parameters of function `d` as das declares them, and the callee copies that open its body
 def private function_params(var em : Emitter; tu : CirTu; d : CirDecl; var taken : table<string>; var params : array<string>; var copies : array<string>) {
-    for (idx, p in range(length(d.params)), d.params) {
+    for (p in d.params) {
         let spelled = das_type(em, tu, p.t, d.loc)
         let name = das_name(em, p.name)
         if (is_va_list(tu, p.t)) {
@@ -3200,16 +2888,16 @@ def private function_params(var em : Emitter; tu : CirTu; d : CirDecl; var taken
             params |> push("var {name} : {spelled}")
             continue
         }
-        // a pointer the body writes through or copies is a `var` parameter, the one spelling
-        // whose pointee stays writable (F3), as `plan_var_params` found; a parameter the body
-        // assigns gets the callee copy, under a name no parameter or local of the body takes
-        let through = key_exists(em.var_params, "{d.name}/{idx}") ? "var " : ""
-        if (key_exists(em.written, p.name)) {
+        let mode = is_var_parameter(tu, p.t) ? "var " : ""
+        if (is_record(tu, p.t)) {
+            // das passes a record by reference: the copy is C's by-value one, under a name no
+            // parameter or local of the body takes
             let copy = free_name(taken, "{name}_in")
-            params |> push("{through}{copy} : {spelled}")
+            params |> push("{mode}{copy} : {spelled}")
             copies |> push("var {name} = {copy}")
         } else {
-            params |> push("{through}{name} : {spelled}")
+            // das passes a scalar or a pointer by value, so the body writes it in place
+            params |> push("{key_exists(em.written, p.name) ? "var " : mode}{name} : {spelled}")
         }
     }
 }
@@ -3223,7 +2911,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
         fail(em, "main with arguments is not lowered yet", d.loc)
         return
     }
-    reset_function_state(em, tu, d)
+    reset_function_state(em, d)
     var params, copies : array<string>
     var taken <- body_names(em, d)
     function_params(em, tu, d, taken, params, copies)
@@ -3530,7 +3218,7 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
     em.requires |> insert("c_runtime/c_function")
     for (f in tu.types[t].fields) {
         let k = kind_of(tu, f.t)
-        if (k == "struct" || k == "union" || (k == "array" && kind_of(tu, tu.types[f.t].elem) != "int" && kind_of(tu, tu.types[f.t].elem) != "float")) {
+        if (is_record(tu, f.t) || (k == "array" && kind_of(tu, tu.types[f.t].elem) != "int" && kind_of(tu, tu.types[f.t].elem) != "float")) {
             fail(em, "field `{name}.{f.name}` of a marshal-only record is a record or an array of records; not lowered yet", loc)
             return
         }
@@ -3545,7 +3233,7 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
     close_block(em)
     line(em, "")
     line(em, "[c_function]")
-    open_block(em, "def {writer_name(em, tu, t, -1)}(bytes : uint8?; ofs : int; v : {name})")
+    open_block(em, "def {writer_name(em, tu, t, -1)}(bytes : uint8?; ofs : int; {is_var_parameter(tu, t) ? "var " : ""}v : {name})")
     line(em, "var copy = v")
     for (f in tu.types[t].fields) {
         line(em, "crt::memcpy(reinterpret<void?>(bytes + (ofs + {f.off})), reinterpret<void?>(addr(copy.{das_name(em, f.name)})), uint64({c_size(tu, f.t)}))")
@@ -3562,7 +3250,7 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
         close_block(em)
         line(em, "")
         line(em, "[c_function]")
-        open_block(em, "def {writer_name(em, tu, t, idx)}(bytes : uint8?; ofs : int; v : {ft})")
+        open_block(em, "def {writer_name(em, tu, t, idx)}(bytes : uint8?; ofs : int; {is_var_parameter(tu, f.t) ? "var " : ""}v : {ft})")
         line(em, "var copy = v")
         line(em, "crt::memcpy(reinterpret<void?>(bytes + (ofs + {f.off})), reinterpret<void?>(addr(copy)), uint64({c_size(tu, f.t)}))")
         close_block(em)
@@ -3742,7 +3430,6 @@ def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
         }
     }
     flag_marshal(em, tu, side)
-    plan_var_params(em, tu)
     em.alloca_limit = side.alloca_limit > 0 ? side.alloca_limit : ALLOCA_LIMIT
     em.stack_option = side.stack
     // the module's first `[init]` goes here, though only the functions tell whether it is needed:
@@ -3801,8 +3488,7 @@ def private assemble_module(var em : Emitter) {
     required |> sort()
     let header = join([for (name in required); "require {name}\n"], "")
     let empty = em.empty_literal ? "var private {EMPTY_LITERAL} : uint8[1] = fixed_array(uint8(0))\n\n" : ""
-    // the arenas live on the das stack, so a module holding one raises it (the sidecar sizes it)
-    let stack = em.stack_option > 0 ? em.stack_option : (em.alloca_used ? ALLOCA_STACK : 0)
-    let stack_line = stack > 0 ? "options stack = {stack}\n" : ""
+    let stack = em.stack_option > 0 ? em.stack_option : MODULE_STACK
+    let stack_line = "options stack = {stack}\n"
     em.text = GENERATED_BANNER + "\noptions gen2\noptions indenting = 4\n" + stack_line + header + "\n" + empty + join(em.out, "")
 }

@@ -1,6 +1,6 @@
 #include <stdio.h>
-/* the pointer shapes csmith generates around `let` parameters: a pointer returned or copied out
-   through `*pp` or a `?:` arm, compared across constness, and arrays of null pointers */
+/* the pointer shapes csmith generates around pointer parameters: a pointer returned or copied
+   out through `*pp` or a `?:` arm, compared across constness, and arrays of null pointers */
 int sprintf(char *, const char *, ...);
 static int g = 5;
 static int h = 6;

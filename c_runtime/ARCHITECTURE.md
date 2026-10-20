@@ -85,8 +85,9 @@ as-if-converted fixture test landing first.
   (a zero value as 1, as C says) and panics; the `recover` of every setjmp site the unwind
   passes compares `c_jmp_target` with its own buffer, rethrows another's or a genuine panic
   (a null target), and clears its own. das skips `finally` on a panic, which is C's
-  no-cleanup-on-longjmp rule. The buffer arrives as C passes it, through a pointer a `let`
-  parameter may hold, so the write goes through a pointer re-made from its address.
+  no-cleanup-on-longjmp rule. `c_longjmp` takes the buffer as a `var` pointer and writes
+  `buf.val` through it; every converted pointer parameter is `var` (F3), so the buffer arrives
+  writable.
 - `c_runtime/c_bitfields.das` - the `[c_bitfields(...)]` structure annotation over a struct
   written C-shaped (`docs/lowering-examples.md` "Bitfields"). `apply` reads the argument list in
   order: `_bits<N> = "uint8"` (or `"uint16"`, `"uint"`, `"uint64"`) opens an allocation unit
@@ -139,13 +140,13 @@ as-if-converted fixture test landing first.
   `c_bsearch(key, base, n, size, cmp)`, over raw bytes in C's own signatures, since the
   element type is not at C's call site, whose `n` and `size` are run-time values
   (`docs/probe-findings.md` F33). The CRT's `qsort` is not bound: it cannot call back
-  into das. The comparator is `CCompare`, `function<(a : void?; b : void?) : int>`, the
-  converter's spelling of C's `int (*)(const void *, const void *)` with no `var` position (a
-  comparator whose type has one arrives cast to it). `qsort` is the runtime's byte sort,
-  `__builtin_sort_any_cblock` (the engine under daslib's `sort`: median-of-three Hoare
-  partitions over the bytes, its own pivot copy, no das value), with the comparator in a block
-  testing `< 0`; it is unstable, as C allows, and counts elements and bytes in `int`, so a call
-  past that panics. `bsearch` is a binary search calling `cmp(key, element)` in C's order.
+  into das. The comparator is `CCompare`, `function<(var a : void?; var b : void?) : int>`,
+  the converter's spelling of C's `int (*)(const void *, const void *)`, whose data pointer
+  positions are `var` like every converted pointer parameter's, so a converted comparator
+  arrives as it is. `qsort` is the runtime's byte sort, `__builtin_sort_any_cblock` (the
+  engine under daslib's `sort`: median-of-three Hoare partitions over the bytes, its own pivot
+  copy, no das value), with the comparator in a block testing `< 0`; it is unstable, as C
+  allows, and counts elements and bytes in `int`, so a call past that panics. `bsearch` is a binary search calling `cmp(key, element)` in C's order.
 - `tests/` - one dastest file per piece, written as the converter will emit the code,
   including a control that the same code without the piece is rejected or wrong. A test that
   compiles or runs a child program does so through `probes/_daslang_child.das`, the one child
