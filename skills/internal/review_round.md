@@ -11,6 +11,23 @@ hypothesis until an adversarial prover fails to disprove it.
 `git merge-base origin/main HEAD`..`HEAD`, plus the working tree when reviewing uncommitted
 work. Always the whole arc.
 
+## Review budget (owner rule, 2026-10-20)
+
+- Per work item: ONE review pass with the roles that check code behaviour only: grounding,
+  prover, `tdd-auditor`, `targeted-reviewer`. No second pass unless one of them found a
+  blocking defect.
+- Rule-document and hygiene audits (`review-md-auditor`, the dragon on `REVIEW.md` files,
+  `dupe-auditor`/`dupe-sweeper`, `style-hygiene-auditor`, `placement-auditor`) run once per
+  phase (end of P4, end of P5, ...), not per item.
+- Review-md wording edits are never committed per item; they are batched into the phase-end
+  audit.
+- Why: the behaviour checkers caught the real bugs (silent wrong output, the module-cache root
+  cause); per-item rule polishing cost a large share of the limit for paper.
+
+The phases below describe the full round; a per-item pass runs Phases 0, 1, 2 with only the
+`targeted-reviewer` surfacers and the `tdd-auditor`, then Phases 3 and 4. The phase-end audit
+adds the other Phase 2 roles and the Phase 4 damper over the phase's accumulated diff.
+
 ## Phase 0 - grounding (one agent)
 
 When the round is `make_pr`'s surfacing phase, the comment harvest has LANDED before Phase 0
