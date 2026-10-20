@@ -16,14 +16,14 @@ supplies `main` and those two prototypes, and the native lane's result is the va
 lane must match.
 
 **A diff that adds or edits a kernel makes `kernel_run` read, on every call, a `volatile`
-file-scope static that its result depends on, and pass that value - never a literal in its place
-- to the functions it times.** With a literal, clang computes the call once outside the
-harness's timing loop and daslang computes it at compile time, so the run times nothing.
+file-scope static that its result depends on, and pass that value to the functions it calls.**
+With a literal in its place, clang computes the call once outside the harness's timing loop and
+daslang computes it at compile time, so the run times nothing.
 
-**A diff that changes the C program `run.das` composes around a kernel, the command that builds
-or runs any lane in `run.das`, the default sample count, or the `LANES` list in
-`perf_tables.das` re-records `results_linux.json` from a `scripts/run_perf.sh` run with no
-`--filter` and no `--samples` in the same change.**
+**A diff that changes a file under `kernels/`, the prologue or epilogue `perf_compose.das` puts
+around a kernel, a command `run.das` builds or runs a lane with, the default sample count, or
+the `LANES` list in `perf_tables.das` re-records `results_linux.json` from a
+`scripts/run_perf.sh` run with no `--filter` and no `--samples` in the same change.**
 
 **A diff that changes `results_linux.json` refreshes the perf table of `README.md` (repo root)
 with `scripts/run_perf.sh --readme` in the same change.**

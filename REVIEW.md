@@ -25,18 +25,27 @@ types, a literal, a statement shape, or a declaration of a type.
 **Never commit converted output - a test that compares against it records its hash.**
 
 **A diff that closes a ledger item of `docs/implementation_order.md` (its commit subject starts
-with the item's id) and changes what the converter emits adds a kernel under `perf/kernels/`
-using the C constructs whose conversion it changes, or names in its commit message the kernel
-that already uses them.**
+with the item's id) and changes how the converter converts a C construct adds a kernel under
+`perf/kernels/` that uses that construct, or names in its commit message the kernel that
+already uses it.**
 
 **A diff that closes a `docs/implementation_order.md` item (its commit subject starts with the
-item's id) re-records `perf/results_linux.json` from a `scripts/run_perf.sh` run with no `--filter` and no `--samples`
-in the same change, and puts that run's `--report` output in its commit message with the reason
-or the fix for every `FLAG` and every `SUSPECT` line it prints.**
+item's id) re-records `perf/results_linux.json` from a `scripts/run_perf.sh` run with no
+`--filter` and no `--samples` in the same change, and puts that run's `--report` output in its
+commit message with the reason or the fix for every `FLAG` and every `SUSPECT` line it prints.**
 
-**A diff that changes the command `run_exe` or `run_aot` in `converter/tiers.das` builds its
-executable with re-records `perf/results_linux.json` from a `scripts/run_perf.sh` run with no
-`--filter` and no `--samples` in the same change.**
+**A diff that changes how `converter/tiers.das` builds the `exe` or `aot` executable
+(`run_exe`, `run_aot`, `aot_link_command` or `native_module_sources`) re-records
+`perf/results_linux.json` from a `scripts/run_perf.sh` run with no `--filter` and no
+`--samples` in the same change.**
+
+**A diff that changes a `.das` file under `converter/` outside `converter/tests/` and
+`converter/benchmarks/` beyond comments, an annotation macro under `c_runtime/c_runtime/`, a
+suite's pin in `VERSIONS.md`, what `csmith_program` (`suites/csmith/generate.das`) writes for a
+seed, the C text of a kernel under `perf/kernels/`, or the prologue or epilogue
+`perf/perf_compose.das` puts around a kernel re-records `metrics/readability_linux.json` with
+`scripts/run_readability.sh --update` in the same change and puts the table that run prints in
+its commit message.**
 
 **A diff that adds a choice for one C project that the converter cannot derive from the C
 source puts it in that project's `.c2das` sidecar, never in converter code.**
