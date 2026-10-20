@@ -5,6 +5,7 @@ module perf_tables public
 require math
 require strings
 require daslib/algorithm
+require daslib/functional
 require daslib/json_boost
 require daslib/md_boost
 
@@ -27,8 +28,7 @@ def kernel_names(js : JsonValue?) : array<string> {
     var names : array<string>
     let tests = js?["tests"]
     if (tests != null && tests is _object) {
-        names <- [for (name in keys(tests as _object)); name]
-        names |> sort()
+        names <- [for (name in sorted([for (key in keys(tests as _object)); key])); name]
     }
     return <- names
 }

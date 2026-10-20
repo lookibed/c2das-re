@@ -17,12 +17,21 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   compile check refused it), `exit`, `output`, or `skip`. The ratchet and the ledger live
   here too: a listed id that stops passing fails the run; an id that starts passing is
   reported and `--update` writes it in; a failing test that is not listed is a count in the
-  summary, not a skip. Its pieces serve the csmith driver too: `read_ratchet` (the ratchet and
-  the ledger as a run reads them), `record` and `count_status` (one outcome into the `Tally`),
+  summary, not a skip. Its pieces serve the csmith driver too: `record` and `count_status` (one outcome into the `Tally`),
   `finish_run` (the summary, `--update`'s write of the ids it is handed unless the run was
   filtered, the exit code), `convert_and_run` (one C file converted and run under the
-  interpreter, with extra interpreter flags when a suite needs them) and `compare_output` (an
-  exit code and output judged against the expected output).
+  interpreter, with extra interpreter flags when a suite needs them), `compare_output` (an
+  exit code and output judged against the expected output), and `run_workers` with
+  `spawn_one` (indices through worker processes of a script's `--one`, a number at a time, each
+  killed past a limit, its printed output kept), which the readability metric runs on too;
+  `C_TESTSUITE_TESTS` and `GCC_TORTURE_TESTS` name the folders the two file-based suites'
+  tests sit in.
+- `suite_files.das` - what the suites and the readability metric agree on, needing no module
+  folder so the `REVIEW.das` gates require it: `read_lines` and `read_ratchet` (the ratchet and
+  the ledger as a run reads them), `c_file_ids` (the `.c` files of a folder by id, the suites'
+  tests and the perf kernels), `expected_input_keys` (the input keys the readability capture
+  holds: each suite's listed ids less its ledgered ones, and every kernel) and `gate_untracked`
+  (a gate finding per tracked file under regenerated folders).
 - `fetch_common.sh` - sourced by the three fetch scripts: `pin_of` (a pin out of
   `VERSIONS.md`), `at_pin` (a checkout at its pin with its build present) and
   `checkout_if_stale` (a fresh clone at the pin unless `at_pin` holds).
@@ -51,6 +60,9 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
 - `csmith/run.das` - the differential driver (section 4): its own `main` over the shared
   runner's pieces, one worker process per seed (`--one <seed>`), and the judge of a generated
   program the reducer calls (`--check <file>`).
+- `csmith/generate.das` - a seed's program (section 4): `csmith_program` runs the pinned csmith
+  with `CSMITH_OPTIONS` and splices the runtime headers in; the driver and the readability
+  metric generate through it.
 - `csmith/verdict.das` - a seed's verdict file (`<seed>.verdict`, written and read) and
   `worker_outcome`, the outcome the driver draws from a worker that ended: its verdict,
   `timeout` when the driver killed it, `crash` when it exited without a verdict.
@@ -63,7 +75,9 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   excludes.
 - `REVIEW.das` - the gate over the three suites: `expected_pass.txt` sorted and unique, every
   `skip.txt` line in the four-field shape with a phase or `never`, no id in both files, every
-  csmith id a decimal seed, and nothing tracked under a suite's `fetch/` or `work/`.
+  csmith id a decimal seed, nothing tracked under a suite's `fetch/` or `work/`, and the
+  module keys of `metrics/readability_linux.json` the expected input keys, so a diff to a
+  ratchet list re-records the readability capture.
 - `scripts/run_suite.sh <suite> [flags]` - fetches when needed and runs the runner from the
   repository root with `-load_module` for `dasCRuntime` and `c_runtime`.
 
@@ -86,8 +100,9 @@ Empty.
 csmith writes a random C program free of undefined behaviour that prints a checksum of its
 globals, so a seed whose converted run disagrees with a native build is a converter bug by
 construction (`docs/very-detailed-plan.md`, V3). A seed's program depends only on the seed, the
-csmith commit `VERSIONS.md` pins and the option list below, which is why the seed alone is the
-test id: `expected_pass.txt` lists the seeds known clean and every run reruns them, `--seeds N`
+csmith commit `VERSIONS.md` pins and what `csmith_program` (`csmith/generate.das`) writes
+around csmith's output (the option list below, the `#define UNSAFE_FLOAT` prelude and the
+spliced runtime headers), which is why the seed alone is the test id: `expected_pass.txt` lists the seeds known clean and every run reruns them, `--seeds N`
 adds N fresh random ones (4 by default, none when `--seed` or `--from` names the seeds; a
 `--filter` narrows the fresh ones too), and `--update` writes the ratchet as it was, less the
 seeds this run failed, plus those it passed. A seed `--seed` or `--from` names is judged whether

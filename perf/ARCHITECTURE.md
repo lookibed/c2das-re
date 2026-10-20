@@ -23,13 +23,9 @@ harness that times them under every lane, and the stored results.
   time whatever `infer_time_folding` says, so the interpreter lane measured a store. The
   converter drops `volatile`, which is what makes the das read a plain global read that no
   pass folds.
-- `run.das` - the harness: composes each kernel with the profile prologue (the `printf` and
-  `clock` prototypes, the CRT's `CLOCKS_PER_SEC` as a constant) and epilogue (dastest's budget
-  loop in C: a 0.5 s budget, reps regrown from the measured rate as `reps * budget / total
-  * 1.2`, at most a hundredfold and at least one more per round, so a sub-tick kernel still
-  converges, then one line `<seconds per run> <runs> <result>`), builds the native lane with the pinned clang at `-O3
-  -funsigned-char` (dasProfile's Release build gives its C++ kernels `-O3`, and the lane
-  follows its method), converts the same file through `converter/pipeline.das`, and runs each
+- `run.das` - the harness: composes each kernel (`perf_compose.das`), builds the native lane
+  with the pinned clang at `-O3 -funsigned-char` (dasProfile's Release build gives its C++
+  kernels `-O3`, and the lane follows its method), converts the same file through `converter/pipeline.das`, and runs each
   lane as its own process `--samples` times (five by default). A cell is the median, with ±
   half the sample range as a share of it; startup never enters a cell because the program
   times itself. The run writes `results_linux.json` and prints the results table,
@@ -37,6 +33,14 @@ harness that times them under every lane, and the stored results.
   exists (section 5); `--table` renders the stored file instead of measuring, `--readme`
   rewrites the results table between the markers in `README.md`, and `--report <path>` writes
   the results, ratio and delta tables as one markdown block to `<path>` and prints it.
+- `perf_compose.das` - the C program of a kernel: `composed_source` puts the kernel between
+  the profile prologue (the `printf` and `clock` prototypes, the CRT's `CLOCKS_PER_SEC` as a
+  constant) and epilogue (dastest's budget loop in C: a 0.5 s budget, reps regrown from the
+  measured rate as `reps * budget / total * 1.2`, at most a hundredfold and at least one more
+  per round, so a sub-tick kernel still converges, then one line `<seconds per run> <runs>
+  <result>`), and `write_composed` writes it into a work folder. The harness builds and
+  converts that program; the readability metric converts it. The kernels are listed by
+  `c_file_ids` of `suites/suite_files.das`.
 - `perf_tables.das` - the lanes and the tables over a capture read as JSON: the results
   table (the fastest lane of a row bold), the ratio table (each lane's median over native's,
   two decimals, native 1.00) with its `SUSPECT` lines, the delta table against a baseline

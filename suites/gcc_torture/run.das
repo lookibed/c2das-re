@@ -14,6 +14,6 @@ def verdict(id : string; _c_path : string; rc : int; output : string) : Outcome 
 
 [export]
 def main : int {
-    let spec = SuiteSpec(name = "gcc_torture", tests_dir = "suites/gcc_torture/fetch/gcc/gcc/testsuite/gcc.c-torture/execute", work_dir = "suites/gcc_torture/work", expected_pass = "suites/gcc_torture/expected_pass.txt", skip_ledger = "suites/gcc_torture/skip.txt", run_timeout = 20.0)
+    let spec = SuiteSpec(name = "gcc_torture", tests_dir = GCC_TORTURE_TESTS, work_dir = "suites/gcc_torture/work", expected_pass = "suites/gcc_torture/expected_pass.txt", skip_ledger = "suites/gcc_torture/skip.txt", run_timeout = 20.0)
     return run_suite_main(spec, @@verdict)
 }

@@ -47,15 +47,15 @@ under every daslang tier; `scripts/run_perf.sh --readme` refreshes this table fr
 `perf/results_linux.json`.
 
 <!-- perf-table:begin -->
-Captured on 2026-10-20 01:11 UTC, linux x86_64, AMD FX(tm)-6300 Six-Core Processor; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
+Captured on 2026-10-20 03:04 UTC, linux x86_64, AMD FX(tm)-6300 Six-Core Processor; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
 
 | Test          |      C (clang -O3) | DAS interpreter |            DAS JIT |        DAS exe |            DAS AOT |
 | :------------ | -----------------: | --------------: | -----------------: | -------------: | -----------------: |
-| blit          |     0.000425s ±1% |  0.036487s ±1% |     0.003993s ±3% | 0.004512s ±0% | **0.000420s ±1%** |
-| fib_loop      |     0.001904s ±0% |  0.354534s ±3% |     0.004369s ±0% | 0.004375s ±0% | **0.001904s ±0%** |
-| fib_recursive |     0.008448s ±0% |  0.072166s ±1% |     0.007970s ±1% | 0.008423s ±1% | **0.007942s ±1%** |
-| fixed_mandel  |     0.000843s ±0% |  0.037543s ±2% | **0.000544s ±0%** | 0.000551s ±0% |     0.000738s ±0% |
-| matmul        |     0.000600s ±0% |  0.062883s ±6% | **0.000347s ±0%** | 0.000577s ±0% |     0.000864s ±1% |
-| primes        |     0.048714s ±0% |  0.352135s ±9% |     0.045269s ±0% | 0.045260s ±0% | **0.035950s ±0%** |
-| sieve         | **0.006830s ±1%** |  0.173264s ±2% |     0.007286s ±0% | 0.007149s ±0% |     0.036651s ±0% |
+| blit          |     0.000425s ±0% |  0.038994s ±5% |     0.004001s ±1% | 0.004471s ±2% | **0.000423s ±2%** |
+| fib_loop      | **0.001904s ±0%** |  0.361216s ±8% |     0.004364s ±0% | 0.004362s ±0% |     0.001904s ±0% |
+| fib_recursive |     0.008446s ±0% |  0.073588s ±1% |     0.007907s ±1% | 0.008443s ±1% | **0.007876s ±1%** |
+| fixed_mandel  |     0.000843s ±0% |  0.039739s ±6% | **0.000544s ±0%** | 0.000551s ±0% |     0.000738s ±0% |
+| matmul        |     0.000600s ±0% |  0.059909s ±2% | **0.000347s ±0%** | 0.000576s ±0% |     0.000862s ±1% |
+| primes        |     0.048713s ±0% | 0.352379s ±13% |     0.045266s ±0% | 0.045250s ±0% | **0.035954s ±0%** |
+| sieve         | **0.006792s ±1%** |  0.172611s ±2% |     0.007286s ±1% | 0.007149s ±0% |     0.036675s ±0% |
 <!-- perf-table:end -->

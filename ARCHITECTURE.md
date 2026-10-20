@@ -22,12 +22,17 @@ toolchain binding section 4; the exception ledger section 5.
   on. Runs first in every test lane.
 - `suites/` - fetch scripts, runners, ratchet state and skip ledgers for c-testsuite, GCC
   c-torture `execute` and csmith; fetched inputs and work trees are gitignored.
+- `metrics/` - the readability metric: the suites' passing tests and the perf kernels
+  converted and counted for `unsafe` scopes and expressions, pointer steps, `reinterpret`
+  casts, `goto`, raw `while` loops and unnamed literals, the totals ratcheted in
+  `metrics/readability_linux.json` (`metrics/ARCHITECTURE.md`).
 - `docs/` - the normative design, authored in its own repository and copied here whole
   (`README.md`). Never edited to match code.
 - `skills/` - agent instructions: vendored daScript skills (never edited here) and this
   repository's own under `skills/internal/`.
-- `scripts/` - `env.sh` (the toolchain variables), `verify_daslang.sh`, `preflight.sh`,
-  `sync_daslang_skills.sh`. Shell only; anything that reads `.das` is a daslang tool from
+- `scripts/` - `env.sh` (the toolchain variables and `das`, daslang with both module folders
+  loaded), `verify_daslang.sh`, `preflight.sh`, `sync_daslang_skills.sh` and the runners
+  `run_suite.sh`, `run_perf.sh` and `run_readability.sh`. Shell only; anything that reads `.das` is a daslang tool from
   `DASLANG_ROOT`.
 - `lua/`, `doom/` - vendored programs with their sidecars and harnesses, created by the phases
   that need them (`docs/implementation_order.md`, P5 and P6). `doom/` is the GPL-2 subtree.

@@ -7,6 +7,7 @@ require daslib/strings_boost
 require daslib/fio
 require daslib/rtti
 require daslib/ast
+require daslib/clargs
 require daslib/das_source_formatter
 require cir
 require dumper_a
@@ -31,19 +32,40 @@ struct ConvertResult {
 }
 
 
-def private compile_errors(das_path : string) : string {
-    var report = ""
+// `das_path` compiled, under `as_written` with every `unsafe` scope kept, no optimization and
+// every symbol kept, the unused ones included;
+// `blk` sees whether it compiled, the program and the compiler's output, never empty on a failure
+def private compile_with(das_path : string; as_written : bool; blk : block<(ok : bool; program : ProgramPtr; output : string) : void>) {
     var inscope access <- make_file_access("")
     using() $(var mg : ModuleGroup) {
         using() $(var cop : CodeOfPolicies) {
-            compile_file(das_path, access, unsafe(addr(mg)), cop) $(ok, _program, output) {
-                if (!ok) {
-                    report = string(output)
-                    if (empty(report)) {
-                        report = "compile failed without a message"
-                    }
-                }
+            cop.no_fold_unsafe = as_written
+            cop.no_optimizations = as_written
+            cop.export_all = as_written
+            compile_file(das_path, access, unsafe(addr(mg)), cop) $(ok, program, output) {
+                invoke(blk, ok, program, ok || !empty(output) ? string(output) : "compile failed without a message")
             }
+        }
+    }
+}
+
+//! `das_path` compiled with the default policies, as the compile check runs it; `blk` sees
+//! whether it compiled, the program and the compiler's output, never empty on a failure.
+def compile_checked(das_path : string; blk : block<(ok : bool; program : ProgramPtr; output : string) : void>) {
+    compile_with(das_path, false, blk)
+}
+
+//! `das_path` compiled with every `unsafe` scope kept, no optimization and no unused symbol
+//! removed, so the program's AST is the text's own; `blk` sees what `compile_checked`'s does.
+def compile_as_written(das_path : string; blk : block<(ok : bool; program : ProgramPtr; output : string) : void>) {
+    compile_with(das_path, true, blk)
+}
+
+def private compile_errors(das_path : string) : string {
+    var report = ""
+    compile_checked(das_path) $(ok, _program, output) {
+        if (!ok) {
+            report = output
         }
     }
     return report
@@ -116,4 +138,18 @@ def convert(c_path : string; out_dir : string; target_name : string; clang : str
     }
     res.ok = true
     return <- res
+}
+
+//! The opening every command-line main shares: `args` parsed for `prog`, the help printed under
+//! `-?`; the exit code to return at once, or -1 to go on.
+def cli_prologue(var args : auto(ArgsT); prog : string) : int {
+    let parsed = _::parse_args_with_help(args, prog)
+    if (parsed >= 0) {
+        return parsed
+    }
+    if (args.show_help) {
+        print_help(_::get_command_info(type<ArgsT>), prog)
+        return 0
+    }
+    return -1
 }

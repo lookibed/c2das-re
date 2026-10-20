@@ -4,4 +4,4 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 . scripts/env.sh
-exec "$DASLANG" -load_module "$repo_root/dasCRuntime" -load_module "$repo_root/c_runtime" perf/run.das -- "$@"
+das perf/run.das -- "$@"

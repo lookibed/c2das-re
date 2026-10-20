@@ -13,6 +13,6 @@ def verdict(id : string; c_path : string; rc : int; output : string) : Outcome =
 
 [export]
 def main : int {
-    let spec = SuiteSpec(name = "c_testsuite", tests_dir = "suites/c_testsuite/fetch/c-testsuite/tests/single-exec", work_dir = "suites/c_testsuite/work", expected_pass = "suites/c_testsuite/expected_pass.txt", skip_ledger = "suites/c_testsuite/skip.txt", run_timeout = 60.0)
+    let spec = SuiteSpec(name = "c_testsuite", tests_dir = C_TESTSUITE_TESTS, work_dir = "suites/c_testsuite/work", expected_pass = "suites/c_testsuite/expected_pass.txt", skip_ledger = "suites/c_testsuite/skip.txt", run_timeout = 60.0)
     return run_suite_main(spec, @@verdict)
 }

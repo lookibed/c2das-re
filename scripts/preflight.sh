@@ -8,8 +8,6 @@ set -uo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 . scripts/env.sh
-# every daslang run sees the crt and c_runtime modules: they live here, not under DASLANG_ROOT/modules
-das() { "$DASLANG" -load_module "$repo_root/dasCRuntime" -load_module "$repo_root/c_runtime" "$@"; }
 base="${PREFLIGHT_BASE:-origin/main}"
 git rev-parse --verify -q "$base" >/dev/null 2>&1 || base="$(git rev-list --max-parents=0 HEAD 2>/dev/null | tail -1)"
 full=0; only=(); skip=()
@@ -29,7 +27,7 @@ compile      fast   -compile-only of every .das outside fixtures/
 ast-verify   fast   -dry-run --ast-verify of every changed .das (a verify line or a crash fails)
 md-ascii     fast   no em-dash, arrow or ellipsis added to a rule document (docs/ is exempt: authored elsewhere)
 review-md    fast   the REVIEW.das gates of every folder the diff touches
-tests        lane   every dastest suite: probes/, dasCRuntime/tests, c_runtime/tests, converter/tests, perf/tests, tests/
+tests        lane   every dastest suite: probes/, dasCRuntime/tests, c_runtime/tests, converter/tests, perf/tests, metrics/tests, tests/
 TABLE
             exit 0 ;;
         *) echo "preflight: unknown flag $1" >&2; exit 2 ;;
@@ -37,8 +35,8 @@ TABLE
     shift
 done
 wants() { local g="$1"; for s in "${skip[@]:-}"; do [ "$s" = "$g" ] && return 1; done; [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$g" ] && return 0; done; return 1; }
-das_dirs=(); for d in converter c_runtime dasCRuntime perf probes suites tests; do [ -d "$d" ] && das_dirs+=("$d"); done
-# a suite's fetch/ and work/ and perf/work hold inputs and converted output, never house code
+das_dirs=(); for d in converter c_runtime dasCRuntime metrics perf probes suites tests; do [ -d "$d" ] && das_dirs+=("$d"); done
+# a suite's fetch/ and work/, perf/work and metrics/work hold inputs and converted output, never house code
 das_files() { [ ${#das_dirs[@]} -gt 0 ] && find "${das_dirs[@]}" -type d \( -name fetch -o -name work \) -prune -o -type f -name '*.das' -print | sort; }
 changed_das() { git diff --name-only "$base" -- '*.das' 2>/dev/null; git ls-files --others --exclude-standard -- '*.das'; }
 pass() { echo "[PASS] $1"; }
@@ -84,7 +82,7 @@ gate_ast_verify() {
     pass "ast-verify ($n changed files)"
 }
 gate_md_ascii() {
-    local bad; bad=$(git diff "$base" -- 'REVIEW*.md' 'ARCHITECTURE*.md' CLAUDE.md AGENTS.md 'skills/internal/*.md' 2>/dev/null | grep '^+' | grep -vP '^\+\+\+' | grep -P '[\x{2014}\x{2192}\x{2026}]' || true)
+    local bad; bad=$(git diff "$base" -- ':(glob)**/REVIEW*.md' ':(glob)**/ARCHITECTURE*.md' ':(glob)**/CLAUDE.md' ':(glob)**/AGENTS.md' 'skills/internal/*.md' 2>/dev/null | grep '^+' | grep -vP '^\+\+\+' | grep -P '[\x{2014}\x{2192}\x{2026}]' || true)
     [ -z "$bad" ] && pass md-ascii || { echo "$bad" | head -5; fail md-ascii "smart punctuation added to a rule document"; }
 }
 gate_review_md() {
@@ -93,7 +91,7 @@ gate_review_md() {
 }
 gate_tests() {
     local d rc=0
-    for d in probes dasCRuntime/tests c_runtime/tests converter/tests perf/tests tests; do
+    for d in probes dasCRuntime/tests c_runtime/tests converter/tests perf/tests metrics/tests tests; do
         [ -d "$d" ] || continue
         das "$DASLANG_ROOT/dastest/dastest.das" -- --test "$d" --failures-only || rc=1
     done

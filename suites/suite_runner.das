@@ -6,8 +6,10 @@ require strings
 require daslib/strings_boost
 require daslib/fio
 require daslib/clargs
+require math
 require ../converter/pipeline.das
 require ../converter/tiers.das
+require suite_files public
 
 //! The runner every suite shares: each `<id>.c` of the suite is converted into `work/<id>/`
 //! under the `linux` dialect, run under the interpreter, and judged by the suite's own
@@ -31,6 +33,10 @@ struct Args {
     show_help : bool
 }
 
+//! the folder each file-based suite's tests sit in, from the repository root
+let C_TESTSUITE_TESTS = "suites/c_testsuite/fetch/c-testsuite/tests/single-exec"
+let GCC_TORTURE_TESTS = "suites/gcc_torture/fetch/gcc/gcc/testsuite/gcc.c-torture/execute"
+
 struct Outcome {
     id : string
     status : string
@@ -45,40 +51,6 @@ struct SuiteSpec {
     skip_ledger : string
     // seconds a converted test may run before it counts as `exit`
     run_timeout : float
-}
-
-def read_lines(path : string) : array<string> {
-    var lines : array<string>
-    if (!fexist(path)) {
-        return <- lines
-    }
-    for (line in split(fread(path), "\n")) {
-        let trimmed = strip(line)
-        if (!empty(trimmed) && !(trimmed |> starts_with("#"))) {
-            lines |> push(trimmed)
-        }
-    }
-    return <- lines
-}
-
-//! The ratchet and the ledger as a run reads them: the ids `expected_pass.txt` lists, as read and
-//! as a set, and the ids `skip.txt` lists.
-struct Ratchet {
-    expected : array<string>
-    expected_set : table<string>
-    skips : table<string>
-}
-
-def read_ratchet(expected_pass, skip_ledger : string) : Ratchet {
-    var r : Ratchet
-    for (line in read_lines(skip_ledger)) {
-        r.skips |> insert(split(line, "\t")[0])
-    }
-    r.expected <- read_lines(expected_pass)
-    for (id in r.expected) {
-        r.expected_set |> insert(id)
-    }
-    return <- r
 }
 
 //! What a run found: the ids that passed, the count per status, the listed ids that stopped
@@ -175,18 +147,6 @@ def compare_output(id : string; rc : int; output, expected : string) : Outcome {
     return Outcome(id = id, status = "pass", reason = "")
 }
 
-// the `.c` files directly under the tests folder, by id, sorted
-def private test_ids(spec : SuiteSpec; filter : string) : array<string> {
-    var ids : array<string>
-    dir(spec.tests_dir) $(name) {
-        if (name |> ends_with(".c") && (empty(filter) || find(name, filter) >= 0)) {
-            ids |> push(slice(name, 0, length(name) - 2))
-        }
-    }
-    ids |> sort()
-    return <- ids
-}
-
 def first_line(text : string) : string {
     let nl = find(text, "\n")
     return nl < 0 ? text : slice(text, 0, nl)
@@ -206,13 +166,9 @@ def private run_one(spec : SuiteSpec; id : string; target : string; verdict : fu
 //! stopped passing, 2 when the suite is not fetched.
 def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : int {
     var args = Args()
-    let parsed = parse_args_with_help(args, "run_suite {spec.name}")
+    let parsed = cli_prologue(args, "run_suite {spec.name}")
     if (parsed >= 0) {
         return parsed
-    }
-    if (args.show_help) {
-        print_help(get_command_info(type<Args>), "run_suite {spec.name}")
-        return 0
     }
     if (!fexist(spec.tests_dir)) {
         to_log(LOG_ERROR, "{spec.tests_dir} is missing: run suites/{spec.name}/fetch.sh\n")
@@ -220,7 +176,7 @@ def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : s
     }
     let ratchet <- read_ratchet(spec.expected_pass, spec.skip_ledger)
     var tally : Tally
-    for (id in test_ids(spec, args.filter)) {
+    for (id in c_file_ids(spec.tests_dir, args.filter)) {
         if (key_exists(ratchet.skips, id)) {
             count_status(tally, "skip")
             continue
@@ -228,4 +184,66 @@ def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : s
         record(tally, ratchet, run_one(spec, id, args.target, verdict), args.verbose)
     }
     return finish_run(spec.name, spec.expected_pass, tally, args.update, !empty(args.filter), tally.passed)
+}
+
+//! The seconds since `t0`, a `ref_time_ticks` reading.
+def seconds_since(t0 : int64) : float => float(double(get_time_nsec(t0)) / 1000000000.0lf)
+
+struct private RunningWorker {
+    index : int
+    proc : process
+    started : int64
+    output : string
+}
+
+// true once `w` ended, by itself or killed past `timeout` seconds, and `done` took it
+def private reap_worker(var w : RunningWorker; timeout : float; done : block<(index : int; killed : bool; rc : int; output : string) : void>) : bool {
+    var rc = unsafe(process_poll(w.proc))
+    let killed = rc == process_running && seconds_since(w.started) >= timeout
+    unsafe(process_drain(w.proc) $(line) {
+        w.output += line
+    })
+    if (rc == process_running && !killed) {
+        return false
+    }
+    if (killed) {
+        unsafe(process_kill(w.proc))
+        rc = unsafe(process_wait(w.proc, 10.0))
+    }
+    invoke(done, w.index, killed, rc, w.output)
+    unsafe(close_process(w.proc))
+    return true
+}
+
+//! Indices 0 to `count - 1` through worker processes, at most `jobs` running at once: `start`
+//! spawns an index's worker, and `done` takes it with what it printed once it exited, or once
+//! it was killed past `timeout` seconds.
+def run_workers(count, jobs : int; timeout : float; start : block<(index : int) : process>; done : block<(index : int; killed : bool; rc : int; output : string) : void>) {
+    var running : array<RunningWorker>
+    var next = 0
+    while (next < count || !empty(running)) {
+        while (next < count && length(running) < max(jobs, 1)) {
+            running |> push(RunningWorker(index = next, proc = invoke(start, next), started = ref_time_ticks()))
+            next++
+        }
+        var idx = 0
+        while (idx < length(running)) {
+            if (reap_worker(running[idx], timeout, done)) {
+                running |> erase(idx)
+            } else {
+                idx++
+            }
+        }
+        sleep(200u)
+    }
+}
+
+//! A worker of `script`: the script run with both module folders loaded and `--one <id>`, the
+//! file `stale` it writes removed first, so a worker that dies leaves none behind.
+def spawn_one(script, id, stale : string) : process {
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from([script, "--", "--one", id])
+    let noenv : array<string>
+    remove(stale)
+    return unsafe(spawn_process(argv, "", noenv))
 }
