@@ -281,7 +281,16 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   calls as the lead). A cause in the emitted shape, the tiers host or its compile flags is
   fixed here; a cause in daScript's AOT gets a minimal standalone repro and an issue in
   lookibed/daScript, the way #15 and #16 were filed. Either way a `docs/probe-findings.md`
-  row records the finding and the capture is re-recorded.
+  row records the finding and the capture is re-recorded. The row also owns the
+  `fib_recursive` AOT cell at 0.01x native (the FX-6300 capture): the host's GCC 14 at `-O2`
+  turns the second recursive call into a loop and unrolls levels, so the cell is a real time
+  of a cheaper program than clang's `-O3` native build, not a kernel time; decide whether the
+  AOT host compiles with the pinned clang at the native lane's flags so the two lanes
+  compare, and record the decision in `perf/ARCHITECTURE.md`. One more cell for the same
+  look: the `exe` lane on `fib_recursive` is 12.8 percent slower than the P2.3 tree on the
+  same CPU while its converted kernel and the JIT cell are unchanged; the gap follows the
+  module folders (`c_runtime/`, `dasCRuntime/`) the executable links, which grew since
+  P2.3, so the mechanism (code layout is the candidate) is open.
 - **P4.5c Readability metric.** `metrics/readability.das` (run by
   `scripts/run_readability.sh`) converts the suites' tests and the perf kernels and counts,
   per converted module and in total: `[c_function]` functions, `unsafe` blocks and

@@ -13,6 +13,9 @@ require crt
 require ../converter/pipeline.das
 require ../converter/tiers.das
 require ../converter/dumper_a.das
+require ../converter/sidecar.das
+require perf_tables
+require perf_cli
 
 //! The performance comparison of docs/very-detailed-plan.md section 2, measured the way
 //! borisbat/dasProfile measures: every kernel under perf/kernels/<name>.c is composed with
@@ -29,8 +32,6 @@ let RESULTS = "perf/results_linux.json"
 let README = "README.md"
 let README_BEGIN = "<!-- perf-table:begin -->"
 let README_END = "<!-- perf-table:end -->"
-let LANES <- ["native", "interp", "jit", "exe", "aot"]
-let LANE_TITLES <- {"native" => "C (clang -O3)", "interp" => "DAS interpreter", "jit" => "DAS JIT", "exe" => "DAS exe", "aot" => "DAS AOT"}
 
 [CommandLineArgs]
 struct Args {
@@ -43,6 +44,12 @@ struct Args {
     show_table : bool
     @clarg_doc = "rewrite the perf table section of README.md after measuring"
     readme : bool
+    @clarg_doc = "print the lane time / native table after the results"
+    ratios : bool
+    @clarg_doc = "the capture the delta compares against (default: perf/results_linux.json at HEAD)"
+    baseline : string = ""
+    @clarg_doc = "write the results, ratio and delta tables as one markdown block to this file"
+    report : string = ""
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -55,24 +62,6 @@ struct Cell {
     count : int64
     result : int
     samples : array<double>
-}
-
-def fread_text(path : string) : string {
-    var text = ""
-    fopen(path, "rb") $(f) {
-        if (f != null) {
-            text = fread(f)
-        }
-    }
-    return text
-}
-
-def write_text(path : string; text : string) {
-    fopen(path, "wb") $(f) {
-        if (f != null) {
-            fwrite(f, text)
-        }
-    }
 }
 
 def first_line(text : string) : string {
@@ -171,10 +160,6 @@ def accept_lane(var cells : table<string; Cell>; lane : string; var cell : Cell;
     }
 }
 
-def module_dirs : array<string> {
-    return <- ["c_runtime", "dasCRuntime"]
-}
-
 //! Every lane of one kernel: the native build and the four converter tiers.
 def run_kernel(name : string; samples : int; var errors : array<string>) : table<string; Cell> {
     var cells : table<string; Cell>
@@ -203,8 +188,8 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
     }
     let daslang = get_das_root() + "/bin/daslang"
     var loader : array<string>
-    loader |> reserve(2 * length(module_dirs()))
-    for (dir in module_dirs()) {
+    loader |> reserve(2 * length(CONVERTED_MODULES))
+    for (dir in CONVERTED_MODULES) {
         loader |> push("-load_module")
         loader |> push(dir)
     }
@@ -221,7 +206,7 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
         errors |> push("{name}/jit: {err}")
     }
     var tier_out : string
-    if (run_tier(res.das_path, "exe", work, tier_out, module_dirs()) >= 0) {
+    if (run_tier(res.das_path, "exe", work, tier_out, CONVERTED_MODULES) >= 0) {
         let exe = path_join(work, "{name}_exe")
         let built = fexist(exe + ".exe") ? exe + ".exe" : exe
         err = ""
@@ -234,7 +219,7 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
         errors |> push("{name}/exe: {first_line(tier_out)}")
     }
     tier_out = ""
-    if (run_tier(res.das_path, "aot", work, tier_out, module_dirs()) >= 0) {
+    if (run_tier(res.das_path, "aot", work, tier_out, CONVERTED_MODULES) >= 0) {
         let bin = path_join(path_join(work, "ctx"), "{name}_aot")
         err = ""
         var aot_cell <- measure([bin], samples, err)
@@ -265,64 +250,12 @@ def cpu_name : string {
     return "unknown cpu"
 }
 
-// six decimals through the CRT, the way the kernels print their own line
-def seconds_text(v : double) : string {
-    var buf : uint8[64]
-    var out = unsafe(addr(buf[0]))
-    let spec = unsafe(reinterpret<uint8?>("%.6f"))
-    let n = unsafe(crt::snprintf_double(out, uint64(typeinfo dim(buf)), spec, v))
-    let rendered = unsafe(reinterpret<string>(out))
-    return slice(rendered, 0, n)
-}
-
-def fmt_cell(c : Cell) : string {
-    return "{seconds_text(c.time)}s ±{int(math::round(c.spread * 100.0lf))}%"
-}
-
 def lane_text(cells : table<string; Cell>; lane : string) : string {
     var text = "-"
     cells |> get(lane) $(c) {
-        text = fmt_cell(c)
+        text = cell_text(c.time, c.spread)
     }
     return text
-}
-
-def render_table(js : JsonValue?) : string {
-    var rows : array<string>
-    rows |> push("| Test | " + join([for (lane in LANES); LANE_TITLES?[lane] ?? lane], " | ") + " |")
-    rows |> push("| --- | " + join([for (_lane in LANES); "---:"], " | ") + " |")
-    let tests = js?["tests"]
-    if (tests != null && tests is _object) {
-        var names <- [for (name in keys(tests as _object)); name]
-        names |> sort()
-        for (name in names) {
-            var cells : array<string>
-            var best = 0.0lf
-            for (lane in LANES) {
-                let t = tests?[name]?[lane]?["time"] ?? 0.0lf
-                if (t > 0.0lf && (best == 0.0lf || t < best)) {
-                    best = t
-                }
-            }
-            for (lane in LANES) {
-                let t = tests?[name]?[lane]?["time"] ?? 0.0lf
-                if (t <= 0.0lf) {
-                    cells |> push("-")
-                    continue
-                }
-                let spread = tests?[name]?[lane]?["spread"] ?? 0.0lf
-                let text = "{seconds_text(t)}s ±{int(math::round(spread * 100.0lf))}%"
-                cells |> push(t == best ? "**{text}**" : text)
-            }
-            rows |> push("| {name} | " + join(cells, " | ") + " |")
-        }
-    }
-    let platform = js?["platform"] ?? ""
-    let cpu = js?["cpu"] ?? ""
-    let stamp = js?["timestamp"] ?? ""
-    let versions = js?["versions"]
-    let head = "Captured on {stamp}, {platform}, {cpu}; {versions?["clang"] ?? ""}, {versions?["daslang"] ?? ""}. A cell is the median of {js?["samples"] ?? 0l} samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.\n\n"
-    return head + join(rows, "\n") + "\n"
 }
 
 def update_readme(rendered : string) : bool {
@@ -343,14 +276,19 @@ def main : int {
     if (parsed >= 0) {
         return parsed
     }
+    var baseline_name, error : string
+    let baseline = baseline_capture(args.baseline, RESULTS, baseline_name, error)
+    if (!empty(error)) {
+        to_log(LOG_ERROR, "{error}\n")
+        return 1
+    }
     if (args.show_table) {
-        var error : string
-        let js = read_json(fread_text(RESULTS), error)
+        let js = read_json_file(RESULTS, error)
         if (js == null) {
-            to_log(LOG_ERROR, "{RESULTS}: {error}\n")
+            to_log(LOG_ERROR, "{error}\n")
             return 1
         }
-        print(render_table(js))
+        print(show_tables(js, baseline, baseline_name, args.ratios, args.report))
         return 0
     }
     var names : array<string>
@@ -364,7 +302,7 @@ def main : int {
     var errors : array<string>
     var tests : table<string; JsonValue?>
     for (name in names) {
-        let cells <- run_kernel(name, args.samples, errors)
+        var inscope cells <- run_kernel(name, args.samples, errors)
         var row <- {for (lane, cell in keys(cells), values(cells)); lane => JV((time = cell.time, spread = cell.spread, count = cell.count, result = cell.result, samples = JV(cell.samples)))}
         tests[name] = JV(row)
         to_log(LOG_INFO, "{name}: " + join([for (lane in LANES); "{lane} {lane_text(cells, lane)}"], ", ") + "\n")
@@ -380,9 +318,8 @@ def main : int {
     }
     let js = JV(root)
     write_text(RESULTS, write_json(js) + "\n")
-    let rendered = render_table(js)
-    print(rendered)
-    if (args.readme && !update_readme(rendered)) {
+    print(show_tables(js, baseline, baseline_name, args.ratios, args.report))
+    if (args.readme && !update_readme(render_results(js))) {
         to_log(LOG_ERROR, "{README} has no perf-table markers\n")
     }
     for (e in errors) {

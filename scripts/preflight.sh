@@ -29,7 +29,7 @@ compile      fast   -compile-only of every .das outside fixtures/
 ast-verify   fast   -dry-run --ast-verify of every changed .das (a verify line or a crash fails)
 md-ascii     fast   no em-dash, arrow or ellipsis added to a rule document (docs/ is exempt: authored elsewhere)
 review-md    fast   the REVIEW.das gates of every folder the diff touches
-tests        lane   every dastest suite: probes/, dasCRuntime/tests, c_runtime/tests, converter/tests, tests/
+tests        lane   every dastest suite: probes/, dasCRuntime/tests, c_runtime/tests, converter/tests, perf/tests, tests/
 TABLE
             exit 0 ;;
         *) echo "preflight: unknown flag $1" >&2; exit 2 ;;
@@ -37,8 +37,8 @@ TABLE
     shift
 done
 wants() { local g="$1"; for s in "${skip[@]:-}"; do [ "$s" = "$g" ] && return 1; done; [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$g" ] && return 0; done; return 1; }
-das_dirs=(); for d in converter c_runtime dasCRuntime probes suites tests; do [ -d "$d" ] && das_dirs+=("$d"); done
-# a suite's fetch/ and work/ hold inputs and converted output, never house code
+das_dirs=(); for d in converter c_runtime dasCRuntime perf probes suites tests; do [ -d "$d" ] && das_dirs+=("$d"); done
+# a suite's fetch/ and work/ and perf/work hold inputs and converted output, never house code
 das_files() { [ ${#das_dirs[@]} -gt 0 ] && find "${das_dirs[@]}" -type d \( -name fetch -o -name work \) -prune -o -type f -name '*.das' -print | sort; }
 changed_das() { git diff --name-only "$base" -- '*.das' 2>/dev/null; git ls-files --others --exclude-standard -- '*.das'; }
 pass() { echo "[PASS] $1"; }
@@ -93,7 +93,7 @@ gate_review_md() {
 }
 gate_tests() {
     local d rc=0
-    for d in probes dasCRuntime/tests c_runtime/tests converter/tests tests; do
+    for d in probes dasCRuntime/tests c_runtime/tests converter/tests perf/tests tests; do
         [ -d "$d" ] || continue
         das "$DASLANG_ROOT/dastest/dastest.das" -- --test "$d" --failures-only || rc=1
     done

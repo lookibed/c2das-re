@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Run the perf comparison from the repository root with both modules loaded:
-# `scripts/run_perf.sh [--filter name] [--samples N] [--readme]`; `--table` renders the stored
-# results. The run builds the native kernels, converts them and runs every tier.
+# Run perf/run.das from the repository root with both modules loaded; flags: scripts/run_perf.sh -?
 set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"

@@ -36,12 +36,9 @@ def find_sidecar(c_path : string; given : string) : string {
     return fexist(folder_wide) ? folder_wide : ""
 }
 
-//! Reads a sidecar file; `error` names a file that is not JSON or a key of the wrong shape.
-def read_sidecar(path : string; var error : string&) : Sidecar {
-    var side : Sidecar
-    if (empty(path)) {
-        return <- side
-    }
+//! The JSON document in the file at `path`; null with `error` naming the path when the file
+//! is missing, empty or not JSON.
+def read_json_file(path : string; var error : string&) : JsonValue? {
     var text = ""
     fopen(path, "rb") $(f) {
         if (f != null) {
@@ -51,6 +48,18 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
     var js = read_json(text, error)
     if (js == null) {
         error = "{path}: {error}"
+    }
+    return js
+}
+
+//! Reads a sidecar file; `error` names a file that is not JSON or a key of the wrong shape.
+def read_sidecar(path : string; var error : string&) : Sidecar {
+    var side : Sidecar
+    if (empty(path)) {
+        return <- side
+    }
+    var js = read_json_file(path, error)
+    if (js == null) {
         return <- side
     }
     let marshal = js?["marshal"]
