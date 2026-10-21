@@ -146,9 +146,9 @@ def test_cli(t : T?) {
     let empty_file = path_join(dir, "empty.json")
     let invalid_file = path_join(dir, "invalid.json")
     let valid_file = path_join(dir, "valid.json")
-    write_text(empty_file, "")
-    write_text(invalid_file, "\{ not json")
-    write_text(valid_file, replace(TWO_BY_TWO, "'", "\""))
+    fwrite(empty_file, "")
+    fwrite(invalid_file, "\{ not json")
+    fwrite(valid_file, replace(TWO_BY_TWO, "'", "\""))
     t |> run("--baseline: a missing, empty or invalid file is an error naming it") @(t : T?) {
         for (path in [path_join(dir, "missing.json"), empty_file, invalid_file]) {
             var name, error : string
@@ -181,7 +181,7 @@ def test_cli(t : T?) {
         let report = path_join(dir, "report.md")
         let text = show_tables(js, js, "same", false, report)
         t |> equal(text, render_report(js, js, "same"))
-        t |> equal(fread_text(report), text)
+        t |> equal(fread(report), text)
     }
     t |> run("without a report: the results, the ratios when asked, the delta only with a baseline") @(t : T?) {
         t |> equal(show_tables(js, null, "", false, ""), render_results(js))

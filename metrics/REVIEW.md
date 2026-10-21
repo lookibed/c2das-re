@@ -3,18 +3,20 @@
 **Read `REVIEW_COMMON.md` (repo root) first - its contract binds this checklist.** Architecture
 doc: `ARCHITECTURE.md`. Planned work: `docs/implementation_order.md`.
 
-**A diff that raises a metric of a `modules` key that `readability_linux.json` already holds at
-the commit the change starts from - a metric the file lacks there counts as zero - says, in the
-message of the commit that records the raise, each raised metric, the keys it rose in - by name,
-or as a whole group of the `inputs` groups when one cause raised it there - and why.**
+**A diff that raises a metric on a `modules` key `readability_linux.json` held at the change's
+base commit says, in the commit that records the raise, each raised metric, the keys it rose
+in, and why.** One `inputs` group of `readability_linux.json` may stand for its keys when one
+cause raised them all; a metric the base lacks counts as zero.
 
 **A diff that adds keys under `modules` in `readability_linux.json` names them in the message of
-the commit that adds them.**
+the commit that adds them, or a whole `inputs` group when the diff adds every key of it.**
 
-**A diff that changes `readability_count.das`, or `c_file_of` or `measure_one` in
-`readability.das`, beyond comments re-records `readability_linux.json` with
-`scripts/run_readability.sh --update` in the same change and puts the run's totals table in
-its commit message.**
+**A diff that changes, beyond comments, any code in `readability.das`, `readability_count.das`
+or `readability_file.das` that decides which counts `readability_linux.json` records re-records
+it with `scripts/run_readability.sh --update` in the same change.**
+
+**A diff that re-records `readability_linux.json` puts the totals table
+`scripts/run_readability.sh --update` prints in its commit message.**
 
 **Never weaken a check `REVIEW.das` runs - in that file, or in `check_capture` or
 `check_input_keys` of `readability_file.das` - fix what it flags instead.**

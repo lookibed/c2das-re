@@ -7,6 +7,7 @@ require daslib/strings_boost
 require daslib/json_boost
 require daslib/md_boost
 require daslib/functional
+require ../suites/suite_files.das
 
 //! The readability capture `metrics/readability_linux.json` as data: the metric and input
 //! names, the text a run writes (keys sorted, two-space indent, one module per line), the shape
@@ -25,10 +26,7 @@ struct Capture {
 }
 
 //! The group of an input key, the text before its first slash.
-def group_of(key : string) : string {
-    let slash = find(key, "/")
-    return slash < 0 ? key : slice(key, 0, slash)
-}
+def group_of(key : string) : string => text_before(key, "/")
 
 //! Every metric summed over `modules`, a metric no module has counted as zero.
 def totals_of(modules : table<string; table<string; int>>) : table<string; int> {

@@ -48,13 +48,7 @@ def find_sidecar(c_path : string; given : string) : string {
 //! The JSON document in the file at `path`; null with `error` naming the path when the file
 //! is missing, empty or not JSON.
 def read_json_file(path : string; var error : string&) : JsonValue? {
-    var text = ""
-    fopen(path, "rb") $(f) {
-        if (f != null) {
-            text = fread(f)
-        }
-    }
-    var js = read_json(text, error)
+    var js = read_json(fread(path), error)
     if (js == null) {
         error = "{path}: {error}"
     }
@@ -84,7 +78,7 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
     side.alloca_limit = int(js?["alloca_limit"] ?? 0l)
     let param_writes = js?["param_writes"] ?? ""
     if (key_exists(js, "param_writes") && !is_param_writes(param_writes)) {
-        error = "{path}: `param_writes` is \"in-place\" or \"copy\""
+        error = "{path}: `param_writes` is \"in-place\" or \"copy\", not {write_json(js?["param_writes"])}"
     } else {
         side.param_writes = param_writes
     }

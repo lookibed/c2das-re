@@ -411,8 +411,43 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `deref(_t0)` after the call too). The read belongs right after the store, into a temporary,
   when a later sibling has an effect; settled with the first suite program or Lua (P5.3) that
   hits it.
+- **P4.9 Matrix and suite leftovers.** The `docs/c-feature-matrix.md` rows the P4 phase-end
+  audit found without a green fixture, and the gcc-torture skip lines for string literals that
+  named a bare phase (the 436 `__attribute__` and `__builtin_*` lines still name `P4`: the row
+  that homes them is the owner's call). Each is the matrix line, then today's behaviour:
+  a pointer to a struct the unit never defines (line 41, `struct opaque; static struct opaque
+  *keep;`) emits no forward struct, so the compile check fails ("don't know what 'opaque' is",
+  error 30817; a function returning one, 30814) - a bug; a VLA `int a[n]` (line 29) is refused
+  with the zero-length-array message, since the dump gives the array count 0 (`converter/emit.das`,
+  "a zero-length array (a GNU extension) is not lowered yet"), so the message names the wrong
+  construct; a flexible array member (line 33) is refused ("flexible array member ... is not
+  lowered yet") and the sidecar has no key for it; a compound literal outside a union
+  initializer (line 52) is refused by the dumper (`CompoundLiteralExpr`; the union case is the
+  P4.2 ledger); `_Alignof` (line 70) is refused by the dumper ("`alignof` is not dumped yet");
+  `main(argc, argv)` (line 113) is refused by the emitter ("main with arguments is not lowered
+  yet"; gcc-torture 20041113-1 waits for it); the general setjmp form `int r = setjmp(b)` (line
+  101) is refused by the emitter ("the general trampoline form"); a wide string literal and a
+  string literal in a 2-D char array initializer (`static const char s4_2[2][4] = {"1234",
+  "5678"}`, "a string literal outside a pointer context is not lowered yet") are the
+  gcc-torture skip lines naming this row (20010325-1, wchar_t-1, widechar-2, widechar-3; memchr-1,
+  pr86714, strlen-2, strlen-6). Fixtures still owed for shapes that convert right today but only
+  suite programs or a scratch conversion show: `_Alignas` (line 32), `exit()` from deep in the
+  stack (line 114), `~` and binary `^` (line 63), `restrict` (line 39), K&R parameters (line 109),
+  `inline` (line 111), `long double` (line 22), `volatile` on a plain field (line 38) and the comma
+  operator as a value (line 69). The sidecar's platform defines for `#if` (section 6, "converter
+  runs clang with fixed defines from sidecar") have no implementation. Duff's device (line 96)
+  stays P3.3, which never landed: the 31 csmith skip lines name it.
+  Upstream (daScript): the AOT lane of the kernel `switch_local` has no cell, since daslang's AOT
+  writes a das `goto` past a `var` declaration as a C++ goto past an initialized local, which
+  clang++ refuses ("jump bypasses variable initialization"; `perf/ARCHITECTURE.md` section 4);
+  the issue with a standalone repro is owed. `perf/run.das` takes the failed AOT link for a
+  built lane (`run_tier` returns the link's exit code, which passes its `>= 0` test) and reports
+  the missing binary's exit 127 instead of the link error.
 - **Exit criterion:** csmith runs clean at 1000/night for a week; torture ≥ target with
   ledger; matrix has no row without a green fixture.
+  Ledger: the nightly csmith N=1000 schedule is blocked on this box by the dumper's parse of
+  clang's JSON dump (the P4.5 ledger line), and P4.9 holds the matrix rows without a green
+  fixture.
 
 ## P5 — Lua 5.4
 

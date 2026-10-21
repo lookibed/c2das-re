@@ -1,6 +1,7 @@
 options gen2
 require dastest/testing_boost public
 require strings
+require daslib/strings_boost
 require daslib/fio
 require ../pipeline.das
 require ../tiers.das
@@ -69,17 +70,6 @@ def rejects(t : T?; name : string; source : string; needle : string; sidecar : s
     t |> equal(res.error |> find(needle) >= 0, true, "{name}: `{needle}` not in `{res.error}`")
 }
 
-
-// how many times `needle` occurs in `text`
-def count_of(text, needle : string) : int {
-    var n = 0
-    var at = find(text, needle)
-    while (at >= 0) {
-        n++
-        at = find(text, needle, at + length(needle))
-    }
-    return n
-}
 
 // a C source the converter must take: its das text, "" with a failure when it refuses;
 // `sidecar` and `param_writes` as for `rejects`
@@ -694,7 +684,7 @@ def p4_param_writes_fixtures(t : T?) {
         has_text(t, text, "def private p4_param_writes__reassigned(var q : int?; k : int) : int \{\n    q = q + k\n")
         has_text(t, text, "def private p4_param_writes__through_address(var x : int) : int \{\n    p4_param_writes__set_to(addr(x), x * 3)\n")
         has_text(t, text, "def private p4_param_writes__shadowed(v_in : int; var v : int) : int \{\n    var pv : int? = addr(v)\n")
-        t |> equal(count_of(text, "_in1"), 0)
+        t |> equal(count(text, "_in1"), 0)
         // copy: the parameter keeps its own mode under a free name, a scalar `let`, a pointer
         // `var` (F3), and the body opens with its `var` copy
         has_text(t, copied, "def private p4_param_writes__count_down(n_in : int) : int \{\n    var n = n_in\n    var steps : int = 0\n")
@@ -715,8 +705,8 @@ def p4_param_writes_fixtures(t : T?) {
     }
     t |> run("parameter writes: the sidecar's `param_writes`, refused when it is not a mode, and the converter's option over it") @(t : T?) {
         let source = "static int dec(int n) \{ n--; return n; \}\nint main(void) \{ return dec(1); \}\n"
-        rejects(t, "param_writes_bad", source, "`param_writes` is \"in-place\" or \"copy\"", "\{\"param_writes\": \"local\"\}\n")
-        rejects(t, "param_writes_number", source, "`param_writes` is \"in-place\" or \"copy\"", "\{\"param_writes\": 1\}\n")
+        rejects(t, "param_writes_bad", source, "`param_writes` is \"in-place\" or \"copy\", not \"local\"", "\{\"param_writes\": \"local\"\}\n")
+        rejects(t, "param_writes_number", source, "`param_writes` is \"in-place\" or \"copy\", not 1", "\{\"param_writes\": 1\}\n")
         rejects(t, "param_writes_option", source, "--param-writes is in-place or copy, not `local`", "", "local")
         // a sidecar holding no `marshal` key is taken
         let by_sidecar = converts(t, "param_writes_copy", source, "\{\"param_writes\": \"copy\"\}\n")
@@ -760,7 +750,7 @@ def p4_varargs_fixtures(t : T?) {
         has_text(t, text, "sscanf(reinterpret<uint8?>(\"  12,-7 2.5e1 hello\")")
         // `va_end` is no statement: the text starts a cursor exactly where C calls `va_start`
         let c_source = fread("{FIXTURES}/p4_varargs.c")
-        t |> equal(count_of(text, "= va_begin("), count_of(c_source, "va_start("), text)
+        t |> equal(count(text, "= va_begin("), count(c_source, "va_start("), text)
         // a `va_list` parameter reassigned and passed on stays the caller's `var` cursor
         has_text(t, text, "def private p4_varargs__relay(var ap : CVaCursor) : int \{\n    var mine : CVaCursor\n    mine = ap\n    ap = mine\n")
         // a pop is an effect: an initializer holding a union evaluates its items first
@@ -959,6 +949,9 @@ def p4_csmith_more_fixtures(t : T?) {
         // a literal past `int64` is no constant below the length: it takes the checked form
         let huge = converts(t, "past_int64_index", "static int a[3];\nstatic int *far(void) \{ return &a[18446744073709551615ULL]; \}\nint main(void) \{ return far() == 0; \}\n")
         has_text(t, huge, "addr(past_int64_index__a[0]) + end_index(18446744073709551615ul, 3)")
+        // a 19-digit literal within `int64` is a constant past the length: das's range check stands
+        let far = converts(t, "int64_index", "static int a[3];\nstatic int *far(void) \{ return &a[1000000000000000000]; \}\nint main(void) \{ return far() == 0; \}\n")
+        has_text(t, far, "return addr(int64_index__a[1000000000000000000l])")
         // a string literal's address is through its pointer, never the decayed array
         let literal = converts(t, "literal_address", "static const char *at(int k) \{ return &\"abcdef\"[k]; \}\nint main(void) \{ return at(6) - at(0) - 6; \}\n")
         has_text(t, literal, "return addr(deref(reinterpret<uint8?>(\"abcdef\") + k))")

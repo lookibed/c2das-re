@@ -45,9 +45,11 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
 - `gcc_torture/filter.das` - the import's filter, run by hand after a fetch: every top-level
   `execute/*.c` whose text carries a GNU extension gets its `skip.txt` line, first matching
   rule wins - the dialect's exclusions (inline asm, `_Complex`, `__int128`, the non-standard
-  floating types, vector types, atomics, GNU keywords) with the phase `never`, then the
-  constructs a later row carries (`&&label` and `__label__` in P3, `__builtin_*` and
-  `__attribute__` in P4). The `builtins/` and `ieee/` subfolders are not part of the suite.
+  floating types, vector types, atomics, GNU keywords, `&&label` and `__label__`) with the phase
+  `never`, then the constructs a later row carries (`__builtin_*` and `__attribute__` under the
+  phase P4; wide string literals and a string literal outside a pointer context, a row of a 2-D
+  `char` array, under the row P4.9). The `builtins/` and `ieee/` subfolders are not part of the
+  suite.
 - `gcc_torture/run.das` - the torture suite on the shared runner: a test passes when its module
   exits 0, the gcc harness's own contract (a failing test calls `abort`); output is not
   judged, as that harness does not judge it.
@@ -72,8 +74,8 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   by default) and leaves the result at `work/<seed>/min.c`.
 - `<suite>/expected_pass.txt` - the ratchet: the sorted ids that pass.
 - `<suite>/skip.txt` - the ledger of tests never run: one tab-separated line per id with the
-  feature, the reason and the phase that unblocks it, `never` for a feature the dialect
-  excludes.
+  feature, the reason and the ledger row (`P<n>.<m>`) or phase that unblocks it, `never` for a
+  feature no row will lift.
 - `REVIEW.das` - the gate over the three suites: `expected_pass.txt` sorted and unique, every
   `skip.txt` line in the four-field shape with a phase or `never`, no id in both files, every
   csmith id a decimal seed, nothing tracked under a suite's `fetch/` or `work/`, and the
@@ -94,7 +96,11 @@ section 8 describes.
 
 ## 3. Exception ledger
 
-Empty.
+- `REVIEW.md`, the rule that a `skip.txt` line and a `RULES` entry of `gcc_torture/filter.das`
+  name a ledger row, never a bare phase: the two entries for `__attribute__` and `__builtin_*`
+  (436 lines of `gcc_torture/skip.txt`) name the phase `P4`, since no `docs/implementation_order.md`
+  row names those constructs; they move to a row when the owner adds one, and `REVIEW.das`
+  accepts a bare phase until then.
 
 ## 4. The csmith run
 

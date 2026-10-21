@@ -194,9 +194,7 @@ def test_unions(t : T?) {
     t |> run("patch runs only once the whole program infers without error") @(t : T?) {
         let dir = temp_directory_result() as value
         let module_path = "{dir}/probe_patch_mod.das"
-        fopen(module_path, "wb") $(f) {
-            fwrite(f, PATCH_MODULE)
-        }
+        fwrite(module_path, PATCH_MODULE)
         let clean = daslang_child("patch_clean", patch_source("    var p : P\n    p.x = 1\n"), true)
         t |> equal(clean.out |> find("PATCH RAN") >= 0, true, clean.out)
         let broken = daslang_child("patch_broken", patch_source("    var p : P\n    p.y = 1\n"), true)

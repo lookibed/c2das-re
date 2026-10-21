@@ -147,11 +147,6 @@ def compare_output(id : string; rc : int; output, expected : string) : Outcome {
     return Outcome(id = id, status = "pass", reason = "")
 }
 
-def first_line(text : string) : string {
-    let nl = find(text, "\n")
-    return nl < 0 ? text : slice(text, 0, nl)
-}
-
 // convert and run one test; the suite's verdict judges a module that ran
 def private run_one(spec : SuiteSpec; id : string; target : string; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : Outcome {
     let c_path = "{spec.tests_dir}/{id}.c"

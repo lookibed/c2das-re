@@ -342,8 +342,7 @@ class private Counter : AstVisitor {
     seen : table<uint64>
     // the pointer steps counted, each once, an index's step among them
     steps : table<uint64>
-    // the pointer steps whose enclosing `unsafe(` was counted
-    unsafe_steps : table<uint64>
+    checked_for_unsafe : table<uint64>
     name_of_value : table<int64; string>
     literals : array<tuple<line : int; value : int64>>
     // the module's text, which tells a literal from a folded constant
@@ -464,8 +463,8 @@ class private Counter : AstVisitor {
         if (!is_pointer_step(expr) || !counted(expr.at)) {
             return
         }
-        if (!key_exists(unsafe_steps, id)) {
-            unsafe_steps |> insert(id)
+        if (!key_exists(checked_for_unsafe, id)) {
+            checked_for_unsafe |> insert(id)
             if (!expr.genFlags.userSaidItsSafe && inside_unsafe_call(lines[int(expr.at.line) - 1], int(expr.at.column))) {
                 count("unsafe_expr", expr.at)
             }

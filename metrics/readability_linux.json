@@ -3,7 +3,7 @@
     "c_testsuite": 194,
     "csmith": 148,
     "gcc_torture": 753,
-    "perf": 20
+    "perf": 24
   },
   "modules": {
     "c_testsuite/00001": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -1120,18 +1120,22 @@
     "perf/sieve": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
     "perf/sieve@copy": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
     "perf/str_copy": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 2, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
-    "perf/str_copy@copy": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 2, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2}
+    "perf/str_copy@copy": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 2, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
+    "perf/switch_local": {"c_function": 1, "goto": 1, "label": 1, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
+    "perf/switch_local@copy": {"c_function": 1, "goto": 1, "label": 1, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
+    "perf/va_forward": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 2, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
+    "perf/va_forward@copy": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 2, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2}
   },
   "totals": {
-    "c_function": 2268,
-    "goto": 358,
-    "label": 303,
+    "c_function": 2274,
+    "goto": 360,
+    "label": 305,
     "literal_named": 21097,
     "pointer_arith": 989,
     "pointer_index": 332,
-    "reinterpret": 33885,
+    "reinterpret": 33891,
     "unsafe_block": 0,
     "unsafe_expr": 49418,
-    "while_rangeable": 8756
+    "while_rangeable": 8764
   }
 }

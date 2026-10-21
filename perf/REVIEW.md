@@ -1,31 +1,28 @@
 # perf Code Review Checklist
 
 **Read `REVIEW_COMMON.md` (repo root) first - its contract binds this checklist.** Architecture
-doc: `perf/ARCHITECTURE.md`. Planned work: `docs/implementation_order.md`.
+doc: `ARCHITECTURE.md`. Planned work: `docs/implementation_order.md`. A benchmark kernel,
+wherever the diff puts it, also answers to the `kernels/` checklist.
 
-**A diff whose `results_linux.json` names a different `cpu` than the committed file's also puts
-in its commit message the `--report` of the `scripts/run_perf.sh` run that records the file, run
-with no `--filter` and no `--samples` and with `--baseline <json>`, where `<json>` is a
-`results_linux.json` written on the parent commit's tree on the new CPU, with the reason or the
-fix for every `FLAG` line it prints.**
+**A diff whose `results_linux.json` names a different `cpu` than the committed file's pastes
+into its commit message the text `--report <file>` writes on the `scripts/run_perf.sh` run that
+records `results_linux.json`, run with `--baseline` and with no `--filter` and no `--samples`.**
 
-**A diff that adds or edits a file under `kernels/` so that it contains a `main`, an `#include`,
-a prototype of `printf` or `clock`, or the kernel's expected result is a defect - declare each
-libc function the kernel calls with a prototype in the kernel file instead.** The harness
-supplies `main` and those two prototypes, and the native lane's result is the value every das
-lane must match.
+**A diff whose `results_linux.json` names a different `cpu` than the committed file's gives
+`--baseline` a json written on the diff's parent commit on the new CPU, and names that commit
+and the command that wrote it in its commit message.**
 
-**A diff that adds or edits a file under `kernels/` makes `kernel_run` read a `volatile`
-file-scope static on every call and pass the value it read to the functions it calls; the value
-`kernel_result` returns depends on that static.**
-With a literal in its place, clang computes the call once outside the harness's timing loop and
-daslang computes it at compile time, so the run times nothing.
+**A diff whose `results_linux.json` names a different `cpu` than the committed file's gives in
+its commit message the reason or the fix for every `FLAG` line its `--report` prints.**
 
 **A diff that changes a file under `kernels/`, the prologue or epilogue `perf_compose.das` puts
 around a kernel, an argument `run.das` passes to the native `clang` command, to `convert`, to
-the `interp` or `jit` lane's `daslang` argv, or to a `run_tier` call, the default sample count,
-or the `LANES` list in `perf_tables.das` re-records `results_linux.json` from a
-`scripts/run_perf.sh` run with no `--filter` and no `--samples` in the same change.**
+the `interp` or `jit` lane's `daslang` argv, or to a `run_tier` call, the `samples` default in
+`run.das`'s `Args`, the `LANES` list in `perf_tables.das`, or `measure`, `cell_of`,
+`median_of`, `last_line` or `accept_lane` in `run.das` beyond comments, re-records
+`results_linux.json` from a `scripts/run_perf.sh` run with no `--filter` and no `--samples` in
+the same change.**
 
-**A diff that changes `results_linux.json` refreshes the perf table of `README.md` (repo root)
-with `scripts/run_perf.sh --readme` in the same change.**
+**A diff after which the text between the perf-table markers of `README.md` (repo root) differs
+from the results table `scripts/run_perf.sh --table` prints refreshes it with
+`scripts/run_perf.sh --readme` in the same change.**

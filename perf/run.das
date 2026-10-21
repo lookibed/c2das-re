@@ -67,11 +67,6 @@ struct Cell {
     samples : array<double>
 }
 
-def first_line(text : string) : string {
-    let nl = find(text, "\n")
-    return nl < 0 ? text : slice(text, 0, nl)
-}
-
 def captured(args : array<string>) : string {
     var out : string
     run_and_capture(args, out, 600.0)
@@ -230,7 +225,7 @@ def with_binary_first(daslang : string; loader : array<string>; flag : string; s
 }
 
 def cpu_name : string {
-    for (line in split(fread_text("/proc/cpuinfo"), "\n")) {
+    for (line in split(fread("/proc/cpuinfo"), "\n")) {
         if (line |> starts_with("model name")) {
             let colon = find(line, ":")
             return colon < 0 ? line : strip(slice(line, colon + 1))
@@ -248,13 +243,13 @@ def lane_text(cells : table<string; Cell>; lane : string) : string {
 }
 
 def update_readme(rendered : string) : bool {
-    let text = fread_text(README)
+    let text = fread(README)
     let b = find(text, README_BEGIN)
     let e = find(text, README_END)
     if (b < 0 || e < 0 || e < b) {
         return false
     }
-    write_text(README, slice(text, 0, b + length(README_BEGIN)) + "\n" + rendered + slice(text, e))
+    fwrite(README, slice(text, 0, b + length(README_BEGIN)) + "\n" + rendered + slice(text, e))
     return true
 }
 
@@ -299,7 +294,7 @@ def main : int {
         "tests" => JV(tests)
     }
     let js = JV(root)
-    write_text(args.out, write_json(js) + "\n")
+    fwrite(args.out, write_json(js) + "\n")
     print(show_tables(js, baseline, baseline_name, args.ratios, args.report))
     if (args.readme && !update_readme(render_results(js))) {
         to_log(LOG_ERROR, "{README} has no perf-table markers\n")

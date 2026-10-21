@@ -111,18 +111,26 @@ def render_results(js : JsonValue?) : string {
     return head + grid + "\n"
 }
 
-//! Every lane under the suspect bar of native, as `<kernel>/<lane> at R.RRx native`.
-def suspect_cells(js : JsonValue?) : array<string> {
-    var suspects : array<string>
-    for (name in kernel_names(js)) {
+// the non-empty texts `cell` gives per kernel of `names` and lane, row by row
+def private picked_cells(names : array<string>; cell : block<(kernel, lane : string) : string>) : array<string> {
+    var picked : array<string>
+    for (name in names) {
         for (lane in LANES) {
-            let r = ratio_of(js, name, lane)
-            if (r > 0.0lf && r < SUSPECT_RATIO) {
-                suspects |> push("{name}/{lane} at {r:.2f}x native")
+            let text = invoke(cell, name, lane)
+            if (!empty(text)) {
+                picked |> push(text)
             }
         }
     }
-    return <- suspects
+    return <- picked
+}
+
+//! Every lane under the suspect bar of native, as `<kernel>/<lane> at R.RRx native`.
+def suspect_cells(js : JsonValue?) : array<string> {
+    return <- picked_cells(kernel_names(js)) $(name, lane) {
+        let r = ratio_of(js, name, lane)
+        return r > 0.0lf && r < SUSPECT_RATIO ? "{name}/{lane} at {r:.2f}x native" : ""
+    }
 }
 
 //! The ratio table, then one `SUSPECT` list item per lane under the suspect bar.
@@ -138,16 +146,10 @@ def render_ratios(js : JsonValue?) : string {
 
 //! Every cell slower than the baseline by more than the flag bar, as `<kernel>/<lane> +N.NN%`.
 def flagged_cells(current, baseline : JsonValue?) : array<string> {
-    var flags : array<string>
-    for (name in kernel_names(current)) {
-        for (lane in LANES) {
-            var cents = 0l
-            if (delta_cents(current, baseline, name, lane, cents) && cents > FLAG_CENTS) {
-                flags |> push("{name}/{lane} {percent_text(cents)}")
-            }
-        }
+    return <- picked_cells(kernel_names(current)) $(name, lane) {
+        var cents = 0l
+        return delta_cents(current, baseline, name, lane, cents) && cents > FLAG_CENTS ? "{name}/{lane} {percent_text(cents)}" : ""
     }
-    return <- flags
 }
 
 //! The delta table over the kernels of either current, then its `FLAG` list or the all-clear.

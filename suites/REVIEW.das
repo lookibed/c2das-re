@@ -5,6 +5,7 @@ require daslib/strings_boost
 require daslib/fio
 require dastest/review_gate
 require suite_files
+require ../converter/cir.das
 require ../metrics/readability_file.das
 
 // The mechanical half of suites/REVIEW.md (contract: REVIEW_COMMON.md at the repo root).
@@ -25,7 +26,7 @@ def private check_suite(suite : string) {
     for (line in read_lines(skip_path)) {
         var inscope fields <- split(line, "\t")
         if (length(fields) != 4 || !(fields[3] |> starts_with("P") || fields[3] == "never")) {
-            gate_finding(skip_path, "`{line}`: a skip line is id, feature, reason, phase (P<n>, or never for a feature outside the dialect), tab-separated")
+            gate_finding(skip_path, "`{line}`: a skip line is id, feature, reason, ledger row id (P<n>.<m>, or never for a construct the dialect excludes or clang rejects), tab-separated")
             continue
         }
         if (key_exists(passing, fields[0])) {
@@ -34,22 +35,13 @@ def private check_suite(suite : string) {
     }
 }
 
-def private is_decimal(text : string) : bool {
-    for (ch in text) {
-        if (!is_number(ch)) {
-            return false
-        }
-    }
-    return !empty(text)
-}
-
 // a csmith id is the seed csmith takes, a decimal number, in the ratchet and the ledger alike
 def private check_seeds(suite : string) {
     for (file in fixed_array("expected_pass.txt", "skip.txt")) {
         let path = "suites/{suite}/{file}"
         for (line in read_lines(path)) {
             let seed = split(line, "\t")[0]
-            if (!is_decimal(seed)) {
+            if (!is_digit_run(seed, 0)) {
                 gate_finding(path, "`{seed}`: a csmith id is a decimal seed")
             }
         }

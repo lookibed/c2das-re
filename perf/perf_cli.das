@@ -7,26 +7,8 @@ require daslib/json_boost
 require ../converter/sidecar.das
 require perf_tables
 
-//! The file side of the perf harness: whole-file text, the baseline capture a delta compares
-//! against, and the tables a run prints and reports.
-
-def fread_text(path : string) : string {
-    var text = ""
-    fopen(path, "rb") $(f) {
-        if (f != null) {
-            text = fread(f)
-        }
-    }
-    return text
-}
-
-def write_text(path : string; text : string) {
-    fopen(path, "wb") $(f) {
-        if (f != null) {
-            fwrite(f, text)
-        }
-    }
-}
+//! The file side of the perf harness: the baseline capture a delta compares against, and the
+//! tables a run prints and reports.
 
 //! The `--baseline` file when given, else `committed` at HEAD; null without error when HEAD has none.
 def baseline_capture(path, committed : string; var name : string&; var error : string&) : JsonValue? {
@@ -51,7 +33,7 @@ def baseline_capture(path, committed : string; var name : string&; var error : s
 def show_tables(current, baseline : JsonValue?; baseline_name : string; ratios : bool; report : string) : string {
     if (!empty(report)) {
         let text = render_report(current, baseline, baseline_name)
-        write_text(report, text)
+        fwrite(report, text)
         return text
     }
     var text = render_results(current)

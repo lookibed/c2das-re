@@ -2,7 +2,7 @@
 
 Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The
 folder charters are section 1; the pipeline is section 2; definitions section 3; the
-toolchain binding section 4; the exception ledger section 5.
+toolchain binding section 4; the readability inputs section 5; the exception ledger section 6.
 
 ## 1. Folder charters
 
@@ -91,6 +91,16 @@ Generic daScript skills are vendored under `skills/` by `scripts/sync_daslang_sk
 pinned in `skills/DASLANG_SKILLS_PIN`, so the agent definitions under `.claude/agents/`
 resolve their `skills/...` paths inside this repository.
 
-## 5. Exception ledger
+## 5. Readability inputs
+
+`metrics/readability_linux.json` counts what the converter makes of a fixed set of C programs,
+so it changes when one of those programs or the code converting them changes. The inputs are
+each suite's pin in `VERSIONS.md`, what `csmith_program` (`suites/csmith/generate.das`) writes
+for a seed, the C text of a kernel under `perf/kernels/`, and the prologue or epilogue
+`perf/perf_compose.das` puts around a kernel. The converting code is every `.das` file under
+`converter/` outside `converter/tests/` and `converter/benchmarks/`, and every annotation macro
+under `c_runtime/c_runtime/`.
+
+## 6. Exception ledger
 
 Empty.

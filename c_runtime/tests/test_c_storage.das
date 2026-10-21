@@ -37,9 +37,7 @@ def bits_source(annotation, storage_field, body : string) : string => "options g
 def bits_run(t : T?; name, annotation, storage_field, body : string) {
     let dir = temp_directory_result() as value
     let module_path = "{dir}/bits_pair_mod.das"
-    fopen(module_path, "wb") $(f) {
-        fwrite(f, BITS_MODULE)
-    }
+    fwrite(module_path, BITS_MODULE)
     let r = runtime_child(name, bits_source(annotation, storage_field, body), false)
     t |> equal(r.rc, 0, r.out)
     remove(module_path)
@@ -79,9 +77,7 @@ def test_c_storage(t : T?) {
     t |> run("add_bit_pair reports an operator the struct already has") @(t : T?) {
         let dir = temp_directory_result() as value
         let module_path = "{dir}/bits_pair_mod.das"
-        fopen(module_path, "wb") $(f) {
-            fwrite(f, BITS_MODULE)
-        }
+        fwrite(module_path, BITS_MODULE)
         let r = runtime_child("twice", "options gen2\nrequire bits_pair_mod\n[bits_pair(field = \"a\", storage = \"uint\", name = \"f\", width = 3), bits_pair(field = \"a\", storage = \"uint\", name = \"f\", width = 3)]\nstruct S \{\n    a : uint\n\}\n[export]\ndef main \{\n\}\n", true)
         t |> equal(r.rc != 0, true, r.out)
         t |> equal(r.out |> find("bits_pair: S already has `operator . f`") >= 0, true, r.out)

@@ -221,7 +221,8 @@ def test_crt_sscanf(t : T?) {
             t |> equal(consumed, -1)
             // das's "" is a null pointer (docs/probe-findings.md F10): the empty input is a NUL byte
             var nul : uint8[1]
-            t |> equal(crt::sscanf_one(addr(nul[0]), cstr("%d%n"), addr<void?>(n), addr(consumed)), -1)
+            // C fixes an input failure's result only as EOF, a negative value
+            t |> equal(crt::sscanf_one(addr(nul[0]), cstr("%d%n"), addr<void?>(n), addr(consumed)) < 0, true)
             consumed = -1
             t |> equal(crt::sscanf_none(cstr(" 77 rest"), cstr("%*d%n"), addr(consumed)), 0)
             t |> equal(consumed, 3)
