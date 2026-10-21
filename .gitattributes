@@ -1,0 +1,10 @@
+# C inputs the converter reads, not the project's code: left out of the language statistics
+converter/tests/fixtures/** linguist-vendored
+perf/kernels/** linguist-vendored
+suites/**/fetch/** linguist-vendored
+suites/**/work/** linguist-generated
+doom/** linguist-vendored
+
+# recorded captures
+perf/results_*.json linguist-generated
+metrics/readability_*.json linguist-generated
