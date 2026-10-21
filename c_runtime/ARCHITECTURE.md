@@ -174,8 +174,12 @@ the same way `dasCRuntime/` is loaded.
 
 ## 3. Exception ledger
 
-- `REVIEW.md`, the GC rule: `printf.das` and `scanf.das` build each directive's format text as
-  a das string (`resolve_stars`, `c_dialect_spec`, `crt_piece`) and pass its bytes to one CRT
-  call. The string is the runtime's transient argument to that call, never C data the program
-  addresses or keeps, and it dies with the call; the rendered and scanned bytes themselves
-  stay in the program's own buffers or in `c_vformat`'s result array.
+- `REVIEW.md`, the rule against storing on the das heap bytes the converted program can take
+  the address of or that outlive the call that made them: `printf.das` and `scanf.das` build each directive's format text as a das string
+  (`resolve_stars`, `c_dialect_spec`, `crt_piece`) and pass its bytes to one CRT call;
+  `c_vformat` collects the rendered bytes in a das array that `c_vsnprintf` copies into the
+  program's buffer and `c_vprintf` writes to stdout; a `CVaList` is the das array
+  `[variadic]` builds from a call's trailing arguments, which the program reads only by value
+  through a `CVaCursor` (`va_i`, `va_d`, `va_p`). The program addresses and keeps none of
+  them, and each dies with the call, so none is an exception to the rule; the scanned bytes
+  stay in the program's own buffers.

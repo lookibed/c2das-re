@@ -86,7 +86,8 @@ runs the same checkout's `watchdog --lsp`.
 
 Task-specific instructions live under `skills/`. Read the relevant skill BEFORE the task.
 Vendored skills (`skills/README.md`, synced from daScript by `scripts/sync_daslang_skills.sh`)
-are never edited here; this repository's own skills are `skills/internal/*.md` written here.
+are never edited here; this repository's own skills are the `skills/internal/*.md` files the
+sync script does not list.
 
 | Skill file | Read BEFORE... |
 |---|---|

@@ -17,15 +17,7 @@ def run_main(dir, mode : string; var out : string&) : int {
     return run_and_capture(argv, out, 300.0)
 }
 
-def converted_text(dir, mode : string) : string {
-    var text = ""
-    fopen(path_join(path_join(dir, mode), "p4_param_writes.das"), "rb") $(f) {
-        if (f != null) {
-            text = fread(f)
-        }
-    }
-    return text
-}
+def converted_text(dir, mode : string) : string => fread(path_join(path_join(dir, mode), "p4_param_writes.das"))
 
 [test]
 def test_cli_param_writes(t : T?) {

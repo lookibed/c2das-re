@@ -99,11 +99,7 @@ def private run_aot(das_path, work_dir : string; var output : string&; module_di
     }
     let prefix = ident_of(file_stem(das_path))
     let host = path_join(ctx_dir, "host.cpp")
-    fopen(host, "wb") $(f) {
-        if (f != null) {
-            fwrite(f, "#include \"{base_name(das_path)}.h\"\nint main() \{\n    {prefix}_ctx * ctx = {prefix}_create();\n    if (!ctx) return 125;\n    const int rc = {prefix}_main(ctx);\n    {prefix}_destroy(ctx);\n    return rc;\n\}\n")
-        }
-    }
+    fwrite(host, "#include \"{base_name(das_path)}.h\"\nint main() \{\n    {prefix}_ctx * ctx = {prefix}_create();\n    if (!ctx) return 125;\n    const int rc = {prefix}_main(ctx);\n    {prefix}_destroy(ctx);\n    return rc;\n\}\n")
     let bin = path_join(ctx_dir, prefix + "_aot")
     let crc = run(aot_link_command(ctx_dir, das_path, host, bin, module_dirs), output)
     if (crc != 0) {

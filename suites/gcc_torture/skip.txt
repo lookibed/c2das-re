@@ -8,7 +8,7 @@
 20001229-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 20010119-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 20010122-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20010325-1	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it (implementation_order P4.3 ledger)	P4
+20010325-1	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it	P4.9
 20010518-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 20010605-2	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
 20010904-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -207,7 +207,7 @@ lto-tbaa-1	__attribute__	an attribute reaches the dialect through the sidecar (p
 mayalias-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 mayalias-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 mayalias-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-memchr-1	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it (implementation_order P4.3 ledger)	P4
+memchr-1	a string literal outside a pointer context	a row of a 2-D char array initialized from a string literal, which the emitter refuses	P4.9
 memcpy-bi	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 memset-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 mul-sext	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -519,6 +519,7 @@ pr85756	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
 pr86231	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr86492	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr86528	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+pr86714	a string literal outside a pointer context	a row of a 2-D char array initialized from a string literal, which the emitter refuses	P4.9
 pr86844	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr87290	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 pr87623	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -592,6 +593,8 @@ strct-pack-1	__attribute__	an attribute reaches the dialect through the sidecar 
 strct-pack-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 strct-pack-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 strct-pack-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+strlen-2	a string literal outside a pointer context	a row of a 2-D char array initialized from a string literal, which the emitter refuses	P4.9
+strlen-6	a string literal outside a pointer context	a row of a 2-D char array initialized from a string literal, which the emitter refuses	P4.9
 strlen-7	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
 struct-aliasing-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 struct-cpy-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
@@ -605,7 +608,7 @@ va-arg-pack-1	GNU argument forwarding builtins	`__builtin_va_arg_pack` and `__bu
 vfprintf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 vprintf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
 vrp-7	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-wchar_t-1	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it (implementation_order P4.3 ledger)	P4
-widechar-2	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it (implementation_order P4.3 ledger)	P4
-widechar-3	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it (implementation_order P4.3 ledger)	P4
+wchar_t-1	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it	P4.9
+widechar-2	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it	P4.9
+widechar-3	wide string literals	the dump gives a wide literal's bytes narrow, so the emitter fails closed on it	P4.9
 zerolen-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4

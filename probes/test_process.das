@@ -8,9 +8,7 @@ def child_path(name : string) : string => "{temp_directory_result() as value}/c2
 
 def stdout_of(name, source : string) : string {
     let path = child_path(name)
-    fopen(path, "wb") $(f) {
-        fwrite(f, source)
-    }
+    fwrite(path, source)
     var out = ""
     unsafe(popen("{get_das_root()}/bin/daslang {path} 2>/dev/null", $(f) {
         if (f != null) {

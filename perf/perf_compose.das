@@ -4,7 +4,6 @@ module perf_compose public
 
 require daslib/fio
 require crt
-require perf_cli
 require ../suites/suite_files.das
 
 //! The C program of a kernel: the kernel file under `perf/kernels/` between the profile
@@ -23,6 +22,6 @@ def composed_source(kernel : string) : string {
 def write_composed(name, work : string) : string {
     mkdir_rec(work)
     let c_path = path_join(work, "{name}.c")
-    write_text(c_path, composed_source(fread_text("{KERNELS}/{name}.c")))
+    fwrite(c_path, composed_source(fread("{KERNELS}/{name}.c")))
     return c_path
 }

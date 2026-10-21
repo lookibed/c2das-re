@@ -73,13 +73,13 @@ C `sscanf` is variadic too and binds the same way, one directive per call: `ssca
 fmt, out, consumed)` passes the C program's out-pointer as `void *`, so the CRT writes it at the
 width `fmt`'s directive names, and `sscanf_none(src, fmt, consumed)` serves a directive that
 assigns nothing; `fmt` ends in `%n`, whose `consumed` tells the scanf lowering
-(`c_runtime/scanf.das`) how far the input moved.
+(`c_runtime/c_runtime/scanf.das`) how far the input moved.
 
 ## 6. Build and loading
 
 `CMakeLists.txt` compiles against `DASLANG_ROOT/include` and links the checkout's
 `lib/liblibDaScriptDyn*` libraries. The checkout builds without RTTI and with the
-header-visible defines `DAS_ENABLE_DYN_INCLUDES=1` and `DAS_FUSION=2`; the module compiles
+header-visible defines `DAS_ENABLE_DYN_INCLUDES=1`, `DAS_FUSION=2` and `SIZE_OF_VOID_P`; the module compiles
 with the same, because a `typeinfo` reference from a module compiled with RTTI is an
 undefined symbol at load time and a define that changes a header changes an ABI.
 `scripts/build_crt.sh` configures into `_build/` (with `compile_commands.json` for the C++
@@ -92,4 +92,10 @@ without that flag fails with "missing prerequisite 'crt'".
 
 ## 7. Exception ledger
 
-Empty.
+- `REVIEW.md`, the rule registering `SideEffects::none` only for a call that changes nothing
+  but its return value: the libm entries (`fmod`, `fmodf`, `ldexp`, `nextafter`, `hypot`,
+  `cbrt`, `expm1`, `log1p`, `copysign`, `remainder`, `trunc`, `round`, `erf`) are `none`
+  though glibc sets `errno` on a domain or range error (`fmod(x, 0)` gives `EDOM`, `ldexp`
+  overflowing gives `ERANGE`), so the optimizer may drop such a call whose result the program
+  discards and a later `errno` read misses the error; settled with the first suite program
+  that reads `errno` after a libm call.

@@ -4,6 +4,7 @@ module emit public
 
 require strings
 require daslib/strings_boost
+require daslib/strings_convert
 require crt
 require cir
 require sidecar
@@ -45,7 +46,8 @@ struct Emitter {
     empty_literal : bool
     global_order : table<string; int>
     global_initialized : table<string>
-    // initializer values already evaluated into temporaries, by node (`hoist_items`)
+    // values already evaluated into temporaries, by node: `hoist_items` and `pin_value` write it,
+    // `unpin` erases
     hoisted : table<uint64; Em>
     globals_seen : int
     marshal : table<int>
@@ -575,7 +577,7 @@ def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
         em.unsafe_used = true
         let scale = marshal_pointee(em, tu, x.a.t)
         if (scale >= 0) {
-            return "{lhs.text} = {lhs.text} {spelled} {wrap(rhs, PREC_MUL)} * {c_size(tu, scale)}"
+            return "{lhs.text} = {lhs.text} {spelled} {wrap(rhs, PREC_MUL)} * {type_size(tu, scale)}"
         }
         return "{lhs.text} = {lhs.text} {spelled} {wrap(rhs, prec + 1)}"
     }
@@ -664,7 +666,7 @@ def private step_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         em.unsafe_used = true
         // a byte pointer to a marshal-only record steps by the record's C size
         let scale = marshal_pointee(em, tu, x.a.t)
-        return "{operand.text} = {operand.text} {up ? "+" : "-"} {scale >= 0 ? c_size(tu, scale) : 1}"
+        return "{operand.text} = {operand.text} {up ? "+" : "-"} {scale >= 0 ? type_size(tu, scale) : 1l}"
     }
     if (kind_of(tu, x.a.t) == "enum") {
         let stepped = "int({operand.text}) {up ? "+" : "-"} 1"
@@ -1199,13 +1201,13 @@ def private pointer_arithmetic(var em : Emitter; tu : CirTu; x : CirExpr; lhs, r
     let pointer_lhs = kind_of(tu, x.a.t) == "ptr"
     let scale = marshal_pointee(em, tu, pointer_lhs ? x.a.t : x.b.t)
     if (pointer_lhs && kind_of(tu, x.b.t) == "ptr" && x.op == "sub") {
-        let diff = scale >= 0 ? "({lhs.text} - {rhs.text}) / {c_size(tu, scale)}" : "{lhs.text} - {rhs.text}"
+        let diff = scale >= 0 ? "({lhs.text} - {rhs.text}) / {type_size(tu, scale)}" : "{lhs.text} - {rhs.text}"
         return unsafe_value(em, "{das_type(em, tu, x.t, loc)}({diff})", PREC_PRIMARY)
     }
     if (scale >= 0) {
         let count = pointer_lhs ? rhs : lhs
         let bytes = pointer_lhs ? lhs : rhs
-        return unsafe_value(em, "{wrap(bytes, prec)} {spelled} {wrap(count, PREC_MUL)} * {c_size(tu, scale)}", prec)
+        return unsafe_value(em, "{wrap(bytes, prec)} {spelled} {wrap(count, PREC_MUL)} * {type_size(tu, scale)}", prec)
     }
     return unsafe_value(em, "{wrap(lhs, prec)} {spelled} {wrap(rhs, prec + 1)}", prec)
 }
@@ -1306,15 +1308,10 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
 // subscript, a literal past `int64` (`18446744073709551615u`) included, which then takes the
 // checked form
 def private literal_index(i : CirExpr?) : int64 {
-    if (i == null || i.e != "int_lit" || empty(i.v) || length(i.v) > 18) {
+    if (i == null || i.e != "int_lit" || !is_digit_run(i.v, 0)) {
         return -1l
     }
-    for (ch in i.v) {
-        if (!is_number(ch)) {
-            return -1l
-        }
-    }
-    return to_int64(i.v)
+    return try_to_int64(i.v) ?? -1l
 }
 
 // `&a[k]` of an array (`x` the `&`): C may form the address one past the end, and das
@@ -1429,7 +1426,7 @@ def private emit_type_operator(var em : Emitter; tu : CirTu; x : CirExpr const?;
     if (x.e == "sizeof_v") {
         if (is_marshal(em, tu, x.of_t) || is_va_list(tu, x.of_t)) {
             // the record's bytes are laid out by clang, not by das; a `va_list` is never laid out
-            return value("{das_type(em, tu, x.t, loc)}({c_size(tu, x.of_t)})", PREC_PRIMARY)
+            return value("{das_type(em, tu, x.t, loc)}({type_size(tu, x.of_t)})", PREC_PRIMARY)
         }
         return value("{das_type(em, tu, x.t, loc)}(typeinfo sizeof(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
     }
@@ -1487,24 +1484,6 @@ def private is_marshal(em : Emitter; tu : CirTu; t : int) : bool => kind_of(tu, 
 def private marshal_pointee(em : Emitter; tu : CirTu; t : int) : int =>
     kind_of(tu, t) == "ptr" && is_marshal(em, tu, tu.types[t].to) ? tu.types[t].to : -1
 
-// the C size of a type, as clang laid it out
-def private c_size(tu : CirTu; t : int) : int {
-    let k = kind_of(tu, t)
-    if (k == "int" || k == "float") {
-        return tu.types[t].w / 8
-    }
-    if (k == "ptr" || k == "func") {
-        return 8
-    }
-    if (k == "enum") {
-        return 4
-    }
-    if (k == "array") {
-        return tu.types[t].count * c_size(tu, tu.types[t].elem)
-    }
-    return tu.types[t].size
-}
-
 // a marshal-only record located in C memory: `*p`, `p[i]` and `p->` of a byte pointer give
 // the record slot and spell the bytes it starts at; -1 for a value (a local, a literal)
 def private marshal_site(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc; var bytes : Em&) : int {
@@ -1519,7 +1498,7 @@ def private marshal_site(var em : Emitter; tu : CirTu; x : CirExpr const?; loc :
         let rec = marshal_pointee(em, tu, x.base.t)
         let base = emit_expr(em, tu, x.base, loc)
         let i = enum_as_int(to_int(emit_expr(em, tu, x.i, loc)), tu, x.i.t)
-        bytes = unsafe_value(em, "{wrap(base, PREC_ADD)} + {wrap(i, PREC_MUL)} * {c_size(tu, rec)}", PREC_ADD)
+        bytes = unsafe_value(em, "{wrap(base, PREC_ADD)} + {wrap(i, PREC_MUL)} * {type_size(tu, rec)}", PREC_ADD)
         return rec
     }
     return -1
@@ -1732,24 +1711,11 @@ def private holds_union_list(tu : CirTu; x : CirExpr const?) : bool {
 
 // whether evaluating `x` has an effect: a call, an assignment, a step or a comma anywhere in it
 def private has_effects(x : CirExpr const?) : bool {
-    if (x == null) {
-        return false
+    var found = false
+    each_subexpr(x) $(sub) {
+        found = found || sub.e == "call" || sub.e == "va_arg" || sub.e == "assign" || sub.e == "comma" || (sub.e == "un" && is_step(sub.op))
     }
-    let own = x.e == "call" || x.e == "va_arg" || x.e == "assign" || x.e == "comma" || (x.e == "un" && is_step(x.op))
-    if (own || has_effects(x.a) || has_effects(x.b) || has_effects(x.c) || has_effects(x.base) || has_effects(x.i) || has_effects(x.list)) {
-        return true
-    }
-    for (arg in x.args) {
-        if (has_effects(arg)) {
-            return true
-        }
-    }
-    for (item in x.init_items) {
-        if (has_effects(item.v)) {
-            return true
-        }
-    }
-    return false
+    return found
 }
 
 // lvalue `x` with each effect in it evaluated once, ahead: the pointer it goes through, an
@@ -2635,6 +2601,22 @@ def private emit_compound(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     }
 }
 
+// the initializer of declaration `st` of `name`: the line `head` spells from the initializer's
+// text ("" when stores fill the value), then the stores; nothing when `head` gives ""
+def private emit_initialized(var em : Emitter; tu : CirTu; st : CirStmt; name : string; head : block<(init : string) : string>) {
+    var stores : array<string>
+    let init = decl_init(em, tu, name, st.t, st.init, st.loc, stores)
+    let first = invoke(head, init)
+    if (empty(first)) {
+        return
+    }
+    flush_pre(em)
+    line(em, first)
+    for (store in stores) {
+        line(em, store)
+    }
+}
+
 def private emit_decl(var em : Emitter; tu : CirTu; st : CirStmt) {
     let spelled = das_type_dims(em, tu, st.t, st.loc, st.dims)
     let name = das_name(em, st.name)
@@ -2642,12 +2624,8 @@ def private emit_decl(var em : Emitter; tu : CirTu; st : CirStmt) {
         line(em, "var {name} : {spelled}")
         return
     }
-    var stores : array<string>
-    let init = decl_init(em, tu, name, st.t, st.init, st.loc, stores)
-    flush_pre(em)
-    line(em, empty(init) ? "var {name} : {spelled}" : "var {name} : {spelled} = {init}")
-    for (store in stores) {
-        line(em, store)
+    emit_initialized(em, tu, st, name) $(init) {
+        return empty(init) ? "var {name} : {spelled}" : "var {name} : {spelled} = {init}"
     }
 }
 
@@ -2657,18 +2635,14 @@ def private emit_carried_init(var em : Emitter; tu : CirTu; st : CirStmt; name :
     if (st.init == null) {
         return
     }
-    var stores : array<string>
-    let init = decl_init(em, tu, name, st.t, st.init, st.loc, stores)
-    if (empty(init)) {
-        // the stores rely on the declaration's zero, which a second pass through the case
-        // would not give again
-        fail(em, "a declaration under a case label filled by stores (a union or a sparse array) and used under a later label is not lowered yet", st.loc)
-        return
-    }
-    flush_pre(em)
-    line(em, "{name} = {init}")
-    for (store in stores) {
-        line(em, store)
+    emit_initialized(em, tu, st, name) $(init) {
+        if (empty(init)) {
+            // the stores rely on the declaration's zero, which a second pass through the case
+            // would not give again
+            fail(em, "a declaration under a case label filled by stores (a union or a sparse array) and used under a later label is not lowered yet", st.loc)
+            return ""
+        }
+        return "{name} = {init}"
     }
 }
 
@@ -2732,54 +2706,70 @@ def private mark_store_root(var em : Emitter; x : CirExpr const?) {
     }
 }
 
-// every expression of statement tree `st`, each before its operands
-def private each_expr(st : CirStmt const?; blk : block<(x : CirExpr const?) : void>) {
+// statement tree `st` and every statement under it, each before its children
+def private each_stmt(st : CirStmt const?; blk : block<(st : CirStmt const?) : void>) {
     if (st == null) {
         return
     }
+    invoke(blk, st)
     for (child in st.body) {
-        each_expr(child, blk)
-    }
-    for (x in fixed_array<CirExpr const?>(st.init, st.e, st.cond, st.inc)) {
-        each_subexpr(x, blk)
+        each_stmt(child, blk)
     }
     for (child in fixed_array<CirStmt const?>(st.then_s, st.else_s, st.body_s, st.init_s)) {
-        each_expr(child, blk)
+        each_stmt(child, blk)
+    }
+}
+
+// every expression of statement tree `st`, each before its operands
+def private each_expr(st : CirStmt const?; blk : block<(var x : CirExpr const?) : void>) {
+    each_stmt(st) $(s) {
+        for (x in fixed_array<CirExpr const?>(s.init, s.e, s.cond, s.inc)) {
+            each_subexpr(x, blk)
+        }
+    }
+}
+
+// expression `root` and every expression under it, each before its operands (`args`,
+// `init_items`, `a`, `b`, `c`, `fn`, `base`, `i`, `init`, `list`), as a recursive walk visits
+// them; `root` is a `var` `CirExpr const?` or `CirExpr?`, since a generic's `var` parameter given
+// a `const` argument loops type inference
+def private walk_subexprs(var root : auto(XP); blk : block<(var x : XP -const) : void>) {
+    var pending : array<XP -const>
+    pending |> push(root)
+    while (!empty(pending)) {
+        var x = pending |> back()
+        pending |> pop()
+        if (x == null) {
+            continue
+        }
+        invoke(blk, x)
+        pending |> reserve(length(pending) + 8 + length(x.init_items) + length(x.args))
+        pending |> push(x.list)
+        pending |> push(x.init)
+        pending |> push(x.i)
+        pending |> push(x.base)
+        pending |> push(x.fn)
+        pending |> push(x.c)
+        pending |> push(x.b)
+        pending |> push(x.a)
+        for (idx in range(length(x.init_items))) {
+            pending |> push(x.init_items[length(x.init_items) - 1 - idx].v)
+        }
+        for (idx in range(length(x.args))) {
+            pending |> push(x.args[length(x.args) - 1 - idx])
+        }
     }
 }
 
 // expression `x` and every expression under it, each before its operands
-def private each_subexpr(x : CirExpr const?; blk : block<(x : CirExpr const?) : void>) {
-    if (x == null) {
-        return
-    }
-    invoke(blk, x)
-    for (arg in x.args) {
-        each_subexpr(arg, blk)
-    }
-    for (item in x.init_items) {
-        each_subexpr(item.v, blk)
-    }
-    for (sub in fixed_array<CirExpr const?>(x.a, x.b, x.c, x.fn, x.base, x.i, x.init, x.list)) {
-        each_subexpr(sub, blk)
-    }
+def private each_subexpr(x : CirExpr const?; blk : block<(var x : CirExpr const?) : void>) {
+    var root = x
+    walk_subexprs(root, blk)
 }
 
 // `each_subexpr` over a tree the block may change
 def private each_subexpr_mut(var x : CirExpr?; blk : block<(var x : CirExpr?) : void>) {
-    if (x == null) {
-        return
-    }
-    invoke(blk, x)
-    for (arg in x.args) {
-        each_subexpr_mut(arg, blk)
-    }
-    for (item in x.init_items) {
-        each_subexpr_mut(item.v, blk)
-    }
-    for (sub in fixed_array(x.a, x.b, x.c, x.fn, x.base, x.i, x.init, x.list)) {
-        each_subexpr_mut(sub, blk)
-    }
+    walk_subexprs(x, blk)
 }
 
 // whether a statement tree calls alloca anywhere
@@ -2844,7 +2834,7 @@ def private unshadow_stmt(var w : ScopeWalk; var st : CirStmt?) {
     if (st == null) {
         return
     }
-    // a block, and a `for` whose first clause declares, open a scope
+    // a block and every `for` open a scope
     let opens = st.s == "compound" || st.s == "for"
     if (opens) {
         w.scopes |> emplace(table<string; string>())
@@ -2910,17 +2900,10 @@ def private unshadow_locals(var tu : CirTu; var carried : table<uint64>) {
 
 // how many locals of statement tree `st` each C name declares
 def private count_decls(st : CirStmt const?; var counts : table<string; int>) {
-    if (st == null) {
-        return
-    }
-    if (st.s == "decl") {
-        counts[st.name] = (counts?[st.name] ?? 0) + 1
-    }
-    for (child in st.body) {
-        count_decls(child, counts)
-    }
-    for (child in fixed_array<CirStmt const?>(st.then_s, st.else_s, st.body_s, st.init_s)) {
-        count_decls(child, counts)
+    each_stmt(st) $(s) {
+        if (s.s == "decl") {
+            counts[s.name] = (counts?[s.name] ?? 0) + 1
+        }
     }
 }
 
@@ -2928,29 +2911,22 @@ def private count_decls(st : CirStmt const?; var counts : table<string; int>) {
 // loses its braces (`flatten`), and one a lowered switch carries (`carried_decls`), which also
 // lands in `carried`
 def private moved_decls(st : CirStmt const?; flatten : table<uint64>; var moved : table<uint64>; var carried : table<uint64>) {
-    if (st == null) {
-        return
-    }
-    if (st.s == "compound" && key_exists(flatten, intptr(st))) {
-        for (child in st.body) {
-            if (child.s == "decl") {
-                moved |> insert(intptr(child))
+    each_stmt(st) $(s) {
+        if (s.s == "compound" && key_exists(flatten, intptr(s))) {
+            for (child in s.body) {
+                if (child.s == "decl") {
+                    moved |> insert(intptr(child))
+                }
             }
         }
-    }
-    if (st.s == "switch") {
-        var found : table<uint64>
-        carried_decls(st.body_s, found)
-        for (decl in keys(found)) {
-            moved |> insert(decl)
-            carried |> insert(decl)
+        if (s.s == "switch") {
+            var found : table<uint64>
+            carried_decls(s.body_s, found)
+            for (decl in keys(found)) {
+                moved |> insert(decl)
+                carried |> insert(decl)
+            }
         }
-    }
-    for (child in st.body) {
-        moved_decls(child, flatten, moved, carried)
-    }
-    for (child in fixed_array<CirStmt const?>(st.then_s, st.else_s, st.body_s, st.init_s)) {
-        moved_decls(child, flatten, moved, carried)
     }
 }
 
@@ -3035,38 +3011,16 @@ def private refs_name(x : CirExpr const?; name : string) : bool {
 
 // every C name a statement tree declares or references
 def private collect_spelled_names(st : CirStmt const?; var names : table<string>) {
-    if (st == null) {
-        return
-    }
-    if (st.s == "decl") {
-        names |> insert(st.name)
-    }
-    for (child in st.body) {
-        collect_spelled_names(child, names)
-    }
-    for (child in fixed_array<CirStmt const?>(st.then_s, st.else_s, st.body_s, st.init_s)) {
-        collect_spelled_names(child, names)
-    }
-    for (x in fixed_array<CirExpr const?>(st.init, st.e, st.cond, st.inc)) {
-        each_subexpr(x) $(sub) {
-            if (sub.e == "ref") {
-                names |> insert(sub.name)
-            }
+    each_stmt(st) $(s) {
+        if (s.s == "decl") {
+            names |> insert(s.name)
         }
     }
-}
-
-// `want` when no name of `taken` is it, else `want` with the first free number appended; the
-// name is then taken
-def private free_name(var taken : table<string>; want : string) : string {
-    var name = want
-    var n = 1
-    while (key_exists(taken, name)) {
-        name = "{want}{n}"
-        n++
+    each_expr(st) $(x) {
+        if (x.e == "ref") {
+            names |> insert(x.name)
+        }
     }
-    taken |> insert(name)
-    return name
 }
 
 def private is_step(op : string) : bool => op == "preinc" || op == "predec" || op == "postinc" || op == "postdec"
@@ -3450,18 +3404,8 @@ def private is_bitfield_member(tu : CirTu; x : CirExpr const?) : bool {
 def private unit_storage(size : int) : string => size == 1 ? "uint8" : size == 2 ? "uint16" : size == 4 ? "uint" : "uint64"
 
 // the number in `name` after `prefix` when the rest is all digits, else -1
-def private numbered_after(name, prefix : string) : int {
-    if (!(name |> starts_with(prefix)) || length(name) == length(prefix)) {
-        return -1
-    }
-    var digits = true
-    peek_data(name) $(bytes) {
-        for (idx in range(length(prefix), length(bytes))) {
-            digits = digits && is_number(int(bytes[idx]))
-        }
-    }
-    return digits ? to_int(slice(name, length(prefix))) : -1
-}
+def private numbered_after(name, prefix : string) : int =>
+    name |> starts_with(prefix) && is_digit_run(name, length(prefix)) ? to_int(slice(name, length(prefix))) : -1
 
 // a C field `[c_bitfields]` would misread: a bitfield named like an opener (`_bits<N>`) or a
 // padding argument (`_<K>`), or another field named like one of the `units` storage fields
@@ -3578,7 +3522,7 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
     open_block(em, "def {reader_name(em, tu, t, -1)}(bytes : uint8?; ofs : int) : {name}")
     line(em, "var r : {name}")
     for (f in tu.types[t].fields) {
-        line(em, "crt::memcpy(reinterpret<void?>(addr(r.{das_name(em, f.name)})), reinterpret<void?>(bytes + (ofs + {f.off})), uint64({c_size(tu, f.t)}))")
+        line(em, "crt::memcpy(reinterpret<void?>(addr(r.{das_name(em, f.name)})), reinterpret<void?>(bytes + (ofs + {f.off})), uint64({type_size(tu, f.t)}))")
     }
     line(em, "return r")
     close_block(em)
@@ -3587,7 +3531,7 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
     open_block(em, "def {writer_name(em, tu, t, -1)}(bytes : uint8?; ofs : int; {is_var_parameter(tu, t) ? "var " : ""}v : {name})")
     line(em, "var copy = v")
     for (f in tu.types[t].fields) {
-        line(em, "crt::memcpy(reinterpret<void?>(bytes + (ofs + {f.off})), reinterpret<void?>(addr(copy.{das_name(em, f.name)})), uint64({c_size(tu, f.t)}))")
+        line(em, "crt::memcpy(reinterpret<void?>(bytes + (ofs + {f.off})), reinterpret<void?>(addr(copy.{das_name(em, f.name)})), uint64({type_size(tu, f.t)}))")
     }
     close_block(em)
     line(em, "")
@@ -3596,14 +3540,14 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
         line(em, "[c_function]")
         open_block(em, "def {reader_name(em, tu, t, idx)}(bytes : uint8?; ofs : int) : {ft}")
         line(em, "var r : {ft}")
-        line(em, "crt::memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + (ofs + {f.off})), uint64({c_size(tu, f.t)}))")
+        line(em, "crt::memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + (ofs + {f.off})), uint64({type_size(tu, f.t)}))")
         line(em, "return r")
         close_block(em)
         line(em, "")
         line(em, "[c_function]")
         open_block(em, "def {writer_name(em, tu, t, idx)}(bytes : uint8?; ofs : int; {is_var_parameter(tu, f.t) ? "var " : ""}v : {ft})")
         line(em, "var copy = v")
-        line(em, "crt::memcpy(reinterpret<void?>(bytes + (ofs + {f.off})), reinterpret<void?>(addr(copy)), uint64({c_size(tu, f.t)}))")
+        line(em, "crt::memcpy(reinterpret<void?>(bytes + (ofs + {f.off})), reinterpret<void?>(addr(copy)), uint64({type_size(tu, f.t)}))")
         close_block(em)
         line(em, "")
     }

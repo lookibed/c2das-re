@@ -161,6 +161,33 @@ def target_lp64_linux : CirTarget =>
 //! host's LP64, for differential runs against a native build on this box).
 def target_by_name(name : string) : CirTarget => name == "linux" ? target_lp64_linux() : target_llp64_msvc()
 
+//! Whether `text` from byte `from` on is a run of one or more decimal digits.
+def is_digit_run(text : string; from : int) : bool {
+    var digits = length(text) > from
+    peek_data(text) $(bytes) {
+        for (idx in range(from, length(bytes))) {
+            digits = digits && is_number(int(bytes[idx]))
+        }
+    }
+    return digits
+}
+
+//! Whether `target` is the `msvc` dialect's.
+def is_msvc(target : CirTarget) : bool => find(target.triple, "windows") >= 0
+
+//! `want` when no name of `taken` is it, else `want` with the first free number appended; the
+//! name is then taken.
+def free_name(var taken : table<string>; want : string) : string {
+    var name = want
+    var n = 1
+    while (key_exists(taken, name)) {
+        name = "{want}{n}"
+        n++
+    }
+    taken |> insert(name)
+    return name
+}
+
 //! Frees a node and everything under it: the generated finalizer of a struct already recurses
 //! through its pointer fields and its arrays of pointers, so one `delete` is the whole walk and
 //! a hand-written walk would free every child twice.

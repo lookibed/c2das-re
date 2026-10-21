@@ -24,9 +24,7 @@ def daslang_run(name, source : string; flags : array<string>; modules : array<st
 //! The same with `args` after the source path (`utils/aot/main.das -- -ctx <in> <out>`).
 def daslang_run(name, source : string; flags : array<string>; modules : array<string>; prefix : string; args_after : array<string>) : tuple<rc : int; out : string> {
     let path = "{temp_directory_result() as value}/{prefix}_{name}.das"
-    fopen(path, "wb") $(f) {
-        fwrite(f, source)
-    }
+    fwrite(path, source)
     var out : string
     // the JIT reports itself at `info`; a run under it carries the line `jit_ran` reads
     let jit = flags |> has_value("-jit")
@@ -122,9 +120,7 @@ def native_battery(stem : string; flags : array<string>; source : string) : stri
     let dir = "{temp_directory_result() as value}"
     let c_path = "{dir}/{stem}.c"
     let bin = "{dir}/{stem}"
-    fopen(c_path, "wb") $(f) {
-        fwrite(f, source)
-    }
+    fwrite(c_path, source)
     var args <- [battery_clang(), "-w"]
     args |> push_from(flags, ["-o", bin, c_path])
     var out : string

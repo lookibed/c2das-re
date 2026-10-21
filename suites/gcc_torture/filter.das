@@ -35,18 +35,9 @@ let RULES <- [
     Rule(pattern = "__attribute__", feature = "__attribute__", reason = "an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet", phase = "P4"),
     Rule(pattern = "__typeof|\\btypeof *\\(|__extension__|__alignof", feature = "GNU keywords", reason = "typeof, __extension__ and __alignof__ have no row", phase = "never"),
     Rule(pattern = "case [^:\n]*\\.\\.\\.", feature = "GNU case range", reason = "`case a ... b` is a GNU extension; the dialect's switch takes one value per label", phase = "never"),
-    Rule(pattern = "(^|[^A-Za-z0-9_\"])[LuU]\"", feature = "wide string literals", reason = "the dump gives a wide literal's bytes narrow, so the emitter fails closed on it (implementation_order P4.3 ledger)", phase = "P4")
+    Rule(pattern = "char +[A-Za-z0-9_]+ *\\[[^\\]\n]*\\] *\\[[^\\]\n]*\\] *= *[\{] *\"", feature = "a string literal outside a pointer context", reason = "a row of a 2-D char array initialized from a string literal, which the emitter refuses", phase = "P4.9"),
+    Rule(pattern = "(^|[^A-Za-z0-9_\"])[LuU]\"", feature = "wide string literals", reason = "the dump gives a wide literal's bytes narrow, so the emitter fails closed on it", phase = "P4.9")
 ]
-
-def file_text(path : string) : string {
-    var text = ""
-    fopen(path, "rb") $(f) {
-        if (f != null) {
-            text = fread(f)
-        }
-    }
-    return text
-}
 
 // the builtins with a plain libc twin the emitter maps by name (converter/ARCHITECTURE_EMITTER.md,
 // the shim list); a test using only these is not a `__builtin_*` skip
@@ -83,7 +74,7 @@ def main : int {
     ids |> sort()
     var lines : array<string>
     for (id in ids) {
-        let text = without_shims(file_text("{TESTS_DIR}/{id}.c"))
+        let text = without_shims(fread("{TESTS_DIR}/{id}.c"))
         for (idx, rule in range(length(RULES)), RULES) {
             if (regex_search(compiled[idx], text).x >= 0) {
                 lines |> push("{id}\t{rule.feature}\t{rule.reason}\t{rule.phase}")
@@ -91,14 +82,13 @@ def main : int {
             }
         }
     }
-    fopen(SKIP_LEDGER, "wb") $(f) {
-        if (f != null) {
-            fwrite(f, "# gcc-torture execute tests never run, one per line: id, feature, reason, the phase that\n# unblocks it (never for a feature the dialect excludes), tab-separated; written by\n# suites/gcc_torture/filter.das over the fetched tree. A test that merely does not pass yet\n# is not listed; the ratchet reports it.\n")
-            for (line in lines) {
-                fwrite(f, "{line}\n")
-            }
+    let text = build_string() $(writer) {
+        writer |> write("# gcc-torture execute tests never run, one per line: id, feature, reason, the phase that\n# unblocks it (never for a feature the dialect excludes), tab-separated; written by\n# suites/gcc_torture/filter.das over the fetched tree. A test that merely does not pass yet\n# is not listed; the ratchet reports it.\n")
+        for (line in lines) {
+            writer |> write("{line}\n")
         }
     }
+    fwrite(SKIP_LEDGER, text)
     to_log(LOG_INFO, "filter: {length(lines)} of {length(ids)} tests skipped\n")
     return 0
 }

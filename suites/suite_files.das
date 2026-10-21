@@ -17,6 +17,15 @@ let RATCHET_SUITES <- ["c_testsuite", "csmith", "gcc_torture"]
 //! the folder of the perf kernels, from the repository root
 let KERNELS = "perf/kernels"
 
+//! The text before the first `sep` in `text`, all of it when there is none.
+def text_before(text, sep : string) : string {
+    let at = find(text, sep)
+    return at < 0 ? text : slice(text, 0, at)
+}
+
+//! The first line of `text`.
+def first_line(text : string) : string => text_before(text, "\n")
+
 //! The lines of `path`, stripped, blank lines and `#` comments dropped; none when it is missing.
 def read_lines(path : string) : array<string> {
     var lines : array<string>

@@ -32,9 +32,7 @@ struct ConvertResult {
 }
 
 
-// `das_path` compiled, under `as_written` with every `unsafe` scope kept, no optimization and
-// every symbol kept, the unused ones included;
-// `blk` sees whether it compiled, the program and the compiler's output, never empty on a failure
+// `as_written` keeps every `unsafe` scope and every symbol and turns optimization off
 def private compile_with(das_path : string; as_written : bool; blk : block<(ok : bool; program : ProgramPtr; output : string) : void>) {
     var inscope access <- make_file_access("")
     using() $(var mg : ModuleGroup) {
@@ -94,7 +92,6 @@ def convert(c_path : string; out_dir : string; target_name : string; clang : str
         res.error = "sidecar: {side_error}"
         return <- res
     }
-    // the converter's option overrides the sidecar's key
     if (!empty(param_writes)) {
         side.param_writes = param_writes
     }

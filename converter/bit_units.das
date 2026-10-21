@@ -3,7 +3,6 @@ options gen2
 module bit_units public
 
 require math
-require strings
 require daslib/math_boost
 require cir
 
@@ -398,7 +397,7 @@ def private assign(tu : CirTu; var memo : LayoutMemo; t, target : int; relaxed :
 
 // whether the target is the `msvc` dialect's, whose ABI lets an unnamed bitfield align the
 // record by its declared type (the Itanium ABI never does)
-def private unnamed_bitfields_align(tu : CirTu) : bool => find(tu.target.triple, "windows") >= 0
+def private unnamed_bitfields_align(tu : CirTu) : bool => is_msvc(tu.target)
 
 //! The alignment record `t`'s members give it with no alignment attribute: each field's das
 //! alignment, a named bitfield's declared type's, a nested record's clang alignment (through

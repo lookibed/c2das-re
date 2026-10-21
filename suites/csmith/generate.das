@@ -5,7 +5,7 @@ module generate public
 require strings
 require daslib/strings_boost
 require daslib/fio
-require ../suite_runner.das
+require ../suite_files.das
 
 //! A seed's program: the pinned csmith run on the seed with the option list, its runtime headers
 //! spliced in, so the program is one unit both the native build and the converter take

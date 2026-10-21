@@ -7,7 +7,7 @@ harness that times them under every lane, and the stored results.
 ## 1. File charters
 
 - `kernels/<name>.c` - one kernel each: a `static void kernel_run(void)` and a
-  `static int kernel_result(void)` over file-scope statics, nothing else; no kernel knows
+  `static int kernel_result(void)` over file-scope variables, nothing else; no kernel knows
   its expected result, the native lane measures it and every das lane must reproduce it or
   its cell is an error. The first three are
   dasProfile's scalar kernels with its parameters (`primes` 14000, `fib_loop` 6511134,
@@ -25,12 +25,20 @@ harness that times them under every lane, and the stored results.
   puns with a plain one beside an unnamed bitfield; `str_copy` is P4.8's, assignments read as
   values: a fill whose stored byte feeds a sum through an index the store steps (`sum +=
   (text[i++] = b)`) and a NUL-terminated copy whose loop tests the byte it stored (`while ((*d++
-  = *s++))`). The kernel's parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
+  = *s++))`); `va_forward` is P4.4's, a variadic sum called in a hot loop whose list `va_copy`
+  copies, both copies forwarded to a consumer taking a `va_list`, and a format helper forwarding
+  its list to `vsnprintf`; `switch_local` is P4.8's, a switch in a hot loop whose case-level
+  local a later case assigns and reads, and a goto into a block whose local hides a global of
+  external linkage, so the flattened local takes a free name (`g1`). The kernel's parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
   argument clang hoists the idempotent call out of the rep loop (the native lane reports
   zero), and daslang's optimizer evaluates a pure call with constant arguments at compile
   time whatever `infer_time_folding` says, so the interpreter lane measured a store. The
   converter drops `volatile`, which is what makes the das read a plain global read that no
   pass folds.
+  A kernel holds no `main`, no `#include` and no `printf` or `clock` prototype, since the
+  harness supplies `main` and those two prototypes (`perf_compose.das`), and no expected result,
+  since the native lane's result is the value every das lane must match; it declares every
+  other libc function it calls with a prototype of its own.
 - `run.das` - the harness: composes each kernel (`perf_compose.das`), builds the native lane
   with the pinned clang at `-O3 -funsigned-char` (dasProfile's Release build gives its C++
   kernels `-O3`, and the lane follows its method), converts the same file through `converter/pipeline.das` (twice: the second under
@@ -58,8 +66,9 @@ harness that times them under every lane, and the stored results.
   capture with its `FLAG` lines, and the report holding the three. A missing cell is `n/a`
   in every table. All of them render through daslib's `md_boost` `render_md_table`. It
   measures nothing and reads no file.
-- `perf_cli.das` - the file side of the harness: whole-file text, the baseline capture
-  (section 5), and the text a run prints and writes as its report.
+- `perf_cli.das` - the file side of the harness: the baseline capture (section 5), and the
+  text a run prints and writes as its report; whole files are read and written through daslib
+  `fio`'s `fread(path)` and `fwrite(path, text)`.
 - `tests/` - the dastest suite over `perf_tables.das` and `perf_cli.das`, driven by JSON
   fixtures, and `run.das` itself as a child process: `-?`, and one sample of `blit` into an
   `--out` file, whose `interp-copy` cell must time the copy conversion and match the native
@@ -126,6 +135,11 @@ module as `interp`, the two cells apart by the samples' spread alone.
   keeping the lookups and indexing raw without the bounds check leaves it at 0.84 ms; the
   lookup is the cost, the bounds check is not (`docs/probe-findings.md` F49,
   lookibed/daScript#5).
+- `switch_local` / `aot`: no cell. daslang's AOT writes the flattened block's `var g1 : int =
+  k * 2` as an initialized C++ local after the `goto` that jumps past it, and clang++ refuses
+  the jump ("jump bypasses variable initialization"); the interpreter, the JIT and the exe
+  take the same module. Every das `goto` past a `var` declaration under AOT meets it, a
+  daScript issue (`docs/implementation_order.md` P4.9).
 
 ## 5. Tracking
 

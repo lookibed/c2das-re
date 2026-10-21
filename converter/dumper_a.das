@@ -804,7 +804,7 @@ def private va_list_type(var d : Dumper; qual : string; at : CirLoc) : int {
         // msvc's builtins take the list by reference
         bare = slice(bare, 0, length(bare) - 2)
     }
-    let words = find(d.tu.target.triple, "windows") >= 0 ? 1 : 3
+    let words = is_msvc(d.tu.target) ? 1 : 3
     var words_array = CirType(k = "array", elem = int_type(d, 64, false, "unsigned long long"), count = words)
     let words_t = intern(d, "array:{words_array.elem}:{words}", words_array)
     let r = opaque_record(d, "va_list", 8 * words, 8, "words", words_t)
@@ -1469,13 +1469,7 @@ def private initialized_field(rec : CirType; slot : int) : int {
 
 def private source_line(var d : Dumper; line : int) : string {
     if (empty(d.source_lines)) {
-        var text = ""
-        fopen(d.c_path, "rb") $(f) {
-            if (f != null) {
-                text = fread(f)
-            }
-        }
-        d.source_lines <- split(text, "\n")
+        d.source_lines <- split(fread(d.c_path), "\n")
     }
     return line >= 1 && line <= length(d.source_lines) ? d.source_lines[line - 1] : ""
 }
@@ -1639,13 +1633,7 @@ def private slot_expr(var d : Dumper; kids : JsonValue?; idx : int; var ok : boo
 def private hoist_static(var d : Dumper; js : JsonValue?; at : CirLoc; t : int) : bool {
     let c_name = js?["name"] ?? ""
     // two static locals of one name in one function take numbered names
-    var hoisted = "{d.current_fn}_{c_name}"
-    var n = 1
-    while (key_exists(d.hoisted_names, hoisted)) {
-        hoisted = "{d.current_fn}_{c_name}{n}"
-        n++
-    }
-    d.hoisted_names |> insert(hoisted)
+    let hoisted = free_name(d.hoisted_names, "{d.current_fn}_{c_name}")
     d.decl_names[js?["id"] ?? ""] = hoisted
     var g = new CirDecl(k = "global", name = hoisted, c_name = c_name, t = t, is_static = true, from_func = d.current_fn, loc = at)
     if (!enum_dims(d, node_key(js), t, at, g.dims)) {
