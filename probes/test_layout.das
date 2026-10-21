@@ -10,7 +10,13 @@ let c_shapes = ("struct P \{ int x; short y; \};\n" +
     "struct A \{ int id; int vals[4]; struct I inner; \};\n" +
     "struct BC \{ _Bool b; char c; \};\n" +
     "struct T2 \{ char a; short b; int c; char d; \};\n" +
-    "struct BF \{ unsigned a : 3; int b : 5; short e; \};\n")
+    "struct BF \{ unsigned a : 3; int b : 5; short e; \};\n" +
+    "struct HoldBF \{ struct BF bf; short y; \};\n" +
+    "struct CharBF \{ char c; struct BF bf; \};\n" +
+    "struct AC \{ unsigned a : 3; char c; \};\n" +
+    "struct OuterAC \{ char q; struct AC a; \};\n")
+
+let UNNAMED_SHAPES = "struct Pad20 \{ char a; int : 20; \};\nstruct Zero0 \{ char a; int : 0; char b; \};\nstruct ZeroBits \{ char c; char x : 3; long long : 0; char d; \};\nstruct ZeroShort \{ char x : 3; short : 0; \};\nstruct ZeroTail \{ char x : 3; long long : 0; \};\nstruct ZeroPlain \{ char x : 3; char y; long long : 0; char d; \};\nstruct ZeroTwice \{ char x : 3; int : 0; long long : 0; char d; \};\nstruct ZeroNine \{ char c; unsigned a : 9; long long : 0; char d; \};\n"
 
 struct P {
     x : int
@@ -59,6 +65,38 @@ struct BFItanium {
     e : int16
 }
 
+// Itanium mirrors whose padding fields complete clang's offsets and size where das's natural
+// placement falls short; each aligns at or below clang's
+struct HoldBFPadded {
+    bf : BFItanium
+    y : int16
+    _pad0 : uint8[2]
+}
+
+// `HoldBF` with no padding field
+struct HoldBFBare {
+    bf : BFItanium
+    y : int16
+}
+
+struct CharBFPadded {
+    c : int8
+    _pad0 : uint8[3]
+    bf : BFItanium
+}
+
+struct ACPadded {
+    _bits0 : uint8
+    c : int8
+    _pad0 : uint8[2]
+}
+
+struct OuterACPadded {
+    q : int8
+    _pad0 : uint8[3]
+    a : ACPadded
+}
+
 struct BFMsvc {
     _bits0 : uint
     e : int16
@@ -77,13 +115,19 @@ struct ClangRecord {
 
 var records : table<string; ClangRecord>
 
-def collect_clang_records(source : string) {
+// the layout clang gives every struct of `source` into `into`, for `triple` (the host's when empty)
+def collect_layouts(source, triple : string; var into : table<string; ClangRecord>) {
     let path = "{temp_directory_result() as value}/c2das_probe_layout.c"
     fopen(path, "wb") $(f) {
         fwrite(f, source)
     }
+    var args <- ["-w"]
+    if (!empty(triple)) {
+        args |> push("-target")
+        args |> push(triple)
+    }
     var idx = clang_createIndex(0, 0)
-    var unit = clang_parseTranslationUnit(idx, path, null, 0, null, 0u, 0u)
+    var unit = clang_parseTranslationUnit(idx, path, unsafe(addr(args[0])), length(args), null, 0u, 0u)
     var root = clang_getTranslationUnitCursor(unit)
     clang_visitChildren(root) $(var c, _parent) {
         if (clang_getCursorKind(c) == CXCursorKind.StructDecl) {
@@ -95,7 +139,7 @@ def collect_clang_records(source : string) {
                 }
                 return CXChildVisitResult.Continue
             }
-            records[string(clang_getCursorSpelling(c))] <- rec
+            into[string(clang_getCursorSpelling(c))] <- rec
         }
         return CXChildVisitResult.Continue
     }
@@ -104,12 +148,35 @@ def collect_clang_records(source : string) {
     remove(path)
 }
 
-def check_record(t : T?; name : string; das_size, das_align : int; das_offsets : table<string; int>) {
+def collect_clang_records(source : string) {
+    collect_layouts(source, "", records)
+}
+
+// clang's size and alignment of struct `name` among `recs`
+def check_size_align(t : T?; recs : table<string; ClangRecord>; name : string; size, align : int; what : string) {
+    var found = false
+    recs |> get(name) $(rec) {
+        found = true
+        t |> equal(int(rec.size), size, "{name} size under {what}")
+        t |> equal(int(rec.align), align, "{name} align under {what}")
+    }
+    if (!found) {
+        t |> failure("clang has no record {name} under {what}")
+    }
+}
+
+// clang's size and offsets of struct `name` against a das mirror's, and its alignment: equal, or
+// when `below` a mirror below clang's alignment, one that divides clang's
+def check_record(t : T?; name : string; das_size, das_align : int; das_offsets : table<string; int>; below : bool = false) {
     var found = false
     records |> get(name) $(rec) {
         found = true
         t |> equal(int(rec.size), das_size, "{name} size")
-        t |> equal(int(rec.align), das_align, "{name} align")
+        if (below) {
+            t |> equal(das_align <= int(rec.align) && int(rec.align) % das_align == 0, true, "{name} align {das_align} against clang's {rec.align}")
+        } else {
+            t |> equal(int(rec.align), das_align, "{name} align")
+        }
         for (fname, ofs in keys(das_offsets), values(das_offsets)) {
             var field_found = false
             rec.fields |> get(fname) $(cf) {
@@ -144,7 +211,7 @@ def check_bits(t : T?; fname : string; bit_offset : int; bit_width : int) {
 def test_layout(t : T?) {
     collect_clang_records(c_shapes)
     t |> run("clang parses the shape battery") @(t : T?) {
-        t |> equal(length(records), 8)
+        t |> equal(length(records), 12)
     }
     t |> run("small fields pack tight and tail-pad to the largest alignment") @(t : T?) {
         check_record(t, "P", typeinfo sizeof(type<P>), typeinfo alignof(type<P>), {"x" => typeinfo offsetof < x > (type<P>), "y" => typeinfo offsetof < y > (type<P>)})
@@ -196,5 +263,53 @@ def test_layout(t : T?) {
             t |> equal(e_bit_offset, 32, "MSVC allocates the whole unsigned unit")
             check_record(t, "BF", typeinfo sizeof(type<BFMsvc>), typeinfo alignof(type<BFMsvc>), {"e" => typeinfo offsetof < e > (type<BFMsvc>)})
         }
+    }
+}
+
+[test]
+def test_layout_padding(t : T?) {
+    collect_clang_records(c_shapes)
+    t |> run("padding fields complete clang's offsets and size where an underaligned record or a narrow unit leaves das short; the stride and a nested offset follow") @(t : T?) {
+        var itanium = false
+        records |> get("BF") $(rec) {
+            itanium = int(rec.size) == 4
+        }
+        if (!itanium) {
+            t |> skip("the shapes pad under the Itanium ABI only")
+            return
+        }
+        check_record(t, "HoldBF", typeinfo sizeof(type<HoldBFPadded>), typeinfo alignof(type<HoldBFPadded>), {"bf" => typeinfo offsetof < bf > (type<HoldBFPadded>), "y" => typeinfo offsetof < y > (type<HoldBFPadded>)}, true)
+        check_record(t, "CharBF", typeinfo sizeof(type<CharBFPadded>), typeinfo alignof(type<CharBFPadded>), {"c" => typeinfo offsetof < c > (type<CharBFPadded>), "bf" => typeinfo offsetof < bf > (type<CharBFPadded>)}, true)
+        check_record(t, "AC", typeinfo sizeof(type<ACPadded>), typeinfo alignof(type<ACPadded>), {"c" => typeinfo offsetof < c > (type<ACPadded>)}, true)
+        check_record(t, "OuterAC", typeinfo sizeof(type<OuterACPadded>), typeinfo alignof(type<OuterACPadded>), {"q" => typeinfo offsetof < q > (type<OuterACPadded>), "a" => typeinfo offsetof < a > (type<OuterACPadded>)}, true)
+        t |> equal(typeinfo sizeof(type<HoldBFPadded[3]>), 24)
+        t |> equal(typeinfo alignof(type<ACPadded>), 1)
+    }
+    t |> run("without its padding field das ends HoldBF at size 6, its own alignment, short of clang's 8") @(t : T?) {
+        t |> equal(typeinfo sizeof(type<HoldBFBare>), 6)
+        records |> get("HoldBF") $(rec) {
+            t |> equal(int(rec.size), 8)
+        }
+    }
+    t |> run("under msvc a nonzero-width unnamed bitfield, and a zero-width one directly after a bitfield of nonzero width, align a record by their declared type; under the Itanium ABI none does") @(t : T?) {
+        var linux, msvc : table<string; ClangRecord>
+        collect_layouts(UNNAMED_SHAPES, "x86_64-unknown-linux-gnu", linux)
+        collect_layouts(UNNAMED_SHAPES, "x86_64-pc-windows-msvc", msvc)
+        check_size_align(t, linux, "Pad20", 4, 1, "linux")
+        check_size_align(t, msvc, "Pad20", 8, 4, "msvc")
+        check_size_align(t, linux, "Zero0", 5, 1, "linux")
+        check_size_align(t, msvc, "Zero0", 2, 1, "msvc")
+        check_size_align(t, linux, "ZeroBits", 9, 1, "linux")
+        check_size_align(t, msvc, "ZeroBits", 16, 8, "msvc")
+        check_size_align(t, linux, "ZeroShort", 2, 1, "linux")
+        check_size_align(t, msvc, "ZeroShort", 2, 2, "msvc")
+        check_size_align(t, linux, "ZeroTail", 8, 1, "linux")
+        check_size_align(t, msvc, "ZeroTail", 8, 8, "msvc")
+        check_size_align(t, linux, "ZeroPlain", 9, 1, "linux")
+        check_size_align(t, msvc, "ZeroPlain", 3, 1, "msvc")
+        check_size_align(t, linux, "ZeroTwice", 9, 1, "linux")
+        check_size_align(t, msvc, "ZeroTwice", 8, 4, "msvc")
+        check_size_align(t, linux, "ZeroNine", 12, 4, "linux")
+        check_size_align(t, msvc, "ZeroNine", 16, 8, "msvc")
     }
 }

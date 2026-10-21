@@ -66,6 +66,40 @@ def operator . bytes(s : Mix) : uint8[12] {
 
 def read_let(m : Mix) : int => m.i + int(m.bytes[0])
 
+// a union with a bitfield member, `union { signed f0 : 8; unsigned f1; }`: the plain member
+// through the ref operators, the bitfield through a property pair over `_storage[0]`, the
+// storage element read as the arithmetic word
+struct UBits {
+    _storage : uint[1]
+}
+
+def operator . f1(var s : UBits) : uint& {
+    unsafe {
+        return *addr<uint?>(s._storage)
+    }
+}
+
+def operator . f1(s : UBits) : uint {
+    unsafe {
+        return *addr<uint?>(s._storage)
+    }
+}
+
+def operator . f0(s : UBits) : int => int(s._storage[0] << 24u) >> 24
+
+def operator . f0 :=(var s : UBits; v : int) {
+    s._storage[0] = (s._storage[0] & 0xffffff00u) | (uint(v) & 0xffu)
+}
+
+def read_bits_let(u : UBits) : int => u.f0
+
+struct HoldsUBits {
+    k : int
+    u : UBits
+}
+
+let UNION_PROPERTY = "options gen2\nstruct U \{\n    _storage : uint[1]\n\}\ndef operator . f0(s : U) : int => int(s._storage[0] << 24u) >> 24\ndef operator . f0 :=(var s : U; v : int) \{\n    s._storage[0] = (s._storage[0] & 0xffffff00u) | (uint(v) & 0xffu)\n\}\n[export]\ndef main \{\n    var u : U\n    var p = unsafe(addr(u.f0))\n    p = null\n\}\n"
+
 let N = 3
 
 enum Count {
@@ -170,5 +204,52 @@ def test_unions(t : T?) {
         t |> equal(broken.out |> find("field 'y' not found") >= 0, true, broken.out)
         t |> equal(broken.out |> find("PATCH RAN") < 0, true, broken.out)
         remove(module_path)
+    }
+}
+
+[test]
+def test_union_bitfields(t : T?) {
+    t |> run("a bitfield member is a property pair over _storage[0] beside the ref operators: it truncates and sign-extends at bit 0 and puns with the plain member") @(t : T?) {
+        var u : UBits
+        u.f1 = 0x12345678u
+        t |> equal(u.f0, 120)
+        // decimal: a hex literal is `uint`, so `u.f0 = 0x1ff` finds no `int` setter, falls back
+        // to the getter and fails with "can only copy to a reference"
+        u.f0 = 511
+        t |> equal(u.f0, -1)
+        t |> equal(u.f1, 0x123456ffu)
+        u.f0 = -128
+        t |> equal(u.f1, 0x12345680u)
+        t |> equal(typeinfo sizeof(type<UBits>), 4)
+    }
+    t |> run("a union bitfield member steps through += 1 and reads through a const base, a nested union, an array element and a pointer") @(t : T?) {
+        var u : UBits
+        u.f0 = 126
+        u.f0 += 1
+        u.f0 += 1
+        t |> equal(u.f0, -128)
+        t |> equal(read_bits_let(u), -128)
+        let c = u
+        t |> equal(c.f0, -128)
+        var h : HoldsUBits
+        h.u.f0 = -5
+        h.u.f0 -= 1
+        t |> equal(h.u.f0, -6)
+        t |> equal(h.u.f1, 0xfau)
+        var arr : UBits[3]
+        arr[1].f0 = 7
+        arr[1].f0 *= 3
+        t |> equal(arr[1].f0, 21)
+        t |> equal(arr[0].f1, 0u)
+        var p = unsafe(addr(h.u))
+        p.f0 = 100
+        t |> equal(h.u.f0, 100)
+        let cp : UBits const? = unsafe(addr(u))
+        t |> equal(cp.f0, -128)
+    }
+    t |> run("a union bitfield member is no reference: addr of it is refused, as C refuses &u.f0") @(t : T?) {
+        let r = daslang_child("union_property_addr", UNION_PROPERTY, true)
+        t |> equal(r.rc != 0, true, r.out)
+        t |> equal(r.out |> find("can only make a pointer of a reference") >= 0, true, r.out)
     }
 }

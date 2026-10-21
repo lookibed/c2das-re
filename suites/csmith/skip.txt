@@ -1,52 +1,33 @@
 # csmith seeds never run, one per line: seed, feature, reason, the phase that unblocks it,
 # tab-separated. A seed that merely does not pass yet is not listed; the run reports it.
-1012244610	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
-105611532	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
-1060825193	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
+105611532	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 115991202	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-119343972	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
-128025372	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
+119343972	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 128116041	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-165335526	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
+165335526	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 203526429	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-204361828	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
-234054364	a record no bitfield unit assignment reproduces	das cannot lay the record out at clang's offsets under the linux dialect, F5 (implementation_order P4.7)	P4.7
 240551078	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 24785750	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-325300791	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
-364378958	a record no bitfield unit assignment reproduces	das cannot lay the record out at clang's offsets under the linux dialect, F5 (implementation_order P4.7)	P4.7
 367116592	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 413157013	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 427292586	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 43912301	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-445944211	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
-458768457	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
-475926366	a record no bitfield unit assignment reproduces	das cannot lay the record out at clang's offsets under the linux dialect, F5 (implementation_order P4.7)	P4.7
-484508504	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
+445944211	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
+475926366	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
+484508504	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 495501810	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-516559102	a record no bitfield unit assignment reproduces	das cannot lay the record out at clang's offsets under the linux dialect, F5 (implementation_order P4.7)	P4.7
 521135984	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-527984002	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
 572278447	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 592309475	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-635826883	a record no bitfield unit assignment reproduces	das cannot lay the record out at clang's offsets under the linux dialect, F5 (implementation_order P4.7)	P4.7
 645821990	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-649166809	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
+649166809	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 65940886	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 66587928	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 67553691	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-676976896	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
-693569754	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
 73782890	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 780813575	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-798831476	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
 827196574	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 846872037	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
 874389118	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-879712864	a record no bitfield unit assignment reproduces	das cannot lay the record out at clang's offsets under the linux dialect, F5 (implementation_order P4.7)	P4.7
 899659462	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-957132751	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
-96469372	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
-981730951	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7
 995533288	goto into a loop, branch or switch body	the emitter fails closed on a goto into a nested body, the Duff's device class (implementation_order P3.3)	P3.3
-999026813	a bitfield member of a union	[c_union] takes no bitfield member, named or padding (implementation_order P4.7)	P4.7

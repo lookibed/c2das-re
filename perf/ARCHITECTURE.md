@@ -17,8 +17,12 @@ harness that times them under every lane, and the stored results.
   `sieve` and `matmul` are P2.2's, a sieve over a fixed byte array and a 96x96 product over
   two-dimensional arrays; `blit` is P2.3's, a byte copy through walking pointers over
   malloc'd buffers; `qsort_cmp` is P4.6's, an array of records sorted by `qsort` through a
-  converted comparator, a function value with `var` pointer positions. The kernel's
-  parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
+  converted comparator, a function value with `var` pointer positions; `bit_pack` is P4.7's,
+  read-modify-writes of bitfields under the `linux` dialect in a record of naturally aligned
+  units, in a record whose bitfield takes a two-byte unit and that each round is built from an
+  initializer folding that unit's word through `c_unit_bytes`, in a record holding an
+  underaligned bitfield record that takes a padding field, and in a union whose bitfield member
+  puns with a plain one beside an unnamed bitfield. The kernel's parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
   argument clang hoists the idempotent call out of the rep loop (the native lane reports
   zero), and daslang's optimizer evaluates a pure call with constant arguments at compile
   time whatever `infer_time_folding` says, so the interpreter lane measured a store. The

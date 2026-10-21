@@ -90,23 +90,33 @@ as-if-converted fixture test landing first.
   writable.
 - `c_runtime/c_bitfields.das` - the `[c_bitfields(...)]` structure annotation over a struct
   written C-shaped (`docs/lowering-examples.md` "Bitfields"). `apply` reads the argument list in
-  order: `_bits<N> = "uint8"` (or `"uint16"`, `"uint"`, `"uint64"`) opens an allocation unit
-  with its bit cursor at 0, `_<K> = n` advances the cursor by `n` padding bits, any other `name =
-  width` places the field `name` at the cursor; a bitfield with no unit open opens `_bits<K>`
+  order: `_bits<N> = "uint8"` (or `"uint16"`, `"uint"`, `"uint64"`, or `"uint8[k]"`, a byte
+  unit of `k` bytes from 1 to 8 at alignment 1) opens an allocation unit with its bit cursor at
+  0, `_<K> = n` advances the cursor by `n` padding bits, any other `name = width` places the
+  field `name` at the cursor; a bitfield with no unit open opens `_bits<K>`
   sized by the field's own type. The opener's value is a string because the storage type names
   are keywords the argument grammar does not take as identifiers. A unit's fields must be
   adjacent and of an integer or `bool` type, and must fit; a unit's name, opened or implied,
-  must be no field of the struct and no other unit's, so the storage never replaces a field. Each unit's fields become one
-  `_bits<N>` field at the place of its first, and each bitfield gets `operator . name` and
-  `operator . name :=`: the getter shifts and masks (a signed field shifts its top bit to the
-  word's top and back, which sign-extends), the setter clears the field's bits and ors the
-  masked value in. The arithmetic runs in `uint`, or `uint64` for an 8-byte unit, since das
-  defines no shift on `uint8` and `uint16`; the value narrows on store. The storage types are
-  `c_storage`'s.
-- `c_runtime/c_storage.das` - the unsigned storage types the layout annotations share:
-  `C_STORAGES` (`uint8`, `uint16`, `uint`, `uint64`, each with its size in bytes, which is its
-  alignment, its width in bits and its das base type), found by name or width (`storage_of`)
-  or by size (`storage_of_bytes`).
+  must be no field of the struct and no other unit's, so the storage never replaces a field.
+  Each unit's fields become one `_bits<N>` field at the place of its first, and each bitfield
+  gets the property pair `c_storage` builds over it. `c_unit_bytes(w, default<uint8[k]>)` is the
+  bytes of a byte unit holding the word `w`, little-endian, which the converter's folded
+  initializer names; its type parameter is `UnitBytesT`, since a generic's `auto(T)` binds a
+  struct `T` visible where the generic is declared, its own module or one it requires
+  (`probes/test_bitfields.das`).
+- `c_runtime/c_storage.das` - the unsigned storage types and the bit arithmetic the layout
+  annotations share: `C_STORAGES` (`uint8`, `uint16`, `uint`, `uint64`, each with its size in
+  bytes, which is its alignment, its width in bits and its das base type), found by name or
+  width (`storage_of`) or by size (`storage_of_bytes`); and `bit_getter`/`bit_setter`, the
+  property pair `operator . name`/`operator . name :=` of one bitfield (`BitAccess`: its name,
+  declared type, bit offset and width) over the field that holds it (`BitStore`: a scalar of a
+  storage type, or an array of one whose first `count` elements hold the bits, little-endian).
+  The getter shifts and masks (a signed field shifts its top bit to the word's top and back,
+  which sign-extends), the setter clears the field's bits and ors the masked value in. The
+  arithmetic runs in `uint`, or `uint64` past 32 bits of store, since das defines no shift on
+  `uint8` and `uint16`; an array store is assembled into the word and written back one element
+  at a time, each narrowing on store. `[c_bitfields]` builds a pair per unit field,
+  `[c_union]` per bitfield member.
 - `c_runtime/c_union.das` - the `[c_union]` structure annotation over a union written as a
   C-shaped struct (`docs/lowering-examples.md` "Unions"). `apply` replaces the members with one
   field `_storage : U[k]`, `U` the `c_storage` type of the union's alignment and `k` its size
@@ -125,12 +135,16 @@ as-if-converted fixture test landing first.
   operator checks the member fits the storage. A function-typed member is pointer-sized like any
   other, so a union of function pointers (Doom's `actionf_t`) is one 8-byte storage and a
   call through any member calls the function last stored, with the arguments that call passes
-  (`docs/probe-findings.md` F32). A class, a struct with no member, a member named
-  `_storage`, one with an initializer, a lone `size` or `align`, a
-  non-integer one, an alignment past 8 and a size that is not a positive multiple of the
-  alignment are compile errors. Another annotation on the same struct is not visible to `apply`
-  (the parser attaches the list after every `apply` ran), so a bitfield member is the
-  converter's to refuse.
+  (`docs/probe-findings.md` F32). Any other argument `name = width` names a bitfield member at
+  bit 0 (`[c_union(f0 = 8)]`): it gets the `c_storage` property pair over the storage's leading
+  elements that hold the width, in place of the two operators, since bits are not addressable;
+  a member spelled `size` or `align` is never a width. Another annotation on the same struct is
+  not visible to `apply` (the parser attaches the list after every `apply` ran), which is why
+  the widths are this annotation's own arguments. A class, a struct with no member, a member
+  named `_storage`, one with an initializer, a lone `size` or `align`, a non-integer one, an
+  alignment past 8, a size that is not a positive multiple of the alignment, an argument naming
+  no member, a non-integer width and a width that does not fit its member's integer type or the
+  storage are compile errors.
 - `c_runtime/c_bounds.das` - `end_index(k, n)`, the index of C's `&a[k]` into an array of `n`
   elements: the converter spells that address `addr(a[0]) + end_index(k, n)`, since `addr(a[n])`
   trips das's range check while C forms the address one past the end (`docs/probe-findings.md`

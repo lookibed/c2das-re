@@ -41,6 +41,26 @@ struct Wide {
     flag : bool
 }
 
+// `struct Cramped { signed f0 : 16; unsigned f1 : 14; signed char f2; unsigned f3 : 12; int f4; }`
+// under the linux dialect: `f3` takes bits 40 to 51, so its unit is two bytes at byte 5
+[c_bitfields(f0 = 16, f1 = 14, _bits1 = "uint8[2]", f3 = 12)]
+struct Cramped {
+    f0 : int
+    f1 : uint
+    f2 : int8
+    f3 : uint
+    f4 : int
+}
+
+// a signed field at bit 4 of a three-byte unit, and a 40-bit field in a five-byte unit whose
+// arithmetic runs in uint64
+[c_bitfields(_bits0 = "uint8[3]", _0 = 4, g = 18, _bits1 = "uint8[5]", x = 40)]
+struct Bytes {
+    c : int8
+    g : int
+    x : uint64
+}
+
 let BF_FIELDS = "    a : uint\n    b : int\n    c : int\n    e : int16\n"
 
 let SOURCE = StructSource(prefix = "c_bitfields", text = "options gen2\nrequire c_runtime/c_bitfields\nenum Color \{\n    Red\n\}\nANNOTATION\nKIND S \{\nFIELDS\}\nAFTER\n[export]\ndef main \{\n\}\n")
@@ -123,6 +143,69 @@ def test_c_bitfields(t : T?) {
         t |> equal(w.flag, true)
         t |> equal(w.lo, 0xfffffu)
         t |> equal(typeinfo sizeof(type<Wide>), 8)
+    }
+}
+
+[test]
+def test_c_bitfields_bytes(t : T?) {
+    t |> run("a byte unit sits at the byte its bits start in, alignment 1") @(t : T?) {
+        t |> equal(typeinfo offsetof < f2 > (type<Cramped>), 4)
+        t |> equal(typeinfo offsetof < _bits1 > (type<Cramped>), 5)
+        t |> equal(typeinfo offsetof < f4 > (type<Cramped>), 8)
+        t |> equal(typeinfo sizeof(type<Cramped>), 12)
+        t |> equal(typeinfo offsetof < _bits0 > (type<Bytes>), 1)
+        t |> equal(typeinfo offsetof < _bits1 > (type<Bytes>), 4)
+        t |> equal(typeinfo sizeof(type<Bytes>), 9)
+    }
+    t |> run("a byte unit's pair assembles and stores its bytes little-endian, keeping the neighbouring bits") @(t : T?) {
+        var s : Cramped
+        s._bits1[1] = 0xf0u8
+        s.f3 = 0x1abcu
+        t |> equal(s.f3, 0xabcu)
+        t |> equal(s._bits1[0], 0xbcu8)
+        t |> equal(s._bits1[1], 0xfau8)
+        s.f3 += 0x545u
+        t |> equal(s.f3, 1u)
+        t |> equal(s._bits1[1], 0xf0u8)
+        s.f2 = int8(-1)
+        s.f0 = -2
+        t |> equal(s.f0, -2)
+        t |> equal(int(s.f2), -1)
+    }
+    t |> run("a signed field at a nonzero bit of a byte unit sign-extends; a five-byte unit runs in uint64") @(t : T?) {
+        var b : Bytes
+        b._bits0[0] = 0x0fu8
+        b.g = -131072
+        t |> equal(b.g, -131072)
+        b.g -= 1
+        t |> equal(b.g, 131071)
+        t |> equal(uint(b._bits0[0]) & 0xfu, 0xfu)
+        b.x = 0xfffffffffful
+        b.x += 2ul
+        t |> equal(b.x, 1ul)
+        b.c = int8(7)
+        t |> equal(b.g, 131071)
+    }
+    t |> run("the converter's byte unit initializer: c_unit_bytes of the folded word") @(t : T?) {
+        let s = Cramped(_bits0 = (uint(-5) & 0xffffu) | ((uint(1000) & 0x3fffu) << 16u), f2 = int8(-7), _bits1 = c_unit_bytes(uint(4000) & 0xfffu, default<uint8[2]>), f4 = 9)
+        t |> equal(s.f0, -5)
+        t |> equal(s.f1, 1000u)
+        t |> equal(s.f3, 4000u)
+        let b = Bytes(c = int8(1), _bits0 = c_unit_bytes((uint(-1) & 0x3ffffu) << 4u, default<uint8[3]>), _bits1 = c_unit_bytes(0x123456789aul, default<uint8[5]>))
+        t |> equal(b.g, -1)
+        t |> equal(b.x, 0x123456789aul)
+    }
+    t |> run("the compiler rejects a byte unit of no byte, past eight, with no count, with an unclosed count or of another element type") @(t : T?) {
+        rejects(t, "bytes_zero", "[c_bitfields(_bits0 = \"uint8[0]\", a = 3)]", "names storage `uint8[0]`")
+        rejects(t, "bytes_nine", "[c_bitfields(_bits0 = \"uint8[9]\", a = 3)]", "names storage `uint8[9]`")
+        rejects(t, "bytes_letter", "[c_bitfields(_bits0 = \"uint8[x]\", a = 3)]", "names storage `uint8[x]`")
+        rejects(t, "bytes_unclosed", "[c_bitfields(_bits0 = \"uint8[3x\", a = 3)]", "names storage `uint8[3x`")
+        rejects(t, "bytes_int16", "[c_bitfields(_bits0 = \"int16[2]\", a = 3)]", "names storage `int16[2]`")
+        rejects(t, "bytes_overflow", "[c_bitfields(_bits0 = \"uint8[2]\", a = 17)]", "does not fit unit `_bits0` of 16 bits")
+    }
+    t |> run("the compiler takes a byte unit of three bytes holding three fields") @(t : T?) {
+        let ok = compile_shape("bytes_ok", "[c_bitfields(_bits0 = \"uint8[3]\", a = 3, b = 5, c = 2)]")
+        t |> equal(ok.rc, 0, ok.out)
     }
 }
 

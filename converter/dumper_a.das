@@ -1457,7 +1457,7 @@ def private dump_union_init(var d : Dumper; js : JsonValue?; t : int; at : CirLo
 def private initialized_field(rec : CirType; slot : int) : int {
     var seen = 0
     for (idx, f in range(length(rec.fields)), rec.fields) {
-        if (!(f.is_bitfield && empty(f.name))) {
+        if (!is_unnamed_bitfield(f)) {
             if (seen == slot) {
                 return idx
             }

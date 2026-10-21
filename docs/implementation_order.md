@@ -168,29 +168,23 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   truncation, compound assign, layout).
   Ledger (fail closed today, each a later row): a bitfield of enum type (the property pair
   would convert through `enum_from_int`); a bitfield of a marshal-only record (the bits read
-  and written through `memcpy` of the unit); a record no unit assignment reproduces under the
-  `linux` dialect (`struct { unsigned a : 3; char c; }`: clang's size 4 needs the declared
-  type's alignment, F5), which the sidecar can mark marshal-only once the previous line lands;
-  a record whose only bitfields are unnamed padding (`struct { char a; int : 20; }`: no das
-  spelling fits both dialects, `uint8[N]` for `linux`, an empty `uint` unit for `msvc`); a
-  record holding an F5 record that clang's size refuses with no escape (`struct { struct BF bf;
-  short y; }` is size 8 under clang, 6 under the mirror's alignment 2); a flexible array member;
-  `aligned(N)` on a record with bitfields; and a `_Bool` step, plain or bitfield (`b++`,
-  `s.f++`).
+  and written through `memcpy` of the unit); a flexible array member; `aligned(N)` on a record
+  with bitfields; and a `_Bool` step, plain or bitfield (`b++`, `s.f++`).
 - **P4.2 `[c_union]` macro.** One ref-returning operator per member (probed); storage
   alignment via max-align member type; anonymous-union flattening.
-  Ledger (fail closed today, each a later row): a bitfield member of a union; a union the layout law finds unnatural - clang's alignment past
-  8 (`aligned(16)`: no unsigned storage type aligns there) or below a member's (`packed`) - which
-  waits for marshal to cover unions; a union holding a marshal-only record, and a marshal-only
-  record holding a union; a union initializer outside a declaration (compound literals); an
-  initializer of a union naming an anonymous member (`field` names `""`); an anonymous member
-  that makes no field name visible (`struct { int : 4; }`), whose offset libclang gives only
-  through `clang_Type_visitFields`, which dasClangBind does not bind yet; two anonymous records
-  one macro expansion makes indistinguishable (`#define TWO REC(a); REC(b)`, one key or one
-  `(anonymous at f:l:c)` spelling); a C tag spelled `anon_<N>` beside an untagged record whose
-  slot is `N` (both spell `anon_<N>`, which predates unions); and the forwarding operators that
-  would spell `s._anon1.i` as `s.i` (F29). Outside the dialect: a GNU zero-length array
-  (`char z[0]`, gcc-torture zerolen-1) and GNU's cast to a union type (`ToUnion`, 960416-1).
+  Ledger (fail closed today, each a later row): a union's bitfield member of enum type; a union
+  the layout law finds unnatural - clang's alignment past 8 (`aligned(16)`: no unsigned storage
+  type aligns there) or below a member's (`packed`) - which waits for marshal to cover unions; a
+  union holding a marshal-only record, and a marshal-only record holding a union; a union
+  initializer outside a declaration (compound literals); an initializer of a union naming an
+  anonymous member (`field` names `""`); an anonymous member that makes no field name visible
+  (`struct { int : 4; }`), whose offset libclang gives only through `clang_Type_visitFields`,
+  which dasClangBind does not bind yet; two anonymous records one macro expansion makes
+  indistinguishable (`#define TWO REC(a); REC(b)`, one key or one `(anonymous at f:l:c)`
+  spelling); a C tag spelled `anon_<N>` beside an untagged record whose slot is `N` (both spell
+  `anon_<N>`, which predates unions); and the forwarding operators that would spell `s._anon1.i`
+  as `s.i` (F29). Outside the dialect: a GNU zero-length array (`char z[0]`, gcc-torture
+  zerolen-1) and GNU's cast to a union type (`ToUnion`, 960416-1).
 - **P4.3 Function-pointer shims.** The sidecar-declared dispatch groups (`actionf_t`
   class); qsort/bsearch typed generics land here too.
   Landed instead of the shim (`docs/probe-findings.md` F32): a union of function pointers is a
@@ -337,11 +331,34 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 - **P4.7 Layout leftovers.** Bitfield members of unions, named or padding (the P4.2 ledger), and
   records outside the layout law (F5, the P4.1 ledger). csmith generates both in about one seed
   in eight; their seeds are skipped under this row.
+  Landed: a union's bitfield member is `[c_union(f0 = 8)]`, a property pair at bit 0 over the
+  storage's leading elements, and an unnamed one is no member, its bits carried by `size =`/
+  `align =`; where no naturally aligned unit reproduces clang, the layout law's relaxed search
+  adds padding fields (`_pad<N> : uint8[n]`), units at the offset their size divides below the
+  bits, and byte units (`_bits<N> = "uint8[k]"`), restoring clang's offsets and size with the
+  das alignment at or below clang's (F5's last column); one bit arithmetic in `c_storage` serves
+  both annotations. Lifted with it: a record no unit assignment reproduced, a record whose only
+  bitfields are unnamed padding, a record holding an F5 record that clang's size refused
+  (`converter/tests/fixtures/p4_layout_leftovers.c`). A record an attribute aligns past its
+  members stays refused with a message naming the attribute. A record declared `packed` or under
+  `#pragma pack(n)` that the relaxed search places converts like any other (F51). A bitfield's
+  step and compound store spell the getter and the setter apart, `x = x + 1`, since a compound
+  store to a property through a field of `deref(p + k)` crashes daslang before `main` (F52,
+  lookibed/daScript#17). csmith 129 to 148: 19 of the 26 seeds pass and leave `skip.txt`; the
+  other 7 now refuse a goto into a loop body and are ledgered under P3.3; gcc-torture 743 to 750
+  (20181120-1, bitfld-6, bitfld-7 and pr58726, union bitfield members; pr58984 and pr60017,
+  records the relaxed search places; pr58570, a `pack(1)` record whose two bitfields join into
+  one 6-byte unit).
 - **P4.8 Scope fidelity.** A block flattened for a goto into it whose local hides a same-named
   global (`int g = 40; ... goto in; { int g = 3; in: ... } printf(g)`: the flattened local
   captures the later reads of the global, which the emitter refuses), and a local declared under one case label and
   used in later cases (`case 0:; int v = 1; ... case 1: v = 7;`), which the switch lowering
   scopes to its own case, so the compile check fails.
+  Ledger: a value-producing step of an lvalue whose index has an effect evaluates the effect
+  twice, `int v = arr[k++].a++;` lowering to `let _t1 = k; k++; let _t2 = k; k++; let _t0 =
+  arr[_t1].a; arr[_t2].a++` (gcc prints `0 1 1 0`, the conversion `0 2 0 1`); the
+  value-producing step reuses the index the read hoisted. The P2.4 ledger's `(*next())++` is the
+  same family.
 - **Exit criterion:** csmith runs clean at 1000/night for a week; torture ≥ target with
   ledger; matrix has no row without a green fixture.
 

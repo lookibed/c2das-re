@@ -51,6 +51,50 @@ struct Tagged {
     m : Mix
 }
 
+// `union Pun { signed f0 : 8; unsigned f1; }`: the bitfield member a property pair at bit 0
+[c_union(f0 = 8)]
+struct Pun {
+    f0 : int
+    f1 : uint
+}
+
+// `union Odd { char c[3]; unsigned f : 20; }` under the msvc dialect, which aligns it to 1: the
+// storage is bytes, so the pair assembles three of them
+[c_union(f = 20, size = 4, align = 1)]
+struct Odd {
+    c : uint8[3]
+    f : uint
+}
+
+// the converter's `union Wide { char c; long long f : 5; }` under linux: an 8-byte storage, the
+// arithmetic in uint64
+[c_union(f = 5)]
+struct WideBits {
+    c : uint8
+    f : int64
+}
+
+struct HoldsPun {
+    k : int
+    u : Pun
+}
+
+// `union Flag { _Bool b : 1; unsigned char raw; }`: a bool bitfield member over a byte
+[c_union(b = 1)]
+struct Flag {
+    b : bool
+    raw : uint8
+}
+
+// a member spelled `size` is a member, never a width: a full-width reference into the storage
+[c_union(size = 8, align = 8)]
+struct Sized {
+    size : int
+    d : double
+}
+
+def read_pun(u : Pun) : int => u.f0
+
 // a union holding no pointer, read through a `let` parameter
 def first_byte(m : Mix) : int => int(m.bytes[0])
 
@@ -209,6 +253,99 @@ def test_c_union_functions(t : T?) {
         t |> equal(r.rc, 0, r.out)
         t |> equal(jit_ran(r.out), true, r.out)
         t |> equal(r.out |> find("8 4 4 true") >= 0, true, r.out)
+    }
+}
+
+[test]
+def test_c_union_bitfields(t : T?) {
+    t |> run("a bitfield member truncates and sign-extends at bit 0 and puns with the plain member") @(t : T?) {
+        var u : Pun
+        u.f1 = 0x12345678u
+        t |> equal(u.f0, 120)
+        u.f0 = 511
+        t |> equal(u.f0, -1)
+        t |> equal(u.f1, 0x123456ffu)
+        t |> equal(typeinfo sizeof(type<Pun>), 4)
+        t |> equal(typeinfo alignof(type<Pun>), 4)
+    }
+    t |> run("a bitfield member steps through += 1, reads through a let parameter, a nested union and a pointer") @(t : T?) {
+        var u : Pun
+        u.f0 = 127
+        u.f0 += 1
+        t |> equal(u.f0, -128)
+        t |> equal(read_pun(u), -128)
+        var h = HoldsPun(k = 1)
+        h.u.f0 = -100
+        var p = unsafe(addr(h))
+        p.u.f0 -= 1
+        t |> equal(h.u.f0, -101)
+        t |> equal(h.u.f1, 155u)
+    }
+    t |> run("a storage narrower than the width: the pair assembles and stores several elements") @(t : T?) {
+        var o : Odd
+        o.f = 0xfffffu
+        o.c[0] = 1u8
+        t |> equal(o.f, 0xfff01u)
+        t |> equal(o.c[2], 0x0fu8)
+        o.c[2] = 0xffu8
+        t |> equal(o.f, 0xfff01u)
+        o.f += 0xffu
+        t |> equal(o.f, 0u)
+        t |> equal(o.c[2], 0xf0u8)
+        t |> equal(typeinfo sizeof(type<Odd>), 4)
+        t |> equal(typeinfo alignof(type<Odd>), 1)
+    }
+    t |> run("a bitfield of an 8-byte storage runs in uint64 and keeps the other bytes") @(t : T?) {
+        var w : WideBits
+        w.c = 0xffu8
+        w.f = -1l
+        t |> equal(w.f, -1l)
+        w.f = 15l
+        t |> equal(w.f, 15l)
+        t |> equal(w.c, 0xefu8)
+        t |> equal(typeinfo sizeof(type<WideBits>), 8)
+    }
+    t |> run("a bool bitfield member stores true and false as bit 0 and reads only that bit") @(t : T?) {
+        var f : Flag
+        f.b = true
+        t |> equal(f.b, true)
+        t |> equal(f.raw, 1u8)
+        f.raw = 2u8
+        t |> equal(f.b, false)
+        f.raw = 3u8
+        f.b = false
+        t |> equal(f.raw, 2u8)
+        t |> equal(typeinfo sizeof(type<Flag>), 1)
+    }
+    t |> run("a member spelled size beside the stated size is a full-width reference into the storage") @(t : T?) {
+        var u : Sized
+        u.size = 300
+        t |> equal(u.size, 300)
+        var p = unsafe(addr(u.size))
+        *p = 70000
+        t |> equal(u.size, 70000)
+        t |> equal(typeinfo sizeof(type<Sized>), 8)
+    }
+}
+
+[test]
+def test_c_union_bitfield_shapes(t : T?) {
+    t |> run("the compiler rejects a width the member's type or the storage cannot hold") @(t : T?) {
+        rejects(t, "width_type", "[c_union(d = 3)]", "bitfield `d` is of type double, not an integer or bool", "    d : double\n    i : int\n")
+        rejects(t, "width_wide", "[c_union(i = 33)]", "bitfield `i` of 33 bits does not fit its type int")
+        rejects(t, "width_zero", "[c_union(i = 0)]", "bitfield `i` of 0 bits holds no bit")
+        rejects(t, "width_bool", "[c_union(b = 2)]", "bool bitfield `b` is 1 bit wide, not 2", "    b : bool\n    i : int\n")
+        rejects(t, "width_storage", "[c_union(c = 16, size = 1, align = 1)]", "bitfield `c` needs 2 bytes, the storage has 1", "    c : int16\n")
+        rejects(t, "width_string", "[c_union(i = \"3\")]", "the width of `i` is not an integer")
+        rejects(t, "width_getter", "[c_union(i = 3)]", "function is already defined .`i", U_FIELDS, "def operator . i(s : U) : int => 0\n")
+    }
+    t |> run("the compiler takes a width on an integer or bool member, and a member spelled size beside the stated size") @(t : T?) {
+        let ok = compile_shape("width_ok", "[c_union(i = 3)]")
+        t |> equal(ok.rc, 0, ok.out)
+        let flag = compile_shape("width_flag", "[c_union(b = 1)]", "    b : bool\n    i : int\n")
+        t |> equal(flag.rc, 0, flag.out)
+        let size_member = compile_shape("size_member", "[c_union(size = 8, align = 8)]", "    size : int\n    d : double\n")
+        t |> equal(size_member.rc, 0, size_member.out)
     }
 }
 

@@ -13,23 +13,24 @@ require c_runtime/c_storage
 //! is written C-shaped; the annotation replaces each allocation unit's fields with one unsigned
 //! storage field `_bits<N>` at the unit's place and generates, per bitfield, the property pair
 //! `operator . a` / `operator . a :=` doing the mask and shift. The argument list is read in order:
-//! `_bits<N> = "uint8"` (or `"uint16"`, `"uint"`, `"uint64"`) opens a unit, `_<K> = n` skips `n`
-//! bits of padding, any other `name = width` places the field `name` at the unit's bit cursor.
-//! A bitfield with no unit open opens `_bits<K>` sized by the field's own type. The bit math runs
-//! in `uint` or `uint64`, since das defines no shift on the 8- and 16-bit storage types.
+//! `_bits<N> = "uint8"` (or `"uint16"`, `"uint"`, `"uint64"`, or `"uint8[k]"`, `k` bytes at
+//! alignment 1) opens a unit, `_<K> = n` skips `n` bits of padding, any other `name = width`
+//! places the field `name` at the unit's bit cursor. A bitfield with no unit open opens `_bits<K>`
+//! sized by the field's own type. The property pairs are `c_storage`'s arithmetic, in `uint` or
+//! `uint64`, since das defines no shift on the 8- and 16-bit storage types.
 
+// a bitfield of a unit: its field's index in the struct and its place in the unit
 struct private BitMember {
-    name : string
     fidx : int
-    ftype : TypeDeclPtr
-    off : int
-    width : int
+    access : BitAccess
 }
 
+// a unit: its storage type, and for a byte unit (`"uint8[k]"`) its `count` of bytes, else 0
 struct private BitUnit {
     name : string
     storage : string
     bits : int
+    count : int
     cursor : int
     members : array<BitMember>
 }
@@ -48,105 +49,25 @@ def private all_digits(s : string; from : int) : bool {
     return digits
 }
 
+// the `k` of a byte unit's storage `"uint8[k]"`, 1 to 8; 0 for any other spelling
+def private byte_unit_count(spelled : string) : int {
+    if (!(spelled |> starts_with("uint8[")) || !(spelled |> ends_with("]"))) {
+        return 0
+    }
+    let digits = slice(spelled, 6, length(spelled) - 1)
+    if (!all_digits(digits, 0)) {
+        return 0
+    }
+    let count = to_int(digits)
+    return count <= 8 ? count : 0
+}
+
 def private is_opener(name : string) : bool => name |> starts_with("_bits") && all_digits(name, 5)
 
 def private is_padding(name : string) : bool => name |> starts_with("_") && all_digits(name, 1)
 
-def private field_index(st : StructurePtr; name : string) : int {
-    for (idx in range(length(st.fields))) {
-        if (st.fields[idx].name == name) {
-            return idx
-        }
-    }
-    return -1
-}
-
-// a constant of the arithmetic type: `uint` for a unit of up to 32 bits, `uint64` past it
-def private arith_const(wide : bool; v : uint64) : ExpressionPtr => wide ? qmacro($v(v)) : qmacro($v(uint(v)))
-
-def private low_mask(width : int) : uint64 => width >= 64 ? ~0ul : (1ul << uint64(width)) - 1ul
-
-// the storage read in the arithmetic type: `s._bitsN`, through `uint(...)` for a narrow unit
-def private storage_read(u : BitUnit; arith_type : string) : ExpressionPtr {
-    var read = qmacro(s.$f(u.name))
-    return u.storage == arith_type ? read : qmacro($c(arith_type)($e(read)))
-}
-
-def private make_getter(var st : StructurePtr; u : BitUnit; m : BitMember) : FunctionPtr {
-    let wide = u.bits == 64
-    let bits = wide ? 64 : 32
-    let arith_type = wide ? "uint64" : "uint"
-    let t_name = describe(m.ftype)
-    var e = storage_read(u, arith_type)
-    if (m.ftype.isSignedInteger) {
-        // shift the field's top bit to the word's top, then an arithmetic shift back down
-        let up = bits - m.off - m.width
-        if (up > 0) {
-            e = qmacro($e(e) << $e(arith_const(wide, uint64(up))))
-        }
-        let signed_name = wide ? "int64" : "int"
-        e = qmacro($c(signed_name)($e(e)))
-        if (bits - m.width > 0) {
-            e = wide ? qmacro($e(e) >> $v(int64(bits - m.width))) : qmacro($e(e) >> $v(bits - m.width))
-        }
-        if (t_name != signed_name) {
-            e = qmacro($c(t_name)($e(e)))
-        }
-    } else {
-        if (m.off > 0) {
-            e = qmacro($e(e) >> $e(arith_const(wide, uint64(m.off))))
-        }
-        if (m.width < bits) {
-            e = qmacro($e(e) & $e(arith_const(wide, low_mask(m.width))))
-        }
-        if (m.ftype.isBool) {
-            e = qmacro($e(e) != $e(arith_const(wide, 0ul)))
-        } elif (t_name != arith_type) {
-            e = qmacro($c(t_name)($e(e)))
-        }
-    }
-    var fn <- qmacro_function(".`{m.name}") $(s : $t(st)) : $t(m.ftype) {
-        return $e(e)
-    }
-    fn.flags.generated = true
-    fn.at = st.at
-    return <- fn
-}
-
-def private make_setter(var st : StructurePtr; u : BitUnit; m : BitMember) : FunctionPtr {
-    let wide = u.bits == 64
-    let bits = wide ? 64 : 32
-    let arith_type = wide ? "uint64" : "uint"
-    let mask = low_mask(m.width)
-    var v = qmacro(v)
-    if (m.ftype.isBool) {
-        v = qmacro($e(v) ? $e(arith_const(wide, 1ul)) : $e(arith_const(wide, 0ul)))
-    } elif (describe(m.ftype) != arith_type) {
-        v = qmacro($c(arith_type)($e(v)))
-    }
-    if (m.width < bits) {
-        v = qmacro($e(v) & $e(arith_const(wide, mask)))
-    }
-    if (m.off > 0) {
-        v = qmacro($e(v) << $e(arith_const(wide, uint64(m.off))))
-    }
-    let keep_mask = ~(mask << uint64(m.off)) & low_mask(bits)
-    var e = qmacro(($e(storage_read(u, arith_type)) & $e(arith_const(wide, keep_mask))) | $e(v))
-    if (u.storage != arith_type) {
-        e = qmacro($c(u.storage)($e(e)))
-    }
-    var fn <- qmacro_function(".`{m.name}`clone") $(var s : $t(st); v : $t(m.ftype)) : void {
-        s.$f(u.name) = $e(e)
-    }
-    // a `v : T` parameter is `T const`, as the parser makes it, so a hand-written twin collides
-    fn.arguments[1]._type.flags.constant = true
-    fn.flags.generated = true
-    fn.at = st.at
-    return <- fn
-}
-
 // opens unit `name` of `storage`, which must not be a field of the struct or another unit
-def private open_unit(st : StructurePtr; var units : array<BitUnit>; name : string; storage : CStorage; var errors : das_string) : bool {
+def private open_unit(st : StructurePtr; var units : array<BitUnit>; name : string; storage : CStorage; count : int; var errors : das_string) : bool {
     if (field_index(st, name) >= 0) {
         errors := "c_bitfields: unit `{name}` collides with a field of {st.name}"
         return false
@@ -157,7 +78,7 @@ def private open_unit(st : StructurePtr; var units : array<BitUnit>; name : stri
             return false
         }
     }
-    units |> emplace(BitUnit(name = name, storage = storage.name, bits = storage.bits))
+    units |> emplace(BitUnit(name = name, storage = storage.name, bits = count == 0 ? storage.bits : 8 * count, count = count))
     return true
 }
 
@@ -187,12 +108,14 @@ def private read_units(st : StructurePtr; args : AnnotationArgumentList; var uni
     for (a in args) {
         let name = string(a.name)
         if (is_opener(name)) {
-            let storage = storage_of(a.basicType == Type.tString ? string(a.sValue) : "?", 0)
+            let spelled = a.basicType == Type.tString ? string(a.sValue) : "?"
+            let count = byte_unit_count(spelled)
+            let storage = count > 0 ? storage_of("uint8", 0) : storage_of(spelled, 0)
             if (empty(storage.name)) {
-                errors := "c_bitfields: unit `{name}` names storage `{a.sValue}`; expecting \"uint8\", \"uint16\", \"uint\" or \"uint64\""
+                errors := "c_bitfields: unit `{name}` names storage `{a.sValue}`; expecting \"uint8\", \"uint16\", \"uint\", \"uint64\" or \"uint8[k]\", k from 1 to 8"
                 return false
             }
-            if (!open_unit(st, units, name, storage, errors)) {
+            if (!open_unit(st, units, name, storage, count, errors)) {
                 return false
             }
             continue
@@ -227,7 +150,7 @@ def private read_units(st : StructurePtr; args : AnnotationArgumentList; var uni
             errors := "c_bitfields: field `{name}` has an initializer; a bitfield starts at zero"
             return false
         }
-        if (empty(units) && !open_unit(st, units, "_bits0", default_unit, errors)) {
+        if (empty(units) && !open_unit(st, units, "_bits0", default_unit, 0, errors)) {
             return false
         }
         assume unit = units[length(units) - 1]
@@ -241,10 +164,10 @@ def private read_units(st : StructurePtr; args : AnnotationArgumentList; var uni
             return false
         }
         if (!empty(unit.members) && unit.members[length(unit.members) - 1].fidx + 1 != fidx) {
-            errors := "c_bitfields: field `{name}` does not follow `{unit.members[length(unit.members) - 1].name}` in {st.name}; a unit's fields are adjacent"
+            errors := "c_bitfields: field `{name}` does not follow `{unit.members[length(unit.members) - 1].access.name}` in {st.name}; a unit's fields are adjacent"
             return false
         }
-        unit.members |> push(BitMember(name = name, fidx = fidx, ftype = clone_type(ftype), off = unit.cursor, width = width))
+        unit.members |> push(BitMember(fidx = fidx, access = BitAccess(name = name, ftype = clone_type(ftype), off = unit.cursor, width = width)))
         unit.cursor += width
     }
     for (u in units) {
@@ -272,15 +195,9 @@ class CBitfieldsAnnotation : AstStructureAnnotation {
             return false
         }
         for (u in units) {
+            let store = BitStore(field = u.name, storage = storage_of(u.storage, 0), count = u.count)
             for (m in u.members) {
-                var getter = make_getter(st, u, m)
-                if (!(compiling_module() |> add_function(getter))) {
-                    errors := "c_bitfields: {st.name} already has `operator . {m.name}`"
-                    return false
-                }
-                var setter = make_setter(st, u, m)
-                if (!(compiling_module() |> add_function(setter))) {
-                    errors := "c_bitfields: {st.name} already has `operator . {m.name} :=`"
+                if (!add_bit_pair(st, store, m.access, st.fields[m.fidx].at, "c_bitfields", errors)) {
                     return false
                 }
             }
@@ -295,8 +212,24 @@ class CBitfieldsAnnotation : AstStructureAnnotation {
                 st.fields |> erase(units[u].members[length(units[u].members) - 1 - mi].fidx)
             }
             st.fields[first].name := units[u].name
-            st.fields[first]._type = new TypeDecl(baseType = storage_of(units[u].storage, 0).base, at = st.fields[first].at)
+            var unit_type = new TypeDecl(baseType = storage_of(units[u].storage, 0).base, at = st.fields[first].at)
+            st.fields[first]._type = units[u].count == 0 ? unit_type : make_fixed_array_type(units[u].count, unit_type)
         }
         return true
     }
 }
+
+//! The bytes of a `uint8[k]` unit holding the word `w`, little-endian, `t` naming the unit's type
+//! (`default<uint8[3]>`): the initializer of a byte unit. The type parameter is `UnitBytesT`, not
+//! `T`: a generic's `auto(T)` binds a struct `T` visible where the generic is declared, its own
+//! module or one it requires (`probes/test_bitfields.das`, "a generic's auto(T) binds a struct T
+//! visible where the generic is declared").
+def c_unit_bytes(w : uint64; t : auto(UnitBytesT)) : UnitBytesT {
+    var r : UnitBytesT
+    for (i in range(length(r))) {
+        r[i] = uint8(w >> uint64(8 * i))
+    }
+    return r
+}
+
+def c_unit_bytes(w : uint; t : auto(UnitBytesT)) : UnitBytesT => c_unit_bytes(uint64(w), t)

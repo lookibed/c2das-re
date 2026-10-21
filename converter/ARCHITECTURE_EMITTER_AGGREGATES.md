@@ -4,28 +4,39 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
 
 ### Bitfields
 
-A record with bitfields is the C-shaped struct under `[c_bitfields(...)]` (`c_runtime/c_bitfields`,
-`docs/lowering-examples.md` "Bitfields"): each named bitfield is a field of its declared das
-type, an unnamed one is no field, and the annotation lists the allocation units `bit_units`
-finds, in order. A unit opens with `_bits<N> = "uint8"` (`"uint16"`, `"uint"`, `"uint64"`),
-left out for the first unit when its storage is the one the macro opens by default for its
-first field (the unsigned type of its declared type's width) and that
-field starts the unit; then each bitfield of the unit as `name = width`, preceded by a padding
-argument `_<K> = gap` (K counting across the record) when clang leaves bits before it. Under
-the `msvc` dialect the documents' `[c_bitfields(a = 3, b = 5)]` comes out as written; under
-`linux` the same struct packs into a byte, which takes the opener (F25). A member reads and
-writes as a field, `s.a` and `p.a` alike, through the generated property pair; das has no `++`
-on a property, so a bitfield step is `s.a += 1u` (`probes/test_bitfields.das`). A record
-initializer folds each unit's initialized bitfields into one `_bits<N>` item, `U((W(v1) & m1)
-| ((W(v2) & m2) << o2))` with `W` the unit's arithmetic type (`uint`, `uint64` for an 8-byte
-unit) and `U` its storage, the setter's own conversions, since a global `fixed_array` of struct
-literals naming a property crashes the program before `main` (`probes/test_bitfields.das`). A
-record with only unnamed bitfields is a plain struct. A bitfield of enum type, a bitfield of a
-marshal-only record, a record with bitfields no unit assignment reproduces (`packed`, with its
-own message, never pointing at the sidecar), a flexible array member, a bitfield named like an
-opener or a padding argument (`_bits0`, `_3`) and another field named like a storage field the
-record emits fail closed. The layout check asserts the das alignment a record ends with, which
-for a record holding bitfield units, or a record holding such a record, can be below clang's.
+A record with bitfields is the C-shaped struct under `[c_bitfields(...)]`
+(`c_runtime/c_bitfields`, `docs/lowering-examples.md` "Bitfields"): each named bitfield is a
+field of its declared das type, an unnamed one is no field, and the annotation lists the
+allocation units `bit_units` finds, in order. A unit opens with `_bits<N> = "uint8"`
+(`"uint16"`, `"uint"`, `"uint64"`, or `"uint8[k]"` for a byte unit), left out for the first unit
+when it is no byte unit, its storage is the one the macro opens by default for its first field
+(the unsigned type of its declared type's width) and that field starts the unit; then each
+bitfield of the unit as `name = width`, preceded by a padding argument `_<K> = gap` (K counting
+across the record) when clang leaves bits before it. Under the `msvc` dialect the documents'
+`[c_bitfields(a = 3, b = 5)]` comes out as written; under `linux` the same struct packs into a
+byte, which takes the opener (F25). A member reads and writes as a field, `s.a` and `p.a` alike,
+through the generated property pair; das has no `++` on a property, and a compound store to one
+reached through a field of `deref(p + k)` crashes daslang before `main`
+(`docs/probe-findings.md` F52), so a bitfield step is `s.a = s.a + 1u` and a compound store
+`s.a = s.a + v`, the getter and the setter spelled apart (`probes/test_bitfields.das`). A record
+initializer folds each unit's initialized bitfields into one `_bits<N>` item, `U((W(v1) & m1) |
+((W(v2) & m2) << o2))` with `W` the unit's arithmetic type (`uint`, `uint64` for a unit past 4
+bytes) and `U` its storage, the setter's own conversions, since a global `fixed_array` of struct
+literals naming a property crashes the program before `main` (`probes/test_bitfields.das`); a
+byte unit's item is `c_unit_bytes(<that word>, default<uint8[k]>)`, its bytes little-endian. A
+record with only unnamed bitfields is a plain struct. Where the layout law pads (section 2 of
+`ARCHITECTURE.md`), the struct carries `_pad<N> : uint8[n]` fields at those places, `N` counting
+across the record, which no initializer names, so they start at zero (`struct HoldBF { bf : BF;
+y : int16; _pad0 : uint8[2] }` for `struct { struct BF bf; short y; }` under `linux`). A
+bitfield of enum type, a bitfield of a marshal-only record (named or unnamed), a record with
+bitfields no unit assignment reproduces even with padding and byte units (`packed`, with its own
+message, never pointing at the sidecar; a record whose alignment an attribute raises past its
+members' says so; a record declared `packed` or under `#pragma pack(n)` that the law places
+converts like any other, F51), a flexible array member, a bitfield named like an opener or a
+padding argument (`_bits0`, `_3`), another field named like a storage field the record emits and
+a field spelled `_pad<N>` in a record that pads fail closed. The layout check asserts the das
+alignment a record ends with, which for a record holding bitfield units, a padded record, or a
+record holding either, can be below clang's.
 
 ### Unions
 
@@ -36,8 +47,12 @@ from the members, so it stands when the members, each measured by its das alignm
 clang's (`union_member_layout`) and no member's type spells a dimension by an enum constant,
 which das folds only after the annotation has read the member types; otherwise the annotation
 states clang's numbers, `[c_union(size = 4, align = 4)]` (a member record whose das alignment
-is below clang's, F5; an `aligned` attribute up to 8). A member reads, stores, steps (`u.i++`),
-takes compound stores and its address (`addr(u.i)`) and reaches a nested field (`u.pt.x = 7`)
+is below clang's, F5; an `aligned` attribute up to 8; an unnamed bitfield member, which is no
+field, yet counts toward clang's size: `union { char c; int : 12; }` is `[c_union(size = 2,
+align = 1)]` under `linux`). A bitfield member adds its width, `[c_union(f0 = 8)]`, and reads
+and writes through a property pair over the storage at bit 0, as a struct's bitfield does
+(`u.f0 = u.f0 + 1` for a step or a compound store, no address). Any other member reads, stores, steps (`u.i++`), takes
+compound stores and its address (`addr(u.i)`) and reaches a nested field (`u.pt.x = 7`)
 as a field does, `u.f` and `p.f` alike, through the ref-returning operator; a const base reads
 through the value one. `offsetof` of a member is `T(0)`, `sizeof` the type's
 `typeinfo sizeof`. A struct literal cannot name a member, so an initializer never puts a union
@@ -53,13 +68,14 @@ left-to-right order. A global whose declaration carries no `=` (its value is sto
 zero-initialized, so a later global taking its address is stored in `c2das_init_globals` too.
 An anonymous member (a struct or union member with no declarator) is the field `_anon<N>`, `N`
 its index, of the record type `anon_<slot>`, so `s.i` through an anonymous union is
-`s._anon1.i`. A function-pointer member is a member like any other (Function pointers, below). Fail
-closed: a bitfield member of a union; a union
-the layout law finds unnatural, with its reason (no member, an alignment that is not 1, 2, 4 or
-8 or does not divide the size, an alignment below a member's, a member that does not fit, a
-member record das cannot lay out); a union holding a marshal-only record; a member named
-`_storage`; a field spelled `_anon<N>` in a record with an anonymous member; a zero-length
-array (`char z[0]`, GNU) anywhere; and a union's list anywhere but an initializer.
+`s._anon1.i`. A function-pointer member is a member like any other (Function pointers, below).
+Fail closed: a bitfield member of enum type and one spelled `size` or `align` (the annotation's
+own arguments); a union the layout law finds unnatural, with its reason (no member, an
+alignment that is not 1, 2, 4 or 8 or does not divide the size, an alignment below a member's,
+a member that does not fit, a member record das cannot lay out); a union holding a marshal-only
+record; a member named `_storage`; a field spelled `_anon<N>` in a record with an anonymous
+member; a zero-length array (`char z[0]`, GNU) anywhere; and a union's list anywhere but an
+initializer.
 
 ### Function pointers
 

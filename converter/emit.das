@@ -580,6 +580,11 @@ def private assignment_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
     if (narrow != wide) {
         return "{lhs.text} = {narrow}({wide}({lhs.text}) {spelled} {wrap(rhs, prec + 1)})"
     }
+    if (is_bitfield_member(tu, x.a)) {
+        // a compound store to a property through `deref(p + k)` crashes daslang before `main`
+        // (docs/probe-findings.md F52): the setter takes the getter's value combined
+        return "{lhs.text} = {lhs.text} {spelled} {wrap(rhs, prec + 1)}"
+    }
     return "{lhs.text} {spelled}= {rhs.text}"
 }
 
@@ -641,14 +646,16 @@ def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return ""
     }
     if (is_bitfield_member(tu, x.a)) {
-        // das has no `++` on a property; a bitfield steps through its getter and setter
+        // das has no `++` on a property, and a compound store to one through `deref(p + k)`
+        // crashes daslang before `main` (docs/probe-findings.md F52): the setter takes the
+        // getter plus one
         let spelled = das_type(em, tu, x.a.t, loc)
         let one = int_literal(spelled, "1")
         if (empty(one)) {
             fail(em, "a step of a `{spelled}` bitfield is not lowered yet", loc)
             return ""
         }
-        return "{operand.text} {up ? "+=" : "-="} {one}"
+        return "{operand.text} = {operand.text} {up ? "+" : "-"} {one}"
     }
     return "{operand.text}{up ? "++" : "--"}"
 }
@@ -1614,7 +1621,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
         return value(array_literal(em, tu, x.t, elems, loc), PREC_PRIMARY)
     }
     var units : array<BitUnit>
-    if (has_named_bitfield(tu, x.t) && !bit_units(tu, em.layout, x.t, units)) {
+    if (has_bitfield(tu, x.t, true) && !bit_units(tu, em.layout, x.t, units)) {
         // the dumper marks such a record packed, so only a C-IR from elsewhere reaches this
         fail(em, "record `{tag_name(em, tu, x.t)}`: no bitfield units reproduce clang's layout", loc)
         return value("", PREC_PRIMARY)
@@ -2960,12 +2967,102 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     }
 }
 
-// `struct Name { fields }`, adjacent fields of one type on one line, under `[c_bitfields(...)]`
-// when it has bitfields and under `[c_union]` when it is a union
+// whether record `t` is refused, with the error set: a marshal-only record with a bitfield, named
+// or not; a packed record whose alignment an attribute raises past its members', or that has
+// bitfields, or that the sidecar does not list marshal-only; a field spelled like an anonymous
+// member's name; a `va_list` field; a flexible array member
+def private record_refusal(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : bool {
+    let name = tag_name(em, tu, t)
+    let marshal = is_marshal(em, tu, t)
+    let any_bitfield = has_bitfield(tu, t, false)
+    if (marshal && any_bitfield) {
+        fail(em, "bitfields of the marshal-only record `{name}` are not lowered yet", loc)
+        return true
+    }
+    if (tu.types[t].packed && !marshal && (any_bitfield || has_underaligned_record_field(tu, em.layout, t))) {
+        let members_align = members_align(tu, em.layout, t)
+        if (tu.types[t].align > members_align) {
+            fail(em, "record `{name}` has an alignment attribute das cannot spell: clang aligns it to {tu.types[t].align}, its members to {members_align}; not lowered yet", loc)
+            return true
+        }
+    }
+    if (tu.types[t].packed && has_bitfield(tu, t, true)) {
+        fail(em, "record `{name}` has bitfields and das cannot lay it out as clang does; not lowered yet", loc)
+        return true
+    }
+    if (tu.types[t].packed && !marshal) {
+        fail(em, "record `{name}` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar", loc)
+        return true
+    }
+    if (has_anonymous_member(tu, t)) {
+        for (f in tu.types[t].fields) {
+            if (numbered_after(das_name(em, f.name), "_anon") >= 0) {
+                fail(em, "field `{name}.{f.name}` is spelled like the name of an anonymous member", loc)
+                return true
+            }
+        }
+    }
+    for (f in tu.types[t].fields) {
+        if (is_va_list(tu, f.t)) {
+            fail(em, "a `va_list` field (`{name}.{f.name}`) is not lowered yet", loc)
+            return true
+        }
+        if (kind_of(tu, f.t) == "array" && tu.types[f.t].count < 0) {
+            fail(em, "flexible array member `{name}.{f.name}` is not lowered yet", loc)
+            return true
+        }
+    }
+    return false
+}
+
+// the field lines of record `t`, adjacent fields of one type on one line, a padding field
+// `_pad<N> : uint8[n]` where the layout law pads; false with the error set when a C field is
+// spelled like a padding field of a record that pads
+def private record_lines(var em : Emitter; tu : CirTu; t : int; loc : CirLoc; var lines : array<string>) : bool {
+    let n = length(tu.types[t].fields)
+    var inscope pads <- layout_pads(tu, em.layout, t)
+    if (!empty(pads)) {
+        for (f in tu.types[t].fields) {
+            if (numbered_after(das_name(em, f.name), "_pad") >= 0) {
+                fail(em, "field `{tag_name(em, tu, t)}.{f.name}` is spelled like a padding field", loc)
+                return false
+            }
+        }
+    }
+    lines |> reserve(length(lines) + n + length(pads))
+    var names : array<string>
+    names |> reserve(n)
+    var spelled = ""
+    var next_pad = 0
+    for (idx in range(n + 1)) {
+        let pad_here = next_pad < length(pads) && pads[next_pad].before == idx
+        var ft = ""
+        if (idx < n && !is_unnamed_bitfield(tu.types[t].fields[idx])) {
+            ft = das_type_dims(em, tu, tu.types[t].fields[idx].t, loc, tu.types[t].fields[idx].dims)
+        }
+        // the end, a padding field or a field of another type closes the line of names
+        if (!empty(names) && (idx == n || pad_here || (!empty(ft) && ft != spelled))) {
+            lines |> push("{join(names, ", ")} : {spelled}")
+            names |> clear()
+        }
+        while (next_pad < length(pads) && pads[next_pad].before == idx) {
+            lines |> push("_pad{next_pad} : uint8[{pads[next_pad].size}]")
+            next_pad++
+        }
+        if (!empty(ft)) {
+            spelled = ft
+            names |> push(member_name(em, tu.types[t].fields[idx], idx))
+        }
+    }
+    return true
+}
+
+// `struct Name { fields }` (`record_lines`), under `[c_bitfields(...)]` when it has bitfields
+// and under `[c_union]` when it is a union
 def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
     let t = d.t
     let name = tag_name(em, tu, t)
-    if (tu.types[t].k == "union") {
+    if (kind_of(tu, t) == "union") {
         let annotation = union_annotation(em, tu, t, d.loc)
         if (empty(annotation)) {
             return
@@ -2973,38 +3070,10 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
         em.requires |> insert("c_runtime/c_union")
         line(em, annotation)
     }
-    let bitfields = has_named_bitfield(tu, t)
-    if (tu.types[t].packed && bitfields) {
-        fail(em, "record `{name}` has bitfields and das cannot lay it out as clang does; not lowered yet", d.loc)
+    if (record_refusal(em, tu, t, d.loc)) {
         return
     }
-    if (tu.types[t].packed && !is_marshal(em, tu, t)) {
-        fail(em, "record `{name}` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar", d.loc)
-        return
-    }
-    if (has_anonymous_member(tu, t)) {
-        for (f in tu.types[t].fields) {
-            if (numbered_after(das_name(em, f.name), "_anon") >= 0) {
-                fail(em, "field `{name}.{f.name}` is spelled like the name of an anonymous member", d.loc)
-                return
-            }
-        }
-    }
-    for (f in tu.types[t].fields) {
-        if (is_va_list(tu, f.t)) {
-            fail(em, "a `va_list` field (`{name}.{f.name}`) is not lowered yet", d.loc)
-            return
-        }
-        if (kind_of(tu, f.t) == "array" && tu.types[f.t].count < 0) {
-            fail(em, "flexible array member `{name}.{f.name}` is not lowered yet", d.loc)
-            return
-        }
-    }
-    if (bitfields) {
-        if (is_marshal(em, tu, t)) {
-            fail(em, "bitfields of the marshal-only record `{name}` are not lowered yet", d.loc)
-            return
-        }
+    if (has_bitfield_units(tu, t)) {
         let annotation = bitfields_annotation(em, tu, t, d.loc)
         if (!empty(em.error)) {
             return
@@ -3012,22 +3081,9 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
         em.requires |> insert("c_runtime/c_bitfields")
         line(em, annotation)
     }
-    var lines, names : array<string>
-    lines |> reserve(length(tu.types[t].fields))
-    names |> reserve(length(tu.types[t].fields))
-    var spelled = ""
-    for (idx, f in range(length(tu.types[t].fields)), tu.types[t].fields) {
-        continue if (f.is_bitfield && empty(f.name))
-        let ft = das_type_dims(em, tu, f.t, d.loc, f.dims)
-        if (!empty(names) && ft != spelled) {
-            lines |> push("{join(names, ", ")} : {spelled}")
-            names |> clear()
-        }
-        spelled = ft
-        names |> push(member_name(em, f, idx))
-    }
-    if (!empty(names)) {
-        lines |> push("{join(names, ", ")} : {spelled}")
+    var lines : array<string>
+    if (!record_lines(em, tu, t, d.loc, lines)) {
+        return
     }
     open_block(em, "struct {name}")
     for (l in lines) {
@@ -3042,16 +3098,27 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
 
 // `[c_union]` for union `t`, or `[c_union(size = N, align = A)]` when the members alone do not
 // give clang's size and alignment, or when a member's type spells a dimension by an enum
-// constant, which das folds only after the annotation has read the members; "" with the error
-// set on a union the annotation does not lower
+// constant, which das folds only after the annotation has read the members; a bitfield member
+// adds `name = width` and an unnamed one is no member; "" with the error set on a union the
+// annotation does not lower
 def private union_annotation(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
     let name = tag_name(em, tu, t)
     var bare = true
+    var widths : array<string>
     for (f in tu.types[t].fields) {
+        continue if (is_unnamed_bitfield(f))
         let member = empty(f.name) ? "an anonymous member" : "`{name}.{f.name}`"
         if (f.is_bitfield) {
-            fail(em, "bitfield {empty(f.name) ? "padding" : member} of the union `{name}` is not lowered yet", loc)
-            return ""
+            if (kind_of(tu, f.t) != "int") {
+                fail(em, "bitfield `{name}.{f.name}` of {kind_of(tu, f.t)} type is not lowered yet", loc)
+                return ""
+            }
+            let spelled = das_name(em, f.name)
+            if (spelled == "size" || spelled == "align") {
+                fail(em, "bitfield {member} is spelled like an argument of `[c_union]`", loc)
+                return ""
+            }
+            widths |> push("{spelled} = {f.bit_w}")
         }
         let elem = element_under(tu, f.t)
         if (is_marshal(em, tu, elem)) {
@@ -3071,9 +3138,11 @@ def private union_annotation(var em : Emitter; tu : CirTu; t : int; loc : CirLoc
     }
     let derived = union_member_layout(tu, em.layout, t)
     if (bare && derived.size == int64(tu.types[t].size) && derived.align == tu.types[t].align) {
-        return "[c_union]"
+        return empty(widths) ? "[c_union]" : "[c_union({join(widths, ", ")})]"
     }
-    return "[c_union(size = {tu.types[t].size}, align = {tu.types[t].align})]"
+    widths |> push("size = {tu.types[t].size}")
+    widths |> push("align = {tu.types[t].align}")
+    return "[c_union({join(widths, ", ")})]"
 }
 
 // whether a declarator of type `t` with dimensions `dims` spells a dimension by an enum
@@ -3092,6 +3161,9 @@ def private spells_enum_dim(tu : CirTu; t : int; dims : array<CirDim>) : bool {
     }
     return false
 }
+
+// whether record `t` is a struct whose bitfields `[c_bitfields]` gives storage units
+def private has_bitfield_units(tu : CirTu; t : int) : bool => kind_of(tu, t) != "union" && has_bitfield(tu, t, true)
 
 def private is_bitfield_member(tu : CirTu; x : CirExpr const?) : bool {
     if (x == null || x.e != "member") {
@@ -3155,7 +3227,7 @@ def private bitfields_annotation(var em : Emitter; tu : CirTu; t : int; loc : Ci
     var args : array<string>
     var pad_index = 0
     for (n, u in range(length(units)), units) {
-        let storage = unit_storage(u.size)
+        let storage = u.byte_array ? "uint8[{u.size}]" : unit_storage(u.size)
         let base = u.off * 8
         assume first = tu.types[t].fields[u.first]
         if (n != 0 || first.bit_off != base || storage != unit_storage(int(type_size(tu, first.t)))) {
@@ -3187,12 +3259,14 @@ def private unit_of(units : array<BitUnit>; field : int) : int {
 }
 
 // one unit's initializer: every initialized bitfield of it as `(W(v) & mask) << bit`, or-ed in
-// the unit's arithmetic type (`uint`, `uint64` for an 8-byte unit; das shifts no narrower
-// type) and narrowed to the storage, the conversions `[c_bitfields]`'s setter makes
+// the unit's arithmetic type (`uint`, `uint64` for a unit past 4 bytes; das shifts no narrower
+// type) and narrowed to the storage, the conversions `[c_bitfields]`'s setter makes; a byte
+// unit's word goes through `c_unit_bytes` into its bytes
 def private unit_init(tu : CirTu; t : int; u : BitUnit; parts : array<tuple<field : int; v : Em; spelled : string>>) : string {
-    let arith_type = u.size == 8 ? "uint64" : "uint"
-    let suffix = u.size == 8 ? "ul" : "u"
-    let bits = u.size == 8 ? 64 : 32
+    let wide = u.size > 4
+    let arith_type = wide ? "uint64" : "uint"
+    let suffix = wide ? "ul" : "u"
+    let bits = wide ? 64 : 32
     var terms : array<string>
     terms |> reserve(length(parts))
     for (p in parts) {
@@ -3205,6 +3279,9 @@ def private unit_init(tu : CirTu; t : int; u : BitUnit; parts : array<tuple<fiel
         terms |> push(shift > 0 ? "({v.text}) << {shift}{suffix}" : v.text)
     }
     let joined = length(terms) == 1 ? terms[0] : join([for (term in terms); "({term})"], " | ")
+    if (u.byte_array) {
+        return "c_unit_bytes({joined}, default<uint8[{u.size}]>)"
+    }
     let storage = unit_storage(u.size)
     return storage == arith_type ? joined : "{storage}({joined})"
 }
@@ -3289,7 +3366,7 @@ def private emit_layout_check(var em : Emitter; tu : CirTu; records : array<int>
         let name = tag_name(em, tu, t)
         // a record holding bitfield units can align below clang (docs/probe-findings.md F5)
         let align = natural_align(tu, em.layout, t)
-        let bitfields = has_named_bitfield(tu, t)
+        let bitfields = has_bitfield_units(tu, t)
         let below = align == tu.types[t].align ? "" : (bitfields ? ", its bitfield units align {align}" : ", its das alignment is {align}")
         line(em, "static_assert(typeinfo sizeof(type<{name}>) == {tu.types[t].size} && typeinfo alignof(type<{name}>) == {align}, \"{name}: clang lays it out as size {tu.types[t].size}, align {tu.types[t].align}{below}\")")
         if (kind_of(tu, t) == "union") {

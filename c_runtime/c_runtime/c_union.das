@@ -16,7 +16,10 @@ require c_runtime/c_storage
 //! into the storage (read, store, compound store, `++`, a nested field, `addr`), over a const one
 //! the value. `[c_union(size = N, align = A)]` states the size and alignment; the bare form
 //! derives them from the members, which takes every member's type known when the struct is
-//! parsed. Every member's size and alignment are checked against the storage at inference.
+//! parsed. Every member's size and alignment are checked against the storage at inference. A
+//! member named with a width, `[c_union(f0 = 8)]`, is a bitfield at bit 0: its property pair,
+//! `operator . f0` and `operator . f0 :=`, reads and writes the storage's leading elements as
+//! one word (`c_storage`'s arithmetic), since bits are not addressable.
 
 // whether das knows the size of a value of type `t` while the struct is parsed: every type held
 // by value resolved, every dimension folded; a pointer or a function value is pointer-sized
@@ -70,6 +73,45 @@ def private int_arg(args : AnnotationArgumentList; name : string; var value : in
     return true
 }
 
+// the width argument of member `f`, `nothing` when it is no bitfield; `size` and `align` are
+// never widths
+def private width_of(args : AnnotationArgumentList; f : FieldDeclaration) : RttiValue {
+    if (f.name == "size" || f.name == "align") {
+        return RttiValue_nothing()
+    }
+    return find_arg(args, string(f.name))
+}
+
+// bitfield member `f` of `width` bits at bit 0: its property pair over the storage elements
+// that hold the width, the `c_storage` arithmetic; false with `errors` set when the member's
+// type holds no bitfield, a `bool` is not 1 bit wide, the width is below 1 or past the type's
+// bits or the storage's bytes, or the pair collides
+def private add_member_bits(var st : StructurePtr; f : FieldDeclaration; width, size : int; storage : CStorage; var errors : das_string) : bool {
+    if (!(f._type.isInteger || f._type.isBool)) {
+        errors := "c_union: bitfield `{f.name}` is of type {describe(f._type)}, not an integer or bool"
+        return false
+    }
+    if (f._type.isBool && width != 1) {
+        errors := "c_union: bool bitfield `{f.name}` is 1 bit wide, not {width}"
+        return false
+    }
+    if (width < 1) {
+        errors := "c_union: bitfield `{f.name}` of {width} bits holds no bit"
+        return false
+    }
+    if (width > f._type.sizeOf * 8) {
+        errors := "c_union: bitfield `{f.name}` of {width} bits does not fit its type {describe(f._type)}"
+        return false
+    }
+    let count = (width + storage.bits - 1) / storage.bits
+    if (count * storage.bytes > size) {
+        errors := "c_union: bitfield `{f.name}` needs {count * storage.bytes} bytes, the storage has {size}"
+        return false
+    }
+    let store = BitStore(field = "_storage", storage = storage, count = count)
+    return add_bit_pair(st, store, BitAccess(name = string(f.name), ftype = clone_type(f._type), off = 0, width = width), f.at, "c_union", errors)
+}
+
 // the shape the annotation takes: a struct with at least one member, none named `_storage`,
 // none with an initializer; false with `errors` set
 def private check_shape(st : StructurePtr; var errors : das_string) : bool {
@@ -98,8 +140,8 @@ def private check_shape(st : StructurePtr; var errors : das_string) : bool {
 // false with `errors` set on arguments the storage cannot spell
 def private layout(st : StructurePtr; args : AnnotationArgumentList; var size : int&; var align : int&; var errors : das_string) : bool {
     for (a in args) {
-        if (a.name != "size" && a.name != "align") {
-            errors := "c_union: unknown argument `{a.name}`; expecting `size` and `align`"
+        if (a.name != "size" && a.name != "align" && field_index(st, string(a.name)) < 0) {
+            errors := "c_union: unknown argument `{a.name}`; expecting `size`, `align` and a member's bit width"
             return false
         }
     }
@@ -161,7 +203,19 @@ class CUnionAnnotation : AstStructureAnnotation {
         if (!layout(st, args, size, align, errors)) {
             return false
         }
+        let storage = storage_of_bytes(align)
         for (f in st.fields) {
+            let width_arg = width_of(args, f)
+            if (!(width_arg is nothing)) {
+                if (!(width_arg is tInt)) {
+                    errors := "c_union: the width of `{f.name}` is not an integer"
+                    return false
+                }
+                if (!add_member_bits(st, f, width_arg as tInt, size, storage, errors)) {
+                    return false
+                }
+                continue
+            }
             // a twin a source spells itself is the parser's error, before this runs
             for (by_ref in fixed_array(true, false)) {
                 var fn <- make_operator(st, f, size, align, by_ref)

@@ -85,31 +85,62 @@ underlying type (F22); the member is absent for a signed one, which is every enu
 A record's `packed` is false exactly when das's natural layout reproduces clang's, by this law
 (`bit_units.das`), which a Dumper B applies to the same facts to write the same byte. Fields go
 in declaration order, each at its offset rounded up to its das alignment (a scalar's size, an
-array's element's, a nested record's das alignment as this law found it, or clang's for a
-record it finds packed); a flexible array member (an array of count -1 that ends the record)
-adds no bytes. An unnamed or zero-width bitfield never opens a storage unit. The first named
-bitfield not yet covered opens an unsigned unit of its declared type's size first, then of 1,
-2, 4 and 8 bytes in that order, at the next offset that size divides; every following bitfield
-whose bits lie inside the unit joins it, and when the rest of the record then misses a clang
-offset or clang's size the search backtracks to the next size. The end, rounded up to the
-largest alignment met, must be clang's size, and that alignment must be the target: clang's
-alignment first, then each power of two below it, the first target that works winning. A target
-below clang's is tried only when the record has a named bitfield of nonzero width or a field
-whose record (through arrays) won below its clang alignment, and when clang's alignment is the
-one the record would have without an alignment attribute: the largest of its named bitfields'
-declared types, its other fields' das alignments and a nested record's clang alignment. A union
-is natural when it has a member, every member sits at offset 0, clang's alignment is 1, 2, 4 or
-8 and divides its positive size, and every member fits it: a member's das alignment (as this
-law finds it) at most clang's alignment, its size at most clang's size, and a member record
-(through arrays) natural itself; `[c_union]` then gives the storage clang's size and alignment,
-so a natural union's das alignment is clang's even where its members align lower (a member
-record below its clang alignment, F5; an `aligned` attribute up to 8). An anonymous member (a
-struct or union member with no declarator) is a field named `""` that is not a bitfield: its
-`t` is the anonymous record, its `off` the byte offset clang gives it, and it carries no
-`bit_w`. In an `init_list` of a record, `pos` is the field index; an unnamed bitfield is never
-an item, and a union's list holds at most one item, `pos` the member it initializes (none for
-`{}`). A record spelling carries no owner scope: `union S::(anonymous at f:l:c)` interns as
-`union (anonymous at f:l:c)`, the spelling libclang and the dump share.
+array's element's, a nested record's das alignment as this law found it, or clang's for a record
+it finds packed); a flexible array member (an array of count -1 that ends the record) adds no
+bytes. An unnamed or zero-width bitfield never opens a storage unit. The first named bitfield
+not yet covered opens an unsigned unit of its declared type's size first, then of 1, 2, 4 and 8
+bytes in that order, at the next offset that size divides; every following bitfield whose bits
+lie inside the unit joins it, and when the rest of the record then misses a clang offset or
+clang's size the search backtracks to the next size. The end, rounded up to the largest
+alignment met, must be clang's size, and that alignment must be the target: clang's alignment
+first, then each power of two below it, the first target that works winning. A target below
+clang's is tried only when the record has a named bitfield of nonzero width or a field whose
+record (through arrays) won below its clang alignment, and when clang's alignment is the one its
+members give with no alignment attribute: the largest of each field's das alignment, a named
+bitfield's declared type, a nested record's clang alignment (through arrays), and under `msvc`
+alone, by its declared type, an unnamed bitfield of nonzero width and a zero-width one that
+directly follows a bitfield of nonzero width. That is the one ABI fact the law reads from the
+target (`CirTarget.triple`): under `msvc` a nonzero-width unnamed bitfield, and a zero-width one
+directly after a nonzero-width bitfield, align a record by their declared type; under the
+Itanium ABI no unnamed bitfield does (`{ char a; int : 20; }` is size 4, align 1 under `linux` and 8, 4 under
+`msvc`; `{ char c; unsigned a : 9; long long : 0; char d; }` is 12, 4 and 16, 8; a zero-width one
+after a plain field or after another zero-width one aligns neither, `{ char a; int : 0; char b;
+}` is 5, 1 and 2, 1, `{ char x : 3; int : 0; long long : 0; char d; }` 9, 1 and 8, 4;
+`probes/test_layout.das`). When no target works, a record with any bitfield (named or unnamed,
+zero-width included) or a field whose record won below its clang alignment takes one relaxed
+search, unless clang's alignment exceeds the alignment its members give, which only an attribute
+does. The relaxed search places fields in the same order and adds three moves: where das's
+offset falls short of clang's, a padding field of the missing bytes (`_pad<N> : uint8[n]`)
+before the field, before a unit or at the tail up to clang's size; a unit of each size in the
+same order also at the offset that size divides at or below the bitfield's first byte; and,
+last, a byte unit of `k` bytes (1 to 8, alignment 1) at that byte. A byte unit joins the
+bitfields that follow while their bits stay within 8 bytes of its start, a zero-width one
+carrying no bits and adding nothing to the size; it tries each join from the most bitfields down
+to its own alone, the joins of at most 4 bytes first and those past 4 bytes after, so a join
+backtracks when the rest of the record misses clang's offsets. The record's das alignment is
+then the largest its fields give, which must be at most clang's; since both are powers of two
+and the size is clang's, every clang offset of the record, in an array or nested, is a multiple
+of it. The C-IR's `packed` is false for every record the law places, the relaxed search
+included, so Dumper B applies the relaxed search to write the same byte. The C-IR carries no
+attribute: a record declared `packed` or under `#pragma pack(n)` whose layout the law places
+converts like any other (`packed { unsigned a : 3; char c; unsigned b : 20; }` takes byte units,
+size 5), and `packed` in the C-IR means a record the law cannot place, not an attributed one
+(`docs/probe-findings.md` F51). A union is natural when it has a member, every member sits at
+offset 0, clang's alignment is 1, 2, 4 or 8 and divides its positive size, and every member fits
+it: a member's das alignment (as this law finds it) at most clang's alignment, its size at most
+clang's size, and a member record (through arrays) natural itself. An unnamed bitfield of a
+union is no member; a named one sits at bit 0 and fits when its bits fit clang's size, whatever
+its declared type's alignment (under `msvc` a bitfield member adds no alignment of its own:
+`union { char c; long long f : 5; }` aligns 1 there, while `union { signed f0 : 8; unsigned f1;
+}` aligns 4 through `f1`). `[c_union]` then gives the storage clang's size and alignment, so a
+natural union's das alignment is clang's even where its members align lower (a member record
+below its clang alignment, F5; an `aligned` attribute up to 8). An anonymous member (a struct or
+union member with no declarator) is a field named `""` that is not a bitfield: its `t` is the
+anonymous record, its `off` the byte offset clang gives it, and it carries no `bit_w`. In an
+`init_list` of a record, `pos` is the field index; an unnamed bitfield is never an item, and a
+union's list holds at most one item, `pos` the member it initializes (none for `{}`). A record
+spelling carries no owner scope: `union S::(anonymous at f:l:c)` interns as `union (anonymous at
+f:l:c)`, the spelling libclang and the dump share.
 
 A C `va_list` is one opaque record named `va_list`, this repository's choice as `jmp_buf` is
 (the spec has no type for it, `docs/probe-findings.md` F39), and Dumper B writes the same bytes:
