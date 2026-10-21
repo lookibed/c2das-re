@@ -57,6 +57,13 @@ its commit message.**
 **A diff that adds a choice for one C project that the converter cannot derive from the C
 source puts it in that project's `.c2das` sidecar, never in converter code.**
 
+**A diff that chooses between a converted form that runs faster under the interpreter and a
+more idiomatic one, where no single form gives both, emits the idiomatic form by default and
+the faster one under an opt-in converter flag that the `.c2das` sidecar can also set, and
+covers each form with a test preflight runs, a column of its own in the perf report and a key
+in the readability capture, in the same change.** The ruling of 2026-10-20 in
+`docs/very-detailed-plan.md`, decision "Speed vs idiomatic output".
+
 **A diff that adds C code under GPL-2 keeps it under `doom/` (repo root); C code anywhere else ships
 under a permissive license.**
 

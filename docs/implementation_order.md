@@ -349,6 +349,19 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   (20181120-1, bitfld-6, bitfld-7 and pr58726, union bitfield members; pr58984 and pr60017,
   records the relaxed search places; pr58570, a `pack(1)` record whose two bitfields join into
   one 6-byte unit).
+- **P4.7a Parameter write mode.** The first case of the "Speed vs idiomatic output" decision
+  (very-detailed-plan.md section 1, ruling 2026-10-20): P4.6 writes a scalar or pointer
+  parameter the body assigns, steps or takes the address of in place (a `var` parameter, no
+  copy), the idiomatic form, which costs the interpreter 14% on `blit` (P4.6's FLAG: a write
+  to an argument slot is slower than a write to a local). The converter flag `--param-writes
+  in-place|copy` (default `in-place`), also the sidecar key `param_writes`, chooses between the
+  in-place write and a local copy of every written scalar and pointer parameter (the callee
+  copy under a free name, as before P4.6, the parameter itself `let`); nothing else about the
+  output changes between the modes. Each mode: a native-compared fixture converted and run in
+  both modes by test_lowerings (so preflight runs both); the perf lane `interp-copy`, the
+  interpreter over the copy-mode conversion, beside `interp` in `results_linux.json`, the
+  README table and the report; the readability capture's keys `perf/<kernel>@copy` for the
+  kernels under both modes. The kernel `blit` covers the parameter write in both modes.
 - **P4.8 Scope fidelity.** A block flattened for a goto into it whose local hides a same-named
   global (`int g = 40; ... goto in; { int g = 3; in: ... } printf(g)`: the flattened local
   captures the later reads of the global, which the emitter refuses), and a local declared under one case label and

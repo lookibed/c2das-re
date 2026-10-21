@@ -33,6 +33,7 @@ Companion documents:
 | C dialect | C99 minus VLAs (`setjmp/longjmp` supported — try/recover lowering, probed 2026-08-21) | Covers Doom (C89-era), Lua 5.4 incl. `pcall` (ANSI), and the practical bulk of the suites |
 | Target ABI | `int`=32, `long`=32, `long long`=64, pointers = native das pointers | Matches MSVC x64 (LLP64) — same ABI as the native baseline we diff against |
 | UB policy | Signed overflow wraps (das is built `-fwrapv`), shifts as hardware, eval order fixed left-to-right | Documented dialect, matches what csmith-safe programs assume |
+| Speed vs idiomatic output | **Do both** (ruling 2026-10-20): where interpreter speed and idiomatic output conflict and no compromise exists, the idiomatic form is the default and the fast form is an opt-in converter flag, also settable in the `.c2das` sidecar; each mode is covered by tests, by the perf capture (a column per mode in the report) and by the readability capture. Applied to every later conflict without a new ruling; first case: in-place parameter writes vs a local copy (P4.7a) | The readable-first choice stays the output's default, and the interpreter cost of a readable form stays measured and avoidable per project rather than argued per item |
 
 ## 2. Success metrics (the only numbers that matter)
 
