@@ -18,7 +18,9 @@ space), `R (*)(P)` pointers to functions, `R (**)(P)` pointers to those and `R (
 arrays of them, the `(*` read as the pointer only outside every parenthesis (a function whose
 parameter is a function pointer, `void (void (*)(int), int)`, is a function type) and a `const`
 on the pointer (`R (* const)(P)`, a member read through a const record) dropped, since das
-spells none. A builtin typedef in a builtin's prototype (`__size_t`, `__ptrdiff_t`) has no
+spells none. clang spells every constant dimension as its count, so a dimension it leaves as an
+expression (`int[n]`) is a variable-length array, which fails closed naming it; a local's error
+spells the declaration (`int a[n]`). A VLA parameter is no array: clang decays it to a pointer. A builtin typedef in a builtin's prototype (`__size_t`, `__ptrdiff_t`) has no
 cursor and is the dialect's pointer-wide integer. Widths follow the selected dialect (`msvc`:
 int 32, long 32, long long 64; `linux`: long 64); plain `char` is unsigned in both
 (`docs/probe-findings.md` F17), which the dumper enforces with `-funsigned-char`. The dump
@@ -68,7 +70,8 @@ Statements: compound, `DeclStmt` (one `decl` per variable), expression statement
 `continue`, `return`, the null statement. Expressions: integer, character, floating (as a
 hex-float through the CRT) and string literals (C escapes decoded, the NUL appended),
 `DeclRefExpr`, every pinned cast, the unary, binary, compound-assignment, conditional and
-comma operators, calls, subscripts, `sizeof`, `MemberExpr` (the field by index into the
+comma operators, calls, subscripts, `sizeof` and `_Alignof` (clang's `alignof`, with clang's
+alignment of the type as its value; GNU `__alignof` fails closed), `MemberExpr` (the field by index into the
 record's fields, `arrow` kept; a member named `""` is the anonymous member whose record is the
 node's type), `InitListExpr` of a record or an array (clang's semantic form,
 one child per field or element, an `ImplicitValueInitExpr` left to the positional zero;

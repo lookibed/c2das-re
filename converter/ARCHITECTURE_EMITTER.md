@@ -10,7 +10,10 @@ stack` and one `require c_runtime/<name>` per piece the body reached (`printf`, 
 das's own context stack is 16 KiB (`probes/test_process.das`), which a record parameter's copy
 on entry or an alloca arena outgrows, and a recursion multiplies.
 Records come first: `struct Name` with adjacent fields of one type on one line, an unnamed
-record named `anon_<slot>`, in declaration order; then `[init] def private c2das_layout_check`,
+record named `anon_<slot>`, in declaration order, after an empty `struct Name {}` per record the
+unit declares and never defines (an opaque handle, reached through pointers alone, since clang
+refuses its `sizeof` and a dereference; das reads `struct Name;` as the same empty struct, no
+forward declaration, `probes/test_structs.das`); then `[init] def private c2das_layout_check`,
 one `static_assert` per record against clang's size and alignment and one per field against its
 offset, the layout law checked at compile time where it is claimed
 (`docs/implementation_order.md` P2.1); a record holding bitfields asserts its das alignment,
@@ -46,7 +49,11 @@ makes to the caller's object through another pointer during the call does not re
 copy's parameter takes `s_in`, else `s_in1` and up, whichever no parameter, local or name the
 body reads already spells. das passes a scalar, a pointer and a function value by value, so a
 parameter of those the body assigns, steps or takes the address of is `var` and written in
-place (`probes/test_param_constness.das`). That is the default parameter write mode,
+place (`probes/test_param_constness.das`). A K&R definition's parameter arrives at the
+promoted type clang's function type gives it (`int (int, int)` for `int a; char b;`), so it is
+`b_in : int` and the body opens with C's conversion on entry, `let b = uint8(b_in)` (`var` when
+the body writes it, `b_in != 0` for `_Bool`, `enum_from_int` for an enum), in both parameter
+write modes (`docs/probe-findings.md` F55). That is the default parameter write mode,
 `in-place`; under `copy` (`--param-writes copy` or the sidecar's `param_writes`, section 1 of
 `ARCHITECTURE.md`) each such parameter is copied on entry the way a record is, `n_in` the
 parameter and `var n = n_in` the body's first statement, under the same free-name rule, and
@@ -133,13 +140,19 @@ and the `mem*` family are the CRT's through `crt`, with C's implicit `void *` co
 explicit `reinterpret`. `[c_function]` lands only on a body with an unsafe operation, and the
 emitter counts those bodies against all the unit defines: the port-progress metric `main.das`
 reports; `sizeof` and `offsetof` are `T(typeinfo sizeof(type<S>))` and `T(typeinfo
-offsetof<f>(type<S>))`, never clang's constants, with the cast to the C result type. A string
+offsetof<f>(type<S>))`, never clang's constants, with the cast to the C result type, and
+`_Alignof` is `T(typeinfo alignof(type<S>))` where das aligns the type as clang does and
+clang's value `T(4)` where das aligns it lower (a record whose bitfield units align below
+clang's, F5), for a marshal-only record and for a `va_list` (`docs/probe-findings.md` F54). A string
 literal in a pointer context stays a das literal, `reinterpret<uint8?>("...")`, which is a
 NUL-terminated interned byte array (`probes/test_strings.das`); the empty literal is the one
 exception, since das's `""` is a null pointer (`docs/probe-findings.md` F10): it is
 `addr(c2das_empty[0])`, a one-byte private array the module declares right after its requires,
 before any global whose initializer takes the address. A `char[N]` initialized from a literal
-is `cstr_array("...", N)`, the empty literal included. A literal indexed in place
+is `cstr_array("...", N)`, the empty literal included, and so is a row of a `char` matrix or a
+record's `char[N]` field (`fixed_array(cstr_array("1234", 4), cstr_array("5678", 4))`, a row
+the list leaves out the zero literal), a literal longer than `N` keeping its first `N` bytes,
+as clang initializes the array. A literal indexed in place
 (`"abcdef"[2]`) is read through its pointer, `deref(p + i)`; a literal under `sizeof` is its
 array type. A call to a libc function the C program declares resolves through two tables:
 `C_RUNTIME_CALLS`, the functions a `c_runtime` piece lowers (`printf`, `sprintf`, `snprintf`,

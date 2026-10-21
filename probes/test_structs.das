@@ -1,5 +1,6 @@
 options gen2
 require dastest/testing_boost public
+require _daslang_child
 
 struct Inner {
     a : int8
@@ -47,6 +48,17 @@ def make() : WithArr {
 }
 
 def sq(x : int) : int => x * x
+
+// the converter's opaque record: an empty struct named for a C struct the unit never defines,
+// reached only through pointers
+struct Opaque {}
+
+var g_handle : Opaque?
+var g_handles : Opaque? [3]
+
+def wrap_handle(var w : WithArr?) : Opaque? => unsafe(reinterpret<Opaque?>(w))
+
+def unwrap_handle(var o : Opaque?) : WithArr? => unsafe(reinterpret<WithArr?>(o))
 
 // the layout law checked at compile time from an [init] body: the converter's generated
 // modules assert clang's layout this way at zero run-time cost
@@ -112,5 +124,25 @@ def test_structs(t : T?) {
             let m2 = reinterpret<Mobj?>(intptr(thp) - uint64(typeinfo offsetof < thinker > (type<Mobj>)))
             t |> equal(m2.x, 11)
         }
+    }
+    t |> run("typeinfo alignof of a scalar and of an array is C's: the size, the element's") @(t : T?) {
+        t |> equal(typeinfo alignof(type<double>), 8)
+        t |> equal(typeinfo alignof(type<int[4]>), 4)
+        t |> equal(typeinfo alignof(type<Inner>), 8)
+    }
+    t |> run("an empty struct is the pointee of an opaque handle: its pointers zero, compare and round-trip through reinterpret") @(t : T?) {
+        t |> equal(typeinfo sizeof(type<Opaque>), 0)
+        t |> equal(typeinfo alignof(type<Opaque>), 1)
+        t |> equal(g_handle == null && g_handles[2] == null, true)
+        var w = WithArr(id = 41)
+        g_handle = wrap_handle(unsafe(addr(w)))
+        g_handles[2] = g_handle
+        t |> equal(g_handles[2] == g_handle, true)
+        t |> equal(unwrap_handle(g_handles[2]).id, 41)
+    }
+    t |> run("`struct X;` is the same empty struct, not a forward declaration: a later body redefines it") @(t : T?) {
+        let bare = daslang_child("bare_struct", "options gen2\nstruct X;\nvar p : X?\n[export]\ndef main \{\n    assert(p == null && typeinfo sizeof(type<X>) == 0)\n\}\n", false)
+        t |> equal(bare.rc, 0, bare.out)
+        child_rejects(t, "struct_then_body", daslang_child("struct_then_body", "options gen2\nstruct X;\nstruct X \{\n    v : int\n\}\n", true), "structure is already defined")
     }
 }

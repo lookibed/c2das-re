@@ -2,7 +2,7 @@
   "inputs": {
     "c_testsuite": 194,
     "csmith": 148,
-    "gcc_torture": 753,
+    "gcc_torture": 759,
     "perf": 24
   },
   "modules": {
@@ -533,6 +533,7 @@
     "gcc_torture/20031204-1": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 4, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20031211-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20031214-1": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
+    "gcc_torture/20031215-1": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 3, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 1, "while_rangeable": 0},
     "gcc_torture/20031216-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20040208-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20040307-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -689,6 +690,7 @@
     "gcc_torture/951115-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/951204-1": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
     "gcc_torture/960116-1": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "gcc_torture/960209-1": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 1, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
     "gcc_torture/960215-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/960219-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/960301-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -1046,6 +1048,7 @@
     "gcc_torture/pr85582-1": {"c_function": 0, "goto": 2, "label": 2, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/pr86659-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/pr86659-2": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "gcc_torture/pr86714": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 1, "pointer_index": 0, "reinterpret": 6, "unsafe_block": 0, "unsafe_expr": 2, "while_rangeable": 0},
     "gcc_torture/pr89826": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/pr93434": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
     "gcc_torture/pr93744-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -1073,10 +1076,12 @@
     "gcc_torture/shiftopt-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/string-opt-17": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 2, "pointer_index": 0, "reinterpret": 8, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/strlen-5": {"c_function": 10, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 162, "pointer_index": 0, "reinterpret": 620, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "gcc_torture/strlen-6": {"c_function": 4, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 66, "unsafe_block": 0, "unsafe_expr": 5, "while_rangeable": 0},
     "gcc_torture/struct-ini-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/struct-ini-2": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/struct-ini-3": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/struct-ini-4": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "gcc_torture/struct-ret-1": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/switch-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
     "gcc_torture/unroll-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/va-arg-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -1093,6 +1098,7 @@
     "gcc_torture/va-arg-23": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/va-arg-24": {"c_function": 11, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 2, "reinterpret": 11, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 11},
     "gcc_torture/va-arg-26": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "gcc_torture/va-arg-4": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/va-arg-5": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/va-arg-6": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/va-arg-7": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -1127,15 +1133,15 @@
     "perf/va_forward@copy": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 2, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2}
   },
   "totals": {
-    "c_function": 2274,
+    "c_function": 2286,
     "goto": 360,
     "label": 305,
     "literal_named": 21097,
-    "pointer_arith": 989,
-    "pointer_index": 332,
-    "reinterpret": 33891,
+    "pointer_arith": 991,
+    "pointer_index": 335,
+    "reinterpret": 33964,
     "unsafe_block": 0,
-    "unsafe_expr": 49418,
-    "while_rangeable": 8764
+    "unsafe_expr": 49426,
+    "while_rangeable": 8766
   }
 }

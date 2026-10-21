@@ -443,6 +443,22 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   the issue with a standalone repro is owed. `perf/run.das` takes the failed AOT link for a
   built lane (`run_tier` returns the link's exit code, which passes its `>= 0` test) and reports
   the missing binary's exit 127 instead of the link error.
+  Landed (phase A): a record the unit declares and never defines is an empty `struct Name {}`;
+  a VLA fails closed in the dumper naming the declaration (`int a[n]`); `_Alignof` dumps as
+  `alignof_v` and emits `typeinfo alignof`, clang's value where das aligns the type lower (F54);
+  a string literal initializing a row of a `char` matrix or a record's `char[N]` field is
+  `cstr_array`, which takes pr86714 and strlen-6 to passing (strlen-2 meets a `void`
+  conditional; memchr-1's skip line moves to its wide literals); wide string literals are
+  `never` on the skip ledger; a K&R parameter converts from its promoted type on entry
+  (F55); the sidecar's `defines` reach clang as `-D`; `perf/run.das` reports a failed AOT host
+  build as the lane's error; `converter/tests/fixtures/p4_matrix_shapes.c` carries these and
+  the owed shapes (`_Alignas`, `exit()` from deep, `~` and `^`, `restrict`, K&R, `inline`,
+  `long double`, `volatile`, the comma's value).
+  Ledger (phase A): a `void` conditional whose arm the emitter hoists (`(e) ? (void)0 :
+  (printf(...), abort())`) emits `var _t0 : void`, which the compile check refuses: strlen-2
+  fails unlisted on it, and memchr-1 meets it behind its wide-literal skip line (clang leaves
+  that file's wide literals out, `__WCHAR_WIDTH__` is 32). The perf `exe` lane takes a failed
+  host build the way the `aot` lane did before phase A; its fix and test are owed.
 - **Exit criterion:** csmith runs clean at 1000/night for a week; torture ≥ target with
   ledger; matrix has no row without a green fixture.
   Ledger: the nightly csmith N=1000 schedule is blocked on this box by the dumper's parse of

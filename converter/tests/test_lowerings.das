@@ -132,6 +132,7 @@ def test_lowerings(t : T?) {
     p4_csmith_fixtures(t)
     p4_csmith_more_fixtures(t)
     p4_scope_fidelity_fixtures(t)
+    p4_matrix_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -1010,5 +1011,59 @@ def p4_scope_fidelity_fixtures(t : T?) {
         // a `for` declaring the name among others binds its own: the union stays in its branch
         has_text(t, text, "p4_scope_edges__for_declares_two(k : int) : int \{\n    var r : int = 0\n    let _cond = k\n    if (_cond == 0) \{\n        var u : un\n")
         has_text(t, text, "            var a : int = 1\n            var u1 : int = 0\n")
+    }
+}
+
+// the c-feature-matrix rows the P4 phase-end audit found without a green fixture
+def p4_matrix_fixtures(t : T?) {
+    t |> run("matrix shapes: an opaque struct pointer, _Alignof, char rows from string literals, _Alignas, ~ and ^, restrict, K&R parameters, inline, long double, volatile, the comma's value, exit from deep") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_matrix_shapes", text)
+        // a struct the unit never defines is an empty struct, reached through pointers alone
+        has_text(t, text, "struct opaque \{\}\n")
+        has_text(t, text, "var slots : opaque? [3]\n")
+        has_text(t, text, "def private p4_matrix_shapes__wrap(var r : real?) : opaque? \{\n    return reinterpret<opaque?>(r)\n")
+        // `_Alignof` is das's alignment where it is clang's, clang's value where das aligns lower (F5)
+        has_text(t, text, "int(uint64(typeinfo alignof(type<S>))), int(uint64(typeinfo alignof(type<double>))), int(uint64(typeinfo alignof(type<int[4]>))), int(uint64(4)))")
+        // a row of a char array from a string literal is `cstr_array`, a missing row zeros
+        has_text(t, text, "var private p4_matrix_shapes__s4_2 : uint8[2][4] = fixed_array(cstr_array(\"1234\", 4), cstr_array(\"5678\", 4))")
+        has_text(t, text, "var part : uint8[3][4] = fixed_array(cstr_array(\"ab\", 4), fixed_array(uint8(0), uint8(0), uint8(0), uint8(0)), fixed_array(uint8(0), uint8(0), uint8(0), uint8(0)))")
+        has_text(t, text, "var cube : uint8[2][2][3] = fixed_array(fixed_array(cstr_array(\"a\", 3), cstr_array(\"bc\", 3)), fixed_array(cstr_array(\"de\", 3), fixed_array(uint8(0), uint8(0), uint8(0))))")
+        has_text(t, text, "var private p4_matrix_shapes__nm : named = named(name = cstr_array(\"abc\", 6), id = 3)")
+        // a union's member is stored after the declaration; one evaluated ahead is read back
+        has_text(t, text, "    var tx : text4\n    tx.s = cstr_array(\"abc\", 4)\n    let _t0 = cstr_array(\"xy\", 4)\n")
+        has_text(t, text, "    h.t.s = _t0\n")
+        // `_Alignas` on a field at its own alignment changes nothing das spells
+        has_text(t, text, "struct aligned_nat \{\n    x : int\n    c : uint8\n\}")
+        has_text(t, text, "~u, ~i, u ^ 240u, i ^ ~i")
+        has_text(t, text, "def private p4_matrix_shapes__copy_r(var dst : int?; var src : int?; n : int)")
+        // a K&R parameter arrives promoted and converts on entry, `var` where the body writes it
+        has_text(t, text, "def private p4_matrix_shapes__knr(a : int; b_in : int; s_in : int; f_in : double; e_in : uint; ok_in : int) : int \{\n    let b = uint8(b_in)\n    var s = int16(s_in)\n    let f = float(f_in)\n    let e = enum_from_int(type<level>, int(e_in))\n    let ok = ok_in != 0\n")
+        has_text(t, text, "def private p4_matrix_shapes__sq(v : int) : int \{\n    return v * v\n")
+        has_text(t, text, "def private p4_matrix_shapes__half(x : double) : double \{\n    return x / 2.0lf\n")
+        has_text(t, text, "struct vol \{\n    ticks, other : int\n\}")
+        has_text(t, text, "    p4_matrix_shapes__clock_v.ticks += 2\n")
+        has_text(t, text, "    a++\n    var x : int = b + a\n")
+        has_text(t, text, "        c_exit(3)\n")
+    }
+    t |> run("matrix shapes: _Alignof of a record das never lays out is clang's value") @(t : T?) {
+        let va = converts(t, "alignof_va_list", "#include <stdarg.h>\nint main(void) \{ return (int) _Alignof(va_list) - 8; \}\n")
+        has_text(t, va, "return int(uint64(8)) - 8")
+        let marshal = converts(t, "alignof_marshal", "struct __attribute__((packed)) P \{ char c; int x; \};\nint main(void) \{ struct P p; p.x = 1; return (int) _Alignof(struct P) - p.x; \}\n", "\{\"marshal\": [\"P\"]\}\n")
+        has_text(t, marshal, "return int(uint64(1)) - p.x")
+    }
+    t |> run("matrix shapes: a literal longer than its row keeps the row's bytes, as clang initializes the array") @(t : T?) {
+        let long_row = converts(t, "literal_past_row", "static const char a[2][3] = \{ \"1234\", \"xyz\" \};\nint main(void) \{ return a[0][2] - '3'; \}\n")
+        has_text(t, long_row, "fixed_array(cstr_array(\"123\", 3), cstr_array(\"xyz\", 3))")
+    }
+    t |> run("matrix shapes: what the lowering refuses, each naming the construct") @(t : T?) {
+        rejects(t, "alignas_over", "struct over \{ char c; _Alignas(8) char d; \};\nint main(void) \{ struct over o = \{ 1, 2 \}; return o.d - 2; \}\n", "record `over` is not laid out naturally: a packed record is marshal-only")
+        rejects(t, "gnu_alignof", "int main(void) \{ return (int) __alignof__(double) - 8; \}\n", "`__alignof` is not dumped yet")
+        rejects(t, "vla", "int main(void) \{ int n = 3; int a[n]; a[0] = 0; return a[0]; \}\n", "`int a[n]`: a variable-length array is not lowered (out of scope in v1)")
+        rejects(t, "vla_rows", "int main(void) \{ int n = 3; int a[n][2]; a[0][0] = 0; return a[0][0]; \}\n", "`int a[n][2]`: a variable-length array is not lowered (out of scope in v1)")
+        rejects(t, "vla_row_pointer", "int main(void) \{ int n = 2; int (*rp)[n] = 0; return rp != 0; \}\n", "`int[n]`: a variable-length array is not lowered (out of scope in v1)")
+        rejects(t, "vla_function_pointers", "int main(void) \{ int n = 2; void (*fps[n])(void); fps[0] = 0; return fps[0] != 0; \}\n", "`void (*[n])(void)`: a variable-length array is not lowered (out of scope in v1)")
+        rejects(t, "vla_unnamed_records", "int main(void) \{ int n = 2; struct \{ int x; \} rs[n]; rs[0].x = 0; return rs[0].x; \}\n", ")[n]`: a variable-length array is not lowered (out of scope in v1)")
+        rejects(t, "zero_length_local", "int main(void) \{ int a[0]; return 0; \}\n", "a zero-length array (a GNU extension) is not lowered yet")
     }
 }
