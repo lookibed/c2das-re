@@ -141,6 +141,7 @@ def test_lowerings(t : T?) {
     p2_fixtures(t)
     p4_csmith_fixtures(t)
     p4_csmith_more_fixtures(t)
+    p4_scope_fidelity_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -954,7 +955,6 @@ def p4_csmith_more_fixtures(t : T?) {
     t |> run("csmith shapes: what the lowering refuses, and the addresses it keeps checked") @(t : T?) {
         rejects(t, "extern_unknown_length", "extern int arr[];\nstatic int *at(int k) \{ return &arr[k]; \}\nint arr[3] = \{1, 2, 3\};\nint main(void) \{ return (int) (at(3) - at(0)); \}\n", "an array of unknown length (`extern int a[];`) is not lowered yet")
         rejects(t, "hidden_block_extern", "int x = 40;\nint main(void) \{ int x = 1; \{ extern int x; return x; \} \}\n", "a block-scope `extern` declaration of `x`, which a local of the function also names, is not lowered yet")
-        rejects(t, "flattened_hides_global", "int g = 40;\nint main(void) \{\n    int n = 0;\n    if (n == 0) goto in;\n    \{\n        int g = 3;\n        n += g;\n    in:\n        n += 1;\n    \}\n    return n + g - 41;\n\}\n", "a block a goto enters declares `g`, which hides a global of that name")
         rejects(t, "late_block_extern", "int main(void) \{ \{ extern int y; return y; \} \}\nint y = 3;\n", "a block-scope `extern` declaration of `y` with no file-scope declaration before it is not lowered yet")
         // a literal past `int64` is no constant below the length: it takes the checked form
         let huge = converts(t, "past_int64_index", "static int a[3];\nstatic int *far(void) \{ return &a[18446744073709551615ULL]; \}\nint main(void) \{ return far() == 0; \}\n")
@@ -962,5 +962,60 @@ def p4_csmith_more_fixtures(t : T?) {
         // a string literal's address is through its pointer, never the decayed array
         let literal = converts(t, "literal_address", "static const char *at(int k) \{ return &\"abcdef\"[k]; \}\nint main(void) \{ return at(6) - at(0) - 6; \}\n")
         has_text(t, literal, "return addr(deref(reinterpret<uint8?>(\"abcdef\") + k))")
+    }
+}
+
+// a local the lowering moves out of its C block, and an lvalue with an effect evaluated once
+def p4_scope_fidelity_fixtures(t : T?) {
+    t |> run("scope fidelity: a moved local takes a free name, a case's local is the switch's, a target with an effect is pinned") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_scope_fidelity", text)
+        // a block a goto enters loses its braces: its local leaves the global and a later
+        // block's local their names
+        has_text(t, text, "    var g1 : int = 3\n    n += g1\n    label 1:  // in\n    n += 1\n    return n * 100 + g\n")
+        has_text(t, text, "    var t1 : int = 2\n    n += t1\n")
+        // a local a later case reaches is declared before the lowered switch
+        has_text(t, text, "    let _cond = k\n    var v : int\n    while (true) \{")
+        has_text(t, text, "        if (_flag) \{\n            v = 1\n            r += v\n        \}")
+        has_text(t, text, "    let _cond = k\n    var w : int\n    if (_cond == 0) \{\n        w = 5\n")
+        // a later case's block or `for` declaring the name binds its own references: the
+        // switch's union stays in its branch, the `int` a later label names is carried
+        has_text(t, text, "    var v1 : int\n    if (_cond == 0) \{\n        var u : un\n        u.i = 5\n        v1 = 1\n")
+        has_text(t, text, "            var u1 : un\n            u1.i = 9\n")
+        has_text(t, text, "            var v2 : int = 0\n            while (v2 < 3) \{")
+        has_text(t, text, "        v1 = 7\n        r = v1\n")
+        // a step's value reads the index the step used
+        has_text(t, text, "    let _t0 = k\n    k++\n    let _t1 = arr[_t0].a\n    arr[_t0].a++\n    var v : int = _t1\n")
+        has_text(t, text, "    arr[_t2].a++\n    var w : int = arr[_t2].a\n")
+        // a target through a call holds the call's pointer
+        has_text(t, text, "    var _t0 = p4_scope_fidelity__next()\n    deref(_t0)++\n    var _t1 = p4_scope_fidelity__next()\n    deref(_t1) += 5\n")
+        has_text(t, text, "    var _t5 = p4_scope_fidelity__cell_at()\n    _t5.a += 3\n")
+        // an assignment read as a value reads the target the store used
+        has_text(t, text, "        deref(_t0) = deref(_t1)\n        if (!(deref(_t0) != 0)) \{\n            break\n")
+        has_text(t, text, "    deref(_t2) = deref(_t3)\n    if (deref(_t2) != 0) \{\n")
+        has_text(t, text, "    a[_t6] = 9\n    var got : int = a[_t6]\n")
+        // a bitfield's getter and setter, spelled apart (F52), share the pinned index
+        has_text(t, text, "    let _t0 = p4_scope_fidelity__pick(1)\n    deref(p + _t0).bf = uint(int(deref(p + _t0).bf) + 5)\n")
+        has_text(t, text, "    bytes[_t3] = int8(int(bytes[_t3]) + 7)\n")
+        // a target spelled by a variable's own name is pinned too: a call later in the
+        // statement changes the variable
+        has_text(t, text, "    p4_scope_fidelity__gi++\n    let _t0 = p4_scope_fidelity__gi\n    uc[_t0] += p4_scope_fidelity__gi_to_one()\n")
+        has_text(t, text, "    var _t1 = p4_scope_fidelity__gp\n    deref(_t1) += p4_scope_fidelity__gp_away()\n")
+        has_text(t, text, "    let _t2 = p4_scope_fidelity__gi\n    uc[_t2] += p4_scope_fidelity__gi_to_zero()\n    var v : int = uc[_t2]\n")
+        rejects(t, "carried_union_local", "union U \{ int i; float f; \};\nint main(void) \{\n    int r = 0;\n    switch (r) \{\n    case 0:;\n        union U u = \{5\};\n        r = u.i;\n    case 1:\n        u.i = 2;\n        r += u.i;\n    \}\n    return r - 7;\n\}\n", "a declaration under a case label filled by stores (a union or a sparse array) and used under a later label is not lowered yet")
+    }
+    t |> run("scope fidelity edges: array members and pointer bases with effects, an else-if step, a C name spelled like a temporary, carried declarations of every shape, the names a later label resolves") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_scope_edges", text)
+        // a C variable named like a temporary is pinned like any other
+        has_text(t, text, "    _t1 = 2\n    let _t0 = _t1\n    p4_scope_edges__uc[_t0] += p4_scope_edges__t1_to_zero()\n")
+        // a plain `=` statement pins nothing
+        has_text(t, text, "    deref(p4_scope_edges__sink()) = 21\n")
+        // a carried declaration without an initializer, and one under a nested `if`
+        has_text(t, text, "p4_scope_edges__carried_bare(k : int) : int \{\n    var r : int = 0\n    let _cond = k\n    var v : int\n")
+        has_text(t, text, "p4_scope_edges__nested_use(k : int) : int \{\n    var r : int = 0\n    let _cond = k\n    var v : int\n")
+        // a `for` declaring the name among others binds its own: the union stays in its branch
+        has_text(t, text, "p4_scope_edges__for_declares_two(k : int) : int \{\n    var r : int = 0\n    let _cond = k\n    if (_cond == 0) \{\n        var u : un\n")
+        has_text(t, text, "            var a : int = 1\n            var u1 : int = 0\n")
     }
 }

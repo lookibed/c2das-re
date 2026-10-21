@@ -2,8 +2,8 @@
   "inputs": {
     "c_testsuite": 194,
     "csmith": 148,
-    "gcc_torture": 750,
-    "perf": 18
+    "gcc_torture": 753,
+    "perf": 20
   },
   "modules": {
     "c_testsuite/00001": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -576,6 +576,7 @@
     "gcc_torture/20060412-1": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 3, "pointer_index": 0, "reinterpret": 2, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20060905-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
     "gcc_torture/20060910-1": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 2, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "gcc_torture/20060929-1": {"c_function": 4, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 12, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20061101-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20061101-2": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20070201-1": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 1, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -747,9 +748,11 @@
     "gcc_torture/990127-2": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/990128-1": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 1, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
     "gcc_torture/990211-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "gcc_torture/990222-1": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 2, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/990324-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/990404-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
     "gcc_torture/990513-1": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 5, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "gcc_torture/990524-1": {"c_function": 2, "goto": 1, "label": 1, "literal_named": 0, "pointer_arith": 5, "pointer_index": 2, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/990525-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/990525-2": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/990527-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
@@ -1115,18 +1118,20 @@
     "perf/qsort_cmp": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 4, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
     "perf/qsort_cmp@copy": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 4, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
     "perf/sieve": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
-    "perf/sieve@copy": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3}
+    "perf/sieve@copy": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
+    "perf/str_copy": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 2, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
+    "perf/str_copy@copy": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 2, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2}
   },
   "totals": {
-    "c_function": 2255,
-    "goto": 357,
-    "label": 302,
+    "c_function": 2268,
+    "goto": 358,
+    "label": 303,
     "literal_named": 21097,
-    "pointer_arith": 966,
-    "pointer_index": 330,
-    "reinterpret": 33883,
+    "pointer_arith": 989,
+    "pointer_index": 332,
+    "reinterpret": 33885,
     "unsafe_block": 0,
     "unsafe_expr": 49418,
-    "while_rangeable": 8752
+    "while_rangeable": 8756
   }
 }

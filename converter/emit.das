@@ -63,6 +63,9 @@ struct Emitter {
     // into them finds its label in an enclosing scope
     labels : table<string; int>
     flatten : table<uint64>
+    // the declarations at a switch body's own level that a statement under a later label reads
+    // or writes, which the lowered switch declares before itself (`carried_decls`)
+    carried : table<uint64>
     // what a C `continue` spells at the current nesting: "" inside a loop body, the `_cont`
     // flag inside a matched-flag switch loop whose `continue` reaches the loop around it
     cont_flags : array<string>
@@ -537,7 +540,20 @@ def private quoted_literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
     }
 }
 
+// the statement of assignment `x`; a compound store spells its target more than once
+// (`lhs = lhs op v`, a marshal record's reader and writer), so a target with an effect is pinned
+// first and every spelling reads the same temporaries
 def private assignment_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
+    var keys : array<uint64>
+    if (!empty(x.op)) {
+        pin_lvalue(em, tu, x.a, loc, keys)
+    }
+    let text = assignment_text(em, tu, x, loc)
+    unpin(em, keys)
+    return text
+}
+
+def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
     // the left side's effects hoist before the right side's: the dialect's fixed order
     var bytes : Em
     let of_field = marshal_field(em, tu, *x.a, loc, bytes)
@@ -617,7 +633,17 @@ def private promoted_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) :
     return das_type(em, tu, t, loc)
 }
 
+// the statement of step `x`; every step but das's own `x++` spells its target twice
+// (`x = x + 1`), so a target with an effect is pinned first
 def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
+    var keys : array<uint64>
+    pin_lvalue(em, tu, x.a, loc, keys)
+    let text = step_text(em, tu, x, loc)
+    unpin(em, keys)
+    return text
+}
+
+def private step_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
     let up = x.op == "preinc" || x.op == "postinc"
     var bytes : Em
     let field = marshal_field(em, tu, *x.a, loc, bytes)
@@ -1214,17 +1240,26 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
         let a = to_bool(emit_expr(em, tu, x.a, loc), tu, x.a.t)
         return truth("!{wrap(a, PREC_UNARY)}", PREC_UNARY)
     }
+    // the step and the read of its value go through one pinned target, so an effect in the
+    // target runs once
     if (x.op == "preinc" || x.op == "predec") {
+        var keys : array<uint64>
+        pin_lvalue(em, tu, x.a, loc, keys)
         em.pre |> push(step_line(em, tu, x, loc))
-        return emit_expr(em, tu, x.a, loc)
+        let after = emit_expr(em, tu, x.a, loc)
+        unpin(em, keys)
+        return after
     }
     if (x.op == "postinc" || x.op == "postdec") {
+        var keys : array<uint64>
+        pin_lvalue(em, tu, x.a, loc, keys)
         let tmp = temp_name(em)
         let before = emit_expr(em, tu, x.a, loc)
         // a `let` copy of a value holding a pointer takes a const pointee (F3): the old value of
         // a stepped pointer that `*p++ = v` writes through is a `var`
         let keep = holds_data_pointer(tu, x.a.t) ? "var" : "let"
         hoist(em, ["{keep} {tmp} = {before.text}", step_line(em, tu, x, loc)])
+        unpin(em, keys)
         return value(tmp, PREC_PRIMARY)
     }
     let past_end = one_past_end_address(em, tu, x, loc)
@@ -1353,8 +1388,13 @@ def private emit_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : Ci
         return emit_binary(em, tu, *x, loc)
     }
     if (x.e == "assign") {
+        // the store and the read of the stored value go through one pinned target
+        var keys : array<uint64>
+        pin_lvalue(em, tu, x.a, loc, keys)
         em.pre |> push(assignment_line(em, tu, *x, loc))
-        return emit_expr(em, tu, x.a, loc)
+        let stored_value = emit_expr(em, tu, x.a, loc)
+        unpin(em, keys)
+        return stored_value
     }
     if (x.e == "cond") {
         return emit_cond(em, tu, *x, loc)
@@ -1711,6 +1751,64 @@ def private has_effects(x : CirExpr const?) : bool {
     }
     return false
 }
+
+// lvalue `x` with each effect in it evaluated once, ahead: the pointer it goes through, an
+// index, a record value, whichever has an effect (`*next()`, `a[i++]`, `p[g()].bf`), lands in a
+// temporary every later spelling of `x` reads through `em.hoisted`, so a step, a compound store
+// or an assignment read as a value spells its target as often as it needs and evaluates it
+// once; `keys` collects what `unpin` drops when the target's statement is spelled
+def private pin_lvalue(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc; var keys : array<uint64>) {
+    if (!has_effects(x)) {
+        return
+    }
+    if (x.e == "un" && x.op == "deref") {
+        pin_value(em, tu, x.a, loc, keys)
+    } elif (x.e == "index") {
+        if (x.base.e == "cast" && x.base.cast_kind == "ArrayToPointerDecay" && kind_of(tu, x.base.a.t) == "array") {
+            pin_lvalue(em, tu, x.base.a, loc, keys)
+        } else {
+            pin_value(em, tu, x.base, loc, keys)
+        }
+        pin_value(em, tu, x.i, loc, keys)
+    } elif (x.e == "member") {
+        if (x.arrow) {
+            pin_value(em, tu, x.base, loc, keys)
+        } else {
+            pin_lvalue(em, tu, x.base, loc, keys)
+        }
+    } else {
+        // no other lvalue the dumper takes holds an effect (it refuses `f().a[0]`)
+        fail(em, "a step or a store through a `{x.e}` target with an effect is not lowered yet", loc)
+    }
+}
+
+// value `x` evaluated once, when it has an effect: its text when that is a temporary the emitter
+// hoisted (a postfix step's old value), else a temporary holding it; a variable's own name (`i`
+// of `++i`, `p` of `p = q`) is not kept, since a call later in the statement can change it
+def private pin_value(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc; var keys : array<uint64>) {
+    if (!has_effects(x) || key_exists(em.hoisted, intptr(x))) {
+        return
+    }
+    var e = emit_expr(em, tu, x, loc)
+    if (!is_temp_name(em, e.text)) {
+        let name = temp_name(em)
+        // a `let` copy of a value holding a pointer takes a const pointee (F3)
+        em.pre |> push("{holds_data_pointer(tu, x.t) ? "var" : "let"} {name} = {e.text}")
+        e.text = name
+        e.prec = PREC_PRIMARY
+    }
+    em.hoisted[intptr(x)] = e
+    keys |> push(intptr(x))
+}
+
+def private unpin(var em : Emitter; keys : array<uint64>) {
+    for (key in keys) {
+        em.hoisted |> erase(key)
+    }
+}
+
+// whether `text` is a temporary the emitter hoisted (`_tN`), which holds one value
+def private is_temp_name(em : Emitter; text : string) : bool => numbered_after(text, "_t") >= 0 && !key_exists(em.spelled, text)
 
 // every value of initializer `x` evaluated into a temporary, in source order, before the
 // declaration: the literal and the union stores after it then read the temporaries, so C's
@@ -2403,6 +2501,15 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
     em.switch_counter++
     var cond_t = st.cond.t
     let cond = switch_condition(em, tu, st, cond_t)
+    // C scopes a declaration at the body's own level to the whole body, the lowering a group
+    // to its own branch: a declaration a later group reaches is declared here
+    for (g in groups) {
+        for (child in g.stmts) {
+            if (child.s == "decl" && key_exists(em.carried, intptr(child))) {
+                line(em, "var {das_name(em, child.name)} : {das_type_dims(em, tu, child.t, child.loc, child.dims)}")
+            }
+        }
+    }
     if (is_if_chain(groups)) {
         emit_if_chain(em, tu, groups, cond, cond_t)
     } else {
@@ -2522,12 +2629,6 @@ def private emit_compound(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (!flat) {
         open_block(em, "")
     }
-    for (child in st.body) {
-        // without its braces the block's local would also capture the global's later reads
-        if (flat && child.s == "decl" && key_exists(em.global_order, child.name)) {
-            fail(em, "a block a goto enters declares `{child.name}`, which hides a global of that name; not lowered yet (docs/implementation_order.md P4.8)", child.loc)
-        }
-    }
     emit_statements(em, tu, st, 0)
     if (!flat) {
         close_block(em)
@@ -2550,6 +2651,27 @@ def private emit_decl(var em : Emitter; tu : CirTu; st : CirStmt) {
     }
 }
 
+// a declaration the lowered switch carries: declared before the switch (`emit_switch`), its
+// initializer is the assignment that stands where C declares it
+def private emit_carried_init(var em : Emitter; tu : CirTu; st : CirStmt; name : string) {
+    if (st.init == null) {
+        return
+    }
+    var stores : array<string>
+    let init = decl_init(em, tu, name, st.t, st.init, st.loc, stores)
+    if (empty(init)) {
+        // the stores rely on the declaration's zero, which a second pass through the case
+        // would not give again
+        fail(em, "a declaration under a case label filled by stores (a union or a sparse array) and used under a later label is not lowered yet", st.loc)
+        return
+    }
+    flush_pre(em)
+    line(em, "{name} = {init}")
+    for (store in stores) {
+        line(em, store)
+    }
+}
+
 def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (st == null) {
         return
@@ -2560,6 +2682,8 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt const?) {
         line(em, "label {em.labels?[st.label_name] ?? 0}:  // {st.label_name}")
     } elif (st.s == "goto") {
         line(em, "goto label {em.labels?[st.label_name] ?? 0}")
+    } elif (st.s == "decl" && key_exists(em.carried, intptr(st))) {
+        emit_carried_init(em, tu, *st, das_name(em, st.name))
     } elif (st.s == "decl") {
         emit_decl(em, tu, *st)
     } elif (st.s == "expr") {
@@ -2688,6 +2812,11 @@ def private body_names(em : Emitter; d : CirDecl) : table<string> {
 struct ScopeWalk {
     scopes : array<table<string; string>>
     taken : table<string>
+    // the locals the lowering declares outside their C block (`moved_decls`), the unit's global
+    // names and how many locals of the function each C name declares
+    moved : table<uint64>
+    globals : table<string>
+    decl_count : table<string; int>
 }
 
 def private scoped_name(w : ScopeWalk; name : string) : string {
@@ -2721,8 +2850,10 @@ def private unshadow_stmt(var w : ScopeWalk; var st : CirStmt?) {
         w.scopes |> emplace(table<string; string>())
     }
     if (st.s == "decl") {
-        // C's scope of a local starts at its declarator, so its own initializer sees it
-        let hides = !empty(scoped_name(w, st.name))
+        // C's scope of a local starts at its declarator, so its own initializer sees it; a local
+        // the lowering moves out of its block also hides a global and another local of its name
+        let moved = key_exists(w.moved, intptr(st)) && (key_exists(w.globals, st.name) || (w.decl_count?[st.name] ?? 0) > 1)
+        let hides = moved || !empty(scoped_name(w, st.name))
         let name = hides ? free_name(w.taken, st.name) : st.name
         w.scopes[length(w.scopes) - 1][st.name] = name
         st.name = name
@@ -2749,12 +2880,25 @@ def private unshadow_stmt(var w : ScopeWalk; var st : CirStmt?) {
     }
 }
 
-// every function body of the unit with its hiding locals renamed, before anything reads a name
-def private unshadow_locals(var tu : CirTu) {
+// every function body of the unit with its hiding locals renamed, before anything reads a name;
+// `carried` gets the declarations a lowered switch declares before itself
+def private unshadow_locals(var tu : CirTu; var carried : table<uint64>) {
+    var globals : table<string>
+    for (d in tu.decls) {
+        if (d.k == "global") {
+            globals |> insert(d.name)
+        }
+    }
     for (d in tu.decls) {
         continue if (d.k != "func" || d.body == null)
         var inscope w : ScopeWalk
         collect_spelled_names(d.body, w.taken)
+        w.globals := globals
+        count_decls(d.body, w.decl_count)
+        // the blocks a goto enters lose their braces, which `plan_labels` decides at emission
+        var inscope plan : Emitter
+        plan_labels(plan, d.body)
+        moved_decls(d.body, plan.flatten, w.moved, carried)
         w.scopes |> resize(1)
         for (p in d.params) {
             w.scopes[0][p.name] = p.name
@@ -2762,6 +2906,131 @@ def private unshadow_locals(var tu : CirTu) {
         }
         unshadow_stmt(w, d.body)
     }
+}
+
+// how many locals of statement tree `st` each C name declares
+def private count_decls(st : CirStmt const?; var counts : table<string; int>) {
+    if (st == null) {
+        return
+    }
+    if (st.s == "decl") {
+        counts[st.name] = (counts?[st.name] ?? 0) + 1
+    }
+    for (child in st.body) {
+        count_decls(child, counts)
+    }
+    for (child in fixed_array<CirStmt const?>(st.then_s, st.else_s, st.body_s, st.init_s)) {
+        count_decls(child, counts)
+    }
+}
+
+// the locals the lowering declares outside their C block: one of a block a goto enters, which
+// loses its braces (`flatten`), and one a lowered switch carries (`carried_decls`), which also
+// lands in `carried`
+def private moved_decls(st : CirStmt const?; flatten : table<uint64>; var moved : table<uint64>; var carried : table<uint64>) {
+    if (st == null) {
+        return
+    }
+    if (st.s == "compound" && key_exists(flatten, intptr(st))) {
+        for (child in st.body) {
+            if (child.s == "decl") {
+                moved |> insert(intptr(child))
+            }
+        }
+    }
+    if (st.s == "switch") {
+        var found : table<uint64>
+        carried_decls(st.body_s, found)
+        for (decl in keys(found)) {
+            moved |> insert(decl)
+            carried |> insert(decl)
+        }
+    }
+    for (child in st.body) {
+        moved_decls(child, flatten, moved, carried)
+    }
+    for (child in fixed_array<CirStmt const?>(st.then_s, st.else_s, st.body_s, st.init_s)) {
+        moved_decls(child, flatten, moved, carried)
+    }
+}
+
+// the declarations at switch body `body`'s own level that a statement under a later label
+// names: C scopes them to the whole body, while the lowering puts each group in its own branch
+def private carried_decls(body : CirStmt const?; var out : table<uint64>) {
+    if (body == null || body.s != "compound") {
+        return
+    }
+    let n = length(body.body)
+    for (idx in range(n)) {
+        let decl = body.body[idx]
+        continue if (decl.s != "decl")
+        var past_label = false
+        for (later in range(idx + 1, n)) {
+            let st = body.body[later]
+            past_label = past_label || st.s == "case" || st.s == "default"
+            if (past_label && names_local(st, decl.name)) {
+                out |> insert(intptr(decl))
+                break
+            }
+        }
+    }
+}
+
+// whether statement tree `st` references C name `name` where no declaration of `st` binds it: a
+// declaration of `name` in `st` takes every later reference of its block or its `for`, its own
+// initializer included (C's scope of a local starts at its declarator)
+def private names_local(st : CirStmt const?; name : string) : bool {
+    if (st == null || (st.s == "decl" && st.name == name)) {
+        return false
+    }
+    for (child in st.body) {
+        if (names_local(child, name)) {
+            return true
+        }
+        if (child.s == "decl" && child.name == name) {
+            return false
+        }
+    }
+    if (names_local(st.init_s, name)) {
+        return true
+    }
+    if (declares(st.init_s, name)) {
+        return false
+    }
+    for (x in fixed_array<CirExpr const?>(st.init, st.e, st.cond, st.inc)) {
+        if (refs_name(x, name)) {
+            return true
+        }
+    }
+    for (child in fixed_array<CirStmt const?>(st.then_s, st.else_s, st.body_s)) {
+        if (names_local(child, name)) {
+            return true
+        }
+    }
+    return false
+}
+
+// whether a `for`'s first clause `st`, the block of declarations the dumper wraps it in,
+// declares `name`
+def private declares(st : CirStmt const?; name : string) : bool {
+    if (st == null) {
+        return false
+    }
+    for (child in st.body) {
+        if (child.s == "decl" && child.name == name) {
+            return true
+        }
+    }
+    return false
+}
+
+// whether expression `x` references C name `name`
+def private refs_name(x : CirExpr const?; name : string) : bool {
+    var found = false
+    each_subexpr(x) $(sub) {
+        found = found || (sub.e == "ref" && sub.name == name)
+    }
+    return found
 }
 
 // every C name a statement tree declares or references
@@ -3505,7 +3774,7 @@ def private flag_marshal(var em : Emitter; tu : CirTu; side : Sidecar) {
 //! local that hides another is renamed in `tu` itself first (`unshadow_locals`).
 def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
     var em : Emitter
-    unshadow_locals(tu)
+    unshadow_locals(tu, em.carried)
     for (d in tu.decls) {
         if (d.k == "func" && d.body != null) {
             em.functions |> insert(d.name)

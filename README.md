@@ -48,17 +48,18 @@ under every daslang tier, and once more under the interpreter as converted with
 `perf/results_linux.json`.
 
 <!-- perf-table:begin -->
-Captured on 2026-10-21 12:52 UTC, linux x86_64, AMD FX(tm)-6300 Six-Core Processor; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
+Captured on 2026-10-21 15:10 UTC, linux x86_64, AMD FX(tm)-6300 Six-Core Processor; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
 
-| Test          |      C (clang -O3) | DAS interpreter | DAS interp, copied params |            DAS JIT |         DAS exe |            DAS AOT |
-| :------------ | -----------------: | --------------: | ------------------------: | -----------------: | --------------: | -----------------: |
-| bit_pack      | **0.000207s ±0%** |  0.069696s ±1% |            0.070492s ±3% |     0.000250s ±0% |  0.000225s ±0% |     0.000232s ±0% |
-| blit          |     0.000427s ±1% |  0.041607s ±7% |            0.037567s ±6% |     0.003989s ±2% |  0.004527s ±1% | **0.000425s ±1%** |
-| fib_loop      | **0.001904s ±0%** |  0.354527s ±2% |           0.360965s ±11% |     0.004361s ±0% |  0.004361s ±0% |     0.001904s ±0% |
-| fib_recursive |     0.008449s ±0% |  0.072704s ±4% |            0.075062s ±7% |     0.007964s ±1% |  0.008431s ±0% | **0.007905s ±1%** |
-| fixed_mandel  |     0.000843s ±0% |  0.035140s ±2% |            0.035018s ±3% | **0.000547s ±0%** |  0.000551s ±0% |     0.000759s ±0% |
-| matmul        |     0.000599s ±0% |  0.060180s ±1% |            0.061730s ±3% | **0.000346s ±0%** |  0.000576s ±0% |     0.000861s ±1% |
-| primes        |     0.048707s ±0% |  0.397390s ±8% |            0.345319s ±0% |     0.045265s ±0% |  0.045260s ±0% | **0.035949s ±0%** |
-| qsort_cmp     | **0.000209s ±0%** |  0.001952s ±0% |            0.001952s ±3% |     0.000543s ±3% | 0.000532s ±12% |     0.000558s ±1% |
-| sieve         | **0.006811s ±2%** |  0.173065s ±5% |            0.173003s ±1% |     0.007290s ±1% |  0.007153s ±0% |     0.036603s ±0% |
+| Test          |      C (clang -O3) | DAS interpreter | DAS interp, copied params |            DAS JIT |        DAS exe |            DAS AOT |
+| :------------ | -----------------: | --------------: | ------------------------: | -----------------: | -------------: | -----------------: |
+| bit_pack      | **0.000206s ±1%** |  0.070337s ±1% |            0.070072s ±1% |     0.000250s ±0% | 0.000225s ±0% |     0.000232s ±0% |
+| blit          |     0.000427s ±1% |  0.041851s ±2% |            0.036653s ±5% |     0.004024s ±3% | 0.004506s ±1% | **0.000420s ±2%** |
+| fib_loop      | **0.001904s ±0%** |  0.359380s ±6% |            0.361806s ±8% |     0.004364s ±1% | 0.004361s ±0% |     0.001904s ±0% |
+| fib_recursive |     0.008441s ±0% |  0.072294s ±2% |            0.072785s ±5% | **0.007882s ±1%** | 0.008418s ±0% |     0.007962s ±1% |
+| fixed_mandel  |     0.000843s ±0% |  0.036167s ±3% |            0.036156s ±8% | **0.000547s ±0%** | 0.000551s ±0% |     0.000759s ±0% |
+| matmul        |     0.000599s ±0% |  0.060164s ±2% |            0.060354s ±5% | **0.000346s ±0%** | 0.000576s ±0% |     0.000861s ±1% |
+| primes        |     0.048708s ±0% |  0.358674s ±4% |            0.377556s ±6% |     0.045262s ±0% | 0.045274s ±0% | **0.035951s ±0%** |
+| qsort_cmp     | **0.000208s ±1%** |  0.001944s ±2% |            0.001989s ±3% |    0.000545s ±24% | 0.000531s ±1% |    0.000572s ±11% |
+| sieve         | **0.006860s ±1%** |  0.182189s ±6% |            0.172688s ±0% |     0.007285s ±0% | 0.007146s ±0% |     0.036649s ±0% |
+| str_copy      | **0.000731s ±2%** |  0.047244s ±1% |            0.045590s ±5% |     0.000869s ±0% | 0.000869s ±0% |     0.004084s ±0% |
 <!-- perf-table:end -->

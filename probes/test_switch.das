@@ -3,6 +3,11 @@ require dastest/testing_boost public
 
 var calls : array<string>
 
+struct Cell {
+    a : int
+    b : int
+}
+
 def a { calls |> push("a") }
 def b { calls |> push("b") }
 def c { calls |> push("c") }
@@ -74,5 +79,28 @@ def test_switch(t : T?) {
             seen |> push(100 + i)
         }
         t |> equal("{seen}", "[ 0, 100, 2, 102, 3, 103]")
+    }
+    t |> run("a local declared bare before an if chain is zero and one variable for every branch; a fixed array and a struct take their literals by assignment") @(t : T?) {
+        var seen : array<int>
+        for (k in range(3)) {
+            let cond = k
+            var v : int
+            var row : int[3]
+            var cell : Cell
+            t |> equal(v, 0)
+            if (cond == 0) {
+                v = 1
+                row = fixed_array(1, 2, 3)
+                cell = Cell(a = 4, b = 5)
+                seen |> push(v + row[2] + cell.b)
+            } elif (cond == 1) {
+                v = 7
+                seen |> push(v + row[0] + cell.a)
+            } else {
+                row = fixed_array(10, 20, 30)
+                seen |> push(row[1])
+            }
+        }
+        t |> equal("{seen}", "[ 9, 7, 20]")
     }
 }

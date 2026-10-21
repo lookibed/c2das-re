@@ -127,7 +127,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   an enum across scopes, a definition inside a `sizeof` or cast operand; and one silent
   divergence shared with the small-integer path since P1.6: `++`/`op=` on an lvalue with
   side effects (`(*next())++`) evaluates the lvalue twice, to be settled by a single
-  address temporary.
+  address temporary (settled in P4.8: the target is pinned, its effects evaluated once).
 - **P2.5 Strings.** Literal policy (das literal reinterpret for `char*`, `cstr_array`
   for mutable `char[]`), interning, the `reinterpret<string>` bridge at logging sites.
   Ledger: a C character literal reaches the das text as its number (`44`, not `','`),
@@ -388,6 +388,29 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   deref(_t0) = deref(_t1); var _t2 = p; p = p + 1; if (deref(_t2) != 0)` (native prints `1 1`,
   the conversion `0 2`; `while ((*d++ = *s++))` copies nothing); the value read is the stored
   value, through the temporary the store used.
+  Landed: a local of a block a goto enters, which loses its braces, and a local a lowered switch
+  carries take a free name when a global or another local of the function spells theirs (`g1`);
+  a declaration at a switch body's own level that a statement under a later label names is
+  declared before the lowered switch as a bare `var v : T`, its initializer the assignment that
+  stands where C declares it, and one filled by stores (a union's list, a sparse array) fails
+  closed (F53). A step, a compound store and an assignment read as a value pin their target
+  first: the pointer, index or record value in it that has an effect is evaluated once, into a
+  temporary unless its text already is one (a variable's own name, `i` of `++i` or `p` of `p =
+  q`, changes under a call later in the statement), and every spelling of the target reads it
+  (`var _t0 = next()` then `deref(_t0)++`; `deref(p + _t0).bf = uint(int(deref(p + _t0).bf) +
+  5)`, the F52 form with one call of the index); the value of an assignment is the target read
+  after the store through the same temporaries (`converter/tests/fixtures/p4_scope_fidelity.c`).
+  A declaration at a switch body's own level counts as named under a later label only where no
+  declaration of that statement binds the name (a later case's block or `for` declaring its own
+  `u` leaves the switch's `u` where it is). No other fixture and no kernel converts differently
+  under either target.
+  Ledger: the value of an assignment is its target read after the store, so a sibling later in
+  the statement whose effect changes the target or its index gives the read a changed value:
+  `reset() + (a[i] = 7)` with `reset()` zeroing `i` lowers to `a[i] = 7` then `reset() + a[i]`
+  (native 107, the conversion 101), with or without a pinned target (`*next() = 7` reads
+  `deref(_t0)` after the call too). The read belongs right after the store, into a temporary,
+  when a later sibling has an effect; settled with the first suite program or Lua (P5.3) that
+  hits it.
 - **Exit criterion:** csmith runs clean at 1000/night for a week; torture ≥ target with
   ledger; matrix has no row without a green fixture.
 

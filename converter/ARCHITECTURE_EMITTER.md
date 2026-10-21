@@ -68,7 +68,11 @@ keyword takes the `_c_` prefix. A local that hides one of an enclosing block or 
 takes the first numbered name the function leaves free (`i1`), and so does every reference C
 resolves to it, since das refuses a local that shadows another (`docs/probe-findings.md` F42);
 `emit_tu` renames over the C-IR in place before anything reads a name, a `for`'s declarations
-scoped to the whole `for`. A temporary (`_tN`) skips every name the function spells, a C local
+scoped to the whole `for`. A local the lowering declares outside its C block, one of a block a
+goto enters (which loses its braces) or one a lowered switch carries (below), also takes a free
+name when a global or another local of the function spells its own, since das would otherwise
+bind the global's later reads, or a later block's local, to it (`int g = 3;` in a flattened
+block beside a global `g` is `g1`; `converter/tests/fixtures/p4_scope_fidelity.c`). A temporary (`_tN`) skips every name the function spells, a C local
 `_t0` included.
 
 An enum is `enum Name { items }` with das's default `int` base, emitted before the records, an
@@ -160,7 +164,18 @@ expands to `lhs = T_lhs(T_rhs(lhs) op rhs)`, which is C's small-int rule (`b = i
 1)`). Statement-ification happens at emission: an assignment, a step or a call met inside an
 expression is hoisted into the statements before the current one (`let _t0 = x` then `x++` for
 a postfix step), left to right; an expression whose value C discards binds a fresh temporary
-(`let _t3 = g[0]`), since a second `_` in a nested block would shadow the first (F42); a comma
+(`let _t3 = g[0]`), since a second `_` in a nested block would shadow the first (F42). A step,
+a compound store and an assignment whose value C reads spell their target more than once (read
+and written, `x = x op v`, a marshal record's reader and writer), so they pin it first: the
+pointer the target goes through, its index or a record value, whichever has an effect, is
+evaluated once, into a temporary unless its text already is one (a variable's own name, `i` of
+`++i` or `p` of `p = q`, changes under a call later in the statement), and every spelling of
+the target reads that (`var _t0 = next()` then `deref(_t0)++`; `let _t0 = pick(1)` then
+`deref(p + _t0).bf = uint(int(deref(p + _t0).bf) + 5)`; `let _t1 = arr[_t0].a` then
+`arr[_t0].a++` for `arr[k++].a++`). An assignment read as a value is its target read after the
+store through the same temporaries, so `if ((*p++ = *q++))` tests what the store wrote, a
+bitfield's truncation included; a plain `=` statement spells its target once and pins nothing.
+The pins live while the statement that needs them is spelled (`em.hoisted`); a comma
 is two statements; `&&` and `||` with a hoisted right
 side become a flag and an `if`; a ternary whose arm carries hoisted statements becomes `var _tN
 : T` and an `if`/`else`, while a ternary of pure arms stays inline since das `?:` evaluates
@@ -207,13 +222,20 @@ for `default`, each group's statements under `if (_flag)`, a trailing `break`; C
 das's. A C `continue` under such a loop would restart the switch, so it spells
 `_contN = true` and `break`, with `if (_contN) { continue }` after the loop - itself through
 the same translation when the switch sits in an outer flag loop; a real loop body resets the
-translation. Computed goto (O6) is the optimization tier's.
+translation. C scopes a declaration at the switch body's own level to the rest of the body, while
+each group lands in its own branch: a declaration that a statement under a later label names is
+declared right after `_condN` as a bare `var v : T` (das's zero where C leaves it indeterminate)
+and its initializer is the assignment that stands where C declares it; one filled by stores (a
+union's list, a sparse array) fails closed, since the stores rely on a zero a second pass through
+the case would not give again; any other declaration keeps its branch's scope (F53). Computed
+goto (O6) is the optimization tier's.
 
 A C label is `label N:  // name`, numbered per function in order of appearance, and a goto
 is `goto label N` (`docs/lowering-examples.md` "goto / labels"); das resolves a label lexically
 upward, so a goto reaches a label in its own block or an enclosing one, and a goto into a
 deeper block has every bare block between them (a block that is its parent's statement)
-emitted without braces, so the label lands in a scope the goto sees; an `if`, loop or switch
+emitted without braces, so the label lands in a scope the goto sees, its locals renamed as above
+where they would meet a global or another local of their name; an `if`, loop or switch
 body on that way is Duff's device (P3.3) and fails closed. A goto over a declaration skips its
 initializer, which is C's rule too (`probes/test_goto.das`).
 

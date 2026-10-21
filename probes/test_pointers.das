@@ -2,6 +2,15 @@ options gen2
 require dastest/testing_boost public
 require _daslang_child
 
+var next_cells = fixed_array(0, 0, 0)
+var next_calls = 0
+
+// a call whose pointer result a step and a compound store reach once each
+def next_cell : int ? {
+    next_calls++
+    return unsafe(addr(next_cells[next_calls % 3]))
+}
+
 [test]
 def test_pointers(t : T?) {
     t |> run("reinterpret between pointer types and void") @(t : T?) {
@@ -33,6 +42,18 @@ def test_pointers(t : T?) {
             t |> equal(np != null, true)
             t |> equal(np == addr(x), true)
         }
+    }
+    t |> run("a pointer a call returned, held in a var temporary, takes a step, a compound store and a store through deref, and a read through it gives the stored value") @(t : T?) {
+        next_calls = 0
+        var held = next_cell()
+        deref(held)++
+        deref(held) += 5
+        var again = next_cell()
+        deref(again) = 33
+        t |> equal(deref(again), 33)
+        t |> equal(next_cells[1], 6)
+        t |> equal(next_cells[2], 33)
+        t |> equal(next_calls, 2)
     }
     t |> run("null deref panics and try/recover catches it") @(t : T?) {
         var np : int?
