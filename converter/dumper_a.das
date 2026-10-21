@@ -391,10 +391,11 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
     }
 }
 
-def private collect_records(var d : Dumper; triple : string; resource_dir : string) {
+def private collect_records(var d : Dumper; triple : string; resource_dir : string; defines : array<string>) {
     // libclang finds no resource directory of its own, so the builtin headers (`stddef.h`, whose
     // `size_t` a libc prototype spells) come from the pinned clang's
     var args <- ["-target", triple, "-funsigned-char", "-w", "-resource-dir", resource_dir]
+    args |> push_from(define_flags(defines))
     var idx = clang_createIndex(0, 0)
     var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, 0u)
     if (unit != null) {
@@ -546,6 +547,35 @@ def private scalar_from_qual(var d : Dumper; qt : string) : int {
     return -2
 }
 
+// whether an array spelling has a dimension clang left as a size expression: it folds every
+// constant dimension to its count, so `int[n]` is a variable-length array
+def private has_variable_dimension(spelling : string) : bool {
+    var inside = false
+    for (ch in spelling) {
+        if (ch == '[') {
+            inside = true
+        } elif (ch == ']') {
+            inside = false
+        } elif (inside && !is_number(ch) && ch != ' ') {
+            return true
+        }
+    }
+    return false
+}
+
+// an array dimension as clang spells it: the count, -1 for `[]`; -2 with the error set for a
+// variable-length array's size expression
+def private dimension_count(var d : Dumper; dim, qual : string; at : CirLoc) : int {
+    if (empty(dim)) {
+        return -1
+    }
+    if (has_variable_dimension("[{dim}]")) {
+        fail(d, "`{qual}`: a variable-length array is not lowered (out of scope in v1)", at)
+        return -2
+    }
+    return to_int(dim)
+}
+
 //! The type a clang `qualType` spelling names, interned; -1 with `error` set for a spelling
 //! the dialect does not cover yet.
 // clang appends function attributes to a type spelling; they carry no type
@@ -595,7 +625,10 @@ def private function_pointer(var d : Dumper; qt : string; at : CirLoc) : int {
         return p
     }
     // the dimensions wrap the pointer, outermost first, as for any array
-    let count = to_int(slice(dims, 1, find(dims, "]")))
+    let count = dimension_count(d, slice(dims, 1, find(dims, "]")), qt, at)
+    if (count == -2) {
+        return -1
+    }
     let rest = slice(dims, find(dims, "]") + 1)
     let elem = empty(rest) ? p : type_from_qual(d, "{ret_text} (*{rest})({slice(qt, close + 2)}", at)
     if (elem < 0) {
@@ -626,8 +659,10 @@ def private unnamed_record_type(var d : Dumper; qual : string; at : CirLoc) : in
             if (elem < 0) {
                 return -1
             }
-            let dim = strip(slice(bare, open + 1, close))
-            let count = empty(dim) ? -1 : to_int(dim)
+            let count = dimension_count(d, strip(slice(bare, open + 1, close)), qual, at)
+            if (count == -2) {
+                return -1
+            }
             var t = CirType(k = "array", elem = elem, count = count)
             return intern(d, "array:{elem}:{count}", t)
         }
@@ -896,8 +931,10 @@ def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
             if (elem < 0) {
                 return -1
             }
-            let dim = strip(slice(qt, open + 1, close))
-            let count = empty(dim) ? -1 : to_int(dim)
+            let count = dimension_count(d, strip(slice(qt, open + 1, close)), qual, at)
+            if (count == -2) {
+                return -1
+            }
             var t = CirType(k = "array", elem = elem, count = count)
             return intern(d, "array:{elem}:{count}", t)
         }
@@ -1344,9 +1381,11 @@ def private dump_subscript(var d : Dumper; js : JsonValue?; t : int; at : CirLoc
     return x
 }
 
+// `sizeof` and `_Alignof` (clang's `alignof`, which C23's `alignof` spells too) of a type or
+// an expression's type, with clang's value; GNU `__alignof__` (`__alignof`) is no dialect trait
 def private dump_sizeof(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
     let trait = js?["name"] ?? ""
-    if (trait != "sizeof") {
+    if (trait != "sizeof" && trait != "alignof") {
         fail(d, "`{trait}` is not dumped yet", at)
         return null
     }
@@ -1365,12 +1404,20 @@ def private dump_sizeof(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
     if (of_t < 0) {
         return null
     }
+    if (trait == "alignof") {
+        let align = type_align(d.tu, of_t)
+        if (align < 0) {
+            fail(d, "alignof of a type without an alignment", at)
+            return null
+        }
+        return new CirExpr(e = "alignof_v", t = t, trait_v = uint64(align), of_t = of_t)
+    }
     let size = type_size(d.tu, of_t)
     if (size < 0l) {
         fail(d, "sizeof of a type without a size", at)
         return null
     }
-    return new CirExpr(e = "sizeof_v", t = t, sizeof_v = uint64(size), of_t = of_t)
+    return new CirExpr(e = "sizeof_v", t = t, trait_v = uint64(size), of_t = of_t)
 }
 
 def private dump_member(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
@@ -1652,6 +1699,13 @@ def private hoist_static(var d : Dumper; js : JsonValue?; at : CirLoc; t : int) 
 }
 
 def private dump_var(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
+    let spelling = type_spelling(d, js?["type"])
+    if (has_variable_dimension(spelling) && find(spelling, "(") < 0) {
+        // the declaration as C spells it, the name before the first bracket
+        let open = find(spelling, "[")
+        fail(d, "`{strip(slice(spelling, 0, open))} {js?["name"] ?? ""}{slice(spelling, open)}`: a variable-length array is not lowered (out of scope in v1)", at)
+        return null
+    }
     let t = node_type(d, js, at)
     if (t < 0) {
         return null
@@ -2209,9 +2263,13 @@ def private merge_tentative(var d : Dumper; var cd : CirDecl?) : bool {
 def default_clang : string =>
     has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
 
-//! Runs clang on `c_path` under the dialect `target` and normalizes the dump; `d.error` names
-//! the first unsupported construct, and the dump is then partial.
-def dump_tu(c_path : string; target : CirTarget; clang : string) : Dumper {
+// the sidecar's `defines` as clang flags, `-D<entry>` each
+def private define_flags(defines : array<string>) : array<string> => <- [for (entry in defines); "-D{entry}"]
+
+//! Runs clang on `c_path` under the dialect `target`, with `-D<entry>` for each of `defines`,
+//! and normalizes the dump; `d.error` names the first unsupported construct, and the dump is
+//! then partial.
+def dump_tu(c_path : string; target : CirTarget; clang : string; defines : array<string>) : Dumper {
     var d : Dumper
     d.tu.cir = CIR_VERSION
     d.tu.target = target
@@ -2226,12 +2284,14 @@ def dump_tu(c_path : string; target : CirTarget; clang : string) : Dumper {
         d.error = "`{clang} -print-resource-dir` gave no resource directory; libclang needs it for the builtin headers"
         return <- d
     }
-    collect_records(d, target.triple, resource_dir)
+    collect_records(d, target.triple, resource_dir, defines)
     if (!empty(d.error)) {
         return <- d
     }
     var out : string
-    let rc = run_and_capture([clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", "-target", target.triple, c_path], out, 120.0)
+    var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", "-target", target.triple]
+    dump_args |> push_from(define_flags(defines), [c_path])
+    let rc = run_and_capture(dump_args, out, 120.0)
     if (rc != 0) {
         d.error = "clang exited {rc}:\n{out}"
         return <- d

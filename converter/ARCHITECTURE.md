@@ -15,7 +15,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   root: the generated finalizer recurses through pointer fields and arrays of pointers
   (`probes/test_delete.das`), so no hand-written walk frees a child.
 - `dumper_a.das` - Dumper A: runs `clang -Xclang -ast-dump=json -fsyntax-only -target
-  <triple>` on one file and normalizes the JSON into a `CirTu`. Fails closed: the first
+  <triple>`, with `-D<entry>` per entry of the sidecar's `defines`, on one file and normalizes
+  the JSON into a `CirTu`. Fails closed: the first
   construct outside what it represents sets `Dumper.error` with `file:line:col`. Layout facts
   come from a libclang pass over the same file (`ARCHITECTURE_DUMPER.md`, section 3).
 - `emit.das` - the emitter: `CirTu` in, gen2 text out, fails closed the same way. The
@@ -35,13 +36,15 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   path given, else `<stem>.c2das` beside the C file, else `.c2das` in its folder) and
   `read_sidecar` (JSON; a key the row that needs it adds - `marshal`, the records read and
   written as bytes; `stack` and `alloca_limit`; `param_writes`, `in-place` or `copy`, the
-  parameter write mode, any other value refused naming the key). A key's presence is
+  parameter write mode, any other value refused naming the key; `defines`, a list of strings
+  `NAME` or `NAME=value` the dump and the libclang pass give clang as `-D<entry>`, a value that
+  is no list or an entry that is no string refused naming the key). A key's presence is
   `key_exists`, since json_boost's `?[]` of a missing key is a non-null sentinel
   (`probes/test_stdlib.das`). Nothing here knows the C-IR or the emitter.
-- `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes])`: dump,
-  write the C-IR, read it back and rewrite it (the bytes must match), read the sidecar (a
-  `param_writes` argument other than "" overrides the sidecar's key, and one that is not a
-  mode is refused), emit, format with
+- `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes])`: read the
+  sidecar (a `param_writes` argument other than "" overrides the sidecar's key, and one that is
+  not a mode is refused), dump under its `defines`, write the C-IR, read it back and rewrite it
+  (the bytes must match), emit, format with
   `daslib/das_source_formatter`, compile-check with `compile_file`. Every artifact lands under
   `out_dir`; `file_stem` is the name every artifact of a C file carries.
 - `tiers.das` - `run_tier(das_path, tier, work_dir, output[, module_dirs[, timeout[,
@@ -67,10 +70,14 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   code), plus the lowering shapes the text must carry.
 - `tests/test_cli.das` - `main.das` run as a child process over `tests/fixtures/p4_param_writes.c`:
   `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2.
+- `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list
+  and the two shapes it refuses.
 - `tests/test_csmith_verdict.das` - the csmith driver's classification of a worker that ended
   (`suites/csmith/verdict.das`), the one piece of the driver testable without a process.
 - `tests/test_pipeline.das` - the P0 gate: `tests/fixtures/ret42.c` converts, the C-IR and the
-  das text hash to their golden values, and the module exits 42 under all four tiers.
+  das text hash to their golden values, and the module exits 42 under all four tiers; and a
+  program whose `#if` branch the sidecar's `defines` select prints what the native build under
+  the same `-D` prints.
   Fixtures under `tests/fixtures/` are C inputs, never das.
 
 ## 2. The C-IR bytes
@@ -86,8 +93,9 @@ string is JSON-escaped by `write_json`; the file ends with one LF. The reader ac
 JSON spelling; the pipeline proves the pair by rewriting what it read and comparing. One
 node is this repository's addition to the spec's table: `offsetof` with `of_t` and `field`
 (the record type and the field index), since the lowering spells `offsetof` as
-`typeinfo offsetof` and the spec has no node for it (`docs/probe-findings.md` F20). The other
-addition is `dims` on a `global`, a `decl` statement and a record field: one `{enum_t, item}`
+`typeinfo offsetof` and the spec has no node for it (`docs/probe-findings.md` F20); `alignof_v`
+is `_Alignof` in the shape of `sizeof_v`, `v` clang's alignment and `of_t` the type, which the
+spec has no node for either (F54). The other addition is `dims` on a `global`, a `decl` statement and a record field: one `{enum_t, item}`
 per array dimension of the declarator, outermost first, the item empty for a dimension not
 spelled as one enum constant, the member absent when none is, since the lowering keeps the
 constant as the dimension and the spec's `count` is the folded integer (F21). The spelling is

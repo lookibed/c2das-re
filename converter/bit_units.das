@@ -79,6 +79,20 @@ def type_size(tu : CirTu; t : int) : int64 {
     return -1l
 }
 
+//! The C alignment of type `t` as clang lays it out (`_Alignof`): a scalar's size, an array's
+//! element's, a record's clang alignment; -1 for a type without one.
+def type_align(tu : CirTu; t : int) : int {
+    let scalar = scalar_bytes(tu, t)
+    if (scalar >= 0) {
+        return scalar
+    }
+    let k = tu.types[t].k
+    if (k == "array") {
+        return type_align(tu, tu.types[t].elem)
+    }
+    return k == "struct" || k == "union" ? tu.types[t].align : -1
+}
+
 //! The alignment das gives a value of type `t`: a record's is its das mirror's, which for a
 //! record holding bitfields can be below clang's (`docs/probe-findings.md` F5), so a record
 //! nested in another is placed by the alignment its mirror has; a union's is clang's, which

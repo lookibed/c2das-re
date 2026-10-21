@@ -95,7 +95,7 @@ def convert(c_path : string; out_dir : string; target_name : string; clang : str
     if (!empty(param_writes)) {
         side.param_writes = param_writes
     }
-    var d <- dump_tu(c_path, target_by_name(target_name), empty(clang) ? default_clang() : clang)
+    var d <- dump_tu(c_path, target_by_name(target_name), empty(clang) ? default_clang() : clang, side.defines)
     if (!empty(d.error)) {
         res.error = "dumper: {d.error}"
         delete_tu(d.tu)

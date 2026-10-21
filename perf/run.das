@@ -209,10 +209,15 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
         errors |> push("{name}/exe: {first_line(tier_out)}")
     }
     tier_out = ""
-    if (run_tier(res.das_path, "aot", work, tier_out, CONVERTED_MODULES) >= 0) {
-        measure_lane(cells, errors, name, "aot", [path_join(path_join(work, "ctx"), "{name}_aot")], samples, oracle)
+    // the tier returns the host build's exit code when the build fails, which passes for a
+    // run's, so the lane stands only on the binary the build left; an earlier run's goes first
+    let aot_bin = path_join(path_join(work, "ctx"), "{name}_aot")
+    remove(aot_bin)
+    let aot_rc = run_tier(res.das_path, "aot", work, tier_out, CONVERTED_MODULES)
+    if (aot_rc >= 0 && fexist(aot_bin)) {
+        measure_lane(cells, errors, name, "aot", [aot_bin], samples, oracle)
     } else {
-        errors |> push("{name}/aot: {first_line(tier_out)}")
+        errors |> push("{name}/aot: the build exited {aot_rc} and left no binary: {last_line(tier_out)}")
     }
     return <- cells
 }

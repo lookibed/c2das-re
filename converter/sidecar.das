@@ -20,6 +20,8 @@ struct Sidecar {
     // how the body writes a scalar or pointer parameter it assigns, steps or takes the address
     // of: `in-place` (the parameter itself) or `copy` (a local copy); "" when the key is absent
     param_writes : string
+    // the macros clang defines for the dump, each `NAME` or `NAME=value`, passed as `-D<entry>`
+    defines : array<string>
 }
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
@@ -81,6 +83,18 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
         error = "{path}: `param_writes` is \"in-place\" or \"copy\", not {write_json(js?["param_writes"])}"
     } else {
         side.param_writes = param_writes
+    }
+    let defines = js?["defines"]
+    if (key_exists(js, "defines") && !(defines is _array)) {
+        error = "{path}: `defines` is a list of strings `NAME` or `NAME=value`, not {write_json(defines)}"
+    } elif (key_exists(js, "defines")) {
+        for (entry in defines as _array) {
+            if (!(entry is _string)) {
+                error = "{path}: `defines` holds strings `NAME` or `NAME=value`, not {write_json(entry)}"
+                break
+            }
+            side.defines |> push(entry ?? "")
+        }
     }
     delete_json(js)
     return <- side

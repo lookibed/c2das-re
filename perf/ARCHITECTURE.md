@@ -45,7 +45,10 @@ harness that times them under every lane, and the stored results.
   `--param-writes copy` for the `interp-copy` lane), and runs each
   lane as its own process `--samples` times (five by default). A cell is the median, with ±
   half the sample range as a share of it; startup never enters a cell because the program
-  times itself; each das lane logs its argv at `info`. The run writes `results_linux.json`, or
+  times itself; each das lane logs its argv at `info`. The `aot` lane stands only on the
+  binary its host build leaves, since the tier returns the build's exit code when the build
+  fails: a failed build is the lane's error, carrying the build's last line. The run writes
+  `results_linux.json`, or
   the `--out <file>` it is given (which `--table` then reads; the delta's default baseline stays
   the committed file at HEAD), and prints the results table,
   `--ratios` adds the ratio table, and the delta table follows whenever a baseline capture
@@ -70,9 +73,10 @@ harness that times them under every lane, and the stored results.
   text a run prints and writes as its report; whole files are read and written through daslib
   `fio`'s `fread(path)` and `fwrite(path, text)`.
 - `tests/` - the dastest suite over `perf_tables.das` and `perf_cli.das`, driven by JSON
-  fixtures, and `run.das` itself as a child process: `-?`, and one sample of `blit` into an
-  `--out` file, whose `interp-copy` cell must time the copy conversion and match the native
-  result; the preflight tests lane runs it.
+  fixtures, and `run.das` itself as a child process: `-?`, one sample of `blit` into an
+  `--out` file, whose `interp-copy` cell must time the copy conversion and match the native result, and one sample of
+  `fib_recursive` under a `PATH_TO_LIBCLANG` whose `clang++` (the AOT host's compiler) fails,
+  whose `aot` error must carry that compiler's output; the preflight tests lane runs it.
 - `results_linux.json` - the committed capture: CPU, platform, timestamp, the clang and
   daslang versions, the sample count, and per kernel and lane the median, spread, rep count,
   the result and raw samples.

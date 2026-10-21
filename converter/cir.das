@@ -86,7 +86,8 @@ struct CirExpr {
     arrow : bool
     i : CirExpr?
     init_items : array<CirInitItem>
-    sizeof_v : uint64
+    // the evaluated value of a `sizeof_v` or an `alignof_v`, whose type `of_t` names
+    trait_v : uint64
     of_t : int
     list : CirExpr?
     arg_t : int
@@ -480,9 +481,9 @@ def private write_expr_composite(var w : Writer; x : CirExpr) {
     } elif (x.e == "init_list") {
         member(w, "items", false)
         write_init_items(w, x.init_items)
-    } elif (x.e == "sizeof_v") {
+    } elif (x.e == "sizeof_v" || x.e == "alignof_v") {
         member(w, "v", false)
-        w.out |> push("{int64(x.sizeof_v)}")
+        w.out |> push("{int64(x.trait_v)}")
         member(w, "of_t", false)
         w.out |> push("{x.of_t}")
     } elif (x.e == "offsetof") {
@@ -939,8 +940,8 @@ def private read_expr_composite(js : JsonValue?; var x : CirExpr?) {
                 x.init_items |> push(CirInitItem(pos = js_int(it, "pos"), v = read_expr(it?["v"])))
             }
         }
-    } elif (x.e == "sizeof_v") {
-        x.sizeof_v = uint64(js?["v"] ?? 0l)
+    } elif (x.e == "sizeof_v" || x.e == "alignof_v") {
+        x.trait_v = uint64(js?["v"] ?? 0l)
         x.of_t = js_int(js, "of_t")
     } elif (x.e == "offsetof") {
         x.of_t = js_int(js, "of_t")

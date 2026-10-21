@@ -64,3 +64,36 @@ def test_run_blit_lanes(t : T?) {
     }
     rmdir_rec(dir)
 }
+
+// a toolchain folder for `PATH_TO_LIBCLANG` whose `clang` is the pinned one and whose `clang++`,
+// the AOT host's compiler, prints a line and fails: the lane's error must carry that line
+def failing_link_toolchain(dir, clang : string) : string {
+    let bin = path_join(path_join(dir, "toolchain"), "bin")
+    mkdir_rec(bin)
+    fwrite(path_join(bin, "clang"), "#!/bin/sh\nexec {clang} \"$@\"\n")
+    fwrite(path_join(bin, "clang++"), "#!/bin/sh\necho fake link failure\nexit 1\n")
+    var out : string
+    run_and_capture(["chmod", "+x", path_join(bin, "clang"), path_join(bin, "clang++")], out, 10.0)
+    return path_join(dir, "toolchain")
+}
+
+[test]
+def test_run_failed_aot_link(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_perf_link", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    let pinned = has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") : ""
+    let clang = empty(pinned) ? "clang" : pinned + "/bin/clang"
+    var out : string
+    set_env_variable("PATH_TO_LIBCLANG", failing_link_toolchain(dir, clang))
+    let rc = run_and_capture(["bash", "scripts/run_perf.sh", "--filter", "fib_recursive", "--samples", "1", "--out", path_join(dir, "results.json")], out, 1200.0)
+    set_env_variable("PATH_TO_LIBCLANG", pinned)
+    t |> run("a failed AOT host build is the lane's error, carrying the build's output") @(t : T?) {
+        t |> equal(rc, 1, out)
+        t |> success(out |> contains("fib_recursive/aot: the build exited 1 and left no binary: fake link failure"), out)
+    }
+    rmdir_rec(dir)
+}

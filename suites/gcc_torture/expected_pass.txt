@@ -184,6 +184,7 @@
 20031204-1
 20031211-1
 20031214-1
+20031215-1
 20031216-1
 20040208-1
 20040307-1
@@ -340,6 +341,7 @@
 951115-1
 951204-1
 960116-1
+960209-1
 960215-1
 960219-1
 960301-1
@@ -697,6 +699,7 @@ pr85529-1
 pr85582-1
 pr86659-1
 pr86659-2
+pr86714
 pr89826
 pr93434
 pr93744-1
@@ -724,10 +727,12 @@ shiftdi-2
 shiftopt-1
 string-opt-17
 strlen-5
+strlen-6
 struct-ini-1
 struct-ini-2
 struct-ini-3
 struct-ini-4
+struct-ret-1
 switch-1
 unroll-1
 va-arg-1
@@ -744,6 +749,7 @@ va-arg-20
 va-arg-23
 va-arg-24
 va-arg-26
+va-arg-4
 va-arg-5
 va-arg-6
 va-arg-7

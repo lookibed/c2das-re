@@ -502,17 +502,18 @@ def private hex_digit(v : int) : string => to_char(v < 10 ? '0' + v : 'a' + v - 
 // two hex digits of a byte, spelled without `fmt`, whose format parsing rejects a zero
 def private hex_byte(b : int) : string => "{hex_digit(b >> 4)}{hex_digit(b & 15)}"
 
-// the das literal spelling of the bytes before the NUL
-def private quoted_literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
+// the das literal spelling of the bytes before the NUL, at most `limit` of them when it is not
+// negative
+def private quoted_literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc; limit : int = -1) : string {
     if (kind_of(tu, x.t) == "array" && tu.types[tu.types[x.t].elem].w != 8) {
         // the bytes are the dump's narrow ones: a wide element needs its own literal
         fail(em, "a wide string literal (`L\"...\"`, `u\"...\"`, `U\"...\"`) is not lowered yet", loc)
         return "\"\""
     }
-    let n = length(x.bytes)
+    let n = limit < 0 || limit >= length(x.bytes) ? length(x.bytes) - 1 : limit
     return build_string() $(var w) {
         w |> write("\"")
-        for (idx in range(n - 1)) {
+        for (idx in range(n)) {
             let b = int(x.bytes[idx])
             if (b == 0) {
                 fail(em, "a string literal with an interior NUL is not lowered yet", loc)
@@ -1419,10 +1420,17 @@ def private emit_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : Ci
     return value("", PREC_PRIMARY)
 }
 
-let TYPE_OPERATORS <- {"sizeof_v", "offsetof", "va_arg"}
+let TYPE_OPERATORS <- {"sizeof_v", "alignof_v", "offsetof", "va_arg"}
 
-// the expressions C spells as operators over a type: `sizeof`, `offsetof`, `va_arg`
+// the expressions C spells as operators over a type: `sizeof`, `_Alignof`, `offsetof`, `va_arg`
 def private emit_type_operator(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
+    if (x.e == "alignof_v") {
+        if (is_marshal(em, tu, x.of_t) || is_va_list(tu, x.of_t) || natural_align(tu, em.layout, x.of_t) != int(x.trait_v)) {
+            // das aligns the type below clang (a record's bitfield units, F5), or never lays it out
+            return value("{das_type(em, tu, x.t, loc)}({int64(x.trait_v)})", PREC_PRIMARY)
+        }
+        return value("{das_type(em, tu, x.t, loc)}(typeinfo alignof(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
+    }
     if (x.e == "sizeof_v") {
         if (is_marshal(em, tu, x.of_t) || is_va_list(tu, x.of_t)) {
             // the record's bytes are laid out by clang, not by das; a `va_list` is never laid out
@@ -1633,7 +1641,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
         var elems <- [for (_i in range(tu.types[x.t].count)); ""]
         for (item in x.init_items) {
             continue if (is_union_list(tu, item.v))
-            elems[item.pos] = stored(emit_expr(em, tu, item.v, loc), tu, tu.types[x.t].elem).text
+            elems[item.pos] = stored(init_value(em, tu, item.v, loc), tu, tu.types[x.t].elem).text
         }
         for (e in elems) {
             if (empty(e)) {
@@ -1656,7 +1664,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
     items |> reserve(length(x.init_items))
     for (item in x.init_items) {
         continue if (is_union_list(tu, item.v))
-        let v = stored(emit_expr(em, tu, item.v, loc), tu, tu.types[x.t].fields[item.pos].t)
+        let v = stored(init_value(em, tu, item.v, loc), tu, tu.types[x.t].fields[item.pos].t)
         let n = tu.types[x.t].fields[item.pos].is_bitfield ? unit_of(units, item.pos) : -1
         if (n < 0) {
             items |> push("{field_name(em, tu, x.t, item.pos)} = {v.text}")
@@ -1784,7 +1792,7 @@ def private hoist_items(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : 
         if (item.v.e == "init_list") {
             hoist_items(em, tu, item.v, loc)
         } else {
-            let e = emit_expr(em, tu, item.v, loc)
+            let e = init_value(em, tu, item.v, loc)
             let name = temp_name(em)
             // a `let` copy of a value holding a pointer takes a const pointee, which no `var` slot
             // takes (F3)
@@ -1800,7 +1808,7 @@ def private is_union_list(tu : CirTu; x : CirExpr const?) : bool => x != null &&
 // of it, then the stores of every union's list `v` holds
 def private init_stores(var em : Emitter; tu : CirTu; path : string; v : CirExpr const?; loc : CirLoc; var out : array<string>) {
     if (!is_union_list(tu, v)) {
-        out |> push("{path} = {stored(emit_expr(em, tu, v, loc), tu, v.t).text}")
+        out |> push("{path} = {stored(init_value(em, tu, v, loc), tu, v.t).text}")
     }
     union_stores(em, tu, path, v, loc, out)
 }
@@ -1827,6 +1835,19 @@ def private union_stores(var em : Emitter; tu : CirTu; path : string; x : CirExp
     }
 }
 
+// a value of an initializer: a `char[N]` from a string literal, a whole declaration's or a row
+// or field of one, is `cstr_array("...", N)` (the bytes, a NUL where it fits, zeros to `N`); a
+// literal longer than `N` keeps its first `N` bytes, as clang initializes the array; one
+// `hoist_items` evaluated ahead is its temporary
+def private init_value(var em : Emitter; tu : CirTu; v : CirExpr const?; loc : CirLoc) : Em {
+    if (v != null && v.e == "str_lit" && kind_of(tu, v.t) == "array" && !key_exists(em.hoisted, intptr(v))) {
+        em.requires |> insert("c_runtime/cstr_array")
+        let count = tu.types[v.t].count
+        return value("cstr_array({quoted_literal(em, tu, *v, loc, count)}, {count})", PREC_PRIMARY)
+    }
+    return emit_expr(em, tu, v, loc)
+}
+
 // the initializer of a declared variable: a `char[N]` from a string literal is
 // `cstr_array`, an array filled sparsely is the bare declaration (stores follow), anything
 // else the expression; "" with `stores` set means the declaration carries no `=`
@@ -1838,10 +1859,6 @@ def private decl_init(var em : Emitter; tu : CirTu; name : string; t : int; init
 
 // the text of `decl_init`, which may read temporaries `hoist_items` made
 def private decl_init_text(var em : Emitter; tu : CirTu; name : string; t : int; init : CirExpr?; loc : CirLoc; var stores : array<string>) : string {
-    if (kind_of(tu, t) == "array" && init.e == "str_lit") {
-        em.requires |> insert("c_runtime/cstr_array")
-        return "cstr_array({quoted_literal(em, tu, *init, loc)}, {tu.types[t].count})"
-    }
     if (init.e == "init_list" && !is_union_list(tu, init) && holds_union_list(tu, init) && has_effects(init)) {
         // the union stores follow the literal, so every item is evaluated first, in order
         hoist_items(em, tu, init, loc)
@@ -1854,7 +1871,7 @@ def private decl_init_text(var em : Emitter; tu : CirTu; name : string; t : int;
         sparse_stores(em, tu, name, *init, loc, stores)
         return ""
     }
-    let text = stored(emit_expr(em, tu, init, loc), tu, t).text
+    let text = stored(init_value(em, tu, init, loc), tu, t).text
     union_stores(em, tu, name, init, loc, stores)
     return text
 }
@@ -3113,9 +3130,16 @@ def private reset_function_state(var em : Emitter; d : CirDecl) {
 
 // the parameters of function `d` as das declares them, and the callee copies that open its body
 def private function_params(var em : Emitter; tu : CirTu; d : CirDecl; var taken : table<string>; var params : array<string>; var copies : array<string>) {
-    for (p in d.params) {
+    for (idx, p in range(length(d.params)), d.params) {
         let spelled = das_type(em, tu, p.t, d.loc)
         let name = das_name(em, p.name)
+        let passed = idx < length(tu.types[d.t].params) ? tu.types[d.t].params[idx] : p.t
+        if (passed != p.t) {
+            // a K&R definition takes its arguments promoted (its type is `int (int, int)` for
+            // `char b`) and converts each to the declared type on entry, as C does
+            promoted_param(em, tu, d, p, passed, name, taken, params, copies)
+            continue
+        }
         if (is_va_list(tu, p.t)) {
             // the caller's cursor, which the body's pops advance, as linux's decayed array does
             params |> push("var {name} : {spelled}")
@@ -3135,6 +3159,17 @@ def private function_params(var em : Emitter; tu : CirTu; d : CirDecl; var taken
             params |> push("{key_exists(em.written, p.name) ? "var " : mode}{name} : {spelled}")
         }
     }
+}
+
+// a K&R parameter that arrives as its promoted type `passed`: the parameter `<name>_in` of that
+// type and its conversion to the declared type, `var` when the body writes it
+def private promoted_param(var em : Emitter; tu : CirTu; d : CirDecl; p : CirParam; passed : int; name : string; var taken : table<string>; var params : array<string>; var copies : array<string>) {
+    let copy = free_name(taken, "{name}_in")
+    let spelled = das_type(em, tu, p.t, d.loc)
+    params |> push("{copy} : {das_type(em, tu, passed, d.loc)}")
+    // only an integer (an enum and `_Bool` among them) or a `float` promotes
+    let converted = is_c_bool(tu, p.t) ? "{copy} != 0" : kind_of(tu, p.t) == "enum" ? int_to_enum(em, tu, p.t, "int({copy})") : "{spelled}({copy})"
+    copies |> push("{key_exists(em.written, p.name) ? "var" : "let"} {name} = {converted}")
 }
 
 def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
@@ -3683,6 +3718,14 @@ def private emit_types(var em : Emitter; tu : CirTu) {
     for (d in tu.decls) {
         if (d.k == "enumdef") {
             emit_enum(em, tu, *d)
+        }
+    }
+    // a record the unit declares and never defines (size -1) is reached only through pointers:
+    // an empty struct names it, which no dereference or `sizeof` reaches, since clang refuses both
+    for (t in range(length(tu.types))) {
+        if (is_record(tu, t) && tu.types[t].size < 0) {
+            line(em, "struct {tag_name(em, tu, t)} \{\}")
+            line(em, "")
         }
     }
     var records : array<int>

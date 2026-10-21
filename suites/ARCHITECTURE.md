@@ -45,10 +45,9 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
 - `gcc_torture/filter.das` - the import's filter, run by hand after a fetch: every top-level
   `execute/*.c` whose text carries a GNU extension gets its `skip.txt` line, first matching
   rule wins - the dialect's exclusions (inline asm, `_Complex`, `__int128`, the non-standard
-  floating types, vector types, atomics, GNU keywords, `&&label` and `__label__`) with the phase
-  `never`, then the constructs a later row carries (`__builtin_*` and `__attribute__` under the
-  phase P4; wide string literals and a string literal outside a pointer context, a row of a 2-D
-  `char` array, under the row P4.9). The `builtins/` and `ieee/` subfolders are not part of the
+  floating types, vector types, atomics, GNU keywords, `&&label` and `__label__`, wide string
+  literals) with the phase `never`, then the constructs a later row carries (`__builtin_*` and
+  `__attribute__` under the phase P4). The `builtins/` and `ieee/` subfolders are not part of the
   suite.
 - `gcc_torture/run.das` - the torture suite on the shared runner: a test passes when its module
   exits 0, the gcc harness's own contract (a failing test calls `abort`); output is not

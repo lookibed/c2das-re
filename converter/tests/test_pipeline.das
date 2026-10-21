@@ -70,3 +70,47 @@ def test_aot_host_command(t : T?) {
         t |> success(!(cmd |> has_value("-O2")), join(cmd, " "))
     }
 }
+
+// a program whose `#if FOO == 2` branch prints another value than its `#else`
+let DEFINES_SOURCE = "int printf(const char *, ...);\n#ifndef FOO\n#define FOO 1\n#endif\n#if FOO == 2\nstruct pick \{ int a; int b; \};\nstatic int value(void) \{ struct pick p = \{ 20, 2 \}; return p.a + p.b; \}\n#else\nstatic int value(void) \{ return 11; \}\n#endif\nint main(void) \{ printf(\"FOO picks %d\\n\", value()); return 0; \}\n"
+
+// `DEFINES_SOURCE` as `<dir>/<name>/defines.c`, with `sidecar` beside it when given, converted
+// and run under the interpreter: its output, "" with a failure when it does not convert
+def defines_run(t : T?; dir, name, sidecar : string) : string {
+    let at = path_join(dir, name)
+    mkdir_rec(at)
+    let c_path = path_join(at, "defines.c")
+    fwrite(c_path, DEFINES_SOURCE)
+    if (!empty(sidecar)) {
+        fwrite(path_join(at, "defines.c2das"), sidecar)
+    }
+    let conv <- convert(c_path, path_join(at, "out"), "linux")
+    if (!conv.ok) {
+        t |> failure(conv.error)
+        return ""
+    }
+    var output : string
+    let rc = run_tier(conv.das_path, "interp", at, output, CONVERTED_MODULES)
+    t |> equal(rc, 0, output)
+    return output
+}
+
+[test]
+def test_sidecar_defines_select(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_defines", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("the sidecar's `defines` reach clang as -D: `FOO=2` selects the `#if` branch the native build with -DFOO=2 takes") @(t : T?) {
+        let defined = defines_run(t, dir, "defined", "\{\"defines\": [\"FOO=2\"]\}\n")
+        let native = native_run(default_clang(), ["-w", "-funsigned-char", "-DFOO=2"], path_join(path_join(dir, "defined"), "defines.c"), path_join(dir, "defines_native"), 60.0)
+        t |> equal(native.built, true, native.output)
+        t |> equal(defined, native.output)
+        t |> equal(defined, "FOO picks 22\n")
+        // without the sidecar the `#else` branch converts
+        t |> equal(defines_run(t, dir, "plain", ""), "FOO picks 11\n")
+    }
+    rmdir_rec(dir)
+}
