@@ -6,9 +6,10 @@ options stack = 1048576
 require daslib/fio
 require daslib/clargs
 require pipeline
+require sidecar
 require tiers
 
-//! c2das: `daslang converter/main.das -- <file.c> [--out <dir>] [--target msvc|linux] [--run <tier>] [--sidecar <file>]`.
+//! c2das: `daslang converter/main.das -- <file.c> [--out <dir>] [--target msvc|linux] [--run <tier>] [--sidecar <file>] [--param-writes in-place|copy]`.
 //! Converts one C file into `<dir>/<stem>.das` (default `out/`); with `--run` executes the
 //! result under a tier and exits with the program's exit code.
 
@@ -25,6 +26,9 @@ struct Args {
     run : string = ""
     @clarg_doc = "the .c2das sidecar (default: <stem>.c2das beside the file, else .c2das in its folder)"
     sidecar : string = ""
+    @clarg_name = "param-writes"
+    @clarg_doc = "a written scalar or pointer parameter: in-place (the default) or copy (a local copy, faster under the interpreter); overrides the sidecar's param_writes"
+    param_writes : string = ""
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -46,7 +50,11 @@ def main : int {
         to_log(LOG_ERROR, "c2das: no input file; -? for help\n")
         return 2
     }
-    let res <- convert(args.input, args.out, args.target, "", args.sidecar)
+    if (!empty(args.param_writes) && !is_param_writes(args.param_writes)) {
+        to_log(LOG_ERROR, "c2das: --param-writes is in-place or copy, not `{args.param_writes}`; -? for help\n")
+        return 2
+    }
+    let res <- convert(args.input, args.out, args.target, "", args.sidecar, args.param_writes)
     if (!res.ok) {
         to_log(LOG_ERROR, "c2das: {res.error}\n")
         return 1

@@ -3,7 +3,7 @@
     "c_testsuite": 194,
     "csmith": 148,
     "gcc_torture": 750,
-    "perf": 9
+    "perf": 18
   },
   "modules": {
     "c_testsuite/00001": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -1099,25 +1099,34 @@
     "gcc_torture/vrp-4": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/widechar-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "perf/bit_pack": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
+    "perf/bit_pack@copy": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
     "perf/blit": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 5, "pointer_index": 1, "reinterpret": 5, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
+    "perf/blit@copy": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 5, "pointer_index": 1, "reinterpret": 5, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
     "perf/fib_loop": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
+    "perf/fib_loop@copy": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
     "perf/fib_recursive": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
+    "perf/fib_recursive@copy": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
     "perf/fixed_mandel": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
+    "perf/fixed_mandel@copy": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
     "perf/matmul": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 7},
+    "perf/matmul@copy": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 7},
     "perf/primes": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
+    "perf/primes@copy": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
     "perf/qsort_cmp": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 4, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
-    "perf/sieve": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3}
+    "perf/qsort_cmp@copy": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 4, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
+    "perf/sieve": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
+    "perf/sieve@copy": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3}
   },
   "totals": {
-    "c_function": 2242,
+    "c_function": 2255,
     "goto": 357,
     "label": 302,
     "literal_named": 21097,
-    "pointer_arith": 961,
-    "pointer_index": 329,
-    "reinterpret": 33867,
+    "pointer_arith": 966,
+    "pointer_index": 330,
+    "reinterpret": 33883,
     "unsafe_block": 0,
     "unsafe_expr": 49418,
-    "while_rangeable": 8728
+    "while_rangeable": 8752
   }
 }

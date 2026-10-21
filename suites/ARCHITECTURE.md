@@ -30,7 +30,8 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   folder so the `REVIEW.das` gates require it: `read_lines` and `read_ratchet` (the ratchet and
   the ledger as a run reads them), `c_file_ids` (the `.c` files of a folder by id, the suites'
   tests and the perf kernels), `expected_input_keys` (the input keys the readability capture
-  holds: each suite's listed ids less its ledgered ones, and every kernel) and `gate_untracked`
+  holds: each suite's listed ids less its ledgered ones, and every kernel as `perf/<kernel>` and
+  `perf/<kernel>@copy`) and `gate_untracked`
   (a gate finding per tracked file under regenerated folders).
 - `fetch_common.sh` - sourced by the three fetch scripts: `pin_of` (a pin out of
   `VERSIONS.md`), `at_pin` (a checkout at its pin with its build present) and

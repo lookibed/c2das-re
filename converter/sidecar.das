@@ -17,7 +17,16 @@ struct Sidecar {
     // of each such function's arena (0: the default)
     stack : int
     alloca_limit : int
+    // how the body writes a scalar or pointer parameter it assigns, steps or takes the address
+    // of: `in-place` (the parameter itself) or `copy` (a local copy); "" when the key is absent
+    param_writes : string
 }
+
+//! The values of the `param_writes` key and of the converter's `--param-writes`.
+let PARAM_WRITES <- ["in-place", "copy"]
+
+//! Whether `mode` is a value of `param_writes`.
+def is_param_writes(mode : string) : bool => has_value(PARAM_WRITES, mode)
 
 //! The sidecar a C file converts under: `given` when it is not empty, else `<stem>.c2das` beside the
 //! file, else `.c2das` in its folder; "" when none exists.
@@ -62,16 +71,23 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
     if (js == null) {
         return <- side
     }
+    // `?[]` of a missing key is json_boost's null sentinel, never null: `key_exists` tells
     let marshal = js?["marshal"]
-    if (marshal != null && !(marshal is _array)) {
+    if (key_exists(js, "marshal") && !(marshal is _array)) {
         error = "{path}: `marshal` is a list of type names"
-    } elif (marshal != null) {
+    } elif (key_exists(js, "marshal")) {
         for (name in marshal as _array) {
             side.marshal |> insert(name ?? "")
         }
     }
     side.stack = int(js?["stack"] ?? 0l)
     side.alloca_limit = int(js?["alloca_limit"] ?? 0l)
+    let param_writes = js?["param_writes"] ?? ""
+    if (key_exists(js, "param_writes") && !is_param_writes(param_writes)) {
+        error = "{path}: `param_writes` is \"in-place\" or \"copy\""
+    } else {
+        side.param_writes = param_writes
+    }
     delete_json(js)
     return <- side
 }

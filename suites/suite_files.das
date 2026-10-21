@@ -64,10 +64,16 @@ def c_file_ids(dir_path, filter : string) : array<string> {
     return <- ids
 }
 
+//! The suffix of a kernel's input key converted under `--param-writes copy` (`perf/blit@copy`).
+let COPY_KEY_SUFFIX = "@copy"
+
 //! Every input key (`<group>/<id>`) the readability metric converts, sorted: each ratchet
-//! suite's listed ids less its ledgered ones, and every kernel.
+//! suite's listed ids less its ledgered ones, and every kernel under both parameter write
+//! modes.
 def expected_input_keys : array<string> {
-    var keys <- [for (name in c_file_ids(KERNELS, "")); "perf/{name}"]
+    let kernels <- c_file_ids(KERNELS, "")
+    var keys <- [for (name in kernels); "perf/{name}"]
+    keys |> push_from([for (name in kernels); "perf/{name}{COPY_KEY_SUFFIX}"])
     for (suite in RATCHET_SUITES) {
         var inscope r <- read_ratchet("suites/{suite}/expected_pass.txt", "suites/{suite}/skip.txt")
         keys |> reserve(length(keys) + length(r.expected))

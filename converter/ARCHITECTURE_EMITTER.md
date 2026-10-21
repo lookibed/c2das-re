@@ -46,7 +46,17 @@ makes to the caller's object through another pointer during the call does not re
 copy's parameter takes `s_in`, else `s_in1` and up, whichever no parameter, local or name the
 body reads already spells. das passes a scalar, a pointer and a function value by value, so a
 parameter of those the body assigns, steps or takes the address of is `var` and written in
-place (`probes/test_param_constness.das`). A function type's positions follow the parameter
+place (`probes/test_param_constness.das`). That is the default parameter write mode,
+`in-place`; under `copy` (`--param-writes copy` or the sidecar's `param_writes`, section 1 of
+`ARCHITECTURE.md`) each such parameter is copied on entry the way a record is, `n_in` the
+parameter and `var n = n_in` the body's first statement, under the same free-name rule, and
+the parameter keeps the mode it has when the body never writes it: a scalar or a function
+value `let`, a data pointer `var`, since a `var` local copied from a `let` pointer parameter
+still reads its pointee as const (`probes/test_param_constness.das`). The interpreter writes a
+local faster than an argument slot (`perf/ARCHITECTURE.md` section 2, the `interp-copy` lane).
+A `va_list` parameter is the caller's cursor and stays in place in both modes; a parameter
+the body only reads, and a record's copy, are the same in both, and nothing else differs
+between them (`converter/tests/fixtures/p4_param_writes.c`). A function type's positions follow the parameter
 rule, so every function of one C type fits one das type (F34); a function pointer position is
 never `var`, since a function value has no pointee. A temporary the emitter hoists holding a
 pointer (an initializer list's item, an alloca's address, a stepped pointer's old value) is

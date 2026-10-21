@@ -25,15 +25,17 @@ def native(name : string) : Expectation {
     return run.built ? Expectation(rc = run.rc, out = run.output) : Expectation(rc = -1, out = "clang failed:\n{run.output}")
 }
 
-def converted(t : T?; name : string; var das_text : string&) : Expectation {
-    let res <- convert("{FIXTURES}/{name}.c", path_join(work_root, name), "linux")
+// `param_writes` is the converter's `--param-writes`, "" for its default
+def converted(t : T?; name : string; var das_text : string&; param_writes : string = "") : Expectation {
+    let work = path_join(work_root, empty(param_writes) ? name : "{name}_{param_writes}")
+    let res <- convert("{FIXTURES}/{name}.c", work, "linux", "", "", param_writes)
     if (!res.ok) {
         t |> failure(res.error)
         return Expectation(rc = -2, out = "")
     }
     das_text = res.das_text
     var out : string
-    let rc = run_tier(res.das_path, "interp", path_join(work_root, name), out, CONVERTED_MODULES)
+    let rc = run_tier(res.das_path, "interp", work, out, CONVERTED_MODULES)
     return Expectation(rc = rc, out = out)
 }
 
@@ -43,17 +45,26 @@ def has_text(t : T?; text : string; needle : string) {
 }
 
 
-// a C source the converter must refuse, with the error naming the construct; `sidecar` is
-// the `.c2das` text beside it, when the shape needs one
-def rejects(t : T?; name : string; source : string; needle : string; sidecar : string = "") {
-    let dir = path_join(work_root, "rejected")
-    mkdir(dir)
-    let c_path = path_join(dir, "{name}.c")
+// `source` written as `<dir>/<name>.c` under the work root, and `sidecar`, when given, as the
+// `.c2das` beside it: the C file's path
+def written_source(dir, name, source, sidecar : string) : string {
+    let at = path_join(work_root, dir)
+    mkdir(at)
+    let c_path = path_join(at, "{name}.c")
     fwrite(c_path, source)
     if (!empty(sidecar)) {
-        fwrite(path_join(dir, "{name}.c2das"), sidecar)
+        fwrite(path_join(at, "{name}.c2das"), sidecar)
     }
-    let res <- convert(c_path, path_join(dir, name), "linux")
+    return c_path
+}
+
+// a C source the converter must refuse, with the error naming the construct; `sidecar` is
+// the `.c2das` text beside it, when the shape needs one, and `param_writes` the converter's
+// `--param-writes`
+def rejects(t : T?; name : string; source : string; needle : string; sidecar : string = ""; param_writes : string = "") {
+    let dir = path_join(work_root, "rejected")
+    let c_path = written_source("rejected", name, source, sidecar)
+    let res <- convert(c_path, path_join(dir, name), "linux", "", "", param_writes)
     t |> equal(res.ok, false, "{name} converted:\n{res.das_text}")
     t |> equal(res.error |> find(needle) >= 0, true, "{name}: `{needle}` not in `{res.error}`")
 }
@@ -70,21 +81,20 @@ def count_of(text, needle : string) : int {
     return n
 }
 
-// a C source the converter must take: its das text, "" with a failure when it refuses
-def converts(t : T?; name : string; source : string) : string {
+// a C source the converter must take: its das text, "" with a failure when it refuses;
+// `sidecar` and `param_writes` as for `rejects`
+def converts(t : T?; name : string; source : string; sidecar : string = ""; param_writes : string = "") : string {
     let dir = path_join(work_root, "converted")
-    mkdir(dir)
-    let c_path = path_join(dir, "{name}.c")
-    fwrite(c_path, source)
-    let res <- convert(c_path, path_join(dir, name), "linux")
+    let c_path = written_source("converted", name, source, sidecar)
+    let res <- convert(c_path, path_join(dir, name), "linux", "", "", param_writes)
     t |> equal(res.ok, true, "{name}: {res.error}")
     return res.das_text
 }
 
-def check_fixture(t : T?; name : string; var das_text : string&) {
+def check_fixture(t : T?; name : string; var das_text : string&; param_writes : string = "") {
     let want = native(name)
     t |> equal(want.rc >= 0, true, want.out)
-    let have = converted(t, name, das_text)
+    let have = converted(t, name, das_text, param_writes)
     t |> equal(have.out, want.out)
     t |> equal(have.rc, want.rc)
 }
@@ -212,6 +222,7 @@ def p2_fixtures(t : T?) {
     p4_function_fixtures(t)
     p4_pointer_policy_fixtures(t)
     p4_varargs_fixtures(t)
+    p4_param_writes_fixtures(t)
 }
 
 def p2_enum_fixtures(t : T?) {
@@ -667,6 +678,55 @@ def p4_pointer_policy_fixtures(t : T?) {
         // a hoisted temporary holding a pointer is `var`
         has_text(t, text, "var _t0 = p4_pointer_policy__next_pick(addr(a[0]))")
         has_text(t, text, "var _t2 = reinterpret<void?>(addr(_c_astack[_c_aoff]))")
+    }
+}
+
+def p4_param_writes_fixtures(t : T?) {
+    t |> run("parameter writes: in place by default, a local copy under --param-writes copy, the same output both ways") @(t : T?) {
+        var text, copied : string
+        check_fixture(t, "p4_param_writes", text)
+        check_fixture(t, "p4_param_writes", copied, "in-place")
+        t |> equal(copied, text)
+        check_fixture(t, "p4_param_writes", copied, "copy")
+        // in place: the written scalar or pointer parameter is `var`, no copy opens the body
+        has_text(t, text, "def private p4_param_writes__count_down(var n : int) : int \{\n    var steps : int = 0\n")
+        has_text(t, text, "def private p4_param_writes__reassigned(var q : int?; k : int) : int \{\n    q = q + k\n")
+        has_text(t, text, "def private p4_param_writes__through_address(var x : int) : int \{\n    p4_param_writes__set_to(addr(x), x * 3)\n")
+        has_text(t, text, "def private p4_param_writes__shadowed(v_in : int; var v : int) : int \{\n    var pv : int? = addr(v)\n")
+        t |> equal(count_of(text, "_in1"), 0)
+        // copy: the parameter keeps its own mode under a free name, a scalar `let`, a pointer
+        // `var` (F3), and the body opens with its `var` copy
+        has_text(t, copied, "def private p4_param_writes__count_down(n_in : int) : int \{\n    var n = n_in\n    var steps : int = 0\n")
+        has_text(t, copied, "def private p4_param_writes__sum_walk(var p_in : int?; n : int) : int \{\n    var p = p_in\n")
+        has_text(t, copied, "def private p4_param_writes__reassigned(var q_in : int?; k : int) : int \{\n    var q = q_in\n    q = q + k\n")
+        has_text(t, copied, "def private p4_param_writes__through_address(x_in : int) : int \{\n    var x = x_in\n    p4_param_writes__set_to(addr(x), x * 3)\n")
+        has_text(t, copied, "def private p4_param_writes__apply(fn : function<(a0 : int) : int>; v_in : int) : int \{\n    var v = v_in\n")
+        has_text(t, copied, "def private p4_param_writes__shadowed(v_in : int; v_in1 : int) : int \{\n    var v = v_in1\n")
+        // a parameter only read and the record copy are the same in both modes
+        has_text(t, copied, "def private p4_param_writes__read_at(var q : int?) : int \{\n    return deref(q)\n")
+        has_text(t, text, "def private p4_param_writes__record_param(var h_in : holder) : int \{\n    var h = h_in\n")
+        has_text(t, copied, "def private p4_param_writes__record_param(var h_in : holder) : int \{\n    var h = h_in\n")
+        has_text(t, copied, "def private p4_param_writes__aliased(var a_in : holder; var b : holder?) : int \{\n    var a = a_in\n")
+        // a `va_list` parameter is the caller's cursor, in place in both modes
+        var va_text : string
+        check_fixture(t, "p4_varargs", va_text, "copy")
+        has_text(t, va_text, "def private p4_varargs__take_two(var ap : CVaCursor) : int")
+    }
+    t |> run("parameter writes: the sidecar's `param_writes`, refused when it is not a mode, and the converter's option over it") @(t : T?) {
+        let source = "static int dec(int n) \{ n--; return n; \}\nint main(void) \{ return dec(1); \}\n"
+        rejects(t, "param_writes_bad", source, "`param_writes` is \"in-place\" or \"copy\"", "\{\"param_writes\": \"local\"\}\n")
+        rejects(t, "param_writes_number", source, "`param_writes` is \"in-place\" or \"copy\"", "\{\"param_writes\": 1\}\n")
+        rejects(t, "param_writes_option", source, "--param-writes is in-place or copy, not `local`", "", "local")
+        // a sidecar holding no `marshal` key is taken
+        let by_sidecar = converts(t, "param_writes_copy", source, "\{\"param_writes\": \"copy\"\}\n")
+        has_text(t, by_sidecar, "def private param_writes_copy__dec(n_in : int) : int \{\n    var n = n_in\n")
+        let in_place = converts(t, "param_writes_in_place", source, "\{\"param_writes\": \"in-place\"\}\n")
+        has_text(t, in_place, "def private param_writes_in_place__dec(var n : int) : int \{\n")
+        // the option wins over the sidecar, both ways
+        let over_copy = converts(t, "param_writes_over_copy", source, "\{\"param_writes\": \"copy\"\}\n", "in-place")
+        has_text(t, over_copy, "def private param_writes_over_copy__dec(var n : int) : int \{\n")
+        let over_in_place = converts(t, "param_writes_over_in_place", source, "\{\"param_writes\": \"in-place\"\}\n", "copy")
+        has_text(t, over_in_place, "def private param_writes_over_in_place__dec(n_in : int) : int \{\n    var n = n_in\n")
     }
 }
 

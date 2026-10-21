@@ -30,10 +30,13 @@ harness that times them under every lane, and the stored results.
   pass folds.
 - `run.das` - the harness: composes each kernel (`perf_compose.das`), builds the native lane
   with the pinned clang at `-O3 -funsigned-char` (dasProfile's Release build gives its C++
-  kernels `-O3`, and the lane follows its method), converts the same file through `converter/pipeline.das`, and runs each
+  kernels `-O3`, and the lane follows its method), converts the same file through `converter/pipeline.das` (twice: the second under
+  `--param-writes copy` for the `interp-copy` lane), and runs each
   lane as its own process `--samples` times (five by default). A cell is the median, with ±
   half the sample range as a share of it; startup never enters a cell because the program
-  times itself. The run writes `results_linux.json` and prints the results table,
+  times itself; each das lane logs its argv at `info`. The run writes `results_linux.json`, or
+  the `--out <file>` it is given (which `--table` then reads; the delta's default baseline stays
+  the committed file at HEAD), and prints the results table,
   `--ratios` adds the ratio table, and the delta table follows whenever a baseline capture
   exists (section 5); `--table` renders the stored file instead of measuring, `--readme`
   rewrites the results table between the markers in `README.md`, and `--report <path>` writes
@@ -55,7 +58,9 @@ harness that times them under every lane, and the stored results.
 - `perf_cli.das` - the file side of the harness: whole-file text, the baseline capture
   (section 5), and the text a run prints and writes as its report.
 - `tests/` - the dastest suite over `perf_tables.das` and `perf_cli.das`, driven by JSON
-  fixtures; the preflight tests lane runs it.
+  fixtures, and `run.das` itself as a child process: `-?`, and one sample of `blit` into an
+  `--out` file, whose `interp-copy` cell must time the copy conversion and match the native
+  result; the preflight tests lane runs it.
 - `results_linux.json` - the committed capture: CPU, platform, timestamp, the clang and
   daslang versions, the sample count, and per kernel and lane the median, spread, rep count,
   the result and raw samples.
@@ -65,7 +70,12 @@ harness that times them under every lane, and the stored results.
 ## 2. The lanes
 
 `native` is the C program; `interp` and `jit` are `daslang` and `daslang -jit` over the
-converted module with `-load_module` for `c_runtime` and `dasCRuntime`; `exe` is the
+converted module with `-load_module` for `c_runtime` and `dasCRuntime`; `interp-copy` is
+`daslang` over a second conversion of the kernel under `--param-writes copy`, into
+`work/<kernel>/copy/`, the faster form of the "speed vs idiomatic" pair the converter offers
+(`converter/ARCHITECTURE_EMITTER.md` section 4): every other lane runs the default `in-place`
+conversion, and the copy lane's cells read beside `interp`'s, since the interpreter writes a
+local faster than an argument slot (`blit` writes its three parameters in its loop); `exe` is the
 JIT-linked executable; `aot` is the `-ctx` context compiled with the seven-line host of
 `converter/tiers.das`, which links `dasCRuntime/src/*.cpp` into the host because the
 generated context declares `Module_CRT` and includes its header. The host compiles with the
@@ -96,6 +106,10 @@ under the interpreter, which is the gap to dasProfile's hand-written das on the 
 kernel; the `range` rewrite of a canonical `for` is the O1 row of
 `docs/implementation_order.md`. The AOT `sieve` and `matmul` cells are ledgered in
 section 4.
+Of the kernels only `blit` writes a parameter, so its module is the only one the copy mode
+changes (its three parameters copied on entry); the `interp-copy` lane runs it about 10 percent
+faster than `interp` (0.0376 against 0.0416 s), and every other row of the lane times the same
+module as `interp`, the two cells apart by the samples' spread alone.
 
 ## 4. Exception ledger
 

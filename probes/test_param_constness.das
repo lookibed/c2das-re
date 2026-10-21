@@ -5,7 +5,8 @@ require _daslang_child
 //! The das facts the pointer-constness policy (docs/implementation_order.md P4.6) rests on: what
 //! a `var` pointer or record parameter takes from its caller, why no copy of a `let` record's
 //! pointer field is writable, that a function type carries a record position's `var`, and that
-//! a write to a `var` scalar or pointer parameter stays in the callee.
+//! a write to a `var` scalar or pointer parameter stays in the callee, and which local copy of a
+//! pointer parameter writes through its pointee (P4.7a's copy mode).
 
 let PRELUDE = "options gen2
 struct S \{
@@ -114,5 +115,15 @@ def test_param_constness(t : T?) {
         let jit = daslang_child_flags("byval_jit", src, jit_flags())
         t |> equal(jit_ran(jit.out), true, jit.out)
         t |> equal(program_output(jit.out), "1 5 true\n", jit.out)
+    }
+}
+
+[test]
+def test_param_copy(t : T?) {
+    t |> run("a `var` local copied from a `let` pointer parameter keeps the const pointee; one copied from a `var` parameter writes through it, and its own writes stay in the callee") @(t : T?) {
+        record_rejects(t, "let_param_copy_store", "def f(p_in : int?) \{\n    var p = p_in\n    unsafe \{\n        *p = 5\n    \}\n\}\n", "can't write to a constant value")
+        record_rejects(t, "let_param_copy_pass", "def f(p_in : int?) \{\n    var p = p_in\n    bump(p)\n\}\n", "no matching functions or generics: bump(int const?&)")
+        let copied = "def f(var p_in : int?; n_in : int) : int \{\n    var p = p_in\n    var n = n_in\n    unsafe \{\n        *p = 5\n    \}\n    bump(p)\n    n++\n    p = null\n    return n\n\}\n[export]\ndef main \{\n    var x = 1\n    var q = unsafe(addr(x))\n    var k = 3\n    let r = f(q, k)\n    print(\"\{r\} \{k\} \{x\} \{q != null\}\\n\")\n\}\n"
+        t |> equal(child_output(t, "var_param_copy", copied), "4 3 6 true\n")
     }
 }

@@ -51,6 +51,8 @@ struct Args {
     baseline : string = ""
     @clarg_doc = "write the results, ratio and delta tables as one markdown block to this file"
     report : string = ""
+    @clarg_doc = "the results file a run writes and --table reads (default perf/results_linux.json)"
+    out : string = RESULTS
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -152,7 +154,19 @@ def accept_lane(var cells : table<string; Cell>; lane : string; var cell : Cell;
     }
 }
 
-//! Every lane of one kernel: the native build and the four converter tiers.
+// one das lane of kernel `name` measured over `argv`, which it logs at `info`, into `cells`, or a line in `errors`
+def measure_lane(var cells : table<string; Cell>; var errors : array<string>; name, lane : string; argv : array<string>; samples, oracle : int) {
+    to_log(LOG_INFO, "{name}/{lane}: {join(argv, " ")}\n")
+    var err : string
+    var cell <- measure(argv, samples, err)
+    accept_lane(cells, lane, cell, oracle, err)
+    if (!empty(err)) {
+        errors |> push("{name}/{lane}: {err}")
+    }
+}
+
+//! Every lane of one kernel: the native build, the four converter tiers, and the interpreter
+//! over the conversion under `--param-writes copy`.
 def run_kernel(name : string; samples : int; var errors : array<string>) : table<string; Cell> {
     var cells : table<string; Cell>
     let work = path_join(WORK, name)
@@ -183,40 +197,25 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
         loader |> push("-load_module")
         loader |> push(dir)
     }
-    var err : string
-    var interp <- measure(with_binary_first(daslang, loader, "", res.das_path), samples, err)
-    accept_lane(cells, "interp", interp, oracle, err)
-    if (!empty(err)) {
-        errors |> push("{name}/interp: {err}")
+    measure_lane(cells, errors, name, "interp", with_binary_first(daslang, loader, "", res.das_path), samples, oracle)
+    // the same lane over the conversion under `--param-writes copy`, in its own folder
+    let copied <- convert(c_path, path_join(work, "copy"), "linux", "", "", "copy")
+    if (copied.ok) {
+        measure_lane(cells, errors, name, "interp-copy", with_binary_first(daslang, loader, "", copied.das_path), samples, oracle)
+    } else {
+        errors |> push("{name}/interp-copy: convert: {first_line(copied.error)}")
     }
-    err = ""
-    var jit <- measure(with_binary_first(daslang, loader, "-jit", res.das_path), samples, err)
-    accept_lane(cells, "jit", jit, oracle, err)
-    if (!empty(err)) {
-        errors |> push("{name}/jit: {err}")
-    }
+    measure_lane(cells, errors, name, "jit", with_binary_first(daslang, loader, "-jit", res.das_path), samples, oracle)
     var tier_out : string
     if (run_tier(res.das_path, "exe", work, tier_out, CONVERTED_MODULES) >= 0) {
         let exe = path_join(work, "{name}_exe")
-        let built = fexist(exe + ".exe") ? exe + ".exe" : exe
-        err = ""
-        var exe_cell <- measure([built], samples, err)
-        accept_lane(cells, "exe", exe_cell, oracle, err)
-        if (!empty(err)) {
-            errors |> push("{name}/exe: {err}")
-        }
+        measure_lane(cells, errors, name, "exe", [fexist(exe + ".exe") ? exe + ".exe" : exe], samples, oracle)
     } else {
         errors |> push("{name}/exe: {first_line(tier_out)}")
     }
     tier_out = ""
     if (run_tier(res.das_path, "aot", work, tier_out, CONVERTED_MODULES) >= 0) {
-        let bin = path_join(path_join(work, "ctx"), "{name}_aot")
-        err = ""
-        var aot_cell <- measure([bin], samples, err)
-        accept_lane(cells, "aot", aot_cell, oracle, err)
-        if (!empty(err)) {
-            errors |> push("{name}/aot: {err}")
-        }
+        measure_lane(cells, errors, name, "aot", [path_join(path_join(work, "ctx"), "{name}_aot")], samples, oracle)
     } else {
         errors |> push("{name}/aot: {first_line(tier_out)}")
     }
@@ -273,7 +272,7 @@ def main : int {
         return 1
     }
     if (args.show_table) {
-        let js = read_json_file(RESULTS, error)
+        let js = read_json_file(args.out, error)
         if (js == null) {
             to_log(LOG_ERROR, "{error}\n")
             return 1
@@ -300,7 +299,7 @@ def main : int {
         "tests" => JV(tests)
     }
     let js = JV(root)
-    write_text(RESULTS, write_json(js) + "\n")
+    write_text(args.out, write_json(js) + "\n")
     print(show_tables(js, baseline, baseline_name, args.ratios, args.report))
     if (args.readme && !update_readme(render_results(js))) {
         to_log(LOG_ERROR, "{README} has no perf-table markers\n")

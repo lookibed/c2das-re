@@ -14,7 +14,7 @@ def capture_of(t : T?; text : string) : JsonValue? {
     return js
 }
 
-let TWO_BY_TWO = "\{'timestamp': 'T', 'platform': 'P', 'cpu': 'C', 'samples': 5, 'versions': \{'clang': 'clang', 'daslang': 'das'\}, 'tests': \{'b': \{'native': \{'time': 0.002, 'spread': 0.01\}, 'jit': \{'time': 0.001, 'spread': 0.0\}\}, 'a': \{'native': \{'time': 0.001, 'spread': 0.0\}, 'jit': \{'time': 0.003, 'spread': 0.026\}\}\}\}"
+let TWO_BY_TWO = "\{'timestamp': 'T', 'platform': 'P', 'cpu': 'C', 'samples': 5, 'versions': \{'clang': 'clang', 'daslang': 'das'\}, 'tests': \{'b': \{'native': \{'time': 0.002, 'spread': 0.01\}, 'jit': \{'time': 0.001, 'spread': 0.0\}\}, 'a': \{'native': \{'time': 0.001, 'spread': 0.0\}, 'interp-copy': \{'time': 0.004, 'spread': 0.0\}, 'jit': \{'time': 0.003, 'spread': 0.026\}\}\}\}"
 
 [test]
 def test_ratio(t : T?) {
@@ -43,7 +43,7 @@ def test_ratio(t : T?) {
 [test]
 def test_delta(t : T?) {
     let old = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.0\}\}, 'c': \{'native': \{'time': 1.0\}\}\}\}")
-    let js = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 0.95\}, 'jit': \{'time': 2.0\}, 'aot': \{'time': 1.0\}\}, 'b': \{'native': \{'time': 1.0\}\}\}\}")
+    let js = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 0.95\}, 'interp-copy': \{'time': 3.0\}, 'jit': \{'time': 2.0\}, 'aot': \{'time': 1.0\}\}, 'b': \{'native': \{'time': 1.0\}\}\}\}")
     t |> run("a cell on both sides is a signed percent") @(t : T?) {
         var cents = 0l
         t |> success(delta_cents(js, old, "a", "native", cents))
@@ -57,12 +57,13 @@ def test_delta(t : T?) {
     t |> run("a lane or a kernel missing on either side has no delta") @(t : T?) {
         var cents = 0l
         t |> success(!delta_cents(js, old, "a", "aot", cents), "lane only in the new capture")
+        t |> success(!delta_cents(js, old, "a", "interp-copy", cents), "the copy lane only in the new capture")
         t |> success(!delta_cents(js, old, "b", "native", cents), "kernel only in the new capture")
         t |> success(!delta_cents(js, old, "c", "native", cents), "kernel only in the baseline")
     }
     t |> run("the delta table spans the kernels of both captures, n/a where a side is missing") @(t : T?) {
         let text = render_delta(js, old, "old.json")
-        t |> equal(text, "Delta against old.json, (new - old) / old per kernel and lane.\n\n| Test | C (clang -O3) | DAS interpreter | DAS JIT | DAS exe | DAS AOT |\n| :--- | ------------: | --------------: | ------: | ------: | ------: |\n| a    |        -5.00% |             n/a |  +0.00% |     n/a |     n/a |\n| b    |           n/a |             n/a |     n/a |     n/a |     n/a |\n| c    |           n/a |             n/a |     n/a |     n/a |     n/a |\n\nno lane slower than 10%\n")
+        t |> equal(text, "Delta against old.json, (new - old) / old per kernel and lane.\n\n| Test | C (clang -O3) | DAS interpreter | DAS interp, copied params | DAS JIT | DAS exe | DAS AOT |\n| :--- | ------------: | --------------: | ------------------------: | ------: | ------: | ------: |\n| a    |        -5.00% |             n/a |                       n/a |  +0.00% |     n/a |     n/a |\n| b    |           n/a |             n/a |                       n/a |     n/a |     n/a |     n/a |\n| c    |           n/a |             n/a |                       n/a |     n/a |     n/a |     n/a |\n\nno lane slower than 10%\n")
     }
 }
 
@@ -94,27 +95,28 @@ def test_delta_across_cpus(t : T?) {
 
 [test]
 def test_flag(t : T?) {
-    let old = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 1.0\}\}\}\}")
+    let old = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.0\}, 'interp-copy': \{'time': 1.0\}, 'jit': \{'time': 1.0\}\}\}\}")
     t |> run("exactly 10 percent slower is not flagged") @(t : T?) {
         let js = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 1.1\}\}\}\}")
         t |> equal(length(flagged_cells(js, old)), 0)
         t |> success(render_delta(js, old, "old") |> ends_with("\n\nno lane slower than 10%\n"))
     }
     t |> run("10.01 percent slower is flagged, one FLAG list item per cell") @(t : T?) {
-        let js = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.2\}, 'jit': \{'time': 1.1001\}\}\}\}")
+        let js = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.2\}, 'interp-copy': \{'time': 1.5\}, 'jit': \{'time': 1.1001\}\}\}\}")
         let flags <- flagged_cells(js, old)
-        t |> equal(length(flags), 2)
+        t |> equal(length(flags), 3)
         t |> equal(flags[0], "a/native +20.00%")
-        t |> equal(flags[1], "a/jit +10.01%")
-        t |> success(render_delta(js, old, "old") |> ends_with("|\n\n- FLAG a/native +20.00%\n- FLAG a/jit +10.01%\n"))
+        t |> equal(flags[1], "a/interp-copy +50.00%")
+        t |> equal(flags[2], "a/jit +10.01%")
+        t |> success(render_delta(js, old, "old") |> ends_with("|\n\n- FLAG a/native +20.00%\n- FLAG a/interp-copy +50.00%\n- FLAG a/jit +10.01%\n"))
     }
 }
 
 [test]
 def test_markdown(t : T?) {
     let js = capture_of(t, TWO_BY_TWO)
-    let results = "Captured on T, P, C; clang, das. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.\n\n| Test |      C (clang -O3) | DAS interpreter |            DAS JIT | DAS exe | DAS AOT |\n| :--- | -----------------: | --------------: | -----------------: | ------: | ------: |\n| a    | **0.001000s ±0%** |             n/a |     0.003000s ±3% |     n/a |     n/a |\n| b    |     0.002000s ±1% |             n/a | **0.001000s ±0%** |     n/a |     n/a |\n"
-    let ratios = "Lane time / native, per kernel.\n\n| Test | C (clang -O3) | DAS interpreter | DAS JIT | DAS exe | DAS AOT |\n| :--- | ------------: | --------------: | ------: | ------: | ------: |\n| a    |          1.00 |             n/a |    3.00 |     n/a |     n/a |\n| b    |          1.00 |             n/a |    0.50 |     n/a |     n/a |\n"
+    let results = "Captured on T, P, C; clang, das. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.\n\n| Test |      C (clang -O3) | DAS interpreter | DAS interp, copied params |            DAS JIT | DAS exe | DAS AOT |\n| :--- | -----------------: | --------------: | ------------------------: | -----------------: | ------: | ------: |\n| a    | **0.001000s ±0%** |             n/a |            0.004000s ±0% |     0.003000s ±3% |     n/a |     n/a |\n| b    |     0.002000s ±1% |             n/a |                       n/a | **0.001000s ±0%** |     n/a |     n/a |\n"
+    let ratios = "Lane time / native, per kernel.\n\n| Test | C (clang -O3) | DAS interpreter | DAS interp, copied params | DAS JIT | DAS exe | DAS AOT |\n| :--- | ------------: | --------------: | ------------------------: | ------: | ------: | ------: |\n| a    |          1.00 |             n/a |                      4.00 |    3.00 |     n/a |     n/a |\n| b    |          1.00 |             n/a |                       n/a |    0.50 |     n/a |     n/a |\n"
     t |> run("results: sorted kernels, the fastest lane bold, the spread rounded, a missing lane n/a") @(t : T?) {
         t |> equal(render_results(js), results)
     }

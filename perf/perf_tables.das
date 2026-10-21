@@ -13,8 +13,8 @@ require daslib/md_boost
 //! ratio of every lane's time to native's, the delta of every cell against a baseline capture
 //! with the cells slower than the flag bar, and the markdown report holding all three.
 
-let LANES <- ["native", "interp", "jit", "exe", "aot"]
-let LANE_TITLES <- {"native" => "C (clang -O3)", "interp" => "DAS interpreter", "jit" => "DAS JIT", "exe" => "DAS exe", "aot" => "DAS AOT"}
+let LANES <- ["native", "interp", "interp-copy", "jit", "exe", "aot"]
+let LANE_TITLES <- {"native" => "C (clang -O3)", "interp" => "DAS interpreter", "interp-copy" => "DAS interp, copied params", "jit" => "DAS JIT", "exe" => "DAS exe", "aot" => "DAS AOT"}
 //! a delta is kept in hundredths of a percent, so exactly 10 percent never flags by rounding
 let FLAG_CENTS = 1000l
 //! a lane this far under native measures a different program

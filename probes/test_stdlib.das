@@ -1,5 +1,6 @@
 options gen2
 require dastest/testing_boost public
+require daslib/json_boost
 
 def cmp_desc(a, b : void?) : int {
     unsafe {
@@ -20,6 +21,17 @@ def test_stdlib(t : T?) {
             t |> equal(int(deref(raw + 3)), 9)
             free(raw)
         }
+    }
+    t |> run("json_boost's `?[]` of a missing key is a non-null sentinel, so `key_exists` tells a sidecar key's presence") @(t : T?) {
+        var err : string
+        var js = read_json("\{\"a\": \"x\"\}", err)
+        let missing = js?["b"]
+        t |> equal(missing != null, true)
+        t |> equal(missing is _array, false)
+        t |> equal(missing ?? "dflt", "dflt")
+        t |> equal(key_exists(js, "a"), true)
+        t |> equal(key_exists(js, "b"), false)
+        delete_json(js)
     }
     t |> run("das sort takes a C comparator through a block adapter") @(t : T?) {
         var arr <- [5, 1, 4, 2, 3, 6]

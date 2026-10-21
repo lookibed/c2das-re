@@ -362,6 +362,18 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   interpreter over the copy-mode conversion, beside `interp` in `results_linux.json`, the
   README table and the report; the readability capture's keys `perf/<kernel>@copy` for the
   kernels under both modes. The kernel `blit` covers the parameter write in both modes.
+  Landed: `--param-writes in-place|copy` in `converter/main.das` and the sidecar key
+  `param_writes`, the option over the key; under `copy` a written scalar or pointer parameter
+  is `n_in` (the record copy's free-name rule) and the body opens with `var n = n_in`, the
+  parameter keeping its own mode, a pointer `var`, since a `var` copy of a `let` pointer
+  parameter keeps a const pointee (`probes/test_param_constness.das`, `test_param_copy`); a
+  `va_list` parameter stays in place in both modes. Every fixture converts byte-identically
+  under the default and under an explicit `in-place` (both targets), and every one runs as its
+  native build under `copy`; `converter/tests/fixtures/p4_param_writes.c` runs in both modes in
+  test_lowerings. A sidecar without `marshal` is no longer refused (json_boost's `?[]` of a
+  missing key is a non-null sentinel, `probes/test_stdlib.das`). The `interp-copy` lane runs
+  `blit` 10 percent faster than `interp`, the only kernel whose module the mode changes; the
+  readability keys `perf/<kernel>@copy` count the same as their in-place keys.
 - **P4.8 Scope fidelity.** A block flattened for a goto into it whose local hides a same-named
   global (`int g = 40; ... goto in; { int g = 3; in: ... } printf(g)`: the flattened local
   captures the later reads of the global, which the emitter refuses), and a local declared under one case label and
@@ -371,7 +383,11 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   twice, `int v = arr[k++].a++;` lowering to `let _t1 = k; k++; let _t2 = k; k++; let _t0 =
   arr[_t1].a; arr[_t2].a++` (gcc prints `0 1 1 0`, the conversion `0 2 0 1`); the
   value-producing step reuses the index the read hoisted. The P2.4 ledger's `(*next())++` is the
-  same family.
+  same family, and so is an assignment used as a value: the emitter stores, then reads the
+  left-hand side again, so `if ((*p++ = *q++))` lowers to `var _t0 = p; p = p + 1; ...;
+  deref(_t0) = deref(_t1); var _t2 = p; p = p + 1; if (deref(_t2) != 0)` (native prints `1 1`,
+  the conversion `0 2`; `while ((*d++ = *s++))` copies nothing); the value read is the stored
+  value, through the temporary the store used.
 - **Exit criterion:** csmith runs clean at 1000/night for a week; torture ≥ target with
   ledger; matrix has no row without a green fixture.
 

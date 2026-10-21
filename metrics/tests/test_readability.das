@@ -314,6 +314,16 @@ def test_worker(t : T?) {
         t |> success(counts |> starts_with("ok\n"), counts)
         t |> success(counts |> contains("\nwhile_rangeable "), counts)
     }
+    t |> run("--one converts a kernel's `@copy` key under --param-writes copy, the plain key in place") @(t : T?) {
+        var counts : string
+        t |> equal(run_worker("perf/blit@copy", counts), 0)
+        t |> success(counts |> starts_with("ok\n"), counts)
+        let copied = fread("metrics/work/perf/blit@copy/das/blit.das")
+        t |> success(copied |> contains("(var src_in : uint8?; var dst_in : uint8?; n_in : int) \{\n    var src = src_in\n"), copied)
+        t |> equal(run_worker("perf/blit", counts), 0)
+        let in_place = fread("metrics/work/perf/blit/das/blit.das")
+        t |> success(in_place |> contains("(var src : uint8?; var dst : uint8?; var n : int) \{\n"), in_place)
+    }
     t |> run("an input that does not convert, and a seed csmith refuses, are errors") @(t : T?) {
         var counts : string
         t |> equal(run_worker("c_testsuite/no_such_test", counts), 0)

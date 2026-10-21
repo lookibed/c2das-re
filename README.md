@@ -43,21 +43,22 @@ See `ARCHITECTURE.md` for the folder charters: `converter/`, `c_runtime/`, `dasC
 The comparison `docs/very-detailed-plan.md` section 2 asks for, measured the way
 [dasProfile](https://github.com/borisbat/dasProfile) measures: each kernel under `perf/kernels/`
 is a C program built natively by the pinned clang at `-O3`, dasProfile's level for its C++ kernels, and converted by the pipeline, run
-under every daslang tier; `scripts/run_perf.sh --readme` refreshes this table from
+under every daslang tier, and once more under the interpreter as converted with
+`--param-writes copy` (the "copied params" column); `scripts/run_perf.sh --readme` refreshes this table from
 `perf/results_linux.json`.
 
 <!-- perf-table:begin -->
-Captured on 2026-10-21 10:28 UTC, linux x86_64, AMD FX(tm)-6300 Six-Core Processor; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
+Captured on 2026-10-21 12:52 UTC, linux x86_64, AMD FX(tm)-6300 Six-Core Processor; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
 
-| Test          |      C (clang -O3) | DAS interpreter |            DAS JIT |        DAS exe |            DAS AOT |
-| :------------ | -----------------: | --------------: | -----------------: | -------------: | -----------------: |
-| bit_pack      | **0.000206s ±0%** |  0.069154s ±2% |     0.000250s ±0% | 0.000225s ±0% |     0.000232s ±0% |
-| blit          |     0.000428s ±1% |  0.042289s ±4% |     0.004012s ±5% | 0.004501s ±1% | **0.000422s ±1%** |
-| fib_loop      | **0.001904s ±0%** |  0.356917s ±2% |     0.004367s ±0% | 0.004369s ±0% |     0.001905s ±0% |
-| fib_recursive |     0.008448s ±0% |  0.073070s ±0% |     0.007961s ±0% | 0.008448s ±0% | **0.007879s ±1%** |
-| fixed_mandel  |     0.000843s ±0% |  0.034913s ±4% | **0.000547s ±0%** | 0.000551s ±0% |     0.000759s ±0% |
-| matmul        |     0.000600s ±0% |  0.059596s ±2% | **0.000347s ±0%** | 0.000576s ±0% |     0.000862s ±1% |
-| primes        |     0.048707s ±0% |  0.347330s ±2% |     0.045277s ±0% | 0.045262s ±0% | **0.035954s ±0%** |
-| qsort_cmp     | **0.000208s ±0%** |  0.001960s ±6% |     0.000543s ±0% | 0.000531s ±0% |     0.000560s ±0% |
-| sieve         | **0.006794s ±0%** |  0.173253s ±4% |     0.007291s ±0% | 0.007145s ±0% |     0.036642s ±0% |
+| Test          |      C (clang -O3) | DAS interpreter | DAS interp, copied params |            DAS JIT |         DAS exe |            DAS AOT |
+| :------------ | -----------------: | --------------: | ------------------------: | -----------------: | --------------: | -----------------: |
+| bit_pack      | **0.000207s ±0%** |  0.069696s ±1% |            0.070492s ±3% |     0.000250s ±0% |  0.000225s ±0% |     0.000232s ±0% |
+| blit          |     0.000427s ±1% |  0.041607s ±7% |            0.037567s ±6% |     0.003989s ±2% |  0.004527s ±1% | **0.000425s ±1%** |
+| fib_loop      | **0.001904s ±0%** |  0.354527s ±2% |           0.360965s ±11% |     0.004361s ±0% |  0.004361s ±0% |     0.001904s ±0% |
+| fib_recursive |     0.008449s ±0% |  0.072704s ±4% |            0.075062s ±7% |     0.007964s ±1% |  0.008431s ±0% | **0.007905s ±1%** |
+| fixed_mandel  |     0.000843s ±0% |  0.035140s ±2% |            0.035018s ±3% | **0.000547s ±0%** |  0.000551s ±0% |     0.000759s ±0% |
+| matmul        |     0.000599s ±0% |  0.060180s ±1% |            0.061730s ±3% | **0.000346s ±0%** |  0.000576s ±0% |     0.000861s ±1% |
+| primes        |     0.048707s ±0% |  0.397390s ±8% |            0.345319s ±0% |     0.045265s ±0% |  0.045260s ±0% | **0.035949s ±0%** |
+| qsort_cmp     | **0.000209s ±0%** |  0.001952s ±0% |            0.001952s ±3% |     0.000543s ±3% | 0.000532s ±12% |     0.000558s ±1% |
+| sieve         | **0.006811s ±2%** |  0.173065s ±5% |            0.173003s ±1% |     0.007290s ±1% |  0.007153s ±0% |     0.036603s ±0% |
 <!-- perf-table:end -->

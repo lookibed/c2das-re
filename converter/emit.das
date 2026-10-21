@@ -56,6 +56,9 @@ struct Emitter {
     // `options stack` (the sidecar's `stack`)
     alloca_limit : int
     stack_option : int
+    // the sidecar's or the option's `param_writes` is `copy`: a written scalar or pointer
+    // parameter gets a local copy instead of being written in place
+    param_copy : bool
     // the function's C labels by das number, and the blocks emitted without braces so a goto
     // into them finds its label in an enclosing scope
     labels : table<string; int>
@@ -2896,9 +2899,11 @@ def private function_params(var em : Emitter; tu : CirTu; d : CirDecl; var taken
             continue
         }
         let mode = is_var_parameter(tu, p.t) ? "var " : ""
-        if (is_record(tu, p.t)) {
-            // das passes a record by reference: the copy is C's by-value one, under a name no
-            // parameter or local of the body takes
+        // das passes a record by reference: the copy is C's by-value one; in the copy mode a
+        // written scalar or pointer is copied too, since the interpreter writes a local faster
+        // than an argument slot. The parameter keeps its mode under a name no parameter or
+        // local of the body takes
+        if (is_record(tu, p.t) || (em.param_copy && key_exists(em.written, p.name))) {
             let copy = free_name(taken, "{name}_in")
             params |> push("{mode}{copy} : {spelled}")
             copies |> push("var {name} = {copy}")
@@ -3509,6 +3514,7 @@ def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
     flag_marshal(em, tu, side)
     em.alloca_limit = side.alloca_limit > 0 ? side.alloca_limit : ALLOCA_LIMIT
     em.stack_option = side.stack
+    em.param_copy = side.param_writes == "copy"
     // the module's first `[init]` goes here, though only the functions tell whether it is needed:
     // the format families read `l` at the dialect's `long`, never the host CRT's
     let dialect_at = length(em.out)

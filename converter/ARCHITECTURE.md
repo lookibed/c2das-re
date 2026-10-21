@@ -34,9 +34,14 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `sidecar.das` - the per-project `.c2das` file as a `Sidecar` value: `find_sidecar` (the
   path given, else `<stem>.c2das` beside the C file, else `.c2das` in its folder) and
   `read_sidecar` (JSON; a key the row that needs it adds - `marshal`, the records read and
-  written as bytes). Nothing here knows the C-IR or the emitter.
-- `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar])`: dump, write the C-IR,
-  read it back and rewrite it (the bytes must match), read the sidecar, emit, format with
+  written as bytes; `stack` and `alloca_limit`; `param_writes`, `in-place` or `copy`, the
+  parameter write mode, any other value refused naming the key). A key's presence is
+  `key_exists`, since json_boost's `?[]` of a missing key is a non-null sentinel
+  (`probes/test_stdlib.das`). Nothing here knows the C-IR or the emitter.
+- `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes])`: dump,
+  write the C-IR, read it back and rewrite it (the bytes must match), read the sidecar (a
+  `param_writes` argument other than "" overrides the sidecar's key, and one that is not a
+  mode is refused), emit, format with
   `daslib/das_source_formatter`, compile-check with `compile_file`. Every artifact lands under
   `out_dir`; `file_stem` is the name every artifact of a C file carries.
 - `tiers.das` - `run_tier(das_path, tier, work_dir, output[, module_dirs[, timeout[,
@@ -46,13 +51,22 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   as a failure. `CONVERTED_MODULES` names the module folders a converted program requires and
   `daslang_cmd` spells the prefix; `native_run` builds a C file with a given compiler and flags
   and runs it once, the native side every differential test compares against.
-- `main.das` - the CLI (`daslib/clargs`): `c2das <file.c> [--out] [--target] [--run] [--sidecar]`.
+- `main.das` - the CLI (`daslib/clargs`): `c2das <file.c> [--out] [--target] [--run] [--sidecar]
+  [--param-writes in-place|copy]`. `--param-writes` chooses how the emitter writes a scalar or
+  pointer parameter the body assigns, steps or takes the address of: `in-place`, the default and
+  the idiomatic form, writes the parameter itself; `copy` writes a local copy, which the
+  interpreter runs faster (`ARCHITECTURE_EMITTER.md` section 4). The option wins over the
+  sidecar's `param_writes` when both are given, since a command line names one run and the
+  sidecar the project. A value other than those two is a usage error: exit 2 before any
+  conversion, as a missing input is.
 - `benchmarks/bench_for_shapes.das` - the loop-shape race behind section 4
   (`ARCHITECTURE_EMITTER.md`), run with `dastest -- --bench` under the interpreter and
   under `-jit`.
 - `tests/test_lowerings.das` - the P1 fixtures under `tests/fixtures/p1_*.c`, each converted
   and run against the native build of the same file by the pinned clang (output and exit
   code), plus the lowering shapes the text must carry.
+- `tests/test_cli.das` - `main.das` run as a child process over `tests/fixtures/p4_param_writes.c`:
+  `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2.
 - `tests/test_csmith_verdict.das` - the csmith driver's classification of a worker that ended
   (`suites/csmith/verdict.das`), the one piece of the driver testable without a process.
 - `tests/test_pipeline.das` - the P0 gate: `tests/fixtures/ret42.c` converts, the C-IR and the

@@ -78,17 +78,25 @@ def file_stem(c_path : string) : string {
     return dot < 0 ? name : slice(name, 0, dot)
 }
 
-def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = "") : ConvertResult {
+def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = "") : ConvertResult {
     var res : ConvertResult
+    if (!empty(param_writes) && !is_param_writes(param_writes)) {
+        res.error = "--param-writes is in-place or copy, not `{param_writes}`"
+        return <- res
+    }
     if (!mkdir_rec(out_dir) && !stat(out_dir).is_dir) {
         res.error = "cannot create {out_dir}"
         return <- res
     }
     var side_error : string
-    let side <- read_sidecar(find_sidecar(c_path, sidecar_path), side_error)
+    var side <- read_sidecar(find_sidecar(c_path, sidecar_path), side_error)
     if (!empty(side_error)) {
         res.error = "sidecar: {side_error}"
         return <- res
+    }
+    // the converter's option overrides the sidecar's key
+    if (!empty(param_writes)) {
+        side.param_writes = param_writes
     }
     var d <- dump_tu(c_path, target_by_name(target_name), empty(clang) ? default_clang() : clang)
     if (!empty(d.error)) {
