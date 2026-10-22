@@ -7,6 +7,7 @@ require daslib/clargs
 require daslib/json_boost
 require ../converter/pipeline.das
 require ../converter/tiers.das
+require ../converter/dumper_a.das
 require ../perf/perf_lanes.das
 require ports_render
 
@@ -16,9 +17,10 @@ require ports_render
 //! measures; then the top-level README's projects table, and with `--commit` a commit in the
 //! clone. Run from the repository root through `scripts/publish_ports.sh`.
 
-//! one workload of a program: its program arguments, the folder it runs in ("" for the repository
-//! root, else a folder under the program's fetch/), and whether a das lane's output must equal
-//! the native build's (else the exit code alone is compared)
+//! one workload of a program: its name, its program arguments, the arguments as the README shows
+//! them, whether it runs in the release's test-suite folder (else in the repository root), whether
+//! a das lane's output must equal the native build's (else the exit code alone is compared), and
+//! whether it is the startup row (no work: the program's load alone)
 struct WorkloadSpec {
     name : string
     args : array<string>
@@ -29,7 +31,8 @@ struct WorkloadSpec {
 }
 
 //! one program the publisher knows: its harness folder, the composed modules it publishes, the
-//! module the workloads run, the libraries its native build links, and its claims
+//! module the workloads run, the libraries its native build links, its upstream-test claims with
+//! the c2das-re item that recorded them, and its workloads
 struct Port {
     name : string
     title : string
@@ -39,17 +42,19 @@ struct Port {
     libs : array<string>
     license_header : string
     claims : array<string>
+    claims_item : string
     workloads : array<WorkloadSpec>
 }
 
 let ALL_LANES <- ["native", "interp", "jit", "exe", "aot"]
 let STARTUP_ARGS <- ["-e", "print(1)"]
+let WARM_UP_TIMEOUT = 3600.0
 let IDENTITY <- ["-c", "user.name=lookibed", "-c", "user.email=93531352+lookibed@users.noreply.github.com"]
 
 def private bench(name : string) : WorkloadSpec => <- WorkloadSpec(name = name, args <- [get_full_file_name("ports/lua/bench/{name}.lua")], shown = "bench/{name}.lua", compare_output = true)
 
 def private lua_port : Port => <- Port(
-    name = "lua", title = "Lua", harness = "lua", runs = "lua_all", license_header = "lua.h",
+    name = "lua", title = "Lua", harness = "lua", runs = "lua_all", license_header = "lua.h", claims_item = "P5.1",
     modules <- [
         (stem = "lua_all", role = "the interpreter `lua`: the core, the standard libraries and `lua.c` as one translation unit"),
         (stem = "luac_all", role = "the compiler `luac`: the core, the auxiliary library and `luac.c` as one translation unit")
@@ -86,6 +91,9 @@ struct Args {
     lanes : string = "interp,jit,exe,aot"
     @clarg_doc = "seconds one sample may run before its cell fails (default 1800)"
     timeout : int = 1800
+    @clarg_name = "allow-stale"
+    @clarg_doc = "with --no-convert, publish a work/ folder whose conversion stamp is missing or names another commit than HEAD"
+    allow_stale : bool
     @clarg_name = "allow-dirty"
     @clarg_doc = "publish from a c2das-re tree with uncommitted changes (the README names the commit -dirty)"
     allow_dirty : bool
@@ -99,12 +107,14 @@ struct Args {
     show_help : bool
 }
 
-//! the facts of one publish, each read once
+//! the c2das-re commit a conversion ran at, as `git describe --tags --always --dirty`, the full
+//! sha and the commit date answered then; `recorded` false for a `--allow-stale` publish of a
+//! work/ folder without a stamp, which names the tree's commit instead
 struct Generation {
     describe : string
     sha : string
     date : string
-    command : string
+    recorded : bool
 }
 
 def private git_in(dir : string; argv : array<string>; var out : string&) : int {
@@ -119,20 +129,23 @@ def private git_line(dir : string; argv : array<string>) : string {
 }
 
 // a clone is a git work tree whose top level is the directory itself
-def private is_clone(repo : string) : bool {
-    let top = git_line(repo, ["rev-parse", "--show-toplevel"])
-    return !empty(top) && top == strip(captured(["realpath", repo]))
-}
+def private is_clone(repo : string) : bool => git_line(repo, ["rev-parse", "--show-toplevel"]) == strip(captured(["realpath", repo]))
 
-def private generation_of(args : Args; port : Port) : Generation {
+def private tree_generation : Generation => Generation(describe = git_line(".", ["describe", "--tags", "--always", "--dirty"]), sha = git_line(".", ["rev-parse", "HEAD"]), date = git_line(".", ["log", "-1", "--format=%cs"]), recorded = true)
+
+// the command a reader runs to reproduce the publish, every flag that shapes the output named
+def private publish_command(args : Args; port : Port) : string {
     var command = "scripts/publish_ports.sh --program {port.name}"
     if (args.no_convert) {
         command += " --no-convert"
     }
-    if (args.perf) {
-        command += " --perf"
+    if (args.allow_stale) {
+        command += " --allow-stale"
     }
-    return Generation(describe = git_line(".", ["describe", "--tags", "--always", "--dirty"]), sha = git_line(".", ["rev-parse", "HEAD"]), date = git_line(".", ["log", "-1", "--format=%cs"]), command = command)
+    if (args.perf) {
+        command += " --perf --samples {args.samples} --lanes {args.lanes} --timeout {args.timeout}"
+    }
+    return command
 }
 
 def private tarball_stem(url : string) : string {
@@ -144,6 +157,39 @@ def private tarball_stem(url : string) : string {
 def private sources_of(port : Port; release : Release) : string => path_join(port.harness, "fetch/{tarball_stem(release.tarballs[0].url)}/src")
 def private tests_of(port : Port; release : Release) : string => path_join(port.harness, "fetch/{tarball_stem(release.tarballs[1].url)}")
 def private log_of(port : Port) : string => path_join(port.harness, "work/publish_run.log")
+def private stamp_of(port : Port) : string => path_join(port.harness, "work/publish.generation")
+def private module_of(port : Port; stem : string) : string => path_join(port.harness, "work/{stem}/{stem}.das")
+def private sidecar_of(port : Port) : string => path_join(port.harness, "{port.name}.c2das")
+
+// the stamp a conversion leaves beside its output: the sha, the describe and the date, one a line
+def private read_stamp(port : Port; var gen : Generation) : bool {
+    let lines <- split(fread(stamp_of(port)), "\n")
+    if (length(lines) < 3 || empty(lines[0])) {
+        return false
+    }
+    gen = Generation(sha = lines[0], describe = lines[1], date = lines[2], recorded = true)
+    return true
+}
+
+// the commit the published work/ folder was converted at: the stamp's, which under --no-convert
+// must name the tree's HEAD unless --allow-stale
+def private generation_for(args : Args; port : Port; var gen : Generation) : bool {
+    let tree = tree_generation()
+    if (read_stamp(port, gen)) {
+        if (gen.sha == tree.sha || args.allow_stale) {
+            return true
+        }
+        to_log(LOG_ERROR, "{port.name}: {stamp_of(port)} names the conversion at {gen.sha}, the tree is at {tree.sha}; run without --no-convert, or pass --allow-stale\n")
+        return false
+    }
+    if (!args.allow_stale) {
+        to_log(LOG_ERROR, "{port.name}: no {stamp_of(port)}, so no conversion of this tree is recorded; run without --no-convert, or pass --allow-stale\n")
+        return false
+    }
+    gen = tree
+    gen.recorded = false
+    return true
+}
 
 // the fetch and the harness's conversion with its native oracle and run, the log kept beside
 // the converted output for the README
@@ -162,7 +208,8 @@ def private convert_program(port : Port) : bool {
         to_log(LOG_ERROR, "{port.name}: the conversion exited {rc}; {log_of(port)} holds its log\n")
         return false
     }
-    return true
+    let gen = tree_generation()
+    return write_or_log(stamp_of(port), "{gen.sha}\n{gen.describe}\n{gen.date}\n")
 }
 
 // a sample's output without the JIT's `info` lines
@@ -186,20 +233,38 @@ def private in_folder(cwd : string; argv : array<string>) : array<string> {
     return <- full
 }
 
-// the JIT compiles the module on its first run in a folder and caches it there: one unmeasured
-// run of the startup arguments keeps the compile out of the cells; "" or why it failed
+// the interpreter and the JIT compile the module on its first run in a folder and cache it there:
+// one unmeasured run of the startup arguments keeps the compile out of the cells; "" or why it
+// failed
 def private warm_up(argv : array<string>; cwd : string) : string {
     var warm <- clone_to_move(argv)
     warm |> push_from(STARTUP_ARGS)
     var out : string
-    let rc = run_and_capture(in_folder(cwd, warm), out, 3600.0)
+    let rc = run_and_capture(in_folder(cwd, warm), out, WARM_UP_TIMEOUT)
+    if (rc == popen_timed_out) {
+        return "the warm-up run timed out after {int(WARM_UP_TIMEOUT)} s"
+    }
     return rc == 0 ? "" : clipped(with_line("the warm-up run exited {rc}", first_reported_line(out)))
 }
 
 def private with_line(text, line : string) : string => empty(line) ? text : "{text}: {line}"
 
+// the first line where a sample's output and the native build's part
+def private first_difference(output, native : string) : string {
+    let lines <- split(output, "\n")
+    let expected <- split(native, "\n")
+    var idx = 0
+    while (idx < length(lines) && idx < length(expected) && lines[idx] == expected[idx]) {
+        idx++
+    }
+    let got = idx < length(lines) ? "`{lines[idx]}`" : "nothing"
+    let want = idx < length(expected) ? "`{expected[idx]}`" : "nothing"
+    return "line {idx + 1} prints {got} where the native build prints {want}"
+}
+
 // `samples` runs of `argv` in `cwd` ("" for here), each timed as a whole process; a run that
-// differs from `oracle` (the native lane's first, when `oracle.rc` is not -1) fails the cell
+// differs from `oracle` (the native lane's first, when `oracle.rc` is not -1) fails the cell,
+// which keeps the samples taken, the failing one last
 [arch(at="ARCHITECTURE.md#measurement")]
 def private measure_cell(argv : array<string>; cwd : string; samples, timeout : int; compare_output : bool; var oracle : Oracle; var cell : LaneCell) {
     let full <- in_folder(cwd, argv)
@@ -217,21 +282,21 @@ def private measure_cell(argv : array<string>; cwd : string; samples, timeout : 
             seconds = double(get_time_nsec(started)) / 1000000000.0lf
         }))
         let output = program_output(out)
+        cell.samples |> push(seconds)
         if (rc == popen_timed_out) {
             cell.error = "timed out after {timeout} s"
         } elif (oracle.rc == -1 && rc != 0) {
-            cell.error = clipped(with_line("exited {rc}", last_line(output)))
+            cell.error = clipped(with_line("exited {rc}", first_reported_line(output)))
         } elif (oracle.rc == -1) {
             oracle = Oracle(rc = rc, output = output)
         } elif (rc != oracle.rc) {
-            cell.error = clipped(with_line("exited {rc} where the native build exits {oracle.rc}", last_line(output)))
+            cell.error = clipped(with_line("exited {rc} where the native build exits {oracle.rc}", first_reported_line(output)))
         } elif (compare_output && output != oracle.output) {
-            cell.error = clipped("prints `{last_line(output)}` where the native build prints `{last_line(oracle.output)}`")
+            cell.error = clipped(first_difference(output, oracle.output))
         }
         if (!empty(cell.error)) {
             return
         }
-        cell.samples |> push(seconds)
     }
     cell.time = median_of(cell.samples)
     cell.spread = spread_of(cell.samples, cell.time)
@@ -270,9 +335,7 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
             run.argv <- das_lane_command(das_path, flag, modules)
             run.argv |> push("--")
             shown = join(["daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime", flag, "{port.runs}.das --"], " ") |> replace("  ", " ")
-            if (lane == "jit") {
-                run.error = warm_up(run.argv, "")
-            }
+            run.error = warm_up(run.argv, "")
         } else {
             var error : string
             let bin = lane == "exe" ? build_exe(das_path, bench_work, STARTUP_ARGS, error) : build_aot(das_path, bench_work, STARTUP_ARGS, error)
@@ -291,10 +354,9 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
 }
 
 // a capture of every workload under every lane of `lanes`, written into the clone
-def private measure_program(args : Args; port : Port; release : Release; lanes : array<string>; repo_dir : string) : bool {
-    var measured = Capture(program = port.name, samples = args.samples)
-    measured.timestamp = strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))
-    measured.machine = Machine(arch = strip(captured(["uname", "-m"])), cpu = cpu_name())
+def private measure_program(args : Args; port : Port; release : Release; lanes : array<string>; repo_dir : string; gen : Generation) : bool {
+    var measured = Capture(program = port.name, commit = gen.sha, command = publish_command(args, port), samples = args.samples, timeout = args.timeout)
+    measured.machine = Machine(arch = strip(captured(["uname", "-m"])), cpu = cpu_name(), clang_path = default_clang())
     tool_versions(measured.machine.clang, measured.machine.daslang)
     var runs <- build_lanes(port, lanes, measured)
     let tests = get_full_file_name(tests_of(port, release))
@@ -313,12 +375,15 @@ def private measure_program(args : Args; port : Port; release : Release; lanes :
                 } elif (spec.in_tests && !stat(tests).is_dir) {
                     cell.error = "no {tests_of(port, release)}"
                 } else {
-                    if (lane == "jit" && spec.in_tests) {
-                        warm_up(run.argv, tests)
+                    // the test-suite folder has a module cache of its own to warm
+                    if (spec.in_tests && (lane == "interp" || lane == "jit")) {
+                        cell.error = warm_up(run.argv, tests)
                     }
-                    var inscope argv <- clone_to_move(run.argv)
-                    argv |> push_from(spec.args)
-                    measure_cell(argv, spec.in_tests ? tests : "", args.samples, args.timeout, spec.compare_output, oracle, cell)
+                    if (empty(cell.error)) {
+                        var inscope argv <- clone_to_move(run.argv)
+                        argv |> push_from(spec.args)
+                        measure_cell(argv, spec.in_tests ? tests : "", args.samples, args.timeout, spec.compare_output, oracle, cell)
+                    }
                 }
             }
             let reported = empty(cell.error) ? "{cell.time:.3f} s" : "not yet: {cell.error}"
@@ -326,14 +391,21 @@ def private measure_program(args : Args; port : Port; release : Release; lanes :
             measured.cells |> emplace(cell)
         }
     }
+    // the timestamp and the file name both name the end of the run
+    let ended <- split(strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC|%Y-%m-%dT%H%M%SZ"])), "|")
+    if (length(ended) != 2) {
+        to_log(LOG_ERROR, "ports: `date -u` answered {join(ended, "|")}\n")
+        return false
+    }
+    measured.timestamp = ended[0]
     let perf_dir = path_join(repo_dir, "perf")
     mkdir_rec(perf_dir)
-    let stamp = strip(captured(["date", "-u", "+%Y-%m-%dT%H%M%SZ"]))
-    return fwrite(path_join(perf_dir, "capture_{stamp}.json"), write_json(JV(measured)) + "\n")
+    return write_or_log(path_join(perf_dir, "capture_{ended[1]}.json"), write_json(JV(measured)) + "\n")
 }
 
-// the latest capture under `<dir>/perf/`, by its name's timestamp; false when there is none
-def private latest_capture(dir : string; var into : Capture) : bool {
+// the latest capture under `<dir>/perf/`, by its name's timestamp, into `into` with `found`;
+// false when that capture is not JSON
+def private latest_capture(dir : string; var into : Capture; var found : bool&) : bool {
     var latest = ""
     let perf_dir = path_join(dir, "perf")
     if (stat(perf_dir).is_dir) {
@@ -343,8 +415,9 @@ def private latest_capture(dir : string; var into : Capture) : bool {
             }
         }
     }
-    if (empty(latest)) {
-        return false
+    found = !empty(latest)
+    if (!found) {
+        return true
     }
     var error : string
     let js = read_json(fread(path_join(perf_dir, latest)), error)
@@ -357,11 +430,16 @@ def private latest_capture(dir : string; var into : Capture) : bool {
     return true
 }
 
-def private readme_text(port : Port; release : Release; gen : Generation; perf, has_capture : bool; shown_capture : Capture; harness_log : string) : string {
+def private generation_line(gen : Generation) : string {
+    let commit = "`{gen.describe}` (`{gen.sha}`, committed {gen.date})"
+    return gen.recorded ? "Generated by c2das-re {commit}" : "Generated by c2das-re at an unrecorded commit: published with `--allow-stale` from {commit}"
+}
+
+def private readme_text(port : Port; release : Release; gen : Generation; command, perf_text, harness_log : string; perf : bool) : string {
     return build_string() $(var w) {
         w |> write("# {port.name}\n\n")
         w |> write("{port.title} {release.version} converted to daslang by [c2das-re](https://github.com/lookibed/c2das-re). ")
-        w |> write("Everything in this directory is generated by `{gen.command}` in c2das-re; never edit it, a fix belongs in c2das-re.\n\n")
+        w |> write("Everything in this directory is generated by `{command}` in c2das-re; never edit it, a fix belongs in c2das-re.\n\n")
         w |> write("## Files\n\n")
         for (m in port.modules) {
             w |> write("- `{m.stem}.das` - {m.role}, converted.\n")
@@ -379,7 +457,7 @@ def private readme_text(port : Port; release : Release; gen : Generation; perf, 
         for (t in release.tarballs) {
             w |> write("  - {t.url} (sha256 `{t.sha256}`)\n")
         }
-        w |> write("- Generated by c2das-re `{gen.describe}` (`{gen.sha}`, committed {gen.date})\n\n")
+        w |> write("- {generation_line(gen)}\n\n")
         w |> write("## Running\n\n")
         w |> write("The modules require c2das-re's `crt` and `c_runtime` modules: a c2das-re checkout at the commit above, ")
         w |> write("with the daScript its `VERSIONS.md` pins built and `scripts/build_crt.sh` run. With `<c2das-re>` that checkout:\n\n```\n")
@@ -390,28 +468,66 @@ def private readme_text(port : Port; release : Release; gen : Generation; perf, 
         w |> write("{load} luac_all.das -- -o out.luac script.lua\n```\n\n")
         w |> write("Everything after `--` is the program's own command line; daslang names the `-exe` binary with `.exe` on every platform.\n\n")
         w |> write("## Upstream tests\n\n")
+        w |> write("The results c2das-re's {port.claims_item} recorded for this program, not results of this publish's run; ")
+        w |> write("the perf section's test-suite row runs the release's test suite once the perf tables are on:\n\n")
         for (claim in port.claims) {
             w |> write("- {claim}\n")
         }
         if (empty(harness_log)) {
             w |> write("\nThis publish reused a conversion that left no harness log.\n\n")
         } else {
-            w |> write("\nThe harness's report of this conversion (`{port.harness}/run.das --native --run`: the dumper, emitter and compile-check seconds, the das line counts, and `lua -e \"print(1+1)\"` under the interpreter against the native build):\n\n```\n{harness_log}```\n\n")
+            w |> write("\nThe harness's report of this conversion (`{port.harness}/run.das --native --run`: the native binaries' sizes, the JSON bytes, ")
+            w |> write("the das line counts and `[c_function]` counts, and `lua -e \"print(1+1)\"` under the interpreter against the native build; ")
+            w |> write("its seconds stay in its log, so an unchanged tree publishes an unchanged README):\n\n```\n{harness_log}```\n\n")
         }
-        w |> write("## Performance\n\n")
-        if (!perf) {
-            w |> write("{PERF_NOT_YET}\n")
-        } elif (has_capture) {
-            w |> write(render_perf(shown_capture))
-        } else {
-            w |> write("No capture yet.\n")
-        }
+        w |> write("## Performance\n\n{perf_text}")
     }
 }
 
-// the lines of the harness's log that report the conversion
+// a harness log line without its seconds: every `, `-separated clause that is `<what> <number> s`
+// dropped, "" when nothing else is left
+def private clock_free(line : string) : string {
+    var head = ""
+    var kept : array<string>
+    for (clause in split(line, ", ")) {
+        if (!is_seconds(clause)) {
+            kept |> push(clause)
+            continue
+        }
+        // the line's first clause carries its `<program>: <stem>: ` prefix
+        let colon = rfind(clause, ": ")
+        if (empty(kept) && colon >= 0) {
+            head = slice(clause, 0, colon + 2)
+        }
+    }
+    return empty(kept) ? "" : head + join(kept, ", ")
+}
+
+def private is_seconds(clause : string) : bool {
+    if (!(clause |> ends_with(" s"))) {
+        return false
+    }
+    let body = slice(clause, 0, length(clause) - 2)
+    var digits = 0
+    for (ch in slice(body, rfind(body, " ") + 1)) {
+        if (is_number(ch)) {
+            digits++
+        } elif (ch != '.') {
+            return false
+        }
+    }
+    return digits > 0
+}
+
+// the lines of the harness's log that report the conversion, without their seconds
 def private harness_report(port : Port) : string {
-    let lines <- [for (ln in split(fread(log_of(port)), "\n")); strip(ln); where ln |> contains("{port.name}: ")]
+    var lines : array<string>
+    for (ln in split(fread(log_of(port)), "\n")) {
+        let line = clock_free(strip(ln))
+        if (ln |> contains("{port.name}: ") && !empty(line)) {
+            lines |> push(line)
+        }
+    }
     return empty(lines) ? "" : join(lines, "\n") + "\n"
 }
 
@@ -423,25 +539,20 @@ def private write_or_log(path, text : string) : bool {
     return true
 }
 
-// the program's directory in the clone: every file of the fixed set replaced whole
-def private publish_program(args : Args; port : Port; lanes : array<string>; repo : string) : bool {
+// the program's directory in the clone: every file of the fixed set replaced whole, every input
+// checked before the first write; `gen` the commit the published conversion ran at
+def private publish_program(args : Args; port : Port; lanes : array<string>; repo : string; var gen : Generation) : bool {
     var release : Release
     if (!release_of(fread("VERSIONS.md"), port.name, release) || length(release.tarballs) != 2) {
         to_log(LOG_ERROR, "{port.name}: VERSIONS.md names no `{port.name}:` line with the release and the test-suite tarballs\n")
         return false
     }
-    if (!args.no_convert && !convert_program(port)) {
+    if ((!args.no_convert && !convert_program(port)) || !generation_for(args, port, gen)) {
         return false
     }
-    let dir = path_join(repo, port.name)
-    mkdir_rec(path_join(dir, "bench"))
     for (m in port.modules) {
-        let das = path_join(port.harness, "work/{m.stem}/{m.stem}.das")
-        if (!fexist(das)) {
-            to_log(LOG_ERROR, "{port.name}: no {das}; run without --no-convert\n")
-            return false
-        }
-        if (!write_or_log(path_join(dir, "{m.stem}.das"), fread(das))) {
+        if (!fexist(module_of(port, m.stem))) {
+            to_log(LOG_ERROR, "{port.name}: no {module_of(port, m.stem)}; run without --no-convert\n")
             return false
         }
     }
@@ -450,19 +561,32 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
         to_log(LOG_ERROR, "{port.name}: {sources_of(port, release)}/{port.license_header} holds no license block\n")
         return false
     }
-    var ok = write_or_log(path_join(dir, "LICENSE"), license)
-    ok = ok && write_or_log(path_join(dir, "{port.name}.c2das"), fread(path_join(port.harness, "{port.name}.c2das")))
+    if (!fexist(sidecar_of(port))) {
+        to_log(LOG_ERROR, "{port.name}: no {sidecar_of(port)}\n")
+        return false
+    }
+    let dir = path_join(repo, port.name)
+    mkdir_rec(path_join(dir, "bench"))
+    var ok = true
+    for (m in port.modules) {
+        ok = ok && write_or_log(path_join(dir, "{m.stem}.das"), fread(module_of(port, m.stem)))
+    }
+    ok = ok && write_or_log(path_join(dir, "LICENSE"), license)
+    ok = ok && write_or_log(path_join(dir, "{port.name}.c2das"), fread(sidecar_of(port)))
     for (spec in port.workloads) {
         if (!spec.startup && !spec.in_tests) {
             ok = ok && write_or_log(path_join(dir, spec.shown), fread(spec.args[0]))
         }
     }
+    var perf_text = "{PERF_NOT_YET}\n"
     if (ok && args.perf) {
-        ok = measure_program(args, port, release, lanes, dir)
+        ok = measure_program(args, port, release, lanes, dir, gen)
+        var latest : Capture
+        var found = false
+        ok = ok && latest_capture(dir, latest, found)
+        perf_text = render_perf(latest)
     }
-    var latest : Capture
-    let has_capture = latest_capture(dir, latest)
-    return ok && write_or_log(path_join(dir, "README.md"), readme_text(port, release, generation_of(args, port), args.perf, has_capture, latest, harness_report(port)))
+    return ok && write_or_log(path_join(dir, "README.md"), readme_text(port, release, gen, publish_command(args, port), perf_text, harness_report(port), args.perf))
 }
 
 // the top-level README: the charter kept above the marker, the projects table (or the perf
@@ -478,7 +602,11 @@ def private publish_top_readme(repo : string; perf : bool) : bool {
     names |> sort()
     for (name in names) {
         var latest : Capture
-        if (latest_capture(path_join(repo, name), latest)) {
+        var found = false
+        if (!latest_capture(path_join(repo, name), latest, found)) {
+            return false
+        }
+        if (found) {
             captures |> emplace(latest)
         }
     }
@@ -496,8 +624,9 @@ def private commit_program(port : Port; repo : string; gen : Generation) : bool 
         to_log(LOG_INFO, "{port.name}: nothing to commit\n")
         return true
     }
+    let message = gen.recorded ? "{port.name}: regenerated from c2das-re {gen.describe} ({gen.sha})" : "{port.name}: republished from c2das-re {gen.describe} ({gen.sha}), the conversion's commit unrecorded"
     var argv <- clone_to_move(IDENTITY)
-    argv |> push_from(["commit", "-q", "-m", "{port.name}: regenerated from c2das-re {gen.describe} ({gen.sha})"])
+    argv |> push_from(["commit", "-q", "-m", message])
     if (git_in(repo, argv, out) != 0) {
         to_log(LOG_ERROR, "{port.name}: git commit failed: {out}\n")
         return false
@@ -541,6 +670,14 @@ def main : int {
         to_log(LOG_ERROR, "ports: --push needs --commit\n")
         return 1
     }
+    if (args.samples < 1) {
+        to_log(LOG_ERROR, "ports: --samples takes a count of 1 or more, not {args.samples}\n")
+        return 1
+    }
+    if (args.timeout <= 0) {
+        to_log(LOG_ERROR, "ports: --timeout takes seconds above 0, not {args.timeout}\n")
+        return 1
+    }
     let repo = repo_of(args)
     if (!is_clone(repo)) {
         to_log(LOG_ERROR, "ports: {repo} is no clone of the ports repository (not the top of a git work tree)\n")
@@ -556,14 +693,12 @@ def main : int {
         return 1
     }
     for (port in ports) {
-        if (!empty(args.program) && port.name != args.program) {
-            continue
-        }
-        if (!publish_program(args, port, lanes, repo) || !publish_top_readme(repo, args.perf)) {
+        var gen : Generation
+        if (!publish_program(args, port, lanes, repo, gen) || !publish_top_readme(repo, args.perf)) {
             return 1
         }
         to_log(LOG_INFO, "{port.name}: published into {path_join(repo, port.name)}\n")
-        if (args.commit && !commit_program(port, repo, generation_of(args, port))) {
+        if (args.commit && !commit_program(port, repo, gen)) {
             return 1
         }
     }

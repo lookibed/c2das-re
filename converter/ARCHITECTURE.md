@@ -56,8 +56,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `tiers.das` - `run_tier(das_path, tier, work_dir, output[, module_dirs[, timeout[,
   flags]]])`: the process exit code of the module under `interp`, `jit`, `exe` or `aot`
   (section 5); `module_dirs` are passed as `-load_module` to the interpreter and the JIT, `flags`
-  before the script, and a run past `timeout` seconds (600 by default) is killed and reported
-  as a failure. `program_args` are the program's own C `argv` after its name: after `--` under
+  before the script, and a process past `timeout` seconds (600 by default) is killed and
+  reported as a failure: the run, and under `exe` and `aot` each build step too. `program_args` are the program's own C `argv` after its name: after `--` under
   `interp` and `jit`, after the binary under `exe`; `aot` refuses them, since its host passes
   none. `CONVERTED_MODULES` names the module folders a converted program requires and
   `daslang_cmd` spells the prefix; `native_run` builds a C file with a given compiler and flags
@@ -202,7 +202,8 @@ Section 4, what the emitter spells (the das text of every construct), is in
 <module> -output <work>/<stem>_exe` and executes the binary (the JIT names it `.exe` on every
 platform), `aot` runs `daslang utils/aot/main.das -- -ctx <module> <work>/ctx/` and compiles
 the generated context with a seven-line C host (`<stem>_create`, `<stem>_main`,
-`<stem>_destroy` from the generated header) against the static runtime: `liblibDaScript.a`,
+`<stem>_destroy` from the generated header, `<stem>` spelled as a C++ identifier, which also
+names the binary `aot_binary` answers) against the static runtime: `liblibDaScript.a`,
 `liblibDaScript_runtime.a`, `liblibUriParser.a`, with the checkout's ABI flags (no RTTI,
 `DAS_FUSION=2`, `SIZE_OF_VOID_P=8`). The compiler is the pinned clang's `clang++` at `-O3`,
 the native perf lane's compiler and level (`perf/ARCHITECTURE.md` section 2); `default_clang()`

@@ -18,6 +18,8 @@ require ../converter/dumper_a.das
 
 //! the native lane's flags: dasProfile's Release build gives its C++ kernels `-O3`
 let NATIVE_FLAGS <- ["-O3", "-w", "-funsigned-char"]
+//! the seconds each step of an `exe` or `aot` build may take, and the run it ends with
+let BUILD_TIMEOUT = 3600.0
 
 //! The native lane's build of `c_path` into `bin` by the pinned clang, `libs` linked last.
 def native_build_command(c_path, bin : string; libs : array<string>) : array<string> {
@@ -38,22 +40,36 @@ def das_lane_command(das_path, flag : string; module_dirs : array<string>) : arr
 }
 
 // the `exe` and `aot` tiers return the build's exit code when the build fails, which passes for a
-// run's, so a lane stands only on the binary its build left; an earlier run's goes first
+// run's, so a lane stands only on the binary its build left; an earlier run's goes first. The
+// build and the run it ends with each get `BUILD_TIMEOUT` seconds
 def private built_binary(das_path, tier, work, bin : string; program_args : array<string>; var error : string&) : string {
     remove(bin)
     remove(bin + ".exe")
     var out : string
     let no_flags : array<string>
-    let rc = run_tier(das_path, tier, work, out, CONVERTED_MODULES, 3600.0, no_flags, program_args)
+    let rc = run_tier(das_path, tier, work, out, CONVERTED_MODULES, BUILD_TIMEOUT, no_flags, program_args)
     let built = fexist(bin + ".exe") ? bin + ".exe" : bin
     if (rc >= 0 && fexist(built)) {
         return built
     }
-    // the exe build's own diagnostic leads its output after the `info` lines (the linker's
-    // failure); the AOT host build's ends it
-    let line = tier == "exe" ? first_reported_line(out) : last_line(out)
+    // the tier refused before any build ran: its text is the reason
+    if (rc == -1) {
+        error = first_reported_line(out)
+        return ""
+    }
+    // the exe build's linker message follows daslang's `Output:` line; the AOT host build's ends
+    // the output
+    let line = tier == "exe" ? exe_build_line(out) : last_line(out)
     error = "the build exited {rc} and left no binary: {line}"
     return ""
+}
+
+//! The line that says why daslang's `-exe` build failed: the first reported line after its
+//! `Output:` line (the linker's own message), else the first reported line.
+def exe_build_line(text : string) : string {
+    let at = find(text, "\nOutput:\n")
+    let line = at < 0 ? "" : first_reported_line(slice(text, at + length("\nOutput:\n")))
+    return empty(line) ? first_reported_line(text) : line
 }
 
 //! The `exe` lane's binary of `das_path`, built in `work` by daslang's `-exe` and run once with
@@ -63,7 +79,7 @@ def build_exe(das_path, work : string; program_args : array<string>; var error :
 //! The `aot` lane's binary of `das_path`: the `-ctx` context and the host `converter/tiers.das`
 //! writes, compiled by the pinned clang++ at `-O3` in `work/ctx`; "" with `error` set when the
 //! build leaves none or the tier refuses `program_args`.
-def build_aot(das_path, work : string; program_args : array<string>; var error : string&) : string => built_binary(das_path, "aot", work, path_join(path_join(work, "ctx"), "{file_stem(das_path)}_aot"), program_args, error)
+def build_aot(das_path, work : string; program_args : array<string>; var error : string&) : string => built_binary(das_path, "aot", work, aot_binary(das_path, work), program_args, error)
 
 //! The merged stdout and stderr of `args`, whatever its exit code.
 def captured(args : array<string>) : string {

@@ -2,6 +2,8 @@ options gen2
 require dastest/testing_boost public
 require daslib/json_boost
 require math
+require _daslang_child
+require strings
 
 def cmp_desc(a, b : void?) : int {
     unsafe {
@@ -80,5 +82,18 @@ def test_math(t : T?) {
         t |> equal(math::sin(0.0lf) + math::tan(0.0lf) + math::asin(0.0lf) + math::atan(0.0lf), 0.0lf)
         t |> equal(math::cos(0.0lf) + math::acos(1.0lf), 1.0lf)
         t |> equal(math::atan2(0.0lf, 1.0lf), 0.0lf)
+    }
+}
+
+[test]
+def test_json_nesting(t : T?) {
+    t |> run("json_boost's JV of a struct holding an array of structs that holds an array of structs fails type inference; one level less converts (docs/probe-findings.md F64)") @(t : T?) {
+        let cell = "struct Cell \{\n    time : double\n    samples : array<double>\n\}\n"
+        let main = "[export]\ndef main \{\n    var c : Capture\n    print(\"\{write_json(JV(c))\}\\n\")\n\}\n"
+        let nested = daslang_child("json_nested", "options gen2\nrequire daslib/json_boost\n{cell}struct Row \{\n    cells : array<Cell>\n\}\nstruct Capture \{\n    rows : array<Row>\n\}\n{main}", true)
+        t |> success(nested.out |> find("error[30507]") >= 0, nested.out)
+        let flat = daslang_child("json_flat", "options gen2\nrequire daslib/json_boost\n{cell}struct Capture \{\n    cells : array<Cell>\n\}\n{main}", false)
+        t |> equal(flat.rc, 0, flat.out)
+        t |> success(flat.out |> find("\"cells\" : []") >= 0, flat.out)
     }
 }
