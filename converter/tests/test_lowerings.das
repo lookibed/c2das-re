@@ -133,6 +133,8 @@ def test_lowerings(t : T?) {
     p4_csmith_more_fixtures(t)
     p4_scope_fidelity_fixtures(t)
     p4_matrix_fixtures(t)
+    p4_matrix_leftover_fixtures(t)
+    p4_matrix_leftover_rejects(t)
     rmdir_rec(work_root)
 }
 
@@ -350,7 +352,7 @@ def p3_fixtures(t : T?) {
         has_text(t, text, "    try \{\n        if (fail_at != 0) \{\n            p3_setjmp__deep(fail_at, addr(buf), value)\n        \}\n        status = 100\n    \} recover \{\n        if (c_jmp_target != addr(buf)) \{\n            panic(\"longjmp\")\n        \}\n        c_jmp_target = null\n        status = -1\n    \}")
         has_text(t, text, "var _sj_run = true\n    var _sj_val = 0\n    while (_sj_run) \{\n        _sj_run = false\n        try \{\n            if (_sj_val != 0) \{\n                return 1\n            \}\n            c_longjmp(addr(buf), 0)")
         has_text(t, text, "_sj_val = buf.val\n            _sj_run = true")
-        rejects(t, "setjmp_value", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int r = setjmp(b); return r; \}\n", "trampoline form")
+        rejects(t, "setjmp_value", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int n = 0; while (setjmp(b) < 2) n++; return n; \}\n", "trampoline form")
         rejects(t, "setjmp_tail_break", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int i = 0; while (i < 3) \{ if (setjmp(b)) \{ i = 9; \} i++; if (i > 1) break; \} return i; \}\n", "tail leaves an enclosing loop")
     }
     t |> run("alloca: the per-function arena with its guard, allocations accumulating to the function's exit, __builtin_ names through the shim list, options stack") @(t : T?) {
@@ -502,7 +504,6 @@ def p4_bitfield_rejects(t : T?) {
         t |> equal(msvc.error |> find("record `P` has bitfields and das cannot lay it out as clang does") >= 0, true, msvc.error)
         rejects(t, "bitfield_packed_attribute", "struct __attribute__((packed)) P \{ char c; int n; unsigned a : 3; \};\nint main(void) \{ struct P s = \{ 1, 2, 3 \}; return s.a + s.c; \}\n", "record `P` has bitfields and das cannot lay it out as clang does; not lowered yet")
         rejects(t, "aligned_container", "struct P8 \{ int x; int y; \} __attribute__((aligned(8)));\nstruct C3 \{ char c; struct P8 p; \};\nint main(void) \{ struct C3 s = \{ 1, \{ 2, 3 \} \}; return s.p.y; \}\n", "record `P8` is not laid out naturally")
-        rejects(t, "flexible_array", "struct V \{ int n; int data[]; \};\nint main(void) \{ return (int) sizeof(struct V); \}\n", "flexible array member `V.data` is not lowered yet")
     }
 }
 
@@ -860,7 +861,7 @@ def p4_varargs_rejects(t : T?) {
         rejects(t, "va_list_pointer", "#include <stdarg.h>\nstatic int f(int n, ...) \{ va_list ap; va_list *p = &ap; va_start(*p, n); int v = va_arg(*p, int); va_end(ap); return v; \}\nint main(void) \{ return f(1, 0); \}\n", "a pointer to a `va_list` or an array of them is not lowered yet")
         rejects(t, "va_arg_array", "#include <stdarg.h>\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); int x = va_arg(ap, int[2])[0]; va_end(ap); return x; \}\nint main(void) \{ return f(0); \}\n", "va_arg of type kind `array` is not lowered yet")
         rejects(t, "va_list_through_dots", "#include <stdarg.h>\nstatic int g(int n, ...) \{ return n; \}\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); int r = g(1, ap); va_end(ap); return r; \}\nint main(void) \{ return f(1, 2) - 1; \}\n", "a `va_list` passed through `...` (argument 1 of `g`) is not lowered yet")
-        rejects(t, "va_end_value", "#include <stdarg.h>\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); n ? va_end(ap) : (void) 0; return n; \}\nint main(void) \{ return f(0); \}\n", "`va_end` used as a value is not lowered yet")
+        rejects(t, "va_end_value", "#include <stdarg.h>\nstatic void f(int n, ...) \{ va_list ap; va_start(ap, n); return va_end(ap); \}\nint main(void) \{ f(0); return 0; \}\n", "`va_end` used as a value is not lowered yet")
         rejects(t, "va_tuple_param", "#include <stdarg.h>\nstatic int f(int _va_tuple, ...) \{ return _va_tuple; \}\nint main(void) \{ return f(0); \}\n", "a C name `_va_tuple` in variadic function `f`")
         rejects(t, "va_tuple_local", "#include <stdarg.h>\nstatic int f(int n, ...) \{ int _va_tuple = n; return _va_tuple; \}\nint main(void) \{ return f(0); \}\n", "a C name `_va_tuple` in variadic function `f`")
         rejects(t, "scanf_stdin", "int scanf(const char *, ...);\nint main(void) \{ int x = 0; scanf(\"%d\", &x); return x; \}\n", "external function `scanf` has no c_runtime mapping")
@@ -1065,5 +1066,112 @@ def p4_matrix_fixtures(t : T?) {
         rejects(t, "vla_function_pointers", "int main(void) \{ int n = 2; void (*fps[n])(void); fps[0] = 0; return fps[0] != 0; \}\n", "`void (*[n])(void)`: a variable-length array is not lowered (out of scope in v1)")
         rejects(t, "vla_unnamed_records", "int main(void) \{ int n = 2; struct \{ int x; \} rs[n]; rs[0].x = 0; return rs[0].x; \}\n", ")[n]`: a variable-length array is not lowered (out of scope in v1)")
         rejects(t, "zero_length_local", "int main(void) \{ int a[0]; return 0; \}\n", "a zero-length array (a GNU extension) is not lowered yet")
+    }
+}
+
+// the das path `converts` wrote for the source it took under `name`
+def converted_path(name : string) : string => path_join(path_join(path_join(work_root, "converted"), name), "{name}.das")
+
+// the matrix rows P4.9's second phase lowers: compound literals, `main(argc, argv)`, the general
+// setjmp form, flexible and over-indexed trailing arrays, the `void` conditional
+def p4_matrix_leftover_fixtures(t : T?) {
+    t |> run("compound literals: values, objects in the enclosing block, file-scope globals, arms, loops") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_compound_lit", text)
+        // a file-scope literal is a global before the one that reads it; one filled by stores, or
+        // taking a zero-initialized global's address, moves to the module's init with its reader
+        has_text(t, text, "var private _cl0 : P = P(x = 3, y = 4)\nvar private p4_compound_lit__origin : P? = unsafe(addr(_cl0))\n")
+        has_text(t, text, "var private _cl1 : int[4] = fixed_array(2, 3, 5, 7)\nvar private p4_compound_lit__primes : int? = unsafe(addr(_cl1[0]))\n")
+        has_text(t, text, "var private _cl2 : num\nvar private p4_compound_lit__shared : num?\n")
+        has_text(t, text, "    _cl2.i = 7\n    p4_compound_lit__shared = unsafe(addr(_cl2))\n    _cl3 = fixed_array<int?>(unsafe(addr(p4_compound_lit__zeroed)), null)\n    p4_compound_lit__zero_ref = unsafe(addr(_cl3[0]))\n")
+        // a struct's value is its literal; an array or an address is an object before the statement
+        has_text(t, text, "    p = P(y = 9)\n")
+        has_text(t, text, "p4_compound_lit__dot(P(x = 2, y = 3), p)")
+        has_text(t, text, "    var _cl4 : P = P(x = 3, y = 4)\n    printf(reinterpret<uint8?>(\"address %d\\n\"), p4_compound_lit__len2(addr(_cl4)))\n")
+        has_text(t, text, "    var _cl4 : int[3] = fixed_array(1, 2, 3)\n    printf(reinterpret<uint8?>(\"array %d\\n\"), p4_compound_lit__sum(addr(_cl4[0]), 3))\n")
+        has_text(t, text, "    var p : P = P(x = p4_compound_lit__note(1), y = p4_compound_lit__note(2))\n")
+        // a union's literal is a declaration and its store, a scalar's its value
+        has_text(t, text, "    var _cl4 : num\n    _cl4.f = 1.5f\n    var u : num? = addr(_cl4)\n")
+        has_text(t, text, "    var _cl5 : tagged = tagged(tag = 7)\n    _cl5.n.i = 9\n    var t : tagged = _cl5\n")
+        has_text(t, text, "    var s : int = 5 + 0\n    var _cl6 : int = 11\n")
+        // under a conditional arm the object is declared before the statement, assigned in the arm
+        has_text(t, text, "    var _cl7 : int[2]\n    var _cl8 : int[2]\n    var _t0 : int?\n    if (c != 0) \{\n        _cl7 = fixed_array(1, 2)\n")
+        has_text(t, text, "        _cl9 = num()\n        _cl9.i = 3\n")
+        has_text(t, text, "        _cl11 = 0\n        _t2 = addr(_cl11)\n")
+        has_text(t, text, "                var _cl4 : int[2] = fixed_array(i, i * 10)\n")
+        // a loop whose condition moves into its body keeps the arms' objects before the loop
+        has_text(t, text, "    var _cl5 : int[1]\n    var _cl6 : int[1]\n    while (true) \{\n")
+    }
+    t |> run("main(argc, argv): c_main takes them and the wrapper builds argv from the program's arguments") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_main_args", text)
+        has_text(t, text, "def c_main(argc : int; var argv : uint8 ??) : int \{\n")
+        has_text(t, text, "def main : int \{\n    c_runtime_init(\"p4_main_args\")\n    return c_main(c_argc(), c_argv())\n")
+        has_text(t, text, "require c_runtime/c_args\n")
+    }
+    t |> run("the general setjmp form: the site's statement opens the trampoline's tail, the value read as _sj_val") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_setjmp_general", text)
+        has_text(t, text, "        try \{\n            r = _sj_val\n            p4_setjmp_general__sum += r\n")
+        has_text(t, text, "        try \{\n            var r : int = _sj_val\n")
+        has_text(t, text, "        try \{\n            let _cond = _sj_val\n")
+        has_text(t, text, "        try \{\n            if (_sj_val == 4) \{\n")
+        has_text(t, text, "        try \{\n            if (!(discarded_stop != 0)) \{\n")
+        has_text(t, text, "        try \{\n            return _sj_val\n")
+    }
+    t |> run("flexible array members read past the record; a sidecar-listed trailing array goes unchecked") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_flexible", text)
+        has_text(t, text, "struct samples \{\n    n : int\n\}\n")
+        has_text(t, text, "deref(reinterpret<int?>(reinterpret<uint8?>(s) + 4) + i) = i * i")
+        has_text(t, text, "deref(reinterpret<int?>(reinterpret<uint8?>(s) + 4) + 0) += 100")
+        has_text(t, text, "var row : int? = reinterpret<int?>(reinterpret<uint8?>(s) + 4)")
+        has_text(t, text, "struct patch \{\n    width, height : int16\n    columnofs : int[8]\n\}\n")
+        has_text(t, text, "deref(addr(p.columnofs[0]) + x) = 1000 + x")
+        has_text(t, text, "var col : int? = addr(deref(addr(p.columnofs[0]) + (width - 1)))")
+    }
+    t |> run("a flexible array member of a record value decays from the record's address") @(t : T?) {
+        let value = converts(t, "flexible_value", "struct S \{ int n; int d[]; \};\nstatic int first(struct S *p) \{ struct S s = *p; int *q = s.d; return s.n + (q == 0); \}\nint main(void) \{ struct S s = \{ 2 \}; return first(&s) - 2; \}\n")
+        has_text(t, value, "var q : int? = reinterpret<int?>(reinterpret<uint8?>(addr(s)) + 4)")
+    }
+    t |> run("the void conditional is an if/else of its arms' statements") @(t : T?) {
+        var text : string
+        check_fixture(t, "p4_void_cond", text)
+        has_text(t, text, "    if (!(n == 3)) \{\n        printf(reinterpret<uint8?>(\"check failed: %s\\n\"), reinterpret<uint8?>(\"n == 3\"))\n        c_abort()\n    \}\n")
+        has_text(t, text, "    if (n > 10) \{\n        p4_void_cond__hit(100)\n    \}\n    if (n > 2) \{\n")
+        has_text(t, text, "    \} else \{\n        p4_void_cond__hit(20)\n        p4_void_cond__hit(30)\n    \}\n")
+    }
+    t |> run("glibc's jmp_buf tag defined in a file that includes no header adds no record") @(t : T?) {
+        let own = converts(t, "own_jmp_buf_tag", "struct __jmp_buf_tag \{ long long words[25]; \};\ntypedef struct __jmp_buf_tag jmp_buf[1];\nint _setjmp(jmp_buf);\nstatic jmp_buf b;\nint main(void) \{ int r = _setjmp(b); return r; \}\n")
+        has_text(t, own, "var private own_jmp_buf_tag__b : CJmpBuf\n")
+        t |> success(!(own |> contains("__jmp_buf_tag")), own)
+    }
+    t |> run("an over-indexed trailing array the sidecar does not list keeps its range check, which panics") @(t : T?) {
+        converts(t, "over_unlisted", "void *malloc(unsigned long);\nstruct patch \{ int w; int cols[2]; \};\nint main(void) \{ struct patch *p = malloc(sizeof(struct patch) + 8 * sizeof(int)); int i; for (i = 0; i < 4; i++) p->cols[i] = i; return p->cols[3]; \}\n")
+        var out : string
+        let rc = run_tier(converted_path("over_unlisted"), "interp", work_root, out, CONVERTED_MODULES)
+        t |> success(rc != 0 && out |> contains("index out of range"), "{rc}: {out}")
+    }
+}
+
+def p4_matrix_leftover_rejects(t : T?) {
+    t |> run("matrix leftovers: what the lowering refuses, each naming the construct") @(t : T?) {
+        rejects(t, "void_cond_value", "void g(void);\nvoid h(void);\nvoid f(int c) \{ return c ? g() : h(); \}\nint main(void) \{ f(1); return 0; \}\n", "a `void` conditional (`c ? f() : g()`) used as a value is not lowered yet")
+        rejects(t, "main_envp", "int main(int argc, char **argv, char **envp) \{ return argc; \}\n", "main with an environment parameter (`char **envp`) is not lowered yet")
+        rejects(t, "main_one", "int main(int argc) \{ return argc; \}\n", "main whose parameters are not `int argc, char **argv` is not lowered yet")
+        let sj = "#include <setjmp.h>\nstatic jmp_buf b;\nstatic int f(void) \{ return 1; \}\n"
+        rejects(t, "setjmp_with_effect", sj + "int main(void) \{ int x; x = f() + setjmp(b); return x; \}\n", "setjmp whose value is not tested against zero by the `if` around it (the general trampoline form) is not lowered yet")
+        rejects(t, "setjmp_two", sj + "int main(void) \{ int x; x = setjmp(b) + setjmp(b); return x; \}\n", "setjmp whose value is not tested against zero by the `if` around it (the general trampoline form) is not lowered yet")
+        rejects(t, "setjmp_stepped_target", sj + "int main(void) \{ int a[2]; int i = 0; a[i++] = setjmp(b); return a[0]; \}\n", "setjmp whose value is not tested against zero by the `if` around it (the general trampoline form) is not lowered yet")
+        rejects(t, "setjmp_compound_store", sj + "int main(void) \{ int x = 0; x += setjmp(b); return x; \}\n", "setjmp whose value is not tested against zero by the `if` around it (the general trampoline form) is not lowered yet")
+        rejects(t, "setjmp_unbraced", sj + "int main(void) \{ int x = 0; if (f()) x = setjmp(b); return x; \}\n", "setjmp whose value is not tested against zero by the `if` around it (the general trampoline form) is not lowered yet")
+        rejects(t, "setjmp_loop_tail", sj + "int main(void) \{ int i; for (i = 0; i < 2; i++) \{ int r = setjmp(b); if (r) break; \} return 0; \}\n", "a setjmp site whose tail leaves an enclosing loop is not lowered yet")
+        rejects(t, "flexible_padding", "struct C \{ char c; int d[]; \};\nint main(void) \{ return (int) sizeof(struct C) - 4; \}\n", "flexible array member `C.d`, which pads the record or raises its alignment, is not lowered yet")
+        rejects(t, "flexible_marshal", "struct __attribute__((packed)) M \{ char c; int d[]; \};\nint main(void) \{ return (int) sizeof(struct M) - 1; \}\n", "flexible array member `M.d` of a marshal-only record is not lowered yet", "\{\"marshal\": [\"M\"]\}\n")
+        rejects(t, "flexible_initializer", "struct S \{ int n; int d[]; \};\nstatic struct S s = \{ 1, \{ 2, 3 \} \};\nint main(void) \{ return s.n - 1; \}\n", "an initializer of flexible array member `S.d` (a GNU extension) is not lowered yet")
+        let patch = "struct patch \{ short w; int cols[8]; \};\nstruct holder \{ int cols[8]; int n; \};\nint main(void) \{ struct patch p; struct holder h; p.w = 0; h.n = 0; return p.w + h.n; \}\n"
+        rejects(t, "over_indexed_not_trailing", patch, "sidecar `over_indexed`: `holder.cols` names no record's trailing array member of a fixed length", "\{\"over_indexed\": [\"holder.cols\"]\}\n")
+        rejects(t, "over_indexed_no_record", patch, "sidecar `over_indexed`: `nothing.cols` names no record's trailing array member of a fixed length", "\{\"over_indexed\": [\"nothing.cols\"]\}\n")
+        rejects(t, "over_indexed_scalar", patch, "sidecar `over_indexed`: `patch.w` names no record's trailing array member of a fixed length", "\{\"over_indexed\": [\"patch.w\"]\}\n")
     }
 }

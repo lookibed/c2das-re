@@ -22,6 +22,10 @@ struct Sidecar {
     param_writes : string
     // the macros clang defines for the dump, each `NAME` or `NAME=value`, passed as `-D<entry>`
     defines : array<string>
+    // the trailing array members the program indexes past their length (C89's `int a[1]` over a
+    // larger allocation), each `Record.field`, by tag or typedef name: their accesses go through a
+    // pointer with no range check
+    over_indexed : array<string>
 }
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
@@ -94,6 +98,20 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
                 break
             }
             side.defines |> push(entry ?? "")
+        }
+    }
+    let over = js?["over_indexed"]
+    if (key_exists(js, "over_indexed") && !(over is _array)) {
+        error = "{path}: `over_indexed` is a list of strings `Record.field`, not {write_json(over)}"
+    } elif (key_exists(js, "over_indexed")) {
+        for (entry in over as _array) {
+            let name = entry is _string ? entry ?? "" : ""
+            let dot = find(name, ".")
+            if (dot <= 0 || dot == length(name) - 1 || find(name, ".", dot + 1) >= 0) {
+                error = "{path}: `over_indexed` holds strings `Record.field`, not {write_json(entry)}"
+                break
+            }
+            side.over_indexed |> push(name)
         }
     }
     delete_json(js)

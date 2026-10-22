@@ -4,6 +4,7 @@ require strings
 require daslib/fio
 require daslib/strings_boost
 require ../tiers.das
+require ../dumper_a.das
 
 let FIXTURE = "converter/tests/fixtures/p4_param_writes.c"
 // the copy prologue of the stepped int parameter, absent in place
@@ -18,6 +19,41 @@ def run_main(dir, mode : string; var out : string&) : int {
 }
 
 def converted_text(dir, mode : string) : string => fread(path_join(path_join(dir, mode), "p4_param_writes.das"))
+
+let ARGS_FIXTURE = "converter/tests/fixtures/p4_main_args.c"
+
+// the arguments the `main(argc, argv)` fixture gets, an empty one and one with a space among them
+let PROGRAM_ARGS = fixed_array("one", "two words", "")
+
+// `converter/main.das -- <ARGS_FIXTURE> --out <dir>/<tier> --target linux --run <tier>` with one
+// `--arg` per program argument, as a child process: its exit code and output
+def run_with_args(dir, tier : string; var out : string&) : int {
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from(["converter/main.das", "--", ARGS_FIXTURE, "--out", path_join(dir, tier), "--target", "linux", "--run", tier])
+    argv |> reserve(length(argv) + 2 * length(PROGRAM_ARGS))
+    for (a in PROGRAM_ARGS) {
+        argv |> push("--arg")
+        argv |> push(a)
+    }
+    return run_and_capture(argv, out, 300.0)
+}
+
+// the native build of the fixture by the pinned clang, run with the same arguments: its exit
+// code and output
+def native_with_args(dir : string; var out : string&) : int {
+    let bin = path_join(dir, "p4_main_args_native")
+    var build : string
+    if (run_and_capture([default_clang(), "-w", "-funsigned-char", "-o", bin, ARGS_FIXTURE], build, 120.0) != 0) {
+        out = build
+        return -1
+    }
+    var argv <- [bin]
+    argv |> push_from(PROGRAM_ARGS)
+    return run_and_capture(argv, out, 60.0)
+}
+
+// the program's own lines of a `--run` child's output, without the converter's `[I]` lines
+def program_lines(out : string) : string => join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
 
 [test]
 def test_cli_param_writes(t : T?) {
@@ -45,6 +81,35 @@ def test_cli_param_writes(t : T?) {
         t |> equal(run_main(dir, "local", out), 2, out)
         t |> success(out |> contains("--param-writes is in-place or copy, not `local`"), out)
         t |> success(!fexist(path_join(path_join(dir, "local"), "p4_param_writes.das")), out)
+    }
+    rmdir_rec(dir)
+}
+
+[test]
+def test_cli_program_args(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_cli_args", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    var native : string
+    let native_rc = native_with_args(dir, native)
+    t |> equal(native_rc, 4, native)
+    t |> run("--arg reaches the C argv under the interpreter as the native build's arguments do") @(t : T?) {
+        var out : string
+        t |> equal(run_with_args(dir, "interp", out), native_rc, out)
+        t |> equal(program_lines(out), native, out)
+    }
+    t |> run("--arg reaches the C argv of the exe tier's binary") @(t : T?) {
+        var out : string
+        t |> equal(run_with_args(dir, "exe", out), native_rc, out)
+        t |> success(out |> contains("argv[2] = 'two words' 9\nargv[3] = '' 0\nend 1\n"), out)
+    }
+    t |> run("the aot tier refuses program arguments, since its host passes none") @(t : T?) {
+        var out : string
+        t |> equal(run_with_args(dir, "aot", out) != 0, true, out)
+        t |> success(out |> contains("the aot tier's host passes the program no arguments"), out)
     }
     rmdir_rec(dir)
 }

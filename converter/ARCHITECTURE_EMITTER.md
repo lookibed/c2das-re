@@ -70,7 +70,12 @@ pointer (an initializer list's item, an alloca's address, a stepped pointer's ol
 `var` for the same reason as a parameter. A body that used an unsafe operation (pointer
 arithmetic, `deref`, `addr`, a `reinterpret`, a string literal) gets `[c_function]`. C `main`
 becomes `c_main` and the module ends with `[export] def main : int { return c_main() }`, whose
-`return` is the CLI's exit-code contract (`docs/probe-findings.md` F1). A C name that is a das
+`return` is the CLI's exit-code contract (`docs/probe-findings.md` F1). `int main(int argc, char
+**argv)` (`char *argv[]` alike) is `c_main(argc : int; var argv : uint8??)`, and the wrapper first
+calls `c_runtime_init("<stem>")` (`c_runtime/c_args`), which builds `argv` once in C-allocator
+memory, `argv[0]` the source file's stem (the name a native build of it carries, the same on
+every tier), then returns `c_main(c_argc(), c_argv())` (F56); a `main` taking `envp` or any other
+parameters fails closed. A C name that is a das
 keyword takes the `_c_` prefix. A local that hides one of an enclosing block or a parameter
 takes the first numbered name the function leaves free (`i1`), and so does every reference C
 resolves to it, since das refuses a local that shadows another (`docs/probe-findings.md` F42);
@@ -192,7 +197,10 @@ The pins live while the statement that needs them is spelled (`em.hoisted`); a c
 is two statements; `&&` and `||` with a hoisted right
 side become a flag and an `if`; a ternary whose arm carries hoisted statements becomes `var _tN
 : T` and an `if`/`else`, while a ternary of pure arms stays inline since das `?:` evaluates
-only the taken arm (F18). Loops follow the documents: `while` is `while`, with a side-effecting
+only the taken arm (F18). A `void` ternary evaluated for its effects (an expression statement, a
+comma's left side, a cast to `void`: the `(e) ? (void) 0 : fail()` of an assert) is an
+`if`/`else` of its arms' statements, an arm with no effect left out (`if (!(e))` when it is the
+first), and fails closed where its value is read, since das has no `void` variable. Loops follow the documents: `while` is `while`, with a side-effecting
 condition spelled `while (true)` plus the test and `break`; `do` is the `_first` flag; `for` is
 a bare block holding the initializer and one of three loops: `while (cond) { body }` when there
 is no increment, `while (cond) { { body } finally { inc } }` when the body never leaves the
@@ -202,9 +210,9 @@ spell `elif` when the nested condition is pure. The split is measured:
 `benchmarks/bench_for_shapes.das` times one body under the three spellings, and under the
 interpreter the `finally` form costs 10.6 ns per iteration against the flag's 14.2 and the
 native `range` loop's 4.9 (the O1 rewrite's target), while the JIT compiles all three alike.
-Compound literals, a string literal outside a pointer or `char[N]` context (where the empty one
-has no das spelling either, F10) and a call to an external function in neither call table are
-errors until their lowering lands (`docs/implementation_order.md`, P2 onward).
+A string literal outside a pointer or `char[N]` context (where the empty one has no das spelling
+either, F10) and a call to an external function in neither call table are errors until their
+lowering lands (`docs/implementation_order.md`, P2 onward).
 
 A marshal-only record - one the sidecar lists under `marshal`, by tag or typedef name - lives
 in C memory as bytes at clang's offsets and as a value is the naturally laid out das struct of
@@ -252,19 +260,6 @@ where they would meet a global or another local of their name; an `if`, loop or 
 body on that way is Duff's device (P3.3) and fails closed. A goto over a declaration skips its
 initializer, which is C's rule too (`probes/test_goto.das`).
 
-A `jmp_buf` is `CJmpBuf` (`c_runtime/setjmp`), its decay `addr(buf)` (or the pointer a `*p`
-read it through), and `longjmp` is `c_longjmp`. A setjmp site is an `if` whose condition is
-`setjmp(buf)` tested against zero, below casts, `!` and `== 0` / `!= 0`. With both branches it
-is the contained site of `docs/lowering-examples.md` "setjmp / longjmp": the first run is the
-`try`, the longjmp return the `recover`, which rethrows a longjmp to another buffer or a
-genuine panic (a null `c_jmp_target`) and clears its own. With one branch, met in a block's
-statement walk, it is the trampoline: `_sj_runN`/`_sj_valN`, a `while` that reruns the
-branch, under `if (_sj_val != 0)` (or `== 0` for `!setjmp`), and the rest of the block as its
-tail once per longjmp caught, the `recover` storing `buf.val` into `_sj_val`; such a block
-cannot end in a return das reads, so the function gets its trailing zero. A tail that leaves
-an enclosing loop, a site that is not an `if` at a block's statement level and a `setjmp`
-whose value is read any other way fail closed.
-
 `alloca(n)` is a bump on a per-function arena (`docs/stdlib-examples.md` "alloca"): a function
 whose body calls it opens with `var _c_astack : uint8[limit]` and `var _c_aoff = 0`, each site
 hoists a guard that panics past the limit (das's `assert` is a debug check, so the guard is a
@@ -280,5 +275,26 @@ Output is assembled as an array of lines joined once (`docs/probe-findings.md` F
 text then goes through the formatter, so spacing is the formatter's and indentation is the
 emitter's, four spaces per depth.
 
-The aggregates, function pointers and variadics (bitfields, unions, function pointers,
-`[variadic]` definitions and the `va_list` cursor) are in `ARCHITECTURE_EMITTER_AGGREGATES.md`.
+The aggregates, function pointers and variadics (bitfields, unions, compound literals, flexible
+array members, function pointers, `[variadic]` definitions and the `va_list` cursor) are in
+`ARCHITECTURE_EMITTER_AGGREGATES.md`.
+
+### setjmp / longjmp {#setjmp-general}
+
+A `jmp_buf` is `CJmpBuf` (`c_runtime/setjmp`), its decay `addr(buf)` (or the pointer a `*p`
+read it through), and `longjmp` is `c_longjmp`. A setjmp site is an `if` whose condition is
+`setjmp(buf)` tested against zero, below casts, `!` and `== 0` / `!= 0`. With both branches it
+is the contained site of `docs/lowering-examples.md` "setjmp / longjmp": the first run is the
+`try`, the longjmp return the `recover`, which rethrows a longjmp to another buffer or a
+genuine panic (a null `c_jmp_target`) and clears its own. With one branch, met in a block's
+statement walk, it is the trampoline: `_sj_runN`/`_sj_valN`, a `while` that reruns the
+branch, under `if (_sj_val != 0)` (or `== 0` for `!setjmp`), and the rest of the block as its
+tail once per longjmp caught, the `recover` storing `buf.val` into `_sj_val`; such a block
+cannot end in a return das reads, so the function gets its trailing zero. The general form is a
+block's statement whose expression reads the value (`r = setjmp(buf);`, `int r = setjmp(buf);`,
+`setjmp(buf);`, `return setjmp(buf);`, a `switch` on it, an `if` testing it against anything but
+zero): the statement opens the tail, the setjmp read as `_sj_valN` (0 on the first run, longjmp's
+value on a rerun), and its expression holds no other effect but the store, since a rerun
+evaluates it again. A tail that leaves an enclosing loop, a site off a block's statement level
+(an unbraced branch, a loop condition), a statement with a second setjmp or another effect (`x =
+f() + setjmp(buf)`, `a[i++] = setjmp(buf)`) and a `setjmp` read any other way fail closed.

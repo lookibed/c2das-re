@@ -97,3 +97,34 @@ def test_run_failed_aot_link(t : T?) {
     }
     rmdir_rec(dir)
 }
+
+// a folder for the front of `PATH` whose `c++`, the linker daslang's `-exe` build calls, prints a
+// line and fails: the exe lane's error must carry that build's diagnostic
+def failing_exe_linker(dir : string) : string {
+    let bin = path_join(dir, "linker")
+    mkdir_rec(bin)
+    fwrite(path_join(bin, "c++"), "#!/bin/sh\necho fake exe link failure\nexit 1\n")
+    var out : string
+    run_and_capture(["chmod", "+x", path_join(bin, "c++")], out, 10.0)
+    return bin
+}
+
+[test]
+def test_run_failed_exe_link(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_perf_exe", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    let path = get_env_variable("PATH")
+    var out : string
+    set_env_variable("PATH", "{failing_exe_linker(dir)}:{path}")
+    let rc = run_and_capture(["bash", "scripts/run_perf.sh", "--filter", "fib_recursive", "--samples", "1", "--out", path_join(dir, "results.json")], out, 1200.0)
+    set_env_variable("PATH", path)
+    t |> run("a failed exe build is the lane's error, carrying the build's diagnostic") @(t : T?) {
+        t |> equal(rc, 1, out)
+        t |> success(out |> contains("fib_recursive/exe: the build exited 1 and left no binary: Failed to link Library"), out)
+    }
+    rmdir_rec(dir)
+}

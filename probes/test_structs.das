@@ -49,6 +49,29 @@ def make() : WithArr {
 
 def sq(x : int) : int => x * x
 
+var literal_order : array<int>
+
+// a value recorded in `literal_order`, so a literal's items show the order they ran in
+def noted(v : int) : int {
+    literal_order |> push(v)
+    return v
+}
+
+struct Held {
+    p : int?
+    n : int
+}
+
+// a `var` record parameter, as the converter declares one holding a pointer (F3), written in place
+def held_n(var h : Held) : int {
+    h.n++
+    return h.n
+}
+
+// a compound literal at file scope: a module global, its address another's initializer
+var private g_literal : Inner = Inner(a = int8(3), b = 4l)
+var private g_literal_at : Inner? = unsafe(addr(g_literal))
+
 // the converter's opaque record: an empty struct named for a C struct the unit never defines,
 // reached only through pointers
 struct Opaque {}
@@ -144,5 +167,28 @@ def test_structs(t : T?) {
         let bare = daslang_child("bare_struct", "options gen2\nstruct X;\nvar p : X?\n[export]\ndef main \{\n    assert(p == null && typeinfo sizeof(type<X>) == 0)\n\}\n", false)
         t |> equal(bare.rc, 0, bare.out)
         child_rejects(t, "struct_then_body", daslang_child("struct_then_body", "options gen2\nstruct X;\nstruct X \{\n    v : int\n\}\n", true), "structure is already defined")
+    }
+}
+
+[test]
+def test_struct_literals(t : T?) {
+    t |> run("a struct literal and a fixed_array evaluate their items left to right; a literal passes to a var record parameter") @(t : T?) {
+        literal_order |> clear()
+        let w = Inner(a = int8(noted(1)), b = int64(noted(2)))
+        let a = fixed_array(noted(3), noted(4), noted(5))
+        t |> equal("{literal_order}", "[ 1, 2, 3, 4, 5]")
+        t |> equal(int(w.a) + a[2], 6)
+        t |> equal(held_n(Held(n = 7)), 8)
+        t |> equal(g_literal_at.b, 4l)
+    }
+    t |> run("a record's trailing bytes past its last field read through reinterpret of its address plus an offset") @(t : T?) {
+        var cells : int[4]
+        unsafe {
+            var s = addr<WithArr?>(cells[0])
+            deref(reinterpret<int?>(reinterpret<uint8?>(s) + 8) + 1) = 9
+            t |> equal(cells[3], 9)
+            var p = addr(deref(addr(s.vals[0]) + 2))
+            t |> equal(intptr(p) - intptr(addr(cells[0])), 12ul)
+        }
     }
 }

@@ -23,8 +23,17 @@ let deep_exit = "options gen2\nrequire daslib/fio\ndef deep(n : int) \{\n    if 
 
 let recursion_arena = "def rec(n : int) : int \{\n    var arena : uint8[131072]\n    arena[n] = uint8(n)\n    if (n == 0) \{\n        return int(arena[0])\n    \}\n    return rec(n - 1) + int(arena[n])\n\}\n[export]\ndef main \{\n    print(\"rec=\{rec(2)\}\\n\")\n\}\n"
 
+let print_user_args = "options gen2\nrequire daslib/clargs\n[export]\ndef main \{\n    print(\"\{get_user_args()\}\")\n\}\n"
+
 [test]
 def test_process(t : T?) {
+    t |> run("get_user_args is what follows the first `--` under the interpreter, a later `--` kept, empties kept, none without `--`") @(t : T?) {
+        let no_flags : array<string>
+        let given = daslang_run("user_args", print_user_args, no_flags, array<string>(), "c2das_probe", ["--", "one", "two words", "", "--", "x"])
+        t |> equal(given.out, "[ one, two words, , --, x]", given.out)
+        let none = daslang_run("user_args_none", print_user_args, no_flags, array<string>(), "c2das_probe", array<string>())
+        t |> equal(none.out, "[]", none.out)
+    }
     t |> run("return N from main sets the process exit code") @(t : T?) {
         let r = daslang_child("return", "options gen2\n[export]\ndef main : int \{\n    return 42\n\}\n", false)
         t |> equal(r.rc, 42)
