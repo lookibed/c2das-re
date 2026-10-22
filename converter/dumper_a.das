@@ -56,6 +56,14 @@ struct ClangEnumRef {
 
 def private is_constant(r : ClangEnumRef) : bool => !empty(r.item)
 
+// an `offsetof(T, f)` as libclang sees it: the type as the source spells it and the member; `path`
+// when the designator is more than one member (`a.b`, `arr[2]`)
+struct ClangOffsetof {
+    type_text : string
+    member : string
+    path : bool
+}
+
 struct Dumper {
     tu : CirTu
     layout : LayoutMemo
@@ -65,9 +73,14 @@ struct Dumper {
     type_index : table<string; int>
     tu_prefix : string
     c_path : string
+    // the canonical directory of the main file with a trailing `/`: a declaration in a file under
+    // it belongs to the program
+    program_dir : string
+    // each file name the dump or libclang spells, made canonical
+    canonical_files : table<string; string>
     linkage_names : table<string; string>
     current_fn : string
-    // the C-IR name of every declaration of the main file by clang's declaration id: a reference
+    // the C-IR name of every declaration of the program by clang's declaration id: a reference
     // binds by the id clang resolved, never by its spelling, so a local hiding a static keeps
     // its own binding (`docs/probe-findings.md` F47)
     decl_names : table<string; string>
@@ -80,13 +93,18 @@ struct Dumper {
     record_by_loc : table<string; int>
     record_hash : table<string; uint>
     typedef_spellings : table<string; string>
-    source_lines : array<string>
     anon_spellings : table<string; string>
     enums : array<ClangEnum>
     enum_by_spelling : table<string; int>
     enum_by_loc : table<string; int>
     enum_ref_by_loc : table<string; ClangEnumRef>
     enum_dims_by_loc : table<string; array<ClangEnumRef>>
+    // the `offsetof` expressions at each key, in tree order: one macro expansion can spell two
+    // (both keyed at the expansion site and at stddef.h's `__builtin_offsetof`), and the JSON walk
+    // takes them in the same order, each node by its id
+    offsetofs_by_loc : table<string; array<ClangOffsetof>>
+    offsetof_index : table<string; int>
+    offsetof_taken : table<string; int>
     // the labels of the function being dumped, by the id a GotoStmt names
     label_names : table<string; string>
     // the typedef names whose declaration reaches clang's implicit `__builtin_va_list`, and the
@@ -102,6 +120,8 @@ struct Dumper {
     // does not read: no value, or an array's element), and their names
     aligned_ids : table<string; int>
     aligned_names : table<string>
+    // the bytes of clang's JSON dump
+    json_bytes : int64
 }
 
 def private fail(var d : Dumper; what : string; at : CirLoc) {
@@ -121,42 +141,90 @@ def private child_count(js : JsonValue?) : int {
 
 def private has_loc(js : JsonValue?) : bool => is_present(js?["loc"])
 
-// clang omits `file` and `line` from a location that repeats the previous node's: the dumper
-// carries them forward in tree order, which is the order clang assigned them in
-def private loc_of(var d : Dumper; js : JsonValue?) : CirLoc {
+// a location as the dump reports it: the expansion site of a macro-produced node, else its own
+def private loc_given(js : JsonValue?) : JsonValue const? {
     let given = has_loc(js) ? js?["loc"] : js?["range"]?["begin"]
-    let at = is_present(given?["expansionLoc"]) ? given?["expansionLoc"] : given
-    let file = at?["file"]
-    if (is_present(file)) {
-        d.cur_file = file ?? ""
-    }
-    let line = at?["line"]
-    if (is_present(line)) {
-        d.cur_line = int(line ?? 0l)
+    return is_present(given?["expansionLoc"]) ? given?["expansionLoc"] : given
+}
+
+// a node's location: `complete_locs` gave every valid location its file and line; an invalid
+// one (`{}`, a builtin's) takes the last valid one's
+def private loc_of(var d : Dumper; js : JsonValue?) : CirLoc {
+    let at = loc_given(js)
+    if (is_present(at?["file"])) {
+        d.cur_file = at?["file"] ?? ""
+        d.cur_line = int(at?["line"] ?? 0l)
     }
     return CirLoc(file = d.cur_file, line = d.cur_line, col = int(at?["col"] ?? 0l))
 }
 
-// every node of a subtree the dumper does not visit still advances the location carry, since
-// clang omitted the lines that repeat these nodes' lines
-def private touch_locs(var d : Dumper; js : JsonValue?) {
-    for (idx in range(child_count(js))) {
-        let kid = (js?["inner"] as _array)[idx]
-        loc_of(d, kid)
-        touch_locs(d, kid)
+// the file and line clang last wrote, the state it omits a repeating `file` and `line` against
+struct LocState {
+    file : string
+    line : int64
+}
+
+// one location without a `spellingLoc` split: the state clang compared it against moves on, and
+// a `file` or `line` clang omitted is written back from it
+def private complete_bare(var at : JsonValue?; var last : LocState&) {
+    if (!is_present(at?["offset"])) {
+        return
+    }
+    if (is_present(at?["file"])) {
+        last.file = at?["file"] ?? ""
+        last.line = at?["line"] ?? 0l
+        return
+    }
+    if (is_present(at?["line"])) {
+        last.line = at?["line"] ?? 0l
+    } else {
+        (at as _object)["line"] = new JsonValue(value <- JsValue(_longint = last.line))
+    }
+    (at as _object)["file"] = JV(last.file)
+}
+
+def private complete_loc(var at : JsonValue?; var last : LocState&) {
+    if (is_present(at?["spellingLoc"])) {
+        complete_bare(at?["spellingLoc"], last)
+        complete_bare(at?["expansionLoc"], last)
+    } else {
+        complete_bare(at, last)
     }
 }
 
-// the record definitions of the main file through libclang, nested ones included, under the
+// clang writes a location's `file` and `line` only where they differ from the last location it
+// wrote, over every location of the dump in print order: a node's `loc` (a macro-produced one as
+// its `spellingLoc`, then its `expansionLoc`), its `range.begin` and `range.end`, then its
+// children, `array_filler` before `inner`; an `includedFrom` file is not part of that state.
+// This walk writes the omitted values back, so every valid location names its own file and line
+[arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
+def private complete_locs(var js : JsonValue?; var last : LocState&) {
+    if (!(js is _object)) {
+        return
+    }
+    complete_loc(js?["loc"], last)
+    complete_loc(js?["range"]?["begin"], last)
+    complete_loc(js?["range"]?["end"], last)
+    for (key in fixed_array("array_filler", "inner")) {
+        var kids = js?[key]
+        if (kids is _array) {
+            for (kid in kids as _array) {
+                complete_locs(kid, last)
+            }
+        }
+    }
+}
+
+// the record definitions of the program through libclang, nested ones included, under the
 // same target and dialect flags as the JSON dump; the pass is the layout read-out of
 // docs/very-detailed-plan.md section 4.1
 def private register_record(var d : Dumper; var c : CXCursor) {
-    let key = cursor_key(c)
+    let key = cursor_key(d, c)
     if (key_exists(d.record_by_loc, key)) {
         // a block-scoped record is visited under its statement and again under the variable's
         // type; another cursor at the same key is a second record one macro expansion made
         if ((d.record_hash?[key] ?? 0u) != clang_hashCursor(c)) {
-            fail(d, "anonymous records from one macro expansion are not dumped yet", cursor_loc(d, c))
+            fail(d, "anonymous records from one macro expansion are not dumped yet", cursor_loc(c))
         }
         return
     }
@@ -170,7 +238,7 @@ def private register_record(var d : Dumper; var c : CXCursor) {
     if (key_exists(d.record_by_spelling, rec.spelling)) {
         // an unnamed record is spelled by its expansion location, which a macro shares
         let unnamed = find(rec.spelling, "(anonymous ") >= 0 || find(rec.spelling, "(unnamed ") >= 0
-        fail(d, unnamed ? "anonymous records from one macro expansion are not dumped yet" : "`{rec.spelling}` is defined more than once in this file; same-tag block-scoped records are not dumped yet", cursor_loc(d, c))
+        fail(d, unnamed ? "anonymous records from one macro expansion are not dumped yet" : "`{rec.spelling}` is defined more than once in this file; same-tag block-scoped records are not dumped yet", cursor_loc(c))
         return
     }
     if (!tagged) {
@@ -180,15 +248,15 @@ def private register_record(var d : Dumper; var c : CXCursor) {
         let fk = clang_getCursorKind(fc)
         if ((fk == CXCursorKind.StructDecl || fk == CXCursorKind.UnionDecl) && clang_isCursorDefinition(fc) != 0u) {
             register_record(d, fc)
-            let inner = d.record_by_loc?[cursor_key(fc)] ?? -1
+            let inner = d.record_by_loc?[cursor_key(d, fc)] ?? -1
             if (inner >= 0 && clang_Cursor_isAnonymousRecordDecl(fc) != 0u) {
                 // an anonymous member: libclang visits its record, never the implicit field
                 let bit_off = anonymous_offset(d, ct, inner)
                 if (bit_off < 0l) {
-                    fail(d, "anonymous member of `{rec.spelling}` exposes no field name; not dumped yet", cursor_loc(d, fc))
+                    fail(d, "anonymous member of `{rec.spelling}` exposes no field name; not dumped yet", cursor_loc(fc))
                 }
                 var canonical = clang_getCanonicalType(clang_getCursorType(fc))
-                rec.fields |> push(ClangField(loc_key = cursor_key(fc), spelling = string(clang_getTypeSpelling(canonical)), bit_off = bit_off))
+                rec.fields |> push(ClangField(loc_key = cursor_key(d, fc), spelling = string(clang_getTypeSpelling(canonical)), bit_off = bit_off))
             }
         } elif (fk == CXCursorKind.EnumDecl && clang_isCursorDefinition(fc) != 0u) {
             register_enum(d, fc)
@@ -202,9 +270,9 @@ def private register_record(var d : Dumper; var c : CXCursor) {
             let va = type_holds_va(declared)
             let spelling = va == VA_EXACT ? VA_BUILTIN : string(clang_getTypeSpelling(canonical))
             if (va == VA_INSIDE) {
-                fail(d, "`{string(clang_getTypeSpelling(declared))}`: a pointer to a `va_list` or an array of them is not lowered yet", cursor_loc(d, fc))
+                fail(d, "`{string(clang_getTypeSpelling(declared))}`: a pointer to a `va_list` or an array of them is not lowered yet", cursor_loc(fc))
             }
-            rec.fields |> push(ClangField(name = string(clang_getCursorSpelling(fc)), loc_key = cursor_key(fc), spelling = spelling, bit_off = clang_Cursor_getOffsetOfField(fc), bit_w = is_bf ? clang_getFieldDeclBitWidth(fc) : 0, is_bitfield = is_bf))
+            rec.fields |> push(ClangField(name = string(clang_getCursorSpelling(fc)), loc_key = cursor_key(d, fc), spelling = spelling, bit_off = clang_Cursor_getOffsetOfField(fc), bit_w = is_bf ? clang_getFieldDeclBitWidth(fc) : 0, is_bitfield = is_bf))
         }
         return CXChildVisitResult.Continue
     }
@@ -256,40 +324,65 @@ def private visible_name(d : Dumper; idx, depth : int; var bit_off : int64&) : s
 // how deep `visible_name` follows anonymous members inside anonymous members
 let private MAX_ANONYMOUS_DEPTH = 64
 
-// a cursor's location as the dump reports it: the main file, the expansion line and column
-def private cursor_loc(d : Dumper; var c : CXCursor) : CirLoc {
+// a file name as the dump or libclang spells it, made canonical (symbolic links and `..`
+// resolved); "" for a buffer that is no file (`<scratch space>`, `<built-in>`)
+def private canonical_file(var d : Dumper; name : string) : string {
+    if (empty(name) || name |> starts_with("<")) {
+        return ""
+    }
+    var full = d.canonical_files?[name] ?? ""
+    if (empty(full)) {
+        full = get_full_file_name(name)
+        d.canonical_files[name] = full
+    }
+    return full
+}
+
+// whether a declaration in file `name` belongs to the program: the main file or a file under
+// its directory; every other file (a system header's) is external
+[arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
+def private in_program(var d : Dumper; name : string) : bool {
+    let full = canonical_file(d, name)
+    return full |> starts_with(d.program_dir)
+}
+
+// the file of a libclang location, as `clang_getExpansionLocation` and its siblings give it
+def private file_name(var file : CXFile) : string => file == null ? "" : string(clang_getFileName(file))
+
+// a cursor's location as the dump reports it: the expansion file, line and column
+def private cursor_loc(var c : CXCursor) : CirLoc {
     var file : CXFile
     var line, column, offset : uint
     clang_getExpansionLocation(clang_getCursorLocation(c), safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
-    return CirLoc(file = d.c_path, line = int(line), col = int(column))
+    return CirLoc(file = file_name(file), line = int(line), col = int(column))
 }
 
-// the key that joins a libclang cursor to the JSON dump's node for it: the byte offsets of the
-// expansion site and of the spelling (the two differ for a macro-produced token, and are the
-// token's own otherwise); the offset, unlike the line, is on every JSON location, where clang
-// omits a line that repeats its last one. The file is left out: the dump omits a `file` that
-// repeats the last one, and every keyed cursor is the main file's
-def private cursor_key(var c : CXCursor) : string {
-    var file : CXFile
+// the key that joins a libclang cursor to the JSON dump's node for it: the canonical file and
+// byte offset of the expansion site and of the spelling (the two differ for a macro-produced
+// token, and are the token's own otherwise); the offset, unlike the line, is on every JSON
+// location, and `complete_locs` gives each its file
+[arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
+def private cursor_key(var d : Dumper; var c : CXCursor) : string {
+    var file, spelled_file : CXFile
     var line, column, offset, spelled : uint
     var loc = clang_getCursorLocation(c)
     clang_getExpansionLocation(loc, safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
-    clang_getSpellingLocation(loc, safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(spelled))
-    return "{int(offset)}:{int(spelled)}"
+    clang_getSpellingLocation(loc, safe_addr(spelled_file), safe_addr(line), safe_addr(column), safe_addr(spelled))
+    return "{canonical_file(d, file_name(file))}:{int(offset)}:{canonical_file(d, file_name(spelled_file))}:{int(spelled)}"
 }
 
-def private node_key(js : JsonValue?) : string {
+def private node_key(var d : Dumper; js : JsonValue?) : string {
     let given = has_loc(js) ? js?["loc"] : js?["range"]?["begin"]
     let at = is_present(given?["expansionLoc"]) ? given?["expansionLoc"] : given
     let spelled = is_present(given?["spellingLoc"]) ? given?["spellingLoc"] : given
-    return "{int(at?["offset"] ?? -1l)}:{int(spelled?["offset"] ?? -1l)}"
+    return "{canonical_file(d, at?["file"] ?? "")}:{int(at?["offset"] ?? -1l)}:{canonical_file(d, spelled?["file"] ?? "")}:{int(spelled?["offset"] ?? -1l)}"
 }
 
 // an enum definition with clang's evaluated values; a typedef-named anonymous enum takes its
 // tag back the way a record does
 def private register_enum(var d : Dumper; var c : CXCursor) {
     // a block-scoped enum is visited under its statement and again under the variable's type
-    if (key_exists(d.enum_by_loc, cursor_key(c))) {
+    if (key_exists(d.enum_by_loc, cursor_key(d, c))) {
         return
     }
     var underlying = clang_getEnumDeclIntegerType(c)
@@ -310,7 +403,7 @@ def private register_enum(var d : Dumper; var c : CXCursor) {
         en.spelling_shared = true
     }
     d.enum_by_spelling[en.spelling] = idx
-    d.enum_by_loc[cursor_key(c)] = idx
+    d.enum_by_loc[cursor_key(d, c)] = idx
     d.enums |> emplace(en)
 }
 
@@ -353,14 +446,44 @@ def private register_dims(var d : Dumper; var c : CXCursor) {
     }
     if (named) {
         dims |> reverse()
-        d.enum_dims_by_loc[cursor_key(c)] <- dims
+        d.enum_dims_by_loc[cursor_key(d, c)] <- dims
     }
+}
+
+// an `offsetof(T, f)`, which libclang shows as an unexposed expression whose children are the
+// type's reference, then one member reference per designator member (an index an expression); a
+// designated initializer has member references but no type reference
+def private register_offsetof(var d : Dumper; var c : CXCursor) {
+    var off : ClangOffsetof
+    var members = 0
+    var others = 0
+    clang_visitChildren(c) $(var kid, _kp) {
+        let kind = clang_getCursorKind(kid)
+        if (kind == CXCursorKind.TypeRef && empty(off.type_text)) {
+            off.type_text = string(clang_getCursorSpelling(kid))
+        } elif (kind == CXCursorKind.MemberRef) {
+            off.member = string(clang_getCursorSpelling(kid))
+            members++
+        } else {
+            others++
+        }
+        return CXChildVisitResult.Continue
+    }
+    if (members == 0 || empty(off.type_text)) {
+        return
+    }
+    off.path = members > 1 || others > 0
+    let key = cursor_key(d, c)
+    if (!key_exists(d.offsetofs_by_loc, key)) {
+        d.offsetofs_by_loc[key] <- array<ClangOffsetof>()
+    }
+    d.offsetofs_by_loc[key] |> emplace(off)
 }
 
 def private walk_records(var d : Dumper; var c : CXCursor) {
     clang_visitChildren(c) $(var kid, _parent) {
         let kind = clang_getCursorKind(kid)
-        if (kind != CXCursorKind.TypedefDecl && clang_Location_isFromMainFile(clang_getCursorLocation(kid)) == 0) {
+        if (kind != CXCursorKind.TypedefDecl && !in_program(d, cursor_loc(kid).file)) {
             return CXChildVisitResult.Continue
         }
         if ((kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl) && clang_isCursorDefinition(kid) != 0u) {
@@ -370,12 +493,15 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
         } elif (kind == CXCursorKind.VarDecl) {
             register_dims(d, kid)
             walk_records(d, kid)
+        } elif (kind == CXCursorKind.UnexposedExpr) {
+            register_offsetof(d, kid)
+            walk_records(d, kid)
         } elif (kind == CXCursorKind.DeclRefExpr) {
             // a reference to an enum constant resolves by its location, since C scopes let
             // two enums of one file spell the same constant name
             let ref = enum_constant_of(kid)
             if (is_constant(ref)) {
-                d.enum_ref_by_loc[cursor_key(kid)] = ref
+                d.enum_ref_by_loc[cursor_key(d, kid)] = ref
             }
         } elif (kind == CXCursorKind.TypedefDecl) {
             var under = clang_getTypedefDeclUnderlyingType(kid)
@@ -399,7 +525,7 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
 def private collect_records(var d : Dumper; triple : string; resource_dir : string; defines : array<string>) {
     // libclang finds no resource directory of its own, so the builtin headers (`stddef.h`, whose
     // `size_t` a libc prototype spells) come from the pinned clang's
-    var args <- ["-target", triple, "-funsigned-char", "-w", "-resource-dir", resource_dir]
+    var args <- ["-target", triple, "-funsigned-char", "-w", NO_CTYPE_MACROS, "-resource-dir", resource_dir]
     args |> push_from(define_flags(defines))
     var idx = clang_createIndex(0, 0)
     var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, 0u)
@@ -438,9 +564,19 @@ def private unscoped_spelling(spelling : string) : string {
     if (scope < 0) {
         return spelling
     }
-    // the scope starts at the first `::`; an anonymous member's own scope is parenthesized
-    // (`union N::(anonymous struct)::(anonymous at f:l:c)`)
-    let start = rfind(slice(spelling, 0, find(spelling, "::")), " ") + 1
+    // the scope follows the first tag word and runs to the last `::`; an anonymous member's own
+    // scope is parenthesized (`union N::(anonymous struct)::(anonymous at f:l:c)`), and a
+    // function's spells its signature (`union f(const char **)::(unnamed at f:l:c)`)
+    var start = -1
+    for (tag in fixed_array("struct ", "union ", "enum ")) {
+        let at = find(spelling, tag)
+        if (at >= 0 && (start < 0 || at + length(tag) < start)) {
+            start = at + length(tag)
+        }
+    }
+    if (start < 0) {
+        start = rfind(slice(spelling, 0, find(spelling, "::")), " ") + 1
+    }
     return slice(spelling, 0, start) + slice(spelling, scope + 2)
 }
 
@@ -607,9 +743,9 @@ def private function_pointer(var d : Dumper; qt : string; at : CirLoc) : int {
     if (close < star) {
         return -2
     }
-    // `(**)` is a pointer to the pointer, one level per extra star; a `const` on the pointer
-    // (`(* const)`, a member read through a const record) changes nothing das spells
-    let between = strip(slice(qt, star + 2, close) |> replace("const", "")) |> replace(" ", "")
+    // `(**)` is a pointer to the pointer, one level per extra star; a qualifier on the pointer
+    // (`(* const)`, a member read through a const record; `(* volatile)`) changes nothing das spells
+    let between = slice(qt, star + 2, close) |> replace("const", "") |> replace("volatile", "") |> replace(" ", "")
     let extra = length([for (ch in between); ch; where ch == '*'])
     let dims = slice(between, extra)
     if (!(between |> starts_with(repeat("*", extra))) || (!empty(dims) && !(dims |> starts_with("[")))) {
@@ -1279,7 +1415,7 @@ def private hex_float(decimal : string) : string {
 def private linkage_name(d : Dumper; c_name : string) : string => d.linkage_names?[c_name] ?? c_name
 
 // the name a reference binds to: the declaration clang resolved, by its id; a declaration
-// outside the main file (a libc function, `stderr`) by its file-scope name
+// outside the program (a libc function, `stderr`) by its file-scope name
 def private bound_name(d : Dumper; referenced : JsonValue?) : string {
     let bound = d.decl_names?[referenced?["id"] ?? ""] ?? ""
     return empty(bound) ? linkage_name(d, referenced?["name"] ?? "") : bound
@@ -1514,6 +1650,13 @@ def private dump_member(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
     let name = js?["name"] ?? ""
     // an anonymous member is the unnamed field of the member's own record type
     let field = member_index(d, rec, name, t)
+    if (field < 0 && rec >= 0 && d.tu.types[rec].size < 0) {
+        // a record of an external file (a system header's `struct lconv`, `struct tm`) has no
+        // layout here
+        fail(d, "member `{name}` of `{d.tu.types[rec].spell}`, a record no file of the program defines, is not lowered yet", at)
+        delete_expr(base)
+        return null
+    }
     if (field < 0) {
         fail(d, "member `{name}` is not a direct field of the base's type", at)
         delete_expr(base)
@@ -1539,6 +1682,11 @@ def private dump_init_list(var d : Dumper; js : JsonValue?; t : int; at : CirLoc
     let entries = filled ? js?["array_filler"] : js?["inner"]
     let count = entries != null && entries is _array ? length(entries as _array) : 0
     let first = filled ? 1 : 0
+    if (k == "array" && !filled && count == 1 && node_kind((entries as _array)[0]) == "StringLiteral" && node_type(d, (entries as _array)[0], at) == t) {
+        // `char s[] = { "ab" }`: clang types the literal as the whole array, which is the
+        // unbraced `char s[] = "ab"`
+        return dump_expr(d, (entries as _array)[0])
+    }
     var x = new CirExpr(e = "init_list", t = t)
     x.init_items |> reserve(count)
     for (idx in range(first, count)) {
@@ -1631,34 +1779,42 @@ def private initialized_field(rec : CirType; slot : int) : int {
     return slot
 }
 
-def private source_line(var d : Dumper; line : int) : string {
-    if (empty(d.source_lines)) {
-        d.source_lines <- split(fread(d.c_path), "\n")
-    }
-    return line >= 1 && line <= length(d.source_lines) ? d.source_lines[line - 1] : ""
-}
-
 // clang's JSON carries neither the components nor the value of `offsetof(T, f)`
-// (docs/probe-findings.md F20): the dumper reads `T, f` from the macro's own text at its
-// expansion site, a direct field of a record only
-def private dump_offsetof(var d : Dumper; t : int; at : CirLoc) : CirExpr? {
-    let text = slice(source_line(d, at.line), max(at.col - 1, 0))
-    let open = find(text, "(")
-    let comma = find(text, ",")
-    let close = find(text, ")")
-    if (!(text |> starts_with("offsetof") || text |> starts_with("__builtin_offsetof")) || open < 0 || comma < open || close < comma) {
-        fail(d, "offsetof: cannot read `type, member` at the expansion site", at)
+// (docs/probe-findings.md F20): libclang's cursor of the expression gives `T` as the source
+// spells it and `f`, a direct field of a record only. The n-th node of a key takes the n-th
+// cursor there, a node met again its own
+def private dump_offsetof(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
+    let key = node_key(d, js)
+    let id = js?["id"] ?? ""
+    var slot = d.offsetof_index?[id] ?? -1
+    if (slot < 0) {
+        slot = d.offsetof_taken?[key] ?? 0
+        d.offsetof_taken[key] = slot + 1
+        d.offsetof_index[id] = slot
+    }
+    var off : ClangOffsetof
+    var found = false
+    get(d.offsetofs_by_loc, key) $(offs) {
+        if (slot < length(offs)) {
+            off = offs[slot]
+            found = true
+        }
+    }
+    if (!found) {
+        fail(d, "offsetof: libclang reports no `offsetof` at this location", at)
         return null
     }
-    let type_text = strip(slice(text, open + 1, comma))
-    let member = strip(slice(text, comma + 1, close))
-    let of_t = type_from_qual(d, type_text, at)
+    if (off.path) {
+        fail(d, "offsetof({off.type_text}, ...): a member path (`a.b`, `a[i]`) is not lowered yet", at)
+        return null
+    }
+    let of_t = type_from_qual(d, off.type_text, at)
     if (of_t < 0) {
         return null
     }
-    let field = member_index(d, of_t, member, -1)
+    let field = member_index(d, of_t, off.member, -1)
     if (field < 0) {
-        fail(d, "offsetof: `{member}` is not a direct field of `{type_text}`", at)
+        fail(d, "offsetof: `{off.member}` is not a direct field of `{off.type_text}`", at)
         return null
     }
     return new CirExpr(e = "offsetof", t = t, of_t = of_t, field = field)
@@ -1705,7 +1861,7 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
     if (kind == "DeclRefExpr") {
         if ((js?["referencedDecl"]?["kind"] ?? "") == "EnumConstantDecl") {
             let item = js?["referencedDecl"]?["name"] ?? ""
-            let ref = d.enum_ref_by_loc?[node_key(js)] ?? ClangEnumRef()
+            let ref = d.enum_ref_by_loc?[node_key(d, js)] ?? ClangEnumRef()
             if (ref.item != item) {
                 fail(d, "enum constant `{item}`: libclang reports no reference at this location", at)
                 return null
@@ -1715,6 +1871,11 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
                 return null
             }
             return new CirExpr(e = "enum_ref", t = t, enum_t = owner, item = item)
+        }
+        if (d.tu.types[t].k == "array" && d.tu.types[t].count < 0) {
+            // the object's definition, later in the unit, gives the count the reference lacks
+            fail(d, "a reference to `{js?["referencedDecl"]?["name"] ?? ""}` before a definition gives its array a length (`extern int a[];`) is not lowered yet", at)
+            return null
         }
         return new CirExpr(e = "ref", t = t, name = bound_name(d, js?["referencedDecl"]))
     }
@@ -1760,7 +1921,7 @@ def private dump_type_operator(var d : Dumper; js : JsonValue?; kind : string; t
         return dump_sizeof(d, js, t, at)
     }
     if (kind == "OffsetOfExpr") {
-        return dump_offsetof(d, t, at)
+        return dump_offsetof(d, js, t, at)
     }
     // clang gives a `VAArgExpr` its list as the one child
     var list = child_expr(d, js?["inner"], 0)
@@ -1804,13 +1965,18 @@ def private hoist_static(var d : Dumper; js : JsonValue?; at : CirLoc; t : int) 
     // two static locals of one name in one function take numbered names
     let hoisted = free_name(d.hoisted_names, "{d.current_fn}_{c_name}")
     d.decl_names[js?["id"] ?? ""] = hoisted
+    var ok = true
+    let init = initializer_of(d, js, at, ok)
+    if (!ok) {
+        return false
+    }
     var g = new CirDecl(k = "global", name = hoisted, c_name = c_name, t = t, is_static = true, from_func = d.current_fn, loc = at)
-    if (!enum_dims(d, node_key(js), t, at, g.dims)) {
+    if (!enum_dims(d, node_key(d, js), t, at, g.dims)) {
         delete_decl(g)
         return false
     }
-    if (child_count(js) > 0) {
-        g.init = dump_expr(d, (js?["inner"] as _array)[child_count(js) - 1])
+    if (init >= 0) {
+        g.init = dump_expr(d, (js?["inner"] as _array)[init])
         if (g.init == null) {
             delete_decl(g)
             return false
@@ -1855,15 +2021,20 @@ def private dump_var(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
         d.decl_names[js?["id"] ?? ""] = bound
         return new CirStmt(s = "null", loc = at)
     }
+    var ok = true
+    let init = initializer_of(d, js, at, ok)
+    if (!ok) {
+        return null
+    }
     var st = new CirStmt(s = "decl", name = js?["name"] ?? "", t = t, loc = at)
     d.decl_names[js?["id"] ?? ""] = st.name
     d.fn_locals |> insert(st.name)
-    if (!enum_dims(d, node_key(js), t, at, st.dims)) {
+    if (!enum_dims(d, node_key(d, js), t, at, st.dims)) {
         delete_stmt(st)
         return null
     }
-    if (child_count(js) > 0) {
-        st.init = dump_expr(d, (js?["inner"] as _array)[child_count(js) - 1])
+    if (init >= 0) {
+        st.init = dump_expr(d, (js?["inner"] as _array)[init])
         if (st.init == null) {
             delete_stmt(st)
             return null
@@ -2197,24 +2368,16 @@ def dump_stmt(var d : Dumper; js : JsonValue?) : CirStmt? {
 // forward declaration adds nothing; the slot comes from the libclang layout at this location
 def private dump_record_decl(var d : Dumper; js : JsonValue?) : bool {
     let at = loc_of(d, js)
-    if (!(js?["completeDefinition"] ?? false)) {
-        return true
-    }
-    if ((js?["name"] ?? "") == "__jmp_buf_tag") {
-        // glibc's tag, which a file that includes no header defines itself: every spelling of it
-        // is the opaque `jmp_buf` record (`jmp_buf_type`), so its fields name nothing
-        touch_locs(d, js)
+    // a forward declaration adds nothing, and neither does glibc's tag, which a file that includes
+    // no header defines itself: every spelling of it is the opaque `jmp_buf` record
+    // (`jmp_buf_type`), so its fields name nothing
+    if (!(js?["completeDefinition"] ?? false) || (js?["name"] ?? "") == "__jmp_buf_tag") {
         return true
     }
     for (idx in range(child_count(js))) {
         let kid = (js?["inner"] as _array)[idx]
-        if (node_kind(kid) == "RecordDecl" || node_kind(kid) == "EnumDecl") {
-            if (!dump_type_decl(d, kid)) {
-                return false
-            }
-        } else {
-            loc_of(d, kid)
-            touch_locs(d, kid)
+        if ((node_kind(kid) == "RecordDecl" || node_kind(kid) == "EnumDecl") && !dump_type_decl(d, kid)) {
+            return false
         }
     }
     return anchor_type(d, js, at, false)
@@ -2223,7 +2386,7 @@ def private dump_record_decl(var d : Dumper; js : JsonValue?) : bool {
 // the anchor of a record or enum definition: the type from the libclang entry at the node's
 // location, pushed as its `record` or `enumdef` declaration
 def private anchor_type(var d : Dumper; js : JsonValue?; at : CirLoc; is_enum : bool) : bool {
-    let key = node_key(js)
+    let key = node_key(d, js)
     let idx = is_enum ? (d.enum_by_loc?[key] ?? -1) : (d.record_by_loc?[key] ?? -1)
     if (idx < 0) {
         fail(d, "libclang reports no {is_enum ? "enum" : "record"} definition at this location", at)
@@ -2241,7 +2404,6 @@ def private anchor_type(var d : Dumper; js : JsonValue?; at : CirLoc; is_enum : 
 // emission and names the type `offsetof` spells
 def private dump_typedef_decl(var d : Dumper; js : JsonValue?) : bool {
     let at = loc_of(d, js)
-    touch_locs(d, js)
     let to = node_type(d, js, at)
     if (to < 0) {
         return false
@@ -2257,7 +2419,6 @@ def private dump_typedef_decl(var d : Dumper; js : JsonValue?) : bool {
 // forward declaration (`enum E;`, no enumerators) adds nothing
 def private dump_enum_decl(var d : Dumper; js : JsonValue?) : bool {
     let at = loc_of(d, js)
-    touch_locs(d, js)
     if (child_count(js) == 0) {
         return true
     }
@@ -2267,6 +2428,24 @@ def private dump_enum_decl(var d : Dumper; js : JsonValue?) : bool {
 def private dump_type_decl(var d : Dumper; js : JsonValue?) : bool {
     let kind = node_kind(js)
     return kind == "RecordDecl" ? dump_record_decl(d, js) : kind == "EnumDecl" ? dump_enum_decl(d, js) : dump_typedef_decl(d, js)
+}
+
+// the child index of a variable's initializer, the last child that is no attribute (`visibility`
+// adds one); -1 when it has none. An alignment the variable asks for (`_Alignas`, `aligned`) fails
+// closed into `ok`, since das places a variable by its type
+def private initializer_of(var d : Dumper; js : JsonValue?; at : CirLoc; var ok : bool&) : int {
+    var init = -1
+    for (idx in range(child_count(js))) {
+        let kid = (js?["inner"] as _array)[idx]
+        let kind = node_kind(kid)
+        if (kind == "AlignedAttr") {
+            fail(d, "`{js?["name"] ?? ""}`: an alignment on a variable (`_Alignas`, `aligned`) is not lowered yet", at)
+            ok = false
+        } elif (!(kind |> ends_with("Attr"))) {
+            init = idx
+        }
+    }
+    return init
 }
 
 def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
@@ -2325,13 +2504,18 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
         if (t < 0) {
             return null
         }
-        var g = new CirDecl(k = "global", name = name, c_name = c_name, t = t, is_static = is_static, is_extern = storage == "extern" && child_count(js) == 0, loc = at)
-        if (!enum_dims(d, node_key(js), t, at, g.dims)) {
+        var ok = true
+        let init = initializer_of(d, js, at, ok)
+        if (!ok) {
+            return null
+        }
+        var g = new CirDecl(k = "global", name = name, c_name = c_name, t = t, is_static = is_static, is_extern = storage == "extern" && init < 0, loc = at)
+        if (!enum_dims(d, node_key(d, js), t, at, g.dims)) {
             delete_decl(g)
             return null
         }
-        if (child_count(js) > 0) {
-            g.init = dump_expr(d, (js?["inner"] as _array)[child_count(js) - 1])
+        if (init >= 0) {
+            g.init = dump_expr(d, (js?["inner"] as _array)[init])
             if (g.init == null) {
                 delete_decl(g)
                 return null
@@ -2379,6 +2563,11 @@ def private merge_tentative(var d : Dumper; var cd : CirDecl?) : bool {
                 prev.init = cd.init
                 cd.init = null
             }
+            if (prev.is_extern && !cd.is_extern) {
+                // the definition's type completes an `extern` one's (`extern const char s[];`)
+                prev.t = cd.t
+                prev.dims <- cd.dims
+            }
             prev.is_extern = prev.is_extern && cd.is_extern
             return false
         }
@@ -2390,6 +2579,10 @@ def private merge_tentative(var d : Dumper; var cd : CirDecl?) : bool {
 //! (`scripts/env.sh`), else whatever `clang` is on PATH.
 def default_clang : string =>
     has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
+
+// glibc's <ctype.h> spells `isalpha(c)` as a macro indexing its locale table (`__ctype_b_loc`)
+// unless `__NO_CTYPE` is defined: with it each is the libc function the crt module binds
+let NO_CTYPE_MACROS = "-D__NO_CTYPE"
 
 // the sidecar's `defines` as clang flags, `-D<entry>` each
 def private define_flags(defines : array<string>) : array<string> => <- [for (entry in defines); "-D{entry}"]
@@ -2404,6 +2597,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; defines : array
     d.tu.tu = base_name(c_path)
     d.c_path = c_path
     d.cur_file = c_path
+    d.program_dir = dir_name(get_full_file_name(c_path)) + "/"
     d.va_names |> insert(VA_BUILTIN)
     d.tu_prefix = ident_of(slice(d.tu.tu, 0, max(find(d.tu.tu, "."), 0)))
     d.tu.producer = "c2das-dumper-a 0.1 / clang {clang_version(clang)}"
@@ -2417,27 +2611,29 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; defines : array
         return <- d
     }
     var out : string
-    var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", "-target", target.triple]
+    var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", NO_CTYPE_MACROS, "-target", target.triple]
     dump_args |> push_from(define_flags(defines), [c_path])
     let rc = run_and_capture(dump_args, out, 120.0)
     if (rc != 0) {
         d.error = "clang exited {rc}:\n{out}"
         return <- d
     }
+    d.json_bytes = long_length(out)
     var err : string
     var js = read_json(out, err)
     if (js == null) {
         d.error = "clang dump is not JSON: {err}"
         return <- d
     }
+    var last : LocState
+    complete_locs(js, last)
     collect_va_ids(d, js)
     collect_aligned_typedefs(d, js)
     let top = js?["inner"]
     for (idx in range(child_count(js))) {
         let decl = (top as _array)[idx]
         let at = loc_of(d, decl)
-        if ((decl?["isImplicit"] ?? false) || at.file != c_path) {
-            touch_locs(d, decl)
+        if ((decl?["isImplicit"] ?? false) || !in_program(d, at.file)) {
             continue
         }
         let kind = node_kind(decl)

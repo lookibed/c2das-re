@@ -22,7 +22,7 @@ struct Expectation {
 var work_root : string
 
 def native(name : string) : Expectation {
-    let run = native_run(default_clang(), ["-w", CLANG_DIALECT], "{FIXTURES}/{name}.c", path_join(work_root, "{name}_native"), 60.0)
+    let run = native_run(default_clang(), ["-w", CLANG_DIALECT, "-lm"], "{FIXTURES}/{name}.c", path_join(work_root, "{name}_native"), 60.0)
     return run.built ? Expectation(rc = run.rc, out = run.output) : Expectation(rc = -1, out = "clang failed:\n{run.output}")
 }
 
@@ -139,6 +139,8 @@ def test_lowerings(t : T?) {
     p4_matrix_leftover_fixtures(t)
     p4_matrix_leftover_shapes(t)
     p4_matrix_leftover_rejects(t)
+    p5_program_fixtures(t)
+    p5_lua_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -266,7 +268,12 @@ def p2_enum_fixtures(t : T?) {
         rejects(t, "same_tag", "static int f(void) \{ enum e \{ A = 1 \}; return A; \}\nstatic int g(void) \{ enum e \{ B = 2 \}; return B; \}\nint main(void) \{ return f() + g(); \}\n", "defined more than once")
         rejects(t, "packed", "enum __attribute__((packed)) P \{ P1 = 1 \};\nint main(void) \{ enum P p = P1; return p; \}\n", "bits wide")
         rejects(t, "in_sizeof", "int main(void) \{ return (int) sizeof(enum Q \{ Q1 = 5 \}); \}\n", "defined inside an expression")
-        rejects(t, "macro_constant", "enum E \{ A = 1, B = 2 \};\n#define BOTH (A + B)\nint main(void) \{ return BOTH; \}\n", "libclang reports no reference")
+    }
+    t |> run("enumerators reached through a macro bind by their spellings' locations") @(t : T?) {
+        let text = converts(t, "macro_constant", "enum E \{ A = 1, B = 2 \};\n#define BOTH (A + B)\n#define TWICE(x) ((x) + (x))\nint main(void) \{ return BOTH + TWICE(B); \}\n")
+        has_text(t, text, "return int(E.A) + int(E.B) + (int(E.B) + int(E.B))")
+        var out : string
+        t |> equal(run_tier(converted_path("macro_constant"), "interp", work_root, out, CONVERTED_MODULES), 7, out)
     }
 }
 
@@ -949,7 +956,8 @@ def p4_csmith_more_fixtures(t : T?) {
         has_text(t, text, "b = (int(b ? 1 : 0) << n) != 0")
     }
     t |> run("csmith shapes: what the lowering refuses, and the addresses it keeps checked") @(t : T?) {
-        rejects(t, "extern_unknown_length", "extern int arr[];\nstatic int *at(int k) \{ return &arr[k]; \}\nint arr[3] = \{1, 2, 3\};\nint main(void) \{ return (int) (at(3) - at(0)); \}\n", "an array of unknown length (`extern int a[];`) is not lowered yet")
+        rejects(t, "extern_unknown_length", "extern int arr[];\nstatic int *at(int k) \{ return &arr[k]; \}\nint arr[3] = \{1, 2, 3\};\nint main(void) \{ return (int) (at(3) - at(0)); \}\n", "a reference to `arr` before a definition gives its array a length (`extern int a[];`) is not lowered yet")
+        rejects(t, "extern_never_defined", "extern int arr[];\nint main(void) \{ return arr[0]; \}\n", "a reference to `arr` before a definition gives its array a length (`extern int a[];`) is not lowered yet")
         rejects(t, "hidden_block_extern", "int x = 40;\nint main(void) \{ int x = 1; \{ extern int x; return x; \} \}\n", "a block-scope `extern` declaration of `x`, which a local of the function also names, is not lowered yet")
         rejects(t, "late_block_extern", "int main(void) \{ \{ extern int y; return y; \} \}\nint y = 3;\n", "a block-scope `extern` declaration of `y` with no file-scope declaration before it is not lowered yet")
         // a literal past `int64` is no constant below the length: it takes the checked form
@@ -1083,12 +1091,11 @@ def p4_matrix_fixtures(t : T?) {
         rejects(t, "alignof_aligned_rows", aligned_rows + "int main(void) \{ return (int) _Alignof(B[2]) - 16; \}\n", "`_Alignof(B[2])`: an `aligned` typedef whose alignment the dump does not give (an array's element, or one with no value) is not lowered yet; an aligned type is marshal-only")
         rejects(t, "alignof_aligned_rows_typedef", aligned_rows + "typedef B B2[2];\nint main(void) \{ return (int) _Alignof(B2) - 16; \}\n", "`_Alignof(B2)`: an `aligned` typedef")
         // `cstr_array` gives `uint8` bytes: a `signed char` array from a literal, a row, a field, a
-        // whole declaration and a compound literal's, and a literal in braces
+        // whole declaration and a compound literal's
         rejects(t, "signed_char_rows", "int main(void) \{ signed char m[2][3] = \{ \"ab\", \"cd\" \}; return m[1][0]; \}\n", "`m`: a string literal initializing a `signed char` array is not lowered yet")
         rejects(t, "signed_char_field", "struct F \{ int n; signed char t[3]; \};\nint main(void) \{ struct F f = \{ 1, \"xy\" \}; return f.t[0]; \}\n", "`f`: a string literal initializing a `signed char` array is not lowered yet")
         rejects(t, "signed_char_whole", "int main(void) \{ signed char s[3] = \"ab\"; return s[0]; \}\n", "`s`: a string literal initializing a `signed char` array is not lowered yet")
         rejects(t, "signed_char_literal", "struct F \{ int n; signed char t[3]; \};\nint main(void) \{ return (struct F)\{ 1, \"xy\" \}.t[0]; \}\n", "a compound literal: a string literal initializing a `signed char` array is not lowered yet")
-        rejects(t, "braced_string", "int main(void) \{ char s[3] = \{ \"ab\" \}; return s[0]; \}\n", "`s`: a string literal in braces initializing a `char` array is not lowered yet")
         rejects(t, "alignof_void", "int main(void) \{ return (int) _Alignof(void) - 1; \}\n", "alignof of a type without an alignment")
         rejects(t, "gnu_alignof", "int main(void) \{ return (int) __alignof__(double) - 8; \}\n", "`__alignof` is not dumped yet")
         rejects(t, "vla", "int main(void) \{ int n = 3; int a[n]; a[0] = 0; return a[0]; \}\n", "`int a[n]`: a variable-length array is not lowered (out of scope in v1)")
@@ -1282,5 +1289,93 @@ def p4_matrix_leftover_rejects(t : T?) {
         rejects(t, "over_indexed_not_trailing", patch, "sidecar `over_indexed`: `holder.cols` names no record's trailing array member of a fixed length", "\{\"over_indexed\": [\"holder.cols\"]\}\n")
         rejects(t, "over_indexed_no_record", patch, "sidecar `over_indexed`: `nothing.cols` names no record's trailing array member of a fixed length", "\{\"over_indexed\": [\"nothing.cols\"]\}\n")
         rejects(t, "over_indexed_scalar", patch, "sidecar `over_indexed`: `patch.w` names no record's trailing array member of a fixed length", "\{\"over_indexed\": [\"patch.w\"]\}\n")
+    }
+}
+
+// P5.1's whole program: a header under the main file's directory belongs to the program, a file
+// elsewhere stays external
+def p5_program_fixtures(t : T?) {
+    t |> run("a header beside the file: its record, typedefs, enum, prototype, extern object, static function and table convert") @(t : T?) {
+        var text : string
+        check_fixture(t, "p5_project_header", text)
+        has_text(t, text, "enum shape \{\n    CIRCLE\n    SQUARE = 4\n    TRIANGLE\n\}\n")
+        has_text(t, text, "struct figure \{\n    kind : shape\n    corner : point\n    name : uint8?\n\}\n")
+        has_text(t, text, "var figures_made : int = 0\n")
+        has_text(t, text, "var private p5_project_header__weights : int[4] = fixed_array(1, 2, 4, 8)\n")
+        has_text(t, text, "def private p5_project_header__clamp(v : int; lo : int; hi : int) : int \{\n")
+        has_text(t, text, "def area(var f : figure?) : int \{\n")
+        // <string.h> is a system header: strlen binds to the CRT by name
+        has_text(t, text, "int(crt::strlen(all[i].name))")
+    }
+    t |> run("a string literal in braces filling a whole `char` array, a local's or a field's, is the literal") @(t : T?) {
+        let text = converts(t, "braced_string", "struct F \{ int n; char t[4]; \};\nint main(void) \{ char s[3] = \{ \"ab\" \}; struct F f = \{ 1, \{ \"xyz\" \} \}; return s[0] + f.t[2] - 219; \}\n")
+        has_text(t, text, "    var s : uint8[3] = cstr_array(\"ab\", 3)\n")
+        has_text(t, text, "t = cstr_array(\"xyz\", 4)")
+        var out : string
+        t |> equal(run_tier(converted_path("braced_string"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
+    }
+    t |> run("a header in a subfolder of the file's folder belongs to the program") @(t : T?) {
+        let c_path = written_source("p5_sub", "nested", "#include \"sub/inside.h\"\nint main(void) \{ struct deep d; d.a = 1; return inside_table[1] - 8 + d.a - 1; \}\n", "")
+        mkdir(path_join(dir_name(c_path), "sub"))
+        fwrite(path_join(dir_name(c_path), "sub/inside.h"), "static const int inside_table[2] = \{7, 8\};\nstruct deep \{ int a; \};\n")
+        let res <- convert(c_path, path_join(work_root, "p5_sub_out"), "linux", "", "", "")
+        t |> equal(res.ok, true, res.error)
+        has_text(t, res.das_text, "struct deep \{\n    a : int\n\}\n")
+        var out : string
+        t |> equal(run_tier(res.das_path, "interp", work_root, out, CONVERTED_MODULES), 0, out)
+    }
+    t |> run("a header outside the file's folder stays external: its table is not declared") @(t : T?) {
+        fwrite(path_join(work_root, "outside.h"), "static const int outside_table[2] = \{5, 6\};\n")
+        let c_path = written_source("p5_out", "outer", "#include \"../outside.h\"\nint main(void) \{ return outside_table[1] - 6; \}\n", "")
+        let res <- convert(c_path, path_join(work_root, "p5_out_out"), "linux", "", "", "")
+        t |> equal(res.ok, false, res.das_text)
+        has_text(t, res.error, "can't locate variable 'outside_table'")
+    }
+}
+
+// the shapes of lua 5.4.8 the conversion met, each with the lua line in the fixture
+def p5_lua_fixtures(t : T?) {
+    t |> run("lua's shapes: one per defect the conversion of lua 5.4.8 met") @(t : T?) {
+        var text : string
+        check_fixture(t, "p5_lua_shapes", text)
+        // a `volatile` on a function pointer, as on any pointer, is no part of the das type
+        has_text(t, text, "    hook : function<(a0 : int) : int>\n")
+        has_text(t, text, "    var local : function<(a0 : int) : int> = @@p5_lua_shapes__twice\n")
+        // an attribute on an extern declaration is no initializer: the definition's list is
+        has_text(t, text, "var shape_names : uint8? [3] = fixed_array<uint8?>(unsafe(reinterpret<uint8?>(\"nil\")), ")
+        // offsetof spelled inside a header's macro, two in one expansion, each its own
+        has_text(t, text, "int(0 == 0 ? uint64(typeinfo offsetof < payload > (type<cell0>)) : uint64(typeinfo offsetof < slots > (type<cell>))")
+        // das subtracts from a pointer variable only: a computed pointer adds the negated count
+        has_text(t, text, "    var last : uint8? = addr(buff[0]) + 10 + -(n)\n")
+        has_text(t, text, "    var first : uint8? = addr(buff[0]) + 10 + -int64(k)\n")
+        // GCC's branch hint is its first operand
+        has_text(t, text, "    if (int64((x > 2 ? 1 : 0) != 0 ? 1 : 0) != 0) \{\n")
+        // <ctype.h> without glibc's table macros: the functions the crt module binds
+        has_text(t, text, "crt::isalnum(int(uint8(deref(s))))")
+        // <math.h>: das math for the surface, the crt module for the exotica
+        has_text(t, text, "math::floor(x), math::ceil(x), math::abs(-x), math::sqrt(x), math::pow(x, 2.0lf), crt::fmod(x, 2.0lf)")
+        has_text(t, text, "    var m : double = crt::frexp(x, addr(e))\n")
+        has_text(t, text, "require math\n")
+        // an `extern` array of unknown length takes its definition's type; a braced literal is the literal
+        has_text(t, text, "var shapes_ident : uint8[15] = cstr_array(\"$Shapes: 5.4 $\", 15)\n")
+        has_text(t, text, "var private p5_lua_shapes__output : uint8[9] = cstr_array(\"luac.out\", 9)\n")
+        // a record of a function whose signature spells pointers keeps its layout
+        has_text(t, text, "    var probe : cD\n")
+        // string.h and ctype.h completions, glibc's errno and HUGE_VAL through the crt module
+        has_text(t, text, "int(int64(crt::strpbrk(s, reinterpret<uint8?>(\"^$*\")) - s)), int(crt::strspn(s, reinterpret<uint8?>(\"abc\"))), crt::strcoll(")
+        has_text(t, text, "crt::isgraph(33)")
+        has_text(t, text, "    deref(crt::c_errno_location()) = 0\n")
+        has_text(t, text, "crt::HUGE_VAL > 1e+308lf && -crt::HUGE_VAL < -1e+308lf")
+        // a do-while condition with an effect runs at the top of every pass but the first
+        has_text(t, text, "    var _first = true\n    while (true) \{\n        if (!_first) \{\n            n--\n            if (!(n > 0)) \{\n                break\n            \}\n        \}\n        _first = false\n")
+    }
+    t |> run("lua's shapes the converter refuses, each naming the construct") @(t : T?) {
+        rejects(t, "aligned_global", "_Alignas(16) static int g;\nint main(void) \{ return g; \}\n", "`g`: an alignment on a variable (`_Alignas`, `aligned`) is not lowered yet")
+        rejects(t, "aligned_local", "int main(void) \{ int x __attribute__((aligned(32))) = 1; return x - 1; \}\n", "`x`: an alignment on a variable (`_Alignas`, `aligned`) is not lowered yet")
+        rejects(t, "aligned_static_local", "int main(void) \{ static _Alignas(8) int s = 2; return s - 2; \}\n", "`s`: an alignment on a variable (`_Alignas`, `aligned`) is not lowered yet")
+        rejects(t, "offsetof_path", "#include <stddef.h>\nstruct P \{ int a; struct \{ int q; \} in; \};\nint main(void) \{ return (int) offsetof(struct P, in.q) - 4; \}\n", "offsetof(struct P, ...): a member path (`a.b`, `a[i]`) is not lowered yet")
+        rejects(t, "system_record_member", "#include <time.h>\nint main(void) \{ struct tm t; t.tm_year = 3; return t.tm_year - 3; \}\n", "member `tm_year` of `struct tm`, a record no file of the program defines, is not lowered yet")
+        rejects(t, "jmp_buf_member", "#include <setjmp.h>\nstruct lj \{ struct lj *previous; jmp_buf b; volatile int status; \};\nint main(void) \{ struct lj l; l.status = 0; return l.status; \}\n", "record `lj` holds a `jmp_buf` (`b`), which das spells as `CJmpBuf`, not at the C library's size; not lowered yet")
+        rejects(t, "offsetof_index", "#include <stddef.h>\nstruct P \{ int a; int b[3]; \};\nint main(void) \{ return (int) offsetof(struct P, b[1]) - 8; \}\n", "offsetof(struct P, ...): a member path (`a.b`, `a[i]`) is not lowered yet")
     }
 }

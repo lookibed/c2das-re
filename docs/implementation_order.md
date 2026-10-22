@@ -508,6 +508,29 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 
 - **P5.1 Whole-program conversion** of lua + luac (single module or SCC split — first
   real data point on das compile time at scale; measure and report).
+  Landed (phase A): the dumper takes a declaration as the program's when its file is the main
+  file or under the main file's directory, so a header beside the `.c` converts with it; `lua/`
+  fetches 5.4.8 with its tests, composes `lua_all.c` (the core, the libraries and `lua.c`) and
+  `luac_all.c` (the core, `lauxlib.c` and `luac.c`) with the headers copied beside them and
+  converts both under `lua/lua.c2das`: the dumper takes 89 s and 81 s over clang JSON dumps of
+  399 MB and 361 MB and stops at `lobject.c:264`, the native oracles are 384 KB and 284 KB, and a
+  scratch unity with the blocked pieces stubbed (the C locale's point, no `os` or `utf8` library,
+  no longjmp) passes the dumper and the emitter (3.9 s, a 24,006-line module, `[c_function]` on
+  750 of 1,049 functions) and reaches das's compile check, which reports its 102 errors after
+  1.6 s: one module type-checks in seconds at this size, so the split is the owner's call.
+  Ledger: `lobject.c:264` (`lua_getlocaledecpoint()`, `localeconv()->decimal_point`) stops the
+  dumper with "member `decimal_point` of `struct lconv`, a record no file of the program
+  defines, is not lowered yet", and `loslib.c:233` (`stm->tm_year`) with the same message for
+  `struct tm`; behind them `ldo.c:84` "record `lua_longjmp` holds a `jmp_buf` (`b`), which das
+  spells as `CJmpBuf`, not at the C library's size; not lowered yet" (P5.2), `lauxlib.c:730`
+  "external function `feof` has no c_runtime mapping" (the stdio surface: `fopen`, `getc`,
+  `stderr` and the rest), `lutf8lib.c:287` "a string literal with an interior NUL is not
+  lowered yet", and in the compile check `gfasttm`'s `NULL` arm (`ltm.h:64`, "void pointer can't
+  be copied to a non-void pointer"), `time(NULL)` (`lstate.c:73`, "no matching functions or
+  generics: crt::time(void?)"), the gotos of `luaV_execute` (`lvm.c:1689`) and `match`
+  (`lstrlib.c:598`) ("can't find label"), `top - 1 - (base + a)` (`lvm.c:853`) emitted as
+  `top - 1 - base + a`, which miscompiles silently wherever it type-checks, and das's
+  "internal compiler error: multiple instances of 'variadic`to_cvalist`'" (error 50609).
 - **P5.2 pcall** via the setjmp lowering (`LUAI_THROW/LUAI_TRY` → `c_longjmp`/contained
   pattern — the easy shape, per spec).
 - **P5.3 Lua's own test suite** under interp. Expect a long tail of libc exactness bugs

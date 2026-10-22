@@ -14,3 +14,4 @@ c-testsuite: 5c7275656d751de0e68b2d340a95b5681858ed07 (c-testsuite/c-testsuite m
 csmith: 0cdc710315cfee9035e22ef4363ca479270d1934 (csmith-project/csmith master; `suites/csmith/fetch.sh` clones it and builds it with cmake)
 cvise: 134d6f6a2c0344903b44629b27e211d9b15dee1c (marxin/cvise master, cvise 2.12.0; `suites/csmith/fetch.sh --cvise` builds it against PATH_TO_LIBCLANG, its Python packages pinned in the script and installed in a venv beside it)
 gcc: 14.2.0 (Debian 14.2.0-19, the reference compiler of the csmith differential; `suites/csmith/run.das` checks `gcc -dumpfullversion` against it)
+lua: 5.4.8 (the lua.org release https://www.lua.org/ftp/lua-5.4.8.tar.gz (sha256 4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae) and its test suite https://www.lua.org/tests/lua-5.4.8-tests.tar.gz (sha256 9581d5a7c39ffbf29b8ccde2709083c380f7bbddbd968dcb15712d2f2e33f4e5); `lua/fetch.sh` downloads both, checks each hash and extracts them)

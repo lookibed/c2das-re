@@ -1,0 +1,3 @@
+{
+    "defines": ["LUA_USE_JUMPTABLE=0"]
+}

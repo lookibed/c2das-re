@@ -4,11 +4,31 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 
 ## 3. Dumper A's subset
 
+### The program's files {#file-policy}
+
+A C program is its main file and every file under the main file's directory, subdirectories
+included: a header beside the `.c` (or under a folder of it) declares the program's records,
+typedefs, enums, prototypes, objects and static functions, and they convert with the file. Every
+other file is external, a system header's above all: its records stay out of the C-IR, and a
+reference to one of its functions or objects binds by name (`strlen`, `stderr`). Paths compare
+canonical (`get_full_file_name`, symbolic links and `..` resolved, memoized per spelling), so
+`#include "../dir/x.h"` back into the folder is the program's too. The rule is one test,
+`in_program`, applied in both passes: the libclang walk keeps a cursor whose expansion file passes
+it, the JSON walk a top-level declaration whose location's file does. The rule draws the
+boundary, so a program whose headers live elsewhere is composed with them copied beside it (as
+`lua/run.das`, repo root, does).
+
+clang writes a location's `file` and `line` only where they differ from the last location it
+wrote, over every location of the dump in print order: a node's `loc` (a macro-produced one as
+its `spellingLoc`, then its `expansionLoc`), its `range.begin` and `range.end`, then its
+children (`array_filler` before `inner`); the `file` of an `includedFrom` is no part of that
+state. Before the walk `complete_locs` replays that order over the whole dump and writes every
+omitted `file` and `line` back, so each valid location names its own file and line; a node's
+location is its `loc`, else its `range.begin`, the expansion site for a macro-produced one, and
+an invalid location (`{}`) takes the last valid one's.
+
 The dumper walks `TranslationUnitDecl.inner`, skipping `isImplicit` nodes (clang's builtin
-typedefs and `_GUID`) and every declaration whose location is another file (a header's).
-Locations come from `loc`, else `range.begin`; clang omits `file` and `line` when they repeat
-the previous node's, so the dumper carries the last seen values forward in tree order, starting
-from the main file. Types are interned by a structural key (`int:32:true:int`, `ptr:3`,
+typedefs and `_GUID`) and every declaration of an external file. Types are interned by a structural key (`int:32:true:int`, `ptr:3`,
 `func:0:1,2:false`) in first-use order, which is the spec's order. Type spellings come from
 `desugaredQualType` when clang gives one, else `qualType`, with `const`, `volatile`, `restrict`
 and `__attribute__` text stripped: the C99 scalar names, `_Bool`, `T *`, `T[N]` (the first
@@ -23,14 +43,17 @@ expression (`int[n]`) is a variable-length array, which fails closed naming it; 
 spells the declaration (`int a[n]`). A VLA parameter is no array: clang decays it to a pointer. A builtin typedef in a builtin's prototype (`__size_t`, `__ptrdiff_t`) has no
 cursor and is the dialect's pointer-wide integer. Widths follow the selected dialect (`msvc`:
 int 32, long 32, long long 64; `linux`: long 64); plain `char` is unsigned in both
-(`docs/probe-findings.md` F17), which the dumper enforces with `-funsigned-char`. The dump
+(`docs/probe-findings.md` F17), which the dumper enforces with `-funsigned-char`. Both
+passes also define `__NO_CTYPE`: glibc's `<ctype.h>` otherwise spells `isalpha(c)` as a macro
+indexing its locale table through `__ctype_b_loc()` and an enum of a system header, and with
+it each is the function the crt module binds. The dump
 desugars only the top level of a spelling, so a typedef name inside `P_t *` or `P_t (P_t, int)`
 resolves through the canonical spelling libclang gives the typedef. Records come from a
 libclang pass over the same file under the same flags and the pinned clang's resource directory
 (`clang -print-resource-dir`; libclang finds none of its own, and without it `stddef.h` and the
 `size_t` a libc prototype spells are missing; an error the pass reports fails the dump with its
 text, since a missing header leaves records and typedefs out), run before the JSON walk: every `struct`
-and `union` definition of the main file, nested ones included, with clang's size, alignment and
+and `union` definition of the program, nested ones included, with clang's size, alignment and
 field offsets, keyed by the canonical spelling the JSON desugars to (`struct X`, `struct
 thinker_t` for a typedef-named anonymous record, which libclang spells bare and the pass
 re-tags) and by its location, which is how a `RecordDecl` of the walk finds its layout. A
@@ -57,7 +80,7 @@ is not a name) and a local `static` is hoisted into `decls` as `<fn>_<name>` wit
 (`<fn>_<name>1` and up for a second one of the name in the function). A reference binds by the
 declaration id clang resolved it to (`referencedDecl.id`), never by its spelling, so a local
 that hides a static, or a later block's local named like an earlier block's static, keeps its
-own binding (`docs/probe-findings.md` F47); an id outside the main file (a libc function,
+own binding (`docs/probe-findings.md` F47); an id outside the program (a libc function,
 `stderr`) binds by its file-scope name. A block-scope `extern` declares nothing: its id binds to
 the declaration its `previousDecl` names, and it fails closed with no file-scope declaration
 before it, or when a local of the function spells the same name, since a non-static global and
@@ -85,22 +108,22 @@ list; a scalar's list, `(int){5}`, holds its one value at position 0, none for `
 `ConstantExpr` (clang's wrapper of a constant item in a file-scope initializer, its child's
 value) and `OffsetOfExpr`,
 whose components the dump omits: the dumper reads `T, f` from the macro's own text at its
-`expansionLoc` (F20). A location with an `expansionLoc` is that location.
+`expansionLoc`, in whichever file of the program that is (F20). A location with an `expansionLoc` is that location.
 
-The libclang pass and the JSON walk meet on one key: the byte offsets of a node's expansion
-location and of its spelling location (`clang_getExpansionLocation`,
+The libclang pass and the JSON walk meet on one key: the canonical file and byte offset of a
+node's expansion location and of its spelling location (`clang_getExpansionLocation`,
 `clang_getSpellingLocation`; the JSON `expansionLoc` and `spellingLoc` of a macro-produced node,
 its flat `loc` for both otherwise), since every node one macro expansion produces shares the
-expansion offset. The JSON always carries `offset`, where clang omits a `line` (and a `file`)
-that repeats the last one it printed, its last-line state also moving on a `range.end` the
-dumper never sees, so the file is no part of the key. Two records one expansion still makes
+expansion offset and two files of the program share offsets. The JSON always carries `offset`,
+and `complete_locs` gives it the file; a buffer that is no file (`<scratch space>`, a pasted
+token's) is the empty file on both sides. Two records one expansion still makes
 indistinguishable (one key, or one `(anonymous at f:l:c)` spelling, which is the expansion
 location) fail closed when the second is registered; the same record met twice (a block-scoped
 record under its statement and its variable's type) is recognized by `clang_hashCursor`. Every record, enum, enumerator reference
 and dimensioned declarator the pass records is keyed that way; the location carry (`loc_of`)
 serves the C-IR's `loc` alone.
 
-Enums come from the same libclang pass as records: every `enum` definition of the main file,
+Enums come from the same libclang pass as records: every `enum` definition of the program,
 nested and block-scoped ones included, with the enumerator values as C reads them
 (`clang_getEnumConstantDeclUnsignedValue` for an unsigned underlying type, which the linux
 dialect gives an enum without a negative enumerator; past INT_MAX such a value is possible) and
@@ -120,8 +143,8 @@ since two declarators of one macro expansion share an offset. A `DeclRefExpr` to
 `EnumConstantDecl` resolves by its offset too, since C scopes let two enums of one file spell one
 constant name: the `enum_ref` carries the enum the constant belongs to, and the node's type is
 what clang gave the reference (`int`, or `unsigned int` for an enum with a value past INT_MAX).
-An enumerator reached through a macro has no main-file cursor and fails closed
-(`docs/implementation_order.md`, the P2.4 ledger). A `SwitchStmt` is a `switch` with its
+An enumerator a macro body spells resolves the same way: each token of the expansion has its own
+spelling offset, so `#define BOTH (A + B)` keys `A` and `B` apart. A `SwitchStmt` is a `switch` with its
 condition and body; clang nests each case's statement under its `CaseStmt`, and shared labels one
 under the other, which the dumper flattens into `case` and `default` marker statements followed
 by the statement, wherever in the body they sit (Duff's device keeps its nesting). A case value
