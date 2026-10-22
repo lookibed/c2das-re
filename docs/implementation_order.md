@@ -516,8 +516,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   accessors, a C `long` widened into and narrowed out of a crt call where the dialect's `long`
   is 32 bits, `fprintf` and `signal` in c_runtime (`signal` keeps the handler and returns the
   previous one, `SIG_DFL` the null function value, `SIG_IGN` the integer sentinel); a goto into
-  another case re-dispatches its switch, and a label with nothing after it in a block other
-  than a loop's body stands on `c_label_end()` (F62); a pointer difference keeps its
+  another case re-dispatches its switch, and a label in a block other than a loop's body stands
+  on `c_label_end()` (F62); a pointer difference keeps its
   subtrahend's parentheses; the sidecar's `defines` take a function-like macro. `lua/` fetches
   5.4.8 with its tests, composes `lua_all.c` and `luac_all.c` with the headers beside them, and
   converts, runs and compares both under `lua/lua.c2das` (`lua/run.das`, `--run --tier
@@ -533,12 +533,28 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   5.4.8 test suite. One module type-checks and compiles in about ten seconds at this size; the
   single-module-or-SCC-split decision is the owner's.
   Ledger: Lua's error recovery is stubbed until P5.2 (`lua/lua.c2das`: `LUAI_THROW(L,c)=abort()`,
-  `LUAI_TRY(L,c,a)={ a }`, `luai_jmpbuf=int`): a Lua error aborts the process. Signals are
-  outside the dialect: a converted program never receives one, so Lua's Ctrl-C hook (`lua.c`'s
-  `laction`) never fires. To be filed against daScript, each with its probe as the repro: F60's
+  `LUAI_TRY(L,c,a)={ a }`, `luai_jmpbuf=int`): a Lua error aborts the process. Host-delivered
+  signals do arrive and `SIG_IGN`/`SIG_DFL` are honoured, but a converted handler never runs (das
+  code cannot run from a host signal), so Lua's Ctrl-C hook (`lua.c`'s `laction`) never fires.
+  `errno` after a `<math.h>` call the dialect maps to das `math::` (`log`, `pow`, `sqrt`, `exp`,
+  ...) is not reliably set: daslang folds or drops a pure call, and the JIT's `sqrt` is an
+  intrinsic (`dasCRuntime/ARCHITECTURE.md` section 7); the crt-bound libm entries set it. A case
+  group of a re-dispatched switch holding a plain C label and a goto that leaves the group fails
+  closed (F63); so do two `offsetof`s of different members in one macro expansion when one sits
+  in an initializer list or where clang's dump keeps no expression (F20), and a C name das
+  reserves whose `_c_` form the program also declares. `lua/run.das --run` and the converter's `--run` compare output through a das
+  string capture that ends at the first NUL, so a script printing a NUL compares only its prefix.
+  Two loud gaps the review's second prover pass found, both older than this item: a label that
+  ends a C `for` body (`cont:;` before the brace) fails under the interpreter, since the
+  for-lowering's leading `if (...) { break }` folds the rest of the body into an `else` and the
+  label ends a block that is no loop (F62; `c_label_end()` after every label is the fix), and
+  `in_program` reads clang's `-v` search list with `CPATH`/`C_INCLUDE_PATH` in it, so a program
+  header directory named there counts as a system directory.
+  To be filed against daScript, each with its probe as the repro: F60's
   two defects (the optimizer moving a label into an `else`, a loop taking a lower-numbered
   outer goto as its own; the label fold is lookibed/daScript#8), F61's generic-instance error,
-  and F62's unreachable label at a block's end, which `c_label_end()` works around. The C-IR
+  F62's unreachable label at a block's end, which `c_label_end()` works around, and F63's
+  labelled block that passes no goto outward under the interpreter. The C-IR
   writes no record spelling, which the emitter's `va_list` test reads, so a module emitted
   from a re-read C-IR (rather than the dumper's tree) spells `va_list` and fails its compile
   check.

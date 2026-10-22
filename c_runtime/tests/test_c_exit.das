@@ -17,6 +17,12 @@ def test_c_exit(t : T?) {
         t |> equal(r.rc, 7)
         t |> equal(r.out, "main\nsecond\nfirst\n")
     }
+    t |> run("a normal return from main flushes every C stream while the context lives, a buffer setvbuf took from das memory included") @(t : T?) {
+        let body = "options gen2\nrequire crt\nrequire c_runtime/c_exit\nvar buf : uint8[4096]\n[export]\ndef main : int \{\n    unsafe \{\n        crt::setvbuf(crt::c_stdout(), addr(buf[0]), 0, 4096ul)\n        crt::fputs(reinterpret<uint8?>(\"buffered line\\n\"), crt::c_stdout())\n    \}\n    return 0\n\}\n"
+        let r = runtime_child("setvbuf_flush", body, false)
+        t |> equal(r.rc, 0)
+        t |> equal(r.out, "buffered line\n")
+    }
     t |> run("c_abort exits 3 and runs no handler") @(t : T?) {
         let r = runtime_child("abort", program("    c_abort()\n    return 0\n"), false)
         t |> equal(r.rc, 3)

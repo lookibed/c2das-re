@@ -27,7 +27,7 @@ compile      fast   -compile-only of every .das outside fixtures/
 ast-verify   fast   -dry-run --ast-verify of every changed .das (a verify line or a crash fails)
 md-ascii     fast   no em-dash, arrow or ellipsis added to a rule document (docs/ is exempt: authored elsewhere)
 review-md    fast   the REVIEW.das gates of every folder the diff touches
-tests        lane   every dastest suite: probes/, dasCRuntime/tests, c_runtime/tests, converter/tests, perf/tests, metrics/tests, tests/
+tests        lane   every dastest suite: probes/, dasCRuntime/tests, c_runtime/tests, converter/tests, lua/tests, perf/tests, metrics/tests, tests/
 TABLE
             exit 0 ;;
         *) echo "preflight: unknown flag $1" >&2; exit 2 ;;
@@ -91,7 +91,7 @@ gate_review_md() {
 }
 gate_tests() {
     local d rc=0
-    for d in probes dasCRuntime/tests c_runtime/tests converter/tests perf/tests metrics/tests tests; do
+    for d in probes dasCRuntime/tests c_runtime/tests converter/tests lua/tests perf/tests metrics/tests tests; do
         [ -d "$d" ] || continue
         das "$DASLANG_ROOT/dastest/dastest.das" -- --test "$d" --failures-only || rc=1
     done

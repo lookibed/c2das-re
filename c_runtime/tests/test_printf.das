@@ -148,6 +148,11 @@ def test_fprintf(t : T?) {
             var f = crt::tmpfile()
             t |> equal(fprintf(f, cstr("%d-%s"), 42, cstr("go")), 5)
             t |> equal(fprintf(f, cstr("!")), 1)
+            // an empty output writes nothing
+            t |> equal(fprintf(f, cstr("")), 0)
+            // das spells "" as a null pointer: an empty C string is a lone NUL byte
+            var nul : uint8[1]
+            t |> equal(fprintf(f, cstr("%s"), addr(nul[0])), 0)
             crt::fseek(f, 0l, 0)
             var back : uint8[8]
             t |> equal(crt::fread(addr<void?>(back[0]), 1ul, 8ul, f), 6ul)

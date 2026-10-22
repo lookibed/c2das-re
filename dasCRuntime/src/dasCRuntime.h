@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <clocale>
+#include <csignal>
 
 namespace crt {
 
@@ -48,12 +49,45 @@ inline double c_strtod(const uint8_t * s, uint8_t ** end) { return ::strtod((con
 inline int32_t c_atoi(const uint8_t * s) { return ::atoi((const char *) s); }
 inline int64_t c_atol(const uint8_t * s) { return ::atol((const char *) s); }
 inline double c_atof(const uint8_t * s) { return ::atof((const char *) s); }
+
+// C's `strtol`, `strtoul` and `atol` where the dialect's `long` is 32 bits (msvc): the host's
+// 64-bit parse, then C11 7.22.1.4's range rule at 32 bits, LONG_MAX, LONG_MIN or ULONG_MAX with
+// `errno` ERANGE; `errno` is left as it was when the value is in range
+inline int32_t c_strtol32(const uint8_t * s, uint8_t ** end, int32_t base) {
+    int saved = errno;
+    errno = 0;
+    long long v = ::strtoll((const char *) s, (char **) end, base);
+    if (errno == 0) errno = saved;
+    if (v > INT32_MAX) { errno = ERANGE; return INT32_MAX; }
+    if (v < INT32_MIN) { errno = ERANGE; return INT32_MIN; }
+    return int32_t(v);
+}
+// a negative subject is its magnitude negated in `unsigned long`, the magnitude range-checked
+inline uint32_t c_strtoul32(const uint8_t * s, uint8_t ** end, int32_t base) {
+    const char * at = (const char *) s;
+    while (isspace((unsigned char) *at)) at++;
+    bool negative = *at == '-';
+    int saved = errno;
+    errno = 0;
+    unsigned long long v = ::strtoull((const char *) s, (char **) end, base);
+    bool over = errno == ERANGE;
+    if (!over) errno = saved;
+    unsigned long long magnitude = negative ? 0ull - v : v;
+    if (over || magnitude > UINT32_MAX) { errno = ERANGE; return UINT32_MAX; }
+    return negative ? 0u - uint32_t(magnitude) : uint32_t(magnitude);
+}
+// msvc documents LONG_MAX and LONG_MIN with ERANGE for an `atol` out of range
+inline int32_t c_atol32(const uint8_t * s) { return c_strtol32(s, nullptr, 10); }
 inline int32_t c_abs(int32_t v) { return ::abs(v); }
 inline int64_t c_llabs(int64_t v) { return ::llabs(v); }
 
 inline uint8_t * c_getenv(const uint8_t * name) { return (uint8_t *) ::getenv((const char *) name); }
 inline int32_t c_rand() { return ::rand(); }
 inline void c_srand(uint32_t seed) { ::srand(seed); }
+
+// the host's SIG_IGN (`ignore`) or SIG_DFL for signal `sig`: the dialect's `signal` applies those
+// two for real and keeps a converted handler without installing it
+inline void c_signal_host(int32_t sig, bool ignore) { ::signal(sig, ignore ? SIG_IGN : SIG_DFL); }
 
 inline int32_t c_errno() { return errno; }
 inline void c_set_errno(int32_t value) { errno = value; }
@@ -91,6 +125,13 @@ inline void c_clearerr(void * f) { ::clearerr((FILE *) f); }
 inline int32_t c_fflush(void * f) { return ::fflush((FILE *) f); }
 inline int32_t c_fseek(void * f, int64_t offset, int32_t whence) { return ::fseek((FILE *) f, long(offset), whence); }
 inline int64_t c_ftell(void * f) { return int64_t(::ftell((FILE *) f)); }
+// C's `ftell` where `long` is 32 bits: a position past LONG_MAX is the failure C11 7.21.9.4 names,
+// -1 with a positive `errno` (ERANGE)
+inline int32_t c_ftell32(void * f) {
+    long long v = ::ftell((FILE *) f);
+    if (v > INT32_MAX) { errno = ERANGE; return -1; }
+    return int32_t(v);
+}
 inline int32_t c_setvbuf(void * f, uint8_t * buf, int32_t mode, uint64_t size) { return ::setvbuf((FILE *) f, (char *) buf, mode, size_t(size)); }
 inline void * c_tmpfile() { return ::tmpfile(); }
 #if defined(__GNUC__)

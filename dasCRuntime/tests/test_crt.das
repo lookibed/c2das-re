@@ -102,6 +102,51 @@ def test_crt_conversions(t : T?) {
             t |> equal(crt::llabs(-3l), 3l)
         }
     }
+    t |> run("the 32-bit `long` forwarders range a parse at 32 bits: LONG_MAX, LONG_MIN or ULONG_MAX with ERANGE, errno untouched in range") @(t : T?) {
+        unsafe {
+            var end : uint8?
+            let s = cstr(" 3000000000x")
+            crt::c_set_errno(0)
+            t |> equal(crt::c_strtol32(s, addr(end), 10), 2147483647)
+            t |> equal(crt::c_errno(), crt::ERANGE)
+            t |> equal(int(deref(end)), 'x')
+            crt::c_set_errno(0)
+            t |> equal(crt::c_strtol32(cstr("-3000000000"), null, 10), -2147483647 - 1)
+            t |> equal(crt::c_errno(), crt::ERANGE)
+            crt::c_set_errno(crt::EDOM)
+            t |> equal(crt::c_strtol32(cstr("-2147483648"), null, 10), -2147483647 - 1)
+            t |> equal(crt::c_strtol32(cstr("7fffffff"), null, 16), 2147483647)
+            t |> equal(crt::c_errno(), crt::EDOM)
+            crt::c_set_errno(0)
+            t |> equal(crt::c_strtoul32(cstr("4294967296"), null, 10), 4294967295u)
+            t |> equal(crt::c_errno(), crt::ERANGE)
+            crt::c_set_errno(0)
+            // a negative subject is its magnitude negated in `unsigned long`
+            t |> equal(crt::c_strtoul32(cstr("  -1"), null, 10), 4294967295u)
+            t |> equal(crt::c_strtoul32(cstr("-4294967295"), null, 10), 1u)
+            t |> equal(crt::c_errno(), 0)
+            t |> equal(crt::c_strtoul32(cstr("-4294967296"), null, 10), 4294967295u)
+            t |> equal(crt::c_errno(), crt::ERANGE)
+            crt::c_set_errno(0)
+            t |> equal(crt::c_strtoul32(cstr("-99999999999999999999"), null, 10), 4294967295u)
+            t |> equal(crt::c_errno(), crt::ERANGE)
+            crt::c_set_errno(0)
+            t |> equal(crt::c_atol32(cstr("3000000000")), 2147483647)
+            t |> equal(crt::c_errno(), crt::ERANGE)
+            crt::c_set_errno(0)
+            t |> equal(crt::c_atol32(cstr("-12")), -12)
+            t |> equal(crt::c_errno(), 0)
+            var f = crt::tmpfile()
+            t |> equal(crt::fwrite(cstr("abc"), 1ul, 3ul, f), 3ul)
+            t |> equal(crt::c_ftell32(f), 3)
+            // a position past LONG_MAX is ftell's failure, -1 with ERANGE
+            t |> equal(crt::fseek(f, 3000000000l, 0), 0)
+            t |> equal(crt::c_ftell32(f), -1)
+            t |> equal(crt::c_errno(), crt::ERANGE)
+            t |> equal(crt::fclose(f), 0)
+            crt::c_set_errno(0)
+        }
+    }
 }
 
 [test]
@@ -166,6 +211,22 @@ def test_crt_math(t : T?) {
         t |> equal(crt::tgamma(5.0lf), 24.0lf)
         t |> equal(crt::lgamma(1.0lf), 0.0lf)
         t |> equal(crt::fma(2.0lf, 3.0lf, 1.0lf), 7.0lf)
+    }
+    t |> run("c_signal_host installs the host's SIG_IGN: a signal the process ignores leaves it running") @(t : T?) {
+        // SIGUSR1 (10) from a shell whose parent is this process
+        crt::c_signal_host(10, true)
+        t |> equal(unsafe(crt::system(cstr("kill -USR1 $PPID"))), 0)
+        crt::c_signal_host(10, false)
+    }
+    t |> run("a libm entry that sets errno runs though its result is discarded") @(t : T?) {
+        let zero = 0.0lf
+        crt::c_set_errno(0)
+        let _rem = crt::fmod(1.0lf, zero)
+        t |> equal(crt::c_errno(), crt::EDOM)
+        crt::c_set_errno(0)
+        let _big = crt::ldexp(1.0lf, 5000)
+        t |> equal(crt::c_errno(), crt::ERANGE)
+        crt::c_set_errno(0)
     }
 }
 
