@@ -103,6 +103,9 @@ def test_lowerings(t : T?) {
         t |> equal(text |> find("b = uint8(int(b) + 1)") >= 0, true, text)
         t |> equal(text |> find("ub = uint8(int(ub) + 1)") >= 0, true, text)
         t |> equal(text |> find("uint(i) < u") >= 0, true, text)
+        t |> equal(text |> find("n : int = -(-i)") >= 0, true, text)
+        t |> equal(text |> find("-(-(-i))") >= 0, true, text)
+        t |> equal(text |> find("--") >= 0, false, text)
     }
     t |> run("statement-ification: assignment as expression, steps, comma, side-effecting arms") @(t : T?) {
         var text : string

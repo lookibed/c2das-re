@@ -1315,7 +1315,9 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     let operand = x.op == "addr" && x.a.e == "compound_lit" ? literal_object(em, tu, *x.a, loc) : emit_expr(em, tu, x.a, loc)
     let a = x.op == "addr" || x.op == "deref" ? operand : to_int(operand)
     if (x.op == "neg") {
-        return value("-{wrap(a, PREC_UNARY)}", PREC_UNARY)
+        // `--x` is das's pre-decrement: a negated operand that spells a leading `-` is parenthesized
+        let inner = wrap(a, PREC_UNARY)
+        return value(inner |> starts_with("-") ? "-({inner})" : "-{inner}", PREC_UNARY)
     }
     if (x.op == "plus") {
         return a
