@@ -16,5 +16,7 @@ int main(void) {
     printf("%d %d %d %d\n", -7 / 2, -7 % 2, -8 >> 1, (int)2.9);
     printf("%u %u %d\n", (unsigned)-1, u >> 1 | 2u, (int)(0x1FFFFFFFFLL));
     printf("%d %d %d %d\n", !i, !!i, i && u, i || 0);
+    int n = -(-i);
+    printf("%d %d %d %d\n", n, -(-(-i)), -(-7), - -s);
     return (b == -128 && ub == 0) ? 42 : 1;
 }

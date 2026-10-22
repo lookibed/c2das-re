@@ -492,7 +492,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   refuses a true shared tag). memchr-1 converts and passes once its wide-literal skip line
   (`never`) is lifted. gcc-torture 920501-6, which `main(argc, argv)` let convert, fails at run
   time on a goto from an inner loop to a label at the end of the outer `for`'s body ("jump to
-  label 1 failed"), a goto lowering defect no fixture covers yet.
+  label 1 failed"), a goto lowering defect no fixture covers yet. An enum constant read on a
+  line where a macro expanded earlier (`int r = setjmp(buf) < FOUR;`) stops the dumper with
+  "enum constant `FOUR`: libclang reports no reference at this location": the dumper's
+  reference lookup takes the pre-expansion location.
 - **Exit criterion:** csmith runs clean at 1000/night for a week; torture ≥ target with
   ledger; matrix has no row without a green fixture.
   Ledger: the nightly csmith N=1000 schedule is blocked on this box by the dumper's parse of
