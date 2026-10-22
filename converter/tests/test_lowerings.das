@@ -1506,7 +1506,10 @@ def p5_lua_expression_fixtures(t : T?) {
         // with its own goto variable
         has_text(t, text, "    let _cond = a\n    var _goto = 0\n    while (true) \{\n        label 2:  // re-dispatch\n")
         has_text(t, text, "            let _cond2 = b\n            var _goto2 = 0\n            while (true) \{\n                label 1:  // re-dispatch\n")
-        // a label in a branch or a function body stands on c_label_end(), at the block's end too
+        // a label in a branch or a function body stands on c_label_end(), at the block's end too;
+        // the module defines the no-op (a call into a c_runtime piece stays a call under the JIT)
+        has_text(t, text, "\n[sideeffects]\ndef private c_label_end \{\n    pass\n\}\n\n")
+        t |> equal(text |> find("require c_runtime/c_label") >= 0, false, text)
         has_text(t, text, "                label 3:  // no_save\n                c_label_end()\n            \}\n")
         has_text(t, text, "    label 1:  // done\n    c_label_end()\n\}\n")
         has_text(t, text, "    label 3:  // returning\n    c_label_end()\n    acc += 1000\n")
@@ -1616,6 +1619,8 @@ def p5_lua_review_refusals(t : T?) {
     t |> run("a C name das reserves that renames onto another identifier of the program fails closed, naming both") @(t : T?) {
         rejects(t, "reserved_underscores", "int __h;\nstatic int f5(int v) \{ int _c___h = v; __h = 3; return _c___h + __h; \}\nint main(void) \{ return f5(5) - 8; \}\n", "C names `__h` and `_c___h` are both `_c___h` in das")
         rejects(t, "reserved_keyword", "int let;\nstatic int f5(int v) \{ int _c_let = v; let = 3; return _c_let + let; \}\nint main(void) \{ return f5(5) - 8; \}\n", "C names `let` and `_c_let` are both `_c_let` in das")
+        // the label statement's name is the module's
+        rejects(t, "reserved_label_end", "int c_label_end(void) \{ return 1; \}\nint main(void) \{ return c_label_end() - 1; \}\n", "C name `c_label_end` is the statement the lowering puts after a label")
     }
 }
 

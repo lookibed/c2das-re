@@ -40,10 +40,13 @@ they would meet a global or another local of their name (`ARCHITECTURE_EMITTER.m
 initializer, which is C's rule too (`probes/test_goto.das`). A label in a das block other
 than a loop's body (llex.c's `no_save: break;` once a switch's if-chain drops the tail `break`, a
 label ending a function body or an `if` branch, one before `if (DEBUG) {...}`) is followed at once by
-`c_label_end()`, the `[sideeffects]` no-op of `c_runtime/c_label.das`: daslang's interpreter jumps
-only to a statement inside such a block, and its optimizer folds an empty block or a statement
-without effect away, an `if` or `while` whose body it can drop included
-(`docs/probe-findings.md` F62). A loop body takes a jump to its end as the next iteration and gets
+`c_label_end()`, a `[sideeffects]` no-op the module itself defines (`def private`): daslang's
+interpreter jumps only to a statement inside such a block, and its optimizer folds an empty block
+or a statement without effect away, an `if` or `while` whose body it can drop included
+(`docs/probe-findings.md` F62). The definition lives in the module because the JIT inlines a
+module-local call to nothing, where a call into a c_runtime piece stays a call: the switch_local
+kernel's jit lane paid 17 percent for it. A C program that names `c_label_end` itself fails
+closed. A loop body takes a jump to its end as the next iteration and gets
 none; the block is a loop's when the line that opens it is a `while`, the only loop the lowering
 spells.
 

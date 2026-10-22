@@ -40,10 +40,6 @@ as-if-converted fixture test landing first.
   the two glibc reserves for its threads, 32 and 33, and past 64; msvc: all but its eight) returns
   `SIG_ERR` with `errno` EINVAL; `c_signal_msvc`, which the converted module's dialect `[init]`
   sets, selects msvc's numbers, its `SIGABRT` (22) applied as the host's. `raise` is not bound.
-- `c_runtime/c_label.das` - `c_label_end()`, the statement a C label stands on in a das block
-  other than a loop's body: daslang's interpreter jumps only to a statement inside such a block,
-  and its optimizer folds an empty block or a statement without effect away
-  (`docs/probe-findings.md` F62); a `[sideeffects]` call stays and does nothing.
 - `c_runtime/c_args.das` - C's `main(argc, argv)`: `c_runtime_init(name)`, which the converted
   module's `main` calls first, builds the argument vector once in C-allocator memory (`malloc`),
   `name` (the C source's stem) then each argument `get_user_args` gives (after `--` under the
