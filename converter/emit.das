@@ -69,6 +69,16 @@ struct Emitter {
     // into them finds its label in an enclosing scope
     labels : table<string; int>
     flatten : table<uint64>
+    // a label a goto from another case group of its switch reaches (`goto dflt` in lstrlib.c's
+    // `match`), by the switch body it splits; the switch bodies that hold one, which take the
+    // matched-flag loop, each with the das label that restarts it; each such goto by its switch
+    // body; and, once the switch is spelled, each such label's test and the store a goto makes
+    group_labels : table<string; uint64>
+    flag_switches : table<uint64; int>
+    goto_switch : table<uint64; uint64>
+    label_tests : table<string; string>
+    label_stores : table<string; string>
+    label_flags : table<string; string>
     // the declarations at a switch body's own level that a statement under a later label reads
     // or writes, which the lowered switch declares before itself (`carried_decls`)
     carried : table<uint64>
@@ -139,6 +149,7 @@ let C_RUNTIME_CALLS <- {
     "abort" => RuntimeCall(piece = "c_runtime/c_exit", das_name = "c_abort"),
     "longjmp" => RuntimeCall(piece = "c_runtime/setjmp", das_name = "c_longjmp"),
     "_longjmp" => RuntimeCall(piece = "c_runtime/setjmp", das_name = "c_longjmp"),
+    "fprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "fprintf"),
     "qsort" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_qsort"),
     "bsearch" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_bsearch"),
     // <math.h>'s surface das math covers at `double` (docs/stdlib-examples.md "math.h"), each the
@@ -161,6 +172,29 @@ let C_RUNTIME_CALLS <- {
     "pow" => RuntimeCall(piece = "math", das_name = "math::pow"),
     // glibc's `errno` is `(*__errno_location())`
     "__errno_location" => RuntimeCall(piece = "crt", das_name = "crt::c_errno_location")
+}
+
+// the libc objects a program reads, each the crt accessor that returns it
+let CRT_OBJECTS <- {"stdin" => "crt::c_stdin", "stdout" => "crt::c_stdout", "stderr" => "crt::c_stderr"}
+
+// a reference: a libc object (`stderr`) is its crt accessor, a `FILE *` as `void?` converted to the
+// program's pointer; anything else is its das name
+def private emit_ref(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    let object = crt_object(em, unsafe(addr(x)))
+    if (empty(object)) {
+        return value(das_name(em, x.name), PREC_PRIMARY)
+    }
+    em.requires |> insert("crt")
+    return unsafe_value(em, "reinterpret<{das_type(em, tu, x.t, loc)}>({object}())", PREC_PRIMARY)
+}
+
+// the crt accessor of the libc object `x` reads (`stderr`), "" for any other expression
+def private crt_object(em : Emitter; x : CirExpr const?) : string {
+    var at = x
+    while (at != null && at.e == "cast" && (at.cast_kind == "LValueToRValue" || at.cast_kind == "NoOp")) {
+        at = at.a
+    }
+    return at != null && at.e == "ref" && !key_exists(em.global_order, at.name) ? CRT_OBJECTS?[at.name] ?? "" : ""
 }
 
 // the builtins that are a constant of the crt module (`HUGE_VAL` expands to one)
@@ -202,7 +236,7 @@ def private va_macro_name(builtin : string) : string =>
 
 // the libc functions the crt module binds under their C names (dasCRuntime/ARCHITECTURE.md),
 // <math.h>'s exotica among them
-let CRT_CALLS <- {"fmod", "frexp", "ldexp", "modf", "nextafter", "hypot", "cbrt", "expm1", "log1p", "copysign", "remainder", "trunc", "round", "erf", "erfc", "tgamma", "lgamma", "fma", "clock", "time", "rand", "srand", "getenv", "malloc", "calloc", "realloc", "free", "memcpy", "memmove", "memset", "memcmp", "memchr", "strlen", "strcpy", "strncpy", "strcat", "strncat", "strcmp", "strncmp", "strchr", "strrchr", "strstr", "strpbrk", "strspn", "strcoll", "strerror", "strtol", "strtoul", "strtoll", "strtoull", "strtod", "atoi", "atol", "atof", "abs", "llabs", "isalpha", "isdigit", "isalnum", "isspace", "isupper", "islower", "isxdigit", "ispunct", "isprint", "iscntrl", "isgraph", "toupper", "tolower"}
+let CRT_CALLS <- {"fmod", "frexp", "ldexp", "modf", "nextafter", "hypot", "cbrt", "expm1", "log1p", "copysign", "remainder", "trunc", "round", "erf", "erfc", "tgamma", "lgamma", "fma", "clock", "time", "difftime", "mktime", "localtime", "gmtime", "strftime", "setlocale", "localeconv", "fopen", "freopen", "fclose", "fread", "fwrite", "fgets", "fputs", "getc", "ungetc", "feof", "ferror", "clearerr", "fflush", "fseek", "ftell", "setvbuf", "tmpfile", "tmpnam", "remove", "rename", "system", "rand", "srand", "getenv", "malloc", "calloc", "realloc", "free", "memcpy", "memmove", "memset", "memcmp", "memchr", "strlen", "strcpy", "strncpy", "strcat", "strncat", "strcmp", "strncmp", "strchr", "strrchr", "strstr", "strpbrk", "strspn", "strcoll", "strerror", "strtol", "strtoul", "strtoll", "strtoull", "strtod", "atoi", "atol", "atof", "abs", "llabs", "isalpha", "isdigit", "isalnum", "isspace", "isupper", "islower", "isxdigit", "ispunct", "isprint", "iscntrl", "isgraph", "toupper", "tolower"}
 
 // C name -> das spelling, and the module it needs
 def private libc_call(name : string) : string {
@@ -261,7 +295,9 @@ def private das_name(em : Emitter; c_name : string) : string {
     if (!empty(renamed)) {
         return renamed
     }
-    return key_exists(DAS_KEYWORDS, c_name) ? "_c_{c_name}" : c_name
+    // das reserves a name that starts with `__` (glibc's `struct tm` field `__tm_gmtoff`) as it
+    // does a keyword
+    return key_exists(DAS_KEYWORDS, c_name) || c_name |> starts_with("__") ? "_c_{c_name}" : c_name
 }
 
 // an unsafe operation's spelling: inside a function it counts toward `[c_function]`; in a
@@ -299,6 +335,16 @@ def private is_va_list(tu : CirTu; t : int) : bool {
 def private is_data_pointer(tu : CirTu; t : int) : bool => kind_of(tu, t) == "ptr" && !is_function_pointer(tu, t)
 
 def private is_record(tu : CirTu; t : int) : bool => kind_of(tu, t) == "struct" || kind_of(tu, t) == "union"
+
+// a pointer to a C record (`FILE *`, `struct tm *`), which a library function takes and returns
+// as `void?` (dasCRuntime/ARCHITECTURE.md): `jmp_buf` and `va_list` are the protocol's own
+// records, passed as they are
+def private is_record_pointer(tu : CirTu; t : int) : bool {
+    if (kind_of(tu, t) != "ptr" || !is_record(tu, tu.types[t].to) || is_va_list(tu, t)) {
+        return false
+    }
+    return !(kind_of(tu, tu.types[t].to) == "struct" && tu.types[tu.types[t].to].name == JMP_BUF)
+}
 
 // whether a value of type `t` holds a data pointer
 def private holds_data_pointer(tu : CirTu; t : int) : bool {
@@ -557,11 +603,25 @@ def private string_literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
 // one hex digit of a value below 16
 def private hex_digit(v : int) : string => to_char(v < 10 ? '0' + v : 'a' + v - 10)
 
+// whether literal `x` holds a NUL before its own terminating one, among its first `limit` bytes
+def private interior_nul(x : CirExpr; limit : int) : bool {
+    for (idx in range(length(x.bytes) - 1)) {
+        if (idx >= limit) {
+            break
+        }
+        if (x.bytes[idx] == uint8(0)) {
+            return true
+        }
+    }
+    return false
+}
+
 // two hex digits of a byte, spelled without `fmt`, whose format parsing rejects a zero
 def private hex_byte(b : int) : string => "{hex_digit(b >> 4)}{hex_digit(b & 15)}"
 
-// the das literal spelling of the bytes before the NUL, at most `limit` of them when it is not
-// negative
+// the das literal spelling of the bytes before the terminating NUL, at most `limit` of them when
+// it is not negative; an interior NUL is `\x00`, which das keeps with the bytes after it
+// (probes/test_strings.das)
 def private quoted_literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc; limit : int = -1) : string {
     if (kind_of(tu, x.t) == "array" && tu.types[tu.types[x.t].elem].w != 8) {
         // the bytes are the dump's narrow ones: a wide element needs its own literal
@@ -573,9 +633,7 @@ def private quoted_literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
         w |> write("\"")
         for (idx in range(n)) {
             let b = int(x.bytes[idx])
-            if (b == 0) {
-                fail(em, "a string literal with an interior NUL is not lowered yet", loc)
-            } elif (b == '"') {
+            if (b == '"') {
                 w |> write("\\\"")
             } elif (b == '\\') {
                 w |> write("\\\\")
@@ -884,6 +942,13 @@ def private check_trailing_arguments(var em : Emitter; tu : CirTu; x : CirExpr; 
     return true
 }
 
+// the index of a call's first trailing argument, past a variadic callee's fixed parameters; the
+// argument count for any other callee
+def private trailing_from(tu : CirTu; x : CirExpr) : int {
+    let ft = called_type(tu, x.fn)
+    return ft >= 0 && tu.types[ft].variadic ? length(tu.types[ft].params) : length(x.args)
+}
+
 // a call of a `[variadic]` function of this module, spelled as the call macro expands it:
 // `f`va(fixed..., (t1, t2))`, `(t,)` for one trailing argument, `VaNone()` for none. A generic
 // body keeps a call macro uninferred, and daScript's module cache refuses to write one the
@@ -947,12 +1012,25 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         }
     }
     let library = !empty(name) && !key_exists(em.functions, called_name(x))
-    for (arg in x.args) {
+    let fixed_count = trailing_from(tu, x)
+    for (idx, arg in range(length(x.args)), x.args) {
         let text = stored(emit_expr(em, tu, arg, loc), tu, arg.t).text
-        if (library && is_va_list(tu, arg.t)) {
+        if (idx >= fixed_count && is_data_pointer(tu, arg.t) && kind_of(tu, tu.types[arg.t].to) == "void") {
+            // a `void?` among a call's trailing arguments makes daslang find two generic
+            // instances for the tuple once two other pointer tuples have one (error 50609,
+            // docs/probe-findings.md F61): it travels as a byte pointer, which the list holds as
+            // the same `void?`
+            em.unsafe_used = true
+            args |> push("reinterpret<uint8?>({text})")
+        } elif (library && is_va_list(tu, arg.t)) {
             // a library function taking a `va_list` takes the list from the cursor on, as a
             // `CVaList` (`c_vprintf`): the forwarding of a `va_list`
             args |> push("va_rest({text})")
+        } elif (library && idx < fixed_count && is_record_pointer(tu, arg.t)) {
+            em.unsafe_used = true
+            // `stderr` passed on is the accessor's `void?` as it is
+            let object = crt_object(em, arg)
+            args |> push(empty(object) ? "reinterpret<void?>({text})" : "{object}()")
         } else {
             args |> push(text)
         }
@@ -963,6 +1041,10 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     let ft = called_type(tu, x.fn)
     if (!library && ft >= 0 && tu.types[ft].variadic) {
         return value(variadic_call(name, length(tu.types[ft].params), args), PREC_PRIMARY)
+    }
+    if (library && is_record_pointer(tu, x.t)) {
+        // `localtime`'s `struct tm *` comes back as `void?`
+        return unsafe_value(em, "reinterpret<{das_type(em, tu, x.t, loc)}>({name}({join(args, ", ")}))", PREC_PRIMARY)
     }
     return value("{name}({join(args, ", ")})", PREC_PRIMARY)
 }
@@ -1270,7 +1352,9 @@ def private pointer_arithmetic(var em : Emitter; tu : CirTu; x : CirExpr; lhs, r
     let pointer_lhs = kind_of(tu, x.a.t) == "ptr"
     let scale = marshal_pointee(em, tu, pointer_lhs ? x.a.t : x.b.t)
     if (pointer_lhs && kind_of(tu, x.b.t) == "ptr" && x.op == "sub") {
-        let diff = scale >= 0 ? "({lhs.text} - {rhs.text}) / {type_size(tu, scale)}" : "{lhs.text} - {rhs.text}"
+        // the subtrahend is wrapped as a right operand of `-`: `top - (base + a)` keeps its parentheses
+        let operands = "{wrap(lhs, PREC_ADD)} - {wrap(rhs, PREC_ADD + 1)}"
+        let diff = scale >= 0 ? "({operands}) / {type_size(tu, scale)}" : operands
         return unsafe_value(em, "{das_type(em, tu, x.t, loc)}({diff})", PREC_PRIMARY)
     }
     if (scale >= 0) {
@@ -1296,7 +1380,12 @@ def private emit_cond(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     let c = to_bool(emit_expr(em, tu, x.c, loc), tu, x.c.t)
     let mark = length(em.pre)
     em.narrow++
-    let a = emit_expr(em, tu, x.a, loc)
+    var a = emit_expr(em, tu, x.a, loc)
+    if (is_data_pointer(tu, x.t) && reaches_null(x.a)) {
+        // das types `?:` by its first arm, and its `null` is a `void?` no other pointer takes
+        // (probes/test_pointers.das): the null arm is the conditional's own pointer type
+        a = value("default<{das_type(em, tu, x.t, loc)}>", PREC_PRIMARY)
+    }
     let a_end = length(em.pre)
     let b = emit_expr(em, tu, x.b, loc)
     em.narrow--
@@ -1452,7 +1541,7 @@ def private emit_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : Ci
         return value("", PREC_PRIMARY)
     }
     if (x.e == "ref") {
-        return value(das_name(em, x.name), PREC_PRIMARY)
+        return emit_ref(em, tu, *x, loc)
     }
     if (x.e == "enum_ref") {
         // an enumerator is an integer in C (`unsigned int` when one of its enum exceeds
@@ -1938,6 +2027,12 @@ def private init_value(var em : Emitter; tu : CirTu; v : CirExpr const?; loc : C
     if (v != null && v.e == "str_lit" && kind_of(tu, v.t) == "array" && !key_exists(em.hoisted, intptr(v))) {
         em.requires |> insert("c_runtime/cstr_array")
         let count = tu.types[v.t].count
+        if (interior_nul(*v, count)) {
+            // `cstr_array` reads its literal as a das string, which ends at the first NUL: the row
+            // is the bytes
+            let row <- [for (idx in range(count)); "uint8({idx < length(v.bytes) ? int(v.bytes[idx]) : 0})"]
+            return value("fixed_array({join(row, ", ")})", PREC_PRIMARY)
+        }
         return value("cstr_array({quoted_literal(em, tu, *v, loc, count)}, {count})", PREC_PRIMARY)
     }
     return emit_expr(em, tu, v, loc)
@@ -2652,12 +2747,17 @@ def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
 struct LabelSite {
     path : array<uint64>
     bare : array<bool>
+    // the switches around the site, outermost first, and the case group of each the site is in
+    switches : array<uint64>
+    groups : array<int>
 }
 
 struct LabelPlan {
     labels : table<string; LabelSite>
     gotos : array<CirStmt const?>
     goto_sites : array<LabelSite>
+    // the switch bodies, each once its own walk ends: an inner switch before the one around it
+    switch_order : array<uint64>
 }
 
 // das resolves a label lexically upward, so a goto reaches a label in its own block or an
@@ -2686,6 +2786,49 @@ def private plan_labels(var em : Emitter; body : CirStmt const?) {
             }
             em.flatten |> insert(target.path[depth])
         }
+        plan_cross_group(em, g, target, plan.goto_sites[idx])
+    }
+    number_restarts(em, plan)
+}
+
+// the das label that restarts each switch a cross-group goto re-dispatches: numbered before the
+// C labels, an inner switch's below the one around it, since daslang's loop node takes a goto
+// whose number is below the count of its body's labels for one of its own
+// (docs/probe-findings.md F60)
+def private number_restarts(var em : Emitter; plan : LabelPlan) {
+    var count = 0
+    for (sw in plan.switch_order) {
+        if (key_exists(em.flag_switches, sw)) {
+            count++
+            em.flag_switches[sw] = count
+        }
+    }
+    if (count == 0) {
+        return
+    }
+    let names <- [for (name in keys(em.labels)); name]
+    for (name in names) {
+        em.labels[name] = em.labels[name] + count
+    }
+}
+
+// a goto into another case group of a switch around both (`goto dflt` from `case '$'`): the
+// lowering puts each group in its own branch, so the switch takes the matched-flag loop and
+// the label becomes a case of a value no case has, which the goto stores into the condition
+// before it restarts the loop
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-labels")]
+def private plan_cross_group(var em : Emitter; g : CirStmt const?; target, from : LabelSite) {
+    for (depth in range(length(target.switches))) {
+        if (depth >= length(from.switches) || target.switches[depth] != from.switches[depth]) {
+            return
+        }
+        if (target.groups[depth] != from.groups[depth]) {
+            let sw = target.switches[depth]
+            em.group_labels[g.label_name] = sw
+            em.flag_switches[sw] = 0
+            em.goto_switch[intptr(g)] = sw
+            return
+        }
     }
 }
 
@@ -2711,6 +2854,26 @@ def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; var 
         }
         site.path |> pop()
         site.bare |> pop()
+    } elif (st.s == "switch" && st.body_s != null && st.body_s.s == "compound") {
+        // the case group of every statement at the body's own level: a run of case labels opens one
+        site.path |> push(intptr(st.body_s))
+        site.bare |> push(false)
+        site.switches |> push(intptr(st.body_s))
+        site.groups |> push(-1)
+        var marker = false
+        for (child in st.body_s.body) {
+            let is_marker = child.s == "case" || child.s == "default"
+            if (is_marker && !marker) {
+                site.groups[length(site.groups) - 1]++
+            }
+            marker = is_marker
+            walk_labels(em, child, true, site, plan)
+        }
+        site.path |> pop()
+        site.bare |> pop()
+        site.switches |> pop()
+        site.groups |> pop()
+        plan.switch_order |> push(intptr(st.body_s))
     } else {
         walk_labels(em, st.then_s, false, site, plan)
         walk_labels(em, st.else_s, false, site, plan)
@@ -2880,7 +3043,7 @@ def private case_compare(var em : Emitter; tu : CirTu; cond : string; cond_t : i
 
 // the switch's condition, evaluated once: the enum below C's promotion when there is one,
 // so cases compare symbolically; returns the name of the local and its type
-def private switch_condition(var em : Emitter; tu : CirTu; st : CirStmt; var cond_t : int&) : string {
+def private switch_condition(var em : Emitter; tu : CirTu; st : CirStmt; var cond_t : int&; restarts : bool) : string {
     var operand = st.cond
     while (operand != null && operand.e == "cast" && (operand.cast_kind == "IntegralCast" || operand.cast_kind == "LValueToRValue" || operand.cast_kind == "NoOp") && kind_of(tu, operand.a.t) == "enum") {
         operand = operand.a
@@ -2895,7 +3058,8 @@ def private switch_condition(var em : Emitter; tu : CirTu; st : CirStmt; var con
     }
     flush_pre(em)
     let name = numbered("_cond", em.switch_counter)
-    line(em, "let {name} = {c.text}")
+    // a goto that re-dispatches the switch stores into its condition
+    line(em, "{restarts ? "var" : "let"} {name} = {c.text}")
     return name
 }
 
@@ -2909,7 +3073,12 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
     }
     em.switch_counter++
     var cond_t = st.cond.t
-    let cond = switch_condition(em, tu, st, cond_t)
+    let restart = em.flag_switches?[intptr(st.body_s)] ?? 0
+    let cond = switch_condition(em, tu, st, cond_t, restart > 0)
+    var pseudo : array<string>
+    if (restart > 0) {
+        label_cases(em, tu, st, groups, cond, cond_t, pseudo)
+    }
     // C scopes a declaration at the body's own level to the whole body, the lowering a group
     // to its own branch: a declaration a later group reaches is declared here
     for (g in groups) {
@@ -2919,11 +3088,64 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
             }
         }
     }
-    if (is_if_chain(groups)) {
+    if (is_if_chain(groups) && restart == 0) {
         emit_if_chain(em, tu, groups, cond, cond_t)
     } else {
-        emit_flag_loop(em, tu, groups, cond, cond_t, st.body_s)
+        emit_flag_loop(em, tu, groups, cond, cond_t, st.body_s, restart, pseudo)
     }
+}
+
+// each label of switch `st` a goto from another case group reaches, as a case of a value no case
+// of the switch has: its test (`_cond == 83`) and the store its gotos make (`_cond = 83`), in
+// `label_tests` and `label_stores` beside the switch's flag, the tests also into `pseudo`
+def private label_cases(var em : Emitter; tu : CirTu; st : CirStmt; groups : array<CaseGroup>; cond : string; cond_t : int; var pseudo : array<string>) {
+    var taken : table<int64>
+    for (g in groups) {
+        for (v in g.values) {
+            taken |> insert(v)
+        }
+    }
+    let spelled = das_type(em, tu, cond_t, st.loc)
+    let is_enum = kind_of(tu, cond_t) == "enum"
+    // in the order the labels appear
+    var names <- [for (name in keys(em.group_labels)); name; where(em.group_labels?[name] ?? 0ul) == intptr(st.body_s)]
+    sort(names) $(a, b) => (em.labels?[a] ?? 0) < (em.labels?[b] ?? 0)
+    pseudo |> reserve(length(names))
+    for (name in names) {
+        let v = free_value(taken, is_enum ? "int" : spelled)
+        taken |> insert(v)
+        let test = case_compare(em, tu, cond, cond_t, v)
+        let literal = int_literal(spelled, "{v}")
+        let value = is_enum ? int_to_enum(em, tu, cond_t, "{v}") : (empty(literal) ? "{spelled}({v})" : literal)
+        em.label_tests[name] = test
+        em.label_flags[name] = numbered("_flag", em.switch_counter)
+        em.label_stores[name] = "{cond} = {value}"
+        pseudo |> push(test)
+    }
+}
+
+// a value of das integer type `spelled` (a switch's promoted condition) outside `taken`: past
+// the largest when the type has room, else below the smallest, else the first gap between them
+def private free_value(taken : table<int64>; spelled : string) : int64 {
+    let narrow = spelled == "int" || spelled == "uint"
+    let top = spelled == "int" ? 2147483647l : spelled == "uint" ? 4294967295l : 9223372036854775807l
+    let bottom = spelled == "int" ? -2147483648l : (narrow || spelled == "uint64") ? 0l : -9223372036854775807l - 1l
+    // a switch with a goto into another group has two groups, one of them under a case
+    var values <- [for (v in keys(taken)); v]
+    sort(values)
+    let lo = values[0]
+    let hi = values[length(values) - 1]
+    if (hi < top) {
+        return hi + 1l
+    }
+    if (lo > bottom) {
+        return lo - 1l
+    }
+    var v = lo + 1l
+    while (key_exists(taken, v)) {
+        v++
+    }
+    return v
 }
 
 def private emit_if_chain(var em : Emitter; tu : CirTu; groups : array<CaseGroup>; cond : string; cond_t : int) {
@@ -2997,11 +3219,12 @@ def private emit_without_tail_break(var em : Emitter; tu : CirTu; st : CirStmt c
     close_block(em)
 }
 
-def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGroup>; cond : string; cond_t : int; body : CirStmt const?) {
+def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGroup>; cond : string; cond_t : int; body : CirStmt const?; restart : int; pseudo : array<string>) {
     let flag = numbered("_flag", em.switch_counter)
     let cont = continues_out(body) ? numbered("_cont", em.switch_counter) : ""
-    // every case value of the switch, for `default`'s match-none test
-    let all_values <- [for (g in groups); join([for (v in g.values); case_compare(em, tu, cond, cond_t, v)], " || "); where !empty(g.values)]
+    // every case value of the switch, for `default`'s match-none test, a label's value included
+    var all_values <- [for (g in groups); join([for (v in g.values); case_compare(em, tu, cond, cond_t, v)], " || "); where !empty(g.values)]
+    all_values |> push_from(pseudo)
     // a compound literal of a group-level statement lives as long as the switch body (C11
     // 6.5.2.5p5), which a later group reached by fallthrough reads: declared before the loop
     let decls_at = length(em.out)
@@ -3013,6 +3236,9 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
         line(em, "var {cont} = false")
     }
     open_block(em, "while (true)")
+    if (restart > 0) {
+        line(em, "label {restart}:  // re-dispatch")
+    }
     line(em, "var {flag} = false")
     em.cont_flags |> push(cont)
     for (g in groups) {
@@ -3022,7 +3248,7 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
         if (g.is_default) {
             line(em, empty(all_values) ? "{flag} = true" : "{flag} ||= !({join(all_values, " || ")})")
         }
-        if (!empty(g.stmts)) {
+        if (!empty(g.stmts) && check_group_split(em, g)) {
             open_block(em, "if ({flag})")
             emit_group(em, tu, g, false)
             close_block(em)
@@ -3041,6 +3267,38 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
         emit_continue(em)
         close_block(em)
     }
+}
+
+// a statement of a group as the lowering spells it at the group's level: a block a goto
+// enters loses its braces, so its statements are the group's
+def private group_level(em : Emitter; st : CirStmt const?; var out : array<CirStmt const?>) {
+    if (st.s == "compound" && key_exists(em.flatten, intptr(st))) {
+        for (child in st.body) {
+            group_level(em, child, out)
+        }
+    } else {
+        out |> push(st)
+    }
+}
+
+// false with the error set when a label another group's goto reaches follows a declaration of
+// its own group: the label splits the group's `if (_flag)` branch in two, and the declaration
+// would end with the first
+def private check_group_split(var em : Emitter; g : CaseGroup) : bool {
+    var level : array<CirStmt const?>
+    for (st in g.stmts) {
+        group_level(em, st, level)
+    }
+    var declared = ""
+    for (st in level) {
+        if (st.s == "decl" && !key_exists(em.carried, intptr(st)) && empty(declared)) {
+            declared = st.name
+        } elif (st.s == "label" && key_exists(em.group_labels, st.label_name) && !empty(declared)) {
+            fail(em, "label `{st.label_name}`, which a goto from another case reaches, follows the declaration of `{declared}` in its case; not lowered yet", st.loc)
+            return false
+        }
+    }
+    return true
 }
 
 // a block a goto enters from outside loses its braces (docs/lowering-examples.md "goto /
@@ -3110,13 +3368,45 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     em.stmt_depth--
 }
 
+// a C label; one another case group's goto reaches is a case of its own value: it splits its
+// group's branch, and control falling into it keeps the flag
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-labels")]
+def private emit_label(var em : Emitter; st : CirStmt const?) {
+    if (!key_exists(em.group_labels, st.label_name)) {
+        line(em, "label {em.labels?[st.label_name] ?? 0}:  // {st.label_name}")
+        return
+    }
+    let flag = em.label_flags?[st.label_name] ?? ""
+    let opened = repeat("    ", em.depth - 1) + "if ({flag}) \{\n"
+    if (!empty(em.out) && em.out[length(em.out) - 1] == opened) {
+        // the label heads its group: no empty branch before it
+        em.out |> pop()
+        em.depth--
+    } else {
+        close_block(em)
+    }
+    line(em, "{flag} ||= {em.label_tests?[st.label_name] ?? ""}  // {st.label_name}")
+    open_block(em, "if ({flag})")
+}
+
+// a C goto; one into another case group re-dispatches: the label's value into the condition,
+// then the switch from the top
+def private emit_goto(var em : Emitter; st : CirStmt const?) {
+    if (key_exists(em.goto_switch, intptr(st))) {
+        line(em, em.label_stores?[st.label_name] ?? "")
+        line(em, "goto label {em.flag_switches?[em.goto_switch?[intptr(st)] ?? 0ul] ?? 0}")
+    } else {
+        line(em, "goto label {em.labels?[st.label_name] ?? 0}")
+    }
+}
+
 def private emit_stmt_kind(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (st.s == "compound") {
         emit_compound(em, tu, st)
     } elif (st.s == "label") {
-        line(em, "label {em.labels?[st.label_name] ?? 0}:  // {st.label_name}")
+        emit_label(em, st)
     } elif (st.s == "goto") {
-        line(em, "goto label {em.labels?[st.label_name] ?? 0}")
+        emit_goto(em, st)
     } elif (st.s == "decl" && key_exists(em.carried, intptr(st))) {
         emit_carried_init(em, tu, *st, das_name(em, st.name))
     } elif (st.s == "decl") {
@@ -3616,6 +3906,12 @@ def private reset_function_state(var em : Emitter; d : CirDecl) {
     em.cont_flags |> clear()
     em.labels |> clear()
     em.flatten |> clear()
+    em.group_labels |> clear()
+    em.flag_switches |> clear()
+    em.goto_switch |> clear()
+    em.label_tests |> clear()
+    em.label_stores |> clear()
+    em.label_flags |> clear()
     plan_labels(em, d.body)
     em.unsafe_used = false
     each_expr(d.body) $(x) {

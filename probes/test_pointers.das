@@ -104,4 +104,19 @@ def test_lua_pointers(t : T?) {
             t |> equal(intptr(addr(buf[0]) + 10 + -int64(k)) - intptr(base), 6ul)
         }
     }
+    t |> run("`?:` takes its type from the first arm: a null second arm is the first's pointer type, a null first arm is no pointer but `default<T?>` is, and a difference keeps a parenthesized subtrahend") @(t : T?) {
+        child_rejects(t, "null_first_arm", daslang_child("null_first_arm", "options gen2\ndef pick(b : bool; var q : int?) : int? \{\n    return b ? null : q\n\}\n", true), "void pointer can't be copied to a non-void pointer")
+        var x = 5
+        var buf : int[8]
+        unsafe {
+            let q = addr(x)
+            let second : int? = false ? q : null
+            let first : int? = true ? default<int?> : q
+            t |> equal(second == null && first == null, true)
+            var top = addr(buf[6])
+            var base = addr(buf[1])
+            let k = 2l
+            t |> equal(top - 1 - (base + k), 2l)
+        }
+    }
 }

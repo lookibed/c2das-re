@@ -31,7 +31,17 @@ or that have no function form become accessors: `errno` is `crt::c_errno()` and
 `crt::c_set_errno(v)`, and `crt::c_errno_location()` is its address, which converted code reaches
 through glibc's spelling of `errno`, `(*__errno_location())`; `CLOCKS_PER_SEC`, `RAND_MAX`,
 `EDOM`, `ERANGE`, `EINVAL` and `HUGE_VAL` (a `double`, what `__builtin_huge_val()` gives) are constants
-read from the CRT that built the module, never restated in das.
+read from the CRT that built the module, never restated in das; the standard streams `stdin`,
+`stdout` and `stderr` are `crt::c_stdin()`, `crt::c_stdout()` and `crt::c_stderr()`.
+
+The binds are the malloc family; `mem*`; string.h; ctype.h; the `strto*` and `ato*` conversions;
+libm's exotica; errno; `getenv`, `rand`, `srand`, `system`; time.h (`time`, `clock`, `difftime`,
+`mktime`, `localtime`, `gmtime`, `strftime`); locale.h (`setlocale`, `localeconv`); stdio (`fopen`,
+`freopen`, `fclose`, `fread`, `fwrite`, `fgets`, `fputs`, `getc`, `ungetc`, `feof`, `ferror`,
+`clearerr`, `fflush`, `fseek`, `ftell`, `setvbuf`, `tmpfile`, `tmpnam`, `remove`, `rename`, and
+`fwrite_stdout`/`fflush_stdout` for the printf family); and the per-directive `snprintf` and
+`sscanf` families (section 5). Every stdio entry a program calls binds here, none through daslib
+`fio`: one binding family serves one header.
 
 ## 3. Type spelling
 
@@ -45,6 +55,11 @@ read from the CRT that built the module, never restated in das.
 | `long`, `time_t`, `clock_t` | `int64_t` | `int64` |
 | `int` | `int32_t` | `int` |
 | `int *`, `double *` out-parameters | `int32_t *`, `double *` | `int?`, `double?` |
+
+A pointer to a record (`FILE *`, `struct tm *`, `struct lconv *`) is `void *` and `void?` in every
+position, taken or returned: the module knows no record of a program, which lays the record out
+itself (`converter/ARCHITECTURE_DUMPER.md` section 3) and converts the pointer at the call site
+(`reinterpret<void?>(f)`, `reinterpret<tm?>(crt::localtime(addr(t)))`).
 
 C strings are bytes, never das `string`: a forwarder takes `uint8_t *` so the das side sees
 `uint8?`, and a test reads a result back through `reinterpret<string>`. `long` is the width

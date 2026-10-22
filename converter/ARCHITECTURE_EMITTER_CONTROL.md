@@ -1,0 +1,58 @@
+# converter Architecture - the emitter's switch and labels
+
+Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITECTURE_EMITTER.md`.
+
+### switch
+
+A `switch` follows the three-tier ladder of `docs/lowering-examples.md`. Its body is read as
+groups, one run of labels and the statements under them; a statement before the first label
+or a label below the switch's own level (Duff's device, P3.3) fails closed, a nested switch's
+labels being its own. The condition is evaluated once into `_condN` (numbered per switch
+within a function), the enum below C's promotion when there is one, so a case compares as
+`_cond == E.X` (`int(_cond) == v` for a value no enumerator has) and otherwise against a
+literal in the condition's type. The if-chain holds when no group falls into the next (each
+ends in `break`, `return`, `goto` or `continue`, a trailing block looked through) and every
+`break` that leaves the switch is that tail - a `break` inside a nested loop or switch is that
+construct's own; the tail `break` is dropped, the groups become `if`/`elif` and the default
+group `else`, wherever it stood. Otherwise the matched-flag loop: `while (true)` holding
+`var _flagN = false`, one `_flag ||= _cond == v` per label and `_flag ||= !(every case value)`
+for `default`, each group's statements under `if (_flag)`, a trailing `break`; C `break` is
+das's. A C `continue` under such a loop would restart the switch, so it spells
+`_contN = true` and `break`, with `if (_contN) { continue }` after the loop - itself through
+the same translation when the switch sits in an outer flag loop; a real loop body resets the
+translation. C scopes a declaration at the switch body's own level to the rest of the body, while
+each group lands in its own branch: a declaration that a statement under a later label names is
+declared right after `_condN` as a bare `var v : T` (das's zero where C leaves it indeterminate)
+and its initializer is the assignment that stands where C declares it; one filled by stores (a
+union's list, a sparse array) fails closed, since the stores rely on a zero a second pass through
+the case would not give again; any other declaration keeps its branch's scope (F53). Computed
+goto (O6) is the optimization tier's.
+
+### Labels and goto {#goto-labels}
+
+A C label is `label N:  // name`, numbered per function in order of appearance, and a goto
+is `goto label N` (`docs/lowering-examples.md` "goto / labels"); das resolves a label lexically
+upward, so a goto reaches a label in its own block or an enclosing one, and a goto into a
+deeper block has every bare block between them (a block that is its parent's statement)
+emitted without braces, so the label lands in a scope the goto sees, its locals renamed where
+they would meet a global or another local of their name (`ARCHITECTURE_EMITTER.md` section 4); an
+`if`, loop or switch body on that way is Duff's device (P3.3) and fails closed. A goto over a declaration skips its
+initializer, which is C's rule too (`probes/test_goto.das`).
+
+A goto into another case group of a switch around both (`goto dflt` from a `case` of lstrlib.c's
+`match`, `goto l_tforcall` and `goto ret` in lvm.c's `luaV_execute`) re-dispatches the switch:
+each group lands in its own branch, so the label could sit in no scope the goto sees. The switch
+takes the matched-flag loop whatever its groups, `_condN` is `var`, and each such label (at its
+group's level once the bare blocks on the way lose their braces) becomes a case of a value no case
+of the switch has: past the largest case when the condition's promoted type has room, else below
+the smallest, else the first gap, an enumerator's as `enum_from_int`. The label splits its
+group's `if (_flag)` branch with `_flag ||= _cond == v  // name`, so control falling into it
+keeps the flag; the goto stores `v` into `_condN` and jumps to `label K:  // re-dispatch`, the
+first statement of the loop body, before the flag's declaration. `default` also matches none of
+these values. A label after a declaration of its own group fails closed, since the split would
+end the declaration's scope. The re-dispatch label stands at the top of the loop body because
+daslang's optimizer moves the statements after an `if` whose branch ends in `break` into an
+`else`, so a label among them escapes a goto from that branch, and no such tail holds the top;
+the re-dispatch labels take the numbers below the C labels, an inner switch's below the one
+around it, because daslang's loop node takes a goto whose number is below the count of its
+body's labels as one of its own (`docs/probe-findings.md` F60, `probes/test_goto.das`).

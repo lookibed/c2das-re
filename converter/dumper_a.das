@@ -122,6 +122,10 @@ struct Dumper {
     aligned_names : table<string>
     // the bytes of clang's JSON dump
     json_bytes : int64
+    // the records of an external file the program reaches a member, a variable or the size of
+    // (`struct tm`, `struct lconv`), by index into `records`: each is anchored where it is
+    // first interned, since the walk skips its file
+    external_records : table<int>
 }
 
 def private fail(var d : Dumper; what : string; at : CirLoc) {
@@ -480,6 +484,63 @@ def private register_offsetof(var d : Dumper; var c : CXCursor) {
     d.offsetofs_by_loc[key] |> emplace(off)
 }
 
+// the definition of an external file's record that `decl` declares, laid out like a program's,
+// and every external record its fields hold by value; nothing for a program's record or one
+// no file defines
+[arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
+def private register_external(var d : Dumper; var decl : CXCursor) {
+    let kind = clang_getCursorKind(decl)
+    if (kind != CXCursorKind.StructDecl && kind != CXCursorKind.UnionDecl) {
+        return
+    }
+    var definition = clang_getCursorDefinition(decl)
+    if (clang_Cursor_isNull(definition) != 0 || in_program(d, cursor_loc(definition).file) || key_exists(d.record_by_loc, cursor_key(d, definition))) {
+        return
+    }
+    register_record(d, definition)
+    let idx = d.record_by_loc?[cursor_key(d, definition)] ?? -1
+    if (idx < 0) {
+        return
+    }
+    d.external_records |> insert(idx)
+    clang_visitChildren(definition) $(var fc, _fp) {
+        if (clang_getCursorKind(fc) == CXCursorKind.FieldDecl) {
+            register_external_type(d, clang_getCursorType(fc))
+        }
+        return CXChildVisitResult.Continue
+    }
+}
+
+// `register_external` for the record a type holds by value, through arrays and typedefs
+def private register_external_type(var d : Dumper; var t : CXType) {
+    var canonical = clang_getCanonicalType(t)
+    while (canonical.kind == CXTypeKind.ConstantArray || canonical.kind == CXTypeKind.IncompleteArray) {
+        canonical = clang_getCanonicalType(clang_getArrayElementType(canonical))
+    }
+    if (canonical.kind == CXTypeKind.Record) {
+        register_external(d, clang_getTypeDeclaration(canonical))
+    }
+}
+
+// the external records a program expression reaches: a member's record (`localeconv()->
+// decimal_point`) and the type `sizeof` or `_Alignof` names
+def private register_external_use(var d : Dumper; var c : CXCursor) {
+    let kind = clang_getCursorKind(c)
+    if (kind == CXCursorKind.MemberRefExpr) {
+        var field = clang_getCursorReferenced(c)
+        if (clang_getCursorKind(field) == CXCursorKind.FieldDecl) {
+            register_external(d, clang_getCursorSemanticParent(field))
+        }
+    } elif (kind == CXCursorKind.UnaryExpr) {
+        clang_visitChildren(c) $(var kid, _kp) {
+            if (clang_getCursorKind(kid) == CXCursorKind.TypeRef) {
+                register_external_type(d, clang_getCursorType(kid))
+            }
+            return CXChildVisitResult.Continue
+        }
+    }
+}
+
 def private walk_records(var d : Dumper; var c : CXCursor) {
     clang_visitChildren(c) $(var kid, _parent) {
         let kind = clang_getCursorKind(kid)
@@ -492,6 +553,11 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
             register_enum(d, kid)
         } elif (kind == CXCursorKind.VarDecl) {
             register_dims(d, kid)
+            // a variable of an external record (`struct tm ts;`) needs its layout
+            register_external_type(d, clang_getCursorType(kid))
+            walk_records(d, kid)
+        } elif (kind == CXCursorKind.MemberRefExpr || kind == CXCursorKind.UnaryExpr) {
+            register_external_use(d, kid)
             walk_records(d, kid)
         } elif (kind == CXCursorKind.UnexposedExpr) {
             register_offsetof(d, kid)
@@ -1205,6 +1271,10 @@ def private record_type(var d : Dumper; qt : string; at : CirLoc) : int {
     }
     d.tu.types[idx].fields <- fields
     d.tu.types[idx].packed = !natural_layout(d.tu, d.layout, idx)
+    if (key_exists(d.external_records, ridx)) {
+        // an external file's record has no definition the walk meets: its anchor is its first use
+        d.tu.decls |> push(new CirDecl(k = "record", name = d.tu.types[idx].name, c_name = d.tu.types[idx].name, t = idx, loc = at))
+    }
     return idx
 }
 

@@ -15,8 +15,8 @@ toolchain binding section 4; the readability inputs section 5; the exception led
   `alloca`. Grown demand-driven by the suites; every piece lands with an as-if-converted
   fixture test under `c_runtime/tests/` first.
 - `dasCRuntime/` - the native glue module `crt`: `addExtern` lines binding the real CRT
-  (malloc family, mem*, string.h, libm exotica, errno, time, rand, getenv, the per-directive
-  `snprintf` family) under their C names, qualified `crt::` at every use. No logic; built by
+  (malloc family, mem*, string.h, libm exotica, errno, time, locale, stdio, rand, getenv, the
+  per-directive `snprintf` family) under their C names, qualified `crt::` at every use. No logic; built by
   `scripts/build_crt.sh` and loaded with `-load_module` (`dasCRuntime/ARCHITECTURE.md`).
 - `probes/` - the das-facts regression net: one dastest probe per fact the backend relies
   on. Runs first in every test lane.

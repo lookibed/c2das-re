@@ -140,3 +140,20 @@ def test_printf(t : T?) {
         t |> equal(caught, true)
     }
 }
+
+[test]
+def test_fprintf(t : T?) {
+    t |> run("fprintf writes the bytes to a CRT stream, a FILE * as void?, and returns their count") @(t : T?) {
+        unsafe {
+            var f = crt::tmpfile()
+            t |> equal(fprintf(f, cstr("%d-%s"), 42, cstr("go")), 5)
+            t |> equal(fprintf(f, cstr("!")), 1)
+            crt::fseek(f, 0l, 0)
+            var back : uint8[8]
+            t |> equal(crt::fread(addr<void?>(back[0]), 1ul, 8ul, f), 6ul)
+            t |> equal(reinterpret<string>(addr(back[0])), "42-go!")
+            crt::fclose(f)
+            t |> equal(fprintf(crt::c_stdout(), cstr("ok\n")), 3)
+        }
+    }
+}

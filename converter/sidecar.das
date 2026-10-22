@@ -3,6 +3,7 @@ options gen2
 module sidecar public
 
 require strings
+require daslib/strings_boost
 require daslib/fio
 require daslib/json_boost
 
@@ -20,7 +21,8 @@ struct Sidecar {
     // how the body writes a scalar or pointer parameter it assigns, steps or takes the address
     // of: `in-place` (the parameter itself) or `copy` (a local copy); "" when the key is absent
     param_writes : string
-    // the macros clang defines for the dump, each `NAME` or `NAME=value`, passed as `-D<entry>`
+    // the macros clang defines for the dump, each `NAME`, `NAME=value` or `NAME(params)=value`,
+    // passed as `-D<entry>`
     defines : array<string>
     // the trailing array members the program indexes past their length (C89's `int a[1]` over a
     // larger allocation), each `Record.field`, by tag or typedef name: their accesses go through a
@@ -61,15 +63,39 @@ def read_json_file(path : string; var error : string&) : JsonValue? {
     return js
 }
 
-// whether `entry` is `NAME` or `NAME=value` with `NAME` a C identifier, what `-D` takes as a macro
-def private is_define(entry : string) : bool {
-    let eq = find(entry, "=")
-    let name = eq < 0 ? entry : slice(entry, 0, eq)
+// whether `name` is a C identifier
+def private is_identifier(name : string) : bool {
     if (empty(name)) {
         return false
     }
     for (idx, ch in count(), name) {
         if (!(ch == '_' || is_alpha(ch) || (idx > 0 && is_number(ch)))) {
+            return false
+        }
+    }
+    return true
+}
+
+// whether `entry` is what `-D` takes as a macro: `NAME`, `NAME=value`, or a function-like
+// `NAME(params)=value` whose params are identifiers separated by commas, `...` last
+def private is_define(entry : string) : bool {
+    let eq = find(entry, "=")
+    let head = eq < 0 ? entry : slice(entry, 0, eq)
+    let paren = find(head, "(")
+    if (paren < 0) {
+        return is_identifier(head)
+    }
+    if (eq < 0 || !(head |> ends_with(")")) || !is_identifier(slice(head, 0, paren))) {
+        return false
+    }
+    let inside = slice(head, paren + 1, length(head) - 1)
+    if (empty(strip(inside))) {
+        return true
+    }
+    let params <- split(inside, ",")
+    for (idx, param in count(), params) {
+        let name = strip(param)
+        if (!is_identifier(name) && !(name == "..." && idx == length(params) - 1)) {
             return false
         }
     }
@@ -105,11 +131,11 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
     }
     let defines = js?["defines"]
     if (key_exists(js, "defines") && !(defines is _array)) {
-        error = "{path}: `defines` is a list of strings `NAME` or `NAME=value`, not {write_json(defines)}"
+        error = "{path}: `defines` is a list of strings `NAME`, `NAME=value` or `NAME(params)=value`, not {write_json(defines)}"
     } elif (key_exists(js, "defines")) {
         for (entry in defines as _array) {
             if (!(entry is _string) || !is_define(entry ?? "")) {
-                error = "{path}: `defines` holds strings `NAME` or `NAME=value`, not {write_json(entry)}"
+                error = "{path}: `defines` holds strings `NAME`, `NAME=value` or `NAME(params)=value`, not {write_json(entry)}"
                 break
             }
             side.defines |> push(entry ?? "")

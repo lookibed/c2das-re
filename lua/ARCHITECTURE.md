@@ -43,6 +43,16 @@ drop out.
 - `defines`: `LUA_USE_JUMPTABLE=0`. `lvm.c` turns on its computed-goto dispatch (`ljumptab.h`,
   `&&L_OP_MOVE`, a GNU extension outside the dialect) whenever `__GNUC__` is defined, which
   clang defines; `0` selects the `switch` dispatch every ISO compiler gets.
+- `defines`: `luai_jmpbuf=int`, `LUAI_THROW(L,c)=abort()` and `LUAI_TRY(L,c,a)={ a }`, the stub of
+  Lua's error recovery: `ldo.c` defines the three only when `LUAI_THROW` is not defined, and its
+  ISO definitions hold a `jmp_buf` in `struct lua_longjmp` and call `setjmp` and `longjmp`, the
+  setjmp lowering that is P5.2's item (`docs/implementation_order.md`). With the stub a script
+  that raises no Lua error runs, and a Lua error aborts the process where the native build
+  recovers; the stub stands until P5.2 lowers the three.
+- `over_indexed`: `TString.contents`, `Udata.uv`, `CClosure.upvalue` and `LClosure.upvals`, the
+  C89 `T a[1]` trailing arrays `lobject.h` indexes past their length over a larger allocation (a
+  string's bytes, a userdata's user values, a closure's upvalues); das would range-check them at
+  one element.
 
 ## 4. The numbers
 

@@ -35,4 +35,15 @@ def test_strings(t : T?) {
             t |> equal(s == "aXc", true)
         }
     }
+    t |> run("a literal keeps the bytes after an interior \\x00, and two literals differing only past it are two pointers") @(t : T?) {
+        unsafe {
+            let p = reinterpret<uint8?>("a\x00b")
+            let q = reinterpret<uint8?>("a\x00c")
+            t |> equal(int(deref(p + 1)), 0)
+            t |> equal(int(deref(p + 2)), 'b')
+            t |> equal(int(deref(p + 3)), 0)
+            t |> equal(int(deref(q + 2)), 'c')
+            t |> equal(intptr(p) != intptr(q), true)
+        }
+    }
 }
