@@ -7,7 +7,9 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 ### The program's files {#file-policy}
 
 A C program is its main file and every file under the main file's directory, subdirectories
-included: a header beside the `.c` (or under a folder of it) declares the program's records,
+included, except clang's resource directory and the directories clang searches for `<...>` under
+the target (its `-v` list), which stay external wherever they lie (a main file in `/root` holds
+the default `/root/libclang`): a header beside the `.c` (or under a folder of it) declares the program's records,
 typedefs, enums, prototypes, objects and static functions, and they convert with the file. Every
 other file is external, a system header's above all: its records stay out of the C-IR, and a
 reference to one of its functions or objects binds by name (`strlen`, `stderr`). Paths compare
@@ -17,9 +19,9 @@ canonical (`get_full_file_name`, symbolic links and `..` resolved, memoized per 
 it, the JSON walk a top-level declaration whose location's file does. The rule draws the
 boundary, so a program whose headers live elsewhere is composed with them copied beside it (as
 `lua/run.das`, repo root, does). An external record the program reaches a member of, declares a
-variable of or names under `sizeof` (`struct tm`, `struct lconv`) is laid out with the program's
-records: the libclang pass registers its definition from the system header, and every external
-record it holds by value, and the walk anchors it where it first interns it, so it converts and is
+variable or a record field of, or names under `sizeof` as a type or an operand's (`sizeof *p`)
+(`struct tm`, `struct lconv`, `mbstate_t`) is laid out with the program's records: the libclang pass registers its definition from the system header, and every external
+record it holds by value, an anonymous one nested in it included, and the walk anchors it where it first interns it, so it converts and is
 layout-checked under its C tag; one the program reaches only through pointers (`FILE`) stays
 opaque.
 
@@ -31,6 +33,15 @@ state. Before the walk `complete_locs` replays that order over the whole dump an
 omitted `file` and `line` back, so each valid location names its own file and line; a node's
 location is its `loc`, else its `range.begin`, the expansion site for a macro-produced one, and
 an invalid location (`{}`) takes the last valid one's.
+
+An `offsetof` joins its libclang cursor (the type and the member, which the dump does not carry)
+by that key too, and every `offsetof` of one macro expansion shares it: the expansion site, and
+stddef.h's `__builtin_offsetof` as the spelling. The dump gives no location of the member, so the
+n-th node of a key takes the n-th cursor, which holds while both walks meet them in source order
+(lua's `udatamemoffset`, two in one `?:`). Where they can disagree the conversion fails closed
+unless the key's `offsetof`s are alike: one in an initializer list, whose designators reorder the
+dump's, and a key the two walks count apart once the dump is walked, one in an array dimension or
+a designator's index, which the dump keeps only in a type or drops.
 
 The dumper walks `TranslationUnitDecl.inner`, skipping `isImplicit` nodes (clang's builtin
 typedefs and `_GUID`) and every declaration of an external file. Types are interned by a structural key (`int:32:true:int`, `ptr:3`,

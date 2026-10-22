@@ -56,6 +56,9 @@ let private FOLDED_TAIL = "options gen2\ndef m(c : int; p : uint8?) : int \{\n  
 // a goto out of a loop body that holds a label, to an outer label numbered `outer`
 def private outer_goto(outer : int) : string => "options gen2\ndef bw(c : int) : int \{\n    var r = 0\n    var n = c\n    label {outer}:\n    r += 1\n    while (true) \{\n        if (n > 0) \{\n            n--\n            goto label {outer}\n        \}\n        label 2:\n        r += 100\n        break\n    \}\n    return r\n\}\n[export]\ndef main : int \{\n    print(\"\{bw(2)\}\\n\")\n    return 0\n\}\n"
 
+// a goto out of an `if` branch that holds a label, to a label above the `if` (C: 23)
+let private BLOCK_TRAP = "options gen2\ndef f(c : int) : int \{\n    var r = 0\n    var n = c\n    label 1:\n    r += 1\n    if (n > 0) \{\n        label 2:\n        r += 10\n        n--\n        if (n == 5) \{\n            goto label 2\n        \}\n        goto label 1\n    \}\n    return r\n\}\n[export]\ndef main : int \{\n    print(\"\{f(2)\}\\n\")\n    return 0\n\}\n"
+
 // a goto to a label that ends an `if` branch and one that ends a function body, each followed by
 // `tail`
 def private block_end(tail : string) : string => "options gen2\nvar r = 0\ndef b(c : int) : int \{\n    var q = 0\n    if (c > 0) \{\n        if (c == 1) \{\n            goto label 3\n        \}\n        q += 100\n        label 3:\n        {tail}\n    \}\n    return q\n\}\ndef f(c : int) \{\n    if (c == 1) \{\n        goto label 3\n    \}\n    r += 100\n    label 3:\n    {tail}\n\}\n[export]\ndef main : int \{\n    print(\"\{b(1)\} \{b(2)\}\\n\")\n    f(1)\n    f(2)\n    print(\"\{r\}\\n\")\n    return 0\n\}\n"
@@ -89,22 +92,28 @@ def test_goto_in_loops(t : T?) {
         let below = daslang_child("goto_out_below", outer_goto(1), false)
         t |> equal(below.rc != 0 || below.out != "103\n", true, below.out)
     }
-    t |> run("the re-dispatch: a label at the top of a loop body restarts it, the case chosen by the stored condition") @(t : T?) {
+    t |> run("the re-dispatch: a label at the top of a loop body restarts it, the case chosen by the goto variable while every case test requires it unset") @(t : T?) {
         var trace : array<int>
-        var cond = 1
+        let cond = 1
+        var pending = 0
         var steps = 0
         while (true) {
             label 1:
             steps++
             var flag = false
-            flag ||= cond == 1
+            flag ||= pending == 0 && cond == 1
             if (flag) {
                 trace |> push(1)
-                cond = 7
+                pending = 1
                 goto label 1
             }
-            flag ||= cond == 7
+            flag ||= pending == 0 && cond == 2
             if (flag) {
+                trace |> push(2)
+            }
+            flag ||= pending == 1
+            if (flag) {
+                pending = 0
                 trace |> push(7)
                 break
             }
@@ -113,5 +122,11 @@ def test_goto_in_loops(t : T?) {
         t |> equal(length(trace), 2)
         t |> equal(trace[1], 7)
         t |> equal(steps, 2)
+        t |> equal(pending, 0)
+    }
+    t |> run("a labelled block that is not a loop passes no goto outward under the interpreter, the JIT does (docs/probe-findings.md F63)") @(t : T?) {
+        child_rejects(t, "goto_block_trap", daslang_child("goto_block_trap", BLOCK_TRAP, false), "jump to label 1 failed")
+        let jit = daslang_child_flags("goto_block_trap_jit", BLOCK_TRAP, jit_flags())
+        t |> equal(jit.out |> ends_with("23\n"), true, jit.out)
     }
 }

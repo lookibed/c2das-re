@@ -35,6 +35,14 @@ def test_pipeline_ret42(t : T?) {
         t |> equal(res.das_text |> find("[export]\ndef main : int \{\n    return c_main()\n\}") >= 0, true, res.das_text)
         t |> equal(res.das_text |> starts_with(GENERATED_BANNER), true)
     }
+    t |> run("the result carries clang's JSON size and each stage's seconds") @(t : T?) {
+        t |> equal(res.json_bytes > 1000l, true, "{res.json_bytes}")
+        t |> equal(res.dump_seconds > 0.0lf, true, "{res.dump_seconds}")
+        t |> equal(res.emit_seconds > 0.0lf, true, "{res.emit_seconds}")
+        t |> equal(res.check_seconds > 0.0lf, true, "{res.check_seconds}")
+        t |> equal(res.c_functions, 0)
+        t |> equal(res.function_count, 1)
+    }
     t |> run("the C-IR carries the target, the interned types and the return") @(t : T?) {
         t |> equal(res.cir_text |> find("\"cir\": \"0.1\"") >= 0, true)
         t |> equal(res.cir_text |> find("\"triple\": \"x86_64-pc-windows-msvc\"") >= 0, true)

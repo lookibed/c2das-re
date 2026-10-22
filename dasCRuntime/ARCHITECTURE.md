@@ -32,7 +32,10 @@ or that have no function form become accessors: `errno` is `crt::c_errno()` and
 through glibc's spelling of `errno`, `(*__errno_location())`; `CLOCKS_PER_SEC`, `RAND_MAX`,
 `EDOM`, `ERANGE`, `EINVAL` and `HUGE_VAL` (a `double`, what `__builtin_huge_val()` gives) are constants
 read from the CRT that built the module, never restated in das; the standard streams `stdin`,
-`stdout` and `stderr` are `crt::c_stdin()`, `crt::c_stdout()` and `crt::c_stderr()`.
+`stdout` and `stderr` are `crt::c_stdin()`, `crt::c_stdout()` and `crt::c_stderr()`. The entries
+no C name covers keep a `c_` name: `c_strtol32`, `c_strtoul32`, `c_atol32` and `c_ftell32` (section
+3), and `c_signal_host(sig, ignore)`, which installs the host's `SIG_IGN` or `SIG_DFL` for
+`c_runtime/c_signal.das`.
 
 The binds are the malloc family; `mem*`; string.h; ctype.h; the `strto*` and `ato*` conversions;
 libm's exotica; errno; `getenv`, `rand`, `srand`, `system`; time.h (`time`, `clock`, `difftime`,
@@ -65,16 +68,25 @@ C strings are bytes, never das `string`: a forwarder takes `uint8_t *` so the da
 `uint8?`, and a test reads a result back through `reinterpret<string>`. `long` is the width
 of the CRT that built the module, 64 bits here; the converter's dialect (`long` = 32) is
 applied by the emitter at the call site, not by the forwarder, so the module tells the truth
-about the platform and the converter owns the narrowing.
+about the platform and the converter owns the narrowing. Where C ranges a result at the dialect's
+`long`, a narrowing would wrap where a 32-bit CRT clamps, so the module carries the 32-bit forms
+the emitter calls instead: `c_strtol32`, `c_strtoul32` and `c_atol32` parse at 64 bits and apply
+C11 7.22.1.4's range rule at 32 (LONG_MAX, LONG_MIN or ULONG_MAX with `errno` ERANGE, a negative
+`strtoul` subject's magnitude range-checked before it is negated, `errno` untouched in range), and
+`c_ftell32` gives C's failure, -1 with ERANGE, for a position past LONG_MAX.
 
 ## 4. Side effects and unsafe
 
 Every bind that takes or returns a raw pointer is registered `unsafeOperation`, matching
 daslang's own `memcpy` and `malloc`: converted bodies that use them carry `[c_function]`,
 which makes the whole body unsafe, and a hand-written caller writes `unsafe`. Pure scalar
-entries (libm, ctype, `abs`) are `SideEffects::none` and safe. Anything that writes memory,
-reads or writes CRT state (`errno`, the `rand` seed, the environment, the clock, the
-`strerror` buffer) is `modifyExternal`: the optimizer may not fold or drop it.
+entries (ctype, `abs`, and the libm entries that never set `errno`: `cbrt`, `copysign`, `trunc`,
+`round`) are `SideEffects::none` and safe. Anything that writes memory, reads or writes CRT state
+(`errno`, the `rand` seed, the environment, the clock, the `strerror` buffer, a signal's
+disposition) is `modifyExternal`: the optimizer may not fold or drop it. The libm entries glibc
+reports a domain or range error through `errno` from (`fmod`, `fmodf`, `ldexp`, `nextafter`,
+`hypot`, `expm1`, `log1p`, `remainder`, `erf`, `erfc`, `tgamma`, `lgamma`, `fma`) are among them,
+so a call whose result the program discards, or whose arguments are constant, still runs.
 
 ## 5. `snprintf` and `sscanf` as per-directive families
 
@@ -110,9 +122,9 @@ without that flag fails with "missing prerequisite 'crt'".
 ## 7. Exception ledger
 
 - `REVIEW.md`, the rule registering `SideEffects::none` only for a call that changes nothing
-  but its return value: the libm entries (`fmod`, `fmodf`, `ldexp`, `nextafter`, `hypot`,
-  `cbrt`, `expm1`, `log1p`, `copysign`, `remainder`, `trunc`, `round`, `erf`) are `none`
-  though glibc sets `errno` on a domain or range error (`fmod(x, 0)` gives `EDOM`, `ldexp`
-  overflowing gives `ERANGE`), so the optimizer may drop such a call whose result the program
-  discards and a later `errno` read misses the error; settled with the first suite program
-  that reads `errno` after a libm call.
+  but its return value, reaches past this module: the converter maps `<math.h>`'s `floor`,
+  `ceil`, `fabs`, `sqrt`, the trigonometric family, `exp`, `log`, `log2`, `log10` and `pow` to das
+  `math::` (`converter/emit.das`, `C_RUNTIME_CALLS`), whose functions are pure on every tier, so
+  daslang folds or drops such a call whose arguments are constant or whose result is discarded,
+  and the JIT's `sqrt` is an intrinsic: `errno` after such a call is not reliably set
+  (`log(0)` leaves `errno` 0 where glibc gives `ERANGE`). A dialect limit, ledgered on P5.1.

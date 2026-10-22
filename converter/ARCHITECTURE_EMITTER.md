@@ -77,7 +77,8 @@ native build's name on every tier), then returns `c_main(c_argc(), c_argv())` (F
 function named like one of these four takes the next free name (`c_argc1`). A `main` taking
 `envp` or other parameters, and a `static` one, fail closed. A C name that is a das
 keyword, or that starts with `__`, which das reserves (glibc's `__tm_gmtoff`), takes the `_c_`
-prefix. A local that hides one of an enclosing block or a parameter
+prefix; a program that also names an object, function, parameter or local `_c_<name>` fails closed
+with both names, since the two would be one das name. A local that hides one of an enclosing block or a parameter
 takes the first numbered name the function leaves free (`i1`), and so does every reference C
 resolves to it, since das refuses a local that shadows another (`docs/probe-findings.md` F42);
 `emit_tu` renames over the C-IR in place before anything reads a name, a `for`'s declarations
@@ -176,9 +177,15 @@ closed. A library call takes a pointer to a record among its fixed arguments as 
 (`reinterpret<tm?>(crt::gmtime(addr(t)))`); `jmp_buf` and `va_list` are the protocol's own. A libc
 object the program reads is its crt accessor through `CRT_OBJECTS` (`stdout` is
 `reinterpret<_IO_FILE?>(crt::c_stdout())`, and the accessor's `void?` as it is where a library call
-takes it). Where the dialect's `long` is 32 bits (`msvc`), a fixed argument of C type `long` or
-`unsigned long` to a `crt::` function is widened (`int64(off)`) and such a result narrowed
-(`int(crt::ftell(...))`), since crt binds C's `long` as 64 bits. A `void *` among a call's trailing arguments travels as `reinterpret<uint8?>(p)`, since
+takes it), decided by declaration: a name a parameter, a local or a program global binds is the
+program's own (`unshadow_locals` marks each reference a parameter or local binds). Where the
+dialect's `long` is 32 bits (`msvc`), a fixed argument of C type `long` or `unsigned long` to a
+`crt::` function is widened (`int64(off)`) and such a result narrowed (`int(crt::clock())`),
+since crt binds C's `long` as 64 bits; a result C ranges at the dialect's `long` never wraps:
+`strtol`, `strtoul`, `atol` and `ftell` call crt's 32-bit forms (`crt::c_strtol32(...)`,
+`LONG32_CALLS`), which clamp with ERANGE as a 32-bit CRT does (`dasCRuntime/ARCHITECTURE.md`
+section 3). A program calling `setvbuf` requires `c_runtime/c_exit`, whose
+`[finalize]` flushes every stream while a buffer the program handed it, das memory, still lives. A `void *` among a call's trailing arguments travels as `reinterpret<uint8?>(p)`, since
 daslang meets a tuple holding `void?` after two tuples of other pointers with two generic
 instances (`docs/probe-findings.md` F61); the list holds every pointer as `void?` either way. A caller's `var` pointer reaches a piece's
 pointer argument as it reaches a converted function's. A `size_t` result is `uint64`, so an index or a count it feeds carries the cast C gives

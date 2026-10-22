@@ -99,10 +99,15 @@ static void libc_pieces(void) {
 }
 
 /* lvm.c:638 `} while (--n > 0);` in `copy2buff`: a do-while whose condition has an effect, with a
-   `continue` that reaches it */
+   `continue` that reaches it; the guard turns a lowering that never runs the condition into a
+   wrong value rather than a hang */
 static int countdown(int n) {
     int total = 0;
+    int guard = 0;
     do {
+        if (++guard > 100) {
+            return -1;
+        }
         total += n;
         if (n == 3) {
             continue;

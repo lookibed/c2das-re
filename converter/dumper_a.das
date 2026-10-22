@@ -57,11 +57,14 @@ struct ClangEnumRef {
 def private is_constant(r : ClangEnumRef) : bool => !empty(r.item)
 
 // an `offsetof(T, f)` as libclang sees it: the type as the source spells it and the member; `path`
-// when the designator is more than one member (`a.b`, `arr[2]`)
+// when the designator is more than one member (`a.b`, `arr[2]`); `in_init` when it sits in an
+// initializer list, whose designators order libclang's walk by the source and the dump's by the
+// object
 struct ClangOffsetof {
     type_text : string
     member : string
     path : bool
+    in_init : bool
 }
 
 struct Dumper {
@@ -76,6 +79,9 @@ struct Dumper {
     // the canonical directory of the main file with a trailing `/`: a declaration in a file under
     // it belongs to the program
     program_dir : string
+    // clang's resource directory and the system include directories, canonical with a trailing
+    // `/`: a file under one is external though it lies under `program_dir`
+    system_dirs : array<string>
     // each file name the dump or libclang spells, made canonical
     canonical_files : table<string; string>
     linkage_names : table<string; string>
@@ -101,10 +107,13 @@ struct Dumper {
     enum_dims_by_loc : table<string; array<ClangEnumRef>>
     // the `offsetof` expressions at each key, in tree order: one macro expansion can spell two
     // (both keyed at the expansion site and at stddef.h's `__builtin_offsetof`), and the JSON walk
-    // takes them in the same order, each node by its id
+    // takes them in the same order, counting each key's nodes
     offsetofs_by_loc : table<string; array<ClangOffsetof>>
-    offsetof_index : table<string; int>
     offsetof_taken : table<string; int>
+    // where the dump first met each key's `offsetof`, and how many initializer lists enclose the
+    // cursor libclang's walk is at
+    offsetof_at : table<string; CirLoc>
+    init_lists : int
     // the labels of the function being dumped, by the id a GotoStmt names
     label_names : table<string; string>
     // the typedef names whose declaration reaches clang's implicit `__builtin_va_list`, and the
@@ -267,6 +276,8 @@ def private register_record(var d : Dumper; var c : CXCursor) {
         } elif (fk == CXCursorKind.FieldDecl) {
             register_dims(d, fc)
             var declared = clang_getCursorType(fc)
+            // a program record holding an external one by value (`struct tm t;`) needs its layout
+            register_external_type(d, declared)
             var canonical = clang_getCanonicalType(declared)
             let is_bf = clang_Cursor_isBitField(fc) != 0u
             // a `va_list` field is known by its declaration chain, which the msvc canonical
@@ -347,7 +358,15 @@ def private canonical_file(var d : Dumper; name : string) : string {
 [arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
 def private in_program(var d : Dumper; name : string) : bool {
     let full = canonical_file(d, name)
-    return full |> starts_with(d.program_dir)
+    if (!(full |> starts_with(d.program_dir))) {
+        return false
+    }
+    for (dir in d.system_dirs) {
+        if (full |> starts_with(dir)) {
+            return false
+        }
+    }
+    return true
 }
 
 // the file of a libclang location, as `clang_getExpansionLocation` and its siblings give it
@@ -477,6 +496,7 @@ def private register_offsetof(var d : Dumper; var c : CXCursor) {
         return
     }
     off.path = members > 1 || others > 0
+    off.in_init = d.init_lists > 0
     let key = cursor_key(d, c)
     if (!key_exists(d.offsetofs_by_loc, key)) {
         d.offsetofs_by_loc[key] <- array<ClangOffsetof>()
@@ -494,12 +514,17 @@ def private register_external(var d : Dumper; var decl : CXCursor) {
         return
     }
     var definition = clang_getCursorDefinition(decl)
-    if (clang_Cursor_isNull(definition) != 0 || in_program(d, cursor_loc(definition).file) || key_exists(d.record_by_loc, cursor_key(d, definition))) {
+    if (clang_Cursor_isNull(definition) != 0 || in_program(d, cursor_loc(definition).file)) {
         return
     }
-    register_record(d, definition)
-    let idx = d.record_by_loc?[cursor_key(d, definition)] ?? -1
-    if (idx < 0) {
+    // a record nested in an external one (`mbstate_t`'s anonymous union) is registered with it,
+    // and is external all the same
+    let key = cursor_key(d, definition)
+    if (!key_exists(d.record_by_loc, key)) {
+        register_record(d, definition)
+    }
+    let idx = d.record_by_loc?[key] ?? -1
+    if (idx < 0 || key_exists(d.external_records, idx)) {
         return
     }
     d.external_records |> insert(idx)
@@ -532,8 +557,10 @@ def private register_external_use(var d : Dumper; var c : CXCursor) {
             register_external(d, clang_getCursorSemanticParent(field))
         }
     } elif (kind == CXCursorKind.UnaryExpr) {
+        // the type `sizeof` names, or its operand's (`sizeof *p`)
         clang_visitChildren(c) $(var kid, _kp) {
-            if (clang_getCursorKind(kid) == CXCursorKind.TypeRef) {
+            let kk = clang_getCursorKind(kid)
+            if (kk == CXCursorKind.TypeRef || clang_isExpression(kk) != 0u) {
                 register_external_type(d, clang_getCursorType(kid))
             }
             return CXChildVisitResult.Continue
@@ -562,6 +589,10 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
         } elif (kind == CXCursorKind.UnexposedExpr) {
             register_offsetof(d, kid)
             walk_records(d, kid)
+        } elif (kind == CXCursorKind.InitListExpr) {
+            d.init_lists++
+            walk_records(d, kid)
+            d.init_lists--
         } elif (kind == CXCursorKind.DeclRefExpr) {
             // a reference to an enum constant resolves by its location, since C scopes let
             // two enums of one file spell the same constant name
@@ -640,10 +671,8 @@ def private unscoped_spelling(spelling : string) : string {
             start = at + length(tag)
         }
     }
-    if (start < 0) {
-        start = rfind(slice(spelling, 0, find(spelling, "::")), " ") + 1
-    }
-    return slice(spelling, 0, start) + slice(spelling, scope + 2)
+    // C spells every record and enum type with its tag word
+    return start < 0 ? spelling : slice(spelling, 0, start) + slice(spelling, scope + 2)
 }
 
 // a libclang spelling in the dump's form: the leading type name, when it is an anonymous
@@ -1849,26 +1878,55 @@ def private initialized_field(rec : CirType; slot : int) : int {
     return slot
 }
 
+def private any_in_init(offs : array<ClangOffsetof>) : bool {
+    for (off in offs) {
+        if (off.in_init) {
+            return true
+        }
+    }
+    return false
+}
+
+// whether the `offsetof`s of one key spell one type and member alike, so that any pairing of
+// them with the dump's nodes gives each node its value
+def private offsetofs_alike(offs : array<ClangOffsetof>) : bool {
+    for (off in offs) {
+        if (off.type_text != offs[0].type_text || off.member != offs[0].member || off.path != offs[0].path) {
+            return false
+        }
+    }
+    return true
+}
+
 // clang's JSON carries neither the components nor the value of `offsetof(T, f)`
 // (docs/probe-findings.md F20): libclang's cursor of the expression gives `T` as the source
-// spells it and `f`, a direct field of a record only. The n-th node of a key takes the n-th
-// cursor there, a node met again its own
+// spells it and `f`, a direct field of a record only. Every `offsetof` of one macro expansion
+// shares a key (the expansion site, and stddef.h's `__builtin_offsetof` as the spelling), and the
+// dump has no location of its member: the n-th node of a key takes the n-th cursor there. That pairing holds while both walks meet the key's `offsetof`s in source
+// order; an initializer list's designators reorder the dump's, so a key whose `offsetof`s differ
+// and one sits in an initializer list fails closed, as does a key the two walks count apart
+// (`check_offsetof_counts`)
+[arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
 def private dump_offsetof(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
     let key = node_key(d, js)
-    let id = js?["id"] ?? ""
-    var slot = d.offsetof_index?[id] ?? -1
-    if (slot < 0) {
-        slot = d.offsetof_taken?[key] ?? 0
-        d.offsetof_taken[key] = slot + 1
-        d.offsetof_index[id] = slot
+    let slot = d.offsetof_taken?[key] ?? 0
+    d.offsetof_taken[key] = slot + 1
+    if (slot == 0) {
+        d.offsetof_at[key] = at
     }
     var off : ClangOffsetof
     var found = false
+    var reordered = false
     get(d.offsetofs_by_loc, key) $(offs) {
         if (slot < length(offs)) {
             off = offs[slot]
             found = true
         }
+        reordered = !offsetofs_alike(offs) && any_in_init(offs)
+    }
+    if (reordered) {
+        fail(d, "offsetof: one macro expansion spells `offsetof`s of different members, one of them in an initializer list, whose designators clang's dump reorders; not lowered", at)
+        return null
     }
     if (!found) {
         fail(d, "offsetof: libclang reports no `offsetof` at this location", at)
@@ -2623,6 +2681,34 @@ def private clang_resource_dir(clang : string) : string {
     return rc == 0 ? strip(out) : ""
 }
 
+// the resource directory and the directories clang searches for `<...>` under `triple`, as its
+// `-v` lists them, each canonical with a trailing `/` (a main file in `/root` holds the default
+// `/root/libclang`'s resource headers under its own directory)
+[arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
+def private system_dirs(clang, triple, resource_dir : string) : array<string> {
+    var dirs : array<string>
+    dirs |> push(get_full_file_name(resource_dir) + "/")
+    var out : string
+    if (run_and_capture([clang, "-target", triple, "-E", "-x", "c", "-v", "/dev/null", "-o", "/dev/null"], out, 30.0) != 0) {
+        return <- dirs
+    }
+    var listing = false
+    for (text in split(out, "\n")) {
+        let entry = strip(text)
+        if (entry |> starts_with("#include <...> search starts here")) {
+            listing = true
+        } elif (entry |> starts_with("End of search list")) {
+            listing = false
+        } elif (listing && !empty(entry)) {
+            let full = get_full_file_name(entry)
+            if (!empty(full)) {
+                dirs |> push(full |> ends_with("/") ? full : full + "/")
+            }
+        }
+    }
+    return <- dirs
+}
+
 // C allows several file-scope declarations of one object (tentative definitions); the one
 // with the initializer wins and the others add nothing
 def private merge_tentative(var d : Dumper; var cd : CirDecl?) : bool {
@@ -2676,6 +2762,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; defines : array
         d.error = "`{clang} -print-resource-dir` gave no resource directory; libclang needs it for the builtin headers"
         return <- d
     }
+    d.system_dirs <- system_dirs(clang, target.triple, resource_dir)
     collect_records(d, target.triple, resource_dir, defines)
     if (!empty(d.error)) {
         return <- d
@@ -2724,8 +2811,25 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; defines : array
     delete_json(js)
     if (empty(d.error)) {
         check_enum_anchors(d)
+        check_offsetof_counts(d)
     }
     return <- d
+}
+
+// a key whose `offsetof`s the dump's walk met a different number of times than libclang's (one in
+// an array dimension or a designator's index, which the dump keeps only in a type or drops) paired
+// its nodes with the wrong cursors unless every `offsetof` there is alike
+def private check_offsetof_counts(var d : Dumper) {
+    for (key, taken in keys(d.offsetof_taken), values(d.offsetof_taken)) {
+        var mismatch = false
+        get(d.offsetofs_by_loc, key) $(offs) {
+            mismatch = length(offs) != taken && !offsetofs_alike(offs)
+        }
+        if (mismatch) {
+            fail(d, "offsetof: one macro expansion spells `offsetof`s of different members, one of them where clang's dump keeps no expression (an array dimension, a designator's index); not lowered", d.offsetof_at?[key] ?? CirLoc(file = d.c_path))
+            return
+        }
+    }
 }
 
 // an enum the walk never anchored was defined inside an expression (a `sizeof` or cast

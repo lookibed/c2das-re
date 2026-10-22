@@ -20,21 +20,30 @@ as-if-converted fixture test landing first.
   value survives by value as C's does.
 - `c_runtime/c_exit.das` - the process-exit protocol: `c_atexit` registers into a module
   list, `c_run_atexit` walks it once in LIFO order, the `[finalize]` walker runs it after a
-  normal return from `main`, `c_exit(code)` runs it and ends the process with `exit_now`
-  because daslang's `exit` reports 1 whatever its argument (`docs/probe-findings.md` F1),
-  `c_abort` is `exit_now(3)` with no handler run, which is C's rule and the baseline's code.
-- `c_runtime/c_signal.das` - C's `signal` in the dialect, which has no signals
-  (`docs/stdlib-examples.md` "signal.h", `docs/c-feature-matrix.md`): a converted program never
-  receives one, so `c_signal(sig, handler)` keeps the handler of each number from 1 to 64 in a
+  normal return from `main` and then flushes every C stream (`crt::fflush(null)`) while the
+  context lives, since a buffer the program handed `setvbuf` is das memory that libc's own flush
+  at process exit would read freed (the emitter requires the piece for a program calling
+  `setvbuf`); `c_exit(code)` runs the handlers and ends the process with `exit_now`, whose libc
+  exit flushes with the context alive, because daslang's `exit` reports 1 whatever its argument
+  (`docs/probe-findings.md` F1), `c_abort` is `exit_now(3)` with no handler run, which is C's rule
+  and the baseline's code.
+- `c_runtime/c_signal.das` - C's `signal` in the dialect (`docs/stdlib-examples.md` "signal.h",
+  `docs/c-feature-matrix.md`): a converted handler never runs, since das code cannot run from a
+  host signal, so `c_signal(sig, handler)` keeps the handler of each number from 1 to 64 in a
   module array and returns the one before it, `SIG_DFL` (the null function value, `default<...>`)
-  until the first call, and never calls a handler; Lua's Ctrl-C hook (`lua.c`'s `laction`) never
-  fires. `SIG_IGN`, `(void (*)(int)) 1`, is the emitter's integer sentinel of a function value
-  (`converter/ARCHITECTURE_EMITTER_AGGREGATES.md`), kept and returned like any handler. A number outside the array panics where C returns `SIG_ERR`, which no das function value
-  spells; `raise` is not bound.
-- `c_runtime/c_label.das` - `c_label_end()`, the statement a C label stands on when nothing
-  follows it in a das block other than a loop's body: daslang's interpreter jumps only to a
-  statement inside such a block, and its optimizer folds an empty block or a statement without
-  effect away (`docs/probe-findings.md` F62); a `[sideeffects]` call stays and does nothing.
+  until the first call; Lua's Ctrl-C hook (`lua.c`'s `laction`) never fires. `SIG_IGN`,
+  `(void (*)(int)) 1`, and `SIG_ERR`, `(void (*)(int)) -1`, are the emitter's integer sentinels of
+  a function value (`converter/ARCHITECTURE_EMITTER_AGGREGATES.md`). `SIG_IGN` and `SIG_DFL` are
+  applied to the host process through `crt::c_signal_host`, so a signal the program ignores
+  (`SIGPIPE`) does not end it, and a host signal to a number with a converted handler takes the
+  host's disposition. A number the dialect's C library refuses (linux: 0, `SIGKILL`, `SIGSTOP`,
+  the two glibc reserves for its threads, 32 and 33, and past 64; msvc: all but its eight) returns
+  `SIG_ERR` with `errno` EINVAL; `c_signal_msvc`, which the converted module's dialect `[init]`
+  sets, selects msvc's numbers, its `SIGABRT` (22) applied as the host's. `raise` is not bound.
+- `c_runtime/c_label.das` - `c_label_end()`, the statement a C label stands on in a das block
+  other than a loop's body: daslang's interpreter jumps only to a statement inside such a block,
+  and its optimizer folds an empty block or a statement without effect away
+  (`docs/probe-findings.md` F62); a `[sideeffects]` call stays and does nothing.
 - `c_runtime/c_args.das` - C's `main(argc, argv)`: `c_runtime_init(name)`, which the converted
   module's `main` calls first, builds the argument vector once in C-allocator memory (`malloc`),
   `name` (the C source's stem) then each argument `get_user_args` gives (after `--` under the

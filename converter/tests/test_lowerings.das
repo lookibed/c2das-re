@@ -163,6 +163,7 @@ def test_lowerings(t : T?) {
     p5_lua_fixtures(t)
     p5_lua_library_fixtures(t)
     p5_lua_expression_fixtures(t)
+    p5_lua_review_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -366,13 +367,13 @@ def p3_fixtures(t : T?) {
     t |> run("goto: labels numbered per function with the C name as a comment, forward and backward jumps, a jump out of nested loops, a block flattened for a goto into it") @(t : T?) {
         var text : string
         check_fixture(t, "p3_goto", text)
-        has_text(t, text, "label 1:  // retry\n    if (!(p3_goto__try_lock() != 0)) \{\n        n++\n        goto label 1\n    \}")
-        has_text(t, text, "return n\n    label 2:  // fail\n    n = -n")
+        has_text(t, text, "label 1:  // retry\n    c_label_end()\n    if (!(p3_goto__try_lock() != 0)) \{\n        n++\n        goto label 1\n    \}")
+        has_text(t, text, "return n\n    label 2:  // fail\n    c_label_end()\n    n = -n")
         has_text(t, text, "found = i * 10 + j\n                        goto label 1\n")
-        has_text(t, text, "    label 1:  // done\n    return found")
-        has_text(t, text, "r += 1\n    r += 10\n    label 1:  // inside\n    r += 100")
+        has_text(t, text, "    label 1:  // done\n    c_label_end()\n    return found")
+        has_text(t, text, "r += 1\n    r += 10\n    label 1:  // inside\n    c_label_end()\n    r += 100")
         has_text(t, text, "r = 2\n    \{\n        var unused : int = 7\n        r += unused\n    \}\n    label 1:  // skip")
-        has_text(t, text, "label 1:  // again\n    n += 2\n    if (n < 7) \{\n        goto label 1")
+        has_text(t, text, "label 1:  // again\n    c_label_end()\n    n += 2\n    if (n < 7) \{\n        goto label 1")
         rejects(t, "goto_into_loop", "int main(void) \{ int i = 0, n = 0; goto in; while (i < 3) \{ in: n++; i++; \} return n; \}\n", "Duff's device")
         rejects(t, "goto_into_if", "int main(void) \{ int n = 0; goto in; if (n == 0) \{ in: n = 5; \} return n; \}\n", "Duff's device")
     }
@@ -1001,7 +1002,7 @@ def p4_scope_fidelity_fixtures(t : T?) {
         check_fixture(t, "p4_scope_fidelity", text)
         // a block a goto enters loses its braces: its local leaves the global and a later
         // block's local their names
-        has_text(t, text, "    var g1 : int = 3\n    n += g1\n    label 1:  // in\n    n += 1\n    return n * 100 + g\n")
+        has_text(t, text, "    var g1 : int = 3\n    n += g1\n    label 1:  // in\n    c_label_end()\n    n += 1\n    return n * 100 + g\n")
         has_text(t, text, "    var t1 : int = 2\n    n += t1\n")
         // a local a later case reaches is declared before the lowered switch
         has_text(t, text, "    let _cond = k\n    var v : int\n    while (true) \{")
@@ -1469,8 +1470,9 @@ def p5_lua_library_fixtures(t : T?) {
             t |> equal(run_tier(res.das_path, "interp", work_root, out, CONVERTED_MODULES), 0, out)
             if (target == "msvc") {
                 has_text(t, res.das_text, "crt::fseek(reinterpret<void?>(f), int64(off - 1), 0)\n")
-                has_text(t, res.das_text, "pos = int(crt::ftell(reinterpret<void?>(f)))\n")
-                has_text(t, res.das_text, "var u : uint = uint(crt::strtoul(")
+                // a parse or a position C ranges at 32 bits: the crt forwarder of C's range rule
+                has_text(t, res.das_text, "pos = crt::c_ftell32(reinterpret<void?>(f))\n")
+                has_text(t, res.das_text, "var u : uint = crt::c_strtoul32(")
                 has_text(t, res.das_text, "int(crt::clock()) < int(0)")
             } else {
                 has_text(t, res.das_text, "crt::fseek(reinterpret<void?>(f), off - 1l, 0)\n")
@@ -1493,18 +1495,21 @@ def p5_lua_expression_fixtures(t : T?) {
         // an interior NUL: `\\x00` in a pointer's literal, a byte row in an array
         has_text(t, text, "reinterpret<uint8?>(\"[\\x00-\\x7f\\xc2-\\xfd][\\x80-\\xbf]*\")")
         has_text(t, text, "var row : uint8[6] = fixed_array(uint8(97), uint8(0), uint8(98), uint8(0), uint8(99), uint8(0))\n")
-        // a goto into another case re-dispatches: the label is a case of a value no case has
-        has_text(t, text, "        var _cond = int(deref(p))\n        while (true) \{\n            label 1:  // re-dispatch\n")
-        has_text(t, text, "                        _cond = 41\n                        goto label 1\n")
-        has_text(t, text, "            _flag ||= !(_cond == 40 || _cond == 36 || _cond == 37 || _cond == 41)\n            _flag ||= _cond == 41  // dflt\n")
-        has_text(t, text, "                _flag ||= int(_cond) == 9  // ret\n")
-        has_text(t, text, "                        _cond = enum_from_int(type<OpCode>, 7)\n")
-        // an inner switch's re-dispatch label is numbered below the outer one's
-        has_text(t, text, "    var _cond = a\n    while (true) \{\n        label 2:  // re-dispatch\n")
-        has_text(t, text, "            var _cond2 = b\n            while (true) \{\n                label 1:  // re-dispatch\n")
-        // a label with nothing after it in a branch or a function body stands on c_label_end()
+        // a goto into another case re-dispatches: the label is a case of its number in the
+        // switch's goto variable, which every case test and `default` require unset
+        has_text(t, text, "        let _cond = int(deref(p))\n        var _goto = 0\n        while (true) \{\n            label 1:  // re-dispatch\n")
+        has_text(t, text, "                        _goto = 1\n                        goto label 1\n")
+        has_text(t, text, "            _flag ||= _goto == 0 && !(_cond == 40 || _cond == 36 || _cond == 37)\n            _flag ||= _goto == 1  // dflt\n            if (_flag) \{\n                _goto = 0\n")
+        has_text(t, text, "                _flag ||= _goto == 3  // ret\n")
+        has_text(t, text, "                _flag ||= _goto == 0 && _cond == OpCode.OP_TFORCALL\n                _flag ||= _goto == 1  // l_tforcall\n")
+        // an inner switch's re-dispatch label is numbered below the outer one's, each switch
+        // with its own goto variable
+        has_text(t, text, "    let _cond = a\n    var _goto = 0\n    while (true) \{\n        label 2:  // re-dispatch\n")
+        has_text(t, text, "            let _cond2 = b\n            var _goto2 = 0\n            while (true) \{\n                label 1:  // re-dispatch\n")
+        // a label in a branch or a function body stands on c_label_end(), at the block's end too
         has_text(t, text, "                label 3:  // no_save\n                c_label_end()\n            \}\n")
         has_text(t, text, "    label 1:  // done\n    c_label_end()\n\}\n")
+        has_text(t, text, "    label 3:  // returning\n    c_label_end()\n    acc += 1000\n")
         // a `void *` among the trailing arguments travels as a byte pointer
         has_text(t, text, "p5_lua_exprs__count_set`va(3, (reinterpret<uint8?>(reinterpret<void?>(addr(slots[0]))), reinterpret<uint8?>(null), reinterpret<uint8?>(reinterpret<void?>(addr(t)))))")
     }
@@ -1522,13 +1527,136 @@ def p5_lua_expression_fixtures(t : T?) {
     t |> run("a goto into another case the re-dispatch cannot express fails closed, naming the label") @(t : T?) {
         rejects(t, "cross_label_after_decl", "int main(void) \{ int r = 0; switch (r) \{ case 0: goto L; case 1: \{ int k = 2; r = k; L: r++; break; \} \} return r - 1; \}\n", "label `L`, which a goto from another case reaches, follows the declaration of `k` in its case; not lowered yet")
     }
-    t |> run("a re-dispatch value: past the largest case, below the smallest when the type ends there, else the first gap") @(t : T?) {
-        let top = converts(t, "cross_label_top", "int f(int x) \{ int r = 0; switch (x) \{ case 2147483647: goto L; case 5: r = 1; break; default: L: r += 2; \} return r; \}\nint main(void) \{ return f(2147483647) + f(5) * 10 - 12; \}\n")
-        has_text(t, top, "_cond = 4\n")
+    t |> run("a re-dispatch takes no value of the condition: one past the largest case or the smallest of the type still reaches default") @(t : T?) {
+        let top = converts(t, "cross_label_top", "int f(int x) \{ int r = 0; switch (x) \{ case 2147483647: goto L; case 5: r = 1; break; default: L: r += 2; \} return r; \}\nint main(void) \{ return f(2147483647) + f(5) * 10 + f(4) * 100 + f(-2147483647 - 1) * 1000 - 2212; \}\n")
+        has_text(t, top, "_flag ||= _goto == 0 && !(_cond == 2147483647 || _cond == 5)\n")
         var out : string
         t |> equal(run_tier(converted_path("cross_label_top"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
-        let gap = converts(t, "cross_label_gap", "int f(int x) \{ int r = 0; switch (x) \{ case 2147483647: goto L; case -2147483647 - 1: r = 1; break; default: L: r += 2; \} return r; \}\nint main(void) \{ return f(2147483647) + f(-2147483647 - 1) * 10 - 12; \}\n")
-        has_text(t, gap, "_cond = -2147483647\n")
-        t |> equal(run_tier(converted_path("cross_label_gap"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
+    }
+}
+
+// the shapes P5.1's review found: each against the native build, or refused with the construct named
+def p5_lua_review_fixtures(t : T?) {
+    t |> run("P5.1's review shapes: re-dispatch by a goto variable, stream names a program binds, a program's stdout buffer, signal, folded labels, libc records") @(t : T?) {
+        var text : string
+        check_fixture(t, "p5_lua_review", text)
+        // the condition is no stand-in for a label: the goto variable selects it, 0 while none is pending
+        has_text(t, text, "    let _cond = x\n    var _goto = 0\n    while (true) \{\n        label 1:  // re-dispatch\n        var _flag = false\n        _flag ||= _goto == 0 && _cond == 1\n")
+        has_text(t, text, "        _flag ||= _goto == 0 && !(_cond == 1 || _cond == 2)\n")
+        // a goto to such a label from its own case re-dispatches too
+        has_text(t, text, "            if (_t0 > 0) \{\n                _goto = 1\n                goto label 1\n")
+        // a parameter and a local named like a standard stream are the program's
+        has_text(t, text, "    while (deref(stdin + n) != 0) \{\n")
+        has_text(t, text, "    var stderr : uint8? = reinterpret<uint8?>(\"hello\")\n")
+        has_text(t, text, "int(deref(stderr + 1))")
+        // setvbuf takes c_exit, which flushes the streams while the program's buffer lives
+        has_text(t, text, "require c_runtime/c_exit\n")
+        // a label stands on c_label_end() before a statement the optimizer folds
+        has_text(t, text, "        label 1:  // L\n        c_label_end()\n        if (0 != 0) \{\n")
+        // a program record holding `struct tm`, and `mbstate_t` with its anonymous union
+        has_text(t, text, "struct stamped \{\n    k : int\n    t : tm\n\}\n")
+        has_text(t, text, "    var st : _c___mbstate_t\n")
+        has_text(t, text, "    var after : tm? = g + 1\n")
+        // errno alone is a crt use: the function takes [c_function]
+        has_text(t, text, "[c_function]\ndef private p5_lua_review__errno_now : int \{\n")
+        // a label after a declaration the switch carries splits its group
+        has_text(t, text, "    var k : int\n    var _goto = 0\n")
+        has_text(t, text, "        _flag ||= _goto == 1  // L\n        if (_flag) \{\n            _goto = 0\n            k = 7\n")
+        // <math.h> beyond das math goes through the crt
+        for (name in ["modf", "nextafter", "hypot", "cbrt", "expm1", "log1p", "copysign", "remainder", "trunc", "round", "erf", "erfc", "tgamma", "lgamma", "fma"]) {
+            has_text(t, text, "crt::{name}(")
+        }
+    }
+    t |> run("the dumper's joins: a location after a range's end in another file, a header's declaration at a main-file offset, offsetof under a designator, libc records reached whole, attributed locals") @(t : T?) {
+        // the literal's range follows the declaration's `range.end` in the header, which clang
+        // writes once: the enum reference joins only when the replay moved to that file
+        let tail_c = written_source("range_end", "main", "enum hue \{ RED = 4 \};\nint off =\n#include \"tail.h\"\n;\nint main(void) \{ return off - 4; \}\n", "")
+        fwrite(path_join(path_join(work_root, "range_end"), "tail.h"), "RED\n")
+        // the header's enum at the main file's byte offsets: the key holds the file
+        let same_c = written_source("same_offsets", "main", "enum aaaa \{ AAAA = 9 \};\n#include \"same.h\"\nint main(void) \{ enum aaaa x = AAAA; enum bbbb y = BBBB; return x * 10 + y - 95; \}\n", "")
+        fwrite(path_join(path_join(work_root, "same_offsets"), "same.h"), "enum bbbb \{ BBBB = 5 \};\n")
+        for (c_path in [tail_c, same_c]) {
+            let res <- convert(c_path, path_join(dir_name(c_path), "out"), "linux")
+            t |> equal(res.ok, true, res.error)
+            var out : string
+            t |> equal(run_tier(res.das_path, "interp", work_root, out, CONVERTED_MODULES), 0, out)
+        }
+        let shapes <- [
+            ("designated_offsetof", "#include <stddef.h>\nstruct s \{ int a; int b; \};\nstruct d \{ int first; int second; \};\n#define DESC \{ .second = offsetof(struct s, b) \}\nint main(void) \{ struct d x = DESC; struct d y = \{ .first = offsetof(struct s, b), .second = 1 \}; return x.second + x.first + y.first + y.second - 9; \}\n"),
+            ("libc_array_whole", "#include <time.h>\nint main(void) \{ struct tm a[2]; return sizeof a < 72; \}\n"),
+            ("libc_array_field", "#include <time.h>\nstruct hold \{ struct tm a[2]; \};\nint main(void) \{ struct hold h; return (int) sizeof(h) != 112; \}\n"),
+            ("attributed_locals", "int main(void) \{ int x __attribute__((unused)) = 1; static int y __attribute__((unused)) = 2; return x + y - 3; \}\n")
+        ]
+        for (shape in shapes) {
+            converts(t, shape._0, shape._1)
+            var out : string
+            t |> equal(run_tier(converted_path(shape._0), "interp", work_root, out, CONVERTED_MODULES), 0, "{shape._0}: {out}")
+        }
+    }
+    p5_lua_review_refusals(t)
+    p5_lua_review_dumper(t)
+}
+
+// the review shapes P5.1's conversion refuses, each naming the construct
+def p5_lua_review_refusals(t : T?) {
+    t |> run("a case group of a re-dispatched switch holding a plain label and a goto that leaves the group fails closed, naming both") @(t : T?) {
+        rejects(t, "labelled_loop_group", "int f(int c, int n) \{ int r = 0; switch (c) \{ case 1: while (n > 0) \{ top: r += 1; n--; if (n == 3) goto top; if (n == 1) goto dflt; \} r += 100; break; default: dflt: r += 1000; break; \} return r; \}\nint main(void) \{ return f(1, 5) - 1004; \}\n", "label `top` sits in a case group whose `goto dflt` leaves the group of a switch a goto re-dispatches")
+        rejects(t, "labelled_block_group", "int f(int c, int n) \{ int r = 0; switch (c) \{ case 1: a: r += 1; if (n-- > 0) goto a; goto dflt; case 2: r += 50; break; default: dflt: r += 1000; break; \} return r; \}\nint main(void) \{ return f(1, 2) - 1003; \}\n", "label `a` sits in a case group whose `goto dflt` leaves the group")
+        rejects(t, "labelled_group_outward", "int f(int c) \{ int r = 0; init: r++; switch (c) \{ case 1: goto dflt; case 2: a: r += 10; if (r < 30) goto a; c = 3; goto init; default: dflt: r += 100; \} return r; \}\nint main(void) \{ return f(2) - 133; \}\n", "label `a` sits in a case group whose `goto init` leaves the group")
+    }
+    t |> run("two offsetofs in one macro expansion that clang's dump can pair out of order fail closed") @(t : T?) {
+        let head = "#include <stddef.h>\nstruct s \{ int a; char pad[20]; int b; int c; \};\n#define OFF(f) offsetof(struct s, f)\n"
+        rejects(t, "offsetof_dimension", head + "#define TWO char buf[OFF(b)]; int v = OFF(c);\nint main(void) \{ TWO return (int) sizeof(buf) + v - 52; \}\n", "one of them where clang's dump keeps no expression")
+        rejects(t, "offsetof_designators", head + "struct desc \{ int first; int second; \};\n#define DESC \{ .second = OFF(c), .first = OFF(a) \}\nint main(void) \{ struct desc d = DESC; return d.first + d.second - 28; \}\n", "one of them in an initializer list")
+        // alike offsetofs pair either way
+        let alike = converts(t, "offsetof_alike", head + "#define SAME \{ OFF(c), OFF(c) \}\nint main(void) \{ int v[2] = SAME; return v[0] + v[1] - 56; \}\n")
+        var out : string
+        t |> equal(run_tier(converted_path("offsetof_alike"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
+    }
+    t |> run("a C name das reserves that renames onto another identifier of the program fails closed, naming both") @(t : T?) {
+        rejects(t, "reserved_underscores", "int __h;\nstatic int f5(int v) \{ int _c___h = v; __h = 3; return _c___h + __h; \}\nint main(void) \{ return f5(5) - 8; \}\n", "C names `__h` and `_c___h` are both `_c___h` in das")
+        rejects(t, "reserved_keyword", "int let;\nstatic int f5(int v) \{ int _c_let = v; let = 3; return _c_let + let; \}\nint main(void) \{ return f5(5) - 8; \}\n", "C names `let` and `_c_let` are both `_c_let` in das")
+    }
+}
+
+// the review shapes of the msvc `long`, the dumper's file policy and its joins
+def p5_lua_review_dumper(t : T?) {
+    t |> run("msvc's 32-bit `long`: strtol, strtoul, atol and ftell range at 32 bits with ERANGE, never wrap") @(t : T?) {
+        // msvc's headers are not on this host: the prototypes spell what <stdlib.h> declares, and
+        // `errno` is reached as glibc spells it
+        let c_path = written_source("converted", "msvc_long_range", "long strtol(const char *, char **, int);\nunsigned long strtoul(const char *, char **, int);\nlong atol(const char *);\nint *__errno_location(void);\nint printf(const char *, ...);\nint main(void) \{\n    *__errno_location() = 0;\n    long a = strtol(\"3000000000\", 0, 10);\n    int ea = *__errno_location();\n    unsigned long b = strtoul(\"4294967296\", 0, 10);\n    unsigned long c = strtoul(\"-1\", 0, 10);\n    long d = atol(\"3000000000\");\n    long e = strtol(\"-3000000000\", 0, 10);\n    printf(\"%ld %lu %lu %ld %ld %d\\n\", a, b, c, d, e, ea);\n    return 0;\n\}\n", "")
+        let res <- convert(c_path, path_join(path_join(work_root, "converted"), "msvc_long_range"), "msvc")
+        t |> equal(res.ok, true, res.error)
+        has_text(t, res.das_text, "var a : int = crt::c_strtol32(")
+        has_text(t, res.das_text, "var b : uint = crt::c_strtoul32(")
+        has_text(t, res.das_text, "var d : int = crt::c_atol32(")
+        var out : string
+        t |> equal(run_tier(res.das_path, "interp", work_root, out, CONVERTED_MODULES), 0, out)
+        // C11 7.22.1.4p8 at a 32-bit `long`, ERANGE 34
+        t |> equal(out |> find("2147483647 4294967295 4294967295 2147483647 -2147483648 34\n") >= 0, true, out)
+    }
+    t |> run("a main file whose directory holds the clang resource headers converts them as external") @(t : T?) {
+        // a clang whose resource directory is a copy of the builtin headers under the main file's
+        let at = path_join(work_root, "resource_inside")
+        let res_include = path_join(at, "res/include")
+        mkdir_rec(res_include)
+        let real = path_join(get_env_variable("PATH_TO_LIBCLANG"), "lib/clang/22/include")
+        dir(real) $(name) {
+            if (name |> starts_with("std") || name |> starts_with("__std")) {
+                fwrite(path_join(res_include, name), fread(path_join(real, name)))
+            }
+        }
+        let clang = path_join(at, "clang")
+        fwrite(clang, "#!/bin/sh\nif [ \"$1\" = -print-resource-dir ]; then echo {at}/res; exit 0; fi\nexec {default_clang()} -resource-dir {at}/res \"$@\"\n")
+        var chmod_out : string
+        t |> equal(run_and_capture(["chmod", "+x", clang], chmod_out, 30.0), 0, chmod_out)
+        let c_path = path_join(at, "main.c")
+        fwrite(c_path, "#include <stddef.h>\n#include <stdio.h>\nstruct s \{ char c; int m; \};\nint main(void) \{ printf(\"%d\\n\", (int) offsetof(struct s, m)); return (int) sizeof(size_t) - 8; \}\n")
+        let res <- convert(c_path, path_join(at, "out"), "linux", clang)
+        t |> equal(res.ok, true, res.error)
+        t |> equal(res.das_text |> find("max_align_t") >= 0, false, res.das_text)
+        var out : string
+        t |> equal(run_tier(res.das_path, "interp", work_root, out, CONVERTED_MODULES), 0, out)
+        rmdir_rec(at)
     }
 }

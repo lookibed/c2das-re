@@ -4,7 +4,7 @@
 `env`, `native`, `untracked`, `format`, `lint`, `compile`, `ast-verify`, `md-ascii`,
 `review-md`. `--full` adds the **tests lane**: every dastest suite folder `gate_tests` in the
 script lists, which `--list-gates` prints (`probes/`, `dasCRuntime/tests`, `c_runtime/tests`,
-`converter/tests`, `perf/tests`, `metrics/tests`, `tests/`; a folder that does not exist is
+`converter/tests`, `lua/tests`, `perf/tests`, `metrics/tests`, `tests/`; a folder that does not exist is
 skipped); a diff to that list changes this paragraph. `--only <gate>` runs one gate (`--only
 tests` runs the lane alone), `--skip <gate>` drops one. `PREFLIGHT_BASE` names the diff base
 (default `origin/main`; the root commit when that ref is absent). The format, lint and compile
