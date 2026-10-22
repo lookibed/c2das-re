@@ -1,6 +1,7 @@
 options gen2
 require dastest/testing_boost public
 require daslib/json_boost
+require math
 
 def cmp_desc(a, b : void?) : int {
     unsafe {
@@ -57,5 +58,27 @@ def test_stdlib(t : T?) {
             t |> equal(deref(raw + 5), 6)
             free(raw)
         }
+    }
+}
+
+// <math.h>'s surface the converter spells as das math (converter/emit.das, C_RUNTIME_CALLS)
+[test]
+def test_math(t : T?) {
+    t |> run("das math takes and gives double for each <math.h> function the emitter maps to it") @(t : T?) {
+        t |> equal(typeinfo typename(math::floor(1.5lf)), "double const")
+        t |> equal(typeinfo typename(math::pow(2.0lf, 3.0lf)), "double const")
+        t |> equal(typeinfo typename(math::atan2(1.0lf, 1.0lf)), "double const")
+        t |> equal(math::floor(-1.5lf), -2.0lf)
+        t |> equal(math::ceil(-1.5lf), -1.0lf)
+        t |> equal(math::abs(-2.5lf), 2.5lf)
+        t |> equal(math::sqrt(2.25lf), 1.5lf)
+        t |> equal(math::pow(2.0lf, 10.0lf), 1024.0lf)
+        t |> equal(math::exp(0.0lf), 1.0lf)
+        t |> equal(math::log(1.0lf), 0.0lf)
+        t |> equal(math::log2(8.0lf), 3.0lf)
+        t |> equal(math::log10(1000.0lf), 3.0lf)
+        t |> equal(math::sin(0.0lf) + math::tan(0.0lf) + math::asin(0.0lf) + math::atan(0.0lf), 0.0lf)
+        t |> equal(math::cos(0.0lf) + math::acos(1.0lf), 1.0lf)
+        t |> equal(math::atan2(0.0lf, 1.0lf), 0.0lf)
     }
 }

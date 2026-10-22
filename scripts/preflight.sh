@@ -35,8 +35,8 @@ TABLE
     shift
 done
 wants() { local g="$1"; for s in "${skip[@]:-}"; do [ "$s" = "$g" ] && return 1; done; [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$g" ] && return 0; done; return 1; }
-das_dirs=(); for d in converter c_runtime dasCRuntime metrics perf probes suites tests; do [ -d "$d" ] && das_dirs+=("$d"); done
-# a suite's fetch/ and work/, perf/work and metrics/work hold inputs and converted output, never house code
+das_dirs=(); for d in converter c_runtime dasCRuntime lua metrics perf probes suites tests; do [ -d "$d" ] && das_dirs+=("$d"); done
+# a suite's fetch/ and work/, lua/fetch and lua/work, perf/work and metrics/work hold inputs and converted output, never house code
 das_files() { [ ${#das_dirs[@]} -gt 0 ] && find "${das_dirs[@]}" -type d \( -name fetch -o -name work \) -prune -o -type f -name '*.das' -print | sort; }
 changed_das() { git diff --name-only "$base" -- '*.das' 2>/dev/null; git ls-files --others --exclude-standard -- '*.das'; }
 pass() { echo "[PASS] $1"; }

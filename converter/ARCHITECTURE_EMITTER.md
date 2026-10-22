@@ -138,7 +138,7 @@ In a global initializer the decay and the sum each wrap themselves, `unsafe(unsa
 pointer is a das function value, `function<(a0 : T; ...) : R>` with the parameters named by
 position, a function's name decays to `@@name`, and a call through a pointer, `fp(...)` or
 `(*fp)(...)`, is `invoke(fp, ...)` (`ARCHITECTURE_EMITTER_AGGREGATES.md`, Function pointers). A pointer difference is `int64(p - q)`, in elements as C
-counts them; a pointer relation goes through `intptr`, and so does `==` or `!=` between two
+counts them; a pointer less a count whose pointer is no load of an object (a decay, a sum, a cast, a call) is the sum with the negated count, `addr(b[0]) + 10 + -(n)` (`-int64(n)` for an unsigned one), since das subtracts from a pointer variable only (F59); a pointer relation goes through `intptr`, and so does `==` or `!=` between two
 data pointers, since das compares only pointers of one constness and a `let` pointer's pointee
 is const (F44), while a null constant on either side compares with `null`; `malloc`, `calloc`, `realloc`, `free`
 and the `mem*` family are the CRT's through `crt`, with C's implicit `void *` conversions as
@@ -157,13 +157,13 @@ before any global whose initializer takes the address. A `char[N]` initialized f
 is `cstr_array("...", N)`, the empty literal included, and so is a row of a `char` matrix or a
 record's `char[N]` field (`fixed_array(cstr_array("1234", 4), cstr_array("5678", 4))`, a row
 the list leaves out the zero literal), a literal longer than `N` keeping its first `N` bytes,
-as clang initializes the array; a `signed char` one and one in braces fail closed. A literal
+as clang initializes the array; a `signed char` one fails closed, and one in braces filling the whole array (`{ "ab" }`) is the dumper's plain literal. A literal
 indexed in place (`"abcdef"[2]`) is read through its pointer, `deref(p + i)`; a literal under `sizeof` is its
 array type. A call to a libc function the C program declares resolves through two tables:
 `C_RUNTIME_CALLS`, the functions a `c_runtime` piece lowers (`printf`, `sprintf`, `snprintf`,
-`vprintf`, `vsprintf`, `vsnprintf`, `sscanf`, `vsscanf`, `exit`, `abort`, `qsort`, `bsearch`),
+`vprintf`, `vsprintf`, `vsnprintf`, `sscanf`, `vsscanf`, `exit`, `abort`, `qsort`, `bsearch`; `<math.h>`'s surface das math covers, `floor` as `math::floor` and `fabs` as `math::abs`, as `docs/stdlib-examples.md` "math.h" rules; glibc's `__errno_location`, which `errno` expands to, as `crt::c_errno_location`),
 one row each naming the module that holds the piece and the das name, and `CRT_CALLS`, the
-functions the `crt` module binds under their C names (the memory, string.h, ctype, conversion, time and random families of
+functions the `crt` module binds under their C names (the memory, string.h, ctype, conversion, libm exotica, time and random families of
 `dasCRuntime/ARCHITECTURE.md`), spelled `crt::name`, which take every pointer `let` (`strcpy`'s,
 `memcpy`'s and `memset`'s destination included), since a C++ binding's parameter carries no das
 constness; a function in neither fails closed. A caller's `var` pointer reaches a piece's
@@ -225,7 +225,7 @@ step into them writes through `write_T_f` around the read, `*p` is `read_T(p, 0)
 `write_T(p, 0, v)`, `sizeof` is clang's size as a literal, and a pointer step, `p + n`, `p[i]`,
 `p - q` scale by that size. A packed record the sidecar does not list, the address of a
 marshal-only value, an array of the record and a record or array-of-records field inside one
-fail closed.
+fail closed, and so does a record holding a `jmp_buf`, which das spells as `CJmpBuf`.
 
 A `switch` follows the three-tier ladder of `docs/lowering-examples.md`. Its body is read as
 groups, one run of labels and the statements under them; a statement before the first label
@@ -269,7 +269,7 @@ frame frees them with it. Every alloca goes through the arena, a constant size i
 a fixed array hoisted inside a loop body would die with the iteration (F24). The limit is the
 sidecar's `alloca_limit`, 65536 by default, which the module's 8 MiB stack holds. A `__builtin_` name whose libc twin the call
 tables carry is that twin (the shim list), so `__builtin_alloca`, `__builtin_memcpy` and
-`__builtin_abort` lower like their plain names.
+`__builtin_abort` lower like their plain names; `__builtin_expect(e, c)` is `e`, and `__builtin_huge_val()` (`HUGE_VAL`) the constant `crt::HUGE_VAL`.
 
 Output is assembled as an array of lines joined once (`docs/probe-findings.md` F19); the
 text then goes through the formatter, so spacing is the formatter's and indentation is the

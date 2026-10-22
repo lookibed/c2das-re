@@ -28,7 +28,9 @@ Several of those names exist in daslang's `builtin` module with different signat
 resolves an unqualified call against every visible module, so converted code and this
 folder's tests always write `crt::malloc(...)`. The names the C standard reserves as macros
 or that have no function form become accessors: `errno` is `crt::c_errno()` and
-`crt::c_set_errno(v)`; `CLOCKS_PER_SEC`, `RAND_MAX`, `EDOM`, `ERANGE`, `EINVAL` are constants
+`crt::c_set_errno(v)`, and `crt::c_errno_location()` is its address, which converted code reaches
+through glibc's spelling of `errno`, `(*__errno_location())`; `CLOCKS_PER_SEC`, `RAND_MAX`,
+`EDOM`, `ERANGE`, `EINVAL` and `HUGE_VAL` (a `double`, what `__builtin_huge_val()` gives) are constants
 read from the CRT that built the module, never restated in das.
 
 ## 3. Type spelling

@@ -11,6 +11,8 @@
 /suites/*/work/
 /perf/work/
 /metrics/work/
+/lua/fetch/
+/lua/work/
 
 # native glue module: build dirs, the built DLL and the descriptor manifest daslang writes
 /dasCRuntime/_build/

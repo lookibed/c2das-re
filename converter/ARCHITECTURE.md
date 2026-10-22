@@ -49,7 +49,9 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   not a mode is refused), dump under its `defines`, write the C-IR, read it back and rewrite it
   (the bytes must match), emit, format with
   `daslib/das_source_formatter`, compile-check with `compile_file`. Every artifact lands under
-  `out_dir`; `file_stem` is the name every artifact of a C file carries.
+  `out_dir`; `file_stem` is the name every artifact of a C file carries. The result carries the
+  bytes of clang's JSON dump and the seconds of the dumper, the emitter (with the formatter) and
+  the compile check, which `lua/run.das` (repo root) reports.
 - `tiers.das` - `run_tier(das_path, tier, work_dir, output[, module_dirs[, timeout[,
   flags]]])`: the process exit code of the module under `interp`, `jit`, `exe` or `aot`
   (section 5); `module_dirs` are passed as `-load_module` to the interpreter and the JIT, `flags`

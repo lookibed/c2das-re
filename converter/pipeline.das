@@ -29,7 +29,16 @@ struct ConvertResult {
     // function bodies needed [c_function], out of all the unit defines
     c_functions : int
     function_count : int
+    // the bytes of clang's JSON dump, and the seconds the dumper (clang included), the emitter
+    // (the formatter included) and the compile check took
+    json_bytes : int64
+    dump_seconds : double
+    emit_seconds : double
+    check_seconds : double
 }
+
+// the seconds since `t0`, a `ref_time_ticks` reading
+def private seconds_since(t0 : int64) : double => double(get_time_usec(t0)) / 1000000.0lf
 
 
 // `as_written` keeps every `unsafe` scope and every symbol and turns optimization off
@@ -95,7 +104,10 @@ def convert(c_path : string; out_dir : string; target_name : string; clang : str
     if (!empty(param_writes)) {
         side.param_writes = param_writes
     }
+    let dump_started = ref_time_ticks()
     var d <- dump_tu(c_path, target_by_name(target_name), empty(clang) ? default_clang() : clang, side.defines)
+    res.dump_seconds = seconds_since(dump_started)
+    res.json_bytes = d.json_bytes
     if (!empty(d.error)) {
         res.error = "dumper: {d.error}"
         delete_tu(d.tu)
@@ -122,6 +134,7 @@ def convert(c_path : string; out_dir : string; target_name : string; clang : str
         delete_tu(d.tu)
         return <- res
     }
+    let emit_started = ref_time_ticks()
     let em <- emit_tu(d.tu, side)
     delete_tu(d.tu)
     if (!empty(em.error)) {
@@ -131,12 +144,15 @@ def convert(c_path : string; out_dir : string; target_name : string; clang : str
     res.c_functions = em.c_functions
     res.function_count = em.function_count
     res.das_text = format_source_string(em.text)
+    res.emit_seconds = seconds_since(emit_started)
     res.das_path = path_join(out_dir, "{file_stem(c_path)}.das")
     if (!fwrite(res.das_path, res.das_text)) {
         res.error = "cannot write {res.das_path}"
         return <- res
     }
+    let check_started = ref_time_ticks()
     let errors = compile_errors(res.das_path)
+    res.check_seconds = seconds_since(check_started)
     if (!empty(errors)) {
         res.error = "compile check: {errors}"
         return <- res

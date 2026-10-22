@@ -87,3 +87,21 @@ def test_csmith_pointers(t : T?) {
         t |> equal(as_var.rc, 0, as_var.out)
     }
 }
+
+// the das facts the conversion of lua found (docs/probe-findings.md F59)
+[test]
+def test_lua_pointers(t : T?) {
+    t |> run("`ptr - n` takes a pointer variable only; a computed pointer steps back by adding the negated count") @(t : T?) {
+        child_rejects(t, "computed_sub", daslang_child("computed_sub", "options gen2\n[export]\ndef main \{\n    var buf : uint8[10]\n    let n = 3\n    unsafe \{\n        let p = addr(buf[0]) + 10 - n\n        assert(p != null)\n    \}\n\}\n", true), "no matching functions or generics: i_das_ptr_sub")
+        var buf : uint8[10]
+        let n = 3
+        let k = 4ul
+        unsafe {
+            let base = addr(buf[0])
+            var held = addr(buf[0]) + 10
+            t |> equal(intptr(held - n) - intptr(base), 7ul)
+            t |> equal(intptr(addr(buf[0]) + 10 + -(n)) - intptr(base), 7ul)
+            t |> equal(intptr(addr(buf[0]) + 10 + -int64(k)) - intptr(base), 6ul)
+        }
+    }
+}

@@ -32,6 +32,9 @@ public:
         addExtern<DAS_BIND_FUN(c_strchr)>(*this, lib, "strchr", SideEffects::none, "crt::c_strchr")->args({"s", "c"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_strrchr)>(*this, lib, "strrchr", SideEffects::none, "crt::c_strrchr")->args({"s", "c"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_strstr)>(*this, lib, "strstr", SideEffects::none, "crt::c_strstr")->args({"s", "needle"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_strpbrk)>(*this, lib, "strpbrk", SideEffects::none, "crt::c_strpbrk")->args({"s", "accept"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_strspn)>(*this, lib, "strspn", SideEffects::none, "crt::c_strspn")->args({"s", "accept"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_strcoll)>(*this, lib, "strcoll", SideEffects::modifyExternal, "crt::c_strcoll")->args({"a", "b"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_strerror)>(*this, lib, "strerror", SideEffects::modifyExternal, "crt::c_strerror")->args({"errnum"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_strtol)>(*this, lib, "strtol", SideEffects::modifyExternal, "crt::c_strtol")->args({"s", "end", "base"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_strtoul)>(*this, lib, "strtoul", SideEffects::modifyExternal, "crt::c_strtoul")->args({"s", "end", "base"})->unsafeOperation = true;
@@ -48,6 +51,7 @@ public:
         addExtern<DAS_BIND_FUN(c_srand)>(*this, lib, "srand", SideEffects::modifyExternal, "crt::c_srand")->args({"seed"});
         addExtern<DAS_BIND_FUN(c_errno)>(*this, lib, "c_errno", SideEffects::modifyExternal, "crt::c_errno");
         addExtern<DAS_BIND_FUN(c_set_errno)>(*this, lib, "c_set_errno", SideEffects::modifyExternal, "crt::c_set_errno")->args({"value"});
+        addExtern<DAS_BIND_FUN(c_errno_location)>(*this, lib, "c_errno_location", SideEffects::modifyExternal, "crt::c_errno_location")->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_time)>(*this, lib, "time", SideEffects::modifyExternal, "crt::c_time");
         addExtern<DAS_BIND_FUN(c_clock)>(*this, lib, "clock", SideEffects::modifyExternal, "crt::c_clock");
         addExtern<DAS_BIND_FUN(c_fwrite_stdout)>(*this, lib, "fwrite_stdout", SideEffects::modifyExternal, "crt::c_fwrite_stdout")->args({"data", "n"})->unsafeOperation = true;
@@ -58,6 +62,7 @@ public:
         addConstant(*this, "EDOM", int32_t(EDOM));
         addConstant(*this, "ERANGE", int32_t(ERANGE));
         addConstant(*this, "EINVAL", int32_t(EINVAL));
+        addConstant(*this, "HUGE_VAL", double(HUGE_VAL));
         addExtern<DAS_BIND_FUN(c_fmod)>(*this, lib, "fmod", SideEffects::none, "crt::c_fmod")->args({"a", "b"});
         addExtern<DAS_BIND_FUN(c_fmodf)>(*this, lib, "fmodf", SideEffects::none, "crt::c_fmodf")->args({"a", "b"});
         addExtern<DAS_BIND_FUN(c_frexp)>(*this, lib, "frexp", SideEffects::modifyExternal, "crt::c_frexp")->args({"v", "exp"})->unsafeOperation = true;
@@ -87,6 +92,7 @@ public:
         addExtern<DAS_BIND_FUN(c_ispunct)>(*this, lib, "ispunct", SideEffects::none, "crt::c_ispunct")->args({"c"});
         addExtern<DAS_BIND_FUN(c_isprint)>(*this, lib, "isprint", SideEffects::none, "crt::c_isprint")->args({"c"});
         addExtern<DAS_BIND_FUN(c_iscntrl)>(*this, lib, "iscntrl", SideEffects::none, "crt::c_iscntrl")->args({"c"});
+        addExtern<DAS_BIND_FUN(c_isgraph)>(*this, lib, "isgraph", SideEffects::none, "crt::c_isgraph")->args({"c"});
         addExtern<DAS_BIND_FUN(c_toupper)>(*this, lib, "toupper", SideEffects::none, "crt::c_toupper")->args({"c"});
         addExtern<DAS_BIND_FUN(c_tolower)>(*this, lib, "tolower", SideEffects::none, "crt::c_tolower")->args({"c"});
         addExtern<DAS_BIND_FUN(c_snprintf_none)>(*this, lib, "snprintf_none", SideEffects::modifyExternal, "crt::c_snprintf_none")->args({"buf", "size", "fmt"})->unsafeOperation = true;

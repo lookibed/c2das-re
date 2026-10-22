@@ -34,6 +34,9 @@ inline int32_t c_strncmp(const uint8_t * a, const uint8_t * b, uint64_t n) { ret
 inline uint8_t * c_strchr(const uint8_t * s, int32_t c) { return (uint8_t *) ::strchr((const char *) s, c); }
 inline uint8_t * c_strrchr(const uint8_t * s, int32_t c) { return (uint8_t *) ::strrchr((const char *) s, c); }
 inline uint8_t * c_strstr(const uint8_t * s, const uint8_t * needle) { return (uint8_t *) ::strstr((const char *) s, (const char *) needle); }
+inline uint8_t * c_strpbrk(const uint8_t * s, const uint8_t * accept) { return (uint8_t *) ::strpbrk((const char *) s, (const char *) accept); }
+inline uint64_t c_strspn(const uint8_t * s, const uint8_t * accept) { return ::strspn((const char *) s, (const char *) accept); }
+inline int32_t c_strcoll(const uint8_t * a, const uint8_t * b) { return ::strcoll((const char *) a, (const char *) b); }
 inline uint8_t * c_strerror(int32_t errnum) { return (uint8_t *) ::strerror(errnum); }
 
 inline int64_t c_strtol(const uint8_t * s, uint8_t ** end, int32_t base) { return ::strtol((const char *) s, (char **) end, base); }
@@ -53,6 +56,7 @@ inline void c_srand(uint32_t seed) { ::srand(seed); }
 
 inline int32_t c_errno() { return errno; }
 inline void c_set_errno(int32_t value) { errno = value; }
+inline int32_t * c_errno_location() { return &errno; }
 
 inline int64_t c_time() { return int64_t(::time(nullptr)); }
 inline int64_t c_clock() { return int64_t(::clock()); }
@@ -87,6 +91,7 @@ inline int32_t c_isxdigit(int32_t c) { return ::isxdigit(c); }
 inline int32_t c_ispunct(int32_t c) { return ::ispunct(c); }
 inline int32_t c_isprint(int32_t c) { return ::isprint(c); }
 inline int32_t c_iscntrl(int32_t c) { return ::iscntrl(c); }
+inline int32_t c_isgraph(int32_t c) { return ::isgraph(c); }
 inline int32_t c_toupper(int32_t c) { return ::toupper(c); }
 inline int32_t c_tolower(int32_t c) { return ::tolower(c); }
 

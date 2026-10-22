@@ -140,12 +140,37 @@ let C_RUNTIME_CALLS <- {
     "longjmp" => RuntimeCall(piece = "c_runtime/setjmp", das_name = "c_longjmp"),
     "_longjmp" => RuntimeCall(piece = "c_runtime/setjmp", das_name = "c_longjmp"),
     "qsort" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_qsort"),
-    "bsearch" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_bsearch")
+    "bsearch" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_bsearch"),
+    // <math.h>'s surface das math covers at `double` (docs/stdlib-examples.md "math.h"), each the
+    // function C names, by the same libm (probes/test_stdlib.das)
+    "floor" => RuntimeCall(piece = "math", das_name = "math::floor"),
+    "ceil" => RuntimeCall(piece = "math", das_name = "math::ceil"),
+    "fabs" => RuntimeCall(piece = "math", das_name = "math::abs"),
+    "sqrt" => RuntimeCall(piece = "math", das_name = "math::sqrt"),
+    "sin" => RuntimeCall(piece = "math", das_name = "math::sin"),
+    "cos" => RuntimeCall(piece = "math", das_name = "math::cos"),
+    "tan" => RuntimeCall(piece = "math", das_name = "math::tan"),
+    "asin" => RuntimeCall(piece = "math", das_name = "math::asin"),
+    "acos" => RuntimeCall(piece = "math", das_name = "math::acos"),
+    "atan" => RuntimeCall(piece = "math", das_name = "math::atan"),
+    "atan2" => RuntimeCall(piece = "math", das_name = "math::atan2"),
+    "exp" => RuntimeCall(piece = "math", das_name = "math::exp"),
+    "log" => RuntimeCall(piece = "math", das_name = "math::log"),
+    "log2" => RuntimeCall(piece = "math", das_name = "math::log2"),
+    "log10" => RuntimeCall(piece = "math", das_name = "math::log10"),
+    "pow" => RuntimeCall(piece = "math", das_name = "math::pow"),
+    // glibc's `errno` is `(*__errno_location())`
+    "__errno_location" => RuntimeCall(piece = "crt", das_name = "crt::c_errno_location")
 }
+
+// the builtins that are a constant of the crt module (`HUGE_VAL` expands to one)
+let CRT_CONSTANT_CALLS <- {"__builtin_huge_val" => "crt::HUGE_VAL"}
 
 let SETJMP_NAMES <- {"setjmp", "_setjmp", "__sigsetjmp"}
 
 let ALLOCA_NAMES <- {"alloca", "__builtin_alloca"}
+
+let EXPECT = "__builtin_expect"
 
 let ALLOCA_LIMIT = 65536
 
@@ -175,8 +200,9 @@ let VA_COPY = "__builtin_va_copy"
 def private va_macro_name(builtin : string) : string =>
     builtin == VA_END ? "va_end" : builtin == VA_COPY ? "va_copy" : "va_start"
 
-// the libc functions the crt module binds under their C names (dasCRuntime/ARCHITECTURE.md)
-let CRT_CALLS <- {"clock", "time", "rand", "srand", "getenv", "malloc", "calloc", "realloc", "free", "memcpy", "memmove", "memset", "memcmp", "memchr", "strlen", "strcpy", "strncpy", "strcat", "strncat", "strcmp", "strncmp", "strchr", "strrchr", "strstr", "strerror", "strtol", "strtoul", "strtoll", "strtoull", "strtod", "atoi", "atol", "atof", "abs", "llabs", "isalpha", "isdigit", "isalnum", "isspace", "isupper", "islower", "isxdigit", "ispunct", "isprint", "iscntrl", "toupper", "tolower"}
+// the libc functions the crt module binds under their C names (dasCRuntime/ARCHITECTURE.md),
+// <math.h>'s exotica among them
+let CRT_CALLS <- {"fmod", "frexp", "ldexp", "modf", "nextafter", "hypot", "cbrt", "expm1", "log1p", "copysign", "remainder", "trunc", "round", "erf", "erfc", "tgamma", "lgamma", "fma", "clock", "time", "rand", "srand", "getenv", "malloc", "calloc", "realloc", "free", "memcpy", "memmove", "memset", "memcmp", "memchr", "strlen", "strcpy", "strncpy", "strcat", "strncat", "strcmp", "strncmp", "strchr", "strrchr", "strstr", "strpbrk", "strspn", "strcoll", "strerror", "strtol", "strtoul", "strtoll", "strtoull", "strtod", "atoi", "atol", "atof", "abs", "llabs", "isalpha", "isdigit", "isalnum", "isspace", "isupper", "islower", "isxdigit", "ispunct", "isprint", "iscntrl", "isgraph", "toupper", "tolower"}
 
 // C name -> das spelling, and the module it needs
 def private libc_call(name : string) : string {
@@ -753,7 +779,7 @@ def private callee_name(var em : Emitter; tu : CirTu; fn : CirExpr?; loc : CirLo
     em.requires |> insert(libc_module(libc))
     // every crt bind is an unsafe operation (dasCRuntime/ARCHITECTURE.md): the body takes
     // [c_function] for it
-    if (key_exists(CRT_CALLS, libc)) {
+    if (libc_module(libc) == "crt") {
         em.unsafe_used = true
     }
     return libc_call(libc)
@@ -883,6 +909,14 @@ def private variadic_call(name : string; fixed : int; args : array<string>) : st
 def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     if (key_exists(ALLOCA_NAMES, called_name(x))) {
         return emit_alloca(em, tu, x, loc)
+    }
+    if (called_name(x) == EXPECT && length(x.args) == 2) {
+        // GCC's branch hint is its first operand's value; the second is a constant
+        return emit_expr(em, tu, x.args[0], loc)
+    }
+    if (key_exists(CRT_CONSTANT_CALLS, called_name(x)) && empty(x.args)) {
+        em.requires |> insert("crt")
+        return value(CRT_CONSTANT_CALLS?[called_name(x)] ?? "", PREC_PRIMARY)
     }
     if (is_va_builtin(x)) {
         // `emit_effect` spells them as statements; as a value there is nothing to spell
@@ -1243,6 +1277,12 @@ def private pointer_arithmetic(var em : Emitter; tu : CirTu; x : CirExpr; lhs, r
         let count = pointer_lhs ? rhs : lhs
         let bytes = pointer_lhs ? lhs : rhs
         return unsafe_value(em, "{wrap(bytes, prec)} {spelled} {wrap(count, PREC_MUL)} * {type_size(tu, scale)}", prec)
+    }
+    if (pointer_lhs && x.op == "sub" && !(x.a.e == "cast" && x.a.cast_kind == "LValueToRValue")) {
+        // das subtracts from a pointer variable only, so a computed pointer (`buf + k - n`) adds
+        // the negated count (probes/test_pointers.das)
+        let negated = is_unsigned(tu, x.b.t) ? "-int64({rhs.text})" : "-({rhs.text})"
+        return unsafe_value(em, "{wrap(lhs, prec)} + {negated}", prec)
     }
     return unsafe_value(em, "{wrap(lhs, prec)} {spelled} {wrap(rhs, prec + 1)}", prec)
 }
@@ -2444,15 +2484,31 @@ def private numbered(base : string; count : int) : string => count == 1 ? base :
 def private emit_do(var em : Emitter; tu : CirTu; st : CirStmt) {
     let mark = length(em.pre)
     let c = to_bool(emit_expr(em, tu, st.cond, st.loc), tu, st.cond.t)
-    if (length(em.pre) != mark) {
-        em.pre |> resize(mark)
-        fail(em, "do-while with a side-effecting condition is not lowered yet", st.loc)
-        return
-    }
     em.first_counter++
     let flag = numbered("_first", em.first_counter)
+    if (length(em.pre) == mark) {
+        line(em, "var {flag} = true")
+        open_block(em, "while ({flag} || {wrap(c, PREC_LOR + 1)})")
+        line(em, "{flag} = false")
+        emit_loop_body(em, tu, st.body_s)
+        close_block(em)
+        return
+    }
+    // a condition with effects (`while (--n > 0)`) runs its statements at the top of every pass
+    // but the first, where C evaluates it after the body; a `continue` reaches it there too
+    let cond_pre <- [for (idx in range(mark, length(em.pre))); em.pre[idx]]
+    em.pre |> resize(mark)
+    flush_literal_decls(em)
     line(em, "var {flag} = true")
-    open_block(em, "while ({flag} || {wrap(c, PREC_LOR + 1)})")
+    open_block(em, "while (true)")
+    open_block(em, "if (!{flag})")
+    for (stmt in cond_pre) {
+        line(em, stmt)
+    }
+    open_block(em, "if (!({c.text}))")
+    line(em, "break")
+    close_block(em)
+    close_block(em)
     line(em, "{flag} = false")
     emit_loop_body(em, tu, st.body_s)
     close_block(em)
@@ -3696,6 +3752,16 @@ def private record_refusal(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) 
     if (tu.types[t].packed && has_bitfield(tu, t, true)) {
         fail(em, "record `{name}` has bitfields and das cannot lay it out as clang does; not lowered yet", loc)
         return true
+    }
+    if (tu.types[t].packed) {
+        for (f in tu.types[t].fields) {
+            if (kind_of(tu, f.t) == "struct" && tu.types[f.t].name == JMP_BUF) {
+                // das holds the protocol's `CJmpBuf`, not glibc's buffer, so the fields after it
+                // cannot sit where clang puts them
+                fail(em, "record `{name}` holds a `jmp_buf` (`{f.name}`), which das spells as `CJmpBuf`, not at the C library's size; not lowered yet", loc)
+                return true
+            }
+        }
     }
     if (tu.types[t].packed && !marshal) {
         fail(em, "record `{name}` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar", loc)

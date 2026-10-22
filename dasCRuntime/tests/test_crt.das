@@ -55,6 +55,12 @@ def test_crt_strings(t : T?) {
             t |> equal(crt::strrchr(s, '.') == s + 3, true)
             t |> equal(crt::strchr(s, 'z') == null, true)
             t |> equal(crt::strstr(s, cstr("b.c")) == s + 2, true)
+            t |> equal(crt::strpbrk(s, cstr("c.")) == s + 1, true)
+            t |> equal(crt::strpbrk(s, cstr("xyz")) == null, true)
+            t |> equal(crt::strspn(s, cstr("a.")), 2ul)
+            // the C locale a program starts in collates by byte value
+            t |> equal(crt::strcoll(cstr("abc"), cstr("abd")) < 0, true)
+            t |> equal(crt::strcoll(cstr("abc"), cstr("abc")), 0)
             t |> equal(crt::strlen(crt::strerror(crt::ERANGE)) > 0ul, true)
         }
     }
@@ -82,6 +88,10 @@ def test_crt_conversions(t : T?) {
             t |> equal(crt::c_errno(), crt::EINVAL)
             crt::c_set_errno(crt::EDOM)
             t |> equal(crt::c_errno(), crt::EDOM)
+            // glibc's `errno` is `*__errno_location()`: a store through the address is errno
+            deref(crt::c_errno_location()) = crt::ERANGE
+            t |> equal(crt::c_errno(), crt::ERANGE)
+            crt::c_set_errno(crt::EDOM)
             t |> equal(crt::EDOM != crt::ERANGE && crt::ERANGE != crt::EINVAL, true)
             crt::c_set_errno(0)
             t |> equal(crt::atoi(cstr("-42")), -42)
@@ -121,6 +131,8 @@ def test_crt_math(t : T?) {
     t |> run("math.h exotica") @(t : T?) {
         t |> equal(crt::fmod(7.5lf, 2.0lf), 1.5lf)
         t |> equal(crt::fmodf(7.5f, 2.0f), 1.5f)
+        // HUGE_VAL is positive and above every finite double (C 7.12p3; IEC 60559 makes it +inf)
+        t |> equal(crt::HUGE_VAL > 1.7976931348623157e308lf, true)
         var e = 0
         var mant = 0.0lf
         unsafe {
@@ -167,6 +179,8 @@ def test_crt_ctype(t : T?) {
         t |> equal(crt::ispunct('!') != 0, true)
         t |> equal(crt::isprint(' ') != 0, true)
         t |> equal(crt::iscntrl(7) != 0, true)
+        t |> equal(crt::isgraph('!') != 0, true)
+        t |> equal(crt::isgraph(' ') != 0, false)
         t |> equal(crt::toupper('a'), 'A')
         t |> equal(crt::tolower('A'), 'a')
     }
