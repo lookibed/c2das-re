@@ -37,8 +37,9 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `read_sidecar` (JSON; a key the row that needs it adds - `marshal`, the records read and
   written as bytes; `stack` and `alloca_limit`; `param_writes`, `in-place` or `copy`, the
   parameter write mode, any other value refused naming the key; `defines`, a list of strings
-  `NAME` or `NAME=value` the dump and the libclang pass give clang as `-D<entry>`, a value that
-  is no list or an entry that is no string refused naming the key; `over_indexed`, a list of
+  `NAME`, `NAME=value` or the function-like `NAME(params)=value` (params identifiers separated by
+  commas, `...` last) the dump and the libclang pass give clang as one `-D<entry>` argument each,
+  a value that is no list or an entry of another shape refused naming the key; `over_indexed`, a list of
   strings `Record.field`, the trailing arrays the program indexes past their length, a value that
   is no list or an entry of another shape refused naming the key, an entry naming no record's
   trailing array the emitter's error). A key's presence is
@@ -60,7 +61,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `interp` and `jit`, after the binary under `exe`; `aot` refuses them, since its host passes
   none. `CONVERTED_MODULES` names the module folders a converted program requires and
   `daslang_cmd` spells the prefix; `native_run` builds a C file with a given compiler and flags
-  and runs it once, the native side every differential test compares against.
+  and runs it once, with the program's arguments when given, the native side every differential test compares against.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c> [--out] [--target] [--run] [--arg]...
   [--sidecar] [--param-writes in-place|copy]`. Each `--arg` is one argument of the C `argv` the
   program `--run` runs gets, in order. `--param-writes` chooses how the emitter writes a scalar or
@@ -80,8 +81,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2; and over
   `tests/fixtures/p4_main_args.c`: `--arg` reaches the C `argv` under `interp` as the native
   build's arguments do and under `exe`, and `aot` refuses it.
-- `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list
-  and the two shapes it refuses, the `over_indexed` list and the shapes it refuses.
+- `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list,
+  its function-like entries and the shapes it refuses, the `over_indexed` list and the shapes it refuses.
 - `tests/test_csmith_verdict.das` - the csmith driver's classification of a worker that ended
   (`suites/csmith/verdict.das`), the one piece of the driver testable without a process.
 - `tests/test_pipeline.das` - the P0 gate: `tests/fixtures/ret42.c` converts, the C-IR and the
@@ -192,7 +193,8 @@ Section 3, Dumper A's subset (what the dumper reads from clang and libclang), is
 
 Section 4, what the emitter spells (the das text of every construct), is in
 `ARCHITECTURE_EMITTER.md`, with bitfields, unions, function pointers and variadics in
-`ARCHITECTURE_EMITTER_AGGREGATES.md`.
+`ARCHITECTURE_EMITTER_AGGREGATES.md` and the switch and the labels in
+`ARCHITECTURE_EMITTER_CONTROL.md`.
 
 ## 5. The four tiers
 

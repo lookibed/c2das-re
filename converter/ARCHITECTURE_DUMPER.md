@@ -16,7 +16,12 @@ canonical (`get_full_file_name`, symbolic links and `..` resolved, memoized per 
 `in_program`, applied in both passes: the libclang walk keeps a cursor whose expansion file passes
 it, the JSON walk a top-level declaration whose location's file does. The rule draws the
 boundary, so a program whose headers live elsewhere is composed with them copied beside it (as
-`lua/run.das`, repo root, does).
+`lua/run.das`, repo root, does). An external record the program reaches a member of, declares a
+variable of or names under `sizeof` (`struct tm`, `struct lconv`) is laid out with the program's
+records: the libclang pass registers its definition from the system header, and every external
+record it holds by value, and the walk anchors it where it first interns it, so it converts and is
+layout-checked under its C tag; one the program reaches only through pointers (`FILE`) stays
+opaque.
 
 clang writes a location's `file` and `line` only where they differ from the last location it
 wrote, over every location of the dump in print order: a node's `loc` (a macro-produced one as

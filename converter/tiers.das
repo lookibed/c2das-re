@@ -170,6 +170,12 @@ struct NativeRun {
 //! `c_path` built by `compiler` with `flags` into `bin`, run with `timeout` seconds, the binary
 //! removed afterwards: the native side of a differential test.
 def native_run(compiler : string; flags : array<string>; c_path, bin : string; timeout : float) : NativeRun {
+    let no_args : array<string>
+    return native_run(compiler, flags, c_path, bin, timeout, no_args)
+}
+
+//! `native_run` with `program_args`, the program's C `argv` after its name.
+def native_run(compiler : string; flags : array<string>; c_path, bin : string; timeout : float; program_args : array<string>) : NativeRun {
     var res : NativeRun
     var args <- [compiler]
     args |> push_from(flags, ["-o", bin, c_path])
@@ -178,7 +184,9 @@ def native_run(compiler : string; flags : array<string>; c_path, bin : string; t
     }
     res.built = true
     res.output = ""
-    res.rc = run_and_capture([bin], res.output, timeout)
+    var run_args <- [bin]
+    run_args |> push_from(program_args)
+    res.rc = run_and_capture(run_args, res.output, timeout)
     remove(bin)
     return res
 }

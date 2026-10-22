@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdint>
+#include <clocale>
 
 namespace crt {
 
@@ -58,8 +59,51 @@ inline int32_t c_errno() { return errno; }
 inline void c_set_errno(int32_t value) { errno = value; }
 inline int32_t * c_errno_location() { return &errno; }
 
-inline int64_t c_time() { return int64_t(::time(nullptr)); }
+inline int64_t c_time(int64_t * t) { return int64_t(::time((time_t *) t)); }
 inline int64_t c_clock() { return int64_t(::clock()); }
+inline double c_difftime(int64_t a, int64_t b) { return ::difftime(time_t(a), time_t(b)); }
+//! A `struct tm *` and a `struct lconv *` are `void *`: the converted program lays the record out
+//! itself and converts the pointer at the call site.
+inline int64_t c_mktime(void * tm) { return int64_t(::mktime((struct tm *) tm)); }
+inline void * c_localtime(const int64_t * t) { return ::localtime((const time_t *) t); }
+inline void * c_gmtime(const int64_t * t) { return ::gmtime((const time_t *) t); }
+inline uint64_t c_strftime(uint8_t * buf, uint64_t size, const uint8_t * fmt, const void * tm) { return ::strftime((char *) buf, size_t(size), (const char *) fmt, (const struct tm *) tm); }
+
+inline uint8_t * c_setlocale(int32_t category, const uint8_t * locale) { return (uint8_t *) ::setlocale(category, (const char *) locale); }
+inline void * c_localeconv() { return ::localeconv(); }
+
+//! stdio: a `FILE *` is `void *`, opaque on both sides.
+inline void * c_stdin() { return stdin; }
+inline void * c_stdout() { return stdout; }
+inline void * c_stderr() { return stderr; }
+inline void * c_fopen(const uint8_t * name, const uint8_t * mode) { return ::fopen((const char *) name, (const char *) mode); }
+inline void * c_freopen(const uint8_t * name, const uint8_t * mode, void * f) { return ::freopen((const char *) name, (const char *) mode, (FILE *) f); }
+inline int32_t c_fclose(void * f) { return ::fclose((FILE *) f); }
+inline uint64_t c_fread(void * data, uint64_t size, uint64_t n, void * f) { return ::fread(data, size_t(size), size_t(n), (FILE *) f); }
+inline uint64_t c_fwrite(const void * data, uint64_t size, uint64_t n, void * f) { return ::fwrite(data, size_t(size), size_t(n), (FILE *) f); }
+inline uint8_t * c_fgets(uint8_t * buf, int32_t n, void * f) { return (uint8_t *) ::fgets((char *) buf, n, (FILE *) f); }
+inline int32_t c_fputs(const uint8_t * s, void * f) { return ::fputs((const char *) s, (FILE *) f); }
+inline int32_t c_getc(void * f) { return ::getc((FILE *) f); }
+inline int32_t c_ungetc(int32_t c, void * f) { return ::ungetc(c, (FILE *) f); }
+inline int32_t c_feof(void * f) { return ::feof((FILE *) f); }
+inline int32_t c_ferror(void * f) { return ::ferror((FILE *) f); }
+inline void c_clearerr(void * f) { ::clearerr((FILE *) f); }
+inline int32_t c_fflush(void * f) { return ::fflush((FILE *) f); }
+inline int32_t c_fseek(void * f, int64_t offset, int32_t whence) { return ::fseek((FILE *) f, long(offset), whence); }
+inline int64_t c_ftell(void * f) { return int64_t(::ftell((FILE *) f)); }
+inline int32_t c_setvbuf(void * f, uint8_t * buf, int32_t mode, uint64_t size) { return ::setvbuf((FILE *) f, (char *) buf, mode, size_t(size)); }
+inline void * c_tmpfile() { return ::tmpfile(); }
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+inline uint8_t * c_tmpnam(uint8_t * buf) { return (uint8_t *) ::tmpnam((char *) buf); }
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+inline int32_t c_remove(const uint8_t * name) { return ::remove((const char *) name); }
+inline int32_t c_rename(const uint8_t * from, const uint8_t * to) { return ::rename((const char *) from, (const char *) to); }
+inline int32_t c_system(const uint8_t * command) { return ::system((const char *) command); }
 
 inline double c_fmod(double a, double b) { return ::fmod(a, b); }
 inline float c_fmodf(float a, float b) { return ::fmodf(a, b); }

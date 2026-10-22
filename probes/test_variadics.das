@@ -168,3 +168,15 @@ def test_variadics(t : T?) {
         t |> equal(spelled.out |> find("outer=6") >= 0, true, spelled.out)
     }
 }
+
+[test]
+def test_variadic_instances(t : T?) {
+    t |> run("a generic over a tuple holding `void?`, met after two tuples of other pointers, is an internal compiler error; a byte pointer in its place is not (docs/probe-findings.md F61)") @(t : T?) {
+        let head = "options gen2\ndef tc(va : auto) : int \{\n    return 1\n\}\ndef user(x : auto) : int \{\n    return tc(x)\n\}\n[export]\ndef main : int \{\n    var a : int?\n    var b : float?\n"
+        let tail = "    print(\"\{user((a,))\} \{user((b,))\} \{user((c,))\}\\n\")\n    return 0\n\}\n"
+        let with_void = daslang_child("tuple_void_last", "{head}    var c : void?\n{tail}", false)
+        t |> equal(with_void.out |> find("error[50609]") >= 0, true, with_void.out)
+        let with_bytes = daslang_child("tuple_bytes_last", "{head}    var c : uint8?\n{tail}", false)
+        t |> equal(with_bytes.out, "1 1 1\n")
+    }
+}

@@ -120,7 +120,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 - **P2.4 Enums.** das enums per spec (casts at arithmetic/relational/index sites,
   `enum_from_int`, count-as-dim).
   Ledger (fail closed or loud today, each a later row): an enumerator reached through a
-  macro expansion (no main-file cursor; two constants of one expansion share a location),
+  macro expansion (no main-file cursor; two constants of one expansion share a location;
+  resolved by P5.1's location pass: `converter/ARCHITECTURE_DUMPER.md` section 3),
   an enum defined in a header, an enum tag that is also an object name in scope
   (`enum color color`: das has one namespace, so `color.GREEN` resolves to the variable),
   an anonymous enum or record nested two levels deep, a typedef name shared by a record and
@@ -518,19 +519,39 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   no longjmp) passes the dumper and the emitter (3.9 s, a 24,006-line module, `[c_function]` on
   750 of 1,049 functions) and reaches das's compile check, which reports its 102 errors after
   1.6 s: one module type-checks in seconds at this size, so the split is the owner's call.
-  Ledger: `lobject.c:264` (`lua_getlocaledecpoint()`, `localeconv()->decimal_point`) stops the
-  dumper with "member `decimal_point` of `struct lconv`, a record no file of the program
-  defines, is not lowered yet", and `loslib.c:233` (`stm->tm_year`) with the same message for
-  `struct tm`; behind them `ldo.c:84` "record `lua_longjmp` holds a `jmp_buf` (`b`), which das
-  spells as `CJmpBuf`, not at the C library's size; not lowered yet" (P5.2), `lauxlib.c:730`
-  "external function `feof` has no c_runtime mapping" (the stdio surface: `fopen`, `getc`,
-  `stderr` and the rest), `lutf8lib.c:287` "a string literal with an interior NUL is not
-  lowered yet", and in the compile check `gfasttm`'s `NULL` arm (`ltm.h:64`, "void pointer can't
-  be copied to a non-void pointer"), `time(NULL)` (`lstate.c:73`, "no matching functions or
-  generics: crt::time(void?)"), the gotos of `luaV_execute` (`lvm.c:1689`) and `match`
-  (`lstrlib.c:598`) ("can't find label"), `top - 1 - (base + a)` (`lvm.c:853`) emitted as
-  `top - 1 - base + a`, which miscompiles silently wherever it type-checks, and das's
-  "internal compiler error: multiple instances of 'variadic`to_cvalist`'" (error 50609).
+  Landed (phase B): a libc record the program reaches a member, a variable or the size of
+  (`struct tm`, `struct lconv`) is laid out from its system header; stdio, time.h and locale.h
+  bind through crt with a record pointer as `void?`, `stdin`/`stdout`/`stderr` as crt accessors
+  and `fprintf` in c_runtime; a goto into another case re-dispatches its switch; the sidecar's
+  `defines` take a function-like macro, which stubs Lua's longjmp; a pointer difference keeps
+  its subtrahend's parentheses; `lua/lua.c2das` lists Lua's four over-indexed trailing arrays.
+  `luac_all.c` goes through the whole pipeline: dumper 80.3 s over 361,265,529 bytes of JSON,
+  emitter 3.2 s, a 19,293-line module with `[c_function]` on 554 of 767 functions, compile
+  check 6.6 s; `luac -v` takes 7.0 s under the interpreter, nearly all of it daslang compiling
+  the module, 38.9 s under the JIT compiling afresh and 7.6 s from its cache; `luac -o` writes
+  the native build's bytecode byte for byte, under the interpreter and the JIT, and `luac -l`
+  prints its listing but for the pointer values. `lua_all.c` dumps in 89.6 s over 399,010,406
+  bytes and stops in the emitter at `lua.c:78`; a scratch copy with `setsignal` made a no-op
+  gives a 24,604-line module, `[c_function]` on 776 of 1,080 functions, emitter 4.0 s, compile
+  check 9.1 s, and `lua -e "print(1+1)"` prints 2 in 10.8 s under the interpreter (55.1 s under
+  a fresh JIT, 10.1 s from its cache), a script over string, table and math printing what the
+  native oracle prints. Native oracles: 383,760 and 284,456 bytes.
+  Ledger: `lua.c:78` stops the emitter with "external function `signal` has no c_runtime
+  mapping" (`#define setsignal signal`, `setsignal(SIGINT, laction)`): a converted function as a
+  C signal handler, which no ruling covers yet. Lua's error recovery is stubbed until P5.2
+  (`lua/lua.c2das`: `LUAI_THROW(L,c)=abort()`, `LUAI_TRY(L,c,a)={ a }`, `luai_jmpbuf=int`): a
+  Lua error aborts the process. Two daslang defects F60 records (the optimizer moving a label
+  into an `else`, a loop taking a lower-numbered outer goto as its own) and the generic-instance
+  error of F61 are to be filed against daScript, each with its probe as the repro. The C-IR
+  writes no record spelling, which the emitter's `va_list` test reads, so a module emitted from
+  a re-read C-IR (rather than the dumper's tree) spells `va_list` and fails its compile check.
+  The stdio binds take C's `long` (`fseek`, `ftell`) as `int64`, which the `msvc` dialect's
+  32-bit `long` does not convert to at the call site. Past the stop, the converted `luac` fails
+  on the test suite's `strings.lua` and `literals.lua` with "jump to label 3 failed": in
+  `llex.c`'s `read_string` the label `no_save: break;` ends its if-chain branch once the
+  lowering drops the tail `break`, and daslang's interpreter cannot jump to a label with no
+  statement after it in its block (an empty block `{}` after the label is a remedy a scratch
+  probe shows).
 - **P5.2 pcall** via the setjmp lowering (`LUAI_THROW/LUAI_TRY` → `c_longjmp`/contained
   pattern — the easy shape, per spec).
 - **P5.3 Lua's own test suite** under interp. Expect a long tail of libc exactness bugs

@@ -19,7 +19,7 @@ def test_sidecar_defines(t : T?) {
         t |> failure("no temp directory: {dir_error}")
         return
     }
-    t |> run("`defines` is a list of strings, each `NAME` or `NAME=value`, kept in order") @(t : T?) {
+    t |> run("`defines` is a list of strings, each `NAME`, `NAME=value` or `NAME(params)=value`, kept in order") @(t : T?) {
         var error : string
         let side <- read_text(dir, "good", "\{\"defines\": [\"FOO=2\", \"BAR\"]\}\n", error)
         t |> equal(error, "")
@@ -36,19 +36,31 @@ def test_sidecar_defines(t : T?) {
     t |> run("`defines` that is no list is refused, naming the key and the value") @(t : T?) {
         var error : string
         let side <- read_text(dir, "string", "\{\"defines\": \"FOO=2\"\}\n", error)
-        t |> success(error |> ends_with("string.c2das: `defines` is a list of strings `NAME` or `NAME=value`, not \"FOO=2\""), error)
+        t |> success(error |> ends_with("string.c2das: `defines` is a list of strings `NAME`, `NAME=value` or `NAME(params)=value`, not \"FOO=2\""), error)
         t |> equal(length(side.defines), 0)
     }
     t |> run("an entry that is no string is refused, naming the entry") @(t : T?) {
         var error : string
         let side <- read_text(dir, "number", "\{\"defines\": [\"FOO=2\", 3]\}\n", error)
-        t |> success(error |> ends_with("number.c2das: `defines` holds strings `NAME` or `NAME=value`, not 3"), error)
+        t |> success(error |> ends_with("number.c2das: `defines` holds strings `NAME`, `NAME=value` or `NAME(params)=value`, not 3"), error)
     }
     t |> run("an entry whose head is no identifier is refused, naming the entry") @(t : T?) {
         for (bad in fixed_array("\"\"", "\"-UN\"", "\"=x\"", "\"1N\"", "\"A-B=1\"")) {
             var error : string
             let side <- read_text(dir, "bad", "\{\"defines\": [\"FOO=2\", {bad}]\}\n", error)
-            t |> success(error |> ends_with("bad.c2das: `defines` holds strings `NAME` or `NAME=value`, not {bad}"), error)
+            t |> success(error |> ends_with("bad.c2das: `defines` holds strings `NAME`, `NAME=value` or `NAME(params)=value`, not {bad}"), error)
+        }
+    }
+    t |> run("a function-like macro: identifier params separated by commas, `...` last, a value required") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "function_like", "\{\"defines\": [\"LUAI_THROW(L,c)=abort()\", \"LUAI_TRY(L, c, a)=\{ a \}\", \"NONE()=0\", \"LOG(fmt, ...)=f(fmt)\"]\}\n", error)
+        t |> equal(error, "")
+        t |> equal(length(side.defines), 4)
+        t |> equal(side.defines[1], "LUAI_TRY(L, c, a)=\{ a \}")
+        for (bad in fixed_array("\"F(x)\"", "\"F(1x)=0\"", "\"F(x,)=0\"", "\"F(..., x)=0\"", "\"F(x=0\"", "\"(x)=0\"", "\"F(x)y=0\"")) {
+            var bad_error : string
+            let refused <- read_text(dir, "bad_function_like", "\{\"defines\": [{bad}]\}\n", bad_error)
+            t |> success(bad_error |> ends_with("bad_function_like.c2das: `defines` holds strings `NAME`, `NAME=value` or `NAME(params)=value`, not {bad}"), bad_error)
         }
     }
     t |> run("an identifier head takes any value, `=` and spaces included") @(t : T?) {

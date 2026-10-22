@@ -76,7 +76,8 @@ becomes `c_main` and the module ends with `[export] def main : int { return c_ma
 native build's name on every tier), then returns `c_main(c_argc(), c_argv())` (F56); a unit's
 function named like one of these four takes the next free name (`c_argc1`). A `main` taking
 `envp` or other parameters, and a `static` one, fail closed. A C name that is a das
-keyword takes the `_c_` prefix. A local that hides one of an enclosing block or a parameter
+keyword, or that starts with `__`, which das reserves (glibc's `__tm_gmtoff`), takes the `_c_`
+prefix. A local that hides one of an enclosing block or a parameter
 takes the first numbered name the function leaves free (`i1`), and so does every reference C
 resolves to it, since das refuses a local that shadows another (`docs/probe-findings.md` F42);
 `emit_tu` renames over the C-IR in place before anything reads a name, a `for`'s declarations
@@ -138,7 +139,7 @@ In a global initializer the decay and the sum each wrap themselves, `unsafe(unsa
 pointer is a das function value, `function<(a0 : T; ...) : R>` with the parameters named by
 position, a function's name decays to `@@name`, and a call through a pointer, `fp(...)` or
 `(*fp)(...)`, is `invoke(fp, ...)` (`ARCHITECTURE_EMITTER_AGGREGATES.md`, Function pointers). A pointer difference is `int64(p - q)`, in elements as C
-counts them; a pointer less a count whose pointer is no load of an object (a decay, a sum, a cast, a call) is the sum with the negated count, `addr(b[0]) + 10 + -(n)` (`-int64(n)` for an unsigned one), since das subtracts from a pointer variable only (F59); a pointer relation goes through `intptr`, and so does `==` or `!=` between two
+counts them, the subtrahend parenthesized as the right operand of `-` (`top - 1 - (base + a)`); a pointer less a count whose pointer is no load of an object (a decay, a sum, a cast, a call) is the sum with the negated count, `addr(b[0]) + 10 + -(n)` (`-int64(n)` for an unsigned one), since das subtracts from a pointer variable only (F59); a pointer relation goes through `intptr`, and so does `==` or `!=` between two
 data pointers, since das compares only pointers of one constness and a `let` pointer's pointee
 is const (F44), while a null constant on either side compares with `null`; `malloc`, `calloc`, `realloc`, `free`
 and the `mem*` family are the CRT's through `crt`, with C's implicit `void *` conversions as
@@ -150,23 +151,34 @@ offsetof<f>(type<S>))`, never clang's constants, with the cast to the C result t
 clang's value `T(4)` where das aligns it lower (a record whose bitfield units align below
 clang's, F5), for a marshal-only record and for a `va_list` (`docs/probe-findings.md` F54). A string
 literal in a pointer context stays a das literal, `reinterpret<uint8?>("...")`, which is a
-NUL-terminated interned byte array (`probes/test_strings.das`); the empty literal is the one
+NUL-terminated interned byte array (`probes/test_strings.das`), an interior NUL spelled `\x00`,
+which das keeps with the bytes after it; the empty literal is the one
 exception, since das's `""` is a null pointer (`docs/probe-findings.md` F10): it is
 `addr(c2das_empty[0])`, a one-byte private array the module declares right after its requires,
 before any global whose initializer takes the address. A `char[N]` initialized from a literal
 is `cstr_array("...", N)`, the empty literal included, and so is a row of a `char` matrix or a
 record's `char[N]` field (`fixed_array(cstr_array("1234", 4), cstr_array("5678", 4))`, a row
 the list leaves out the zero literal), a literal longer than `N` keeping its first `N` bytes,
-as clang initializes the array; a `signed char` one fails closed, and one in braces filling the whole array (`{ "ab" }`) is the dumper's plain literal. A literal
+as clang initializes the array; one with an interior NUL is the row of its bytes,
+`fixed_array(uint8(97), uint8(0), ...)`, since `cstr_array` reads its literal as a das string,
+which ends at the first NUL; a `signed char` one fails closed, and one in braces filling the whole array (`{ "ab" }`) is the dumper's plain literal. A literal
 indexed in place (`"abcdef"[2]`) is read through its pointer, `deref(p + i)`; a literal under `sizeof` is its
 array type. A call to a libc function the C program declares resolves through two tables:
 `C_RUNTIME_CALLS`, the functions a `c_runtime` piece lowers (`printf`, `sprintf`, `snprintf`,
-`vprintf`, `vsprintf`, `vsnprintf`, `sscanf`, `vsscanf`, `exit`, `abort`, `qsort`, `bsearch`; `<math.h>`'s surface das math covers, `floor` as `math::floor` and `fabs` as `math::abs`, as `docs/stdlib-examples.md` "math.h" rules; glibc's `__errno_location`, which `errno` expands to, as `crt::c_errno_location`),
+`vprintf`, `vsprintf`, `vsnprintf`, `fprintf`, `sscanf`, `vsscanf`, `exit`, `abort`, `qsort`, `bsearch`; `<math.h>`'s surface das math covers, `floor` as `math::floor` and `fabs` as `math::abs`, as `docs/stdlib-examples.md` "math.h" rules; glibc's `__errno_location`, which `errno` expands to, as `crt::c_errno_location`),
 one row each naming the module that holds the piece and the das name, and `CRT_CALLS`, the
-functions the `crt` module binds under their C names (the memory, string.h, ctype, conversion, libm exotica, time and random families of
-`dasCRuntime/ARCHITECTURE.md`), spelled `crt::name`, which take every pointer `let` (`strcpy`'s,
-`memcpy`'s and `memset`'s destination included), since a C++ binding's parameter carries no das
-constness; a function in neither fails closed. A caller's `var` pointer reaches a piece's
+functions the `crt` module binds under their C names (the memory, string.h, ctype, conversion,
+libm exotica, time, locale, stdio and random families of `dasCRuntime/ARCHITECTURE.md`), spelled
+`crt::name`, which take every pointer `let` (`strcpy`'s, `memcpy`'s and `memset`'s destination
+included), since a C++ binding's parameter carries no das constness; a function in neither fails
+closed. A library call takes a pointer to a record among its fixed arguments as `void?`
+(`crt::getc(reinterpret<void?>(f))`) and gives one back through `reinterpret<T?>`
+(`reinterpret<tm?>(crt::gmtime(addr(t)))`); `jmp_buf` and `va_list` are the protocol's own. A libc
+object the program reads is its crt accessor through `CRT_OBJECTS` (`stdout` is
+`reinterpret<_IO_FILE?>(crt::c_stdout())`, and the accessor's `void?` as it is where a library call
+takes it). A `void *` among a call's trailing arguments travels as `reinterpret<uint8?>(p)`, since
+daslang meets a tuple holding `void?` after two tuples of other pointers with two generic
+instances (`docs/probe-findings.md` F61); the list holds every pointer as `void?` either way. A caller's `var` pointer reaches a piece's
 pointer argument as it reaches a converted function's. A `size_t` result is `uint64`, so an index or a count it feeds carries the cast C gives
 it. Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
 cast, `IntegralToBoolean` is `x != 0` (`!= null` for a pointer), `BooleanToSignedIntegral` is
@@ -197,7 +209,10 @@ The pins live while the statement that needs them is spelled (`em.hoisted`); a c
 is two statements; `&&` and `||` with a hoisted right
 side become a flag and an `if`; a ternary whose arm carries hoisted statements becomes `var _tN
 : T` and an `if`/`else`, while a ternary of pure arms stays inline since das `?:` evaluates
-only the taken arm (F18). A `void` ternary evaluated for its effects (an expression statement, a
+only the taken arm (F18). das types `?:` by its first arm and takes no `null` there for a pointer,
+so a null first arm of a pointer conditional is `default<T?>` (`probes/test_pointers.das`); a null
+in any other position with a pointer type (a second arm, an argument, a return, a store, an
+initializer) is `null`. A `void` ternary evaluated for its effects (an expression statement, a
 comma's left side, a cast to `void`: the `(e) ? (void) 0 : fail()` of an assert) is an
 `if`/`else` of its arms' statements, an arm with no effect left out (`if (!(e))` when it is the
 first), and fails closed where its value is read, since das has no `void` variable. Loops follow the documents: `while` is `while`, with a side-effecting
@@ -227,38 +242,8 @@ step into them writes through `write_T_f` around the read, `*p` is `read_T(p, 0)
 marshal-only value, an array of the record and a record or array-of-records field inside one
 fail closed, and so does a record holding a `jmp_buf`, which das spells as `CJmpBuf`.
 
-A `switch` follows the three-tier ladder of `docs/lowering-examples.md`. Its body is read as
-groups, one run of labels and the statements under them; a statement before the first label
-or a label below the switch's own level (Duff's device, P3.3) fails closed, a nested switch's
-labels being its own. The condition is evaluated once into `_condN` (numbered per switch
-within a function), the enum below C's promotion when there is one, so a case compares as
-`_cond == E.X` (`int(_cond) == v` for a value no enumerator has) and otherwise against a
-literal in the condition's type. The if-chain holds when no group falls into the next (each
-ends in `break`, `return`, `goto` or `continue`, a trailing block looked through) and every
-`break` that leaves the switch is that tail - a `break` inside a nested loop or switch is that
-construct's own; the tail `break` is dropped, the groups become `if`/`elif` and the default
-group `else`, wherever it stood. Otherwise the matched-flag loop: `while (true)` holding
-`var _flagN = false`, one `_flag ||= _cond == v` per label and `_flag ||= !(every case value)`
-for `default`, each group's statements under `if (_flag)`, a trailing `break`; C `break` is
-das's. A C `continue` under such a loop would restart the switch, so it spells
-`_contN = true` and `break`, with `if (_contN) { continue }` after the loop - itself through
-the same translation when the switch sits in an outer flag loop; a real loop body resets the
-translation. C scopes a declaration at the switch body's own level to the rest of the body, while
-each group lands in its own branch: a declaration that a statement under a later label names is
-declared right after `_condN` as a bare `var v : T` (das's zero where C leaves it indeterminate)
-and its initializer is the assignment that stands where C declares it; one filled by stores (a
-union's list, a sparse array) fails closed, since the stores rely on a zero a second pass through
-the case would not give again; any other declaration keeps its branch's scope (F53). Computed
-goto (O6) is the optimization tier's.
-
-A C label is `label N:  // name`, numbered per function in order of appearance, and a goto
-is `goto label N` (`docs/lowering-examples.md` "goto / labels"); das resolves a label lexically
-upward, so a goto reaches a label in its own block or an enclosing one, and a goto into a
-deeper block has every bare block between them (a block that is its parent's statement)
-emitted without braces, so the label lands in a scope the goto sees, its locals renamed as above
-where they would meet a global or another local of their name; an `if`, loop or switch
-body on that way is Duff's device (P3.3) and fails closed. A goto over a declaration skips its
-initializer, which is C's rule too (`probes/test_goto.das`).
+The switch ladder and the labels (`switch`, `goto`, a goto into another case) are in
+`ARCHITECTURE_EMITTER_CONTROL.md`.
 
 `alloca(n)` is a bump on a per-function arena (`docs/stdlib-examples.md` "alloca"): a function
 whose body calls it opens with `var _c_astack : uint8[limit]` and `var _c_aoff = 0`, each site

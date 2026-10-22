@@ -2,6 +2,7 @@ options gen2
 require dastest/testing_boost public
 require crt
 require math
+require daslib/fio
 
 def cstr(s : string) : uint8? => unsafe(reinterpret<uint8?>(s))
 
@@ -117,7 +118,10 @@ def test_crt_environment(t : T?) {
         t |> equal(crt::rand(), first)
         t |> equal(crt::rand(), second)
         t |> equal(first >= 0 && first <= crt::RAND_MAX, true)
-        t |> equal(crt::time() > 1700000000l, true)
+        var now = 0l
+        t |> equal(unsafe(crt::time(null)) > 1700000000l, true)
+        t |> equal(unsafe(crt::time(unsafe(addr(now)))) == now, true)
+        t |> equal(crt::difftime(now + 60l, now), 60.0lf)
         t |> equal(crt::clock() >= 0l, true)
         t |> equal(crt::CLOCKS_PER_SEC > 0l, true)
         t |> equal(crt::LONG_BITS == 32 || crt::LONG_BITS == 64, true)
@@ -241,5 +245,91 @@ def test_crt_sscanf(t : T?) {
             t |> equal(crt::sscanf_none(cstr(" 77 rest"), cstr("%*d%n"), addr(consumed)), 0)
             t |> equal(consumed, 3)
         }
+    }
+}
+
+// `struct tm` as C names its first nine members, which glibc lays out in this order; the tail
+// (`tm_gmtoff`, `tm_zone`) is room the CRT may write
+struct CTm {
+    tm_sec, tm_min, tm_hour, tm_mday, tm_mon, tm_year, tm_wday, tm_yday, tm_isdst : int
+    tail : int64[2]
+}
+
+[test]
+def test_crt_time_locale(t : T?) {
+    t |> run("mktime normalizes, localtime and gmtime convert back, strftime formats, the C locale's point") @(t : T?) {
+        unsafe {
+            // C fixes mktime's normalization: the 32nd of January is the 1st of February
+            var tm = CTm(tm_mday = 32, tm_mon = 0, tm_year = 100, tm_hour = 12, tm_isdst = -1)
+            var when = crt::mktime(addr<void?>(tm))
+            t |> equal(when != -1l, true)
+            t |> equal(tm.tm_mon, 1)
+            t |> equal(tm.tm_mday, 1)
+            let local = reinterpret<CTm?>(crt::localtime(addr(when)))
+            t |> equal(local.tm_mon == 1 && local.tm_mday == 1 && local.tm_year == 100, true)
+            t |> equal(crt::gmtime(addr(when)) != null, true)
+            var buf : uint8[16]
+            t |> equal(crt::strftime(addr(buf[0]), 16ul, cstr("%Y-%m-%d"), addr<void?>(tm)), 10ul)
+            t |> equal(as_string(addr(buf[0])), "2000-02-01")
+            // the C locale is every program's at startup; a null locale queries it
+            t |> equal(as_string(crt::setlocale(0, null)), "C")
+            // `decimal_point`, the member C lists first and glibc lays out first, is "." in the C locale
+            t |> equal(as_string(deref(reinterpret<uint8 ??>(crt::localeconv()))), ".")
+        }
+    }
+}
+
+[test]
+def test_crt_stdio(t : T?) {
+    t |> run("a FILE as void?: writes, reads, positions, errors and the standard streams") @(t : T?) {
+        unsafe {
+            t |> equal(crt::c_stdin() != null && crt::c_stdout() != null && crt::c_stderr() != null, true)
+            t |> equal(crt::fflush(crt::c_stderr()), 0)
+            var f = crt::tmpfile()
+            t |> equal(f != null, true)
+            t |> equal(crt::fputs(cstr("ab\n"), f) >= 0, true)
+            t |> equal(crt::fwrite(cstr("cde"), 1ul, 3ul, f), 3ul)
+            t |> equal(crt::fflush(f), 0)
+            t |> equal(crt::ftell(f), 6l)
+            // SEEK_SET, which glibc and every POSIX system spell 0
+            t |> equal(crt::fseek(f, 0l, 0), 0)
+            t |> equal(crt::getc(f), 'a')
+            t |> equal(crt::ungetc('A', f), 'A')
+            var line : uint8[8]
+            t |> equal(crt::fgets(addr(line[0]), 8, f) == addr(line[0]), true)
+            t |> equal(as_string(addr(line[0])), "Ab\n")
+            var rest : uint8[8]
+            t |> equal(crt::fread(addr<void?>(rest[0]), 1ul, 8ul, f), 3ul)
+            t |> equal(crt::feof(f) != 0, true)
+            t |> equal(crt::ferror(f), 0)
+            crt::clearerr(f)
+            t |> equal(crt::feof(f), 0)
+            t |> equal(crt::setvbuf(f, null, 2, 0ul), 0)
+            t |> equal(crt::fclose(f), 0)
+        }
+    }
+    t |> run("named files: fopen, freopen, rename, remove, tmpnam, system") @(t : T?) {
+        var dir_error : string
+        let dir = create_temp_directory("c2das_crt", dir_error)
+        t |> equal(dir_error, "")
+        let first = path_join(dir, "first.txt")
+        let second = path_join(dir, "second.txt")
+        unsafe {
+            var f = crt::fopen(cstr(first), cstr("w"))
+            t |> equal(f != null, true)
+            t |> equal(crt::fputs(cstr("x"), f) >= 0, true)
+            f = crt::freopen(cstr(first), cstr("r"), f)
+            t |> equal(crt::getc(f), 'x')
+            t |> equal(crt::fclose(f), 0)
+            t |> equal(crt::rename(cstr(first), cstr(second)), 0)
+            t |> equal(crt::fopen(cstr(first), cstr("r")) == null, true)
+            t |> equal(crt::remove(cstr(second)), 0)
+            t |> equal(crt::remove(cstr(second)) != 0, true)
+            var name : uint8[4096]
+            t |> equal(crt::tmpnam(addr(name[0])) == addr(name[0]), true)
+            // a null command asks whether a command processor exists
+            t |> equal(crt::system(null) != 0, true)
+        }
+        rmdir_rec(dir)
     }
 }

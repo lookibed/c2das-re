@@ -1,4 +1,7 @@
 options gen2
+// the pipeline parses clang's JSON dump below the test's own frames: a deep expression tree
+// overflows the default 16 KB context stack
+options stack = 1048576
 require dastest/testing_boost public
 require strings
 require daslib/strings_boost
@@ -81,6 +84,23 @@ def converts(t : T?; name : string; source : string; sidecar : string = ""; para
     return res.das_text
 }
 
+// `check_fixture` for a program that takes `program_args` after its name, both builds run with them
+def check_fixture_args(t : T?; name : string; program_args : array<string>; var das_text : string&) {
+    let run = native_run(default_clang(), ["-w", CLANG_DIALECT, "-lm"], "{FIXTURES}/{name}.c", path_join(work_root, "{name}_native"), 60.0, program_args)
+    t |> equal(run.built, true, run.output)
+    let res <- convert("{FIXTURES}/{name}.c", path_join(work_root, name), "linux", "", "", "")
+    if (!res.ok) {
+        t |> failure(res.error)
+        return
+    }
+    das_text = res.das_text
+    var out : string
+    let no_flags : array<string>
+    let rc = run_tier(res.das_path, "interp", work_root, out, CONVERTED_MODULES, 600.0, no_flags, program_args)
+    t |> equal(out, run.output)
+    t |> equal(rc, run.rc)
+}
+
 def check_fixture(t : T?; name : string; var das_text : string&; param_writes : string = "") {
     let want = native(name)
     t |> equal(want.rc >= 0, true, want.out)
@@ -141,6 +161,8 @@ def test_lowerings(t : T?) {
     p4_matrix_leftover_rejects(t)
     p5_program_fixtures(t)
     p5_lua_fixtures(t)
+    p5_lua_library_fixtures(t)
+    p5_lua_expression_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -876,7 +898,7 @@ def p4_varargs_rejects(t : T?) {
         rejects(t, "va_tuple_param", "#include <stdarg.h>\nstatic int f(int _va_tuple, ...) \{ return _va_tuple; \}\nint main(void) \{ return f(0); \}\n", "a C name `_va_tuple` in variadic function `f`")
         rejects(t, "va_tuple_local", "#include <stdarg.h>\nstatic int f(int n, ...) \{ int _va_tuple = n; return _va_tuple; \}\nint main(void) \{ return f(0); \}\n", "a C name `_va_tuple` in variadic function `f`")
         rejects(t, "scanf_stdin", "int scanf(const char *, ...);\nint main(void) \{ int x = 0; scanf(\"%d\", &x); return x; \}\n", "external function `scanf` has no c_runtime mapping")
-        rejects(t, "fprintf_stream", "typedef struct F F;\nextern F *stderr;\nint fprintf(F *, const char *, ...);\nint main(void) \{ fprintf(stderr, \"x\"); return 0; \}\n", "external function `fprintf` has no c_runtime mapping")
+        rejects(t, "fscanf_stream", "typedef struct F F;\nextern F *stdin;\nint fscanf(F *, const char *, ...);\nint main(void) \{ int x = 0; fscanf(stdin, \"%d\", &x); return x; \}\n", "external function `fscanf` has no c_runtime mapping")
     }
 }
 
@@ -1374,8 +1396,105 @@ def p5_lua_fixtures(t : T?) {
         rejects(t, "aligned_local", "int main(void) \{ int x __attribute__((aligned(32))) = 1; return x - 1; \}\n", "`x`: an alignment on a variable (`_Alignas`, `aligned`) is not lowered yet")
         rejects(t, "aligned_static_local", "int main(void) \{ static _Alignas(8) int s = 2; return s - 2; \}\n", "`s`: an alignment on a variable (`_Alignas`, `aligned`) is not lowered yet")
         rejects(t, "offsetof_path", "#include <stddef.h>\nstruct P \{ int a; struct \{ int q; \} in; \};\nint main(void) \{ return (int) offsetof(struct P, in.q) - 4; \}\n", "offsetof(struct P, ...): a member path (`a.b`, `a[i]`) is not lowered yet")
-        rejects(t, "system_record_member", "#include <time.h>\nint main(void) \{ struct tm t; t.tm_year = 3; return t.tm_year - 3; \}\n", "member `tm_year` of `struct tm`, a record no file of the program defines, is not lowered yet")
         rejects(t, "jmp_buf_member", "#include <setjmp.h>\nstruct lj \{ struct lj *previous; jmp_buf b; volatile int status; \};\nint main(void) \{ struct lj l; l.status = 0; return l.status; \}\n", "record `lj` holds a `jmp_buf` (`b`), which das spells as `CJmpBuf`, not at the C library's size; not lowered yet")
         rejects(t, "offsetof_index", "#include <stddef.h>\nstruct P \{ int a; int b[3]; \};\nint main(void) \{ return (int) offsetof(struct P, b[1]) - 8; \}\n", "offsetof(struct P, ...): a member path (`a.b`, `a[i]`) is not lowered yet")
+    }
+}
+
+// the C library lua 5.4.8 reaches: stdio through a FILE * the crt module takes as void?, the
+// standard streams, fprintf, struct tm and struct lconv laid out from the system headers
+def p5_lua_library_fixtures(t : T?) {
+    t |> run("lua's C library: stdio, the standard streams, fprintf, time.h and locale.h") @(t : T?) {
+        // every file the program names lives under this directory, which the test removes
+        let files = path_join(work_root, "p5_lua_stdio_files")
+        mkdir(files)
+        var text : string
+        check_fixture_args(t, "p5_lua_stdio", [files], text)
+        var left = 0
+        dir(files) $(name) {
+            if (name != "." && name != "..") {
+                left++
+            }
+        }
+        t |> equal(left, 0)
+        rmdir_rec(files)
+        // a FILE * is the opaque record, passed to the crt as void?
+        has_text(t, text, "struct _IO_FILE \{\}\n")
+        has_text(t, text, "    var c : int = crt::getc(reinterpret<void?>(f))\n")
+        has_text(t, text, "s.f = reinterpret<_IO_FILE?>(crt::freopen(")
+        // the standard streams are crt accessors, passed on as they are
+        has_text(t, text, "fprintf(crt::c_stderr(), reinterpret<uint8?>(\"to %s\\n\"), reinterpret<uint8?>(\"stderr\"))\n")
+        has_text(t, text, "    var out : _IO_FILE? = reinterpret<_IO_FILE?>(crt::c_stdout())\n")
+        // struct tm and struct lconv from the system headers, layout-checked like the program's
+        // das reserves a name that starts with `__`, as it does a keyword
+        has_text(t, text, "struct tm \{\n    tm_sec, tm_min, tm_hour, tm_mday, tm_mon, tm_year, tm_wday, tm_yday, tm_isdst : int\n    _c___tm_gmtoff : int64\n    _c___tm_zone : uint8?\n\}\n")
+        has_text(t, text, "static_assert(typeinfo sizeof(type<tm>) == 56 && typeinfo alignof(type<tm>) == 8")
+        has_text(t, text, "static_assert(typeinfo offsetof < decimal_point > (type<lconv>) == 0")
+        has_text(t, text, "    stm = reinterpret<tm?>(crt::gmtime(addr(t)))\n")
+        has_text(t, text, "crt::mktime(reinterpret<void?>(addr(ts)))")
+        has_text(t, text, "deref(reinterpret<lconv?>(crt::localeconv()).decimal_point + 0)")
+        has_text(t, text, "crt::time(null)")
+        // a record pointer among the trailing arguments stays the program's pointer
+        has_text(t, text, "snprintf(addr(p5_lua_stdio__path[0]), uint64(typeinfo sizeof(type<uint8[512]>)), reinterpret<uint8?>(\"%p\"), out)\n")
+    }
+    t |> run("a system record the program only points to stays opaque; one it reaches a member of by sizeof is laid out") @(t : T?) {
+        let text = converts(t, "system_sizeof", "#include <time.h>\nint main(void) \{ struct tm *p = 0; return (int) sizeof(struct tm) < 36 || p != 0; \}\n")
+        has_text(t, text, "struct tm \{\n")
+        let opaque = converts(t, "system_pointer", "#include <stdio.h>\nint main(void) \{ FILE *f = 0; return f != 0; \}\n")
+        has_text(t, opaque, "struct _IO_FILE \{\}\n")
+        t |> equal(opaque |> find("struct tm") >= 0, false, opaque)
+        // an array of an external record, and the external records one holds by value
+        let nested = converts(t, "system_nested", "#include <sys/time.h>\n#include <time.h>\nint main(void) \{ struct tm a[2]; struct itimerval v; a[1].tm_year = 5; return (int) sizeof(v) != 32 || a[1].tm_year != 5; \}\n")
+        has_text(t, nested, "struct timeval \{\n")
+        has_text(t, nested, "struct itimerval \{\n    it_interval, it_value : timeval\n\}\n")
+        var out : string
+        t |> equal(run_tier(converted_path("system_nested"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
+        // a program's own global named like a libc object is that global
+        let own = converts(t, "own_stdout", "int stdout = 3;\nint main(void) \{ return stdout - 3; \}\n")
+        has_text(t, own, "    return stdout - 3\n")
+    }
+}
+
+// the expression and statement shapes of lua 5.4.8 the phase-B conversion met
+def p5_lua_expression_fixtures(t : T?) {
+    t |> run("lua's expressions: a null conditional arm, a pointer difference of a sum, an interior NUL, gotos into other cases") @(t : T?) {
+        var text : string
+        check_fixture(t, "p5_lua_exprs", text)
+        // das types `?:` by its first arm: a null one is the conditional's pointer type
+        has_text(t, text, "return et == null ? default<int?> : ((uint(et.flags) & 1u << uint(e)) != 0 ? default<int?> : et.slots + e)\n")
+        has_text(t, text, "? et.slots + e : null\n")
+        // the subtrahend of a pointer difference keeps its parentheses
+        has_text(t, text, "int(int64(top - 1 - (base + k)))")
+        has_text(t, text, "int(int64(top - (addr(a[0]) + int(h))))")
+        // an interior NUL: `\\x00` in a pointer's literal, a byte row in an array
+        has_text(t, text, "reinterpret<uint8?>(\"[\\x00-\\x7f\\xc2-\\xfd][\\x80-\\xbf]*\")")
+        has_text(t, text, "var row : uint8[6] = fixed_array(uint8(97), uint8(0), uint8(98), uint8(0), uint8(99), uint8(0))\n")
+        // a goto into another case re-dispatches: the label is a case of a value no case has
+        has_text(t, text, "        var _cond = int(deref(p))\n        while (true) \{\n            label 1:  // re-dispatch\n")
+        has_text(t, text, "                        _cond = 41\n                        goto label 1\n")
+        has_text(t, text, "            _flag ||= !(_cond == 40 || _cond == 36 || _cond == 37 || _cond == 41)\n            _flag ||= _cond == 41  // dflt\n")
+        has_text(t, text, "                _flag ||= int(_cond) == 9  // ret\n")
+        has_text(t, text, "                        _cond = enum_from_int(type<OpCode>, 7)\n")
+        // an inner switch's re-dispatch label is numbered below the outer one's
+        has_text(t, text, "    var _cond = a\n    while (true) \{\n        label 2:  // re-dispatch\n")
+        has_text(t, text, "            var _cond2 = b\n            while (true) \{\n                label 1:  // re-dispatch\n")
+        // a `void *` among the trailing arguments travels as a byte pointer
+        has_text(t, text, "p5_lua_exprs__count_set`va(3, (reinterpret<uint8?>(reinterpret<void?>(addr(slots[0]))), reinterpret<uint8?>(null), reinterpret<uint8?>(reinterpret<void?>(addr(t)))))")
+    }
+    t |> run("an interior NUL past a `char` array's length leaves the literal") @(t : T?) {
+        let text = converts(t, "nul_past_length", "int main(void) \{ char s[2] = \"ab\\0c\"; return s[1] - 98; \}\n")
+        has_text(t, text, "var s : uint8[2] = cstr_array(\"ab\", 2)\n")
+    }
+    t |> run("a goto into another case the re-dispatch cannot express fails closed, naming the label") @(t : T?) {
+        rejects(t, "cross_label_after_decl", "int main(void) \{ int r = 0; switch (r) \{ case 0: goto L; case 1: \{ int k = 2; r = k; L: r++; break; \} \} return r - 1; \}\n", "label `L`, which a goto from another case reaches, follows the declaration of `k` in its case; not lowered yet")
+    }
+    t |> run("a re-dispatch value: past the largest case, below the smallest when the type ends there, else the first gap") @(t : T?) {
+        let top = converts(t, "cross_label_top", "int f(int x) \{ int r = 0; switch (x) \{ case 2147483647: goto L; case 5: r = 1; break; default: L: r += 2; \} return r; \}\nint main(void) \{ return f(2147483647) + f(5) * 10 - 12; \}\n")
+        has_text(t, top, "_cond = 4\n")
+        var out : string
+        t |> equal(run_tier(converted_path("cross_label_top"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
+        let gap = converts(t, "cross_label_gap", "int f(int x) \{ int r = 0; switch (x) \{ case 2147483647: goto L; case -2147483647 - 1: r = 1; break; default: L: r += 2; \} return r; \}\nint main(void) \{ return f(2147483647) + f(-2147483647 - 1) * 10 - 12; \}\n")
+        has_text(t, gap, "_cond = -2147483647\n")
+        t |> equal(run_tier(converted_path("cross_label_gap"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
     }
 }

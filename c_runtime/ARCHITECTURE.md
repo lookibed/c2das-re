@@ -65,8 +65,9 @@ as-if-converted fixture test landing first.
   wide `%lc`, `%ls` or `%l[` panics where the dialect's `wchar_t` is not the host's, which is
   where the two `long`s differ; `c_vsnprintf` and
   `c_vprintf` (bytes through `crt::fwrite_stdout`, so they order with every other CRT write)
-  are the fronts with `c_vsprintf` (`c_vsnprintf` with no bound), and `printf`, `sprintf`,
-  `snprintf` are `[variadic]` over them. The directive parser, `c_parse_directive` and its
+  are the fronts with `c_vsprintf` (`c_vsnprintf` with no bound) and `c_vfprintf` (bytes
+  through `crt::fwrite` to a stream, a `FILE *` as `void?`), and `printf`, `fprintf`,
+  `sprintf`, `snprintf` are `[variadic]` over them. The directive parser, `c_parse_directive` and its
   `CFormatDirective`, serves the scanf family too: a `*` before the width (a scanf
   suppression, parsed in scanf mode, where a printf `*` takes the width's place) and a scanf
   set running to its `]` parse alike. An

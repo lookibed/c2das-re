@@ -12,8 +12,8 @@ require c_runtime/variadic public
 //! directive is rendered by the CRT's own `snprintf` with one argument of its C type, so the
 //! bytes are the CRT's byte for byte and no conversion engine lives in das. `c_vformat` is the
 //! splitter, `c_vsnprintf`, `c_vsprintf` and `c_vprintf` its `CVaList` fronts (a forwarded
-//! `va_list` arrives as `va_rest` of its cursor), and `printf`, `sprintf` and `snprintf` are
-//! `[variadic]` over them.
+//! `va_list` arrives as `va_rest` of its cursor), `c_vfprintf` the front onto a CRT stream, and
+//! `printf`, `fprintf`, `sprintf` and `snprintf` are `[variadic]` over them.
 
 //! The width in bits of the dialect's `long`, which a `l` length modifier names: 64 under
 //! `linux`, 32 under `msvc`. A converted module sets it before `main` (`c2das_dialect`); the
@@ -288,6 +288,18 @@ def c_vprintf(fmt : uint8?; va : CVaList) : int {
     return length(bytes)
 }
 
+//! C `vfprintf`: the bytes go through the CRT's `fwrite` to `f`, a `FILE *` as `void?`, so they
+//! interleave with every other bound write to the stream in order.
+def c_vfprintf(var f : void?; fmt : uint8?; va : CVaList) : int {
+    let bytes <- c_vformat(fmt, va)
+    if (!empty(bytes)) {
+        unsafe {
+            crt::fwrite(addr(bytes[0]), 1ul, uint64(long_length(bytes)), f)
+        }
+    }
+    return length(bytes)
+}
+
 [variadic]
 def printf(fmt : uint8?; va : va_args) : int {
     return c_vprintf(fmt, va)
@@ -301,4 +313,9 @@ def sprintf(var buf : uint8?; fmt : uint8?; va : va_args) : int {
 [variadic]
 def snprintf(var buf : uint8?; size : uint64; fmt : uint8?; va : va_args) : int {
     return c_vsnprintf(buf, size, fmt, va)
+}
+
+[variadic]
+def fprintf(var f : void?; fmt : uint8?; va : va_args) : int {
+    return c_vfprintf(f, fmt, va)
 }

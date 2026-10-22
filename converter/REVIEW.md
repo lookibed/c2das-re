@@ -2,7 +2,7 @@
 
 **Read `REVIEW_COMMON.md` (repo root) first - its contract binds this checklist.** Architecture
 docs: `ARCHITECTURE.md`, `ARCHITECTURE_DUMPER.md`, `ARCHITECTURE_EMITTER.md`,
-`ARCHITECTURE_EMITTER_AGGREGATES.md`. Planned work: `docs/implementation_order.md`.
+`ARCHITECTURE_EMITTER_AGGREGATES.md`, `ARCHITECTURE_EMITTER_CONTROL.md`. Planned work: `docs/implementation_order.md`.
 
 **A diff that changes `run_exe`, `run_aot`, `aot_link_command` or `native_module_sources` in
 `tiers.das`, or `default_clang` in `dumper_a.das`, beyond comments re-records
