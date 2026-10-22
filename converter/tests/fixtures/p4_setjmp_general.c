@@ -3,8 +3,9 @@
 int printf(const char *, ...);
 
 /* the general setjmp form: the value stored (`r = setjmp(buf)`), declared (`int r =
-   setjmp(buf)`), switched on, compared with a value other than zero, discarded, and returned (no
-   longjmp reaches that one, whose frame is gone); after a re-entry the code reads only
+   setjmp(buf)`), switched on, compared with an integer constant other than zero on either side,
+   discarded (`(void)` too), converted (`unsigned char`, `double`), and returned (no longjmp
+   reaches that one, whose frame is gone); after a re-entry the code reads only
    volatiles, globals and the value just stored, the C rule (a non-volatile local changed since
    the setjmp is indeterminate after longjmp) */
 static jmp_buf buf;
@@ -64,6 +65,40 @@ static int compared(void) {
     return -1;
 }
 
+static int reversed(void) {
+    static int passes;
+    if (2 == setjmp(buf)) {
+        return passes;
+    }
+    passes++;
+    jump(2);
+    return -1;
+}
+
+static void converted(void) {
+    static int pass;
+    unsigned char c = setjmp(buf);
+    pass++;
+    if (pass == 1) {
+        jump(300);
+    }
+    printf("converted %d\n", c);
+    static int dpass;
+    double d = setjmp(buf);
+    dpass++;
+    if (dpass == 1) {
+        jump(7);
+    }
+    printf("converted %.1f\n", d);
+    static int vpass;
+    (void) setjmp(buf);
+    vpass++;
+    if (vpass == 1) {
+        jump(1);
+    }
+    printf("converted %d\n", vpass);
+}
+
 static int discarded(void) {
     static int stop;
     setjmp(buf);
@@ -83,6 +118,8 @@ int main(void) {
     declared();
     switched();
     printf("compared %d\n", compared());
+    printf("reversed %d\n", reversed());
+    converted();
     printf("discarded %d\n", discarded());
     printf("returned %d\n", returned());
     return 0;

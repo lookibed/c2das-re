@@ -44,6 +44,19 @@ def test_sidecar_defines(t : T?) {
         let side <- read_text(dir, "number", "\{\"defines\": [\"FOO=2\", 3]\}\n", error)
         t |> success(error |> ends_with("number.c2das: `defines` holds strings `NAME` or `NAME=value`, not 3"), error)
     }
+    t |> run("an entry whose head is no identifier is refused, naming the entry") @(t : T?) {
+        for (bad in fixed_array("\"\"", "\"-UN\"", "\"=x\"", "\"1N\"", "\"A-B=1\"")) {
+            var error : string
+            let side <- read_text(dir, "bad", "\{\"defines\": [\"FOO=2\", {bad}]\}\n", error)
+            t |> success(error |> ends_with("bad.c2das: `defines` holds strings `NAME` or `NAME=value`, not {bad}"), error)
+        }
+    }
+    t |> run("an identifier head takes any value, `=` and spaces included") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "values", "\{\"defines\": [\"_N1\", \"M=a=b c\", \"E=\"]\}\n", error)
+        t |> equal(error, "")
+        t |> equal(length(side.defines), 3)
+    }
     rmdir_rec(dir)
 }
 

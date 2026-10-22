@@ -101,6 +101,11 @@ def test_cli_program_args(t : T?) {
         t |> equal(run_with_args(dir, "interp", out), native_rc, out)
         t |> equal(program_lines(out), native, out)
     }
+    t |> run("--arg reaches the C argv under the JIT, after its `--`") @(t : T?) {
+        var out : string
+        t |> equal(run_with_args(dir, "jit", out), native_rc, out)
+        t |> equal(program_lines(out), native, out)
+    }
     t |> run("--arg reaches the C argv of the exe tier's binary") @(t : T?) {
         var out : string
         t |> equal(run_with_args(dir, "exe", out), native_rc, out)

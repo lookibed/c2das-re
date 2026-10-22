@@ -71,11 +71,11 @@ pointer (an initializer list's item, an alloca's address, a stepped pointer's ol
 arithmetic, `deref`, `addr`, a `reinterpret`, a string literal) gets `[c_function]`. C `main`
 becomes `c_main` and the module ends with `[export] def main : int { return c_main() }`, whose
 `return` is the CLI's exit-code contract (`docs/probe-findings.md` F1). `int main(int argc, char
-**argv)` (`char *argv[]` alike) is `c_main(argc : int; var argv : uint8??)`, and the wrapper first
-calls `c_runtime_init("<stem>")` (`c_runtime/c_args`), which builds `argv` once in C-allocator
-memory, `argv[0]` the source file's stem (the name a native build of it carries, the same on
-every tier), then returns `c_main(c_argc(), c_argv())` (F56); a `main` taking `envp` or any other
-parameters fails closed. A C name that is a das
+**argv)` is `c_main(argc : int; var argv : uint8??)`; the wrapper calls `c_runtime_init("<stem>")`
+(`c_runtime/c_args`: `argv` built once in C-allocator memory, `argv[0]` the source's stem, a
+native build's name on every tier), then returns `c_main(c_argc(), c_argv())` (F56); a unit's
+function named like one of these four takes the next free name (`c_argc1`). A `main` taking
+`envp` or other parameters, and a `static` one, fail closed. A C name that is a das
 keyword takes the `_c_` prefix. A local that hides one of an enclosing block or a parameter
 takes the first numbered name the function leaves free (`i1`), and so does every reference C
 resolves to it, since das refuses a local that shadows another (`docs/probe-findings.md` F42);
@@ -157,8 +157,8 @@ before any global whose initializer takes the address. A `char[N]` initialized f
 is `cstr_array("...", N)`, the empty literal included, and so is a row of a `char` matrix or a
 record's `char[N]` field (`fixed_array(cstr_array("1234", 4), cstr_array("5678", 4))`, a row
 the list leaves out the zero literal), a literal longer than `N` keeping its first `N` bytes,
-as clang initializes the array. A literal indexed in place
-(`"abcdef"[2]`) is read through its pointer, `deref(p + i)`; a literal under `sizeof` is its
+as clang initializes the array; a `signed char` one and one in braces fail closed. A literal
+indexed in place (`"abcdef"[2]`) is read through its pointer, `deref(p + i)`; a literal under `sizeof` is its
 array type. A call to a libc function the C program declares resolves through two tables:
 `C_RUNTIME_CALLS`, the functions a `c_runtime` piece lowers (`printf`, `sprintf`, `snprintf`,
 `vprintf`, `vsprintf`, `vsnprintf`, `sscanf`, `vsscanf`, `exit`, `abort`, `qsort`, `bsearch`),
@@ -291,10 +291,10 @@ statement walk, it is the trampoline: `_sj_runN`/`_sj_valN`, a `while` that reru
 branch, under `if (_sj_val != 0)` (or `== 0` for `!setjmp`), and the rest of the block as its
 tail once per longjmp caught, the `recover` storing `buf.val` into `_sj_val`; such a block
 cannot end in a return das reads, so the function gets its trailing zero. The general form is a
-block's statement whose expression reads the value (`r = setjmp(buf);`, `int r = setjmp(buf);`,
-`setjmp(buf);`, `return setjmp(buf);`, a `switch` on it, an `if` testing it against anything but
-zero): the statement opens the tail, the setjmp read as `_sj_valN` (0 on the first run, longjmp's
-value on a rerun), and its expression holds no other effect but the store, since a rerun
-evaluates it again. A tail that leaves an enclosing loop, a site off a block's statement level
-(an unbraced branch, a loop condition), a statement with a second setjmp or another effect (`x =
-f() + setjmp(buf)`, `a[i++] = setjmp(buf)`) and a `setjmp` read any other way fail closed.
+block's statement that reads the value only where ISO C 7.13.1.1 allows it (`setjmp(buf);`,
+`r = setjmp(buf);`, `int r = setjmp(buf);`, `return setjmp(buf);`, a `switch` or an `if` on it,
+on `!setjmp(buf)` or on it compared with an integer constant), through implicit conversions: it
+opens the tail, setjmp read as `_sj_valN` (0 on the first run, longjmp's value on a rerun), which
+reruns the statement, so nothing in it is read before the call. A branch or a tail that leaves
+an enclosing loop, a site off a block's statement level, a second setjmp, another effect or read
+(`x = g + setjmp(buf)`, `a[i++] = setjmp(buf)`) and a `setjmp` read any other way fail closed.

@@ -61,6 +61,21 @@ def read_json_file(path : string; var error : string&) : JsonValue? {
     return js
 }
 
+// whether `entry` is `NAME` or `NAME=value` with `NAME` a C identifier, what `-D` takes as a macro
+def private is_define(entry : string) : bool {
+    let eq = find(entry, "=")
+    let name = eq < 0 ? entry : slice(entry, 0, eq)
+    if (empty(name)) {
+        return false
+    }
+    for (idx, ch in count(), name) {
+        if (!(ch == '_' || is_alpha(ch) || (idx > 0 && is_number(ch)))) {
+            return false
+        }
+    }
+    return true
+}
+
 //! Reads a sidecar file; `error` names a file that is not JSON or a key of the wrong shape.
 def read_sidecar(path : string; var error : string&) : Sidecar {
     var side : Sidecar
@@ -93,7 +108,7 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
         error = "{path}: `defines` is a list of strings `NAME` or `NAME=value`, not {write_json(defines)}"
     } elif (key_exists(js, "defines")) {
         for (entry in defines as _array) {
-            if (!(entry is _string)) {
+            if (!(entry is _string) || !is_define(entry ?? "")) {
                 error = "{path}: `defines` holds strings `NAME` or `NAME=value`, not {write_json(entry)}"
                 break
             }
