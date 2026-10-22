@@ -1,0 +1,40 @@
+# The preflight check on the self-hosted runner (AGENTS.md "Git workflow"): the fast tier on
+# every pull request into main, the full tier (the test lanes too) on every push to main. The
+# toolchain lives only on that machine, so no GitHub-hosted runner can run this. A pull request
+# from a fork never runs here: the job is skipped unless the head repository is this one.
+name: preflight
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, c2das]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: preflight (fast tier)
+        if: github.event_name == 'pull_request'
+        run: PREFLIGHT_BASE=origin/main bash scripts/preflight.sh
+
+      - name: preflight --full
+        if: github.event_name == 'push'
+        run: |
+          # the diff-scoped gates (ast-verify, review-md) cover the pushed commits
+          base='${{ github.event.before }}'
+          git cat-file -e "$base^{commit}" 2>/dev/null || base=HEAD~1
+          PREFLIGHT_BASE="$base" bash scripts/preflight.sh --full

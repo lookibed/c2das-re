@@ -41,6 +41,9 @@ bullet per mechanism), `**Observable behavior.**` (`before -> after` lines, or `
 only: a gate skipped, a partial result, a known-red cell with its control), `### Claims -
 stated, not tested`, `### Not done`. Omit an empty section; never rename one.
 
+**Refs**, one line after the fold: `Refs: <issue>, ...` naming every related issue, with
+`lookibed/daScript#N` for each upstream defect the item found; omitted only when there is none.
+
 No session links, no "Generated with" footer, no `Co-Authored-By` trailer: the PR and its
 commits are the user's. `#N` is GitHub reference syntax; a ledger row is cited as
 `followup N` or in backticks.
