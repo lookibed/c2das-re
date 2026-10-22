@@ -1404,7 +1404,7 @@ def p5_lua_fixtures(t : T?) {
 // the C library lua 5.4.8 reaches: stdio through a FILE * the crt module takes as void?, the
 // standard streams, fprintf, struct tm and struct lconv laid out from the system headers
 def p5_lua_library_fixtures(t : T?) {
-    t |> run("lua's C library: stdio, the standard streams, fprintf, time.h and locale.h") @(t : T?) {
+    t |> run("lua's C library: stdio, the standard streams, fprintf, time.h, locale.h and signal.h") @(t : T?) {
         // every file the program names lives under this directory, which the test removes
         let files = path_join(work_root, "p5_lua_stdio_files")
         mkdir(files)
@@ -1434,6 +1434,11 @@ def p5_lua_library_fixtures(t : T?) {
         has_text(t, text, "crt::mktime(reinterpret<void?>(addr(ts)))")
         has_text(t, text, "deref(reinterpret<lconv?>(crt::localeconv()).decimal_point + 0)")
         has_text(t, text, "crt::time(null)")
+        // signal keeps the handler and returns the one before; SIG_DFL is the null function value
+        has_text(t, text, "    var prev : function<(a0 : int) : void> = c_signal(2, @@p5_lua_stdio__laction)\n")
+        has_text(t, text, "    prev = c_signal(2, default<function<(a0 : int) : void>>)\n")
+        // SIG_IGN is the integer sentinel a function value holds and compares, never called
+        has_text(t, text, "c_signal(2, reinterpret<function<(a0 : int) : void>>(uint64(1)))")
         // a record pointer among the trailing arguments stays the program's pointer
         has_text(t, text, "snprintf(addr(p5_lua_stdio__path[0]), uint64(typeinfo sizeof(type<uint8[512]>)), reinterpret<uint8?>(\"%p\"), out)\n")
     }
@@ -1452,6 +1457,25 @@ def p5_lua_library_fixtures(t : T?) {
         // a program's own global named like a libc object is that global
         let own = converts(t, "own_stdout", "int stdout = 3;\nint main(void) \{ return stdout - 3; \}\n")
         has_text(t, own, "    return stdout - 3\n")
+    }
+    t |> run("a C `long` to and from a crt function under msvc's 32-bit `long`: widened on the way in, narrowed on the way out") @(t : T?) {
+        // msvc's headers are not on this host: the prototypes spell what <stdio.h>, <stdlib.h>
+        // and <time.h> declare
+        let c_path = written_source("converted", "msvc_long_crt", "typedef struct _iobuf FILE;\ntypedef long clock_t;\nFILE *tmpfile(void);\nint fputs(const char *, FILE *);\nint fseek(FILE *, long, int);\nlong ftell(FILE *);\nint fclose(FILE *);\nlong strtol(const char *, char **, int);\nunsigned long strtoul(const char *, char **, int);\nclock_t clock(void);\nint main(void) \{\n    FILE *f = tmpfile();\n    long off = 3, pos;\n    unsigned long u = strtoul(\"40\", 0, 10);\n    if (f == 0)\n        return 1;\n    fputs(\"hello\", f);\n    fseek(f, off - 1L, 0);\n    pos = ftell(f);\n    fclose(f);\n    return (int) (pos + strtol(\"-42\", 0, 10) + (long) u) + (clock() < 0);\n\}\n", "")
+        for (target in ["msvc", "linux"]) {
+            let res <- convert(c_path, path_join(path_join(work_root, "converted"), "msvc_long_crt_{target}"), target)
+            t |> equal(res.ok, true, "{target}: {res.error}")
+            var out : string
+            t |> equal(run_tier(res.das_path, "interp", work_root, out, CONVERTED_MODULES), 0, out)
+            if (target == "msvc") {
+                has_text(t, res.das_text, "crt::fseek(reinterpret<void?>(f), int64(off - 1), 0)\n")
+                has_text(t, res.das_text, "pos = int(crt::ftell(reinterpret<void?>(f)))\n")
+                has_text(t, res.das_text, "var u : uint = uint(crt::strtoul(")
+                has_text(t, res.das_text, "int(crt::clock()) < int(0)")
+            } else {
+                has_text(t, res.das_text, "crt::fseek(reinterpret<void?>(f), off - 1l, 0)\n")
+            }
+        }
     }
 }
 
@@ -1478,8 +1502,18 @@ def p5_lua_expression_fixtures(t : T?) {
         // an inner switch's re-dispatch label is numbered below the outer one's
         has_text(t, text, "    var _cond = a\n    while (true) \{\n        label 2:  // re-dispatch\n")
         has_text(t, text, "            var _cond2 = b\n            while (true) \{\n                label 1:  // re-dispatch\n")
+        // a label with nothing after it in a branch or a function body stands on c_label_end()
+        has_text(t, text, "                label 3:  // no_save\n                c_label_end()\n            \}\n")
+        has_text(t, text, "    label 1:  // done\n    c_label_end()\n\}\n")
         // a `void *` among the trailing arguments travels as a byte pointer
         has_text(t, text, "p5_lua_exprs__count_set`va(3, (reinterpret<uint8?>(reinterpret<void?>(addr(slots[0]))), reinterpret<uint8?>(null), reinterpret<uint8?>(reinterpret<void?>(addr(t)))))")
+    }
+    t |> run("a label that ends a loop's body needs no c_label_end(): the loop takes the jump as its next iteration") @(t : T?) {
+        let text = converts(t, "label_loop_end", "int main(void) \{ int i = 0, r = 0; while (i < 4) \{ i++; if (i == 2) goto next; r++; next: ; \} return r - 3; \}\n")
+        has_text(t, text, "        label 1:  // next\n    \}\n")
+        t |> equal(text |> find("c_label_end") >= 0, false, text)
+        var out : string
+        t |> equal(run_tier(converted_path("label_loop_end"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
     }
     t |> run("an interior NUL past a `char` array's length leaves the literal") @(t : T?) {
         let text = converts(t, "nul_past_length", "int main(void) \{ char s[2] = \"ab\\0c\"; return s[1] - 98; \}\n")

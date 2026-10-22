@@ -1,4 +1,4 @@
-/* The expression and statement shapes of lua 5.4.8 the P5.1 phase B conversion met, each with
+/* The expression and statement shapes of lua 5.4.8 the P5.1 conversion met, each with
    the lua line it stands for, compared against the native build. */
 #include <stdio.h>
 #include <stdarg.h>
@@ -148,6 +148,55 @@ static int count_set(int n, ...) {
     return set;
 }
 
+/* llex.c:433 read_string: `no_save: break;` ends its case group, and so its das branch once the
+   if-chain drops the tail `break`; gotos from the inner switch reach it and the labels above it */
+static int read_string(const char *s, char *out) {
+    int n = 0;
+    while (*s != '"') {
+        switch (*s) {
+        case '\0':
+            return -1;
+        case '\\': {
+            int c;
+            s++;
+            switch (*s) {
+            case 'n': c = '\n'; goto read_save;
+            case 't': c = '\t'; goto read_save;
+            case 'z': {
+                s++;
+                while (*s == ' ')
+                    s++;
+                goto no_save;
+            }
+            case '\0': goto no_save;
+            default: {
+                c = *s + 1;
+                s++;
+                goto only_save;
+            }
+            }
+          read_save:
+            s++;
+          only_save:
+            out[n++] = (char) c;
+          no_save: break;
+        }
+        default:
+            out[n++] = *s++;
+        }
+    }
+    out[n] = '\0';
+    return n;
+}
+
+/* a label that ends a function body */
+static void count_unless(int skip, int *r) {
+    if (skip)
+        goto done;
+    *r += 1;
+  done:;
+}
+
 int main(void) {
     int code[] = { OP_MOVE, OP_TFORPREP, OP_MOVE, OP_TFORCALL, OP_TFORLOOP, OP_RETURN, OP_RETURN1, OP_STOP };
     int slots[4] = { 10, 20, 30, 40 };
@@ -164,5 +213,15 @@ int main(void) {
     printf("execute %d %d %d\n", execute(code, 1), execute(code, 2), execute(code + 6, 1));
     printf("nested %d %d %d\n", nested_dispatch(1, 1), nested_dispatch(1, 2), nested_dispatch(2, 0));
     printf("set %d\n", count_set(3, (void *) slots, (void *) NULL, (void *) &t));
+    {
+        char buf[32];
+        int r = 0, len = read_string("ab\\ncd\\z   e\\qf\\tg\"", buf);
+        printf("read_string %d", len);
+        for (int i = 0; i < len; i++)
+            printf(" %d", buf[i]);
+        count_unless(1, &r);
+        count_unless(0, &r);
+        printf(" | %d %d\n", read_string("x\\", buf), r);
+    }
     return 0;
 }

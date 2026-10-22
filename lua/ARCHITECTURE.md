@@ -15,10 +15,10 @@ takes as one translation unit.
   included, and reports the numbers of section 4, an error at a line of the composed file with
   the Lua source line beside it (`lobject.c:264`, by the banner above the line); `--native`
   builds each native oracle into
-  `work/<stem>_native`, `--run` runs the converted interpreter under the interpreter tier with
-  each `--arg` (default `-e "print(1+1)"`) and compares it with the oracle. Run from the
-  repository root: `daslang -load_module dasCRuntime -load_module c_runtime lua/run.das --
-  [--native] [--run]`.
+  `work/<stem>_native`, `--run` runs the converted interpreter under the tier `--tier` names
+  (`interp`, the default, or `jit`) with each `--arg` (default `-e "print(1+1)"`; a script is
+  `--arg <path>`) and compares it with the oracle. Run from the repository root: `daslang
+  -load_module dasCRuntime -load_module c_runtime lua/run.das -- [--native] [--run] [--tier jit]`.
 - `lua.c2das` - the sidecar both programs convert under (section 3).
 - `REVIEW.das` - the mechanical gate: no file under `fetch/` or `work/` is tracked.
 

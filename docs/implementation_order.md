@@ -509,49 +509,39 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 
 - **P5.1 Whole-program conversion** of lua + luac (single module or SCC split — first
   real data point on das compile time at scale; measure and report).
-  Landed (phase A): the dumper takes a declaration as the program's when its file is the main
-  file or under the main file's directory, so a header beside the `.c` converts with it; `lua/`
-  fetches 5.4.8 with its tests, composes `lua_all.c` (the core, the libraries and `lua.c`) and
-  `luac_all.c` (the core, `lauxlib.c` and `luac.c`) with the headers copied beside them and
-  converts both under `lua/lua.c2das`: the dumper takes 89 s and 81 s over clang JSON dumps of
-  399 MB and 361 MB and stops at `lobject.c:264`, the native oracles are 384 KB and 284 KB, and a
-  scratch unity with the blocked pieces stubbed (the C locale's point, no `os` or `utf8` library,
-  no longjmp) passes the dumper and the emitter (3.9 s, a 24,006-line module, `[c_function]` on
-  750 of 1,049 functions) and reaches das's compile check, which reports its 102 errors after
-  1.6 s: one module type-checks in seconds at this size, so the split is the owner's call.
-  Landed (phase B): a libc record the program reaches a member, a variable or the size of
-  (`struct tm`, `struct lconv`) is laid out from its system header; stdio, time.h and locale.h
-  bind through crt with a record pointer as `void?`, `stdin`/`stdout`/`stderr` as crt accessors
-  and `fprintf` in c_runtime; a goto into another case re-dispatches its switch; the sidecar's
-  `defines` take a function-like macro, which stubs Lua's longjmp; a pointer difference keeps
-  its subtrahend's parentheses; `lua/lua.c2das` lists Lua's four over-indexed trailing arrays.
-  `luac_all.c` goes through the whole pipeline: dumper 80.3 s over 361,265,529 bytes of JSON,
-  emitter 3.2 s, a 19,293-line module with `[c_function]` on 554 of 767 functions, compile
-  check 6.6 s; `luac -v` takes 7.0 s under the interpreter, nearly all of it daslang compiling
-  the module, 38.9 s under the JIT compiling afresh and 7.6 s from its cache; `luac -o` writes
-  the native build's bytecode byte for byte, under the interpreter and the JIT, and `luac -l`
-  prints its listing but for the pointer values. `lua_all.c` dumps in 89.6 s over 399,010,406
-  bytes and stops in the emitter at `lua.c:78`; a scratch copy with `setsignal` made a no-op
-  gives a 24,604-line module, `[c_function]` on 776 of 1,080 functions, emitter 4.0 s, compile
-  check 9.1 s, and `lua -e "print(1+1)"` prints 2 in 10.8 s under the interpreter (55.1 s under
-  a fresh JIT, 10.1 s from its cache), a script over string, table and math printing what the
-  native oracle prints. Native oracles: 383,760 and 284,456 bytes.
-  Ledger: `lua.c:78` stops the emitter with "external function `signal` has no c_runtime
-  mapping" (`#define setsignal signal`, `setsignal(SIGINT, laction)`): a converted function as a
-  C signal handler, which no ruling covers yet. Lua's error recovery is stubbed until P5.2
-  (`lua/lua.c2das`: `LUAI_THROW(L,c)=abort()`, `LUAI_TRY(L,c,a)={ a }`, `luai_jmpbuf=int`): a
-  Lua error aborts the process. Two daslang defects F60 records (the optimizer moving a label
-  into an `else`, a loop taking a lower-numbered outer goto as its own) and the generic-instance
-  error of F61 are to be filed against daScript, each with its probe as the repro. The C-IR
-  writes no record spelling, which the emitter's `va_list` test reads, so a module emitted from
-  a re-read C-IR (rather than the dumper's tree) spells `va_list` and fails its compile check.
-  The stdio binds take C's `long` (`fseek`, `ftell`) as `int64`, which the `msvc` dialect's
-  32-bit `long` does not convert to at the call site. Past the stop, the converted `luac` fails
-  on the test suite's `strings.lua` and `literals.lua` with "jump to label 3 failed": in
-  `llex.c`'s `read_string` the label `no_save: break;` ends its if-chain branch once the
-  lowering drops the tail `break`, and daslang's interpreter cannot jump to a label with no
-  statement after it in its block (an empty block `{}` after the label is a remedy a scratch
-  probe shows).
+  Landed: the dumper takes a declaration as the program's when its file is the main file or
+  under its directory, and lays out a libc record the program reaches a member, a variable or
+  the size of (`struct tm`, `struct lconv`) from its system header; stdio, time.h and locale.h
+  bind through crt with a record pointer as `void?` and `stdin`/`stdout`/`stderr` as crt
+  accessors, a C `long` widened into and narrowed out of a crt call where the dialect's `long`
+  is 32 bits, `fprintf` and `signal` in c_runtime (`signal` keeps the handler and returns the
+  previous one, `SIG_DFL` the null function value, `SIG_IGN` the integer sentinel); a goto into
+  another case re-dispatches its switch, and a label with nothing after it in a block other
+  than a loop's body stands on `c_label_end()` (F62); a pointer difference keeps its
+  subtrahend's parentheses; the sidecar's `defines` take a function-like macro. `lua/` fetches
+  5.4.8 with its tests, composes `lua_all.c` and `luac_all.c` with the headers beside them, and
+  converts, runs and compares both under `lua/lua.c2das` (`lua/run.das`, `--run --tier
+  interp|jit`, a script as `--arg <path>`). On this host: `lua_all.c` dumps in 89.5 s over
+  399,010,406 bytes of clang JSON, emits in 3.9 s a 24,610-line module with `[c_function]` on
+  776 of 1,080 functions, compile check 8.3 s; `luac_all.c` 78.8 s over 361,265,529 bytes, 3.1
+  s, 19,295 lines, 554 of 767, 6.5 s. daslang compiles the lua module in 9.9 s
+  (`-compile-only`; `lua -e "print(1+1)"` runs in 9.3 s under the interpreter, 53.9 s under a
+  fresh JIT and 9.7 s from its cache), the luac one in 7.8 s (`luac -v` 7.3 s, 37.7 s and
+  7.7 s). The native oracles are 383,760 and 284,456 bytes. `lua -e "print(1+1)"` and a script
+  over string, table and math print what the native build prints under the interpreter and
+  the JIT, and `luac -o` writes the native build's bytecode byte for byte for every file of the
+  5.4.8 test suite. One module type-checks and compiles in about ten seconds at this size; the
+  single-module-or-SCC-split decision is the owner's.
+  Ledger: Lua's error recovery is stubbed until P5.2 (`lua/lua.c2das`: `LUAI_THROW(L,c)=abort()`,
+  `LUAI_TRY(L,c,a)={ a }`, `luai_jmpbuf=int`): a Lua error aborts the process. Signals are
+  outside the dialect: a converted program never receives one, so Lua's Ctrl-C hook (`lua.c`'s
+  `laction`) never fires. To be filed against daScript, each with its probe as the repro: F60's
+  two defects (the optimizer moving a label into an `else`, a loop taking a lower-numbered
+  outer goto as its own; the label fold is lookibed/daScript#8), F61's generic-instance error,
+  and F62's unreachable label at a block's end, which `c_label_end()` works around. The C-IR
+  writes no record spelling, which the emitter's `va_list` test reads, so a module emitted
+  from a re-read C-IR (rather than the dumper's tree) spells `va_list` and fails its compile
+  check.
 - **P5.2 pcall** via the setjmp lowering (`LUAI_THROW/LUAI_TRY` → `c_longjmp`/contained
   pattern — the easy shape, per spec).
 - **P5.3 Lua's own test suite** under interp. Expect a long tail of libc exactness bugs

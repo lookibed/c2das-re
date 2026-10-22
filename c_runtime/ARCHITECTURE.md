@@ -23,6 +23,18 @@ as-if-converted fixture test landing first.
   normal return from `main`, `c_exit(code)` runs it and ends the process with `exit_now`
   because daslang's `exit` reports 1 whatever its argument (`docs/probe-findings.md` F1),
   `c_abort` is `exit_now(3)` with no handler run, which is C's rule and the baseline's code.
+- `c_runtime/c_signal.das` - C's `signal` in the dialect, which has no signals
+  (`docs/stdlib-examples.md` "signal.h", `docs/c-feature-matrix.md`): a converted program never
+  receives one, so `c_signal(sig, handler)` keeps the handler of each number from 1 to 64 in a
+  module array and returns the one before it, `SIG_DFL` (the null function value, `default<...>`)
+  until the first call, and never calls a handler; Lua's Ctrl-C hook (`lua.c`'s `laction`) never
+  fires. `SIG_IGN`, `(void (*)(int)) 1`, is the emitter's integer sentinel of a function value
+  (`converter/ARCHITECTURE_EMITTER_AGGREGATES.md`), kept and returned like any handler. A number outside the array panics where C returns `SIG_ERR`, which no das function value
+  spells; `raise` is not bound.
+- `c_runtime/c_label.das` - `c_label_end()`, the statement a C label stands on when nothing
+  follows it in a das block other than a loop's body: daslang's interpreter jumps only to a
+  statement inside such a block, and its optimizer folds an empty block or a statement without
+  effect away (`docs/probe-findings.md` F62); a `[sideeffects]` call stays and does nothing.
 - `c_runtime/c_args.das` - C's `main(argc, argv)`: `c_runtime_init(name)`, which the converted
   module's `main` calls first, builds the argument vector once in C-allocator memory (`malloc`),
   `name` (the C source's stem) then each argument `get_user_args` gives (after `--` under the
