@@ -71,7 +71,9 @@ Statements: compound, `DeclStmt` (one `decl` per variable), expression statement
 hex-float through the CRT) and string literals (C escapes decoded, the NUL appended),
 `DeclRefExpr`, every pinned cast, the unary, binary, compound-assignment, conditional and
 comma operators, calls, subscripts, `sizeof` and `_Alignof` (clang's `alignof`, with clang's
-alignment of the type as its value; GNU `__alignof` fails closed), `MemberExpr` (the field by index into the
+alignment of the type as its value, the `AlignedAttr` value when a typedef's `aligned` attribute
+sets it, its own or one down its chain, which the interned type has lost; an aligned typedef as
+an array's element, or one with no value, and GNU `__alignof` fail closed), `MemberExpr` (the field by index into the
 record's fields, `arrow` kept; a member named `""` is the anonymous member whose record is the
 node's type), `InitListExpr` of a record or an array (clang's semantic form,
 one child per field or element, an `ImplicitValueInitExpr` left to the positional zero;

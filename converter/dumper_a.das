@@ -97,6 +97,11 @@ struct Dumper {
     // the JSON ids of the typedef declarations that reach the builtin, which a node's type
     // names as `typeAliasDeclId`
     va_ids : table<string>
+    // the JSON ids of the typedef declarations whose type carries `__attribute__((aligned(N)))`,
+    // their own or one down their chain, to clang's alignment (N; 0 for an attribute the dumper
+    // does not read: no value, or an array's element), and their names
+    aligned_ids : table<string; int>
+    aligned_names : table<string>
 }
 
 def private fail(var d : Dumper; what : string; at : CirLoc) {
@@ -825,6 +830,51 @@ def private collect_va_ids(var d : Dumper; js : JsonValue?) {
     }
 }
 
+// the typedef names of spelling `qual` that can set its alignment, a tag's name left out: none
+// behind a pointer, whose alignment is the pointer's
+def private aligning_words(qual : string) : array<string> {
+    if (find(qual, "*") >= 0) {
+        return <- array<string>()
+    }
+    let words <- split_by_chars(qual, " &()[],")
+    return <- [for (idx, word in range(length(words)), words); word; where !(idx > 0 && (words[idx - 1] == "struct" || words[idx - 1] == "union" || words[idx - 1] == "enum"))]
+}
+
+// the typedef declarations whose type an `aligned` attribute sets (`aligned_ids`), in tree order,
+// so a typedef's own chain is known before the typedefs over it: a typedef's own attribute (the
+// largest, when it has several) gives clang's alignment, even one below the type's, and a typedef
+// over an aligned one without its own takes that one's
+def private collect_aligned_typedefs(var d : Dumper; js : JsonValue?) {
+    if (node_kind(js) == "TypedefDecl") {
+        var own = -1
+        for (idx in range(child_count(js))) {
+            let kid = (js?["inner"] as _array)[idx]
+            if (node_kind(kid) == "AlignedAttr") {
+                let value = child_count(kid) > 0 ? (kid?["inner"] as _array)[0]?["value"] ?? "" : ""
+                own = max(own, empty(value) ? 0 : to_int(value))
+            }
+        }
+        let under = js?["type"]?["typeAliasDeclId"] ?? ""
+        if (own < 0 && key_exists(d.aligned_ids, under)) {
+            own = d.aligned_ids?[under] ?? 0
+        }
+        if (own < 0) {
+            for (word in aligning_words(js?["type"]?["qualType"] ?? "")) {
+                if (key_exists(d.aligned_names, word)) {
+                    own = 0
+                }
+            }
+        }
+        if (own >= 0) {
+            d.aligned_ids[js?["id"] ?? ""] = own
+            d.aligned_names |> insert(js?["name"] ?? "")
+        }
+    }
+    for (idx in range(child_count(js))) {
+        collect_aligned_typedefs(d, (js?["inner"] as _array)[idx])
+    }
+}
+
 // a C `va_list` is the one opaque record `va_list` of clang's size and alignment (24 and 8 on
 // linux, where it is `struct __va_list_tag[1]`; 8 and 8 on msvc, where it is a `char *`), which
 // the lowering spells as the runtime's cursor; linux's decay and parameter, `struct
@@ -1405,7 +1455,11 @@ def private dump_sizeof(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
         return null
     }
     if (trait == "alignof") {
-        let align = type_align(d.tu, of_t)
+        let aligned = typedef_alignment(d, js, at)
+        if (aligned == 0) {
+            return null
+        }
+        let align = aligned > 0 ? aligned : type_align(d.tu, of_t)
         if (align < 0) {
             fail(d, "alignof of a type without an alignment", at)
             return null
@@ -1418,6 +1472,36 @@ def private dump_sizeof(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
         return null
     }
     return new CirExpr(e = "sizeof_v", t = t, trait_v = uint64(size), of_t = of_t)
+}
+
+// the JSON type of the operand of trait node `js`: its `argType`, else its expression's
+def private trait_operand_type(js : JsonValue?) : JsonValue const? {
+    let arg_type = js?["argType"]
+    if (is_present(arg_type) || child_count(js) == 0) {
+        return arg_type
+    }
+    return (js?["inner"] as _array)[0]?["type"]
+}
+
+// clang's alignment of the operand of `_Alignof` node `js` when an `aligned` typedef sets it (the
+// interned type has lost the typedef): the attribute's value; -1 when no aligned typedef sets
+// the operand's alignment, 0 with the error set when one does where the dumper reads no value
+def private typedef_alignment(var d : Dumper; js : JsonValue?; at : CirLoc) : int {
+    let spelled = trait_operand_type(js)
+    let qual = spelled?["qualType"] ?? ""
+    let id = spelled?["typeAliasDeclId"] ?? ""
+    var align = key_exists(d.aligned_ids, id) ? d.aligned_ids?[id] ?? 0 : -1
+    if (align < 0) {
+        for (word in aligning_words(qual)) {
+            if (key_exists(d.aligned_names, word)) {
+                align = 0
+            }
+        }
+    }
+    if (align == 0) {
+        fail(d, "`_Alignof({qual})`: an `aligned` typedef whose alignment the dump does not give (an array's element, or one with no value) is not lowered yet; an aligned type is marshal-only", at)
+    }
+    return align
 }
 
 def private dump_member(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
@@ -2347,6 +2431,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; defines : array
         return <- d
     }
     collect_va_ids(d, js)
+    collect_aligned_typedefs(d, js)
     let top = js?["inner"]
     for (idx in range(child_count(js))) {
         let decl = (top as _array)[idx]

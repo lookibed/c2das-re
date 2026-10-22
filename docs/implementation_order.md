@@ -454,32 +454,45 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   build as the lane's error; `converter/tests/fixtures/p4_matrix_shapes.c` carries these and
   the owed shapes (`_Alignas`, `exit()` from deep, `~` and `^`, `restrict`, K&R, `inline`,
   `long double`, `volatile`, the comma's value).
-  Landed (phase B): a compound literal is its value where C reads one (`S(f = v, ...)`, a
-  scalar's value) and otherwise an object `_clN` declared before the statement in the
-  enclosing block (an array, a union, an address taken), a module global at file scope;
-  `main(int argc, char **argv)` takes its arguments from `c_runtime/c_args`, `argv[0]` the
-  source's stem (F56), and the converter's `--arg` passes them to a `--run`; the general setjmp
-  form (`r = setjmp(buf)`, `int r = setjmp(buf)`, `setjmp(buf);`, `return setjmp(buf)`, a
-  `switch` on it, an `if` testing it against a nonzero value) opens the trampoline's tail with
-  the value read as `_sj_val`; a flexible array member is read through the record's address
-  plus its offset with no sidecar flag (F57), and a C89 trailing array the sidecar lists under
-  `over_indexed` goes unchecked through its decay; a `void` conditional evaluated for its
-  effects is an `if`/`else`, which takes strlen-2 to passing; `perf/run.das` reports a failed
-  exe build as the lane's error; `perf/kernels/compound_lit.c` and `setjmp_general.c` carry
-  the newly converted constructs; gcc-torture passes 39 more (27 that waited on
-  `main(argc, argv)`, 11 on compound literals, strlen-2) and c-testsuite 00149 and 00150.
-  Ledger: still refused, each with its message - a setjmp whose statement holds another effect
-  or a second setjmp, sits off a block's statement level (an unbraced branch, a loop
-  condition) or whose tail leaves an enclosing loop ("setjmp whose value is not tested against
-  zero ... (the general trampoline form) is not lowered yet", "a setjmp site whose tail leaves
-  an enclosing loop is not lowered yet"); `main` with `envp` ("main with an environment
-  parameter (`char **envp`) is not lowered yet"); a flexible array member that pads its record
-  or raises its alignment, one of a marshal-only record, and an initializer of one; a `void`
-  conditional whose value is read; the `aot` tier's program arguments, since its host passes
-  none. memchr-1 converts and passes once its wide-literal skip line (`never`) is lifted.
-  gcc-torture 920501-6, which `main(argc, argv)` let convert, fails at run time on a goto from
-  an inner loop to a label at the end of the outer `for`'s body ("jump to label 1 failed"),
-  a goto lowering defect no fixture covers yet.
+  Landed (phase B): a compound literal is its value where C reads one (`S(f = v, ...)`, a scalar's
+  value) and otherwise an object `_clN` declared before the statement in the enclosing block (an
+  array, a union, an address taken), a module global at file scope; `main(int argc, char **argv)`
+  takes its arguments from `c_runtime/c_args`, `argv[0]` the source's stem (F56), and the
+  converter's `--arg` passes them to a `--run`; the general setjmp form (`r = setjmp(buf)`, `int r
+  = setjmp(buf)`, `setjmp(buf);`, `return setjmp(buf)`, a `switch` on it, an `if` testing it
+  against a nonzero integer constant) opens the trampoline's tail with the value read as
+  `_sj_val`, ISO C 7.13.1.1's shapes alone (F58); a flexible array member is read through the
+  record's address plus its offset with no sidecar flag (F57), and a C89 trailing array the
+  sidecar lists under `over_indexed` goes unchecked through its decay; a `void` conditional
+  evaluated for its effects is an `if`/`else`, which takes strlen-2 to passing; `perf/run.das`
+  reports a failed exe build as the lane's error; `perf/kernels/compound_lit.c` and
+  `setjmp_general.c` carry the newly converted constructs; gcc-torture passes 39 more (27 that
+  waited on `main(argc, argv)`, 11 on compound literals, strlen-2) and c-testsuite 00149 and
+  00150.
+  Ledger: still refused, each with its message - a setjmp whose statement reads anything before
+  the call, holds another effect or a second setjmp, sits off a block's statement level (an
+  unbraced branch, a loop condition) or whose branch or tail leaves an enclosing loop ("setjmp
+  whose value is not tested against zero ... (the general trampoline form) is not lowered yet", "a
+  setjmp site whose tail leaves an enclosing loop is not lowered yet"); `main` with `envp` ("main
+  with an environment parameter (`char **envp`) is not lowered yet"); a flexible array member that
+  pads its record or raises its alignment, one of a marshal-only record, and an initializer of
+  one; a `void` conditional whose value is read; the `aot` tier's program arguments, since its
+  host passes none; a `signed char` array initialized from a string literal, and a string literal
+  in braces (`char s[3] = { "ab" }`); a `static` `main`; `_Alignof` of an `aligned` typedef as an
+  array's element. A longjmp delivered after the setjmp site's block has ended (C keeps the buffer
+  valid until the function returns) aborts the converted program with `EXCEPTION: longjmp`
+  (`c_runtime/setjmp.das`) under both the `if` form and the general form, with no refusal at
+  conversion. A goto into a trampoline's tail fails the compile check ("can't find label") instead
+  of a refusal. A compound literal, or any hoisted temporary, in a do-while condition is refused
+  "do-while with a side-effecting condition is not lowered yet" even when it has no effect (the
+  fallback of `docs/lowering-examples.md` "Loops: if / while / do-while" is not implemented).
+  `_Alignof(long double)` and `sizeof(long double)` on `--target linux` are double's 8, where
+  clang gives 16 (F54). An `over_indexed` entry whose record name is both a typedef and another
+  record's tag resolves to the last declaration (the other panics at its range check; the dumper
+  refuses a true shared tag). memchr-1 converts and passes once its wide-literal skip line
+  (`never`) is lifted. gcc-torture 920501-6, which `main(argc, argv)` let convert, fails at run
+  time on a goto from an inner loop to a label at the end of the outer `for`'s body ("jump to
+  label 1 failed"), a goto lowering defect no fixture covers yet.
 - **Exit criterion:** csmith runs clean at 1000/night for a week; torture ≥ target with
   ledger; matrix has no row without a green fixture.
   Ledger: the nightly csmith N=1000 schedule is blocked on this box by the dumper's parse of

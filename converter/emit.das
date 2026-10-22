@@ -44,6 +44,8 @@ struct Emitter {
     written : table<string>
     renames : table<string; string>
     functions : table<string>
+    // a function of the unit named like one the `main` wrapper calls, to the free name it takes
+    function_renames : table<string; string>
     unsafe_used : bool
     empty_literal : bool
     global_order : table<string; int>
@@ -85,6 +87,12 @@ struct Emitter {
     global_literals : array<string>
     literal_decls : array<string>
     narrow : int
+    // how many statements enclose the one being spelled, itself included; the count a matched-flag
+    // switch's group-level statements have (0 outside one), and the declarations of the compound
+    // literal objects those statements make, which go before the switch's loop
+    stmt_depth : int
+    case_depth : int
+    case_literal_decls : array<string>
     // the trailing array members the sidecar lists under `over_indexed`, by record and field
     // (`member_key`)
     over_indexed : table<int64>
@@ -740,7 +748,7 @@ def private callee_name(var em : Emitter; tu : CirTu; fn : CirExpr?; loc : CirLo
         return ""
     }
     if (key_exists(em.functions, target.name)) {
-        return target.name == "main" ? "c_main" : das_name(em, target.name)
+        return function_name(em, target.name)
     }
     em.requires |> insert(libc_module(libc))
     // every crt bind is an unsafe operation (dasCRuntime/ARCHITECTURE.md): the body takes
@@ -1130,7 +1138,7 @@ def private function_value(var em : Emitter; f : CirExpr; loc : CirLoc) : Em {
         fail(em, "the value of external function `{f.name}` (a pointer to a function this file does not define) is not lowered yet", loc)
         return value("", PREC_PRIMARY)
     }
-    return value(f.name == "main" ? "@@c_main" : "@@{das_name(em, f.name)}", PREC_PRIMARY)
+    return value("@@{function_name(em, f.name)}", PREC_PRIMARY)
 }
 
 // whether `x` is a null pointer constant below its casts: `0` or `(void *)0` converted
@@ -1893,10 +1901,45 @@ def private init_value(var em : Emitter; tu : CirTu; v : CirExpr const?; loc : C
     return emit_expr(em, tu, v, loc)
 }
 
+// why initializer `x` of type `t` cannot fill its arrays from a string literal it holds at any
+// depth, "" when it can: a literal filling an array of signed bytes (`cstr_array` gives `uint8`
+// ones; a `signed char` row or field), or a literal in braces (`char s[3] = {
+// "ab" }`), which the list spells as the array's first element
+def private string_init_refusal(tu : CirTu; t : int; x : CirExpr const?) : string {
+    if (x == null || t < 0) {
+        return ""
+    }
+    if (x.e == "str_lit" && kind_of(tu, t) != "array") {
+        return "a string literal in braces initializing a `{tu.types[t].spell}` array is not lowered yet"
+    }
+    if (x.e == "str_lit") {
+        let elem = tu.types[t].elem
+        // a wide literal's elements are refused by the literal itself (`quoted_literal`)
+        let signed_bytes = kind_of(tu, elem) == "int" && tu.types[elem].w == 8 && tu.types[elem].is_signed
+        return signed_bytes ? "a string literal initializing a `{tu.types[elem].spell}` array is not lowered yet" : ""
+    }
+    if (x.e != "init_list") {
+        return ""
+    }
+    for (item in x.init_items) {
+        let item_t = kind_of(tu, t) == "array" ? tu.types[t].elem : is_record(tu, t) ? tu.types[t].fields[item.pos].t : -1
+        let refusal = string_init_refusal(tu, item_t, item.v)
+        if (!empty(refusal)) {
+            return refusal
+        }
+    }
+    return ""
+}
+
 // a compound literal (`(T){...}`) where C reads its value: a struct's is the literal `S(f = v,
 // ...)` and a scalar's the value it holds; an array, a union and a record holding a union's list
 // are objects (`literal_object`), since only a declaration spells them
 def private emit_compound_literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    let refusal = string_init_refusal(tu, x.t, x.init)
+    if (!empty(refusal)) {
+        fail(em, "a compound literal: {refusal}", loc)
+        return value("", PREC_PRIMARY)
+    }
     let k = kind_of(tu, x.t)
     if (k == "struct" && !holds_union_list(tu, x.init)) {
         return emit_init_list(em, tu, *x.init, loc)
@@ -1937,9 +1980,14 @@ def private literal_object(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
             em.global_stores |> push("{name} = {text}")
         }
         em.global_stores |> push_from(stores)
-    } elif (em.narrow > 0) {
-        // the arm's statements land inside its `if`, a narrower block than C's
-        em.literal_decls |> push("var {name} : {spelled}")
+    } elif (em.narrow > 0 || at_case_level(em)) {
+        // the statements land in a narrower block than C's: a conditional arm's `if`, or the `if`
+        // of a matched-flag switch's group, which a later group reached by fallthrough is outside of
+        if (at_case_level(em)) {
+            em.case_literal_decls |> push("var {name} : {spelled}")
+        } else {
+            em.literal_decls |> push("var {name} : {spelled}")
+        }
         let zero = kind_of(tu, x.t) == "array" ? "default<{spelled}>" : zero_literal(em, tu, x.t, loc)
         em.pre |> push("{name} = {empty(text) ? zero : text}")
         em.pre |> push_from(stores)
@@ -1949,6 +1997,9 @@ def private literal_object(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
     }
     return value(name, PREC_PRIMARY)
 }
+
+// whether the statement being spelled is a group-level statement of a matched-flag switch
+def private at_case_level(em : Emitter) : bool => em.case_depth > 0 && em.case_depth == em.stmt_depth
 
 // `_cl<N>`: the next number no name of the function, no global and no function spells; a
 // file-scope literal's global joins the names every later one skips
@@ -1981,6 +2032,11 @@ def private unhoist_items(var em : Emitter; x : CirExpr const?) {
 // `cstr_array`, an array filled sparsely is the bare declaration (stores follow), anything
 // else the expression; "" with `stores` set means the declaration carries no `=`
 def private decl_init(var em : Emitter; tu : CirTu; name : string; t : int; init : CirExpr?; loc : CirLoc; var stores : array<string>) : string {
+    let refusal = string_init_refusal(tu, t, init)
+    if (!empty(refusal)) {
+        fail(em, "`{name}`: {refusal}", loc)
+        return ""
+    }
     let text = decl_init_text(em, tu, name, t, init, loc, stores)
     em.hoisted |> clear()
     return text
@@ -2102,54 +2158,99 @@ def private emit_statements(var em : Emitter; tu : CirTu; owner : CirStmt const?
 }
 
 // the setjmp call of a statement that re-enters through the general trampoline, null for any
-// other statement: `r = setjmp(buf);`, `int r = setjmp(buf);`, `setjmp(buf);`, `return
-// setjmp(buf);`, and an `if` or a `switch` whose condition reads the value (`setjmp(buf) == 2`)
-// beside the `if` forms tested against zero; one setjmp, and no other effect in the statement's
-// expression but the store of the value into a target that has none, since the re-entry runs the
-// statement again from its start
+// other statement: the forms ISO C 7.13.1.1 gives setjmp, where the statement reads nothing
+// before the call that a rerun would read again - `setjmp(buf);` (`(void)` included), `r =
+// setjmp(buf);` (a plain store into a target with no effect), `int r = setjmp(buf);`, `return
+// setjmp(buf);`, and an `if` or a `switch` controlled by the value, by `!setjmp(buf)` or by
+// setjmp compared with an integer constant (`setjmp(buf) == 2`), beside the `if` forms tested
+// against zero; implicit conversions of the value pass, since they read nothing
 [arch(at="ARCHITECTURE_EMITTER.md#setjmp-general")]
 def private general_setjmp(st : CirStmt const?) : CirExpr const? {
-    var x : CirExpr const? = null
     if (st.s == "decl") {
-        x = st.init
-    } elif (st.s == "expr" || st.s == "return") {
-        x = st.e
+        return setjmp_call(st.init)
+    } elif (st.s == "return") {
+        return setjmp_call(st.e)
+    } elif (st.s == "expr") {
+        let whole = setjmp_call(st.e)
+        if (whole != null) {
+            return whole
+        }
+        let x = below_casts(st.e)
+        if (x != null && x.e == "assign" && empty(x.op) && !has_effects(x.a)) {
+            return setjmp_call(x.b)
+        }
     } elif (st.s == "switch") {
-        x = st.cond
+        return controlling_setjmp(st.cond)
     } elif (st.s == "if") {
         var first_in_then = false
-        if (setjmp_site(st.cond, first_in_then) != null) {
-            return null
+        if (setjmp_site(st.cond, first_in_then) == null) {
+            return controlling_setjmp(st.cond)
         }
-        x = st.cond
     }
-    if (x == null) {
+    return null
+}
+
+// `x` below its casts
+def private below_casts(x : CirExpr const?) : CirExpr const? {
+    var at = x
+    while (at != null && at.e == "cast") {
+        at = at.a
+    }
+    return at
+}
+
+// the setjmp call `x` is below its casts, with a buffer that has no effect; null for any other
+def private setjmp_call(x : CirExpr const?) : CirExpr const? {
+    let at = below_casts(x)
+    if (at == null || at.e != "call" || !key_exists(SETJMP_NAMES, called_name(*at)) || length(at.args) != 1 || has_effects(at.args[0])) {
         return null
     }
-    var call : CirExpr const? = null
-    var calls = 0
-    var other_effects = false
-    each_subexpr(x) $(sub) {
-        if (sub.e == "call" && key_exists(SETJMP_NAMES, called_name(*sub))) {
-            call = sub
-            calls++
-        } elif (sub.e == "call" || sub.e == "va_arg" || sub.e == "comma" || (sub.e == "un" && is_step(sub.op))) {
-            other_effects = true
-        } elif (sub.e == "assign" && (sub != x || st.s != "expr" || !empty(sub.op) || has_effects(sub.a))) {
-            other_effects = true
-        }
+    return at
+}
+
+// the setjmp call of a controlling expression ISO C gives it: the value, `!` of it, or the value
+// compared with an integer constant on either side
+def private controlling_setjmp(x : CirExpr const?) : CirExpr const? {
+    let at = below_casts(x)
+    if (at == null) {
+        return null
     }
-    return calls == 1 && !other_effects && length(call.args) == 1 ? call : null
+    if (at.e == "un" && at.op == "not") {
+        return setjmp_call(at.a)
+    }
+    if (at.e == "bin" && (at.op == "eq" || at.op == "ne" || at.op == "lt" || at.op == "gt" || at.op == "le" || at.op == "ge")) {
+        if (integer_constant(at.b)) {
+            return setjmp_call(at.a)
+        }
+        if (integer_constant(at.a)) {
+            return setjmp_call(at.b)
+        }
+        return null
+    }
+    return setjmp_call(at)
+}
+
+// whether `x` is an integer constant: a literal, an enumerator, `sizeof` or `_Alignof`, through
+// casts and the unary arithmetic operators
+def private integer_constant(x : CirExpr const?) : bool {
+    let at = below_casts(x)
+    if (at == null) {
+        return false
+    }
+    if (at.e == "un" && (at.op == "neg" || at.op == "plus" || at.op == "bnot")) {
+        return integer_constant(at.a)
+    }
+    return at.e == "int_lit" || at.e == "enum_ref" || at.e == "sizeof_v" || at.e == "alignof_v"
 }
 
 // `if (setjmp(buf)) { B } tail`: C re-enters at the setjmp with longjmp's value and runs on,
-// so the branch and the tail live in a loop that reruns once per longjmp caught; a tail that
-// leaves an outer loop would leave this one instead and fails closed. The general form (`call`,
+// so the branch and the tail live in a loop that reruns once per longjmp caught; a branch or a
+// tail that leaves an outer loop would leave this one instead and fails closed. The general form (`call`,
 // `general_setjmp`) puts the site's statement itself first in the tail, the setjmp read as
 // `_sj_val`, which is 0 on the first run and longjmp's value on every rerun
 def private emit_trampoline(var em : Emitter; tu : CirTu; owner : CirStmt const?; site : int; first_in_then : bool; call : CirExpr const?) {
     let st = owner.body[site]
-    for (idx in range(call != null ? site : site + 1, length(owner.body))) {
+    for (idx in range(site, length(owner.body))) {
         if (breaks_switch(owner.body[idx]) || continues_out(owner.body[idx])) {
             fail(em, "a setjmp site whose tail leaves an enclosing loop is not lowered yet", st.loc)
             return
@@ -2275,10 +2376,12 @@ def private emit_if(var em : Emitter; tu : CirTu; st : CirStmt; head : string) {
         if (st.else_s.s == "if") {
             let mark = length(em.pre)
             let decls_mark = length(em.literal_decls)
+            let case_mark = length(em.case_literal_decls)
             let probe = to_bool(emit_expr(em, tu, st.else_s.cond, st.else_s.loc), tu, st.else_s.cond.t)
             let pure = length(em.pre) == mark
             em.pre |> resize(mark)
             em.literal_decls |> resize(decls_mark)
+            em.case_literal_decls |> resize(case_mark)
             if (pure) {
                 em.depth--
                 emit_if(em, tu, *st.else_s, "\} elif")
@@ -2374,14 +2477,13 @@ def private leaves_loop(st : CirStmt?; nested : bool) : bool {
     return leaves_loop(st.then_s, inner) || leaves_loop(st.else_s, inner) || leaves_loop(st.body_s, inner)
 }
 
-def private emit_for_flag(var em : Emitter; tu : CirTu; st : CirStmt) {
+def private emit_for_flag(var em : Emitter; tu : CirTu; st : CirStmt; inc_lines : array<string>) {
     em.for_counter++
     let flag = numbered("_f", em.for_counter)
     line(em, "var {flag} = false")
     open_block(em, "while (true)")
     open_block(em, "if ({flag})")
-    emit_effect(em, tu, st.inc, st.loc)
-    flush_pre(em)
+    write_increment(em, tu, st, inc_lines)
     close_block(em)
     line(em, "{flag} = true")
     if (st.cond != null) {
@@ -2420,13 +2522,56 @@ def private open_for_head(var em : Emitter; tu : CirTu; st : CirStmt) {
     close_block(em)
 }
 
+// the statements of C's increment `st.inc`, each evaluation's: a compound literal object in it is
+// assigned there and declared in `em.literal_decls`
+def private increment_lines(var em : Emitter; tu : CirTu; st : CirStmt) : array<string> {
+    let mark = length(em.pre)
+    em.narrow++
+    emit_effect(em, tu, st.inc, st.loc)
+    em.narrow--
+    var lines <- [for (idx in range(mark, length(em.pre))); em.pre[idx]]
+    em.pre |> resize(mark)
+    return <- lines
+}
+
+// the increment's statements where the loop runs them: `ahead`, the ones `emit_for` spelled before
+// the loop, when it holds a compound literal, else spelled here
+def private write_increment(var em : Emitter; tu : CirTu; st : CirStmt; ahead : array<string>) {
+    if (!holds_compound_literal(st.inc)) {
+        let lines <- increment_lines(em, tu, st)
+        for (stmt in lines) {
+            line(em, stmt)
+        }
+        return
+    }
+    for (stmt in ahead) {
+        line(em, stmt)
+    }
+}
+
+// whether `x` holds a compound literal
+def private holds_compound_literal(x : CirExpr const?) : bool {
+    var found = false
+    each_subexpr(x) $(sub) {
+        found = found || sub.e == "compound_lit"
+    }
+    return found
+}
+
+// a compound literal in the increment lives as long as the `for` (C11 6.8.5p5), past the block
+// the increment's statements land in: its object is declared ahead, in the `for`'s own block
 def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
     open_block(em, "")
     if (st.init_s != null) {
         emit_body(em, tu, st.init_s)
     }
+    let ahead = st.inc != null && holds_compound_literal(st.inc)
+    let inc_lines <- ahead ? increment_lines(em, tu, st) : array<string>()
+    if (ahead) {
+        flush_literal_decls(em)
+    }
     if (st.inc != null && leaves_loop(st.body_s, false)) {
-        emit_for_flag(em, tu, st)
+        emit_for_flag(em, tu, st, inc_lines)
     } else {
         open_for_head(em, tu, st)
         if (st.inc == null) {
@@ -2436,8 +2581,7 @@ def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
             emit_loop_body(em, tu, st.body_s)
             em.depth--
             open_block(em, "\} finally")
-            emit_effect(em, tu, st.inc, st.loc)
-            flush_pre(em)
+            write_increment(em, tu, st, inc_lines)
             close_block(em)
         }
         close_block(em)
@@ -2800,6 +2944,13 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
     let cont = continues_out(body) ? numbered("_cont", em.switch_counter) : ""
     // every case value of the switch, for `default`'s match-none test
     let all_values <- [for (g in groups); join([for (v in g.values); case_compare(em, tu, cond, cond_t, v)], " || "); where !empty(g.values)]
+    // a compound literal of a group-level statement lives as long as the switch body (C11
+    // 6.5.2.5p5), which a later group reached by fallthrough reads: declared before the loop
+    let decls_at = length(em.out)
+    let decls_depth = em.depth
+    let outer_case_depth = em.case_depth
+    var outer_decls <- em.case_literal_decls
+    em.case_depth = em.stmt_depth + 1
     if (!empty(cont)) {
         line(em, "var {cont} = false")
     }
@@ -2822,6 +2973,11 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
     em.cont_flags |> pop()
     line(em, "break")
     close_block(em)
+    if (!empty(em.case_literal_decls)) {
+        em.out |> push(join([for (decl in em.case_literal_decls); repeat("    ", decls_depth) + decl + "\n"], ""), decls_at)
+    }
+    em.case_depth = outer_case_depth
+    em.case_literal_decls <- outer_decls
     if (!empty(cont)) {
         open_block(em, "if ({cont})")
         emit_continue(em)
@@ -2891,6 +3047,12 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (st == null) {
         return
     }
+    em.stmt_depth++
+    emit_stmt_kind(em, tu, st)
+    em.stmt_depth--
+}
+
+def private emit_stmt_kind(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (st.s == "compound") {
         emit_compound(em, tu, st)
     } elif (st.s == "label") {
@@ -3325,9 +3487,40 @@ def private zero_of(var em : Emitter; tu : CirTu; t : int; spelled : string) : s
 def private das_func_name(var em : Emitter; d : CirDecl) : string {
     if (d.c_name == "main" && !d.is_static) {
         em.has_c_main = true
+    }
+    return function_name(em, d.name)
+}
+
+// the das name of function `name` of the unit: C `main` is `c_main`, a function named like one the
+// wrapper calls takes its free name (`rename_wrapper_names`)
+def private function_name(em : Emitter; name : string) : string {
+    if (name == "main") {
         return "c_main"
     }
-    return das_name(em, d.name)
+    return em.function_renames?[name] ?? das_name(em, name)
+}
+
+// the functions the `main` wrapper calls: C `main` itself and the `c_runtime/c_args` ones
+let WRAPPER_CALLS <- {"c_main", "c_runtime_init", "c_argc", "c_argv"}
+
+// a function of a unit that has a `main` named like one the wrapper calls would make its call
+// ambiguous (or redefine `c_main`): it takes the next free numbered name (`c_argc1`)
+def private rename_wrapper_names(var em : Emitter; tu : CirTu) {
+    if (!key_exists(em.functions, "main")) {
+        return
+    }
+    var taken : table<string>
+    for (d in tu.decls) {
+        taken |> insert(d.name)
+    }
+    for (name in keys(WRAPPER_CALLS)) {
+        taken |> insert(name)
+    }
+    for (d in tu.decls) {
+        if (d.k == "func" && d.body != null && key_exists(WRAPPER_CALLS, d.name)) {
+            em.function_renames[d.name] = free_name(taken, d.name)
+        }
+    }
 }
 
 // whether C `main` takes what the wrapper passes, with the error set when not: none, or `int argc,
@@ -3423,7 +3616,11 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
         return
     }
     let variadic = tu.types[d.t].variadic
-    if (d.c_name == "main" && !d.is_static && !main_parameters(em, tu, d)) {
+    if (d.c_name == "main" && d.is_static) {
+        fail(em, "`main` is static: no entry point is synthesized", d.loc)
+        return
+    }
+    if (d.c_name == "main" && !main_parameters(em, tu, d)) {
         return
     }
     reset_function_state(em, d)
@@ -4110,6 +4307,7 @@ def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
             em.functions |> insert(d.name)
         }
     }
+    rename_wrapper_names(em, tu)
     flag_marshal(em, tu, side)
     flag_over_indexed(em, tu, side)
     em.alloca_limit = side.alloca_limit > 0 ? side.alloca_limit : ALLOCA_LIMIT

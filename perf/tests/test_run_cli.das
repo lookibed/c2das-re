@@ -65,6 +65,15 @@ def test_run_blit_lanes(t : T?) {
     rmdir_rec(dir)
 }
 
+// an executable at `path` an earlier run could have left, which prints a result and succeeds: a
+// lane whose build fails must not time it
+def plant_stale_binary(path : string) {
+    mkdir_rec(dir_name(path))
+    fwrite(path, "#!/bin/sh\necho 1\nexit 0\n")
+    var out : string
+    run_and_capture(["chmod", "+x", path], out, 10.0)
+}
+
 // a toolchain folder for `PATH_TO_LIBCLANG` whose `clang` is the pinned one and whose `clang++`,
 // the AOT host's compiler, prints a line and fails: the lane's error must carry that line
 def failing_link_toolchain(dir, clang : string) : string {
@@ -89,9 +98,10 @@ def test_run_failed_aot_link(t : T?) {
     let clang = empty(pinned) ? "clang" : pinned + "/bin/clang"
     var out : string
     set_env_variable("PATH_TO_LIBCLANG", failing_link_toolchain(dir, clang))
+    plant_stale_binary("perf/work/fib_recursive/ctx/fib_recursive_aot")
     let rc = run_and_capture(["bash", "scripts/run_perf.sh", "--filter", "fib_recursive", "--samples", "1", "--out", path_join(dir, "results.json")], out, 1200.0)
     set_env_variable("PATH_TO_LIBCLANG", pinned)
-    t |> run("a failed AOT host build is the lane's error, carrying the build's output") @(t : T?) {
+    t |> run("a failed AOT host build is the lane's error, carrying the build's output, never an earlier binary's run") @(t : T?) {
         t |> equal(rc, 1, out)
         t |> success(out |> contains("fib_recursive/aot: the build exited 1 and left no binary: fake link failure"), out)
     }
@@ -120,9 +130,10 @@ def test_run_failed_exe_link(t : T?) {
     let path = get_env_variable("PATH")
     var out : string
     set_env_variable("PATH", "{failing_exe_linker(dir)}:{path}")
+    plant_stale_binary("perf/work/fib_recursive/fib_recursive_exe")
     let rc = run_and_capture(["bash", "scripts/run_perf.sh", "--filter", "fib_recursive", "--samples", "1", "--out", path_join(dir, "results.json")], out, 1200.0)
     set_env_variable("PATH", path)
-    t |> run("a failed exe build is the lane's error, carrying the build's diagnostic") @(t : T?) {
+    t |> run("a failed exe build is the lane's error, carrying the build's diagnostic, never an earlier binary's run") @(t : T?) {
         t |> equal(rc, 1, out)
         t |> success(out |> contains("fib_recursive/exe: the build exited 1 and left no binary: Failed to link Library"), out)
     }

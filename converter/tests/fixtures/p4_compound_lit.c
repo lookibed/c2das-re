@@ -4,7 +4,12 @@ int printf(const char *, ...);
    array's passed as a pointer; the address of a struct's; file-scope ones, whose storage is
    static (a union's, one taking the address of a zero-initialized global); one whose items have effects,
    evaluated left to right; a union's; a scalar's, an empty one included; ones under a
-   conditional arm, one in a loop's condition; one in a loop, a fresh object per pass */
+   conditional arm, one in a loop's condition; one in a loop, a fresh object per pass; one in a
+   `for` increment, which the next pass reads (C11 6.8.5p5: it lives as long as the loop), plain,
+   in a loop a `break` leaves and under a conditional arm; one under a case label, which the group
+   a fallthrough reaches reads, and one in a group that breaks; under the arms of a `for` head, of
+   `&&`, of a `void` conditional and of an `else if` condition; an array filled sparsely under an
+   arm; an empty scalar's value; a record holding a union's list with effects in its items */
 struct P { int x, y; };
 union num { int i; float f; };
 struct tagged { int tag; union num n; };
@@ -100,6 +105,90 @@ static void loop(void) {
     printf("condition %d\n", k);
 }
 
+static void increment(int c) {
+    int *p = 0;
+    for (int i = 0; i < 3; p = (int[]){ i, i, i }, i++) {
+        int big[3] = { 100, 200, 300 };
+        if (p) {
+            printf("increment %d %d\n", sum(p, 3), big[0]);
+        }
+    }
+    p = 0;
+    for (int i = 0; i < 4; p = (int[]){ i, 1, 1 }, i++) {
+        int big[3] = { 100, 200, 300 };
+        if (p) {
+            printf("increment break %d %d\n", sum(p, 3), big[0]);
+        }
+        if (i == 2) {
+            break;
+        }
+    }
+    p = 0;
+    for (int i = 0; i < 3; p = c ? (int[]){ i, 2, 2 } : (int[]){ 0, 0, i }, i++) {
+        int big[3] = { 100, 200, 300 };
+        if (p) {
+            printf("increment arm %d %d\n", sum(p, 3), big[0]);
+        }
+    }
+}
+
+static void cases(int j) {
+    int *q = 0;
+    switch (j) {
+    case 0:
+        q = (int[]){ 1, 2, 3 };
+    case 1: {
+        int big[3] = { 100, 200, 300 };
+        if (!q) {
+            q = big;
+        }
+        printf("case %d %d\n", sum(q, 3), big[0]);
+        break;
+    }
+    case 2:
+        q = (int[]){ 4, 5, 6 };
+        printf("case break %d\n", sum(q, 3));
+        break;
+    default:
+        printf("case default\n");
+    }
+}
+
+static void arms(int c) {
+    int k = 0;
+    int *seen = 0;
+    for (; k < 3 && (seen = (k ? (int[]){ 5, k } : (int[]){ 6, k }))[0] > 0; k++) {
+        int big[2] = { 100, 200 };
+        printf("for head %d %d %d\n", seen[0], seen[1], big[0]);
+    }
+    int *kept = 0;
+    if (c && (kept = (int[]){ 7, 8 })[0] > 0) {
+        int big[2] = { 100, 200 };
+        printf("and %d %d %d\n", kept[0], kept[1], big[0]);
+    }
+    int *armed = 0;
+    c ? (void) (armed = (int[]){ 3, 4 }) : (void) 0;
+    {
+        int big[2] = { 100, 200 };
+        printf("void arm %d %d\n", armed ? armed[1] : -1, big[0]);
+    }
+    int r = 0;
+    if (c == 5) {
+        r = 1;
+    } else if ((c ? (int[]){ 5 } : (int[]){ 6 })[0] > 0) {
+        r = 2;
+    }
+    int *sparse = c ? (int[40]){ [30] = 1 } : 0;
+    printf("else if %d sparse %d %d\n", r, sparse ? sparse[30] : -1, sparse ? sparse[3] : -1);
+    printf("empty %d\n", (int){} + 2);
+}
+
+static void union_effects(void) {
+    order_n = 0;
+    struct tagged t = (struct tagged){ note(5), { .i = note(6) } };
+    printf("union effects %d %d %d %d\n", t.tag, t.n.i, order[0], order[1]);
+}
+
 int main(void) {
     struct_literals();
     array_literals();
@@ -108,5 +197,13 @@ int main(void) {
     other_kinds(1);
     other_kinds(0);
     loop();
+    increment(1);
+    increment(0);
+    for (int j = 0; j < 4; j++) {
+        cases(j);
+    }
+    arms(1);
+    arms(0);
+    union_effects();
     return 0;
 }

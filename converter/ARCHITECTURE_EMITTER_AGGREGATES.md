@@ -90,8 +90,12 @@ and its lifetime is C11 6.5.2.5's: in a function the enclosing block, so `var _c
 fixed_array(1, 2, 3)` is declared before the statement that reads it (`sum(addr(_cl0[0]), 3)`),
 each pass of a loop body declaring it afresh; under a conditional arm, whose statements the
 lowering moves into an `if`, the declaration still precedes the statement and the arm assigns
-the value (`_cl1 = fixed_array(1, 2)`, the zero for a union's stores). At file scope the object
-is static: a module global `var private _cl0 : P = P(x = 3, y = 4)` declared right before the
+the value (`_cl1 = fixed_array(1, 2)`, the zero for a union's stores). Two more statements
+land in a block narrower than C's, so their objects are declared ahead and assigned in place: a
+`for` increment's, which lives as long as the loop (C11 6.8.5p5) and is declared in the `for`'s
+own block before the loop head, and one of a matched-flag `switch` group's own statements, which
+a later group reached by fallthrough reads, declared before the switch's loop. At file scope
+the object is static: a module global `var private _cl0 : P = P(x = 3, y = 4)` declared right before the
 global whose initializer reads it (`unsafe(addr(_cl0))`), its value and that initializer moved
 into `c2das_init_globals` under the global order rule of `ARCHITECTURE_EMITTER.md` section 4 when
 the literal takes the address of a later or zero-initialized global or is filled by stores.
