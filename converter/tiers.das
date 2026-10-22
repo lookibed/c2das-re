@@ -46,7 +46,7 @@ def private run(args : array<string>; var output : string&; timeout : float = 60
     return rc
 }
 
-def private run_exe(das_path, work_dir : string; var output : string&; module_dirs : array<string>) : int {
+def private run_exe(das_path, work_dir : string; var output : string&; module_dirs : array<string>; program_args : array<string>) : int {
     let exe = path_join(work_dir, file_stem(das_path) + "_exe")
     var cmd <- daslang_cmd(module_dirs)
     cmd |> push_from(["-exe", "{das_path}", "-output", "{exe}"])
@@ -55,7 +55,9 @@ def private run_exe(das_path, work_dir : string; var output : string&; module_di
         return rc
     }
     let built = fexist(exe + ".exe") ? exe + ".exe" : exe
-    return run(["{built}"], output)
+    var bin <- ["{built}"]
+    bin |> push_from(program_args)
+    return run(bin, output)
 }
 
 // a native module folder (one holding src/*.cpp) joins the AOT host's compile: the generated
@@ -122,18 +124,33 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
 
 //! `flags` go to the interpreter and the JIT before the script (`-no-module-cache`).
 def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>; timeout : float; flags : array<string>) : int {
-    if (tier == "interp") {
+    let no_args : array<string>
+    return run_tier(das_path, tier, work_dir, output, module_dirs, timeout, flags, no_args)
+}
+
+//! `program_args` are the converted program's own arguments, its C `argv` after the name: after
+//! `--` under the interpreter and the JIT, after the binary under `exe`; the `aot` host passes
+//! none, so the tier refuses them.
+def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>; timeout : float; flags : array<string>; program_args : array<string>) : int {
+    if (tier == "interp" || tier == "jit") {
         var cmd <- daslang_cmd(module_dirs)
-        cmd |> push_from(flags, [das_path])
-        return run(cmd, output, timeout)
-    }
-    if (tier == "jit") {
-        var cmd <- daslang_cmd(module_dirs)
-        cmd |> push_from(flags, ["-jit", das_path])
+        cmd |> push_from(flags)
+        if (tier == "jit") {
+            cmd |> push("-jit")
+        }
+        cmd |> push(das_path)
+        if (!empty(program_args)) {
+            cmd |> push("--")
+            cmd |> push_from(program_args)
+        }
         return run(cmd, output, timeout)
     }
     if (tier == "exe") {
-        return run_exe(das_path, work_dir, output, module_dirs)
+        return run_exe(das_path, work_dir, output, module_dirs, program_args)
+    }
+    if (tier == "aot" && !empty(program_args)) {
+        output += "the aot tier's host passes the program no arguments\n"
+        return -1
     }
     if (tier == "aot") {
         return run_aot(das_path, work_dir, output, module_dirs)

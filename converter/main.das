@@ -9,9 +9,10 @@ require pipeline
 require sidecar
 require tiers
 
-//! c2das: `daslang converter/main.das -- <file.c> [--out <dir>] [--target msvc|linux] [--run <tier>] [--sidecar <file>] [--param-writes in-place|copy]`.
+//! c2das: `daslang converter/main.das -- <file.c> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy]`.
 //! Converts one C file into `<dir>/<stem>.das` (default `out/`); with `--run` executes the
-//! result under a tier and exits with the program's exit code.
+//! result under a tier, `--arg` each argument of its C `argv` in order, and exits with the
+//! program's exit code.
 
 [CommandLineArgs]
 struct Args {
@@ -24,6 +25,8 @@ struct Args {
     target : string = "msvc"
     @clarg_doc = "run the converted module under interp, jit, exe or aot and exit with its code"
     run : string = ""
+    @clarg_doc = "an argument the program run by --run gets in its C argv, one per --arg, in order"
+    arg : array<string>
     @clarg_doc = "the .c2das sidecar (default: <stem>.c2das beside the file, else .c2das in its folder)"
     sidecar : string = ""
     @clarg_name = "param-writes"
@@ -66,7 +69,8 @@ def main : int {
     var output : string
     let script = get_command_line_arguments()[1]
     let repo = dir_name(dir_name(script))
-    let rc = run_tier(res.das_path, args.run, args.out, output, [path_join(repo, "c_runtime"), path_join(repo, "dasCRuntime")])
+    let no_flags : array<string>
+    let rc = run_tier(res.das_path, args.run, args.out, output, [path_join(repo, "c_runtime"), path_join(repo, "dasCRuntime")], 600.0, no_flags, args.arg)
     to_log(LOG_INFO, "c2das: {args.run} exited {rc}\n{output}")
     return rc
 }

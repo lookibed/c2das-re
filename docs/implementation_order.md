@@ -454,11 +454,32 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   build as the lane's error; `converter/tests/fixtures/p4_matrix_shapes.c` carries these and
   the owed shapes (`_Alignas`, `exit()` from deep, `~` and `^`, `restrict`, K&R, `inline`,
   `long double`, `volatile`, the comma's value).
-  Ledger (phase A): a `void` conditional whose arm the emitter hoists (`(e) ? (void)0 :
-  (printf(...), abort())`) emits `var _t0 : void`, which the compile check refuses: strlen-2
-  fails unlisted on it, and memchr-1 meets it behind its wide-literal skip line (clang leaves
-  that file's wide literals out, `__WCHAR_WIDTH__` is 32). The perf `exe` lane takes a failed
-  host build the way the `aot` lane did before phase A; its fix and test are owed.
+  Landed (phase B): a compound literal is its value where C reads one (`S(f = v, ...)`, a
+  scalar's value) and otherwise an object `_clN` declared before the statement in the
+  enclosing block (an array, a union, an address taken), a module global at file scope;
+  `main(int argc, char **argv)` takes its arguments from `c_runtime/c_args`, `argv[0]` the
+  source's stem (F56), and the converter's `--arg` passes them to a `--run`; the general setjmp
+  form (`r = setjmp(buf)`, `int r = setjmp(buf)`, `setjmp(buf);`, `return setjmp(buf)`, a
+  `switch` on it, an `if` testing it against a nonzero value) opens the trampoline's tail with
+  the value read as `_sj_val`; a flexible array member is read through the record's address
+  plus its offset with no sidecar flag (F57), and a C89 trailing array the sidecar lists under
+  `over_indexed` goes unchecked through its decay; a `void` conditional evaluated for its
+  effects is an `if`/`else`, which takes strlen-2 to passing; `perf/run.das` reports a failed
+  exe build as the lane's error; `perf/kernels/compound_lit.c` and `setjmp_general.c` carry
+  the newly converted constructs; gcc-torture passes 39 more (27 that waited on
+  `main(argc, argv)`, 11 on compound literals, strlen-2) and c-testsuite 00149 and 00150.
+  Ledger: still refused, each with its message - a setjmp whose statement holds another effect
+  or a second setjmp, sits off a block's statement level (an unbraced branch, a loop
+  condition) or whose tail leaves an enclosing loop ("setjmp whose value is not tested against
+  zero ... (the general trampoline form) is not lowered yet", "a setjmp site whose tail leaves
+  an enclosing loop is not lowered yet"); `main` with `envp` ("main with an environment
+  parameter (`char **envp`) is not lowered yet"); a flexible array member that pads its record
+  or raises its alignment, one of a marshal-only record, and an initializer of one; a `void`
+  conditional whose value is read; the `aot` tier's program arguments, since its host passes
+  none. memchr-1 converts and passes once its wide-literal skip line (`never`) is lifted.
+  gcc-torture 920501-6, which `main(argc, argv)` let convert, fails at run time on a goto from
+  an inner loop to a label at the end of the outer `for`'s body ("jump to label 1 failed"),
+  a goto lowering defect no fixture covers yet.
 - **Exit criterion:** csmith runs clean at 1000/night for a week; torture ≥ target with
   ledger; matrix has no row without a green fixture.
   Ledger: the nightly csmith N=1000 schedule is blocked on this box by the dumper's parse of

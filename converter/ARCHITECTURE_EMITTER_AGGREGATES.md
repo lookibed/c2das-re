@@ -75,7 +75,45 @@ alignment that is not 1, 2, 4 or 8 or does not divide the size, an alignment bel
 a member that does not fit, a member record das cannot lay out); a union holding a marshal-only
 record; a member named `_storage`; a field spelled `_anon<N>` in a record with an anonymous
 member; a zero-length array (`char z[0]`, GNU) anywhere; and a union's list anywhere but an
-initializer.
+initializer or a compound literal.
+
+### Compound literals {#compound-literals}
+
+A compound literal (`(T){...}`, the C-IR's `compound_lit`) read as a value is the value: a
+struct's is its literal `S(f = v, ...)` (an initializer, an assigned value, an argument passed
+by value: `dot(P(x = 2, y = 3), p)`), a scalar's (`(int){5}`) the value it holds. Anything else
+is an object, since C gives the literal storage: an array (`(int[]){1, 2, 3}`, read through its
+decay or an index), a union and a record holding a union's list (the union rule above, a
+declaration and its stores), and any literal whose address C takes (`&(struct P){1, 2}`). The
+object is `_cl<N>`, the first number no name of the function, no global and no function spells,
+and its lifetime is C11 6.5.2.5's: in a function the enclosing block, so `var _cl0 : int[3] =
+fixed_array(1, 2, 3)` is declared before the statement that reads it (`sum(addr(_cl0[0]), 3)`),
+each pass of a loop body declaring it afresh; under a conditional arm, whose statements the
+lowering moves into an `if`, the declaration still precedes the statement and the arm assigns
+the value (`_cl1 = fixed_array(1, 2)`, the zero for a union's stores). At file scope the object
+is static: a module global `var private _cl0 : P = P(x = 3, y = 4)` declared right before the
+global whose initializer reads it (`unsafe(addr(_cl0))`), its value and that initializer moved
+into `c2das_init_globals` under the global order rule of `ARCHITECTURE_EMITTER.md` section 4 when
+the literal takes the address of a later or zero-initialized global or is filled by stores.
+The items evaluate left to right, as das evaluates a struct literal's and a `fixed_array`'s
+(`probes/test_structs.das`), the dialect's order.
+
+### Flexible array members {#flexible-array-members}
+
+A flexible array member (`int data[];`, an array of unknown length that ends a struct) has no
+das field: the struct is emitted without it and its `sizeof` stays `typeinfo sizeof`, clang's
+size, which the member adds nothing to. Its decay is the record's address plus clang's offset of
+the member as a pointer to the element, `reinterpret<int?>(reinterpret<uint8?>(p) + 4)` for
+`p->data` (`addr(s)` for a value `s`), so `p->data[i]` is `deref(reinterpret<int?>(...) + i)`
+with no range check, as C reads the storage the program allocated past the record. A member
+whose offset is not clang's size or whose element aligns past the other fields (`{ char c; int
+d[]; }`) fails closed, since leaving it out would change the record's size or alignment; so do
+one in a marshal-only record and an initializer of one (a GNU extension). A C89 trailing array
+indexed past its length over a larger allocation (`int columnofs[8]` after `malloc(sizeof(T) + n
+* sizeof(int))`) keeps its declaration and its range check unless the sidecar lists it under
+`over_indexed` (`"Record.field"`, by tag or typedef name), where its accesses go through the
+decay, `deref(addr(p.columnofs[0]) + x)`, and `&p->columnofs[k]` is the address of that read; an
+entry that names no record's trailing array of a fixed length is a sidecar error.
 
 ### Function pointers
 

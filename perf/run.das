@@ -74,6 +74,17 @@ def captured(args : array<string>) : string {
 }
 
 // the kernel's line is the last one: a tier may log before the program runs
+// the first line of `text` that is not empty and not an `info` line (`[I] `)
+def first_reported_line(text : string) : string {
+    for (l in split(text, "\n")) {
+        let line = strip(l)
+        if (!empty(line) && !(line |> starts_with("[I] "))) {
+            return line
+        }
+    }
+    return ""
+}
+
 def last_line(text : string) : string {
     let lines <- [for (l in split(text, "\n")); strip(l); where !empty(strip(l))]
     return empty(lines) ? "" : lines[length(lines) - 1]
@@ -202,15 +213,20 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
     }
     measure_lane(cells, errors, name, "jit", with_binary_first(daslang, loader, "-jit", res.das_path), samples, oracle)
     var tier_out : string
-    if (run_tier(res.das_path, "exe", work, tier_out, CONVERTED_MODULES) >= 0) {
-        let exe = path_join(work, "{name}_exe")
-        measure_lane(cells, errors, name, "exe", [fexist(exe + ".exe") ? exe + ".exe" : exe], samples, oracle)
+    // the `exe` and `aot` tiers return the build's exit code when the build fails, which passes
+    // for a run's, so each lane stands only on the binary its build left; an earlier run's goes
+    // first. The exe build's own diagnostic leads its output, after the `info` lines
+    let exe = path_join(work, "{name}_exe")
+    remove(exe)
+    remove(exe + ".exe")
+    let exe_rc = run_tier(res.das_path, "exe", work, tier_out, CONVERTED_MODULES)
+    let exe_bin = fexist(exe + ".exe") ? exe + ".exe" : exe
+    if (exe_rc >= 0 && fexist(exe_bin)) {
+        measure_lane(cells, errors, name, "exe", [exe_bin], samples, oracle)
     } else {
-        errors |> push("{name}/exe: {first_line(tier_out)}")
+        errors |> push("{name}/exe: the build exited {exe_rc} and left no binary: {first_reported_line(tier_out)}")
     }
     tier_out = ""
-    // the tier returns the host build's exit code when the build fails, which passes for a
-    // run's, so the lane stands only on the binary the build left; an earlier run's goes first
     let aot_bin = path_join(path_join(work, "ctx"), "{name}_aot")
     remove(aot_bin)
     let aot_rc = run_tier(res.das_path, "aot", work, tier_out, CONVERTED_MODULES)

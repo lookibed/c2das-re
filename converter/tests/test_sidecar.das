@@ -46,3 +46,35 @@ def test_sidecar_defines(t : T?) {
     }
     rmdir_rec(dir)
 }
+
+[test]
+def test_sidecar_over_indexed(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_over", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`over_indexed` is a list of strings `Record.field`, kept in order") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "good", "\{\"over_indexed\": [\"patch.columnofs\", \"vis.cols\"]\}\n", error)
+        t |> equal(error, "")
+        t |> equal(length(side.over_indexed), 2)
+        t |> equal(side.over_indexed[0], "patch.columnofs")
+        t |> equal(side.over_indexed[1], "vis.cols")
+    }
+    t |> run("`over_indexed` that is no list is refused, naming the key and the value") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "string", "\{\"over_indexed\": \"patch.columnofs\"\}\n", error)
+        t |> success(error |> ends_with("string.c2das: `over_indexed` is a list of strings `Record.field`, not \"patch.columnofs\""), error)
+        t |> equal(length(side.over_indexed), 0)
+    }
+    t |> run("an entry that is no string or not `Record.field` is refused, naming the entry") @(t : T?) {
+        for (bad in fixed_array("3", "\"columnofs\"", "\".columnofs\"", "\"patch.\"", "\"a.b.c\"")) {
+            var error : string
+            let side <- read_text(dir, "bad", "\{\"over_indexed\": [\"patch.columnofs\", {bad}]\}\n", error)
+            t |> success(error |> ends_with("bad.c2das: `over_indexed` holds strings `Record.field`, not {bad}"), error)
+        }
+    }
+    rmdir_rec(dir)
+}

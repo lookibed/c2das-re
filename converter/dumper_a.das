@@ -1471,6 +1471,39 @@ def private dump_init_list(var d : Dumper; js : JsonValue?; t : int; at : CirLoc
     return x
 }
 
+// `(T){...}`: the `compound_lit` node over its initializer list; a scalar's list (`(int){5}`)
+// holds its one value at position 0, none for `(int){}`
+def private dump_compound_literal(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
+    if (child_count(js) != 1 || node_kind((js?["inner"] as _array)[0]) != "InitListExpr") {
+        fail(d, "a compound literal without an initializer list", at)
+        return null
+    }
+    let list = (js?["inner"] as _array)[0]
+    var init : CirExpr?
+    let k = d.tu.types[t].k
+    if (k == "struct" || k == "union" || k == "array") {
+        init = dump_init_list(d, list, t, at)
+    } else {
+        init = new CirExpr(e = "init_list", t = t)
+        if (child_count(list) == 1) {
+            var v = child_expr(d, list?["inner"], 0)
+            if (v == null) {
+                delete_expr(init)
+                return null
+            }
+            init.init_items |> push(CirInitItem(pos = 0, v = v))
+        } elif (child_count(list) > 1) {
+            fail(d, "a scalar compound literal of {child_count(list)} values", at)
+            delete_expr(init)
+            return null
+        }
+    }
+    if (init == null) {
+        return null
+    }
+    return new CirExpr(e = "compound_lit", t = t, init = init)
+}
+
 // a union's initializer: clang names the member it initializes under `field` and gives at
 // most one child, none for `{}`, which leaves the union zero
 def private dump_union_init(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
@@ -1569,7 +1602,9 @@ def private dump_literal(var d : Dumper; js : JsonValue?; kind : string; t : int
 def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
     let at = loc_of(d, js)
     let kind = node_kind(js)
-    if (kind == "ParenExpr") {
+    if (kind == "ParenExpr" || kind == "ConstantExpr") {
+        // clang wraps a constant item of a file-scope initializer in `ConstantExpr`, whose
+        // value is its child's
         if (child_count(js) == 0) {
             fail(d, "empty parentheses", at)
             return null
@@ -1623,6 +1658,9 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
     if (kind == "InitListExpr") {
         return dump_init_list(d, js, t, at)
     }
+    if (kind == "CompoundLiteralExpr") {
+        return dump_compound_literal(d, js, t, at)
+    }
     if (key_exists(TYPE_OPERATOR_KINDS, kind)) {
         return dump_type_operator(d, js, kind, t, at)
     }
@@ -1648,7 +1686,7 @@ def private dump_type_operator(var d : Dumper; js : JsonValue?; kind : string; t
     return new CirExpr(e = "va_arg", t = t, list = list, arg_t = t)
 }
 
-let EXPR_KINDS <- {"IntegerLiteral", "CharacterLiteral", "FloatingLiteral", "StringLiteral", "DeclRefExpr", "ImplicitCastExpr", "CStyleCastExpr", "UnaryOperator", "BinaryOperator", "CompoundAssignOperator", "ConditionalOperator", "CallExpr", "ArraySubscriptExpr", "UnaryExprOrTypeTraitExpr", "ParenExpr", "MemberExpr", "InitListExpr", "OffsetOfExpr", "VAArgExpr"}
+let EXPR_KINDS <- {"IntegerLiteral", "CharacterLiteral", "FloatingLiteral", "StringLiteral", "DeclRefExpr", "ImplicitCastExpr", "CStyleCastExpr", "UnaryOperator", "BinaryOperator", "CompoundAssignOperator", "ConditionalOperator", "CallExpr", "ArraySubscriptExpr", "UnaryExprOrTypeTraitExpr", "ParenExpr", "MemberExpr", "InitListExpr", "OffsetOfExpr", "VAArgExpr", "CompoundLiteralExpr"}
 
 // an optional slot of a statement: clang spells an absent one as `{}`
 def private slot_stmt(var d : Dumper; kids : JsonValue?; idx : int; var ok : bool&) : CirStmt? {
@@ -2076,6 +2114,12 @@ def dump_stmt(var d : Dumper; js : JsonValue?) : CirStmt? {
 def private dump_record_decl(var d : Dumper; js : JsonValue?) : bool {
     let at = loc_of(d, js)
     if (!(js?["completeDefinition"] ?? false)) {
+        return true
+    }
+    if ((js?["name"] ?? "") == "__jmp_buf_tag") {
+        // glibc's tag, which a file that includes no header defines itself: every spelling of it
+        // is the opaque `jmp_buf` record (`jmp_buf_type`), so its fields name nothing
+        touch_locs(d, js)
         return true
     }
     for (idx in range(child_count(js))) {

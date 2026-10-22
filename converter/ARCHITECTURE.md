@@ -38,7 +38,10 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   written as bytes; `stack` and `alloca_limit`; `param_writes`, `in-place` or `copy`, the
   parameter write mode, any other value refused naming the key; `defines`, a list of strings
   `NAME` or `NAME=value` the dump and the libclang pass give clang as `-D<entry>`, a value that
-  is no list or an entry that is no string refused naming the key). A key's presence is
+  is no list or an entry that is no string refused naming the key; `over_indexed`, a list of
+  strings `Record.field`, the trailing arrays the program indexes past their length, a value that
+  is no list or an entry of another shape refused naming the key, an entry naming no record's
+  trailing array the emitter's error). A key's presence is
   `key_exists`, since json_boost's `?[]` of a missing key is a non-null sentinel
   (`probes/test_stdlib.das`). Nothing here knows the C-IR or the emitter.
 - `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes])`: read the
@@ -51,11 +54,14 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   flags]]])`: the process exit code of the module under `interp`, `jit`, `exe` or `aot`
   (section 5); `module_dirs` are passed as `-load_module` to the interpreter and the JIT, `flags`
   before the script, and a run past `timeout` seconds (600 by default) is killed and reported
-  as a failure. `CONVERTED_MODULES` names the module folders a converted program requires and
+  as a failure. `program_args` are the program's own C `argv` after its name: after `--` under
+  `interp` and `jit`, after the binary under `exe`; `aot` refuses them, since its host passes
+  none. `CONVERTED_MODULES` names the module folders a converted program requires and
   `daslang_cmd` spells the prefix; `native_run` builds a C file with a given compiler and flags
   and runs it once, the native side every differential test compares against.
-- `main.das` - the CLI (`daslib/clargs`): `c2das <file.c> [--out] [--target] [--run] [--sidecar]
-  [--param-writes in-place|copy]`. `--param-writes` chooses how the emitter writes a scalar or
+- `main.das` - the CLI (`daslib/clargs`): `c2das <file.c> [--out] [--target] [--run] [--arg]...
+  [--sidecar] [--param-writes in-place|copy]`. Each `--arg` is one argument of the C `argv` the
+  program `--run` runs gets, in order. `--param-writes` chooses how the emitter writes a scalar or
   pointer parameter the body assigns, steps or takes the address of: `in-place`, the default and
   the idiomatic form, writes the parameter itself; `copy` writes a local copy, which the
   interpreter runs faster (`ARCHITECTURE_EMITTER.md` section 4). The option wins over the
@@ -69,9 +75,11 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   and run against the native build of the same file by the pinned clang (output and exit
   code), plus the lowering shapes the text must carry.
 - `tests/test_cli.das` - `main.das` run as a child process over `tests/fixtures/p4_param_writes.c`:
-  `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2.
+  `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2; and over
+  `tests/fixtures/p4_main_args.c`: `--arg` reaches the C `argv` under `interp` as the native
+  build's arguments do and under `exe`, and `aot` refuses it.
 - `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list
-  and the two shapes it refuses.
+  and the two shapes it refuses, the `over_indexed` list and the shapes it refuses.
 - `tests/test_csmith_verdict.das` - the csmith driver's classification of a worker that ended
   (`suites/csmith/verdict.das`), the one piece of the driver testable without a process.
 - `tests/test_pipeline.das` - the P0 gate: `tests/fixtures/ret42.c` converts, the C-IR and the

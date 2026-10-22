@@ -78,7 +78,10 @@ one child per field or element, an `ImplicitValueInitExpr` left to the positiona
 an array with a trailing run of zeros lists its filler first under `array_filler`, then the
 elements up to the last one written) or of a union (at most one child, the member it
 initializes named under `field`: one item at that member's index, none for `{}`, and a member
-`field` names `""` fails closed) and `OffsetOfExpr`,
+`field` names `""` fails closed), `CompoundLiteralExpr` (the `compound_lit` node over its
+list; a scalar's list, `(int){5}`, holds its one value at position 0, none for `(int){}`),
+`ConstantExpr` (clang's wrapper of a constant item in a file-scope initializer, its child's
+value) and `OffsetOfExpr`,
 whose components the dump omits: the dumper reads `T, f` from the macro's own text at its
 `expansionLoc` (F20). A location with an `expansionLoc` is that location.
 
@@ -129,7 +132,8 @@ an `IndirectGotoStmt` (a computed goto through a label address) is outside the d
 Every type spelling that carries `__jmp_buf_tag` (glibc's `jmp_buf`, `struct
 __jmp_buf_tag[1]`; its decay and a pointer to it, `struct __jmp_buf_tag *`; a pointer to the
 array, `(*)[1]`) is the one opaque record `jmp_buf` of one `int` field, or a pointer to it,
-which the lowering spells as the protocol's `CJmpBuf`. A `va_list` is known by its declaration, since
+which the lowering spells as the protocol's `CJmpBuf`; a main-file definition of `struct
+__jmp_buf_tag` (a file that includes no header declares glibc's tag itself) adds no record. A `va_list` is known by its declaration, since
 msvc's desugaring to `char *` loses it and a program's own `typedef char *va_list` desugars
 alike: a typedef is one when its chain of typedefs reaches clang's implicit `__builtin_va_list`
 declaration, which the `va_list` and `__gnuc_va_list` of clang's `stdarg.h` do. The JSON walk
@@ -149,4 +153,4 @@ A `VAArgExpr` is the `va_arg` node. A `__builtin_*` reference has no
 prototype in the dump (`<builtin fn type>`), so it is a variadic function type read only
 through its decay, which clang spells `BuiltinFnToFnPtr` and the dumper as the pinned
 `FunctionToPointerDecay` (F23); the emitter resolves the callee by name. Anything else is an
-error naming the node kind and its location: compound literals are the next row.
+error naming the node kind and its location.

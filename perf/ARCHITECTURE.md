@@ -29,7 +29,14 @@ harness that times them under every lane, and the stored results.
   copies, both copies forwarded to a consumer taking a `va_list`, and a format helper forwarding
   its list to `vsnprintf`; `switch_local` is P4.8's, a switch in a hot loop whose case-level
   local a later case assigns and reads, and a goto into a block whose local hides a global of
-  external linkage, so the flattened local takes a free name (`g1`). The kernel's parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
+  external linkage, so the flattened local takes a free name (`g1`); `compound_lit` is P4.9's,
+  compound literals as call arguments (a record by value, an array as a pointer, a record's
+  address) and as assigned values in a hot loop, an `_Alignof` in the arithmetic, a pointer to a
+  record the unit never defines passed through, a two-dimensional `char` table from string
+  literals read through its rows, and a flexible array member filled and summed;
+  `setjmp_general` is P4.9's too, `r = setjmp(buf)` re-entered by a longjmp on every pass of a
+  hot loop and the value accumulated, glibc's `struct __jmp_buf_tag` declared in the kernel
+  since a kernel includes no header. The kernel's parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
   argument clang hoists the idempotent call out of the rep loop (the native lane reports
   zero), and daslang's optimizer evaluates a pure call with constant arguments at compile
   time whatever `infer_time_folding` says, so the interpreter lane measured a store. The
@@ -45,9 +52,11 @@ harness that times them under every lane, and the stored results.
   `--param-writes copy` for the `interp-copy` lane), and runs each
   lane as its own process `--samples` times (five by default). A cell is the median, with ±
   half the sample range as a share of it; startup never enters a cell because the program
-  times itself; each das lane logs its argv at `info`. The `aot` lane stands only on the
-  binary its host build leaves, since the tier returns the build's exit code when the build
-  fails: a failed build is the lane's error, carrying the build's last line. The run writes
+  times itself; each das lane logs its argv at `info`. The `exe` and `aot` lanes each stand
+  only on the binary their build leaves (an earlier run's removed first), since the tier
+  returns the build's exit code when the build fails: a failed build is the lane's error,
+  carrying the exe build's first line past its `info` lines (the linker's failure) or the AOT
+  host build's last line. The run writes
   `results_linux.json`, or
   the `--out <file>` it is given (which `--table` then reads; the delta's default baseline stays
   the committed file at HEAD), and prints the results table,
@@ -76,7 +85,9 @@ harness that times them under every lane, and the stored results.
   fixtures, and `run.das` itself as a child process: `-?`, one sample of `blit` into an
   `--out` file, whose `interp-copy` cell must time the copy conversion and match the native result, and one sample of
   `fib_recursive` under a `PATH_TO_LIBCLANG` whose `clang++` (the AOT host's compiler) fails,
-  whose `aot` error must carry that compiler's output; the preflight tests lane runs it.
+  whose `aot` error must carry that compiler's output, and one under a `PATH` whose `c++` (the
+  linker daslang's `-exe` build calls) fails, whose `exe` error must carry the failed link; the
+  preflight tests lane runs it.
 - `results_linux.json` - the committed capture: CPU, platform, timestamp, the clang and
   daslang versions, the sample count, and per kernel and lane the median, spread, rep count,
   the result and raw samples.
