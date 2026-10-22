@@ -558,6 +558,31 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   writes no record spelling, which the emitter's `va_list` test reads, so a module emitted
   from a re-read C-IR (rather than the dumper's tree) spells `va_list` and fails its compile
   check.
+- **P5.1a Ports repository** (owner ruling 2026-10-22 (2), item A, with its perf addendum and
+  the owner's correction of the native lane). `scripts/publish_ports.sh` runs `ports/publish.das`,
+  which regenerates `lookibed/c2das-ports`: per program the converted modules, the sidecar, the
+  upstream license, and a README naming the release and both tarball sha256s as the `VERSIONS.md`
+  line pins them, the generating commit (`git describe` and the full sha; a dirty tree refused
+  without `--allow-dirty`), how to run the modules, which upstream tests pass, the harness's report
+  of the conversion, and the perf tables; `--commit` commits the program as `lookibed`, `--push`
+  pushes. The perf tables time the same workloads (the startup row `-e "print(1)"`, fib,
+  binary-trees, nbody and spectral-norm from `ports/lua/bench/`, and the release's test suite)
+  as whole processes under the native build and the interpreter, JIT, exe and AOT lanes, built by
+  `perf/perf_lanes.das`, the lane module `perf/run.das` now shares (native: the pinned clang at
+  `-O3 -funsigned-char`); a lane or cell that does not work is `not yet` with its reason. Every
+  sample of every lane lands in a capture file beside the tables; the top-level README carries the
+  geometric mean of each lane's ratio to native per program. `ports/ARCHITECTURE.md` holds the
+  method. The perf tables are off by default (`--perf` turns them on, owner ruling 3): until the
+  perf method audit lands, the published README and projects section carry its `not yet` line,
+  and the benchmark scripts stay in `ports/lua/bench/` as its inputs.
+  Ledger: the perf tables wait for the perf method audit (ledger item C, `p-perf-method`).
+  `doom/` joins at P6. The publisher runs by hand at each phase release; its CI
+  invocation is a later pipeline item. The AOT lane is `not yet` for Lua: the AOT host passes the
+  program no arguments (`converter/tiers.das`), and the test-suite row is `not yet` under every das
+  lane until P5.2 (a Lua error aborts the process). daslang's `json_boost` fails type inference on
+  `JV` of a struct holding an array of structs that holds an array of structs, so the capture keeps
+  its cells flat; popen's timeout watchdog delays the return by up to 100 ms, so a sample's clock
+  stops at the end of its output.
 - **P5.2 pcall** via the setjmp lowering (`LUAI_THROW/LUAI_TRY` → `c_longjmp`/contained
   pattern — the easy shape, per spec).
 - **P5.3 Lua's own test suite** under interp. Expect a long tail of libc exactness bugs

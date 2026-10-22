@@ -4,7 +4,6 @@ options gen2
 options stack = 1048576
 
 require strings
-require math
 require daslib/strings_boost
 require daslib/fio
 require daslib/clargs
@@ -12,12 +11,12 @@ require daslib/json_boost
 require crt
 require ../converter/pipeline.das
 require ../converter/tiers.das
-require ../converter/dumper_a.das
 require ../converter/sidecar.das
 require perf_tables
 require ../suites/suite_files.das
 require perf_cli
 require perf_compose
+require perf_lanes
 
 //! The performance comparison of docs/very-detailed-plan.md section 2, measured the way
 //! borisbat/dasProfile measures: every kernel under perf/kernels/<name>.c is composed with
@@ -67,29 +66,7 @@ struct Cell {
     samples : array<double>
 }
 
-def captured(args : array<string>) : string {
-    var out : string
-    run_and_capture(args, out, 600.0)
-    return out
-}
-
 // the kernel's line is the last one: a tier may log before the program runs
-// the first line of `text` that is not empty and not an `info` line (`[I] `)
-def first_reported_line(text : string) : string {
-    for (l in split(text, "\n")) {
-        let line = strip(l)
-        if (!empty(line) && !(line |> starts_with("[I] "))) {
-            return line
-        }
-    }
-    return ""
-}
-
-def last_line(text : string) : string {
-    let lines <- [for (l in split(text, "\n")); strip(l); where !empty(strip(l))]
-    return empty(lines) ? "" : lines[length(lines) - 1]
-}
-
 def parse_sample(out : string; var seconds : double&; var reps : int64&; var result : int&) : bool {
     let fields <- split(last_line(out), " ")
     if (length(fields) != 3) {
@@ -102,24 +79,9 @@ def parse_sample(out : string; var seconds : double&; var reps : int64&; var res
     return seconds > 0.0lf
 }
 
-def median_of(values : array<double>) : double {
-    var sorted := values
-    sorted |> sort()
-    let n = length(sorted)
-    return n == 0 ? 0.0lf : (n & 1) == 1 ? sorted[n / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) * 0.5lf
-}
-
 def cell_of(samples : array<double>; count : int64; result : int) : Cell {
     var c = Cell(time = median_of(samples), count = count, result = result)
-    if (!empty(samples)) {
-        var lo = samples[0]
-        var hi = samples[0]
-        for (s in samples) {
-            lo = min(lo, s)
-            hi = max(hi, s)
-        }
-        c.spread = c.time > 0.0lf ? (hi - lo) * 0.5lf / c.time : 0.0lf
-    }
+    c.spread = spread_of(samples, c.time)
     c.samples := samples
     return <- c
 }
@@ -179,7 +141,8 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
     let c_path = write_composed(name, work)
     let native_bin = path_join(work, "{name}_native")
     var build_out : string
-    if (run_and_capture([default_clang(), "-O3", "-w", "-funsigned-char", "-o", native_bin, c_path], build_out, 600.0) != 0) {
+    let no_libs : array<string>
+    if (run_and_capture(native_build_command(c_path, native_bin, no_libs), build_out, 600.0) != 0) {
         errors |> push("{name}/native: {first_line(build_out)}")
         return <- cells
     }
@@ -196,63 +159,26 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
         errors |> push("{name}/convert: {first_line(res.error)}")
         return <- cells
     }
-    let daslang = get_das_root() + "/bin/daslang"
-    var loader : array<string>
-    loader |> reserve(2 * length(CONVERTED_MODULES))
-    for (dir in CONVERTED_MODULES) {
-        loader |> push("-load_module")
-        loader |> push(dir)
-    }
-    measure_lane(cells, errors, name, "interp", with_binary_first(daslang, loader, "", res.das_path), samples, oracle)
+    measure_lane(cells, errors, name, "interp", das_lane_command(res.das_path, "", CONVERTED_MODULES), samples, oracle)
     // the same lane over the conversion under `--param-writes copy`, in its own folder
     let copied <- convert(c_path, path_join(work, "copy"), "linux", "", "", "copy")
     if (copied.ok) {
-        measure_lane(cells, errors, name, "interp-copy", with_binary_first(daslang, loader, "", copied.das_path), samples, oracle)
+        measure_lane(cells, errors, name, "interp-copy", das_lane_command(copied.das_path, "", CONVERTED_MODULES), samples, oracle)
     } else {
         errors |> push("{name}/interp-copy: convert: {first_line(copied.error)}")
     }
-    measure_lane(cells, errors, name, "jit", with_binary_first(daslang, loader, "-jit", res.das_path), samples, oracle)
-    var tier_out : string
-    // the `exe` and `aot` tiers return the build's exit code when the build fails, which passes
-    // for a run's, so each lane stands only on the binary its build left; an earlier run's goes
-    // first. The exe build's own diagnostic leads its output, after the `info` lines
-    let exe = path_join(work, "{name}_exe")
-    remove(exe)
-    remove(exe + ".exe")
-    let exe_rc = run_tier(res.das_path, "exe", work, tier_out, CONVERTED_MODULES)
-    let exe_bin = fexist(exe + ".exe") ? exe + ".exe" : exe
-    if (exe_rc >= 0 && fexist(exe_bin)) {
-        measure_lane(cells, errors, name, "exe", [exe_bin], samples, oracle)
-    } else {
-        errors |> push("{name}/exe: the build exited {exe_rc} and left no binary: {first_reported_line(tier_out)}")
-    }
-    tier_out = ""
-    let aot_bin = path_join(path_join(work, "ctx"), "{name}_aot")
-    remove(aot_bin)
-    let aot_rc = run_tier(res.das_path, "aot", work, tier_out, CONVERTED_MODULES)
-    if (aot_rc >= 0 && fexist(aot_bin)) {
-        measure_lane(cells, errors, name, "aot", [aot_bin], samples, oracle)
-    } else {
-        errors |> push("{name}/aot: the build exited {aot_rc} and left no binary: {last_line(tier_out)}")
-    }
-    return <- cells
-}
-
-def with_binary_first(daslang : string; loader : array<string>; flag : string; script : string) : array<string> {
-    var argv <- [daslang]
-    let tail <- empty(flag) ? [script] : [flag, script]
-    argv |> push_from(loader, tail)
-    return <- argv
-}
-
-def cpu_name : string {
-    for (line in split(fread("/proc/cpuinfo"), "\n")) {
-        if (line |> starts_with("model name")) {
-            let colon = find(line, ":")
-            return colon < 0 ? line : strip(slice(line, colon + 1))
+    measure_lane(cells, errors, name, "jit", das_lane_command(res.das_path, "-jit", CONVERTED_MODULES), samples, oracle)
+    let no_args : array<string>
+    for (lane in ["exe", "aot"]) {
+        var build_error : string
+        let bin = lane == "exe" ? build_exe(res.das_path, work, no_args, build_error) : build_aot(res.das_path, work, no_args, build_error)
+        if (empty(bin)) {
+            errors |> push("{name}/{lane}: {build_error}")
+        } else {
+            measure_lane(cells, errors, name, lane, [bin], samples, oracle)
         }
     }
-    return "unknown cpu"
+    return <- cells
 }
 
 def lane_text(cells : table<string; Cell>; lane : string) : string {
@@ -305,12 +231,14 @@ def main : int {
         tests[name] = JV(row)
         to_log(LOG_INFO, "{name}: " + join([for (lane in LANES); "{lane} {lane_text(cells, lane)}"], ", ") + "\n")
     }
+    var clang_version, daslang_version : string
+    tool_versions(clang_version, daslang_version)
     var root <- {
         "cpu" => JV(cpu_name()),
         "platform" => JV("{get_platform_name()} {strip(captured(["uname", "-m"]))}"),
         "timestamp" => JV(strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))),
         "samples" => JV(args.samples),
-        "versions" => JV({"clang" => JV(first_line(captured([default_clang(), "--version"]))), "daslang" => JV(first_line(captured([get_das_root() + "/bin/daslang", "-version"])))}),
+        "versions" => JV({"clang" => JV(clang_version), "daslang" => JV(daslang_version)}),
         "lanes" => JV(LANES),
         "tests" => JV(tests)
     }

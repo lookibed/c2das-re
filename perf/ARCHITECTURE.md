@@ -67,6 +67,12 @@ harness that times them under every lane, and the stored results.
   exists (section 5); `--table` renders the stored file instead of measuring, `--readme`
   rewrites the results table between the markers in `README.md`, and `--report <path>` writes
   the results, ratio and delta tables as one markdown block to `<path>` and prints it.
+- `perf_lanes.das` - the lanes and the sample arithmetic `run.das` shares with
+  `ports/publish.das`: the native lane's build command (the pinned clang, `NATIVE_FLAGS`
+  `-O3 -w -funsigned-char`), the interpreter and JIT commands over a converted module, the `exe`
+  and `aot` builds through `converter/tiers.das` (each standing only on the binary it leaves, an
+  earlier run's removed first, with the build's line as the error), the median and the spread
+  of a cell, the CPU model and the clang and daslang version lines.
 - `perf_compose.das` - the C program of a kernel: `composed_source` puts the kernel between
   the profile prologue (the `printf` and `clock` prototypes, the CRT's `CLOCKS_PER_SEC` as a
   constant) and epilogue (dastest's budget loop in C: a 0.5 s budget, reps regrown from the
@@ -85,7 +91,8 @@ harness that times them under every lane, and the stored results.
   text a run prints and writes as its report; whole files are read and written through daslib
   `fio`'s `fread(path)` and `fwrite(path, text)`.
 - `tests/` - the dastest suite over `perf_tables.das` and `perf_cli.das`, driven by JSON
-  fixtures, and `run.das` itself as a child process: `-?`, one sample of `blit` into an
+  fixtures, over `perf_lanes.das`'s arithmetic, commands and the AOT tier's refusal of program
+  arguments, and `run.das` itself as a child process: `-?`, one sample of `blit` into an
   `--out` file, whose `interp-copy` cell must time the copy conversion and match the native result, and one sample of
   `fib_recursive` under a `PATH_TO_LIBCLANG` whose `clang++` (the AOT host's compiler) fails,
   whose `aot` error must carry that compiler's output, and one under a `PATH` whose `c++` (the
