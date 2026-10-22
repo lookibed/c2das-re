@@ -36,7 +36,10 @@ harness that times them under every lane, and the stored results.
   literals read through its rows, and a flexible array member filled and summed;
   `setjmp_general` is P4.9's too, `r = setjmp(buf)` re-entered by a longjmp on every pass of a
   hot loop and the value accumulated, glibc's `struct __jmp_buf_tag` declared in the kernel
-  since a kernel includes no header. The kernel's parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
+  since a kernel includes no header; `switch_goto` is P5.1's, lua's VM dispatch: a loop over an
+  opcode array whose switch cases jump into another case's block and into the middle of one, so
+  every such goto re-dispatches the switch's matched-flag loop; `do_while_effect` is P5.1's too,
+  `do { ... } while (--n > 0)` nested in another, the decrement in the condition. The kernel's parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
   argument clang hoists the idempotent call out of the rep loop (the native lane reports
   zero), and daslang's optimizer evaluates a pure call with constant arguments at compile
   time whatever `infer_time_folding` says, so the interpreter lane measured a store. The

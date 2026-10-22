@@ -165,7 +165,7 @@ which ends at the first NUL; a `signed char` one fails closed, and one in braces
 indexed in place (`"abcdef"[2]`) is read through its pointer, `deref(p + i)`; a literal under `sizeof` is its
 array type. A call to a libc function the C program declares resolves through two tables:
 `C_RUNTIME_CALLS`, the functions a `c_runtime` piece lowers (`printf`, `sprintf`, `snprintf`,
-`vprintf`, `vsprintf`, `vsnprintf`, `fprintf`, `sscanf`, `vsscanf`, `exit`, `abort`, `qsort`, `bsearch`; `<math.h>`'s surface das math covers, `floor` as `math::floor` and `fabs` as `math::abs`, as `docs/stdlib-examples.md` "math.h" rules; glibc's `__errno_location`, which `errno` expands to, as `crt::c_errno_location`),
+`vprintf`, `vsprintf`, `vsnprintf`, `fprintf`, `sscanf`, `vsscanf`, `exit`, `abort`, `signal`, `qsort`, `bsearch`; `<math.h>`'s surface das math covers, `floor` as `math::floor` and `fabs` as `math::abs`, as `docs/stdlib-examples.md` "math.h" rules; glibc's `__errno_location`, which `errno` expands to, as `crt::c_errno_location`),
 one row each naming the module that holds the piece and the das name, and `CRT_CALLS`, the
 functions the `crt` module binds under their C names (the memory, string.h, ctype, conversion,
 libm exotica, time, locale, stdio and random families of `dasCRuntime/ARCHITECTURE.md`), spelled
@@ -176,7 +176,9 @@ closed. A library call takes a pointer to a record among its fixed arguments as 
 (`reinterpret<tm?>(crt::gmtime(addr(t)))`); `jmp_buf` and `va_list` are the protocol's own. A libc
 object the program reads is its crt accessor through `CRT_OBJECTS` (`stdout` is
 `reinterpret<_IO_FILE?>(crt::c_stdout())`, and the accessor's `void?` as it is where a library call
-takes it). A `void *` among a call's trailing arguments travels as `reinterpret<uint8?>(p)`, since
+takes it). Where the dialect's `long` is 32 bits (`msvc`), a fixed argument of C type `long` or
+`unsigned long` to a `crt::` function is widened (`int64(off)`) and such a result narrowed
+(`int(crt::ftell(...))`), since crt binds C's `long` as 64 bits. A `void *` among a call's trailing arguments travels as `reinterpret<uint8?>(p)`, since
 daslang meets a tuple holding `void?` after two tuples of other pointers with two generic
 instances (`docs/probe-findings.md` F61); the list holds every pointer as `void?` either way. A caller's `var` pointer reaches a piece's
 pointer argument as it reaches a converted function's. A `size_t` result is `uint64`, so an index or a count it feeds carries the cast C gives

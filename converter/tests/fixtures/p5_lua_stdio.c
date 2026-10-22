@@ -1,12 +1,13 @@
 /* The C library surface lua 5.4.8 reaches (P5.1 phase B): <stdio.h> through a FILE * the crt
    module takes as void *, the standard streams, fprintf, <time.h> with struct tm laid out from
-   the system header, and <locale.h>'s struct lconv. The one argument is a directory the test
+   the system header, <locale.h>'s struct lconv and <signal.h>'s signal (P5.1 phase C). The one argument is a directory the test
    creates and removes; every named file lives under it. lprefix.h's macros come first, as in
    every lua source: under _XOPEN_SOURCE glibc names struct tm's tail __tm_gmtoff and __tm_zone. */
 #define _XOPEN_SOURCE 600
 #define _LARGEFILE_SOURCE 1
 #define _FILE_OFFSET_BITS 64
 #include <locale.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -131,6 +132,25 @@ static void locale(void) {
     printf("query %s\n", setlocale(LC_NUMERIC, NULL));
 }
 
+/* lua.c:78 setsignal, lua.c:96 laction: signal returns the previous handler, SIG_DFL before the
+   first call, SIG_IGN as the sentinel stored; the dialect never delivers a signal, and the program
+   raises none */
+static int interrupts;
+
+static void laction(int i) {
+    signal(i, SIG_DFL);
+    interrupts++;
+}
+
+static void signals(void) {
+    void (*prev)(int) = signal(SIGINT, laction);
+    printf("signal first %d\n", prev == SIG_DFL);
+    prev = signal(SIGINT, SIG_IGN);
+    printf("signal second %d %d\n", prev == laction, interrupts);
+    prev = signal(SIGINT, SIG_DFL);
+    printf("signal ignored %d\n", prev == SIG_IGN);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2)
         return 2;
@@ -139,5 +159,6 @@ int main(int argc, char **argv) {
     standard();
     times();
     locale();
+    signals();
     return 0;
 }

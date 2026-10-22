@@ -37,7 +37,13 @@ deeper block has every bare block between them (a block that is its parent's sta
 emitted without braces, so the label lands in a scope the goto sees, its locals renamed where
 they would meet a global or another local of their name (`ARCHITECTURE_EMITTER.md` section 4); an
 `if`, loop or switch body on that way is Duff's device (P3.3) and fails closed. A goto over a declaration skips its
-initializer, which is C's rule too (`probes/test_goto.das`).
+initializer, which is C's rule too (`probes/test_goto.das`). A label with nothing after it in a das block other
+than a loop's body (llex.c's `no_save: break;` once a switch's if-chain drops the tail `break`, a
+label ending a function body or an `if` branch) is followed by `c_label_end()`, the `[sideeffects]`
+no-op of `c_runtime/c_label.das`: daslang's interpreter jumps only to a statement inside such a
+block, and its optimizer folds an empty block or a statement without effect away
+(`docs/probe-findings.md` F62). A loop body takes a jump to its end as the next iteration and gets
+none; the block a `}` closes is a loop's when the line that opens it is a `while` or a `for`.
 
 A goto into another case group of a switch around both (`goto dflt` from a `case` of lstrlib.c's
 `match`, `goto l_tforcall` and `goto ret` in lvm.c's `luaV_execute`) re-dispatches the switch:

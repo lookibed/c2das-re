@@ -69,6 +69,10 @@ struct Emitter {
     // into them finds its label in an enclosing scope
     labels : table<string; int>
     flatten : table<uint64>
+    // the last line spelled is a C label: a block other than a loop's body closing there takes
+    // `c_label_end()` first, since daslang's interpreter cannot jump to a label with nothing after
+    // it in such a block (docs/probe-findings.md F62)
+    after_label : bool
     // a label a goto from another case group of its switch reaches (`goto dflt` in lstrlib.c's
     // `match`), by the switch body it splits; the switch bodies that hold one, which take the
     // matched-flag loop, each with the das label that restarts it; each such goto by its switch
@@ -147,6 +151,7 @@ let C_RUNTIME_CALLS <- {
     "vsscanf" => RuntimeCall(piece = "c_runtime/scanf", das_name = "c_vsscanf"),
     "exit" => RuntimeCall(piece = "c_runtime/c_exit", das_name = "c_exit"),
     "abort" => RuntimeCall(piece = "c_runtime/c_exit", das_name = "c_abort"),
+    "signal" => RuntimeCall(piece = "c_runtime/c_signal", das_name = "c_signal"),
     "longjmp" => RuntimeCall(piece = "c_runtime/setjmp", das_name = "c_longjmp"),
     "_longjmp" => RuntimeCall(piece = "c_runtime/setjmp", das_name = "c_longjmp"),
     "fprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "fprintf"),
@@ -255,7 +260,29 @@ def private fail(var em : Emitter; what : string; loc : CirLoc) {
 }
 
 def private line(var em : Emitter; text : string) {
+    if (em.after_label && text |> starts_with("\}") && !closes_loop_body(em)) {
+        em.requires |> insert("c_runtime/c_label")
+        em.out |> push(repeat("    ", em.depth + 1) + "c_label_end()\n")
+    }
+    em.after_label = false
     em.out |> push(repeat("    ", em.depth) + text + "\n")
+}
+
+// whether the block a `}` at the current depth closes is a loop's body: the nearest line above at
+// that depth opens it
+def private closes_loop_body(em : Emitter) : bool {
+    let indent = repeat("    ", em.depth)
+    var at = length(em.out) - 1
+    while (at >= 0) {
+        var inscope lines <- split(em.out[at], "\n")
+        let opener = length(lines) >= 2 ? lines[length(lines) - 2] : ""
+        if (opener |> starts_with(indent) && !(opener |> starts_with(indent + " "))) {
+            let head = slice(opener, length(indent))
+            return head |> starts_with("while (") || head |> starts_with("for (")
+        }
+        at--
+    }
+    return false
 }
 
 def private flush_pre(var em : Emitter) {
@@ -322,6 +349,17 @@ def private is_small_int(tu : CirTu; t : int) : bool =>
 def private is_unsigned(tu : CirTu; t : int) : bool => kind_of(tu, t) == "int" && !tu.types[t].is_signed
 
 def private is_function_pointer(tu : CirTu; t : int) : bool => kind_of(tu, t) == "ptr" && kind_of(tu, tu.types[t].to) == "func"
+
+// a C `long` or `unsigned long` where the dialect's `long` is 32 bits (`msvc`): the crt module
+// binds C's `long` as 64 bits (dasCRuntime/ARCHITECTURE.md), so a call to it widens such an
+// argument and narrows such a result
+def private is_narrow_long(tu : CirTu; t : int) : bool {
+    var at = t
+    while (kind_of(tu, at) == "typedef") {
+        at = tu.types[at].to
+    }
+    return tu.target.long_w == 32 && kind_of(tu, at) == "int" && (tu.types[at].spell == "long" || tu.types[at].spell == "unsigned long")
+}
 
 // a C `va_list`: the dumper's opaque record, or linux's decay of it, `struct __va_list_tag *`
 // (a parameter, an argument), which the lowering spells alike as the runtime's cursor
@@ -971,6 +1009,31 @@ def private variadic_call(name : string; fixed : int; args : array<string>) : st
     return "{name}`va({join(parts, ", ")})"
 }
 
+// the spelling of argument `arg` (spelled `text`) of a call, `fixed` when it meets a parameter of
+// the prototype, `library` when the callee is a libc function, `crt` when the crt module binds it
+def private call_argument(var em : Emitter; tu : CirTu; arg : CirExpr const?; text : string; fixed, library, crt : bool) : string {
+    if (!fixed && is_data_pointer(tu, arg.t) && kind_of(tu, tu.types[arg.t].to) == "void") {
+        // a `void?` among a call's trailing arguments makes daslang find two generic
+        // instances for the tuple once two other pointer tuples have one (error 50609,
+        // docs/probe-findings.md F61): it travels as a byte pointer, which the list holds as
+        // the same `void?`
+        em.unsafe_used = true
+        return "reinterpret<uint8?>({text})"
+    } elif (library && is_va_list(tu, arg.t)) {
+        // a library function taking a `va_list` takes the list from the cursor on, as a
+        // `CVaList` (`c_vprintf`): the forwarding of a `va_list`
+        return "va_rest({text})"
+    } elif (crt && fixed && is_narrow_long(tu, arg.t)) {
+        return "{is_unsigned(tu, arg.t) ? "uint64" : "int64"}({text})"
+    } elif (library && fixed && is_record_pointer(tu, arg.t)) {
+        em.unsafe_used = true
+        // `stderr` passed on is the accessor's `void?` as it is
+        let object = crt_object(em, arg)
+        return empty(object) ? "reinterpret<void?>({text})" : "{object}()"
+    }
+    return text
+}
+
 def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     if (key_exists(ALLOCA_NAMES, called_name(x))) {
         return emit_alloca(em, tu, x, loc)
@@ -1013,27 +1076,10 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     }
     let library = !empty(name) && !key_exists(em.functions, called_name(x))
     let fixed_count = trailing_from(tu, x)
+    let crt = name |> starts_with("crt::")
     for (idx, arg in range(length(x.args)), x.args) {
         let text = stored(emit_expr(em, tu, arg, loc), tu, arg.t).text
-        if (idx >= fixed_count && is_data_pointer(tu, arg.t) && kind_of(tu, tu.types[arg.t].to) == "void") {
-            // a `void?` among a call's trailing arguments makes daslang find two generic
-            // instances for the tuple once two other pointer tuples have one (error 50609,
-            // docs/probe-findings.md F61): it travels as a byte pointer, which the list holds as
-            // the same `void?`
-            em.unsafe_used = true
-            args |> push("reinterpret<uint8?>({text})")
-        } elif (library && is_va_list(tu, arg.t)) {
-            // a library function taking a `va_list` takes the list from the cursor on, as a
-            // `CVaList` (`c_vprintf`): the forwarding of a `va_list`
-            args |> push("va_rest({text})")
-        } elif (library && idx < fixed_count && is_record_pointer(tu, arg.t)) {
-            em.unsafe_used = true
-            // `stderr` passed on is the accessor's `void?` as it is
-            let object = crt_object(em, arg)
-            args |> push(empty(object) ? "reinterpret<void?>({text})" : "{object}()")
-        } else {
-            args |> push(text)
-        }
+        args |> push(call_argument(em, tu, arg, text, idx < fixed_count, library, crt))
     }
     if (empty(name)) {
         return value("invoke({join(args, ", ")})", PREC_PRIMARY)
@@ -1041,6 +1087,9 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     let ft = called_type(tu, x.fn)
     if (!library && ft >= 0 && tu.types[ft].variadic) {
         return value(variadic_call(name, length(tu.types[ft].params), args), PREC_PRIMARY)
+    }
+    if (crt && is_narrow_long(tu, x.t)) {
+        return value("{is_unsigned(tu, x.t) ? "uint" : "int"}({name}({join(args, ", ")}))", PREC_PRIMARY)
     }
     if (library && is_record_pointer(tu, x.t)) {
         // `localtime`'s `struct tm *` comes back as `void?`
@@ -3374,6 +3423,7 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt const?) {
 def private emit_label(var em : Emitter; st : CirStmt const?) {
     if (!key_exists(em.group_labels, st.label_name)) {
         line(em, "label {em.labels?[st.label_name] ?? 0}:  // {st.label_name}")
+        em.after_label = true
         return
     }
     let flag = em.label_flags?[st.label_name] ?? ""

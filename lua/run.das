@@ -37,8 +37,10 @@ let PROGRAMS <- [("lua_all", "lua", true), ("luac_all", "luac", false)]
 struct Args {
     @clarg_doc = "also build the native oracle of each program into lua/work/<stem>_native"
     native : bool
-    @clarg_doc = "also run the converted interpreter under interp with each --arg and compare with the native oracle"
+    @clarg_doc = "also run the converted interpreter under --tier with each --arg and compare with the native oracle"
     run : bool
+    @clarg_doc = "the tier --run takes: interp or jit"
+    tier : string = "interp"
     @clarg_doc = "an argument the interpreter gets under --run, one per --arg, in order (default -e \"print(1+1)\")"
     arg : array<string>
     @clarg_doc = "convert only the programs whose stem contains this text"
@@ -141,18 +143,20 @@ def private build_native(c_path, bin : string) : bool {
     return true
 }
 
-// the converted interpreter at `das_path` and the native one at `bin`, each run with
+// the converted interpreter at `das_path` under `tier` and the native one at `bin`, each run with
 // `program_args`: true when the exit codes and the outputs agree
-def private run_both(das_path, bin : string; program_args : array<string>) : bool {
+def private run_both(das_path, bin, tier : string; program_args : array<string>) : bool {
     var native_args <- [bin]
     native_args |> push_from(program_args)
     var native_out : string
     let native_rc = run_and_capture(native_args, native_out, 60.0)
     var das_out : string
     let no_flags : array<string>
-    let das_rc = run_tier(das_path, "interp", WORK, das_out, CONVERTED_MODULES, 600.0, no_flags, program_args)
+    let das_rc = run_tier(das_path, tier, WORK, das_out, CONVERTED_MODULES, 600.0, no_flags, program_args)
+    // the JIT reports its compilation on `info` lines among the program's output
+    das_out = join([for (ln in split(das_out, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
     to_log(LOG_INFO, "lua: native exited {native_rc}: {native_out}\n")
-    to_log(LOG_INFO, "lua: interp exited {das_rc}: {das_out}\n")
+    to_log(LOG_INFO, "lua: {tier} exited {das_rc}: {das_out}\n")
     return native_rc == das_rc && native_out == das_out
 }
 
@@ -182,7 +186,7 @@ def private build_program(stem, main_source : string; standard : bool; args : Ar
     if (!empty(args.arg)) {
         program_args := args.arg
     }
-    return run_both(res.das_path, bin, program_args)
+    return run_both(res.das_path, bin, args.tier, program_args)
 }
 
 [export]
@@ -191,6 +195,10 @@ def main : int {
     let early = cli_prologue(args, "lua/run.das")
     if (early >= 0) {
         return early
+    }
+    if (args.tier != "interp" && args.tier != "jit") {
+        to_log(LOG_ERROR, "lua: --tier is interp or jit, not `{args.tier}`\n")
+        return 1
     }
     if (!stat(SOURCES).is_dir) {
         to_log(LOG_ERROR, "lua: no {SOURCES}; run lua/fetch.sh first\n")
