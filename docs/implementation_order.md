@@ -550,11 +550,11 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   label ends a block that is no loop (F62; `c_label_end()` after every label is the fix), and
   `in_program` reads clang's `-v` search list with `CPATH`/`C_INCLUDE_PATH` in it, so a program
   header directory named there counts as a system directory.
-  To be filed against daScript, each with its probe as the repro: F60's
-  two defects (the optimizer moving a label into an `else`, a loop taking a lower-numbered
-  outer goto as its own; the label fold is lookibed/daScript#8), F61's generic-instance error,
-  F62's unreachable label at a block's end, which `c_label_end()` works around, and F63's
-  labelled block that passes no goto outward under the interpreter. The C-IR
+  Filed against daScript, each with its probe as the repro: F60's
+  two defects (the optimizer moving a label into an `else`, lookibed/daScript#8; a loop taking
+  a lower-numbered outer goto as its own, #19), F61's generic-instance error (#20), F62's
+  unreachable label at a block's end, which `c_label_end()` works around (#22), and F63's
+  labelled block that passes no goto outward under the interpreter (#21). The C-IR
   writes no record spelling, which the emitter's `va_list` test reads, so a module emitted
   from a re-read C-IR (rather than the dumper's tree) spells `va_list` and fails its compile
   check.

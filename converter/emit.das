@@ -65,6 +65,8 @@ struct Emitter {
     // the sidecar's or the option's `param_writes` is `copy`: a written scalar or pointer
     // parameter gets a local copy instead of being written in place
     param_copy : bool
+    // a label stands on `c_label_end()`: the module defines the no-op
+    label_end : bool
     // the function's C labels by das number, and the blocks emitted without braces so a goto
     // into them finds its label in an enclosing scope
     labels : table<string; int>
@@ -351,6 +353,10 @@ def private check_reserved_renames(var em : Emitter; tu : CirTu) {
     }
     var sorted <- [for (name in keys(names)); name]
     sort(sorted)
+    if (key_exists(names, "c_label_end")) {
+        fail(em, "C name `c_label_end` is the statement the lowering puts after a label; not lowered", names?["c_label_end"] ?? CirLoc(file = tu.tu))
+        return
+    }
     for (name in sorted) {
         let renamed = reserved_rename(name)
         if (renamed != name && key_exists(names, renamed)) {
@@ -651,6 +657,10 @@ def private int_literal(spelled, digits : string) : string {
 }
 
 let EMPTY_LITERAL = "c2das_empty"
+
+// the statement a C label stands on in a das block other than a loop's body
+// (docs/probe-findings.md F62), defined in the module so the JIT inlines it
+let LABEL_END_DEF = "// a C label's statement: the optimizer keeps a [sideeffects] call after the label\n[sideeffects]\ndef private c_label_end \{\n    pass\n\}\n\n"
 
 // a das literal is a legal read-only C string, except the empty one, which is a null pointer
 // (docs/probe-findings.md F10): C's `""` points at one NUL byte, so it is the module's
@@ -3476,9 +3486,10 @@ def private emit_label(var em : Emitter; st : CirStmt const?) {
         line(em, "label {em.labels?[st.label_name] ?? 0}:  // {st.label_name}")
         // daslang's interpreter jumps only to a statement inside a block other than a loop's body,
         // and its optimizer folds a statement without effect after the label away
-        // (docs/probe-findings.md F62): the label stands on a `[sideeffects]` no-op
+        // (docs/probe-findings.md F62): the label stands on a `[sideeffects]` no-op the module
+        // defines, which the JIT inlines where a call into a c_runtime piece stays a call
         if (!in_loop_body(em)) {
-            em.requires |> insert("c_runtime/c_label")
+            em.label_end = true
             line(em, "c_label_end()")
         }
         return
@@ -4882,7 +4893,8 @@ def private assemble_module(var em : Emitter) {
     required |> sort()
     let header = join([for (name in required); "require {name}\n"], "")
     let empty = em.empty_literal ? "var private {EMPTY_LITERAL} : uint8[1] = fixed_array(uint8(0))\n\n" : ""
+    let label_end = em.label_end ? LABEL_END_DEF : ""
     let stack = em.stack_option > 0 ? em.stack_option : MODULE_STACK
     let stack_line = "options stack = {stack}\n"
-    em.text = GENERATED_BANNER + "\noptions gen2\noptions indenting = 4\n" + stack_line + header + "\n" + empty + join(em.out, "")
+    em.text = GENERATED_BANNER + "\noptions gen2\noptions indenting = 4\n" + stack_line + header + "\n" + empty + label_end + join(em.out, "")
 }
