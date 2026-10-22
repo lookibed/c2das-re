@@ -46,18 +46,19 @@ def private run(args : array<string>; var output : string&; timeout : float = 60
     return rc
 }
 
-def private run_exe(das_path, work_dir : string; var output : string&; module_dirs : array<string>; program_args : array<string>) : int {
+// the build and the run each get `timeout` seconds
+def private run_exe(das_path, work_dir : string; var output : string&; module_dirs : array<string>; program_args : array<string>; timeout : float) : int {
     let exe = path_join(work_dir, file_stem(das_path) + "_exe")
     var cmd <- daslang_cmd(module_dirs)
     cmd |> push_from(["-exe", "{das_path}", "-output", "{exe}"])
-    let rc = run(cmd, output)
+    let rc = run(cmd, output, timeout)
     if (rc != 0) {
         return rc
     }
     let built = fexist(exe + ".exe") ? exe + ".exe" : exe
     var bin <- ["{built}"]
     bin |> push_from(program_args)
-    return run(bin, output)
+    return run(bin, output, timeout)
 }
 
 // a native module folder (one holding src/*.cpp) joins the AOT host's compile: the generated
@@ -90,24 +91,29 @@ def aot_link_command(ctx_dir, das_path, host, bin : string; module_dirs : array<
     return <- link
 }
 
-def private run_aot(das_path, work_dir : string; var output : string&; module_dirs : array<string>) : int {
+//! The binary the `aot` tier builds for `das_path` in `work_dir`: `ctx/<stem>_aot`, the stem
+//! spelled as the context's C++ prefix.
+def aot_binary(das_path, work_dir : string) : string => path_join(path_join(work_dir, "ctx"), ident_of(file_stem(das_path)) + "_aot")
+
+// the context generation, the host's build and the run each get `timeout` seconds
+def private run_aot(das_path, work_dir : string; var output : string&; module_dirs : array<string>; timeout : float) : int {
     let ctx_dir = path_join(work_dir, "ctx")
     mkdir_rec(ctx_dir)
     var cmd <- daslang_cmd(module_dirs)
     cmd |> push_from([get_das_root() + "/utils/aot/main.das", "--", "-ctx", "{das_path}", ctx_dir + "/"])
-    let rc = run(cmd, output)
+    let rc = run(cmd, output, timeout)
     if (rc != 0) {
         return rc
     }
     let prefix = ident_of(file_stem(das_path))
     let host = path_join(ctx_dir, "host.cpp")
     fwrite(host, "#include \"{base_name(das_path)}.h\"\nint main() \{\n    {prefix}_ctx * ctx = {prefix}_create();\n    if (!ctx) return 125;\n    const int rc = {prefix}_main(ctx);\n    {prefix}_destroy(ctx);\n    return rc;\n\}\n")
-    let bin = path_join(ctx_dir, prefix + "_aot")
-    let crc = run(aot_link_command(ctx_dir, das_path, host, bin, module_dirs), output)
+    let bin = aot_binary(das_path, work_dir)
+    let crc = run(aot_link_command(ctx_dir, das_path, host, bin, module_dirs), output, timeout)
     if (crc != 0) {
         return crc
     }
-    return run(["{bin}"], output)
+    return run(["{bin}"], output, timeout)
 }
 
 //! `module_dirs` are the module folders the converted program requires, each passed as
@@ -130,7 +136,8 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
 
 //! `program_args` are the converted program's own arguments, its C `argv` after the name: after
 //! `--` under the interpreter and the JIT, after the binary under `exe`; the `aot` host passes
-//! none, so the tier refuses them.
+//! none, so the tier refuses them. `timeout` bounds every process the tier starts: the run, and
+//! under `exe` and `aot` each build step as well.
 def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>; timeout : float; flags : array<string>; program_args : array<string>) : int {
     if (tier == "interp" || tier == "jit") {
         var cmd <- daslang_cmd(module_dirs)
@@ -146,14 +153,14 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
         return run(cmd, output, timeout)
     }
     if (tier == "exe") {
-        return run_exe(das_path, work_dir, output, module_dirs, program_args)
+        return run_exe(das_path, work_dir, output, module_dirs, program_args, timeout)
     }
     if (tier == "aot" && !empty(program_args)) {
         output += "the aot tier's host passes the program no arguments\n"
         return -1
     }
     if (tier == "aot") {
-        return run_aot(das_path, work_dir, output, module_dirs)
+        return run_aot(das_path, work_dir, output, module_dirs, timeout)
     }
     output += "unknown tier `{tier}`; one of interp, jit, exe, aot\n"
     return -1

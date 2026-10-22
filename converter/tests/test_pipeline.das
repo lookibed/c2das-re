@@ -65,7 +65,25 @@ def test_pipeline_ret42(t : T?) {
             t |> equal(run_tier(res.das_path, tier, out, output), 42, output)
         }
     }
+    t |> run("the timeout bounds the exe and aot builds as well as the run") @(t : T?) {
+        if (!res.ok) {
+            t |> skip("conversion failed")
+            return
+        }
+        let no_modules : array<string>
+        for (tier in ["exe", "aot"]) {
+            var output : string
+            t |> equal(run_tier(res.das_path, tier, path_join(out, "timeout"), output, no_modules, 0.05), popen_timed_out, "{tier}: {output}")
+        }
+    }
     rmdir_rec(out)
+}
+
+[test]
+def test_aot_binary(t : T?) {
+    t |> run("the AOT binary is named by the stem spelled as the context's C++ prefix") @(t : T?) {
+        t |> equal(aot_binary("w/lua-all.das", "w"), "w/ctx/lua_all_aot")
+    }
 }
 
 [test]

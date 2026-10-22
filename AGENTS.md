@@ -23,7 +23,9 @@ gates and the review machinery. Codex sessions take their MCP wiring from
   upstream defect the item found. It merges with `gh pr merge --rebase --delete-branch` after
   the verification and only with the `preflight` check green; never a squash.
 - Each phase end is an annotated tag `v0.<phase>.0` with a GitHub release carrying the suite
-  counts and the perf and readability numbers at that commit; closing a phase includes it.
+  counts and the perf and readability numbers at that commit, and the ports repository
+  (`lookibed/c2das-ports`) regenerated from that tag with `bash scripts/publish_ports.sh --commit
+  --push`; closing a phase includes both.
 - CI is `.github/workflows/preflight.yml` on a self-hosted runner (labels `self-hosted`,
   `c2das`) installed under `/opt/actions-runner` on the machine that holds the toolchain, as the
   systemd service of the dedicated user `gha`, which reads `DASLANG_ROOT` and

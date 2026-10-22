@@ -58,8 +58,10 @@ harness that times them under every lane, and the stored results.
   times itself; each das lane logs its argv at `info`. The `exe` and `aot` lanes each stand
   only on the binary their build leaves (an earlier run's removed first), since the tier
   returns the build's exit code when the build fails: a failed build is the lane's error,
-  carrying the exe build's first line past its `info` lines (the linker's failure) or the AOT
-  host build's last line. The run writes
+  carrying the exe build's linker message (the first line after daslang's `Output:` line,
+  else its first line past the `info` lines) or the AOT host build's last line; a tier that
+  refuses before any build (the AOT host takes no program arguments) gives its own text alone.
+  The run writes
   `results_linux.json`, or
   the `--out <file>` it is given (which `--table` then reads; the delta's default baseline stays
   the committed file at HEAD), and prints the results table,
@@ -70,9 +72,12 @@ harness that times them under every lane, and the stored results.
 - `perf_lanes.das` - the lanes and the sample arithmetic `run.das` shares with
   `ports/publish.das`: the native lane's build command (the pinned clang, `NATIVE_FLAGS`
   `-O3 -w -funsigned-char`), the interpreter and JIT commands over a converted module, the `exe`
-  and `aot` builds through `converter/tiers.das` (each standing only on the binary it leaves, an
-  earlier run's removed first, with the build's line as the error), the median and the spread
-  of a cell, the CPU model and the clang and daslang version lines.
+  and `aot` builds through `converter/tiers.das` (each standing only on the binary it leaves,
+  named as the tier names it, an earlier run's removed first, with the build's line as the
+  error), the median and the spread of a cell, the CPU model and the clang and daslang version
+  lines (each the first line past the `info` lines). `BUILD_TIMEOUT`, 3600 s, bounds each step
+  of an `exe` or `aot` build and the run it ends with: `run_tier` passes its timeout to every
+  process the tier starts.
 - `perf_compose.das` - the C program of a kernel: `composed_source` puts the kernel between
   the profile prologue (the `printf` and `clock` prototypes, the CRT's `CLOCKS_PER_SEC` as a
   constant) and epilogue (dastest's budget loop in C: a 0.5 s budget, reps regrown from the

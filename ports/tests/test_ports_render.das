@@ -15,8 +15,8 @@ def private failed(workload, lane, error : string) : LaneCell => <- LaneCell(wor
 // two workloads and the startup row; interp everywhere, jit on one workload, aot a lane error,
 // exe a failed cell
 def private fixture : Capture => <- Capture(
-    program = "lua", timestamp = "2026-10-22 10:00 UTC", samples = 3,
-    machine = Machine(arch = "x86_64", cpu = "CPU", clang = "clang version 22", daslang = "0.6.4"),
+    program = "lua", commit = "abc123", command = "scripts/publish_ports.sh --program lua --perf --samples 3", timestamp = "2026-10-22 10:00 UTC", samples = 3, timeout = 60,
+    machine = Machine(arch = "x86_64", cpu = "CPU", clang = "clang version 22", clang_path = "/opt/clang/bin/clang", daslang = "0.6.4"),
     lanes <- [for (lane in ["native", "interp", "jit", "exe", "aot"]); Lane(name = lane, command = "run {lane}", error = lane == "aot" ? "no arguments" : "")],
     workloads <- [
         Workload(name = "startup", args = "-e \"print(1)\"", startup = true),
@@ -56,9 +56,28 @@ def test_tables(t : T?) {
     t |> run("the perf section names the machine, the samples and every lane's command") @(t : T?) {
         let c <- fixture()
         let text = render_perf(c)
-        t |> success(text |> starts_with("Captured 2026-10-22 10:00 UTC on x86_64, CPU; clang version 22; daslang 0.6.4. A cell is the median wall time of 3 runs"), text)
+        t |> success(text |> starts_with("Captured 2026-10-22 10:00 UTC on x86_64, CPU; clang version 22 at `/opt/clang/bin/clang`, the native lane's compiler; daslang 0.6.4; c2das-re `abc123`. Reproduced by `scripts/publish_ports.sh --program lua --perf --samples 3`. A cell is the median wall time of 3 runs"), text)
+        t |> success(text |> contains("a run past 60 s fails its cell"), text)
         t |> success(text |> contains("- JIT: `run jit`\n"), text)
         t |> success(text |> ends_with("Not yet:\n\n- nbody, JIT: not yet: prints `x`\n- fib, exe: not yet: exited 3\n- AOT, every workload: not yet: no arguments\n"), text)
+    }
+    t |> run("a capture where every cell stands has no not-yet list") @(t : T?) {
+        var c <- fixture()
+        c.lanes |> resize(2)
+        c.cells <- [cell("startup", "native", 0.001lf), cell("startup", "interp", 1.0lf), cell("fib", "native", 1.0lf), cell("fib", "interp", 2.0lf), cell("nbody", "native", 1.0lf), cell("nbody", "interp", 2.0lf)]
+        let text = render_perf(c)
+        t |> success(!(text |> contains("Not yet")), text)
+        t |> success(text |> ends_with("- interpreter: `run interp`\n"), text)
+    }
+    t |> run("a lane the capture's --lanes left out is `not measured`, in the ratio table and the projects table") @(t : T?) {
+        var c <- fixture()
+        c.lanes |> resize(2)
+        let ratios = render_ratios(c)
+        t |> success(ratios |> contains("| fib      | `bench/fib.lua`   |               200.00 | not measured | not measured | not measured |      not measured |      not measured |      not measured | not measured |"), ratios)
+        var captures : array<Capture>
+        captures |> emplace(c)
+        let projects = render_projects(captures)
+        t |> success(projects |> contains("| x86_64, CPU |         2 |      100.00 | not measured | not measured | not measured |"), projects)
     }
 }
 
@@ -77,7 +96,7 @@ def test_projects(t : T?) {
     t |> run("a projects row: all workloads bare, some named, none `not yet`") @(t : T?) {
         var captures : array<Capture>
         captures |> emplace(fixture())
-        t |> equal(render_projects(captures), "| Program              | Captured             | Workloads | interpreter |           JIT |     exe |     AOT |\n| :------------------- | :------------------- | --------: | ----------: | ------------: | ------: | ------: |\n| [lua](lua/README.md) | 2026-10-22 10:00 UTC |         2 |      100.00 | 8.00 (1 of 2) | not yet | not yet |\n")
+        t |> equal(render_projects(captures), "| Program              | Captured             | Machine     | Workloads | interpreter |           JIT |     exe |     AOT |\n| :------------------- | :------------------- | :---------- | --------: | ----------: | ------------: | ------: | ------: |\n| [lua](lua/README.md) | 2026-10-22 10:00 UTC | x86_64, CPU |         2 |      100.00 | 8.00 (1 of 2) | not yet | not yet |\n")
     }
     t |> run("the top-level README keeps the charter above the marker and replaces what is under it") @(t : T?) {
         var captures : array<Capture>
@@ -91,6 +110,8 @@ def test_projects(t : T?) {
         t |> success(render_top_readme(first, none, true) |> ends_with("No program has a capture yet.\n"))
         // without --perf the projects section is the one line the perf method audit leaves
         t |> equal(render_top_readme(first, captures, false), "# ports\n\ncharter\n\n{README_MARKER}\n\n## Programs\n\n{PERF_NOT_YET}\n")
+        // a README without the marker is the charter whole, its trailing blanks trimmed
+        t |> equal(render_top_readme("# ports\ncharter", captures, false), "# ports\ncharter\n\n{README_MARKER}\n\n## Programs\n\n{PERF_NOT_YET}\n")
     }
 }
 
@@ -101,6 +122,12 @@ def test_sources(t : T?) {
         t |> equal(license_block(header), "Copyright (C) 1994 Someone.\n\nPermission is granted.\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n")
         t |> equal(license_block("* Copyright (C) 1994\n* never closed\n"), "")
         t |> equal(license_block("int x;\n"), "")
+    }
+    t |> run("the license block starts at the last Copyright (C) line inside the comment that ends with the terms") @(t : T?) {
+        let header = "/*\n* Copyright (C) 1990 Earlier, no terms.\n*/\nint code;\n/***\n* Copyright (C) 1994 Someone.\n*\n* Permission is granted.\n* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n****/\n"
+        t |> equal(license_block(header), "Copyright (C) 1994 Someone.\n\nPermission is granted.\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n")
+        // a comment that closes before the terms holds none, and the next comment's block stands
+        t |> equal(license_block("/*\n* Copyright (C) 1990 A.\n*/\n* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n"), "")
     }
     t |> run("the VERSIONS.md pin: the version and every tarball with its sha256") @(t : T?) {
         let a = repeat("a", 64)
@@ -114,5 +141,14 @@ def test_sources(t : T?) {
         t |> equal(release.tarballs[1].sha256, b)
         var missing : Release
         t |> success(!release_of("doom: 1\n", "lua", missing))
+    }
+    t |> run("a pin with a bare version, and a sha256 without a URL, name no tarball") @(t : T?) {
+        var bare : Release
+        t |> success(release_of("lua: 9.9\n", "lua", bare))
+        t |> equal(bare.version, "9.9")
+        t |> equal(length(bare.tarballs), 0)
+        var no_url : Release
+        t |> success(release_of("lua: 9.9 (sha256 {repeat("a", 64)})\n", "lua", no_url))
+        t |> equal(length(no_url.tarballs), 0)
     }
 }

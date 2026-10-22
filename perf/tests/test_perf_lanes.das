@@ -1,12 +1,14 @@
 options gen2
 require dastest/testing_boost public
 require strings
+require daslib/fio
 require daslib/strings_boost
 require ../perf_lanes.das
 require ../../converter/dumper_a.das
 
 //! The shared lane module: the sample arithmetic, the output lines a lane's error quotes, the
-//! native and das lane commands, and the AOT tier's refusal of program arguments.
+//! native and das lane commands, the AOT tier's refusal of program arguments and its binary's name,
+//! and the line an exe build's failure quotes.
 
 [test]
 def test_samples(t : T?) {
@@ -40,9 +42,29 @@ def test_commands(t : T?) {
         t |> equal(join(das_lane_command("m.das", "", ["a"]), " "), "{get_das_root()}/bin/daslang -load_module a m.das")
         t |> equal(join(das_lane_command("m.das", "-jit", ["a", "b"]), " "), "{get_das_root()}/bin/daslang -load_module a -load_module b -jit m.das")
     }
-    t |> run("the AOT lane refuses program arguments: no binary, the tier's reason") @(t : T?) {
+    t |> run("the AOT lane refuses program arguments: no binary, the tier's reason alone, since no build ran") @(t : T?) {
         var error : string
         t |> equal(build_aot("m.das", "perf/work/none", ["-e", "x"], error), "")
-        t |> equal(error, "the build exited -1 and left no binary: the aot tier's host passes the program no arguments")
+        t |> equal(error, "the aot tier's host passes the program no arguments")
+    }
+    t |> run("the AOT lane removes an earlier binary by the tier's name for it, the stem spelled as a C++ identifier") @(t : T?) {
+        let stale = "perf/work/lanes_aot_name/ctx/no_such_module_aot"
+        mkdir_rec("perf/work/lanes_aot_name/ctx")
+        fwrite(stale, "stale\n")
+        let no_args : array<string>
+        var error : string
+        t |> equal(build_aot("perf/work/lanes_aot_name/no-such-module.das", "perf/work/lanes_aot_name", no_args, error), "")
+        t |> success(!fexist(stale), "an earlier binary survived: {error}")
+        t |> success(error |> starts_with("the build exited "), error)
+        rmdir_rec("perf/work/lanes_aot_name")
+    }
+}
+
+[test]
+def test_exe_build_line(t : T?) {
+    t |> run("an exe build's reason is the linker's line after daslang's Output: line, else the first reported line") @(t : T?) {
+        t |> equal(exe_build_line("[I] LLVM EXE: x\nFailed to link Library a.exe, command 'c++ ...'\nOutput:\n\nld: cannot find -lfoo\nwrite_artifact: link failed\n"), "ld: cannot find -lfoo")
+        t |> equal(exe_build_line("[I] LLVM EXE: x\nerror[30304]: no such function\n"), "error[30304]: no such function")
+        t |> equal(exe_build_line("Failed to link Library a.exe\nOutput:\n"), "Failed to link Library a.exe")
     }
 }

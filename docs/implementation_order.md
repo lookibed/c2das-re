@@ -581,8 +581,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   program no arguments (`converter/tiers.das`), and the test-suite row is `not yet` under every das
   lane until P5.2 (a Lua error aborts the process). daslang's `json_boost` fails type inference on
   `JV` of a struct holding an array of structs that holds an array of structs, so the capture keeps
-  its cells flat; popen's timeout watchdog delays the return by up to 100 ms, so a sample's clock
-  stops at the end of its output.
+  its cells flat (lookibed/daScript#23, `docs/probe-findings.md` F64); popen's timeout watchdog
+  delays the return by up to 100 ms, so a sample's clock stops at the end of its output. A
+  conversion leaves a stamp of its commit in `lua/work/`, which a `--no-convert` publish must
+  match (`--allow-stale` otherwise). `perf/run.das`'s clang and daslang version lines now read
+  past `info` lines (`first_reported_line`, the same text on this machine), and its exe and AOT
+  builds take the 3600 s build timeout `converter/tiers.das` now passes to every build step.
 - **P5.2 pcall** via the setjmp lowering (`LUAI_THROW/LUAI_TRY` → `c_longjmp`/contained
   pattern — the easy shape, per spec).
 - **P5.3 Lua's own test suite** under interp. Expect a long tail of libc exactness bugs
