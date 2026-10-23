@@ -1841,7 +1841,7 @@ def p7_volatile_fixtures(t : T?) {
 }
 
 def p5_skip_audit_fixtures(t : T?) {
-    t |> run("the skip audit's shims: dropped attributes, asm barriers as nothing, the builtins with a direct meaning") @(t : T?) {
+    t |> run("the skip audit's shims: dropped attributes, mode, asm barriers as nothing, the builtins with a direct meaning, clang's constant_p") @(t : T?) {
         var text : string
         check_fixture(t, "p5_gnu_shims", text)
         has_text(t, text, "require c_runtime/c_builtins")
@@ -1853,25 +1853,34 @@ def p5_skip_audit_fixtures(t : T?) {
         t |> equal(text |> find("__builtin_constant_p") < 0, true, text)
     }
     t |> run("an attribute outside the dropped and read lists fails closed naming it") @(t : T?) {
-        rejects(t, "attr_mode", "typedef int QI __attribute__((mode(QI)));\nint main(void) \{ QI q = 1; return q - 1; \}\n", "the attribute `mode` is not lowered")
+        rejects(t, "attr_alias", "int f(void) \{ return 0; \}\nint g(void) __attribute__((alias(\"f\")));\nint main(void) \{ return g(); \}\n", "the attribute `alias` is not lowered")
         rejects(t, "attr_cleanup", "static void done(int *p) \{ (void)p; \}\nint main(void) \{ int c __attribute__((cleanup(done))) = 0; return c; \}\n", "the attribute `cleanup` is not lowered")
         rejects(t, "attr_transparent", "union __attribute__((transparent_union)) U \{ int *a; long *b; \};\nint main(void) \{ return 0; \}\n", "the attribute `transparent_union` is not lowered")
         rejects(t, "attr_weak_undefined", "extern int w __attribute__((weak));\nint main(void) \{ return &w != 0; \}\n", "`weak` on `w`, which the unit never defines")
+        rejects(t, "attr_statement", "int f(int x) \{ if (x) \{ __attribute__((musttail)) return f(x - 1); \} return 0; \}\nint main(void) \{ return f(2); \}\n", "the attribute `must_tail` is not lowered")
     }
-    t |> run("asm with template text or operands fails closed") @(t : T?) {
-        rejects(t, "asm_text", "int main(void) \{ asm(\"nop\"); return 0; \}\n", "inline asm with template text or operands")
-        rejects(t, "asm_operands", "int main(void) \{ int x = 1; asm volatile(\"\" : \"+r\"(x)); return x - 1; \}\n", "inline asm with template text or operands")
-        rejects(t, "asm_inputs", "int main(void) \{ int x = 0; asm(\"\" : : \"r\"(x) : \"memory\"); return x; \}\n", "inline asm with template text or operands")
+    t |> run("an attribute clang wrote itself or carried from an earlier declaration is not judged") @(t : T?) {
+        converts(t, "attr_implicit", "#pragma clang optimize off\nstatic int f(void) \{ return 0; \}\n#pragma clang optimize on\nint main(void) \{ return f(); \}\n")
+        converts(t, "attr_inherited", "#include <stdio.h>\nint sscanf(const char *, const char *, ...);\nint main(void) \{ int x = 0; sscanf(\"7\", \"%d\", &x); return x - 7; \}\n")
     }
-    t |> run("the barrier test reads the statement's source") @(t : T?) {
-        t |> equal(is_barrier_asm("asm(\"\")"), true)
-        t |> equal(is_barrier_asm("__asm__ __volatile__(\"\" : : : \"memory\", \"cc\")"), true)
-        t |> equal(is_barrier_asm("asm volatile (\"\" \"\" ::: \"memory\")"), true)
-        t |> equal(is_barrier_asm("asm(\"nop\")"), false)
-        t |> equal(is_barrier_asm("asm goto(\"\" : : : : out)"), false)
-        t |> equal(is_barrier_asm("asm(\"\" : \"=r\"(x))"), false)
-        t |> equal(is_barrier_asm("asm(\"\" : : \"r\"(x))"), false)
-        t |> equal(is_barrier_asm("asm(\"\" : : : : l)"), false)
-        t |> equal(is_barrier_asm(""), false)
+    t |> run("an attribute's spelling breaks words before a capital that follows no capital") @(t : T?) {
+        t |> equal(attribute_spelling("TransparentUnionAttr"), "transparent_union")
+        t |> equal(attribute_spelling("CXX11NoReturnAttr"), "cxx11_no_return")
+        t |> equal(attribute_spelling("AliasAttr"), "alias")
+    }
+    t |> run("asm with template text, operands or a goto fails closed naming why") @(t : T?) {
+        rejects(t, "asm_text", "int main(void) \{ asm(\"nop\"); return 0; \}\n", "inline asm with template text is machine code")
+        rejects(t, "asm_macro_text", "#define TEMPLATED(s) __asm__ volatile(s ::: \"memory\")\nint main(void) \{ TEMPLATED(\"nop\"); return 0; \}\n", "inline asm with template text is machine code")
+        rejects(t, "asm_operands", "int main(void) \{ int x = 1; asm volatile(\"\" : \"+r\"(x)); return x - 1; \}\n", "inline asm with operands is a register binding")
+        rejects(t, "asm_inputs", "int main(void) \{ int x = 0; asm(\"\" : : \"r\"(x) : \"memory\"); return x; \}\n", "inline asm with operands is a register binding")
+        rejects(t, "asm_goto", "int main(void) \{ asm goto(\"\" : : : : out); return 1;\nout:\n    return 0; \}\n", "`asm goto` jumps to a label from machine code")
+        rejects(t, "asm_file_scope", "asm(\".globl marker\");\nint main(void) \{ return 0; \}\n", "a file-scope asm is machine code")
+    }
+    t |> run("a __builtin_constant_p over a comma operator clang cannot fold fails closed, through a cast too") @(t : T?) {
+        rejects(t, "constant_p_comma", "int main(int argc, char **argv) \{ (void)argv; int x = argc; return __builtin_constant_p((x, 5)) - 1; \}\n", "a `__builtin_constant_p` over a comma operator clang cannot fold")
+        rejects(t, "constant_p_comma_cast", "int main(int argc, char **argv) \{ (void)argv; int x = argc; return __builtin_constant_p((double)(x, 2.5)) - 1; \}\n", "a `__builtin_constant_p` over a comma operator clang cannot fold")
+    }
+    t |> run("a __builtin_constant_p over another one clang cannot fold fails closed") @(t : T?) {
+        rejects(t, "constant_p_nested", "int main(int argc, char **argv) \{ (void)argv; return __builtin_constant_p(__builtin_constant_p(argc)) - 1; \}\n", "a `__builtin_constant_p` whose argument holds another one clang cannot fold")
     }
 }

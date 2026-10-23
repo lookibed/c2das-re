@@ -6,7 +6,8 @@ require daslib/fio
 require ../../suites/suite_runner.das
 
 //! The runner's skip audit (`--audit-skips`) over a stand-in suite: only the ledgered ids run,
-//! each outcome lands in `work/skip_audit.tsv` with its feature, and the ratchet is untouched.
+//! each outcome lands in `work/skip_audit.tsv` with its feature, and the ratchet is untouched but
+//! under `--update`, which only adds the ids that passed.
 
 def torture_verdict(id : string; _c_path : string; rc : int; output : string) : Outcome =>
     rc != 0 ? Outcome(id = id, status = "exit", reason = "exited {rc}: {first_line(output)}") : Outcome(id = id, status = "pass", reason = "")
@@ -37,6 +38,10 @@ def test_audit_status(t : T?) {
         t |> equal(audit_status(Outcome(id = "a", status = "exit", reason = "exited 1")), "exit")
         t |> equal(audit_status(Outcome(id = "a", status = "timeout", reason = "")), "timeout")
     }
+    t |> run("a skip line of an id alone names no feature") @(t : T?) {
+        t |> equal(skip_line("lonely").feature, "")
+        t |> equal(skip_line("lonely").id, "lonely")
+    }
     t |> run("an audit row keeps the reason's first line, tabs spelled as spaces") @(t : T?) {
         let row = audit_row("f", Outcome(id = "a", status = "exit", reason = "exited 1:\tx\nmore"))
         t |> equal(row.reason, "exited 1: x")
@@ -57,17 +62,30 @@ def test_audit_suite(t : T?) {
     if (empty(dir)) {
         return
     }
-    t |> run("only the ledgered ids present run, each with its feature, into work/skip_audit.tsv") @(t : T?) {
+    t |> run("only the ledgered ids run, each with its feature, into work/skip_audit.tsv; a ledgered id with no file is missing") @(t : T?) {
         let spec = make_suite(dir, 60.0)
         let rows <- audit_suite(spec, "", "linux", @@torture_verdict)
         let seen = join([for (r in rows); "{r.id}:{r.feature}:{r.status}"], " ")
-        t |> equal(seen, "ok:feature a:pass bad:feature b:exit")
+        t |> equal(seen, "bad:feature b:exit ghost:feature a:missing ok:feature a:pass spin:feature c:missing")
+        t |> success(find(fread(path_join(spec.work_dir, "skip_audit.tsv")), "ghost\tfeature a\tmissing\tno ghost.c in ") >= 0)
         let tsv = fread(path_join(spec.work_dir, "skip_audit.tsv"))
         t |> success(find(tsv, "bad\tfeature b\texit\texited 3: \n") >= 0, tsv)
         t |> success(find(tsv, "ok\tfeature a\tpass\t\n") >= 0, tsv)
         t |> success(find(tsv, "bad\t") < find(tsv, "ok\t"), "rows are sorted by id: {tsv}")
         t |> equal(fexist(path_join(spec.work_dir, "plain")), false, "an unlisted id never runs")
         t |> equal(fread(spec.expected_pass), RATCHET_TEXT)
+    }
+    t |> run("a filter narrows the missing ids too") @(t : T?) {
+        let spec = make_suite(dir, 60.0)
+        let rows <- audit_suite(spec, "ok", "linux", @@torture_verdict)
+        t |> equal(join([for (r in rows); "{r.id}:{r.status}"], " "), "ok:pass")
+    }
+    t |> run("--update joins the audited ids that pass to the ratchet, sorted; a failure, a timeout or a missing file joins nothing") @(t : T?) {
+        let spec = make_suite(dir, 60.0)
+        let rows <- [AuditRow(id = "zeta", status = "pass"), AuditRow(id = "alpha", status = "pass"), AuditRow(id = "plain", status = "pass"), AuditRow(id = "bad", status = "exit"), AuditRow(id = "slow", status = "timeout"), AuditRow(id = "ghost", status = "missing")]
+        t |> equal(join_audit_passes("standin", spec.expected_pass, rows), 2)
+        t |> equal(fread(spec.expected_pass), "# standin tests that pass under the interpreter; the ratchet, kept sorted\nalpha\nplain\nzeta\n")
+        t |> equal(join_audit_passes("standin", spec.expected_pass, rows), 0)
     }
     t |> run("a run past the suite's timeout is `timeout`, not `exit`") @(t : T?) {
         let spec = make_suite(dir, 3.0)
@@ -80,6 +98,64 @@ def test_audit_suite(t : T?) {
         }
     }
     rmdir_rec(dir)
+}
+
+[test]
+def test_audited_lines(t : T?) {
+    t |> run("an audit judges each ledgered id once, by its first line, those the filter holds, sorted") @(t : T?) {
+        let lines <- [skip_line("30\tgoto\tr\tP7.7"), skip_line("100\tgoto\tr\tP7.7"), skip_line("30\tother\tr\tnever"), skip_line("200")]
+        let all <- audited_lines(lines, "")
+        t |> equal(join([for (l in all); "{l.id}:{l.feature}"], " "), "100:goto 200: 30:goto")
+        let some <- audited_lines(lines, "0")
+        t |> equal(length(some), 3)
+        let one <- audited_lines(lines, "20")
+        t |> equal(join([for (l in one); l.id], " "), "200")
+    }
+}
+
+// the stand-in tree a child run of `suites/gcc_torture/run.das` reads from its working folder:
+// the tests, the ledger, the ratchet, and the module folders the converted run loads
+def make_torture_tree(root : string) : string {
+    let tests = path_join(root, "suites/gcc_torture/fetch/gcc/gcc/testsuite/gcc.c-torture/execute")
+    mkdir_rec(tests)
+    fwrite(path_join(tests, "ok.c"), "int main(void) \{ return 0; \}\n")
+    fwrite(path_join(tests, "bad.c"), "int main(void) \{ return 3; \}\n")
+    fwrite(path_join(tests, "plain.c"), "int main(void) \{ return 0; \}\n")
+    fwrite(path_join(root, "suites/gcc_torture/skip.txt"), "# ledger\nok\tfeature a\treason\tP9.1\nbad\tfeature b\treason\tnever\n")
+    fwrite(path_join(root, "suites/gcc_torture/expected_pass.txt"), RATCHET_TEXT)
+    var out : string
+    run_and_capture(["bash", "-c", "ln -s \"$(pwd)/c_runtime\" \"$(pwd)/dasCRuntime\" \"$1\"", "links", root], out, 60.0)
+    return path_join(root, "suites/gcc_torture/expected_pass.txt")
+}
+
+// `suites/gcc_torture/run.das -- <flags>` run in `root`: its exit code, its output in `out`
+def run_torture(root : string; flags : string; var out : string&) : int {
+    let daslang = get_das_root() + "/bin/daslang"
+    return run_and_capture(["bash", "-c", "repo=$(pwd); cd \"$1\" && \"$2\" -load_module \"$repo/dasCRuntime\" -load_module \"$repo/c_runtime\" \"$repo/suites/gcc_torture/run.das\" -- $3", "torture", root, daslang, flags], out, 600.0)
+}
+
+[test]
+def test_audit_cli(t : T?) {
+    var dir_error : string
+    let root = create_temp_directory("c2das_audit_cli", dir_error)
+    t |> equal(dir_error, "")
+    if (empty(root)) {
+        return
+    }
+    let ratchet = make_torture_tree(root)
+    t |> run("--audit-skips runs the ledger alone and exits 0, the ratchet untouched and never run") @(t : T?) {
+        var out : string
+        t |> equal(run_torture(root, "--audit-skips", out), 0, out)
+        t |> success(fexist(path_join(root, "suites/gcc_torture/work/skip_audit.tsv")), out)
+        t |> equal(fexist(path_join(root, "suites/gcc_torture/work/plain")), false, "the ratchet's id ran: {out}")
+        t |> equal(fread(ratchet), RATCHET_TEXT)
+    }
+    t |> run("--audit-skips --update joins the passing ledgered id, not the failing one") @(t : T?) {
+        var out : string
+        t |> equal(run_torture(root, "--audit-skips --update", out), 0, out)
+        t |> equal(fread(ratchet), "# gcc_torture tests that pass under the interpreter; the ratchet, kept sorted\nok\nplain\n")
+    }
+    rmdir_rec(root)
 }
 
 [test]
@@ -97,6 +173,15 @@ def test_closed_phase(t : T?) {
         t |> equal(highest_closed_phase([""]), CLOSED_PHASE_FLOOR)
         t |> equal(highest_closed_phase(["v0.4.0", "v0.5.0", "v0.6.1", "v1.7.0", "v0.x.0"]), 5)
         t |> equal(highest_closed_phase(["v0.2.0"]), CLOSED_PHASE_FLOOR)
+        t |> equal(highest_closed_phase(["v0.9.0.0", "v0.9"]), CLOSED_PHASE_FLOOR)
+    }
+    t |> run("a phase column is never or a row id; anything else is malformed") @(t : T?) {
+        for (good in fixed_array("never", "P7", "P7.5", "P5.1c", "P12.10")) {
+            t |> equal(phase_well_formed(good), true, good)
+        }
+        for (bad in fixed_array("P4a", "Px", "P7.", "P.5", "P7.5.1", "P7.c", "p7.5", "", "Never")) {
+            t |> equal(phase_well_formed(bad), false, bad)
+        }
     }
     t |> run("a phase at or below the highest closed one is closed; never and a later phase are not") @(t : T?) {
         t |> equal(names_closed_phase("P3.3", 4), true)
@@ -105,4 +190,29 @@ def test_closed_phase(t : T?) {
         t |> equal(names_closed_phase("P7.5", 4), false)
         t |> equal(names_closed_phase("never", 4), false)
     }
+}
+
+[test]
+def test_review_gate(t : T?) {
+    var dir_error : string
+    let root = create_temp_directory("c2das_suites_gate", dir_error)
+    t |> equal(dir_error, "")
+    if (empty(root)) {
+        return
+    }
+    for (suite in fixed_array("c_testsuite", "gcc_torture", "csmith")) {
+        mkdir_rec(path_join(root, "suites/{suite}"))
+    }
+    fwrite(path_join(root, "suites/gcc_torture/skip.txt"), "# ledger\nclosed\tf\tr\tP4\nlive\tf\tr\tP7.5\nnone\tf\tr\tnever\nodd\tf\tr\tP4a\n")
+    t |> run("suites/REVIEW.das names a skip line of a closed phase and a malformed phase, and passes a live row and never") @(t : T?) {
+        var out : string
+        let daslang = get_das_root() + "/bin/daslang"
+        let rc = run_and_capture(["bash", "-c", "repo=$(pwd); cd \"$1\" && \"$2\" \"$repo/suites/REVIEW.das\"", "gate", root, daslang], out, 120.0)
+        t |> equal(rc, 1, out)
+        t |> success(out |> contains("`closed` names P4, a closed phase"), out)
+        t |> success(out |> contains("`odd\tf\tr\tP4a`: a skip line is id, feature, reason, ledger row id"), out)
+        t |> success(!(out |> contains("`live`")), out)
+        t |> success(!(out |> contains("`none`")), out)
+    }
+    rmdir_rec(root)
 }

@@ -27,13 +27,7 @@ def main : int {
         passing |> insert(id)
     }
     let ids <- c_file_ids(TESTS_DIR, "")
-    var lines : array<string>
-    for (id in ids) {
-        let idx = key_exists(passing, id) ? -1 : first_rule(compiled, fread("{TESTS_DIR}/{id}.c"))
-        if (idx >= 0) {
-            lines |> push("{id}\t{RULES[idx].feature}\t{RULES[idx].reason}\t{RULES[idx].phase}")
-        }
-    }
+    let lines <- skip_lines(compiled, ids, passing) $(id) => fread("{TESTS_DIR}/{id}.c")
     let text = build_string() $(writer) {
         writer |> write("# gcc-torture execute tests never run, one per line: id, feature, reason, the ledger row that\n# unblocks it (never for a construct no emulation reaches), tab-separated; written by\n# suites/gcc_torture/filter.das over the fetched tree, less the ids expected_pass.txt lists. A\n# test that merely does not pass yet is not listed; the ratchet reports it.\n")
         for (line in lines) {

@@ -211,22 +211,45 @@ nothing a das run observes: inlining and optimizer hints (`noinline`, `always_in
 `cold`, `const`, `pure`, `leaf`, `nothrow`, `malloc`, `alloc_size`), diagnostics (`unused`,
 `used`, `format`, `nonnull`, `returns_nonnull`, `warn_unused_result`, `deprecated`, `nodebug`,
 `no_instrument_function`, `fallthrough`), a symbol's `visibility` or `section`, `gnu_inline`
-(a definition the unit uses either way), `_Noreturn`
-(GNU `noreturn` is part of the function type, not an attribute node), `weak` on a name the unit
-defines (a function with a body, a variable that is not `extern` or has an initializer), and
+(a definition the unit uses either way), `_Noreturn` and `[[noreturn]]`
+(GNU `noreturn` is part of the function type, not an attribute node), `mode` (clang has already
+given the declaration the type the mode names, `typedef int DI __attribute__((mode(DI)))` dumping
+as `long`; a vector mode leaves a vector type, which fails closed as a type), `weak` on a name the
+unit defines (a function with a body, a variable that is not `extern` or has an initializer), and
 `may_alias`, since das has no strict-aliasing rule for it to relax. `noclone`, `noipa`,
 `optimize`, `externally_visible` and `scalar_storage_order` reach no node: clang ignores them, so the dump cannot tell
 a test it changed. The read list holds `aligned` (the typedef pass above, the record layout
 check) and `packed` with `#pragma pack` (clang's record layout, which the layout law places or
-the sidecar marshals, `ARCHITECTURE.md` section 2). Any other attribute (`mode`, `cleanup`,
+the sidecar marshals, `ARCHITECTURE.md` section 2). Any other attribute (`cleanup`,
 `constructor`, `destructor`, `transparent_union`, `alias`, `weak` on a name the unit never
 defines) fails the conversion naming it; one clang wrote itself (`implicit`) or carried from an
 earlier declaration (`inherited`) was judged where it was written or belongs to the library.
 
-A `GCCAsmStmt` has neither its template nor its constraints in the dump, so the dumper reads the
-statement's source between its first and last token (a macro's statement where the macro's
-definition spells it). An asm with no operand child whose source is a compiler barrier
-(`is_barrier_asm`: `asm`, `__asm` or `__asm__` with `volatile` or `inline`, empty template
-strings and at most a clobber list, `asm("")`, `asm volatile("" ::: "memory")`) is the empty
-statement, since it orders nothing a das run observes; any other asm is machine code or a
-register binding, which fails closed.
+A statement that carries attributes (`AttributedStmt`: `__attribute__((fallthrough));`,
+`[[fallthrough]];`) is its statement, the attributes judged with the declaration around it.
+
+A `GCCAsmStmt` has neither its template nor its constraints in the dump, so the libclang pass
+reads each asm statement as clang parsed it (`clang_Cursor_getGCCAssemblyTemplate`, the operand
+counts, `goto`; a template a macro argument gives is the argument's) and keys it like an enum
+reference (`register_asm`). An asm with an empty template, no operand and no `goto`, at most a
+clobber list (`asm("")`, `asm volatile("" ::: "memory")`), is a compiler barrier and the empty
+statement, since it orders nothing a das run observes; any other fails closed naming why: template
+text is machine code, an operand a register binding, `asm goto` a jump from machine code. A
+file-scope asm fails closed as machine code outside any function.
+
+### `__builtin_constant_p` {#builtin-constant-p}
+
+A `__builtin_constant_p(e)` call is the `int_lit` of clang's answer, so its argument is neither
+dumped nor evaluated (`i++` stays unstepped, `f()` uncalled). The answer is the pinned clang's
+at -O0, which is its constant evaluator's and not GCC's (a `const int` local, `(1, 2)`, `1 ? 2 :
+x`, `0 && x` and `"hi"[0]` are constants; `1 / 0`, `"hi" + 1`, an address and a variable are
+not): the libclang pass evaluates every call (`clang_Cursor_Evaluate`) and keys the answer like
+an enum reference, a result its value. Where the evaluator gives none, the -O0 build answers
+`llvm.is_constant` over the value its code generator emits for the argument, which is 0 (none
+is 0) except across a comma operator, whose right operand the generator emits on its own
+(`(x, 5)` answers 1), and over a nested call the evaluator cannot fold
+(`__builtin_constant_p(__builtin_constant_p(x))` answers 1): both fail closed
+(`probes/test_toolchain.das`), `(x, x)` with them. So does a key two calls share with different
+answers (one macro expansion spelling both from one token, a nested expansion placing two calls
+at one spelling and one expansion site included: a refusal, never a wrong value), and a call the
+pass never saw.

@@ -41,6 +41,10 @@ def test_csmith_verdict(t : T?) {
         t |> equal(row.id, "9")
         let killed = audit_row("f", worker_outcome("9", true, -1, 900.0, Verdict()))
         t |> equal(killed.status, "timeout")
+        // the driver's own statuses pass through: a native side that failed, a worker with no verdict
+        write_verdict(c_path, Verdict(status = "native", signature = "native", reason = "gcc exited 1"))
+        t |> equal(audit_row("f", worker_outcome("9", false, 0, 900.0, read_verdict(c_path))).status, "native")
+        t |> equal(audit_row("f", worker_outcome("9", false, 3, 900.0, Verdict())).status, "crash")
         if (!empty(dir)) {
             rmdir_rec(dir)
         }

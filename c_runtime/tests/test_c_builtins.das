@@ -13,6 +13,7 @@ def test_c_builtins(t : T?) {
         t |> equal(c_ffs(12), 3)
         t |> equal(c_ffs(int(0x80000000u)), 32)
         t |> equal(c_ffs(1l << 40l), 41)
+        t |> equal(c_ffs(0l), 0)
         t |> equal(c_ctz(0xF0u), 4)
         t |> equal(c_ctz(0x8000000000000000ul), 63)
         t |> equal(c_clz(0xF0u), 24)
@@ -42,9 +43,10 @@ def test_c_builtins(t : T?) {
         var arr : int[2]
         unsafe {
             c_prefetch(addr(arr[i++]))
+            c_prefetch(addr(arr[i++]), 0)
             c_prefetch(addr(arr[0]), 1, 3)
         }
-        t |> equal(i, 1)
+        t |> equal(i, 2)
     }
     t |> run("unreachable ends the run as abort does") @(t : T?) {
         let r = runtime_child("unreachable", "options gen2\nrequire c_runtime/c_builtins\n[export]\ndef main : int \{\n    print(\"before\\n\")\n    c_unreachable()\n    return 0\n\}\n", false)
