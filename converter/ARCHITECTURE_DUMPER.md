@@ -47,7 +47,9 @@ The dumper walks `TranslationUnitDecl.inner`, skipping `isImplicit` nodes (clang
 typedefs and `_GUID`) and every declaration of an external file. Types are interned by a structural key (`int:32:true:int`, `ptr:3`,
 `func:0:1,2:false`) in first-use order, which is the spec's order. Type spellings come from
 `desugaredQualType` when clang gives one, else `qualType`, with `const`, `volatile`, `restrict`
-and `__attribute__` text stripped: the C99 scalar names, `_Bool`, `T *`, `T[N]` (the first
+and `__attribute__` text stripped (a `volatile` the node's own type carries at the top level,
+`volatile int` or `int *volatile` but not `volatile int *`, marks a `ref`, `member`, `index` or
+`un deref` node `vol` instead, `is_volatile_spelling`): the C99 scalar names, `_Bool`, `T *`, `T[N]` (the first
 bracket is the outer dimension: `T[2][3]` is two `T[3]`), `T (*)[N]` pointers to arrays, `R (P,
 ...)` function types (`R *(P)` when the return is a pointer, which clang writes without a
 space), `R (*)(P)` pointers to functions, `R (**)(P)` pointers to those and `R (*[N])(P)`

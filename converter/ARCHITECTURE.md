@@ -36,7 +36,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   path given, else `<stem>.c2das` beside the C file, else `.c2das` in its folder) and
   `read_sidecar` (JSON; a key the row that needs it adds - `marshal`, the records read and
   written as bytes; `stack` and `alloca_limit`; `param_writes`, `in-place` or `copy`, the
-  parameter write mode, any other value refused naming the key; `defines`, a list of strings
+  parameter write mode, any other value refused naming the key; `loops`, `range` or `while`, how
+  a canonical counting `for` is spelled, any other value refused naming the key; `defines`, a list of strings
   `NAME`, `NAME=value` or the function-like `NAME(params)=value` (params identifiers separated by
   commas, `...` last) the dump and the libclang pass give clang as one `-D<entry>` argument each,
   a value that is no list or an entry of another shape refused naming the key; `over_indexed`, a list of
@@ -45,9 +46,9 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   trailing array the emitter's error). A key's presence is
   `key_exists`, since json_boost's `?[]` of a missing key is a non-null sentinel
   (`probes/test_stdlib.das`). Nothing here knows the C-IR or the emitter.
-- `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes])`: read the
-  sidecar (a `param_writes` argument other than "" overrides the sidecar's key, and one that is
-  not a mode is refused), dump under its `defines`, write the C-IR, read it back and rewrite it
+- `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes, loops])`: read
+  the sidecar (a `param_writes` or `loops` argument other than "" overrides the sidecar's key, and
+  one that is not a mode is refused), dump under its `defines`, write the C-IR, read it back and rewrite it
   (the bytes must match), emit, format with
   `daslib/das_source_formatter`, compile-check with `compile_file`. Every artifact lands under
   `out_dir`; `file_stem` is the name every artifact of a C file carries. The result carries the
@@ -63,14 +64,19 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `daslang_cmd` spells the prefix; `native_run` builds a C file with a given compiler and flags
   and runs it once, with the program's arguments when given, the native side every differential test compares against.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c> [--out] [--target] [--run] [--arg]...
-  [--sidecar] [--param-writes in-place|copy]`. Each `--arg` is one argument of the C `argv` the
+  [--sidecar] [--param-writes in-place|copy] [--loops range|while]`. Each `--arg` is one argument of the C `argv` the
   program `--run` runs gets, in order. `--param-writes` chooses how the emitter writes a scalar or
   pointer parameter the body assigns, steps or takes the address of: `in-place`, the default and
   the idiomatic form, writes the parameter itself; `copy` writes a local copy, which the
   interpreter runs faster (`ARCHITECTURE_EMITTER.md` section 4). The option wins over the
   sidecar's `param_writes` when both are given, since a command line names one run and the
   sidecar the project. A value other than those two is a usage error: exit 2 before any
-  conversion, as a missing input is.
+  conversion, as a missing input is. `--loops` chooses how a canonical counting `for` is spelled:
+  `range`, the default, a das range loop, which is both the idiomatic and the faster form
+  (`ARCHITECTURE_EMITTER_LOOPS.md`); `while`, the `while` form every other `for` takes, which
+  the plan's section 6 gates the rewrite behind until demo sync (`docs/implementation_order.md`
+  P7.0 holds the owner's ruling); it wins over the sidecar's `loops` and refuses any other value
+  the same way.
 - `benchmarks/bench_for_shapes.das` - the loop-shape race behind section 4
   (`ARCHITECTURE_EMITTER.md`), run with `dastest -- --bench` under the interpreter and
   under `-jit`.
@@ -78,11 +84,17 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   and run against the native build of the same file by the pinned clang (output and exit
   code), plus the lowering shapes the text must carry.
 - `tests/test_cli.das` - `main.das` run as a child process over `tests/fixtures/p4_param_writes.c`:
-  `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2; and over
+  `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2; over
+  `tests/fixtures/p7_loops.c`: `--loops range` and `while` reach the emitter, and a bad value
+  exits 2; and over
   `tests/fixtures/p4_main_args.c`: `--arg` reaches the C `argv` under `interp` as the native
   build's arguments do and under `exe`, and `aot` refuses it.
 - `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list,
-  its function-like entries and the shapes it refuses, the `over_indexed` list and the shapes it refuses.
+  its function-like entries and the shapes it refuses, the `over_indexed` list and the shapes it
+  refuses, the `loops` values and the ones it refuses.
+- `tests/test_tier_facts.das` - the das facts the emitter relies on, each a program run under the
+  four tiers: `int` and `int64` `+` and `-` wrap, and `c_volatile_load` reads a global on every
+  pass of a loop whose plain read the JIT, the exe and AOT fold out of it.
 - `tests/test_csmith_verdict.das` - the csmith driver's classification of a worker that ended
   (`suites/csmith/verdict.das`), the one piece of the driver testable without a process.
 - `tests/test_pipeline.das` - the P0 gate: `tests/fixtures/ret42.c` converts, the C-IR and the
@@ -113,7 +125,10 @@ constant as the dimension and the spec's `count` is the folded integer (F21). Th
 a fact about the declarator, not the type, so the type table interns `T[6]` once however the
 source wrote it. An `enum` type carries `"signed": false` when clang gave it an unsigned
 underlying type (F22); the member is absent for a signed one, which is every enum of the
-`msvc` dialect.
+`msvc` dialect. An lvalue node (`ref`, `member`, `index`, `un` `deref`) of volatile-qualified
+type carries `"vol": true` after its other members, absent otherwise, since the type table
+strips qualifiers and the emitter keeps every access of such an object (F65,
+`ARCHITECTURE_EMITTER_LOOPS.md`).
 
 A record's `packed` is false exactly when das's natural layout reproduces clang's, by this law
 (`bit_units.das`), which a Dumper B applies to the same facts to write the same byte. Fields go
@@ -193,8 +208,9 @@ Section 3, Dumper A's subset (what the dumper reads from clang and libclang), is
 
 Section 4, what the emitter spells (the das text of every construct), is in
 `ARCHITECTURE_EMITTER.md`, with bitfields, unions, function pointers and variadics in
-`ARCHITECTURE_EMITTER_AGGREGATES.md` and the switch and the labels in
-`ARCHITECTURE_EMITTER_CONTROL.md`.
+`ARCHITECTURE_EMITTER_AGGREGATES.md`, the switch and the labels in
+`ARCHITECTURE_EMITTER_CONTROL.md`, and the loops, the compound stores and the volatile access in
+`ARCHITECTURE_EMITTER_LOOPS.md`.
 
 ## 5. The four tiers
 

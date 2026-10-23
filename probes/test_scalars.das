@@ -7,6 +7,13 @@ def record(var trace : array<int>; v : int) : int {
     return v
 }
 
+struct Wide {
+    sum : int
+}
+
+// the sums run on values the optimizer cannot see: an argument and a global the program sets
+let WRAP_SOURCE = "options gen2\nvar g = 0\nvar h = 0l\ndef sum(a, b : int) : int => a + b\ndef diff(a, b : int) : int => a - b\n[export]\ndef main \{\n    g = 2147483647\n    h = 9223372036854775807l\n    var c = g\n    c += 5\n    print(\"\{sum(g, 5)\} \{diff(-g, 5)\} \{h + 2l\} \{-h - 3l\} \{c\} \{g + 5\}\\n\")\n\}\n"
+
 [test]
 def test_scalars(t : T?) {
     t |> run("small-int arithmetic computes in int and truncates on store") @(t : T?) {
@@ -48,6 +55,46 @@ def test_scalars(t : T?) {
         big = big + 1
         t |> equal(big, -2147483647 - 1)
     }
+}
+
+[test]
+def test_wrap_and_compound(t : T?) {
+    t |> run("int and int64 + and - wrap as C's sum through the unsigned type does, interpreted and jitted") @(t : T?) {
+        for (flags in [array<string>(), jit_flags()]) {
+            let r = daslang_child_flags("wrap_sum{length(flags)}", WRAP_SOURCE, flags)
+            t |> equal(r.rc, 0, r.out)
+            t |> equal(program_output(r.out), "-2147483644 2147483644 -9223372036854775807 9223372036854775806 -2147483644 -2147483644\n", r.out)
+        }
+    }
+    t |> run("x op= y on a local, a field and an element, each operator and type the emitter spells") @(t : T?) {
+        var x = 1
+        x += 4
+        x -= 2
+        x *= 3
+        x &= 255
+        x |= 256
+        x ^= 1
+        var y = 3l
+        y *= 5l
+        var u = 7u
+        u += 3u
+        var d = 0.5lf
+        d *= 4.0lf
+        var cells = fixed_array(0, 0, 0)
+        cells[1] += 7
+        var w = Wide(sum = 2)
+        w.sum += x
+        t |> equal(x, 264)
+        t |> equal(y, 15l)
+        t |> equal(u, 10u)
+        t |> equal(d, 2.0lf)
+        t |> equal(cells[1], 7)
+        t |> equal(w.sum, 266)
+    }
+}
+
+[test]
+def test_scalar_basics(t : T?) {
     t |> run("char literal is int") @(t : T?) {
         t |> equal('a', 97)
         t |> equal(typeinfo typename('a'), "int const")

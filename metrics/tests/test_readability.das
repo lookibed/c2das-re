@@ -324,6 +324,16 @@ def test_worker(t : T?) {
         let in_place = fread("metrics/work/perf/blit/das/blit.das")
         t |> success(in_place |> contains("(var src : uint8?; var dst : uint8?; var n : int) \{\n"), in_place)
     }
+    t |> run("--one converts a kernel's `@while` key under --loops while, the plain key with range loops") @(t : T?) {
+        var counts : string
+        t |> equal(run_worker("perf/primes@while", counts), 0)
+        t |> success(counts |> starts_with("ok\n"), counts)
+        let kept = fread("metrics/work/perf/primes@while/das/primes.das")
+        t |> success(!(kept |> contains(" in range(")), kept)
+        t |> equal(run_worker("perf/primes", counts), 0)
+        let ranged = fread("metrics/work/perf/primes/das/primes.das")
+        t |> success(ranged |> contains("for (i in range(2, n)) \{\n"), ranged)
+    }
     t |> run("an input that does not convert, and a seed csmith refuses, are errors") @(t : T?) {
         var counts : string
         t |> equal(run_worker("c_testsuite/no_such_test", counts), 0)

@@ -3,6 +3,7 @@ require dastest/testing_boost public
 require strings
 require daslib/fio
 require daslib/json_boost
+require daslib/strings_boost
 require ../perf_tables.das
 require ../perf_cli.das
 
@@ -14,7 +15,7 @@ def capture_of(t : T?; text : string) : JsonValue? {
     return js
 }
 
-let TWO_BY_TWO = "\{'timestamp': 'T', 'platform': 'P', 'cpu': 'C', 'samples': 5, 'versions': \{'clang': 'clang', 'daslang': 'das'\}, 'tests': \{'b': \{'native': \{'time': 0.002, 'spread': 0.01\}, 'jit': \{'time': 0.001, 'spread': 0.0\}\}, 'a': \{'native': \{'time': 0.001, 'spread': 0.0\}, 'interp-copy': \{'time': 0.004, 'spread': 0.0\}, 'jit': \{'time': 0.003, 'spread': 0.026\}\}\}\}"
+let TWO_BY_TWO = "\{'lanes': ['native', 'interp', 'interp-copy', 'jit', 'exe', 'aot'], 'timestamp': 'T', 'platform': 'P', 'cpu': 'C', 'samples': 5, 'versions': \{'clang': 'clang', 'daslang': 'das'\}, 'tests': \{'b': \{'native': \{'time': 0.002, 'spread': 0.01\}, 'jit': \{'time': 0.001, 'spread': 0.0\}\}, 'a': \{'native': \{'time': 0.001, 'spread': 0.0\}, 'interp-copy': \{'time': 0.004, 'spread': 0.0\}, 'jit': \{'time': 0.003, 'spread': 0.026\}\}\}\}"
 
 [test]
 def test_ratio(t : T?) {
@@ -43,7 +44,7 @@ def test_ratio(t : T?) {
 [test]
 def test_delta(t : T?) {
     let old = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.0\}\}, 'c': \{'native': \{'time': 1.0\}\}\}\}")
-    let js = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 0.95\}, 'interp-copy': \{'time': 3.0\}, 'jit': \{'time': 2.0\}, 'aot': \{'time': 1.0\}\}, 'b': \{'native': \{'time': 1.0\}\}\}\}")
+    let js = capture_of(t, "\{'lanes': ['native', 'interp', 'interp-copy', 'jit', 'exe', 'aot'], 'tests': \{'a': \{'native': \{'time': 0.95\}, 'interp-copy': \{'time': 3.0\}, 'jit': \{'time': 2.0\}, 'aot': \{'time': 1.0\}\}, 'b': \{'native': \{'time': 1.0\}\}\}\}")
     t |> run("a cell on both sides is a signed percent") @(t : T?) {
         var cents = 0l
         t |> success(delta_cents(js, old, "a", "native", cents))
@@ -187,5 +188,57 @@ def test_cli(t : T?) {
         t |> equal(show_tables(js, null, "", false, ""), render_results(js))
         t |> equal(show_tables(js, null, "", true, ""), render_results(js) + "\n" + render_ratios(js))
         t |> equal(show_tables(js, js, "same", false, ""), render_results(js) + "\n" + render_delta(js, js, "same"))
+    }
+}
+
+[test]
+def test_lanes(t : T?) {
+    t |> run("a capture's own lane list orders the columns; one without a list takes every lane") @(t : T?) {
+        let listed = capture_of(t, "\{'lanes': ['native', 'jit'], 'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.0\}\}\}\}")
+        t |> equal(render_ratios(listed), "Lane time / native, per kernel.\n\n| Test | C (clang -O3) | DAS JIT |\n| :--- | ------------: | ------: |\n| a    |          1.00 |    2.00 |\n")
+        let unlisted = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.0\}, 'interp-while': \{'time': 4.0\}\}\}\}")
+        let lanes <- lanes_of(unlisted)
+        t |> equal(join(lanes, " "), "native interp interp-copy interp-while jit exe aot")
+        t |> success(render_ratios(unlisted) |> contains("| DAS interp, while loops |"), render_ratios(unlisted))
+        t |> success(render_ratios(unlisted) |> contains("|                    4.00 |"), render_ratios(unlisted))
+    }
+}
+
+[test]
+def test_drift(t : T?) {
+    let old = capture_of(t, "\{'cpu': 'X', 'lanes': ['native', 'jit', 'aot'], 'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.0\}, 'aot': \{'time': 1.0\}\}\}\}")
+    t |> run("a cell past the tolerance either way drifts; at the tolerance it does not") @(t : T?) {
+        let js = capture_of(t, "\{'cpu': 'X', 'lanes': ['native', 'jit', 'aot'], 'tests': \{'a': \{'native': \{'time': 1.1\}, 'jit': \{'time': 1.7\}, 'aot': \{'time': 1.0\}\}\}\}")
+        let drifted <- drifted_cells(js, old, 1000l)
+        t |> equal(join(drifted, "; "), "a/jit -15.00%")
+        let tight <- drifted_cells(js, old, 500l)
+        t |> equal(join(tight, "; "), "a/native +10.00%; a/jit -15.00%")
+    }
+    t |> run("a cell one capture has and the other lacks is missing, a kernel too") @(t : T?) {
+        let js = capture_of(t, "\{'cpu': 'X', 'lanes': ['native', 'jit', 'aot'], 'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.0\}\}, 'b': \{'native': \{'time': 1.0\}\}\}\}")
+        let drifted <- drifted_cells(js, old, 1000l)
+        t |> equal(join(drifted, "; "), "a/aot missing; b/native missing")
+    }
+}
+
+let METHOD_CAPTURE = "\{'cpu': 'C', 'timestamp': 'T', 'versions': \{'clang': 'clang 22', 'daslang': '0.6.4'\}, 'lanes': ['native', 'interp', 'jit', 'exe', 'aot'], 'tests': \{'fib_loop': \{'native': \{'time': 0.002\}, 'interp': \{'time': 0.06\}, 'jit': \{'time': 0.004\}, 'exe': \{'time': 0.004\}, 'aot': \{'time': 0.002\}\}, 'sieve': \{'native': \{'time': 0.1\}\}\}\}"
+let DASPROFILE_CAPTURE = "\{'cpu': 'C', 'timestamp': 'D', 'dasprofile_commit': 'abc', 'toolchain': 'Clang 22', 'Interpreted': \{'fibonacci loop': [\{'language': 'DAS INTERPRETER', 'time': 0.06\}]\}, 'AOT or JIT': \{'fibonacci loop': [\{'language': 'DAS AOT', 'time': 0.002\}, \{'language': 'DAS JIT', 'time': 0.002\}, \{'language': 'C++', 'time': 0.002\}]\}\}"
+
+[test]
+def test_method_comparison(t : T?) {
+    let method = capture_of(t, METHOD_CAPTURE)
+    let dp = capture_of(t, DASPROFILE_CAPTURE)
+    t |> run("dasProfile's capture gives a language's time on a board, 0 for none") @(t : T?) {
+        t |> equal(dasprofile_time(dp, "AOT or JIT", "fibonacci loop", "C++"), 0.002lf)
+        t |> equal(dasprofile_time(dp, "Interpreted", "fibonacci loop", "DAS INTERPRETER"), 0.06lf)
+        t |> equal(dasprofile_time(dp, "Interpreted", "primes loop", "DAS INTERPRETER"), 0.0lf)
+        t |> equal(dasprofile_time(dp, "AOT or JIT", "fibonacci loop", "Zig"), 0.0lf)
+    }
+    t |> run("one row per shared kernel: each hand-written cell over dasProfile's C++, each converted one over the C program; the different programs named") @(t : T?) {
+        let text = render_method_comparison(method, dp)
+        t |> success(text |> starts_with("The dasProfile method on C (T; clang 22, daslang 0.6.4) beside borisbat/dasProfile abc run on C (D; Clang 22)."), text)
+        t |> success(text |> contains("| fib_loop |     0.002000s |      0.002000s |  0.060000s (30.00x) | 0.002000s (1.00x) | 0.002000s (1.00x) | 0.060000s (30.00x) | 0.004000s (2.00x) | 0.002000s (1.00x) | 0.004000s (2.00x) |"), text)
+        t |> success(!(text |> contains("| sieve")), text)
+        t |> success(text |> contains("- `fixed_mandel` (16.16 fixed point, 96x96, 48 iterations, struct vectors by value) is not dasProfile's `mandelbrot` (double, 64x64, 255 iterations): different programs, not compared\n"), text)
     }
 }

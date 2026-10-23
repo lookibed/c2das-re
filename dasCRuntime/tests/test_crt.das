@@ -168,6 +168,8 @@ def test_crt_environment(t : T?) {
         t |> equal(unsafe(crt::time(unsafe(addr(now)))) == now, true)
         t |> equal(crt::difftime(now + 60l, now), 60.0lf)
         t |> equal(crt::clock() >= 0l, true)
+        let before = crt::c_monotonic_ns()
+        t |> equal(crt::c_monotonic_ns() >= before && before > 0l, true)
         t |> equal(crt::CLOCKS_PER_SEC > 0l, true)
         t |> equal(crt::LONG_BITS == 32 || crt::LONG_BITS == 64, true)
         t |> equal(crt::fflush_stdout(), 0)
@@ -392,5 +394,47 @@ def test_crt_stdio(t : T?) {
             t |> equal(crt::system(null) != 0, true)
         }
         rmdir_rec(dir)
+    }
+}
+
+[test]
+def test_crt_volatile(t : T?) {
+    t |> run("each volatile forwarder reads or writes its width once through the pointer it is given") @(t : T?) {
+        var i8 = int8(-5)
+        var u8 = 250u8
+        var i16 = int16(-300)
+        var u16 = uint16(60000)
+        var i32 = -70000
+        var u32 = 4000000000u
+        var i64 = -5000000000l
+        var u64 = 18000000000000000000ul
+        var f32 = 1.5f
+        var f64 = -2.25lf
+        var target = 7
+        var ptr : void? = null
+        unsafe {
+            crt::c_volatile_store_i8(addr(i8), int8(int(crt::c_volatile_load_i8(addr(i8))) - 1))
+            crt::c_volatile_store_u8(addr(u8), uint8(int(crt::c_volatile_load_u8(addr(u8))) + 1))
+            crt::c_volatile_store_i16(addr(i16), int16(int(crt::c_volatile_load_i16(addr(i16))) - 1))
+            crt::c_volatile_store_u16(addr(u16), uint16(int(crt::c_volatile_load_u16(addr(u16))) + 1))
+            crt::c_volatile_store_i32(addr(i32), crt::c_volatile_load_i32(addr(i32)) - 1)
+            crt::c_volatile_store_u32(addr(u32), crt::c_volatile_load_u32(addr(u32)) + 1u)
+            crt::c_volatile_store_i64(addr(i64), crt::c_volatile_load_i64(addr(i64)) - 1l)
+            crt::c_volatile_store_u64(addr(u64), crt::c_volatile_load_u64(addr(u64)) + 1ul)
+            crt::c_volatile_store_f32(addr(f32), crt::c_volatile_load_f32(addr(f32)) * 2.0f)
+            crt::c_volatile_store_f64(addr(f64), crt::c_volatile_load_f64(addr(f64)) * 2.0lf)
+            crt::c_volatile_store_ptr(addr(ptr), addr<void?>(target))
+            t |> equal(crt::c_volatile_load_ptr(addr(ptr)) == addr<void?>(target), true)
+        }
+        t |> equal(i8, int8(-6))
+        t |> equal(u8, 251u8)
+        t |> equal(i16, int16(-301))
+        t |> equal(u16, uint16(60001))
+        t |> equal(i32, -70001)
+        t |> equal(u32, 4000000001u)
+        t |> equal(i64, -5000000001l)
+        t |> equal(u64, 18000000000000000001ul)
+        t |> equal(f32, 3.0f)
+        t |> equal(f64, -4.5lf)
     }
 }

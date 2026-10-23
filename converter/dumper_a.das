@@ -2005,13 +2005,13 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
             fail(d, "a reference to `{js?["referencedDecl"]?["name"] ?? ""}` before a definition gives its array a length (`extern int a[];`) is not lowered yet", at)
             return null
         }
-        return new CirExpr(e = "ref", t = t, name = bound_name(d, js?["referencedDecl"]))
+        return new CirExpr(e = "ref", t = t, name = bound_name(d, js?["referencedDecl"]), vol = is_volatile_spelling(js))
     }
     if (kind == "ImplicitCastExpr" || kind == "CStyleCastExpr") {
         return dump_cast(d, js, t, at)
     }
     if (kind == "UnaryOperator") {
-        return dump_unary(d, js, t, at)
+        return marked_volatile(dump_unary(d, js, t, at), js)
     }
     if (kind == "BinaryOperator" || kind == "CompoundAssignOperator") {
         return dump_binary(d, js, t, at)
@@ -2023,10 +2023,10 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
         return dump_call(d, js, t, at)
     }
     if (kind == "ArraySubscriptExpr") {
-        return dump_subscript(d, js, t, at)
+        return marked_volatile(dump_subscript(d, js, t, at), js)
     }
     if (kind == "MemberExpr") {
-        return dump_member(d, js, t, at)
+        return marked_volatile(dump_member(d, js, t, at), js)
     }
     if (kind == "InitListExpr") {
         return dump_init_list(d, js, t, at)
@@ -2039,6 +2039,39 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
     }
     fail(d, "unsupported expression `{kind}`", at)
     return null
+}
+
+// whether clang's spelling of node `js`'s type is volatile at the top level: `volatile int`,
+// `int *volatile`, a typedef through its desugared spelling; the qualifier of a pointer's pointee
+// (`volatile int *`) and of a function type's parameter is not the node's own
+def is_volatile_spelling(js : JsonValue?) : bool {
+    let ty = js?["type"]
+    let desugared = ty?["desugaredQualType"] ?? ""
+    let spelled = empty(desugared) ? ty?["qualType"] ?? "" : desugared
+    let star = rfind(spelled, "*")
+    var own = star < 0 ? spelled : slice(spelled, star + 1)
+    let close = find(own, ")")
+    if (close >= 0) {
+        own = slice(own, 0, close)
+    }
+    let paren = find(own, "(")
+    if (star < 0 && paren >= 0) {
+        own = slice(own, 0, paren)
+    }
+    for (word in split(replace(replace(own, "[", " "), "]", " "), " ")) {
+        if (word == "volatile") {
+            return true
+        }
+    }
+    return false
+}
+
+// `x` marked volatile when it is an lvalue node of a volatile-qualified type
+def private marked_volatile(var x : CirExpr?; js : JsonValue?) : CirExpr? {
+    if (x != null && (x.e == "member" || x.e == "index" || (x.e == "un" && x.op == "deref"))) {
+        x.vol = is_volatile_spelling(js)
+    }
+    return x
 }
 
 let TYPE_OPERATOR_KINDS <- {"UnaryExprOrTypeTraitExpr", "OffsetOfExpr", "VAArgExpr"}

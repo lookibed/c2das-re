@@ -65,6 +65,12 @@ struct Emitter {
     // the sidecar's or the option's `param_writes` is `copy`: a written scalar or pointer
     // parameter gets a local copy instead of being written in place
     param_copy : bool
+    // the sidecar's or the option's `loops` is not `while`: a canonical counting `for` is a das
+    // range loop (`for_range`)
+    range_loops : bool
+    // the unit's global names, and the names the function being emitted takes the address of
+    global_names : table<string>
+    addressed : table<string>
     // a label stands on `c_label_end()`: the module defines the no-op
     label_end : bool
     // the function's C labels by das number, and the blocks emitted without braces so a goto
@@ -253,7 +259,7 @@ def private va_macro_name(builtin : string) : string =>
 
 // the libc functions the crt module binds under their C names (dasCRuntime/ARCHITECTURE.md),
 // <math.h>'s exotica among them
-let CRT_CALLS <- {"fmod", "frexp", "ldexp", "modf", "nextafter", "hypot", "cbrt", "expm1", "log1p", "copysign", "remainder", "trunc", "round", "erf", "erfc", "tgamma", "lgamma", "fma", "clock", "time", "difftime", "mktime", "localtime", "gmtime", "strftime", "setlocale", "localeconv", "fopen", "freopen", "fclose", "fread", "fwrite", "fgets", "fputs", "getc", "ungetc", "feof", "ferror", "clearerr", "fflush", "fseek", "ftell", "setvbuf", "tmpfile", "tmpnam", "remove", "rename", "system", "rand", "srand", "getenv", "malloc", "calloc", "realloc", "free", "memcpy", "memmove", "memset", "memcmp", "memchr", "strlen", "strcpy", "strncpy", "strcat", "strncat", "strcmp", "strncmp", "strchr", "strrchr", "strstr", "strpbrk", "strspn", "strcoll", "strerror", "strtol", "strtoul", "strtoll", "strtoull", "strtod", "atoi", "atol", "atof", "abs", "llabs", "isalpha", "isdigit", "isalnum", "isspace", "isupper", "islower", "isxdigit", "ispunct", "isprint", "iscntrl", "isgraph", "toupper", "tolower"}
+let CRT_CALLS <- {"fmod", "frexp", "ldexp", "modf", "nextafter", "hypot", "cbrt", "expm1", "log1p", "copysign", "remainder", "trunc", "round", "erf", "erfc", "tgamma", "lgamma", "fma", "clock", "c_monotonic_ns", "time", "difftime", "mktime", "localtime", "gmtime", "strftime", "setlocale", "localeconv", "fopen", "freopen", "fclose", "fread", "fwrite", "fgets", "fputs", "getc", "ungetc", "feof", "ferror", "clearerr", "fflush", "fseek", "ftell", "setvbuf", "tmpfile", "tmpnam", "remove", "rename", "system", "rand", "srand", "getenv", "malloc", "calloc", "realloc", "free", "memcpy", "memmove", "memset", "memcmp", "memchr", "strlen", "strcpy", "strncpy", "strcat", "strncat", "strcmp", "strncmp", "strchr", "strrchr", "strstr", "strpbrk", "strspn", "strcoll", "strerror", "strtol", "strtoul", "strtoll", "strtoull", "strtod", "atoi", "atol", "atof", "abs", "llabs", "isalpha", "isdigit", "isalnum", "isspace", "isupper", "islower", "isxdigit", "ispunct", "isprint", "iscntrl", "isgraph", "toupper", "tolower"}
 
 // C name -> das spelling, and the module it needs
 def private libc_call(name : string) : string {
@@ -746,6 +752,9 @@ def private assignment_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
 }
 
 def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
+    if (volatile_kept(em, tu, x.a)) {
+        return volatile_assignment(em, tu, x, loc)
+    }
     // the left side's effects hoist before the right side's: the dialect's fixed order
     var bytes : Em
     let of_field = marshal_field(em, tu, *x.a, loc, bytes)
@@ -759,6 +768,13 @@ def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
         return marshal_store(em, tu, x, whole, -1, bytes, rhs, loc)
     }
     if (empty(x.op)) {
+        let compound = self_operation(tu, x)
+        if (compound != null) {
+            // `x = x op y` is das's `x op= y`; `rhs` already spelled `y`'s effects, of which there are none
+            let operand = compound.b.e == "cast" && wrap_pair(tu, x.b) != null ? compound.b.a : compound.b
+            let spelled_op = BIN_SPELLING?[compound.op] ?? ""
+            return "{lhs.text} {spelled_op}= {emit_expr(em, tu, operand, loc).text}"
+        }
         return "{lhs.text} = {rhs.text}"
     }
     let spelled = BIN_SPELLING?[x.op] ?? ""
@@ -799,6 +815,142 @@ def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
     return "{lhs.text} {spelled}= {rhs.text}"
 }
 
+// whether an access of volatile lvalue `x` goes through `c_volatile_load`/`c_volatile_store`: a
+// number, `_Bool`, a data or function pointer, a field of a plain record, an element. A bitfield,
+// a `[c_union]` or marshal-only record's member and an enum are properties or tagged values with
+// no address, and a whole record is a copy of many fields, no single access: their access stays
+// the plain one
+def private volatile_kept(var em : Emitter; tu : CirTu; x : CirExpr const?) : bool {
+    let k = x == null ? "" : kind_of(tu, x.t)
+    let rec = x != null && x.e == "member" ? (x.arrow ? tu.types[x.base.t].to : x.base.t) : -1
+    let kept = x != null && x.vol && (k == "int" || k == "float" || k == "ptr") && !is_bitfield_member(tu, x) && (rec < 0 || (kind_of(tu, rec) == "struct" && !is_marshal(em, tu, rec)))
+    if (kept) {
+        em.requires |> insert("c_runtime/c_volatile")
+    }
+    return kept
+}
+
+// a read of volatile lvalue `x`: one `c_volatile_load` through its address, which no tier folds
+def private volatile_load(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
+    let text = "c_volatile_load({emit_expr(em, tu, x, loc).text})"
+    return is_c_bool(tu, x.t) ? truth(text, PREC_PRIMARY) : value(text, PREC_PRIMARY)
+}
+
+// the value of lvalue `x` read back after a store or a step: a volatile one is read again
+def private lvalue_read(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em => volatile_kept(em, tu, x) ? volatile_load(em, tu, x, loc) : emit_expr(em, tu, x, loc)
+
+// `a = v` and `a op= v` into volatile `a`: one store, a compound one after one load, the
+// arithmetic in the type the plain form computes in; the target, pinned, is spelled twice
+def private volatile_assignment(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
+    let target = emit_expr(em, tu, x.a, loc).text
+    var rhs = stored(emit_expr(em, tu, x.b, loc), tu, x.a.t)
+    if (empty(x.op)) {
+        return "c_volatile_store({target}, {rhs.text})"
+    }
+    let spelled = BIN_SPELLING?[x.op] ?? ""
+    let prec = BIN_PREC?[x.op] ?? 0
+    let current = "c_volatile_load({target})"
+    if (kind_of(tu, x.a.t) == "ptr") {
+        // the plain form's pointer step, a marshal-only pointee's in its C size
+        em.unsafe_used = true
+        let scale = marshal_pointee(em, tu, x.a.t)
+        let step = scale >= 0 ? "{wrap(rhs, PREC_MUL)} * {type_size(tu, scale)}" : wrap(rhs, prec + 1)
+        // das's pointer `-` takes only a variable (probes/test_pointers.das): the load's value
+        // steps back as the sum of the negated count
+        return x.op == "sub" ? "c_volatile_store({target}, {current} + -({step}))" : "c_volatile_store({target}, {current} {spelled} {step})"
+    }
+    let shift = x.op == "shl" || x.op == "shr"
+    let wide = shift ? promoted_type(em, tu, x.a.t, loc) : das_type(em, tu, x.b.t, loc)
+    if (shift) {
+        rhs = shift_count(em, tu, *x.b, rhs, wide, loc)
+    }
+    if (is_c_bool(tu, x.a.t)) {
+        // C computes `b op= v` in the promoted type and stores the truth of the result
+        return "c_volatile_store({target}, ({wide}({current} ? 1 : 0) {spelled} {wrap(rhs, prec + 1)}) != 0)"
+    }
+    let narrow = das_type(em, tu, x.a.t, loc)
+    let combined = narrow == wide ? "{current} {spelled} {wrap(rhs, prec + 1)}" : "{narrow}({wide}({current}) {spelled} {wrap(rhs, prec + 1)})"
+    return "c_volatile_store({target}, {combined})"
+}
+
+// `++a` / `a--` of volatile `a`: one load and one store of the stepped value
+def private volatile_step(var em : Emitter; tu : CirTu; x : CirExpr; up : bool; loc : CirLoc) : string {
+    let narrow = das_type(em, tu, x.a.t, loc)
+    let float_step = kind_of(tu, x.a.t) == "float"
+    if (is_c_bool(tu, x.a.t)) {
+        fail(em, "a `_Bool` step (`b++`, `s.f++`) is not lowered yet", loc)
+        return ""
+    }
+    let target = emit_expr(em, tu, x.a, loc).text
+    let current = "c_volatile_load({target})"
+    let sign = up ? "+" : "-"
+    var stepped = ""
+    if (kind_of(tu, x.a.t) == "ptr") {
+        em.unsafe_used = true
+        let scale = marshal_pointee(em, tu, x.a.t)
+        stepped = "{current} + {up ? "" : "-"}{scale >= 0 ? type_size(tu, scale) : 1l}"
+    } elif (float_step) {
+        stepped = "{current} {sign} {narrow == "float" ? "1.0f" : "1.0lf"}"
+    } elif (is_small_int(tu, x.a.t)) {
+        stepped = "{narrow}({is_unsigned(tu, x.a.t) ? "uint" : "int"}({current}) {sign} 1)"
+    } else {
+        stepped = "{current} {sign} {int_literal(narrow, "1")}"
+    }
+    return "c_volatile_store({target}, {stepped})"
+}
+
+// `x = x op y`, with `x` read on the right as the same object, no call or effect in it, and the
+// operation in `x`'s own type (a number of 32 or 64 bits or a float, never a pointer, a small
+// integer, an enum or `_Bool`), or a wrapping sum of it (`wrap_pair`): the `bin` node das spells as
+// `x op= y`; null for any other assignment
+def private self_operation(tu : CirTu; x : CirExpr) : CirExpr const? {
+    let wrapped = wrap_pair(tu, x.b)
+    var op : CirExpr const? = x.b
+    if (wrapped != null) {
+        op = wrapped
+    }
+    if (!self_target(tu, x.a) || op == null || op.e != "bin" || !key_exists(SELF_OPS, op.op) || has_effects(x.a) || has_effects(op.b) || (wrapped == null && (op.t != x.a.t || op.b.t != x.a.t))) {
+        return null
+    }
+    let read = wrapped == null ? op.a : op.a.a
+    return read != null && read.e == "cast" && read.cast_kind == "LValueToRValue" && same_lvalue(read.a, x.a) ? op : null
+}
+
+// whether lvalue `a` takes `op=`: a number of 32 or 64 bits or a float that is no bitfield and
+// not volatile, in no `[c_union]` record, whose member is a property, whose compound store
+// crashes daslang through some bases (docs/probe-findings.md F52)
+def private self_target(tu : CirTu; a : CirExpr const?) : bool {
+    let k = kind_of(tu, a.t)
+    let record = a.e == "member" ? (a.arrow ? tu.types[a.base.t].to : a.base.t) : -1
+    return (k == "int" || k == "float") && !is_small_int(tu, a.t) && !is_c_bool(tu, a.t) && !is_bitfield_member(tu, a) && !a.vol && (record < 0 || kind_of(tu, record) == "struct")
+}
+
+let SELF_OPS <- {"add", "sub", "mul", "band", "bor", "bxor"}
+
+// whether C-IR lvalues `a` and `b` name the same object: one variable, or the same field or
+// element chain over equal bases and literal or variable indexes
+def private same_lvalue(a, b : CirExpr const?) : bool {
+    if (a == null || b == null || a.e != b.e || a.t != b.t) {
+        return false
+    }
+    if (a.e == "ref") {
+        return a.name == b.name
+    }
+    if (a.e == "member") {
+        return a.field == b.field && a.arrow == b.arrow && same_lvalue(a.base, b.base)
+    }
+    if (a.e == "index") {
+        return same_lvalue(a.base, b.base) && same_lvalue(a.i, b.i)
+    }
+    if (a.e == "cast") {
+        return a.cast_kind == b.cast_kind && same_lvalue(a.a, b.a)
+    }
+    if (a.e == "un") {
+        return a.op == "deref" && b.op == "deref" && same_lvalue(a.a, b.a)
+    }
+    return a.e == "int_lit" && a.v == b.v
+}
+
 // C promotes a shift's count apart from its left side, and das shifts a value only by a count
 // of its own type (`docs/probe-findings.md` F40): the count takes the left side's spelling
 def private shift_count(var em : Emitter; tu : CirTu; count : CirExpr; rhs : Em; left_type : string; loc : CirLoc) : Em {
@@ -830,7 +982,7 @@ def private promoted_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) :
 def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
     var keys : array<uint64>
     pin_lvalue(em, tu, x.a, loc, keys)
-    let text = step_text(em, tu, x, loc)
+    let text = volatile_kept(em, tu, x.a) ? volatile_step(em, tu, x, x.op == "preinc" || x.op == "postinc", loc) : step_text(em, tu, x, loc)
     unpin(em, keys)
     return text
 }
@@ -1217,6 +1369,47 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     return inner
 }
 
+// C's wrapping signed sum: `(T) ((U) a + (U) b)`, `-` too, with `T` a signed integer of 32 or 64
+// bits, `U` its unsigned twin and `a`, `b` of type `T`; the `bin` node, null for any other cast.
+// das `int` and `int64` arithmetic wraps on every tier (probes/test_scalars.das), so the sum is
+// `a + b` in `T`
+def private wrap_pair(tu : CirTu; x : CirExpr const?) : CirExpr const? {
+    if (x == null) {
+        return null
+    }
+    return wrap_pair(tu, *x)
+}
+
+def private wrap_pair(tu : CirTu; x : CirExpr) : CirExpr const? {
+    let sum = x.a
+    if (x.e != "cast" || x.cast_kind != "IntegralCast" || sum == null || sum.e != "bin" || (sum.op != "add" && sum.op != "sub") || !unsigned_twin(tu, sum.t, x.t)) {
+        return null
+    }
+    for (side in fixed_array<CirExpr const?>(sum.a, sum.b)) {
+        if (side == null || side.e != "cast" || side.cast_kind != "IntegralCast" || side.a == null || side.a.t != x.t) {
+            return null
+        }
+    }
+    return sum
+}
+
+// `u` is the unsigned twin of `t`, a signed integer of 32 or 64 bits that is no `_Bool`
+def private unsigned_twin(tu : CirTu; u, t : int) : bool {
+    if (kind_of(tu, t) != "int" || kind_of(tu, u) != "int" || is_c_bool(tu, t)) {
+        return false
+    }
+    let w = tu.types[t].w
+    return tu.types[t].is_signed && !tu.types[u].is_signed && tu.types[u].w == w && (w == 32 || w == 64)
+}
+
+// the wrapping sum `wrap_pair` matched, spelled in the signed type
+def private emit_wrap_pair(var em : Emitter; tu : CirTu; sum : CirExpr; loc : CirLoc) : Em {
+    let prec = BIN_PREC?[sum.op] ?? 0
+    let lhs = emit_expr(em, tu, sum.a.a, loc)
+    let rhs = emit_expr(em, tu, sum.b.a, loc)
+    return value("{wrap(lhs, prec)} {BIN_SPELLING?[sum.op] ?? ""} {wrap(rhs, prec + 1)}", prec)
+}
+
 // `enum_from_int(type<E>, i)` over an int-typed spelling, C's implicit int-to-enum conversion
 def private int_to_enum(var em : Emitter; tu : CirTu; t : int; i : string) : string {
     em.requires |> insert("c_runtime/enum_from_int")
@@ -1513,7 +1706,7 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
         var keys : array<uint64>
         pin_lvalue(em, tu, x.a, loc, keys)
         em.pre |> push(step_line(em, tu, x, loc))
-        let after = emit_expr(em, tu, x.a, loc)
+        let after = lvalue_read(em, tu, x.a, loc)
         unpin(em, keys)
         return after
     }
@@ -1521,7 +1714,7 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
         var keys : array<uint64>
         pin_lvalue(em, tu, x.a, loc, keys)
         let tmp = temp_name(em)
-        let before = emit_expr(em, tu, x.a, loc)
+        let before = lvalue_read(em, tu, x.a, loc)
         // a `let` copy of a value holding a pointer takes a const pointee (F3): the old value of
         // a stepped pointer that `*p++ = v` writes through is a `var`
         let keep = holds_data_pointer(tu, x.a.t) ? "var" : "let"
@@ -1622,6 +1815,15 @@ def emit_expr(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : 
     return e
 }
 
+// a cast: the read of a volatile object, C's wrapping signed sum, or the cast table
+def private emit_cast_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
+    if (x.cast_kind == "LValueToRValue" && volatile_kept(em, tu, x.a)) {
+        return volatile_load(em, tu, x.a, loc)
+    }
+    let wrapped = wrap_pair(tu, x)
+    return wrapped != null ? emit_wrap_pair(em, tu, *wrapped, loc) : emit_cast(em, tu, *x, loc)
+}
+
 def private emit_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
     if (x == null) {
         fail(em, "missing expression", loc)
@@ -1647,7 +1849,7 @@ def private emit_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : Ci
         return flexible_pointer(em, tu, x.a, loc)
     }
     if (x.e == "cast") {
-        return emit_cast(em, tu, *x, loc)
+        return emit_cast_node(em, tu, x, loc)
     }
     if (x.e == "un") {
         return emit_unary(em, tu, *x, loc)
@@ -1660,7 +1862,7 @@ def private emit_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : Ci
         var keys : array<uint64>
         pin_lvalue(em, tu, x.a, loc, keys)
         em.pre |> push(assignment_line(em, tu, *x, loc))
-        let stored_value = emit_expr(em, tu, x.a, loc)
+        let stored_value = lvalue_read(em, tu, x.a, loc)
         unpin(em, keys)
         return stored_value
     }
@@ -2316,6 +2518,9 @@ def private emit_effect(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc
         emit_effect(em, tu, x.b, loc)
     } elif (x.e == "cond" && kind_of(tu, x.t) == "void") {
         void_conditional(em, tu, *x, loc)
+    } elif (x.e == "cast" && x.cast_kind == "LValueToRValue" && volatile_kept(em, tu, x.a)) {
+        // a volatile read is an access C keeps though its value is discarded
+        em.pre |> push("let {temp_name(em)} = {volatile_load(em, tu, x.a, loc).text}")
     } elif (x.e == "cast" && (x.cast_kind == "ToVoid" || x.cast_kind == "LValueToRValue" || x.cast_kind == "NoOp")) {
         emit_effect(em, tu, x.a, loc)
     } else {
@@ -2806,8 +3011,14 @@ def private holds_compound_literal(x : CirExpr const?) : bool {
 }
 
 // a compound literal in the increment lives as long as the `for` (C11 6.8.5p5), past the block
-// the increment's statements land in: its object is declared ahead, in the `for`'s own block
+// the increment's statements land in: its object is declared ahead, in the `for`'s own block. A
+// canonical counting loop is a das range loop (`for_range`); the increment of any other is the
+// body's last statement when the body holds no `continue` of the loop, else the `finally` block
+// when the body never leaves the loop, else the increment-first flag
 def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
+    if (for_range(em, tu, st)) {
+        return
+    }
     open_block(em, "")
     if (st.init_s != null) {
         emit_body(em, tu, st.init_s)
@@ -2817,12 +3028,15 @@ def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
     if (ahead) {
         flush_literal_decls(em)
     }
-    if (st.inc != null && leaves_loop(st.body_s, false)) {
+    if (st.inc != null && continues_loop(st.body_s, false) && leaves_loop(st.body_s, false)) {
         emit_for_flag(em, tu, st, inc_lines)
     } else {
         open_for_head(em, tu, st)
         if (st.inc == null) {
             emit_loop_body(em, tu, st.body_s)
+        } elif (!continues_loop(st.body_s, false)) {
+            emit_loop_body(em, tu, st.body_s)
+            write_increment(em, tu, st, inc_lines)
         } else {
             open_block(em, "")
             emit_loop_body(em, tu, st.body_s)
@@ -2834,6 +3048,145 @@ def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
         close_block(em)
     }
     close_block(em)
+}
+
+// true when the body holds a C `continue` of this loop: one outside every nested loop, a switch's
+// included
+def private continues_loop(st : CirStmt?; nested : bool) : bool {
+    if (st == null) {
+        return false
+    }
+    if (st.s == "continue") {
+        return !nested
+    }
+    let inner = nested || st.s == "while" || st.s == "do" || st.s == "for"
+    for (child in st.body) {
+        if (continues_loop(child, inner)) {
+            return true
+        }
+    }
+    return continues_loop(st.then_s, inner) || continues_loop(st.else_s, inner) || continues_loop(st.body_s, inner)
+}
+
+// the das range of a counting variable of C type `t`: `range`, `range64`, `urange`, `urange64`;
+// "" for a type no range counts
+def private range_kind(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
+    if (kind_of(tu, t) != "int" || is_c_bool(tu, t)) {
+        return ""
+    }
+    let spelled = das_type(em, tu, t, loc)
+    return spelled == "int" ? "range" : spelled == "int64" ? "range64" : spelled == "uint" ? "urange" : spelled == "uint64" ? "urange64" : ""
+}
+
+// the one declaration a `for`'s initializer holds, null for any other initializer
+def private counter_decl(st : CirStmt const?) : CirStmt const? {
+    if (st == null) {
+        return null
+    }
+    if (st.s == "decl") {
+        return st.init != null ? st : null
+    }
+    if (st.s == "compound" && length(st.body) == 1) {
+        return counter_decl(st.body[0])
+    }
+    return null
+}
+
+// `x` is a read of variable `name`: the reference under its load
+def private reads_variable(x : CirExpr const?; name : string) : bool {
+    let root = below_casts(x)
+    return root != null && root.e == "ref" && root.name == name && x.e == "cast" && x.cast_kind == "LValueToRValue" && !root.vol
+}
+
+// `inc` adds one to `name`: `++i`, `i++`, `i += 1`
+def private steps_by_one(inc : CirExpr const?; name : string) : bool {
+    if (inc == null) {
+        return false
+    }
+    let target = inc.e == "un" || inc.e == "assign" ? below_casts(inc.a) : null
+    if (target == null || target.e != "ref" || target.name != name || target.vol) {
+        return false
+    }
+    if (inc.e == "un") {
+        return inc.op == "preinc" || inc.op == "postinc"
+    }
+    let one = below_casts(inc.b)
+    return inc.op == "add" && one != null && one.e == "int_lit" && one.v == "1"
+}
+
+// the names statement tree `st` assigns, steps or takes the address of, below casts
+def private written_names(st : CirStmt const?) : table<string> {
+    var names : table<string>
+    each_expr(st) $(x) {
+        if (x.e == "assign" || (x.e == "un" && (is_step(x.op) || x.op == "addr"))) {
+            let root = below_casts(x.a)
+            if (root != null && root.e == "ref") {
+                names |> insert(root.name)
+            }
+        }
+    }
+    return <- names
+}
+
+// a loop bound C reads before every pass that reads the same value each time: literals,
+// constants, and the function's own locals and parameters that `body` never writes and nothing
+// takes the address of, under casts and `+`, `-`, `*`, never a call, a global, a load through a
+// pointer or a volatile object
+def private invariant_bound(em : Emitter; x : CirExpr const?; written : table<string>) : bool {
+    var ok = x != null
+    each_subexpr(x) $(sub) {
+        if (sub.e == "ref") {
+            ok = ok && !sub.vol && !key_exists(em.global_names, sub.name) && !key_exists(written, sub.name) && !key_exists(em.addressed, sub.name)
+        } elif (sub.e == "bin") {
+            ok = ok && (sub.op == "add" || sub.op == "sub" || sub.op == "mul")
+        } elif (sub.e == "cast") {
+            ok = ok && (sub.cast_kind == "LValueToRValue" || sub.cast_kind == "IntegralCast" || sub.cast_kind == "NoOp")
+        } else {
+            ok = ok && (sub.e == "int_lit" || sub.e == "enum_ref" || sub.e == "sizeof_v" || sub.e == "alignof_v")
+        }
+    }
+    return ok
+}
+
+// O1 of the plan, the "General for" of docs/lowering-examples.md: `for (T i = a; i < n; ++i)`
+// with `i` an integer of 32 or 64 bits that the body never writes or takes the address of and
+// `n` an invariant bound (`invariant_bound`) of `i`'s type is `for (i in range(a, n))`; das
+// evaluates `a` then `n` once, C's order, and `i` dies with the loop as C99's does. False, with
+// nothing spelled, for any other loop or under `loops` `while`
+def private for_range(var em : Emitter; tu : CirTu; st : CirStmt) : bool {
+    if (!em.range_loops) {
+        return false
+    }
+    let decl = counter_decl(st.init_s)
+    if (decl == null || st.cond == null || st.cond.e != "bin" || st.cond.op != "lt" || !steps_by_one(st.inc, decl.name)) {
+        return false
+    }
+    let kind = range_kind(em, tu, decl.t, st.loc)
+    if (empty(kind) || !reads_variable(st.cond.a, decl.name) || st.cond.a.t != decl.t || st.cond.b.t != decl.t) {
+        return false
+    }
+    let written <- written_names(st.body_s)
+    if (key_exists(written, decl.name) || key_exists(em.addressed, decl.name) || !invariant_bound(em, st.cond.b, written)) {
+        return false
+    }
+    let mark = length(em.pre)
+    let first = emit_expr(em, tu, decl.init, st.loc)
+    let bound = emit_expr(em, tu, st.cond.b, st.loc)
+    // the start's statements go before the loop, in a block of its own as C scopes them
+    let scoped = length(em.pre) != mark
+    if (scoped) {
+        open_block(em, "")
+        flush_pre(em)
+    }
+    let zero = below_casts(decl.init)
+    let start = zero.e == "int_lit" && zero.v == "0" ? "" : "{first.text}, "
+    open_block(em, "for ({das_name(em, decl.name)} in {kind}({start}{bound.text}))")
+    emit_loop_body(em, tu, st.body_s)
+    close_block(em)
+    if (scoped) {
+        close_block(em)
+    }
+    return true
 }
 
 // where a label or a goto sits: the compound blocks above it, outermost first, and whether
@@ -4043,9 +4396,16 @@ def private reset_function_state(var em : Emitter; d : CirDecl) {
     em.label_gotos |> clear()
     plan_labels(em, d.body)
     em.unsafe_used = false
+    em.addressed |> clear()
     each_expr(d.body) $(x) {
         if (x.e == "assign" || (x.e == "un" && (is_step(x.op) || x.op == "addr"))) {
             mark_store_root(em, x.a)
+        }
+        if (x.e == "un" && x.op == "addr") {
+            let root = below_casts(x.a)
+            if (root != null && root.e == "ref") {
+                em.addressed |> insert(root.name)
+            }
         }
     }
 }
@@ -4792,6 +5152,15 @@ def private flag_over_indexed(var em : Emitter; tu : CirTu; side : Sidecar) {
 //! The whole module: banner, options, requires, every declaration, and the `main` wrapper
 //! when the C program has one. Empty with `error` set when a node is outside the subset. A
 //! local that hides another is renamed in `tu` itself first (`unshadow_locals`).
+// the sidecar's and the options' choices the emitter reads, and the unit's global names
+def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
+    em.alloca_limit = side.alloca_limit > 0 ? side.alloca_limit : ALLOCA_LIMIT
+    em.stack_option = side.stack
+    em.param_copy = side.param_writes == "copy"
+    em.range_loops = side.loops != "while"
+    em.global_names <- {for (d in tu.decls); d.name; where d.k == "global"}
+}
+
 def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
     var em : Emitter
     unshadow_locals(tu, em.carried, em.bound_objects)
@@ -4804,9 +5173,7 @@ def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
     rename_wrapper_names(em, tu)
     flag_marshal(em, tu, side)
     flag_over_indexed(em, tu, side)
-    em.alloca_limit = side.alloca_limit > 0 ? side.alloca_limit : ALLOCA_LIMIT
-    em.stack_option = side.stack
-    em.param_copy = side.param_writes == "copy"
+    take_options(em, tu, side)
     // the module's first `[init]` goes here, though only the functions tell whether it is needed:
     // the format families read `l` at the dialect's `long`, never the host CRT's
     let dialect_at = length(em.out)

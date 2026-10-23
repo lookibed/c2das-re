@@ -29,9 +29,17 @@ require perf_lanes
 
 let WORK = "perf/work"
 let RESULTS = "perf/results_linux.json"
+//! the dasProfile method's capture, and dasProfile's own capture from this machine beside it
+let METHOD_RESULTS = "perf/results_method_linux.json"
+let DASPROFILE_RESULTS = "perf/dasprofile_linux.json"
 let README = "README.md"
 let README_BEGIN = "<!-- perf-table:begin -->"
 let README_END = "<!-- perf-table:end -->"
+let README_METHOD_BEGIN = "<!-- perf-method:begin -->"
+let README_METHOD_END = "<!-- perf-method:end -->"
+//! the methods a run measures by: this tree's (`composed_source`) and dasProfile's
+//! (`composed_method_source`), over the kernels both repositories share
+let METHODS <- ["default", "dasprofile"]
 
 [CommandLineArgs]
 struct Args {
@@ -42,16 +50,22 @@ struct Args {
     @clarg_name = "table"
     @clarg_doc = "render the table from the stored results instead of measuring"
     show_table : bool
-    @clarg_doc = "rewrite the perf table section of README.md after measuring"
+    @clarg_doc = "rewrite the method's section of README.md from the run, or under --table from the stored capture"
     readme : bool
     @clarg_doc = "print the lane time / native table after the results"
     ratios : bool
-    @clarg_doc = "the capture the delta compares against (default: perf/results_linux.json at HEAD)"
+    @clarg_doc = "the capture the delta compares against (default: the method's committed capture at HEAD)"
     baseline : string = ""
     @clarg_doc = "write the results, ratio and delta tables as one markdown block to this file"
     report : string = ""
-    @clarg_doc = "the results file a run writes and --table reads (default perf/results_linux.json)"
-    out : string = RESULTS
+    @clarg_doc = "the results file a run writes and --table reads (default perf/results_linux.json, under --method dasprofile perf/results_method_linux.json)"
+    out : string = ""
+    @clarg_doc = "default (this tree's harness, every kernel) or dasprofile (dasProfile's harness: noinline kernel, volatile sink, steady clock; the kernels both repositories share)"
+    method : string = "default"
+    @clarg_doc = "exit 1 when a cell drifts from the baseline past --tolerance either way, or one capture lacks a cell the other has"
+    check : bool
+    @clarg_doc = "the --check bar in percent (default 10, the FLAG rule's)"
+    tolerance : int = 10
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -133,52 +147,90 @@ def measure_lane(var cells : table<string; Cell>; var errors : array<string>; na
     }
 }
 
-//! Every lane of one kernel: the native build, the four converter tiers, and the interpreter
-//! over the conversion under `--param-writes copy`.
+//! Every lane of one kernel under the default method: the native build, the four converter tiers,
+//! and the interpreter over the conversions under `--param-writes copy` and `--loops while`.
 def run_kernel(name : string; samples : int; var errors : array<string>) : table<string; Cell> {
     var cells : table<string; Cell>
     let work = path_join(WORK, name)
     let c_path = write_composed(name, work)
-    let native_bin = path_join(work, "{name}_native")
-    var build_out : string
     let no_libs : array<string>
-    if (run_and_capture(native_build_command(c_path, native_bin, no_libs), build_out, 600.0) != 0) {
-        errors |> push("{name}/native: {first_line(build_out)}")
+    var oracle = 0
+    if (!measure_native(cells, errors, name, c_path, work, no_libs, samples, oracle)) {
         return <- cells
     }
-    var native_err : string
-    var native <- measure([native_bin], samples, native_err)
-    if (!empty(native_err)) {
-        errors |> push("{name}/native: {native_err}")
-        return <- cells
-    }
-    let oracle = native.result
-    cells["native"] <- native
     let res <- convert(c_path, work, "linux")
     if (!res.ok) {
         errors |> push("{name}/convert: {first_line(res.error)}")
         return <- cells
     }
     measure_lane(cells, errors, name, "interp", das_lane_command(res.das_path, "", CONVERTED_MODULES), samples, oracle)
-    // the same lane over the conversion under `--param-writes copy`, in its own folder
-    let copied <- convert(c_path, path_join(work, "copy"), "linux", "", "", "copy")
-    if (copied.ok) {
-        measure_lane(cells, errors, name, "interp-copy", das_lane_command(copied.das_path, "", CONVERTED_MODULES), samples, oracle)
-    } else {
-        errors |> push("{name}/interp-copy: convert: {first_line(copied.error)}")
+    // the same lane over the conversions under the non-default options, each in its own folder
+    for (lane, sub, param_writes, loops in ["interp-copy", "interp-while"], ["copy", "while"], ["copy", ""], ["", "while"]) {
+        let other <- convert(c_path, path_join(work, sub), "linux", "", "", param_writes, loops)
+        if (other.ok) {
+            measure_lane(cells, errors, name, lane, das_lane_command(other.das_path, "", CONVERTED_MODULES), samples, oracle)
+        } else {
+            errors |> push("{name}/{lane}: convert: {first_line(other.error)}")
+        }
     }
-    measure_lane(cells, errors, name, "jit", das_lane_command(res.das_path, "-jit", CONVERTED_MODULES), samples, oracle)
+    measure_tiers(cells, errors, name, res.das_path, work, samples, oracle)
+    return <- cells
+}
+
+//! Every lane of one kernel under the dasProfile method: the method's program built natively with
+//! its clock's C body, and its conversion under the four tiers, in `work/<kernel>/method`.
+def run_method_kernel(name : string; samples : int; var errors : array<string>) : table<string; Cell> {
+    var cells : table<string; Cell>
+    let work = path_join(path_join(WORK, name), "method")
+    let c_path = write_method_composed(name, work)
+    var oracle = 0
+    if (!measure_native(cells, errors, name, c_path, work, [METHOD_NATIVE_DEFINE], samples, oracle)) {
+        return <- cells
+    }
+    let res <- convert(c_path, work, "linux")
+    if (!res.ok) {
+        errors |> push("{name}/convert: {first_line(res.error)}")
+        return <- cells
+    }
+    measure_lane(cells, errors, name, "interp", das_lane_command(res.das_path, "", CONVERTED_MODULES), samples, oracle)
+    measure_tiers(cells, errors, name, res.das_path, work, samples, oracle)
+    return <- cells
+}
+
+// the native lane of `c_path` built into `work` with `extra` after the file, its result the
+// `oracle` every das lane must reproduce: false, with the line in `errors`, when the build or a
+// sample fails
+def measure_native(var cells : table<string; Cell>; var errors : array<string>; name, c_path, work : string; extra : array<string>; samples : int; var oracle : int&) : bool {
+    let native_bin = path_join(work, "{name}_native")
+    var build_out : string
+    if (run_and_capture(native_build_command(c_path, native_bin, extra), build_out, 600.0) != 0) {
+        errors |> push("{name}/native: {first_line(build_out)}")
+        return false
+    }
+    var native_err : string
+    var native <- measure([native_bin], samples, native_err)
+    if (!empty(native_err)) {
+        errors |> push("{name}/native: {native_err}")
+        return false
+    }
+    oracle = native.result
+    cells["native"] <- native
+    return true
+}
+
+// the JIT, exe and AOT lanes of the converted `das_path`
+def measure_tiers(var cells : table<string; Cell>; var errors : array<string>; name, das_path, work : string; samples, oracle : int) {
+    measure_lane(cells, errors, name, "jit", das_lane_command(das_path, "-jit", CONVERTED_MODULES), samples, oracle)
     let no_args : array<string>
     for (lane in ["exe", "aot"]) {
         var build_error : string
-        let bin = lane == "exe" ? build_exe(res.das_path, work, no_args, build_error) : build_aot(res.das_path, work, no_args, build_error)
+        let bin = lane == "exe" ? build_exe(das_path, work, no_args, build_error) : build_aot(das_path, work, no_args, build_error)
         if (empty(bin)) {
             errors |> push("{name}/{lane}: {build_error}")
         } else {
             measure_lane(cells, errors, name, lane, [bin], samples, oracle)
         }
     }
-    return <- cells
 }
 
 def lane_text(cells : table<string; Cell>; lane : string) : string {
@@ -189,15 +241,102 @@ def lane_text(cells : table<string; Cell>; lane : string) : string {
     return text
 }
 
-def update_readme(rendered : string) : bool {
+// the text between `begin` and `end` in README.md replaced by `rendered`; false without the markers
+def update_readme(rendered, begin, end : string) : bool {
     let text = fread(README)
-    let b = find(text, README_BEGIN)
-    let e = find(text, README_END)
+    let b = find(text, begin)
+    let e = find(text, end)
     if (b < 0 || e < 0 || e < b) {
         return false
     }
-    fwrite(README, slice(text, 0, b + length(README_BEGIN)) + "\n" + rendered + slice(text, e))
+    fwrite(README, slice(text, 0, b + length(begin)) + "\n" + rendered + slice(text, e))
     return true
+}
+
+// the README section of a capture: the results table of the default method, the comparison
+// with dasProfile's own capture of the dasProfile method
+def readme_section(js : JsonValue?; method : string; var error : string&) : string {
+    if (method != "dasprofile") {
+        return render_results(js)
+    }
+    let dp = read_json_file(DASPROFILE_RESULTS, error)
+    return dp == null ? "" : render_method_comparison(js, dp)
+}
+
+// `--check`: the cells past the tolerance against the baseline, each an error line; true when none
+def check_drift(js, baseline : JsonValue?; baseline_name : string; tolerance : int) : bool {
+    if (baseline == null) {
+        to_log(LOG_ERROR, "--check: no baseline capture to compare with\n")
+        return false
+    }
+    let drifted <- drifted_cells(js, baseline, int64(tolerance) * 100l)
+    for (cell in drifted) {
+        to_log(LOG_ERROR, "--check: {cell} against {baseline_name}, past {tolerance}%\n")
+    }
+    return empty(drifted)
+}
+
+// the stored capture `out` rendered, by `--table`; under the dasProfile method the comparison
+// too; with `--readme` the method's README.md section rewritten from it
+def show_stored(args : Args; out : string; baseline : JsonValue?; baseline_name : string) : int {
+    var error : string
+    let js = read_json_file(out, error)
+    if (js == null) {
+        to_log(LOG_ERROR, "{error}\n")
+        return 1
+    }
+    print(show_tables(js, baseline, baseline_name, args.ratios, args.report))
+    if (args.method == "dasprofile") {
+        let section = readme_section(js, args.method, error)
+        print(empty(section) ? "{error}\n" : "\n{section}")
+    }
+    if (args.readme) {
+        write_readme(js, args.method)
+    }
+    return 0
+}
+
+// every kernel the run names measured by the method's lanes, one JSON row per kernel
+def measure_kernels(args : Args; lanes : array<string>; var errors : array<string>) : table<string; JsonValue?> {
+    let by_dasprofile = args.method == "dasprofile"
+    let names <- [for (name in c_file_ids(KERNELS, args.filter)); name; where !by_dasprofile || key_exists(SHARED_KERNELS, name)]
+    var tests : table<string; JsonValue?>
+    for (name in names) {
+        var inscope cells <- by_dasprofile ? run_method_kernel(name, args.samples, errors) : run_kernel(name, args.samples, errors)
+        var row <- {for (lane, cell in keys(cells), values(cells)); lane => JV((time = cell.time, spread = cell.spread, count = cell.count, result = cell.result, samples = JV(cell.samples)))}
+        tests[name] = JV(row)
+        to_log(LOG_INFO, "{name}: " + join([for (lane in lanes); "{lane} {lane_text(cells, lane)}"], ", ") + "\n")
+    }
+    return <- tests
+}
+
+// the capture of a run: the machine, the versions, the method, its lanes and the rows
+def capture_of(args : Args; lanes : array<string>; var tests : table<string; JsonValue?>) : JsonValue? {
+    var clang_version, daslang_version : string
+    tool_versions(clang_version, daslang_version)
+    var root <- {
+        "cpu" => JV(cpu_name()),
+        "platform" => JV("{get_platform_name()} {strip(captured(["uname", "-m"]))}"),
+        "timestamp" => JV(strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))),
+        "samples" => JV(args.samples),
+        "method" => JV(args.method),
+        "versions" => JV({"clang" => JV(clang_version), "daslang" => JV(daslang_version)}),
+        "lanes" => JV(lanes),
+        "tests" => JV(tests)
+    }
+    return JV(root)
+}
+
+// `--readme`: the method's section of README.md rewritten from capture `js`
+def write_readme(js : JsonValue?; method : string) {
+    var error : string
+    let section = readme_section(js, method, error)
+    let by_dasprofile = method == "dasprofile"
+    if (empty(section)) {
+        to_log(LOG_ERROR, "{error}\n")
+    } elif (!update_readme(section, by_dasprofile ? README_METHOD_BEGIN : README_BEGIN, by_dasprofile ? README_METHOD_END : README_END)) {
+        to_log(LOG_ERROR, "{README} has no {by_dasprofile ? "perf-method" : "perf-table"} markers\n")
+    }
 }
 
 [export]
@@ -207,49 +346,37 @@ def main : int {
     if (parsed >= 0) {
         return parsed
     }
+    if (!has_value(METHODS, args.method)) {
+        to_log(LOG_ERROR, "--method is default or dasprofile, not `{args.method}`\n")
+        return 2
+    }
+    let committed = args.method == "dasprofile" ? METHOD_RESULTS : RESULTS
+    let out = empty(args.out) ? committed : args.out
     var baseline_name, error : string
-    let baseline = baseline_capture(args.baseline, RESULTS, baseline_name, error)
+    let baseline = baseline_capture(args.baseline, committed, baseline_name, error)
     if (!empty(error)) {
         to_log(LOG_ERROR, "{error}\n")
         return 1
     }
     if (args.show_table) {
-        let js = read_json_file(args.out, error)
-        if (js == null) {
-            to_log(LOG_ERROR, "{error}\n")
-            return 1
-        }
-        print(show_tables(js, baseline, baseline_name, args.ratios, args.report))
-        return 0
+        return show_stored(args, out, baseline, baseline_name)
     }
-    let names <- c_file_ids(KERNELS, args.filter)
+    let lanes <- args.method == "dasprofile" ? [for (lane in METHOD_LANES); lane] : [for (lane in LANES); lane]
     var errors : array<string>
-    var tests : table<string; JsonValue?>
-    for (name in names) {
-        var inscope cells <- run_kernel(name, args.samples, errors)
-        var row <- {for (lane, cell in keys(cells), values(cells)); lane => JV((time = cell.time, spread = cell.spread, count = cell.count, result = cell.result, samples = JV(cell.samples)))}
-        tests[name] = JV(row)
-        to_log(LOG_INFO, "{name}: " + join([for (lane in LANES); "{lane} {lane_text(cells, lane)}"], ", ") + "\n")
-    }
-    var clang_version, daslang_version : string
-    tool_versions(clang_version, daslang_version)
-    var root <- {
-        "cpu" => JV(cpu_name()),
-        "platform" => JV("{get_platform_name()} {strip(captured(["uname", "-m"]))}"),
-        "timestamp" => JV(strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))),
-        "samples" => JV(args.samples),
-        "versions" => JV({"clang" => JV(clang_version), "daslang" => JV(daslang_version)}),
-        "lanes" => JV(LANES),
-        "tests" => JV(tests)
-    }
-    let js = JV(root)
-    fwrite(args.out, write_json(js) + "\n")
+    var tests <- measure_kernels(args, lanes, errors)
+    let js = capture_of(args, lanes, tests)
+    fwrite(out, write_json(js) + "\n")
     print(show_tables(js, baseline, baseline_name, args.ratios, args.report))
-    if (args.readme && !update_readme(render_results(js))) {
-        to_log(LOG_ERROR, "{README} has no perf-table markers\n")
+    if (args.readme) {
+        write_readme(js, args.method)
     }
     for (e in errors) {
         to_log(LOG_ERROR, "{e}\n")
+    }
+    // `--check` asks whether the run reproduces the baseline: a lane error the baseline shares
+    // (a cell both lack) reproduces it, a new one is a missing cell
+    if (args.check) {
+        return check_drift(js, baseline, baseline_name, args.tolerance) ? 0 : 1
     }
     return empty(errors) ? 0 : 1
 }

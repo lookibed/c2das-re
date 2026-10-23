@@ -103,3 +103,32 @@ def test_sidecar_over_indexed(t : T?) {
     }
     rmdir_rec(dir)
 }
+
+[test]
+def test_sidecar_loops(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_loops", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`loops` is \"range\" or \"while\"; absent it is empty, the emitter's range default") @(t : T?) {
+        for (mode in ["range", "while"]) {
+            var error : string
+            let side <- read_text(dir, mode, "\{\"loops\": \"{mode}\"\}\n", error)
+            t |> equal(error, "")
+            t |> equal(side.loops, mode)
+        }
+        var error : string
+        let side <- read_text(dir, "no_loops", "\{\"stack\": 65536\}\n", error)
+        t |> equal(error, "")
+        t |> equal(side.loops, "")
+    }
+    t |> run("any other `loops` value is refused, naming the key and the value") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "bad_loops", "\{\"loops\": \"for\"\}\n", error)
+        t |> success(error |> ends_with("bad_loops.c2das: `loops` is \"range\" or \"while\", not \"for\""), error)
+        t |> equal(side.loops, "")
+    }
+    rmdir_rec(dir)
+}

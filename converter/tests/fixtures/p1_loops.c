@@ -17,6 +17,9 @@ int main(void) {
         total += j;
     }
     printf("f%d\n", total);
+    for (i = 0; i < 6; i++) { if (i == 1) continue; if (i == 4) break; total += i; }
+    for (i = 0; i < 4; i++) { if (i == 2) continue; total += i; }
+    printf("g%d %d\n", total, i);
     for (;;) { total++; if (total > 10) break; }
     for (i = 0, n = 10; i < n; i += 3, n--) { }
     printf("%d %d %d\n", total, i, n);

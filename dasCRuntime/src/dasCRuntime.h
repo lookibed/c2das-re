@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <clocale>
 #include <csignal>
+#include <chrono>
 
 namespace crt {
 
@@ -93,8 +94,36 @@ inline int32_t c_errno() { return errno; }
 inline void c_set_errno(int32_t value) { errno = value; }
 inline int32_t * c_errno_location() { return &errno; }
 
+//! volatile access: one read or write through a `volatile` pointer each call, which neither the JIT
+//! (an extern call) nor clang++ under AOT (a volatile access survives inlining) folds or hoists.
+inline int8_t c_volatile_load_i8(const int8_t * p) { return *(const volatile int8_t *) p; }
+inline uint8_t c_volatile_load_u8(const uint8_t * p) { return *(const volatile uint8_t *) p; }
+inline int16_t c_volatile_load_i16(const int16_t * p) { return *(const volatile int16_t *) p; }
+inline uint16_t c_volatile_load_u16(const uint16_t * p) { return *(const volatile uint16_t *) p; }
+inline int32_t c_volatile_load_i32(const int32_t * p) { return *(const volatile int32_t *) p; }
+inline uint32_t c_volatile_load_u32(const uint32_t * p) { return *(const volatile uint32_t *) p; }
+inline int64_t c_volatile_load_i64(const int64_t * p) { return *(const volatile int64_t *) p; }
+inline uint64_t c_volatile_load_u64(const uint64_t * p) { return *(const volatile uint64_t *) p; }
+inline float c_volatile_load_f32(const float * p) { return *(const volatile float *) p; }
+inline double c_volatile_load_f64(const double * p) { return *(const volatile double *) p; }
+inline void * c_volatile_load_ptr(void * const * p) { return *(void * const volatile *) p; }
+inline void c_volatile_store_i8(int8_t * p, int8_t v) { *(volatile int8_t *) p = v; }
+inline void c_volatile_store_u8(uint8_t * p, uint8_t v) { *(volatile uint8_t *) p = v; }
+inline void c_volatile_store_i16(int16_t * p, int16_t v) { *(volatile int16_t *) p = v; }
+inline void c_volatile_store_u16(uint16_t * p, uint16_t v) { *(volatile uint16_t *) p = v; }
+inline void c_volatile_store_i32(int32_t * p, int32_t v) { *(volatile int32_t *) p = v; }
+inline void c_volatile_store_u32(uint32_t * p, uint32_t v) { *(volatile uint32_t *) p = v; }
+inline void c_volatile_store_i64(int64_t * p, int64_t v) { *(volatile int64_t *) p = v; }
+inline void c_volatile_store_u64(uint64_t * p, uint64_t v) { *(volatile uint64_t *) p = v; }
+inline void c_volatile_store_f32(float * p, float v) { *(volatile float *) p = v; }
+inline void c_volatile_store_f64(double * p, double v) { *(volatile double *) p = v; }
+inline void c_volatile_store_ptr(void ** p, void * v) { *(void * volatile *) p = v; }
+
 inline int64_t c_time(int64_t * t) { return int64_t(::time((time_t *) t)); }
 inline int64_t c_clock() { return int64_t(::clock()); }
+//! the steady clock's nanoseconds: the wall clock the perf harness's dasProfile method times by,
+//! std::chrono::steady_clock as dasProfile's C++ harness reads it
+inline int64_t c_monotonic_ns() { return int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
 inline double c_difftime(int64_t a, int64_t b) { return ::difftime(time_t(a), time_t(b)); }
 //! A `struct tm *` and a `struct lconv *` are `void *`: the converted program lays the record out
 //! itself and converts the pointer at the call site.

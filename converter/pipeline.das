@@ -85,10 +85,18 @@ def file_stem(c_path : string) : string {
     return dot < 0 ? name : slice(name, 0, dot)
 }
 
-def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = "") : ConvertResult {
-    var res : ConvertResult
+// why an option value given to `convert` is refused, "" when both are empty or a mode
+def private option_error(param_writes, loops : string) : string {
     if (!empty(param_writes) && !is_param_writes(param_writes)) {
-        res.error = "--param-writes is in-place or copy, not `{param_writes}`"
+        return "--param-writes is in-place or copy, not `{param_writes}`"
+    }
+    return !empty(loops) && !is_loops(loops) ? "--loops is range or while, not `{loops}`" : ""
+}
+
+def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = "") : ConvertResult {
+    var res : ConvertResult
+    res.error = option_error(param_writes, loops)
+    if (!empty(res.error)) {
         return <- res
     }
     if (!mkdir_rec(out_dir) && !stat(out_dir).is_dir) {
@@ -103,6 +111,9 @@ def convert(c_path : string; out_dir : string; target_name : string; clang : str
     }
     if (!empty(param_writes)) {
         side.param_writes = param_writes
+    }
+    if (!empty(loops)) {
+        side.loops = loops
     }
     let dump_started = ref_time_ticks()
     var d <- dump_tu(c_path, target_by_name(target_name), empty(clang) ? default_clang() : clang, side.defines)

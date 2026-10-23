@@ -120,3 +120,19 @@ def test_lua_pointers(t : T?) {
         }
     }
 }
+
+// a pointer value that is no variable, less a count
+let PTR_SUB_SOURCE = "options gen2\nvar cells = fixed_array(1, 2, 3)\ndef at_end : int? => unsafe(addr(cells[2]))\n[export]\ndef main \{\n    let p = unsafe(at_end() - 1)\n    print(\"\{*p\}\\n\")\n\}\n"
+
+[test]
+def test_pointer_step_back(t : T?) {
+    t |> run("a pointer value that is no variable takes `+` but not `-`; `+ -n` steps it back") @(t : T?) {
+        let refused = daslang_child("ptr_sub_value", PTR_SUB_SOURCE, true)
+        child_rejects(t, "ptr_sub_value", refused, "i_das_ptr_sub")
+        var cells = fixed_array(1, 2, 3)
+        let back = unsafe(unsafe(addr(cells[2])) + -1)
+        t |> equal(*back, 2)
+        let at_end = unsafe(unsafe(addr(cells[0])) + 2)
+        t |> equal(*at_end, 3)
+    }
+}

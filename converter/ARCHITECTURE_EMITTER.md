@@ -224,16 +224,9 @@ in any other position with a pointer type (a second arm, an argument, a return, 
 initializer) is `null`. A `void` ternary evaluated for its effects (an expression statement, a
 comma's left side, a cast to `void`: the `(e) ? (void) 0 : fail()` of an assert) is an
 `if`/`else` of its arms' statements, an arm with no effect left out (`if (!(e))` when it is the
-first), and fails closed where its value is read, since das has no `void` variable. Loops follow the documents: `while` is `while`, with a side-effecting
-condition spelled `while (true)` plus the test and `break`; `do` is the `_first` flag; `for` is
-a bare block holding the initializer and one of three loops: `while (cond) { body }` when there
-is no increment, `while (cond) { { body } finally { inc } }` when the body never leaves the
-loop (no `break` at its level, no `return`, no `goto`), since `finally` runs on `continue` and
-on every pass but also on `break`, and the `_f` increment-first flag otherwise; `if` chains
-spell `elif` when the nested condition is pure. The split is measured:
-`benchmarks/bench_for_shapes.das` times one body under the three spellings, and under the
-interpreter the `finally` form costs 10.6 ns per iteration against the flag's 14.2 and the
-native `range` loop's 4.9 (the O1 rewrite's target), while the JIT compiles all three alike.
+first), and fails closed where its value is read, since das has no `void` variable. The loops (the range loop of a canonical counting `for`, the trailing increment, the `finally`
+block and the flag), `x = x op y` as `x op= y`, C's wrapping signed sum and the volatile access
+are in `ARCHITECTURE_EMITTER_LOOPS.md`; `if` chains spell `elif` when the nested condition is pure.
 A string literal outside a pointer or `char[N]` context (where the empty one has no das spelling
 either, F10) and a call to an external function in neither call table are errors until their
 lowering lands (`docs/implementation_order.md`, P2 onward).

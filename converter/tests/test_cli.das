@@ -85,6 +85,43 @@ def test_cli_param_writes(t : T?) {
     rmdir_rec(dir)
 }
 
+let LOOPS_FIXTURE = "converter/tests/fixtures/p7_loops.c"
+
+// `converter/main.das -- <LOOPS_FIXTURE> --out <dir>/loops_<mode> --target linux --loops <mode>`
+// as a child process
+def run_loops(dir, mode : string; var out : string&) : int {
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from(["converter/main.das", "--", LOOPS_FIXTURE, "--out", path_join(dir, "loops_{mode}"), "--target", "linux", "--loops", mode])
+    return run_and_capture(argv, out, 300.0)
+}
+
+[test]
+def test_cli_loops(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_cli_loops", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("--loops range spells a canonical counting loop as a range loop, --loops while as the while form") @(t : T?) {
+        var out : string
+        t |> equal(run_loops(dir, "range", out), 0, out)
+        let ranged = fread(path_join(path_join(dir, "loops_range"), "p7_loops.das"))
+        t |> success(ranged |> contains("    for (i in range(n)) \{\n"), ranged)
+        t |> equal(run_loops(dir, "while", out), 0, out)
+        let kept = fread(path_join(path_join(dir, "loops_while"), "p7_loops.das"))
+        t |> success(!(kept |> contains("    for (i in range(n)) \{\n")), kept)
+        t |> success(kept |> contains("        var i : int = 0\n        while (i < n) \{\n"), kept)
+    }
+    t |> run("--loops for is a usage error before any conversion") @(t : T?) {
+        var out : string
+        t |> equal(run_loops(dir, "for", out), 2, out)
+        t |> success(out |> contains("--loops is range or while, not `for`"), out)
+        t |> success(!fexist(path_join(path_join(dir, "loops_for"), "p7_loops.das")), out)
+    }
+    rmdir_rec(dir)
+}
+
 [test]
 def test_cli_program_args(t : T?) {
     var dir_error : string
