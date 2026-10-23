@@ -19,9 +19,14 @@ never a bare phase `P<n>`.**
 dialect excludes the construct the line names, or clang (the converter's frontend) rejects the
 program.**
 
-**A diff that changes `gcc_torture/skip.txt` also changes `gcc_torture/filter.das`, leaves
-`skip.txt` equal to what `filter.das` writes over the pinned tree, and gives every entry of
-`RULES` a `phase` that is a ledger row id or `never`, the same as the lines it writes.**
+**A diff that changes `gcc_torture/skip.txt` leaves it equal to what `gcc_torture/filter.das`
+writes over the pinned tree and the diff's own `expected_pass.txt`, and gives every entry of
+`RULES` (`gcc_torture/filter_rules.das`) a `phase` that is a ledger row id or `never`, the same as
+the lines it writes.**
+
+**A diff that adds or rewrites a `skip.txt` line names in its phase column `never` or a row of a
+phase above the highest closed one (the highest `v0.<N>.0` tag, at least phase 4), never a
+closed phase's row.**
 
 **Never weaken a check in `REVIEW.das` - fix what it flags instead.**
 

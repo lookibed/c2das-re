@@ -124,3 +124,24 @@ def test_functions(t : T?) {
         t |> equal(variant_index(a), 1)
     }
 }
+
+def private empty_hint(_x : int?) {
+    pass
+}
+
+[sideeffects]
+def private kept_hint(_x : int?) {
+    pass
+}
+
+[test]
+def test_empty_call_effects(t : T?) {
+    t |> run("a call to an empty function whose argument hides an effect inside `addr` goes with the effect; [sideeffects] keeps both (c_prefetch)") @(t : T?) {
+        var i = 0
+        var arr : int[3]
+        empty_hint(unsafe(addr(arr[i++])))
+        t |> equal(i, 0)
+        kept_hint(unsafe(addr(arr[i++])))
+        t |> equal(i, 1)
+    }
+}

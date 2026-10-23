@@ -4,53 +4,16 @@ require strings
 require daslib/strings_boost
 require daslib/fio
 require daslib/regex
-require daslib/regex_boost
+require ../suite_files.das
+require filter_rules
 
 //! The torture import's filter (`daslang suites/gcc_torture/filter.das` from the repository
-//! root, after a fetch): every `execute/*.c` whose text carries a GNU extension outside the
-//! dialect, or a construct a later row owns, gets its `skip.txt` line - id, feature, reason,
-//! the phase that unblocks it, `never` for a feature the dialect excludes. The rest ratchet.
+//! root, after a fetch): `skip.txt` is a line for every `execute/*.c` the first of
+//! `filter_rules.das`'s `RULES` matches, less the ids `expected_pass.txt` lists.
 
 let TESTS_DIR = "suites/gcc_torture/fetch/gcc/gcc/testsuite/gcc.c-torture/execute"
 let SKIP_LEDGER = "suites/gcc_torture/skip.txt"
-
-struct Rule {
-    pattern : string
-    feature : string
-    reason : string
-    phase : string
-}
-
-// first match wins: the dialect's exclusions before the rows that will carry a construct
-let RULES <- [
-    Rule(pattern = "\\basm\\b|__asm__", feature = "inline asm", reason = "machine code has no das spelling (c-ir-spec section 9)", phase = "never"),
-    Rule(pattern = "_Complex|__complex__|__real__|__imag__", feature = "_Complex", reason = "complex arithmetic is outside the dialect (c-ir-spec section 9)", phase = "never"),
-    Rule(pattern = "__int128", feature = "__int128", reason = "no 128-bit integer in das or the dialect", phase = "never"),
-    Rule(pattern = "_Float[0-9]|__float128|__fp16|_Decimal", feature = "non-standard floating types", reason = "float and double are the dialect's floating types", phase = "never"),
-    Rule(pattern = "vector_size", feature = "GNU vector extension", reason = "SIMD vector types are outside the dialect", phase = "never"),
-    Rule(pattern = "__sync_|__atomic_|__thread|_Thread_local", feature = "atomics and thread-local storage", reason = "single-threaded dialect", phase = "never"),
-    Rule(pattern = "__label__|&&[A-Za-z_]", feature = "address of a label and local labels", reason = "`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address", phase = "never"),
-    Rule(pattern = "__builtin_va_arg_pack|__builtin_apply", feature = "GNU argument forwarding builtins", reason = "`__builtin_va_arg_pack` and `__builtin_apply` are GCC builtins clang does not know (`use of unknown builtin`)", phase = "never"),
-    Rule(pattern = "__builtin_", feature = "__builtin_* calls", reason = "a builtin maps through a shim list that the punning tier grows", phase = "P4"),
-    Rule(pattern = "__attribute__", feature = "__attribute__", reason = "an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet", phase = "P4"),
-    Rule(pattern = "__typeof|\\btypeof *\\(|__extension__|__alignof", feature = "GNU keywords", reason = "typeof, __extension__ and __alignof__ have no row", phase = "never"),
-    Rule(pattern = "case [^:\n]*\\.\\.\\.", feature = "GNU case range", reason = "`case a ... b` is a GNU extension; the dialect's switch takes one value per label", phase = "never"),
-    Rule(pattern = "(^|[^A-Za-z0-9_\"])[LuU]\"", feature = "wide string literals", reason = "wide strings are outside the dialect (docs/lowering-examples.md, Strings & literals); the emitter fails closed on one", phase = "never")
-]
-
-// the builtins with a plain libc twin the emitter maps by name (converter/ARCHITECTURE_EMITTER.md,
-// the shim list); a test using only these is not a `__builtin_*` skip
-let BUILTIN_SHIMS <- ["alloca", "abort", "exit", "memcpy", "memmove", "memset", "memcmp", "strlen", "strcpy", "strncpy", "strcmp", "strncmp", "strchr", "printf", "sprintf", "malloc", "calloc", "free", "abs"]
-
-// the text with the shimmed builtins spelled as their libc twins, so the `__builtin_` rule
-// sees only the builtins without one
-def without_shims(text : string) : string {
-    var out = text
-    for (name in BUILTIN_SHIMS) {
-        out = out |> replace("__builtin_{name}", name)
-    }
-    return out
-}
+let EXPECTED_PASS = "suites/gcc_torture/expected_pass.txt"
 
 [export]
 def main : int {
@@ -58,31 +21,21 @@ def main : int {
         to_log(LOG_ERROR, "{TESTS_DIR} is missing: run suites/gcc_torture/fetch.sh\n")
         return 2
     }
-    var compiled : array<Regex>
-    compiled |> reserve(length(RULES))
-    for (rule in RULES) {
-        var re <- regex_compile(rule.pattern)
-        compiled |> emplace(re)
+    var compiled <- compile_rules()
+    var passing : table<string>
+    for (id in read_lines(EXPECTED_PASS)) {
+        passing |> insert(id)
     }
-    var ids : array<string>
-    dir(TESTS_DIR) $(name) {
-        if (name |> ends_with(".c")) {
-            ids |> push(slice(name, 0, length(name) - 2))
-        }
-    }
-    ids |> sort()
+    let ids <- c_file_ids(TESTS_DIR, "")
     var lines : array<string>
     for (id in ids) {
-        let text = without_shims(fread("{TESTS_DIR}/{id}.c"))
-        for (idx, rule in range(length(RULES)), RULES) {
-            if (regex_search(compiled[idx], text).x >= 0) {
-                lines |> push("{id}\t{rule.feature}\t{rule.reason}\t{rule.phase}")
-                break
-            }
+        let idx = key_exists(passing, id) ? -1 : first_rule(compiled, fread("{TESTS_DIR}/{id}.c"))
+        if (idx >= 0) {
+            lines |> push("{id}\t{RULES[idx].feature}\t{RULES[idx].reason}\t{RULES[idx].phase}")
         }
     }
     let text = build_string() $(writer) {
-        writer |> write("# gcc-torture execute tests never run, one per line: id, feature, reason, the phase that\n# unblocks it (never for a feature the dialect excludes), tab-separated; written by\n# suites/gcc_torture/filter.das over the fetched tree. A test that merely does not pass yet\n# is not listed; the ratchet reports it.\n")
+        writer |> write("# gcc-torture execute tests never run, one per line: id, feature, reason, the ledger row that\n# unblocks it (never for a construct no emulation reaches), tab-separated; written by\n# suites/gcc_torture/filter.das over the fetched tree, less the ids expected_pass.txt lists. A\n# test that merely does not pass yet is not listed; the ratchet reports it.\n")
         for (line in lines) {
             writer |> write("{line}\n")
         }

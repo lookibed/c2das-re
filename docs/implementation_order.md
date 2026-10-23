@@ -587,6 +587,38 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   match (`--allow-stale` otherwise). `perf/run.das`'s clang and daslang version lines now read
   past `info` lines (`first_reported_line`, the same text on this machine), and its exe and AOT
   builds take the 3600 s build timeout `converter/tiers.das` now passes to every build step.
+- **P5.1c Skip-list audit** (owner ruling 2026-10-22 (2), item B; branch `p5.1c-skip-audit`).
+  `run_suite.sh <suite> --audit-skips` runs every ledgered id through the convert-and-run path,
+  ratchet untouched, into `work/skip_audit.tsv` (id, feature, status by stage, reason) with a
+  per-feature tally; the audit of all 638 lines (gcc-torture 607, csmith 31) found 312 passing
+  already. Skip lines before: 638, of them 436 naming the closed P4 (`__attribute__` 376,
+  `__builtin_*` 60), 31 naming the closed P3.3 (csmith, goto into a nested body), 171 `never`
+  (inline asm 73, GNU vectors 31, label addresses 21, `_Complex` 20, `__int128` 11, GNU keywords
+  6, wide strings 5, argument forwarding 2, non-standard floats 1, case range 1). After: 354, none
+  naming a closed phase: `never` 59 (asm with template text or operands 43, GCC builtins clang does
+  not know 7, frame and return addresses 5, argument forwarding 2, `-finstrument-functions` 1,
+  non-standard floats 1), P7.5 23, P7.6 137, P7.7 31, P7.8 104. By class: (a) 306 gcc-torture ids
+  passed as they were and joined the ratchet (293 `__attribute__`, 7 builtins, 3 asm, 1 label
+  address, 1 GNU keyword, 1 wide string); (b) 43 more pass after this item's fixes - the dumper
+  drops a deliberate list of attributes and refuses every other naming it, lowers an asm barrier
+  (empty template, no operand) to the empty statement, and the emitter maps `__builtin_ffs`,
+  `ctz`, `clz`, `popcount`, `parity`, `clrsb` (with their `l`/`ll` forms), `bswap16/32/64`,
+  `signbit`, `unreachable`, `prefetch`, `trap` and `constant_p` (`c_runtime/c_builtins`); (c) the
+  rows P7.5 to P7.9; (d) `never` only with the reasons above, none on standard C99. gcc-torture
+  824 -> 1173 passing, c-testsuite 199 and csmith 151 held. `suites/gcc_torture/filter.das` writes
+  `skip.txt` from `filter_rules.das` less the ratchet's ids (a passing test is never skipped); the
+  audit's false positives are fixed: `&&[A-Za-z_]` matched a logical and (20000511-1), `\basm\b`
+  matched `#include <asm/...>` (20001229-1), `__asm` without trailing underscores slipped through
+  (pr81588). Five `mode` tests and pr87623 (`scalar_storage_order`, which clang ignores) passed
+  only because the attribute was silently dropped: the first now fail closed, all six carry a
+  P7.6 line. `packed` and `aligned` stay read, not refused (the layout law places a packed record,
+  F51), so the packed and aligned tests that pass (align-1, 20050215-1, bf-pack-1, pr52979-1/2,
+  pr57344-1/2, pr70602, pr91597) are in the ratchet. A `weak` on a name the unit never defines is
+  refused by the dumper, not the filter (no regex sees definedness). `suites/REVIEW.das` fails a
+  skip line naming a phase at or below the highest `v0.<N>.0` tag (floor 4). Upstream (daScript):
+  a call to an empty function whose argument hides an effect inside `addr` (`h(addr(a[i++]))`) is
+  removed with the effect, where `h(i++)` keeps it (`probes/test_functions.das`); `c_prefetch` is
+  `[sideeffects]` for it; the report with a repro is owed.
 - **P5.2 pcall** via the setjmp lowering (`LUAI_THROW/LUAI_TRY` → `c_longjmp`/contained
   pattern — the easy shape, per spec).
 - **P5.3 Lua's own test suite** under interp. Expect a long tail of libc exactness bugs
@@ -724,6 +756,43 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   and `matmul` (5.4x and 1.4x native) wait for daScript to address a module global by offset
   instead of a hash probe per access (lookibed/daScript#5, F49).
 - **P7.4 The bar:** interp ≥ 35 fps at 320×200 (30 accepted floor). Then the writeup.
+- **P7.5 C99 completeness owed by the skip audit** (P5.1c). Skip lines name it: `_Complex` (19)
+  and `wide string literals` (4, with `wchar_t`). Ordinary failures the rows' fixes unblock: `bool`
+  as `#define bool _Bool`, which clang spells `bool` (20141107-1, 20230510-1); a file-scope empty
+  declaration `;` (`EmptyDecl`: builtin-bitops-1, pr37573, and 20230630-2/4 behind P7.6); a
+  block-scope function declaration (struct-cpy-1, behind P7.6); a pointer to `va_list` (pr64979,
+  va-arg-21); a call through an unprototyped function pointer with arguments (pr67037), a pointer to
+  a variadic function (pr68390), a libc function's value (pr54937), `main` with other parameters
+  (alias-4, behind P7.6); `vfprintf` and `perror` mappings (fprintf-chk-1, user-printf,
+  vfprintf-chk-1, printf-2).
+- **P7.6 GNU emulations owed by the skip audit** (P5.1c). Skip lines name it under these features:
+  `__attribute__` (49: an attribute outside the dumper's dropped list - `packed` and `aligned`
+  beyond what the layout law places or a typedef carries, `mode`, `alias`, `scalar_storage_order`,
+  `constructor`), `GNU vector extension` (29), `address of a label and local labels` (17, labels as
+  values through the switch re-dispatch), `__int128` (13, through c_runtime), `GNU keywords` (11:
+  `typeof`, `__extension__`, `__alignof`), `GCC overflow builtins` (11), `__builtin_setjmp` (4,
+  through the setjmp lowering), `__builtin_* calls` (2: `classify_type`, `choose_expr`/
+  `types_compatible_p`), `GNU case range` (1). Ordinary failures: `__extension__` from a macro
+  (pr58831), an alignment on a variable (pr68532), a record the law cannot place (pr41463).
+- **P7.7 goto into a nested body** (P5.1c; P3.3's state-machine lowering, still owed, is owned
+  here): the 31 csmith seeds `suites/csmith/skip.txt` lists, and gcc-torture pr38051 and pr43269
+  (ordinary failures).
+- **P7.8 Permissive inputs** (P5.1c): 104 gcc-torture skip lines `permissive input`, tests whose
+  `dg-additional-options` ask gcc for `-std=gnu89` or `-fpermissive`, refused by clang 22's
+  default-error diagnostics (implicit int, a parameter not declared, an undeclared library
+  function, incompatible pointer types); and 20180921-1, a chained comparison `a < b <= c` clang
+  refuses under `-Wparentheses` (an ordinary failure). The runner passing the test's own options,
+  or the dumper `-Wno-error=` for these, unblocks them.
+- **P7.9 Defects the skip audit found** (P5.1c), ordinary failures or behind a P7.6 line: wrong
+  output or a run-time error - pr15296 (a null dereference at run time), builtin-prefetch-2 (`&p->f`
+  through a null `p` dereferences, where C only computes the address), pr41395-1/2 (`failed to
+  simulate`), 20101011-1 (integer division by zero must raise SIGFPE to the test's handler),
+  bitfld-5 (exits 3); a failed compile check of emitted code - pr39100 and pr47925 (can't locate
+  a variable), pr48571-1 (`void? + uint64`), pure-1 (deref of `int[10]&`), 20090113-2/3 (a record
+  clang lays out as size 16 align 8); the two bitfield layouts das cannot reproduce, standard C99
+  (20040709-2 and pr79737-1, behind P7.6 lines): clang packs their bitfields across a unit the law
+  does not join; 20030330-1, a link test whose `if (__builtin_constant_p(delay))` arm calls an
+  undefined `link_error` that GCC's dead-code elimination removes.
 - **Exit criterion:** the §2 metric sentence of the plan is true, all four columns
   published.
 

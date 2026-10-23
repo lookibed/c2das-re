@@ -3,9 +3,11 @@ options gen2
 module suite_files public
 
 require strings
+require math
 require daslib/strings_boost
 require daslib/fio
 require dastest/review_gate
+require ../converter/cir.das
 
 //! The files the suites and the readability metric agree on: a ratchet and its ledger as lines,
 //! the C files of a folder by id, and the input keys the readability capture must hold. It needs
@@ -121,4 +123,38 @@ def gate_untracked(pathspecs : array<string>; message : string) {
             gate_finding(path, message)
         }
     }
+}
+
+//! The highest phase a repository closes when it carries no `v0.<N>.0` tag (a shallow clone):
+//! phases 1 to 4 closed with v0.4.0, and the owner's ruling (2026-10-22, item B) bars a skip line
+//! from naming a closed phase.
+let CLOSED_PHASE_FLOOR = 4
+
+//! The phase a skip line's phase column names: `P7.5` and `P7` are 7, `P3.3` is 3; `never` and
+//! any other text -1.
+def phase_number(phase : string) : int {
+    if (!(phase |> starts_with("P")) || length(phase) < 2) {
+        return -1
+    }
+    let digits = text_before(slice(phase, 1), ".")
+    return is_digit_run(digits, 0) ? to_int(digits) : -1
+}
+
+//! The highest closed phase: the largest N among `tags` spelled `v0.<N>.0`, never below
+//! `CLOSED_PHASE_FLOOR`.
+def highest_closed_phase(tags : array<string>) : int {
+    var highest = CLOSED_PHASE_FLOOR
+    for (tag in tags) {
+        var inscope parts <- split(strip(tag), ".")
+        if (length(parts) == 3 && parts[0] == "v0" && parts[2] == "0" && is_digit_run(parts[1], 0)) {
+            highest = max(highest, to_int(parts[1]))
+        }
+    }
+    return highest
+}
+
+//! Whether a skip line's phase column names a phase at or below `highest`, a closed one.
+def names_closed_phase(phase : string; highest : int) : bool {
+    let n = phase_number(phase)
+    return n >= 0 && n <= highest
 }

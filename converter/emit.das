@@ -164,6 +164,34 @@ let C_RUNTIME_CALLS <- {
     "fprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "fprintf"),
     "qsort" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_qsort"),
     "bsearch" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_bsearch"),
+    // the GCC builtins with a direct meaning (c_runtime/c_builtins.das); an `l` or `ll` spelling
+    // reaches the overload of its operand's width through the argument's type
+    "__builtin_ffs" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_ffs"),
+    "__builtin_ffsl" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_ffs"),
+    "__builtin_ffsll" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_ffs"),
+    "__builtin_ctz" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_ctz"),
+    "__builtin_ctzl" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_ctz"),
+    "__builtin_ctzll" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_ctz"),
+    "__builtin_clz" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_clz"),
+    "__builtin_clzl" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_clz"),
+    "__builtin_clzll" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_clz"),
+    "__builtin_popcount" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_popcount"),
+    "__builtin_popcountl" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_popcount"),
+    "__builtin_popcountll" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_popcount"),
+    "__builtin_parity" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_parity"),
+    "__builtin_parityl" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_parity"),
+    "__builtin_parityll" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_parity"),
+    "__builtin_clrsb" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_clrsb"),
+    "__builtin_clrsbl" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_clrsb"),
+    "__builtin_clrsbll" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_clrsb"),
+    "__builtin_bswap16" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_bswap16"),
+    "__builtin_bswap32" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_bswap32"),
+    "__builtin_bswap64" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_bswap64"),
+    "__builtin_signbit" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_signbit"),
+    "__builtin_signbitf" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_signbit"),
+    "__builtin_unreachable" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_unreachable"),
+    "__builtin_prefetch" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_prefetch"),
+    "__builtin_trap" => RuntimeCall(piece = "c_runtime/c_exit", das_name = "c_abort"),
     // <math.h>'s surface das math covers at `double` (docs/stdlib-examples.md "math.h"), each the
     // function C names, by the same libm (probes/test_stdlib.das)
     "floor" => RuntimeCall(piece = "math", das_name = "math::floor"),
@@ -228,6 +256,33 @@ let SETVBUF = "setvbuf"
 let ALLOCA_NAMES <- {"alloca", "__builtin_alloca"}
 
 let EXPECT = "__builtin_expect"
+
+let CONSTANT_P = "__builtin_constant_p"
+
+// the expressions `__builtin_constant_p` takes for constants: literals, enum constants and the
+// sizes, and the arithmetic, casts and conditionals over them; a name, a call, a dereference, an
+// address and a step are not
+def private is_constant_expr(x : CirExpr?) : bool {
+    if (x == null) {
+        return false
+    }
+    if (x.e == "int_lit" || x.e == "float_lit" || x.e == "str_lit" || x.e == "enum_ref" || x.e == "sizeof_v" || x.e == "alignof_v" || x.e == "offsetof") {
+        return true
+    }
+    if (x.e == "cast") {
+        return is_constant_expr(x.a)
+    }
+    if (x.e == "un") {
+        return (x.op == "neg" || x.op == "plus" || x.op == "not" || x.op == "bnot") && is_constant_expr(x.a)
+    }
+    if (x.e == "bin") {
+        return is_constant_expr(x.a) && is_constant_expr(x.b)
+    }
+    if (x.e == "cond") {
+        return is_constant_expr(x.c) && is_constant_expr(x.a) && is_constant_expr(x.b)
+    }
+    return false
+}
 
 let ALLOCA_LIMIT = 65536
 
@@ -1232,6 +1287,11 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     if (called_name(x) == EXPECT && length(x.args) == 2) {
         // GCC's branch hint is its first operand's value; the second is a constant
         return emit_expr(em, tu, x.args[0], loc)
+    }
+    if (called_name(x) == CONSTANT_P && length(x.args) == 1) {
+        // GCC's unoptimized answer: 1 for a constant expression, 0 for anything else, whose
+        // operand GCC never evaluates
+        return value(is_constant_expr(x.args[0]) ? "1" : "0", PREC_PRIMARY)
     }
     if (key_exists(CRT_CONSTANT_CALLS, called_name(x)) && empty(x.args)) {
         em.requires |> insert("crt")
@@ -3229,7 +3289,7 @@ struct LabelPlan {
 // das resolves a label lexically upward, so a goto reaches a label in its own block or an
 // enclosing one; the C labels are numbered in order of appearance, and every bare block
 // between a goto and a deeper label is flattened, while an `if`, loop or switch body on
-// that way is Duff's device (P3.3) and fails closed
+// that way is Duff's device (P7.7) and fails closed
 def private plan_labels(var em : Emitter; body : CirStmt const?) {
     var plan : LabelPlan
     var site : LabelSite
@@ -3247,7 +3307,7 @@ def private plan_labels(var em : Emitter; body : CirStmt const?) {
         }
         for (depth in range(common, length(target.path))) {
             if (!target.bare[depth]) {
-                fail(em, "goto into a loop, branch or switch body (Duff's device) is not lowered yet (docs/implementation_order.md P3.3)", g.loc)
+                fail(em, "goto into a loop, branch or switch body (Duff's device) is not lowered yet (docs/implementation_order.md P7.7)", g.loc)
                 return
             }
             em.flatten |> insert(target.path[depth])
@@ -3517,7 +3577,7 @@ def private group_statement(var em : Emitter; st : CirStmt const?; loc : CirLoc;
         return false
     }
     if (has_nested_label(st)) {
-        fail(em, "a case label inside a nested statement (Duff's device) is not lowered yet (docs/implementation_order.md P3.3)", st.loc)
+        fail(em, "a case label inside a nested statement (Duff's device) is not lowered yet (docs/implementation_order.md P7.7)", st.loc)
         return false
     }
     groups[length(groups) - 1].stmts |> push(st)
@@ -3942,7 +4002,7 @@ def private emit_stmt_kind(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     } elif (st.s == "switch") {
         emit_switch(em, tu, *st)
     } elif (st.s == "case" || st.s == "default") {
-        fail(em, "a case label inside a nested statement (Duff's device) is not lowered yet (docs/implementation_order.md P3.3)", st.loc)
+        fail(em, "a case label inside a nested statement (Duff's device) is not lowered yet (docs/implementation_order.md P7.7)", st.loc)
     } elif (st.s == "null") {
         return
     } else {

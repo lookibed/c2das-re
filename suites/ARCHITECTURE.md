@@ -3,7 +3,7 @@
 Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder
 holds the external C test suites that verify the backend: for each suite a fetch script, a
 runner, the ratchet state and the skip ledger; csmith's suite is generated, its ids the seeds
-(section 4). Fetched inputs (`<suite>/fetch/`) and converted
+(section 3). Fetched inputs (`<suite>/fetch/`) and converted
 output (`<suite>/work/`) are gitignored; only the runner and its two state files are tracked.
 
 ## 1. File charters
@@ -14,10 +14,16 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   native build on this host), runs the module under the interpreter with both module folders
   loaded and a per-suite timeout, and hands the exit code and merged output to the suite's
   verdict. Each test ends in one status: `pass`, `convert` (the dumper, the emitter or the
-  compile check refused it), `exit`, `output`, or `skip`. The ratchet and the ledger live
+  compile check refused it), `timeout` (the module ran past the suite's limit), `exit`,
+  `output`, or `skip`. The ratchet and the ledger live
   here too: a listed id that stops passing fails the run; an id that starts passing is
   reported and `--update` writes it in; a failing test that is not listed is a count in the
-  summary, not a skip. Its pieces serve the csmith driver too: `record` and `count_status` (one outcome into the `Tally`),
+  summary, not a skip. `--audit-skips` (`audit_suite`) runs the ledgered ids alone, as an
+  unlisted id would run, and neither judges nor writes the ratchet: `finish_audit` writes
+  `work/skip_audit.tsv` (id, feature, status, the reason's first line) and logs the tally per
+  feature, where `audit_status` names a `convert` by the stage its error names (`dumper`,
+  `emitter`, `compile`) and an `output` as `mismatch`; the csmith driver's `--audit-skips`
+  judges its ledgered seeds the same way. Its pieces serve the csmith driver too: `record` and `count_status` (one outcome into the `Tally`),
   `finish_run` (the summary, `--update`'s write of the ids it is handed unless the run was
   filtered, the exit code), `convert_and_run` (one C file converted and run under the
   interpreter, with extra interpreter flags when a suite needs them), `compare_output` (an
@@ -29,7 +35,8 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
 - `suite_files.das` - what the suites and the readability metric agree on, needing no module
   folder so the `REVIEW.das` gates require it: `read_lines` and `read_ratchet` (the ratchet and
   the ledger as a run reads them), `c_file_ids` (the `.c` files of a folder by id, the suites'
-  tests and the perf kernels), `expected_input_keys` (the input keys the readability capture
+  tests and the perf kernels), `phase_number`, `highest_closed_phase` and `names_closed_phase`
+  (the closed-phase check of `REVIEW.das`), `expected_input_keys` (the input keys the readability capture
   holds: each suite's listed ids less its ledgered ones, and every kernel as `perf/<kernel>` and
   `perf/<kernel>@copy`) and `gate_untracked`
   (a gate finding per tracked file under regenerated folders).
@@ -42,12 +49,20 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   module exits 0 with the merged output `<id>.c.expected` holds, the suite's contract.
 - `gcc_torture/fetch.sh` - a blob-less sparse clone of gcc-mirror/gcc at the release tag and
   commit `VERSIONS.md` pins, holding only `gcc/testsuite/gcc.c-torture/execute`.
-- `gcc_torture/filter.das` - the import's filter, run by hand after a fetch: every top-level
-  `execute/*.c` whose text carries a GNU extension gets its `skip.txt` line, first matching
-  rule wins - the dialect's exclusions (inline asm, `_Complex`, `__int128`, the non-standard
-  floating types, vector types, atomics, GNU keywords, `&&label` and `__label__`, wide string
-  literals) with the phase `never`, then the constructs a later row carries (`__builtin_*` and
-  `__attribute__` under the phase P4). The `builtins/` and `ieee/` subfolders are not part of the
+- `gcc_torture/filter.das` - the import's filter, run by hand after a fetch and after a change to
+  the ratchet: `skip.txt` gets a line for every top-level `execute/*.c` the first of the `RULES`
+  in `gcc_torture/filter_rules.das` matches, less the ids `expected_pass.txt` lists, since a test
+  that passes is judged, never skipped (a rule can only read the text; the ratchet knows what
+  runs), so the file is reproducible from the filter and the ratchet. The rules come in the
+  order a test meets the constructs: the ones no emulation reaches (asm with template text or
+  operands, `-finstrument-functions`, the builtins clang does not know, frame and return
+  addresses, the non-standard floating types, atomics and thread-local storage) with the phase
+  `never`, then the rows that will carry one (a test asking gcc for `-std=gnu89` or
+  `-fpermissive` under P7.8; `_Complex` and wide strings under P7.5; `__int128`, vectors, labels
+  as values, case ranges, the GNU keywords, an attribute outside the dumper's dropped list
+  (`attribute_names`), the overflow and setjmp builtins and any `__builtin_*` the emitter does not
+  map (`unmapped_builtins`) under P7.6). A test that fails for a reason no rule can read is an
+  ordinary failure the run counts. The `builtins/` and `ieee/` subfolders are not part of the
   suite.
 - `gcc_torture/run.das` - the torture suite on the shared runner: a test passes when its module
   exits 0, the gcc harness's own contract (a failing test calls `abort`); output is not
@@ -59,16 +74,16 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   packages at the versions the script names in the venv `csmith/fetch/cvise-venv`. A checkout at
   its pin with its build present is left alone; a failed build shows its log's tail; the venv
   records the package set it installed and installs again when the list differs.
-- `csmith/run.das` - the differential driver (section 4): its own `main` over the shared
+- `csmith/run.das` - the differential driver (section 3): its own `main` over the shared
   runner's pieces, one worker process per seed (`--one <seed>`), and the judge of a generated
   program the reducer calls (`--check <file>`).
-- `csmith/generate.das` - a seed's program (section 4): `csmith_program` runs the pinned csmith
+- `csmith/generate.das` - a seed's program (section 3): `csmith_program` runs the pinned csmith
   with `CSMITH_OPTIONS` and splices the runtime headers in; the driver and the readability
   metric generate through it.
 - `csmith/verdict.das` - a seed's verdict file (`<seed>.verdict`, written and read) and
   `worker_outcome`, the outcome the driver draws from a worker that ended: its verdict,
   `timeout` when the driver killed it, `crash` when it exited without a verdict.
-- `csmith/reduce.sh <seed> [reducer]` - the minimization harness (section 4): judges the seed
+- `csmith/reduce.sh <seed> [reducer]` - the minimization harness (section 3): judges the seed
   afresh, writes the interestingness test `work/<seed>/interesting.sh`, runs the reducer (cvise
   by default) and leaves the result at `work/<seed>/min.c`.
 - `<suite>/expected_pass.txt` - the ratchet: the sorted ids that pass.
@@ -76,7 +91,10 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   feature, the reason and the ledger row (`P<n>.<m>`) or phase that unblocks it, `never` for a
   feature no row will lift.
 - `REVIEW.das` - the gate over the three suites: `expected_pass.txt` sorted and unique, every
-  `skip.txt` line in the four-field shape with a phase or `never`, no id in both files, every
+  `skip.txt` line in the four-field shape with a phase or `never`, no line naming a closed phase
+  (`names_closed_phase` in `suite_files.das`: a phase at or below the highest `v0.<N>.0` tag the
+  repository carries, `highest_closed_phase`, never below `CLOSED_PHASE_FLOOR`, 4, since a
+  shallow clone carries no tag), no id in both files, every
   csmith id a decimal seed, nothing tracked under a suite's `fetch/` or `work/`, and the
   module keys of `metrics/readability_linux.json` the expected input keys, so a diff to a
   ratchet list re-records the readability capture.
@@ -86,22 +104,14 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
 ## 2. Why the suites are not preflight gates
 
 A full c-testsuite run converts 220 files and spawns clang and daslang for each, a minute on
-this box, and the torture suite converts the 892 of its 1656 the ledger does not skip, and a csmith seed takes up
+this box, and the torture suite converts the 1333 of its 1656 the ledger does not skip, and a csmith seed takes up
 to a minute to convert; the
 preflight `tests` lane stays the sub-second
 dastest suites. The runners keep
 their own ratchet and run on their own schedule, the way `docs/very-detailed-plan.md`
 section 8 describes.
 
-## 3. Exception ledger
-
-- `REVIEW.md`, the rule that a `skip.txt` line and a `RULES` entry of `gcc_torture/filter.das`
-  name a ledger row, never a bare phase: the two entries for `__attribute__` and `__builtin_*`
-  (436 lines of `gcc_torture/skip.txt`) name the phase `P4`, since no `docs/implementation_order.md`
-  row names those constructs; they move to a row when the owner adds one, and `REVIEW.das`
-  accepts a bare phase until then.
-
-## 4. The csmith run
+## 3. The csmith run
 
 csmith writes a random C program free of undefined behaviour that prints a checksum of its
 globals, so a seed whose converted run disagrees with a native build is a converter bug by

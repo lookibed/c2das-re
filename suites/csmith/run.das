@@ -59,6 +59,8 @@ struct CsmithArgs {
     filter : string = ""
     @clarg_doc = "seeds converted at once, one worker process each"
     jobs : int = 4
+    @clarg_doc = "judge only the seeds skip.txt lists, writing work/skip_audit.tsv; the ratchet is neither judged nor written"
+    audit_skips : bool
     @clarg_doc = "worker: generate, build, convert and judge this seed, writing work/<seed>/<seed>.verdict"
     one : string = ""
     @clarg_doc = "judge this generated program as a seed, writing <stem>.verdict beside it"
@@ -248,6 +250,18 @@ def private ratchet_after(ratchet : Ratchet; failed : table<string>; tally : Tal
     return <- ratchet_ids
 }
 
+// the skip audit: every seed skip.txt lists whose number holds `filter` judged through a worker,
+// with no rerun of a timeout, into work/skip_audit.tsv
+def private audit_seeds(filter : string; jobs : int) {
+    var feature_of <- {for (line in read_skip_lines(SKIP_LEDGER)); line.id => line.feature; where empty(filter) || find(line.id, filter) >= 0}
+    var seeds <- [for (s in keys(feature_of)); s]
+    seeds |> sort()
+    var outcomes : array<Outcome>
+    drive(seeds, jobs, outcomes)
+    let rows <- [for (o in outcomes); audit_row(feature_of?[o.id] ?? "", o)]
+    finish_audit("csmith", WORK_DIR, rows)
+}
+
 // the gcc version VERSIONS.md pins against `gcc -dumpfullversion`: "" when they agree
 def private gcc_pin_mismatch : string {
     var pin = ""
@@ -284,6 +298,10 @@ def main : int {
     if (!fexist("{CSMITH_DIR}/build/src/csmith")) {
         to_log(LOG_ERROR, "{CSMITH_DIR}/build/src/csmith is missing: run suites/csmith/fetch.sh\n")
         return 2
+    }
+    if (args.audit_skips) {
+        audit_seeds(args.filter, args.jobs)
+        return 0
     }
     let ratchet <- read_ratchet(EXPECTED_PASS, SKIP_LEDGER)
     let seeds <- run_seeds(args, ratchet)

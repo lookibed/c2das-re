@@ -27,6 +27,8 @@ struct Args {
     verbose : bool
     @clarg_doc = "dialect for the conversion: linux (this host's baseline) or msvc"
     target : string = "linux"
+    @clarg_doc = "run only the ids skip.txt lists, writing work/skip_audit.tsv; the ratchet is neither judged nor written"
+    audit_skips : bool
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -49,7 +51,7 @@ struct SuiteSpec {
     work_dir : string
     expected_pass : string
     skip_ledger : string
-    // seconds a converted test may run before it counts as `exit`
+    // seconds a converted test may run before it counts as `timeout`
     run_timeout : float
 }
 
@@ -147,18 +149,116 @@ def compare_output(id : string; rc : int; output, expected : string) : Outcome {
     return Outcome(id = id, status = "pass", reason = "")
 }
 
-// convert and run one test; the suite's verdict judges a module that ran
+// convert and run one test; the suite's verdict judges a module that ran within the timeout
 def private run_one(spec : SuiteSpec; id : string; target : string; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : Outcome {
     let c_path = "{spec.tests_dir}/{id}.c"
     let run = convert_and_run(c_path, "{spec.work_dir}/{id}", target, spec.run_timeout)
     if (!run.converted) {
         return Outcome(id = id, status = "convert", reason = run.error)
     }
+    if (run.rc == popen_timed_out) {
+        return Outcome(id = id, status = "timeout", reason = "ran longer than {int(spec.run_timeout)} s")
+    }
     return invoke(verdict, id, c_path, run.rc, run.output)
 }
 
+//! A `skip.txt` line as the skip audit reads it: the id and the feature it names.
+struct SkipLine {
+    id : string
+    feature : string
+}
+
+def skip_line(line : string) : SkipLine {
+    var inscope fields <- split(line, "\t")
+    return SkipLine(id = fields[0], feature = length(fields) > 1 ? fields[1] : "")
+}
+
+def read_skip_lines(skip_ledger : string) : array<SkipLine> => [for (line in read_lines(skip_ledger)); skip_line(line)]
+
+//! One ledgered id's outcome in the skip audit.
+struct AuditRow {
+    id : string
+    feature : string
+    status : string
+    reason : string
+}
+
+// the error prefix of each conversion stage `convert` writes, and the audit's status for it
+let private CONVERT_STAGES = fixed_array((prefix = "dumper: ", stage = "dumper"), (prefix = "emitter: ", stage = "emitter"), (prefix = "compile check: ", stage = "compile"))
+
+//! The audit's status of an outcome: `convert` as the stage its error names (`dumper`,
+//! `emitter`, `compile`; `convert` for any other), `output` as `mismatch`, any other as it is.
+def audit_status(out : Outcome) : string {
+    if (out.status == "output") {
+        return "mismatch"
+    }
+    if (out.status != "convert") {
+        return out.status
+    }
+    for (s in CONVERT_STAGES) {
+        if (out.reason |> starts_with(s.prefix)) {
+            return s.stage
+        }
+    }
+    return "convert"
+}
+
+def audit_row(feature : string; out : Outcome) : AuditRow =>
+    AuditRow(id = out.id, feature = feature, status = audit_status(out), reason = replace(first_line(out.reason), "\t", " "))
+
+//! The skip audit's tally: one line per feature, sorted, with its count per status, sorted.
+def audit_tally(rows : array<AuditRow>) : array<string> {
+    var per_feature : table<string; table<string; int>>
+    for (row in rows) {
+        per_feature[row.feature][row.status] = (per_feature?[row.feature]?[row.status] ?? 0) + 1
+    }
+    var features <- [for (f in keys(per_feature)); f]
+    features |> sort()
+    return <- [for (f in features); "{f}: {status_counts(per_feature[f])}"]
+}
+
+// a feature's count per status, sorted by status
+def private status_counts(counts : table<string; int>) : string {
+    var inscope statuses <- [for (s in keys(counts)); s]
+    statuses |> sort()
+    return join([for (s in statuses); "{s} {counts?[s] ?? 0}"], ", ")
+}
+
+//! The end of a skip audit: the rows, sorted by id, written to `<work_dir>/skip_audit.tsv` (id,
+//! feature, status, the reason's first line) and the per-feature tally logged.
+def finish_audit(name, work_dir : string; rows : array<AuditRow>) {
+    var sorted := rows
+    sorted |> sort() $(a, b) => a.id < b.id
+    mkdir_rec(work_dir)
+    let path = "{work_dir}/skip_audit.tsv"
+    let text = build_string() $(writer) {
+        writer |> write("# {name} skip audit: id, feature, status, reason\n")
+        for (row in sorted) {
+            writer |> write("{row.id}\t{row.feature}\t{row.status}\t{row.reason}\n")
+        }
+    }
+    fwrite(path, text)
+    to_log(LOG_INFO, "{name} skip audit: {length(rows)} ids, written to {path}\n")
+    for (line in audit_tally(rows)) {
+        to_log(LOG_INFO, "  {line}\n")
+    }
+}
+
+//! The skip audit of a file-based suite: every id `skip.txt` lists whose name holds `filter`
+//! is converted and run as an unlisted id would be; the rows, which `finish_audit` wrote too.
+def audit_suite(spec : SuiteSpec; filter, target : string; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : array<AuditRow> {
+    var present : table<string>
+    for (id in c_file_ids(spec.tests_dir, filter)) {
+        present |> insert(id)
+    }
+    var rows <- [for (line in read_skip_lines(spec.skip_ledger)); audit_row(line.feature, run_one(spec, line.id, target, verdict)); where key_exists(present, line.id)]
+    finish_audit(spec.name, spec.work_dir, rows)
+    return <- rows
+}
+
 //! The whole run from the command line: exit 0 when the ratchet holds, 1 when a listed id
-//! stopped passing, 2 when the suite is not fetched.
+//! stopped passing, 2 when the suite is not fetched; under `--audit-skips` the skip audit,
+//! exit 0.
 def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : int {
     var args = Args()
     let parsed = cli_prologue(args, "run_suite {spec.name}")
@@ -168,6 +268,10 @@ def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : s
     if (!fexist(spec.tests_dir)) {
         to_log(LOG_ERROR, "{spec.tests_dir} is missing: run suites/{spec.name}/fetch.sh\n")
         return 2
+    }
+    if (args.audit_skips) {
+        audit_suite(spec, args.filter, args.target, verdict)
+        return 0
     }
     let ratchet <- read_ratchet(spec.expected_pass, spec.skip_ledger)
     var tally : Tally
