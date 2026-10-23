@@ -168,8 +168,13 @@ def test_crt_environment(t : T?) {
         t |> equal(unsafe(crt::time(unsafe(addr(now)))) == now, true)
         t |> equal(crt::difftime(now + 60l, now), 60.0lf)
         t |> equal(crt::clock() >= 0l, true)
+        // the steady clock advances over a busy wait of two milliseconds of processor time
         let before = crt::c_monotonic_ns()
-        t |> equal(crt::c_monotonic_ns() >= before && before > 0l, true)
+        let started = crt::clock()
+        while (crt::clock() - started < crt::CLOCKS_PER_SEC / 500l) {
+            pass
+        }
+        t |> success(before > 0l && crt::c_monotonic_ns() - before >= 1000000l, "the steady clock did not advance a millisecond")
         t |> equal(crt::CLOCKS_PER_SEC > 0l, true)
         t |> equal(crt::LONG_BITS == 32 || crt::LONG_BITS == 64, true)
         t |> equal(crt::fflush_stdout(), 0)
@@ -410,8 +415,6 @@ def test_crt_volatile(t : T?) {
         var u64 = 18000000000000000000ul
         var f32 = 1.5f
         var f64 = -2.25lf
-        var target = 7
-        var ptr : void? = null
         unsafe {
             crt::c_volatile_store_i8(addr(i8), int8(int(crt::c_volatile_load_i8(addr(i8))) - 1))
             crt::c_volatile_store_u8(addr(u8), uint8(int(crt::c_volatile_load_u8(addr(u8))) + 1))
@@ -423,8 +426,6 @@ def test_crt_volatile(t : T?) {
             crt::c_volatile_store_u64(addr(u64), crt::c_volatile_load_u64(addr(u64)) + 1ul)
             crt::c_volatile_store_f32(addr(f32), crt::c_volatile_load_f32(addr(f32)) * 2.0f)
             crt::c_volatile_store_f64(addr(f64), crt::c_volatile_load_f64(addr(f64)) * 2.0lf)
-            crt::c_volatile_store_ptr(addr(ptr), addr<void?>(target))
-            t |> equal(crt::c_volatile_load_ptr(addr(ptr)) == addr<void?>(target), true)
         }
         t |> equal(i8, int8(-6))
         t |> equal(u8, 251u8)

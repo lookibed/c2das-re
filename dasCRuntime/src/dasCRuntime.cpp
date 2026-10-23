@@ -67,7 +67,6 @@ public:
         addExtern<DAS_BIND_FUN(c_volatile_load_u64)>(*this, lib, "c_volatile_load_u64", SideEffects::modifyExternal, "crt::c_volatile_load_u64")->args({"p"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_volatile_load_f32)>(*this, lib, "c_volatile_load_f32", SideEffects::modifyExternal, "crt::c_volatile_load_f32")->args({"p"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_volatile_load_f64)>(*this, lib, "c_volatile_load_f64", SideEffects::modifyExternal, "crt::c_volatile_load_f64")->args({"p"})->unsafeOperation = true;
-        addExtern<DAS_BIND_FUN(c_volatile_load_ptr)>(*this, lib, "c_volatile_load_ptr", SideEffects::modifyExternal, "crt::c_volatile_load_ptr")->args({"p"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_volatile_store_i8)>(*this, lib, "c_volatile_store_i8", SideEffects::modifyExternal, "crt::c_volatile_store_i8")->args({"p", "v"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_volatile_store_u8)>(*this, lib, "c_volatile_store_u8", SideEffects::modifyExternal, "crt::c_volatile_store_u8")->args({"p", "v"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_volatile_store_i16)>(*this, lib, "c_volatile_store_i16", SideEffects::modifyExternal, "crt::c_volatile_store_i16")->args({"p", "v"})->unsafeOperation = true;
@@ -78,7 +77,6 @@ public:
         addExtern<DAS_BIND_FUN(c_volatile_store_u64)>(*this, lib, "c_volatile_store_u64", SideEffects::modifyExternal, "crt::c_volatile_store_u64")->args({"p", "v"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_volatile_store_f32)>(*this, lib, "c_volatile_store_f32", SideEffects::modifyExternal, "crt::c_volatile_store_f32")->args({"p", "v"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_volatile_store_f64)>(*this, lib, "c_volatile_store_f64", SideEffects::modifyExternal, "crt::c_volatile_store_f64")->args({"p", "v"})->unsafeOperation = true;
-        addExtern<DAS_BIND_FUN(c_volatile_store_ptr)>(*this, lib, "c_volatile_store_ptr", SideEffects::modifyExternal, "crt::c_volatile_store_ptr")->args({"p", "v"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_clock)>(*this, lib, "clock", SideEffects::modifyExternal, "crt::c_clock");
         addExtern<DAS_BIND_FUN(c_monotonic_ns)>(*this, lib, "c_monotonic_ns", SideEffects::modifyExternal, "crt::c_monotonic_ns");
         addExtern<DAS_BIND_FUN(c_difftime)>(*this, lib, "difftime", SideEffects::none, "crt::c_difftime")->args({"a", "b"});

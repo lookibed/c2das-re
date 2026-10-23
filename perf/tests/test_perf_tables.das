@@ -6,6 +6,7 @@ require daslib/json_boost
 require daslib/strings_boost
 require ../perf_tables.das
 require ../perf_cli.das
+require ../perf_compose.das
 
 // fixtures spell JSON quotes as single quotes
 def capture_of(t : T?; text : string) : JsonValue? {
@@ -219,26 +220,86 @@ def test_drift(t : T?) {
         let drifted <- drifted_cells(js, old, 1000l)
         t |> equal(join(drifted, "; "), "a/aot missing; b/native missing")
     }
+    t |> run("a baseline cell whose samples spread wider than the tolerance drifts only past twice its spread") @(t : T?) {
+        let noisy = capture_of(t, "\{'cpu': 'X', 'lanes': ['native', 'jit'], 'tests': \{'a': \{'native': \{'time': 1.0, 'spread': 0.01\}, 'jit': \{'time': 2.0, 'spread': 0.2\}\}\}\}")
+        let within = capture_of(t, "\{'cpu': 'X', 'lanes': ['native', 'jit'], 'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.7\}\}\}\}")
+        t |> equal(length(drifted_cells(within, noisy, 1000l)), 0)
+        let past = capture_of(t, "\{'cpu': 'X', 'lanes': ['native', 'jit'], 'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.9\}\}\}\}")
+        t |> equal(join(drifted_cells(past, noisy, 1000l), "; "), "a/jit +45.00%")
+    }
+    t |> run("a lane or a kernel only the baseline has is missing") @(t : T?) {
+        let wider = capture_of(t, "\{'cpu': 'X', 'lanes': ['native', 'jit', 'aot', 'exe'], 'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.0\}, 'aot': \{'time': 1.0\}, 'exe': \{'time': 2.0\}\}, 'c': \{'native': \{'time': 1.0\}\}\}\}")
+        let js = capture_of(t, "\{'cpu': 'X', 'lanes': ['native', 'jit', 'aot'], 'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.0\}, 'aot': \{'time': 1.0\}\}\}\}")
+        let drifted <- drifted_cells(js, wider, 1000l)
+        t |> equal(join(drifted, "; "), "a/exe missing; c/native missing")
+    }
+    t |> run("--check: no baseline fails; a capture within the tolerance passes, one past it fails") @(t : T?) {
+        let js = capture_of(t, "\{'cpu': 'X', 'lanes': ['native', 'jit', 'aot'], 'tests': \{'a': \{'native': \{'time': 1.05\}, 'jit': \{'time': 2.0\}, 'aot': \{'time': 1.0\}\}\}\}")
+        t |> success(!check_drift(js, null, "none", 10))
+        t |> success(check_drift(js, old, "old", 10))
+        t |> success(!check_drift(js, old, "old", 4))
+    }
 }
 
-let METHOD_CAPTURE = "\{'cpu': 'C', 'timestamp': 'T', 'versions': \{'clang': 'clang 22', 'daslang': '0.6.4'\}, 'lanes': ['native', 'interp', 'jit', 'exe', 'aot'], 'tests': \{'fib_loop': \{'native': \{'time': 0.002\}, 'interp': \{'time': 0.06\}, 'jit': \{'time': 0.004\}, 'exe': \{'time': 0.004\}, 'aot': \{'time': 0.002\}\}, 'sieve': \{'native': \{'time': 0.1\}\}\}\}"
-let DASPROFILE_CAPTURE = "\{'cpu': 'C', 'timestamp': 'D', 'dasprofile_commit': 'abc', 'toolchain': 'Clang 22', 'Interpreted': \{'fibonacci loop': [\{'language': 'DAS INTERPRETER', 'time': 0.06\}]\}, 'AOT or JIT': \{'fibonacci loop': [\{'language': 'DAS AOT', 'time': 0.002\}, \{'language': 'DAS JIT', 'time': 0.002\}, \{'language': 'C++', 'time': 0.002\}]\}\}"
+let METHOD_CAPTURE = "\{'cpu': 'C', 'timestamp': 'T', 'versions': \{'clang': 'clang 22', 'daslang': '0.6.4'\}, 'lanes': ['native', 'interp', 'jit', 'exe', 'aot'], 'tests': \{'fib_loop': \{'native': \{'time': 0.00190631\}, 'interp': \{'time': 0.06\}, 'jit': \{'time': 0.004\}, 'exe': \{'time': 0.004\}, 'aot': \{'time': 0.001906438\}\}, 'sieve': \{'native': \{'time': 0.1\}\}\}\}"
+let DASPROFILE_CAPTURE = "\{'cpu': 'C', 'timestamp': 'D', 'dasprofile_commit': 'abc', 'toolchain': 'Clang 22', 'Interpreted': \{'fibonacci loop': [\{'language': 'DAS INTERPRETER', 'time': 0.06\}]\}, 'AOT or JIT': \{'fibonacci loop': [\{'language': 'DAS AOT', 'time': 0.002\}, \{'language': 'DAS JIT', 'time': 0.002\}, \{'language': 'C++', 'time': 0.001905751\}]\}\}"
 
 [test]
 def test_method_comparison(t : T?) {
     let method = capture_of(t, METHOD_CAPTURE)
     let dp = capture_of(t, DASPROFILE_CAPTURE)
     t |> run("dasProfile's capture gives a language's time on a board, 0 for none") @(t : T?) {
-        t |> equal(dasprofile_time(dp, "AOT or JIT", "fibonacci loop", "C++"), 0.002lf)
+        t |> equal(dasprofile_time(dp, "AOT or JIT", "fibonacci loop", "C++"), 0.001905751lf)
         t |> equal(dasprofile_time(dp, "Interpreted", "fibonacci loop", "DAS INTERPRETER"), 0.06lf)
         t |> equal(dasprofile_time(dp, "Interpreted", "primes loop", "DAS INTERPRETER"), 0.0lf)
         t |> equal(dasprofile_time(dp, "AOT or JIT", "fibonacci loop", "Zig"), 0.0lf)
     }
+    t |> run("--readme rewrites the method's section between its markers, the other untouched; a missing marker or capture is the error") @(t : T?) {
+        var dir_error : string
+        let dir = create_temp_directory("c2das_perf_readme", dir_error)
+        t |> equal(dir_error, "")
+        let readme = path_join(dir, "README.md")
+        let dp_path = path_join(dir, "dasprofile.json")
+        fwrite(dp_path, replace(DASPROFILE_CAPTURE, "'", "\""))
+        fwrite(readme, "top\n{README_BEGIN}\nold table\n{README_END}\nmiddle\n{README_METHOD_BEGIN}\nold comparison\n{README_METHOD_END}\nend\n")
+        t |> equal(write_readme(readme, dp_path, method, "dasprofile"), "")
+        let compared = fread(readme)
+        t |> equal(compared, "top\n{README_BEGIN}\nold table\n{README_END}\nmiddle\n{README_METHOD_BEGIN}\n{render_method_comparison(method, dp)}{README_METHOD_END}\nend\n")
+        t |> equal(write_readme(readme, dp_path, method, "default"), "")
+        t |> equal(fread(readme), "top\n{README_BEGIN}\n{render_results(method)}{README_END}\nmiddle\n{README_METHOD_BEGIN}\n{render_method_comparison(method, dp)}{README_METHOD_END}\nend\n")
+        fwrite(readme, "no markers\n")
+        t |> equal(write_readme(readme, dp_path, method, "dasprofile"), "{readme} has no perf-method markers")
+        t |> equal(write_readme(readme, dp_path, method, "default"), "{readme} has no perf-table markers")
+        t |> success(write_readme(readme, path_join(dir, "none.json"), method, "dasprofile") |> contains("none.json"))
+        rmdir_rec(dir)
+    }
     t |> run("one row per shared kernel: each hand-written cell over dasProfile's C++, each converted one over the C program; the different programs named") @(t : T?) {
         let text = render_method_comparison(method, dp)
         t |> success(text |> starts_with("The dasProfile method on C (T; clang 22, daslang 0.6.4) beside borisbat/dasProfile abc run on C (D; Clang 22)."), text)
-        t |> success(text |> contains("| fib_loop |     0.002000s |      0.002000s |  0.060000s (30.00x) | 0.002000s (1.00x) | 0.002000s (1.00x) | 0.060000s (30.00x) | 0.004000s (2.00x) | 0.002000s (1.00x) | 0.004000s (2.00x) |"), text)
+        // five significant digits keep apart cells a microsecond apart
+        t |> success(text |> contains("| fib_loop |    0.0019063s |     0.0019058s |      0.06s (31.48x) |   0.002s (1.05x) |   0.002s (1.05x) |   0.06s (31.47x) | 0.004s (2.10x) | 0.0019064s (1.00x) | 0.004s (2.10x) |"), text)
         t |> success(!(text |> contains("| sieve")), text)
+        let bare = render_method_comparison(method, capture_of(t, "\{'dasprofile_commit': 'x'\}"))
+        t |> success(bare |> contains("| fib_loop |    0.0019063s |            n/a |                 n/a |"), bare)
+        // the hand-written columns time a literal count
+        t |> success(text |> contains("dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one"), text)
+        t |> success(text |> contains("- the first table's `fib_loop`, `fib_recursive` and `primes` are this tree's versions of the three"), text)
         t |> success(text |> contains("- `fixed_mandel` (16.16 fixed point, 96x96, 48 iterations, struct vectors by value) is not dasProfile's `mandelbrot` (double, 64x64, 255 iterations): different programs, not compared\n"), text)
+    }
+}
+
+[test]
+def test_method_kernels(t : T?) {
+    t |> run("the dasProfile method runs the method kernels, the ones SHARED_KERNELS names, whatever the filter matches beside them") @(t : T?) {
+        var named <- [for (k in keys(SHARED_KERNELS)); k]
+        sort(named)
+        t |> equal(join(kernel_ids("dasprofile", ""), " "), join(named, " "))
+        t |> equal(join(kernel_ids("dasprofile", "s"), " "), "fib_recursive primes")
+        t |> success(has_value(kernel_ids("default", "s"), "sieve"))
+    }
+    t |> run("the method's program leaves the noinline to the kernel's own functions") @(t : T?) {
+        let text = composed_method_source(fread("{METHOD_KERNELS}/fib_loop.c"))
+        t |> success(text |> contains("__attribute__((noinline)) int fibI(int n) \{"), text)
+        t |> success(!(text |> contains("kernel_run(void) __attribute__")), text)
     }
 }

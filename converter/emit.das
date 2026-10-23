@@ -760,6 +760,13 @@ def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
     let of_field = marshal_field(em, tu, *x.a, loc, bytes)
     let whole = of_field < 0 && empty(x.op) ? marshal_site(em, tu, x.a, loc, bytes) : -1
     let lhs = of_field < 0 && whole < 0 ? emit_expr(em, tu, x.a, loc) : value("", PREC_PRIMARY)
+    let compound = empty(x.op) && of_field < 0 && whole < 0 ? self_operation(tu, x) : null
+    if (compound != null) {
+        // `x = x op y` is das's `x op= y`, `y` the integer it is in the plain form's sum
+        let operand = compound.b.e == "cast" && wrap_pair(tu, x.b) != null ? compound.b.a : compound.b
+        let y = stored(emit_expr(em, tu, operand, loc), tu, x.a.t)
+        return "{lhs.text} {BIN_SPELLING?[compound.op] ?? ""}= {wrap(y, (BIN_PREC?[compound.op] ?? 0) + 1)}"
+    }
     var rhs = stored(emit_expr(em, tu, x.b, loc), tu, x.a.t)
     if (of_field >= 0) {
         return marshal_store(em, tu, x, of_field, x.a.field, bytes, rhs, loc)
@@ -768,13 +775,6 @@ def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
         return marshal_store(em, tu, x, whole, -1, bytes, rhs, loc)
     }
     if (empty(x.op)) {
-        let compound = self_operation(tu, x)
-        if (compound != null) {
-            // `x = x op y` is das's `x op= y`; `rhs` already spelled `y`'s effects, of which there are none
-            let operand = compound.b.e == "cast" && wrap_pair(tu, x.b) != null ? compound.b.a : compound.b
-            let spelled_op = BIN_SPELLING?[compound.op] ?? ""
-            return "{lhs.text} {spelled_op}= {emit_expr(em, tu, operand, loc).text}"
-        }
         return "{lhs.text} = {rhs.text}"
     }
     let spelled = BIN_SPELLING?[x.op] ?? ""
@@ -831,10 +831,7 @@ def private volatile_kept(var em : Emitter; tu : CirTu; x : CirExpr const?) : bo
 }
 
 // a read of volatile lvalue `x`: one `c_volatile_load` through its address, which no tier folds
-def private volatile_load(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
-    let text = "c_volatile_load({emit_expr(em, tu, x, loc).text})"
-    return is_c_bool(tu, x.t) ? truth(text, PREC_PRIMARY) : value(text, PREC_PRIMARY)
-}
+def private volatile_load(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em => value("c_volatile_load({emit_expr(em, tu, x, loc).text})", PREC_PRIMARY)
 
 // the value of lvalue `x` read back after a store or a step: a volatile one is read again
 def private lvalue_read(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em => volatile_kept(em, tu, x) ? volatile_load(em, tu, x, loc) : emit_expr(em, tu, x, loc)
@@ -873,8 +870,9 @@ def private volatile_assignment(var em : Emitter; tu : CirTu; x : CirExpr; loc :
     return "c_volatile_store({target}, {combined})"
 }
 
-// `++a` / `a--` of volatile `a`: one load and one store of the stepped value
-def private volatile_step(var em : Emitter; tu : CirTu; x : CirExpr; up : bool; loc : CirLoc) : string {
+// `++a` / `a--` of volatile `a`: one load and one store of the stepped value; `loaded` names the
+// temporary a used old value was loaded into, the step's one load then, "" for none
+def private volatile_step(var em : Emitter; tu : CirTu; x : CirExpr; up : bool; loaded : string; loc : CirLoc) : string {
     let narrow = das_type(em, tu, x.a.t, loc)
     let float_step = kind_of(tu, x.a.t) == "float"
     if (is_c_bool(tu, x.a.t)) {
@@ -882,7 +880,7 @@ def private volatile_step(var em : Emitter; tu : CirTu; x : CirExpr; up : bool; 
         return ""
     }
     let target = emit_expr(em, tu, x.a, loc).text
-    let current = "c_volatile_load({target})"
+    let current = empty(loaded) ? "c_volatile_load({target})" : loaded
     let sign = up ? "+" : "-"
     var stepped = ""
     if (kind_of(tu, x.a.t) == "ptr") {
@@ -899,17 +897,18 @@ def private volatile_step(var em : Emitter; tu : CirTu; x : CirExpr; up : bool; 
     return "c_volatile_store({target}, {stepped})"
 }
 
-// `x = x op y`, with `x` read on the right as the same object, no call or effect in it, and the
-// operation in `x`'s own type (a number of 32 or 64 bits or a float, never a pointer, a small
-// integer, an enum or `_Bool`), or a wrapping sum of it (`wrap_pair`): the `bin` node das spells as
-// `x op= y`; null for any other assignment
+// `x = x op y`, with `x` read on the right as the same object, no call, effect or volatile read in
+// it (C reads a volatile index or pointer of `x` on both sides), and the operation in `x`'s own
+// type (a number of 32 or 64 bits or a float, never a pointer, a small integer, an enum or
+// `_Bool`), or a wrapping sum of it (`wrap_pair`): the `bin` node das spells as `x op= y`; null
+// for any other assignment
 def private self_operation(tu : CirTu; x : CirExpr) : CirExpr const? {
     let wrapped = wrap_pair(tu, x.b)
     var op : CirExpr const? = x.b
     if (wrapped != null) {
         op = wrapped
     }
-    if (!self_target(tu, x.a) || op == null || op.e != "bin" || !key_exists(SELF_OPS, op.op) || has_effects(x.a) || has_effects(op.b) || (wrapped == null && (op.t != x.a.t || op.b.t != x.a.t))) {
+    if (!self_target(tu, x.a) || op == null || op.e != "bin" || !key_exists(SELF_OPS, op.op) || has_effects(x.a) || reads_volatile(x.a) || has_effects(op.b) || (wrapped == null && op.b.t != x.a.t)) {
         return null
     }
     let read = wrapped == null ? op.a : op.a.a
@@ -982,7 +981,7 @@ def private promoted_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) :
 def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
     var keys : array<uint64>
     pin_lvalue(em, tu, x.a, loc, keys)
-    let text = volatile_kept(em, tu, x.a) ? volatile_step(em, tu, x, x.op == "preinc" || x.op == "postinc", loc) : step_text(em, tu, x, loc)
+    let text = volatile_kept(em, tu, x.a) ? volatile_step(em, tu, x, x.op == "preinc" || x.op == "postinc", "", loc) : step_text(em, tu, x, loc)
     unpin(em, keys)
     return text
 }
@@ -1405,8 +1404,8 @@ def private unsigned_twin(tu : CirTu; u, t : int) : bool {
 // the wrapping sum `wrap_pair` matched, spelled in the signed type
 def private emit_wrap_pair(var em : Emitter; tu : CirTu; sum : CirExpr; loc : CirLoc) : Em {
     let prec = BIN_PREC?[sum.op] ?? 0
-    let lhs = emit_expr(em, tu, sum.a.a, loc)
-    let rhs = emit_expr(em, tu, sum.b.a, loc)
+    let lhs = to_int(emit_expr(em, tu, sum.a.a, loc))
+    let rhs = to_int(emit_expr(em, tu, sum.b.a, loc))
     return value("{wrap(lhs, prec)} {BIN_SPELLING?[sum.op] ?? ""} {wrap(rhs, prec + 1)}", prec)
 }
 
@@ -1718,7 +1717,9 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
         // a `let` copy of a value holding a pointer takes a const pointee (F3): the old value of
         // a stepped pointer that `*p++ = v` writes through is a `var`
         let keep = holds_data_pointer(tu, x.a.t) ? "var" : "let"
-        hoist(em, ["{keep} {tmp} = {before.text}", step_line(em, tu, x, loc)])
+        // a volatile object is loaded once: the step stores from the old value's temporary
+        let step = volatile_kept(em, tu, x.a) ? volatile_step(em, tu, x, x.op == "postinc", tmp, loc) : step_line(em, tu, x, loc)
+        hoist(em, ["{keep} {tmp} = {before.text}", step])
         unpin(em, keys)
         return value(tmp, PREC_PRIMARY)
     }
@@ -2206,13 +2207,23 @@ def private has_effects(x : CirExpr const?) : bool {
     return found
 }
 
+// whether evaluating `x` reads a volatile object: a load of an lvalue the dumper marked, an
+// access C counts as an effect
+def private reads_volatile(x : CirExpr const?) : bool {
+    var found = false
+    each_subexpr(x) $(sub) {
+        found = found || (sub.e == "cast" && sub.cast_kind == "LValueToRValue" && sub.a != null && sub.a.vol)
+    }
+    return found
+}
+
 // lvalue `x` with each effect in it evaluated once, ahead: the pointer it goes through, an
 // index, a record value, whichever has an effect (`*next()`, `a[i++]`, `p[g()].bf`), lands in a
 // temporary every later spelling of `x` reads through `em.hoisted`, so a step, a compound store
 // or an assignment read as a value spells its target as often as it needs and evaluates it
 // once; `keys` collects what `unpin` drops when the target's statement is spelled
 def private pin_lvalue(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc; var keys : array<uint64>) {
-    if (!has_effects(x)) {
+    if (!has_effects(x) && !reads_volatile(x)) {
         return
     }
     if (x.e == "un" && x.op == "deref") {
@@ -2240,7 +2251,7 @@ def private pin_lvalue(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : C
 // hoisted (a postfix step's old value), else a temporary holding it; a variable's own name (`i`
 // of `++i`, `p` of `p = q`) is not kept, since a call later in the statement can change it
 def private pin_value(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc; var keys : array<uint64>) {
-    if (!has_effects(x) || key_exists(em.hoisted, intptr(x))) {
+    if ((!has_effects(x) && !reads_volatile(x)) || key_exists(em.hoisted, intptr(x))) {
         return
     }
     var e = emit_expr(em, tu, x, loc)
@@ -3036,7 +3047,10 @@ def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
             emit_loop_body(em, tu, st.body_s)
         } elif (!continues_loop(st.body_s, false)) {
             emit_loop_body(em, tu, st.body_s)
-            write_increment(em, tu, st, inc_lines)
+            // a body ending in a `break`, a `return` or a `goto` never reaches the increment
+            if (!leaves_at_end(st.body_s)) {
+                write_increment(em, tu, st, inc_lines)
+            }
         } else {
             open_block(em, "")
             emit_loop_body(em, tu, st.body_s)
@@ -3165,8 +3179,13 @@ def private for_range(var em : Emitter; tu : CirTu; st : CirStmt) : bool {
     if (empty(kind) || !reads_variable(st.cond.a, decl.name) || st.cond.a.t != decl.t || st.cond.b.t != decl.t) {
         return false
     }
-    let written <- written_names(st.body_s)
-    if (key_exists(written, decl.name) || key_exists(em.addressed, decl.name) || !invariant_bound(em, st.cond.b, written)) {
+    var written <- written_names(st.body_s)
+    if (key_exists(written, decl.name) || key_exists(em.addressed, decl.name)) {
+        return false
+    }
+    // the increment writes the counter, so a bound that reads it is no invariant
+    written |> insert(decl.name)
+    if (!invariant_bound(em, st.cond.b, written)) {
         return false
     }
     let mark = length(em.pre)
@@ -3444,6 +3463,18 @@ def private ends_group(st : CirStmt const?) : bool {
         return !empty(st.body) && ends_group(st.body[length(st.body) - 1])
     }
     return st.s == "break" || st.s == "return" || st.s == "goto" || st.s == "continue"
+}
+
+// whether control cannot run past the end of loop body `st`: it ends in a leaving statement, or
+// in an `if` whose both arms do
+def private leaves_at_end(st : CirStmt const?) : bool {
+    if (st != null && st.s == "compound") {
+        return !empty(st.body) && leaves_at_end(st.body[length(st.body) - 1])
+    }
+    if (st != null && st.s == "if") {
+        return st.else_s != null && leaves_at_end(st.then_s) && leaves_at_end(st.else_s)
+    }
+    return ends_group(st)
 }
 
 // whether the group's last statement leaves the switch only in tail position: the `break`

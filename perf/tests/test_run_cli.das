@@ -64,6 +64,9 @@ def test_run_blit_lanes(t : T?) {
         t |> success((blit?["interp-while"]?["time"] ?? 0.0lf) > 0.0lf, out)
         t |> equal(blit?["interp-while"]?["result"] ?? -1l, blit?["native"]?["result"] ?? -2l, out)
         t |> success(lane_argv(out, "blit/interp-while") |> ends_with(" perf/work/blit/while/blit.das"), out)
+        // the harness's own counting loop is the one canonical `for` of the program
+        t |> success(fread("perf/work/blit/blit.das") |> contains(" in range64(reps)"))
+        t |> success(!(fread("perf/work/blit/while/blit.das") |> contains(" in range")))
     }
     t |> run("a cell of two samples has their spread") @(t : T?) {
         let native = js?["tests"]?["blit"]?["native"]
@@ -108,13 +111,20 @@ def test_run_method(t : T?) {
             }
             t |> equal(row?["interp"]?["result"] ?? -1l, row?["native"]?["result"] ?? -2l, out)
         }
-        t |> success(js?["tests"]?["sieve"] == null || (js?["tests"]?["sieve"]).value is _null, "sieve is not shared: {out}")
+        t |> equal(length((js?["tests"]).value as _object), 2, out)
         t |> success(fread("perf/work/fib_loop/method/fib_loop.das") |> contains("c_volatile_store(fib_loop__c2das_sink, fib_loop__kernel_result())"))
     }
     t |> run("--check exits 1 naming each cell past the tolerance and each cell one capture lacks") @(t : T?) {
         t |> equal(rc, 1, out)
         t |> success(out |> contains("--check: fib_recursive/native -"), out)
         t |> success(out |> contains("--check: fib_loop/native missing"), out)
+    }
+    t |> run("--table under the method renders the committed capture, its delta against HEAD's and the comparison with dasProfile's") @(t : T?) {
+        var shown : string
+        t |> equal(run_and_capture(["bash", "scripts/run_perf.sh", "--method", "dasprofile", "--table"], shown, 120.0), 0, shown)
+        t |> success(shown |> contains("Delta against HEAD:perf/results_method_linux.json"), shown)
+        t |> success(shown |> contains("The dasProfile method on "), shown)
+        t |> success(shown |> contains("| primes "), shown)
     }
     rmdir_rec(dir)
 }
@@ -200,6 +210,44 @@ def test_run_failed_exe_link(t : T?) {
     t |> run("a failed exe build is the lane's error, carrying the build's diagnostic, never an earlier binary's run") @(t : T?) {
         t |> equal(rc, 1, out)
         t |> success(out |> contains("fib_recursive/exe: the build exited 1 and left no binary: fake exe link failure"), out)
+    }
+    rmdir_rec(dir)
+}
+
+// `perf/dasprofile_capture.das` run with `args` through the repository's module setup: its exit code
+def capture_run(args : string; var out : string&) : int => run_and_capture(["bash", "-c", ". scripts/env.sh && das perf/dasprofile_capture.das -- {args}"], out, 120.0)
+
+[test]
+def test_dasprofile_capture(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_dasprofile_capture", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    let input = path_join(dir, "in.json")
+    let written = path_join(dir, "out.json")
+    t |> run("without --input and --commit the help is printed and the exit is 2") @(t : T?) {
+        var out : string
+        t |> equal(capture_run("--out {written}", out), 2, out)
+        t |> success(out |> contains("the dasProfile commit the capture ran"), out)
+    }
+    t |> run("an input that is no JSON object is an error naming the file") @(t : T?) {
+        fwrite(input, "[1, 2]\n")
+        var out : string
+        t |> equal(capture_run("--input {input} --commit abc --out {written}", out), 1, out)
+        t |> success(out |> contains("{input}: not a JSON object"), out)
+    }
+    t |> run("the capture is copied with the commit and the toolchain line stamped on") @(t : T?) {
+        fwrite(input, "\{\"versions\": \{\"cpp_compiler\": \"Clang 22\", \"daslang\": \"0.6.4\", \"llvm\": \"22.1.5\"\}, \"cpu\": \"C\"\}\n")
+        var out : string
+        t |> equal(capture_run("--input {input} --commit abc --out {written}", out), 0, out)
+        var error : string
+        let js = read_json(fread(written), error)
+        t |> equal(error, "", fread(written))
+        t |> equal(js?["dasprofile_commit"] ?? "", "abc")
+        t |> equal(js?["toolchain"] ?? "", "Clang 22, daslang 0.6.4, LLVM 22.1.5")
+        t |> equal(js?["cpu"] ?? "", "C")
     }
     rmdir_rec(dir)
 }

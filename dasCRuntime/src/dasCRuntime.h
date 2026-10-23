@@ -106,7 +106,6 @@ inline int64_t c_volatile_load_i64(const int64_t * p) { return *(const volatile 
 inline uint64_t c_volatile_load_u64(const uint64_t * p) { return *(const volatile uint64_t *) p; }
 inline float c_volatile_load_f32(const float * p) { return *(const volatile float *) p; }
 inline double c_volatile_load_f64(const double * p) { return *(const volatile double *) p; }
-inline void * c_volatile_load_ptr(void * const * p) { return *(void * const volatile *) p; }
 inline void c_volatile_store_i8(int8_t * p, int8_t v) { *(volatile int8_t *) p = v; }
 inline void c_volatile_store_u8(uint8_t * p, uint8_t v) { *(volatile uint8_t *) p = v; }
 inline void c_volatile_store_i16(int16_t * p, int16_t v) { *(volatile int16_t *) p = v; }
@@ -117,7 +116,6 @@ inline void c_volatile_store_i64(int64_t * p, int64_t v) { *(volatile int64_t *)
 inline void c_volatile_store_u64(uint64_t * p, uint64_t v) { *(volatile uint64_t *) p = v; }
 inline void c_volatile_store_f32(float * p, float v) { *(volatile float *) p = v; }
 inline void c_volatile_store_f64(double * p, double v) { *(volatile double *) p = v; }
-inline void c_volatile_store_ptr(void ** p, void * v) { *(void * volatile *) p = v; }
 
 inline int64_t c_time(int64_t * t) { return int64_t(::time((time_t *) t)); }
 inline int64_t c_clock() { return int64_t(::clock()); }

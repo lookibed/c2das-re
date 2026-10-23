@@ -30,22 +30,30 @@ def write_composed(name, work : string) : string {
 //! body, which the conversion reaches as `crt::c_monotonic_ns` instead.
 let METHOD_NATIVE_DEFINE = "-DC2DAS_NATIVE"
 
-//! The dasProfile method around a kernel, its `profile.h` step for step: `kernel_run` never
-//! inlined into the timing loop (`PROFILE_NOINLINE`), each run's result stored into a `volatile`
-//! sink (`profile::keep`), the steady clock (CLOCK_MONOTONIC, what `std::chrono::steady_clock`
+//! The kernels of the dasProfile method: dasProfile's C++ kernels in C, file for file, each with
+//! its functions, its parameter and its `PROFILE_NOINLINE` as `__attribute__((noinline))`.
+let METHOD_KERNELS = "perf/kernels/dasprofile"
+
+//! The kernels the method `method` runs whose name holds `filter`: every kernel by `default`, the
+//! method kernels by `dasprofile`.
+def kernel_ids(method, filter : string) : array<string> => <- c_file_ids(method == "dasprofile" ? METHOD_KERNELS : KERNELS, filter)
+
+//! The dasProfile method around a method kernel, its `profile.h` step for step: the kernel
+//! function never inlined (the kernel's own `noinline`, `PROFILE_NOINLINE`), each run's result
+//! stored into a `volatile` sink (`profile::keep`), the steady clock (CLOCK_MONOTONIC, what `std::chrono::steady_clock`
 //! reads on linux; `crt::c_monotonic_ns` in the conversion), a 0.5 s budget in seconds, the count
 //! regrown as `budget / per-run * 1.2`, at most a hundredfold and at least one more per round,
 //! capped at 1e9; then the same one line as `composed_source`.
 def composed_method_source(kernel : string) : string {
-    let prologue = "int printf(const char *, ...);\nlong c_monotonic_ns(void);\n#ifdef C2DAS_NATIVE\n#include <time.h>\nlong c_monotonic_ns(void) \{\n    struct timespec ts;\n    clock_gettime(CLOCK_MONOTONIC, &ts);\n    return ts.tv_sec * 1000000000L + ts.tv_nsec;\n\}\n#endif\nstatic void kernel_run(void) __attribute__((noinline));\n\n"
+    let prologue = "int printf(const char *, ...);\nlong c_monotonic_ns(void);\n#ifdef C2DAS_NATIVE\n#include <time.h>\nlong c_monotonic_ns(void) \{\n    struct timespec ts;\n    clock_gettime(CLOCK_MONOTONIC, &ts);\n    return ts.tv_sec * 1000000000L + ts.tv_nsec;\n\}\n#endif\n\n"
     let epilogue = "\nstatic volatile int c2das_sink;\n\nint main(void) \{\n    const double budget = 0.5;\n    long n = 1;\n    double total = 0.0;\n    for (;;) \{\n        long t0 = c_monotonic_ns();\n        for (long i = 0; i < n; i++) \{\n            kernel_run();\n            c2das_sink = kernel_result();\n        \}\n        total = (double) (c_monotonic_ns() - t0) / 1e9;\n        if (total >= budget || n >= 1000000000L) break;\n        double per = total / (double) n > 1e-9 ? total / (double) n : 1e-9;\n        long next = (long) (budget / per * 1.2);\n        if (next > 100 * n) next = 100 * n;\n        if (next < n + 1) next = n + 1;\n        n = next < 1000000000L ? next : 1000000000L;\n    \}\n    printf(\"%.9f %ld %d\\n\", total / (double) n, n, kernel_result());\n    return 0;\n\}\n"
     return prologue + kernel + epilogue
 }
 
-//! The kernel `name` composed by the dasProfile method into `<work>/<name>.c`, `work` created.
+//! The method kernel `name` composed by the dasProfile method into `<work>/<name>.c`, `work` created.
 def write_method_composed(name, work : string) : string {
     mkdir_rec(work)
     let c_path = path_join(work, "{name}.c")
-    fwrite(c_path, composed_method_source(fread("{KERNELS}/{name}.c")))
+    fwrite(c_path, composed_method_source(fread("{METHOD_KERNELS}/{name}.c")))
     return c_path
 }

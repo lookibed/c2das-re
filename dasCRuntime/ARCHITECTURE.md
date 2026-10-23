@@ -36,10 +36,10 @@ read from the CRT that built the module, never restated in das; the standard str
 no C name covers keep a `c_` name: `c_strtol32`, `c_strtoul32`, `c_atol32` and `c_ftell32` (section
 3), and `c_signal_host(sig, ignore)`, which installs the host's `SIG_IGN` or `SIG_DFL` for
 `c_runtime/c_signal.das`; `c_volatile_load_<w>(p)` and `c_volatile_store_<w>(p, v)` for `w` in
-`i8 u8 i16 u16 i32 u32 i64 u64 f32 f64 ptr`, one access through a `volatile` pointer each, for
-`c_runtime/c_volatile.das`; and `c_monotonic_ns()`, the steady clock's nanoseconds
-(`std::chrono::steady_clock`, CLOCK_MONOTONIC on linux), which the perf harness's dasProfile
-method times by (`perf/ARCHITECTURE.md` section 2).
+`i8 u8 i16 u16 i32 u32 i64 u64 f32 f64`, one access through a `volatile` pointer each, for
+`c_runtime/c_volatile.das`, which moves a pointer or a function value through `u64`; and
+`c_monotonic_ns()`, the steady clock's nanoseconds (`std::chrono::steady_clock`, CLOCK_MONOTONIC
+on linux), which the perf harness's dasProfile method times by (`perf/ARCHITECTURE.md` section 2).
 
 The binds are the malloc family; `mem*`; string.h; ctype.h; the `strto*` and `ato*` conversions;
 libm's exotica; errno; `getenv`, `rand`, `srand`, `system`; time.h (`time`, `clock`, `difftime`,

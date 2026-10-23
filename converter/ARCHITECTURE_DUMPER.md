@@ -48,8 +48,12 @@ typedefs and `_GUID`) and every declaration of an external file. Types are inter
 `func:0:1,2:false`) in first-use order, which is the spec's order. Type spellings come from
 `desugaredQualType` when clang gives one, else `qualType`, with `const`, `volatile`, `restrict`
 and `__attribute__` text stripped (a `volatile` the node's own type carries at the top level,
-`volatile int` or `int *volatile` but not `volatile int *`, marks a `ref`, `member`, `index` or
-`un deref` node `vol` instead, `is_volatile_spelling`): the C99 scalar names, `_Bool`, `T *`, `T[N]` (the first
+`volatile int`, `int *volatile` or `int (*volatile)(char *)` but not `volatile int *` or
+`void (*)(int *volatile)`, marks a `ref`, `member`, `index` or `un deref` node `vol` instead,
+`is_volatile_spelling`: the qualifiers after the last `*` of the innermost declarator group, a
+parenthesis whose text starts with `*`, before any bounds, clang's `(unnamed at f:l:c)` name of
+an anonymous record no group; a function type is never volatile, its qualifier being its return
+value's): the C99 scalar names, `_Bool`, `T *`, `T[N]` (the first
 bracket is the outer dimension: `T[2][3]` is two `T[3]`), `T (*)[N]` pointers to arrays, `R (P,
 ...)` function types (`R *(P)` when the return is a pointer, which clang writes without a
 space), `R (*)(P)` pointers to functions, `R (**)(P)` pointers to those and `R (*[N])(P)`

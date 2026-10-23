@@ -92,7 +92,10 @@ counters and `while_rangeable` need types it does not have.
 - `pointer_index` - an index into a pointer: `deref` of a pointer step (`deref(p + i)`, the
   emitter's spelling of C's `p[i]`) or `[]` on a pointer. The step inside a `deref` counts
   here, not under `pointer_arith`, so the two counts are disjoint.
-- `reinterpret` - a cast with the reinterpret flag.
+- `reinterpret` - a cast with the reinterpret flag that the inferred program keeps. Inference
+  drops a reinterpret to the type a call's result already has, so csmith's
+  `reinterpret<T>(c_volatile_load(v))` of a volatile pointer global `v` of type `T` (C's cast
+  away of a qualifier) is spelled and not counted, where `reinterpret<T>(v)` of a plain one is.
 - `goto`, `label` - each `goto label N` and each `label N:`.
 - `literal_named` - an integer literal of any width or signedness whose value is not 0, 1 or
   -1 and equals a named value of the same module: an enumerator, or a module-level global,

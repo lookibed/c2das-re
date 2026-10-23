@@ -667,7 +667,49 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   generator settings (a `-mtune`/target-cpu option for the JIT would align them); (d) every
   `uint(x)` conversion is an interpreter node of its own. F67 (an interpreter reinterpret of an
   extern's result, the class of lookibed/daScript#3) is lookibed/daScript#25; F68 is
-  lookibed/daScript#24.
+  lookibed/daScript#24. Review fixes (grounding, prover, tdd-auditor, targeted reviewer): the
+  op-assign and wrap folds spell a C truth value as its int and the folded operand once (`x = x + (a
+  < b)` failed the compile check); a bound reading the counter keeps the `while` form; a volatile
+  read in a store's or a step's target is made once into a temporary, a `x = x op y` with one keeps
+  both of C's reads, and a used postfix step of a volatile stores from its one load; the dumper
+  takes a type's own `volatile` from its innermost declarator group, so a volatile function pointer
+  whose parameters hold a `*` (liolib's `volatile lua_CFunction`) is kept and a plain one with a
+  volatile parameter is not; a `for` body ending in `break`, `return` or `goto` spells no dead
+  increment; `crt::c_volatile_load_ptr`/`c_volatile_store_ptr` are gone (pointers move through
+  `u64`); `"cir"` stays 0.1 as for F20 and F21. The dasProfile method runs dasProfile's own three
+  kernels in C (`perf/kernels/dasprofile/`: `i != n` and `bool` in `isprime`, `noinline` on the
+  kernel functions as its C++ has it, none on `kernel_run`; the default kernels, their emitted code
+  and the default table unchanged), re-captured: converted `primes` interp is 4.45x native against
+  the hand-written 2.92x, since both its loops test `!=`, the leftover above (+64% interp on
+  dasProfile's program); `fib_loop` 31.5x against 31.6x, `fib_recursive` 8.76x against 8.60x. The
+  README says the hand-written das passes literal counts, the comparison prints five significant
+  digits, and `--check` holds a cell to 10% or twice its committed spread (the bimodal
+  `fib_loop/interp-while`, 29%, upstream note (a)) and reruns this tree's lanes only. The
+  readability record (main -> this item): every metric's rise is the 21 new keys (the three csmith
+  seeds that now pass, `125079271`, `550566874`, `847133440`: `reinterpret` +918, `unsafe_expr`
+  +1623, `while_rangeable` +234; the 16 perf `@while` keys: `while_rangeable` +40, `reinterpret`
+  +39; the two torture tests: +3), and on the 1201 keys both captures hold `while_rangeable` is +101
+  (csmith's loops whose counter outlives the loop, formerly in the flag form the metric does not
+  count, now take the trailing increment and are counted: +183 before the review fixes, less the 55
+  whose dead increment after `return`/`break`/`goto` is gone and the 32 perf default and `@copy`
+  keys whose canonical loops became range loops), `reinterpret` -39
+  (`reinterpret<T>(c_volatile_load(v))` of a volatile pointer global, a cast inference drops from
+  the counted program where it kept `reinterpret<T>(v)`; `metrics/ARCHITECTURE.md`) and
+  `literal_named` -22 (16 csmith keys with the review fixes). F69 (recorded, not fixed): in a
+  `[c_function]` an assignment over a local array evaluates its value before its target's index
+  under the interpreter, the JIT and the exe and the target first under AOT, so `arr[g()] = arr[g()]
+  + 10` writes different elements per tier. Second review pass: clang's name of an anonymous record
+  (`struct (unnamed at f.c:3:10)`) is no declarator group, so a plain pointer to a volatile
+  anonymous record is no volatile object; a function whose return value is volatile carries no
+  `vol`; a `for` body ending in an `if` whose both arms leave takes no increment. Leftover (P6.3,
+  the whole-program compile stress): a volatile pointer to an anonymous record (`struct { int a; }
+  *volatile p`, a typedef of such a pointer made volatile) is typed as the record `anon_N` itself,
+  not `anon_N?`, so the module fails the compile check; older than P7.0, and the dumper's `vol` on
+  such a pointer is tested on the spelling alone until it lands. Leftover (P6.3, same stress; older
+  than P7.0, silent wrong output): a compound literal as a step's or an assignment's target
+  (`((int[]){x, 2})[0]++`, `((struct P){x, 3}).a += 4`) is spelled twice, two objects, so the step
+  lands on a copy (gcc 8, das 3 on the second pass's `v5.c`); with a volatile read inside the
+  literal the store now fails closed instead.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, pending its ruling), **O2
   `[unsafe_deref]`**, **O3 `[hint(unsafe_range_check)]`** — sidecar-gated, enabled only
