@@ -2042,25 +2042,97 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
 }
 
 // whether clang's spelling of node `js`'s type is volatile at the top level: `volatile int`,
-// `int *volatile`, a typedef through its desugared spelling; the qualifier of a pointer's pointee
-// (`volatile int *`) and of a function type's parameter is not the node's own
+// `int *volatile`, `void (*volatile)(char *)`, a typedef through its desugared spelling; the
+// qualifier of a pointer's pointee (`volatile int *`) and of a function type's parameter
+// (`void (*)(int *volatile)`) is not the node's own
 def is_volatile_spelling(js : JsonValue?) : bool {
     let ty = js?["type"]
     let desugared = ty?["desugaredQualType"] ?? ""
-    let spelled = empty(desugared) ? ty?["qualType"] ?? "" : desugared
-    let star = rfind(spelled, "*")
-    var own = star < 0 ? spelled : slice(spelled, star + 1)
-    let close = find(own, ")")
-    if (close >= 0) {
-        own = slice(own, 0, close)
+    return own_volatile(empty(desugared) ? ty?["qualType"] ?? "" : desugared)
+}
+
+// whether type spelling `spelled` qualifies its own top level `volatile`: the qualifiers after the
+// last `*` of the innermost declarator group (`(*volatile)` of `int (*volatile)(int *)`), the
+// part before an array's bounds, or the specifiers when no `*` is left. clang's name of an
+// anonymous record (`struct (unnamed struct at x.c:3:10)`) is no group, and a function type's
+// own qualifiers are its return value's, never the function's
+def own_volatile(spelled : string) : bool {
+    var lo = 0
+    var hi = length(spelled)
+    var of_function = false
+    peek_data(spelled) $(bytes) {
+        var open = first_group(bytes, lo, hi)
+        while (open >= 0) {
+            let close = group_end(bytes, open, hi)
+            let paren = int(bytes[open]) == '('
+            if (paren && close > open && names_record(spelled, lo, open)) {
+                open = first_group(bytes, close + 1, hi)
+            } elif (paren && close > open && opens_pointer(bytes, open + 1, close)) {
+                lo = open + 1
+                hi = close
+                open = first_group(bytes, lo, hi)
+            } else {
+                of_function = paren
+                hi = open
+                open = -1
+            }
+        }
     }
-    let paren = find(own, "(")
-    if (star < 0 && paren >= 0) {
-        own = slice(own, 0, paren)
+    if (of_function) {
+        return false
     }
-    for (word in split(replace(replace(own, "[", " "), "]", " "), " ")) {
+    let own = slice(spelled, lo, hi)
+    let star = rfind(own, "*")
+    for (word in split(star < 0 ? own : slice(own, star + 1), " ")) {
         if (word == "volatile") {
             return true
+        }
+    }
+    return false
+}
+
+// the first `(` or `[` of `bytes` in `[lo, hi)`, -1 for none
+def private first_group(bytes : array<uint8>#; lo, hi : int) : int {
+    for (i in range(lo, hi)) {
+        let c = int(bytes[i])
+        if (c == '(' || c == '[') {
+            return i
+        }
+    }
+    return -1
+}
+
+// the index of the bracket closing the one at `open` in `bytes` before `hi`, -1 when unbalanced
+def private group_end(bytes : array<uint8>#; open, hi : int) : int {
+    var depth = 0
+    for (i in range(open, hi)) {
+        let c = int(bytes[i])
+        if (c == '(' || c == '[') {
+            depth++
+        } elif (c == ')' || c == ']') {
+            depth--
+            if (depth == 0) {
+                return i
+            }
+        }
+    }
+    return -1
+}
+
+// whether the text of `spelled` in `[lo, open)` ends in `struct `, `union ` or `enum `: the group
+// at `open` is clang's name of an anonymous record, no declarator
+def private names_record(spelled : string; lo, open : int) : bool {
+    let before = slice(spelled, lo, open)
+    return ends_with(before, "struct ") || ends_with(before, "union ") || ends_with(before, "enum ")
+}
+
+// whether the first character of `bytes` in `[lo, hi)` past the spaces is a `*`: a declarator
+// group, where a parameter list starts with a type
+def private opens_pointer(bytes : array<uint8>#; lo, hi : int) : bool {
+    for (i in range(lo, hi)) {
+        let c = int(bytes[i])
+        if (c != ' ') {
+            return c == '*'
         }
     }
     return false

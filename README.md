@@ -46,9 +46,10 @@ loop or call runs, not how a program does; the program-level number is Doom's ti
 rate, which this table gains when P6 lands, and none is published before then.
 
 **Machine.** Every number below is from one machine: an AMD FX-6300 (Piledriver, six cores,
-`bdver2`), Linux x86_64, the pinned clang 22.1.8 and daslang 0.6.4 (LLVM 22.1.5) of
-`VERSIONS.md`, with no other job on it while it runs (the self-hosted Actions runner shares the
-machine, so a capture waits for it to idle). Times from another machine do not compare; ratios to
+`bdver2`), Linux x86_64, the clang 22.1.8 of the libclang archive and the daScript commit
+`VERSIONS.md` pins (the captures record daslang 0.6.4, dasProfile's its LLVM 22.1.5), with no
+other job on it while it runs (the self-hosted Actions runner shares the machine, so a capture
+waits for it to idle). Times from another machine do not compare; ratios to
 native on the same machine do, which is what the delta against an earlier capture on another CPU
 uses (`perf/ARCHITECTURE.md` section 5).
 
@@ -71,10 +72,11 @@ range rewrite).
 **Two methods.** The first table is this tree's harness over every kernel: the program times
 itself with the CRT's `clock()` (process CPU time) around a plain call per run, the result kept
 in a global. The second follows [dasProfile](https://github.com/borisbat/dasProfile)'s harness
-step for step over the kernels both repositories share (the same C program at the same
-parameter): `kernel_run` never inlined into the timing loop, each run's result stored into a
-`volatile` sink, wall time by the steady clock (`clock_gettime(CLOCK_MONOTONIC)` natively,
-`std::chrono::steady_clock` through `crt::c_monotonic_ns` in the conversion); the das side
+step for step over its own three scalar kernels in C (`perf/kernels/dasprofile/`: its functions,
+loops, parameters and `noinline` marks, file for file; the first table's three are this tree's
+versions of them): each run's result stored into a `volatile` sink, wall time by the steady
+clock (`clock_gettime(CLOCK_MONOTONIC)` natively, `std::chrono::steady_clock` through
+`crt::c_monotonic_ns` in the conversion). The conversion carries no `noinline`; the das side
 reads the kernel's `volatile` parameter through `c_volatile_load`, the same unknown trip count
 dasProfile's C++ reads, and the table sets dasProfile itself, built and run on the same machine
 at the commit `VERSIONS.md` pins, beside it. Kernels that are not the same program are named and
@@ -84,7 +86,9 @@ not compared.
 `perf/results_linux.json` and `perf/results_method_linux.json`; `scripts/run_perf.sh
 --from-scratch` rebuilds everything and reruns both methods and dasProfile;
 `scripts/run_perf.sh --check` reruns both methods and fails when a cell moves more than 10% from
-the committed capture, which CI runs on every release tag.
+the committed capture, or more than twice the cell's committed spread where that is wider (the
+interpreter's `fib_loop` under `--loops while` spreads 29%), which CI runs on every release tag;
+it reruns this tree's lanes only, and dasProfile's columns rerun under `--from-scratch` alone.
 
 <!-- perf-table:begin -->
 Captured on 2026-10-23 00:57 UTC, linux x86_64, AMD FX(tm)-6300 Six-Core Processor; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
@@ -110,14 +114,15 @@ Captured on 2026-10-23 00:57 UTC, linux x86_64, AMD FX(tm)-6300 Six-Core Process
 <!-- perf-table:end -->
 
 <!-- perf-method:begin -->
-The dasProfile method on AMD FX(tm)-6300 Six-Core Processor (2026-10-23 01:01 UTC; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), daslang 0.6.4) beside borisbat/dasProfile 436d58d2840ff839550d44d32f98e10a15b57bf2 run on AMD FX(tm)-6300 Six-Core (Thu Oct 22 20:55:43 2026; Clang 22.1.8, daslang 0.6.4, LLVM 22.1.5). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program.
+The dasProfile method on AMD FX(tm)-6300 Six-Core Processor (2026-10-23 05:28 UTC; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), daslang 0.6.4) beside borisbat/dasProfile 436d58d2840ff839550d44d32f98e10a15b57bf2 run on AMD FX(tm)-6300 Six-Core (Thu Oct 22 20:55:43 2026; Clang 22.1.8, daslang 0.6.4, LLVM 22.1.5). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).
 
-| Test          | C (clang -O3) | dasProfile C++ | hand-written interp |  hand-written JIT |  hand-written AOT |   converted interp |     converted JIT |     converted AOT |     converted exe |
-| :------------ | ------------: | -------------: | ------------------: | ----------------: | ----------------: | -----------------: | ----------------: | ----------------: | ----------------: |
-| fib_loop      |     0.001906s |      0.001906s |  0.060231s (31.60x) | 0.001906s (1.00x) | 0.001906s (1.00x) | 0.059845s (31.39x) | 0.004336s (2.27x) | 0.001904s (1.00x) | 0.004370s (2.29x) |
-| fib_recursive |     0.008401s |      0.008433s |   0.072531s (8.60x) | 0.008844s (1.05x) | 0.009518s (1.13x) |  0.073639s (8.77x) | 0.008829s (1.05x) | 0.008839s (1.05x) | 0.008452s (1.01x) |
-| primes        |     0.048735s |      0.049543s |   0.144809s (2.92x) | 0.046757s (0.94x) | 0.028860s (0.58x) |  0.134606s (2.76x) | 0.046817s (0.96x) | 0.031117s (0.64x) | 0.046813s (0.96x) |
+| Test          | C (clang -O3) | dasProfile C++ | hand-written interp |   hand-written JIT |   hand-written AOT |   converted interp |      converted JIT |      converted AOT |      converted exe |
+| :------------ | ------------: | -------------: | ------------------: | -----------------: | -----------------: | -----------------: | -----------------: | -----------------: | -----------------: |
+| fib_loop      |    0.0019071s |     0.0019058s |  0.060231s (31.60x) | 0.0019058s (1.00x) | 0.0019064s (1.00x) | 0.060066s (31.50x) | 0.0043479s (2.28x) | 0.0019056s (1.00x) | 0.0043726s (2.29x) |
+| fib_recursive |    0.0084092s |      0.008433s |   0.072531s (8.60x) | 0.0088441s (1.05x) | 0.0095176s (1.13x) |   0.07364s (8.76x) | 0.0088473s (1.05x) |   0.00883s (1.05x) | 0.0084476s (1.00x) |
+| primes        |     0.049574s |      0.049543s |    0.14481s (2.92x) |  0.046757s (0.94x) |   0.02886s (0.58x) |    0.2204s (4.45x) |  0.046791s (0.94x) |  0.031046s (0.63x) |  0.046864s (0.95x) |
 
+- the first table's `fib_loop`, `fib_recursive` and `primes` are this tree's versions of the three (`primes` tests `i < n` in `isprime` and returns `int`, and no kernel function is `noinline`): different programs, not compared
 - `fixed_mandel` (16.16 fixed point, 96x96, 48 iterations, struct vectors by value) is not dasProfile's `mandelbrot` (double, 64x64, 255 iterations): different programs, not compared
 - `matmul`, `sieve`, `blit` and the construct kernels have no dasProfile twin; dasProfile's `n-bodies`, `spectral norm`, `sha256`, `sort`, `tree`, `queen`, `dictionary`, `exp loop`, `particles kinematics`, `string2float`, `float2string` and `interop host calls` have no kernel here: different programs, not compared
 <!-- perf-method:end -->

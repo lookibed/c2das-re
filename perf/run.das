@@ -33,10 +33,6 @@ let RESULTS = "perf/results_linux.json"
 let METHOD_RESULTS = "perf/results_method_linux.json"
 let DASPROFILE_RESULTS = "perf/dasprofile_linux.json"
 let README = "README.md"
-let README_BEGIN = "<!-- perf-table:begin -->"
-let README_END = "<!-- perf-table:end -->"
-let README_METHOD_BEGIN = "<!-- perf-method:begin -->"
-let README_METHOD_END = "<!-- perf-method:end -->"
 //! the methods a run measures by: this tree's (`composed_source`) and dasProfile's
 //! (`composed_method_source`), over the kernels both repositories share
 let METHODS <- ["default", "dasprofile"]
@@ -60,7 +56,7 @@ struct Args {
     report : string = ""
     @clarg_doc = "the results file a run writes and --table reads (default perf/results_linux.json, under --method dasprofile perf/results_method_linux.json)"
     out : string = ""
-    @clarg_doc = "default (this tree's harness, every kernel) or dasprofile (dasProfile's harness: noinline kernel, volatile sink, steady clock; the kernels both repositories share)"
+    @clarg_doc = "default (this tree's harness, every kernel) or dasprofile (dasProfile's harness and its kernels in C, perf/kernels/dasprofile: noinline kernel functions, volatile sink, steady clock)"
     method : string = "default"
     @clarg_doc = "exit 1 when a cell drifts from the baseline past --tolerance either way, or one capture lacks a cell the other has"
     check : bool
@@ -241,41 +237,6 @@ def lane_text(cells : table<string; Cell>; lane : string) : string {
     return text
 }
 
-// the text between `begin` and `end` in README.md replaced by `rendered`; false without the markers
-def update_readme(rendered, begin, end : string) : bool {
-    let text = fread(README)
-    let b = find(text, begin)
-    let e = find(text, end)
-    if (b < 0 || e < 0 || e < b) {
-        return false
-    }
-    fwrite(README, slice(text, 0, b + length(begin)) + "\n" + rendered + slice(text, e))
-    return true
-}
-
-// the README section of a capture: the results table of the default method, the comparison
-// with dasProfile's own capture of the dasProfile method
-def readme_section(js : JsonValue?; method : string; var error : string&) : string {
-    if (method != "dasprofile") {
-        return render_results(js)
-    }
-    let dp = read_json_file(DASPROFILE_RESULTS, error)
-    return dp == null ? "" : render_method_comparison(js, dp)
-}
-
-// `--check`: the cells past the tolerance against the baseline, each an error line; true when none
-def check_drift(js, baseline : JsonValue?; baseline_name : string; tolerance : int) : bool {
-    if (baseline == null) {
-        to_log(LOG_ERROR, "--check: no baseline capture to compare with\n")
-        return false
-    }
-    let drifted <- drifted_cells(js, baseline, int64(tolerance) * 100l)
-    for (cell in drifted) {
-        to_log(LOG_ERROR, "--check: {cell} against {baseline_name}, past {tolerance}%\n")
-    }
-    return empty(drifted)
-}
-
 // the stored capture `out` rendered, by `--table`; under the dasProfile method the comparison
 // too; with `--readme` the method's README.md section rewritten from it
 def show_stored(args : Args; out : string; baseline : JsonValue?; baseline_name : string) : int {
@@ -287,11 +248,11 @@ def show_stored(args : Args; out : string; baseline : JsonValue?; baseline_name 
     }
     print(show_tables(js, baseline, baseline_name, args.ratios, args.report))
     if (args.method == "dasprofile") {
-        let section = readme_section(js, args.method, error)
+        let section = readme_section(js, args.method, DASPROFILE_RESULTS, error)
         print(empty(section) ? "{error}\n" : "\n{section}")
     }
     if (args.readme) {
-        write_readme(js, args.method)
+        log_error(write_readme(README, DASPROFILE_RESULTS, js, args.method))
     }
     return 0
 }
@@ -299,7 +260,7 @@ def show_stored(args : Args; out : string; baseline : JsonValue?; baseline_name 
 // every kernel the run names measured by the method's lanes, one JSON row per kernel
 def measure_kernels(args : Args; lanes : array<string>; var errors : array<string>) : table<string; JsonValue?> {
     let by_dasprofile = args.method == "dasprofile"
-    let names <- [for (name in c_file_ids(KERNELS, args.filter)); name; where !by_dasprofile || key_exists(SHARED_KERNELS, name)]
+    let names <- kernel_ids(args.method, args.filter)
     var tests : table<string; JsonValue?>
     for (name in names) {
         var inscope cells <- by_dasprofile ? run_method_kernel(name, args.samples, errors) : run_kernel(name, args.samples, errors)
@@ -327,15 +288,10 @@ def capture_of(args : Args; lanes : array<string>; var tests : table<string; Jso
     return JV(root)
 }
 
-// `--readme`: the method's section of README.md rewritten from capture `js`
-def write_readme(js : JsonValue?; method : string) {
-    var error : string
-    let section = readme_section(js, method, error)
-    let by_dasprofile = method == "dasprofile"
-    if (empty(section)) {
+// `error` logged, when there is one
+def log_error(error : string) {
+    if (!empty(error)) {
         to_log(LOG_ERROR, "{error}\n")
-    } elif (!update_readme(section, by_dasprofile ? README_METHOD_BEGIN : README_BEGIN, by_dasprofile ? README_METHOD_END : README_END)) {
-        to_log(LOG_ERROR, "{README} has no {by_dasprofile ? "perf-method" : "perf-table"} markers\n")
     }
 }
 
@@ -368,7 +324,7 @@ def main : int {
     fwrite(out, write_json(js) + "\n")
     print(show_tables(js, baseline, baseline_name, args.ratios, args.report))
     if (args.readme) {
-        write_readme(js, args.method)
+        log_error(write_readme(README, DASPROFILE_RESULTS, js, args.method))
     }
     for (e in errors) {
         to_log(LOG_ERROR, "{e}\n")

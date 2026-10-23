@@ -118,17 +118,20 @@ node is this repository's addition to the spec's table: `offsetof` with `of_t` a
 (the record type and the field index), since the lowering spells `offsetof` as
 `typeinfo offsetof` and the spec has no node for it (`docs/probe-findings.md` F20); `alignof_v`
 is `_Alignof` in the shape of `sizeof_v`, `v` clang's alignment and `of_t` the type, which the
-spec has no node for either (F54). The other addition is `dims` on a `global`, a `decl` statement and a record field: one `{enum_t, item}`
-per array dimension of the declarator, outermost first, the item empty for a dimension not
+spec has no node for either (F54). Another addition is `dims` on a `global`, a `decl` statement
+and a record field: one `{enum_t, item}` per array dimension of the declarator, outermost
+first, the item empty for a dimension not
 spelled as one enum constant, the member absent when none is, since the lowering keeps the
 constant as the dimension and the spec's `count` is the folded integer (F21). The spelling is
 a fact about the declarator, not the type, so the type table interns `T[6]` once however the
 source wrote it. An `enum` type carries `"signed": false` when clang gave it an unsigned
 underlying type (F22); the member is absent for a signed one, which is every enum of the
 `msvc` dialect. An lvalue node (`ref`, `member`, `index`, `un` `deref`) of volatile-qualified
-type carries `"vol": true` after its other members, absent otherwise, since the type table
-strips qualifiers and the emitter keeps every access of such an object (F65,
-`ARCHITECTURE_EMITTER_LOOPS.md`).
+type carries `"vol": true` after the members of its kind and before `macro`, absent otherwise,
+since the type table strips qualifiers and the emitter keeps every access of such an object
+(F65, `ARCHITECTURE_EMITTER_LOOPS.md`). The additions keep `"cir": "0.1"` (`CIR_VERSION`), where
+the spec's section 10 bumps the minor for an additive field: F20, F21 and F65 record each as
+additive at 0.1, and a reader of this tree accepts no other version.
 
 A record's `packed` is false exactly when das's natural layout reproduces clang's, by this law
 (`bit_units.das`), which a Dumper B applies to the same facts to write the same byte. Fields go

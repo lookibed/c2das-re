@@ -164,9 +164,11 @@ def flagged_cells(current, baseline : JsonValue?) : array<string> {
     }
 }
 
-//! Every cell either capture has whose delta is past `tolerance_cents` either way, as
-//! `<kernel>/<lane> +N.NN%`, and every kernel or lane one capture has and the other lacks, as
-//! `<kernel>/<lane> missing`: a rerun that does not reproduce the committed capture.
+//! Every cell either capture has whose delta is past its bar either way, as `<kernel>/<lane>
+//! +N.NN%`, and every kernel or lane one capture has and the other lacks, as `<kernel>/<lane>
+//! missing`: a rerun that does not reproduce the committed capture. A cell's bar is
+//! `tolerance_cents`, or twice the baseline cell's own spread when that is wider: a cell whose
+//! samples already spread that far reproduces anywhere inside it.
 def drifted_cells(current, baseline : JsonValue?; tolerance_cents : int64) : array<string> {
     var names <- kernel_names(current)
     names |> push_from(kernel_names(baseline))
@@ -184,7 +186,8 @@ def drifted_cells(current, baseline : JsonValue?; tolerance_cents : int64) : arr
             return "{name}/{lane} missing"
         }
         var cents = 0l
-        return delta_cents(current, baseline, name, lane, cents) && abs(cents) > tolerance_cents ? "{name}/{lane} {percent_text(cents)}" : ""
+        let spread_cents = int64(round((baseline?["tests"]?[name]?[lane]?["spread"] ?? 0.0lf) * 20000.0lf))
+        return delta_cents(current, baseline, name, lane, cents) && abs(cents) > max(tolerance_cents, spread_cents) ? "{name}/{lane} {percent_text(cents)}" : ""
     }
 }
 
@@ -210,10 +213,11 @@ def render_report(current, baseline : JsonValue?; baseline_name : string) : stri
 }
 
 //! The kernels this tree shares with borisbat/dasProfile, by our name to its test's category: the
-//! same C program with the same parameter, so a row compares one program across the two harnesses.
+//! method kernels (`perf/kernels/dasprofile/`), dasProfile's C++ programs in C with the same
+//! parameter, so a row compares one program across the two harnesses.
 let SHARED_KERNELS <- {"fib_loop" => "fibonacci loop", "fib_recursive" => "fibonacci recursive", "primes" => "primes loop"}
 //! The same-named or same-themed kernels that are not the same program, never compared.
-let DIFFERENT_PROGRAMS <- ["`fixed_mandel` (16.16 fixed point, 96x96, 48 iterations, struct vectors by value) is not dasProfile's `mandelbrot` (double, 64x64, 255 iterations)", "`matmul`, `sieve`, `blit` and the construct kernels have no dasProfile twin; dasProfile's `n-bodies`, `spectral norm`, `sha256`, `sort`, `tree`, `queen`, `dictionary`, `exp loop`, `particles kinematics`, `string2float`, `float2string` and `interop host calls` have no kernel here"]
+let DIFFERENT_PROGRAMS <- ["the first table's `fib_loop`, `fib_recursive` and `primes` are this tree's versions of the three (`primes` tests `i < n` in `isprime` and returns `int`, and no kernel function is `noinline`)", "`fixed_mandel` (16.16 fixed point, 96x96, 48 iterations, struct vectors by value) is not dasProfile's `mandelbrot` (double, 64x64, 255 iterations)", "`matmul`, `sieve`, `blit` and the construct kernels have no dasProfile twin; dasProfile's `n-bodies`, `spectral norm`, `sha256`, `sort`, `tree`, `queen`, `dictionary`, `exp loop`, `particles kinematics`, `string2float`, `float2string` and `interop host calls` have no kernel here"]
 
 //! The median seconds dasProfile's capture `dp` gives `language` on test `category` of `board`
 //! (`Interpreted` or `AOT or JIT`), 0 when it has none.
@@ -230,12 +234,12 @@ def dasprofile_time(dp : JsonValue?; board, category, language : string) : doubl
     return 0.0lf
 }
 
-// `t` with its ratio to `base`, `n/a` without a time
+// `t` to five significant digits with its ratio to `base`, `n/a` without a time
 def private timed_ratio(t, base : double) : string {
     if (t <= 0.0lf) {
         return MISSING
     }
-    return base > 0.0lf ? "{t:.6f}s ({t / base:.2f}x)" : "{t:.6f}s"
+    return base > 0.0lf ? "{t:.5g}s ({t / base:.2f}x)" : "{t:.5g}s"
 }
 
 //! The comparison of the dasProfile-method capture `method` with dasProfile's own capture `dp`
@@ -261,7 +265,7 @@ def render_method_comparison(method, dp : JsonValue?) : string {
         row |> push_from([for (lane in ["interp", "jit", "aot", "exe"]); timed_ratio(time_of(method, kernel, lane), native)])
         rows |> emplace(row)
     }
-    let head = "The dasProfile method on {method?["cpu"] ?? ""} ({method?["timestamp"] ?? ""}; {method?["versions"]?["clang"] ?? ""}, daslang {method?["versions"]?["daslang"] ?? ""}) beside borisbat/dasProfile {dp?["dasprofile_commit"] ?? ""} run on {dp?["cpu"] ?? ""} ({dp?["timestamp"] ?? ""}; {dp?["toolchain"] ?? ""}). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program.\n\n"
+    let head = "The dasProfile method on {method?["cpu"] ?? ""} ({method?["timestamp"] ?? ""}; {method?["versions"]?["clang"] ?? ""}, daslang {method?["versions"]?["daslang"] ?? ""}) beside borisbat/dasProfile {dp?["dasprofile_commit"] ?? ""} run on {dp?["cpu"] ?? ""} ({dp?["timestamp"] ?? ""}; {dp?["toolchain"] ?? ""}). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).\n\n"
     let different = join([for (line in DIFFERENT_PROGRAMS); "- {line}: different programs, not compared\n"], "")
     return head + render_md_table(headers, aligns, rows) + "\n\n" + different
 }

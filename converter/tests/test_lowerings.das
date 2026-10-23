@@ -174,6 +174,7 @@ def test_lowerings(t : T?) {
     p5_lua_fixtures(t)
     p5_lua_library_fixtures(t)
     p7_fixtures(t)
+    p7_volatile_fixtures(t)
     p5_lua_expression_fixtures(t)
     p5_lua_review_fixtures(t)
     rmdir_rec(work_root)
@@ -1681,7 +1682,7 @@ def p5_lua_review_dumper(t : T?) {
 }
 
 // P7.0: the range rewrite of a canonical `for` and the loops it leaves alone, the increment as the
-// body's last statement, `x = x op y` as `x op= y`, C's wrapping signed sum, and volatile access
+// body's last statement, `x = x op y` as `x op= y`, and C's wrapping signed sum
 def p7_fixtures(t : T?) {
     t |> run("canonical counting loops are range loops; the rest keep the while forms; x = x op y is x op= y; a wrapping sum is the plain one") @(t : T?) {
         var text : string
@@ -1691,22 +1692,50 @@ def p7_fixtures(t : T?) {
         has_text(t, text, "    for (k in range64(int64(1), m)) \{")
         has_text(t, text, "    for (v in urange(u)) \{")
         has_text(t, text, "    for (i in range(n, 2)) \{")
+        has_text(t, text, "    for (z in urange64(uint64(u))) \{")
         // each loop of `kept` keeps the while form: the body writes the counter or the bound, the
         // bound is a global, the test is not `<`, the step not one, the counter not declared, an
-        // address taken
-        t |> equal(count(text, " in range("), 3, text)
+        // address taken; so does each but the last of `bounds`: the bound reads the counter, a
+        // member, a call. The addresses `kept` takes are its own
+        t |> equal(count(text, " in range("), 5, text)
+        has_text(t, text, "    for (j in range(b)) \{\n        total += j\n")
+        has_text(t, text, "        while (i < n - i) \{")
+        has_text(t, text, "        while (i < b.n) \{")
+        has_text(t, text, "        while (i < p7_loops__lim()) \{")
+        // a start with an effect hoists into a block of its own before the loop
+        has_text(t, text, "    \{\n        let _t0 = j\n        j++\n        for (i in range(_t0, n)) \{\n")
         has_text(t, text, "        while (j < p7_loops__limit) \{\n            total += j\n            j++\n")
         has_text(t, text, "        while (j <= n) \{")
         has_text(t, text, "            total += p7_loops__bump(addr(j))\n            j++\n")
         // a body with no `continue` takes the increment last, `break` and `return` skipping it
         has_text(t, text, "            if (j == 7) \{\n                break\n            \}\n            total += j\n            j++\n")
         has_text(t, text, "            if (j == 3) \{\n                return total + j * 1000\n            \}\n            total += j\n            j++\n")
-        t |> equal(text |> find("finally") < 0, true, text)
+        // a body ending in the jump never reaches the increment, which is then not spelled
+        has_text(t, text, "            total += 5\n            break\n        \}\n")
+        has_text(t, text, "            total += 7\n            goto label 1\n        \}\n")
+        has_text(t, text, "            total += j\n            return total * 10 + j\n        \}\n")
+        has_text(t, text, "                return 2000 + j\n            \}\n        \}\n    \}\n    return j\n")
+        // a `continue` of a nested loop is not the outer loop's: the outer takes the increment last
+        has_text(t, text, "            total += j\n            j++\n        \}\n    \}\n    return total\n")
+        t |> equal(count(text, "finally"), 1, text)
         has_text(t, text, "    x += n\n    x -= 2\n    x *= 3\n    x &= 255\n    x |= 256\n    x ^= 1\n    y *= int64(5)\n    u += 3u\n    d *= 4.0lf\n")
         has_text(t, text, "    a.sum += x\n    a.cells[1] += 7\n    a.mean += d\n")
         has_text(t, text, "    c = uint8(int(c) + 1)\n    x = n + x\n    x = x / 2\n")
+        // an effect on the right keeps the plain store, its step made once
+        has_text(t, text, "    let _t0 = z\n    z++\n    x = x + _t0\n")
+        has_text(t, text, "    deref(pz) += 4\n")
+        // a truth value is the int C adds; the right side is spelled once
+        has_text(t, text, "    x += (a < b ? 1 : 0)\n    x |= (!(a != 0) ? 1 : 0)\n    x *= (a != 0 && b != 0 ? 1 : 0)\n    d += double(a > b ? 1 : 0)\n    var _cl0 : int[2] = fixed_array(7, 8)\n    x += deref(addr(_cl0[0]))\n")
+        t |> equal(text |> find("_cl1") < 0, true, text)
+        // a bitfield and a `[c_union]` member keep the plain store (F52)
+        has_text(t, text, "    deref(p + 2).bf.b = uint(int(deref(p + 2).bf.b) + 3)\n    deref(p + 2).bf.c = deref(p + 2).bf.c + uint(3)\n")
+        has_text(t, text, "    deref(pu + 1).i = deref(pu + 1).i + 5\n")
         has_text(t, text, "    var s : int = a + b\n    var t : int = a - b\n    var w : int64 = p + q\n    var m : uint = uint(a) * uint(b)\n")
         has_text(t, text, "    cur += b\n")
+        // a small integer's sum is no wrapping pair; a truth value in one is the int
+        has_text(t, text, "    var ss : int16 = int16(int(s1) + int(s2))\n")
+        has_text(t, text, "    var cs : uint8 = uint8(int(c1) + int(c2))\n")
+        has_text(t, text, "    var tw : int = (a < b ? 1 : 0) + b\n    var tw2 : int = b - (!(a != 0) ? 1 : 0)\n")
     }
     t |> run("under `--loops while` no loop is a range loop, and the program prints the same") @(t : T?) {
         var text : string
@@ -1722,7 +1751,14 @@ def p7_fixtures(t : T?) {
         let res <- convert(c_path, path_join(work_root, "loops_sidecar_range"), "linux", "", "", "", "range")
         t |> equal(res.ok, true, res.error)
         t |> success(res.das_text |> contains("for (i in range(4)) \{"), res.das_text)
+        let refused <- convert(c_path, path_join(work_root, "loops_sidecar_for"), "linux", "", "", "", "for")
+        t |> equal(refused.ok, false, refused.das_text)
+        t |> success(refused.error |> contains("--loops is range or while, not `for`"), refused.error)
     }
+}
+
+// P7.0: volatile access, each kept read and write one `c_volatile_load` or `c_volatile_store`
+def p7_volatile_fixtures(t : T?) {
     t |> run("a volatile object is read and written through c_volatile_load and c_volatile_store, on every tier") @(t : T?) {
         var text : string
         check_fixture(t, "p7_volatile", text)
@@ -1737,6 +1773,38 @@ def p7_fixtures(t : T?) {
         // a pointer steps back as the sum of the negated count, a `_Bool` stores the truth
         has_text(t, text, "    c_volatile_store(p7_volatile__walker, c_volatile_load(p7_volatile__walker) + -1)\n    c_volatile_store(p7_volatile__walker, c_volatile_load(p7_volatile__walker) + -(1))\n")
         has_text(t, text, "    c_volatile_store(p7_volatile__seen, (int(c_volatile_load(p7_volatile__seen) ? 1 : 0) | 1) != 0)\n")
+        // the value of an assignment read back is a load
+        has_text(t, text, "    c_volatile_store(p7_volatile__a, 4)\n    var u : int = c_volatile_load(p7_volatile__a) + 4\n")
+        // a volatile read in a store's target is made once, into a temporary, and both reads of
+        // `x = x + y` are made: as many loads as C makes reads
+        has_text(t, text, "    let _t0 = c_volatile_load(p7_volatile__vi)\n    p7_volatile__cb[_t0] = uint8(int(p7_volatile__cb[_t0]) + 1)\n")
+        has_text(t, text, "    let _t2 = c_volatile_load(p7_volatile__vi)\n    p7_volatile__cb[_t2] = uint8(7)\n    var a2 : int = int(p7_volatile__cb[_t2])\n")
+        has_text(t, text, "    deref(c_volatile_load(p7_volatile__vbp)) = deref(c_volatile_load(p7_volatile__vbp)) + y\n")
+        has_text(t, text, "    c_volatile_load(vp).v = c_volatile_load(vp).v + 2\n")
+        t |> equal(count(text, "c_volatile_load(p7_volatile__vi)"), 5, text)
+        t |> equal(count(text, "c_volatile_load(p7_volatile__vbp)"), 2, text)
+        // a used old value is the step's one load
+        has_text(t, text, "    let _t3 = c_volatile_load(p7_volatile__va[5])\n    c_volatile_store(p7_volatile__va[5], _t3 + 1)\n    var x : int = _t3\n")
+        // a shift computes in the promoted left side; a float and a small integer step
+        has_text(t, text, "    c_volatile_store(p7_volatile__vbig, c_volatile_load(p7_volatile__vbig) << int64(n))\n")
+        has_text(t, text, "    c_volatile_store(p7_volatile__vd, c_volatile_load(p7_volatile__vd) + 1.0lf)\n    c_volatile_store(p7_volatile__vc, uint8(uint(c_volatile_load(p7_volatile__vc)) + 1))\n")
+        // a volatile function pointer whose parameters hold a `*` is kept; a plain one whose
+        // parameter is a volatile pointer is not
+        has_text(t, text, "    invoke(f, addr(y))\n    var r : int = invoke(c_volatile_load(p7_volatile__hook), null) + invoke(c_volatile_load(p7_volatile__raw), addr(y))\n")
+        // a volatile counter or bound keeps the while form
+        has_text(t, text, "        while (c_volatile_load(i) < 3) \{")
+        has_text(t, text, "        while (i < c_volatile_load(bound)) \{")
+        // a plain pointer to a volatile anonymous record is no volatile object; a volatile
+        // pointer to one (`struct \{..\} *volatile`) meets the older anonymous-pointer type defect
+        // first (P7.0 ledger row) and is covered by the spelling arm below
+        has_text(t, text, "    y += c_volatile_load(p7_volatile__pvr.a) + deref(gret()) + vret()\n    p7_volatile__pvr = p7_volatile__pvr + 1\n")
+        // the C-IR the dumper writes carries the flag, never on a function whose return value is volatile
+        let cir = fread(path_join(path_join(work_root, "p7_volatile"), "p7_volatile.cir.json"))
+        t |> success(cir |> contains("\"vol\": true"), "no `vol` in the written C-IR")
+        let packed = replace(replace(cir, "\n", ""), " ", "")
+        for (fn in ["gret", "vret"]) {
+            t |> success(!(packed |> contains("\"name\":\"{fn}\",\"vol\":true")), "{fn} marked volatile")
+        }
         let want = native("p7_volatile")
         for (tier in ["jit", "exe", "aot"]) {
             var out : string
@@ -1744,6 +1812,25 @@ def p7_fixtures(t : T?) {
             t |> equal(rc, want.rc, "{tier}: {out}")
             t |> equal(out |> find(want.out) >= 0, true, "{tier}: {out}")
         }
+    }
+    t |> run("a type spelling's own volatile is the innermost declarator group's, never a pointee's or a parameter's") @(t : T?) {
+        for (spelled in ["volatile int", "int *volatile", "int *volatile[4]", "volatile int[3]", "void (*volatile)(int)", "void (*volatile)(const char *)", "int (*volatile)(struct L *)", "int *(*volatile)(int)", "int (*volatile)[4]", "int ( *volatile)(int *)", "struct (unnamed struct at x.c:3:10) *volatile", "volatile union (unnamed at a.c:1:1)"]) {
+            t |> success(own_volatile(spelled), spelled)
+        }
+        for (spelled in ["volatile int *", "const char *", "void (*)(volatile int)", "void (*)(int *volatile)", "void (int *volatile)", "int (*)[4]", "int (*)(int *volatile)", "volatile struct (unnamed struct at x.c:3:10) *", "volatile int (void)", "int *volatile (void)"]) {
+            t |> success(!own_volatile(spelled), spelled)
+        }
+    }
+    t |> run("a volatile `_Bool` step fails closed as the plain one does") @(t : T?) {
+        rejects(t, "volatile_bool_step", "static volatile _Bool b;\nint main(void) \{ b++; return b; \}\n", "a `_Bool` step")
+    }
+    t |> run("a volatile member of a `[c_union]` or a marshal-only record is the plain access; a volatile pointer to a marshal-only record steps by its C size") @(t : T?) {
+        let pun = converts(t, "volatile_union", "union U \{ volatile int a; float f; \};\nint main(void) \{ union U u; u.a = 3; u.a += 2; return u.a; \}\n")
+        has_text(t, pun, "    u.a = 3\n    u.a += 2\n    return u.a\n")
+        let source = "typedef struct \{ short w; volatile int ofs; \} mrec;\nstatic unsigned char lump[64];\nint main(void) \{ mrec *volatile vm = (mrec *) lump; mrec *m = (mrec *) lump; m->ofs = 5; m->ofs += 2; vm++; vm += 2; vm -= 1; return m->ofs + (int) ((unsigned char *) vm - lump); \}\n"
+        let marshal = converts(t, "volatile_marshal", source, "\{\"marshal\": [\"mrec\"]\}\n")
+        has_text(t, marshal, "    write_mrec_ofs(m, 0, 5)\n    write_mrec_ofs(m, 0, read_mrec_ofs(m, 0) + 2)\n")
+        has_text(t, marshal, "    c_volatile_store(vm, c_volatile_load(vm) + 8)\n    c_volatile_store(vm, c_volatile_load(vm) + 2 * 8)\n    c_volatile_store(vm, c_volatile_load(vm) + -(1 * 8))\n")
     }
     t |> run("a whole volatile record copied at once is the plain copy; its scalar field is kept") @(t : T?) {
         let text = converts(t, "volatile_record", "struct P \{ int x; \};\nstatic volatile struct P g;\nint main(void) \{ struct P c = g; g = c; return c.x + g.x; \}\n")
