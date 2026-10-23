@@ -16,7 +16,7 @@ require readability_count
 
 //! The readability metric (`scripts/run_readability.sh`): every input key `expected_input_keys`
 //! names, converted under the `linux` dialect (a `perf/<kernel>@copy` key under `--param-writes
-//! copy`) and counted by `readability_count`, one worker
+//! copy`, a `perf/<kernel>@while` key under `--loops while`) and counted by `readability_count`, one worker
 //! process per input, `--jobs` at a time. The totals ratchet against the committed
 //! `readability_linux.json`: a run exits 1 when one went up, and `--update` records the run.
 
@@ -53,7 +53,7 @@ def private c_file_of(key, dir : string; var error : string&) : string {
     } elif (group == "gcc_torture") {
         return "{GCC_TORTURE_TESTS}/{id}.c"
     } elif (group == "perf") {
-        return write_composed(id |> ends_with(COPY_KEY_SUFFIX) ? slice(id, 0, length(id) - length(COPY_KEY_SUFFIX)) : id, dir)
+        return write_composed(kernel_of_key(id), dir)
     }
     let prog = csmith_program(id, dir, CSMITH_TIMEOUT)
     error = prog.timed_out ? "csmith took longer than {int(CSMITH_TIMEOUT)} s" : prog.error
@@ -80,7 +80,7 @@ def private measure_one(key : string) : ModuleCount {
     if (!empty(error)) {
         return ModuleCount(error = error)
     }
-    let res <- convert(c_path, path_join(dir, "das"), "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "")
+    let res <- convert(c_path, path_join(dir, "das"), "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "")
     if (!res.ok) {
         return ModuleCount(error = "convert: {headline(res.error)}")
     }

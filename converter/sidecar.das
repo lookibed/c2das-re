@@ -21,6 +21,9 @@ struct Sidecar {
     // how the body writes a scalar or pointer parameter it assigns, steps or takes the address
     // of: `in-place` (the parameter itself) or `copy` (a local copy); "" when the key is absent
     param_writes : string
+    // how a canonical counting `for` is spelled: `range` (a das range loop) or `while` (the
+    // `while` form every other `for` takes); "" when the key is absent
+    loops : string
     // the macros clang defines for the dump, each `NAME`, `NAME=value` or `NAME(params)=value`,
     // passed as `-D<entry>`
     defines : array<string>
@@ -35,6 +38,12 @@ let PARAM_WRITES <- ["in-place", "copy"]
 
 //! Whether `mode` is a value of `param_writes`.
 def is_param_writes(mode : string) : bool => has_value(PARAM_WRITES, mode)
+
+//! The values of the `loops` key and of the converter's `--loops`.
+let LOOPS <- ["range", "while"]
+
+//! Whether `mode` is a value of `loops`.
+def is_loops(mode : string) : bool => has_value(LOOPS, mode)
 
 //! The sidecar a C file converts under: `given` when it is not empty, else `<stem>.c2das` beside the
 //! file, else `.c2das` in its folder; "" when none exists.
@@ -128,6 +137,12 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
         error = "{path}: `param_writes` is \"in-place\" or \"copy\", not {write_json(js?["param_writes"])}"
     } else {
         side.param_writes = param_writes
+    }
+    let loops = js?["loops"] ?? ""
+    if (key_exists(js, "loops") && !is_loops(loops)) {
+        error = "{path}: `loops` is \"range\" or \"while\", not {write_json(js?["loops"])}"
+    } else {
+        side.loops = loops
     }
     let defines = js?["defines"]
     if (key_exists(js, "defines") && !(defines is _array)) {

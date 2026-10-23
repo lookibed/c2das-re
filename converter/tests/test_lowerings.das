@@ -29,10 +29,10 @@ def native(name : string) : Expectation {
     return run.built ? Expectation(rc = run.rc, out = run.output) : Expectation(rc = -1, out = "clang failed:\n{run.output}")
 }
 
-// `param_writes` is the converter's `--param-writes`, "" for its default
-def converted(t : T?; name : string; var das_text : string&; param_writes : string = "") : Expectation {
-    let work = path_join(work_root, empty(param_writes) ? name : "{name}_{param_writes}")
-    let res <- convert("{FIXTURES}/{name}.c", work, "linux", "", "", param_writes)
+// `param_writes` is the converter's `--param-writes` and `loops` its `--loops`, "" for their defaults
+def converted(t : T?; name : string; var das_text : string&; param_writes : string = ""; loops : string = "") : Expectation {
+    let work = path_join(work_root, "{name}{empty(param_writes) ? "" : "_" + param_writes}{empty(loops) ? "" : "_" + loops}")
+    let res <- convert("{FIXTURES}/{name}.c", work, "linux", "", "", param_writes, loops)
     if (!res.ok) {
         t |> failure(res.error)
         return Expectation(rc = -2, out = "")
@@ -101,10 +101,10 @@ def check_fixture_args(t : T?; name : string; program_args : array<string>; var 
     t |> equal(rc, run.rc)
 }
 
-def check_fixture(t : T?; name : string; var das_text : string&; param_writes : string = "") {
+def check_fixture(t : T?; name : string; var das_text : string&; param_writes : string = ""; loops : string = "") {
     let want = native(name)
     t |> equal(want.rc >= 0, true, want.out)
-    let have = converted(t, name, das_text, param_writes)
+    let have = converted(t, name, das_text, param_writes, loops)
     t |> equal(have.out, want.out)
     t |> equal(have.rc, want.rc)
 }
@@ -139,14 +139,25 @@ def test_lowerings(t : T?) {
         check_fixture(t, "p1_loops", text)
         t |> equal(text |> find("var _first = true") >= 0, true, text)
         t |> equal(text |> find("while (_first || ") >= 0, true, text)
-        t |> equal(text |> find("var _f = false") >= 0, true, text)
-        t |> equal(text |> find("\} finally \{") >= 0, true, text)
         t |> equal(text |> find("} elif (") >= 0, true, text)
+        // a canonical counting loop is a range loop; a body with `continue` that leaves the loop
+        // takes the flag, one that never leaves it the `finally`, one with no `continue` the
+        // increment as its last statement
+        has_text(t, text, "    for (j in range(10)) \{\n        if (j == 1) \{\n            continue\n")
+        has_text(t, text, "        var _f = false\n        while (true) \{\n            if (_f) \{\n                i++\n")
+        has_text(t, text, "            \} finally \{\n                i++\n")
+        has_text(t, text, "        while (i < n) \{\n            i += 3\n            n--\n        \}\n")
+    }
+    t |> run("loops under `--loops while`: the canonical loop keeps the while form") @(t : T?) {
+        var text : string
+        check_fixture(t, "p1_loops", text, "", "while")
+        t |> equal(text |> find(" in range(") < 0, true, text)
+        has_text(t, text, "        var j : int = 0\n        var _f = false\n        while (true) \{\n            if (_f) \{\n                j++\n")
     }
     t |> run("functions: written parameters in place, statics, globals, exit") @(t : T?) {
         var text : string
         check_fixture(t, "p1_functions", text)
-        has_text(t, text, "def twice(var v : int) : int \{\n    v = v * 2\n")
+        has_text(t, text, "def twice(var v : int) : int \{\n    v *= 2\n")
         t |> equal(text |> find("def private p1_functions__bump(") >= 0, true, text)
         t |> equal(text |> find("c_exit(42)") >= 0, true, text)
         t |> equal(text |> find("require c_runtime/c_exit") >= 0, true, text)
@@ -162,6 +173,7 @@ def test_lowerings(t : T?) {
     p5_program_fixtures(t)
     p5_lua_fixtures(t)
     p5_lua_library_fixtures(t)
+    p7_fixtures(t)
     p5_lua_expression_fixtures(t)
     p5_lua_review_fixtures(t)
     rmdir_rec(work_root)
@@ -945,7 +957,7 @@ def p4_csmith_fixtures(t : T?) {
         has_text(t, text, "let _t0 = p4_csmith_scopes__g[0]")
         has_text(t, text, "var p1 : int = 3")
         has_text(t, text, "var v1 : int = 100")
-        has_text(t, text, "var i3 : int = 1\n        while (i3 < 3) \{")
+        has_text(t, text, "for (i3 in range(1, 3)) \{")
         // das indexes by `int`, `int64`, `uint` or `uint64` alone (F43)
         has_text(t, text, "p4_csmith_scopes__g[int(k)] + p4_csmith_scopes__g[int(m)] + p4_csmith_scopes__g[int(n)]")
         has_text(t, text, "def private p4_csmith_scopes__at(var p : int?; c : uint8) : int \{\n    return deref(p + int(c))")
@@ -1012,7 +1024,7 @@ def p4_scope_fidelity_fixtures(t : T?) {
         // switch's union stays in its branch, the `int` a later label names is carried
         has_text(t, text, "    var v1 : int\n    if (_cond == 0) \{\n        var u : un\n        u.i = 5\n        v1 = 1\n")
         has_text(t, text, "            var u1 : un\n            u1.i = 9\n")
-        has_text(t, text, "            var v2 : int = 0\n            while (v2 < 3) \{")
+        has_text(t, text, "        for (v2 in range(3)) \{\n            r += v2\n")
         has_text(t, text, "        v1 = 7\n        r = v1\n")
         // a step's value reads the index the step used
         has_text(t, text, "    let _t0 = k\n    k++\n    let _t1 = arr[_t0].a\n    arr[_t0].a++\n    var v : int = _t1\n")
@@ -1078,7 +1090,7 @@ def p4_matrix_fixtures(t : T?) {
         has_text(t, text, "def private p4_matrix_shapes__sq(v : int) : int \{\n    return v * v\n")
         has_text(t, text, "def private p4_matrix_shapes__half(x : double) : double \{\n    return x / 2.0lf\n")
         has_text(t, text, "struct vol \{\n    ticks, other : int\n\}")
-        has_text(t, text, "    p4_matrix_shapes__clock_v.ticks += 2\n")
+        has_text(t, text, "    c_volatile_store(p4_matrix_shapes__clock_v.ticks, c_volatile_load(p4_matrix_shapes__clock_v.ticks) + 2)\n")
         has_text(t, text, "    a++\n    var x : int = b + a\n")
         has_text(t, text, "        c_exit(3)\n")
     }
@@ -1159,7 +1171,7 @@ def p4_matrix_leftover_fixtures(t : T?) {
         has_text(t, text, "    var _cl7 : int[2]\n    var _cl8 : int[2]\n    var _t0 : int?\n    if (c != 0) \{\n        _cl7 = fixed_array(1, 2)\n")
         has_text(t, text, "        _cl9 = num()\n        _cl9.i = 3\n")
         has_text(t, text, "        _cl11 = 0\n        _t2 = addr(_cl11)\n")
-        has_text(t, text, "                var _cl4 : int[2] = fixed_array(i, i * 10)\n")
+        has_text(t, text, "    for (i in range(3)) \{\n        var _cl4 : int[2] = fixed_array(i, i * 10)\n")
         // a loop whose condition moves into its body keeps the arms' objects before the loop
         has_text(t, text, "    var _cl5 : int[1]\n    var _cl6 : int[1]\n    while (true) \{\n")
         // an increment's object is declared in the `for`'s block and assigned by each increment
@@ -1167,6 +1179,8 @@ def p4_matrix_leftover_fixtures(t : T?) {
         has_text(t, text, "            \} finally \{\n                _cl4 = fixed_array(i, i, i)\n                p = addr(_cl4[0])\n")
         has_text(t, text, "        var _cl5 : int[3]\n        var _f = false\n        while (true) \{\n            if (_f) \{\n                _cl5 = fixed_array(i, 1, 1)\n")
         has_text(t, text, "        var _cl6 : int[3]\n        var _cl7 : int[3]\n        while (i < 3) \{\n")
+        // with no `continue` in the body the increment's statements end it
+        has_text(t, text, "                _t0 = addr(_cl7[0])\n            \}\n            p = _t0\n            i++\n        \}\n")
         // a case group's object is declared before the matched-flag loop and assigned in its group
         has_text(t, text, "    let _cond = j\n    var _cl4 : int[3]\n    var _cl5 : int[3]\n    while (true) \{\n")
         has_text(t, text, "        if (_flag) \{\n            _cl4 = fixed_array(1, 2, 3)\n            q = addr(_cl4[0])\n")
@@ -1663,5 +1677,77 @@ def p5_lua_review_dumper(t : T?) {
         var out : string
         t |> equal(run_tier(res.das_path, "interp", work_root, out, CONVERTED_MODULES), 0, out)
         rmdir_rec(at)
+    }
+}
+
+// P7.0: the range rewrite of a canonical `for` and the loops it leaves alone, the increment as the
+// body's last statement, `x = x op y` as `x op= y`, C's wrapping signed sum, and volatile access
+def p7_fixtures(t : T?) {
+    t |> run("canonical counting loops are range loops; the rest keep the while forms; x = x op y is x op= y; a wrapping sum is the plain one") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_loops", text)
+        has_text(t, text, "    for (i in range(n)) \{\n        total += i\n    \}\n")
+        has_text(t, text, "    for (i in range(2, n + 3)) \{\n        if (i == 3) \{\n            continue\n")
+        has_text(t, text, "    for (k in range64(int64(1), m)) \{")
+        has_text(t, text, "    for (v in urange(u)) \{")
+        has_text(t, text, "    for (i in range(n, 2)) \{")
+        // each loop of `kept` keeps the while form: the body writes the counter or the bound, the
+        // bound is a global, the test is not `<`, the step not one, the counter not declared, an
+        // address taken
+        t |> equal(count(text, " in range("), 3, text)
+        has_text(t, text, "        while (j < p7_loops__limit) \{\n            total += j\n            j++\n")
+        has_text(t, text, "        while (j <= n) \{")
+        has_text(t, text, "            total += p7_loops__bump(addr(j))\n            j++\n")
+        // a body with no `continue` takes the increment last, `break` and `return` skipping it
+        has_text(t, text, "            if (j == 7) \{\n                break\n            \}\n            total += j\n            j++\n")
+        has_text(t, text, "            if (j == 3) \{\n                return total + j * 1000\n            \}\n            total += j\n            j++\n")
+        t |> equal(text |> find("finally") < 0, true, text)
+        has_text(t, text, "    x += n\n    x -= 2\n    x *= 3\n    x &= 255\n    x |= 256\n    x ^= 1\n    y *= int64(5)\n    u += 3u\n    d *= 4.0lf\n")
+        has_text(t, text, "    a.sum += x\n    a.cells[1] += 7\n    a.mean += d\n")
+        has_text(t, text, "    c = uint8(int(c) + 1)\n    x = n + x\n    x = x / 2\n")
+        has_text(t, text, "    var s : int = a + b\n    var t : int = a - b\n    var w : int64 = p + q\n    var m : uint = uint(a) * uint(b)\n")
+        has_text(t, text, "    cur += b\n")
+    }
+    t |> run("under `--loops while` no loop is a range loop, and the program prints the same") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_loops", text, "", "while")
+        t |> equal(text |> find(" in range") < 0 && text |> find(" in urange") < 0, true, text)
+        has_text(t, text, "        var i : int = 0\n        while (i < n) \{\n            total += i\n            i++\n")
+    }
+    t |> run("the sidecar's `loops` while keeps the while form; the option overrides it") @(t : T?) {
+        let source = "int printf(const char *, ...);\nint main(void) \{ int s = 0; for (int i = 0; i < 4; i++) s += i; printf(\"%d\\n\", s); return 0; \}\n"
+        let kept = converts(t, "loops_sidecar", source, "\{\"loops\": \"while\"\}\n")
+        t |> success(!(kept |> contains(" in range(")), kept)
+        let c_path = path_join(path_join(work_root, "converted"), "loops_sidecar.c")
+        let res <- convert(c_path, path_join(work_root, "loops_sidecar_range"), "linux", "", "", "", "range")
+        t |> equal(res.ok, true, res.error)
+        t |> success(res.das_text |> contains("for (i in range(4)) \{"), res.das_text)
+    }
+    t |> run("a volatile object is read and written through c_volatile_load and c_volatile_store, on every tier") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_volatile", text)
+        has_text(t, text, "require c_runtime/c_volatile")
+        has_text(t, text, "    return c_volatile_load(p7_volatile__a) + c_volatile_load(p7_volatile__b) + deref(c_volatile_load(p7_volatile__p)) + c_volatile_load(p7_volatile__arr[1]) + c_volatile_load(deref(q)) + c_volatile_load(s.f) + s.g\n")
+        has_text(t, text, "    c_volatile_store(p7_volatile__a, c_volatile_load(p7_volatile__a) + 5)\n")
+        has_text(t, text, "    c_volatile_store(p7_volatile__vc, uint8(int(c_volatile_load(p7_volatile__vc)) + 10))\n")
+        has_text(t, text, "    c_volatile_store(ps.f, c_volatile_load(ps.f) + 1)\n")
+        // a discarded volatile read still reads
+        has_text(t, text, "    let _t0 = c_volatile_load(p7_volatile__a)\n")
+        has_text(t, text, "    c_volatile_store(local, c_volatile_load(h.hook))\n")
+        // a pointer steps back as the sum of the negated count, a `_Bool` stores the truth
+        has_text(t, text, "    c_volatile_store(p7_volatile__walker, c_volatile_load(p7_volatile__walker) + -1)\n    c_volatile_store(p7_volatile__walker, c_volatile_load(p7_volatile__walker) + -(1))\n")
+        has_text(t, text, "    c_volatile_store(p7_volatile__seen, (int(c_volatile_load(p7_volatile__seen) ? 1 : 0) | 1) != 0)\n")
+        let want = native("p7_volatile")
+        for (tier in ["jit", "exe", "aot"]) {
+            var out : string
+            let rc = run_tier(path_join(path_join(work_root, "p7_volatile"), "p7_volatile.das"), tier, path_join(work_root, "p7_volatile_{tier}"), out, CONVERTED_MODULES)
+            t |> equal(rc, want.rc, "{tier}: {out}")
+            t |> equal(out |> find(want.out) >= 0, true, "{tier}: {out}")
+        }
+    }
+    t |> run("a whole volatile record copied at once is the plain copy; its scalar field is kept") @(t : T?) {
+        let text = converts(t, "volatile_record", "struct P \{ int x; \};\nstatic volatile struct P g;\nint main(void) \{ struct P c = g; g = c; return c.x + g.x; \}\n")
+        has_text(t, text, "var c : P = volatile_record__g\n    volatile_record__g = c\n")
+        has_text(t, text, "c_volatile_load(volatile_record__g.x)")
     }
 }

@@ -76,13 +76,26 @@ def c_file_ids(dir_path, filter : string) : array<string> {
 //! The suffix of a kernel's input key converted under `--param-writes copy` (`perf/blit@copy`).
 let COPY_KEY_SUFFIX = "@copy"
 
+//! The suffix of a kernel's input key converted under `--loops while` (`perf/primes@while`).
+let WHILE_KEY_SUFFIX = "@while"
+
+//! The kernel id a perf input key names: the key's id less its mode suffix.
+def kernel_of_key(id : string) : string {
+    for (suffix in [COPY_KEY_SUFFIX, WHILE_KEY_SUFFIX]) {
+        if (id |> ends_with(suffix)) {
+            return slice(id, 0, length(id) - length(suffix))
+        }
+    }
+    return id
+}
+
 //! Every input key (`<group>/<id>`) the readability metric converts, sorted: each ratchet
-//! suite's listed ids less its ledgered ones, and every kernel under both parameter write
-//! modes.
+//! suite's listed ids less its ledgered ones, and every kernel converted by default, under
+//! `--param-writes copy` and under `--loops while`.
 def expected_input_keys : array<string> {
     let kernels <- c_file_ids(KERNELS, "")
     var keys <- [for (name in kernels); "perf/{name}"]
-    keys |> push_from([for (name in kernels); "perf/{name}{COPY_KEY_SUFFIX}"])
+    keys |> push_from([for (name in kernels); "perf/{name}{COPY_KEY_SUFFIX}"], [for (name in kernels); "perf/{name}{WHILE_KEY_SUFFIX}"])
     for (suite in RATCHET_SUITES) {
         var inscope r <- read_ratchet("suites/{suite}/expected_pass.txt", "suites/{suite}/skip.txt")
         keys |> reserve(length(keys) + length(r.expected))

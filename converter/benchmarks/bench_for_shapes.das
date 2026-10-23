@@ -3,9 +3,10 @@ options persistent_heap
 
 require dastest/testing_boost
 
-//! The two lowerings of a general C `for` (docs/lowering-examples.md, "General for") against
-//! each other and against the native range loop: the increment-first flag that every `for`
-//! can take, and the body-block `finally` that a body without `break` can take.
+//! The lowerings of a general C `for` (docs/lowering-examples.md, "General for") against each
+//! other and against the native range loop: the increment-first flag that every `for` can take,
+//! the body-block `finally` that a body without `break` can take, and the increment as the last
+//! statement that a body without `continue` takes.
 
 let N = 1000
 
@@ -42,6 +43,16 @@ def finally_form(n : int) : int {
     return acc
 }
 
+def trailing_form(n : int) : int {
+    var acc = 0
+    var i = 0
+    while (i < n) {
+        acc = (acc * 31 + i) & 0xFFFF
+        i++
+    }
+    return acc
+}
+
 def range_form(n : int) : int {
     var acc = 0
     for (i in range(n)) {
@@ -58,6 +69,9 @@ def for_shapes(b : B?) {
     }
     b |> run("finally/{N}", N) {
         b |> equal(finally_form(n_rt), want)
+    }
+    b |> run("trailing/{N}", N) {
+        b |> equal(trailing_form(n_rt), want)
     }
     b |> run("range/{N}", N) {
         b |> equal(range_form(n_rt), want)

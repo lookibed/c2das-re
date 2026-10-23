@@ -8,6 +8,11 @@ def cond(i : int) : bool {
     return i < 4
 }
 
+def note(v : int) : int {
+    trace |> push(v)
+    return v
+}
+
 [test]
 def test_loops(t : T?) {
     t |> run("do-while first-pass flag: condition skipped on entry, tested after every pass including continue") @(t : T?) {
@@ -88,3 +93,49 @@ def test_loops(t : T?) {
         t |> equal(runs, 2)
     }
 }
+
+[test]
+def test_range_loops(t : T?) {
+    t |> run("a range loop of each counting type counts from its start to below its end, empty when the start is past it") @(t : T?) {
+        var seen : array<int>
+        seen |> reserve(8)
+        for (i in range(2, 5)) {
+            seen |> push(i)
+        }
+        for (i in range(3)) {
+            seen |> push(i * 10)
+        }
+        for (_i in range(7, 2)) {
+            seen |> push(-1)
+        }
+        var wide = 0l
+        for (k in range64(int64(1), 4l)) {
+            wide += k
+        }
+        var unsigned_sum = 0u
+        for (v in urange(3u)) {
+            unsigned_sum += v
+        }
+        var big = 0ul
+        for (v in urange64(2ul, 4ul)) {
+            big += v
+        }
+        t |> equal("{seen}", "[ 2, 3, 4, 0, 10, 20]")
+        t |> equal(wide, 6l)
+        t |> equal(unsigned_sum, 3u)
+        t |> equal(big, 5ul)
+    }
+    t |> run("a range loop evaluates its start and its end once, start first, and continue goes to the next value") @(t : T?) {
+        trace |> clear()
+        var visited : array<int>
+        for (i in range(note(1), note(4))) {
+            if (i == 2) {
+                continue
+            }
+            visited |> push(i)
+        }
+        t |> equal("{trace}", "[ 1, 4]")
+        t |> equal("{visited}", "[ 1, 3]")
+    }
+}
+

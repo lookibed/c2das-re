@@ -623,7 +623,53 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 
 **Goal: the 35 fps interp bar and the full table.**
 
-- **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision), **O2
+- **P7.0 Perf method audit** (owner ruling 2026-10-22 (3), item C; branch `p7.0-perf-method`).
+  Landed: the root cause of `fib_loop` interp 186x and `primes` 7.5x against dasProfile's
+  hand-written 20x and 2.05x, measured construct by construct on the FX-6300 (five samples per cell,
+  each change alone): the converted loop shapes and the wrap casts, nothing else - `[sideeffects]`,
+  `options stack`, `[c_function]`, the global `count`/`result` per call, the clock, `bool` returns
+  and `[hint(unsafe_division_check)]` each move nothing. Three converter changes, idiomatic and
+  default (F66): a canonical counting `for` is a range loop (`primes` interp -63% alone), C's
+  wrapping signed sum `(int)((unsigned)a + (unsigned)b)` is `a + b` (`fib_loop` -43% alone), `x = x
+  op y` is `x op= y` (a further -23%), and a `for` body with no `continue` takes its increment last
+  instead of `finally` or the flag (-29% against `finally`, -49% against the flag); with them
+  `fib_loop` runs 0.060 s (31x native here, dasProfile's own hand-written das 32x on this machine)
+  and `primes` 0.135 s (2.8x, dasProfile 2.9x). `--loops while` / the sidecar's `"loops": "while"`
+  keeps the earlier `while` forms, both modes tested and captured (the `interp-while` lane, the
+  `@while` readability keys). `volatile` is kept (F65): the dumper's `vol` mark, `c_volatile_load` /
+  `c_volatile_store` over new `crt` forwarders, the fold probe on all four tiers; a whole volatile
+  record copied at once keeps the plain copy (csmith's programs copy volatile records, so failing
+  closed lost 40-odd csmith inputs), as do a bitfield and a `[c_union]` member, which have no
+  address. The JIT's 2.3x on `fib_loop` is no converter cost: the JIT tunes for the host (`bdver2`),
+  under which LLVM does not unroll a loop of unknown trip count (`clang -O3 -mtune=bdver2` on the C
+  file runs the JIT's 0.00437 s), and dasProfile's das kernel passes a literal count where its C++
+  reads a volatile one; the dasProfile-method lane gives the das side the volatile count its C++
+  side has. The dasProfile method (`perf/run.das --method dasprofile`: `kernel_run` noinline, a
+  volatile sink per run, the steady clock) over `fib_loop`, `fib_recursive` and `primes`, dasProfile
+  436d58d run on the same machine (`perf/dasprofile.sh`, the SDK at `/root/daScript-sdk`), the
+  comparison table generated into `README.md`; `scripts/run_perf.sh --from-scratch` and `--check`
+  (10% either way), `.github/workflows/perf.yml` running `--check` on release tags. NEEDS RULING
+  (owner): `very-detailed-plan.md` section 6 says the optimization tier is "Sidecar-gated, applied
+  only after demo-sync is green", O1 among it, while `lowering-examples.md` "General for" says
+  "Canonical counting loops take the O1 `for (i in range(n))` rewrite instead"; this item makes the
+  range rewrite the default (the readable and the faster form at once) with `--loops while` as the
+  opt-out - make the range rewrite default, or gate it on demo-sync per section 6. Same ruling for
+  the trailing increment, which "General for" does not show (it gives the flag, with `finally` as
+  the P1 alternative). Left undone, each measured: the range form of a `!=` counting test (`primes`'
+  outer loop, -5% interp; `!=` equals `<` only when the start is at most the bound, which the
+  converter cannot prove in general); `[hint(unsafe_division_check)]` on a function dividing by a
+  range loop's variable (0% interp, within +-3% JIT: not worth a rule). Upstream (daScript, nothing
+  filed but #24 and #25): (a) the interpreter runs `x = x + y` 1.3 to 1.7 times slower than `x +=
+  y`, and bimodally per process (0.077 or 0.100 s on `fib_loop`), where a peephole to the fused
+  op-assign node would close it; (b) a `while` body in a `{ } finally { }` block costs 29% over the
+  same loop with a trailing increment; (c) the JIT tunes for the host CPU and on `bdver2` skips the
+  runtime unrolling clang's generic tuning does, so the JIT and native lanes compare two code
+  generator settings (a `-mtune`/target-cpu option for the JIT would align them); (d) every
+  `uint(x)` conversion is an interpreter node of its own. F67 (an interpreter reinterpret of an
+  extern's result, the class of lookibed/daScript#3) is lookibed/daScript#25; F68 is
+  lookibed/daScript#24.
+- **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
+  landed in P7.0 as the default, pending its ruling), **O2
   `[unsafe_deref]`**, **O3 `[hint(unsafe_range_check)]`** — sidecar-gated, enabled only
   after demo-sync green, re-verify sync after enabling.
 - **P7.2 Profile** the renderer inner loops (R_DrawColumn/R_DrawSpan expected); apply

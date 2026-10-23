@@ -32,6 +32,8 @@ struct Args {
     @clarg_name = "param-writes"
     @clarg_doc = "a written scalar or pointer parameter: in-place (the default) or copy (a local copy, faster under the interpreter); overrides the sidecar's param_writes"
     param_writes : string = ""
+    @clarg_doc = "a canonical counting for loop: range (a das range loop, the default) or while (the while form every other for takes); overrides the sidecar's loops"
+    loops : string = ""
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -57,7 +59,11 @@ def main : int {
         to_log(LOG_ERROR, "c2das: --param-writes is in-place or copy, not `{args.param_writes}`; -? for help\n")
         return 2
     }
-    let res <- convert(args.input, args.out, args.target, "", args.sidecar, args.param_writes)
+    if (!empty(args.loops) && !is_loops(args.loops)) {
+        to_log(LOG_ERROR, "c2das: --loops is range or while, not `{args.loops}`; -? for help\n")
+        return 2
+    }
+    let res <- convert(args.input, args.out, args.target, "", args.sidecar, args.param_writes, args.loops)
     if (!res.ok) {
         to_log(LOG_ERROR, "c2das: {res.error}\n")
         return 1

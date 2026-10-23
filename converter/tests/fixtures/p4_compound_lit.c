@@ -109,6 +109,7 @@ static void increment(int c) {
     int *p = 0;
     for (int i = 0; i < 3; p = (int[]){ i, i, i }, i++) {
         int big[3] = { 100, 200, 300 };
+        if (i == 5) continue;
         if (p) {
             printf("increment %d %d\n", sum(p, 3), big[0]);
         }
@@ -116,6 +117,7 @@ static void increment(int c) {
     p = 0;
     for (int i = 0; i < 4; p = (int[]){ i, 1, 1 }, i++) {
         int big[3] = { 100, 200, 300 };
+        if (i == 5) continue;
         if (p) {
             printf("increment break %d %d\n", sum(p, 3), big[0]);
         }

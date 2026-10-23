@@ -35,7 +35,11 @@ read from the CRT that built the module, never restated in das; the standard str
 `stdout` and `stderr` are `crt::c_stdin()`, `crt::c_stdout()` and `crt::c_stderr()`. The entries
 no C name covers keep a `c_` name: `c_strtol32`, `c_strtoul32`, `c_atol32` and `c_ftell32` (section
 3), and `c_signal_host(sig, ignore)`, which installs the host's `SIG_IGN` or `SIG_DFL` for
-`c_runtime/c_signal.das`.
+`c_runtime/c_signal.das`; `c_volatile_load_<w>(p)` and `c_volatile_store_<w>(p, v)` for `w` in
+`i8 u8 i16 u16 i32 u32 i64 u64 f32 f64 ptr`, one access through a `volatile` pointer each, for
+`c_runtime/c_volatile.das`; and `c_monotonic_ns()`, the steady clock's nanoseconds
+(`std::chrono::steady_clock`, CLOCK_MONOTONIC on linux), which the perf harness's dasProfile
+method times by (`perf/ARCHITECTURE.md` section 2).
 
 The binds are the malloc family; `mem*`; string.h; ctype.h; the `strto*` and `ato*` conversions;
 libm's exotica; errno; `getenv`, `rand`, `srand`, `system`; time.h (`time`, `clock`, `difftime`,
@@ -83,7 +87,9 @@ which makes the whole body unsafe, and a hand-written caller writes `unsafe`. Pu
 entries (ctype, `abs`, and the libm entries that never set `errno`: `cbrt`, `copysign`, `trunc`,
 `round`) are `SideEffects::none` and safe. Anything that writes memory, reads or writes CRT state
 (`errno`, the `rand` seed, the environment, the clock, the `strerror` buffer, a signal's
-disposition) is `modifyExternal`: the optimizer may not fold or drop it. The libm entries glibc
+disposition) is `modifyExternal`: the optimizer may not fold or drop it. The volatile forwarders
+are too, each an extern call the JIT cannot see into, and under AOT an inline body whose
+`volatile` access clang++ keeps. The libm entries glibc
 reports a domain or range error through `errno` from (`fmod`, `fmodf`, `ldexp`, `nextafter`,
 `hypot`, `expm1`, `log1p`, `remainder`, `erf`, `erfc`, `tgamma`, `lgamma`, `fma`) are among them,
 so a call whose result the program discards, or whose arguments are constant, still runs.

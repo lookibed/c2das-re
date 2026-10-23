@@ -185,6 +185,14 @@ as-if-converted fixture test landing first.
   engine under daslib's `sort`: median-of-three Hoare partitions over the bytes, its own pivot
   copy, no das value), with the comparator in a block testing `< 0`; it is unstable, as C
   allows, and counts elements and bytes in `int`, so a call past that panics. `bsearch` is a binary search calling `cmp(key, element)` in C's order.
+- `c_runtime/c_volatile.das` - C's volatile access (`converter/ARCHITECTURE_EMITTER_LOOPS.md`):
+  `c_volatile_load(x)` and `c_volatile_store(x, v)` take the object by reference and read or
+  write it once through the `crt` forwarders that access it through a `volatile` pointer, so no
+  tier folds a read or drops a store. One overload per C scalar width, `bool` through its byte,
+  and a generic over any eight-byte value (a pointer, a function value) through its bits, whose
+  load lands the bits in a local before the reinterpret: the interpreter refuses a reinterpret
+  of a `crt` call's `uint64` result straight to a pointer ("typed eval on wrong extern return
+  kind", F67), which the JIT takes.
 - `tests/` - one dastest file per piece, written as the converter will emit the code,
   including a control that the same code without the piece is rejected or wrong. A test that
   compiles or runs a child program does so through `probes/_daslang_child.das`, the one child

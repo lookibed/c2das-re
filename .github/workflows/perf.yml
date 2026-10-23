@@ -1,0 +1,34 @@
+# The perf table reproduced on the self-hosted runner (AGENTS.md "Git workflow"): on every release
+# tag and on request, `scripts/run_perf.sh --check` reruns both methods and fails when a cell
+# drifts from the committed captures past the FLAG rule's 10%. The toolchain and the machine the
+# captures name live only on that runner. A run for a fork never reaches it: the job runs only in
+# this repository.
+name: perf
+
+on:
+  push:
+    tags: ['v0.*.0']
+  workflow_dispatch:
+
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  perf-check:
+    if: github.repository == 'lookibed/c2das-re'
+    runs-on: [self-hosted, c2das]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: build the crt module
+        run: bash scripts/build_crt.sh
+
+      - name: run_perf.sh --check
+        run: bash scripts/run_perf.sh --check

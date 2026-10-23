@@ -92,6 +92,8 @@ struct CirExpr {
     list : CirExpr?
     arg_t : int
     init : CirExpr?
+    // an lvalue (`ref`, `member`, `index`, `un deref`) whose C type is volatile-qualified
+    vol : bool
     macro : string
 }
 
@@ -556,6 +558,10 @@ def private write_expr(var w : Writer; x : CirExpr) {
     } else {
         write_expr_composite(w, x)
     }
+    if (x.vol) {
+        member(w, "vol", false)
+        w.out |> push("true")
+    }
     if (!empty(x.macro)) {
         member(w, "macro", false)
         w.out |> push(json_str(x.macro))
@@ -995,6 +1001,7 @@ def private read_expr(js : JsonValue?) : CirExpr? {
     } else {
         read_expr_composite(js, x)
     }
+    x.vol = js_bool(js, "vol")
     x.macro = js_str(js, "macro")
     return x
 }
