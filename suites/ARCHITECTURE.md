@@ -17,13 +17,19 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   compile check refused it), `timeout` (the module ran past the suite's limit), `exit`,
   `output`, or `skip`. The ratchet and the ledger live
   here too: a listed id that stops passing fails the run; an id that starts passing is
-  reported and `--update` writes it in; a failing test that is not listed is a count in the
-  summary, not a skip. `--audit-skips` (`audit_suite`) runs the ledgered ids alone, as an
-  unlisted id would run, and neither judges nor writes the ratchet: `finish_audit` writes
-  `work/skip_audit.tsv` (id, feature, status, the reason's first line) and logs the tally per
-  feature, where `audit_status` names a `convert` by the stage its error names (`dumper`,
-  `emitter`, `compile`) and an `output` as `mismatch`; the csmith driver's `--audit-skips`
-  judges its ledgered seeds the same way. Its pieces serve the csmith driver too: `record` and `count_status` (one outcome into the `Tally`),
+  reported, and `--update` rewrites the file as the ids the run passed, so a listed id that
+  failed leaves it while the run exits 1; a failing test that is not listed is a count in the
+  summary, not a skip. `--audit-skips` (`audit_suite`) runs the ledgered ids alone
+  (`audited_lines`: each id once, sorted), as an unlisted id would run, and does not judge the
+  ratchet: `finish_audit` writes `work/skip_audit.tsv` (id, feature, status, the reason's first
+  line) and logs the tally per feature, where `audit_status` names a `convert` by the stage its
+  error names (`dumper`, `emitter`, `compile`) and an `output` as `mismatch`, and a ledgered id
+  with no `.c` file is `missing`; the csmith driver's `--audit-skips` judges its ledgered seeds
+  the same way, its own `native` (the native build or run failed) and `crash` (a worker ended
+  without a verdict) passing through. With `--update` an audit only adds to the ratchet
+  (`join_audit_passes`): the ids that passed join, sorted, and nothing leaves; their skip lines
+  stay until the ledger is rewritten, by `gcc_torture/filter.das` for the torture suite and by
+  hand for csmith's. Its pieces serve the csmith driver too: `record` and `count_status` (one outcome into the `Tally`),
   `finish_run` (the summary, `--update`'s write of the ids it is handed unless the run was
   filtered, the exit code), `convert_and_run` (one C file converted and run under the
   interpreter, with extra interpreter flags when a suite needs them), `compare_output` (an
@@ -35,8 +41,9 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
 - `suite_files.das` - what the suites and the readability metric agree on, needing no module
   folder so the `REVIEW.das` gates require it: `read_lines` and `read_ratchet` (the ratchet and
   the ledger as a run reads them), `c_file_ids` (the `.c` files of a folder by id, the suites'
-  tests and the perf kernels), `phase_number`, `highest_closed_phase` and `names_closed_phase`
-  (the closed-phase check of `REVIEW.das`), `expected_input_keys` (the input keys the readability capture
+  tests and the perf kernels), `phase_well_formed` (a phase column is `never` or a row id,
+  `P<n>` or `P<n>.<m>` with at most one lowercase letter after `<m>`), `phase_number`,
+  `highest_closed_phase` and `names_closed_phase` (the closed-phase check of `REVIEW.das`), `expected_input_keys` (the input keys the readability capture
   holds: each suite's listed ids less its ledgered ones, and every kernel as `perf/<kernel>` and
   `perf/<kernel>@copy`) and `gate_untracked`
   (a gate finding per tracked file under regenerated folders).
@@ -51,19 +58,23 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   commit `VERSIONS.md` pins, holding only `gcc/testsuite/gcc.c-torture/execute`.
 - `gcc_torture/filter.das` - the import's filter, run by hand after a fetch and after a change to
   the ratchet: `skip.txt` gets a line for every top-level `execute/*.c` the first of the `RULES`
-  in `gcc_torture/filter_rules.das` matches, less the ids `expected_pass.txt` lists, since a test
-  that passes is judged, never skipped (a rule can only read the text; the ratchet knows what
-  runs), so the file is reproducible from the filter and the ratchet. The rules come in the
-  order a test meets the constructs: the ones no emulation reaches (asm with template text or
-  operands, `-finstrument-functions`, the builtins clang does not know, frame and return
-  addresses, the non-standard floating types, atomics and thread-local storage) with the phase
-  `never`, then the rows that will carry one (a test asking gcc for `-std=gnu89` or
-  `-fpermissive` under P7.8; `_Complex` and wide strings under P7.5; `__int128`, vectors, labels
-  as values, case ranges, the GNU keywords, an attribute outside the dumper's dropped list
-  (`attribute_names`), the overflow and setjmp builtins and any `__builtin_*` the emitter does not
-  map (`unmapped_builtins`) under P7.6). A test that fails for a reason no rule can read is an
-  ordinary failure the run counts. The `builtins/` and `ieee/` subfolders are not part of the
-  suite.
+  in `gcc_torture/filter_rules.das` matches, less the ids `expected_pass.txt` lists
+  (`skip_lines`), since a test that passes is judged, never skipped (a rule can only read the
+  text; the ratchet knows what runs), so the file is reproducible from the filter and the
+  ratchet. Both directions follow: an id an audit's `--update` adds to the ratchet loses its line
+  at the next rewrite, and an id taken out of the ratchet by hand gets its line back when a rule
+  matches it. The rules fire in their table order, the first match naming the line: the
+  constructs no emulation reaches (asm with template text or operands, `-finstrument-functions`,
+  the argument forwarding builtins, the builtins clang does not know, a variable-length array in
+  a block-scope struct, frame and return addresses, the non-standard floating types, atomics and
+  thread-local storage) with the phase `never`, then the rows that will carry one (a test asking
+  gcc for `-std=gnu89` or `-fpermissive`, or calling `__builtin_exit`, which only the permissive
+  flags declare, under P7.8; `_Complex`, wide literals and a block-scope function declaration
+  under P7.5; `__int128`, vectors, labels as values, case ranges, the GNU keywords, an attribute
+  outside the dumper's dropped list (`attribute_names`), `packed` or `aligned` alone, the overflow
+  and setjmp builtins and any `__builtin_*` the emitter does not map (`unmapped_builtins`) under
+  P7.6). A test that fails for a reason no rule can read is an ordinary failure the run counts.
+  The `builtins/` and `ieee/` subfolders are not part of the suite.
 - `gcc_torture/run.das` - the torture suite on the shared runner: a test passes when its module
   exits 0, the gcc harness's own contract (a failing test calls `abort`); output is not
   judged, as that harness does not judge it.
@@ -91,7 +102,7 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   feature, the reason and the ledger row (`P<n>.<m>`) or phase that unblocks it, `never` for a
   feature no row will lift.
 - `REVIEW.das` - the gate over the three suites: `expected_pass.txt` sorted and unique, every
-  `skip.txt` line in the four-field shape with a phase or `never`, no line naming a closed phase
+  `skip.txt` line in the four-field shape with a row id or `never` (`phase_well_formed`), no line naming a closed phase
   (`names_closed_phase` in `suite_files.das`: a phase at or below the highest `v0.<N>.0` tag the
   repository carries, `highest_closed_phase`, never below `CLOSED_PHASE_FLOOR`, 4, since a
   shallow clone carries no tag), no id in both files, every
@@ -104,7 +115,7 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
 ## 2. Why the suites are not preflight gates
 
 A full c-testsuite run converts 220 files and spawns clang and daslang for each, a minute on
-this box, and the torture suite converts the 1333 of its 1656 the ledger does not skip, and a csmith seed takes up
+this box, and the torture suite converts the 1335 of its 1656 the ledger does not skip, and a csmith seed takes up
 to a minute to convert; the
 preflight `tests` lane stays the sub-second
 dastest suites. The runners keep

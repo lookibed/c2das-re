@@ -1,6 +1,5 @@
 options gen2
 
-require strings
 require daslib/strings_boost
 require daslib/fio
 require dastest/review_gate
@@ -25,7 +24,7 @@ def private check_suite(suite : string; highest_closed : int) {
     }
     for (line in read_lines(skip_path)) {
         var inscope fields <- split(line, "\t")
-        if (length(fields) != 4 || !(fields[3] |> starts_with("P") || fields[3] == "never")) {
+        if (length(fields) != 4 || !phase_well_formed(fields[3])) {
             gate_finding(skip_path, "`{line}`: a skip line is id, feature, reason, ledger row id (P<n>.<m>, or never for a construct the dialect excludes or clang rejects), tab-separated")
             continue
         }

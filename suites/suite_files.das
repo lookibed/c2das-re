@@ -140,6 +140,28 @@ def phase_number(phase : string) : int {
     return is_digit_run(digits, 0) ? to_int(digits) : -1
 }
 
+//! Whether a skip line's phase column is `never` or a ledger row id: `P7`, `P7.5`, `P5.1c` (a
+//! row's minor number may end in one lowercase letter); `P4a`, `Px` and `P7.` are not.
+def phase_well_formed(phase : string) : bool {
+    if (phase == "never") {
+        return true
+    }
+    if (!(phase |> starts_with("P"))) {
+        return false
+    }
+    var inscope parts <- split(slice(phase, 1), ".")
+    if (length(parts) > 2 || !is_digit_run(parts[0], 0)) {
+        return false
+    }
+    if (length(parts) == 1) {
+        return true
+    }
+    let minor = parts[1]
+    let last = slice(minor, length(minor) - 1)
+    let lettered = length(minor) > 1 && last >= "a" && last <= "z"
+    return is_digit_run(lettered ? slice(minor, 0, length(minor) - 1) : minor, 0)
+}
+
 //! The highest closed phase: the largest N among `tags` spelled `v0.<N>.0`, never below
 //! `CLOSED_PHASE_FLOOR`.
 def highest_closed_phase(tags : array<string>) : int {

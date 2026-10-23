@@ -257,33 +257,6 @@ let ALLOCA_NAMES <- {"alloca", "__builtin_alloca"}
 
 let EXPECT = "__builtin_expect"
 
-let CONSTANT_P = "__builtin_constant_p"
-
-// the expressions `__builtin_constant_p` takes for constants: literals, enum constants and the
-// sizes, and the arithmetic, casts and conditionals over them; a name, a call, a dereference, an
-// address and a step are not
-def private is_constant_expr(x : CirExpr?) : bool {
-    if (x == null) {
-        return false
-    }
-    if (x.e == "int_lit" || x.e == "float_lit" || x.e == "str_lit" || x.e == "enum_ref" || x.e == "sizeof_v" || x.e == "alignof_v" || x.e == "offsetof") {
-        return true
-    }
-    if (x.e == "cast") {
-        return is_constant_expr(x.a)
-    }
-    if (x.e == "un") {
-        return (x.op == "neg" || x.op == "plus" || x.op == "not" || x.op == "bnot") && is_constant_expr(x.a)
-    }
-    if (x.e == "bin") {
-        return is_constant_expr(x.a) && is_constant_expr(x.b)
-    }
-    if (x.e == "cond") {
-        return is_constant_expr(x.c) && is_constant_expr(x.a) && is_constant_expr(x.b)
-    }
-    return false
-}
-
 let ALLOCA_LIMIT = 65536
 
 // the context stack every converted module asks for, C's default on linux (8 MiB): das's own
@@ -1287,11 +1260,6 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     if (called_name(x) == EXPECT && length(x.args) == 2) {
         // GCC's branch hint is its first operand's value; the second is a constant
         return emit_expr(em, tu, x.args[0], loc)
-    }
-    if (called_name(x) == CONSTANT_P && length(x.args) == 1) {
-        // GCC's unoptimized answer: 1 for a constant expression, 0 for anything else, whose
-        // operand GCC never evaluates
-        return value(is_constant_expr(x.args[0]) ? "1" : "0", PREC_PRIMARY)
     }
     if (key_exists(CRT_CONSTANT_CALLS, called_name(x)) && empty(x.args)) {
         em.requires |> insert("crt")

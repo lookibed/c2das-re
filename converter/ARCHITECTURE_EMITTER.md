@@ -257,9 +257,8 @@ a fixed array hoisted inside a loop body would die with the iteration (F24). The
 sidecar's `alloca_limit`, 65536 by default, which the module's 8 MiB stack holds. A `__builtin_` name whose libc twin the call
 tables carry is that twin (the shim list), so `__builtin_alloca`, `__builtin_memcpy` and
 `__builtin_abort` lower like their plain names; `__builtin_expect(e, c)` is `e`, and `__builtin_huge_val()` (`HUGE_VAL`) the constant `crt::HUGE_VAL`.
-`__builtin_constant_p(e)` is GCC's unoptimized answer, `1` for a constant expression (literals,
-enum constants and sizes, and the arithmetic, casts and conditionals over them) and `0` for any
-other, whose operand is never evaluated, as GCC never evaluates it. The bit builtins
+`__builtin_constant_p(e)` never reaches the emitter from Dumper A: the dumper writes clang's
+answer as an integer literal (`ARCHITECTURE_DUMPER.md` "`__builtin_constant_p`"). The bit builtins
 (`ffs`, `ctz`, `clz`, `popcount`, `parity`, `clrsb`, each with its `l` and `ll` spellings),
 `bswap16/32/64`, `signbit`, `unreachable` and `prefetch` are calls of the
 `c_runtime/c_builtins` piece, the `l` and `ll` spellings reaching the overload of the operand's

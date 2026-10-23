@@ -1,5 +1,7 @@
 options gen2
 require dastest/testing_boost public
+require daslib/regex
+require daslib/regex_boost
 
 [test]
 def test_strings(t : T?) {
@@ -45,5 +47,17 @@ def test_strings(t : T?) {
             t |> equal(int(deref(q + 2)), 'c')
             t |> equal(intptr(p) != intptr(q), true)
         }
+    }
+}
+
+[test]
+def test_regex_alternation(t : T?) {
+    t |> run("daslib regex: a repeated group whose alternatives share a prefix misses a match (F71); an optional suffix finds it") @(t : T?) {
+        var prefixed <- regex_compile("x(aba|ab|b)*c")
+        t |> equal(regex_search(prefixed, "xabac").x, -1, "the engine settles on the first alternative and never retries the group")
+        var optional <- regex_compile("x(ab(a)?|b)*c")
+        t |> equal(regex_search(optional, "xabac").x, 0)
+        var keyword <- regex_compile("\\b(__asm(__)?|asm)(\\s|__volatile(__)?|volatile)*\\(")
+        t |> equal(regex_search(keyword, "x __asm __volatile__ (").x, 2)
     }
 }

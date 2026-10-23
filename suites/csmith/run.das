@@ -59,7 +59,7 @@ struct CsmithArgs {
     filter : string = ""
     @clarg_doc = "seeds converted at once, one worker process each"
     jobs : int = 4
-    @clarg_doc = "judge only the seeds skip.txt lists, writing work/skip_audit.tsv; the ratchet is neither judged nor written"
+    @clarg_doc = "judge only the seeds skip.txt lists, writing work/skip_audit.tsv; the ratchet is not judged, and only --update writes it, adding the audited seeds that pass"
     audit_skips : bool
     @clarg_doc = "worker: generate, build, convert and judge this seed, writing work/<seed>/<seed>.verdict"
     one : string = ""
@@ -251,15 +251,19 @@ def private ratchet_after(ratchet : Ratchet; failed : table<string>; tally : Tal
 }
 
 // the skip audit: every seed skip.txt lists whose number holds `filter` judged through a worker,
-// with no rerun of a timeout, into work/skip_audit.tsv
-def private audit_seeds(filter : string; jobs : int) {
-    var feature_of <- {for (line in read_skip_lines(SKIP_LEDGER)); line.id => line.feature; where empty(filter) || find(line.id, filter) >= 0}
-    var seeds <- [for (s in keys(feature_of)); s]
-    seeds |> sort()
+// with no rerun of a timeout, into work/skip_audit.tsv; under `update` the seeds that pass join
+// the ratchet
+def private audit_seeds(filter : string; jobs : int; update : bool) {
+    let lines <- audited_lines(read_skip_lines(SKIP_LEDGER), filter)
+    let feature_of <- {for (line in lines); line.id => line.feature}
+    let seeds <- [for (line in lines); line.id]
     var outcomes : array<Outcome>
     drive(seeds, jobs, outcomes)
     let rows <- [for (o in outcomes); audit_row(feature_of?[o.id] ?? "", o)]
     finish_audit("csmith", WORK_DIR, rows)
+    if (update) {
+        join_audit_passes("csmith", EXPECTED_PASS, rows)
+    }
 }
 
 // the gcc version VERSIONS.md pins against `gcc -dumpfullversion`: "" when they agree
@@ -300,7 +304,7 @@ def main : int {
         return 2
     }
     if (args.audit_skips) {
-        audit_seeds(args.filter, args.jobs)
+        audit_seeds(args.filter, args.jobs, args.update)
         return 0
     }
     let ratchet <- read_ratchet(EXPECTED_PASS, SKIP_LEDGER)

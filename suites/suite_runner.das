@@ -27,7 +27,7 @@ struct Args {
     verbose : bool
     @clarg_doc = "dialect for the conversion: linux (this host's baseline) or msvc"
     target : string = "linux"
-    @clarg_doc = "run only the ids skip.txt lists, writing work/skip_audit.tsv; the ratchet is neither judged nor written"
+    @clarg_doc = "run only the ids skip.txt lists, writing work/skip_audit.tsv; the ratchet is not judged, and only --update writes it, adding the audited ids that pass"
     audit_skips : bool
     @clarg_short = "?"
     @clarg_name = "show-help"
@@ -99,14 +99,19 @@ def finish_run(name, expected_pass : string; tally : Tally; update, filtered : b
         to_log(LOG_INFO, "newly passing: {join(tally.gained, " ")} ({how})\n")
     }
     if (write) {
-        let lines <- [for (id in ratchet_ids); "{id}\n"]
-        fwrite(expected_pass, "# {name} tests that pass under the interpreter; the ratchet, kept sorted\n{join(lines, "")}")
+        write_ratchet(name, expected_pass, ratchet_ids)
     }
     if (!empty(tally.regressions)) {
         to_log(LOG_ERROR, "ratchet broken, these passed before: {join(tally.regressions, " ")}\n")
         return 1
     }
     return 0
+}
+
+//! `ids`, sorted, written as the ratchet `expected_pass` of suite `name`.
+def write_ratchet(name, expected_pass : string; ids : array<string>) {
+    let lines <- [for (id in ids); "{id}\n"]
+    fwrite(expected_pass, "# {name} tests that pass under the interpreter; the ratchet, kept sorted\n{join(lines, "")}")
 }
 
 //! A C file converted into `work` under `target` and, when it converts, run under the
@@ -174,6 +179,21 @@ def skip_line(line : string) : SkipLine {
 }
 
 def read_skip_lines(skip_ledger : string) : array<SkipLine> => [for (line in read_lines(skip_ledger)); skip_line(line)]
+
+//! The ledger lines an audit judges: each id once, the first line naming it, those whose id holds
+//! `filter` (all for ""), sorted by id.
+def audited_lines(lines : array<SkipLine>; filter : string) : array<SkipLine> {
+    var seen : table<string>
+    var kept : array<SkipLine>
+    for (line in lines) {
+        if (!key_exists(seen, line.id) && (empty(filter) || find(line.id, filter) >= 0)) {
+            seen |> insert(line.id)
+            kept |> push(line)
+        }
+    }
+    kept |> sort() $(a, b) => a.id < b.id
+    return <- kept
+}
 
 //! One ledgered id's outcome in the skip audit.
 struct AuditRow {
@@ -245,20 +265,52 @@ def finish_audit(name, work_dir : string; rows : array<AuditRow>) {
 }
 
 //! The skip audit of a file-based suite: every id `skip.txt` lists whose name holds `filter`
-//! is converted and run as an unlisted id would be; the rows, which `finish_audit` wrote too.
+//! is converted and run as an unlisted id would be, and a listed id with no `.c` file is
+//! `missing`; the rows, which `finish_audit` wrote too.
 def audit_suite(spec : SuiteSpec; filter, target : string; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : array<AuditRow> {
     var present : table<string>
     for (id in c_file_ids(spec.tests_dir, filter)) {
         present |> insert(id)
     }
-    var rows <- [for (line in read_skip_lines(spec.skip_ledger)); audit_row(line.feature, run_one(spec, line.id, target, verdict)); where key_exists(present, line.id)]
+    var rows : array<AuditRow>
+    for (line in audited_lines(read_skip_lines(spec.skip_ledger), filter)) {
+        if (key_exists(present, line.id)) {
+            rows |> push(audit_row(line.feature, run_one(spec, line.id, target, verdict)))
+        } else {
+            rows |> push(AuditRow(id = line.id, feature = line.feature, status = "missing", reason = "no {line.id}.c in {spec.tests_dir}"))
+        }
+    }
     finish_audit(spec.name, spec.work_dir, rows)
     return <- rows
 }
 
+//! `--audit-skips --update`: the audited ids that passed join the ratchet `expected_pass` of suite
+//! `name`, which only grows (a failure, a timeout or a missing file joins nothing, and no listed id
+//! leaves); the count that joined. Their `skip.txt` lines stay until the ledger is rewritten
+//! (`gcc_torture/filter.das` for the torture suite).
+def join_audit_passes(name, expected_pass : string; rows : array<AuditRow>) : int {
+    var ids <- read_lines(expected_pass)
+    var listed : table<string>
+    for (id in ids) {
+        listed |> insert(id)
+    }
+    var joined = 0
+    for (row in rows) {
+        if (row.status == "pass" && !key_exists(listed, row.id)) {
+            listed |> insert(row.id)
+            ids |> push(row.id)
+            joined++
+        }
+    }
+    ids |> sort()
+    write_ratchet(name, expected_pass, ids)
+    to_log(LOG_INFO, "{name} skip audit: {joined} passing ids joined {expected_pass}; rewrite skip.txt so their lines go\n")
+    return joined
+}
+
 //! The whole run from the command line: exit 0 when the ratchet holds, 1 when a listed id
 //! stopped passing, 2 when the suite is not fetched; under `--audit-skips` the skip audit,
-//! exit 0.
+//! exit 0, its passing ids joining the ratchet under `--update`.
 def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : int {
     var args = Args()
     let parsed = cli_prologue(args, "run_suite {spec.name}")
@@ -270,7 +322,10 @@ def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : s
         return 2
     }
     if (args.audit_skips) {
-        audit_suite(spec, args.filter, args.target, verdict)
+        let rows <- audit_suite(spec, args.filter, args.target, verdict)
+        if (args.update) {
+            join_audit_passes(spec.name, spec.expected_pass, rows)
+        }
         return 0
     }
     let ratchet <- read_ratchet(spec.expected_pass, spec.skip_ledger)

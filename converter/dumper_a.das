@@ -114,6 +114,9 @@ struct Dumper {
     // cursor libclang's walk is at
     offsetof_at : table<string; CirLoc>
     init_lists : int
+    // clang's answer to each `__builtin_constant_p` call by its key (`register_constant_p`): 1 or
+    // 0, or `CONSTANT_P_NESTED` or `CONSTANT_P_SPLIT` for a call the conversion refuses
+    constant_p_by_loc : table<string; int>
     // the labels of the function being dumped, by the id a GotoStmt names
     label_names : table<string; string>
     // the typedef names whose declaration reaches clang's implicit `__builtin_va_list`, and the
@@ -131,9 +134,8 @@ struct Dumper {
     aligned_names : table<string>
     // the bytes of clang's JSON dump
     json_bytes : int64
-    // the main file's text, read once an asm statement asks for its source
-    c_text : string
-    c_text_read : bool
+    // why the conversion refuses each asm statement by its key (`register_asm`), "" for a barrier
+    asm_by_loc : table<string; string>
     // the names the program defines (a function with a body, a variable with no `extern` or
     // with an initializer): a `weak` attribute is dropped only on one of these
     defined_names : table<string>
@@ -510,6 +512,86 @@ def private register_offsetof(var d : Dumper; var c : CXCursor) {
     d.offsetofs_by_loc[key] |> emplace(off)
 }
 
+// an asm statement, as clang parsed it (the template a macro argument gives included): a compiler
+// barrier, an empty template with no operand and no `goto` and at most clobbers, is "", since it
+// orders nothing a das run observes; any other is the reason the conversion refuses it, an asm one
+// macro expansion spells twice from one token keeping the first refusal
+[arch(at="ARCHITECTURE_DUMPER.md#attributes-and-asm")]
+def private register_asm(var d : Dumper; var c : CXCursor) {
+    var reason = ""
+    if (clang_Cursor_isGCCAssemblyHasGoto(c) != 0u) {
+        reason = "`asm goto` jumps to a label from machine code; no emulation exists in the das runtime"
+    } elif (!empty(string(clang_Cursor_getGCCAssemblyTemplate(c)))) {
+        reason = "inline asm with template text is machine code; no emulation exists in the das runtime"
+    } elif (clang_Cursor_getGCCAssemblyNumOutputs(c) != 0u || clang_Cursor_getGCCAssemblyNumInputs(c) != 0u) {
+        reason = "inline asm with operands is a register binding; no emulation exists in the das runtime"
+    }
+    let key = cursor_key(d, c)
+    let earlier = d.asm_by_loc?[key] ?? ""
+    d.asm_by_loc[key] = empty(earlier) ? reason : earlier
+}
+
+let CONSTANT_P = "__builtin_constant_p"
+
+// a `__builtin_constant_p` whose argument holds another one clang's evaluator cannot fold: the
+// -O0 build answers by what its code generator folds, which no evaluation reproduces
+let CONSTANT_P_NESTED = -1
+
+// two calls at one key (one macro expansion spelling both from one token) clang answers apart
+let CONSTANT_P_SPLIT = -2
+
+// a call the libclang pass never met
+let CONSTANT_P_UNSEEN = -3
+
+// a `__builtin_constant_p` the evaluator cannot fold whose argument holds a comma operator: the
+// code generator emits the right operand on its own, which can be a constant
+let CONSTANT_P_COMMA = -4
+
+// clang's answer to a `__builtin_constant_p` call, as the pinned clang's -O0 build gives it: the
+// evaluator's fold of the call (`clang_Cursor_Evaluate`); where it gives none the build answers
+// `llvm.is_constant` over the value its code generator emits for the argument, which is 0 but
+// across a comma operator, whose right operand the generator emits on its own, or a nested call:
+// those two are refused (`probes/test_toolchain.das`)
+[arch(at="ARCHITECTURE_DUMPER.md#builtin-constant-p")]
+def private register_constant_p(var d : Dumper; var c : CXCursor) {
+    if (string(clang_getCursorSpelling(c)) != CONSTANT_P) {
+        return
+    }
+    var v = 0
+    var res = clang_Cursor_Evaluate(c)
+    if (res != null) {
+        v = clang_EvalResult_getKind(res) == CXEvalResultKind.Int && clang_EvalResult_getAsLongLong(res) != 0l ? 1 : 0
+        clang_EvalResult_dispose(res)
+    } elif (holds_constant_p(c)) {
+        v = CONSTANT_P_NESTED
+    } elif (holds_comma(c)) {
+        v = CONSTANT_P_COMMA
+    }
+    let key = cursor_key(d, c)
+    let earlier = d.constant_p_by_loc?[key] ?? v
+    d.constant_p_by_loc[key] = earlier == v ? v : CONSTANT_P_SPLIT
+}
+
+// whether a `__builtin_constant_p` call sits anywhere under cursor `c`
+def private holds_constant_p(var c : CXCursor) : bool {
+    var found = false
+    clang_visitChildren(c) $(var kid, _parent) {
+        found = clang_getCursorKind(kid) == CXCursorKind.CallExpr && string(clang_getCursorSpelling(kid)) == CONSTANT_P
+        return found ? CXChildVisitResult.Break : CXChildVisitResult.Recurse
+    }
+    return found
+}
+
+// whether a comma operator sits anywhere under cursor `c`, casts included
+def private holds_comma(var c : CXCursor) : bool {
+    var found = false
+    clang_visitChildren(c) $(var kid, _parent) {
+        found = clang_getCursorKind(kid) == CXCursorKind.BinaryOperator && string(clang_getCursorSpelling(kid)) == ","
+        return found ? CXChildVisitResult.Break : CXChildVisitResult.Recurse
+    }
+    return found
+}
+
 // the definition of an external file's record that `decl` declares, laid out like a program's,
 // and every external record its fields hold by value; nothing for a program's record or one
 // no file defines
@@ -594,6 +676,12 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
             walk_records(d, kid)
         } elif (kind == CXCursorKind.UnexposedExpr) {
             register_offsetof(d, kid)
+            walk_records(d, kid)
+        } elif (kind == CXCursorKind.CallExpr) {
+            register_constant_p(d, kid)
+            walk_records(d, kid)
+        } elif (kind == CXCursorKind.AsmStmt) {
+            register_asm(d, kid)
             walk_records(d, kid)
         } elif (kind == CXCursorKind.InitListExpr) {
             d.init_lists++
@@ -1645,6 +1733,9 @@ def private dump_call(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : C
         return null
     }
     let kids = js?["inner"]
+    if (callee_name((kids as _array)[0]) == CONSTANT_P) {
+        return dump_constant_p(d, js, t, at)
+    }
     var x = new CirExpr(e = "call", t = t)
     x.fn = child_expr(d, kids, 0)
     if (x.fn == null || !dump_args(d, kids, 1, nkids, x)) {
@@ -1652,6 +1743,35 @@ def private dump_call(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : C
         return null
     }
     return x
+}
+
+// the name a callee references through its decay and parentheses, "" for any other callee
+def private callee_name(js : JsonValue?) : string {
+    let kind = node_kind(js)
+    if (child_count(js) > 0 && (kind == "ImplicitCastExpr" || kind == "ParenExpr")) {
+        return callee_name((js?["inner"] as _array)[0])
+    }
+    return kind == "DeclRefExpr" ? js?["referencedDecl"]?["name"] ?? "" : ""
+}
+
+// a `__builtin_constant_p` call is the integer literal clang's answer is, so the argument is
+// never dumped, let alone evaluated
+[arch(at="ARCHITECTURE_DUMPER.md#builtin-constant-p")]
+def private dump_constant_p(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
+    let v = d.constant_p_by_loc?[node_key(d, js)] ?? CONSTANT_P_UNSEEN
+    if (v >= 0) {
+        return new CirExpr(e = "int_lit", t = t, v = "{v}")
+    }
+    if (v == CONSTANT_P_NESTED) {
+        fail(d, "a `__builtin_constant_p` whose argument holds another one clang cannot fold is not lowered (the -O0 answer is the code generator's)", at)
+    } elif (v == CONSTANT_P_COMMA) {
+        fail(d, "a `__builtin_constant_p` over a comma operator clang cannot fold is not lowered (the -O0 answer is the code generator's, which emits a constant across a comma)", at)
+    } elif (v == CONSTANT_P_SPLIT) {
+        fail(d, "two `__builtin_constant_p` calls of one macro expansion that clang answers apart are not lowered", at)
+    } else {
+        fail(d, "`__builtin_constant_p`: libclang reports no call at this location", at)
+    }
+    return null
 }
 
 def private dump_subscript(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
@@ -2410,110 +2530,71 @@ def private dump_for(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
 
 let LEAF_STMTS <- {"NullStmt" => "null", "BreakStmt" => "break", "ContinueStmt" => "continue"}
 
-// an asm statement: a compiler barrier (an empty template, no operand, at most clobbers) is the
-// empty statement, since it orders nothing a das run observes; any other is machine code or a
-// register binding, which no das spelling emulates
+// the GNU statement forms: an asm statement and a statement that carries attributes
+let GNU_STMT_KINDS <- {"GCCAsmStmt", "AttributedStmt"}
+
+// an asm statement: a compiler barrier is the empty statement; any other fails closed with the
+// reason the libclang pass gave it
 [arch(at="ARCHITECTURE_DUMPER.md#attributes-and-asm")]
 def private dump_asm(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
-    if (child_count(js) == 0 && is_barrier_asm(asm_source(d, js))) {
+    let key = node_key(d, js)
+    if (!key_exists(d.asm_by_loc, key)) {
+        fail(d, "inline asm: libclang reports no statement at this location", at)
+        return null
+    }
+    let reason = d.asm_by_loc?[key] ?? ""
+    if (empty(reason)) {
         return new CirStmt(s = "null", loc = at)
     }
-    fail(d, "inline asm with template text or operands is machine code or a register binding; no emulation exists in the das runtime", at)
+    fail(d, reason, at)
     return null
 }
 
-// the source text of a statement in the main file, from its first token to its last (a macro's
-// statement as its definition spells it); "" when it lies outside the main file
-def private asm_source(var d : Dumper; js : JsonValue?) : string {
-    let b = js?["range"]?["begin"]
-    let e = js?["range"]?["end"]
-    let bs = is_present(b?["spellingLoc"]) ? b?["spellingLoc"] : b
-    let es = is_present(e?["spellingLoc"]) ? e?["spellingLoc"] : e
-    let main = canonical_file(d, d.c_path)
-    if (canonical_file(d, bs?["file"] ?? "") != main || canonical_file(d, es?["file"] ?? "") != main) {
-        return ""
-    }
-    if (!d.c_text_read) {
-        d.c_text = fread(d.c_path)
-        d.c_text_read = true
-    }
-    let first = int(bs?["offset"] ?? -1l)
-    let last = int(es?["offset"] ?? -1l)
-    if (first < 0 || last < first || last >= length(d.c_text)) {
-        return ""
-    }
-    return slice(d.c_text, first, last + 1)
-}
+def private dump_gnu_stmt(var d : Dumper; js : JsonValue?; kind : string; at : CirLoc) : CirStmt? =>
+    kind == "GCCAsmStmt" ? dump_asm(d, js, at) : dump_attributed(d, js, at)
 
-//! Whether `text`, an asm statement's source, is a compiler barrier: `asm`, `__asm` or `__asm__`
-//! with any of `volatile` and `inline` (never `goto`), then a parenthesized body of empty
-//! template strings, no output or input operand, and at most a clobber list: `asm("")`,
-//! `asm volatile("" ::: "memory")`.
-def is_barrier_asm(text : string) : bool {
-    let open = find(text, "(")
-    if (open < 0 || !(text |> ends_with(")"))) {
-        return false
-    }
-    for (word in split(replace(strip(slice(text, 0, open)), "\t", " "), " ")) {
-        if (!empty(word) && !key_exists(ASM_HEAD_WORDS, word)) {
-            return false
+// a statement that carries attributes (`__attribute__((fallthrough));`, `[[fallthrough]];`) is
+// its statement: `check_attributes` judged the attributes with the declaration around it
+def private dump_attributed(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
+    for (idx in range(child_count(js))) {
+        let kid = (js?["inner"] as _array)[idx]
+        if (!(node_kind(kid) |> ends_with("Attr"))) {
+            return dump_stmt(d, kid)
         }
     }
-    var section = 0
-    var barrier = true
-    peek_data(text) $(bytes) {
-        var at = open + 1
-        let stop = length(bytes) - 1
-        while (barrier && at < stop) {
-            let ch = int(bytes[at])
-            if (ch == '"') {
-                var close = at + 1
-                while (close < stop && int(bytes[close]) != '"') {
-                    close += int(bytes[close]) == '\\' ? 2 : 1
-                }
-                // a template string is empty; an operand's constraint string sits in section 1 or 2
-                barrier = close < stop && (section != 0 || close == at + 1) && section != 1 && section != 2
-                at = close + 1
-            } elif (ch == ':') {
-                section++
-                at++
-            } elif (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\\' || (ch == ',' && section == 3)) {
-                at++
-            } else {
-                barrier = false
-            }
-        }
-    }
-    return barrier && section <= 3
+    fail(d, "an attributed statement without a statement", at)
+    return null
 }
-
-// the words that may precede an asm statement's body
-let private ASM_HEAD_WORDS <- {"asm", "__asm", "__asm__", "volatile", "__volatile", "__volatile__", "inline", "__inline", "__inline__"}
 
 // the attributes the dumper drops, each changing nothing a das run observes: optimizer and
 // inlining hints, diagnostics, a symbol's visibility or section, a defined symbol's weakness,
-// and `may_alias`, since das has no strict-aliasing rule for it to relax; `noclone`, `noipa`,
-// `optimize` and `scalar_storage_order` reach no node at all, clang ignoring them
-let DROPPED_ATTRIBUTES <- {"NoInlineAttr", "UnusedAttr", "UsedAttr", "C11NoReturnAttr", "ConstAttr", "PureAttr", "AlwaysInlineAttr", "NoThrowAttr", "ColdAttr", "HotAttr", "VisibilityAttr", "FormatAttr", "NonNullAttr", "RestrictAttr", "WarnUnusedResultAttr", "DeprecatedAttr", "WeakAttr", "MayAliasAttr", "SectionAttr", "LeafAttr", "NoInstrumentFunctionAttr", "AllocSizeAttr", "ReturnsNonNullAttr", "NoDebugAttr", "FallThroughAttr", "GNUInlineAttr"}
+// `mode`, whose type clang has already given the declaration, and `may_alias`, since das has no
+// strict-aliasing rule for it to relax; `noclone`, `noipa`, `optimize` and
+// `scalar_storage_order` reach no node at all, clang ignoring them
+let DROPPED_ATTRIBUTES <- {"NoInlineAttr", "UnusedAttr", "UsedAttr", "C11NoReturnAttr", "ConstAttr", "PureAttr", "AlwaysInlineAttr", "NoThrowAttr", "ColdAttr", "HotAttr", "VisibilityAttr", "FormatAttr", "NonNullAttr", "RestrictAttr", "WarnUnusedResultAttr", "DeprecatedAttr", "WeakAttr", "MayAliasAttr", "SectionAttr", "LeafAttr", "NoInstrumentFunctionAttr", "AllocSizeAttr", "ReturnsNonNullAttr", "NoDebugAttr", "FallThroughAttr", "GNUInlineAttr", "CXX11NoReturnAttr", "ModeAttr"}
 
 // the attributes the conversion reads: `aligned` (the typedef pass, the record layout check)
 // and `packed` and `#pragma pack` (clang's record layout, which the layout law places or the
 // sidecar marshals)
 let READ_ATTRIBUTES <- {"AlignedAttr", "PackedAttr", "MaxFieldAlignmentAttr"}
 
-// an attribute's GNU spelling from its node kind: `TransparentUnionAttr` is `transparent_union`
-def private attribute_spelling(kind : string) : string {
+//! An attribute's spelling from its node kind, a word break before each capital that follows no
+//! capital: `TransparentUnionAttr` is `transparent_union`, `CXX11NoReturnAttr` `cxx11_no_return`.
+def attribute_spelling(kind : string) : string {
     let base = kind |> ends_with("Attr") ? slice(kind, 0, length(kind) - 4) : kind
     return build_string() $(writer) {
-        for (idx, ch in range(length(base)), base) {
-            if (ch >= 'A' && ch <= 'Z') {
-                if (idx > 0) {
+        var after_capital = true
+        for (ch in base) {
+            let capital = ch >= 'A' && ch <= 'Z'
+            if (capital) {
+                if (!after_capital) {
                     writer |> write_char('_')
                 }
                 writer |> write_char(ch - 'A' + 'a')
             } else {
                 writer |> write_char(ch)
             }
+            after_capital = capital
         }
     }
 }
@@ -2707,8 +2788,8 @@ def dump_stmt(var d : Dumper; js : JsonValue?) : CirStmt? {
     if (!empty(leaf)) {
         return new CirStmt(s = leaf, loc = at)
     }
-    if (kind == "GCCAsmStmt") {
-        return dump_asm(d, js, at)
+    if (key_exists(GNU_STMT_KINDS, kind)) {
+        return dump_gnu_stmt(d, js, kind, at)
     }
     if (kind == "IfStmt" || kind == "WhileStmt" || kind == "DoStmt") {
         return dump_loop_or_if(d, js, kind, at)
@@ -2920,7 +3001,7 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
         }
         return g
     }
-    fail(d, "unsupported declaration `{kind}`", at)
+    fail(d, kind == "FileScopeAsmDecl" ? "a file-scope asm is machine code outside any function; no emulation exists in the das runtime" : "unsupported declaration `{kind}`", at)
     return null
 }
 
