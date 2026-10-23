@@ -587,6 +587,27 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   match (`--allow-stale` otherwise). `perf/run.das`'s clang and daslang version lines now read
   past `info` lines (`first_reported_line`, the same text on this machine), and its exe and AOT
   builds take the 3600 s build timeout `converter/tiers.das` now passes to every build step.
+- **P5.1b Source module layout** (owner ruling 2026-10-23, ruling 4, after Boris 2026-10-08; the
+  decisions row "Module layout" of `very-detailed-plan.md` section 1; branch `p5.1b-source-layout`).
+  Lua converts from its separate `.c` files as its Makefile builds them (the core and the libraries
+  with `lua.c`; the core and `lauxlib.c` with `luac.c`), not from `lua_all.c`: a program manifest
+  of several translation units (`c-ir-spec.md` section 7, `"tus"`), the whole-program merge in the
+  backend with cross-TU symbol resolution, and file-scope statics kept apart by a TU prefix (plan
+  section 4.2 item 1). The output mirrors Lua's `src/`: `lapi.c` -> `lapi.das`, a set of mutually
+  dependent files -> `<first_stem>_cluster.das` with a `<stem>.das.inc` fragment per member, an
+  entry module with `main`; the single module stays an opt-in (a converter flag and a `.c2das`
+  field). The mechanism is not Lua's: no Doom here (P6). Acceptance: everything P5.1 proves holds
+  in both layouts (`lua -e "print(1+1)"` and the string/table/math script print the native build's
+  output under the interpreter and the JIT; `luac -o` writes the native bytecode byte for byte for
+  every file of the 5.4.8 test suite), tested in the repository's style; `ports/publish.das` copies
+  the module tree; preflight `--full` green, the suite counts held. Report: the modules and
+  fragments, every cluster with its members, the largest cluster and why its files are linked, the
+  count by Boris's include rule beside it, compile-check and `-compile-only` seconds and `lua -e`
+  startup under the interpreter, a fresh JIT and the JIT cache for both layouts, readability and
+  perf captures for both.
+  Ledger: the multi-TU merge is more than one item; the design and the proposed split (P5.1b1 the
+  multi-TU link into the single module, P5.1b2 the source layout over it) wait for the owner's
+  decision.
 - **P5.1c Skip-list audit** (owner ruling 2026-10-22 (2), item B; branch `p5.1c-skip-audit`).
   `run_suite.sh <suite> --audit-skips` runs every ledgered id through the convert-and-run path,
   ratchet untouched (`--update` only adds the audited ids that pass), into `work/skip_audit.tsv`
