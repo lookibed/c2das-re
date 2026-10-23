@@ -1,611 +1,327 @@
-# gcc-torture execute tests never run, one per line: id, feature, reason, the phase that
-# unblocks it (never for a feature the dialect excludes), tab-separated; written by
-# suites/gcc_torture/filter.das over the fetched tree. A test that merely does not pass yet
-# is not listed; the ratchet reports it.
-20000223-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
-20000511-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-20001009-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20001229-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20010119-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20010122-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20010325-1	wide string literals	wide strings are outside the dialect (docs/lowering-examples.md, Strings & literals); the emitter fails closed on one	never
-20010518-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20010605-2	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-20010904-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20010904-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20011024-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20020107-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20020108-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20020227-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-20020411-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-20020412-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
-20020418-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20021120-3	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20030105-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20030125-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20030222-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20030224-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20030323-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20030330-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20030811-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20031010-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20031020-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20031201-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20040218-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20040302-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-20040308-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20040625-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20040709-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20040709-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20040805-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20040823-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20040917-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20041011-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20041124-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-20041201-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-20041212-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20041213-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20041214-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-20041218-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20050107-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20050119-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20050119-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20050121-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-20050125-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20050203-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20050215-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20050316-1	GNU vector extension	SIMD vector types are outside the dialect	never
-20050316-2	GNU vector extension	SIMD vector types are outside the dialect	never
-20050316-3	GNU vector extension	SIMD vector types are outside the dialect	never
-20050410-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20050502-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20050604-1	GNU vector extension	SIMD vector types are outside the dialect	never
-20050607-1	GNU vector extension	SIMD vector types are outside the dialect	never
-20050826-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20051113-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20051215-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20060420-1	GNU vector extension	SIMD vector types are outside the dialect	never
-20060930-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20060930-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20061031-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20061220-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20070517-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20070614-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-20070623-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20070919-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20071018-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20071029-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20071108-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20071120-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20071202-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20071210-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-20071211-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20071216-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20071219-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20071220-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20071220-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20080122-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-20080424-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20080502-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20080506-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20080519-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20080522-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20080604-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20081112-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20081117-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20081218-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20090113-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20090113-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20090711-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20090814-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20100316-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20100430-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20100708-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20100827-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20101011-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20101013-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20101025-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20110418-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20111208-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20111212-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20111227-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20120105-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20120111-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20120207-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20120615-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20120817-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20120919-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20121108-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20140212-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20140425-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20140622-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20140828-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20141022-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20141107-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20141125-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20170111-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20170401-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20171008-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20180112-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20180131-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20180226-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20180921-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20190820-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20190901-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20191023-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20230509-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-20230510-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20230630-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20230630-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-20230802-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-920302-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-920415-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-920428-2	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-920501-3	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-920501-5	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-920501-7	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-920721-4	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-930406-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-930930-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
-960117-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-960312-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-960512-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-960830-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-980505-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-980526-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-990130-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-990208-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-990326-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-991228-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
-alias-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-alias-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-alias-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-alias-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-align-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-align-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-align-nest	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-alloca-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-bcp-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-bf-pack-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-bitfld-10	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-bitfld-5	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-bitfld-8	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-bitfld-9	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-bitops-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-bswap-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-bswap-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-bswap-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-built-in-setjmp	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-builtin-bitops-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-builtin-constant	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-builtin-prefetch-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-builtin-prefetch-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-builtin-prefetch-3	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-builtin-prefetch-4	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-builtin-prefetch-5	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-builtin-prefetch-6	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-builtin-types-compatible-p	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-cbrt	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-comp-goto-1	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-comp-goto-2	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-complex-1	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-complex-2	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-complex-4	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-complex-5	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-complex-6	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-complex-7	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-eeprof-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-ffs-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-ffs-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-fprintf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-frame-address	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-ifcvt-onecmpl-abs-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-ipa-sra-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-ipa-sra-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-loop-12	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-lto-tbaa-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-mayalias-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-mayalias-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-mayalias-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-memchr-1	wide string literals	wide strings are outside the dialect (docs/lowering-examples.md, Strings & literals); the emitter fails closed on one	never
-memcpy-bi	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-memset-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-mul-sext	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-nest-align-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-nestfunc-5	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-nestfunc-6	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-packed-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-packed-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-postmod-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr101188	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr103255	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr103376	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr104604	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-pr104839	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr105613	__int128	no 128-bit integer in das or the dialect	never
-pr105984	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr106032	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr106523	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr107131	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr107879	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr108064	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr108292	GNU vector extension	SIMD vector types are outside the dialect	never
-pr108498-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr108498-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr108789	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr109040	GNU vector extension	SIMD vector types are outside the dialect	never
-pr110165-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr110166-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr110252-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr110252-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr110252-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr110666-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr110817-1	GNU vector extension	SIMD vector types are outside the dialect	never
-pr110817-2	GNU vector extension	SIMD vector types are outside the dialect	never
-pr110817-3	GNU vector extension	SIMD vector types are outside the dialect	never
-pr110914	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr111431-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr111469-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr111863-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr113787	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr114207	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr114396	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr114552	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr115033	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr15296	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr17377	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr19449	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr20466-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr20527-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr20601-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr22141-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr22141-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr23135	GNU vector extension	SIMD vector types are outside the dialect	never
-pr23467	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr24135	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-pr25125	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr27073	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr27285	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr27671-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr28289	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr28403	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr28651	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr28865	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr28982a	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr28982b	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr29006	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr30778	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr32500	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr33142	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr33870	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr33870-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr33992	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr34154	GNU case range	`case a ... b` is a GNU extension; the dialect's switch takes one value per label	never
-pr34176	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr34415	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr34456	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr34768-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr34768-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr35231	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr35456	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr35472	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr36034-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr36034-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr36339	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr36343	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr36765	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr37102	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr37573	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr37780	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr38051	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr38151	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-pr38212	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr38236	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr38533	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr38819	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr38969	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-pr39100	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr39120	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr39228	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr39233	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr39240	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr39339	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr39501	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr40022	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr40057	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr40579	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr40657	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr41239	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr41395-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr41395-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr41463	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr41750	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr41935	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr42142	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr42154	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr42231	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr42248	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-pr42269-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr42614	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr43008	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr43269	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr43385	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr43560	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr43784	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr43835	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr43987	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr44164	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr44202-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr44468	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr44683	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr44852	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr44858	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr45034	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr45070	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr45695	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr46309	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr46316	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr46909-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr46909-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr47237	GNU argument forwarding builtins	`__builtin_va_arg_pack` and `__builtin_apply` are GCC builtins clang does not know (`use of unknown builtin`)	never
-pr47299	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr47538	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr47925	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr48571-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr48814-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr49039	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr49161	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr49218	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr49279	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr49281	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr49390	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr49644	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-pr49886	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr51323	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr51447	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr51466	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr51581-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr51581-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr51877	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr51933	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr52129	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr52286	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr52760	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr52979-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr52979-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr53084	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr53645	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr53645-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr53688	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr54471	__int128	no 128-bit integer in das or the dialect	never
-pr54937	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr54985	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr55750	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr55875	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr56205	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr56799	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr56837	_Complex	complex arithmetic is outside the dialect (c-ir-spec section 9)	never
-pr56866	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr56899	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr56962	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr56982	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr57124	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr57130	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr57144	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr57344-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr57344-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr57344-3	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr57344-4	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr57829	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr58277-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr58419	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr58574	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr58831	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr59014-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr59101	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr59229	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr59358	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr59643	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr59747	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr60003	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr60062	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr60072	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr60454	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr60822	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr60960	GNU vector extension	SIMD vector types are outside the dialect	never
-pr61306-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr61306-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr61375	__int128	no 128-bit integer in das or the dialect	never
-pr61673	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr61725	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr63209	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr63302	__int128	no 128-bit integer in das or the dialect	never
-pr63641	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr63843	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr64006	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr64242	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr64255	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr64682	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr64718	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr64957	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr64979	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr65053-1	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr65053-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr65170	__int128	no 128-bit integer in das or the dialect	never
-pr65215-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr65215-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr65215-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr65215-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr65215-5	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr65369	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr65401	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr65418-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr65418-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr65427	GNU vector extension	SIMD vector types are outside the dialect	never
-pr65648	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr65956	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr66233	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr66940	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr67037	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr67226	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr67929_1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr68143_1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr68250	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr68328	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr68376-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr68381	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr68390	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr68532	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr68648	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr69097-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr69320-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr69403	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr69447	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr69691	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr70127	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr70222-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr70222-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr70429	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr70460	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-pr70566	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr70602	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr70903	GNU vector extension	SIMD vector types are outside the dialect	never
-pr71083	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr71494	address of a label and local labels	`&&label` and `__label__` are GNU extensions; das's computed goto serves the switch tier 3, not a C label's address	never
-pr71554	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr71626-1	GNU vector extension	SIMD vector types are outside the dialect	never
-pr77718	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr78378	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr78436	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr78438	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr78622	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr78675	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr78720	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr78726	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr78791	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr79043	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr79121	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr79354	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr79388	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr79737-1	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
-pr79737-2	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr80153	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr80421	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr80501	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr80692	non-standard floating types	float and double are the dialect's floating types	never
-pr81281	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr81423	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr81556	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr81588	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr82192	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr82210	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr82524	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr82954	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr83362	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr84169	__int128	no 128-bit integer in das or the dialect	never
-pr84339	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr84478	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr84521	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr84524	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr84748	__int128	no 128-bit integer in das or the dialect	never
-pr85095	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr85156	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr85169	GNU vector extension	SIMD vector types are outside the dialect	never
-pr85331	GNU vector extension	SIMD vector types are outside the dialect	never
-pr85529-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr85582-2	__int128	no 128-bit integer in das or the dialect	never
-pr85582-3	__int128	no 128-bit integer in das or the dialect	never
-pr85756	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr86231	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr86492	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr86528	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr86844	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr87290	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr87623	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr88693	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr88714	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr88739	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr88904	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr89195	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr89369	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr89434	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr89634	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr90025	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr90311	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr90348	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr90949	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr91137	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr91450-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr91450-2	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr91597	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr91632	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr91635	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr92140	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr92618	GNU vector extension	SIMD vector types are outside the dialect	never
-pr92904	__int128	no 128-bit integer in das or the dialect	never
-pr93213	__int128	no 128-bit integer in das or the dialect	never
-pr93402	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr93494	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr93582	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr93908	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr93945	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr94130	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-pr94412	GNU vector extension	SIMD vector types are outside the dialect	never
-pr94524-1	GNU vector extension	SIMD vector types are outside the dialect	never
-pr94524-2	GNU vector extension	SIMD vector types are outside the dialect	never
-pr94591	GNU vector extension	SIMD vector types are outside the dialect	never
-pr94734	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr95731	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr97073	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr97325	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr97386-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr97386-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr97421-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr97888-1	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-pr97888-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr98474	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr98681	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr98727	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr98853-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr98853-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pr99079	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-printf-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-printf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pta-field-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pta-field-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-pure-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-return-addr	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-scal-to-vec1	GNU vector extension	SIMD vector types are outside the dialect	never
-scal-to-vec2	GNU vector extension	SIMD vector types are outside the dialect	never
-scal-to-vec3	GNU vector extension	SIMD vector types are outside the dialect	never
-signed1bitfield-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-simd-1	GNU vector extension	SIMD vector types are outside the dialect	never
-simd-2	GNU vector extension	SIMD vector types are outside the dialect	never
-simd-4	GNU vector extension	SIMD vector types are outside the dialect	never
-simd-5	GNU vector extension	SIMD vector types are outside the dialect	never
-simd-6	GNU vector extension	SIMD vector types are outside the dialect	never
-ssad-run	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-stdarg-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-stkalign	inline asm	machine code has no das spelling (c-ir-spec section 9)	never
-strcpy-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-strct-pack-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-strct-pack-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-strct-pack-3	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-strct-pack-4	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-strlen-7	__builtin_* calls	a builtin maps through a shim list that the punning tier grows	P4
-struct-aliasing-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-struct-cpy-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-struct-ret-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-usad-run	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-user-printf	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-usmul	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-va-arg-21	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-va-arg-22	GNU keywords	typeof, __extension__ and __alignof__ have no row	never
-va-arg-pack-1	GNU argument forwarding builtins	`__builtin_va_arg_pack` and `__builtin_apply` are GCC builtins clang does not know (`use of unknown builtin`)	never
-vfprintf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-vprintf-chk-1	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-vrp-7	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
-wchar_t-1	wide string literals	wide strings are outside the dialect (docs/lowering-examples.md, Strings & literals); the emitter fails closed on one	never
-widechar-2	wide string literals	wide strings are outside the dialect (docs/lowering-examples.md, Strings & literals); the emitter fails closed on one	never
-widechar-3	wide string literals	wide strings are outside the dialect (docs/lowering-examples.md, Strings & literals); the emitter fails closed on one	never
-zerolen-2	__attribute__	an attribute reaches the dialect through the sidecar (packed, aligned) or is dropped (noinline), neither read yet	P4
+# gcc-torture execute tests never run, one per line: id, feature, reason, the ledger row that
+# unblocks it (never for a construct no emulation reaches), tab-separated; written by
+# suites/gcc_torture/filter.das over the fetched tree, less the ids expected_pass.txt lists. A
+# test that merely does not pass yet is not listed; the ratchet reports it.
+20000223-1	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+20000412-3	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+20000717-3	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+20001009-2	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+20001111-1	GCC builtins clang does not know	the pinned clang refuses the input and the pipeline has no other frontend	never
+20010122-1	return and frame addresses	the das runtime exposes no frame or return addresses; a null mapping would lie to the test	never
+20010325-1	wide string literals	a wide string literal is not lowered yet; the emitter fails closed on one	P7.5
+20010518-2	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20010605-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+20010904-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20010904-2	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20020107-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+20020108-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20020227-1	_Complex	complex arithmetic is not lowered yet	P7.5
+20020314-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+20020411-1	_Complex	complex arithmetic is not lowered yet	P7.5
+20020412-1	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+20020819-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+20030222-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+20030224-2	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20030323-1	return and frame addresses	the das runtime exposes no frame or return addresses; a null mapping would lie to the test	never
+20030811-1	return and frame addresses	the das runtime exposes no frame or return addresses; a null mapping would lie to the test	never
+20031211-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+20040223-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+20040302-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+20040308-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20040625-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20040709-1	__builtin_* calls	a builtin outside the emitter's shim list is not lowered yet	P7.6
+20040709-2	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20041019-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+20041124-1	_Complex	complex arithmetic is not lowered yet	P7.5
+20041201-1	_Complex	complex arithmetic is not lowered yet	P7.5
+20041214-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+20041218-2	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20050107-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20050119-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20050119-2	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20050121-1	_Complex	complex arithmetic is not lowered yet	P7.5
+20050316-1	GNU vector extension	GNU vector types are not lowered yet	P7.6
+20050316-2	GNU vector extension	GNU vector types are not lowered yet	P7.6
+20050316-3	GNU vector extension	GNU vector types are not lowered yet	P7.6
+20050604-1	GNU vector extension	GNU vector types are not lowered yet	P7.6
+20050607-1	GNU vector extension	GNU vector types are not lowered yet	P7.6
+20051113-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20060420-1	GNU vector extension	GNU vector types are not lowered yet	P7.6
+20061220-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+20070614-1	_Complex	complex arithmetic is not lowered yet	P7.5
+20071210-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+20071220-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+20071220-2	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+20100430-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20111212-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20120105-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20120427-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+20120427-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+20170401-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20171008-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20190820-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20230630-2	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+20230630-4	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+920302-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+920409-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920411-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920415-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920428-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920428-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920429-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920501-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920501-3	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+920501-4	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+920501-5	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+920501-7	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920501-9	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920520-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920603-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920721-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920721-3	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920721-4	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+920728-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920730-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920731-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920812-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920908-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920909-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921013-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921017-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921110-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921123-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921124-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921202-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921207-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921208-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921215-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921218-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921218-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930106-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930111-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930208-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930406-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+930429-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930513-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930513-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930518-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930527-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930603-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930603-3	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930621-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930622-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930630-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930702-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930713-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930718-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930719-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930818-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930916-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930921-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930929-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+930930-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+931009-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+931012-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+931017-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+931018-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+931031-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+931102-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+931102-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+931208-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+931228-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+940115-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+940122-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+941101-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+941110-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+941202-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+950322-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+950426-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+950512-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+950605-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+950621-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+960117-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+960218-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+960312-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+960402-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+960512-1	_Complex	complex arithmetic is not lowered yet	P7.5
+960830-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+961112-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+980526-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+990106-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+990130-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+990208-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+990326-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+alias-2	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+alias-3	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+alias-4	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+align-3	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+align-nest	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+alloca-1	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+built-in-setjmp	__builtin_setjmp	the builtin setjmp pair through the setjmp lowering is not lowered yet	P7.6
+builtin-types-compatible-p	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+cbrt	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+cmpdi-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+cmpsf-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+cmpsi-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+cmpsi-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+comp-goto-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+comp-goto-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+complex-1	_Complex	complex arithmetic is not lowered yet	P7.5
+complex-2	_Complex	complex arithmetic is not lowered yet	P7.5
+complex-4	_Complex	complex arithmetic is not lowered yet	P7.5
+complex-5	_Complex	complex arithmetic is not lowered yet	P7.5
+complex-6	_Complex	complex arithmetic is not lowered yet	P7.5
+complex-7	_Complex	complex arithmetic is not lowered yet	P7.5
+dbra-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+divmod-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+eeprof-1	-finstrument-functions	checks gcc's -finstrument-functions output	never
+frame-address	return and frame addresses	the das runtime exposes no frame or return addresses; a null mapping would lie to the test	never
+inst-check	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+int-compare	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+loop-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+loop-2d	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+loop-3	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+loop-3b	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+loop-3c	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+memcpy-bi	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+mod-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+nest-align-1	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+nestfunc-5	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+nestfunc-6	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+packed-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+packed-2	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+packed-aligned	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr103052	GCC builtins clang does not know	the pinned clang refuses the input and the pipeline has no other frontend	never
+pr103376	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr104604	_Complex	complex arithmetic is not lowered yet	P7.5
+pr105613	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+pr105984	GCC builtins clang does not know	the pinned clang refuses the input and the pipeline has no other frontend	never
+pr108064	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr108292	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr108498-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr108789	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
+pr109040	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr110252-2	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr110817-1	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr110817-2	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr110817-3	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr114552	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr115033	GCC builtins clang does not know	the pinned clang refuses the input and the pipeline has no other frontend	never
+pr17377	return and frame addresses	the das runtime exposes no frame or return addresses; a null mapping would lie to the test	never
+pr19449	__builtin_* calls	a builtin outside the emitter's shim list is not lowered yet	P7.6
+pr22061-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+pr22141-2	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr23135	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr23467	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr24135	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+pr29006	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr34154	GNU case range	`case a ... b` is not lowered yet	P7.6
+pr38151	_Complex	complex arithmetic is not lowered yet	P7.5
+pr38533	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr38969	_Complex	complex arithmetic is not lowered yet	P7.5
+pr39228	GCC builtins clang does not know	the pinned clang refuses the input and the pipeline has no other frontend	never
+pr40022	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr40657	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr41239	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr42248	_Complex	complex arithmetic is not lowered yet	P7.5
+pr43385	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr43560	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr45070	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr45695	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr47237	GNU argument forwarding builtins	the pinned clang refuses the input and the pipeline has no other frontend	never
+pr49218	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+pr49279	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr49390	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr49644	_Complex	complex arithmetic is not lowered yet	P7.5
+pr51447	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr51933	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr52286	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr53645	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr53645-2	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr54471	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+pr55875	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+pr56837	_Complex	complex arithmetic is not lowered yet	P7.5
+pr56866	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr57344-3	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr57344-4	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr60003	__builtin_setjmp	the builtin setjmp pair through the setjmp lowering is not lowered yet	P7.6
+pr60960	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr61375	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+pr63302	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+pr64006	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
+pr64242	__builtin_setjmp	the builtin setjmp pair through the setjmp lowering is not lowered yet	P7.6
+pr65053-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr65053-2	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr65170	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+pr65369	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr65427	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr65648	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr65956	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr68328	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr68381	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
+pr70460	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+pr70903	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr71083	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+pr71494	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+pr71554	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
+pr71626-1	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr77718	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr78726	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr79737-1	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+pr79737-2	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+pr80421	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr80692	non-standard floating types	_Float16, __float128 and _Decimal have no das type and no exact emulation; _Decimal is also an input the pinned clang refuses	never
+pr81588	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr82210	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr82954	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr84169	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+pr84521	__builtin_setjmp	the builtin setjmp pair through the setjmp lowering is not lowered yet	P7.6
+pr84524	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr84748	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+pr85095	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
+pr85156	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr85169	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr85331	GCC builtins clang does not know	the pinned clang refuses the input and the pipeline has no other frontend	never
+pr85582-2	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+pr85582-3	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+pr85756	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr87623	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+pr88904	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr89434	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
+pr90311	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
+pr91450-1	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
+pr91450-2	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
+pr91635	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
+pr92618	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr92904	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+pr93213	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+pr93494	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
+pr93945	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr94130	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr94412	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr94524-1	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr94524-2	GNU vector extension	GNU vector types are not lowered yet	P7.6
+pr94591	GCC builtins clang does not know	the pinned clang refuses the input and the pipeline has no other frontend	never
+pr98474	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
+scal-to-vec1	GNU vector extension	GNU vector types are not lowered yet	P7.6
+scal-to-vec2	GNU vector extension	GNU vector types are not lowered yet	P7.6
+scal-to-vec3	GNU vector extension	GNU vector types are not lowered yet	P7.6
+simd-1	GNU vector extension	GNU vector types are not lowered yet	P7.6
+simd-2	GNU vector extension	GNU vector types are not lowered yet	P7.6
+simd-4	GNU vector extension	GNU vector types are not lowered yet	P7.6
+simd-5	GNU vector extension	GNU vector types are not lowered yet	P7.6
+simd-6	GNU vector extension	GNU vector types are not lowered yet	P7.6
+stkalign	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+strct-pack-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+strct-pack-2	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+strct-pack-3	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+strct-pack-4	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+struct-cpy-1	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+struct-ret-2	__attribute__	an attribute outside the dumper's dropped list (layout, linkage, run-time behaviour) is not lowered yet	P7.6
+tstdi-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+va-arg-22	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+va-arg-pack-1	GNU argument forwarding builtins	the pinned clang refuses the input and the pipeline has no other frontend	never
+wchar_t-1	wide string literals	a wide string literal is not lowered yet; the emitter fails closed on one	P7.5
+widechar-2	wide string literals	a wide string literal is not lowered yet; the emitter fails closed on one	P7.5
+widechar-3	wide string literals	a wide string literal is not lowered yet; the emitter fails closed on one	P7.5
+zerolen-2	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6

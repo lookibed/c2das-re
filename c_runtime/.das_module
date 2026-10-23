@@ -4,7 +4,7 @@ require daslib/fio
 
 [export]
 def initialize(project_path : string) {
-    for (name in ["c_function", "enum_from_int", "c_exit", "cstr_array", "variadic", "printf", "setjmp", "c_bitfields", "c_union", "c_storage", "c_sort", "scanf", "c_bounds", "c_args", "c_signal", "c_volatile"]) {
+    for (name in ["c_function", "enum_from_int", "c_exit", "cstr_array", "variadic", "printf", "setjmp", "c_bitfields", "c_union", "c_storage", "c_sort", "scanf", "c_bounds", "c_args", "c_signal", "c_volatile", "c_builtins"]) {
         register_native_path("c_runtime", name, "{project_path}/c_runtime/{name}.das")
     }
 }

@@ -152,3 +152,16 @@ def test_csmith_scalars(t : T?) {
         t |> equal(siblings.rc, 0, siblings.out)
     }
 }
+
+[test]
+def test_bit_intrinsics(t : T?) {
+    t |> run("clz, ctz and popcnt count at the operand's width and return it; clz of zero is not the width (c_builtins)") @(t : T?) {
+        t |> equal(clz(1u), 31u)
+        t |> equal(clz(1ul), 63ul)
+        t |> equal(ctz(8u), 3u)
+        t |> equal(ctz(0u), 32u)
+        t |> equal(ctz(0ul), 64ul)
+        t |> equal(popcnt(0xFFul), 8ul)
+        t |> equal(clz(0u), 31u)
+    }
+}

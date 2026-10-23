@@ -131,6 +131,12 @@ struct Dumper {
     aligned_names : table<string>
     // the bytes of clang's JSON dump
     json_bytes : int64
+    // the main file's text, read once an asm statement asks for its source
+    c_text : string
+    c_text_read : bool
+    // the names the program defines (a function with a body, a variable with no `extern` or
+    // with an initializer): a `weak` attribute is dropped only on one of these
+    defined_names : table<string>
     // the records of an external file the program reaches a member, a variable or the size of
     // (`struct tm`, `struct lconv`), by index into `records`: each is anchored where it is
     // first interned, since the walk skips its file
@@ -2404,6 +2410,161 @@ def private dump_for(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
 
 let LEAF_STMTS <- {"NullStmt" => "null", "BreakStmt" => "break", "ContinueStmt" => "continue"}
 
+// an asm statement: a compiler barrier (an empty template, no operand, at most clobbers) is the
+// empty statement, since it orders nothing a das run observes; any other is machine code or a
+// register binding, which no das spelling emulates
+[arch(at="ARCHITECTURE_DUMPER.md#attributes-and-asm")]
+def private dump_asm(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
+    if (child_count(js) == 0 && is_barrier_asm(asm_source(d, js))) {
+        return new CirStmt(s = "null", loc = at)
+    }
+    fail(d, "inline asm with template text or operands is machine code or a register binding; no emulation exists in the das runtime", at)
+    return null
+}
+
+// the source text of a statement in the main file, from its first token to its last (a macro's
+// statement as its definition spells it); "" when it lies outside the main file
+def private asm_source(var d : Dumper; js : JsonValue?) : string {
+    let b = js?["range"]?["begin"]
+    let e = js?["range"]?["end"]
+    let bs = is_present(b?["spellingLoc"]) ? b?["spellingLoc"] : b
+    let es = is_present(e?["spellingLoc"]) ? e?["spellingLoc"] : e
+    let main = canonical_file(d, d.c_path)
+    if (canonical_file(d, bs?["file"] ?? "") != main || canonical_file(d, es?["file"] ?? "") != main) {
+        return ""
+    }
+    if (!d.c_text_read) {
+        d.c_text = fread(d.c_path)
+        d.c_text_read = true
+    }
+    let first = int(bs?["offset"] ?? -1l)
+    let last = int(es?["offset"] ?? -1l)
+    if (first < 0 || last < first || last >= length(d.c_text)) {
+        return ""
+    }
+    return slice(d.c_text, first, last + 1)
+}
+
+//! Whether `text`, an asm statement's source, is a compiler barrier: `asm`, `__asm` or `__asm__`
+//! with any of `volatile` and `inline` (never `goto`), then a parenthesized body of empty
+//! template strings, no output or input operand, and at most a clobber list: `asm("")`,
+//! `asm volatile("" ::: "memory")`.
+def is_barrier_asm(text : string) : bool {
+    let open = find(text, "(")
+    if (open < 0 || !(text |> ends_with(")"))) {
+        return false
+    }
+    for (word in split(replace(strip(slice(text, 0, open)), "\t", " "), " ")) {
+        if (!empty(word) && !key_exists(ASM_HEAD_WORDS, word)) {
+            return false
+        }
+    }
+    var section = 0
+    var barrier = true
+    peek_data(text) $(bytes) {
+        var at = open + 1
+        let stop = length(bytes) - 1
+        while (barrier && at < stop) {
+            let ch = int(bytes[at])
+            if (ch == '"') {
+                var close = at + 1
+                while (close < stop && int(bytes[close]) != '"') {
+                    close += int(bytes[close]) == '\\' ? 2 : 1
+                }
+                // a template string is empty; an operand's constraint string sits in section 1 or 2
+                barrier = close < stop && (section != 0 || close == at + 1) && section != 1 && section != 2
+                at = close + 1
+            } elif (ch == ':') {
+                section++
+                at++
+            } elif (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\\' || (ch == ',' && section == 3)) {
+                at++
+            } else {
+                barrier = false
+            }
+        }
+    }
+    return barrier && section <= 3
+}
+
+// the words that may precede an asm statement's body
+let private ASM_HEAD_WORDS <- {"asm", "__asm", "__asm__", "volatile", "__volatile", "__volatile__", "inline", "__inline", "__inline__"}
+
+// the attributes the dumper drops, each changing nothing a das run observes: optimizer and
+// inlining hints, diagnostics, a symbol's visibility or section, a defined symbol's weakness,
+// and `may_alias`, since das has no strict-aliasing rule for it to relax; `noclone`, `noipa`,
+// `optimize` and `scalar_storage_order` reach no node at all, clang ignoring them
+let DROPPED_ATTRIBUTES <- {"NoInlineAttr", "UnusedAttr", "UsedAttr", "C11NoReturnAttr", "ConstAttr", "PureAttr", "AlwaysInlineAttr", "NoThrowAttr", "ColdAttr", "HotAttr", "VisibilityAttr", "FormatAttr", "NonNullAttr", "RestrictAttr", "WarnUnusedResultAttr", "DeprecatedAttr", "WeakAttr", "MayAliasAttr", "SectionAttr", "LeafAttr", "NoInstrumentFunctionAttr", "AllocSizeAttr", "ReturnsNonNullAttr", "NoDebugAttr", "FallThroughAttr", "GNUInlineAttr"}
+
+// the attributes the conversion reads: `aligned` (the typedef pass, the record layout check)
+// and `packed` and `#pragma pack` (clang's record layout, which the layout law places or the
+// sidecar marshals)
+let READ_ATTRIBUTES <- {"AlignedAttr", "PackedAttr", "MaxFieldAlignmentAttr"}
+
+// an attribute's GNU spelling from its node kind: `TransparentUnionAttr` is `transparent_union`
+def private attribute_spelling(kind : string) : string {
+    let base = kind |> ends_with("Attr") ? slice(kind, 0, length(kind) - 4) : kind
+    return build_string() $(writer) {
+        for (idx, ch in range(length(base)), base) {
+            if (ch >= 'A' && ch <= 'Z') {
+                if (idx > 0) {
+                    writer |> write_char('_')
+                }
+                writer |> write_char(ch - 'A' + 'a')
+            } else {
+                writer |> write_char(ch)
+            }
+        }
+    }
+}
+
+// every attribute a program declaration carries, at any depth (a local's, a field's, a
+// statement's), against the deliberate lists: one clang wrote itself (`implicit`) or carried
+// from an earlier declaration (`inherited`) was judged there or is the library's; a dropped one
+// passes, `weak` only on a name the program defines; any other fails the conversion naming it
+[arch(at="ARCHITECTURE_DUMPER.md#attributes-and-asm")]
+def private check_attributes(var d : Dumper; js : JsonValue?; owner : string = "") : bool {
+    let kind = node_kind(js)
+    if (kind |> ends_with("Attr") && !(js?["implicit"] ?? false) && !(js?["inherited"] ?? false)) {
+        let dropped = key_exists(DROPPED_ATTRIBUTES, kind) && (kind != "WeakAttr" || key_exists(d.defined_names, owner))
+        if (!dropped && !key_exists(READ_ATTRIBUTES, kind)) {
+            let what = kind == "WeakAttr" ? "`weak` on `{owner}`, which the unit never defines," : "the attribute `{attribute_spelling(kind)}`"
+            fail(d, "{what} is not lowered (the dumper drops only the attributes that change nothing for a run)", loc_of(d, js))
+            return false
+        }
+    }
+    let name = kind |> ends_with("Decl") ? js?["name"] ?? owner : owner
+    for (idx in range(child_count(js))) {
+        if (!check_attributes(d, (js?["inner"] as _array)[idx], name)) {
+            return false
+        }
+    }
+    return true
+}
+
+// the names the program's top-level declarations define: a function with a body, a variable
+// that is not `extern` or carries an initializer
+def private collect_defined_names(var d : Dumper; js : JsonValue?) {
+    for (idx in range(child_count(js))) {
+        let decl = (js?["inner"] as _array)[idx]
+        let kind = node_kind(decl)
+        let extern_var = kind == "VarDecl" && (decl?["storageClass"] ?? "") == "extern" && !is_present(decl?["init"])
+        let body = kind == "FunctionDecl" && has_child_kind(decl, "CompoundStmt")
+        if (body || (kind == "VarDecl" && !extern_var)) {
+            d.defined_names |> insert(decl?["name"] ?? "")
+        }
+    }
+}
+
+def private has_child_kind(js : JsonValue?; kind : string) : bool {
+    for (idx in range(child_count(js))) {
+        if (node_kind((js?["inner"] as _array)[idx]) == kind) {
+            return true
+        }
+    }
+    return false
+}
+
 // a decimal integer as clang's JSON spells one, optionally negative
 def private parse_int64(text : string) : int64 {
     var v = 0l
@@ -2545,6 +2706,9 @@ def dump_stmt(var d : Dumper; js : JsonValue?) : CirStmt? {
     let leaf = LEAF_STMTS?[kind] ?? ""
     if (!empty(leaf)) {
         return new CirStmt(s = leaf, loc = at)
+    }
+    if (kind == "GCCAsmStmt") {
+        return dump_asm(d, js, at)
     }
     if (kind == "IfStmt" || kind == "WhileStmt" || kind == "DoStmt") {
         return dump_loop_or_if(d, js, kind, at)
@@ -2891,6 +3055,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; defines : array
     complete_locs(js, last)
     collect_va_ids(d, js)
     collect_aligned_typedefs(d, js)
+    collect_defined_names(d, js)
     let top = js?["inner"]
     for (idx in range(child_count(js))) {
         let decl = (top as _array)[idx]
@@ -2898,6 +3063,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; defines : array
         if ((decl?["isImplicit"] ?? false) || !in_program(d, at.file)) {
             continue
         }
+        break if (!check_attributes(d, decl))
         let kind = node_kind(decl)
         if (kind == "RecordDecl" || kind == "EnumDecl" || kind == "TypedefDecl") {
             break if (!dump_type_decl(d, decl))

@@ -11,7 +11,7 @@ require ../metrics/readability_file.das
 // The mechanical half of suites/REVIEW.md (contract: REVIEW_COMMON.md at the repo root).
 // Run from the repo root: daslang suites/REVIEW.das - exit 0 clean, 1 with findings.
 
-def private check_suite(suite : string) {
+def private check_suite(suite : string; highest_closed : int) {
     let pass_path = "suites/{suite}/expected_pass.txt"
     let skip_path = "suites/{suite}/skip.txt"
     var passing : table<string>
@@ -31,6 +31,9 @@ def private check_suite(suite : string) {
         }
         if (key_exists(passing, fields[0])) {
             gate_finding(skip_path, "`{fields[0]}` is skipped and in the ratchet at once")
+        }
+        if (names_closed_phase(fields[3], highest_closed)) {
+            gate_finding(skip_path, "`{fields[0]}` names {fields[3]}, a closed phase (phases up to P{highest_closed} are closed): a skip line names a live row or never")
         }
     }
 }
@@ -56,11 +59,19 @@ def private check_readability_inputs {
     }
 }
 
+// the highest closed phase: the repository's `v0.<N>.0` tags, at least the floor
+def private closed_phase : int {
+    var listed : string
+    run_and_capture(["git", "tag", "--list", "v0.*.0"], listed, 60.0)
+    return highest_closed_phase(split(listed, "\n"))
+}
+
 [export]
 def main : int {
-    check_suite("c_testsuite")
-    check_suite("gcc_torture")
-    check_suite("csmith")
+    let highest_closed = closed_phase()
+    check_suite("c_testsuite", highest_closed)
+    check_suite("gcc_torture", highest_closed)
+    check_suite("csmith", highest_closed)
     check_seeds("csmith")
     gate_untracked(["suites/*/fetch", "suites/*/work"], "a suite's fetch/ or work/ folder is never committed")
     check_readability_inputs()

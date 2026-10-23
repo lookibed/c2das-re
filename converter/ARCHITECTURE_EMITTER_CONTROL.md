@@ -6,7 +6,7 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
 
 A `switch` follows the three-tier ladder of `docs/lowering-examples.md`. Its body is read as
 groups, one run of labels and the statements under them; a statement before the first label
-or a label below the switch's own level (Duff's device, P3.3) fails closed, a nested switch's
+or a label below the switch's own level (Duff's device, P7.7) fails closed, a nested switch's
 labels being its own. The condition is evaluated once into `_condN` (numbered per switch
 within a function), the enum below C's promotion when there is one, so a case compares as
 `_cond == E.X` (`int(_cond) == v` for a value no enumerator has) and otherwise against a
@@ -36,7 +36,7 @@ upward, so a goto reaches a label in its own block or an enclosing one, and a go
 deeper block has every bare block between them (a block that is its parent's statement)
 emitted without braces, so the label lands in a scope the goto sees, its locals renamed where
 they would meet a global or another local of their name (`ARCHITECTURE_EMITTER.md` section 4); an
-`if`, loop or switch body on that way is Duff's device (P3.3) and fails closed. A goto over a declaration skips its
+`if`, loop or switch body on that way is Duff's device (P7.7) and fails closed. A goto over a declaration skips its
 initializer, which is C's rule too (`probes/test_goto.das`). A label in a das block other
 than a loop's body (llex.c's `no_save: break;` once a switch's if-chain drops the tail `break`, a
 label ending a function body or an `if` branch, one before `if (DEBUG) {...}`) is followed at once by

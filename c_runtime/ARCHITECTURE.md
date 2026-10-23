@@ -40,6 +40,14 @@ as-if-converted fixture test landing first.
   the two glibc reserves for its threads, 32 and 33, and past 64; msvc: all but its eight) returns
   `SIG_ERR` with `errno` EINVAL; `c_signal_msvc`, which the converted module's dialect `[init]`
   sets, selects msvc's numbers, its `SIGABRT` (22) applied as the host's. `raise` is not bound.
+- `c_runtime/c_builtins.das` - the GCC builtins with a direct das meaning, as the emitter's shim
+  list calls them: `c_ffs`, `c_ctz`, `c_clz`, `c_popcount`, `c_parity` and `c_clrsb` over das's
+  own `clz`, `ctz` and `popcnt`, one overload per operand width (C's `l` and `ll` spellings
+  select it through the argument's type), `c_clrsb` counting every bit but the sign for 0 and -1
+  since das's `clz` of zero is not the width (`probes/test_scalars.das`); `c_bswap16/32/64`;
+  `c_signbit` reading the sign bit of a `float` or `double`; `c_unreachable`, which ends the run
+  as `c_abort` does; and `c_prefetch`, `[sideeffects]` so das keeps the call and its arguments'
+  effects (`probes/test_functions.das`).
 - `c_runtime/c_args.das` - C's `main(argc, argv)`: `c_runtime_init(name)`, which the converted
   module's `main` calls first, builds the argument vector once in C-allocator memory (`malloc`),
   `name` (the C source's stem) then each argument `get_user_args` gives (after `--` under the

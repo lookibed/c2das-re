@@ -177,6 +177,7 @@ def test_lowerings(t : T?) {
     p7_volatile_fixtures(t)
     p5_lua_expression_fixtures(t)
     p5_lua_review_fixtures(t)
+    p5_skip_audit_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -1836,5 +1837,41 @@ def p7_volatile_fixtures(t : T?) {
         let text = converts(t, "volatile_record", "struct P \{ int x; \};\nstatic volatile struct P g;\nint main(void) \{ struct P c = g; g = c; return c.x + g.x; \}\n")
         has_text(t, text, "var c : P = volatile_record__g\n    volatile_record__g = c\n")
         has_text(t, text, "c_volatile_load(volatile_record__g.x)")
+    }
+}
+
+def p5_skip_audit_fixtures(t : T?) {
+    t |> run("the skip audit's shims: dropped attributes, asm barriers as nothing, the builtins with a direct meaning") @(t : T?) {
+        var text : string
+        check_fixture(t, "p5_gnu_shims", text)
+        has_text(t, text, "require c_runtime/c_builtins")
+        has_text(t, text, "c_ffs(")
+        has_text(t, text, "c_bswap64(")
+        has_text(t, text, "c_prefetch(")
+        has_text(t, text, "c_abort()")
+        t |> equal(text |> find("asm") < 0, true, text)
+        t |> equal(text |> find("__builtin_constant_p") < 0, true, text)
+    }
+    t |> run("an attribute outside the dropped and read lists fails closed naming it") @(t : T?) {
+        rejects(t, "attr_mode", "typedef int QI __attribute__((mode(QI)));\nint main(void) \{ QI q = 1; return q - 1; \}\n", "the attribute `mode` is not lowered")
+        rejects(t, "attr_cleanup", "static void done(int *p) \{ (void)p; \}\nint main(void) \{ int c __attribute__((cleanup(done))) = 0; return c; \}\n", "the attribute `cleanup` is not lowered")
+        rejects(t, "attr_transparent", "union __attribute__((transparent_union)) U \{ int *a; long *b; \};\nint main(void) \{ return 0; \}\n", "the attribute `transparent_union` is not lowered")
+        rejects(t, "attr_weak_undefined", "extern int w __attribute__((weak));\nint main(void) \{ return &w != 0; \}\n", "`weak` on `w`, which the unit never defines")
+    }
+    t |> run("asm with template text or operands fails closed") @(t : T?) {
+        rejects(t, "asm_text", "int main(void) \{ asm(\"nop\"); return 0; \}\n", "inline asm with template text or operands")
+        rejects(t, "asm_operands", "int main(void) \{ int x = 1; asm volatile(\"\" : \"+r\"(x)); return x - 1; \}\n", "inline asm with template text or operands")
+        rejects(t, "asm_inputs", "int main(void) \{ int x = 0; asm(\"\" : : \"r\"(x) : \"memory\"); return x; \}\n", "inline asm with template text or operands")
+    }
+    t |> run("the barrier test reads the statement's source") @(t : T?) {
+        t |> equal(is_barrier_asm("asm(\"\")"), true)
+        t |> equal(is_barrier_asm("__asm__ __volatile__(\"\" : : : \"memory\", \"cc\")"), true)
+        t |> equal(is_barrier_asm("asm volatile (\"\" \"\" ::: \"memory\")"), true)
+        t |> equal(is_barrier_asm("asm(\"nop\")"), false)
+        t |> equal(is_barrier_asm("asm goto(\"\" : : : : out)"), false)
+        t |> equal(is_barrier_asm("asm(\"\" : \"=r\"(x))"), false)
+        t |> equal(is_barrier_asm("asm(\"\" : : \"r\"(x))"), false)
+        t |> equal(is_barrier_asm("asm(\"\" : : : : l)"), false)
+        t |> equal(is_barrier_asm(""), false)
     }
 }

@@ -201,3 +201,32 @@ prototype in the dump (`<builtin fn type>`), so it is a variadic function type r
 through its decay, which clang spells `BuiltinFnToFnPtr` and the dumper as the pinned
 `FunctionToPointerDecay` (F23); the emitter resolves the callee by name. Anything else is an
 error naming the node kind and its location.
+
+### Attributes and asm {#attributes-and-asm}
+
+The C-IR carries no attribute, so every attribute a program declaration carries, at any depth (a
+function's, a local's, a field's, a statement's), is judged against two deliberate lists before
+the declaration is dumped (`check_attributes`). The dropped list holds the attributes that change
+nothing a das run observes: inlining and optimizer hints (`noinline`, `always_inline`, `hot`,
+`cold`, `const`, `pure`, `leaf`, `nothrow`, `malloc`, `alloc_size`), diagnostics (`unused`,
+`used`, `format`, `nonnull`, `returns_nonnull`, `warn_unused_result`, `deprecated`, `nodebug`,
+`no_instrument_function`, `fallthrough`), a symbol's `visibility` or `section`, `gnu_inline`
+(a definition the unit uses either way), `_Noreturn`
+(GNU `noreturn` is part of the function type, not an attribute node), `weak` on a name the unit
+defines (a function with a body, a variable that is not `extern` or has an initializer), and
+`may_alias`, since das has no strict-aliasing rule for it to relax. `noclone`, `noipa`,
+`optimize`, `externally_visible` and `scalar_storage_order` reach no node: clang ignores them, so the dump cannot tell
+a test it changed. The read list holds `aligned` (the typedef pass above, the record layout
+check) and `packed` with `#pragma pack` (clang's record layout, which the layout law places or
+the sidecar marshals, `ARCHITECTURE.md` section 2). Any other attribute (`mode`, `cleanup`,
+`constructor`, `destructor`, `transparent_union`, `alias`, `weak` on a name the unit never
+defines) fails the conversion naming it; one clang wrote itself (`implicit`) or carried from an
+earlier declaration (`inherited`) was judged where it was written or belongs to the library.
+
+A `GCCAsmStmt` has neither its template nor its constraints in the dump, so the dumper reads the
+statement's source between its first and last token (a macro's statement where the macro's
+definition spells it). An asm with no operand child whose source is a compiler barrier
+(`is_barrier_asm`: `asm`, `__asm` or `__asm__` with `volatile` or `inline`, empty template
+strings and at most a clobber list, `asm("")`, `asm volatile("" ::: "memory")`) is the empty
+statement, since it orders nothing a das run observes; any other asm is machine code or a
+register binding, which fails closed.
