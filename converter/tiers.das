@@ -182,10 +182,14 @@ def native_run(compiler : string; flags : array<string>; c_path, bin : string; t
 }
 
 //! `native_run` with `program_args`, the program's C `argv` after its name.
-def native_run(compiler : string; flags : array<string>; c_path, bin : string; timeout : float; program_args : array<string>) : NativeRun {
+def native_run(compiler : string; flags : array<string>; c_path, bin : string; timeout : float; program_args : array<string>) : NativeRun =>
+    native_run(compiler, flags, [c_path], bin, timeout, program_args)
+
+//! `native_run` of a program of several C files, `c_paths` in link order.
+def native_run(compiler : string; flags : array<string>; c_paths : array<string>; bin : string; timeout : float; program_args : array<string>) : NativeRun {
     var res : NativeRun
     var args <- [compiler]
-    args |> push_from(flags, ["-o", bin, c_path])
+    args |> push_from(flags, ["-o", bin], c_paths)
     if (run_and_capture(args, res.output, 120.0) != 0) {
         return res
     }

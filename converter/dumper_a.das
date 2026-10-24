@@ -92,6 +92,11 @@ struct Dumper {
     decl_names : table<string; string>
     // the hoisted names of static locals taken so far
     hoisted_names : table<string>
+    // every file-scope name the unit's dump declares (a system header's included, so a libc
+    // function the unit calls), and every parameter and local of the function being dumped: a
+    // hoisted local static's name passes both
+    file_scope_names : table<string>
+    fn_all_locals : table<string>
     // the names of the current function's locals declared so far
     fn_locals : table<string>
     records : array<ClangRecord>
@@ -2321,8 +2326,16 @@ def private slot_expr(var d : Dumper; kids : JsonValue?; idx : int; var ok : boo
 // the dumper hoists it into `decls` with `from_func` and the body refers to the hoisted name
 def private hoist_static(var d : Dumper; js : JsonValue?; at : CirLoc; t : int) : bool {
     let c_name = js?["name"] ?? ""
-    // two static locals of one name in one function take numbered names
-    let hoisted = free_name(d.hoisted_names, "{d.current_fn}_{c_name}")
+    // `<fn>_<name>` first, numbered past another hoisted static, a file-scope name of the unit and
+    // a parameter or local of the function
+    let want = "{d.current_fn}_{c_name}"
+    var hoisted = want
+    var n = 1
+    while (key_exists(d.hoisted_names, hoisted) || key_exists(d.file_scope_names, hoisted) || key_exists(d.fn_all_locals, hoisted)) {
+        hoisted = "{want}{n}"
+        n++
+    }
+    d.hoisted_names |> insert(hoisted)
     d.decl_names[js?["id"] ?? ""] = hoisted
     var ok = true
     let init = initializer_of(d, js, at, ok)
@@ -2625,10 +2638,31 @@ def private check_attributes(var d : Dumper; js : JsonValue?; owner : string = "
 
 // the names the program's top-level declarations define: a function with a body, a variable
 // that is not `extern` or carries an initializer
+// the names every parameter and variable declared under `js` takes
+def private local_names(js : JsonValue?) : table<string> {
+    var names : table<string>
+    collect_local_names(js, names)
+    return <- names
+}
+
+def private collect_local_names(js : JsonValue?; var names : table<string>) {
+    for (idx in range(child_count(js))) {
+        let kid = (js?["inner"] as _array)[idx]
+        let kind = node_kind(kid)
+        if (kind == "VarDecl" || kind == "ParmVarDecl") {
+            names |> insert(kid?["name"] ?? "")
+        }
+        collect_local_names(kid, names)
+    }
+}
+
 def private collect_defined_names(var d : Dumper; js : JsonValue?) {
     for (idx in range(child_count(js))) {
         let decl = (js?["inner"] as _array)[idx]
         let kind = node_kind(decl)
+        if (kind == "FunctionDecl" || kind == "VarDecl") {
+            d.file_scope_names |> insert(decl?["name"] ?? "")
+        }
         let extern_var = kind == "VarDecl" && (decl?["storageClass"] ?? "") == "extern" && !is_present(decl?["init"])
         let body = kind == "FunctionDecl" && has_child_kind(decl, "CompoundStmt")
         if (body || (kind == "VarDecl" && !extern_var)) {
@@ -2931,7 +2965,8 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
     let kind = node_kind(js)
     let c_name = js?["name"] ?? ""
     let storage = js?["storageClass"] ?? ""
-    let is_static = storage == "static"
+    // a declaration without `static` after a `static` one keeps its internal linkage (C11 6.2.2p4)
+    let is_static = storage == "static" || key_exists(d.linkage_names, c_name)
     if (is_static) {
         d.linkage_names[c_name] = "{d.tu_prefix}__{c_name}"
     }
@@ -2945,6 +2980,7 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
         var fn = new CirDecl(k = "func", name = name, c_name = c_name, t = t, is_static = is_static, loc = at)
         d.current_fn = c_name
         d.fn_locals |> clear()
+        d.fn_all_locals <- local_names(js)
         let kids = js?["inner"]
         for (idx in range(child_count(js))) {
             let child = (kids as _array)[idx]
@@ -3003,17 +3039,6 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
     }
     fail(d, kind == "FileScopeAsmDecl" ? "a file-scope asm is machine code outside any function; no emulation exists in the das runtime" : "unsupported declaration `{kind}`", at)
     return null
-}
-
-// a file stem as an identifier: every other character an underscore, a leading digit kept
-// behind one, since `00099__f` is not a name
-def private ident_of(name : string) : string {
-    let ident = build_string() $(var w) {
-        for (ch in name) {
-            w |> write(is_alnum(ch) ? to_char(ch) : "_")
-        }
-    }
-    return !empty(ident) && is_number(first_character(ident)) ? "_" + ident : ident
 }
 
 def private clang_version(clang : string) : string {

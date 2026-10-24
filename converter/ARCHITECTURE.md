@@ -10,7 +10,9 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 
 - `cir.das` - the C-IR of `docs/c-ir-spec.md` as das values (`CirTu`, `CirType`, `CirDecl`,
   `CirStmt`, `CirExpr`, one struct per spec table), the canonical writer `write_cir`, the
-  reader `read_cir`, the pinned `CAST_KINDS`, the two dialects. Nothing here knows clang or
+  reader `read_cir`, `write_program` (the manifest of `docs/c-ir-spec.md` section 7), `write_cir_decl` (one
+  declaration's bytes), `ident_of` (a file stem as an identifier), the pinned `CAST_KINDS`, the two
+  dialects. Nothing here knows clang or
   daslang syntax. A tree is owned through plain pointers and freed by one `delete` of its
   root: the generated finalizer recurses through pointer fields and arrays of pointers
   (`probes/test_delete.das`), so no hand-written walk frees a child.
@@ -53,7 +55,14 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `daslib/das_source_formatter`, compile-check with `compile_file`. Every artifact lands under
   `out_dir`; `file_stem` is the name every artifact of a C file carries. The result carries the
   bytes of clang's JSON dump and the seconds of the dumper, the emitter (with the formatter) and
-  the compile check, which `lua/run.das` (repo root) reports.
+  the compile check, which `lua/run.das` (repo root) reports. `convert_program(c_paths, ...[,
+  entry])` is the program of several files: each dumped, written and round-tripped as `convert`
+  does it, then linked (section 6) into `<stem>.das` of the unit holding `main`, else of the first,
+  beside `program.cir.json`; its result adds the link's seconds and report. One file is `convert`
+  of it. `read_program_input` reads a manifest the converter takes (section 6).
+- `link.das` - the link of section 6 (`ARCHITECTURE_LINK.md`): `link_tus` over the dumper's trees
+  of a program's units.
+  Nothing here knows clang or daslang syntax.
 - `tiers.das` - `run_tier(das_path, tier, work_dir, output[, module_dirs[, timeout[,
   flags]]])`: the process exit code of the module under `interp`, `jit`, `exe` or `aot`
   (section 5); `module_dirs` are passed as `-load_module` to the interpreter and the JIT, `flags`
@@ -61,10 +70,12 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   reported as a failure: the run, and under `exe` and `aot` each build step too. `program_args` are the program's own C `argv` after its name: after `--` under
   `interp` and `jit`, after the binary under `exe`; `aot` refuses them, since its host passes
   none. `CONVERTED_MODULES` names the module folders a converted program requires and
-  `daslang_cmd` spells the prefix; `native_run` builds a C file with a given compiler and flags
-  and runs it once, with the program's arguments when given, the native side every differential test compares against.
-- `main.das` - the CLI (`daslib/clargs`): `c2das <file.c> [--out] [--target] [--run] [--arg]...
-  [--sidecar] [--param-writes in-place|copy] [--loops range|while]`. Each `--arg` is one argument of the C `argv` the
+  `daslang_cmd` spells the prefix; `native_run` builds a C file, or a program's files in order,
+  with a given compiler and flags and runs it once, with the program's arguments when given, the native side every differential test compares against.
+- `main.das` - the CLI (`daslib/clargs`): `c2das <file.c>... | --program <p.json> [--out] [--target]
+  [--run] [--arg]... [--sidecar] [--param-writes in-place|copy] [--loops range|while]`. Several
+  files are one program linked in their order, as are the files a manifest names; files beside
+  `--program` are a usage error (exit 2). Each `--arg` is one argument of the C `argv` the
   program `--run` runs gets, in order. `--param-writes` chooses how the emitter writes a scalar or
   pointer parameter the body assigns, steps or takes the address of: `in-place`, the default and
   the idiomatic form, writes the parameter itself; `copy` writes a local copy, which the
@@ -101,6 +112,10 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   das text hash to their golden values, and the module exits 42 under all four tiers; and a
   program whose `#if` branch the sidecar's `defines` select prints what the native build under
   the same `-D` prints.
+- `tests/test_link.das` - the three files of `tests/fixtures/p5_multi_link/` linked into one module
+  that prints what their native build prints, with the renames, the header copies and the scoping
+  the text must carry; the file list and the fixture's manifest giving one module through
+  `main.das`; the manifest's and the link's refusals; the binding rules over trees built by hand.
   Fixtures under `tests/fixtures/` are C inputs, never das.
 
 ## 2. The C-IR bytes
@@ -235,6 +250,10 @@ as sources, where a folder holding `src/*.cpp` (`dasCRuntime`) compiles into the
 its header. The exit code is the program's own on every tier,
 which is why the wrapper returns from `main`.
 
-## 6. Exception ledger
+## 6. The link
+
+Section 6, how several C files link into one program, is in `ARCHITECTURE_LINK.md`.
+
+## 7. Exception ledger
 
 Empty.

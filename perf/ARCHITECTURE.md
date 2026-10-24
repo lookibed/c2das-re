@@ -85,7 +85,7 @@ harness that times them under every lane, and the stored results.
   0 otherwise, a lane error the baseline shares included (a cell both lack reproduces it).
 - `perf_lanes.das` - the lanes and the sample arithmetic `run.das` shares with
   `ports/publish.das`: the native lane's build command (the pinned clang, `NATIVE_FLAGS`
-  `-O3 -w -funsigned-char`), the interpreter and JIT commands over a converted module, the `exe`
+  `-O3 -w -funsigned-char`, a program's C files in order), the interpreter and JIT commands over a converted module, the `exe`
   and `aot` builds through `converter/tiers.das` (each standing only on the binary it leaves,
   named as the tier names it, an earlier run's removed first, with the build's line as the
   error), the median and the spread of a cell, the CPU model and the clang and daslang version

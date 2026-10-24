@@ -54,10 +54,10 @@ let IDENTITY <- ["-c", "user.name=lookibed", "-c", "user.email=93531352+lookibed
 def private bench(name : string) : WorkloadSpec => <- WorkloadSpec(name = name, args <- [get_full_file_name("ports/lua/bench/{name}.lua")], shown = "bench/{name}.lua", compare_output = true)
 
 def private lua_port : Port => <- Port(
-    name = "lua", title = "Lua", harness = "lua", runs = "lua_all", license_header = "lua.h", claims_item = "P5.1",
+    name = "lua", title = "Lua", harness = "lua", runs = "lua", license_header = "lua.h", claims_item = "P5.1",
     modules <- [
-        (stem = "lua_all", role = "the interpreter `lua`: the core, the standard libraries and `lua.c` as one translation unit"),
-        (stem = "luac_all", role = "the compiler `luac`: the core, the auxiliary library and `luac.c` as one translation unit")
+        (stem = "lua", role = "the interpreter `lua`: the core, the standard libraries and `lua.c`, linked from their separate files into one module"),
+        (stem = "luac", role = "the compiler `luac`: the core, the auxiliary library and `luac.c`, linked from their separate files into one module")
     ],
     libs <- ["-lm"],
     claims <- [
@@ -193,7 +193,7 @@ def private generation_for(args : Args; port : Port; var gen : Generation) : boo
 
 // the fetch and the harness's conversion with its native oracle and run, the log kept beside
 // the converted output for the README
-def private convert_program(port : Port) : bool {
+def private run_harness(port : Port) : bool {
     var out : string
     if (run_and_capture(["bash", path_join(port.harness, "fetch.sh")], out, 3600.0) != 0) {
         to_log(LOG_ERROR, "{port.name}: {port.harness}/fetch.sh failed: {last_line(out)}\n")
@@ -308,14 +308,15 @@ struct LaneRun {
     error : string
 }
 
-// every lane of `lanes` built once: native from the composed C file, the das lanes over the
-// converted module, the program's arguments after `--` for the interpreter and the JIT
+// every lane of `lanes` built once: native from the sources the harness's program manifest lists,
+// the das lanes over the converted module, the program's arguments after `--` for the interpreter
+// and the JIT
 def private build_lanes(port : Port; lanes : array<string>; var into : Capture) : table<string; LaneRun> {
     var runs : table<string; LaneRun>
     let work = path_join(port.harness, "work")
     let bench_work = path_join(work, "bench")
     mkdir_rec(bench_work)
-    let c_path = path_join(work, "{port.runs}.c")
+    let manifest = path_join(work, "{port.runs}.program.json")
     let das_path = get_full_file_name(path_join(work, "{port.runs}/{port.runs}.das"))
     let modules <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)]
     into.lanes |> reserve(length(lanes))
@@ -324,12 +325,17 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
         var shown : string
         if (lane == "native") {
             let bin = path_join(bench_work, "{port.runs}_native")
+            var error : string
+            let input <- read_program_input(manifest, "linux", error)
             var out : string
-            if (run_and_capture(native_build_command(c_path, bin, port.libs), out, 3600.0) != 0) {
+            if (!empty(error)) {
+                run.error = clipped(error)
+            } elif (run_and_capture(native_build_command(input.c_paths, bin, port.libs), out, 3600.0) != 0) {
                 run.error = clipped(with_line("the build failed", first_reported_line(out)))
             }
             run.argv <- [get_full_file_name(bin)]
-            shown = join(native_build_command("{port.runs}.c", "{port.runs}_native", port.libs), " ")
+            var inscope listed <- empty(error) ? [for (c_path in input.c_paths); base_name(c_path)] : ["<the C files of {manifest}>"]
+            shown = join(native_build_command(listed, "{port.runs}_native", port.libs), " ")
         } elif (lane == "interp" || lane == "jit") {
             let flag = lane == "jit" ? "-jit" : ""
             run.argv <- das_lane_command(das_path, flag, modules)
@@ -462,10 +468,10 @@ def private readme_text(port : Port; release : Release; gen : Generation; comman
         w |> write("The modules require c2das-re's `crt` and `c_runtime` modules: a c2das-re checkout at the commit above, ")
         w |> write("with the daScript its `VERSIONS.md` pins built and `scripts/build_crt.sh` run. With `<c2das-re>` that checkout:\n\n```\n")
         let load = "daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime"
-        w |> write("{load} lua_all.das -- -e \"print(1+1)\"\n")
-        w |> write("{load} -jit lua_all.das -- bench/fib.lua\n")
-        w |> write("{load} -exe lua_all.das -output lua && ./lua.exe bench/fib.lua\n")
-        w |> write("{load} luac_all.das -- -o out.luac script.lua\n```\n\n")
+        w |> write("{load} lua.das -- -e \"print(1+1)\"\n")
+        w |> write("{load} -jit lua.das -- bench/fib.lua\n")
+        w |> write("{load} -exe lua.das -output lua && ./lua.exe bench/fib.lua\n")
+        w |> write("{load} luac.das -- -o out.luac script.lua\n```\n\n")
         w |> write("Everything after `--` is the program's own command line; daslang names the `-exe` binary with `.exe` on every platform.\n\n")
         w |> write("## Upstream tests\n\n")
         w |> write("The results c2das-re's {port.claims_item} recorded for this program, not results of this publish's run; ")
@@ -547,7 +553,7 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
         to_log(LOG_ERROR, "{port.name}: VERSIONS.md names no `{port.name}:` line with the release and the test-suite tarballs\n")
         return false
     }
-    if ((!args.no_convert && !convert_program(port)) || !generation_for(args, port, gen)) {
+    if ((!args.no_convert && !run_harness(port)) || !generation_for(args, port, gen)) {
         return false
     }
     for (m in port.modules) {

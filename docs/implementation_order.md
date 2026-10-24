@@ -587,27 +587,109 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   match (`--allow-stale` otherwise). `perf/run.das`'s clang and daslang version lines now read
   past `info` lines (`first_reported_line`, the same text on this machine), and its exe and AOT
   builds take the 3600 s build timeout `converter/tiers.das` now passes to every build step.
-- **P5.1b Source module layout** (owner ruling 2026-10-23, ruling 4, after Boris 2026-10-08; the
-  decisions row "Module layout" of `very-detailed-plan.md` section 1; branch `p5.1b-source-layout`).
-  Lua converts from its separate `.c` files as its Makefile builds them (the core and the libraries
-  with `lua.c`; the core and `lauxlib.c` with `luac.c`), not from `lua_all.c`: a program manifest
-  of several translation units (`c-ir-spec.md` section 7, `"tus"`), the whole-program merge in the
-  backend with cross-TU symbol resolution, and file-scope statics kept apart by a TU prefix (plan
-  section 4.2 item 1). The output mirrors Lua's `src/`: `lapi.c` -> `lapi.das`, a set of mutually
-  dependent files -> `<first_stem>_cluster.das` with a `<stem>.das.inc` fragment per member, an
-  entry module with `main`; the single module stays an opt-in (a converter flag and a `.c2das`
-  field). The mechanism is not Lua's: no Doom here (P6). Acceptance: everything P5.1 proves holds
-  in both layouts (`lua -e "print(1+1)"` and the string/table/math script print the native build's
-  output under the interpreter and the JIT; `luac -o` writes the native bytecode byte for byte for
-  every file of the 5.4.8 test suite), tested in the repository's style; `ports/publish.das` copies
-  the module tree; preflight `--full` green, the suite counts held. Report: the modules and
-  fragments, every cluster with its members, the largest cluster and why its files are linked, the
-  count by Boris's include rule beside it, compile-check and `-compile-only` seconds and `lua -e`
-  startup under the interpreter, a fresh JIT and the JIT cache for both layouts, readability and
-  perf captures for both.
-  Ledger: the multi-TU merge is more than one item; the design and the proposed split (P5.1b1 the
-  multi-TU link into the single module, P5.1b2 the source layout over it) wait for the owner's
-  decision.
+- **P5.1b1 Multi-TU link** (owner rulings 2026-10-23, 4 and 5: the P5.1b split, the link on the
+  dumper's in-memory trees with no C-IR spec change; branch `p5.1b1-multi-tu-link`). `c2das <a.c>
+  <b.c> ...` and `c2das --program <p.json>` convert several C files as one program: each file is
+  dumped as its own translation unit under the sidecar's `defines`, its `<stem>.cir.json` written
+  and round-tripped as before, and `converter/link.das`'s `link_tus` merges the dumper's trees into
+  one tree the emitter takes as one unit (one module, named by the unit holding `main`), with
+  `program.cir.json` beside them in the spec's section 7 shape (`cir`, `target`, `tus` the units'
+  C-IR files, `entry`). A manifest the converter takes names the C files in `tus` (relative to it),
+  since the link never rereads C-IR; a C-IR file there, an empty `tus` or another target is
+  refused. The link: the type tables merge by structural key (a record and an enum by spelling,
+  location-based for anonymous ones), a record incomplete in one unit takes another's definition,
+  two layouts or two enumerator lists of one spelling are refused with both locations; each
+  external binds to its definition, else its first tentative definition, else its first
+  declaration, and two definitions, a name both function and object, two dialects or two units of
+  one stem are refused (two definitions at one header location named as such); internal linkage
+  belongs to the name (the dumper makes a declaration without `static` after a `static` one
+  static); a hoisted local static's `<function>_<name>` is numbered by the dumper past every
+  file-scope name the unit declares and every parameter and local of the function (which also
+  fixes a one-file program whose local spells that name: it read the local for the static); a
+  static keeps its unit and its C name, two of one unit wanting one name refused, and is renamed `<stem>_<name>` when another owner takes the name: an external of the program, a name
+  a converted module can resolve besides the program's own (the names mapped to libc, crt or
+  c_runtime, every name the emitter spells bare, every public c_runtime definition, every crt
+  binding: `reserved_das_names`), a name another unit's code references without a
+  static of its own, or another unit's static; the new name is numbered past every file-scope name
+  and every parameter, local and label of the units reaching it, and a parameter or local of the
+  old name stays untouched; a header's static objects stay one copy per unit, its functions are
+  kept once where every copy is byte-identical and every name they reference resolves alike in
+  every unit of the copies (an external everywhere, or a static function kept once across them).
+  A multi-file program's sidecar is the given one, else the entry file's `<stem>.c2das` (one
+  beside another file, or two, refused), else the first file's folder `.c2das`; a file stemmed
+  `program` is refused. One file is the one-unit conversion as before (no link, statics keep the
+  dumper's `<stem>__<name>`). `lua/run.das` writes `work/lua.program.json` (the Makefile's
+  `CORE_O`, `LIB_O`, `lua.c`) and `work/luac.program.json` (the core, `lauxlib.c`, `luac.c`) and
+  converts both from the release's `src/` (no `lua_all.c`/`luac_all.c`, no header copy) into
+  `work/lua/lua.das` and `work/luac/luac.das`; the native oracles build from the same files;
+  `--filter` takes a stem. `ports/publish.das` publishes `lua.das` and `luac.das` and builds its
+  native lane from the manifest's files; `perf/perf_lanes.das`'s `native_build_command` takes a
+  program's files. On Lua the link refuses nothing and renames nothing, after the review fixes too
+  (no Lua static is named like a mapped libc name or a name another file references, and no two
+  files of either program share a static name; `writer` of `luac.c` and `lstrlib.c` never meet, since `luac` links
+  no standard library), binds 5,829 declarations of `lua` and 4,185 of `luac` to another file's
+  definition, and keeps no header function once (Lua's headers define none); the modules hold
+  24,048 and 18,843 lines with `[c_function]` on 776 of 1,080 and 554 of 767 functions, the
+  composition's counts, the text differing only in the statics' names (no `lua_all__` prefix) and
+  in where an external object is defined. On this host, idle: the conversion of both programs
+  takes 318.6 s against the composition's 220.0 s, the dumper 144.9 s over 33 files and
+  498,177,489 bytes of clang JSON for `lua` (composed: 90.4 s, 399,010,406) and 120.1 s over 22
+  files and 431,164,186 bytes for `luac` (81.3 s, 361,265,529), the link 0.2 s each; the compile
+  check 8.9 s and 7.0 s (composed 9.0 and 6.9), `-compile-only` 9.75-10.21 s and 7.82-8.10 s
+  over three runs (composed 9.81-10.23 and 7.85-7.89). `lua -e "print(1+1)"` and the
+  string/table/math script print the native build's output under the interpreter and the JIT, and
+  `luac -o` writes the native bytecode byte for byte for all 33 files of the 5.4.8 test suite.
+  The review pass (grounding, prover, targeted, tdd-auditor) found three silent wrong outputs (a
+  header copy kept once reading another unit's name, a renamed static captured by a local of its
+  new name, a static named like a libc function taking another unit's libc call) and two loud
+  failures (a static prototype before a definition without `static`, a hoisted local static and a
+  file-scope static of one name); its second targeted pass two more silent ones (a numbered name
+  taken by a local, a hoisted name equal to an external the unit references); its third pass one
+  more (a renamed static taking a name the module spells bare: `end.c`'s `index` as `end_index`,
+  the c_runtime helper an array pointer spells, read wild memory); all are fixed and tested
+  (`tests/fixtures/p5_multi_names`, `p5_multi_hoisted`, `p5_multi_reserved`, and a test that fails
+  when a public c_runtime definition is missing from the reserved list), with
+  the sidecar rule above and the refusals of a field-order or dimension-only layout difference.
+  Ledger: the ports repository still holds `lua_all.das` and `luac_all.das` until removed by hand
+  at the next publish (the publisher deletes nothing). A header function kept once has one address
+  where C gives each unit its own (`p_fp() == twice` across units is 1, natively 0). The reserved
+  set holds the module's fixed names, not the pattern-named ones the emitter generates
+  (`read_<record>`, `write_<record>`, `_cl<N>`, `anon_<N>`): a renamed static of a unit stemmed
+  `read` or `write` could still meet one. `extern T a[];`
+  in a shared header referenced in a unit not defining the array is refused per unit by the dumper
+  ("a reference ... before a definition gives its array a length") where the link could size it.
+  Two units with different anonymous `typedef struct {...} T` are refused as a layout clash of
+  `struct T` though C allows them. One typedef name with two targets in two units is not refused
+  (the lead's ruling asked for a refusal; it would refuse valid C the emitter handles, the
+  typedefs being transparent: prover c10 prints the native output), so a sidecar key naming such a
+  typedef (`marshal`, `over_indexed`) resolves to the last. A program whose headers sit outside its C
+  files' folder needs them copied beside those files (the dumper's program-files rule holds per
+  unit); a manifest naming the program's root is not implemented, Lua needing none. A non-static
+  C99 `inline` function a header defines in several units is two definitions and refused, the
+  message naming `inline` and both units. A
+  one-file program keeps `<stem>__<name>` for its statics where `docs/lowering-examples.md` names
+  them bare (renamed only on a cross-TU collision), as before this item. `lua/REVIEW.md`'s
+  composition rule names `composes`; its wording joins the phase-end audit.
+- **P5.1b2 Source module layout** (owner ruling 2026-10-23, ruling 4, after Boris 2026-10-08; the
+  decisions row "Module layout" of `very-detailed-plan.md` section 1; after P5.1b1). Over P5.1b1's
+  link, the output mirrors Lua's `src/`: `lapi.c` -> `lapi.das`, a set of mutually dependent files
+  -> `<first_stem>_cluster.das` with a `<stem>.das.inc` fragment per member, an entry module with
+  `main`. The partition is the Tarjan SCC of the unit reference graph (an edge from a unit to the
+  owner of each function or object it references and to the owner of each type its declarations
+  spell); a singleton is `<stem>.das`, a component `<lexically first stem>_cluster.das` with a
+  `<stem>.das.inc` fragment per member sharing one module scope through a cluster renamer; a
+  header's types go to `<header>_h.das`, never to the same-stem `.c`; the entry module holds
+  `main`; the emitter splits into program and module state; `--layout source|single` with the
+  sidecar field `layout`, default `source`; the single module stays an opt-in (a converter flag and a `.c2das` field). The mechanism is
+  not Lua's: no Doom here (P6). Acceptance: everything P5.1 proves holds in both layouts (`lua -e
+  "print(1+1)"` and the string/table/math script print the native build's output under the
+  interpreter and the JIT; `luac -o` writes the native bytecode byte for byte for every file of the
+  5.4.8 test suite), tested in the repository's style; `ports/publish.das` copies the module tree;
+  preflight `--full` green, the suite counts held. Report: the modules and fragments, every cluster
+  with its members, the largest cluster and why its files are linked, the count by Boris's include
+  rule beside it, compile-check and `-compile-only` seconds and `lua -e` startup under the
+  interpreter, a fresh JIT and the JIT cache for both layouts, readability and perf captures for
+  both.
 - **P5.1c Skip-list audit** (owner ruling 2026-10-22 (2), item B; branch `p5.1c-skip-audit`).
   `run_suite.sh <suite> --audit-skips` runs every ledgered id through the convert-and-run path,
   ratchet untouched (`--update` only adds the audited ids that pass), into `work/skip_audit.tsv`

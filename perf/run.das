@@ -199,7 +199,7 @@ def run_method_kernel(name : string; samples : int; var errors : array<string>) 
 def measure_native(var cells : table<string; Cell>; var errors : array<string>; name, c_path, work : string; extra : array<string>; samples : int; var oracle : int&) : bool {
     let native_bin = path_join(work, "{name}_native")
     var build_out : string
-    if (run_and_capture(native_build_command(c_path, native_bin, extra), build_out, 600.0) != 0) {
+    if (run_and_capture(native_build_command([c_path], native_bin, extra), build_out, 600.0) != 0) {
         errors |> push("{name}/native: {first_line(build_out)}")
         return false
     }

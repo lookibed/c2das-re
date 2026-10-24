@@ -9,16 +9,19 @@ require pipeline
 require sidecar
 require tiers
 
-//! c2das: `daslang converter/main.das -- <file.c> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy]`.
-//! Converts one C file into `<dir>/<stem>.das` (default `out/`); with `--run` executes the
+//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy]`.
+//! Converts one C file into `<dir>/<stem>.das` (default `out/`), several or a manifest's as one
+//! program into the module of the unit holding `main`; with `--run` executes the
 //! result under a tier, `--arg` each argument of its C `argv` in order, and exits with the
 //! program's exit code.
 
 [CommandLineArgs]
 struct Args {
     @clarg_positional
-    @clarg_doc = "the C translation unit to convert"
-    input : string
+    @clarg_doc = "the C translation units to convert, one program linked in this order"
+    input : array<string>
+    @clarg_doc = "a program manifest (`tus`, the C files relative to it, and `entry`) in place of the files"
+    program : string = ""
     @clarg_doc = "output directory for the C-IR and the das module (default out)"
     out : string = "out"
     @clarg_doc = "dialect: msvc (LLP64, the documents' default) or linux (LP64, this host)"
@@ -27,7 +30,7 @@ struct Args {
     run : string = ""
     @clarg_doc = "an argument the program run by --run gets in its C argv, one per --arg, in order"
     arg : array<string>
-    @clarg_doc = "the .c2das sidecar (default: <stem>.c2das beside the file, else .c2das in its folder)"
+    @clarg_doc = "the .c2das sidecar (default: <stem>.c2das beside the file, else .c2das in its folder; of several files, the <stem>.c2das of the file holding main, else .c2das in the first file's folder)"
     sidecar : string = ""
     @clarg_name = "param-writes"
     @clarg_doc = "a written scalar or pointer parameter: in-place (the default) or copy (a local copy, faster under the interpreter); overrides the sidecar's param_writes"
@@ -51,8 +54,12 @@ def main : int {
         print_help(get_command_info(type<Args>), "c2das")
         return 0
     }
-    if (empty(args.input)) {
+    if (empty(args.input) && empty(args.program)) {
         to_log(LOG_ERROR, "c2das: no input file; -? for help\n")
+        return 2
+    }
+    if (!empty(args.input) && !empty(args.program)) {
+        to_log(LOG_ERROR, "c2das: --program names the files; give no file beside it; -? for help\n")
         return 2
     }
     if (!empty(args.param_writes) && !is_param_writes(args.param_writes)) {
@@ -63,7 +70,13 @@ def main : int {
         to_log(LOG_ERROR, "c2das: --loops is range or while, not `{args.loops}`; -? for help\n")
         return 2
     }
-    let res <- convert(args.input, args.out, args.target, "", args.sidecar, args.param_writes, args.loops)
+    var error : string
+    let input <- !empty(args.program) ? read_program_input(args.program, args.target, error) : ProgramInput(c_paths <- clone_to_move(args.input), entry = "main")
+    if (!empty(error)) {
+        to_log(LOG_ERROR, "c2das: {error}\n")
+        return 1
+    }
+    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry)
     if (!res.ok) {
         to_log(LOG_ERROR, "c2das: {res.error}\n")
         return 1

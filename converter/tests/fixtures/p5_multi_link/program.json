@@ -1,0 +1,5 @@
+{
+ "cir": "0.1",
+ "tus": ["geo.c", "parity.c", "prog.c"],
+ "entry": "main"
+}
