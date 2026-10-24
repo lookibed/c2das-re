@@ -40,6 +40,16 @@ def test_pointer_counts(t : T?) {
 }
 
 [test]
+def test_cluster_counts(t : T?) {
+    t |> run("a cluster module counts its own text, and with its fragments named their text too") @(t : T?) {
+        let own <- count_module("{FIXTURES}/cluster/cluster.das")
+        expect_counts(t, own, {"unsafe_expr" => 2, "reinterpret" => 1})
+        let whole <- count_module("{FIXTURES}/cluster/cluster.das", ["{FIXTURES}/cluster/part.das.inc"])
+        expect_counts(t, whole, {"c_function" => 1, "unsafe_expr" => 2, "reinterpret" => 1, "pointer_index" => 2})
+    }
+}
+
+[test]
 def test_generated_counts(t : T?) {
     t |> run("generated functions and macro wraps uncounted, one instance per generic, an uncalled generic as written") @(t : T?) {
         let mc <- count_module("{FIXTURES}/generated.das")
@@ -170,7 +180,7 @@ def private sample_capture : Capture {
 def test_capture_text(t : T?) {
     let text = capture_text(sample_capture())
     t |> run("keys sorted, two-space indent, one module per line, totals summed") @(t : T?) {
-        t |> success(text |> starts_with("\{\n  \"inputs\": \{\n    \"c_testsuite\": 0,\n    \"csmith\": 0,\n    \"gcc_torture\": 0,\n    \"perf\": 2\n  \},\n  \"modules\": \{\n    \"perf/a\": \{\"c_function\": 0, \"goto\": 1,"), text)
+        t |> success(text |> starts_with("\{\n  \"inputs\": \{\n    \"c_testsuite\": 0,\n    \"csmith\": 0,\n    \"gcc_torture\": 0,\n    \"lua\": 0,\n    \"perf\": 2\n  \},\n  \"modules\": \{\n    \"perf/a\": \{\"c_function\": 0, \"goto\": 1,"), text)
         t |> success(find(text, "\"perf/a\"") < find(text, "\"perf/b\""), text)
         t |> success(text |> contains("  \"totals\": \{\n    \"c_function\": 0,\n    \"goto\": 3,\n    \"label\": 1,"), text)
         t |> success(text |> ends_with("\n  \}\n\}\n"), text)
@@ -218,7 +228,7 @@ def test_check_capture(t : T?) {
         t |> success(findings_of(replace(good, "\"goto\": 2", "\"goto\": -2")) |> contains("modules.perf/b.goto is not a non-negative integer"))
         t |> success(findings_of(replace(good, "\"goto\": 2", "\"goto\": 2.5")) |> contains("modules.perf/b.goto is not a non-negative integer"))
         t |> success(findings_of(replace(good, "\"goto\": 2", "\"goto\": \"2\"")) |> contains("modules.perf/b.goto is not a non-negative integer"))
-        t |> success(findings_of(replace(good, "\"perf\": 2", "\"perf\": 2,\n    \"lua\": 0")) |> contains("inputs has the unknown key `lua`"))
+        t |> success(findings_of(replace(good, "\"perf\": 2", "\"perf\": 2,\n    \"zz\": 0")) |> contains("inputs has the unknown key `zz`"))
         t |> success(findings_of(replace(good, "    \"perf\": 2\n", "    \"zz\": 2\n")) |> contains("inputs lacks `perf`"))
     }
     t |> run("modules out of order or a changed indent is not the writer's spelling") @(t : T?) {
@@ -231,8 +241,8 @@ def test_check_capture(t : T?) {
         t |> success(findings_of(replace(good, "\"perf\": 2", "\"perf\": 5")) |> contains("inputs.perf is 5, the modules hold 2"))
     }
     t |> run("a module outside every input group") @(t : T?) {
-        let stray = replace(good, "\"perf/a\":", "\"lua/a\": \{\"c_function\": 0, \"goto\": 0, \"label\": 0, \"literal_named\": 0, \"pointer_arith\": 0, \"pointer_index\": 0, \"reinterpret\": 0, \"unsafe_block\": 0, \"unsafe_expr\": 0, \"while_rangeable\": 0\},\n    \"perf/a\":")
-        t |> success(findings_of(stray) |> contains("modules: `lua/a` names no input group"), findings_of(stray))
+        let stray = replace(good, "\"perf/a\":", "\"doom/a\": \{\"c_function\": 0, \"goto\": 0, \"label\": 0, \"literal_named\": 0, \"pointer_arith\": 0, \"pointer_index\": 0, \"reinterpret\": 0, \"unsafe_block\": 0, \"unsafe_expr\": 0, \"while_rangeable\": 0\},\n    \"perf/a\":")
+        t |> success(findings_of(stray) |> contains("modules: `doom/a` names no input group"), findings_of(stray))
     }
 }
 

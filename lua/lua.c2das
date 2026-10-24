@@ -1,4 +1,5 @@
 {
     "defines": ["LUA_USE_JUMPTABLE=0", "luai_jmpbuf=int", "LUAI_THROW(L,c)=abort()", "LUAI_TRY(L,c,a)={ a }"],
-    "over_indexed": ["TString.contents", "Udata.uv", "CClosure.upvalue", "LClosure.upvals"]
+    "over_indexed": ["TString.contents", "Udata.uv", "CClosure.upvalue", "LClosure.upvals"],
+    "layout": {"profile": "lua.profile.json"}
 }

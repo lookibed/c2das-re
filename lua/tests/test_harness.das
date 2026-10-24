@@ -46,21 +46,26 @@ def private stand_in_root(name, lobject : string) : string {
         fwrite(path_join(src, "{source}.c"), source == "lobject" ? lobject : "/* {source} */\n")
     }
     fwrite(path_join(src, "lua.c"), "#include <stdio.h>\n#include \"lua.h\"\nint main(int argc, char **argv) \{ printf(\"%d %s\\n\", lua_answer() + argc, argv[argc - 1]); return 0; \}\n")
-    fwrite(path_join(src, "luac.c"), "int main(void) \{ return 0; \}\n")
+    fwrite(path_join(src, "luac.c"), LUAC_C)
     return root
 }
+
+// a stand-in compiler: `luac -o <out> <in>` writes the input's bytes, each xored, to the output
+let LUAC_C = "#include <stdio.h>\nint main(int argc, char **argv) \{\n    char buf[256];\n    FILE *in, *out;\n    size_t n;\n    if (argc != 4) return 2;\n    in = fopen(argv[3], \"rb\");\n    out = fopen(argv[2], \"wb\");\n    if (in == 0 || out == 0) return 1;\n    n = fread(buf, 1, sizeof buf, in);\n    for (size_t i = 0; i < n; i++) buf[i] = (char)(buf[i] ^ 0x5a);\n    fwrite(buf, 1, n, out);\n    fclose(in);\n    fclose(out);\n    return 0;\n\}\n"
 
 let LOBJECT = "#include \"lua.h\"\nint lua_answer(void) \{ return 41; \}\n"
 
 [test]
 def test_run_refusals(t : T?) {
-    t |> run("run.das refuses a tier other than interp or jit, and a tree with no fetched sources") @(t : T?) {
+    t |> run("run.das refuses a tier other than interp or jit, a layout other than source, scc, single or all, and a tree with no fetched sources") @(t : T?) {
         var dir_error : string
         let empty_root = create_temp_directory("c2das_lua_empty", dir_error)
         t |> equal(dir_error, "")
         var out : string
         t |> equal(run_in(empty_root, daslang_argv("lua/run.das", ["--tier", "aot"]), out), 1, out)
         t |> success(out |> contains("--tier is interp or jit, not `aot`"), out)
+        t |> equal(run_in(empty_root, daslang_argv("lua/run.das", ["--layout", "flat"]), out), 1, out)
+        t |> success(out |> contains("--layout is source, scc, single or all, not `flat`"), out)
         t |> equal(run_in(empty_root, daslang_argv("lua/run.das", array<string>()), out), 1, out)
         t |> success(out |> contains("no lua/fetch/lua-5.4.8/src; run lua/fetch.sh first"), out)
         rmdir_rec(empty_root)
@@ -75,15 +80,22 @@ def private manifest_tus(root : string; sources : array<string>) : string {
 
 [test]
 def test_run_stand_in(t : T?) {
-    t |> run("run.das converts each program from its separate sources through a manifest, and agrees with the native build under the interpreter and the JIT") @(t : T?) {
+    t |> run("run.das converts each program from its separate sources through a manifest in all three layouts, and each agrees with the native build under the interpreter and the JIT") @(t : T?) {
         let root = stand_in_root("c2das_lua_stand_in", LOBJECT)
         t |> success(!empty(root))
         for (tier in ["interp", "jit"]) {
             var out : string
             t |> equal(run_in(root, daslang_argv("lua/run.das", ["--run", "--tier", tier, "--filter", "lua", "--arg", "word"]), out), 0, out)
-            // the JIT's `[I]` lines are no part of the program's output
-            t |> success(out |> contains("lua: {tier} exited 0: 43 word\n"), out)
+            // the JIT's `[I]` lines are no part of the program's output; one run per layout
+            t |> equal(length(split(out, "lua: {tier} exited 0: 43 word\n")) - 1, 3, out)
+            t |> success(out |> contains("lua: lua (source): ") && out |> contains("lua: lua (scc): ") && out |> contains("lua: lua (single): "), out)
         }
+        // the source layout's tree: the entry module and the module of the file defining
+        // `lua_answer`, which it requires; the single layout's one module under `single/`
+        t |> success(fexist(path_join(root, "lua/work/lua/lua.das")) && fexist(path_join(root, "lua/work/lua/lobject.das")), root)
+        t |> success(fread(path_join(root, "lua/work/lua/lua.das")) |> contains("require lobject\n"))
+        t |> success(fexist(path_join(root, "lua/work/single/lua/lua.das")) && !fexist(path_join(root, "lua/work/single/lua/lobject.das")), root)
+        t |> success(fexist(path_join(root, "lua/work/scc/lua/lua.das")) && fexist(path_join(root, "lua/work/scc/lua/lobject.das")), root)
         var interpreter <- clone_to_move(CORE)
         interpreter |> push("lua")
         t |> equal(fread(path_join(root, "lua/work/lua.program.json")), "\{\n \"tus\": [{manifest_tus(root, interpreter)}],\n \"entry\": \"main\"\n\}\n")
@@ -93,11 +105,28 @@ def test_run_stand_in(t : T?) {
         t |> success(fexist(path_join(root, "lua/work/lua/lua.das")) && !fexist(path_join(root, "lua/work/lua.h")))
         // the compiler links no standard library
         var out : string
-        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "luac"]), out), 0, out)
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "luac", "--layout", "source"]), out), 0, out)
+        t |> success(!fexist(path_join(root, "lua/work/single/luac/luac.das")), out)
         var compiler <- [for (source in CORE); source; where !has_value(STANDARD, source)]
         compiler |> push("luac")
         t |> equal(fread(path_join(root, "lua/work/luac.program.json")), "\{\n \"tus\": [{manifest_tus(root, compiler)}],\n \"entry\": \"main\"\n\}\n")
         t |> success(fexist(path_join(root, "lua/work/luac/luac.das")))
+        rmdir_rec(root)
+    }
+    t |> run("--luac-check compiles every script of a folder with the converted compiler's -o in each layout, byte for byte the native compiler's, and refuses a folder with none") @(t : T?) {
+        let root = stand_in_root("c2das_lua_luac", LOBJECT)
+        let scripts = path_join(root, "scripts")
+        mkdir_rec(scripts)
+        // `Z` xors to a zero byte, past which a das string would compare nothing
+        fwrite(path_join(scripts, "a.lua"), "print(\"Zebra\")\n")
+        fwrite(path_join(scripts, "b.lua"), "return \"two\"\n")
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "luac", "--luac-check", "scripts"]), out), 0, out)
+        t |> equal(length(split(out, "lua: luac -o under interp: 2 of 2 files byte for byte the native compiler's\n")) - 1, 3, out)
+        t |> success(fexist(path_join(root, "lua/work/luac/luac_check/a.interp.luac")) && fexist(path_join(root, "lua/work/single/luac/luac_check/a.native.luac")), out)
+        mkdir_rec(path_join(root, "none"))
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "luac", "--layout", "single", "--luac-check", "none"]), out), 1, out)
+        t |> success(out |> contains("lua: luac -o: no .lua file in none"), out)
         rmdir_rec(root)
     }
     t |> run("a conversion error names the Lua source and line") @(t : T?) {

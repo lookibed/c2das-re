@@ -13,5 +13,6 @@ if [ $help = 0 ]; then
     for suite in c_testsuite gcc_torture csmith; do
         "suites/$suite/fetch.sh"
     done
+    lua/fetch.sh
 fi
 das metrics/readability.das -- "$@"

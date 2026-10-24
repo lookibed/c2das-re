@@ -32,8 +32,11 @@ code; this repository holds only the generator and its inputs.
 ## 2. What a publish writes
 
 The program's directory in the clone holds a fixed set of files, each replaced whole on every
-publish: the converted modules (`lua.das`, `luac.das`, copied from
-`lua/work/<stem>/<stem>.das`), the sidecar (`lua.c2das`), `LICENSE` (the block of the release's
+publish: each program's source layout, the converter's default, as the tree of its modules and
+fragments (every `.das` and `.das.inc` file under `lua/work/<stem>/`, in its folders, into
+`<stem>/`, with its `program.layout.txt`; the conversion's C-IR and `luac -o` checks stay out), the
+opt-ins beside it: the scc layout's tree (`lua/work/scc/<stem>/` into `scc/<stem>/`) and the single
+layout's module (`lua/work/single/<stem>/<stem>.das` into `single/<stem>.das`), the sidecar (`lua.c2das`), `LICENSE` (the block of the release's
 `src/lua.h` from the line `* Copyright (C)` to the line ending `DEALINGS IN THE SOFTWARE.`, the
 leading `* ` stripped), the benchmark scripts under `bench/`, and `README.md`. The publisher
 deletes nothing: a file it no longer writes stays until removed by hand in the ports repository,
@@ -88,7 +91,10 @@ The lanes are perf's (`perf/ARCHITECTURE.md` section 2), built by `perf/perf_lan
 module `perf/run.das` builds its kernels' lanes with: `native` is the C files the harness's
 program manifest `work/<runs>.program.json` lists, in its order, built by the pinned clang at `-O3
 -w -funsigned-char` (with `-lm`), a missing or refused manifest the lane's reason, `interp` and `jit` are daslang over the
-converted module with the module folders loaded, `exe` is daslang's `-exe` build, `aot` the
+source layout's entry module (`work/<runs>/<runs>.das`) with the module folders loaded,
+`interp-scc` and `jit-scc` the same over the scc layout's entry (`work/scc/<runs>/<runs>.das`),
+`interp-single` and `jit-single` over the single layout's module
+(`work/single/<runs>/<runs>.das`), `exe` is daslang's `-exe` build, `aot` the
 `-ctx` context with the host of `converter/tiers.das` compiled by the pinned `clang++ -O3`. Each
 lane is built once, before the workloads. The AOT host passes the program no arguments, so the
 tier refuses the lane for a program that needs them; that refusal is the lane's reason. A lane
@@ -126,7 +132,9 @@ sample count and the timeout, every lane with its command and error, and every c
 samples. The README's tables render from the latest capture by name; a latest capture that is not
 JSON fails the publish. The
 ratio table holds each das lane over native and the pairs interpreter over JIT, interpreter
-over exe, interpreter over AOT and JIT over AOT. The top-level README keeps the text above its
+over exe, interpreter over AOT and JIT over AOT; a `-scc` or `-single` lane the capture measured adds its
+column and its pair over its source-layout twin, and a column of the projects table, which a
+capture without one renders as before. The top-level README keeps the text above its
 marker line and holds below it one row per program with a capture: its timestamp and machine, and
 the geometric mean, over the workloads other than the startup row, of each das lane's ratio to
 native, with the count when a lane covers only some workloads, `not yet` when it covers none, and

@@ -2,6 +2,7 @@ options gen2
 require dastest/testing_boost public
 require strings
 require daslib/fio
+require daslib/strings_boost
 require ../sidecar.das
 
 // the sidecar `text` written to a fresh `.c2das` file under `dir`, read back
@@ -129,6 +130,61 @@ def test_sidecar_loops(t : T?) {
         let side <- read_text(dir, "bad_loops", "\{\"loops\": \"for\"\}\n", error)
         t |> success(error |> ends_with("bad_loops.c2das: `loops` is \"range\" or \"while\", not \"for\""), error)
         t |> equal(side.loops, "")
+    }
+    rmdir_rec(dir)
+}
+
+[test]
+def test_sidecar_layout(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_layout", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`layout` is \"source\", \"scc\" or \"single\"; absent it is empty, the converter's source default") @(t : T?) {
+        for (mode in ["source", "scc", "single"]) {
+            var error : string
+            let side <- read_text(dir, mode, "\{\"layout\": \"{mode}\"\}\n", error)
+            t |> equal(error, "")
+            t |> equal(side.layout, mode)
+        }
+        var error : string
+        let side <- read_text(dir, "no_layout", "\{\"stack\": 65536\}\n", error)
+        t |> equal(error, "")
+        t |> equal(side.layout, "")
+        t |> equal(side.layout_threshold, -1l)
+    }
+    t |> run("`layout` as an object: its mode, the cut's threshold, the symbols and file groups kept together, the symbols cut, the profile beside the sidecar") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "object", "\{\"layout\": \{\"mode\": \"scc\", \"threshold\": 1000, \"keep_together\": [\"luaV_execute\", [\"ldo\", \"lvm\"]], \"cut\": [\"luaG_runerror\"], \"profile\": \"lua.profile.json\"\}\}\n", error)
+        t |> equal(error, "")
+        t |> equal(side.layout, "scc")
+        t |> equal(side.layout_threshold, 1000l)
+        t |> equal(join(side.layout_keep_symbols, " "), "luaV_execute")
+        t |> equal(length(side.layout_keep_units), 1)
+        t |> equal(join(side.layout_keep_units[0], " "), "ldo lvm")
+        t |> equal(join(side.layout_cut, " "), "luaG_runerror")
+        t |> equal(side.layout_profile, path_join(dir, "lua.profile.json"))
+    }
+    t |> run("any other `layout` value or key, and a key of the wrong shape, is refused naming it") @(t : T?) {
+        let cases <- [
+            ("flat", "\{\"layout\": \"flat\"\}", "`layout` is \"source\", \"scc\" or \"single\", or an object, not \"flat\""),
+            ("number", "\{\"layout\": 3\}", "`layout` is \"source\", \"scc\" or \"single\", or an object, not 3"),
+            ("mode", "\{\"layout\": \{\"mode\": \"flat\"\}\}", "`layout.mode` is \"source\", \"scc\" or \"single\", not \"flat\""),
+            ("key", "\{\"layout\": \{\"depth\": 1\}\}", "`layout.depth` is no key of `layout`"),
+            ("threshold", "\{\"layout\": \{\"threshold\": 1.5\}\}", "`layout.threshold` is a count of 0 or more, not 1.5"),
+            ("negative", "\{\"layout\": \{\"threshold\": -1\}\}", "`layout.threshold` is a count of 0 or more, not -1"),
+            ("keep", "\{\"layout\": \{\"keep_together\": \"ldo\"\}\}", "`layout.keep_together` is a list of symbols and lists of file stems"),
+            ("group", "\{\"layout\": \{\"keep_together\": [[1]]\}\}", "`layout.keep_together`'s group holds strings, not 1"),
+            ("cut", "\{\"layout\": \{\"cut\": \"x\"\}\}", "`layout.cut` is a list of strings, not \"x\""),
+            ("profile", "\{\"layout\": \{\"profile\": 2\}\}", "`layout.profile` is a file name, not 2")
+        ]
+        for (c in cases) {
+            var error : string
+            read_text(dir, "bad_{c._0}", c._1, error)
+            t |> success(error |> contains("bad_{c._0}.c2das: {c._2}"), "{c._0}: `{c._2}` not in `{error}`")
+        }
     }
     rmdir_rec(dir)
 }

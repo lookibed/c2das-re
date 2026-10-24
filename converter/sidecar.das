@@ -31,6 +31,19 @@ struct Sidecar {
     // larger allocation), each `Record.field`, by tag or typedef name: their accesses go through a
     // pointer with no range check
     over_indexed : array<string>
+    // how a program of several files lays out its modules: `source` (a module per C file, the
+    // cycles cut by late binding), `scc` (a module per C file, mutually dependent files one module
+    // of fragments) or `single` (one module); "" when the key is absent
+    layout : string
+    // the cycle cut of the `source` layout (`converter/ARCHITECTURE_LAYOUT.md`): the weight above
+    // which an edge is never cut (-1: none), the symbols never cut, the groups of units kept in one
+    // module, the symbols always cut, and the profile of call counts (a path beside the sidecar,
+    // "" for none)
+    layout_threshold : int64 = -1l
+    layout_keep_symbols : array<string>
+    layout_keep_units : array<array<string>>
+    layout_cut : array<string>
+    layout_profile : string
 }
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
@@ -44,6 +57,12 @@ let LOOPS <- ["range", "while"]
 
 //! Whether `mode` is a value of `loops`.
 def is_loops(mode : string) : bool => has_value(LOOPS, mode)
+
+//! The values of the `layout` key and of the converter's `--layout`.
+let LAYOUTS <- ["source", "scc", "single"]
+
+//! Whether `mode` is a value of `layout`.
+def is_layout(mode : string) : bool => has_value(LAYOUTS, mode)
 
 //! The sidecar a C file converts under: `given` when it is not empty, else `<stem>.c2das` beside the
 //! file, else `.c2das` in its folder; "" when none exists.
@@ -111,9 +130,108 @@ def private is_define(entry : string) : bool {
     return true
 }
 
+// whether `text` is one or more decimal digits
+def private is_digit_text(text : string) : bool {
+    for (ch in text) {
+        if (!is_number(ch)) {
+            return false
+        }
+    }
+    return !empty(text)
+}
+
+// a list of strings, or "" in `error` naming what `key` holds otherwise
+def private strings_of(js : JsonValue?; what : string; var out : array<string>; var error : string&) {
+    if (!(js is _array)) {
+        error = "{what} is a list of strings, not {write_json(js)}"
+        return
+    }
+    out |> reserve(length(out) + length(js as _array))
+    for (item in js as _array) {
+        if (!(item is _string) || empty(item ?? "")) {
+            error = "{what} holds strings, not {write_json(item)}"
+            return
+        }
+        out |> push(item ?? "")
+    }
+}
+
+// the `layout` key: a mode, or an object with `mode`, `threshold`, `keep_together`, `cut` and
+// `profile`
+def private read_layout(js : JsonValue?; path : string; var side : Sidecar; var error : string&) {
+    let modes = "\"source\", \"scc\" or \"single\""
+    if (js is _string) {
+        side.layout = js ?? ""
+        if (!is_layout(side.layout)) {
+            error = "{path}: `layout` is {modes}, or an object, not {write_json(js)}"
+            side.layout = ""
+        }
+        return
+    }
+    if (!(js is _object)) {
+        error = "{path}: `layout` is {modes}, or an object, not {write_json(js)}"
+        return
+    }
+    for (key in keys(js as _object)) {
+        if (!has_value(["mode", "threshold", "keep_together", "cut", "profile"], key)) {
+            error = "{path}: `layout.{key}` is no key of `layout` (mode, threshold, keep_together, cut, profile)"
+            return
+        }
+    }
+    let mode = js?["mode"] ?? ""
+    if (key_exists(js, "mode") && !is_layout(mode)) {
+        error = "{path}: `layout.mode` is {modes}, not {write_json(js?["mode"])}"
+        return
+    }
+    side.layout = mode
+    if (key_exists(js, "threshold")) {
+        let threshold = js?["threshold"]
+        let text = write_json(threshold)
+        let count = is_digit_text(text) ? to_int64(text) : -1l
+        if (count < 0l) {
+            error = "{path}: `layout.threshold` is a count of 0 or more, not {write_json(threshold)}"
+            return
+        }
+        side.layout_threshold = count
+    }
+    if (key_exists(js, "keep_together")) {
+        let keep = js?["keep_together"]
+        if (!(keep is _array)) {
+            error = "{path}: `layout.keep_together` is a list of symbols and lists of file stems, not {write_json(keep)}"
+            return
+        }
+        for (item in keep as _array) {
+            if (item is _string && !empty(item ?? "")) {
+                side.layout_keep_symbols |> push(item ?? "")
+            } else {
+                var inscope group : array<string>
+                strings_of(item, "{path}: `layout.keep_together`'s group", group, error)
+                if (!empty(error)) {
+                    return
+                }
+                side.layout_keep_units |> emplace(group)
+            }
+        }
+    }
+    if (key_exists(js, "cut")) {
+        strings_of(js?["cut"], "{path}: `layout.cut`", side.layout_cut, error)
+        if (!empty(error)) {
+            return
+        }
+    }
+    if (key_exists(js, "profile")) {
+        let profile = js?["profile"]
+        if (!(profile is _string) || empty(profile ?? "")) {
+            error = "{path}: `layout.profile` is a file name, not {write_json(profile)}"
+            return
+        }
+        side.layout_profile = path_join(dir_name(path), profile ?? "")
+    }
+}
+
 //! Reads a sidecar file; `error` names a file that is not JSON or a key of the wrong shape.
 def read_sidecar(path : string; var error : string&) : Sidecar {
-    var side : Sidecar
+    var side = Sidecar()
     if (empty(path)) {
         return <- side
     }
@@ -143,6 +261,9 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
         error = "{path}: `loops` is \"range\" or \"while\", not {write_json(js?["loops"])}"
     } else {
         side.loops = loops
+    }
+    if (key_exists(js, "layout")) {
+        read_layout(js?["layout"], path, side, error)
     }
     let defines = js?["defines"]
     if (key_exists(js, "defines") && !(defines is _array)) {

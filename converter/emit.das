@@ -9,6 +9,7 @@ require crt
 require cir
 require sidecar
 require bit_units
+require layout
 require daslib/rtti
 
 //! The das emitter: C-IR in, gen2 source text out, one pass that spells nodes and lowers the
@@ -44,9 +45,6 @@ struct Emitter {
     // the names the body assigns, steps or takes the address of
     written : table<string>
     renames : table<string; string>
-    functions : table<string>
-    // a function of the unit named like one the `main` wrapper calls, to the free name it takes
-    function_renames : table<string; string>
     unsafe_used : bool
     empty_literal : bool
     global_order : table<string; int>
@@ -55,22 +53,9 @@ struct Emitter {
     // `unpin` erases
     hoisted : table<uint64; Em>
     globals_seen : int
-    marshal : table<int>
-    layout : LayoutMemo
     switch_counter : int
     setjmp_counter : int
-    // the alloca arena's bytes per function (the sidecar's `alloca_limit`) and the module's
-    // `options stack` (the sidecar's `stack`)
-    alloca_limit : int
-    stack_option : int
-    // the sidecar's or the option's `param_writes` is `copy`: a written scalar or pointer
-    // parameter gets a local copy instead of being written in place
-    param_copy : bool
-    // the sidecar's or the option's `loops` is not `while`: a canonical counting `for` is a das
-    // range loop (`for_range`)
-    range_loops : bool
-    // the unit's global names, and the names the function being emitted takes the address of
-    global_names : table<string>
+    // the names the function being emitted takes the address of
     addressed : table<string>
     // a label stands on `c_label_end()`: the module defines the no-op
     label_end : bool
@@ -88,9 +73,6 @@ struct Emitter {
     label_index : table<string; int>
     label_flags : table<string; string>
     label_gotos : table<string; string>
-    // the declarations at a switch body's own level that a statement under a later label reads
-    // or writes, which the lowered switch declares before itself (`carried_decls`)
-    carried : table<uint64>
     // what a C `continue` spells at the current nesting: "" inside a loop body, the `_cont`
     // flag inside a matched-flag switch loop whose `continue` reaches the loop around it
     cont_flags : array<string>
@@ -112,6 +94,45 @@ struct Emitter {
     stmt_depth : int
     case_depth : int
     case_literal_decls : array<string>
+    // the facts of the whole program, which every module of it reads
+    prog : EmitProgram
+    // the part of the program being emitted, unless `whole`: the indices of its globals and
+    // functions in the unit's declarations and the records and enums it defines
+    whole : bool
+    part_decls : table<int>
+    part_types : table<int>
+    // the cycle cut: each late-bound function the module calls that it also sees itself, with the
+    // `<module>::` its calls take, and the late-bound functions the module defines, which its
+    // `[init]` binds to their slots, each with its slot
+    late_quals : table<string; string>
+    late_defs : table<string; string>
+}
+
+//! The facts of a whole program the emitter reads in each of its modules: the functions it
+//! defines, the wrapper's renames, its defined and declared global names, the sidecar's records and
+//! options, the layout memo, and the scoping facts `unshadow_locals` finds.
+struct EmitProgram {
+    functions : table<string>
+    // a function of the unit named like one the `main` wrapper calls, to the free name it takes
+    function_renames : table<string; string>
+    // the globals the program defines (no `extern` declaration), and every global name it declares
+    defined_globals : table<string>
+    global_names : table<string>
+    marshal : table<int>
+    layout : LayoutMemo
+    // the alloca arena's bytes per function (the sidecar's `alloca_limit`) and the module's
+    // `options stack` (the sidecar's `stack`)
+    alloca_limit : int
+    stack_option : int
+    // the sidecar's or the option's `param_writes` is `copy`: a written scalar or pointer
+    // parameter gets a local copy instead of being written in place
+    param_copy : bool
+    // the sidecar's or the option's `loops` is not `while`: a canonical counting `for` is a das
+    // range loop (`for_range`)
+    range_loops : bool
+    // the declarations at a switch body's own level that a statement under a later label reads
+    // or writes, which the lowered switch declares before itself (`carried_decls`)
+    carried : table<uint64>
     // the trailing array members the sidecar lists under `over_indexed`, by record and field
     // (`member_key`)
     over_indexed : table<int64>
@@ -144,12 +165,13 @@ let ARGV = "c_argv"
 let C_MAIN = "c_main"
 let LABEL_END = "c_label_end"
 let LAYOUT_CHECK = "c2das_layout_check"
+let LATE_BIND = "c2das_late_bind"
 let INIT_GLOBALS = "c2das_init_globals"
 let DIALECT_INIT = "c2das_dialect"
 let EMPTY_LITERAL = "c2das_empty"
 
 //! Every name the emitter spells bare in a module besides the program's own (`reserved_das_names`).
-let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, JMP_TARGET, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LABEL_END, LAYOUT_CHECK, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL]
+let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, JMP_TARGET, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LABEL_END, LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL]
 
 //! The public names of the c_runtime modules a converted module may require, each top-level
 //! function, global, type and call macro of `c_runtime/c_runtime/*.das` (repo root);
@@ -275,7 +297,7 @@ def private crt_object(em : Emitter; x : CirExpr const?) : string {
     while (at != null && at.e == "cast" && (at.cast_kind == "LValueToRValue" || at.cast_kind == "NoOp")) {
         at = at.a
     }
-    if (at == null || at.e != "ref" || key_exists(em.global_order, at.name) || key_exists(em.bound_objects, intptr(at))) {
+    if (at == null || at.e != "ref" || key_exists(em.prog.defined_globals, at.name) || key_exists(em.prog.bound_objects, intptr(at))) {
         return ""
     }
     return CRT_OBJECTS?[at.name] ?? ""
@@ -1135,7 +1157,7 @@ def private callee_name(var em : Emitter; tu : CirTu; fn : CirExpr?; loc : CirLo
         return ""
     }
     let libc = libc_name(target.name)
-    if (!key_exists(em.functions, target.name) && empty(libc_call(libc))) {
+    if (!key_exists(em.prog.functions, target.name) && empty(libc_call(libc))) {
         // a name of function type is an external function; a pointer-typed one is a call
         // through the pointer
         if (kind_of(tu, target.t) == "func") {
@@ -1143,8 +1165,10 @@ def private callee_name(var em : Emitter; tu : CirTu; fn : CirExpr?; loc : CirLo
         }
         return ""
     }
-    if (key_exists(em.functions, target.name)) {
-        return function_name(em, target.name)
+    if (key_exists(em.prog.functions, target.name)) {
+        // a late-bound function the module also sees itself, as its definer or through a require,
+        // names its module, since the link module's wrapper of its name is in sight too
+        return "{em.late_quals?[target.name] ?? ""}{function_name(em, target.name)}"
     }
     em.requires |> insert(libc_module(libc))
     if (libc == SETVBUF) {
@@ -1180,7 +1204,7 @@ def private emit_alloca(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
     let size = das_type(em, tu, x.args[0].t, loc) == "int" ? n.text : "int({n.text})"
     let tmp = temp_name(em)
     em.unsafe_used = true
-    hoist(em, ["if (_c_aoff + {size} > {em.alloca_limit}) \{", "    panic(\"alloca past the function's {em.alloca_limit} byte arena\")", "\}", "var {tmp} = reinterpret<void?>(addr(_c_astack[_c_aoff]))", "_c_aoff += ({size} + 15) & ~15"])
+    hoist(em, ["if (_c_aoff + {size} > {em.prog.alloca_limit}) \{", "    panic(\"alloca past the function's {em.prog.alloca_limit} byte arena\")", "\}", "var {tmp} = reinterpret<void?>(addr(_c_astack[_c_aoff]))", "_c_aoff += ({size} + 15) & ~15"])
     return value(tmp, PREC_PRIMARY)
 }
 
@@ -1353,7 +1377,7 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
             args |> push(callee.text)
         }
     }
-    let library = !empty(name) && !key_exists(em.functions, called_name(x))
+    let library = !empty(name) && !key_exists(em.prog.functions, called_name(x))
     let fixed_count = trailing_from(tu, x)
     let crt = name |> starts_with("crt::")
     for (idx, arg in range(length(x.args)), x.args) {
@@ -1365,6 +1389,9 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     }
     let ft = called_type(tu, x.fn)
     if (!library && ft >= 0 && tu.types[ft].variadic) {
+        // the trailing arguments' `VaNone` and tuples are c_runtime/variadic's, which a caller in
+        // another module than the function's requires too
+        em.requires |> insert("c_runtime/variadic")
         return value(variadic_call(name, length(tu.types[ft].params), args), PREC_PRIMARY)
     }
     if (crt && is_narrow_long(tu, x.t)) {
@@ -1624,7 +1651,7 @@ def private target_of(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : str
 // `@@name`: a function of this unit as a value; C `main` is `c_main`; an external function has
 // no das value C's type would fit, since a call table spells its calls
 def private function_value(var em : Emitter; f : CirExpr; loc : CirLoc) : Em {
-    if (!key_exists(em.functions, f.name)) {
+    if (!key_exists(em.prog.functions, f.name)) {
         fail(em, "the value of external function `{f.name}` (a pointer to a function this file does not define) is not lowered yet", loc)
         return value("", PREC_PRIMARY)
     }
@@ -1989,7 +2016,7 @@ let TYPE_OPERATORS <- {"sizeof_v", "alignof_v", "offsetof", "va_arg"}
 // the expressions C spells as operators over a type: `sizeof`, `_Alignof`, `offsetof`, `va_arg`
 def private emit_type_operator(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
     if (x.e == "alignof_v") {
-        if (is_marshal(em, tu, x.of_t) || is_va_list(tu, x.of_t) || natural_align(tu, em.layout, x.of_t) != int(x.trait_v)) {
+        if (is_marshal(em, tu, x.of_t) || is_va_list(tu, x.of_t) || natural_align(tu, em.prog.layout, x.of_t) != int(x.trait_v)) {
             // das aligns the type below clang (a record's bitfield units, F5), or never lays it out
             return value("{das_type(em, tu, x.t, loc)}({int64(x.trait_v)})", PREC_PRIMARY)
         }
@@ -2050,7 +2077,7 @@ def private emit_va_arg(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
 }
 
 // a record the sidecar marks marshal-only: read and written as bytes at clang's offsets
-def private is_marshal(em : Emitter; tu : CirTu; t : int) : bool => kind_of(tu, t) == "struct" && key_exists(em.marshal, t)
+def private is_marshal(em : Emitter; tu : CirTu; t : int) : bool => kind_of(tu, t) == "struct" && key_exists(em.prog.marshal, t)
 
 // the marshal-only record a pointer type points at, -1 for any other type
 def private marshal_pointee(em : Emitter; tu : CirTu; t : int) : int =>
@@ -2216,7 +2243,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
         return value(array_literal(em, tu, x.t, elems, loc), PREC_PRIMARY)
     }
     var units : array<BitUnit>
-    if (has_bitfield(tu, x.t, true) && !bit_units(tu, em.layout, x.t, units)) {
+    if (has_bitfield(tu, x.t, true) && !bit_units(tu, em.prog.layout, x.t, units)) {
         // the dumper marks such a record packed, so only a C-IR from elsewhere reaches this
         fail(em, "record `{tag_name(em, tu, x.t)}`: no bitfield units reproduce clang's layout", loc)
         return value("", PREC_PRIMARY)
@@ -2538,7 +2565,7 @@ def private at_case_level(em : Emitter) : bool => em.case_depth > 0 && em.case_d
 def private literal_name(var em : Emitter) : string {
     var name = "_cl{em.literal_counter}"
     em.literal_counter++
-    while (key_exists(em.spelled, name) || key_exists(em.global_order, name) || key_exists(em.functions, name) || key_exists(em.literal_globals, name)) {
+    while (key_exists(em.spelled, name) || key_exists(em.prog.defined_globals, name) || key_exists(em.prog.functions, name) || key_exists(em.literal_globals, name)) {
         name = "_cl{em.literal_counter}"
         em.literal_counter++
     }
@@ -3238,7 +3265,7 @@ def private invariant_bound(em : Emitter; x : CirExpr const?; written : table<st
     var ok = x != null
     each_subexpr(x) $(sub) {
         if (sub.e == "ref") {
-            ok = ok && !sub.vol && !key_exists(em.global_names, sub.name) && !key_exists(written, sub.name) && !key_exists(em.addressed, sub.name)
+            ok = ok && !sub.vol && !key_exists(em.prog.global_names, sub.name) && !key_exists(written, sub.name) && !key_exists(em.addressed, sub.name)
         } elif (sub.e == "bin") {
             ok = ok && (sub.op == "add" || sub.op == "sub" || sub.op == "mul")
         } elif (sub.e == "cast") {
@@ -3256,7 +3283,7 @@ def private invariant_bound(em : Emitter; x : CirExpr const?; written : table<st
 // evaluates `a` then `n` once, C's order, and `i` dies with the loop as C99's does. False, with
 // nothing spelled, for any other loop or under `loops` `while`
 def private for_range(var em : Emitter; tu : CirTu; st : CirStmt) : bool {
-    if (!em.range_loops) {
+    if (!em.prog.range_loops) {
         return false
     }
     let decl = counter_decl(st.init_s)
@@ -3695,7 +3722,7 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
     // to its own branch: a declaration a later group reaches is declared here
     for (g in groups) {
         for (child in g.stmts) {
-            if (child.s == "decl" && key_exists(em.carried, intptr(child))) {
+            if (child.s == "decl" && key_exists(em.prog.carried, intptr(child))) {
                 line(em, "var {das_name(em, child.name)} : {das_type_dims(em, tu, child.t, child.loc, child.dims)}")
             }
         }
@@ -3872,7 +3899,7 @@ def private check_group_split(var em : Emitter; g : CaseGroup) : bool {
     }
     var declared = ""
     for (st in level) {
-        if (st.s == "decl" && !key_exists(em.carried, intptr(st)) && empty(declared)) {
+        if (st.s == "decl" && !key_exists(em.prog.carried, intptr(st)) && empty(declared)) {
             declared = st.name
         } elif (st.s == "label" && key_exists(em.group_labels, st.label_name) && !empty(declared)) {
             fail(em, "label `{st.label_name}`, which a goto from another case reaches, follows the declaration of `{declared}` in its case; not lowered yet", st.loc)
@@ -4000,7 +4027,7 @@ def private emit_stmt_kind(var em : Emitter; tu : CirTu; st : CirStmt const?) {
         emit_label(em, st)
     } elif (st.s == "goto") {
         emit_goto(em, st)
-    } elif (st.s == "decl" && key_exists(em.carried, intptr(st))) {
+    } elif (st.s == "decl" && key_exists(em.prog.carried, intptr(st))) {
         emit_carried_init(em, tu, *st, das_name(em, st.name))
     } elif (st.s == "decl") {
         emit_decl(em, tu, *st)
@@ -4447,7 +4474,7 @@ def private function_name(em : Emitter; name : string) : string {
     if (name == "main") {
         return C_MAIN
     }
-    return em.function_renames?[name] ?? das_name(em, name)
+    return em.prog.function_renames?[name] ?? das_name(em, name)
 }
 
 // the functions the `main` wrapper calls: C `main` itself and the `c_runtime/c_args` ones
@@ -4456,7 +4483,7 @@ let WRAPPER_CALLS <- {C_MAIN, RUNTIME_INIT, ARGC, ARGV}
 // a function of a unit that has a `main` named like one the wrapper calls would make its call
 // ambiguous (or redefine `c_main`): it takes the next free numbered name (`c_argc1`)
 def private rename_wrapper_names(var em : Emitter; tu : CirTu) {
-    if (!key_exists(em.functions, "main")) {
+    if (!key_exists(em.prog.functions, "main")) {
         return
     }
     var taken : table<string>
@@ -4468,7 +4495,7 @@ def private rename_wrapper_names(var em : Emitter; tu : CirTu) {
     }
     for (d in tu.decls) {
         if (d.k == "func" && d.body != null && key_exists(WRAPPER_CALLS, d.name)) {
-            em.function_renames[d.name] = free_name(taken, d.name)
+            em.prog.function_renames[d.name] = free_name(taken, d.name)
         }
     }
 }
@@ -4551,7 +4578,7 @@ def private function_params(var em : Emitter; tu : CirTu; d : CirDecl; var taken
         // written scalar or pointer is copied too, since the interpreter writes a local faster
         // than an argument slot. The parameter keeps its mode under a name no parameter or
         // local of the body takes
-        if (is_record(tu, p.t) || (em.param_copy && key_exists(em.written, p.name))) {
+        if (is_record(tu, p.t) || (em.prog.param_copy && key_exists(em.written, p.name))) {
             let copy = free_name(taken, "{name}_in")
             params |> push("{mode}{copy} : {spelled}")
             copies |> push("var {name} = {copy}")
@@ -4610,7 +4637,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     }
     if (calls_alloca(d.body)) {
         // the per-function arena every alloca of the body bumps, freed with the frame
-        line(em, "var _c_astack : uint8[{em.alloca_limit}]")
+        line(em, "var _c_astack : uint8[{em.prog.alloca_limit}]")
         line(em, "var _c_aoff = 0")
     }
     emit_body(em, tu, d.body)
@@ -4646,8 +4673,8 @@ def private record_refusal(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) 
         fail(em, "bitfields of the marshal-only record `{name}` are not lowered yet", loc)
         return true
     }
-    if (tu.types[t].packed && !marshal && (any_bitfield || has_underaligned_record_field(tu, em.layout, t))) {
-        let members_align = members_align(tu, em.layout, t)
+    if (tu.types[t].packed && !marshal && (any_bitfield || has_underaligned_record_field(tu, em.prog.layout, t))) {
+        let members_align = members_align(tu, em.prog.layout, t)
         if (tu.types[t].align > members_align) {
             fail(em, "record `{name}` has an alignment attribute das cannot spell: clang aligns it to {tu.types[t].align}, its members to {members_align}; not lowered yet", loc)
             return true
@@ -4690,7 +4717,7 @@ def private record_refusal(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) 
         assume fam = tu.types[t].fields[n - 1]
         var rest_align = 1
         for (idx in range(n - 1)) {
-            let a = natural_align(tu, em.layout, tu.types[t].fields[idx].t)
+            let a = natural_align(tu, em.prog.layout, tu.types[t].fields[idx].t)
             if (a > rest_align) {
                 rest_align = a
             }
@@ -4699,7 +4726,7 @@ def private record_refusal(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) 
             fail(em, "flexible array member `{name}.{fam.name}` of a marshal-only record is not lowered yet", loc)
             return true
         }
-        if (fam.off != tu.types[t].size || natural_align(tu, em.layout, fam.t) > rest_align) {
+        if (fam.off != tu.types[t].size || natural_align(tu, em.prog.layout, fam.t) > rest_align) {
             // the record leaves the member out, so the member may neither pad its end nor raise its
             // alignment
             fail(em, "flexible array member `{name}.{fam.name}`, which pads the record or raises its alignment, is not lowered yet", loc)
@@ -4734,7 +4761,7 @@ def private trailing_access(em : Emitter; tu : CirTu; x : CirExpr const?) : stri
     if (m.field < 0 || m.field >= length(tu.types[m.rec].fields)) {
         return ""
     }
-    return is_flexible(tu, m.rec, m.field) ? "flexible" : key_exists(em.over_indexed, member_key(m.rec, m.field)) ? "over" : ""
+    return is_flexible(tu, m.rec, m.field) ? "flexible" : key_exists(em.prog.over_indexed, member_key(m.rec, m.field)) ? "over" : ""
 }
 
 // the decay of flexible array member `x` (`p->data`, `s.data`): the record's address plus the
@@ -4760,7 +4787,7 @@ def private flexible_pointer(var em : Emitter; tu : CirTu; x : CirExpr const?; l
 // spelled like a padding field of a record that pads
 def private record_lines(var em : Emitter; tu : CirTu; t : int; loc : CirLoc; var lines : array<string>) : bool {
     let n = length(tu.types[t].fields)
-    var inscope pads <- layout_pads(tu, em.layout, t)
+    var inscope pads <- layout_pads(tu, em.prog.layout, t)
     if (!empty(pads)) {
         for (f in tu.types[t].fields) {
             if (numbered_after(das_name(em, f.name), "_pad") >= 0) {
@@ -4871,12 +4898,12 @@ def private union_annotation(var em : Emitter; tu : CirTu; t : int; loc : CirLoc
         }
         bare = bare && !spells_enum_dim(tu, f.t, f.dims)
     }
-    let flaw = union_flaw(tu, em.layout, t)
+    let flaw = union_flaw(tu, em.prog.layout, t)
     if (!empty(flaw)) {
         fail(em, "union `{name}` {flaw}; not lowered yet", loc)
         return ""
     }
-    let derived = union_member_layout(tu, em.layout, t)
+    let derived = union_member_layout(tu, em.prog.layout, t)
     if (bare && derived.size == int64(tu.types[t].size) && derived.align == tu.types[t].align) {
         return empty(widths) ? "[c_union]" : "[c_union({join(widths, ", ")})]"
     }
@@ -4943,7 +4970,7 @@ def private bitfields_annotation(var em : Emitter; tu : CirTu; t : int; loc : Ci
         }
     }
     var units : array<BitUnit>
-    if (!bit_units(tu, em.layout, t, units)) {
+    if (!bit_units(tu, em.prog.layout, t, units)) {
         // the dumper marks such a record packed, so only a C-IR from elsewhere reaches this
         fail(em, "record `{name}`: no bitfield units reproduce clang's layout", loc)
         return ""
@@ -5095,7 +5122,7 @@ def private emit_layout_check(var em : Emitter; tu : CirTu; records : array<int>
     for (t in records) {
         let name = tag_name(em, tu, t)
         // a record holding bitfield units can align below clang (docs/probe-findings.md F5)
-        let align = natural_align(tu, em.layout, t)
+        let align = natural_align(tu, em.prog.layout, t)
         let bitfields = has_bitfield_units(tu, t)
         let below = align == tu.types[t].align ? "" : (bitfields ? ", its bitfield units align {align}" : ", its das alignment is {align}")
         line(em, "static_assert(typeinfo sizeof(type<{name}>) == {tu.types[t].size} && typeinfo alignof(type<{name}>) == {align}, \"{name}: clang lays it out as size {tu.types[t].size}, align {tu.types[t].align}{below}\")")
@@ -5109,7 +5136,7 @@ def private emit_layout_check(var em : Emitter; tu : CirTu; records : array<int>
             }
         }
         var inscope units : array<BitUnit>
-        if (bitfields && bit_units(tu, em.layout, t, units)) {
+        if (bitfields && bit_units(tu, em.prog.layout, t, units)) {
             for (n, u in range(length(units)), units) {
                 line(em, "static_assert(typeinfo offsetof<_bits{n}>(type<{name}>) == {u.off}, \"{name}._bits{n}: the bitfield unit sits at {u.off}\")")
             }
@@ -5183,7 +5210,7 @@ def private inline_legal(var em : Emitter; tu : CirTu; x : CirExpr?) : bool {
         while (target != null && target.e != "ref" && (target.e == "cast" || target.e == "member" || target.e == "index")) {
             target = target.e == "cast" ? target.a : target.base
         }
-        if (target != null && target.e == "ref" && key_exists(em.global_order, target.name) && !key_exists(em.functions, target.name)) {
+        if (target != null && target.e == "ref" && key_exists(em.global_order, target.name) && !key_exists(em.prog.functions, target.name)) {
             if (!key_exists(em.global_initialized, target.name) || em.global_order[target.name] >= em.globals_seen) {
                 return false
             }
@@ -5200,23 +5227,30 @@ def private inline_legal(var em : Emitter; tu : CirTu; x : CirExpr?) : bool {
     return true
 }
 
-def private emit_types(var em : Emitter; tu : CirTu) {
+// whether the part being emitted holds the global or function at index `di` of the unit's
+// declarations, and whether it defines record or enum `t`
+def private in_part(em : Emitter; di : int) : bool => em.whole || key_exists(em.part_decls, di)
+
+def private owns_type(em : Emitter; t : int) : bool => em.whole || key_exists(em.part_types, t)
+
+// the enums, the opaque records and the records of the part, each record the layout check reads
+// pushed to `records`
+def private emit_type_decls(var em : Emitter; tu : CirTu; var records : array<int>) {
     for (d in tu.decls) {
-        if (d.k == "enumdef") {
+        if (d.k == "enumdef" && owns_type(em, d.t)) {
             emit_enum(em, tu, *d)
         }
     }
     // a record the unit declares and never defines (size -1) is reached only through pointers:
     // an empty struct names it, which no dereference or `sizeof` reaches, since clang refuses both
     for (t in range(length(tu.types))) {
-        if (is_record(tu, t) && tu.types[t].size < 0) {
+        if (is_record(tu, t) && tu.types[t].size < 0 && owns_type(em, t)) {
             line(em, "struct {tag_name(em, tu, t)} \{\}")
             line(em, "")
         }
     }
-    var records : array<int>
     for (d in tu.decls) {
-        if (d.k == "record" && tu.types[d.t].size >= 0) {
+        if (d.k == "record" && tu.types[d.t].size >= 0 && owns_type(em, d.t)) {
             emit_record(em, tu, *d)
             // a marshal-only record's das layout is not clang's, by design
             if (!is_marshal(em, tu, d.t)) {
@@ -5225,6 +5259,11 @@ def private emit_types(var em : Emitter; tu : CirTu) {
         }
         break if (!empty(em.error))
     }
+}
+
+def private emit_types(var em : Emitter; tu : CirTu) {
+    var records : array<int>
+    emit_type_decls(em, tu, records)
     if (!empty(records) && empty(em.error)) {
         emit_layout_check(em, tu, records)
     }
@@ -5234,10 +5273,10 @@ def private emit_types(var em : Emitter; tu : CirTu) {
 def private flag_marshal(var em : Emitter; tu : CirTu; side : Sidecar) {
     for (d in tu.decls) {
         if (d.k == "record" && key_exists(side.marshal, tu.types[d.t].name)) {
-            em.marshal |> insert(d.t)
+            em.prog.marshal |> insert(d.t)
         }
         if (d.k == "typedefdecl" && key_exists(side.marshal, d.name) && kind_of(tu, tu.types[d.t].to) == "struct") {
-            em.marshal |> insert(tu.types[d.t].to)
+            em.prog.marshal |> insert(tu.types[d.t].to)
         }
     }
 }
@@ -5264,47 +5303,50 @@ def private flag_over_indexed(var em : Emitter; tu : CirTu; side : Sidecar) {
             em.error = "sidecar `over_indexed`: `{entry}` names no record's trailing array member of a fixed length"
             return
         }
-        em.over_indexed |> insert(member_key(rec, n - 1))
+        em.prog.over_indexed |> insert(member_key(rec, n - 1))
     }
 }
 
-//! The whole module: banner, options, requires, every declaration, and the `main` wrapper
-//! when the C program has one. Empty with `error` set when a node is outside the subset. A
-//! local that hides another is renamed in `tu` itself first (`unshadow_locals`).
-// the sidecar's and the options' choices the emitter reads, and the unit's global names
+// the sidecar's and the options' choices the emitter reads, and the program's global names
 def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
-    em.alloca_limit = side.alloca_limit > 0 ? side.alloca_limit : ALLOCA_LIMIT
-    em.stack_option = side.stack
-    em.param_copy = side.param_writes == "copy"
-    em.range_loops = side.loops != "while"
-    em.global_names <- {for (d in tu.decls); d.name; where d.k == "global"}
+    em.prog.alloca_limit = side.alloca_limit > 0 ? side.alloca_limit : ALLOCA_LIMIT
+    em.prog.stack_option = side.stack
+    em.prog.param_copy = side.param_writes == "copy"
+    em.prog.range_loops = side.loops != "while"
+    em.prog.global_names <- {for (d in tu.decls); d.name; where d.k == "global"}
+    em.prog.defined_globals <- {for (d in tu.decls); d.name; where d.k == "global" && !d.is_extern}
 }
 
-def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
-    var em : Emitter
-    unshadow_locals(tu, em.carried, em.bound_objects)
+// the facts of the whole program, before any module of it is spelled: a local that hides another
+// is renamed in `tu` itself first (`unshadow_locals`)
+def private prepare_program(var em : Emitter; var tu : CirTu; side : Sidecar) {
+    unshadow_locals(tu, em.prog.carried, em.prog.bound_objects)
     check_reserved_renames(em, tu)
     for (d in tu.decls) {
         if (d.k == "func" && d.body != null) {
-            em.functions |> insert(d.name)
+            em.prog.functions |> insert(d.name)
         }
     }
     rename_wrapper_names(em, tu)
     flag_marshal(em, tu, side)
     flag_over_indexed(em, tu, side)
     take_options(em, tu, side)
-    // the module's first `[init]` goes here, though only the functions tell whether it is needed:
-    // the format families read `l` at the dialect's `long`, never the host CRT's
-    let dialect_at = length(em.out)
-    emit_types(em, tu)
-    for (d in tu.decls) {
-        if (d.k == "global" && !d.is_extern) {
+}
+
+// the order das initializes the globals of the part in, which is the order they are spelled
+def private order_globals(var em : Emitter; tu : CirTu) {
+    for (di, d in count(), tu.decls) {
+        if (d.k == "global" && !d.is_extern && in_part(em, di)) {
             em.global_order[d.name] = length(em.global_order)
         }
     }
+}
+
+// the part's globals, then a blank line when there was one
+def private emit_globals(var em : Emitter; tu : CirTu) {
     var globals_done = false
-    for (d in tu.decls) {
-        if (d.k == "global") {
+    for (di, d in count(), tu.decls) {
+        if (d.k == "global" && in_part(em, di)) {
             em.globals_seen = em.global_order?[d.name] ?? em.globals_seen
             emit_global(em, tu, *d)
             globals_done = true
@@ -5314,6 +5356,10 @@ def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
     if (globals_done) {
         line(em, "")
     }
+}
+
+// `c2das_init_globals`, the stores the module's global initializers moved to module init
+def private emit_init_globals(var em : Emitter) {
     if (!empty(em.global_stores)) {
         line(em, "[init]")
         open_block(em, "def private {INIT_GLOBALS}")
@@ -5323,12 +5369,20 @@ def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
         close_block(em)
         line(em, "")
     }
-    for (d in tu.decls) {
-        if (d.k == "func") {
+}
+
+def private emit_functions(var em : Emitter; tu : CirTu) {
+    for (di, d in count(), tu.decls) {
+        if (d.k == "func" && in_part(em, di)) {
             emit_function(em, tu, *d)
         }
         break if (!empty(em.error))
     }
+}
+
+// the module's first `[init]`, at line `at`, though only the functions tell whether it is needed:
+// the format families read `l` at the dialect's `long`, never the host CRT's
+def private emit_dialect(var em : Emitter; tu : CirTu; at : int) {
     var dialect : array<string>
     if (key_exists(em.requires, "c_runtime/printf") || key_exists(em.requires, "c_runtime/scanf")) {
         dialect |> push("    {LONG_BITS_GLOBAL} = {tu.target.long_w}\n")
@@ -5338,8 +5392,12 @@ def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
         dialect |> push("    {SIGNAL_MSVC} = true\n")
     }
     if (!empty(dialect)) {
-        em.out |> push("[init]\ndef private {DIALECT_INIT} \{\n{join(dialect, "")}\}\n\n", dialect_at)
+        em.out |> push("[init]\ndef private {DIALECT_INIT} \{\n{join(dialect, "")}\}\n\n", at)
     }
+}
+
+// `[export] def main`, which calls C `main`, when the module holds it
+def private emit_main_wrapper(var em : Emitter; tu : CirTu) {
     if (em.has_c_main) {
         line(em, "[export]")
         open_block(em, "def main : int")
@@ -5354,6 +5412,30 @@ def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
         }
         close_block(em)
     }
+}
+
+// the module of the part `em` selects as one file: the dialect's `[init]`, the types with their
+// layout check, the globals and their module-init stores, the functions and the `main` wrapper
+def private emit_module_body(var em : Emitter; tu : CirTu) {
+    let dialect_at = length(em.out)
+    emit_types(em, tu)
+    order_globals(em, tu)
+    emit_globals(em, tu)
+    emit_init_globals(em)
+    emit_functions(em, tu)
+    emit_late_binding(em, tu)
+    emit_dialect(em, tu, dialect_at)
+    emit_main_wrapper(em, tu)
+}
+
+//! The whole module: banner, options, requires, every declaration, and the `main` wrapper
+//! when the C program has one. Empty with `error` set when a node is outside the subset. A
+//! local that hides another is renamed in `tu` itself first (`unshadow_locals`).
+def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
+    var em : Emitter
+    em.whole = true
+    prepare_program(em, tu, side)
+    emit_module_body(em, tu)
     assemble_module(em)
     return <- em
 }
@@ -5380,7 +5462,269 @@ def private assemble_module(var em : Emitter) {
     let header = join([for (name in required); "require {name}\n"], "")
     let empty = em.empty_literal ? "var private {EMPTY_LITERAL} : uint8[1] = fixed_array(uint8(0))\n\n" : ""
     let label_end = em.label_end ? LABEL_END_DEF : ""
-    let stack = em.stack_option > 0 ? em.stack_option : MODULE_STACK
+    let stack = em.prog.stack_option > 0 ? em.prog.stack_option : MODULE_STACK
     let stack_line = "options stack = {stack}\n"
     em.text = GENERATED_BANNER + "\noptions gen2\noptions indenting = 4\n" + stack_line + header + "\n" + empty + label_end + join(em.out, "")
+}
+
+//! One file of a converted program: its path under the output folder (a module's `.das`, a
+//! fragment's `.das.inc`) and its text.
+struct ModuleFile {
+    path : string
+    text : string
+}
+
+//! A program emitted module by module: its files, the path of the module holding `main` among
+//! them, the port-progress counts summed over the modules, and the first error.
+struct ProgramEmission {
+    files : array<ModuleFile>
+    entry : string
+    c_functions : int
+    function_count : int
+    error : string
+}
+
+// `name` in folder `dir`, relative to the program's root ("" the root itself)
+def private in_dir(dir, name : string) : string => empty(dir) ? name : "{dir}/{name}"
+
+// the path of `name` in folder `to_dir` as a file in folder `from_dir` reaches it, both relative
+// to the program's root
+def private relative_to(from_dir, to_dir, name : string) : string {
+    var inscope from <- empty(from_dir) ? array<string>() : split(from_dir, "/")
+    var inscope to <- empty(to_dir) ? array<string>() : split(to_dir, "/")
+    var common = 0
+    while (common < length(from) && common < length(to) && from[common] == to[common]) {
+        common++
+    }
+    var parts <- [for (_ in range(common, length(from))); ".."]
+    parts |> push_from([for (idx in range(common, length(to))); to[idx]])
+    parts |> push(name)
+    return join(parts, "/")
+}
+
+// what module `from` requires module `to` by: its name when the two share a folder, else its
+// path, which daslang takes only with `./` or `../` in front and `.das` behind
+def private require_text(plan : LayoutPlan; from, to : int) : string {
+    if (plan.modules[from].dir == plan.modules[to].dir) {
+        return plan.modules[to].name
+    }
+    let rel = relative_to(plan.modules[from].dir, plan.modules[to].dir, "{plan.modules[to].name}.das")
+    return rel |> starts_with("../") ? rel : "./{rel}"
+}
+
+// the part of node `node`: the globals and functions its unit owns and the records and enums it
+// defines
+def private select_node(var em : Emitter; tu : CirTu; plan : LayoutPlan; owners : array<int>; node : int) {
+    em.whole = false
+    em.part_decls |> clear()
+    em.part_types |> clear()
+    let unit = plan.nodes[node].unit
+    for (di, d in count(), tu.decls) {
+        if ((d.k == "global" || d.k == "func") && unit >= 0 && owners[di] == unit) {
+            em.part_decls |> insert(di)
+        }
+    }
+    for (t, owner in keys(plan.type_node), values(plan.type_node)) {
+        if (owner == node) {
+            em.part_types |> insert(t)
+        }
+    }
+}
+
+// a cluster module: one fragment per member, each its types, globals and functions, and the
+// module's own file with the dialect's `[init]`, one `include` per fragment in include order, the
+// fragments' digest (daslang's module cache sees no change to an included file, only one to the
+// including file's text: docs/probe-findings.md F72), the layout check of every member's records,
+// the module-init stores and the `main` wrapper
+def private emit_cluster(var em : Emitter; tu : CirTu; plan : LayoutPlan; owners : array<int>; mi : int; var files : array<ModuleFile>) {
+    assume mod = plan.modules[mi]
+    for (node in mod.members) {
+        select_node(em, tu, plan, owners, node)
+        order_globals(em, tu)
+    }
+    var records : array<int>
+    var includes, hashes : array<string>
+    includes |> reserve(length(mod.members))
+    hashes |> reserve(length(mod.members))
+    files |> reserve(length(files) + length(mod.members) + 1)
+    for (node in mod.members) {
+        select_node(em, tu, plan, owners, node)
+        emit_type_decls(em, tu, records)
+        emit_globals(em, tu)
+        emit_functions(em, tu)
+        let name = "{plan.nodes[node].stem}.das.inc"
+        let text = GENERATED_BANNER + "\n" + join(em.out, "")
+        hashes |> push("{hash(text)}")
+        files |> push(ModuleFile(path = in_dir(plan.nodes[node].dir, name), text = text))
+        includes |> push("include {relative_to(mod.dir, plan.nodes[node].dir, name)}")
+        em.out |> clear()
+        break if (!empty(em.error))
+    }
+    for (inc in includes) {
+        line(em, inc)
+    }
+    line(em, "// the fragments' digest: {hash(join(hashes, " "))}")
+    line(em, "")
+    if (!empty(records) && empty(em.error)) {
+        emit_layout_check(em, tu, records)
+    }
+    emit_init_globals(em)
+    emit_late_binding(em, tu)
+    emit_dialect(em, tu, 0)
+    emit_main_wrapper(em, tu)
+}
+
+// the das signature a late-bound function's slot and wrapper share, `fn` its function type: each
+// parameter `a<N>`, `var` where a parameter of its type is, a variadic one's list last
+def private late_params(var em : Emitter; tu : CirTu; fn : int; loc : CirLoc; variadic_tail : string) : array<string> {
+    var params : array<string>
+    params |> reserve(length(tu.types[fn].params) + 1)
+    for (idx, p in count(), tu.types[fn].params) {
+        params |> push("{is_var_parameter(tu, p) ? "var " : ""}a{idx} : {das_type(em, tu, p, loc)}")
+    }
+    if (tu.types[fn].variadic) {
+        em.requires |> insert("c_runtime/variadic")
+        params |> push(variadic_tail)
+    }
+    return <- params
+}
+
+// the definition of late-bound function `name`, which a cut leaves in one module of the program
+def private late_decl(tu : CirTu; name : string) : CirDecl const? {
+    for (d in tu.decls) {
+        if (d.k == "func" && d.body != null && d.name == name) {
+            return d
+        }
+    }
+    return null
+}
+
+// the link module of a cut program: per late-bound function its slot and a wrapper of its name,
+// which fails closed while no module has bound the slot
+def private emit_link_module(var em : Emitter; tu : CirTu; plan : LayoutPlan) {
+    var inscope names <- [for (name in keys(plan.slots)); name]
+    sort(names)
+    line(em, "// the late-bound functions of the program's cut cycles: each module defining one binds its slot at [init]")
+    line(em, "")
+    for (name in names) {
+        let d = late_decl(tu, name)
+        let slot = plan.slots?[name] ?? ""
+        let fn = d.t
+        let ret = das_type(em, tu, tu.types[fn].ret, d.loc)
+        var inscope slot_params <- late_params(em, tu, fn, d.loc, "a{length(tu.types[fn].params)} : CVaList")
+        var inscope wrapper_params <- late_params(em, tu, fn, d.loc, "va : va_args")
+        var inscope args <- [for (idx in range(length(tu.types[fn].params))); "a{idx}"]
+        if (tu.types[fn].variadic) {
+            args |> push("va")
+        }
+        line(em, "var {slot} : function<({join(slot_params, "; ")}) : {ret}>")
+        line(em, "")
+        if (tu.types[fn].variadic) {
+            line(em, "[variadic]")
+        }
+        open_block(em, "def {function_name(em, name)}({join(wrapper_params, "; ")})" + (ret == "void" ? "" : " : {ret}"))
+        open_block(em, "if ({slot} == null)")
+        line(em, "panic(\"{name} is late-bound and no module has bound it\")")
+        close_block(em)
+        let call = "invoke({slot}{empty(args) ? "" : ", "}{join(args, ", ")})"
+        line(em, ret == "void" ? call : "return {call}")
+        close_block(em)
+        line(em, "")
+    }
+}
+
+// the defining module's binding of its late-bound functions to their slots at [init]: a variadic
+// one through a private function taking its list, which calls it with the list as it is
+def private emit_late_binding(var em : Emitter; tu : CirTu) {
+    if (empty(em.late_defs)) {
+        return
+    }
+    var inscope names <- [for (name in keys(em.late_defs)); name]
+    sort(names)
+    var stores : array<string>
+    for (name in names) {
+        let d = late_decl(tu, name)
+        let slot = em.late_defs?[name] ?? ""
+        let own = "{em.late_quals?[name] ?? ""}{function_name(em, name)}"
+        if (!tu.types[d.t].variadic) {
+            stores |> push("{slot} = @@{own}")
+            continue
+        }
+        let fn = d.t
+        let ret = das_type(em, tu, tu.types[fn].ret, d.loc)
+        var inscope params <- late_params(em, tu, fn, d.loc, "a{length(tu.types[fn].params)} : CVaList")
+        let args = join([for (idx in range(length(tu.types[fn].params) + 1)); "a{idx}"], ", ")
+        let binder = "{slot}_bind"
+        open_block(em, "def private {binder}({join(params, "; ")})" + (ret == "void" ? "" : " : {ret}"))
+        line(em, ret == "void" ? "{own}`va({args})" : "return {own}`va({args})")
+        close_block(em)
+        line(em, "")
+        stores |> push("{slot} = @@{binder}")
+    }
+    line(em, "[init]")
+    open_block(em, "def private {LATE_BIND}")
+    for (store in stores) {
+        line(em, store)
+    }
+    close_block(em)
+    line(em, "")
+}
+
+//! The program `tu` in the source layout `plan` (`converter/layout.das`), `owners` the unit of each
+//! of its declarations (`link_tus`): one module per module of the plan, a single node's as
+//! `emit_tu` spells a unit, a cluster's as `emit_cluster` does, each requiring the modules of the
+//! plan it uses. `tu` is renamed in place as `emit_tu` renames it.
+[arch(at="ARCHITECTURE_LAYOUT.md#emission")]
+def emit_program(var tu : CirTu; side : Sidecar; plan : LayoutPlan; owners : array<int>) : ProgramEmission {
+    var res : ProgramEmission
+    var first : Emitter
+    prepare_program(first, tu, side)
+    if (!empty(first.error)) {
+        res.error = first.error
+        return <- res
+    }
+    var prog <- first.prog
+    for (mi, mod in count(), plan.modules) {
+        var em : Emitter
+        em.prog <- prog
+        for (name, definer in keys(plan.late), values(plan.late)) {
+            let dm = plan.node_module[definer]
+            // the defining module names its own `__::`, which holds however the module is compiled
+            if (mi == dm) {
+                em.late_quals[name] = "__::"
+            } elif (has_value(mod.requires, dm) && has_value(mod.requires, plan.link)) {
+                em.late_quals[name] = "{plan.modules[dm].name}::"
+            }
+            if (mi == dm) {
+                em.late_defs[name] = plan.slots?[name] ?? ""
+            }
+        }
+        if (mi == plan.link) {
+            emit_link_module(em, tu, plan)
+        } elif (mod.cluster) {
+            emit_cluster(em, tu, plan, owners, mi, res.files)
+        } else {
+            select_node(em, tu, plan, owners, mod.members[0])
+            emit_module_body(em, tu)
+        }
+        for (r in mod.requires) {
+            em.requires |> insert(require_text(plan, mi, r))
+        }
+        assemble_module(em)
+        let path = in_dir(mod.dir, "{mod.name}.das")
+        res.files |> push(ModuleFile(path = path, text = em.text))
+        if (mi == plan.entry) {
+            res.entry = path
+        }
+        res.c_functions += em.c_functions
+        res.function_count += em.function_count
+        // the program state went to the module's emitter and comes back from it
+        delete prog
+        prog <- em.prog
+        if (!empty(em.error)) {
+            res.error = em.error
+            break
+        }
+    }
+    return <- res
 }

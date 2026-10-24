@@ -71,11 +71,17 @@ struct Release {
     tarballs : array<tuple<url : string; sha256 : string>>
 }
 
-let LANE_TITLES <- {"native" => "clang -O3", "interp" => "interpreter", "jit" => "JIT", "exe" => "exe", "aot" => "AOT"}
+let LANE_TITLES <- {"native" => "clang -O3", "interp" => "interpreter", "jit" => "JIT", "exe" => "exe", "aot" => "AOT", "interp-scc" => "interpreter, scc layout", "jit-scc" => "JIT, scc layout", "interp-single" => "interpreter, single module", "jit-single" => "JIT, single module"}
 //! the das lanes, each with a ratio to native and a column of the projects table
 let DAS_LANES <- ["interp", "jit", "exe", "aot"]
 //! the lane-to-lane ratios of the ratio table, slower lane first
 let LANE_PAIRS <- [("interp", "jit"), ("interp", "exe"), ("interp", "aot"), ("jit", "aot")]
+//! the lanes over the scc layout's modules and the single layout's module, where the others run the
+//! source layout's: a column of the ratio table and of the projects table only where a capture
+//! measured them
+let SINGLE_LANES <- ["interp-scc", "jit-scc", "interp-single", "jit-single"]
+//! each such lane over its source-layout twin, a ratio-table column where both stand
+let SINGLE_PAIRS <- [("interp-scc", "interp"), ("jit-scc", "jit"), ("interp-single", "interp"), ("jit-single", "jit")]
 //! the line above which the top-level README is the charter's; the publisher owns the rest
 let README_MARKER = "<!-- generated below: c2das-re's scripts/publish_ports.sh renders everything under this line from each program's latest capture -->"
 //! the perf section and the projects table while the perf method audit is open
@@ -156,15 +162,37 @@ def render_times(c : Capture) : string {
     return table_of(headers, rows, 2)
 }
 
-//! The ratio table: each das lane over native, then the lane-to-lane pairs.
+// the das lanes a table shows for `captures`: every one of `DAS_LANES`, then each single-module
+// lane one of them measured
+def private shown_lanes(captures : array<Capture>) : array<string> {
+    var lanes <- clone_to_move(DAS_LANES)
+    for (lane in SINGLE_LANES) {
+        if (has_value([for (c in captures); has_lane(c, lane)], true)) {
+            lanes |> push(lane)
+        }
+    }
+    return <- lanes
+}
+
+//! The ratio table: each das lane over native, then the lane-to-lane pairs; a single-module lane
+//! the capture measured adds its column and its pair with its source-layout twin.
 def render_ratios(c : Capture) : string {
+    var one : array<Capture>
+    one |> push_clone(c)
+    let lanes <- shown_lanes(one)
+    var pairs <- clone_to_move(LANE_PAIRS)
+    for (pair in SINGLE_PAIRS) {
+        if (has_value(lanes, pair._0)) {
+            pairs |> push(pair)
+        }
+    }
     var headers <- ["Workload", "Arguments"]
-    headers |> push_from([for (lane in DAS_LANES); "{lane_title(lane)} / native"], [for (pair in LANE_PAIRS); "{lane_title(pair._0)} / {lane_title(pair._1)}"])
+    headers |> push_from([for (lane in lanes); "{lane_title(lane)} / native"], [for (pair in pairs); "{lane_title(pair._0)} / {lane_title(pair._1)}"])
     var rows : array<array<string>>
     rows |> reserve(length(c.workloads))
     for (w in c.workloads) {
         var inscope row <- [w.name, "`{w.args}`"]
-        row |> push_from([for (lane in DAS_LANES); pair_text(c, w.name, lane, "native")], [for (pair in LANE_PAIRS); pair_text(c, w.name, pair._0, pair._1)])
+        row |> push_from([for (lane in lanes); pair_text(c, w.name, lane, "native")], [for (pair in pairs); pair_text(c, w.name, pair._0, pair._1)])
         rows |> emplace(row)
     }
     return table_of(headers, rows, 2)
@@ -239,16 +267,18 @@ def private lane_mean_text(c : Capture; lane : string; total : int) : string {
     return count == 0 ? NOT_YET : count < total ? "{g:.2f} ({count} of {total})" : "{g:.2f}"
 }
 
-//! The projects table: one row per program, the geometric mean of each lane's ratio to native.
+//! The projects table: one row per program, the geometric mean of each lane's ratio to native; a
+//! single-module lane a capture measured adds its column.
 def render_projects(captures : array<Capture>) : string {
+    let lanes <- shown_lanes(captures)
     var headers <- ["Program", "Captured", "Machine", "Workloads"]
-    headers |> push_from([for (lane in DAS_LANES); lane_title(lane)])
+    headers |> push_from([for (lane in lanes); lane_title(lane)])
     var rows : array<array<string>>
     rows |> reserve(length(captures))
     for (c in captures) {
         let total = length([for (w in c.workloads); w; where !w.startup])
         var inscope row <- ["[{c.program}]({c.program}/README.md)", c.timestamp, "{c.machine.arch}, {c.machine.cpu}", "{total}"]
-        row |> push_from([for (lane in DAS_LANES); lane_mean_text(c, lane, total)])
+        row |> push_from([for (lane in lanes); lane_mean_text(c, lane, total)])
         rows |> emplace(row)
     }
     return table_of(headers, rows, 3)

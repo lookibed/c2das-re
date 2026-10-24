@@ -82,6 +82,27 @@ def test_tables(t : T?) {
 }
 
 [test]
+def test_single_lanes(t : T?) {
+    t |> run("a single-module lane the capture measured adds its column and its ratio to its source-layout twin; without one the tables keep their columns") @(t : T?) {
+        var c <- fixture()
+        c.lanes |> push(Lane(name = "interp-single", command = "run interp-single"))
+        c.cells |> emplace(cell("fib", "interp-single", 400.0lf)) // nolint:STYLE012 - appends to the fixture's cells
+        c.cells |> emplace(cell("nbody", "interp-single", 50.0lf))
+        let ratios = render_ratios(c)
+        t |> success(ratios |> contains("| interpreter, single module / native | interpreter / JIT | interpreter / exe | interpreter / AOT | JIT / AOT | interpreter, single module / interpreter |"), ratios)
+        t |> success(ratios |> contains(" 400.00 |             25.00 |"), ratios)
+        t |> success(ratios |> contains(" 2.00 |\n") && ratios |> contains(" 0.50 |\n"), ratios)
+        t |> success(!(ratios |> contains("JIT, single module")), ratios)
+        var captures : array<Capture>
+        captures |> emplace(c)
+        let projects = render_projects(captures)
+        t |> success(projects |> contains("|     AOT | interpreter, single module |"), projects)
+        t |> success(projects |> contains("|                     100.00 |\n"), projects)
+        t |> success(!(render_ratios(fixture()) |> contains("single module")))
+    }
+}
+
+[test]
 def test_projects(t : T?) {
     t |> run("the geometric mean skips the startup row and the cells that do not stand") @(t : T?) {
         let c <- fixture()

@@ -4,9 +4,11 @@ Companion to `ARCHITECTURE.md` in this folder, its section 6.
 
 ## The link {#link}
 
-A program of several C files converts into one module: each file is dumped as its own translation
+A program of several C files converts as one program: each file is dumped as its own translation
 unit, as one file is, its `<stem>.cir.json` written and round-tripped, and `link_tus` merges the
-dumper's trees in their link order into one tree the emitter takes as it takes one unit. The link
+dumper's trees in their link order into one tree the emitter takes as it takes one unit, in one
+module or, in the source layout, in a module per file (`ARCHITECTURE_LAYOUT.md`); each declaration
+keeps the unit it came from (`owners`). The link
 consumes the trees in memory and never rereads the C-IR files, whose writer keeps no record
 spelling (the `va_list` record's included). `program.cir.json` beside them is the manifest of
 `docs/c-ir-spec.md` section 7: `cir`, `target`, `tus` (the units' C-IR files) and `entry`, `main`,
@@ -33,6 +35,9 @@ folder; its `defines` reach every unit.
   location (a header function without `static`, C99 `inline` among them) name both units. Units of
   two dialects, or of one stem, are refused. Internal linkage belongs to the name: the dumper makes
   a declaration without `static` after a `static` one of its name static too.
+- Scopes: once the externals are bound, the caller's block sees the units, the merged types and
+  the link's facts (the unit defining each external name, the names each unit references) and gives
+  each unit its scope, the output module that holds it; the single layout puts every unit in one.
 - Statics: every static keeps its unit and wants its C name (a hoisted local static the dumper's
   `<function>_<name>`, numbered past every file-scope name the unit declares, a libc function's
   included, and every parameter and local of the function; two statics of one unit wanting one
@@ -42,12 +47,14 @@ folder; its `defines` reach every unit.
   program's own (`reserved_das_names` of `emit.das`: the names mapped to libc, crt or c_runtime and
   their unqualified das names such as `c_exit`, every name the emitter spells bare such as
   `end_index` or `c2das_dialect`, every public c_runtime definition and every crt binding)
-  (whether or not a unit calls it), a name another unit's code references without
-  a static of its own by that name (a libc function it calls), or another unit's static. The new
+  (whether or not a unit calls it), or, in a unit of its own scope, a name that unit's code
+  references without a static of its own by that name (a libc function it calls) or that unit's
+  static: a `def private` of one name in two modules is no collision, one beside a public name of a
+  module it requires is (`probes/test_modules.das`). The new
   name passes every file-scope name of the program and every parameter, local and label of the
   units that reach it, numbered past them; a parameter or local of the old name is left alone. A
   static object a header defines stays one copy per unit. A function a header defines is kept once
-  where its copies in several units are byte-identical and every name they reference resolves alike
+  where its copies in several units of one scope are byte-identical and every name they reference resolves alike
   in every one of those units: an external in all of them, or a static function in all of them
   that is itself kept once across them (a static object, or a name static in one unit and external
   in another, keeps a copy per unit); the other units' references reach the kept copy, so its

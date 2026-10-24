@@ -24,7 +24,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `emit.das` - the emitter: `CirTu` in, gen2 text out, fails closed the same way. The
   lowering passes of the plan (type resolve and rename, promotion insertion,
   statement-ification, control flow) happen as it spells nodes (`ARCHITECTURE_EMITTER.md`,
-  section 4); no pass transforms the `CirTu` before emission.
+  section 4); no pass transforms the `CirTu` before emission. `emit_tu` spells one module,
+  `emit_program` the modules of a source layout over one program state (section 8).
 - `bit_units.das` - the layout law over the C-IR (section 2, `packed`): `type_size`,
   `natural_align` (a record's is its das mirror's, which can be below clang's, F5),
   `natural_layout` (the dumper's `packed` verdict), `bit_units` (the allocation units that cover
@@ -39,7 +40,11 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `read_sidecar` (JSON; a key the row that needs it adds - `marshal`, the records read and
   written as bytes; `stack` and `alloca_limit`; `param_writes`, `in-place` or `copy`, the
   parameter write mode, any other value refused naming the key; `loops`, `range` or `while`, how
-  a canonical counting `for` is spelled, any other value refused naming the key; `defines`, a list of strings
+  a canonical counting `for` is spelled, any other value refused naming the key; `layout`, `source`,
+  `scc` or `single`, the module layout of a program of several files, or an object of `mode` (one of
+  those), `threshold` (a count), `keep_together` (symbols and lists of file stems), `cut` (symbols)
+  and `profile` (a file beside the sidecar), the cycle cut's choices, any other value or key refused
+  naming it; `defines`, a list of strings
   `NAME`, `NAME=value` or the function-like `NAME(params)=value` (params identifiers separated by
   commas, `...` last) the dump and the libclang pass give clang as one `-D<entry>` argument each,
   a value that is no list or an entry of another shape refused naming the key; `over_indexed`, a list of
@@ -57,12 +62,20 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   bytes of clang's JSON dump and the seconds of the dumper, the emitter (with the formatter) and
   the compile check, which `lua/run.das` (repo root) reports. `convert_program(c_paths, ...[,
   entry])` is the program of several files: each dumped, written and round-tripped as `convert`
-  does it, then linked (section 6) into `<stem>.das` of the unit holding `main`, else of the first,
-  beside `program.cir.json`; its result adds the link's seconds and report. One file is `convert`
+  does it, then linked (section 6) and emitted in the layout of section 8: by default a module per
+  C file under `out_dir` as the files lie under their common folder, the cycles cut by late binding
+  (`source`), every cycle one module (`scc`), or one module, `<stem>.das` of the unit holding `main`,
+  else of the first (`single`), as `--layout` or the sidecar's `layout` chooses; beside
+  `program.cir.json`, and in the two module-per-file layouts `program.layout.txt`, the partition's
+  report; its result adds the link's seconds and report, the files it wrote and that report. One file is `convert`
   of it. `read_program_input` reads a manifest the converter takes (section 6).
 - `link.das` - the link of section 6 (`ARCHITECTURE_LINK.md`): `link_tus` over the dumper's trees
-  of a program's units.
+  of a program's units, each unit's scope (its output module) from the caller's block.
   Nothing here knows clang or daslang syntax.
+- `layout.das` - the source layout of section 8 (`ARCHITECTURE_LAYOUT.md`): `plan_layout`, the
+  partition of a linked program into modules with the cycle cut (`CutOptions`), and
+  `layout_report`, its lines. Nothing here knows
+  clang or daslang syntax.
 - `tiers.das` - `run_tier(das_path, tier, work_dir, output[, module_dirs[, timeout[,
   flags]]])`: the process exit code of the module under `interp`, `jit`, `exe` or `aot`
   (section 5); `module_dirs` are passed as `-load_module` to the interpreter and the JIT, `flags`
@@ -73,9 +86,13 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `daslang_cmd` spells the prefix; `native_run` builds a C file, or a program's files in order,
   with a given compiler and flags and runs it once, with the program's arguments when given, the native side every differential test compares against.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c>... | --program <p.json> [--out] [--target]
-  [--run] [--arg]... [--sidecar] [--param-writes in-place|copy] [--loops range|while]`. Several
-  files are one program linked in their order, as are the files a manifest names; files beside
-  `--program` are a usage error (exit 2). Each `--arg` is one argument of the C `argv` the
+  [--run] [--arg]... [--sidecar] [--param-writes in-place|copy] [--loops range|while] [--layout
+  source|single]`. Several files are one program linked in their order, as are the files a manifest
+  names; files beside `--program` are a usage error (exit 2). `--layout` chooses the modules of such
+  a program (section 8): `source`, the default and the idiomatic form, a module per C file with the
+  cycles cut by late binding; `scc`, every cycle one module of fragments; `single`, one module; it
+  wins over the sidecar's `layout` mode, and any other value is a usage error (exit 2). One file is
+  one module in each layout. Each `--arg` is one argument of the C `argv` the
   program `--run` runs gets, in order. `--param-writes` chooses how the emitter writes a scalar or
   pointer parameter the body assigns, steps or takes the address of: `in-place`, the default and
   the idiomatic form, writes the parameter itself; `copy` writes a local copy, which the
@@ -97,12 +114,14 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `tests/test_cli.das` - `main.das` run as a child process over `tests/fixtures/p4_param_writes.c`:
   `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2; over
   `tests/fixtures/p7_loops.c`: `--loops range` and `while` reach the emitter, and a bad value
-  exits 2; and over
+  exits 2; over `tests/fixtures/p5_layout_cut/`: `--layout source`, `scc` and `single` reach the
+  converter, and a bad value exits 2; and over
   `tests/fixtures/p4_main_args.c`: `--arg` reaches the C `argv` under `interp` as the native
   build's arguments do and under `exe`, and `aot` refuses it.
 - `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list,
   its function-like entries and the shapes it refuses, the `over_indexed` list and the shapes it
-  refuses, the `loops` values and the ones it refuses.
+  refuses, the `loops` and `layout` values (the latter as a mode and as an object) and the ones
+  they refuse.
 - `tests/test_tier_facts.das` - the das facts the emitter relies on, each a program run under the
   four tiers: `int` and `int64` `+` and `-` wrap, and `c_volatile_load` reads a global on every
   pass of a loop whose plain read the JIT, the exe and AOT fold out of it.
@@ -115,7 +134,20 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `tests/test_link.das` - the three files of `tests/fixtures/p5_multi_link/` linked into one module
   that prints what their native build prints, with the renames, the header copies and the scoping
   the text must carry; the file list and the fixture's manifest giving one module through
-  `main.das`; the manifest's and the link's refusals; the binding rules over trees built by hand.
+  `main.das`; the manifest's and the link's refusals; the binding rules over trees built by hand;
+  all of it in the single layout.
+- `tests/test_layout.das` - the source layout of section 8: `tests/fixtures/p5_layout_tree/` (four
+  files in two folders, a cluster of two, a header's types, the shared types module) converted and
+  run against its native build under the interpreter and the JIT, with the requires, the include
+  order, the renames, the header copies and the literal objects the text must carry; the single
+  layout's text against the hash of the link's one module before this layout; one file as one
+  module; `tests/fixtures/p5_layout_types/` (two headers whose records point at each other); the
+  refusals; and `tests/fixtures/p5_layout_cut/` (two files calling each other, a variadic callee, a
+  header pointing at a record a unit defines): the cut by the static count, by a profile, under
+  `layout.keep_together`, `layout.cut` and `layout.threshold`, the refused cut of an object, a file
+  reached only through cut edges, and the three layouts printing what the native build prints;
+  `cut_order` against every permutation of small weighted graphs, and its greedy order past 16
+  nodes.
   Fixtures under `tests/fixtures/` are C inputs, never das.
 
 ## 2. The C-IR bytes
@@ -257,3 +289,8 @@ Section 6, how several C files link into one program, is in `ARCHITECTURE_LINK.m
 ## 7. Exception ledger
 
 Empty.
+
+## 8. The source layout
+
+Section 8, the modules of a program of several files (the partition, the fragments, the program
+and module state of the emitter), is in `ARCHITECTURE_LAYOUT.md`.
