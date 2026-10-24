@@ -17,8 +17,8 @@ canonical (`get_full_file_name`, symbolic links and `..` resolved, memoized per 
 `#include "../dir/x.h"` back into the folder is the program's too. The rule is one test,
 `in_program`, applied in both passes: the libclang walk keeps a cursor whose expansion file passes
 it, the JSON walk a top-level declaration whose location's file does. The rule draws the
-boundary, so a program whose headers live elsewhere is composed with them copied beside it (as
-`lua/run.das`, repo root, does). An external record the program reaches a member of, declares a
+boundary per translation unit, so a program whose headers live outside the folder of its C files
+needs them copied beside those files; Lua's sources and headers share one folder. An external record the program reaches a member of, declares a
 variable or a record field of, or names under `sizeof` as a type or an operand's (`sizeof *p`)
 (`struct tm`, `struct lconv`, `mbstate_t`) is laid out with the program's records: the libclang pass registers its definition from the system header, and every external
 record it holds by value, an anonymous one nested in it included, and the walk anchors it where it first interns it, so it converts and is
@@ -99,7 +99,9 @@ record spelling is keyed with the scope dropped. A typedef is a `typedef` type a
 anchor, nothing more. A file-scope `static` gets the TU-qualified name `<stem>__<name>` (a stem
 that starts with a digit, as the c-testsuite's do, takes a leading underscore, since `00099__f`
 is not a name) and a local `static` is hoisted into `decls` as `<fn>_<name>` with `from_func`
-(`<fn>_<name>1` and up for a second one of the name in the function). A reference binds by the
+(`<fn>_<name>1` and up past another hoisted static, a file-scope name the dump declares, a system
+header's included, and a parameter or local of the function). A file-scope `static` declared
+again without `static` keeps its internal linkage (C11 6.2.2p4). A reference binds by the
 declaration id clang resolved it to (`referencedDecl.id`), never by its spelling, so a local
 that hides a static, or a later block's local named like an earlier block's static, keeps its
 own binding (`docs/probe-findings.md` F47); an id outside the program (a libc function,

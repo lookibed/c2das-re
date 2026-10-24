@@ -178,6 +178,17 @@ def is_digit_run(text : string; from : int) : bool {
 //! Whether `target` is the `msvc` dialect's.
 def is_msvc(target : CirTarget) : bool => find(target.triple, "windows") >= 0
 
+//! A file stem as an identifier: every other character an underscore, a leading digit kept
+//! behind one, since `00099__f` is not a name.
+def ident_of(name : string) : string {
+    let ident = build_string() $(var w) {
+        for (ch in name) {
+            w |> write(is_alnum(ch) ? to_char(ch) : "_")
+        }
+    }
+    return !empty(ident) && is_number(first_character(ident)) ? "_" + ident : ident
+}
+
 //! `want` when no name of `taken` is it, else `want` with the first free number appended; the
 //! name is then taken.
 def free_name(var taken : table<string>; want : string) : string {
@@ -764,6 +775,49 @@ def private write_params(var w : Writer; params : array<CirParam>) {
     w.out |> push("]")
 }
 
+def private write_target(var w : Writer; target : CirTarget) {
+    open_object(w)
+    member(w, "triple", true)
+    w.out |> push(json_str(target.triple))
+    member(w, "int", false)
+    w.out |> push("{target.int_w}")
+    member(w, "long", false)
+    w.out |> push("{target.long_w}")
+    member(w, "llong", false)
+    w.out |> push("{target.llong_w}")
+    member(w, "ptr", false)
+    w.out |> push("{target.ptr_w}")
+    member(w, "char_signed", false)
+    w.out |> push("{target.char_signed}")
+    close_object(w)
+}
+
+//! The canonical bytes of one declaration, as `write_cir` spells it at depth 0: two declarations
+//! with these bytes equal are the same declaration.
+def write_cir_decl(d : CirDecl) : string {
+    var w : Writer
+    write_decl(w, d)
+    return join(w.out, "")
+}
+
+//! The canonical bytes of a program manifest (docs/c-ir-spec.md section 7): the version, the
+//! dialect, the C-IR files of the units in link order and the entry point.
+def write_program(target : CirTarget; tus : array<string>; entry : string) : string {
+    var w : Writer
+    open_object(w)
+    member(w, "cir", true)
+    w.out |> push(json_str(CIR_VERSION))
+    member(w, "target", false)
+    write_target(w, target)
+    member(w, "tus", false)
+    w.out |> push("[" + join([for (name in tus); json_str(name)], ", ") + "]")
+    member(w, "entry", false)
+    w.out |> push(json_str(entry))
+    close_object(w)
+    w.out |> push("\n")
+    return join(w.out, "")
+}
+
 //! The canonical bytes of a TU (docs/c-ir-spec.md section 8): every key in spec order, one
 //! member per line at one space per depth, scalar arrays on one line, LF, a final LF.
 def write_cir(tu : CirTu) : string {
@@ -774,20 +828,7 @@ def write_cir(tu : CirTu) : string {
     member(w, "producer", false)
     w.out |> push(json_str(tu.producer))
     member(w, "target", false)
-    open_object(w)
-    member(w, "triple", true)
-    w.out |> push(json_str(tu.target.triple))
-    member(w, "int", false)
-    w.out |> push("{tu.target.int_w}")
-    member(w, "long", false)
-    w.out |> push("{tu.target.long_w}")
-    member(w, "llong", false)
-    w.out |> push("{tu.target.llong_w}")
-    member(w, "ptr", false)
-    w.out |> push("{tu.target.ptr_w}")
-    member(w, "char_signed", false)
-    w.out |> push("{tu.target.char_signed}")
-    close_object(w)
+    write_target(w, tu.target)
     member(w, "tu", false)
     w.out |> push(json_str(tu.tu))
     member(w, "types", false)

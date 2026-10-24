@@ -28,6 +28,7 @@ def test_pipeline_ret42(t : T?) {
         t |> failure("no temp directory: {dir_error}")
         return
     }
+    delete res
     res <- convert(FIXTURE, out, "msvc")
     t |> run("the P0 program converts, formats and compile-checks") @(t : T?) {
         t |> equal(res.ok, true, res.error)

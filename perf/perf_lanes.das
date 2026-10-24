@@ -21,10 +21,11 @@ let NATIVE_FLAGS <- ["-O3", "-w", "-funsigned-char"]
 //! the seconds each step of an `exe` or `aot` build may take, and the run it ends with
 let BUILD_TIMEOUT = 3600.0
 
-//! The native lane's build of `c_path` into `bin` by the pinned clang, `libs` linked last.
-def native_build_command(c_path, bin : string; libs : array<string>) : array<string> {
+//! The native lane's build of the program's `c_paths` into `bin` by the pinned clang, `libs`
+//! linked last.
+def native_build_command(c_paths : array<string>; bin : string; libs : array<string>) : array<string> {
     var argv <- [default_clang()]
-    argv |> push_from(NATIVE_FLAGS, ["-o", bin, c_path], libs)
+    argv |> push_from(NATIVE_FLAGS, ["-o", bin], c_paths, libs)
     return <- argv
 }
 

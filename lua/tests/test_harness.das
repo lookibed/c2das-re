@@ -8,8 +8,11 @@ require daslib/strings_boost
 //! `lua/fetch/lua-5.4.8/src` of small C files, `lua/fetch.sh`'s refusals over a scratch
 //! `VERSIONS.md` and tarballs, and `lua/REVIEW.das` over a scratch git index.
 
-// the sources run.das composes, each a stand-in here
+// the sources run.das links, each a stand-in here
 let CORE <- ["lapi", "lcode", "lctype", "ldebug", "ldo", "ldump", "lfunc", "lgc", "llex", "lmem", "lobject", "lopcodes", "lparser", "lstate", "lstring", "ltable", "ltm", "lundump", "lvm", "lzio", "lauxlib", "lbaselib", "lcorolib", "ldblib", "liolib", "lmathlib", "loadlib", "loslib", "lstrlib", "ltablib", "lutf8lib", "linit"]
+
+// the standard libraries among them, which only the interpreter links
+let STANDARD <- ["lbaselib", "lcorolib", "ldblib", "liolib", "lmathlib", "loadlib", "loslib", "lstrlib", "ltablib", "lutf8lib", "linit"]
 
 def private run_in(dir : string; argv : array<string>; var out : string&) : int {
     var shell <- ["sh", "-c", "cd \"$0\" && exec \"$@\"", dir]
@@ -64,33 +67,44 @@ def test_run_refusals(t : T?) {
     }
 }
 
+// the full paths of the stand-in sources of `root`, each a JSON string, in link order
+def private manifest_tus(root : string; sources : array<string>) : string {
+    let src = get_full_file_name(path_join(root, "lua/fetch/lua-5.4.8/src"))
+    return join([for (source in sources); "\"{src}/{source}.c\""], ", ")
+}
+
 [test]
 def test_run_stand_in(t : T?) {
-    t |> run("run.das composes the sources under a banner each, converts, and agrees with the native build under the interpreter and the JIT") @(t : T?) {
+    t |> run("run.das converts each program from its separate sources through a manifest, and agrees with the native build under the interpreter and the JIT") @(t : T?) {
         let root = stand_in_root("c2das_lua_stand_in", LOBJECT)
         t |> success(!empty(root))
         for (tier in ["interp", "jit"]) {
             var out : string
-            t |> equal(run_in(root, daslang_argv("lua/run.das", ["--run", "--tier", tier, "--filter", "lua_all", "--arg", "word"]), out), 0, out)
+            t |> equal(run_in(root, daslang_argv("lua/run.das", ["--run", "--tier", tier, "--filter", "lua", "--arg", "word"]), out), 0, out)
             // the JIT's `[I]` lines are no part of the program's output
             t |> success(out |> contains("lua: {tier} exited 0: 43 word\n"), out)
         }
-        let composed = fread(path_join(root, "lua/work/lua_all.c"))
-        t |> success(composed |> starts_with("/* lua_all: lua 5.4.8 as one translation unit, composed by lua/run.das */\n#define LUA_CORE\n#define LUA_LIB\n#define lua_c\n/* ==== lapi.c ==== */\n"), composed)
-        t |> success(composed |> contains("/* ==== linit.c ==== */\n/* linit */\n/* ==== lua.c ==== */\n"), composed)
+        var interpreter <- clone_to_move(CORE)
+        interpreter |> push("lua")
+        t |> equal(fread(path_join(root, "lua/work/lua.program.json")), "\{\n \"tus\": [{manifest_tus(root, interpreter)}],\n \"entry\": \"main\"\n\}\n")
+        // `--filter` names one program's stem: `lua` is not `luac`
+        t |> success(!fexist(path_join(root, "lua/work/luac.program.json")))
+        // the converted module is the entry unit's, and no header is copied out of the release
+        t |> success(fexist(path_join(root, "lua/work/lua/lua.das")) && !fexist(path_join(root, "lua/work/lua.h")))
         // the compiler links no standard library
         var out : string
-        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "luac_all"]), out), 0, out)
-        let compiler = fread(path_join(root, "lua/work/luac_all.c"))
-        t |> success(compiler |> contains("/* ==== lauxlib.c ==== */\n/* lauxlib */\n/* ==== luac.c ==== */\n"), compiler)
-        t |> success(!(compiler |> contains("lbaselib")), compiler)
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "luac"]), out), 0, out)
+        var compiler <- [for (source in CORE); source; where !has_value(STANDARD, source)]
+        compiler |> push("luac")
+        t |> equal(fread(path_join(root, "lua/work/luac.program.json")), "\{\n \"tus\": [{manifest_tus(root, compiler)}],\n \"entry\": \"main\"\n\}\n")
+        t |> success(fexist(path_join(root, "lua/work/luac/luac.das")))
         rmdir_rec(root)
     }
-    t |> run("a conversion error names the Lua source and line beside the composed file's location") @(t : T?) {
+    t |> run("a conversion error names the Lua source and line") @(t : T?) {
         let root = stand_in_root("c2das_lua_located", "#include \"lua.h\"\nint lua_answer(void) \{ return L\"x\"[0]; \}\n")
         var out : string
-        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua_all"]), out), 1, out)
-        t |> success(out |> contains("(lua lobject.c:2)"), out)
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua"]), out), 1, out)
+        t |> success(out |> contains("lobject.c:2:"), out)
         rmdir_rec(root)
     }
 }
@@ -136,13 +150,13 @@ def test_review_gate(t : T?) {
         t |> equal(run_in(root, ["git", "init", "-q"], out), 0, out)
         mkdir_rec(path_join(root, "lua/work"))
         fwrite(path_join(root, "lua/run.das"), "// tracked\n")
-        fwrite(path_join(root, "lua/work/lua_all.c"), "/* generated */\n")
+        fwrite(path_join(root, "lua/work/lua.program.json"), "\{\}\n")
         t |> equal(run_in(root, ["git", "add", "lua/run.das"], out), 0, out)
         let gate <- daslang_argv("lua/REVIEW.das", array<string>())
         t |> equal(run_in(root, gate, out), 0, out)
-        t |> equal(run_in(root, ["git", "add", "-f", "lua/work/lua_all.c"], out), 0, out)
+        t |> equal(run_in(root, ["git", "add", "-f", "lua/work/lua.program.json"], out), 0, out)
         t |> equal(run_in(root, gate, out), 1, out)
-        t |> success(out |> contains("lua/work/lua_all.c") && out |> contains("never committed"), out)
+        t |> success(out |> contains("lua/work/lua.program.json") && out |> contains("never committed"), out)
         rmdir_rec(root)
     }
 }

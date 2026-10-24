@@ -13,7 +13,7 @@ code; this repository holds only the generator and its inputs.
   and with `--commit` one commit per program (`--push` pushes the clone's HEAD). Run from the
   repository root through `scripts/publish_ports.sh`, which loads the `crt` and `c_runtime`
   modules and passes its flags through. The programs it knows are a constant table in it (the
-  `Port` records): the harness folder, the composed modules, the module the workloads run, the
+  `Port` records): the harness folder, the converted modules, the module the workloads run, the
   libraries the native build links, the header holding the license, the upstream-test claims with
   the c2das-re item that recorded them, and the workloads.
 - `ports_render.das` - the text: the capture records, the times, ratio and not-yet text of a
@@ -32,7 +32,7 @@ code; this repository holds only the generator and its inputs.
 ## 2. What a publish writes
 
 The program's directory in the clone holds a fixed set of files, each replaced whole on every
-publish: the converted modules (`lua_all.das`, `luac_all.das`, copied from
+publish: the converted modules (`lua.das`, `luac.das`, copied from
 `lua/work/<stem>/<stem>.das`), the sidecar (`lua.c2das`), `LICENSE` (the block of the release's
 `src/lua.h` from the line `* Copyright (C)` to the line ending `DEALINGS IN THE SOFTWARE.`, the
 leading `* ` stripped), the benchmark scripts under `bench/`, and `README.md`. The publisher
@@ -85,8 +85,9 @@ rendered from captures by this publisher once it lands` (`PERF_NOT_YET`). With `
 measures as this section states and renders the tables.
 
 The lanes are perf's (`perf/ARCHITECTURE.md` section 2), built by `perf/perf_lanes.das`, the
-module `perf/run.das` builds its kernels' lanes with: `native` is the composed C file built by
-the pinned clang at `-O3 -w -funsigned-char` (with `-lm`), `interp` and `jit` are daslang over the
+module `perf/run.das` builds its kernels' lanes with: `native` is the C files the harness's
+program manifest `work/<runs>.program.json` lists, in its order, built by the pinned clang at `-O3
+-w -funsigned-char` (with `-lm`), a missing or refused manifest the lane's reason, `interp` and `jit` are daslang over the
 converted module with the module folders loaded, `exe` is daslang's `-exe` build, `aot` the
 `-ctx` context with the host of `converter/tiers.das` compiled by the pinned `clang++ -O3`. Each
 lane is built once, before the workloads. The AOT host passes the program no arguments, so the

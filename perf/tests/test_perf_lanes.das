@@ -34,9 +34,11 @@ def test_samples(t : T?) {
 
 [test]
 def test_commands(t : T?) {
-    t |> run("the native lane: the pinned clang at -O3 with unsigned char, the libraries last") @(t : T?) {
-        let cmd <- native_build_command("k.c", "k_native", ["-lm"])
+    t |> run("the native lane: the pinned clang at -O3 with unsigned char, the program's files in order, the libraries last") @(t : T?) {
+        let cmd <- native_build_command(["k.c"], "k_native", ["-lm"])
         t |> equal(join(cmd, " "), "{default_clang()} -O3 -w -funsigned-char -o k_native k.c -lm")
+        let program <- native_build_command(["a.c", "b.c"], "p_native", ["-lm"])
+        t |> equal(join(program, " "), "{default_clang()} -O3 -w -funsigned-char -o p_native a.c b.c -lm")
     }
     t |> run("the interpreter and JIT lanes: daslang, the module folders, the flag, the module") @(t : T?) {
         t |> equal(join(das_lane_command("m.das", "", ["a"]), " "), "{get_das_root()}/bin/daslang -load_module a m.das")
