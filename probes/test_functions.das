@@ -145,3 +145,18 @@ def test_empty_call_effects(t : T?) {
         t |> equal(i, 1)
     }
 }
+
+// two mutually recursive functions, one reading a global, the outer called with a constant
+let FOLDED_RECURSION = "options gen2\nvar step : int = 4\n\ndef through(n : int) : int => n <= 0 ? 1 : looks_pure(n - 1) + step\n\ndef looks_pure(n : int) : int => n <= 0 ? 2 : through(n - 1) * 2\n\n[export]\ndef main \{\n    let a = looks_pure(2)\n    print(\"\{a\}\\n\")\n\}\n"
+
+[test]
+def test_folded_global_read(t : T?) {
+    t |> run("the optimizer folds a constant-argument call into mutually recursive functions reading a global before the global holds its value (docs/probe-findings.md F73); -no-optimization prints the program's own answer") @(t : T?) {
+        // looks_pure(2) = through(1) * 2 = (looks_pure(0) + 4) * 2 = 12
+        let honest = daslang_child_flags("folded_recursion_noopt", FOLDED_RECURSION, ["-no-optimization"])
+        t |> equal(honest.rc, 0, honest.out)
+        t |> equal(honest.out, "12\n")
+        let folded = daslang_child_flags("folded_recursion", FOLDED_RECURSION, array<string>())
+        t |> success(folded.out != "12\n", "the fold now reads the initialized global: {folded.out}; F73 is fixed upstream, the probe and the finding change")
+    }
+}

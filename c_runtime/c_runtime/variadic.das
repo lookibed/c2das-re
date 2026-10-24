@@ -35,6 +35,10 @@ def to_cvalist(va : VaNone) : CVaList {
     return <- lst
 }
 
+//! A list already built, which a late-bound variadic call forwards from its wrapper
+//! (`converter/ARCHITECTURE_LAYOUT.md`): the list as it is, copied.
+def to_cvalist(va : CVaList) : CVaList => <- clone_to_move(va)
+
 //! The prologue converter: one `CVal` per tuple field, C's default argument promotions applied -
 //! `float` widens to `double`, every integer class including `bool` and enums widens to `int64`,
 //! any pointer or function value travels as `void?`.

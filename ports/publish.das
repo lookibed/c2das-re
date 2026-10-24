@@ -46,7 +46,7 @@ struct Port {
     workloads : array<WorkloadSpec>
 }
 
-let ALL_LANES <- ["native", "interp", "jit", "exe", "aot"]
+let ALL_LANES <- ["native", "interp", "jit", "exe", "aot", "interp-scc", "jit-scc", "interp-single", "jit-single"]
 let STARTUP_ARGS <- ["-e", "print(1)"]
 let WARM_UP_TIMEOUT = 3600.0
 let IDENTITY <- ["-c", "user.name=lookibed", "-c", "user.email=93531352+lookibed@users.noreply.github.com"]
@@ -56,8 +56,8 @@ def private bench(name : string) : WorkloadSpec => <- WorkloadSpec(name = name, 
 def private lua_port : Port => <- Port(
     name = "lua", title = "Lua", harness = "lua", runs = "lua", license_header = "lua.h", claims_item = "P5.1",
     modules <- [
-        (stem = "lua", role = "the interpreter `lua`: the core, the standard libraries and `lua.c`, linked from their separate files into one module"),
-        (stem = "luac", role = "the compiler `luac`: the core, the auxiliary library and `luac.c`, linked from their separate files into one module")
+        (stem = "lua", role = "the interpreter `lua`: the core, the standard libraries and `lua.c`"),
+        (stem = "luac", role = "the compiler `luac`: the core, the auxiliary library and `luac.c`")
     ],
     libs <- ["-lm"],
     claims <- [
@@ -87,8 +87,8 @@ struct Args {
     perf : bool
     @clarg_doc = "samples per workload and lane, each its own process (default 5)"
     samples : int = 5
-    @clarg_doc = "the das lanes to measure, comma-separated, out of interp,jit,exe,aot (default all)"
-    lanes : string = "interp,jit,exe,aot"
+    @clarg_doc = "the das lanes to measure, comma-separated, out of interp,jit,exe,aot,interp-scc,jit-scc,interp-single,jit-single (default all): the -scc and -single lanes run those layouts' modules"
+    lanes : string = "interp,jit,exe,aot,interp-scc,jit-scc,interp-single,jit-single"
     @clarg_doc = "seconds one sample may run before its cell fails (default 1800)"
     timeout : int = 1800
     @clarg_name = "allow-stale"
@@ -159,6 +159,32 @@ def private tests_of(port : Port; release : Release) : string => path_join(port.
 def private log_of(port : Port) : string => path_join(port.harness, "work/publish_run.log")
 def private stamp_of(port : Port) : string => path_join(port.harness, "work/publish.generation")
 def private module_of(port : Port; stem : string) : string => path_join(port.harness, "work/{stem}/{stem}.das")
+def private single_of(port : Port; stem : string) : string => path_join(port.harness, "work/single/{stem}/{stem}.das")
+def private scc_of(port : Port; stem : string) : string => path_join(port.harness, "work/scc/{stem}/{stem}.das")
+
+// the das files of a program's source layout under `dir` (its modules and fragments), each relative
+// to `dir`, in order; the conversion's C-IR files and anything else stay out
+def private tree_files(dir : string) : array<string> {
+    var files : array<string>
+    var folders <- [""]
+    while (!empty(folders)) {
+        let rel = folders[length(folders) - 1]
+        folders |> pop()
+        dir(path_join(dir, rel)) $(name) {
+            if (name == "." || name == "..") {
+                return
+            }
+            let sub = empty(rel) ? name : "{rel}/{name}"
+            if (stat(path_join(dir, sub)).is_dir) {
+                folders |> push(sub)
+            } elif (name |> ends_with(".das") || name |> ends_with(".das.inc")) {
+                files |> push(sub)
+            }
+        }
+    }
+    sort(files)
+    return <- files
+}
 def private sidecar_of(port : Port) : string => path_join(port.harness, "{port.name}.c2das")
 
 // the stamp a conversion leaves beside its output: the sha, the describe and the date, one a line
@@ -318,6 +344,8 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
     mkdir_rec(bench_work)
     let manifest = path_join(work, "{port.runs}.program.json")
     let das_path = get_full_file_name(path_join(work, "{port.runs}/{port.runs}.das"))
+    let single_path = get_full_file_name(single_of(port, port.runs))
+    let scc_path = get_full_file_name(scc_of(port, port.runs))
     let modules <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)]
     into.lanes |> reserve(length(lanes))
     for (lane in lanes) {
@@ -336,11 +364,15 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
             run.argv <- [get_full_file_name(bin)]
             var inscope listed <- empty(error) ? [for (c_path in input.c_paths); base_name(c_path)] : ["<the C files of {manifest}>"]
             shown = join(native_build_command(listed, "{port.runs}_native", port.libs), " ")
-        } elif (lane == "interp" || lane == "jit") {
-            let flag = lane == "jit" ? "-jit" : ""
-            run.argv <- das_lane_command(das_path, flag, modules)
+        } elif (lane == "interp" || lane == "jit" || lane |> ends_with("-scc") || lane |> ends_with("-single")) {
+            // the -scc and -single lanes run those layouts' modules, the others the source layout's
+            let single = lane |> ends_with("-single")
+            let scc = lane |> ends_with("-scc")
+            let flag = lane |> starts_with("jit") ? "-jit" : ""
+            run.argv <- das_lane_command(single ? single_path : scc ? scc_path : das_path, flag, modules)
             run.argv |> push("--")
-            shown = join(["daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime", flag, "{port.runs}.das --"], " ") |> replace("  ", " ")
+            let shown_module = single ? "single/{port.runs}.das" : scc ? "scc/{port.runs}/{port.runs}.das" : "{port.runs}/{port.runs}.das"
+            shown = join(["daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime", flag, "{shown_module} --"], " ") |> replace("  ", " ")
             run.error = warm_up(run.argv, "")
         } else {
             var error : string
@@ -349,7 +381,7 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
             if (!empty(bin)) {
                 run.argv <- [get_full_file_name(bin)]
             }
-            shown = lane == "exe" ? "daslang -exe {port.runs}.das, the binary run" : "the -ctx context and its host compiled by clang++ -O3 (c2das-re converter/tiers.das), the binary run"
+            shown = lane == "exe" ? "daslang -exe {port.runs}/{port.runs}.das, the binary run" : "the -ctx context and its host compiled by clang++ -O3 (c2das-re converter/tiers.das), the binary run"
         }
         into.lanes |> push(Lane(name = lane, command = shown, error = run.error))
         let reported = empty(run.error) ? join(run.argv, " ") : "not yet: {run.error}"
@@ -382,7 +414,7 @@ def private measure_program(args : Args; port : Port; release : Release; lanes :
                     cell.error = "no {tests_of(port, release)}"
                 } else {
                     // the test-suite folder has a module cache of its own to warm
-                    if (spec.in_tests && (lane == "interp" || lane == "jit")) {
+                    if (spec.in_tests && (lane == "interp" || lane == "jit" || lane |> ends_with("-scc") || lane |> ends_with("-single"))) {
                         cell.error = warm_up(run.argv, tests)
                     }
                     if (empty(cell.error)) {
@@ -448,7 +480,13 @@ def private readme_text(port : Port; release : Release; gen : Generation; comman
         w |> write("Everything in this directory is generated by `{command}` in c2das-re; never edit it, a fix belongs in c2das-re.\n\n")
         w |> write("## Files\n\n")
         for (m in port.modules) {
-            w |> write("- `{m.stem}.das` - {m.role}, converted.\n")
+            w |> write("- `{m.stem}/` - {m.role}, converted as a module per C file, the cycles among files cut by late binding through `{m.stem}/{m.stem}_link.das` (c2das-re's source layout, its default; `{m.stem}/program.layout.txt` lists the cut); `{m.stem}/{m.stem}.das` holds `main`.\n")
+        }
+        for (m in port.modules) {
+            w |> write("- `scc/{m.stem}/` - the same program with every cycle of files one module of `.das.inc` fragments (c2das-re's `--layout scc`).\n")
+        }
+        for (m in port.modules) {
+            w |> write("- `single/{m.stem}.das` - the same program as one module (c2das-re's `--layout single`).\n")
         }
         w |> write("- `{port.name}.c2das` - the sidecar both were converted under.\n")
         w |> write("- `LICENSE` - {port.title}'s license, from `src/{port.license_header}` of the release; the conversion is a derived work.\n")
@@ -468,10 +506,11 @@ def private readme_text(port : Port; release : Release; gen : Generation; comman
         w |> write("The modules require c2das-re's `crt` and `c_runtime` modules: a c2das-re checkout at the commit above, ")
         w |> write("with the daScript its `VERSIONS.md` pins built and `scripts/build_crt.sh` run. With `<c2das-re>` that checkout:\n\n```\n")
         let load = "daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime"
-        w |> write("{load} lua.das -- -e \"print(1+1)\"\n")
-        w |> write("{load} -jit lua.das -- bench/fib.lua\n")
-        w |> write("{load} -exe lua.das -output lua && ./lua.exe bench/fib.lua\n")
-        w |> write("{load} luac.das -- -o out.luac script.lua\n```\n\n")
+        w |> write("{load} lua/lua.das -- -e \"print(1+1)\"\n")
+        w |> write("{load} -jit lua/lua.das -- bench/fib.lua\n")
+        w |> write("{load} -exe lua/lua.das -output lua && ./lua.exe bench/fib.lua\n")
+        w |> write("{load} luac/luac.das -- -o out.luac script.lua\n")
+        w |> write("{load} single/lua.das -- -e \"print(1+1)\"\n```\n\n")
         w |> write("Everything after `--` is the program's own command line; daslang names the `-exe` binary with `.exe` on every platform.\n\n")
         w |> write("## Upstream tests\n\n")
         w |> write("The results c2das-re's {port.claims_item} recorded for this program, not results of this publish's run; ")
@@ -557,9 +596,11 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
         return false
     }
     for (m in port.modules) {
-        if (!fexist(module_of(port, m.stem))) {
-            to_log(LOG_ERROR, "{port.name}: no {module_of(port, m.stem)}; run without --no-convert\n")
-            return false
+        for (path in [module_of(port, m.stem), scc_of(port, m.stem), single_of(port, m.stem)]) {
+            if (!fexist(path)) {
+                to_log(LOG_ERROR, "{port.name}: no {path}; run without --no-convert\n")
+                return false
+            }
         }
     }
     let license = license_block(fread(path_join(sources_of(port, release), port.license_header)))
@@ -574,8 +615,22 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
     let dir = path_join(repo, port.name)
     mkdir_rec(path_join(dir, "bench"))
     var ok = true
+    mkdir_rec(path_join(dir, "single"))
     for (m in port.modules) {
-        ok = ok && write_or_log(path_join(dir, "{m.stem}.das"), fread(module_of(port, m.stem)))
+        for (scc in [false, true]) {
+            let tree = dir_name(scc ? scc_of(port, m.stem) : module_of(port, m.stem))
+            let into = scc ? path_join(path_join(dir, "scc"), m.stem) : path_join(dir, m.stem)
+            for (rel in tree_files(tree)) {
+                let target = path_join(into, rel)
+                mkdir_rec(dir_name(target))
+                ok = ok && write_or_log(target, fread(path_join(tree, rel)))
+            }
+        }
+        let report = path_join(dir_name(module_of(port, m.stem)), "program.layout.txt")
+        if (fexist(report)) {
+            ok = ok && write_or_log(path_join(path_join(dir, m.stem), "program.layout.txt"), fread(report))
+        }
+        ok = ok && write_or_log(path_join(dir, "single/{m.stem}.das"), fread(single_of(port, m.stem)))
     }
     ok = ok && write_or_log(path_join(dir, "LICENSE"), license)
     ok = ok && write_or_log(path_join(dir, "{port.name}.c2das"), fread(sidecar_of(port)))
@@ -667,7 +722,7 @@ def main : int {
     lanes |> reserve(1 + length(das_lanes))
     for (lane in das_lanes) {
         if (lane == "native" || !has_value(ALL_LANES, lane)) {
-            to_log(LOG_ERROR, "ports: no das lane `{lane}`; --lanes takes interp, jit, exe and aot\n")
+            to_log(LOG_ERROR, "ports: no das lane `{lane}`; --lanes takes interp, jit, exe, aot, interp-scc, jit-scc, interp-single and jit-single\n")
             return 1
         }
         lanes |> push(lane)

@@ -11,29 +11,22 @@ require daslib/json_boost
 require ../converter/pipeline.das
 require ../converter/tiers.das
 require ../converter/dumper_a.das
+require ../converter/sidecar.das
+require sources
 
 //! The Lua harness: `lua/fetch.sh`'s release converted as its Makefile builds it, the interpreter
 //! `lua` and the compiler `luac`, each from its separate C files through a program manifest
 //! `lua/work/<stem>.program.json` and `converter/pipeline.das`'s `convert_program` with
-//! `lua/lua.c2das`, its compile check included, and timed. `--native` builds the native oracle of
-//! each, `--run` runs the converted interpreter under the interpreter tier against it. Run from the
-//! repository root.
+//! `lua/lua.c2das`, its compile check included, and timed, in the source layout into
+//! `lua/work/<stem>/`, in the scc layout into `lua/work/scc/<stem>/` and in the single layout into
+//! `lua/work/single/<stem>/`. `--native` builds the
+//! native oracle of each, `--run` runs the converted interpreter against it, `--luac-check` the
+//! converted compiler's `-o` over a folder of scripts. Run from the repository root.
 
-let SOURCES = "lua/fetch/lua-5.4.8/src"
 let WORK = "lua/work"
-let SIDECAR = "lua/lua.c2das"
 let NATIVE_FLAGS <- ["-O0", "-funsigned-char", "-w"]
 
-// the sources of the Makefile's `CORE_O`, in its order, then the auxiliary library of its `LIB_O`
-let CORE <- ["lapi", "lcode", "lctype", "ldebug", "ldo", "ldump", "lfunc", "lgc", "llex", "lmem", "lobject", "lopcodes", "lparser", "lstate", "lstring", "ltable", "ltm", "lundump", "lvm", "lzio", "lauxlib"]
 
-// the rest of `LIB_O`, the standard libraries: the interpreter links them; the compiler, which
-// calls none of them, does not, as the Makefile's archive link pulls none into it
-let STANDARD <- ["lbaselib", "lcorolib", "ldblib", "liolib", "lmathlib", "loadlib", "loslib", "lstrlib", "ltablib", "lutf8lib", "linit"]
-
-// the program each manifest builds: its stem, the source holding its `main`, and whether it links
-// the standard libraries
-let PROGRAMS <- [("lua", "lua", true), ("luac", "luac", false)]
 
 [CommandLineArgs]
 struct Args {
@@ -47,6 +40,11 @@ struct Args {
     arg : array<string>
     @clarg_doc = "convert only the program of this stem: lua or luac"
     filter : string = ""
+    @clarg_doc = "the layouts to convert: source (a module per C file, the cycles cut, into lua/work/<stem>/), scc (every cycle one module, into lua/work/scc/<stem>/), single (one module, into lua/work/single/<stem>/) or all, the default"
+    layout : string = "all"
+    @clarg_name = "luac-check"
+    @clarg_doc = "a folder of Lua scripts: the converted luac compiles each with -o under --tier, and its bytes must be the native luac's"
+    luac_check : string = ""
     @clarg_doc = "dialect: linux (this host, the native oracle's) or msvc"
     target : string = "linux"
     @clarg_short = "?"
@@ -55,18 +53,12 @@ struct Args {
     show_help : bool
 }
 
-// `lua/work/<stem>.program.json`: the program's sources in link order, the core, the standard
-// libraries when it links them, then `main_source`, each by its full path; the manifest's path, ""
-// when it cannot be written
+// `lua/work/<stem>.program.json`: the program's sources in link order (`program_sources`), each by
+// its full path; the manifest's path, "" when it cannot be written
 [arch(at="ARCHITECTURE.md#program")]
-def private write_manifest(stem, main_source : string; standard : bool) : string {
-    var sources <- clone_to_move(CORE)
-    if (standard) {
-        sources |> push_from(STANDARD)
-    }
-    sources |> push(main_source)
+def private write_manifest(stem : string) : string {
     let path = path_join(WORK, "{stem}.program.json")
-    let tus = join([for (source in sources); write_json(JV(get_full_file_name(path_join(SOURCES, "{source}.c"))))], ", ")
+    let tus = join([for (c_path in program_sources(stem)); write_json(JV(c_path))], ", ")
     return fwrite(path, "\{\n \"tus\": [{tus}],\n \"entry\": \"main\"\n\}\n") ? path : ""
 }
 
@@ -111,10 +103,133 @@ def private run_both(das_path, bin, tier : string; program_args : array<string>)
     return native_rc == das_rc && native_out == das_out
 }
 
-// one program's manifest written, the program converted and reported; with `--native` its
-// oracle built, with `--run` both run
-def private build_program(stem, main_source : string; standard : bool; args : Args) : bool {
-    let manifest = write_manifest(stem, main_source, standard)
+// the bytes of the file at `path`, none when it cannot be read; a das string would stop at the
+// first zero byte, which bytecode holds
+def private file_bytes(path : string) : array<uint8> {
+    var bytes : array<uint8>
+    fopen(path, "rb") $(f) {
+        if (f != null) {
+            fload(f, int64(stat(path).size)) $(data) {
+                bytes := data
+            }
+        }
+    }
+    return <- bytes
+}
+
+// whether the files at `a` and `b` hold the same bytes
+def private same_bytes(a, b : string) : bool {
+    let left <- file_bytes(a)
+    let right <- file_bytes(b)
+    if (length(left) != length(right)) {
+        return false
+    }
+    for (x, y in left, right) {
+        if (x != y) {
+            return false
+        }
+    }
+    return true
+}
+
+// every `.lua` file of `dir` compiled by the native compiler `bin` and by the converted one at
+// `das_path` under `tier`, each with `-o` into its own file under `out_dir`: true when every pair of
+// exit codes agrees and every pair of outputs is byte for byte the same
+def private luac_check(das_path, bin, tier, dir, out_dir : string) : bool {
+    var scripts : array<string>
+    dir(dir) $(name) {
+        if (name |> ends_with(".lua")) {
+            scripts |> push(path_join(dir, name))
+        }
+    }
+    if (empty(scripts)) {
+        to_log(LOG_ERROR, "lua: luac -o: no .lua file in {dir}\n")
+        return false
+    }
+    sort(scripts)
+    mkdir_rec(out_dir)
+    var same = 0
+    for (script in scripts) {
+        let stem = file_stem(script)
+        let native_out = path_join(out_dir, "{stem}.native.luac")
+        let das_out = path_join(out_dir, "{stem}.{tier}.luac")
+        var native_text, das_text : string
+        let native_rc = run_and_capture([bin, "-o", native_out, script], native_text, 60.0)
+        var inscope no_flags : array<string>
+        let das_rc = run_tier(das_path, tier, WORK, das_text, CONVERTED_MODULES, 600.0, no_flags, ["-o", das_out, script])
+        let agree = native_rc == das_rc && fexist(native_out) && same_bytes(native_out, das_out)
+        if (agree) {
+            same++
+        } else {
+            to_log(LOG_ERROR, "lua: luac -o {base_name(script)}: native exited {native_rc}, {tier} {das_rc}; the bytes differ\n")
+        }
+    }
+    to_log(LOG_INFO, "lua: luac -o under {tier}: {same} of {length(scripts)} files byte for byte the native compiler's\n")
+    return same == length(scripts)
+}
+
+// the folder a program's conversion in `layout` lands in: `lua/work/<stem>/` for the source layout,
+// `lua/work/<layout>/<stem>/` for the scc and the single ones
+def private layout_dir(stem, layout : string) : string =>
+    layout == "source" ? path_join(WORK, stem) : path_join(path_join(WORK, layout), stem)
+
+// the layouts `--layout` names
+def private layouts_of(args : Args) : array<string> => <- args.layout == "all" ? ["source", "scc", "single"] : [args.layout]
+
+// the lines of every das file a conversion wrote, a fragment's included
+def private das_lines(res : ConvertResult; dir : string) : int {
+    if (empty(res.files)) {
+        return line_count(res.das_text)
+    }
+    var lines = 0
+    for (f in res.files) {
+        lines += line_count(fread(path_join(dir, f)))
+    }
+    return lines
+}
+
+// one program converted in `layout` and reported; with `--run` the interpreter run against the
+// native oracle `bin`, with `--luac-check` the compiler over the folder it names
+def private convert_layout(stem, main_source : string; input : ProgramInput; bin, layout : string; args : Args) : bool {
+    let dir = layout_dir(stem, layout)
+    let res <- convert_program(input.c_paths, dir, args.target, "", SIDECAR, "", "", input.entry, layout)
+    let head = "lua: {stem} ({layout})"
+    to_log(LOG_INFO, "{head}: {length(input.c_paths)} files, dumper {fmt(":.1f", res.dump_seconds)} s, JSON {res.json_bytes} bytes\n")
+    if (!res.ok) {
+        to_log(LOG_ERROR, "{head}: {res.error}\n")
+        return false
+    }
+    to_log(LOG_INFO, "{head}: link {fmt(":.1f", res.link_seconds)} s, {length(res.bound)} declarations bound to another file's definition, {length(res.renamed)} statics renamed, {length(res.deduplicated)} header functions kept once\n")
+    for (line in res.renamed) {
+        to_log(LOG_INFO, "{head}: renamed {line}\n")
+    }
+    if (!empty(res.files)) {
+        let fragments = length([for (f in res.files); f; where f |> ends_with(".das.inc")])
+        to_log(LOG_INFO, "{head}: {length(res.files) - fragments} modules, {fragments} fragments\n")
+        // the modules belong to the conversion's report; the edges that tie each cluster are
+        // logged apart, outside the lines the ports README quotes
+        for (line in res.partition) {
+            to_log(LOG_INFO, line |> contains(" -> ") ? "partition {stem} ({layout}): {line}\n" : "{head}: module {line}\n")
+        }
+    }
+    to_log(LOG_INFO, "{head}: emitter {fmt(":.1f", res.emit_seconds)} s, compile check {fmt(":.1f", res.check_seconds)} s, {das_lines(res, dir)} lines of das, [c_function] on {res.c_functions} of {res.function_count} functions\n")
+    if (args.run && main_source == "lua") {
+        var program_args <- ["-e", "print(1+1)"]
+        if (!empty(args.arg)) {
+            program_args := args.arg
+        }
+        return run_both(res.das_path, bin, args.tier, program_args)
+    }
+    if (!empty(args.luac_check) && main_source == "luac") {
+        return luac_check(res.das_path, bin, args.tier, args.luac_check, path_join(dir, "luac_check"))
+    }
+    return true
+}
+
+// one program's manifest written, the program converted in each layout `--layout` names and
+// reported; with `--native`, `--run` or `--luac-check` its oracle built first
+def private build_program(stem, main_source : string; args : Args) : bool {
+    let manifest = write_manifest(stem)
     if (empty(manifest)) {
         to_log(LOG_ERROR, "lua: cannot write {WORK}/{stem}.program.json\n")
         return false
@@ -126,28 +241,14 @@ def private build_program(stem, main_source : string; standard : bool; args : Ar
         return false
     }
     let bin = path_join(WORK, "{stem}_native")
-    if ((args.native || args.run) && !build_native(input.c_paths, bin)) {
+    if ((args.native || args.run || !empty(args.luac_check)) && !build_native(input.c_paths, bin)) {
         return false
     }
-    let res <- convert_program(input.c_paths, path_join(WORK, stem), args.target, "", SIDECAR, "", "", input.entry)
-    to_log(LOG_INFO, "lua: {stem}: {length(input.c_paths)} files, dumper {fmt(":.1f", res.dump_seconds)} s, JSON {res.json_bytes} bytes\n")
-    if (!res.ok) {
-        to_log(LOG_ERROR, "lua: {stem}: {res.error}\n")
-        return false
+    var ok = true
+    for (layout in layouts_of(args)) {
+        ok = convert_layout(stem, main_source, input, bin, layout, args) && ok
     }
-    to_log(LOG_INFO, "lua: {stem}: link {fmt(":.1f", res.link_seconds)} s, {length(res.bound)} declarations bound to another file's definition, {length(res.renamed)} statics renamed, {length(res.deduplicated)} header functions kept once\n")
-    for (line in res.renamed) {
-        to_log(LOG_INFO, "lua: {stem}: renamed {line}\n")
-    }
-    to_log(LOG_INFO, "lua: {stem}: emitter {fmt(":.1f", res.emit_seconds)} s, compile check {fmt(":.1f", res.check_seconds)} s, {line_count(res.das_text)} lines of das, [c_function] on {res.c_functions} of {res.function_count} functions\n")
-    if (!args.run || main_source != "lua") {
-        return true
-    }
-    var program_args <- ["-e", "print(1+1)"]
-    if (!empty(args.arg)) {
-        program_args := args.arg
-    }
-    return run_both(res.das_path, bin, args.tier, program_args)
+    return ok
 }
 
 [export]
@@ -161,6 +262,10 @@ def main : int {
         to_log(LOG_ERROR, "lua: --tier is interp or jit, not `{args.tier}`\n")
         return 1
     }
+    if (args.layout != "all" && !is_layout(args.layout)) {
+        to_log(LOG_ERROR, "lua: --layout is source, scc, single or all, not `{args.layout}`\n")
+        return 1
+    }
     if (!stat(SOURCES).is_dir) {
         to_log(LOG_ERROR, "lua: no {SOURCES}; run lua/fetch.sh first\n")
         return 1
@@ -172,7 +277,7 @@ def main : int {
     var ok = true
     for (program in PROGRAMS) {
         if (empty(args.filter) || program._0 == args.filter) {
-            ok = build_program(program._0, program._1, program._2, args) && ok
+            ok = build_program(program._0, program._1, args) && ok
         }
     }
     return ok ? 0 : 1

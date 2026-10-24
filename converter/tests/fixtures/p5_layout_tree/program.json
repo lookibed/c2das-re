@@ -1,0 +1,4 @@
+{
+ "tus": ["main.c", "sub/ring_b.c", "ring_a.c", "sub/solo.c"],
+ "entry": "main"
+}

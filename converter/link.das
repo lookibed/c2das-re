@@ -12,11 +12,12 @@ require cir
 //! syntax: the type tables merge into one, every external symbol binds to its one definition, and
 //! a file-scope static keeps its owning unit, renamed only where its name collides.
 
-//! The linked program: the merged tree, whose `tu` names the entry unit's file; the first refusal;
-//! and the link's report, one line per static renamed, per declaration bound to another unit's
-//! definition and per header function kept once.
+//! The linked program: the merged tree, whose `tu` names the entry unit's file, with the unit each
+//! of its declarations came from; the first refusal; and the link's report, one line per static
+//! renamed, per declaration bound to another unit's definition and per header function kept once.
 struct LinkResult {
     program : CirTu
+    owners : array<int>
     error : string
     renamed : array<string>
     bound : array<string>
@@ -31,6 +32,15 @@ struct private Linker {
     maps : array<array<int>>
     origin : table<int; CirLoc>
     error : string
+}
+
+//! What the link knows of a program before it names the statics, which the partition into modules
+//! reads (`converter/layout.das`): the unit defining each external name that has a definition (or a
+//! tentative one), and per unit the names its code references that none of its statics,
+//! parameters, locals or labels declares.
+struct LinkFacts {
+    defined_in : table<string; int>
+    refs : array<table<string>>
 }
 
 // a declaration by its unit and its index there
@@ -441,7 +451,7 @@ def private name_kind(tus : array<CirTu>; units : array<UnitNames>; ti : int; na
 // whether every reference of the copies resolves alike in every unit holding one: an external in
 // all of them, or a static function in all of them whose own group stands over those units; a
 // static object stays one copy per unit, so it never does
-def private resolves_alike(var tus : array<CirTu>; units : array<UnitNames>; standing : table<string; array<DeclRef>>; name : string; copies : array<DeclRef>) : bool {
+def private resolves_alike(var tus : array<CirTu>; units : array<UnitNames>; standing : table<string; array<DeclRef>>; name : string; scope : int; copies : array<DeclRef>) : bool {
     var refs <- free_refs(tus[copies[0].tu].decls[copies[0].at])
     for (ref in keys(refs)) {
         let kind = name_kind(tus, units, copies[0].tu, ref)
@@ -455,7 +465,7 @@ def private resolves_alike(var tus : array<CirTu>; units : array<UnitNames>; sta
         }
         if (kind == "function" && ref != name) {
             var covered = false
-            standing |> get(ref) $(callee) {
+            standing |> get(scoped_key(ref, scope)) $(callee) {
                 covered = covers(callee, copies)
             }
             if (!covered) {
@@ -466,33 +476,38 @@ def private resolves_alike(var tus : array<CirTu>; units : array<UnitNames>; sta
     return true
 }
 
-// the header functions identical in several units, each a group of copies by name and bytes; a
-// group stands while its references resolve alike in every unit of it (`resolves_alike`)
-def private header_groups(var tus : array<CirTu>; units : array<UnitNames>) : table<string; array<DeclRef>> {
+// a header function's group within one scope, by its name and the scope
+def private scoped_key(name : string; scope : int) : string => "{name}@{scope}"
+
+// the header functions identical in several units of one scope (one output module), each a group of
+// copies by scope, name and bytes keyed by `scoped_key`; a group stands while its references resolve
+// alike in every unit of it (`resolves_alike`)
+def private header_groups(var tus : array<CirTu>; units : array<UnitNames>; scopes : array<int>) : table<string; array<DeclRef>> {
     var groups : table<string; array<DeclRef>>
     for (ti, tu in count(), tus) {
         for (di, d in count(), tu.decls) {
             if (d.k == "func" && d.is_static && d.body != null && from_header(tu, d)) {
-                groups["{d.name}\n{write_cir_decl(*d)}"] |> push(DeclRef(tu = ti, at = di))
+                groups["{scopes[ti]}\n{d.name}\n{write_cir_decl(*d)}"] |> push(DeclRef(tu = ti, at = di))
             }
         }
     }
     var standing : table<string; array<DeclRef>>
     for (copies in values(groups)) {
         if (length(copies) > 1) {
-            standing[tus[copies[0].tu].decls[copies[0].at].name] := copies
+            standing[scoped_key(tus[copies[0].tu].decls[copies[0].at].name, scopes[copies[0].tu])] := copies
         }
     }
     var changed = true
     while (changed) {
         var inscope fallen : array<string>
-        for (name, copies in keys(standing), values(standing)) {
-            if (!resolves_alike(tus, units, standing, name, copies)) {
-                fallen |> push(name)
+        for (key, copies in keys(standing), values(standing)) {
+            let first = DeclRef(tu = copies[0].tu, at = copies[0].at)
+            if (!resolves_alike(tus, units, standing, tus[first.tu].decls[first.at].name, scopes[first.tu], copies)) {
+                fallen |> push(key)
             }
         }
-        for (name in fallen) {
-            standing |> erase(name)
+        for (key in fallen) {
+            standing |> erase(key)
         }
         changed = !empty(fallen)
     }
@@ -536,7 +551,7 @@ def private merge_types(var tus : array<CirTu>; var program : CirTu) : string {
 // the declaration every external name binds to, by name: its definition with a body or an
 // initializer, else its first tentative definition, else its first declaration; a tentative
 // definition merges into the initialized one
-def private bind_externals(var tus : array<CirTu>; var res : LinkResult; var keep : table<string; DeclRef>) {
+def private bind_externals(var tus : array<CirTu>; var res : LinkResult; var keep : table<string; DeclRef>; var facts : LinkFacts) {
     var uses : table<string; array<DeclRef>>
     var order : array<string>
     for (ti, tu in count(), tus) {
@@ -578,6 +593,7 @@ def private bind_externals(var tus : array<CirTu>; var res : LinkResult; var kee
             }
             let chosen = strong.tu >= 0 ? strong : tentative.tu >= 0 ? tentative : refs[0]
             if (strong.tu >= 0 || tentative.tu >= 0) {
+                facts.defined_in[name] = chosen.tu
                 for (ref in refs) {
                     if (ref.tu != chosen.tu) {
                         res.bound |> push("{tus[ref.tu].tu}: {name} -> {tus[chosen.tu].tu}")
@@ -670,9 +686,10 @@ def private want_names(var tus : array<CirTu>; var b : Binding) : string {
 }
 
 // a header function kept once lives in its first unit; the other units' copies drop
-def private share_header_copies(var tus : array<CirTu>; var b : Binding; var res : LinkResult) {
-    let groups <- header_groups(tus, b.units)
-    for (name, copies in keys(groups), values(groups)) {
+def private share_header_copies(var tus : array<CirTu>; var b : Binding; scopes : array<int>; var res : LinkResult) {
+    let groups <- header_groups(tus, b.units, scopes)
+    for (copies in values(groups)) {
+        let name = tus[copies[0].tu].decls[copies[0].at].name
         res.deduplicated |> push("{name}: {join([for (c in copies); tus[c.tu].tu], ", ")}")
         for (c in copies) {
             if (c.tu != copies[0].tu) {
@@ -701,12 +718,15 @@ def private fresh_name(var taken : table<string>; blocked : array<table<string>>
 }
 
 // a static keeps its name unless another owner takes it: an external name of the program, a name
-// the emitter maps to libc or c_runtime (`reserved`), a name another unit's code references
-// without a static of its own by that name, or another unit's static (a header function kept once
-// owned by its first unit). A renamed static takes `<stem>_<name>`, the next free one past every
-// file-scope name of the program and every parameter, local and label of the units that call it;
-// a shared header copy's references reach its kept copy's name
-def private rename_collisions(var tus : array<CirTu>; var b : Binding; reserved : array<string>; var res : LinkResult) {
+// the emitter maps to libc or c_runtime (`reserved`), or, in a unit of its scope (its output
+// module), a name the unit's code references without a static of its own by that name or the
+// unit's own static (a header function kept once owned by its first unit). A renamed static takes
+// `<stem>_<name>`, the next free one past every file-scope name of the program and every
+// parameter, local and label of the units that call it; a shared header copy's references reach
+// its kept copy's name
+def private rename_collisions(var tus : array<CirTu>; var b : Binding; reserved : array<string>; scopes : array<int>; var res : LinkResult) {
+    // by name, -1 for a name of the whole program and each unit referencing it or holding a
+    // static of it
     var owners : table<string; table<int>>
     var taken : table<string>
     for (name in keys(b.keep)) {
@@ -718,7 +738,7 @@ def private rename_collisions(var tus : array<CirTu>; var b : Binding; reserved 
     for (ti, unit in count(), b.units) {
         for (name in keys(unit.refs)) {
             if (!key_exists(unit.statics, name)) {
-                owners[name] |> insert(-1)
+                owners[name] |> insert(ti)
             }
         }
         for (name in keys(unit.statics)) {
@@ -736,7 +756,9 @@ def private rename_collisions(var tus : array<CirTu>; var b : Binding; reserved 
         for (name in names) {
             var others = false
             owners |> get(name) $(units) {
-                others = length(units) > 1 || !key_exists(units, ti)
+                for (other in keys(units)) {
+                    others = others || other == -1 || (other != ti && scopes[other] == scopes[ti])
+                }
             }
             if (others) {
                 var inscope blocked <- [for (other in b.units); other.locals; where copies_from(other, name, ti)]
@@ -759,7 +781,8 @@ def private rename_collisions(var tus : array<CirTu>; var b : Binding; reserved 
 }
 
 // the declarations in link order into the program: each external once at its binding, the
-// statics but the dropped copies, each type anchor once; the program's `tu` the unit defining `main`
+// statics but the dropped copies, each type anchor once, each with its unit in `owners`; the
+// program's `tu` the unit defining `main`
 def private gather(var tus : array<CirTu>; b : Binding; var res : LinkResult) {
     var anchors : table<string>
     for (ti, tu in count(), tus) {
@@ -782,6 +805,7 @@ def private gather(var tus : array<CirTu>; b : Binding; var res : LinkResult) {
             }
             if (take) {
                 res.program.decls |> push(d)
+                res.owners |> push(ti)
             } else {
                 delete_decl(d)
             }
@@ -793,12 +817,15 @@ def private gather(var tus : array<CirTu>; b : Binding; var res : LinkResult) {
 //! Links the dumper's trees of a program's units, in link order, into one tree: the merged type
 //! table, one declaration per external name (prototypes and `extern` declarations bound to the
 //! definition, tentative definitions merged), every unit's statics, renamed `<stem>_<name>` only
-//! where the name collides with another unit's static or an external, a function a header defines
-//! in several units kept once where every copy is identical, the type anchors once each. The units'
+//! where the name collides with an external or with a static or a reference of another unit of its
+//! scope, a function a header defines in several units of one scope kept once where every copy is
+//! identical, the type anchors once each. `scoping` sees the units (their types already indices into
+//! the merged table), that table and the link's facts once the externals are bound, and gives each
+//! unit its scope, the output module that holds it (`converter/layout.das`), or a refusal. The units'
 //! declarations move into the program, which leaves `tus` without any. `entry` must be `main`; the
 //! program's `tu` is the file of the unit defining it, else the first unit's.
 [arch(at="ARCHITECTURE_LINK.md#link")]
-def link_tus(var tus : array<CirTu>; entry : string; reserved : array<string>) : LinkResult {
+def link_tus(var tus : array<CirTu>; entry : string; reserved : array<string>; scoping : block<(tus : array<CirTu>; types : array<CirType>; facts : LinkFacts; var scopes : array<int>) : string>) : LinkResult {
     var res : LinkResult
     res.error = refusal(tus, entry)
     if (!empty(res.error)) {
@@ -817,14 +844,31 @@ def link_tus(var tus : array<CirTu>; entry : string; reserved : array<string>) :
     if (!empty(res.error)) {
         return <- res
     }
-    bind_externals(tus, res, b.keep)
+    var facts : LinkFacts
+    bind_externals(tus, res, b.keep, facts)
     if (!empty(res.error)) {
         return <- res
     }
-    share_header_copies(tus, b, res)
-    rename_collisions(tus, b, reserved, res)
+    facts.refs <- [for (unit in b.units); {for (name in keys(unit.refs)); name; where !key_exists(unit.statics, name)}]
+    var scopes : array<int>
+    res.error = invoke(scoping, tus, res.program.types, facts, scopes)
+    if (!empty(res.error)) {
+        return <- res
+    }
+    if (length(scopes) != length(tus)) {
+        scopes |> resize(length(tus))
+    }
+    share_header_copies(tus, b, scopes, res)
+    rename_collisions(tus, b, reserved, scopes, res)
     gather(tus, b, res)
     return <- res
+}
+
+//! `link_tus` with every unit in one scope, one output module.
+def link_tus(var tus : array<CirTu>; entry : string; reserved : array<string>) : LinkResult {
+    return <- link_tus(tus, entry, reserved) $(_tus, _types, _facts, _scopes) : string {
+        return ""
+    }
 }
 
 //! `link_tus` with no name reserved beyond the program's own.

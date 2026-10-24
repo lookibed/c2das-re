@@ -81,6 +81,15 @@ let COPY_KEY_SUFFIX = "@copy"
 //! The suffix of a kernel's input key converted under `--loops while` (`perf/primes@while`).
 let WHILE_KEY_SUFFIX = "@while"
 
+//! The suffix of a Lua input key converted in the single layout (`lua/lua@single`), and of one in
+//! the scc layout (`lua/lua@scc`); the bare key (`lua/lua`) is the source layout, the converter's
+//! default.
+let SINGLE_KEY_SUFFIX = "@single"
+let SCC_KEY_SUFFIX = "@scc"
+
+//! The Lua programs (`lua/sources.das`) the readability metric measures, each in both layouts.
+let LUA_PROGRAMS <- ["lua", "luac"]
+
 //! The kernel id a perf input key names: the key's id less its mode suffix.
 def kernel_of_key(id : string) : string {
     for (suffix in [COPY_KEY_SUFFIX, WHILE_KEY_SUFFIX]) {
@@ -98,6 +107,7 @@ def expected_input_keys : array<string> {
     let kernels <- c_file_ids(KERNELS, "")
     var keys <- [for (name in kernels); "perf/{name}"]
     keys |> push_from([for (name in kernels); "perf/{name}{COPY_KEY_SUFFIX}"], [for (name in kernels); "perf/{name}{WHILE_KEY_SUFFIX}"])
+    keys |> push_from([for (name in LUA_PROGRAMS); "lua/{name}"], [for (name in LUA_PROGRAMS); "lua/{name}{SINGLE_KEY_SUFFIX}"], [for (name in LUA_PROGRAMS); "lua/{name}{SCC_KEY_SUFFIX}"])
     for (suite in RATCHET_SUITES) {
         var inscope r <- read_ratchet("suites/{suite}/expected_pass.txt", "suites/{suite}/skip.txt")
         keys |> reserve(length(keys) + length(r.expected))

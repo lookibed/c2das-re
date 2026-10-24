@@ -690,6 +690,80 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   rule beside it, compile-check and `-compile-only` seconds and `lua -e` startup under the
   interpreter, a fresh JIT and the JIT cache for both layouts, readability and perf captures for
   both.
+  Done (branch `p5.1b2-source-layout`), with owner ruling 2026-10-24 (6), the cycle cut: plain SCC
+  is a monolith on real programs (Lua's core one cluster of 15 files; the Rust c2das put 51 of
+  PureDOOM's 62 files in one), so the default `source` layout cuts the cycles where the cut is cheap,
+  by late binding; `scc` keeps every cycle one module of fragments; `single` is P5.1b1's module.
+  `converter/layout.das`'s `plan_layout` partitions the linked program inside `link_tus`'s scoping
+  block (statics renamed and header copies kept per module); a record a header spells is the
+  header's even where a unit defines it (`struct lua_longjmp` of `ldo.c` is `lstate_h`'s), so no
+  header requires a unit; in each strongly connected component the edges a cut cannot late-bind (an
+  object, a function whose address is taken or whose type spells a unit's record, a type edge,
+  `layout.keep_together`, an edge above `layout.threshold`) collapse into groups that stay one
+  module, and among the groups the cut is a minimum weight feedback arc set (exact over the subsets
+  up to 16 groups, else greedy), each edge weighed by its symbols' dynamic call counts from the
+  calling file in the profile `layout.profile` names, else by its call sites; `layout.cut` forces a
+  cut. A cut symbol's slot and same-named wrapper (failing closed while unbound) live in the
+  generated `<entry>_link.das`; the defining module binds it at `[init]` (a variadic one through a
+  private function taking its `CVaList`, `c_runtime/variadic` taking a built list as it is) and
+  spells its own calls `__::name`, a module requiring it and the link module `<module>::name`; the entry module requires every module it would not reach
+  otherwise. `program.layout.txt` beside the C-IR lists the cut. `emit_program` spells the modules
+  over one `EmitProgram` state with a fresh module `Emitter` each, a cluster's file holding the
+  requires, the empty literal, the dialect `[init]`, its `include` lines, the fragments' digest
+  (F72), the layout check, the module-init stores and the wrapper; one file is one module in each
+  layout; `single` is P5.1b1's text byte for byte (107 single-file inputs and the four multi-file
+  fixtures identical to ce50b58's, the fixtures' hashes in `converter/tests/test_layout.das`).
+  `lua/profile.das` profiles the native interpreter (`-finstrument-functions`, the test suite and
+  the four benchmarks) into `lua/lua.profile.json`, which `lua/lua.c2das` names; no threshold is set
+  (below). On Lua 5.4.8 by the include rule (Boris): 61 files, 317 include edges, no include
+  cycle, 33 modules, which daslang refuses (`circular dependency`); by the symbol graph alone
+  (`nm`, the lead's probe reproduced): 19 modules, a cluster of 15. `scc`: 28 modules for `lua`
+  (17 for `luac`), the cluster `lcode_cluster` of 15 (`lcode ldebug ldo lfunc lgc llex lmem lobject
+  lparser lstate lstring ltable ltm lundump lvm`), and two header clusters, `lobject_h lstate_h
+  lua_h` and `llex_h lparser_h`, whose records point at each other: 20 fragments. `source`: 43
+  modules for `lua` (32 for `luac`) with `lua_link`, the largest cluster the three headers, 5
+  fragments; 64 symbols cut on 34 edges, the same in both programs; the edges by profiled calls:
+  `ltable -> lgc` 3,908,560 (`luaC_barrierback_`, `luaC_newobj`), `ldo -> lvm` 1,620,065
+  (`luaV_execute` 1,618,204, `luaV_finishOp`), `lcode -> lparser` 1,359,860 (`luaY_nvarstack`),
+  `lgc -> lstring` 482,158, `lobject -> lstring` 385,819, `ltable -> lvm` 332,876, `lgc -> lfunc`
+  241,966, `ldo -> lparser` 228,646, `lgc -> ldo` 20,732, `ldo -> ldebug` 11,910 (`luaG_callerror`,
+  `luaG_runerror`), and 24 more under 4,000, seven of them never called (`luaG_runerror` from
+  `lmem`, `lobject`; `luaD_throw` from `lmem`, `lstring`, `ltable`; `luaC_fullgc`; `luaT_trybinTM`);
+  the full list is `lua/work/lua/program.layout.txt`. Measured on this host, idle, three runs (min
+  to max), source / scc / single: `lua` `-compile-only` 4.18-4.52 / 7.98-8.11 / 9.86-10.28 s, the
+  compile check 2.81-3.00 / 6.58-6.82 / 8.61-9.02, `luac` 3.54-3.68 / 6.88-6.92 / 7.88-8.23 and
+  2.25-2.36 / 5.71-5.97 / 6.66-7.00; `lua -e "print(1)"` under the interpreter 1.14-3.77 /
+  5.80-8.31 / 8.93-9.29 (4.33-4.35 / 7.90-8.27 / 10.27-10.36 with `-no-module-cache`), a fresh JIT
+  33.6-43.9 / 42.0-52.5 / 44.2-52.9, the JIT cache 1.84-1.93 / 6.76-6.99 / 9.91-10.23; the
+  benchmarks as whole processes, interpreter: fib 27 13.8-14.8 / 19.1-19.4 / 22.1-22.8, binary_trees
+  12 39.4-42.0 / 46.1-46.3 / 48.9-49.7, nbody 20000 33.4-35.5 / 39.6-40.0 / 43.4-43.7, spectral_norm
+  100 19.8-21.1 / 25.6-26.0 / 28.7-29.1; JIT: 2.05-2.11 / 7.03-7.31 / 10.01-10.44, 2.56-2.64 /
+  7.48-7.70 / 10.40-10.44, 2.39-2.43 / 7.31-7.63 / 10.19-10.72, 2.13-2.16 / 7.11-7.34 / 10.01-10.33
+  (native 0.08-0.09, 0.39, 0.26-0.29, 0.11). With each layout's startup taken off, the late-bound
+  calls cost nothing measurable under the interpreter (fib 12.6 / 13.3 / 13.1 s) and 2 to 3 percent
+  under the JIT at a larger size (fib 32: 2.52 / 2.45 / 2.19 s, binary_trees 15: 6.95 / 6.77 / 6.1),
+  where one module is 10 to 15 percent faster than either module-per-file layout; within "a few
+  percent", so no threshold is set; the AOT lane stays `not yet` for Lua (its host passes no
+  arguments). In all three layouts, under the interpreter and the JIT, `lua -e "print(1+1)"` and the
+  string/table/math script print the native build's output and `luac -o` writes the native bytecode
+  byte for byte for all 33 files of the test suite. Readability: keys `lua/<program>` (source),
+  `@scc` and `@single`, no other key moved; every count agrees across the layouts but
+  `literal_named` (71, 71, 1,947 for `lua`; 0, 0, 1,476 for `luac`), since a module counts only the
+  names its own files declare and the enumerators live in the header modules. Perf: `perf/run.das`'s kernels are one file each, one
+  module in every layout, and gain no lane; the ports publisher publishes the `source` trees as the
+  primary, `scc/` and `single/` as opt-ins, and gains the `interp-scc`, `jit-scc`, `interp-single`
+  and `jit-single` lanes; `perf/results_linux.json` and the README tables are not regenerated. das
+  facts that failed their probe: daslang's module cache serves a module whose `include`d fragment
+  changed (F72; the cluster's file carries the fragments' digest), and the optimizer folds a
+  constant-argument call into mutually recursive functions reading a global before the global
+  holds its value (F73, every layout; the fixtures pass their arguments through `argc`).
+  Ledger: F72 and F73 are to be filed on lookibed/daScript. F73 touches no Lua call the three checks
+  run (Lua's core calls take `L`, never all constants); no mitigation is applied: `[sideeffects]` on
+  every function reading a global would stop the fold and cost the optimizer elsewhere,
+  `-no-optimization` every program. The ports repository still holds `lua.das`, `luac.das`,
+  `lua_all.das` and `luac_all.das` at its top until removed by hand. A type no single file defines
+  and one two `.c` files define alike share `c_types`, whatever their headers. The scc and source
+  layouts' JIT runs are slower than single's by a module-crossing cost the cut does not cause.
 - **P5.1c Skip-list audit** (owner ruling 2026-10-22 (2), item B; branch `p5.1c-skip-audit`).
   `run_suite.sh <suite> --audit-skips` runs every ledgered id through the convert-and-run path,
   ratchet untouched (`--update` only adds the audited ids that pass), into `work/skip_audit.tsv`
@@ -921,6 +995,26 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   GCC's wrap of a 40-bit bitfield.
 - **Exit criterion:** the §2 metric sentence of the plan is true, all four columns
   published.
+
+## P8 — Comparison
+
+- **P8.1 Head-to-head with lookibed/c2das (the Rust translator)** (owner ruling 2026-10-24 (8);
+  added with P5.1b2, not executed before the stop ruling 5 orders). Build lookibed/c2das (master,
+  the pinned commit recorded) as its README says and run it on exactly the inputs c2das-re uses:
+  the three suites (gcc-torture execute, c-testsuite, csmith seeds), the perf kernels, Lua 5.4.8
+  (`lua`, `luac`) and PureDOOM, with the same daScript pin where possible (any difference
+  recorded). Correctness: pass counts per suite under the same runner and oracle; the Lua checks
+  (`lua -e`, the string/table/math script, `luac -o` byte-identical, the Lua test suite once P5.3
+  exists); Doom demo sync once P6 exists; a failure of either side classified (refused, compile
+  error, runtime, wrong output). Code quality: `metrics/readability.das` on both outputs
+  (`c_function`, `reinterpret`, `unsafe`, `while_rangeable` and the rest), size (lines, modules,
+  fragments, largest cluster), and a short side-by-side of a few representative functions
+  (`lvm.c`'s `luaV_execute` slice, a Doom renderer loop) in the report. Speed: the perf lanes
+  (native clang -O3, interp, JIT, AOT, exe) and the dasProfile-method lane on the same machine with
+  the same parameters for both translators, geometric means per lane. Output: a comparison table in
+  c2das-re (`docs/` or `perf/`) and in the c2das-ports README, regenerated from scratch by the
+  generator script, never hand-typed. Honest: where the Rust version is better, say so and open
+  ledger rows to close the gap.
 
 ---
 

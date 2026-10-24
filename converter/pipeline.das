@@ -12,6 +12,7 @@ require daslib/das_source_formatter
 require daslib/json_boost
 require cir
 require link
+require layout
 require dumper_a
 require emit
 require sidecar
@@ -42,7 +43,15 @@ struct ConvertResult {
     renamed : array<string>
     bound : array<string>
     deduplicated : array<string>
+    // a program in the source layout: every file written under `out_dir` (each module's `.das`,
+    // each fragment's `.das.inc`), relative to it, and the partition's report (`layout_report`)
+    files : array<string>
+    partition : array<string>
 }
+
+//! The report of a program's source layout beside its modules: the modules, each cluster's edges,
+//! and the cycle cut's late-bound functions with their edges and weights (`layout_report`).
+let LAYOUT_REPORT = "program.layout.txt"
 
 // the seconds since `t0`, a `ref_time_ticks` reading
 def private seconds_since(t0 : int64) : double => double(get_time_usec(t0)) / 1000000.0lf
@@ -92,18 +101,21 @@ def file_stem(c_path : string) : string {
     return dot < 0 ? name : slice(name, 0, dot)
 }
 
-// why an option value given to `convert` is refused, "" when both are empty or a mode
-def private option_error(param_writes, loops : string) : string {
+// why an option value given to `convert` is refused, "" when each is empty or a mode
+def private option_error(param_writes, loops, layout : string) : string {
     if (!empty(param_writes) && !is_param_writes(param_writes)) {
         return "--param-writes is in-place or copy, not `{param_writes}`"
+    }
+    if (!empty(layout) && !is_layout(layout)) {
+        return "--layout is source, scc or single, not `{layout}`"
     }
     return !empty(loops) && !is_loops(loops) ? "--loops is range or while, not `{loops}`" : ""
 }
 
 // the sidecar of a conversion, read from `sidecar` ("" for none), the options' values over its
 // keys; `error` the refusal of the options, the output folder or the sidecar
-def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var error : string&) : Sidecar {
-    error = option_error(param_writes, loops)
+def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var error : string&; layout : string = "") : Sidecar {
+    error = option_error(param_writes, loops, layout)
     if (empty(error) && !mkdir_rec(out_dir) && !stat(out_dir).is_dir) {
         error = "cannot create {out_dir}"
     }
@@ -117,6 +129,9 @@ def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var
     }
     if (!empty(loops)) {
         side.loops = loops
+    }
+    if (!empty(layout)) {
+        side.layout = layout
     }
     return <- side
 }
@@ -181,6 +196,56 @@ def private emit_unit(var tu : CirTu; side : Sidecar; out_dir, stem : string; va
     res.ok = true
 }
 
+// the files a source layout's program `tu` emits into (`emit_program`), each formatted and
+// written under `out_dir` at its path; the modules no other module requires (the entry's and any
+// the program never reaches) compile-checked, which compiles every module they require; `tu` is
+// deleted
+def private emit_modules(var tu : CirTu; owners : array<int>; plan : LayoutPlan; side : Sidecar; out_dir : string; var res : ConvertResult) {
+    let emit_started = ref_time_ticks()
+    var emitted <- emit_program(tu, side, plan, owners)
+    delete_tu(tu)
+    if (!empty(emitted.error)) {
+        res.error = "emitter: {emitted.error}"
+        return
+    }
+    res.c_functions = emitted.c_functions
+    res.function_count = emitted.function_count
+    res.files |> reserve(length(emitted.files))
+    for (f in emitted.files) {
+        let path = path_join(out_dir, f.path)
+        let text = format_source_string(f.text)
+        if ((!mkdir_rec(dir_name(path)) && !stat(dir_name(path)).is_dir) || !fwrite(path, text)) {
+            res.error = "cannot write {path}"
+            return
+        }
+        res.files |> push(f.path)
+        if (f.path == emitted.entry) {
+            res.das_path = path
+            res.das_text = text
+        }
+    }
+    res.emit_seconds = seconds_since(emit_started)
+    var required : table<int>
+    for (mod in plan.modules) {
+        for (r in mod.requires) {
+            required |> insert(r)
+        }
+    }
+    let check_started = ref_time_ticks()
+    for (mi, mod in count(), plan.modules) {
+        if (!key_exists(required, mi)) {
+            let rel = empty(mod.dir) ? "{mod.name}.das" : "{mod.dir}/{mod.name}.das"
+            let errors = compile_errors(path_join(out_dir, rel))
+            if (!empty(errors)) {
+                res.error = "compile check: {errors}"
+                return
+            }
+        }
+    }
+    res.check_seconds = seconds_since(check_started)
+    res.ok = true
+}
+
 def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = "") : ConvertResult {
     var res : ConvertResult
     let side <- conversion_setup(out_dir, find_sidecar(c_path, sidecar_path), param_writes, loops, res.error)
@@ -224,13 +289,22 @@ def private program_sidecar(c_paths : array<string>; given : string; var sidecar
 }
 
 //! A program of several C files, each dumped as `convert` dumps one (its C-IR written and
-//! round-tripped), then linked in the given order (`converter/link.das`) into one module named by
-//! the unit defining `main`, else the first; `<out_dir>/program.cir.json` names the units' C-IR
-//! files and the entry. The sidecar is `sidecar_path`, else the entry file's `<stem>.c2das`, else
-//! the `.c2das` of the first file's folder. A file stemmed `program` is refused, since its C-IR
-//! would be the manifest's file. One file is `convert` of it.
-def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main") : ConvertResult {
+//! round-tripped), then linked in the given order (`converter/link.das`). In the `source` layout,
+//! the default, the program is a module per C file and a cluster of mutually dependent files one
+//! module of fragments (`converter/layout.das`), written under `out_dir` as its C files lie under
+//! their common folder; in the `single` layout it is one module named by the unit defining `main`,
+//! else the first. `layout` ("" for the sidecar's `layout`, else `source`) chooses.
+//! `<out_dir>/program.cir.json` names the units' C-IR files and the entry. The sidecar is
+//! `sidecar_path`, else the entry file's `<stem>.c2das`, else the `.c2das` of the first file's
+//! folder. A file stemmed `program` is refused, since its C-IR would be the manifest's file. One
+//! file is `convert` of it, one module in either layout.
+def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main"; layout : string = "") : ConvertResult {
     if (length(c_paths) == 1 && entry == "main") {
+        if (!empty(layout) && !is_layout(layout)) {
+            var refused : ConvertResult
+            refused.error = option_error("", "", layout)
+            return <- refused
+        }
         return <- convert(c_paths[0], out_dir, target_name, clang, sidecar_path, param_writes, loops)
     }
     var res : ConvertResult
@@ -249,29 +323,35 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
     if (!empty(res.error)) {
         return <- res
     }
-    let side <- conversion_setup(out_dir, sidecar, param_writes, loops, res.error)
+    let side <- conversion_setup(out_dir, sidecar, param_writes, loops, res.error, layout)
     if (!empty(res.error)) {
         return <- res
     }
-    let target = target_by_name(target_name)
+    let source = side.layout != "single"
+    let opts <- cut_options(side, res.error)
+    if (!empty(res.error)) {
+        return <- res
+    }
     var units : array<CirTu>
     var cir_names : array<string>
-    units |> reserve(length(c_paths))
-    cir_names |> reserve(length(c_paths))
-    for (c_path in c_paths) {
-        var tu <- dump_unit(c_path, out_dir, target, clang, side, res)
-        units |> emplace(tu)
-        cir_names |> push(base_name(res.cir_path))
-        break if (!empty(res.error))
-    }
+    dump_units(c_paths, out_dir, target_by_name(target_name), clang, side, res, units, cir_names)
     if (empty(res.error)) {
         let link_started = ref_time_ticks()
-        var linked <- link_tus(units, entry, reserved_das_names())
+        var plan = LayoutPlan()
+        var linked <- link_tus(units, entry, reserved_das_names()) $(tus, types, facts, scopes) : string {
+            if (!source) {
+                return ""
+            }
+            delete plan
+            plan <- plan_layout(tus, types, facts, c_paths, opts)
+            scopes := unit_scopes(plan)
+            return plan.error
+        }
         res.link_seconds = seconds_since(link_started)
         res.renamed <- linked.renamed
         res.bound <- linked.bound
         res.deduplicated <- linked.deduplicated
-        res.cir_text = write_program(target, cir_names, entry)
+        res.cir_text = write_program(target_by_name(target_name), cir_names, entry)
         res.cir_path = path_join(out_dir, "program.cir.json")
         if (!empty(linked.error)) {
             res.error = "link: {linked.error}"
@@ -282,6 +362,10 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
         } elif (!fwrite(res.cir_path, res.cir_text)) {
             res.error = "cannot write {res.cir_path}"
             delete_tu(linked.program)
+        } elif (source) {
+            res.partition <- layout_report(plan)
+            fwrite(path_join(out_dir, LAYOUT_REPORT), join(res.partition, "\n") + "\n")
+            emit_modules(linked.program, linked.owners, plan, side, out_dir, res)
         } else {
             emit_unit(linked.program, side, out_dir, file_stem(linked.program.tu), res)
         }
@@ -290,6 +374,56 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
         delete_tu(tu)
     }
     return <- res
+}
+
+// every file of a program dumped as `convert` dumps one, into `units`, its C-IR file's name into
+// `cir_names`, until the first error
+def private dump_units(c_paths : array<string>; out_dir : string; target : CirTarget; clang : string; side : Sidecar; var res : ConvertResult; var units : array<CirTu>; var cir_names : array<string>) {
+    units |> reserve(length(c_paths))
+    cir_names |> reserve(length(c_paths))
+    for (c_path in c_paths) {
+        var tu <- dump_unit(c_path, out_dir, target, clang, side, res)
+        units |> emplace(tu)
+        cir_names |> push(base_name(res.cir_path))
+        break if (!empty(res.error))
+    }
+}
+
+// the cycle cut's options from the sidecar: cut in the `source` layout (the default) and not in
+// `scc`; the profile the sidecar's `layout.profile` names read, `error` when it is no object of
+// symbols holding an object of calling file stems and counts
+def private cut_options(side : Sidecar; var error : string&) : CutOptions {
+    var opts = CutOptions(cut_cycles = side.layout != "scc", threshold = side.layout_threshold)
+    for (name in side.layout_keep_symbols) {
+        opts.keep_symbols |> insert(name)
+    }
+    opts.keep_units := side.layout_keep_units
+    for (name in side.layout_cut) {
+        opts.always_cut |> insert(name)
+    }
+    if (empty(side.layout_profile)) {
+        return <- opts
+    }
+    var js = read_json_file(side.layout_profile, error)
+    if (js == null) {
+        error = "layout.profile: {error}"
+        return <- opts
+    }
+    if (!(js is _object)) {
+        error = "layout.profile: {side.layout_profile} is no object of symbols"
+    } else {
+        for (name, by_unit in keys(js as _object), values(js as _object)) {
+            if (!(by_unit is _object)) {
+                error = "layout.profile: `{name}` in {side.layout_profile} holds no object of calling files"
+                break
+            }
+            for (unit, count in keys(by_unit as _object), values(by_unit as _object)) {
+                opts.profile[name][unit] = count ?? 0l
+            }
+        }
+    }
+    delete_json(js)
+    return <- opts
 }
 
 //! A program manifest (docs/c-ir-spec.md section 7) as the converter takes it: `tus` the C files

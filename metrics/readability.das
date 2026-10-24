@@ -11,12 +11,15 @@ require ../suites/suite_runner.das
 require ../suites/csmith/generate.das
 require ../perf/perf_compose.das
 require ../converter/pipeline.das
+require ../lua/sources.das
 require readability_file
 require readability_count
 
 //! The readability metric (`scripts/run_readability.sh`): every input key `expected_input_keys`
 //! names, converted under the `linux` dialect (a `perf/<kernel>@copy` key under `--param-writes
-//! copy`, a `perf/<kernel>@while` key under `--loops while`) and counted by `readability_count`, one worker
+//! copy`, a `perf/<kernel>@while` key under `--loops while`, a `lua/<program>` key from the
+//! release's files in the source layout, its `@scc` and `@single` twins in those layouts) and counted by
+//! `readability_count`, one worker
 //! process per input, `--jobs` at a time. The totals ratchet against the committed
 //! `readability_linux.json`: a run exits 1 when one went up, and `--update` records the run.
 
@@ -72,9 +75,49 @@ def private headline(error : string) : string {
     return lines[0] |> ends_with(":") && length(lines) > 1 ? "{lines[0]} {lines[1]}" : lines[0]
 }
 
+// a Lua program converted into `dir` in the layout its key names, every module counted with the
+// fragments it includes, and the counts summed into one
+def private measure_lua(key, dir : string) : ModuleCount {
+    let id = slice(key, length("lua/"))
+    let single = id |> ends_with(SINGLE_KEY_SUFFIX)
+    let scc = id |> ends_with(SCC_KEY_SUFFIX)
+    let stem = single ? slice(id, 0, length(id) - length(SINGLE_KEY_SUFFIX)) : scc ? slice(id, 0, length(id) - length(SCC_KEY_SUFFIX)) : id
+    let res <- convert_program(program_sources(stem), path_join(dir, "das"), "linux", "", SIDECAR, "", "", "main", single ? "single" : scc ? "scc" : "source")
+    if (!res.ok) {
+        return ModuleCount(error = "convert: {headline(res.error)}")
+    }
+    if (single) {
+        return <- count_module(res.das_path)
+    }
+    var total : ModuleCount
+    total.counts <- {for (m in METRICS); m => 0}
+    for (f in res.files) {
+        if (f |> ends_with(".das")) {
+            let path = path_join(path_join(dir, "das"), f)
+            var inscope included : array<string>
+            for (ln in split(fread(path), "\n")) {
+                if (ln |> starts_with("include ")) {
+                    included |> push(path_join(dir_name(path), slice(ln, length("include "))))
+                }
+            }
+            let mc <- count_module(path, included)
+            if (!empty(mc.error)) {
+                return ModuleCount(error = "{f}: {headline(mc.error)}")
+            }
+            for (m in METRICS) {
+                total.counts[m] += mc.counts?[m] ?? 0
+            }
+        }
+    }
+    return <- total
+}
+
 // the worker: one input converted into work/<key>/ and counted
 def private measure_one(key : string) : ModuleCount {
     let dir = "{WORK}/{key}"
+    if (group_of(key) == "lua") {
+        return <- measure_lua(key, dir)
+    }
     var error : string
     let c_path = c_file_of(key, dir, error)
     if (!empty(error)) {
@@ -152,7 +195,7 @@ def main : int {
         fwrite(counts_path(args.one), count_text(measure_one(args.one)))
         return 0
     }
-    for (needed in fixed_array(C_TESTSUITE_TESTS, GCC_TORTURE_TESTS, "{CSMITH_DIR}/build/src/csmith")) {
+    for (needed in fixed_array(C_TESTSUITE_TESTS, GCC_TORTURE_TESTS, "{CSMITH_DIR}/build/src/csmith", SOURCES)) {
         if (!fexist(needed)) {
             to_log(LOG_ERROR, "{needed} is missing: run scripts/run_readability.sh, which fetches the suites\n")
             return 2

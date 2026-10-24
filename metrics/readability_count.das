@@ -335,7 +335,9 @@ class private InstanceScan : AstVisitor {
 let DIALECT_INIT = "c2das_dialect"
 
 class private Counter : AstVisitor {
-    file : string
+    // the files whose text is counted, each with its lines, which tell a literal from a folded
+    // constant: the module's own, and the fragments a cluster module includes
+    files : table<string; array<string>>
     counts : table<string; int>
     sites : array<Site>
     // the expressions met already: the visitor reaches a constant twice
@@ -345,8 +347,6 @@ class private Counter : AstVisitor {
     checked_for_unsafe : table<uint64>
     name_of_value : table<int64; string>
     literals : array<tuple<line : int; value : int64>>
-    // the module's text, which tells a literal from a folded constant
-    lines : array<string>
     in_enum : bool
     // the globals some function of the module writes
     written_globals : table<string>
@@ -355,7 +355,15 @@ class private Counter : AstVisitor {
     // the instance walked for each generic
     first_instance : table<uint64; uint64>
     skip_body : bool
-    def counted(at : LineInfo) : bool => !skip_body && at.fileInfo != null && at.fileInfo.name == file
+    def counted(at : LineInfo) : bool => !skip_body && at.fileInfo != null && key_exists(files, string(at.fileInfo.name))
+    // the line of the counted file `at` names
+    def line_at(at : LineInfo) : string {
+        var text = ""
+        files |> get(string(at.fileInfo.name)) $(lines) {
+            text = lines[int(at.line) - 1]
+        }
+        return text
+    }
     def count(metric : string; at : LineInfo) {
         if (counted(at)) {
             counts[metric]++
@@ -373,7 +381,7 @@ class private Counter : AstVisitor {
     // the compiler folds a cast of a constant into a literal, `int(E.X)` and `int8(7)` alike,
     // and `5 + 7` into 12, so a literal counts only when its text spells its value
     def spells_value(expr : ExpressionPtr; value : int64) : bool {
-        let text = slice(lines[int(expr.at.line) - 1], int(expr.at.column))
+        let text = slice(line_at(expr.at), int(expr.at.column))
         var spelled = 0l
         return spelled_number(text, spelled) && spelled == value
     }
@@ -383,7 +391,7 @@ class private Counter : AstVisitor {
         }
     }
     def override canVisitFunction(fun : Function?) : bool {
-        if (fun.flags.generated || fun.name == DIALECT_INIT || fun.at.fileInfo == null || fun.at.fileInfo.name != file) {
+        if (fun.flags.generated || fun.name == DIALECT_INIT || fun.at.fileInfo == null || !key_exists(files, string(fun.at.fileInfo.name))) {
             return false
         }
         if (fun.fromGeneric == null) {
@@ -465,7 +473,7 @@ class private Counter : AstVisitor {
         }
         if (!key_exists(checked_for_unsafe, id)) {
             checked_for_unsafe |> insert(id)
-            if (!expr.genFlags.userSaidItsSafe && inside_unsafe_call(lines[int(expr.at.line) - 1], int(expr.at.column))) {
+            if (!expr.genFlags.userSaidItsSafe && inside_unsafe_call(line_at(expr.at), int(expr.at.column))) {
                 count("unsafe_expr", expr.at)
             }
         }
@@ -509,7 +517,11 @@ class private Counter : AstVisitor {
 }
 
 //! The counts of the module at `das_path`.
-def count_module(das_path : string) : ModuleCount {
+def count_module(das_path : string) : ModuleCount => <- count_module(das_path, array<string>())
+
+//! The counts of the module at `das_path` and of the fragments it includes, `included` each by the
+//! name daslang gives it: the module's folder joined with the `include` line's path.
+def count_module(das_path : string; included : array<string>) : ModuleCount {
     var res : ModuleCount
     res.counts <- {for (m in METRICS); m => 0}
     compile_as_written(das_path) $(ok, program, output) {
@@ -525,10 +537,13 @@ def count_module(das_path : string) : ModuleCount {
         make_visitor(*writes) $(adapter) {
             visit(program, adapter)
         }
-        var counter = new Counter(file = das_path)
+        var counter = new Counter()
+        counter.files[das_path] <- split(fread(das_path), "\n")
+        for (f in included) {
+            counter.files[f] <- split(fread(f), "\n")
+        }
         counter.instanced <- instances.generics
         counter.written_globals <- writes.written_globals
-        counter.lines <- split(fread(das_path), "\n")
         counter.counts <- res.counts
         make_visitor(*counter) $(adapter) {
             visit_with_generics(program, adapter)

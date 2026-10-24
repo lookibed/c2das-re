@@ -122,6 +122,42 @@ def test_cli_loops(t : T?) {
     rmdir_rec(dir)
 }
 
+let LAYOUT_FIXTURE = "converter/tests/fixtures/p5_layout_cut"
+
+// `converter/main.das -- <LAYOUT_FIXTURE>/{main,a,b}.c --out <dir>/layout_<mode> --target linux
+// --layout <mode>` as a child process
+def run_layout(dir, mode : string; var out : string&) : int {
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from(["converter/main.das", "--", "{LAYOUT_FIXTURE}/main.c", "{LAYOUT_FIXTURE}/a.c", "{LAYOUT_FIXTURE}/b.c", "--out", path_join(dir, "layout_{mode}"), "--target", "linux", "--layout", mode])
+    return run_and_capture(argv, out, 600.0)
+}
+
+[test]
+def test_cli_layout(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_cli_layout", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("--layout source cuts the cycle through the link module, --layout scc keeps it one module, --layout single writes one module") @(t : T?) {
+        var out : string
+        t |> equal(run_layout(dir, "source", out), 0, out)
+        t |> success(fexist(path_join(dir, "layout_source/a.das")) && fexist(path_join(dir, "layout_source/main_link.das")), out)
+        t |> equal(run_layout(dir, "scc", out), 0, out)
+        t |> success(fexist(path_join(dir, "layout_scc/a_cluster.das")) && !fexist(path_join(dir, "layout_scc/main_link.das")), out)
+        t |> equal(run_layout(dir, "single", out), 0, out)
+        t |> success(fexist(path_join(dir, "layout_single/main.das")) && !fexist(path_join(dir, "layout_single/a.das")), out)
+    }
+    t |> run("--layout flat is a usage error before any conversion") @(t : T?) {
+        var out : string
+        t |> equal(run_layout(dir, "flat", out), 2, out)
+        t |> success(out |> contains("--layout is source, scc or single, not `flat`"), out)
+        t |> success(!fexist(path_join(dir, "layout_flat")), out)
+    }
+    rmdir_rec(dir)
+}
+
 [test]
 def test_cli_program_args(t : T?) {
     var dir_error : string

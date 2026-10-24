@@ -17,7 +17,7 @@ require ../suites/suite_files.das
 let METRICS <- ["c_function", "goto", "label", "literal_named", "pointer_arith", "pointer_index", "reinterpret", "unsafe_block", "unsafe_expr", "while_rangeable"]
 
 //! the input groups, sorted; an input key is `<group>/<id>`
-let INPUT_GROUPS <- ["c_testsuite", "csmith", "gcc_torture", "perf"]
+let INPUT_GROUPS <- ["c_testsuite", "csmith", "gcc_torture", "lua", "perf"]
 
 //! One capture: the input count per group and the counts per input key.
 struct Capture {

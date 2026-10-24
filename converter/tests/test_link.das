@@ -25,6 +25,9 @@ var work_root : string
 
 def private unit_paths : array<string> => <- [for (stem in UNITS); "{PROGRAM}/{stem}.c"]
 
+// the program of `paths` linked in the single layout, the one module this file's checks read
+def private single_program(paths : array<string>; out_dir : string) : ConvertResult => <- convert_program(paths, out_dir, "linux", "", "", "", "", "main", "single")
+
 // the text occurs `n` times in `text`
 def private occurs(t : T?; text, needle : string; n : int) {
     t |> equal(length(split(text, needle)) - 1, n, "`{needle}` {n} times in:\n{text}")
@@ -47,7 +50,7 @@ def private written(dir : string; sources : array<tuple<name : string; text : st
 // the program of `sources` refused by the link, the error carrying every needle
 def private refused(t : T?; dir : string; sources : array<tuple<name : string; text : string>>; needles : array<string>) {
     let paths <- written(dir, sources)
-    let res <- convert_program(paths, path_join(path_join(work_root, dir), "out"), "linux")
+    let res <- single_program(paths, path_join(path_join(work_root, dir), "out"))
     t |> equal(res.ok, false, "{dir} converted:\n{res.das_text}")
     for (needle in needles) {
         t |> success(res.error |> find(needle) >= 0, "{dir}: `{needle}` not in `{res.error}`")
@@ -64,7 +67,7 @@ def test_three_files(t : T?) {
         let native = native_run(default_clang(), ["-w", "-funsigned-char"], paths, path_join(work_root, "multi_native"), 60.0, array<string>())
         t |> equal(native.built, true, native.output)
         let out_dir = path_join(work_root, "multi")
-        let res <- convert_program(paths, out_dir, "linux")
+        let res <- single_program(paths, out_dir)
         if (!res.ok) {
             t |> failure(res.error)
             return
@@ -142,12 +145,12 @@ def test_manifest(t : T?) {
     var dir_error : string
     work_root = create_temp_directory("c2das_manifest", dir_error)
     t |> equal(dir_error, "")
-    t |> run("the files on the command line and a manifest naming them give one module") @(t : T?) {
+    t |> run("the files on the command line and a manifest naming them give one module in the single layout") @(t : T?) {
         var listed <- unit_paths()
-        listed |> push_from(["--out", path_join(work_root, "listed"), "--target", "linux"])
+        listed |> push_from(["--out", path_join(work_root, "listed"), "--target", "linux", "--layout", "single"])
         var out : string
         t |> equal(run_main(listed, out), 0, out)
-        t |> equal(run_main(["--program", "{PROGRAM}/program.json", "--out", path_join(work_root, "manifest"), "--target", "linux"], out), 0, out)
+        t |> equal(run_main(["--program", "{PROGRAM}/program.json", "--out", path_join(work_root, "manifest"), "--target", "linux", "--layout", "single"], out), 0, out)
         let text = fread(path_join(work_root, "listed/prog.das"))
         t |> success(text |> contains("def c_main"), text)
         t |> equal(fread(path_join(work_root, "manifest/prog.das")), text)
@@ -219,20 +222,20 @@ def test_refusals(t : T?) {
     }
     t |> run("a function a header defines without `static` in two units names `inline` and both units") @(t : T?) {
         let paths <- written("inline", [(name = "inl.h", text = "inline int sq(int x) \{ return x * x; \}\n"), (name = "i1.c", text = "#include \"inl.h\"\nint u1(void) \{ return sq(3); \}\n"), (name = "i2.c", text = "#include \"inl.h\"\nextern int sq(int);\nint u1(void);\nint main(void) \{ return u1() + sq(4); \}\n")])
-        let res <- convert_program([paths[1], paths[2]], path_join(work_root, "inline/out"), "linux")
+        let res <- single_program([paths[1], paths[2]], path_join(work_root, "inline/out"))
         for (needle in ["link: `sq` is defined in i1.c and i2.c by ", "inl.h:1: a function or object a header defines without `static` (C99 `inline` among them) is one definition per unit, which the link does not merge yet"]) {
             t |> success(res.error |> contains(needle), "`{needle}` not in `{res.error}`")
         }
     }
     t |> run("a unit stemmed `program` is refused, its C-IR being the manifest's file") @(t : T?) {
         let paths <- written("program", [(name = "program.c", text = "int main(void) \{ return 0; \}\n"), (name = "b.c", text = "int b(void) \{ return 0; \}\n")])
-        let res <- convert_program(paths, path_join(work_root, "program/out"), "linux")
+        let res <- single_program(paths, path_join(work_root, "program/out"))
         t |> success(res.error |> ends_with("program.c: its C-IR would be {work_root}/program/out/program.cir.json, the program manifest's file; rename the file"), res.error)
     }
     t |> run("two units of one stem are refused") @(t : T?) {
         let first <- written("stem/one", [(name = "u.c", text = "int main(void) \{ return 0; \}\n")])
         let second <- written("stem/two", [(name = "u.c", text = "int u(void) \{ return 0; \}\n")])
-        let res <- convert_program([first[0], second[0]], path_join(work_root, "stem/out"), "linux")
+        let res <- single_program([first[0], second[0]], path_join(work_root, "stem/out"))
         t |> equal(res.error, "link: u.c and u.c share the stem `u`")
     }
     rmdir_rec(work_root)
@@ -250,7 +253,7 @@ def test_names(t : T?) {
         let native = native_run(default_clang(), ["-w", "-funsigned-char", "-lm"], paths, path_join(work_root, "names_native"), 60.0, array<string>())
         t |> equal(native.built, true, native.output)
         let out_dir = path_join(work_root, "names")
-        let res <- convert_program(paths, out_dir, "linux")
+        let res <- single_program(paths, out_dir)
         if (!res.ok) {
             t |> failure(res.error)
             return
@@ -298,7 +301,7 @@ def test_hoisted(t : T?) {
         let native = native_run(default_clang(), ["-w", "-funsigned-char"], paths, path_join(work_root, "hoisted_native"), 60.0, array<string>())
         t |> equal(native.built, true, native.output)
         let out_dir = path_join(work_root, "hoisted")
-        let res <- convert_program(paths, out_dir, "linux")
+        let res <- single_program(paths, out_dir)
         if (!res.ok) {
             t |> failure(res.error)
             return
@@ -313,7 +316,7 @@ def test_hoisted(t : T?) {
     }
     t |> run("one file: a hoisted local static passes a local of its function") @(t : T?) {
         let paths <- written("one_hoisted", [(name = "k.c", text = "#include <stdio.h>\nint f(void) \{ static int x = 1; int f_x = 3; return x + f_x; \}\nint main(void) \{ printf(\"%d\\n\", f()); return 0; \}\n")])
-        let res <- convert_program(paths, path_join(work_root, "one_hoisted/out"), "linux")
+        let res <- single_program(paths, path_join(work_root, "one_hoisted/out"))
         t |> equal(res.ok, true, res.error)
         var out : string
         t |> equal(run_tier(res.das_path, "interp", path_join(work_root, "one_hoisted/out"), out, CONVERTED_MODULES), 0, out)
@@ -341,7 +344,7 @@ def test_reserved(t : T?) {
         let native = native_run(default_clang(), ["-w", "-funsigned-char"], paths, path_join(work_root, "reserved_native"), 60.0, array<string>())
         t |> equal(native.built, true, native.output)
         let out_dir = path_join(work_root, "reserved")
-        let res <- convert_program(paths, out_dir, "linux")
+        let res <- single_program(paths, out_dir)
         if (!res.ok) {
             t |> failure(res.error)
             return
@@ -433,7 +436,7 @@ def test_program_sidecar(t : T?) {
         let native = native_run(default_clang(), ["-w", "-funsigned-char", "-DVALUE=7"], paths, path_join(work_root, "sidecar_native"), 60.0, array<string>())
         t |> equal(native.built, true, native.output)
         let out_dir = path_join(work_root, "sidecar")
-        let res <- convert_program(paths, out_dir, "linux")
+        let res <- single_program(paths, out_dir)
         if (!res.ok) {
             t |> failure(res.error)
             return
@@ -444,13 +447,13 @@ def test_program_sidecar(t : T?) {
     }
     t |> run("a sidecar beside a file other than the entry, or beside two files, is refused; the folder's applies") @(t : T?) {
         let other <- written("other", [(name = "a.c", text = "int a(void) \{ return VALUE; \}\n"), (name = "a.c2das", text = "\{\"defines\": [\"VALUE=1\"]\}\n"), (name = "b.c", text = "int a(void);\nint main(void) \{ return a(); \}\n")])
-        let res <- convert_program([other[0], other[2]], path_join(work_root, "other/out"), "linux")
+        let res <- single_program([other[0], other[2]], path_join(work_root, "other/out"))
         t |> equal(res.error, "{other[1]} is the sidecar of a, but the program's entry file is b.c: a program's sidecar is its entry file's")
         let both <- written("both", [(name = "a.c", text = "int a(void) \{ return 0; \}\n"), (name = "a.c2das", text = "\{\}\n"), (name = "b.c", text = "int main(void) \{ return 0; \}\n"), (name = "b.c2das", text = "\{\}\n")])
-        let refused_both <- convert_program([both[0], both[2]], path_join(work_root, "both/out"), "linux")
+        let refused_both <- single_program([both[0], both[2]], path_join(work_root, "both/out"))
         t |> equal(refused_both.error, "{both[1]} and {both[3]} are each a file's sidecar; a program's is its entry file's: pass --sidecar")
         let folder <- written("folder", [(name = "a.c", text = "int a(void) \{ return VALUE; \}\n"), (name = ".c2das", text = "\{\"defines\": [\"VALUE=3\"]\}\n"), (name = "b.c", text = "int a(void);\nint main(void) \{ return a(); \}\n")])
-        let folder_res <- convert_program([folder[0], folder[2]], path_join(work_root, "folder/out"), "linux")
+        let folder_res <- single_program([folder[0], folder[2]], path_join(work_root, "folder/out"))
         t |> equal(folder_res.ok, true, folder_res.error)
         var out : string
         t |> equal(run_tier(folder_res.das_path, "interp", path_join(work_root, "folder/out"), out, CONVERTED_MODULES), 3, out)

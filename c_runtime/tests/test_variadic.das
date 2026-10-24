@@ -125,6 +125,12 @@ def test_variadic(t : T?) {
     t |> run("a [variadic] function declared in another module is callable through its macro") @(t : T?) {
         t |> equal(fixture_sum(3, 1, 2, 3), 6l)
     }
+    t |> run("a list already built passes as the trailing arguments as it is, a copy (a late-bound variadic call forwarding its list)") @(t : T?) {
+        var built <- [CVal(i = 4l), CVal(i = 5l)]
+        t |> equal(fixture_sum`va(2, built), 9l)
+        let copied_list <- to_cvalist(built)
+        t |> equal(length(copied_list), 2)
+    }
 }
 
 [test]
