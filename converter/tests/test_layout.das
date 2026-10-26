@@ -371,6 +371,43 @@ def test_taken_names(t : T?) {
     rmdir_rec(work_root)
 }
 
+[test]
+def test_owned_folder(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_layout_owned", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("a conversion removes the modules the earlier one listed, keeps every file no list names, and lists the ones it writes") @(t : T?) {
+        let paths <- cut_paths()
+        let out = path_join(work_root, "stale/out")
+        mkdir_rec(out)
+        fwrite(path_join(out, "keep.das"), "// hand-written\n")
+        fwrite(path_join(out, "notes.txt"), "kept\n")
+        let scc <- convert_program(paths, out, "linux", "", "", "", "", "main", "scc")
+        t |> equal(scc.error, "")
+        t |> success(has_value(scc.files, "a_cluster.das"), join(scc.files, " "))
+        let res <- convert_program(paths, out, "linux", "", "", "", "", "main", "source")
+        t |> equal(res.error, "")
+        for (name in scc.files) {
+            t |> equal(fexist(path_join(out, name)), has_value(res.files, name), name)
+        }
+        for (name in ["keep.das", "notes.txt"]) {
+            t |> success(fexist(path_join(out, name)), name)
+        }
+        t |> equal(fread(path_join(out, "program.modules.txt")), join(res.files, "\n") + "\n")
+    }
+    t |> run("a listed path leaving the folder is not followed") @(t : T?) {
+        let paths <- cut_paths()
+        let out = path_join(work_root, "escape/out")
+        mkdir_rec(out)
+        fwrite(path_join(work_root, "escape/outside.das"), "// not the conversion's\n")
+        fwrite(path_join(out, "program.modules.txt"), "../outside.das\n{work_root}/escape/outside.das\n")
+        let res <- convert_program(paths, out, "linux", "", "", "", "", "main", "source")
+        t |> equal(res.error, "")
+        t |> success(fexist(path_join(work_root, "escape/outside.das")))
+    }
+    rmdir_rec(work_root)
+}
+
 // the weight of the edges going up `order` (lowest first), `w` as `cut_order` takes it
 def private order_cost(n : int; w : array<int64>; order : array<int>) : int64 {
     var place : array<int>
