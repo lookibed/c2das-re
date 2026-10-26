@@ -320,10 +320,10 @@ def test_cut_choices(t : T?) {
         t |> success(fread(path_join(dir, "out/main.das")) |> contains("require b\n"), res.das_text)
         agrees(t, files, res.das_path, "interp", "unreached")
     }
-    t |> run("layout.cut naming an object is refused; the scc layout keeps the cycle a cluster; single is one module; each prints what the native build prints") @(t : T?) {
+    t |> run("layout.cut naming a symbol on no cycle is refused; the scc layout keeps the cycle a cluster; single is one module; each prints what the native build prints") @(t : T?) {
         let paths <- cut_paths()
         let refused <- converted_with(paths, "object", "\{\"layout\": \{\"cut\": [\"b_count\"]\}\}\n")
-        t |> equal(refused.error, "link: layout.cut names `b_count`, which no cut can late-bind: an object")
+        t |> equal(refused.error, "link: layout.cut names `b_count`, which no edge of a cycle carries")
         let scc <- convert_program(paths, path_join(work_root, "scc"), "linux", "", "", "", "", "main", "scc")
         t |> success(fexist(path_join(work_root, "scc/a_cluster.das")) && !fexist(path_join(work_root, "scc/main_link.das")), scc.error)
         agrees(t, paths, scc.das_path, "interp", "scc")
@@ -357,6 +357,19 @@ def private converted_in(paths : array<string>; dir, sidecar, layout : string) :
     }
     return <- convert_program(paths, path_join(path_join(work_root, dir), "out"), "linux", "", side, "", "", "main", layout)
 }
+
+let TYPE_EDGE_A = "static struct S *keep;\nint a_back(void) \{ return keep == 0 ? 7 : 8; \}\n"
+let TYPE_EDGE_B = "struct S \{ int x; \};\nint a_back(void);\nint b_g(void) \{ return a_back() + a_back(); \}\n"
+let MIXED_EDGE_A = "static struct S *keep;\nint b_two(void);\nint a_back(void) \{ return keep == 0 ? b_two() : 8; \}\n"
+let MIXED_EDGE_B = "struct S \{ int x; \};\nint a_back(void);\nint b_two(void) \{ return 2; \}\nint b_g(void) \{ return a_back() + a_back() + a_back(); \}\n"
+let CALL_MAIN = "#include <stdio.h>\nint b_g(void);\nint main(void) \{ printf(\"%d\\n\", b_g()); return 0; \}\n"
+let OBJ_A = "extern int b_obj;\nint b_g(int);\nint a_f(int n) \{ return n <= 0 ? b_obj : b_g(n - 1) + 1; \}\n"
+let OBJ_B = "int b_obj = 5;\nint a_f(int);\nint b_g(int n) \{ return a_f(n) + a_f(n) * 0; \}\n"
+let ADDR_A = "typedef int (*fn)(int);\nfn b_get(void);\nint b_h(int);\nint b_g(int);\nint a_f(int n) \{ fn p = b_h; return n <= 0 ? (p == b_get()) : b_g(n - 1) + 1; \}\n"
+let ADDR_B = "typedef int (*fn)(int);\nint a_f(int);\nint b_h(int x) \{ return x; \}\nfn b_get(void) \{ return b_h; \}\nint b_g(int n) \{ return a_f(n) + a_f(n) * 0; \}\n"
+let AF_MAIN = "#include <stdio.h>\nint a_f(int);\nint main(void) \{ printf(\"%d\\n\", a_f(3)); return 0; \}\n"
+let FATAL_MAIN = "#include <stdio.h>\n#include <stdlib.h>\nint parse(const char *s);\nvoid fatal(const char *msg) \{ printf(\"fatal: %s\\n\", msg); exit(1); \}\nint main(void) \{ printf(\"%d\\n\", parse(\"12\")); return 0; \}\n"
+let FATAL_UTIL = "void fatal(const char *msg);\nint parse(const char *s) \{\n    if (!s) fatal(\"null\");\n    if (!*s) fatal(\"empty\");\n    return (s[0] - '0') * 10 + (s[1] - '0');\n\}\n"
 
 [test]
 def test_taken_names(t : T?) {
@@ -404,6 +417,107 @@ def test_owned_folder(t : T?) {
         let res <- convert_program(paths, out, "linux", "", "", "", "", "main", "source")
         t |> equal(res.error, "")
         t |> success(fexist(path_join(work_root, "escape/outside.das")))
+    }
+    rmdir_rec(work_root)
+}
+
+[test]
+def test_cut_limits(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_layout_limits", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("an edge carrying a type the other file defines is never cut, alone or beside calls: the calls of the edge back are cut") @(t : T?) {
+        for (dir, a, b in ["type", "mixed"], [TYPE_EDGE_A, MIXED_EDGE_A], [TYPE_EDGE_B, MIXED_EDGE_B]) {
+            var inscope paths <- written(dir, [(name = "main.c", text = CALL_MAIN), (name = "a.c", text = a), (name = "b.c", text = b)])
+            let res <- converted_in(paths, dir, "", "source")
+            t |> equal(res.error, "")
+            t |> success(cut_lines(res) |> starts_with("cut a_back: b -> a"), cut_lines(res))
+            agrees(t, paths, res.das_path, "interp", dir)
+        }
+    }
+    t |> run("an edge out of the entry module is not cut: the edge back to it is, and the program runs") @(t : T?) {
+        let paths <- written("entry", [(name = "main.c", text = FATAL_MAIN), (name = "util.c", text = FATAL_UTIL)])
+        let res <- converted_in(paths, "entry", "", "source")
+        t |> equal(res.error, "")
+        t |> equal(cut_lines(res), "cut fatal: util -> main, 2 call sites of the edge's 2")
+        agrees(t, paths, res.das_path, "interp", "entry")
+    }
+    t |> run("layout.cut forcing an edge that also carries an object or a function whose address is taken is refused, naming it") @(t : T?) {
+        let obj <- written("obj", [(name = "main.c", text = AF_MAIN), (name = "a.c", text = OBJ_A), (name = "b.c", text = OBJ_B)])
+        let refused <- converted_in(obj, "obj", "\{\"layout\": \{\"cut\": [\"b_g\"]\}\}\n", "source")
+        t |> equal(refused.error, "link: layout.cut forces the edge a -> b, which carries `b_obj`, which no cut can late-bind: an object")
+        let taken_paths <- written("addr", [(name = "main.c", text = AF_MAIN), (name = "a.c", text = ADDR_A), (name = "b.c", text = ADDR_B)])
+        let taken <- converted_in(taken_paths, "addr", "\{\"layout\": \{\"cut\": [\"b_g\"]\}\}\n", "source")
+        t |> equal(taken.error, "link: layout.cut forces the edge a -> b, which carries `b_h`, which no cut can late-bind: its address is taken")
+    }
+    t |> run("each layout option naming what the program does not hold, or a profile count that is no count, is refused") @(t : T?) {
+        let paths <- cut_paths()
+        for (sidecar, error in [
+                "\{\"layout\": \{\"keep_together\": [[\"a\", \"nofile\"]]\}\}\n",
+                "\{\"layout\": \{\"keep_together\": [\"b_step\", \"nosym\"]\}\}\n",
+                "\{\"layout\": \{\"keep_together\": [\"b_step\", \"a_back\"], \"cut\": [\"a_back\"]\}\}\n",
+                "\{\"layout\": \{\"cut\": [\"nosym\"]\}\}\n",
+                "\{\"layout\": \{\"cut\": [\"a_run\"]\}\}\n"
+            ], [
+                "link: layout.keep_together names `nofile`, which is no file of the program",
+                "link: layout.keep_together names `nosym`, which no file calls from another",
+                "link: layout.keep_together and layout.cut both name `a_back`",
+                "link: layout.cut names `nosym`, which no edge of a cycle carries",
+                "link: layout.cut names `a_run`, which no edge of a cycle carries"
+            ]) {
+            let res <- converted_with(paths, "options", sidecar)
+            t |> equal(res.error, error, sidecar)
+        }
+        for (count in ["-5", "1.5", "\"7\""]) {
+            fwrite(path_join(work_root, "bad.profile.json"), "\{\"b_step\": \{\"a\": {count}\}\}\n")
+            let res <- converted_with(paths, "counts", "\{\"layout\": \{\"profile\": \"../bad.profile.json\"\}\}\n")
+            t |> success(res.error |> contains("layout.profile: `b_step`'s count from `a` in ") && res.error |> contains("is no count of 0 or more"), res.error)
+        }
+    }
+    rmdir_rec(work_root)
+}
+
+[test]
+def test_entry_highest(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_layout_entry", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("the entry module is highest in every cycle's order: the edges into it are cut, a file only it must stay below shares its module, a file nothing requires after the cut is required by it, and a file only calling into the entry stays unrequired") @(t : T?) {
+        var inscope programs : array<tuple<dir : string; files : array<tuple<name : string; text : string>>>>
+        programs |> emplace((dir = "two", files = [
+            (name = "a.c", text = "#include <stdio.h>\nint fb(int);\nint fa(int n) \{ return n * 2; \}\nint main(void) \{ printf(\"%d\\n\", fb(4)); return 0; \}\n"),
+            (name = "b.c", text = "int fa(int);\nint fb(int n) \{ return fa(n) + fa(n + 1); \}\n")]))
+        programs |> emplace((dir = "tri", files = [
+            (name = "a.c", text = "#include <stdio.h>\nint fb(int);\nint fa(int n) \{ return n <= 0 ? 0 : n + fb(n - 1) + fb(n - 2) * 0 + fb(n - 3) * 0 + fb(n - 4) * 0 + fb(n - 5) * 0; \}\nint main(void) \{ printf(\"%d\\n\", fa(9)); return 0; \}\n"),
+            (name = "b.c", text = "int fa(int); int fc(int);\nint fb(int n) \{ return n <= 0 ? 1 : fa(n - 1) + fc(n - 1); \}\n"),
+            (name = "c.c", text = "int fa(int);\nint fc(int n) \{ return n <= 0 ? 2 : 2 * fa(n - 1); \}\n")]))
+        programs |> emplace((dir = "globals", files = [
+            (name = "a.c", text = "#include <stdio.h>\nextern int bv; int av = 3; int fb(int);\nint main(void) \{ printf(\"%d %d\\n\", fb(6) + fb(1) + fb(2), bv); return 0; \}\n"),
+            (name = "b.c", text = "extern int av; int bv = 7; int fc(int);\nint fb(int n) \{ return n <= 0 ? av : fc(n - 1) + bv; \}\n"),
+            (name = "c.c", text = "int fb(int);\nint fc(int n) \{ return 2 * fb(n - 1); \}\n")]))
+        programs |> emplace((dir = "address", files = [
+            (name = "a.c", text = "#include <stdio.h>\ntypedef int (*fn)(int);\nint twice(int n) \{ return n * 2; \}\nfn get_b(void);\nint callb(int);\nint main(void) \{\n    fn f = get_b();\n    printf(\"%d %d %d\\n\", f == twice, f(5), callb(3) + callb(4) + callb(5));\n    return 0;\n\}\n"),
+            (name = "b.c", text = "typedef int (*fn)(int);\nint twice(int n);\nfn get_b(void) \{ return twice; \}\nint callb(int n) \{ return twice(n) + 1; \}\n")]))
+        programs |> emplace((dir = "dead", files = [
+            (name = "a.c", text = "#include <stdio.h>\nint helper(int n) \{ return n + 1; \}\nint main(void) \{ printf(\"%d\\n\", helper(4)); return 0; \}\n"),
+            (name = "d.c", text = "int helper(int);\nint unused(int n) \{ return helper(n) * 2; \}\n")]))
+        var inscope ring : array<tuple<name : string; text : string>>
+        ring |> reserve(18)
+        ring |> push((name = "a.c", text = "#include <stdio.h>\nint r1(int);\nint r0(int n) \{ return n <= 0 ? 0 : r1(n - 1); \}\nint main(void) \{ printf(\"%d\\n\", r0(40)); return 0; \}\n"))
+        for (i in range(1, 18)) {
+            let next = i == 17 ? 0 : i + 1
+            ring |> push((name = "r{i}.c", text = "int r{next}(int);\nint r{i}(int n) \{ return n <= 0 ? {i} : r{next}(n - 1) + {i}; \}\n"))
+        }
+        programs |> emplace((dir = "ring", files <- ring))
+        for (program in programs) {
+            var inscope paths <- written(program.dir, program.files)
+            let res <- converted_in(paths, program.dir, "", "source")
+            t |> equal(res.error, "", program.dir)
+            agrees(t, paths, res.das_path, "interp", program.dir)
+        }
+        let paths <- written("pinned", [(name = "a.c", text = "#include <stdio.h>\nint fb(int);\nint fa(int n) \{ return n * 2; \}\nint main(void) \{ printf(\"%d\\n\", fb(4)); return 0; \}\n"), (name = "b.c", text = "int fa(int);\nint fb(int n) \{ return fa(n) + fa(n + 1); \}\n")])
+        let res <- converted_in(paths, "pinned", "\{\"layout\": \{\"cut\": [\"fb\"]\}\}\n", "source")
+        t |> equal(res.error, "link: layout.cut forces the edge a -> b out of the entry module, which every cycle's cut keeps")
     }
     rmdir_rec(work_root)
 }
@@ -463,6 +577,45 @@ def test_cut_order(t : T?) {
             used |> resize(n)
             t |> equal(order_cost(n, w, cut_order(n, w)), brute_cost(n, w, prefix, used))
         }
+    }
+    t |> run("a pinned node is highest, the others in the least weight order; among orders of least weight the one leaving fewer nodes without a caller above them") @(t : T?) {
+        var seed = 7
+        for (n in range(2, 7)) {
+            var inscope w, others : array<int64>
+            w |> resize(n * n)
+            for (a in range(n)) {
+                for (b in range(n)) {
+                    seed = (seed * 1103515245 + 12345) & 0x7fffffff
+                    w[a * n + b] = a == b || (seed & 3) == 0 ? 0l : int64(seed % 97)
+                }
+            }
+            let top = n / 2
+            others := w
+            var into = 0l
+            for (u in range(n)) {
+                into += w[u * n + top]
+                others[u * n + top] = 0l
+                others[top * n + u] = 0l
+            }
+            var inscope order <- cut_order(n, w, top)
+            t |> equal(order[n - 1], top)
+            var inscope prefix : array<int>
+            var inscope used : array<bool>
+            used |> resize(n)
+            t |> equal(order_cost(n, w, order), brute_cost(n, others, prefix, used) + into)
+        }
+        var tie : array<int64>
+        tie |> resize(9)
+        tie[0 * 3 + 1] = 5l
+        tie[1 * 3 + 2] = 1l
+        tie[2 * 3 + 1] = 1l
+        t |> equal(cut_order(3, tie, 0), [2, 1, 0])
+        var long : array<int64>
+        long |> resize(18 * 18)
+        for (a in range(18)) {
+            long[a * 18 + (a + 1) % 18] = 1l
+        }
+        t |> equal(cut_order(18, long, 5)[17], 5)
     }
     t |> run("past 16 nodes the greedy order places every node once and cuts nothing of an acyclic graph") @(t : T?) {
         let n = 18

@@ -60,6 +60,10 @@ struct LayoutPlan {
     // and the cut's report lines, one per cut symbol and per cluster no cut breaks
     late : table<string; int>
     slots : table<string; string>
+    // the edges between two units a type makes (the target unit defines a record the source spells),
+    // which no cut takes, and the node of the unit holding `main`, whose own edges no cut takes
+    type_edges : table<string>
+    entry_node : int
     link : int = -1
     cut_report : array<string>
     error : string
@@ -383,7 +387,11 @@ def private find_edges(var plan : LayoutPlan; tus : array<CirTu>; types : array<
             }
         }
         for (t in keys(refs[ti].types)) {
-            add_edge(plan, from, plan.type_node?[t] ?? -1, type_label(types[t], t))
+            let owner = plan.type_node?[t] ?? -1
+            add_edge(plan, from, owner, type_label(types[t], t))
+            if (owner >= 0 && owner != from && plan.nodes[owner].kind == NODE_UNIT) {
+                plan.type_edges |> insert("{from}>{owner}")
+            }
         }
     }
     for (t, node in keys(plan.type_node), values(plan.type_node)) {
@@ -680,6 +688,9 @@ def private uncuttable(plan : LayoutPlan; opts : CutOptions; from, to : int; wei
     if (plan.nodes[from].kind != NODE_UNIT || plan.nodes[to].kind != NODE_UNIT) {
         return "a type"
     }
+    if (key_exists(plan.type_edges, "{from}>{to}")) {
+        return "a type {base_name(plan.nodes[to].file)} defines"
+    }
     if (kept_together(plan, opts, from, to)) {
         return "layout.keep_together"
     }
@@ -704,37 +715,51 @@ let NO_CUT = 4611686018427387903l
 
 //! The order of `n` nodes, lowest first, that minimizes the weight of the edges going up it (an
 //! edge `a` -> `b` with `a` placed below `b`), `w[a * n + b]` each edge's weight (`NO_CUT` for one
-//! never cut): exact over the subsets for up to 16 nodes, else a greedy order (a node requiring
-//! nothing unplaced goes lowest, one nothing unplaced requires highest, else the node most required
-//! over what it requires).
-def cut_order(n : int; w : array<int64>) : array<int> => <- n <= 16 ? exact_order(n, w) : greedy_order(n, w)
+//! never cut), node `top` (-1 for none) placed highest: exact over the subsets for up to 16 nodes,
+//! among the orders of least weight one leaving the fewest nodes whose every caller is below them,
+//! else a greedy order (a node requiring nothing unplaced goes lowest, one nothing unplaced requires
+//! highest, else the node most required over what it requires).
+def cut_order(n : int; w : array<int64>; top : int = -1) : array<int> => <- n <= 16 ? exact_order(n, w, top) : greedy_order(n, w, top)
 
 // `cut_order` over the subsets: the least weight of each set of nodes placed lowest, built a node at
 // a time
-def private exact_order(n : int; w : array<int64>) : array<int> {
+def private exact_order(n : int; w : array<int64>; top : int) : array<int> {
     var order : array<int>
     let full = (1 << n) - 1
     var best : array<int64>
-    var last : array<int>
+    var orphans, last, callers : array<int>
     best |> resize(full + 1)
+    orphans |> resize(full + 1)
     last |> resize(full + 1)
+    callers |> resize(n)
     for (set in range(1, full + 1)) {
         best[set] = NO_CUT
     }
     best[0] = 0l
+    for (v in range(n)) {
+        for (u in range(n)) {
+            if (u != v && w[u * n + v] != 0l) {
+                callers[v] |= 1 << u
+            }
+        }
+    }
+    let below_top = top >= 0 ? full & ~(1 << top) : full
     for (set in range(full + 1)) {
         if (best[set] < NO_CUT) {
             for (v in range(n)) {
-                if ((set & (1 << v)) == 0) {
+                if ((set & (1 << v)) == 0 && (v != top || set == below_top)) {
                     var cost = best[set]
                     for (u in range(n)) {
                         if ((set & (1 << u)) != 0) {
                             cost = min(NO_CUT, cost + w[u * n + v])
                         }
                     }
+                    // a node every caller of which is below it is left without a caller
+                    let left = orphans[set] + (callers[v] != 0 && (callers[v] & ~set) == 0 ? 1 : 0)
                     let next = set | (1 << v)
-                    if (cost < best[next]) {
+                    if (cost < best[next] || (cost == best[next] && left < orphans[next])) {
                         best[next] = cost
+                        orphans[next] = left
                         last[next] = v
                     }
                 }
@@ -751,12 +776,16 @@ def private exact_order(n : int; w : array<int64>) : array<int> {
 }
 
 // `cut_order` by the greedy rule
-def private greedy_order(n : int; w : array<int64>) : array<int> {
+def private greedy_order(n : int; w : array<int64>; top : int) : array<int> {
     var order : array<int>
     var placed : array<bool>
     placed |> resize(n)
     var low, high : array<int>
-    for (_ in range(n)) {
+    if (top >= 0) {
+        placed[top] = true
+        high |> push(top)
+    }
+    for (_ in range(top >= 0 ? n - 1 : n)) {
         var sink, source, pick = -1
         var best = -NO_CUT
         for (v in range(n)) {
@@ -831,10 +860,35 @@ def private report_cut(var plan : LayoutPlan; opts : CutOptions; a, b : int; key
     }
 }
 
+// the entry module is highest in its component's order: every node with a path of edges never cut
+// to `entry` would stay above it, so it is kept in the entry's module (an edge from the entry to it
+// in `fixed` closes the cycle)
+def private join_entry(comp : array<int>; entry : int; var fixed : array<table<int>>) {
+    var inscope above : table<int>
+    var inscope todo <- [entry]
+    while (!empty(todo)) {
+        let m = todo[length(todo) - 1]
+        todo |> pop()
+        for (a in comp) {
+            if (key_exists(fixed[a], m) && !key_exists(above, a) && a != entry) {
+                above |> insert(a)
+                todo |> push(a)
+            }
+        }
+    }
+    for (a in keys(above)) {
+        fixed[entry] |> insert(a)
+    }
+}
+
 def private cut_component(var plan : LayoutPlan; opts : CutOptions; comp : array<int>) {
     var inscope fixed : array<table<int>>
     var inscope weights : table<string; int64>
     component_edges(plan, opts, comp, fixed, weights)
+    let entry = has_value(comp, plan.entry_node) ? plan.entry_node : -1
+    if (entry >= 0) {
+        join_entry(comp, entry, fixed)
+    }
     var inscope group_of : table<int; int>
     var inscope groups : array<array<int>>
     for (g in components_of(fixed)) {
@@ -857,7 +911,7 @@ def private cut_component(var plan : LayoutPlan; opts : CutOptions; comp : array
             w[ga * n + gb] = min(NO_CUT, w[ga * n + gb] + cost)
         }
     }
-    let order <- cut_order(n, w)
+    let order <- cut_order(n, w, entry >= 0 ? group_of[entry] : -1)
     var inscope place : array<int>
     place |> resize(n)
     for (at, g in count(), order) {
@@ -883,17 +937,87 @@ def private cut_component(var plan : LayoutPlan; opts : CutOptions; comp : array
     }
 }
 
-// the cycle cut over every strongly connected component of more than one node; refused when
-// `layout.cut` names a symbol no cut can late-bind
-[arch(at="ARCHITECTURE_LAYOUT.md#cut")]
-def private cut_cycles(var plan : LayoutPlan; opts : CutOptions) {
-    for (syms in values(plan.symbols)) {
-        for (sym in syms) {
-            if (key_exists(opts.always_cut, sym.name) && !empty(sym.why_not)) {
-                plan.error = "layout.cut names `{sym.name}`, which no cut can late-bind: {sym.why_not}"
-                return
+// why `layout.cut` may not force the edge `a` -> `b` of a cycle, carrying `syms`: "" when it may
+def private refused_forced(plan : LayoutPlan; a, b : int; key : string; syms : array<EdgeSymbol>) : string {
+    let edge = "layout.cut forces the edge {plan.nodes[a].stem} -> {plan.nodes[b].stem}"
+    if (a == plan.entry_node) {
+        return "{edge} out of the entry module, which every cycle's cut keeps"
+    }
+    if (key_exists(plan.type_edges, key)) {
+        return "{edge}, which carries a type {base_name(plan.nodes[b].file)} defines"
+    }
+    for (sym in syms) {
+        if (!empty(sym.why_not)) {
+            return "{edge}, which carries `{sym.name}`, which no cut can late-bind: {sym.why_not}"
+        }
+    }
+    return ""
+}
+
+// why the cut's options are refused, "" when they are not: a `layout.keep_together` group naming a
+// file the program has not, a symbol it names that no file calls from another, a `layout.cut`
+// symbol no cycle's edge carries or that `layout.keep_together` names too, and an edge `layout.cut`
+// forces out of the entry module or that carries a type or a symbol no cut can late-bind
+def private refused_options(plan : LayoutPlan; opts : CutOptions) : string {
+    var stems : table<string>
+    for (n in plan.unit_node) {
+        stems |> insert(plan.nodes[n].stem)
+    }
+    for (group in opts.keep_units) {
+        for (stem in group) {
+            if (!key_exists(stems, stem)) {
+                return "layout.keep_together names `{stem}`, which is no file of the program"
             }
         }
+    }
+    var called, cyclic : table<string>
+    var inscope comp_of : table<int; int>
+    for (ci, comp in count(), components_of(plan.edges)) {
+        for (m in comp) {
+            comp_of[m] = length(comp) > 1 ? ci : -1
+        }
+    }
+    for (key, syms in keys(plan.symbols), values(plan.symbols)) {
+        var inscope parts <- split(key, ">")
+        let a = to_int(parts[0])
+        let b = to_int(parts[1])
+        let in_cycle = (comp_of?[a] ?? -1) >= 0 && (comp_of?[a] ?? -1) == (comp_of?[b] ?? -1)
+        for (sym in syms) {
+            called |> insert(sym.name)
+            if (in_cycle) {
+                cyclic |> insert(sym.name)
+            }
+        }
+        if (in_cycle && has_value([for (sym in syms); key_exists(opts.always_cut, sym.name)], true)) {
+            let why = refused_forced(plan, a, b, key, syms)
+            if (!empty(why)) {
+                return why
+            }
+        }
+    }
+    for (name in keys(opts.keep_symbols)) {
+        if (!key_exists(called, name)) {
+            return "layout.keep_together names `{name}`, which no file calls from another"
+        }
+        if (key_exists(opts.always_cut, name)) {
+            return "layout.keep_together and layout.cut both name `{name}`"
+        }
+    }
+    for (name in keys(opts.always_cut)) {
+        if (!key_exists(cyclic, name)) {
+            return "layout.cut names `{name}`, which no edge of a cycle carries"
+        }
+    }
+    return ""
+}
+
+// the cycle cut over every strongly connected component of more than one node; refused when
+// the options are (`refused_options`)
+[arch(at="ARCHITECTURE_LAYOUT.md#cut")]
+def private cut_cycles(var plan : LayoutPlan; opts : CutOptions) {
+    plan.error = refused_options(plan, opts)
+    if (!empty(plan.error)) {
+        return
     }
     for (comp in components_of(plan.edges)) {
         if (length(comp) > 1) {
@@ -998,15 +1122,12 @@ def private reached(plan : LayoutPlan; from : int) : table<int> {
 
 // a cut leaves a module whose functions are called only late-bound reached by no require, so it
 // would never load and never bind its slots: the entry module requires every module it does not
-// reach; one that reaches the entry module itself cannot be, and is refused
+// reach. One that reaches the entry module itself is outside the entry's cycles (the entry is
+// highest in their order), so `main` never calls it: it stays unrequired, compiled on its own
 def private require_unreached(var plan : LayoutPlan) {
     let reach <- reached(plan, plan.entry)
     for (m in range(length(plan.modules))) {
-        if (m != plan.entry && !key_exists(reach, m)) {
-            if (key_exists(reached(plan, m), plan.entry)) {
-                plan.error = "the cut leaves module `{plan.modules[m].name}` reached by no require of the entry module, which it requires itself; keep its cut edges (layout.keep_together)"
-                return
-            }
+        if (m != plan.entry && !key_exists(reach, m) && !key_exists(reached(plan, m), plan.entry)) {
             plan.modules[plan.entry].requires |> push(m)
         }
     }
@@ -1036,6 +1157,7 @@ def plan_layout(tus : array<CirTu>; types : array<CirType>; facts : LinkFacts; c
         }
     }
     plan.edges |> resize(length(plan.nodes))
+    plan.entry_node = plan.unit_node[entry_unit]
     own_types(plan, tus, types, by_file)
     find_edges(plan, tus, types, facts)
     if (opts.cut_cycles) {
