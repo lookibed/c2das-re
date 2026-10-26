@@ -480,6 +480,33 @@ def test_cut_limits(t : T?) {
 }
 
 [test]
+def test_forced_and_profile(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_layout_forced", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("layout.cut naming a symbol of each edge of the cycle cuts both, the one the order keeps among them") @(t : T?) {
+        let paths <- cut_paths()
+        let res <- converted_with(paths, "both", "\{\"layout\": \{\"cut\": [\"b_step\", \"a_back\"]\}\}\n")
+        t |> equal(res.error, "")
+        let lines = cut_lines(res)
+        for (needle in ["cut a_back: b -> a", "cut b_step: a -> b"]) {
+            t |> success(lines |> contains(needle), lines)
+        }
+        agrees(t, paths, res.das_path, "interp", "both")
+    }
+    t |> run("a profile that is missing, not an object of symbols, or holding a symbol without an object of calling files is refused") @(t : T?) {
+        let paths <- cut_paths()
+        fwrite(path_join(work_root, "list.profile.json"), "[1, 2]\n")
+        fwrite(path_join(work_root, "flat.profile.json"), "\{\"b_step\": 3\}\n")
+        for (name, needle in ["none", "list", "flat"], ["layout.profile: ", "is no object of symbols", "holds no object of calling files"]) {
+            let res <- converted_with(paths, "profile_{name}", "\{\"layout\": \{\"profile\": \"../{name}.profile.json\"\}\}\n")
+            t |> success(res.error |> contains("layout.profile: ") && res.error |> contains(needle), res.error)
+        }
+    }
+    rmdir_rec(work_root)
+}
+
+[test]
 def test_entry_highest(t : T?) {
     var dir_error : string
     work_root = create_temp_directory("c2das_layout_entry", dir_error)
