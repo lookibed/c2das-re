@@ -58,14 +58,21 @@ In the `source` layout each strongly connected component of more than one node i
 late binding instead of merged (`cut_cycles`). A candidate is an edge between two units every symbol
 of which is a function the program defines, calls directly everywhere (no reference takes its
 address, so its identity stays one) and whose type spells no unit's record; an object, a type edge,
-a symbol `layout.keep_together` names, two units of one `layout.keep_together` group, and an edge
-whose weight is above `layout.threshold` are never cut, and an edge carrying a symbol `layout.cut`
-names always is (one naming a symbol no cut can late-bind is refused). The edges never cut collapse
-into groups, which stay one module of fragments as in `scc`; among the groups the cut is a minimum
-weight feedback arc set: the order of the groups, lowest first, that minimizes the weight of the
-edges going up it, exact over the subsets for up to 16 groups, else a greedy order (a group
-requiring nothing unplaced goes lowest, one nothing unplaced requires highest, else the one most
-required over what it requires). An edge's weight is the dynamic call count of its symbols from
+an edge from a unit spelling a record another unit defines (its calls or not: the record needs the
+`require`), a symbol `layout.keep_together` names, two units of one `layout.keep_together` group,
+and an edge whose weight is above `layout.threshold` are never cut, and an edge carrying a symbol
+`layout.cut` names always is. The options are checked before the cut and refused naming the option
+and the value: a `layout.keep_together` stem no file has or symbol no file calls from another, a
+symbol both options name, a `layout.cut` symbol no edge of a cycle carries, a forced edge out of the
+entry module or carrying a type or a symbol no cut can late-bind, and a profile count that is not
+an integer of 0 or more. The edges never cut collapse into groups, which stay one module of
+fragments as in `scc`; the entry module is highest in its component's order, since it requires and
+nothing requires it, so a group with a never-cut path to it joins its group and every edge into it
+is cut. Among the groups the cut is a minimum weight feedback arc set: the order of the groups,
+lowest first, that minimizes the weight of the edges going up it, exact over the subsets for up to
+16 groups, among equal weights the order leaving the fewest groups whose callers are all below
+them, else a greedy order (a group requiring nothing unplaced goes lowest, one nothing unplaced
+requires highest, else the one most required over what it requires). An edge's weight is the dynamic call count of its symbols from
 the calling file, read from the profile `layout.profile` names (a JSON object of callee names, each
 an object of calling file stems and counts, `lua/profile.das` writes Lua's), else the count of its
 call sites. `program.layout.txt` beside the program's C-IR lists every cut symbol with its edge and
@@ -81,7 +88,8 @@ a private function taking its list; it spells its own calls of the function `__:
 compiled), and a module requiring both it and the link module spells them `<module>::name`, since
 the wrapper of that name is in sight (`probes/test_modules.das`). A module whose cut edge carries a symbol requires the link module, not
 the defining module; the entry module requires every module it would not reach otherwise, so each
-loads and binds before `main` runs (one reaching the entry module itself is refused). The link
+loads and binds before `main` runs; with the entry highest in its cycles' order a module reaching
+the entry is outside them, never called from `main`, and stays unrequired. The link
 module requires the modules of the types the signatures spell, all header type modules.
 
 ## Emitting the modules {#emission}

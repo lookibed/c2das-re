@@ -444,8 +444,14 @@ def private cut_options(side : Sidecar; var error : string&) : CutOptions {
                 break
             }
             for (unit, count in keys(by_unit as _object), values(by_unit as _object)) {
-                opts.profile[name][unit] = count ?? 0l
+                let text = write_json(count)
+                if (empty(text) || has_value([for (ch in text); is_number(ch)], false)) {
+                    error = "layout.profile: `{name}`'s count from `{unit}` in {side.layout_profile} is no count of 0 or more: {text}"
+                    break
+                }
+                opts.profile[name][unit] = to_int64(text)
             }
+            break if (!empty(error))
         }
     }
     delete_json(js)

@@ -133,6 +133,34 @@ def test_three_files(t : T?) {
     rmdir_rec(work_root)
 }
 
+// the fixture in the default layout, whose cut the entry module's object `calls` steers
+[test]
+def test_three_files_source(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_link_source", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("the three files in the default layout, geo.c joins the entry's module since it reads the entry's object `calls`, parity.c's edge back cut, print what the native build prints") @(t : T?) {
+        let paths <- unit_paths()
+        let native = native_run(default_clang(), ["-w", "-funsigned-char"], paths, path_join(work_root, "source_native"), 60.0, array<string>())
+        t |> equal(native.built, true, native.output)
+        let out_dir = path_join(work_root, "source")
+        let res <- convert_program(paths, out_dir, "linux")
+        if (!res.ok) {
+            t |> failure(res.error)
+            return
+        }
+        t |> equal(res.das_path, path_join(out_dir, "prog.das"))
+        for (name in ["parity.das", "prog_link.das", "geo.das.inc", "prog.das.inc"]) {
+            t |> success(fexist(path_join(out_dir, name)), name)
+        }
+        t |> success(join(res.partition, "\n") |> contains("cut is_even: parity -> geo"), join(res.partition, "\n"))
+        var out : string
+        t |> equal(run_tier(res.das_path, "interp", out_dir, out, CONVERTED_MODULES), native.rc)
+        t |> equal(out, native.output)
+    }
+    rmdir_rec(work_root)
+}
+
 // `converter/main.das -- <args>` as a child process: its exit code and output
 def private run_main(args : array<string>; var out : string&) : int {
     var argv <- daslang_cmd(CONVERTED_MODULES)

@@ -698,10 +698,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   block (statics renamed and header copies kept per module); a record a header spells is the
   header's even where a unit defines it (`struct lua_longjmp` of `ldo.c` is `lstate_h`'s), so no
   header requires a unit; in each strongly connected component the edges a cut cannot late-bind (an
-  object, a function whose address is taken or whose type spells a unit's record, a type edge,
-  `layout.keep_together`, an edge above `layout.threshold`) collapse into groups that stay one
-  module, and among the groups the cut is a minimum weight feedback arc set (exact over the subsets
-  up to 16 groups, else greedy), each edge weighed by its symbols' dynamic call counts from the
+  object, a function whose address is taken or whose type spells a unit's record, a type edge, an
+  edge whose source spells a record its target unit defines, `layout.keep_together`, an edge above
+  `layout.threshold`) collapse into groups that stay one module, the entry module is highest (a
+  group with a never-cut path to it joins it, every edge into it is cut, every module left without
+  a require is required by it), and among the groups the cut is a minimum weight feedback arc set
+  (exact over the subsets up to 16 groups, ties to fewer modules without a caller, else greedy),
+  the `layout` options refused when they name what the program does not hold, each edge weighed by its symbols' dynamic call counts from the
   calling file in the profile `layout.profile` names, else by its call sites; `layout.cut` forces a
   cut. A cut symbol's slot and same-named wrapper (failing closed while unbound) live in the
   generated `<entry>_link.das`; the defining module binds it at `[init]` (a variadic one through a
@@ -764,6 +767,14 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `lua_all.das` and `luac_all.das` at its top until removed by hand. A type no single file defines
   and one two `.c` files define alike share `c_types`, whatever their headers. The scc and source
   layouts' JIT runs are slower than single's by a module-crossing cost the cut does not cause.
+  Not captured: perf per layout and the `interp-scc`, `jit-scc`, `interp-single` and
+  `jit-single` ports lanes (the perf method's runs wait for an idle host); AOT per layout is `not
+  yet` (the AOT host passes a program no arguments); a real ports publish with the three trees is
+  owed. A conversion lists what it writes in `program.modules.txt` and removes what the earlier
+  list names, the publisher copying only the listed files. A C file whose module would take a
+  name daslang or c2das-re loads (`math.c`, `strings.c`) is refused; renaming such a module
+  (`math_c.das`) is a leftover. The full cut list is in the PR body and in `program.layout.txt` of
+  every conversion (`lua/work/` is gitignored).
 - **P5.1c Skip-list audit** (owner ruling 2026-10-22 (2), item B; branch `p5.1c-skip-audit`).
   `run_suite.sh <suite> --audit-skips` runs every ledgered id through the convert-and-run path,
   ratchet untouched (`--update` only adds the audited ids that pass), into `work/skip_audit.tsv`
