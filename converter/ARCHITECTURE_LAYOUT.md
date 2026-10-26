@@ -34,7 +34,9 @@ statics are named:
 - Modules: each strongly connected component (Tarjan's algorithm) is one module. A single node is
   `<stem>.das`; a component of several is `<lexically first stem>_cluster.das`, the one holding
   `main` named by the entry unit's stem, with a `<stem>.das.inc` fragment per member. Two modules
-  of one name (a unit `shape_h.c` beside a header `shape.h`) are refused.
+  of one name (a unit `shape_h.c` beside a header `shape.h`) are refused, as is a module named like
+  one daslang or c2das-re loads by that name (a daslib module file, `crt`, a `c_runtime` module):
+  `math.c` would be `math.das`, which a bare `require math` resolves to daslib's.
 - Placement: the output folder mirrors the C files' folders under their common folder, the root; a
   module lies in its naming node's folder, `c_types` at the root, a fragment beside its file. A
   module requires another by its name in the same folder and by its relative path elsewhere
