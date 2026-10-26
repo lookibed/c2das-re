@@ -87,7 +87,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   with a given compiler and flags and runs it once, with the program's arguments when given, the native side every differential test compares against.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c>... | --program <p.json> [--out] [--target]
   [--run] [--arg]... [--sidecar] [--param-writes in-place|copy] [--loops range|while] [--layout
-  source|single]`. Several files are one program linked in their order, as are the files a manifest
+  source|scc|single]`. Several files are one program linked in their order, as are the files a manifest
   names; files beside `--program` are a usage error (exit 2). `--layout` chooses the modules of such
   a program (section 8): `source`, the default and the idiomatic form, a module per C file with the
   cycles cut by late binding; `scc`, every cycle one module of fragments; `single`, one module; it

@@ -712,7 +712,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   requires, the empty literal, the dialect `[init]`, its `include` lines, the fragments' digest
   (F72), the layout check, the module-init stores and the wrapper; one file is one module in each
   layout; `single` is P5.1b1's text byte for byte (107 single-file inputs and the four multi-file
-  fixtures identical to ce50b58's, the fixtures' hashes in `converter/tests/test_layout.das`).
+  fixtures identical to f321bfc's, the fixtures' hashes in `converter/tests/test_layout.das`).
   `lua/profile.das` profiles the native interpreter (`-finstrument-functions`, the test suite and
   the four benchmarks) into `lua/lua.profile.json`, which `lua/lua.c2das` names; no threshold is set
   (below). On Lua 5.4.8 by the include rule (Boris): 61 files, 317 include edges, no include
@@ -722,7 +722,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   lparser lstate lstring ltable ltm lundump lvm`), and two header clusters, `lobject_h lstate_h
   lua_h` and `llex_h lparser_h`, whose records point at each other: 20 fragments. `source`: 43
   modules for `lua` (32 for `luac`) with `lua_link`, the largest cluster the three headers, 5
-  fragments; 64 symbols cut on 34 edges, the same in both programs; the edges by profiled calls:
+  fragments; 64 symbol-edge cuts of 51 functions on 34 edges, the same in both programs; the edges by profiled calls:
   `ltable -> lgc` 3,908,560 (`luaC_barrierback_`, `luaC_newobj`), `ldo -> lvm` 1,620,065
   (`luaV_execute` 1,618,204, `luaV_finishOp`), `lcode -> lparser` 1,359,860 (`luaY_nvarstack`),
   `lgc -> lstring` 482,158, `lobject -> lstring` 385,819, `ltable -> lvm` 332,876, `lgc -> lfunc`
@@ -757,7 +757,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   changed (F72; the cluster's file carries the fragments' digest), and the optimizer folds a
   constant-argument call into mutually recursive functions reading a global before the global
   holds its value (F73, every layout; the fixtures pass their arguments through `argc`).
-  Ledger: F72 and F73 are to be filed on lookibed/daScript. F73 touches no Lua call the three checks
+  Ledger: F72 is filed as lookibed/daScript#29 and F73 as #28. F73 touches no Lua call the three checks
   run (Lua's core calls take `L`, never all constants); no mitigation is applied: `[sideeffects]` on
   every function reading a global would stop the fold and cost the optimizer elsewhere,
   `-no-optimization` every program. The ports repository still holds `lua.das`, `luac.das`,
