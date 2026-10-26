@@ -115,6 +115,8 @@ variadic function requires `c_runtime/variadic` for the trailing arguments' spel
 external name of the program is one name and the link renames a static meeting one, so two modules
 a module requires export one name only for a late-bound function, its definer and the link module;
 any other cross-module name is spelled bare. The pipeline
-writes every file under the output folder, formats each, and compile-checks each module no other
+lists every module and fragment it writes in `program.modules.txt` beside them (the files the ports
+publisher copies) and, before converting, deletes the files an earlier conversion listed there,
+none other, so no stale module stays beside the new ones; it writes every file, formats each, and compile-checks each module no other
 module requires (the entry's, and any the program never reaches), which compiles every module
 they require.

@@ -103,6 +103,12 @@ def private stand_in_root(name : string) : string {
     fwrite(path_join(root, "lua/work/luac/sub/lcode.native.luac"), "bytes\n")
     fwrite(path_join(root, "lua/work/luac/program.layout.txt"), "luac\nluac_link\n")
     fwrite(path_join(root, "lua/work/scc/luac/lcode.das.inc"), "// scc fragment\n")
+    // the module lists of the conversions; a module an earlier conversion left is in none
+    fwrite(path_join(root, "lua/work/lua/program.modules.txt"), "lua.das\n")
+    fwrite(path_join(root, "lua/work/luac/program.modules.txt"), "lcode.das.inc\nlcode_cluster.das\nluac.das\nsub/deep.das\n")
+    fwrite(path_join(root, "lua/work/scc/lua/program.modules.txt"), "lua.das\n")
+    fwrite(path_join(root, "lua/work/scc/luac/program.modules.txt"), "lcode.das.inc\nluac.das\n")
+    fwrite(path_join(root, "lua/work/luac/stale_cluster.das"), "// stale\n")
     fwrite(path_join(root, "lua/work/lua.c"), LUA_C)
     fwrite(path_join(root, "lua/work/lua.program.json"), "\{\"tus\": [\"lua.c\"]\}\n")
     mkdir_rec(path_join(root, "ports/lua/bench"))
@@ -335,6 +341,7 @@ def private published_modules(t : T?; dir : string) {
     t |> equal(fread(path_join(dir, "luac/program.layout.txt")), "luac\nluac_link\n")
     t |> equal(fread(path_join(dir, "scc/luac/luac.das")), "// luac scc\n")
     t |> equal(fread(path_join(dir, "scc/luac/lcode.das.inc")), "// scc fragment\n")
+    t |> success(!fexist(path_join(dir, "luac/stale_cluster.das")))
 }
 
 [test]

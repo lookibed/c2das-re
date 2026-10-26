@@ -162,29 +162,15 @@ def private module_of(port : Port; stem : string) : string => path_join(port.har
 def private single_of(port : Port; stem : string) : string => path_join(port.harness, "work/single/{stem}/{stem}.das")
 def private scc_of(port : Port; stem : string) : string => path_join(port.harness, "work/scc/{stem}/{stem}.das")
 
-// the das files of a program's source layout under `dir` (its modules and fragments), each relative
-// to `dir`, in order; the conversion's C-IR files and anything else stay out
+// the das files of a program's source or scc layout under `dir` (its modules and fragments), each
+// relative to `dir`: the ones the conversion's `program.modules.txt` lists, so a file an earlier
+// conversion left there stays out; none when the list is missing
 def private tree_files(dir : string) : array<string> {
-    var files : array<string>
-    var folders <- [""]
-    while (!empty(folders)) {
-        let rel = folders[length(folders) - 1]
-        folders |> pop()
-        dir(path_join(dir, rel)) $(name) {
-            if (name == "." || name == "..") {
-                return
-            }
-            let sub = empty(rel) ? name : "{rel}/{name}"
-            if (stat(path_join(dir, sub)).is_dir) {
-                folders |> push(sub)
-            } elif (name |> ends_with(".das") || name |> ends_with(".das.inc")) {
-                files |> push(sub)
-            }
-        }
-    }
+    var files <- [for (ln in split(fread(path_join(dir, "program.modules.txt")), "\n")); strip(ln); where !empty(strip(ln))]
     sort(files)
     return <- files
 }
+
 def private sidecar_of(port : Port) : string => path_join(port.harness, "{port.name}.c2das")
 
 // the stamp a conversion leaves beside its output: the sha, the describe and the date, one a line
@@ -596,7 +582,7 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
         return false
     }
     for (m in port.modules) {
-        for (path in [module_of(port, m.stem), scc_of(port, m.stem), single_of(port, m.stem)]) {
+        for (path in [module_of(port, m.stem), scc_of(port, m.stem), single_of(port, m.stem), path_join(dir_name(module_of(port, m.stem)), "program.modules.txt"), path_join(dir_name(scc_of(port, m.stem)), "program.modules.txt")]) {
             if (!fexist(path)) {
                 to_log(LOG_ERROR, "{port.name}: no {path}; run without --no-convert\n")
                 return false

@@ -53,6 +53,27 @@ struct ConvertResult {
 //! and the cycle cut's late-bound functions with their edges and weights (`layout_report`).
 let LAYOUT_REPORT = "program.layout.txt"
 
+//! The files a program's source or scc layout wrote under the output folder, one relative path a
+//! line: the modules and fragments a publisher copies, and nothing an earlier conversion left.
+let MODULE_LIST = "program.modules.txt"
+
+// the modules and fragments an earlier conversion listed in `out_dir`'s module list removed, and
+// the list, before this conversion writes, so none of them stays beside the new ones; a file the
+// list does not name stays, whatever its kind (`--out` may hold hand-written das)
+def private clear_owned(out_dir : string) {
+    let list = path_join(out_dir, MODULE_LIST)
+    if (!fexist(list)) {
+        return
+    }
+    for (line in split(fread(list), "\n")) {
+        let rel = strip(line)
+        if (!empty(rel) && !rel |> starts_with("/") && find(rel, "..") < 0) {
+            remove(path_join(out_dir, rel))
+        }
+    }
+    remove(list)
+}
+
 // the seconds since `t0`, a `ref_time_ticks` reading
 def private seconds_since(t0 : int64) : double => double(get_time_usec(t0)) / 1000000.0lf
 
@@ -224,6 +245,10 @@ def private emit_modules(var tu : CirTu; owners : array<int>; plan : LayoutPlan;
             res.das_text = text
         }
     }
+    if (!fwrite(path_join(out_dir, MODULE_LIST), join(res.files, "\n") + "\n")) {
+        res.error = "cannot write {path_join(out_dir, MODULE_LIST)}"
+        return
+    }
     res.emit_seconds = seconds_since(emit_started)
     var required : table<int>
     for (mod in plan.modules) {
@@ -332,6 +357,7 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
     if (!empty(res.error)) {
         return <- res
     }
+    clear_owned(out_dir)
     var units : array<CirTu>
     var cir_names : array<string>
     dump_units(c_paths, out_dir, target_by_name(target_name), clang, side, res, units, cir_names)
