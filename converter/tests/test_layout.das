@@ -381,6 +381,12 @@ def test_taken_names(t : T?) {
         let res <- converted_in(paths, "taken", "", "source")
         t |> equal(res.error, "link: the module of math.c would be `math.das`, which a module daslang or c2das-re loads by that name takes; rename the file")
     }
+    t |> run("a module the source layout writes that does not compile fails the conversion: a native module's name the refusal does not list (`ast_core`) reaches the compile check") @(t : T?) {
+        let paths <- written("native_name", [(name = "main.c", text = "#include <stdio.h>\nint twice(int);\nint main(void) \{ printf(\"%d\\n\", twice(4)); return 0; \}\n"), (name = "ast_core.c", text = "int twice(int x) \{ return 2 * x; \}\n")])
+        let res <- converted_in(paths, "native_name", "", "source")
+        t |> equal(res.ok, false)
+        t |> success(res.error |> starts_with("compile check: ") && res.error |> contains("twice"), res.error)
+    }
     rmdir_rec(work_root)
 }
 
