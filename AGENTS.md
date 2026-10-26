@@ -22,6 +22,13 @@ gates and the review machinery. Codex sessions take their MCP wiring from
   and ends with a `Refs:` line linking the related issues, `lookibed/daScript#N` for every
   upstream defect the item found. It merges with `gh pr merge --rebase --delete-branch` after
   the verification and only with the `preflight` check green; never a squash.
+- A pull request carries at most about 400 to 600 lines of non-generated code. A ledger item
+  larger than that is split into consecutive pull requests, stacked or sequential, each green
+  and reviewed on its own (owner ruling 2026-10-26).
+- A commit per logical step: a test with the change it covers, never one commit per phase. A
+  coder subagent commits its steps as it goes; the lead does not squash them into one.
+- A pull request merges only when CI is green AND the item's review pass is closed with no
+  BLOCKING or MAJOR finding open; a green check never overrides an open review.
 - Each phase end is an annotated tag `v0.<phase>.0` with a GitHub release carrying the suite
   counts and the perf and readability numbers at that commit, and the ports repository
   (`lookibed/c2das-ports`) regenerated from that tag with `bash scripts/publish_ports.sh --commit
