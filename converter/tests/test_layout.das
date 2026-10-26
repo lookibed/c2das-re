@@ -334,6 +334,43 @@ def test_cut_choices(t : T?) {
     rmdir_rec(work_root)
 }
 
+// the C files `files` (name, text) written under the work root's `dir`, their paths in that order
+def private written(dir : string; files : array<tuple<name : string; text : string>>) : array<string> {
+    let at = path_join(work_root, dir)
+    mkdir_rec(at)
+    var paths : array<string>
+    for (f in files) {
+        fwrite(path_join(at, f.name), f.text)
+        if (f.name |> ends_with(".c")) {
+            paths |> push(path_join(at, f.name))
+        }
+    }
+    return <- paths
+}
+
+// the program of `paths` converted in `layout` into the work root's `dir`/out, with the sidecar
+// of text `sidecar` ("" for none)
+def private converted_in(paths : array<string>; dir, sidecar, layout : string) : ConvertResult {
+    let side = empty(sidecar) ? "" : path_join(path_join(work_root, dir), "main.c2das")
+    if (!empty(side)) {
+        fwrite(side, sidecar)
+    }
+    return <- convert_program(paths, path_join(path_join(work_root, dir), "out"), "linux", "", side, "", "", "main", layout)
+}
+
+[test]
+def test_taken_names(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_layout_taken", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("a file whose module would take the name of a daslang module is refused, naming the file") @(t : T?) {
+        let paths <- written("taken", [(name = "main.c", text = "#include <stdio.h>\nint twice(int);\nint main(void) \{ printf(\"%d\\n\", twice(4)); return 0; \}\n"), (name = "math.c", text = "int twice(int x) \{ return 2 * x; \}\n")])
+        let res <- converted_in(paths, "taken", "", "source")
+        t |> equal(res.error, "link: the module of math.c would be `math.das`, which a module daslang or c2das-re loads by that name takes; rename the file")
+    }
+    rmdir_rec(work_root)
+}
+
 // the weight of the edges going up `order` (lowest first), `w` as `cut_order` takes it
 def private order_cost(n : int; w : array<int64>; order : array<int>) : int64 {
     var place : array<int>

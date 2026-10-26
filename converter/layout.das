@@ -592,6 +592,10 @@ def private name_modules(var plan : LayoutPlan; tus : array<CirTu>; types : arra
         }
         let other = names?[name] ?? ""
         let shown = plan.nodes[lead].kind == NODE_TYPES ? "the types no single file defines" : base_name(plan.nodes[lead].file)
+        if (is_taken_module(name)) {
+            plan.error = "the module of {shown} would be `{name}.das`, which a module daslang or c2das-re loads by that name takes; rename the file"
+            return
+        }
         if (!empty(other)) {
             plan.error = "the modules of {other} and {shown} would both be `{name}.das`; rename a file"
             return
@@ -920,6 +924,10 @@ def private name_slots(var plan : LayoutPlan; tus : array<CirTu>) {
 // of the types their signatures spell, the lowest layer of the program
 def private add_link_module(var plan : LayoutPlan; types : array<CirType>; tus : array<CirTu>; entry_unit : int) {
     let name = "{plan.nodes[plan.unit_node[entry_unit]].stem}_link"
+    if (is_taken_module(name)) {
+        plan.error = "the link module would be `{name}.das`, which a module daslang or c2das-re loads by that name takes; rename the entry file"
+        return
+    }
     for (mod in plan.modules) {
         if (mod.name == name) {
             plan.error = "the link module would be `{name}.das`, the module of {mod.name}'s file too; rename a file"
@@ -1052,6 +1060,19 @@ def plan_layout(tus : array<CirTu>; types : array<CirType>; facts : LinkFacts; c
         add_link_module(plan, types, tus, entry_unit)
     }
     return <- plan
+}
+
+//! The c_runtime modules a converted module requires, and the crt module.
+let TAKEN_MODULES <- ["crt", "c_runtime", "c_args", "c_bitfields", "c_bounds", "c_builtins", "c_exit", "c_function", "c_signal", "c_sort", "c_storage", "cstr_array", "c_union", "c_volatile", "enum_from_int", "printf", "scanf", "setjmp", "variadic"]
+
+// whether a generated module named `name` would meet a module daslang or c2das-re loads by that name
+// (daslib's, c_runtime's, crt), which a bare `require` reaches first
+def private is_taken_module(name : string) : bool {
+    if (has_value(TAKEN_MODULES, name)) {
+        return true
+    }
+    let path = "{get_das_root()}/daslib/{name}.das"
+    return fexist(path) || name == "math" || name == "strings" || name == "rtti" || name == "ast" || name == "fio" || name == "jobque" || name == "network" || name == "uriparser" || name == "debugapi"
 }
 
 //! The scope of each unit for `link_tus`: the module that holds it.
