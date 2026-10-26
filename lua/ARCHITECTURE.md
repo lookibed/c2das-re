@@ -52,7 +52,7 @@ holding `main`, `lua.das` and `luac.das`; in the module-per-file layouts
 `scc` of 28 and 17 modules, the 15 core files that call each other one module, `lcode_cluster.das`,
 and the headers whose records point at each other two (`lobject.h lstate.h lua.h`, `llex.h
 lparser.h`); in `source` of 43 and 32 modules, the core's cycles cut by late binding through
-`lua_link.das` and `luac_link.das` (64 functions on 34 edges, `program.layout.txt` beside the
+`lua_link.das` and `luac_link.das` (64 symbol-edge cuts of 51 functions on 34 edges, `program.layout.txt` beside the
 modules), only the two header clusters left. The build is the ANSI one, no `LUA_USE_*` platform macro: `lua_Integer`
 is `long long`, `lua_Number` `double`.
 
@@ -109,4 +109,7 @@ site counted in an open-addressed table, written at exit), and runs the release'
 benchmark scripts of `ports/lua/bench/` at their default sizes. Each call site resolves to the
 function holding it, so a count is a callee's calls from one file; `lua.profile.json` keeps every
 call that crosses files, by callee and calling file's stem, sorted. `luac` shares the core and its
-profile. The conversion depends on the file only through the sidecar naming it.
+profile. The conversion depends on the file only through the sidecar naming it. The file's
+provenance is its command and its inputs: `profile.das` run from the repository root over the
+release and clang `VERSIONS.md` pins, the commit that last wrote the file being its git history; a
+change of the pinned release reruns it.
