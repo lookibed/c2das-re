@@ -422,6 +422,25 @@ def test_owned_folder(t : T?) {
 }
 
 [test]
+def test_cluster_digest(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_layout_digest", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("a cluster whose fragment alone changes runs the new fragment through daslang's module cache: the cluster's file carries the fragments' digest") @(t : T?) {
+        let main_c = "#include <stdio.h>\nint fa(int);\nint main(void) \{ printf(\"%d\\n\", fa(3)); return 0; \}\n"
+        let a_c = "int fb(int);\nint fa(int n) \{ return n <= 0 ? 0 : fb(n - 1) + 1; \}\n"
+        for (step, bias in count(), ["10", "20"]) {
+            var inscope paths <- written("digest", [(name = "main.c", text = main_c), (name = "a.c", text = a_c), (name = "b.c", text = "int fa(int);\nint fb(int n) \{ return fa(n) + {bias}; \}\n")])
+            let res <- converted_in(paths, "digest", "", "scc")
+            t |> equal(res.error, "")
+            t |> success(has_value(res.files, "a_cluster.das"), join(res.files, " "))
+            agrees(t, paths, res.das_path, "interp", "digest{step}")
+        }
+    }
+    rmdir_rec(work_root)
+}
+
+[test]
 def test_cut_limits(t : T?) {
     var dir_error : string
     work_root = create_temp_directory("c2das_layout_limits", dir_error)
