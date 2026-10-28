@@ -532,6 +532,19 @@ def test_forced_and_profile(t : T?) {
 }
 
 [test]
+def test_plan_refusals(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_layout_plan_refusals", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("a file whose module takes the link module's name is refused when the program has a cut") @(t : T?) {
+        let paths <- written("link_name", [(name = "main.c", text = FATAL_MAIN), (name = "util.c", text = FATAL_UTIL), (name = "main_link.c", text = "int spare(void) \{ return 1; \}\n")])
+        let res <- converted_in(paths, "link_name", "", "source")
+        t |> equal(res.error, "link: the link module would be `main_link.das`, the module of main_link's file too; rename a file")
+    }
+    rmdir_rec(work_root)
+}
+
+[test]
 def test_entry_highest(t : T?) {
     var dir_error : string
     work_root = create_temp_directory("c2das_layout_entry", dir_error)
