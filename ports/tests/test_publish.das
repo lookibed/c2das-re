@@ -559,7 +559,7 @@ def test_single_lanes(t : T?) {
         // the source layout's entry fails every workload, the single module runs them
         fwrite(path_join(root, "lua/work/lua/lua.das"), "options gen2\n[export]\ndef main : int \{\n    return 5\n\}\n")
         var out : string
-        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp,interp-scc,interp-single", "--allow-dirty"], out), 0, out)
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp,interp-scc,interp-single,jit-scc,jit-single", "--allow-dirty"], out), 0, out)
         var name : string
         let c <- capture_of(clone, name)
         let fib = cell_of(c, "fib", "interp-single")
@@ -568,8 +568,14 @@ def test_single_lanes(t : T?) {
         t |> success(empty(scc_fib.error) && length(scc_fib.samples) == 1, "{scc_fib}")
         t |> success(!empty(cell_of(c, "fib", "interp").error), "{cell_of(c, "fib", "interp")}")
         let readme = fread(path_join(clone, "lua/README.md"))
-        for (fact in ["- interpreter, single module: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime single/lua.das --`", "| interpreter, single module / native |", "| interpreter, single module / interpreter |", "- interpreter, scc layout: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime scc/lua/lua.das --`"]) {
+        for (fact in ["- interpreter, single module: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime single/lua.das --`", "| interpreter, single module / native |", "| interpreter, single module / interpreter |", "- interpreter, scc layout: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime scc/lua/lua.das --`", "- JIT, single module: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit single/lua.das --`", "- JIT, scc layout: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit scc/lua/lua.das --`"]) {
             t |> success(readme |> contains(fact), "README lacks {fact}:\n{readme}")
+        }
+        // the stand-in logs a run whose command carries `-jit` as the JIT's: the two JIT lanes ran under it
+        t |> success(line_count(path_join(root, "runs_jit.log")) > 0, "no run of the jit-scc and jit-single lanes carried -jit")
+        for (lane in ["jit-scc", "jit-single"]) {
+            let fib_jit = cell_of(c, "fib", lane)
+            t |> success(empty(fib_jit.error) && length(fib_jit.samples) == 1, "{lane}: {fib_jit}")
         }
         rmdir_rec(root)
     }
