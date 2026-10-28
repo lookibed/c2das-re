@@ -457,13 +457,15 @@ def test_cut_limits(t : T?) {
                 "\{\"layout\": \{\"keep_together\": [\"b_step\", \"nosym\"]\}\}\n",
                 "\{\"layout\": \{\"keep_together\": [\"b_step\", \"a_back\"], \"cut\": [\"a_back\"]\}\}\n",
                 "\{\"layout\": \{\"cut\": [\"nosym\"]\}\}\n",
-                "\{\"layout\": \{\"cut\": [\"a_run\"]\}\}\n"
+                "\{\"layout\": \{\"cut\": [\"a_run\"]\}\}\n",
+                "\{\"layout\": \{\"keep_together\": [[\"a\", \"b\"]], \"cut\": [\"a_back\"]\}\}\n"
             ], [
                 "link: layout.keep_together names `nofile`, which is no file of the program",
                 "link: layout.keep_together names `nosym`, which no file calls from another",
                 "link: layout.keep_together and layout.cut both name `a_back`",
                 "link: layout.cut names `nosym`, which no edge of a cycle carries",
-                "link: layout.cut names `a_run`, which no edge of a cycle carries"
+                "link: layout.cut names `a_run`, which no edge of a cycle carries",
+                "link: layout.cut forces the edge b -> a, which layout.keep_together keeps"
             ]) {
             let res <- converted_with(paths, "options", sidecar)
             t |> equal(res.error, error, sidecar)
@@ -538,6 +540,13 @@ def test_entry_highest(t : T?) {
         let paths <- written("pinned", [(name = "a.c", text = "#include <stdio.h>\nint fb(int);\nint fa(int n) \{ return n * 2; \}\nint main(void) \{ printf(\"%d\\n\", fb(4)); return 0; \}\n"), (name = "b.c", text = "int fa(int);\nint fb(int n) \{ return fa(n) + fa(n + 1); \}\n")])
         let res <- converted_in(paths, "pinned", "\{\"layout\": \{\"cut\": [\"fb\"]\}\}\n", "source")
         t |> equal(res.error, "link: layout.cut forces the edge a -> b out of the entry module, which every cycle's cut keeps")
+        // a and b both read the entry's object, so both join the entry's module: no cut parts a from b
+        let grouped <- written("grouped", [
+            (name = "m.c", text = "#include <stdio.h>\nint gm = 2; int a_f(void);\nint main(void) \{ printf(\"%d\\n\", a_f()); return 0; \}\n"),
+            (name = "a.c", text = "extern int gm; int b_g(void);\nint a_f(void) \{ return gm + b_g(); \}\n"),
+            (name = "b.c", text = "extern int gm;\nint b_g(void) \{ return gm * 10; \}\n")])
+        let in_group <- converted_in(grouped, "grouped", "\{\"layout\": \{\"cut\": [\"b_g\"]\}\}\n", "source")
+        t |> equal(in_group.error, "link: layout.cut forces the edge a -> b, which the module of a b m holds, no cut parting it")
     }
     rmdir_rec(work_root)
 }

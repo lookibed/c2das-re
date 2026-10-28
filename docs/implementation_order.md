@@ -767,6 +767,9 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `lua_all.das` and `luac_all.das` at its top until removed by hand. A type no single file defines
   and one two `.c` files define alike share `c_types`, whatever their headers. The scc and source
   layouts' JIT runs are slower than single's by a module-crossing cost the cut does not cause.
+  A conversion removes only the files an earlier `program.modules.txt` lists: files from before any
+  list existed, the `.cir.json` of renamed units and a previous layout's `program.layout.txt`
+  survive in `--out`; the publisher copies only the listed files.
   Not captured: perf per layout and the `interp-scc`, `jit-scc`, `interp-single` and
   `jit-single` ports lanes (the perf method's runs wait for an idle host); AOT per layout is `not
   yet` (the AOT host passes a program no arguments); a real ports publish with the three trees is

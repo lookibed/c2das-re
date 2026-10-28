@@ -64,7 +64,8 @@ and an edge whose weight is above `layout.threshold` are never cut, and an edge 
 `layout.cut` names always is. The options are checked before the cut and refused naming the option
 and the value: a `layout.keep_together` stem no file has or symbol no file calls from another, a
 symbol both options name, a `layout.cut` symbol no edge of a cycle carries, a forced edge out of the
-entry module or carrying a type or a symbol no cut can late-bind, and a profile count that is not
+entry module, carrying a type or a symbol no cut can late-bind, kept by `layout.keep_together`, or
+inside a group no cut parts (the entry's joined group among them), and a profile count that is not
 an integer of 0 or more. The edges never cut collapse into groups, which stay one module of
 fragments as in `scc`; the entry module is highest in its component's order, since it requires and
 nothing requires it, so a group with a never-cut path to it joins its group, one module with it

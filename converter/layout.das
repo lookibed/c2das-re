@@ -926,6 +926,11 @@ def private cut_component(var plan : LayoutPlan; opts : CutOptions; comp : array
         let b = to_int(parts[1])
         let ga = group_of[a]
         let gb = group_of[b]
+        if (ga == gb && weight < 0l && empty(plan.error)) {
+            var inscope held <- [for (m in groups[ga]); plan.nodes[m].stem]
+            sort(held)
+            plan.error = "layout.cut forces the edge {plan.nodes[a].stem} -> {plan.nodes[b].stem}, which the module of {join(held, " ")} holds, no cut parting it"
+        }
         if (ga != gb && !key_exists(fixed[a], b) && (weight < 0l || place[ga] < place[gb])) {
             plan.edges[a] |> erase(b)
             report_cut(plan, opts, a, b, key, weight)
@@ -941,13 +946,16 @@ def private cut_component(var plan : LayoutPlan; opts : CutOptions; comp : array
 }
 
 // why `layout.cut` may not force the edge `a` -> `b` of a cycle, carrying `syms`: "" when it may
-def private refused_forced(plan : LayoutPlan; a, b : int; key : string; syms : array<EdgeSymbol>) : string {
+def private refused_forced(plan : LayoutPlan; opts : CutOptions; a, b : int; key : string; syms : array<EdgeSymbol>) : string {
     let edge = "layout.cut forces the edge {plan.nodes[a].stem} -> {plan.nodes[b].stem}"
     if (a == plan.entry_node) {
         return "{edge} out of the entry module, which every cycle's cut keeps"
     }
     if (key_exists(plan.type_edges, key)) {
         return "{edge}, which carries a type {base_name(plan.nodes[b].file)} defines"
+    }
+    if (kept_together(plan, opts, a, b)) {
+        return "{edge}, which layout.keep_together keeps"
     }
     for (sym in syms) {
         if (!empty(sym.why_not)) {
@@ -992,7 +1000,7 @@ def private refused_options(plan : LayoutPlan; opts : CutOptions) : string {
             }
         }
         if (in_cycle && has_value([for (sym in syms); key_exists(opts.always_cut, sym.name)], true)) {
-            let why = refused_forced(plan, a, b, key, syms)
+            let why = refused_forced(plan, opts, a, b, key, syms)
             if (!empty(why)) {
                 return why
             }
@@ -1023,7 +1031,7 @@ def private cut_cycles(var plan : LayoutPlan; opts : CutOptions) {
         return
     }
     for (comp in components_of(plan.edges)) {
-        if (length(comp) > 1) {
+        if (length(comp) > 1 && empty(plan.error)) {
             cut_component(plan, opts, comp)
         }
     }
