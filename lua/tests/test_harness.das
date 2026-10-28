@@ -53,6 +53,10 @@ def private stand_in_root(name, lobject : string) : string {
 // a stand-in compiler: `luac -o <out> <in>` writes the input's bytes, each xored, to the output
 let LUAC_C = "#include <stdio.h>\nint main(int argc, char **argv) \{\n    char buf[256];\n    FILE *in, *out;\n    size_t n;\n    if (argc != 4) return 2;\n    in = fopen(argv[3], \"rb\");\n    out = fopen(argv[2], \"wb\");\n    if (in == 0 || out == 0) return 1;\n    n = fread(buf, 1, sizeof buf, in);\n    for (size_t i = 0; i < n; i++) buf[i] = (char)(buf[i] ^ 0x5a);\n    fwrite(buf, 1, n, out);\n    fclose(in);\n    fclose(out);\n    return 0;\n\}\n"
 
+// a stand-in compiler whose output differs from build to build: `luac -o <out> <in>` writes its own
+// `argv[0]`, the native binary's path or the converted program's name, to the output
+let LUAC_ARGV0_C = "#include <stdio.h>\n#include <string.h>\nint main(int argc, char **argv) \{\n    FILE *out;\n    if (argc != 4) return 2;\n    out = fopen(argv[2], \"wb\");\n    if (out == 0) return 1;\n    fwrite(argv[0], 1, strlen(argv[0]), out);\n    fclose(out);\n    return 0;\n\}\n"
+
 let LOBJECT = "#include \"lua.h\"\nint lua_answer(void) \{ return 41; \}\n"
 
 [test]
@@ -127,6 +131,18 @@ def test_run_stand_in(t : T?) {
         mkdir_rec(path_join(root, "none"))
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "luac", "--layout", "single", "--luac-check", "none"]), out), 1, out)
         t |> success(out |> contains("lua: luac -o: no .lua file in none"), out)
+        rmdir_rec(root)
+    }
+    t |> run("--luac-check fails when the converted compiler writes other bytes than the native one, its exit code the same") @(t : T?) {
+        let root = stand_in_root("c2das_lua_luac_differ", LOBJECT)
+        fwrite(path_join(root, "lua/fetch/lua-5.4.8/src/luac.c"), LUAC_ARGV0_C)
+        let scripts = path_join(root, "scripts")
+        mkdir_rec(scripts)
+        fwrite(path_join(scripts, "a.lua"), "return 1\n")
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "luac", "--layout", "source", "--luac-check", "scripts"]), out), 1, out)
+        t |> success(out |> contains("lua: luac -o a.lua: native exited 0, interp 0; the bytes differ"), out)
+        t |> success(out |> contains("lua: luac -o under interp: 0 of 1 files byte for byte the native compiler's"), out)
         rmdir_rec(root)
     }
     t |> run("a conversion error names the Lua source and line") @(t : T?) {
