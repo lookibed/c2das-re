@@ -509,17 +509,51 @@ def test_entry_highest(t : T?) {
             ring |> push((name = "r{i}.c", text = "int r{next}(int);\nint r{i}(int n) \{ return n <= 0 ? {i} : r{next}(n - 1) + {i}; \}\n"))
         }
         programs |> emplace((dir = "ring", files <- ring))
+        // a file reading the entry's object joins the entry's module, and its slot is bound there
+        programs |> emplace((dir = "joined", files = [
+            (name = "m.c", text = "#include <stdio.h>\nint gm = 1; int y_f(void);\nint main(void) \{ printf(\"%d\\n\", y_f()); return 0; \}\n"),
+            (name = "x.c", text = "extern int gm;\nint x_f(void) \{ return gm + 1; \}\n"),
+            (name = "y.c", text = "int x_f(void);\nint y_f(void) \{ return x_f() * 10; \}\n")]))
+        // the same past 16 groups, the greedy order's
+        var inscope joined_ring : array<tuple<name : string; text : string>>
+        joined_ring |> reserve(19)
+        joined_ring |> push((name = "a.c", text = "#include <stdio.h>\nint gm = 3; int r1(int);\nint r0(int n) \{ return n <= 0 ? 0 : r1(n - 1); \}\nint main(void) \{ printf(\"%d\\n\", r0(40)); return 0; \}\n"))
+        joined_ring |> push((name = "x.c", text = "extern int gm;\nint x_f(int n) \{ return gm + n; \}\n"))
+        for (i in range(1, 18)) {
+            let next = i == 17 ? 0 : i + 1
+            let extra = i == 5 ? " + x_f(n)" : ""
+            joined_ring |> push((name = "r{i}.c", text = "int r{next}(int); int x_f(int);\nint r{i}(int n) \{ return n <= 0 ? {i} : r{next}(n - 1) + {i}{extra}; \}\n"))
+        }
+        programs |> emplace((dir = "joined_ring", files <- joined_ring))
         for (program in programs) {
             var inscope paths <- written(program.dir, program.files)
             let res <- converted_in(paths, program.dir, "", "source")
             t |> equal(res.error, "", program.dir)
             agrees(t, paths, res.das_path, "interp", program.dir)
+            if (program.dir == "joined") {
+                let lines = join(res.partition, "\n")
+                t |> success(lines |> contains("m: cluster of 2: m x") && lines |> contains("m: m -> x: kept with the entry") && lines |> contains("cut x_f: y -> x"), lines)
+            }
         }
         let paths <- written("pinned", [(name = "a.c", text = "#include <stdio.h>\nint fb(int);\nint fa(int n) \{ return n * 2; \}\nint main(void) \{ printf(\"%d\\n\", fb(4)); return 0; \}\n"), (name = "b.c", text = "int fa(int);\nint fb(int n) \{ return fa(n) + fa(n + 1); \}\n")])
         let res <- converted_in(paths, "pinned", "\{\"layout\": \{\"cut\": [\"fb\"]\}\}\n", "source")
         t |> equal(res.error, "link: layout.cut forces the edge a -> b out of the entry module, which every cycle's cut keeps")
     }
     rmdir_rec(work_root)
+}
+
+[test]
+def test_unbound_module(t : T?) {
+    t |> run("a module defining a late-bound function main can call that the entry module does not reach is refused as a defect of the layout; one main never reaches is not") @(t : T?) {
+        var plan <- LayoutPlan(entry = 0, entry_node = 0, modules <- [LayoutModule(name = "m"), LayoutModule(name = "x")], node_module <- [0, 1])
+        plan.edges |> resize(2)
+        plan.late["x_f"] = 1
+        t |> equal(unbound_module(plan), "")
+        plan.symbols["0>1"] |> push(EdgeSymbol(name = "x_f"))
+        t |> equal(unbound_module(plan), "layout: the module x binds the slot of `x_f`, but the entry module m never loads it; a defect of the layout, not of the program")
+        plan.modules[0].requires |> push(1)
+        t |> equal(unbound_module(plan), "")
+    }
 }
 
 // the weight of the edges going up `order` (lowest first), `w` as `cut_order` takes it

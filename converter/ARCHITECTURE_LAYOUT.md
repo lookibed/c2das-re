@@ -67,8 +67,8 @@ symbol both options name, a `layout.cut` symbol no edge of a cycle carries, a fo
 entry module or carrying a type or a symbol no cut can late-bind, and a profile count that is not
 an integer of 0 or more. The edges never cut collapse into groups, which stay one module of
 fragments as in `scc`; the entry module is highest in its component's order, since it requires and
-nothing requires it, so a group with a never-cut path to it joins its group and every edge into it
-is cut. Among the groups the cut is a minimum weight feedback arc set: the order of the groups,
+nothing requires it, so a group with a never-cut path to it joins its group, one module with it
+(the report's `kept with the entry` edge), and every edge into it is cut. Among the groups the cut is a minimum weight feedback arc set: the order of the groups,
 lowest first, that minimizes the weight of the edges going up it, exact over the subsets for up to
 16 groups, among equal weights the order leaving the fewest groups whose callers are all below
 them, else a greedy order (a group requiring nothing unplaced goes lowest, one nothing unplaced
@@ -89,7 +89,10 @@ compiled), and a module requiring both it and the link module spells them `<modu
 the wrapper of that name is in sight (`probes/test_modules.das`). A module whose cut edge carries a symbol requires the link module, not
 the defining module; the entry module requires every module it would not reach otherwise, so each
 loads and binds before `main` runs; with the entry highest in its cycles' order a module reaching
-the entry is outside them, never called from `main`, and stays unrequired. The link
+the entry is outside them, never called from `main`, and stays unrequired. A module defining a
+late-bound function `main` can call (over the edges before the cut) that the entry module still
+does not reach is refused as a defect of the layout, never shipped to panic at run time
+(`unbound_module`). The link
 module requires the modules of the types the signatures spell, all header type modules.
 
 ## Emitting the modules {#emission}
