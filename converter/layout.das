@@ -862,8 +862,8 @@ def private report_cut(var plan : LayoutPlan; opts : CutOptions; a, b : int; key
 
 // the entry module is highest in its component's order: every node with a path of edges never cut
 // to `entry` would stay above it, so it is kept in the entry's module (an edge from the entry to it
-// in `fixed` closes the cycle)
-def private join_entry(comp : array<int>; entry : int; var fixed : array<table<int>>) {
+// in `fixed` closes the cycle of the cut's groups, and in `plan.edges` the one `name_modules` clusters)
+def private join_entry(var plan : LayoutPlan; comp : array<int>; entry : int; var fixed : array<table<int>>) {
     var inscope above : table<int>
     var inscope todo <- [entry]
     while (!empty(todo)) {
@@ -878,6 +878,9 @@ def private join_entry(comp : array<int>; entry : int; var fixed : array<table<i
     }
     for (a in keys(above)) {
         fixed[entry] |> insert(a)
+        if (!key_exists(plan.edges[entry], a)) {
+            add_edge(plan, entry, a, "kept with the entry")
+        }
     }
 }
 
@@ -887,7 +890,7 @@ def private cut_component(var plan : LayoutPlan; opts : CutOptions; comp : array
     component_edges(plan, opts, comp, fixed, weights)
     let entry = has_value(comp, plan.entry_node) ? plan.entry_node : -1
     if (entry >= 0) {
-        join_entry(comp, entry, fixed)
+        join_entry(plan, comp, entry, fixed)
     }
     var inscope group_of : table<int; int>
     var inscope groups : array<array<int>>
@@ -1093,6 +1096,7 @@ def private add_link_module(var plan : LayoutPlan; types : array<CirType>; tus :
         plan.modules[plan.node_module[definer]].requires |> push(plan.link)
     }
     require_unreached(plan)
+    plan.error = unbound_module(plan)
     for (mod in plan.modules) {
         var inscope unique : table<int>
         for (r in mod.requires) {
@@ -1131,6 +1135,50 @@ def private require_unreached(var plan : LayoutPlan) {
             plan.modules[plan.entry].requires |> push(m)
         }
     }
+}
+
+// the nodes the entry's node reaches over the edges before the cut: the kept ones and every edge a
+// symbol makes, cut or not
+def private live_nodes(plan : LayoutPlan) : table<int> {
+    var seen : table<int>
+    var todo <- [plan.entry_node]
+    seen |> insert(plan.entry_node)
+    while (!empty(todo)) {
+        let a = todo[length(todo) - 1]
+        todo |> pop()
+        var inscope next <- [for (b in keys(plan.edges[a])); b]
+        for (key in keys(plan.symbols)) {
+            if (key |> starts_with("{a}>")) {
+                next |> push(to_int(slice(key, find(key, ">") + 1)))
+            }
+        }
+        for (b in next) {
+            if (!key_exists(seen, b)) {
+                seen |> insert(b)
+                todo |> push(b)
+            }
+        }
+    }
+    return <- seen
+}
+
+//! Why the plan is refused, "" when it is not: a module defining a late-bound function `main` can
+//! call (the entry's node reaches the defining one over the edges before the cut) that the entry
+//! module does not reach through requires would never load, and its slot would stay unbound when
+//! the call runs: a defect of the layout, not of the program.
+def unbound_module(plan : LayoutPlan) : string {
+    let reach <- reached(plan, plan.entry)
+    let live <- live_nodes(plan)
+    var inscope names <- [for (name in keys(plan.late)); name]
+    sort(names)
+    for (name in names) {
+        let node = plan.late?[name] ?? plan.entry_node
+        let m = plan.node_module[node]
+        if (m != plan.entry && key_exists(live, node) && !key_exists(reach, m)) {
+            return "layout: the module {plan.modules[m].name} binds the slot of `{name}`, but the entry module {plan.modules[plan.entry].name} never loads it; a defect of the layout, not of the program"
+        }
+    }
+    return ""
 }
 
 //! The source layout of a program linked from `tus` (their C files `c_paths`, in link order):
