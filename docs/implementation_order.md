@@ -883,15 +883,37 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   of this item reached 15 GB RSS in `lua_native` and the OOM killer took the session; which file
   is not recorded (`heavy.lua`, which `all.lua` never runs, is the suite's memory test); under the
   cap no run of the lane, native or converted, reaches 4G.
+  PR 2 (branch `p5.3-port-survey`): `--run`, `--error-check` and `--suite-check` compare stdout
+  and stderr apart (each run's stderr through `lua/work/run.stderr`; the JIT's `[I]` lines are on
+  stdout), a difference naming its stream, and an `oracle` verdict quotes the first line of the
+  native stderr; `--suite-port false` gives each file `_port=false`, running the tests `_port`
+  skips. Survey 2026-10-29, `--suite-port false` under interp, the trees reconverted on the branch
+  (the converter unchanged since 04efd6a): 27 pass, 3 oracle, no fail, timeout or memory verdict
+  in each of the source, scc and single layouts; wall time with the conversion 13.1, 15.5 and 16.8
+  minutes, the suite runs 613, 754 and 831 s (`all.lua` not run, an oracle). The `_port`-only
+  blocks of `gc.lua`, `attrib.lua` (`package.loadlib`, which the ANSI build answers `not
+  supported`, as the test accepts) and `math.lua` pass in every layout, each file's converted
+  seconds those of the `_port=true` run. Verdicts that differ from the `_port=true` run (each a pass
+  there): `main.lua` oracle, `sh: 1: lua: not found`: the lane's, the native run's `argv[0]` is
+  `lua`, which the file runs through `os.execute`, and no `lua` is on `PATH`; `files.lua` oracle,
+  `files.lua:84: assertion failed!`: the lane's, the invalid-seek check expects `io.stdin:seek` to
+  fail and `run_and_capture` gives the child `/dev/null`, which seeks; past it, line 732's
+  `io.popen` raises `'popen' not supported` in the ANSI build (class a: the file cannot pass
+  natively without `LUA_USE_POSIX`); `all.lua` oracle, `main.lua`'s failure, which it runs first.
+  No libc exactness difference, lowering bug, runtime panic, timeout or memory verdict surfaced;
+  the converted side of the three oracle files is not run.
   Next, cheapest first: (1) the JIT survey, `--suite-check --tier jit`, after
   lookibed/daScript#30 (F75: every protected call reports success under the JIT, so the suite
-  cannot pass there now); (2) the oracle comparison split by stream (stdout and stderr compared
-  apart; P5.2's ledgered MINOR), a lane change with a stand-in test; (3) the tests `_port` skips
-  (locale, `os.date`/strftime formats, `io.popen`, `os.execute`) run under `_port=false` against
-  the native ANSI build, which fails some of them natively too: a survey of what is the ANSI
-  build's and what is the converter's, fixtures in `c_runtime/tests` for any libc difference;
-  (4) the scc and single layouts' per-process compile, a perf row for P5.4. The exit criterion
-  is not claimed until the JIT and AOT lanes of the phase exit run.
+  cannot pass there now); (2) the suite runs' stdin a pipe, not `/dev/null`, so `files.lua`'s
+  invalid-seek check holds under `_port=false` (a lane change with a stand-in test; the file then
+  stops at its `io.popen` block, still `oracle` on the ANSI build); (3) a `lua` launcher per side on
+  `PATH` for `main.lua` and `all.lua` under `_port=false` (the native binary for the oracle, the
+  converted interpreter under the tier for the converted run, `argv[0]` naming it), a lane change
+  with a stand-in test; `main.lua`'s 66 nested runs (`RUN` and `NoRun`) each pay the converted
+  interpreter's fixed cost; (4) whether the suite also runs against a `LUA_USE_POSIX` build pair (`io.popen`,
+  `mkstemp` for `os.tmpname`, `%Ex` in `os.date`), an owner ruling, the port being the ANSI build;
+  (5) the scc and single layouts' per-process compile, a perf row for P5.4. The exit criterion is
+  not claimed until the JIT and AOT lanes of the phase exit run.
 - **P5.4 Perf snapshot:** fib/nbody/binary-trees, converted-interp vs native lua. Data
   point only; no bar.
 - **Exit criterion:** Lua test suite passes under interp; JIT/AOT lanes at least compile

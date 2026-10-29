@@ -350,6 +350,17 @@ def private first_difference(native, das : Streams; tier : string) : string {
     return empty(out) ? first_line_difference("stderr", native.err, das.err, tier) : out
 }
 
+// the first line of `text` that is not empty, "" when there is none: an uncaught error's message,
+// before its traceback
+def private first_line(text : string) : string {
+    for (ln in split(text, "\n")) {
+        if (!empty(ln)) {
+            return ln
+        }
+    }
+    return ""
+}
+
 // one run's verdict when the cap or the timeout ended it: `memory`, `timeout`, or "" when it exited
 def private ended(rc : int; side, memory : string; timeout : float) : string {
     if (rc == popen_timed_out) {
@@ -360,8 +371,8 @@ def private ended(rc : int; side, memory : string; timeout : float) : string {
 
 // the verdict line of one test file: the native oracle `bin` run first, then the converted
 // interpreter at `das_path` under `tier`, each in the suite's folder, capped and timed; a run the
-// cap or the timeout ends is `memory` or `timeout`, and an oracle that fails on its own is `oracle`:
-// in both the converted one is skipped
+// cap or the timeout ends is `memory` or `timeout`, and an oracle that fails on its own is `oracle`
+// with the first line of its stderr: in both the converted one is skipped
 def private suite_file(file, das_path, bin, tier : string; args : Args) : string {
     let dir = full_path(SUITE_DIR)
     if (!fexist(path_join(dir, file))) {
@@ -379,7 +390,9 @@ def private suite_file(file, das_path, bin, tier : string; args : Args) : string
         return "{file} {native_end |> starts_with("memory") ? "memory" : "timeout"} {fmt(":.1f", native_seconds)} {native_end}"
     }
     if (native_rc != 0) {
-        return "{file} oracle {fmt(":.1f", native_seconds)} native exited {native_rc}"
+        let said = first_line(native.err)
+        let quoted = empty(said) ? "" : ": " + slice(said, 0, 160)
+        return "{file} oracle {fmt(":.1f", native_seconds)} native exited {native_rc}{quoted}"
     }
     var das_args <- capped(args.suite_memory)
     das_args |> push_from(["sh", "-c", "cd \"$0\" && exec \"$@\"", dir], das_argv(das_path, tier, suite_args(file, args.suite_port)))
