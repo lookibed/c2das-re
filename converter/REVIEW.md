@@ -19,16 +19,22 @@ of a more idiomatic one, where no single form is both, keeps the idiomatic form 
 and emits the faster one only under a converter option the `.c2das` sidecar can also set.**
 
 **A diff that adds a converter option, or a new value of one that takes a fixed set of values,
-covers each fixed value, and one setting of an open-valued option, with a test under `tests/`, a
-lane in the recorded results of a suite whose converted text the value changes
-(`perf/results_linux.json` (repo root) for a single-file option, a lane `ports/publish.das` (repo
-root) captures for a program-level one) and its keys in `metrics/readability_linux.json` (repo
-root), in the same change.** A converter option is a `main.das` flag or a `.c2das` key that changes
+covers each fixed value, and one setting of an open-valued option, with a test under `tests/`, in
+the same change.** A converter option is a `main.das` flag or a `.c2das` key that changes
 converted text.
 
-**A diff that adds a converter option refuses a value of it the converter does not know, and a
+**A diff that adds a converter option, or a new value of one that takes a fixed set of values,
+adds a lane for each fixed value, and for one setting of an open-valued option, in the same
+change: in `perf/results_linux.json` (repo root) for an option that changes one file's text, in a
+lane `ports/publish.das` (repo root) captures for an option that changes a whole program's text.**
+
+**A diff that adds a converter option, or a new value of one that takes a fixed set of values,
+records `<suite>/<input>@<value>` entries in `metrics/readability_linux.json` (repo root) for each
+fixed value, and for one setting of an open-valued option, in the same change.**
+
+**A diff that adds a fixed-set converter option refuses any value outside the set, and a
 diff that adds a `.c2das` key refuses an unknown key beside it, with an error naming the option or
 key and the value - never a silent default.**
 
-**A diff that adds a module name the converter writes beside the converted modules refuses a C
-file whose module would take that name, with a test under `tests/`.**
+**A diff that adds a module name, or a name pattern, that the converter generates beyond one module
+per C file refuses a C file whose module would take that name, with a test under `tests/`.**
