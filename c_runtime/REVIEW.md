@@ -3,24 +3,24 @@
 **Read `REVIEW_COMMON.md` (repo root) first - its contract binds this checklist.** Architecture
 doc: `ARCHITECTURE.md`. Planned work: `docs/implementation_order.md`.
 
-**A diff that changes a piece's public surface updates its fixture test `tests/test_<name>.das`
-in the same change.** A piece is a `.das` file `c_runtime/c_runtime/<name>.das` (repo root); its
-public surface is a public function's signature, a public struct's fields, a public global's
-name or type, and the argument grammar of an annotation or call macro, each added, removed or
-changed.
+**A diff that changes a piece's public surface updates its fixture test in the same change.** A
+piece is a `.das` file `c_runtime/c_runtime/<name>.das` (repo root) and its fixture test is
+`tests/test_<name>.das`; its public surface is a public function's signature, a public struct's
+fields, a public global's name or type, and the argument grammar of an annotation or call macro,
+each added, removed or changed.
 
-**A diff that adds or changes a call or annotation in a piece's fixture test (`tests/test_<name>.das`
-for the piece `c_runtime/c_runtime/<name>.das`, repo root) that the test expects to compile and
-return normally spells it exactly as the converter emits it.** The order of sources is: the
-converter's output for a C file under `converter/tests/fixtures/` (repo root) that calls the
-piece, then a `docs/probe-findings.md` row naming the piece, then an example in
-`docs/lowering-examples.md` or `docs/stdlib-examples.md`. A public function that none of these
-sources calls is tested by a direct call.
+**A call or annotation that a diff adds to or changes in a fixture test, and that the test expects
+to compile and return normally, matches the converter's spelling in its argument types, its casts
+and where its side effects sit; literal values and their radix are free.** The spelling is that of
+the first source calling the function, in the order `ARCHITECTURE.md` section 4 ranks them.
+
+**A diff that adds a public overload that no converted fixture, `docs/probe-findings.md` row or
+`docs/` example calls tests it by a direct call in the piece's fixture test.**
 
 **Never weaken `REVIEW.das` - fix what it flags instead.**
 
-**A diff that makes run-time code of a converted program (a piece's function, or code a
-piece's macro generates) store bytes the converted program can take the address of, or that
-outlive the piece's call that made them (a C object, a C string), on the das heap (an `array`,
-`table`, `string`, `new` allocation, or a lambda capture) is a defect - keep them in
-C-allocator memory, globals or the stack instead.**
+**A diff that makes a piece's function, or code a piece's macro generates, store on the das heap
+bytes the converted program can take the address of, or bytes that outlive the call that made
+them, is a defect - keep them in C-allocator memory, globals or the stack instead.** The das heap
+is memory daslang's garbage collector owns: an `array`, a `table`, a `string`, a `new`
+allocation, a lambda capture.

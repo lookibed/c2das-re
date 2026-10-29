@@ -219,7 +219,16 @@ the same way `dasCRuntime/` is loaded.
   (`resolve_stars`, `c_dialect_spec`, `crt_piece`) and pass its bytes to one CRT call;
   `c_vformat` collects the rendered bytes in a das array that `c_vsnprintf` copies into the
   program's buffer and `c_vprintf` writes to stdout; a `CVaList` is the das array
-  `[variadic]` builds from a call's trailing arguments, which the program reads only by value
+  `[variadic]` builds from a call's trailing arguments, or the copy `to_cvalist` (`variadic.das`)
+  makes of a list a late-bound wrapper forwards, which the program reads only by value
   through a `CVaCursor` (`va_i`, `va_d`, `va_p`). The program addresses and keeps none of
   them, and each dies with the call, so none is an exception to the rule; the scanned bytes
   stay in the program's own buffers.
+
+## 4. The spelling a fixture test copies
+
+A fixture test calls a piece the way converted code calls it. The sources of that spelling, in
+rank order: the converter's output for a C file under `converter/tests/fixtures/` (repo root)
+that calls the function; a `docs/probe-findings.md` row naming the piece; an example in
+`docs/lowering-examples.md` or `docs/stdlib-examples.md`. A public overload none of them calls has
+no converted spelling, so its test is a direct call.
