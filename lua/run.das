@@ -61,6 +61,9 @@ struct Args {
     @clarg_name = "suite-timeout"
     @clarg_doc = "the seconds each run of a test file gets under --suite-check"
     suite_timeout : float = 1800.0
+    @clarg_name = "suite-port"
+    @clarg_doc = "the value of the global `_port` each test file gets under --suite-check: true skips the tests that assume a POSIX build, false runs them"
+    suite_port : string = "true"
     @clarg_name = "suite-memory"
     @clarg_doc = "the memory each run of a test file gets under --suite-check, as systemd's MemoryMax takes it"
     suite_memory : string = "4G"
@@ -266,9 +269,10 @@ let SUITE <- ["main.lua", "gc.lua", "db.lua", "calls.lua", "strings.lua", "liter
 // `big.lua` yields at its top level: `all.lua` runs it as a coroutine and checks what it yields
 let BIG_LUA = "local f = coroutine.wrap(assert(loadfile('big.lua'))) assert(f() == 'b') assert(f() == 'a')"
 
-// the interpreter's arguments for the test file `file`, with the globals `all.lua` sets for it
-def private suite_args(file : string) : array<string> =>
-    <- file == "big.lua" ? ["-e", "_port=true", "-e", BIG_LUA] : ["-e", "_port=true", file]
+// the interpreter's arguments for the test file `file`, with the globals `all.lua` sets for it and
+// `_port` as `--suite-port` names it
+def private suite_args(file, port : string) : array<string> =>
+    <- file == "big.lua" ? ["-e", "_port={port}", "-e", BIG_LUA] : ["-e", "_port={port}", file]
 
 // the prefix that runs a command in a scope of its own whose memory systemd caps at `memory`; the
 // kernel kills the command past it, which `run_and_capture` reports as the signal's number
@@ -364,7 +368,7 @@ def private suite_file(file, das_path, bin, tier : string; args : Args) : string
         return "{file} missing 0.0"
     }
     var native_args <- capped(args.suite_memory)
-    native_args |> push_from(["bash", "-c", "cd \"$1\" && exec -a \"$0\" \"$\{@:2\}\"", "lua", dir, full_path(bin)], suite_args(file))
+    native_args |> push_from(["bash", "-c", "cd \"$1\" && exec -a \"$0\" \"$\{@:2\}\"", "lua", dir, full_path(bin)], suite_args(file, args.suite_port))
     var native : Streams
     let native_started = ref_time_ticks()
     let native_rc = run_split(native_args, args.suite_timeout, native)
@@ -378,7 +382,7 @@ def private suite_file(file, das_path, bin, tier : string; args : Args) : string
         return "{file} oracle {fmt(":.1f", native_seconds)} native exited {native_rc}"
     }
     var das_args <- capped(args.suite_memory)
-    das_args |> push_from(["sh", "-c", "cd \"$0\" && exec \"$@\"", dir], das_argv(das_path, tier, suite_args(file)))
+    das_args |> push_from(["sh", "-c", "cd \"$0\" && exec \"$@\"", dir], das_argv(das_path, tier, suite_args(file, args.suite_port)))
     var das : Streams
     let das_started = ref_time_ticks()
     let das_rc = run_split(das_args, args.suite_timeout, das)
@@ -528,6 +532,10 @@ def main : int {
     }
     if (!empty(args.suite_filter) && !has_value(SUITE, args.suite_filter)) {
         to_log(LOG_ERROR, "lua: --suite-filter names a file of the suite, not `{args.suite_filter}`\n")
+        return 1
+    }
+    if (args.suite_port != "true" && args.suite_port != "false") {
+        to_log(LOG_ERROR, "lua: --suite-port is true or false, not `{args.suite_port}`\n")
         return 1
     }
     if (args.suite_check) {
