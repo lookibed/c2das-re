@@ -241,25 +241,58 @@ def private capped(memory : string) : array<string> =>
 // `path` from the repository root, the runs entering the suite's folder
 def private full_path(path : string) : string => path_join(getcwd(), path)
 
-// `text` with every run of digits one `#`: the suite prints seeds, timings and dates
-def private masked(text : string) : string {
+// whether the character at `i` of `text` is a digit; false past its end
+def private digit_at(text : array<int>; i : int) : bool => i < length(text) && is_number(text[i])
+
+// whether the character at `i` of `text` is a sign
+def private sign_at(text : array<int>; i : int) : bool => i < length(text) && (text[i] == '+' || text[i] == '-')
+
+// the end of the number starting at `i` of `text`: a sign, digits and points, an exponent
+def private number_end(text : array<int>; i : int) : int {
+    var j = sign_at(text, i) ? i + 1 : i
+    while (j < length(text)) {
+        let ch = text[j]
+        if (is_number(ch) || ch == '.') {
+            j++
+        } elif ((ch == 'e' || ch == 'E') && (digit_at(text, j + 1) || (sign_at(text, j + 1) && digit_at(text, j + 2)))) {
+            j += 2
+        } else {
+            break
+        }
+    }
+    return j
+}
+
+// `line` with every number one `#`, whatever its sign, digits or notation: the suite prints seeds,
+// timings and dates, `%g` choosing the notation by the value
+def private masked(line : string) : string {
+    let text <- [for (ch in line); ch]
     return build_string() $(var w) {
-        var in_digits = false
-        for (ch in text) {
-            if (!is_number(ch)) {
-                w |> write_char(ch)
-            } elif (!in_digits) {
+        var i = 0
+        while (i < length(text)) {
+            let ch = text[i]
+            if (is_number(ch) || ((ch == '.' || ch == '+' || ch == '-') && digit_at(text, i + 1))) {
                 w |> write("#")
+                i = number_end(text, i)
+            } else {
+                w |> write_char(ch)
+                i++
             }
-            in_digits = is_number(ch)
         }
     }
 }
 
+// the lines of a run's output the comparison reads: all but the warning `all.lua` prints when its
+// time differs from the time the previous run left in the suite's folder, which the other build is
+let TIME_WARNING = "Lua warning: #time difference from previous test"
+
+def private compared_lines(output : string) : array<string> =>
+    <- [for (ln in split(output, "\n")); ln; where !(ln |> starts_with(TIME_WARNING))]
+
 // the first line where `native` and `das` differ once masked, quoted from each
 def private first_difference(native, das, tier : string) : string {
-    let left <- split(native, "\n")
-    let right <- split(das, "\n")
+    let left <- compared_lines(native)
+    let right <- compared_lines(das)
     for (i in range(max(length(left), length(right)))) {
         let l = i < length(left) ? left[i] : "<end>"
         let r = i < length(right) ? right[i] : "<end>"

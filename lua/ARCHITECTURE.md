@@ -37,10 +37,11 @@ one module (the scc layout), and one module (the single layout).
   converted interpreter of each layout under the tier with each of `run.das`'s `ERROR_CHECKS` (an
   error caught by `pcall`, one uncaught, nested protected calls, an error the VM raises, a table as
   the error object, an error in a coroutine, `xpcall`'s handler, a memory error) and compares each
-  with the oracle; `--filter <stem>` converts
+  with the oracle; `--suite-check` runs the release's test suite with the converted interpreter of
+  each layout under the tier (section 2, "The test suite"); `--filter <stem>` converts
   that program alone. Run from the repository root: `daslang -load_module dasCRuntime
-  -load_module c_runtime lua/run.das -- [--native] [--run] [--error-check] [--tier jit] [--luac-check
-  lua/fetch/lua-5.4.8-tests]`.
+  -load_module c_runtime lua/run.das -- [--native] [--run] [--error-check] [--suite-check] [--tier
+  jit] [--luac-check lua/fetch/lua-5.4.8-tests]`.
 - `lua.c2das` - the sidecar both programs convert under (section 3).
 - `REVIEW.das` - the mechanical gate: no file under `fetch/` or `work/` is tracked, and `SOURCES` in
   `sources.das` names the folder of the release the `lua:` line of `VERSIONS.md` pins.
@@ -71,6 +72,28 @@ define a static of one name and no static is named like a name another file refe
 converter maps to libc, so the link renames nothing; `luac.c` and `lstrlib.c` both define a
 static `writer`, which the link would rename `luac_writer` and `lstrlib_writer` were both in one
 module of one program.
+
+### The test suite
+
+`--suite-check` runs the test suite of the release, `fetch/lua-5.4.8-tests/`, file by file: each
+file `all.lua` runs, in its order, with the globals it sets for them (`-e "_port=true" <file>`, so
+the tests that assume a POSIX build skip; `_soft` stays false, so the long tests run; `T`, the debug
+build's test library, is absent), `big.lua` as `all.lua` runs it (a coroutine whose yields are
+checked, since the file yields at its top level), then `all.lua` itself. `main.lua` returns at once
+under `_port`, and `heavy.lua`, which `all.lua` never runs, is no file of the lane. Each file runs
+first with the native oracle, then with the converted interpreter, both in the suite's folder, each
+in a systemd scope of its own (`systemd-run --scope -p MemoryMax=<--suite-memory>`, default `4G`, an
+RSS cap the kernel enforces by killing the run) and under `--suite-timeout` seconds (default 1800).
+The verdict is `pass` when the exit codes agree and the merged outputs agree line by line once every
+number reads as one, whatever its sign or notation (the suite prints random seeds, timings and the
+date, `%g` picking the notation by the value), and without the warning `all.lua` prints when its time
+differs from the one the previous run left in `time.txt` of the folder, the other build's; `fail` with the
+first line that differs, quoted from both runs, or the two exit codes; `timeout` or `memory` naming
+the run the timeout or the cap ended (when it is the oracle's, the converted one does not run);
+`missing` for a file the folder lacks. The verdicts go to `work/<layout>/suite.txt`, a line
+`<file> <verdict> <seconds of the converted run> [<detail>]` per file, and the totals to a
+`lua: suite under <tier> (<layout>): ...` line; `--suite-filter <file>` runs one file of the lane.
+A cap systemd refuses (`--suite-memory lots`) refuses the lane before any run.
 
 ## 3. The sidecar keys
 
