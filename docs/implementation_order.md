@@ -906,18 +906,39 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `_port` blocks (`io.popen` at 717, the date table at 805 exercising `os.time`/`os.date`,
   `%Ex`/`%Oy` at 841) stay uncovered on both sides until (4) below or a copy of the file without
   its popen block.
+  PR 3 (branch `p5.3-main-lua`, follow-ups 2 and 3 of PR 2): each run of `--run`, `--error-check`
+  and `--suite-check` reads a pipe at its end as stdin (`0< <(:)` in `run_split`'s bash wrapper,
+  every `exec` keeping the program the direct child; `run_and_capture` alone gives `/dev/null`,
+  which seeks), and each side's suite runs find a `lua` of their own build first on `PATH`
+  (`lua/work/native_bin/lua`, a link to the oracle, `argv[0]` still `lua`;
+  `lua/work/<layout>/bin/lua`, a script running the converted interpreter under the tier).
+  Survey 2026-10-29, `--suite-port false` under interp, the trees reconverted on the branch (the
+  converter unchanged since 04efd6a): 27 pass, 3 oracle, no fail, timeout or memory verdict in each
+  of the source, scc and single layouts; wall time with the conversion 13.0, 15.5 and 16.8
+  minutes, the suite runs 614, 748 and 834 s; the 27 passing files' converted seconds
+  within 6 s of PR 2's. The three oracles are now each the ANSI build's own (class a),
+  past the lane's two causes: `files.lua` passes its invalid-seek check (line 84) and stops at line
+  732, `'popen' not supported`; `main.lua` runs `lua -v` through the launcher and stops at line 97
+  (`main.lua:59: assertion failed!` in `checkout`): `echo ... | lua` with no script enters the
+  interactive mode and its `> ` prompts reach the output, because the ANSI build's
+  `lua_stdin_is_tty()` is the constant 1 (`lua.c:426`; `isatty(0)` only under `LUA_USE_POSIX`);
+  past it, line 530's `io.popen` would stop it too; `all.lua` stops at the same line, `main.lua`
+  being its first file. The converted side of an oracle does not run, so the three files have no
+  converted seconds and the converted launcher runs under the stand-in test alone. No libc
+  exactness difference, lowering bug, runtime panic, timeout or memory verdict surfaced.
   Next, cheapest first: (1) the JIT survey, `--suite-check --tier jit`, after
   lookibed/daScript#30 (F75: every protected call reports success under the JIT, so the suite
-  cannot pass there now); (2) the suite runs' stdin a pipe, not `/dev/null`, so `files.lua`'s
-  invalid-seek check holds under `_port=false` (a lane change with a stand-in test; the file then
-  stops at its `io.popen` block, still `oracle` on the ANSI build); (3) a `lua` launcher per side on
-  `PATH` for `main.lua` and `all.lua` under `_port=false` (the native binary for the oracle, the
-  converted interpreter under the tier for the converted run, `argv[0]` naming it), a lane change
-  with a stand-in test; `main.lua`'s 66 nested runs (`RUN` and `NoRun`) each pay the converted
-  interpreter's fixed cost; (4) whether the suite also runs against a `LUA_USE_POSIX` build pair (`io.popen`,
-  `mkstemp` for `os.tmpname`, `%Ex` in `os.date`), an owner ruling, the port being the ANSI build;
-  (5) the scc and single layouts' per-process compile, a perf row for P5.4. The exit criterion is
-  not claimed until the JIT and AOT lanes of the phase exit run.
+  cannot pass there now); (2) the converted side of an `oracle` file run too, its verdict whether it
+  fails the same way (exit code and stderr, masked as the comparison is): `main.lua` up to line 97
+  (two runs of the converted launcher), `files.lua` up to line 732 (its `_port` blocks before the
+  popen one), `all.lua` up to `main.lua`'s line, a lane change with a stand-in test; (3) whether
+  the suite also runs against a `LUA_USE_POSIX` build pair (`isatty` for `lua_stdin_is_tty`,
+  `io.popen`, `mkstemp` for `os.tmpname`, `%Ex` in `os.date`), an owner ruling, the port being the
+  ANSI build: with it `main.lua`'s 66 nested runs (`RUN` and `NoRun`) each pay the converted
+  interpreter's fixed cost, and `files.lua`'s later `_port` blocks (`io.popen` at 717, the date
+  table at 805, `%Ex`/`%Oy` at 841) run on both sides; (4) the scc and single layouts'
+  per-process compile, a perf row for P5.4. The exit criterion is not claimed until the JIT and AOT
+  lanes of the phase exit run.
 - **P5.4 Perf snapshot:** fib/nbody/binary-trees, converted-interp vs native lua. Data
   point only; no bar.
 - **Exit criterion:** Lua test suite passes under interp; JIT/AOT lanes at least compile
