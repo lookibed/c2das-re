@@ -29,6 +29,11 @@ gates and the review machinery. Codex sessions take their MCP wiring from
   coder subagent commits its steps as it goes; the lead does not squash them into one.
 - A pull request merges only when CI is green AND the item's review pass is closed with no
   BLOCKING or MAJOR finding open; a green check never overrides an open review.
+- Review effort scales with the pull request (owner rule 10, 2026-10-29). A pull request (a fix,
+  hygiene, one plan step) runs the fast preflight tier, the ports tests and the suites the change
+  touches, with one reviewer pass; a pull request adding a plan-item feature also runs the full C
+  suites (the ratchet) before it merges; a phase end (the last item of P5, P6, P7, P8) runs the
+  full preflight, the per-document dragon re-reads, the architecture audit and the perf re-record.
 - Each phase end is an annotated tag `v0.<phase>.0` with a GitHub release carrying the suite
   counts and the perf and readability numbers at that commit, and the ports repository
   (`lookibed/c2das-ports`) regenerated from that tag with `bash scripts/publish_ports.sh --commit
