@@ -114,4 +114,5 @@ function holding it, so a count is a callee's calls from one file; `lua.profile.
 call that crosses files, by callee and calling file's stem, sorted. `luac` shares the core and its
 profile. The conversion depends on the file only through the sidecar naming it. The file's
 provenance is its command and its inputs: `profile.das` run from the repository root over the
-release and clang `VERSIONS.md` pins, the commit that last wrote the file being its git history.
+release, clang and `nm` `VERSIONS.md` pins (an `nm` of another version, a failed listing or an empty
+one refused), the commit that last wrote the file being its git history.

@@ -76,6 +76,43 @@ def test_run_refusals(t : T?) {
     }
 }
 
+// a stand-in `nm` under `root`: `--version` prints `version` as binutils does, any other run exits 1
+def private stand_in_nm(root, version : string) : string {
+    let nm = path_join(get_full_file_name(root), "nm")
+    fwrite(nm, "#!/bin/sh\nif [ \"$1\" = --version ]; then echo \"GNU nm (GNU Binutils for Debian) {version}\"; exit 0; fi\nexit 1\n")
+    var out : string
+    run_and_capture(["chmod", "+x", nm], out, 30.0)
+    return nm
+}
+
+[test]
+def test_profile_refusals(t : T?) {
+    t |> run("profile.das refuses an nm other than the one VERSIONS.md pins, a missing one, a failed run and an object listing no text symbol") @(t : T?) {
+        var pin = ""
+        for (line in split(fread("VERSIONS.md"), "\n")) {
+            if (line |> starts_with("nm: ")) {
+                pin = split(slice(line, 4), " ")[0]
+            }
+        }
+        t |> success(!empty(pin))
+        let root = stand_in_root("c2das_lua_profile", LOBJECT)
+        t |> success(!empty(root))
+        fwrite(path_join(root, "VERSIONS.md"), "nm: {pin} (stand-in)\n")
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", path_join(root, "missing_nm")]), out), 1, out)
+        t |> success(out |> contains("missing_nm --version` printed `` (exit ") && out |> contains("VERSIONS.md pins nm `{pin}`"), out)
+        t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, "0.1")]), out), 1, out)
+        t |> success(out |> contains("printed `GNU nm (GNU Binutils for Debian) 0.1` (exit 0), VERSIONS.md pins nm `{pin}`"), out)
+        // the pinned version, every listing failing: refused at the first object
+        t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, pin)]), out), 1, out)
+        t |> success(out |> contains("nm -n ") && out |> contains("lapi.o exited 1"), out)
+        // the real nm over the stand-in `lapi.c`, a comment alone
+        t |> equal(run_in(root, daslang_argv("lua/profile.das", array<string>()), out), 1, out)
+        t |> success(out |> contains("lapi.o lists no text symbol"), out)
+        rmdir_rec(root)
+    }
+}
+
 // the full paths of the stand-in sources of `root`, each a JSON string, in link order
 def private manifest_tus(root : string; sources : array<string>) : string {
     let src = get_full_file_name(path_join(root, "lua/fetch/lua-5.4.8/src"))
