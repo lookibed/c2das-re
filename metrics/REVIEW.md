@@ -10,7 +10,8 @@ cause raised them all; a metric the base lacks counts as zero.
 
 **A diff that adds keys under `modules` in `readability_linux.json` names them in the message of
 the commit that adds them, or a whole `inputs` group when the diff adds every key of it, or names
-the `expected_pass.txt` change that adds them.**
+the change to the suite's `suites/<suite>/expected_pass.txt` (repo root) that adds them.** The
+`lua` and `perf` groups have no `expected_pass.txt`.
 
 **A diff that changes, beyond comments, any code in `readability.das`, `readability_count.das`
 or `readability_file.das` that decides which counts `readability_linux.json` records re-records
