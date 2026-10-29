@@ -236,7 +236,7 @@ def private suite_args(file : string) : array<string> =>
 // the prefix that runs a command in a scope of its own whose memory systemd caps at `memory`; the
 // kernel kills the command past it, which `run_and_capture` reports as the signal's number
 def private capped(memory : string) : array<string> =>
-    <- ["systemd-run", "--scope", "-p", "MemoryMax={memory}", "--quiet"]
+    <- ["systemd-run", "--scope", "--collect", "-p", "MemoryMax={memory}", "-p", "MemorySwapMax=0", "--quiet"]
 
 // `path` from the repository root, the runs entering the suite's folder
 def private full_path(path : string) : string => path_join(getcwd(), path)
@@ -313,7 +313,8 @@ def private ended(rc : int; side, memory : string; timeout : float) : string {
 
 // the verdict line of one test file: the native oracle `bin` run first, then the converted
 // interpreter at `das_path` under `tier`, each in the suite's folder, capped and timed; a run the
-// cap or the timeout ends is `memory` or `timeout`, the converted one skipped when it is the oracle's
+// cap or the timeout ends is `memory` or `timeout`, and an oracle that fails on its own is `oracle`:
+// in both the converted one is skipped
 def private suite_file(file, das_path, bin, tier : string; args : Args) : string {
     let dir = full_path(SUITE_DIR)
     if (!fexist(path_join(dir, file))) {
@@ -329,6 +330,9 @@ def private suite_file(file, das_path, bin, tier : string; args : Args) : string
     let native_end = ended(native_rc, "native", args.suite_memory, args.suite_timeout)
     if (!empty(native_end)) {
         return "{file} {native_end |> starts_with("memory") ? "memory" : "timeout"} {fmt(":.1f", native_seconds)} {native_end}"
+    }
+    if (native_rc != 0) {
+        return "{file} oracle {fmt(":.1f", native_seconds)} native exited {native_rc}"
     }
     var das_args <- capped(args.suite_memory)
     das_args |> push_from(["sh", "-c", "cd \"$0\" && exec \"$@\"", dir], daslang_cmd([for (m in CONVERTED_MODULES); full_path(m)]))
@@ -369,7 +373,7 @@ def private suite_check(das_path, bin, layout : string; args : Args) : bool {
     let out_dir = path_join(WORK, layout)
     mkdir_rec(out_dir)
     fwrite(path_join(out_dir, "suite.txt"), join(lines, "\n") + "\n")
-    let totals = join([for (verdict in ["pass", "fail", "timeout", "memory", "missing"]); "{counts?[verdict] ?? 0} {verdict}"], ", ")
+    let totals = join([for (verdict in ["pass", "fail", "timeout", "memory", "oracle", "missing"]); "{counts?[verdict] ?? 0} {verdict}"], ", ")
     to_log(LOG_INFO, "lua: suite under {args.tier} ({layout}): {totals} of {length(files)} files in {fmt(":.0f", double(get_time_usec(started)) / 1000000.0lf)} s\n")
     return (counts?["pass"] ?? 0) == length(files)
 }

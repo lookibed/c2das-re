@@ -872,7 +872,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   unchanged since P5.2): 30 of 30 files pass in each of the source, scc and single layouts, no
   fail, no timeout, no memory verdict at the 4G cap; wall time with the conversion 21.7, 24.3 and
   25.7 minutes, the suite runs 1131, 1291 and 1368 s. Native per file under the same cap: at most
-  7.0 s (`errors.lua`), `all.lua` 13.9 s. The converted run's seconds (source / scc / single):
+  6.8 s (`errors.lua`), `all.lua` 13.8 to 14.1 s. The converted run's seconds (source / scc / single):
   `all.lua` 493 / 518 / 511, `constructs.lua` 234 / 238 / 236, `errors.lua` 173 / 177 / 180,
   `sort.lua` 59 / 61 / 63, `verybig.lua` 23 / 28 / 31, `big.lua` 19 / 23 / 27, `gc.lua`
   17 / 22 / 25, `calls.lua` 15 / 20 / 23, every other file under 17 s; a run's fixed cost is
