@@ -1024,7 +1024,17 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   and late-signature lines in `emit.das` (5362-5371 vs 5664-5670, 5613-5626 vs 5654-5660), the
   `"{a}>{b}"` edge keys parsed in five places of `layout.das` (key by `int2`), the dedupe-and-sort
   of requires written three times, the three per-layout README loops in `publish.das`, the `[I]`
-  line strip in `test_layout.das` (third copy of `program_output`). Style items the audit rated
+  line strip in `test_layout.das` (third copy of `program_output`). The cheap folds the hygiene PR left for
+  size: `lua/profile.das` `holder` as `algorithm::upper_bound(...) - 1` (no test reaches it short of the full profile run);
+  `pipeline.das` `read_program_input` over `sidecar.das` `read_json_file`; `lua/run.das`
+  `write_manifest` over `cir.das` `write_program`; `occurs` shared by `test_layout.das` and
+  `test_link.das`; the torture verdict in a module both `test_suite_audit.das` and
+  `suites/gcc_torture/run.das` require; the constants and messages spelled twice (`lua/run.das`
+  `layouts_of` vs `sidecar.das` `LAYOUTS`, `publish.das` `ALL_LANES` vs `DAS_LANES` with
+  `LAYOUT_LANES`, the `program.modules.txt`/`program.layout.txt` literals vs `LAYOUT_REPORT`/
+  `MODULE_LIST`, the module-list reader in `clear_owned` and `publish.das`, `main.das`'s third copy
+  of the `--layout` `option_error`); `tiers.das` `bare_ident_of` beside `cir.das` `ident_of` (the
+  AOT and exe output names keep a leading digit bare). Style items the audit rated
   suggestion or nitpick (`/root/notes/audit_p5.1/reports/style_*.md`): the `-1` sentinels and the
   `16` exact-order limit named, `NO_CUT` written as `(1l << 62l) - 1l`, `LayoutNode.kind` an enum,
   the forced edges in their own table, one `why_*` prefix for the refusal functions, the
