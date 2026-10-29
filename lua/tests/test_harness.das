@@ -111,9 +111,9 @@ def test_profile_refusals(t : T?) {
         t |> success(out |> contains("missing_nm --version` printed `` (exit ") && out |> contains("VERSIONS.md pins nm `{pin}`"), out)
         t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, "0.1", 1)]), out), 1, out)
         t |> success(out |> contains("printed `GNU nm (GNU Binutils for Debian) 0.1` (exit 0), VERSIONS.md pins nm `{pin}`"), out)
-        // the pinned version, every listing failing: refused at the first object
+        // the pinned version, every listing failing: refused at the first object, no second one listed
         t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, pin, 1)]), out), 1, out)
-        t |> success(out |> contains("nm -n ") && out |> contains("lapi.o exited 1"), out)
+        t |> success(out |> contains("nm -n ") && out |> contains("lapi.o exited 1") && !(out |> contains("lcode.o")), out)
         // every listing empty: each object passes as one holding data alone, the binary is refused
         t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, pin, 0)]), out), 1, out)
         t |> success(out |> contains("lua_profiled lists no text symbol") && !(out |> contains("lapi.o")), out)
