@@ -76,10 +76,11 @@ def test_run_refusals(t : T?) {
     }
 }
 
-// a stand-in `nm` under `root`: `--version` prints `version` as binutils does, any other run exits 1
-def private stand_in_nm(root, version : string) : string {
+// a stand-in `nm` under `root`: `--version` prints `version` as binutils does, any other run prints
+// nothing and exits `listing_rc`
+def private stand_in_nm(root, version : string; listing_rc : int) : string {
     let nm = path_join(get_full_file_name(root), "nm")
-    fwrite(nm, "#!/bin/sh\nif [ \"$1\" = --version ]; then echo \"GNU nm (GNU Binutils for Debian) {version}\"; exit 0; fi\nexit 1\n")
+    fwrite(nm, "#!/bin/sh\nif [ \"$1\" = --version ]; then echo \"GNU nm (GNU Binutils for Debian) {version}\"; exit 0; fi\nexit {listing_rc}\n")
     var out : string
     run_and_capture(["chmod", "+x", nm], out, 30.0)
     return nm
@@ -87,7 +88,7 @@ def private stand_in_nm(root, version : string) : string {
 
 [test]
 def test_profile_refusals(t : T?) {
-    t |> run("profile.das refuses an nm other than the one VERSIONS.md pins, a missing one, a failed run and an object listing no text symbol") @(t : T?) {
+    t |> run("profile.das refuses an nm other than the one VERSIONS.md pins, a missing one, a failed listing and a binary listing no text symbol, and accepts an object holding data alone") @(t : T?) {
         var pin = ""
         for (line in split(fread("VERSIONS.md"), "\n")) {
             if (line |> starts_with("nm: ")) {
@@ -98,17 +99,28 @@ def test_profile_refusals(t : T?) {
         let root = stand_in_root("c2das_lua_profile", LOBJECT)
         t |> success(!empty(root))
         fwrite(path_join(root, "VERSIONS.md"), "nm: {pin} (stand-in)\n")
+        // the test suite and the benchmarks the profiled binary runs: the stand-in ignores its arguments
+        mkdir_rec(path_join(root, "lua/fetch/lua-5.4.8-tests"))
+        fwrite(path_join(root, "lua/fetch/lua-5.4.8-tests/all.lua"), "")
+        mkdir_rec(path_join(root, "ports/lua/bench"))
+        for (name in ["fib", "binary_trees", "nbody", "spectral_norm"]) {
+            fwrite(path_join(root, "ports/lua/bench/{name}.lua"), "")
+        }
         var out : string
         t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", path_join(root, "missing_nm")]), out), 1, out)
         t |> success(out |> contains("missing_nm --version` printed `` (exit ") && out |> contains("VERSIONS.md pins nm `{pin}`"), out)
-        t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, "0.1")]), out), 1, out)
+        t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, "0.1", 1)]), out), 1, out)
         t |> success(out |> contains("printed `GNU nm (GNU Binutils for Debian) 0.1` (exit 0), VERSIONS.md pins nm `{pin}`"), out)
         // the pinned version, every listing failing: refused at the first object
-        t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, pin)]), out), 1, out)
+        t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, pin, 1)]), out), 1, out)
         t |> success(out |> contains("nm -n ") && out |> contains("lapi.o exited 1"), out)
-        // the real nm over the stand-in `lapi.c`, a comment alone
-        t |> equal(run_in(root, daslang_argv("lua/profile.das", array<string>()), out), 1, out)
-        t |> success(out |> contains("lapi.o lists no text symbol"), out)
+        // every listing empty: each object passes as one holding data alone, the binary is refused
+        t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, pin, 0)]), out), 1, out)
+        t |> success(out |> contains("lua_profiled lists no text symbol") && !(out |> contains("lapi.o")), out)
+        // the real nm: the stand-in `lapi.c`, a comment alone, passes; `lua_answer` is the one call
+        // crossing files, once per run of the suite and each benchmark
+        t |> equal(run_in(root, daslang_argv("lua/profile.das", array<string>()), out), 0, out)
+        t |> equal(fread(path_join(root, "lua/lua.profile.json")), "\{\n  \"lua_answer\": \{\"lua\": 5\}\n\}\n")
         rmdir_rec(root)
     }
 }
