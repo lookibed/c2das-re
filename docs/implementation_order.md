@@ -532,8 +532,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   the JIT, and `luac -o` writes the native build's bytecode byte for byte for every file of the
   5.4.8 test suite. One module type-checks and compiles in about ten seconds at this size; the
   single-module-or-SCC-split decision is the owner's.
-  Ledger: Lua's error recovery is stubbed until P5.2 (`lua/lua.c2das`: `LUAI_THROW(L,c)=abort()`,
-  `LUAI_TRY(L,c,a)={ a }`, `luai_jmpbuf=int`): a Lua error aborts the process. Host-delivered
+  Ledger: Lua's error recovery was stubbed until P5.2 (`lua/lua.c2das`: `LUAI_THROW(L,c)=abort()`,
+  `LUAI_TRY(L,c,a)={ a }`, `luai_jmpbuf=int`), which removed the stub (P5.2 row). Host-delivered
   signals do arrive and `SIG_IGN`/`SIG_DFL` are honoured, but a converted handler never runs (das
   code cannot run from a host signal), so Lua's Ctrl-C hook (`lua.c`'s `laction`) never fires.
   `errno` after a `<math.h>` call the dialect maps to das `math::` (`log`, `pow`, `sqrt`, `exp`,
@@ -579,7 +579,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `doom/` joins at P6. The publisher runs by hand at each phase release; its CI
   invocation is a later pipeline item. The AOT lane is `not yet` for Lua: the AOT host passes the
   program no arguments (`converter/tiers.das`), and the test-suite row is `not yet` under every das
-  lane until P5.2 (a Lua error aborts the process). daslang's `json_boost` fails type inference on
+  lane until P5.3 runs Lua's own suite (P5.2 made a Lua error recoverable under the interpreter). daslang's `json_boost` fails type inference on
   `JV` of a struct holding an array of structs that holds an array of structs, so the capture keeps
   its cells flat (lookibed/daScript#23, `docs/probe-findings.md` F64); popen's timeout watchdog
   delays the return by up to 100 ms, so a sample's clock stops at the end of its output. A
@@ -829,7 +829,29 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   sidecar lists under `marshal` spells `typeinfo offsetof` over das's natural layout (8 where the
   pinned clang gives 5); the marshal path owes clang's offset.
 - **P5.2 pcall** via the setjmp lowering (`LUAI_THROW/LUAI_TRY` → `c_longjmp`/contained
-  pattern — the easy shape, per spec).
+  pattern — the easy shape, per spec; branch `p5.2-pcall`). `lua/lua.c2das` drops the stub
+  (`luai_jmpbuf=int`, `LUAI_THROW(L,c)=abort()`, `LUAI_TRY(L,c,a)={ a }`); with neither
+  `LUA_USE_LINUX` nor `LUA_USE_POSIX` defined `ldo.c` takes its ISO `setjmp`/`longjmp` pair:
+  `luaD_rawrunprotected` is the single-branch trampoline, `luaD_throw` a `c_longjmp` through the
+  handler chain. The one converter change: the layout law's relaxed search takes a record with a
+  `jmp_buf` field, padding after `CJmpBuf` to clang's offsets and size (`struct lua_longjmp`, 216
+  bytes), where it failed closed; a packed one still refuses. Fixture
+  `converter/tests/fixtures/p5_lua_protect.c` (ldo.c's struct, runner and throw, nested, rethrown
+  and three-frames-deep errors) matches the native build. `lua/run.das --error-check` runs eight
+  checks against the native oracle (now run under the name `lua`): `pcall(error, 'boom')`, an
+  uncaught `error('x')` (exit 1, the message on stderr), nested `pcall`, `1 + {}`, a table error
+  object, an error in a coroutine, `xpcall` with a handler, `string.rep`'s size error. Under the
+  interpreter all eight agree in the source, scc and single layouts, with the standing checks (a
+  string/table/math script, `luac -o` 33 of 33 byte for byte). Under the JIT the standing checks
+  pass in every layout and the error checks agree 0 of 8: a `return` inside a `try` or `recover`
+  arm leaves only the arm there (`docs/probe-findings.md` F75, lookibed/daScript#30), so
+  `luaD_rawrunprotected`'s `return lj.status` falls through to the trailing 0 and every protected
+  call reports success. Probes: a panic crosses `[no_jit]` and JIT frames both ways, and unwinds
+  through a late-bound slot's `invoke` across modules under both tiers. Readability re-recorded:
+  every metric's delta 0, the `lua/*` keys unchanged.
+  Ledger: the JIT lane of Lua's error recovery waits for lookibed/daScript#30 (or a converter
+  shape keeping returns out of the `try` arm, the owner's ruling); the ports README's Lua claim
+  and its test-suite `not yet` text regenerate at the next publish; perf not re-captured.
 - **P5.3 Lua's own test suite** under interp. Expect a long tail of libc exactness bugs
   (strtod, number formatting, string.format) — each fix lands with a fixture.
 - **P5.4 Perf snapshot:** fib/nbody/binary-trees, converted-interp vs native lua. Data
