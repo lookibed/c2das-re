@@ -69,16 +69,6 @@ def c_unreachable {
 //! `[sideeffects]` keeps the call, since das drops a call to an empty function and its arguments'
 //! effects with it (probes/test_functions.das)
 [sideeffects]
-def c_prefetch(_addr : auto) {
-    pass
-}
-
-[sideeffects]
-def c_prefetch(_addr : auto; _rw : int) {
-    pass
-}
-
-[sideeffects]
-def c_prefetch(_addr : auto; _rw, _locality : int) {
+def c_prefetch(_addr : auto; _rw : int = 0; _locality : int = 3) {
     pass
 }
