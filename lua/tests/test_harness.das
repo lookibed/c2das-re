@@ -308,6 +308,17 @@ def test_suite_check(t : T?) {
         t |> success(suite |> starts_with("pm.lua fail ") && suite |> contains(" stdout line 1: native ``, interp `streamed`\n"), suite)
         rmdir_rec(root)
     }
+    t |> run("--suite-port sets the global `_port` each test file gets, true by default") @(t : T?) {
+        let root = suite_root("c2das_lua_suite_port", [("pm.lua", "port")])
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "pm.lua", "--suite-port", "false", "--filter", "lua", "--layout", "single"]), out), 0, out)
+        t |> success(fread(path_join(root, "lua/work/single/suite.txt")) |> starts_with("pm.lua pass "), out)
+        // under the default the stand-in sees `_port=true` and fails natively
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "pm.lua", "--filter", "lua", "--layout", "single"]), out), 1, out)
+        let suite = fread(path_join(root, "lua/work/single/suite.txt"))
+        t |> success(suite |> starts_with("pm.lua oracle ") && suite |> contains(" native exited 6\n"), suite)
+        rmdir_rec(root)
+    }
     t |> run("--suite-filter runs one file under the interpreter and the JIT, passing; a file outside the suite and a cap systemd refuses are refused") @(t : T?) {
         let root = suite_root("c2das_lua_suite_one", [("pm.lua", "hello")])
         for (tier in ["interp", "jit"]) {
@@ -319,6 +330,8 @@ def test_suite_check(t : T?) {
         var out : string
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "heavy.lua"]), out), 1, out)
         t |> success(out |> contains("--suite-filter names a file of the suite, not `heavy.lua`"), out)
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-port", "maybe"]), out), 1, out)
+        t |> success(out |> contains("--suite-port is true or false, not `maybe`"), out)
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-memory", "lots"]), out), 1, out)
         t |> success(out |> contains("MemoryMax=lots") && out |> contains("which fails"), out)
         rmdir_rec(root)
