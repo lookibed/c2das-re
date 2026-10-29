@@ -213,6 +213,17 @@ def test_review_gate(t : T?) {
         t |> success(out |> contains("`odd\tf\tr\tP4a`: a skip line is id, feature, reason, ledger row id"), out)
         t |> success(!(out |> contains("`live`")), out)
         t |> success(!(out |> contains("`none`")), out)
+        t |> success(!(out |> contains("filter_rules.das")), out)
+    }
+    t |> run("suites/REVIEW.das names a filter rule whose phase a v0.<N>.0 tag closed") @(t : T?) {
+        var out : string
+        let daslang = get_das_root() + "/bin/daslang"
+        let git = "git -c user.name=gate -c user.email=gate@invalid"
+        let script = "repo=$(pwd); cd \"$1\" && git init -q && {git} commit -q --allow-empty -m tag && git tag v0.7.0 && \"$2\" \"$repo/suites/REVIEW.das\""
+        let rc = run_and_capture(["bash", "-c", script, "gate", root, daslang], out, 120.0)
+        t |> equal(rc, 1, out)
+        t |> success(out |> contains("suites/gcc_torture/filter_rules.das: the rule for `_Complex` names P7.5"), out)
+        t |> success(!(out |> contains("names never")), out)
     }
     rmdir_rec(root)
 }

@@ -4,6 +4,7 @@ require daslib/strings_boost
 require daslib/fio
 require dastest/review_gate
 require suite_files
+require gcc_torture/filter_rules
 require ../converter/cir.das
 require ../metrics/readability_file.das
 
@@ -25,7 +26,7 @@ def private check_suite(suite : string; highest_closed : int) {
     for (line in read_lines(skip_path)) {
         var inscope fields <- split(line, "\t")
         if (length(fields) != 4 || !phase_well_formed(fields[3])) {
-            gate_finding(skip_path, "`{line}`: a skip line is id, feature, reason, ledger row id (P<n>.<m>, or never for a construct the dialect excludes or clang rejects), tab-separated")
+            gate_finding(skip_path, "`{line}`: a skip line is id, feature, reason, ledger row id (P<n> or P<n>.<m>, the minor number may end in one lowercase letter) or never, tab-separated")
             continue
         }
         if (key_exists(passing, fields[0])) {
@@ -58,6 +59,15 @@ def private check_readability_inputs {
     }
 }
 
+// every filter rule names a live ledger row id or never, as the skip lines it writes do
+def private check_rule_phases(highest_closed : int) {
+    for (rule in RULES) {
+        if (!phase_well_formed(rule.phase) || names_closed_phase(rule.phase, highest_closed)) {
+            gate_finding("suites/gcc_torture/filter_rules.das", "the rule for `{rule.feature}` names {rule.phase}: a rule's phase is a ledger row id of a phase above P{highest_closed} or never")
+        }
+    }
+}
+
 // the highest closed phase: the repository's `v0.<N>.0` tags, at least the floor
 def private closed_phase : int {
     var listed : string
@@ -72,6 +82,7 @@ def main : int {
     check_suite("gcc_torture", highest_closed)
     check_suite("csmith", highest_closed)
     check_seeds("csmith")
+    check_rule_phases(highest_closed)
     gate_untracked(["suites/*/fetch", "suites/*/work"], "a suite's fetch/ or work/ folder is never committed")
     check_readability_inputs()
     return gate_verdict("suites")

@@ -3,48 +3,48 @@
 **Read `REVIEW_COMMON.md` (repo root) first - its contract binds this checklist.** Architecture
 doc: `ARCHITECTURE.md`. Planned work: `docs/implementation_order.md`.
 
-**A diff that leaves an id's verdict inputs unchanged - the suite's pin in `VERSIONS.md` (repo
-root) and, for csmith, what `csmith_program` (`csmith/generate.das`) writes for the seed,
-`NATIVE_FLAGS` (`csmith/run.das`) and the `gcc:` line of `VERSIONS.md` - removes that id from
-`expected_pass.txt` only by adding its `skip.txt` line in the same change; otherwise it fixes
-the regression.**
+**A diff that changes an id's verdict inputs - a suite's pin in `VERSIONS.md` (repo root;
+csmith's is its `csmith:` line), what `csmith_program` (`csmith/generate.das`) writes for a seed,
+or the csmith reference compiler's flags (`NATIVE_FLAGS` in `csmith/run.das`) or version (the
+`gcc:` line of `VERSIONS.md`) - re-records that suite's `expected_pass.txt` with `--update` from a
+run that judges every listed id, in the same change; any other diff removes an id from
+`expected_pass.txt` only by adding its `skip.txt` line in the same change, and otherwise fixes the
+regression.** A run that judges every listed id is, for csmith, `--seeds 0` with no `--seed` or
+`--from`, and for c-testsuite and gcc-torture a run with no `--filter`.
+
+**A diff that changes an id's verdict inputs keeps a `skip.txt` line only for an id the line
+marks `never`, or one that a run made with the line removed still refuses with an error naming
+the line's construct (for csmith a `--seed` run naming the id or a `--from` file listing it, for c-testsuite and
+gcc-torture a run with no `--filter`).**
 
 **A diff adds or rewrites an id's `skip.txt` line naming a ledger row only for a test that uses
-a C construct the converter refuses with an error naming it (the dumper, the emitter or the
-compile check of the emitted module); the line names that construct and the id of the
-`docs/implementation_order.md` row whose text names it, as the row's bold head spells it,
-never a bare phase `P<n>`.**
+a C construct refused with an error naming it by the dumper, the emitter, the compile check of
+the emitted module, or clang's diagnostics.**
 
-**A diff adds or rewrites a `skip.txt` line marked `never` only when the converter's `--target`
-dialect excludes the construct the line names, or clang (the converter's frontend) rejects the
-program.**
+**A `skip.txt` line a diff adds or rewrites names its construct and the id of the
+`docs/implementation_order.md` row whose text names it, as the row's bold head spells it; a
+line may name the class of clang diagnostics that refuses the test as its construct when the row
+names that class.**
+
+**A diff adds or rewrites a `skip.txt` line marked `never` only for a construct standard C99 does
+not define, and the line's reason states why: no das emulation can exist, the converter's
+`--target` dialect excludes it, or clang (the converter's frontend) rejects the program.**
 
 **A diff that changes `gcc_torture/skip.txt` leaves it equal to what `gcc_torture/filter.das`
-writes over the pinned tree and the diff's own `expected_pass.txt`, and gives every entry of
-`RULES` (`gcc_torture/filter_rules.das`) a `phase` that is a ledger row id or `never`, the same as
-the lines it writes.**
+writes over the pinned tree and the diff's own `expected_pass.txt`.**
 
-**A diff that adds or rewrites a `skip.txt` line names in its phase column `never` or a row of a
-phase above the highest closed one (the highest `v0.<N>.0` tag, at least phase 4), never a
-closed phase's row.**
+**A diff to `csmith/run.das` keeps `WORKER_BUDGET` below `WORKER_TIMEOUT` and caps every timed
+child at what is left of the worker's budget, so the driver never kills a worker while a timed
+child is alive.**
 
 **Never weaken a check in `REVIEW.das` - fix what it flags instead.**
 
-**A diff that changes a suite's pin in `VERSIONS.md` (repo root; csmith's is its `csmith:`
-line), what `csmith_program` (`csmith/generate.das`) writes for a seed, or the reference
-compiler of the csmith differential - its flags (`NATIVE_FLAGS` in `csmith/run.das`) or its
-version (the `gcc:` line of `VERSIONS.md`) - re-records that suite's `expected_pass.txt` with
-`--update` from a run with no `--filter` (for csmith, with `--seeds 0` and no `--seed` or
-`--from`, which judges every seed `expected_pass.txt` lists), and keeps a `skip.txt` line only
-for an id that a run made with the line removed still refuses with an error naming the line's
-construct, or one the line marks `never` (for csmith a `--seed` run naming the id or a `--from`
-run naming it, for c-testsuite and gcc-torture a run with no `--filter`), in the same change.**
-
-**A diff that changes a suite's `expected_pass.txt` puts in its commit message the summary line -
-the runner's `<suite>: <status> <count>, ...` - of every `--update` run that wrote it, and names
-each id it adds or removes by hand.**
+**A diff that changes a suite's `expected_pass.txt` puts in its commit message the summary line
+of every `--update` run that wrote it - the runner's `<suite>: <status> <count>, ...`, or an
+`--audit-skips --update` run's `<suite> skip audit: <n> passing ids joined ...` - and names each
+id it adds or removes by hand.**
 
 **A diff that removes an id's line from `skip.txt` lists that id in `expected_pass.txt` exactly
-when an `--update` run made after that removal judged it passing: for csmith a `--seed` run
-naming the id or a `--from` file listing it, for c-testsuite and gcc-torture a run with no
-`--filter`, which judges every id neither file lists.**
+when an `--update` run judged it passing: an `--audit-skips --update` run made before the
+removal, which joins the ids it passes, or a run made after the removal (for csmith a `--seed` run naming the id or a `--from` file listing it, for c-testsuite and
+gcc-torture a run with no `--filter`).**
