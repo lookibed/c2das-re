@@ -163,5 +163,31 @@ def test_bit_intrinsics(t : T?) {
         t |> equal(ctz(0ul), 64ul)
         t |> equal(popcnt(0xFFul), 8ul)
         t |> equal(clz(0u), 31u)
+        var bits = 0xF0F0u
+        t |> equal(popcnt(bits), 8u)
+        bits = 0u
+        t |> equal(popcnt(bits), 0u)
+    }
+    t |> run("reinterpret between double and uint64, float and uint copies the bits both ways, a NaN payload and the negative zero's sign included (c_builtins c_signbit)") @(t : T?) {
+        var d = -0.0lf
+        t |> equal(unsafe(reinterpret<uint64>(d)), 0x8000000000000000ul)
+        d = 1.0lf
+        t |> equal(unsafe(reinterpret<uint64>(d)), 0x3FF0000000000000ul)
+        var dbits = 0x7FF8000000000123ul
+        let dnan = unsafe(reinterpret<double>(dbits))
+        t |> equal(dnan != dnan, true)
+        t |> equal(unsafe(reinterpret<uint64>(dnan)), 0x7FF8000000000123ul)
+        dbits = 0xC000000000000000ul
+        t |> equal(unsafe(reinterpret<double>(dbits)), -2.0lf)
+        var f = -0.0f
+        t |> equal(unsafe(reinterpret<uint>(f)), 0x80000000u)
+        f = 1.0f
+        t |> equal(unsafe(reinterpret<uint>(f)), 0x3F800000u)
+        var fbits = 0x7FC00123u
+        let fnan = unsafe(reinterpret<float>(fbits))
+        t |> equal(fnan != fnan, true)
+        t |> equal(unsafe(reinterpret<uint>(fnan)), 0x7FC00123u)
+        fbits = 0xC0000000u
+        t |> equal(unsafe(reinterpret<float>(fbits)), -2.0f)
     }
 }
