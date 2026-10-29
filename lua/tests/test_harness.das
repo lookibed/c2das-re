@@ -315,28 +315,6 @@ def test_suite_check(t : T?) {
         t |> success(suite |> starts_with("pm.lua fail ") && suite |> contains(" stdout line 1: native ``, interp `streamed`\n"), suite)
         rmdir_rec(root)
     }
-    t |> run("--suite-check gives each run a stdin that does not seek, as files.lua's invalid-seek check expects of a pipe") @(t : T?) {
-        let root = suite_root("c2das_lua_suite_seek", [("files.lua", "seek")])
-        var out : string
-        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "files.lua", "--filter", "lua", "--layout", "single"]), out), 0, out)
-        let suite = fread(path_join(root, "lua/work/single/suite.txt"))
-        t |> success(suite |> starts_with("files.lua pass "), suite)
-        rmdir_rec(root)
-    }
-    t |> run("--suite-check puts a `lua` on each side's PATH: the native oracle for the native run, the converted interpreter under the tier for the converted one") @(t : T?) {
-        let root = suite_root("c2das_lua_suite_launch", [("main.lua", "launch"), ("self.lua", "self")])
-        var out : string
-        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "main.lua", "--filter", "lua", "--layout", "single"]), out), 0, out)
-        let suite = fread(path_join(root, "lua/work/single/suite.txt"))
-        t |> success(suite |> starts_with("main.lua pass "), suite)
-        t |> success(fread(path_join(root, "lua/work/single/bin/lua")) |> contains("/lua/work/single/lua/lua.das' '--' \"$@\""), out)
-        // a file where the launcher's folder goes: refused before any run
-        mkdir_rec(path_join(root, "lua/work/scc"))
-        fwrite(path_join(root, "lua/work/scc/bin"), "")
-        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "main.lua", "--filter", "lua", "--layout", "scc"]), out), 1, out)
-        t |> success(out |> contains("cannot write the suite's `lua` launchers") && !fexist(path_join(root, "lua/work/scc/suite.txt")), out)
-        rmdir_rec(root)
-    }
     t |> run("--suite-port sets the global `_port` each test file gets, true by default") @(t : T?) {
         let root = suite_root("c2das_lua_suite_port", [("pm.lua", "port")])
         var out : string
@@ -420,6 +398,32 @@ def test_suite_cap(t : T?) {
         // a count past int64 is no byte count
         t |> equal(run_in(root, with_path(refusing_shims(root, ["systemd-run"]), daslang_argv("lua/run.das", ["--suite-check", "--suite-memory", "10000000T"])), out), 1, out)
         t |> success(out |> contains("not `10000000T`"), out)
+        rmdir_rec(root)
+    }
+}
+
+[test]
+def test_suite_environment(t : T?) {
+    t |> run("--suite-check gives each run a stdin that does not seek, as files.lua's invalid-seek check expects of a pipe") @(t : T?) {
+        let root = suite_root("c2das_lua_suite_seek", [("files.lua", "seek")])
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "files.lua", "--filter", "lua", "--layout", "single"]), out), 0, out)
+        let suite = fread(path_join(root, "lua/work/single/suite.txt"))
+        t |> success(suite |> starts_with("files.lua pass "), suite)
+        rmdir_rec(root)
+    }
+    t |> run("--suite-check puts a `lua` on each side's PATH: the native oracle for the native run, the converted interpreter under the tier for the converted one") @(t : T?) {
+        let root = suite_root("c2das_lua_suite_launch", [("main.lua", "launch"), ("self.lua", "self")])
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "main.lua", "--filter", "lua", "--layout", "single"]), out), 0, out)
+        let suite = fread(path_join(root, "lua/work/single/suite.txt"))
+        t |> success(suite |> starts_with("main.lua pass "), suite)
+        t |> success(fread(path_join(root, "lua/work/single/bin/lua")) |> contains("/lua/work/single/lua/lua.das' '--' \"$@\""), out)
+        // a file where the launcher's folder goes: refused before any run
+        mkdir_rec(path_join(root, "lua/work/scc"))
+        fwrite(path_join(root, "lua/work/scc/bin"), "")
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "main.lua", "--filter", "lua", "--layout", "scc"]), out), 1, out)
+        t |> success(out |> contains("cannot write the suite's `lua` launchers") && !fexist(path_join(root, "lua/work/scc/suite.txt")), out)
         rmdir_rec(root)
     }
 }
