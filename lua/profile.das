@@ -63,14 +63,16 @@ def private ran(argv : array<string>; timeout : float) : bool {
     return rc == 0
 }
 
-// the text symbols of an object or a binary, `nm -n`: each address with its name; a failed `nm`
-// or one that lists no text symbol is logged and gives none
-def private text_symbols(nm, path : string) : array<tuple<at : uint64; name : string>> {
+// the text symbols of an object or a binary, `nm -n`: each address with its name; a failed `nm` is
+// logged and sets `failed`. A listing with no text symbol is legitimate for an object holding data
+// alone (`lctype.o`, `lopcodes.o`) and refused only for the linked binary, by its caller
+def private text_symbols(nm, path : string; var failed : bool&) : array<tuple<at : uint64; name : string>> {
     var out : string
     let rc = run_and_capture([nm, "-n", path], out, 60.0)
     var syms : array<tuple<at : uint64; name : string>>
     if (rc != 0) {
         to_log(LOG_ERROR, "lua: profile: {nm} -n {path} exited {rc}:\n{out}\n")
+        failed = true
         return <- syms
     }
     for (ln in split(out, "\n")) {
@@ -78,9 +80,6 @@ def private text_symbols(nm, path : string) : array<tuple<at : uint64; name : st
         if (length(parts) == 3 && (parts[1] == "T" || parts[1] == "t")) {
             syms |> push((at = to_uint64(parts[0], true), name = parts[2]))
         }
-    }
-    if (empty(syms)) {
-        to_log(LOG_ERROR, "lua: profile: {nm} -n {path} lists no text symbol\n")
     }
     return <- syms
 }
@@ -166,8 +165,9 @@ def main : int {
             return 1
         }
         objects |> push(obj)
-        var inscope file_syms <- text_symbols(args.nm, obj)
-        if (empty(file_syms)) {
+        var nm_failed = false
+        var inscope file_syms <- text_symbols(args.nm, obj, nm_failed)
+        if (nm_failed) {
             return 1
         }
         for (s in file_syms) {
@@ -190,8 +190,13 @@ def main : int {
     if (!ok) {
         return 1
     }
-    let syms <- text_symbols(args.nm, bin)
+    var nm_failed = false
+    let syms <- text_symbols(args.nm, bin, nm_failed)
+    if (nm_failed) {
+        return 1
+    }
     if (empty(syms)) {
+        to_log(LOG_ERROR, "lua: profile: {args.nm} -n {bin} lists no text symbol\n")
         return 1
     }
     write_profile(syms, raw, unit_of)
