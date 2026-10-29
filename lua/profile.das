@@ -31,6 +31,25 @@ struct Args {
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
     show_help : bool
+    @clarg_doc = "the binutils nm that reads the symbol tables, at the version VERSIONS.md pins"
+    nm : string = "nm"
+}
+
+// `nm --version`'s first line against the version the `nm:` line of VERSIONS.md pins: "" when they
+// agree, else the refusal; a missing or failing `nm` prints no version and is refused
+def private nm_pin_mismatch(nm : string) : string {
+    var pin = ""
+    for (line in split(fread("VERSIONS.md"), "\n")) {
+        if (line |> starts_with("nm: ")) {
+            pin = split(slice(line, 4), " ")[0]
+        }
+    }
+    var out : string
+    let rc = run_and_capture([nm, "--version"], out, 30.0)
+    let first = split(out, "\n")[0]
+    let words <- split(strip(first), " ")
+    let version = rc == 0 ? words[length(words) - 1] : ""
+    return version == pin ? "" : "`{nm} --version` printed `{strip(first)}` (exit {rc}), VERSIONS.md pins nm `{pin}`"
 }
 
 // `argv` run, its output logged when it fails; whether it exited 0
@@ -43,16 +62,24 @@ def private ran(argv : array<string>; timeout : float) : bool {
     return rc == 0
 }
 
-// the text symbols of an object or a binary, `nm -n`: each address with its name
-def private text_symbols(path : string) : array<tuple<at : uint64; name : string>> {
+// the text symbols of an object or a binary, `nm -n`: each address with its name; a failed `nm`
+// or one that lists no text symbol is logged and gives none
+def private text_symbols(nm, path : string) : array<tuple<at : uint64; name : string>> {
     var out : string
-    run_and_capture(["nm", "-n", path], out, 60.0)
+    let rc = run_and_capture([nm, "-n", path], out, 60.0)
     var syms : array<tuple<at : uint64; name : string>>
+    if (rc != 0) {
+        to_log(LOG_ERROR, "lua: profile: {nm} -n {path} exited {rc}:\n{out}\n")
+        return <- syms
+    }
     for (ln in split(out, "\n")) {
         var inscope parts <- split(strip(ln), " ")
         if (length(parts) == 3 && (parts[1] == "T" || parts[1] == "t")) {
             syms |> push((at = to_uint64(parts[0], true), name = parts[2]))
         }
+    }
+    if (empty(syms)) {
+        to_log(LOG_ERROR, "lua: profile: {nm} -n {path} lists no text symbol\n")
     }
     return <- syms
 }
@@ -74,53 +101,9 @@ def private holder(syms : array<tuple<at : uint64; name : string>>; at : uint64)
     return found
 }
 
-[export, arch(at="ARCHITECTURE.md#profile")]
-def main : int {
-    var args = Args()
-    let early = cli_prologue(args, "lua/profile.das")
-    if (early >= 0) {
-        return early
-    }
-    mkdir_rec(WORK)
-    let counter = path_join(WORK, "counter.c")
-    fwrite(counter, COUNTER)
-    let clang = default_clang()
-    if (!ran([clang, "-O0", "-w", "-c", "-o", path_join(WORK, "counter.o"), counter], 120.0)) {
-        return 1
-    }
-    // each file compiled apart, so its functions name its file
-    var unit_of : table<string; string>
-    var objects : array<string>
-    objects |> reserve(length(program_sources("lua")))
-    for (c_path in program_sources("lua")) {
-        let stem = file_stem(c_path)
-        let obj = path_join(WORK, "{stem}.o")
-        if (!ran([clang, "-O0", "-w", "-funsigned-char", "-fno-pie", "-finstrument-functions", "-c", "-o", obj, c_path], 300.0)) {
-            return 1
-        }
-        objects |> push(obj)
-        for (s in text_symbols(obj)) {
-            unit_of[s.name] = stem
-        }
-    }
-    let bin = path_join(get_full_file_name(WORK), "lua_profiled")
-    var link <- [clang, "-no-pie", "-o", bin]
-    link |> push_from(objects, [path_join(WORK, "counter.o"), "-lm"])
-    if (!ran(link, 300.0)) {
-        return 1
-    }
-    let raw = path_join(get_full_file_name(WORK), "profile.raw")
-    remove(raw)
-    set_env_variable("C2DAS_PROFILE_OUT", raw)
-    var ok = ran(["sh", "-c", "cd \"$0\" && exec \"$@\"", TESTS, bin, "-e", "_port=true", "all.lua"], 3600.0)
-    for (name in BENCH) {
-        ok = ran([bin, get_full_file_name("ports/lua/bench/{name}.lua")], 600.0) && ok
-    }
-    if (!ok) {
-        return 1
-    }
-    let syms <- text_symbols(bin)
-    // by callee, by the caller's file: the calls that cross files
+// the calls `raw` counts that cross files, by callee and the caller's file, written to `PROFILE`;
+// `syms` resolves each address to its function, `unit_of` each function to its file
+def private write_profile(syms : array<tuple<at : uint64; name : string>>; raw : string; unit_of : table<string; string>) {
     var counts : table<string; table<string; int64>>
     for (ln in split(fread(raw), "\n")) {
         var inscope parts <- split(strip(ln), " ")
@@ -150,5 +133,66 @@ def main : int {
     }
     fwrite(PROFILE, "\{\n{join(lines, ",\n")}\n\}\n")
     to_log(LOG_INFO, "lua: profile: {length(callees)} functions called across files, written to {PROFILE}\n")
+}
+
+[export, arch(at="ARCHITECTURE.md#profile")]
+def main : int {
+    var args = Args()
+    let early = cli_prologue(args, "lua/profile.das")
+    if (early >= 0) {
+        return early
+    }
+    let pin_error = nm_pin_mismatch(args.nm)
+    if (!empty(pin_error)) {
+        to_log(LOG_ERROR, "lua: profile: {pin_error}\n")
+        return 1
+    }
+    mkdir_rec(WORK)
+    let counter = path_join(WORK, "counter.c")
+    fwrite(counter, COUNTER)
+    let clang = default_clang()
+    if (!ran([clang, "-O0", "-w", "-c", "-o", path_join(WORK, "counter.o"), counter], 120.0)) {
+        return 1
+    }
+    // each file compiled apart, so its functions name its file
+    var unit_of : table<string; string>
+    var objects : array<string>
+    objects |> reserve(length(program_sources("lua")))
+    for (c_path in program_sources("lua")) {
+        let stem = file_stem(c_path)
+        let obj = path_join(WORK, "{stem}.o")
+        if (!ran([clang, "-O0", "-w", "-funsigned-char", "-fno-pie", "-finstrument-functions", "-c", "-o", obj, c_path], 300.0)) {
+            return 1
+        }
+        objects |> push(obj)
+        var inscope file_syms <- text_symbols(args.nm, obj)
+        if (empty(file_syms)) {
+            return 1
+        }
+        for (s in file_syms) {
+            unit_of[s.name] = stem
+        }
+    }
+    let bin = path_join(get_full_file_name(WORK), "lua_profiled")
+    var link <- [clang, "-no-pie", "-o", bin]
+    link |> push_from(objects, [path_join(WORK, "counter.o"), "-lm"])
+    if (!ran(link, 300.0)) {
+        return 1
+    }
+    let raw = path_join(get_full_file_name(WORK), "profile.raw")
+    remove(raw)
+    set_env_variable("C2DAS_PROFILE_OUT", raw)
+    var ok = ran(["sh", "-c", "cd \"$0\" && exec \"$@\"", TESTS, bin, "-e", "_port=true", "all.lua"], 3600.0)
+    for (name in BENCH) {
+        ok = ran([bin, get_full_file_name("ports/lua/bench/{name}.lua")], 600.0) && ok
+    }
+    if (!ok) {
+        return 1
+    }
+    let syms <- text_symbols(args.nm, bin)
+    if (empty(syms)) {
+        return 1
+    }
+    write_profile(syms, raw, unit_of)
     return 0
 }
