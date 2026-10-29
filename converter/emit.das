@@ -1184,15 +1184,6 @@ def private callee_name(var em : Emitter; tu : CirTu; fn : CirExpr?; loc : CirLo
     return libc_call(libc)
 }
 
-// the C name a call's callee spells, "" for a call through a pointer
-def private called_name(x : CirExpr) : string {
-    var target = x.fn
-    if (target != null && target.e == "cast" && target.cast_kind == "FunctionToPointerDecay") {
-        target = target.a
-    }
-    return target != null && target.e == "ref" ? target.name : ""
-}
-
 // `alloca(n)`: a bump on the function's arena (docs/stdlib-examples.md "alloca"): the guard
 // panics past the limit, since das's `assert` is a debug check; the offset rounds to 16
 def private emit_alloca(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {

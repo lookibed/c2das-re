@@ -11,6 +11,7 @@ require daslib/random
 require math
 require ../suite_runner.das
 require ../../converter/pipeline.das
+require ../../converter/cir.das
 require ../../converter/tiers.das
 require verdict
 require generate

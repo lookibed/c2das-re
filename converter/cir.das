@@ -5,6 +5,7 @@ module cir public
 require strings
 require daslib/strings_boost
 require daslib/json_boost
+require daslib/fio
 
 //! The C-IR interchange format (docs/c-ir-spec.md) as das values, with the canonical writer and
 //! the reader: one struct per spec table, kind-tagged the way the spec tags them (`k`, `s`, `e`).
@@ -175,8 +176,25 @@ def is_digit_run(text : string; from : int) : bool {
     return digits
 }
 
+//! The C name a call's callee spells, below the decay of a function to its pointer; "" for a
+//! call through a pointer.
+def called_name(x : CirExpr) : string {
+    var target = x.fn
+    if (target != null && target.e == "cast" && target.cast_kind == "FunctionToPointerDecay") {
+        target = target.a
+    }
+    return target != null && target.e == "ref" ? target.name : ""
+}
+
 //! Whether `target` is the `msvc` dialect's.
 def is_msvc(target : CirTarget) : bool => find(target.triple, "windows") >= 0
+
+//! The file name of `c_path` up to its first dot: the stem every artifact of the file is named by.
+def file_stem(c_path : string) : string {
+    let name = base_name(c_path)
+    let dot = find(name, ".")
+    return dot < 0 ? name : slice(name, 0, dot)
+}
 
 //! A file stem as an identifier: every other character an underscore, a leading digit kept
 //! behind one, since `00099__f` is not a name.

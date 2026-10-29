@@ -115,13 +115,6 @@ def private compile_errors(das_path : string) : string {
     return report
 }
 
-//! The file name of `c_path` up to its first dot: the stem every artifact of the file is named by.
-def file_stem(c_path : string) : string {
-    let name = base_name(c_path)
-    let dot = find(name, ".")
-    return dot < 0 ? name : slice(name, 0, dot)
-}
-
 // why an option value given to `convert` is refused, "" when each is empty or a mode
 def private option_error(param_writes, loops, layout : string) : string {
     if (!empty(param_writes) && !is_param_writes(param_writes)) {
@@ -444,12 +437,12 @@ def private cut_options(side : Sidecar; var error : string&) : CutOptions {
                 break
             }
             for (unit, count in keys(by_unit as _object), values(by_unit as _object)) {
-                let text = write_json(count)
-                if (empty(text) || has_value([for (ch in text); is_number(ch)], false)) {
-                    error = "layout.profile: `{name}`'s count from `{unit}` in {side.layout_profile} is no count of 0 or more: {text}"
+                let calls = json_count(count)
+                if (calls < 0l) {
+                    error = "layout.profile: `{name}`'s count from `{unit}` in {side.layout_profile} is no count of 0 or more: {write_json(count)}"
                     break
                 }
-                opts.profile[name][unit] = to_int64(text)
+                opts.profile[name][unit] = calls
             }
             break if (!empty(error))
         }

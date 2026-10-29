@@ -9,6 +9,7 @@ require daslib/fio
 require daslib/clargs
 require daslib/json_boost
 require ../converter/pipeline.das
+require ../converter/cir.das
 require ../converter/tiers.das
 require ../converter/dumper_a.das
 require ../converter/sidecar.das

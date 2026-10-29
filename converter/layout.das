@@ -131,15 +131,6 @@ struct private Refs {
     calls : table<string; int>
 }
 
-// the name a call's callee is when it is one, below the decay of a function to its pointer
-def private callee_ref(fn : CirExpr const?) : string {
-    var at = fn
-    if (at != null && at.e == "cast" && at.cast_kind == "FunctionToPointerDecay") {
-        at = at.a
-    }
-    return at != null && at.e == "ref" ? at.name : ""
-}
-
 def private expr_uses(types : array<CirType>; x : CirExpr const?; var r : Refs) {
     if (x == null) {
         return
@@ -154,7 +145,7 @@ def private expr_uses(types : array<CirType>; x : CirExpr const?; var r : Refs) 
     } elif (x.e == "ref") {
         r.names |> insert(x.name)
     }
-    let callee = x.e == "call" ? callee_ref(x.fn) : ""
+    let callee = x.e == "call" ? called_name(*x) : ""
     if (!empty(callee)) {
         r.calls[callee] = (r.calls?[callee] ?? 0) + 1
     } else {
@@ -1204,7 +1195,7 @@ def plan_layout(tus : array<CirTu>; types : array<CirType>; facts : LinkFacts; c
     var entry_unit = 0
     for (ti, tu in count(), tus) {
         plan.unit_node |> push(length(plan.nodes))
-        plan.nodes |> push(LayoutNode(kind = NODE_UNIT, file = full[ti], stem = ident_of(file_stem_of(tu.tu)), unit = ti))
+        plan.nodes |> push(LayoutNode(kind = NODE_UNIT, file = full[ti], stem = unit_stem(tu), unit = ti))
         by_file[full[ti]] = ti
         for (d in tu.decls) {
             if (d.k == "func" && d.c_name == "main" && !d.is_static && d.body != null) {
@@ -1255,12 +1246,6 @@ def private is_taken_module(name : string) : bool {
 
 //! The scope of each unit for `link_tus`: the module that holds it.
 def unit_scopes(plan : LayoutPlan) : array<int> => <- empty(plan.error) ? [for (n in plan.unit_node); plan.node_module[n]] : array<int>()
-
-// a file name up to its first dot
-def private file_stem_of(name : string) : string {
-    let dot = find(name, ".")
-    return dot < 0 ? name : slice(name, 0, dot)
-}
 
 //! The partition as report lines: each module with its members (a cluster's marked), then for each
 //! cluster the edges among its members, each with the names that make it, then the cycle cut's

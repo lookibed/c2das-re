@@ -6,6 +6,7 @@ require strings
 require daslib/strings_boost
 require daslib/fio
 require daslib/json_boost
+require cir
 
 //! The per-project `.c2das` file: every judgment the pipeline cannot derive from the C source
 //! (docs/very-detailed-plan.md section 4.4). JSON; a key the row that needs it adds.
@@ -130,14 +131,10 @@ def private is_define(entry : string) : bool {
     return true
 }
 
-// whether `text` is one or more decimal digits
-def private is_digit_text(text : string) : bool {
-    for (ch in text) {
-        if (!is_number(ch)) {
-            return false
-        }
-    }
-    return !empty(text)
+//! The count a JSON value spells as one or more decimal digits, else -1.
+def json_count(js : JsonValue?) : int64 {
+    let text = write_json(js)
+    return is_digit_run(text, 0) ? to_int64(text) : -1l
 }
 
 // a list of strings, or "" in `error` naming what `key` holds otherwise
@@ -186,8 +183,7 @@ def private read_layout(js : JsonValue?; path : string; var side : Sidecar; var 
     side.layout = mode
     if (key_exists(js, "threshold")) {
         let threshold = js?["threshold"]
-        let text = write_json(threshold)
-        let count = is_digit_text(text) ? to_int64(text) : -1l
+        let count = json_count(threshold)
         if (count < 0l) {
             error = "{path}: `layout.threshold` is a count of 0 or more, not {write_json(threshold)}"
             return

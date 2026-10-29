@@ -6,7 +6,7 @@ require strings
 require daslib/strings_boost
 require daslib/fio
 require ../suite_runner.das
-require ../../converter/pipeline.das
+require ../../converter/cir.das
 
 //! A seed's verdict as a worker writes it beside the program, and the outcome the driver draws
 //! from a worker that ended: its verdict, or `timeout` when the driver killed it, or `crash`
