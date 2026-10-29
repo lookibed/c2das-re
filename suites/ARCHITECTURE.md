@@ -67,7 +67,7 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   constructs no emulation reaches (asm with template text or operands, `-finstrument-functions`,
   the argument forwarding builtins, the builtins clang does not know, a variable-length array in
   a block-scope struct, frame and return addresses, the non-standard floating types, atomics and
-  thread-local storage) with the phase `never`, then the rows that will carry one (a test asking
+  thread-local storage) with the phase `never`, then the rules naming a ledger row (a test asking
   gcc for `-std=gnu89` or `-fpermissive`, or calling `__builtin_exit`, which only the permissive
   flags declare, under P7.8; `_Complex`, wide literals and a block-scope function declaration
   under P7.5; `__int128`, vectors, labels as values, case ranges, the GNU keywords, an attribute
@@ -114,13 +114,11 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
 
 ## 2. Why the suites are not preflight gates
 
-A full c-testsuite run converts 220 files and spawns clang and daslang for each, a minute on
-this box, and the torture suite converts the 1335 of its 1656 the ledger does not skip, and a csmith seed takes up
-to a minute to convert; the
-preflight `tests` lane stays the sub-second
-dastest suites. The runners keep
-their own ratchet and run on their own schedule, the way `docs/very-detailed-plan.md`
-section 8 describes.
+A full c-testsuite run converts every test file and spawns clang and daslang for each, about a
+minute on this box; the torture suite converts every test its ledger does not skip, and a csmith
+seed takes up to a minute to convert. The preflight `tests` lane stays the sub-second dastest
+suites. The runners keep their own ratchet and run on their own schedule, the way
+`docs/very-detailed-plan.md` section 8 describes.
 
 ## 3. The csmith run
 
@@ -158,8 +156,8 @@ converted module runs under the interpreter with both module folders loaded,
 `-no-module-cache` (a seed's module is never compiled twice, so a cache record would only churn
 the cache the test lanes share, and a cache message on stdout would be judged as output) and
 300 seconds, and its complete merged output is compared with the native one. The default 16 KB
-context stack holds every csmith program met so far, so the run writes no sidecar `stack`; one
-would go beside the program as `<seed>.c2das`.
+context stack holds the csmith programs the run converts, so the run writes no sidecar `stack`;
+one would go beside the program as `<seed>.c2das`.
 
 A seed ends in one status: `pass`, `convert`, `exit` (the converted run exited non-zero),
 `output`, `native`, `crash` (the worker exited on its own without a verdict), `timeout` (a
@@ -187,9 +185,9 @@ writes `<seed>.verdict`, one line of status, signature and reason; the driver re
 worker exits and kills a worker past 900 seconds. A file is the channel because a verdict then
 needs no output parsing and survives for a person to read. The worker keeps its own deadline of
 750 seconds: each timed child gets the lesser of its own limit and what is left of that budget,
-so the worker ends inside the driver's limit. The driver's kill must never land while a timed
-child is alive, since daScript's timed process capture starts each child in a process group of
-its own, and a kill of the worker's group misses it (an upstream report is queued).
+so the worker ends inside the driver's limit and the driver's kill does not land while a timed
+child is alive: daScript's timed process capture starts each child in a process group of its own,
+and a kill of the worker's group misses it.
 
 `reduce.sh` minimizes a seed that does not pass while every candidate keeps the seed's status
 and signature: the converter's first error line with its location dropped and every name in

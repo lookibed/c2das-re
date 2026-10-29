@@ -23,17 +23,19 @@ one module (the scc layout), and one module (the single layout).
   sidecar, the compile check included, in each layout `--layout` names (`all`, the default,
   `source`, `scc` or `single`): the source layout into the tree `work/<stem>/`, its entry
   `work/<stem>/<stem>.das`, the scc layout into `work/scc/<stem>/`, the single layout into
-  `work/single/<stem>/<stem>.das`, a folder each so each run's module caches stay apart; it reports the numbers of section 4 per layout, an error at
-  the Lua source and line the dumper names. `--native` builds each native oracle from the same
+  `work/single/<stem>/<stem>.das`, a folder each so each run's module caches stay apart; it
+  reports the numbers of section 4 per layout, an error at the Lua source and line the dumper
+  names. `--native` builds each native oracle from the same
   sources into `work/<stem>_native`; `--run` runs the converted interpreter of each layout under
   the tier `--tier` names (`interp`, the default, or `jit`) with each `--arg` (default `-e
   "print(1+1)"`; a script is `--arg <path>`) and compares it with the oracle; `--luac-check
   <folder>` compiles every `.lua` file of the folder with the converted compiler of each layout
-  under the tier, `-o` into `work/<stem>/luac_check/` (`work/single/luac/luac_check/` for the single
-  one, `work/scc/luac/luac_check/` for the scc one), and compares the bytes and the exit code with the native compiler's, refusing a folder with
-  no script; `--filter <stem>` converts that program alone. Run from the repository root: `daslang
-  -load_module dasCRuntime -load_module c_runtime lua/run.das -- [--native] [--run] [--tier jit]
-  [--luac-check lua/fetch/lua-5.4.8-tests]`.
+  under the tier, `-o` into `work/<stem>/luac_check/` (`work/single/luac/luac_check/` for the
+  single one, `work/scc/luac/luac_check/` for the scc one), and compares the bytes and the exit
+  code with the native compiler's, refusing a folder with no script; `--filter <stem>` converts
+  that program alone. Run from the repository root: `daslang -load_module dasCRuntime
+  -load_module c_runtime lua/run.das -- [--native] [--run] [--tier jit] [--luac-check
+  lua/fetch/lua-5.4.8-tests]`.
 - `lua.c2das` - the sidecar both programs convert under (section 3).
 - `REVIEW.das` - the mechanical gate: no file under `fetch/` or `work/` is tracked.
 
@@ -49,12 +51,12 @@ the file defines itself (`LUA_CORE`, `LUA_LIB`, `lua_c`, `luac_c`), and links th
 (`converter/ARCHITECTURE_LINK.md`): in the single layout the program's module is named by the file
 holding `main`, `lua.das` and `luac.das`; in the module-per-file layouts
 (`converter/ARCHITECTURE_LAYOUT.md`) `lua.das` and `luac.das` are the entry modules of a tree: in
-`scc` of 28 and 17 modules, the 15 core files that call each other one module, `lcode_cluster.das`,
-and the headers whose records point at each other two (`lobject.h lstate.h lua.h`, `llex.h
-lparser.h`); in `source` of 43 and 32 modules, the core's cycles cut by late binding through
-`lua_link.das` and `luac_link.das` (64 symbol-edge cuts of 51 functions on 34 edges, `program.layout.txt` beside the
-modules), only the two header clusters left. The build is the ANSI one, no `LUA_USE_*` platform macro: `lua_Integer`
-is `long long`, `lua_Number` `double`.
+`scc` the core files that call each other are one module, `lcode_cluster.das`, and the headers
+whose records point at each other two (`lobject.h lstate.h lua.h`, `llex.h lparser.h`); in
+`source` the core's cycles are cut by late binding through `lua_link.das` and `luac_link.das`,
+only the two header clusters left. Each tree's `program.layout.txt`, beside its modules, lists
+the modules, each cluster's members and every cut. The build is the ANSI one, no `LUA_USE_*`
+platform macro: `lua_Integer` is `long long`, `lua_Number` `double`.
 
 The headers stay in the release's `src/`: the converter takes a declaration as the program's when
 its file is under the main file's directory (`converter/ARCHITECTURE_DUMPER.md`, "The program's
@@ -71,10 +73,10 @@ module of one program.
   clang defines; `0` selects the `switch` dispatch every ISO compiler gets.
 - `defines`: `luai_jmpbuf=int`, `LUAI_THROW(L,c)=abort()` and `LUAI_TRY(L,c,a)={ a }`, the stub of
   Lua's error recovery: `ldo.c` defines the three only when `LUAI_THROW` is not defined, and its
-  ISO definitions hold a `jmp_buf` in `struct lua_longjmp` and call `setjmp` and `longjmp`, the
-  setjmp lowering that is P5.2's item (`docs/implementation_order.md`). With the stub a script
+  ISO definitions hold a `jmp_buf` in `struct lua_longjmp` and call `setjmp` and `longjmp`, whose
+  lowering here is ledgered as P5.2 (`docs/implementation_order.md`). With the stub a script
   that raises no Lua error runs, and a Lua error aborts the process where the native build
-  recovers; the stub stands until P5.2 lowers the three.
+  recovers.
 - `layout`: `{"profile": "lua.profile.json"}`, the counts the source layout's cycle cut weighs its
   edges by (section 5); no `threshold`, since the late-bound calls cost 2 to 3 percent under the
   JIT and nothing measurable under the interpreter (`docs/implementation_order.md` P5.1b2).
@@ -85,11 +87,11 @@ module of one program.
 
 ## 4. The numbers
 
-Each conversion prints `[I]` lines: the dumper's seconds over all the program's files (clang's
-JSON dump, the libclang pass, the parse of the JSON and the walk, file by file) and the bytes of
-clang's JSON summed; then, when every dump succeeds, the link's seconds with how many declarations
-bound to another file's definition, how many statics it renamed (a line each) and how many header
-functions it kept once, the emitter's seconds (the formatter included), the compile check's seconds (daslang
+Each conversion prints `[I]` lines: the dumper's seconds over all the program's files (clang's JSON
+dump, the libclang pass, the parse of the JSON and the walk, file by file) and the bytes of clang's
+JSON summed; then, when every dump succeeds, the link's seconds with how many declarations bound to
+another file's definition, how many statics it renamed (a line each) and how many header functions
+it kept once, the emitter's seconds (the formatter included), the compile check's seconds (daslang
 compiling the module with its default policies, as `convert` checks it), the lines of the `.das`
 module and how many of its functions carry `[c_function]`. Each line names the program and the
 layout (`lua: lua (source): ...`); in the source layout the lines of das are those of every module
@@ -111,5 +113,4 @@ function holding it, so a count is a callee's calls from one file; `lua.profile.
 call that crosses files, by callee and calling file's stem, sorted. `luac` shares the core and its
 profile. The conversion depends on the file only through the sidecar naming it. The file's
 provenance is its command and its inputs: `profile.das` run from the repository root over the
-release and clang `VERSIONS.md` pins, the commit that last wrote the file being its git history; a
-change of the pinned release reruns it.
+release and clang `VERSIONS.md` pins, the commit that last wrote the file being its git history.

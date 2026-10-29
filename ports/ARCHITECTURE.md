@@ -2,7 +2,7 @@
 
 Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder
 publishes the ports repository, `lookibed/c2das-ports`: one directory per real program this
-repository converts (`lua/` today), each regenerated from the pinned upstream release and
+repository converts, each regenerated from the pinned upstream release and
 committed there with the c2das-re commit that produced it. The ports repository holds generated
 code; this repository holds only the generator and its inputs.
 
@@ -36,7 +36,8 @@ publish: each program's source layout, the converter's default, as the tree of i
 fragments (every `.das` and `.das.inc` file under `lua/work/<stem>/`, in its folders, into
 `<stem>/`, with its `program.layout.txt`; the conversion's C-IR and `luac -o` checks stay out), the
 opt-ins beside it: the scc layout's tree (`lua/work/scc/<stem>/` into `scc/<stem>/`) and the single
-layout's module (`lua/work/single/<stem>/<stem>.das` into `single/<stem>.das`), the sidecar (`lua.c2das`), `LICENSE` (the block of the release's
+layout's module (`lua/work/single/<stem>/<stem>.das` into `single/<stem>.das`), the sidecar
+(`lua.c2das`), `LICENSE` (the block of the release's
 `src/lua.h` from the line `* Copyright (C)` to the line ending `DEALINGS IN THE SOFTWARE.`, the
 leading `* ` stripped), the benchmark scripts under `bench/`, and `README.md`. The publisher
 deletes nothing: a file it no longer writes stays until removed by hand in the ports repository,
@@ -80,8 +81,7 @@ commit, or, without a stamp, as converted at an unrecorded commit and published 
 
 ## 4. The measurement {#measurement}
 
-`--perf` is off by default: the perf method audit (ledger item C, `p-perf-method`) settles the
-method before any table is published. Without `--perf` the publisher measures nothing and writes
+`--perf` is off by default. Without `--perf` the publisher measures nothing and writes
 no capture, and the program's perf section and the top-level projects section are the one line
 `not yet: the perf method audit (ledger item C, p-perf-method) comes first; the tables are
 rendered from captures by this publisher once it lands` (`PERF_NOT_YET`). With `--perf` it
@@ -90,8 +90,8 @@ measures as this section states and renders the tables.
 The lanes are perf's (`perf/ARCHITECTURE.md` section 2), built by `perf/perf_lanes.das`, the
 module `perf/run.das` builds its kernels' lanes with: `native` is the C files the harness's
 program manifest `work/<runs>.program.json` lists, in its order, built by the pinned clang at `-O3
--w -funsigned-char` (with `-lm`), a missing or refused manifest the lane's reason, `interp` and `jit` are daslang over the
-source layout's entry module (`work/<runs>/<runs>.das`) with the module folders loaded,
+-w -funsigned-char` (with `-lm`), a missing or refused manifest the lane's reason, `interp` and
+`jit` are daslang over the source layout's entry module (`work/<runs>/<runs>.das`) with the module folders loaded,
 `interp-scc` and `jit-scc` the same over the scc layout's entry (`work/scc/<runs>/<runs>.das`),
 `interp-single` and `jit-single` over the single layout's module
 (`work/single/<runs>/<runs>.das`), `exe` is daslang's `-exe` build, `aot` the
@@ -132,9 +132,9 @@ sample count and the timeout, every lane with its command and error, and every c
 samples. The README's tables render from the latest capture by name; a latest capture that is not
 JSON fails the publish. The
 ratio table holds each das lane over native and the pairs interpreter over JIT, interpreter
-over exe, interpreter over AOT and JIT over AOT; a `-scc` or `-single` lane the capture measured adds its
-column and its pair over its source-layout twin, and a column of the projects table, which a
-capture without one renders as before. The top-level README keeps the text above its
+over exe, interpreter over AOT and JIT over AOT; a `-scc` or `-single` lane the capture measured
+adds its column and its pair over its source-layout twin, and a column of the projects table; a
+capture without such a lane renders neither. The top-level README keeps the text above its
 marker line and holds below it one row per program with a capture: its timestamp and machine, and
 the geometric mean, over the workloads other than the startup row, of each das lane's ratio to
 native, with the count when a lane covers only some workloads, `not yet` when it covers none, and
