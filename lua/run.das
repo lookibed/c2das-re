@@ -105,25 +105,61 @@ def private build_native(c_paths : array<string>; bin : string) : bool {
     return true
 }
 
-// the JIT reports its compilation on `info` lines among the program's output: `output` without them
+// the JIT reports its compilation on `info` lines among the program's stdout: `output` without them
 def private program_output(output : string) : string =>
     join([for (ln in split(output, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
 
+// a run's stdout and stderr, apart
+struct Streams {
+    out : string
+    err : string
+}
+
+// `argv` run with its stderr sent to a file of its own under `lua/work`, read and removed after the
+// run: its exit code, the two streams in `streams`
+def private run_split(argv : array<string>; timeout : float; var streams : Streams) : int {
+    let err_path = full_path(path_join(WORK, "run.stderr"))
+    var cmd <- ["sh", "-c", "exec 2>\"$0\"; exec \"$@\"", err_path]
+    cmd |> push_from(argv)
+    let rc = run_and_capture(cmd, streams.out, timeout)
+    streams.err = fexist(err_path) ? fread(err_path) : ""
+    remove(err_path)
+    return rc
+}
+
+// the converted interpreter at `das_path` under `tier`, `interp` or `jit`, with `program_args`
+def private das_argv(das_path, tier : string; program_args : array<string>) : array<string> {
+    var argv <- daslang_cmd([for (m in CONVERTED_MODULES); full_path(m)])
+    if (tier == "jit") {
+        argv |> push("-jit")
+    }
+    argv |> push_from([full_path(das_path), "--"], program_args)
+    return <- argv
+}
+
+// the streams of the native run and the converted run that differ, "" when both agree
+def private stream_difference(native, das : Streams) : string {
+    if (native.out != das.out && native.err != das.err) {
+        return "stdout and stderr differ"
+    }
+    return native.out != das.out ? "stdout differs" : native.err != das.err ? "stderr differs" : ""
+}
+
 // the converted interpreter at `das_path` under `tier` and the native one at `bin`, each run with
-// `program_args`: true when the exit codes and the outputs agree. The native one runs under the
-// name `stem`, the `argv[0]` the converted program gets, which Lua's messages quote
-def private run_both(das_path, bin, stem, tier : string; program_args : array<string>) : bool {
+// `program_args`: "" when the exit codes and both streams agree, else what differs. The native one
+// runs under the name `stem`, the `argv[0]` the converted program gets, which Lua's messages quote
+def private run_both(das_path, bin, stem, tier : string; program_args : array<string>) : string {
     var native_args <- ["bash", "-c", "exec -a \"$0\" \"$@\"", stem, bin]
     native_args |> push_from(program_args)
-    var native_out : string
-    let native_rc = run_and_capture(native_args, native_out, 60.0)
-    var das_out : string
-    let no_flags : array<string>
-    let das_rc = run_tier(das_path, tier, WORK, das_out, CONVERTED_MODULES, 600.0, no_flags, program_args)
-    das_out = program_output(das_out)
-    to_log(LOG_INFO, "lua: native exited {native_rc}: {native_out}\n")
-    to_log(LOG_INFO, "lua: {tier} exited {das_rc}: {das_out}\n")
-    return native_rc == das_rc && native_out == das_out
+    var native, das : Streams
+    let native_rc = run_split(native_args, 60.0, native)
+    let das_rc = run_split(das_argv(das_path, tier, program_args), 600.0, das)
+    das.out = program_output(das.out)
+    to_log(LOG_INFO, "lua: native exited {native_rc}: {native.out}\n")
+    to_log(LOG_INFO, "lua: native stderr: {native.err}\n")
+    to_log(LOG_INFO, "lua: {tier} exited {das_rc}: {das.out}\n")
+    to_log(LOG_INFO, "lua: {tier} stderr: {das.err}\n")
+    return native_rc != das_rc ? "native exited {native_rc}, {tier} {das_rc}" : stream_difference(native, das)
 }
 
 // the interpreter's arguments of each error-recovery check: an error caught by `pcall`, one
@@ -145,10 +181,11 @@ let ERROR_CHECKS <- [
 def private error_check(das_path, bin, stem, tier : string) : bool {
     var agree = 0
     for (check in ERROR_CHECKS) {
-        if (run_both(das_path, bin, stem, tier, check)) {
+        let difference = run_both(das_path, bin, stem, tier, check)
+        if (empty(difference)) {
             agree++
         } else {
-            to_log(LOG_ERROR, "lua: error check `{join(check, " ")}` under {tier} differs from the native build\n")
+            to_log(LOG_ERROR, "lua: error check `{join(check, " ")}` under {tier} differs from the native build: {difference}\n")
         }
     }
     to_log(LOG_INFO, "lua: error checks under {tier}: {agree} of {length(ERROR_CHECKS)} agree with the native build\n")
@@ -289,18 +326,24 @@ let TIME_WARNING = "Lua warning: #time difference from previous test"
 def private compared_lines(output : string) : array<string> =>
     <- [for (ln in split(output, "\n")); ln; where !(ln |> starts_with(TIME_WARNING))]
 
-// the first line where `native` and `das` differ once masked, quoted from each
-def private first_difference(native, das, tier : string) : string {
+// the first line of `stream` where `native` and `das` differ once masked, quoted from each
+def private first_line_difference(stream, native, das, tier : string) : string {
     let left <- compared_lines(native)
     let right <- compared_lines(das)
     for (i in range(max(length(left), length(right)))) {
         let l = i < length(left) ? left[i] : "<end>"
         let r = i < length(right) ? right[i] : "<end>"
         if (masked(l) != masked(r)) {
-            return "line {i + 1}: native `{slice(l, 0, 120)}`, {tier} `{slice(r, 0, 120)}`"
+            return "{stream} line {i + 1}: native `{slice(l, 0, 120)}`, {tier} `{slice(r, 0, 120)}`"
         }
     }
     return ""
+}
+
+// the first line where the native run and the converted run differ, stdout before stderr
+def private first_difference(native, das : Streams; tier : string) : string {
+    let out = first_line_difference("stdout", native.out, das.out, tier)
+    return empty(out) ? first_line_difference("stderr", native.err, das.err, tier) : out
 }
 
 // one run's verdict when the cap or the timeout ended it: `memory`, `timeout`, or "" when it exited
@@ -322,9 +365,9 @@ def private suite_file(file, das_path, bin, tier : string; args : Args) : string
     }
     var native_args <- capped(args.suite_memory)
     native_args |> push_from(["bash", "-c", "cd \"$1\" && exec -a \"$0\" \"$\{@:2\}\"", "lua", dir, full_path(bin)], suite_args(file))
-    var native_out : string
+    var native : Streams
     let native_started = ref_time_ticks()
-    let native_rc = run_and_capture(native_args, native_out, args.suite_timeout)
+    let native_rc = run_split(native_args, args.suite_timeout, native)
     let native_seconds = double(get_time_usec(native_started)) / 1000000.0lf
     to_log(LOG_INFO, "lua: suite {file}: native exited {native_rc} in {fmt(":.1f", native_seconds)} s\n")
     let native_end = ended(native_rc, "native", args.suite_memory, args.suite_timeout)
@@ -335,21 +378,17 @@ def private suite_file(file, das_path, bin, tier : string; args : Args) : string
         return "{file} oracle {fmt(":.1f", native_seconds)} native exited {native_rc}"
     }
     var das_args <- capped(args.suite_memory)
-    das_args |> push_from(["sh", "-c", "cd \"$0\" && exec \"$@\"", dir], daslang_cmd([for (m in CONVERTED_MODULES); full_path(m)]))
-    if (tier == "jit") {
-        das_args |> push("-jit")
-    }
-    das_args |> push_from([full_path(das_path), "--"], suite_args(file))
-    var das_out : string
+    das_args |> push_from(["sh", "-c", "cd \"$0\" && exec \"$@\"", dir], das_argv(das_path, tier, suite_args(file)))
+    var das : Streams
     let das_started = ref_time_ticks()
-    let das_rc = run_and_capture(das_args, das_out, args.suite_timeout)
+    let das_rc = run_split(das_args, args.suite_timeout, das)
     let seconds = fmt(":.1f", double(get_time_usec(das_started)) / 1000000.0lf)
-    das_out = program_output(das_out)
+    das.out = program_output(das.out)
     let das_end = ended(das_rc, tier, args.suite_memory, args.suite_timeout)
     if (!empty(das_end)) {
         return "{file} {das_end |> starts_with("memory") ? "memory" : "timeout"} {seconds} {das_end}"
     }
-    let difference = first_difference(native_out, das_out, tier)
+    let difference = first_difference(native, das, tier)
     if (native_rc != das_rc) {
         return "{file} fail {seconds} native exited {native_rc}, {tier} {das_rc}; {difference}"
     }
@@ -431,7 +470,11 @@ def private convert_layout(stem, main_source : string; input : ProgramInput; bin
         if (!empty(args.arg)) {
             program_args := args.arg
         }
-        return run_both(res.das_path, bin, stem, args.tier, program_args)
+        let difference = run_both(res.das_path, bin, stem, args.tier, program_args)
+        if (!empty(difference)) {
+            to_log(LOG_ERROR, "lua: --run under {args.tier} differs from the native build: {difference}\n")
+        }
+        return empty(difference)
     }
     if (args.suite_check && main_source == "lua" && !suite_check(res.das_path, bin, layout, args)) {
         return false

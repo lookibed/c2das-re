@@ -212,6 +212,12 @@ def test_run_stand_in(t : T?) {
     }
 }
 
+// a stand-in interpreter whose stream differs from run to run: it appends a byte to the file at
+// `path` and prints its last argument, to stderr on an odd run (the native build's, which runs
+// first) and to stdout on an even one: the merged outputs agree, the streams do not
+def private lua_stream_c(path : string) : string =>
+    "#include <stdio.h>\nint main(int argc, char **argv) \{\n    FILE *f = fopen(\"{path}\", \"ab\");\n    if (f == 0) return 2;\n    fwrite(\"x\", 1, 1, f);\n    long size = ftell(f);\n    fclose(f);\n    fprintf(size % 2 ? stderr : stdout, \"%s\\n\", argv[argc - 1]);\n    return 0;\n\}\n"
+
 [test]
 def test_error_check(t : T?) {
     t |> run("--error-check runs each error-recovery check with the converted interpreter of each layout under the interpreter and the JIT, each agreeing with the native build") @(t : T?) {
@@ -235,14 +241,27 @@ def test_error_check(t : T?) {
         t |> success(out |> contains("lua: error checks under interp: 0 of 8 agree with the native build"), out)
         rmdir_rec(root)
     }
+    t |> run("--error-check compares stdout and stderr apart: the same text on the other stream differs, naming it") @(t : T?) {
+        let root = stand_in_root("c2das_lua_errors_stream", LOBJECT)
+        fwrite(path_join(root, "lua/fetch/lua-5.4.8/src/lua.c"), lua_stream_c(path_join(root, "stream.bin")))
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--error-check", "--filter", "lua", "--layout", "single"]), out), 1, out)
+        t |> success(out |> contains("lua: error check `-e error('x')` under interp differs from the native build: stdout and stderr differ"), out)
+        t |> success(out |> contains("lua: error checks under interp: 0 of 8 agree with the native build"), out)
+        // the stderr file is read and removed after each run
+        t |> success(!fexist(path_join(root, "lua/work/run.stderr")), out)
+        rmdir_rec(root)
+    }
 }
 
 // a stand-in interpreter for the test suite: its last argument names a script whose first word
 // says what to do - `spin` counts long enough that only the converted build outlasts a short
-// timeout, `grow` allocates until a cap kills it, `runs` prints an `x` per run so far, `shape`
+// timeout, `grow` allocates until a cap kills it, `runs` prints an `x` per run so far, `stream`
+// prints one line to stderr on an odd run and to stdout on an even one, `port` prints the `-e`
+// string before the script and fails unless it is `_port=false`, `shape`
 // prints a time in `%g`'s other notation and sign on a later run, with all.lua's time warning, any
 // other word prints itself with digits that differ from run to run
-let LUA_SUITE_C = "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <time.h>\n#include \"lua.h\"\nint main(int argc, char **argv) \{\n    char word[64];\n    FILE *f = fopen(argv[argc - 1], \"r\");\n    if (f == 0 || fgets(word, sizeof word, f) == 0) return 3;\n    fclose(f);\n    for (char *c = word; *c; c++) if (*c == '\\n') *c = 0;\n    if (strcmp(word, \"oracle\") == 0) return 5;\n    if (strcmp(word, \"spin\") == 0) \{\n        volatile long n = 0;\n        while (n < 300000000L) n++;\n    \}\n    if (strcmp(word, \"grow\") == 0) \{\n        for (;;) \{\n            char *p = malloc(1 << 24);\n            if (p == 0) return 4;\n            memset(p, 1, 1 << 24);\n        \}\n    \}\n    if (strcmp(word, \"runs\") == 0) \{\n        FILE *g = fopen(\"runs.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        for (long i = 0; i < size; i++) printf(\"x\");\n        printf(\"\\n\");\n        return 0;\n    \}\n    if (strcmp(word, \"shape\") == 0) \{\n        FILE *g = fopen(\"shape.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        if (size > 1) printf(\"Lua warning: #time difference from previous test: +5.0%%\\n\");\n        printf(size > 1 ? \"time: 0.000643 (-0.000643)\\n\" : \"time: 2.7e-05 (+2.7e-05)\\n\");\n        return 0;\n    \}\n    printf(\"%s %d %ld\\n\", word, lua_answer(), (long)clock() + (long)time(0));\n    return 0;\n\}\n"
+let LUA_SUITE_C = "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <time.h>\n#include \"lua.h\"\nint main(int argc, char **argv) \{\n    char word[64];\n    FILE *f = fopen(argv[argc - 1], \"r\");\n    if (f == 0 || fgets(word, sizeof word, f) == 0) return 3;\n    fclose(f);\n    for (char *c = word; *c; c++) if (*c == '\\n') *c = 0;\n    if (strcmp(word, \"oracle\") == 0) return 5;\n    if (strcmp(word, \"spin\") == 0) \{\n        volatile long n = 0;\n        while (n < 300000000L) n++;\n    \}\n    if (strcmp(word, \"grow\") == 0) \{\n        for (;;) \{\n            char *p = malloc(1 << 24);\n            if (p == 0) return 4;\n            memset(p, 1, 1 << 24);\n        \}\n    \}\n    if (strcmp(word, \"runs\") == 0) \{\n        FILE *g = fopen(\"runs.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        for (long i = 0; i < size; i++) printf(\"x\");\n        printf(\"\\n\");\n        return 0;\n    \}\n    if (strcmp(word, \"stream\") == 0) \{\n        FILE *g = fopen(\"stream.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        fprintf(size % 2 ? stderr : stdout, \"streamed\\n\");\n        return 0;\n    \}\n    if (strcmp(word, \"port\") == 0) \{\n        if (strcmp(argv[argc - 2], \"_port=false\") != 0) return 6;\n        printf(\"%s\\n\", argv[argc - 2]);\n        return 0;\n    \}\n    if (strcmp(word, \"shape\") == 0) \{\n        FILE *g = fopen(\"shape.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        if (size > 1) printf(\"Lua warning: #time difference from previous test: +5.0%%\\n\");\n        printf(size > 1 ? \"time: 0.000643 (-0.000643)\\n\" : \"time: 2.7e-05 (+2.7e-05)\\n\");\n        return 0;\n    \}\n    printf(\"%s %d %ld\\n\", word, lua_answer(), (long)clock() + (long)time(0));\n    return 0;\n\}\n"
 
 // a stand-in root whose interpreter is `LUA_SUITE_C` and whose test folder holds `scripts`, each
 // a file name of the suite and the word its script holds
@@ -279,6 +298,14 @@ def test_suite_check(t : T?) {
         // the native build fails on its own: no pass by agreement, and the converted one is not run
         t |> success(suite |> contains("tpack.lua oracle ") && suite |> contains(" native exited 5\n"), suite)
         t |> success(out |> contains("lua: suite under interp (single): 2 pass, 1 fail, 1 timeout, 1 memory, 1 oracle, 24 missing of 30 files in "), out)
+        rmdir_rec(root)
+    }
+    t |> run("--suite-check compares stdout and stderr apart: the same line on the other stream fails, naming the stream") @(t : T?) {
+        let root = suite_root("c2das_lua_suite_stream", [("pm.lua", "stream")])
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "pm.lua", "--filter", "lua", "--layout", "single"]), out), 1, out)
+        let suite = fread(path_join(root, "lua/work/single/suite.txt"))
+        t |> success(suite |> starts_with("pm.lua fail ") && suite |> contains(" stdout line 1: native ``, interp `streamed`\n"), suite)
         rmdir_rec(root)
     }
     t |> run("--suite-filter runs one file under the interpreter and the JIT, passing; a file outside the suite and a cap systemd refuses are refused") @(t : T?) {
