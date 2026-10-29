@@ -83,8 +83,8 @@ commit, or, without a stamp, as converted at an unrecorded commit and published 
 
 `--perf` is off by default. Without `--perf` the publisher measures nothing and writes
 no capture, and the program's perf section and the top-level projects section are the one line
-`not yet: the perf method audit (ledger item C, p-perf-method) comes first; the tables are
-rendered from captures by this publisher once it lands` (`PERF_NOT_YET`). With `--perf` it
+``not yet: the publisher measures only under `--perf`, off by default because a capture takes
+hours and runs only on an idle machine`` (`PERF_NOT_YET`). With `--perf` it
 measures as this section states and renders the tables.
 
 The lanes are perf's (`perf/ARCHITECTURE.md` section 2), built by `perf/perf_lanes.das`, the
@@ -106,9 +106,9 @@ the release's test suite (`-e "_port=true" all.lua` in the fetched test folder; 
 tests that assume a POSIX build, and the ANSI build passes the rest). A sample is one process: its
 time is the wall time from the spawn to the end of its output, which the child closes on exit
 (popen's return lags the exit by up to its 100 ms watchdog tick, so the return is not the clock).
-The spawn is the publisher's, so every sample includes it: on the FX-6300 the captures run on, a
-null spawn costs about 24 ms the first time and about 7 ms after, and the `sh -c` that enters the
-test-suite folder adds about 8 ms more.
+The spawn is the publisher's, so every sample includes it: on the reference machine, the FX-6300
+the captures run on, a null spawn costs about 24 ms the first time and about 7 ms after, and the
+`sh -c` that enters the test-suite folder adds about 8 ms more; these figures are that machine's.
 The interpreter and the JIT each cache the compiled module in the folder they run in, so one
 unmeasured run of the startup arguments precedes each lane's samples in each folder, and a
 warm-up that fails or times out fails the lane (in the repository root) or the cell (in the
