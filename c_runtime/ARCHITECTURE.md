@@ -227,8 +227,8 @@ the same way `dasCRuntime/` is loaded.
 
 ## 4. The spelling a fixture test copies
 
-A fixture test calls a piece the way converted code calls it. The sources of that spelling, in
-rank order: the converter's output for a C file under `converter/tests/fixtures/` (repo root)
-that calls the function; a `docs/probe-findings.md` row naming the piece; an example in
-`docs/lowering-examples.md` or `docs/stdlib-examples.md`. A public overload none of them calls has
-no converted spelling, so its test is a direct call.
+A fixture test calls a piece the way converted code calls it, so a passing test shows that the
+call shape converted programs use works. The converter's output ranks first because it is what
+converted programs run; a `docs/probe-findings.md` row records where that output and the design
+documents disagree, so it outranks the design examples. A public overload none of these sources
+calls has no converted spelling, so its test is a direct call.

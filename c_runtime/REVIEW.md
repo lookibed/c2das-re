@@ -12,10 +12,13 @@ each added, removed or changed.
 **A call or annotation that a diff adds to or changes in a fixture test, and that the test expects
 to compile and return normally, matches the converter's spelling in its argument types, its casts
 and where its side effects sit; literal values and their radix are free.** The spelling is that of
-the first source calling the function, in the order `ARCHITECTURE.md` section 4 ranks them.
+the first of these that calls the function: the converter's output for a C file under
+`converter/tests/fixtures/` (repo root); a `docs/probe-findings.md` row naming the piece; an example
+in `docs/lowering-examples.md` or `docs/stdlib-examples.md`.
 
-**A diff that adds a public overload that no converted fixture, `docs/probe-findings.md` row or
-`docs/` example calls tests it by a direct call in the piece's fixture test.**
+**A diff that adds a public overload that the converter's output for no C file under
+`converter/tests/fixtures/` (repo root), no `docs/probe-findings.md` row and no `docs/` example
+calls tests it by a direct call in the piece's fixture test.**
 
 **Never weaken `REVIEW.das` - fix what it flags instead.**
 
