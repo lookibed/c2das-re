@@ -84,8 +84,8 @@ let SINGLE_LANES <- ["interp-scc", "jit-scc", "interp-single", "jit-single"]
 let SINGLE_PAIRS <- [("interp-scc", "interp"), ("jit-scc", "jit"), ("interp-single", "interp"), ("jit-single", "jit")]
 //! the line above which the top-level README is the charter's; the publisher owns the rest
 let README_MARKER = "<!-- generated below: c2das-re's scripts/publish_ports.sh renders everything under this line from each program's latest capture -->"
-//! the perf section and the projects table while the perf method audit is open
-let PERF_NOT_YET = "not yet: the perf method audit (ledger item C, p-perf-method) comes first; the tables are rendered from captures by this publisher once it lands"
+//! the perf section and the projects table of a publish that measures nothing
+let PERF_NOT_YET = "not yet: the publisher measures only under `--perf`, off by default because a capture takes hours and runs only on an idle machine"
 let MISSING = "n/a"
 let NOT_YET = "not yet"
 //! a das lane the capture's `--lanes` left out
