@@ -1,6 +1,9 @@
 options gen2
+// the converter casts an address with reinterpret<void?>(addr(...)), and the calls are spelled its way
+options _nolint = "STYLE034"
 require dastest/testing_boost public
 require c_runtime/c_builtins
+require c_runtime/c_bounds
 require ../../probes/_daslang_child.das
 
 //! The GCC builtins the converter maps by name (`converter/tests/fixtures/p5_gnu_shims.c` calls
@@ -38,13 +41,24 @@ def test_c_builtins(t : T?) {
         t |> equal(c_signbit(1.5lf), 0)
         t |> equal(c_signbit(-2.0f), 1)
     }
-    t |> run("prefetch evaluates its arguments and does nothing else") @(t : T?) {
+    t |> run("prefetch evaluates its arguments and does nothing else, spelled as the converter emits p5_gnu_shims.c") @(t : T?) {
+        var i = 0
+        var arr : int[2]
+        unsafe {
+            let before = i
+            i++
+            c_prefetch(reinterpret<void?>(addr(arr[0]) + end_index(before, 2)))
+            c_prefetch(reinterpret<void?>(addr(arr[0])), 0)
+            c_prefetch(reinterpret<void?>(addr(arr[0])), 1, 3)
+        }
+        t |> equal(i, 1)
+    }
+    t |> run("a step inside the argument survives the call: F70 drops it from a call to an effect-free function, and c_prefetch is [sideeffects] for it") @(t : T?) {
         var i = 0
         var arr : int[2]
         unsafe {
             c_prefetch(addr(arr[i++]))
             c_prefetch(addr(arr[i++]), 0)
-            c_prefetch(addr(arr[0]), 1, 3)
         }
         t |> equal(i, 2)
     }
