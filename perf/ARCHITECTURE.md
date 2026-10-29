@@ -282,3 +282,13 @@ tree's lanes only: the hand-written and dasProfile C++ columns of the comparison
 `dasprofile_linux.json`, which `--from-scratch` alone reruns. `.github/workflows/perf.yml` runs it on the
 self-hosted runner for every release tag and on request.
 
+## 7. What a capture depends on
+
+A capture's cells change with: a file under `kernels/`; the prologue and epilogue
+`perf_compose.das` puts around a kernel; the argv of a timed lane - the native `clang` command
+(`native_build_command` and `NATIVE_FLAGS` in `perf_lanes.das`), `run.das`'s `convert` calls, the
+`interp` and `jit` lanes' `daslang` argv (`das_lane_command`) and the exe and AOT builds'
+`run_tier` call (`built_binary` in `perf_lanes.das`); the sample count (the `samples` default of
+`run.das`'s `Args`); the lane list (`LANES` in `perf_tables.das`); and the sample arithmetic -
+`measure`, `cell_of` and `accept_lane` in `run.das`, `median_of` and `last_line` in
+`perf_lanes.das`.
