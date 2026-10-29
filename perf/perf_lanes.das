@@ -6,7 +6,7 @@ require math
 require strings
 require daslib/strings_boost
 require daslib/fio
-require ../converter/pipeline.das
+require ../converter/cir.das
 require ../converter/tiers.das
 require ../converter/dumper_a.das
 

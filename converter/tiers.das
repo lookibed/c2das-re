@@ -5,7 +5,7 @@ module tiers public
 require strings
 require daslib/strings_boost
 require daslib/fio
-require pipeline
+require cir
 require dumper_a
 
 //! Runs a converted module under one execution tier and returns the process exit code:
@@ -31,7 +31,9 @@ def daslang_cmd(module_dirs : array<string>) : array<string> {
     return <- cmd
 }
 
-def private ident_of(name : string) : string {
+// `name` with every other character an underscore and a leading digit left bare, unlike cir's
+// `ident_of`: the names the AOT and exe builds give their outputs
+def private bare_ident_of(name : string) : string {
     return build_string() $(var w) {
         for (ch in name) {
             w |> write(is_alnum(ch) ? to_char(ch) : "_")
@@ -93,7 +95,7 @@ def aot_link_command(ctx_dir, das_path, host, bin : string; module_dirs : array<
 
 //! The binary the `aot` tier builds for `das_path` in `work_dir`: `ctx/<stem>_aot`, the stem
 //! spelled as the context's C++ prefix.
-def aot_binary(das_path, work_dir : string) : string => path_join(path_join(work_dir, "ctx"), ident_of(file_stem(das_path)) + "_aot")
+def aot_binary(das_path, work_dir : string) : string => path_join(path_join(work_dir, "ctx"), bare_ident_of(file_stem(das_path)) + "_aot")
 
 // the context generation, the host's build and the run each get `timeout` seconds
 def private run_aot(das_path, work_dir : string; var output : string&; module_dirs : array<string>; timeout : float) : int {
@@ -105,7 +107,7 @@ def private run_aot(das_path, work_dir : string; var output : string&; module_di
     if (rc != 0) {
         return rc
     }
-    let prefix = ident_of(file_stem(das_path))
+    let prefix = bare_ident_of(file_stem(das_path))
     let host = path_join(ctx_dir, "host.cpp")
     fwrite(host, "#include \"{base_name(das_path)}.h\"\nint main() \{\n    {prefix}_ctx * ctx = {prefix}_create();\n    if (!ctx) return 125;\n    const int rc = {prefix}_main(ctx);\n    {prefix}_destroy(ctx);\n    return rc;\n\}\n")
     let bin = aot_binary(das_path, work_dir)

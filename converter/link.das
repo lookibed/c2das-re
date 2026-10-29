@@ -514,11 +514,9 @@ def private header_groups(var tus : array<CirTu>; units : array<UnitNames>; scop
     return <- standing
 }
 
-// a unit's file name up to its first dot, as an identifier: the prefix of its renamed statics
-def private unit_stem(tu : CirTu) : string {
-    let dot = find(tu.tu, ".")
-    return ident_of(dot < 0 ? tu.tu : slice(tu.tu, 0, dot))
-}
+//! A unit's file stem as an identifier: the prefix of its renamed statics and its node's stem in
+//! the layout.
+def unit_stem(tu : CirTu) : string => ident_of(file_stem(tu.tu))
 
 def private same_target(a, b : CirTarget) : bool =>
     a.triple == b.triple && a.int_w == b.int_w && a.long_w == b.long_w && a.llong_w == b.llong_w && a.ptr_w == b.ptr_w && a.char_signed == b.char_signed
