@@ -105,8 +105,8 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   `skip.txt` line in the four-field shape with a row id or `never` (`phase_well_formed`), no line naming a closed phase
   (`names_closed_phase` in `suite_files.das`: a phase at or below the highest `v0.<N>.0` tag the
   repository carries, `highest_closed_phase`, never below `CLOSED_PHASE_FLOOR`, 4, since a
-  shallow clone carries no tag), no id in both files, every
-  csmith id a decimal seed, nothing tracked under a suite's `fetch/` or `work/`, and the
+  shallow clone carries no tag), the same two checks over the `phase` of every `RULES` entry of
+  `gcc_torture/filter_rules.das`, no id in both files, every csmith id a decimal seed, nothing tracked under a suite's `fetch/` or `work/`, and the
   module keys of `metrics/readability_linux.json` the expected input keys, so a diff to a
   ratchet list re-records the readability capture.
 - `scripts/run_suite.sh <suite> [flags]` - fetches when needed and runs the runner from the
