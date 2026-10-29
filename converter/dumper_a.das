@@ -2636,8 +2636,6 @@ def private check_attributes(var d : Dumper; js : JsonValue?; owner : string = "
     return true
 }
 
-// the names the program's top-level declarations define: a function with a body, a variable
-// that is not `extern` or carries an initializer
 // the names every parameter and variable declared under `js` takes
 def private local_names(js : JsonValue?) : table<string> {
     var names : table<string>
@@ -2656,6 +2654,8 @@ def private collect_local_names(js : JsonValue?; var names : table<string>) {
     }
 }
 
+// the names the program's top-level declarations define: a function with a body, a variable
+// that is not `extern` or carries an initializer
 def private collect_defined_names(var d : Dumper; js : JsonValue?) {
     for (idx in range(child_count(js))) {
         let decl = (js?["inner"] as _array)[idx]

@@ -82,8 +82,8 @@ def test_tables(t : T?) {
 }
 
 [test]
-def test_single_lanes(t : T?) {
-    t |> run("a single-module lane the capture measured adds its column and its ratio to its source-layout twin; without one the tables keep their columns") @(t : T?) {
+def test_layout_lanes(t : T?) {
+    t |> run("a layout lane (scc or single) the capture measured adds its column and its ratio to its source-layout twin; without one the tables keep their columns") @(t : T?) {
         var c <- fixture()
         c.lanes |> push(Lane(name = "interp-single", command = "run interp-single"))
         c.cells |> emplace(cell("fib", "interp-single", 400.0lf)) // nolint:STYLE012 - appends to the fixture's cells

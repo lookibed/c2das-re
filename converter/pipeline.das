@@ -345,7 +345,7 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
     if (!empty(res.error)) {
         return <- res
     }
-    let source = side.layout != "single"
+    let per_file_modules = side.layout != "single"
     let opts <- cut_options(side, res.error)
     if (!empty(res.error)) {
         return <- res
@@ -358,7 +358,7 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
         let link_started = ref_time_ticks()
         var plan = LayoutPlan()
         var linked <- link_tus(units, entry, reserved_das_names()) $(tus, types, facts, scopes) : string {
-            if (!source) {
+            if (!per_file_modules) {
                 return ""
             }
             delete plan
@@ -381,7 +381,7 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
         } elif (!fwrite(res.cir_path, res.cir_text)) {
             res.error = "cannot write {res.cir_path}"
             delete_tu(linked.program)
-        } elif (source) {
+        } elif (per_file_modules) {
             res.partition <- layout_report(plan)
             fwrite(path_join(out_dir, LAYOUT_REPORT), join(res.partition, "\n") + "\n")
             emit_modules(linked.program, linked.owners, plan, side, out_dir, res)
