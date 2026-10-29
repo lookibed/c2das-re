@@ -210,3 +210,21 @@ def test_late_binding(t : T?) {
         rmdir_rec(dir)
     }
 }
+
+// a longjmp's panic raised in a module reached through a late-bound slot, recovered in a third
+// module that calls the wrapper: the recover sees the target the thrower set
+let LATE_THROW_LINK = "options gen2\nvar t_slot : function<(a0 : int) : int>\ndef t(a0 : int) : int \{\n    return invoke(t_slot, a0)\n\}\n"
+let LATE_THROWER = "options gen2\nrequire throw_link\nvar target = 0\ndef thrower(a : int) : int \{\n    if (a > 0) \{\n        target = a\n        panic(\"longjmp\")\n    \}\n    return 1\n\}\n[init]\ndef private c2das_link \{\n    t_slot = @@__::thrower\n\}\n"
+let LATE_CATCHER = "options gen2\nrequire throw_link\nrequire thrower\n[export]\ndef main \{\n    var caught = 0\n    try \{\n        caught = t(0)\n        t(3)\n        caught = 100\n    \} recover \{\n        caught += 10 * target\n    \}\n    print(\"\{caught\}\\n\")\n\}\n"
+
+[test]
+def test_late_bound_panic(t : T?) {
+    t |> run("a panic raised behind a late-bound slot unwinds through invoke and the wrapper to a recover in another module, under the interpreter and the JIT") @(t : T?) {
+        let dir = write_tree("late_panic", [probe_file("throw_link.das", LATE_THROW_LINK), probe_file("thrower.das", LATE_THROWER), probe_file("main.das", LATE_CATCHER)])
+        runs_as(t, "interp", run_plain(dir), "31\n")
+        let jit = run_main(dir, jit_flags())
+        t |> success(jit_ran(jit.out), jit.out)
+        runs_as(t, "jit", jit, "31\n")
+        rmdir_rec(dir)
+    }
+}

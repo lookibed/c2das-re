@@ -205,8 +205,9 @@ Itanium ABI no unnamed bitfield does (`{ char a; int : 20; }` is size 4, align 1
 after a plain field or after another zero-width one aligns neither, `{ char a; int : 0; char b;
 }` is 5, 1 and 2, 1, `{ char x : 3; int : 0; long long : 0; char d; }` 9, 1 and 8, 4;
 `probes/test_layout.das`). When no target works, a record with any bitfield (named or unnamed,
-zero-width included) or a field whose record won below its clang alignment takes one relaxed
-search, unless clang's alignment exceeds the alignment its members give, which only an attribute
+zero-width included), a field whose record won below its clang alignment or a field that is (an
+array of) the opaque `jmp_buf` record, whose one `int` stands for the C library's buffer, takes
+one relaxed search, unless clang's alignment exceeds the alignment its members give, which only an attribute
 does. The relaxed search places fields in the same order and adds three moves: where das's
 offset falls short of clang's, a padding field of the missing bytes (`_pad<N> : uint8[n]`)
 before the field, before a unit or at the tail up to clang's size; a unit of each size in the
