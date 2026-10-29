@@ -4,6 +4,7 @@ options gen2
 options stack = 1048576
 
 require strings
+require math
 require daslib/strings_boost
 require daslib/fio
 require daslib/clargs
@@ -23,7 +24,8 @@ require sources
 //! `lua/work/single/<stem>/`. `--native` builds the
 //! native oracle of each, `--run` runs the converted interpreter against it, `--error-check` the
 //! interpreter's error-recovery checks against it, `--luac-check` the
-//! converted compiler's `-o` over a folder of scripts. Run from the repository root.
+//! converted compiler's `-o` over a folder of scripts, `--suite-check` the release's test suite file
+//! by file against it. Run from the repository root.
 
 let WORK = "lua/work"
 let NATIVE_FLAGS <- ["-O0", "-funsigned-char", "-w"]
@@ -50,6 +52,18 @@ struct Args {
     @clarg_name = "luac-check"
     @clarg_doc = "a folder of Lua scripts: the converted luac compiles each with -o under --tier, and its bytes must be the native luac's"
     luac_check : string = ""
+    @clarg_name = "suite-check"
+    @clarg_doc = "also run each file of the release's test suite with the converted interpreter under --tier and with the native oracle, each capped, and write the verdicts to lua/work/<layout>/suite.txt"
+    suite_check : bool
+    @clarg_name = "suite-filter"
+    @clarg_doc = "run only this file of the test suite under --suite-check"
+    suite_filter : string = ""
+    @clarg_name = "suite-timeout"
+    @clarg_doc = "the seconds each run of a test file gets under --suite-check"
+    suite_timeout : float = 1800.0
+    @clarg_name = "suite-memory"
+    @clarg_doc = "the memory each run of a test file gets under --suite-check, as systemd's MemoryMax takes it"
+    suite_memory : string = "4G"
     @clarg_doc = "dialect: linux (this host, the native oracle's) or msvc"
     target : string = "linux"
     @clarg_short = "?"
@@ -91,6 +105,10 @@ def private build_native(c_paths : array<string>; bin : string) : bool {
     return true
 }
 
+// the JIT reports its compilation on `info` lines among the program's output: `output` without them
+def private program_output(output : string) : string =>
+    join([for (ln in split(output, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
+
 // the converted interpreter at `das_path` under `tier` and the native one at `bin`, each run with
 // `program_args`: true when the exit codes and the outputs agree. The native one runs under the
 // name `stem`, the `argv[0]` the converted program gets, which Lua's messages quote
@@ -102,8 +120,7 @@ def private run_both(das_path, bin, stem, tier : string; program_args : array<st
     var das_out : string
     let no_flags : array<string>
     let das_rc = run_tier(das_path, tier, WORK, das_out, CONVERTED_MODULES, 600.0, no_flags, program_args)
-    // the JIT reports its compilation on `info` lines among the program's output
-    das_out = join([for (ln in split(das_out, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
+    das_out = program_output(das_out)
     to_log(LOG_INFO, "lua: native exited {native_rc}: {native_out}\n")
     to_log(LOG_INFO, "lua: {tier} exited {das_rc}: {das_out}\n")
     return native_rc == das_rc && native_out == das_out
@@ -203,6 +220,127 @@ def private luac_check(das_path, bin, tier, dir, out_dir : string) : bool {
     return same == length(scripts)
 }
 
+// the release's test suite, beside its `src/`
+let SUITE_DIR = "{dir_name(SOURCES)}-tests"
+
+// the files `all.lua` runs under `_port=true`, in its order, then `all.lua` itself
+let SUITE <- ["main.lua", "gc.lua", "db.lua", "calls.lua", "strings.lua", "literals.lua", "tpack.lua", "attrib.lua", "gengc.lua", "locals.lua", "constructs.lua", "code.lua", "big.lua", "cstack.lua", "nextvar.lua", "pm.lua", "utf8.lua", "api.lua", "events.lua", "vararg.lua", "closure.lua", "coroutine.lua", "goto.lua", "errors.lua", "math.lua", "sort.lua", "bitwise.lua", "verybig.lua", "files.lua", "all.lua"]
+
+// `big.lua` yields at its top level: `all.lua` runs it as a coroutine and checks what it yields
+let BIG_LUA = "local f = coroutine.wrap(assert(loadfile('big.lua'))) assert(f() == 'b') assert(f() == 'a')"
+
+// the interpreter's arguments for the test file `file`, with the globals `all.lua` sets for it
+def private suite_args(file : string) : array<string> =>
+    <- file == "big.lua" ? ["-e", "_port=true", "-e", BIG_LUA] : ["-e", "_port=true", file]
+
+// the prefix that runs a command in a scope of its own whose memory systemd caps at `memory`; the
+// kernel kills the command past it, which `run_and_capture` reports as the signal's number
+def private capped(memory : string) : array<string> =>
+    <- ["systemd-run", "--scope", "-p", "MemoryMax={memory}", "--quiet"]
+
+// `path` from the repository root, the runs entering the suite's folder
+def private full_path(path : string) : string => path_join(getcwd(), path)
+
+// `text` with every run of digits one `#`: the suite prints seeds, timings and dates
+def private masked(text : string) : string {
+    return build_string() $(var w) {
+        var in_digits = false
+        for (ch in text) {
+            if (!is_number(ch)) {
+                w |> write_char(ch)
+            } elif (!in_digits) {
+                w |> write("#")
+            }
+            in_digits = is_number(ch)
+        }
+    }
+}
+
+// the first line where `native` and `das` differ once masked, quoted from each
+def private first_difference(native, das, tier : string) : string {
+    let left <- split(native, "\n")
+    let right <- split(das, "\n")
+    for (i in range(max(length(left), length(right)))) {
+        let l = i < length(left) ? left[i] : "<end>"
+        let r = i < length(right) ? right[i] : "<end>"
+        if (masked(l) != masked(r)) {
+            return "line {i + 1}: native `{slice(l, 0, 120)}`, {tier} `{slice(r, 0, 120)}`"
+        }
+    }
+    return ""
+}
+
+// one run's verdict when the cap or the timeout ended it: `memory`, `timeout`, or "" when it exited
+def private ended(rc : int; side, memory : string; timeout : float) : string {
+    if (rc == popen_timed_out) {
+        return "timeout {side} past {timeout} s"
+    }
+    return rc == 9 ? "memory {side} over {memory}" : ""
+}
+
+// the verdict line of one test file: the native oracle `bin` run first, then the converted
+// interpreter at `das_path` under `tier`, each in the suite's folder, capped and timed; a run the
+// cap or the timeout ends is `memory` or `timeout`, the converted one skipped when it is the oracle's
+def private suite_file(file, das_path, bin, tier : string; args : Args) : string {
+    let dir = full_path(SUITE_DIR)
+    if (!fexist(path_join(dir, file))) {
+        return "{file} missing 0.0"
+    }
+    var native_args <- capped(args.suite_memory)
+    native_args |> push_from(["bash", "-c", "cd \"$1\" && exec -a \"$0\" \"$\{@:2\}\"", "lua", dir, full_path(bin)], suite_args(file))
+    var native_out : string
+    let native_started = ref_time_ticks()
+    let native_rc = run_and_capture(native_args, native_out, args.suite_timeout)
+    let native_seconds = double(get_time_usec(native_started)) / 1000000.0lf
+    to_log(LOG_INFO, "lua: suite {file}: native exited {native_rc} in {fmt(":.1f", native_seconds)} s\n")
+    let native_end = ended(native_rc, "native", args.suite_memory, args.suite_timeout)
+    if (!empty(native_end)) {
+        return "{file} {native_end |> starts_with("memory") ? "memory" : "timeout"} {fmt(":.1f", native_seconds)} {native_end}"
+    }
+    var das_args <- capped(args.suite_memory)
+    das_args |> push_from(["sh", "-c", "cd \"$0\" && exec \"$@\"", dir], daslang_cmd([for (m in CONVERTED_MODULES); full_path(m)]))
+    if (tier == "jit") {
+        das_args |> push("-jit")
+    }
+    das_args |> push_from([full_path(das_path), "--"], suite_args(file))
+    var das_out : string
+    let das_started = ref_time_ticks()
+    let das_rc = run_and_capture(das_args, das_out, args.suite_timeout)
+    let seconds = fmt(":.1f", double(get_time_usec(das_started)) / 1000000.0lf)
+    das_out = program_output(das_out)
+    let das_end = ended(das_rc, tier, args.suite_memory, args.suite_timeout)
+    if (!empty(das_end)) {
+        return "{file} {das_end |> starts_with("memory") ? "memory" : "timeout"} {seconds} {das_end}"
+    }
+    let difference = first_difference(native_out, das_out, tier)
+    if (native_rc != das_rc) {
+        return "{file} fail {seconds} native exited {native_rc}, {tier} {das_rc}; {difference}"
+    }
+    return empty(difference) ? "{file} pass {seconds}" : "{file} fail {seconds} {difference}"
+}
+
+// every file of `SUITE` (the one `--suite-filter` names) run by `suite_file` in `layout`, its
+// verdicts written to `lua/work/<layout>/suite.txt` and counted: true when every file passes
+def private suite_check(das_path, bin, layout : string; args : Args) : bool {
+    let files <- empty(args.suite_filter) ? clone_to_move(SUITE) : [args.suite_filter]
+    let started = ref_time_ticks()
+    var lines : array<string>
+    lines |> reserve(length(files))
+    var counts : table<string; int>
+    for (file in files) {
+        let line = suite_file(file, das_path, bin, args.tier, args)
+        to_log(LOG_INFO, "lua: suite ({layout}, {args.tier}): {line}\n")
+        lines |> push(line)
+        counts[split(line, " ")[1]]++
+    }
+    let out_dir = path_join(WORK, layout)
+    mkdir_rec(out_dir)
+    fwrite(path_join(out_dir, "suite.txt"), join(lines, "\n") + "\n")
+    let totals = join([for (verdict in ["pass", "fail", "timeout", "memory", "missing"]); "{counts?[verdict] ?? 0} {verdict}"], ", ")
+    to_log(LOG_INFO, "lua: suite under {args.tier} ({layout}): {totals} of {length(files)} files in {fmt(":.0f", double(get_time_usec(started)) / 1000000.0lf)} s\n")
+    return (counts?["pass"] ?? 0) == length(files)
+}
+
 // the folder a program's conversion in `layout` lands in: `lua/work/<stem>/` for the source layout,
 // `lua/work/<layout>/<stem>/` for the scc and the single ones
 def private layout_dir(stem, layout : string) : string =>
@@ -223,8 +361,8 @@ def private das_lines(res : ConvertResult; dir : string) : int {
     return lines
 }
 
-// one program converted in `layout` and reported; with `--error-check` and `--run` the interpreter
-// run against the native oracle `bin`, with `--luac-check` the compiler over the folder it names
+// one program converted in `layout` and reported; with `--error-check`, `--suite-check` and `--run`
+// the interpreter run against the native oracle `bin`, with `--luac-check` the compiler over the folder it names
 def private convert_layout(stem, main_source : string; input : ProgramInput; bin, layout : string; args : Args) : bool {
     let dir = layout_dir(stem, layout)
     let res <- convert_program(input.c_paths, dir, args.target, "", SIDECAR, "", "", input.entry, layout)
@@ -258,6 +396,9 @@ def private convert_layout(stem, main_source : string; input : ProgramInput; bin
         }
         return run_both(res.das_path, bin, stem, args.tier, program_args)
     }
+    if (args.suite_check && main_source == "lua" && !suite_check(res.das_path, bin, layout, args)) {
+        return false
+    }
     if (!empty(args.luac_check) && main_source == "luac") {
         return luac_check(res.das_path, bin, args.tier, args.luac_check, path_join(dir, "luac_check"))
     }
@@ -265,7 +406,8 @@ def private convert_layout(stem, main_source : string; input : ProgramInput; bin
 }
 
 // one program's manifest written, the program converted in each layout `--layout` names and
-// reported; with `--native`, `--run`, `--error-check` or `--luac-check` its oracle built first
+// reported; with `--native`, `--run`, `--error-check`, `--suite-check` or `--luac-check` its oracle
+// built first
 def private build_program(stem, main_source : string; args : Args) : bool {
     let manifest = write_manifest(stem)
     if (empty(manifest)) {
@@ -279,7 +421,7 @@ def private build_program(stem, main_source : string; args : Args) : bool {
         return false
     }
     let bin = path_join(WORK, "{stem}_native")
-    if ((args.native || args.run || args.error_check || !empty(args.luac_check)) && !build_native(input.c_paths, bin)) {
+    if ((args.native || args.run || args.error_check || args.suite_check || !empty(args.luac_check)) && !build_native(input.c_paths, bin)) {
         return false
     }
     var ok = true
@@ -303,6 +445,19 @@ def main : int {
     if (args.layout != "all" && !is_layout(args.layout)) {
         to_log(LOG_ERROR, "lua: --layout is source, scc, single or all, not `{args.layout}`\n")
         return 1
+    }
+    if (!empty(args.suite_filter) && !has_value(SUITE, args.suite_filter)) {
+        to_log(LOG_ERROR, "lua: --suite-filter names a file of the suite, not `{args.suite_filter}`\n")
+        return 1
+    }
+    if (args.suite_check) {
+        var probe <- capped(args.suite_memory)
+        probe |> push("true")
+        var out : string
+        if (run_and_capture(probe, out, 60.0) != 0) {
+            to_log(LOG_ERROR, "lua: --suite-check caps each run with `{join(probe, " ")}`, which fails: {out}\n")
+            return 1
+        }
     }
     if (!stat(SOURCES).is_dir) {
         to_log(LOG_ERROR, "lua: no {SOURCES}; run lua/fetch.sh first\n")
