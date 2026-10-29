@@ -121,11 +121,11 @@ struct Streams {
 // `argv` run with its stderr sent to a file of its own under `lua/work`, read and removed after the
 // run, and its stdin a pipe whose writer has exited, which reads at its end at once and does not
 // seek, where `run_and_capture` alone gives the `/dev/null` that seeks: its exit code, the two
-// streams in `streams`. Each `exec` keeps `argv`'s program the direct child the timeout and the
-// cap kill
-def private run_split(argv : array<string>; timeout : float; var streams : Streams) : int {
+// streams in `streams`. `path_dir`, unless empty, leads its `PATH`. Each `exec` keeps `argv`'s
+// program the direct child the timeout and the cap kill
+def private run_split(argv : array<string>; timeout : float; path_dir : string; var streams : Streams) : int {
     let err_path = full_path(path_join(WORK, "run.stderr"))
-    var cmd <- ["bash", "-c", "exec 2>\"$0\" 0< <(:); exec \"$@\"", err_path]
+    var cmd <- ["bash", "-c", "exec 2>\"$0\" 0< <(:); [ -z \"$1\" ] || PATH=\"$1:$PATH\"; shift; exec \"$@\"", err_path, path_dir]
     cmd |> push_from(argv)
     let rc = run_and_capture(cmd, streams.out, timeout)
     streams.err = fexist(err_path) ? fread(err_path) : ""
@@ -158,8 +158,8 @@ def private run_both(das_path, bin, stem, tier : string; program_args : array<st
     var native_args <- ["bash", "-c", "exec -a \"$0\" \"$@\"", stem, bin]
     native_args |> push_from(program_args)
     var native, das : Streams
-    let native_rc = run_split(native_args, 60.0, native)
-    let das_rc = run_split(das_argv(das_path, tier, program_args), 600.0, das)
+    let native_rc = run_split(native_args, 60.0, "", native)
+    let das_rc = run_split(das_argv(das_path, tier, program_args), 600.0, "", das)
     das.out = program_output(das.out)
     to_log(LOG_INFO, "lua: native exited {native_rc}: {native.out}\n")
     to_log(LOG_INFO, "lua: native stderr: {native.err}\n")
@@ -451,10 +451,11 @@ def private ended(rc : int; cap : Cap; err, side, memory : string; timeout : flo
 }
 
 // the verdict line of one test file: the native oracle `bin` run first, then the converted
-// interpreter at `das_path` under `tier`, each in the suite's folder, under `cap` and timed; a run the
+// interpreter at `das_path` under `tier`, each in the suite's folder with the `lua` of
+// `launchers` on its `PATH` (`suite_launchers`), under `cap` and timed; a run the
 // cap or the timeout ends is `memory` or `timeout`, and an oracle that fails on its own is `oracle`
 // with the first line of its stderr: in both the converted one is skipped
-def private suite_file(file, das_path, bin, tier : string; cap : Cap; args : Args) : string {
+def private suite_file(file, das_path, bin, tier : string; launchers : Launchers; cap : Cap; args : Args) : string {
     let dir = full_path(SUITE_DIR)
     if (!fexist(path_join(dir, file))) {
         return "{file} missing 0.0"
@@ -463,7 +464,7 @@ def private suite_file(file, das_path, bin, tier : string; cap : Cap; args : Arg
     native_args |> push_from(["bash", "-c", "cd \"$1\" && exec -a \"$0\" \"$\{@:2\}\"", "lua", dir, full_path(bin)], suite_args(file, args.suite_port))
     var native : Streams
     let native_started = ref_time_ticks()
-    let native_rc = run_split(native_args, args.suite_timeout, native)
+    let native_rc = run_split(native_args, args.suite_timeout, launchers.native, native)
     let native_seconds = double(get_time_usec(native_started)) / 1000000.0lf
     to_log(LOG_INFO, "lua: suite {file}: native exited {native_rc} in {fmt(":.1f", native_seconds)} s\n")
     let native_end = ended(native_rc, cap, native.err, "native", args.suite_memory, args.suite_timeout)
@@ -479,7 +480,7 @@ def private suite_file(file, das_path, bin, tier : string; cap : Cap; args : Arg
     das_args |> push_from(["sh", "-c", "cd \"$0\" && exec \"$@\"", dir], das_argv(das_path, tier, suite_args(file, args.suite_port)))
     var das : Streams
     let das_started = ref_time_ticks()
-    let das_rc = run_split(das_args, args.suite_timeout, das)
+    let das_rc = run_split(das_args, args.suite_timeout, launchers.das, das)
     let seconds = fmt(":.1f", double(get_time_usec(das_started)) / 1000000.0lf)
     das.out = program_output(das.out)
     let das_end = ended(das_rc, cap, das.err, tier, args.suite_memory, args.suite_timeout)
@@ -493,11 +494,38 @@ def private suite_file(file, das_path, bin, tier : string; cap : Cap; args : Arg
     return empty(difference) ? "{file} pass {seconds}" : "{file} fail {seconds} {difference}"
 }
 
+// the folders whose `lua` each side's runs find on their `PATH`, as `main.lua` runs the interpreter
+struct Launchers {
+    native : string
+    das : string
+}
+
+// `lua/work/native_bin/lua`, a link to the native oracle `bin`, which keeps the name `lua` in
+// `argv[0]`, and `lua/work/<layout>/bin/lua`, a script running the converted interpreter at
+// `das_path` under `tier` with its arguments: their folders, empty when one cannot be written
+def private suite_launchers(das_path, bin, tier, layout : string) : Launchers {
+    let native_dir = full_path(path_join(WORK, "native_bin"))
+    let das_dir = full_path(path_join(path_join(WORK, layout), "bin"))
+    mkdir_rec(native_dir)
+    mkdir_rec(das_dir)
+    let das_lua = path_join(das_dir, "lua")
+    let command = join([for (word in das_argv(das_path, tier, array<string>())); "'{word}'"], " ")
+    var out : string
+    let linked = run_and_capture(["ln", "-sfn", full_path(bin), path_join(native_dir, "lua")], out, 60.0) == 0
+    let written = fwrite(das_lua, "#!/bin/sh\nexec {command} \"$@\"\n") && run_and_capture(["chmod", "+x", das_lua], out, 60.0) == 0
+    return linked && written ? Launchers(native = native_dir, das = das_dir) : Launchers()
+}
+
 // every file of `SUITE` (the one `--suite-filter` names) run by `suite_file` in `layout` under the
 // cap `choose_cap` finds (probed again here: `Args` stays the command line), its verdicts written
 // to `lua/work/<layout>/suite.txt` and counted: true when every file passes
 def private suite_check(das_path, bin, layout : string; args : Args) : bool {
     let files <- empty(args.suite_filter) ? clone_to_move(SUITE) : [args.suite_filter]
+    let launchers = suite_launchers(das_path, bin, args.tier, layout)
+    if (empty(launchers.native)) {
+        to_log(LOG_ERROR, "lua: cannot write the suite's `lua` launchers under {WORK}\n")
+        return false
+    }
     var cap : Cap
     var refused : string
     if (!choose_cap(args.suite_memory, refused, cap)) {
@@ -510,7 +538,7 @@ def private suite_check(das_path, bin, layout : string; args : Args) : bool {
     lines |> reserve(length(files))
     var counts : table<string; int>
     for (file in files) {
-        let line = suite_file(file, das_path, bin, args.tier, cap, args)
+        let line = suite_file(file, das_path, bin, args.tier, launchers, cap, args)
         to_log(LOG_INFO, "lua: suite ({layout}, {args.tier}): {line}\n")
         lines |> push(line)
         counts[split(line, " ")[1]]++
