@@ -239,9 +239,10 @@ def test_error_check(t : T?) {
 
 // a stand-in interpreter for the test suite: its last argument names a script whose first word
 // says what to do - `spin` counts long enough that only the converted build outlasts a short
-// timeout, `grow` allocates until a cap kills it, `runs` prints an `x` per run so far, any other
-// word prints itself with digits that differ from run to run
-let LUA_SUITE_C = "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <time.h>\n#include \"lua.h\"\nint main(int argc, char **argv) \{\n    char word[64];\n    FILE *f = fopen(argv[argc - 1], \"r\");\n    if (f == 0 || fgets(word, sizeof word, f) == 0) return 3;\n    fclose(f);\n    for (char *c = word; *c; c++) if (*c == '\\n') *c = 0;\n    if (strcmp(word, \"spin\") == 0) \{\n        volatile long n = 0;\n        while (n < 300000000L) n++;\n    \}\n    if (strcmp(word, \"grow\") == 0) \{\n        for (;;) \{\n            char *p = malloc(1 << 24);\n            if (p == 0) return 4;\n            memset(p, 1, 1 << 24);\n        \}\n    \}\n    if (strcmp(word, \"runs\") == 0) \{\n        FILE *g = fopen(\"runs.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        for (long i = 0; i < size; i++) printf(\"x\");\n        printf(\"\\n\");\n        return 0;\n    \}\n    printf(\"%s %d %ld\\n\", word, lua_answer(), (long)clock() + (long)time(0));\n    return 0;\n\}\n"
+// timeout, `grow` allocates until a cap kills it, `runs` prints an `x` per run so far, `shape`
+// prints a time in `%g`'s other notation and sign on a later run, with all.lua's time warning, any
+// other word prints itself with digits that differ from run to run
+let LUA_SUITE_C = "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <time.h>\n#include \"lua.h\"\nint main(int argc, char **argv) \{\n    char word[64];\n    FILE *f = fopen(argv[argc - 1], \"r\");\n    if (f == 0 || fgets(word, sizeof word, f) == 0) return 3;\n    fclose(f);\n    for (char *c = word; *c; c++) if (*c == '\\n') *c = 0;\n    if (strcmp(word, \"spin\") == 0) \{\n        volatile long n = 0;\n        while (n < 300000000L) n++;\n    \}\n    if (strcmp(word, \"grow\") == 0) \{\n        for (;;) \{\n            char *p = malloc(1 << 24);\n            if (p == 0) return 4;\n            memset(p, 1, 1 << 24);\n        \}\n    \}\n    if (strcmp(word, \"runs\") == 0) \{\n        FILE *g = fopen(\"runs.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        for (long i = 0; i < size; i++) printf(\"x\");\n        printf(\"\\n\");\n        return 0;\n    \}\n    if (strcmp(word, \"shape\") == 0) \{\n        FILE *g = fopen(\"shape.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        if (size > 1) printf(\"Lua warning: #time difference from previous test: +5.0%%\\n\");\n        printf(size > 1 ? \"time: 0.000643 (-0.000643)\\n\" : \"time: 2.7e-05 (+2.7e-05)\\n\");\n        return 0;\n    \}\n    printf(\"%s %d %ld\\n\", word, lua_answer(), (long)clock() + (long)time(0));\n    return 0;\n\}\n"
 
 // a stand-in root whose interpreter is `LUA_SUITE_C` and whose test folder holds `scripts`, each
 // a file name of the suite and the word its script holds
@@ -259,7 +260,7 @@ def private suite_root(name : string; scripts : array<tuple<string; string>>) : 
 [test]
 def test_suite_check(t : T?) {
     t |> run("--suite-check runs each file of the suite with both builds, capped and timed, and writes a verdict per file: pass, fail with the first difference, timeout, memory, missing") @(t : T?) {
-        let root = suite_root("c2das_lua_suite", [("pm.lua", "hello"), ("math.lua", "runs"), ("sort.lua", "spin"), ("gc.lua", "grow")])
+        let root = suite_root("c2das_lua_suite", [("pm.lua", "hello"), ("db.lua", "shape"), ("math.lua", "runs"), ("sort.lua", "spin"), ("gc.lua", "grow")])
         var out : string
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--filter", "lua", "--layout", "single", "--suite-timeout", "5", "--suite-memory", "256M"]), out), 1, out)
         let suite = fread(path_join(root, "lua/work/single/suite.txt"))
@@ -268,12 +269,14 @@ def test_suite_check(t : T?) {
         t |> equal(lines[0], "main.lua missing 0.0", suite)
         // the digits of `hello`'s line differ from run to run, which the comparison ignores
         t |> success(lines[15] |> starts_with("pm.lua pass "), suite)
+        // a number in another notation and sign, and the time warning of the later run, compare equal
+        t |> success(lines[2] |> starts_with("db.lua pass "), suite)
         t |> success(suite |> contains("math.lua fail ") && suite |> contains(" line 1: native `x`, interp `xx`\n"), suite)
         // the native build counts in time, the converted one past it
         t |> success(suite |> contains("sort.lua timeout ") && suite |> contains(" timeout interp past 5 s\n"), suite)
         // the native build is killed at the cap, and the converted one is not run
         t |> success(suite |> contains("gc.lua memory ") && suite |> contains(" memory native over 256M\n"), suite)
-        t |> success(out |> contains("lua: suite under interp (single): 1 pass, 1 fail, 1 timeout, 1 memory, 26 missing of 30 files in "), out)
+        t |> success(out |> contains("lua: suite under interp (single): 2 pass, 1 fail, 1 timeout, 1 memory, 25 missing of 30 files in "), out)
         rmdir_rec(root)
     }
     t |> run("--suite-filter runs one file under the interpreter and the JIT, passing; a file outside the suite and a cap systemd refuses are refused") @(t : T?) {
