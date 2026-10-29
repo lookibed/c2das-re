@@ -893,15 +893,19 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   minutes, the suite runs 613, 754 and 831 s (`all.lua` not run, an oracle). The `_port`-only
   blocks of `gc.lua`, `attrib.lua` (`package.loadlib`, which the ANSI build answers `not
   supported`, as the test accepts) and `math.lua` pass in every layout, each file's converted
-  seconds those of the `_port=true` run. Verdicts that differ from the `_port=true` run (each a pass
+  seconds within a few seconds of the `_port=true` run's (up to 6 s apart in scc and single). Verdicts that differ from the `_port=true` run (each a pass
   there): `main.lua` oracle, `sh: 1: lua: not found`: the lane's, the native run's `argv[0]` is
   `lua`, which the file runs through `os.execute`, and no `lua` is on `PATH`; `files.lua` oracle,
   `files.lua:84: assertion failed!`: the lane's, the invalid-seek check expects `io.stdin:seek` to
   fail and `run_and_capture` gives the child `/dev/null`, which seeks; past it, line 732's
   `io.popen` raises `'popen' not supported` in the ANSI build (class a: the file cannot pass
-  natively without `LUA_USE_POSIX`); `all.lua` oracle, `main.lua`'s failure, which it runs first.
-  No libc exactness difference, lowering bug, runtime panic, timeout or memory verdict surfaced;
-  the converted side of the three oracle files is not run.
+  natively without `LUA_USE_POSIX`); `all.lua` oracle, `main.lua`'s failure, which it runs first (the source layout's run predates
+  the stderr quote: its three reasons are the ones the scc and single logs record, and the native
+  runs repeat by hand). No libc exactness difference, lowering bug, runtime panic, timeout or memory
+  verdict surfaced; the converted side of the three oracle files is not run, so `files.lua`'s later
+  `_port` blocks (`io.popen` at 717, the date table at 805 exercising `os.time`/`os.date`,
+  `%Ex`/`%Oy` at 841) stay uncovered on both sides until (4) below or a copy of the file without
+  its popen block.
   Next, cheapest first: (1) the JIT survey, `--suite-check --tier jit`, after
   lookibed/daScript#30 (F75: every protected call reports success under the JIT, so the suite
   cannot pass there now); (2) the suite runs' stdin a pipe, not `/dev/null`, so `files.lua`'s
