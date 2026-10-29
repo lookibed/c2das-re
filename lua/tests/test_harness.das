@@ -185,6 +185,14 @@ def test_fetch_refusals(t : T?) {
     }
 }
 
+// a scratch `VERSIONS.md` pinning `pinned` on its `lua:` line and a `lua/sources.das` whose
+// `SOURCES` names the folder of `fetched`
+def private stage_release_pair(root : string; pinned : string; fetched : string) {
+    mkdir_rec(path_join(root, "lua"))
+    fwrite(path_join(root, "VERSIONS.md"), "lua: {pinned} (the lua.org release)\n")
+    fwrite(path_join(root, "lua/sources.das"), "let SOURCES = \"lua/fetch/lua-{fetched}/src\"\n")
+}
+
 [test]
 def test_review_gate(t : T?) {
     t |> run("lua/REVIEW.das finds a tracked file under lua/fetch or lua/work, and passes a tree with none") @(t : T?) {
@@ -194,6 +202,7 @@ def test_review_gate(t : T?) {
         var out : string
         t |> equal(run_in(root, ["git", "init", "-q"], out), 0, out)
         mkdir_rec(path_join(root, "lua/work"))
+        stage_release_pair(root, "5.4.8", "5.4.8")
         fwrite(path_join(root, "lua/run.das"), "// tracked\n")
         fwrite(path_join(root, "lua/work/lua.program.json"), "\{\}\n")
         t |> equal(run_in(root, ["git", "add", "lua/run.das"], out), 0, out)
@@ -202,6 +211,20 @@ def test_review_gate(t : T?) {
         t |> equal(run_in(root, ["git", "add", "-f", "lua/work/lua.program.json"], out), 0, out)
         t |> equal(run_in(root, gate, out), 1, out)
         t |> success(out |> contains("lua/work/lua.program.json") && out |> contains("never committed"), out)
+        rmdir_rec(root)
+    }
+    t |> run("lua/REVIEW.das finds a SOURCES folder of another release than the lua: line pins") @(t : T?) {
+        var dir_error : string
+        let root = create_temp_directory("c2das_lua_gate", dir_error)
+        t |> equal(dir_error, "")
+        var out : string
+        t |> equal(run_in(root, ["git", "init", "-q"], out), 0, out)
+        stage_release_pair(root, "5.4.8", "5.4.8")
+        let gate <- daslang_argv("lua/REVIEW.das", array<string>())
+        t |> equal(run_in(root, gate, out), 0, out)
+        stage_release_pair(root, "5.4.9", "5.4.8")
+        t |> equal(run_in(root, gate, out), 1, out)
+        t |> success(out |> contains("lua/sources.das") && out |> contains("lua/fetch/lua-5.4.9/src"), out)
         rmdir_rec(root)
     }
 }

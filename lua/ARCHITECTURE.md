@@ -37,7 +37,8 @@ one module (the scc layout), and one module (the single layout).
   -load_module c_runtime lua/run.das -- [--native] [--run] [--tier jit] [--luac-check
   lua/fetch/lua-5.4.8-tests]`.
 - `lua.c2das` - the sidecar both programs convert under (section 3).
-- `REVIEW.das` - the mechanical gate: no file under `fetch/` or `work/` is tracked.
+- `REVIEW.das` - the mechanical gate: no file under `fetch/` or `work/` is tracked, and `SOURCES` in
+  `sources.das` names the folder of the release the `lua:` line of `VERSIONS.md` pins.
 
 ## 2. The programs {#program}
 
