@@ -433,7 +433,7 @@ def members_align(tu : CirTu; var memo : LayoutMemo; t : int) : int {
     return a
 }
 
-// whether a field of record `t` is (an array of) the opaque `jmp_buf` record, whose 4 bytes stand
+// whether a field of record `t` is the opaque `jmp_buf` record, whose 4 bytes stand
 // for the C library's buffer: padding after it keeps clang's offsets and size
 def private holds_jmp_buf(tu : CirTu; t : int) : bool {
     for (f in tu.types[t].fields) {

@@ -63,7 +63,7 @@ def private lua_port : Port => <- Port(
     claims <- [
         "`lua -e \"print(1+1)\"` and a script over string, table and math print what the native build prints, under the interpreter and the JIT.",
         "`luac -o` writes the native build's bytecode byte for byte for every file of the release's test suite.",
-        "A Lua error is caught as the native build catches it under the interpreter (`pcall`, `xpcall`, nested protected calls, errors in coroutines); under the JIT a protected call reports success (c2das-re's `docs/probe-findings.md` F75, lookibed/daScript#30). Lua's own test suite is not run yet (c2das-re's P5.3)."
+        "A Lua error is caught as the native build catches it under the interpreter (`pcall`, `xpcall`, nested protected calls, errors in coroutines); under the JIT a protected call reports success and an uncaught error exits 0 with no message (c2das-re's `docs/probe-findings.md` F75, lookibed/daScript#30). Lua's own test suite is not run yet (c2das-re's P5.3)."
     ],
     workloads <- [
         WorkloadSpec(name = "startup", args <- clone_to_move(STARTUP_ARGS), shown = "-e \"print(1)\"", compare_output = true, startup = true),
