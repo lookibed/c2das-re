@@ -87,7 +87,7 @@ let WHILE_KEY_SUFFIX = "@while"
 let SINGLE_KEY_SUFFIX = "@single"
 let SCC_KEY_SUFFIX = "@scc"
 
-//! The Lua programs (`lua/sources.das`) the readability metric measures, each in both layouts.
+//! The Lua programs (`lua/sources.das`) the readability metric measures, each in the three layouts (source, scc, single).
 let LUA_PROGRAMS <- ["lua", "luac"]
 
 //! The kernel id a perf input key names: the key's id less its mode suffix.

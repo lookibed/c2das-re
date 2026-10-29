@@ -13,19 +13,24 @@ require daslib/regex_boost
 //! since a test that passes is judged, never skipped. The rest ratchet; a test that fails for a
 //! reason no rule names is an ordinary failure the run counts.
 
-//! A rule: `pattern` is a regex over the test's text, or `ATTRIBUTES` (an attribute outside
-//! `DROPPED_ATTRIBUTES` and `LAYOUT_ATTRIBUTES`), `LAYOUT` (attributes outside `DROPPED_ATTRIBUTES`,
-//! every one in `LAYOUT_ATTRIBUTES`) or `BUILTINS` (a `__builtin_*` name outside `MAPPED_BUILTINS`).
+//! What a rule matches: its `pattern`, a regex over the test's text; an attribute outside
+//! `DROPPED_ATTRIBUTES` and `LAYOUT_ATTRIBUTES`; attributes outside `DROPPED_ATTRIBUTES`, every one
+//! in `LAYOUT_ATTRIBUTES`; or a `__builtin_*` name outside `MAPPED_BUILTINS`.
+enum RuleKind {
+    regex
+    attributes
+    layout
+    builtins
+}
+
+//! A rule: what it matches (`kind`, and `pattern` for a regex), and the skip line it writes.
 struct Rule {
+    kind : RuleKind = RuleKind.regex
     pattern : string
     feature : string
     reason : string
     phase : string
 }
-
-let ATTRIBUTES = "<attributes>"
-let LAYOUT = "<layout attributes>"
-let BUILTINS = "<builtins>"
 
 let REFUSED_INPUT = "the pinned clang refuses the input and the pipeline has no other frontend"
 
@@ -56,11 +61,11 @@ let RULES <- [
     Rule(pattern = "__label__|[=,(\{:?]\\s*&&\\s*[A-Za-z_]|\\breturn\\s+&&|goto\\s*\\*", feature = "address of a label and local labels", reason = "labels as values through the switch re-dispatch and local labels are not lowered yet", phase = "P7.6"),
     Rule(pattern = "case [^:\n]*\\.\\.\\.", feature = "GNU case range", reason = "`case a ... b` is not lowered yet", phase = "P7.6"),
     Rule(pattern = "__typeof|\\btypeof *\\(|__extension__|__alignof", feature = "GNU keywords", reason = "typeof, __extension__ and __alignof__ are not lowered yet", phase = "P7.6"),
-    Rule(pattern = ATTRIBUTES, feature = "__attribute__", reason = "an attribute outside the dumper's dropped list (linkage, run-time behaviour) is not lowered yet", phase = "P7.6"),
-    Rule(pattern = LAYOUT, feature = "packed or aligned layout", reason = "a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet", phase = "P7.6"),
+    Rule(kind = RuleKind.attributes, feature = "__attribute__", reason = "an attribute outside the dumper's dropped list (linkage, run-time behaviour) is not lowered yet", phase = "P7.6"),
+    Rule(kind = RuleKind.layout, feature = "packed or aligned layout", reason = "a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet", phase = "P7.6"),
     Rule(pattern = "__builtin_(add|sub|mul)_overflow", feature = "GCC overflow builtins", reason = "the checked arithmetic builtins are not lowered yet", phase = "P7.6"),
     Rule(pattern = "__builtin_(setjmp|longjmp)\\b", feature = "__builtin_setjmp", reason = "the builtin setjmp pair through the setjmp lowering is not lowered yet", phase = "P7.6"),
-    Rule(pattern = BUILTINS, feature = "__builtin_* calls", reason = "a builtin outside the emitter's shim list is not lowered yet", phase = "P7.6")
+    Rule(kind = RuleKind.builtins, feature = "__builtin_* calls", reason = "a builtin outside the emitter's shim list is not lowered yet", phase = "P7.6")
 ]
 
 //! The attributes the layout reads (`converter/ARCHITECTURE_DUMPER.md`, attributes and asm): a test
@@ -155,15 +160,15 @@ def first_rule(var compiled : array<Regex>; text : string) : int {
     let kept <- [for (n in attribute_names(text)); n; where !key_exists(DROPPED_ATTRIBUTES, n)]
     let layout_only = !empty(kept) && empty([for (n in kept); n; where !key_exists(LAYOUT_ATTRIBUTES, n)])
     for (idx, rule in range(length(RULES)), RULES) {
-        if (rule.pattern == ATTRIBUTES) {
+        if (rule.kind == RuleKind.attributes) {
             if (!empty(kept) && !layout_only) {
                 return idx
             }
-        } elif (rule.pattern == LAYOUT) {
+        } elif (rule.kind == RuleKind.layout) {
             if (layout_only) {
                 return idx
             }
-        } elif (rule.pattern == BUILTINS) {
+        } elif (rule.kind == RuleKind.builtins) {
             if (!empty(unmapped_builtins(text))) {
                 return idx
             }
@@ -190,8 +195,9 @@ def skip_lines(var compiled : array<Regex>; ids : array<string>; passing : table
 def compile_rules : array<Regex> {
     var compiled : array<Regex>
     compiled |> reserve(length(RULES))
+    // a rule of another kind keeps its index with a regex never compiled, never searched
     for (rule in RULES) {
-        var re <- regex_compile(rule.pattern == ATTRIBUTES || rule.pattern == LAYOUT || rule.pattern == BUILTINS ? "^$" : rule.pattern)
+        var re <- rule.kind == RuleKind.regex ? regex_compile(rule.pattern) : Regex()
         compiled |> emplace(re)
     }
     return <- compiled

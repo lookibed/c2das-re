@@ -70,13 +70,11 @@ struct LayoutPlan {
 }
 
 //! A function or object an edge between two units carries: its name, its call sites in the calling
-//! unit, its dynamic call count from that unit when a profile has one, and why a cut cannot
-//! late-bind it ("" when it can: a function every reference of the program calls directly, whose
+//! unit, and why a cut cannot late-bind it ("" when it can: a function every reference of the program calls directly, whose
 //! type spells no unit's record).
 struct EdgeSymbol {
     name : string
     calls : int
-    dynamic : int64
     why_not : string
 }
 
@@ -817,8 +815,6 @@ def private greedy_order(n : int; w : array<int64>; top : int) : array<int> {
     return <- order
 }
 
-// one strongly connected component with a cut: the edges never cut collapse into groups that stay
-// one module, the groups take the order `cut_order` finds, and every cuttable edge going up it is cut
 // the weight of each edge inside component `comp` by `<from>><to>` (-1 for one `layout.cut`
 // forces), and in `fixed` each edge no cut may take
 def private component_edges(plan : LayoutPlan; opts : CutOptions; comp : array<int>; var fixed : array<table<int>>; var weights : table<string; int64>) {
@@ -875,6 +871,8 @@ def private join_entry(var plan : LayoutPlan; comp : array<int>; entry : int; va
     }
 }
 
+// one strongly connected component with a cut: the edges never cut collapse into groups that stay
+// one module, the groups take the order `cut_order` finds, and every cuttable edge going up it is cut
 def private cut_component(var plan : LayoutPlan; opts : CutOptions; comp : array<int>) {
     var inscope fixed : array<table<int>>
     var inscope weights : table<string; int64>

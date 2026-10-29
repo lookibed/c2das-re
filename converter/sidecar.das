@@ -137,7 +137,7 @@ def json_count(js : JsonValue?) : int64 {
     return is_digit_run(text, 0) ? to_int64(text) : -1l
 }
 
-// a list of strings, or "" in `error` naming what `key` holds otherwise
+// the strings of the list `js` appended to `out`, else in `error` what `what` holds instead
 def private strings_of(js : JsonValue?; what : string; var out : array<string>; var error : string&) {
     if (!(js is _array)) {
         error = "{what} is a list of strings, not {write_json(js)}"

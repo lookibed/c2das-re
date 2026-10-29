@@ -79,9 +79,9 @@ let LANE_PAIRS <- [("interp", "jit"), ("interp", "exe"), ("interp", "aot"), ("ji
 //! the lanes over the scc layout's modules and the single layout's module, where the others run the
 //! source layout's: a column of the ratio table and of the projects table only where a capture
 //! measured them
-let SINGLE_LANES <- ["interp-scc", "jit-scc", "interp-single", "jit-single"]
+let LAYOUT_LANES <- ["interp-scc", "jit-scc", "interp-single", "jit-single"]
 //! each such lane over its source-layout twin, a ratio-table column where both stand
-let SINGLE_PAIRS <- [("interp-scc", "interp"), ("jit-scc", "jit"), ("interp-single", "interp"), ("jit-single", "jit")]
+let LAYOUT_PAIRS <- [("interp-scc", "interp"), ("jit-scc", "jit"), ("interp-single", "interp"), ("jit-single", "jit")]
 //! the line above which the top-level README is the charter's; the publisher owns the rest
 let README_MARKER = "<!-- generated below: c2das-re's scripts/publish_ports.sh renders everything under this line from each program's latest capture -->"
 //! the perf section and the projects table of a publish that measures nothing
@@ -162,11 +162,11 @@ def render_times(c : Capture) : string {
     return table_of(headers, rows, 2)
 }
 
-// the das lanes a table shows for `captures`: every one of `DAS_LANES`, then each single-module
-// lane one of them measured
+// the das lanes a table shows for `captures`: every one of `DAS_LANES`, then each layout lane
+// one of them measured
 def private shown_lanes(captures : array<Capture>) : array<string> {
     var lanes <- clone_to_move(DAS_LANES)
-    for (lane in SINGLE_LANES) {
+    for (lane in LAYOUT_LANES) {
         if (has_value([for (c in captures); has_lane(c, lane)], true)) {
             lanes |> push(lane)
         }
@@ -174,14 +174,14 @@ def private shown_lanes(captures : array<Capture>) : array<string> {
     return <- lanes
 }
 
-//! The ratio table: each das lane over native, then the lane-to-lane pairs; a single-module lane
-//! the capture measured adds its column and its pair with its source-layout twin.
+//! The ratio table: each das lane over native, then the lane-to-lane pairs; a layout lane the
+//! capture measured adds its column and its pair with its source-layout twin.
 def render_ratios(c : Capture) : string {
     var one : array<Capture>
     one |> push_clone(c)
     let lanes <- shown_lanes(one)
     var pairs <- clone_to_move(LANE_PAIRS)
-    for (pair in SINGLE_PAIRS) {
+    for (pair in LAYOUT_PAIRS) {
         if (has_value(lanes, pair._0)) {
             pairs |> push(pair)
         }
@@ -268,7 +268,7 @@ def private lane_mean_text(c : Capture; lane : string; total : int) : string {
 }
 
 //! The projects table: one row per program, the geometric mean of each lane's ratio to native; a
-//! single-module lane a capture measured adds its column.
+//! layout lane a capture measured adds its column.
 def render_projects(captures : array<Capture>) : string {
     let lanes <- shown_lanes(captures)
     var headers <- ["Program", "Captured", "Machine", "Workloads"]
