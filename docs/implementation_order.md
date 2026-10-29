@@ -851,7 +851,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   every metric's delta 0, the `lua/*` keys unchanged.
   Ledger: the JIT lane of Lua's error recovery waits for lookibed/daScript#30 (or a converter
   shape keeping returns out of the `try` arm, the owner's ruling); the ports README's Lua claim
-  and its test-suite `not yet` text regenerate at the next publish; perf not re-captured.
+  and its test-suite `not yet` text regenerate at the next publish; perf not re-captured; a field
+  that is an array of `jmp_buf` (`jmp_buf bs[2]`) loses its array type in Dumper A (the C-IR field
+  names the one `jmp_buf` record), so the relaxed search pads it as one buffer and the compile
+  check fails where the record was refused before: refusing or lowering the array is open; the
+  `--error-check` comparison merges stdout and stderr (a message on the wrong stream passes), and
+  the `argv[0]` rename of the oracle and the `lua`-only gating of `--error-check` have no stand-in
+  test (the real `error('x')` check is what catches them).
 - **P5.3 Lua's own test suite** under interp. Expect a long tail of libc exactness bugs
   (strtod, number formatting, string.format) — each fix lands with a fixture.
 - **P5.4 Perf snapshot:** fib/nbody/binary-trees, converted-interp vs native lua. Data
