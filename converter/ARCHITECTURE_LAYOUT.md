@@ -9,7 +9,7 @@ the files cut by late binding (`--layout source`, the sidecar's `layout`); `--la
 every cycle one module of fragments, and `--layout single` the one module of section 6. A program
 of one file is one module in each layout: it never reaches the link, and its headers' types stay in
 it. The layout is the owner's rulings (`docs/very-detailed-plan.md` section 1, "Module layout", and
-the cycle cut of 2026-10-24): the output reads like the C program's own files, not a monolith.
+the cycle-cut ruling): the output reads like the C program's own files, not a monolith.
 
 daslang refuses a cyclic `require` (`probes/test_modules.das`), and C files call each other in
 cycles without including each other's headers (Lua's `ldo.c` and `lvm.c`), so a file cannot always
@@ -68,33 +68,34 @@ entry module, carrying a type or a symbol no cut can late-bind, kept by `layout.
 inside a group no cut parts (the entry's joined group among them), and a profile count that is not
 an integer of 0 or more. The edges never cut collapse into groups, which stay one module of
 fragments as in `scc`; the entry module is highest in its component's order, since it requires and
-nothing requires it, so a group with a never-cut path to it joins its group, one module with it
-(the report's `kept with the entry` edge), and every edge into it is cut. Among the groups the cut is a minimum weight feedback arc set: the order of the groups,
-lowest first, that minimizes the weight of the edges going up it, exact over the subsets for up to
-16 groups, among equal weights the order leaving the fewest groups whose callers are all below
-them, else a greedy order (a group requiring nothing unplaced goes lowest, one nothing unplaced
-requires highest, else the one most required over what it requires). An edge's weight is the dynamic call count of its symbols from
-the calling file, read from the profile `layout.profile` names (a JSON object of callee names, each
-an object of calling file stems and counts, `lua/profile.das` writes Lua's), else the count of its
-call sites. `program.layout.txt` beside the program's C-IR lists every cut symbol with its edge and
-weight and every group no cut parts.
+nothing requires it, so a group with a never-cut path to it joins its group, one module with it (the
+report's `kept with the entry` edge), and every edge into it is cut. Among the groups the cut is a
+minimum weight feedback arc set: the order of the groups, lowest first, that minimizes the weight of
+the edges going up it, exact over the subsets for up to 16 groups, among equal weights the order
+leaving the fewest groups whose callers are all below them, else a greedy order (a group requiring
+nothing unplaced goes lowest, one nothing unplaced requires highest, else the one most required over
+what it requires). An edge's weight is the dynamic call count of its symbols from the calling file,
+read from the profile `layout.profile` names (a JSON object of callee names, each an object of
+calling file stems and counts, `lua/profile.das` writes Lua's), else the count of its call sites.
+`program.layout.txt` beside the program's C-IR lists every cut symbol with its edge and weight and
+every group no cut parts.
 
-A cut edge is the C linker's work done at `[init]`: the generated link module `<entry stem>_link.das`
-at the root, the lowest layer, holds per late-bound function a slot `<name>_slot` of its das function
-type and a wrapper of the function's own name, so a call site reads as C writes it; the wrapper
-panics naming the function while the slot is empty, and a variadic one forwards its list
+A cut edge is the C linker's work done at `[init]`: the generated link module
+`<entry stem>_link.das` at the root, the lowest layer, holds per late-bound function a slot `<name>_slot` of
+its das function type and a wrapper of the function's own name, so a call site reads as C writes it;
+the wrapper panics naming the function while the slot is empty, and a variadic one forwards its list
 (`c_runtime/variadic`'s `to_cvalist` of a `CVaList` takes it as it is). The defining module requires
 the link module and binds the slot in its `[init]` (`c2das_late_bind`), a variadic function through
-a private function taking its list; it spells its own calls of the function `__::name` (the module's own, however the module is
-compiled), and a module requiring both it and the link module spells them `<module>::name`, since
-the wrapper of that name is in sight (`probes/test_modules.das`). A module whose cut edge carries a symbol requires the link module, not
-the defining module; the entry module requires every module it would not reach otherwise, so each
-loads and binds before `main` runs; with the entry highest in its cycles' order a module reaching
-the entry is outside them, never called from `main`, and stays unrequired. A module defining a
-late-bound function `main` can call (over the edges before the cut) that the entry module still
-does not reach is refused as a defect of the layout, never shipped to panic at run time
-(`unbound_module`). The link
-module requires the modules of the types the signatures spell, all header type modules.
+a private function taking its list; it spells its own calls of the function `__::name` (the module's
+own, however the module is compiled), and a module requiring both it and the link module spells them
+`<module>::name`, since the wrapper of that name is in sight (`probes/test_modules.das`). A module
+whose cut edge carries a symbol requires the link module, not the defining module; the entry module
+requires every module it would not reach otherwise, so each loads and binds before `main` runs; with
+the entry highest in its cycles' order a module reaching the entry is outside them, never called
+from `main`, and stays unrequired. A module defining a late-bound function `main` can call (over the
+edges before the cut) that the entry module still does not reach is refused as a defect of the
+layout, never shipped to panic at run time (`unbound_module`). The link module requires the modules
+of the types the signatures spell, all header type modules.
 
 ## Emitting the modules {#emission}
 
@@ -122,13 +123,12 @@ module by its own file's text and serves a stale module when only an included fr
 (`docs/probe-findings.md` F72), so a changed fragment changes the cluster's file.
 
 A module requires the program modules its nodes' edges reach (a superset of the names its text
-spells, acyclic by construction) and the c_runtime pieces its text reaches; a caller of a
-variadic function requires `c_runtime/variadic` for the trailing arguments' spelling. Every
-external name of the program is one name and the link renames a static meeting one, so two modules
-a module requires export one name only for a late-bound function, its definer and the link module;
-any other cross-module name is spelled bare. The pipeline
-lists every module and fragment it writes in `program.modules.txt` beside them (the files the ports
-publisher copies) and, before converting, deletes the files an earlier conversion listed there,
-none other, so no stale module stays beside the new ones; it writes every file, formats each, and compile-checks each module no other
-module requires (the entry's, and any the program never reaches), which compiles every module
-they require.
+spells, acyclic by construction) and the c_runtime pieces its text reaches; a caller of a variadic
+function requires `c_runtime/variadic` for the trailing arguments' spelling. Every external name of
+the program is one name and the link renames a static meeting one, so two modules a module requires
+export one name only for a late-bound function, its definer and the link module; any other
+cross-module name is spelled bare. The pipeline lists every module and fragment it writes in
+`program.modules.txt` beside them (the files the ports publisher copies) and, before converting,
+deletes the files an earlier conversion listed there, none other, so no stale module stays beside
+the new ones; it writes every file, formats each, and compile-checks each module no other module
+requires (the entry's, and any the program never reaches), which compiles every module they require.
