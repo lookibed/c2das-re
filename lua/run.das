@@ -119,10 +119,13 @@ struct Streams {
 }
 
 // `argv` run with its stderr sent to a file of its own under `lua/work`, read and removed after the
-// run: its exit code, the two streams in `streams`
+// run, and its stdin a pipe whose writer has exited, which reads at its end at once and does not
+// seek, where `run_and_capture` alone gives the `/dev/null` that seeks: its exit code, the two
+// streams in `streams`. Each `exec` keeps `argv`'s program the direct child the timeout and the
+// cap kill
 def private run_split(argv : array<string>; timeout : float; var streams : Streams) : int {
     let err_path = full_path(path_join(WORK, "run.stderr"))
-    var cmd <- ["sh", "-c", "exec 2>\"$0\"; exec \"$@\"", err_path]
+    var cmd <- ["bash", "-c", "exec 2>\"$0\" 0< <(:); exec \"$@\"", err_path]
     cmd |> push_from(argv)
     let rc = run_and_capture(cmd, streams.out, timeout)
     streams.err = fexist(err_path) ? fread(err_path) : ""
