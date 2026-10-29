@@ -28,7 +28,8 @@ one module (the scc layout), and one module (the single layout).
   names. `--native` builds each native oracle from the same
   sources into `work/<stem>_native`; `--run` runs the converted interpreter of each layout under
   the tier `--tier` names (`interp`, the default, or `jit`) with each `--arg` (default `-e
-  "print(1+1)"`; a script is `--arg <path>`) and compares it with the oracle; `--luac-check
+  "print(1+1)"`; a script is `--arg <path>`) and compares it with the oracle, which runs under the
+  name `lua`, the `argv[0]` the converted program gets and Lua's messages quote; `--luac-check
   <folder>` compiles every `.lua` file of the folder with the converted compiler of each layout
   under the tier, `-o` into `work/<stem>/luac_check/` (`work/single/luac/luac_check/` for the
   single one, `work/scc/luac/luac_check/` for the scc one), and compares the bytes and the exit

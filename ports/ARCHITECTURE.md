@@ -22,7 +22,8 @@ code; this repository holds only the generator and its inputs.
 - `lua/bench/*.lua` - the Lua benchmark workloads (`fib`, `binary_trees`, `nbody`,
   `spectral_norm`): plain scripts that print their result, take their size from `arg[1]` and
   default to about one second under the native build. They use no `pcall` and no
-  `string.format` beyond `%d` and `%.9f`, since the converted interpreter aborts on a Lua error.
+  `string.format` beyond `%d` and `%.9f`, since under the JIT the converted interpreter's protected
+  calls report success (`docs/probe-findings.md` F75).
 - `tests/` - `test_ports_render.das` over fixed captures (golden tables), and
   `test_publish.das`, the publisher as a child process over a scratch c2das-re root (a stand-in
   release, harness and work tree with its stamp, its own git repository) and a scratch bare
