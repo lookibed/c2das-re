@@ -1374,6 +1374,14 @@ def p5_program_fixtures(t : T?) {
 
 // the shapes of lua 5.4.8 the conversion met, each with the lua line in the fixture
 def p5_lua_fixtures(t : T?) {
+    t |> run("lua's error recovery: a record holding a jmp_buf padded to clang's layout, the protected runner's trampoline, the throw through the chained handler") @(t : T?) {
+        var text : string
+        check_fixture(t, "p5_lua_protect", text)
+        has_text(t, text, "struct lua_longjmp \{\n    previous : lua_longjmp?\n    b : CJmpBuf\n    _pad0 : uint8[196]\n    status : int\n\}")
+        has_text(t, text, "static_assert(typeinfo sizeof(type<lua_longjmp>) == 216")
+        has_text(t, text, "        c_volatile_store(L.errorJmp.status, errcode)\n        c_longjmp(addr(L.errorJmp.b), 1)\n")
+        has_text(t, text, "            if (_sj_val == 0) \{\n                invoke(f, L, ud)\n            \}\n            L.errorJmp = lj.previous\n")
+    }
     t |> run("lua's shapes: one per defect the conversion of lua 5.4.8 met") @(t : T?) {
         var text : string
         check_fixture(t, "p5_lua_shapes", text)
@@ -1413,7 +1421,7 @@ def p5_lua_fixtures(t : T?) {
         rejects(t, "aligned_local", "int main(void) \{ int x __attribute__((aligned(32))) = 1; return x - 1; \}\n", "`x`: an alignment on a variable (`_Alignas`, `aligned`) is not lowered yet")
         rejects(t, "aligned_static_local", "int main(void) \{ static _Alignas(8) int s = 2; return s - 2; \}\n", "`s`: an alignment on a variable (`_Alignas`, `aligned`) is not lowered yet")
         rejects(t, "offsetof_path", "#include <stddef.h>\nstruct P \{ int a; struct \{ int q; \} in; \};\nint main(void) \{ return (int) offsetof(struct P, in.q) - 4; \}\n", "offsetof(struct P, ...): a member path (`a.b`, `a[i]`) is not lowered yet")
-        rejects(t, "jmp_buf_member", "#include <setjmp.h>\nstruct lj \{ struct lj *previous; jmp_buf b; volatile int status; \};\nint main(void) \{ struct lj l; l.status = 0; return l.status; \}\n", "record `lj` holds a `jmp_buf` (`b`), which das spells as `CJmpBuf`, not at the C library's size; not lowered yet")
+        rejects(t, "jmp_buf_member", "#include <setjmp.h>\nstruct __attribute__((packed)) lj \{ char c; jmp_buf b; int status; \};\nint main(void) \{ struct lj l; l.status = 0; return l.status; \}\n", "record `lj` holds a `jmp_buf` (`b`), which das spells as `CJmpBuf`, not at the C library's size; not lowered yet")
         rejects(t, "offsetof_index", "#include <stddef.h>\nstruct P \{ int a; int b[3]; \};\nint main(void) \{ return (int) offsetof(struct P, b[1]) - 8; \}\n", "offsetof(struct P, ...): a member path (`a.b`, `a[i]`) is not lowered yet")
     }
 }

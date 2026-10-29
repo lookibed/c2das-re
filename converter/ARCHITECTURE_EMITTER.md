@@ -242,7 +242,7 @@ step into them writes through `write_T_f` around the read, `*p` is `read_T(p, 0)
 `write_T(p, 0, v)`, `sizeof` is clang's size as a literal, and a pointer step, `p + n`, `p[i]`,
 `p - q` scale by that size. A packed record the sidecar does not list, the address of a
 marshal-only value, an array of the record and a record or array-of-records field inside one
-fail closed, and so does a record holding a `jmp_buf`, which das spells as `CJmpBuf`.
+fail closed, and so does a packed record holding a `jmp_buf`, which das spells as `CJmpBuf`.
 
 The switch ladder and the labels (`switch`, `goto`, a goto into another case) are in
 `ARCHITECTURE_EMITTER_CONTROL.md`.
@@ -275,7 +275,9 @@ array members, function pointers, `[variadic]` definitions and the `va_list` cur
 ### setjmp / longjmp {#setjmp-general}
 
 A `jmp_buf` is `CJmpBuf` (`c_runtime/setjmp`), its decay `addr(buf)` (or the pointer a `*p`
-read it through), and `longjmp` is `c_longjmp`. A setjmp site is an `if` whose condition is
+read it through), and `longjmp` is `c_longjmp`. A record holding one (Lua's `struct lua_longjmp`)
+keeps clang's offsets and size through a padding field after it (`converter/ARCHITECTURE.md`
+section 2, the relaxed search). A setjmp site is an `if` whose condition is
 `setjmp(buf)` tested against zero, below casts, `!` and `== 0` / `!= 0`. With both branches it
 is the contained site of `docs/lowering-examples.md` "setjmp / longjmp": the first run is the
 `try`, the longjmp return the `recover`, which rethrows a longjmp to another buffer or a
@@ -291,3 +293,6 @@ opens the tail, setjmp read as `_sj_valN` (0 on the first run, longjmp's value o
 reruns the statement, so nothing in it is read before the call. A branch or a tail that leaves
 an enclosing loop, a site off a block's statement level, a second setjmp, another effect or read
 (`x = g + setjmp(buf)`, `a[i++] = setjmp(buf)`) and a `setjmp` read any other way fail closed.
+The lowering is exact under the interpreter; under the JIT a `return` inside a `try` or `recover`
+arm leaves the arm, not the function (`docs/probe-findings.md` F75), so a trampoline whose tail
+returns runs on past it there.

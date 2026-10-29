@@ -1,5 +1,8 @@
 options gen2
 require dastest/testing_boost public
+require strings
+require daslib/strings_boost
+require _daslang_child
 
 struct CJmpBuf {
     val : int
@@ -94,5 +97,32 @@ def test_setjmp(t : T?) {
             _c_jmp_target = null
         }
         t |> equal(zero.val, 1)
+    }
+}
+
+// a panic crossing between a JIT-compiled function and a `[no_jit]` one, which the JIT leaves to
+// the interpreter, each way: `5 6` when both recovers catch
+let MIXED_TIERS = "options gen2\n[no_jit]\ndef interp_thrower \{\n    panic(\"i\")\n\}\ndef jit_thrower \{\n    panic(\"j\")\n\}\ndef jit_catches : int \{\n    var r = 0\n    try \{\n        interp_thrower()\n    \} recover \{\n        r = 5\n    \}\n    return r\n\}\n[no_jit]\ndef interp_catches : int \{\n    var r = 0\n    try \{\n        jit_thrower()\n    \} recover \{\n        r = 6\n    \}\n    return r\n\}\n[export]\ndef main \{\n    print(\"\{jit_catches()\} \{interp_catches()\}\\n\")\n\}\n"
+
+// a `return` inside a try block after a call, with no panic, and inside a recover block: C's
+// answers are 1 and 7
+let RETURN_IN_TRY = "options gen2\ndef thrower(n : int) \{\n    if (n > 0) \{\n        panic(\"x\")\n    \}\n\}\ndef in_try : int \{\n    try \{\n        thrower(0)\n        return 1\n    \} recover \{\n        pass\n    \}\n    return 10\n\}\ndef in_recover : int \{\n    try \{\n        thrower(1)\n    \} recover \{\n        return 7\n    \}\n    return 20\n\}\n[export]\ndef main \{\n    print(\"\{in_try()\} \{in_recover()\}\\n\")\n\}\n"
+
+[test]
+def test_setjmp_tiers(t : T?) {
+    t |> run("under the JIT a panic crosses from a [no_jit] function to a JIT-compiled recover and back") @(t : T?) {
+        let interp = daslang_child_flags("setjmp_mixed", MIXED_TIERS, array<string>())
+        t |> equal(interp.out, "5 6\n", interp.out)
+        let jit = daslang_child_flags("setjmp_mixed_jit", MIXED_TIERS, jit_flags())
+        t |> success(jit_ran(jit.out), jit.out)
+        t |> equal(program_output(jit.out), "5 6\n", jit.out)
+    }
+    t |> run("under the JIT a return inside a try block after a call, or inside a recover block, leaves the block and not the function (docs/probe-findings.md F75)") @(t : T?) {
+        let interp = daslang_child_flags("setjmp_return", RETURN_IN_TRY, array<string>())
+        t |> equal(interp.out, "1 7\n", interp.out)
+        // the JIT warns at compile time and runs on; lookibed/daScript#30
+        let jit = daslang_child_flags("setjmp_return_jit", RETURN_IN_TRY, jit_flags())
+        t |> success(jit_ran(jit.out) && jit.out |> contains("return inside try/recover leaves the try arm"), jit.out)
+        t |> success(jit.out |> ends_with("\n10 20\n"), jit.out)
     }
 }

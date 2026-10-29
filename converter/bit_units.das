@@ -433,6 +433,18 @@ def members_align(tu : CirTu; var memo : LayoutMemo; t : int) : int {
     return a
 }
 
+// whether a field of record `t` is (an array of) the opaque `jmp_buf` record, whose 4 bytes stand
+// for the C library's buffer: padding after it keeps clang's offsets and size
+def private holds_jmp_buf(tu : CirTu; t : int) : bool {
+    for (f in tu.types[t].fields) {
+        let ft = record_under(tu, f.t)
+        if (ft >= 0 && tu.types[ft].k == "struct" && tu.types[ft].name == "jmp_buf") {
+            return true
+        }
+    }
+    return false
+}
+
 //! Whether a field's record type (through arrays) won an alignment below clang's.
 def has_underaligned_record_field(tu : CirTu; var memo : LayoutMemo; t : int) : bool {
     for (f in tu.types[t].fields) {
@@ -508,8 +520,8 @@ def private measure(tu : CirTu; var memo : LayoutMemo; t : int) {
     }
     // the fallback: byte units and padding reproduce clang's offsets and size, the alignment
     // the fields give at or below clang's, for a record with bitfields (its own or a nested
-    // record's) whose clang alignment no attribute raised past its members'
-    if ((has_bitfield(tu, t, false) || has_underaligned_record_field(tu, memo, t)) && clang_align <= members_align(tu, memo, t)) {
+    // record's) or a `jmp_buf` field whose clang alignment no attribute raised past its members'
+    if ((has_bitfield(tu, t, false) || has_underaligned_record_field(tu, memo, t) || holds_jmp_buf(tu, t)) && clang_align <= members_align(tu, memo, t)) {
         if (assign(tu, memo, t, clang_align, true)) {
             memo.natural[t] = true
             memo.underaligned[t] = memo.align[t] < clang_align
