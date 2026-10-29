@@ -860,6 +860,38 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   test (the real `error('x')` check is what catches them).
 - **P5.3 Lua's own test suite** under interp. Expect a long tail of libc exactness bugs
   (strtod, number formatting, string.format) — each fix lands with a fixture.
+  In progress (branch `p5.3-lua-suite`, PR 1 of n: the lane and the survey; owner rule
+  2026-10-29 on memory: every suite run capped). `lua/run.das --suite-check` runs the files
+  `all.lua` runs under `_port=true` (`_soft` false, `T` absent; `big.lua` as `all.lua`'s coroutine;
+  `main.lua` returns at once under `_port`; `heavy.lua` is no file of the lane), then `all.lua`,
+  each with the native oracle and the converted interpreter in the test folder, each in a systemd
+  scope capped at `--suite-memory` (4G) and timed at `--suite-timeout` (1800 s), verdicts to
+  `lua/work/<layout>/suite.txt`; outputs compare with every number masked (the suite prints seeds,
+  timings, dates; `%g` picks its notation by the value) and without `all.lua`'s time warning.
+  Survey 2026-10-29 under interp, the trees reconverted from main 04efd6a (the converter
+  unchanged since P5.2): 30 of 30 files pass in each of the source, scc and single layouts, no
+  fail, no timeout, no memory verdict at the 4G cap; wall time with the conversion 21.7, 24.3 and
+  25.7 minutes, the suite runs 1131, 1291 and 1368 s. Native per file under the same cap: at most
+  7.0 s (`errors.lua`), `all.lua` 13.9 s. The converted run's seconds (source / scc / single):
+  `all.lua` 493 / 518 / 511, `constructs.lua` 234 / 238 / 236, `errors.lua` 173 / 177 / 180,
+  `sort.lua` 59 / 61 / 63, `verybig.lua` 23 / 28 / 31, `big.lua` 19 / 23 / 27, `gc.lua`
+  17 / 22 / 25, `calls.lua` 15 / 20 / 23, every other file under 17 s; a run's fixed cost is
+  1.3 s in the source layout, 6 s in scc and 9 s in single (the larger modules' compile per
+  process). No libc exactness bug, lowering bug or runtime panic surfaced: the first survey's one
+  failure was the lane's (`all.lua`'s `time: %g` line, `2.7e-05` native beside `0.000643`
+  converted), fixed by the number masking. Finding: before the cap, a run of the earlier session
+  of this item reached 15 GB RSS in `lua_native` and the OOM killer took the session; which file
+  is not recorded (`heavy.lua`, which `all.lua` never runs, is the suite's memory test); under the
+  cap no run of the lane, native or converted, reaches 4G.
+  Next, cheapest first: (1) the JIT survey, `--suite-check --tier jit`, after
+  lookibed/daScript#30 (F75: every protected call reports success under the JIT, so the suite
+  cannot pass there now); (2) the oracle comparison split by stream (stdout and stderr compared
+  apart; P5.2's ledgered MINOR), a lane change with a stand-in test; (3) the tests `_port` skips
+  (locale, `os.date`/strftime formats, `io.popen`, `os.execute`) run under `_port=false` against
+  the native ANSI build, which fails some of them natively too: a survey of what is the ANSI
+  build's and what is the converter's, fixtures in `c_runtime/tests` for any libc difference;
+  (4) the scc and single layouts' per-process compile, a perf row for P5.4. The exit criterion
+  is not claimed until the JIT and AOT lanes of the phase exit run.
 - **P5.4 Perf snapshot:** fib/nbody/binary-trees, converted-interp vs native lua. Data
   point only; no bar.
 - **Exit criterion:** Lua test suite passes under interp; JIT/AOT lanes at least compile
