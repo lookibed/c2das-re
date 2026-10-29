@@ -40,8 +40,12 @@ one module (the scc layout), and one module (the single layout).
   with the oracle; `--suite-check` runs the release's test suite with the converted interpreter of
   each layout under the tier, file by file against the oracle, each run in a memory-capped scope
   (`--suite-memory`, default `4G`) under `--suite-timeout` seconds (default 1800), the verdicts to
-  `work/<layout>/suite.txt`; `--suite-filter <file>` runs one file of it (section 2, "The test
-  suite"); `--filter <stem>` converts that program alone. Run from the repository root: `daslang -load_module dasCRuntime
+  `work/<layout>/suite.txt`; `--suite-filter <file>` runs one file of it, `--suite-port` (`true`,
+  the default, or `false`) the value of the global `_port` each file gets (section 2, "The test
+  suite"); `--run`, `--error-check` and `--suite-check` compare the exit code, stdout and stderr,
+  the two streams apart, each run's stderr going to `work/run.stderr`, read and removed after the
+  run, and the JIT's `[I]` lines, which land on stdout, dropped from it; `--filter <stem>` converts
+  that program alone. Run from the repository root: `daslang -load_module dasCRuntime
   -load_module c_runtime lua/run.das -- [--native] [--run] [--error-check] [--suite-check] [--tier
   jit] [--luac-check lua/fetch/lua-5.4.8-tests]`.
 - `lua.c2das` - the sidecar both programs convert under (section 3).
@@ -79,25 +83,29 @@ module of one program.
 
 `--suite-check` runs the test suite of the release, `fetch/lua-5.4.8-tests/`, file by file: each
 file `all.lua` runs, in its order, with the globals it sets for them (`-e "_port=true" <file>`, so
-the tests that assume a POSIX build skip; `_soft` stays false, so the long tests run; `T`, the debug
-build's test library, is absent), `big.lua` as `all.lua` runs it (a coroutine whose yields are
-checked, since the file yields at its top level), then `all.lua` itself. `main.lua` returns at once
-under `_port`, and `heavy.lua`, which `all.lua` never runs, is no file of the lane. Each file runs
-first with the native oracle, then with the converted interpreter, both in the suite's folder, each
-in a systemd scope of its own (`systemd-run --scope --collect -p MemoryMax=<--suite-memory> -p
-MemorySwapMax=0`, default `4G`: a cgroup memory cap with swap excluded, which the kernel enforces by
-killing the run; the scope is unloaded when it ends) and under `--suite-timeout` seconds (default 1800).
-The verdict is `pass` when the exit codes agree and the merged outputs agree line by line once every
-number reads as one, whatever its sign or notation (the suite prints random seeds, timings and the
-date, `%g` picking the notation by the value), and without the warning `all.lua` prints when its time
-differs from the one the previous run left in `time.txt` of the folder, the other build's; `fail` with the
-first line that differs, quoted from both runs, or the two exit codes; `timeout` or `memory` naming
-the run the timeout or the cap ended, or `oracle` with the exit code when the native build fails on
-its own (in both the converted one does not run: an oracle's failure never passes by agreement);
-`missing` for a file the folder lacks. The verdicts go to `work/<layout>/suite.txt`, a line
-`<file> <verdict> <seconds of the converted run> [<detail>]` per file, and the totals to a
-`lua: suite under <tier> (<layout>): ...` line; `--suite-filter <file>` runs one file of the lane.
-A cap systemd refuses (`--suite-memory lots`) refuses the lane before any run.
+the tests that assume a POSIX build skip; `--suite-port false` gives `_port=false`, which runs them
+against the same ANSI build natively, `main.lua` then running the interpreter by its `argv[0]`
+through `os.execute`; `_soft` stays false, so the long tests run; `T`, the debug build's test
+library, is absent), `big.lua` as `all.lua` runs it (a coroutine whose yields are checked, since the
+file yields at its top level), then `all.lua` itself. `main.lua` returns at once under `_port`, and
+`heavy.lua`, which `all.lua` never runs, is no file of the lane. Each file runs first with the
+native oracle, then with the converted interpreter, both in the suite's folder with `/dev/null` as
+stdin, each in a systemd scope of its own (`systemd-run --scope --collect -p
+MemoryMax=<--suite-memory> -p MemorySwapMax=0`, default `4G`: a cgroup memory cap with swap
+excluded, which the kernel enforces by killing the run; the scope is unloaded when it ends) and
+under `--suite-timeout` seconds (default 1800). The verdict is `pass` when the exit codes agree and
+stdout and stderr each agree line by line once every number reads as one, whatever its sign or
+notation (the suite prints random seeds, timings and the date, `%g` picking the notation by the
+value), and without the warning `all.lua` prints when its time differs from the one the previous run
+left in `time.txt` of the folder, the other build's; `fail` with the first line that differs, stdout
+before stderr, quoted from both runs and naming its stream, or the two exit codes; `timeout` or
+`memory` naming the run the timeout or the cap ended, or `oracle` with the exit code and the first
+line of the native stderr when the native build fails on its own (in both the converted one does not
+run: an oracle's failure never passes by agreement); `missing` for a file the folder lacks. The
+verdicts go to `work/<layout>/suite.txt`, a line `<file> <verdict> <seconds of the converted run>
+[<detail>]` per file, and the totals to a `lua: suite under <tier> (<layout>): ...` line;
+`--suite-filter <file>` runs one file of the lane. A cap systemd refuses (`--suite-memory lots`)
+refuses the lane before any run.
 
 ## 3. The sidecar keys
 
