@@ -1007,6 +1007,36 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   converted module compiles every function and finds no `link_error`. Not a defect: bitfld-5
   exits 3 as the pinned clang's own build aborts (134); only gcc exits 0, since the test checks
   GCC's wrap of a 40-bit bitfield.
+- **P7.10 Hygiene the P5.1 audit deferred** (owner ruling 9 step b, 2026-10-29; reports under
+  `/root/notes/audit_p5.1/`). Folds the dupe audit found and the fix round left: the C-IR tree walks
+  `layout.das` `expr_uses`/`stmt_uses` and `link.das` `remap_expr`/`remap_stmt`/`rename_expr` rewrite
+  `emit.das`'s private `each_stmt`/`each_expr`/`each_subexpr(_mut)` (make the walkers public in
+  `cir.das`, with a skip predicate for a direct call's callee); `emit.das` `relative_to`/`in_dir` and
+  `layout.das` `relative_dir` against `fio::relative` (state the text-only reason or fold); the
+  free-name search spelled three ways (`cir.das` `free_name`, `link.das` `fresh_name`, the
+  `hoist_static` loop in `dumper_a.das`: one `free_name(taken, want, blocked)`); the per-layout output
+  path spelled in `ports/publish.das` `module_of`/`single_of`/`scc_of`, `lua/run.das` `layout_dir`
+  and the lane-suffix tests (one `layout_module_of` plus one lane-to-layout parse);
+  `holds_constant_p`/`holds_comma` as one `holds_node`; the reachability walks `reached`,
+  `live_nodes` and `join_entry`'s loop as one `reach(start, successors)`; the key-suffix strip in
+  `metrics/readability.das` and `suite_files.das` `kernel_of_key`; the test helpers `written`,
+  `converted_with`/`converted_in` and `test_cli.das` `run_layout`; the copied blocks: the `[init]`
+  and late-signature lines in `emit.das` (5362-5371 vs 5664-5670, 5613-5626 vs 5654-5660), the
+  `"{a}>{b}"` edge keys parsed in five places of `layout.das` (key by `int2`), the dedupe-and-sort
+  of requires written three times, the three per-layout README loops in `publish.das`, the `[I]`
+  line strip in `test_layout.das` (third copy of `program_output`). Style items the audit rated
+  suggestion or nitpick (`/root/notes/audit_p5.1/reports/style_*.md`): the `-1` sentinels and the
+  `16` exact-order limit named, `NO_CUT` written as `(1l << 62l) - 1l`, `LayoutNode.kind` an enum,
+  the forced edges in their own table, one `why_*` prefix for the refusal functions, the
+  `PROGRAMS` tuple's named fields, `holder`/`counts`/`to`/`from` in `lua/profile.das`, the
+  `output`/`mismatch` and `phase`/`ledger row` word pairs, the error message of `lua/run.das:164`
+  naming its cause, the hand counts in `probes/test_toolchain.das`. Also: the daScript upstream
+  report of the csmith worker kill missing children in their own process groups; whether the
+  architecture companions number their sections (`ARCHITECTURE_COMMON.md` says sections are
+  numbered); the vendored `skills/comment_style_hygiene.md` contradiction on a multi-line `//!`
+  above a public `def` or global (fix upstream, re-sync). Metrics history: the commit messages of
+  ce977d2, 97410f4 and 1e436ab lack the totals table and the added keys the checklist asks for
+  (history is not rewritten).
 - **Exit criterion:** the §2 metric sentence of the plan is true, all four columns
   published.
 
