@@ -59,6 +59,15 @@ let LUAC_ARGV0_C = "#include <stdio.h>\n#include <string.h>\nint main(int argc, 
 
 let LOBJECT = "#include \"lua.h\"\nint lua_answer(void) \{ return 41; \}\n"
 
+// a stand-in interpreter that recovers from its own error: an argument naming `error` longjmps out
+// of the protected part, which prints `caught` instead of the answer and exits 1
+let LUA_PROTECTED_C = "#include <stdio.h>\n#include <setjmp.h>\n#include <string.h>\n#include \"lua.h\"\nstatic jmp_buf b;\nstatic void raise_error(void) \{ longjmp(b, 1); \}\nint main(int argc, char **argv) \{\n    int status = 0;\n    if (setjmp(b) == 0) \{\n        if (strstr(argv[argc - 1], \"error\")) raise_error();\n        printf(\"%d %s\\n\", lua_answer() + argc, argv[argc - 1]);\n    \} else \{\n        printf(\"caught\\n\");\n        status = 1;\n    \}\n    return status;\n\}\n"
+
+// a stand-in interpreter whose output differs from run to run: it appends a byte to the file at
+// `path`, wherever the run's folder is, and prints the file's size
+def private lua_runs_c(path : string) : string =>
+    "#include <stdio.h>\nint main(void) \{\n    FILE *f = fopen(\"{path}\", \"ab\");\n    if (f == 0) return 2;\n    fwrite(\"x\", 1, 1, f);\n    printf(\"%ld\\n\", ftell(f));\n    fclose(f);\n    return 0;\n\}\n"
+
 [test]
 def test_run_refusals(t : T?) {
     t |> run("run.das refuses a tier other than interp or jit, a layout other than source, scc, single or all, and a tree with no fetched sources") @(t : T?) {
@@ -199,6 +208,31 @@ def test_run_stand_in(t : T?) {
         var out : string
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua"]), out), 1, out)
         t |> success(out |> contains("lobject.c:2:"), out)
+        rmdir_rec(root)
+    }
+}
+
+[test]
+def test_error_check(t : T?) {
+    t |> run("--error-check runs each error-recovery check with the converted interpreter of each layout under the interpreter and the JIT, each agreeing with the native build") @(t : T?) {
+        let root = stand_in_root("c2das_lua_errors", LOBJECT)
+        fwrite(path_join(root, "lua/fetch/lua-5.4.8/src/lua.c"), LUA_PROTECTED_C)
+        for (tier in ["interp", "jit"]) {
+            var out : string
+            t |> equal(run_in(root, daslang_argv("lua/run.das", ["--error-check", "--tier", tier, "--filter", "lua"]), out), 0, out)
+            t |> equal(length(split(out, "lua: error checks under {tier}: 8 of 8 agree with the native build\n")) - 1, 3, out)
+            // a check naming `error` raises the stand-in's; the VM error's and the memory error's do not
+            t |> success(out |> contains("lua: {tier} exited 1: caught\n") && out |> contains("lua: {tier} exited 0: 44 print(pcall(string.rep, 'x', 1 << 40))\n"), out)
+        }
+        rmdir_rec(root)
+    }
+    t |> run("--error-check fails, naming each check, when the converted interpreter's output differs from the native one's") @(t : T?) {
+        let root = stand_in_root("c2das_lua_errors_differ", LOBJECT)
+        fwrite(path_join(root, "lua/fetch/lua-5.4.8/src/lua.c"), lua_runs_c(path_join(root, "runs.bin")))
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--error-check", "--filter", "lua", "--layout", "single"]), out), 1, out)
+        t |> success(out |> contains("lua: error check `-e print(pcall(error, 'boom'))` under interp differs from the native build"), out)
+        t |> success(out |> contains("lua: error checks under interp: 0 of 8 agree with the native build"), out)
         rmdir_rec(root)
     }
 }

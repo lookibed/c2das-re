@@ -32,9 +32,13 @@ one module (the scc layout), and one module (the single layout).
   <folder>` compiles every `.lua` file of the folder with the converted compiler of each layout
   under the tier, `-o` into `work/<stem>/luac_check/` (`work/single/luac/luac_check/` for the
   single one, `work/scc/luac/luac_check/` for the scc one), and compares the bytes and the exit
-  code with the native compiler's, refusing a folder with no script; `--filter <stem>` converts
+  code with the native compiler's, refusing a folder with no script; `--error-check` runs the
+  converted interpreter of each layout under the tier with each of `run.das`'s `ERROR_CHECKS` (an
+  error caught by `pcall`, one uncaught, nested protected calls, an error the VM raises, a table as
+  the error object, an error in a coroutine, `xpcall`'s handler, a memory error) and compares each
+  with the oracle; `--filter <stem>` converts
   that program alone. Run from the repository root: `daslang -load_module dasCRuntime
-  -load_module c_runtime lua/run.das -- [--native] [--run] [--tier jit] [--luac-check
+  -load_module c_runtime lua/run.das -- [--native] [--run] [--error-check] [--tier jit] [--luac-check
   lua/fetch/lua-5.4.8-tests]`.
 - `lua.c2das` - the sidecar both programs convert under (section 3).
 - `REVIEW.das` - the mechanical gate: no file under `fetch/` or `work/` is tracked, and `SOURCES` in
@@ -72,12 +76,15 @@ module of one program.
 - `defines`: `LUA_USE_JUMPTABLE=0`. `lvm.c` turns on its computed-goto dispatch (`ljumptab.h`,
   `&&L_OP_MOVE`, a GNU extension outside the dialect) whenever `__GNUC__` is defined, which
   clang defines; `0` selects the `switch` dispatch every ISO compiler gets.
-- `defines`: `luai_jmpbuf=int`, `LUAI_THROW(L,c)=abort()` and `LUAI_TRY(L,c,a)={ a }`, the stub of
-  Lua's error recovery: `ldo.c` defines the three only when `LUAI_THROW` is not defined, and its
-  ISO definitions hold a `jmp_buf` in `struct lua_longjmp` and call `setjmp` and `longjmp`, whose
-  lowering here is ledgered as P5.2 (`docs/implementation_order.md`). With the stub a script
-  that raises no Lua error runs, and a Lua error aborts the process where the native build
-  recovers.
+- No define touches Lua's error recovery: neither `LUA_USE_LINUX` nor `LUA_USE_POSIX` is defined
+  (the native oracle is built without them too), so `ldo.c` takes its ISO C definitions, a `jmp_buf`
+  in `struct lua_longjmp`, `LUAI_TRY` as `if (setjmp((c)->b) == 0) { a }` and `LUAI_THROW` as
+  `longjmp((c)->b, 1)`. The converter's setjmp lowering takes both (`converter/ARCHITECTURE_EMITTER.md`
+  "setjmp / longjmp"): `luaD_rawrunprotected` is the single-branch trampoline, `luaD_throw` a
+  `c_longjmp` through the handler chain, and `struct lua_longjmp` keeps clang's layout with a
+  padding field after its `CJmpBuf`. A Lua error is caught as the native build catches it under the
+  interpreter; under the JIT the trampoline's `return lj.status` leaves only its `try` arm
+  (`docs/probe-findings.md` F75), so every protected call reports success there.
 - `layout`: `{"profile": "lua.profile.json"}`, the counts the source layout's cycle cut weighs its
   edges by (section 5); no `threshold`, since the late-bound calls cost 2 to 3 percent under the
   JIT and nothing measurable under the interpreter (`docs/implementation_order.md` P5.1b2).

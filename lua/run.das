@@ -21,7 +21,8 @@ require sources
 //! `lua/lua.c2das`, its compile check included, and timed, in the source layout into
 //! `lua/work/<stem>/`, in the scc layout into `lua/work/scc/<stem>/` and in the single layout into
 //! `lua/work/single/<stem>/`. `--native` builds the
-//! native oracle of each, `--run` runs the converted interpreter against it, `--luac-check` the
+//! native oracle of each, `--run` runs the converted interpreter against it, `--error-check` the
+//! interpreter's error-recovery checks against it, `--luac-check` the
 //! converted compiler's `-o` over a folder of scripts. Run from the repository root.
 
 let WORK = "lua/work"
@@ -39,6 +40,9 @@ struct Args {
     tier : string = "interp"
     @clarg_doc = "an argument the interpreter gets under --run, one per --arg, in order (default -e \"print(1+1)\")"
     arg : array<string>
+    @clarg_name = "error-check"
+    @clarg_doc = "also run the converted interpreter under --tier with each of Lua's error-recovery checks and compare each with the native oracle"
+    error_check : bool
     @clarg_doc = "convert only the program of this stem: lua or luac"
     filter : string = ""
     @clarg_doc = "the layouts to convert: source (a module per C file, the cycles cut, into lua/work/<stem>/), scc (every cycle one module, into lua/work/scc/<stem>/), single (one module, into lua/work/single/<stem>/) or all, the default"
@@ -88,9 +92,10 @@ def private build_native(c_paths : array<string>; bin : string) : bool {
 }
 
 // the converted interpreter at `das_path` under `tier` and the native one at `bin`, each run with
-// `program_args`: true when the exit codes and the outputs agree
-def private run_both(das_path, bin, tier : string; program_args : array<string>) : bool {
-    var native_args <- [bin]
+// `program_args`: true when the exit codes and the outputs agree. The native one runs under the
+// name `stem`, the `argv[0]` the converted program gets, which Lua's messages quote
+def private run_both(das_path, bin, stem, tier : string; program_args : array<string>) : bool {
+    var native_args <- ["bash", "-c", "exec -a \"$0\" \"$@\"", stem, bin]
     native_args |> push_from(program_args)
     var native_out : string
     let native_rc = run_and_capture(native_args, native_out, 60.0)
@@ -102,6 +107,35 @@ def private run_both(das_path, bin, tier : string; program_args : array<string>)
     to_log(LOG_INFO, "lua: native exited {native_rc}: {native_out}\n")
     to_log(LOG_INFO, "lua: {tier} exited {das_rc}: {das_out}\n")
     return native_rc == das_rc && native_out == das_out
+}
+
+// the interpreter's arguments of each error-recovery check: an error caught by `pcall`, one
+// uncaught (exit 1, the message on stderr), nested protected calls, an error the VM raises, an
+// error object that is a table, an error inside a coroutine, `xpcall`'s handler and a memory error
+let ERROR_CHECKS <- [
+    ["-e", "print(pcall(error, 'boom'))"],
+    ["-e", "error('x')"],
+    ["-e", "print(pcall(function() print(pcall(error, 'in')); error('out') end))"],
+    ["-e", "print(pcall(function() return 1 + \{\} end))"],
+    ["-e", "print(select(2, pcall(error, \{code = 7\})).code)"],
+    ["-e", "print(coroutine.resume(coroutine.create(function() error('c') end)))"],
+    ["-e", "print(xpcall(function() error('h') end, function(m) return 'handled: ' .. m end))"],
+    ["-e", "print(pcall(string.rep, 'x', 1 << 40))"]
+]
+
+// every check of `ERROR_CHECKS` run by the converted interpreter at `das_path` under `tier` and by
+// the native one at `bin` named `stem`: true when each agrees
+def private error_check(das_path, bin, stem, tier : string) : bool {
+    var agree = 0
+    for (check in ERROR_CHECKS) {
+        if (run_both(das_path, bin, stem, tier, check)) {
+            agree++
+        } else {
+            to_log(LOG_ERROR, "lua: error check `{join(check, " ")}` under {tier} differs from the native build\n")
+        }
+    }
+    to_log(LOG_INFO, "lua: error checks under {tier}: {agree} of {length(ERROR_CHECKS)} agree with the native build\n")
+    return agree == length(ERROR_CHECKS)
 }
 
 // the bytes of the file at `path`, none when it cannot be read; a das string would stop at the
@@ -189,8 +223,8 @@ def private das_lines(res : ConvertResult; dir : string) : int {
     return lines
 }
 
-// one program converted in `layout` and reported; with `--run` the interpreter run against the
-// native oracle `bin`, with `--luac-check` the compiler over the folder it names
+// one program converted in `layout` and reported; with `--error-check` and `--run` the interpreter
+// run against the native oracle `bin`, with `--luac-check` the compiler over the folder it names
 def private convert_layout(stem, main_source : string; input : ProgramInput; bin, layout : string; args : Args) : bool {
     let dir = layout_dir(stem, layout)
     let res <- convert_program(input.c_paths, dir, args.target, "", SIDECAR, "", "", input.entry, layout)
@@ -214,12 +248,15 @@ def private convert_layout(stem, main_source : string; input : ProgramInput; bin
         }
     }
     to_log(LOG_INFO, "{head}: emitter {fmt(":.1f", res.emit_seconds)} s, compile check {fmt(":.1f", res.check_seconds)} s, {das_lines(res, dir)} lines of das, [c_function] on {res.c_functions} of {res.function_count} functions\n")
+    if (args.error_check && main_source == "lua" && !error_check(res.das_path, bin, stem, args.tier)) {
+        return false
+    }
     if (args.run && main_source == "lua") {
         var program_args <- ["-e", "print(1+1)"]
         if (!empty(args.arg)) {
             program_args := args.arg
         }
-        return run_both(res.das_path, bin, args.tier, program_args)
+        return run_both(res.das_path, bin, stem, args.tier, program_args)
     }
     if (!empty(args.luac_check) && main_source == "luac") {
         return luac_check(res.das_path, bin, args.tier, args.luac_check, path_join(dir, "luac_check"))
@@ -228,7 +265,7 @@ def private convert_layout(stem, main_source : string; input : ProgramInput; bin
 }
 
 // one program's manifest written, the program converted in each layout `--layout` names and
-// reported; with `--native`, `--run` or `--luac-check` its oracle built first
+// reported; with `--native`, `--run`, `--error-check` or `--luac-check` its oracle built first
 def private build_program(stem, main_source : string; args : Args) : bool {
     let manifest = write_manifest(stem)
     if (empty(manifest)) {
@@ -242,7 +279,7 @@ def private build_program(stem, main_source : string; args : Args) : bool {
         return false
     }
     let bin = path_join(WORK, "{stem}_native")
-    if ((args.native || args.run || !empty(args.luac_check)) && !build_native(input.c_paths, bin)) {
+    if ((args.native || args.run || args.error_check || !empty(args.luac_check)) && !build_native(input.c_paths, bin)) {
         return false
     }
     var ok = true
