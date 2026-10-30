@@ -227,25 +227,12 @@ def private run_harness(port : Port) : bool {
     return write_or_log(stamp_of(port), "{gen.sha}\n{gen.describe}\n{gen.date}\n")
 }
 
-// a sample's output without the JIT's `info` lines
-def private program_output(text : string) : string => join([for (ln in split(text, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
-
 def private clipped(text : string) : string => length(text) > 160 ? slice(text, 0, 157) + "..." : text
 
 //! the native lane's first sample: what every other sample and every das lane must reproduce
 struct Oracle {
     rc : int
     output : string
-}
-
-// `argv` run in the folder `cwd`, "" for here
-def private in_folder(cwd : string; argv : array<string>) : array<string> {
-    var full : array<string>
-    if (!empty(cwd)) {
-        full |> push_from(["sh", "-c", "cd \"$0\" && exec \"$@\"", cwd])
-    }
-    full |> push_from(argv)
-    return <- full
 }
 
 // the interpreter and the JIT compile the module on its first run in a folder and cache it there:

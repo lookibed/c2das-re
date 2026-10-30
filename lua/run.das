@@ -14,6 +14,7 @@ require ../converter/cir.das
 require ../converter/tiers.das
 require ../converter/dumper_a.das
 require ../converter/sidecar.das
+require ../perf/perf_lanes.das
 require sources
 
 //! The Lua harness: `lua/fetch.sh`'s release converted as its Makefile builds it, the interpreter
@@ -28,7 +29,7 @@ require sources
 //! by file against it. Run from the repository root.
 
 let WORK = "lua/work"
-let NATIVE_FLAGS <- ["-O0", "-funsigned-char", "-w"]
+let ORACLE_FLAGS <- ["-O0", "-funsigned-char", "-w"]
 
 
 
@@ -98,7 +99,7 @@ def private line_count(text : string) : int {
 // when it fails
 def private build_native(c_paths : array<string>; bin : string) : bool {
     var args <- [default_clang()]
-    args |> push_from(NATIVE_FLAGS, ["-o", bin], c_paths, ["-lm"])
+    args |> push_from(ORACLE_FLAGS, ["-o", bin], c_paths, ["-lm"])
     var output : string
     if (run_and_capture(args, output, 300.0) != 0) {
         to_log(LOG_ERROR, "lua: native build of {bin} failed:\n{output}\n")
@@ -107,10 +108,6 @@ def private build_native(c_paths : array<string>; bin : string) : bool {
     to_log(LOG_INFO, "lua: {bin}: {int64(stat(bin).size)} bytes\n")
     return true
 }
-
-// the JIT reports its compilation on `info` lines among the program's stdout: `output` without them
-def private program_output(output : string) : string =>
-    join([for (ln in split(output, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
 
 // a run's stdout and stderr, apart
 struct Streams {
@@ -401,12 +398,12 @@ def private masked(line : string) : string {
     }
 }
 
-// the lines of a run's output the comparison reads: all but the warning `all.lua` prints when its
-// time differs from the time the previous run left in the suite's folder, which the other build is
+// the warning `all.lua` prints when its time differs from the one the previous run left
 let TIME_WARNING = "Lua warning: #time difference from previous test"
 
-def private compared_lines(output : string) : array<string> =>
-    <- [for (ln in split(output, "\n")); ln; where !(ln |> starts_with(TIME_WARNING))]
+// the lines of a run's output the comparison reads: all but `TIME_WARNING`, since the previous run
+// in the suite's folder is the other build's
+def private compared_lines(output : string) : array<string> => <- lines_without(output, TIME_WARNING)
 
 // the first line of `stream` where `native` and `das` differ once masked, quoted from each
 def private first_line_difference(stream, native, das, tier : string) : string {
@@ -477,7 +474,7 @@ def private suite_file(file, das_path, bin, tier : string; launchers : Launchers
         return "{file} oracle {fmt(":.1f", native_seconds)} native exited {native_rc}{quoted}"
     }
     var das_args := cap.prefix
-    das_args |> push_from(["sh", "-c", "cd \"$0\" && exec \"$@\"", dir], das_argv(das_path, tier, suite_args(file, args.suite_port)))
+    das_args |> push_from(in_folder(dir, das_argv(das_path, tier, suite_args(file, args.suite_port))))
     var das : Streams
     let das_started = ref_time_ticks()
     let das_rc = run_split(das_args, args.suite_timeout, launchers.das, das)

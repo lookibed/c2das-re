@@ -5,6 +5,7 @@ require daslib/fio
 require daslib/strings_boost
 require daslib/json_boost
 require ../ports_render.das
+require ../../perf/perf_lanes.das
 
 //! `ports/publish.das` without the release: a scratch c2das-re root holding a stand-in
 //! `lua/work` (a small C program and a hand-written das module in place of the composed and
@@ -33,11 +34,7 @@ let LUA_DAS = "options gen2\nrequire strings\nrequire daslib/strings_boost\nrequ
 // alone, and clauses ending in ` s` that are no seconds
 let RUN_DAS = "options gen2\n[export]\ndef main : int \{\n    to_log(LOG_WARNING, \"lua: lua_all: dumper \{ref_time_ticks()\} s, JSON 10 bytes\\n\")\n    to_log(LOG_WARNING, \"lua: lua_all: emitter 0.\{ref_time_ticks() % 10l\} s, compile check 2.5 s, 3 lines of das\\n\")\n    to_log(LOG_WARNING, \"lua: total 7 s\\n\")\n    to_log(LOG_WARNING, \"lua: lua_all: units of s, dots . s\\n\")\n    return 0\n\}\n"
 
-def private run_in(dir : string; argv : array<string>; var out : string&) : int {
-    var shell <- ["sh", "-c", "cd \"$0\" && exec \"$@\"", dir]
-    shell |> push_from(argv)
-    return run_and_capture(shell, out, 1200.0)
-}
+def private run_in(dir : string; argv : array<string>; var out : string&) : int => run_and_capture(in_folder(dir, argv), out, 1200.0)
 
 def private git(dir : string; argv : array<string>) : string {
     var full <- ["git", "-C", dir]
