@@ -119,10 +119,13 @@ includes; with the spawn inside it, the row is an upper bound of the load. A cel
 of `--samples` samples (5 by default), with the spread as half the sample range over the median,
 perf's rule. The native lane's first sample is the oracle: a later sample of any lane that exits
 otherwise fails the cell with the exit codes and the sample's first reported line (an exception
-line comes before its trailer), one that prints otherwise (the test-suite row compares the exit
-code alone, since it prints its random seeds and timings) with the first line where the two
-outputs part; a sample past `--timeout` seconds fails it too. A failed cell keeps the samples it
-took, the failing one last. A das cell without a native one is `no native run to compare with`.
+line comes before its trailer), one that prints otherwise (the test-suite row's output is not
+compared, since it prints its random seeds and timings) with the first line where the two outputs
+part, and one that leaves out the closing line its workload names (`final OK !!!`, the line Lua's
+suite prints last when every test passed) with the sample's last line, since a suite that stops
+early can exit 0: under the JIT an uncaught Lua error exits 0 (`docs/probe-findings.md` F75), and
+`all.lua` ends at `db.lua` there; a sample past `--timeout` seconds fails it too. A failed cell
+keeps the samples it took, the failing one last. A das cell without a native one is `no native run to compare with`.
 
 A measuring publish writes `<program>/perf/capture_<UTC timestamp>.json`, the timestamp inside
 and in the name both the end of the run: the c2das-re commit of the conversion it timed (the

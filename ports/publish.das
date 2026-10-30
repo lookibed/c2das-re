@@ -19,14 +19,17 @@ require ports_render
 
 //! one workload of a program: its name, its program arguments, the arguments as the README shows
 //! them, whether it runs in the release's test-suite folder (else in the repository root), whether
-//! a das lane's output must equal the native build's (else the exit code alone is compared), and
-//! whether it is the startup row (no work: the program's load alone)
+//! a das lane's output must equal the native build's (else the exit code alone is compared), the
+//! line every run must print when the output is not compared ("" for none: the line a test suite
+//! prints last when every test passed, since a run that stops early can exit 0), and whether it is
+//! the startup row (no work: the program's load alone)
 struct WorkloadSpec {
     name : string
     args : array<string>
     shown : string
     in_tests : bool
     compare_output : bool
+    closing : string
     startup : bool
 }
 
@@ -71,7 +74,7 @@ def private lua_port : Port => <- Port(
         bench("binary_trees"),
         bench("nbody"),
         bench("spectral_norm"),
-        WorkloadSpec(name = "test suite", args <- ["-e", "_port=true", "all.lua"], shown = "-e \"_port=true\" all.lua", in_tests = true)
+        WorkloadSpec(name = "test suite", args <- ["-e", "_port=true", "all.lua"], shown = "-e \"_port=true\" all.lua", in_tests = true, closing = "final OK !!!")
     ])
 
 [CommandLineArgs]
@@ -275,10 +278,10 @@ def private first_difference(output, native : string) : string {
 }
 
 // `samples` runs of `argv` in `cwd` ("" for here), each timed as a whole process; a run that
-// differs from `oracle` (the native lane's first, when `oracle.rc` is not -1) fails the cell,
-// which keeps the samples taken, the failing one last
+// differs from `oracle` (the native lane's first, when `oracle.rc` is not -1), or that leaves out
+// the closing line `spec` names, fails the cell, which keeps the samples taken, the failing one last
 [arch(at="ARCHITECTURE.md#measurement")]
-def private measure_cell(argv : array<string>; cwd : string; samples, timeout : int; compare_output : bool; var oracle : Oracle; var cell : LaneCell) {
+def private measure_cell(argv : array<string>; cwd : string; samples, timeout : int; spec : WorkloadSpec; var oracle : Oracle; var cell : LaneCell) {
     let full <- in_folder(cwd, argv)
     cell.samples |> reserve(samples)
     for (_s in range(samples)) {
@@ -299,12 +302,15 @@ def private measure_cell(argv : array<string>; cwd : string; samples, timeout : 
             cell.error = "timed out after {timeout} s"
         } elif (oracle.rc == -1 && rc != 0) {
             cell.error = clipped(with_line("exited {rc}", first_reported_line(output)))
+        } elif (oracle.rc != -1 && rc != oracle.rc) {
+            cell.error = clipped(with_line("exited {rc} where the native build exits {oracle.rc}", first_reported_line(output)))
+        } elif (oracle.rc != -1 && spec.compare_output && output != oracle.output) {
+            cell.error = clipped(first_difference(output, oracle.output))
+        } elif (!empty(spec.closing) && !has_value(split(output, "\n"), spec.closing)) {
+            // a suite that stops early can exit 0 (under the JIT an uncaught Lua error does, F75)
+            cell.error = clipped(with_line("exited {rc} without the line `{spec.closing}`; its last line", last_line(output)))
         } elif (oracle.rc == -1) {
             oracle = Oracle(rc = rc, output = output)
-        } elif (rc != oracle.rc) {
-            cell.error = clipped(with_line("exited {rc} where the native build exits {oracle.rc}", first_reported_line(output)))
-        } elif (compare_output && output != oracle.output) {
-            cell.error = clipped(first_difference(output, oracle.output))
         }
         if (!empty(cell.error)) {
             return
@@ -406,7 +412,7 @@ def private measure_program(args : Args; port : Port; release : Release; lanes :
                     if (empty(cell.error)) {
                         var inscope argv <- clone_to_move(run.argv)
                         argv |> push_from(spec.args)
-                        measure_cell(argv, spec.in_tests ? tests : "", args.samples, args.timeout, spec.compare_output, oracle, cell)
+                        measure_cell(argv, spec.in_tests ? tests : "", args.samples, args.timeout, spec, oracle, cell)
                     }
                 }
             }
