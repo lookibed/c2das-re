@@ -394,10 +394,10 @@ def private compared_lines(output : string) : array<string> => <- lines_without(
 // the first line of `stream` where `native` and `das` differ once masked, quoted from each
 def private first_line_difference(stream, native, das, tier : string) : string {
     let native_lines <- compared_lines(native)
-    let das_lines <- compared_lines(das)
-    for (i in range(max(length(native_lines), length(das_lines)))) {
+    let converted_lines <- compared_lines(das)
+    for (i in range(max(length(native_lines), length(converted_lines)))) {
         let native_line = i < length(native_lines) ? native_lines[i] : "<end>"
-        let das_line = i < length(das_lines) ? das_lines[i] : "<end>"
+        let das_line = i < length(converted_lines) ? converted_lines[i] : "<end>"
         if (masked(native_line) != masked(das_line)) {
             return "{stream} line {i + 1}: native `{slice(native_line, 0, 120)}`, {tier} `{slice(das_line, 0, 120)}`"
         }

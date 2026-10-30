@@ -158,6 +158,17 @@ def private untouched(t : T?; clone, head, why : string) {
 // the lines of `path`, 0 for a missing file
 def private line_count(path : string) : int => length([for (ln in split(fread(path), "\n")); ln; where !empty(ln)])
 
+// the cell of `workload` under `lane`, or a failing one when the capture lacks it, so a missing
+// cell fails the test instead of dereferencing `find_cell`'s null
+def private cell_of(t : T?; c : Capture; workload, lane : string) : LaneCell {
+    let cell = find_cell(c, workload, lane)
+    if (cell == null) {
+        t |> failure("no {workload}/{lane} cell")
+        return <- LaneCell(error = "no cell")
+    }
+    return <- clone_to_move(*cell)
+}
+
 [test]
 def test_refusals(t : T?) {
     t |> run("-? prints the help and publishes nothing") @(t : T?) {
@@ -449,15 +460,15 @@ def test_bench(t : T?) {
         let minute = "{slice(c.timestamp, 0, 10)}T{slice(c.timestamp, 11, 13)}{slice(c.timestamp, 14, 16)}"
         t |> equal(slice(name, length("capture_"), length("capture_YYYY-MM-DDTHHMM")), minute, "{name} {c.timestamp}")
         // a sample ends with the program's output, not with popen's 100 ms watchdog tick
-        let startup = find_cell(c, "startup", "native")
+        let startup <- cell_of(t, c, "startup", "native")
         t |> success(empty(startup.error) && startup.time < 0.09lf, "{startup}")
         t |> success(startup.spread == startup.spread && startup.spread < 100.0lf, "{startup}")
         // a standing cell is the median of all its samples; the stand-in's `info` line is no output
-        let fib = find_cell(c, "fib", "interp")
+        let fib <- cell_of(t, c, "fib", "interp")
         t |> success(empty(fib.error) && length(fib.samples) == 2, "{fib}")
         t |> success(length(fib.samples) == 2 && fib.time == (fib.samples[0] + fib.samples[1]) * 0.5lf, "{fib}")
         // a failed cell keeps the sample that failed it
-        let trees = find_cell(c, "binary_trees", "interp")
+        let trees <- cell_of(t, c, "binary_trees", "interp")
         t |> success(!empty(trees.error) && length(trees.samples) == 1, "{trees}")
         let readme = fread(path_join(clone, "lua/README.md"))
         for (fact in ["- `perf/capture_*.json` - every capture", "`scripts/publish_ports.sh --program lua --no-convert --perf --samples 2 --lanes interp,jit,exe,aot --timeout 1800`", "Captured ", " runs of the whole program", "- JIT: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit lua/lua.das --`", "- AOT, every workload: not yet: the aot tier's host passes the program no arguments\n", "- binary_trees, interpreter: not yet: exited 2 where the native build exits 0: EXCEPTION: boom\n", "- nbody, JIT: not yet: line 1 prints `drift` where the native build prints `", "- spectral_norm, clang -O3: not yet: exited 1\n", "- spectral_norm, exe: not yet: no native run to compare with", "- clang -O3: `", " -o lua_native lua.c -lm`"]) {
@@ -488,11 +499,11 @@ def test_single_lanes(t : T?) {
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp,interp-scc,interp-single,jit-scc,jit-single", "--allow-dirty"], out), 0, out)
         var name : string
         let c <- capture_of(clone, name)
-        let fib = find_cell(c, "fib", "interp-single")
+        let fib <- cell_of(t, c, "fib", "interp-single")
         t |> success(empty(fib.error) && length(fib.samples) == 1, "{fib}")
-        let scc_fib = find_cell(c, "fib", "interp-scc")
+        let scc_fib <- cell_of(t, c, "fib", "interp-scc")
         t |> success(empty(scc_fib.error) && length(scc_fib.samples) == 1, "{scc_fib}")
-        t |> success(!empty(find_cell(c, "fib", "interp").error), "{find_cell(c, "fib", "interp")}")
+        t |> success(!empty(cell_of(t, c, "fib", "interp").error), "{cell_of(t, c, "fib", "interp")}")
         let readme = fread(path_join(clone, "lua/README.md"))
         for (fact in ["- interpreter, single module: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime single/lua.das --`", "| interpreter, single module / native |", "| interpreter, single module / interpreter |", "- interpreter, scc layout: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime scc/lua/lua.das --`", "- JIT, single module: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit single/lua.das --`", "- JIT, scc layout: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit scc/lua/lua.das --`"]) {
             t |> success(readme |> contains(fact), "README lacks {fact}:\n{readme}")
@@ -500,7 +511,7 @@ def test_single_lanes(t : T?) {
         // the stand-in logs a run whose command carries `-jit` as the JIT's: the two JIT lanes ran under it
         t |> success(line_count(path_join(root, "runs_jit.log")) > 0, "no run of the jit-scc and jit-single lanes carried -jit")
         for (lane in ["jit-scc", "jit-single"]) {
-            let fib_jit = find_cell(c, "fib", lane)
+            let fib_jit <- cell_of(t, c, "fib", lane)
             t |> success(empty(fib_jit.error) && length(fib_jit.samples) == 1, "{lane}: {fib_jit}")
         }
     }
