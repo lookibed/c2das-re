@@ -32,8 +32,8 @@ gates and the review machinery. Codex sessions take their MCP wiring from
 - Review effort scales with the pull request (owner rule 10, 2026-10-29). A pull request (a fix,
   hygiene, one plan step) runs the fast preflight tier, the ports tests and the suites the change
   touches, with one reviewer pass; a pull request adding a plan-item feature also runs the full C
-  suites (the ratchet) before it merges; a pull request touching the harness CI's full tier
-  tests (the suite and port runners and their tests) also runs the full tier before it merges;
+  suites (the ratchet) before it merges; a pull request touching a harness the full tier tests
+  (the suite and port runners and their tests) runs that tier before it merges;
   a phase end (the last item of P5, P6, P7, P8) runs the
   full preflight, the per-document dragon re-reads, the architecture audit and the perf re-record.
 - Each phase end is an annotated tag `v0.<phase>.0` with a GitHub release carrying the suite

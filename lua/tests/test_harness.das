@@ -321,7 +321,7 @@ def test_suite_check(t : T?) {
         t |> success(suite |> starts_with("pm.lua oracle ") && suite |> contains(" native exited 6\n"), suite)
         rmdir_rec(root)
     }
-    t |> run("--suite-filter runs one file under the interpreter and the JIT, passing; a file outside the suite and a cap systemd refuses are refused") @(t : T?) {
+    t |> run("--suite-filter runs one file under the interpreter and the JIT, passing; a file outside the suite and a cap no tier applies are refused") @(t : T?) {
         let root = suite_root("c2das_lua_suite_one", [("pm.lua", "hello")])
         for (tier in ["interp", "jit"]) {
             var out : string
@@ -354,6 +354,18 @@ def private refusing_shims(root : string; commands : array<string>) : string {
     return dir
 }
 
+// `root/shim_user`, holding a `systemd-run` that refuses a system scope and runs a user scope's
+// command uncapped, as a manager would for a user with one of its own: the folder
+def private user_scope_shim(root : string) : string {
+    let dir = path_join(root, "shim_user")
+    mkdir_rec(dir)
+    let path = path_join(dir, "systemd-run")
+    fwrite(path, "#!/bin/sh\n[ \"$1\" = --user ] || \{ echo \"$0: refused\" >&2; exit 1; \}\nwhile [ \"$1\" != --quiet ]; do shift; done\nshift\nexec \"$@\"\n")
+    var out : string
+    run_and_capture(["chmod", "+x", path], out, 30.0)
+    return dir
+}
+
 // `argv` run with `dir` leading its `PATH`
 def private with_path(dir : string; argv : array<string>) : array<string> {
     var shell <- ["sh", "-c", "PATH=\"$0:$PATH\"; export PATH; exec \"$@\"", dir]
@@ -363,18 +375,24 @@ def private with_path(dir : string; argv : array<string>) : array<string> {
 
 [test]
 def test_suite_cap(t : T?) {
-    t |> run("--suite-check caps each run with a system scope, else a user scope, else prlimit's address-space limit, as on a runner without root, under which a run out of memory says so and gets the memory verdict; a cap none of them applies refuses the lane") @(t : T?) {
+    t |> run("--suite-check caps each run with a system scope, else a user scope, else prlimit's address-space limit, as on a runner without root, under which a run out of memory says so and gets the memory verdict; a cap none of them applies, or past int64, refuses the lane") @(t : T?) {
         let root = suite_root("c2das_lua_suite_cap", [("pm.lua", "hello"), ("gc.lua", "grow")])
         var out : string
+        // the manager refuses a system scope and gives a user scope
+        t |> equal(run_in(root, with_path(user_scope_shim(root), daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "pm.lua", "--filter", "lua", "--layout", "single"])), out), 0, out)
+        t |> success(out |> contains("caps each run with `systemd-run --user --scope --collect -p MemoryMax=4G"), out)
         // the manager refuses every scope (as it does a user without root): the address-space limit
         t |> equal(run_in(root, with_path(refusing_shims(root, ["systemd-run"]), daslang_argv("lua/run.das", ["--suite-check", "--filter", "lua", "--layout", "single", "--suite-memory", "1G"])), out), 1, out)
         t |> success(out |> contains("caps each run with `prlimit --as=1073741824 --`"), out)
         let suite = fread(path_join(root, "lua/work/single/suite.txt"))
         t |> success(suite |> contains("pm.lua pass ") && suite |> contains("gc.lua memory ") && suite |> contains(" memory native over 1G\n"), suite)
         // prlimit refusing too: no cap, so no run, every attempt named
-        t |> equal(run_in(root, with_path(refusing_shims(root, ["systemd-run", "prlimit"]), daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "pm.lua", "--filter", "lua", "--layout", "source"])), out), 1, out)
-        t |> success(out |> contains("`systemd-run --user --scope --collect -p MemoryMax=4G -p MemorySwapMax=0 --quiet true`, which fails: ") && out |> contains("`prlimit --as=4294967296 -- true`, which fails: ") && out |> contains("/shim/prlimit: refused"), out)
+        t |> equal(run_in(root, with_path(refusing_shims(root, ["systemd-run", "prlimit"]), daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "pm.lua", "--filter", "lua", "--layout", "source", "--suite-memory", "4096M"])), out), 1, out)
+        t |> success(out |> contains("`systemd-run --user --scope --collect -p MemoryMax=4096M -p MemorySwapMax=0 --quiet true`, which fails: ") && out |> contains("`prlimit --as=4294967296 -- true`, which fails: ") && out |> contains("/shim/prlimit: refused"), out)
         t |> success(!fexist(path_join(root, "lua/work/source/suite.txt")), out)
+        // a count past int64 is no byte count
+        t |> equal(run_in(root, with_path(refusing_shims(root, ["systemd-run"]), daslang_argv("lua/run.das", ["--suite-check", "--suite-memory", "10000000T"])), out), 1, out)
+        t |> success(out |> contains("not `10000000T`"), out)
         rmdir_rec(root)
     }
 }
