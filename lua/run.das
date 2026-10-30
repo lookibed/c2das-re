@@ -425,6 +425,10 @@ def private limit_verdict(rc : int; cap : Cap; err, side, memory : string; timeo
     return over ? "memory {side} over {memory}" : ""
 }
 
+// the seconds since `t0`, a `ref_time_ticks` reading; `suites/suite_runner.das` holds a public
+// float one, which a public one in `converter/pipeline.das` would make ambiguous there
+def private run_seconds(t0 : int64) : double => double(get_time_usec(t0)) / 1000000.0lf
+
 // one run of a test file under the cap: its exit code, its streams, its seconds and its
 // `limit_verdict`
 struct CappedRun {
@@ -442,7 +446,7 @@ def private capped_run(argv : array<string>; side, path_dir : string; cap : Cap;
     var run : CappedRun
     let started = ref_time_ticks()
     run.rc = run_split(full, args.suite_timeout, path_dir, run.streams)
-    run.seconds = seconds_since(started)
+    run.seconds = run_seconds(started)
     run.limit = limit_verdict(run.rc, cap, run.streams.err, side, args.suite_memory, args.suite_timeout)
     return run
 }
@@ -536,7 +540,7 @@ def private suite_check(das_path, bin, layout : string; args : Args) : bool {
     mkdir_rec(out_dir)
     fwrite(path_join(out_dir, "suite.txt"), join(lines, "\n") + "\n")
     let totals = join([for (verdict in ["pass", "fail", "timeout", "memory", "oracle", "missing"]); "{counts?[verdict] ?? 0} {verdict}"], ", ")
-    to_log(LOG_INFO, "lua: suite under {args.tier} ({layout}): {totals} of {length(files)} files in {fmt(":.0f", seconds_since(started))} s\n")
+    to_log(LOG_INFO, "lua: suite under {args.tier} ({layout}): {totals} of {length(files)} files in {fmt(":.0f", run_seconds(started))} s\n")
     return (counts?["pass"] ?? 0) == length(files)
 }
 
