@@ -186,6 +186,12 @@ def called_name(x : CirExpr) : string {
     return target != null && target.e == "ref" ? target.name : ""
 }
 
+//! The name of the opaque record the dumper gives every spelling of C's `jmp_buf`.
+let JMP_BUF = "jmp_buf"
+
+//! Whether type `t` of `tu` is the opaque `jmp_buf` record.
+def is_jmp_buf(tu : CirTu; t : int) : bool => t >= 0 && t < length(tu.types) && tu.types[t].k == "struct" && tu.types[t].name == JMP_BUF
+
 //! Whether `target` is the `msvc` dialect's.
 def is_msvc(target : CirTarget) : bool => find(target.triple, "windows") >= 0
 

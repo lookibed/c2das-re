@@ -324,8 +324,6 @@ let MODULE_STACK = 8388608
 def private libc_name(name : string) : string =>
     name |> starts_with("__builtin_") && !empty(libc_call(slice(name, length("__builtin_")))) ? slice(name, length("__builtin_")) : name
 
-let JMP_BUF = "jmp_buf"
-
 let VA_LIST = "va_list"
 
 // the name `[variadic]` gives the trailing tuple parameter (c_runtime/variadic.das)
@@ -529,7 +527,7 @@ def private is_record_pointer(tu : CirTu; t : int) : bool {
     if (kind_of(tu, t) != "ptr" || !is_record(tu, tu.types[t].to) || is_va_list(tu, t)) {
         return false
     }
-    return !(kind_of(tu, tu.types[t].to) == "struct" && tu.types[tu.types[t].to].name == JMP_BUF)
+    return !is_jmp_buf(tu, tu.types[t].to)
 }
 
 // whether a value of type `t` holds a data pointer
@@ -598,7 +596,7 @@ def das_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
         let bare : array<CirDim>
         return array_type(em, tu, t, loc, bare)
     }
-    if (k == "struct" && tu.types[t].name == JMP_BUF) {
+    if (is_jmp_buf(tu, t)) {
         em.requires |> insert("c_runtime/setjmp")
         return "CJmpBuf"
     }
@@ -1465,7 +1463,7 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     if (k == "ArrayToPointerDecay") {
         // a `jmp_buf` is one record here, not glibc's one-element array: its decay is its
         // address, or the pointer a `*p` read it through
-        if (kind_of(tu, x.a.t) == "struct" && tu.types[x.a.t].name == JMP_BUF) {
+        if (is_jmp_buf(tu, x.a.t)) {
             return x.a.e == "un" && x.a.op == "deref" ? emit_expr(em, tu, x.a.a, loc) : unsafe_value(em, "addr({inner.text})", PREC_PRIMARY)
         }
         return unsafe_value(em, "addr({inner.text}[0])", PREC_PRIMARY)
@@ -4675,15 +4673,12 @@ def private record_refusal(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) 
         fail(em, "record `{name}` has bitfields and das cannot lay it out as clang does; not lowered yet", loc)
         return true
     }
-    if (tu.types[t].packed) {
-        for (f in tu.types[t].fields) {
-            if (kind_of(tu, f.t) == "struct" && tu.types[f.t].name == JMP_BUF) {
-                // das holds the protocol's `CJmpBuf`, not glibc's buffer, so the fields after it
-                // cannot sit where clang puts them
-                fail(em, "record `{name}` holds a `jmp_buf` (`{f.name}`), which das spells as `CJmpBuf`, not at the C library's size; not lowered yet", loc)
-                return true
-            }
-        }
+    let jmp_buf_at = tu.types[t].packed ? jmp_buf_field(tu, t) : -1
+    if (jmp_buf_at >= 0) {
+        // das holds the protocol's `CJmpBuf`, not glibc's buffer, so the fields after it cannot
+        // sit where clang puts them
+        fail(em, "record `{name}` holds a `jmp_buf` (`{tu.types[t].fields[jmp_buf_at].name}`), which das spells as `CJmpBuf`, not at the C library's size; not lowered yet", loc)
+        return true
     }
     if (tu.types[t].packed && !marshal) {
         fail(em, "record `{name}` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar", loc)

@@ -12,7 +12,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `CirStmt`, `CirExpr`, one struct per spec table), the canonical writer `write_cir`, the
   reader `read_cir`, `write_program` (the manifest of `docs/c-ir-spec.md` section 7), `write_cir_decl` (one
   declaration's bytes), `ident_of` (a file stem as an identifier), the pinned `CAST_KINDS`, the two
-  dialects. Nothing here knows clang or
+  dialects, `is_jmp_buf` (the dumper's opaque `jmp_buf` record, `JMP_BUF`). Nothing here knows clang or
   daslang syntax. A tree is owned through plain pointers and freed by one `delete` of its
   root: the generated finalizer recurses through pointer fields and arrays of pointers
   (`probes/test_delete.das`), so no hand-written walk frees a child.
@@ -31,10 +31,10 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `natural_layout` (the dumper's `packed` verdict), `bit_units` (the allocation units that cover
   a record's bitfields), `union_flaw` (why a union is not natural), `union_member_layout` (the
   size and alignment a bare `[c_union]` derives), `record_under`/`element_under` (the type at
-  an array's bottom) and `is_storage_bitfield`. Every answer about a record lands in a
-  `LayoutMemo` the dumper and the emitter each own, so a nest of records is measured once per
-  record; a unit search never retries a failed state (field, offset, alignment so far). Nothing
-  here knows clang or das syntax.
+  an array's bottom), `jmp_buf_field` (a record's field holding a `jmp_buf`) and
+  `is_storage_bitfield`. Every answer about a record lands in a `LayoutMemo` the dumper and the
+  emitter each own, so a nest of records is measured once per record; a unit search never
+  retries a failed state (field, offset, alignment so far). Nothing here knows clang or das syntax.
 - `sidecar.das` - the per-project `.c2das` file as a `Sidecar` value: `find_sidecar` (the
   path given, else `<stem>.c2das` beside the C file, else `.c2das` in its folder) and
   `read_sidecar` (JSON; a key the row that needs it adds - `marshal`, the records read and
@@ -67,9 +67,9 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   (`source`), every cycle one module (`scc`), or one module, `<stem>.das` of the unit holding `main`,
   else of the first (`single`), as `--layout` or the sidecar's `layout` chooses; beside
   `program.cir.json`, and in the two module-per-file layouts `program.layout.txt`, the partition's
-  report; its result adds the link's seconds and report, the files it wrote and that report. One file is `convert`
-  of it. `read_program_input` reads a manifest the converter takes (section 6); `seconds_since`
-  is the clock every reported phase reads, `lua/run.das`'s runs included.
+  report; its result adds the link's seconds and report, the files it wrote and that report. One
+  file is `convert` of it. `read_program_input` reads a manifest the converter takes (section 6);
+  `seconds_since` is the clock of every reported phase, `lua/run.das`'s runs included.
 - `link.das` - the link of section 6 (`ARCHITECTURE_LINK.md`): `link_tus` over the dumper's trees
   of a program's units, each unit's scope (its output module) from the caller's block.
   Nothing here knows clang or daslang syntax.
