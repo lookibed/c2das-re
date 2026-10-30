@@ -20,14 +20,14 @@ let VERSIONS = "# pins\nlua: 5.9.1 (the release https://example.invalid/lua-5.9.
 let LUA_H = "#ifndef lua_h\n/******\n* Copyright (C) 1994-2025 Stand-in.\n*\n* Permission is hereby granted.\n* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n******/\n#endif\n"
 
 // the stand-in interpreter: its last argument, except `spectral_norm.lua` which fails and
-// `all.lua`, which must be in the working folder
-let LUA_C = "#include <stdio.h>\n#include <string.h>\nint main(int argc, char **argv) \{\n    const char *last = argv[argc - 1];\n    if (strstr(last, \"spectral_norm.lua\")) return 1;\n    if (strcmp(last, \"all.lua\") == 0) \{\n        FILE *f = fopen(\"all.lua\", \"r\");\n        if (!f) return 1;\n        fclose(f);\n    \}\n    printf(\"%s\\n\", last);\n    return 0;\n\}\n"
+// `all.lua`, which must be in the working folder and ends with the suite's closing line
+let LUA_C = "#include <stdio.h>\n#include <string.h>\nint main(int argc, char **argv) \{\n    const char *last = argv[argc - 1];\n    if (strstr(last, \"spectral_norm.lua\")) return 1;\n    if (strcmp(last, \"all.lua\") == 0) \{\n        FILE *f = fopen(\"all.lua\", \"r\");\n        if (!f) return 1;\n        fclose(f);\n        printf(\"all.lua\\nfinal OK !!!\\n\");\n        return 0;\n    \}\n    printf(\"%s\\n\", last);\n    return 0;\n\}\n"
 
 // the stand-in conversion: an `info` line, then what the C prints, except an exception line and a
-// trailer with exit 2 for `binary_trees.lua`, another first line for `nbody.lua`, and `ALL` for
-// `all.lua`, whose row compares exit codes alone; every run counts itself in `runs_<lane>.log` of
-// its working folder
-let LUA_DAS = "options gen2\nrequire strings\nrequire daslib/strings_boost\nrequire daslib/fio\ndef count_run(argv : array<string>) \{\n    let lane = has_value(argv, \"-jit\") ? \"jit\" : argv[0] |> ends_with(\"_exe.exe\") || argv[0] |> ends_with(\"_exe\") ? \"exe\" : \"interp\"\n    fopen(\"runs_\{lane\}.log\", \"ab\") $(f) \{\n        if (f != null) \{\n            fwrite(f, \"run\\n\")\n        \}\n    \}\n\}\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    count_run(argv)\n    let last = argv[length(argv) - 1]\n    print(\"[I] stand-in\\n\")\n    if (last |> ends_with(\"binary_trees.lua\")) \{\n        print(\"EXCEPTION: boom\\ntrailer\\n\")\n        return 2\n    \}\n    if (last == \"all.lua\" && !fexist(\"all.lua\")) \{\n        return 1\n    \}\n    if (last |> ends_with(\"nbody.lua\")) \{\n        print(\"drift\\n\{last\}\\n\")\n        return 0\n    \}\n    print(\"\{last == \"all.lua\" ? \"ALL\" : last\}\\n\")\n    return 0\n\}\n"
+// trailer with exit 2 for `binary_trees.lua`, another first line for `nbody.lua`, and `ALL` with
+// the suite's closing line for `all.lua`, whose row compares the exit code and that line alone;
+// every run counts itself in `runs_<lane>.log` of its working folder
+let LUA_DAS = "options gen2\nrequire strings\nrequire daslib/strings_boost\nrequire daslib/fio\ndef count_run(argv : array<string>) \{\n    let lane = has_value(argv, \"-jit\") ? \"jit\" : argv[0] |> ends_with(\"_exe.exe\") || argv[0] |> ends_with(\"_exe\") ? \"exe\" : \"interp\"\n    fopen(\"runs_\{lane\}.log\", \"ab\") $(f) \{\n        if (f != null) \{\n            fwrite(f, \"run\\n\")\n        \}\n    \}\n\}\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    count_run(argv)\n    let last = argv[length(argv) - 1]\n    print(\"[I] stand-in\\n\")\n    if (last |> ends_with(\"binary_trees.lua\")) \{\n        print(\"EXCEPTION: boom\\ntrailer\\n\")\n        return 2\n    \}\n    if (last == \"all.lua\" && !fexist(\"all.lua\")) \{\n        return 1\n    \}\n    if (last |> ends_with(\"nbody.lua\")) \{\n        print(\"drift\\n\{last\}\\n\")\n        return 0\n    \}\n    print(\"\{last == \"all.lua\" ? \"ALL\\nfinal OK !!!\" : last\}\\n\")\n    return 0\n\}\n"
 
 // the stand-in harness: its report with seconds that differ on every run, a line of seconds
 // alone, and clauses ending in ` s` that are no seconds
@@ -530,8 +530,8 @@ def test_bench(t : T?) {
         for (fact in ["- `perf/capture_*.json` - every capture", "`scripts/publish_ports.sh --program lua --no-convert --perf --samples 2 --lanes interp,jit,exe,aot --timeout 1800`", "Captured ", " runs of the whole program", "- JIT: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit lua/lua.das --`", "- AOT, every workload: not yet: the aot tier's host passes the program no arguments\n", "- binary_trees, interpreter: not yet: exited 2 where the native build exits 0: EXCEPTION: boom\n", "- nbody, JIT: not yet: line 1 prints `drift` where the native build prints `", "- spectral_norm, clang -O3: not yet: exited 1\n", "- spectral_norm, exe: not yet: no native run to compare with", "- clang -O3: `", " -o lua_native lua.c -lm`"]) {
             t |> success(readme |> contains(fact), "README lacks {fact}:\n{readme}")
         }
-        // the test-suite row runs in the test folder and compares the exit code alone, so `ALL`
-        // against `all.lua` stands
+        // the test-suite row runs in the test folder and compares the exit code and the closing
+        // line alone, so `ALL` against `all.lua` stands
         t |> success(!(readme |> contains("- test suite, ")), readme)
         // each folder: one warm-up run, then the samples (a failing cell stops at its first)
         let tests = path_join(root, "lua/fetch/lua-5.9.1-tests")
@@ -605,6 +605,13 @@ def test_bench_failures(t : T?) {
         readme = fread(path_join(clone, "lua/README.md"))
         t |> success(readme |> contains("- test suite, interpreter: not yet: the warm-up run exited 4: no test folder here\n"), readme)
         t |> success(readme |> contains("| fib "), readme)
+        // a run that exits 0 without the suite's closing line fails the cell: under the JIT an
+        // uncaught Lua error exits 0, so all.lua stops early and still exits 0 (F75)
+        fwrite(path_join(root, "lua/work/lua/lua.das"), "options gen2\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    let last = argv[length(argv) - 1]\n    print(\"\{last == \"all.lua\" ? \"ALL\" : last\}\\n\")\n    return 0\n\}\n")
+        t |> equal(publish(root, args, out), 0, out)
+        readme = fread(path_join(clone, "lua/README.md"))
+        t |> success(readme |> contains("- test suite, interpreter: not yet: exited 0 without the line `final OK !!!`; its last line: ALL\n"), readme)
+        t |> success(!(readme |> contains("- test suite, clang -O3")), readme)
         fwrite(path_join(root, "lua/work/lua.c"), "#include <unistd.h>\nint main(void) \{ sleep(5); return 0; \}\n")
         var timed <- clone_to_move(args)
         timed |> push_from(["--timeout", "1"])
