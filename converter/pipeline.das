@@ -74,8 +74,8 @@ def private clear_owned(out_dir : string) {
     remove(list)
 }
 
-//! The seconds since `t0`, a `ref_time_ticks` reading.
-def seconds_since(t0 : int64) : double => double(get_time_usec(t0)) / 1000000.0lf
+// the seconds since `t0`, a `ref_time_ticks` reading
+def private seconds_since(t0 : int64) : double => double(get_time_usec(t0)) / 1000000.0lf
 
 
 // `as_written` keeps every `unsafe` scope and every symbol and turns optimization off
