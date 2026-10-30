@@ -118,6 +118,10 @@ def in_folder(cwd : string; argv : array<string>) : array<string> {
     return <- full
 }
 
+//! The folder a program's conversion in `layout` lands in under `work`: `<work>/<stem>/` for the
+//! source layout, `<work>/<layout>/<stem>/` for the scc and the single ones.
+def layout_dir(work, stem, layout : string) : string => layout == "source" ? path_join(work, stem) : path_join(path_join(work, layout), stem)
+
 //! The last line of `text` that is not empty.
 def last_line(text : string) : string {
     let lines <- [for (l in split(text, "\n")); strip(l); where !empty(strip(l))]

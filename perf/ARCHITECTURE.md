@@ -91,8 +91,8 @@ harness that times them under every lane, and the stored results.
   error), the median and the spread of a cell, the CPU model and the clang and daslang version
   lines (each the first line past the `info` lines), and the helpers `lua/run.das` shares with
   `ports/publish.das`: `lines_without` (a text's lines not starting with a prefix),
-  `program_output` (a run's output without the JIT's `info` lines) and `in_folder` (a command run
-  in a folder through `sh`). `BUILD_TIMEOUT`, 3600 s, bounds each step
+  `program_output` (a run's output without the JIT's `info` lines), `in_folder` (a command run
+  in a folder through `sh`) and `layout_dir` (the folder a layout's conversion lands in). `BUILD_TIMEOUT`, 3600 s, bounds each step
   of an `exe` or `aot` build and the run it ends with: `run_tier` passes its timeout to every
   process the tier starts.
 - `perf_compose.das` - the C program of a kernel, by either method: `composed_source` puts the kernel between
