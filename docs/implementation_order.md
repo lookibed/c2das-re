@@ -993,6 +993,29 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   program given arguments before any build (`converter/tiers.das`, `run_tier`; the P4.9 ledger
   line); both stay open past the phase tag, as P4's nightly csmith did.
 
+## P8 — Comparison (runs before P6: owner ruling 2026-10-30 (11))
+
+- **P8.1 Head-to-head with lookibed/c2das (the Rust translator)** (owner ruling 2026-10-24 (8);
+  added with P5.1b2; owner ruling 2026-10-30 (11): it runs right after the P5 close (PR #25,
+  v0.5.0, the ports publish), before any P6 or later item, under rule 10 in small PRs, the Lua
+  tests under the memory cap; the Doom parts, which need P6, are marked pending, not blocking;
+  the table is reported when done). Build lookibed/c2das (master,
+  the pinned commit recorded) as its README says and run it on exactly the inputs c2das-re uses:
+  the three suites (gcc-torture execute, c-testsuite, csmith seeds), the perf kernels, Lua 5.4.8
+  (`lua`, `luac`) and PureDOOM, with the same daScript pin where possible (any difference
+  recorded). Correctness: pass counts per suite under the same runner and oracle; the Lua checks
+  (`lua -e`, the string/table/math script, `luac -o` byte-identical, the Lua test suite once P5.3
+  exists); Doom demo sync once P6 exists; a failure of either side classified (refused, compile
+  error, runtime, wrong output). Code quality: `metrics/readability.das` on both outputs
+  (`c_function`, `reinterpret`, `unsafe`, `while_rangeable` and the rest), size (lines, modules,
+  fragments, largest cluster), and a short side-by-side of a few representative functions
+  (`lvm.c`'s `luaV_execute` slice, a Doom renderer loop) in the report. Speed: the perf lanes
+  (native clang -O3, interp, JIT, AOT, exe) and the dasProfile-method lane on the same machine with
+  the same parameters for both translators, geometric means per lane. Output: a comparison table in
+  c2das-re (`docs/` or `perf/`) and in the c2das-ports README, regenerated from scratch by the
+  generator script, never hand-typed. Honest: where the Rust version is better, say so and open
+  ledger rows to close the gap.
+
 ## P6 — Doom
 
 **Goal: the metric.**
@@ -1205,26 +1228,6 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   (history is not rewritten).
 - **Exit criterion:** the §2 metric sentence of the plan is true, all four columns
   published.
-
-## P8 — Comparison
-
-- **P8.1 Head-to-head with lookibed/c2das (the Rust translator)** (owner ruling 2026-10-24 (8);
-  added with P5.1b2, not executed before the stop ruling 5 orders). Build lookibed/c2das (master,
-  the pinned commit recorded) as its README says and run it on exactly the inputs c2das-re uses:
-  the three suites (gcc-torture execute, c-testsuite, csmith seeds), the perf kernels, Lua 5.4.8
-  (`lua`, `luac`) and PureDOOM, with the same daScript pin where possible (any difference
-  recorded). Correctness: pass counts per suite under the same runner and oracle; the Lua checks
-  (`lua -e`, the string/table/math script, `luac -o` byte-identical, the Lua test suite once P5.3
-  exists); Doom demo sync once P6 exists; a failure of either side classified (refused, compile
-  error, runtime, wrong output). Code quality: `metrics/readability.das` on both outputs
-  (`c_function`, `reinterpret`, `unsafe`, `while_rangeable` and the rest), size (lines, modules,
-  fragments, largest cluster), and a short side-by-side of a few representative functions
-  (`lvm.c`'s `luaV_execute` slice, a Doom renderer loop) in the report. Speed: the perf lanes
-  (native clang -O3, interp, JIT, AOT, exe) and the dasProfile-method lane on the same machine with
-  the same parameters for both translators, geometric means per lane. Output: a comparison table in
-  c2das-re (`docs/` or `perf/`) and in the c2das-ports README, regenerated from scratch by the
-  generator script, never hand-typed. Honest: where the Rust version is better, say so and open
-  ledger rows to close the gap.
 
 ---
 
