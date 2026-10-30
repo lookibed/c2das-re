@@ -65,7 +65,7 @@ struct Args {
     @clarg_doc = "the value of the global `_port` each test file gets under --suite-check: true skips the tests that assume a POSIX build, false runs them"
     suite_port : string = "true"
     @clarg_name = "suite-memory"
-    @clarg_doc = "the memory each run of a test file gets under --suite-check, as systemd's MemoryMax takes it"
+    @clarg_doc = "the memory each run of a test file gets under --suite-check, as systemd's MemoryMax takes it: bytes with K, M, G or T"
     suite_memory : string = "4G"
     @clarg_doc = "dialect: linux (this host, the native oracle's) or msvc"
     target : string = "linux"
@@ -274,10 +274,81 @@ let BIG_LUA = "local f = coroutine.wrap(assert(loadfile('big.lua'))) assert(f() 
 def private suite_args(file, port : string) : array<string> =>
     <- file == "big.lua" ? ["-e", "_port={port}", "-e", BIG_LUA] : ["-e", "_port={port}", file]
 
-// the prefix that runs a command in a scope of its own whose memory systemd caps at `memory`; the
-// kernel kills the command past it, which `run_and_capture` reports as the signal's number
-def private capped(memory : string) : array<string> =>
-    <- ["systemd-run", "--scope", "--collect", "-p", "MemoryMax={memory}", "-p", "MemorySwapMax=0", "--quiet"]
+// a run's memory cap: the words that run a command under it, and whether the kernel kills the
+// command past it (a cgroup cap, which `run_and_capture` reports as the signal's number) or its
+// allocations fail there (an address-space cap, which `lua.c` reports as `not enough memory`)
+struct Cap {
+    prefix : array<string>
+    kills : bool
+}
+
+// `memory` as systemd's MemoryMax takes it, in bytes: digits with K, M, G or T; -1 for any other
+// spelling
+def private memory_bytes(memory : string) : int64 {
+    let last = empty(memory) ? "" : slice(memory, length(memory) - 1)
+    let scale = last == "K" ? 1024l : last == "M" ? 1048576l : last == "G" ? 1073741824l : last == "T" ? 1099511627776l : 1l
+    let digits = scale == 1l ? memory : slice(memory, 0, length(memory) - 1)
+    if (empty(digits)) {
+        return -1l
+    }
+    for (ch in digits) {
+        if (!is_number(ch)) {
+            return -1l
+        }
+    }
+    return to_int64(digits) * scale
+}
+
+// the caps `--suite-check` can apply, in the order it tries them: a scope of the system manager
+// (root's), a scope of the user's own manager (a user with one running), and `prlimit`'s
+// address-space limit (any user); a scope's `MemoryMax` is `memory` as given, the limit `memory` in
+// bytes, which `unparsed` says when it has none
+def private cap_tiers(memory : string; var unparsed : string&) : array<Cap> {
+    let scope <- ["--scope", "--collect", "-p", "MemoryMax={memory}", "-p", "MemorySwapMax=0", "--quiet"]
+    var tiers : array<Cap>
+    tiers |> reserve(3)
+    for (manager in [["systemd-run"], ["systemd-run", "--user"]]) {
+        var cap : Cap
+        cap.prefix := manager
+        cap.prefix |> push_from(scope)
+        cap.kills = true
+        tiers |> emplace(cap)
+    }
+    let bytes = memory_bytes(memory)
+    if (bytes < 0l) {
+        unparsed = "`prlimit --as` takes bytes with K, M, G or T, not `{memory}`"
+    } else {
+        var cap : Cap
+        cap.prefix <- ["prlimit", "--as={bytes}", "--"]
+        tiers |> emplace(cap)
+    }
+    return <- tiers
+}
+
+// the first of `cap_tiers` under which `true` runs, in `cap`: false when none does, each probe
+// and why it failed in `refused`
+def private choose_cap(memory : string; var refused : string&; var cap : Cap&) : bool {
+    var unparsed : string
+    var tiers <- cap_tiers(memory, unparsed)
+    var attempts : array<string>
+    attempts |> reserve(length(tiers) + 1)
+    for (tier in tiers) {
+        var inscope probe := tier.prefix
+        probe |> push("true")
+        var out : string
+        if (run_and_capture(probe, out, 60.0) == 0) {
+            cap.prefix := tier.prefix
+            cap.kills = tier.kills
+            return true
+        }
+        attempts |> push("`{join(probe, " ")}`, which fails: {first_line(out)}")
+    }
+    if (!empty(unparsed)) {
+        attempts |> push(unparsed)
+    }
+    refused = join(attempts, "; ")
+    return false
+}
 
 // `path` from the repository root, the runs entering the suite's folder
 def private full_path(path : string) : string => path_join(getcwd(), path)
@@ -361,31 +432,34 @@ def private first_line(text : string) : string {
     return ""
 }
 
-// one run's verdict when the cap or the timeout ended it: `memory`, `timeout`, or "" when it exited
-def private ended(rc : int; side, memory : string; timeout : float) : string {
+// one run's verdict when the cap or the timeout ended it: `memory`, `timeout`, or "" when it
+// exited; a cap that kills ended the run with signal 9, one that fails allocations with the
+// `not enough memory` of `lua.c` on stderr `err`
+def private ended(rc : int; cap : Cap; err, side, memory : string; timeout : float) : string {
     if (rc == popen_timed_out) {
         return "timeout {side} past {timeout} s"
     }
-    return rc == 9 ? "memory {side} over {memory}" : ""
+    let over = cap.kills ? rc == 9 : rc != 0 && err |> contains("not enough memory")
+    return over ? "memory {side} over {memory}" : ""
 }
 
 // the verdict line of one test file: the native oracle `bin` run first, then the converted
-// interpreter at `das_path` under `tier`, each in the suite's folder, capped and timed; a run the
+// interpreter at `das_path` under `tier`, each in the suite's folder, under `cap` and timed; a run the
 // cap or the timeout ends is `memory` or `timeout`, and an oracle that fails on its own is `oracle`
 // with the first line of its stderr: in both the converted one is skipped
-def private suite_file(file, das_path, bin, tier : string; args : Args) : string {
+def private suite_file(file, das_path, bin, tier : string; cap : Cap; args : Args) : string {
     let dir = full_path(SUITE_DIR)
     if (!fexist(path_join(dir, file))) {
         return "{file} missing 0.0"
     }
-    var native_args <- capped(args.suite_memory)
+    var native_args := cap.prefix
     native_args |> push_from(["bash", "-c", "cd \"$1\" && exec -a \"$0\" \"$\{@:2\}\"", "lua", dir, full_path(bin)], suite_args(file, args.suite_port))
     var native : Streams
     let native_started = ref_time_ticks()
     let native_rc = run_split(native_args, args.suite_timeout, native)
     let native_seconds = double(get_time_usec(native_started)) / 1000000.0lf
     to_log(LOG_INFO, "lua: suite {file}: native exited {native_rc} in {fmt(":.1f", native_seconds)} s\n")
-    let native_end = ended(native_rc, "native", args.suite_memory, args.suite_timeout)
+    let native_end = ended(native_rc, cap, native.err, "native", args.suite_memory, args.suite_timeout)
     if (!empty(native_end)) {
         return "{file} {native_end |> starts_with("memory") ? "memory" : "timeout"} {fmt(":.1f", native_seconds)} {native_end}"
     }
@@ -394,14 +468,14 @@ def private suite_file(file, das_path, bin, tier : string; args : Args) : string
         let quoted = empty(said) ? "" : ": " + slice(said, 0, 160)
         return "{file} oracle {fmt(":.1f", native_seconds)} native exited {native_rc}{quoted}"
     }
-    var das_args <- capped(args.suite_memory)
+    var das_args := cap.prefix
     das_args |> push_from(["sh", "-c", "cd \"$0\" && exec \"$@\"", dir], das_argv(das_path, tier, suite_args(file, args.suite_port)))
     var das : Streams
     let das_started = ref_time_ticks()
     let das_rc = run_split(das_args, args.suite_timeout, das)
     let seconds = fmt(":.1f", double(get_time_usec(das_started)) / 1000000.0lf)
     das.out = program_output(das.out)
-    let das_end = ended(das_rc, tier, args.suite_memory, args.suite_timeout)
+    let das_end = ended(das_rc, cap, das.err, tier, args.suite_memory, args.suite_timeout)
     if (!empty(das_end)) {
         return "{file} {das_end |> starts_with("memory") ? "memory" : "timeout"} {seconds} {das_end}"
     }
@@ -412,16 +486,24 @@ def private suite_file(file, das_path, bin, tier : string; args : Args) : string
     return empty(difference) ? "{file} pass {seconds}" : "{file} fail {seconds} {difference}"
 }
 
-// every file of `SUITE` (the one `--suite-filter` names) run by `suite_file` in `layout`, its
-// verdicts written to `lua/work/<layout>/suite.txt` and counted: true when every file passes
+// every file of `SUITE` (the one `--suite-filter` names) run by `suite_file` in `layout` under the
+// cap `choose_cap` finds (probed again here: `Args` stays the command line), its verdicts written
+// to `lua/work/<layout>/suite.txt` and counted: true when every file passes
 def private suite_check(das_path, bin, layout : string; args : Args) : bool {
     let files <- empty(args.suite_filter) ? clone_to_move(SUITE) : [args.suite_filter]
+    var cap : Cap
+    var refused : string
+    if (!choose_cap(args.suite_memory, refused, cap)) {
+        to_log(LOG_ERROR, "lua: --suite-check caps each run with {refused}\n")
+        return false
+    }
+    to_log(LOG_INFO, "lua: suite ({layout}, {args.tier}) caps each run with `{join(cap.prefix, " ")}`\n")
     let started = ref_time_ticks()
     var lines : array<string>
     lines |> reserve(length(files))
     var counts : table<string; int>
     for (file in files) {
-        let line = suite_file(file, das_path, bin, args.tier, args)
+        let line = suite_file(file, das_path, bin, args.tier, cap, args)
         to_log(LOG_INFO, "lua: suite ({layout}, {args.tier}): {line}\n")
         lines |> push(line)
         counts[split(line, " ")[1]]++
@@ -552,11 +634,10 @@ def main : int {
         return 1
     }
     if (args.suite_check) {
-        var probe <- capped(args.suite_memory)
-        probe |> push("true")
-        var out : string
-        if (run_and_capture(probe, out, 60.0) != 0) {
-            to_log(LOG_ERROR, "lua: --suite-check caps each run with `{join(probe, " ")}`, which fails: {out}\n")
+        var cap : Cap
+        var refused : string
+        if (!choose_cap(args.suite_memory, refused, cap)) {
+            to_log(LOG_ERROR, "lua: --suite-check caps each run with {refused}\n")
             return 1
         }
     }

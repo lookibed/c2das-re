@@ -256,12 +256,13 @@ def test_error_check(t : T?) {
 
 // a stand-in interpreter for the test suite: its last argument names a script whose first word
 // says what to do - `spin` counts long enough that only the converted build outlasts a short
-// timeout, `grow` allocates until a cap kills it, `runs` prints an `x` per run so far, `stream`
+// timeout, `grow` allocates until a cap kills it or, under an address-space limit, until `malloc`
+// fails, which it reports as `lua.c` does and exits 4, `runs` prints an `x` per run so far, `stream`
 // prints one line to stderr on an odd run and to stdout on an even one, `port` prints the `-e`
 // string before the script and fails unless it is `_port=false`, `shape`
 // prints a time in `%g`'s other notation and sign on a later run, with all.lua's time warning, any
 // other word prints itself with digits that differ from run to run
-let LUA_SUITE_C = "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <time.h>\n#include \"lua.h\"\nint main(int argc, char **argv) \{\n    char word[64];\n    FILE *f = fopen(argv[argc - 1], \"r\");\n    if (f == 0 || fgets(word, sizeof word, f) == 0) return 3;\n    fclose(f);\n    for (char *c = word; *c; c++) if (*c == '\\n') *c = 0;\n    if (strcmp(word, \"oracle\") == 0) \{\n        fprintf(stderr, \"\\nbroken\\ntraceback\\n\");\n        return 5;\n    \}\n    if (strcmp(word, \"spin\") == 0) \{\n        volatile long n = 0;\n        while (n < 300000000L) n++;\n    \}\n    if (strcmp(word, \"grow\") == 0) \{\n        for (;;) \{\n            char *p = malloc(1 << 24);\n            if (p == 0) return 4;\n            memset(p, 1, 1 << 24);\n        \}\n    \}\n    if (strcmp(word, \"runs\") == 0) \{\n        FILE *g = fopen(\"runs.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        for (long i = 0; i < size; i++) printf(\"x\");\n        printf(\"\\n\");\n        return 0;\n    \}\n    if (strcmp(word, \"stream\") == 0) \{\n        FILE *g = fopen(\"stream.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        fprintf(size % 2 ? stderr : stdout, \"streamed\\n\");\n        return 0;\n    \}\n    if (strcmp(word, \"port\") == 0) \{\n        if (strcmp(argv[argc - 2], \"_port=false\") != 0) return 6;\n        printf(\"%s\\n\", argv[argc - 2]);\n        return 0;\n    \}\n    if (strcmp(word, \"shape\") == 0) \{\n        FILE *g = fopen(\"shape.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        if (size > 1) printf(\"Lua warning: #time difference from previous test: +5.0%%\\n\");\n        printf(size > 1 ? \"time: 0.000643 (-0.000643)\\n\" : \"time: 2.7e-05 (+2.7e-05)\\n\");\n        return 0;\n    \}\n    printf(\"%s %d %ld\\n\", word, lua_answer(), (long)clock() + (long)time(0));\n    return 0;\n\}\n"
+let LUA_SUITE_C = "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <time.h>\n#include \"lua.h\"\nint main(int argc, char **argv) \{\n    char word[64];\n    FILE *f = fopen(argv[argc - 1], \"r\");\n    if (f == 0 || fgets(word, sizeof word, f) == 0) return 3;\n    fclose(f);\n    for (char *c = word; *c; c++) if (*c == '\\n') *c = 0;\n    if (strcmp(word, \"oracle\") == 0) \{\n        fprintf(stderr, \"\\nbroken\\ntraceback\\n\");\n        return 5;\n    \}\n    if (strcmp(word, \"spin\") == 0) \{\n        volatile long n = 0;\n        while (n < 300000000L) n++;\n    \}\n    if (strcmp(word, \"grow\") == 0) \{\n        for (;;) \{\n            char *p = malloc(1 << 24);\n            if (p == 0) \{ fputs(\"not enough memory\\n\", stderr); return 4; \}\n            memset(p, 1, 1 << 24);\n        \}\n    \}\n    if (strcmp(word, \"runs\") == 0) \{\n        FILE *g = fopen(\"runs.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        for (long i = 0; i < size; i++) printf(\"x\");\n        printf(\"\\n\");\n        return 0;\n    \}\n    if (strcmp(word, \"stream\") == 0) \{\n        FILE *g = fopen(\"stream.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        fprintf(size % 2 ? stderr : stdout, \"streamed\\n\");\n        return 0;\n    \}\n    if (strcmp(word, \"port\") == 0) \{\n        if (strcmp(argv[argc - 2], \"_port=false\") != 0) return 6;\n        printf(\"%s\\n\", argv[argc - 2]);\n        return 0;\n    \}\n    if (strcmp(word, \"shape\") == 0) \{\n        FILE *g = fopen(\"shape.bin\", \"ab\");\n        fwrite(\"x\", 1, 1, g);\n        long size = ftell(g);\n        fclose(g);\n        if (size > 1) printf(\"Lua warning: #time difference from previous test: +5.0%%\\n\");\n        printf(size > 1 ? \"time: 0.000643 (-0.000643)\\n\" : \"time: 2.7e-05 (+2.7e-05)\\n\");\n        return 0;\n    \}\n    printf(\"%s %d %ld\\n\", word, lua_answer(), (long)clock() + (long)time(0));\n    return 0;\n\}\n"
 
 // a stand-in root whose interpreter is `LUA_SUITE_C` and whose test folder holds `scripts`, each
 // a file name of the suite and the word its script holds
@@ -334,7 +335,46 @@ def test_suite_check(t : T?) {
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-port", "maybe"]), out), 1, out)
         t |> success(out |> contains("--suite-port is true or false, not `maybe`"), out)
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-memory", "lots"]), out), 1, out)
-        t |> success(out |> contains("MemoryMax=lots") && out |> contains("which fails"), out)
+        t |> success(out |> contains("MemoryMax=lots") && out |> contains("which fails") && out |> contains("not `lots`"), out)
+        rmdir_rec(root)
+    }
+}
+
+// `root/shim`, holding a stand-in for each of `commands` that refuses whatever it is asked: the
+// folder, to lead the lane's `PATH`
+def private refusing_shims(root : string; commands : array<string>) : string {
+    let dir = path_join(root, "shim")
+    mkdir_rec(dir)
+    var out : string
+    for (command in commands) {
+        let path = path_join(dir, command)
+        fwrite(path, "#!/bin/sh\necho \"$0: refused\" >&2\nexit 1\n")
+        run_and_capture(["chmod", "+x", path], out, 30.0)
+    }
+    return dir
+}
+
+// `argv` run with `dir` leading its `PATH`
+def private with_path(dir : string; argv : array<string>) : array<string> {
+    var shell <- ["sh", "-c", "PATH=\"$0:$PATH\"; export PATH; exec \"$@\"", dir]
+    shell |> push_from(argv)
+    return <- shell
+}
+
+[test]
+def test_suite_cap(t : T?) {
+    t |> run("--suite-check caps each run with a system scope, else a user scope, else prlimit's address-space limit, as on a runner without root, under which a run out of memory says so and gets the memory verdict; a cap none of them applies refuses the lane") @(t : T?) {
+        let root = suite_root("c2das_lua_suite_cap", [("pm.lua", "hello"), ("gc.lua", "grow")])
+        var out : string
+        // the manager refuses every scope (as it does a user without root): the address-space limit
+        t |> equal(run_in(root, with_path(refusing_shims(root, ["systemd-run"]), daslang_argv("lua/run.das", ["--suite-check", "--filter", "lua", "--layout", "single", "--suite-memory", "1G"])), out), 1, out)
+        t |> success(out |> contains("caps each run with `prlimit --as=1073741824 --`"), out)
+        let suite = fread(path_join(root, "lua/work/single/suite.txt"))
+        t |> success(suite |> contains("pm.lua pass ") && suite |> contains("gc.lua memory ") && suite |> contains(" memory native over 1G\n"), suite)
+        // prlimit refusing too: no cap, so no run, every attempt named
+        t |> equal(run_in(root, with_path(refusing_shims(root, ["systemd-run", "prlimit"]), daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "pm.lua", "--filter", "lua", "--layout", "source"])), out), 1, out)
+        t |> success(out |> contains("`systemd-run --user --scope --collect -p MemoryMax=4G -p MemorySwapMax=0 --quiet true`, which fails: ") && out |> contains("`prlimit --as=4294967296 -- true`, which fails: ") && out |> contains("/shim/prlimit: refused"), out)
+        t |> success(!fexist(path_join(root, "lua/work/source/suite.txt")), out)
         rmdir_rec(root)
     }
 }
