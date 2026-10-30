@@ -8,49 +8,51 @@ gates and the review machinery. Codex sessions take their MCP wiring from
 # Git workflow
 
 - `main` is the only long-lived branch. It receives verified work only through pull requests,
-  is never force-pushed and never deleted. GitHub offers branch protection on a private
-  repository only with a Pro plan (the protection and ruleset endpoints answer 403 here), so
-  the rule holds by discipline. When the repository goes public, enable protection on `main`
-  (no direct push, no force push, the required check `preflight`, linear history) and require
-  approval for every outside contributor's workflow run.
-- One branch per ledger item, named `<item>-<slug>` (`p4.9-<slug>`); outside the ledger
-  `fix/<slug>`, `docs/<slug>`, `perf/<slug>`, `upstream/<slug>`. The branch is pushed after
-  every verified commit (`git push origin HEAD`).
+  is never force-pushed and never deleted; the rule holds by discipline, since a private
+  repository has no branch protection here (root `ARCHITECTURE.md` section 7). The change that
+  makes the repository public enables protection on `main` (no direct push, no force push, the
+  required check `preflight`, linear history) and the approval of every outside contributor's
+  workflow run in the same change.
+- One branch per pull request, named `<item>-<slug>` for a ledger item (`p4.9-<slug>`; a later
+  pull request of a split item adds a number, `p5.3-<slug>-2`), otherwise `fix/<slug>`,
+  `docs/<slug>`, `perf/<slug>` or `upstream/<slug>`. The branch is pushed after every verified
+  commit (`git push origin HEAD`).
 - Every item lands as a pull request into `main`, opened with `gh pr create --body-file`. The
-  body states what changed, the suites (gcc-torture, c-testsuite, csmith), the perf ratio
-  table and its delta, the readability delta, the ledgered leftovers and the preflight result,
-  and ends with a `Refs:` line linking the related issues, `lookibed/daScript#N` for every
-  upstream defect the item found. It merges with `gh pr merge --rebase --delete-branch` after
-  the verification and only with the `preflight` check green; never a squash.
-- A pull request carries at most about 400 to 600 lines of non-generated code. A ledger item
+  body states what changed, the gcc-torture, c-testsuite and csmith counts when the pull
+  request ran those suites, the perf ratio table with its delta when it recorded perf, the
+  readability delta when it changed converter output, the ledgered leftovers and the preflight
+  result, and ends with a `Refs:` line when an issue relates, `lookibed/daScript#N` for every
+  upstream defect the item found.
+- A pull request merges with `gh pr merge --rebase --delete-branch`, never a squash.
+- A pull request carries at most about 600 lines of non-generated code. A ledger item
   larger than that is split into consecutive pull requests, stacked or sequential, each green
-  and reviewed on its own (owner ruling 2026-10-26).
+  and reviewed on its own.
 - A commit per logical step: a test with the change it covers, never one commit per phase. A
   coder subagent commits its steps as it goes; the lead does not squash them into one.
-- A pull request merges only when CI is green AND the item's review pass is closed with no
-  BLOCKING or MAJOR finding open; a green check never overrides an open review.
-- Review effort scales with the pull request (owner rule 10, 2026-10-29). A pull request (a fix,
-  hygiene, one plan step) runs the fast preflight tier, the ports tests and the suites the change
-  touches, with one reviewer pass; a pull request adding a plan-item feature also runs the full C
-  suites (the ratchet) before it merges; a pull request touching a harness the full tier tests
-  (the suite and port runners and their tests) runs that tier before it merges;
-  a phase end (the last item of P5, P6, P7, P8) runs the
-  full preflight, the per-document dragon re-reads, the architecture audit and the perf re-record.
-- Each phase end is an annotated tag `v0.<phase>.0` with a GitHub release carrying the suite
+- A pull request merges only when the `preflight` check is green AND the pull request's review
+  pass is closed with no BLOCKING or MAJOR finding open.
+- Every pull request runs `scripts/preflight.sh`, the `ports/tests` suite and the dastest suites
+  of the folders it touches locally before it is opened, and gets one review pass plus a re-check
+  of each BLOCKING or MAJOR fix. A pull request that does not close a phase runs no
+  per-document dragon audit and no `scripts/run_perf.sh` recording.
+- A pull request that changes `converter/` outside `converter/tests/`, `c_runtime/` or
+  `dasCRuntime/` also runs the gcc-torture, c-testsuite and csmith suites before it merges.
+- A pull request touching `suites/suite_runner.das`, `lua/` or `ports/` runs
+  `scripts/preflight.sh --full` before it merges.
+- The last pull request of a phase runs `scripts/preflight.sh --full`, a dragon-agent audit of
+  every `REVIEW*.md`, `ARCHITECTURE*.md` and `AGENTS.md` the phase changed, an archivist pass
+  over each of those architecture documents, the dupe-sweeper and style-hygiene audits over the
+  phase's new code, and `scripts/run_perf.sh --readme`, which re-records
+  `perf/results_linux.json`.
+- Closing a phase is an annotated tag `v0.<phase>.0` with a GitHub release carrying the suite
   counts and the perf and readability numbers at that commit, and the ports repository
   (`lookibed/c2das-ports`) regenerated from that tag with `bash scripts/publish_ports.sh --commit
-  --push`; closing a phase includes both.
-- CI is `.github/workflows/preflight.yml` on a self-hosted runner (labels `self-hosted`,
-  `c2das`) installed under `/opt/actions-runner` on the machine that holds the toolchain, as the
-  systemd service of the dedicated user `gha`, which reads `DASLANG_ROOT` and
-  `PATH_TO_LIBCLANG` through read-only bind mounts (`/srv/daScript`, `/srv/libclang`; the
-  runner's `.env` names them). A pull request runs the fast tier, a push to `main` the full
-  tier; a fork's pull request never runs there (the job's `if` on the head repository, and the
-  repository setting that keeps fork workflows off). `scripts/preflight.sh --full` still runs
-  locally before each pull request.
-- `.gitattributes` marks the C inputs (fixtures, kernels, fetched suite trees, the vendored
-  Doom sources) `linguist-vendored` and the recorded captures `linguist-generated`, so the
-  language statistics show the converter's own code.
+  --push`; the phase is closed only with the tag, the release and the regeneration done.
+- A diff to `.github/workflows/preflight.yml` keeps the job's `if` on the head repository, so a
+  fork's pull request never runs on the self-hosted runner (root `ARCHITECTURE.md` section 7).
+- A diff adding a C-input folder (fixtures, kernels, fetched suite trees, vendored sources) or a
+  recorded capture marks it in `.gitattributes` (`linguist-vendored`, `linguist-generated`) in
+  the same change, so the language statistics show the converter's own code.
 
 # Workspace hygiene
 
