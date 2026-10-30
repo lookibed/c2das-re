@@ -100,6 +100,24 @@ def first_reported_line(text : string) : string {
     return ""
 }
 
+//! The lines of `text` that do not start with `prefix`.
+def lines_without(text, prefix : string) : array<string> => <- [for (ln in split(text, "\n")); ln; where !(ln |> starts_with(prefix))]
+
+//! `text` without the `info` lines (`[I] `) the JIT reports its compilation on among a program's
+//! output.
+def program_output(text : string) : string => join(lines_without(text, "[I] "), "\n")
+
+//! `argv` run in the folder `cwd` through `sh`, so the folder needs no process API; `argv` itself
+//! for an empty `cwd`.
+def in_folder(cwd : string; argv : array<string>) : array<string> {
+    var full : array<string>
+    if (!empty(cwd)) {
+        full |> push_from(["sh", "-c", "cd \"$0\" && exec \"$@\"", cwd])
+    }
+    full |> push_from(argv)
+    return <- full
+}
+
 //! The last line of `text` that is not empty.
 def last_line(text : string) : string {
     let lines <- [for (l in split(text, "\n")); strip(l); where !empty(strip(l))]

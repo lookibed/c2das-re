@@ -3,6 +3,7 @@ require dastest/testing_boost public
 require strings
 require daslib/fio
 require daslib/strings_boost
+require ../../perf/perf_lanes.das
 
 //! The lua harness without the release: `lua/run.das` over a scratch tree holding a stand-in
 //! `lua/fetch/lua-5.4.8/src` of small C files, `lua/fetch.sh`'s refusals over a scratch
@@ -14,11 +15,7 @@ let CORE <- ["lapi", "lcode", "lctype", "ldebug", "ldo", "ldump", "lfunc", "lgc"
 // the standard libraries among them, which only the interpreter links
 let STANDARD <- ["lbaselib", "lcorolib", "ldblib", "liolib", "lmathlib", "loadlib", "loslib", "lstrlib", "ltablib", "lutf8lib", "linit"]
 
-def private run_in(dir : string; argv : array<string>; var out : string&) : int {
-    var shell <- ["sh", "-c", "cd \"$0\" && exec \"$@\"", dir]
-    shell |> push_from(argv)
-    return run_and_capture(shell, out, 600.0)
-}
+def private run_in(dir : string; argv : array<string>; var out : string&) : int => run_and_capture(in_folder(dir, argv), out, 600.0)
 
 def private daslang_argv(script : string; args : array<string>) : array<string> {
     var argv <- [get_das_root() + "/bin/daslang", "-load_module", get_full_file_name("dasCRuntime"), "-load_module", get_full_file_name("c_runtime"), get_full_file_name(script), "--"]

@@ -30,6 +30,17 @@ def test_samples(t : T?) {
         t |> equal(last_line("a\nb  \n\n"), "b")
         t |> equal(last_line(""), "")
     }
+    t |> run("lines without a prefix keep every other line, blanks included; a program's output drops the info lines") @(t : T?) {
+        t |> equal(join(lines_without("a\n# x\n\nb", "# "), "|"), "a||b")
+        t |> equal(program_output("[I] jit\nout\n[I] more\nend"), "out\nend")
+    }
+    t |> run("a command in a folder runs through sh there; in no folder it is the command itself") @(t : T?) {
+        t |> equal(join(in_folder("/tmp/w", ["prog", "a b"]), "|"), "sh|-c|cd \"$0\" && exec \"$@\"|/tmp/w|prog|a b")
+        t |> equal(join(in_folder("", ["prog"]), "|"), "prog")
+        var out : string
+        t |> equal(run_and_capture(in_folder("/", ["pwd"]), out, 30.0), 0, out)
+        t |> equal(strip(out), "/")
+    }
 }
 
 [test]
