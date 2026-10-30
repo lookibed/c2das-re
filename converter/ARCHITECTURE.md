@@ -68,7 +68,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   else of the first (`single`), as `--layout` or the sidecar's `layout` chooses; beside
   `program.cir.json`, and in the two module-per-file layouts `program.layout.txt`, the partition's
   report; its result adds the link's seconds and report, the files it wrote and that report. One file is `convert`
-  of it. `read_program_input` reads a manifest the converter takes (section 6).
+  of it. `read_program_input` reads a manifest the converter takes (section 6); `seconds_since`
+  is the clock every reported phase reads, `lua/run.das`'s runs included.
 - `link.das` - the link of section 6 (`ARCHITECTURE_LINK.md`): `link_tus` over the dumper's trees
   of a program's units, each unit's scope (its output module) from the caller's block.
   Nothing here knows clang or daslang syntax.

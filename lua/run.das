@@ -85,16 +85,6 @@ def private write_manifest(stem : string) : string {
     return fwrite(path, "\{\n \"tus\": [{tus}],\n \"entry\": \"main\"\n\}\n") ? path : ""
 }
 
-def private line_count(text : string) : int {
-    var lines = 0
-    for (ch in text) {
-        if (ch == '\n') {
-            lines++
-        }
-    }
-    return lines
-}
-
 // the native oracle of the program's `c_paths` at `bin`; false with the compiler's text logged
 // when it fails
 def private build_native(c_paths : array<string>; bin : string) : bool {
@@ -109,7 +99,6 @@ def private build_native(c_paths : array<string>; bin : string) : bool {
     return true
 }
 
-// a run's stdout and stderr, apart
 struct Streams {
     out : string
     err : string
@@ -282,6 +271,9 @@ struct Cap {
     kills : bool
 }
 
+// the most digits every count of which fits an int64, whose largest value has 19
+let MAX_INT64_DIGITS = 18
+
 // `memory` as systemd's MemoryMax takes it, in bytes: digits with K, M, G or T; -1 for any other
 // spelling, and for a count past int64
 def private memory_bytes(memory : string) : int64 {
@@ -296,7 +288,7 @@ def private memory_bytes(memory : string) : int64 {
             return -1l
         }
     }
-    if (length(digits) > 18) {
+    if (length(digits) > MAX_INT64_DIGITS) {
         return -1l
     }
     let count = to_int64(digits)
@@ -307,50 +299,45 @@ def private memory_bytes(memory : string) : int64 {
 // (root's), a scope of the user's own manager (a user with one running), and `prlimit`'s
 // address-space limit (any user); a scope's `MemoryMax` is `memory` as given, the limit `memory` in
 // bytes, which `unparsed` says when it has none
-def private cap_tiers(memory : string; var unparsed : string&) : array<Cap> {
+def private cap_candidates(memory : string; var unparsed : string&) : array<Cap> {
     let scope <- ["--scope", "--collect", "-p", "MemoryMax={memory}", "-p", "MemorySwapMax=0", "--quiet"]
-    var tiers : array<Cap>
-    tiers |> reserve(3)
+    var candidates : array<Cap>
+    candidates |> reserve(3)
     for (manager in [["systemd-run"], ["systemd-run", "--user"]]) {
-        var cap : Cap
-        cap.prefix := manager
-        cap.prefix |> push_from(scope)
-        cap.kills = true
-        tiers |> emplace(cap)
+        var inscope prefix := manager
+        prefix |> push_from(scope)
+        candidates |> emplace(Cap(prefix <- prefix, kills = true))
     }
     let bytes = memory_bytes(memory)
     if (bytes < 0l) {
         unparsed = "`prlimit --as` takes bytes with K, M, G or T, not `{memory}`"
     } else {
-        var cap : Cap
-        cap.prefix <- ["prlimit", "--as={bytes}", "--"]
-        tiers |> emplace(cap)
+        candidates |> emplace(Cap(prefix <- ["prlimit", "--as={bytes}", "--"]))
     }
-    return <- tiers
+    return <- candidates
 }
 
-// the first of `cap_tiers` under which `true` runs, in `cap`: false when none does, each probe
-// and why it failed in `refused`
-def private choose_cap(memory : string; var refused : string&; var cap : Cap&) : bool {
+// the first of `cap_candidates` for `--suite-memory` under which `true` runs, in `cap`: false when
+// none does, each probe and why it failed logged
+def private choose_cap(args : Args; var cap : Cap&) : bool {
     var unparsed : string
-    var tiers <- cap_tiers(memory, unparsed)
+    var candidates <- cap_candidates(args.suite_memory, unparsed)
     var attempts : array<string>
-    attempts |> reserve(length(tiers) + 1)
-    for (tier in tiers) {
-        var inscope probe := tier.prefix
+    attempts |> reserve(length(candidates) + 1)
+    for (candidate in candidates) {
+        var inscope probe := candidate.prefix
         probe |> push("true")
         var out : string
         if (run_and_capture(probe, out, 60.0) == 0) {
-            cap.prefix := tier.prefix
-            cap.kills = tier.kills
+            cap := candidate
             return true
         }
-        attempts |> push("`{join(probe, " ")}`, which fails: {first_line(out)}")
+        attempts |> push("`{join(probe, " ")}`, which fails: {first_reported_line(out)}")
     }
     if (!empty(unparsed)) {
         attempts |> push(unparsed)
     }
-    refused = join(attempts, "; ")
+    to_log(LOG_ERROR, "lua: --suite-check caps each run with {join(attempts, "; ")}\n")
     return false
 }
 
@@ -360,7 +347,6 @@ def private full_path(path : string) : string => path_join(getcwd(), path)
 // whether the character at `i` of `text` is a digit; false past its end
 def private digit_at(text : array<int>; i : int) : bool => i < length(text) && is_number(text[i])
 
-// whether the character at `i` of `text` is a sign
 def private sign_at(text : array<int>; i : int) : bool => i < length(text) && (text[i] == '+' || text[i] == '-')
 
 // the end of the number starting at `i` of `text`: a sign, digits and points, an exponent
@@ -407,13 +393,13 @@ def private compared_lines(output : string) : array<string> => <- lines_without(
 
 // the first line of `stream` where `native` and `das` differ once masked, quoted from each
 def private first_line_difference(stream, native, das, tier : string) : string {
-    let left <- compared_lines(native)
-    let right <- compared_lines(das)
-    for (i in range(max(length(left), length(right)))) {
-        let l = i < length(left) ? left[i] : "<end>"
-        let r = i < length(right) ? right[i] : "<end>"
-        if (masked(l) != masked(r)) {
-            return "{stream} line {i + 1}: native `{slice(l, 0, 120)}`, {tier} `{slice(r, 0, 120)}`"
+    let native_lines <- compared_lines(native)
+    let das_lines <- compared_lines(das)
+    for (i in range(max(length(native_lines), length(das_lines)))) {
+        let native_line = i < length(native_lines) ? native_lines[i] : "<end>"
+        let das_line = i < length(das_lines) ? das_lines[i] : "<end>"
+        if (masked(native_line) != masked(das_line)) {
+            return "{stream} line {i + 1}: native `{slice(native_line, 0, 120)}`, {tier} `{slice(das_line, 0, 120)}`"
         }
     }
     return ""
@@ -425,27 +411,44 @@ def private first_difference(native, das : Streams; tier : string) : string {
     return empty(out) ? first_line_difference("stderr", native.err, das.err, tier) : out
 }
 
-// the first line of `text` that is not empty, "" when there is none: an uncaught error's message,
-// before its traceback
-def private first_line(text : string) : string {
-    for (ln in split(text, "\n")) {
-        if (!empty(ln)) {
-            return ln
-        }
-    }
-    return ""
-}
+// the signal a cgroup cap kills a run with, which `run_and_capture` returns as its exit code
+let SIGKILL = 9
 
 // one run's verdict when the cap or the timeout ended it: `memory`, `timeout`, or "" when it
-// exited; a cap that kills ended the run with signal 9, one that fails allocations with the
+// exited; a cap that kills ended the run with `SIGKILL`, one that fails allocations with the
 // `not enough memory` of `lua.c` on stderr `err`
-def private ended(rc : int; cap : Cap; err, side, memory : string; timeout : float) : string {
+def private limit_verdict(rc : int; cap : Cap; err, side, memory : string; timeout : float) : string {
     if (rc == popen_timed_out) {
         return "timeout {side} past {timeout} s"
     }
-    let over = cap.kills ? rc == 9 : rc != 0 && err |> contains("not enough memory")
+    let over = cap.kills ? rc == SIGKILL : rc != 0 && err |> contains("not enough memory")
     return over ? "memory {side} over {memory}" : ""
 }
+
+// one run of a test file under the cap: its exit code, its streams, its seconds and its
+// `limit_verdict`
+struct CappedRun {
+    rc : int
+    streams : Streams
+    seconds : double
+    limit : string
+}
+
+// `argv` run under `cap` and timed, `path_dir` leading its `PATH`, the run named `side` in its
+// limit verdict
+def private capped_run(argv : array<string>; side, path_dir : string; cap : Cap; args : Args) : CappedRun {
+    var full := cap.prefix
+    full |> push_from(argv)
+    var run : CappedRun
+    let started = ref_time_ticks()
+    run.rc = run_split(full, args.suite_timeout, path_dir, run.streams)
+    run.seconds = seconds_since(started)
+    run.limit = limit_verdict(run.rc, cap, run.streams.err, side, args.suite_memory, args.suite_timeout)
+    return run
+}
+
+// the verdict line of a run the cap or the timeout ended: `memory` or `timeout`, its seconds, why
+def private limit_line(file : string; run : CappedRun) : string => "{file} {split(run.limit, " ")[0]} {run.seconds:.1f} {run.limit}"
 
 // the verdict line of one test file: the native oracle `bin` run first, then the converted
 // interpreter at `das_path` under `tier`, each in the suite's folder with the `lua` of
@@ -457,38 +460,28 @@ def private suite_file(file, das_path, bin, tier : string; launchers : Launchers
     if (!fexist(path_join(dir, file))) {
         return "{file} missing 0.0"
     }
-    var native_args := cap.prefix
-    native_args |> push_from(["bash", "-c", "cd \"$1\" && exec -a \"$0\" \"$\{@:2\}\"", "lua", dir, full_path(bin)], suite_args(file, args.suite_port))
-    var native : Streams
-    let native_started = ref_time_ticks()
-    let native_rc = run_split(native_args, args.suite_timeout, launchers.native, native)
-    let native_seconds = double(get_time_usec(native_started)) / 1000000.0lf
-    to_log(LOG_INFO, "lua: suite {file}: native exited {native_rc} in {fmt(":.1f", native_seconds)} s\n")
-    let native_end = ended(native_rc, cap, native.err, "native", args.suite_memory, args.suite_timeout)
-    if (!empty(native_end)) {
-        return "{file} {native_end |> starts_with("memory") ? "memory" : "timeout"} {fmt(":.1f", native_seconds)} {native_end}"
+    var native_argv <- ["bash", "-c", "cd \"$1\" && exec -a \"$0\" \"$\{@:2\}\"", "lua", dir, full_path(bin)]
+    native_argv |> push_from(suite_args(file, args.suite_port))
+    let native = capped_run(native_argv, "native", launchers.native, cap, args)
+    to_log(LOG_INFO, "lua: suite {file}: native exited {native.rc} in {native.seconds:.1f} s\n")
+    if (!empty(native.limit)) {
+        return limit_line(file, native)
     }
-    if (native_rc != 0) {
-        let said = first_line(native.err)
+    if (native.rc != 0) {
+        let said = first_reported_line(native.streams.err)
         let quoted = empty(said) ? "" : ": " + slice(said, 0, 160)
-        return "{file} oracle {fmt(":.1f", native_seconds)} native exited {native_rc}{quoted}"
+        return "{file} oracle {native.seconds:.1f} native exited {native.rc}{quoted}"
     }
-    var das_args := cap.prefix
-    das_args |> push_from(in_folder(dir, das_argv(das_path, tier, suite_args(file, args.suite_port))))
-    var das : Streams
-    let das_started = ref_time_ticks()
-    let das_rc = run_split(das_args, args.suite_timeout, launchers.das, das)
-    let seconds = fmt(":.1f", double(get_time_usec(das_started)) / 1000000.0lf)
-    das.out = program_output(das.out)
-    let das_end = ended(das_rc, cap, das.err, tier, args.suite_memory, args.suite_timeout)
-    if (!empty(das_end)) {
-        return "{file} {das_end |> starts_with("memory") ? "memory" : "timeout"} {seconds} {das_end}"
+    var das = capped_run(in_folder(dir, das_argv(das_path, tier, suite_args(file, args.suite_port))), tier, launchers.das, cap, args)
+    if (!empty(das.limit)) {
+        return limit_line(file, das)
     }
-    let difference = first_difference(native, das, tier)
-    if (native_rc != das_rc) {
-        return "{file} fail {seconds} native exited {native_rc}, {tier} {das_rc}; {difference}"
+    das.streams.out = program_output(das.streams.out)
+    let difference = first_difference(native.streams, das.streams, tier)
+    if (native.rc != das.rc) {
+        return "{file} fail {das.seconds:.1f} native exited {native.rc}, {tier} {das.rc}; {difference}"
     }
-    return empty(difference) ? "{file} pass {seconds}" : "{file} fail {seconds} {difference}"
+    return empty(difference) ? "{file} pass {das.seconds:.1f}" : "{file} fail {das.seconds:.1f} {difference}"
 }
 
 // the folders whose `lua` each side's runs find on their `PATH`, as `main.lua` runs the interpreter
@@ -525,9 +518,7 @@ def private suite_check(das_path, bin, layout : string; args : Args) : bool {
         return false
     }
     var cap : Cap
-    var refused : string
-    if (!choose_cap(args.suite_memory, refused, cap)) {
-        to_log(LOG_ERROR, "lua: --suite-check caps each run with {refused}\n")
+    if (!choose_cap(args, cap)) {
         return false
     }
     to_log(LOG_INFO, "lua: suite ({layout}, {args.tier}) caps each run with `{join(cap.prefix, " ")}`\n")
@@ -545,7 +536,7 @@ def private suite_check(das_path, bin, layout : string; args : Args) : bool {
     mkdir_rec(out_dir)
     fwrite(path_join(out_dir, "suite.txt"), join(lines, "\n") + "\n")
     let totals = join([for (verdict in ["pass", "fail", "timeout", "memory", "oracle", "missing"]); "{counts?[verdict] ?? 0} {verdict}"], ", ")
-    to_log(LOG_INFO, "lua: suite under {args.tier} ({layout}): {totals} of {length(files)} files in {fmt(":.0f", double(get_time_usec(started)) / 1000000.0lf)} s\n")
+    to_log(LOG_INFO, "lua: suite under {args.tier} ({layout}): {totals} of {length(files)} files in {fmt(":.0f", seconds_since(started))} s\n")
     return (counts?["pass"] ?? 0) == length(files)
 }
 
@@ -560,11 +551,11 @@ def private layouts_of(args : Args) : array<string> => <- args.layout == "all" ?
 // the lines of every das file a conversion wrote, a fragment's included
 def private das_lines(res : ConvertResult; dir : string) : int {
     if (empty(res.files)) {
-        return line_count(res.das_text)
+        return count(res.das_text, "\n")
     }
     var lines = 0
     for (f in res.files) {
-        lines += line_count(fread(path_join(dir, f)))
+        lines += count(fread(path_join(dir, f)), "\n")
     }
     return lines
 }
@@ -666,13 +657,9 @@ def main : int {
         to_log(LOG_ERROR, "lua: --suite-port is true or false, not `{args.suite_port}`\n")
         return 1
     }
-    if (args.suite_check) {
-        var cap : Cap
-        var refused : string
-        if (!choose_cap(args.suite_memory, refused, cap)) {
-            to_log(LOG_ERROR, "lua: --suite-check caps each run with {refused}\n")
-            return 1
-        }
+    var cap : Cap
+    if (args.suite_check && !choose_cap(args, cap)) {
+        return 1
     }
     if (!stat(SOURCES).is_dir) {
         to_log(LOG_ERROR, "lua: no {SOURCES}; run lua/fetch.sh first\n")
