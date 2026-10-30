@@ -135,6 +135,20 @@ def private ports_clone(root : string) : string {
     return clone
 }
 
+// `body` run as a named arm over a fresh stand-in root named after `name` and its ports clone,
+// the root removed after it; a failure when no root can be made
+def private run_stand_in(t : T?; title, name : string; body : lambda<(t : T?; root, clone : string) : void>) {
+    t |> run(title) @(t : T?) {
+        let root = stand_in_root(name)
+        if (empty(root)) {
+            t |> failure("no stand-in root")
+            return
+        }
+        body |> invoke(t, root, ports_clone(root))
+        rmdir_rec(root)
+    }
+}
+
 // the clone as the publish that made `head` left it
 def private untouched(t : T?; clone, head, why : string) {
     t |> equal(git(clone, ["status", "--porcelain"]), "", why)
@@ -152,13 +166,7 @@ def test_refusals(t : T?) {
         t |> success(out |> contains("show this help and exit"), out)
         t |> success(out |> contains("--allow-stale"), out)
     }
-    t |> run("an unknown program or lane, --push without --commit, --samples below 1, --timeout of 0, and a directory that is no clone") @(t : T?) {
-        let root = stand_in_root("c2das_ports_refusals")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("an unknown program or lane, --push without --commit, --samples below 1, --timeout of 0, and a directory that is no clone", "c2das_ports_refusals") @(t : T?; root, clone : string) {
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--program", "doom"], out), 1, out)
         t |> success(out |> contains("no program `doom`; the publisher knows lua"), out)
@@ -181,15 +189,8 @@ def test_refusals(t : T?) {
         t |> equal(publish(root, ["--repo", path_join(clone, "sub"), "--no-convert"], out), 1, out)
         t |> success(out |> contains("is no clone of the ports repository"), out)
         t |> success(!fexist(path_join(clone, "lua")), "a refused publish wrote into the clone")
-        rmdir_rec(root)
     }
-    t |> run("the clone defaults to $C2DAS_PORTS, else ../c2das-ports") @(t : T?) {
-        let root = stand_in_root("c2das_ports_env")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("the clone defaults to $C2DAS_PORTS, else ../c2das-ports", "c2das_ports_env") @(t : T?; root, clone : string) {
         var out : string
         let plain = path_join(root, "plain")
         t |> equal(run_in(root, with_env(["C2DAS_PORTS={plain}"]), out), 1, out)
@@ -199,19 +200,12 @@ def test_refusals(t : T?) {
         // without the variable, the clone beside the root
         t |> equal(run_in(root, with_env(["-u", "C2DAS_PORTS"]), out), 1, out)
         t |> success(out |> contains("../c2das-ports is no clone"), out)
-        rmdir_rec(root)
     }
 }
 
 [test]
 def test_tree_refusals(t : T?) {
-    t |> run("a dirty c2das-re tree without --allow-dirty; with it the conversion's stamp names -dirty; a root that is no git tree") @(t : T?) {
-        let root = stand_in_root("c2das_ports_dirty")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("a dirty c2das-re tree without --allow-dirty; with it the conversion's stamp names -dirty; a root that is no git tree", "c2das_ports_dirty") @(t : T?; root, clone : string) {
         fwrite(path_join(root, "VERSIONS.md"), VERSIONS + "# edited\n")
         var out : string
         t |> equal(publish(root, ["--repo", clone], out), 1, out)
@@ -222,19 +216,12 @@ def test_tree_refusals(t : T?) {
         run_and_capture(["mv", path_join(root, ".git"), path_join(root, "git.moved")], out, 30.0)
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--allow-dirty"], out), 1, out)
         t |> success(out |> contains("run from the c2das-re checkout"), out)
-        rmdir_rec(root)
     }
 }
 
 [test]
 def test_input_refusals(t : T?) {
-    t |> run("a refused input leaves the clone as the last publish left it: the pin, the stamp, a module, the license block, the sidecar") @(t : T?) {
-        let root = stand_in_root("c2das_ports_inputs")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("a refused input leaves the clone as the last publish left it: the pin, the stamp, a module, the license block, the sidecar", "c2das_ports_inputs") @(t : T?; root, clone : string) {
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--commit"], out), 0, out)
         let head = git(clone, ["rev-parse", "HEAD"])
@@ -294,19 +281,12 @@ def test_input_refusals(t : T?) {
         t |> equal(publish(root, args, out), 1, out)
         t |> success(out |> contains("no lua/lua.c2das"), out)
         untouched(t, clone, head, "no sidecar")
-        rmdir_rec(root)
     }
 }
 
 [test]
 def test_stale(t : T?) {
-    t |> run("--allow-stale publishes a stamp of another commit under that commit, and a missing stamp as unrecorded") @(t : T?) {
-        let root = stand_in_root("c2das_ports_stale")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("--allow-stale publishes a stamp of another commit under that commit, and a missing stamp as unrecorded", "c2das_ports_stale") @(t : T?; root, clone : string) {
         let sha = git(root, ["rev-parse", "HEAD"])
         var out : string
         fwrite(stamp_path(root), "{OTHER_SHA}\nv0.0.1\n2020-01-01\n")
@@ -320,7 +300,6 @@ def test_stale(t : T?) {
         let unrecorded = fread(path_join(clone, "lua/README.md"))
         t |> success(unrecorded |> contains("- Generated by c2das-re at an unrecorded commit: published with `--allow-stale` from `v9.9.9` (`{sha}`, committed "), unrecorded)
         t |> equal(git(clone, ["log", "-1", "--format=%s"]), "lua: republished from c2das-re v9.9.9 ({sha}), the conversion's commit unrecorded")
-        rmdir_rec(root)
     }
 }
 
@@ -343,13 +322,7 @@ def private published_modules(t : T?; dir : string) {
 
 [test]
 def test_publish_commit_push(t : T?) {
-    t |> run("--no-convert --commit writes the fixed set and commits it; a second run commits nothing; --push pushes") @(t : T?) {
-        let root = stand_in_root("c2das_ports_publish")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("--no-convert --commit writes the fixed set and commits it; a second run commits nothing; --push pushes", "c2das_ports_publish") @(t : T?; root, clone : string) {
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--commit"], out), 0, out)
         let dir = path_join(clone, "lua")
@@ -391,15 +364,8 @@ def test_publish_commit_push(t : T?) {
         t |> equal(git(path_join(root, "ports.git"), ["rev-parse", "HEAD"]) == head, false)
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--commit", "--push"], out), 0, out)
         t |> equal(git(path_join(root, "ports.git"), ["rev-parse", "HEAD"]), head)
-        rmdir_rec(root)
     }
-    t |> run("a failed git add, git commit or git push fails the publish") @(t : T?) {
-        let root = stand_in_root("c2das_ports_git_fails")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("a failed git add, git commit or git push fails the publish", "c2das_ports_git_fails") @(t : T?; root, clone : string) {
         var out : string
         let lock = path_join(clone, ".git/index.lock")
         fwrite(lock, "")
@@ -415,19 +381,12 @@ def test_publish_commit_push(t : T?) {
         git(clone, ["remote", "set-url", "origin", path_join(root, "no-such-origin.git")])
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--commit", "--push"], out), 1, out)
         t |> success(out |> contains("ports: git push failed: "), out)
-        rmdir_rec(root)
     }
 }
 
 [test]
 def test_convert(t : T?) {
-    t |> run("without --no-convert: fetch.sh and the harness run, the stamp names HEAD, the harness's clock-free report in the README; an unchanged tree commits once") @(t : T?) {
-        let root = stand_in_root("c2das_ports_convert")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("without --no-convert: fetch.sh and the harness run, the stamp names HEAD, the harness's clock-free report in the README; an unchanged tree commits once", "c2das_ports_convert") @(t : T?; root, clone : string) {
         remove(stamp_path(root))
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--commit"], out), 0, out)
@@ -443,15 +402,8 @@ def test_convert(t : T?) {
         // the log stays for a later --no-convert publish
         t |> equal(publish(root, ["--repo", clone, "--no-convert"], out), 0, out)
         t |> success(fread(path_join(clone, "lua/README.md")) |> contains("[W] lua: lua_all: JSON 10 bytes"), out)
-        rmdir_rec(root)
     }
-    t |> run("a failed fetch and a failed conversion stop the publish before the clone is touched") @(t : T?) {
-        let root = stand_in_root("c2das_ports_convert_fails")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("a failed fetch and a failed conversion stop the publish before the clone is touched", "c2das_ports_convert_fails") @(t : T?; root, clone : string) {
         fwrite(path_join(root, "lua/fetch.sh"), "echo no network\nexit 1\n")
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--allow-dirty"], out), 1, out)
@@ -461,7 +413,6 @@ def test_convert(t : T?) {
         t |> equal(publish(root, ["--repo", clone, "--allow-dirty"], out), 1, out)
         t |> success(out |> contains("lua: the conversion exited 1; lua/work/publish_run.log holds its log"), out)
         t |> equal(git(clone, ["status", "--porcelain"]), "")
-        rmdir_rec(root)
     }
 }
 
@@ -481,24 +432,9 @@ def private capture_of(clone : string; var name : string&) : Capture {
     return <- c
 }
 
-def private cell_of(c : Capture; workload, lane : string) : LaneCell {
-    for (cell in c.cells) {
-        if (cell.workload == workload && cell.lane == lane) {
-            return <- clone_to_move(cell)
-        }
-    }
-    return LaneCell(error = "no cell")
-}
-
 [test]
 def test_bench(t : T?) {
-    t |> run("a bench run: every workload under every lane, a das cell standing only on the native output and exit code") @(t : T?) {
-        let root = stand_in_root("c2das_ports_bench")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("a bench run: every workload under every lane, a das cell standing only on the native output and exit code", "c2das_ports_bench") @(t : T?; root, clone : string) {
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "2", "--lanes", "interp,jit,exe,aot", "--commit"], out), 0, out)
         var name : string
@@ -513,15 +449,15 @@ def test_bench(t : T?) {
         let minute = "{slice(c.timestamp, 0, 10)}T{slice(c.timestamp, 11, 13)}{slice(c.timestamp, 14, 16)}"
         t |> equal(slice(name, length("capture_"), length("capture_YYYY-MM-DDTHHMM")), minute, "{name} {c.timestamp}")
         // a sample ends with the program's output, not with popen's 100 ms watchdog tick
-        let startup = cell_of(c, "startup", "native")
+        let startup = find_cell(c, "startup", "native")
         t |> success(empty(startup.error) && startup.time < 0.09lf, "{startup}")
         t |> success(startup.spread == startup.spread && startup.spread < 100.0lf, "{startup}")
         // a standing cell is the median of all its samples; the stand-in's `info` line is no output
-        let fib = cell_of(c, "fib", "interp")
+        let fib = find_cell(c, "fib", "interp")
         t |> success(empty(fib.error) && length(fib.samples) == 2, "{fib}")
         t |> success(length(fib.samples) == 2 && fib.time == (fib.samples[0] + fib.samples[1]) * 0.5lf, "{fib}")
         // a failed cell keeps the sample that failed it
-        let trees = cell_of(c, "binary_trees", "interp")
+        let trees = find_cell(c, "binary_trees", "interp")
         t |> success(!empty(trees.error) && length(trees.samples) == 1, "{trees}")
         let readme = fread(path_join(clone, "lua/README.md"))
         for (fact in ["- `perf/capture_*.json` - every capture", "`scripts/publish_ports.sh --program lua --no-convert --perf --samples 2 --lanes interp,jit,exe,aot --timeout 1800`", "Captured ", " runs of the whole program", "- JIT: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit lua/lua.das --`", "- AOT, every workload: not yet: the aot tier's host passes the program no arguments\n", "- binary_trees, interpreter: not yet: exited 2 where the native build exits 0: EXCEPTION: boom\n", "- nbody, JIT: not yet: line 1 prints `drift` where the native build prints `", "- spectral_norm, clang -O3: not yet: exited 1\n", "- spectral_norm, exe: not yet: no native run to compare with", "- clang -O3: `", " -o lua_native lua.c -lm`"]) {
@@ -540,30 +476,23 @@ def test_bench(t : T?) {
         t |> success(top |> contains("| [lua](lua/README.md) |"), top)
         t |> success(top |> contains("not yet |\n"), top)
         t |> equal(git(clone, ["status", "--porcelain"]), "")
-        rmdir_rec(root)
     }
 }
 
 [test]
 def test_single_lanes(t : T?) {
-    t |> run("the -scc and -single lanes run those layouts' modules, a column each beside the source layout's") @(t : T?) {
-        let root = stand_in_root("c2das_ports_single_lanes")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("the -scc and -single lanes run those layouts' modules, a column each beside the source layout's", "c2das_ports_single_lanes") @(t : T?; root, clone : string) {
         // the source layout's entry fails every workload, the single module runs them
         fwrite(path_join(root, "lua/work/lua/lua.das"), "options gen2\n[export]\ndef main : int \{\n    return 5\n\}\n")
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp,interp-scc,interp-single,jit-scc,jit-single", "--allow-dirty"], out), 0, out)
         var name : string
         let c <- capture_of(clone, name)
-        let fib = cell_of(c, "fib", "interp-single")
+        let fib = find_cell(c, "fib", "interp-single")
         t |> success(empty(fib.error) && length(fib.samples) == 1, "{fib}")
-        let scc_fib = cell_of(c, "fib", "interp-scc")
+        let scc_fib = find_cell(c, "fib", "interp-scc")
         t |> success(empty(scc_fib.error) && length(scc_fib.samples) == 1, "{scc_fib}")
-        t |> success(!empty(cell_of(c, "fib", "interp").error), "{cell_of(c, "fib", "interp")}")
+        t |> success(!empty(find_cell(c, "fib", "interp").error), "{find_cell(c, "fib", "interp")}")
         let readme = fread(path_join(clone, "lua/README.md"))
         for (fact in ["- interpreter, single module: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime single/lua.das --`", "| interpreter, single module / native |", "| interpreter, single module / interpreter |", "- interpreter, scc layout: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime scc/lua/lua.das --`", "- JIT, single module: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit single/lua.das --`", "- JIT, scc layout: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit scc/lua/lua.das --`"]) {
             t |> success(readme |> contains(fact), "README lacks {fact}:\n{readme}")
@@ -571,29 +500,22 @@ def test_single_lanes(t : T?) {
         // the stand-in logs a run whose command carries `-jit` as the JIT's: the two JIT lanes ran under it
         t |> success(line_count(path_join(root, "runs_jit.log")) > 0, "no run of the jit-scc and jit-single lanes carried -jit")
         for (lane in ["jit-scc", "jit-single"]) {
-            let fib_jit = cell_of(c, "fib", lane)
+            let fib_jit = find_cell(c, "fib", lane)
             t |> success(empty(fib_jit.error) && length(fib_jit.samples) == 1, "{lane}: {fib_jit}")
         }
-        rmdir_rec(root)
     }
 }
 
 [test]
 def test_closing_line(t : T?) {
-    t |> run("a test-suite run without the suite's closing line fails its cell, under the native oracle too, and a differing exit code is reported first") @(t : T?) {
-        let root = stand_in_root("c2das_ports_closing")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("a test-suite run without the suite's closing line fails its cell, under the native oracle too, and a differing exit code is reported first", "c2das_ports_closing") @(t : T?; root, clone : string) {
         let args <- ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp", "--allow-dirty"]
-        var out, readme : string
+        var out : string
         // a run that exits 0 without the suite's closing line fails the cell: under the JIT an
         // uncaught Lua error exits 0, so all.lua stops early and still exits 0 (F75)
         fwrite(path_join(root, "lua/work/lua/lua.das"), "options gen2\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    let last = argv[length(argv) - 1]\n    print(\"\{last == \"all.lua\" ? \"ALL\" : last\}\\n\")\n    return 0\n\}\n")
         t |> equal(publish(root, args, out), 0, out)
-        readme = fread(path_join(clone, "lua/README.md"))
+        var readme = fread(path_join(clone, "lua/README.md"))
         t |> success(readme |> contains("- test suite, interpreter: not yet: exited 0 without the line `final OK !!!`; its last line: ALL\n"), readme)
         t |> success(!(readme |> contains("- test suite, clang -O3")), readme)
         // an exit code that differs is reported before the closing line
@@ -606,18 +528,13 @@ def test_closing_line(t : T?) {
         t |> equal(publish(root, args, out), 0, out)
         readme = fread(path_join(clone, "lua/README.md"))
         t |> success(readme |> contains("- test suite, clang -O3: not yet: exited 0 without the line `final OK !!!`; its last line: all.lua\n"), readme)
-        t |> success(readme |> contains("- test suite, interpreter: not yet: no native run to compare with\n"), readme)    }
+        t |> success(readme |> contains("- test suite, interpreter: not yet: no native run to compare with\n"), readme)
+    }
 }
 
 [test]
 def test_bench_failures(t : T?) {
-    t |> run("a missing test-suite folder, a native timeout, a native build that fails beside an earlier binary, failing warm-ups, a capture that is not JSON") @(t : T?) {
-        let root = stand_in_root("c2das_ports_bench_fails")
-        if (empty(root)) {
-            t |> failure("no stand-in root")
-            return
-        }
-        let clone = ports_clone(root)
+    t |> run_stand_in("a missing test-suite folder, a native timeout, a native build that fails beside an earlier binary, failing warm-ups, a capture that is not JSON", "c2das_ports_bench_fails") @(t : T?; root, clone : string) {
         var args <- ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp", "--allow-dirty"]
         var out : string
         rmdir_rec(path_join(root, "lua/fetch/lua-5.9.1-tests"))
@@ -671,6 +588,5 @@ def test_bench_failures(t : T?) {
         fwrite(path_join(clone, "lua/perf/capture_9999-99-99T999999Z.json"), "not json\n")
         t |> equal(publish(root, args, out), 1, out)
         t |> success(out |> contains("lua/perf/capture_9999-99-99T999999Z.json is not JSON"), out)
-        rmdir_rec(root)
     }
 }
