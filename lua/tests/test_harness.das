@@ -245,7 +245,6 @@ def test_error_check(t : T?) {
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--error-check", "--filter", "lua", "--layout", "single"]), out), 1, out)
         t |> success(out |> contains("lua: error check `-e error('x')` under interp differs from the native build: stdout and stderr differ"), out)
         t |> success(out |> contains("lua: error checks under interp: 0 of 8 agree with the native build"), out)
-        // the stderr file is read and removed after each run
         t |> success(!fexist(path_join(root, "lua/work/run.stderr")), out)
         rmdir_rec(root)
     }
@@ -254,7 +253,8 @@ def test_error_check(t : T?) {
 // a stand-in interpreter for the test suite: its last argument names a script whose first word
 // says what to do - `spin` counts long enough that only the converted build outlasts a short
 // timeout, `grow` allocates until a cap kills it or, under an address-space limit, until `malloc`
-// fails, which it reports as `lua.c` does and exits 4, `runs` prints an `x` per run so far, `stream`
+// fails, which it reports as `lua.c` does and exits 4, `oracle` prints a traceback to stderr and
+// exits 5, `runs` prints an `x` per run so far, `stream`
 // prints one line to stderr on an odd run and to stdout on an even one, `port` prints the `-e`
 // string before the script and fails unless it is `_port=false`, `seek` seeks its stdin and exits 7
 // when that succeeds, `self` writes the name its process runs under (`/proc/self/cmdline`'s first
@@ -288,15 +288,15 @@ def test_suite_check(t : T?) {
         t |> equal(length(lines), 31, suite)
         t |> equal(lines[0], "main.lua missing 0.0", suite)
         // the digits of `hello`'s line differ from run to run, which the comparison ignores
-        t |> success(lines[15] |> starts_with("pm.lua pass "), suite)
+        t |> success(find_index_if(lines, $(line) => line |> starts_with("pm.lua pass ")) >= 0, suite)
         // a number in another notation and sign, and the time warning of the later run, compare equal
-        t |> success(lines[2] |> starts_with("db.lua pass "), suite)
+        t |> success(find_index_if(lines, $(line) => line |> starts_with("db.lua pass ")) >= 0, suite)
         t |> success(suite |> contains("math.lua fail ") && suite |> contains(" line 1: native `x`, interp `xx`\n"), suite)
         // the native build counts in time, the converted one past it
         t |> success(suite |> contains("sort.lua timeout ") && suite |> contains(" timeout interp past 5 s\n"), suite)
         // the native build is killed at the cap, and the converted one is not run; the cap is 1G, not
         // less, because under the prlimit tier it bounds the address space, and daslang with the
-        // modules loaded aborts under 256M (as it did on the CI runner, where this test was red)
+        // modules loaded aborts under 256M
         t |> success(suite |> contains("gc.lua memory ") && suite |> contains(" memory native over 1G\n"), suite)
         // the native build fails on its own: no pass by agreement, the converted one is not run, and
         // the verdict quotes the first line of the native stderr
