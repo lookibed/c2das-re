@@ -282,7 +282,7 @@ def test_suite_check(t : T?) {
     t |> run("--suite-check runs each file of the suite with both builds, capped and timed, and writes a verdict per file: pass, fail with the first difference, timeout, memory, oracle, missing") @(t : T?) {
         let root = suite_root("c2das_lua_suite", [("pm.lua", "hello"), ("db.lua", "shape"), ("math.lua", "runs"), ("sort.lua", "spin"), ("gc.lua", "grow"), ("tpack.lua", "oracle")])
         var out : string
-        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--filter", "lua", "--layout", "single", "--suite-timeout", "5", "--suite-memory", "256M"]), out), 1, out)
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--filter", "lua", "--layout", "single", "--suite-timeout", "5", "--suite-memory", "1G"]), out), 1, out)
         let suite = fread(path_join(root, "lua/work/single/suite.txt"))
         let lines <- split(suite, "\n")
         t |> equal(length(lines), 31, suite)
@@ -294,8 +294,10 @@ def test_suite_check(t : T?) {
         t |> success(suite |> contains("math.lua fail ") && suite |> contains(" line 1: native `x`, interp `xx`\n"), suite)
         // the native build counts in time, the converted one past it
         t |> success(suite |> contains("sort.lua timeout ") && suite |> contains(" timeout interp past 5 s\n"), suite)
-        // the native build is killed at the cap, and the converted one is not run
-        t |> success(suite |> contains("gc.lua memory ") && suite |> contains(" memory native over 256M\n"), suite)
+        // the native build is killed at the cap, and the converted one is not run; the cap is 1G, not
+        // less, because under the prlimit tier it bounds the address space, and daslang with the
+        // modules loaded aborts under 256M (as it did on the CI runner, where this test was red)
+        t |> success(suite |> contains("gc.lua memory ") && suite |> contains(" memory native over 1G\n"), suite)
         // the native build fails on its own: no pass by agreement, the converted one is not run, and
         // the verdict quotes the first line of the native stderr
         t |> success(suite |> contains("tpack.lua oracle ") && suite |> contains(" native exited 5: broken\n"), suite)
