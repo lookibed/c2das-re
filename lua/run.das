@@ -500,16 +500,17 @@ struct Launchers {
     das : string
 }
 
-// `lua/work/native_bin/lua`, a link to the native oracle `bin`, which keeps the name `lua` in
-// `argv[0]`, and `lua/work/<layout>/bin/lua`, a script running the converted interpreter at
-// `das_path` under `tier` with its arguments: their folders, empty when one cannot be written
+// `lua/work/native_bin/lua`, a link named `lua` to the native oracle `bin` (the nested runs look
+// `lua` up on `PATH`), and `lua/work/<layout>/bin/lua`, a script running the converted interpreter
+// at `das_path` under `tier` with its arguments, each word quoted for `sh`: their folders, empty
+// when one cannot be written
 def private suite_launchers(das_path, bin, tier, layout : string) : Launchers {
     let native_dir = full_path(path_join(WORK, "native_bin"))
     let das_dir = full_path(path_join(path_join(WORK, layout), "bin"))
     mkdir_rec(native_dir)
     mkdir_rec(das_dir)
     let das_lua = path_join(das_dir, "lua")
-    let command = join([for (word in das_argv(das_path, tier, array<string>())); "'{word}'"], " ")
+    let command = join([for (word in das_argv(das_path, tier, array<string>())); "'{replace(word, "'", "'\\''")}'"], " ")
     var out : string
     let linked = run_and_capture(["ln", "-sfn", full_path(bin), path_join(native_dir, "lua")], out, 60.0) == 0
     let written = fwrite(das_lua, "#!/bin/sh\nexec {command} \"$@\"\n") && run_and_capture(["chmod", "+x", das_lua], out, 60.0) == 0

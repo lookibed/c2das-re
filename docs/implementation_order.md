@@ -910,7 +910,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   and `--suite-check` reads a pipe at its end as stdin (`0< <(:)` in `run_split`'s bash wrapper,
   every `exec` keeping the program the direct child; `run_and_capture` alone gives `/dev/null`,
   which seeks), and each side's suite runs find a `lua` of their own build first on `PATH`
-  (`lua/work/native_bin/lua`, a link to the oracle, `argv[0]` still `lua`;
+  (`lua/work/native_bin/lua`, a link named `lua` to the oracle;
   `lua/work/<layout>/bin/lua`, a script running the converted interpreter under the tier).
   Survey 2026-10-29, `--suite-port false` under interp, the trees reconverted on the branch (the
   converter unchanged since 04efd6a): 27 pass, 3 oracle, no fail, timeout or memory verdict in each
@@ -926,6 +926,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   being its first file. The converted side of an oracle does not run, so the three files have no
   converted seconds and the converted launcher runs under the stand-in test alone. No libc
   exactness difference, lowering bug, runtime panic, timeout or memory verdict surfaced.
+  The memory cap (PR #20, the fix for the red main: the CI runner's user has no root and no
+  manager of its own, so there the cap is `prlimit --as`, an address-space limit under which
+  `malloc` fails instead of the kernel killing the run) leaves one gap: under `prlimit --as=512M`
+  the converted interpreter dies with SIGSEGV where native lua says `not enough memory` (at 4G
+  both run, the JIT too), and such a run reads as `fail` with exit code 11, not `memory`;
+  whether the daslang heap or the converted allocation path dies is unprobed.
   Next, cheapest first: (1) the JIT survey, `--suite-check --tier jit`, after
   lookibed/daScript#30 (F75: every protected call reports success under the JIT, so the suite
   cannot pass there now); (2) the converted side of an `oracle` file run too, its verdict whether it
