@@ -540,11 +540,6 @@ def private suite_check(das_path, bin, layout : string; args : Args) : bool {
     return (counts?["pass"] ?? 0) == length(files)
 }
 
-// the folder a program's conversion in `layout` lands in: `lua/work/<stem>/` for the source layout,
-// `lua/work/<layout>/<stem>/` for the scc and the single ones
-def private layout_dir(stem, layout : string) : string =>
-    layout == "source" ? path_join(WORK, stem) : path_join(path_join(WORK, layout), stem)
-
 // the layouts `--layout` names
 def private layouts_of(args : Args) : array<string> => <- args.layout == "all" ? ["source", "scc", "single"] : [args.layout]
 
@@ -563,7 +558,7 @@ def private das_lines(res : ConvertResult; dir : string) : int {
 // one program converted in `layout` and reported; with `--error-check`, `--suite-check` and `--run`
 // the interpreter run against the native oracle `bin`, with `--luac-check` the compiler over the folder it names
 def private convert_layout(stem, main_source : string; input : ProgramInput; bin, layout : string; args : Args) : bool {
-    let dir = layout_dir(stem, layout)
+    let dir = layout_dir(WORK, stem, layout)
     let res <- convert_program(input.c_paths, dir, args.target, "", SIDECAR, "", "", input.entry, layout)
     let head = "lua: {stem} ({layout})"
     to_log(LOG_INFO, "{head}: {length(input.c_paths)} files, dumper {fmt(":.1f", res.dump_seconds)} s, JSON {res.json_bytes} bytes\n")

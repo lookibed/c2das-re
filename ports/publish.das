@@ -20,16 +20,15 @@ require ports_render
 //! one workload of a program: its name, its program arguments, the arguments as the README shows
 //! them, whether it runs in the release's test-suite folder (else in the repository root), whether
 //! a das lane's output must equal the native build's (else the exit code alone is compared), the
-//! line every run, the native oracle's too, must print when the output is not compared ("" for
-//! none: the line a test suite prints after its last test passes, since a run that stops early can
-//! exit 0), and whether it is the startup row (no work: the program's load alone)
+//! line every run, the native oracle's too, must print ("" for none), since a test suite that stops
+//! early can exit 0, and whether it is the startup row (no work: the program's load alone)
 struct WorkloadSpec {
     name : string
     args : array<string>
     shown : string
     in_tests : bool
     compare_output : bool
-    closing : string
+    closing_line : string
     startup : bool
 }
 
@@ -66,7 +65,7 @@ def private lua_port : Port => <- Port(
     claims <- [
         "`lua -e \"print(1+1)\"` and a script over string, table and math print what the native build prints, under the interpreter and the JIT.",
         "`luac -o` writes the native build's bytecode byte for byte for every file of the release's test suite.",
-        "A Lua error is caught as the native build catches it under the interpreter (`pcall`, `xpcall`, nested protected calls, errors in coroutines); under the JIT a protected call reports success and an uncaught error exits 0 with no message (c2das-re's `docs/probe-findings.md` F75, lookibed/daScript#30). Lua's own test suite is not run yet (c2das-re's P5.3)."
+        "A Lua error is caught as the native build catches it under the interpreter (`pcall`, `xpcall`, nested protected calls, errors in coroutines); under the JIT a protected call reports success and an uncaught error exits 0 with no message (c2das-re's `docs/probe-findings.md` F75, lookibed/daScript#30). Lua's own test suite passes under the interpreter, file by file and as one process (c2das-re's P5.3 and P5.4)."
     ],
     workloads <- [
         WorkloadSpec(name = "startup", args <- clone_to_move(STARTUP_ARGS), shown = "-e \"print(1)\"", compare_output = true, startup = true),
@@ -74,7 +73,7 @@ def private lua_port : Port => <- Port(
         bench("binary_trees"),
         bench("nbody"),
         bench("spectral_norm"),
-        WorkloadSpec(name = "test suite", args <- ["-e", "_port=true", "all.lua"], shown = "-e \"_port=true\" all.lua", in_tests = true, closing = "final OK !!!")
+        WorkloadSpec(name = "test suite", args <- ["-e", "_port=true", "all.lua"], shown = "-e \"_port=true\" all.lua", in_tests = true, closing_line = "final OK !!!")
     ])
 
 [CommandLineArgs]
@@ -151,19 +150,16 @@ def private publish_command(args : Args; port : Port) : string {
     return command
 }
 
-def private tarball_stem(url : string) : string {
-    let name = base_name(url)
-    return name |> ends_with(".tar.gz") ? slice(name, 0, length(name) - length(".tar.gz")) : name
-}
-
 // the program's fetched release: `fetch/<release tarball>/src` and `fetch/<tests tarball>`
-def private sources_of(port : Port; release : Release) : string => path_join(port.harness, "fetch/{tarball_stem(release.tarballs[0].url)}/src")
-def private tests_of(port : Port; release : Release) : string => path_join(port.harness, "fetch/{tarball_stem(release.tarballs[1].url)}")
+def private sources_of(port : Port; release : Release) : string => path_join(port.harness, "fetch/{trim_suffix(base_name(release.tarballs[0].url), ".tar.gz")}/src")
+def private tests_of(port : Port; release : Release) : string => path_join(port.harness, "fetch/{trim_suffix(base_name(release.tarballs[1].url), ".tar.gz")}")
 def private log_of(port : Port) : string => path_join(port.harness, "work/publish_run.log")
 def private stamp_of(port : Port) : string => path_join(port.harness, "work/publish.generation")
-def private module_of(port : Port; stem : string) : string => path_join(port.harness, "work/{stem}/{stem}.das")
-def private single_of(port : Port; stem : string) : string => path_join(port.harness, "work/single/{stem}/{stem}.das")
-def private scc_of(port : Port; stem : string) : string => path_join(port.harness, "work/scc/{stem}/{stem}.das")
+def private module_of(port : Port; stem, layout : string) : string => path_join(layout_dir(path_join(port.harness, "work"), stem, layout), "{stem}.das")
+
+// the layout a das lane runs: the -scc and -single lanes those layouts' modules, the others the
+// source layout's
+def private lane_layout(lane : string) : string => lane |> ends_with("-single") ? "single" : lane |> ends_with("-scc") ? "scc" : "source"
 
 // the das files of a program's source or scc layout under `dir` (its modules and fragments), each
 // relative to `dir`: the ones the conversion's `program.modules.txt` lists, so a file an earlier
@@ -293,9 +289,8 @@ def private measure_cell(argv : array<string>; cwd : string; samples, timeout : 
             cell.error = clipped(with_line("exited {rc} where the native build exits {oracle.rc}", first_reported_line(output)))
         } elif (oracle.rc != -1 && spec.compare_output && output != oracle.output) {
             cell.error = clipped(first_difference(output, oracle.output))
-        } elif (!empty(spec.closing) && !has_value(split(output, "\n"), spec.closing)) {
-            // a suite that stops early can exit 0 (under the JIT an uncaught Lua error does, F75)
-            cell.error = clipped(with_line("exited {rc} without the line `{spec.closing}`; its last line", last_line(output)))
+        } elif (!empty(spec.closing_line) && !has_value(split(output, "\n"), spec.closing_line)) {
+            cell.error = clipped(with_line("exited {rc} without the line `{spec.closing_line}`; its last line", last_line(output)))
         } elif (oracle.rc == -1) {
             oracle = Oracle(rc = rc, output = output)
         }
@@ -322,9 +317,7 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
     let bench_work = path_join(work, "bench")
     mkdir_rec(bench_work)
     let manifest = path_join(work, "{port.runs}.program.json")
-    let das_path = get_full_file_name(path_join(work, "{port.runs}/{port.runs}.das"))
-    let single_path = get_full_file_name(single_of(port, port.runs))
-    let scc_path = get_full_file_name(scc_of(port, port.runs))
+    let das_path = get_full_file_name(module_of(port, port.runs, "source"))
     let modules <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)]
     into.lanes |> reserve(length(lanes))
     for (lane in lanes) {
@@ -344,13 +337,11 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
             var inscope listed <- empty(error) ? [for (c_path in input.c_paths); base_name(c_path)] : ["<the C files of {manifest}>"]
             shown = join(native_build_command(listed, "{port.runs}_native", port.libs), " ")
         } elif (lane == "interp" || lane == "jit" || lane |> ends_with("-scc") || lane |> ends_with("-single")) {
-            // the -scc and -single lanes run those layouts' modules, the others the source layout's
-            let single = lane |> ends_with("-single")
-            let scc = lane |> ends_with("-scc")
+            let layout = lane_layout(lane)
             let flag = lane |> starts_with("jit") ? "-jit" : ""
-            run.argv <- das_lane_command(single ? single_path : scc ? scc_path : das_path, flag, modules)
+            run.argv <- das_lane_command(get_full_file_name(module_of(port, port.runs, layout)), flag, modules)
             run.argv |> push("--")
-            let shown_module = single ? "single/{port.runs}.das" : scc ? "scc/{port.runs}/{port.runs}.das" : "{port.runs}/{port.runs}.das"
+            let shown_module = layout == "single" ? "single/{port.runs}.das" : "{layout_dir("", port.runs, layout)}/{port.runs}.das"
             shown = join(["daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime", flag, "{shown_module} --"], " ") |> replace("  ", " ")
             run.error = warm_up(run.argv, "")
         } else {
@@ -575,7 +566,7 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
         return false
     }
     for (m in port.modules) {
-        for (path in [module_of(port, m.stem), scc_of(port, m.stem), single_of(port, m.stem), path_join(dir_name(module_of(port, m.stem)), "program.modules.txt"), path_join(dir_name(scc_of(port, m.stem)), "program.modules.txt")]) {
+        for (path in [module_of(port, m.stem, "source"), module_of(port, m.stem, "scc"), module_of(port, m.stem, "single"), path_join(dir_name(module_of(port, m.stem, "source")), "program.modules.txt"), path_join(dir_name(module_of(port, m.stem, "scc")), "program.modules.txt")]) {
             if (!fexist(path)) {
                 to_log(LOG_ERROR, "{port.name}: no {path}; run without --no-convert\n")
                 return false
@@ -597,7 +588,7 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
     mkdir_rec(path_join(dir, "single"))
     for (m in port.modules) {
         for (scc in [false, true]) {
-            let tree = dir_name(scc ? scc_of(port, m.stem) : module_of(port, m.stem))
+            let tree = dir_name(module_of(port, m.stem, scc ? "scc" : "source"))
             let into = scc ? path_join(path_join(dir, "scc"), m.stem) : path_join(dir, m.stem)
             for (rel in tree_files(tree)) {
                 let target = path_join(into, rel)
@@ -605,11 +596,11 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
                 ok = ok && write_or_log(target, fread(path_join(tree, rel)))
             }
         }
-        let report = path_join(dir_name(module_of(port, m.stem)), "program.layout.txt")
+        let report = path_join(dir_name(module_of(port, m.stem, "source")), "program.layout.txt")
         if (fexist(report)) {
             ok = ok && write_or_log(path_join(path_join(dir, m.stem), "program.layout.txt"), fread(report))
         }
-        ok = ok && write_or_log(path_join(dir, "single/{m.stem}.das"), fread(single_of(port, m.stem)))
+        ok = ok && write_or_log(path_join(dir, "single/{m.stem}.das"), fread(module_of(port, m.stem, "single")))
     }
     ok = ok && write_or_log(path_join(dir, "LICENSE"), license)
     ok = ok && write_or_log(path_join(dir, "{port.name}.c2das"), fread(sidecar_of(port)))
