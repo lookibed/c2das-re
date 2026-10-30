@@ -65,7 +65,7 @@ struct Args {
     @clarg_doc = "the value of the global `_port` each test file gets under --suite-check: true skips the tests that assume a POSIX build, false runs them"
     suite_port : string = "true"
     @clarg_name = "suite-memory"
-    @clarg_doc = "the memory each run of a test file gets under --suite-check, as systemd's MemoryMax takes it: bytes with K, M, G or T"
+    @clarg_doc = "the memory each run of a test file gets under --suite-check: anything systemd's MemoryMax takes; the prlimit fallback needs bytes with K, M, G or T"
     suite_memory : string = "4G"
     @clarg_doc = "dialect: linux (this host, the native oracle's) or msvc"
     target : string = "linux"
@@ -283,7 +283,7 @@ struct Cap {
 }
 
 // `memory` as systemd's MemoryMax takes it, in bytes: digits with K, M, G or T; -1 for any other
-// spelling
+// spelling, and for a count past int64
 def private memory_bytes(memory : string) : int64 {
     let last = empty(memory) ? "" : slice(memory, length(memory) - 1)
     let scale = last == "K" ? 1024l : last == "M" ? 1048576l : last == "G" ? 1073741824l : last == "T" ? 1099511627776l : 1l
@@ -296,7 +296,11 @@ def private memory_bytes(memory : string) : int64 {
             return -1l
         }
     }
-    return to_int64(digits) * scale
+    if (length(digits) > 18) {
+        return -1l
+    }
+    let count = to_int64(digits)
+    return count > 9223372036854775807l / scale ? -1l : count * scale
 }
 
 // the caps `--suite-check` can apply, in the order it tries them: a scope of the system manager
