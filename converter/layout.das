@@ -90,7 +90,7 @@ let TYPES_STEM = "c_types"
 // a record or enum that is the program's own type: neither the `va_list` record nor `jmp_buf`, which
 // c_runtime spells
 def private owned_kind(t : CirType) : bool =>
-    (t.k == "struct" || t.k == "union" || t.k == "enum") && t.spell != "va_list" && t.name != "jmp_buf"
+    (t.k == "struct" || t.k == "union" || t.k == "enum") && t.spell != "va_list" && t.name != JMP_BUF
 
 // the records and enums type `t` spells, through pointers, arrays, functions and typedefs (a
 // record's fields are its own owner's)

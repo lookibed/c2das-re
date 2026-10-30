@@ -433,16 +433,15 @@ def members_align(tu : CirTu; var memo : LayoutMemo; t : int) : int {
     return a
 }
 
-// whether a field of record `t` is the opaque `jmp_buf` record, whose 4 bytes stand
-// for the C library's buffer: padding after it keeps clang's offsets and size
-def private holds_jmp_buf(tu : CirTu; t : int) : bool {
-    for (f in tu.types[t].fields) {
-        let ft = record_under(tu, f.t)
-        if (ft >= 0 && tu.types[ft].k == "struct" && tu.types[ft].name == "jmp_buf") {
-            return true
+//! The index of the first field of record `t` whose type, through arrays, is the opaque `jmp_buf`
+//! record, whose 4 bytes stand for the C library's buffer; -1 for none.
+def jmp_buf_field(tu : CirTu; t : int) : int {
+    for (i, f in count(), tu.types[t].fields) {
+        if (is_jmp_buf(tu, record_under(tu, f.t))) {
+            return i
         }
     }
-    return false
+    return -1
 }
 
 //! Whether a field's record type (through arrays) won an alignment below clang's.
@@ -518,10 +517,11 @@ def private measure(tu : CirTu; var memo : LayoutMemo; t : int) {
             target /= 2
         }
     }
-    // the fallback: byte units and padding reproduce clang's offsets and size, the alignment
-    // the fields give at or below clang's, for a record with bitfields (its own or a nested
-    // record's) or a `jmp_buf` field whose clang alignment no attribute raised past its members'
-    if ((has_bitfield(tu, t, false) || has_underaligned_record_field(tu, memo, t) || holds_jmp_buf(tu, t)) && clang_align <= members_align(tu, memo, t)) {
+    // the fallback: byte units and padding reproduce clang's offsets and size for a record with a
+    // bitfield, a field whose record won an alignment below clang's, or a `jmp_buf` field, when no
+    // attribute raised its clang alignment past its members'; the record's alignment is the one its
+    // fields give, at or below clang's
+    if ((has_bitfield(tu, t, false) || has_underaligned_record_field(tu, memo, t) || jmp_buf_field(tu, t) >= 0) && clang_align <= members_align(tu, memo, t)) {
         if (assign(tu, memo, t, clang_align, true)) {
             memo.natural[t] = true
             memo.underaligned[t] = memo.align[t] < clang_align
