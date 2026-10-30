@@ -90,10 +90,15 @@ library, is absent), `big.lua` as `all.lua` runs it (a coroutine whose yields ar
 file yields at its top level), then `all.lua` itself. `main.lua` returns at once under `_port`, and
 `heavy.lua`, which `all.lua` never runs, is no file of the lane. Each file runs first with the
 native oracle, then with the converted interpreter, both in the suite's folder with `/dev/null` as
-stdin, each in a systemd scope of its own (`systemd-run --scope --collect -p
-MemoryMax=<--suite-memory> -p MemorySwapMax=0`, default `4G`: a cgroup memory cap with swap
-excluded, which the kernel enforces by killing the run; the scope is unloaded when it ends) and
-under `--suite-timeout` seconds (default 1800). The verdict is `pass` when the exit codes agree and
+stdin, each under the memory cap `--suite-memory` names (default `4G`: bytes with K, M, G or T)
+and under `--suite-timeout` seconds (default 1800). The cap is the first of three the lane can
+apply, each probed with `true` before the first run: a scope of the system manager (`systemd-run
+--scope --collect -p MemoryMax=<memory> -p MemorySwapMax=0`, root's: a cgroup cap with swap
+excluded, which the kernel enforces by killing the run, and the scope is unloaded when it ends),
+the same scope of the user's own manager (`systemd-run --user`, a user with one running), or the
+address-space limit `prlimit --as=<bytes>` sets (any user, the CI runner's `gha` among them),
+under which an allocation past it fails and `lua.c` exits with `not enough memory`, which the lane
+reads as the cap ending the run. The verdict is `pass` when the exit codes agree and
 stdout and stderr each agree line by line once every number reads as one, whatever its sign or
 notation (the suite prints random seeds, timings and the date, `%g` picking the notation by the
 value), and without the warning `all.lua` prints when its time differs from the one the previous run
@@ -104,8 +109,9 @@ line of the native stderr when the native build fails on its own (in both the co
 run: an oracle's failure never passes by agreement); `missing` for a file the folder lacks. The
 verdicts go to `work/<layout>/suite.txt`, a line `<file> <verdict> <seconds of the converted run>
 [<detail>]` per file, and the totals to a `lua: suite under <tier> (<layout>): ...` line;
-`--suite-filter <file>` runs one file of the lane. A cap systemd refuses (`--suite-memory lots`)
-refuses the lane before any run.
+`--suite-filter <file>` runs one file of the lane. A cap none of the three applies
+(`--suite-memory lots`: no manager takes it, and it is no byte count) refuses the lane before any
+run, naming each attempt.
 
 ## 3. The sidecar keys
 
