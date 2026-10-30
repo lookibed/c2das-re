@@ -94,7 +94,7 @@ file yields at its top level), then `all.lua` itself. `main.lua` returns at once
 native oracle, then with the converted interpreter, both in the suite's folder with a pipe at its
 end as stdin (`files.lua`'s invalid-seek check expects `io.stdin:seek` to fail, which `/dev/null`,
 `run_and_capture`'s own stdin, does not), each with a `lua` of its own side first on `PATH`
-(`work/native_bin/lua`, a link to the oracle, which keeps `lua` as `argv[0]`;
+(`work/native_bin/lua`, a link named `lua` to the oracle, the name the nested runs look up;
 `work/<layout>/bin/lua`, a script running the converted interpreter of the layout under the tier
 with its arguments), which `main.lua` runs through `os.execute` under `_port=false`, each under
 the memory cap `--suite-memory` names (default `4G`: anything systemd's `MemoryMax` takes, which
@@ -121,7 +121,7 @@ verdicts go to `work/<layout>/suite.txt`, a line `<file> <verdict> <seconds of t
 [<detail>]` per file, and the totals to a `lua: suite under <tier> (<layout>): ...` line;
 `--suite-filter <file>` runs one file of the lane. A cap none of the three applies
 (`--suite-memory lots`: no manager takes it, and it is no byte count) refuses the lane before any
-run, naming each attempt.
+run, naming each attempt, as does a `lua` launcher the lane cannot write.
 
 ## 3. The sidecar keys
 

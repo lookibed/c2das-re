@@ -424,6 +424,11 @@ def test_suite_environment(t : T?) {
         fwrite(path_join(root, "lua/work/scc/bin"), "")
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "main.lua", "--filter", "lua", "--layout", "scc"]), out), 1, out)
         t |> success(out |> contains("cannot write the suite's `lua` launchers") && !fexist(path_join(root, "lua/work/scc/suite.txt")), out)
+        // a file where the native link's folder goes: refused as well
+        rmdir_rec(path_join(root, "lua/work/native_bin"))
+        fwrite(path_join(root, "lua/work/native_bin"), "")
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "main.lua", "--filter", "lua", "--layout", "single"]), out), 1, out)
+        t |> success(out |> contains("cannot write the suite's `lua` launchers"), out)
         rmdir_rec(root)
     }
 }
