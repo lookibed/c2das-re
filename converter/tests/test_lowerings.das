@@ -24,13 +24,14 @@ struct Expectation {
 
 var work_root : string
 
-def native(name : string) : Expectation {
-    let run = native_run(default_clang(), ["-w", CLANG_DIALECT, "-lm"], "{FIXTURES}/{name}.c", path_join(work_root, "{name}_native"), 60.0)
+def native(name : string; program_args : array<string> = array<string>()) : Expectation {
+    let run = native_run(default_clang(), ["-w", CLANG_DIALECT, "-lm"], "{FIXTURES}/{name}.c", path_join(work_root, "{name}_native"), 60.0, program_args)
     return run.built ? Expectation(rc = run.rc, out = run.output) : Expectation(rc = -1, out = "clang failed:\n{run.output}")
 }
 
-// `param_writes` is the converter's `--param-writes` and `loops` its `--loops`, "" for their defaults
-def converted(t : T?; name : string; var das_text : string&; param_writes : string = ""; loops : string = "") : Expectation {
+// `param_writes` is the converter's `--param-writes` and `loops` its `--loops`, "" for their
+// defaults; the program gets `program_args` after its name
+def converted(t : T?; name : string; var das_text : string&; param_writes : string = ""; loops : string = ""; program_args : array<string> = array<string>()) : Expectation {
     let work = path_join(work_root, "{name}{empty(param_writes) ? "" : "_" + param_writes}{empty(loops) ? "" : "_" + loops}")
     let res <- convert("{FIXTURES}/{name}.c", work, "linux", "", "", param_writes, loops)
     if (!res.ok) {
@@ -39,7 +40,8 @@ def converted(t : T?; name : string; var das_text : string&; param_writes : stri
     }
     das_text = res.das_text
     var out : string
-    let rc = run_tier(res.das_path, "interp", work, out, CONVERTED_MODULES)
+    let no_flags : array<string>
+    let rc = run_tier(res.das_path, "interp", work, out, CONVERTED_MODULES, 600.0, no_flags, program_args)
     return Expectation(rc = rc, out = out)
 }
 
@@ -84,27 +86,11 @@ def converts(t : T?; name : string; source : string; sidecar : string = ""; para
     return res.das_text
 }
 
-// `check_fixture` for a program that takes `program_args` after its name, both builds run with them
-def check_fixture_args(t : T?; name : string; program_args : array<string>; var das_text : string&) {
-    let run = native_run(default_clang(), ["-w", CLANG_DIALECT, "-lm"], "{FIXTURES}/{name}.c", path_join(work_root, "{name}_native"), 60.0, program_args)
-    t |> equal(run.built, true, run.output)
-    let res <- convert("{FIXTURES}/{name}.c", path_join(work_root, name), "linux", "", "", "")
-    if (!res.ok) {
-        t |> failure(res.error)
-        return
-    }
-    das_text = res.das_text
-    var out : string
-    let no_flags : array<string>
-    let rc = run_tier(res.das_path, "interp", work_root, out, CONVERTED_MODULES, 600.0, no_flags, program_args)
-    t |> equal(out, run.output)
-    t |> equal(rc, run.rc)
-}
-
-def check_fixture(t : T?; name : string; var das_text : string&; param_writes : string = ""; loops : string = "") {
-    let want = native(name)
+// both builds of the fixture `name` agree, each run with `program_args` after its name
+def check_fixture(t : T?; name : string; var das_text : string&; param_writes : string = ""; loops : string = ""; program_args : array<string> = array<string>()) {
+    let want = native(name, program_args)
     t |> equal(want.rc >= 0, true, want.out)
-    let have = converted(t, name, das_text, param_writes, loops)
+    let have = converted(t, name, das_text, param_writes, loops, program_args)
     t |> equal(have.out, want.out)
     t |> equal(have.rc, want.rc)
 }
@@ -1434,7 +1420,7 @@ def p5_lua_library_fixtures(t : T?) {
         let files = path_join(work_root, "p5_lua_stdio_files")
         mkdir(files)
         var text : string
-        check_fixture_args(t, "p5_lua_stdio", [files], text)
+        check_fixture(t, "p5_lua_stdio", text, program_args = [files])
         var left = 0
         dir(files) $(name) {
             if (name != "." && name != "..") {
