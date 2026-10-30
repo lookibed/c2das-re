@@ -2,7 +2,8 @@
 
 Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The
 folder charters are section 1; the pipeline is section 2; definitions section 3; the
-toolchain binding section 4; the readability inputs section 5; the exception ledger section 6.
+toolchain binding section 4; the readability inputs section 5; the exception ledger section 6;
+the continuous integration section 7.
 
 ## 1. Folder charters
 
@@ -104,3 +105,16 @@ under `c_runtime/c_runtime/`.
 ## 6. Exception ledger
 
 Empty.
+
+## 7. Continuous integration
+
+CI is `.github/workflows/preflight.yml` on a self-hosted runner (labels `self-hosted`, `c2das`)
+installed under `/opt/actions-runner` on the machine that holds the toolchain, as the systemd
+service of the dedicated user `gha`, which reads `DASLANG_ROOT` and `PATH_TO_LIBCLANG` through
+read-only bind mounts (`/srv/daScript`, `/srv/libclang`; the runner's `.env` names them). A pull
+request runs the fast tier of `scripts/preflight.sh`, a push to `main` the full tier. A fork's
+pull request never runs there: the job's `if` on the head repository, and the repository setting
+that keeps fork workflows off. The repository is private, and GitHub offers branch protection on a
+private repository only with a Pro plan, so `main` is protected by the rules of `AGENTS.md`
+alone. The runner has no root and no user manager of its own, so a memory cap it grants is
+`prlimit`'s (`lua/ARCHITECTURE.md` section 2).
