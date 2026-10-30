@@ -23,31 +23,30 @@ one module (the scc layout), and one module (the single layout).
   sidecar, the compile check included, in each layout `--layout` names (`all`, the default,
   `source`, `scc` or `single`): the source layout into the tree `work/<stem>/`, its entry
   `work/<stem>/<stem>.das`, the scc layout into `work/scc/<stem>/`, the single layout into
-  `work/single/<stem>/<stem>.das`, a folder each so each run's module caches stay apart; it
-  reports the numbers of section 4 per layout, an error at the Lua source and line the dumper
-  names. `--native` builds each native oracle from the same
-  sources into `work/<stem>_native`; `--run` runs the converted interpreter of each layout under
-  the tier `--tier` names (`interp`, the default, or `jit`) with each `--arg` (default `-e
-  "print(1+1)"`; a script is `--arg <path>`) and compares it with the oracle, which runs under the
-  name `lua`, the `argv[0]` the converted program gets and Lua's messages quote; `--luac-check
-  <folder>` compiles every `.lua` file of the folder with the converted compiler of each layout
-  under the tier, `-o` into `work/<stem>/luac_check/` (`work/single/luac/luac_check/` for the
-  single one, `work/scc/luac/luac_check/` for the scc one), and compares the bytes and the exit
-  code with the native compiler's, refusing a folder with no script; `--error-check` runs the
-  converted interpreter of each layout under the tier with each of `run.das`'s `ERROR_CHECKS` (an
-  error caught by `pcall`, one uncaught, nested protected calls, an error the VM raises, a table as
-  the error object, an error in a coroutine, `xpcall`'s handler, a memory error) and compares each
-  with the oracle; `--suite-check` runs the release's test suite with the converted interpreter of
-  each layout under the tier, file by file against the oracle, each run in a memory-capped scope
-  (`--suite-memory`, default `4G`) under `--suite-timeout` seconds (default 1800), the verdicts to
-  `work/<layout>/suite.txt`, each side's `lua` on `PATH` to `work/native_bin/` and
-  `work/<layout>/bin/`; `--suite-filter <file>` runs one file of it, `--suite-port` (`true`,
-  the default, or `false`) the value of the global `_port` each file gets (section 2, "The test
-  suite"); `--run`, `--error-check` and `--suite-check` compare the exit code, stdout and stderr,
-  the two streams apart, each run's stderr going to `work/run.stderr`, read and removed after the
-  run, its stdin a pipe whose writer has exited (it reads at its end at once and does not seek),
-  and the JIT's `[I]` lines, which land on stdout, dropped from it; `--filter <stem>` converts
-  that program alone. Run from the repository root: `daslang -load_module dasCRuntime
+  `work/single/<stem>/<stem>.das`, a folder each so each run's module caches stay apart; it reports
+  the numbers of section 4 per layout, an error at the Lua source and line the dumper names.
+  `--native` builds each native oracle from the same sources into `work/<stem>_native`; `--run` runs
+  the converted interpreter of each layout under the tier `--tier` names (`interp`, the default, or
+  `jit`) with each `--arg` (default `-e "print(1+1)"`; a script is `--arg <path>`) and compares it
+  with the oracle, which runs under the name `lua`, the `argv[0]` the converted program gets and
+  Lua's messages quote; `--luac-check <folder>` compiles every `.lua` file of the folder with the
+  converted compiler of each layout under the tier, `-o` into `work/<stem>/luac_check/`
+  (`work/single/luac/luac_check/` for the single one, `work/scc/luac/luac_check/` for the scc one),
+  and compares the bytes and the exit code with the native compiler's, refusing a folder with no
+  script; `--error-check` runs the converted interpreter of each layout under the tier with each of
+  `run.das`'s `ERROR_CHECKS` (an error caught by `pcall`, one uncaught, nested protected calls, an
+  error the VM raises, a table as the error object, an error in a coroutine, `xpcall`'s handler, a
+  memory error) and compares each with the oracle; `--suite-check` runs the release's test suite
+  with the converted interpreter of each layout under the tier, file by file against the oracle,
+  each run in a memory-capped scope (`--suite-memory`, default `4G`) under `--suite-timeout` seconds
+  (default 1800), the verdicts to `work/<layout>/suite.txt`, each side's `lua` on `PATH` to
+  `work/native_bin/` and `work/<layout>/bin/`; `--suite-filter <file>` runs one file of it,
+  `--suite-port` (`true`, the default, or `false`) the value of the global `_port` each file gets
+  (section 6); `--run`, `--error-check` and `--suite-check` compare the exit code, stdout and
+  stderr, the two streams apart, each run's stderr going to `work/run.stderr`, read and removed
+  after the run, its stdin a pipe whose writer has exited (it reads at its end at once and does not
+  seek), and the JIT's `[I]` lines, which land on stdout, dropped from it; `--filter <stem>`
+  converts that program alone. Run from the repository root: `daslang -load_module dasCRuntime
   -load_module c_runtime lua/run.das -- [--native] [--run] [--error-check] [--suite-check] [--tier
   jit] [--luac-check lua/fetch/lua-5.4.8-tests]`.
 - `lua.c2das` - the sidecar both programs convert under (section 3).
@@ -80,48 +79,6 @@ define a static of one name and no static is named like a name another file refe
 converter maps to libc, so the link renames nothing; `luac.c` and `lstrlib.c` both define a
 static `writer`, which the link would rename `luac_writer` and `lstrlib_writer` were both in one
 module of one program.
-
-### The test suite
-
-`--suite-check` runs the test suite of the release, `fetch/lua-5.4.8-tests/`, file by file: each
-file `all.lua` runs, in its order, with the globals it sets for them (`-e "_port=true" <file>`, so
-the tests that assume a POSIX build skip; `--suite-port false` gives `_port=false`, which runs them
-against the same ANSI build natively, `main.lua` then running the interpreter by its `argv[0]`
-through `os.execute`; `_soft` stays false, so the long tests run; `T`, the debug build's test
-library, is absent), `big.lua` as `all.lua` runs it (a coroutine whose yields are checked, since the
-file yields at its top level), then `all.lua` itself. `main.lua` returns at once under `_port`, and
-`heavy.lua`, which `all.lua` never runs, is no file of the lane. Each file runs first with the
-native oracle, then with the converted interpreter, both in the suite's folder with a pipe at its
-end as stdin (`files.lua`'s invalid-seek check expects `io.stdin:seek` to fail, which `/dev/null`,
-`run_and_capture`'s own stdin, does not), each with a `lua` of its own side first on `PATH`
-(`work/native_bin/lua`, a link named `lua` to the oracle, the name the nested runs look up;
-`work/<layout>/bin/lua`, a script running the converted interpreter of the layout under the tier
-with its arguments), which `main.lua` runs through `os.execute` under `_port=false`, each under
-the memory cap `--suite-memory` names (default `4G`: anything systemd's `MemoryMax` takes, which
-the prlimit tier needs as bytes with K, M, G or T) and under `--suite-timeout` seconds (default
-1800). The cap is the first of three the lane can apply, each probed with `true` before the first
-run: a scope of the system manager (`systemd-run
---scope --collect -p MemoryMax=<memory> -p MemorySwapMax=0`, root's: a cgroup cap with swap
-excluded, which the kernel enforces by killing the run, and the scope is unloaded when it ends),
-the same scope of the user's own manager (`systemd-run --user`, a user with one running), or the
-address-space limit `prlimit --as=<bytes>` sets (any user, the CI runner's `gha` among them),
-under which an allocation past it fails and `lua.c` exits with `not enough memory`, which the lane
-reads as the cap ending the run; a run the limit ends elsewhere than in `malloc` (the daslang
-runtime's own allocations, where the converted interpreter dies with a signal) reads as `fail`
-with its exit code. The verdict is `pass` when the exit codes agree and
-stdout and stderr each agree line by line once every number reads as one, whatever its sign or
-notation (the suite prints random seeds, timings and the date, `%g` picking the notation by the
-value), and without the warning `all.lua` prints when its time differs from the one the previous run
-left in `time.txt` of the folder, the other build's; `fail` with the first line that differs, stdout
-before stderr, quoted from both runs and naming its stream, or the two exit codes; `timeout` or
-`memory` naming the run the timeout or the cap ended, or `oracle` with the exit code and the first
-line of the native stderr when the native build fails on its own (in both the converted one does not
-run: an oracle's failure never passes by agreement); `missing` for a file the folder lacks. The
-verdicts go to `work/<layout>/suite.txt`, a line `<file> <verdict> <seconds of the converted run>
-[<detail>]` per file, and the totals to a `lua: suite under <tier> (<layout>): ...` line;
-`--suite-filter <file>` runs one file of the lane. A cap none of the three applies
-(`--suite-memory lots`: no manager takes it, and it is no byte count) refuses the lane before any
-run, naming each attempt, as does a `lua` launcher the lane cannot write.
 
 ## 3. The sidecar keys
 
@@ -175,3 +132,43 @@ profile. The conversion depends on the file only through the sidecar naming it. 
 provenance is its command and its inputs: `profile.das` run from the repository root over the
 release, clang and `nm` `VERSIONS.md` pins (an `nm` of another version, a failed listing or an empty
 one refused), the commit that last wrote the file being its git history.
+
+## 6. The test suite
+
+`--suite-check` runs the test suite of the release, `fetch/lua-5.4.8-tests/`, file by file: each
+file `all.lua` runs, in its order, with the globals it sets for them (`-e "_port=true" <file>`, so
+the tests that assume a POSIX build skip; `--suite-port false` gives `_port=false`, which runs them
+against the same ANSI build natively, `main.lua` then running the interpreter by its `argv[0]`
+through `os.execute`; `_soft` stays false, so the long tests run; `T`, the debug build's test
+library, is absent), `big.lua` as `all.lua` runs it (a coroutine whose yields are checked, since the
+file yields at its top level), then `all.lua` itself. `main.lua` returns at once under `_port`, and
+`heavy.lua`, which `all.lua` never runs, is no file of the lane. Each file runs first with the
+native oracle, then with the converted interpreter, both in the suite's folder with a pipe at its
+end as stdin (`files.lua`'s invalid-seek check expects `io.stdin:seek` to fail, which `/dev/null`,
+`run_and_capture`'s own stdin, does not), each with a `lua` of its own side first on `PATH`
+(`work/native_bin/lua`, a link named `lua` to the oracle, the name the nested runs look up;
+`work/<layout>/bin/lua`, a script running the converted interpreter of the layout under the tier
+with its arguments), which `main.lua` runs through `os.execute` under `_port=false`, each under the
+memory cap `--suite-memory` names (anything systemd's `MemoryMax` takes, which the prlimit tier
+needs as bytes with K, M, G or T) and under `--suite-timeout` seconds. The cap is the first of three
+the lane can apply, each probed with `true` before the first run: a scope of the system manager
+(`systemd-run --scope --collect -p MemoryMax=<memory> -p MemorySwapMax=0`, root's: a cgroup cap with
+swap excluded, which the kernel enforces by killing the run, and the scope is unloaded when it
+ends), the same scope of the user's own manager (`systemd-run --user`, a user with one running), or
+the address-space limit `prlimit --as=<bytes>` sets (any user, the CI runner's `gha` among them),
+under which an allocation past it fails and `lua.c` exits with `not enough memory`, which the lane
+reads as the cap ending the run; a run the limit ends elsewhere than in `malloc` (the daslang
+runtime's own allocations, where the converted interpreter dies with a signal) reads as `fail` with
+its exit code. The verdict is `pass` when the exit codes agree and stdout and stderr each agree line
+by line once every number reads as one, whatever its sign or notation (the suite prints random
+seeds, timings and the date, `%g` picking the notation by the value), and without the warning
+`all.lua` prints when its time differs from the one the previous run left in `time.txt` of the
+folder, the other build's; `fail` with the first line that differs, stdout before stderr, quoted
+from both runs and naming its stream, or the two exit codes; `timeout` or `memory` naming the run
+the timeout or the cap ended, or `oracle` with the exit code and the first line of the native stderr
+when the native build fails on its own (in both the converted one does not run: an oracle's failure
+never passes by agreement); `missing` for a file the folder lacks. The verdicts go to
+`work/<layout>/suite.txt`, a line `<file> <verdict> <seconds of the converted run> [<detail>]` per
+file, and the totals to a `lua: suite under <tier> (<layout>): ...` line. A cap none of the three
+applies (`--suite-memory lots`: no manager takes it, and it is no byte count) refuses the lane
+before any run, naming each attempt, as does a `lua` launcher the lane cannot write.

@@ -101,10 +101,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   sidecar the project. A value other than those two is a usage error: exit 2 before any
   conversion, as a missing input is. `--loops` chooses how a canonical counting `for` is spelled:
   `range`, the default, a das range loop, which is both the idiomatic and the faster form
-  (`ARCHITECTURE_EMITTER_LOOPS.md`); `while`, the `while` form every other `for` takes, which
-  the plan's section 6 gates the rewrite behind until demo sync (`docs/implementation_order.md`
-  P7.0 holds the owner's ruling); it wins over the sidecar's `loops` and refuses any other value
-  the same way.
+  (`ARCHITECTURE_EMITTER_LOOPS.md`); `while`, the `while` form every other `for` takes; it wins
+  over the sidecar's `loops` and refuses any other value the same way.
 - `benchmarks/bench_for_shapes.das` - the loop-shape race behind section 4
   (`ARCHITECTURE_EMITTER.md`), run with `dastest -- --bench` under the interpreter and
   under `-jit`.
@@ -127,6 +125,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   pass of a loop whose plain read the JIT, the exe and AOT fold out of it.
 - `tests/test_csmith_verdict.das` - the csmith driver's classification of a worker that ended
   (`suites/csmith/verdict.das`), the one piece of the driver testable without a process.
+- `tests/test_suite_audit.das` - the runner's skip audit (`--audit-skips`) over a stand-in suite.
+- `tests/test_torture_filter.das` - the gcc-torture import's rules (`suites/gcc_torture/filter_rules.das`).
 - `tests/test_pipeline.das` - the P0 gate: `tests/fixtures/ret42.c` converts, the C-IR and the
   das text hash to their golden values, and the module exits 42 under all four tiers; and a
   program whose `#if` branch the sidecar's `defines` select prints what the native build under
@@ -140,7 +140,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   files in two folders, a cluster of two, a header's types, the shared types module) converted and
   run against its native build under the interpreter and the JIT, with the requires, the include
   order, the renames, the header copies and the literal objects the text must carry; the single
-  layout's text against the hash of the link's one module before this layout; one file as one
+  layout's text against the recorded hash of the link's one module; one file as one
   module; `tests/fixtures/p5_layout_types/` (two headers whose records point at each other); the
   refusals; and `tests/fixtures/p5_layout_cut/` (two files calling each other, a variadic callee, a
   header pointing at a record a unit defines): the cut by the static count, by a profile, under
@@ -148,7 +148,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   reached only through cut edges, and the three layouts printing what the native build prints;
   `cut_order` against every permutation of small weighted graphs, and its greedy order past 16
   nodes.
-  Fixtures under `tests/fixtures/` are C inputs, never das.
+- Fixtures under `tests/fixtures/` are C inputs, never das.
 
 ## 2. The C-IR bytes
 
@@ -160,26 +160,24 @@ of scalars is one line `[1, 2, 3]`; an array of objects opens with `[` and a new
 one object per line at the inner depth, and closes with `]` at the parent's depth; an empty
 array is `[]`; keys follow the spec's table order; `null` spells an absent optional node; a
 string is JSON-escaped by `write_json`; the file ends with one LF. The reader accepts any
-JSON spelling; the pipeline proves the pair by rewriting what it read and comparing. One
-node is this repository's addition to the spec's table: `offsetof` with `of_t` and `field`
-(the record type and the field index), since the lowering spells `offsetof` as
-`typeinfo offsetof` and the spec has no node for it (`docs/probe-findings.md` F20); `alignof_v`
-is `_Alignof` in the shape of `sizeof_v`, `v` clang's alignment and `of_t` the type, which the
-spec has no node for either (F54). Another addition is `dims` on a `global`, a `decl` statement
-and a record field: one `{enum_t, item}` per array dimension of the declarator, outermost
-first, the item empty for a dimension not
-spelled as one enum constant, the member absent when none is, since the lowering keeps the
-constant as the dimension and the spec's `count` is the folded integer (F21). The spelling is
-a fact about the declarator, not the type, so the type table interns `T[6]` once however the
-source wrote it. An `enum` type carries `"signed": false` when clang gave it an unsigned
-underlying type (F22); the member is absent for a signed one, which is every enum of the
-`msvc` dialect. An lvalue node (`ref`, `member`, `index`, `un` `deref`) of volatile-qualified
-type carries `"vol": true` after the members of its kind and before `macro`, absent otherwise,
-since the type table strips qualifiers and the emitter keeps every access of such an object
-(F65, `ARCHITECTURE_EMITTER_LOOPS.md`). The additions keep `"cir": "0.1"` (`CIR_VERSION`), where
-the spec's section 10 bumps the minor for an additive field: F20, F21 and F65 record each as
-additive at 0.1, and a reader of this tree accepts no other version.
-
+JSON spelling; the pipeline proves the pair by rewriting what it read and comparing.
+One node is this repository's addition to the spec's table: `offsetof` with `of_t` and `field` (the
+record type and the field index), since the lowering spells `offsetof` as `typeinfo offsetof` and
+the spec has no node for it (`docs/probe-findings.md` F20); `alignof_v` is `_Alignof` in the shape
+of `sizeof_v`, `v` clang's alignment and `of_t` the type, which the spec has no node for either
+(F54). Another addition is `dims` on a `global`, a `decl` statement and a record field: one
+`{enum_t, item}` per array dimension of the declarator, outermost first, the item empty for a
+dimension not spelled as one enum constant, the member absent when none is, since the lowering
+keeps the constant as the dimension and the spec's `count` is the folded integer (F21). The
+spelling is a fact about the declarator, not the type, so the type table interns `T[6]` once
+however the source wrote it. An `enum` type carries `"signed": false` when clang gave it an
+unsigned underlying type (F22); the member is absent for a signed one, which is every enum of the
+`msvc` dialect. An lvalue node (`ref`, `member`, `index`, `un` `deref`) of volatile-qualified type
+carries `"vol": true` after the members of its kind and before `macro`, absent otherwise, since the
+type table strips qualifiers and the emitter keeps every access of such an object (F65,
+`ARCHITECTURE_EMITTER_LOOPS.md`). The additions keep `"cir": "0.1"` (`CIR_VERSION`), where the
+spec's section 10 bumps the minor for an additive field: F20, F21 and F65 record each as additive
+at 0.1, and a reader of this tree accepts no other version.
 A record's `packed` is false exactly when das's natural layout reproduces clang's, by this law
 (`bit_units.das`), which a Dumper B applies to the same facts to write the same byte. Fields go
 in declaration order, each at its offset rounded up to its das alignment (a scalar's size, an
@@ -220,26 +218,30 @@ backtracks when the rest of the record misses clang's offsets. The record's das 
 then the largest its fields give, which must be at most clang's; since both are powers of two
 and the size is clang's, every clang offset of the record, in an array or nested, is a multiple
 of it. The C-IR's `packed` is false for every record the law places, the relaxed search
-included, so Dumper B applies the relaxed search to write the same byte. The C-IR carries no
-attribute: a record declared `packed` or under `#pragma pack(n)` whose layout the law places
-converts like any other (`packed { unsigned a : 3; char c; unsigned b : 20; }` takes byte units,
-size 5), and `packed` in the C-IR means a record the law cannot place, not an attributed one
-(`docs/probe-findings.md` F51). A union is natural when it has a member, every member sits at
-offset 0, clang's alignment is 1, 2, 4 or 8 and divides its positive size, and every member fits
-it: a member's das alignment (as this law finds it) at most clang's alignment, its size at most
-clang's size, and a member record (through arrays) natural itself. An unnamed bitfield of a
-union is no member; a named one sits at bit 0 and fits when its bits fit clang's size, whatever
-its declared type's alignment (under `msvc` a bitfield member adds no alignment of its own:
-`union { char c; long long f : 5; }` aligns 1 there, while `union { signed f0 : 8; unsigned f1;
-}` aligns 4 through `f1`). `[c_union]` then gives the storage clang's size and alignment, so a
-natural union's das alignment is clang's even where its members align lower (a member record
-below its clang alignment, F5; an `aligned` attribute up to 8). An anonymous member (a struct or
-union member with no declarator) is a field named `""` that is not a bitfield: its `t` is the
-anonymous record, its `off` the byte offset clang gives it, and it carries no `bit_w`. In an
-`init_list` of a record, `pos` is the field index; an unnamed bitfield is never an item, and a
-union's list holds at most one item, `pos` the member it initializes (none for `{}`). A record
-spelling carries no owner scope: `union S::(anonymous at f:l:c)` interns as `union (anonymous at
-f:l:c)`, the spelling libclang and the dump share.
+included, so Dumper B applies the relaxed search to write the same byte.
+
+The C-IR carries no attribute: a record declared `packed` or under `#pragma pack(n)` whose layout
+the law places converts like any other (`packed { unsigned a : 3; char c; unsigned b : 20; }` takes
+byte units, size 5), and `packed` in the C-IR means a record the law cannot place, not an
+attributed one (`docs/probe-findings.md` F51).
+
+A union is natural when it has a member, every member sits at offset 0, clang's alignment is 1, 2,
+4 or 8 and divides its positive size, and every member fits it: a member's das alignment (as this
+law finds it) at most clang's alignment, its size at most clang's size, and a member record
+(through arrays) natural itself. An unnamed bitfield of a union is no member; a named one sits at
+bit 0 and fits when its bits fit clang's size, whatever its declared type's alignment (under `msvc`
+a bitfield member adds no alignment of its own: `union { char c; long long f : 5; }` aligns 1
+there, while `union { signed f0 : 8; unsigned f1; }` aligns 4 through `f1`). `[c_union]` then gives
+the storage clang's size and alignment, so a natural union's das alignment is clang's even where
+its members align lower (a member record below its clang alignment, F5; an `aligned` attribute up
+to 8).
+
+An anonymous member (a struct or union member with no declarator) is a field named `""` that is not
+a bitfield: its `t` is the anonymous record, its `off` the byte offset clang gives it, and it
+carries no `bit_w`. In an `init_list` of a record, `pos` is the field index; an unnamed bitfield is
+never an item, and a union's list holds at most one item, `pos` the member it initializes (none for
+`{}`). A record spelling carries no owner scope: `union S::(anonymous at f:l:c)` interns as `union
+(anonymous at f:l:c)`, the spelling libclang and the dump share.
 
 A C `va_list` is one opaque record named `va_list`, this repository's choice as `jmp_buf` is
 (the spec has no type for it, `docs/probe-findings.md` F39), and Dumper B writes the same bytes:
