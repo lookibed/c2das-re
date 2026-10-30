@@ -946,7 +946,34 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   per-process compile, a perf row for P5.4. The exit criterion is not claimed until the JIT and AOT
   lanes of the phase exit run.
 - **P5.4 Perf snapshot:** fib/nbody/binary-trees, converted-interp vs native lua. Data
-  point only; no bar.
+  point only; no bar. Done (branch `p5.4-perf-snapshot`, main 81b5379): the ports publisher's
+  capture of 2026-10-30 (`scripts/publish_ports.sh --program lua --perf --samples 5 --lanes
+  interp,jit,exe,aot,interp-scc,jit-scc,interp-single,jit-single --timeout 1800` without
+  `--commit`: the capture and the READMEs sit in the ports clone until the phase release
+  publishes them; the FX-6300, clang 22.1.8, daslang 0.6.4, five whole-process samples, the spawn
+  inside each), the converted `lua` over the native build: under the interpreter fib 400 (365 s over
+  0.91), binary_trees 193, nbody 324, spectral_norm 436; under the JIT 9.2, 5.7, 7.2, 8.3; as the
+  exe 6.1, 3.1, 4.3, 5.5; the startup row 1.15 s under the interpreter, 1.84 under the JIT, 0.052
+  as the exe (native 0.006). Per layout (P5.3's follow-up 4): the startup row, each layout's
+  per-process load from the module cache, is 1.15 / 6.01 / 8.93 s under the interpreter and 1.84 /
+  6.99 / 9.79 under the JIT for source / scc / single, the difference the suite's per-file survey
+  shows (30 processes: 614 / 748 / 834 s); with the startup taken off the benchmarks agree across
+  the layouts within 6 percent under the interpreter (fib 364 / 386 / 375 s, nbody 331 / 335 / 328)
+  and one module runs 3 to 25 percent ahead under the JIT (fib 6.5 / 6.3 / 5.7, spectral_norm 7.6
+  / 7.6 / 6.1), as P5.1b2 measured at smaller sizes. The test suite as one process (`-e
+  "_port=true" all.lua`): native 8.50 s, the interpreter 492 s (58 times; scc 504, single 507),
+  exit 0 with the suite's `final OK !!!`; the capture's JIT cells (2.43 s, 0.29 times native)
+  measured no suite: under the JIT an uncaught Lua error exits 0 (F75), so `all.lua` stops at
+  `db.lua` (12 of 30 files) and exits 0, and the row compared the exit code alone; the publisher
+  now requires the closing line (`ports/publish.das`, `closing`) and the phase-release publish
+  re-captures under it; the exe suite cell is `not yet` (`Module_CRT` does not load through the
+  relative module path from the test folder, the P5.1a leftover); the AOT lane stays `not yet`
+  (its host passes no arguments). Against the capture of 2026-10-23 (one module, before P5.1b2,
+  P5.2 and P5.3): the interpreter runs fib in 365 s against 386 and the JIT in 8.4 against 15.5, of
+  which the startup row is 1.1 against 9.2 and 1.8 against 9.8 (the source layout's cached load
+  against one module's), the work under the JIT 6.5 against 5.7 (one module ahead, as above) and
+  the exe 5.59 against 5.49. `perf/results_linux.json` is re-recorded in the same change (the
+  phase end's re-record, rule 10): no cell moved past 10 percent, no `SUSPECT` line.
 - **Exit criterion:** Lua test suite passes under interp; JIT/AOT lanes at least compile
   and run the benchmarks.
 
