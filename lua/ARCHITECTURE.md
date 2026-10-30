@@ -40,11 +40,13 @@ one module (the scc layout), and one module (the single layout).
   with the oracle; `--suite-check` runs the release's test suite with the converted interpreter of
   each layout under the tier, file by file against the oracle, each run in a memory-capped scope
   (`--suite-memory`, default `4G`) under `--suite-timeout` seconds (default 1800), the verdicts to
-  `work/<layout>/suite.txt`; `--suite-filter <file>` runs one file of it, `--suite-port` (`true`,
+  `work/<layout>/suite.txt`, each side's `lua` on `PATH` to `work/native_bin/` and
+  `work/<layout>/bin/`; `--suite-filter <file>` runs one file of it, `--suite-port` (`true`,
   the default, or `false`) the value of the global `_port` each file gets (section 2, "The test
   suite"); `--run`, `--error-check` and `--suite-check` compare the exit code, stdout and stderr,
   the two streams apart, each run's stderr going to `work/run.stderr`, read and removed after the
-  run, and the JIT's `[I]` lines, which land on stdout, dropped from it; `--filter <stem>` converts
+  run, its stdin a pipe whose writer has exited (it reads at its end at once and does not seek),
+  and the JIT's `[I]` lines, which land on stdout, dropped from it; `--filter <stem>` converts
   that program alone. Run from the repository root: `daslang -load_module dasCRuntime
   -load_module c_runtime lua/run.das -- [--native] [--run] [--error-check] [--suite-check] [--tier
   jit] [--luac-check lua/fetch/lua-5.4.8-tests]`.
@@ -89,11 +91,16 @@ through `os.execute`; `_soft` stays false, so the long tests run; `T`, the debug
 library, is absent), `big.lua` as `all.lua` runs it (a coroutine whose yields are checked, since the
 file yields at its top level), then `all.lua` itself. `main.lua` returns at once under `_port`, and
 `heavy.lua`, which `all.lua` never runs, is no file of the lane. Each file runs first with the
-native oracle, then with the converted interpreter, both in the suite's folder with `/dev/null` as
-stdin, each under the memory cap `--suite-memory` names (default `4G`: anything systemd's
-`MemoryMax` takes, which the prlimit tier needs as bytes with K, M, G or T) and under
-`--suite-timeout` seconds (default 1800). The cap is the first of three the lane can
-apply, each probed with `true` before the first run: a scope of the system manager (`systemd-run
+native oracle, then with the converted interpreter, both in the suite's folder with a pipe at its
+end as stdin (`files.lua`'s invalid-seek check expects `io.stdin:seek` to fail, which `/dev/null`,
+`run_and_capture`'s own stdin, does not), each with a `lua` of its own side first on `PATH`
+(`work/native_bin/lua`, a link to the oracle, which keeps `lua` as `argv[0]`;
+`work/<layout>/bin/lua`, a script running the converted interpreter of the layout under the tier
+with its arguments), which `main.lua` runs through `os.execute` under `_port=false`, each under
+the memory cap `--suite-memory` names (default `4G`: anything systemd's `MemoryMax` takes, which
+the prlimit tier needs as bytes with K, M, G or T) and under `--suite-timeout` seconds (default
+1800). The cap is the first of three the lane can apply, each probed with `true` before the first
+run: a scope of the system manager (`systemd-run
 --scope --collect -p MemoryMax=<memory> -p MemorySwapMax=0`, root's: a cgroup cap with swap
 excluded, which the kernel enforces by killing the run, and the scope is unloaded when it ends),
 the same scope of the user's own manager (`systemd-run --user`, a user with one running), or the
