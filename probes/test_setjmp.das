@@ -120,7 +120,7 @@ def test_setjmp_tiers(t : T?) {
     t |> run("under the JIT a return inside a try block after a call, or inside a recover block, leaves the block and not the function (docs/probe-findings.md F75)") @(t : T?) {
         let interp = daslang_child_flags("setjmp_return", RETURN_IN_TRY, array<string>())
         t |> equal(interp.out, "1 7\n", interp.out)
-        // the JIT warns at compile time and runs on; lookibed/daScript#30
+        // the JIT warns at compile time and runs on
         let jit = daslang_child_flags("setjmp_return_jit", RETURN_IN_TRY, jit_flags())
         t |> success(jit_ran(jit.out) && jit.out |> contains("return inside try/recover leaves the try arm"), jit.out)
         t |> success(jit.out |> ends_with("\n10 20\n"), jit.out)
