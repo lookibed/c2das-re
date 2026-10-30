@@ -946,11 +946,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   per-process compile, a perf row for P5.4 (answered there: the startup row per layout). Done
   (PRs #18, #19, #21, the cap tiers of #20 and #22; closed at the phase end, main 039f554): the
   suite passes under the interpreter file by file in the three layouts (30 of 30 under `_port=true`,
-  27 pass and 3 `oracle` under `_port=false`, each `oracle` the lane's or the ANSI build's, no
-  converter or runtime bug) and as one process (P5.4: `all.lua` 492 s, exit 0, `final OK !!!`);
-  every run is capped (a system scope, a user scope or `prlimit`, whichever the host grants) and
-  timed, stdin a pipe, each side's `lua` on `PATH`. Leftovers (1) to (3) above stay ledgered; no
-  libc exactness bug surfaced, so no fixture landed for one.
+  27 pass and 3 `oracle` under `_port=false`, each `oracle` the ANSI build's own, no converter
+  or runtime bug) and as one process (P5.4: `all.lua` 492 s, exit 0, `final OK !!!`); every run
+  is capped (a system scope, a user scope or `prlimit`, whichever the host grants) and timed,
+  stdin a pipe, each side's `lua` on `PATH`. Leftovers (1) to (3) above and the `prlimit` gap
+  (the converted interpreter dies with SIGSEGV under `--as=512M` where native lua prints `not
+  enough memory`, the dying path unprobed) stay ledgered; no libc exactness bug surfaced, so no
+  fixture landed for one.
 - **P5.4 Perf snapshot:** fib/nbody/binary-trees, converted-interp vs native lua. Data
   point only; no bar. Done (branch `p5.4-perf-snapshot`, main 81b5379): the ports publisher's
   capture of 2026-10-30 (`scripts/publish_ports.sh --program lua --perf --samples 5 --lanes
@@ -987,9 +989,9 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   and run the benchmarks.
   Ledger: the suite passes under the interpreter (P5.3) and the JIT lane compiles and runs the
   four benchmarks (P5.4); the suite under the JIT waits for lookibed/daScript#30 (F75: a
-  protected call reports success), and the AOT lane compiles but runs nothing, since its host
-  passes the program no arguments (the P4.9 ledger line); both stay open past the phase tag, as
-  P4's nightly csmith did.
+  protected call reports success), and the AOT lane neither builds nor runs: the tier refuses a
+  program given arguments before any build (`converter/tiers.das`, `run_tier`; the P4.9 ledger
+  line); both stay open past the phase tag, as P4's nightly csmith did.
 
 ## P6 — Doom
 

@@ -117,4 +117,4 @@ pull request never runs there: the job's `if` on the head repository, and the re
 that keeps fork workflows off. The repository is private, and GitHub offers branch protection on a
 private repository only with a Pro plan, so `main` is protected by the rules of `AGENTS.md`
 alone. The runner has no root and no user manager of its own, so a memory cap it grants is
-`prlimit`'s (`lua/ARCHITECTURE.md` section 2).
+`prlimit`'s (`lua/ARCHITECTURE.md` section 6).

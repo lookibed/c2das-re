@@ -13,32 +13,36 @@ gates and the review machinery. Codex sessions take their MCP wiring from
   makes the repository public enables protection on `main` (no direct push, no force push, the
   required check `preflight`, linear history) and the approval of every outside contributor's
   workflow run in the same change.
-- One branch per pull request, named `<item>-<slug>` for a ledger item (`p4.9-<slug>`; a later
-  pull request of a split item adds a number, `p5.3-<slug>-2`), otherwise `fix/<slug>`,
-  `docs/<slug>`, `perf/<slug>` or `upstream/<slug>`. The branch is pushed after every verified
-  commit (`git push origin HEAD`).
+- One branch per ledger item, named `<item>-<slug>` (`p4.9-<slug>`); a split item's later pull
+  requests branch as `<item>-<slug>-N`; outside the ledger `fix/<slug>`, `docs/<slug>`,
+  `perf/<slug>` or `upstream/<slug>`. The branch is pushed after every verified commit (`git
+  push origin HEAD`).
 - Every item lands as a pull request into `main`, opened with `gh pr create --body-file`. The
   body states what changed, the gcc-torture, c-testsuite and csmith counts when the pull
-  request ran those suites, the perf ratio table with its delta when it recorded perf, the
-  readability delta when it changed converter output, the ledgered leftovers and the preflight
-  result, and ends with a `Refs:` line when an issue relates, `lookibed/daScript#N` for every
-  upstream defect the item found.
+  request ran those suites, the perf ratio table and its delta (the phase end's re-record, or
+  the pull request's own measurement), the readability delta, the ledgered leftovers and the
+  preflight result, and ends with a `Refs:` line when an issue relates, `lookibed/daScript#N`
+  for every upstream defect the item found.
 - A pull request merges with `gh pr merge --rebase --delete-branch`, never a squash.
-- A pull request carries at most about 600 lines of non-generated code. A ledger item
+- A pull request carries at most about 400 to 600 lines of non-generated code. A ledger item
   larger than that is split into consecutive pull requests, stacked or sequential, each green
   and reviewed on its own.
 - A commit per logical step: a test with the change it covers, never one commit per phase. A
   coder subagent commits its steps as it goes; the lead does not squash them into one.
 - A pull request merges only when the `preflight` check is green AND the pull request's review
-  pass is closed with no BLOCKING or MAJOR finding open.
+  pass is closed with no BLOCKING or MAJOR finding open; a green check never overrides an open
+  review.
 - Every pull request runs `scripts/preflight.sh`, the `ports/tests` suite and the dastest suites
   of the folders it touches locally before it is opened, and gets one review pass plus a re-check
   of each BLOCKING or MAJOR fix. A pull request that does not close a phase runs no
-  per-document dragon audit and no `scripts/run_perf.sh` recording.
-- A pull request that changes `converter/` outside `converter/tests/`, `c_runtime/` or
-  `dasCRuntime/` also runs the gcc-torture, c-testsuite and csmith suites before it merges.
-- A pull request touching `suites/suite_runner.das`, `lua/` or `ports/` runs
-  `scripts/preflight.sh --full` before it merges.
+  per-document dragon audit.
+- A pull request adding a plan item's feature, or changing `converter/` outside
+  `converter/tests/`, `c_runtime/` or `dasCRuntime/`, also runs the gcc-torture, c-testsuite and
+  csmith suites before it merges.
+- A pull request touching the suite and port runners or their tests (`suites/`, `perf/`, `lua/`,
+  `ports/`, `converter/tests/test_suite_audit.das`, `converter/tests/test_torture_filter.das`,
+  `converter/tests/test_csmith_verdict.das`) runs `scripts/preflight.sh --full` before it
+  merges.
 - The last pull request of a phase runs `scripts/preflight.sh --full`, a dragon-agent audit of
   every `REVIEW*.md`, `ARCHITECTURE*.md` and `AGENTS.md` the phase changed, an archivist pass
   over each of those architecture documents, the dupe-sweeper and style-hygiene audits over the
