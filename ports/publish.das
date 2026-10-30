@@ -20,9 +20,9 @@ require ports_render
 //! one workload of a program: its name, its program arguments, the arguments as the README shows
 //! them, whether it runs in the release's test-suite folder (else in the repository root), whether
 //! a das lane's output must equal the native build's (else the exit code alone is compared), the
-//! line every run must print when the output is not compared ("" for none: the line a test suite
-//! prints last when every test passed, since a run that stops early can exit 0), and whether it is
-//! the startup row (no work: the program's load alone)
+//! line every run, the native oracle's too, must print when the output is not compared ("" for
+//! none: the line a test suite prints after its last test passes, since a run that stops early can
+//! exit 0), and whether it is the startup row (no work: the program's load alone)
 struct WorkloadSpec {
     name : string
     args : array<string>

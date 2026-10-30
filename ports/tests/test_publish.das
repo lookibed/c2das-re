@@ -582,6 +582,37 @@ def test_single_lanes(t : T?) {
 }
 
 [test]
+def test_closing_line(t : T?) {
+    t |> run("a test-suite run without the suite's closing line fails its cell, under the native oracle too, and a differing exit code is reported first") @(t : T?) {
+        let root = stand_in_root("c2das_ports_closing")
+        if (empty(root)) {
+            t |> failure("no stand-in root")
+            return
+        }
+        let clone = ports_clone(root)
+        let args <- ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp", "--allow-dirty"]
+        var out, readme : string
+        // a run that exits 0 without the suite's closing line fails the cell: under the JIT an
+        // uncaught Lua error exits 0, so all.lua stops early and still exits 0 (F75)
+        fwrite(path_join(root, "lua/work/lua/lua.das"), "options gen2\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    let last = argv[length(argv) - 1]\n    print(\"\{last == \"all.lua\" ? \"ALL\" : last\}\\n\")\n    return 0\n\}\n")
+        t |> equal(publish(root, args, out), 0, out)
+        readme = fread(path_join(clone, "lua/README.md"))
+        t |> success(readme |> contains("- test suite, interpreter: not yet: exited 0 without the line `final OK !!!`; its last line: ALL\n"), readme)
+        t |> success(!(readme |> contains("- test suite, clang -O3")), readme)
+        // an exit code that differs is reported before the closing line
+        fwrite(path_join(root, "lua/work/lua/lua.das"), "options gen2\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    let last = argv[length(argv) - 1]\n    print(\"\{last == \"all.lua\" ? \"ALL\" : last\}\\n\")\n    return last == \"all.lua\" ? 3 : 0\n\}\n")
+        t |> equal(publish(root, args, out), 0, out)
+        readme = fread(path_join(clone, "lua/README.md"))
+        t |> success(readme |> contains("- test suite, interpreter: not yet: exited 3 where the native build exits 0: ALL\n"), readme)
+        // the native oracle must print the line too: without it there is no oracle
+        fwrite(path_join(root, "lua/work/lua.c"), "#include <stdio.h>\nint main(int argc, char **argv) \{\n    printf(\"%s\\n\", argv[argc - 1]);\n    return 0;\n\}\n")
+        t |> equal(publish(root, args, out), 0, out)
+        readme = fread(path_join(clone, "lua/README.md"))
+        t |> success(readme |> contains("- test suite, clang -O3: not yet: exited 0 without the line `final OK !!!`; its last line: all.lua\n"), readme)
+        t |> success(readme |> contains("- test suite, interpreter: not yet: no native run to compare with\n"), readme)    }
+}
+
+[test]
 def test_bench_failures(t : T?) {
     t |> run("a missing test-suite folder, a native timeout, a native build that fails beside an earlier binary, failing warm-ups, a capture that is not JSON") @(t : T?) {
         let root = stand_in_root("c2das_ports_bench_fails")
@@ -605,13 +636,6 @@ def test_bench_failures(t : T?) {
         readme = fread(path_join(clone, "lua/README.md"))
         t |> success(readme |> contains("- test suite, interpreter: not yet: the warm-up run exited 4: no test folder here\n"), readme)
         t |> success(readme |> contains("| fib "), readme)
-        // a run that exits 0 without the suite's closing line fails the cell: under the JIT an
-        // uncaught Lua error exits 0, so all.lua stops early and still exits 0 (F75)
-        fwrite(path_join(root, "lua/work/lua/lua.das"), "options gen2\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    let last = argv[length(argv) - 1]\n    print(\"\{last == \"all.lua\" ? \"ALL\" : last\}\\n\")\n    return 0\n\}\n")
-        t |> equal(publish(root, args, out), 0, out)
-        readme = fread(path_join(clone, "lua/README.md"))
-        t |> success(readme |> contains("- test suite, interpreter: not yet: exited 0 without the line `final OK !!!`; its last line: ALL\n"), readme)
-        t |> success(!(readme |> contains("- test suite, clang -O3")), readme)
         fwrite(path_join(root, "lua/work/lua.c"), "#include <unistd.h>\nint main(void) \{ sleep(5); return 0; \}\n")
         var timed <- clone_to_move(args)
         timed |> push_from(["--timeout", "1"])

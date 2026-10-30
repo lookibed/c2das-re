@@ -121,11 +121,13 @@ perf's rule. The native lane's first sample is the oracle: a later sample of any
 otherwise fails the cell with the exit codes and the sample's first reported line (an exception
 line comes before its trailer), one that prints otherwise (the test-suite row's output is not
 compared, since it prints its random seeds and timings) with the first line where the two outputs
-part, and one that leaves out the closing line its workload names (`final OK !!!`, the line Lua's
-suite prints last when every test passed) with the sample's last line, since a suite that stops
-early can exit 0: under the JIT an uncaught Lua error exits 0 (`docs/probe-findings.md` F75), and
-`all.lua` ends at `db.lua` there; a sample past `--timeout` seconds fails it too. A failed cell
-keeps the samples it took, the failing one last. A das cell without a native one is `no native run to compare with`.
+part, and one, the native lane's first sample too, that leaves out the closing line its workload
+names (`final OK !!!`, the line `all.lua` prints after its last test passes; a finalizer prints one
+more as the state closes) with the sample's last line, since a suite that stops early can exit 0:
+under the JIT an uncaught Lua error exits 0 (`docs/probe-findings.md` F75), and `all.lua` ends in
+`db.lua`, the third file it runs; a sample past `--timeout` seconds fails it too. A native first
+sample without the line leaves no oracle. A failed cell keeps the samples it took, the failing one
+last. A das cell without a native one is `no native run to compare with`.
 
 A measuring publish writes `<program>/perf/capture_<UTC timestamp>.json`, the timestamp inside
 and in the name both the end of the run: the c2das-re commit of the conversion it timed (the

@@ -228,7 +228,7 @@ def render_perf(c : Capture) : string {
         w |> write("other row of that lane includes, so a workload's own time is its cell less the startup cell, and the row is ")
         w |> write("an upper bound of the load. A das lane's cell stands only when every run prints what the native ")
         w |> write("build prints and exits as it does (the test-suite row compares the exit code and requires the line the ")
-        w |> write("suite prints last when every test passed, not the output: it prints its random seeds and timings). ")
+        w |> write("suite prints after its last test passes, not the output: it prints its random seeds and timings). ")
         w |> write("A lane the run left out is `{NOT_MEASURED}`.\n\n")
         w |> write("Times:\n\n{render_times(c)}\n")
         w |> write("Ratios, a lane's time over another's (each das lane over native, then interpreter over JIT, ")

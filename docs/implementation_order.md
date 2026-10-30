@@ -959,21 +959,24 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   6.99 / 9.79 under the JIT for source / scc / single, the difference the suite's per-file survey
   shows (30 processes: 614 / 748 / 834 s); with the startup taken off the benchmarks agree across
   the layouts within 6 percent under the interpreter (fib 364 / 386 / 375 s, nbody 331 / 335 / 328)
-  and one module runs 3 to 25 percent ahead under the JIT (fib 6.5 / 6.3 / 5.7, spectral_norm 7.6
-  / 7.6 / 6.1), as P5.1b2 measured at smaller sizes. The test suite as one process (`-e
+  and under the JIT one module runs 5 to 26 percent ahead of the source layout (fib 6.5 / 6.3 /
+  5.7, spectral_norm 7.6 / 7.6 / 6.1), level with scc on binary_trees (3.5 / 3.4 / 3.4), as P5.1b2
+  measured at smaller sizes. The test suite as one process (`-e
   "_port=true" all.lua`): native 8.50 s, the interpreter 492 s (58 times; scc 504, single 507),
   exit 0 with the suite's `final OK !!!`; the capture's JIT cells (2.43 s, 0.29 times native)
-  measured no suite: under the JIT an uncaught Lua error exits 0 (F75), so `all.lua` stops at
-  `db.lua` (12 of 30 files) and exits 0, and the row compared the exit code alone; the publisher
+  measured no suite: under the JIT an uncaught Lua error exits 0 (F75), so `all.lua` stops in
+  `db.lua`, the third file it runs, and exits 0, and the row compared the exit code alone; the publisher
   now requires the closing line (`ports/publish.das`, `closing`) and the phase-release publish
   re-captures under it; the exe suite cell is `not yet` (`Module_CRT` does not load through the
   relative module path from the test folder, the P5.1a leftover); the AOT lane stays `not yet`
   (its host passes no arguments). Against the capture of 2026-10-23 (one module, before P5.1b2,
   P5.2 and P5.3): the interpreter runs fib in 365 s against 386 and the JIT in 8.4 against 15.5, of
   which the startup row is 1.1 against 9.2 and 1.8 against 9.8 (the source layout's cached load
-  against one module's), the work under the JIT 6.5 against 5.7 (one module ahead, as above) and
-  the exe 5.59 against 5.49. `perf/results_linux.json` is re-recorded in the same change (the
-  phase end's re-record, rule 10): no cell moved past 10 percent, no `SUSPECT` line.
+  against one module's), the work under the JIT 6.5 against 5.6 (one module ahead, as above) and
+  the exe 5.59 against 5.49, absolute times on the same machine (the native fib cell moved from
+  0.76 to 0.91 s between the captures under the same clang, so the ratios do not compare). `perf/results_linux.json` is re-recorded in the same change (the
+  phase end's re-record, rule 10): no lane slower than 10 percent (switch_local under the exe lane
+  runs 10.3 percent faster, within its 7 percent spread), no `SUSPECT` line.
 - **Exit criterion:** Lua test suite passes under interp; JIT/AOT lanes at least compile
   and run the benchmarks.
 
