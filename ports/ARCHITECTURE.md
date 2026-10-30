@@ -33,15 +33,20 @@ code; this repository holds only the generator and its inputs.
 ## 2. What a publish writes
 
 The program's directory in the clone holds a fixed set of files, each replaced whole on every
-publish: each program's source layout, the converter's default, as the tree of its modules and
-fragments (every `.das` and `.das.inc` file under `lua/work/<stem>/`, in its folders, into
-`<stem>/`, with its `program.layout.txt`; the conversion's C-IR and `luac -o` checks stay out), the
-opt-ins beside it: the scc layout's tree (`lua/work/scc/<stem>/` into `scc/<stem>/`) and the single
-layout's module (`lua/work/single/<stem>/<stem>.das` into `single/<stem>.das`), the sidecar
-(`lua.c2das`), `LICENSE` (the block of the release's
-`src/lua.h` from the line `* Copyright (C)` to the line ending `DEALINGS IN THE SOFTWARE.`, the
-leading `* ` stripped), the benchmark scripts under `bench/`, and `README.md`. The publisher
-deletes nothing: a file it no longer writes stays until removed by hand in the ports repository,
+publish:
+
+- the source layout, the converter's default, as the tree of its modules and fragments: every
+  `.das` and `.das.inc` file under `lua/work/<stem>/`, in its folders, into `<stem>/`, with its
+  `program.layout.txt`. The conversion's C-IR and `luac -o` checks stay out.
+- the opt-in layouts beside it: the scc layout's tree (`lua/work/scc/<stem>/` into `scc/<stem>/`)
+  and the single layout's module (`lua/work/single/<stem>/<stem>.das` into `single/<stem>.das`).
+- the sidecar (`lua.c2das`).
+- `LICENSE`: the block of the release's `src/lua.h` from the line `* Copyright (C)` to the line
+  ending `DEALINGS IN THE SOFTWARE.`, the leading `* ` stripped.
+- the benchmark scripts under `bench/`.
+- `README.md`.
+
+The publisher deletes nothing: a file it no longer writes stays until removed by hand in the ports repository,
 which is the only hand edit that repository takes. The captures under `perf/` accumulate, one per
 measuring publish.
 
@@ -89,15 +94,21 @@ hours and runs only on an idle machine`` (`PERF_NOT_YET`). With `--perf` it
 measures as this section states and renders the tables.
 
 The lanes are perf's (`perf/ARCHITECTURE.md` section 2), built by `perf/perf_lanes.das`, the
-module `perf/run.das` builds its kernels' lanes with: `native` is the C files the harness's
-program manifest `work/<runs>.program.json` lists, in its order, built by the pinned clang at `-O3
--w -funsigned-char` (with `-lm`), a missing or refused manifest the lane's reason, `interp` and
-`jit` are daslang over the source layout's entry module (`work/<runs>/<runs>.das`) with the module folders loaded,
-`interp-scc` and `jit-scc` the same over the scc layout's entry (`work/scc/<runs>/<runs>.das`),
-`interp-single` and `jit-single` over the single layout's module
-(`work/single/<runs>/<runs>.das`), `exe` is daslang's `-exe` build, `aot` the
-`-ctx` context with the host of `converter/tiers.das` compiled by the pinned `clang++ -O3`. Each
-lane is built once, before the workloads. The AOT host passes the program no arguments, so the
+module `perf/run.das` builds its kernels' lanes with:
+
+- `native`: the C files the harness's program manifest `work/<runs>.program.json` lists, in its
+  order, built by the pinned clang at `-O3 -w -funsigned-char` (with `-lm`). A missing or refused
+  manifest is the lane's reason.
+- `interp` and `jit`: daslang over the source layout's entry module (`work/<runs>/<runs>.das`)
+  with the module folders loaded.
+- `interp-scc` and `jit-scc`: the same over the scc layout's entry (`work/scc/<runs>/<runs>.das`).
+- `interp-single` and `jit-single`: over the single layout's module
+  (`work/single/<runs>/<runs>.das`).
+- `exe`: daslang's `-exe` build.
+- `aot`: the `-ctx` context with the host of `converter/tiers.das`, compiled by the pinned
+  `clang++ -O3`.
+
+Each lane is built once, before the workloads. The AOT host passes the program no arguments, so the
 tier refuses the lane for a program that needs them; that refusal is the lane's reason. A lane
 whose build fails is `not yet` with its first error line for every workload; the publish still
 exits 0. A lane `--lanes` leaves out is `not measured` in the tables, never `not yet`.
@@ -117,17 +128,27 @@ test-suite folder) with its first reported line. The startup row times the progr
 work: under a das lane that is the load from the warm cache, not a compile, which every other row
 includes; with the spawn inside it, the row is an upper bound of the load. A cell is the median
 of `--samples` samples (5 by default), with the spread as half the sample range over the median,
-perf's rule. The native lane's first sample is the oracle: a later sample of any lane that exits
-otherwise fails the cell with the exit codes and the sample's first reported line (an exception
-line comes before its trailer), one that prints otherwise (the test-suite row's output is not
-compared, since it prints its random seeds and timings) with the first line where the two outputs
-part, and one, the native lane's first sample too, that leaves out the closing line its workload
-names (`final OK !!!`, the line `all.lua` prints after its last test passes; a finalizer prints one
-more as the state closes) with the sample's last line, since a suite that stops early can exit 0:
-under the JIT an uncaught Lua error exits 0 (`docs/probe-findings.md` F75), and `all.lua` ends in
-`db.lua`, the third file it runs; a sample past `--timeout` seconds fails it too. A native first
-sample without the line leaves no oracle. A failed cell keeps the samples it took, the failing one
-last. A das cell without a native one is `no native run to compare with`.
+perf's rule.
+
+The native lane's first sample is the oracle. A sample fails the cell when:
+
+- it is the native lane's first sample and exits nonzero. The cell names the exit code and the
+  sample's first reported line.
+- it is a later sample of any lane and exits otherwise than the oracle. The cell names the exit
+  codes and the sample's first reported line (an exception line comes before its trailer).
+- it is a later sample of any lane and prints otherwise than the oracle. The cell names the first
+  line where the two outputs part. The test-suite row's output is not compared, since it prints
+  its random seeds and timings.
+- it leaves out the closing line its workload names; this holds for the native lane's first
+  sample too. The cell names the sample's last line. The test-suite row's closing line is
+  `final OK !!!`, the line `all.lua` prints after its last test passes; a finalizer prints one
+  more as the state closes. The check is there because a suite that stops early can exit 0: under
+  the JIT an uncaught Lua error exits 0 (`docs/probe-findings.md` F75), and `all.lua` stops in
+  `db.lua`, the third file it runs.
+- it runs past `--timeout` seconds.
+
+A native first sample without the closing line leaves no oracle. A failed cell keeps the samples
+it took, the failing one last. A das cell without a native one is `no native run to compare with`.
 
 A measuring publish writes `<program>/perf/capture_<UTC timestamp>.json`, the timestamp inside
 and in the name both the end of the run: the c2das-re commit of the conversion it timed (the
@@ -136,8 +157,7 @@ machine (`uname -m`, the CPU model of `/proc/cpuinfo`, the clang version line wi
 clang the native lane ran, which the lane's command names, and daslang's version line), the
 sample count and the timeout, every lane with its command and error, and every cell with its
 samples. The README's tables render from the latest capture by name; a latest capture that is not
-JSON fails the publish. The
-ratio table holds each das lane over native and the pairs interpreter over JIT, interpreter
+JSON fails the publish. The ratio table holds each das lane over native and the pairs interpreter over JIT, interpreter
 over exe, interpreter over AOT and JIT over AOT; a `-scc` or `-single` lane the capture measured
 adds its column and its pair over its source-layout twin, and a column of the projects table; a
 capture without such a lane renders neither. The top-level README keeps the text above its

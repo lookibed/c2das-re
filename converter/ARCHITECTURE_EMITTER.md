@@ -67,7 +67,7 @@ between them (`converter/tests/fixtures/p4_param_writes.c`). A function type's p
 rule, so every function of one C type fits one das type (F34); a function pointer position is
 never `var`, since a function value has no pointee. A temporary the emitter hoists holding a
 pointer (an initializer list's item, an alloca's address, a stepped pointer's old value) is
-`var` for the same reason as a parameter. A body that used an unsafe operation (pointer
+`var` for the same reason as a parameter. A body that uses an unsafe operation (pointer
 arithmetic, `deref`, `addr`, a `reinterpret`, a string literal) gets `[c_function]`. C `main`
 becomes `c_main` and the module ends with `[export] def main : int { return c_main() }`, whose
 `return` is the CLI's exit-code contract (`docs/probe-findings.md` F1). `int main(int argc, char
@@ -125,8 +125,7 @@ dimensions in C's order and `T? [N]` for an array of pointers, since `?[` lexes 
 safe-index operator; its initializer is one `fixed_array` holding every element, the unwritten
 ones as zero literals (`fixed_array<T?>` for an array of pointers, since an all-null literal is
 a `void?` array no pointer array takes, F41), except an array past 32 elements the source fills sparsely, which is the
-bare declaration followed by one store per written element (at module init for a global); a
-`char[N]` from a string literal is `cstr_array("...", N)`. A subscript of an array is the das
+bare declaration followed by one store per written element (at module init for a global). A subscript of an array is the das
 index, range-checked (the documents' safety oracle); a subscript of a pointer is `deref(p +
 i)`; an index of a small integer type widens to `int`, since das indexes by `int`, `int64`,
 `uint` and `uint64` alone and C does not promote a subscript (F43); `&a[k]` of an array whose
@@ -228,8 +227,7 @@ first), and fails closed where its value is read, since das has no `void` variab
 block and the flag), `x = x op y` as `x op= y`, C's wrapping signed sum and the volatile access
 are in `ARCHITECTURE_EMITTER_LOOPS.md`; `if` chains spell `elif` when the nested condition is pure.
 A string literal outside a pointer or `char[N]` context (where the empty one has no das spelling
-either, F10) and a call to an external function in neither call table are errors until their
-lowering lands (`docs/implementation_order.md`, P2 onward).
+either, F10) fails closed.
 
 A marshal-only record - one the sidecar lists under `marshal`, by tag or typedef name - lives
 in C memory as bytes at clang's offsets and as a value is the naturally laid out das struct of
