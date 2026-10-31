@@ -17,6 +17,15 @@ gates and the review machinery. Codex sessions take their MCP wiring from
   requests branch as `<item>-<slug>-N`; outside the ledger `fix/<slug>`, `docs/<slug>`,
   `perf/<slug>` or `upstream/<slug>`. The branch is pushed after every verified commit (`git
   push origin HEAD`).
+- At most one pull request is open at a time; a second is opened only for a fix of a BLOCKING
+  defect on `main` or in the open pull request.
+- A branch without a pull request lives at most one working session (the time from one start of
+  the agent's session to the next).
+- Before an item starts, `git branch -r` must show only `main` and the current item's branch, and
+  `gh pr list` at most the current item's pull request. Merging a pull request deletes its remote
+  and local branches and every worktree of that branch.
+- The first report of each working day lists the open branches and pull requests with the reason
+  each one still exists.
 - Every item lands as a pull request into `main`, opened with `gh pr create --body-file`. The
   body states what changed, the gcc-torture, c-testsuite and csmith counts when the pull
   request ran those suites, the perf ratio table and its delta (the phase end's re-record, or
@@ -25,8 +34,8 @@ gates and the review machinery. Codex sessions take their MCP wiring from
   for every upstream defect the item found.
 - A pull request merges with `gh pr merge --rebase --delete-branch`, never a squash.
 - A pull request carries at most about 400 to 600 lines of non-generated code. A ledger item
-  larger than that is split into consecutive pull requests, stacked or sequential, each green
-  and reviewed on its own.
+  larger than that is split into consecutive pull requests, each opened after the one before
+  merges, each green and reviewed on its own.
 - A commit per logical step: a test with the change it covers, never one commit per phase. A
   coder subagent commits its steps as it goes; the lead does not squash them into one.
 - A pull request merges only when the `preflight` check is green AND the pull request's review
@@ -51,14 +60,8 @@ gates and the review machinery. Codex sessions take their MCP wiring from
 - Closing a phase is an annotated tag `v0.<phase>.0` with a GitHub release carrying the suite
   counts and the perf and readability numbers at that commit, and the ports repository
   (`lookibed/c2das-ports`) regenerated from that tag with `bash scripts/publish_ports.sh --commit
-  --push`; the phase is closed only with the tag, the release and the regeneration done.
-- At most one pull request is open at a time; a second is opened only for a blocker fix. A branch
-  without a pull request lives at most one working session.
-- Before an item starts, `git branch -r` and `gh pr list` show only `main` and the current item's
-  branch; a merged pull request's branch and its worktree (`/root/wt-*`) are gone (the repository
-  deletes the remote branch on merge).
-- Each phase end and each morning report lists the open branches and pull requests with the
-  reason each one still exists.
+  --push`, and the list of open branches and pull requests with the reason each one exists; the
+  phase is closed only with the tag, the release, the regeneration and the list done.
 - A diff to `.github/workflows/preflight.yml` keeps the job's `if` on the head repository, so a
   fork's pull request never runs on the self-hosted runner (root `ARCHITECTURE.md` section 7).
 - A diff adding a C-input folder (fixtures, kernels, fetched suite trees, vendored sources) or a
