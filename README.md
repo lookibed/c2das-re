@@ -32,6 +32,8 @@ The repository binds to one daScript checkout, `DASLANG_ROOT` (`scripts/env.sh`,
 `VERSIONS.md` pins. Nothing of daScript is vendored except the generic skills under
 `skills/` (`scripts/sync_daslang_skills.sh`). `scripts/verify_daslang.sh` says what is
 missing; `scripts/preflight.sh` is the gate a change clears before it is pushed.
+`scripts/build_c2das_rust.sh` builds the Rust translator lookibed/c2das at its `VERSIONS.md` pin
+for the head-to-head under `compare/`.
 
 ## Layout
 
