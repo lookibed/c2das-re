@@ -10,6 +10,7 @@
 /suites/*/fetch/
 /suites/*/work/
 /perf/work/
+/compare/work/
 /metrics/work/
 /lua/fetch/
 /lua/work/
