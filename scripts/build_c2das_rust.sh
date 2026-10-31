@@ -44,7 +44,7 @@ binary="$checkout/target/release/c2dascript-transpile"
 export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
 
 missing=0
-miss() { echo "build_c2das_rust: missing $1"; missing=1; }
+miss() { echo "build_c2das_rust: missing $1" >&2; missing=1; }
 
 if [ ! -d "$checkout/.git" ]; then
     if [ $check = 1 ]; then
@@ -62,7 +62,7 @@ if [ -d "$checkout/.git" ]; then
     fi
 fi
 command -v rustup >/dev/null 2>&1 || miss "rustup (install it under ${CARGO_HOME:-$HOME/.cargo})"
-if command -v rustup >/dev/null 2>&1 && ! rustup toolchain list | grep -q "^$channel"; then
+if command -v rustup >/dev/null 2>&1 && ! grep -q "^$channel" <<<"$(rustup toolchain list)"; then
     miss "the rust toolchain $channel (rustup toolchain install $channel)"
 fi
 llvm_config=$(command -v "llvm-config-$llvm" || true)

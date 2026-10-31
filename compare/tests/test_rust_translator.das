@@ -10,11 +10,13 @@ require ../rust_translator.das
 //! argv, prints the real banner, and writes, refuses, stays silent or sleeps by the name of its
 //! input. The real Rust binary never runs here.
 
-// the stand-in: `refused.c` fails with a diagnostic, `silent.c` exits 3 saying nothing, `slow.c`
-// sleeps, `nomain.c` writes a module without `main`, a `.json` database writes the source
+// the stand-in: it prints a progress line first on stdout as the translator does, then
+// `refused.c` fails with a clang warning and the diagnostic, `silent.c` exits 3 saying nothing more, `usage.c` fails
+// with a line that is no `translation failed:`, `twomain.c` writes two modules defining `main`,
+// `slow.c` sleeps, `nomain.c` writes a module without `main`, a `.json` database writes the source
 // layout's entry cluster, its fragment, the runtime module and a log, any other file its module and a
 // helper module defining only `main_0`
-let STAND_IN = "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$(dirname \"$0\")/argv.txt\"\necho \"c2dascript-transpile v0.1.0\" >&2\nout=\"\"\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    prev=\"$a\"\ndone\ncase \"$*\" in\n    *refused.c*) echo \"translation failed: unsupported construct at refused.c:3\" >&2; exit 2 ;;\n    *silent.c*) exit 3 ;;\n    *slow.c*) exec sleep 10 ;;\n    *nomain.c*) mkdir -p \"$out\"; echo 'def helper() : int \{ return 0; \}' > \"$out/nomain.das\"; exit 0 ;;\n    *.json*) mkdir -p \"$out\"; echo 'include prog.das.inc' > \"$out/prog.das\"; printf '[export]\\ndef main() : int \{\\n    return 0\\n\}\\n' > \"$out/prog.das.inc\"; echo 'def c2da_rt() : int \{ return 0; \}' > \"$out/c2da_runtime.das\"; echo log > \"$out/translate.log\"; exit 0 ;;\nesac\nmkdir -p \"$out\"\nstem=$(basename \"$2\" .c)\nprintf '[export]\\ndef main() : int \{\\n    return main_0()\\n\}\\n' > \"$out/$stem.das\"\nprintf 'def main_0() : int \{\\n    return 0\\n\}\\n' > \"$out/aaa_helper.das\"\n"
+let STAND_IN = "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$(dirname \"$0\")/argv.txt\"\necho \"c2dascript-transpile v0.1.0\" >&2\nout=\"\"\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    prev=\"$a\"\ndone\nstem=$(basename \"$2\" .c)\necho \"Transpiling $stem\"\ncase \"$*\" in\n    *refused.c*) echo \"refused.c:1:1: warning: a clang warning\" >&2; echo \"translation failed: unsupported construct at refused.c:3\" >&2; exit 2 ;;\n    *silent.c*) exit 3 ;;\n    *usage.c*) echo \"--libc requires a value\" >&2; exit 1 ;;\n    *twomain.c*) mkdir -p \"$out\"; for m in one two; do printf '[export]\\ndef main() : int \{\\n    return 0\\n\}\\n' > \"$out/$m.das\"; done; exit 0 ;;\n    *slow.c*) exec sleep 10 ;;\n    *nomain.c*) mkdir -p \"$out\"; echo 'def helper() : int \{ return 0; \}' > \"$out/nomain.das\"; exit 0 ;;\n    *.json*) mkdir -p \"$out\"; echo 'include prog.das.inc' > \"$out/prog.das\"; printf '[export]\\ndef main() : int \{\\n    return 0\\n\}\\n' > \"$out/prog.das.inc\"; echo 'def c2da_rt() : int \{ return 0; \}' > \"$out/c2da_runtime.das\"; echo log > \"$out/translate.log\"; exit 0 ;;\nesac\nmkdir -p \"$out\"\nprintf '[export]\\ndef main() : int \{\\n    return main_0()\\n\}\\n' > \"$out/$stem.das\"\nprintf 'def main_0() : int \{\\n    return 0\\n\}\\n' > \"$out/aaa_helper.das\"\n"
 
 // a das program standing in for a translation's entry: its command line after the script, one
 // argument a line, and exit 3
@@ -172,6 +174,50 @@ def test_translate_file(t : T?) {
             let res = translate_file(bin, "/src/nomain.c", path_join(dir, "nomain"), NO_ARGS, NO_ARGS, 60.0)
             t |> success(res.ok, res.error)
             t |> equal(length(res.files), 1)
+            t |> equal(res.entry, "")
+        }
+    }
+}
+
+[test]
+def test_translate_file_edges(t : T?) {
+    t |> run("a failure without a `translation failed:` line reports its first other line") @(t : T?) {
+        t |> with_stand_in("c2das_usage") $(dir, bin) {
+            let res = translate_file(bin, "/src/usage.c", path_join(dir, "usage"), NO_ARGS, NO_ARGS, 60.0)
+            t |> equal(res.exit_code, 1)
+            t |> equal(res.error, "--libc requires a value")
+        }
+    }
+    t |> run("an output folder that is not empty is refused before the translator runs") @(t : T?) {
+        t |> with_stand_in("c2das_reuse") $(dir, bin) {
+            let out = path_join(dir, "reused")
+            let first = translate_file(bin, "/src/prog.c", out, NO_ARGS, NO_ARGS, 60.0)
+            t |> success(first.ok, first.error)
+            remove(path_join(dir, "argv.txt"))
+            let again = translate_file(bin, "/src/nomain.c", out, NO_ARGS, NO_ARGS, 60.0)
+            t |> success(!again.ok)
+            t |> equal(again.exit_code, -1)
+            t |> equal(again.error, "the output folder {out} is not empty: translate into a fresh folder")
+            t |> equal(again.entry, "")
+            t |> success(!fexist(path_join(dir, "argv.txt")), "the translator ran")
+            t |> success(fexist(path_join(out, "prog.das")), "the folder was touched")
+        }
+    }
+    t |> run("the entry keeps every dot of the file name but the extension") @(t : T?) {
+        t |> with_stand_in("c2das_dotted") $(dir, bin) {
+            let out = path_join(dir, "dotted")
+            let res = translate_file(bin, "/src/a.b.c", out, NO_ARGS, NO_ARGS, 60.0)
+            t |> success(res.ok, res.error)
+            t |> equal(res.entry, path_join(out, "a.b.das"))
+        }
+    }
+    t |> run("two modules defining main fail the translation") @(t : T?) {
+        t |> with_stand_in("c2das_twomain") $(dir, bin) {
+            let out = path_join(dir, "twomain")
+            let res = translate_file(bin, "/src/twomain.c", out, NO_ARGS, NO_ARGS, 60.0)
+            t |> success(!res.ok)
+            t |> equal(res.exit_code, 0)
+            t |> equal(res.error, "more than one module defines main: {out}/one.das, {out}/two.das")
             t |> equal(res.entry, "")
         }
     }
