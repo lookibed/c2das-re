@@ -52,6 +52,13 @@ gates and the review machinery. Codex sessions take their MCP wiring from
   counts and the perf and readability numbers at that commit, and the ports repository
   (`lookibed/c2das-ports`) regenerated from that tag with `bash scripts/publish_ports.sh --commit
   --push`; the phase is closed only with the tag, the release and the regeneration done.
+- At most one pull request is open at a time; a second is opened only for a blocker fix. A branch
+  without a pull request lives at most one working session.
+- Before an item starts, `git branch -r` and `gh pr list` show only `main` and the current item's
+  branch; a merged pull request's branch and its worktree (`/root/wt-*`) are gone (the repository
+  deletes the remote branch on merge).
+- Each phase end and each morning report lists the open branches and pull requests with the
+  reason each one still exists.
 - A diff to `.github/workflows/preflight.yml` keeps the job's `if` on the head repository, so a
   fork's pull request never runs on the self-hosted runner (root `ARCHITECTURE.md` section 7).
 - A diff adding a C-input folder (fixtures, kernels, fetched suite trees, vendored sources) or a
