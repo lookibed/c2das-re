@@ -16,10 +16,11 @@ let DEFAULT_CHECKOUT = "/root/c2das"
 let BINARY_IN_CHECKOUT = "target/release/c2dascript-transpile"
 let BANNER = "c2dascript-transpile v"
 
-//! One translation: `ok` when the translator exited 0; `error` the first diagnostic line
-//! otherwise; `exit_code` the translator's (`popen_timed_out` past the timeout); `files` every
-//! `.das` and `.das.inc` under `out_dir`, sorted; `entry` the module daslang runs, "" when no file
-//! defines `main`; `seconds` the translator's wall time.
+//! One translation: `ok` when the translator exited 0 and at most one module defines `main`;
+//! `error` what went wrong otherwise; `exit_code` the translator's (`popen_timed_out` past the
+//! timeout, -1 when it did not run); `files` every `.das` and `.das.inc` under `out_dir`, sorted;
+//! `entry` the module daslang runs, "" when no file defines `main`; `seconds` the translator's wall
+//! time.
 struct RustTranslation {
     ok : bool
     error : string
@@ -87,22 +88,51 @@ def private defines_main(text : string) : bool {
     return false
 }
 
-// the first line the translator reported that is not its banner, or the exit code
+// a line the translator prints on stdout as it goes, before any diagnostic
+def private is_progress(line : string) : bool => line |> starts_with("Transpiling ") || line |> starts_with("Reading ") || line |> starts_with("Wrote ")
+
+// the translator's `translation failed:` line, else the first line that is neither its banner nor
+// progress, else the exit code
 [arch(at="ARCHITECTURE.md#command-line")]
 def private first_diagnostic(text : string; exit_code : int) : string {
+    var other = ""
     for (ln in split(text, "\n")) {
         let line = strip(ln)
-        if (!empty(line) && !(line |> starts_with(BANNER))) {
+        if (line |> starts_with("translation failed:")) {
             return line
         }
+        if (empty(other) && !empty(line) && !(line |> starts_with(BANNER)) && !is_progress(line)) {
+            other = line
+        }
     }
-    return "exit {exit_code}"
+    return empty(other) ? "exit {exit_code}" : other
 }
 
-// `argv` run with `timeout` seconds into `out_dir`, the written files collected
+// whether `dir` exists and holds anything
+def private has_entries(dir : string) : bool {
+    var found = false
+    if (fexist(dir)) {
+        dir(dir) $(name) {
+            found = found || (name != "." && name != "..")
+        }
+    }
+    return found
+}
+
+// the module daslang runs for `file`, the one holding the wrapper: itself, or the cluster module a
+// fragment `<stem>.das.inc` belongs to, `<stem>.das`
+[arch(at="ARCHITECTURE.md#entry")]
+def private entry_of(file : string) : string => file |> ends_with(".das") ? file : slice(file, 0, length(file) - length(".inc"))
+
+// `argv` run with `timeout` seconds into `out_dir`, which must be absent or empty, the written
+// files collected
 [arch(at="ARCHITECTURE.md#entry")]
 def private translate(argv : array<string>; out_dir : string; timeout : float) : RustTranslation {
-    var t = RustTranslation(out_dir = out_dir)
+    var t = RustTranslation(out_dir = out_dir, exit_code = -1)
+    if (has_entries(out_dir)) {
+        t.error = "the output folder {out_dir} is not empty: translate into a fresh folder"
+        return <- t
+    }
     mkdir_rec(out_dir)
     let started = ref_time_ticks()
     var text : string
@@ -120,11 +150,12 @@ def private translate(argv : array<string>; out_dir : string; timeout : float) :
         }
     }
     sort(t.files)
-    for (f in t.files) {
-        if (defines_main(fread(f))) {
-            t.entry = path_join(out_dir, file_stem(f) + ".das")
-            break
-        }
+    let mains <- [for (f in t.files); f; where defines_main(fread(f))]
+    if (length(mains) > 1) {
+        t.ok = false
+        t.error = "more than one module defines main: {join(mains, ", ")}"
+    } elif (length(mains) == 1) {
+        t.entry = entry_of(mains[0])
     }
     return <- t
 }

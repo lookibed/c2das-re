@@ -23,8 +23,8 @@ daslang; this repository never builds it inside a test and never vendors it.
 A Rust translation is the set of `.das` and `.das.inc` files the binary
 `c2dascript-transpile` writes into one output folder for one C program. Its pins are in
 `VERSIONS.md`: the lookibed/c2das commit, the rust toolchain its `rust-toolchain.toml` names,
-LLVM 18, and the daScript commit lookibed/c2das runs its own output on. That daScript is a fork
-commit older than this repository's pin; the Rust side's output runs here on this repository's
+LLVM 18, and the daScript commit lookibed/c2das's CI runs its own output on. That daScript is a
+fork commit, 3 commits ahead of an upstream master older than this repository's pin; the Rust side's output runs here on this repository's
 daScript, so both sides run on one daslang.
 
 `scripts/build_c2das_rust.sh` clones the checkout when it is absent, refuses one at another
@@ -46,17 +46,26 @@ lines 315-322, `translator/libc.rs` `build_main_wrapper` at line 5792 and its de
 parentheses always (`das_ast/src/stmt.rs` lines 245-250), so a line opening `def main(` marks
 the wrapper and a line opening `def main_0(` does not.
 
-The module daslang runs is `<output folder>/<stem>.das`, where `<stem>` is the stem of the file
-holding the wrapper. One C file under `--file` becomes `<output folder>/<file name>.das`
+The module daslang runs is the file holding the wrapper when it is a `.das` module, and the
+cluster module `<stem>.das` when it is a fragment `<stem>.das.inc`; `<stem>` keeps every dot
+but the extension's, as the translator's own stems do (`lib.rs` lines 578 and 1096-1099). One C
+file under `--file` becomes `<output folder>/<file name>` with its extension replaced by `.das`
 (`lib.rs` `output_path_for`, lines 569-581). Under `--module-layout source` a unit outside any
 cycle is its own `<stem>.das`, and a unit in a cycle is a fragment `<stem>.das.inc` included by
 its cluster module; the cluster holding C `main` takes the entry unit's stem as its name
-(`lib.rs` lines 1224-1230). Both cases give the same rule.
+(`lib.rs` lines 1224-1230). A translation has one wrapper, so a translation with two modules
+defining `main` is a failed one. Every file of the output folder is the translation's, so a
+translation runs only into an absent or empty folder: the caller chooses a fresh one, and a
+folder that holds anything is refused before the translator runs, its files left as they are.
 
 Since the wrapper is daslang's default entry `main`, no `-main` is passed in any tier. The
 wrapper takes C's arguments from after a `--`, else from after the script, so
 `converter/tiers.das`'s `run_tier`, which passes `--` before the program's arguments and nothing
-when there are none, runs a Rust translation unchanged. A Rust translation requires only
+when there are none, runs a Rust translation unchanged under the interpreter, the JIT and `exe`;
+the test runs the interpreter. Under `aot` the host passes no arguments; the wrapper calls
+`main_0` with `argc` 0 when the command line it reads is empty (`translator/libc.rs` lines
+5835-5852). That tier stands on the same wrapper and is checked on the real binary with the
+suites. A Rust translation requires only
 daslib and its own modules, so it runs with no module folder loaded.
 
 ## 4. The command line {#command-line}
@@ -69,7 +78,11 @@ options from anywhere in its argv and drops every `--` before handing the rest t
 lines 326 and 410), so no separator is passed: it would protect no clang argument.
 
 The translator prints the banner `c2dascript-transpile v<version>` to stderr first (`main.rs`
-line 10), exits 2 with `translation failed: <error>` when a translation fails and 1 on a usage
-error (`main.rs` lines 253-321 and 423-441). A `RustTranslation`'s `error` is the first non-empty
-line of the merged output that is not the banner, `exit <code>` when there is none, and `timed
-out after <seconds> s` past the timeout.
+line 10) and progress lines to stdout as it goes: `Transpiling <stem>` and `Wrote <path>` for a
+file, `Reading <path>` and `Transpiling <module>` in the source layout (`lib.rs` lines 524, 602,
+652, 682 and 812). Clang's warnings reach the same output. It exits 2 on a failed translation,
+with `translation failed: <error>` (`main.rs` lines 423-441), and on a refused option (`main.rs`
+lines 190 and 217), and 1 on a usage error (`main.rs` lines 253-321). The child's stdout and
+stderr arrive merged, so a `RustTranslation`'s `error` is the `translation failed:` line, else
+the first non-empty line that is neither the banner nor a progress line, else `exit <code>`; it
+is `timed out after <seconds> s` past the timeout.
