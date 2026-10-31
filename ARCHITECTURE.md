@@ -27,13 +27,17 @@ the continuous integration section 7.
   converted and counted for `unsafe` scopes and expressions, pointer steps, `reinterpret`
   casts, `goto`, raw `while` loops and unnamed literals, the totals ratcheted in
   `metrics/readability_linux.json` (`metrics/ARCHITECTURE.md`).
+- `compare/` - the head-to-head with the Rust translator lookibed/c2das (ledger item P8.1): the
+  module that runs its binary and its translations, over the same inputs and runners as this
+  repository's own (`compare/ARCHITECTURE.md`).
 - `docs/` - the normative design, authored in its own repository and copied here whole
   (`README.md`). Never edited to match code.
 - `skills/` - agent instructions: vendored daScript skills (never edited here) and this
   repository's own under `skills/internal/`.
 - `scripts/` - `env.sh` (the toolchain variables and `das`, daslang with both module folders
   loaded), `verify_daslang.sh`, `preflight.sh`, `sync_daslang_skills.sh` and the runners
-  `run_suite.sh`, `run_perf.sh` and `run_readability.sh`. Shell only; anything that reads `.das` is a daslang tool from
+  `run_suite.sh`, `run_perf.sh` and `run_readability.sh`; `build_c2das_rust.sh` builds the Rust
+  translator `compare/` runs, at its `VERSIONS.md` pin. Shell only; anything that reads `.das` is a daslang tool from
   `DASLANG_ROOT`.
 - `lua/`, `doom/` - vendored programs with their sidecars and harnesses, created by the phases
   that need them (`docs/implementation_order.md`, P5 and P6). `doom/` is the GPL-2 subtree.
