@@ -16,11 +16,11 @@ and the command that wrote it in its commit message.**
 its commit message the reason or the fix for every `FLAG` line its `--report` prints.**
 
 **A diff that changes, beyond comments, what a timed lane runs or how its samples become a cell
-- a file under `kernels/`, or, in `run.das`, `perf_lanes.das`, `perf_compose.das` or
-`perf_tables.das`, the text around a kernel, a lane's argv or build, the lane list, the sample
-count, or the sample arithmetic - re-records each capture whose lanes the diff changes
-(`results_linux.json`, `results_method_linux.json`) from a `scripts/run_perf.sh` run with no
-`--filter` and no `--samples` in the same change.** `ARCHITECTURE.md` section 7 lists the sites.
+- a file under `kernels/`, or, in `run.das`, `perf_measure.das`, `perf_lanes.das`,
+`perf_compose.das` or `perf_tables.das`, the text around a kernel, a lane's argv or build, the
+lane list, the sample count, or the sample arithmetic - re-records each capture whose lanes the
+diff changes (`results_linux.json`, `results_method_linux.json`) from a `scripts/run_perf.sh` run
+with no `--filter` and no `--samples` in the same change.** `ARCHITECTURE.md` section 7 lists the sites.
 
 **A diff after which the text between the perf-table markers of `README.md` (repo root) differs
 from the results table `scripts/run_perf.sh --table` prints refreshes it with
