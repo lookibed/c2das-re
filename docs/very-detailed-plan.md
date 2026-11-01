@@ -253,7 +253,8 @@ families.
 
 ## 6. Converter optimization tier (the "cleaner port" pass)
 
-Ruling 2026-11-01 (13): O1 and the trailing increment are the converter's default (section 1, Loop lowering; the B pull request restates this section). The rest: sidecar-gated, applied only after demo-sync is green — every optimization trades checks or
+Ruling 2026-11-01 (13): O1 and the trailing increment are the converter's default (section 1,
+Loop lowering; the B pull request restates this section). The rest: sidecar-gated, applied only after demo-sync is green — every optimization trades checks or
 shape for speed while preserving semantics of *correct* programs, so correctness is proven
 first, then the tier switches on. The list is a living discussion with Boris; seeded with
 the obvious ones (all spellings repo-verified 2026-08-21):

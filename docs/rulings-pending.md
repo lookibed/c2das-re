@@ -10,5 +10,4 @@ lines head every report (`AGENTS.md`).
 - P5 close (archivists, PR #24), `lua/REVIEW.md`: the proposed rule "A diff that changes which files `--suite-check` runs, the arguments it gives them, its memory caps, or its verdicts restates `ARCHITECTURE.md` section 6 in the same change"; add it, or not; 2026-10-30.
 - P5 close (archivists, PR #24), `converter/ARCHITECTURE_EMITTER.md`: the JIT `return` inside a try/recover arm (F75, lookibed/daScript#30) is stated as a fact; an exception-ledger row, or a fix item; 2026-10-30.
 - P5 close (archivists, PR #24), `converter/ARCHITECTURE_EMITTER.md`: merge the two `[c_function]` clauses, or keep them apart; 2026-10-30.
-- P5 close (archivists, PR #24), `converter/ARCHITECTURE.md`: the `--loops while` reason was plan text and is cut (ruling (13) settles the default); keep a present-tense reason for the option, or none; 2026-10-30.
 - P5.3: a `LUA_USE_POSIX` build pair beside the ANSI port (`isatty`, `io.popen`, `mkstemp`, `%Ex`); run the Lua test suite against it too, or the ANSI build stays the port; 2026-10-29.
