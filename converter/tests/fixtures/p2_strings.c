@@ -28,7 +28,7 @@ static int count_upper(const char *s) {
     return n;
 }
 int main(void) {
-    char local[32];
+    char local[32] = "";
     const char *e = "";
     char num[8] = "42";
     strcpy(local, greeting);
