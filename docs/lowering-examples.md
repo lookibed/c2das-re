@@ -430,12 +430,46 @@ Side-effecting condition (`do {…} while ((c = next()) != EOF)`) can't inline i
 header — fallback: `while (true) { body; c = next(); if (!(c != EOF)) { break } }`, with a
 tail label for `continue` only if the body contains one.
 
-### General for — the increment-first flag ✓ (probed)
-Ruling 2026-11-01 (13): the range form is the default, and a body without `continue` takes its
-increment last (`very-detailed-plan.md` section 1, Loop lowering; the B pull request restates this
-section).
-Canonical counting loops take the O1 `for (i in range(n))` rewrite instead; everything
-else lowers to:
+### General for — four shapes, the first that applies ✓ (probed)
+Ruling 2026-11-01 (13): the range form is the default and a body without `continue` takes its
+increment last; `--loops while` (the sidecar's `"loops": "while"`) is the option that turns the
+range form off. The converter's rule (`converter/ARCHITECTURE_EMITTER_LOOPS.md`): a `for` is the
+first of these that applies.
+
+1. **The range loop** (O1): `for (T i = a; i < n; ++i)` (or `i++`, `i += 1`) with `T` a 32- or
+   64-bit integer the initializer declares, the test comparing `i` with a bound of `i`'s own type,
+   the body never writing `i` or taking its address, and the bound invariant (literals, enumerators,
+   `sizeof`, the function's own unwritten locals and parameters under casts, `+`, `-`, `*`; never a
+   call, a global, a load through a pointer or a volatile object) is
+   `for (i in range(a, n))` — `range`, `range64`, `urange` or `urange64` by `T`, `range(n)` when
+   `a` is the literal 0. das evaluates `a` then `n` once (C's order; with the bound invariant, C's
+   every-pass test); `i` dies with the loop as C99's does; `continue` reaches the next value as C's
+   increment does; a start past the bound runs no pass (`probes/test_loops.das`).
+2. **The trailing increment**: a body holding no `continue` of this loop (one outside every nested
+   loop and switch) is
+```das
+a
+while (b) {
+    // body
+    c
+}
+```
+   A `break`, `return` or `goto` out of the body skips `c`, as C does.
+3. **The `finally` block**: a body with a `continue` that never leaves the loop (no `break` at its
+   level, no `return`, no `goto`) is
+```das
+a
+while (b) {
+    {
+        // body
+    } finally {
+        c                      // probed: runs per iteration AND on continue ✓
+    }
+}
+```
+   `finally` also runs on `break` (scope exit) while C's `break` skips `c`, which is why a body with
+   a `break` at its level takes shape 4 instead.
+4. **The increment-first flag** otherwise:
 ```c
 for (a; b; c) { ... continue ... break ... }
 ```
@@ -458,21 +492,9 @@ while (true) {
 Probed exact (side-effect counter on `b`): eval order body→c→b matches C; `continue` runs
 the increment, `break` skips it — both native, no labels. (Note: the naive
 `while (b) { if (_f) c; … }` shape tests `b` before `c` — one increment stale; rejected.)
-
-Alternative to profile (P1): body-block `finally` —
-```das
-a
-while (b) {
-    {
-        // body
-    } finally {
-        c                      // probed: runs per iteration AND on continue ✓
-    }
-}
-```
-`finally` also runs on `break` (scope exit) — C's break skips `c` — so this form is valid
-only when the body contains no `break`, or `c`'s effect is provably dead after the loop.
-Profile both at P1; emit the faster one where A is eligible.
+The split is measured (`benchmarks/bench_for_shapes.das`): the interpreter runs the range loop
+fastest, then the trailing increment, the `finally` form and the flag; the JIT compiles all four
+to the same code.
 
 ## switch — three-tier ladder (Boris 2026-08-21)
 
