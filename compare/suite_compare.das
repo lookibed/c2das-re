@@ -11,6 +11,7 @@ require ../converter/tiers.das
 require ../suites/suite_runner.das
 require ../suites/csmith/generate.das
 require ../suites/csmith/verdict.das
+require ../perf/perf_lanes.das
 require rust_translator
 
 //! The three suites through the Rust translator: every id a suite's own run judges, translated,
@@ -151,7 +152,7 @@ def judge_translation(bin, c_path, work : string; limits : Limits; oracle : Orac
         return CaseVerdict(status = "compile", reason = compile_error(compiled))
     }
     var output : string
-    let rc = run_translation(t, "interp", path_join(work, "run"), output, limits.run, no_args)
+    let rc = run_translation(t, "interp", path_join(work, "run"), output, limits.run, ["-no-module-cache"], no_args)
     if (rc == popen_timed_out) {
         return timed_out("the run", limits.run)
     }
@@ -179,7 +180,7 @@ def judge_csmith_program(bin, c_path, work : string; limits : Limits) : CaseVerd
         return CaseVerdict(status = "native", reason = "gcc refused it: {first_line(native.output)}")
     }
     if (native.rc == popen_timed_out) {
-        return timed_out("the native run", limits.native)
+        return CaseVerdict(status = "native", reason = "the native run took longer than {int(limits.native)} s")
     }
     if (native.rc != 0) {
         return CaseVerdict(status = "native", reason = "the native run exited {native.rc}")
@@ -191,7 +192,7 @@ def judge_csmith_program(bin, c_path, work : string; limits : Limits) : CaseVerd
 def private judge_seed(seed, bin, reuse_dir, work : string; limits : Limits) : CaseVerdict {
     let prog = csmith_source(seed, reuse_dir, work)
     if (prog.timed_out) {
-        return timed_out("csmith", CSMITH_TIMEOUT)
+        return CaseVerdict(status = "native", reason = "csmith took longer than {int(CSMITH_TIMEOUT)} s")
     }
     if (!empty(prog.error)) {
         return CaseVerdict(status = "native", reason = prog.error)
@@ -235,10 +236,12 @@ def split_worker_id(text : string; var suite, id : string&) : bool {
     return !empty(id) && find(id, "/") < 0 && !(id |> starts_with("."))
 }
 
-//! seconds a worker of `spec` may live: every timed child's limit summed, and the margin
+//! seconds a worker of `spec` may live: its timed children's limits summed (csmith's and the
+//! native run's for csmith alone), and the margin
 def worker_limit(spec : SuiteSpec) : float {
     let limits = suite_limits(spec)
-    return CSMITH_TIMEOUT + limits.native + limits.translate + limits.compile + limits.run + WORKER_MARGIN
+    let reference = spec.name == CSMITH ? CSMITH_TIMEOUT + limits.native : 0.0
+    return reference + limits.translate + limits.compile + limits.run + WORKER_MARGIN
 }
 
 //! One case's line in a capture.
@@ -270,8 +273,34 @@ def drive_suite(spec : SuiteSpec; ids : array<string>; ratchet : Ratchet; jobs :
     return <- outcomes
 }
 
+//! What a suite's entry records of the run that wrote it: the Rust translator's commit, or why
+//! there is none, the first line of `daslang -version`, and the date.
+struct Stamps {
+    rust_commit : string
+    rust_commit_error : string
+    daslang : string
+    date : string
+}
+
+//! The stamps of a run now, the Rust translator `bin`'s commit logged as a warning when it has none.
+def run_stamps(bin : string) : Stamps {
+    var s : Stamps
+    s.rust_commit = rust_version(bin, s.rust_commit_error)
+    if (empty(s.rust_commit)) {
+        to_log(LOG_WARNING, "no commit to stamp: {s.rust_commit_error}\n")
+    }
+    var clang_version : string
+    tool_versions(clang_version, s.daslang)
+    s.date = strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))
+    return s
+}
+
 //! A suite's entry in the capture's `suites` section.
 struct SuiteCapture {
+    rust_commit : string
+    rust_commit_error : string
+    daslang : string
+    date : string
     ids : int
     ours_pass : int
     ours_skipped : int
@@ -284,10 +313,10 @@ struct SuiteCapture {
 }
 
 //! The entry of a run over a whole suite: our side's counts from `ratchet`, the Rust side's from
-//! `outcomes`, every status of `STATUSES` counted.
+//! `outcomes`, every status of `STATUSES` counted, stamped with `stamps`.
 [arch(at="ARCHITECTURE.md#capture")]
-def suite_capture(ratchet : Ratchet; var outcomes : array<CaseOutcome>; seconds : float) : SuiteCapture {
-    var c = SuiteCapture(ids = length(outcomes), ours_pass = length(ratchet.expected), ours_skipped = length(ratchet.skips), seconds = seconds)
+def suite_capture(ratchet : Ratchet; var outcomes : array<CaseOutcome>; seconds : float; stamps : Stamps) : SuiteCapture {
+    var c = SuiteCapture(rust_commit = stamps.rust_commit, rust_commit_error = stamps.rust_commit_error, daslang = stamps.daslang, date = stamps.date, ids = length(outcomes), ours_pass = length(ratchet.expected), ours_skipped = length(ratchet.skips), seconds = seconds)
     for (s in STATUSES) {
         c.rust[s] = 0
     }
@@ -304,10 +333,10 @@ def suite_capture(ratchet : Ratchet; var outcomes : array<CaseOutcome>; seconds 
 }
 
 //! `path` rewritten with each entry of `suites` replacing the suite of its name in the `suites`
-//! section, every other suite and section kept, and the top-level `stamps` set; "" or why the
-//! file present at `path` cannot be read.
+//! section, every other suite and section kept; "" or why the file present at `path` cannot be
+//! read.
 [arch(at="ARCHITECTURE.md#capture")]
-def write_capture(path : string; var suites : table<string; JsonValue?>; stamps : table<string; string>) : string {
+def write_capture(path : string; var suites : table<string; JsonValue?>) : string {
     var root : JsonValue?
     if (fexist(path)) {
         var error : string
@@ -328,9 +357,6 @@ def write_capture(path : string; var suites : table<string; JsonValue?>; stamps 
     for (name, entry in keys(suites), values(suites)) {
         (section.value as _object)[name] = entry
     }
-    for (key, value in keys(stamps), values(stamps)) {
-        (root.value as _object)[key] = JV(value)
-    }
     fwrite(path, write_json(root) + "\n")
     return ""
 }
@@ -348,4 +374,20 @@ def missing_inputs(specs : array<SuiteSpec>) : string {
         }
     }
     return ""
+}
+
+//! The end of a run: the entries written into the capture `out` unless the run was `filtered`;
+//! 0, or 1 when the capture cannot be read.
+def record_run(out, filter : string; var entries : table<string; JsonValue?>) : int {
+    if (!empty(filter)) {
+        to_log(LOG_INFO, "a --filter run writes no capture\n")
+        return 0
+    }
+    let error = write_capture(out, entries)
+    if (!empty(error)) {
+        to_log(LOG_ERROR, "{error}\n")
+        return 1
+    }
+    to_log(LOG_INFO, "written to {out}\n")
+    return 0
 }

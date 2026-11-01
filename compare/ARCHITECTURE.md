@@ -114,7 +114,8 @@ One worker process per id, `--jobs` at a time, through the suites' `run_workers`
 `converter/dumper_a.das`, which requires the native module `crt`; the translation it runs needs
 none. A case is translated by `translate_file` (`--libc std --strict`, no other flag or clang
 argument), its entry checked by `daslang -compile-only` with no module folder, then run under the
-interpreter by `run_translation` with the suite's own timeout (60 s c-testsuite, 20 s
+interpreter by `run_translation` with `-no-module-cache` (a case's module is compiled once, so a
+cache record would only churn the cache the test lanes share) and the suite's own timeout (60 s c-testsuite, 20 s
 gcc-torture, 300 s csmith), and judged by the suite's oracle: c-testsuite the merged output
 `<id>.c.expected` holds and exit 0, gcc-torture exit 0 with the output not judged, csmith the
 native build's output (section 6) and exit 0, all through `compare_output`.
@@ -122,11 +123,12 @@ native build's output (section 6) and exit 0, all through `compare_output`.
 A case ends in the first status that applies, in this order: `refused` (the translator failed
 within its limit, or no module defines `main`; the reason is the translation's `error`), `compile` (the
 compile check exited non-zero; the reason is its first `error[` line), `timeout` (the translator
-past 300 s, the compile check past 120 s, the run past the suite's timeout, or for csmith csmith
-or the native run past theirs), `exit` (the run exited non-zero), `output` (the run printed other
-than the oracle), `pass`. A csmith seed whose native build or run fails is `native`, which judges
-no translator; a worker that exits without a verdict is `crash`, and one the driver kills past the
-sum of its children's limits and a 60 s margin is `timeout`. The compile check is its own step
+past 300 s, the compile check past 120 s, the run past the suite's timeout), `exit` (the run exited non-zero), `output` (the run printed other
+than the oracle), `pass`. A csmith seed whose reference fails is `native`, which judges no translator: csmith
+refuses the seed or runs past 120 s, gcc refuses the program, or the native run exits non-zero or
+runs past 2 s. A worker that exits without a verdict is `crash`, and one the driver kills past the
+sum of its children's limits and a 60 s margin is `timeout`; csmith's and the native run's limits
+enter that sum for csmith alone. The compile check is its own step
 because a `daslang` run that does not compile exits 1, as a program returning 1 does: the
 probe of `daslang -compile-only` on a module naming an undefined variable exits 1 with an
 `error[30838]: can't locate variable` line, and on a Rust translation that compiles exits 0
@@ -150,11 +152,14 @@ model it implements.
 
 ## 7. The capture {#capture}
 
-`results_linux.json` holds one section per comparison and three stamps: `rust_commit`
-(`rust_version` of the binary), `daslang` (the first line of `daslang -version`, as the perf
-capture records it) and `date`. A run rewrites only the entries of the suites it ran inside
-`suites`, keeping every other suite and section; a `--filter` run writes nothing. A suite's entry:
+`results_linux.json` holds one section per comparison. A run rewrites only the entries of the
+suites it ran inside `suites`, keeping every other suite and section; a `--filter` run writes
+nothing. Each entry carries the stamps of the run that wrote it, since a run over one suite keeps
+the others' entries from earlier runs. A suite's entry:
 
+- `rust_commit` - `rust_version` of the binary, "" when it has none, with `rust_commit_error`
+  saying why (the run logs it as a warning); `daslang` - the first line of `daslang -version`, as
+  the perf capture records it; `date`;
 - `ids` - the cases run; `ours_pass` and `ours_skipped` - the ratchet's and the ledger's id counts;
 - `rust` - the count per status, every status present;
 - `rust_pass_of_ours`, `rust_pass_of_skipped`, `rust_pass_of_unlisted` - the Rust passes per tag;

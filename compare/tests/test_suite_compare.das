@@ -6,6 +6,7 @@ require daslib/strings_boost
 require daslib/json_boost
 require ../../suites/suite_runner.das
 require ../../suites/csmith/generate.das
+require ../../converter/tiers.das
 require ../suite_compare.das
 require _common
 
@@ -122,9 +123,12 @@ def test_csmith_program(t : T?) {
             fwrite(path_join(dir, "exit1.c"), "int main(void) \{ return 1; \}\n")
             fwrite(path_join(dir, "broken.c"), "int main(void) \{ return \n")
             fwrite(path_join(dir, "loop.c"), "int main(void) \{ for (;;) \{\} \}\n")
+            fwrite(path_join(dir, "signed.c"), "#include <stdio.h>\nint main(void) \{ char c = (char)200; printf(c < 0 ? \"hi\\n\" : \"unsigned\\n\"); return 0; \}\n")
+            fwrite(path_join(dir, "signed.das.src"), fread(path_join(dir, "hello.das.src")))
             let csmith_of = $(stem : string; limits : Limits) => judge_csmith_program(bin, path_join(dir, "{stem}.c"), path_join(dir, "w_{stem}"), limits)
             t |> equal(invoke(csmith_of, "hello", LIMITS).status, "pass")
             t |> equal(invoke(csmith_of, "wrong", LIMITS).status, "output")
+            t |> equal(invoke(csmith_of, "signed", LIMITS).status, "pass", "the reference builds char signed, as the Rust side does")
             var v = invoke(csmith_of, "exit1", LIMITS)
             t |> equal(v.status, "native")
             t |> equal(v.reason, "the native run exited 1")
@@ -132,7 +136,7 @@ def test_csmith_program(t : T?) {
             t |> equal(v.status, "native")
             t |> success(v.reason |> starts_with("gcc refused it:"), v.reason)
             v = invoke(csmith_of, "loop", Limits(translate = 60.0, compile = 60.0, run = 30.0, native = 0.3))
-            t |> equal(v.status, "timeout")
+            t |> equal(v.status, "native")
             t |> success(v.reason |> starts_with("the native run took longer"), v.reason)
         }
     }
@@ -258,7 +262,10 @@ def test_suite_capture(t : T?) {
         ratchet.expected <- ["1", "2"]
         ratchet.skips |> insert("3")
         var outcomes <- [CaseOutcome(id = "1", tag = "ours", status = "pass"), CaseOutcome(id = "2", tag = "ours", status = "compile"), CaseOutcome(id = "3", tag = "skipped", status = "pass"), CaseOutcome(id = "4", tag = "unlisted", status = "pass"), CaseOutcome(id = "5", tag = "unlisted", status = "refused")]
-        let c <- suite_capture(ratchet, outcomes, 3.0)
+        let c <- suite_capture(ratchet, outcomes, 3.0, Stamps(rust_commit = "abc", daslang = "0.6.4", date = "today"))
+        t |> equal(c.rust_commit, "abc")
+        t |> equal(c.daslang, "0.6.4")
+        t |> equal(c.date, "today")
         t |> equal(c.ids, 5)
         t |> equal(c.ours_pass, 2)
         t |> equal(c.ours_skipped, 1)
@@ -276,34 +283,37 @@ def test_suite_capture(t : T?) {
 
 [test]
 def test_write_capture(t : T?) {
-    t |> run("a run replaces its suites only: another suite and another section stay; the stamps are set") @(t : T?) {
+    t |> run("a run replaces its suites only: another suite and another section stay") @(t : T?) {
         t |> with_stand_in("cmp_capture") $(dir, _bin) {
             let path = path_join(dir, "results.json")
             fwrite(path, "\{\"perf\": \{\"lanes\": 5\}, \"suites\": \{\"csmith\": \{\"ids\": 9\}, \"c_testsuite\": \{\"ids\": 1\}\}, \"date\": \"old\"\}")
             var entries <- {"c_testsuite" => JV(2)}
-            t |> equal(write_capture(path, entries, {"date" => "new", "rust_commit" => "abc"}), "")
+            t |> equal(write_capture(path, entries), "")
             var error : string
             let js = read_json(fread(path), error)
             t |> equal(error, "")
             t |> equal(js?["perf"]?["lanes"] ?? 0, 5)
             t |> equal(js?["suites"]?["csmith"]?["ids"] ?? 0, 9)
             t |> equal(js?["suites"]?["c_testsuite"] ?? 0, 2)
-            t |> equal(js?["date"] ?? "", "new")
-            t |> equal(js?["rust_commit"] ?? "", "abc")
+            t |> equal(js?["date"] ?? "", "old")
         }
     }
     t |> run("a fresh file gets the section; a file that is not a JSON object is left alone") @(t : T?) {
         t |> with_stand_in("cmp_capture_new") $(dir, _bin) {
             let path = path_join(dir, "fresh.json")
             var entries <- {"csmith" => JV(4)}
-            t |> equal(write_capture(path, entries, {"date" => "d"}), "")
+            t |> equal(write_capture(path, entries), "")
             var error : string
             let js = read_json(fread(path), error)
             t |> equal(js?["suites"]?["csmith"] ?? 0, 4)
             let bad = path_join(dir, "bad.json")
             fwrite(bad, "[1, 2]")
-            t |> success(write_capture(bad, entries, {"date" => "d"}) |> starts_with("cannot read"))
+            t |> success(write_capture(bad, entries) |> starts_with("cannot read"))
             t |> equal(fread(bad), "[1, 2]")
+            let truncated = path_join(dir, "truncated.json")
+            fwrite(truncated, "\{\"suites\": \{")
+            t |> success(write_capture(truncated, entries) |> starts_with("cannot read"))
+            t |> equal(fread(truncated), "\{\"suites\": \{")
         }
     }
 }
@@ -323,6 +333,126 @@ def test_missing_inputs(t : T?) {
             }
             t |> equal(input_of(SuiteSpec(name = "csmith", tests_dir = dir)), "{CSMITH_DIR}/build/src/csmith")
             t |> equal(input_of(present), dir)
+        }
+    }
+}
+
+[test]
+def test_compile_error_fallback(t : T?) {
+    t |> run("a compile check failing with no `error[` line reports its first line") @(t : T?) {
+        t |> with_stand_in("cmp_fallback") $(dir, bin) {
+            fwrite(path_join(dir, "nofile.das.src"), "options gen2\nrequire no_such_module_anywhere\n[export]\ndef main() : int \{\n    return 0\n\}\n")
+            let v = judged(dir, bin, "nofile", LIMITS, Oracle())
+            t |> equal(v.status, "compile")
+            t |> success(!empty(v.reason), v.reason)
+        }
+    }
+}
+
+[test]
+def test_suite_values(t : T?) {
+    t |> run("each suite's run timeout, tests folder and worker limit; only csmith's limit counts csmith and the native run") @(t : T?) {
+        let specs <- compare_suites()
+        t |> equal(join([for (s in specs); s.name], " "), "c_testsuite gcc_torture csmith")
+        t |> equal(join([for (s in specs); "{int(suite_limits(s).run)}"], " "), "60 20 300")
+        t |> equal(specs[0].tests_dir, C_TESTSUITE_TESTS)
+        t |> equal(specs[1].tests_dir, GCC_TORTURE_TESTS)
+        t |> equal(specs[2].tests_dir, "suites/csmith/work")
+        t |> equal(specs[1].work_dir, "compare/work/gcc_torture")
+        let limits = suite_limits(specs[1])
+        t |> equal(limits.translate, 300.0)
+        t |> equal(limits.compile, 120.0)
+        t |> equal(limits.native, 2.0)
+        t |> equal(worker_limit(specs[1]), 300.0 + 120.0 + 20.0 + 60.0)
+        t |> equal(worker_limit(specs[2]), CSMITH_TIMEOUT + 2.0 + 300.0 + 120.0 + 300.0 + 60.0)
+        t |> success(!has_value(RUST_NATIVE_FLAGS, "-funsigned-char"))
+    }
+}
+
+[test]
+def test_judge_seed_generation_error(t : T?) {
+    t |> run("a seed csmith cannot generate is `native`; one it generates reaches the translator") @(t : T?) {
+        t |> with_stand_in("cmp_seed") $(dir, bin) {
+            let spec = SuiteSpec(name = "csmith", tests_dir = path_join(dir, "seeds"), work_dir = path_join(dir, "s_work"), run_timeout = 30.0)
+            let v = judge_case(spec, "5", bin)
+            if (fexist("{CSMITH_DIR}/build/src/csmith")) {
+                t |> equal(v.status, "refused", v.reason)
+                t |> success(fexist(path_join(dir, "s_work/5/5.c")), "no program generated")
+            } else {
+                t |> equal(v.status, "native")
+                t |> success(v.reason |> starts_with("csmith refused the seed"), v.reason)
+            }
+        }
+    }
+}
+
+[test]
+def test_record_run(t : T?) {
+    t |> run("a filtered run leaves the capture alone, an unfiltered one writes its entries") @(t : T?) {
+        t |> with_stand_in("cmp_record") $(dir, _bin) {
+            let path = path_join(dir, "capture.json")
+            var entries <- {"gcc_torture" => JV(7)}
+            t |> equal(record_run(path, "0001", entries), 0)
+            t |> success(!fexist(path), "a filtered run wrote the capture")
+            t |> equal(record_run(path, "", entries), 0)
+            var error : string
+            let js = read_json(fread(path), error)
+            t |> equal(js?["suites"]?["gcc_torture"] ?? 0, 7)
+            fwrite(path, "[")
+            t |> equal(record_run(path, "", entries), 1)
+        }
+    }
+}
+
+[test]
+def test_run_stamps(t : T?) {
+    t |> run("a binary in no checkout stamps no commit and says why") @(t : T?) {
+        t |> with_stand_in("cmp_stamps") $(dir, bin) {
+            let s = run_stamps(bin)
+            t |> equal(s.rust_commit, "")
+            t |> success(s.rust_commit_error |> contains("is in no git checkout"), s.rust_commit_error)
+            t |> success(!empty(s.daslang) && !empty(s.date))
+        }
+    }
+}
+
+// `compare/run.das` run from the repository root with `args`; its exit code
+def private run_script(args : array<string>; var out : string&) : int {
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push("compare/run.das")
+    argv |> push_from(args)
+    return run_and_capture(argv, out, 300.0)
+}
+
+[test]
+def test_command_line(t : T?) {
+    t |> run("naming no suite exits 1; a worker argument naming no case exits 2") @(t : T?) {
+        var out : string
+        t |> equal(run_script(array<string>(), out), 1, out)
+        t |> equal(run_script(["--", "--one", "csmith/.."], out), 2, out)
+        t |> equal(run_script(["--", "--one", "nosuite/1"], out), 2, out)
+    }
+}
+
+[test]
+def test_drive_suite(t : T?) {
+    t |> run("workers judge the torture suite's ids, sorted, a worker without a verdict a crash") @(t : T?) {
+        t |> with_stand_in("cmp_drive") $(dir, bin) {
+            fwrite(path_join(dir, "cmp_drive_ok.das.src"), fread(path_join(dir, "hello.das.src")))
+            let specs <- compare_suites()
+            let spec = specs[1]
+            let ratchet : Ratchet
+            with_env(bin, "") {
+                let outcomes <- drive_suite(spec, ["cmp_drive_ok", "cmp_drive/bad"], ratchet, 2)
+                t |> equal(join([for (o in outcomes); o.id], " "), "cmp_drive/bad cmp_drive_ok")
+                t |> equal(outcomes[0].status, "crash")
+                t |> equal(outcomes[0].reason, "the worker exited 2 without a verdict")
+                t |> equal(outcomes[1].status, "pass", outcomes[1].reason)
+                t |> equal(outcomes[1].tag, "unlisted")
+                t |> success(outcomes[1].seconds > 0.0)
+            }
+            rmdir_rec("compare/work/gcc_torture/cmp_drive_ok")
+            rmdir_rec("compare/work/gcc_torture/cmp_drive")
         }
     }
 }

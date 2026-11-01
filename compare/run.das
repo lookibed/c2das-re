@@ -5,7 +5,6 @@ require daslib/strings_boost
 require daslib/clargs
 require daslib/json_boost
 require ../converter/pipeline.das
-require ../perf/perf_lanes.das
 require ../suites/suite_runner.das
 require rust_translator
 require suite_compare
@@ -59,7 +58,7 @@ def run_suite(spec : SuiteSpec; args : CompareArgs) : SuiteCapture {
             to_log(LOG_INFO, "{spec.name}/{o.id} ({o.tag}): {o.status}: {o.reason}\n")
         }
     }
-    var c <- suite_capture(ratchet, outcomes, seconds_since(started))
+    var c <- suite_capture(ratchet, outcomes, seconds_since(started), run_stamps(rust_binary()))
     let counts = join([for (s in STATUSES); "{s} {c.rust?[s] ?? 0}"], ", ")
     to_log(LOG_INFO, "{spec.name}: rust {counts} of {c.ids} (ours {c.ours_pass}, skipped {c.ours_skipped}; rust passes of ours {c.rust_pass_of_ours}, of skipped {c.rust_pass_of_skipped}, of unlisted {c.rust_pass_of_unlisted})\n")
     return <- c
@@ -87,18 +86,5 @@ def main : int {
         return 2
     }
     var entries <- {for (spec in specs); spec.name => JV(run_suite(spec, args))}
-    if (!empty(args.filter)) {
-        return 0
-    }
-    var reason, clang_version, daslang_version : string
-    tool_versions(clang_version, daslang_version)
-    let stamps <- {"rust_commit" => rust_version(rust_binary(), reason), "daslang" => daslang_version, "date" => strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))}
-    let out = empty(args.out) ? CAPTURE : args.out
-    let error = write_capture(out, entries, stamps)
-    if (!empty(error)) {
-        to_log(LOG_ERROR, "{error}\n")
-        return 1
-    }
-    to_log(LOG_INFO, "written to {out}\n")
-    return 0
+    return record_run(empty(args.out) ? CAPTURE : args.out, args.filter, entries)
 }
