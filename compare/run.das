@@ -19,7 +19,7 @@ require ../lua/sources.das
 //! the three suites' inputs and writes the `suites` section of `compare/results_linux.json`,
 //! `--perf` times the perf kernels through both translators and writes its `perf` section
 //! (`compare/ARCHITECTURE.md`); `--lua` runs the Rust translator over Lua and writes the `lua` and
-//! `doom` sections.
+//! `doom` sections, over the C files and the sidecar of the folder `--lua-from` names when it is set.
 
 [CommandLineArgs]
 struct CompareArgs {
@@ -31,7 +31,7 @@ struct CompareArgs {
     perf : bool
     @clarg_doc = "translate Lua with the Rust translator and list the C library functions it lacks"
     lua : bool
-    @clarg_doc = "--lua over the .c files of this folder (its lua.c holding main) into <folder>/work instead of Lua's release"
+    @clarg_doc = "--lua over the .c files of this folder (its lua.c holding main) with its lua.c2das, when present, as the sidecar, into <folder>/work, instead of Lua's release"
     lua_from : string = ""
     @clarg_doc = "samples per perf lane, each its own process (default 5)"
     samples : int = 5
@@ -105,7 +105,7 @@ def run_perf(args : CompareArgs) : int {
 // the Lua comparison over Lua's release, or the C files of `from` when it is set: its `lua` and
 // `doom` sections written
 def run_lua(out, from : string) : int {
-    let missing = lua_missing(empty(from) ? SOURCES : from)
+    let missing = empty(from) ? lua_missing(SOURCES, false) : lua_missing(from, true)
     if (!empty(missing)) {
         to_log(LOG_ERROR, "{missing}\n")
         return 2
@@ -113,7 +113,7 @@ def run_lua(out, from : string) : int {
     let bin = rust_binary()
     var error : string
     let c_paths <- empty(from) ? program_sources("lua") : folder_sources(from)
-    var section = lua_section(bin, c_paths, SIDECAR, empty(from) ? LUA_WORK : folder_work(from), run_stamps(bin), error)
+    var section = lua_section(bin, c_paths, empty(from) ? SIDECAR : folder_sidecar(from), empty(from) ? LUA_WORK : folder_work(from), run_stamps(bin), error)
     if (section == null) {
         to_log(LOG_ERROR, "{error}\n")
         return 1

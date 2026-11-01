@@ -198,7 +198,7 @@ def gap_method : string {
 }
 
 //! The `lua` section of the program whose C files are `c_paths` (`program_sources("lua")`): a
-//! compilation database with the defines of the sidecar at `sidecar_path`, translated by `bin`
+//! compilation database with the defines of the sidecar at `sidecar_path` (none for ""), translated by `bin`
 //! with `translate_db` into `work`, its status (`refused` with the translator's error, else
 //! `translated` with the file count), the seconds and the gap; our side's numbers are the ports
 //! capture's. Null, with `error` set, when the sidecar cannot be read.
@@ -206,7 +206,7 @@ def gap_method : string {
 def lua_section(bin : string; c_paths : array<string>; sidecar_path, work : string; stamps : Stamps; var error : string&) : JsonValue? {
     var side_error : string
     let side <- read_sidecar(sidecar_path, side_error)
-    if (!empty(side_error) || !fexist(sidecar_path)) {
+    if (!empty(side_error) || (!empty(sidecar_path) && !fexist(sidecar_path))) {
         error = "cannot read the sidecar {sidecar_path}: {side_error}"
         return null
     }
@@ -244,13 +244,24 @@ def folder_sources(folder : string) : array<string> => <- [for (id in c_file_ids
 def folder_work(folder : string) : string => path_join(folder, "work")
 
 //! Why the Lua comparison cannot start, "" when it can: the Rust translator is missing, or the
-//! fetched release's sources `release` (`SOURCES`) lack `lua.c`.
-def lua_missing(release : string) : string {
+//! program's folder lacks `lua.c`: the fetched release's sources (`SOURCES`), or the folder
+//! `--lua-from` names when `from_folder`.
+def lua_missing(folder : string; from_folder : bool) : string {
     var reason : string
     if (!rust_available(reason)) {
         return reason
     }
-    return fexist(path_join(release, "lua.c")) ? "" : "{release} is missing: run lua/fetch.sh"
+    if (fexist(path_join(folder, "lua.c"))) {
+        return ""
+    }
+    return from_folder ? "{folder} has no lua.c" : "{folder} is missing: run lua/fetch.sh"
+}
+
+//! The sidecar of the program `--lua-from` names: `<folder>/lua.c2das` when present, else "" (no
+//! defines); never Lua's own.
+def folder_sidecar(folder : string) : string {
+    let path = path_join(folder, "lua.c2das")
+    return fexist(path) ? path : ""
 }
 
 //! The line a run logs of the `lua` section: the status, the error, and the gap.
