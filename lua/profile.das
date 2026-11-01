@@ -36,9 +36,9 @@ struct Args {
     nm : string = "nm"
 }
 
-//! The versions the `nm:` line of a VERSIONS.md text pins: the comma-separated words before the
-//! line's first parenthesis, one per machine the captures and the CI run on; none without the line.
-def nm_pins(versions_md : string) : array<string> {
+// the versions the `nm:` line of a VERSIONS.md text pins: the comma-separated words before the
+// line's first parenthesis, one per machine the captures and the CI run on; none without the line
+def private nm_pins(versions_md : string) : array<string> {
     var nm_line = ""
     for (line in split(versions_md, "\n")) {
         if (line |> starts_with("nm: ")) {
@@ -52,6 +52,9 @@ def nm_pins(versions_md : string) : array<string> {
 // names one of them, else the refusal; a missing or failing `nm` prints no version and is refused
 def private nm_pin_mismatch(nm : string) : string {
     let pins <- nm_pins(fread("VERSIONS.md"))
+    if (empty(pins)) {
+        return "VERSIONS.md has no `nm:` line"
+    }
     var out : string
     let rc = run_and_capture([nm, "--version"], out, 30.0)
     let first = split(out, "\n")[0]
