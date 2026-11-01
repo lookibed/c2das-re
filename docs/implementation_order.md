@@ -1050,12 +1050,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   expanded; its Lua speed part, interp and JIT of both translators on the same inputs, is mandatory.
   Done (branches `p8.1-*`, PRs #31, #32, #36 and `p8.1-report`): the Rust translator at
   `ce4647af` on the three suites, the 19 perf kernels, Lua and the output's readability, all in
-  `compare/results_linux.json`, rendered by `compare/run.das --readme` into the root `README.md`
-  (the report) and into the ports README. Suites pass ours 199 / 1179 / 151 against Rust 202 /
-  1197 / 47 (c-testsuite, gcc-torture, csmith); perf geomean over native, ours against Rust:
-  interp 36.08 / 35.92, JIT 1.61 / 1.55, AOT 1.37 / 1.92; Rust lines 1.33x ours without its
-  emitted runtime, 5.10x with it. Lua: the Rust side refuses it at `ldexp`, 20 libc names in the
-  gap, so it has no Lua speed (ruling pending); Doom pending P6. The gaps where Rust is ahead: P8.3.
+  `compare/results_linux.json`, rendered by `compare/run.das --readme` into the report, the root
+  [README](../README.md#head-to-head-with-the-rust-translator), and into the ports README. Suites
+  pass ours 199 / 1179 / 151 against Rust 202 / 1197 / 47 (c-testsuite, gcc-torture, csmith); perf
+  geomean over native, ours against Rust: interp 36.08 / 35.92, JIT 1.61 / 1.55, AOT 1.37 / 1.92;
+  Rust lines 1.33x ours without its emitted runtime, 5.10x with it. Lua: the Rust side refuses it
+  at `ldexp`, 20 libc names in the gap, so it has no Lua speed (ruling pending); Doom pending P6.
+  The gaps where Rust is ahead: P8.3.
 - **P8.2 Real projects of the Rust c2das** (owner ruling 2026-11-01 (17); after P8.1, before P7.0a).
   The six projects of the Rust repository's `tests/manual` (binjgb, doomgeneric, h264bsd-mp4,
   plmpeg-stream, quakegeneric, wasm3), each run through c2das-re on exactly the inputs, hosts,
@@ -1072,13 +1073,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   memory cap and the two-heavy-tasks rule as for Lua. Output: one generated table in `compare/` and
   the ports README, never hand-typed; the `Done` row short (ruling 15).
 - **P8.3 Gaps against the Rust translator** (from P8.1's "where the Rust version is better"; the
-  README's head-to-head block lists them, past a 5% margin and the cells' spreads). Candidates, each
+  README's head-to-head block lists them: a suite on any excess, the rest past 5%). Candidates, each
   its own item later, none scheduled: the interpreter cells where Rust is ahead (`blit`,
   `compound_lit`, `do_while_effect`, `matmul`, `sieve`, `str_copy`, `switch_goto`, `switch_local`,
   `va_forward`); `switch_local` under the JIT (Rust 0.98x native, ours 5.96x) and AOT (our build
   fails); the suite ids Rust passes that our ratchet skips (gcc-torture 41, csmith 5, c-testsuite
-  0). The rest of the list (`switch_goto` JIT and exe, `primes` AOT, the counters `c_function` and
-  `pointer_arith`) is read from the block when an item is cut.
+  0). The rest of the list (`switch_goto` JIT and exe, `primes` AOT, the counter `pointer_arith`) is
+  read from the block when an item is cut.
 
 ## P6 — Doom
 
