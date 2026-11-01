@@ -129,9 +129,9 @@ rule; say so in the end-of-turn summary.
 ## Gates
 
 `scripts/preflight.sh` (`skills/internal/preflight.md`) runs the fast tier - `env`, `native`,
-`untracked`, `format`, `lint`, `compile`, `ast-verify`, `md-ascii`, `review-md`, `criteria` (a report) - and with
-`--full` the `tests` lane over every dastest suite. `--only <gate>` reruns one, `--list-gates`
-prints the table. The suites' pass counts are a ratchet: a count only goes up, and every
+`untracked`, `format`, `lint`, `compile`, `ast-verify`, `md-ascii`, `review-md`, `criteria` (a
+report) - and with `--full` the `tests` lane over every dastest suite. `--only <gate>` reruns
+one, `--list-gates` prints the table. The suites' pass counts are a ratchet: a count only goes up, and every
 skipped suite test carries a ledger line naming the feature, the reason and the phase that
 unblocks it (`suites/`).
 
