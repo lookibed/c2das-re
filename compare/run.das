@@ -12,14 +12,17 @@ require ../suites/suite_runner.das
 require rust_translator
 require suite_compare
 require perf_compare
+require quality_compare
 require lua_compare
 require ../lua/sources.das
 
 //! The head-to-head with the Rust translator from the repository root: `--suites` runs it over
 //! the three suites' inputs and writes the `suites` section of `compare/results_linux.json`,
 //! `--perf` times the perf kernels through both translators and writes its `perf` section
-//! (`compare/ARCHITECTURE.md`); `--lua` runs the Rust translator over Lua and writes the `lua` and
-//! `doom` sections, over the C files and the sidecar of the folder `--lua-from` names when it is set.
+//! (`compare/ARCHITECTURE.md`); `--quality` counts and sizes both sides' output over the inputs
+//! both translated and writes its `quality` section; `--lua` runs the Rust translator over Lua and
+//! writes the `lua` and `doom` sections, over the C files and the sidecar of the folder
+//! `--lua-from` names when it is set.
 
 [CommandLineArgs]
 struct CompareArgs {
@@ -29,6 +32,8 @@ struct CompareArgs {
     suite : string = ""
     @clarg_doc = "time the perf kernels through both translators under every lane"
     perf : bool
+    @clarg_doc = "count and size both translators' output over the inputs both translated"
+    quality : bool
     @clarg_doc = "translate Lua with the Rust translator and list the C library functions it lacks"
     lua : bool
     @clarg_doc = "--lua over the .c files of this folder (its lua.c holding main) with its lua.c2das, when present, as the sidecar, into <folder>/work, instead of Lua's release"
@@ -51,8 +56,13 @@ struct CompareArgs {
     show_help : bool
 }
 
-// the worker of `--one`: 0 once the verdict is written, 2 for an argument naming no case
+// the worker of `--one`: 0 once the verdict is written, 2 for an argument naming no case; an
+// argument `quality/<key>` measures that key of the quality comparison
 def run_worker(text : string) : int {
+    if (text |> starts_with("quality/")) {
+        measure_key(slice(text, length("quality/")), rust_binary())
+        return 0
+    }
     var suite, id : string
     let specs <- compare_suites()
     let found = split_worker_id(text, suite, id) ? find_index_if(specs, $(s) => s.name == suite) : -1
@@ -102,6 +112,28 @@ def run_perf(args : CompareArgs) : int {
     return record_run(empty(args.out) ? CAPTURE : args.out, args.filter) $(path) => write_capture_section(path, "perf", section)
 }
 
+// the quality comparison over the corpus the capture `out` and the ratchets name, `--filter`
+// narrowing it, `--jobs` workers at a time; its `quality` section written
+def run_quality(args : CompareArgs; out : string) : int {
+    let missing = missing_inputs(compare_suites())
+    if (!empty(missing)) {
+        to_log(LOG_ERROR, "{missing}\n")
+        return 2
+    }
+    var error : string
+    let corpus <- quality_corpus_of(out, args.filter, error)
+    if (!empty(error)) {
+        to_log(LOG_ERROR, "{error}\n")
+        return 1
+    }
+    var entries <- drive_quality(corpus, args.jobs)
+    var section = quality_section(run_stamps(rust_binary()), entries)
+    for (g, totals in keys(section?["totals"] as _object), values(section?["totals"] as _object)) {
+        to_log(LOG_INFO, "{g}: {totals?["counted"] ?? 0} of {totals?["keys"] ?? 0} keys counted; lines ours {totals?["ours"]?["lines"] ?? 0}, rust {totals?["rust"]?["lines"] ?? 0}, of them its runtime {totals?["rust"]?["runtime_lines"] ?? 0}\n")
+    }
+    return record_run(out, args.filter) $(path) => write_capture_section(path, "quality", section)
+}
+
 // the Lua comparison over Lua's release, or the C files of `from` when it is set: its `lua` and
 // `doom` sections written
 def run_lua(out, from : string) : int {
@@ -135,17 +167,21 @@ def main : int {
     if (!empty(args.one)) {
         return run_worker(args.one)
     }
-    let alone <- [for (mode in [("--perf", args.perf), ("--lua", args.lua)]); mode._0; where mode._1]
+    let alone <- [for (mode in [("--perf", args.perf), ("--quality", args.quality), ("--lua", args.lua)]); mode._0; where mode._1]
     if (length(alone) > 1 || (length(alone) == 1 && (args.suites || !empty(args.suite)))) {
-        to_log(LOG_ERROR, "{alone[0]} runs alone: run the suites and each of --perf and --lua in a run of its own\n")
+        to_log(LOG_ERROR, "{alone[0]} runs alone: run the suites and each of --perf, --quality and --lua in a run of its own\n")
         return 1
     }
     if (args.lua && !empty(args.filter)) {
         to_log(LOG_ERROR, "--lua takes no --filter: it translates the whole program\n")
         return 1
     }
+    let out = empty(args.out) ? CAPTURE : args.out
+    if (args.quality) {
+        return run_quality(args, out)
+    }
     if (args.lua) {
-        return run_lua(empty(args.out) ? CAPTURE : args.out, args.lua_from)
+        return run_lua(out, args.lua_from)
     }
     if (args.perf) {
         if (args.samples < 1) {
@@ -157,7 +193,7 @@ def main : int {
     let all <- compare_suites()
     let specs <- [for (s in all); s; where args.suites || s.name == args.suite]
     if (empty(specs)) {
-        to_log(LOG_ERROR, "name what to run: --suites, --suite c_testsuite, gcc_torture or csmith, --perf or --lua\n")
+        to_log(LOG_ERROR, "name what to run: --suites, --suite c_testsuite, gcc_torture or csmith, --perf, --quality or --lua\n")
         return 1
     }
     let missing = missing_inputs(specs)
