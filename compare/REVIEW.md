@@ -7,6 +7,10 @@
 writes it from the capture the table's generator reads, never by hand.** A hand-typed number goes
 stale with the next capture.
 
+**A diff to the block of `README.md` (repository root) between `<!-- compare:begin -->` and
+`<!-- compare:end -->` is the output of `compare/run.das --readme` over the committed capture,
+never a hand edit.** The next `--readme` run overwrites a hand edit without a trace.
+
 **A diff that runs the Rust translator on an input records every input it does not pass as one of
 `refused` (the translator failed), `compile` (daslang rejected the output), `exit` (the run exited
 otherwise than the oracle), `output` (the run printed otherwise than the oracle), `timeout`,
