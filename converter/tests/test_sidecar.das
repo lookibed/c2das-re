@@ -187,5 +187,30 @@ def test_sidecar_layout(t : T?) {
             t |> success(error |> contains("bad_{c._0}.c2das: {c._2}"), "{c._0}: `{c._2}` not in `{error}`")
         }
     }
+    t |> run("`include_dirs` is a list of folders and `program_root` a folder, each read beside the sidecar unless absolute") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "inputs", "\{\"include_dirs\": [\"inc\", \"/abs/inc\"], \"program_root\": \"..\"\}\n", error)
+        t |> equal(error, "")
+        t |> equal(join(side.include_dirs, " "), "{path_join(dir, "inc")} /abs/inc")
+        t |> equal(side.program_root, path_join(dir, ".."))
+        let plain <- read_text(dir, "no_inputs", "\{\}\n", error)
+        t |> equal(length(plain.include_dirs), 0)
+        t |> equal(plain.program_root, "")
+    }
+    t |> run("`include_dirs` or `program_root` of the wrong shape, an unknown key and a sidecar that is no object are refused naming them") @(t : T?) {
+        let cases <- [
+            ("dirs", "\{\"include_dirs\": \"inc\"\}", "`include_dirs` is a list of strings, not \"inc\""),
+            ("dir", "\{\"include_dirs\": [2]\}", "`include_dirs` holds strings, not 2"),
+            ("root", "\{\"program_root\": 3\}", "`program_root` is a folder name, not 3"),
+            ("empty_root", "\{\"program_root\": \"\"\}", "`program_root` is a folder name, not \"\""),
+            ("unknown", "\{\"includes\": []\}", "`includes` is no sidecar key (marshal, stack"),
+            ("list", "[1]", "a sidecar is a JSON object, not ")
+        ]
+        for (c in cases) {
+            var error : string
+            read_text(dir, "bad_{c._0}", c._1, error)
+            t |> success(error |> contains("bad_{c._0}.c2das: {c._2}"), "{c._0}: `{c._2}` not in `{error}`")
+        }
+    }
     rmdir_rec(dir)
 }

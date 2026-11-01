@@ -45,7 +45,16 @@ struct Sidecar {
     layout_keep_units : array<array<string>>
     layout_cut : array<string>
     layout_profile : string
+    // the folders clang searches for `#include`, each passed as `-I<dir>` to both passes of the
+    // dumper, in order; absolute (a relative entry is read beside the sidecar)
+    include_dirs : array<string>
+    // the folder whose files are the program's (`converter/ARCHITECTURE_DUMPER.md`, the file
+    // policy), absolute; "" for the main file's own folder
+    program_root : string
 }
+
+//! The keys a sidecar may hold; any other is refused naming it.
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "layout", "defines", "over_indexed", "include_dirs", "program_root"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -225,7 +234,42 @@ def private read_layout(js : JsonValue?; path : string; var side : Sidecar; var 
     }
 }
 
-//! Reads a sidecar file; `error` names a file that is not JSON or a key of the wrong shape.
+// `name` read beside the sidecar at `path`: itself when absolute
+def private beside(path, name : string) : string => is_absolute(name) ? name : path_join(dir_name(path), name)
+
+// why the sidecar document `js` at `path` is refused before its keys are read: it is no object, or
+// it holds a key outside `SIDECAR_KEYS`; "" when neither
+def private shape_error(js : JsonValue?; path : string) : string {
+    if (!(js is _object)) {
+        return "{path}: a sidecar is a JSON object, not {write_json(js)}"
+    }
+    for (key in keys(js as _object)) {
+        if (!has_value(SIDECAR_KEYS, key)) {
+            return "{path}: `{key}` is no sidecar key ({join(SIDECAR_KEYS, ", ")})"
+        }
+    }
+    return ""
+}
+
+// the `include_dirs` and `program_root` keys, each folder read beside the sidecar at `path`
+def private read_inputs(js : JsonValue?; path : string; var side : Sidecar; var error : string&) {
+    if (key_exists(js, "include_dirs")) {
+        var inscope dirs : array<string>
+        strings_of(js?["include_dirs"], "{path}: `include_dirs`", dirs, error)
+        side.include_dirs |> push_from([for (dir in dirs); beside(path, dir)])
+    }
+    if (key_exists(js, "program_root")) {
+        let root = js?["program_root"]
+        if (!(root is _string) || empty(root ?? "")) {
+            error = "{path}: `program_root` is a folder name, not {write_json(root)}"
+        } else {
+            side.program_root = beside(path, root ?? "")
+        }
+    }
+}
+
+//! Reads a sidecar file; `error` names a file that is not JSON, a key it does not know or a key of
+//! the wrong shape.
 def read_sidecar(path : string; var error : string&) : Sidecar {
     var side = Sidecar()
     if (empty(path)) {
@@ -233,6 +277,11 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
     }
     var js = read_json_file(path, error)
     if (js == null) {
+        return <- side
+    }
+    error = shape_error(js, path)
+    if (!empty(error)) {
+        delete_json(js)
         return <- side
     }
     // `?[]` of a missing key is json_boost's null sentinel, never null: `key_exists` tells
@@ -273,6 +322,7 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
             side.defines |> push(entry ?? "")
         }
     }
+    read_inputs(js, path, side, error)
     let over = js?["over_indexed"]
     if (key_exists(js, "over_indexed") && !(over is _array)) {
         error = "{path}: `over_indexed` is a list of strings `Record.field`, not {write_json(over)}"

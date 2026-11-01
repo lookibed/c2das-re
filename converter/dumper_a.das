@@ -76,8 +76,8 @@ struct Dumper {
     type_index : table<string; int>
     tu_prefix : string
     c_path : string
-    // the canonical directory of the main file with a trailing `/`: a declaration in a file under
-    // it belongs to the program
+    // the canonical program root (the sidecar's `program_root`, else the main file's directory)
+    // with a trailing `/`: a declaration in a file under it belongs to the program
     program_dir : string
     // clang's resource directory and the system include directories, canonical with a trailing
     // `/`: a file under one is external though it lies under `program_dir`
@@ -366,20 +366,23 @@ def private canonical_file(var d : Dumper; name : string) : string {
     return full
 }
 
-// whether a declaration in file `name` belongs to the program: the main file or a file under
-// its directory; every other file (a system header's) is external
+// whether a declaration in file `name` belongs to the program: a file under the program root
+// outside the system directories; every other file (a system header's) is external
 [arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
 def private in_program(var d : Dumper; name : string) : bool {
     let full = canonical_file(d, name)
-    if (!(full |> starts_with(d.program_dir))) {
-        return false
-    }
+    return full |> starts_with(d.program_dir) && !under_system_dir(d, name)
+}
+
+// whether file `name` lies under clang's resource directory or a system include directory
+def private under_system_dir(var d : Dumper; name : string) : bool {
+    let full = canonical_file(d, name)
     for (dir in d.system_dirs) {
         if (full |> starts_with(dir)) {
-            return false
+            return true
         }
     }
-    return true
+    return false
 }
 
 // the file of a libclang location, as `clang_getExpansionLocation` and its siblings give it
@@ -718,11 +721,11 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
     }
 }
 
-def private collect_records(var d : Dumper; triple : string; resource_dir : string; defines : array<string>) {
+def private collect_records(var d : Dumper; triple : string; resource_dir : string; inputs : array<string>) {
     // libclang finds no resource directory of its own, so the builtin headers (`stddef.h`, whose
     // `size_t` a libc prototype spells) come from the pinned clang's
     var args <- ["-target", triple, "-funsigned-char", "-w", NO_CTYPE_MACROS, "-resource-dir", resource_dir]
-    args |> push_from(define_flags(defines))
+    args |> push_from(inputs)
     var idx = clang_createIndex(0, 0)
     var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, 0u)
     if (unit != null) {
@@ -3057,8 +3060,9 @@ def private clang_resource_dir(clang : string) : string {
 }
 
 // the resource directory and the directories clang searches for `<...>` under `triple`, as its
-// `-v` lists them, each canonical with a trailing `/` (a main file in `/root` holds the default
-// `/root/libclang`'s resource headers under its own directory)
+// `-v` lists them but those `CPATH` and `C_INCLUDE_PATH` name, each canonical with a trailing `/`
+// (a main file in `/root` holds the default `/root/libclang`'s resource headers under its own
+// directory)
 [arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
 def private system_dirs(clang, triple, resource_dir : string) : array<string> {
     var dirs : array<string>
@@ -3067,6 +3071,7 @@ def private system_dirs(clang, triple, resource_dir : string) : array<string> {
     if (run_and_capture([clang, "-target", triple, "-E", "-x", "c", "-v", "/dev/null", "-o", "/dev/null"], out, 30.0) != 0) {
         return <- dirs
     }
+    let user_dirs <- user_path_dirs()
     var listing = false
     for (text in split(out, "\n")) {
         let entry = strip(text)
@@ -3076,8 +3081,9 @@ def private system_dirs(clang, triple, resource_dir : string) : array<string> {
             listing = false
         } elif (listing && !empty(entry)) {
             let full = get_full_file_name(entry)
-            if (!empty(full)) {
-                dirs |> push(full |> ends_with("/") ? full : full + "/")
+            let dir = full |> ends_with("/") ? full : full + "/"
+            if (!empty(full) && !has_value(user_dirs, dir)) {
+                dirs |> push(dir)
             }
         }
     }
@@ -3115,58 +3121,45 @@ def default_clang : string =>
 // unless `__NO_CTYPE` is defined: with it each is the libc function the crt module binds
 let NO_CTYPE_MACROS = "-D__NO_CTYPE"
 
-// the sidecar's `defines` as clang flags, `-D<entry>` each
-def private define_flags(defines : array<string>) : array<string> => <- [for (entry in defines); "-D{entry}"]
+// the sidecar's `defines` and `include_dirs` as clang flags, `-D<entry>` and `-I<dir>` each
+def private input_flags(defines, include_dirs : array<string>) : array<string> {
+    var flags <- [for (entry in defines); "-D{entry}"]
+    flags |> push_from([for (dir in include_dirs); "-I{dir}"])
+    return <- flags
+}
 
-//! Runs clang on `c_path` under the dialect `target`, with `-D<entry>` for each of `defines`,
-//! and normalizes the dump; `d.error` names the first unsupported construct, and the dump is
-//! then partial.
-def dump_tu(c_path : string; target : CirTarget; clang : string; defines : array<string>) : Dumper {
-    var d : Dumper
-    d.tu.cir = CIR_VERSION
-    d.tu.target = target
-    d.tu.tu = base_name(c_path)
-    d.c_path = c_path
-    d.cur_file = c_path
-    d.program_dir = dir_name(get_full_file_name(c_path)) + "/"
-    d.va_names |> insert(VA_BUILTIN)
-    d.tu_prefix = ident_of(slice(d.tu.tu, 0, max(find(d.tu.tu, "."), 0)))
-    d.tu.producer = "c2das-dumper-a 0.1 / clang {clang_version(clang)}"
-    let resource_dir = clang_resource_dir(clang)
-    if (empty(resource_dir)) {
-        d.error = "`{clang} -print-resource-dir` gave no resource directory; libclang needs it for the builtin headers"
-        return <- d
+// the folders `CPATH` and `C_INCLUDE_PATH` name, canonical with a trailing `/`: clang's `-v` lists
+// them with its own `<...>` folders, yet they hold the user's headers, never the system's
+def private user_path_dirs : array<string> {
+    var dirs : array<string>
+    for (name in ["CPATH", "C_INCLUDE_PATH"]) {
+        if (has_env_variable(name)) {
+            for (entry in split(get_env_variable(name), ":")) {
+                let full = empty(entry) ? "" : get_full_file_name(entry)
+                if (!empty(full)) {
+                    dirs |> push(full |> ends_with("/") ? full : full + "/")
+                }
+            }
+        }
     }
-    d.system_dirs <- system_dirs(clang, target.triple, resource_dir)
-    collect_records(d, target.triple, resource_dir, defines)
-    if (!empty(d.error)) {
-        return <- d
-    }
-    var out : string
-    var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", NO_CTYPE_MACROS, "-target", target.triple]
-    dump_args |> push_from(define_flags(defines), [c_path])
-    let rc = run_and_capture(dump_args, out, 120.0)
-    if (rc != 0) {
-        d.error = "clang exited {rc}:\n{out}"
-        return <- d
-    }
-    d.json_bytes = long_length(out)
-    var err : string
-    var js = read_json(out, err)
-    if (js == null) {
-        d.error = "clang dump is not JSON: {err}"
-        return <- d
-    }
-    var last : LocState
-    complete_locs(js, last)
-    collect_va_ids(d, js)
-    collect_aligned_typedefs(d, js)
-    collect_defined_names(d, js)
+    return <- dirs
+}
+
+// the top-level declarations of the dump `js` the program owns, dumped into `d.tu.decls`; a `.c`
+// file outside the program root and the system directories fails the dump naming it
+def private dump_top_level(var d : Dumper; js : JsonValue?) {
     let top = js?["inner"]
     for (idx in range(child_count(js))) {
         let decl = (top as _array)[idx]
         let at = loc_of(d, decl)
-        if ((decl?["isImplicit"] ?? false) || !in_program(d, at.file)) {
+        if (decl?["isImplicit"] ?? false) {
+            continue
+        }
+        if (!in_program(d, at.file)) {
+            if (at.file |> ends_with(".c") && !under_system_dir(d, at.file)) {
+                fail(d, "{at.file} is a C file outside the program root {d.program_dir}: its definitions would stay external; the sidecar's `program_root` widens the root", at)
+                break
+            }
             continue
         }
         break if (!check_attributes(d, decl))
@@ -3185,6 +3178,71 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; defines : array
         }
         d.tu.decls |> push(cd)
     }
+}
+
+//! What a unit is dumped under beyond its file and dialect: the sidecar's `defines` (`-D<entry>`
+//! each), its `include_dirs` (`-I<dir>` each, both passes) and its `program_root` ("" for the main
+//! file's folder).
+struct DumpInputs {
+    defines : array<string>
+    include_dirs : array<string>
+    program_root : string
+}
+
+//! Runs clang on `c_path` under the dialect `target` and `inputs`, and normalizes the dump;
+//! `d.error` names the first unsupported construct, and the dump is then partial.
+def dump_tu(c_path : string; target : CirTarget; clang : string; inputs : DumpInputs) : Dumper {
+    var d : Dumper
+    d.tu.cir = CIR_VERSION
+    d.tu.target = target
+    d.tu.tu = base_name(c_path)
+    d.c_path = c_path
+    d.cur_file = c_path
+    let root = empty(inputs.program_root) ? dir_name(get_full_file_name(c_path)) : get_full_file_name(inputs.program_root)
+    if (empty(root)) {
+        d.error = "the program root `{inputs.program_root}` is no folder"
+        return <- d
+    }
+    d.program_dir = root |> ends_with("/") ? root : root + "/"
+    d.va_names |> insert(VA_BUILTIN)
+    d.tu_prefix = ident_of(slice(d.tu.tu, 0, max(find(d.tu.tu, "."), 0)))
+    d.tu.producer = "c2das-dumper-a 0.1 / clang {clang_version(clang)}"
+    let resource_dir = clang_resource_dir(clang)
+    if (empty(resource_dir)) {
+        d.error = "`{clang} -print-resource-dir` gave no resource directory; libclang needs it for the builtin headers"
+        return <- d
+    }
+    d.system_dirs <- system_dirs(clang, target.triple, resource_dir)
+    if (!in_program(d, c_path)) {
+        d.error = "the main file {get_full_file_name(c_path)} is no file of the program: it lies outside the program root {d.program_dir} or under a folder clang searches for system headers"
+        return <- d
+    }
+    let flags <- input_flags(inputs.defines, inputs.include_dirs)
+    collect_records(d, target.triple, resource_dir, flags)
+    if (!empty(d.error)) {
+        return <- d
+    }
+    var out : string
+    var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", NO_CTYPE_MACROS, "-target", target.triple]
+    dump_args |> push_from(flags, [c_path])
+    let rc = run_and_capture(dump_args, out, 120.0)
+    if (rc != 0) {
+        d.error = "clang exited {rc}:\n{out}"
+        return <- d
+    }
+    d.json_bytes = long_length(out)
+    var err : string
+    var js = read_json(out, err)
+    if (js == null) {
+        d.error = "clang dump is not JSON: {err}"
+        return <- d
+    }
+    var last : LocState
+    complete_locs(js, last)
+    collect_va_ids(d, js)
+    collect_aligned_typedefs(d, js)
+    collect_defined_names(d, js)
+    dump_top_level(d, js)
     delete_json(js)
     if (empty(d.error)) {
         check_enum_anchors(d)

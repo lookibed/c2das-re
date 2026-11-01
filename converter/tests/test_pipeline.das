@@ -141,3 +141,79 @@ def test_sidecar_defines_select(t : T?) {
     }
     rmdir_rec(dir)
 }
+
+let WIDE = "converter/tests/fixtures/p8_include_dirs"
+
+// `WIDE`'s main file converted into `<dir>/<name>` under `sidecar` ("" for the fixture's own)
+def wide_convert(dir, name, sidecar : string) : ConvertResult => <- convert(path_join(WIDE, "app/main.c"), path_join(dir, name), "linux", "", sidecar)
+
+// `text` as the sidecar `<dir>/<name>.c2das`: its path
+def written_sidecar(dir, name, text : string) : string {
+    let path = path_join(dir, "{name}.c2das")
+    fwrite(path, text)
+    return path
+}
+
+[test]
+def test_include_dirs(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_include_dirs", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    let lib_dir = get_full_file_name(path_join(WIDE, "lib"))
+    let root = get_full_file_name(WIDE)
+    t |> run("`include_dirs` reach both clang passes and `program_root` makes a sibling folder's C file and a `../` header the program's") @(t : T?) {
+        let res <- wide_convert(dir, "wide", "")
+        t |> equal(res.ok, true, res.error)
+        has_wide_program(t, res.das_text)
+        let native = native_run(default_clang(), ["-w", "-funsigned-char", "-I{lib_dir}"], path_join(WIDE, "app/main.c"), path_join(dir, "wide_native"), 60.0)
+        t |> equal(native.built, true, native.output)
+        var output : string
+        let rc = run_tier(res.das_path, "interp", dir, output, CONVERTED_MODULES)
+        t |> equal(output, native.output)
+        t |> equal(output, "sum 7 scaled 70\n")
+        t |> equal(rc, native.rc)
+    }
+    t |> run("absolute `include_dirs` and `program_root` are taken as they are") @(t : T?) {
+        let side = written_sidecar(dir, "absolute", "\{\"include_dirs\": [\"{lib_dir}\"], \"program_root\": \"{root}\"\}\n")
+        let res <- wide_convert(dir, "absolute", side)
+        t |> equal(res.ok, true, res.error)
+        has_wide_program(t, res.das_text)
+    }
+    t |> run("a C file an include folder reaches outside the program root is refused, naming the file and the root") @(t : T?) {
+        let side = written_sidecar(dir, "narrow", "\{\"include_dirs\": [\"{lib_dir}\"]\}\n")
+        let res <- wide_convert(dir, "narrow", side)
+        t |> equal(res.ok, false, res.das_text)
+        t |> success(res.error |> contains("{lib_dir}/lib.c is a C file outside the program root {get_full_file_name(path_join(WIDE, "app"))}/"), res.error)
+    }
+    t |> run("without `include_dirs` clang finds no `lib.c`, and the conversion fails with its error") @(t : T?) {
+        let side = written_sidecar(dir, "no_includes", "\{\"program_root\": \"{root}\"\}\n")
+        let res <- wide_convert(dir, "no_includes", side)
+        t |> equal(res.ok, false, res.das_text)
+        t |> success(res.error |> contains("'lib.c' file not found"), res.error)
+    }
+    t |> run("a main file outside `program_root` is refused, naming it") @(t : T?) {
+        let side = written_sidecar(dir, "outside", "\{\"include_dirs\": [\"{lib_dir}\"], \"program_root\": \"{lib_dir}\"\}\n")
+        let res <- wide_convert(dir, "outside", side)
+        t |> equal(res.ok, false, res.das_text)
+        t |> success(res.error |> contains("the main file {root}/app/main.c is no file of the program"), res.error)
+    }
+    t |> run("a folder `CPATH` names holds the user's headers, never the system's: the program in it converts") @(t : T?) {
+        let saved = has_env_variable("CPATH") ? get_env_variable("CPATH") : ""
+        set_env_variable("CPATH", root)
+        let res <- wide_convert(dir, "cpath", "")
+        set_env_variable("CPATH", saved)
+        t |> equal(res.ok, true, res.error)
+        has_wide_program(t, res.das_text)
+    }
+    rmdir_rec(dir)
+}
+
+// the declarations of all three files of `WIDE` in one module's text
+def has_wide_program(t : T?; text : string) {
+    for (needle in ["struct pair \{", "def make_pair(", "def pair_sum(", "def c_main"]) {
+        t |> success(text |> contains(needle), "missing `{needle}` in:\n{text}")
+    }
+}

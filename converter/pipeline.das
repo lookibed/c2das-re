@@ -151,12 +151,14 @@ def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var
     return <- side
 }
 
-// one unit dumped under the sidecar's `defines`, its C-IR written to `<out_dir>/<stem>.cir.json`,
-// read back and rewritten (the bytes must match); the dumper's tree, which the caller deletes, and
-// `res` carrying the C-IR, the dump's bytes and seconds, or the error
+// one unit dumped under the sidecar's `defines`, `include_dirs` and `program_root`, its C-IR
+// written to `<out_dir>/<stem>.cir.json`, read back and rewritten (the bytes must match); the
+// dumper's tree, which the caller deletes, and `res` carrying the C-IR, the dump's bytes and
+// seconds, or the error
 def private dump_unit(c_path, out_dir : string; target : CirTarget; clang : string; side : Sidecar; var res : ConvertResult) : CirTu {
     let dump_started = ref_time_ticks()
-    var d <- dump_tu(c_path, target, empty(clang) ? default_clang() : clang, side.defines)
+    let inputs = DumpInputs(defines := side.defines, include_dirs := side.include_dirs, program_root = side.program_root)
+    var d <- dump_tu(c_path, target, empty(clang) ? default_clang() : clang, inputs)
     res.dump_seconds += seconds_since(dump_started)
     res.json_bytes += d.json_bytes
     if (!empty(d.error)) {
