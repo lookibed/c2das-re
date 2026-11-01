@@ -352,6 +352,8 @@ def test_rendering(t : T?) {
     }
     t |> run("a bench cell without a cell or a native time, and a capture without projects") @(t : T?) {
         let native = json_of(t, "\{\"decode\": \{\"time\": 0.5\}\}")
+        t |> equal(compiler_name("clang version 22.1.8 (https://x y)"), "clang version 22.1.8")
+        t |> equal(compiler_name("gcc 14"), "gcc 14")
         t |> equal(bench_text_of(null, native), "n/a")
         t |> equal(bench_text_of(json_of(t, "\{\"decode\": \{\"time\": 1.0\}\}"), null), "n/a")
         t |> equal(bench_text_of(json_of(t, "\{\"error\": \"odd\"\}"), native), "odd")

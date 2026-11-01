@@ -49,8 +49,8 @@ past its limit, `exit` with the code and the first line naming an error, `output
 line that differs from the expected text (numbered from 1, a missing line `(none)`), `pass`. The
 JIT's `[I]` lines are not the program's output. The `aot` tier's host passes the program no
 arguments, so a project that reads its fixture from its argument is `skipped` under `aot` with that
-reason, never dropped. A lane's limit is 120 s for a run and for the compile check, 300 s for each `exe` or `aot` build step
-and the run it ends with (`COMPARE_LIMITS`).
+reason, never dropped. A lane's limit is 120 s for a run and for the compile check, 300 s for each
+`exe` or `aot` build step and the run it ends with (`COMPARE_LIMITS`).
 
 ## The speed {#speed}
 
@@ -81,9 +81,9 @@ computed per project.
 `compare_render.das`'s `projects_text` renders the section under `### Real projects`: the verdicts
 table (per project and side, the native verdict and each lane's), one line per side and reason for
 every lane that does not pass, the lanes sharing a reason named together, the bench table (the
-native compiler's version line, the native decode seconds, each lane's decode median over it, an
-error cell as the lane's status, `refused` for a side with no bench module, else the error's first
-word), the code table (status, files, lines, the Rust runtime's lines and each counter, `-` for a
-side not measured) and the functions side by side. A capture without the section renders `No project
-is captured yet.` The list of where the Rust translator is ahead names each project whose Rust side
-passes a lane ours does not.
+native compiler's version line without its source, the native decode seconds, each lane's decode
+median over it, an error cell as the lane's status, `refused` for a side with no bench module, else
+the error's first word), the code table (status, files, lines, the Rust runtime's lines and each
+counter, `-` for a side not measured) and the functions side by side. A capture without the section
+renders `No project is captured yet.` The list of where the Rust translator is ahead names each
+project whose Rust side passes a lane ours does not.
