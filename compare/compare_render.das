@@ -379,6 +379,7 @@ def private stamp_of(section : JsonValue const?; date_key : string) : string => 
 def private list_or(lines : array<string>; none : string) : string => empty(lines) ? "{none}\n" : join(lines, "\n") + "\n"
 
 //! The whole comparison: every table and list under a `###` heading each.
+[arch(at="ARCHITECTURE_REPORT.md#report")]
 def compare_report(results : JsonValue const?) : string {
     return build_string() $(var w) {
         w |> write("Rendered from c2das-re's `compare/results_linux.json` alone, never edited by hand. ")
