@@ -23,7 +23,9 @@ inputs' text, are `ARCHITECTURE_CRITERIA.md`.
   criteria driver converts through it too.
 - `readability_count.das` - the counting: `count_module` compiles one emitted module and walks
   its AST (section 3), counting what the module's own file spells and, when it is a cluster
-  module, what the fragments it is given spell (`converter/ARCHITECTURE_LAYOUT.md`); `count_text`
+  module, what the fragments it is given spell (`converter/ARCHITECTURE_LAYOUT.md`); `count_program`
+  sums `count_module` over a program's modules, each with the fragments its `include` lines name;
+  `count_text`
   and `read_count_text` are the worker file.
 - `readability_file.das` - the capture as data: the metric and input group names, the text of
   `readability_linux.json` (top-level keys sorted, two-space indent, one module per line with
