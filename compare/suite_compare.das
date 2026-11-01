@@ -13,6 +13,7 @@ require ../suites/csmith/generate.das
 require ../suites/csmith/verdict.das
 require ../perf/perf_lanes.das
 require rust_translator
+require compare_render public
 
 //! The three suites through the Rust translator: every id a suite's own run judges, translated,
 //! checked under `-compile-only`, run under the interpreter and judged by the suite's oracle, one
@@ -48,9 +49,6 @@ def suite_limits(spec : SuiteSpec) : Limits => Limits(translate = TRANSLATE_TIME
 
 //! seconds a worker gets past the sum of its timed children's limits before the driver kills it
 let WORKER_MARGIN = 60.0
-
-//! every status a case ends in, the keys of a capture's counts
-let STATUSES <- ["pass", "refused", "compile", "timeout", "exit", "output", "native", "crash"]
 
 def private suite_spec(name, tests_dir : string; run_timeout : float) : SuiteSpec =>
     SuiteSpec(name = name, tests_dir = tests_dir, work_dir = "{WORK}/{name}", expected_pass = "suites/{name}/expected_pass.txt", skip_ledger = "suites/{name}/skip.txt", run_timeout = run_timeout)

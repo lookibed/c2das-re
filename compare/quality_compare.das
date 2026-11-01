@@ -29,9 +29,6 @@ let COMPILED_STATUSES <- ["pass", "exit", "output"]
 //! the group of a kernel's key: a kernel `k` of the perf section is the key `perf/k`
 let PERF_GROUP = "perf"
 
-//! the key of the totals over every group
-let ALL_GROUPS = "all"
-
 //! The functions shown side by side: a key, then the C names of its functions.
 let SAMPLES <- [("perf/fib_loop", ["fibI", "kernel_run"]), ("perf/sieve", ["kernel_run"]), ("perf/str_copy", ["copy_text", "work"]), ("perf/switch_local", ["step", "kernel_run"]), ("c_testsuite/00156", ["main"]), ("c_testsuite/00205", ["main"])]
 
