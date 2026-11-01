@@ -546,7 +546,7 @@ def projects_text(results : JsonValue const?) : string {
     let lanes <- project_lanes(results)
     return build_string() $(var w) {
         if (!empty(names)) {
-            w |> write("Each project of the Rust repository's `tests/manual` on its own fixture, checked against the output its README gives; the native build (the pinned clang with the README's flags) must print it too. ")
+            w |> write("Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. ")
             w |> write("Captured: " + join([for (n in names); "{n} ({stamp_of(results?["projects"]?[n], "date")})"], "; ") + ".\n\n")
         }
         w |> write(projects_table(results))
