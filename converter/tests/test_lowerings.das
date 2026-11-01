@@ -1906,4 +1906,10 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "reinterpret<uint8?>(\"int main(void)\"))")
         has_text(t, text, "require c_runtime/c_exit")
     }
+    t |> run("clock_gettime binds to the crt over a timespec the program lays out: both clocks, an unknown one refused") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_clock_gettime", text)
+        has_text(t, text, "struct timespec \{\n    tv_sec, tv_nsec : int64\n\}\n")
+        has_text(t, text, "crt::clock_gettime(1, reinterpret<void?>(addr(a)))")
+    }
 }

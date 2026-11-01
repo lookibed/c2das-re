@@ -79,6 +79,7 @@ public:
         addExtern<DAS_BIND_FUN(c_volatile_store_f64)>(*this, lib, "c_volatile_store_f64", SideEffects::modifyExternal, "crt::c_volatile_store_f64")->args({"p", "v"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_clock)>(*this, lib, "clock", SideEffects::modifyExternal, "crt::c_clock");
         addExtern<DAS_BIND_FUN(c_monotonic_ns)>(*this, lib, "c_monotonic_ns", SideEffects::modifyExternal, "crt::c_monotonic_ns");
+        addExtern<DAS_BIND_FUN(c_clock_gettime)>(*this, lib, "clock_gettime", SideEffects::modifyExternal, "crt::c_clock_gettime")->args({"clock_id", "ts"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_difftime)>(*this, lib, "difftime", SideEffects::none, "crt::c_difftime")->args({"a", "b"});
         addExtern<DAS_BIND_FUN(c_mktime)>(*this, lib, "mktime", SideEffects::modifyExternal, "crt::c_mktime")->args({"tm"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_localtime)>(*this, lib, "localtime", SideEffects::modifyExternal, "crt::c_localtime")->args({"t"})->unsafeOperation = true;
