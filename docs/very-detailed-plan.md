@@ -35,7 +35,7 @@ Companion documents:
 | UB policy | Signed overflow wraps (das is built `-fwrapv`), shifts as hardware, eval order fixed left-to-right | Documented dialect, matches what csmith-safe programs assume |
 | Speed vs idiomatic output | **Do both** (ruling 2026-10-20): where interpreter speed and idiomatic output conflict and no compromise exists, the idiomatic form is the default and the fast form is an opt-in converter flag, also settable in the `.c2das` sidecar; each mode is covered by tests, by the perf capture (a column per mode in the report) and by the readability capture. Applied to every later conflict without a new ruling; first case: in-place parameter writes vs a local copy (P4.7a) | The readable-first choice stays the output's default, and the interpreter cost of a readable form stays measured and avoidable per project rather than argued per item |
 | Module layout | **source** (ruling 2026-10-23, after Boris 2026-10-08; supersedes the whole-program emission of section 4.3): one das module per C file, a set of mutually dependent files is one module (`<first_stem>_cluster.das`) with a `.das.inc` fragment per file, the entry module holds `main`; the whole-program single module stays as an opt-in (converter flag and `.c2das` sidecar field, the file-to-module mapping of section 4.4). Clusters are the strongly connected components of the unit reference graph (a unit to the owner of each function, object and type it uses), not Boris's include-graph clusters: daslang's `require` must be acyclic and the include graph does not bound the reference graph (Lua 5.4.8 has no include cycle, so the include rule gives one module per file, while `ldo.c` and `lvm.c` call each other without including each other: `luaV_execute`, `luaD_call`). Measured on the native objects' symbol references, Lua's 33 interpreter units give 19 modules: one 15-file core cluster and 18 single-file modules. Ruling 2026-10-24 (6): a plain SCC is a monolith on real programs (Lua's 15-file core; 51 of 62 PureDOOM files in the Rust converter's cluster), so inside each component the cycles are cut where the cut is cheap: a cut set of call edges minimizing the symbols' dynamic call count from a native profiled run (static count without a profile) makes the component acyclic, and each cut symbol is late-bound through a generated `<program>_link.das` (a function-pointer slot and a same-named thin wrapper per symbol, the defining module filling the slot in its `[init]`, an unfilled slot failing closed); edges above a sidecar threshold are never cut and keep their files a cluster; types live in header modules and a global is reached through its owner module, never through a cut. Three layouts: `source` (cut, the default), `scc` (clusters only), `single`; the rule is the program-independent one P6 uses for Doom. Ruling 2026-11-01 (12): the default keeps every cycle one module of fragments (P5.1b2's `scc`), branches separate modules; header clusters as they are; the cut by late binding is the opt-in (for example `source-cut`), the mode names following the meaning; every mode stays tested and captured and the ports publisher publishes the default as the primary one; the language's mutual-`require` limit is a probe, a `probe-findings.md` row and an issue in lookibed/daScript (P7.0a) | Readability and resemblance to the original: `lvm.das` reads beside `lvm.c`, the input of the LLM pass that follows; compile time is not the goal |
-| Loop lowering | **Range form by default** (ruling 2026-11-01 (13)): a canonical counting loop is a das range loop and a `for` body without `continue` takes its increment last; `--loops while` and the sidecar's `"loops": "while"` keep the `while` forms; O1 is therefore not sidecar-gated (the B pull request corrects section 6 and `lowering-examples.md` "General for"); O2 and O3 stay gated after demo sync | Readable and faster at once, the 2026-10-20 ruling applied: P7.0 measured the range form at -63% interp on `primes` alone and the trailing increment at -29% against `finally` and -49% against the flag |
+| Loop lowering | **Range form by default** (ruling 2026-11-01 (13)): a canonical counting loop is a das range loop and a `for` body without `continue` takes its increment last; `--loops while` and the sidecar's `"loops": "while"` keep the `while` forms; O1 is therefore not sidecar-gated (section 6 and `lowering-examples.md` "General for" state the four loop shapes); O2 and O3 stay gated after demo sync | Readable and faster at once, the 2026-10-20 ruling applied: P7.0 measured the range form at -63% interp on `primes` alone and the trailing increment at -29% against `finally` and -49% against the flag |
 
 ## 2. Success metrics (the only numbers that matter)
 
@@ -253,22 +253,30 @@ families.
 
 ## 6. Converter optimization tier (the "cleaner port" pass)
 
-Ruling 2026-11-01 (13): O1 and the trailing increment are the converter's default (section 1,
-Loop lowering; the B pull request restates this section). The rest: sidecar-gated, applied only after demo-sync is green — every optimization trades checks or
-shape for speed while preserving semantics of *correct* programs, so correctness is proven
-first, then the tier switches on. The list is a living discussion with Boris; seeded with
-the obvious ones (all spellings repo-verified 2026-08-21):
+Ruling 2026-11-01 (13): O1 and the trailing increment are the converter's default, not part of
+the gated tier. A canonical counting loop (`for (i = a; i < n; ++i)` with `i` unwritten in the
+body and `n` invariant) is a das range loop, `for (i in range(a, n))`, which unlocks das's
+automatic bound-check elision (`src/ast/ast_bound_check_elision.cpp` proves range-bounded indices
+with no annotation) and is the idiomatic spelling; a `for` body without a `continue` takes its
+increment last, `while (cond) { body; inc }`; the exact eligibility and the remaining shapes are
+"General for" in `lowering-examples.md` and `converter/ARCHITECTURE_EMITTER_LOOPS.md`. The option
+`--loops while` (the sidecar's `"loops": "while"`) turns the range form off for a program.
+
+The rest of the tier is sidecar-gated, applied only after demo-sync is green — every optimization
+trades checks or shape for speed while preserving semantics of *correct* programs, so correctness
+is proven first, then the tier switches on. The list is a living discussion with Boris; seeded with
+the obvious ones (all spellings repo-verified 2026-08-21); O1 stays in the table as the reference
+point the others build on:
 
 | # | Optimization | Mechanism |
 |---|---|---|
-| O1 | Canonical counting loop → das native range loop: `for (i=0; i<n; i++) { a[i]=b; }` ⇒ `for (i in range(n)) { a[i] = b }` when `i` is unmodified in the body and `n` loop-invariant | Unlocks das's **automatic bound-check elision** (`src/ast/ast_bound_check_elision.cpp` proves range-bounded indices with no annotation) plus the interpreter's fused loop fast path |
-| O2 | `[unsafe_deref]` on functions | Existing das function annotation — drops null-deref checks (interp + JIT honor it) |
+| O1 | (default since ruling (13)) Canonical counting loop → das native range loop: `for (i=0; i<n; i++) { a[i]=b; }` ⇒ `for (i in range(n)) { a[i] = b }` when `i` is unmodified in the body and `n` loop-invariant | Unlocks das's **automatic bound-check elision** (`src/ast/ast_bound_check_elision.cpp` proves range-bounded indices with no annotation) plu| O2 | `[unsafe_deref]` on functions | Existing das function annotation — drops null-deref checks (interp + JIT honor it) |
 | O3 | `[hint(unsafe_range_check)]` on functions where O1's provable form doesn't apply (pointer-indexed renderer inner loops) | Existing hint honored by both the interp elision pass and the JIT |
 | O4 | Pointer-walk → index rewrite (`while (*p) p++` family) where the base and bound are recoverable | Feeds O1/elision; where not provable, stays pointer form under O3 |
 | O5 | Byte-fill / byte-copy loop recognition → `memset` / `memcpy` builtins | Doom's renderer has several |
 | O6 | Dense no-fallthrough switch → computed-`goto` jump table (bounds guard + `goto base + x`) | The matched-flag loop is the semantic default; O6 exists for hot dense dispatch (Lua VM: ~85 cases per instruction) |
 
-Expectation (Boris, 2026-08-21): O1–O3 alone likely reach the 35 fps interp bar.
+Expectation (Boris, 2026-08-21): O1–O3 alone likely reach the 35 fps interp bar. (O1 is now the default; O2 and O3 stay gated until demo sync.)
 
 ## 7. c_runtime module (the libc subset)
 
