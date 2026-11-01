@@ -119,7 +119,11 @@ carrying the initializer.
 Declarations: `FunctionDecl` with `ParmVarDecl` and a `CompoundStmt` body, `VarDecl`.
 Statements: compound, `DeclStmt` (one `decl` per variable), expression statements,
 `if`, `while`, `do`, `for` (its five slots, an absent one spelled `{}`), `break`,
-`continue`, `return`, the null statement. Expressions: integer, character, floating (as a
+`continue`, `return`, the null statement. An expression statement that is a GNU statement
+expression `({ ... })` through parentheses, `__extension__` and a cast to `void` is its block, and
+one that is a comma expression holding such an operand is its operands as statements in order
+(glibc's `assert` without `NDEBUG`, `((void) sizeof (e), __extension__ ({ if (e) ; else
+__assert_fail (...); }))`); a statement expression anywhere else fails closed. Expressions: integer, character, floating (as a
 hex-float through the CRT) and string literals (C escapes decoded, the NUL appended),
 `DeclRefExpr`, every pinned cast, the unary, binary, compound-assignment, conditional and
 comma operators, calls, subscripts, `sizeof` and `_Alignof` (clang's `alignof`, with clang's
@@ -137,7 +141,8 @@ initializes named under `field`: one item at that member's index, none for `{}`,
 so the braces leave no trace in the C-IR; a scalar's `{}` fails closed), `CompoundLiteralExpr` (the `compound_lit` node over its
 list; a scalar's list, `(int){5}`, holds its one value at position 0, none for `(int){}`),
 `ConstantExpr` (clang's wrapper of a constant item in a file-scope initializer, its child's
-value) and `OffsetOfExpr`,
+value), `PredefinedExpr` (`__func__`, `__PRETTY_FUNCTION__`: its string literal child), GNU
+`__extension__` (its operand: it only silences pedantic warnings) and `OffsetOfExpr`,
 whose components the dump omits: the dumper reads `T, f` from the macro's own text at its
 `expansionLoc`, in whichever file of the program that is (F20). A location with an `expansionLoc` is that location.
 

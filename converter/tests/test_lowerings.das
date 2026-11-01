@@ -1899,4 +1899,11 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "def private p8_das_type_names__half2(_c_short8 : int) : int \{")
         has_text(t, text, "var _c_fixed_array : int = ")
     }
+    t |> run("glibc's `assert` without NDEBUG: `__extension__` dropped, its statement expression a block, `__PRETTY_FUNCTION__` and `__func__` the name's literal") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_glibc_assert", text)
+        has_text(t, text, "            if (total == 14) \{\n            \} else \{\n                c_assert_fail(reinterpret<uint8?>(\"total == 14\"), ")
+        has_text(t, text, "reinterpret<uint8?>(\"int main(void)\"))")
+        has_text(t, text, "require c_runtime/c_exit")
+    }
 }
