@@ -9,9 +9,9 @@ require daslib/fio
 require daslib/clargs
 require ../suites/suite_runner.das
 require ../suites/csmith/generate.das
-require ../perf/perf_compose.das
 require ../converter/pipeline.das
 require ../lua/sources.das
+require readability_inputs
 require readability_file
 require readability_count
 
@@ -47,66 +47,28 @@ struct ReadabilityArgs {
     show_help : bool
 }
 
-// the C file of an input, written under `dir` when it is generated or composed
-def private c_file_of(key, dir : string; var error : string&) : string {
-    let group = group_of(key)
-    let id = slice(key, length(group) + 1)
-    if (group == "c_testsuite") {
-        return "{C_TESTSUITE_TESTS}/{id}.c"
-    } elif (group == "gcc_torture") {
-        return "{GCC_TORTURE_TESTS}/{id}.c"
-    } elif (group == "perf") {
-        return write_composed(kernel_of_key(id), dir)
-    }
-    let prog = csmith_program(id, dir, CSMITH_TIMEOUT)
-    error = prog.timed_out ? "csmith took longer than {int(CSMITH_TIMEOUT)} s" : prog.error
-    return prog.c_path
-}
-
 def private counts_path(key : string) : string => "{WORK}/{key}/counts.txt"
 
-// an error's first line, and when that line only names the stage (`dumper: clang exited 1:`)
-// the first non-empty line after it
-def private headline(error : string) : string {
-    let lines <- [for (l in split(error, "\n")); strip(l); where !empty(strip(l))]
-    if (empty(lines)) {
-        return error
-    }
-    return lines[0] |> ends_with(":") && length(lines) > 1 ? "{lines[0]} {lines[1]}" : lines[0]
-}
-
-// a Lua program converted into `dir` in the layout its key names, every module counted with the
-// fragments it includes, and the counts summed into one
-def private measure_lua(key, dir : string) : ModuleCount {
-    let id = slice(key, length("lua/"))
-    let single = id |> ends_with(SINGLE_KEY_SUFFIX)
-    let scc = id |> ends_with(SCC_KEY_SUFFIX)
-    let stem = single ? slice(id, 0, length(id) - length(SINGLE_KEY_SUFFIX)) : scc ? slice(id, 0, length(id) - length(SCC_KEY_SUFFIX)) : id
-    let res <- convert_program(program_sources(stem), path_join(dir, "das"), "linux", "", SIDECAR, "", "", "main", single ? "single" : scc ? "scc" : "source")
-    if (!res.ok) {
-        return ModuleCount(error = "convert: {headline(res.error)}")
-    }
-    if (single) {
-        return <- count_module(res.das_path)
+// a Lua program's modules counted with the fragments each includes, and the counts summed into one
+def private count_lua(conv : ConvertedInput) : ModuleCount {
+    if (empty(conv.fragments) && length(conv.das_paths) == 1) {
+        return <- count_module(conv.das_paths[0])
     }
     var total : ModuleCount
     total.counts <- {for (m in METRICS); m => 0}
-    for (f in res.files) {
-        if (f |> ends_with(".das")) {
-            let path = path_join(path_join(dir, "das"), f)
-            var inscope included : array<string>
-            for (ln in split(fread(path), "\n")) {
-                if (ln |> starts_with("include ")) {
-                    included |> push(path_join(dir_name(path), slice(ln, length("include "))))
-                }
+    for (path in conv.das_paths) {
+        var inscope included : array<string>
+        for (ln in split(fread(path), "\n")) {
+            if (ln |> starts_with("include ")) {
+                included |> push(path_join(dir_name(path), slice(ln, length("include "))))
             }
-            let mc <- count_module(path, included)
-            if (!empty(mc.error)) {
-                return ModuleCount(error = "{f}: {headline(mc.error)}")
-            }
-            for (m in METRICS) {
-                total.counts[m] += mc.counts?[m] ?? 0
-            }
+        }
+        let mc <- count_module(path, included)
+        if (!empty(mc.error)) {
+            return ModuleCount(error = "{base_name(path)}: {headline(mc.error)}")
+        }
+        for (m in METRICS) {
+            total.counts[m] += mc.counts?[m] ?? 0
         }
     }
     return <- total
@@ -114,20 +76,14 @@ def private measure_lua(key, dir : string) : ModuleCount {
 
 // the worker: one input converted into work/<key>/ and counted
 def private measure_one(key : string) : ModuleCount {
-    let dir = "{WORK}/{key}"
+    let conv <- convert_input(key, "{WORK}/{key}")
+    if (!empty(conv.error)) {
+        return ModuleCount(error = conv.error)
+    }
     if (group_of(key) == "lua") {
-        return <- measure_lua(key, dir)
+        return <- count_lua(conv)
     }
-    var error : string
-    let c_path = c_file_of(key, dir, error)
-    if (!empty(error)) {
-        return ModuleCount(error = error)
-    }
-    let res <- convert(c_path, path_join(dir, "das"), "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "")
-    if (!res.ok) {
-        return ModuleCount(error = "convert: {headline(res.error)}")
-    }
-    return <- count_module(res.das_path)
+    return <- count_module(conv.das_paths[0])
 }
 
 // the committed capture, empty when there is none
