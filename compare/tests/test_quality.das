@@ -19,7 +19,7 @@ require _common
 
 // the stand-in translator: `refuse.c` is refused, any other file becomes a module defining `fibI`
 // and the wrapper `main`
-let STAND_IN = "#!/bin/sh\nout=\"\"\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    prev=\"$a\"\ndone\nstem=$(basename \"$2\" .c)\ncase \"$*\" in\n    *nomain.c*) mkdir -p \"$out\"; echo 'options gen2' > \"$out/$stem.das\"; exit 0 ;;\n    *refuse.c*) echo \"translation failed: unsupported external call: ldexp\" >&2; exit 2 ;;\n    *.json*) echo \"translation failed: unsupported external call: ldexp\" >&2; exit 2 ;;\nesac\nmkdir -p \"$out\"\nprintf 'options gen2\\n\\n[export, sideeffects]\\ndef fibI(var n : int) : int \{\\n    return n\\n\}\\n[export]\\ndef main() : int \{\\n    return fibI(0)\\n\}\\n' > \"$out/$stem.das\"\n"
+let STAND_IN = "#!/bin/sh\nout=\"\"\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    prev=\"$a\"\ndone\nstem=$(basename \"$2\" .c)\ncase \"$*\" in\n    *nomain.c*) mkdir -p \"$out\"; echo 'options gen2' > \"$out/$stem.das\"; exit 0 ;;\n    *refuse.c*) echo \"translation failed: unsupported external call: ldexp\" >&2; exit 2 ;;\n    *.json*) echo \"translation failed: unsupported external call: ldexp\" >&2; exit 2 ;;\nesac\nmkdir -p \"$out\"\nprintf 'options gen2\\n\\n[export, sideeffects]\\ndef fibI(var n : int) : int \{\\n    return n\\n\}\\n[export]\\ndef main() : int \{\\n    return fibI(0)\\n\}\\nvar c2da_str_0 : int = 1\\n' > \"$out/$stem.das\"\n"
 
 // a scratch folder holding the executable stand-in `rust`, passed to `body` with its path
 def private with_stand_in(t : T?; name : string; body : block<(dir, bin : string) : void>) {
@@ -69,8 +69,9 @@ def test_corpus(t : T?) {
         t |> equal(length(quality_corpus_of(path, "", error)), 0)
         t |> success(error |> starts_with("cannot read {path}"), error)
         error = ""
-        t |> equal(length(quality_corpus_of(path_join(dir, "absent.json"), "", error)), 0)
-        t |> equal(error, "")
+        let absent = path_join(dir, "absent.json")
+        t |> equal(length(quality_corpus_of(absent, "", error)), 0)
+        t |> success(error |> starts_with("no capture at {absent}"), error)
         rmdir_rec(dir)
     }
 }
@@ -156,6 +157,7 @@ def test_function_text(t : T?) {
         t |> equal(declared_name("    def x()"), "")
         t |> equal(declared_name("require strings"), "")
         t |> success(!is_c_function("main_0", "main", "ours") && !is_c_function("xmiddle", "middle", "ours"))
+        t |> success(is_c_function("fib_loop__middle", "middle", "ours") && !is_c_function("fib_loop__middle", "middle", "rust"))
     }
 }
 
@@ -214,29 +216,32 @@ def test_section_capture(t : T?) {
 
 [test]
 def test_worker(t : T?) {
-    t |> run("a sampled kernel through a worker: our conversion, the stand-in's module, the functions") @(t : T?) {
+    t |> run("a sampled kernel measured in a scratch root: our conversion, the stand-in's module, the functions") @(t : T?) {
         t |> with_stand_in("cmp_quality_worker") $(dir, bin) {
+            let q <- measure_key("perf/fib_loop", bin, dir)
+            t |> equal(q.ours.status, "ok", q.ours.error)
+            t |> equal(q.ours.counts?["c_function"] ?? 0, 1)
+            t |> equal(q.rust.status, "ok", q.rust.error)
+            t |> equal(q.rust.lines, 10)
+            t |> equal(q.rust_c2da?["c2da_str_0"] ?? 0, 1)
+            t |> equal(join([for (f in q.functions); f.name], " "), "fibI kernel_run")
+            t |> success(q.functions[0].ours |> starts_with("def private fib_loop__fibI("), q.functions[0].ours)
+            t |> equal(q.functions[0].rust, "[export, sideeffects]\ndef fibI(var n : int) : int \{\n    return n\n\}")
+            t |> equal(q.functions[1].rust, "")
+            t |> success(fexist(path_join(dir, "perf/fib_loop/quality.json")))
+        }
+    }
+    t |> run("a key through a worker process: a kernel no folder has") @(t : T?) {
+        t |> with_stand_in("cmp_quality_driver") $(dir, bin) {
             with_env(bin, "") {
-                let entries <- drive_quality(["perf/fib_loop", "perf/no_such_kernel"], 2)
-                entries |> get("perf/fib_loop") $(q) {
-                    t |> equal(q.ours.status, "ok", q.ours.error)
-                    t |> equal(q.ours.counts?["c_function"] ?? 0, 1)
-                    t |> equal(q.rust.status, "ok", q.rust.error)
-                    t |> equal(q.rust.lines, 9)
-                    t |> equal(q.rust.runtime_lines, 0)
-                    t |> equal(join([for (f in q.functions); f.name], " "), "fibI kernel_run")
-                    t |> success(q.functions[0].ours |> starts_with("def private fib_loop__fibI("), q.functions[0].ours)
-                    t |> equal(q.functions[0].rust, "[export, sideeffects]\ndef fibI(var n : int) : int \{\n    return n\n\}")
-                    t |> equal(q.functions[1].rust, "")
-                }
-                entries |> get("perf/no_such_kernel") $(q) {
+                let entries <- drive_quality(["perf/cmp_test_no_kernel"], 1)
+                entries |> get("perf/cmp_test_no_kernel") $(q) {
                     t |> equal(q.ours.status, "convert")
-                    t |> equal(q.rust.error, "no input is keyed perf/no_such_kernel")
+                    t |> equal(q.rust.error, "no input is keyed perf/cmp_test_no_kernel")
                 }
-                t |> equal(length(entries), 2)
+                t |> equal(length(entries), 1)
             }
-            rmdir_rec(quality_work("perf/fib_loop"))
-            rmdir_rec(quality_work("perf/no_such_kernel"))
+            rmdir_rec(quality_work("perf/cmp_test_no_kernel"))
         }
     }
     t |> run("a suite case's file by its id, a refused translation, a csmith seed csmith refuses") @(t : T?) {
@@ -252,12 +257,13 @@ def test_worker(t : T?) {
             let refused = path_join(dir, "refuse.c")
             fwrite(refused, "int main(void) \{ return 0; \}\n")
             var entry : string
-            let side <- rust_quality(bin, refused, path_join(dir, "out"), args, 30.0, entry)
+            var c2da : table<string; int>
+            let side <- rust_quality(bin, refused, path_join(dir, "out"), args, 30.0, entry, c2da)
             t |> equal(side.status, "refused")
             t |> equal(side.error, "translation failed: unsupported external call: ldexp")
             let nomain = path_join(dir, "nomain.c")
             fwrite(nomain, "int f(void) \{ return 0; \}\n")
-            let no_entry <- rust_quality(bin, nomain, path_join(dir, "out2"), args, 30.0, entry)
+            let no_entry <- rust_quality(bin, nomain, path_join(dir, "out2"), args, 30.0, entry, c2da)
             t |> equal(no_entry.status, "refused")
             t |> success(no_entry.error |> ends_with("defines main"), no_entry.error)
             t |> equal(entry, "")
@@ -293,13 +299,35 @@ def test_quality_command_line(t : T?) {
     }
 }
 
-let RUNTIME_MODULE = "options gen2\n\nvar c2da_rt_heap : array<uint8>\n\ndef program_first() : int \{\n    return 1\n\}\n\n[sideeffects]\ndef c2da_std_helper(x : int) : int \{\n\n    return x\n\}\n[export, sideeffects]\ndef program_second() : int \{\n    return 2\n\}\n[sideeffects]\ndef c2da_layout_proofs() \{\n    pass\n\}\n"
+let RUNTIME_MODULE = "options gen2\n\nvar c2da_rt_heap : array<uint8>\n\ndef program_first() : int \{\n    return 1\n\}\n\n[sideeffects]\ndef c2da_std_helper(x : int) : int \{\n\n    return x\n\}\ntypedef clockid_t = int\nvar c2da_str_0 : array<uint8>\n[export, sideeffects]\ndef program_second() : int \{\n    return 2\n\}\n[sideeffects]\ndef c2da_clip_uint() \{\n    pass\n\}\n"
 
 [test]
 def test_runtime_lines(t : T?) {
-    t |> run("each c2da_ declaration from its annotation to the next one's, the last to the end") @(t : T?) {
-        t |> equal(runtime_lines(RUNTIME_MODULE), 1 + 4 + 4)
-        t |> equal(runtime_lines("options gen2\n\ndef program() \{\n\}\n"), 0)
-        t |> equal(runtime_lines(""), 0)
+    t |> run("each c2da_ declaration's lines, from its annotation to the next declaration, a typedef one") @(t : T?) {
+        let blocks <- c2da_blocks(RUNTIME_MODULE)
+        t |> equal(blocks?["c2da_rt_heap"] ?? 0, 1)
+        t |> equal(blocks?["c2da_std_helper"] ?? 0, 4)
+        t |> equal(blocks?["c2da_str_0"] ?? 0, 1)
+        t |> equal(blocks?["c2da_clip_uint"] ?? 0, 4)
+        t |> equal(length(blocks), 4)
+        t |> equal(length(c2da_blocks("options gen2\n\ndef program() \{\n\}\n")), 0)
+        t |> equal(length(c2da_blocks("")), 0)
+    }
+    t |> run("runtime: the heap and libc prefixes and a name every module has; the rest program code") @(t : T?) {
+        var entries <- {"a" => KeyQuality(rust <- SideQuality(status = "ok"), rust_c2da <- {"c2da_rt_heap" => 1, "c2da_clip_uint" => 4, "c2da_str_0" => 2, "c2da_layout_proofs" => 3}), "b" => KeyQuality(rust <- SideQuality(status = "ok"), rust_c2da <- {"c2da_clip_uint" => 4, "c2da_ginit_g_1" => 5}), "c" => KeyQuality(rust <- SideQuality(status = "compile"), rust_c2da <- {"c2da_std_printf" => 7, "c2da_clip_uint" => 1})}
+        split_runtime(entries)
+        entries |> get("a") $(q) {
+            t |> equal(q.rust.runtime_lines, 5)
+            t |> equal(q.rust.program_c2da_lines, 5)
+        }
+        entries |> get("b") $(q) {
+            t |> equal(q.rust.runtime_lines, 4)
+            t |> equal(q.rust.program_c2da_lines, 5)
+        }
+        entries |> get("c") $(q) {
+            t |> equal(q.rust.runtime_lines, 8)
+        }
+        let none : table<string>
+        t |> success(is_runtime("c2da_std_x", none) && is_runtime("c2da_rt_y", none) && !is_runtime("c2da_str_1", none))
     }
 }

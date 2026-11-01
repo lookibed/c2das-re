@@ -22,9 +22,10 @@ daslang; this repository never builds it inside a test and never vendors it.
   cell or error (`lane_entries`), the geometric means (`lane_geomean`, `geomeans`) and the
   capture's `perf` section (`perf_section`). It times through `perf/perf_measure.das` and composes
   through `perf/perf_compose.das`; it copies neither.
-- `quality_compare.das` - the quality comparison (section 10, `ARCHITECTURE_QUALITY.md`): the corpus (`quality_corpus`), one
-  key measured on both sides by a worker (`measure_key`), the Rust runtime's lines
-  (`runtime_lines`), the function extraction (`function_text`), the totals and the `quality` section.
+- `quality_compare.das` - the quality comparison (section 10, `ARCHITECTURE_QUALITY.md`): the corpus
+  (`quality_corpus`), one key measured on both sides by a worker (`measure_key`), the Rust side's
+  `c2da_` declarations split into its runtime and program code (`c2da_blocks`, `split_runtime`), the
+  function extraction (`function_text`), the totals and the `quality` section.
 - `lua_compare.das` - the Lua comparison (section 9): the translation of the interpreter, the gap
   (`program_gap`) and the `lua` and `doom` sections.
 - `run.das` - the command line, run from the repository root with both module folders loaded:
@@ -176,11 +177,11 @@ model it implements.
 
 ## 7. The capture {#capture}
 
-`results_linux.json` holds one section per comparison. A run rewrites only the entries of the
-suites it ran inside `suites`, keeping every other suite and section; a `--perf` run replaces the
-`perf` section whole (section 8), keeping the others, as `--quality` replaces `quality` and `--lua` `lua` and `doom`; a
-`--filter` run writes nothing. Each entry carries the stamps of the run that wrote it, since a run over one suite keeps
-the others' entries from earlier runs. A suite's entry:
+`results_linux.json` holds one section per comparison. A run rewrites only the entries of the suites
+it ran inside `suites`, keeping every other suite and section; a `--perf` run replaces the `perf`
+section whole (section 8), keeping the others, as `--quality` replaces `quality` and `--lua` `lua`
+and `doom`; a `--filter` run writes nothing. Each entry carries the stamps of the run that wrote it,
+since a run over one suite keeps the others' entries from earlier runs. A suite's entry:
 
 - `rust_commit` - `rust_version` of the binary, "" when it has none, with `rust_commit_error`
   saying why (the run logs it as a warning); `daslang` - the first line of `daslang -version`, as
