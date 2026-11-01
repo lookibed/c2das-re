@@ -133,6 +133,33 @@ def test_verdicts(t : T?) {
         t |> equal(first_difference("a\n", "a\n"), "")
         t |> equal(judge_run(0, "[I] jit: compiled\na\n", "a\n", 9.0).status, "pass")
     }
+    t |> run("a run's stdout judged, its stderr apart and read for an exit's error line") @(t : T?) {
+        var out, err : string
+        t |> equal(run_split(["sh", "-c", "echo a; echo log >&2"], 30.0, out, err), 0)
+        t |> equal("{out}|{err}", "a\n|log\n")
+        t |> equal(run_judged(["sh", "-c", "echo a; echo log >&2"], "a\n", 30.0).status, "pass")
+        let failed = run_judged(["sh", "-c", "echo a; echo 'error: x' >&2; exit 4"], "a\n", 30.0)
+        t |> equal("{failed.status} {failed.reason}", "exit exit 4: error: x")
+        t |> equal(judge_run(4, "a\n", "", "a\n", 9.0).reason, "exit 4: a")
+    }
+    t |> run("a lane's command: daslang over the module, or the exe binary, the program's arguments last") @(t : T?) {
+        t |> with_scratch("cmp_projects_lane_argv") $(dir) {
+            let none : array<string>
+            var error : string
+            let jit <- lane_argv("m.das", "jit", dir, none, ["f"], 9.0, error)
+            t |> equal(join([for (i in range(length(jit) - 4, length(jit))); jit[i]], " "), "-jit m.das -- f")
+            let das = path_join(dir, "m.das")
+            fwrite(das, "options gen2\n[export]\ndef main() : int \{\n    return 0\n\}\n")
+            let exe <- lane_argv(das, "exe", path_join(dir, "w"), none, ["f"], 300.0, error)
+            t |> equal(length(exe), 2, error)
+            t |> success(fexist(exe[0]) && exe[1] == "f", join(exe, " "))
+            let slow <- lane_argv(das, "exe", path_join(dir, "w"), none, ["f"], 1.0, error)
+            t |> equal("{length(slow)} {error}", "0 timeout: the build or its run took longer than 1 s")
+            fwrite(das, "options gen2\n[export]\ndef main() : int \{\n    return undefined_name\n\}\n")
+            let broken <- lane_argv(das, "exe", path_join(dir, "w"), none, ["f"], 300.0, error)
+            t |> success(empty(broken) && error |> starts_with("exe build: the build exited "), error)
+        }
+    }
     t |> run("a lane's limit: a run, or a build step and its run") @(t : T?) {
         t |> equal(lane_timeout("interp", COMPARE_LIMITS), 120.0)
         t |> equal(lane_timeout("jit", COMPARE_LIMITS), 120.0)
@@ -299,6 +326,47 @@ def test_project_entry(t : T?) {
             let lines <- project_lines("p", entry)
             t |> equal(lines[0], "p: native native line 1: got `nope`, expected `yes`")
             t |> success(has_value(lines, "p: rust aot: refused no native result: line 1: got `nope`, expected `yes`"), join(lines, "\n"))
+        }
+    }
+}
+
+[test]
+def test_working_folder(t : T?) {
+    t |> run("a path made absolute, and a working folder made and entered, the one before returned") @(t : T?) {
+        t |> equal(absolute_path("/a/b"), "/a/b")
+        t |> equal(absolute_path("a/b"), path_join(getcwd(), "a/b"))
+        t |> with_scratch("cmp_projects_cwd") $(dir) {
+            let before = getcwd()
+            let back = enter_working_folder(path_join(dir, "new/cwd"))
+            let inside = getcwd()
+            fwrite("mark", "x")
+            chdir(back)
+            t |> equal(back, before)
+            t |> equal(inside, path_join(dir, "new/cwd"))
+            t |> success(fexist(path_join(dir, "new/cwd/mark")))
+        }
+    }
+    t |> run("every program of a project, native and each lane of both sides, runs in <work>/cwd, judged on its stdout") @(t : T?) {
+        t |> with_scratch("cmp_projects_entry_cwd") $(dir) {
+            let mark = "#include <stdio.h>\nint main(void) \{\n    FILE *f = fopen(\"c_mark\", \"w\");\n    if (f) fclose(f);\n    fprintf(stderr, \"log\\n\");\n    printf(\"yes\\n%s\");\n    return 0;\n\}\n"
+            fwrite(path_join(dir, "prog.c"), replace(mark, "%s", ""))
+            fwrite(path_join(dir, "bench.c"), replace(mark, "%s", "setup_us=3\\ndecode_us=6\\n"))
+            fwrite(path_join(dir, "input"), "")
+            let program = "options gen2\nrequire daslib/fio\n[export]\ndef main() : int \{\n    fwrite(\"das_mark\", \"x\")\n    print(\"yes\\n%s\")\n    return 0\n\}\n"
+            fwrite(path_join(dir, "prog.das"), replace(program, "%s", ""))
+            fwrite(path_join(dir, "bench.das"), replace(program, "%s", "setup_us=3\\ndecode_us=6\\n"))
+            let bin = path_join(dir, "rust")
+            write_script(bin, "#!/bin/sh\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    if [ \"$prev\" = \"--file\" ]; then src=\"$a\"; fi\n    prev=\"$a\"\ndone\nmkdir -p \"$out\"\ncp {dir}/$(basename \"$src\" .c).das \"$out/prog.das\"\n")
+            let p = Project(name = "p", dir = dir, tu = "prog.c", bench_tu = "bench.c", native_sources <- ["prog.c"], native_bench_sources <- ["bench.c"], c_std = "c11", fixture = "input", expected = "yes\n", bench_free_keys <- ["setup_us", "decode_us"])
+            let entry = project_entry(p, bin, path_join(dir, "work"), 1, Stamps())
+            t |> equal(entry?["native"]?["status"] ?? "", "pass")
+            for (side in ["ours", "rust"]) {
+                t |> equal(join([for (lane in DAS_LANES); entry?[side]?["lanes"]?[lane]?["status"] ?? ""], " "), "pass pass pass skipped", side)
+                t |> equal(entry?["speed"]?[side]?["exe"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf, side)
+            }
+            t |> equal(entry?["speed"]?["native"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf)
+            t |> success(fexist(path_join(dir, "work/cwd/c_mark")) && fexist(path_join(dir, "work/cwd/das_mark")))
+            t |> success(!fexist("c_mark") && !fexist("das_mark"))
         }
     }
 }
