@@ -96,6 +96,13 @@ def test_time_limits(t : T?) {
         t |> equal(error, "a sample took longer than 1 s")
         t |> equal(length(cell.samples), 0)
     }
+    t |> run("a lane whose sample passes its limit: the error line under the kernel's name, no cell") @(t : T?) {
+        var inscope cells : table<string; Cell>
+        var errors : array<string>
+        measure_lane(cells, errors, "k", "interp", ["sleep", "5"], 1, 0, 1.0)
+        t |> equal(join(errors, "|"), "k/interp: a sample took longer than 1 s")
+        t |> success(!key_exists(cells, "interp"))
+    }
     t |> run("an exe build whose run never ends leaves no lane, the limit named") @(t : T?) {
         let work = "perf/work/lanes_exe_limit"
         mkdir_rec(work)

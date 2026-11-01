@@ -61,7 +61,7 @@ def test_kernels_and_composition(t : T?) {
     }
 }
 
-let GEOMEAN_KERNELS = "\{\"a\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"jit\": \{\"time\": 2.0\}\}, \"rust\": \{\"lanes\": \{\"jit\": \{\"time\": 1.0\}\}\}\}, \"b\": \{\"native\": \{\"time\": 0.5\}, \"ours\": \{\"jit\": \{\"time\": 4.0\}, \"aot\": \{\"time\": 1.0\}\}, \"rust\": \{\"lanes\": \{\"jit\": \{\"time\": 2.0\}, \"aot\": \{\"error\": \"not built\"\}\}\}\}, \"c\": \{\"native\": \{\"error\": \"exited 1\"\}, \"ours\": \{\"jit\": \{\"time\": 9.0\}\}, \"rust\": \{\"lanes\": \{\"jit\": \{\"time\": 9.0\}\}\}\}, \"d\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"jit\": \{\"time\": 9.0\}\}, \"rust\": \{\"status\": \"refused\", \"error\": \"translation failed: x\"\}\}\}"
+let GEOMEAN_KERNELS = "\{\"a\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"jit\": \{\"time\": 2.0\}\}, \"rust\": \{\"lanes\": \{\"jit\": \{\"time\": 1.0\}\}\}\}, \"b\": \{\"native\": \{\"time\": 0.5\}, \"ours\": \{\"jit\": \{\"time\": 4.0\}, \"aot\": \{\"time\": 1.0\}\}, \"rust\": \{\"lanes\": \{\"jit\": \{\"time\": 2.0\}, \"aot\": \{\"error\": \"not built\"\}\}\}\}, \"c\": \{\"native\": \{\"error\": \"exited 1\"\}, \"ours\": \{\"jit\": \{\"time\": 9.0\}\}, \"rust\": \{\"lanes\": \{\"jit\": \{\"time\": 9.0\}\}\}\}, \"d\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"jit\": \{\"time\": 9.0\}\}, \"rust\": \{\"status\": \"refused\", \"error\": \"translation failed: x\"\}\}, \"e\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"jit\": \{\"error\": \"exited 1\"\}\}, \"rust\": \{\"lanes\": \{\"jit\": \{\"time\": 3.0\}\}\}\}\}"
 
 [test]
 def test_geomean(t : T?) {
@@ -84,10 +84,16 @@ def test_geomean(t : T?) {
         t |> equal(rust, 0.0lf)
         lane_geomean(null, "jit", ours, rust, count)
         t |> equal(count, 0)
+        lane_geomean(JV(1), "jit", ours, rust, count)
+        t |> equal(count, 0)
+        t |> equal(ours, 0.0lf)
+        t |> equal(rust, 0.0lf)
         var by_lane = geomeans(kernels)
         t |> equal(by_lane?["jit"]?["kernels"] ?? 0, 2)
         t |> equal(by_lane?["interp"]?["kernels"] ?? -1, 0)
-        t |> equal(length(geomean_lines(JV({"geomean" => by_lane}))), length(DAS_LANES))
+        let lines <- geomean_lines(JV({"geomean" => by_lane}))
+        t |> equal(length(lines), length(DAS_LANES))
+        t |> equal(lines[1], "jit: ours 4.000, rust 2.000 times native over 2 kernels")
     }
 }
 
@@ -296,17 +302,68 @@ def test_compare_kernel_refused(t : T?) {
 
 [test]
 def test_perf_command_line(t : T?) {
-    t |> run("--perf with a suite exits 1; --perf without the Rust translator exits 2") @(t : T?) {
+    t |> run("--perf with a suite or under one sample exits 1; --perf without the Rust translator exits 2") @(t : T?) {
         var out : string
         var argv <- daslang_cmd(CONVERTED_MODULES)
         argv |> push_from(["compare/run.das", "--", "--perf", "--suites"])
         t |> equal(run_and_capture(argv, out, 300.0), 1, out)
         t |> success(out |> contains("--perf runs alone"), out)
+        var with_suite <- daslang_cmd(CONVERTED_MODULES)
+        with_suite |> push_from(["compare/run.das", "--", "--perf", "--suite", "csmith"])
+        t |> equal(run_and_capture(with_suite, out, 300.0), 1, out)
+        t |> success(out |> contains("--perf runs alone"), out)
+        var no_samples <- daslang_cmd(CONVERTED_MODULES)
+        no_samples |> push_from(["compare/run.das", "--", "--perf", "--samples", "0"])
+        t |> equal(run_and_capture(no_samples, out, 300.0), 1, out)
+        t |> success(out |> contains("--samples takes a count of at least 1, not 0"), out)
         with_env("/nonexistent/c2das-rust", "") {
             var perf_only <- daslang_cmd(CONVERTED_MODULES)
             perf_only |> push_from(["compare/run.das", "--", "--perf"])
             t |> equal(run_and_capture(perf_only, out, 300.0), 2, out)
             t |> success(out |> contains("no Rust translator at /nonexistent/c2das-rust"), out)
+        }
+    }
+}
+
+[test]
+def test_compare_limits(t : T?) {
+    t |> run("both sides' lanes: 120 s a sample, 300 s a build with its run") @(t : T?) {
+        t |> equal(COMPARE_LIMITS.sample, 120.0)
+        t |> equal(COMPARE_LIMITS.build, 300.0)
+    }
+    t |> run("a program that never ends: every lane is an error naming its limit") @(t : T?) {
+        let work = "compare/work/perf/cmp_test/forever"
+        mkdir_rec(work)
+        let das_path = path_join(work, "forever.das")
+        fwrite(das_path, "options gen2\n[export]\ndef main() : int \{\n    var i = 0\n    while (i >= 0) \{\n        i = (i + 1) % 7\n    \}\n    return i\n\}\n")
+        let no_modules : array<string>
+        let lanes = JV(das_lane_entries("rust", das_path, work, no_modules, 1, 0, LaneLimits(sample = 1.0, build = 15.0)))
+        t |> equal(lanes?["interp"]?["error"] ?? "", "a sample took longer than 1 s")
+        t |> equal(lanes?["jit"]?["error"] ?? "", "a sample took longer than 1 s")
+        t |> equal(lanes?["exe"]?["error"] ?? "", "the build or its run took longer than 15 s")
+        t |> equal(lanes?["aot"]?["error"] ?? "", "the build or its run took longer than 15 s")
+        rmdir_rec("compare/work/perf/cmp_test")
+    }
+}
+
+[test]
+def test_perf_run(t : T?) {
+    t |> run("one kernel, one sample, a stand-in translator: the kernel line, four geomean lines, no capture") @(t : T?) {
+        t |> with_scratch("cmp_perf_run") $(dir) {
+            let bin = path_join(dir, "rust")
+            fwrite(bin, STAND_IN)
+            var out : string
+            run_and_capture(["chmod", "+x", bin], out, 30.0)
+            var argv <- ["env", "DAS_LOG_LEVEL=info"]
+            argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["compare/run.das", "--", "--perf", "--filter", "dasprofile/fib_loop", "--samples", "1"])
+            with_env(bin, "") {
+                t |> equal(run_and_capture(argv, out, 900.0), 0, out)
+            }
+            let lines <- split(out, "\n")
+            t |> equal(length([for (ln in lines); ln; where ln |> contains("dasprofile/fib_loop: native ")]), 1, out)
+            t |> equal(length([for (ln in lines); ln; where ln |> contains(" times native over ")]), 4, out)
+            t |> success(out |> contains("a --filter run writes no capture"), out)
+            t |> success(!(out |> contains("dasprofile/fib_recursive: native")), out)
         }
     }
 }
