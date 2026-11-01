@@ -164,6 +164,7 @@ def test_lowerings(t : T?) {
     p5_lua_expression_fixtures(t)
     p5_lua_review_fixtures(t)
     p5_skip_audit_fixtures(t)
+    p8_input_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -1876,5 +1877,17 @@ def p5_skip_audit_fixtures(t : T?) {
     }
     t |> run("a __builtin_constant_p over another one clang cannot fold fails closed") @(t : T?) {
         rejects(t, "constant_p_nested", "int main(int argc, char **argv) \{ (void)argv; return __builtin_constant_p(__builtin_constant_p(argc)) - 1; \}\n", "a `__builtin_constant_p` whose argument holds another one clang cannot fold")
+    }
+}
+
+// P8.4's input gaps: C the real projects of P8.2 spell that the converter refused
+def p8_input_fixtures(t : T?) {
+    t |> run("a braced scalar initializer is the unbraced one: a pointer's `{ NULL }`, an int's, a double's, an enum's, a record's scalar members") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_braced_scalar", text)
+        has_text(t, text, "var private p8_braced_scalar__err_none : uint8? = null\n")
+        has_text(t, text, "var private p8_braced_scalar__counter : int = 3\n")
+        has_text(t, text, "    var c : color = color.BLUE\n")
+        has_text(t, text, "    var msg : uint8? = null\n")
     }
 }
