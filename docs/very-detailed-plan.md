@@ -270,7 +270,8 @@ point the others build on:
 
 | # | Optimization | Mechanism |
 |---|---|---|
-| O1 | (default since ruling (13)) Canonical counting loop → das native range loop: `for (i=0; i<n; i++) { a[i]=b; }` ⇒ `for (i in range(n)) { a[i] = b }` when `i` is unmodified in the body and `n` loop-invariant | Unlocks das's **automatic bound-check elision** (`src/ast/ast_bound_check_elision.cpp` proves range-bounded indices with no annotation) plu| O2 | `[unsafe_deref]` on functions | Existing das function annotation — drops null-deref checks (interp + JIT honor it) |
+| O1 | (default since ruling (13)) Canonical counting loop → das native range loop: `for (i=0; i<n; i++) { a[i]=b; }` ⇒ `for (i in range(n)) { a[i] = b }` when `i` is unmodified in the body and `n` loop-invariant | Unlocks das's **automatic bound-check elision** (`src/ast/ast_bound_check_elision.cpp` proves range-bounded indices with no annotation) plus the interpreter's fused loop fast path |
+| O2 | `[unsafe_deref]` on functions | Existing das function annotation — drops null-deref checks (interp + JIT honor it) |
 | O3 | `[hint(unsafe_range_check)]` on functions where O1's provable form doesn't apply (pointer-indexed renderer inner loops) | Existing hint honored by both the interp elision pass and the JIT |
 | O4 | Pointer-walk → index rewrite (`while (*p) p++` family) where the base and bound are recoverable | Feeds O1/elision; where not provable, stays pointer form under O3 |
 | O5 | Byte-fill / byte-copy loop recognition → `memset` / `memcpy` builtins | Doom's renderer has several |

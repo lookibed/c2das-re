@@ -439,14 +439,16 @@ first of these that applies.
 1. **The range loop** (O1): `for (T i = a; i < n; ++i)` (or `i++`, `i += 1`) with `T` a 32- or
    64-bit integer the initializer declares, the test comparing `i` with a bound of `i`'s own type,
    the body never writing `i` or taking its address, and the bound invariant (literals, enumerators,
-   `sizeof`, the function's own unwritten locals and parameters under casts, `+`, `-`, `*`; never a
-   call, a global, a load through a pointer or a volatile object) is
+   `sizeof`, and the function's own locals and parameters that the body never writes and nothing in
+   the function takes the address of, under casts, `+`, `-`, `*`; never `i` itself, a call, a
+   global, a load through a pointer or a volatile object) is
    `for (i in range(a, n))` — `range`, `range64`, `urange` or `urange64` by `T`, `range(n)` when
    `a` is the literal 0. das evaluates `a` then `n` once (C's order; with the bound invariant, C's
    every-pass test); `i` dies with the loop as C99's does; `continue` reaches the next value as C's
-   increment does; a start past the bound runs no pass (`probes/test_loops.das`).
+   increment does; a start past the bound runs no pass (`probes/test_loops.das`). The start's
+   hoisted statements, when it has any, go in a block of their own before the loop.
 2. **The trailing increment**: a body holding no `continue` of this loop (one outside every nested
-   loop and switch) is
+   loop; a `continue` inside a `switch` belongs to this loop and counts) is
 ```das
 a
 while (b) {
@@ -454,7 +456,8 @@ while (b) {
     c
 }
 ```
-   A `break`, `return` or `goto` out of the body skips `c`, as C does.
+   A `break`, `return` or `goto` out of the body skips `c`, as C does, and a body ending in one
+   takes no increment, which no pass would reach.
 3. **The `finally` block**: a body with a `continue` that never leaves the loop (no `break` at its
    level, no `return`, no `goto`) is
 ```das
