@@ -3,7 +3,8 @@
 **Read `REVIEW_COMMON.md` (repo root) first - its contract binds this checklist.** Architecture
 docs: `ARCHITECTURE.md`, `ARCHITECTURE_DUMPER.md`, `ARCHITECTURE_EMITTER.md`,
 `ARCHITECTURE_EMITTER_AGGREGATES.md`, `ARCHITECTURE_EMITTER_CONTROL.md`,
-`ARCHITECTURE_EMITTER_LOOPS.md`, `ARCHITECTURE_LINK.md`, `ARCHITECTURE_LAYOUT.md`. Planned work:
+`ARCHITECTURE_EMITTER_LOOPS.md`, `ARCHITECTURE_LINK.md`, `ARCHITECTURE_LAYOUT.md`,
+`ARCHITECTURE_TIERS.md`. Planned work:
 `docs/implementation_order.md`.
 
 **A diff that changes `run_exe`, `run_aot`, `aot_link_command` or `native_module_sources` in

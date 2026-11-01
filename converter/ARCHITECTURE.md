@@ -17,7 +17,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   root: the generated finalizer recurses through pointer fields and arrays of pointers
   (`probes/test_delete.das`), so no hand-written walk frees a child.
 - `dumper_a.das` - Dumper A: runs `clang -Xclang -ast-dump=json -fsyntax-only -target
-  <triple>`, with `-D<entry>` per entry of the sidecar's `defines`, on one file and normalizes
+  <triple>`, with `-D<entry>` per entry of the sidecar's `defines` and `-I<dir>` per entry of its
+  `include_dirs` (`DumpInputs`), on one file and normalizes
   the JSON into a `CirTu`. Fails closed: the first
   construct outside what it represents sets `Dumper.error` with `file:line:col`. Layout facts
   come from a libclang pass over the same file (`ARCHITECTURE_DUMPER.md`, section 3).
@@ -50,7 +51,10 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   a value that is no list or an entry of another shape refused naming the key; `over_indexed`, a list of
   strings `Record.field`, the trailing arrays the program indexes past their length, a value that
   is no list or an entry of another shape refused naming the key, an entry naming no record's
-  trailing array the emitter's error). A key's presence is
+  trailing array the emitter's error; `include_dirs`, a list of folders both clang passes of the
+  dump search as `-I<dir>` in order, and `program_root`, the folder whose files are the program's
+  (`ARCHITECTURE_DUMPER.md`, the file policy), each read beside the sidecar unless absolute, a value
+  of another shape refused naming the key). A key outside these is refused naming it. A key's presence is
   `key_exists`, since json_boost's `?[]` of a missing key is a non-null sentinel
   (`probes/test_stdlib.das`). Nothing here knows the C-IR or the emitter.
 - `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes, loops])`: read
@@ -78,7 +82,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   clang or daslang syntax.
 - `tiers.das` - `run_tier(das_path, tier, work_dir, output[, module_dirs[, timeout[,
   flags]]])`: the process exit code of the module under `interp`, `jit`, `exe` or `aot`
-  (section 5); `module_dirs` are passed as `-load_module` to the interpreter and the JIT, `flags`
+  (section 5, `ARCHITECTURE_TIERS.md`); `module_dirs` are passed as `-load_module` to the interpreter and the JIT, `flags`
   before the script, and a process past `timeout` seconds (600 by default) is killed and
   reported as a failure: the run, and under `exe` and `aot` each build step too. `program_args` are the program's own C `argv` after its name: after `--` under
   `interp` and `jit`, after the binary under `exe`; `aot` refuses them, since its host passes
@@ -120,7 +124,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list,
   its function-like entries and the shapes it refuses, the `over_indexed` list and the shapes it
   refuses, the `loops` and `layout` values (the latter as a mode and as an object) and the ones
-  they refuse.
+  they refuse, `include_dirs` and `program_root` read beside the sidecar and the shapes they
+  refuse, and an unknown key.
 - `tests/test_tier_facts.das` - the das facts the emitter relies on, each a program run under the
   four tiers: `int` and `int64` `+` and `-` wrap, and `c_volatile_load` reads a global on every
   pass of a loop whose plain read the JIT, the exe and AOT fold out of it.
@@ -131,7 +136,10 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `tests/test_pipeline.das` - the P0 gate: `tests/fixtures/ret42.c` converts, the C-IR and the
   das text hash to their golden values, and the module exits 42 under all four tiers; and a
   program whose `#if` branch the sidecar's `defines` select prints what the native build under
-  the same `-D` prints.
+  the same `-D` prints; and `tests/fixtures/p8_include_dirs/` (a unit including a sibling folder's
+  C file through `include_dirs` and a `../` header, under a `program_root` above both) printing what
+  its native build prints, with the refusals of a C file outside the root and of a main file
+  outside it, and the program converting with its folder named in `CPATH`.
 - `tests/test_link.das` - the three files of `tests/fixtures/p5_multi_link/` linked into one module
   that prints what their native build prints, with the renames, the header copies and the scoping
   the text must carry; the file list and the fixture's manifest giving one module through
@@ -268,23 +276,7 @@ Section 4, what the emitter spells (the das text of every construct), is in
 
 ## 5. The four tiers
 
-`interp` runs `daslang <module>`, `jit` runs `daslang -jit <module>`, `exe` runs `daslang -exe
-<module> -output <work>/<stem>_exe` and executes the binary (the JIT names it `.exe` on every
-platform), `aot` runs `daslang utils/aot/main.das -- -ctx <module> <work>/ctx/` and compiles
-the generated context with a seven-line C host (`<stem>_create`, `<stem>_main`,
-`<stem>_destroy` from the generated header, `<stem>` spelled as a C++ identifier, which also
-names the binary `aot_binary` answers) against the static runtime: `liblibDaScript.a`,
-`liblibDaScript_runtime.a`, `liblibUriParser.a`, with the checkout's ABI flags (no RTTI,
-`DAS_FUSION=2`, `SIZE_OF_VOID_P=8`). The compiler is the pinned clang's `clang++` at `-O3`,
-the native perf lane's compiler and level (`perf/ARCHITECTURE.md` section 2); `default_clang()`
-answers `clang` on PATH when `PATH_TO_LIBCLANG` is unset, so the host is then `clang++` on
-PATH, the same requirement the conversion already has. Every tier takes the module folders
-from the caller (`suites/c_testsuite/run.das` passes both): the interpreter and the JIT load
-them, `exe` loads them while it builds the executable, and `aot` uses them twice, loaded while `-ctx` generates the context and
-as sources, where a folder holding `src/*.cpp` (`dasCRuntime`) compiles into the host with its
-`src/` on the include path, because the generated context declares the module and includes
-its header. The exit code is the program's own on every tier,
-which is why the wrapper returns from `main`.
+Section 5, how `tiers.das` runs a module under each tier, is in `ARCHITECTURE_TIERS.md`.
 
 ## 6. The link
 

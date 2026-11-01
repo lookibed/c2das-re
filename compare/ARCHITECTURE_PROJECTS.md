@@ -98,12 +98,10 @@ clang-18, so the native cells are this machine's baseline, not the Rust reposito
 The native build (the case's C files, the pinned clang, the row's flags) runs with the fixture; it
 is `pass` when it prints the expected output, else `native` with the reason, and then every lane of
 both sides is `refused` with `no native result`. Our side converts the unit under `linux` with a
-sidecar of the project's defines (a project of units with `convert_program`, in the source layout);
-the converter takes no include folder and no further clang argument, so a project whose unit
-includes from a folder other than its own is refused at the first such `#include`; a header reached
-by a relative path from outside the unit's folder (`../upstream/...`) is found but external, so the
-first type it declares that the program uses is refused. The Rust side translates it with
-`translate_file` (`--libc std --strict`, the case's options, the clang arguments of the row) within
+sidecar of the project's defines, its include folders and the project folder as the program root,
+every folder absolute (a project of units with `convert_program`, in the source layout); the
+converter takes no further clang argument (`clang_extra`'s forced include). The Rust side
+translates it with `translate_file` (`--libc std --strict`, the case's options, the clang arguments of the row) within
 600 s; a project of units through `translate_db` in the source layout over a compilation database
 naming each unit with the row's clang arguments (`write_unit_commands`, as the Rust repository's
 case runner writes one), the runtime module named by the translator.

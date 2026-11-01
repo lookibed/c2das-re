@@ -6,10 +6,15 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 
 ### The program's files {#file-policy}
 
-A C program is its main file and every file under the main file's directory, subdirectories
-included, except clang's resource directory and the directories clang searches for `<...>` under
-the target (its `-v` list), which stay external wherever they lie (a main file in `/root` holds
-the default `/root/libclang`): a header beside the `.c` (or under a folder of it) declares the program's records,
+A C program is its main file and every file under the program root, subdirectories included: the
+sidecar's `program_root`, else the main file's directory. Clang's resource directory and the
+directories clang searches for `<...>` under the target (its `-v` list) stay external wherever
+they lie (a main file in `/root` holds the default `/root/libclang`), but for the folders `CPATH`
+and `C_INCLUDE_PATH` name, which `-v` lists with them and which hold the user's headers. A main
+file that is no file of the program fails the dump naming it and the root, and so does a
+top-level declaration of a `.c` file outside the root and the system directories (a unit that
+includes another unit's source through `include_dirs`), since its definitions would stay external
+and leave the module empty with no error: a header beside the `.c` (or under a folder of it) declares the program's records,
 typedefs, enums, prototypes, objects and static functions, and they convert with the file. Every
 other file is external, a system header's above all: its records stay out of the C-IR, and a
 reference to one of its functions or objects binds by name (`strlen`, `stderr`). Paths compare
@@ -18,7 +23,7 @@ canonical (`get_full_file_name`, symbolic links and `..` resolved, memoized per 
 `in_program`, applied in both passes: the libclang walk keeps a cursor whose expansion file passes
 it, the JSON walk a top-level declaration whose location's file does. The rule draws the
 boundary per translation unit, so a program whose headers live outside the folder of its C files
-needs them copied beside those files; Lua's sources and headers share one folder. An external record the program reaches a member of, declares a
+names a wider `program_root`; Lua's sources and headers share one folder. An external record the program reaches a member of, declares a
 variable or a record field of, or names under `sizeof` as a type or an operand's (`sizeof *p`)
 (`struct tm`, `struct lconv`, `mbstate_t`) is laid out with the program's records: the libclang pass registers its definition from the system header, and every external
 record it holds by value, an anonymous one nested in it included, and the walk anchors it where it first interns it, so it converts and is
