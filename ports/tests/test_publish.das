@@ -601,3 +601,24 @@ def test_bench_failures(t : T?) {
         t |> success(out |> contains("lua/perf/capture_9999-99-99T999999Z.json is not JSON"), out)
     }
 }
+
+[test]
+def test_head_to_head(t : T?) {
+    t |> run_stand_in("the top-level README carries the head-to-head only when the comparison's capture exists, and refuses one that does not read", "c2das_ports_compare") @(t : T?; root, clone : string) {
+        let args <- ["--repo", clone, "--no-convert", "--allow-dirty"]
+        var out : string
+        t |> equal(publish(root, args, out), 0, out)
+        t |> success(!(fread(path_join(clone, "README.md")) |> contains("Head-to-head")), out)
+        mkdir_rec(path_join(root, "compare"))
+        fwrite(path_join(root, "compare/results_linux.json"), "\{\"doom\": \{\"status\": \"pending\", \"reason\": \"P6\"\}\}\n")
+        t |> equal(publish(root, args, out), 0, out)
+        let readme = fread(path_join(clone, "README.md"))
+        t |> success(readme |> contains("\n\n## Head-to-head with the Rust translator\n\nRendered from c2das-re's `compare/results_linux.json` alone"), readme)
+        t |> success(readme |> contains("No suite is captured yet."), readme)
+        t |> success(readme |> ends_with("Doom: pending (P6).\n\n### Where the Rust translator is ahead\n\nNowhere in this capture.\n"), readme)
+        fwrite(path_join(root, "compare/results_linux.json"), "\{ not json\n")
+        t |> equal(publish(root, args, out), 1, out)
+        t |> success(out |> contains("ports: "), out)
+        t |> equal(fread(path_join(clone, "README.md")), readme, "a refused capture left the README as it was")
+    }
+}
