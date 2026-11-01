@@ -19,7 +19,7 @@ require _common
 
 // the stand-in translator: `refuse.c` is refused, any other file becomes a module defining `fibI`
 // and the wrapper `main`
-let STAND_IN = "#!/bin/sh\nout=\"\"\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    prev=\"$a\"\ndone\nstem=$(basename \"$2\" .c)\ncase \"$*\" in\n    *nomain.c*) mkdir -p \"$out\"; echo 'options gen2' > \"$out/$stem.das\"; exit 0 ;;\n    *refuse.c*) echo \"translation failed: unsupported external call: ldexp\" >&2; exit 2 ;;\n    *.json*) echo \"translation failed: unsupported external call: ldexp\" >&2; exit 2 ;;\nesac\nmkdir -p \"$out\"\nprintf 'options gen2\\n\\n[export, sideeffects]\\ndef fibI(var n : int) : int \{\\n    return n\\n\}\\n[export]\\ndef main() : int \{\\n    return fibI(0)\\n\}\\nvar c2da_str_0 : int = 1\\n' > \"$out/$stem.das\"\n"
+let STAND_IN = "#!/bin/sh\nout=\"\"\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    prev=\"$a\"\ndone\nstem=$(basename \"$2\" .c)\ncase \"$*\" in\n    *nomain.c*) mkdir -p \"$out\"; echo 'options gen2' > \"$out/$stem.das\"; exit 0 ;;\n    *refuse.c*) echo \"translation failed: unsupported external call: ldexp\" >&2; exit 2 ;;\n    *.json*) echo \"translation failed: unsupported external call: ldexp\" >&2; exit 2 ;;\nesac\nmkdir -p \"$out\"\nprintf 'options gen2\\n\\n[export, sideeffects]\\ndef fibI(var n : int) : int \{\\n    return n\\n\}\\n[export]\\ndef main() : int \{\\n    return fibI(0)\\n\}\\nvar c2da_str_0 : int = 1\\n' > \"$out/$stem.das\"\nprintf 'options gen2\\n[sideeffects]\\ndef c2da_rt_helper() \{\\n\}\\n' > \"$out/aaa_helper.das\"\n"
 
 // a scratch folder holding the executable stand-in `rust`, passed to `body` with its path
 def private with_stand_in(t : T?; name : string; body : block<(dir, bin : string) : void>) {
@@ -44,7 +44,7 @@ def private json_of(t : T?; text : string) : JsonValue? {
     return js
 }
 
-let CAPTURE_TEXT = "\{\"suites\": \{\"c_testsuite\": \{\"outcomes\": [\{\"id\": \"a\", \"status\": \"pass\"\}, \{\"id\": \"b\", \"status\": \"exit\"\}, \{\"id\": \"c\", \"status\": \"output\"\}, \{\"id\": \"d\", \"status\": \"compile\"\}, \{\"id\": \"e\", \"status\": \"refused\"\}, \{\"id\": \"f\", \"status\": \"pass\"\}]\}, \"csmith\": \{\"outcomes\": [\{\"id\": \"7\", \"status\": \"pass\"\}]\}\}, \"perf\": \{\"kernels\": \{\"sieve\": \{\"rust\": \{\"status\": \"ran\"\}\}, \"qsort_cmp\": \{\"rust\": \{\"status\": \"refused\"\}\}, \"dasprofile/fib_loop\": \{\"rust\": \{\"status\": \"ran\"\}\}\}\}\}"
+let CAPTURE_TEXT = "\{\"suites\": \{\"c_testsuite\": \{\"outcomes\": [\{\"id\": \"a\", \"status\": \"pass\"\}, \{\"id\": \"b\", \"status\": \"exit\"\}, \{\"id\": \"c\", \"status\": \"output\"\}, \{\"id\": \"d\", \"status\": \"compile\"\}, \{\"id\": \"e\", \"status\": \"refused\"\}, \{\"id\": \"f\", \"status\": \"pass\"\}]\}, \"csmith\": \{\"outcomes\": [\{\"id\": \"7\", \"status\": \"pass\"\}]\}, \"gcc_torture\": \{\"ids\": 3\}\}, \"perf\": \{\"kernels\": \{\"sieve\": \{\"rust\": \{\"status\": \"ran\"\}\}, \"qsort_cmp\": \{\"rust\": \{\"status\": \"refused\"\}\}, \"dasprofile/fib_loop\": \{\"rust\": \{\"status\": \"ran\"\}\}\}\}\}"
 
 [test]
 def test_corpus(t : T?) {
@@ -52,6 +52,7 @@ def test_corpus(t : T?) {
         let results = json_of(t, CAPTURE_TEXT)
         var listed : table<string; table<string>>
         listed["c_testsuite"] <- {"a", "b", "c", "d", "e"}
+        listed["gcc_torture"] <- {"x"}
         let all <- quality_corpus(results, listed, "")
         t |> equal(join(all, " "), "c_testsuite/a c_testsuite/b c_testsuite/c perf/dasprofile/fib_loop perf/sieve")
         t |> equal(join(quality_corpus(results, listed, "perf/"), " "), "perf/dasprofile/fib_loop perf/sieve")
@@ -76,7 +77,7 @@ def test_corpus(t : T?) {
     }
 }
 
-let TWO_FUNCTIONS = "options gen2\n\nvar private g : int = 3\n\ndef private f : int? \{\n    return unsafe(addr(g))\n\}\n\n[export]\ndef main() : int \{\n    var i = 0\n    while (i < 5) \{\n        i++\n    \}\n    return i\n\}\n"
+let TWO_FUNCTIONS = "options gen2\n    \nvar private g : int = 3\n\ndef private f : int? \{\n    return unsafe(addr(g))\n\}\n\n[export]\ndef main() : int \{\n    var i = 0\n    while (i < 5) \{\n        i++\n    \}\n    return i\n\}\n"
 
 [test]
 def test_measure_side(t : T?) {
@@ -114,31 +115,35 @@ def private side_of(status : string; lines, unsafe_sites : int) : SideQuality {
 [test]
 def test_totals(t : T?) {
     t |> run("summed over the keys both sides measured, per group and over all, the rest excluded") @(t : T?) {
-        var entries <- {"c_testsuite/a" => KeyQuality(ours <- side_of("ok", 10, 1), rust <- side_of("ok", 30, 4)), "c_testsuite/b" => KeyQuality(ours <- side_of("ok", 20, 2), rust <- side_of("compile", 50, 9)), "perf/k" => KeyQuality(ours <- side_of("convert", 0, 0), rust <- side_of("ok", 5, 1))}
+        var entries <- {"c_testsuite/a" => KeyQuality(ours <- side_of("ok", 10, 1), rust <- side_of("ok", 30, 4)), "c_testsuite/c" => KeyQuality(ours <- side_of("ok", 5, 2), rust <- side_of("ok", 6, 1)), "c_testsuite/b" => KeyQuality(ours <- side_of("ok", 20, 2), rust <- side_of("compile", 50, 9)), "perf/k" => KeyQuality(ours <- side_of("convert", 0, 0), rust <- side_of("ok", 5, 1))}
         entries |> get("c_testsuite/a") $(var q) {
             q.rust.runtime_lines = 15
         }
+        entries |> get("c_testsuite/c") $(var q) {
+            q.rust.runtime_lines = 3
+        }
         let totals = quality_totals(entries)
         let all = totals?["all"]
-        t |> equal(all?["keys"] ?? 0, 3)
-        t |> equal(all?["counted"] ?? 0, 1)
+        t |> equal(all?["keys"] ?? 0, 4)
+        t |> equal(all?["counted"] ?? 0, 2)
         t |> equal(all?["excluded"]?["rust_compile"] ?? 0, 1)
         t |> equal(all?["excluded"]?["ours_convert"] ?? 0, 1)
-        t |> equal(all?["ours"]?["lines"] ?? 0, 10)
-        t |> equal(all?["rust"]?["lines"] ?? 0, 30)
-        t |> equal(all?["rust"]?["files"] ?? 0, 1)
-        t |> equal(all?["rust"]?["unsafe_expr"] ?? 0, 4)
+        t |> equal(all?["ours"]?["lines"] ?? 0, 15)
+        t |> equal(all?["rust"]?["lines"] ?? 0, 36)
+        t |> equal(all?["rust"]?["files"] ?? 0, 2)
+        t |> equal(all?["rust"]?["unsafe_expr"] ?? 0, 5)
         t |> equal(all?["ours"]?["goto"] ?? -1, 0)
-        t |> equal(all?["line_ratio"] ?? 0.0lf, 3.0lf)
-        t |> equal(all?["rust"]?["runtime_lines"] ?? 0, 15)
-        t |> equal(all?["program_line_ratio"] ?? 0.0lf, 1.5lf)
-        t |> equal(totals?["c_testsuite"]?["keys"] ?? 0, 2)
+        t |> equal(all?["line_ratio"] ?? 0.0lf, 36.0lf / 15.0lf)
+        t |> equal(all?["rust"]?["runtime_lines"] ?? 0, 18)
+        t |> equal(all?["program_line_ratio"] ?? 0.0lf, 18.0lf / 15.0lf)
+        t |> equal(totals?["c_testsuite"]?["keys"] ?? 0, 3)
+        t |> equal(totals?["perf"]?["program_line_ratio"] ?? -1.0lf, 0.0lf)
         t |> equal(totals?["perf"]?["counted"] ?? -1, 0)
         t |> equal(totals?["perf"]?["line_ratio"] ?? -1.0lf, 0.0lf)
     }
 }
 
-let MODULE_TEXT = "options gen2\n\ndef first(a : int) : int \{\n    return a\n\}\n\n[export, sideeffects]\ndef private fib_loop__middle \{\n    first(1)\n\}\n\ndef helper_middle() => 1\n\n[c_function]\ndef c_main : int \{\n    return 0\n\}\n\ndef main_0() : int \{\n    return 0\n\}\n\ndef last() : int \{\n    return 2\n"
+let MODULE_TEXT = "options gen2\n\nvar first : int\ndef first(a : int) : int \{\n    return a\n\}\n\n[export, sideeffects]\ndef private fib_loop__middle \{\n    first(1)\n\}\n\ndef helper_middle() => 1\n\n[c_function]\ndef c_main : int \{\n    return 0\n\}\n\ndef main_0() : int \{\n    return 0\n\}\n\ndef last() : int \{\n    return 2\n"
 
 [test]
 def test_function_text(t : T?) {
@@ -198,7 +203,12 @@ def test_section_capture(t : T?) {
         var q <- KeyQuality(ours <- side_of("ok", 3, 1), rust <- side_of("ok", 6, 2))
         q.functions |> push(FunctionPair(key = "perf/sieve", name = "kernel_run", ours = "o", rust = "r"))
         entries["perf/sieve"] <- q
-        entries["perf/other"] <- KeyQuality(ours <- side_of("ok", 1, 0), rust <- side_of("ok", 1, 0))
+        var other <- KeyQuality(ours <- side_of("ok", 1, 0), rust <- side_of("ok", 1, 0))
+        other.functions |> push(FunctionPair(key = "perf/other", name = "unsampled", ours = "x", rust = "y"))
+        entries["perf/other"] <- other
+        var fib <- KeyQuality(ours <- side_of("ok", 1, 0), rust <- side_of("ok", 1, 0))
+        fib.functions |> push(FunctionPair(key = "perf/fib_loop", name = "fibI", ours = "f", rust = "g"))
+        entries["perf/fib_loop"] <- fib
         var section = quality_section(Stamps(rust_commit = "abc", date = "today"), entries)
         t |> equal(write_capture_section(path, "quality", section), "")
         let js = json_of(t, fread(path))
@@ -207,9 +217,10 @@ def test_section_capture(t : T?) {
         t |> equal(js?["quality"]?["old"] ?? 0, 0)
         t |> equal(js?["quality"]?["rust_commit"] ?? "", "abc")
         t |> equal(js?["quality"]?["keys"]?["perf/sieve"]?["rust"]?["lines"] ?? 0, 6)
-        t |> equal(js?["quality"]?["totals"]?["perf"]?["counted"] ?? 0, 2)
-        t |> equal(js?["quality"]?["functions"]?[0]?["rust"] ?? "", "r")
-        t |> equal(js?["quality"]?["functions"]?[1] ?? "none", "none")
+        t |> equal(js?["quality"]?["totals"]?["perf"]?["counted"] ?? 0, 3)
+        t |> equal(js?["quality"]?["functions"]?[0]?["rust"] ?? "", "g")
+        t |> equal(js?["quality"]?["functions"]?[1]?["rust"] ?? "", "r")
+        t |> equal(js?["quality"]?["functions"]?[2] ?? "none", "none")
         rmdir_rec(dir)
     }
 }
@@ -218,12 +229,18 @@ def test_section_capture(t : T?) {
 def test_worker(t : T?) {
     t |> run("a sampled kernel measured in a scratch root: our conversion, the stand-in's module, the functions") @(t : T?) {
         t |> with_stand_in("cmp_quality_worker") $(dir, bin) {
+            let stale = path_join(dir, "perf/fib_loop/rust/extra.das")
+            mkdir_rec(path_join(dir, "perf/fib_loop/rust"))
+            fwrite(stale, "options gen2\n")
             let q <- measure_key("perf/fib_loop", bin, dir)
+            t |> success(!fexist(stale))
+            t |> equal(q.rust.files, 2)
             t |> equal(q.ours.status, "ok", q.ours.error)
             t |> equal(q.ours.counts?["c_function"] ?? 0, 1)
             t |> equal(q.rust.status, "ok", q.rust.error)
-            t |> equal(q.rust.lines, 10)
+            t |> equal(q.rust.lines, 10 + 4)
             t |> equal(q.rust_c2da?["c2da_str_0"] ?? 0, 1)
+            t |> equal(q.rust_c2da?["c2da_rt_helper"] ?? 0, 3)
             t |> equal(join([for (f in q.functions); f.name], " "), "fibI kernel_run")
             t |> success(q.functions[0].ours |> starts_with("def private fib_loop__fibI("), q.functions[0].ours)
             t |> equal(q.functions[0].rust, "[export, sideeffects]\ndef fibI(var n : int) : int \{\n    return n\n\}")
@@ -248,12 +265,39 @@ def test_worker(t : T?) {
         t |> with_stand_in("cmp_quality_sources") $(dir, bin) {
             var args : array<string>
             var error : string
-            t |> equal(quality_source("c_testsuite/00001", dir, args, error), "{C_TESTSUITE_TESTS}/00001.c")
-            t |> equal(quality_source("gcc_torture/x", dir, args, error), "{GCC_TORTURE_TESTS}/x.c")
+            t |> equal(quality_source("c_testsuite/00001", dir, args, error, dir), "{C_TESTSUITE_TESTS}/00001.c")
+            t |> equal(quality_source("gcc_torture/x", dir, args, error, dir), "{GCC_TORTURE_TESTS}/x.c")
             t |> equal(error, "")
-            quality_source("csmith/not-a-seed", dir, args, error)
+            quality_source("csmith/not-a-seed", path_join(dir, "gen"), args, error, dir)
             t |> success(!empty(error))
             t |> equal(length(args), 0)
+            error = ""
+            let cached = path_join(dir, "cache/42/42.c")
+            mkdir_rec(path_join(dir, "cache/42"))
+            fwrite(cached, "int main(void) \{ return 0; \}\n")
+            t |> equal(quality_source("csmith/42", path_join(dir, "gen"), args, error, path_join(dir, "cache")), cached)
+            t |> equal(error, "")
+            t |> success(csmith_error(CsmithProgram(timed_out = true)) |> starts_with("csmith took longer than "))
+            t |> equal(csmith_error(CsmithProgram(error = "refused")), "refused")
+            t |> equal(quality_source("other/fib_loop", path_join(dir, "k1"), args, error, dir), "")
+            t |> equal(error, "no input is keyed other/fib_loop")
+            t |> equal(length(args), 0)
+            error = ""
+            t |> success(quality_source("perf/fib_loop", path_join(dir, "k2"), args, error, dir) |> ends_with("fib_loop.c"))
+            t |> equal(join(args, " "), METHOD_NATIVE_DEFINE)
+            t |> equal(quality_translate_timeout("perf/fib_loop"), 600.0)
+            t |> equal(quality_translate_timeout("c_testsuite/00001"), 300.0)
+            let specs <- [SuiteSpec(name = "c_testsuite", tests_dir = path_join(dir, "absent"))]
+            t |> equal(quality_missing(["perf/fib_loop"], specs), "")
+            t |> equal(quality_missing(["c_testsuite/00001"], specs), "{path_join(dir, "absent")} is missing: run suites/c_testsuite/fetch.sh")
+            let asm_c = path_join(dir, "asm.c")
+            fwrite(asm_c, "int main(void) \{ __asm__(\"nop\"); return 0; \}\n")
+            var das_path : string
+            let ours <- ours_quality(asm_c, path_join(dir, "asm_out"), das_path)
+            t |> equal(ours.status, "convert")
+            t |> success(!empty(ours.error), ours.error)
+            t |> equal(das_path, "")
+            args |> clear()
             let refused = path_join(dir, "refuse.c")
             fwrite(refused, "int main(void) \{ return 0; \}\n")
             var entry : string
@@ -294,7 +338,36 @@ def test_quality_command_line(t : T?) {
             with_env(bin, "") {
                 t |> equal(run_compare(["--quality", "--out", bad], out), 1, out)
                 t |> success(out |> contains("cannot read {bad}"), out)
+                t |> success(!(out |> contains("keys counted")), out)
             }
+        }
+    }
+    t |> run("--quality over a one-kernel capture writes quality and keeps the rest; no --out reads the committed one") @(t : T?) {
+        t |> with_stand_in("cmp_quality_run") $(dir, bin) {
+            let results = path_join(dir, "results.json")
+            fwrite(results, "\{\"suites\": \{\}, \"perf\": \{\"samples\": 5, \"kernels\": \{\"dasprofile/fib_loop\": \{\"rust\": \{\"status\": \"ran\"\}\}\}\}, \"lua\": \{\"status\": \"refused\"\}, \"doom\": \{\"status\": \"pending\"\}\}")
+            var out : string
+            var argv <- ["env", "DAS_LOG_LEVEL=info"]
+            argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["compare/run.das", "--", "--quality", "--out", results, "--jobs", "1"])
+            with_env(bin, "") {
+                t |> equal(run_and_capture(argv, out, 900.0), 0, out)
+            }
+            let js = json_of(t, fread(results))
+            t |> equal(js?["quality"]?["keys"]?["perf/dasprofile/fib_loop"]?["rust"]?["status"] ?? "", "ok")
+            t |> equal(js?["perf"]?["samples"] ?? 0, 5)
+            t |> equal(js?["lua"]?["status"] ?? "", "refused")
+            t |> equal(js?["doom"]?["status"] ?? "", "pending")
+            t |> success(js?["suites"] != null)
+            let committed = fread(CAPTURE)
+            var filtered <- ["env", "DAS_LOG_LEVEL=info"]
+            filtered |> push_from(daslang_cmd(CONVERTED_MODULES), ["compare/run.das", "--", "--quality", "--filter", "perf/sieve", "--jobs", "1"])
+            with_env(bin, "") {
+                t |> equal(run_and_capture(filtered, out, 900.0), 0, out)
+            }
+            t |> success(out |> contains("all: 1 of 1 keys counted"), out)
+            t |> equal(fread(CAPTURE), committed)
+            rmdir_rec(quality_work("perf/dasprofile/fib_loop"))
+            rmdir_rec(quality_work("perf/sieve"))
         }
     }
 }
@@ -312,6 +385,7 @@ def test_runtime_lines(t : T?) {
         t |> equal(length(blocks), 4)
         t |> equal(length(c2da_blocks("options gen2\n\ndef program() \{\n\}\n")), 0)
         t |> equal(length(c2da_blocks("")), 0)
+        t |> equal(c2da_blocks("def c2da_x() \{\n\}\n[export]")?["c2da_x"] ?? 0, 3)
     }
     t |> run("runtime: the heap and libc prefixes and a name every module has; the rest program code") @(t : T?) {
         var entries <- {"a" => KeyQuality(rust <- SideQuality(status = "ok"), rust_c2da <- {"c2da_rt_heap" => 1, "c2da_clip_uint" => 4, "c2da_str_0" => 2, "c2da_layout_proofs" => 3}), "b" => KeyQuality(rust <- SideQuality(status = "ok"), rust_c2da <- {"c2da_clip_uint" => 4, "c2da_ginit_g_1" => 5}), "c" => KeyQuality(rust <- SideQuality(status = "compile"), rust_c2da <- {"c2da_std_printf" => 7, "c2da_clip_uint" => 1})}
