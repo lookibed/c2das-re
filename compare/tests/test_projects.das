@@ -90,6 +90,8 @@ def test_project_row(t : T?) {
             fwrite(p.cases, "\{\"cases\": [\{\"id\": \"c\", {stdout}, \"c_reference\": \{\"entrypoint\": \"main\"\}\}]\}")
             t |> equal(load_expected(p), "")
             t |> equal("{join(p.native_sources, " ")} | {join(p.native_bench_sources, " ")}", "u.c | b.c")
+            fwrite(p.cases, "\{\"cases\": [\{\"id\": \"c\", {stdout}, \"c_reference\": \{\"sources\": [\"g.c\", 3]\}\}]\}")
+            t |> equal(load_expected(p), "{p.cases}: the case c has a c_reference.sources entry that is not a string")
         }
     }
     t |> run("the expected output read from the canonical case, or why not") @(t : T?) {
