@@ -26,7 +26,9 @@ as-if-converted fixture test landing first.
   `setvbuf`); `c_exit(code)` runs the handlers and ends the process with `exit_now`, whose libc
   exit flushes with the context alive, because daslang's `exit` reports 1 whatever its argument
   (`docs/probe-findings.md` F1), `c_abort` is `exit_now(3)` with no handler run, which is C's rule
-  and the baseline's code.
+  and the baseline's code; `c_assert_fail(expr, file, line, func)` is glibc's `__assert_fail`, which
+  `assert` calls without `NDEBUG`: glibc's message on stderr (`argv[0]` first when `c_args` holds
+  one), then `c_abort`'s code 3 where glibc raises `SIGABRT`.
 - `c_runtime/c_signal.das` - C's `signal` in the dialect (`docs/stdlib-examples.md` "signal.h",
   `docs/c-feature-matrix.md`): a converted handler never runs, since das code cannot run from a
   host signal, so `c_signal(sig, handler)` keeps the handler of each number from 1 to 64 in a

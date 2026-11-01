@@ -4,6 +4,7 @@ module c_exit public
 
 require daslib/fio
 require crt
+require c_runtime/c_args
 
 //! The C process-exit protocol: `c_atexit` registers, the handlers run once in LIFO order
 //! either on the normal return from `main` (the `[finalize]` walker) or inside `c_exit`,
@@ -39,6 +40,27 @@ def c_exit(code : int) {
 
 def c_abort {
     unsafe(exit_now(3))
+}
+
+//! glibc's `__assert_fail`, which `assert` calls without `NDEBUG` when its expression is zero:
+//! glibc's message on stderr (`<argv[0]>: <file>:<line>: <function>: Assertion `<expression>'
+//! failed.`), then `c_abort`.
+def c_assert_fail(expr, file : uint8?; line : uint; func : uint8?) {
+    unsafe {
+        let err = crt::c_stderr()
+        if (c_argc() > 0) {
+            crt::fputs(deref(c_argv()), err)
+            crt::fputs(reinterpret<uint8?>(": "), err)
+        }
+        crt::fputs(file, err)
+        crt::fputs(reinterpret<uint8?>(":{int64(line)}: "), err)
+        crt::fputs(func, err)
+        crt::fputs(reinterpret<uint8?>(": Assertion `"), err)
+        crt::fputs(expr, err)
+        crt::fputs(reinterpret<uint8?>("' failed.\n"), err)
+        crt::fflush(err)
+    }
+    c_abort()
 }
 
 [finalize]

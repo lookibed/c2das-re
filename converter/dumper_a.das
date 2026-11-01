@@ -1659,6 +1659,11 @@ def private dump_cast(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : C
 
 def private dump_unary(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
     let opcode = js?["opcode"] ?? ""
+    if (opcode == "__extension__" && child_count(js) == 1) {
+        // GNU `__extension__` only silences pedantic warnings: the operand is the value (glibc's
+        // `assert` without `NDEBUG`)
+        return child_expr(d, js?["inner"], 0)
+    }
     var op = ""
     if (opcode == "++" || opcode == "--") {
         let post = js?["isPostfix"] ?? false
@@ -2109,9 +2114,10 @@ def private dump_literal(var d : Dumper; js : JsonValue?; kind : string; t : int
 def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
     let at = loc_of(d, js)
     let kind = node_kind(js)
-    if (kind == "ParenExpr" || kind == "ConstantExpr") {
+    if (kind == "ParenExpr" || kind == "ConstantExpr" || kind == "PredefinedExpr") {
         // clang wraps a constant item of a file-scope initializer in `ConstantExpr`, whose
-        // value is its child's
+        // value is its child's; `__func__` and `__PRETTY_FUNCTION__` are a `PredefinedExpr` over
+        // the string literal of the function's name
         if (child_count(js) == 0) {
             fail(d, "empty parentheses", at)
             return null
@@ -2874,14 +2880,85 @@ def dump_stmt(var d : Dumper; js : JsonValue?) : CirStmt? {
         return dump_for(d, js, at)
     }
     if (key_exists(EXPR_KINDS, kind)) {
-        var e = dump_expr(d, js)
-        if (e == null) {
-            return null
-        }
-        return new CirStmt(s = "expr", e = e, loc = at)
+        return dump_expr_stmt(d, js, at)
     }
     fail(d, "unsupported statement `{kind}`", at)
     return null
+}
+
+// an expression statement: a statement block (`is_statement_block`) or a comma holding one as
+// statements, any other expression as the `expr` statement
+def private dump_expr_stmt(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
+    if (is_statement_block(js)) {
+        return dump_statement_block(d, js, at)
+    }
+    if (is_block_comma(js)) {
+        return dump_comma_statements(d, js, at)
+    }
+    var e = dump_expr(d, js)
+    if (e == null) {
+        return null
+    }
+    return new CirStmt(s = "expr", e = e, loc = at)
+}
+
+// whether `js` is a GNU statement expression `({ ... })` that an expression statement evaluates for
+// its effect alone, through parentheses, `__extension__` and a cast to `void`: glibc's `assert`
+// without `NDEBUG` spells one
+def private is_statement_block(js : JsonValue?) : bool {
+    let kind = node_kind(js)
+    if (child_count(js) != 1) {
+        return false
+    }
+    if (kind == "StmtExpr") {
+        return node_kind((js?["inner"] as _array)[0]) == "CompoundStmt"
+    }
+    let unwraps = kind == "ParenExpr" || (kind == "UnaryOperator" && (js?["opcode"] ?? "") == "__extension__") || (kind == "CStyleCastExpr" && (js?["castKind"] ?? "") == "ToVoid")
+    return unwraps && is_statement_block((js?["inner"] as _array)[0])
+}
+
+// the block of a statement expression `is_statement_block` accepts, as a compound statement
+def private dump_statement_block(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
+    let inner = (js?["inner"] as _array)[0]
+    return node_kind(js) == "StmtExpr" ? dump_compound(d, inner, at) : dump_statement_block(d, inner, at)
+}
+
+// whether `js` is a comma expression, through parentheses, with a statement block
+// (`is_statement_block`) as an operand, through nested commas
+def private is_block_comma(js : JsonValue?) : bool {
+    let kind = node_kind(js)
+    if (kind == "ParenExpr" && child_count(js) == 1) {
+        return is_block_comma((js?["inner"] as _array)[0])
+    }
+    if (kind != "BinaryOperator" || (js?["opcode"] ?? "") != ",") {
+        return false
+    }
+    for (idx in range(child_count(js))) {
+        let kid = (js?["inner"] as _array)[idx]
+        if (is_statement_block(kid) || is_block_comma(kid)) {
+            return true
+        }
+    }
+    return false
+}
+
+// a comma expression statement holding a statement block, its operands as statements in order:
+// the comma's value is discarded, so the sequence is the expression
+def private dump_comma_statements(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
+    if (node_kind(js) == "ParenExpr") {
+        return dump_comma_statements(d, (js?["inner"] as _array)[0], at)
+    }
+    var st = new CirStmt(s = "compound", loc = at)
+    st.body |> reserve(child_count(js))
+    for (idx in range(child_count(js))) {
+        var part = dump_stmt(d, (js?["inner"] as _array)[idx])
+        if (part == null) {
+            delete_stmt(st)
+            return null
+        }
+        st.body |> push(part)
+    }
+    return st
 }
 
 // a record's definition: nested records first, since a field's type precedes the field; a

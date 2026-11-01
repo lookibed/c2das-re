@@ -23,6 +23,11 @@ def test_c_exit(t : T?) {
         t |> equal(r.rc, 0)
         t |> equal(r.out, "buffered line\n")
     }
+    t |> run("c_assert_fail writes glibc's message to stderr, then exits 3 as c_abort does, running no handler") @(t : T?) {
+        let r = runtime_child("assert_fail", program("    unsafe \{\n        c_assert_fail(reinterpret<uint8?>(\"x == 3\"), reinterpret<uint8?>(\"f.c\"), uint(12), reinterpret<uint8?>(\"int main(void)\"))\n    \}\n    return 0\n"), false)
+        t |> equal(r.rc, 3)
+        t |> equal(r.out, "main\nf.c:12: int main(void): Assertion `x == 3' failed.\n")
+    }
     t |> run("c_abort exits 3 and runs no handler") @(t : T?) {
         let r = runtime_child("abort", program("    c_abort()\n    return 0\n"), false)
         t |> equal(r.rc, 3)
