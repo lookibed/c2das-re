@@ -1,8 +1,9 @@
 # perf Architecture
 
-Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder
-is the performance comparison of `docs/very-detailed-plan.md` section 2: C kernels, the
-harness that times them under every lane, and the stored results.
+Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder is
+the performance comparison of `docs/very-detailed-plan.md` section 2: C kernels, the harness that
+times them under every lane, and the stored results; the interpreter audit on Lua is in
+`ARCHITECTURE_AUDIT.md`.
 
 ## 1. File charters
 
@@ -70,8 +71,7 @@ harness that times them under every lane, and the stored results.
   carrying the exe build's linker message (the first line after daslang's `Output:` line,
   else its first line past the `info` lines) or the AOT host build's last line; a tier that
   refuses before any build (the AOT host takes no program arguments) gives its own text alone.
-  The run writes
-  `results_linux.json` (`results_method_linux.json` under `--method dasprofile`), or
+  The run writes `results_linux.json` (`results_method_linux.json` under `--method dasprofile`), or
   the `--out <file>` it is given (which `--table` then reads; the delta's default baseline stays
   the method's committed file at HEAD), and prints the results table,
   `--ratios` adds the ratio table, and the delta table follows whenever a baseline capture
