@@ -76,7 +76,8 @@ becomes `c_main` and the module ends with `[export] def main : int { return c_ma
 native build's name on every tier), then returns `c_main(c_argc(), c_argv())` (F56); a unit's
 function named like one of these four takes the next free name (`c_argc1`). A `main` taking
 `envp` or other parameters, and a `static` one, fail closed. A C name that is a das
-keyword, or that starts with `__`, which das reserves (glibc's `__tm_gmtoff`), takes the `_c_`
+keyword or a name of a das builtin type (every token of the gen2 lexer a C identifier can spell:
+`include`, `fixed_array`, the vector types `int2` to `ushort8` and `byte3`, `DAS_KEYWORDS`), or that starts with `__`, which das reserves (glibc's `__tm_gmtoff`), takes the `_c_`
 prefix; a program that also names an object, function, parameter or local `_c_<name>` fails closed
 with both names, since the two would be one das name. A local that hides one of an enclosing block or a parameter
 takes the first numbered name the function leaves free (`i1`), and so does every reference C

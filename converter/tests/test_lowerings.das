@@ -1882,12 +1882,21 @@ def p5_skip_audit_fixtures(t : T?) {
 
 // P8.4's input gaps: C the real projects of P8.2 spell that the converter refused
 def p8_input_fixtures(t : T?) {
-    t |> run("a braced scalar initializer is the unbraced one: a pointer's `{ NULL }`, an int's, a double's, an enum's, a record's scalar members") @(t : T?) {
+    t |> run("a braced scalar initializer is the unbraced one: a pointer's `\{ NULL \}`, an int's, a double's, an enum's, a record's scalar members") @(t : T?) {
         var text : string
         check_fixture(t, "p8_braced_scalar", text)
         has_text(t, text, "var private p8_braced_scalar__err_none : uint8? = null\n")
         has_text(t, text, "var private p8_braced_scalar__counter : int = 3\n")
         has_text(t, text, "    var c : color = color.BLUE\n")
         has_text(t, text, "    var msg : uint8? = null\n")
+    }
+    t |> run("a C name that is a das builtin type or keyword takes the `_c_` prefix: a record member, a local, a global, a parameter") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_das_type_names", text)
+        has_text(t, text, "byte0, byte1, _c_byte2, _c_byte3 : uint8\n")
+        has_text(t, text, "int(o._c_byte3) + o._c_int2")
+        has_text(t, text, "var _c_include : int = 4\n")
+        has_text(t, text, "def private p8_das_type_names__half2(_c_short8 : int) : int \{")
+        has_text(t, text, "var _c_fixed_array : int = ")
     }
 }
