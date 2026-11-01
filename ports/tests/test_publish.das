@@ -617,7 +617,7 @@ def test_head_to_head(t : T?) {
         let readme = fread(path_join(clone, "README.md"))
         t |> success(readme |> contains("\n\n## Head-to-head with the Rust translator\n\nRendered from c2das-re's `compare/results_linux.json` alone"), readme)
         t |> success(readme |> contains("No suite is captured yet."), readme)
-        t |> success(readme |> ends_with("Doom: pending (P6).\n\n### Where the Rust translator is ahead\n\nNowhere in this capture.\n"), readme)
+        t |> success(readme |> ends_with("Doom: pending (P6).\n\n### Real projects\n\nNo project is captured yet.\n\n### Where the Rust translator is ahead\n\nNowhere in this capture.\n"), readme)
         fwrite(path_join(root, "compare/results_linux.json"), "\{ not json\n")
         t |> equal(publish(root, args, out), 1, out)
         t |> success(out |> contains("ports: "), out)
