@@ -1,0 +1,305 @@
+options gen2
+// the quality worker converts in this process: the pipeline parses clang's JSON dump below its own
+// frames, and a deep expression tree overflows the default 16 KB context stack
+options stack = 1048576
+require dastest/testing_boost public
+require strings
+require daslib/fio
+require daslib/strings_boost
+require daslib/json_boost
+require ../../converter/tiers.das
+require ../../suites/suite_runner.das
+require ../suite_compare.das
+require ../quality_compare.das
+require _common
+
+//! `compare/quality_compare.das` without the Rust binary: the corpus over a capture the test writes,
+//! two sides measured over das files the test writes, the totals, the function extraction, the
+//! section written beside the others, and a kernel measured by a worker with a stand-in translator.
+
+// the stand-in translator: `refuse.c` is refused, any other file becomes a module defining `fibI`
+// and the wrapper `main`
+let STAND_IN = "#!/bin/sh\nout=\"\"\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    prev=\"$a\"\ndone\nstem=$(basename \"$2\" .c)\ncase \"$*\" in\n    *nomain.c*) mkdir -p \"$out\"; echo 'options gen2' > \"$out/$stem.das\"; exit 0 ;;\n    *refuse.c*) echo \"translation failed: unsupported external call: ldexp\" >&2; exit 2 ;;\n    *.json*) echo \"translation failed: unsupported external call: ldexp\" >&2; exit 2 ;;\nesac\nmkdir -p \"$out\"\nprintf 'options gen2\\n\\n[export, sideeffects]\\ndef fibI(var n : int) : int \{\\n    return n\\n\}\\n[export]\\ndef main() : int \{\\n    return fibI(0)\\n\}\\n' > \"$out/$stem.das\"\n"
+
+// a scratch folder holding the executable stand-in `rust`, passed to `body` with its path
+def private with_stand_in(t : T?; name : string; body : block<(dir, bin : string) : void>) {
+    var dir_error : string
+    let dir = create_temp_directory(name, dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no scratch folder: {dir_error}")
+        return
+    }
+    let bin = path_join(dir, "rust")
+    fwrite(bin, STAND_IN)
+    var out : string
+    run_and_capture(["chmod", "+x", bin], out, 30.0)
+    invoke(body, dir, bin)
+    rmdir_rec(dir)
+}
+
+def private json_of(t : T?; text : string) : JsonValue? {
+    var error : string
+    var js = read_json(text, error)
+    t |> equal(error, "")
+    return js
+}
+
+let CAPTURE_TEXT = "\{\"suites\": \{\"c_testsuite\": \{\"outcomes\": [\{\"id\": \"a\", \"status\": \"pass\"\}, \{\"id\": \"b\", \"status\": \"exit\"\}, \{\"id\": \"c\", \"status\": \"output\"\}, \{\"id\": \"d\", \"status\": \"compile\"\}, \{\"id\": \"e\", \"status\": \"refused\"\}, \{\"id\": \"f\", \"status\": \"pass\"\}]\}, \"csmith\": \{\"outcomes\": [\{\"id\": \"7\", \"status\": \"pass\"\}]\}\}, \"perf\": \{\"kernels\": \{\"sieve\": \{\"rust\": \{\"status\": \"ran\"\}\}, \"qsort_cmp\": \{\"rust\": \{\"status\": \"refused\"\}\}, \"dasprofile/fib_loop\": \{\"rust\": \{\"status\": \"ran\"\}\}\}\}\}"
+
+[test]
+def test_corpus(t : T?) {
+    t |> run("compiled Rust statuses the ratchet lists, kernels the Rust side ran, sorted, filtered") @(t : T?) {
+        let results = json_of(t, CAPTURE_TEXT)
+        var listed : table<string; table<string>>
+        listed["c_testsuite"] <- {"a", "b", "c", "d", "e"}
+        let all <- quality_corpus(results, listed, "")
+        t |> equal(join(all, " "), "c_testsuite/a c_testsuite/b c_testsuite/c perf/dasprofile/fib_loop perf/sieve")
+        t |> equal(join(quality_corpus(results, listed, "perf/"), " "), "perf/dasprofile/fib_loop perf/sieve")
+        t |> equal(length(quality_corpus(json_of(t, "\{\}"), listed, "")), 0)
+    }
+    t |> run("the corpus of a capture file: the real ratchets; a file that is no JSON is an error") @(t : T?) {
+        let dir = "compare/work/cmp_quality_corpus"
+        mkdir_rec(dir)
+        let path = path_join(dir, "results.json")
+        fwrite(path, "\{\"suites\": \{\"c_testsuite\": \{\"outcomes\": [\{\"id\": \"00001\", \"status\": \"pass\"\}, \{\"id\": \"no-such-id\", \"status\": \"pass\"\}]\}\}\}")
+        var error : string
+        t |> equal(join(quality_corpus_of(path, "", error), " "), "c_testsuite/00001")
+        t |> equal(error, "")
+        fwrite(path, "[")
+        t |> equal(length(quality_corpus_of(path, "", error)), 0)
+        t |> success(error |> starts_with("cannot read {path}"), error)
+        error = ""
+        t |> equal(length(quality_corpus_of(path_join(dir, "absent.json"), "", error)), 0)
+        t |> equal(error, "")
+        rmdir_rec(dir)
+    }
+}
+
+let TWO_FUNCTIONS = "options gen2\n\nvar private g : int = 3\n\ndef private f : int? \{\n    return unsafe(addr(g))\n\}\n\n[export]\ndef main() : int \{\n    var i = 0\n    while (i < 5) \{\n        i++\n    \}\n    return i\n\}\n"
+
+[test]
+def test_measure_side(t : T?) {
+    t |> run("files, non-blank lines and the counters; a module that does not compile is `compile`") @(t : T?) {
+        let dir = "compare/work/cmp_quality_side"
+        mkdir_rec(dir)
+        let good = path_join(dir, "good.das")
+        let helper = path_join(dir, "helper.das")
+        fwrite(good, TWO_FUNCTIONS)
+        fwrite(helper, "options gen2\n\n\ndef helper() \{\n\}\n")
+        t |> equal(nonblank_lines(TWO_FUNCTIONS), 13)
+        let side <- measure_side([good, helper], good)
+        t |> equal(side.status, "ok", side.error)
+        t |> equal(side.files, 2)
+        t |> equal(side.lines, 16)
+        t |> equal(side.counts?["unsafe_expr"] ?? -1, 1)
+        t |> equal(side.counts?["while_rangeable"] ?? -1, 1)
+        t |> equal(side.counts?["c_function"] ?? -1, 0)
+        let bad = path_join(dir, "bad.das")
+        fwrite(bad, "options gen2\ndef main() : int \{\n    return int16 const(1)\n\}\n")
+        let broken <- measure_side([bad], bad)
+        t |> equal(broken.status, "compile")
+        t |> success(!empty(broken.error), broken.error)
+        rmdir_rec(dir)
+    }
+}
+
+// a side with `lines` lines, one file and `unsafe_expr` sites
+def private side_of(status : string; lines, unsafe_sites : int) : SideQuality {
+    var side = SideQuality(status = status, files = 1, lines = lines)
+    side.counts["unsafe_expr"] = unsafe_sites
+    return <- side
+}
+
+[test]
+def test_totals(t : T?) {
+    t |> run("summed over the keys both sides measured, per group and over all, the rest excluded") @(t : T?) {
+        var entries <- {"c_testsuite/a" => KeyQuality(ours <- side_of("ok", 10, 1), rust <- side_of("ok", 30, 4)), "c_testsuite/b" => KeyQuality(ours <- side_of("ok", 20, 2), rust <- side_of("compile", 50, 9)), "perf/k" => KeyQuality(ours <- side_of("convert", 0, 0), rust <- side_of("ok", 5, 1))}
+        entries |> get("c_testsuite/a") $(var q) {
+            q.rust.runtime_lines = 15
+        }
+        let totals = quality_totals(entries)
+        let all = totals?["all"]
+        t |> equal(all?["keys"] ?? 0, 3)
+        t |> equal(all?["counted"] ?? 0, 1)
+        t |> equal(all?["excluded"]?["rust_compile"] ?? 0, 1)
+        t |> equal(all?["excluded"]?["ours_convert"] ?? 0, 1)
+        t |> equal(all?["ours"]?["lines"] ?? 0, 10)
+        t |> equal(all?["rust"]?["lines"] ?? 0, 30)
+        t |> equal(all?["rust"]?["files"] ?? 0, 1)
+        t |> equal(all?["rust"]?["unsafe_expr"] ?? 0, 4)
+        t |> equal(all?["ours"]?["goto"] ?? -1, 0)
+        t |> equal(all?["line_ratio"] ?? 0.0lf, 3.0lf)
+        t |> equal(all?["rust"]?["runtime_lines"] ?? 0, 15)
+        t |> equal(all?["program_line_ratio"] ?? 0.0lf, 1.5lf)
+        t |> equal(totals?["c_testsuite"]?["keys"] ?? 0, 2)
+        t |> equal(totals?["perf"]?["counted"] ?? -1, 0)
+        t |> equal(totals?["perf"]?["line_ratio"] ?? -1.0lf, 0.0lf)
+    }
+}
+
+let MODULE_TEXT = "options gen2\n\ndef first(a : int) : int \{\n    return a\n\}\n\n[export, sideeffects]\ndef private fib_loop__middle \{\n    first(1)\n\}\n\ndef helper_middle() => 1\n\n[c_function]\ndef c_main : int \{\n    return 0\n\}\n\ndef main_0() : int \{\n    return 0\n\}\n\ndef last() : int \{\n    return 2\n"
+
+[test]
+def test_function_text(t : T?) {
+    t |> run("the first, a middle one with its annotation, a one-line one, the last without its brace") @(t : T?) {
+        t |> equal(function_text(MODULE_TEXT, "first", "rust"), "def first(a : int) : int \{\n    return a\n\}")
+        t |> equal(function_text(MODULE_TEXT, "middle", "ours"), "[export, sideeffects]\ndef private fib_loop__middle \{\n    first(1)\n\}")
+        t |> equal(function_text(MODULE_TEXT, "helper_middle", "rust"), "def helper_middle() => 1")
+        t |> equal(function_text(MODULE_TEXT, "last", "rust"), "def last() : int \{\n    return 2\n")
+    }
+    t |> run("C's main as each side names it; a missing name is empty") @(t : T?) {
+        t |> equal(function_text(MODULE_TEXT, "main", "ours"), "[c_function]\ndef c_main : int \{\n    return 0\n\}")
+        t |> equal(function_text(MODULE_TEXT, "main", "rust"), "def main_0() : int \{\n    return 0\n\}")
+        t |> equal(function_text(MODULE_TEXT, "absent", "ours"), "")
+        t |> equal(declared_name("def public x(y : int)"), "x")
+        t |> equal(declared_name("struct private c2da_s \{"), "c2da_s")
+        t |> equal(declared_name("    def x()"), "")
+        t |> equal(declared_name("require strings"), "")
+        t |> success(!is_c_function("main_0", "main", "ours") && !is_c_function("xmiddle", "middle", "ours"))
+    }
+}
+
+[test]
+def test_key_results(t : T?) {
+    t |> run("a worker's result read back; none is a crash, a killed worker a timeout") @(t : T?) {
+        let key = "perf/cmp_quality_result"
+        mkdir_rec(quality_work(key))
+        var q <- KeyQuality(ours <- side_of("ok", 3, 1), rust <- side_of("compile", 4, 0))
+        q.functions |> push(FunctionPair(key = key, name = "f", ours = "def f \{\n\}", rust = ""))
+        fwrite(quality_result_path(key), sprint_json(q, false))
+        let back <- read_key_quality(key, false, 0)
+        t |> equal(back.ours.lines, 3)
+        t |> equal(back.rust.status, "compile")
+        t |> equal(back.functions[0].ours, "def f \{\n\}")
+        let killed <- read_key_quality(key, true, 9)
+        t |> equal(killed.ours.status, "timeout")
+        t |> equal(killed.rust.status, "timeout")
+        rmdir_rec(quality_work(key))
+        mkdir_rec(quality_work(key))
+        fwrite(quality_result_path(key), "not json")
+        t |> equal(read_key_quality(key, false, 0).ours.status, "crash")
+        rmdir_rec(quality_work(key))
+        let crashed <- read_key_quality(key, false, 3)
+        t |> equal(crashed.ours.status, "crash")
+        t |> equal(crashed.rust.error, "the worker exited 3 with no result")
+    }
+}
+
+[test]
+def test_section_capture(t : T?) {
+    t |> run("the quality section replaces the old one and keeps suites and perf") @(t : T?) {
+        let dir = "compare/work/cmp_quality_capture"
+        mkdir_rec(dir)
+        let path = path_join(dir, "results.json")
+        fwrite(path, "\{\"suites\": \{\"csmith\": \{\"ids\": 9\}\}, \"perf\": \{\"samples\": 5\}, \"quality\": \{\"old\": 1\}\}")
+        var entries : table<string; KeyQuality>
+        var q <- KeyQuality(ours <- side_of("ok", 3, 1), rust <- side_of("ok", 6, 2))
+        q.functions |> push(FunctionPair(key = "perf/sieve", name = "kernel_run", ours = "o", rust = "r"))
+        entries["perf/sieve"] <- q
+        entries["perf/other"] <- KeyQuality(ours <- side_of("ok", 1, 0), rust <- side_of("ok", 1, 0))
+        var section = quality_section(Stamps(rust_commit = "abc", date = "today"), entries)
+        t |> equal(write_capture_section(path, "quality", section), "")
+        let js = json_of(t, fread(path))
+        t |> equal(js?["suites"]?["csmith"]?["ids"] ?? 0, 9)
+        t |> equal(js?["perf"]?["samples"] ?? 0, 5)
+        t |> equal(js?["quality"]?["old"] ?? 0, 0)
+        t |> equal(js?["quality"]?["rust_commit"] ?? "", "abc")
+        t |> equal(js?["quality"]?["keys"]?["perf/sieve"]?["rust"]?["lines"] ?? 0, 6)
+        t |> equal(js?["quality"]?["totals"]?["perf"]?["counted"] ?? 0, 2)
+        t |> equal(js?["quality"]?["functions"]?[0]?["rust"] ?? "", "r")
+        t |> equal(js?["quality"]?["functions"]?[1] ?? "none", "none")
+        rmdir_rec(dir)
+    }
+}
+
+[test]
+def test_worker(t : T?) {
+    t |> run("a sampled kernel through a worker: our conversion, the stand-in's module, the functions") @(t : T?) {
+        t |> with_stand_in("cmp_quality_worker") $(dir, bin) {
+            with_env(bin, "") {
+                let entries <- drive_quality(["perf/fib_loop", "perf/no_such_kernel"], 2)
+                entries |> get("perf/fib_loop") $(q) {
+                    t |> equal(q.ours.status, "ok", q.ours.error)
+                    t |> equal(q.ours.counts?["c_function"] ?? 0, 1)
+                    t |> equal(q.rust.status, "ok", q.rust.error)
+                    t |> equal(q.rust.lines, 9)
+                    t |> equal(q.rust.runtime_lines, 0)
+                    t |> equal(join([for (f in q.functions); f.name], " "), "fibI kernel_run")
+                    t |> success(q.functions[0].ours |> starts_with("def private fib_loop__fibI("), q.functions[0].ours)
+                    t |> equal(q.functions[0].rust, "[export, sideeffects]\ndef fibI(var n : int) : int \{\n    return n\n\}")
+                    t |> equal(q.functions[1].rust, "")
+                }
+                entries |> get("perf/no_such_kernel") $(q) {
+                    t |> equal(q.ours.status, "convert")
+                    t |> equal(q.rust.error, "no input is keyed perf/no_such_kernel")
+                }
+                t |> equal(length(entries), 2)
+            }
+            rmdir_rec(quality_work("perf/fib_loop"))
+            rmdir_rec(quality_work("perf/no_such_kernel"))
+        }
+    }
+    t |> run("a suite case's file by its id, a refused translation, a csmith seed csmith refuses") @(t : T?) {
+        t |> with_stand_in("cmp_quality_sources") $(dir, bin) {
+            var args : array<string>
+            var error : string
+            t |> equal(quality_source("c_testsuite/00001", dir, args, error), "{C_TESTSUITE_TESTS}/00001.c")
+            t |> equal(quality_source("gcc_torture/x", dir, args, error), "{GCC_TORTURE_TESTS}/x.c")
+            t |> equal(error, "")
+            quality_source("csmith/not-a-seed", dir, args, error)
+            t |> success(!empty(error))
+            t |> equal(length(args), 0)
+            let refused = path_join(dir, "refuse.c")
+            fwrite(refused, "int main(void) \{ return 0; \}\n")
+            var entry : string
+            let side <- rust_quality(bin, refused, path_join(dir, "out"), args, 30.0, entry)
+            t |> equal(side.status, "refused")
+            t |> equal(side.error, "translation failed: unsupported external call: ldexp")
+            let nomain = path_join(dir, "nomain.c")
+            fwrite(nomain, "int f(void) \{ return 0; \}\n")
+            let no_entry <- rust_quality(bin, nomain, path_join(dir, "out2"), args, 30.0, entry)
+            t |> equal(no_entry.status, "refused")
+            t |> success(no_entry.error |> ends_with("defines main"), no_entry.error)
+            t |> equal(entry, "")
+        }
+    }
+}
+
+// `compare/run.das` run from the repository root with `args` after `--`; its exit code
+def private run_compare(args : array<string>; var out : string&) : int {
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from(["compare/run.das", "--"], args)
+    return run_and_capture(argv, out, 300.0)
+}
+
+[test]
+def test_quality_command_line(t : T?) {
+    t |> run("--quality and --lua run alone; without the Rust translator they exit 2; a bad capture exits 1") @(t : T?) {
+        var out : string
+        t |> equal(run_compare(["--quality", "--lua"], out), 1, out)
+        t |> success(out |> contains("--quality runs alone"), out)
+        with_env("/nonexistent/c2das-rust", "") {
+            t |> equal(run_compare(["--quality"], out), 2, out)
+            t |> success(out |> contains("no Rust translator at /nonexistent/c2das-rust"), out)
+        }
+        t |> with_stand_in("cmp_quality_cli") $(dir, bin) {
+            let bad = path_join(dir, "bad.json")
+            fwrite(bad, "[")
+            with_env(bin, "") {
+                t |> equal(run_compare(["--quality", "--out", bad], out), 1, out)
+                t |> success(out |> contains("cannot read {bad}"), out)
+            }
+        }
+    }
+}
+
+let RUNTIME_MODULE = "options gen2\n\nvar c2da_rt_heap : array<uint8>\n\ndef program_first() : int \{\n    return 1\n\}\n\n[sideeffects]\ndef c2da_std_helper(x : int) : int \{\n\n    return x\n\}\n[export, sideeffects]\ndef program_second() : int \{\n    return 2\n\}\n[sideeffects]\ndef c2da_layout_proofs() \{\n    pass\n\}\n"
+
+[test]
+def test_runtime_lines(t : T?) {
+    t |> run("each c2da_ declaration from its annotation to the next one's, the last to the end") @(t : T?) {
+        t |> equal(runtime_lines(RUNTIME_MODULE), 1 + 4 + 4)
+        t |> equal(runtime_lines("options gen2\n\ndef program() \{\n\}\n"), 0)
+        t |> equal(runtime_lines(""), 0)
+    }
+}
