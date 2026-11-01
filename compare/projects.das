@@ -37,7 +37,9 @@ let PROJECT_TRANSLATE_TIMEOUT = 600.0
 //! the Rust side's canonical case passes, and the C functions shown side by side. The output it
 //! must print is the canonical case `case_id`'s `expected.stdout` in the file `cases`, read by
 //! `load_expected` into `expected`; `bench_free_keys` are the keys of the lines the bench unit
-//! prints with a value of its own (`bench_disagreement`).
+//! prints with a value of its own and the prefixes of the keys it prints beyond the expected
+//! output, `bench_omitted_keys` the keys of the expected lines it does not print
+//! (`bench_disagreement`).
 struct Project {
     name : string
     dir : string
@@ -54,6 +56,7 @@ struct Project {
     rust_flags : array<string>
     functions : array<string>
     bench_free_keys : array<string>
+    bench_omitted_keys : array<string>
 }
 
 //! A lane's verdict: `pass`, else `refused`, `compile`, `exit`, `output`, `timeout` or `skipped`,
@@ -93,7 +96,8 @@ def project_table(checkout : string) : array<Project> {
         cases = path_join(checkout, CASES_FILE),
         case_id = "binjgb-cgb-acid2-std",
         functions <- ["emulator_step_internal", "ppu_mode3_synchronize"],
-        bench_free_keys <- ["frames"])]
+        bench_free_keys <- ["frames", "frame["],
+        bench_omitted_keys <- ["width", "height", "ticks"])]
 }
 
 //! The project `name` of the Rust checkout `checkout` into `p`; false when the table has none.
@@ -276,25 +280,43 @@ def private line_key(line : string) : string {
     return at < 0 ? line : slice(line, 0, at)
 }
 
-//! Why the native bench run's text `bench` cannot be the bench's oracle: "" when it prints a line
-//! of the expected output `expected` and every line whose key `expected` prints too, a key of
-//! `free` excepted, equals that line of `expected`.
+// whether `key` begins with an entry of `prefixes`
+def private has_prefix(key : string; prefixes : array<string>) : bool {
+    for (prefix in prefixes) {
+        if (key |> starts_with(prefix)) {
+            return true
+        }
+    }
+    return false
+}
+
+//! Why the native bench run's text `bench` cannot be the bench's oracle: "" when it prints every
+//! line of the expected output `expected` whose key is not in `omitted`, each equal to that line
+//! unless its key is in `free`, and every other line it prints has a key beginning with an entry
+//! of `free`.
 [arch(at="ARCHITECTURE_PROJECTS.md#speed")]
-def bench_disagreement(bench, expected : string; free : array<string>) : string {
-    let by_key <- {for (line in split(expected, "\n")); line_key(line) => line; where !empty(line)}
-    var matched = 0
-    for (line in split(bench, "\n")) {
-        let key = line_key(line)
-        if (empty(line) || has_value(free, key) || !key_exists(by_key, key)) {
+def bench_disagreement(bench, expected : string; free, omitted : array<string>) : string {
+    let printed <- {for (line in split(bench, "\n")); line_key(line) => line; where !empty(line)}
+    let wanted <- {for (line in split(expected, "\n")); line_key(line) => line; where !empty(line)}
+    for (want in split(expected, "\n")) {
+        let key = line_key(want)
+        if (empty(want) || has_value(omitted, key)) {
             continue
         }
-        let want = by_key?[key] ?? ""
-        if (line != want) {
-            return "got `{line}`, expected `{want}`"
+        if (!key_exists(printed, key)) {
+            return "the bench lacks `{want}`"
         }
-        matched++
+        let got = printed?[key] ?? ""
+        if (got != want && !has_value(free, key)) {
+            return "got `{got}`, expected `{want}`"
+        }
     }
-    return matched > 0 ? "" : "it prints no line of the expected output: {first_reported_line(bench)}"
+    for (line in split(bench, "\n")) {
+        if (!empty(line) && !key_exists(wanted, line_key(line)) && !has_prefix(line_key(line), free)) {
+            return "the expected output has no `{line}`"
+        }
+    }
+    return ""
 }
 
 //! The bench's oracle into `oracle`: the text of one run of the native bench `bin` on `fixture`,
@@ -309,7 +331,7 @@ def native_bench_oracle(p : Project; bin, fixture : string; var oracle : string&
         return "{v.status}: {v.reason}"
     }
     let text = bench_text(out)
-    let disagreement = bench_disagreement(text, p.expected, p.bench_free_keys)
+    let disagreement = bench_disagreement(text, p.expected, p.bench_free_keys, p.bench_omitted_keys)
     if (!empty(disagreement)) {
         return "output: {disagreement}"
     }

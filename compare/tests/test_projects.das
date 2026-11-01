@@ -64,7 +64,8 @@ def test_project_row(t : T?) {
         t |> success(find_project("/m", "binjgb", p))
         t |> equal("{p.tu} {p.bench_tu} {p.fixture} {p.case_id}", "src/binjgb_all.c src/binjgb_bench_all.c fixtures/cgb-acid2.gbc binjgb-cgb-acid2-std")
         t |> equal(join(clang_args(p), " "), "-std=c11 -I/m/tests/manual/binjgb/include -I/m/tests/manual/binjgb/upstream/binjgb/src -I/m/tests/manual/binjgb/src -DNDEBUG")
-        t |> equal(join(p.bench_free_keys, " "), "frames")
+        t |> equal(join(p.bench_free_keys, " "), "frames frame[")
+        t |> equal(join(p.bench_omitted_keys, " "), "width height ticks")
         t |> equal(join(p.functions, " "), "emulator_step_internal ppu_mode3_synchronize")
     }
     t |> run("the expected output read from the canonical case, or why not") @(t : T?) {
@@ -144,17 +145,22 @@ def test_bench(t : T?) {
     }
     t |> run("the native bench's text as the oracle: agreeing on the lines it shares with the output") @(t : T?) {
         let none : array<string>
-        t |> equal(bench_disagreement("a=1\nf[0]=5\nf[1]=6\nn=3\n", "a=1\nf[0]=5\nn=1\nend\n", ["n"]), "")
-        t |> equal(bench_disagreement("a=1\nf[0]=4\n", "a=1\nf[0]=5\n", none), "got `f[0]=4`, expected `f[0]=5`")
-        t |> equal(bench_disagreement("title: X\nend\n", "title: Y\nend\n", none), "got `title: X`, expected `title: Y`")
-        t |> equal(bench_disagreement("n=3\nz=1\n", "a=1\nn=1\n", ["n"]), "it prints no line of the expected output: n=3")
+        let expected = "a=1\nw=2\nf[0]=5\nn=1\n"
+        t |> equal(bench_disagreement("a=1\nf[0]=5\nf[1]=5\nn=3\n", expected, ["n", "f["], ["w"]), "")
+        t |> equal(bench_disagreement("a=1\nn=0\n", expected, ["n", "f["], ["w"]), "the bench lacks `f[0]=5`")
+        t |> equal(bench_disagreement("a=1\nf[0]=5\nn=3\n", expected, ["n", "f["], none), "the bench lacks `w=2`")
+        t |> equal(bench_disagreement("a=1\nf[0]=4\n", "a=1\nf[0]=5\n", none, none), "got `f[0]=4`, expected `f[0]=5`")
+        t |> equal(bench_disagreement("title: X\nend\n", "title: Y\nend\n", none, none), "got `title: X`, expected `title: Y`")
+        t |> equal(bench_disagreement("a=1\n", "a=1\n", none, none), "")
+        t |> equal(bench_disagreement("a=1\nx=2\n", "a=1\n", none, none), "the expected output has no `x=2`")
+        t |> equal(bench_disagreement("a=1\nx=2\n", "a=1\n", ["x"], none), "")
         t |> with_scratch("cmp_projects_oracle") $(dir) {
             let p = Project(expected = "a=1\nn=1\n", bench_free_keys <- ["n"])
             let bin = path_join(dir, "bench")
             var oracle : string
-            write_script(bin, "#!/bin/sh\nprintf 'a=1\\nk=2\\nn=3\\nsetup_us=4\\ndecode_us=8\\n'\n")
+            write_script(bin, "#!/bin/sh\nprintf 'a=1\\nn=3\\nsetup_us=4\\ndecode_us=8\\n'\n")
             t |> equal(native_bench_oracle(p, bin, "f", oracle), "")
-            t |> equal(oracle, "a=1\nk=2\nn=3\n")
+            t |> equal(oracle, "a=1\nn=3\n")
             write_script(bin, "#!/bin/sh\nprintf 'a=2\\n'\n")
             t |> equal(native_bench_oracle(p, bin, "f", oracle), "output: got `a=2`, expected `a=1`")
             write_script(bin, "#!/bin/sh\necho 'error: no rom'\nexit 2\n")
@@ -244,8 +250,8 @@ def test_project_entry(t : T?) {
             t |> equal(entry?["ours"]?["lanes"]?["jit"]?["reason"] ?? "", "no native result: line 1: got `nope`, expected `yes`")
             t |> equal(entry?["rust"]?["lanes"]?["interp"]?["status"] ?? "", "refused")
             t |> equal(entry?["rust"]?["error"] ?? "", "translation failed: x")
-            t |> equal(entry?["speed"]?["native"]?["error"] ?? "", "output: it prints no line of the expected output: nope")
-            t |> equal(entry?["speed"]?["ours"]?["interp"]?["error"] ?? "", "bench: no native bench result: output: it prints no line of the expected output: nope")
+            t |> equal(entry?["speed"]?["native"]?["error"] ?? "", "output: the bench lacks `yes`")
+            t |> equal(entry?["speed"]?["ours"]?["interp"]?["error"] ?? "", "bench: no native bench result: output: the bench lacks `yes`")
             t |> equal(entry?["speed"]?["rust"]?["exe"]?["error"] ?? "", "bench: translation failed: x")
             t |> equal(entry?["code"]?["rust"]?["status"] ?? "", "refused")
             t |> equal(entry?["code"]?["ours"]?["files"] ?? 0, 1)
@@ -287,7 +293,7 @@ def private escaped(text : string) : string => replace(text, "\n", "\\n")
 // a stand-in folder of the project `name` (wasm3 or binjgb) under `<dir>/tests/manual` and a
 // translator `<dir>/rust` that copies a das program printing the expected output, the bench one
 // for a bench unit; binjgb's units print their first line only under its define, and its bench
-// prints one frame more than its unit and a count of its own
+// prints one frame more than its unit, a count of its own and no `ticks=`
 def private stand_in_project(dir, name : string) : string {
     let wasm3 = name == "wasm3"
     let root = path_join(dir, "tests/manual/{name}")
@@ -296,8 +302,8 @@ def private stand_in_project(dir, name : string) : string {
     let fixture = wasm3 ? "fixtures/fib32.wasm" : "fixtures/cgb-acid2.gbc"
     let case_id = wasm3 ? "wasm3-fib32-std" : "binjgb-cgb-acid2-std"
     let head = wasm3 ? "" : "rom=1\n"
-    let body = wasm3 ? EXPECTED : "f[0]=5\nframes=1\n"
-    let bench_body = wasm3 ? EXPECTED : "f[0]=5\nf[1]=5\nframes=2\n"
+    let body = wasm3 ? EXPECTED : "frame[0]=5\nframes=1\nticks=7\n"
+    let bench_body = wasm3 ? EXPECTED : "frame[0]=5\nframe[1]=5\nframes=2\n"
     let times = escaped("setup_us=3\ndecode_us=6\n")
     for (sub in ["src", "fixtures"]) {
         mkdir_rec(path_join(root, sub))
