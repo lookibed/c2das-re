@@ -475,6 +475,12 @@ def bench_text_of(cell, native : JsonValue const?) : string {
     return error |> starts_with("bench: ") ? "refused" : colon < 0 ? error : slice(error, 0, colon)
 }
 
+//! A compiler's version line without the source it was built from: the text before ` (`.
+def compiler_name(line : string) : string {
+    let at = find(line, " (")
+    return at < 0 ? line : slice(line, 0, at)
+}
+
 //! The bench table: per project and side the native compiler's version line, the native build's
 //! decode seconds and each lane's decode time over it.
 [arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
@@ -493,7 +499,7 @@ def project_speed_table(results : JsonValue const?) : string {
         let native = speed?["native"]
         let native_time = native?["decode"]?["time"] ?? 0.0lf
         for (side in ["ours", "rust"]) {
-            var inscope row <- [name, side_title(side), results?["projects"]?[name]?["native_compiler"] ?? "", native_time > 0.0lf ? "{native_time:.6f}" : "n/a"]
+            var inscope row <- [name, side_title(side), compiler_name(results?["projects"]?[name]?["native_compiler"] ?? ""), native_time > 0.0lf ? "{native_time:.6f}" : "n/a"]
             row |> push_from([for (lane in lanes); bench_text_of(speed?[side]?[lane], native)])
             rows |> emplace(row)
         }

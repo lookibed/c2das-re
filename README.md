@@ -645,10 +645,10 @@ Why a lane does not pass:
 
 The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 5 samples a cell:
 
-| Project | Side | Native compiler                                                                                      | Native s | interpreter |     JIT |     exe |     AOT |
-| :------ | :--- | :--------------------------------------------------------------------------------------------------- | -------: | ----------: | ------: | ------: | ------: |
-| wasm3   | Ours | clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1) | 0.002223 |     refused | refused | refused | refused |
-| wasm3   | Rust | clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1) | 0.002223 |       58.07 |    2.23 |    2.10 | skipped |
+| Project | Side | Native compiler      | Native s | interpreter |     JIT |     exe |     AOT |
+| :------ | :--- | :------------------- | -------: | ----------: | ------: | ------: | ------: |
+| wasm3   | Ours | clang version 22.1.8 | 0.002223 |     refused | refused | refused | refused |
+| wasm3   | Rust | clang version 22.1.8 | 0.002223 |       58.07 |    2.23 |    2.10 | skipped |
 
 The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
 
