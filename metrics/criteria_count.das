@@ -337,7 +337,7 @@ def private function_counts(dm : DasModule; stems : table<string; bool>; var sid
 [arch(at="ARCHITECTURE_CRITERIA.md#criteria")]
 def count_criteria(sources : array<CSource>; modules : array<DasModule>; constants : table<string; bool>) : CriteriaRaw {
     var raw : CriteriaRaw
-    var c : table<string; int>
+    var c <- {for (k in RAW_KEYS); k => 0}
     var side <- c_side(sources, constants, c)
     let corpus = CorpusIndex(lines <- {for (line in side.corpus); line => true}, joined = join(side.corpus, "\n"))
     let stems <- {for (dm in modules); dm.stem => true}

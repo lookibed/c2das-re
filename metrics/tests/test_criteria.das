@@ -94,6 +94,11 @@ def test_ratio_criteria(t : T?) {
         t |> equal(got(c, "das_comment_lines"), 2)
         t |> equal(got(c, "das_comments_carried"), 2)
     }
+    t |> run("every raw key is counted, zero included, so a fresh sample compares key by key") @(t : T?) {
+        let c = raw_of("", "")
+        t |> equal(length(c), length(RAW_KEYS))
+        t |> equal(c?["setjmp_sites"] ?? -1, 0)
+    }
     t |> run("comments: a word inside a C comment and a converter note are not") @(t : T?) {
         let c = raw_of("/* retry the call */\nint f(void) \{ return 1; \}\n", "def f : int \{\n    // retry\n    // re-dispatch\n    return 1\n\}\n")
         t |> equal(got(c, "das_comments_carried"), 0)
