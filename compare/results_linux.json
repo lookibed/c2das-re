@@ -1,7 +1,7 @@
 {
 	"suites" : {
 		"c_testsuite" : {
-			"daslang" : "0.6.4",
+			"rust_pass_of_skipped" : 0,
 			"date" : "2026-11-01 02:54 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 199,
@@ -1560,13 +1560,13 @@
 			],
 			"rust_pass_of_unlisted" : 8,
 			"ids" : 220,
+			"daslang" : "0.6.4",
 			"seconds" : 86.92239379882812,
 			"ours_skipped" : 0,
-			"rust_pass_of_ours" : 194,
-			"rust_pass_of_skipped" : 0
+			"rust_pass_of_ours" : 194
 		},
 		"gcc_torture" : {
-			"daslang" : "0.6.4",
+			"rust_pass_of_skipped" : 41,
 			"date" : "2026-11-01 03:04 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 1179,
@@ -13177,13 +13177,13 @@
 			],
 			"rust_pass_of_unlisted" : 67,
 			"ids" : 1656,
+			"daslang" : "0.6.4",
 			"seconds" : 645.4718017578125,
 			"ours_skipped" : 321,
-			"rust_pass_of_ours" : 1089,
-			"rust_pass_of_skipped" : 41
+			"rust_pass_of_ours" : 1089
 		},
 		"csmith" : {
-			"daslang" : "0.6.4",
+			"rust_pass_of_skipped" : 5,
 			"date" : "2026-11-01 03:12 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 151,
@@ -14476,10 +14476,10 @@
 			],
 			"rust_pass_of_unlisted" : 0,
 			"ids" : 182,
+			"daslang" : "0.6.4",
 			"seconds" : 434.8171081542969,
 			"ours_skipped" : 31,
-			"rust_pass_of_ours" : 42,
-			"rust_pass_of_skipped" : 5
+			"rust_pass_of_ours" : 42
 		}
 	},
 	"perf" : {
@@ -17294,48 +17294,6 @@
 					}
 				}
 			},
-			"gcc_torture/990525-1" : {
-				"ours" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 40,
-					"runtime_lines" : 0,
-					"program_c2da_lines" : 0,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 0,
-						"unsafe_expr" : 0,
-						"c_function" : 0,
-						"literal_named" : 0,
-						"pointer_arith" : 0,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 0,
-						"pointer_index" : 0
-					}
-				},
-				"rust" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 341,
-					"runtime_lines" : 290,
-					"program_c2da_lines" : 7,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 14,
-						"unsafe_expr" : 34,
-						"c_function" : 0,
-						"literal_named" : 0,
-						"pointer_arith" : 0,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 1,
-						"pointer_index" : 11
-					}
-				}
-			},
 			"gcc_torture/990628-1" : {
 				"ours" : {
 					"status" : "ok",
@@ -17375,6 +17333,48 @@
 						"unsafe_block" : 0,
 						"while_rangeable" : 1,
 						"pointer_index" : 13
+					}
+				}
+			},
+			"gcc_torture/990525-1" : {
+				"ours" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 40,
+					"runtime_lines" : 0,
+					"program_c2da_lines" : 0,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 0,
+						"unsafe_expr" : 0,
+						"c_function" : 0,
+						"literal_named" : 0,
+						"pointer_arith" : 0,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 0,
+						"pointer_index" : 0
+					}
+				},
+				"rust" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 341,
+					"runtime_lines" : 290,
+					"program_c2da_lines" : 7,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 14,
+						"unsafe_expr" : 34,
+						"c_function" : 0,
+						"literal_named" : 0,
+						"pointer_arith" : 0,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 1,
+						"pointer_index" : 11
 					}
 				}
 			},
@@ -75780,6 +75780,244 @@
 								0.043732,
 								0.042248,
 								0.042472
+							]
+						}
+					},
+					"aot" : {
+						"error" : "the lane does not pass: skipped"
+					}
+				}
+			},
+			"daslang" : "0.6.4"
+		},
+		"doomgeneric" : {
+			"code" : {
+				"ours" : {
+					"status" : "refused",
+					"error" : "dumper: libclang: /root/c2das/tests/manual/doomgeneric/src/all.c:37:10: fatal error: 'dummy.c' file not found",
+					"files" : 0,
+					"lines" : 0,
+					"runtime_lines" : 0,
+					"program_c2da_lines" : 0,
+					"counts" : {}
+				},
+				"rust" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 37045,
+					"runtime_lines" : 1579,
+					"program_c2da_lines" : 4365,
+					"counts" : {
+						"label" : 612,
+						"reinterpret" : 10418,
+						"unsafe_expr" : 15426,
+						"c_function" : 0,
+						"literal_named" : 43595,
+						"pointer_arith" : 523,
+						"goto" : 435,
+						"unsafe_block" : 260,
+						"while_rangeable" : 169,
+						"pointer_index" : 3454
+					}
+				}
+			},
+			"lanes" : [
+				"interp",
+				"jit",
+				"exe",
+				"aot"
+			],
+			"date" : "2026-11-01 22:02 UTC",
+			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"ours" : {
+				"error" : "dumper: libclang: /root/c2das/tests/manual/doomgeneric/src/all.c:37:10: fatal error: 'dummy.c' file not found",
+				"lanes" : {
+					"interp" : {
+						"status" : "refused",
+						"reason" : "dumper: libclang: /root/c2das/tests/manual/doomgeneric/src/all.c:37:10: fatal error: 'dummy.c' file not found"
+					},
+					"jit" : {
+						"status" : "refused",
+						"reason" : "dumper: libclang: /root/c2das/tests/manual/doomgeneric/src/all.c:37:10: fatal error: 'dummy.c' file not found"
+					},
+					"exe" : {
+						"status" : "refused",
+						"reason" : "dumper: libclang: /root/c2das/tests/manual/doomgeneric/src/all.c:37:10: fatal error: 'dummy.c' file not found"
+					},
+					"aot" : {
+						"status" : "refused",
+						"reason" : "dumper: libclang: /root/c2das/tests/manual/doomgeneric/src/all.c:37:10: fatal error: 'dummy.c' file not found"
+					}
+				}
+			},
+			"rust_commit_error" : "",
+			"functions" : [
+				{
+					"key" : "doomgeneric",
+					"name" : "R_DrawColumn",
+					"ours" : "",
+					"rust" : "[sideeffects]\ndef R_DrawColumn() {\n    var count_9 : int\n    var dest_8 : uint8?\n    var frac_7 : int\n    var fracstep : int\n    count_9 = dc_yh - dc_yl\n    if (count_9 < 0) {\n        return\n    }\n    if (uint(dc_x) >= 320u || dc_yl < 0 || dc_yh >= 200) {\n        I_Error(unsafe(addr<int8?>(c2da_str_393[0])), [C2daVaArg(tag = 1, i64 = int64(dc_yl), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(dc_yh), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(dc_x), f64 = 0.0lf, raw = 0x0)])\n    }\n    dest_8 = unsafe(reinterpret<uint8?>(unsafe(ylookup[dc_yl] + columnofs[dc_x])))\n    fracstep = dc_iscale\n    frac_7 = dc_texturemid + (dc_yl - centery) * fracstep\n    var c2da_dest_8_addr : uint64 = unsafe(reinterpret<uint64>(dest_8))\n    for (c2da_iter in urange64(0ul, uint64(uint(count_9)) + 1ul)) {\n        *unsafe(reinterpret<uint8?>(c2da_dest_8_addr)) = uint8(unsafe(dc_colormap[int(unsafe(dc_source[frac_7 >> 16 & 127]))]))  // nolint:PERF020\n        c2da_dest_8_addr += 320ul\n        frac_7 += fracstep\n    }\n    return\n}"
+				},
+				{
+					"key" : "doomgeneric",
+					"name" : "R_DrawSpan",
+					"ours" : "",
+					"rust" : "[sideeffects]\ndef R_DrawSpan() {\n    var position_1 : uint\n    var step : uint\n    var dest_14 : uint8?\n    var count_16 : int\n    if (ds_x2 < ds_x1 || ds_x1 < 0 || ds_x2 >= 320 || uint(ds_y) > 200u) {\n        I_Error(unsafe(addr<int8?>(c2da_str_395[0])), [C2daVaArg(tag = 1, i64 = int64(ds_x1), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(ds_x2), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(ds_y), f64 = 0.0lf, raw = 0x0)])\n    }\n    position_1 = uint(ds_xfrac << 10) & 0xffff0000u | uint(ds_yfrac >> 6 & 65535)\n    step = uint(ds_xstep << 10) & 0xffff0000u | uint(ds_ystep >> 6 & 65535)\n    dest_14 = unsafe(reinterpret<uint8?>(unsafe(ylookup[ds_y] + columnofs[ds_x1])))\n    count_16 = ds_x2 - ds_x1\n    var c2da_dest_14_addr : uint64 = unsafe(reinterpret<uint64>(dest_14))\n    for (c2da_iter_5 in urange64(0ul, uint64(uint(count_16)) + 1ul)) {\n        *unsafe(reinterpret<uint8?>(c2da_dest_14_addr)) = uint8(unsafe(ds_colormap[int(unsafe(ds_source[int(position_1 >> 26u | position_1 >> 4u & 0xfc0u)]))]))  // nolint:PERF020\n        c2da_dest_14_addr++\n        position_1 += step\n    }\n    return\n}"
+				}
+			],
+			"native" : {
+				"status" : "pass",
+				"reason" : ""
+			},
+			"samples" : 5,
+			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
+			"rust" : {
+				"error" : "",
+				"lanes" : {
+					"interp" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"jit" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"exe" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"aot" : {
+						"status" : "skipped",
+						"reason" : "the aot host passes the program no arguments, and it reads its input from its last one"
+					}
+				}
+			},
+			"speed" : {
+				"native" : {
+					"setup" : {
+						"time" : 0.006477,
+						"spread" : 0.020302609232669393,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.006477,
+							0.006592,
+							0.006546,
+							0.006329,
+							0.006452
+						]
+					},
+					"decode" : {
+						"time" : 0.121829,
+						"spread" : 0.0056883008150769195,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.121192,
+							0.121582,
+							0.122578,
+							0.122046,
+							0.121829
+						]
+					}
+				},
+				"ours" : {
+					"interp" : {
+						"error" : "bench: dumper: libclang: /root/c2das/tests/manual/doomgeneric/src/all.c:37:10: fatal error: 'dummy.c' file not found"
+					},
+					"jit" : {
+						"error" : "bench: dumper: libclang: /root/c2das/tests/manual/doomgeneric/src/all.c:37:10: fatal error: 'dummy.c' file not found"
+					},
+					"exe" : {
+						"error" : "bench: dumper: libclang: /root/c2das/tests/manual/doomgeneric/src/all.c:37:10: fatal error: 'dummy.c' file not found"
+					},
+					"aot" : {
+						"error" : "bench: dumper: libclang: /root/c2das/tests/manual/doomgeneric/src/all.c:37:10: fatal error: 'dummy.c' file not found"
+					}
+				},
+				"rust" : {
+					"interp" : {
+						"setup" : {
+							"time" : 0.107649,
+							"spread" : 0.02140753745970702,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.110364,
+								0.107657,
+								0.107649,
+								0.10712,
+								0.105755
+							]
+						},
+						"decode" : {
+							"time" : 4.07804,
+							"spread" : 0.017774960520249863,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								4.200443,
+								4.07804,
+								4.055469,
+								4.067381,
+								4.096986
+							]
+						}
+					},
+					"jit" : {
+						"setup" : {
+							"time" : 0.006032,
+							"spread" : 0.45722811671087543,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.011057,
+								0.006032,
+								0.005851,
+								0.006529,
+								0.005541
+							]
+						},
+						"decode" : {
+							"time" : 0.1311,
+							"spread" : 0.012684973302822257,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.130245,
+								0.1311,
+								0.133571,
+								0.130871,
+								0.132041
+							]
+						}
+					},
+					"exe" : {
+						"setup" : {
+							"time" : 0.006366,
+							"spread" : 0.06275526233113417,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.006416,
+								0.00563,
+								0.005628,
+								0.006366,
+								0.006427
+							]
+						},
+						"decode" : {
+							"time" : 0.130363,
+							"spread" : 0.008982610096423106,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.132337,
+								0.130103,
+								0.129995,
+								0.130363,
+								0.130399
 							]
 						}
 					},

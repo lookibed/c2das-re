@@ -631,12 +631,14 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-01 20:17 UTC); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-01 20:51 UTC); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-01 21:25 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-01 20:17 UTC); doomgeneric (Rust `b1d012eb5d26`, 2026-11-01 22:02 UTC); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-01 20:51 UTC); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-01 21:25 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
 
 | Project       | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------------ | :--- | :----- | ----------: | ------: | ------: | ------: |
 | binjgb        | Ours | pass   |     refused | refused | refused | refused |
 | binjgb        | Rust | pass   |        pass |    pass |    pass | skipped |
+| doomgeneric   | Ours | pass   |     refused | refused | refused | refused |
+| doomgeneric   | Rust | pass   |        pass |    pass |    pass | skipped |
 | h264bsd-mp4   | Ours | pass   |     refused | refused | refused | refused |
 | h264bsd-mp4   | Rust | pass   |        pass |    pass |    pass | skipped |
 | plmpeg-stream | Ours | pass   |     refused | refused | refused | refused |
@@ -648,6 +650,8 @@ Why a lane does not pass:
 
 - binjgb, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/binjgb/src/all.c:11:10: fatal error: 'common.c' file not found
 - binjgb, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
+- doomgeneric, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/doomgeneric/src/all.c:37:10: fatal error: 'dummy.c' file not found
+- doomgeneric, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 - h264bsd-mp4, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`
 - h264bsd-mp4, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 - plmpeg-stream, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`
@@ -661,6 +665,8 @@ The bench entry's timed loop (`decode_us`), a lane's median over the native buil
 | :------------ | :--- | :------------------- | -------: | ----------: | ------: | ------: | ------: |
 | binjgb        | Ours | clang version 22.1.8 | 0.062580 |     refused | refused | refused | refused |
 | binjgb        | Rust | clang version 22.1.8 | 0.062580 |       71.34 |    1.07 |    1.05 | skipped |
+| doomgeneric   | Ours | clang version 22.1.8 | 0.121829 |     refused | refused | refused | refused |
+| doomgeneric   | Rust | clang version 22.1.8 | 0.121829 |       33.47 |    1.08 |    1.07 | skipped |
 | h264bsd-mp4   | Ours | clang version 22.1.8 | 0.085924 |     refused | refused | refused | refused |
 | h264bsd-mp4   | Rust | clang version 22.1.8 | 0.085924 |       48.69 |    1.03 |    1.01 | skipped |
 | plmpeg-stream | Ours | clang version 22.1.8 | 0.042030 |     refused | refused | refused | refused |
@@ -674,6 +680,8 @@ The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std
 | :------------ | :--- | :------ | ----: | ----: | ------------: | ---------: | ---: | ----: | ------------: | ------------: | ------------: | ----------: | -----------: | ----------: | --------------: |
 | binjgb        | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | binjgb        | Rust | ok      |     1 | 11481 |           956 |          0 |  670 |   867 |          2393 |            33 |           939 |        3818 |            8 |        5049 |              12 |
+| doomgeneric   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| doomgeneric   | Rust | ok      |     1 | 37045 |          1579 |          0 |  435 |   612 |         43595 |           523 |          3454 |       10418 |          260 |       15426 |             169 |
 | h264bsd-mp4   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | h264bsd-mp4   | Rust | ok      |     1 | 24316 |           822 |          0 |  362 |   309 |          7164 |          1738 |          2701 |        5172 |         1208 |        8557 |              73 |
 | plmpeg-stream | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
@@ -950,6 +958,70 @@ def ppu_mode3_synchronize(var e_10 : Emulator?) {
         x_2 = uint8(int(x_2) + 4)
     }
     e_10.state.ppu.render_x = x_2
+    return
+}
+```
+
+
+#### `doomgeneric`: `R_DrawColumn`
+
+Ours: not found in this side's module.
+
+Rust:
+
+```das
+[sideeffects]
+def R_DrawColumn() {
+    var count_9 : int
+    var dest_8 : uint8?
+    var frac_7 : int
+    var fracstep : int
+    count_9 = dc_yh - dc_yl
+    if (count_9 < 0) {
+        return
+    }
+    if (uint(dc_x) >= 320u || dc_yl < 0 || dc_yh >= 200) {
+        I_Error(unsafe(addr<int8?>(c2da_str_393[0])), [C2daVaArg(tag = 1, i64 = int64(dc_yl), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(dc_yh), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(dc_x), f64 = 0.0lf, raw = 0x0)])
+    }
+    dest_8 = unsafe(reinterpret<uint8?>(unsafe(ylookup[dc_yl] + columnofs[dc_x])))
+    fracstep = dc_iscale
+    frac_7 = dc_texturemid + (dc_yl - centery) * fracstep
+    var c2da_dest_8_addr : uint64 = unsafe(reinterpret<uint64>(dest_8))
+    for (c2da_iter in urange64(0ul, uint64(uint(count_9)) + 1ul)) {
+        *unsafe(reinterpret<uint8?>(c2da_dest_8_addr)) = uint8(unsafe(dc_colormap[int(unsafe(dc_source[frac_7 >> 16 & 127]))]))  // nolint:PERF020
+        c2da_dest_8_addr += 320ul
+        frac_7 += fracstep
+    }
+    return
+}
+```
+
+#### `doomgeneric`: `R_DrawSpan`
+
+Ours: not found in this side's module.
+
+Rust:
+
+```das
+[sideeffects]
+def R_DrawSpan() {
+    var position_1 : uint
+    var step : uint
+    var dest_14 : uint8?
+    var count_16 : int
+    if (ds_x2 < ds_x1 || ds_x1 < 0 || ds_x2 >= 320 || uint(ds_y) > 200u) {
+        I_Error(unsafe(addr<int8?>(c2da_str_395[0])), [C2daVaArg(tag = 1, i64 = int64(ds_x1), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(ds_x2), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(ds_y), f64 = 0.0lf, raw = 0x0)])
+    }
+    position_1 = uint(ds_xfrac << 10) & 0xffff0000u | uint(ds_yfrac >> 6 & 65535)
+    step = uint(ds_xstep << 10) & 0xffff0000u | uint(ds_ystep >> 6 & 65535)
+    dest_14 = unsafe(reinterpret<uint8?>(unsafe(ylookup[ds_y] + columnofs[ds_x1])))
+    count_16 = ds_x2 - ds_x1
+    var c2da_dest_14_addr : uint64 = unsafe(reinterpret<uint64>(dest_14))
+    for (c2da_iter_5 in urange64(0ul, uint64(uint(count_16)) + 1ul)) {
+        *unsafe(reinterpret<uint8?>(c2da_dest_14_addr)) = uint8(unsafe(ds_colormap[int(unsafe(ds_source[int(position_1 >> 26u | position_1 >> 4u & 0xfc0u)]))]))  // nolint:PERF020
+        c2da_dest_14_addr++
+        position_1 += step
+    }
     return
 }
 ```
@@ -1580,6 +1652,7 @@ def call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Resul
 - switch_local, AOT: Rust 2.61x native, ours has no cell (compile).
 - va_forward, interpreter: Rust 131.56x native, ours 215.67x.
 - project binjgb: Rust passes interpreter, JIT, exe, ours does not.
+- project doomgeneric: Rust passes interpreter, JIT, exe, ours does not.
 - project h264bsd-mp4: Rust passes interpreter, JIT, exe, ours does not.
 - project plmpeg-stream: Rust passes interpreter, JIT, exe, ours does not.
 - project wasm3: Rust passes interpreter, JIT, exe, ours does not.
