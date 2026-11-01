@@ -631,7 +631,7 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the output its README gives; the native build (the pinned clang with the README's flags) must print it too. Captured: wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:36 UTC).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the output its README gives; the native build (the pinned clang with the README's flags) must print it too. Captured: wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
 
 | Project | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------ | :--- | :----- | ----------: | ------: | ------: | ------: |
@@ -645,16 +645,16 @@ Why a lane does not pass:
 
 The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 5 samples a cell:
 
-| Project | Side | Native s | interpreter |     JIT |     exe |     AOT |
-| :------ | :--- | -------: | ----------: | ------: | ------: | ------: |
-| wasm3   | Ours | 0.001838 |     refused | refused | refused | refused |
-| wasm3   | Rust | 0.001838 |       65.86 |    2.70 |    2.49 | skipped |
+| Project | Side | Native compiler                                                                                      | Native s | interpreter |     JIT |     exe |     AOT |
+| :------ | :--- | :--------------------------------------------------------------------------------------------------- | -------: | ----------: | ------: | ------: | ------: |
+| wasm3   | Ours | clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1) | 0.002223 |     refused | refused | refused | refused |
+| wasm3   | Rust | clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1) | 0.002223 |       58.07 |    2.23 |    2.10 | skipped |
 
 The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
 
 | Project | Side | Code    | Files | Lines | Runtime lines | c_function | goto | label | literal_named | pointer_arith | pointer_index | reinterpret | unsafe_block | unsafe_expr | while_rangeable |
 | :------ | :--- | :------ | ----: | ----: | ------------: | ---------: | ---: | ----: | ------------: | ------------: | ------------: | ----------: | -----------: | ----------: | --------------: |
-| wasm3   | Ours | refused |     0 |     0 |             0 |          0 |    0 |     0 |             0 |             0 |             0 |           0 |            0 |           0 |               0 |
+| wasm3   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | wasm3   | Rust | ok      |     1 | 25827 |          1009 |          0 | 2393 |  2162 |          1827 |          2074 |           430 |        4550 |          814 |        6589 |              24 |
 
 #### `wasm3`: `op_Call`
