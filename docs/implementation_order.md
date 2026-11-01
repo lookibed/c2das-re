@@ -1087,6 +1087,14 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   report, printing the percentages and their delta against `main`. `main` is re-measured in the item
   and the numbers land in the critic file's footnote area and the PR's `Кратко`. No translator fix in
   this item: the owner decides fixes from the critic file.
+  Done (branch `p8.1b-metric`, PR #39): 22 criteria in `metrics/criteria*.das`, each a compliance
+  percentage against a human port (`metrics/ARCHITECTURE_CRITERIA.md`), the total their unweighted
+  mean; `scripts/run_criteria.sh` measures Lua (both programs, three layouts) and the three suites
+  into `metrics/criteria_linux.json` (1535 inputs, 19 min); preflight's `criteria` report gate and
+  the item-report line in `AGENTS.md`. Main 26e00eb: total 63.3% (Lua 61.8 source / 63.3 scc /
+  58.8 single; c-testsuite 75.2, csmith 69.5, gcc-torture 67.5); comments, constant names,
+  character literals, string literals and setjmp at 0%; long lines 35.7%. The numbers are the
+  measurement block of the critic file; no translator change.
 - **P8.2 Real projects of the Rust c2das** (owner ruling 2026-11-01 (17); after P8.1, before P7.0a).
   The six projects of the Rust repository's `tests/manual` (binjgb, doomgeneric, h264bsd-mp4,
   plmpeg-stream, quakegeneric, wasm3), each run through c2das-re on exactly the inputs, hosts,
