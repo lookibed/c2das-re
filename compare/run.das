@@ -17,6 +17,7 @@ require perf_compare
 require quality_compare
 require lua_compare
 require compare_render
+require projects
 require ../perf/perf_cli.das
 require ../lua/sources.das
 
@@ -26,7 +27,9 @@ require ../lua/sources.das
 //! (`compare/ARCHITECTURE.md`); `--quality` counts and sizes both sides' output over the inputs
 //! both translated and writes its `quality` section; `--lua` runs the Rust translator over Lua and
 //! writes the `lua` and `doom` sections, over the C files and the sidecar of the folder
-//! `--lua-from` names when it is set; `--readme` and `--report` render the capture as markdown.
+//! `--lua-from` names when it is set; `--project` runs one real project of the Rust checkout and
+//! writes its entry of the `projects` section; `--readme` and `--report` render the capture as
+//! markdown.
 
 //! the README `--readme` rewrites and the rulings `--report` opens with, from the repository root
 let README = "README.md"
@@ -46,6 +49,8 @@ struct CompareArgs {
     lua : bool
     @clarg_doc = "--lua over the .c files of this folder (its lua.c holding main) with its lua.c2das, when present, as the sidecar, into <folder>/work, instead of Lua's release"
     lua_from : string = ""
+    @clarg_doc = "run one real project of the Rust checkout's tests/manual through both translators: wasm3"
+    project : string = ""
     @clarg_doc = "rewrite the comparison rendered from the capture between the compare markers of README.md"
     readme : bool
     @clarg_doc = "write the comparison rendered from the capture into this markdown file, the open rulings first"
@@ -174,6 +179,32 @@ def run_lua(out, from : string) : int {
     }
 }
 
+// the real project `--project` names through both translators, its result lines logged; its
+// entry of the capture's `projects` section written
+def run_project(args : CompareArgs; out : string) : int {
+    var reason : string
+    if (!rust_available(reason)) {
+        to_log(LOG_ERROR, "{reason}\n")
+        return 2
+    }
+    let manual = path_join(rust_checkout(), MANUAL_DIR)
+    var p : Project
+    if (!find_project(manual, args.project, p)) {
+        to_log(LOG_ERROR, "--project takes one of {join([for (row in project_table(manual)); row.name], ", ")}, not `{args.project}`\n")
+        return 1
+    }
+    if (!fexist(project_path(p, p.tu))) {
+        to_log(LOG_ERROR, "no {project_path(p, p.tu)}: the Rust checkout {rust_checkout()} lacks the project\n")
+        return 2
+    }
+    let bin = rust_binary()
+    var entry = project_entry(p, bin, path_join(PROJECTS_WORK, p.name), args.samples, run_stamps(bin))
+    for (line in project_lines(p.name, entry)) {
+        to_log(LOG_INFO, "{line}\n")
+    }
+    return record_run(out, args.filter) $(path) => write_project(path, p.name, entry)
+}
+
 // the open lines of `docs/rulings-pending.md`, under their heading; "" without the file or a line
 def private rulings_pending : string {
     let lines <- [for (line in split(fexist(RULINGS) ? fread(RULINGS) : "", "\n")); line; where line |> starts_with("- ")]
@@ -210,9 +241,9 @@ def main : int {
     if (!empty(args.one)) {
         return run_worker(args.one)
     }
-    let alone <- [for (mode in [("--perf", args.perf), ("--quality", args.quality), ("--lua", args.lua), ("--readme or --report", args.readme || !empty(args.report))]); mode._0; where mode._1]
+    let alone <- [for (mode in [("--perf", args.perf), ("--quality", args.quality), ("--lua", args.lua), ("--project", !empty(args.project)), ("--readme or --report", args.readme || !empty(args.report))]); mode._0; where mode._1]
     if (length(alone) > 1 || (length(alone) == 1 && (args.suites || !empty(args.suite)))) {
-        to_log(LOG_ERROR, "{alone[0]} runs alone: run the suites and each of --perf, --quality, --lua and the rendering in a run of its own\n")
+        to_log(LOG_ERROR, "{alone[0]} runs alone: run the suites and each of --perf, --quality, --lua, --project and the rendering in a run of its own\n")
         return 1
     }
     if (args.lua && !empty(args.filter)) {
@@ -229,11 +260,14 @@ def main : int {
     if (args.lua) {
         return run_lua(out, args.lua_from)
     }
+    if ((args.perf || !empty(args.project)) && args.samples < 1) {
+        to_log(LOG_ERROR, "--samples takes a count of at least 1, not {args.samples}\n")
+        return 1
+    }
+    if (!empty(args.project)) {
+        return run_project(args, out)
+    }
     if (args.perf) {
-        if (args.samples < 1) {
-            to_log(LOG_ERROR, "--samples takes a count of at least 1, not {args.samples}\n")
-            return 1
-        }
         return run_perf(args)
     }
     let all <- compare_suites()

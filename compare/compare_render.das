@@ -270,8 +270,10 @@ def excluded_lines(results : JsonValue const?) : array<string> {
 
 //! The functions side by side: per entry a heading naming the key and the C function, then our
 //! text and the Rust side's as fenced `das` blocks, a side without the function said so.
-def side_by_side(results : JsonValue const?) : string {
-    let functions = results?["quality"]?["functions"]
+def side_by_side(results : JsonValue const?) : string => functions_text(results?["quality"]?["functions"])
+
+//! The functions of the array `functions`, each `{key, name, ours, rust}`, side by side.
+def functions_text(functions : JsonValue const?) : string {
     if (absent(functions) || !(functions.value is _array) || empty(functions.value as _array)) {
         return "No function is sampled yet.\n"
     }
@@ -367,6 +369,13 @@ def rust_ahead(results : JsonValue const?) : array<string> {
             lines |> push("- geomean, {lane_title(lane)}: Rust {ratio_cell(rust)}x native, ours {ratio_cell(ours)}x over {g?["kernels"] ?? 0} kernels.")
         }
     }
+    for (name in keys_of(results?["projects"])) {
+        let entry = results?["projects"]?[name]
+        var inscope ahead <- [for (lane in strings_of(entry?["lanes"])); lane_title(lane); where(entry?["rust"]?["lanes"]?[lane]?["status"] ?? "") == "pass" && (entry?["ours"]?["lanes"]?[lane]?["status"] ?? "") != "pass"]
+        if (!empty(ahead)) {
+            lines |> push("- project {name}: Rust passes {join(ahead, ", ")}, ours does not.")
+        }
+    }
     let all = results?["quality"]?["totals"]?[ALL_GROUPS]
     if (!absent(all)) {
         for (m in METRICS) {
@@ -386,6 +395,167 @@ def rust_ahead(results : JsonValue const?) : array<string> {
         }
     }
     return <- lines
+}
+
+// the lanes of the capture's first project, sorted by name
+def private project_lanes(results : JsonValue const?) : array<string> {
+    let names <- keys_of(results?["projects"])
+    return <- empty(names) ? array<string>() : strings_of(results?["projects"]?[names[0]]?["lanes"])
+}
+
+// the title of a side
+def private side_title(side : string) : string => side == "ours" ? "Ours" : "Rust"
+
+//! The real projects table: per project and side the native build's verdict and each lane's.
+[arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
+def projects_table(results : JsonValue const?) : string {
+    let names <- keys_of(results?["projects"])
+    let lanes <- project_lanes(results)
+    if (empty(names)) {
+        return "No project is captured yet.\n"
+    }
+    var headers <- ["Project", "Side", "Native"]
+    headers |> push_from([for (lane in lanes); lane_title(lane)])
+    var rows : array<array<string>>
+    rows |> reserve(2 * length(names))
+    for (name in names) {
+        let entry = results?["projects"]?[name]
+        for (side in ["ours", "rust"]) {
+            var inscope row <- [name, side_title(side), entry?["native"]?["status"] ?? ""]
+            row |> push_from([for (lane in lanes); entry?[side]?["lanes"]?[lane]?["status"] ?? "n/a"])
+            rows |> emplace(row)
+        }
+    }
+    return table_of(headers, rows, 3)
+}
+
+//! The code table: per project and side its status, files, non-blank lines, the Rust runtime's
+//! lines and each readability counter.
+[arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
+def project_code_table(results : JsonValue const?) : string {
+    let names <- keys_of(results?["projects"])
+    let lanes <- project_lanes(results)
+    if (empty(names)) {
+        return ""
+    }
+    var headers <- ["Project", "Side", "Code", "Files", "Lines", "Runtime lines"]
+    headers |> push_from(METRICS)
+    var rows : array<array<string>>
+    rows |> reserve(2 * length(names))
+    for (name in names) {
+        for (side in ["ours", "rust"]) {
+            let code = results?["projects"]?[name]?["code"]?[side]
+            var inscope row <- [name, side_title(side), code?["status"] ?? "", "{code?["files"] ?? 0}", "{code?["lines"] ?? 0}", "{code?["runtime_lines"] ?? 0}"]
+            row |> push_from([for (m in METRICS); "{code?["counts"]?[m] ?? 0}"])
+            rows |> emplace(row)
+        }
+    }
+    return table_of(headers, rows, 3)
+}
+
+//! A bench cell's text: the decode time over the native one, `n/a` without a cell, else the
+//! error's first word: the verdict of a lane that does not pass, `refused` for a side with no
+//! bench module, the run's verdict.
+[arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
+def bench_text_of(cell, native : JsonValue const?) : string {
+    if (absent(cell)) {
+        return "n/a"
+    }
+    let error = cell?["error"] ?? ""
+    if (empty(error)) {
+        let r = cell_ratio(cell?["decode"], native?["decode"])
+        return r > 0.0lf ? ratio_cell(r) : "n/a"
+    }
+    let lane_fails = "the lane does not pass: "
+    if (error |> starts_with(lane_fails)) {
+        return slice(error, length(lane_fails))
+    }
+    let colon = find(error, ":")
+    return error |> starts_with("bench: ") ? "refused" : colon < 0 ? error : slice(error, 0, colon)
+}
+
+//! The bench table: per project and side the native build's decode seconds and each lane's decode
+//! time over it.
+[arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
+def project_speed_table(results : JsonValue const?) : string {
+    let names <- keys_of(results?["projects"])
+    let lanes <- project_lanes(results)
+    if (empty(names)) {
+        return ""
+    }
+    var headers <- ["Project", "Side", "Native s"]
+    headers |> push_from([for (lane in lanes); lane_title(lane)])
+    var rows : array<array<string>>
+    rows |> reserve(2 * length(names))
+    for (name in names) {
+        let speed = results?["projects"]?[name]?["speed"]
+        let native = speed?["native"]
+        let native_time = native?["decode"]?["time"] ?? 0.0lf
+        for (side in ["ours", "rust"]) {
+            var inscope row <- [name, side_title(side), native_time > 0.0lf ? "{native_time:.6f}" : "n/a"]
+            row |> push_from([for (lane in lanes); bench_text_of(speed?[side]?[lane], native)])
+            rows |> emplace(row)
+        }
+    }
+    return table_of(headers, rows, 2)
+}
+
+//! One line per side of each project for every reason its lanes give, the lanes sharing it named
+//! together, and one for a native build that does not pass.
+[arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
+def project_reasons(results : JsonValue const?) : array<string> {
+    var lines : array<string>
+    let names <- keys_of(results?["projects"])
+    let lanes <- project_lanes(results)
+    for (name in names) {
+        let entry = results?["projects"]?[name]
+        if ((entry?["native"]?["status"] ?? "") != "pass") {
+            lines |> push("- {name}, native: {clip(entry?["native"]?["reason"] ?? "")}")
+        }
+        for (side in ["ours", "rust"]) {
+            var inscope order : array<string>
+            var inscope by_reason : table<string; array<string>>
+            for (lane in lanes) {
+                let v = entry?[side]?["lanes"]?[lane]
+                let status = v?["status"] ?? ""
+                if (status != "pass") {
+                    let reason = "{status}: {v?["reason"] ?? ""}"
+                    if (!key_exists(by_reason, reason)) {
+                        order |> push(reason)
+                    }
+                    by_reason[reason] |> push(lane_title(lane))
+                }
+            }
+            lines |> push_from([for (reason in order); "- {name}, {side_title(side)}, {join(by_reason?[reason] ?? array<string>(), " ")}: {clip(reason)}"])
+        }
+    }
+    return <- lines
+}
+
+//! The real projects: the verdicts, the bench, the reasons and the functions side by side.
+[arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
+def projects_text(results : JsonValue const?) : string {
+    let names <- keys_of(results?["projects"])
+    let lanes <- project_lanes(results)
+    return build_string() $(var w) {
+        if (!empty(names)) {
+            w |> write("Each project of the Rust repository's `tests/manual` on its own fixture, checked against the output its README gives; the native build (the pinned clang with the README's flags) must print it too. ")
+            w |> write("Captured: " + join([for (n in names); "{n} ({stamp_of(results?["projects"]?[n], "date")})"], "; ") + ".\n\n")
+        }
+        w |> write(projects_table(results))
+        let reasons <- project_reasons(results)
+        if (!empty(reasons)) {
+            w |> write("\nWhy a lane does not pass:\n\n" + join(reasons, "\n") + "\n")
+        }
+        if (!empty(names)) {
+            w |> write("\nThe bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), {results?["projects"]?[names[0]]?["samples"] ?? 0} samples a cell:\n\n")
+            w |> write(project_speed_table(results))
+            w |> write("\nThe code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):\n\n{project_code_table(results)}")
+            for (n in names) {
+                w |> write("\n{functions_text(results?["projects"]?[n]?["functions"])}")
+            }
+        }
+    }
 }
 
 // the stamps of a section: its Rust commit and date
@@ -433,6 +603,7 @@ def compare_report(results : JsonValue const?) : string {
         w |> write("\n{counters_table(results)}")
         w |> write("\n### Functions side by side\n\n{side_by_side(results)}")
         w |> write("\n### Lua and Doom\n\n{lua_text(results)}")
+        w |> write("\n### Real projects\n\n{projects_text(results)}")
         w |> write("\n### Where the Rust translator is ahead\n\n{list_or(rust_ahead(results), "Nowhere in this capture.")}")
     }
 }

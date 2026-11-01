@@ -114,13 +114,18 @@ def private timed_out(stage : string; seconds : float) : CaseVerdict => CaseVerd
 // `entry` under `daslang -compile-only` with no module folders: the exit code and the text
 def private compile_entry(entry : string; timeout : float; var text : string&) : int {
     let no_modules : array<string>
-    var cmd <- daslang_cmd(no_modules)
+    return compile_entry(entry, no_modules, timeout, text)
+}
+
+//! `entry` under `daslang -compile-only` with `module_dirs` loaded: the exit code and the text.
+def compile_entry(entry : string; module_dirs : array<string>; timeout : float; var text : string&) : int {
+    var cmd <- daslang_cmd(module_dirs)
     cmd |> push_from(["-compile-only", entry])
     return run_and_capture(cmd, text, timeout)
 }
 
-// the first `error[` line of a failed compile check, else its first line
-def private compile_error(text : string) : string {
+//! The first `error[` line of a failed compile check, else its first line.
+def compile_error(text : string) : string {
     for (ln in split(text, "\n")) {
         if (ln |> starts_with("error[")) {
             return strip(ln)
@@ -330,10 +335,10 @@ def suite_capture(ratchet : Ratchet; var outcomes : array<CaseOutcome>; seconds 
     return <- c
 }
 
-// the capture at `path` as a JSON object, a fresh one when there is no file; null with `error`
-// set when the file present there is not a JSON object
+//! The capture at `path` as a JSON object, a fresh one when there is no file; null with `error`
+//! set when the file present there is not a JSON object.
 [arch(at="ARCHITECTURE.md#capture")]
-def private capture_root(path : string; var error : string&) : JsonValue? {
+def capture_root(path : string; var error : string&) : JsonValue? {
     if (!fexist(path)) {
         var empty_root : table<string; JsonValue?>
         return JV(empty_root)
