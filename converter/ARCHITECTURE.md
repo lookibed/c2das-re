@@ -47,7 +47,9 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   and `profile` (a file beside the sidecar), the cycle cut's choices, any other value or key refused
   naming it; `defines`, a list of strings
   `NAME`, `NAME=value` or the function-like `NAME(params)=value` (params identifiers separated by
-  commas, `...` last) the dump and the libclang pass give clang as one `-D<entry>` argument each,
+  commas, `...` last) the dump and the libclang pass give clang as one `-D<entry>` argument each
+  (a function a host defines outside the unit, plmpeg's test hook `c2da_rt_reset`, is nothing
+  under `NAME(...)=`, its prototype and its calls alike),
   a value that is no list or an entry of another shape refused naming the key; `over_indexed`, a list of
   strings `Record.field`, the trailing arrays the program indexes past their length, a value that
   is no list or an entry of another shape refused naming the key, an entry naming no record's
