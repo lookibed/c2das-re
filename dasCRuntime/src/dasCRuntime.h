@@ -122,6 +122,24 @@ inline int64_t c_clock() { return int64_t(::clock()); }
 //! the steady clock's nanoseconds: the wall clock the perf harness's dasProfile method times by,
 //! std::chrono::steady_clock as dasProfile's C++ harness reads it
 inline int64_t c_monotonic_ns() { return int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
+//! POSIX `clock_gettime` over the two clocks a program reads, by glibc's ids: CLOCK_REALTIME (0),
+//! std::chrono::system_clock, and CLOCK_MONOTONIC (1), the steady clock `c_monotonic_ns` reads;
+//! any other id returns -1 with errno EINVAL. The `struct timespec *` is a `void *` the converted
+//! program lays out as the host's `<time.h>` does (glibc: two 64-bit words).
+inline int32_t c_clock_gettime(int32_t clock_id, void * ts) {
+    int64_t ns = 0;
+    if (clock_id == 0) {
+        ns = int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+    } else if (clock_id == 1) {
+        ns = c_monotonic_ns();
+    } else {
+        errno = EINVAL;
+        return -1;
+    }
+    ((struct timespec *) ts)->tv_sec = time_t(ns / 1000000000);
+    ((struct timespec *) ts)->tv_nsec = long(ns % 1000000000);
+    return 0;
+}
 inline double c_difftime(int64_t a, int64_t b) { return ::difftime(time_t(a), time_t(b)); }
 //! A `struct tm *` and a `struct lconv *` are `void *`: the converted program lays the record out
 //! itself and converts the pointer at the call site.

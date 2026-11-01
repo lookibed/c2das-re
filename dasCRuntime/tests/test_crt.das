@@ -175,6 +175,16 @@ def test_crt_environment(t : T?) {
             pass
         }
         t |> success(before > 0l && crt::c_monotonic_ns() - before >= 1000000l, "the steady clock did not advance a millisecond")
+        // clock_gettime: glibc's CLOCK_REALTIME (0) and CLOCK_MONOTONIC (1) into glibc's timespec,
+        // the monotonic one the steady clock's, an unknown id refused
+        var ts = CTimespec()
+        unsafe {
+            t |> equal(crt::clock_gettime(1, addr<void?>(ts)), 0)
+            t |> success(ts.tv_nsec >= 0l && ts.tv_nsec < 1000000000l && ts.tv_sec * 1000000000l + ts.tv_nsec <= crt::c_monotonic_ns(), "monotonic {ts.tv_sec}.{ts.tv_nsec}")
+            t |> equal(crt::clock_gettime(0, addr<void?>(ts)), 0)
+            t |> success(ts.tv_sec > 1700000000l && ts.tv_nsec < 1000000000l, "realtime {ts.tv_sec}.{ts.tv_nsec}")
+            t |> equal(crt::clock_gettime(12345, addr<void?>(ts)), -1)
+        }
         t |> equal(crt::CLOCKS_PER_SEC > 0l, true)
         t |> equal(crt::LONG_BITS == 32 || crt::LONG_BITS == 64, true)
         t |> equal(crt::fflush_stdout(), 0)
@@ -314,6 +324,12 @@ def test_crt_sscanf(t : T?) {
             t |> equal(consumed, 3)
         }
     }
+}
+
+// glibc's `struct timespec` on x86_64: the seconds and the nanoseconds, a word each
+struct CTimespec {
+    tv_sec : int64
+    tv_nsec : int64
 }
 
 // `struct tm` as C names its first nine members, which glibc lays out in this order; the tail
