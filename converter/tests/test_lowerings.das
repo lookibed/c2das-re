@@ -1922,4 +1922,10 @@ def p8_input_fixtures(t : T?) {
         let text = converts(t, "hook_define", "#include <stdio.h>\nvoid c2da_rt_reset(void);\nint main(void) \{ c2da_rt_reset(); printf(\"reset\\n\"); return 0; \}\n", "\{\"defines\": [\"c2da_rt_reset(...)=\"]\}\n")
         t |> success(!(text |> contains("c2da_rt_reset")), text)
     }
+    t |> run("clang's `bool` spelling of `_Bool` (stdbool's macro in scope after a diagnostic) is the C bool: a parameter, a pointer, a return") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_stdbool", text)
+        has_text(t, text, "def set_flag(var flag : bool?; value : bool) \{\n")
+        has_text(t, text, "def private p8_stdbool__both(a : bool; b : bool) : bool \{\n")
+    }
 }
