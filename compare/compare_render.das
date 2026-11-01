@@ -381,7 +381,7 @@ def private list_or(lines : array<string>; none : string) : string => empty(line
 //! The whole comparison: every table and list under a `###` heading each.
 def compare_report(results : JsonValue const?) : string {
     return build_string() $(var w) {
-        w |> write("Rendered by `compare/run.das --readme` from `compare/results_linux.json` alone; never edited by hand. ")
+        w |> write("Rendered from c2das-re's `compare/results_linux.json` alone, never edited by hand. ")
         w |> write("Both translators run on one machine and one daslang, under the same runner and oracle (`compare/ARCHITECTURE.md`).\n\n")
         w |> write("### Suites\n\n")
         let suites = results?["suites"]

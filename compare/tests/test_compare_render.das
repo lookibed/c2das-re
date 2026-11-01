@@ -203,7 +203,7 @@ def test_command_line(t : T?) {
             var out : string
             t |> equal(run_compare_in(dir, ["--readme", "--out", "results.json"], out), 0, out)
             let text = fread(readme)
-            t |> success(text |> starts_with("# top\n\ncharter\n\n{COMPARE_BEGIN}\nRendered by "), text)
+            t |> success(text |> starts_with("# top\n\ncharter\n\n{COMPARE_BEGIN}\nRendered from "), text)
             t |> success(!(text |> contains("stale")), text)
             t |> success(text |> ends_with("{COMPARE_END}\n\ntail\n"), text)
         }
@@ -223,7 +223,7 @@ def test_command_line(t : T?) {
             var out : string
             t |> equal(run_compare_in(dir, ["--report", "plain.md", "--out", "results.json"], out), 0, out)
             let plain = fread(path_join(dir, "plain.md"))
-            t |> success(plain |> starts_with("# c2das-re against the Rust translator\n\n## Head-to-head\n\nRendered by "), plain)
+            t |> success(plain |> starts_with("# c2das-re against the Rust translator\n\n## Head-to-head\n\nRendered from "), plain)
             mkdir_rec(path_join(dir, "docs"))
             fwrite(path_join(dir, "docs/rulings-pending.md"), "# Rulings pending\n\nintro\n\n- P8.1: a question; 2026-11-01.\n")
             t |> equal(run_compare_in(dir, ["--report", "ruled.md", "--out", "results.json"], out), 0, out)

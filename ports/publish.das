@@ -10,6 +10,8 @@ require ../converter/tiers.das
 require ../converter/dumper_a.das
 require ../perf/perf_lanes.das
 require ports_render
+require ../converter/sidecar.das
+require ../compare/compare_render.das
 
 //! The publisher of the ports repository (`lookibed/c2das-ports`): for each program it knows,
 //! the converted modules, the sidecar, the upstream license and a README with the release, the
@@ -621,7 +623,7 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
 }
 
 // the top-level README: the charter kept above the marker, the projects table (or the perf
-// method line without `--perf`) below it
+// method line without `--perf`) below it, then the head-to-head when its capture exists
 def private publish_top_readme(repo : string; perf : bool) : bool {
     var captures : array<Capture>
     var names : array<string>
@@ -641,8 +643,31 @@ def private publish_top_readme(repo : string; perf : bool) : bool {
             captures |> emplace(latest)
         }
     }
+    var head_to_head : string
+    if (!compare_section(head_to_head)) {
+        return false
+    }
     let path = path_join(repo, "README.md")
-    return write_or_log(path, render_top_readme(fread(path), captures, perf))
+    return write_or_log(path, render_top_readme(fread(path), captures, perf) + head_to_head)
+}
+
+//! the head-to-head's capture in the c2das-re tree
+let COMPARE_CAPTURE = "compare/results_linux.json"
+
+// the top-level README's head-to-head section rendered from `COMPARE_CAPTURE` into `section`, ""
+// without the capture; false when it does not read
+def private compare_section(var section : string&) : bool {
+    if (!fexist(COMPARE_CAPTURE)) {
+        return true
+    }
+    var error : string
+    let results = read_json_file(COMPARE_CAPTURE, error)
+    if (results == null) {
+        to_log(LOG_ERROR, "ports: {error}\n")
+        return false
+    }
+    section = "\n## Head-to-head with the Rust translator\n\n{compare_report(results)}"
+    return true
 }
 
 def private commit_program(port : Port; repo : string; gen : Generation) : bool {
