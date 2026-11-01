@@ -196,26 +196,38 @@ def test_lua_section(t : T?) {
                 let missing = path_join(dir, "absent.c2das")
                 t |> success(lua_section(bin, c_paths, missing, path_join(dir, "work2"), Stamps(), error) == null)
                 t |> success(error |> starts_with("cannot read the sidecar {missing}"), error)
+                error = ""
+                t |> equal(folder_sidecar(dir), "")
+                fwrite(path_join(dir, "lua.c2das"), "\{\}\n")
+                t |> equal(folder_sidecar(dir), path_join(dir, "lua.c2das"))
+                let no_sidecar = lua_section(bin, [c_paths[0]], "", path_join(dir, "work3"), Stamps(), error)
+                t |> equal(error, "")
+                t |> equal(no_sidecar?["status"] ?? "", "translated")
                 t |> success(!fexist(path_join(dir, "work2")))
             }
         }
     }
+}
+
+[test]
+def test_lua_inputs(t : T?) {
     t |> run("the inputs a run needs; the log line of a section without a gap; Doom pending") @(t : T?) {
         t |> with_sources("cmp_lua_missing") $(dir) {
             let release = path_join(dir, "release")
             mkdir_rec(release)
             with_env(path_join(dir, "rust"), dir) {
-                t |> success(lua_missing(release) |> contains("no Rust translator at"))
+                t |> success(lua_missing(release, false) |> contains("no Rust translator at"))
             }
             with_env(dir, dir) {
-                t |> success(lua_missing(release) |> contains("is a folder"))
+                t |> success(lua_missing(release, false) |> contains("is a folder"))
             }
             let bin = path_join(dir, "rust")
             fwrite(bin, "#!/bin/sh\nexit 0\n")
             with_env(bin, dir) {
-                t |> equal(lua_missing(release), "{release} is missing: run lua/fetch.sh")
+                t |> equal(lua_missing(release, false), "{release} is missing: run lua/fetch.sh")
                 fwrite(path_join(release, "lua.c"), "int main(void) \{ return 0; \}\n")
-                t |> equal(lua_missing(release), "")
+                t |> equal(lua_missing(release, false), "")
+                t |> equal(lua_missing(dir, true), "{dir} has no lua.c")
             }
         }
         t |> equal(lua_line(JV(1)), "lua:  ; gap: ")
@@ -241,6 +253,7 @@ def test_lua_run(t : T?) {
             var out : string
             run_and_capture(["chmod", "+x", bin], out, 30.0)
             stand_in_program(dir)
+            fwrite(path_join(dir, "prog/lua.c2das"), "\{\"defines\": [\"HELPER_VALUE=3\"]\}\n")
             let results = path_join(dir, "results.json")
             fwrite(results, "\{\"perf\": \{\"samples\": 5\}\}")
             let committed = fread(CAPTURE)
@@ -252,10 +265,19 @@ def test_lua_run(t : T?) {
             t |> equal(read_error, "")
             t |> equal(js?["lua"]?["status"] ?? "", "refused")
             t |> equal(js?["lua"]?["units"] ?? 0, 2)
+            t |> equal(js?["lua"]?["gap_error"] ?? "x", "")
+            t |> equal(js?["lua"]?["gap"]?[0] ?? "", "ldexp")
+            t |> equal(js?["lua"]?["gap"]?[1] ?? "none", "none")
             t |> equal(js?["doom"]?["status"] ?? "", "pending")
             t |> equal(js?["perf"]?["samples"] ?? 0, 5)
             t |> equal(fread(CAPTURE), committed)
-            t |> success(fexist(path_join(dir, "prog/work/compile_commands.json")))
+            t |> success(fread(path_join(dir, "prog/work/compile_commands.json")) |> contains("-DHELPER_VALUE=3"))
+            let no_main = path_join(dir, "no_main")
+            mkdir_rec(no_main)
+            with_env(bin, dir) {
+                t |> equal(run_compare(["--lua", "--lua-from", no_main, "--out", results], out), 2, out)
+            }
+            t |> success(out |> contains("{no_main} has no lua.c"), out)
         }
     }
 }
