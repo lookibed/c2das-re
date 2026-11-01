@@ -110,6 +110,10 @@ def main : int {
             to_log(LOG_ERROR, "--perf runs alone: run the suites in a run of their own\n")
             return 1
         }
+        if (args.samples < 1) {
+            to_log(LOG_ERROR, "--samples takes a count of at least 1, not {args.samples}\n")
+            return 1
+        }
         return run_perf(args)
     }
     let all <- compare_suites()

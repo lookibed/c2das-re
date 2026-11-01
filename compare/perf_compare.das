@@ -91,13 +91,14 @@ def lane_entries(cells : table<string; Cell>; errors : array<string>; side : str
 }
 
 //! Every das lane of `das_path` against `oracle`, its builds in `work`: the interpreter and the JIT
-//! with `module_dirs` loaded, `exe` and `aot` through `measure_tiers`; the errors under `side`.
+//! with `module_dirs` loaded, `exe` and `aot` through `measure_tiers`, each under `limits`; the
+//! errors under `side`.
 [arch(at="ARCHITECTURE.md#perf")]
-def das_lane_entries(side, das_path, work : string; module_dirs : array<string>; samples, oracle : int) : table<string; JsonValue?> {
+def das_lane_entries(side, das_path, work : string; module_dirs : array<string>; samples, oracle : int; limits : LaneLimits) : table<string; JsonValue?> {
     var inscope cells : table<string; Cell>
     var errors : array<string>
-    measure_lane(cells, errors, side, "interp", das_lane_command(das_path, "", module_dirs), samples, oracle, COMPARE_LIMITS.sample)
-    measure_tiers(cells, errors, side, das_path, work, module_dirs, samples, oracle, COMPARE_LIMITS)
+    measure_lane(cells, errors, side, "interp", das_lane_command(das_path, "", module_dirs), samples, oracle, limits.sample)
+    measure_tiers(cells, errors, side, das_path, work, module_dirs, samples, oracle, limits)
     return <- lane_entries(cells, errors, side, DAS_LANES)
 }
 
@@ -115,7 +116,7 @@ def rust_entry(t : RustTranslation; work : string; samples, oracle : int; lanes_
         return JV({"status" => JV("refused"), "error" => JV(error)})
     }
     let no_modules : array<string>
-    var lanes <- empty(lanes_error) ? das_lane_entries("rust", t.entry, work, no_modules, samples, oracle) : failed_lanes(lanes_error)
+    var lanes <- empty(lanes_error) ? das_lane_entries("rust", t.entry, work, no_modules, samples, oracle, COMPARE_LIMITS) : failed_lanes(lanes_error)
     return JV({"status" => JV("ran"), "lanes" => JV(lanes)})
 }
 
@@ -130,7 +131,7 @@ def private ours_lanes(c_path, work, no_oracle : string; samples, oracle : int) 
     if (!res.ok) {
         return <- failed_lanes("convert: {first_line(res.error)}")
     }
-    return <- das_lane_entries("ours", res.das_path, ours_work, CONVERTED_MODULES, samples, oracle)
+    return <- das_lane_entries("ours", res.das_path, ours_work, CONVERTED_MODULES, samples, oracle, COMPARE_LIMITS)
 }
 
 //! One kernel compared: composed by the method into `compare/work/perf/<key>/`, its native lane
