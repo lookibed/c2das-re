@@ -61,8 +61,8 @@ suite's `expected_pass.txt` lists that its `skip.txt` does not, and every kernel
 (`converter/ARCHITECTURE.md` section 1), so each non-default form's readable cost is measured
 beside the default; and each Lua program of `lua/sources.das`, three times: `lua/<program>` converted
 from the release's files in the source layout, its counts the sum over its modules (a cluster
-module's fragments counted with it, the link module's wrappers too), `lua/<program>@scc` in the scc
-layout and `lua/<program>@single` in the single layout. A program of
+module's fragments counted with it), `lua/<program>@source-cut` in the source-cut layout (the link
+module's wrappers counted too) and `lua/<program>@single` in the single layout. A program of
 one file is one module in either layout, so every other input stands for both. The committed capture
 holds exactly those keys: both `REVIEW.das` gates, this folder's and `suites/`, check it, so a diff to a ratchet list fails the suites gate until the
 capture is re-recorded, and a run without `--filter` names a recorded key no list holds any

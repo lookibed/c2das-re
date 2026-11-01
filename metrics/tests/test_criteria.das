@@ -304,7 +304,7 @@ def test_compliance(t : T?) {
         t |> equal(length(summed), length(RAW_KEYS))
     }
     t |> run("a Lua key is its own row, a suite key its suite's") @(t : T?) {
-        t |> equal(row_of("lua/lua@scc"), "lua/lua@scc")
+        t |> equal(row_of("lua/lua@source-cut"), "lua/lua@source-cut")
         t |> equal(row_of("csmith/123"), "csmith")
         t |> equal(row_of("bare"), "bare")
     }
