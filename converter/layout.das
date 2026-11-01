@@ -633,10 +633,10 @@ def private require_modules(var plan : LayoutPlan) {
 }
 
 //! The choices of the cycle cut (`ARCHITECTURE_LAYOUT.md`, "The cycle cut"): whether to cut at
-//! all (the `source-cut` layout; `source` keeps every cycle a cluster), the weight above which an edge is
-//! never cut (-1: none), the symbols never cut, the groups of units (by file stem) kept in one
-//! module, the symbols always cut, and the dynamic call counts of a profiled native run, by symbol
-//! and calling unit's stem (empty: none, the static count of call sites weighs instead).
+//! all (the `source-cut` layout; `source` keeps every cycle a cluster), the weight above which an
+//! edge is never cut (-1: none), the symbols never cut, the groups of units (by file stem) kept in
+//! one module, the symbols always cut, and the dynamic call counts of a profiled native run, by
+//! symbol and calling unit's stem (empty: none, the static count of call sites weighs instead).
 struct CutOptions {
     cut_cycles : bool
     threshold : int64 = -1l
