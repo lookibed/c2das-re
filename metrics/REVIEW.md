@@ -13,12 +13,19 @@ the commit that adds them, or a whole `inputs` group when the diff adds every ke
 the change to the suite's `suites/<suite>/expected_pass.txt` (repo root) that adds them.** The
 `lua` and `perf` groups have no `expected_pass.txt`.
 
-**A diff that changes, beyond comments, any code in `readability.das`, `readability_count.das`
-or `readability_file.das` that decides which counts `readability_linux.json` records re-records
+**A diff that changes, beyond comments, any code in `readability.das`, `readability_count.das`,
+`readability_file.das` or `readability_inputs.das` that decides which counts `readability_linux.json` records re-records
 it with `scripts/run_readability.sh --update` in the same change.**
 
 **A diff that re-records `readability_linux.json` puts the totals table
 `scripts/run_readability.sh --update` prints in its commit message.**
 
+**A diff that changes, beyond comments, any code in `criteria.das`, `criteria_scan.das`,
+`criteria_count.das`, `criteria_defines.das`, `criteria_file.das` or `readability_inputs.das`
+that decides which counts `criteria_linux.json` records re-records it with
+`scripts/run_criteria.sh` in the same change, and puts the table that run prints in the message
+of the commit that records it.**
+
 **Never weaken a check `REVIEW.das` runs - in that file, or in `check_capture` or
-`check_input_keys` of `readability_file.das` - fix what it flags instead.**
+`check_input_keys` of `readability_file.das`, or `check_criteria` of `criteria_file.das` - fix what
+it flags instead.**

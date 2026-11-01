@@ -8,4 +8,5 @@ doom/** linguist-vendored
 # recorded captures
 perf/results_*.json linguist-generated
 metrics/readability_*.json linguist-generated
+metrics/criteria_*.json linguist-generated
 compare/results_*.json linguist-generated
