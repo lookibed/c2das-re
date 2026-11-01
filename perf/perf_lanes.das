@@ -130,7 +130,7 @@ def in_folder(cwd : string; argv : array<string>) : array<string> {
 }
 
 //! The folder a program's conversion in `layout` lands in under `work`: `<work>/<stem>/` for the
-//! source layout, `<work>/<layout>/<stem>/` for the scc and the single ones.
+//! source layout, `<work>/<layout>/<stem>/` for the source-cut and the single ones.
 def layout_dir(work, stem, layout : string) : string => layout == "source" ? path_join(work, stem) : path_join(path_join(work, layout), stem)
 
 //! The last line of `text` that is not empty.

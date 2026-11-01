@@ -44,7 +44,7 @@ def test_samples(t : T?) {
     }
     t |> run("the source layout's conversion lands in its stem's folder, the others in the layout's") @(t : T?) {
         t |> equal(layout_dir("w", "lua", "source"), "w/lua")
-        t |> equal(layout_dir("w", "lua", "scc"), "w/scc/lua")
+        t |> equal(layout_dir("w", "lua", "source-cut"), "w/source-cut/lua")
         t |> equal(layout_dir("w", "lua", "single"), "w/single/lua")
     }
 }

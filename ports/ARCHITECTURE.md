@@ -38,7 +38,8 @@ publish:
 - the source layout, the converter's default, as the tree of its modules and fragments: every
   `.das` and `.das.inc` file under `lua/work/<stem>/`, in its folders, into `<stem>/`, with its
   `program.layout.txt`. The conversion's C-IR and `luac -o` checks stay out.
-- the opt-in layouts beside it: the scc layout's tree (`lua/work/scc/<stem>/` into `scc/<stem>/`)
+- the opt-in layouts beside it: the source-cut layout's tree (`lua/work/source-cut/<stem>/` into
+  `source-cut/<stem>/`, with its `program.layout.txt`)
   and the single layout's module (`lua/work/single/<stem>/<stem>.das` into `single/<stem>.das`).
 - the sidecar (`lua.c2das`).
 - `LICENSE`: the block of the release's `src/lua.h` from the line `* Copyright (C)` to the line
@@ -101,7 +102,8 @@ module `perf/run.das` builds its kernels' lanes with:
   manifest is the lane's reason.
 - `interp` and `jit`: daslang over the source layout's entry module (`work/<runs>/<runs>.das`)
   with the module folders loaded.
-- `interp-scc` and `jit-scc`: the same over the scc layout's entry (`work/scc/<runs>/<runs>.das`).
+- `interp-source-cut` and `jit-source-cut`: the same over the source-cut layout's entry
+  (`work/source-cut/<runs>/<runs>.das`).
 - `interp-single` and `jit-single`: over the single layout's module
   (`work/single/<runs>/<runs>.das`).
 - `exe`: daslang's `-exe` build.
@@ -158,7 +160,7 @@ clang the native lane ran, which the lane's command names, and daslang's version
 sample count and the timeout, every lane with its command and error, and every cell with its
 samples. The README's tables render from the latest capture by name; a latest capture that is not
 JSON fails the publish. The ratio table holds each das lane over native and the pairs interpreter over JIT, interpreter
-over exe, interpreter over AOT and JIT over AOT; a `-scc` or `-single` lane the capture measured
+over exe, interpreter over AOT and JIT over AOT; a `-source-cut` or `-single` lane the capture measured
 adds its column and its pair over its source-layout twin, and a column of the projects table; a
 capture without such a lane renders neither. The top-level README keeps the text above its
 marker line and holds below it one row per program with a capture: its timestamp and machine, and

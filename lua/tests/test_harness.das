@@ -67,7 +67,7 @@ def private lua_runs_c(path : string) : string =>
 
 [test]
 def test_run_refusals(t : T?) {
-    t |> run("run.das refuses a tier other than interp or jit, a layout other than source, scc, single or all, and a tree with no fetched sources") @(t : T?) {
+    t |> run("run.das refuses a tier other than interp or jit, a layout other than source, source-cut, single or all, and a tree with no fetched sources") @(t : T?) {
         var dir_error : string
         let empty_root = create_temp_directory("c2das_lua_empty", dir_error)
         t |> equal(dir_error, "")
@@ -75,7 +75,7 @@ def test_run_refusals(t : T?) {
         t |> equal(run_in(empty_root, daslang_argv("lua/run.das", ["--tier", "aot"]), out), 1, out)
         t |> success(out |> contains("--tier is interp or jit, not `aot`"), out)
         t |> equal(run_in(empty_root, daslang_argv("lua/run.das", ["--layout", "flat"]), out), 1, out)
-        t |> success(out |> contains("--layout is source, scc, single or all, not `flat`"), out)
+        t |> success(out |> contains("--layout is source, source-cut, single or all, not `flat`"), out)
         t |> equal(run_in(empty_root, daslang_argv("lua/run.das", array<string>()), out), 1, out)
         t |> success(out |> contains("no lua/fetch/lua-5.4.8/src; run lua/fetch.sh first"), out)
         rmdir_rec(empty_root)
@@ -160,14 +160,14 @@ def test_run_stand_in(t : T?) {
             t |> equal(run_in(root, daslang_argv("lua/run.das", ["--run", "--tier", tier, "--filter", "lua", "--arg", "word"]), out), 0, out)
             // the JIT's `[I]` lines are no part of the program's output; one run per layout
             t |> equal(length(split(out, "lua: {tier} exited 0: 43 word\n")) - 1, 3, out)
-            t |> success(out |> contains("lua: lua (source): ") && out |> contains("lua: lua (scc): ") && out |> contains("lua: lua (single): "), out)
+            t |> success(out |> contains("lua: lua (source): ") && out |> contains("lua: lua (source-cut): ") && out |> contains("lua: lua (single): "), out)
         }
         // the source layout's tree: the entry module and the module of the file defining
         // `lua_answer`, which it requires; the single layout's one module under `single/`
         t |> success(fexist(path_join(root, "lua/work/lua/lua.das")) && fexist(path_join(root, "lua/work/lua/lobject.das")), root)
         t |> success(fread(path_join(root, "lua/work/lua/lua.das")) |> contains("require lobject\n"))
         t |> success(fexist(path_join(root, "lua/work/single/lua/lua.das")) && !fexist(path_join(root, "lua/work/single/lua/lobject.das")), root)
-        t |> success(fexist(path_join(root, "lua/work/scc/lua/lua.das")) && fexist(path_join(root, "lua/work/scc/lua/lobject.das")), root)
+        t |> success(fexist(path_join(root, "lua/work/source-cut/lua/lua.das")) && fexist(path_join(root, "lua/work/source-cut/lua/lobject.das")), root)
         var interpreter <- clone_to_move(CORE)
         interpreter |> push("lua")
         t |> equal(fread(path_join(root, "lua/work/lua.program.json")), "\{\n \"tus\": [{manifest_tus(root, interpreter)}],\n \"entry\": \"main\"\n\}\n")
@@ -430,10 +430,10 @@ def test_suite_environment(t : T?) {
         t |> success(suite |> starts_with("main.lua pass "), suite)
         t |> success(fread(path_join(root, "lua/work/single/bin/lua")) |> contains("/lua/work/single/lua/lua.das' '--' \"$@\""), out)
         // a file where the launcher's folder goes: refused before any run
-        mkdir_rec(path_join(root, "lua/work/scc"))
-        fwrite(path_join(root, "lua/work/scc/bin"), "")
-        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "main.lua", "--filter", "lua", "--layout", "scc"]), out), 1, out)
-        t |> success(out |> contains("cannot write the suite's `lua` launchers") && !fexist(path_join(root, "lua/work/scc/suite.txt")), out)
+        mkdir_rec(path_join(root, "lua/work/source-cut"))
+        fwrite(path_join(root, "lua/work/source-cut/bin"), "")
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "main.lua", "--filter", "lua", "--layout", "source-cut"]), out), 1, out)
+        t |> success(out |> contains("cannot write the suite's `lua` launchers") && !fexist(path_join(root, "lua/work/source-cut/suite.txt")), out)
         // a file where the native link's folder goes: refused as well
         rmdir_rec(path_join(root, "lua/work/native_bin"))
         fwrite(path_join(root, "lua/work/native_bin"), "")

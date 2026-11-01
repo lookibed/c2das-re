@@ -87,8 +87,8 @@ def private stand_in_root(name : string) : string {
         fwrite(path_join(root, "lua/work/{stem}/{stem}.das"), stem == "lua" ? LUA_DAS : "// {stem}\n")
         mkdir_rec(path_join(root, "lua/work/single/{stem}"))
         fwrite(path_join(root, "lua/work/single/{stem}/{stem}.das"), stem == "lua" ? LUA_DAS : "// {stem} single\n")
-        mkdir_rec(path_join(root, "lua/work/scc/{stem}"))
-        fwrite(path_join(root, "lua/work/scc/{stem}/{stem}.das"), stem == "lua" ? LUA_DAS : "// {stem} scc\n")
+        mkdir_rec(path_join(root, "lua/work/source-cut/{stem}"))
+        fwrite(path_join(root, "lua/work/source-cut/{stem}/{stem}.das"), stem == "lua" ? LUA_DAS : "// {stem} source-cut\n")
     }
     // the source layout's tree holds fragments and folders beside the entry module, and the
     // conversion's C-IR and checks, which stay out of the publish
@@ -98,13 +98,14 @@ def private stand_in_root(name : string) : string {
     fwrite(path_join(root, "lua/work/luac/sub/deep.das"), "// deep\n")
     fwrite(path_join(root, "lua/work/luac/lcode.cir.json"), "\{\}\n")
     fwrite(path_join(root, "lua/work/luac/sub/lcode.native.luac"), "bytes\n")
-    fwrite(path_join(root, "lua/work/luac/program.layout.txt"), "luac\nluac_link\n")
-    fwrite(path_join(root, "lua/work/scc/luac/lcode.das.inc"), "// scc fragment\n")
+    fwrite(path_join(root, "lua/work/luac/program.layout.txt"), "luac\nlcode_cluster\n")
+    fwrite(path_join(root, "lua/work/source-cut/luac/program.layout.txt"), "luac\nluac_link\n")
+    fwrite(path_join(root, "lua/work/source-cut/luac/lcode.das.inc"), "// source-cut fragment\n")
     // the module lists of the conversions; a module an earlier conversion left is in none
     fwrite(path_join(root, "lua/work/lua/program.modules.txt"), "lua.das\n")
     fwrite(path_join(root, "lua/work/luac/program.modules.txt"), "lcode.das.inc\nlcode_cluster.das\nluac.das\nsub/deep.das\n")
-    fwrite(path_join(root, "lua/work/scc/lua/program.modules.txt"), "lua.das\n")
-    fwrite(path_join(root, "lua/work/scc/luac/program.modules.txt"), "lcode.das.inc\nluac.das\n")
+    fwrite(path_join(root, "lua/work/source-cut/lua/program.modules.txt"), "lua.das\n")
+    fwrite(path_join(root, "lua/work/source-cut/luac/program.modules.txt"), "lcode.das.inc\nluac.das\n")
     fwrite(path_join(root, "lua/work/luac/stale_cluster.das"), "// stale\n")
     fwrite(path_join(root, "lua/work/lua.c"), LUA_C)
     fwrite(path_join(root, "lua/work/lua.program.json"), "\{\"tus\": [\"lua.c\"]\}\n")
@@ -282,12 +283,12 @@ def test_input_refusals(t : T?) {
         t |> success(out |> contains("no lua/work/single/luac/luac.das; run without --no-convert"), out)
         untouched(t, clone, head, "no single luac module")
         fwrite(luac_single, "// luac single\n")
-        let luac_scc = path_join(root, "lua/work/scc/luac/luac.das")
-        remove(luac_scc)
+        let luac_cut = path_join(root, "lua/work/source-cut/luac/luac.das")
+        remove(luac_cut)
         t |> equal(publish(root, args, out), 1, out)
-        t |> success(out |> contains("no lua/work/scc/luac/luac.das; run without --no-convert"), out)
-        untouched(t, clone, head, "no scc luac module")
-        fwrite(luac_scc, "// luac scc\n")
+        t |> success(out |> contains("no lua/work/source-cut/luac/luac.das; run without --no-convert"), out)
+        untouched(t, clone, head, "no source-cut luac module")
+        fwrite(luac_cut, "// luac source-cut\n")
         remove(path_join(root, "lua/lua.c2das"))
         t |> equal(publish(root, args, out), 1, out)
         t |> success(out |> contains("no lua/lua.c2das"), out)
@@ -325,9 +326,10 @@ def private published_modules(t : T?; dir : string) {
     t |> success(!fexist(path_join(dir, "luac/lcode.cir.json")) && !fexist(path_join(dir, "luac/sub/lcode.native.luac")))
     t |> equal(fread(path_join(dir, "single/luac.das")), "// luac single\n")
     t |> equal(fread(path_join(dir, "single/lua.das")), LUA_DAS)
-    t |> equal(fread(path_join(dir, "luac/program.layout.txt")), "luac\nluac_link\n")
-    t |> equal(fread(path_join(dir, "scc/luac/luac.das")), "// luac scc\n")
-    t |> equal(fread(path_join(dir, "scc/luac/lcode.das.inc")), "// scc fragment\n")
+    t |> equal(fread(path_join(dir, "luac/program.layout.txt")), "luac\nlcode_cluster\n")
+    t |> equal(fread(path_join(dir, "source-cut/luac/program.layout.txt")), "luac\nluac_link\n")
+    t |> equal(fread(path_join(dir, "source-cut/luac/luac.das")), "// luac source-cut\n")
+    t |> equal(fread(path_join(dir, "source-cut/luac/lcode.das.inc")), "// source-cut fragment\n")
     t |> success(!fexist(path_join(dir, "luac/stale_cluster.das")))
 }
 
@@ -344,7 +346,7 @@ def test_publish_commit_push(t : T?) {
             }
         }
         names |> sort()
-        t |> equal(join(names, " "), "LICENSE README.md bench lua lua.c2das luac scc single")
+        t |> equal(join(names, " "), "LICENSE README.md bench lua lua.c2das luac single source-cut")
         var benches : array<string>
         dir(path_join(dir, "bench")) $(name) {
             if (name != "." && name != "..") {
@@ -361,7 +363,7 @@ def test_publish_commit_push(t : T?) {
         t |> success(license |> ends_with("DEALINGS IN THE SOFTWARE.\n"), license)
         let sha = git(root, ["rev-parse", "HEAD"])
         let readme = fread(path_join(dir, "README.md"))
-        for (fact in ["# lua\n\nLua 5.9.1 converted", A_HASH, B_HASH, "https://example.invalid/lua-5.9.1-tests.tar.gz", "- Generated by c2das-re `v9.9.9` (`{sha}`, committed ", "`scripts/publish_ports.sh --program lua --no-convert`", "luac/luac.das -- -o out.luac", "single/lua.das -- -e", "- `lua/` - the interpreter `lua`: the core, the standard libraries and `lua.c`, converted as a module per C file", "- `single/luac.das` - the same program as one module", "The results c2das-re's P5.1 recorded for this program, not results of this publish's run", "a conversion that left no harness log", "- `bench/` - the benchmark scripts the perf tables will run.\n\n## Source", "## Performance\n\nnot yet: the publisher measures only under `--perf`, off by default because a capture takes hours and runs only on an idle machine\n"]) {
+        for (fact in ["# lua\n\nLua 5.9.1 converted", A_HASH, B_HASH, "https://example.invalid/lua-5.9.1-tests.tar.gz", "- Generated by c2das-re `v9.9.9` (`{sha}`, committed ", "`scripts/publish_ports.sh --program lua --no-convert`", "luac/luac.das -- -o out.luac", "single/lua.das -- -e", "- `lua/` - the interpreter `lua`: the core, the standard libraries and `lua.c`, converted as a module per C file", "- `single/luac.das` - the same program as one module", "- `source-cut/luac/` - the same program with the cycles among files cut by late binding through `source-cut/luac/luac_link.das`", "every cycle of files one module of `.das.inc` fragments (c2das-re's source layout, its default", "The results c2das-re's P5.1 recorded for this program, not results of this publish's run", "a conversion that left no harness log", "- `bench/` - the benchmark scripts the perf tables will run.\n\n## Source", "## Performance\n\nnot yet: the publisher measures only under `--perf`, off by default because a capture takes hours and runs only on an idle machine\n"]) {
             t |> success(readme |> contains(fact), "README lacks {fact}:\n{readme}")
         }
         let top = fread(path_join(clone, "README.md"))
@@ -492,25 +494,25 @@ def test_bench(t : T?) {
 
 [test]
 def test_single_lanes(t : T?) {
-    t |> run_stand_in("the -scc and -single lanes run those layouts' modules, a column each beside the source layout's", "c2das_ports_single_lanes") @(t : T?; root, clone : string) {
+    t |> run_stand_in("the -source-cut and -single lanes run those layouts' modules, a column each beside the source layout's", "c2das_ports_single_lanes") @(t : T?; root, clone : string) {
         // the source layout's entry fails every workload, the single module runs them
         fwrite(path_join(root, "lua/work/lua/lua.das"), "options gen2\n[export]\ndef main : int \{\n    return 5\n\}\n")
         var out : string
-        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp,interp-scc,interp-single,jit-scc,jit-single", "--allow-dirty"], out), 0, out)
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp,interp-source-cut,interp-single,jit-source-cut,jit-single", "--allow-dirty"], out), 0, out)
         var name : string
         let c <- capture_of(clone, name)
         let fib <- cell_of(t, c, "fib", "interp-single")
         t |> success(empty(fib.error) && length(fib.samples) == 1, "{fib}")
-        let scc_fib <- cell_of(t, c, "fib", "interp-scc")
-        t |> success(empty(scc_fib.error) && length(scc_fib.samples) == 1, "{scc_fib}")
+        let cut_fib <- cell_of(t, c, "fib", "interp-source-cut")
+        t |> success(empty(cut_fib.error) && length(cut_fib.samples) == 1, "{cut_fib}")
         t |> success(!empty(cell_of(t, c, "fib", "interp").error), "{cell_of(t, c, "fib", "interp")}")
         let readme = fread(path_join(clone, "lua/README.md"))
-        for (fact in ["- interpreter, single module: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime single/lua.das --`", "| interpreter, single module / native |", "| interpreter, single module / interpreter |", "- interpreter, scc layout: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime scc/lua/lua.das --`", "- JIT, single module: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit single/lua.das --`", "- JIT, scc layout: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit scc/lua/lua.das --`"]) {
+        for (fact in ["- interpreter, single module: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime single/lua.das --`", "| interpreter, single module / native |", "| interpreter, single module / interpreter |", "- interpreter, source-cut layout: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime source-cut/lua/lua.das --`", "- JIT, single module: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit single/lua.das --`", "- JIT, source-cut layout: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit source-cut/lua/lua.das --`"]) {
             t |> success(readme |> contains(fact), "README lacks {fact}:\n{readme}")
         }
         // the stand-in logs a run whose command carries `-jit` as the JIT's: the two JIT lanes ran under it
-        t |> success(line_count(path_join(root, "runs_jit.log")) > 0, "no run of the jit-scc and jit-single lanes carried -jit")
-        for (lane in ["jit-scc", "jit-single"]) {
+        t |> success(line_count(path_join(root, "runs_jit.log")) > 0, "no run of the jit-source-cut and jit-single lanes carried -jit")
+        for (lane in ["jit-source-cut", "jit-single"]) {
             let fib_jit <- cell_of(t, c, "fib", lane)
             t |> success(empty(fib_jit.error) && length(fib_jit.samples) == 1, "{lane}: {fib_jit}")
         }
