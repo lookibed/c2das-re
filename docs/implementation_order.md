@@ -1110,6 +1110,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   row, its fix a separate item; doomgeneric does not replace PureDOOM in P6 (overlaps noted); the
   memory cap and the two-heavy-tasks rule as for Lua. Output: one generated table in `compare/` and
   the ports README, never hand-typed; the `Done` row short (ruling 15).
+  Done (branches `p8.2-*`, six PRs): `compare/run.das --project <name>` captures each project into
+  `projects` of `compare/results_linux.json`, rendered under
+  [Real projects](../README.md#real-projects). Ours is refused on 6 of 6 (five at an include folder
+  or an external header, P8.4 (a); quakegeneric at a `///` comment); Rust passes 6 of 6 (interp and
+  exe everywhere, JIT on 5: quakegeneric's prints LLVM JIT warnings before the right frames); Rust
+  interp 31-71x native, JIT and exe 0.95-2.2x.
 - **P8.3 Gaps against the Rust translator** (from P8.1's "where the Rust version is better"; the
   README's head-to-head block lists them: a suite on any excess, the rest past 5%). Candidates, each
   its own item later, none scheduled: the interpreter cells where Rust is ahead (`blit`,
