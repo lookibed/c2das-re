@@ -51,8 +51,9 @@ stand behind each)
     through c2das-re on the Rust side's own inputs, hosts, fixtures and reference outputs, the Rust
     result beside; right after P8.1 (its PR 5 closes it) and before P7.0a, so the order of (14) reads
     P8.1, P8.2, P7.0a, P7.0b, P6.
-18. CI is off (2026-11-01, evening): the owner disabled both workflows and stopped the WSL runner, the
-    box having no spare resources beside the agent; neither is re-enabled or touched by the agent.
+18. CI is off (2026-11-01, evening): the owner disabled both workflows (preflight, perf) and stopped
+    the WSL runner, the box having no spare resources beside the agent; the agent re-enables neither
+    workflow and touches neither runner (the WSL one nor the fx6300 one); #37 was merged on the gate.
     The merge gate until the owner says otherwise: the fast tier green locally on the pull request's
     branch rebased on `main`, plus the one quick review closed; the full tier runs locally at phase
     ends only (rule 10).
@@ -1070,7 +1071,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   pass ours 199 / 1179 / 151 against Rust 202 / 1197 / 47 (c-testsuite, gcc-torture, csmith); perf
   geomean over native, ours against Rust: interp 36.08 / 35.92, JIT 1.61 / 1.55, AOT 1.37 / 1.92;
   Rust lines 1.33x ours without its emitted runtime, 5.10x with it. Lua: the Rust side refuses it
-  at `ldexp`, 20 libc names in the gap, so it has no Lua speed (ruling pending); Doom pending P6.
+  at `ldexp`, 20 libc names in the gap, so it has no Lua speed (deferred to the owner, ruling (19); the report says refused); Doom pending P6.
   The gaps where Rust is ahead: P8.3.
 - **P8.1b Readability metric by the critic's criteria** (owner ruling 2026-11-01 (21); after P8.1,
   before P8.2). `metrics/readability.das` gains a criterion for every finding and blind spot of the
