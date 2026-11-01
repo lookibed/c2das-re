@@ -1118,17 +1118,19 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   fails); the suite ids Rust passes that our ratchet skips (gcc-torture 41, csmith 5, c-testsuite
   0). The rest of the list (`switch_goto` JIT and exe, `primes` AOT, the counter `pointer_arith`) is
   read from the block when an item is cut.
-- **P8.4 Converter gaps found by P8.2** (from P8.2 PRs 1-3, wasm3, binjgb, h264bsd-mp4; later
-  projects may add). Candidates, each its own item later, none scheduled: (a) include folders, a
-  sidecar key for both clang passes, and a program root wider than the main file's folder (wasm3
-  refused at `m3_bind.c`, binjgb at `common.c`; `CPATH` or a symlinked root: an empty module; h264bsd-mp4's
-  `../upstream` files are external, refused at the first upstream type `picParamSet_t`);
-  (b) braced scalar pointer initializers (`m3Err_none = { NULL }`, "not dumped yet"); (c)
-  `__attribute__((musttail))` refused (the Rust side drops it with a warning); (d) the AOT host of
-  `converter/tiers.das` passes no program arguments, so AOT is skipped for argv programs; (e) a C
-  name that is a daslang type keyword (`Obj.byte3`) is emitted unrenamed, a compile failure; (f)
-  `clock_gettime` has no c_runtime mapping (the Rust corpora's bench units refused on our side);
-  (g) glibc `assert` without `NDEBUG` refused at `__extension__`.
+- **P8.4 Converter gaps found by P8.2** (from P8.2 PRs 1-4, wasm3, binjgb, h264bsd-mp4,
+  plmpeg-stream; later projects may add). Candidates, each its own item later, none scheduled: (a)
+  include folders, a sidecar key for both clang passes, and a program root wider than the main
+  file's folder (wasm3 refused at `m3_bind.c`, binjgb at `common.c`; `CPATH` or a symlinked root:
+  an empty module; `../upstream` files are external: h264bsd-mp4 refused at `picParamSet_t`,
+  plmpeg-stream at `plm_frame_t`); (b) braced scalar pointer initializers (`m3Err_none = { NULL }`,
+  "not dumped yet"); (c) `__attribute__((musttail))` refused (the Rust side drops it with a
+  warning); (d) the AOT host of `converter/tiers.das` passes no program arguments, so AOT is
+  skipped for argv programs; (e) a C name that is a daslang type keyword (`Obj.byte3`) is emitted
+  unrenamed, a compile failure; (f) `clock_gettime` has no c_runtime mapping (the Rust corpora's
+  bench units refused on our side); (g) glibc `assert` without `NDEBUG` refused at `__extension__`;
+  (h) `c2da_rt_reset()`, a test-runtime hook the Rust runtime defines and the native build takes
+  from `shim.c`, is undefined for our converter once (a) is fixed (plmpeg-stream; not reached yet).
 
 ## P6 — Doom
 
