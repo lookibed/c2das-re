@@ -8,13 +8,16 @@ Companion to `ARCHITECTURE.md` in this folder: the real projects comparison.
 both translators and writes its entry of the capture's `projects` section, keeping every other
 project and section. A project is a row of `project_table` in `projects.das`, the facts of the
 project's README in the Rust checkout (`$C2DAS_RUST`, else `/root/c2das`, read in place, never
-copied or built): the translation unit and the bench unit relative to the project folder, the
-include folders, the defines, the C standard and the native build's flags the README gives, the
-fixture the program reads from its last argument, the id of the project's canonical case in the Rust
-repository's `tests/canonical/cases.json`, whose `expected.stdout` (`load_expected`, read at the
-start of a run, which exits 2 without it) is the output the program must print and whose
-`c_reference.sources` are the C files the native build compiles (the unit when the case names none;
-the bench's are the same with `corpus.bench_c_entry` in place of the last, the entry), that case's
+copied or built): the translation unit and the bench unit relative to the project folder (no bench
+unit for a project without one), the include folders, the defines, further clang arguments
+(`clang_extra`, after the defines), the C standard, the native build's flags and its link flags
+(after the C files) the README gives, the fixture the program reads from its last argument, the id
+of the project's canonical case in the Rust repository's `tests/canonical/cases.json`, whose
+`expected.stdout` (`load_expected`, read at the start of a run, which exits 2 without it) is the
+output the program must print, whose `translation_units`, when it lists them, are the program (the
+row's unit the one among them defining `main`), and whose `c_reference.sources` are the C files the
+native build compiles (else the units, else the unit; the bench's are the same with
+`corpus.bench_c_entry` in place of the last, the entry), that case's
 translator options, the C functions shown side by side, and the bench unit's departures from the
 expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed). The rows:
 
@@ -61,10 +64,22 @@ expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed). The ro
   `./.savegame/` in its working folder at startup. The Eden and SDL hosts of the project are GUI
   programs and are not built; its other cases (the Eden memory model, the per-file graph) are not
   compared.
+- quakegeneric: the case's 70 units (the 68 engine files of upstream's makefile, the platform layer
+  `src/qg_platform.c` and the entry `src/quake_entry.c`), compiled one by one (Quake's headers have
+  no include guards), `-std=c11 -Iupstream/quakegeneric/source -Isrc -include engine_config.h`
+  (the forced include sends the engine's console to stderr), `-O2`, linked `-lm`, the folder
+  `fixtures` (holding `id1/pak0.pak`, the shareware data) as the argument, the case
+  `quakegeneric-demo1-std` (`+timedemo demo1` on a virtual clock: 100 `frame[i]=` hashes and
+  `frames=100`), `--das-option "stack = 4194304"`, and `D_DrawSpans8` (a textured span of a world
+  surface) and `D_DrawZSpans` (the same span's depth), which every world pixel of a frame passes
+  through. Its case names no reference source and no bench, so the native build is the units and
+  the project has no bench unit. The Eden and SDL hosts are GUI programs and are not built; the
+  case under the Eden memory model is not compared.
 
 Everything a run builds sits in `work/projects/<name>/`: `native/` (the pinned clang's builds of
 both units), `ours/` and `ours_bench/` (our conversions), `rust/` and `rust_bench/` (the Rust
-translations), and each side's lane builds. Every program of the run (the native builds, each lane
+translations; `rust_db/` the compilation database of a project of units), and each side's lane
+builds. Every program of the run (the native builds, each lane
 and each bench sample of both sides, and the run each `exe` build ends with) runs with the working
 folder `cwd/` there (`enter_working_folder`, every path passed on absolute), so a program writing
 into its working folder writes into the run's scratch, never into the checkout. The run is capped by
@@ -83,12 +98,15 @@ clang-18, so the native cells are this machine's baseline, not the Rust reposito
 The native build (the case's C files, the pinned clang, the row's flags) runs with the fixture; it
 is `pass` when it prints the expected output, else `native` with the reason, and then every lane of
 both sides is `refused` with `no native result`. Our side converts the unit under `linux` with a
-sidecar of the project's defines; the converter takes no include folder, so a project whose unit
+sidecar of the project's defines (a project of units with `convert_program`, in the source layout);
+the converter takes no include folder and no further clang argument, so a project whose unit
 includes from a folder other than its own is refused at the first such `#include`; a header reached
 by a relative path from outside the unit's folder (`../upstream/...`) is found but external, so the
 first type it declares that the program uses is refused. The Rust side translates it with
 `translate_file` (`--libc std --strict`, the case's options, the clang arguments of the row) within
-600 s.
+600 s; a project of units through `translate_db` in the source layout over a compilation database
+naming each unit with the row's clang arguments (`write_unit_commands`, as the Rust repository's
+case runner writes one), the runtime module named by the translator.
 
 Each side's lanes: `refused` with the side's error when it has no module; `compile` with the first
 `error[` line when the module fails `daslang -compile-only` (with our module folders on our side,
@@ -123,17 +141,21 @@ module folders loaded by absolute path). A run whose output without the two line
 oracle, or that lacks them, stops the cell with an error. A cell is `{setup, decode}`, each perf's
 cell shape (`time` the median in seconds, `spread`, `samples`); a lane that does not pass is
 `{error: "the lane does not pass: <status>"}`, a side whose bench unit does not convert or translate
-`{error: "bench: <reason>"}`. The native cell is timed the same way. Each side is timed where its
+`{error: "bench: <reason>"}`. The native cell is timed the same way. A project without a bench
+unit times nothing: the native cell and every lane's of both sides are `{error: "no bench: the
+project has no bench unit"}`. Each side is timed where its
 own lanes pass, whether or not the other side's do.
 
 ## The code {#code}
 
 Each side that has a module is measured as the quality comparison measures one (`measure_side`): its
 `.das` and `.das.inc` files, their non-blank lines and the readability counters over the entry
-module, `compile` when the counters' compile fails. The Rust side's runtime lines are its `c2da_`
+module, or over every module with the fragments it includes when there are several
+(`count_program`), `compile` when the counters' compile fails. The Rust side's runtime lines are its `c2da_`
 declarations named with a prefix of `RUNTIME_PREFIXES` (`c2da_rt_`, `c2da_std_`); a single project's
 run has no other Rust modules to find the fixed prelude from, so the prelude counts as program code.
-`functions` holds `{key, name, ours, rust}` per C function of the row, found by `function_text`.
+`functions` holds `{key, name, ours, rust}` per C function of the row, found by `function_text`
+in the side's files.
 `scripts/run_criteria.sh` measures its own inputs and takes no single one, so the criteria are not
 computed per project.
 
