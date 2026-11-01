@@ -38,6 +38,23 @@ gates and the review machinery. Codex sessions take their MCP wiring from
   merges, each green and reviewed on its own.
 - A commit per logical step: a test with the change it covers, never one commit per phase. A
   coder subagent commits its steps as it goes; the lead does not squash them into one.
+- A commit subject is at most about 72 characters; the details go in the body.
+- A new `Done` entry in `docs/implementation_order.md` is at most about ten lines: what was done,
+  one to three numbers, a link to the report (the pull request or the item's report). Older entries
+  are not rewritten.
+- A pull request that closes a ledger item carries a `Кратко` section: two to four lines in
+  Russian, no table, in the order essence, number, execution mode (interp, JIT, AOT, exe), next
+  step; only facts this pull request measured.
+- A decision that waits for the owner (a `NEEDS RULING`) is one line in `docs/rulings-pending.md`:
+  the item, the question, the options, the date. The open lines are the first lines of every
+  report until the owner rules; a line leaves the file when its ruling lands in the ledger.
+- A pull request that changes the default generated output (a lowering, the layout, the names)
+  shows before and after on a fixed sample of real output in its body: the `luaV_execute` slice of
+  `lvm.das`, `ldo.das`, a module header with its `require` lines, and from P6 a Doom render loop.
+  Its review judges readability by the plan's Readable-first decision, not correctness alone.
+- The implementer sets no threshold: an item that makes any perf lane worse than `main` by more
+  than 5%, or trades speed against the output's shape, is a `NEEDS RULING` line, not the agent's
+  decision.
 - A pull request merges only when the `preflight` check is green AND the pull request's review
   pass is closed with no BLOCKING or MAJOR finding open; a green check never overrides an open
   review.
