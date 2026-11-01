@@ -156,28 +156,28 @@ Captured: c_testsuite (Rust `ce4647af2826`, 2026-11-01 02:54 UTC); csmith (Rust 
 
 Captured 2026-11-01 07:27 UTC on linux x86_64, AMD FX(tm)-6300 Six-Core Processor; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.4; Rust `ce4647af2826`; 5 samples a cell. A cell is a lane's time over the native build's (lower is faster); the geomean row covers the kernels where native and both sides stand, their count in parentheses.
 
-| Kernel                   | native ms | ours interpreter | Rust interpreter |  ours JIT |  Rust JIT |  ours exe |  Rust exe |  ours AOT |  Rust AOT |
-| :----------------------- | --------: | ---------------: | ---------------: | --------: | --------: | --------: | --------: | --------: | --------: |
-| bit_pack                 |     0.213 |           330.27 |           638.52 |      1.06 |      exit |      1.07 |      exit |      1.09 |     45.37 |
-| blit                     |     0.428 |            96.71 |            53.86 |      8.65 |      9.21 |     10.40 |     10.77 |      0.99 |      1.66 |
-| compound_lit             |     0.531 |           111.19 |            94.11 |      1.04 |      1.32 |      1.07 |      1.16 |      1.05 |      2.44 |
-| dasprofile/fib_loop      |     1.905 |            31.44 |           116.98 |      2.28 |      2.29 |      2.29 |      2.29 |      1.00 |      1.00 |
-| dasprofile/fib_recursive |     8.354 |             8.66 |            12.00 |      1.05 |   timeout |      1.01 |   timeout |      1.06 |      1.04 |
-| dasprofile/primes        |    49.542 |             4.44 |             4.44 |      0.94 |      0.96 |      0.94 |      0.94 |      0.63 |      0.58 |
-| do_while_effect          |     3.408 |            22.14 |            18.89 |      1.02 |      1.02 |      1.00 |      1.02 |      0.99 |      1.01 |
-| fib_loop                 |     1.906 |            31.51 |           117.26 |      2.28 |      2.30 |      2.30 |      2.29 |      1.00 |      1.00 |
-| fib_recursive            |     7.529 |             9.94 |            13.46 |      1.17 |   timeout |      1.12 |   timeout |      1.17 |      1.17 |
-| fixed_mandel             |     0.844 |            39.84 |            48.35 |      0.69 |      0.69 |      0.70 |      0.69 |      0.95 |      0.92 |
-| matmul                   |     0.597 |            92.91 |            38.11 |      0.58 |      0.58 |      0.97 |      0.96 |      1.43 |      1.40 |
-| primes                   |    49.269 |             2.73 |             2.85 |      0.95 |      0.95 |      0.95 |      0.95 |      0.63 |      0.59 |
-| qsort_cmp                |     0.210 |             9.26 |          refused |      2.56 |   refused |      2.53 |   refused |      2.65 |   refused |
-| setjmp_general           |     0.211 |            42.96 |          refused |     22.01 |   refused |     21.16 |   refused |     17.59 |   refused |
-| sieve                    |     6.701 |            22.61 |            11.84 |      1.06 |      1.18 |      1.04 |      1.15 |      5.15 |      5.15 |
-| str_copy                 |     0.720 |            65.51 |            55.17 |      1.20 |      1.21 |      1.22 |      1.22 |      5.68 |      5.56 |
-| switch_goto              |     4.559 |            42.01 |            16.87 |      0.43 |      0.29 |      0.43 |      0.29 |      0.51 |      0.85 |
-| switch_local             |     1.164 |            73.51 |            60.15 |      5.96 |      0.98 |      6.15 |      0.99 |   compile |      2.61 |
-| va_forward               |     0.603 |           215.67 |           131.56 |     13.55 |     47.21 |     10.45 |     47.37 |     13.42 |     14.76 |
-| geomean (kernels)        |           |       36.08 (17) |       35.92 (17) | 1.61 (14) | 1.55 (14) | 1.66 (14) | 1.60 (14) | 1.37 (16) | 1.92 (16) |
+| Kernel                   | native (s) | ours interpreter | Rust interpreter |  ours JIT |  Rust JIT |  ours exe |  Rust exe |  ours AOT |  Rust AOT |
+| :----------------------- | ---------: | ---------------: | ---------------: | --------: | --------: | --------: | --------: | --------: | --------: |
+| bit_pack                 |   0.000213 |           330.27 |           638.52 |      1.06 |      exit |      1.07 |      exit |      1.09 |     45.37 |
+| blit                     |   0.000428 |            96.71 |            53.86 |      8.65 |      9.21 |     10.40 |     10.77 |      0.99 |      1.66 |
+| compound_lit             |   0.000531 |           111.19 |            94.11 |      1.04 |      1.32 |      1.07 |      1.16 |      1.05 |      2.44 |
+| dasprofile/fib_loop      |   0.001905 |            31.44 |           116.98 |      2.28 |      2.29 |      2.29 |      2.29 |      1.00 |      1.00 |
+| dasprofile/fib_recursive |   0.008354 |             8.66 |            12.00 |      1.05 |   timeout |      1.01 |   timeout |      1.06 |      1.04 |
+| dasprofile/primes        |   0.049542 |             4.44 |             4.44 |      0.94 |      0.96 |      0.94 |      0.94 |      0.63 |      0.58 |
+| do_while_effect          |   0.003408 |            22.14 |            18.89 |      1.02 |      1.02 |      1.00 |      1.02 |      0.99 |      1.01 |
+| fib_loop                 |   0.001906 |            31.51 |           117.26 |      2.28 |      2.30 |      2.30 |      2.29 |      1.00 |      1.00 |
+| fib_recursive            |   0.007529 |             9.94 |            13.46 |      1.17 |   timeout |      1.12 |   timeout |      1.17 |      1.17 |
+| fixed_mandel             |   0.000844 |            39.84 |            48.35 |      0.69 |      0.69 |      0.70 |      0.69 |      0.95 |      0.92 |
+| matmul                   |   0.000597 |            92.91 |            38.11 |      0.58 |      0.58 |      0.97 |      0.96 |      1.43 |      1.40 |
+| primes                   |   0.049269 |             2.73 |             2.85 |      0.95 |      0.95 |      0.95 |      0.95 |      0.63 |      0.59 |
+| qsort_cmp                |   0.000210 |             9.26 |          refused |      2.56 |   refused |      2.53 |   refused |      2.65 |   refused |
+| setjmp_general           |   0.000211 |            42.96 |          refused |     22.01 |   refused |     21.16 |   refused |     17.59 |   refused |
+| sieve                    |   0.006701 |            22.61 |            11.84 |      1.06 |      1.18 |      1.04 |      1.15 |      5.15 |      5.15 |
+| str_copy                 |   0.000720 |            65.51 |            55.17 |      1.20 |      1.21 |      1.22 |      1.22 |      5.68 |      5.56 |
+| switch_goto              |   0.004559 |            42.01 |            16.87 |      0.43 |      0.29 |      0.43 |      0.29 |      0.51 |      0.85 |
+| switch_local             |   0.001164 |            73.51 |            60.15 |      5.96 |      0.98 |      6.15 |      0.99 |   compile |      2.61 |
+| va_forward               |   0.000603 |           215.67 |           131.56 |     13.55 |     47.21 |     10.45 |     47.37 |     13.42 |     14.76 |
+| geomean (kernels)        |            |       36.08 (17) |       35.92 (17) | 1.61 (14) | 1.55 (14) | 1.66 (14) | 1.60 (14) | 1.37 (16) | 1.92 (16) |
 
 Error cells:
 
@@ -635,19 +635,12 @@ Doom: pending (P6).
 - gcc_torture: Rust passes 1197 of 1656 ids, our ratchet 1179; of the Rust passes 41 are ids we skip and 67 ids our ratchet does not list.
 - blit, interpreter: Rust 53.86x native, ours 96.71x.
 - compound_lit, interpreter: Rust 94.11x native, ours 111.19x.
-- dasprofile/fib_recursive, AOT: Rust 1.04x native, ours 1.06x.
 - dasprofile/primes, AOT: Rust 0.58x native, ours 0.63x.
 - do_while_effect, interpreter: Rust 18.89x native, ours 22.14x.
-- fib_loop, exe: Rust 2.29x native, ours 2.30x.
-- fixed_mandel, exe: Rust 0.69x native, ours 0.70x.
-- fixed_mandel, AOT: Rust 0.92x native, ours 0.95x.
 - matmul, interpreter: Rust 38.11x native, ours 92.91x.
-- matmul, exe: Rust 0.96x native, ours 0.97x.
-- matmul, AOT: Rust 1.40x native, ours 1.43x.
 - primes, AOT: Rust 0.59x native, ours 0.63x.
 - sieve, interpreter: Rust 11.84x native, ours 22.61x.
 - str_copy, interpreter: Rust 55.17x native, ours 65.51x.
-- str_copy, AOT: Rust 5.56x native, ours 5.68x.
 - switch_goto, interpreter: Rust 16.87x native, ours 42.01x.
 - switch_goto, JIT: Rust 0.29x native, ours 0.43x.
 - switch_goto, exe: Rust 0.29x native, ours 0.43x.
@@ -656,9 +649,6 @@ Doom: pending (P6).
 - switch_local, exe: Rust 0.99x native, ours 6.15x.
 - switch_local, AOT: Rust 2.61x native, ours has no cell (compile).
 - va_forward, interpreter: Rust 131.56x native, ours 215.67x.
-- geomean, interpreter: Rust 35.92x native, ours 36.08x over 17 kernels.
-- geomean, JIT: Rust 1.55x native, ours 1.61x over 14 kernels.
-- geomean, exe: Rust 1.60x native, ours 1.66x over 14 kernels.
 - counter `c_function`: Rust 0, ours 1310 over all keys.
 - counter `pointer_arith`: Rust 606, ours 843 over all keys.
 <!-- compare:end -->
