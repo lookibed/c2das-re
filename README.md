@@ -631,15 +631,19 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the output its README gives; the native build (the pinned clang with the README's flags) must print it too. Captured: wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the output its README gives; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-01 20:17 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
 
 | Project | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------ | :--- | :----- | ----------: | ------: | ------: | ------: |
+| binjgb  | Ours | pass   |     refused | refused | refused | refused |
+| binjgb  | Rust | pass   |        pass |    pass |    pass | skipped |
 | wasm3   | Ours | pass   |     refused | refused | refused | refused |
 | wasm3   | Rust | pass   |        pass |    pass |    pass | skipped |
 
 Why a lane does not pass:
 
+- binjgb, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/binjgb/src/all.c:11:10: fatal error: 'common.c' file not found
+- binjgb, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 - wasm3, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found
 - wasm3, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 
@@ -647,6 +651,8 @@ The bench entry's timed loop (`decode_us`), a lane's median over the native buil
 
 | Project | Side | Native compiler      | Native s | interpreter |     JIT |     exe |     AOT |
 | :------ | :--- | :------------------- | -------: | ----------: | ------: | ------: | ------: |
+| binjgb  | Ours | clang version 22.1.8 | 0.062580 |     refused | refused | refused | refused |
+| binjgb  | Rust | clang version 22.1.8 | 0.062580 |       71.34 |    1.07 |    1.05 | skipped |
 | wasm3   | Ours | clang version 22.1.8 | 0.002223 |     refused | refused | refused | refused |
 | wasm3   | Rust | clang version 22.1.8 | 0.002223 |       58.07 |    2.23 |    2.10 | skipped |
 
@@ -654,8 +660,284 @@ The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std
 
 | Project | Side | Code    | Files | Lines | Runtime lines | c_function | goto | label | literal_named | pointer_arith | pointer_index | reinterpret | unsafe_block | unsafe_expr | while_rangeable |
 | :------ | :--- | :------ | ----: | ----: | ------------: | ---------: | ---: | ----: | ------------: | ------------: | ------------: | ----------: | -----------: | ----------: | --------------: |
+| binjgb  | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| binjgb  | Rust | ok      |     1 | 11481 |           956 |          0 |  670 |   867 |          2393 |            33 |           939 |        3818 |            8 |        5049 |              12 |
 | wasm3   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | wasm3   | Rust | ok      |     1 | 25827 |          1009 |          0 | 2393 |  2162 |          1827 |          2074 |           430 |        4550 |          814 |        6589 |              24 |
+
+#### `binjgb`: `emulator_step_internal`
+
+Ours: not found in this side's module.
+
+Rust:
+
+```das
+[sideeffects]
+def emulator_step_internal(var e_114 : Emulator?) {
+    if (uint(e_114.state.hdma.state) == 0u) {
+        if (0 != 0) {
+            return
+        }
+        execute_instruction(e_114)
+    } else {
+        tick(e_114)
+        hdma_copy_byte(e_114)
+        hdma_copy_byte(e_114)
+    }
+    return
+}
+```
+
+#### `binjgb`: `ppu_mode3_synchronize`
+
+Ours: not found in this side's module.
+
+Rust:
+
+```das
+[sideeffects]
+def ppu_mode3_synchronize(var e_10 : Emulator?) {
+    var x_2 : uint8
+    var y : uint8
+    var display_bg : Bool = Bool()
+    var display_obj : Bool = Bool()
+    var rendering_window : Bool = Bool()
+    var window_counter : int
+    var data_select : TileDataSelect = TileDataSelect()
+    var mx : uint8
+    var my : uint8
+    var map_base : uint16
+    var pixel : uint?
+    var map_addr : uint16
+    var pal_1 : PaletteRGBA?
+    var lo : uint8
+    var hi : uint8
+    var priority : Bool = Bool()
+    var i_3 : int
+    var bg_is_zero : Bool[4] = fixed_array<Bool>(Bool(), Bool(), Bool(), Bool())
+    var bg_priority : Bool[4] = fixed_array<Bool>(Bool(), Bool(), Bool(), Bool())
+    var new_map_addr : uint16
+    var tile_index : uint16
+    var my7 : uint8
+    var attr : uint8
+    var tile_addr : uint16
+    var idx : int
+    var palidx : uint8
+    var tile_addr_0 : uint16
+    var shift : uint8
+    var palette_index_0 : uint8
+    var obj_height : uint8
+    var n : int
+    var o : Obj?
+    var ox_start : int8
+    var ox_end : int8
+    var oy : uint8
+    var tile_index_0 : uint16
+    var pal_2 : PaletteRGBA?
+    var tile_addr_1 : uint16
+    var lo_0 : uint8
+    var hi_0 : uint8
+    var tile_data_offset : int
+    var start : int
+    var end : int
+    var palette_index_1 : uint8
+    x_2 = e_10.state.ppu.render_x
+    y = e_10.state.ppu.line_y
+    if (uint(e_10.state.ppu.stat.mode) != 3u || int(x_2) >= 160) {
+        return
+    }
+    display_bg = unsafe(reinterpret<Bool>(uint((uint(e_10.state.is_cgb) != 0x0 || uint(e_10.state.ppu.lcdc.bg_display) != 0x0) && uint(e_10.config.disable_bg) == 0u ? 1 : 0)))
+    display_obj = unsafe(reinterpret<Bool>(uint(uint(e_10.state.ppu.lcdc.obj_display) != 0x0 && uint(e_10.config.disable_obj) == 0u ? 1 : 0)))
+    rendering_window = e_10.state.ppu.rendering_window
+    window_counter = uint(rendering_window) != 0x0 ? 0 : 255
+    if (uint(rendering_window) == 0u && uint(e_10.state.ppu.lcdc.window_display) != 0x0 && uint(e_10.config.disable_window) == 0u && int(e_10.state.ppu.wx) <= 166 && int(y) >= int(e_10.state.ppu.wy)) {
+        window_counter = 0 > int(e_10.state.ppu.wx) - (int(x_2) + 7) ? 0 : int(e_10.state.ppu.wx) - (int(x_2) + 7)
+    }
+    data_select = e_10.state.ppu.lcdc.bg_tile_data_select
+    mx = uint8(int(e_10.state.ppu.scx) + int(x_2))
+    my = uint8(int(e_10.state.ppu.scy) + int(y))
+    var c2da_fresh46 : TileMapSelect = e_10.state.ppu.lcdc.bg_tile_map_select
+    map_base = uint16(int(uint16(uint(c2da_fresh46) == 0u ? 6144 : 7168)) | (int(my) >> 3) * 32)
+    if (uint(e_10.state.sgb.mask) != 0u) {
+        pixel = unsafe(addr<uint?>(ppu_mode3_synchronize__s_dummy_frame_buffer_line[0]))
+    } else {
+        var c2da_fresh47 : uint? = unsafe(reinterpret<uint?>(unsafe(reinterpret<uint64>(e_10)) + 212000ul))
+        pixel = unsafe(addr<uint?>(unsafe(unsafe(reinterpret<uint?>(c2da_fresh47))[int(y) * 160 + int(x_2)])))
+    }
+    map_addr = uint16(0)
+    pal_1 = null
+    lo = 0u8
+    hi = 0u8
+    priority = unsafe(reinterpret<Bool>(0u))
+    var c2da_pixel_addr : uint64 = unsafe(reinterpret<uint64>(pixel))
+    while (e_10.state.ppu.mode3_render_ticks < e_10.state.ticks && int(x_2) < 160) {
+        bg_is_zero = fixed_array<Bool>(unsafe(reinterpret<Bool>(1u)), unsafe(reinterpret<Bool>(1u)), unsafe(reinterpret<Bool>(1u)), unsafe(reinterpret<Bool>(1u)))
+        bg_priority = fixed_array<Bool>(unsafe(reinterpret<Bool>(0u)), unsafe(reinterpret<Bool>(0u)), unsafe(reinterpret<Bool>(0u)), unsafe(reinterpret<Bool>(0u)))
+        i_3 = 0
+        while (i_3 < 4) {
+            let c2da_postinc : int = window_counter
+            window_counter--
+            if ((!(!(c2da_postinc == 0)) ? 1l : 0l) != 0) {
+                display_bg = unsafe(reinterpret<Bool>(1u))
+                rendering_window = display_bg
+                e_10.state.ppu.rendering_window = rendering_window
+                mx = uint8(int(x_2) + i_3 + 7 - int(e_10.state.ppu.wx))
+                my = e_10.state.ppu.win_y
+                var c2da_fresh48 : TileMapSelect = e_10.state.ppu.lcdc.window_tile_map_select
+                map_base = uint16(int(uint16(uint(c2da_fresh48) == 0u ? 6144 : 7168)) | (int(my) >> 3) * 32)
+                map_addr = uint16(0)
+            }
+            if (uint(display_bg) != 0u) {
+                new_map_addr = uint16(int(map_base) | int(mx) >> 3)
+                if (int(map_addr) == int(new_map_addr)) {
+                    lo = uint8(int(lo) << 1)
+                    hi = uint8(int(hi) << 1)
+                } else {
+                    map_addr = new_map_addr
+                    var c2da_fresh49 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))
+                    tile_index = uint16(unsafe(unsafe(reinterpret<uint8?>(c2da_fresh49))[int(map_addr)]))
+                    my7 = uint8(int(my) & 7)
+                    if (uint(data_select) == 0u) {
+                        tile_index = uint16(256 + int(int8(tile_index)))
+                    }
+                    if (uint(e_10.state.is_cgb) != 0u) {
+                        var c2da_fresh50 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))
+                        attr = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh50))[8192 + int(map_addr)])
+                        var c2da_fresh51 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 211140ul))
+                        pal_1 = unsafe(addr<PaletteRGBA?>(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh51))[int(attr) & 7])))
+                        if ((int(attr) & 8) != 0) {
+                            tile_index = uint16(int(tile_index) + 512)
+                        }
+                        if ((int(attr) & 64) != 0) {
+                            my7 = uint8(7 - int(my7))
+                        }
+                        priority = unsafe(reinterpret<Bool>(uint((int(attr) & 128) != 0 ? 1 : 0)))
+                        tile_addr = uint16((int(tile_index) * 8 + int(my7)) * 2)
+                        var c2da_fresh52 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))
+                        lo = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh52))[int(tile_addr)])
+                        var c2da_fresh53 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))
+                        hi = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh53))[int(tile_addr) + 1])
+                        if ((int(attr) & 32) != 0) {
+                            lo = reverse_bits_u8(lo)
+                            hi = reverse_bits_u8(hi)
+                        }
+                    } else {
+                        if (uint(e_10.state.is_sgb) != 0u) {
+                            idx = (int(y) >> 3) * (160 >> 3) + (int(x_2) >> 3)
+                            var c2da_fresh54 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 209930ul))
+                            palidx = uint8(int(unsafe(unsafe(reinterpret<uint8?>(c2da_fresh54))[idx >> 2])) >> 2 * (3 - (idx & 3)) & 3)
+                            var c2da_fresh55 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 533688ul))
+                            pal_1 = unsafe(addr<PaletteRGBA?>(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh55))[int(palidx)])))
+                        } else {
+                            var c2da_fresh56 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 533640ul))
+                            pal_1 = unsafe(addr<PaletteRGBA?>(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh56))[0])))
+                        }
+                        priority = unsafe(reinterpret<Bool>(0u))
+                        tile_addr_0 = uint16((int(tile_index) * 8 + int(my7)) * 2)
+                        var c2da_fresh57 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))
+                        lo = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh57))[int(tile_addr_0)])
+                        var c2da_fresh58 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))
+                        hi = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh58))[int(tile_addr_0) + 1])
+                    }
+                    shift = uint8(int(mx) & 7)
+                    lo = uint8(int(lo) << int(shift))
+                    hi = uint8(int(hi) << int(shift))
+                }
+                palette_index_0 = uint8(int(hi) >> 6 & 2 | int(lo) >> 7)
+                var c2da_fresh59 : uint? = unsafe(reinterpret<uint?>(unsafe(reinterpret<uint64>(pal_1))))
+                unsafe(unsafe(reinterpret<uint?>(c2da_pixel_addr))[i_3]) = uint(unsafe(unsafe(reinterpret<uint?>(c2da_fresh59))[int(palette_index_0)]))  // nolint:PERF020
+                bg_is_zero[i_3] = unsafe(reinterpret<Bool>(uint(int(palette_index_0) == 0 ? 1 : 0)))
+                bg_priority[i_3] = priority
+            } elif (uint(e_10.state.is_cgb) != 0u) {
+                var c2da_fresh60 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 211140ul))
+                unsafe(unsafe(reinterpret<uint?>(c2da_pixel_addr))[i_3]) = uint(unsafe(unsafe(addr(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh60))[0]).color[0]))[0]))  // nolint:PERF020
+            } elif (uint(e_10.state.is_sgb) != 0u) {
+                var c2da_fresh61 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 533688ul))
+                unsafe(unsafe(reinterpret<uint?>(c2da_pixel_addr))[i_3]) = uint(unsafe(unsafe(addr(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh61))[0]).color[0]))[0]))  // nolint:PERF020
+            } else {
+                var c2da_fresh62 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 533592ul))
+                unsafe(unsafe(reinterpret<uint?>(c2da_pixel_addr))[i_3]) = uint(unsafe(unsafe(addr(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh62))[0]).color[0]))[0]))  // nolint:PERF020
+            }
+            i_3++
+            mx = uint8(int(mx) + 1)
+        }
+        if (uint(e_10.state.is_cgb) != 0x0 && uint(e_10.state.ppu.lcdc.bg_display) == 0u) {
+            unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(addr<uint8?>(bg_is_zero)))), 1u8, 16ul)))
+            unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(addr<uint8?>(bg_priority)))), 0u8, 16ul)))
+        }
+        if (uint(display_obj) != 0u) {
+            obj_height = s_obj_size_to_height[int(e_10.state.ppu.lcdc.obj_size)]
+            n = int(e_10.state.ppu.line_obj_count) - 1
+            while (n >= 0) {
+                var c2da_fresh63 : Obj? = unsafe(reinterpret<Obj?>(unsafe(reinterpret<uint64>(e_10)) + 211572ul))
+                o = unsafe(addr(unsafe(unsafe(reinterpret<Obj?>(c2da_fresh63))[n])))
+                ox_start = int8(int(o.x) - int(x_2))
+                ox_end = int8(int(ox_start) + 7)
+                oy = uint8(int(y) - int(o.y))
+                if (int(uint8(ox_start)) >= 4 && int(uint8(ox_end)) >= 8 || int(oy) >= int(obj_height)) {
+                    n--
+                    continue
+                }
+                if (uint(o.yflip) != 0u) {
+                    oy = uint8(int(obj_height) - 1 - int(oy))
+                }
+                tile_index_0 = uint16(o.tile)
+                if (int(obj_height) == 16) {
+                    if (int(oy) < 8) {
+                        tile_index_0 = uint16(int(tile_index_0) & 254)
+                    } else {
+                        tile_index_0 = uint16(int(tile_index_0) | 1)
+                        oy = uint8(int(oy) - 8)
+                    }
+                }
+                pal_2 = null
+                if (uint(e_10.state.is_cgb) != 0u) {
+                    var c2da_fresh64 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 211340ul))
+                    pal_2 = unsafe(addr<PaletteRGBA?>(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh64))[int(o.cgb_palette) & 7])))
+                    if (o.bank != 0x0) {
+                        tile_index_0 = uint16(int(tile_index_0) + 512)
+                    }
+                } else {
+                    var c2da_fresh65 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 533640ul))
+                    pal_2 = unsafe(addr<PaletteRGBA?>(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh65))[int(o.palette) + 1])))
+                }
+                tile_addr_1 = uint16((int(tile_index_0) * 8 + (int(oy) & 7)) * 2)
+                var c2da_fresh66 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))
+                lo_0 = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh66))[int(tile_addr_1)])
+                var c2da_fresh67 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))
+                hi_0 = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh67))[int(tile_addr_1) + 1])
+                if (uint(o.xflip) == 0u) {
+                    lo_0 = reverse_bits_u8(lo_0)
+                    hi_0 = reverse_bits_u8(hi_0)
+                }
+                tile_data_offset = 0 > -int(ox_start) ? 0 : -int(ox_start)
+                lo_0 = uint8(int(lo_0) >> tile_data_offset)
+                hi_0 = uint8(int(hi_0) >> tile_data_offset)
+                start = 0 > int(ox_start) ? 0 : int(ox_start)
+                end = 3 < int(ox_end) ? 3 : int(ox_end)
+                i_3 = start
+                while (i_3 <= end) {
+                    palette_index_1 = uint8((int(hi_0) & 1) << 1 | int(lo_0) & 1)
+                    if (int(palette_index_1) != 0 && (uint(bg_priority[i_3]) == 0u || uint(bg_is_zero[i_3]) != 0x0) && (uint(o.priority) == 0u || uint(bg_is_zero[i_3]) != 0x0)) {
+                        var c2da_fresh68 : uint? = unsafe(reinterpret<uint?>(unsafe(reinterpret<uint64>(pal_2))))
+                        unsafe(unsafe(reinterpret<uint?>(c2da_pixel_addr))[i_3]) = uint(unsafe(unsafe(reinterpret<uint?>(c2da_fresh68))[int(palette_index_1)]))  // nolint:PERF020
+                    }
+                    i_3++
+                    lo_0 = uint8(int(lo_0) >> 1)
+                    hi_0 = uint8(int(hi_0) >> 1)
+                }
+                n--
+            }
+        }
+        e_10.state.ppu.mode3_render_ticks += 4ul
+        c2da_pixel_addr += 16ul
+        x_2 = uint8(int(x_2) + 4)
+    }
+    e_10.state.ppu.render_x = x_2
+    return
+}
+```
+
 
 #### `wasm3`: `op_Call`
 
@@ -746,6 +1028,7 @@ def call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Resul
 - switch_local, exe: Rust 0.99x native, ours 6.15x.
 - switch_local, AOT: Rust 2.61x native, ours has no cell (compile).
 - va_forward, interpreter: Rust 131.56x native, ours 215.67x.
+- project binjgb: Rust passes interpreter, JIT, exe, ours does not.
 - project wasm3: Rust passes interpreter, JIT, exe, ours does not.
 - counter `pointer_arith`: Rust 606, ours 843 over all keys.
 <!-- compare:end -->
