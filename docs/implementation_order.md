@@ -20,6 +20,32 @@ never block this plan.
    hand-written "as-if-converted" `.das` test first, converter integration second.
 5. No hand edits to converted output, ever. Per-project judgment goes in the sidecar.
 
+**Owner rulings 2026-11-01 (12) to (16)** (after Boris Batkin's framing of 2026-08-22: generate the
+text, make it all work, then the LLM-assisted port; his words on layout, start-up, speed and text
+stand behind each)
+12. Layout (P7.0a): the default layout keeps every cycle one module of `.das.inc` fragments, a file
+    per member (today's `scc`); branches stay separate modules; late binding (the `<entry>_link.das`
+    slots) stays an opt-in flag and sidecar field; the mode names follow the meaning, so the default
+    is not called by another mode's old name; tests and captures in every mode; the ports publisher
+    publishes the default mode as the primary one; the language's mutual-`require` limit becomes a
+    probe, a `probe-findings.md` row and an issue in `lookibed/daScript` (fact and repro only).
+13. Loops (P7.0, P7.1): the range form of a canonical counting loop and the trailing increment are
+    the default, `--loops while` the option; `very-detailed-plan.md` section 6 and
+    `lowering-examples.md` "General for" are corrected to the code (the B pull request); O2 and O3
+    stay gated after demo sync.
+14. Order: P8.1 finishes in its current scope, not expanded, its Lua speed part (interp and JIT of
+    both translators on the same inputs) mandatory; then P7.0a, then P7.0b (the interpreter audit on
+    Lua by P7.0's method); then P6.1 to P6.5, then the rest of P6; P7.5 to P7.10 wait for P6.5
+    unless one blocks Doom.
+15. Brevity: a new `Done` entry here is at most about ten lines (what, one to three numbers, a link
+    to the report; older entries are not rewritten); a commit subject is at most about 72
+    characters; a pull request closing an item carries a `Кратко` section (`AGENTS.md`).
+16. Review: pending owner decisions live one line each in [rulings-pending.md](rulings-pending.md)
+    and head every report; a pull request changing the default generated output shows before and
+    after on a fixed sample; the readability metric counts structural noise (late-bound wrappers
+    and slots, qualified calls, `require` lines per module); a perf lane worse than `main` by more
+    than 5%, or a trade of speed against the output's shape, is an owner decision (`AGENTS.md`).
+
 ---
 
 ## Where to get everything
@@ -1014,7 +1040,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   the same parameters for both translators, geometric means per lane. Output: a comparison table in
   c2das-re (`docs/` or `perf/`) and in the c2das-ports README, regenerated from scratch by the
   generator script, never hand-typed. Honest: where the Rust version is better, say so and open
-  ledger rows to close the gap.
+  ledger rows to close the gap. Owner ruling 2026-11-01 (14): finished in its current scope, not
+  expanded; its Lua speed part, interp and JIT of both translators on the same inputs, is mandatory.
 
 ## P6 — Doom
 
@@ -1129,9 +1156,35 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   than P7.0, silent wrong output): a compound literal as a step's or an assignment's target
   (`((int[]){x, 2})[0]++`, `((struct P){x, 3}).a += 4`) is spelled twice, two objects, so the step
   lands on a copy (gcc 8, das 3 on the second pass's `v5.c`); with a volatile read inside the
-  literal the store now fails closed instead.
+  literal the store now fails closed instead. Owner ruling 2026-11-01 (13): the range form and the
+  trailing increment are the default, `--loops while` the option; section 6 and "General for" are
+  corrected by the B pull request.
+- **P7.0a Default layout: cycles as one module** (owner ruling 2026-11-01 (12); after P8.1, before
+  P6: ruling (14)). The default layout keeps every cycle one module of `.das.inc` fragments, a file
+  per member (P5.1b2's `scc`), branches separate modules, header clusters as they are; the cycle cut
+  by late binding stays an opt-in flag and sidecar field. The mode names follow the meaning (for
+  example `source` = cycles as one module, `source-cut` = with the cut, `single`), the rename recorded
+  in `converter/ARCHITECTURE_LAYOUT.md`; tests and captures in every mode as now; the ports publisher
+  publishes the default mode as the primary one. The pull request shows before and after on the fixed
+  sample of ruling (16) (`lvm.das`'s `luaV_execute` slice, `ldo.das`, a module header with its
+  `require` lines) and adds the structural-noise counters to `metrics/readability.das` (late-bound
+  wrappers and slots, `mod::name` and `__::name` calls, `require` lines per module). The language
+  limit becomes a probe (two modules needing a mutual `require`, the minimal repro), a
+  `probe-findings.md` row and an issue in `lookibed/daScript` asking whether daslang has or plans a
+  way for two modules to call each other (fact and repro only, no implementation proposal; nothing
+  filed in `GaijinEntertainment/daScript`). Report: compile, start-up, interp and JIT of the new
+  default against `source-cut`, one line per mode.
+- **P7.0b Interpreter audit on Lua** (owner ruling 2026-11-01 (14); after P7.0a, before P6). P7.0
+  took `fib_loop` to 31x against 32x for hand-written das, while Lua runs 193x to 436x native under
+  the interpreter (the P5.4 capture), so other constructs cost. One construct at a time, by P7.0's
+  method, on `fib`, `binary_trees`, `nbody` and `spectral_norm`: find what costs. Candidates to
+  check, not to assume: `TValue` and union access through `reinterpret`, pointer arithmetic, `setjmp`
+  as try/recover, `[c_function]`, wrap casts on `uint`, calls through slots (gone in the default mode
+  after P7.0a). The Rust c2das (P8.1) beside, on the same function. Output: a table construct ->
+  interpreter effect and ledger rows for the fixes; the fixes are separate items, not this one. Lua
+  tests under the memory cap.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
-  landed in P7.0 as the default, pending its ruling), **O2
+  landed in P7.0 as the default, owner ruling 2026-11-01 (13)), **O2
   `[unsafe_deref]`**, **O3 `[hint(unsafe_range_check)]`** — sidecar-gated, enabled only
   after demo-sync green, re-verify sync after enabling.
 - **P7.2 Profile** the renderer inner loops (R_DrawColumn/R_DrawSpan expected); apply
