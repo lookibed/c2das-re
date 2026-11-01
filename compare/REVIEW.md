@@ -9,7 +9,8 @@ stale with the next capture.
 
 **A diff that runs the Rust translator on an input records every input it does not pass as one of
 `refused` (the translator failed), `compile` (daslang rejected the output), `exit` (the run exited
-otherwise than the oracle), `output` (the run printed otherwise than the oracle) or `timeout`,
+otherwise than the oracle), `output` (the run printed otherwise than the oracle), `timeout`,
+`native` (a csmith seed's native reference failed) or `crash` (a worker ended without a verdict),
 never skips or drops it.** A dropped input inflates the Rust side's pass rate.
 
 **A diff to `tests/` never builds the Rust translator (no `cargo`, no `scripts/build_c2das_rust.sh`
@@ -18,3 +19,6 @@ test writes instead.**
 
 **Never commit a file under `work/` (a translation, a compilation database, a run's scratch) -
 write it there and keep `/compare/work/` in `.gitignore` (repo root) instead.**
+
+**A diff to the suites comparison never writes a file under `suites/` (a csmith program, a
+build, a verdict) - write it under `work/<suite>/<id>/` instead.**

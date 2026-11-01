@@ -28,8 +28,9 @@ the continuous integration section 7.
   casts, `goto`, raw `while` loops and unnamed literals, the totals ratcheted in
   `metrics/readability_linux.json` (`metrics/ARCHITECTURE.md`).
 - `compare/` - the head-to-head with the Rust translator lookibed/c2das (ledger item P8.1): the
-  module that runs its binary and its translations, over the same inputs and runners as this
-  repository's own (`compare/ARCHITECTURE.md`).
+  module that runs its binary and its translations, and the suites comparison over the same
+  inputs, runners and oracles as this repository's own, recorded in `compare/results_linux.json`
+  (`compare/ARCHITECTURE.md`).
 - `docs/` - the normative design, authored in its own repository and copied here whole
   (`README.md`). Never edited to match code.
 - `skills/` - agent instructions: vendored daScript skills (never edited here) and this
