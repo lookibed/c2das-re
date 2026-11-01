@@ -290,13 +290,13 @@ def run_judged(argv : array<string>; expected : string; timeout : float) : Verdi
 def judge_run(rc : int; output, expected : string; timeout : float) : Verdict => judge_run(rc, output, "", expected, timeout)
 
 //! `judge_run` of a run whose stdout is `output` and stderr `errors`: the stdout judged, an exit's
-//! error line read from the stdout, then the stderr.
+//! error line read from the stderr, then the stdout.
 def judge_run(rc : int; output, errors, expected : string; timeout : float) : Verdict {
     if (rc == popen_timed_out) {
         return Verdict(status = "timeout", reason = "the run took longer than {int(timeout)} s")
     }
     if (rc != 0) {
-        let text = empty(errors) ? output : "{output}\n{errors}"
+        let text = empty(errors) ? output : "{errors}\n{output}"
         return Verdict(status = "exit", reason = "exit {rc}: {error_line(text)}")
     }
     let differ = first_difference(program_output(output), expected)
@@ -365,7 +365,8 @@ def side_lanes(das_path, refusal, work : string; module_dirs, args : array<strin
             var error : string
             var inscope argv <- lane_argv(das_path, lane, path_join(work, lane), module_dirs, args, lane_timeout(lane, limits), error)
             if (empty(argv)) {
-                lanes[lane] = Verdict(status = error |> starts_with("timeout: ") ? "timeout" : "compile", reason = error)
+                let timed_out = error |> starts_with("timeout: ")
+                lanes[lane] = Verdict(status = timed_out ? "timeout" : "compile", reason = timed_out ? slice(error, length("timeout: ")) : error)
             } else {
                 lanes[lane] = run_judged(argv, expected, lane_timeout(lane, limits))
             }
