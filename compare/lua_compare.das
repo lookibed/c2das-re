@@ -208,14 +208,14 @@ def lua_section(bin : string; stamps : Stamps) : JsonValue? {
     return JV(root)
 }
 
-//! Why the Lua comparison cannot start, "" when it can: the Rust translator or the fetched release
-//! is missing.
-def lua_missing : string {
+//! Why the Lua comparison cannot start, "" when it can: the Rust translator is missing, or the
+//! fetched release's sources `release` (`SOURCES`) lack `lua.c`.
+def lua_missing(release : string) : string {
     var reason : string
     if (!rust_available(reason)) {
         return reason
     }
-    return fexist(SOURCES) ? "" : "{SOURCES} is missing: run lua/fetch.sh"
+    return fexist(path_join(release, "lua.c")) ? "" : "{release} is missing: run lua/fetch.sh"
 }
 
 //! The line a run logs of the `lua` section: the status, the error, and the gap.

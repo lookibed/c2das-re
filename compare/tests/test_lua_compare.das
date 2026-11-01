@@ -6,6 +6,8 @@ require daslib/strings_boost
 require daslib/json_boost
 require ../suite_compare.das
 require ../lua_compare.das
+require ../../converter/tiers.das
+require ../../lua/sources.das
 require _common
 
 //! `compare/lua_compare.das` without the Rust binary: the known names read from stand-in Rust
@@ -89,6 +91,18 @@ def test_gap(t : T?) {
             error = ""
             program_gap([a], array<string>(), path_join(dir, "obj"), path_join(dir, "absent"), error)
             t |> success(error |> starts_with("no Rust source at"), error)
+            let fake_bin = path_join(dir, "fake_bin")
+            mkdir_rec(fake_bin)
+            fwrite(path_join(fake_bin, "nm"), "#!/bin/sh\nexit 1\n")
+            var out : string
+            run_and_capture(["chmod", "+x", path_join(fake_bin, "nm")], out, 30.0)
+            let saved_path = get_env_variable("PATH")
+            set_env_variable("PATH", "{fake_bin}:{saved_path}")
+            error = ""
+            let none <- program_gap([a, b], array<string>(), path_join(dir, "obj"), translator, error)
+            set_env_variable("PATH", saved_path)
+            t |> equal(length(none), 0)
+            t |> success(error |> starts_with("nm failed over "), error)
         }
     }
 }
@@ -102,7 +116,7 @@ def test_lua_section(t : T?) {
             var out : string
             run_and_capture(["chmod", "+x", bin], out, 30.0)
             with_env(bin, dir) {
-                t |> equal(lua_missing(), "")
+                t |> equal(lua_missing(SOURCES), "")
                 let section = lua_section(bin, Stamps(rust_commit = "abc", date = "today"))
                 t |> equal(section?["status"] ?? "", "refused")
                 t |> equal(section?["error"] ?? "", "translation failed: unsupported external call: ldexp")
@@ -121,12 +135,39 @@ def test_lua_section(t : T?) {
                 t |> equal(section?["speed"] ?? "", "not measured here")
             }
             with_env(path_join(dir, "absent"), dir) {
-                t |> success(lua_missing() |> contains("no Rust translator at"))
+                t |> success(lua_missing(SOURCES) |> contains("no Rust translator at"))
+            }
+            with_env(bin, dir) {
+                let empty_release = path_join(dir, "empty_release")
+                mkdir_rec(empty_release)
+                t |> equal(lua_missing(empty_release), "{empty_release} is missing: run lua/fetch.sh")
             }
         }
         t |> equal(lua_line(JV(1)), "lua:  ; gap: ")
         let doom = doom_section()
         t |> equal(doom?["status"] ?? "", "pending")
         t |> equal(doom?["reason"] ?? "", "P6")
+    }
+}
+
+// `compare/run.das` run from the repository root with `args` after `--`; its exit code
+def private run_compare(args : array<string>; var out : string&) : int {
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from(["compare/run.das", "--"], args)
+    return run_and_capture(argv, out, 300.0)
+}
+
+[test]
+def test_lua_command_line(t : T?) {
+    t |> run("--lua runs alone; without the Rust translator it exits 2") @(t : T?) {
+        var out : string
+        t |> equal(run_compare(["--lua", "--suites"], out), 1, out)
+        t |> success(out |> contains("--lua runs alone"), out)
+        t |> equal(run_compare(["--perf", "--lua"], out), 1, out)
+        t |> success(out |> contains("--perf runs alone"), out)
+        with_env("/nonexistent/c2das-rust", "") {
+            t |> equal(run_compare(["--lua"], out), 2, out)
+            t |> success(out |> contains("no Rust translator at /nonexistent/c2das-rust"), out)
+        }
     }
 }
