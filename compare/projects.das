@@ -148,30 +148,36 @@ def load_expected(var p : Project) : string {
             let stdout = c?["expected"]?["stdout"]
             if ((c?["id"] ?? "") == p.case_id && stdout != null && stdout.value is _string) {
                 p.expected = stdout ?? ""
-                read_native_sources(p, c)
-                return ""
+                return read_native_sources(p, c)
             }
         }
     }
     return "{p.cases} has no case {p.case_id} with an expected.stdout"
 }
 
-// the C files of `p`'s native builds from its canonical case `c`, its units where the case names none
-def private read_native_sources(var p : Project; c : JsonValue?) {
+// the C files of `p`'s native builds from its canonical case `c`, its units where the case names
+// none; "", or why a named source is not a path
+def private read_native_sources(var p : Project; c : JsonValue?) : string {
     let sources = c?["c_reference"]?["sources"]
     let bench_entry = c?["corpus"]?["bench_c_entry"]
     if (sources == null || !(sources.value is _array) || empty(sources.value as _array)) {
         p.native_sources <- [p.tu]
         p.native_bench_sources <- [p.bench_tu]
-        return
+        return ""
+    }
+    for (s in sources.value as _array) {
+        if (s == null || !(s.value is _string)) {
+            return "{p.cases}: the case {p.case_id} has a c_reference.sources entry that is not a string"
+        }
     }
     p.native_sources <- [for (s in sources.value as _array); s ?? ""]
     if (bench_entry == null || !(bench_entry.value is _string)) {
         p.native_bench_sources <- [p.bench_tu]
-        return
+        return ""
     }
     p.native_bench_sources <- [for (s, i in p.native_sources, count()); s; where i + 1 < length(p.native_sources)]
     p.native_bench_sources |> push(bench_entry ?? "")
+    return ""
 }
 
 //! `rel`, a path of project `p`, made absolute under its folder.

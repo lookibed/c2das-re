@@ -60,9 +60,11 @@ The native build (the case's C files, the pinned clang, the row's flags) runs wi
 is `pass` when it prints the expected output, else `native` with the reason, and then every lane of
 both sides is `refused` with `no native result`. Our side converts the unit under `linux` with a
 sidecar of the project's defines; the converter takes no include folder, so a project whose unit
-includes from a folder other than its own is refused at the first such `#include`. The Rust side
-translates it with `translate_file` (`--libc std --strict`, the case's options, the clang arguments
-of the row) within 600 s.
+includes from a folder other than its own is refused at the first such `#include`; a header reached
+by a relative path from outside the unit's folder (`../upstream/...`) is found but external, so the
+first type it declares that the program uses is refused. The Rust side translates it with
+`translate_file` (`--libc std --strict`, the case's options, the clang arguments of the row) within
+600 s.
 
 Each side's lanes: `refused` with the side's error when it has no module; `compile` with the first
 `error[` line when the module fails `daslang -compile-only` (with our module folders on our side,
