@@ -20,6 +20,10 @@ let STATUSES <- ["pass", "refused", "compile", "timeout", "exit", "output", "nat
 //! the key of the quality totals over every group, the last row of its tables
 let ALL_GROUPS = "all"
 
+//! the counters `rust_ahead` does not rank: `c_function` counts an annotation only our output
+//! writes, so the Rust side's 0 says nothing of its code
+let UNRANKED_COUNTERS <- ["c_function"]
+
 //! the markers of the generated block in a README
 let COMPARE_BEGIN = "<!-- compare:begin -->"
 let COMPARE_END = "<!-- compare:end -->"
@@ -314,7 +318,7 @@ def lua_text(results : JsonValue const?) : string {
                 w |> write("The C library functions it calls that the Rust translator lowers in no mode ({length(gap)}): ")
                 w |> write(empty(gap) ? "none. " : join([for (name in gap); "`{name}`"], ", ") + ". ")
             }
-            w |> write("Our Lua numbers are in the ports repository (lookibed/c2das-ports); whether to write host modules for the gap waits on a ruling (`docs/rulings-pending.md`, P8.1).\n")
+            w |> write("Our Lua numbers are in the ports repository (lookibed/c2das-ports); whether to write host modules for the gap waits on a ruling (c2das-re's `docs/rulings-pending.md`, P8.1).\n")
         }
         w |> write(absent(doom) ? "\nDoom: not run yet.\n" : "\nDoom: {doom?["status"] ?? ""} ({doom?["reason"] ?? ""}).\n")
     }
@@ -322,8 +326,8 @@ def lua_text(results : JsonValue const?) : string {
 
 //! Where the Rust translator is ahead, one fact a line: a suite it passes more ids of than our
 //! ratchet, a perf cell or geometric mean whose ratio ours exceeds by `AHEAD_MARGIN` (a cell also by
-//! more than both cells' spreads) or where ours has no cell, a readability counter or the line
-//! total without the Rust runtime that ours exceeds by `AHEAD_MARGIN`.
+//! more than both cells' spreads) or where ours has no cell, a readability counter (but those of
+//! `UNRANKED_COUNTERS`) or the line total without the Rust runtime that ours exceeds by `AHEAD_MARGIN`.
 def rust_ahead(results : JsonValue const?) : array<string> {
     var lines : array<string>
     let suites = results?["suites"]
@@ -366,6 +370,9 @@ def rust_ahead(results : JsonValue const?) : array<string> {
     let all = results?["quality"]?["totals"]?[ALL_GROUPS]
     if (!absent(all)) {
         for (m in METRICS) {
+            if (has_value(UNRANKED_COUNTERS, m)) {
+                continue
+            }
             let rust = all?["rust"]?[m] ?? 0
             let ours = all?["ours"]?[m] ?? 0
             if (ahead_by_margin(double(rust), double(ours))) {
@@ -391,13 +398,13 @@ def private list_or(lines : array<string>; none : string) : string => empty(line
 def compare_report(results : JsonValue const?) : string {
     return build_string() $(var w) {
         w |> write("Rendered from c2das-re's `compare/results_linux.json` alone, never edited by hand. ")
-        w |> write("Both translators run on one machine and one daslang, under the same runner and oracle (`compare/ARCHITECTURE.md`).\n\n")
+        w |> write("Both translators run on one machine and one daslang, under the same runner and oracle (c2das-re's `compare/ARCHITECTURE.md`).\n\n")
         w |> write("### Suites\n\n")
         let suites = results?["suites"]
         let names <- keys_of(suites)
         if (!empty(names)) {
             w |> write("Captured: " + join([for (n in names); "{n} ({stamp_of(suites?[n], "date")})"], "; ") + ". ")
-            w |> write("Ours is the ratchet (`suites/<suite>/expected_pass.txt`); the Rust side runs every id under `--libc std --strict`, the interpreter.\n\n")
+            w |> write("Ours is the ratchet (c2das-re's `suites/<suite>/expected_pass.txt`); the Rust side runs every id under `--libc std --strict`, the interpreter.\n\n")
         }
         w |> write(suites_table(results))
         let perf = results?["perf"]

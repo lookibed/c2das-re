@@ -167,6 +167,10 @@ def test_rust_ahead(t : T?) {
         let lines_cap = "\{\"quality\": \{\"totals\": \{\"all\": \{\"ours\": \{\"lines\": 106\}, \"rust\": \{\"lines\": 120, \"runtime_lines\": 20\}\}\}\}\}"
         t |> equal(join(rust_ahead(json_of(t, lines_cap)), "\n"), "- lines without the Rust runtime: Rust 100, ours 106.")
     }
+    t |> run("c_function is not ranked: the Rust side writes no such annotation") @(t : T?) {
+        let cap = "\{\"quality\": \{\"totals\": \{\"all\": \{\"ours\": \{\"lines\": 1, \"c_function\": 50, \"label\": 50\}, \"rust\": \{\"lines\": 1, \"c_function\": 0, \"label\": 0\}\}\}\}\}"
+        t |> equal(join(rust_ahead(json_of(t, cap)), "\n"), "- counter `label`: Rust 0, ours 50 over all keys.")
+    }
     t |> run("our lane without a cell where the Rust side has one") @(t : T?) {
         let cap = "\{\"perf\": \{\"lanes\": [\"native\", \"aot\"], \"kernels\": \{\"k\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"aot\": \{\"error\": \"the build exited 1 and left no binary\"\}\}, \"rust\": \{\"status\": \"ran\", \"lanes\": \{\"aot\": \{\"time\": 2.0\}\}\}\}\}\}\}"
         t |> equal(join(rust_ahead(json_of(t, cap)), "\n"), "- k, AOT: Rust 2.00x native, ours has no cell (compile).")
