@@ -58,7 +58,8 @@ and `__attribute__` text stripped (a `volatile` the node's own type carries at t
 `is_volatile_spelling`: the qualifiers after the last `*` of the innermost declarator group, a
 parenthesis whose text starts with `*`, before any bounds, clang's `(unnamed at f:l:c)` name of
 an anonymous record no group; a function type is never volatile, its qualifier being its return
-value's): the C99 scalar names, `_Bool`, `T *`, `T[N]` (the first
+value's): the C99 scalar names, `_Bool` (also spelled `bool`: once a diagnostic has formatted a type with
+`<stdbool.h>`'s macro in scope, clang's dump prints every `_Bool` so), `T *`, `T[N]` (the first
 bracket is the outer dimension: `T[2][3]` is two `T[3]`), `T (*)[N]` pointers to arrays, `R (P,
 ...)` function types (`R *(P)` when the return is a pointer, which clang writes without a
 space), `R (*)(P)` pointers to functions, `R (**)(P)` pointers to those and `R (*[N])(P)`

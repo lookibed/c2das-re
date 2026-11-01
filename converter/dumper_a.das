@@ -871,8 +871,10 @@ def private scalar_from_qual(var d : Dumper; qt : string) : int {
     if (qt == "unsigned long long") {
         return int_type(d, d.tu.target.llong_w, false, qt)
     }
-    if (qt == "_Bool") {
-        return int_type(d, 8, false, qt)
+    if (qt == "_Bool" || qt == "bool") {
+        // clang spells `_Bool` as `bool` wherever `<stdbool.h>`'s macro is in scope (wasm3's
+        // prototypes): one type, spelled `_Bool`
+        return int_type(d, 8, false, "_Bool")
     }
     if (qt == "float") {
         var t = CirType(k = "float", w = 32, spell = qt)
