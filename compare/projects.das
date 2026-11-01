@@ -36,7 +36,8 @@ let PROJECT_TRANSLATE_TIMEOUT = 600.0
 //! the program reads from its last argument, the output it must print, the translator options
 //! the Rust side's canonical case passes, and the C functions shown side by side. The output it
 //! must print is the canonical case `case_id`'s `expected.stdout` in the file `cases`, read by
-//! `load_expected` into `expected`.
+//! `load_expected` into `expected`; `bench_free_keys` are the keys of the lines the bench unit
+//! prints with a value of its own (`bench_disagreement`).
 struct Project {
     name : string
     dir : string
@@ -52,6 +53,7 @@ struct Project {
     expected : string
     rust_flags : array<string>
     functions : array<string>
+    bench_free_keys : array<string>
 }
 
 //! A lane's verdict: `pass`, else `refused`, `compile`, `exit`, `output`, `timeout` or `skipped`,
@@ -65,8 +67,7 @@ struct Verdict {
 [arch(at="ARCHITECTURE_PROJECTS.md#projects")]
 def project_table(checkout : string) : array<Project> {
     let manual_dir = path_join(checkout, MANUAL_DIR)
-    var all : array<Project>
-    all |> emplace(Project(
+    return <- [Project(
         name = "wasm3",
         dir = path_join(manual_dir, "wasm3"),
         tu = "src/all_host.c",
@@ -78,8 +79,21 @@ def project_table(checkout : string) : array<Project> {
         cases = path_join(checkout, CASES_FILE),
         case_id = "wasm3-fib32-std",
         rust_flags <- ["--das-option", "stack = 4194304"],
-        functions <- ["op_Call", "call_fib"]))
-    return <- all
+        functions <- ["op_Call", "call_fib"]),
+    Project(
+        name = "binjgb",
+        dir = path_join(manual_dir, "binjgb"),
+        tu = "src/binjgb_all.c",
+        bench_tu = "src/binjgb_bench_all.c",
+        include_dirs <- ["include", "upstream/binjgb/src", "src"],
+        defines <- ["NDEBUG"],
+        c_std = "c11",
+        native_flags <- ["-O2"],
+        fixture = "fixtures/cgb-acid2.gbc",
+        cases = path_join(checkout, CASES_FILE),
+        case_id = "binjgb-cgb-acid2-std",
+        functions <- ["emulator_step_internal", "ppu_mode3_synchronize"],
+        bench_free_keys <- ["frames"])]
 }
 
 //! The project `name` of the Rust checkout `checkout` into `p`; false when the table has none.
@@ -254,6 +268,55 @@ def bench_cells(argv : array<string>; expected : string; samples : int; timeout 
     return JV({"setup" => cell_json(cell_of(setup, 1l, 0)), "decode" => cell_json(cell_of(decode, 1l, 0))})
 }
 
+// a line's key: its text before the first `=` or `:`, the whole line without either
+def private line_key(line : string) : string {
+    let eq = find(line, "=")
+    let colon = find(line, ":")
+    let at = eq < 0 || (colon >= 0 && colon < eq) ? colon : eq
+    return at < 0 ? line : slice(line, 0, at)
+}
+
+//! Why the native bench run's text `bench` cannot be the bench's oracle: "" when it prints a line
+//! of the expected output `expected` and every line whose key `expected` prints too, a key of
+//! `free` excepted, equals that line of `expected`.
+[arch(at="ARCHITECTURE_PROJECTS.md#speed")]
+def bench_disagreement(bench, expected : string; free : array<string>) : string {
+    let by_key <- {for (line in split(expected, "\n")); line_key(line) => line; where !empty(line)}
+    var matched = 0
+    for (line in split(bench, "\n")) {
+        let key = line_key(line)
+        if (empty(line) || has_value(free, key) || !key_exists(by_key, key)) {
+            continue
+        }
+        let want = by_key?[key] ?? ""
+        if (line != want) {
+            return "got `{line}`, expected `{want}`"
+        }
+        matched++
+    }
+    return matched > 0 ? "" : "it prints no line of the expected output: {first_reported_line(bench)}"
+}
+
+//! The bench's oracle into `oracle`: the text of one run of the native bench `bin` on `fixture`,
+//! its time lines dropped, checked by `bench_disagreement` against `p`'s expected output; "" when
+//! it stands, else why not.
+[arch(at="ARCHITECTURE_PROJECTS.md#speed")]
+def native_bench_oracle(p : Project; bin, fixture : string; var oracle : string&) : string {
+    var out : string
+    let rc = run_and_capture([bin, fixture], out, COMPARE_LIMITS.sample)
+    if (rc != 0) {
+        let v = judge_run(rc, out, "", COMPARE_LIMITS.sample)
+        return "{v.status}: {v.reason}"
+    }
+    let text = bench_text(out)
+    let disagreement = bench_disagreement(text, p.expected, p.bench_free_keys)
+    if (!empty(disagreement)) {
+        return "output: {disagreement}"
+    }
+    oracle = text
+    return ""
+}
+
 //! The bench cells of each das lane of the bench module `das_path`: `{error}` on every lane with
 //! `refusal` set, and on a lane whose verdict in `lanes` is not `pass`; the interpreter and the
 //! JIT run the module, `exe` its binary built once in `<work>/exe`, each within `lane_timeout`.
@@ -366,8 +429,13 @@ def project_entry(p : Project; bin, work : string; samples : int; stamps : Stamp
     let ours_bench = ours_module(p, p.bench_tu, path_join(work, "ours_bench"), ours_bench_refusal)
     let rust_bench = rust_module(p, bin, p.bench_tu, path_join(work, "rust_bench"), rust_bench_refusal, rust_bench_files)
     let native_bench = path_join(work, "native/{p.name}_bench")
-    let native_bench_error = native_build(p, p.bench_tu, native_bench)
-    var bench_native = empty(native_bench_error) ? bench_cells([native_bench, args[0]], p.expected, samples, COMPARE_LIMITS.sample) : error_json(native_bench_error)
+    var bench_expected : string
+    var native_bench_error = native_build(p, p.bench_tu, native_bench)
+    if (empty(native_bench_error)) {
+        native_bench_error = native_bench_oracle(p, native_bench, args[0], bench_expected)
+    }
+    var bench_native = empty(native_bench_error) ? bench_cells([native_bench, args[0]], bench_expected, samples, COMPARE_LIMITS.sample) : error_json(native_bench_error)
+    let no_bench_oracle = empty(native_bench_error) ? "" : "no native bench result: {native_bench_error}"
     let ours_files <- empty(ours_refusal) ? [ours_das] : array<string>()
     let ours_text = empty(ours_refusal) ? fread(ours_das) : ""
     let rust_text = empty(rust_refusal) ? fread(rust_das) : ""
@@ -385,8 +453,8 @@ def project_entry(p : Project; bin, work : string; samples : int; stamps : Stamp
         "rust" => JV({"error" => JV(rust_refusal), "lanes" => lanes_json(rust_lanes)}),
         "speed" => JV({
             "native" => bench_native,
-            "ours" => JV(side_speed(ours_bench, ours_bench_refusal, path_join(work, "ours_bench_run"), CONVERTED_MODULES, args, ours_lanes, p.expected, samples, COMPARE_LIMITS)),
-            "rust" => JV(side_speed(rust_bench, rust_bench_refusal, path_join(work, "rust_bench_run"), array<string>(), args, rust_lanes, p.expected, samples, COMPARE_LIMITS))
+            "ours" => JV(side_speed(ours_bench, empty(ours_bench_refusal) ? no_bench_oracle : ours_bench_refusal, path_join(work, "ours_bench_run"), CONVERTED_MODULES, args, ours_lanes, bench_expected, samples, COMPARE_LIMITS)),
+            "rust" => JV(side_speed(rust_bench, empty(rust_bench_refusal) ? no_bench_oracle : rust_bench_refusal, path_join(work, "rust_bench_run"), array<string>(), args, rust_lanes, bench_expected, samples, COMPARE_LIMITS))
         }),
         "code" => JV({
             "ours" => JV(side_code(ours_files, ours_das, ours_refusal, false)),
