@@ -629,6 +629,103 @@ Lua: the Rust translator refuses `lua` (33 units, `--libc std`): `unsupported ex
 
 Doom: pending (P6).
 
+### Real projects
+
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the output its README gives; the native build (the pinned clang with the README's flags) must print it too. Captured: wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:36 UTC).
+
+| Project | Side | Native | interpreter |     JIT |     exe |     AOT |
+| :------ | :--- | :----- | ----------: | ------: | ------: | ------: |
+| wasm3   | Ours | pass   |     refused | refused | refused | refused |
+| wasm3   | Rust | pass   |        pass |    pass |    pass | skipped |
+
+Why a lane does not pass:
+
+- wasm3, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found
+- wasm3, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
+
+The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 5 samples a cell:
+
+| Project | Side | Native s | interpreter |     JIT |     exe |     AOT |
+| :------ | :--- | -------: | ----------: | ------: | ------: | ------: |
+| wasm3   | Ours | 0.001838 |     refused | refused | refused | refused |
+| wasm3   | Rust | 0.001838 |       65.86 |    2.70 |    2.49 | skipped |
+
+The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
+
+| Project | Side | Code    | Files | Lines | Runtime lines | c_function | goto | label | literal_named | pointer_arith | pointer_index | reinterpret | unsafe_block | unsafe_expr | while_rangeable |
+| :------ | :--- | :------ | ----: | ----: | ------------: | ---------: | ---: | ----: | ------------: | ------------: | ------------: | ----------: | -----------: | ----------: | --------------: |
+| wasm3   | Ours | refused |     0 |     0 |             0 |          0 |    0 |     0 |             0 |             0 |             0 |           0 |            0 |           0 |               0 |
+| wasm3   | Rust | ok      |     1 | 25827 |          1009 |          0 | 2393 |  2162 |          1827 |          2074 |           430 |        4550 |          814 |        6589 |              24 |
+
+#### `wasm3`: `op_Call`
+
+Ours: not found in this side's module.
+
+Rust:
+
+```das
+[sideeffects]
+def op_Call(var _pc_224 : pc_t; var _sp_224 : m3stack_t; var _mem_224 : M3MemoryHeader?; var _r0_224 : int64) : m3ret_t {
+    var callPC_0 : pc_t
+    var stackOffset_2 : int
+    var memory_9 : IM3Memory
+    var r_16 : m3ret_t
+    var c2da_postinc_332 : pc_t = _pc_224
+    unsafe {  // nolint:STYLE025
+        _pc_224 += 1
+    }
+    callPC_0 = *unsafe(reinterpret<pc_t?>(c2da_postinc_332))
+    var c2da_postinc_333 : pc_t = _pc_224
+    unsafe {  // nolint:STYLE025
+        _pc_224 += 1
+    }
+    stackOffset_2 = *unsafe(reinterpret<int?>(c2da_postinc_333))
+    memory_9 = _mem_224.memory
+    r_16 = Call(callPC_0, unsafe(_sp_224 + stackOffset_2), _mem_224, 0l)
+    _mem_224 = unsafe(reinterpret<M3MemoryHeader?>(memory_9.mallocated))
+    if ((!(!(r_16 == null)) ? 1l : 0l) != 0) {
+        return invoke(unsafe(reinterpret<IM3Operation>(*_pc_224)), unsafe(_pc_224 + 1), _sp_224, _mem_224, _r0_224)
+    } else {
+        return r_16
+    }
+}
+```
+
+#### `wasm3`: `call_fib`
+
+Ours: not found in this side's module.
+
+Rust:
+
+```das
+[sideeffects]
+def call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Result {
+    var result_227 : M3Result
+    var value_81 : uint64
+    var value_82 : uint
+    result_227 = m3Err_none
+    if (uint(m3_GetArgType(fib, 0u)) == 2u) {
+        value_81 = 0ul
+        result_227 = m3_CallV(fib, [C2daVaArg(tag = 1, i64 = int64(uint64(n_6)), f64 = 0.0lf, raw = 0x0)])
+        if (result_227 != null) {
+            return result_227
+        }
+        result_227 = m3_GetResultsV(fib, [C2daVaArg(tag = 3, i64 = 0, f64 = 0.0lf, raw = unsafe(reinterpret<uint64>(unsafe(addr(value_81)))))])
+        *out_1 = int64(value_81)
+    } else {
+        value_82 = 0u
+        result_227 = m3_CallV(fib, [C2daVaArg(tag = 1, i64 = int64(uint(n_6)), f64 = 0.0lf, raw = 0x0)])
+        if (result_227 != null) {
+            return result_227
+        }
+        result_227 = m3_GetResultsV(fib, [C2daVaArg(tag = 3, i64 = 0, f64 = 0.0lf, raw = unsafe(reinterpret<uint64>(unsafe(addr(value_82)))))])
+        *out_1 = int64(value_82)
+    }
+    return result_227
+}
+```
+
+
 ### Where the Rust translator is ahead
 
 - c_testsuite: Rust passes 202 of 220 ids, our ratchet 199; of the Rust passes 0 are ids we skip and 8 ids our ratchet does not list.
@@ -649,5 +746,6 @@ Doom: pending (P6).
 - switch_local, exe: Rust 0.99x native, ours 6.15x.
 - switch_local, AOT: Rust 2.61x native, ours has no cell (compile).
 - va_forward, interpreter: Rust 131.56x native, ours 215.67x.
+- project wasm3: Rust passes interpreter, JIT, exe, ours does not.
 - counter `pointer_arith`: Rust 606, ours 843 over all keys.
 <!-- compare:end -->

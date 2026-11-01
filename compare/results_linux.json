@@ -1,7 +1,7 @@
 {
 	"suites" : {
 		"c_testsuite" : {
-			"ours_skipped" : 0,
+			"seconds" : 86.92239379882812,
 			"date" : "2026-11-01 02:54 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 199,
@@ -1561,12 +1561,12 @@
 			"rust_pass_of_unlisted" : 8,
 			"ids" : 220,
 			"daslang" : "0.6.4",
+			"ours_skipped" : 0,
 			"rust_pass_of_ours" : 194,
-			"rust_pass_of_skipped" : 0,
-			"seconds" : 86.92239379882812
+			"rust_pass_of_skipped" : 0
 		},
 		"gcc_torture" : {
-			"ours_skipped" : 321,
+			"seconds" : 645.4718017578125,
 			"date" : "2026-11-01 03:04 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 1179,
@@ -13178,12 +13178,12 @@
 			"rust_pass_of_unlisted" : 67,
 			"ids" : 1656,
 			"daslang" : "0.6.4",
+			"ours_skipped" : 321,
 			"rust_pass_of_ours" : 1089,
-			"rust_pass_of_skipped" : 41,
-			"seconds" : 645.4718017578125
+			"rust_pass_of_skipped" : 41
 		},
 		"csmith" : {
-			"ours_skipped" : 31,
+			"seconds" : 434.8171081542969,
 			"date" : "2026-11-01 03:12 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 151,
@@ -14477,9 +14477,9 @@
 			"rust_pass_of_unlisted" : 0,
 			"ids" : 182,
 			"daslang" : "0.6.4",
+			"ours_skipped" : 31,
 			"rust_pass_of_ours" : 42,
-			"rust_pass_of_skipped" : 5,
-			"seconds" : 434.8171081542969
+			"rust_pass_of_skipped" : 5
 		}
 	},
 	"perf" : {
@@ -17294,48 +17294,6 @@
 					}
 				}
 			},
-			"gcc_torture/990628-1" : {
-				"ours" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 65,
-					"runtime_lines" : 0,
-					"program_c2da_lines" : 0,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 3,
-						"unsafe_expr" : 0,
-						"c_function" : 3,
-						"literal_named" : 0,
-						"pointer_arith" : 1,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 0,
-						"pointer_index" : 2
-					}
-				},
-				"rust" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 391,
-					"runtime_lines" : 290,
-					"program_c2da_lines" : 34,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 25,
-						"unsafe_expr" : 47,
-						"c_function" : 0,
-						"literal_named" : 0,
-						"pointer_arith" : 0,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 1,
-						"pointer_index" : 13
-					}
-				}
-			},
 			"gcc_torture/990525-1" : {
 				"ours" : {
 					"status" : "ok",
@@ -17375,6 +17333,48 @@
 						"unsafe_block" : 0,
 						"while_rangeable" : 1,
 						"pointer_index" : 11
+					}
+				}
+			},
+			"gcc_torture/990628-1" : {
+				"ours" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 65,
+					"runtime_lines" : 0,
+					"program_c2da_lines" : 0,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 3,
+						"unsafe_expr" : 0,
+						"c_function" : 3,
+						"literal_named" : 0,
+						"pointer_arith" : 1,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 0,
+						"pointer_index" : 2
+					}
+				},
+				"rust" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 391,
+					"runtime_lines" : 290,
+					"program_c2da_lines" : 34,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 25,
+						"unsafe_expr" : 47,
+						"c_function" : 0,
+						"literal_named" : 0,
+						"pointer_arith" : 0,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 1,
+						"pointer_index" : 13
 					}
 				}
 			},
@@ -74836,5 +74836,244 @@
 				"rust" : "[export, sideeffects]\ndef main_0() : int {\n    var i : int\n    var j : int = 0\n    while (uint64(j) < 504ul / 56ul) {\n        i = 0\n        while (uint64(i) < 32ul / 8ul) {\n            c2da_std_printf(unsafe(addr<int8 const?>(c2da_str_0[0])), [C2daVaArg(tag = 1, i64 = int64(j), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(i), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = unsafe(unsafe(addr(cases[j].c[0]))[i]), f64 = 0.0lf, raw = 0x0)])\n            i++\n        }\n        c2da_std_printf(unsafe(addr<int8 const?>(c2da_str_1[0])), [C2daVaArg(tag = 1, i64 = int64(j), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = cases[j].b, f64 = 0.0lf, raw = 0x0)])\n        c2da_std_printf(unsafe(addr<int8 const?>(c2da_str_2[0])), [C2daVaArg(tag = 1, i64 = int64(j), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = cases[j].e, f64 = 0.0lf, raw = 0x0)])\n        c2da_std_printf(unsafe(addr<int8 const?>(c2da_str_3[0])), [C2daVaArg(tag = 1, i64 = int64(j), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = cases[j].k, f64 = 0.0lf, raw = 0x0)])\n        c2da_std_printf(unsafe(addr<int8 const?>(c2da_str_4[0])), [])\n        j++\n    }\n    return 0\n}"
 			}
 		]
+	},
+	"projects" : {
+		"wasm3" : {
+			"code" : {
+				"ours" : {
+					"status" : "refused",
+					"error" : "dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found",
+					"files" : 0,
+					"lines" : 0,
+					"runtime_lines" : 0,
+					"program_c2da_lines" : 0,
+					"counts" : {}
+				},
+				"rust" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 25827,
+					"runtime_lines" : 1009,
+					"program_c2da_lines" : 501,
+					"counts" : {
+						"label" : 2162,
+						"reinterpret" : 4550,
+						"unsafe_expr" : 6589,
+						"c_function" : 0,
+						"literal_named" : 1827,
+						"pointer_arith" : 2074,
+						"goto" : 2393,
+						"unsafe_block" : 814,
+						"while_rangeable" : 24,
+						"pointer_index" : 430
+					}
+				}
+			},
+			"lanes" : [
+				"interp",
+				"jit",
+				"exe",
+				"aot"
+			],
+			"date" : "2026-11-01 19:36 UTC",
+			"ours" : {
+				"error" : "dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found",
+				"lanes" : {
+					"interp" : {
+						"status" : "refused",
+						"reason" : "dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found"
+					},
+					"jit" : {
+						"status" : "refused",
+						"reason" : "dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found"
+					},
+					"exe" : {
+						"status" : "refused",
+						"reason" : "dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found"
+					},
+					"aot" : {
+						"status" : "refused",
+						"reason" : "dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found"
+					}
+				}
+			},
+			"functions" : [
+				{
+					"key" : "wasm3",
+					"name" : "op_Call",
+					"ours" : "",
+					"rust" : "[sideeffects]\ndef op_Call(var _pc_224 : pc_t; var _sp_224 : m3stack_t; var _mem_224 : M3MemoryHeader?; var _r0_224 : int64) : m3ret_t {\n    var callPC_0 : pc_t\n    var stackOffset_2 : int\n    var memory_9 : IM3Memory\n    var r_16 : m3ret_t\n    var c2da_postinc_332 : pc_t = _pc_224\n    unsafe {  // nolint:STYLE025\n        _pc_224 += 1\n    }\n    callPC_0 = *unsafe(reinterpret<pc_t?>(c2da_postinc_332))\n    var c2da_postinc_333 : pc_t = _pc_224\n    unsafe {  // nolint:STYLE025\n        _pc_224 += 1\n    }\n    stackOffset_2 = *unsafe(reinterpret<int?>(c2da_postinc_333))\n    memory_9 = _mem_224.memory\n    r_16 = Call(callPC_0, unsafe(_sp_224 + stackOffset_2), _mem_224, 0l)\n    _mem_224 = unsafe(reinterpret<M3MemoryHeader?>(memory_9.mallocated))\n    if ((!(!(r_16 == null)) ? 1l : 0l) != 0) {\n        return invoke(unsafe(reinterpret<IM3Operation>(*_pc_224)), unsafe(_pc_224 + 1), _sp_224, _mem_224, _r0_224)\n    } else {\n        return r_16\n    }\n}"
+				},
+				{
+					"key" : "wasm3",
+					"name" : "call_fib",
+					"ours" : "",
+					"rust" : "[sideeffects]\ndef call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Result {\n    var result_227 : M3Result\n    var value_81 : uint64\n    var value_82 : uint\n    result_227 = m3Err_none\n    if (uint(m3_GetArgType(fib, 0u)) == 2u) {\n        value_81 = 0ul\n        result_227 = m3_CallV(fib, [C2daVaArg(tag = 1, i64 = int64(uint64(n_6)), f64 = 0.0lf, raw = 0x0)])\n        if (result_227 != null) {\n            return result_227\n        }\n        result_227 = m3_GetResultsV(fib, [C2daVaArg(tag = 3, i64 = 0, f64 = 0.0lf, raw = unsafe(reinterpret<uint64>(unsafe(addr(value_81)))))])\n        *out_1 = int64(value_81)\n    } else {\n        value_82 = 0u\n        result_227 = m3_CallV(fib, [C2daVaArg(tag = 1, i64 = int64(uint(n_6)), f64 = 0.0lf, raw = 0x0)])\n        if (result_227 != null) {\n            return result_227\n        }\n        result_227 = m3_GetResultsV(fib, [C2daVaArg(tag = 3, i64 = 0, f64 = 0.0lf, raw = unsafe(reinterpret<uint64>(unsafe(addr(value_82)))))])\n        *out_1 = int64(value_82)\n    }\n    return result_227\n}"
+				}
+			],
+			"rust_commit_error" : "",
+			"native" : {
+				"status" : "pass",
+				"reason" : ""
+			},
+			"samples" : 5,
+			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
+			"rust" : {
+				"error" : "",
+				"lanes" : {
+					"interp" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"jit" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"exe" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"aot" : {
+						"status" : "skipped",
+						"reason" : "the aot host passes the program no arguments, and it reads its input from its last one"
+					}
+				}
+			},
+			"speed" : {
+				"native" : {
+					"setup" : {
+						"time" : 7.1e-05,
+						"spread" : 0.1408450704225352,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							8.9e-05,
+							7e-05,
+							6.9e-05,
+							7.7e-05,
+							7.1e-05
+						]
+					},
+					"decode" : {
+						"time" : 0.001838,
+						"spread" : 0.01822633297062024,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.001824,
+							0.001809,
+							0.001838,
+							0.001851,
+							0.001876
+						]
+					}
+				},
+				"ours" : {
+					"interp" : {
+						"error" : "bench: dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found"
+					},
+					"jit" : {
+						"error" : "bench: dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found"
+					},
+					"exe" : {
+						"error" : "bench: dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found"
+					},
+					"aot" : {
+						"error" : "bench: dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found"
+					}
+				},
+				"rust" : {
+					"interp" : {
+						"setup" : {
+							"time" : 0.000302,
+							"spread" : 0.18543046357615894,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.00037,
+								0.000314,
+								0.000268,
+								0.000258,
+								0.000302
+							]
+						},
+						"decode" : {
+							"time" : 0.121049,
+							"spread" : 0.009822468587101112,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.121049,
+								0.122379,
+								0.121825,
+								0.120001,
+								0.120348
+							]
+						}
+					},
+					"jit" : {
+						"setup" : {
+							"time" : 7.1e-05,
+							"spread" : 0.4436619718309859,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.000126,
+								7.1e-05,
+								6.9e-05,
+								6.3e-05,
+								7.4e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.004958,
+							"spread" : 0.023093989511899966,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.00506,
+								0.004976,
+								0.004831,
+								0.004958,
+								0.004948
+							]
+						}
+					},
+					"exe" : {
+						"setup" : {
+							"time" : 4.1e-05,
+							"spread" : 0.09756097560975607,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								4.1e-05,
+								4.1e-05,
+								4.1e-05,
+								4.9e-05,
+								4.5e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.00458,
+							"spread" : 0.015283842794759866,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.00456,
+								0.004541,
+								0.004585,
+								0.004681,
+								0.00458
+							]
+						}
+					},
+					"aot" : {
+						"error" : "the lane does not pass: skipped"
+					}
+				}
+			},
+			"daslang" : "0.6.4"
+		}
 	}
 }
