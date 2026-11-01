@@ -31,6 +31,8 @@ struct CompareArgs {
     perf : bool
     @clarg_doc = "translate Lua with the Rust translator and list the C library functions it lacks"
     lua : bool
+    @clarg_doc = "--lua over the .c files of this folder (its lua.c holding main) into <folder>/work instead of Lua's release"
+    lua_from : string = ""
     @clarg_doc = "samples per perf lane, each its own process (default 5)"
     samples : int = 5
     @clarg_doc = "run only the ids (perf: the kernels) that contain this text; a filtered run writes no capture"
@@ -100,19 +102,26 @@ def run_perf(args : CompareArgs) : int {
     return record_run(empty(args.out) ? CAPTURE : args.out, args.filter) $(path) => write_capture_section(path, "perf", section)
 }
 
-// the Lua comparison: its `lua` and `doom` sections written
-def run_lua(out : string) : int {
-    let missing = lua_missing(SOURCES)
+// the Lua comparison over Lua's release, or the C files of `from` when it is set: its `lua` and
+// `doom` sections written
+def run_lua(out, from : string) : int {
+    let missing = lua_missing(empty(from) ? SOURCES : from)
     if (!empty(missing)) {
         to_log(LOG_ERROR, "{missing}\n")
         return 2
     }
     let bin = rust_binary()
-    var section = lua_section(bin, run_stamps(bin))
+    var error : string
+    let c_paths <- empty(from) ? program_sources("lua") : folder_sources(from)
+    var section = lua_section(bin, c_paths, SIDECAR, empty(from) ? LUA_WORK : folder_work(from), run_stamps(bin), error)
+    if (section == null) {
+        to_log(LOG_ERROR, "{error}\n")
+        return 1
+    }
     to_log(LOG_INFO, "{lua_line(section)}\n")
     return record_run(out, "") $(path) {
-        let error = write_capture_section(path, "lua", section)
-        return empty(error) ? write_capture_section(path, "doom", doom_section()) : error
+        let written = write_capture_section(path, "lua", section)
+        return empty(written) ? write_capture_section(path, "doom", doom_section()) : written
     }
 }
 
@@ -131,8 +140,12 @@ def main : int {
         to_log(LOG_ERROR, "{alone[0]} runs alone: run the suites and each of --perf and --lua in a run of its own\n")
         return 1
     }
+    if (args.lua && !empty(args.filter)) {
+        to_log(LOG_ERROR, "--lua takes no --filter: it translates the whole program\n")
+        return 1
+    }
     if (args.lua) {
-        return run_lua(empty(args.out) ? CAPTURE : args.out)
+        return run_lua(empty(args.out) ? CAPTURE : args.out, args.lua_from)
     }
     if (args.perf) {
         if (args.samples < 1) {

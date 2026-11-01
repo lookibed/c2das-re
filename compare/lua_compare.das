@@ -9,7 +9,6 @@ require daslib/json_boost
 require ../converter/cir.das
 require ../converter/sidecar.das
 require ../suites/suite_files.das
-require ../lua/sources.das
 require rust_translator
 require suite_compare
 
@@ -38,12 +37,16 @@ let GLIBC_ALIASES <- [("fopen64", "fopen"), ("freopen64", "freopen"), ("tmpfile6
 let KNOWN_NAME_TABLES <- [("libc.rs", "std_function"), ("libc.rs", "std_stream"), ("libc.rs", "jmp_call"), ("libc.rs", "libm_function"), ("runtime.rs", "canonical_runtime_function")]
 
 //! The string literals on the left of each `=>` in the body of the Rust function `fn_name` in
-//! `source`: from its `fn <name>(` line to the `}` that closes it at that line's indentation.
+//! `source`: from its `fn <name>(` line to the `}` that closes it at that line's indentation,
+//! trailing blanks ignored; `error` says why when there is no such function, its closing brace is
+//! never found, or it names nothing.
 [arch(at="ARCHITECTURE.md#lua-gap")]
-def match_arm_names(source, fn_name : string) : array<string> {
+def match_arm_names(source, fn_name : string; var error : string&) : array<string> {
     var names : array<string>
     var closing = ""
-    for (line in split(source, "\n")) {
+    var closed = false
+    for (raw in split(source, "\n")) {
+        let line = strip_right(raw)
         if (empty(closing)) {
             let at = find(line, "fn {fn_name}(")
             if (at >= 0) {
@@ -53,6 +56,7 @@ def match_arm_names(source, fn_name : string) : array<string> {
             continue
         }
         if (line == closing) {
+            closed = true
             break
         }
         let arrow = find(line, "=>")
@@ -65,6 +69,13 @@ def match_arm_names(source, fn_name : string) : array<string> {
                 names |> push(parts[i])
             }
         }
+    }
+    if (empty(closing)) {
+        error = "no fn {fn_name}( in the source"
+    } elif (!closed) {
+        error = "fn {fn_name} has no closing brace"
+    } elif (empty(names)) {
+        error = "fn {fn_name} names nothing"
     }
     return <- names
 }
@@ -81,7 +92,13 @@ def known_names(translator_dir : string; var error : string&) : table<string> {
             error = "no Rust source at {path}"
             return <- known
         }
-        for (name in match_arm_names(fread(path), source._1)) {
+        var table_error : string
+        var inscope names <- match_arm_names(fread(path), source._1, table_error)
+        if (!empty(table_error)) {
+            error = "{path}: {table_error}"
+            return <- known
+        }
+        for (name in names) {
             known |> insert(name)
             if (source._1 == "libm_function") {
                 known |> insert("{name}f")
@@ -91,14 +108,18 @@ def known_names(translator_dir : string; var error : string&) : table<string> {
     return <- known
 }
 
-//! The symbols of `nm` output `text` whose type letter is `U` (`undefined`) or any other
-//! (`defined`), each once.
+//! the `nm` type letters of a symbol a unit refers to without defining it: undefined, and weak
+//! undefined (an object or other)
+let UNDEFINED_TYPES <- ["U", "w", "v"]
+
+//! The symbols of `nm` output `text` whose type letter is in `UNDEFINED_TYPES` (`undefined`) or any
+//! other (`defined`), each once.
 def nm_symbols(text : string; undefined : bool) : table<string> {
     var names : table<string>
     for (line in split(text, "\n")) {
         var inscope fields <- [for (f in split(strip(line), " ")); f; where !empty(f)]
         let n = length(fields)
-        if (n >= 2 && (fields[n - 2] == "U") == undefined && length(fields[n - 2]) == 1) {
+        if (n >= 2 && length(fields[n - 2]) == 1 && has_value(UNDEFINED_TYPES, fields[n - 2]) == undefined) {
             names |> insert(fields[n - 1])
         }
     }
@@ -171,27 +192,35 @@ def program_gap(c_paths, defines : array<string>; obj_dir, translator_dir : stri
 }
 
 //! How the gap is derived, the text the capture carries beside it.
-let GAP_METHOD = "gcc -c -O0 -fno-builtin -fno-stack-protector of the program's units with the sidecar's defines, nm -u less the symbols any unit defines, glibc's redirected names mapped to the C names, less the names the match arms of the Rust translator's std_function, std_stream, jmp_call, libm_function (and each stem's f form) and canonical_runtime_function lower"
+def gap_method : string {
+    let tables = join([for (t in KNOWN_NAME_TABLES); "{t._1} ({t._0})"], ", ")
+    return "gcc {join(GAP_CFLAGS, " ")} of the program's units with the sidecar's defines; nm's undefined symbols ({join(UNDEFINED_TYPES, ", ")}) less those any unit defines, glibc's redirected names mapped to the C names; less the names the match arms of the Rust translator's {tables} lower, each libm_function stem also in its f form"
+}
 
-//! The `lua` section: the interpreter `lua` of `program_sources` as a compilation database with the
-//! sidecar's defines, translated by `bin` with `translate_db` into `LUA_WORK`, its status
-//! (`refused` with the translator's error, else `translated` with the file count), the seconds, and
-//! the gap; our side's numbers are the ports capture's.
+//! The `lua` section of the program whose C files are `c_paths` (`program_sources("lua")`): a
+//! compilation database with the defines of the sidecar at `sidecar_path`, translated by `bin`
+//! with `translate_db` into `work`, its status (`refused` with the translator's error, else
+//! `translated` with the file count), the seconds and the gap; our side's numbers are the ports
+//! capture's. Null, with `error` set, when the sidecar cannot be read.
 [arch(at="ARCHITECTURE.md#lua")]
-def lua_section(bin : string; stamps : Stamps) : JsonValue? {
-    rmdir_rec(LUA_WORK)
-    mkdir_rec(LUA_WORK)
+def lua_section(bin : string; c_paths : array<string>; sidecar_path, work : string; stamps : Stamps; var error : string&) : JsonValue? {
     var side_error : string
-    let side <- read_sidecar(SIDECAR, side_error)
-    let c_paths <- program_sources("lua")
-    let db = path_join(LUA_WORK, "compile_commands.json")
+    let side <- read_sidecar(sidecar_path, side_error)
+    if (!empty(side_error) || !fexist(sidecar_path)) {
+        error = "cannot read the sidecar {sidecar_path}: {side_error}"
+        return null
+    }
+    rmdir_rec(work)
+    mkdir_rec(work)
+    let db = path_join(work, "compile_commands.json")
     write_compile_commands(db, c_paths, side.defines, get_full_file_name("."))
     let no_flags : array<string>
-    let t <- translate_db(bin, db, path_join(LUA_WORK, "rust"), LUA_RUNTIME_MODULE, no_flags, LUA_TRANSLATE_TIMEOUT)
+    let t <- translate_db(bin, db, path_join(work, "rust"), LUA_RUNTIME_MODULE, no_flags, LUA_TRANSLATE_TIMEOUT)
     var gap_error : string
-    let gap <- program_gap(c_paths, side.defines, path_join(LUA_WORK, "obj"), path_join(rust_checkout(), "c2dascript-transpile/src/translator"), gap_error)
+    let gap <- program_gap(c_paths, side.defines, path_join(work, "obj"), path_join(rust_checkout(), "c2dascript-transpile/src/translator"), gap_error)
     var root <- {
         "rust_commit" => JV(stamps.rust_commit),
+        "rust_commit_error" => JV(stamps.rust_commit_error),
         "date" => JV(stamps.date),
         "program" => JV("lua"),
         "units" => JV(length(c_paths)),
@@ -201,12 +230,18 @@ def lua_section(bin : string; stamps : Stamps) : JsonValue? {
         "seconds" => JV(t.seconds),
         "gap" => JV(gap),
         "gap_error" => JV(gap_error),
-        "gap_method" => JV(GAP_METHOD),
+        "gap_method" => JV(gap_method()),
         "ours" => JV("see ports"),
         "speed" => JV(t.ok ? "not measured here" : "refused on the Rust side")
     }
     return JV(root)
 }
+
+//! The C files of `folder`, sorted, each by its full path: the program `--lua-from` names.
+def folder_sources(folder : string) : array<string> => <- [for (id in c_file_ids(folder, "")); get_full_file_name(path_join(folder, "{id}.c"))]
+
+//! The work folder of the program `--lua-from` names: `<folder>/work`.
+def folder_work(folder : string) : string => path_join(folder, "work")
 
 //! Why the Lua comparison cannot start, "" when it can: the Rust translator is missing, or the
 //! fetched release's sources `release` (`SOURCES`) lack `lua.c`.
