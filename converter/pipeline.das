@@ -53,8 +53,9 @@ struct ConvertResult {
 //! and the cycle cut's late-bound functions with their edges and weights (`layout_report`).
 let LAYOUT_REPORT = "program.layout.txt"
 
-//! The files a program's source or source-cut layout wrote under the output folder, one relative path a
-//! line: the modules and fragments a publisher copies, and nothing an earlier conversion left.
+//! The files a program's source or source-cut layout wrote under the output folder, one relative
+//! path a line: the modules and fragments a publisher copies, and nothing an earlier conversion
+//! left.
 let MODULE_LIST = "program.modules.txt"
 
 // the modules and fragments an earlier conversion listed in `out_dir`'s module list removed, and

@@ -36,10 +36,10 @@ struct Sidecar {
     // dependent files one module of fragments), `source-cut` (a module per C file, the cycles cut
     // by late binding) or `single` (one module); "" when the key is absent
     layout : string
-    // the cycle cut of the `source-cut` layout (`converter/ARCHITECTURE_LAYOUT.md`): the weight above
-    // which an edge is never cut (-1: none), the symbols never cut, the groups of units kept in one
-    // module, the symbols always cut, and the profile of call counts (a path beside the sidecar,
-    // "" for none)
+    // the cycle cut of the `source-cut` layout (`converter/ARCHITECTURE_LAYOUT.md`): the weight
+    // above which an edge is never cut (-1: none), the symbols never cut, the groups of units kept
+    // in one module, the symbols always cut, and the profile of call counts (a path beside the
+    // sidecar, "" for none)
     layout_threshold : int64 = -1l
     layout_keep_symbols : array<string>
     layout_keep_units : array<array<string>>
