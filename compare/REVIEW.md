@@ -13,6 +13,14 @@ otherwise than the oracle), `output` (the run printed otherwise than the oracle)
 `native` (a csmith seed's native reference failed) or `crash` (a worker ended without a verdict),
 never skips or drops it.** A dropped input inflates the Rust side's pass rate.
 
+**A diff that adds a time or ratio of this repository's output to the perf comparison takes it
+from the run that timed the Rust side, never from a capture under `perf/` (`results_linux.json`,
+`results_method_linux.json`).** Two runs on different days time two states of the machine.
+
+**A diff to the perf comparison keeps every kernel and every lane in the capture: a lane without a
+cell is an `{"error": ...}` entry, a refused translation a `refused` entry - never drop either.** A
+dropped lane hides a side's failure from the table.
+
 **A diff to `tests/` never builds the Rust translator (no `cargo`, no `scripts/build_c2das_rust.sh`
 from the repo root) and never runs the binary `rust_binary` names; it runs a stand-in script the
 test writes instead.**
