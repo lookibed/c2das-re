@@ -25,6 +25,10 @@ dropped lane hides a side's failure from the table.
 from the repo root) and never runs the binary `rust_binary` names; it runs a stand-in script the
 test writes instead.**
 
+**A test that runs `run.das --lua` passes `--lua-from` and `--out`, both naming a scratch folder the
+test writes, never Lua's release or `results_linux.json`.** Without them the run reads the fetched
+release, which a clean checkout lacks, and rewrites the committed capture.
+
 **Never commit a file under `work/` (a translation, a compilation database, a run's scratch) -
 write it there and keep `/compare/work/` in `.gitignore` (repo root) instead.**
 
