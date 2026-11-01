@@ -3,6 +3,7 @@ options gen2
 require daslib/fio
 require dastest/review_gate
 require readability_file
+require criteria_file
 require ../suites/suite_files.das
 
 // The mechanical half of metrics/REVIEW.md (contract: REVIEW_COMMON.md at the repo root).
@@ -24,9 +25,22 @@ def private check_capture_file {
     }
 }
 
+let CRITERIA_CAPTURE = "metrics/criteria_linux.json"
+
+def private check_criteria_file {
+    if (!fexist(CRITERIA_CAPTURE)) {
+        gate_finding(CRITERIA_CAPTURE, "the committed criteria capture is missing: run scripts/run_criteria.sh")
+        return
+    }
+    for (finding in check_criteria(fread(CRITERIA_CAPTURE))) {
+        gate_finding(CRITERIA_CAPTURE, finding)
+    }
+}
+
 [export]
 def main : int {
     check_capture_file()
+    check_criteria_file()
     gate_untracked(["metrics/work"], "metrics/work/ is converted output, never committed")
     return gate_verdict("metrics")
 }

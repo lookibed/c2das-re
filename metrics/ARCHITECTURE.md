@@ -5,17 +5,21 @@ measures how readable the converter's output is: it converts a fixed set of C pr
 counts, per emitted module, `unsafe` scopes and expressions, pointer steps and indexes,
 `reinterpret` casts, `goto` and labels, raw `while` loops and literals a name exists for. The
 counts ratchet like the suite pass lists, in the opposite direction: a total only goes down.
+The readability criteria, compliance percentages against a human port measured over the same
+inputs' text, are `ARCHITECTURE_CRITERIA.md`.
 
 ## 1. File charters
 
 - `readability.das` - the driver (`scripts/run_readability.sh`): takes the input keys (section
   2), runs one worker process per input, `--jobs` at a time (4 by default), through
   `run_workers` of `suites/suite_runner.das`, the pool the csmith driver uses; a worker
-  (`--one <input key>`) writes or generates the input's C file, converts it through
-  `converter/pipeline.das` into `work/<input key>/das/` under the `linux` dialect and writes its
-  counts to `work/<input key>/counts.txt`. The driver gathers the files, prints the totals table
+  (`--one <input key>`) converts the input through `convert_input` of `readability_inputs.das`
+  into `work/<input key>/das/` and writes its counts to `work/<input key>/counts.txt`. The driver gathers the files, prints the totals table
   with the inputs attempted and failed, and applies the ratchet (section 4). A failed worker's
   line carries what the worker printed. It never runs a converted module.
+- `readability_inputs.das` - an input key converted: it writes or generates the input's C file
+  and converts it through `converter/pipeline.das` under the `linux` dialect (section 2); the
+  criteria driver converts through it too.
 - `readability_count.das` - the counting: `count_module` compiles one emitted module and walks
   its AST (section 3), counting what the module's own file spells and, when it is a cluster
   module, what the fragments it is given spell (`converter/ARCHITECTURE_LAYOUT.md`); `count_text`
