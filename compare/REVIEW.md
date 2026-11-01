@@ -14,8 +14,9 @@ never a hand edit.** The next `--readme` run overwrites a hand edit without a tr
 **A diff that runs the Rust translator on an input records every input it does not pass as one of
 `refused` (the translator failed), `compile` (daslang rejected the output), `exit` (the run exited
 otherwise than the oracle), `output` (the run printed otherwise than the oracle), `timeout`,
-`native` (a csmith seed's native reference failed) or `crash` (a worker ended without a verdict),
-never skips or drops it.** A dropped input inflates the Rust side's pass rate.
+`native` (a csmith seed's native reference failed), `crash` (a worker ended without a verdict)
+or `skipped` (a lane the harness cannot run, its reason recorded), never drops it.** A dropped
+input inflates the Rust side's pass rate.
 
 **A diff that adds a time or ratio of this repository's output to the perf comparison takes it
 from the run that timed the Rust side, never from a capture under `perf/` (`results_linux.json`,
