@@ -6,14 +6,18 @@ options stack = 1048576
 require strings
 require daslib/strings_boost
 require daslib/clargs
+require daslib/fio
 require daslib/json_boost
 require ../converter/pipeline.das
+require ../converter/sidecar.das
 require ../suites/suite_runner.das
 require rust_translator
 require suite_compare
 require perf_compare
 require quality_compare
 require lua_compare
+require compare_render
+require ../perf/perf_cli.das
 require ../lua/sources.das
 
 //! The head-to-head with the Rust translator from the repository root: `--suites` runs it over
@@ -22,7 +26,11 @@ require ../lua/sources.das
 //! (`compare/ARCHITECTURE.md`); `--quality` counts and sizes both sides' output over the inputs
 //! both translated and writes its `quality` section; `--lua` runs the Rust translator over Lua and
 //! writes the `lua` and `doom` sections, over the C files and the sidecar of the folder
-//! `--lua-from` names when it is set.
+//! `--lua-from` names when it is set; `--readme` and `--report` render the capture as markdown.
+
+//! the README `--readme` rewrites and the rulings `--report` opens with, from the repository root
+let README = "README.md"
+let RULINGS = "docs/rulings-pending.md"
 
 [CommandLineArgs]
 struct CompareArgs {
@@ -38,6 +46,10 @@ struct CompareArgs {
     lua : bool
     @clarg_doc = "--lua over the .c files of this folder (its lua.c holding main) with its lua.c2das, when present, as the sidecar, into <folder>/work, instead of Lua's release"
     lua_from : string = ""
+    @clarg_doc = "rewrite the comparison rendered from the capture between the compare markers of README.md"
+    readme : bool
+    @clarg_doc = "write the comparison rendered from the capture into this markdown file, the open rulings first"
+    report : string = ""
     @clarg_doc = "samples per perf lane, each its own process (default 5)"
     samples : int = 5
     @clarg_doc = "run only the ids (perf: the kernels) that contain this text; a filtered run writes no capture"
@@ -162,6 +174,32 @@ def run_lua(out, from : string) : int {
     }
 }
 
+// the open lines of `docs/rulings-pending.md`, under their heading; "" without the file or a line
+def private rulings_pending : string {
+    let lines <- [for (line in split(fexist(RULINGS) ? fread(RULINGS) : "", "\n")); line; where line |> starts_with("- ")]
+    return empty(lines) ? "" : "## Rulings pending\n\n" + join(lines, "\n") + "\n\n"
+}
+
+// the comparison rendered from the capture `out`: into README.md between its compare markers under
+// `--readme`, into the file `--report` names under its heading
+def run_render(args : CompareArgs; out : string) : int {
+    var error : string
+    let results = read_json_file(out, error)
+    if (results == null) {
+        to_log(LOG_ERROR, "{error}\n")
+        return 1
+    }
+    let body = compare_report(results)
+    if (args.readme && !update_readme(README, body, COMPARE_BEGIN, COMPARE_END)) {
+        to_log(LOG_ERROR, "{README} has no compare markers\n")
+        return 1
+    }
+    if (!empty(args.report)) {
+        fwrite(args.report, "# c2das-re against the Rust translator\n\n{rulings_pending()}## Head-to-head\n\n{body}")
+    }
+    return 0
+}
+
 [export]
 def main : int {
     var args = CompareArgs()
@@ -172,9 +210,9 @@ def main : int {
     if (!empty(args.one)) {
         return run_worker(args.one)
     }
-    let alone <- [for (mode in [("--perf", args.perf), ("--quality", args.quality), ("--lua", args.lua)]); mode._0; where mode._1]
+    let alone <- [for (mode in [("--perf", args.perf), ("--quality", args.quality), ("--lua", args.lua), ("--readme or --report", args.readme || !empty(args.report))]); mode._0; where mode._1]
     if (length(alone) > 1 || (length(alone) == 1 && (args.suites || !empty(args.suite)))) {
-        to_log(LOG_ERROR, "{alone[0]} runs alone: run the suites and each of --perf, --quality and --lua in a run of its own\n")
+        to_log(LOG_ERROR, "{alone[0]} runs alone: run the suites and each of --perf, --quality, --lua and the rendering in a run of its own\n")
         return 1
     }
     if (args.lua && !empty(args.filter)) {
@@ -182,6 +220,9 @@ def main : int {
         return 1
     }
     let out = empty(args.out) ? CAPTURE : args.out
+    if (args.readme || !empty(args.report)) {
+        return run_render(args, out)
+    }
     if (args.quality) {
         return run_quality(args, out)
     }

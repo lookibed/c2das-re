@@ -142,8 +142,8 @@ def has_lane(c : Capture; lane : string) : bool {
 // `lane` over `base` for `workload`, `not measured` when the capture left either lane out
 def private pair_text(c : Capture; workload, lane, base : string) : string => has_lane(c, lane) && has_lane(c, base) ? ratio_text(ratio_of(c, workload, lane, base)) : NOT_MEASURED
 
-// the first `text_columns` columns are text, aligned left; the rest are numbers
-def private table_of(headers : array<string>; rows : array<array<string>>; text_columns : int) : string {
+//! A markdown table whose first `text_columns` columns are text, aligned left, the rest numbers.
+def table_of(headers : array<string>; rows : array<array<string>>; text_columns : int) : string {
     let aligns <- [for (idx in range(length(headers))); idx < text_columns ? ColAlign.left : ColAlign.right]
     return render_md_table(headers, aligns, rows) + "\n"
 }
