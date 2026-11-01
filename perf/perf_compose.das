@@ -51,9 +51,13 @@ def composed_method_source(kernel : string) : string {
 }
 
 //! The method kernel `name` composed by the dasProfile method into `<work>/<name>.c`, `work` created.
-def write_method_composed(name, work : string) : string {
+def write_method_composed(name, work : string) : string => write_method_composed(METHOD_KERNELS, name, work)
+
+//! The kernel `<kernels>/<name>.c` of any folder composed by the dasProfile method into
+//! `<work>/<name>.c`, `work` created; the path written.
+def write_method_composed(kernels, name, work : string) : string {
     mkdir_rec(work)
     let c_path = path_join(work, "{name}.c")
-    fwrite(c_path, composed_method_source(fread("{METHOD_KERNELS}/{name}.c")))
+    fwrite(c_path, composed_method_source(fread("{kernels}/{name}.c")))
     return c_path
 }

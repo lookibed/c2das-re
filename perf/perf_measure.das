@@ -113,7 +113,12 @@ def measure_native(var cells : table<string; Cell>; var errors : array<string>; 
 
 // the JIT, exe and AOT lanes of the converted `das_path`
 def measure_tiers(var cells : table<string; Cell>; var errors : array<string>; name, das_path, work : string; samples, oracle : int) {
-    measure_lane(cells, errors, name, "jit", das_lane_command(das_path, "-jit", CONVERTED_MODULES), samples, oracle)
+    measure_tiers(cells, errors, name, das_path, work, CONVERTED_MODULES, samples, oracle)
+}
+
+//! The JIT lane with `module_dirs` loaded, and the exe and AOT lanes, of `das_path`.
+def measure_tiers(var cells : table<string; Cell>; var errors : array<string>; name, das_path, work : string; module_dirs : array<string>; samples, oracle : int) {
+    measure_lane(cells, errors, name, "jit", das_lane_command(das_path, "-jit", module_dirs), samples, oracle)
     let no_args : array<string>
     for (lane in ["exe", "aot"]) {
         var build_error : string
