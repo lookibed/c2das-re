@@ -1,7 +1,7 @@
 {
 	"suites" : {
 		"c_testsuite" : {
-			"rust_pass_of_skipped" : 0,
+			"ours_skipped" : 0,
 			"date" : "2026-11-01 02:54 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 199,
@@ -1561,12 +1561,12 @@
 			"rust_pass_of_unlisted" : 8,
 			"ids" : 220,
 			"seconds" : 86.92239379882812,
-			"daslang" : "0.6.4",
-			"ours_skipped" : 0,
-			"rust_pass_of_ours" : 194
+			"rust_pass_of_ours" : 194,
+			"rust_pass_of_skipped" : 0,
+			"daslang" : "0.6.4"
 		},
 		"gcc_torture" : {
-			"rust_pass_of_skipped" : 41,
+			"ours_skipped" : 321,
 			"date" : "2026-11-01 03:04 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 1179,
@@ -13178,12 +13178,12 @@
 			"rust_pass_of_unlisted" : 67,
 			"ids" : 1656,
 			"seconds" : 645.4718017578125,
-			"daslang" : "0.6.4",
-			"ours_skipped" : 321,
-			"rust_pass_of_ours" : 1089
+			"rust_pass_of_ours" : 1089,
+			"rust_pass_of_skipped" : 41,
+			"daslang" : "0.6.4"
 		},
 		"csmith" : {
-			"rust_pass_of_skipped" : 5,
+			"ours_skipped" : 31,
 			"date" : "2026-11-01 03:12 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 151,
@@ -14477,9 +14477,9 @@
 			"rust_pass_of_unlisted" : 0,
 			"ids" : 182,
 			"seconds" : 434.8171081542969,
-			"daslang" : "0.6.4",
-			"ours_skipped" : 31,
-			"rust_pass_of_ours" : 42
+			"rust_pass_of_ours" : 42,
+			"rust_pass_of_skipped" : 5,
+			"daslang" : "0.6.4"
 		}
 	},
 	"perf" : {
@@ -16742,5 +16742,45 @@
 		"samples" : 5,
 		"rust_commit" : "ce4647af282636fef030067fc50db2ae6a72dd4b",
 		"timestamp" : "2026-11-01 07:27 UTC"
+	},
+	"lua" : {
+		"program" : "lua",
+		"gap" : [
+			"__ctype_b_loc",
+			"clock",
+			"difftime",
+			"freopen",
+			"frexp",
+			"gmtime",
+			"ldexp",
+			"localeconv",
+			"localtime",
+			"log2",
+			"mktime",
+			"setlocale",
+			"signal",
+			"strcoll",
+			"strftime",
+			"strpbrk",
+			"strspn",
+			"time",
+			"tmpfile",
+			"tmpnam"
+		],
+		"status" : "refused",
+		"date" : "2026-11-01 09:18 UTC",
+		"gap_error" : "",
+		"ours" : "see ports",
+		"error" : "translation failed: operation=top-level declaration lowering; c_type=Function(CQualTypeId { qualifiers: Qualifiers { is_const: false, is_restrict: false, is_volatile: false }, ctype: CTypeId(31) }, [CQualTypeId { qualifiers: Qualifiers { is_const: false, is_restrict: false, is_volatile: false }, ctype: CTypeId(3497) }, CQualTypeId { qualifiers: Qualifiers { is_const: false, is_restrict: false, is_volatile: false }, ctype: CTypeId(2099) }], false, false, true); declaration=luaK_numberK; cause=unsupported external call: ldexp",
+		"gap_method" : "gcc -c -O0 -fno-builtin -fno-stack-protector of the program's units with the sidecar's defines, nm -u less the symbols any unit defines, glibc's redirected names mapped to the C names, less the names the match arms of the Rust translator's std_function, std_stream, jmp_call, libm_function (and each stem's f form) and canonical_runtime_function lower",
+		"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
+		"speed" : "refused on the Rust side",
+		"files" : 0,
+		"units" : 33,
+		"seconds" : 5.605588436126709
+	},
+	"doom" : {
+		"status" : "pending",
+		"reason" : "P6"
 	}
 }
