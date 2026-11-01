@@ -10,24 +10,27 @@ project and section. A project is a row of `project_table` in `projects.das`, th
 project's README in the Rust checkout (`$C2DAS_RUST`, else `/root/c2das`, read in place, never
 copied or built): the translation unit and the bench unit relative to the project folder, the
 include folders, the defines, the C standard and the native build's flags the README gives, the
-fixture the program reads from its last argument, the output it must print (the README's text), the
-translator options of the project's canonical case in the Rust repository's
-`tests/canonical/cases.json`, and the C functions shown side by side. wasm3 is the first row:
-`src/all_host.c` and `src/all_host_bench.c`, `-std=c11 -Iinclude -Iupstream/wasm3/source -Isrc`,
-`-O2`, `fixtures/fib32.wasm`, the nine lines `bytes=62` to `count=7`, `--das-option "stack =
-4194304"`, and `op_Call` (an op that ends in the dispatch to the next op) and `call_fib` (the host's
-call of the module's `fib`).
+fixture the program reads from its last argument, the id of the project's canonical case in the Rust
+repository's `tests/canonical/cases.json`, whose `expected.stdout` (`load_expected`, read at the
+start of a run, which exits 2 without it) is the output the program must print, that case's
+translator options, and the C functions shown side by side. wasm3 is the first row: `src/all_host.c`
+and `src/all_host_bench.c`, `-std=c11 -Iinclude -Iupstream/wasm3/source -Isrc`, `-O2`,
+`fixtures/fib32.wasm`, the case `wasm3-fib32-std`, `--das-option "stack = 4194304"`, and `op_Call`
+(an op that ends in the dispatch to the next op) and `call_fib` (the host's call of the module's
+`fib`).
 
 Everything a run builds sits in `work/projects/<name>/`: `native/` (the pinned clang's builds of
 both units), `ours/` and `ours_bench/` (our conversions), `rust/` and `rust_bench/` (the Rust
 translations), and each side's lane builds. The run is capped by the command that starts it
 (`prlimit --as=3221225472`), which every child process inherits.
 
-The entry is `{rust_commit, rust_commit_error, daslang, date, samples, lanes, native, ours, rust,
-speed, code, functions}`: `native` the native build's verdict, `ours` and `rust` each `{error,
-lanes}` with the side's refusal and a verdict per lane of `lanes` (`interp`, `jit`, `exe`, `aot`),
-`speed`, `code` and `functions` as below. The capture's `rust_commit` is the `HEAD` of the checkout
-holding the binary (`ARCHITECTURE.md` section 2).
+The entry is `{rust_commit, rust_commit_error, daslang, date, samples, lanes, native,
+native_compiler, ours, rust, speed, code, functions}`: `native` the native build's verdict,
+`native_compiler` the first line of the pinned clang's `--version` (the Rust README builds with
+clang-18, so the native cells are this machine's baseline, not the Rust repository's numbers),
+`ours` and `rust` each `{error, lanes}` with the side's refusal and a verdict per lane of `lanes`
+(`interp`, `jit`, `exe`, `aot`), `speed`, `code` and `functions` as below. The capture's
+`rust_commit` is the `HEAD` of the checkout holding the binary (`ARCHITECTURE.md` section 2).
 
 ## The verdicts {#verdicts}
 
@@ -40,13 +43,13 @@ std --strict`, the case's options, the clang arguments of the row) within 600 s.
 
 Each side's lanes: `refused` with the side's error when it has no module; `compile` with the first
 `error[` line when the module fails `daslang -compile-only` (with our module folders on our side,
-none on the Rust side), `timeout` past that check's 120 s; else each lane run by
+none on the Rust side), `timeout` past that check's limit; else each lane run by
 `converter/tiers.das`'s `run_tier` with the fixture as the program's argument and judged: `timeout`
 past its limit, `exit` with the code and the first line naming an error, `output` with the first
 line that differs from the expected text (numbered from 1, a missing line `(none)`), `pass`. The
 JIT's `[I]` lines are not the program's output. The `aot` tier's host passes the program no
 arguments, so a project that reads its fixture from its argument is `skipped` under `aot` with that
-reason, never dropped. A lane's limit is 120 s for a run, 300 s for each `exe` or `aot` build step
+reason, never dropped. A lane's limit is 120 s for a run and for the compile check, 300 s for each `exe` or `aot` build step
 and the run it ends with (`COMPARE_LIMITS`).
 
 ## The speed {#speed}
@@ -78,8 +81,9 @@ computed per project.
 `compare_render.das`'s `projects_text` renders the section under `### Real projects`: the verdicts
 table (per project and side, the native verdict and each lane's), one line per side and reason for
 every lane that does not pass, the lanes sharing a reason named together, the bench table (the
-native decode seconds, each lane's decode median over it, an error cell as the lane's status,
-`refused` for a side with no bench module, else the error's first word), the code table (status,
-files, lines, the Rust runtime's lines and each counter) and the functions side by side. A capture
-without the section renders `No project is captured yet.` The list of where the Rust translator is
-ahead names each project whose Rust side passes a lane ours does not.
+native compiler's version line, the native decode seconds, each lane's decode median over it, an
+error cell as the lane's status, `refused` for a side with no bench module, else the error's first
+word), the code table (status, files, lines, the Rust runtime's lines and each counter, `-` for a
+side not measured) and the functions side by side. A capture without the section renders `No project
+is captured yet.` The list of where the Rust translator is ahead names each project whose Rust side
+passes a lane ours does not.
