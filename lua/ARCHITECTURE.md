@@ -4,15 +4,15 @@ Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this docume
 converts Lua 5.4.8 (MIT), the interpreter `lua` and the compiler `luac`, as whole programs: the
 release is fetched, never committed, and each program is converted from its separate C files as the
 Makefile builds it, linked by the converter, in each of its layouts: a module per C file with the
-cycles cut by late binding (the source layout, the default), a module per C file with every cycle
-one module (the scc layout), and one module (the single layout).
+every cycle one module (the source layout, the default), a module per C file with the cycles cut by
+late binding (the source-cut layout), and one module (the single layout).
 
 ## 1. File charters
 
 - `fetch.sh` - downloads the release tarball and the test-suite tarball the `lua:` line of
   `VERSIONS.md` names into `fetch/` unless present, checks each against the line's sha256 and
   refuses a mismatch, and extracts them into `fetch/lua-5.4.8/` and `fetch/lua-5.4.8-tests/`.
-- `profile.das` - the profile the source layout's cycle cut weighs by (section 5), written to
+- `profile.das` - the profile the source-cut layout's cycle cut weighs by (section 5), written to
   `lua.profile.json`.
 - `lua.profile.json` - that profile, committed beside the sidecar, which names it.
 - `sources.das` - the release's sources as the Makefile links each program (section 2):
@@ -21,8 +21,8 @@ one module (the scc layout), and one module (the single layout).
 - `run.das` - writes each program's manifest `work/<stem>.program.json` (section 2), converts the
   program it names through `converter/pipeline.das`'s `convert_program` with `lua.c2das` as the
   sidecar, the compile check included, in each layout `--layout` names (`all`, the default,
-  `source`, `scc` or `single`): the source layout into the tree `work/<stem>/`, its entry
-  `work/<stem>/<stem>.das`, the scc layout into `work/scc/<stem>/`, the single layout into
+  `source`, `source-cut` or `single`): the source layout into the tree `work/<stem>/`, its entry
+  `work/<stem>/<stem>.das`, the source-cut layout into `work/source-cut/<stem>/`, the single layout into
   `work/single/<stem>/<stem>.das`, a folder each so each run's module caches stay apart; it reports
   the numbers of section 4 per layout, an error at the Lua source and line the dumper names.
   `--native` builds each native oracle from the same sources into `work/<stem>_native`; `--run` runs
@@ -31,7 +31,7 @@ one module (the scc layout), and one module (the single layout).
   with the oracle, which runs under the name `lua`, the `argv[0]` the converted program gets and
   Lua's messages quote; `--luac-check <folder>` compiles every `.lua` file of the folder with the
   converted compiler of each layout under the tier, `-o` into `work/<stem>/luac_check/`
-  (`work/single/luac/luac_check/` for the single one, `work/scc/luac/luac_check/` for the scc one),
+  (`work/single/luac/luac_check/` for the single one, `work/source-cut/luac/luac_check/` for the source-cut one),
   and compares the bytes and the exit code with the native compiler's, refusing a folder with no
   script; `--error-check` runs the converted interpreter of each layout under the tier with each of
   `run.das`'s `ERROR_CHECKS` (an error caught by `pcall`, one uncaught, nested protected calls, an
@@ -65,9 +65,9 @@ the file defines itself (`LUA_CORE`, `LUA_LIB`, `lua_c`, `luac_c`), and links th
 (`converter/ARCHITECTURE_LINK.md`): in the single layout the program's module is named by the file
 holding `main`, `lua.das` and `luac.das`; in the module-per-file layouts
 (`converter/ARCHITECTURE_LAYOUT.md`) `lua.das` and `luac.das` are the entry modules of a tree: in
-`scc` the core files that call each other are one module, `lcode_cluster.das`, and the headers
+`source` the core files that call each other are one module, `lcode_cluster.das`, and the headers
 whose records point at each other two (`lobject.h lstate.h lua.h`, `llex.h lparser.h`); in
-`source` the core's cycles are cut by late binding through `lua_link.das` and `luac_link.das`,
+`source-cut` the core's cycles are cut by late binding through `lua_link.das` and `luac_link.das`,
 only the two header clusters left. Each tree's `program.layout.txt`, beside its modules, lists
 the modules, each cluster's members and every cut. The build is the ANSI one, no `LUA_USE_*`
 platform macro: `lua_Integer` is `long long`, `lua_Number` `double`.
@@ -94,7 +94,7 @@ module of one program.
   padding field after its `CJmpBuf`. A Lua error is caught as the native build catches it under the
   interpreter; under the JIT the trampoline's `return lj.status` leaves only its `try` arm
   (`docs/probe-findings.md` F75), so every protected call reports success there.
-- `layout`: `{"profile": "lua.profile.json"}`, the counts the source layout's cycle cut weighs its
+- `layout`: `{"profile": "lua.profile.json"}`, the counts the source-cut layout's cycle cut weighs its
   edges by (section 5); no `threshold`, since the late-bound calls cost 2 to 3 percent under the
   JIT and nothing measurable under the interpreter (`docs/implementation_order.md` P5.1b2).
 - `over_indexed`: `TString.contents`, `Udata.uv`, `CClosure.upvalue` and `LClosure.upvals`, the
@@ -111,7 +111,7 @@ another file's definition, how many statics it renamed (a line each) and how man
 it kept once, the emitter's seconds (the formatter included), the compile check's seconds (daslang
 compiling the module with its default policies, as `convert` checks it), the lines of the `.das`
 module and how many of its functions carry `[c_function]`. Each line names the program and the
-layout (`lua: lua (source): ...`); in the source layout the lines of das are those of every module
+layout (`lua: lua (source): ...`); in the module-per-file layouts the lines of das are those of every module
 and fragment, and the report adds the count of modules and fragments and a line per module, its
 members when it is a cluster, while the edges that tie each cluster's members, with the names that
 make each, go to `partition <stem> (source): ...` lines. `--native` adds each oracle's size in
@@ -119,7 +119,7 @@ bytes.
 
 ## 5. The profile {#profile}
 
-The source layout cuts the cycles of Lua's core where the cut is cheap, by the calls a run makes
+The source-cut layout cuts the cycles of Lua's core where the cut is cheap, by the calls a run makes
 (`converter/ARCHITECTURE_LAYOUT.md`, "The cycle cut"). `profile.das` measures them: it compiles
 every file of `lua` with the pinned clang at `-O0 -fno-pie -finstrument-functions`, each file apart
 so its functions name it (`nm`), links them `-no-pie` with a counting runtime (each callee and call

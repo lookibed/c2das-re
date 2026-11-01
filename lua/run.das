@@ -21,8 +21,8 @@ require sources
 //! `lua` and the compiler `luac`, each from its separate C files through a program manifest
 //! `lua/work/<stem>.program.json` and `converter/pipeline.das`'s `convert_program` with
 //! `lua/lua.c2das`, its compile check included, and timed, in the source layout into
-//! `lua/work/<stem>/`, in the scc layout into `lua/work/scc/<stem>/` and in the single layout into
-//! `lua/work/single/<stem>/`. `--native` builds the
+//! `lua/work/<stem>/`, in the source-cut layout into `lua/work/source-cut/<stem>/` and in the
+//! single layout into `lua/work/single/<stem>/`. `--native` builds the
 //! native oracle of each, `--run` runs the converted interpreter against it, `--error-check` the
 //! interpreter's error-recovery checks against it, `--luac-check` the
 //! converted compiler's `-o` over a folder of scripts, `--suite-check` the release's test suite file
@@ -48,7 +48,7 @@ struct Args {
     error_check : bool
     @clarg_doc = "convert only the program of this stem: lua or luac"
     filter : string = ""
-    @clarg_doc = "the layouts to convert: source (a module per C file, the cycles cut, into lua/work/<stem>/), scc (every cycle one module, into lua/work/scc/<stem>/), single (one module, into lua/work/single/<stem>/) or all, the default"
+    @clarg_doc = "the layouts to convert: source (a module per C file, every cycle one module, into lua/work/<stem>/), source-cut (the cycles cut by late binding, into lua/work/source-cut/<stem>/), single (one module, into lua/work/single/<stem>/) or all, the default"
     layout : string = "all"
     @clarg_name = "luac-check"
     @clarg_doc = "a folder of Lua scripts: the converted luac compiles each with -o under --tier, and its bytes must be the native luac's"
@@ -545,7 +545,7 @@ def private suite_check(das_path, bin, layout : string; args : Args) : bool {
 }
 
 // the layouts `--layout` names
-def private layouts_of(args : Args) : array<string> => <- args.layout == "all" ? ["source", "scc", "single"] : [args.layout]
+def private layouts_of(args : Args) : array<string> => <- args.layout == "all" ? ["source", "source-cut", "single"] : [args.layout]
 
 // the lines of every das file a conversion wrote, a fragment's included
 def private das_lines(res : ConvertResult; dir : string) : int {
@@ -645,7 +645,7 @@ def main : int {
         return 1
     }
     if (args.layout != "all" && !is_layout(args.layout)) {
-        to_log(LOG_ERROR, "lua: --layout is source, scc, single or all, not `{args.layout}`\n")
+        to_log(LOG_ERROR, "lua: --layout is source, source-cut, single or all, not `{args.layout}`\n")
         return 1
     }
     if (!empty(args.suite_filter) && !has_value(SUITE, args.suite_filter)) {

@@ -71,17 +71,17 @@ struct Release {
     tarballs : array<tuple<url : string; sha256 : string>>
 }
 
-let LANE_TITLES <- {"native" => "clang -O3", "interp" => "interpreter", "jit" => "JIT", "exe" => "exe", "aot" => "AOT", "interp-scc" => "interpreter, scc layout", "jit-scc" => "JIT, scc layout", "interp-single" => "interpreter, single module", "jit-single" => "JIT, single module"}
+let LANE_TITLES <- {"native" => "clang -O3", "interp" => "interpreter", "jit" => "JIT", "exe" => "exe", "aot" => "AOT", "interp-source-cut" => "interpreter, source-cut layout", "jit-source-cut" => "JIT, source-cut layout", "interp-single" => "interpreter, single module", "jit-single" => "JIT, single module"}
 //! the das lanes, each with a ratio to native and a column of the projects table
 let DAS_LANES <- ["interp", "jit", "exe", "aot"]
 //! the lane-to-lane ratios of the ratio table, slower lane first
 let LANE_PAIRS <- [("interp", "jit"), ("interp", "exe"), ("interp", "aot"), ("jit", "aot")]
-//! the lanes over the scc layout's modules and the single layout's module, where the others run the
+//! the lanes over the source-cut layout's modules and the single layout's module, where the others run the
 //! source layout's: a column of the ratio table and of the projects table only where a capture
 //! measured them
-let LAYOUT_LANES <- ["interp-scc", "jit-scc", "interp-single", "jit-single"]
+let LAYOUT_LANES <- ["interp-source-cut", "jit-source-cut", "interp-single", "jit-single"]
 //! each such lane over its source-layout twin, a ratio-table column where both stand
-let LAYOUT_PAIRS <- [("interp-scc", "interp"), ("jit-scc", "jit"), ("interp-single", "interp"), ("jit-single", "jit")]
+let LAYOUT_PAIRS <- [("interp-source-cut", "interp"), ("jit-source-cut", "jit"), ("interp-single", "interp"), ("jit-single", "jit")]
 //! the line above which the top-level README is the charter's; the publisher owns the rest
 let README_MARKER = "<!-- generated below: c2das-re's scripts/publish_ports.sh renders everything under this line from each program's latest capture -->"
 //! the perf section and the projects table of a publish that measures nothing
