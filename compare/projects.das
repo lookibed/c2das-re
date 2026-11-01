@@ -136,25 +136,27 @@ def judge_run(rc : int; output, expected : string; timeout : float) : Verdict {
     return empty(differ) ? Verdict(status = "pass") : Verdict(status = "output", reason = differ)
 }
 
-//! The seconds a lane may take: a run, or under `exe` and `aot` each build step and the run.
-def lane_timeout(lane : string) : float => lane == "exe" || lane == "aot" ? COMPARE_LIMITS.build : COMPARE_LIMITS.sample
+//! The seconds a lane may take under `limits`: a run, or under `exe` and `aot` each build step and
+//! the run.
+def lane_timeout(lane : string; limits : LaneLimits) : float => lane == "exe" || lane == "aot" ? limits.build : limits.sample
 
 // a verdict as the capture holds it
 def private verdict_json(v : Verdict) : JsonValue? => JV({"status" => JV(v.status), "reason" => JV(v.reason)})
 
 //! Each lane of `DAS_LANES` over the module `das_path` with `module_dirs` loaded, the program
 //! given `args`: every lane `refused` with `refusal` when it is set, `compile` when the module
-//! fails `-compile-only`, `aot` `skipped` since its host passes no arguments, else the run judged
-//! against `expected`; each lane builds in `<work>/<lane>`.
+//! fails `-compile-only` and `timeout` when that check runs past `limits.sample`, `aot` `skipped`
+//! since its host passes no arguments, else the run judged against `expected` within
+//! `lane_timeout`; each lane builds in `<work>/<lane>`.
 [arch(at="ARCHITECTURE_PROJECTS.md#verdicts")]
-def side_lanes(das_path, refusal, work : string; module_dirs, args : array<string>; expected : string) : table<string; Verdict> {
+def side_lanes(das_path, refusal, work : string; module_dirs, args : array<string>; expected : string; limits : LaneLimits) : table<string; Verdict> {
     var lanes : table<string; Verdict>
     var common = empty(refusal) ? Verdict() : Verdict(status = "refused", reason = refusal)
     if (empty(refusal)) {
         var text : string
-        let rc = compile_entry(das_path, module_dirs, COMPARE_LIMITS.sample, text)
+        let rc = compile_entry(das_path, module_dirs, limits.sample, text)
         if (rc == popen_timed_out) {
-            common = Verdict(status = "timeout", reason = "the compile check took longer than {int(COMPARE_LIMITS.sample)} s")
+            common = Verdict(status = "timeout", reason = "the compile check took longer than {limits.sample} s")
         } elif (rc != 0) {
             common = Verdict(status = "compile", reason = compile_error(text))
         }
@@ -168,8 +170,8 @@ def side_lanes(das_path, refusal, work : string; module_dirs, args : array<strin
         } else {
             var output : string
             to_log(LOG_INFO, "{das_path}: {lane}\n")
-            let rc = run_tier(das_path, lane, path_join(work, lane), output, module_dirs, lane_timeout(lane), no_flags, args)
-            lanes[lane] = judge_run(rc, output, expected, lane_timeout(lane))
+            let rc = run_tier(das_path, lane, path_join(work, lane), output, module_dirs, lane_timeout(lane, limits), no_flags, args)
+            lanes[lane] = judge_run(rc, output, expected, lane_timeout(lane, limits))
         }
     }
     return <- lanes
@@ -223,9 +225,9 @@ def bench_cells(argv : array<string>; expected : string; samples : int; timeout 
 
 //! The bench cells of each das lane of the bench module `das_path`: `{error}` on every lane with
 //! `refusal` set, and on a lane whose verdict in `lanes` is not `pass`; the interpreter and the
-//! JIT run the module, `exe` its binary built once in `<work>/exe`.
+//! JIT run the module, `exe` its binary built once in `<work>/exe`, each within `lane_timeout`.
 [arch(at="ARCHITECTURE_PROJECTS.md#speed")]
-def side_speed(das_path, refusal, work : string; module_dirs, args : array<string>; lanes : table<string; Verdict>; expected : string; samples : int) : table<string; JsonValue?> {
+def side_speed(das_path, refusal, work : string; module_dirs, args : array<string>; lanes : table<string; Verdict>; expected : string; samples : int; limits : LaneLimits) : table<string; JsonValue?> {
     var cells : table<string; JsonValue?>
     for (lane in DAS_LANES) {
         let v = lanes?[lane] ?? Verdict(status = "skipped", reason = "not run")
@@ -235,15 +237,15 @@ def side_speed(das_path, refusal, work : string; module_dirs, args : array<strin
             cells[lane] = error_json("the lane does not pass: {v.status}")
         } elif (lane == "exe") {
             var error : string
-            let bin = build_exe(das_path, path_join(work, lane), args, error, lane_timeout(lane))
+            let bin = build_exe(das_path, path_join(work, lane), args, error, lane_timeout(lane, limits))
             var inscope argv <- [bin]
             argv |> push_from(args)
-            cells[lane] = empty(bin) ? error_json("exe build: {error}") : bench_cells(argv, expected, samples, lane_timeout(lane))
+            cells[lane] = empty(bin) ? error_json("exe build: {error}") : bench_cells(argv, expected, samples, lane_timeout(lane, limits))
         } else {
             var inscope argv <- das_lane_command(das_path, lane == "jit" ? "-jit" : "", module_dirs)
             argv |> push("--")
             argv |> push_from(args)
-            cells[lane] = bench_cells(argv, expected, samples, lane_timeout(lane))
+            cells[lane] = bench_cells(argv, expected, samples, lane_timeout(lane, limits))
         }
     }
     return <- cells
@@ -328,8 +330,8 @@ def project_entry(p : Project; bin, work : string; samples : int; stamps : Stamp
     let ours_das = ours_module(p, p.tu, path_join(work, "ours"), ours_refusal)
     var rust_files, rust_bench_files : array<string>
     let rust_das = rust_module(p, bin, p.tu, path_join(work, "rust"), rust_refusal, rust_files)
-    let ours_lanes <- side_lanes(ours_das, empty(no_oracle) ? ours_refusal : no_oracle, path_join(work, "ours_run"), CONVERTED_MODULES, args, p.expected)
-    let rust_lanes <- side_lanes(rust_das, empty(no_oracle) ? rust_refusal : no_oracle, path_join(work, "rust_run"), array<string>(), args, p.expected)
+    let ours_lanes <- side_lanes(ours_das, empty(no_oracle) ? ours_refusal : no_oracle, path_join(work, "ours_run"), CONVERTED_MODULES, args, p.expected, COMPARE_LIMITS)
+    let rust_lanes <- side_lanes(rust_das, empty(no_oracle) ? rust_refusal : no_oracle, path_join(work, "rust_run"), array<string>(), args, p.expected, COMPARE_LIMITS)
     let ours_bench = ours_module(p, p.bench_tu, path_join(work, "ours_bench"), ours_bench_refusal)
     let rust_bench = rust_module(p, bin, p.bench_tu, path_join(work, "rust_bench"), rust_bench_refusal, rust_bench_files)
     let native_bench = path_join(work, "native/{p.name}_bench")
@@ -351,8 +353,8 @@ def project_entry(p : Project; bin, work : string; samples : int; stamps : Stamp
         "rust" => JV({"error" => JV(rust_refusal), "lanes" => lanes_json(rust_lanes)}),
         "speed" => JV({
             "native" => bench_native,
-            "ours" => JV(side_speed(ours_bench, ours_bench_refusal, path_join(work, "ours_bench_run"), CONVERTED_MODULES, args, ours_lanes, p.expected, samples)),
-            "rust" => JV(side_speed(rust_bench, rust_bench_refusal, path_join(work, "rust_bench_run"), array<string>(), args, rust_lanes, p.expected, samples))
+            "ours" => JV(side_speed(ours_bench, ours_bench_refusal, path_join(work, "ours_bench_run"), CONVERTED_MODULES, args, ours_lanes, p.expected, samples, COMPARE_LIMITS)),
+            "rust" => JV(side_speed(rust_bench, rust_bench_refusal, path_join(work, "rust_bench_run"), array<string>(), args, rust_lanes, p.expected, samples, COMPARE_LIMITS))
         }),
         "code" => JV({
             "ours" => JV(side_code(ours_files, ours_das, ours_refusal, false)),

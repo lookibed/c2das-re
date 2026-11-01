@@ -6,6 +6,7 @@ require daslib/strings_boost
 require daslib/json_boost
 require ../../converter/tiers.das
 require ../suite_compare.das
+require ../../perf/perf_measure.das
 require ../perf_compare.das
 require ../projects.das
 require ../compare_render.das
@@ -76,22 +77,28 @@ def test_verdicts(t : T?) {
         t |> equal(judge_run(0, "[I] jit: compiled\na\n", "a\n", 9.0).status, "pass")
     }
     t |> run("a lane's limit: a run, or a build step and its run") @(t : T?) {
-        t |> equal(lane_timeout("interp"), 120.0)
-        t |> equal(lane_timeout("jit"), 120.0)
-        t |> equal(lane_timeout("exe"), 300.0)
-        t |> equal(lane_timeout("aot"), 300.0)
+        t |> equal(lane_timeout("interp", COMPARE_LIMITS), 120.0)
+        t |> equal(lane_timeout("jit", COMPARE_LIMITS), 120.0)
+        t |> equal(lane_timeout("exe", COMPARE_LIMITS), 300.0)
+        t |> equal(lane_timeout("aot", LaneLimits(sample = 1.0, build = 2.0)), 2.0)
     }
     t |> run("a side refused, and a module failing the compile check, on every lane") @(t : T?) {
         t |> with_scratch("cmp_projects_lanes") $(dir) {
             let none : array<string>
-            let refused <- side_lanes("", "no module", dir, none, ["f"], "a\n")
+            let refused <- side_lanes("", "no module", dir, none, ["f"], "a\n", COMPARE_LIMITS)
             t |> equal(join([for (lane in DAS_LANES); "{(refused?[lane] ?? Verdict()).status}:{(refused?[lane] ?? Verdict()).reason}"], " "), "refused:no module refused:no module refused:no module refused:no module")
             let broken = path_join(dir, "broken.das")
             fwrite(broken, "options gen2\n[export]\ndef main() : int \{\n    return undefined_name\n\}\n")
-            var compiled <- side_lanes(broken, "", dir, none, ["f"], "a\n")
+            var compiled <- side_lanes(broken, "", dir, none, ["f"], "a\n", COMPARE_LIMITS)
             t |> equal(join([for (lane in DAS_LANES); compiled[lane].status], " "), "compile compile compile compile")
             let reason = (compiled?["interp"] ?? Verdict()).reason
             t |> success(reason |> starts_with("error["), reason)
+            let fifo = path_join(dir, "blocked.das")
+            var made : string
+            run_and_capture(["mkfifo", fifo], made, 30.0)
+            let slow <- side_lanes(fifo, "", dir, none, ["f"], "a\n", LaneLimits(sample = 0.5, build = 0.5))
+            t |> equal(join([for (lane in DAS_LANES); (slow?[lane] ?? Verdict()).status], " "), "timeout timeout timeout timeout")
+            t |> equal((slow?["jit"] ?? Verdict()).reason, "the compile check took longer than 0.5 s")
         }
     }
 }
@@ -117,12 +124,23 @@ def test_bench(t : T?) {
     t |> run("a side's cells: refused, or a lane that does not pass") @(t : T?) {
         let none : array<string>
         let lanes : table<string; Verdict>
-        var refused <- side_speed("", "translation failed: x", "w", none, none, lanes, "a\n", 1)
+        var refused <- side_speed("", "translation failed: x", "w", none, none, lanes, "a\n", 1, COMPARE_LIMITS)
         t |> equal(refused["jit"]?["error"] ?? "", "bench: translation failed: x")
         let failing <- { "interp" => Verdict(status = "output", reason = "line 1") }
-        var not_passing <- side_speed("m.das", "", "w", none, none, failing, "a\n", 1)
+        var not_passing <- side_speed("m.das", "", "w", none, none, failing, "a\n", 1, COMPARE_LIMITS)
         t |> equal(not_passing["interp"]?["error"] ?? "", "the lane does not pass: output")
         t |> equal(not_passing["exe"]?["error"] ?? "", "the lane does not pass: skipped")
+    }
+    t |> run("an exe lane whose bench module does not build") @(t : T?) {
+        t |> with_scratch("cmp_projects_exe_build") $(dir) {
+            let none : array<string>
+            let broken = path_join(dir, "bench.das")
+            fwrite(broken, "options gen2\n[export]\ndef main() : int \{\n    return undefined_name\n\}\n")
+            let passing <- { "exe" => Verdict(status = "pass") }
+            var cells <- side_speed(broken, "", path_join(dir, "w"), none, ["f"], passing, "a\n", 1, COMPARE_LIMITS)
+            let error = cells["exe"]?["error"] ?? ""
+            t |> success(error |> starts_with("exe build: "), error)
+        }
     }
 }
 
