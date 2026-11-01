@@ -75,9 +75,10 @@ def test_error_word(t : T?) {
 def test_perf(t : T?) {
     t |> run("ratios, short errors, refused, the geomean row with its count, n/a without kernels") @(t : T?) {
         let md = perf_table(json_of(t, "\{{PERF}\}"))
-        t |> success(md |> contains("| k1                |   500.000 |             2.00 |             1.00 |  differs |     3.00 |"), md)
-        t |> success(md |> contains("| k2                |   convert |          convert |          refused |      n/a |  refused |"), md)
-        t |> success(md |> contains("| geomean (kernels) |           |         2.00 (1) |         1.00 (1) |      n/a |      n/a |"), md)
+        t |> success(md |> contains("| Kernel            | native (s) |"), md)
+        t |> success(md |> contains("| k1                |   0.500000 |             2.00 |             1.00 |  differs |     3.00 |"), md)
+        t |> success(md |> contains("| k2                |    convert |          convert |          refused |      n/a |  refused |"), md)
+        t |> success(md |> contains("| geomean (kernels) |            |         2.00 (1) |         1.00 (1) |      n/a |      n/a |"), md)
     }
     t |> run("the error lines: the refusal and each error cell") @(t : T?) {
         let lines <- perf_errors(json_of(t, "\{{PERF}\}"))
@@ -149,6 +150,22 @@ def test_rust_ahead(t : T?) {
 \"geomean\": \{\"interp\": \{\"ours\": 1.001, \"rust\": 1.0, \"kernels\": 1\}, \"jit\": \{\"ours\": 2.0, \"rust\": 1.0, \"kernels\": 0\}\}\},
 \"quality\": \{\"totals\": \{\"all\": \{\"ours\": \{\"lines\": 5, \"goto\": 1\}, \"rust\": \{\"lines\": 9, \"runtime_lines\": 4, \"goto\": 1\}\}\}\}\}"
         t |> equal(length(rust_ahead(json_of(t, cap))), 0)
+    }
+    t |> run("the margin: ours more than 5% above and above both spreads is ahead, 5% or less, or within a spread, is not") @(t : T?) {
+        t |> success(ahead_by_margin(1.0lf, 1.06lf))
+        t |> success(!ahead_by_margin(1.0lf, 1.04lf))
+        t |> success(cell_ahead(1.0lf, 1.06lf, 0.05lf, 0.0lf))
+        t |> success(!cell_ahead(1.0lf, 1.06lf, 0.07lf, 0.0lf))
+        t |> success(!cell_ahead(1.0lf, 1.06lf, 0.0lf, 0.07lf))
+        t |> success(!cell_ahead(1.0lf, 1.04lf, 0.0lf, 0.0lf))
+        let cap = "\{\"perf\": \{\"lanes\": [\"native\", \"interp\", \"jit\"], \"kernels\": \{
+\"a\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"interp\": \{\"time\": 1.06, \"spread\": 0.01\}, \"jit\": \{\"time\": 1.04\}\}, \"rust\": \{\"status\": \"ran\", \"lanes\": \{\"interp\": \{\"time\": 1.0, \"spread\": 0.02\}, \"jit\": \{\"time\": 1.0\}\}\}\},
+\"b\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"interp\": \{\"time\": 1.06, \"spread\": 0.08\}\}, \"rust\": \{\"status\": \"ran\", \"lanes\": \{\"interp\": \{\"time\": 1.0\}\}\}\}\},
+\"geomean\": \{\"interp\": \{\"ours\": 1.06, \"rust\": 1.0, \"kernels\": 2\}, \"jit\": \{\"ours\": 1.04, \"rust\": 1.0, \"kernels\": 1\}\}\},
+\"quality\": \{\"totals\": \{\"all\": \{\"ours\": \{\"lines\": 104, \"goto\": 106, \"label\": 104\}, \"rust\": \{\"lines\": 120, \"runtime_lines\": 20, \"goto\": 100, \"label\": 100\}\}\}\}\}"
+        t |> equal(join(rust_ahead(json_of(t, cap)), "\n"), "- a, interpreter: Rust 1.00x native, ours 1.06x.\n- geomean, interpreter: Rust 1.00x native, ours 1.06x over 2 kernels.\n- counter `goto`: Rust 100, ours 106 over all keys.")
+        let lines_cap = "\{\"quality\": \{\"totals\": \{\"all\": \{\"ours\": \{\"lines\": 106\}, \"rust\": \{\"lines\": 120, \"runtime_lines\": 20\}\}\}\}\}"
+        t |> equal(join(rust_ahead(json_of(t, lines_cap)), "\n"), "- lines without the Rust runtime: Rust 100, ours 106.")
     }
     t |> run("our lane without a cell where the Rust side has one") @(t : T?) {
         let cap = "\{\"perf\": \{\"lanes\": [\"native\", \"aot\"], \"kernels\": \{\"k\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"aot\": \{\"error\": \"the build exited 1 and left no binary\"\}\}, \"rust\": \{\"status\": \"ran\", \"lanes\": \{\"aot\": \{\"time\": 2.0\}\}\}\}\}\}\}"

@@ -54,8 +54,15 @@ def private clip(text : string) : string => length(text) > REASON_WIDTH ? slice(
 
 def private ratio_cell(r : double) : string => "{r:.2f}"
 
-// a ratio as the tables show it, in hundredths
-def private shown(r : double) : double => round(r * 100.0lf)
+//! how much higher the other side's value must be for the lower side to be ahead: 5%
+let AHEAD_MARGIN = 1.05lf
+
+//! Whether `lower` is ahead of `higher`: `higher` exceeds it by more than `AHEAD_MARGIN`.
+def ahead_by_margin(lower, higher : double) : bool => higher > lower * AHEAD_MARGIN
+
+//! Whether the cell with ratio `lower` is ahead of the one with `higher`: by the margin, and by
+//! more than either cell's spread, a share of its median.
+def cell_ahead(lower, higher, lower_spread, higher_spread : double) : bool => ahead_by_margin(lower, higher) && higher / lower - 1.0lf > max(lower_spread, higher_spread)
 
 //! The suites table: per suite the ids run, our ratchet's pass count, the Rust passes over the
 //! same ids and by our tag, then each Rust status counted; a total row under two or more suites.
@@ -154,7 +161,7 @@ def perf_table(results : JsonValue const?) : string {
         return "No kernel is timed yet.\n"
     }
     let lanes <- das_lanes(perf)
-    var headers <- ["Kernel", "native ms"]
+    var headers <- ["Kernel", "native (s)"]
     for (lane in lanes) {
         headers |> push_from(["ours {lane_title(lane)}", "Rust {lane_title(lane)}"])
     }
@@ -163,7 +170,7 @@ def perf_table(results : JsonValue const?) : string {
     for (name in names) {
         let entry = kernels?[name]
         let native = entry?["native"]
-        var inscope row <- [name, key_exists(native, "error") ? error_word(native?["error"] ?? "") : "{(native?["time"] ?? 0.0lf) * 1000.0lf:.3f}"]
+        var inscope row <- [name, key_exists(native, "error") ? error_word(native?["error"] ?? "") : "{native?["time"] ?? 0.0lf:.6f}"]
         for (lane in lanes) {
             row |> push_from([side_text(entry, entry?["ours"]?[lane], false), side_text(entry, rust_cell(entry, lane), is_refused(entry))])
         }
@@ -314,8 +321,9 @@ def lua_text(results : JsonValue const?) : string {
 }
 
 //! Where the Rust translator is ahead, one fact a line: a suite it passes more ids of than our
-//! ratchet, a perf cell or geometric mean whose shown ratio is lower than ours or where ours has
-//! no cell, a readability counter or line total lower than ours.
+//! ratchet, a perf cell or geometric mean whose ratio ours exceeds by `AHEAD_MARGIN` (a cell also by
+//! more than both cells' spreads) or where ours has no cell, a readability counter or the line
+//! total without the Rust runtime that ours exceeds by `AHEAD_MARGIN`.
 def rust_ahead(results : JsonValue const?) : array<string> {
     var lines : array<string>
     let suites = results?["suites"]
@@ -342,7 +350,7 @@ def rust_ahead(results : JsonValue const?) : array<string> {
             let ours = cell_ratio(ours_cell, entry?["native"])
             if (ours == 0.0lf) {
                 lines |> push("- {name}, {lane_title(lane)}: Rust {ratio_cell(rust)}x native, ours has no cell ({error_word(ours_cell?["error"] ?? "")}).")
-            } elif (shown(rust) < shown(ours)) {
+            } elif (cell_ahead(rust, ours, rust_cell_of?["spread"] ?? 0.0lf, ours_cell?["spread"] ?? 0.0lf)) {
                 lines |> push("- {name}, {lane_title(lane)}: Rust {ratio_cell(rust)}x native, ours {ratio_cell(ours)}x.")
             }
         }
@@ -351,7 +359,7 @@ def rust_ahead(results : JsonValue const?) : array<string> {
         let g = perf?["geomean"]?[lane]
         let rust = g?["rust"] ?? 0.0lf
         let ours = g?["ours"] ?? 0.0lf
-        if ((g?["kernels"] ?? 0) > 0 && shown(rust) < shown(ours)) {
+        if ((g?["kernels"] ?? 0) > 0 && ahead_by_margin(rust, ours)) {
             lines |> push("- geomean, {lane_title(lane)}: Rust {ratio_cell(rust)}x native, ours {ratio_cell(ours)}x over {g?["kernels"] ?? 0} kernels.")
         }
     }
@@ -360,13 +368,13 @@ def rust_ahead(results : JsonValue const?) : array<string> {
         for (m in METRICS) {
             let rust = all?["rust"]?[m] ?? 0
             let ours = all?["ours"]?[m] ?? 0
-            if (rust < ours) {
+            if (ahead_by_margin(double(rust), double(ours))) {
                 lines |> push("- counter `{m}`: Rust {rust}, ours {ours} over all keys.")
             }
         }
         let ours_lines = all?["ours"]?["lines"] ?? 0
         let rust_program = (all?["rust"]?["lines"] ?? 0) - (all?["rust"]?["runtime_lines"] ?? 0)
-        if (rust_program < ours_lines) {
+        if (ahead_by_margin(double(rust_program), double(ours_lines))) {
             lines |> push("- lines without the Rust runtime: Rust {rust_program}, ours {ours_lines}.")
         }
     }

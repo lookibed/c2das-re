@@ -27,7 +27,8 @@ live in `compare_render.das` so that the writers and the renderer share one list
 - Suites: per suite of `suites`, `ids`, `ours_pass` (the ratchet), the Rust `pass` and its
   breakdown by our tag, then the count of every status of `STATUSES` but `pass`; a total row when
   two or more suites are captured.
-- Speed: `perf.lanes` less `native` gives the columns; a cell is the lane's `time` over the
+- Speed: the native column is the native cell's `time` in seconds, as the capture holds it;
+  `perf.lanes` less `native` gives the other columns; a cell is the lane's `time` over the
   kernel's native `time`, two decimals, or the error in short form (`differs`, `timeout`,
   `compile` for a build that left no binary, `exit`, `convert`, else `error`; a refused Rust
   translation is `refused` in each Rust column); the geomean row is the capture's `perf.geomean`,
@@ -42,9 +43,10 @@ live in `compare_render.das` so that the writers and the renderer share one list
 - Lua and Doom: `lua.status`; a refusal shows the text after `cause=` of the error, then the gap
   (or `gap_error`), the pointer to the ports repository for our Lua numbers and to the pending
   ruling; `doom.status` and `doom.reason`.
-- Where the Rust translator is ahead, one line a fact: a suite whose Rust `pass` exceeds our
-  `ours_pass`; a kernel and lane whose Rust ratio, rounded to the two decimals the table shows, is
-  lower than ours, or where the Rust side has a cell and ours has none; a lane whose geomean,
-  rounded likewise, is lower over a non-zero kernel count; a counter whose `all` total is lower on
-  the Rust side; the Rust lines without its runtime below ours. A tie at the shown precision is not
-  listed, and the list does not weigh a difference against the cells' spread.
+- Where the Rust translator is ahead, one line a fact, by a margin `AHEAD_MARGIN` of 5%: a suite
+  whose Rust `pass` exceeds our `ours_pass`; a kernel and lane whose ratio ours exceeds the Rust
+  one by more than the margin and, relative to the Rust ratio, by more than either cell's
+  `spread`, or where the Rust side has a cell and ours has none; a lane whose geomean ours exceeds
+  by more than the margin over a non-zero kernel count; a counter whose `all` total ours exceeds
+  the Rust one by more than the margin; the Rust lines without its runtime likewise below ours.
+  A difference within the margin or within a cell's spread is not listed.
