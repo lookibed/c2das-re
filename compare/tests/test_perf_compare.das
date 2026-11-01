@@ -1,0 +1,312 @@
+options gen2
+require dastest/testing_boost public
+require math
+require strings
+require daslib/fio
+require daslib/strings_boost
+require daslib/json_boost
+require ../../perf/perf_compose.das
+require ../../perf/perf_lanes.das
+require ../../perf/perf_measure.das
+require ../rust_translator.das
+require ../suite_compare.das
+require ../perf_compare.das
+require ../../converter/tiers.das
+require _common
+
+//! `compare/perf_compare.das` without the Rust binary: the composition over a kernel folder the
+//! test writes, the geometric means over hand-written cells, the capture's `perf` section, the Rust
+//! side of a refused or failed translation, and one lane timed on the real daslang over a das
+//! program that prints a kernel's line.
+
+// a scratch folder passed to `body` and removed after it; a failure when none can be made
+def private with_scratch(t : T?; name : string; body : block<(dir : string) : void>) {
+    var dir_error : string
+    let dir = create_temp_directory(name, dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no scratch folder: {dir_error}")
+        return
+    }
+    invoke(body, dir)
+    rmdir_rec(dir)
+}
+
+// a JSON text read back, a failure when it is not JSON
+def private json_of(t : T?; text : string) : JsonValue? {
+    var error : string
+    var js = read_json(text, error)
+    t |> equal(error, "")
+    return js
+}
+
+[test]
+def test_kernels_and_composition(t : T?) {
+    t |> run("both kernel folders, the method ones keyed under dasprofile/, a filter on the key") @(t : T?) {
+        let all <- perf_kernels("")
+        let keys <- [for (k in all); k.key]
+        t |> success(has_value(keys, "fib_loop") && has_value(keys, "dasprofile/fib_loop"), join(keys, " "))
+        t |> equal(length(all), length(kernel_ids("default", "")) + length(kernel_ids("dasprofile", "")))
+        let method <- perf_kernels("dasprofile/")
+        t |> equal(join([for (k in method); "{k.key}={k.dir}/{k.name}"], " "), "dasprofile/fib_loop=perf/kernels/dasprofile/fib_loop dasprofile/fib_recursive=perf/kernels/dasprofile/fib_recursive dasprofile/primes=perf/kernels/dasprofile/primes")
+    }
+    t |> run("a kernel of any folder composed by the method, its work folder created") @(t : T?) {
+        t |> with_scratch("cmp_perf_compose") $(dir) {
+            let kernel = "static void kernel_run(void) \{\}\nstatic int kernel_result(void) \{ return 4; \}\n"
+            fwrite(path_join(dir, "tiny.c"), kernel)
+            let work = path_join(dir, "w/tiny")
+            let c_path = write_method_composed(dir, "tiny", work)
+            t |> equal(c_path, path_join(work, "tiny.c"))
+            t |> equal(fread(c_path), composed_method_source(kernel))
+        }
+    }
+}
+
+let GEOMEAN_KERNELS = "\{\"a\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"jit\": \{\"time\": 2.0\}\}, \"rust\": \{\"lanes\": \{\"jit\": \{\"time\": 1.0\}\}\}\}, \"b\": \{\"native\": \{\"time\": 0.5\}, \"ours\": \{\"jit\": \{\"time\": 4.0\}, \"aot\": \{\"time\": 1.0\}\}, \"rust\": \{\"lanes\": \{\"jit\": \{\"time\": 2.0\}, \"aot\": \{\"error\": \"not built\"\}\}\}\}, \"c\": \{\"native\": \{\"error\": \"exited 1\"\}, \"ours\": \{\"jit\": \{\"time\": 9.0\}\}, \"rust\": \{\"lanes\": \{\"jit\": \{\"time\": 9.0\}\}\}\}, \"d\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"jit\": \{\"time\": 9.0\}\}, \"rust\": \{\"status\": \"refused\", \"error\": \"translation failed: x\"\}\}\}"
+
+[test]
+def test_geomean(t : T?) {
+    t |> run("over the kernels where native and both sides stand, each a ratio to native") @(t : T?) {
+        let kernels = json_of(t, GEOMEAN_KERNELS)
+        var ours, rust : double
+        var count : int
+        lane_geomean(kernels, "jit", ours, rust, count)
+        t |> equal(count, 2)
+        t |> success(abs(ours - 4.0lf) < 1e-9lf, "ours {ours}")
+        t |> success(abs(rust - 2.0lf) < 1e-9lf, "rust {rust}")
+    }
+    t |> run("a lane one side lacks everywhere, and no kernels at all, give no mean") @(t : T?) {
+        let kernels = json_of(t, GEOMEAN_KERNELS)
+        var ours, rust : double
+        var count : int
+        lane_geomean(kernels, "aot", ours, rust, count)
+        t |> equal(count, 0)
+        t |> equal(ours, 0.0lf)
+        t |> equal(rust, 0.0lf)
+        lane_geomean(null, "jit", ours, rust, count)
+        t |> equal(count, 0)
+        var by_lane = geomeans(kernels)
+        t |> equal(by_lane?["jit"]?["kernels"] ?? 0, 2)
+        t |> equal(by_lane?["interp"]?["kernels"] ?? -1, 0)
+        t |> equal(length(geomean_lines(JV({"geomean" => by_lane}))), length(DAS_LANES))
+    }
+}
+
+[test]
+def test_perf_section_capture(t : T?) {
+    t |> run("the perf section replaces the old one whole and keeps suites") @(t : T?) {
+        t |> with_scratch("cmp_perf_capture") $(dir) {
+            let path = path_join(dir, "results.json")
+            fwrite(path, "\{\"suites\": \{\"csmith\": \{\"ids\": 9\}\}, \"perf\": \{\"kernels\": \{\"old\": 1\}, \"samples\": 3\}\}")
+            var kernels : table<string; JsonValue?>
+            kernels["k"] = JV(1)
+            let stamps = Stamps(rust_commit = "abc", daslang = "daslang 0.6", date = "2026-11-01 00:00 UTC")
+            var section = perf_section(stamps, 5, kernels)
+            t |> equal(write_capture_section(path, "perf", section), "")
+            let js = json_of(t, fread(path))
+            t |> equal(js?["suites"]?["csmith"]?["ids"] ?? 0, 9)
+            t |> equal(js?["perf"]?["kernels"]?["old"] ?? 0, 0)
+            t |> equal(js?["perf"]?["kernels"]?["k"] ?? 0, 1)
+            t |> equal(js?["perf"]?["samples"] ?? 0, 5)
+            t |> equal(js?["perf"]?["rust_commit"] ?? "", "abc")
+            t |> equal(js?["perf"]?["timestamp"] ?? "", "2026-11-01 00:00 UTC")
+            t |> success(!empty(js?["perf"]?["versions"]?["clang"] ?? "") && !empty(js?["perf"]?["cpu"] ?? ""))
+            let lanes = js?["perf"]?["lanes"]
+            t |> equal(lanes?[0] ?? "", "native")
+            t |> equal(lanes?[4] ?? "", "aot")
+            t |> equal(js?["perf"]?["geomean"]?["jit"]?["kernels"] ?? -1, 0)
+        }
+    }
+    t |> run("a fresh file gets the section; a file that is no JSON object is left alone") @(t : T?) {
+        t |> with_scratch("cmp_perf_capture_new") $(dir) {
+            let fresh = path_join(dir, "fresh.json")
+            t |> equal(write_capture_section(fresh, "perf", JV(7)), "")
+            t |> equal(json_of(t, fread(fresh))?["perf"] ?? 0, 7)
+            let bad = path_join(dir, "bad.json")
+            fwrite(bad, "[1]")
+            t |> success(write_capture_section(bad, "perf", JV(7)) |> starts_with("cannot read"))
+            t |> equal(fread(bad), "[1]")
+        }
+    }
+    t |> run("a filtered run writes nothing; a capture that cannot be read exits 1") @(t : T?) {
+        t |> with_scratch("cmp_perf_record") $(dir) {
+            let path = path_join(dir, "out.json")
+            t |> equal(record_run(path, "fib") $(p) => write_capture_section(p, "perf", JV(1)), 0)
+            t |> success(!fexist(path))
+            fwrite(path, "nope")
+            t |> equal(record_run(path, "") $(p) => write_capture_section(p, "perf", JV(1)), 1)
+            t |> equal(fread(path), "nope")
+        }
+    }
+}
+
+[test]
+def test_lane_entries(t : T?) {
+    t |> run("a cell stands as perf writes it; a lane without one is \{error\}, its own line first") @(t : T?) {
+        var inscope cells : table<string; Cell>
+        cells["interp"] <- cell_of([0.5lf, 1.0lf, 2.0lf], 10l, 3)
+        let errors <- ["rust/jit: exited 1: boom", "rust/convert: unsupported", "other/exe: elsewhere", "rust/aot: the build exited 1 and left no binary: ld"]
+        let entries = JV(lane_entries(cells, errors, "rust", DAS_LANES))
+        let interp = entries?["interp"]
+        t |> equal(interp?["time"] ?? 0.0lf, 1.0lf)
+        t |> equal(interp?["spread"] ?? 0.0lf, 0.75lf)
+        t |> equal(interp?["count"] ?? 0, 10)
+        t |> equal(interp?["result"] ?? 0, 3)
+        t |> equal(interp?["samples"]?[2] ?? 0.0lf, 2.0lf)
+        t |> equal(entries?["jit"]?["error"] ?? "", "exited 1: boom")
+        t |> equal(entries?["exe"]?["error"] ?? "", "convert: unsupported")
+        t |> equal(entries?["aot"]?["error"] ?? "", "the build exited 1 and left no binary: ld")
+        t |> equal(lane_error(errors, "nobody", "aot"), "not measured")
+        let failed = JV(failed_lanes("no native result: exited 1"))
+        t |> equal(join([for (lane in DAS_LANES); failed?[lane]?["error"] ?? ""], "|"), "no native result: exited 1|no native result: exited 1|no native result: exited 1|no native result: exited 1")
+    }
+}
+
+[test]
+def test_rust_entry(t : T?) {
+    t |> run("a refused translation is refused with its error and no lanes") @(t : T?) {
+        let refused = RustTranslation(ok = false, error = "translation failed: unsupported external call: qsort", exit_code = 2)
+        let entry = rust_entry(refused, "unused", 1, 0, "")
+        t |> equal(entry?["status"] ?? "", "refused")
+        t |> equal(entry?["error"] ?? "", "translation failed: unsupported external call: qsort")
+        t |> success(!key_exists(entry.value as _object, "lanes"))
+        let no_main = RustTranslation(ok = true, out_dir = "o")
+        let none = rust_entry(no_main, "unused", 1, 0, "")
+        t |> equal(none?["status"] ?? "", "refused")
+        t |> equal(none?["error"] ?? "", "the translation defines no main in o")
+    }
+    t |> run("a translation that ran without an oracle carries the reason on every lane") @(t : T?) {
+        let ran = RustTranslation(ok = true, entry = "o/k.das", out_dir = "o")
+        let entry = rust_entry(ran, "unused", 1, 0, "no native result: exited 1")
+        t |> equal(entry?["status"] ?? "", "ran")
+        t |> equal(entry?["lanes"]?["aot"]?["error"] ?? "", "no native result: exited 1")
+        t |> equal(entry?["lanes"]?["interp"]?["error"] ?? "", "no native result: exited 1")
+    }
+}
+
+// a das program that prints a kernel's line, `<seconds> <runs> <result>`
+let KERNEL_LINE_DAS = "options gen2\n[export]\ndef main() : int \{\n    print(\"0.001000000 10 7\\n\")\n    return 0\n\}\n"
+
+[test]
+def test_lane_against_oracle(t : T?) {
+    t |> run("a lane whose result is the oracle's stands; another result is an error cell") @(t : T?) {
+        t |> with_scratch("cmp_perf_lane") $(dir) {
+            let das_path = path_join(dir, "k.das")
+            fwrite(das_path, KERNEL_LINE_DAS)
+            let no_modules : array<string>
+            let argv <- das_lane_command(das_path, "", no_modules)
+            var inscope cells : table<string; Cell>
+            var errors : array<string>
+            measure_lane(cells, errors, "rust", "interp", argv, 1, 7)
+            let matching = JV(lane_entries(cells, errors, "rust", ["interp"]))
+            t |> equal(matching?["interp"]?["time"] ?? 0.0lf, 0.001lf)
+            t |> equal(matching?["interp"]?["result"] ?? 0, 7)
+            var inscope wrong_cells : table<string; Cell>
+            var wrong_errors : array<string>
+            measure_lane(wrong_cells, wrong_errors, "rust", "interp", argv, 1, 8)
+            let wrong = JV(lane_entries(wrong_cells, wrong_errors, "rust", ["interp"]))
+            t |> equal(wrong?["interp"]?["error"] ?? "", "result 7 differs from the native 8")
+            t |> equal(wrong?["interp"]?["time"] ?? -1.0lf, -1.0lf)
+        }
+    }
+}
+
+[test]
+def test_kernel_line(t : T?) {
+    t |> run("the log line: native, our lanes, then the Rust lanes or why it did not run") @(t : T?) {
+        let ran = json_of(t, "\{\"native\": \{\"time\": 0.5\}, \"ours\": \{\"interp\": \{\"time\": 1.0\}, \"jit\": \{\"error\": \"x\"\}\}, \"rust\": \{\"status\": \"ran\", \"lanes\": \{\"aot\": \{\"time\": 0.25\}\}\}\}")
+        t |> equal(kernel_line("k", ran), "k: native 0.500000s; ours interp 1.000000s, jit error, exe error, aot error; rust interp error, jit error, exe error, aot 0.250000s")
+        let refused = json_of(t, "\{\"native\": \{\"error\": \"exited 1\"\}, \"ours\": \{\}, \"rust\": \{\"status\": \"refused\", \"error\": \"translation failed: y\"\}\}")
+        t |> equal(kernel_line("k", refused), "k: native error; ours interp error, jit error, exe error, aot error; rust refused: translation failed: y")
+    }
+}
+
+// a stand-in Rust translator: it writes the module `<stem>.das` defining `main` into its output folder
+let STAND_IN = "#!/bin/sh\nout=\"\"\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    prev=\"$a\"\ndone\nstem=$(basename \"$2\" .c)\necho \"c2dascript-transpile v0.1.0\" >&2\nmkdir -p \"$out\"\nprintf '[export]\\ndef main() : int \{\\n    return 0\\n\}\\n' > \"$out/$stem.das\"\n"
+
+[test]
+def test_compare_kernel_without_oracle(t : T?) {
+    t |> run("a kernel the native build refuses: native is its error, and every lane of both sides says so") @(t : T?) {
+        t |> with_scratch("cmp_perf_kernel") $(dir) {
+            fwrite(path_join(dir, "cmp_broken.c"), "static void kernel_run(void) \{ this is not C \}\n")
+            let bin = path_join(dir, "rust")
+            fwrite(bin, STAND_IN)
+            var out : string
+            run_and_capture(["chmod", "+x", bin], out, 30.0)
+            let entry = compare_kernel(PerfKernel(key = "cmp_test/cmp_broken", name = "cmp_broken", dir = dir), bin, 1)
+            let native_error = entry?["native"]?["error"] ?? ""
+            t |> success(!empty(native_error), "the native build failed")
+            t |> equal(entry?["native"]?["time"] ?? -1.0lf, -1.0lf)
+            t |> equal(entry?["ours"]?["interp"]?["error"] ?? "", "no native result: {native_error}")
+            t |> equal(entry?["rust"]?["status"] ?? "", "ran")
+            t |> equal(entry?["rust"]?["lanes"]?["exe"]?["error"] ?? "", "no native result: {native_error}")
+            t |> success(fexist("compare/work/perf/cmp_test/cmp_broken/cmp_broken.c"))
+            rmdir_rec("compare/work/perf/cmp_test")
+        }
+    }
+}
+
+// a stand-in Rust translator that writes, as its translation of `<stem>.c`, the das program beside
+// it, `<stem>.das.src`
+let COPYING_STAND_IN = "#!/bin/sh\nout=\"\"\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    prev=\"$a\"\ndone\nstem=$(basename \"$2\" .c)\nmkdir -p \"$out\"\ncp \"$(dirname \"$0\")/$stem.das.src\" \"$out/$stem.das\"\n"
+
+[test]
+def test_compare_kernel(t : T?) {
+    t |> run("a kernel through native, our four lanes and the Rust side's four, one sample each") @(t : T?) {
+        t |> with_scratch("cmp_perf_kernel_ran") $(dir) {
+            fwrite(path_join(dir, "cmp_tiny.c"), "static volatile int n = 1000;\nstatic int sum;\nstatic void kernel_run(void) \{ sum = 0; for (int i = 0; i < n; i++) sum += i & 3; sum = sum / 375; \}\nstatic int kernel_result(void) \{ return sum; \}\n")
+            fwrite(path_join(dir, "cmp_tiny.das.src"), "options gen2\n[export]\ndef main() : int \{\n    print(\"0.000001000 10 4\\n\")\n    return 0\n\}\n")
+            let bin = path_join(dir, "rust")
+            fwrite(bin, COPYING_STAND_IN)
+            var out : string
+            run_and_capture(["chmod", "+x", bin], out, 30.0)
+            let entry = compare_kernel(PerfKernel(key = "cmp_test/cmp_tiny", name = "cmp_tiny", dir = dir), bin, 1)
+            t |> equal(entry?["native"]?["result"] ?? 0, 4)
+            for (lane in DAS_LANES) {
+                t |> equal(entry?["ours"]?[lane]?["result"] ?? 0, 4, "ours {lane}: {entry?["ours"]?[lane]?["error"] ?? ""}")
+                t |> equal(entry?["rust"]?["lanes"]?[lane]?["time"] ?? 0.0lf, 0.000001lf, "rust {lane}: {entry?["rust"]?["lanes"]?[lane]?["error"] ?? ""}")
+            }
+            t |> equal(entry?["rust"]?["status"] ?? "", "ran")
+            rmdir_rec("compare/work/perf/cmp_test")
+        }
+    }
+}
+
+// a stand-in Rust translator that refuses every input
+let REFUSING_STAND_IN = "#!/bin/sh\necho \"c2dascript-transpile v0.1.0\" >&2\necho \"translation failed: unsupported external call: qsort\" >&2\nexit 2\n"
+
+[test]
+def test_compare_kernel_refused(t : T?) {
+    t |> run("a kernel our converter refuses and the Rust side refuses: native stands, our lanes say convert, Rust is refused") @(t : T?) {
+        t |> with_scratch("cmp_perf_kernel_refused") $(dir) {
+            fwrite(path_join(dir, "cmp_asm.c"), "static volatile int n = 1000;\nstatic int sum;\nstatic void kernel_run(void) \{ __asm__ volatile(\"nop\"); sum = 0; for (int i = 0; i < n; i++) sum += i & 3; sum = sum / 375; \}\nstatic int kernel_result(void) \{ return sum; \}\n")
+            let bin = path_join(dir, "rust")
+            fwrite(bin, REFUSING_STAND_IN)
+            var out : string
+            run_and_capture(["chmod", "+x", bin], out, 30.0)
+            let entry = compare_kernel(PerfKernel(key = "cmp_test/cmp_asm", name = "cmp_asm", dir = dir), bin, 1)
+            t |> equal(entry?["native"]?["result"] ?? 0, 4)
+            let convert_error = entry?["ours"]?["jit"]?["error"] ?? ""
+            t |> success(convert_error |> starts_with("convert: ") && convert_error |> contains("inline asm"), convert_error)
+            t |> equal(entry?["rust"]?["status"] ?? "", "refused")
+            t |> equal(entry?["rust"]?["error"] ?? "", "translation failed: unsupported external call: qsort")
+            rmdir_rec("compare/work/perf/cmp_test")
+        }
+    }
+}
+
+[test]
+def test_perf_command_line(t : T?) {
+    t |> run("--perf with a suite exits 1; --perf without the Rust translator exits 2") @(t : T?) {
+        var out : string
+        var argv <- daslang_cmd(CONVERTED_MODULES)
+        argv |> push_from(["compare/run.das", "--", "--perf", "--suites"])
+        t |> equal(run_and_capture(argv, out, 300.0), 1, out)
+        t |> success(out |> contains("--perf runs alone"), out)
+        with_env("/nonexistent/c2das-rust", "") {
+            var perf_only <- daslang_cmd(CONVERTED_MODULES)
+            perf_only |> push_from(["compare/run.das", "--", "--perf"])
+            t |> equal(run_and_capture(perf_only, out, 300.0), 2, out)
+            t |> success(out |> contains("no Rust translator at /nonexistent/c2das-rust"), out)
+        }
+    }
+}

@@ -1,4 +1,7 @@
 options gen2
+// `--perf` converts in this process: the pipeline parses clang's JSON dump below its own frames,
+// and a deep expression tree overflows the default 16 KB context stack
+options stack = 1048576
 
 require strings
 require daslib/strings_boost
@@ -8,9 +11,11 @@ require ../converter/pipeline.das
 require ../suites/suite_runner.das
 require rust_translator
 require suite_compare
+require perf_compare
 
 //! The head-to-head with the Rust translator from the repository root: `--suites` runs it over
-//! the three suites' inputs and writes the `suites` section of `compare/results_linux.json`
+//! the three suites' inputs and writes the `suites` section of `compare/results_linux.json`,
+//! `--perf` times the perf kernels through both translators and writes its `perf` section
 //! (`compare/ARCHITECTURE.md`).
 
 [CommandLineArgs]
@@ -19,7 +24,11 @@ struct CompareArgs {
     suites : bool
     @clarg_doc = "run it over one suite: c_testsuite, gcc_torture or csmith"
     suite : string = ""
-    @clarg_doc = "run only the ids that contain this text; a filtered run writes no capture"
+    @clarg_doc = "time the perf kernels through both translators under every lane"
+    perf : bool
+    @clarg_doc = "samples per perf lane, each its own process (default 5)"
+    samples : int = 5
+    @clarg_doc = "run only the ids (perf: the kernels) that contain this text; a filtered run writes no capture"
     filter : string = ""
     @clarg_doc = "cases judged at once, one worker process each"
     jobs : int = 4
@@ -64,6 +73,28 @@ def run_suite(spec : SuiteSpec; args : CompareArgs) : SuiteCapture {
     return <- c
 }
 
+// the perf comparison over the kernels `--filter` names, the geometric means logged; the capture's
+// `perf` section written
+def run_perf(args : CompareArgs) : int {
+    var reason : string
+    if (!rust_available(reason)) {
+        to_log(LOG_ERROR, "{reason}\n")
+        return 2
+    }
+    let bin = rust_binary()
+    var entries : table<string; JsonValue?>
+    for (k in perf_kernels(args.filter)) {
+        var entry = compare_kernel(k, bin, args.samples)
+        to_log(LOG_INFO, "{kernel_line(k.key, entry)}\n")
+        entries[k.key] = entry
+    }
+    var section = perf_section(run_stamps(bin), args.samples, entries)
+    for (line in geomean_lines(section)) {
+        to_log(LOG_INFO, "{line}\n")
+    }
+    return record_run(empty(args.out) ? CAPTURE : args.out, args.filter) $(path) => write_capture_section(path, "perf", section)
+}
+
 [export]
 def main : int {
     var args = CompareArgs()
@@ -74,10 +105,17 @@ def main : int {
     if (!empty(args.one)) {
         return run_worker(args.one)
     }
+    if (args.perf) {
+        if (args.suites || !empty(args.suite)) {
+            to_log(LOG_ERROR, "--perf runs alone: run the suites in a run of their own\n")
+            return 1
+        }
+        return run_perf(args)
+    }
     let all <- compare_suites()
     let specs <- [for (s in all); s; where args.suites || s.name == args.suite]
     if (empty(specs)) {
-        to_log(LOG_ERROR, "name what to run: --suites, or --suite c_testsuite, gcc_torture or csmith\n")
+        to_log(LOG_ERROR, "name what to run: --suites, --suite c_testsuite, gcc_torture or csmith, or --perf\n")
         return 1
     }
     let missing = missing_inputs(specs)

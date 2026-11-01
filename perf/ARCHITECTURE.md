@@ -83,13 +83,8 @@ harness that times them under every lane, and the stored results.
   default), or past twice the baseline cell's spread where that is wider, either way, or one
   capture lacks a cell the other has, each named on an error line, and
   0 otherwise, a lane error the baseline shares included (a cell both lack reproduces it).
-- `perf_measure.das` - a timed lane's samples and its cell, which `run.das` and
-  `compare/run.das` share: a sample is one process whose last line is the kernel's line
-  (`parse_sample`), `measure` takes `--samples` of them into a `Cell` (median, spread, count,
-  result, samples), `accept_lane` keeps a das lane's cell only with the native result,
-  `measure_native` builds and times the native lane and sets that result, `measure_lane` one das
-  lane, `measure_tiers` the JIT, `exe` and `aot` lanes of a converted module. It composes no
-  kernel and writes no capture.
+- `perf_measure.das` - the samples and the cell of a timed lane (`measure`, `accept_lane`,
+  `measure_native`, `measure_lane`, `measure_tiers`), shared by `run.das` and `compare/run.das`.
 - `perf_lanes.das` - the lanes and the sample arithmetic `run.das` shares with
   `ports/publish.das`: the native lane's build command (the pinned clang, `NATIVE_FLAGS`
   `-O3 -w -funsigned-char`, a program's C files in order), the interpreter and JIT commands over a converted module, the `exe`

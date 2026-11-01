@@ -332,21 +332,32 @@ def suite_capture(ratchet : Ratchet; var outcomes : array<CaseOutcome>; seconds 
     return <- c
 }
 
+// the capture at `path` as a JSON object, a fresh one when there is no file; null with `error`
+// set when the file present there is not a JSON object
+[arch(at="ARCHITECTURE.md#capture")]
+def private capture_root(path : string; var error : string&) : JsonValue? {
+    if (!fexist(path)) {
+        var empty_root : table<string; JsonValue?>
+        return JV(empty_root)
+    }
+    var read_error : string
+    var root = read_json(fread(path), read_error)
+    if (!empty(read_error) || root == null || !(root.value is _object)) {
+        error = "cannot read {path}: {read_error}"
+        return null
+    }
+    return root
+}
+
 //! `path` rewritten with each entry of `suites` replacing the suite of its name in the `suites`
 //! section, every other suite and section kept; "" or why the file present at `path` cannot be
 //! read.
 [arch(at="ARCHITECTURE.md#capture")]
 def write_capture(path : string; var suites : table<string; JsonValue?>) : string {
-    var root : JsonValue?
-    if (fexist(path)) {
-        var error : string
-        root = read_json(fread(path), error)
-        if (!empty(error) || root == null || !(root.value is _object)) {
-            return "cannot read {path}: {error}"
-        }
-    } else {
-        var empty_root : table<string; JsonValue?>
-        root = JV(empty_root)
+    var error : string
+    var root = capture_root(path, error)
+    if (root == null) {
+        return error
     }
     var section = root?["suites"]
     if (section == null || !(section.value is _object)) {
@@ -357,6 +368,20 @@ def write_capture(path : string; var suites : table<string; JsonValue?>) : strin
     for (name, entry in keys(suites), values(suites)) {
         (section.value as _object)[name] = entry
     }
+    fwrite(path, write_json(root) + "\n")
+    return ""
+}
+
+//! `path` rewritten with its section `name` replaced by `section` as a whole, every other section
+//! kept; "" or why the file present at `path` cannot be read.
+[arch(at="ARCHITECTURE.md#capture")]
+def write_capture_section(path, name : string; var section : JsonValue?) : string {
+    var error : string
+    var root = capture_root(path, error)
+    if (root == null) {
+        return error
+    }
+    (root.value as _object)[name] = section
     fwrite(path, write_json(root) + "\n")
     return ""
 }
@@ -378,12 +403,16 @@ def missing_inputs(specs : array<SuiteSpec>) : string {
 
 //! The end of a run: the entries written into the capture `out` unless the run was `filtered`;
 //! 0, or 1 when the capture cannot be read.
-def record_run(out, filter : string; var entries : table<string; JsonValue?>) : int {
+def record_run(out, filter : string; var entries : table<string; JsonValue?>) : int => record_run(out, filter) $(path) => write_capture(path, entries)
+
+//! The end of a run whose capture `write` writes into `out`, called unless the run was
+//! `filtered`, returning "" or why the capture cannot be read; 0, or 1 when it cannot.
+def record_run(out, filter : string; write : block<(path : string) : string>) : int {
     if (!empty(filter)) {
         to_log(LOG_INFO, "a --filter run writes no capture\n")
         return 0
     }
-    let error = write_capture(out, entries)
+    let error = invoke(write, out)
     if (!empty(error)) {
         to_log(LOG_ERROR, "{error}\n")
         return 1
