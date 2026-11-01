@@ -234,7 +234,11 @@ unit defines (a function with a body, a variable that is not `extern` or has an 
 `optimize`, `externally_visible` and `scalar_storage_order` reach no node: clang ignores them, so the dump cannot tell
 a test it changed. The read list holds `aligned` (the typedef pass above, the record layout
 check) and `packed` with `#pragma pack` (clang's record layout, which the layout law places or
-the sidecar marshals, `ARCHITECTURE.md` section 2). Any other attribute (`cleanup`,
+the sidecar marshals, `ARCHITECTURE.md` section 2). `musttail` on a `return f(...)` (wasm3's
+threaded ops) is accepted apart from both: the call converts as a plain call whose value the
+function returns, the same value with no tail call guaranteed, so a chain of such calls takes
+stack per call until it returns, where clang's build takes none (a chain deeper than the module's
+`options stack` allows ends the run). Any other attribute (`cleanup`,
 `constructor`, `destructor`, `transparent_union`, `alias`, `weak` on a name the unit never
 defines) fails the conversion naming it; one clang wrote itself (`implicit`) or carried from an
 earlier declaration (`inherited`) was judged where it was written or belongs to the library.

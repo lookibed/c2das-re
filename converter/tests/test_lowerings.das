@@ -1852,7 +1852,7 @@ def p5_skip_audit_fixtures(t : T?) {
         rejects(t, "attr_cleanup", "static void done(int *p) \{ (void)p; \}\nint main(void) \{ int c __attribute__((cleanup(done))) = 0; return c; \}\n", "the attribute `cleanup` is not lowered")
         rejects(t, "attr_transparent", "union __attribute__((transparent_union)) U \{ int *a; long *b; \};\nint main(void) \{ return 0; \}\n", "the attribute `transparent_union` is not lowered")
         rejects(t, "attr_weak_undefined", "extern int w __attribute__((weak));\nint main(void) \{ return &w != 0; \}\n", "`weak` on `w`, which the unit never defines")
-        rejects(t, "attr_statement", "int f(int x) \{ if (x) \{ __attribute__((musttail)) return f(x - 1); \} return 0; \}\nint main(void) \{ return f(2); \}\n", "the attribute `must_tail` is not lowered")
+        rejects(t, "attr_statement", "int f(int x) \{ if (x) \{ __attribute__((nomerge)) f(x - 1); \} return 0; \}\nint main(void) \{ return f(2); \}\n", "the attribute `no_merge` is not lowered")
     }
     t |> run("an attribute clang wrote itself or carried from an earlier declaration is not judged") @(t : T?) {
         converts(t, "attr_implicit", "#pragma clang optimize off\nstatic int f(void) \{ return 0; \}\n#pragma clang optimize on\nint main(void) \{ return f(); \}\n")
@@ -1911,5 +1911,15 @@ def p8_input_fixtures(t : T?) {
         check_fixture(t, "p8_clock_gettime", text)
         has_text(t, text, "struct timespec \{\n    tv_sec, tv_nsec : int64\n\}\n")
         has_text(t, text, "crt::clock_gettime(1, reinterpret<void?>(addr(a)))")
+    }
+    t |> run("`musttail` on a return converts as a plain call whose value is returned: through a function pointer and direct") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_musttail", text)
+        has_text(t, text, "    return invoke(next, code, pc + 1, acc)\n")
+        has_text(t, text, "    return p8_musttail__count_down(n - 1, acc + n)\n")
+    }
+    t |> run("a hook a host defines elsewhere (plmpeg's `c2da_rt_reset`) becomes nothing through a variadic define of no value in the sidecar") @(t : T?) {
+        let text = converts(t, "hook_define", "#include <stdio.h>\nvoid c2da_rt_reset(void);\nint main(void) \{ c2da_rt_reset(); printf(\"reset\\n\"); return 0; \}\n", "\{\"defines\": [\"c2da_rt_reset(...)=\"]\}\n")
+        t |> success(!(text |> contains("c2da_rt_reset")), text)
     }
 }

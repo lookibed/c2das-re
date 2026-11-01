@@ -2600,6 +2600,11 @@ def private dump_attributed(var d : Dumper; js : JsonValue?; at : CirLoc) : CirS
 // `scalar_storage_order` reach no node at all, clang ignoring them
 let DROPPED_ATTRIBUTES <- {"NoInlineAttr", "UnusedAttr", "UsedAttr", "C11NoReturnAttr", "ConstAttr", "PureAttr", "AlwaysInlineAttr", "NoThrowAttr", "ColdAttr", "HotAttr", "VisibilityAttr", "FormatAttr", "NonNullAttr", "RestrictAttr", "WarnUnusedResultAttr", "DeprecatedAttr", "WeakAttr", "MayAliasAttr", "SectionAttr", "LeafAttr", "NoInstrumentFunctionAttr", "AllocSizeAttr", "ReturnsNonNullAttr", "NoDebugAttr", "FallThroughAttr", "GNUInlineAttr", "CXX11NoReturnAttr", "ModeAttr"}
 
+// `musttail` on a `return f(...)`: the call converts as a plain call whose value the function
+// returns, which computes the same value but guarantees no tail call, so each such call takes
+// stack until the chain returns (wasm3's threaded ops)
+let TAIL_CALL_ATTRIBUTES <- {"MustTailAttr"}
+
 // the attributes the conversion reads: `aligned` (the typedef pass, the record layout check)
 // and `packed` and `#pragma pack` (clang's record layout, which the layout law places or the
 // sidecar marshals)
@@ -2635,7 +2640,7 @@ def private check_attributes(var d : Dumper; js : JsonValue?; owner : string = "
     let kind = node_kind(js)
     if (kind |> ends_with("Attr") && !(js?["implicit"] ?? false) && !(js?["inherited"] ?? false)) {
         let dropped = key_exists(DROPPED_ATTRIBUTES, kind) && (kind != "WeakAttr" || key_exists(d.defined_names, owner))
-        if (!dropped && !key_exists(READ_ATTRIBUTES, kind)) {
+        if (!dropped && !key_exists(READ_ATTRIBUTES, kind) && !key_exists(TAIL_CALL_ATTRIBUTES, kind)) {
             let what = kind == "WeakAttr" ? "`weak` on `{owner}`, which the unit never defines," : "the attribute `{attribute_spelling(kind)}`"
             fail(d, "{what} is not lowered (the dumper drops only the attributes that change nothing for a run)", loc_of(d, js))
             return false
