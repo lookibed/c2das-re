@@ -11,3 +11,4 @@ lines head every report (`AGENTS.md`).
 - P5 close (archivists, PR #24), `converter/ARCHITECTURE_EMITTER.md`: the JIT `return` inside a try/recover arm (F75, lookibed/daScript#30) is stated as a fact; an exception-ledger row, or a fix item; 2026-10-30.
 - P5 close (archivists, PR #24), `converter/ARCHITECTURE_EMITTER.md`: merge the two `[c_function]` clauses, or keep them apart; 2026-10-30.
 - P5.3: a `LUA_USE_POSIX` build pair beside the ANSI port (`isatty`, `io.popen`, `mkstemp`, `%Ex`); run the Lua test suite against it too, or the ANSI build stays the port; 2026-10-29.
+- P8.1: Lua on the Rust side is refused at `ldexp` (`luaK_numberK`) and the libc gap is 20 names (`compare/results_linux.json` section `lua`); keep `refused` in the report, or write `--host-import` modules for the gap to get a Lua speed number; 2026-11-01.
