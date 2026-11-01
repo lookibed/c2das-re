@@ -21,3 +21,4 @@ lines head every report (`AGENTS.md`).
 - P8.2: project speed is timed per side wherever that side's lanes pass (the Rust and native cells stand without ours); keep, or time only lanes both sides ran; 2026-11-01.
 - P8.2: the AOT host passes no program arguments, so AOT is skipped for programs reading argv (wasm3, both sides); fix it in `converter/tiers.das` as its own item, or leave AOT skipped for those programs; 2026-11-01.
 - P8.2: `skipped` as a lane status (a lane the harness cannot run, reason recorded); keep it, or fold it into `refused` with the reason; 2026-11-01.
+- P8.2: the bench's oracle is one native bench run when it agrees with the expected output on the line keys both print, `bench_free_keys` per project excepted (binjgb `frames`), slightly weaker than wasm3's former exact check; keep, or require the exact expected text for the bench too; 2026-11-01.
