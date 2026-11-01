@@ -50,6 +50,17 @@ expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed). The ro
   `src/plmpeg_file_bench_entry.c`; the case's other two ids (`plmpeg-stream`,
   `plmpeg-stream-320x240`) run daslang entries of the Rust side and are not compared. Its bench
   prints its lines in another order and omits `bytes=`: omitted key `bytes`.
+- doomgeneric: `src/doom_all.c` and `src/doom_bench_all.c` (the engine graph `all.c`, its headless
+  platform layer and the C entry in one unit each), `-std=c11 -Iinclude
+  -Iupstream/doomgeneric/doomgeneric -Isrc`, `-O2`, `fixtures/doom1.wad` (the shareware IWAD), the
+  case `doomgeneric-demo1-std` (`-timedemo demo1` on a virtual clock: a `frame[i]=` hash per
+  rendered frame, `frames=70`), `--das-option "stack = 4194304"`, and `R_DrawColumn` (a wall or
+  sprite column) and `R_DrawSpan` (a floor or ceiling span), the renderer's two inner loops. Its
+  case names the unit as its reference source and the bench unit as its bench entry. Its bench
+  prints 1000 frames and their count: free keys `frames` and the prefix `frame[`. The engine makes
+  `./.savegame/` in its working folder at startup. The Eden and SDL hosts of the project are GUI
+  programs and are not built; its other cases (the Eden memory model, the per-file graph) are not
+  compared.
 
 Everything a run builds sits in `work/projects/<name>/`: `native/` (the pinned clang's builds of
 both units), `ours/` and `ours_bench/` (our conversions), `rust/` and `rust_bench/` (the Rust
@@ -103,9 +114,9 @@ finds nothing: a line's key is its text before the first `=` or `:`; every line 
 output whose key is not in `bench_omitted_keys` is printed, equal to that line unless its key is in
 `bench_free_keys`, and every other line printed has a key beginning with an entry of
 `bench_free_keys`. wasm3 lists neither, so its bench must print the expected output exactly;
-binjgb's prints the header and the hashes of 300 frames; h264bsd-mp4's and plmpeg-stream's the
-hashes, `frames=`, `width=` and `height=`. Without that oracle every side's cell is `{error: "bench:
-no native bench result: <reason>"}`. Each side's lane whose
+binjgb's prints the header and the hashes of 300 frames, doomgeneric's the hashes of 1000;
+h264bsd-mp4's and plmpeg-stream's the hashes, `frames=`, `width=` and `height=`. Without that oracle
+every side's cell is `{error: "bench: no native bench result: <reason>"}`. Each side's lane whose
 verdict over the unit is `pass` is timed over `--samples` runs (five by default), each its own
 process: the interpreter and the JIT run the module, `exe` its binary built once (`exe_binary`, our
 module folders loaded by absolute path). A run whose output without the two lines differs from the

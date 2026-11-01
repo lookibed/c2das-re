@@ -86,6 +86,16 @@ def test_project_row(t : T?) {
         t |> equal("{length(p.rust_flags)} {length(p.bench_free_keys)} {join(p.bench_omitted_keys, " ")}", "0 0 bytes")
         t |> equal(join(p.functions, " "), "plm_video_idct plm_video_decode_block")
     }
+    t |> run("doomgeneric with the engine's folder included, the stack the case asks for, its bench's 1000 frames") @(t : T?) {
+        var p : Project
+        t |> success(find_project("/m", "doomgeneric", p))
+        t |> equal("{p.tu} {p.bench_tu} {p.fixture} {p.case_id}", "src/doom_all.c src/doom_bench_all.c fixtures/doom1.wad doomgeneric-demo1-std")
+        t |> equal(join(clang_args(p), " "), "-std=c11 -I/m/tests/manual/doomgeneric/include -I/m/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric -I/m/tests/manual/doomgeneric/src")
+        t |> equal(join(p.native_flags, " "), "-O2")
+        t |> equal(join(p.rust_flags, "|"), "--das-option|stack = 4194304")
+        t |> equal("{join(p.bench_free_keys, " ")} {length(p.bench_omitted_keys)}", "frames frame[ 0")
+        t |> equal(join(p.functions, " "), "R_DrawColumn R_DrawSpan")
+    }
     t |> run("the native build's C files: the case's reference sources and bench entry, else the units") @(t : T?) {
         t |> with_scratch("cmp_projects_sources") $(dir) {
             var p = Project(tu = "u.c", bench_tu = "b.c", cases = path_join(dir, "cases.json"), case_id = "c")
@@ -515,7 +525,7 @@ def test_project_run(t : T?) {
             var out : string
             with_env(bin, dir) {
                 t |> equal(run_compare(["--project", "doom"], out), 1, out)
-                t |> success(out |> contains("--project takes one of wasm3, binjgb, h264bsd-mp4, plmpeg-stream, not `doom`"), out)
+                t |> success(out |> contains("--project takes one of wasm3, binjgb, h264bsd-mp4, plmpeg-stream, doomgeneric, not `doom`"), out)
                 t |> equal(run_compare(["--project", "wasm3"], out), 2, out)
                 t |> success(out |> contains("the Rust checkout {dir} lacks the project"), out)
                 mkdir_rec(path_join(dir, "tests/manual/wasm3/src"))

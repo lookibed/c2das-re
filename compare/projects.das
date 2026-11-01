@@ -128,7 +128,21 @@ def project_table(checkout : string) : array<Project> {
         cases = path_join(checkout, CASES_FILE),
         case_id = "plmpeg-stream-320x240-std",
         functions <- ["plm_video_idct", "plm_video_decode_block"],
-        bench_omitted_keys <- ["bytes"])]
+        bench_omitted_keys <- ["bytes"]),
+    Project(
+        name = "doomgeneric",
+        dir = path_join(manual_dir, "doomgeneric"),
+        tu = "src/doom_all.c",
+        bench_tu = "src/doom_bench_all.c",
+        include_dirs <- ["include", "upstream/doomgeneric/doomgeneric", "src"],
+        c_std = "c11",
+        native_flags <- ["-O2"],
+        fixture = "fixtures/doom1.wad",
+        cases = path_join(checkout, CASES_FILE),
+        case_id = "doomgeneric-demo1-std",
+        rust_flags <- ["--das-option", "stack = 4194304"],
+        functions <- ["R_DrawColumn", "R_DrawSpan"],
+        bench_free_keys <- ["frames", "frame["])]
 }
 
 //! The project `name` of the Rust checkout `checkout` into `p`; false when the table has none.
