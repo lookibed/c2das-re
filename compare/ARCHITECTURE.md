@@ -213,7 +213,9 @@ a file-scope object (`static volatile int depth = 31;` becomes `var depth : int 
 the JIT nothing stops the optimizer from hoisting the kernel's work out of the budget loop; the
 loop's per-run time then stays under its 1 ns floor, the count grows by one a round, and the
 program never ends: the Rust `fib_recursive` under `daslang -jit` runs past 60 s, while the
-native build of the same C text ends once its 0.5 s budget is spent.
+native build of the same C text ends once its 0.5 s budget is spent. The Rust side's cells thus
+time a program the optimizer may reshape; the oracle checks the result only, and the 120 s sample
+limit is what catches the endless loop.
 
 The section `perf` is `{cpu, platform, versions {clang, daslang}, rust_commit, rust_commit_error,
 samples, timestamp, lanes, kernels, geomean}`. `lanes` is `native` and the four das lanes;
