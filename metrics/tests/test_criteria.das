@@ -402,16 +402,48 @@ def test_worker_file(t : T?) {
     t |> run("the sample: every key measured as recorded, or the keys that differ named") @(t : T?) {
         let cap <- sample_capture()
         var fresh <- {for (k in SAMPLE_KEYS); k => full_raw(1)}
+        let no_failures : table<string; string>
         var committed := cap
         for (k in SAMPLE_KEYS) {
             committed.sample[k] <- full_raw(1)
         }
-        t |> equal(length(sample_freshness(committed, fresh)), 1)
-        t |> success(sample_freshness(committed, fresh)[0] |> starts_with("sample: the 4 sample inputs"))
+        t |> equal(length(sample_freshness(committed, fresh, no_failures)), 1)
+        t |> success(sample_freshness(committed, fresh, no_failures)[0] |> starts_with("sample: the 4 sample inputs"))
         fresh[SAMPLE_KEYS[0]]["modules"] = 7
-        let stale <- sample_freshness(committed, fresh)
+        let stale <- sample_freshness(committed, fresh, no_failures)
         t |> equal(length(stale), 1)
         t |> success(stale[0] |> contains("stale: {SAMPLE_KEYS[0]}") && stale[0] |> contains("(modules)"), stale[0])
+    }
+}
+
+// the worker run on one input key, and the result file it wrote
+def private run_worker(key : string; var result : string&) : int {
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from(["metrics/criteria.das", "--", "--one", key])
+    var out : string
+    let rc = run_and_capture(argv, out, 300.0)
+    let path = "metrics/work/{key}/criteria.txt"
+    result = fexist(path) ? fread(path) : out
+    return rc
+}
+
+[test]
+def test_failed_sample(t : T?) {
+    t |> run("an input that does not convert is an error line, and the gate names it failed, not stale") @(t : T?) {
+        var result : string
+        t |> equal(run_worker("c_testsuite/no_such_test", result), 0)
+        t |> success(result |> starts_with("error convert: "), result)
+        var error : string
+        read_result_text(result, error)
+        let failed <- {SAMPLE_KEYS[0] => error}
+        let fresh <- {for (k in SAMPLE_KEYS); k => full_raw(1); where k != SAMPLE_KEYS[0]}
+        var committed <- sample_capture()
+        for (k in SAMPLE_KEYS) {
+            committed.sample[k] <- full_raw(1)
+        }
+        let lines <- sample_freshness(committed, fresh, failed)
+        t |> equal(length(lines), 1)
+        t |> success(lines[0] |> starts_with("failed: {SAMPLE_KEYS[0]}: convert: "), lines[0])
     }
 }
 

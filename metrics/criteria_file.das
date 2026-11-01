@@ -341,11 +341,16 @@ def read_result_text(text : string; var error : string&) : CriteriaRaw {
     return <- raw
 }
 
-//! The gate's verdict on the sample: one line per sample key whose fresh raw counts differ from the
-//! capture's, naming the keys that differ, or the line that all match; nothing is red.
-def sample_freshness(committed : CriteriaCapture; fresh : table<string; table<string; int>>) : array<string> {
+//! The gate's verdict on the sample: a line per sample key that failed to measure (`failed` holds
+//! its error), one per key whose fresh raw counts differ from the capture's, naming the keys that
+//! differ, or the line that all match; nothing is red.
+def sample_freshness(committed : CriteriaCapture; fresh : table<string; table<string; int>>; failed : table<string; string>) : array<string> {
     var lines : array<string>
     for (key in SAMPLE_KEYS) {
+        if (key_exists(failed, key)) {
+            lines |> push("failed: {key}: {failed?[key] ?? ""}")
+            continue
+        }
         var inscope differ <- [for (k in RAW_KEYS); k; where(fresh?[key]?[k] ?? -1) != (committed.sample?[key]?[k] ?? -1)]
         if (!empty(differ)) {
             lines |> push("stale: {key} measures differently now ({join(differ, ", ")}): re-record with scripts/run_criteria.sh")
