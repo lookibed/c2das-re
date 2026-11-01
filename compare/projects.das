@@ -190,8 +190,8 @@ def find_project(checkout, name : string; var p : Project) : bool {
 //! `p.expected` read from its canonical case's `expected.stdout`, `p.units` from its
 //! `translation_units`, and the C files of its native builds: the unit's the case's
 //! `c_reference.sources`, else the units, else `p.tu`; the bench's the same without their last
-//! (the entry) and with the case's `corpus.bench_c_entry` after them, else `p.bench_tu`, none when
-//! that is ""; "", or why it cannot be.
+//! (the entry) and with the case's `corpus.bench_c_entry` after them, else `p.bench_tu`; none when
+//! `p.bench_tu` is "" (no bench unit), whatever the case names; "", or why it cannot be.
 [arch(at="ARCHITECTURE_PROJECTS.md#projects")]
 def load_expected(var p : Project) : string {
     if (!fexist(p.cases)) {
@@ -244,7 +244,7 @@ def private read_native_sources(var p : Project; c : JsonValue?) : string {
         return ""
     }
     p.native_sources <- sources
-    if (bench_entry == null || !(bench_entry.value is _string)) {
+    if (empty(p.bench_tu) || bench_entry == null || !(bench_entry.value is _string)) {
         p.native_bench_sources := bench_units
         return ""
     }

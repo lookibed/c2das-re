@@ -152,6 +152,9 @@ def test_project_units_row(t : T?) {
             fwrite(p.cases, "\{\"cases\": [\{\"id\": \"c\", {stdout}, \"translation_units\": [\"g.c\", \"e.c\"], \"c_reference\": \{\"sources\": [\"r.c\"]\}\}]\}")
             t |> equal(load_expected(p), "")
             t |> equal("{join(p.units, " ")} | {join(p.native_sources, " ")}", "g.c e.c | r.c")
+            fwrite(p.cases, "\{\"cases\": [\{\"id\": \"c\", {stdout}, \"c_reference\": \{\"sources\": [\"r.c\"]\}, \"corpus\": \{\"bench_c_entry\": \"be.c\"\}\}]\}")
+            t |> equal(load_expected(p), "")
+            t |> equal("{join(p.native_sources, " ")} | {length(p.native_bench_sources)}", "r.c | 0")
             fwrite(p.cases, "\{\"cases\": [\{\"id\": \"c\", {stdout}, \"translation_units\": [\"g.c\", 1]\}]\}")
             t |> equal(load_expected(p), "{p.cases}: the case c has a translation_units entry that is not a string")
         }
