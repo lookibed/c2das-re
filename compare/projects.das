@@ -113,6 +113,20 @@ def project_table(checkout : string) : array<Project> {
         cases = path_join(checkout, CASES_FILE),
         case_id = "h264bsd-mp4-640x360-std",
         functions <- ["h264bsdProcessBlock", "FilterVerLumaEdge"],
+        bench_omitted_keys <- ["bytes"]),
+    Project(
+        name = "plmpeg-stream",
+        dir = path_join(manual_dir, "plmpeg-stream"),
+        tu = "src/plmpeg_file_all.c",
+        bench_tu = "src/plmpeg_file_bench_all.c",
+        include_dirs <- ["include", "upstream", "fixtures", "src"],
+        defines <- ["PLM_NO_STDIO"],
+        c_std = "c11",
+        native_flags <- ["-O2"],
+        fixture = "fixtures/testsrc2_320x240.m1v",
+        cases = path_join(checkout, CASES_FILE),
+        case_id = "plmpeg-stream-320x240-std",
+        functions <- ["plm_video_idct", "plm_video_decode_block"],
         bench_omitted_keys <- ["bytes"])]
 }
 
