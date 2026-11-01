@@ -54,22 +54,10 @@ def private count_lua(conv : ConvertedInput) : ModuleCount {
     if (empty(conv.fragments) && length(conv.das_paths) == 1) {
         return <- count_module(conv.das_paths[0])
     }
-    var total : ModuleCount
-    total.counts <- {for (m in METRICS); m => 0}
-    for (path in conv.das_paths) {
-        var inscope included : array<string>
-        for (ln in split(fread(path), "\n")) {
-            if (ln |> starts_with("include ")) {
-                included |> push(path_join(dir_name(path), slice(ln, length("include "))))
-            }
-        }
-        let mc <- count_module(path, included)
-        if (!empty(mc.error)) {
-            return ModuleCount(error = "{base_name(path)}: {headline(mc.error)}")
-        }
-        for (m in METRICS) {
-            total.counts[m] += mc.counts?[m] ?? 0
-        }
+    var failed : string
+    var total <- count_program(conv.das_paths, failed)
+    if (!empty(total.error)) {
+        return ModuleCount(error = "{base_name(failed)}: {headline(total.error)}")
     }
     return <- total
 }

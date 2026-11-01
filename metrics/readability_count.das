@@ -519,6 +519,30 @@ class private Counter : AstVisitor {
 //! The counts of the module at `das_path`.
 def count_module(das_path : string) : ModuleCount => <- count_module(das_path, array<string>())
 
+//! The counts of a program's modules `das_paths`, each counted with the fragments its `include`
+//! lines name, summed; at the first module that fails, its error with `failed` its path.
+def count_program(das_paths : array<string>; var failed : string&) : ModuleCount {
+    var total : ModuleCount
+    total.counts <- {for (m in METRICS); m => 0}
+    for (path in das_paths) {
+        var inscope included : array<string>
+        for (ln in split(fread(path), "\n")) {
+            if (ln |> starts_with("include ")) {
+                included |> push(path_join(dir_name(path), slice(ln, length("include "))))
+            }
+        }
+        let mc <- count_module(path, included)
+        if (!empty(mc.error)) {
+            failed = path
+            return ModuleCount(error = mc.error)
+        }
+        for (m in METRICS) {
+            total.counts[m] += mc.counts?[m] ?? 0
+        }
+    }
+    return <- total
+}
+
 //! The counts of the module at `das_path` and of the fragments it includes, `included` each by the
 //! name daslang gives it: the module's folder joined with the `include` line's path.
 def count_module(das_path : string; included : array<string>) : ModuleCount {
