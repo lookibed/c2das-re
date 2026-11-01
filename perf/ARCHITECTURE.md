@@ -95,9 +95,9 @@ harness that times them under every lane, and the stored results.
   `ports/publish.das`: `lines_without` (a text's lines not starting with a prefix),
   `program_output` (a run's output without the JIT's `info` lines), `in_folder` (a command run
   in a folder through `sh`) and `layout_dir` (the folder a layout's conversion lands in).
-  `BUILD_TIMEOUT`, 3600 s, bounds each step of an `exe` or `aot` build and the run it ends
-  with: `run_tier` passes its timeout to every
-  process the tier starts.
+  `BUILD_TIMEOUT`, 3600 s, bounds each step of an `exe` or `aot` build and the run it ends with:
+  `run_tier` passes its timeout to every process the tier starts, and a build or run past it is
+  the lane's error naming the limit, even when a binary was left.
 - `perf_compose.das` - the C program of a kernel, by either method: `composed_source` puts the kernel between
   the profile prologue (the `printf` and `clock` prototypes, the CRT's `CLOCKS_PER_SEC` as a
   constant) and epilogue (dastest's budget loop in C: a 0.5 s budget, reps regrown from the
