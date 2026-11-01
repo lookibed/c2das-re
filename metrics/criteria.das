@@ -167,14 +167,17 @@ def private report(delta_ref : string) : int {
         return 0
     }
     var fresh : table<string; table<string; int>>
+    var failed : table<string; string>
     for (key in SAMPLE_KEYS) {
         var sample_error : string
         let raw <- measure_input(key, "{WORK}/{key}", sample_error)
         if (empty(sample_error)) {
             fresh[key] := raw.counts
+        } else {
+            failed[key] = headline(sample_error)
         }
     }
-    for (line in sample_freshness(committed, fresh)) {
+    for (line in sample_freshness(committed, fresh, failed)) {
         print("{line}\n")
     }
     return 0
