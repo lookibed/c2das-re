@@ -431,7 +431,9 @@ header — fallback: `while (true) { body; c = next(); if (!(c != EOF)) { break 
 tail label for `continue` only if the body contains one.
 
 ### General for — the increment-first flag ✓ (probed)
-Ruling 2026-11-01 (13): the range form is the default, and a body without `continue` takes its increment last (`very-detailed-plan.md` section 1, Loop lowering; the B pull request restates this section).
+Ruling 2026-11-01 (13): the range form is the default, and a body without `continue` takes its
+increment last (`very-detailed-plan.md` section 1, Loop lowering; the B pull request restates this
+section).
 Canonical counting loops take the O1 `for (i in range(n))` rewrite instead; everything
 else lowers to:
 ```c
