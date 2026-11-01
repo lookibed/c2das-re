@@ -4,6 +4,7 @@ require strings
 require daslib/fio
 require daslib/strings_boost
 require ../perf_lanes.das
+require ../perf_measure.das
 require ../../converter/dumper_a.das
 
 //! The shared lane module: the sample arithmetic, the output lines a lane's error quotes, the
@@ -84,5 +85,26 @@ def test_exe_build_line(t : T?) {
         t |> equal(exe_build_line("[I] LLVM EXE: x\nFailed to link Library a.exe, command 'c++ ...'\nOutput:\n\nld: cannot find -lfoo\nwrite_artifact: link failed\n"), "ld: cannot find -lfoo")
         t |> equal(exe_build_line("[I] LLVM EXE: x\nerror[30304]: no such function\n"), "error[30304]: no such function")
         t |> equal(exe_build_line("Failed to link Library a.exe\nOutput:\n"), "Failed to link Library a.exe")
+    }
+}
+
+[test]
+def test_time_limits(t : T?) {
+    t |> run("a sample past its limit is the lane's error, no cell") @(t : T?) {
+        var error : string
+        let cell <- measure(["sleep", "5"], 1, error, 1.0)
+        t |> equal(error, "a sample took longer than 1 s")
+        t |> equal(length(cell.samples), 0)
+    }
+    t |> run("an exe build whose run never ends leaves no lane, the limit named") @(t : T?) {
+        let work = "perf/work/lanes_exe_limit"
+        mkdir_rec(work)
+        let das_path = path_join(work, "forever.das")
+        fwrite(das_path, "options gen2\n[export]\ndef main() : int \{\n    var i = 0\n    while (i >= 0) \{\n        i = (i + 1) % 7\n    \}\n    return i\n\}\n")
+        let no_args : array<string>
+        var error : string
+        t |> equal(build_exe(das_path, work, no_args, error, 20.0), "")
+        t |> equal(error, "the build or its run took longer than 20 s")
+        rmdir_rec(work)
     }
 }

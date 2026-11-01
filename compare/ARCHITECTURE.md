@@ -206,6 +206,15 @@ lane that has no cell is `{"error": <line>}`, never dropped: its own line, else 
 lane stands on (`convert: ...`, `no native result: ...`). A refused Rust translation is `{status:
 "refused", error}` with no lanes; one with no module defining `main` is refused the same way.
 
+Each das lane of both sides has `COMPARE_LIMITS`: 120 s a sample, 300 s an `exe` or `aot` build
+with the run it ends with, past which the lane is an error cell naming the limit (perf's own
+limits, 600 s and 3600 s, fit programs that always end). The Rust translator drops `volatile` from
+a file-scope object (`static volatile int depth = 31;` becomes `var depth : int = 31`), so under
+the JIT nothing stops the optimizer from hoisting the kernel's work out of the budget loop; the
+loop's per-run time then stays under its 1 ns floor, the count grows by one a round, and the
+program never ends: the Rust `fib_recursive` under `daslang -jit` runs past 60 s, while the
+native build of the same C text ends once its 0.5 s budget is spent.
+
 The section `perf` is `{cpu, platform, versions {clang, daslang}, rust_commit, rust_commit_error,
 samples, timestamp, lanes, kernels, geomean}`. `lanes` is `native` and the four das lanes;
 `kernels` maps each key to `{native, ours: {lane: cell}, rust: {status, error?, lanes?}}`, a cell

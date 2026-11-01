@@ -23,6 +23,18 @@ struct Cell {
     samples : array<double>
 }
 
+//! the seconds a sample may take
+let SAMPLE_TIMEOUT = 600.0
+
+//! The seconds a das lane's sample and its `exe` or `aot` build (with the run it ends with) may take.
+struct LaneLimits {
+    sample : float
+    build : float
+}
+
+//! the perf harness's limits
+let PERF_LIMITS = LaneLimits(sample = SAMPLE_TIMEOUT, build = BUILD_TIMEOUT)
+
 // the kernel's line is the last one: a tier may log before the program runs
 def parse_sample(out : string; var seconds : double&; var reps : int64&; var result : int&) : bool {
     let fields <- split(last_line(out), " ")
@@ -44,16 +56,23 @@ def cell_of(samples : array<double>; count : int64; result : int) : Cell {
 }
 
 //! `samples` launches of `argv`, each a process; the kernel's own line gives the per-run time.
-def measure(argv : array<string>; samples : int; var error : string&) : Cell {
+def measure(argv : array<string>; samples : int; var error : string&) : Cell => measure(argv, samples, error, SAMPLE_TIMEOUT)
+
+//! `measure` with `timeout` seconds per sample; a sample past it is the error.
+def measure(argv : array<string>; samples : int; var error : string&; timeout : float) : Cell {
     var times : array<double>
     var count = 0l
     var result = 0
     times |> reserve(samples)
     for (_s in range(samples)) {
         var out : string
-        let rc = run_and_capture(argv, out, 600.0)
+        let rc = run_and_capture(argv, out, timeout)
         var seconds = 0.0lf
         var sample_result = 0
+        if (rc == popen_timed_out) {
+            error = "a sample took longer than {int(timeout)} s"
+            break
+        }
         if (rc != 0 || !parse_sample(out, seconds, count, sample_result)) {
             error = "exited {rc}: {first_line(out)}"
             break
@@ -81,9 +100,14 @@ def accept_lane(var cells : table<string; Cell>; lane : string; var cell : Cell;
 
 // one das lane of kernel `name` measured over `argv`, which it logs at `info`, into `cells`, or a line in `errors`
 def measure_lane(var cells : table<string; Cell>; var errors : array<string>; name, lane : string; argv : array<string>; samples, oracle : int) {
+    measure_lane(cells, errors, name, lane, argv, samples, oracle, SAMPLE_TIMEOUT)
+}
+
+//! `measure_lane` with `timeout` seconds per sample.
+def measure_lane(var cells : table<string; Cell>; var errors : array<string>; name, lane : string; argv : array<string>; samples, oracle : int; timeout : float) {
     to_log(LOG_INFO, "{name}/{lane}: {join(argv, " ")}\n")
     var err : string
-    var cell <- measure(argv, samples, err)
+    var cell <- measure(argv, samples, err, timeout)
     accept_lane(cells, lane, cell, oracle, err)
     if (!empty(err)) {
         errors |> push("{name}/{lane}: {err}")
@@ -113,20 +137,20 @@ def measure_native(var cells : table<string; Cell>; var errors : array<string>; 
 
 // the JIT, exe and AOT lanes of the converted `das_path`
 def measure_tiers(var cells : table<string; Cell>; var errors : array<string>; name, das_path, work : string; samples, oracle : int) {
-    measure_tiers(cells, errors, name, das_path, work, CONVERTED_MODULES, samples, oracle)
+    measure_tiers(cells, errors, name, das_path, work, CONVERTED_MODULES, samples, oracle, PERF_LIMITS)
 }
 
-//! The JIT lane with `module_dirs` loaded, and the exe and AOT lanes, of `das_path`.
-def measure_tiers(var cells : table<string; Cell>; var errors : array<string>; name, das_path, work : string; module_dirs : array<string>; samples, oracle : int) {
-    measure_lane(cells, errors, name, "jit", das_lane_command(das_path, "-jit", module_dirs), samples, oracle)
+//! The JIT lane with `module_dirs` loaded, and the exe and AOT lanes, of `das_path`, under `limits`.
+def measure_tiers(var cells : table<string; Cell>; var errors : array<string>; name, das_path, work : string; module_dirs : array<string>; samples, oracle : int; limits : LaneLimits) {
+    measure_lane(cells, errors, name, "jit", das_lane_command(das_path, "-jit", module_dirs), samples, oracle, limits.sample)
     let no_args : array<string>
     for (lane in ["exe", "aot"]) {
         var build_error : string
-        let bin = lane == "exe" ? build_exe(das_path, work, no_args, build_error) : build_aot(das_path, work, no_args, build_error)
+        let bin = lane == "exe" ? build_exe(das_path, work, no_args, build_error, limits.build) : build_aot(das_path, work, no_args, build_error, limits.build)
         if (empty(bin)) {
             errors |> push("{name}/{lane}: {build_error}")
         } else {
-            measure_lane(cells, errors, name, lane, [bin], samples, oracle)
+            measure_lane(cells, errors, name, lane, [bin], samples, oracle, limits.sample)
         }
     }
 }

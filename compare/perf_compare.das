@@ -27,6 +27,10 @@ let PERF_WORK = "compare/work/perf"
 //! seconds the Rust translator may take over one kernel
 let PERF_TRANSLATE_TIMEOUT = 600.0
 
+//! the limits of both sides' das lanes: a translation that loses the kernel's `volatile` lets the
+//! optimizer hoist the kernel out of the budget loop, which then never ends
+let COMPARE_LIMITS = LaneLimits(sample = 120.0, build = 300.0)
+
 //! the das lanes, each measured for both sides; the capture lists `native` before them
 let DAS_LANES <- ["interp", "jit", "exe", "aot"]
 
@@ -92,8 +96,8 @@ def lane_entries(cells : table<string; Cell>; errors : array<string>; side : str
 def das_lane_entries(side, das_path, work : string; module_dirs : array<string>; samples, oracle : int) : table<string; JsonValue?> {
     var inscope cells : table<string; Cell>
     var errors : array<string>
-    measure_lane(cells, errors, side, "interp", das_lane_command(das_path, "", module_dirs), samples, oracle)
-    measure_tiers(cells, errors, side, das_path, work, module_dirs, samples, oracle)
+    measure_lane(cells, errors, side, "interp", das_lane_command(das_path, "", module_dirs), samples, oracle, COMPARE_LIMITS.sample)
+    measure_tiers(cells, errors, side, das_path, work, module_dirs, samples, oracle, COMPARE_LIMITS)
     return <- lane_entries(cells, errors, side, DAS_LANES)
 }
 
