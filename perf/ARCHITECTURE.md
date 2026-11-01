@@ -286,7 +286,7 @@ its committed spread either way (`--tolerance <percent>` sets the 10) or a cell 
 either side; on another CPU the comparison is of lane/native ratios (section 5). It reruns this
 tree's lanes only: the hand-written and dasProfile C++ columns of the comparison come from
 `dasprofile_linux.json`, which `--from-scratch` alone reruns. `.github/workflows/perf.yml` runs it on the
-self-hosted runner for every release tag and on request.
+capture machine's own runner (label `c2das-fx`) for every release tag and on request.
 
 ## 7. What a capture depends on
 

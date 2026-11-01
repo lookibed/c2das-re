@@ -114,9 +114,11 @@ Empty.
 ## 7. Continuous integration
 
 CI is `.github/workflows/preflight.yml` on a self-hosted runner (labels `self-hosted`, `c2das`)
-installed under `/opt/actions-runner` on the machine that holds the toolchain, as the systemd
+installed under `/opt/actions-runner` on a machine that holds the toolchain, as the systemd
 service of the dedicated user `gha`, which reads `DASLANG_ROOT` and `PATH_TO_LIBCLANG` through
-read-only bind mounts (`/srv/daScript`, `/srv/libclang`; the runner's `.env` names them). A pull
+read-only bind mounts (`/srv/daScript`, `/srv/libclang`; the runner's `.env` names them). The perf
+check (`.github/workflows/perf.yml`, `perf/ARCHITECTURE.md` section 6) runs on the runner of the
+machine the captures name, labelled `c2das-fx`, installed the same way. A pull
 request runs the fast tier of `scripts/preflight.sh`, a push to `main` the full tier. A fork's
 pull request never runs there: the job's `if` on the head repository, and the repository setting
 that keeps fork workflows off. The repository is private, and GitHub offers branch protection on a
