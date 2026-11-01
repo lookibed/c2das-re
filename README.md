@@ -631,7 +631,7 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-01 20:17 UTC); doomgeneric (Rust `b1d012eb5d26`, 2026-11-01 22:02 UTC); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-01 20:51 UTC); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-01 21:25 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-01 20:17 UTC); doomgeneric (Rust `b1d012eb5d26`, 2026-11-01 22:02 UTC); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-01 20:51 UTC); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-01 21:25 UTC); quakegeneric (Rust `b1d012eb5d26`, 2026-11-01 22:43 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
 
 | Project       | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------------ | :--- | :----- | ----------: | ------: | ------: | ------: |
@@ -643,6 +643,8 @@ Each project of the Rust repository's `tests/manual` on its own fixture, checked
 | h264bsd-mp4   | Rust | pass   |        pass |    pass |    pass | skipped |
 | plmpeg-stream | Ours | pass   |     refused | refused | refused | refused |
 | plmpeg-stream | Rust | pass   |        pass |    pass |    pass | skipped |
+| quakegeneric  | Ours | pass   |     refused | refused | refused | refused |
+| quakegeneric  | Rust | pass   |        pass |  output |    pass | skipped |
 | wasm3         | Ours | pass   |     refused | refused | refused | refused |
 | wasm3         | Rust | pass   |        pass |    pass |    pass | skipped |
 
@@ -656,23 +658,28 @@ Why a lane does not pass:
 - h264bsd-mp4, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 - plmpeg-stream, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`
 - plmpeg-stream, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
+- quakegeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/common.c:1187:4: unsupported child `FullComment` of function `memsearch`
+- quakegeneric, Rust, JIT: output: line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at /root/wt-p82q/compare/work/projects/quakegeneric/rust/h...
+- quakegeneric, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 - wasm3, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found
 - wasm3, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 
 The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 5 samples a cell:
 
-| Project       | Side | Native compiler      | Native s | interpreter |     JIT |     exe |     AOT |
-| :------------ | :--- | :------------------- | -------: | ----------: | ------: | ------: | ------: |
-| binjgb        | Ours | clang version 22.1.8 | 0.062580 |     refused | refused | refused | refused |
-| binjgb        | Rust | clang version 22.1.8 | 0.062580 |       71.34 |    1.07 |    1.05 | skipped |
-| doomgeneric   | Ours | clang version 22.1.8 | 0.121829 |     refused | refused | refused | refused |
-| doomgeneric   | Rust | clang version 22.1.8 | 0.121829 |       33.47 |    1.08 |    1.07 | skipped |
-| h264bsd-mp4   | Ours | clang version 22.1.8 | 0.085924 |     refused | refused | refused | refused |
-| h264bsd-mp4   | Rust | clang version 22.1.8 | 0.085924 |       48.69 |    1.03 |    1.01 | skipped |
-| plmpeg-stream | Ours | clang version 22.1.8 | 0.042030 |     refused | refused | refused | refused |
-| plmpeg-stream | Rust | clang version 22.1.8 | 0.042030 |       31.12 |    0.95 |    1.01 | skipped |
-| wasm3         | Ours | clang version 22.1.8 | 0.002223 |     refused | refused | refused | refused |
-| wasm3         | Rust | clang version 22.1.8 | 0.002223 |       58.07 |    2.23 |    2.10 | skipped |
+| Project       | Side | Native compiler      | Native s | interpreter |      JIT |      exe |      AOT |
+| :------------ | :--- | :------------------- | -------: | ----------: | -------: | -------: | -------: |
+| binjgb        | Ours | clang version 22.1.8 | 0.062580 |     refused |  refused |  refused |  refused |
+| binjgb        | Rust | clang version 22.1.8 | 0.062580 |       71.34 |     1.07 |     1.05 |  skipped |
+| doomgeneric   | Ours | clang version 22.1.8 | 0.121829 |     refused |  refused |  refused |  refused |
+| doomgeneric   | Rust | clang version 22.1.8 | 0.121829 |       33.47 |     1.08 |     1.07 |  skipped |
+| h264bsd-mp4   | Ours | clang version 22.1.8 | 0.085924 |     refused |  refused |  refused |  refused |
+| h264bsd-mp4   | Rust | clang version 22.1.8 | 0.085924 |       48.69 |     1.03 |     1.01 |  skipped |
+| plmpeg-stream | Ours | clang version 22.1.8 | 0.042030 |     refused |  refused |  refused |  refused |
+| plmpeg-stream | Rust | clang version 22.1.8 | 0.042030 |       31.12 |     0.95 |     1.01 |  skipped |
+| quakegeneric  | Ours | clang version 22.1.8 |      n/a |    no bench | no bench | no bench | no bench |
+| quakegeneric  | Rust | clang version 22.1.8 |      n/a |    no bench | no bench | no bench | no bench |
+| wasm3         | Ours | clang version 22.1.8 | 0.002223 |     refused |  refused |  refused |  refused |
+| wasm3         | Rust | clang version 22.1.8 | 0.002223 |       58.07 |     2.23 |     2.10 |  skipped |
 
 The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
 
@@ -686,6 +693,8 @@ The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std
 | h264bsd-mp4   | Rust | ok      |     1 | 24316 |           822 |          0 |  362 |   309 |          7164 |          1738 |          2701 |        5172 |         1208 |        8557 |              73 |
 | plmpeg-stream | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | plmpeg-stream | Rust | ok      |     1 |  4988 |           822 |          0 |    0 |     0 |          1891 |            10 |           587 |         505 |            0 |        1259 |              11 |
+| quakegeneric  | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| quakegeneric  | Rust | ok      |    72 | 59613 |          1781 |          0 |  461 |   578 |          2275 |           745 |          5761 |       10506 |          219 |       20287 |             203 |
 | wasm3         | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | wasm3         | Rust | ok      |     1 | 25827 |          1009 |          0 | 2393 |  2162 |          1827 |          2074 |           430 |        4550 |          814 |        6589 |              24 |
 
@@ -1562,6 +1571,196 @@ def plm_video_decode_block(var self_92 : plm_video_t?; var block_1 : int) {
 ```
 
 
+#### `quakegeneric`: `D_DrawSpans8`
+
+Ours: not found in this side's module.
+
+Rust:
+
+```das
+[export, sideeffects]
+def D_DrawSpans8(var pspan : espan_s?) {
+    var count : int
+    var spancount : int
+    var pbase : uint8?
+    var pdest : uint8?
+    var s : int
+    var t : int
+    var snext : int
+    var tnext : int
+    var sstep : int
+    var tstep : int
+    var sdivz : float
+    var tdivz : float
+    var zi : float
+    var z : float
+    var du : float
+    var dv : float
+    var spancountminus1 : float
+    var sdivz8stepu : float
+    var tdivz8stepu : float
+    var zi8stepu : float
+    sstep = 0
+    tstep = 0
+    pbase = unsafe(reinterpret<uint8?>(cacheblock))
+    sdivz8stepu = d_sdivzstepu * 8.0
+    tdivz8stepu = d_tdivzstepu * 8.0
+    zi8stepu = d_zistepu * 8.0
+    while (true) {
+        pdest = unsafe(reinterpret<uint8?>(unsafe(unsafe(d_viewbuffer + int64(screenwidth * pspan.v)) + pspan.u)))
+        count = pspan.count
+        du = float(pspan.u)
+        dv = float(pspan.v)
+        sdivz = d_sdivzorigin + dv * d_sdivzstepv + du * d_sdivzstepu
+        tdivz = d_tdivzorigin + dv * d_tdivzstepv + du * d_tdivzstepu
+        zi = d_ziorigin + dv * d_zistepv + du * d_zistepu
+        z = 65536.0 / zi
+        s = int(sdivz * z) + sadjust
+        if (s > bbextents) {
+            s = bbextents
+        } elif (s < 0) {
+            s = 0
+        }
+        t = int(tdivz * z) + tadjust
+        if (t > bbextentt) {
+            t = bbextentt
+        } elif (t < 0) {
+            t = 0
+        }
+        while (true) {
+            if (count >= 8) {
+                spancount = 8
+            } else {
+                spancount = count
+            }
+            count -= spancount
+            if (count != 0) {
+                sdivz += sdivz8stepu
+                tdivz += tdivz8stepu
+                zi += zi8stepu
+                z = 65536.0 / zi
+                snext = int(sdivz * z) + sadjust
+                if (snext > bbextents) {
+                    snext = bbextents
+                } elif (snext < 8) {
+                    snext = 8
+                }
+                tnext = int(tdivz * z) + tadjust
+                if (tnext > bbextentt) {
+                    tnext = bbextentt
+                } elif (tnext < 8) {
+                    tnext = 8
+                }
+                sstep = snext - s >> 3
+                tstep = tnext - t >> 3
+            } else {
+                spancountminus1 = float(spancount - 1)
+                sdivz = sdivz + d_sdivzstepu * spancountminus1
+                tdivz = tdivz + d_tdivzstepu * spancountminus1
+                zi = zi + d_zistepu * spancountminus1
+                z = 65536.0 / zi
+                snext = int(sdivz * z) + sadjust
+                if (snext > bbextents) {
+                    snext = bbextents
+                } elif (snext < 8) {
+                    snext = 8
+                }
+                tnext = int(tdivz * z) + tadjust
+                if (tnext > bbextentt) {
+                    tnext = bbextentt
+                } elif (tnext < 8) {
+                    tnext = 8
+                }
+                if (spancount > 1) {
+                    sstep = (snext - s) / (spancount - 1)
+                    tstep = (tnext - t) / (spancount - 1)
+                }
+            }
+            var c2da_pdest_addr : uint64 = unsafe(reinterpret<uint64>(pdest))
+            while (true) {
+                *unsafe(reinterpret<uint8?>(c2da_pdest_addr)) = uint8(*unsafe(unsafe(pbase + int64(s >> 16)) + int64((t >> 16) * cachewidth)))
+                c2da_pdest_addr++
+                s += sstep
+                t += tstep
+                spancount--
+                if (spancount <= 0) {
+                    break
+                }
+            }
+            pdest = unsafe(reinterpret<uint8?>(c2da_pdest_addr))
+            s = snext
+            t = tnext
+            if (count <= 0) {
+                break
+            }
+        }
+        pspan = unsafe(reinterpret<espan_s?>(pspan.pnext))
+        if (pspan == null) {
+            break
+        }
+    }
+    return
+}
+```
+
+#### `quakegeneric`: `D_DrawZSpans`
+
+Ours: not found in this side's module.
+
+Rust:
+
+```das
+[export, sideeffects]
+def D_DrawZSpans(var pspan_0 : espan_s?) {
+    var count_0 : int
+    var doublecount : int
+    var izistep : int
+    var izi : int
+    var pdest_0 : int16?
+    var ltemp : uint
+    izistep = int(d_zistepu * 32768.0 * 65536.0)
+    while (true) {
+        pdest_0 = unsafe(reinterpret<int16?>(unsafe(unsafe(d_pzbuffer + int64(d_zwidth * uint(pspan_0.v))) + pspan_0.u)))
+        count_0 = pspan_0.count
+        izi = int(double(d_ziorigin + float(pspan_0.v) * d_zistepv + float(pspan_0.u) * d_zistepu) * 32768.0lf * 65536.0lf)
+        if ((int64(unsafe(reinterpret<uint64>(pdest_0))) & 2l) != 0) {
+            *pdest_0 = int16(izi >> 16)
+            unsafe {  // nolint:STYLE025
+                pdest_0 += 1
+            }
+            izi += izistep
+            count_0--
+        }
+        doublecount = count_0 >> 1
+        if (doublecount > 0) {
+            while (true) {
+                ltemp = uint(izi >> 16)
+                izi += izistep
+                ltemp |= uint(izi) & 0xffff0000u
+                izi += izistep
+                *unsafe(reinterpret<int?>(pdest_0)) = int(ltemp)
+                unsafe {  // nolint:STYLE025
+                    pdest_0 += 2
+                }
+                doublecount--
+                if (doublecount <= 0) {
+                    break
+                }
+            }
+        }
+        if ((count_0 & 1) != 0) {
+            *pdest_0 = int16(izi >> 16)
+        }
+        pspan_0 = unsafe(reinterpret<espan_s?>(pspan_0.pnext))
+        if (pspan_0 == null) {
+            break
+        }
+    }
+    return
+}
+```
+
+
 #### `wasm3`: `op_Call`
 
 Ours: not found in this side's module.
@@ -1655,6 +1854,7 @@ def call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Resul
 - project doomgeneric: Rust passes interpreter, JIT, exe, ours does not.
 - project h264bsd-mp4: Rust passes interpreter, JIT, exe, ours does not.
 - project plmpeg-stream: Rust passes interpreter, JIT, exe, ours does not.
+- project quakegeneric: Rust passes interpreter, exe, ours does not.
 - project wasm3: Rust passes interpreter, JIT, exe, ours does not.
 - counter `pointer_arith`: Rust 606, ours 843 over all keys.
 <!-- compare:end -->
