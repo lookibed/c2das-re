@@ -159,6 +159,17 @@ def test_project_units_row(t : T?) {
 }
 
 [test]
+def test_path_free(t : T?) {
+    t |> run("a reason's paths under the root made relative, any other path kept") @(t : T?) {
+        let warn = "[W] LLVM JIT: return inside try/recover leaves the try arm. at /r/wt/compare/work/p/rust/host.das.inc:664:12"
+        t |> equal(path_free(warn, "/r/wt"), "[W] LLVM JIT: return inside try/recover leaves the try arm. at compare/work/p/rust/host.das.inc:664:12")
+        t |> equal(path_free(warn, "/r/wt/"), path_free(warn, "/r/wt"))
+        t |> equal(path_free("dumper: /c/src/a.c:1:1: x", "/r/wt"), "dumper: /c/src/a.c:1:1: x")
+        t |> equal(path_free("at /r/wtx/a.das", "/r/wt"), "at /r/wtx/a.das")
+    }
+}
+
+[test]
 def test_verdicts(t : T?) {
     t |> run("each class of a run: timeout, exit, output, pass") @(t : T?) {
         let timed = judge_run(popen_timed_out, "", "a\n", 9.0)
