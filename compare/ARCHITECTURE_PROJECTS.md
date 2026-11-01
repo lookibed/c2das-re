@@ -13,11 +13,20 @@ include folders, the defines, the C standard and the native build's flags the RE
 fixture the program reads from its last argument, the id of the project's canonical case in the Rust
 repository's `tests/canonical/cases.json`, whose `expected.stdout` (`load_expected`, read at the
 start of a run, which exits 2 without it) is the output the program must print, that case's
-translator options, and the C functions shown side by side. wasm3 is the first row: `src/all_host.c`
-and `src/all_host_bench.c`, `-std=c11 -Iinclude -Iupstream/wasm3/source -Isrc`, `-O2`,
-`fixtures/fib32.wasm`, the case `wasm3-fib32-std`, `--das-option "stack = 4194304"`, and `op_Call`
-(an op that ends in the dispatch to the next op) and `call_fib` (the host's call of the module's
-`fib`).
+translator options, the C functions shown side by side, and the keys of the lines the bench unit
+prints with a value of its own (`bench_free_keys`, see the speed). The rows:
+
+- wasm3: `src/all_host.c` and `src/all_host_bench.c`, `-std=c11 -Iinclude -Iupstream/wasm3/source
+  -Isrc`, `-O2`, `fixtures/fib32.wasm`, the case `wasm3-fib32-std`, `--das-option "stack =
+  4194304"`, and `op_Call` (an op that ends in the dispatch to the next op) and `call_fib` (the
+  host's call of the module's `fib`).
+- binjgb: `src/binjgb_all.c` and `src/binjgb_bench_all.c`, `-std=c11 -DNDEBUG -Iinclude
+  -Iupstream/binjgb/src -Isrc`, `-O2`, `fixtures/cgb-acid2.gbc`, the case `binjgb-cgb-acid2-std`
+  (60 frames: the cartridge header, `frame[i]=` hashes, `frames=60`, `ticks=`), no translator
+  option, and `emulator_step_internal` (the CPU step: one instruction, or a pair of HDMA bytes;
+  `execute_instruction`, the opcode switch it calls, is a few thousand lines translated) and
+  `ppu_mode3_synchronize` (the PPU's pixel transfer, which renders a line). Its bench prints 300
+  frames and their count, `frames` its free key.
 
 Everything a run builds sits in `work/projects/<name>/`: `native/` (the pinned clang's builds of
 both units), `ours/` and `ours_bench/` (our conversions), `rust/` and `rust_bench/` (the Rust
@@ -54,12 +63,17 @@ reason, never dropped. A lane's limit is 120 s for a run and for the compile che
 
 ## The speed {#speed}
 
-The bench unit prints the expected output and two more lines, `setup_us=<n>` (parse and load) and
-`decode_us=<n>` (the timed loop). It is built natively and converted and translated as the unit is;
-each side's lane whose verdict over the unit is `pass` is timed over `--samples` runs (five by
-default), each its own process: the interpreter and the JIT run the module, `exe` its binary built
-once. A run whose output without the two lines differs from the expected text, or that lacks them,
-stops the cell with an error. A cell is `{setup, decode}`, each perf's cell shape (`time` the median
+The bench unit prints the unit's output or a longer run of it and two more lines, `setup_us=<n>`
+(parse and load, or the emulator's creation) and `decode_us=<n>` (the timed loop). It is built
+natively and converted and translated as the unit is. One run of the native bench, its time lines
+dropped, is the bench's oracle (`native_bench_oracle`) when it prints a line of the expected output
+and every line whose key (the text before its first `=` or `:`) the expected output prints too
+equals that line, a key of `bench_free_keys` excepted: wasm3's bench prints the expected output
+itself, binjgb's the header and the hashes of 300 frames. Without that oracle every side's cell is
+`{error: "bench: no native bench result: <reason>"}`. Each side's lane whose verdict over the unit
+is `pass` is timed over `--samples` runs (five by default), each its own process: the interpreter
+and the JIT run the module, `exe` its binary built once. A run whose output without the two lines
+differs from the oracle, or that lacks them, stops the cell with an error. A cell is `{setup, decode}`, each perf's cell shape (`time` the median
 in seconds, `spread`, `samples`); a lane that does not pass is `{error: "the lane does not pass:
 <status>"}`, a side whose bench unit does not convert or translate `{error: "bench: <reason>"}`. The
 native cell is timed the same way. Each side is timed where its own lanes pass, whether or not the
