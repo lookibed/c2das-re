@@ -40,6 +40,16 @@ expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed). The ro
   the case's other two ids (`h264bsd-mp4`, `h264bsd-mp4-640x360`) run daslang entries of the Rust
   side and are not compared. Its bench prints its lines in another order and omits `bytes=`:
   omitted key `bytes`.
+- plmpeg-stream: `src/plmpeg_file_all.c` and `src/plmpeg_file_bench_all.c` (the pl_mpeg graph
+  `all.c` and the C file entry in one unit each), `-std=c11 -DPLM_NO_STDIO -Iinclude -Iupstream
+  -Ifixtures -Isrc`, `-O2`, `fixtures/testsrc2_320x240.m1v`, the case `plmpeg-stream-320x240-std`
+  (`bytes=`, `width=`, `height=`, a `frame[i]=` hash per decoded frame, `frames=59`), no translator
+  option, and `plm_video_idct` (the inverse DCT of an 8x8 block) and `plm_video_decode_block` (one
+  block's coefficients decoded, dequantised and added or copied into the frame). Its native builds
+  compile `src/all_reference.c` with `src/plmpeg_file_reference_entry.c` or
+  `src/plmpeg_file_bench_entry.c`; the case's other two ids (`plmpeg-stream`,
+  `plmpeg-stream-320x240`) run daslang entries of the Rust side and are not compared. Its bench
+  prints its lines in another order and omits `bytes=`: omitted key `bytes`.
 
 Everything a run builds sits in `work/projects/<name>/`: `native/` (the pinned clang's builds of
 both units), `ours/` and `ours_bench/` (our conversions), `rust/` and `rust_bench/` (the Rust
@@ -87,8 +97,8 @@ finds nothing: a line's key is its text before the first `=` or `:`; every line 
 output whose key is not in `bench_omitted_keys` is printed, equal to that line unless its key is in
 `bench_free_keys`, and every other line printed has a key beginning with an entry of
 `bench_free_keys`. wasm3 lists neither, so its bench must print the expected output exactly;
-binjgb's prints the header and the hashes of 300 frames; h264bsd-mp4's the hashes, `frames=`,
-`width=` and `height=`. Without that oracle every side's cell is `{error: "bench: no native bench
+binjgb's prints the header and the hashes of 300 frames; h264bsd-mp4's and plmpeg-stream's the
+hashes, `frames=`, `width=` and `height=`. Without that oracle every side's cell is `{error: "bench: no native bench
 result: <reason>"}`. Each side's lane whose verdict over the unit is `pass` is timed over
 `--samples` runs (five by default), each its own process: the interpreter and the JIT run the
 module, `exe` its binary built once. A run whose output without the two lines differs from the

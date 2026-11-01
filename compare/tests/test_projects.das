@@ -77,6 +77,15 @@ def test_project_row(t : T?) {
         t |> equal("{length(p.rust_flags)} {length(p.bench_free_keys)} {join(p.bench_omitted_keys, " ")}", "0 0 bytes")
         t |> equal(join(p.functions, " "), "h264bsdProcessBlock FilterVerLumaEdge")
     }
+    t |> run("plmpeg-stream with its define and the whole upstream folder included, its bench without `bytes=`") @(t : T?) {
+        var p : Project
+        t |> success(find_project("/m", "plmpeg-stream", p))
+        t |> equal("{p.tu} {p.bench_tu} {p.fixture} {p.case_id}", "src/plmpeg_file_all.c src/plmpeg_file_bench_all.c fixtures/testsrc2_320x240.m1v plmpeg-stream-320x240-std")
+        t |> equal(join(clang_args(p), " "), "-std=c11 -I/m/tests/manual/plmpeg-stream/include -I/m/tests/manual/plmpeg-stream/upstream -I/m/tests/manual/plmpeg-stream/fixtures -I/m/tests/manual/plmpeg-stream/src -DPLM_NO_STDIO")
+        t |> equal(join(p.native_flags, " "), "-O2")
+        t |> equal("{length(p.rust_flags)} {length(p.bench_free_keys)} {join(p.bench_omitted_keys, " ")}", "0 0 bytes")
+        t |> equal(join(p.functions, " "), "plm_video_idct plm_video_decode_block")
+    }
     t |> run("the native build's C files: the case's reference sources and bench entry, else the units") @(t : T?) {
         t |> with_scratch("cmp_projects_sources") $(dir) {
             var p = Project(tu = "u.c", bench_tu = "b.c", cases = path_join(dir, "cases.json"), case_id = "c")
@@ -438,7 +447,7 @@ def test_project_run(t : T?) {
             var out : string
             with_env(bin, dir) {
                 t |> equal(run_compare(["--project", "doom"], out), 1, out)
-                t |> success(out |> contains("--project takes one of wasm3, binjgb, h264bsd-mp4, not `doom`"), out)
+                t |> success(out |> contains("--project takes one of wasm3, binjgb, h264bsd-mp4, plmpeg-stream, not `doom`"), out)
                 t |> equal(run_compare(["--project", "wasm3"], out), 2, out)
                 t |> success(out |> contains("the Rust checkout {dir} lacks the project"), out)
                 mkdir_rec(path_join(dir, "tests/manual/wasm3/src"))
