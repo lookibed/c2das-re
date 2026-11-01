@@ -263,6 +263,8 @@ def test_run_translation(t : T?) {
             t |> equal(strip(output), "arg --\narg in.txt")
             t |> equal(run_translation(res, "interp", path_join(dir, "work"), output, 60.0, NO_ARGS), 3, output)
             t |> equal(strip(output), "")
+            t |> equal(run_translation(res, "interp", path_join(dir, "work"), output, 60.0, ["-no-module-cache"], ["x"]), 3, output)
+            t |> equal(strip(output), "arg --\narg x")
         }
     }
     t |> run("a failed translation and one without main do not run") @(t : T?) {

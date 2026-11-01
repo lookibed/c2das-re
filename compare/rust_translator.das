@@ -202,6 +202,13 @@ def write_compile_commands(path : string; c_paths : array<string>; defines : arr
 //! and `aot` build; the exit code, -1 when `t` has no entry to run. `output` is the run's text.
 [arch(at="ARCHITECTURE.md#entry")]
 def run_translation(t : RustTranslation; tier : string; work : string; var output : string&; timeout : float; program_args : array<string>) : int {
+    let no_flags : array<string>
+    return run_translation(t, tier, work, output, timeout, no_flags, program_args)
+}
+
+//! `flags` go to the interpreter and the JIT before the module (`-no-module-cache`).
+[arch(at="ARCHITECTURE.md#entry")]
+def run_translation(t : RustTranslation; tier : string; work : string; var output : string&; timeout : float; flags : array<string>; program_args : array<string>) : int {
     output = ""
     if (!t.ok) {
         output = "the translation failed: {t.error}\n"
@@ -211,7 +218,7 @@ def run_translation(t : RustTranslation; tier : string; work : string; var outpu
         output = "the translation defines no main in {t.out_dir}\n"
         return -1
     }
-    let no_modules, no_flags : array<string>
+    let no_modules : array<string>
     mkdir_rec(work)
-    return run_tier(t.entry, tier, work, output, no_modules, timeout, no_flags, program_args)
+    return run_tier(t.entry, tier, work, output, no_modules, timeout, flags, program_args)
 }
