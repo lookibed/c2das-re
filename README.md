@@ -631,39 +631,47 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-01 20:17 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-01 20:17 UTC); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-01 20:51 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
 
-| Project | Side | Native | interpreter |     JIT |     exe |     AOT |
-| :------ | :--- | :----- | ----------: | ------: | ------: | ------: |
-| binjgb  | Ours | pass   |     refused | refused | refused | refused |
-| binjgb  | Rust | pass   |        pass |    pass |    pass | skipped |
-| wasm3   | Ours | pass   |     refused | refused | refused | refused |
-| wasm3   | Rust | pass   |        pass |    pass |    pass | skipped |
+| Project     | Side | Native | interpreter |     JIT |     exe |     AOT |
+| :---------- | :--- | :----- | ----------: | ------: | ------: | ------: |
+| binjgb      | Ours | pass   |     refused | refused | refused | refused |
+| binjgb      | Rust | pass   |        pass |    pass |    pass | skipped |
+| h264bsd-mp4 | Ours | pass   |     refused | refused | refused | refused |
+| h264bsd-mp4 | Rust | pass   |        pass |    pass |    pass | skipped |
+| wasm3       | Ours | pass   |     refused | refused | refused | refused |
+| wasm3       | Rust | pass   |        pass |    pass |    pass | skipped |
 
 Why a lane does not pass:
 
 - binjgb, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/binjgb/src/all.c:11:10: fatal error: 'common.c' file not found
 - binjgb, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
+- h264bsd-mp4, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`
+- h264bsd-mp4, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 - wasm3, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found
 - wasm3, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 
 The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 5 samples a cell:
 
-| Project | Side | Native compiler      | Native s | interpreter |     JIT |     exe |     AOT |
-| :------ | :--- | :------------------- | -------: | ----------: | ------: | ------: | ------: |
-| binjgb  | Ours | clang version 22.1.8 | 0.062580 |     refused | refused | refused | refused |
-| binjgb  | Rust | clang version 22.1.8 | 0.062580 |       71.34 |    1.07 |    1.05 | skipped |
-| wasm3   | Ours | clang version 22.1.8 | 0.002223 |     refused | refused | refused | refused |
-| wasm3   | Rust | clang version 22.1.8 | 0.002223 |       58.07 |    2.23 |    2.10 | skipped |
+| Project     | Side | Native compiler      | Native s | interpreter |     JIT |     exe |     AOT |
+| :---------- | :--- | :------------------- | -------: | ----------: | ------: | ------: | ------: |
+| binjgb      | Ours | clang version 22.1.8 | 0.062580 |     refused | refused | refused | refused |
+| binjgb      | Rust | clang version 22.1.8 | 0.062580 |       71.34 |    1.07 |    1.05 | skipped |
+| h264bsd-mp4 | Ours | clang version 22.1.8 | 0.085924 |     refused | refused | refused | refused |
+| h264bsd-mp4 | Rust | clang version 22.1.8 | 0.085924 |       48.69 |    1.03 |    1.01 | skipped |
+| wasm3       | Ours | clang version 22.1.8 | 0.002223 |     refused | refused | refused | refused |
+| wasm3       | Rust | clang version 22.1.8 | 0.002223 |       58.07 |    2.23 |    2.10 | skipped |
 
 The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
 
-| Project | Side | Code    | Files | Lines | Runtime lines | c_function | goto | label | literal_named | pointer_arith | pointer_index | reinterpret | unsafe_block | unsafe_expr | while_rangeable |
-| :------ | :--- | :------ | ----: | ----: | ------------: | ---------: | ---: | ----: | ------------: | ------------: | ------------: | ----------: | -----------: | ----------: | --------------: |
-| binjgb  | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
-| binjgb  | Rust | ok      |     1 | 11481 |           956 |          0 |  670 |   867 |          2393 |            33 |           939 |        3818 |            8 |        5049 |              12 |
-| wasm3   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
-| wasm3   | Rust | ok      |     1 | 25827 |          1009 |          0 | 2393 |  2162 |          1827 |          2074 |           430 |        4550 |          814 |        6589 |              24 |
+| Project     | Side | Code    | Files | Lines | Runtime lines | c_function | goto | label | literal_named | pointer_arith | pointer_index | reinterpret | unsafe_block | unsafe_expr | while_rangeable |
+| :---------- | :--- | :------ | ----: | ----: | ------------: | ---------: | ---: | ----: | ------------: | ------------: | ------------: | ----------: | -----------: | ----------: | --------------: |
+| binjgb      | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| binjgb      | Rust | ok      |     1 | 11481 |           956 |          0 |  670 |   867 |          2393 |            33 |           939 |        3818 |            8 |        5049 |              12 |
+| h264bsd-mp4 | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| h264bsd-mp4 | Rust | ok      |     1 | 24316 |           822 |          0 |  362 |   309 |          7164 |          1738 |          2701 |        5172 |         1208 |        8557 |              73 |
+| wasm3       | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| wasm3       | Rust | ok      |     1 | 25827 |          1009 |          0 | 2393 |  2162 |          1827 |          2074 |           430 |        4550 |          814 |        6589 |              24 |
 
 #### `binjgb`: `emulator_step_internal`
 
@@ -939,6 +947,252 @@ def ppu_mode3_synchronize(var e_10 : Emulator?) {
 ```
 
 
+#### `h264bsd-mp4`: `h264bsdProcessBlock`
+
+Ours: not found in this side's module.
+
+Rust:
+
+```das
+[sideeffects]
+def h264bsdProcessBlock(var data_28 : int?; var qp : uint; var skip : uint; var coeffMap_0 : uint) : uint {
+    var tmp0 : int
+    var tmp1_14 : int
+    var tmp2_14 : int
+    var tmp3_12 : int
+    var d2 : int
+    var d3 : int
+    var row_3 : uint
+    var col_3 : uint
+    var qpDiv : uint
+    var ptr_3 : int?
+    qpDiv = uint(qpDiv6[int(qp)])
+    tmp1_14 = levelScale[int(qpMod6[int(qp)])][0] << int(qpDiv)
+    tmp2_14 = levelScale[int(qpMod6[int(qp)])][1] << int(qpDiv)
+    tmp3_12 = levelScale[int(qpMod6[int(qp)])][2] << int(qpDiv)
+    if (skip == 0) {
+        unsafe(data_28[0]) *= tmp1_14
+    }
+    if ((coeffMap_0 & 0xff9cu) != 0x0) {
+        d2 = unsafe(data_28[14])
+        d3 = unsafe(data_28[15])
+        unsafe(data_28[1]) *= tmp2_14
+        unsafe(data_28[14]) = d2 * tmp2_14
+        unsafe(data_28[15]) = d3 * tmp3_12
+        d2 = unsafe(data_28[5])
+        d3 = unsafe(data_28[4])
+        unsafe(data_28[4]) = unsafe(data_28[2]) * tmp2_14
+        unsafe(data_28[2]) = d2 * tmp1_14
+        unsafe(data_28[5]) = d3 * tmp3_12
+        d3 = unsafe(data_28[6])
+        tmp0 = unsafe(data_28[8]) * tmp2_14
+        unsafe(data_28[8]) = unsafe(data_28[3]) * tmp1_14
+        unsafe(data_28[3]) = d3 * tmp2_14
+        d2 = unsafe(data_28[12])
+        d3 = unsafe(data_28[9])
+        unsafe(data_28[6]) = unsafe(data_28[7]) * tmp2_14
+        unsafe(data_28[7]) = d2 * tmp3_12
+        unsafe(data_28[12]) = d3 * tmp2_14
+        unsafe(data_28[9]) = tmp0
+        d2 = unsafe(data_28[11])
+        d3 = unsafe(data_28[13])
+        unsafe(data_28[13]) = unsafe(data_28[10]) * tmp3_12
+        unsafe(data_28[10]) = d2 * tmp1_14
+        unsafe(data_28[11]) = d3 * tmp2_14
+        row_3 = 4u
+        ptr_3 = unsafe(reinterpret<int?>(data_28))
+        while (true) {
+            let c2da_postinc_60 : uint = row_3
+            row_3--
+            if (c2da_postinc_60 == 0x0) {
+                break
+            }
+            tmp0 = unsafe(ptr_3[0]) + unsafe(ptr_3[2])
+            tmp1_14 = unsafe(ptr_3[0]) - unsafe(ptr_3[2])
+            tmp2_14 = (unsafe(ptr_3[1]) >> 1) - unsafe(ptr_3[3])
+            tmp3_12 = unsafe(ptr_3[1]) + (unsafe(ptr_3[3]) >> 1)
+            unsafe(ptr_3[0]) = tmp0 + tmp3_12
+            unsafe(ptr_3[1]) = tmp1_14 + tmp2_14
+            unsafe(ptr_3[2]) = tmp1_14 - tmp2_14
+            unsafe(ptr_3[3]) = tmp0 - tmp3_12
+            unsafe {  // nolint:STYLE025
+                ptr_3 += 4
+            }
+        }
+        var c2da_data_28_addr : uint64 = unsafe(reinterpret<uint64>(data_28))
+        col_3 = 4u
+        while (true) {
+            let c2da_postinc_61 : uint = col_3
+            col_3--
+            if (c2da_postinc_61 == 0x0) {
+                break
+            }
+            tmp0 = unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[0]) + unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[8])
+            tmp1_14 = unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[0]) - unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[8])
+            tmp2_14 = (unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[4]) >> 1) - unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[12])
+            tmp3_12 = unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[4]) + (unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[12]) >> 1)
+            unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[0]) = tmp0 + tmp3_12 + 32 >> 6
+            unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[4]) = tmp1_14 + tmp2_14 + 32 >> 6
+            unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[8]) = tmp1_14 - tmp2_14 + 32 >> 6
+            unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[12]) = tmp0 - tmp3_12 + 32 >> 6
+            if (uint(unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[0]) + 512) > 1023u || uint(unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[4]) + 512) > 1023u || uint(unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[8]) + 512) > 1023u || uint(unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[12]) + 512) > 1023u) {
+                return 1u
+            }
+            c2da_data_28_addr += 4ul
+        }
+    } elif ((coeffMap_0 & 0x62u) == 0u) {
+        tmp0 = unsafe(data_28[0]) + 32 >> 6
+        if (uint(tmp0 + 512) > 1023u) {
+            return 1u
+        }
+        unsafe(data_28[15]) = tmp0
+        unsafe(data_28[14]) = int(unsafe(data_28[15]))  // nolint:PERF020
+        unsafe(data_28[13]) = int(unsafe(data_28[14]))  // nolint:PERF020
+        unsafe(data_28[12]) = int(unsafe(data_28[13]))  // nolint:PERF020
+        unsafe(data_28[11]) = int(unsafe(data_28[12]))  // nolint:PERF020
+        unsafe(data_28[10]) = int(unsafe(data_28[11]))  // nolint:PERF020
+        unsafe(data_28[9]) = int(unsafe(data_28[10]))  // nolint:PERF020
+        unsafe(data_28[8]) = int(unsafe(data_28[9]))  // nolint:PERF020
+        unsafe(data_28[7]) = int(unsafe(data_28[8]))  // nolint:PERF020
+        unsafe(data_28[6]) = int(unsafe(data_28[7]))  // nolint:PERF020
+        unsafe(data_28[5]) = int(unsafe(data_28[6]))  // nolint:PERF020
+        unsafe(data_28[4]) = int(unsafe(data_28[5]))  // nolint:PERF020
+        unsafe(data_28[3]) = int(unsafe(data_28[4]))  // nolint:PERF020
+        unsafe(data_28[2]) = int(unsafe(data_28[3]))  // nolint:PERF020
+        unsafe(data_28[1]) = int(unsafe(data_28[2]))  // nolint:PERF020
+        unsafe(data_28[0]) = int(unsafe(data_28[1]))  // nolint:PERF020
+    } else {
+        unsafe(data_28[1]) *= tmp2_14
+        unsafe(data_28[2]) = unsafe(data_28[5]) * tmp1_14
+        unsafe(data_28[3]) = unsafe(data_28[6]) * tmp2_14
+        tmp0 = unsafe(data_28[0]) + unsafe(data_28[2])
+        tmp1_14 = unsafe(data_28[0]) - unsafe(data_28[2])
+        tmp2_14 = (unsafe(data_28[1]) >> 1) - unsafe(data_28[3])
+        tmp3_12 = unsafe(data_28[1]) + (unsafe(data_28[3]) >> 1)
+        unsafe(data_28[0]) = tmp0 + tmp3_12 + 32 >> 6
+        unsafe(data_28[1]) = tmp1_14 + tmp2_14 + 32 >> 6
+        unsafe(data_28[2]) = tmp1_14 - tmp2_14 + 32 >> 6
+        unsafe(data_28[3]) = tmp0 - tmp3_12 + 32 >> 6
+        unsafe(data_28[12]) = int(unsafe(data_28[0]))  // nolint:PERF020
+        unsafe(data_28[8]) = int(unsafe(data_28[12]))  // nolint:PERF020
+        unsafe(data_28[4]) = int(unsafe(data_28[8]))  // nolint:PERF020
+        unsafe(data_28[13]) = int(unsafe(data_28[1]))  // nolint:PERF020
+        unsafe(data_28[9]) = int(unsafe(data_28[13]))  // nolint:PERF020
+        unsafe(data_28[5]) = int(unsafe(data_28[9]))  // nolint:PERF020
+        unsafe(data_28[14]) = int(unsafe(data_28[2]))  // nolint:PERF020
+        unsafe(data_28[10]) = int(unsafe(data_28[14]))  // nolint:PERF020
+        unsafe(data_28[6]) = int(unsafe(data_28[10]))  // nolint:PERF020
+        unsafe(data_28[15]) = int(unsafe(data_28[3]))  // nolint:PERF020
+        unsafe(data_28[11]) = int(unsafe(data_28[15]))  // nolint:PERF020
+        unsafe(data_28[7]) = int(unsafe(data_28[11]))  // nolint:PERF020
+        if (uint(unsafe(data_28[0]) + 512) > 1023u || uint(unsafe(data_28[1]) + 512) > 1023u || uint(unsafe(data_28[2]) + 512) > 1023u || uint(unsafe(data_28[3]) + 512) > 1023u) {
+            return 1u
+        }
+    }
+    return 0u
+}
+```
+
+#### `h264bsd-mp4`: `FilterVerLumaEdge`
+
+Ours: not found in this side's module.
+
+Rust:
+
+```das
+[sideeffects]
+def FilterVerLumaEdge(var data_40 : uint8?; var bS_7 : uint; var thresholds_8 : edgeThreshold_t?; var imageWidth_1 : uint) {
+    var delta_4 : int
+    var tc_4 : int
+    var tmp_54 : int
+    var i_81 : uint
+    var p0_4 : int
+    var q0_4 : int
+    var p1_12 : int
+    var q1_4 : int
+    var p2_1 : int
+    var q2_1 : int
+    var tmpFlag_0 : uint
+    var clp_15 : uint8 const?
+    var alpha_0 : uint
+    var beta_0 : uint
+    var val_3 : int
+    clp_15 = unsafe(unsafe(addr(h264bsdClip[0])) + 512)
+    alpha_0 = thresholds_8.alpha
+    beta_0 = thresholds_8.beta
+    if (bS_7 < 4u) {
+        tc_4 = int(unsafe(thresholds_8.tc0[int(bS_7 - 1u)]))
+        tmp_54 = tc_4
+        i_81 = 4u
+        while (i_81 != 0x0) {
+            p1_12 = int(unsafe(data_40[-2]))
+            p0_4 = int(unsafe(data_40[-1]))
+            q0_4 = int(unsafe(data_40[0]))
+            q1_4 = int(unsafe(data_40[1]))
+            if (uint(p0_4 - q0_4 < 0 ? -(p0_4 - q0_4) : p0_4 - q0_4) < alpha_0 && uint(p1_12 - p0_4 < 0 ? -(p1_12 - p0_4) : p1_12 - p0_4) < beta_0 && uint(q1_4 - q0_4 < 0 ? -(q1_4 - q0_4) : q1_4 - q0_4) < beta_0) {
+                p2_1 = int(unsafe(data_40[-3]))
+                q2_1 = int(unsafe(data_40[2]))
+                if (uint(p2_1 - p0_4 < 0 ? -(p2_1 - p0_4) : p2_1 - p0_4) < beta_0) {
+                    val_3 = p2_1 + (p0_4 + q0_4 + 1 >> 1) - (p1_12 << 1) >> 1
+                    unsafe(data_40[-2]) = uint8(p1_12 + (val_3 < -tc_4 ? -tc_4 : val_3 > tc_4 ? tc_4 : val_3))
+                    tmp_54++
+                }
+                if (uint(q2_1 - q0_4 < 0 ? -(q2_1 - q0_4) : q2_1 - q0_4) < beta_0) {
+                    val_3 = q2_1 + (p0_4 + q0_4 + 1 >> 1) - (q1_4 << 1) >> 1
+                    unsafe(data_40[1]) = uint8(q1_4 + (val_3 < -tc_4 ? -tc_4 : val_3 > tc_4 ? tc_4 : val_3))
+                    tmp_54++
+                }
+                val_3 = (q0_4 - p0_4 << 2) + (p1_12 - q1_4) + 4 >> 3
+                delta_4 = val_3 < -tmp_54 ? -tmp_54 : val_3 > tmp_54 ? tmp_54 : val_3
+                q0_4 = int(unsafe(clp_15[q0_4 - delta_4]))
+                tmp_54 = tc_4
+                unsafe(data_40[-1]) = uint8(unsafe(clp_15[p0_4 + delta_4]))  // nolint:PERF020
+                unsafe(data_40[0]) = uint8(q0_4)
+            }
+            i_81--
+            unsafe {  // nolint:STYLE025
+                data_40 += int64(imageWidth_1)
+            }
+        }
+    } else {
+        i_81 = 4u
+        while (i_81 != 0x0) {
+            p1_12 = int(unsafe(data_40[-2]))
+            p0_4 = int(unsafe(data_40[-1]))
+            q0_4 = int(unsafe(data_40[0]))
+            q1_4 = int(unsafe(data_40[1]))
+            if (uint(p0_4 - q0_4 < 0 ? -(p0_4 - q0_4) : p0_4 - q0_4) < alpha_0 && uint(p1_12 - p0_4 < 0 ? -(p1_12 - p0_4) : p1_12 - p0_4) < beta_0 && uint(q1_4 - q0_4 < 0 ? -(q1_4 - q0_4) : q1_4 - q0_4) < beta_0) {
+                tmpFlag_0 = uint(uint(p0_4 - q0_4 < 0 ? -(p0_4 - q0_4) : p0_4 - q0_4) < (alpha_0 >> 2u) + 2u ? 1 : 0)
+                p2_1 = int(unsafe(data_40[-3]))
+                q2_1 = int(unsafe(data_40[2]))
+                if (tmpFlag_0 != 0x0 && uint(p2_1 - p0_4 < 0 ? -(p2_1 - p0_4) : p2_1 - p0_4) < beta_0) {
+                    tmp_54 = p1_12 + p0_4 + q0_4
+                    unsafe(data_40[-1]) = uint8(p2_1 + 2 * tmp_54 + q1_4 + 4 >> 3)
+                    unsafe(data_40[-2]) = uint8(p2_1 + tmp_54 + 2 >> 2)
+                    unsafe(data_40[-3]) = uint8(2 * int(unsafe(data_40[-4])) + 3 * p2_1 + tmp_54 + 4 >> 3)
+                } else {
+                    unsafe(data_40[-1]) = uint8(2 * p1_12 + p0_4 + q1_4 + 2 >> 2)
+                }
+                if (tmpFlag_0 != 0x0 && uint(q2_1 - q0_4 < 0 ? -(q2_1 - q0_4) : q2_1 - q0_4) < beta_0) {
+                    tmp_54 = p0_4 + q0_4 + q1_4
+                    unsafe(data_40[0]) = uint8(p1_12 + 2 * tmp_54 + q2_1 + 4 >> 3)
+                    unsafe(data_40[1]) = uint8(tmp_54 + q2_1 + 2 >> 2)
+                    unsafe(data_40[2]) = uint8(2 * int(unsafe(data_40[3])) + 3 * q2_1 + tmp_54 + 4 >> 3)
+                } else {
+                    unsafe(data_40[0]) = uint8(2 * q1_4 + q0_4 + p1_12 + 2 >> 2)
+                }
+            }
+            i_81--
+            unsafe {  // nolint:STYLE025
+                data_40 += int64(imageWidth_1)
+            }
+        }
+    }
+    return
+}
+```
+
+
 #### `wasm3`: `op_Call`
 
 Ours: not found in this side's module.
@@ -1029,6 +1283,7 @@ def call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Resul
 - switch_local, AOT: Rust 2.61x native, ours has no cell (compile).
 - va_forward, interpreter: Rust 131.56x native, ours 215.67x.
 - project binjgb: Rust passes interpreter, JIT, exe, ours does not.
+- project h264bsd-mp4: Rust passes interpreter, JIT, exe, ours does not.
 - project wasm3: Rust passes interpreter, JIT, exe, ours does not.
 - counter `pointer_arith`: Rust 606, ours 843 over all keys.
 <!-- compare:end -->
