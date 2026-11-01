@@ -136,6 +136,28 @@ def test_module_names(t : T?) {
     }
 }
 
+let MUTUAL_A = "options gen2\nrequire b\n\ndef fa(n : int) : int => n <= 0 ? 0 : fb(n - 1) + 1\n"
+
+let MUTUAL_B = "options gen2\nrequire a\n\ndef fb(n : int) : int => n <= 0 ? 0 : fa(n - 1) + 1\n"
+
+let MUTUAL_MAIN = "options gen2\nrequire a\n\n[export]\ndef main \{\n    print(\"\{fa(5)\}\\n\")\n\}\n"
+
+// two C files calling each other (Lua's `ldo.c` and `lvm.c`) need two das modules calling each
+// other: the minimal repro of the mutual-require row of `docs/probe-findings.md`
+[test]
+def test_mutual_require(t : T?) {
+    t |> run("two modules whose functions call each other cannot require each other: daslang has no forward declaration of another module's function and refuses the cycle") @(t : T?) {
+        let dir = write_tree("mutual", [probe_file("a.das", MUTUAL_A), probe_file("b.das", MUTUAL_B), probe_file("main.das", MUTUAL_MAIN)])
+        child_rejects(t, "mutual require", run_plain(dir), "circular dependency 'a'")
+        rmdir_rec(dir)
+    }
+    t |> run("the same two functions as fragments of one module run: the default layout's cluster") @(t : T?) {
+        let dir = write_tree("mutual_cluster", [probe_file("a.das.inc", "def fa(n : int) : int => n <= 0 ? 0 : fb(n - 1) + 1\n"), probe_file("b.das.inc", "def fb(n : int) : int => n <= 0 ? 0 : fa(n - 1) + 1\n"), probe_file("a_cluster.das", "options gen2\ninclude a.das.inc\ninclude b.das.inc\n"), probe_file("main.das", "options gen2\nrequire a_cluster\n\n[export]\ndef main \{\n    print(\"\{fa(5)\}\\n\")\n\}\n")])
+        runs_as(t, "mutual cluster", run_plain(dir), "5\n")
+        rmdir_rec(dir)
+    }
+}
+
 let ANNOTATED_A = "options gen2\nrequire c_runtime/variadic\nrequire c_runtime/c_function\n\nstruct P \{\n    x, y : int\n\}\n\n[variadic]\ndef vsum(n : int; va : va_args) : int \{\n    var ap : CVaCursor\n    ap = va_begin(va)\n    var s : int = 0\n    for (i in range(n)) \{\n        s += int(va_i(ap))\n    \}\n    return s\n\}\n\n[c_function]\ndef bump(var p : int?) : int \{\n    deref(p) += 1\n    return deref(p)\n\}\n"
 
 let ANNOTATED_B = "options gen2\nrequire a\nrequire c_runtime/c_union\nrequire c_runtime/c_bitfields\n\n[c_union]\nstruct U \{\n    p : P\n    i : int64\n\}\n\n[c_bitfields(a = 3, b = 5)]\nstruct B \{\n    a, b : uint\n    q : P\n\}\n\ndef pick : function<(var a0 : int?) : int> => @@bump\n"

@@ -16,7 +16,8 @@ and qualified calls are text the C program does not have.
 The names say what each layout keeps: `source` the C files, `source-cut` the C files with the cut,
 `single` one module. Any other value, `scc` included, is refused naming the three.
 
-daslang refuses a cyclic `require` (`probes/test_modules.das`), and C files call each other in
+daslang refuses a cyclic `require` and has no forward declaration of another module's function
+(`probes/test_modules.das`, `test_mutual_require`), and C files call each other in
 cycles without including each other's headers (Lua's `ldo.c` and `lvm.c`), so a file cannot always
 be a module of its own. `plan_layout` (`layout.das`) partitions the linked program before its
 statics are named:
