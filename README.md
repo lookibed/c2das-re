@@ -659,7 +659,7 @@ Why a lane does not pass:
 - plmpeg-stream, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`
 - plmpeg-stream, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 - quakegeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/common.c:1187:4: unsupported child `FullComment` of function `memsearch`
-- quakegeneric, Rust, JIT: output: line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at /root/wt-p82q/compare/work/projects/quakegeneric/rust/h...
+- quakegeneric, Rust, JIT: output: line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at compare/work/projects/quakegeneric/rust/host.das.inc:66...
 - quakegeneric, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 - wasm3, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found
 - wasm3, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one

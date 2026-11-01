@@ -117,7 +117,9 @@ on its stdout (`run_split`; the program's stderr, doomgeneric's engine log, is a
 past its limit, `exit` with the code and the first line naming an error in the stderr, then the
 stdout, `output` with the first line that differs from the expected text (numbered from 1, a missing
 line `(none)`), `pass`. The native runs and each bench sample are judged the same way. The JIT's
-`[I]` lines are not the program's output. The `aot` tier's host passes the program no
+`[I]` lines are not the program's output. A recorded reason names a path under the repository
+relative to it (`path_free`: the JIT's warnings quote the module's absolute path), so the capture
+reads the same from any checkout. The `aot` tier's host passes the program no
 arguments, so a project that reads its fixture from its argument is `skipped` under `aot` with that
 reason, never dropped. A lane's limit is 120 s for a run and for the compile check, 300 s for each
 `exe` or `aot` build step and the run it ends with (`COMPARE_LIMITS`).

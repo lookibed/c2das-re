@@ -1124,11 +1124,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   fails); the suite ids Rust passes that our ratchet skips (gcc-torture 41, csmith 5, c-testsuite
   0). The rest of the list (`switch_goto` JIT and exe, `primes` AOT, the counter `pointer_arith`) is
   read from the block when an item is cut.
-- **P8.4 Converter gaps found by P8.2** (from P8.2 PRs 1-5, wasm3, binjgb, h264bsd-mp4,
-  plmpeg-stream, doomgeneric; later projects may add). Candidates, each its own item later, none
+- **P8.4 Converter gaps found by P8.2** (from P8.2's six projects: wasm3, binjgb,
+  h264bsd-mp4, plmpeg-stream, doomgeneric, quakegeneric). Candidates, each its own item later, none
   scheduled: (a) include folders, a sidecar key for both clang passes, and a program root wider than
   the main file's folder (wasm3 refused at `m3_bind.c`, binjgb at `common.c`, doomgeneric at
-  `dummy.c`; `CPATH` or a symlinked root:
+  `dummy.c`; further clang arguments such as quakegeneric's `-include engine_config.h` passed through
+  too; `CPATH` or a symlinked root:
   an empty module; `../upstream` files are external: h264bsd-mp4 refused at `picParamSet_t`,
   plmpeg-stream at `plm_frame_t`); (b) braced scalar pointer initializers (`m3Err_none = { NULL }`,
   "not dumped yet"); (c) `__attribute__((musttail))` refused (the Rust side drops it with a
@@ -1137,7 +1138,9 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   unrenamed, a compile failure; (f) `clock_gettime` has no c_runtime mapping (the Rust corpora's
   bench units refused on our side); (g) glibc `assert` without `NDEBUG` refused at `__extension__`;
   (h) `c2da_rt_reset()`, a test-runtime hook the Rust runtime defines and the native build takes
-  from `shim.c`, is undefined for our converter once (a) is fixed (plmpeg-stream; not reached yet).
+  from `shim.c`, is undefined for our converter once (a) is fixed (plmpeg-stream; not reached yet); (i) a `///`
+  or `/** */` doc comment before a function is refused as a `FullComment` child (quakegeneric at
+  `common.c` `memsearch`).
 
 ## P6 — Doom
 

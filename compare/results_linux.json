@@ -76119,7 +76119,7 @@
 					},
 					"jit" : {
 						"status" : "output",
-						"reason" : "line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at /root/wt-p82q/compare/work/projects/quakegeneric/rust/host.das.inc:664:12`, expected `frame[0]=1626327968`"
+						"reason" : "line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at compare/work/projects/quakegeneric/rust/host.das.inc:664:12`, expected `frame[0]=1626327968`"
 					},
 					"exe" : {
 						"status" : "pass",

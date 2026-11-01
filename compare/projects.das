@@ -351,8 +351,12 @@ def judge_run(rc : int; output, errors, expected : string; timeout : float) : Ve
 //! the run.
 def lane_timeout(lane : string; limits : LaneLimits) : float => lane == "exe" || lane == "aot" ? limits.build : limits.sample
 
-// a verdict as the capture holds it
-def private verdict_json(v : Verdict) : JsonValue? => JV({"status" => JV(v.status), "reason" => JV(v.reason)})
+//! `reason` with every path under the folder `root` written relative to it, so a capture names the
+//! same file from any checkout (the JIT's warnings quote the module's absolute path).
+def path_free(reason, root : string) : string => replace(reason, root |> ends_with("/") ? root : "{root}/", "")
+
+// a verdict as the capture holds it, its paths under `root` relative
+def private verdict_json(v : Verdict; root : string) : JsonValue? => JV({"status" => JV(v.status), "reason" => JV(path_free(v.reason, root))})
 
 //! The command of the `interp`, `jit` or `exe` lane over the module `das_path` with `module_dirs`
 //! loaded and the program given `args`: daslang over the module, or the binary `exe_binary` builds
@@ -619,8 +623,8 @@ def private rust_module(p : Project; bin, tu, out_dir : string; units : array<st
     return t.entry
 }
 
-// one side's lanes as the capture holds them
-def private lanes_json(lanes : table<string; Verdict>) : JsonValue? => JV({for (lane in DAS_LANES); lane => verdict_json(lanes?[lane] ?? Verdict())})
+// one side's lanes as the capture holds them, their paths under `root` relative
+def private lanes_json(lanes : table<string; Verdict>; root : string) : JsonValue? => JV({for (lane in DAS_LANES); lane => verdict_json(lanes?[lane] ?? Verdict(), root)})
 
 //! The code of one side: its files, non-blank lines and the readability counters over `entry`
 //! (`measure_side`), over every module of `files` when there are several (`count_program`), the
@@ -754,10 +758,10 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
         "date" => JV(stamps.date),
         "samples" => JV(samples),
         "lanes" => JV(DAS_LANES),
-        "native" => verdict_json(native),
+        "native" => verdict_json(native, back),
         "native_compiler" => JV(first_line(captured([default_clang(), "--version"]))),
-        "ours" => JV({"error" => JV(ours_refusal), "lanes" => lanes_json(ours_lanes)}),
-        "rust" => JV({"error" => JV(rust_refusal), "lanes" => lanes_json(rust_lanes)}),
+        "ours" => JV({"error" => JV(ours_refusal), "lanes" => lanes_json(ours_lanes, back)}),
+        "rust" => JV({"error" => JV(rust_refusal), "lanes" => lanes_json(rust_lanes, back)}),
         "speed" => speed,
         "code" => JV({
             "ours" => JV(side_code(ours_files, ours_das, ours_refusal, false)),
