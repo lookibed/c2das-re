@@ -1,7 +1,7 @@
 {
 	"suites" : {
 		"c_testsuite" : {
-			"rust_pass_of_ours" : 194,
+			"ours_skipped" : 0,
 			"date" : "2026-11-01 02:54 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 199,
@@ -1561,12 +1561,12 @@
 			"rust_pass_of_unlisted" : 8,
 			"ids" : 220,
 			"seconds" : 86.92239379882812,
+			"rust_pass_of_ours" : 194,
 			"rust_pass_of_skipped" : 0,
-			"daslang" : "0.6.4",
-			"ours_skipped" : 0
+			"daslang" : "0.6.4"
 		},
 		"gcc_torture" : {
-			"rust_pass_of_ours" : 1089,
+			"ours_skipped" : 321,
 			"date" : "2026-11-01 03:04 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 1179,
@@ -13178,12 +13178,12 @@
 			"rust_pass_of_unlisted" : 67,
 			"ids" : 1656,
 			"seconds" : 645.4718017578125,
+			"rust_pass_of_ours" : 1089,
 			"rust_pass_of_skipped" : 41,
-			"daslang" : "0.6.4",
-			"ours_skipped" : 321
+			"daslang" : "0.6.4"
 		},
 		"csmith" : {
-			"rust_pass_of_ours" : 42,
+			"ours_skipped" : 31,
 			"date" : "2026-11-01 03:12 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 151,
@@ -14477,9 +14477,9 @@
 			"rust_pass_of_unlisted" : 0,
 			"ids" : 182,
 			"seconds" : 434.8171081542969,
+			"rust_pass_of_ours" : 42,
 			"rust_pass_of_skipped" : 5,
-			"daslang" : "0.6.4",
-			"ours_skipped" : 31
+			"daslang" : "0.6.4"
 		}
 	},
 	"perf" : {
@@ -17294,48 +17294,6 @@
 					}
 				}
 			},
-			"gcc_torture/990525-1" : {
-				"ours" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 40,
-					"runtime_lines" : 0,
-					"program_c2da_lines" : 0,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 0,
-						"unsafe_expr" : 0,
-						"c_function" : 0,
-						"literal_named" : 0,
-						"pointer_arith" : 0,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 0,
-						"pointer_index" : 0
-					}
-				},
-				"rust" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 341,
-					"runtime_lines" : 290,
-					"program_c2da_lines" : 7,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 14,
-						"unsafe_expr" : 34,
-						"c_function" : 0,
-						"literal_named" : 0,
-						"pointer_arith" : 0,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 1,
-						"pointer_index" : 11
-					}
-				}
-			},
 			"gcc_torture/990628-1" : {
 				"ours" : {
 					"status" : "ok",
@@ -17375,6 +17333,48 @@
 						"unsafe_block" : 0,
 						"while_rangeable" : 1,
 						"pointer_index" : 13
+					}
+				}
+			},
+			"gcc_torture/990525-1" : {
+				"ours" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 40,
+					"runtime_lines" : 0,
+					"program_c2da_lines" : 0,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 0,
+						"unsafe_expr" : 0,
+						"c_function" : 0,
+						"literal_named" : 0,
+						"pointer_arith" : 0,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 0,
+						"pointer_index" : 0
+					}
+				},
+				"rust" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 341,
+					"runtime_lines" : 290,
+					"program_c2da_lines" : 7,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 14,
+						"unsafe_expr" : 34,
+						"c_function" : 0,
+						"literal_named" : 0,
+						"pointer_arith" : 0,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 1,
+						"pointer_index" : 11
 					}
 				}
 			},
@@ -75304,6 +75304,244 @@
 								0.065712,
 								0.066471,
 								0.065745
+							]
+						}
+					},
+					"aot" : {
+						"error" : "the lane does not pass: skipped"
+					}
+				}
+			},
+			"daslang" : "0.6.4"
+		},
+		"h264bsd-mp4" : {
+			"code" : {
+				"ours" : {
+					"status" : "refused",
+					"error" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`",
+					"files" : 0,
+					"lines" : 0,
+					"runtime_lines" : 0,
+					"program_c2da_lines" : 0,
+					"counts" : {}
+				},
+				"rust" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 24316,
+					"runtime_lines" : 822,
+					"program_c2da_lines" : 854,
+					"counts" : {
+						"label" : 309,
+						"reinterpret" : 5172,
+						"unsafe_expr" : 8557,
+						"c_function" : 0,
+						"literal_named" : 7164,
+						"pointer_arith" : 1738,
+						"goto" : 362,
+						"unsafe_block" : 1208,
+						"while_rangeable" : 73,
+						"pointer_index" : 2701
+					}
+				}
+			},
+			"lanes" : [
+				"interp",
+				"jit",
+				"exe",
+				"aot"
+			],
+			"date" : "2026-11-01 20:51 UTC",
+			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"ours" : {
+				"error" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`",
+				"lanes" : {
+					"interp" : {
+						"status" : "refused",
+						"reason" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`"
+					},
+					"jit" : {
+						"status" : "refused",
+						"reason" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`"
+					},
+					"exe" : {
+						"status" : "refused",
+						"reason" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`"
+					},
+					"aot" : {
+						"status" : "refused",
+						"reason" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`"
+					}
+				}
+			},
+			"rust_commit_error" : "",
+			"functions" : [
+				{
+					"key" : "h264bsd-mp4",
+					"name" : "h264bsdProcessBlock",
+					"ours" : "",
+					"rust" : "[sideeffects]\ndef h264bsdProcessBlock(var data_28 : int?; var qp : uint; var skip : uint; var coeffMap_0 : uint) : uint {\n    var tmp0 : int\n    var tmp1_14 : int\n    var tmp2_14 : int\n    var tmp3_12 : int\n    var d2 : int\n    var d3 : int\n    var row_3 : uint\n    var col_3 : uint\n    var qpDiv : uint\n    var ptr_3 : int?\n    qpDiv = uint(qpDiv6[int(qp)])\n    tmp1_14 = levelScale[int(qpMod6[int(qp)])][0] << int(qpDiv)\n    tmp2_14 = levelScale[int(qpMod6[int(qp)])][1] << int(qpDiv)\n    tmp3_12 = levelScale[int(qpMod6[int(qp)])][2] << int(qpDiv)\n    if (skip == 0) {\n        unsafe(data_28[0]) *= tmp1_14\n    }\n    if ((coeffMap_0 & 0xff9cu) != 0x0) {\n        d2 = unsafe(data_28[14])\n        d3 = unsafe(data_28[15])\n        unsafe(data_28[1]) *= tmp2_14\n        unsafe(data_28[14]) = d2 * tmp2_14\n        unsafe(data_28[15]) = d3 * tmp3_12\n        d2 = unsafe(data_28[5])\n        d3 = unsafe(data_28[4])\n        unsafe(data_28[4]) = unsafe(data_28[2]) * tmp2_14\n        unsafe(data_28[2]) = d2 * tmp1_14\n        unsafe(data_28[5]) = d3 * tmp3_12\n        d3 = unsafe(data_28[6])\n        tmp0 = unsafe(data_28[8]) * tmp2_14\n        unsafe(data_28[8]) = unsafe(data_28[3]) * tmp1_14\n        unsafe(data_28[3]) = d3 * tmp2_14\n        d2 = unsafe(data_28[12])\n        d3 = unsafe(data_28[9])\n        unsafe(data_28[6]) = unsafe(data_28[7]) * tmp2_14\n        unsafe(data_28[7]) = d2 * tmp3_12\n        unsafe(data_28[12]) = d3 * tmp2_14\n        unsafe(data_28[9]) = tmp0\n        d2 = unsafe(data_28[11])\n        d3 = unsafe(data_28[13])\n        unsafe(data_28[13]) = unsafe(data_28[10]) * tmp3_12\n        unsafe(data_28[10]) = d2 * tmp1_14\n        unsafe(data_28[11]) = d3 * tmp2_14\n        row_3 = 4u\n        ptr_3 = unsafe(reinterpret<int?>(data_28))\n        while (true) {\n            let c2da_postinc_60 : uint = row_3\n            row_3--\n            if (c2da_postinc_60 == 0x0) {\n                break\n            }\n            tmp0 = unsafe(ptr_3[0]) + unsafe(ptr_3[2])\n            tmp1_14 = unsafe(ptr_3[0]) - unsafe(ptr_3[2])\n            tmp2_14 = (unsafe(ptr_3[1]) >> 1) - unsafe(ptr_3[3])\n            tmp3_12 = unsafe(ptr_3[1]) + (unsafe(ptr_3[3]) >> 1)\n            unsafe(ptr_3[0]) = tmp0 + tmp3_12\n            unsafe(ptr_3[1]) = tmp1_14 + tmp2_14\n            unsafe(ptr_3[2]) = tmp1_14 - tmp2_14\n            unsafe(ptr_3[3]) = tmp0 - tmp3_12\n            unsafe {  // nolint:STYLE025\n                ptr_3 += 4\n            }\n        }\n        var c2da_data_28_addr : uint64 = unsafe(reinterpret<uint64>(data_28))\n        col_3 = 4u\n        while (true) {\n            let c2da_postinc_61 : uint = col_3\n            col_3--\n            if (c2da_postinc_61 == 0x0) {\n                break\n            }\n            tmp0 = unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[0]) + unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[8])\n            tmp1_14 = unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[0]) - unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[8])\n            tmp2_14 = (unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[4]) >> 1) - unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[12])\n            tmp3_12 = unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[4]) + (unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[12]) >> 1)\n            unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[0]) = tmp0 + tmp3_12 + 32 >> 6\n            unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[4]) = tmp1_14 + tmp2_14 + 32 >> 6\n            unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[8]) = tmp1_14 - tmp2_14 + 32 >> 6\n            unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[12]) = tmp0 - tmp3_12 + 32 >> 6\n            if (uint(unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[0]) + 512) > 1023u || uint(unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[4]) + 512) > 1023u || uint(unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[8]) + 512) > 1023u || uint(unsafe(unsafe(reinterpret<int?>(c2da_data_28_addr))[12]) + 512) > 1023u) {\n                return 1u\n            }\n            c2da_data_28_addr += 4ul\n        }\n    } elif ((coeffMap_0 & 0x62u) == 0u) {\n        tmp0 = unsafe(data_28[0]) + 32 >> 6\n        if (uint(tmp0 + 512) > 1023u) {\n            return 1u\n        }\n        unsafe(data_28[15]) = tmp0\n        unsafe(data_28[14]) = int(unsafe(data_28[15]))  // nolint:PERF020\n        unsafe(data_28[13]) = int(unsafe(data_28[14]))  // nolint:PERF020\n        unsafe(data_28[12]) = int(unsafe(data_28[13]))  // nolint:PERF020\n        unsafe(data_28[11]) = int(unsafe(data_28[12]))  // nolint:PERF020\n        unsafe(data_28[10]) = int(unsafe(data_28[11]))  // nolint:PERF020\n        unsafe(data_28[9]) = int(unsafe(data_28[10]))  // nolint:PERF020\n        unsafe(data_28[8]) = int(unsafe(data_28[9]))  // nolint:PERF020\n        unsafe(data_28[7]) = int(unsafe(data_28[8]))  // nolint:PERF020\n        unsafe(data_28[6]) = int(unsafe(data_28[7]))  // nolint:PERF020\n        unsafe(data_28[5]) = int(unsafe(data_28[6]))  // nolint:PERF020\n        unsafe(data_28[4]) = int(unsafe(data_28[5]))  // nolint:PERF020\n        unsafe(data_28[3]) = int(unsafe(data_28[4]))  // nolint:PERF020\n        unsafe(data_28[2]) = int(unsafe(data_28[3]))  // nolint:PERF020\n        unsafe(data_28[1]) = int(unsafe(data_28[2]))  // nolint:PERF020\n        unsafe(data_28[0]) = int(unsafe(data_28[1]))  // nolint:PERF020\n    } else {\n        unsafe(data_28[1]) *= tmp2_14\n        unsafe(data_28[2]) = unsafe(data_28[5]) * tmp1_14\n        unsafe(data_28[3]) = unsafe(data_28[6]) * tmp2_14\n        tmp0 = unsafe(data_28[0]) + unsafe(data_28[2])\n        tmp1_14 = unsafe(data_28[0]) - unsafe(data_28[2])\n        tmp2_14 = (unsafe(data_28[1]) >> 1) - unsafe(data_28[3])\n        tmp3_12 = unsafe(data_28[1]) + (unsafe(data_28[3]) >> 1)\n        unsafe(data_28[0]) = tmp0 + tmp3_12 + 32 >> 6\n        unsafe(data_28[1]) = tmp1_14 + tmp2_14 + 32 >> 6\n        unsafe(data_28[2]) = tmp1_14 - tmp2_14 + 32 >> 6\n        unsafe(data_28[3]) = tmp0 - tmp3_12 + 32 >> 6\n        unsafe(data_28[12]) = int(unsafe(data_28[0]))  // nolint:PERF020\n        unsafe(data_28[8]) = int(unsafe(data_28[12]))  // nolint:PERF020\n        unsafe(data_28[4]) = int(unsafe(data_28[8]))  // nolint:PERF020\n        unsafe(data_28[13]) = int(unsafe(data_28[1]))  // nolint:PERF020\n        unsafe(data_28[9]) = int(unsafe(data_28[13]))  // nolint:PERF020\n        unsafe(data_28[5]) = int(unsafe(data_28[9]))  // nolint:PERF020\n        unsafe(data_28[14]) = int(unsafe(data_28[2]))  // nolint:PERF020\n        unsafe(data_28[10]) = int(unsafe(data_28[14]))  // nolint:PERF020\n        unsafe(data_28[6]) = int(unsafe(data_28[10]))  // nolint:PERF020\n        unsafe(data_28[15]) = int(unsafe(data_28[3]))  // nolint:PERF020\n        unsafe(data_28[11]) = int(unsafe(data_28[15]))  // nolint:PERF020\n        unsafe(data_28[7]) = int(unsafe(data_28[11]))  // nolint:PERF020\n        if (uint(unsafe(data_28[0]) + 512) > 1023u || uint(unsafe(data_28[1]) + 512) > 1023u || uint(unsafe(data_28[2]) + 512) > 1023u || uint(unsafe(data_28[3]) + 512) > 1023u) {\n            return 1u\n        }\n    }\n    return 0u\n}"
+				},
+				{
+					"key" : "h264bsd-mp4",
+					"name" : "FilterVerLumaEdge",
+					"ours" : "",
+					"rust" : "[sideeffects]\ndef FilterVerLumaEdge(var data_40 : uint8?; var bS_7 : uint; var thresholds_8 : edgeThreshold_t?; var imageWidth_1 : uint) {\n    var delta_4 : int\n    var tc_4 : int\n    var tmp_54 : int\n    var i_81 : uint\n    var p0_4 : int\n    var q0_4 : int\n    var p1_12 : int\n    var q1_4 : int\n    var p2_1 : int\n    var q2_1 : int\n    var tmpFlag_0 : uint\n    var clp_15 : uint8 const?\n    var alpha_0 : uint\n    var beta_0 : uint\n    var val_3 : int\n    clp_15 = unsafe(unsafe(addr(h264bsdClip[0])) + 512)\n    alpha_0 = thresholds_8.alpha\n    beta_0 = thresholds_8.beta\n    if (bS_7 < 4u) {\n        tc_4 = int(unsafe(thresholds_8.tc0[int(bS_7 - 1u)]))\n        tmp_54 = tc_4\n        i_81 = 4u\n        while (i_81 != 0x0) {\n            p1_12 = int(unsafe(data_40[-2]))\n            p0_4 = int(unsafe(data_40[-1]))\n            q0_4 = int(unsafe(data_40[0]))\n            q1_4 = int(unsafe(data_40[1]))\n            if (uint(p0_4 - q0_4 < 0 ? -(p0_4 - q0_4) : p0_4 - q0_4) < alpha_0 && uint(p1_12 - p0_4 < 0 ? -(p1_12 - p0_4) : p1_12 - p0_4) < beta_0 && uint(q1_4 - q0_4 < 0 ? -(q1_4 - q0_4) : q1_4 - q0_4) < beta_0) {\n                p2_1 = int(unsafe(data_40[-3]))\n                q2_1 = int(unsafe(data_40[2]))\n                if (uint(p2_1 - p0_4 < 0 ? -(p2_1 - p0_4) : p2_1 - p0_4) < beta_0) {\n                    val_3 = p2_1 + (p0_4 + q0_4 + 1 >> 1) - (p1_12 << 1) >> 1\n                    unsafe(data_40[-2]) = uint8(p1_12 + (val_3 < -tc_4 ? -tc_4 : val_3 > tc_4 ? tc_4 : val_3))\n                    tmp_54++\n                }\n                if (uint(q2_1 - q0_4 < 0 ? -(q2_1 - q0_4) : q2_1 - q0_4) < beta_0) {\n                    val_3 = q2_1 + (p0_4 + q0_4 + 1 >> 1) - (q1_4 << 1) >> 1\n                    unsafe(data_40[1]) = uint8(q1_4 + (val_3 < -tc_4 ? -tc_4 : val_3 > tc_4 ? tc_4 : val_3))\n                    tmp_54++\n                }\n                val_3 = (q0_4 - p0_4 << 2) + (p1_12 - q1_4) + 4 >> 3\n                delta_4 = val_3 < -tmp_54 ? -tmp_54 : val_3 > tmp_54 ? tmp_54 : val_3\n                q0_4 = int(unsafe(clp_15[q0_4 - delta_4]))\n                tmp_54 = tc_4\n                unsafe(data_40[-1]) = uint8(unsafe(clp_15[p0_4 + delta_4]))  // nolint:PERF020\n                unsafe(data_40[0]) = uint8(q0_4)\n            }\n            i_81--\n            unsafe {  // nolint:STYLE025\n                data_40 += int64(imageWidth_1)\n            }\n        }\n    } else {\n        i_81 = 4u\n        while (i_81 != 0x0) {\n            p1_12 = int(unsafe(data_40[-2]))\n            p0_4 = int(unsafe(data_40[-1]))\n            q0_4 = int(unsafe(data_40[0]))\n            q1_4 = int(unsafe(data_40[1]))\n            if (uint(p0_4 - q0_4 < 0 ? -(p0_4 - q0_4) : p0_4 - q0_4) < alpha_0 && uint(p1_12 - p0_4 < 0 ? -(p1_12 - p0_4) : p1_12 - p0_4) < beta_0 && uint(q1_4 - q0_4 < 0 ? -(q1_4 - q0_4) : q1_4 - q0_4) < beta_0) {\n                tmpFlag_0 = uint(uint(p0_4 - q0_4 < 0 ? -(p0_4 - q0_4) : p0_4 - q0_4) < (alpha_0 >> 2u) + 2u ? 1 : 0)\n                p2_1 = int(unsafe(data_40[-3]))\n                q2_1 = int(unsafe(data_40[2]))\n                if (tmpFlag_0 != 0x0 && uint(p2_1 - p0_4 < 0 ? -(p2_1 - p0_4) : p2_1 - p0_4) < beta_0) {\n                    tmp_54 = p1_12 + p0_4 + q0_4\n                    unsafe(data_40[-1]) = uint8(p2_1 + 2 * tmp_54 + q1_4 + 4 >> 3)\n                    unsafe(data_40[-2]) = uint8(p2_1 + tmp_54 + 2 >> 2)\n                    unsafe(data_40[-3]) = uint8(2 * int(unsafe(data_40[-4])) + 3 * p2_1 + tmp_54 + 4 >> 3)\n                } else {\n                    unsafe(data_40[-1]) = uint8(2 * p1_12 + p0_4 + q1_4 + 2 >> 2)\n                }\n                if (tmpFlag_0 != 0x0 && uint(q2_1 - q0_4 < 0 ? -(q2_1 - q0_4) : q2_1 - q0_4) < beta_0) {\n                    tmp_54 = p0_4 + q0_4 + q1_4\n                    unsafe(data_40[0]) = uint8(p1_12 + 2 * tmp_54 + q2_1 + 4 >> 3)\n                    unsafe(data_40[1]) = uint8(tmp_54 + q2_1 + 2 >> 2)\n                    unsafe(data_40[2]) = uint8(2 * int(unsafe(data_40[3])) + 3 * q2_1 + tmp_54 + 4 >> 3)\n                } else {\n                    unsafe(data_40[0]) = uint8(2 * q1_4 + q0_4 + p1_12 + 2 >> 2)\n                }\n            }\n            i_81--\n            unsafe {  // nolint:STYLE025\n                data_40 += int64(imageWidth_1)\n            }\n        }\n    }\n    return\n}"
+				}
+			],
+			"native" : {
+				"status" : "pass",
+				"reason" : ""
+			},
+			"samples" : 5,
+			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
+			"rust" : {
+				"error" : "",
+				"lanes" : {
+					"interp" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"jit" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"exe" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"aot" : {
+						"status" : "skipped",
+						"reason" : "the aot host passes the program no arguments, and it reads its input from its last one"
+					}
+				}
+			},
+			"speed" : {
+				"native" : {
+					"setup" : {
+						"time" : 2.1e-05,
+						"spread" : 0.0714285714285714,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							2e-05,
+							2.1e-05,
+							2.1e-05,
+							2.3e-05,
+							2.2e-05
+						]
+					},
+					"decode" : {
+						"time" : 0.085924,
+						"spread" : 0.07711465946650528,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.098378,
+							0.085777,
+							0.087222,
+							0.085126,
+							0.085924
+						]
+					}
+				},
+				"ours" : {
+					"interp" : {
+						"error" : "bench: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`"
+					},
+					"jit" : {
+						"error" : "bench: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`"
+					},
+					"exe" : {
+						"error" : "bench: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`"
+					},
+					"aot" : {
+						"error" : "bench: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`"
+					}
+				},
+				"rust" : {
+					"interp" : {
+						"setup" : {
+							"time" : 0.000313,
+							"spread" : 0.08466453674121403,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.00031,
+								0.000347,
+								0.000294,
+								0.000322,
+								0.000313
+							]
+						},
+						"decode" : {
+							"time" : 4.183893,
+							"spread" : 0.013619373153185343,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								4.287003,
+								4.191504,
+								4.183893,
+								4.176122,
+								4.173039
+							]
+						}
+					},
+					"jit" : {
+						"setup" : {
+							"time" : 2.4e-05,
+							"spread" : 0.43749999999999994,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								3.7e-05,
+								1.6e-05,
+								2.4e-05,
+								1.7e-05,
+								2.9e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.088335,
+							"spread" : 0.025301409407369604,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.088333,
+								0.088335,
+								0.088463,
+								0.089998,
+								0.085528
+							]
+						}
+					},
+					"exe" : {
+						"setup" : {
+							"time" : 1.9e-05,
+							"spread" : 0.15789473684210525,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								2.3e-05,
+								2.4e-05,
+								1.9e-05,
+								1.8e-05,
+								1.9e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.086462,
+							"spread" : 0.013792186162707307,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.087968,
+								0.086352,
+								0.085583,
+								0.086657,
+								0.086462
 							]
 						}
 					},
