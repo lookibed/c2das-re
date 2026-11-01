@@ -5,6 +5,7 @@ require daslib/fio
 require daslib/strings_boost
 require daslib/json_boost
 require ../rust_translator.das
+require _common
 
 //! `compare/rust_translator.das` over a stand-in translator: a shell script that records its
 //! argv, prints the real banner, and writes, refuses, stays silent or sleeps by the name of its
@@ -43,18 +44,6 @@ def private with_stand_in(t : T?; name : string; body : block<(dir, bin : string
 
 // the argv the stand-in last recorded, one argument an element
 def private recorded_argv(dir : string) : array<string> => <- [for (ln in split(fread(path_join(dir, "argv.txt")), "\n")); ln; where !empty(ln)]
-
-// `body` with `C2DAS_RUST_BIN` and `C2DAS_RUST` set to `bin_var` and `checkout_var`, both
-// restored after it
-def private with_env(bin_var, checkout_var : string; body : block<() : void>) {
-    let saved_bin = get_env_variable("C2DAS_RUST_BIN")
-    let saved_checkout = get_env_variable("C2DAS_RUST")
-    set_env_variable("C2DAS_RUST_BIN", bin_var)
-    set_env_variable("C2DAS_RUST", checkout_var)
-    invoke(body)
-    set_env_variable("C2DAS_RUST_BIN", saved_bin)
-    set_env_variable("C2DAS_RUST", saved_checkout)
-}
 
 def private git(dir : string; argv : array<string>) {
     var full <- ["git", "-C", dir, "-c", "user.name=test", "-c", "user.email=test@example.invalid"]
