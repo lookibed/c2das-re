@@ -42,6 +42,9 @@ gates and the review machinery. Codex sessions take their MCP wiring from
 - A new `Done` entry in `docs/implementation_order.md` is at most about ten lines: what was done,
   one to three numbers, a link to the report (the pull request or the item's report). Older entries
   are not rewritten.
+- A pull request that closes a ledger item prints in its body the readability criteria table and
+  its delta against `main` (`scripts/run_criteria.sh --delta <main's metrics/criteria_linux.json>`,
+  or the preflight `criteria` gate's output when the item does not change the output).
 - A pull request that closes a ledger item carries a `Кратко` section: two to four lines in
   Russian, no table, in the order essence, number, execution mode (interp, JIT, AOT, exe), next
   step; only facts this pull request measured.

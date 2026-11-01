@@ -27,6 +27,7 @@ compile      fast   -compile-only of every .das outside fixtures/
 ast-verify   fast   -dry-run --ast-verify of every changed .das (a verify line or a crash fails)
 md-ascii     fast   no em-dash, arrow or ellipsis added to a rule document (docs/ is exempt: authored elsewhere)
 review-md    fast   the REVIEW.das gates of every folder the diff touches
+criteria     fast   a report: the readability criteria of metrics/criteria_linux.json, the delta against the base's and the sample's freshness; red only when the capture is missing or unreadable
 tests        lane   every dastest suite: probes/, dasCRuntime/tests, c_runtime/tests, converter/tests, lua/tests, perf/tests, ports/tests, metrics/tests, compare/tests, tests/
 TABLE
             exit 0 ;;
@@ -89,6 +90,12 @@ gate_review_md() {
     local out; out=$(das "$DASLANG_ROOT/utils/internal/review-md/main.das" -- --base "$base" 2>&1) || { echo "$out" | tail -20; fail review-md "a REVIEW.das gate fired"; return 1; }
     pass review-md
 }
+gate_criteria() {
+    local out rc
+    out=$(das metrics/criteria.das -- --report --delta-ref "$base" 2>&1); rc=$?
+    echo "$out"
+    [ $rc = 0 ] && pass criteria || fail criteria "metrics/criteria_linux.json is missing or unreadable: run scripts/run_criteria.sh"
+}
 gate_tests() {
     local d rc=0
     for d in probes dasCRuntime/tests c_runtime/tests converter/tests lua/tests perf/tests ports/tests metrics/tests compare/tests tests; do
@@ -97,7 +104,7 @@ gate_tests() {
     done
     [ $rc = 0 ] && pass tests || fail tests "a suite is red"
 }
-fast=(env native untracked format lint compile ast-verify md-ascii review-md)
+fast=(env native untracked format lint compile ast-verify md-ascii review-md criteria)
 red=0
 for g in "${fast[@]}"; do
     wants "$g" || continue

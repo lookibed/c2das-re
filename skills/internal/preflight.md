@@ -2,7 +2,7 @@
 
 `scripts/preflight.sh` runs the **fast tier** serially and stops at the first red:
 `env`, `native`, `untracked`, `format`, `lint`, `compile`, `ast-verify`, `md-ascii`,
-`review-md`. `--full` adds the **tests lane**: every dastest suite folder `gate_tests` in the
+`review-md`, `criteria`. `--full` adds the **tests lane**: every dastest suite folder `gate_tests` in the
 script lists, which `--list-gates` prints (`probes/`, `dasCRuntime/tests`, `c_runtime/tests`,
 `converter/tests`, `lua/tests`, `perf/tests`, `ports/tests`, `metrics/tests`, `compare/tests`, `tests/`; a folder that does not exist is
 skipped); a diff to that list changes this paragraph. `--only <gate>` runs one gate (`--only
@@ -22,6 +22,7 @@ and `work/`; a folder of house `.das` code outside that list is a defect of the 
 | ast-verify | `daslang -dry-run --ast-verify` per changed `.das` outside `fixtures/` | an AST verify line or a crash: a bug in what built the node |
 | md-ascii | added lines of every `REVIEW*.md`, `ARCHITECTURE*.md`, `CLAUDE.md` and `AGENTS.md` in the tree and of `skills/internal/*.md` (`docs/` is never checked) | an em-dash, arrow or ellipsis in one of them |
 | review-md | `utils/internal/review-md/main.das -- --base <base>` | a `REVIEW.das` gate of a touched folder fired |
+| criteria | `metrics/criteria.das -- --report --delta-ref <base>`: prints the readability criteria table of the committed `metrics/criteria_linux.json`, its delta against the base's, and a `stale:` line per sample input that measures differently now | the capture is missing or unreadable; a stale sample or a fallen percentage is reported, never red: re-record with `scripts/run_criteria.sh` |
 | tests | `dastest -- --test <suite>` per suite; every suite runs before the lane fails | a suite is red: the failing test is fixed or its expectation corrected |
 
 A red gate is fixed and re-run alone with `--only`; the full run happens once per PR. The
