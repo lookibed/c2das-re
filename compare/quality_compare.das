@@ -122,9 +122,9 @@ def quality_corpus_of(path, filter : string; var error : string&) : array<string
 }
 
 //! The C file of `key` and the clang arguments of its Rust translation: a suite case's file, a
-//! csmith seed's program found or generated into `work`, or a kernel composed by the method into
-//! `work`; "" with `error` set when there is none.
-def quality_source(key, work : string; var clang_args : array<string>; var error : string&) : string {
+//! csmith seed's program found under `csmith_dir` or generated into `work`, or a kernel composed by
+//! the method into `work`; "" with `error` set when there is none.
+def quality_source(key, work : string; var clang_args : array<string>; var error : string&; csmith_dir : string) : string {
     let group = text_before(key, "/")
     let id = slice(key, length(group) + 1)
     if (group == "c_testsuite") {
@@ -132,8 +132,8 @@ def quality_source(key, work : string; var clang_args : array<string>; var error
     } elif (group == "gcc_torture") {
         return "{GCC_TORTURE_TESTS}/{id}.c"
     } elif (group == CSMITH) {
-        let prog = csmith_source(id, "suites/csmith/work", work)
-        error = prog.timed_out ? "csmith took longer than {int(CSMITH_TIMEOUT)} s" : prog.error
+        let prog = csmith_source(id, csmith_dir, work)
+        error = csmith_error(prog)
         return prog.c_path
     }
     for (k in perf_kernels("")) {
@@ -143,6 +143,27 @@ def quality_source(key, work : string; var clang_args : array<string>; var error
         }
     }
     error = "no input is keyed {key}"
+    return ""
+}
+
+//! Why a csmith program could not be had, "" when it was.
+def csmith_error(prog : CsmithProgram) : string => prog.timed_out ? "csmith took longer than {int(CSMITH_TIMEOUT)} s" : prog.error
+
+//! The seconds the Rust translator may take over `key`: a kernel's limit, else a suite case's.
+def quality_translate_timeout(key : string) : float => group_of(key) == PERF_GROUP ? PERF_TRANSLATE_TIMEOUT : TRANSLATE_TIMEOUT
+
+//! The folder where the csmith suite's own run leaves its programs, which a key reuses.
+let CSMITH_PROGRAMS = "suites/csmith/work"
+
+//! Why `--quality` over `corpus` cannot start, "" when it can: the input of a suite of `specs` the
+//! corpus holds a key of is missing.
+def quality_missing(corpus : array<string>; specs : array<SuiteSpec>) : string {
+    for (spec in specs) {
+        let used = find_index_if(corpus, $(k) => group_of(k) == spec.name) >= 0
+        if (used && !fexist(input_of(spec))) {
+            return "{input_of(spec)} is missing: run suites/{spec.name}/fetch.sh"
+        }
+    }
     return ""
 }
 
@@ -356,13 +377,13 @@ def measure_key(key, bin, root : string) : KeyQuality {
     var q : KeyQuality
     var clang_args : array<string>
     var error, ours_path, rust_path : string
-    let c_path = quality_source(key, work, clang_args, error)
+    let c_path = quality_source(key, work, clang_args, error, CSMITH_PROGRAMS)
     if (!empty(error) || empty(c_path)) {
         q.ours = SideQuality(status = "convert", error = error)
         q.rust = SideQuality(status = "refused", error = error)
     } else {
         q.ours <- ours_quality(c_path, path_join(work, "ours"), ours_path)
-        q.rust <- rust_quality(bin, c_path, path_join(work, "rust"), clang_args, group_of(key) == PERF_GROUP ? PERF_TRANSLATE_TIMEOUT : TRANSLATE_TIMEOUT, rust_path, q.rust_c2da)
+        q.rust <- rust_quality(bin, c_path, path_join(work, "rust"), clang_args, quality_translate_timeout(key), rust_path, q.rust_c2da)
     }
     q.functions <- sampled_functions(key, ours_path, rust_path)
     fwrite(path_join(work, "quality.json"), sprint_json(q, false))

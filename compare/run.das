@@ -115,9 +115,9 @@ def run_perf(args : CompareArgs) : int {
 // the quality comparison over the corpus the capture `out` and the ratchets name, `--filter`
 // narrowing it, `--jobs` workers at a time; its `quality` section written
 def run_quality(args : CompareArgs; out : string) : int {
-    let missing = missing_inputs(compare_suites())
-    if (!empty(missing)) {
-        to_log(LOG_ERROR, "{missing}\n")
+    var reason : string
+    if (!rust_available(reason)) {
+        to_log(LOG_ERROR, "{reason}\n")
         return 2
     }
     var error : string
@@ -125,6 +125,11 @@ def run_quality(args : CompareArgs; out : string) : int {
     if (!empty(error)) {
         to_log(LOG_ERROR, "{error}\n")
         return 1
+    }
+    let missing = quality_missing(corpus, compare_suites())
+    if (!empty(missing)) {
+        to_log(LOG_ERROR, "{missing}\n")
+        return 2
     }
     var entries <- drive_quality(corpus, args.jobs)
     var section = quality_section(run_stamps(rust_binary()), entries)
