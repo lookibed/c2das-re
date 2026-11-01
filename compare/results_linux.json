@@ -1,7 +1,7 @@
 {
 	"suites" : {
 		"c_testsuite" : {
-			"rust_pass_of_skipped" : 0,
+			"ours_skipped" : 0,
 			"date" : "2026-11-01 02:54 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 199,
@@ -1561,12 +1561,12 @@
 			"rust_pass_of_unlisted" : 8,
 			"ids" : 220,
 			"daslang" : "0.6.4",
-			"seconds" : 86.92239379882812,
-			"ours_skipped" : 0,
-			"rust_pass_of_ours" : 194
+			"rust_pass_of_ours" : 194,
+			"rust_pass_of_skipped" : 0,
+			"seconds" : 86.92239379882812
 		},
 		"gcc_torture" : {
-			"rust_pass_of_skipped" : 41,
+			"ours_skipped" : 321,
 			"date" : "2026-11-01 03:04 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 1179,
@@ -13178,12 +13178,12 @@
 			"rust_pass_of_unlisted" : 67,
 			"ids" : 1656,
 			"daslang" : "0.6.4",
-			"seconds" : 645.4718017578125,
-			"ours_skipped" : 321,
-			"rust_pass_of_ours" : 1089
+			"rust_pass_of_ours" : 1089,
+			"rust_pass_of_skipped" : 41,
+			"seconds" : 645.4718017578125
 		},
 		"csmith" : {
-			"rust_pass_of_skipped" : 5,
+			"ours_skipped" : 31,
 			"date" : "2026-11-01 03:12 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 151,
@@ -14477,9 +14477,9 @@
 			"rust_pass_of_unlisted" : 0,
 			"ids" : 182,
 			"daslang" : "0.6.4",
-			"seconds" : 434.8171081542969,
-			"ours_skipped" : 31,
-			"rust_pass_of_ours" : 42
+			"rust_pass_of_ours" : 42,
+			"rust_pass_of_skipped" : 5,
+			"seconds" : 434.8171081542969
 		}
 	},
 	"perf" : {
@@ -76023,6 +76023,144 @@
 					},
 					"aot" : {
 						"error" : "the lane does not pass: skipped"
+					}
+				}
+			},
+			"daslang" : "0.6.4"
+		},
+		"quakegeneric" : {
+			"code" : {
+				"ours" : {
+					"status" : "refused",
+					"error" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/common.c:1187:4: unsupported child `FullComment` of function `memsearch`",
+					"files" : 0,
+					"lines" : 0,
+					"runtime_lines" : 0,
+					"program_c2da_lines" : 0,
+					"counts" : {}
+				},
+				"rust" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 72,
+					"lines" : 59613,
+					"runtime_lines" : 1781,
+					"program_c2da_lines" : 23660,
+					"counts" : {
+						"label" : 578,
+						"reinterpret" : 10506,
+						"unsafe_expr" : 20287,
+						"c_function" : 0,
+						"literal_named" : 2275,
+						"pointer_arith" : 745,
+						"goto" : 461,
+						"unsafe_block" : 219,
+						"while_rangeable" : 203,
+						"pointer_index" : 5761
+					}
+				}
+			},
+			"lanes" : [
+				"interp",
+				"jit",
+				"exe",
+				"aot"
+			],
+			"date" : "2026-11-01 22:43 UTC",
+			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"ours" : {
+				"error" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/common.c:1187:4: unsupported child `FullComment` of function `memsearch`",
+				"lanes" : {
+					"interp" : {
+						"status" : "refused",
+						"reason" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/common.c:1187:4: unsupported child `FullComment` of function `memsearch`"
+					},
+					"jit" : {
+						"status" : "refused",
+						"reason" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/common.c:1187:4: unsupported child `FullComment` of function `memsearch`"
+					},
+					"exe" : {
+						"status" : "refused",
+						"reason" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/common.c:1187:4: unsupported child `FullComment` of function `memsearch`"
+					},
+					"aot" : {
+						"status" : "refused",
+						"reason" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/common.c:1187:4: unsupported child `FullComment` of function `memsearch`"
+					}
+				}
+			},
+			"rust_commit_error" : "",
+			"functions" : [
+				{
+					"key" : "quakegeneric",
+					"name" : "D_DrawSpans8",
+					"ours" : "",
+					"rust" : "[export, sideeffects]\ndef D_DrawSpans8(var pspan : espan_s?) {\n    var count : int\n    var spancount : int\n    var pbase : uint8?\n    var pdest : uint8?\n    var s : int\n    var t : int\n    var snext : int\n    var tnext : int\n    var sstep : int\n    var tstep : int\n    var sdivz : float\n    var tdivz : float\n    var zi : float\n    var z : float\n    var du : float\n    var dv : float\n    var spancountminus1 : float\n    var sdivz8stepu : float\n    var tdivz8stepu : float\n    var zi8stepu : float\n    sstep = 0\n    tstep = 0\n    pbase = unsafe(reinterpret<uint8?>(cacheblock))\n    sdivz8stepu = d_sdivzstepu * 8.0\n    tdivz8stepu = d_tdivzstepu * 8.0\n    zi8stepu = d_zistepu * 8.0\n    while (true) {\n        pdest = unsafe(reinterpret<uint8?>(unsafe(unsafe(d_viewbuffer + int64(screenwidth * pspan.v)) + pspan.u)))\n        count = pspan.count\n        du = float(pspan.u)\n        dv = float(pspan.v)\n        sdivz = d_sdivzorigin + dv * d_sdivzstepv + du * d_sdivzstepu\n        tdivz = d_tdivzorigin + dv * d_tdivzstepv + du * d_tdivzstepu\n        zi = d_ziorigin + dv * d_zistepv + du * d_zistepu\n        z = 65536.0 / zi\n        s = int(sdivz * z) + sadjust\n        if (s > bbextents) {\n            s = bbextents\n        } elif (s < 0) {\n            s = 0\n        }\n        t = int(tdivz * z) + tadjust\n        if (t > bbextentt) {\n            t = bbextentt\n        } elif (t < 0) {\n            t = 0\n        }\n        while (true) {\n            if (count >= 8) {\n                spancount = 8\n            } else {\n                spancount = count\n            }\n            count -= spancount\n            if (count != 0) {\n                sdivz += sdivz8stepu\n                tdivz += tdivz8stepu\n                zi += zi8stepu\n                z = 65536.0 / zi\n                snext = int(sdivz * z) + sadjust\n                if (snext > bbextents) {\n                    snext = bbextents\n                } elif (snext < 8) {\n                    snext = 8\n                }\n                tnext = int(tdivz * z) + tadjust\n                if (tnext > bbextentt) {\n                    tnext = bbextentt\n                } elif (tnext < 8) {\n                    tnext = 8\n                }\n                sstep = snext - s >> 3\n                tstep = tnext - t >> 3\n            } else {\n                spancountminus1 = float(spancount - 1)\n                sdivz = sdivz + d_sdivzstepu * spancountminus1\n                tdivz = tdivz + d_tdivzstepu * spancountminus1\n                zi = zi + d_zistepu * spancountminus1\n                z = 65536.0 / zi\n                snext = int(sdivz * z) + sadjust\n                if (snext > bbextents) {\n                    snext = bbextents\n                } elif (snext < 8) {\n                    snext = 8\n                }\n                tnext = int(tdivz * z) + tadjust\n                if (tnext > bbextentt) {\n                    tnext = bbextentt\n                } elif (tnext < 8) {\n                    tnext = 8\n                }\n                if (spancount > 1) {\n                    sstep = (snext - s) / (spancount - 1)\n                    tstep = (tnext - t) / (spancount - 1)\n                }\n            }\n            var c2da_pdest_addr : uint64 = unsafe(reinterpret<uint64>(pdest))\n            while (true) {\n                *unsafe(reinterpret<uint8?>(c2da_pdest_addr)) = uint8(*unsafe(unsafe(pbase + int64(s >> 16)) + int64((t >> 16) * cachewidth)))\n                c2da_pdest_addr++\n                s += sstep\n                t += tstep\n                spancount--\n                if (spancount <= 0) {\n                    break\n                }\n            }\n            pdest = unsafe(reinterpret<uint8?>(c2da_pdest_addr))\n            s = snext\n            t = tnext\n            if (count <= 0) {\n                break\n            }\n        }\n        pspan = unsafe(reinterpret<espan_s?>(pspan.pnext))\n        if (pspan == null) {\n            break\n        }\n    }\n    return\n}"
+				},
+				{
+					"key" : "quakegeneric",
+					"name" : "D_DrawZSpans",
+					"ours" : "",
+					"rust" : "[export, sideeffects]\ndef D_DrawZSpans(var pspan_0 : espan_s?) {\n    var count_0 : int\n    var doublecount : int\n    var izistep : int\n    var izi : int\n    var pdest_0 : int16?\n    var ltemp : uint\n    izistep = int(d_zistepu * 32768.0 * 65536.0)\n    while (true) {\n        pdest_0 = unsafe(reinterpret<int16?>(unsafe(unsafe(d_pzbuffer + int64(d_zwidth * uint(pspan_0.v))) + pspan_0.u)))\n        count_0 = pspan_0.count\n        izi = int(double(d_ziorigin + float(pspan_0.v) * d_zistepv + float(pspan_0.u) * d_zistepu) * 32768.0lf * 65536.0lf)\n        if ((int64(unsafe(reinterpret<uint64>(pdest_0))) & 2l) != 0) {\n            *pdest_0 = int16(izi >> 16)\n            unsafe {  // nolint:STYLE025\n                pdest_0 += 1\n            }\n            izi += izistep\n            count_0--\n        }\n        doublecount = count_0 >> 1\n        if (doublecount > 0) {\n            while (true) {\n                ltemp = uint(izi >> 16)\n                izi += izistep\n                ltemp |= uint(izi) & 0xffff0000u\n                izi += izistep\n                *unsafe(reinterpret<int?>(pdest_0)) = int(ltemp)\n                unsafe {  // nolint:STYLE025\n                    pdest_0 += 2\n                }\n                doublecount--\n                if (doublecount <= 0) {\n                    break\n                }\n            }\n        }\n        if ((count_0 & 1) != 0) {\n            *pdest_0 = int16(izi >> 16)\n        }\n        pspan_0 = unsafe(reinterpret<espan_s?>(pspan_0.pnext))\n        if (pspan_0 == null) {\n            break\n        }\n    }\n    return\n}"
+				}
+			],
+			"native" : {
+				"status" : "pass",
+				"reason" : ""
+			},
+			"samples" : 5,
+			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
+			"rust" : {
+				"error" : "",
+				"lanes" : {
+					"interp" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"jit" : {
+						"status" : "output",
+						"reason" : "line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at /root/wt-p82q/compare/work/projects/quakegeneric/rust/host.das.inc:664:12`, expected `frame[0]=1626327968`"
+					},
+					"exe" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"aot" : {
+						"status" : "skipped",
+						"reason" : "the aot host passes the program no arguments, and it reads its input from its last one"
+					}
+				}
+			},
+			"speed" : {
+				"native" : {
+					"error" : "no bench: the project has no bench unit"
+				},
+				"ours" : {
+					"interp" : {
+						"error" : "no bench: the project has no bench unit"
+					},
+					"jit" : {
+						"error" : "no bench: the project has no bench unit"
+					},
+					"exe" : {
+						"error" : "no bench: the project has no bench unit"
+					},
+					"aot" : {
+						"error" : "no bench: the project has no bench unit"
+					}
+				},
+				"rust" : {
+					"interp" : {
+						"error" : "no bench: the project has no bench unit"
+					},
+					"jit" : {
+						"error" : "no bench: the project has no bench unit"
+					},
+					"exe" : {
+						"error" : "no bench: the project has no bench unit"
+					},
+					"aot" : {
+						"error" : "no bench: the project has no bench unit"
 					}
 				}
 			},
