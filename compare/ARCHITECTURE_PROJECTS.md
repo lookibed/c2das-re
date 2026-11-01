@@ -96,8 +96,8 @@ none on the Rust side), `timeout` past that check's limit; else each lane runs w
 the program's argument (`lane_argv`: daslang over the module under `interp` and `jit`, under `exe`
 the binary `exe_binary` builds, `compile` with the build's line when it leaves none) and is judged
 on its stdout (`run_split`; the program's stderr, doomgeneric's engine log, is apart): `timeout`
-past its limit, `exit` with the code and the first line naming an error in the stdout, then the
-stderr, `output` with the first line that differs from the expected text (numbered from 1, a missing
+past its limit, `exit` with the code and the first line naming an error in the stderr, then the
+stdout, `output` with the first line that differs from the expected text (numbered from 1, a missing
 line `(none)`), `pass`. The native runs and each bench sample are judged the same way. The JIT's
 `[I]` lines are not the program's output. The `aot` tier's host passes the program no
 arguments, so a project that reads its fixture from its argument is `skipped` under `aot` with that

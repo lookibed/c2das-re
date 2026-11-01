@@ -1357,7 +1357,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `LAYOUT_LANES`, the `program.modules.txt`/`program.layout.txt` literals vs `LAYOUT_REPORT`/
   `MODULE_LIST`, the module-list reader in `clear_owned` and `publish.das`, `main.das`'s third copy
   of the `--layout` `option_error`); `tiers.das` `bare_ident_of` beside `cir.das` `ident_of` (the
-  AOT and exe output names keep a leading digit bare). Style items the audit rated
+  AOT and exe output names keep a leading digit bare); `compare/projects.das` `exe_binary` beside
+  `perf_lanes.das`'s private `built_binary` (fold: a `module_dirs` parameter on `built_binary`). Style items the audit rated
   suggestion or nitpick (`/root/notes/audit_p5.1/reports/style_*.md`): the `-1` sentinels and the
   `16` exact-order limit named, `NO_CUT` written as `(1l << 62l) - 1l`, `LayoutNode.kind` an enum,
   the forced edges in their own table, one `why_*` prefix for the refusal functions, the

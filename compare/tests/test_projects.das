@@ -151,6 +151,8 @@ def test_verdicts(t : T?) {
         let failed = run_judged(["sh", "-c", "echo a; echo 'error: x' >&2; exit 4"], "a\n", 30.0)
         t |> equal("{failed.status} {failed.reason}", "exit exit 4: error: x")
         t |> equal(judge_run(4, "a\n", "", "a\n", 9.0).reason, "exit 4: a")
+        let died = run_judged(["sh", "-c", "echo 'frame[0]=1'; echo 'segmentation fault' >&2; exit 1"], "a\n", 30.0)
+        t |> equal("{died.status} {died.reason}", "exit exit 1: segmentation fault")
     }
     t |> run("a lane's command: daslang over the module, or the exe binary, the program's arguments last") @(t : T?) {
         t |> with_scratch("cmp_projects_lane_argv") $(dir) {
@@ -165,6 +167,9 @@ def test_verdicts(t : T?) {
             t |> success(fexist(exe[0]) && exe[1] == "f", join(exe, " "))
             let slow <- lane_argv(das, "exe", path_join(dir, "w"), none, ["f"], 1.0, error)
             t |> equal("{length(slow)} {error}", "0 timeout: the build or its run took longer than 1 s")
+            let lanes <- side_lanes(das, "", path_join(dir, "lanes"), none, ["f"], "", LaneLimits(sample = 60.0, build = 1.0))
+            let exe_lane = lanes?["exe"] ?? Verdict()
+            t |> equal("{exe_lane.status} {exe_lane.reason}", "timeout the build or its run took longer than 1 s")
             fwrite(das, "options gen2\n[export]\ndef main() : int \{\n    return undefined_name\n\}\n")
             let broken <- lane_argv(das, "exe", path_join(dir, "w"), none, ["f"], 300.0, error)
             t |> success(empty(broken) && error |> starts_with("exe build: the build exited "), error)
