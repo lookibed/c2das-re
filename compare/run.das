@@ -187,14 +187,19 @@ def run_project(args : CompareArgs; out : string) : int {
         to_log(LOG_ERROR, "{reason}\n")
         return 2
     }
-    let manual = path_join(rust_checkout(), MANUAL_DIR)
+    let checkout = rust_checkout()
     var p : Project
-    if (!find_project(manual, args.project, p)) {
-        to_log(LOG_ERROR, "--project takes one of {join([for (row in project_table(manual)); row.name], ", ")}, not `{args.project}`\n")
+    if (!find_project(checkout, args.project, p)) {
+        to_log(LOG_ERROR, "--project takes one of {join([for (row in project_table(checkout)); row.name], ", ")}, not `{args.project}`\n")
         return 1
     }
     if (!fexist(project_path(p, p.tu))) {
-        to_log(LOG_ERROR, "no {project_path(p, p.tu)}: the Rust checkout {rust_checkout()} lacks the project\n")
+        to_log(LOG_ERROR, "no {project_path(p, p.tu)}: the Rust checkout {checkout} lacks the project\n")
+        return 2
+    }
+    let expected_error = load_expected(p)
+    if (!empty(expected_error)) {
+        to_log(LOG_ERROR, "{expected_error}\n")
         return 2
     }
     let bin = rust_binary()

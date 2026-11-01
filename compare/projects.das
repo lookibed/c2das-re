@@ -24,8 +24,9 @@ require quality_compare
 
 let PROJECTS_WORK = "compare/work/projects"
 
-//! the folder under a Rust checkout holding its real projects
+//! the folder under a Rust checkout holding its real projects, and the file of its canonical cases
 let MANUAL_DIR = "tests/manual"
+let CASES_FILE = "tests/canonical/cases.json"
 
 //! seconds the Rust translator may take over a project
 let PROJECT_TRANSLATE_TIMEOUT = 600.0
@@ -33,7 +34,9 @@ let PROJECT_TRANSLATE_TIMEOUT = 600.0
 //! One project, the facts of its README in the Rust repository: the translation unit and the
 //! bench one, relative to `dir`, the clang flags both sides and the native build take, the fixture
 //! the program reads from its last argument, the output it must print, the translator options
-//! the Rust side's canonical case passes, and the C functions shown side by side.
+//! the Rust side's canonical case passes, and the C functions shown side by side. The output it
+//! must print is the canonical case `case_id`'s `expected.stdout` in the file `cases`, read by
+//! `load_expected` into `expected`.
 struct Project {
     name : string
     dir : string
@@ -44,6 +47,8 @@ struct Project {
     c_std : string
     native_flags : array<string>
     fixture : string
+    cases : string
+    case_id : string
     expected : string
     rust_flags : array<string>
     functions : array<string>
@@ -56,9 +61,10 @@ struct Verdict {
     reason : string
 }
 
-//! The projects of the Rust checkout's `manual_dir`.
+//! The projects of the Rust checkout `checkout`, their expected output not yet read.
 [arch(at="ARCHITECTURE_PROJECTS.md#projects")]
-def project_table(manual_dir : string) : array<Project> {
+def project_table(checkout : string) : array<Project> {
+    let manual_dir = path_join(checkout, MANUAL_DIR)
     var all : array<Project>
     all |> emplace(Project(
         name = "wasm3",
@@ -69,22 +75,47 @@ def project_table(manual_dir : string) : array<Project> {
         c_std = "c11",
         native_flags <- ["-O2"],
         fixture = "fixtures/fib32.wasm",
-        expected = "bytes=62\nfib[1]=1\nfib[2]=1\nfib[5]=5\nfib[10]=55\nfib[15]=610\nfib[20]=6765\nfib[24]=46368\ncount=7\n",
+        cases = path_join(checkout, CASES_FILE),
+        case_id = "wasm3-fib32-std",
         rust_flags <- ["--das-option", "stack = 4194304"],
         functions <- ["op_Call", "call_fib"]))
     return <- all
 }
 
-//! The project `name` of `manual_dir` into `p`; false when the table has none.
-def find_project(manual_dir, name : string; var p : Project) : bool {
+//! The project `name` of the Rust checkout `checkout` into `p`; false when the table has none.
+def find_project(checkout, name : string; var p : Project) : bool {
     var found = false
-    for (row in project_table(manual_dir)) {
+    for (row in project_table(checkout)) {
         if (row.name == name) {
             p := row
             found = true
         }
     }
     return found
+}
+
+//! `p.expected` read from its canonical case's `expected.stdout`: "", or why it cannot be.
+[arch(at="ARCHITECTURE_PROJECTS.md#projects")]
+def load_expected(var p : Project) : string {
+    if (!fexist(p.cases)) {
+        return "no {p.cases}: the Rust checkout lacks its canonical cases"
+    }
+    var error : string
+    let js = read_json(fread(p.cases), error)
+    if (js == null) {
+        return "{p.cases} is not JSON: {error}"
+    }
+    let cases = js?["cases"]
+    if (cases != null && cases.value is _array) {
+        for (c in cases.value as _array) {
+            let stdout = c?["expected"]?["stdout"]
+            if ((c?["id"] ?? "") == p.case_id && stdout != null && stdout.value is _string) {
+                p.expected = stdout ?? ""
+                return ""
+            }
+        }
+    }
+    return "{p.cases} has no case {p.case_id} with an expected.stdout"
 }
 
 //! `rel`, a path of project `p`, made absolute under its folder.
@@ -349,6 +380,7 @@ def project_entry(p : Project; bin, work : string; samples : int; stamps : Stamp
         "samples" => JV(samples),
         "lanes" => JV(DAS_LANES),
         "native" => verdict_json(native),
+        "native_compiler" => JV(first_line(captured([default_clang(), "--version"]))),
         "ours" => JV({"error" => JV(ours_refusal), "lanes" => lanes_json(ours_lanes)}),
         "rust" => JV({"error" => JV(rust_refusal), "lanes" => lanes_json(rust_lanes)}),
         "speed" => JV({

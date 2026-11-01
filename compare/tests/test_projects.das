@@ -48,16 +48,29 @@ let EXPECTED = "bytes=62\nfib[1]=1\nfib[2]=1\nfib[5]=5\nfib[10]=55\nfib[15]=610\
 
 [test]
 def test_project_row(t : T?) {
-    t |> run("wasm3 resolved under the manual folder, its clang arguments absolute") @(t : T?) {
+    t |> run("wasm3 resolved under the checkout's manual folder, its clang arguments absolute") @(t : T?) {
         var p : Project
         t |> success(find_project("/m", "wasm3", p))
-        t |> equal(p.dir, "/m/wasm3")
-        t |> equal(project_path(p, p.fixture), "/m/wasm3/fixtures/fib32.wasm")
-        t |> equal(join(clang_args(p), " "), "-std=c11 -I/m/wasm3/include -I/m/wasm3/upstream/wasm3/source -I/m/wasm3/src")
-        t |> equal(p.expected, EXPECTED)
+        t |> equal(p.dir, "/m/tests/manual/wasm3")
+        t |> equal(project_path(p, p.fixture), "/m/tests/manual/wasm3/fixtures/fib32.wasm")
+        t |> equal(join(clang_args(p), " "), "-std=c11 -I/m/tests/manual/wasm3/include -I/m/tests/manual/wasm3/upstream/wasm3/source -I/m/tests/manual/wasm3/src")
+        t |> equal("{p.cases} {p.case_id} {p.expected}", "/m/tests/canonical/cases.json wasm3-fib32-std ")
         t |> equal(join(p.rust_flags, "|"), "--das-option|stack = 4194304")
         var q : Project
         t |> success(!find_project("/m", "doom", q))
+    }
+    t |> run("the expected output read from the canonical case, or why not") @(t : T?) {
+        t |> with_scratch("cmp_projects_cases") $(dir) {
+            var p = Project(cases = path_join(dir, "cases.json"), case_id = "c")
+            t |> equal(load_expected(p), "no {p.cases}: the Rust checkout lacks its canonical cases")
+            fwrite(p.cases, "\{")
+            t |> success(load_expected(p) |> starts_with("{p.cases} is not JSON: "))
+            fwrite(p.cases, "\{\"cases\": [\{\"id\": \"c\"\}, \{\"id\": \"d\", \"expected\": \{\"stdout\": \"x\"\}\}]\}")
+            t |> equal(load_expected(p), "{p.cases} has no case c with an expected.stdout")
+            fwrite(p.cases, "\{\"cases\": [\{\"id\": \"d\"\}, \{\"id\": \"c\", \"expected\": \{\"stdout\": \"a\\nb\\n\"\}\}]\}")
+            t |> equal(load_expected(p), "")
+            t |> equal(p.expected, "a\nb\n")
+        }
     }
 }
 
@@ -249,6 +262,8 @@ def private stand_in_project(dir : string) : string {
         mkdir_rec(path_join(root, sub))
     }
     fwrite(path_join(root, "fixtures/fib32.wasm"), "")
+    mkdir_rec(path_join(dir, "tests/canonical"))
+    fwrite(path_join(dir, "tests/canonical/cases.json"), write_json(JV({"cases" => JV([JV({"id" => JV("wasm3-fib32-std"), "expected" => JV({"stdout" => JV(EXPECTED)})})])})))
     let lines = replace(EXPECTED, "\n", "\\n")
     let call = "int call_fib(int n) \{ return n; \}\n"
     fwrite(path_join(root, "src/all_host.c"), "#include <stdio.h>\n{call}int main(void) \{ printf(\"{lines}\"); return call_fib(0); \}\n")
@@ -298,6 +313,10 @@ def test_project_run(t : T?) {
                 t |> success(out |> contains("--project takes one of wasm3, not `doom`"), out)
                 t |> equal(run_compare(["--project", "wasm3"], out), 2, out)
                 t |> success(out |> contains("the Rust checkout {dir} lacks the project"), out)
+                mkdir_rec(path_join(dir, "tests/manual/wasm3/src"))
+                fwrite(path_join(dir, "tests/manual/wasm3/src/all_host.c"), "int main(void) \{ return 0; \}\n")
+                t |> equal(run_compare(["--project", "wasm3"], out), 2, out)
+                t |> success(out |> contains("the Rust checkout lacks its canonical cases"), out)
                 t |> equal(run_compare(["--project", "wasm3", "--samples", "0"], out), 1, out)
                 t |> equal(run_compare(["--project", "wasm3", "--perf"], out), 1, out)
                 t |> success(out |> contains("--perf runs alone"), out)
@@ -309,7 +328,7 @@ def test_project_run(t : T?) {
     }
 }
 
-let RENDER_CAPTURE = "\{\"projects\": \{\"w\": \{\"rust_commit\": \"0123456789abcdef\", \"date\": \"d\", \"samples\": 5, \"lanes\": [\"interp\", \"aot\"], \"native\": \{\"status\": \"native\", \"reason\": \"clang exited 1\"\}, \"ours\": \{\"lanes\": \{\"interp\": \{\"status\": \"refused\", \"reason\": \"r\"\}, \"aot\": \{\"status\": \"refused\", \"reason\": \"r\"\}\}\}, \"rust\": \{\"lanes\": \{\"interp\": \{\"status\": \"pass\", \"reason\": \"\"\}, \"aot\": \{\"status\": \"skipped\", \"reason\": \"no args\"\}\}\}, \"speed\": \{\"native\": \{\"decode\": \{\"time\": 0.5\}\}, \"ours\": \{\"interp\": \{\"error\": \"bench: r\"\}, \"aot\": \{\"error\": \"the lane does not pass: refused\"\}\}, \"rust\": \{\"interp\": \{\"decode\": \{\"time\": 1.0\}\}, \"aot\": \{\"error\": \"timeout: the run took longer than 1 s\"\}\}\}, \"code\": \{\"rust\": \{\"status\": \"ok\", \"files\": 1, \"lines\": 9, \"runtime_lines\": 2, \"counts\": \{\"goto\": 4\}\}\}, \"functions\": [\{\"key\": \"w\", \"name\": \"f\", \"ours\": \"\", \"rust\": \"def f() \{\\n\}\"\}]\}\}\}"
+let RENDER_CAPTURE = "\{\"projects\": \{\"w\": \{\"rust_commit\": \"0123456789abcdef\", \"date\": \"d\", \"samples\": 5, \"native_compiler\": \"clang 22\", \"lanes\": [\"interp\", \"aot\"], \"native\": \{\"status\": \"native\", \"reason\": \"clang exited 1\"\}, \"ours\": \{\"lanes\": \{\"interp\": \{\"status\": \"refused\", \"reason\": \"r\"\}, \"aot\": \{\"status\": \"refused\", \"reason\": \"r\"\}\}\}, \"rust\": \{\"lanes\": \{\"interp\": \{\"status\": \"pass\", \"reason\": \"\"\}, \"aot\": \{\"status\": \"skipped\", \"reason\": \"no args\"\}\}\}, \"speed\": \{\"native\": \{\"decode\": \{\"time\": 0.5\}\}, \"ours\": \{\"interp\": \{\"error\": \"bench: r\"\}, \"aot\": \{\"error\": \"the lane does not pass: refused\"\}\}, \"rust\": \{\"interp\": \{\"decode\": \{\"time\": 1.0\}\}, \"aot\": \{\"error\": \"timeout: the run took longer than 1 s\"\}\}\}, \"code\": \{\"rust\": \{\"status\": \"ok\", \"files\": 1, \"lines\": 9, \"runtime_lines\": 2, \"counts\": \{\"goto\": 4\}\}\}, \"functions\": [\{\"key\": \"w\", \"name\": \"f\", \"ours\": \"\", \"rust\": \"def f() \{\\n\}\"\}]\}\}\}"
 
 [test]
 def test_rendering(t : T?) {
@@ -319,10 +338,11 @@ def test_rendering(t : T?) {
         t |> success(verdicts |> contains("| w       | Ours | native |     refused | refused |"), verdicts)
         t |> success(verdicts |> contains("| w       | Rust | native |        pass | skipped |"), verdicts)
         let speed = project_speed_table(js)
-        t |> success(speed |> contains("| w       | Ours | 0.500000 |     refused | refused |"), speed)
-        t |> success(speed |> contains("| w       | Rust | 0.500000 |        2.00 | timeout |"), speed)
+        t |> success(speed |> contains("| w       | Ours | clang 22        | 0.500000 |     refused | refused |"), speed)
+        t |> success(speed |> contains("| w       | Rust | clang 22        | 0.500000 |        2.00 | timeout |"), speed)
         let code = project_code_table(js)
         t |> success(code |> contains("| w       | Rust | ok   |     1 |     9 |             2 |"), code)
+        t |> success(code |> contains("| w       | Ours |      |     - |     - |             - |          - |"), code)
         let reasons <- project_reasons(js)
         t |> equal(join(reasons, "\n"), "- w, native: clang exited 1\n- w, Ours, interpreter AOT: refused: r\n- w, Rust, AOT: skipped: no args")
         let text = projects_text(js)

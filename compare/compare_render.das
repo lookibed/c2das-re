@@ -430,7 +430,7 @@ def projects_table(results : JsonValue const?) : string {
 }
 
 //! The code table: per project and side its status, files, non-blank lines, the Rust runtime's
-//! lines and each readability counter.
+//! lines and each readability counter, each `-` for a side that was not measured.
 [arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
 def project_code_table(results : JsonValue const?) : string {
     let names <- keys_of(results?["projects"])
@@ -445,8 +445,9 @@ def project_code_table(results : JsonValue const?) : string {
     for (name in names) {
         for (side in ["ours", "rust"]) {
             let code = results?["projects"]?[name]?["code"]?[side]
-            var inscope row <- [name, side_title(side), code?["status"] ?? "", "{code?["files"] ?? 0}", "{code?["lines"] ?? 0}", "{code?["runtime_lines"] ?? 0}"]
-            row |> push_from([for (m in METRICS); "{code?["counts"]?[m] ?? 0}"])
+            let measured = (code?["status"] ?? "") == "ok"
+            var inscope row <- [name, side_title(side), code?["status"] ?? ""]
+            row |> push_from([for (key in ["files", "lines", "runtime_lines"]); measured ? "{code?[key] ?? 0}" : "-"], [for (m in METRICS); measured ? "{code?["counts"]?[m] ?? 0}" : "-"])
             rows |> emplace(row)
         }
     }
@@ -474,8 +475,8 @@ def bench_text_of(cell, native : JsonValue const?) : string {
     return error |> starts_with("bench: ") ? "refused" : colon < 0 ? error : slice(error, 0, colon)
 }
 
-//! The bench table: per project and side the native build's decode seconds and each lane's decode
-//! time over it.
+//! The bench table: per project and side the native compiler's version line, the native build's
+//! decode seconds and each lane's decode time over it.
 [arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
 def project_speed_table(results : JsonValue const?) : string {
     let names <- keys_of(results?["projects"])
@@ -483,7 +484,7 @@ def project_speed_table(results : JsonValue const?) : string {
     if (empty(names)) {
         return ""
     }
-    var headers <- ["Project", "Side", "Native s"]
+    var headers <- ["Project", "Side", "Native compiler", "Native s"]
     headers |> push_from([for (lane in lanes); lane_title(lane)])
     var rows : array<array<string>>
     rows |> reserve(2 * length(names))
@@ -492,12 +493,12 @@ def project_speed_table(results : JsonValue const?) : string {
         let native = speed?["native"]
         let native_time = native?["decode"]?["time"] ?? 0.0lf
         for (side in ["ours", "rust"]) {
-            var inscope row <- [name, side_title(side), native_time > 0.0lf ? "{native_time:.6f}" : "n/a"]
+            var inscope row <- [name, side_title(side), results?["projects"]?[name]?["native_compiler"] ?? "", native_time > 0.0lf ? "{native_time:.6f}" : "n/a"]
             row |> push_from([for (lane in lanes); bench_text_of(speed?[side]?[lane], native)])
             rows |> emplace(row)
         }
     }
-    return table_of(headers, rows, 2)
+    return table_of(headers, rows, 3)
 }
 
 //! One line per side of each project for every reason its lanes give, the lanes sharing it named
