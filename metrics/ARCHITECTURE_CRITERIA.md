@@ -82,7 +82,7 @@ them. "Clean share" is the share of the denominator free of the defect.
 | `addr_deref` | `addr(x).f`, `addr(deref(`, `deref(addr(` | none | clean share of matched functions |
 | `reinterpret_casts` | `reinterpret<T>(...)` of anything but a string literal | none | clean share of matched functions |
 | `late_binding` | a module named `*_link` or spelling a `*_slot` | none | clean share of modules |
-| `qualified_calls` | `__::` and `<module>::` of a program module (`crt::` and other outside modules are not) | none | clean share of matched functions |
+| `qualified_calls` | `__::` and `<module>::` of a program module; `crt::` and other outside modules are not counted, since `crt` is a real outside module holding the C library and a human port qualifies a call to it too | none | clean share of matched functions |
 | `require_lines` | das `require` lines | one per C `#include` | C includes / das requires, capped |
 | `setjmp` | `try` lines inside a `while (_sj_run)` trampoline | a flat `try`/`recover` | clean share of the `try` lines |
 | `layout_checks` | `static_assert(typeinfo ...)` lines | in a test, not the module | clean share of modules |
@@ -98,7 +98,11 @@ them. "Clean share" is the share of the denominator free of the defect.
 Where the C source has no counterpart (most noise criteria), the denominator is the unit a reader
 judges, the function or the module, since a site count per C line would read near 100 percent
 however noisy the worst functions are. `switch_flags` and `string_literals` take the larger of
-the C count and the das count as the denominator, so a das count past the C one reads 0.
+the C count and the das count as the denominator, so a das count past the C one reads 0. The
+per-module criteria (`layout_checks`, `long_lines`, `late_binding`) are binary in a one-module
+row: the `single` layout and every suite input hold one module, so a single layout check or long
+line takes a Lua `single` row to 0 where the source layout's many modules read a share
+(`lua/lua@single` `layout_checks` 0.0 against 64.6 in `lua/lua`).
 
 What the criteria leave out: the unreachable `return` the emitter adds after a function whose end
 is formally reachable (no text shape tells it from a reachable one), `[c_function]` (the

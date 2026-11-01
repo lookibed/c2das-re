@@ -14,9 +14,10 @@ inputs' text, are `ARCHITECTURE_CRITERIA.md`.
   2), runs one worker process per input, `--jobs` at a time (4 by default), through
   `run_workers` of `suites/suite_runner.das`, the pool the csmith driver uses; a worker
   (`--one <input key>`) converts the input through `convert_input` of `readability_inputs.das`
-  into `work/<input key>/das/` and writes its counts to `work/<input key>/counts.txt`. The driver gathers the files, prints the totals table
-  with the inputs attempted and failed, and applies the ratchet (section 4). A failed worker's
-  line carries what the worker printed. It never runs a converted module.
+  into `work/<input key>/das/` and writes its counts to `work/<input key>/counts.txt`. The
+  driver gathers the files, prints the totals table with the inputs attempted and failed, and
+  applies the ratchet (section 4). A failed worker's line carries what the worker printed. It
+  never runs a converted module.
 - `readability_inputs.das` - an input key converted: it writes or generates the input's C file
   and converts it through `converter/pipeline.das` under the `linux` dialect (section 2); the
   criteria driver converts through it too.
