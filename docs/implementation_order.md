@@ -25,7 +25,8 @@ text, make it all work, then the LLM-assisted port; his words on layout, start-u
 stand behind each)
 12. Layout (P7.0a): the default layout keeps every cycle one module of `.das.inc` fragments, a file
     per member (today's `scc`); branches stay separate modules, header clusters as they are; late
-    binding (the `<entry>_link.das` slots) stays an opt-in flag and sidecar field; the mode names follow the meaning, so the default
+    binding (the `<entry>_link.das` slots) stays an opt-in flag and sidecar field; the mode
+    names follow the meaning, so the default
     is not called by another mode's old name; tests and captures in every mode; the ports publisher
     publishes the default mode as the primary one; the language's mutual-`require` limit becomes a
     probe, a `probe-findings.md` row and an issue in `lookibed/daScript` (fact and repro only).
