@@ -133,18 +133,35 @@ def test_three_files(t : T?) {
     rmdir_rec(work_root)
 }
 
-// the fixture in the default layout, whose cut the entry module's object `calls` steers
+// the fixture in the source-cut layout, whose cut the entry module's object `calls` steers, and in
+// the default layout, which cuts nothing
 [test]
 def test_three_files_source(t : T?) {
     var dir_error : string
     work_root = create_temp_directory("c2das_link_source", dir_error)
     t |> equal(dir_error, "")
-    t |> run("the three files in the default layout, geo.c joins the entry's module since it reads the entry's object `calls`, parity.c's edge back cut, print what the native build prints") @(t : T?) {
+    t |> run("the three files in the default layout are one module of three fragments, no link module, and print what the native build prints") @(t : T?) {
+        let paths <- unit_paths()
+        let native = native_run(default_clang(), ["-w", "-funsigned-char"], paths, path_join(work_root, "default_native"), 60.0, array<string>())
+        t |> equal(native.built, true, native.output)
+        let out_dir = path_join(work_root, "default")
+        let res <- convert_program(paths, out_dir, "linux")
+        if (!res.ok) {
+            t |> failure(res.error)
+            return
+        }
+        t |> equal(join(res.files, " "), "shape_h.das geo.das.inc parity.das.inc prog.das.inc prog.das")
+        t |> success(!fexist(path_join(out_dir, "prog_link.das")))
+        var out : string
+        t |> equal(run_tier(res.das_path, "interp", out_dir, out, CONVERTED_MODULES), native.rc)
+        t |> equal(out, native.output)
+    }
+    t |> run("the three files in the source-cut layout, geo.c joins the entry's module since it reads the entry's object `calls`, parity.c's edge back cut, print what the native build prints") @(t : T?) {
         let paths <- unit_paths()
         let native = native_run(default_clang(), ["-w", "-funsigned-char"], paths, path_join(work_root, "source_native"), 60.0, array<string>())
         t |> equal(native.built, true, native.output)
         let out_dir = path_join(work_root, "source")
-        let res <- convert_program(paths, out_dir, "linux")
+        let res <- convert_program(paths, out_dir, "linux", "", "", "", "", "main", "source-cut")
         if (!res.ok) {
             t |> failure(res.error)
             return

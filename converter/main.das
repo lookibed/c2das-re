@@ -9,11 +9,11 @@ require pipeline
 require sidecar
 require tiers
 
-//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy] [--loops range|while] [--layout source|scc|single]`.
+//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy] [--loops range|while] [--layout source|source-cut|single]`.
 //! Converts one C file into `<dir>/<stem>.das` (default `out/`), several or a manifest's as one
 //! program: by default a module per C file under `<dir>` as the files lie under their common
-//! folder, the cycles among them cut by late binding through `<entry>_link.das` (`--layout
-//! source`), mutually dependent files one module of fragments (`--layout scc`), or one module
+//! folder, mutually dependent files one module of fragments (`--layout source`), the cycles among
+//! them cut by late binding through `<entry>_link.das` (`--layout source-cut`), or one module
 //! named by the unit holding `main` (`--layout single`); with `--run` executes the result under a tier, `--arg` each argument of its C `argv`
 //! in order, and exits with the program's exit code.
 
@@ -39,7 +39,7 @@ struct Args {
     param_writes : string = ""
     @clarg_doc = "a canonical counting for loop: range (a das range loop, the default) or while (the while form every other for takes); overrides the sidecar's loops"
     loops : string = ""
-    @clarg_doc = "a program of several files: source (the default: a module per C file under --out as the files lie under their common folder, a header's types <header>_h.das, the entry module the one holding main, the cycles among files cut by late binding through <entry>_link.das, as the sidecar's layout object directs; program.layout.txt reports the cut), scc (the same with every cycle one module <first stem>_cluster.das of <stem>.das.inc fragments) or single (one module named by the file holding main); one file is one module in each; overrides the sidecar's layout"
+    @clarg_doc = "a program of several files: source (the default: a module per C file under --out as the files lie under their common folder, a header's types <header>_h.das, the entry module the one holding main, every cycle among files one module <first stem>_cluster.das of <stem>.das.inc fragments; program.layout.txt reports the partition), source-cut (the same with the cycles cut by late binding through <entry>_link.das, as the sidecar's layout object directs; program.layout.txt reports the cut) or single (one module named by the file holding main); one file is one module in each; overrides the sidecar's layout"
     layout : string = ""
     @clarg_short = "?"
     @clarg_name = "show-help"
@@ -75,7 +75,7 @@ def main : int {
         return 2
     }
     if (!empty(args.layout) && !is_layout(args.layout)) {
-        to_log(LOG_ERROR, "c2das: --layout is source, scc or single, not `{args.layout}`; -? for help\n")
+        to_log(LOG_ERROR, "c2das: --layout is source, source-cut or single, not `{args.layout}`; -? for help\n")
         return 2
     }
     var error : string

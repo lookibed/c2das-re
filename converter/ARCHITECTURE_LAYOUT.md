@@ -4,12 +4,17 @@ Companion to `ARCHITECTURE.md` in this folder, its section 8.
 
 ## The partition {#layout}
 
-A program of several C files converts, by default, into a das module per C file, the cycles among
-the files cut by late binding (`--layout source`, the sidecar's `layout`); `--layout scc` keeps
-every cycle one module of fragments, and `--layout single` the one module of section 6. A program
-of one file is one module in each layout: it never reaches the link, and its headers' types stay in
-it. The layout is the owner's rulings (`docs/very-detailed-plan.md` section 1, "Module layout", and
-the cycle-cut ruling): the output reads like the C program's own files, not a monolith.
+A program of several C files converts, by default, into a das module per C file, every cycle among
+the files one module of fragments (`--layout source`, the sidecar's `layout`); `--layout source-cut`
+cuts the cycles by late binding instead, and `--layout single` is the one module of section 6. A
+program of one file is one module in each layout: it never reaches the link, and its headers' types
+stay in it. The layout is the owner's rulings (`docs/very-detailed-plan.md` section 1, "Module
+layout": the cycle-cut ruling and ruling 12): the output reads like the C program's own files, its
+calls spelled as C spells them, and a cut by late binding is the opt-in, since its slots, wrappers
+and qualified calls are text the C program does not have.
+
+The names say what each layout keeps: `source` the C files, `source-cut` the C files with the cut,
+`single` one module. Any other value, `scc` included, is refused naming the three.
 
 daslang refuses a cyclic `require` (`probes/test_modules.das`), and C files call each other in
 cycles without including each other's headers (Lua's `ldo.c` and `lvm.c`), so a file cannot always
@@ -54,9 +59,9 @@ is kept once per module, never across modules.
 
 ## The cycle cut {#cut}
 
-In the `source` layout each strongly connected component of more than one node is made acyclic by
-late binding instead of merged (`cut_cycles`). A candidate is an edge between two units every symbol
-of which is a function the program defines, calls directly everywhere (no reference takes its
+In the `source-cut` layout each strongly connected component of more than one node is made acyclic
+by late binding instead of merged (`cut_cycles`). A candidate is an edge between two units every
+symbol of which is a function the program defines, calls directly everywhere (no reference takes its
 address, so its identity stays one) and whose type spells no unit's record; an object, a type edge,
 an edge from a unit spelling a record another unit defines (its calls or not: the record needs the
 `require`), a symbol `layout.keep_together` names, two units of one `layout.keep_together` group,
@@ -66,19 +71,21 @@ and the value: a `layout.keep_together` stem no file has or symbol no file calls
 symbol both options name, a `layout.cut` symbol no edge of a cycle carries, a forced edge out of the
 entry module, carrying a type or a symbol no cut can late-bind, kept by `layout.keep_together`, or
 inside a group no cut parts (the entry's joined group among them), and a profile count that is not
-an integer of 0 or more. The edges never cut collapse into groups, which stay one module of
-fragments as in `scc`; the entry module is highest in its component's order, since it requires and
-nothing requires it, so a group with a never-cut path to it joins its group, one module with it (the
-report's `kept with the entry` edge), and every edge into it is cut. Among the groups the cut is a
-minimum weight feedback arc set: the order of the groups, lowest first, that minimizes the weight of
-the edges going up it, exact over the subsets for up to 16 groups, among equal weights the order
-leaving the fewest groups whose callers are all below them, else a greedy order (a group requiring
-nothing unplaced goes lowest, one nothing unplaced requires highest, else the one most required over
-what it requires). An edge's weight is the dynamic call count of its symbols from the calling file,
-read from the profile `layout.profile` names (a JSON object of callee names, each an object of
-calling file stems and counts, `lua/profile.das` writes Lua's), else the count of its call sites.
-`program.layout.txt` beside the program's C-IR lists every cut symbol with its edge and weight and
-every group no cut parts.
+an integer of 0 or more; the `source` layout cuts nothing and applies none of them, the profile's
+counts still read and refused alike (Lua's sidecar names its profile for `source-cut`). The edges
+never cut collapse into groups, which stay one module of fragments as in `source`; the entry module
+is highest in its component's order, since it requires and nothing requires it, so a group with a
+never-cut path to it joins its group, one module with it (the report's `kept with the entry` edge),
+and every edge into it is cut. Among the groups the cut is a minimum weight feedback arc set: the
+order of the groups, lowest first, that minimizes the weight of the edges going up it, exact over
+the subsets for up to 16 groups, among equal weights the order leaving the fewest groups whose
+callers are all below them, else a greedy order (a group requiring nothing unplaced goes lowest, one
+nothing unplaced requires highest, else the one most required over what it requires). An edge's
+weight is the dynamic call count of its symbols from the calling file, read from the profile
+`layout.profile` names (a JSON object of callee names, each an object of calling file stems and
+counts, `lua/profile.das` writes Lua's), else the count of its call sites. `program.layout.txt`
+beside the program's C-IR lists every cut symbol with its edge and weight and every group no cut
+parts.
 
 A cut edge is the C linker's work done at `[init]`: the generated link module
 `<entry stem>_link.das` at the root, the lowest layer, holds per late-bound function a slot `<name>_slot` of

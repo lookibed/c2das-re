@@ -142,8 +142,8 @@ def test_sidecar_layout(t : T?) {
         t |> failure("no temp directory: {dir_error}")
         return
     }
-    t |> run("`layout` is \"source\", \"scc\" or \"single\"; absent it is empty, the converter's source default") @(t : T?) {
-        for (mode in ["source", "scc", "single"]) {
+    t |> run("`layout` is \"source\", \"source-cut\" or \"single\"; absent it is empty, the converter's source default") @(t : T?) {
+        for (mode in ["source", "source-cut", "single"]) {
             var error : string
             let side <- read_text(dir, mode, "\{\"layout\": \"{mode}\"\}\n", error)
             t |> equal(error, "")
@@ -157,9 +157,9 @@ def test_sidecar_layout(t : T?) {
     }
     t |> run("`layout` as an object: its mode, the cut's threshold, the symbols and file groups kept together, the symbols cut, the profile beside the sidecar") @(t : T?) {
         var error : string
-        let side <- read_text(dir, "object", "\{\"layout\": \{\"mode\": \"scc\", \"threshold\": 1000, \"keep_together\": [\"luaV_execute\", [\"ldo\", \"lvm\"]], \"cut\": [\"luaG_runerror\"], \"profile\": \"lua.profile.json\"\}\}\n", error)
+        let side <- read_text(dir, "object", "\{\"layout\": \{\"mode\": \"source-cut\", \"threshold\": 1000, \"keep_together\": [\"luaV_execute\", [\"ldo\", \"lvm\"]], \"cut\": [\"luaG_runerror\"], \"profile\": \"lua.profile.json\"\}\}\n", error)
         t |> equal(error, "")
-        t |> equal(side.layout, "scc")
+        t |> equal(side.layout, "source-cut")
         t |> equal(side.layout_threshold, 1000l)
         t |> equal(join(side.layout_keep_symbols, " "), "luaV_execute")
         t |> equal(length(side.layout_keep_units), 1)
@@ -169,9 +169,10 @@ def test_sidecar_layout(t : T?) {
     }
     t |> run("any other `layout` value or key, and a key of the wrong shape, is refused naming it") @(t : T?) {
         let cases <- [
-            ("flat", "\{\"layout\": \"flat\"\}", "`layout` is \"source\", \"scc\" or \"single\", or an object, not \"flat\""),
-            ("number", "\{\"layout\": 3\}", "`layout` is \"source\", \"scc\" or \"single\", or an object, not 3"),
-            ("mode", "\{\"layout\": \{\"mode\": \"flat\"\}\}", "`layout.mode` is \"source\", \"scc\" or \"single\", not \"flat\""),
+            ("flat", "\{\"layout\": \"flat\"\}", "`layout` is \"source\", \"source-cut\" or \"single\", or an object, not \"flat\""),
+            ("old", "\{\"layout\": \"scc\"\}", "`layout` is \"source\", \"source-cut\" or \"single\", or an object, not \"scc\""),
+            ("number", "\{\"layout\": 3\}", "`layout` is \"source\", \"source-cut\" or \"single\", or an object, not 3"),
+            ("mode", "\{\"layout\": \{\"mode\": \"flat\"\}\}", "`layout.mode` is \"source\", \"source-cut\" or \"single\", not \"flat\""),
             ("key", "\{\"layout\": \{\"depth\": 1\}\}", "`layout.depth` is no key of `layout`"),
             ("threshold", "\{\"layout\": \{\"threshold\": 1.5\}\}", "`layout.threshold` is a count of 0 or more, not 1.5"),
             ("negative", "\{\"layout\": \{\"threshold\": -1\}\}", "`layout.threshold` is a count of 0 or more, not -1"),
