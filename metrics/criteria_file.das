@@ -26,7 +26,7 @@ struct CriteriaRaw {
 let CRITERIA <- ["comments", "constant_names", "char_literals", "macro_blowup", "repeated_blocks", "switch_flags", "temporaries", "addr_deref", "reinterpret_casts", "late_binding", "qualified_calls", "require_lines", "setjmp", "layout_checks", "stray_braces", "label_stubs", "string_literals", "lost_parens", "literal_arithmetic", "bool_roundtrip", "c_renames", "long_lines"]
 
 //! The rows of the capture: each Lua program in each layout, then each ratchet suite.
-let ROWS <- ["lua/lua", "lua/lua@scc", "lua/lua@single", "lua/luac", "lua/luac@scc", "lua/luac@single", "c_testsuite", "csmith", "gcc_torture"]
+let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "c_testsuite", "csmith", "gcc_torture"]
 
 //! The c-testsuite inputs the gate re-measures against the capture's `sample`: a switch with
 //! character literals and comments, defines, a plain switch.

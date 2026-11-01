@@ -33,7 +33,7 @@ needs no compile beyond the conversion's own.
 
 ## 2. Rows, columns and the total {#rows}
 
-A row is one Lua program in one layout (`lua/lua`, `lua/lua@scc`, `lua/lua@single`, the same for
+A row is one Lua program in one layout (`lua/lua`, `lua/lua@source-cut`, `lua/lua@single`, the same for
 `luac`) or one ratchet suite (`c_testsuite`, `csmith`, `gcc_torture`), whose raw counts are the
 sum over its inputs. A per-function ratio's median and worst are taken over the row's pooled
 functions. Each criterion's compliance is computed per row from the row's raw counts; a criterion
@@ -102,7 +102,7 @@ the C count and the das count as the denominator, so a das count past the C one 
 per-module criteria (`layout_checks`, `long_lines`, `late_binding`) are binary in a one-module
 row: the `single` layout and every suite input hold one module, so a single layout check or long
 line takes a Lua `single` row to 0 where the source layout's many modules read a share
-(`lua/lua@single` `layout_checks` 0.0 against 64.6 in `lua/lua`).
+(`lua/lua@single` `layout_checks` 0.0 against 72.9 in `lua/lua`).
 
 What the criteria leave out: the unreachable `return` the emitter adds after a function whose end
 is formally reachable (no text shape tells it from a reachable one), `[c_function]` (the

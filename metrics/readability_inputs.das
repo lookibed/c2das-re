@@ -54,11 +54,11 @@ def private c_file_of(key, dir : string; var error : string&) : string {
     return prog.c_path
 }
 
-//! The Lua program stem and layout (`source`, `scc` or `single`) a `lua/<program>[@scc|@single]`
-//! key names.
+//! The Lua program stem and layout (`source`, `source-cut` or `single`) a
+//! `lua/<program>[@source-cut|@single]` key names.
 def lua_key_parts(key : string; var layout : string&) : string {
     let id = slice(key, length("lua/"))
-    for (suffix in [SINGLE_KEY_SUFFIX, SCC_KEY_SUFFIX]) {
+    for (suffix in [SINGLE_KEY_SUFFIX, CUT_KEY_SUFFIX]) {
         if (id |> ends_with(suffix)) {
             layout = slice(suffix, 1)
             return slice(id, 0, length(id) - length(suffix))
