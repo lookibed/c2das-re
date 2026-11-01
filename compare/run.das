@@ -12,11 +12,14 @@ require ../suites/suite_runner.das
 require rust_translator
 require suite_compare
 require perf_compare
+require lua_compare
+require ../lua/sources.das
 
 //! The head-to-head with the Rust translator from the repository root: `--suites` runs it over
 //! the three suites' inputs and writes the `suites` section of `compare/results_linux.json`,
 //! `--perf` times the perf kernels through both translators and writes its `perf` section
-//! (`compare/ARCHITECTURE.md`).
+//! (`compare/ARCHITECTURE.md`); `--lua` runs the Rust translator over Lua and writes the `lua` and
+//! `doom` sections.
 
 [CommandLineArgs]
 struct CompareArgs {
@@ -26,6 +29,8 @@ struct CompareArgs {
     suite : string = ""
     @clarg_doc = "time the perf kernels through both translators under every lane"
     perf : bool
+    @clarg_doc = "translate Lua with the Rust translator and list the C library functions it lacks"
+    lua : bool
     @clarg_doc = "samples per perf lane, each its own process (default 5)"
     samples : int = 5
     @clarg_doc = "run only the ids (perf: the kernels) that contain this text; a filtered run writes no capture"
@@ -95,6 +100,22 @@ def run_perf(args : CompareArgs) : int {
     return record_run(empty(args.out) ? CAPTURE : args.out, args.filter) $(path) => write_capture_section(path, "perf", section)
 }
 
+// the Lua comparison: its `lua` and `doom` sections written
+def run_lua(out : string) : int {
+    let missing = lua_missing(SOURCES)
+    if (!empty(missing)) {
+        to_log(LOG_ERROR, "{missing}\n")
+        return 2
+    }
+    let bin = rust_binary()
+    var section = lua_section(bin, run_stamps(bin))
+    to_log(LOG_INFO, "{lua_line(section)}\n")
+    return record_run(out, "") $(path) {
+        let error = write_capture_section(path, "lua", section)
+        return empty(error) ? write_capture_section(path, "doom", doom_section()) : error
+    }
+}
+
 [export]
 def main : int {
     var args = CompareArgs()
@@ -105,11 +126,15 @@ def main : int {
     if (!empty(args.one)) {
         return run_worker(args.one)
     }
+    let alone <- [for (mode in [("--perf", args.perf), ("--lua", args.lua)]); mode._0; where mode._1]
+    if (length(alone) > 1 || (length(alone) == 1 && (args.suites || !empty(args.suite)))) {
+        to_log(LOG_ERROR, "{alone[0]} runs alone: run the suites and each of --perf and --lua in a run of its own\n")
+        return 1
+    }
+    if (args.lua) {
+        return run_lua(empty(args.out) ? CAPTURE : args.out)
+    }
     if (args.perf) {
-        if (args.suites || !empty(args.suite)) {
-            to_log(LOG_ERROR, "--perf runs alone: run the suites in a run of their own\n")
-            return 1
-        }
         if (args.samples < 1) {
             to_log(LOG_ERROR, "--samples takes a count of at least 1, not {args.samples}\n")
             return 1
@@ -119,7 +144,7 @@ def main : int {
     let all <- compare_suites()
     let specs <- [for (s in all); s; where args.suites || s.name == args.suite]
     if (empty(specs)) {
-        to_log(LOG_ERROR, "name what to run: --suites, --suite c_testsuite, gcc_torture or csmith, or --perf\n")
+        to_log(LOG_ERROR, "name what to run: --suites, --suite c_testsuite, gcc_torture or csmith, --perf or --lua\n")
         return 1
     }
     let missing = missing_inputs(specs)
