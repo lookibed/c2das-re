@@ -53,8 +53,11 @@ expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed). The ro
 
 Everything a run builds sits in `work/projects/<name>/`: `native/` (the pinned clang's builds of
 both units), `ours/` and `ours_bench/` (our conversions), `rust/` and `rust_bench/` (the Rust
-translations), and each side's lane builds. The run is capped by the command that starts it
-(`prlimit --as=3221225472`), which every child process inherits.
+translations), and each side's lane builds. Every program of the run (the native builds, each lane
+and each bench sample of both sides, and the run each `exe` build ends with) runs with the working
+folder `cwd/` there (`enter_working_folder`, every path passed on absolute), so a program writing
+into its working folder writes into the run's scratch, never into the checkout. The run is capped by
+the command that starts it (`prlimit --as=3221225472`), which every child process inherits.
 
 The entry is `{rust_commit, rust_commit_error, daslang, date, samples, lanes, native,
 native_compiler, ours, rust, speed, code, functions}`: `native` the native build's verdict,
@@ -78,11 +81,14 @@ first type it declares that the program uses is refused. The Rust side translate
 
 Each side's lanes: `refused` with the side's error when it has no module; `compile` with the first
 `error[` line when the module fails `daslang -compile-only` (with our module folders on our side,
-none on the Rust side), `timeout` past that check's limit; else each lane run by
-`converter/tiers.das`'s `run_tier` with the fixture as the program's argument and judged: `timeout`
-past its limit, `exit` with the code and the first line naming an error, `output` with the first
-line that differs from the expected text (numbered from 1, a missing line `(none)`), `pass`. The
-JIT's `[I]` lines are not the program's output. The `aot` tier's host passes the program no
+none on the Rust side), `timeout` past that check's limit; else each lane runs with the fixture as
+the program's argument (`lane_argv`: daslang over the module under `interp` and `jit`, under `exe`
+the binary `exe_binary` builds, `compile` with the build's line when it leaves none) and is judged
+on its stdout (`run_split`; the program's stderr, doomgeneric's engine log, is apart): `timeout`
+past its limit, `exit` with the code and the first line naming an error in the stdout, then the
+stderr, `output` with the first line that differs from the expected text (numbered from 1, a missing
+line `(none)`), `pass`. The native runs and each bench sample are judged the same way. The JIT's
+`[I]` lines are not the program's output. The `aot` tier's host passes the program no
 arguments, so a project that reads its fixture from its argument is `skipped` under `aot` with that
 reason, never dropped. A lane's limit is 120 s for a run and for the compile check, 300 s for each
 `exe` or `aot` build step and the run it ends with (`COMPARE_LIMITS`).
@@ -98,10 +104,11 @@ output whose key is not in `bench_omitted_keys` is printed, equal to that line u
 `bench_free_keys`, and every other line printed has a key beginning with an entry of
 `bench_free_keys`. wasm3 lists neither, so its bench must print the expected output exactly;
 binjgb's prints the header and the hashes of 300 frames; h264bsd-mp4's and plmpeg-stream's the
-hashes, `frames=`, `width=` and `height=`. Without that oracle every side's cell is `{error: "bench: no native bench
-result: <reason>"}`. Each side's lane whose verdict over the unit is `pass` is timed over
-`--samples` runs (five by default), each its own process: the interpreter and the JIT run the
-module, `exe` its binary built once. A run whose output without the two lines differs from the
+hashes, `frames=`, `width=` and `height=`. Without that oracle every side's cell is `{error: "bench:
+no native bench result: <reason>"}`. Each side's lane whose
+verdict over the unit is `pass` is timed over `--samples` runs (five by default), each its own
+process: the interpreter and the JIT run the module, `exe` its binary built once (`exe_binary`, our
+module folders loaded by absolute path). A run whose output without the two lines differs from the
 oracle, or that lacks them, stops the cell with an error. A cell is `{setup, decode}`, each perf's
 cell shape (`time` the median in seconds, `spread`, `samples`); a lane that does not pass is
 `{error: "the lane does not pass: <status>"}`, a side whose bench unit does not convert or translate
