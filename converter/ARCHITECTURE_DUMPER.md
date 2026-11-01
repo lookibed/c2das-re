@@ -132,7 +132,9 @@ one child per field or element, an `ImplicitValueInitExpr` left to the positiona
 an array with a trailing run of zeros lists its filler first under `array_filler`, then the
 elements up to the last one written) or of a union (at most one child, the member it
 initializes named under `field`: one item at that member's index, none for `{}`, and a member
-`field` names `""` fails closed), `CompoundLiteralExpr` (the `compound_lit` node over its
+`field` names `""` fails closed) or of a scalar with one child (`T *p = { NULL }`, `int n = { 3
+}`, a record's scalar member braced in its list: the child itself, which clang already converted,
+so the braces leave no trace in the C-IR; a scalar's `{}` fails closed), `CompoundLiteralExpr` (the `compound_lit` node over its
 list; a scalar's list, `(int){5}`, holds its one value at position 0, none for `(int){}`),
 `ConstantExpr` (clang's wrapper of a constant item in a file-scope initializer, its child's
 value) and `OffsetOfExpr`,

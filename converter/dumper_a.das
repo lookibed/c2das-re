@@ -1907,6 +1907,11 @@ def private dump_init_list(var d : Dumper; js : JsonValue?; t : int; at : CirLoc
     if (k == "union") {
         return dump_union_init(d, js, t, at)
     }
+    if (k != "struct" && k != "array" && child_count(js) == 1) {
+        // `T *p = { NULL }`, `int n = { 3 }`: a scalar's braced value is the unbraced one, which
+        // clang already converted to the scalar's type
+        return dump_expr(d, (js?["inner"] as _array)[0])
+    }
     if (k != "struct" && k != "array") {
         fail(d, "`{k}` initializer lists are not dumped yet", at)
         return null
