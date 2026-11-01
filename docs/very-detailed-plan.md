@@ -345,7 +345,7 @@ No sizing — order and exit criteria only.
 | **P6** | Doom bring-up ladder: converts+compiles → `D_DoomMain` reaches attract screen (framebuffer CRC) → demo-sync green demo1/2/3 → input playable → SFX → timedemo | demo-sync 100%, playable, perf table v1 published |
 | **P7** | Perf pass: profile interp hot spots (`R_DrawColumn`/`R_DrawSpan` inner loops are the known worry), JIT/AOT lanes green on everything, final perf table; the writeup | The metric sentence in §2 is true |
 
-Order (owner ruling 2026-11-01 (14)): after P5, P8.1 in its current scope, then P7.0a and P7.0b, then P6.1 to P6.5, then the rest of P6; P7.5 to P7.10 wait for P6.5 unless one blocks Doom.
+Order (owner ruling 2026-11-01 (14)): after P5, P8.1 in its current scope, then P7.0a and P7.0b, then P6.1 to P6.5, then the rest of P6; P7.5 to P7.10 wait for P6.5 unless one blocks Doom. Ruling 2026-11-01 (17) places P8.2, the Rust c2das's six real projects through c2das-re on the Rust side's own fixtures, between P8.1 and P7.0a.
 
 ## 10. Risk register
 

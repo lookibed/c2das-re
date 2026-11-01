@@ -20,7 +20,7 @@ never block this plan.
    hand-written "as-if-converted" `.das` test first, converter integration second.
 5. No hand edits to converted output, ever. Per-project judgment goes in the sidecar.
 
-**Owner rulings 2026-11-01 (12) to (16)** (after Boris Batkin's framing of 2026-08-22: generate the
+**Owner rulings 2026-11-01 (12) to (17)** (after Boris Batkin's framing of 2026-08-22: generate the
 text, make it all work, then the LLM-assisted port; his words on layout, start-up, speed and text
 stand behind each)
 12. Layout (P7.0a): the default layout keeps every cycle one module of `.das.inc` fragments, a file
@@ -46,6 +46,11 @@ stand behind each)
     after on a fixed sample; the readability metric counts structural noise (late-bound wrappers
     and slots, qualified calls, `require` lines per module); a perf lane worse than `main` by more
     than 5%, or a trade of speed against the output's shape, is an owner decision (`AGENTS.md`).
+17. P8.2, the Rust c2das's real projects (ruling of 2026-11-01, later in the day): the six projects
+    of its `tests/manual` (binjgb, doomgeneric, h264bsd-mp4, plmpeg-stream, quakegeneric, wasm3) go
+    through c2das-re on the Rust side's own inputs, hosts, fixtures and reference outputs, the Rust
+    result beside; right after P8.1 (its PR 5 closes it) and before P7.0a, so the order of (14) reads
+    P8.1, P8.2, P7.0a, P7.0b, P6.
 
 ---
 
@@ -1043,6 +1048,21 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   generator script, never hand-typed. Honest: where the Rust version is better, say so and open
   ledger rows to close the gap. Owner ruling 2026-11-01 (14): finished in its current scope, not
   expanded; its Lua speed part, interp and JIT of both translators on the same inputs, is mandatory.
+- **P8.2 Real projects of the Rust c2das** (owner ruling 2026-11-01 (17); after P8.1, before P7.0a).
+  The six projects of the Rust repository's `tests/manual` (binjgb, doomgeneric, h264bsd-mp4,
+  plmpeg-stream, quakegeneric, wasm3), each run through c2das-re on exactly the inputs, hosts,
+  fixtures and reference outputs the Rust side uses there (its README, UPSTREAM and
+  `fixtures/*.expected` are the oracle), the Rust result beside it. Per project: correctness (the
+  Rust side's check passes or not, a failure classified refused, compile error, runtime, wrong
+  output), speed on the same machine where the Rust side has a benchmark (interp, JIT, AOT or exe
+  as available), code (`metrics/readability.das` on both outputs, size, a short side-by-side of one
+  or two hot functions). Rules: the Rust checkout is read in place (`/root/c2das`, the owner's; no
+  copy, worktree or rebuild; the binary through `C2DAS_RUST_BIN`); a host that needs SDL, Eden or a
+  window runs headless or through the reference-output path, else one line says so and no GUI stack
+  is built; one small PR per project (rule 9), the easiest first; a c2das-re failure becomes a ledger
+  row, its fix a separate item; doomgeneric does not replace PureDOOM in P6 (overlaps noted); the
+  memory cap and the two-heavy-tasks rule as for Lua. Output: one generated table in `compare/` and
+  the ports README, never hand-typed; the `Done` row short (ruling 15).
 
 ## P6 — Doom
 
