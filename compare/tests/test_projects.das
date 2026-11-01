@@ -68,6 +68,30 @@ def test_project_row(t : T?) {
         t |> equal(join(p.bench_omitted_keys, " "), "width height ticks")
         t |> equal(join(p.functions, " "), "emulator_step_internal ppu_mode3_synchronize")
     }
+    t |> run("h264bsd-mp4 with four include folders, warnings off natively, its bench without `bytes=`") @(t : T?) {
+        var p : Project
+        t |> success(find_project("/m", "h264bsd-mp4", p))
+        t |> equal("{p.tu} {p.bench_tu} {p.fixture} {p.case_id}", "src/h264_file_all.c src/h264_file_bench_all.c fixtures/test_640x360.mp4 h264bsd-mp4-640x360-std")
+        t |> equal(join(clang_args(p), " "), "-std=c11 -I/m/tests/manual/h264bsd-mp4/include -I/m/tests/manual/h264bsd-mp4/upstream/h264bsd/src -I/m/tests/manual/h264bsd-mp4/upstream/minimp4 -I/m/tests/manual/h264bsd-mp4/src")
+        t |> equal(join(p.native_flags, " "), "-w -O2")
+        t |> equal("{length(p.rust_flags)} {length(p.bench_free_keys)} {join(p.bench_omitted_keys, " ")}", "0 0 bytes")
+        t |> equal(join(p.functions, " "), "h264bsdProcessBlock FilterVerLumaEdge")
+    }
+    t |> run("the native build's C files: the case's reference sources and bench entry, else the units") @(t : T?) {
+        t |> with_scratch("cmp_projects_sources") $(dir) {
+            var p = Project(tu = "u.c", bench_tu = "b.c", cases = path_join(dir, "cases.json"), case_id = "c")
+            let stdout = "\"expected\": \{\"stdout\": \"a\\n\"\}"
+            fwrite(p.cases, "\{\"cases\": [\{\"id\": \"c\", {stdout}, \"c_reference\": \{\"sources\": [\"g.c\", \"e.c\"]\}, \"corpus\": \{\"bench_c_entry\": \"be.c\"\}\}]\}")
+            t |> equal(load_expected(p), "")
+            t |> equal("{join(p.native_sources, " ")} | {join(p.native_bench_sources, " ")}", "g.c e.c | g.c be.c")
+            fwrite(p.cases, "\{\"cases\": [\{\"id\": \"c\", {stdout}, \"c_reference\": \{\"sources\": [\"g.c\", \"e.c\"]\}\}]\}")
+            t |> equal(load_expected(p), "")
+            t |> equal("{join(p.native_sources, " ")} | {join(p.native_bench_sources, " ")}", "g.c e.c | b.c")
+            fwrite(p.cases, "\{\"cases\": [\{\"id\": \"c\", {stdout}, \"c_reference\": \{\"entrypoint\": \"main\"\}\}]\}")
+            t |> equal(load_expected(p), "")
+            t |> equal("{join(p.native_sources, " ")} | {join(p.native_bench_sources, " ")}", "u.c | b.c")
+        }
+    }
     t |> run("the expected output read from the canonical case, or why not") @(t : T?) {
         t |> with_scratch("cmp_projects_cases") $(dir) {
             var p = Project(cases = path_join(dir, "cases.json"), case_id = "c")
@@ -197,8 +221,13 @@ def test_native_and_code(t : T?) {
             fwrite(path_join(dir, "ok.c"), "int main(void) \{ return 0; \}\n")
             fwrite(path_join(dir, "bad.c"), "int main(void) \{ return \}\n")
             let p = Project(name = "p", dir = dir, c_std = "c11")
-            t |> equal(native_build(p, "ok.c", path_join(dir, "ok")), "")
-            t |> success(native_build(p, "bad.c", path_join(dir, "bad")) |> starts_with("clang exited 1: "))
+            t |> equal(native_build(p, ["ok.c"], path_join(dir, "ok")), "")
+            t |> success(native_build(p, ["bad.c"], path_join(dir, "bad")) |> starts_with("clang exited 1: "))
+            fwrite(path_join(dir, "graph.c"), "int seven(void) \{ return 7; \}\n")
+            fwrite(path_join(dir, "entry.c"), "int seven(void);\nint main(void) \{ return seven() - 7; \}\n")
+            t |> equal(native_build(p, ["graph.c", "entry.c"], path_join(dir, "two")), "")
+            var out : string
+            t |> equal(run_and_capture([path_join(dir, "two")], out, 30.0), 0, out)
         }
     }
     t |> run("a side's code: refused, or counted, the Rust runtime split by its prefixes") @(t : T?) {
@@ -244,7 +273,7 @@ def test_project_entry(t : T?) {
             fwrite(path_join(dir, "input"), "")
             let bin = path_join(dir, "rust")
             write_script(bin, "#!/bin/sh\necho \"translation failed: x\" >&2\nexit 2\n")
-            let p = Project(name = "p", dir = dir, tu = "prog.c", bench_tu = "prog.c", c_std = "c11", fixture = "input", expected = "yes\n")
+            let p = Project(name = "p", dir = dir, tu = "prog.c", bench_tu = "prog.c", native_sources <- ["prog.c"], native_bench_sources <- ["prog.c"], c_std = "c11", fixture = "input", expected = "yes\n")
             let entry = project_entry(p, bin, path_join(dir, "work"), 1, Stamps(rust_commit = "abc"))
             t |> equal(entry?["native"]?["status"] ?? "", "native")
             t |> equal(entry?["ours"]?["lanes"]?["jit"]?["reason"] ?? "", "no native result: line 1: got `nope`, expected `yes`")
@@ -270,7 +299,7 @@ def test_refusals(t : T?) {
             fwrite(path_join(dir, "prog.c"), "#include \"missing.h\"\nint main(void) \{ return 0; \}\n")
             let bin = path_join(dir, "rust")
             write_script(bin, "#!/bin/sh\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    prev=\"$a\"\ndone\nmkdir -p \"$out\"\necho 'options gen2' > \"$out/prog.das\"\n")
-            let p = Project(name = "p", dir = dir, tu = "prog.c", bench_tu = "prog.c", c_std = "c11", fixture = "input", expected = "yes\n")
+            let p = Project(name = "p", dir = dir, tu = "prog.c", bench_tu = "prog.c", native_sources <- ["prog.c"], native_bench_sources <- ["prog.c"], c_std = "c11", fixture = "input", expected = "yes\n")
             let entry = project_entry(p, bin, path_join(dir, "work"), 1, Stamps())
             t |> success((entry?["native"]?["reason"] ?? "") |> starts_with("clang exited 1: "), entry?["native"]?["reason"] ?? "")
             t |> success((entry?["ours"]?["error"] ?? "") |> contains("missing.h"), entry?["ours"]?["error"] ?? "")
@@ -290,36 +319,66 @@ def private run_compare(args : array<string>; var out : string&) : int {
 // `text` with each newline written as the escape a C or das string literal reads
 def private escaped(text : string) : string => replace(text, "\n", "\\n")
 
-// a stand-in folder of the project `name` (wasm3 or binjgb) under `<dir>/tests/manual` and a
-// translator `<dir>/rust` that copies a das program printing the expected output, the bench one
-// for a bench unit; binjgb's units print their first line only under its define, and its bench
-// prints one frame more than its unit, a count of its own and no `ticks=`
+// a stand-in project's facts: its units, fixture and case, the output it prints, the native
+// build's own C files when its case names them, and the text its converted unit prints instead
+struct private StandIn {
+    unit : string
+    bench_unit : string
+    fixture : string
+    case_id : string
+    head : string
+    body : string
+    bench_body : string
+    guarded : bool
+    unit_body : string
+}
+
+// the facts of the stand-in `name`
+def private stand_in_facts(name : string) : StandIn {
+    if (name == "wasm3") {
+        return StandIn(unit = "all_host", bench_unit = "all_host_bench", fixture = "fixtures/fib32.wasm", case_id = "wasm3-fib32-std", body = EXPECTED, bench_body = EXPECTED)
+    } elif (name == "binjgb") {
+        return StandIn(unit = "binjgb_all", bench_unit = "binjgb_bench_all", fixture = "fixtures/cgb-acid2.gbc", case_id = "binjgb-cgb-acid2-std",
+            head = "rom=1\n", body = "frame[0]=5\nframes=1\nticks=7\n", bench_body = "frame[0]=5\nframe[1]=5\nframes=2\n", guarded = true)
+    }
+    return StandIn(unit = "h264_file_all", bench_unit = "h264_file_bench_all", fixture = "fixtures/test_640x360.mp4", case_id = "h264bsd-mp4-640x360-std",
+        body = "bytes=4\nframe[0]=5\nwidth=2\nframes=1\n", bench_body = "frame[0]=5\nframes=1\nwidth=2\n", unit_body = "bytes=3\n")
+}
+
+// a stand-in folder of the project `name` (wasm3, binjgb or h264bsd-mp4) under
+// `<dir>/tests/manual` and a translator `<dir>/rust` that copies a das program printing the
+// expected output, the bench one for a bench unit; binjgb's units print their first line only
+// under its define, and its bench prints one frame more than its unit, a count of its own and no
+// `ticks=`; h264bsd-mp4's case names the native build's own C files, a graph and an entry, its
+// unit prints `bytes=3` alone, and its bench prints its lines in another order and no `bytes=`
 def private stand_in_project(dir, name : string) : string {
-    let wasm3 = name == "wasm3"
+    let f = stand_in_facts(name)
     let root = path_join(dir, "tests/manual/{name}")
-    let unit = wasm3 ? "all_host" : "binjgb_all"
-    let bench_unit = wasm3 ? "all_host_bench" : "binjgb_bench_all"
-    let fixture = wasm3 ? "fixtures/fib32.wasm" : "fixtures/cgb-acid2.gbc"
-    let case_id = wasm3 ? "wasm3-fib32-std" : "binjgb-cgb-acid2-std"
-    let head = wasm3 ? "" : "rom=1\n"
-    let body = wasm3 ? EXPECTED : "frame[0]=5\nframes=1\nticks=7\n"
-    let bench_body = wasm3 ? EXPECTED : "frame[0]=5\nframe[1]=5\nframes=2\n"
     let times = escaped("setup_us=3\ndecode_us=6\n")
     for (sub in ["src", "fixtures"]) {
         mkdir_rec(path_join(root, sub))
     }
     mkdir_rec(path_join(dir, "tests/canonical"))
-    fwrite(path_join(root, fixture), "")
-    fwrite(path_join(dir, "tests/canonical/cases.json"), write_json(JV({"cases" => JV([JV({"id" => JV(case_id), "expected" => JV({"stdout" => JV(head + body)})})])})))
-    let guarded = wasm3 ? "" : "#ifdef NDEBUG\n    printf(\"{escaped(head)}\");\n#endif\n"
+    fwrite(path_join(root, f.fixture), "")
+    var canonical <- {"id" => JV(f.case_id), "expected" => JV({"stdout" => JV(f.head + f.body)})}
+    let guarded = f.guarded ? "#ifdef NDEBUG\n    printf(\"{escaped(f.head)}\");\n#endif\n" : ""
     let c_unit = "#include <stdio.h>\nint call_fib(int n) \{ return n; \}\nint main(void) \{\n{guarded}    printf(\"%s\");\n    return call_fib(0);\n\}\n"
-    fwrite(path_join(root, "src/{unit}.c"), replace(c_unit, "%s", escaped(body)))
-    fwrite(path_join(root, "src/{bench_unit}.c"), replace(c_unit, "%s", escaped(bench_body) + times))
+    if (!empty(f.unit_body)) {
+        canonical["c_reference"] = JV({"sources" => JV(["src/graph.c", "src/entry.c"])})
+        canonical["corpus"] = JV({"bench_c_entry" => JV("src/bench_entry.c")})
+        fwrite(path_join(root, "src/graph.c"), "int call_fib(int n) \{ return n; \}\n")
+        let entry = "#include <stdio.h>\nint call_fib(int n);\nint main(void) \{\n    printf(\"%s\");\n    return call_fib(0);\n\}\n"
+        fwrite(path_join(root, "src/entry.c"), replace(entry, "%s", escaped(f.body)))
+        fwrite(path_join(root, "src/bench_entry.c"), replace(entry, "%s", escaped(f.bench_body) + times))
+    }
+    fwrite(path_join(dir, "tests/canonical/cases.json"), write_json(JV({"cases" => JV([JV(canonical)])})))
+    fwrite(path_join(root, "src/{f.unit}.c"), replace(c_unit, "%s", escaped(empty(f.unit_body) ? f.body : f.unit_body)))
+    fwrite(path_join(root, "src/{f.bench_unit}.c"), replace(c_unit, "%s", escaped(f.bench_body) + times))
     let program = "options gen2\ndef call_fib(n : int) : int \{\n    return n\n\}\n[export]\ndef main() : int \{\n    print(\"%s\")\n    return call_fib(0)\n\}\n"
-    fwrite(path_join(dir, "main.das"), replace(program, "%s", escaped(head + body)))
-    fwrite(path_join(dir, "bench.das"), replace(program, "%s", escaped(head + bench_body) + times))
+    fwrite(path_join(dir, "main.das"), replace(program, "%s", escaped(f.head + f.body)))
+    fwrite(path_join(dir, "bench.das"), replace(program, "%s", escaped(f.head + f.bench_body) + times))
     let bin = path_join(dir, "rust")
-    write_script(bin, "#!/bin/sh\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    if [ \"$prev\" = \"--file\" ]; then src=\"$a\"; fi\n    prev=\"$a\"\ndone\nmkdir -p \"$out\"\ncase \"$src\" in\n    *bench*) cp {dir}/bench.das \"$out/{bench_unit}.das\" ;;\n    *) cp {dir}/main.das \"$out/{unit}.das\" ;;\nesac\n")
+    write_script(bin, "#!/bin/sh\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    if [ \"$prev\" = \"--file\" ]; then src=\"$a\"; fi\n    prev=\"$a\"\ndone\nmkdir -p \"$out\"\ncase \"$src\" in\n    *bench*) cp {dir}/bench.das \"$out/{f.bench_unit}.das\" ;;\n    *) cp {dir}/main.das \"$out/{f.unit}.das\" ;;\nesac\n")
     return bin
 }
 
@@ -377,7 +436,7 @@ def test_project_run(t : T?) {
             var out : string
             with_env(bin, dir) {
                 t |> equal(run_compare(["--project", "doom"], out), 1, out)
-                t |> success(out |> contains("--project takes one of wasm3, binjgb, not `doom`"), out)
+                t |> success(out |> contains("--project takes one of wasm3, binjgb, h264bsd-mp4, not `doom`"), out)
                 t |> equal(run_compare(["--project", "wasm3"], out), 2, out)
                 t |> success(out |> contains("the Rust checkout {dir} lacks the project"), out)
                 mkdir_rec(path_join(dir, "tests/manual/wasm3/src"))
@@ -391,6 +450,29 @@ def test_project_run(t : T?) {
             with_env("/nonexistent/c2das-rust", "") {
                 t |> equal(run_compare(["--project", "wasm3"], out), 2, out)
             }
+        }
+    }
+}
+
+[test]
+def test_project_run_native_sources(t : T?) {
+    t |> run("--project h264bsd-mp4 over a stand-in: the native build from the case's own C files, not the unit") @(t : T?) {
+        t |> with_scratch("cmp_projects_h264") $(dir) {
+            let bin = stand_in_project(dir, "h264bsd-mp4")
+            let results = path_join(dir, "results.json")
+            fwrite(results, "\{\"projects\": \{\"wasm3\": \{\"x\": 1\}\}\}")
+            var out : string
+            with_env(bin, dir) {
+                t |> equal(run_compare(["--project", "h264bsd-mp4", "--samples", "1", "--out", results], out), 0, out)
+            }
+            let js = json_of(t, fread(results))
+            let entry = js?["projects"]?["h264bsd-mp4"]
+            t |> equal(js?["projects"]?["wasm3"]?["x"] ?? 0, 1)
+            t |> equal(entry?["native"]?["status"] ?? "", "pass", out)
+            t |> equal(entry?["speed"]?["native"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf, out)
+            t |> equal(join([for (lane in ["interp", "jit"]); entry?["rust"]?["lanes"]?[lane]?["status"] ?? ""], " "), "pass pass", out)
+            t |> equal(entry?["speed"]?["rust"]?["interp"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf, out)
+            t |> equal(entry?["ours"]?["lanes"]?["interp"]?["reason"] ?? "", "line 1: got `bytes=3`, expected `bytes=4`", out)
         }
     }
 }

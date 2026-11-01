@@ -12,7 +12,9 @@ copied or built): the translation unit and the bench unit relative to the projec
 include folders, the defines, the C standard and the native build's flags the README gives, the
 fixture the program reads from its last argument, the id of the project's canonical case in the Rust
 repository's `tests/canonical/cases.json`, whose `expected.stdout` (`load_expected`, read at the
-start of a run, which exits 2 without it) is the output the program must print, that case's
+start of a run, which exits 2 without it) is the output the program must print and whose
+`c_reference.sources` are the C files the native build compiles (the unit when the case names none;
+the bench's are the same with `corpus.bench_c_entry` in place of the last, the entry), that case's
 translator options, the C functions shown side by side, and the bench unit's departures from the
 expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed). The rows:
 
@@ -28,6 +30,16 @@ expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed). The ro
   `ppu_mode3_synchronize` (the PPU's pixel transfer, which renders a line). Its bench prints 300
   frames and their count and omits `width=`, `height=` and `ticks=`: free keys `frames` and the
   prefix `frame[`, omitted keys `width`, `height`, `ticks`.
+- h264bsd-mp4: `src/h264_file_all.c` and `src/h264_file_bench_all.c` (the decoder graph `all.c` and
+  the C file entry in one unit each), `-std=c11 -Iinclude -Iupstream/h264bsd/src -Iupstream/minimp4
+  -Isrc`, `-w -O2`, `fixtures/test_640x360.mp4`, the case `h264bsd-mp4-640x360-std` (`bytes=`, a
+  `frame[i]=` hash per decoded picture, `width=`, `height=`, `frames=73`), no translator option, and
+  `h264bsdProcessBlock` (the inverse transform of a 4x4 residual block) and `FilterVerLumaEdge` (the
+  deblocking filter across a vertical luma edge). Its native builds compile the case's own graph
+  `src/all_reference.c` with `src/h264_file_reference_entry.c` or `src/h264_file_bench_entry.c`;
+  the case's other two ids (`h264bsd-mp4`, `h264bsd-mp4-640x360`) run daslang entries of the Rust
+  side and are not compared. Its bench prints its lines in another order and omits `bytes=`:
+  omitted key `bytes`.
 
 Everything a run builds sits in `work/projects/<name>/`: `native/` (the pinned clang's builds of
 both units), `ours/` and `ours_bench/` (our conversions), `rust/` and `rust_bench/` (the Rust
@@ -44,12 +56,13 @@ clang-18, so the native cells are this machine's baseline, not the Rust reposito
 
 ## The verdicts {#verdicts}
 
-The native build runs the unit with the fixture; it is `pass` when it prints the expected output,
-else `native` with the reason, and then every lane of both sides is `refused` with `no native
-result`. Our side converts the unit under `linux` with a sidecar of the project's defines; the
-converter takes no include folder, so a project whose unit includes from a folder other than its own
-is refused at the first such `#include`. The Rust side translates it with `translate_file` (`--libc
-std --strict`, the case's options, the clang arguments of the row) within 600 s.
+The native build (the case's C files, the pinned clang, the row's flags) runs with the fixture; it
+is `pass` when it prints the expected output, else `native` with the reason, and then every lane of
+both sides is `refused` with `no native result`. Our side converts the unit under `linux` with a
+sidecar of the project's defines; the converter takes no include folder, so a project whose unit
+includes from a folder other than its own is refused at the first such `#include`. The Rust side
+translates it with `translate_file` (`--libc std --strict`, the case's options, the clang arguments
+of the row) within 600 s.
 
 Each side's lanes: `refused` with the side's error when it has no module; `compile` with the first
 `error[` line when the module fails `daslang -compile-only` (with our module folders on our side,
@@ -66,21 +79,22 @@ reason, never dropped. A lane's limit is 120 s for a run and for the compile che
 
 The bench unit prints the unit's output or a longer run of it and two more lines, `setup_us=<n>`
 (parse and load, or the emulator's creation) and `decode_us=<n>` (the timed loop). It is built
-natively and converted and translated as the unit is. One run of the native bench, its time lines
-dropped, is the bench's oracle (`native_bench_oracle`) when `bench_disagreement` finds nothing: a
-line's key is its text before the first `=` or `:`; every line of the expected output whose key is
-not in `bench_omitted_keys` is printed, equal to that line unless its key is in `bench_free_keys`,
-and every other line printed has a key beginning with an entry of `bench_free_keys`. wasm3 lists
-neither, so its bench must print the expected output exactly; binjgb's prints the header and the
-hashes of 300 frames. Without that oracle every side's cell is `{error: "bench: no native bench
+natively from its C files and converted and translated as the unit is. One run of the native bench,
+its time lines dropped, is the bench's oracle (`native_bench_oracle`) when `bench_disagreement`
+finds nothing: a line's key is its text before the first `=` or `:`; every line of the expected
+output whose key is not in `bench_omitted_keys` is printed, equal to that line unless its key is in
+`bench_free_keys`, and every other line printed has a key beginning with an entry of
+`bench_free_keys`. wasm3 lists neither, so its bench must print the expected output exactly;
+binjgb's prints the header and the hashes of 300 frames; h264bsd-mp4's the hashes, `frames=`,
+`width=` and `height=`. Without that oracle every side's cell is `{error: "bench: no native bench
 result: <reason>"}`. Each side's lane whose verdict over the unit is `pass` is timed over
 `--samples` runs (five by default), each its own process: the interpreter and the JIT run the
 module, `exe` its binary built once. A run whose output without the two lines differs from the
 oracle, or that lacks them, stops the cell with an error. A cell is `{setup, decode}`, each perf's
 cell shape (`time` the median in seconds, `spread`, `samples`); a lane that does not pass is
-`{error: "the lane does not pass: <status>"}`, a side whose bench unit does not convert or
-translate `{error: "bench: <reason>"}`. The native cell is timed the same way. Each side is timed
-where its own lanes pass, whether or not the other side's do.
+`{error: "the lane does not pass: <status>"}`, a side whose bench unit does not convert or translate
+`{error: "bench: <reason>"}`. The native cell is timed the same way. Each side is timed where its
+own lanes pass, whether or not the other side's do.
 
 ## The code {#code}
 
@@ -96,12 +110,12 @@ computed per project.
 ## The rendering {#rendering}
 
 `compare_render.das`'s `projects_text` renders the section under `### Real projects`: an intro
-naming the oracle (each project's canonical case's `expected.stdout`) and each capture's stamp,
-the verdicts table (per project and side, the native verdict and each lane's), one line per side
-and reason for every lane that does not pass, the lanes sharing a reason named together, the bench table (the
-native compiler's version line without its source, the native decode seconds, each lane's decode
-median over it, an error cell as the lane's status, `refused` for a side with no bench module, else
-the error's first word), the code table (status, files, lines, the Rust runtime's lines and each
-counter, `-` for a side not measured) and the functions side by side. A capture without the section
-renders `No project is captured yet.` The list of where the Rust translator is ahead names each
-project whose Rust side passes a lane ours does not.
+naming the oracle (each project's canonical case's `expected.stdout`) and each capture's stamp, the
+verdicts table (per project and side, the native verdict and each lane's), one line per side and
+reason for every lane that does not pass, the lanes sharing a reason named together, the bench table
+(the native compiler's version line without its source, the native decode seconds, each lane's
+decode median over it, an error cell as the lane's status, `refused` for a side with no bench
+module, else the error's first word), the code table (status, files, lines, the Rust runtime's lines
+and each counter, `-` for a side not measured) and the functions side by side. A capture without the
+section renders `No project is captured yet.` The list of where the Rust translator is ahead names
+each project whose Rust side passes a lane ours does not.

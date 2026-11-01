@@ -36,7 +36,8 @@ let PROJECT_TRANSLATE_TIMEOUT = 600.0
 //! the program reads from its last argument, the output it must print, the translator options
 //! the Rust side's canonical case passes, and the C functions shown side by side. The output it
 //! must print is the canonical case `case_id`'s `expected.stdout` in the file `cases`, read by
-//! `load_expected` into `expected`; `bench_free_keys` are the keys of the lines the bench unit
+//! `load_expected` into `expected` with the C files of the native builds into `native_sources`
+//! and `native_bench_sources`; `bench_free_keys` are the keys of the lines the bench unit
 //! prints with a value of its own and the prefixes of the keys it prints beyond the expected
 //! output, `bench_omitted_keys` the keys of the expected lines it does not print
 //! (`bench_disagreement`).
@@ -53,6 +54,8 @@ struct Project {
     cases : string
     case_id : string
     expected : string
+    native_sources : array<string>
+    native_bench_sources : array<string>
     rust_flags : array<string>
     functions : array<string>
     bench_free_keys : array<string>
@@ -97,7 +100,20 @@ def project_table(checkout : string) : array<Project> {
         case_id = "binjgb-cgb-acid2-std",
         functions <- ["emulator_step_internal", "ppu_mode3_synchronize"],
         bench_free_keys <- ["frames", "frame["],
-        bench_omitted_keys <- ["width", "height", "ticks"])]
+        bench_omitted_keys <- ["width", "height", "ticks"]),
+    Project(
+        name = "h264bsd-mp4",
+        dir = path_join(manual_dir, "h264bsd-mp4"),
+        tu = "src/h264_file_all.c",
+        bench_tu = "src/h264_file_bench_all.c",
+        include_dirs <- ["include", "upstream/h264bsd/src", "upstream/minimp4", "src"],
+        c_std = "c11",
+        native_flags <- ["-w", "-O2"],
+        fixture = "fixtures/test_640x360.mp4",
+        cases = path_join(checkout, CASES_FILE),
+        case_id = "h264bsd-mp4-640x360-std",
+        functions <- ["h264bsdProcessBlock", "FilterVerLumaEdge"],
+        bench_omitted_keys <- ["bytes"])]
 }
 
 //! The project `name` of the Rust checkout `checkout` into `p`; false when the table has none.
@@ -112,7 +128,10 @@ def find_project(checkout, name : string; var p : Project) : bool {
     return found
 }
 
-//! `p.expected` read from its canonical case's `expected.stdout`: "", or why it cannot be.
+//! `p.expected` read from its canonical case's `expected.stdout`, and the C files of its native
+//! builds: the unit's the case's `c_reference.sources`, else `p.tu`; the bench's the same without
+//! their last (the entry) and with the case's `corpus.bench_c_entry` after them, else
+//! `p.bench_tu`; "", or why it cannot be.
 [arch(at="ARCHITECTURE_PROJECTS.md#projects")]
 def load_expected(var p : Project) : string {
     if (!fexist(p.cases)) {
@@ -129,11 +148,30 @@ def load_expected(var p : Project) : string {
             let stdout = c?["expected"]?["stdout"]
             if ((c?["id"] ?? "") == p.case_id && stdout != null && stdout.value is _string) {
                 p.expected = stdout ?? ""
+                read_native_sources(p, c)
                 return ""
             }
         }
     }
     return "{p.cases} has no case {p.case_id} with an expected.stdout"
+}
+
+// the C files of `p`'s native builds from its canonical case `c`, its units where the case names none
+def private read_native_sources(var p : Project; c : JsonValue?) {
+    let sources = c?["c_reference"]?["sources"]
+    let bench_entry = c?["corpus"]?["bench_c_entry"]
+    if (sources == null || !(sources.value is _array) || empty(sources.value as _array)) {
+        p.native_sources <- [p.tu]
+        p.native_bench_sources <- [p.bench_tu]
+        return
+    }
+    p.native_sources <- [for (s in sources.value as _array); s ?? ""]
+    if (bench_entry == null || !(bench_entry.value is _string)) {
+        p.native_bench_sources <- [p.bench_tu]
+        return
+    }
+    p.native_bench_sources <- [for (s, i in p.native_sources, count()); s; where i + 1 < length(p.native_sources)]
+    p.native_bench_sources |> push(bench_entry ?? "")
 }
 
 //! `rel`, a path of project `p`, made absolute under its folder.
@@ -367,11 +405,11 @@ def side_speed(das_path, refusal, work : string; module_dirs, args : array<strin
     return <- cells
 }
 
-//! The native build of `p`'s unit `tu` into `bin` by the pinned clang with the project's flags;
-//! "" when it built, else the compiler's first line.
-def native_build(p : Project; tu, bin : string) : string {
+//! The native build of `p`'s C files `sources` into `bin` by the pinned clang with the project's
+//! flags; "" when it built, else the compiler's first line.
+def native_build(p : Project; sources : array<string>; bin : string) : string {
     var argv <- [default_clang()]
-    argv |> push_from(clang_args(p), p.native_flags, [project_path(p, tu), "-o", bin])
+    argv |> push_from(clang_args(p), p.native_flags, [for (s in sources); project_path(p, s)], ["-o", bin])
     var out : string
     let rc = run_and_capture(argv, out, COMPARE_LIMITS.build)
     return rc == 0 ? "" : "clang exited {rc}: {first_line(out)}"
@@ -434,7 +472,7 @@ def project_entry(p : Project; bin, work : string; samples : int; stamps : Stamp
     let args <- [project_path(p, p.fixture)]
     let native_bin = path_join(work, "native/{p.name}")
     mkdir_rec(path_join(work, "native"))
-    var native = Verdict(status = "native", reason = native_build(p, p.tu, native_bin))
+    var native = Verdict(status = "native", reason = native_build(p, p.native_sources, native_bin))
     if (empty(native.reason)) {
         var out : string
         let rc = run_and_capture([native_bin, args[0]], out, COMPARE_LIMITS.sample)
@@ -452,7 +490,7 @@ def project_entry(p : Project; bin, work : string; samples : int; stamps : Stamp
     let rust_bench = rust_module(p, bin, p.bench_tu, path_join(work, "rust_bench"), rust_bench_refusal, rust_bench_files)
     let native_bench = path_join(work, "native/{p.name}_bench")
     var bench_expected : string
-    var native_bench_error = native_build(p, p.bench_tu, native_bench)
+    var native_bench_error = native_build(p, p.native_bench_sources, native_bench)
     if (empty(native_bench_error)) {
         native_bench_error = native_bench_oracle(p, native_bench, args[0], bench_expected)
     }
