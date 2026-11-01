@@ -36,21 +36,28 @@ struct Args {
     nm : string = "nm"
 }
 
-// `nm --version`'s first line against the version the `nm:` line of VERSIONS.md pins: "" when they
-// agree, else the refusal; a missing or failing `nm` prints no version and is refused
-def private nm_pin_mismatch(nm : string) : string {
-    var pin = ""
-    for (line in split(fread("VERSIONS.md"), "\n")) {
+//! The versions the `nm:` line of a VERSIONS.md text pins: the comma-separated words before the
+//! line's first parenthesis, one per machine the captures and the CI run on; none without the line.
+def nm_pins(versions_md : string) : array<string> {
+    var nm_line = ""
+    for (line in split(versions_md, "\n")) {
         if (line |> starts_with("nm: ")) {
-            pin = split(slice(line, 4), " ")[0]
+            nm_line = split(slice(line, 4), " (")[0]
         }
     }
+    return <- [for (word in split(nm_line, ",")); strip(word); where !empty(strip(word))]
+}
+
+// `nm --version`'s first line against the versions the `nm:` line of VERSIONS.md pins: "" when it
+// names one of them, else the refusal; a missing or failing `nm` prints no version and is refused
+def private nm_pin_mismatch(nm : string) : string {
+    let pins <- nm_pins(fread("VERSIONS.md"))
     var out : string
     let rc = run_and_capture([nm, "--version"], out, 30.0)
     let first = split(out, "\n")[0]
     let words <- split(strip(first), " ")
     let version = rc == 0 ? words[length(words) - 1] : ""
-    return version == pin ? "" : "`{nm} --version` printed `{strip(first)}` (exit {rc}), VERSIONS.md pins nm `{pin}`"
+    return (pins |> has_value(version)) ? "" : "`{nm} --version` printed `{strip(first)}` (exit {rc}), VERSIONS.md pins nm `{join(pins, ", ")}`"
 }
 
 // `argv` run, its output logged when it fails; whether it exited 0
