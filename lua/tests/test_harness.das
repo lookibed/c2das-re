@@ -94,17 +94,22 @@ def private stand_in_nm(root, version : string; listing_rc : int) : string {
 
 [test]
 def test_profile_refusals(t : T?) {
-    t |> run("profile.das refuses an nm other than the one VERSIONS.md pins, a missing one, a failed listing and a binary listing no text symbol, and accepts an object holding data alone") @(t : T?) {
-        var pin = ""
+    t |> run("profile.das refuses an nm of a version VERSIONS.md does not list, a missing one, a failed listing and a binary listing no text symbol, and accepts an object holding data alone under every listed version") @(t : T?) {
+        // the versions VERSIONS.md lists, as profile.das's `nm_pins` reads them: the comma-separated
+        // words before the line's first parenthesis
+        var nm_line = ""
         for (line in split(fread("VERSIONS.md"), "\n")) {
             if (line |> starts_with("nm: ")) {
-                pin = split(slice(line, 4), " ")[0]
+                nm_line = split(slice(line, 4), " (")[0]
             }
         }
-        t |> success(!empty(pin))
+        let pins <- [for (word in split(nm_line, ",")); strip(word)]
+        t |> success(!empty(pins), "VERSIONS.md names no nm version")
+        let pin = pins[0]
+        let listed = join(pins, ", ")
         let root = stand_in_root("c2das_lua_profile", LOBJECT)
         t |> success(!empty(root))
-        fwrite(path_join(root, "VERSIONS.md"), "nm: {pin} (stand-in)\n")
+        fwrite(path_join(root, "VERSIONS.md"), "nm: {listed} (stand-in)\n")
         // the test suite and the benchmarks the profiled binary runs: the stand-in ignores its arguments
         mkdir_rec(path_join(root, "lua/fetch/lua-5.4.8-tests"))
         fwrite(path_join(root, "lua/fetch/lua-5.4.8-tests/all.lua"), "")
@@ -114,9 +119,12 @@ def test_profile_refusals(t : T?) {
         }
         var out : string
         t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", path_join(root, "missing_nm")]), out), 1, out)
-        t |> success(out |> contains("missing_nm --version` printed `` (exit ") && out |> contains("VERSIONS.md pins nm `{pin}`"), out)
+        t |> success(out |> contains("missing_nm --version` printed `` (exit ") && out |> contains("VERSIONS.md pins nm `{listed}`"), out)
         t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, "0.1", 1)]), out), 1, out)
-        t |> success(out |> contains("printed `GNU nm (GNU Binutils for Debian) 0.1` (exit 0), VERSIONS.md pins nm `{pin}`"), out)
+        t |> success(out |> contains("printed `GNU nm (GNU Binutils for Debian) 0.1` (exit 0), VERSIONS.md pins nm `{listed}`"), out)
+        // the last listed version passes the version check too: the run gets as far as the listings
+        t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, pins[length(pins) - 1], 0)]), out), 1, out)
+        t |> success(out |> contains("lua_profiled lists no text symbol") && !(out |> contains("VERSIONS.md pins nm")), out)
         // the pinned version, every listing failing: refused at the first object, no second one listed
         t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, pin, 1)]), out), 1, out)
         t |> success(out |> contains("nm -n ") && out |> contains("lapi.o exited 1") && !(out |> contains("lcode.o")), out)
