@@ -13,6 +13,7 @@ require ../converter/pipeline.das
 require ../suites/suite_files.das
 require ../perf/perf_lanes.das
 require ../perf/perf_measure.das
+require ../metrics/readability_count.das
 require rust_translator
 require suite_compare
 require perf_compare
@@ -33,12 +34,14 @@ let CASES_FILE = "tests/canonical/cases.json"
 let PROJECT_TRANSLATE_TIMEOUT = 600.0
 
 //! One project, the facts of its README in the Rust repository: the translation unit and the
-//! bench one, relative to `dir`, the clang flags both sides and the native build take, the fixture
-//! the program reads from its last argument, the output it must print, the translator options
-//! the Rust side's canonical case passes, and the C functions shown side by side. The output it
-//! must print is the canonical case `case_id`'s `expected.stdout` in the file `cases`, read by
-//! `load_expected` into `expected` with the C files of the native builds into `native_sources`
-//! and `native_bench_sources`; `bench_free_keys` are the keys of the lines the bench unit
+//! bench one (none when ""), relative to `dir`, the clang flags both sides and the native build
+//! take (`clang_extra` after the include folders and defines, `link_flags` the native link's), the
+//! fixture the program reads from its last argument, the output it must print, the translator
+//! options the Rust side's canonical case passes, and the C functions shown side by side. The
+//! output it must print is the canonical case `case_id`'s `expected.stdout` in the file `cases`,
+//! read by `load_expected` into `expected` with the case's `translation_units` into `units` (the
+//! program is those units when there are any, `tu` the one defining `main`) and the C files of the
+//! native builds into `native_sources` and `native_bench_sources`; `bench_free_keys` are the keys of the lines the bench unit
 //! prints with a value of its own and the prefixes of the keys it prints beyond the expected
 //! output, `bench_omitted_keys` the keys of the expected lines it does not print
 //! (`bench_disagreement`).
@@ -49,12 +52,15 @@ struct Project {
     bench_tu : string
     include_dirs : array<string>
     defines : array<string>
+    clang_extra : array<string>
     c_std : string
     native_flags : array<string>
+    link_flags : array<string>
     fixture : string
     cases : string
     case_id : string
     expected : string
+    units : array<string>
     native_sources : array<string>
     native_bench_sources : array<string>
     rust_flags : array<string>
@@ -74,7 +80,7 @@ struct Verdict {
 [arch(at="ARCHITECTURE_PROJECTS.md#projects")]
 def project_table(checkout : string) : array<Project> {
     let manual_dir = path_join(checkout, MANUAL_DIR)
-    return <- [Project(
+    var rows <- [Project(
         name = "wasm3",
         dir = path_join(manual_dir, "wasm3"),
         tu = "src/all_host.c",
@@ -128,8 +134,18 @@ def project_table(checkout : string) : array<Project> {
         cases = path_join(checkout, CASES_FILE),
         case_id = "plmpeg-stream-320x240-std",
         functions <- ["plm_video_idct", "plm_video_decode_block"],
-        bench_omitted_keys <- ["bytes"]),
-    Project(
+        bench_omitted_keys <- ["bytes"])]
+    var engines <- engine_rows(manual_dir, path_join(checkout, CASES_FILE))
+    rows |> reserve(length(rows) + length(engines))
+    for (row in engines) {
+        rows |> emplace(row)
+    }
+    return <- rows
+}
+
+// the game engines among the projects under `manual_dir`, `cases` the Rust checkout's cases
+def private engine_rows(manual_dir, cases : string) : array<Project> {
+    return <- [Project(
         name = "doomgeneric",
         dir = path_join(manual_dir, "doomgeneric"),
         tu = "src/doom_all.c",
@@ -138,11 +154,25 @@ def project_table(checkout : string) : array<Project> {
         c_std = "c11",
         native_flags <- ["-O2"],
         fixture = "fixtures/doom1.wad",
-        cases = path_join(checkout, CASES_FILE),
+        cases = cases,
         case_id = "doomgeneric-demo1-std",
         rust_flags <- ["--das-option", "stack = 4194304"],
         functions <- ["R_DrawColumn", "R_DrawSpan"],
-        bench_free_keys <- ["frames", "frame["])]
+        bench_free_keys <- ["frames", "frame["]),
+    Project(
+        name = "quakegeneric",
+        dir = path_join(manual_dir, "quakegeneric"),
+        tu = "src/quake_entry.c",
+        include_dirs <- ["upstream/quakegeneric/source", "src"],
+        clang_extra <- ["-include", "engine_config.h"],
+        c_std = "c11",
+        native_flags <- ["-O2"],
+        link_flags <- ["-lm"],
+        fixture = "fixtures",
+        cases = cases,
+        case_id = "quakegeneric-demo1-std",
+        rust_flags <- ["--das-option", "stack = 4194304"],
+        functions <- ["D_DrawSpans8", "D_DrawZSpans"])]
 }
 
 //! The project `name` of the Rust checkout `checkout` into `p`; false when the table has none.
@@ -157,10 +187,11 @@ def find_project(checkout, name : string; var p : Project) : bool {
     return found
 }
 
-//! `p.expected` read from its canonical case's `expected.stdout`, and the C files of its native
-//! builds: the unit's the case's `c_reference.sources`, else `p.tu`; the bench's the same without
-//! their last (the entry) and with the case's `corpus.bench_c_entry` after them, else
-//! `p.bench_tu`; "", or why it cannot be.
+//! `p.expected` read from its canonical case's `expected.stdout`, `p.units` from its
+//! `translation_units`, and the C files of its native builds: the unit's the case's
+//! `c_reference.sources`, else the units, else `p.tu`; the bench's the same without their last
+//! (the entry) and with the case's `corpus.bench_c_entry` after them, else `p.bench_tu`, none when
+//! that is ""; "", or why it cannot be.
 [arch(at="ARCHITECTURE_PROJECTS.md#projects")]
 def load_expected(var p : Project) : string {
     if (!fexist(p.cases)) {
@@ -184,24 +215,37 @@ def load_expected(var p : Project) : string {
     return "{p.cases} has no case {p.case_id} with an expected.stdout"
 }
 
-// the C files of `p`'s native builds from its canonical case `c`, its units where the case names
-// none; "", or why a named source is not a path
+// the strings of the array `value`, none when it is no array; `bad` set when an element is not a
+// string
+def private read_paths(value : JsonValue?; var bad : bool&) : array<string> {
+    if (value == null || !(value.value is _array)) {
+        return <- array<string>()
+    }
+    for (s in value.value as _array) {
+        bad = bad || s == null || !(s.value is _string)
+    }
+    return <- [for (s in value.value as _array); s ?? ""]
+}
+
+// the units of `p` and the C files of its native builds from its canonical case `c`, its units
+// where the case names none; "", or why a named source is not a path
 def private read_native_sources(var p : Project; c : JsonValue?) : string {
-    let sources = c?["c_reference"]?["sources"]
+    var bad_units, bad_sources : bool
+    p.units <- read_paths(c?["translation_units"], bad_units)
+    var sources <- read_paths(c?["c_reference"]?["sources"], bad_sources)
+    if (bad_units || bad_sources) {
+        return "{p.cases}: the case {p.case_id} has a {bad_units ? "translation_units" : "c_reference.sources"} entry that is not a string"
+    }
     let bench_entry = c?["corpus"]?["bench_c_entry"]
-    if (sources == null || !(sources.value is _array) || empty(sources.value as _array)) {
-        p.native_sources <- [p.tu]
-        p.native_bench_sources <- [p.bench_tu]
+    let bench_units <- empty(p.bench_tu) ? array<string>() : [p.bench_tu]
+    if (empty(sources)) {
+        p.native_sources <- empty(p.units) ? [p.tu] : clone_to_move(p.units)
+        p.native_bench_sources := bench_units
         return ""
     }
-    for (s in sources.value as _array) {
-        if (s == null || !(s.value is _string)) {
-            return "{p.cases}: the case {p.case_id} has a c_reference.sources entry that is not a string"
-        }
-    }
-    p.native_sources <- [for (s in sources.value as _array); s ?? ""]
+    p.native_sources <- sources
     if (bench_entry == null || !(bench_entry.value is _string)) {
-        p.native_bench_sources <- [p.bench_tu]
+        p.native_bench_sources := bench_units
         return ""
     }
     p.native_bench_sources <- [for (s, i in p.native_sources, count()); s; where i + 1 < length(p.native_sources)]
@@ -226,10 +270,10 @@ def enter_working_folder(cwd : string) : string {
     return back
 }
 
-//! The clang arguments of `p`: the C standard, each include folder, each define.
+//! The clang arguments of `p`: the C standard, each include folder, each define, `clang_extra`.
 def clang_args(p : Project) : array<string> {
     var args <- ["-std={p.c_std}"]
-    args |> push_from([for (d in p.include_dirs); "-I{project_path(p, d)}"], [for (d in p.defines); "-D{d}"])
+    args |> push_from([for (d in p.include_dirs); "-I{project_path(p, d)}"], [for (d in p.defines); "-D{d}"], p.clang_extra)
     return <- args
 }
 
@@ -532,30 +576,44 @@ def side_speed(das_path, refusal, work : string; module_dirs, args : array<strin
 }
 
 //! The native build of `p`'s C files `sources` into `bin` by the pinned clang with the project's
-//! flags; "" when it built, else the compiler's first line.
+//! flags, `link_flags` after the files; "" when it built, else the compiler's first line.
 def native_build(p : Project; sources : array<string>; bin : string) : string {
     var argv <- [default_clang()]
-    argv |> push_from(clang_args(p), p.native_flags, [for (s in sources); project_path(p, s)], ["-o", bin])
+    argv |> push_from(clang_args(p), p.native_flags, [for (s in sources); project_path(p, s)])
+    argv |> push_from(p.link_flags, ["-o", bin])
     var out : string
     let rc = run_and_capture(argv, out, COMPARE_LIMITS.build)
     return rc == 0 ? "" : "clang exited {rc}: {first_line(out)}"
 }
 
-// our side of one unit of `p`: converted under `linux` into `out_dir` with a sidecar of the
-// project's defines; the module, or "" with `refusal` the converter's first line
-def private ours_module(p : Project; tu, out_dir : string; var refusal : string&) : string {
+// our side of one unit of `p`, or of its units (`units`, a program in the source layout):
+// converted under `linux` into `out_dir` with a sidecar of the project's defines; the entry
+// module with every file written into `files`, or "" with `refusal` the converter's first line
+def private ours_module(p : Project; tu, out_dir : string; units : array<string>; var refusal : string&; var files : array<string>) : string {
     mkdir_rec(out_dir)
     let sidecar = path_join(out_dir, "{p.name}.c2das")
     fwrite(sidecar, write_json(JV({"defines" => JV(p.defines)})))
-    let res <- convert(project_path(p, tu), out_dir, "linux", "", sidecar)
+    var res <- empty(units) ? convert(project_path(p, tu), out_dir, "linux", "", sidecar) : convert_program([for (u in units); project_path(p, u)], out_dir, "linux", "", sidecar)
     refusal = res.ok ? "" : first_line(res.error)
+    delete files
+    files <- empty(refusal) && !empty(res.files) ? [for (f in res.files); path_join(out_dir, f)] : [res.das_path]
     return res.das_path
 }
 
-// the Rust side of one unit of `p`, translated by `bin` into `out_dir` with the case's options
-def private rust_module(p : Project; bin, tu, out_dir : string; var refusal : string&; var files : array<string>) : string {
+// the units `units` of `p` translated by `bin` into `out_dir` in the source layout, through a
+// compilation database in `<out_dir>_db`
+def private rust_units(p : Project; bin, out_dir : string; units : array<string>) : RustTranslation {
+    let db = path_join("{out_dir}_db", "compile_commands.json")
+    mkdir_rec("{out_dir}_db")
+    write_unit_commands(db, [for (u in units); project_path(p, u)], clang_args(p), p.dir)
+    return <- translate_db(bin, db, out_dir, "", p.rust_flags, PROJECT_TRANSLATE_TIMEOUT)
+}
+
+// the Rust side of one unit of `p`, translated by `bin` into `out_dir` with the case's options,
+// or of its units (`units`, `rust_units`)
+def private rust_module(p : Project; bin, tu, out_dir : string; units : array<string>; var refusal : string&; var files : array<string>) : string {
     rmdir_rec(out_dir)
-    let t <- translate_file(bin, project_path(p, tu), out_dir, p.rust_flags, clang_args(p), PROJECT_TRANSLATE_TIMEOUT)
+    var t <- empty(units) ? translate_file(bin, project_path(p, tu), out_dir, p.rust_flags, clang_args(p), PROJECT_TRANSLATE_TIMEOUT) : rust_units(p, bin, out_dir, units)
     refusal = !t.ok ? t.error : empty(t.entry) ? "no module of {out_dir} defines main" : ""
     files := t.files
     return t.entry
@@ -565,14 +623,25 @@ def private rust_module(p : Project; bin, tu, out_dir : string; var refusal : st
 def private lanes_json(lanes : table<string; Verdict>) : JsonValue? => JV({for (lane in DAS_LANES); lane => verdict_json(lanes?[lane] ?? Verdict())})
 
 //! The code of one side: its files, non-blank lines and the readability counters over `entry`
-//! (`measure_side`), the Rust side's runtime lines split from its `c2da_` declarations by their
-//! prefix; `refused` with `refusal` set.
+//! (`measure_side`), over every module of `files` when there are several (`count_program`), the
+//! Rust side's runtime lines split from its `c2da_` declarations by their prefix; `refused` with
+//! `refusal` set.
 [arch(at="ARCHITECTURE_PROJECTS.md#code")]
 def side_code(files : array<string>; entry, refusal : string; rust : bool) : SideQuality {
     if (!empty(refusal)) {
         return SideQuality(status = "refused", error = refusal)
     }
     var side <- measure_side(files, entry)
+    let modules <- [for (f in files); f; where f |> ends_with(".das")]
+    if (side.status == "ok" && length(modules) > 1) {
+        var failed : string
+        var mc <- count_program(modules, failed)
+        if (!empty(mc.error)) {
+            side.status = "compile"
+            side.error = "{base_name(failed)}: {first_line(strip(mc.error))}"
+        }
+        side.counts <- mc.counts
+    }
     if (rust) {
         let none : table<string>
         for (f in files) {
@@ -589,6 +658,64 @@ def side_code(files : array<string>; entry, refusal : string; rust : bool) : Sid
     return <- side
 }
 
+//! The error of every bench cell of a project without a bench unit.
+let NO_BENCH = "no bench: the project has no bench unit"
+
+// the text of `files`, one after another
+def private files_text(files : array<string>) : string => join([for (f in files); fread(f)], "\n")
+
+// the bench builds of a project: the native bench binary or its build's failure, and each side's
+// bench module or its refusal; `has` false for a project without a bench unit
+struct private BenchModules {
+    has : bool
+    native : string
+    native_error : string
+    ours : string
+    ours_refusal : string
+    rust : string
+    rust_refusal : string
+}
+
+// `p`'s bench unit built natively into `<work>/native`, converted into `<work>/ours_bench` and
+// translated by `bin` into `<work>/rust_bench`; nothing for a project without one
+def private bench_modules(p : Project; bin, work : string) : BenchModules {
+    var b = BenchModules(has = !empty(p.native_bench_sources), native = path_join(work, "native/{p.name}_bench"))
+    if (!b.has) {
+        return b
+    }
+    b.native_error = native_build(p, p.native_bench_sources, b.native)
+    var inscope ours_files, rust_files : array<string>
+    let no_units : array<string>
+    b.ours = ours_module(p, p.bench_tu, path_join(work, "ours_bench"), no_units, b.ours_refusal, ours_files)
+    b.rust = rust_module(p, bin, p.bench_tu, path_join(work, "rust_bench"), no_units, b.rust_refusal, rust_files)
+    return b
+}
+
+// the speed section of `p`'s entry, timed in the working folder: `NO_BENCH` in every cell without
+// a bench, else the native bench the oracle (`native_bench_oracle`) and timed, and each side's
+// bench module timed where its lane in `ours_lanes` or `rust_lanes` passes (`side_speed`)
+def private project_speed(p : Project; work : string; b : BenchModules; modules, args : array<string>; ours_lanes, rust_lanes : table<string; Verdict>; samples : int) : JsonValue? {
+    if (!b.has) {
+        return JV({
+            "native" => error_json(NO_BENCH),
+            "ours" => JV({for (lane in DAS_LANES); lane => error_json(NO_BENCH)}),
+            "rust" => JV({for (lane in DAS_LANES); lane => error_json(NO_BENCH)})
+        })
+    }
+    var oracle : string
+    let error = empty(b.native_error) ? native_bench_oracle(p, b.native, args[0], oracle) : b.native_error
+    let no_oracle = empty(error) ? "" : "no native bench result: {error}"
+    let no_modules : array<string>
+    var native = empty(error) ? bench_cells([b.native, args[0]], oracle, samples, COMPARE_LIMITS.sample) : error_json(error)
+    var ours <- side_speed(b.ours, empty(b.ours_refusal) ? no_oracle : b.ours_refusal, path_join(work, "ours_bench_run"), modules, args, ours_lanes, oracle, samples, COMPARE_LIMITS)
+    var rust <- side_speed(b.rust, empty(b.rust_refusal) ? no_oracle : b.rust_refusal, path_join(work, "rust_bench_run"), no_modules, args, rust_lanes, oracle, samples, COMPARE_LIMITS)
+    return JV({
+        "native" => native,
+        "ours" => JV(ours),
+        "rust" => JV(rust)
+    })
+}
+
 //! Project `p` through both sides, built in `work` and run with the working folder `<work>/cwd`,
 //! the Rust side by `bin`, each bench lane timed over `samples` runs: its capture entry.
 [arch(at="ARCHITECTURE_PROJECTS.md#projects")]
@@ -600,16 +727,13 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
     let no_modules : array<string>
     let args <- [absolute_path(project_path(p, p.fixture))]
     let native_bin = path_join(work, "native/{p.name}")
-    let native_bench = path_join(work, "native/{p.name}_bench")
     mkdir_rec(path_join(work, "native"))
     var native = Verdict(status = "native", reason = native_build(p, p.native_sources, native_bin))
-    var native_bench_error = native_build(p, p.native_bench_sources, native_bench)
-    var ours_refusal, rust_refusal, ours_bench_refusal, rust_bench_refusal : string
-    let ours_das = ours_module(p, p.tu, path_join(work, "ours"), ours_refusal)
-    var rust_files, rust_bench_files : array<string>
-    let rust_das = rust_module(p, bin, p.tu, path_join(work, "rust"), rust_refusal, rust_files)
-    let ours_bench = ours_module(p, p.bench_tu, path_join(work, "ours_bench"), ours_bench_refusal)
-    let rust_bench = rust_module(p, bin, p.bench_tu, path_join(work, "rust_bench"), rust_bench_refusal, rust_bench_files)
+    var ours_refusal, rust_refusal : string
+    var ours_files, rust_files : array<string>
+    let ours_das = ours_module(p, p.tu, path_join(work, "ours"), p.units, ours_refusal, ours_files)
+    let rust_das = rust_module(p, bin, p.tu, path_join(work, "rust"), p.units, rust_refusal, rust_files)
+    let bench = bench_modules(p, bin, work)
     let back = enter_working_folder(path_join(work, "cwd"))
     if (empty(native.reason)) {
         native = run_judged([native_bin, args[0]], p.expected, COMPARE_LIMITS.sample)
@@ -618,18 +742,10 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
     let no_oracle = native.status == "pass" ? "" : "no native result: {native.reason}"
     let ours_lanes <- side_lanes(ours_das, empty(no_oracle) ? ours_refusal : no_oracle, path_join(work, "ours_run"), modules, args, p.expected, COMPARE_LIMITS)
     let rust_lanes <- side_lanes(rust_das, empty(no_oracle) ? rust_refusal : no_oracle, path_join(work, "rust_run"), no_modules, args, p.expected, COMPARE_LIMITS)
-    var bench_expected : string
-    if (empty(native_bench_error)) {
-        native_bench_error = native_bench_oracle(p, native_bench, args[0], bench_expected)
-    }
-    var bench_native = empty(native_bench_error) ? bench_cells([native_bench, args[0]], bench_expected, samples, COMPARE_LIMITS.sample) : error_json(native_bench_error)
-    let no_bench_oracle = empty(native_bench_error) ? "" : "no native bench result: {native_bench_error}"
-    var ours_speed <- side_speed(ours_bench, empty(ours_bench_refusal) ? no_bench_oracle : ours_bench_refusal, path_join(work, "ours_bench_run"), modules, args, ours_lanes, bench_expected, samples, COMPARE_LIMITS)
-    var rust_speed <- side_speed(rust_bench, empty(rust_bench_refusal) ? no_bench_oracle : rust_bench_refusal, path_join(work, "rust_bench_run"), no_modules, args, rust_lanes, bench_expected, samples, COMPARE_LIMITS)
+    let speed = project_speed(p, work, bench, modules, args, ours_lanes, rust_lanes, samples)
     chdir(back)
-    let ours_files <- empty(ours_refusal) ? [ours_das] : array<string>()
-    let ours_text = empty(ours_refusal) ? fread(ours_das) : ""
-    let rust_text = empty(rust_refusal) ? fread(rust_das) : ""
+    let ours_text = empty(ours_refusal) ? files_text(ours_files) : ""
+    let rust_text = empty(rust_refusal) ? files_text(rust_files) : ""
     var functions <- [for (name in p.functions); JV({"key" => JV(p.name), "name" => JV(name), "ours" => JV(function_text(ours_text, name, "ours")), "rust" => JV(function_text(rust_text, name, "rust"))})]
     var entry <- {
         "rust_commit" => JV(stamps.rust_commit),
@@ -642,11 +758,7 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
         "native_compiler" => JV(first_line(captured([default_clang(), "--version"]))),
         "ours" => JV({"error" => JV(ours_refusal), "lanes" => lanes_json(ours_lanes)}),
         "rust" => JV({"error" => JV(rust_refusal), "lanes" => lanes_json(rust_lanes)}),
-        "speed" => JV({
-            "native" => bench_native,
-            "ours" => JV(ours_speed),
-            "rust" => JV(rust_speed)
-        }),
+        "speed" => speed,
         "code" => JV({
             "ours" => JV(side_code(ours_files, ours_das, ours_refusal, false)),
             "rust" => JV(side_code(rust_files, rust_das, rust_refusal, true))

@@ -1,4 +1,7 @@
 options gen2
+// the project tests convert in this process: the emitter walks a program's statements below its own
+// frames, and they overflow the default 16 KB context stack
+options stack = 1048576
 require dastest/testing_boost public
 require strings
 require daslib/fio
@@ -124,6 +127,33 @@ def test_project_row(t : T?) {
             fwrite(p.cases, "\{\"cases\": [\{\"id\": \"d\"\}, \{\"id\": \"c\", \"expected\": \{\"stdout\": \"a\\nb\\n\"\}\}]\}")
             t |> equal(load_expected(p), "")
             t |> equal(p.expected, "a\nb\n")
+        }
+    }
+}
+
+[test]
+def test_project_units_row(t : T?) {
+    t |> run("quakegeneric with its forced include, libm linked natively, no bench unit") @(t : T?) {
+        var p : Project
+        t |> success(find_project("/m", "quakegeneric", p))
+        t |> equal("{p.tu} [{p.bench_tu}] {p.fixture} {p.case_id}", "src/quake_entry.c [] fixtures quakegeneric-demo1-std")
+        t |> equal(join(clang_args(p), " "), "-std=c11 -I/m/tests/manual/quakegeneric/upstream/quakegeneric/source -I/m/tests/manual/quakegeneric/src -include engine_config.h")
+        t |> equal("{join(p.native_flags, " ")} {join(p.link_flags, " ")}", "-O2 -lm")
+        t |> equal(join(p.rust_flags, "|"), "--das-option|stack = 4194304")
+        t |> equal(join(p.functions, " "), "D_DrawSpans8 D_DrawZSpans")
+    }
+    t |> run("a case's translation units: the program, and the native build's C files when it names no reference") @(t : T?) {
+        t |> with_scratch("cmp_projects_units") $(dir) {
+            var p = Project(tu = "e.c", cases = path_join(dir, "cases.json"), case_id = "c")
+            let stdout = "\"expected\": \{\"stdout\": \"a\\n\"\}"
+            fwrite(p.cases, "\{\"cases\": [\{\"id\": \"c\", {stdout}, \"translation_units\": [\"g.c\", \"e.c\"]\}]\}")
+            t |> equal(load_expected(p), "")
+            t |> equal("{join(p.units, " ")} | {join(p.native_sources, " ")} | {length(p.native_bench_sources)}", "g.c e.c | g.c e.c | 0")
+            fwrite(p.cases, "\{\"cases\": [\{\"id\": \"c\", {stdout}, \"translation_units\": [\"g.c\", \"e.c\"], \"c_reference\": \{\"sources\": [\"r.c\"]\}\}]\}")
+            t |> equal(load_expected(p), "")
+            t |> equal("{join(p.units, " ")} | {join(p.native_sources, " ")}", "g.c e.c | r.c")
+            fwrite(p.cases, "\{\"cases\": [\{\"id\": \"c\", {stdout}, \"translation_units\": [\"g.c\", 1]\}]\}")
+            t |> equal(load_expected(p), "{p.cases}: the case c has a translation_units entry that is not a string")
         }
     }
 }
@@ -283,6 +313,18 @@ def test_native_and_code(t : T?) {
             t |> equal(run_and_capture([path_join(dir, "two")], out, 30.0), 0, out)
         }
     }
+    t |> run("the native build: the forced include, the link flags after the files") @(t : T?) {
+        t |> with_scratch("cmp_projects_link") $(dir) {
+            fwrite(path_join(dir, "cfg.h"), "#define ROOT cbrt\n")
+            fwrite(path_join(dir, "m.c"), "#include <math.h>\nvolatile double v = 8.0;\nint main(void) \{ return (int)ROOT(v) - 2; \}\n")
+            var p = Project(name = "p", dir = dir, include_dirs <- ["."], clang_extra <- ["-include", "cfg.h"], c_std = "c11")
+            t |> success(native_build(p, ["m.c"], path_join(dir, "m")) |> starts_with("clang exited 1: "))
+            p.link_flags <- ["-lm"]
+            t |> equal(native_build(p, ["m.c"], path_join(dir, "m")), "")
+            var out : string
+            t |> equal(run_and_capture([path_join(dir, "m")], out, 30.0), 0, out)
+        }
+    }
     t |> run("a side's code: refused, or counted, the Rust runtime split by its prefixes") @(t : T?) {
         t |> with_scratch("cmp_projects_code") $(dir) {
             let none : array<string>
@@ -293,6 +335,21 @@ def test_native_and_code(t : T?) {
             t |> equal("{rust.status} {rust.files} {rust.lines} {rust.runtime_lines} {rust.program_c2da_lines}", "ok 1 11 3 3")
             let ours = side_code([das], das, "", false)
             t |> equal("{ours.status} {ours.runtime_lines} {ours.program_c2da_lines}", "ok 0 0")
+        }
+    }
+    t |> run("a side of several modules: every module counted, or the first that fails named") @(t : T?) {
+        t |> with_scratch("cmp_projects_modules") $(dir) {
+            let lib = path_join(dir, "lib.das")
+            let entry = path_join(dir, "entry.das")
+            fwrite(lib, "options gen2\nmodule lib public\ndef seven() : int \{\n    var p : int?\n    unsafe \{\n        p = reinterpret<int?>(0l)\n    \}\n    return 7\n\}\n")
+            fwrite(entry, "options gen2\nrequire lib\n[export]\ndef main() : int \{\n    return seven()\n\}\n")
+            let alone = side_code([entry], entry, "", false)
+            let both = side_code([entry, lib], entry, "", false)
+            t |> equal("{alone.counts?["reinterpret"] ?? -1} {both.status} {both.files} {both.counts?["reinterpret"] ?? -1}", "0 ok 2 1")
+            let bad = path_join(dir, "bad.das")
+            fwrite(bad, "options gen2\nmodule bad public\ndef f() : int \{\n    return x\n\}\n")
+            let broken = side_code([entry, bad], entry, "", false)
+            t |> success("{broken.status} {broken.error}" |> starts_with("compile bad.das: "), broken.error)
         }
     }
 }
@@ -341,6 +398,37 @@ def test_project_entry(t : T?) {
             let lines <- project_lines("p", entry)
             t |> equal(lines[0], "p: native native line 1: got `nope`, expected `yes`")
             t |> success(has_value(lines, "p: rust aot: refused no native result: line 1: got `nope`, expected `yes`"), join(lines, "\n"))
+        }
+    }
+}
+
+[test]
+def test_project_units(t : T?) {
+    t |> run("a project of several units without a bench: ours converts the program, Rust gets a database, no bench cell") @(t : T?) {
+        t |> with_scratch("cmp_projects_program") $(dir) {
+            mkdir_rec(path_join(dir, "src"))
+            fwrite(path_join(dir, "src/graph.c"), "int call_fib(int n) \{ return n; \}\n")
+            fwrite(path_join(dir, "src/entry.c"), "#include <stdio.h>\nint call_fib(int n);\nint main(void) \{\n    printf(\"{escaped(EXPECTED)}\");\n    return call_fib(0);\n\}\n")
+            fwrite(path_join(dir, "input"), "")
+            fwrite(path_join(dir, "graph.das"), "options gen2\nmodule graph public\ndef call_fib(n : int) : int \{\n    return n\n\}\n")
+            fwrite(path_join(dir, "entry.das"), "options gen2\nrequire graph\n[export]\ndef main() : int \{\n    print(\"{escaped(EXPECTED)}\")\n    return call_fib(0)\n\}\n")
+            let bin = path_join(dir, "rust")
+            write_script(bin, "#!/bin/sh\nprintf '%s\\n' \"$@\" > {dir}/argv.txt\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    prev=\"$a\"\ndone\nmkdir -p \"$out\"\ncp {dir}/graph.das {dir}/entry.das \"$out/\"\n")
+            let p = Project(name = "p", dir = dir, tu = "src/entry.c", units <- ["src/graph.c", "src/entry.c"], native_sources <- ["src/graph.c", "src/entry.c"], c_std = "c11", fixture = "input", expected = EXPECTED, functions <- ["call_fib"])
+            let entry = project_entry(p, bin, path_join(dir, "work"), 1, Stamps())
+            t |> equal(entry?["native"]?["status"] ?? "", "pass")
+            for (side in ["ours", "rust"]) {
+                t |> equal(join([for (lane in ["interp", "jit"]); entry?[side]?["lanes"]?[lane]?["status"] ?? ""], " "), "pass pass", side)
+                t |> equal(entry?["speed"]?[side]?["interp"]?["error"] ?? "", "no bench: the project has no bench unit", side)
+                t |> equal(entry?["code"]?[side]?["status"] ?? "", "ok", side)
+                t |> success((entry?["functions"]?[0]?[side] ?? "") |> contains("call_fib"), side)
+            }
+            t |> equal(entry?["speed"]?["native"]?["error"] ?? "", "no bench: the project has no bench unit")
+            t |> equal(entry?["code"]?["rust"]?["files"] ?? 0, 2)
+            let argv = fread(path_join(dir, "argv.txt"))
+            t |> success(argv |> starts_with(path_join(dir, "work/rust_db/compile_commands.json")) && argv |> contains("--module-layout\nsource\n"), argv)
+            let db = fread(path_join(dir, "work/rust_db/compile_commands.json"))
+            t |> success(db |> contains(path_join(dir, "src/graph.c")) && !(db |> contains("bench")), db)
         }
     }
 }
@@ -530,7 +618,7 @@ def test_project_run(t : T?) {
             var out : string
             with_env(bin, dir) {
                 t |> equal(run_compare(["--project", "doom"], out), 1, out)
-                t |> success(out |> contains("--project takes one of wasm3, binjgb, h264bsd-mp4, plmpeg-stream, doomgeneric, not `doom`"), out)
+                t |> success(out |> contains("--project takes one of wasm3, binjgb, h264bsd-mp4, plmpeg-stream, doomgeneric, quakegeneric, not `doom`"), out)
                 t |> equal(run_compare(["--project", "wasm3"], out), 2, out)
                 t |> success(out |> contains("the Rust checkout {dir} lacks the project"), out)
                 mkdir_rec(path_join(dir, "tests/manual/wasm3/src"))
