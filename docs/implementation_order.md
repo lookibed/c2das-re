@@ -1118,14 +1118,16 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   fails); the suite ids Rust passes that our ratchet skips (gcc-torture 41, csmith 5, c-testsuite
   0). The rest of the list (`switch_goto` JIT and exe, `primes` AOT, the counter `pointer_arith`) is
   read from the block when an item is cut.
-- **P8.4 Converter gaps found by P8.2** (from P8.2 PR 1, wasm3; P8.2's later projects may add to
-  it). Candidates, each its own item later, none scheduled: (a) include folders, a sidecar key
-  passed to both clang passes, and a program root wider than the main file's folder (wasm3 is
-  refused at `m3_bind.c` not found; with `CPATH` set the converter writes an empty module and
-  reports no error, a defect of its own); (b) braced scalar pointer initializers (`m3Err_none = {
-  NULL }`: "`ptr` initializer lists are not dumped yet"); (c) `__attribute__((musttail))`, refused
-  ("`must_tail` is not lowered"; the Rust side drops it with a warning); (d) the AOT host of
-  `converter/tiers.das` passes no program arguments, so AOT is skipped for any program reading argv.
+- **P8.4 Converter gaps found by P8.2** (from P8.2 PRs 1-2, wasm3 and binjgb; later projects may
+  add). Candidates, each its own item later, none scheduled: (a) include folders, a sidecar key for
+  both clang passes, and a program root wider than the main file's folder (wasm3 refused at
+  `m3_bind.c`, binjgb at `common.c`; with `CPATH` the converter writes an empty module, no error);
+  (b) braced scalar pointer initializers (`m3Err_none = { NULL }`, "not dumped yet"); (c)
+  `__attribute__((musttail))` refused (the Rust side drops it with a warning); (d) the AOT host of
+  `converter/tiers.das` passes no program arguments, so AOT is skipped for argv programs; (e) a C
+  name that is a daslang type keyword (`Obj.byte3`) is emitted unrenamed, a compile failure; (f)
+  `clock_gettime` has no c_runtime mapping (the Rust corpora's bench units refused on our side);
+  (g) glibc `assert` without `NDEBUG` refused at `__extension__`.
 
 ## P6 — Doom
 
