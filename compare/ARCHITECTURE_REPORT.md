@@ -44,9 +44,10 @@ live in `compare_render.das` so that the writers and the renderer share one list
   (or `gap_error`), the pointer to the ports repository for our Lua numbers and to the pending
   ruling; `doom.status` and `doom.reason`.
 - Where the Rust translator is ahead, one line a fact, by a margin `AHEAD_MARGIN` of 5%: a suite
-  whose Rust `pass` exceeds our `ours_pass`; a kernel and lane whose ratio ours exceeds the Rust
+  whose Rust `pass` exceeds our `ours_pass` by any count; a kernel and lane whose ratio ours exceeds the Rust
   one by more than the margin and, relative to the Rust ratio, by more than either cell's
   `spread`, or where the Rust side has a cell and ours has none; a lane whose geomean ours exceeds
   by more than the margin over a non-zero kernel count; a counter whose `all` total ours exceeds
-  the Rust one by more than the margin; the Rust lines without its runtime likewise below ours.
+  the Rust one by more than the margin, `c_function` aside (`UNRANKED_COUNTERS`: the annotation
+  exists only in our output); the Rust lines without its runtime likewise below ours.
   A difference within the margin or within a cell's spread is not listed.
