@@ -32,11 +32,11 @@ struct Sidecar {
     // larger allocation), each `Record.field`, by tag or typedef name: their accesses go through a
     // pointer with no range check
     over_indexed : array<string>
-    // how a program of several files lays out its modules: `source` (a module per C file, the
-    // cycles cut by late binding), `scc` (a module per C file, mutually dependent files one module
-    // of fragments) or `single` (one module); "" when the key is absent
+    // how a program of several files lays out its modules: `source` (a module per C file, mutually
+    // dependent files one module of fragments), `source-cut` (a module per C file, the cycles cut
+    // by late binding) or `single` (one module); "" when the key is absent
     layout : string
-    // the cycle cut of the `source` layout (`converter/ARCHITECTURE_LAYOUT.md`): the weight above
+    // the cycle cut of the `source-cut` layout (`converter/ARCHITECTURE_LAYOUT.md`): the weight above
     // which an edge is never cut (-1: none), the symbols never cut, the groups of units kept in one
     // module, the symbols always cut, and the profile of call counts (a path beside the sidecar,
     // "" for none)
@@ -60,7 +60,7 @@ let LOOPS <- ["range", "while"]
 def is_loops(mode : string) : bool => has_value(LOOPS, mode)
 
 //! The values of the `layout` key and of the converter's `--layout`.
-let LAYOUTS <- ["source", "scc", "single"]
+let LAYOUTS <- ["source", "source-cut", "single"]
 
 //! Whether `mode` is a value of `layout`.
 def is_layout(mode : string) : bool => has_value(LAYOUTS, mode)
@@ -156,7 +156,7 @@ def private strings_of(js : JsonValue?; what : string; var out : array<string>; 
 // the `layout` key: a mode, or an object with `mode`, `threshold`, `keep_together`, `cut` and
 // `profile`
 def private read_layout(js : JsonValue?; path : string; var side : Sidecar; var error : string&) {
-    let modes = "\"source\", \"scc\" or \"single\""
+    let modes = "\"source\", \"source-cut\" or \"single\""
     if (js is _string) {
         side.layout = js ?? ""
         if (!is_layout(side.layout)) {

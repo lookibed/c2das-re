@@ -140,20 +140,22 @@ def test_cli_layout(t : T?) {
         t |> failure("no temp directory: {dir_error}")
         return
     }
-    t |> run("--layout source cuts the cycle through the link module, --layout scc keeps it one module, --layout single writes one module") @(t : T?) {
+    t |> run("--layout source-cut cuts the cycle through the link module, --layout source keeps it one module, --layout single writes one module") @(t : T?) {
         var out : string
+        t |> equal(run_layout(dir, "source-cut", out), 0, out)
+        t |> success(fexist(path_join(dir, "layout_source-cut/a.das")) && fexist(path_join(dir, "layout_source-cut/main_link.das")), out)
         t |> equal(run_layout(dir, "source", out), 0, out)
-        t |> success(fexist(path_join(dir, "layout_source/a.das")) && fexist(path_join(dir, "layout_source/main_link.das")), out)
-        t |> equal(run_layout(dir, "scc", out), 0, out)
-        t |> success(fexist(path_join(dir, "layout_scc/a_cluster.das")) && !fexist(path_join(dir, "layout_scc/main_link.das")), out)
+        t |> success(fexist(path_join(dir, "layout_source/a_cluster.das")) && !fexist(path_join(dir, "layout_source/main_link.das")), out)
         t |> equal(run_layout(dir, "single", out), 0, out)
         t |> success(fexist(path_join(dir, "layout_single/main.das")) && !fexist(path_join(dir, "layout_single/a.das")), out)
     }
-    t |> run("--layout flat is a usage error before any conversion") @(t : T?) {
+    t |> run("--layout flat, and the old name scc, are a usage error before any conversion") @(t : T?) {
         var out : string
         t |> equal(run_layout(dir, "flat", out), 2, out)
-        t |> success(out |> contains("--layout is source, scc or single, not `flat`"), out)
+        t |> success(out |> contains("--layout is source, source-cut or single, not `flat`"), out)
         t |> success(!fexist(path_join(dir, "layout_flat")), out)
+        t |> equal(run_layout(dir, "scc", out), 2, out)
+        t |> success(out |> contains("--layout is source, source-cut or single, not `scc`"), out)
     }
     rmdir_rec(dir)
 }

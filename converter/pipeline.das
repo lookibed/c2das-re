@@ -53,7 +53,7 @@ struct ConvertResult {
 //! and the cycle cut's late-bound functions with their edges and weights (`layout_report`).
 let LAYOUT_REPORT = "program.layout.txt"
 
-//! The files a program's source or scc layout wrote under the output folder, one relative path a
+//! The files a program's source or source-cut layout wrote under the output folder, one relative path a
 //! line: the modules and fragments a publisher copies, and nothing an earlier conversion left.
 let MODULE_LIST = "program.modules.txt"
 
@@ -121,7 +121,7 @@ def private option_error(param_writes, loops, layout : string) : string {
         return "--param-writes is in-place or copy, not `{param_writes}`"
     }
     if (!empty(layout) && !is_layout(layout)) {
-        return "--layout is source, scc or single, not `{layout}`"
+        return "--layout is source, source-cut or single, not `{layout}`"
     }
     return !empty(loops) && !is_loops(loops) ? "--loops is range or while, not `{loops}`" : ""
 }
@@ -310,7 +310,8 @@ def private program_sidecar(c_paths : array<string>; given : string; var sidecar
 //! round-tripped), then linked in the given order (`converter/link.das`). In the `source` layout,
 //! the default, the program is a module per C file and a cluster of mutually dependent files one
 //! module of fragments (`converter/layout.das`), written under `out_dir` as its C files lie under
-//! their common folder; in the `single` layout it is one module named by the unit defining `main`,
+//! their common folder; in the `source-cut` layout the cycles among the files are cut by late
+//! binding instead; in the `single` layout it is one module named by the unit defining `main`,
 //! else the first. `layout` ("" for the sidecar's `layout`, else `source`) chooses.
 //! `<out_dir>/program.cir.json` names the units' C-IR files and the entry. The sidecar is
 //! `sidecar_path`, else the entry file's `<stem>.c2das`, else the `.c2das` of the first file's
@@ -408,11 +409,11 @@ def private dump_units(c_paths : array<string>; out_dir : string; target : CirTa
     }
 }
 
-// the cycle cut's options from the sidecar: cut in the `source` layout (the default) and not in
-// `scc`; the profile the sidecar's `layout.profile` names read, `error` when it is no object of
-// symbols holding an object of calling file stems and counts
+// the cycle cut's options from the sidecar: cut in the `source-cut` layout alone, not in `source`
+// (the default); the profile the sidecar's `layout.profile` names read, `error` when it is no
+// object of symbols holding an object of calling file stems and counts
 def private cut_options(side : Sidecar; var error : string&) : CutOptions {
-    var opts = CutOptions(cut_cycles = side.layout != "scc", threshold = side.layout_threshold)
+    var opts = CutOptions(cut_cycles = side.layout == "source-cut", threshold = side.layout_threshold)
     for (name in side.layout_keep_symbols) {
         opts.keep_symbols |> insert(name)
     }

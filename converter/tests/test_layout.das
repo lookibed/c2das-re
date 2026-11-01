@@ -45,7 +45,7 @@ def private tree_paths : array<string> {
 // the program of `paths` converted in `layout` under the work root's `dir`
 def private converted(paths : array<string>; dir, layout : string) : ConvertResult => <- convert_program(paths, path_join(work_root, dir), "linux", "", "", "", "", "main", layout)
 
-// the program of `paths` converted in the source layout under the work root's `dir`, with a sidecar
+// the program of `paths` converted in the source-cut layout under the work root's `dir`, with a sidecar
 // of text `sidecar` written beside it ("" for none)
 def private converted_with(paths : array<string>; dir, sidecar : string) : ConvertResult {
     let at = path_join(work_root, dir)
@@ -54,7 +54,7 @@ def private converted_with(paths : array<string>; dir, sidecar : string) : Conve
     if (!empty(side)) {
         fwrite(side, sidecar)
     }
-    return <- convert_program(paths, path_join(at, "out"), "linux", "", side, "", "", "main", "source")
+    return <- convert_program(paths, path_join(at, "out"), "linux", "", side, "", "", "main", "source-cut")
 }
 
 // the text of the file at `rel` under the work root's `dir`
@@ -79,19 +79,19 @@ def private agrees(t : T?; paths : array<string>; das_path, tier, name : string)
 }
 
 [test]
-def test_scc_tree(t : T?) {
+def test_source_tree(t : T?) {
     var dir_error : string
     work_root = create_temp_directory("c2das_layout", dir_error)
     t |> equal(dir_error, "")
     delete tree_files
     tree_files <- tree_paths()
     delete tree
-    tree <- converted(tree_files, "tree", "scc")
+    tree <- converted(tree_files, "tree", "source")
     if (!tree.ok) {
         t |> failure(tree.error)
         return
     }
-    t |> run("in the scc layout four files in two folders are a module per file, a cluster of the two that call each other, a header's types and the types no file defines, mirroring the folders") @(t : T?) {
+    t |> run("in the source layout, the default, four files in two folders are a module per file, a cluster of the two that call each other, a header's types and the types no file defines, mirroring the folders") @(t : T?) {
         t |> equal(join(tree.files, " "), "sub/shapes_h.das c_types.das ring_a.das.inc sub/ring_b.das.inc ring_a_cluster.das sub/solo.das main.das")
         t |> equal(tree.das_path, path_join(path_join(work_root, "tree"), "main.das"))
         t |> equal(join(tree.partition, "\n"), "c_types\nmain\nring_a_cluster: cluster of 2: ring_a ring_b\nshapes_h\nsolo\nring_a_cluster: ring_a -> ring_b: ring_b\nring_a_cluster: ring_b -> ring_a: a_value, ring_a")
@@ -172,7 +172,7 @@ def test_single_layout(t : T?) {
         t |> equal(sha256_hex(types.das_text), TYPES_SINGLE_SHA, types.das_text)
     }
     t |> run("one file is one module in either layout") @(t : T?) {
-        let source <- converted(["converter/tests/fixtures/ret42.c"], "one_source", "source")
+        let source <- converted(["converter/tests/fixtures/ret42.c"], "one_source", "source-cut")
         let single <- converted(["converter/tests/fixtures/ret42.c"], "one_single", "single")
         t |> equal(source.ok && single.ok, true, "{source.error} {single.error}")
         t |> equal(length(source.files), 0)
@@ -188,7 +188,7 @@ def test_type_cluster(t : T?) {
     t |> equal(dir_error, "")
     t |> run("two headers whose records point at each other are one module of two fragments, the one whose record the other holds by value included first") @(t : T?) {
         let paths <- ["{TYPES}/main.c", "{TYPES}/weigh.c"]
-        let res <- converted(paths, "types", "source")
+        let res <- converted(paths, "types", "source-cut")
         if (!res.ok) {
             t |> failure(res.error)
             return
@@ -213,15 +213,17 @@ def test_layout_refusals(t : T?) {
         fwrite(path_join(dir, "shape.h"), "struct shape \{ int w; \};\n")
         fwrite(path_join(dir, "shape_h.c"), "#include \"shape.h\"\nint area(struct shape *s) \{ return s->w; \}\n")
         fwrite(path_join(dir, "main.c"), "#include \"shape.h\"\nint area(struct shape *s);\nint main(void) \{ struct shape s = \{ 3 \}; return area(&s); \}\n")
-        let res <- converted([path_join(dir, "main.c"), path_join(dir, "shape_h.c")], "clash/out", "source")
+        let res <- converted([path_join(dir, "main.c"), path_join(dir, "shape_h.c")], "clash/out", "source-cut")
         t |> success(res.error |> contains("link: the modules of ") && res.error |> contains("would both be `shape_h.das`; rename a file"), res.error)
         t |> success(res.error |> contains("shape.h") && res.error |> contains("shape_h.c"), res.error)
     }
-    t |> run("a layout other than source or single is refused before any conversion") @(t : T?) {
+    t |> run("a layout other than source, source-cut or single is refused before any conversion, the old name scc too") @(t : T?) {
         let res <- converted(["{TYPES}/main.c", "{TYPES}/weigh.c"], "flat", "flat")
-        t |> equal(res.error, "--layout is source, scc or single, not `flat`")
+        t |> equal(res.error, "--layout is source, source-cut or single, not `flat`")
         let one <- converted(["converter/tests/fixtures/ret42.c"], "flat_one", "flat")
-        t |> equal(one.error, "--layout is source, scc or single, not `flat`")
+        t |> equal(one.error, "--layout is source, source-cut or single, not `flat`")
+        let old <- converted(cut_paths(), "old_scc", "scc")
+        t |> equal(old.error, "--layout is source, source-cut or single, not `scc`")
     }
     rmdir_rec(work_root)
 }
@@ -237,9 +239,9 @@ def test_cut_tree(t : T?) {
     var dir_error : string
     work_root = create_temp_directory("c2das_layout_cut_tree", dir_error)
     t |> equal(dir_error, "")
-    t |> run("the source layout cuts the cycle of two files: the lighter edge late-binds through the link module, each file its own module, which print what the native build prints") @(t : T?) {
+    t |> run("the source-cut layout cuts the cycle of two files: the lighter edge late-binds through the link module, each file its own module, which print what the native build prints") @(t : T?) {
         let paths <- tree_paths()
-        let res <- converted(paths, "tree", "source")
+        let res <- converted(paths, "tree", "source-cut")
         if (!res.ok) {
             t |> failure(res.error)
             return
@@ -315,18 +317,18 @@ def test_cut_choices(t : T?) {
         }
         fwrite(path_join(dir, "main.c"), "#include <stdio.h>\n#include \"cut.h\"\n\nint main(int argc, char **argv) \{\n    printf(\"%d %d\\n\", a_run(argc + 2), argv[argc] == 0);\n    return 0;\n\}\n")
         var inscope files <- [for (name in ["main.c", "a.c", "b.c"]); path_join(dir, name)]
-        let res <- convert_program(files, path_join(dir, "out"), "linux", "", "", "", "", "main", "source")
+        let res <- convert_program(files, path_join(dir, "out"), "linux", "", "", "", "", "main", "source-cut")
         t |> equal(res.error, "")
         t |> success(fread(path_join(dir, "out/main.das")) |> contains("require b\n"), res.das_text)
         agrees(t, files, res.das_path, "interp", "unreached")
     }
-    t |> run("layout.cut naming a symbol on no cycle is refused; the scc layout keeps the cycle a cluster; single is one module; each prints what the native build prints") @(t : T?) {
+    t |> run("layout.cut naming a symbol on no cycle is refused; the source layout keeps the cycle a cluster; single is one module; each prints what the native build prints") @(t : T?) {
         let paths <- cut_paths()
         let refused <- converted_with(paths, "object", "\{\"layout\": \{\"cut\": [\"b_count\"]\}\}\n")
         t |> equal(refused.error, "link: layout.cut names `b_count`, which no edge of a cycle carries")
-        let scc <- convert_program(paths, path_join(work_root, "scc"), "linux", "", "", "", "", "main", "scc")
-        t |> success(fexist(path_join(work_root, "scc/a_cluster.das")) && !fexist(path_join(work_root, "scc/main_link.das")), scc.error)
-        agrees(t, paths, scc.das_path, "interp", "scc")
+        let clustered <- convert_program(paths, path_join(work_root, "source"), "linux", "", "", "", "", "main", "source")
+        t |> success(fexist(path_join(work_root, "source/a_cluster.das")) && !fexist(path_join(work_root, "source/main_link.das")), clustered.error)
+        agrees(t, paths, clustered.das_path, "interp", "source")
         let single <- convert_program(paths, path_join(work_root, "single"), "linux", "", "", "", "", "main", "single")
         t |> equal(length(single.files), 0)
         agrees(t, paths, single.das_path, "interp", "single")
@@ -378,12 +380,12 @@ def test_taken_names(t : T?) {
     t |> equal(dir_error, "")
     t |> run("a file whose module would take the name of a daslang module is refused, naming the file") @(t : T?) {
         let paths <- written("taken", [(name = "main.c", text = "#include <stdio.h>\nint twice(int);\nint main(void) \{ printf(\"%d\\n\", twice(4)); return 0; \}\n"), (name = "math.c", text = "int twice(int x) \{ return 2 * x; \}\n")])
-        let res <- converted_in(paths, "taken", "", "source")
+        let res <- converted_in(paths, "taken", "", "source-cut")
         t |> equal(res.error, "link: the module of math.c would be `math.das`, which a module daslang or c2das-re loads by that name takes; rename the file")
     }
-    t |> run("a module the source layout writes that does not compile fails the conversion: a native module's name the refusal does not list (`ast_core`) reaches the compile check") @(t : T?) {
+    t |> run("a module the source-cut layout writes that does not compile fails the conversion: a native module's name the refusal does not list (`ast_core`) reaches the compile check") @(t : T?) {
         let paths <- written("native_name", [(name = "main.c", text = "#include <stdio.h>\nint twice(int);\nint main(void) \{ printf(\"%d\\n\", twice(4)); return 0; \}\n"), (name = "ast_core.c", text = "int twice(int x) \{ return 2 * x; \}\n")])
-        let res <- converted_in(paths, "native_name", "", "source")
+        let res <- converted_in(paths, "native_name", "", "source-cut")
         t |> equal(res.ok, false)
         t |> success(res.error |> starts_with("compile check: ") && res.error |> contains("twice"), res.error)
     }
@@ -401,12 +403,12 @@ def test_owned_folder(t : T?) {
         mkdir_rec(out)
         fwrite(path_join(out, "keep.das"), "// hand-written\n")
         fwrite(path_join(out, "notes.txt"), "kept\n")
-        let scc <- convert_program(paths, out, "linux", "", "", "", "", "main", "scc")
-        t |> equal(scc.error, "")
-        t |> success(has_value(scc.files, "a_cluster.das"), join(scc.files, " "))
-        let res <- convert_program(paths, out, "linux", "", "", "", "", "main", "source")
+        let clustered <- convert_program(paths, out, "linux", "", "", "", "", "main", "source")
+        t |> equal(clustered.error, "")
+        t |> success(has_value(clustered.files, "a_cluster.das"), join(clustered.files, " "))
+        let res <- convert_program(paths, out, "linux", "", "", "", "", "main", "source-cut")
         t |> equal(res.error, "")
-        for (name in scc.files) {
+        for (name in clustered.files) {
             t |> equal(fexist(path_join(out, name)), has_value(res.files, name), name)
         }
         for (name in ["keep.das", "notes.txt"]) {
@@ -420,7 +422,7 @@ def test_owned_folder(t : T?) {
         mkdir_rec(out)
         fwrite(path_join(work_root, "escape/outside.das"), "// not the conversion's\n")
         fwrite(path_join(out, "program.modules.txt"), "../outside.das\n{work_root}/escape/outside.das\n")
-        let res <- convert_program(paths, out, "linux", "", "", "", "", "main", "source")
+        let res <- convert_program(paths, out, "linux", "", "", "", "", "main", "source-cut")
         t |> equal(res.error, "")
         t |> success(fexist(path_join(work_root, "escape/outside.das")))
     }
@@ -437,7 +439,7 @@ def test_cluster_digest(t : T?) {
         let a_c = "int fb(int);\nint fa(int n) \{ return n <= 0 ? 0 : fb(n - 1) + 1; \}\n"
         for (step, bias in count(), ["10", "20"]) {
             var inscope paths <- written("digest", [(name = "main.c", text = main_c), (name = "a.c", text = a_c), (name = "b.c", text = "int fa(int);\nint fb(int n) \{ return fa(n) + {bias}; \}\n")])
-            let res <- converted_in(paths, "digest", "", "scc")
+            let res <- converted_in(paths, "digest", "", "source")
             t |> equal(res.error, "")
             t |> success(has_value(res.files, "a_cluster.das"), join(res.files, " "))
             agrees(t, paths, res.das_path, "interp", "digest{step}")
@@ -454,7 +456,7 @@ def test_cut_limits(t : T?) {
     t |> run("an edge carrying a type the other file defines is never cut, alone or beside calls: the calls of the edge back are cut") @(t : T?) {
         for (dir, a, b in ["type", "mixed"], [TYPE_EDGE_A, MIXED_EDGE_A], [TYPE_EDGE_B, MIXED_EDGE_B]) {
             var inscope paths <- written(dir, [(name = "main.c", text = CALL_MAIN), (name = "a.c", text = a), (name = "b.c", text = b)])
-            let res <- converted_in(paths, dir, "", "source")
+            let res <- converted_in(paths, dir, "", "source-cut")
             t |> equal(res.error, "")
             t |> success(cut_lines(res) |> starts_with("cut a_back: b -> a"), cut_lines(res))
             agrees(t, paths, res.das_path, "interp", dir)
@@ -462,17 +464,17 @@ def test_cut_limits(t : T?) {
     }
     t |> run("an edge out of the entry module is not cut: the edge back to it is, and the program runs") @(t : T?) {
         let paths <- written("entry", [(name = "main.c", text = FATAL_MAIN), (name = "util.c", text = FATAL_UTIL)])
-        let res <- converted_in(paths, "entry", "", "source")
+        let res <- converted_in(paths, "entry", "", "source-cut")
         t |> equal(res.error, "")
         t |> equal(cut_lines(res), "cut fatal: util -> main, 2 call sites of the edge's 2")
         agrees(t, paths, res.das_path, "interp", "entry")
     }
     t |> run("layout.cut forcing an edge that also carries an object or a function whose address is taken is refused, naming it") @(t : T?) {
         let obj <- written("obj", [(name = "main.c", text = AF_MAIN), (name = "a.c", text = OBJ_A), (name = "b.c", text = OBJ_B)])
-        let refused <- converted_in(obj, "obj", "\{\"layout\": \{\"cut\": [\"b_g\"]\}\}\n", "source")
+        let refused <- converted_in(obj, "obj", "\{\"layout\": \{\"cut\": [\"b_g\"]\}\}\n", "source-cut")
         t |> equal(refused.error, "link: layout.cut forces the edge a -> b, which carries `b_obj`, which no cut can late-bind: an object")
         let taken_paths <- written("addr", [(name = "main.c", text = AF_MAIN), (name = "a.c", text = ADDR_A), (name = "b.c", text = ADDR_B)])
-        let taken <- converted_in(taken_paths, "addr", "\{\"layout\": \{\"cut\": [\"b_g\"]\}\}\n", "source")
+        let taken <- converted_in(taken_paths, "addr", "\{\"layout\": \{\"cut\": [\"b_g\"]\}\}\n", "source-cut")
         t |> equal(taken.error, "link: layout.cut forces the edge a -> b, which carries `b_h`, which no cut can late-bind: its address is taken")
     }
     t |> run("each layout option naming what the program does not hold, or a profile count that is no count, is refused") @(t : T?) {
@@ -538,7 +540,7 @@ def test_plan_refusals(t : T?) {
     t |> equal(dir_error, "")
     t |> run("a file whose module takes the link module's name is refused when the program has a cut") @(t : T?) {
         let paths <- written("link_name", [(name = "main.c", text = FATAL_MAIN), (name = "util.c", text = FATAL_UTIL), (name = "main_link.c", text = "int spare(void) \{ return 1; \}\n")])
-        let res <- converted_in(paths, "link_name", "", "source")
+        let res <- converted_in(paths, "link_name", "", "source-cut")
         t |> equal(res.error, "link: the link module would be `main_link.das`, the module of main_link's file too; rename a file")
     }
     rmdir_rec(work_root)
@@ -594,7 +596,7 @@ def test_entry_highest(t : T?) {
         programs |> emplace((dir = "joined_ring", files <- joined_ring))
         for (program in programs) {
             var inscope paths <- written(program.dir, program.files)
-            let res <- converted_in(paths, program.dir, "", "source")
+            let res <- converted_in(paths, program.dir, "", "source-cut")
             t |> equal(res.error, "", program.dir)
             agrees(t, paths, res.das_path, "interp", program.dir)
             if (program.dir == "joined") {
@@ -603,14 +605,14 @@ def test_entry_highest(t : T?) {
             }
         }
         let paths <- written("pinned", [(name = "a.c", text = "#include <stdio.h>\nint fb(int);\nint fa(int n) \{ return n * 2; \}\nint main(void) \{ printf(\"%d\\n\", fb(4)); return 0; \}\n"), (name = "b.c", text = "int fa(int);\nint fb(int n) \{ return fa(n) + fa(n + 1); \}\n")])
-        let res <- converted_in(paths, "pinned", "\{\"layout\": \{\"cut\": [\"fb\"]\}\}\n", "source")
+        let res <- converted_in(paths, "pinned", "\{\"layout\": \{\"cut\": [\"fb\"]\}\}\n", "source-cut")
         t |> equal(res.error, "link: layout.cut forces the edge a -> b out of the entry module, which every cycle's cut keeps")
         // a and b both read the entry's object, so both join the entry's module: no cut parts a from b
         let grouped <- written("grouped", [
             (name = "m.c", text = "#include <stdio.h>\nint gm = 2; int a_f(void);\nint main(void) \{ printf(\"%d\\n\", a_f()); return 0; \}\n"),
             (name = "a.c", text = "extern int gm; int b_g(void);\nint a_f(void) \{ return gm + b_g(); \}\n"),
             (name = "b.c", text = "extern int gm;\nint b_g(void) \{ return gm * 10; \}\n")])
-        let in_group <- converted_in(grouped, "grouped", "\{\"layout\": \{\"cut\": [\"b_g\"]\}\}\n", "source")
+        let in_group <- converted_in(grouped, "grouped", "\{\"layout\": \{\"cut\": [\"b_g\"]\}\}\n", "source-cut")
         t |> equal(in_group.error, "link: layout.cut forces the edge a -> b, which the module of a b m holds, no cut parting it")
     }
     rmdir_rec(work_root)

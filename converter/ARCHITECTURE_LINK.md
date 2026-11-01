@@ -7,7 +7,7 @@ Companion to `ARCHITECTURE.md` in this folder, its section 6.
 A program of several C files converts as one program: each file is dumped as its own translation
 unit, as one file is, its `<stem>.cir.json` written and round-tripped, and `link_tus` merges the
 dumper's trees in their link order into one tree the emitter takes as it takes one unit, in one
-module or, in the source layout, in a module per file (`ARCHITECTURE_LAYOUT.md`); each declaration
+module or, in the source layouts, in a module per file (`ARCHITECTURE_LAYOUT.md`); each declaration
 keeps the unit it came from (`owners`). The link
 consumes the trees in memory and never rereads the C-IR files, whose writer keeps no record
 spelling (the `va_list` record's included). `program.cir.json` beside them is the manifest of

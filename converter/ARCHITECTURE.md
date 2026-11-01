@@ -41,7 +41,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   written as bytes; `stack` and `alloca_limit`; `param_writes`, `in-place` or `copy`, the
   parameter write mode, any other value refused naming the key; `loops`, `range` or `while`, how
   a canonical counting `for` is spelled, any other value refused naming the key; `layout`, `source`,
-  `scc` or `single`, the module layout of a program of several files, or an object of `mode` (one of
+  `source-cut` or `single`, the module layout of a program of several files, or an object of `mode` (one of
   those), `threshold` (a count), `keep_together` (symbols and lists of file stems), `cut` (symbols)
   and `profile` (a file beside the sidecar), the cycle cut's choices, any other value or key refused
   naming it; `defines`, a list of strings
@@ -63,8 +63,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   the compile check, which `lua/run.das` (repo root) reports. `convert_program(c_paths, ...[,
   entry])` is the program of several files: each dumped, written and round-tripped as `convert`
   does it, then linked (section 6) and emitted in the layout of section 8: by default a module per
-  C file under `out_dir` as the files lie under their common folder, the cycles cut by late binding
-  (`source`), every cycle one module (`scc`), or one module, `<stem>.das` of the unit holding `main`,
+  C file under `out_dir` as the files lie under their common folder, every cycle one module
+  (`source`), the cycles cut by late binding (`source-cut`), or one module, `<stem>.das` of the unit holding `main`,
   else of the first (`single`), as `--layout` or the sidecar's `layout` chooses; beside
   `program.cir.json`, and in the two module-per-file layouts `program.layout.txt`, the partition's
   report; its result adds the link's seconds and report, the files it wrote and that report. One
@@ -87,10 +87,11 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   with a given compiler and flags and runs it once, with the program's arguments when given, the native side every differential test compares against.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c>... | --program <p.json> [--out] [--target]
   [--run] [--arg]... [--sidecar] [--param-writes in-place|copy] [--loops range|while] [--layout
-  source|scc|single]`. Several files are one program linked in their order, as are the files a manifest
+  source|source-cut|single]`. Several files are one program linked in their order, as are the files a manifest
   names; files beside `--program` are a usage error (exit 2). `--layout` chooses the modules of such
-  a program (section 8): `source`, the default and the idiomatic form, a module per C file with the
-  cycles cut by late binding; `scc`, every cycle one module of fragments; `single`, one module; it
+  a program (section 8): `source`, the default and the idiomatic form, a module per C file with
+  every cycle one module of fragments; `source-cut`, the cycles cut by late binding; `single`, one
+  module; it
   wins over the sidecar's `layout` mode, and any other value is a usage error (exit 2). One file is
   one module in each layout. Each `--arg` is one argument of the C `argv` the
   program `--run` runs gets, in order. `--param-writes` chooses how the emitter writes a scalar or
@@ -112,8 +113,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `tests/test_cli.das` - `main.das` run as a child process over `tests/fixtures/p4_param_writes.c`:
   `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2; over
   `tests/fixtures/p7_loops.c`: `--loops range` and `while` reach the emitter, and a bad value
-  exits 2; over `tests/fixtures/p5_layout_cut/`: `--layout source`, `scc` and `single` reach the
-  converter, and a bad value exits 2; and over
+  exits 2; over `tests/fixtures/p5_layout_cut/`: `--layout source`, `source-cut` and `single` reach the
+  converter, and a bad value or the old name `scc` exits 2; and over
   `tests/fixtures/p4_main_args.c`: `--arg` reaches the C `argv` under `interp` as the native
   build's arguments do and under `exe`, and `aot` refuses it.
 - `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list,
