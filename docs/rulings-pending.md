@@ -18,3 +18,6 @@ lines head every report (`AGENTS.md`).
 - P8.1b: the `all` column and the total weigh the nine rows (six Lua program/layout rows, three suites) equally; keep, or weigh by input count or by C lines; 2026-11-01.
 - P8.1b: `comments` counts a das comment as carried when it equals a C comment line or has two or more words found inside one, so one-word converter notes (`// retry`) do not count; keep, or count any das comment; 2026-11-01.
 - P8.1b: the per-module criteria (`layout_checks`, `long_lines`, `late_binding`) are binary in the one-module `single` layout (0 or 100: lua/lua@single `layout_checks` 0.0 against 64.6 in source, `long_lines` 0.0 against 29.2); keep the per-module unit, or count these per function or per 1000 lines so a one-module layout is comparable; 2026-11-01.
+- P8.2: project speed is timed per side wherever that side's lanes pass (the Rust and native cells stand without ours); keep, or time only lanes both sides ran; 2026-11-01.
+- P8.2: the AOT host passes no program arguments, so AOT is skipped for programs reading argv (wasm3, both sides); fix it in `converter/tiers.das` as its own item, or leave AOT skipped for those programs; 2026-11-01.
+- P8.2: `skipped` as a lane status (a lane the harness cannot run, reason recorded); keep it, or fold it into `refused` with the reason; 2026-11-01.
