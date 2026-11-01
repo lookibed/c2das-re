@@ -49,7 +49,7 @@ struct CompareArgs {
     lua : bool
     @clarg_doc = "--lua over the .c files of this folder (its lua.c holding main) with its lua.c2das, when present, as the sidecar, into <folder>/work, instead of Lua's release"
     lua_from : string = ""
-    @clarg_doc = "run one real project of the Rust checkout's tests/manual through both translators: wasm3, binjgb, h264bsd-mp4 or plmpeg-stream"
+    @clarg_doc = "run one real project of the Rust checkout's tests/manual through both translators: wasm3, binjgb, h264bsd-mp4, plmpeg-stream or doomgeneric"
     project : string = ""
     @clarg_doc = "rewrite the comparison rendered from the capture between the compare markers of README.md"
     readme : bool
