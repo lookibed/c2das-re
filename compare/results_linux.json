@@ -1,7 +1,7 @@
 {
 	"suites" : {
 		"c_testsuite" : {
-			"ours_skipped" : 0,
+			"daslang" : "0.6.4",
 			"date" : "2026-11-01 02:54 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 199,
@@ -1561,12 +1561,12 @@
 			"rust_pass_of_unlisted" : 8,
 			"ids" : 220,
 			"seconds" : 86.92239379882812,
+			"ours_skipped" : 0,
 			"rust_pass_of_ours" : 194,
-			"rust_pass_of_skipped" : 0,
-			"daslang" : "0.6.4"
+			"rust_pass_of_skipped" : 0
 		},
 		"gcc_torture" : {
-			"ours_skipped" : 321,
+			"daslang" : "0.6.4",
 			"date" : "2026-11-01 03:04 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 1179,
@@ -13178,12 +13178,12 @@
 			"rust_pass_of_unlisted" : 67,
 			"ids" : 1656,
 			"seconds" : 645.4718017578125,
+			"ours_skipped" : 321,
 			"rust_pass_of_ours" : 1089,
-			"rust_pass_of_skipped" : 41,
-			"daslang" : "0.6.4"
+			"rust_pass_of_skipped" : 41
 		},
 		"csmith" : {
-			"ours_skipped" : 31,
+			"daslang" : "0.6.4",
 			"date" : "2026-11-01 03:12 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 151,
@@ -14477,9 +14477,9 @@
 			"rust_pass_of_unlisted" : 0,
 			"ids" : 182,
 			"seconds" : 434.8171081542969,
+			"ours_skipped" : 31,
 			"rust_pass_of_ours" : 42,
-			"rust_pass_of_skipped" : 5,
-			"daslang" : "0.6.4"
+			"rust_pass_of_skipped" : 5
 		}
 	},
 	"perf" : {
@@ -17294,48 +17294,6 @@
 					}
 				}
 			},
-			"gcc_torture/990628-1" : {
-				"ours" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 65,
-					"runtime_lines" : 0,
-					"program_c2da_lines" : 0,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 3,
-						"unsafe_expr" : 0,
-						"c_function" : 3,
-						"literal_named" : 0,
-						"pointer_arith" : 1,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 0,
-						"pointer_index" : 2
-					}
-				},
-				"rust" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 391,
-					"runtime_lines" : 290,
-					"program_c2da_lines" : 34,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 25,
-						"unsafe_expr" : 47,
-						"c_function" : 0,
-						"literal_named" : 0,
-						"pointer_arith" : 0,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 1,
-						"pointer_index" : 13
-					}
-				}
-			},
 			"gcc_torture/990525-1" : {
 				"ours" : {
 					"status" : "ok",
@@ -17375,6 +17333,48 @@
 						"unsafe_block" : 0,
 						"while_rangeable" : 1,
 						"pointer_index" : 11
+					}
+				}
+			},
+			"gcc_torture/990628-1" : {
+				"ours" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 65,
+					"runtime_lines" : 0,
+					"program_c2da_lines" : 0,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 3,
+						"unsafe_expr" : 0,
+						"c_function" : 3,
+						"literal_named" : 0,
+						"pointer_arith" : 1,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 0,
+						"pointer_index" : 2
+					}
+				},
+				"rust" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 391,
+					"runtime_lines" : 290,
+					"program_c2da_lines" : 34,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 25,
+						"unsafe_expr" : 47,
+						"c_function" : 0,
+						"literal_named" : 0,
+						"pointer_arith" : 0,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 1,
+						"pointer_index" : 13
 					}
 				}
 			},
@@ -75542,6 +75542,244 @@
 								0.085583,
 								0.086657,
 								0.086462
+							]
+						}
+					},
+					"aot" : {
+						"error" : "the lane does not pass: skipped"
+					}
+				}
+			},
+			"daslang" : "0.6.4"
+		},
+		"plmpeg-stream" : {
+			"code" : {
+				"ours" : {
+					"status" : "refused",
+					"error" : "dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`",
+					"files" : 0,
+					"lines" : 0,
+					"runtime_lines" : 0,
+					"program_c2da_lines" : 0,
+					"counts" : {}
+				},
+				"rust" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 4988,
+					"runtime_lines" : 822,
+					"program_c2da_lines" : 199,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 505,
+						"unsafe_expr" : 1259,
+						"c_function" : 0,
+						"literal_named" : 1891,
+						"pointer_arith" : 10,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 11,
+						"pointer_index" : 587
+					}
+				}
+			},
+			"lanes" : [
+				"interp",
+				"jit",
+				"exe",
+				"aot"
+			],
+			"date" : "2026-11-01 21:25 UTC",
+			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"ours" : {
+				"error" : "dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`",
+				"lanes" : {
+					"interp" : {
+						"status" : "refused",
+						"reason" : "dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`"
+					},
+					"jit" : {
+						"status" : "refused",
+						"reason" : "dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`"
+					},
+					"exe" : {
+						"status" : "refused",
+						"reason" : "dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`"
+					},
+					"aot" : {
+						"status" : "refused",
+						"reason" : "dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`"
+					}
+				}
+			},
+			"rust_commit_error" : "",
+			"functions" : [
+				{
+					"key" : "plmpeg-stream",
+					"name" : "plm_video_idct",
+					"ours" : "",
+					"rust" : "[sideeffects]\ndef plm_video_idct(var block_2 : int?) {\n    var b1 : int\n    var b3 : int\n    var b4 : int\n    var b6 : int\n    var b7 : int\n    var tmp1 : int\n    var tmp2 : int\n    var m0 : int\n    var x0 : int\n    var x1 : int\n    var x2 : int\n    var x3 : int\n    var x4 : int\n    var y3 : int\n    var y4 : int\n    var y5 : int\n    var y6 : int\n    var y7 : int\n    var i_6 : int\n    for (i_5 in range(0, 8)) {\n        b1 = unsafe(block_2[4 * 8 + i_5])\n        b3 = unsafe(block_2[2 * 8 + i_5]) + unsafe(block_2[6 * 8 + i_5])\n        b4 = unsafe(block_2[5 * 8 + i_5]) - unsafe(block_2[3 * 8 + i_5])\n        tmp1 = unsafe(block_2[1 * 8 + i_5]) + unsafe(block_2[7 * 8 + i_5])\n        tmp2 = unsafe(block_2[3 * 8 + i_5]) + unsafe(block_2[5 * 8 + i_5])\n        b6 = unsafe(block_2[1 * 8 + i_5]) - unsafe(block_2[7 * 8 + i_5])\n        b7 = tmp1 + tmp2\n        m0 = unsafe(block_2[0 * 8 + i_5])\n        x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7\n        x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)\n        x1 = m0 - b1\n        x2 = ((unsafe(block_2[2 * 8 + i_5]) - unsafe(block_2[6 * 8 + i_5])) * 362 + 128 >> 8) - b3\n        x3 = m0 + b1\n        y3 = x1 + x2\n        y4 = x3 + b3\n        y5 = x1 - x2\n        y6 = x3 - b3\n        y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)\n        unsafe(block_2[0 * 8 + i_5]) = b7 + y4\n        unsafe(block_2[1 * 8 + i_5]) = x4 + y3\n        unsafe(block_2[2 * 8 + i_5]) = y5 - x0\n        unsafe(block_2[3 * 8 + i_5]) = y6 - y7\n        unsafe(block_2[4 * 8 + i_5]) = y6 + y7\n        unsafe(block_2[5 * 8 + i_5]) = x0 + y5\n        unsafe(block_2[6 * 8 + i_5]) = y3 - x4\n        unsafe(block_2[7 * 8 + i_5]) = y4 - b7\n    }\n    i_6 = 0\n    while (i_6 < 64) {\n        b1 = unsafe(block_2[4 + i_6])\n        b3 = unsafe(block_2[2 + i_6]) + unsafe(block_2[6 + i_6])\n        b4 = unsafe(block_2[5 + i_6]) - unsafe(block_2[3 + i_6])\n        tmp1 = unsafe(block_2[1 + i_6]) + unsafe(block_2[7 + i_6])\n        tmp2 = unsafe(block_2[3 + i_6]) + unsafe(block_2[5 + i_6])\n        b6 = unsafe(block_2[1 + i_6]) - unsafe(block_2[7 + i_6])\n        b7 = tmp1 + tmp2\n        m0 = unsafe(block_2[0 + i_6])\n        x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7\n        x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)\n        x1 = m0 - b1\n        x2 = ((unsafe(block_2[2 + i_6]) - unsafe(block_2[6 + i_6])) * 362 + 128 >> 8) - b3\n        x3 = m0 + b1\n        y3 = x1 + x2\n        y4 = x3 + b3\n        y5 = x1 - x2\n        y6 = x3 - b3\n        y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)\n        unsafe(block_2[0 + i_6]) = b7 + y4 + 128 >> 8\n        unsafe(block_2[1 + i_6]) = x4 + y3 + 128 >> 8\n        unsafe(block_2[2 + i_6]) = y5 - x0 + 128 >> 8\n        unsafe(block_2[3 + i_6]) = y6 - y7 + 128 >> 8\n        unsafe(block_2[4 + i_6]) = y6 + y7 + 128 >> 8\n        unsafe(block_2[5 + i_6]) = x0 + y5 + 128 >> 8\n        unsafe(block_2[6 + i_6]) = y3 - x4 + 128 >> 8\n        unsafe(block_2[7 + i_6]) = y4 - b7 + 128 >> 8\n        i_6 += 8\n    }\n    return\n}"
+				},
+				{
+					"key" : "plmpeg-stream",
+					"name" : "plm_video_decode_block",
+					"ours" : "",
+					"rust" : "[sideeffects]\ndef plm_video_decode_block(var self_92 : plm_video_t?; var block_1 : int) {\n    var n : int\n    var quant_matrix : uint8?\n    var predictor : int\n    var dct_size : int\n    var plane_index : int\n    var differential : int\n    var level : int\n    var run : int\n    var coeff : uint16\n    var de_zig_zagged : int\n    var d_0 : uint8?\n    var dw : int\n    var di : int\n    var s_0 : int?\n    var si : int\n    var clamped : int\n    var dest_scan : int\n    var source_scan : int\n    var dest_scan_0 : int\n    var source_scan_0 : int\n    var value_1 : int\n    var dest_scan_1 : int\n    var source_scan_1 : int\n    var dest_scan_2 : int\n    var source_scan_2 : int\n    n = 0\n    if (self_92.macroblock_intra != 0) {\n        plane_index = block_1 > 3 ? block_1 - 3 : 0\n        var c2da_fresh93 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 144ul))\n        predictor = unsafe(unsafe(reinterpret<int?>(c2da_fresh93))[plane_index])\n        dct_size = int(plm_buffer_read_vlc(self_92.buffer, unsafe(reinterpret<plm_vlc_t const?>(PLM_VIDEO_DCT_SIZE[plane_index]))))\n        if (dct_size > 0) {\n            differential = plm_buffer_read(self_92.buffer, dct_size)\n            if ((differential & 1 << dct_size - 1) != 0) {\n                var c2da_fresh94 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n                unsafe(unsafe(reinterpret<int?>(c2da_fresh94))[0]) = predictor + differential\n            } else {\n                var c2da_fresh95 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n                unsafe(unsafe(reinterpret<int?>(c2da_fresh95))[0]) = predictor + (-(1 << dct_size) | differential + 1)\n            }\n        } else {\n            var c2da_fresh96 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n            unsafe(unsafe(reinterpret<int?>(c2da_fresh96))[0]) = predictor\n        }\n        var c2da_fresh97 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 144ul))\n        var c2da_fresh98 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(unsafe(reinterpret<int?>(c2da_fresh97))[plane_index]) = int(unsafe(unsafe(reinterpret<int?>(c2da_fresh98))[0]))  // nolint:PERF020\n        var c2da_fresh99 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(unsafe(reinterpret<int?>(c2da_fresh99))[0]) <<= 3 + 5\n        var c2da_fresh100 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(self_92)) + 632ul))\n        quant_matrix = unsafe(reinterpret<uint8?>(c2da_fresh100))\n        n = 1\n    } else {\n        var c2da_fresh101 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(self_92)) + 696ul))\n        quant_matrix = unsafe(reinterpret<uint8?>(c2da_fresh101))\n    }\n    level = 0\n    while (true) {\n        run = 0\n        coeff = plm_buffer_read_vlc_uint(self_92.buffer, unsafe(addr<plm_vlc_uint_t const?>(PLM_VIDEO_DCT_COEFF[0])))\n        if (int(coeff) == 1 && n > 0 && plm_buffer_read(self_92.buffer, 1) == 0) {\n            break\n        }\n        if (int(coeff) == 65535) {\n            run = plm_buffer_read(self_92.buffer, 6)\n            level = plm_buffer_read(self_92.buffer, 8)\n            if (level == 0) {\n                level = plm_buffer_read(self_92.buffer, 8)\n            } elif (level == 128) {\n                level = plm_buffer_read(self_92.buffer, 8) - 256\n            } elif (level > 128) {\n                level -= 256\n            }\n        } else {\n            run = int(coeff) >> 8\n            level = int(coeff) & 255\n            if (plm_buffer_read(self_92.buffer, 1) != 0) {\n                level = -level\n            }\n        }\n        n += run\n        if (n < 0 || n >= 64) {\n            return\n        }\n        de_zig_zagged = int(PLM_VIDEO_ZIG_ZAG[n])\n        n++\n        level = int(uint(level) << 1u)\n        if (self_92.macroblock_intra == 0) {\n            level += level < 0 ? -1 : 1\n        }\n        level = level * self_92.quantizer_scale * int(unsafe(quant_matrix[de_zig_zagged])) >> 4\n        if ((level & 1) == 0) {\n            level -= level > 0 ? 1 : -1\n        }\n        if (level > 2047) {\n            level = 2047\n        } elif (level < -2048) {\n            level = -2048\n        }\n        var c2da_fresh102 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(unsafe(reinterpret<int?>(c2da_fresh102))[de_zig_zagged]) = level * int(PLM_VIDEO_PREMULTIPLIER_MATRIX[de_zig_zagged])\n    }\n    if (block_1 < 4) {\n        d_0 = unsafe(reinterpret<uint8?>(self_92.frame_current.y.data))\n        dw = self_92.luma_width\n        di = self_92.mb_row * self_92.luma_width + self_92.mb_col << 4\n        if ((block_1 & 1) != 0) {\n            di += 8\n        }\n        if ((block_1 & 2) != 0) {\n            di += self_92.luma_width << 3\n        }\n    } else {\n        d_0 = unsafe(reinterpret<uint8?>(block_1 == 4 ? self_92.frame_current.cb.data : self_92.frame_current.cr.data))\n        dw = self_92.chroma_width\n        di = (self_92.mb_row * self_92.luma_width << 2) + (self_92.mb_col << 3)\n    }\n    var c2da_fresh103 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n    s_0 = c2da_fresh103\n    si = 0\n    if (self_92.macroblock_intra != 0) {\n        if (n == 1) {\n            let c2da_fresh104 : int = unsafe(s_0[0]) + 128 >> 8\n            clamped = int(uint8(c2da_fresh104 > 255 ? 255 : c2da_fresh104 < 0 ? 0 : c2da_fresh104))\n            dest_scan = dw - 8\n            source_scan = 8 - 8\n            for (y in range(0, 8)) {\n                for (x in range(0, 8)) {\n                    unsafe(d_0[di]) = uint8(clamped)\n                    si++\n                    di++\n                }\n                si += source_scan\n                di += dest_scan\n            }\n            unsafe(s_0[0]) = 0\n        } else {\n            plm_video_idct(s_0)\n            dest_scan_0 = dw - 8\n            source_scan_0 = 8 - 8\n            for (y_0 in range(0, 8)) {\n                for (x_0 in range(0, 8)) {\n                    let c2da_fresh105 : int = unsafe(s_0[si])\n                    unsafe(d_0[di]) = uint8(c2da_fresh105 > 255 ? 255 : c2da_fresh105 < 0 ? 0 : c2da_fresh105)\n                    si++\n                    di++\n                }\n                si += source_scan_0\n                di += dest_scan_0\n            }\n            var c2da_fresh106 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n            unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(reinterpret<uint8?>(c2da_fresh106)))), 0u8, 256ul)))\n        }\n    } elif (n == 1) {\n        value_1 = unsafe(s_0[0]) + 128 >> 8\n        dest_scan_1 = dw - 8\n        source_scan_1 = 8 - 8\n        for (y_1 in range(0, 8)) {\n            for (x_1 in range(0, 8)) {\n                let c2da_fresh107 : int = int(unsafe(d_0[di])) + value_1\n                unsafe(d_0[di]) = uint8(c2da_fresh107 > 255 ? 255 : c2da_fresh107 < 0 ? 0 : c2da_fresh107)\n                si++\n                di++\n            }\n            si += source_scan_1\n            di += dest_scan_1\n        }\n        unsafe(s_0[0]) = 0\n    } else {\n        plm_video_idct(s_0)\n        dest_scan_2 = dw - 8\n        source_scan_2 = 8 - 8\n        for (y_2 in range(0, 8)) {\n            for (x_2 in range(0, 8)) {\n                let c2da_fresh108 : int = int(unsafe(d_0[di])) + unsafe(s_0[si])\n                unsafe(d_0[di]) = uint8(c2da_fresh108 > 255 ? 255 : c2da_fresh108 < 0 ? 0 : c2da_fresh108)\n                si++\n                di++\n            }\n            si += source_scan_2\n            di += dest_scan_2\n        }\n        var c2da_fresh109 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(reinterpret<uint8?>(c2da_fresh109)))), 0u8, 256ul)))\n    }\n    return\n}"
+				}
+			],
+			"native" : {
+				"status" : "pass",
+				"reason" : ""
+			},
+			"samples" : 5,
+			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
+			"rust" : {
+				"error" : "",
+				"lanes" : {
+					"interp" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"jit" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"exe" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"aot" : {
+						"status" : "skipped",
+						"reason" : "the aot host passes the program no arguments, and it reads its input from its last one"
+					}
+				}
+			},
+			"speed" : {
+				"native" : {
+					"setup" : {
+						"time" : 0.000143,
+						"spread" : 0.10489510489510488,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.000143,
+							0.000146,
+							0.000165,
+							0.000137,
+							0.000135
+						]
+					},
+					"decode" : {
+						"time" : 0.04203,
+						"spread" : 0.008684273138234612,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.04203,
+							0.041745,
+							0.04197,
+							0.042475,
+							0.042074
+						]
+					}
+				},
+				"ours" : {
+					"interp" : {
+						"error" : "bench: dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`"
+					},
+					"jit" : {
+						"error" : "bench: dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`"
+					},
+					"exe" : {
+						"error" : "bench: dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`"
+					},
+					"aot" : {
+						"error" : "bench: dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`"
+					}
+				},
+				"rust" : {
+					"interp" : {
+						"setup" : {
+							"time" : 4.6e-05,
+							"spread" : 0.7717391304347827,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								3.9e-05,
+								4.6e-05,
+								5.2e-05,
+								0.00011,
+								4.6e-05
+							]
+						},
+						"decode" : {
+							"time" : 1.307885,
+							"spread" : 0.04231946998398176,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								1.28091,
+								1.29588,
+								1.307885,
+								1.391608,
+								1.332447
+							]
+						}
+					},
+					"jit" : {
+						"setup" : {
+							"time" : 5.6e-05,
+							"spread" : 0.12499999999999996,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								6.5e-05,
+								5.1e-05,
+								5.4e-05,
+								5.6e-05,
+								5.7e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.040046,
+							"spread" : 0.003271238076212335,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.040039,
+								0.039978,
+								0.040109,
+								0.04024,
+								0.040046
+							]
+						}
+					},
+					"exe" : {
+						"setup" : {
+							"time" : 4.2e-05,
+							"spread" : 0.09523809523809522,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								4.1e-05,
+								4.2e-05,
+								4.8e-05,
+								4e-05,
+								4.5e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.042358,
+							"spread" : 0.017517352094055423,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.042358,
+								0.04234,
+								0.043732,
+								0.042248,
+								0.042472
 							]
 						}
 					},

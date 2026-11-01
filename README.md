@@ -631,16 +631,18 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-01 20:17 UTC); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-01 20:51 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-01 20:17 UTC); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-01 20:51 UTC); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-01 21:25 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
 
-| Project     | Side | Native | interpreter |     JIT |     exe |     AOT |
-| :---------- | :--- | :----- | ----------: | ------: | ------: | ------: |
-| binjgb      | Ours | pass   |     refused | refused | refused | refused |
-| binjgb      | Rust | pass   |        pass |    pass |    pass | skipped |
-| h264bsd-mp4 | Ours | pass   |     refused | refused | refused | refused |
-| h264bsd-mp4 | Rust | pass   |        pass |    pass |    pass | skipped |
-| wasm3       | Ours | pass   |     refused | refused | refused | refused |
-| wasm3       | Rust | pass   |        pass |    pass |    pass | skipped |
+| Project       | Side | Native | interpreter |     JIT |     exe |     AOT |
+| :------------ | :--- | :----- | ----------: | ------: | ------: | ------: |
+| binjgb        | Ours | pass   |     refused | refused | refused | refused |
+| binjgb        | Rust | pass   |        pass |    pass |    pass | skipped |
+| h264bsd-mp4   | Ours | pass   |     refused | refused | refused | refused |
+| h264bsd-mp4   | Rust | pass   |        pass |    pass |    pass | skipped |
+| plmpeg-stream | Ours | pass   |     refused | refused | refused | refused |
+| plmpeg-stream | Rust | pass   |        pass |    pass |    pass | skipped |
+| wasm3         | Ours | pass   |     refused | refused | refused | refused |
+| wasm3         | Rust | pass   |        pass |    pass |    pass | skipped |
 
 Why a lane does not pass:
 
@@ -648,30 +650,36 @@ Why a lane does not pass:
 - binjgb, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 - h264bsd-mp4, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`
 - h264bsd-mp4, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
+- plmpeg-stream, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`
+- plmpeg-stream, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 - wasm3, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found
 - wasm3, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 
 The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 5 samples a cell:
 
-| Project     | Side | Native compiler      | Native s | interpreter |     JIT |     exe |     AOT |
-| :---------- | :--- | :------------------- | -------: | ----------: | ------: | ------: | ------: |
-| binjgb      | Ours | clang version 22.1.8 | 0.062580 |     refused | refused | refused | refused |
-| binjgb      | Rust | clang version 22.1.8 | 0.062580 |       71.34 |    1.07 |    1.05 | skipped |
-| h264bsd-mp4 | Ours | clang version 22.1.8 | 0.085924 |     refused | refused | refused | refused |
-| h264bsd-mp4 | Rust | clang version 22.1.8 | 0.085924 |       48.69 |    1.03 |    1.01 | skipped |
-| wasm3       | Ours | clang version 22.1.8 | 0.002223 |     refused | refused | refused | refused |
-| wasm3       | Rust | clang version 22.1.8 | 0.002223 |       58.07 |    2.23 |    2.10 | skipped |
+| Project       | Side | Native compiler      | Native s | interpreter |     JIT |     exe |     AOT |
+| :------------ | :--- | :------------------- | -------: | ----------: | ------: | ------: | ------: |
+| binjgb        | Ours | clang version 22.1.8 | 0.062580 |     refused | refused | refused | refused |
+| binjgb        | Rust | clang version 22.1.8 | 0.062580 |       71.34 |    1.07 |    1.05 | skipped |
+| h264bsd-mp4   | Ours | clang version 22.1.8 | 0.085924 |     refused | refused | refused | refused |
+| h264bsd-mp4   | Rust | clang version 22.1.8 | 0.085924 |       48.69 |    1.03 |    1.01 | skipped |
+| plmpeg-stream | Ours | clang version 22.1.8 | 0.042030 |     refused | refused | refused | refused |
+| plmpeg-stream | Rust | clang version 22.1.8 | 0.042030 |       31.12 |    0.95 |    1.01 | skipped |
+| wasm3         | Ours | clang version 22.1.8 | 0.002223 |     refused | refused | refused | refused |
+| wasm3         | Rust | clang version 22.1.8 | 0.002223 |       58.07 |    2.23 |    2.10 | skipped |
 
 The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
 
-| Project     | Side | Code    | Files | Lines | Runtime lines | c_function | goto | label | literal_named | pointer_arith | pointer_index | reinterpret | unsafe_block | unsafe_expr | while_rangeable |
-| :---------- | :--- | :------ | ----: | ----: | ------------: | ---------: | ---: | ----: | ------------: | ------------: | ------------: | ----------: | -----------: | ----------: | --------------: |
-| binjgb      | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
-| binjgb      | Rust | ok      |     1 | 11481 |           956 |          0 |  670 |   867 |          2393 |            33 |           939 |        3818 |            8 |        5049 |              12 |
-| h264bsd-mp4 | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
-| h264bsd-mp4 | Rust | ok      |     1 | 24316 |           822 |          0 |  362 |   309 |          7164 |          1738 |          2701 |        5172 |         1208 |        8557 |              73 |
-| wasm3       | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
-| wasm3       | Rust | ok      |     1 | 25827 |          1009 |          0 | 2393 |  2162 |          1827 |          2074 |           430 |        4550 |          814 |        6589 |              24 |
+| Project       | Side | Code    | Files | Lines | Runtime lines | c_function | goto | label | literal_named | pointer_arith | pointer_index | reinterpret | unsafe_block | unsafe_expr | while_rangeable |
+| :------------ | :--- | :------ | ----: | ----: | ------------: | ---------: | ---: | ----: | ------------: | ------------: | ------------: | ----------: | -----------: | ----------: | --------------: |
+| binjgb        | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| binjgb        | Rust | ok      |     1 | 11481 |           956 |          0 |  670 |   867 |          2393 |            33 |           939 |        3818 |            8 |        5049 |              12 |
+| h264bsd-mp4   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| h264bsd-mp4   | Rust | ok      |     1 | 24316 |           822 |          0 |  362 |   309 |          7164 |          1738 |          2701 |        5172 |         1208 |        8557 |              73 |
+| plmpeg-stream | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| plmpeg-stream | Rust | ok      |     1 |  4988 |           822 |          0 |    0 |     0 |          1891 |            10 |           587 |         505 |            0 |        1259 |              11 |
+| wasm3         | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| wasm3         | Rust | ok      |     1 | 25827 |          1009 |          0 | 2393 |  2162 |          1827 |          2074 |           430 |        4550 |          814 |        6589 |              24 |
 
 #### `binjgb`: `emulator_step_internal`
 
@@ -1193,6 +1201,295 @@ def FilterVerLumaEdge(var data_40 : uint8?; var bS_7 : uint; var thresholds_8 : 
 ```
 
 
+#### `plmpeg-stream`: `plm_video_idct`
+
+Ours: not found in this side's module.
+
+Rust:
+
+```das
+[sideeffects]
+def plm_video_idct(var block_2 : int?) {
+    var b1 : int
+    var b3 : int
+    var b4 : int
+    var b6 : int
+    var b7 : int
+    var tmp1 : int
+    var tmp2 : int
+    var m0 : int
+    var x0 : int
+    var x1 : int
+    var x2 : int
+    var x3 : int
+    var x4 : int
+    var y3 : int
+    var y4 : int
+    var y5 : int
+    var y6 : int
+    var y7 : int
+    var i_6 : int
+    for (i_5 in range(0, 8)) {
+        b1 = unsafe(block_2[4 * 8 + i_5])
+        b3 = unsafe(block_2[2 * 8 + i_5]) + unsafe(block_2[6 * 8 + i_5])
+        b4 = unsafe(block_2[5 * 8 + i_5]) - unsafe(block_2[3 * 8 + i_5])
+        tmp1 = unsafe(block_2[1 * 8 + i_5]) + unsafe(block_2[7 * 8 + i_5])
+        tmp2 = unsafe(block_2[3 * 8 + i_5]) + unsafe(block_2[5 * 8 + i_5])
+        b6 = unsafe(block_2[1 * 8 + i_5]) - unsafe(block_2[7 * 8 + i_5])
+        b7 = tmp1 + tmp2
+        m0 = unsafe(block_2[0 * 8 + i_5])
+        x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7
+        x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)
+        x1 = m0 - b1
+        x2 = ((unsafe(block_2[2 * 8 + i_5]) - unsafe(block_2[6 * 8 + i_5])) * 362 + 128 >> 8) - b3
+        x3 = m0 + b1
+        y3 = x1 + x2
+        y4 = x3 + b3
+        y5 = x1 - x2
+        y6 = x3 - b3
+        y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)
+        unsafe(block_2[0 * 8 + i_5]) = b7 + y4
+        unsafe(block_2[1 * 8 + i_5]) = x4 + y3
+        unsafe(block_2[2 * 8 + i_5]) = y5 - x0
+        unsafe(block_2[3 * 8 + i_5]) = y6 - y7
+        unsafe(block_2[4 * 8 + i_5]) = y6 + y7
+        unsafe(block_2[5 * 8 + i_5]) = x0 + y5
+        unsafe(block_2[6 * 8 + i_5]) = y3 - x4
+        unsafe(block_2[7 * 8 + i_5]) = y4 - b7
+    }
+    i_6 = 0
+    while (i_6 < 64) {
+        b1 = unsafe(block_2[4 + i_6])
+        b3 = unsafe(block_2[2 + i_6]) + unsafe(block_2[6 + i_6])
+        b4 = unsafe(block_2[5 + i_6]) - unsafe(block_2[3 + i_6])
+        tmp1 = unsafe(block_2[1 + i_6]) + unsafe(block_2[7 + i_6])
+        tmp2 = unsafe(block_2[3 + i_6]) + unsafe(block_2[5 + i_6])
+        b6 = unsafe(block_2[1 + i_6]) - unsafe(block_2[7 + i_6])
+        b7 = tmp1 + tmp2
+        m0 = unsafe(block_2[0 + i_6])
+        x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7
+        x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)
+        x1 = m0 - b1
+        x2 = ((unsafe(block_2[2 + i_6]) - unsafe(block_2[6 + i_6])) * 362 + 128 >> 8) - b3
+        x3 = m0 + b1
+        y3 = x1 + x2
+        y4 = x3 + b3
+        y5 = x1 - x2
+        y6 = x3 - b3
+        y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)
+        unsafe(block_2[0 + i_6]) = b7 + y4 + 128 >> 8
+        unsafe(block_2[1 + i_6]) = x4 + y3 + 128 >> 8
+        unsafe(block_2[2 + i_6]) = y5 - x0 + 128 >> 8
+        unsafe(block_2[3 + i_6]) = y6 - y7 + 128 >> 8
+        unsafe(block_2[4 + i_6]) = y6 + y7 + 128 >> 8
+        unsafe(block_2[5 + i_6]) = x0 + y5 + 128 >> 8
+        unsafe(block_2[6 + i_6]) = y3 - x4 + 128 >> 8
+        unsafe(block_2[7 + i_6]) = y4 - b7 + 128 >> 8
+        i_6 += 8
+    }
+    return
+}
+```
+
+#### `plmpeg-stream`: `plm_video_decode_block`
+
+Ours: not found in this side's module.
+
+Rust:
+
+```das
+[sideeffects]
+def plm_video_decode_block(var self_92 : plm_video_t?; var block_1 : int) {
+    var n : int
+    var quant_matrix : uint8?
+    var predictor : int
+    var dct_size : int
+    var plane_index : int
+    var differential : int
+    var level : int
+    var run : int
+    var coeff : uint16
+    var de_zig_zagged : int
+    var d_0 : uint8?
+    var dw : int
+    var di : int
+    var s_0 : int?
+    var si : int
+    var clamped : int
+    var dest_scan : int
+    var source_scan : int
+    var dest_scan_0 : int
+    var source_scan_0 : int
+    var value_1 : int
+    var dest_scan_1 : int
+    var source_scan_1 : int
+    var dest_scan_2 : int
+    var source_scan_2 : int
+    n = 0
+    if (self_92.macroblock_intra != 0) {
+        plane_index = block_1 > 3 ? block_1 - 3 : 0
+        var c2da_fresh93 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 144ul))
+        predictor = unsafe(unsafe(reinterpret<int?>(c2da_fresh93))[plane_index])
+        dct_size = int(plm_buffer_read_vlc(self_92.buffer, unsafe(reinterpret<plm_vlc_t const?>(PLM_VIDEO_DCT_SIZE[plane_index]))))
+        if (dct_size > 0) {
+            differential = plm_buffer_read(self_92.buffer, dct_size)
+            if ((differential & 1 << dct_size - 1) != 0) {
+                var c2da_fresh94 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))
+                unsafe(unsafe(reinterpret<int?>(c2da_fresh94))[0]) = predictor + differential
+            } else {
+                var c2da_fresh95 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))
+                unsafe(unsafe(reinterpret<int?>(c2da_fresh95))[0]) = predictor + (-(1 << dct_size) | differential + 1)
+            }
+        } else {
+            var c2da_fresh96 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))
+            unsafe(unsafe(reinterpret<int?>(c2da_fresh96))[0]) = predictor
+        }
+        var c2da_fresh97 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 144ul))
+        var c2da_fresh98 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))
+        unsafe(unsafe(reinterpret<int?>(c2da_fresh97))[plane_index]) = int(unsafe(unsafe(reinterpret<int?>(c2da_fresh98))[0]))  // nolint:PERF020
+        var c2da_fresh99 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))
+        unsafe(unsafe(reinterpret<int?>(c2da_fresh99))[0]) <<= 3 + 5
+        var c2da_fresh100 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(self_92)) + 632ul))
+        quant_matrix = unsafe(reinterpret<uint8?>(c2da_fresh100))
+        n = 1
+    } else {
+        var c2da_fresh101 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(self_92)) + 696ul))
+        quant_matrix = unsafe(reinterpret<uint8?>(c2da_fresh101))
+    }
+    level = 0
+    while (true) {
+        run = 0
+        coeff = plm_buffer_read_vlc_uint(self_92.buffer, unsafe(addr<plm_vlc_uint_t const?>(PLM_VIDEO_DCT_COEFF[0])))
+        if (int(coeff) == 1 && n > 0 && plm_buffer_read(self_92.buffer, 1) == 0) {
+            break
+        }
+        if (int(coeff) == 65535) {
+            run = plm_buffer_read(self_92.buffer, 6)
+            level = plm_buffer_read(self_92.buffer, 8)
+            if (level == 0) {
+                level = plm_buffer_read(self_92.buffer, 8)
+            } elif (level == 128) {
+                level = plm_buffer_read(self_92.buffer, 8) - 256
+            } elif (level > 128) {
+                level -= 256
+            }
+        } else {
+            run = int(coeff) >> 8
+            level = int(coeff) & 255
+            if (plm_buffer_read(self_92.buffer, 1) != 0) {
+                level = -level
+            }
+        }
+        n += run
+        if (n < 0 || n >= 64) {
+            return
+        }
+        de_zig_zagged = int(PLM_VIDEO_ZIG_ZAG[n])
+        n++
+        level = int(uint(level) << 1u)
+        if (self_92.macroblock_intra == 0) {
+            level += level < 0 ? -1 : 1
+        }
+        level = level * self_92.quantizer_scale * int(unsafe(quant_matrix[de_zig_zagged])) >> 4
+        if ((level & 1) == 0) {
+            level -= level > 0 ? 1 : -1
+        }
+        if (level > 2047) {
+            level = 2047
+        } elif (level < -2048) {
+            level = -2048
+        }
+        var c2da_fresh102 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))
+        unsafe(unsafe(reinterpret<int?>(c2da_fresh102))[de_zig_zagged]) = level * int(PLM_VIDEO_PREMULTIPLIER_MATRIX[de_zig_zagged])
+    }
+    if (block_1 < 4) {
+        d_0 = unsafe(reinterpret<uint8?>(self_92.frame_current.y.data))
+        dw = self_92.luma_width
+        di = self_92.mb_row * self_92.luma_width + self_92.mb_col << 4
+        if ((block_1 & 1) != 0) {
+            di += 8
+        }
+        if ((block_1 & 2) != 0) {
+            di += self_92.luma_width << 3
+        }
+    } else {
+        d_0 = unsafe(reinterpret<uint8?>(block_1 == 4 ? self_92.frame_current.cb.data : self_92.frame_current.cr.data))
+        dw = self_92.chroma_width
+        di = (self_92.mb_row * self_92.luma_width << 2) + (self_92.mb_col << 3)
+    }
+    var c2da_fresh103 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))
+    s_0 = c2da_fresh103
+    si = 0
+    if (self_92.macroblock_intra != 0) {
+        if (n == 1) {
+            let c2da_fresh104 : int = unsafe(s_0[0]) + 128 >> 8
+            clamped = int(uint8(c2da_fresh104 > 255 ? 255 : c2da_fresh104 < 0 ? 0 : c2da_fresh104))
+            dest_scan = dw - 8
+            source_scan = 8 - 8
+            for (y in range(0, 8)) {
+                for (x in range(0, 8)) {
+                    unsafe(d_0[di]) = uint8(clamped)
+                    si++
+                    di++
+                }
+                si += source_scan
+                di += dest_scan
+            }
+            unsafe(s_0[0]) = 0
+        } else {
+            plm_video_idct(s_0)
+            dest_scan_0 = dw - 8
+            source_scan_0 = 8 - 8
+            for (y_0 in range(0, 8)) {
+                for (x_0 in range(0, 8)) {
+                    let c2da_fresh105 : int = unsafe(s_0[si])
+                    unsafe(d_0[di]) = uint8(c2da_fresh105 > 255 ? 255 : c2da_fresh105 < 0 ? 0 : c2da_fresh105)
+                    si++
+                    di++
+                }
+                si += source_scan_0
+                di += dest_scan_0
+            }
+            var c2da_fresh106 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))
+            unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(reinterpret<uint8?>(c2da_fresh106)))), 0u8, 256ul)))
+        }
+    } elif (n == 1) {
+        value_1 = unsafe(s_0[0]) + 128 >> 8
+        dest_scan_1 = dw - 8
+        source_scan_1 = 8 - 8
+        for (y_1 in range(0, 8)) {
+            for (x_1 in range(0, 8)) {
+                let c2da_fresh107 : int = int(unsafe(d_0[di])) + value_1
+                unsafe(d_0[di]) = uint8(c2da_fresh107 > 255 ? 255 : c2da_fresh107 < 0 ? 0 : c2da_fresh107)
+                si++
+                di++
+            }
+            si += source_scan_1
+            di += dest_scan_1
+        }
+        unsafe(s_0[0]) = 0
+    } else {
+        plm_video_idct(s_0)
+        dest_scan_2 = dw - 8
+        source_scan_2 = 8 - 8
+        for (y_2 in range(0, 8)) {
+            for (x_2 in range(0, 8)) {
+                let c2da_fresh108 : int = int(unsafe(d_0[di])) + unsafe(s_0[si])
+                unsafe(d_0[di]) = uint8(c2da_fresh108 > 255 ? 255 : c2da_fresh108 < 0 ? 0 : c2da_fresh108)
+                si++
+                di++
+            }
+            si += source_scan_2
+            di += dest_scan_2
+        }
+        var c2da_fresh109 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))
+        unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(reinterpret<uint8?>(c2da_fresh109)))), 0u8, 256ul)))
+    }
+    return
+}
+```
+
+
 #### `wasm3`: `op_Call`
 
 Ours: not found in this side's module.
@@ -1284,6 +1581,7 @@ def call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Resul
 - va_forward, interpreter: Rust 131.56x native, ours 215.67x.
 - project binjgb: Rust passes interpreter, JIT, exe, ours does not.
 - project h264bsd-mp4: Rust passes interpreter, JIT, exe, ours does not.
+- project plmpeg-stream: Rust passes interpreter, JIT, exe, ours does not.
 - project wasm3: Rust passes interpreter, JIT, exe, ours does not.
 - counter `pointer_arith`: Rust 606, ours 843 over all keys.
 <!-- compare:end -->
