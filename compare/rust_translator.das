@@ -170,11 +170,15 @@ def translate_file(bin, c_path, out_dir : string; flags : array<string>; clang_a
 }
 
 //! The compilation database `db_path` translated as one program in the source layout into
-//! `out_dir`, the shared runtime prelude as the module `runtime_module`.
+//! `out_dir`, the shared runtime prelude as the module `runtime_module`, the translator's own name
+//! for it when that is "".
 [arch(at="ARCHITECTURE.md#command-line")]
 def translate_db(bin, db_path, out_dir, runtime_module : string; flags : array<string>; timeout : float) : RustTranslation {
-    var argv <- [bin, db_path, "--libc", "std", "--strict", "--module-layout", "source", "--runtime-module", runtime_module, "--output-dir", out_dir]
-    argv |> push_from(flags)
+    var argv <- [bin, db_path, "--libc", "std", "--strict", "--module-layout", "source"]
+    if (!empty(runtime_module)) {
+        argv |> push_from(["--runtime-module", runtime_module])
+    }
+    argv |> push_from(["--output-dir", out_dir], flags)
     return <- translate(argv, out_dir, timeout)
 }
 
@@ -195,6 +199,20 @@ def private compile_arguments(c_path : string; defines : array<string>) : array<
 //! file of `c_paths`, run in `directory`.
 def write_compile_commands(path : string; c_paths : array<string>; defines : array<string>; directory : string) {
     let commands <- [for (c_path in c_paths); CompileCommand(directory = directory, file = c_path, arguments <- compile_arguments(c_path, defines))]
+    fwrite(path, sprint_json(commands, true))
+}
+
+// the clang command line of one unit: the clang arguments, then the file
+def private unit_arguments(c_path : string; clang_args : array<string>) : array<string> {
+    var args <- ["clang"]
+    args |> push_from(clang_args, [c_path])
+    return <- args
+}
+
+//! A compilation database at `path`: one `clang <clang_args>... <file>` command per file of
+//! `c_paths`, run in `directory`, as the Rust repository's case runner writes a case's units.
+def write_unit_commands(path : string; c_paths : array<string>; clang_args : array<string>; directory : string) {
+    let commands <- [for (c_path in c_paths); CompileCommand(directory = directory, file = c_path, arguments <- unit_arguments(c_path, clang_args))]
     fwrite(path, sprint_json(commands, true))
 }
 

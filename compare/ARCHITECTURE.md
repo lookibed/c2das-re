@@ -10,9 +10,10 @@ daslang; this repository never builds it inside a test and never vendors it.
 
 - `rust_translator.das` - the Rust translator as a child process: where its binary is, the
   commit its checkout is at, a translation of one C file (`translate_file`) or of a compilation
-  database (`translate_db`) into a `RustTranslation`, the compilation database writer for a list
-  of C files (`write_compile_commands`), and a run of a translation's entry module under one
-  execution tier (`run_translation`). It classifies nothing and reads no suite.
+  database (`translate_db`) into a `RustTranslation`, the compilation database writers for a list
+  of C files (`write_compile_commands` with defines, `write_unit_commands` with clang arguments),
+  and a run of a translation's entry module under one execution tier (`run_translation`). It
+  classifies nothing and reads no suite.
 - `suite_compare.das` - the suites comparison (section 5): the suites as it runs them, their
   ids and tags, one case judged (`judge_case`, `judge_translation`, `judge_csmith_program`), the
   verdict file, the driver over the workers (`drive_suite`) and the capture's `suites` section
@@ -116,15 +117,16 @@ when there are none, runs a Rust translation unchanged under the interpreter, th
 the test runs the interpreter. Under `aot` the host passes no arguments; the wrapper calls
 `main_0` with `argc` 0 when the command line it reads is empty (`translator/libc.rs` lines
 5835-5852). That tier stands on the same wrapper and is checked on the real binary with the
-suites. A Rust translation requires only
-daslib and its own modules, so it runs with no module folder loaded.
+suites. A Rust translation requires only daslib and its own modules, so it runs with no module
+folder loaded.
 
 ## 4. The command line {#command-line}
 
 `translate_file` runs `<bin> --file <c> --libc std --strict --output-dir <out> <flags> <clang
 args>`; `translate_db` runs `<bin> <compile_commands.json> --libc std --strict --module-layout
-source --runtime-module <name> --output-dir <out> <flags>`. The translator takes each of its own
-options from anywhere in its argv and drops every `--` before handing the rest to clang
+source --runtime-module <name> --output-dir <out> <flags>`, without `--runtime-module` when no name
+is given (the translator names the module). The translator takes each of its own options from
+anywhere in its argv and drops every `--` before handing the rest to clang
 (`c2dascript-transpile/src/main.rs` lines 295-298 and 311-314, `take_flag` and `take_value` at
 lines 326 and 410), so no separator is passed: it would protect no clang argument.
 
@@ -165,11 +167,10 @@ than the oracle), `pass`. A csmith seed whose reference fails is `native`, which
 refuses the seed or runs past 120 s, gcc refuses the program, or the native run exits non-zero or
 runs past 2 s. A worker that exits without a verdict is `crash`, and one the driver kills past the
 sum of its children's limits and a 60 s margin is `timeout`; csmith's and the native run's limits
-enter that sum for csmith alone. The compile check is its own step
-because a `daslang` run that does not compile exits 1, as a program returning 1 does: the
-probe of `daslang -compile-only` on a module naming an undefined variable exits 1 with an
-`error[30838]: can't locate variable` line, and on a Rust translation that compiles exits 0
-running nothing. The worker writes `work/<suite>/<id>/verdict`, one line of status, reason and
+enter that sum for csmith alone. The compile check is its own step because a `daslang` run that
+does not compile exits 1, as a program returning 1 does: the probe of `daslang -compile-only` on a
+module naming an undefined variable exits 1 with an `error[30838]: can't locate variable` line,
+and on a Rust translation that compiles exits 0 running nothing. The worker writes `work/<suite>/<id>/verdict`, one line of status, reason and
 seconds, tab-separated; the driver reads it when the worker exits.
 
 The tables' column for this repository is the ratchet: `expected_pass.txt` lists exactly the ids
@@ -280,8 +281,7 @@ every call stays a call and the compiler adds none; the symbols `nm` lists undef
 undefined (`w`, `v`) over the objects, less every symbol one defines, is what Lua calls outside
 itself, glibc's redirected names (`fopen64`, `freopen64`, `tmpfile64`, `__sysv_signal`,
 `__isoc99_*`) mapped back to the C names clang's declarations keep. The known names are the string
-literals left of each `=>` in five match tables under
-`$C2DAS_RUST/c2dascript-transpile/src/translator/`, at the pinned commit: `std_function` (`libc.rs`
+literals left of each `=>` in five match tables under `$C2DAS_RUST/c2dascript-transpile/src/translator/`, at the pinned commit: `std_function` (`libc.rs`
 line 791), `std_stream` (890), `libm_function` (987, each stem with its `float` form, 1017),
 `jmp_call` (1658) and `canonical_runtime_function` (`runtime.rs` line 131: the `malloc` family and
 `mem*`); `functions.rs` line 1234 refuses any other external. `__ctype_b_loc` is in the gap: glibc's

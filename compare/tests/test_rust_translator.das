@@ -224,6 +224,14 @@ def test_translate_db(t : T?) {
             t |> equal(res.entry, path_join(out, "prog.das"))
         }
     }
+    t |> run("no runtime module name: the translator names it") @(t : T?) {
+        t |> with_stand_in("c2das_db_runtime") $(dir, bin) {
+            let out = path_join(dir, "db")
+            let res = translate_db(bin, "/src/compile_commands.json", out, "", NO_ARGS, 60.0)
+            t |> success(res.ok, res.error)
+            t |> equal(join(recorded_argv(dir), " "), "/src/compile_commands.json --libc std --strict --module-layout source --output-dir {out}")
+        }
+    }
 }
 
 struct ParsedCommand {
@@ -247,6 +255,24 @@ def test_write_compile_commands(t : T?) {
             t |> equal(commands[1].file, "/src/lua.c")
             t |> equal(join(commands[0].arguments, " "), "clang -c /src/lvm.c -DLUA_USE_C89 -DN=2 -o lvm.o")
             t |> equal(join(commands[1].arguments, " "), "clang -c /src/lua.c -DLUA_USE_C89 -DN=2 -o lua.o")
+        }
+    }
+}
+
+[test]
+def test_write_unit_commands(t : T?) {
+    t |> run("one clang command per file, the clang arguments before it") @(t : T?) {
+        t |> with_stand_in("c2das_db_units") $(dir, _bin) {
+            let path = path_join(dir, "compile_commands.json")
+            write_unit_commands(path, ["/q/a.c", "/q/src/e.c"], ["-std=c11", "-I/q/src", "-include", "cfg.h"], "/q")
+            var error : string
+            let js = read_json(fread(path), error)
+            t |> equal(error, "")
+            let commands <- from_JV(js, type<array<ParsedCommand>>)
+            t |> equal(length(commands), 2)
+            t |> equal("{commands[0].directory} {commands[1].file}", "/q /q/src/e.c")
+            t |> equal(join(commands[0].arguments, " "), "clang -std=c11 -I/q/src -include cfg.h /q/a.c")
+            t |> equal(join(commands[1].arguments, " "), "clang -std=c11 -I/q/src -include cfg.h /q/src/e.c")
         }
     }
 }
