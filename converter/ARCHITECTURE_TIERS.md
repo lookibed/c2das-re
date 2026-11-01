@@ -7,9 +7,10 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 `interp` runs `daslang <module>`, `jit` runs `daslang -jit <module>`, `exe` runs `daslang -exe
 <module> -output <work>/<stem>_exe` and executes the binary (the JIT names it `.exe` on every
 platform), `aot` runs `daslang utils/aot/main.das -- -ctx <module> <work>/ctx/` and compiles
-the generated context with a seven-line C host (`<stem>_create`, `<stem>_main`,
-`<stem>_destroy` from the generated header, `<stem>` spelled as a C++ identifier, which also
-names the binary `aot_binary` answers) against the static runtime: `liblibDaScript.a`,
+the generated context with a C++ host (`aot_host_source`: `das::setCommandLineArguments(argc,
+argv)` as `daslang` and an `-exe` binary call it, so the program's arguments, passed after `--`,
+reach `get_user_args`; then `<stem>_create`, `<stem>_main`, `<stem>_destroy` from the generated
+header, `<stem>` spelled as a C++ identifier, which also names the binary `aot_binary` answers) against the static runtime: `liblibDaScript.a`,
 `liblibDaScript_runtime.a`, `liblibUriParser.a`, with the checkout's ABI flags (no RTTI,
 `DAS_FUSION=2`, `SIZE_OF_VOID_P=8`). The compiler is the pinned clang's `clang++` at `-O3`,
 the native perf lane's compiler and level (`perf/ARCHITECTURE.md` section 2); `default_clang()`

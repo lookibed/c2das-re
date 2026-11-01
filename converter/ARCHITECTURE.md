@@ -85,8 +85,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   (section 5, `ARCHITECTURE_TIERS.md`); `module_dirs` are passed as `-load_module` to the interpreter and the JIT, `flags`
   before the script, and a process past `timeout` seconds (600 by default) is killed and
   reported as a failure: the run, and under `exe` and `aot` each build step too. `program_args` are the program's own C `argv` after its name: after `--` under
-  `interp` and `jit`, after the binary under `exe`; `aot` refuses them, since its host passes
-  none. `CONVERTED_MODULES` names the module folders a converted program requires and
+  `interp`, `jit` and `aot` (whose host hands its command line to the runtime), after the binary
+  under `exe`. `CONVERTED_MODULES` names the module folders a converted program requires and
   `daslang_cmd` spells the prefix; `native_run` builds a C file, or a program's files in order,
   with a given compiler and flags and runs it once, with the program's arguments when given, the native side every differential test compares against.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c>... | --program <p.json> [--out] [--target]
@@ -120,7 +120,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   exits 2; over `tests/fixtures/p5_layout_cut/`: `--layout source`, `source-cut` and `single` reach the
   converter, and a bad value or the old name `scc` exits 2; and over
   `tests/fixtures/p4_main_args.c`: `--arg` reaches the C `argv` under `interp` as the native
-  build's arguments do and under `exe`, and `aot` refuses it.
+  build's arguments do, under `jit`, under `exe` and under `aot`.
 - `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list,
   its function-like entries and the shapes it refuses, the `over_indexed` list and the shapes it
   refuses, the `loops` and `layout` values (the latter as a mode and as an object) and the ones

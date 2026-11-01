@@ -186,10 +186,10 @@ def test_cli_program_args(t : T?) {
         t |> equal(run_with_args(dir, "exe", out), native_rc, out)
         t |> success(out |> contains("argv[2] = 'two words' 9\nargv[3] = '' 0\nend 1\n"), out)
     }
-    t |> run("the aot tier refuses program arguments, since its host passes none") @(t : T?) {
+    t |> run("--arg reaches the C argv of the aot tier's host, after its `--`") @(t : T?) {
         var out : string
-        t |> equal(run_with_args(dir, "aot", out) != 0, true, out)
-        t |> success(out |> contains("the aot tier's host passes the program no arguments"), out)
+        t |> equal(run_with_args(dir, "aot", out), native_rc, out)
+        t |> success(out |> contains("argc 4 name 1\nargv[1] = 'one' 3\nargv[2] = 'two words' 9\nargv[3] = '' 0\nend 1\nwritten Xne\n"), out)
     }
     rmdir_rec(dir)
 }
