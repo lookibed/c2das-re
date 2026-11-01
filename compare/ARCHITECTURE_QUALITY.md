@@ -10,11 +10,12 @@ whose Rust status is `pass`, `exit` or `output` and which the suite's `expected_
 each kernel of its `perf` section the Rust side `ran`; a key is `<suite>/<id>` or `perf/<kernel
 key>`. A key's C file is the one the earlier sections ran (a csmith seed's by `csmith_source`, a
 kernel composed by the method and translated with `-DC2DAS_NATIVE` as in `ARCHITECTURE.md` section
-8). One worker process per key, `--jobs` at a time, 900 s each, converts it for `linux` and
-translates it with `translate_file`, no run, into `work/quality/<key>/`. A kernel's Rust translation
-thus holds the clock's C body (`c_monotonic_ns` over `clock_gettime`, `struct timespec`,
-`clockid_t`), about 5% of the perf group's Rust program lines, where ours calls
-`crt::c_monotonic_ns`; the perf comparison times that same text, so the quality comparison keeps it.
+8). A suite's fetched input is required only when the corpus holds a key of that suite. One worker
+process per key, `--jobs` at a time, 900 s each, converts it for `linux` and translates it with
+`translate_file`, no run, into `work/quality/<key>/`. A kernel's Rust translation thus holds the
+clock's C body (`c_monotonic_ns` over `clock_gettime`, `struct timespec`, `clockid_t`), about 5% of
+the perf group's Rust program lines, where ours calls `crt::c_monotonic_ns`; the perf comparison
+times that same text, so the quality comparison keeps it.
 
 Each side is measured by the readability metric's ten counters, `count_module` of
 `metrics/readability_count.das`, over the module daslang runs (ours the one module the pipeline

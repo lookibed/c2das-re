@@ -9,6 +9,8 @@ require daslib/strings_boost
 require daslib/json_boost
 require ../../converter/tiers.das
 require ../../suites/suite_runner.das
+require ../../suites/csmith/generate.das
+require ../../perf/perf_compose.das
 require ../suite_compare.das
 require ../quality_compare.das
 require _common
@@ -50,9 +52,7 @@ let CAPTURE_TEXT = "\{\"suites\": \{\"c_testsuite\": \{\"outcomes\": [\{\"id\": 
 def test_corpus(t : T?) {
     t |> run("compiled Rust statuses the ratchet lists, kernels the Rust side ran, sorted, filtered") @(t : T?) {
         let results = json_of(t, CAPTURE_TEXT)
-        var listed : table<string; table<string>>
-        listed["c_testsuite"] <- {"a", "b", "c", "d", "e"}
-        listed["gcc_torture"] <- {"x"}
+        let listed <- {"c_testsuite" => {"a", "b", "c", "d", "e"}, "gcc_torture" => {"x"}}
         let all <- quality_corpus(results, listed, "")
         t |> equal(join(all, " "), "c_testsuite/a c_testsuite/b c_testsuite/c perf/dasprofile/fib_loop perf/sieve")
         t |> equal(join(quality_corpus(results, listed, "perf/"), " "), "perf/dasprofile/fib_loop perf/sieve")
@@ -261,6 +261,10 @@ def test_worker(t : T?) {
             rmdir_rec(quality_work("perf/cmp_test_no_kernel"))
         }
     }
+}
+
+[test]
+def test_sources(t : T?) {
     t |> run("a suite case's file by its id, a refused translation, a csmith seed csmith refuses") @(t : T?) {
         t |> with_stand_in("cmp_quality_sources") $(dir, bin) {
             var args : array<string>
