@@ -103,7 +103,7 @@ def test_profile_refusals(t : T?) {
                 nm_line = split(slice(line, 4), " (")[0]
             }
         }
-        let pins <- [for (word in split(nm_line, ",")); strip(word)]
+        let pins <- [for (word in split(nm_line, ",")); strip(word); where !empty(strip(word))]
         t |> success(!empty(pins), "VERSIONS.md names no nm version")
         let pin = pins[0]
         let listed = join(pins, ", ")
@@ -118,6 +118,11 @@ def test_profile_refusals(t : T?) {
             fwrite(path_join(root, "ports/lua/bench/{name}.lua"), "")
         }
         var out : string
+        // no `nm:` line at all: refused before any nm runs
+        fwrite(path_join(root, "VERSIONS.md"), "lua: 5.4.8 (stand-in)\n")
+        t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", path_join(root, "missing_nm")]), out), 1, out)
+        t |> success(out |> contains("VERSIONS.md has no `nm:` line"), out)
+        fwrite(path_join(root, "VERSIONS.md"), "nm: {listed} (stand-in)\n")
         t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", path_join(root, "missing_nm")]), out), 1, out)
         t |> success(out |> contains("missing_nm --version` printed `` (exit ") && out |> contains("VERSIONS.md pins nm `{listed}`"), out)
         t |> equal(run_in(root, daslang_argv("lua/profile.das", ["--nm", stand_in_nm(root, "0.1", 1)]), out), 1, out)
