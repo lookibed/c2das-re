@@ -408,6 +408,7 @@ def test_rendering(t : T?) {
         t |> equal(join(reasons, "\n"), "- w, native: clang exited 1\n- w, Ours, interpreter AOT: refused: r\n- w, Rust, AOT: skipped: no args")
         let text = projects_text(js)
         t |> success(text |> contains("Captured: w (Rust `0123456789ab`, d)."), text)
+        t |> success(text |> contains("checked against the `expected.stdout` of its canonical case"), text)
         t |> success(text |> contains("#### `w`: `f`") && text |> contains("Ours: not found"), text)
         t |> success(has_value(rust_ahead(js), "- project w: Rust passes interpreter, ours does not."))
     }

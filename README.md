@@ -631,7 +631,7 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the output its README gives; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-01 20:17 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-01 20:17 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
 
 | Project | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------ | :--- | :----- | ----------: | ------: | ------: | ------: |
