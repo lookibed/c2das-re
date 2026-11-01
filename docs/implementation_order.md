@@ -24,8 +24,8 @@ never block this plan.
 text, make it all work, then the LLM-assisted port; his words on layout, start-up, speed and text
 stand behind each)
 12. Layout (P7.0a): the default layout keeps every cycle one module of `.das.inc` fragments, a file
-    per member (today's `scc`); branches stay separate modules; late binding (the `<entry>_link.das`
-    slots) stays an opt-in flag and sidecar field; the mode names follow the meaning, so the default
+    per member (today's `scc`); branches stay separate modules, header clusters as they are; late
+    binding (the `<entry>_link.das` slots) stays an opt-in flag and sidecar field; the mode names follow the meaning, so the default
     is not called by another mode's old name; tests and captures in every mode; the ports publisher
     publishes the default mode as the primary one; the language's mutual-`require` limit becomes a
     probe, a `probe-findings.md` row and an issue in `lookibed/daScript` (fact and repro only).
@@ -1171,8 +1171,9 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   wrappers and slots, `mod::name` and `__::name` calls, `require` lines per module). The language
   limit becomes a probe (two modules needing a mutual `require`, the minimal repro), a
   `probe-findings.md` row and an issue in `lookibed/daScript` asking whether daslang has or plans a
-  way for two modules to call each other (fact and repro only, no implementation proposal; nothing
-  filed in `GaijinEntertainment/daScript`). Report: compile, start-up, interp and JIT of the new
+  way for two modules to call each other (a forward declaration of a function from a module below,
+  a mutual `require` inside one package, or the like; fact and repro only, no implementation
+  proposal; nothing filed in `GaijinEntertainment/daScript`). Report: compile, start-up, interp and JIT of the new
   default against `source-cut`, one line per mode.
 - **P7.0b Interpreter audit on Lua** (owner ruling 2026-11-01 (14); after P7.0a, before P6). P7.0
   took `fib_loop` to 31x against 32x for hand-written das, while Lua runs 193x to 436x native under
@@ -1184,8 +1185,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   interpreter effect and ledger rows for the fixes; the fixes are separate items, not this one. Lua
   tests under the memory cap.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
-  landed in P7.0 as the default, owner ruling 2026-11-01 (13)), **O2
-  `[unsafe_deref]`**, **O3 `[hint(unsafe_range_check)]`** — sidecar-gated, enabled only
+  landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
+  `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
   after demo-sync green, re-verify sync after enabling.
 - **P7.2 Profile** the renderer inner loops (R_DrawColumn/R_DrawSpan expected); apply
   O4/O5/O6 only where the profile demands.
