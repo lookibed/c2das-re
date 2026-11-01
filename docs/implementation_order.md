@@ -20,7 +20,7 @@ never block this plan.
    hand-written "as-if-converted" `.das` test first, converter integration second.
 5. No hand edits to converted output, ever. Per-project judgment goes in the sidecar.
 
-**Owner rulings 2026-11-01 (12) to (17)** (after Boris Batkin's framing of 2026-08-22: generate the
+**Owner rulings 2026-11-01 (12) to (21)** (after Boris Batkin's framing of 2026-08-22: generate the
 text, make it all work, then the LLM-assisted port; his words on layout, start-up, speed and text
 stand behind each)
 12. Layout (P7.0a): the default layout keeps every cycle one module of `.das.inc` fragments, a file
@@ -51,6 +51,21 @@ stand behind each)
     through c2das-re on the Rust side's own inputs, hosts, fixtures and reference outputs, the Rust
     result beside; right after P8.1 (its PR 5 closes it) and before P7.0a, so the order of (14) reads
     P8.1, P8.2, P7.0a, P7.0b, P6.
+18. CI is off (2026-11-01, evening): the owner disabled both workflows and stopped the WSL runner, the
+    box having no spare resources beside the agent; neither is re-enabled or touched by the agent.
+    The merge gate until the owner says otherwise: the fast tier green locally on the pull request's
+    branch rebased on `main`, plus the one quick review closed; the full tier runs locally at phase
+    ends only (rule 10).
+19. Lua on the Rust side (P8.1) is deferred to the owner; the report says refused, no host-import work.
+20. The P8.1 report headlines the Rust line total without its emitted runtime (1.33x ours); the total
+    as written (5.10x) stays as the second line.
+21. P8.1b, the readability metric rebuilt on the critic's findings (`/root/notes/owner/
+    2026-11-01_readability-critic.md`, the critic's text plus the agent's footnotes): next item,
+    before P8.2; every finding and blind spot a criterion, a compliance percentage per criterion
+    against a human port and one total, one command over the ports output (Lua, every layout) and the
+    suites, wired into the fast tier as a report and into the item reports with the delta against
+    `main`; `main` re-measured now, the numbers in the critic file's footnote area and the PR's
+    `Кратко`; no translator fixes in the item.
 
 ---
 
@@ -1057,6 +1072,20 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   Rust lines 1.33x ours without its emitted runtime, 5.10x with it. Lua: the Rust side refuses it
   at `ldexp`, 20 libc names in the gap, so it has no Lua speed (ruling pending); Doom pending P6.
   The gaps where Rust is ahead: P8.3.
+- **P8.1b Readability metric by the critic's criteria** (owner ruling 2026-11-01 (21); after P8.1,
+  before P8.2). `metrics/readability.das` gains a criterion for every finding and blind spot of the
+  critic's review (`/root/notes/owner/2026-11-01_readability-critic.md`, the agent's footnotes
+  included): comments lost, `#define` constant names lost to numbers, character literals turned into
+  numbers, macro blow-up as das lines per C line per function, `switch` flag chains and manual
+  `_goto`, machine temporaries `_tN` and `_first`, self-assignments, layout-check lines, stray braces,
+  `_c_` renames, late-binding slots and wrappers, `__::` and `mod::` calls, `require` lines per module,
+  `addr`/`deref` pairs around fields, lost parentheses, long lines and the rest the critic lists. Each
+  criterion is a compliance percentage against what a human port would have (its definition stated
+  per criterion in `metrics/ARCHITECTURE.md`), plus one total. One command measures the ports output
+  (Lua, every layout) and the suites; it runs in the fast tier as a report line and in every item
+  report, printing the percentages and their delta against `main`. `main` is re-measured in the item
+  and the numbers land in the critic file's footnote area and the PR's `Кратко`. No translator fix in
+  this item: the owner decides fixes from the critic file.
 - **P8.2 Real projects of the Rust c2das** (owner ruling 2026-11-01 (17); after P8.1, before P7.0a).
   The six projects of the Rust repository's `tests/manual` (binjgb, doomgeneric, h264bsd-mp4,
   plmpeg-stream, quakegeneric, wasm3), each run through c2das-re on exactly the inputs, hosts,
