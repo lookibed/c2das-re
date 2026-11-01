@@ -1048,6 +1048,14 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   generator script, never hand-typed. Honest: where the Rust version is better, say so and open
   ledger rows to close the gap. Owner ruling 2026-11-01 (14): finished in its current scope, not
   expanded; its Lua speed part, interp and JIT of both translators on the same inputs, is mandatory.
+  Done (branches `p8.1-*`, PRs #31, #32, #36 and `p8.1-report`): the Rust translator at
+  `ce4647af` on the three suites, the 19 perf kernels, Lua and the output's readability, all in
+  `compare/results_linux.json`, rendered by `compare/run.das --readme` into the root `README.md`
+  (the report) and into the ports README. Suites pass ours 199 / 1179 / 151 against Rust 202 /
+  1197 / 47 (c-testsuite, gcc-torture, csmith); perf geomean over native, ours against Rust:
+  interp 36.08 / 35.92, JIT 1.61 / 1.55, AOT 1.37 / 1.92; Rust lines 1.33x ours without its
+  emitted runtime, 5.10x with it. Lua: the Rust side refuses it at `ldexp`, 20 libc names in the
+  gap, so it has no Lua speed (ruling pending); Doom pending P6.
 - **P8.2 Real projects of the Rust c2das** (owner ruling 2026-11-01 (17); after P8.1, before P7.0a).
   The six projects of the Rust repository's `tests/manual` (binjgb, doomgeneric, h264bsd-mp4,
   plmpeg-stream, quakegeneric, wasm3), each run through c2das-re on exactly the inputs, hosts,
