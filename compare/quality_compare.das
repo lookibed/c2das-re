@@ -37,14 +37,16 @@ let SAMPLES <- [("perf/fib_loop", ["fibI", "kernel_run"]), ("perf/sieve", ["kern
 
 //! One side of a key: `status` `ok` when it was measured, else why not (`convert` or `refused`,
 //! `compile` when the counters' compile failed, `crash` or `timeout` for a worker); `error` the
-//! reason; the count of `.das` and `.das.inc` files, their non-blank lines, those of the Rust
-//! translator's emitted runtime (`runtime_lines`, 0 on our side), and the counters.
+//! reason; the count of `.das` and `.das.inc` files, their non-blank lines; on the Rust side the
+//! lines of its emitted runtime (`runtime_lines`) and of its `c2da_` declarations derived from the
+//! program (`program_c2da_lines`), both 0 on ours; and the counters.
 struct SideQuality {
     status : string
     error : string
     files : int
     lines : int
     runtime_lines : int
+    program_c2da_lines : int
     counts : table<string; int>
 }
 
@@ -56,11 +58,13 @@ struct FunctionPair {
     rust : string
 }
 
-//! What a worker measures of one key.
+//! What a worker measures of one key; `rust_c2da` the non-blank lines of each `c2da_` declaration
+//! of the Rust side, which the driver splits into runtime and program code.
 struct KeyQuality {
     ours : SideQuality
     rust : SideQuality
     functions : array<FunctionPair>
+    rust_c2da : table<string; int>
 }
 
 //! The keys of the corpus, sorted, the ones holding `filter`: per suite of the capture's `suites`
@@ -100,7 +104,11 @@ def quality_corpus(results : JsonValue?; listed : table<string; table<string>>; 
 //! The corpus of the capture at `path` and the suites' ratchets, the keys holding `filter`; none,
 //! with `error` set, when the file present there is not JSON.
 def quality_corpus_of(path, filter : string; var error : string&) : array<string> {
-    let results = read_json(fexist(path) ? fread(path) : "\{\}", error)
+    if (!fexist(path)) {
+        error = "no capture at {path}: the corpus comes from its suites and perf sections"
+        return <- array<string>()
+    }
+    let results = read_json(fread(path), error)
     if (results == null) {
         error = "cannot read {path}: {error}"
         return <- array<string>()
@@ -113,9 +121,9 @@ def quality_corpus_of(path, filter : string; var error : string&) : array<string
     return <- quality_corpus(results, listed, filter)
 }
 
-//! The C file of `key` and the clang arguments of its Rust translation: a suite case's file, a csmith
-//! seed's program found or generated into `work`, or a kernel composed by the method into `work`;
-//! "" with `error` set when there is none.
+//! The C file of `key` and the clang arguments of its Rust translation: a suite case's file, a
+//! csmith seed's program found or generated into `work`, or a kernel composed by the method into
+//! `work`; "" with `error` set when there is none.
 def quality_source(key, work : string; var clang_args : array<string>; var error : string&) : string {
     let group = text_before(key, "/")
     let id = slice(key, length(group) + 1)
@@ -159,7 +167,7 @@ def measure_side(files : array<string>; entry : string) : SideQuality {
 }
 
 //! the words that open a top-level declaration
-let DECLARATION_WORDS <- ["def ", "var ", "let ", "struct ", "enum "]
+let DECLARATION_WORDS <- ["def ", "var ", "let ", "struct ", "enum ", "typedef "]
 
 //! The name a top-level declaration line `line` declares: the word after `def`, `var`, `let`,
 //! `struct` or `enum` and an optional `private ` or `public `; "" for any other line.
@@ -179,18 +187,21 @@ def declared_name(line : string) : string {
     return slice(rest, 0, n)
 }
 
-//! the prefix of every name the Rust translator's emitted runtime declares
-let RUNTIME_PREFIX = "c2da_"
+//! the prefix of every name the Rust translator declares of its own
+let C2DA_PREFIX = "c2da_"
 
-//! The non-blank lines of the module `text` that belong to a top-level declaration whose name starts
-//! with `RUNTIME_PREFIX`: each from its first annotation line to the line before the next
-//! declaration's first line, the last to the end of the text.
+//! the prefixes of the Rust translator's emitted runtime: its heap and its libc helpers
+let RUNTIME_PREFIXES <- ["c2da_rt_", "c2da_std_"]
+
+//! The non-blank lines of each top-level declaration of the module `text` whose name starts with
+//! `C2DA_PREFIX`, by name: each from its first annotation line to the line before the next
+//! declaration's first line (a `typedef` is one), the last to the end of the text.
 [arch(at="ARCHITECTURE_QUALITY.md#quality")]
-def runtime_lines(text : string) : int {
+def c2da_blocks(text : string) : table<string; int> {
+    var blocks : table<string; int>
     let lines <- split(text, "\n")
     let n = length(lines)
-    var count = 0
-    var inside = false
+    var current = ""
     for (i in range(n)) {
         let annotated = i > 0 && lines[i - 1] |> starts_with("[")
         if (!annotated) {
@@ -200,14 +211,48 @@ def runtime_lines(text : string) : int {
             }
             let name = decl < n ? declared_name(lines[decl]) : ""
             if (!empty(name)) {
-                inside = name |> starts_with(RUNTIME_PREFIX)
+                current = name |> starts_with(C2DA_PREFIX) ? name : ""
             }
         }
-        if (inside && !empty(strip(lines[i]))) {
-            count++
+        if (!empty(current) && !empty(strip(lines[i]))) {
+            blocks[current] = (blocks?[current] ?? 0) + 1
         }
     }
-    return count
+    return <- blocks
+}
+
+//! Whether the `c2da_` declaration `name` is the Rust translator's emitted runtime: a name with a
+//! prefix of `RUNTIME_PREFIXES`, or one `every_module` holds, the names every Rust module declares.
+[arch(at="ARCHITECTURE_QUALITY.md#quality")]
+def is_runtime(name : string; every_module : table<string>) : bool => find_index_if(RUNTIME_PREFIXES, $(p) => name |> starts_with(p)) >= 0 || key_exists(every_module, name)
+
+//! Each Rust side of `entries` split: `runtime_lines` the lines of its `c2da_` declarations
+//! `is_runtime` holds, `program_c2da_lines` the rest; the names every module declares are those the
+//! `rust_c2da` of every entry measured `ok` on the Rust side holds.
+[arch(at="ARCHITECTURE_QUALITY.md#quality")]
+def split_runtime(var entries : table<string; KeyQuality>) {
+    var modules = 0
+    var declared : table<string; int>
+    for (q in values(entries)) {
+        if (q.rust.status == "ok") {
+            modules++
+            for (name in keys(q.rust_c2da)) {
+                declared[name] = (declared?[name] ?? 0) + 1
+            }
+        }
+    }
+    let every_module <- {for (name, count in keys(declared), values(declared)); name; where count == modules}
+    for (q in values(entries)) {
+        q.rust.runtime_lines = 0
+        q.rust.program_c2da_lines = 0
+        for (name, lines in keys(q.rust_c2da), values(q.rust_c2da)) {
+            if (is_runtime(name, every_module)) {
+                q.rust.runtime_lines += lines
+            } else {
+                q.rust.program_c2da_lines += lines
+            }
+        }
+    }
 }
 
 //! Whether the daslang function `das_name` of `side` (`ours` or `rust`) is the C function `c_name`:
@@ -218,12 +263,12 @@ def is_c_function(das_name, c_name, side : string) : bool {
     if (c_name == "main") {
         return das_name == (side == "ours" ? "c_main" : "main_0")
     }
-    return das_name == c_name || das_name |> ends_with("__{c_name}")
+    return das_name == c_name || (side == "ours" && das_name |> ends_with("__{c_name}"))
 }
 
 //! The text of the C function `c_name` in the daslang module `text` of `side`: the annotation lines
-//! right above its `def` line, the `def` line, and every line after it up to the first `}` at column
-//! 0, or the `def` line alone when it does not end in `{`; "" when no function matches.
+//! right above its `def` line, the `def` line, and every line after it up to the first `}` at
+//! column 0, or the `def` line alone when it does not end in `{`; "" when no function matches.
 [arch(at="ARCHITECTURE_QUALITY.md#side-by-side")]
 def function_text(text, c_name, side : string) : string {
     let lines <- split(text, "\n")
@@ -261,8 +306,9 @@ def ours_quality(c_path, out_dir : string; var das_path : string&) : SideQuality
 
 //! The Rust side of `c_path`: translated by `bin` into `out_dir` with `clang_args` within `timeout`
 //! seconds and measured; `refused` with the translator's error when it fails or no module defines
-//! `main`. `entry` is the module daslang runs, "" without one.
-def rust_quality(bin, c_path, out_dir : string; clang_args : array<string>; timeout : float; var entry : string&) : SideQuality {
+//! `main`. `entry` is the module daslang runs, "" without one; `c2da` gets the lines of each
+//! `c2da_` declaration of its modules.
+def rust_quality(bin, c_path, out_dir : string; clang_args : array<string>; timeout : float; var entry : string&; var c2da : table<string; int>) : SideQuality {
     let no_flags : array<string>
     let t <- translate_file(bin, c_path, out_dir, no_flags, clang_args, timeout)
     if (!t.ok || empty(t.entry)) {
@@ -271,7 +317,10 @@ def rust_quality(bin, c_path, out_dir : string; clang_args : array<string>; time
     entry = t.entry
     var side <- measure_side(t.files, t.entry)
     for (f in t.files) {
-        side.runtime_lines += runtime_lines(fread(f))
+        var inscope blocks <- c2da_blocks(fread(f))
+        for (name, lines in keys(blocks), values(blocks)) {
+            c2da[name] = (c2da?[name] ?? 0) + lines
+        }
     }
     return <- side
 }
@@ -295,12 +344,13 @@ def private sampled_functions(key, ours_path, rust_path : string) : array<Functi
     return <- pairs
 }
 
-//! One key measured by the Rust translator `bin` in `quality_work(key)`, emptied first: our
-//! conversion under `linux` into `ours/`, the Rust translation into `rust/`, each side counted and
-//! sized, the sampled functions taken from both; written to `quality_result_path(key)`.
+//! One key measured by the Rust translator `bin` in `<root>/<key>` (`quality_work(key)` for the
+//! driver's `QUALITY_WORK`), emptied first: our conversion under `linux` into `ours/`, the Rust
+//! translation into `rust/`, each side counted and sized, the sampled functions taken from both;
+//! written to its `quality.json`.
 [arch(at="ARCHITECTURE_QUALITY.md#quality")]
-def measure_key(key, bin : string) : KeyQuality {
-    let work = quality_work(key)
+def measure_key(key, bin, root : string) : KeyQuality {
+    let work = path_join(root, key)
     rmdir_rec(work)
     mkdir_rec(work)
     var q : KeyQuality
@@ -312,10 +362,10 @@ def measure_key(key, bin : string) : KeyQuality {
         q.rust = SideQuality(status = "refused", error = error)
     } else {
         q.ours <- ours_quality(c_path, path_join(work, "ours"), ours_path)
-        q.rust <- rust_quality(bin, c_path, path_join(work, "rust"), clang_args, group_of(key) == PERF_GROUP ? PERF_TRANSLATE_TIMEOUT : TRANSLATE_TIMEOUT, rust_path)
+        q.rust <- rust_quality(bin, c_path, path_join(work, "rust"), clang_args, group_of(key) == PERF_GROUP ? PERF_TRANSLATE_TIMEOUT : TRANSLATE_TIMEOUT, rust_path, q.rust_c2da)
     }
     q.functions <- sampled_functions(key, ours_path, rust_path)
-    fwrite(quality_result_path(key), sprint_json(q, false))
+    fwrite(path_join(work, "quality.json"), sprint_json(q, false))
     return <- q
 }
 
@@ -353,6 +403,7 @@ def private zero_sums : table<string; int> {
     sums["files"] = 0
     sums["lines"] = 0
     sums["runtime_lines"] = 0
+    sums["program_c2da_lines"] = 0
     return <- sums
 }
 
@@ -364,13 +415,14 @@ def private add_side(var sums : table<string; int>; side : SideQuality) {
     sums["files"] += side.files
     sums["lines"] += side.lines
     sums["runtime_lines"] += side.runtime_lines
+    sums["program_c2da_lines"] += side.program_c2da_lines
 }
 
 //! The totals of `entries` per group (the key's text before its first `/`) and over `ALL_GROUPS`:
-//! `keys` the corpus keys, `counted` those both sides measured `ok`, `excluded` the rest by side and
-//! status (`rust_compile`), `ours` and `rust` the counters, files, lines and runtime lines summed
-//! over the counted keys, `line_ratio` the Rust lines over ours and `program_line_ratio` the Rust
-//! lines less its runtime's over ours.
+//! `keys` the corpus keys, `counted` those both sides measured `ok`, `excluded` the rest by side
+//! and status (`rust_compile`), `ours` and `rust` the counters, files, lines and runtime lines
+//! summed over the counted keys, `line_ratio` the Rust lines over ours and `program_line_ratio` the
+//! Rust lines less its runtime's over ours.
 [arch(at="ARCHITECTURE_QUALITY.md#quality")]
 def quality_totals(entries : table<string; KeyQuality>) : JsonValue? {
     var by_group : table<string; JsonValue?>
@@ -412,6 +464,7 @@ def quality_totals(entries : table<string; KeyQuality>) : JsonValue? {
 //! functions in the order `SAMPLES` lists them.
 [arch(at="ARCHITECTURE_QUALITY.md#quality")]
 def quality_section(stamps : Stamps; var entries : table<string; KeyQuality>) : JsonValue? {
+    split_runtime(entries)
     var functions : array<FunctionPair>
     for (sample in SAMPLES) {
         entries |> get(sample._0) $(q) {

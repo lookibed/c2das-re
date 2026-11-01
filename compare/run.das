@@ -60,7 +60,7 @@ struct CompareArgs {
 // argument `quality/<key>` measures that key of the quality comparison
 def run_worker(text : string) : int {
     if (text |> starts_with("quality/")) {
-        measure_key(slice(text, length("quality/")), rust_binary())
+        measure_key(slice(text, length("quality/")), rust_binary(), QUALITY_WORK)
         return 0
     }
     var suite, id : string
