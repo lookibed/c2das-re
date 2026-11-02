@@ -149,6 +149,13 @@ def test_cli_layout(t : T?) {
         t |> equal(run_layout(dir, "single", out), 0, out)
         t |> success(fexist(path_join(dir, "layout_single/main.das")) && !fexist(path_join(dir, "layout_single/a.das")), out)
     }
+    t |> run("--edge-census writes the census of the cycles beside the partition's report") @(t : T?) {
+        var out : string
+        var argv <- daslang_cmd(CONVERTED_MODULES)
+        argv |> push_from(["converter/main.das", "--", "{LAYOUT_FIXTURE}/main.c", "{LAYOUT_FIXTURE}/a.c", "{LAYOUT_FIXTURE}/b.c", "--out", path_join(dir, "census"), "--target", "linux", "--edge-census"])
+        t |> equal(run_and_capture(argv, out, 600.0), 0, out)
+        t |> success(fread(path_join(dir, "census/program.edges.txt")) |> starts_with("today: clusters 1\n  2 nodes, 2 units: a b\n"), out)
+    }
     t |> run("--layout flat, and the old name scc, are a usage error before any conversion") @(t : T?) {
         var out : string
         t |> equal(run_layout(dir, "flat", out), 2, out)

@@ -105,6 +105,22 @@ edges before the cut) that the entry module still does not reach is refused as a
 layout, never shipped to panic at run time (`unbound_module`). The link module requires the modules
 of the types the signatures spell, all header type modules.
 
+## The edge census {#census}
+
+`--edge-census` (`edge_census`) asks a conversion in a source layout what its cycles are made of;
+it changes no converted text and no partition, and writes `program.edges.txt` beside
+`program.layout.txt`, which every conversion first deletes. It reads the edges as `find_edges`
+leaves them, before any cut. Each symbol of an edge between two units has a kind: `call`, a
+function the calling unit only calls; `address`, a function whose address the calling unit takes,
+its calls besides or not; `global`, an object. An edge's other reasons, the records and enums it
+spells, are its `type`s. For each cluster (a strongly connected component of more than one node,
+headers counted as nodes) the census gives its edges, per kind the edges carrying it and the
+symbols or types of that kind, and the edges carrying calls alone and calls and globals alone.
+Then come the clusters `components_of` finds once the edges of calls alone are dropped, as if
+every function were declared forward, and once the edges of calls and globals alone are, as if
+every object were too; an edge with any other reason stays. One file or the single layout is
+refused, having no cycle among modules to report.
+
 ## Emitting the modules {#emission}
 
 `emit_program` (`emit.das`) spells the modules over one program state, `EmitProgram`: the
