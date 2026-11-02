@@ -186,9 +186,9 @@ unsigned underlying type (F22); the member is absent for a signed one, which is 
 `msvc` dialect. An lvalue node (`ref`, `member`, `index`, `un` `deref`) of volatile-qualified type
 carries `"vol": true` after the members of its kind and before `macro`, absent otherwise, since the
 type table strips qualifiers and the emitter keeps every access of such an object (F65,
-`ARCHITECTURE_EMITTER_LOOPS.md`). The additions keep `"cir": "0.1"` (`CIR_VERSION`), where the
-spec's section 10 bumps the minor for an additive field: F20, F21 and F65 record each as additive
-at 0.1, and a reader of this tree accepts no other version.
+`ARCHITECTURE_EMITTER_LOOPS.md`), then a character literal's `"char": true` (P7.0i). These keep
+`"cir": "0.1"` (`CIR_VERSION`), where the spec's section 10 bumps the minor for an additive field:
+F20, F21, F65 and P7.0i record each as additive at 0.1; a reader here accepts no other version.
 A record's `packed` is false exactly when das's natural layout reproduces clang's, by this law
 (`bit_units.das`), which a Dumper B applies to the same facts to write the same byte. Fields go
 in declaration order, each at its offset rounded up to its das alignment (a scalar's size, an
@@ -273,8 +273,8 @@ Section 3, Dumper A's subset (what the dumper reads from clang and libclang), is
 Section 4, what the emitter spells (the das text of every construct), is in
 `ARCHITECTURE_EMITTER.md`, with bitfields, unions, function pointers and variadics in
 `ARCHITECTURE_EMITTER_AGGREGATES.md`, the switch and the labels in
-`ARCHITECTURE_EMITTER_CONTROL.md`, and the loops, the compound stores and the volatile access in
-`ARCHITECTURE_EMITTER_LOOPS.md`.
+`ARCHITECTURE_EMITTER_CONTROL.md`, the loops, the compound stores and the volatile access in
+`ARCHITECTURE_EMITTER_LOOPS.md`, and the C spelling it carries in `ARCHITECTURE_EMITTER_TEXT.md`.
 
 ## 5. The four tiers
 

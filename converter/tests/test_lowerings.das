@@ -165,6 +165,7 @@ def test_lowerings(t : T?) {
     p5_lua_review_fixtures(t)
     p5_skip_audit_fixtures(t)
     p8_input_fixtures(t)
+    p7_readable_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -1927,5 +1928,23 @@ def p8_input_fixtures(t : T?) {
         check_fixture(t, "p8_stdbool", text)
         has_text(t, text, "def set_flag(var flag : bool?; value : bool) \{\n")
         has_text(t, text, "def private p8_stdbool__both(a : bool; b : bool) : bool \{\n")
+    }
+}
+
+def p7_readable_fixtures(t : T?) {
+    t |> run("a C character literal is a das one where das spells it, a case label too; the rest stay numbers") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_chars", text)
+        has_text(t, text, "    if (_cond == 's') \{\n        return 1\n    \} elif (_cond == '%') \{\n")
+        has_text(t, text, "    \} elif (_cond == '\\n') \{\n")
+        has_text(t, text, "    \} elif (_cond == '\\\\') \{\n")
+        has_text(t, text, "    \} elif (_cond == '\\'') \{\n")
+        has_text(t, text, "    \} elif (_cond == 38) \{\n")
+        has_text(t, text, "    \} elif (_cond == 7) \{\n")
+        has_text(t, text, "crt::strchr(fmt, '%')")
+        has_text(t, text, "var q : uint8 = uint8('\\'')")
+        has_text(t, text, "int(deref(p)) == '\{' || int(deref(p)) == '\}'")
+        has_text(t, text, "int(deref(p)) != 0")
+        has_text(t, text, "'\\t', p7_chars__kind('&'), 127)")
     }
 }
