@@ -34,3 +34,14 @@ its header (lines holding a comment and no code), above the specifiers' own line
 (`static int` alone above the name, a line ending in an identifier or `*`); the comments
 between functions elsewhere, of globals, types and directives, and after a function's last
 statement, are not carried.
+
+### Constant names {#constant-names}
+
+A node of a function body that carries a `macro` (`ARCHITECTURE_DUMPER.md`, "Macro names") and
+is a numeric constant (literals, enumerators, `sizeof` and `alignof` under arithmetic, bitwise
+and numeric conversions) is spelled by the macro's name, through the `_c_` rule for a das
+keyword (`match` is `_c_match`). The module holds `let private NAME = <value>` for each name
+in first-use order, after its globals (in a cluster's own module, before its `include`s): the
+value is the das text of the first use, and a use whose text differs (the macro redefined, or
+expanded at another type) keeps its value. A global's initializer keeps the value, as does a
+spelling that does not go through `emit_expr` (a case label, a loop's step).
