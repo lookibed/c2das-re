@@ -550,11 +550,25 @@ def lane_binary(das_path, lane, work : string; module_dirs, args : array<string>
     }
     let built = fexist(bin + ".exe") ? bin + ".exe" : bin
     if (!fexist(built)) {
-        // the exe build's linker message follows daslang's `Output:` line; the AOT host build's ends the output
-        error = "the build exited {rc} and left no binary: {lane == "aot" ? last_line(out) : exe_build_line(out)}"
+        error = "the build exited {rc} and left no binary: {lane == "aot" ? aot_build_line(out) : exe_build_line(out)}"
         return ""
     }
     return built
+}
+
+//! The line that says why the `aot` build failed: the context generation's `out of heap memory`
+//! line (its `error[...]` line only names the exception), else the first line naming an error
+//! (the host compiler's `error:`), else the last line of `text`.
+def aot_build_line(text : string) : string {
+    let lines <- [for (l in split(text, "\n")); strip(l)]
+    for (key in ["out of heap memory", "error"]) {
+        for (line in lines) {
+            if (find(line, key) >= 0) {
+                return line
+            }
+        }
+    }
+    return last_line(text)
 }
 
 //! The bench cells of each das lane of the bench module `das_path`: `{error}` on every lane with

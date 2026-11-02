@@ -113,7 +113,8 @@ Each side's lanes: `refused` with the side's error when it has no module; `compi
 none on the Rust side), `timeout` past that check's limit; else each lane runs with the fixture as
 the program's argument (`lane_argv`: daslang over the module under `interp` and `jit`, under `exe`
 and `aot` the binary `lane_binary` builds and runs once, the `aot` host's program given its
-arguments after `--`, `compile` with the build's line when it leaves none) and is judged
+arguments after `--`, `compile` with the build's line when it leaves none: the `aot` build's
+`out of heap memory` line, else its first naming an error, `aot_build_line`) and is judged
 on its stdout (`run_split`; the program's stderr, doomgeneric's engine log, is apart): `timeout`
 past its limit, `exit` with the code and the first line naming an error in the stderr, then the
 stdout, `output` with the first line that differs from the expected text (numbered from 1, a missing
