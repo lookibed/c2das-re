@@ -83,8 +83,9 @@ sites in the same modules correlate; they prove nothing about each other.
 
 The committed capture is from the Ryzen 7 7435HS, while other jobs shared the machine, five
 samples per kernel lane. Six constructs cost under the interpreter, each measured as the converted
-time over the rewrite's: the `_flag` switch chain 2.08x (419x native as converted; the Rust
-translation's computed `goto` dispatch runs the same kernel at 23.9x native), the wrap casts
+time over the rewrite's: the `_flag` switch chain 2.33x (the converter's plain cases run the
+kernel at 195x native, the chain the `flag-chain` rewrite restores 2.33 times slower, a re-record
+after the fix; the Rust translation's computed `goto` dispatch runs it at 27.0x native), the wrap casts
 `int64(uint64(a) op uint64(b))` 2.10x, the `int64(x != 0 ? 1 : 0) != 0` test 1.58x, `addr((p +
 i).f)` on a stack slot 1.53x, `c_volatile_load` 1.32x, and `try`/`recover` itself 1.25x, of which
 the `while (_sj_run)` trampoline 1.13x; the union member through `reinterpret<GCUnion?>` costs 1.17x
