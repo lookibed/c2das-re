@@ -55,7 +55,7 @@ struct CompareArgs {
     readme : bool
     @clarg_doc = "write the comparison rendered from the capture into this markdown file, the open rulings first"
     report : string = ""
-    @clarg_doc = "samples per perf lane, each its own process (default 5)"
+    @clarg_doc = "samples per perf lane, each its own process (default 5); 0 with --project times no bench"
     samples : int = 5
     @clarg_doc = "run only the ids (perf: the kernels) that contain this text; a filtered run writes no capture"
     filter : string = ""
@@ -110,6 +110,9 @@ def run_suite(spec : SuiteSpec; args : CompareArgs) : SuiteCapture {
 // the perf comparison over the kernels `--filter` names, the geometric means logged; the capture's
 // `perf` section written
 def run_perf(args : CompareArgs) : int {
+    if (samples_refused(args.samples, 1)) {
+        return 1
+    }
     var reason : string
     if (!rust_available(reason)) {
         to_log(LOG_ERROR, "{reason}\n")
@@ -179,9 +182,22 @@ def run_lua(out, from : string) : int {
     }
 }
 
+// true, the refusal logged, when `samples` is below `least`
+def private samples_refused(samples, least : int) : bool {
+    if (samples >= least) {
+        return false
+    }
+    to_log(LOG_ERROR, "--samples takes a count of at least {least}, not {samples}\n")
+    return true
+}
+
 // the real project `--project` names through both translators, its result lines logged; its
 // entry of the capture's `projects` section written
 def run_project(args : CompareArgs; out : string) : int {
+    // 0 samples: the run times no bench
+    if (samples_refused(args.samples, 0)) {
+        return 1
+    }
     var reason : string
     if (!rust_available(reason)) {
         to_log(LOG_ERROR, "{reason}\n")
@@ -264,10 +280,6 @@ def main : int {
     }
     if (args.lua) {
         return run_lua(out, args.lua_from)
-    }
-    if ((args.perf || !empty(args.project)) && args.samples < 1) {
-        to_log(LOG_ERROR, "--samples takes a count of at least 1, not {args.samples}\n")
-        return 1
     }
     if (!empty(args.project)) {
         return run_project(args, out)

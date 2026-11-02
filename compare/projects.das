@@ -35,7 +35,8 @@ let PROJECT_TRANSLATE_TIMEOUT = 600.0
 
 //! One project, the facts of its README in the Rust repository: the translation unit and the
 //! bench one (none when ""), relative to `dir`, the clang flags both sides and the native build
-//! take (`clang_extra` after the include folders and defines, `link_flags` the native link's), the
+//! take (`clang_extra` after the include folders and defines, `link_flags` the native link's),
+//! `ours_defines` the defines of our side's sidecar alone (a hook the Rust runtime defines), the
 //! fixture the program reads from its last argument, the output it must print, the translator
 //! options the Rust side's canonical case passes, and the C functions shown side by side. The
 //! output it must print is the canonical case `case_id`'s `expected.stdout` in the file `cases`,
@@ -52,6 +53,7 @@ struct Project {
     bench_tu : string
     include_dirs : array<string>
     defines : array<string>
+    ours_defines : array<string>
     clang_extra : array<string>
     c_std : string
     native_flags : array<string>
@@ -128,6 +130,7 @@ def project_table(checkout : string) : array<Project> {
         bench_tu = "src/plmpeg_file_bench_all.c",
         include_dirs <- ["include", "upstream", "fixtures", "src"],
         defines <- ["PLM_NO_STDIO"],
+        ours_defines <- ["c2da_rt_reset(...)="],
         c_std = "c11",
         native_flags <- ["-O2"],
         fixture = "fixtures/testsrc2_320x240.m1v",
@@ -358,19 +361,23 @@ def path_free(reason, root : string) : string => replace(reason, root |> ends_wi
 // a verdict as the capture holds it, its paths under `root` relative
 def private verdict_json(v : Verdict; root : string) : JsonValue? => JV({"status" => JV(v.status), "reason" => JV(path_free(v.reason, root))})
 
-//! The command of the `interp`, `jit` or `exe` lane over the module `das_path` with `module_dirs`
-//! loaded and the program given `args`: daslang over the module, or the binary `exe_binary` builds
-//! in `work`; empty with `error` the build's failure, prefixed `timeout: ` or `exe build: `.
+//! The command of a lane of `DAS_LANES` over the module `das_path` with `module_dirs` loaded and
+//! the program given `args`: daslang over the module, or the binary `lane_binary` builds in `work`
+//! (the `aot` host's program reads its arguments after `--`); empty with `error` the build's
+//! failure, prefixed `timeout: ` or `<lane> build: `.
 def lane_argv(das_path, lane, work : string; module_dirs, args : array<string>; timeout : float; var error : string&) : array<string> {
     var argv : array<string>
-    if (lane == "exe") {
+    if (lane == "exe" || lane == "aot") {
         var why : string
-        let bin = exe_binary(das_path, work, module_dirs, args, timeout, why)
+        let bin = lane_binary(das_path, lane, work, module_dirs, args, timeout, why)
         if (empty(bin)) {
-            error = why |> starts_with("the build or its run took longer") ? "timeout: {why}" : "exe build: {why}"
+            error = why |> starts_with("the build or its run took longer") ? "timeout: {why}" : "{lane} build: {why}"
             return <- argv
         }
         argv |> push(bin)
+        if (lane == "aot") {
+            argv |> push("--")
+        }
     } else {
         argv <- das_lane_command(das_path, lane == "jit" ? "-jit" : "", module_dirs)
         argv |> push("--")
@@ -381,9 +388,8 @@ def lane_argv(das_path, lane, work : string; module_dirs, args : array<string>; 
 
 //! Each lane of `DAS_LANES` over the module `das_path` with `module_dirs` loaded, the program
 //! given `args`: every lane `refused` with `refusal` when it is set, `compile` when the module
-//! fails `-compile-only` and `timeout` when that check runs past `limits.sample`, `aot` `skipped`
-//! since its host passes no arguments, else the run judged against `expected` within
-//! `lane_timeout`; each lane builds in `<work>/<lane>`.
+//! fails `-compile-only` and `timeout` when that check runs past `limits.sample`, else the run
+//! judged against `expected` within `lane_timeout`; each lane builds in `<work>/<lane>`.
 [arch(at="ARCHITECTURE_PROJECTS.md#verdicts")]
 def side_lanes(das_path, refusal, work : string; module_dirs, args : array<string>; expected : string; limits : LaneLimits) : table<string; Verdict> {
     var lanes : table<string; Verdict>
@@ -397,17 +403,9 @@ def side_lanes(das_path, refusal, work : string; module_dirs, args : array<strin
             common = Verdict(status = "compile", reason = compile_error(text))
         }
     }
-    let no_flags : array<string>
     for (lane in DAS_LANES) {
         if (!empty(common.status)) {
             lanes[lane] = common
-        } elif (lane == "aot" && !empty(args)) {
-            lanes[lane] = Verdict(status = "skipped", reason = "the aot host passes the program no arguments, and it reads its input from its last one")
-        } elif (lane == "aot") {
-            var output : string
-            to_log(LOG_INFO, "{das_path}: {lane}\n")
-            let rc = run_tier(das_path, lane, path_join(work, lane), output, module_dirs, lane_timeout(lane, limits), no_flags, args)
-            lanes[lane] = judge_run(rc, output, expected, lane_timeout(lane, limits))
         } else {
             to_log(LOG_INFO, "{das_path}: {lane}\n")
             var error : string
@@ -536,23 +534,24 @@ def native_bench_oracle(p : Project; bin, fixture : string; var oracle : string&
     return ""
 }
 
-//! The `exe` binary of `das_path` built in `work` with `module_dirs` loaded and run once with
-//! `args`, as the exe lane builds it (`perf_lanes`'s `build_exe` loads `CONVERTED_MODULES` from
-//! the working folder); "" with `error` set when the build leaves none.
-def exe_binary(das_path, work : string; module_dirs, args : array<string>; timeout : float; var error : string&) : string {
-    let bin = path_join(work, "{file_stem(das_path)}_exe")
+//! The `exe` or `aot` binary of `das_path` built in `work` with `module_dirs` loaded and run once
+//! with `args`, as the lane builds it (`perf_lanes`'s `build_exe` and `build_aot` load
+//! `CONVERTED_MODULES` from the working folder); "" with `error` set when the build leaves none.
+def lane_binary(das_path, lane, work : string; module_dirs, args : array<string>; timeout : float; var error : string&) : string {
+    let bin = lane == "aot" ? aot_binary(das_path, work) : path_join(work, "{file_stem(das_path)}_exe")
     remove(bin)
     remove(bin + ".exe")
     var out : string
     let no_flags : array<string>
-    let rc = run_tier(das_path, "exe", work, out, module_dirs, timeout, no_flags, args)
+    let rc = run_tier(das_path, lane, work, out, module_dirs, timeout, no_flags, args)
     if (rc == popen_timed_out) {
         error = "the build or its run took longer than {int(timeout)} s"
         return ""
     }
     let built = fexist(bin + ".exe") ? bin + ".exe" : bin
     if (!fexist(built)) {
-        error = "the build exited {rc} and left no binary: {exe_build_line(out)}"
+        // the exe build's linker message follows daslang's `Output:` line; the AOT host build's ends the output
+        error = "the build exited {rc} and left no binary: {lane == "aot" ? last_line(out) : exe_build_line(out)}"
         return ""
     }
     return built
@@ -603,7 +602,8 @@ def private absolute_include(p : Project; name : string) : string {
 }
 
 // our side of one unit of `p`, or of its units (`units`, a program in the source layout):
-// converted under `linux` into `out_dir` with a sidecar of the project's defines, its include
+// converted under `linux` into `out_dir` with a sidecar of the project's defines and
+// `ours_defines`, its include
 // folders, its forced includes (`-include` in `clang_extra`) and the project folder as the program
 // root, each path absolute; the entry module with
 // every file written into `files`, or "" with `refusal` the converter's first line
@@ -612,7 +612,9 @@ def private ours_module(p : Project; tu, out_dir : string; units : array<string>
     let sidecar = path_join(out_dir, "{p.name}.c2das")
     let include_dirs <- [for (d in p.include_dirs); absolute_path(project_path(p, d))]
     let include_files <- [for (i, a in range(length(p.clang_extra)), p.clang_extra); absolute_include(p, a); where i > 0 && p.clang_extra[i - 1] == "-include"]
-    fwrite(sidecar, write_json(JV({"defines" => JV(p.defines), "include_dirs" => JV(include_dirs), "include_files" => JV(include_files), "program_root" => JV(absolute_path(p.dir))})))
+    var defines := p.defines
+    defines |> push_from(p.ours_defines)
+    fwrite(sidecar, write_json(JV({"defines" => JV(defines), "include_dirs" => JV(include_dirs), "include_files" => JV(include_files), "program_root" => JV(absolute_path(p.dir))})))
     var res <- empty(units) ? convert(project_path(p, tu), out_dir, "linux", "", sidecar) : convert_program([for (u in units); project_path(p, u)], out_dir, "linux", "", sidecar)
     refusal = res.ok ? "" : first_line(res.error)
     delete files
@@ -681,6 +683,9 @@ def side_code(files : array<string>; entry, refusal : string; rust : bool) : Sid
 //! The error of every bench cell of a project without a bench unit.
 let NO_BENCH = "no bench: the project has no bench unit"
 
+//! The error of every bench cell of a run that times nothing (`samples` 0).
+let NOT_TIMED = "not measured: the run timed no bench (--samples 0)"
+
 // the text of `files`, one after another
 def private files_text(files : array<string>) : string => join([for (f in files); fread(f)], "\n")
 
@@ -711,15 +716,16 @@ def private bench_modules(p : Project; bin, work : string) : BenchModules {
     return b
 }
 
-// the speed section of `p`'s entry, timed in the working folder: `NO_BENCH` in every cell without
-// a bench, else the native bench the oracle (`native_bench_oracle`) and timed, and each side's
+// the speed section of `p`'s entry, timed in the working folder: `NOT_TIMED` in every cell when
+// `samples` is 0, `NO_BENCH` without a bench, else the native bench the oracle (`native_bench_oracle`) and timed, and each side's
 // bench module timed where its lane in `ours_lanes` or `rust_lanes` passes (`side_speed`)
 def private project_speed(p : Project; work : string; b : BenchModules; modules, args : array<string>; ours_lanes, rust_lanes : table<string; Verdict>; samples : int) : JsonValue? {
-    if (!b.has) {
+    if (samples == 0 || !b.has) {
+        let why = samples == 0 ? NOT_TIMED : NO_BENCH
         return JV({
-            "native" => error_json(NO_BENCH),
-            "ours" => JV({for (lane in DAS_LANES); lane => error_json(NO_BENCH)}),
-            "rust" => JV({for (lane in DAS_LANES); lane => error_json(NO_BENCH)})
+            "native" => error_json(why),
+            "ours" => JV({for (lane in DAS_LANES); lane => error_json(why)}),
+            "rust" => JV({for (lane in DAS_LANES); lane => error_json(why)})
         })
     }
     var oracle : string
@@ -737,7 +743,8 @@ def private project_speed(p : Project; work : string; b : BenchModules; modules,
 }
 
 //! Project `p` through both sides, built in `work` and run with the working folder `<work>/cwd`,
-//! the Rust side by `bin`, each bench lane timed over `samples` runs: its capture entry.
+//! the Rust side by `bin`, each bench lane timed over `samples` runs (none built or timed when
+//! `samples` is 0): its capture entry.
 [arch(at="ARCHITECTURE_PROJECTS.md#projects")]
 def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : Stamps) : JsonValue? {
     let work = absolute_path(work_dir)
@@ -753,7 +760,7 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
     var ours_files, rust_files : array<string>
     let ours_das = ours_module(p, p.tu, path_join(work, "ours"), p.units, ours_refusal, ours_files)
     let rust_das = rust_module(p, bin, p.tu, path_join(work, "rust"), p.units, rust_refusal, rust_files)
-    let bench = bench_modules(p, bin, work)
+    let bench = samples > 0 ? bench_modules(p, bin, work) : BenchModules()
     let back = enter_working_folder(path_join(work, "cwd"))
     if (empty(native.reason)) {
         native = run_judged([native_bin, args[0]], p.expected, COMPARE_LIMITS.sample)

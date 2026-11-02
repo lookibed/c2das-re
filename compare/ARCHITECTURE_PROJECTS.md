@@ -9,7 +9,9 @@ both translators and writes its entry of the capture's `projects` section, keepi
 project and section. A project is a row of `project_table` in `projects.das`, the facts of the
 project's README in the Rust checkout (`$C2DAS_RUST`, else `/root/c2das`, read in place, never
 copied or built): the translation unit and the bench unit relative to the project folder (no bench
-unit for a project without one), the include folders, the defines, further clang arguments
+unit for a project without one), the include folders, the defines, the defines of our side alone
+(`ours_defines`: plmpeg-stream's `c2da_rt_reset(...)=`, a test-runtime hook the Rust runtime
+defines and the native build takes from the project's `shim.c`), further clang arguments
 (`clang_extra`, after the defines), the C standard, the native build's flags and its link flags
 (after the C files) the README gives, the fixture the program reads from its last argument, the id
 of the project's canonical case in the Rust repository's `tests/canonical/cases.json`, whose
@@ -99,8 +101,8 @@ The native build (the case's C files, the pinned clang, the row's flags) runs wi
 is `pass` when it prints the expected output, else `native` with the reason, and then every lane of
 both sides is `refused` with `no native result`. Our side converts the unit under `linux` with a
 sidecar of the project's defines, its include folders and the project folder as the program root,
-every folder absolute (a project of units with `convert_program`, in the source layout); the
-converter takes no further clang argument (`clang_extra`'s forced include). The Rust side
+every folder absolute, and `ours_defines` (a project of units with `convert_program`, in the source
+layout); the converter takes no further clang argument (`clang_extra`'s forced include). The Rust side
 translates it with `translate_file` (`--libc std --strict`, the case's options, the clang arguments of the row) within
 600 s; a project of units through `translate_db` in the source layout over a compilation database
 naming each unit with the row's clang arguments (`write_unit_commands`, as the Rust repository's
@@ -110,16 +112,15 @@ Each side's lanes: `refused` with the side's error when it has no module; `compi
 `error[` line when the module fails `daslang -compile-only` (with our module folders on our side,
 none on the Rust side), `timeout` past that check's limit; else each lane runs with the fixture as
 the program's argument (`lane_argv`: daslang over the module under `interp` and `jit`, under `exe`
-the binary `exe_binary` builds, `compile` with the build's line when it leaves none) and is judged
+and `aot` the binary `lane_binary` builds and runs once, the `aot` host's program given its
+arguments after `--`, `compile` with the build's line when it leaves none) and is judged
 on its stdout (`run_split`; the program's stderr, doomgeneric's engine log, is apart): `timeout`
 past its limit, `exit` with the code and the first line naming an error in the stderr, then the
 stdout, `output` with the first line that differs from the expected text (numbered from 1, a missing
 line `(none)`), `pass`. The native runs and each bench sample are judged the same way. The JIT's
 `[I]` lines are not the program's output. A recorded reason names a path under the repository
 relative to it (`path_free`: the JIT's warnings quote the module's absolute path), so the capture
-reads the same from any checkout. The `aot` tier's host passes the program no
-arguments, so a project that reads its fixture from its argument is `skipped` under `aot` with that
-reason, never dropped. A lane's limit is 120 s for a run and for the compile check, 300 s for each
+reads the same from any checkout. A lane's limit is 120 s for a run and for the compile check, 300 s for each
 `exe` or `aot` build step and the run it ends with (`COMPARE_LIMITS`).
 
 ## The speed {#speed}
@@ -136,14 +137,16 @@ binjgb's prints the header and the hashes of 300 frames, doomgeneric's the hashe
 h264bsd-mp4's and plmpeg-stream's the hashes, `frames=`, `width=` and `height=`. Without that oracle
 every side's cell is `{error: "bench: no native bench result: <reason>"}`. Each side's lane whose
 verdict over the unit is `pass` is timed over `--samples` runs (five by default), each its own
-process: the interpreter and the JIT run the module, `exe` its binary built once (`exe_binary`, our
-module folders loaded by absolute path). A run whose output without the two lines differs from the
-oracle, or that lacks them, stops the cell with an error. A cell is `{setup, decode}`, each perf's
+process: the interpreter and the JIT run the module, `exe` and `aot` their binary built once
+(`lane_binary`, our module folders loaded by absolute path). A run whose output without the two
+lines differs from the oracle, or that lacks them, stops the cell with an error. A cell is `{setup, decode}`, each perf's
 cell shape (`time` the median in seconds, `spread`, `samples`); a lane that does not pass is
 `{error: "the lane does not pass: <status>"}`, a side whose bench unit does not convert or translate
 `{error: "bench: <reason>"}`. The native cell is timed the same way. A project without a bench
 unit times nothing: the native cell and every lane's of both sides are `{error: "no bench: the
-project has no bench unit"}`. Each side is timed where its
+project has no bench unit"}`. A run with `--samples 0` builds no bench and times nothing: every cell
+is `{error: "not measured: the run timed no bench (--samples 0)"}` (`NOT_TIMED`), and the rendering
+says the capture is not measured. Each side is timed where its
 own lanes pass, whether or not the other side's do.
 
 ## The code {#code}
