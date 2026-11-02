@@ -47,8 +47,11 @@ publish:
 - the benchmark scripts under `bench/`.
 - `README.md`.
 
-The publisher deletes nothing: a file it no longer writes stays until removed by hand in the ports repository,
-which is the only hand edit that repository takes. The captures under `perf/` accumulate, one per
+A layout's folder mirrors its conversion's module list: before copying, the publisher removes
+every file under `<stem>/` and `source-cut/<stem>/` the list does not name (`program.layout.txt`
+excepted), and the `scc/` folder the cut layout had under its former name. Beyond those folders
+the publisher deletes nothing: a file it no longer writes stays until removed by hand in the ports
+repository, which is the only hand edit that repository takes. The captures under `perf/` accumulate, one per
 measuring publish.
 
 The README states the release and both tarballs with their sha256 as the `lua:` line of

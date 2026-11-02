@@ -171,12 +171,15 @@ def test_single_layout(t : T?) {
         let types <- converted(["{TYPES}/main.c", "{TYPES}/weigh.c"], "types_single", "single")
         t |> equal(sha256_hex(types.das_text), TYPES_SINGLE_SHA, types.das_text)
     }
-    t |> run("one file is one module in either layout") @(t : T?) {
-        let source <- converted(["converter/tests/fixtures/ret42.c"], "one_source", "source-cut")
+    t |> run("one file is one module in every layout") @(t : T?) {
         let single <- converted(["converter/tests/fixtures/ret42.c"], "one_single", "single")
-        t |> equal(source.ok && single.ok, true, "{source.error} {single.error}")
-        t |> equal(length(source.files), 0)
-        t |> equal(source.das_text, single.das_text)
+        t |> equal(single.ok, true, single.error)
+        for (layout in ["source", "source-cut"]) {
+            let res <- converted(["converter/tests/fixtures/ret42.c"], "one_{layout}", layout)
+            t |> equal(res.ok, true, "{layout}: {res.error}")
+            t |> equal(length(res.files), 0, layout)
+            t |> equal(res.das_text, single.das_text, layout)
+        }
     }
     rmdir_rec(work_root)
 }

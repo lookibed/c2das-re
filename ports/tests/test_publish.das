@@ -493,6 +493,26 @@ def test_bench(t : T?) {
 }
 
 [test]
+def test_stale_modules(t : T?) {
+    t |> run_stand_in("a publish removes from each layout's folder every file its module list no longer names, and the former scc folder; a listed file stays", "c2das_ports_stale") @(t : T?; root, clone : string) {
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--allow-dirty"], out), 0, out)
+        let dir = path_join(clone, "lua")
+        mkdir_rec(path_join(dir, "luac/sub"))
+        fwrite(path_join(dir, "luac/ldo.das"), "// a module of the former default\n")
+        fwrite(path_join(dir, "luac/sub/gone.das"), "// stale\n")
+        fwrite(path_join(dir, "source-cut/luac/lcode_cluster.das"), "// stale\n")
+        mkdir_rec(path_join(dir, "scc/luac"))
+        fwrite(path_join(dir, "scc/luac/luac.das"), "// former scc\n")
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--allow-dirty"], out), 0, out)
+        for (gone in ["luac/ldo.das", "luac/sub/gone.das", "source-cut/luac/lcode_cluster.das", "scc"]) {
+            t |> success(!fexist(path_join(dir, gone)), gone)
+        }
+        published_modules(t, dir)
+    }
+}
+
+[test]
 def test_single_lanes(t : T?) {
     t |> run_stand_in("the -source-cut and -single lanes run those layouts' modules, a column each beside the source layout's", "c2das_ports_single_lanes") @(t : T?; root, clone : string) {
         // the source layout's entry fails every workload, the single module runs them
