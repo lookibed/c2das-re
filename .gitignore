@@ -44,3 +44,5 @@ Thumbs.db
 
 # user-supplied game data: never committed
 /doom/wads/doom2.wad
+research/*/composed/out/*_native
+research/*/composed/out/*.cir.json
