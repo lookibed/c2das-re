@@ -1,0 +1,5 @@
+{
+    "defines": ["DOOM_IMPLEMENT_PRINT", "DOOM_IMPLEMENT_MALLOC", "DOOM_IMPLEMENT_FILE_IO", "DOOM_IMPLEMENT_EXIT", "DOOM_IMPLEMENT_GETENV", "DOOM_TIC_CHECKSUM"],
+    "marshal": ["mapvertex_t", "mapsidedef_t", "maplinedef_t", "mapsector_t", "mapsubsector_t", "mapseg_t", "mapnode_t", "patch_t", "post_t", "mappatch_t", "maptexture_t"],
+    "over_indexed": ["patch_t.columnofs", "maptexture_t.patches", "texture_t.patches"]
+}

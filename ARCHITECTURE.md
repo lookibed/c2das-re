@@ -40,8 +40,11 @@ the continuous integration section 7.
   `run_suite.sh`, `run_perf.sh` and `run_readability.sh`; `build_c2das_rust.sh` builds the Rust
   translator `compare/` runs, at its `VERSIONS.md` pin. Shell only; anything that reads `.das` is a daslang tool from
   `DASLANG_ROOT`.
-- `lua/`, `doom/` - vendored programs with their sidecars and harnesses, created by the phases
-  that need them (`docs/implementation_order.md`, P5 and P6). `doom/` is the GPL-2 subtree.
+- `lua/`, `doom/` - the vendored programs, each fetched at a `VERSIONS.md` pin and never
+  committed, with their sidecars and harnesses (`docs/implementation_order.md`, P5 and P6):
+  `lua/` converts Lua 5.4.8 (`lua/ARCHITECTURE.md`); `doom/` patches PureDOOM, drives it
+  headless and holds its reference demo checksum logs (`doom/ARCHITECTURE.md`). `doom/` is the
+  GPL-2 subtree: its patch and host carry PureDOOM's license, and no IWAD is committed.
 - `.claude/agents/` - the agent set, copied from daScript: the auditors (`review-md-auditor`,
   `tdd-auditor`, `dupe-auditor`, `style-hygiene-auditor`, `placement-auditor`), the rule-doc
   judges (`dragon`, `janitor`, `archivist`, `spartan`), the comment `harvester`, the
