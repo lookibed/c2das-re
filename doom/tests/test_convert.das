@@ -63,8 +63,23 @@ def test_units_alone(t : T?) {
     t |> success(verdicts[3].error |> starts_with(LINK_BOUND), verdicts[3].error)
     let rows <- blocker_table(verdicts)
     t |> equal(length(rows), 2)
-    t |> success(rows[0] |> starts_with("2  a function another unit defines"), rows[0])
+    t |> success(rows[0] |> starts_with("2  a function or an array another unit defines"), rows[0])
     t |> success(rows[1] |> starts_with("1  a block-scope function prototype  (bad)"), rows[1])
+}
+
+[test]
+def test_units_alone_arrays(t : T?) {
+    let root = scratch("doom_arrays")
+    fwrite(path_join(root, "use.c"), "extern int tbl[];\nint use(int k) \{ return tbl[k]; \}\n")
+    fwrite(path_join(root, "tbl.c"), "int tbl[] = \{1, 2\};\n")
+    fwrite(path_join(root, "lone.c"), "extern int nowhere[];\nint lone(int k) \{ return nowhere[k]; \}\n")
+    let verdicts <- convert_units([for (stem in ["use", "tbl", "lone"]); path_join(root, "{stem}.c")], Sidecar())
+    // an array another unit defines is the link's; one no unit defines is the unit's own error
+    t |> success(verdicts[0].error |> starts_with(LINK_BOUND), verdicts[0].error)
+    t |> success(verdicts[0].error |> contains("`tbl` is an array of unknown length"), verdicts[0].error)
+    t |> equal(verdicts[1].error, "")
+    t |> success(verdicts[2].error |> starts_with("emitter: "), verdicts[2].error)
+    t |> success(verdicts[2].error |> contains("`nowhere` is an array of unknown length"), verdicts[2].error)
 }
 
 [test]
