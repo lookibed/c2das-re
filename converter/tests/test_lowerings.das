@@ -1828,6 +1828,14 @@ def p7_first_member_fixtures(t : T?) {
         has_text(t, text, "    return addr(p.a.c)\n")
         has_text(t, text, "    var kept : int? = addr(held.a.b)\n")
         has_text(t, text, "    var elem : Inner? = addr(outs[1].a)\n")
+        // a pointer, a function value, a union and a `char` first member; a stepped subscript's temporary
+        has_text(t, text, "def private p7_first_member__link(var p : Node?) : Node ?? \{\n    return reinterpret<Node ??>(p)\n")
+        has_text(t, text, "    return reinterpret<function<(a0 : int) : int>?>(o)\n")
+        has_text(t, text, "def private p7_first_member__cell_of(var t : Tagged?) : Cell? \{\n    return reinterpret<Cell?>(t)\n")
+        has_text(t, text, "def private p7_first_member__byte_of(var m : Mixed?) : uint8? \{\n    return reinterpret<uint8?>(m)\n")
+        has_text(t, text, "    let _t0 = k\n    k++\n    var r : int? = reinterpret<int?>(p + _t0)\n")
+        // an anonymous union's member past offset 0 keeps `addr(...)`
+        has_text(t, text, "    return addr(p._anon1.b)\n")
     }
     t |> run("`first_member` reinterpret leaves a marshal-only record and a member of a marshal-only type to the default") @(t : T?) {
         let disk = "#pragma pack(1)\ntypedef struct Disk \{ int first; char c; \} Disk;\n#pragma pack()\n"

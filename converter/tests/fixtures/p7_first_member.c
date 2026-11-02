@@ -13,6 +13,19 @@ typedef struct Outer { Inner a; int d; } Outer;
 typedef struct Row { int cells[4]; int sum; } Row;
 typedef struct Fixed { const int k; volatile int v; } Fixed;
 typedef struct Ticker { volatile int v; } Ticker;
+typedef struct Node { struct Node *next; int v; } Node;
+typedef int (*Fn)(int);
+typedef struct Ops { Fn fn; int k; } Ops;
+typedef struct Tagged { Cell u; int tag; } Tagged;
+typedef struct Mixed { char c; double d; } Mixed;
+typedef struct Anon { int a; union { int b; float g; }; } Anon;
+static Node **link(Node *p) { return &p->next; }
+static Fn *op_of(Ops *o) { return &o->fn; }
+static Cell *cell_of(Tagged *t) { return &t->u; }
+static char *byte_of(Mixed *m) { return &m->c; }
+static int *stepped(Outer *p, int *i) { int k = *i; int *r = &p[k++].a.b; *i = k; return r; }
+static int *anon_member(Anon *p) { return &p->b; }
+static int twice(int x) { return 2 * x; }
 static TValue *slot(StackValue *base, int a) { return &(base + a)->val; }
 static Table *as_table(GCObject *o) { return &((GCUnion *) o)->h; }
 static int *as_cell(int *ip) { return &((Cell *) ip)->i; }
@@ -53,5 +66,18 @@ int main(void) {
     printf("%lld %d %d %d\n", top->v, top->tt, h->size, raw);
     printf("%d %d %d %d %d %d %d\n", outs[0].a.b, outs[1].a.b, second->c, outs[0].d, outs[1].a.c, held.a.b, elem->b);
     printf("%d %d %d %d\n", row.sum, (*all)[3], *constant(&fx), tk.v);
+    Node n2 = { 0, 2 }, n1 = { 0, 1 };
+    *link(&n1) = &n2;
+    Ops ops = { 0, 3 };
+    *op_of(&ops) = twice;
+    Tagged tg = { { 0 }, 4 };
+    cell_of(&tg)->i = 21;
+    Mixed mx = { 'a', 1.5 };
+    *byte_of(&mx) += 1;
+    int at = 1;
+    *stepped(outs, &at) += 1000;
+    Anon an = { 1, { 2 } };
+    *anon_member(&an) += 5;
+    printf("%d %d %d %c %d %d %d\n", n1.next->v, ops.fn(ops.k), tg.u.i, mx.c, outs[1].a.b, at, an.b);
     return 0;
 }
