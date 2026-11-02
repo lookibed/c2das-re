@@ -235,7 +235,9 @@ its fields, which carries no layout assertion (`docs/lowering-examples.md` "Pack
 Beside the struct the emitter writes `read_T(bytes, ofs)`, `write_T(bytes, ofs, v)` and a
 `read_T_f`/`write_T_f` pair per field, each a `crt::memcpy` of the field's C size at its
 offset, so no alignment is assumed and the value side is a plain struct copy; an array of
-arrays of scalars (`short bbox[2][4]`) is one such block. A pointer to
+arrays of scalars (`short bbox[2][4]`) is one such block, so reading one element copies the
+whole field. Since the read is a copy, a store into an element of an array field (`p->a[i] = v`,
+`+=`, a step), its address and its decay to a pointer fail closed. A pointer to
 such a record is `uint8?`: `p->f`, `(*p).f` and `p[i].f` read through `read_T_f`, a store or
 step into them writes through `write_T_f` around the read, `*p` is `read_T(p, 0)`, `*p = v` is
 `write_T(p, 0, v)`, `sizeof` is clang's size as a literal, and a pointer step, `p + n`, `p[i]`,

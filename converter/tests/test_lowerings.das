@@ -343,13 +343,19 @@ def p2_memory_fixtures(t : T?) {
     t |> run("marshal: an array of arrays of scalars in a marshal-only record is one block its readers copy") @(t : T?) {
         var text : string
         check_fixture(t, "p2_marshal_rows", text)
-        has_text(t, text, "def read_node_t_bbox(bytes : uint8?; ofs : int) : int16[2][4]")
-        has_text(t, text, "uint64(16)")
+        has_text(t, text, "def read_node_t_bbox(bytes : uint8?; ofs : int) : int16[2][4] \{\n    var r : int16[2][4]\n    crt::memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + (ofs + 2)), uint64(16))")
+        has_text(t, text, "crt::memcpy(reinterpret<void?>(addr(r.bbox)), reinterpret<void?>(bytes + (ofs + 2)), uint64(16))")
     }
     t |> run("marshal: the shapes the emitter refuses, each naming the record") @(t : T?) {
         let packed = "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nint main(void) \{ disk_t d; d.w = 1; return d.w; \}\n"
         rejects(t, "packed_unlisted", packed, "listed under `marshal`")
         rejects(t, "marshal_addr", "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nint main(void) \{ disk_t d; disk_t *p = &d; return p->w; \}\n", "address of a value of the marshal-only record", "\{ \"marshal\": [\"disk_t\"] \}\n")
+        let rows = "#pragma pack(1)\ntypedef struct \{ short x; short bbox[2][4]; \} node_t;\n#pragma pack()\nstatic unsigned char lump[2 * 18];\n"
+        rejects(t, "marshal_row_pointer", rows + "int main(void) \{ node_t *n = (node_t *) lump; short *row = n[1].bbox[1]; row[0] = 9; return row[0]; \}\n", "pointer into array field `node_t.bbox` of a marshal-only record", "\{ \"marshal\": [\"node_t\"] \}\n")
+        rejects(t, "marshal_element_address", rows + "int main(void) \{ node_t *n = (node_t *) lump; short *e = &n->bbox[0][1]; *e = 4; return *e; \}\n", "address of array field `node_t.bbox` of a marshal-only record", "\{ \"marshal\": [\"node_t\"] \}\n")
+        rejects(t, "marshal_element_store", rows + "int main(void) \{ node_t *n = (node_t *) lump; n->bbox[1][2] = 5; return 0; \}\n", "store into an element of array field `node_t.bbox` of a marshal-only record", "\{ \"marshal\": [\"node_t\"] \}\n")
+        rejects(t, "marshal_element_add", rows + "int main(void) \{ node_t *n = (node_t *) lump; n[1].bbox[0][3] += 5; return 0; \}\n", "store into an element of array field `node_t.bbox` of a marshal-only record", "\{ \"marshal\": [\"node_t\"] \}\n")
+        rejects(t, "marshal_element_step", rows + "int main(void) \{ node_t *n = (node_t *) lump; n->bbox[0][0]++; return 0; \}\n", "store into an element of array field `node_t.bbox` of a marshal-only record", "\{ \"marshal\": [\"node_t\"] \}\n")
         rejects(t, "marshal_array", "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nstatic disk_t table[3];\nint main(void) \{ return table[1].w; \}\n", "array of the marshal-only record", "\{ \"marshal\": [\"disk_t\"] \}\n")
     }
 }
