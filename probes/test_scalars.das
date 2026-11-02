@@ -66,6 +66,7 @@ def test_wrap_and_compound(t : T?) {
         for (flags in [array<string>(), jit_flags()]) {
             let r = daslang_child_flags("wrap_sum{length(flags)}", WRAP_SOURCE, flags)
             t |> equal(r.rc, 0, r.out)
+            t |> equal(jit_ran(r.out), !empty(flags), r.out)
             t |> equal(program_output(r.out), "-2147483644 2147483644 -9223372036854775807 9223372036854775806 -2147483644 -2147483644\n", r.out)
         }
     }
@@ -73,6 +74,7 @@ def test_wrap_and_compound(t : T?) {
         for (flags in [array<string>(), jit_flags()]) {
             let r = daslang_child_flags("wrap_product{length(flags)}", WRAP_PRODUCT_SOURCE, flags)
             t |> equal(r.rc, 0, r.out)
+            t |> equal(jit_ran(r.out), !empty(flags), r.out)
             t |> equal(program_output(r.out), "131073 -131073 9223372036854775805 8589934593 9223372036854775805 -9223372036854775808 65537\n", r.out)
         }
     }
