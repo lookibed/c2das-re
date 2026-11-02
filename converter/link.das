@@ -546,6 +546,23 @@ def private merge_types(var tus : array<CirTu>; var program : CirTu) : string {
     return ""
 }
 
+// why the array the declarations `refs` of `name` declare cannot be the object `chosen` defines, ""
+// when it can: a declaration giving it a length other than the definition's (`extern int a[3];`
+// against `int a[4];`), which C leaves undefined; one of unknown length takes the definition's
+def private length_mismatch(tus : array<CirTu>; types : array<CirType>; name : string; refs : array<DeclRef>; chosen : DeclRef) : string {
+    let def_decl = tus[chosen.tu].decls[chosen.at]
+    if (types[def_decl.t].k != "array" || types[def_decl.t].count < 0) {
+        return ""
+    }
+    for (ref in refs) {
+        let d = tus[ref.tu].decls[ref.at]
+        if (types[d.t].k == "array" && types[d.t].count >= 0 && types[d.t].count != types[def_decl.t].count) {
+            return "`{name}` is declared an array of {types[d.t].count} at {loc_text(d.loc)} and defined an array of {types[def_decl.t].count} at {loc_text(def_decl.loc)}"
+        }
+    }
+    return ""
+}
+
 // the declaration every external name binds to, by name: its definition with a body or an
 // initializer, else its first tentative definition, else its first declaration; a tentative
 // definition merges into the initialized one
@@ -590,6 +607,8 @@ def private bind_externals(var tus : array<CirTu>; var res : LinkResult; var kee
                 }
             }
             let chosen = strong.tu >= 0 ? strong : tentative.tu >= 0 ? tentative : refs[0]
+            res.error = length_mismatch(tus, res.program.types, name, refs, chosen)
+            return if (!empty(res.error))
             if (strong.tu >= 0 || tentative.tu >= 0) {
                 facts.defined_in[name] = chosen.tu
                 for (ref in refs) {

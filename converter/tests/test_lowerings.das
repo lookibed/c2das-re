@@ -1007,9 +1007,17 @@ def p4_csmith_more_fixtures(t : T?) {
         // a `_Bool` shift computes in `int`
         has_text(t, text, "b = (int(b ? 1 : 0) << n) != 0")
     }
+    t |> run("an array declared without a length takes the length of its later definition") @(t : T?) {
+        var text : string
+        check_fixture(t, "p6_extern_array", text)
+        // a function and a file-scope initializer before the definition index and decay its storage
+        has_text(t, text, "    return addr(_c_table[0]) + end_index(k, 4)\n")
+        has_text(t, text, "var private p6_extern_array__third : int? = unsafe(addr(_c_table[2]))\n")
+        has_text(t, text, "    return grid[1][1] + grid[0][1]\n")
+    }
     t |> run("csmith shapes: what the lowering refuses, and the addresses it keeps checked") @(t : T?) {
-        rejects(t, "extern_unknown_length", "extern int arr[];\nstatic int *at(int k) \{ return &arr[k]; \}\nint arr[3] = \{1, 2, 3\};\nint main(void) \{ return (int) (at(3) - at(0)); \}\n", "a reference to `arr` before a definition gives its array a length (`extern int a[];`) is not lowered yet")
-        rejects(t, "extern_never_defined", "extern int arr[];\nint main(void) \{ return arr[0]; \}\n", "a reference to `arr` before a definition gives its array a length (`extern int a[];`) is not lowered yet")
+        rejects(t, "extern_never_defined", "extern int arr[];\nint main(void) \{ return arr[0]; \}\n", "`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines")
+        rejects(t, "extern_never_defined_init", "extern int arr[];\nint *p = arr;\nint main(void) \{ return 0; \}\n", "`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines")
         rejects(t, "hidden_block_extern", "int x = 40;\nint main(void) \{ int x = 1; \{ extern int x; return x; \} \}\n", "a block-scope `extern` declaration of `x`, which a local of the function also names, is not lowered yet")
         rejects(t, "late_block_extern", "int main(void) \{ \{ extern int y; return y; \} \}\nint y = 3;\n", "a block-scope `extern` declaration of `y` with no file-scope declaration before it is not lowered yet")
         // a literal past `int64` is no constant below the length: it takes the checked form

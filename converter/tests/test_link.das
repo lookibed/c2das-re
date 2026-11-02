@@ -377,6 +377,41 @@ def test_hoisted(t : T?) {
     rmdir_rec(work_root)
 }
 
+let EXTERN_ARRAYS = "converter/tests/fixtures/p6_extern_array_link"
+
+[test]
+def test_extern_arrays(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_link_extern_arrays", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("arrays two units declare without a length take the length the third unit defines, in one module and in a module per file") @(t : T?) {
+        let paths <- [for (stem in ["data", "use", "prog"]); "{EXTERN_ARRAYS}/{stem}.c"]
+        let native = native_run(default_clang(), ["-w", "-funsigned-char"], paths, path_join(work_root, "native"), 60.0, array<string>())
+        t |> equal(native.built, true, native.output)
+        for (layout in ["single", "source"]) {
+            let out_dir = path_join(work_root, layout)
+            let res <- convert_program(paths, out_dir, "linux", "", "", "", "", "main", layout)
+            if (!res.ok) {
+                t |> failure("{layout}: {res.error}")
+                continue
+            }
+            var out : string
+            t |> equal(run_tier(res.das_path, "interp", out_dir, out, CONVERTED_MODULES), native.rc, layout)
+            t |> equal(out, native.output, layout)
+        }
+        // use.c's references index and decay the storage data.c defines, with its length
+        let use_text = fread(path_join(path_join(work_root, "source"), "use.das"))
+        t |> success(use_text |> contains("var private middle : int? = unsafe(addr(_c_table[2]))\n"), use_text)
+        t |> success(use_text |> contains("    return addr(_c_table[0]) + end_index(k, 5)\n"), use_text)
+    }
+    t |> run("an array no unit defines, or one declared with another length than its definition's, is refused") @(t : T?) {
+        refused(t, "never_defined", [(name = "a.c", text = "extern int arr[];\nint main(void) \{ return arr[0]; \}\n"), (name = "b.c", text = "extern int arr[];\nint *at(int k) \{ return &arr[k]; \}\n")], ["`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines", "a.c:1"])
+        refused(t, "never_sized", [(name = "a.c", text = "extern int arr[];\nint main(void) \{ return arr[0]; \}\n"), (name = "b.c", text = "extern int arr[3];\nint get(int k) \{ return arr[k]; \}\n")], ["`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines", "a.c:1"])
+        refused(t, "length", [(name = "a.c", text = "extern int arr[3];\nint main(void) \{ return arr[0]; \}\n"), (name = "b.c", text = "\nint arr[4] = \{1, 2, 3, 4\};\n")], ["link: `arr` is declared an array of 3 at ", "a.c:1 and defined an array of 4 at ", "b.c:2"])
+    }
+    rmdir_rec(work_root)
+}
+
 let RESERVED = "converter/tests/fixtures/p5_multi_reserved"
 
 [test]
