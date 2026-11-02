@@ -198,9 +198,13 @@ as-if-converted fixture test landing first.
 - `c_runtime/c_volatile.das` - C's volatile access (`converter/ARCHITECTURE_EMITTER_LOOPS.md`):
   `c_volatile_load(x)` and `c_volatile_store(x, v)` take the object by reference and read or
   write it once through the `crt` forwarders that access it through a `volatile` pointer, so no
-  tier folds a read or drops a store. One overload per C scalar width, `bool` through its byte,
-  and a generic over any eight-byte value (a pointer, a function value) through its bits, whose
-  load lands the bits in a local before the reinterpret: the interpreter refuses a reinterpret
+  tier folds a read or drops a store. `c_volatile_load` is a call macro: a number's load expands
+  in place to its forwarder over the object's address (the interpreter makes the one extern call,
+  no das call around it: 1.3x on a load loop), which is why the piece re-exports `crt`; `bool` and
+  an eight-byte value go through `c_volatile_read`. One overload of `c_volatile_read` and of the
+  store per C scalar width, `bool` through its byte, and a generic over any eight-byte value (a
+  pointer, a function value) through its bits, whose load lands the bits in a local before the
+  reinterpret: the interpreter refuses a reinterpret
   of a `crt` call's `uint64` result straight to a pointer ("typed eval on wrong extern return
   kind", F67), which the JIT takes.
 - `tests/` - one dastest file per piece, written as the converter will emit the code,
