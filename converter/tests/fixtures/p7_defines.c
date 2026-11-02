@@ -12,12 +12,14 @@
 #define HALF 0.5
 #define GLOBAL_START 11
 #define PI 3
+#define SUM 1 + 2
 
 static int start = GLOBAL_START;
 
 static int kind(int tt, unsigned calls) {
     if (tt == VNUMINT) return calls >= MAXCALLS ? 1 : 2;
     if (tt == VNUMFLT) return match;
+    if (tt == 0) return SUM * 3 + SUM;
     return makevariant(1, 2);
 }
 

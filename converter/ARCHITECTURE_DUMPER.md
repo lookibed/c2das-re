@@ -283,3 +283,7 @@ node): both ends of the node's range expand from one location, its text an ident
 emitter skips a program macro so named (`PI`). The outermost such node is named, an implicit
 conversion's operand rather than the conversion; a node inside it is not, so `VNUMINT` names
 `makevariant(TNUMBER, 0)` and `TNUMBER` inside it stays its value.
+A node whose parent expression starts or ends in the same expansion is named only when the
+macro's body (its `#define` line, in the file the node's first token is spelled in or the main
+file) is one operand: a token, a parenthesized group or a call; so `#define SUM 1 + 2` names
+nothing in `SUM * 3`, where the `1` is a piece of `1 + 2 * 3`.

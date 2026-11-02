@@ -2028,5 +2028,8 @@ def p7_readable_fixtures(t : T?) {
         has_text(t, text, "var private p7_defines__start : int = 11\n")
         has_text(t, text, "return 2147483647 == 2147483647 ? 0 : 1")
         t |> equal(text |> find("TNUMBER") < 0, true, text)
+        // `#define SUM 1 + 2` in `SUM * 3`: no piece of the body takes the name
+        has_text(t, text, "        return 1 + 2 * 3 + 1 + 2\n")
+        t |> equal(text |> find("SUM") < 0, true, text)
     }
 }
