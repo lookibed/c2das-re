@@ -38,7 +38,14 @@ for the head-to-head under `compare/`.
 ## Layout
 
 See `ARCHITECTURE.md` for the folder charters: `converter/`, `c_runtime/`, `dasCRuntime/`,
-`probes/`, `suites/`, `docs/`, `skills/`, `scripts/`.
+`probes/`, `suites/`, `docs/`, `skills/`, `scripts/`, `lua/`, `doom/`.
+
+## License
+
+The repository is MIT (`LICENSE`), except `doom/`, which is GPL-2: its patch to PureDOOM and its
+headless host carry PureDOOM's license. PureDOOM itself (GPL-2) and the WADs are never committed:
+`doom/fetch.sh` fetches PureDOOM and freedoom2.wad (BSD) at the pins in `VERSIONS.md`, and
+`doom2.wad` is user-supplied.
 
 ## Performance
 
