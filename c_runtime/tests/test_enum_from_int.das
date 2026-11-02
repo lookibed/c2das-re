@@ -65,6 +65,11 @@ def test_enum_from_int(t : T?) {
         remove(path)
         rmdir(dir)
     }
+    t |> run("a call without a type witness reaches a program's own enum_from_int") @(t : T?) {
+        let r = runtime_child("enum_from_int_own", "options gen2\nrequire c_runtime/enum_from_int\nenum E \{\n    A\n    B = 5\n\}\ndef enum_from_int(a : int; b : int) : int => a + b\n[export]\ndef main \{\n    print(\"\{enum_from_int(2, 3)\} \{enum_from_int(type<E>, 5)\}\\n\")\n\}\n", false)
+        t |> equal(r.rc, 0, r.out)
+        t |> equal(r.out |> find("5 B") >= 0, true, r.out)
+    }
     t |> run("a witness that is no enum, or a value that is no int, fails at the call site") @(t : T?) {
         let r = runtime_child("enum_from_int_witness", "options gen2\nrequire c_runtime/enum_from_int\n[export]\ndef main \{\n    let x = enum_from_int(type<int>, 3)\n\}\n", true)
         t |> equal(r.rc != 0, true, r.out)

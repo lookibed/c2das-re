@@ -4,7 +4,7 @@ int printf(const char *, ...);
 
 /* Lua's ldo.c error recovery under LUA_USE_POSIX: a `struct lua_longjmp` holding the jmp_buf
    and the status, chained through `previous` from the state's handler; the protected runner's
-   single-branch `if (_setjmp((c)->b) == 0) { a }` (the trampoline form) and the throw's
+   single-branch `if (_setjmp((c)->b) == 0) { a }` (flat: its tail calls nothing) and the throw's
    `_longjmp((c)->b, 1)` through the pointer, the status carried in the record, not in the
    longjmp value */
 struct lua_longjmp {
@@ -86,7 +86,8 @@ int main(void) {
     printf("ok %d calls %d\n", run_protected(L, deep, &code), st.calls);
     code = 3;
     printf("caught %d calls %d deepest %d chain %d\n", run_protected(L, deep, &code), st.calls, deepest, L->errorJmp == 0);
-    printf("nested %d inner %d\n", run_protected(L, nested_caught, &out), out);
+    int nested = run_protected(L, nested_caught, &out);
+    printf("nested %d inner %d\n", nested, out);
     printf("rethrown %d\n", run_protected(L, nested_rethrown, &out));
     code = 2;
     printf("after %d chain %d\n", run_protected(L, after_inner, &code), L->errorJmp == 0);
