@@ -211,12 +211,12 @@ def test_include_dirs(t : T?) {
         t |> success(res.das_text |> contains("f.v = 17"), res.das_text)
     }
     t |> run("a folder `CPATH` names holds the user's headers, never the system's: the program in it converts") @(t : T?) {
-        let saved = has_env_variable("CPATH") ? get_env_variable("CPATH") : ""
-        set_env_variable("CPATH", root)
-        let res <- wide_convert(dir, "cpath", "")
-        set_env_variable("CPATH", saved)
-        t |> equal(res.ok, true, res.error)
-        has_wide_program(t, res.das_text)
+        // a child converter under `env CPATH=<root>`, so this process's environment stays as it was
+        var argv <- ["env", "CPATH={root}"]
+        argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["converter/main.das", "--", path_join(WIDE, "app/main.c"), "--out", path_join(dir, "cpath"), "--target", "linux"])
+        var out : string
+        t |> equal(run_and_capture(argv, out, 300.0), 0, out)
+        has_wide_program(t, fread(path_join(path_join(dir, "cpath"), "main.das")))
     }
     rmdir_rec(dir)
 }

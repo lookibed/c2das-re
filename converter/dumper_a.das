@@ -2886,7 +2886,8 @@ def dump_stmt(var d : Dumper; js : JsonValue?) : CirStmt? {
     if (kind == "ForStmt") {
         return dump_for(d, js, at)
     }
-    if (key_exists(EXPR_KINDS, kind)) {
+    if (key_exists(EXPR_KINDS, kind) || kind == "StmtExpr") {
+        // a bare statement expression `({ ... });` is no expression kind: `dump_expr_stmt` takes it
         return dump_expr_stmt(d, js, at)
     }
     fail(d, "unsupported statement `{kind}`", at)
@@ -3095,7 +3096,9 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
                     delete_decl(fn)
                     return null
                 }
-            } elif (ck |> ends_with("Attr")) {
+            } elif (ck |> ends_with("Attr") || ck == "FullComment") {
+                // an attribute is judged by `check_attributes`; a documentation comment clang
+                // attaches to the declaration carries nothing a run observes
                 continue
             } else {
                 fail(d, "unsupported child `{ck}` of function `{c_name}`", loc_of(d, child))

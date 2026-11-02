@@ -1,9 +1,13 @@
 options gen2
 require dastest/testing_boost public
+require strings
 require ../../probes/_daslang_child.das
 
 def program(tail : string) : string =>
     "options gen2\nrequire c_runtime/c_exit\ndef first \{\n    print(\"first\\n\")\n\}\ndef second \{\n    print(\"second\\n\")\n\}\n[export]\ndef main : int \{\n    c_atexit(@@first)\n    c_atexit(@@second)\n    print(\"main\\n\")\n" + tail + "\}\n"
+
+// `program(tail)` with c_runtime/c_args required too
+def program_with_args(tail : string) : string => "options gen2\nrequire c_runtime/c_args\n" + slice(program(tail), length("options gen2\n"))
 
 [test]
 def test_c_exit(t : T?) {
@@ -27,6 +31,15 @@ def test_c_exit(t : T?) {
         let r = runtime_child("assert_fail", program("    unsafe \{\n        c_assert_fail(reinterpret<uint8?>(\"x == 3\"), reinterpret<uint8?>(\"f.c\"), uint(12), reinterpret<uint8?>(\"int main(void)\"))\n    \}\n    return 0\n"), false)
         t |> equal(r.rc, 3)
         t |> equal(r.out, "main\nf.c:12: int main(void): Assertion `x == 3' failed.\n")
+    }
+    t |> run("c_assert_fail names the program by argv[0]'s base name, as glibc's __progname, and by nothing when argv[0] is empty") @(t : T?) {
+        let call = "    unsafe \{\n        c_assert_fail(reinterpret<uint8?>(\"x == 3\"), reinterpret<uint8?>(\"f.c\"), uint(12), reinterpret<uint8?>(\"int main(void)\"))\n    \}\n    return 0\n"
+        let named = runtime_child("assert_named", program_with_args("    c_runtime_init(\"/some/dir/prog\")\n" + call), false)
+        t |> equal(named.rc, 3)
+        t |> equal(named.out, "main\nprog: f.c:12: int main(void): Assertion `x == 3' failed.\n")
+        let unnamed = runtime_child("assert_unnamed", program_with_args("    c_runtime_init(\"\")\n" + call), false)
+        t |> equal(unnamed.rc, 3)
+        t |> equal(unnamed.out, "main\nf.c:12: int main(void): Assertion `x == 3' failed.\n")
     }
     t |> run("c_abort exits 3 and runs no handler") @(t : T?) {
         let r = runtime_child("abort", program("    c_abort()\n    return 0\n"), false)

@@ -1928,4 +1928,13 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "def set_flag(var flag : bool?; value : bool) \{\n")
         has_text(t, text, "def private p8_stdbool__both(a : bool; b : bool) : bool \{\n")
     }
+    t |> run("a bare statement expression as a statement, and one under `__extension__`, is its block") @(t : T?) {
+        let text = converts(t, "bare_stmt_expr", "int main(void) \{ int x = 1; (\{ x += 2; \}); __extension__ (\{ x++; \}); return x - 4; \}\n")
+        has_text(t, text, "x += 2")
+        has_text(t, text, "x++")
+    }
+    t |> run("a documentation comment clang attaches to a function (`FullComment`) is dropped") @(t : T?) {
+        let text = converts(t, "doc_comment", "/**\n * Twice the value.\n * @param v the value\n */\nstatic int twice(int v) \{ return v * 2; \}\nint main(void) \{ return twice(2) - 4; \}\n")
+        has_text(t, text, "return v * 2")
+    }
 }
