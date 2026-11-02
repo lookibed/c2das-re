@@ -35,6 +35,16 @@ static int fallthrough(int x, int *trace) {
     }
     return n;
 }
+static int middle_default(int x) {
+    int r = 0;
+    switch (x) {
+    case 1: r += 1;
+    case 2: r += 2; break;
+    default: r += 50; break;
+    case 3: r += 300; break;
+    }
+    return r;
+}
 static int mid_break(int x, int y) {
     int r = 0;
     switch (x) {
@@ -97,6 +107,7 @@ int main(void) {
     n = fallthrough(5, trace);
     printf("%d %d %d | %d %d %d %d\n", n, trace[0], trace[1], fallthrough(1, trace), fallthrough(9, trace), fallthrough(2, trace), trace[0]);
     printf("%d %d %d %d\n", mid_break(1, 1), mid_break(1, 0), mid_break(2, 0), mid_break(3, 0));
+    printf("%d %d %d %d\n", middle_default(1), middle_default(2), middle_default(3), middle_default(9));
     printf("%d %d %d %d %d\n", continue_in_switch(), nested(1, 1), nested(1, 2), nested(2, 5), nested(3, 0));
     printf("%d %d %d %d\n", (int) wide(1L << 33), (int) wide(97), (int) wide(7), (int) wide(8));
     for (i = 0; i < 3; i++) {
