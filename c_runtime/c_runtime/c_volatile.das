@@ -54,7 +54,8 @@ let private LOAD_FORWARDERS <- {
 
 //! `c_volatile_load(x)`: one read of object `x`. A number expands in place to its `crt` forwarder
 //! over `addr(x)`, so the interpreter makes one extern call where a function around it would add a
-//! das call; `bool`, a pointer and a function value go through `c_volatile_read`.
+//! das call; `bool`, a pointer, a function value and a by-value parameter go through
+//! `c_volatile_read`.
 [call_macro(name = "c_volatile_load")]
 class CVolatileLoadMacro : AstCallMacro {
     def override visit(prog : ProgramPtr; mod : Module?; var expr : ExprCallMacro?) : ExpressionPtr {
@@ -68,7 +69,10 @@ class CVolatileLoadMacro : AstCallMacro {
             object = (object as ExprRef2Value).subexpr
         }
         let forwarder = LOAD_FORWARDERS?[arg._type.baseType] ?? ""
-        if (empty(forwarder) || !object._type.isRef) {
+        // a by-value parameter is a reference the optimizer may replace with a caller's constant,
+        // which has no address: its read goes through the fallback, whose `const&` binds anything
+        let parameter = object is ExprVar && (object as ExprVar).varFlags.argument
+        if (empty(forwarder) || !object._type.isRef || parameter) {
             // the module's own `c_volatile_read` by its qualified name, so a program's function of
             // that name cannot take the read; the error of a wrong argument names the call site
             var fallback <- qmacro(c_volatile::c_volatile_read($e(arg)))

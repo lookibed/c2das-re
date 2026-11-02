@@ -15,6 +15,8 @@ def private twice(v : int) : int => v * 2
 
 def private thrice(v : int) : int => v * 3
 
+def private plus_one(x : int) : int => c_volatile_load(x) + 1
+
 // a program's own function under the fallback's name (a unit `c.c` with a `static volatile_read`
 // lands here): the macro's expansion names the module's, never this one
 def c_volatile_read(var p : int?) : int? {
@@ -29,6 +31,11 @@ let REINTERPRET_SOURCE = "options gen2\nrequire crt\nvar g : int = 7\nvar p : in
 
 [test]
 def test_c_volatile(t : T?) {
+    t |> run("a by-value parameter's read takes the fallback: a constant argument from a plain caller compiles under the optimizer") @(t : T?) {
+        t |> equal(plus_one(41), 42)
+        let v = 2
+        t |> equal(plus_one(v), 3)
+    }
     t |> run("c_volatile_load and c_volatile_store take the object by reference, each C scalar width") @(t : T?) {
         t |> equal(c_volatile_load(counter), 41)
         c_volatile_store(counter, c_volatile_load(counter) + 1)
