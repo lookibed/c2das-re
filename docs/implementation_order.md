@@ -1275,6 +1275,15 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   a mutual `require` inside one package, or the like; fact and repro only, no implementation
   proposal; nothing filed in `GaijinEntertainment/daScript`). Report: compile, start-up, interp and JIT of the new
   default against `source-cut`, one line per mode.
+  Done (branch `p7.0a-layout`, PR #47): `--layout`/sidecar `layout`: `source` (default, every
+  cycle one module of `.das.inc` fragments, the former `scc`), `source-cut` (late binding through
+  `<entry>_link.das`, the former default), `single`; `scc` refused. Lua `lua` default: 28 modules
+  + 20 fragments, 0 slots, 0 qualified calls, 168 `require` lines (source-cut: 42 slots, 169
+  qualified calls, 359); criteria `lua/lua` late_binding 79.2 -> 100, qualified_calls 93.8 -> 100.
+  Interp benches 7% faster, compile 6.9 vs 4.1 s, start-up 5.3 vs 1.0 s (accepted, ruling (22)).
+  Probe `test_mutual_require`, issue lookibed/daScript#32. Before/after and per-mode numbers in
+  the PR; probe row F76. The next ports publish runs `--perf` (the old captures measured the
+  former default).
 - **P7.0b Interpreter audit on Lua** (owner ruling 2026-11-01 (14); after P7.0a, before P6). P7.0
   took `fib_loop` to 31x against 32x for hand-written das, while Lua runs 193x to 436x native under
   the interpreter (the P5.4 capture), so other constructs cost. One construct at a time, by P7.0's
