@@ -26,3 +26,4 @@ lines head every report (`AGENTS.md`).
 - P8.2: the case's `-w` reaches only the native build (h264bsd-mp4), not the Rust translator's clang arguments; keep, or pass it to the translator too; 2026-11-02.
 - P8.2: plmpeg-stream's unit calls `c2da_rt_reset()`, a test-runtime hook the Rust runtime defines; give our side a body (a sidecar stub or no-op, as the Rust runtime does), or count the hook as a Rust-only input our converter refuses; 2026-11-02.
 - P8.2: the JIT prints compile warnings (`[W] LLVM JIT: ...`) on stdout before the program runs; drop them before judging, as the `[I]` lines are (quakegeneric's Rust JIT would pass, Rust 6 of 6 on JIT), or keep them as output (quakegeneric's Rust JIT `output`); 2026-11-02.
+- P6.1: the plan's "vendored PureDOOM under `doom/`" is kept as fetched at a pin, nothing GPL committed; options: keep fetched (as Lua) / commit the tree under `doom/` (GPL-2).; 2026-11-02.

@@ -29,7 +29,8 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
   `-timedemo demoN` on that build over `--wad` (default `fetch/wads/freedoom2.wad`) in
   `work/run/<wad stem>/`, where `doom2.wad` links to the wad and `DOOMWADDIR` is `.`, under
   `prlimit --as` 3 GiB and a 600-second timeout, and writes the reference log
-  `work/ref/<wad stem>_demo<N>.log`, refusing a run section 6 refuses. `work/` is gitignored.
+  `work/ref/<wad stem>_demo<N>.log`, refusing a run section 6 refuses. `work/` is gitignored; the
+committed references under `ref/` are those files copied by hand after a reference run.
 - `ref/freedoom2_demo1.log`, `ref/freedoom2_demo2.log`, `ref/freedoom2_demo3.log` - the committed
   reference logs (section 6).
 - `REVIEW.das` - the mechanical gate: nothing under `fetch/` or `work/` and no `.wad` file of the repository is
