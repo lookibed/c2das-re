@@ -20,7 +20,7 @@ never block this plan.
    hand-written "as-if-converted" `.das` test first, converter integration second.
 5. No hand edits to converted output, ever. Per-project judgment goes in the sidecar.
 
-**Owner rulings 2026-11-01 (12) to (21)** (after Boris Batkin's framing of 2026-08-22: generate the
+**Owner rulings 2026-11-01 (12) to (22)** (after Boris Batkin's framing of 2026-08-22: generate the
 text, make it all work, then the LLM-assisted port; his words on layout, start-up, speed and text
 stand behind each)
 12. Layout (P7.0a): the default layout keeps every cycle one module of `.das.inc` fragments, a file
@@ -67,6 +67,7 @@ stand behind each)
     suites, wired into the fast tier as a report and into the item reports with the delta against
     `main`; `main` re-measured now, the numbers in the critic file's footnote area and the PR's
     `Кратко`; no translator fixes in the item.
+22. P7.0a's start-up, 5.3 s against 1.0 s for `source-cut` (2026-11-02): accepted, no threshold.
 
 ---
 
@@ -1283,6 +1284,36 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   after P7.0a). The Rust c2das (P8.1) beside, on the same function. Output: a table construct ->
   interpreter effect and ledger rows for the fixes; the fixes are separate items, not this one. Lua
   tests under the memory cap.
+  Done (branch `p7.0b-audit`, PR #48): Landed: `perf/audit_lua.das` over 12 kernels under
+  `perf/kernels/audit/`, 14 constructs each timed as converted and as the spelling a fix would
+  emit, the Rust translation beside, sites counted in lvm/ltable/lgc/ldo, the four benches whole
+  with a startup row (`perf/audit_linux.json`, `perf/ARCHITECTURE_AUDIT.md`). Costly under the
+  interpreter: the `_flag` switch chain 2.08x (Rust's computed `goto` 17x faster on the kernel),
+  wrap casts 2.10x, the `__builtin_expect` round trip 1.58x, `addr((p + i).f)` 1.53x; the JIT
+  within 16% (small call 1.16x) but `try` 5.43x, the `c_volatile_load` JIT cell SUSPECT and left
+  out; slots 0.95-1.00x of scc net. No IR change needed; fixes are rows P7.0c-P7.0h. Report: the
+  item's PR.
+- **P7.0c Switch dispatch without the flag chain.** A case no `goto` and no fall-through enters
+  tests `_goto == 0 && _cond == K` alone (2.08x interp on `dispatch_switch`, 83 flag cases in lvm,
+  an upper bound of the plain ones, every VM instruction). Then, opt-in under the speed-vs-
+  idiomatic rule, a dense switch as computed `goto <expr>` (the Rust translation's form: 23.9x
+  native against our 419x on the same kernel). Both modes tested and measured.
+- **P7.0d Wrap casts on 64-bit mixed operands.** `int64(uint64(a) op uint64(b))` as `a op
+  int64(b)`, extending P7.0's `int` fold to lvm's `intop` (OP_ADDI, OP_MUL, bitwise ops): 2.10x
+  interp, sites 14/1/5/0. The kernel never overflows (values < 2^28): the fix depends on daslang's
+  defined signed wrap, a probe to land with it.
+- **P7.0e `__builtin_expect` truth tests.** `int64(x != 0 ? 1 : 0) != 0` as `x != 0`
+  (`l_likely`/`l_unlikely`): 1.58x interp, sites 61/8/2/37.
+- **P7.0f Address of a first member.** `addr((p + i).val)` and `addr(reinterpret<GCUnion?>(o).h)`
+  where the member sits at offset 0: 1.53x and 1.17x interp, sites 106/2/0/11 and 81/10/62/10. The
+  fast form is a `reinterpret`, which the readability criteria count as noise: NEEDS RULING
+  (default or opt-in).
+- **P7.0g Cheaper volatile load.** `c_volatile_load` (a C++ forwarder) costs 1.32x interp on the
+  `trap` re-read, sites 50/0/0/7 (`updatetrap` per protected instruction); keep F65's semantics,
+  find an interpreter-cheap form.
+- **P7.0h Flat setjmp and inline enum cast (low weight).** The `while (_sj_run)` trampoline as a
+  flat `try` when the setjmp value is only tested against 0 (1.13x; `try` itself 1.25x interp,
+  5.43x JIT; 1 site, per pcall); `enum_from_int` inline (1.12x, 5 sites, per instruction).
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
