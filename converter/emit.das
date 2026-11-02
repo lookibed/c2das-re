@@ -3069,6 +3069,9 @@ def private emit_statements(var em : Emitter; tu : CirTu; owner : CirStmt const?
         let child = owner.body[idx]
         var first_in_then = false
         if (flat_setjmp(owner, idx)) {
+            if (tail_leaves_loop(em, owner, idx)) {
+                return
+            }
             emit_setjmp_site(em, tu, *child, setjmp_site(child.cond, first_in_then), true)
             continue
         }
@@ -3086,8 +3089,8 @@ def private emit_statements(var em : Emitter; tu : CirTu; owner : CirStmt const?
 }
 
 // a single-branch setjmp `if` whose branch is the first run (`== 0`, `!`) and whose block tail
-// calls nothing, so no longjmp reaches the buffer once the branch is done: the contained site
-// with an empty `recover` arm, the tail after it run once
+// calls nothing, so no longjmp from the tail reaches the buffer: the contained site with an
+// empty `recover` arm, the tail after it run once
 [arch(at="ARCHITECTURE_EMITTER.md#setjmp-general")]
 def private flat_setjmp(owner : CirStmt const?; site : int) : bool {
     let st = owner.body[site]
@@ -3193,6 +3196,18 @@ def private integer_constant(x : CirExpr const?) : bool {
     return at.e == "int_lit" || at.e == "enum_ref" || at.e == "sizeof_v" || at.e == "alignof_v"
 }
 
+// whether the setjmp site at `site` or the rest of its block leaves an enclosing loop, which
+// fails closed: the branch sits in a `try` arm, and the trampoline's tail in its loop
+def private tail_leaves_loop(var em : Emitter; owner : CirStmt const?; site : int) : bool {
+    for (idx in range(site, length(owner.body))) {
+        if (breaks_switch(owner.body[idx]) || continues_out(owner.body[idx])) {
+            fail(em, "a setjmp site whose tail leaves an enclosing loop is not lowered yet", owner.body[site].loc)
+            return true
+        }
+    }
+    return false
+}
+
 // `if (setjmp(buf)) { B } tail`: C re-enters at the setjmp with longjmp's value and runs on,
 // so the branch and the tail live in a loop that reruns once per longjmp caught; a branch or a
 // tail that leaves an outer loop would leave this one instead and fails closed. The general form (`call`,
@@ -3200,11 +3215,8 @@ def private integer_constant(x : CirExpr const?) : bool {
 // `_sj_val`, which is 0 on the first run and longjmp's value on every rerun
 def private emit_trampoline(var em : Emitter; tu : CirTu; owner : CirStmt const?; site : int; first_in_then : bool; call : CirExpr const?) {
     let st = owner.body[site]
-    for (idx in range(site, length(owner.body))) {
-        if (breaks_switch(owner.body[idx]) || continues_out(owner.body[idx])) {
-            fail(em, "a setjmp site whose tail leaves an enclosing loop is not lowered yet", st.loc)
-            return
-        }
+    if (tail_leaves_loop(em, owner, site)) {
+        return
     }
     var first_in_then_again = false
     var buf : CirExpr const? = setjmp_site(st.cond, first_in_then_again)

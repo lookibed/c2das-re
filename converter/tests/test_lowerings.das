@@ -414,6 +414,8 @@ def p3_fixtures(t : T?) {
         // one whose tail longjmps to its own buffer keeps the rerun loop
         has_text(t, text, "    var passes : int = 0\n    var _sj_run = true\n    var _sj_val = 0\n    while (_sj_run) \{\n        _sj_run = false\n        try \{\n            if (_sj_val == 0) \{\n")
         rejects(t, "setjmp_value", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int n = 0; while (setjmp(b) < 2) n++; return n; \}\n", "trampoline form")
+        rejects(t, "setjmp_flat_branch_break", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int i = 0, n = 0; while (i < 5) \{ i++; if (!setjmp(b)) \{ if (i == 3) break; n++; \} n += 100; \} return n; \}\n", "tail leaves an enclosing loop")
+        rejects(t, "setjmp_flat_tail_continue", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int i = 0, n = 0; while (i < 5) \{ i++; if (setjmp(b) == 0) \{ n++; \} if (i == 2) continue; n += 100; \} return n; \}\n", "tail leaves an enclosing loop")
         rejects(t, "setjmp_tail_break", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int i = 0; while (i < 3) \{ if (setjmp(b)) \{ i = 9; \} i++; if (i > 1) break; \} return i; \}\n", "tail leaves an enclosing loop")
     }
     t |> run("alloca: the per-function arena with its guard, allocations accumulating to the function's exit, __builtin_ names through the shim list, options stack") @(t : T?) {
