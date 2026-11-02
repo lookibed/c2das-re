@@ -156,3 +156,14 @@ folders.
 findings among them (finding 2: an array of records inside a marshal record; finding 3: an
 over-indexed trailing array inside one); a line no fragment matches is `new:` with its stage and
 locations dropped. `blocker_table` counts the units or modules per construct.
+
+At the pin, 10 of the 63 units pass alone; 37 stop at a function another unit defines, which the
+link binds; 5 at an `extern T a[];` referenced before a definition that gives its length (the
+definition in another unit: `defaults`, `S_sfx`, `chat_macros`), 3 at a block-scope `extern`
+with no file-scope declaration, 2 at a block-scope function prototype, 1 at finding 2 (`r_data`,
+`maptexture_t.patches`) and 5 at a function of a unit the dumper refuses. The program stops at
+the first of these, in `DOOM.c`, so no module is emitted and `--compile-check` has none to
+compile. Past those gaps, a staged copy patched by hand shows the next: a file-scope `;;`
+(`EmptyDecl`, `m_misc.c`), then a `goto` into a block (`docs/implementation_order.md` P7.7:
+`F_CastTicker`, `P_SlideMove`). Its partition: the `source` layout holds 51 units in one cluster
+(39 modules), `source-cut` 36 (56 modules).
