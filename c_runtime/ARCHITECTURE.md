@@ -16,7 +16,8 @@ as-if-converted fixture test landing first.
   port-progress metric of the follow-up story; nothing else about the function changes.
   `unsafe` does not reach into a lambda or generator body, which C never produces.
 - `c_runtime/enum_from_int.das` - `enum_from_int(type<E>, i)`, the C int-to-enum conversion:
-  one generic over the type witness holding the one `unsafe(reinterpret)`, so an out-of-range
+  a call macro that expands in place to the one `reinterpret<E>(i)`, flagged safe, so converted
+  code carries no `unsafe`, the interpreter makes no call per conversion, and an out-of-range
   value survives by value as C's does.
 - `c_runtime/c_exit.das` - the process-exit protocol: `c_atexit` registers into a module
   list, `c_run_atexit` walks it once in LIFO order, the `[finalize]` walker runs it after a
