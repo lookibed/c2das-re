@@ -219,6 +219,16 @@ def private add_edge(var plan : LayoutPlan; from, to : int; why : string) {
     }
 }
 
+// an edge `from` -> the owner of type `t`, which `from` spells; between two units a type edge, which
+// no cut takes
+def private add_type_edge(var plan : LayoutPlan; types : array<CirType>; from, t : int) {
+    let owner = plan.type_node?[t] ?? -1
+    add_edge(plan, from, owner, type_label(types[t], t))
+    if (owner >= 0 && owner != from && plan.nodes[from].kind == NODE_UNIT && plan.nodes[owner].kind == NODE_UNIT) {
+        plan.type_edges |> insert("{from}>{owner}")
+    }
+}
+
 // the node of non-unit file `file` (a header), made on first use
 def private header_node(var plan : LayoutPlan; var by_file : table<string; int>; file : string) : int {
     let known = by_file?[file] ?? -1
@@ -392,11 +402,7 @@ def private find_edges(var plan : LayoutPlan; tus : array<CirTu>; types : array<
             }
         }
         for (t in keys(refs[ti].types)) {
-            let owner = plan.type_node?[t] ?? -1
-            add_edge(plan, from, owner, type_label(types[t], t))
-            if (owner >= 0 && owner != from && plan.nodes[owner].kind == NODE_UNIT) {
-                plan.type_edges |> insert("{from}>{owner}")
-            }
+            add_type_edge(plan, types, from, t)
         }
     }
     for (t, node in keys(plan.type_node), values(plan.type_node)) {
@@ -406,7 +412,7 @@ def private find_edges(var plan : LayoutPlan; tus : array<CirTu>; types : array<
             dims_types(types, f.dims, used)
         }
         for (u in keys(used)) {
-            add_edge(plan, node, plan.type_node?[u] ?? -1, type_label(types[u], u))
+            add_type_edge(plan, types, node, u)
         }
     }
 }

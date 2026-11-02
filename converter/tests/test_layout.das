@@ -23,6 +23,7 @@ require ../dumper_a.das
 let TREE = "converter/tests/fixtures/p5_layout_tree"
 let TYPES = "converter/tests/fixtures/p5_layout_types"
 let CUT = "converter/tests/fixtures/p5_layout_cut"
+let TYPE_FIELD = "converter/tests/fixtures/p7_type_edge"
 
 // the single layout's module of each fixture: the multi-TU link's text before the source layout
 // (P5.1b1), which the single layout keeps byte for byte, plus the C comments it carries (P7.0j)
@@ -465,6 +466,17 @@ def test_cut_limits(t : T?) {
             t |> success(cut_lines(res) |> starts_with("cut a_back: b -> a"), cut_lines(res))
             agrees(t, paths, res.das_path, "interp", dir)
         }
+    }
+    t |> run("an edge carrying a type a field of the calling file's record spells is never cut: the call back is cut; the source layout keeps the cycle a cluster") @(t : T?) {
+        let paths <- [for (f in ["main.c", "x.c", "y.c"]); "{TYPE_FIELD}/{f}"]
+        let res <- converted_in(paths, "field", "", "source-cut")
+        t |> equal(res.error, "")
+        t |> equal(cut_lines(res), "cut x_g: y -> x, 1 call sites of the edge's 1")
+        agrees(t, paths, res.das_path, "interp", "field")
+        let source <- converted_in(paths, "field_source", "", "source")
+        t |> equal(source.error, "")
+        t |> equal(join(source.partition, "\n"), "main\nx_cluster: cluster of 2: x y\nx_cluster: x -> y: y_f, struct S\nx_cluster: y -> x: x_g")
+        agrees(t, paths, source.das_path, "interp", "field_source")
     }
     t |> run("an edge out of the entry module is not cut: the edge back to it is, and the program runs") @(t : T?) {
         let paths <- written("entry", [(name = "main.c", text = FATAL_MAIN), (name = "util.c", text = FATAL_UTIL)])
