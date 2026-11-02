@@ -55,10 +55,12 @@ def replaced_all(text : string; pairs : array<tuple<old : string; by : string>>;
 
 let private FLAG_CASE = "_flag ||= _goto == 0 && _cond == "
 
-//! The `_flag` switch chain with every case no `goto` enters as a plain `if`: a `_flag ||= _goto ==
-//! 0 && _cond == K` line followed by `if (_flag) \{` becomes `if (_goto == 0 && _cond == K) \{`; a
-//! case a `goto` enters keeps its flag lines, so a jump still lands, and the re-dispatch after it
-//! still passes over every plain case.
+//! The `_flag` switch chain with every case no `goto` and no fall-through enters as a plain `if`: a
+//! `_flag ||= _goto == 0 && _cond == K` line followed by `if (_flag) \{` becomes `if (_goto == 0 &&
+//! _cond == K) \{`; a case a `goto` enters keeps its flag lines, so a jump still lands, and the
+//! re-dispatch after it still passes over every plain case. A case a fall-through enters (the case
+//! before it ends without `break`) needs its flag too: the audit kernel has none, so the rewrite
+//! does not tell such a case apart, and a count of flag cases is an upper bound of the plain ones.
 def if_chain(text : string; var error : string&) : string {
     let lines <- split(text, "\n")
     var out : array<string>

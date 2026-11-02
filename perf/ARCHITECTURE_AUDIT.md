@@ -12,8 +12,8 @@ row for a fix.
 - `kernels/audit/<name>.c` - one kernel per construct family, in the kernel shape of
   `ARCHITECTURE.md` section 1 (a `volatile` static read on every call, no `main`, no
   `#include`, no expected result), each modelled on the Lua function its first comment names.
-  The inner loop's input depends on the outer loop's counter, so clang cannot hoist the work
-  out of the rep loop. The folder is no kernel list `c_file_ids` reads for `run.das`, the
+  A loop-carried accumulator, or an inner input that depends on the outer loop's counter, keeps
+  clang from hoisting the work out of the rep loop. The folder is no kernel list `c_file_ids` reads for `run.das`, the
   readability metric or `compare/`.
 - `audit_constructs.das` - the constructs (`constructs()`): each its kernel, the name of its
   alternative spelling, the text whose occurrences count its sites in Lua, and the rewrite of
@@ -28,9 +28,12 @@ row for a fix.
   printed; `--table` renders a stored capture, `--filter` names kernels, `--no-benches` leaves
   the benchmarks out, `--benches-only` times the benchmarks alone into the stored capture,
   `--lua-work` names the folder `lua/run.das` converted Lua into.
-- `audit_linux.json` - the committed capture: the machine, the versions, the Rust translator's
-  commit, per kernel the native cell, the `converted` interpreter and JIT cells, one entry per
-  alternative spelling with its two cells, and the Rust entry; the sites; the benchmarks.
+- `audit_linux.json` - the committed capture, a one-off: it is re-recorded by hand when a kernel
+  or a rewrite changes, and the `results_linux.json` rules of `REVIEW.md` (the `--report` text,
+  the `FLAG` lines, the re-record duty) do not apply to it. It holds the machine, the versions,
+  the Rust translator's commit, per kernel the native cell, the `converted` interpreter and JIT
+  cells, one entry per alternative spelling with its two cells, and the Rust entry; the sites;
+  the benchmarks.
 - `tests/test_audit.das` - the rewrites on small texts, every rewrite applied to its kernel's
   real conversion, the site count, both tables over a fixture capture, and the driver as a child
   process: `-?`, one sample of `sizeof_scale`, `--table`.
@@ -85,8 +88,11 @@ the `while (_sj_run)` trampoline 1.13x; the union member through `reinterpret<GC
 and `enum_from_int` 1.12x. Five cost nothing measurable (0.93x to 1.02x): `addr(deref(p + i))`,
 the macro mask arithmetic (daslang folds the constants), a small call against its body inlined,
 the redundant `uint8` cast of a byte read, and `typeinfo sizeof`. Under the JIT every construct but
-`try`/`recover` (5.43x) costs within 11 percent. The whole benchmarks run the source layout's
+`try`/`recover` (5.43x) costs within 16 percent (the small call 1.16x); the `c_volatile_load` JIT
+cell is `SUSPECT` and left out. The `wrap_cast` kernel's values stay under 2^28, so its rewrite
+matching native shows no wrap semantics: the plain operators' wrap on overflow is daslang's
+defined signed arithmetic, which a probe should pin before the fix lands. The whole benchmarks run the source layout's
 late-bound calls at 0.95x to 1.00x of the scc layout's net time, so the slots cost nothing
-measurable there, while the scc layout loads in 4.21 s against 0.80 s. The native benchmark runs
-end within the clock's 0.1 s tick, so their net factors over native show only for
-`binary_trees` (67x scc, 65x source).
+measurable there, while the scc layout loads in 4.21 s against 0.80 s. Each whole-run sample
+resolves to 0.1 s on every lane (about 5 percent of a 4 s net time). The native benchmark runs
+end within a few ticks, under the 1.0 s net floor, so no net factor over native is shown.
