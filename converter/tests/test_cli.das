@@ -122,6 +122,42 @@ def test_cli_loops(t : T?) {
     rmdir_rec(dir)
 }
 
+let FIRST_MEMBER_FIXTURE = "converter/tests/fixtures/p7_first_member.c"
+
+// `converter/main.das -- <FIRST_MEMBER_FIXTURE> --out <dir>/first_member_<mode> --target linux
+// --first-member <mode>` as a child process
+def run_first_member(dir, mode : string; var out : string&) : int {
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from(["converter/main.das", "--", FIRST_MEMBER_FIXTURE, "--out", path_join(dir, "first_member_{mode}"), "--target", "linux", "--first-member", mode])
+    return run_and_capture(argv, out, 300.0)
+}
+
+[test]
+def test_cli_first_member(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_cli_first_member", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("--first-member addr spells the address of a first member as addr(...), --first-member reinterpret as its record's pointer reinterpreted") @(t : T?) {
+        var out : string
+        t |> equal(run_first_member(dir, "addr", out), 0, out)
+        let kept = fread(path_join(path_join(dir, "first_member_addr"), "p7_first_member.das"))
+        t |> success(kept |> contains("    return addr((base + a).val)\n"), kept)
+        t |> equal(run_first_member(dir, "reinterpret", out), 0, out)
+        let reinterpreted = fread(path_join(path_join(dir, "first_member_reinterpret"), "p7_first_member.das"))
+        t |> success(reinterpreted |> contains("    return reinterpret<TValue?>(base + a)\n"), reinterpreted)
+    }
+    t |> run("--first-member offset is a usage error before any conversion") @(t : T?) {
+        var out : string
+        t |> equal(run_first_member(dir, "offset", out), 2, out)
+        t |> success(out |> contains("--first-member is addr or reinterpret, not `offset`"), out)
+        t |> success(!fexist(path_join(path_join(dir, "first_member_offset"), "p7_first_member.das")), out)
+    }
+    rmdir_rec(dir)
+}
+
 let LAYOUT_FIXTURE = "converter/tests/fixtures/p5_layout_cut"
 
 // `converter/main.das -- <LAYOUT_FIXTURE>/{main,a,b}.c --out <dir>/layout_<mode> --target linux

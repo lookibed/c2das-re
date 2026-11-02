@@ -41,7 +41,9 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `read_sidecar` (JSON; a key the row that needs it adds - `marshal`, the records read and
   written as bytes; `stack` and `alloca_limit`; `param_writes`, `in-place` or `copy`, the
   parameter write mode, any other value refused naming the key; `loops`, `range` or `while`, how
-  a canonical counting `for` is spelled, any other value refused naming the key; `layout`, `source`,
+  a canonical counting `for` is spelled, any other value refused naming the key; `first_member`,
+  `addr` or `reinterpret`, how the address of a member at offset 0 is spelled, any other value
+  refused naming the key; `layout`, `source`,
   `source-cut` or `single`, the module layout of a program of several files, or an object of `mode` (one of
   those), `threshold` (a count), `keep_together` (symbols and lists of file stems), `cut` (symbols)
   and `profile` (a file beside the sidecar), the cycle cut's choices, any other value or key refused
@@ -60,8 +62,9 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   of another shape refused naming the key). A key outside these is refused naming it. A key's presence is
   `key_exists`, since json_boost's `?[]` of a missing key is a non-null sentinel
   (`probes/test_stdlib.das`). Nothing here knows the C-IR or the emitter.
-- `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes, loops])`: read
-  the sidecar (a `param_writes` or `loops` argument other than "" overrides the sidecar's key, and
+- `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes, loops,
+  first_member])`: read the sidecar (a `param_writes`, `loops` or `first_member` argument other
+  than "" overrides the sidecar's key, and
   one that is not a mode is refused), dump under its `defines`, write the C-IR, read it back and rewrite it
   (the bytes must match), emit, format with
   `daslib/das_source_formatter`, compile-check with `compile_file`. Every artifact lands under
@@ -93,15 +96,14 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `daslang_cmd` spells the prefix; `native_run` builds a C file, or a program's files in order,
   with a given compiler and flags and runs it once, with the program's arguments when given, the native side every differential test compares against.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c>... | --program <p.json> [--out] [--target]
-  [--run] [--arg]... [--sidecar] [--param-writes in-place|copy] [--loops range|while] [--layout
-  source|source-cut|single]`. Several files are one program linked in their order, as are the files a manifest
+  [--run] [--arg]... [--sidecar] [--param-writes in-place|copy] [--loops range|while] [--first-member
+  addr|reinterpret] [--layout source|source-cut|single]`. Several files are one program linked in their order, as are the files a manifest
   names; files beside `--program` are a usage error (exit 2). `--layout` chooses the modules of such
   a program (section 8): `source`, the default and the idiomatic form, a module per C file with
   every cycle one module of fragments; `source-cut`, the cycles cut by late binding; `single`, one
-  module; it
-  wins over the sidecar's `layout` mode, and any other value is a usage error (exit 2). One file is
-  one module in each layout. Each `--arg` is one argument of the C `argv` the
-  program `--run` runs gets, in order. `--param-writes` chooses how the emitter writes a scalar or
+  module; it wins over the sidecar's `layout` mode, and any other value is a usage error (exit 2).
+  One file is one module in each layout. Each `--arg` is one argument of the C `argv` the program
+  `--run` runs gets, in order. `--param-writes` chooses how the emitter writes a scalar or
   pointer parameter the body assigns, steps or takes the address of: `in-place`, the default and
   the idiomatic form, writes the parameter itself; `copy` writes a local copy, which the
   interpreter runs faster (`ARCHITECTURE_EMITTER.md` section 4). The option wins over the
@@ -110,7 +112,10 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   conversion, as a missing input is. `--loops` chooses how a canonical counting `for` is spelled:
   `range`, the default, a das range loop, which is both the idiomatic and the faster form
   (`ARCHITECTURE_EMITTER_LOOPS.md`); `while`, the `while` form every other `for` takes; it wins
-  over the sidecar's `loops` and refuses any other value the same way.
+  over the sidecar's `loops` and refuses any other value the same way. `--first-member` chooses how
+  the address of a member at offset 0 is spelled: `addr`, the default and the idiomatic form,
+  `addr(p.f)`; `reinterpret`, the record's pointer reinterpreted, which the interpreter runs faster
+  (`ARCHITECTURE_EMITTER_AGGREGATES.md`); it wins over the sidecar's `first_member` the same way.
 - `benchmarks/bench_for_shapes.das` - the loop-shape race behind section 4
   (`ARCHITECTURE_EMITTER.md`), run with `dastest -- --bench` under the interpreter and
   under `-jit`.
@@ -120,13 +125,13 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `tests/test_cli.das` - `main.das` run as a child process over `tests/fixtures/p4_param_writes.c`:
   `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2; over
   `tests/fixtures/p7_loops.c`: `--loops range` and `while` reach the emitter, and a bad value
-  exits 2; over `tests/fixtures/p5_layout_cut/`: `--layout source`, `source-cut` and `single` reach the
+  exits 2, as `--first-member` over `tests/fixtures/p7_first_member.c`; over `tests/fixtures/p5_layout_cut/`: `--layout source`, `source-cut` and `single` reach the
   converter, and a bad value or the old name `scc` exits 2; and over
   `tests/fixtures/p4_main_args.c`: `--arg` reaches the C `argv` under `interp` as the native
   build's arguments do, under `jit`, under `exe` and under `aot`.
 - `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list,
   its function-like entries and the shapes it refuses, the `over_indexed` list and the shapes it
-  refuses, the `loops` and `layout` values (the latter as a mode and as an object) and the ones
+  refuses, the `loops`, `first_member` and `layout` values (the latter as a mode and as an object) and the ones
   they refuse, `include_dirs` and `program_root` read beside the sidecar and the shapes they
   refuse, and an unknown key.
 - `tests/test_tier_facts.das` - the das facts the emitter relies on, each a program run under the

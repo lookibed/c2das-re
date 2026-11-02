@@ -148,6 +148,9 @@ struct EmitProgram {
     // the sidecar's or the option's `loops` is not `while`: a canonical counting `for` is a das
     // range loop (`for_range`)
     range_loops : bool
+    // the sidecar's or the option's `first_member` is `reinterpret`: the address of a member at
+    // offset 0 reinterprets its record's pointer (`first_member_address`)
+    reinterpret_members : bool
     // the declarations at a switch body's own level that a statement under a later label reads
     // or writes, which the lowered switch declares before itself (`carried_decls`)
     carried : table<uint64>
@@ -1651,6 +1654,12 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     if (k == "ArrayToPointerDecay" && x.a != null && x.a.e == "str_lit") {
         return string_literal(em, tu, *x.a, loc)
     }
+    if (k == "ArrayToPointerDecay") {
+        let first = first_member_address(em, tu, x, loc)
+        if (!empty(first.text)) {
+            return first
+        }
+    }
     if ((k == "IntegralCast" || k == "FloatingToIntegral") && kind_of(tu, x.t) == "enum") {
         return emit_enum_cast(em, tu, x, loc)
     }
@@ -2096,9 +2105,9 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
         unpin(em, keys)
         return value(tmp, PREC_PRIMARY)
     }
-    let past_end = one_past_end_address(em, tu, x, loc)
-    if (!empty(past_end.text)) {
-        return past_end
+    let direct = direct_address(em, tu, x, loc)
+    if (!empty(direct.text)) {
+        return direct
     }
     // the arithmetic operators read a number; `&` and `*` take the operand as it is; the address
     // of a compound literal is its object's
@@ -2137,6 +2146,17 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     }
     fail(em, "unary `{x.op}` is not lowered yet", loc)
     return a
+}
+
+// `&x` (`x` the `&`) spelled without `addr` of its operand: one past an array's end
+// (`one_past_end_address`), a member at offset 0 under `first_member` `reinterpret`
+// (`first_member_address`); an empty text for any other operand
+def private direct_address(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    if (x.op != "addr") {
+        return Em()
+    }
+    let past_end = one_past_end_address(em, tu, x, loc)
+    return empty(past_end.text) ? first_member_address(em, tu, x, loc) : past_end
 }
 
 // the value of a subscript that is a plain decimal literal within `int64`, -1 for any other
@@ -5194,6 +5214,75 @@ def private flexible_pointer(var em : Emitter; tu : CirTu; x : CirExpr const?; l
     return unsafe_value(em, "reinterpret<{elem}?>(reinterpret<uint8?>({record.text}) + {tu.types[m.rec].fields[m.field].off})", PREC_PRIMARY)
 }
 
+// member expression `x` (`p->f`, `s.f`) is a field at offset 0 that the containing pointer can stand
+// for: neither a field of a marshal-only record, which das reads through its readers, nor one of a
+// marshal-only type, whose das value has das's layout (C takes no bitfield's address)
+def private at_offset_zero(em : Emitter; tu : CirTu; x : CirExpr const?) : bool {
+    if (x == null || x.e != "member") {
+        return false
+    }
+    let m = member_of(tu, x)
+    if (is_marshal(em, tu, m.rec) || m.field < 0 || m.field >= length(tu.types[m.rec].fields)) {
+        return false
+    }
+    return tu.types[m.rec].fields[m.field].off == 0 && !is_marshal(em, tu, tu.types[m.rec].fields[m.field].t)
+}
+
+// the lvalue under the members at offset 0 that `x` chains (`p->a.b`, `(*p).a`, `p[i].a`) when it
+// is reached through a pointer: the arrow member, the `*p` or the `p[i]` of a pointer; null when
+// `x` is no such member, or the chain ends at a record held by value (`s.a`, `arr[i].a`)
+def private first_member_root(em : Emitter; tu : CirTu; x : CirExpr const?) : CirExpr const? {
+    if (!at_offset_zero(em, tu, x)) {
+        return null
+    }
+    var at = x
+    while (at_offset_zero(em, tu, at)) {
+        if (at.arrow) {
+            return at
+        }
+        at = at.base
+    }
+    if (at.e == "un" && at.op == "deref") {
+        return at
+    }
+    let decay = at.e == "index" && at.base.e == "cast" && at.base.cast_kind == "ArrayToPointerDecay"
+    return at.e == "index" && is_data_pointer(tu, at.base.t) && !decay ? at : null
+}
+
+// a pointer operand under its pointer `BitCast`s (`(union GCUnion *) o` is `o`), the record it
+// points to being read at offset 0 alone
+def private under_pointer_casts(tu : CirTu; p : CirExpr const?) : CirExpr const? {
+    var at = p
+    while (at.e == "cast" && at.cast_kind == "BitCast" && is_data_pointer(tu, at.t) && is_data_pointer(tu, at.a.t)) {
+        at = at.a
+    }
+    return at
+}
+
+// under the `first_member` option `reinterpret`, `&x` (`x` the `&`) of a member at offset 0, or the
+// decay of an array member at offset 0 (`x` the cast), as its record's pointer reinterpreted to the
+// result's type: `reinterpret<TValue?>(base + a)` for `&(base + a)->val`, the pointer as it is when
+// it already has that type; an empty text for any other operand, which keeps `addr(...)`
+[arch(at="ARCHITECTURE_EMITTER_AGGREGATES.md#first-member-address")]
+def private first_member_address(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    let root = em.prog.reinterpret_members ? first_member_root(em, tu, x.a) : null
+    if (root == null) {
+        return Em()
+    }
+    let target = das_type(em, tu, x.t, loc)
+    if (root.e == "index") {
+        let base = emit_expr(em, tu, root.base, loc)
+        let i = index_value(em, tu, root.i, loc)
+        return unsafe_value(em, "reinterpret<{target}>({wrap(base, PREC_ADD)} + {wrap(i, PREC_ADD + 1)})", PREC_PRIMARY)
+    }
+    let pointer = under_pointer_casts(tu, root.e == "member" ? root.base : root.a)
+    let text = emit_expr(em, tu, pointer, loc)
+    if (das_type(em, tu, pointer.t, loc) == target) {
+        return text
+    }
+    return unsafe_value(em, "reinterpret<{target}>({text.text})", PREC_PRIMARY)
+}
+
 // the field lines of record `t`, adjacent fields of one type on one line, a padding field
 // `_pad<N> : uint8[n]` where the layout law pads; false with the error set when a C field is
 // spelled like a padding field of a record that pads
@@ -5729,6 +5818,7 @@ def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
     em.prog.stack_option = side.stack
     em.prog.param_copy = side.param_writes == "copy"
     em.prog.range_loops = side.loops != "while"
+    em.prog.reinterpret_members = side.first_member == "reinterpret"
     em.prog.global_names <- {for (d in tu.decls); d.name; where d.k == "global"}
     em.prog.defined_globals <- {for (d in tu.decls); d.name; where d.k == "global" && !d.is_extern}
 }
