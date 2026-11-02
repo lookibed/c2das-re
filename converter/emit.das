@@ -5,6 +5,8 @@ module emit public
 require strings
 require daslib/strings_boost
 require daslib/strings_convert
+require daslib/fio
+require math
 require crt
 require cir
 require sidecar
@@ -56,6 +58,12 @@ struct Emitter {
     switch_counter : int
     // the case values the switch being emitted labels with a character literal
     char_cases : table<int64>
+    // the C sources' comments by file (`c_comments`), read on first use
+    c_comments : table<string; CComments>
+    // per C file, the line (from 1) up to which the output carries its comments
+    comments_done : table<string; int>
+    // the C file of the function being emitted: a statement carries only that file's comments
+    comment_file : string
     setjmp_counter : int
     // the names the function being emitted takes the address of
     addressed : table<string>
@@ -763,6 +771,149 @@ def private literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : E
         return value(x.v != "0" ? "true" : "false", PREC_PRIMARY)
     }
     return value("{spelled}({x.v})", PREC_PRIMARY)
+}
+
+// the comments of one C source by line (from 0): each line's comment text, "" for none, and
+// whether the line holds a comment and no code
+struct CComments {
+    texts : array<string>
+    alone : array<bool>
+}
+
+// one comment's text as the readability criterion reads it (metrics/criteria_scan.das):
+// whitespace collapsed, the `*` and `/` decoration at either end dropped
+def private comment_text(text : string) : string {
+    let words <- [for (w in split(replace(replace(text, "\t", " "), "\r", " "), " ")); w; where !empty(w)]
+    let joined = join(words, " ")
+    var first = 0
+    var last = 0
+    peek_data(joined) $(b) {
+        last = length(b)
+        while (first < last && (int(b[first]) == '*' || int(b[first]) == '/' || int(b[first]) == ' ')) {
+            first++
+        }
+        while (last > first && (int(b[last - 1]) == '*' || int(b[last - 1]) == '/' || int(b[last - 1]) == ' ')) {
+            last--
+        }
+    }
+    return slice(joined, first, last)
+}
+
+// the comments of C text `text`, a block comment's lines each its own; a string or a character
+// literal is skipped, so a `//` inside one is no comment
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#comments")]
+def private c_comments(text : string) : CComments {
+    var cc : CComments
+    var code : array<bool>
+    var pieces : array<tuple<line : int; a : int; b : int>>
+    var line = 0
+    cc.texts |> push("")
+    code |> push(false)
+    peek_data(text) $(b) {
+        let n = length(b)
+        var i = 0
+        while (i < n) {
+            let c = int(b[i])
+            if (c == '\n') {
+                line++
+                cc.texts |> push("")
+                code |> push(false)
+                i++
+            } elif (c == '/' && i + 1 < n && int(b[i + 1]) == '/') {
+                var e = i
+                while (e < n && int(b[e]) != '\n') {
+                    e++
+                }
+                pieces |> push((line = line, a = i + 2, b = e))
+                i = e
+            } elif (c == '/' && i + 1 < n && int(b[i + 1]) == '*') {
+                var a = i + 2
+                var e = a
+                while (e < n && !(int(b[e]) == '*' && e + 1 < n && int(b[e + 1]) == '/')) {
+                    if (int(b[e]) == '\n') {
+                        pieces |> push((line = line, a = a, b = e))
+                        line++
+                        cc.texts |> push("")
+                        code |> push(false)
+                        a = e + 1
+                    }
+                    e++
+                }
+                pieces |> push((line = line, a = a, b = e))
+                i = min(e + 2, n)
+            } else {
+                if (!is_white_space(c)) {
+                    code[line] = true
+                }
+                if (c == '"' || c == '\'') {
+                    i++
+                    while (i < n && int(b[i]) != c && int(b[i]) != '\n') {
+                        i += int(b[i]) == '\\' && i + 1 < n ? 2 : 1
+                    }
+                }
+                i = min(i + 1, n)
+            }
+        }
+        cc.alone |> resize(length(cc.texts))
+        for (p in pieces) {
+            cc.alone[p.line] = !code[p.line]
+            let piece = comment_text(slice(b, p.a, p.b))
+            if (!empty(piece)) {
+                cc.texts[p.line] = empty(cc.texts[p.line]) ? piece : "{cc.texts[p.line]} {piece}"
+            }
+        }
+    }
+    return <- cc
+}
+
+// the comments of the C file at `file`, read on first use; none for a file that is not there
+def private comments_of(var em : Emitter; file : string) : CComments? {
+    if (!key_exists(em.c_comments, file)) {
+        em.c_comments[file] <- stat(file).is_reg ? c_comments(fread(file)) : CComments()
+    }
+    return unsafe(addr(em.c_comments[file]))
+}
+
+// the comments of the lines from the last carried one up to `loc`'s, each a `//` line above the
+// statement there, when `loc` is in the file of the function being emitted
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#comments")]
+def private carry_comments(var em : Emitter; loc : CirLoc) {
+    if (empty(loc.file) || loc.file != em.comment_file) {
+        return
+    }
+    let done = em.comments_done?[loc.file] ?? 0
+    if (loc.line <= done) {
+        return
+    }
+    let cc = comments_of(em, loc.file)
+    for (l in range(done, min(loc.line, length(cc.texts)))) {
+        if (!empty(cc.texts[l])) {
+            line(em, "// {cc.texts[l]}")
+        }
+    }
+    em.comments_done[loc.file] = loc.line
+}
+
+// the comment lines right above a function's header (a block of lines that hold a comment and no
+// code), above its `def`; the body then carries from the header's line on
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#comments")]
+def private carry_comments_above(var em : Emitter; loc : CirLoc) {
+    em.comment_file = loc.file
+    if (empty(loc.file) || loc.line <= 0) {
+        return
+    }
+    let cc = comments_of(em, loc.file)
+    let done = em.comments_done?[loc.file] ?? 0
+    var first = min(loc.line - 1, length(cc.alone))
+    while (first > done && cc.alone[first - 1]) {
+        first--
+    }
+    for (l in range(first, min(loc.line - 1, length(cc.texts)))) {
+        if (!empty(cc.texts[l])) {
+            line(em, "// {cc.texts[l]}")
+        }
+    }
+    em.comments_done[loc.file] = max(done, loc.line - 1)
 }
 
 // the das character literal of C character `c`, "" where das has none: the printable ASCII and
@@ -4007,6 +4158,9 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (st == null) {
         return
     }
+    if (st.s != "compound" && st.s != "label") {
+        carry_comments(em, st.loc)
+    }
     em.stmt_depth++
     emit_stmt_kind(em, tu, st)
     em.stmt_depth--
@@ -4666,6 +4820,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     }
     let ret = das_type(em, tu, tu.types[d.t].ret, d.loc)
     let header = "def {d.is_static ? "private " : ""}{das_func_name(em, d)}" + (empty(params) ? "" : "({join(params, "; ")})") + (ret == "void" ? "" : " : {ret}")
+    carry_comments_above(em, d.loc)
     let header_at = length(em.out)
     open_block(em, header)
     for (copy in copies) {

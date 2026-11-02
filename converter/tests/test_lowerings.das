@@ -1950,4 +1950,15 @@ def p7_readable_fixtures(t : T?) {
         has_text(t, text, "var digit : int = int(deref(fmt + 0)) == 'a' ? '7' - '0' : 0")
         has_text(t, text, "\"), 255, 24930, 'x', digit)")
     }
+    t |> run("the C comments land as `//` lines above the statement of their line, a block comment line by line") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_comments", text)
+        has_text(t, text, "var private p7_comments__unused_global : int = 3\n\n// sum of the odd numbers below n\n// (a block comment over lines, right above the function)\ndef private p7_comments__odd_sum(n : int) : int \{\n    // the running sum\n    var s : int = 0\n    // walk every number\n    for (i in range(n)) \{\n")
+        has_text(t, text, "            // skip the even ones\n            continue\n")
+        has_text(t, text, "        // add the odd one,\n        // over two lines\n        s += i\n")
+        has_text(t, text, "    // \"a // inside\" stays one comment\n    return s\n")
+        has_text(t, text, "    var t : uint8? = reinterpret<uint8?>(\"not /* a comment */ here\")\n    // print it\n")
+        t |> equal(text |> find("a global's comment") < 0, true, text)
+        t |> equal(text |> find("P7.0j") < 0, true, text)
+    }
 }
