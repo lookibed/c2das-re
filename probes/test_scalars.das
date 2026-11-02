@@ -14,6 +14,9 @@ struct Wide {
 // the sums run on values the optimizer cannot see: an argument and a global the program sets
 let WRAP_SOURCE = "options gen2\nvar g = 0\nvar h = 0l\ndef sum(a, b : int) : int => a + b\ndef diff(a, b : int) : int => a - b\n[export]\ndef main \{\n    g = 2147483647\n    h = 9223372036854775807l\n    var c = g\n    c += 5\n    print(\"\{sum(g, 5)\} \{diff(-g, 5)\} \{h + 2l\} \{-h - 3l\} \{c\} \{g + 5\}\\n\")\n\}\n"
 
+// the products and bitwise operators on values the optimizer cannot see, past the type's range
+let WRAP_PRODUCT_SOURCE = "options gen2\nvar g = 0\nvar h = 0l\ndef mul(a, b : int) : int => a * b\ndef mul64(a, b : int64) : int64 => a * b\n[export]\ndef main \{\n    g = 65537\n    h = 9223372036854775807l\n    var c = h\n    c *= 3l\n    print(\"\{mul(g, g)\} \{mul(g, -g)\} \{mul64(h, 3l)\} \{mul64(4294967297l, 4294967297l)\} \{c\} \{h ^ int64(-1)\} \{(h | 1l) & int64(g)\}\\n\")\n\}\n"
+
 [test]
 def test_scalars(t : T?) {
     t |> run("small-int arithmetic computes in int and truncates on store") @(t : T?) {
@@ -64,6 +67,13 @@ def test_wrap_and_compound(t : T?) {
             let r = daslang_child_flags("wrap_sum{length(flags)}", WRAP_SOURCE, flags)
             t |> equal(r.rc, 0, r.out)
             t |> equal(program_output(r.out), "-2147483644 2147483644 -9223372036854775807 9223372036854775806 -2147483644 -2147483644\n", r.out)
+        }
+    }
+    t |> run("int and int64 * wrap as C's product through the unsigned type does, interpreted and jitted; & | ^ take the bits") @(t : T?) {
+        for (flags in [array<string>(), jit_flags()]) {
+            let r = daslang_child_flags("wrap_product{length(flags)}", WRAP_PRODUCT_SOURCE, flags)
+            t |> equal(r.rc, 0, r.out)
+            t |> equal(program_output(r.out), "131073 -131073 9223372036854775805 8589934593 9223372036854775805 -9223372036854775808 65537\n", r.out)
         }
     }
     t |> run("x op= y on a local, a field and an element, each operator and type the emitter spells") @(t : T?) {
