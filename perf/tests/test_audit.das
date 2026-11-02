@@ -30,17 +30,17 @@ def scratch(t : T?) : string {
 
 [test]
 def test_rewrites(t : T?) {
-    t |> run("if_chain: a case no goto enters tests the value alone; a goto target keeps its flag") @(t : T?) {
-        let text = join(["    _flag ||= _goto == 0 && _cond == 3", "    if (_flag) \{", "        a()", "    _flag ||= _goto == 0 && _cond == 4", "    _flag ||= _goto == 1", "    if (_flag) \{"], "\n")
+    t |> run("flag_chain: a plain case takes the flag line and the flag test; a flag case stays") @(t : T?) {
+        let text = join(["    if (_goto == 0 && _cond == 3) \{", "        a()", "    _flag ||= _goto == 0 && _cond == 4", "    _flag ||= _goto == 1", "    if (_flag) \{"], "\n")
         var error : string
-        let out = if_chain(text, error)
+        let out = flag_chain(text, error)
         t |> equal(error, "")
-        t |> equal(out, join(["    if (_goto == 0 && _cond == 3) \{", "        a()", "    _flag ||= _goto == 0 && _cond == 4", "    _flag ||= _goto == 1", "    if (_flag) \{"], "\n"))
+        t |> equal(out, join(["    _flag ||= _goto == 0 && _cond == 3", "    if (_flag) \{", "        a()", "    _flag ||= _goto == 0 && _cond == 4", "    _flag ||= _goto == 1", "    if (_flag) \{"], "\n"))
     }
-    t |> run("if_chain: no flag case is an error") @(t : T?) {
+    t |> run("flag_chain: no plain case is an error") @(t : T?) {
         var error : string
-        t |> equal(if_chain("if (x) \{\n\}", error), "")
-        t |> success(error |> contains("no `_flag` switch case"), error)
+        t |> equal(flag_chain("if (x) \{\n\}", error), "")
+        t |> success(error |> contains("no plain switch case"), error)
     }
     t |> run("unwrap_addr_deref: each addr(deref(p)) is (p), nested parentheses kept") @(t : T?) {
         var error : string
@@ -110,7 +110,7 @@ def test_site_counts(t : T?) {
         let js = site_counts(dir)
         t |> equal(js?["pointer"]?["lvm"] ?? -1l, 1l)
         t |> equal(js?["pointer"]?["ltable"] ?? -1l, 2l)
-        t |> equal(js?["if-chain"]?["lgc"] ?? -1l, 0l)
+        t |> equal(js?["flag-chain"]?["lgc"] ?? -1l, 0l)
     }
 }
 

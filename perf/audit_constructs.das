@@ -53,35 +53,31 @@ def replaced_all(text : string; pairs : array<tuple<old : string; by : string>>;
     return out
 }
 
-let private FLAG_CASE = "_flag ||= _goto == 0 && _cond == "
+let private PLAIN_CASE = "if (_goto == 0 && _cond == "
 
-//! The `_flag` switch chain with every case no `goto` and no fall-through enters as a plain `if`: a
-//! `_flag ||= _goto == 0 && _cond == K` line followed by `if (_flag) \{` becomes `if (_goto == 0 &&
-//! _cond == K) \{`; a case a `goto` enters keeps its flag lines, so a jump still lands, and the
-//! re-dispatch after it still passes over every plain case. A case a fall-through enters (the case
-//! before it ends without `break`) needs its flag too: the audit kernel has none, so the rewrite
-//! does not tell such a case apart, and a count of flag cases is an upper bound of the plain ones.
-def if_chain(text : string; var error : string&) : string {
+//! The former `_flag` switch chain (before P7.0c) of a switch a goto re-dispatches: every plain case
+//! `if (_goto == 0 && _cond == K) \{` becomes `_flag ||= _goto == 0 && _cond == K` followed by
+//! `if (_flag) \{`, which the flag loop's `var _flag = false` serves. A plain case leaves the switch
+//! at its end, so the flag it sets is never read: the two spellings run the same program, and the
+//! converted time over this rewrite's is the inverse of the chain's cost.
+def flag_chain(text : string; var error : string&) : string {
     let lines <- split(text, "\n")
     var out : array<string>
-    out |> reserve(length(lines))
+    out |> reserve(length(lines) + 64)
     var taken = 0
-    var i = 0
-    while (i < length(lines)) {
-        let line = lines[i]
+    for (line in lines) {
         let head = strip_left(line)
-        if (head |> starts_with(FLAG_CASE) && i + 1 < length(lines) && strip(lines[i + 1]) == "if (_flag) \{") {
+        if (head |> starts_with(PLAIN_CASE) && head |> ends_with(") \{")) {
             let indent = slice(line, 0, length(line) - length(head))
-            out |> push("{indent}if (_goto == 0 && _cond == {slice(head, length(FLAG_CASE))}) \{")
+            out |> push("{indent}_flag ||= _goto == 0 && _cond == {slice(head, length(PLAIN_CASE), length(head) - 3)}")
+            out |> push("{indent}if (_flag) \{")
             taken++
-            i += 2
         } else {
             out |> push(line)
-            i++
         }
     }
     if (taken == 0) {
-        error = "no `_flag` switch case in the converted module"
+        error = "no plain switch case in the converted module"
         return ""
     }
     return join(out, "\n")
@@ -244,7 +240,7 @@ def private literal_sizes(text : string; var error : string&) : string => replac
 //! Every construct the audit measures, in the table's order.
 def constructs : array<Construct> {
     return <- [
-        Construct(name = "`_flag` switch chain", kernel = "dispatch_switch", spelling = "if-chain", sites = "_flag ||= _goto == 0 && _cond ==", rewrite = @@if_chain),
+        Construct(name = "`_flag` switch chain", kernel = "dispatch_switch", spelling = "flag-chain", sites = "_flag ||= _goto == 0 && _cond ==", rewrite = @@flag_chain),
         Construct(name = "union member through `reinterpret<GCUnion?>`", kernel = "union_access", spelling = "member-cast", sites = "reinterpret<GCUnion?>(", rewrite = @@union_members),
         Construct(name = "`addr((p + i).f)` on a stack slot", kernel = "stack_ptr", spelling = "slot-cast", sites = "addr((", rewrite = @@slot_casts),
         Construct(name = "`addr(deref(p + i))` indexing", kernel = "node_index", spelling = "pointer", sites = ADDR_DEREF, rewrite = @@unwrap_addr_deref),

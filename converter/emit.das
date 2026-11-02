@@ -3879,9 +3879,26 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
     if (restart > 0) {
         line(em, "label {restart}:  // re-dispatch")
     }
-    line(em, "var {flag} = false")
+    let plain <- [for (idx in range(length(groups))); plain_case(em, groups, idx, !empty(all_values))]
+    if (has_value(plain, false)) {
+        line(em, "var {flag} = false")
+    }
     em.cont_flags |> push(cont)
-    for (g in groups) {
+    for (idx, g in range(length(groups)), groups) {
+        if (empty(g.stmts)) {
+            continue
+        }
+        if (plain[idx]) {
+            var tests <- [for (v in g.values); case_compare(em, tu, cond, cond_t, v)]
+            if (g.is_default) {
+                tests |> push("!({join(all_values, " || ")})")
+            }
+            let test = join(tests, " || ")
+            open_block(em, restart == 0 ? "if ({test})" : length(tests) == 1 ? "if ({pending}{test})" : "if ({pending}({test}))")
+            emit_group(em, tu, g, false)
+            close_block(em)
+            continue
+        }
         for (v in g.values) {
             line(em, "{flag} ||= {pending}{case_compare(em, tu, cond, cond_t, v)}")
         }
@@ -3892,7 +3909,7 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
                 line(em, "{flag} ||= {pending}!({join(all_values, " || ")})")
             }
         }
-        if (!empty(g.stmts) && check_group_split(em, g)) {
+        if (check_group_split(em, g)) {
             open_block(em, "if ({flag})")
             emit_group(em, tu, g, false)
             close_block(em)
@@ -3911,6 +3928,30 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
         emit_continue(em)
         close_block(em)
     }
+}
+
+// whether group `idx` of a matched-flag loop is entered by its own labels alone: the group before
+// it cannot fall into it, no goto re-dispatches into it and it cannot fall into the next, so its
+// branch tests its labels directly and the flag stays unset; `default` needs a case value to
+// negate (`has_values`)
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#plain-cases")]
+def private plain_case(em : Emitter; groups : array<CaseGroup>; idx : int; has_values : bool) : bool {
+    if (empty(groups[idx].stmts) || (groups[idx].is_default && !has_values)) {
+        return false
+    }
+    if (idx > 0 && !ends_group(groups[idx - 1].stmts |> back())) {
+        return false
+    }
+    if (idx < length(groups) - 1 && !ends_group(groups[idx].stmts |> back())) {
+        return false
+    }
+    var entered = false
+    for (st in groups[idx].stmts) {
+        each_stmt(st) $(s) {
+            entered ||= s.s == "label" && key_exists(em.group_labels, s.label_name)
+        }
+    }
+    return !entered
 }
 
 // a statement of a group as the lowering spells it at the group's level: a block a goto

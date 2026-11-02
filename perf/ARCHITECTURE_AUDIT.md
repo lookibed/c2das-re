@@ -19,7 +19,10 @@ row for a fix.
   alternative spelling, the text whose occurrences count its sites in Lua, and the rewrite of
   the converted module into the alternative spelling; `site_counts`, the sites per hot module.
   A rewrite fails, naming the text it did not find, when the converter's output no longer holds
-  that text, so a stale rewrite is an error cell, never a silent no-op.
+  that text, so a stale rewrite is an error cell, never a silent no-op. A construct the converter
+  no longer writes rewrites the other way: the converter tests a plain switch case alone
+  (`converter/ARCHITECTURE_EMITTER_CONTROL.md`), so `flag-chain` restores the former `_flag`
+  line on each, and that row's factor is the inverse of the chain's cost.
 - `audit_tables.das` - the construct table and the whole-benchmark table of a capture, and
   `BENCHES`, the startup row and the four Lua benchmarks with the argument each runs with here. It measures nothing
   and reads no file.
