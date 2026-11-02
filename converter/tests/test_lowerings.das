@@ -229,8 +229,8 @@ def p2_fixtures(t : T?) {
         has_text(t, text, "var private p2_strings__empty : uint8[1] = cstr_array(\"\", 1)")
         has_text(t, text, "crt::strcpy(addr(local[0]), p2_strings__greeting)")
         has_text(t, text, "crt::strncpy(addr(local[0]) + crt::strlen(addr(local[0])), p2_strings__names[1], uint64(3))")
-        has_text(t, text, "int64(crt::strchr(addr(local[0]), 44) - addr(local[0]))")
-        has_text(t, text, "deref(reinterpret<uint8?>(crt::memchr(reinterpret<void?>(p2_strings__greeting), 101, uint64(5))))")
+        has_text(t, text, "int64(crt::strchr(addr(local[0]), ',') - addr(local[0]))")
+        has_text(t, text, "deref(reinterpret<uint8?>(crt::memchr(reinterpret<void?>(p2_strings__greeting), 'e', uint64(5))))")
         has_text(t, text, "crt::atoi(addr(num[0])) + int(crt::atol(reinterpret<uint8?>(\"100\")))")
         has_text(t, text, "deref(reinterpret<uint8?>(\"abcdef\") + 2)")
         has_text(t, text, "typeinfo sizeof(type<uint8[4]>)")
@@ -1398,7 +1398,7 @@ def p5_lua_fixtures(t : T?) {
         has_text(t, text, "    var probe : cD\n")
         // string.h and ctype.h completions, glibc's errno and HUGE_VAL through the crt module
         has_text(t, text, "int(int64(crt::strpbrk(s, reinterpret<uint8?>(\"^$*\")) - s)), int(crt::strspn(s, reinterpret<uint8?>(\"abc\"))), crt::strcoll(")
-        has_text(t, text, "crt::isgraph(33)")
+        has_text(t, text, "crt::isgraph('!')")
         has_text(t, text, "    deref(crt::c_errno_location()) = 0\n")
         has_text(t, text, "crt::HUGE_VAL > 1e+308lf && -crt::HUGE_VAL < -1e+308lf")
         // a do-while condition with an effect runs at the top of every pass but the first
@@ -1511,7 +1511,7 @@ def p5_lua_expression_fixtures(t : T?) {
         // switch's goto variable, which every case test and `default` require unset
         has_text(t, text, "        let _cond = int(deref(p))\n        var _goto = 0\n        while (true) \{\n            label 1:  // re-dispatch\n")
         has_text(t, text, "                        _goto = 1\n                        goto label 1\n")
-        has_text(t, text, "            _flag ||= _goto == 0 && !(_cond == 40 || _cond == 36 || _cond == 37)\n            _flag ||= _goto == 1  // dflt\n            if (_flag) \{\n                _goto = 0\n")
+        has_text(t, text, "            _flag ||= _goto == 0 && !(_cond == '(' || _cond == '$' || _cond == '%')\n            _flag ||= _goto == 1  // dflt\n            if (_flag) \{\n                _goto = 0\n")
         has_text(t, text, "                _flag ||= _goto == 3  // ret\n")
         has_text(t, text, "                _flag ||= _goto == 0 && _cond == OpCode.OP_TFORCALL\n                _flag ||= _goto == 1  // l_tforcall\n")
         // an inner switch's re-dispatch label is numbered below the outer one's, each switch
@@ -1946,5 +1946,8 @@ def p7_readable_fixtures(t : T?) {
         has_text(t, text, "int(deref(p)) == '\{' || int(deref(p)) == '\}'")
         has_text(t, text, "int(deref(p)) != 0")
         has_text(t, text, "'\\t', p7_chars__kind('&'), 127)")
+        has_text(t, text, "'7' - '0'")
+        has_text(t, text, "var digit : int = int(deref(fmt + 0)) == 'a' ? '7' - '0' : 0")
+        has_text(t, text, "\"), 255, 24930, 'x', digit)")
     }
 }
