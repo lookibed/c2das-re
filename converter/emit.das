@@ -773,11 +773,12 @@ def private literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : E
     return value("{spelled}({x.v})", PREC_PRIMARY)
 }
 
-// the comments of one C source by line (from 0): each line's comment text, "" for none, and
-// whether the line holds a comment and no code
+// the comments of one C source by line (from 0): each line's comment text, "" for none,
+// whether the line holds a comment and no code, and the line's last byte of code (0 for none)
 struct CComments {
     texts : array<string>
     alone : array<bool>
+    last : array<int>
 }
 
 // one comment's text as the readability criterion reads it (metrics/criteria_scan.das):
@@ -804,11 +805,10 @@ def private comment_text(text : string) : string {
 [arch(at="ARCHITECTURE_EMITTER_TEXT.md#comments")]
 def private c_comments(text : string) : CComments {
     var cc : CComments
-    var code : array<bool>
     var pieces : array<tuple<line : int; a : int; b : int>>
     var line = 0
     cc.texts |> push("")
-    code |> push(false)
+    cc.last |> push(0)
     peek_data(text) $(b) {
         let n = length(b)
         var i = 0
@@ -817,7 +817,7 @@ def private c_comments(text : string) : CComments {
             if (c == '\n') {
                 line++
                 cc.texts |> push("")
-                code |> push(false)
+                cc.last |> push(0)
                 i++
             } elif (c == '/' && i + 1 < n && int(b[i + 1]) == '/') {
                 var e = i
@@ -834,7 +834,7 @@ def private c_comments(text : string) : CComments {
                         pieces |> push((line = line, a = a, b = e))
                         line++
                         cc.texts |> push("")
-                        code |> push(false)
+                        cc.last |> push(0)
                         a = e + 1
                     }
                     e++
@@ -843,20 +843,29 @@ def private c_comments(text : string) : CComments {
                 i = min(e + 2, n)
             } else {
                 if (!is_white_space(c)) {
-                    code[line] = true
+                    cc.last[line] = c
                 }
+                i++
                 if (c == '"' || c == '\'') {
-                    i++
+                    // the literal ends at its quote or, unterminated, before the newline, which
+                    // the loop counts; a backslash-newline splice inside it is a line too
                     while (i < n && int(b[i]) != c && int(b[i]) != '\n') {
+                        if (int(b[i]) == '\\' && i + 1 < n && int(b[i + 1]) == '\n') {
+                            line++
+                            cc.texts |> push("")
+                            cc.last |> push(c)
+                        }
                         i += int(b[i]) == '\\' && i + 1 < n ? 2 : 1
                     }
+                    if (i < n && int(b[i]) == c) {
+                        i++
+                    }
                 }
-                i = min(i + 1, n)
             }
         }
         cc.alone |> resize(length(cc.texts))
         for (p in pieces) {
-            cc.alone[p.line] = !code[p.line]
+            cc.alone[p.line] = cc.last[p.line] == 0
             let piece = comment_text(slice(b, p.a, p.b))
             if (!empty(piece)) {
                 cc.texts[p.line] = empty(cc.texts[p.line]) ? piece : "{cc.texts[p.line]} {piece}"
@@ -894,6 +903,10 @@ def private carry_comments(var em : Emitter; loc : CirLoc) {
     em.comments_done[loc.file] = loc.line
 }
 
+// whether a line whose last byte of code is `c` can end a declaration's specifiers: an
+// identifier's character or a pointer's `*`, not a statement's or a block's end
+def private is_specifier_end(c : int) : bool => is_alnum(c) || c == '_' || c == '*'
+
 // the comment lines right above a function's header (a block of lines that hold a comment and no
 // code), above its `def`; the body then carries from the header's line on
 [arch(at="ARCHITECTURE_EMITTER_TEXT.md#comments")]
@@ -905,6 +918,11 @@ def private carry_comments_above(var em : Emitter; loc : CirLoc) {
     let cc = comments_of(em, loc.file)
     let done = em.comments_done?[loc.file] ?? 0
     var first = min(loc.line - 1, length(cc.alone))
+    // a GNU-style header puts the specifiers on a line of their own (`static int` above the
+    // name's line): the comment block stands above that line
+    if (first > done && !cc.alone[first - 1] && empty(cc.texts[first - 1]) && is_specifier_end(cc.last[first - 1])) {
+        first--
+    }
     while (first > done && cc.alone[first - 1]) {
         first--
     }

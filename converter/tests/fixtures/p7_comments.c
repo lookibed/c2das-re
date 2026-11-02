@@ -21,9 +21,32 @@ static int odd_sum(int n) {
     return s;  // "a // inside" stays one comment
 }
 
+#if 0
+it's prose an unbalanced apostrophe opens
+#endif
+
+/* the sign of n, in GNU style */
+static int
+sign_of(int n)
+{
+    int r;
+    switch (n) {
+    case 0:  /* zero */
+        r = 0;
+        break;
+    default:  /* the rest */
+        if (n > 0) {
+            r = 1;  /* positive */
+        } /* not positive */ else {
+            r = -1;  /* negative */
+        }
+    }
+    return r;  /* the sign */
+}
+
 int main(void) {
     const char *t = "not /* a comment */ here";
     // print it
-    printf("%d %s %d\n", odd_sum(10), t, unused_global);
+    printf("%d %s %d %d\n", odd_sum(10), t, unused_global, sign_of(-4) + sign_of(0));
     return 0;
 }

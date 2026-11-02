@@ -17,14 +17,15 @@ require ../dumper_a.das
 //! files in two folders converted into a module per file, a cluster of two fragments, a header's
 //! types module and the module of the types no file defines, run against the native build of the
 //! same files under the interpreter and the JIT; the same program in the single layout, byte for
-//! byte the module the link gave before the layout; a type cycle across two headers; the refusals.
+//! byte the module the link gives (the link's text before the layout plus the carried C comments);
+//! a type cycle across two headers; the refusals.
 
 let TREE = "converter/tests/fixtures/p5_layout_tree"
 let TYPES = "converter/tests/fixtures/p5_layout_types"
 let CUT = "converter/tests/fixtures/p5_layout_cut"
 
-// the single layout's module of each fixture as the multi-TU link wrote it before the source
-// layout (P5.1b1), which the single layout keeps byte for byte
+// the single layout's module of each fixture: the multi-TU link's text before the source layout
+// (P5.1b1), which the single layout keeps byte for byte, plus the C comments it carries (P7.0j)
 let TREE_SINGLE_SHA = "c72c2f24ff3d7f5bbd2bc72a5cf99016ca8602aad01e9f362347f8f6af548ae1"
 let TYPES_SINGLE_SHA = "cfbd3ed05076a2f81ddec33c0bb79f78347369ffece083b4f1ca307352fc4725"
 

@@ -25,7 +25,12 @@ lines each their own, a `//` or `/*` inside a string or a character literal no c
 statement other than a block or a label carries, as `//` lines above it, the comments of the
 lines after the last one carried up to its own: a comment on its own line lands above the next
 statement, one after code above the statement of that line. Only the file of the function being
-emitted counts, so a statement a header's macro spells carries nothing. Above a function's `def`
-go the comment lines right above its header (lines holding a comment and no code); the comments
+emitted counts: a statement a macro spells stands at its expansion site and carries that line's
+comments, while a statement of a fragment the function's body includes (`ljumptab.h` in Lua's
+`lvm.c`) lies in the fragment's file and carries nothing. An unterminated literal (an apostrophe
+in `#if 0` prose) ends at its line's end, and a backslash-newline inside a literal is a line, so
+no later comment moves off its line. Above a function's `def` go the comment lines right above
+its header (lines holding a comment and no code), above the specifiers' own line in the GNU style
+(`static int` alone above the name, a line ending in an identifier or `*`); the comments
 between functions elsewhere, of globals, types and directives, and after a function's last
 statement, are not carried.
