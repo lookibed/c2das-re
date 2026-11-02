@@ -297,7 +297,7 @@ def p2_enum_fixtures(t : T?) {
     }
     t |> run("enumerators reached through a macro bind by their spellings' locations") @(t : T?) {
         let text = converts(t, "macro_constant", "enum E \{ A = 1, B = 2 \};\n#define BOTH (A + B)\n#define TWICE(x) ((x) + (x))\nint main(void) \{ return BOTH + TWICE(B); \}\n")
-        has_text(t, text, "return int(E.A) + int(E.B) + (int(E.B) + int(E.B))")
+        has_text(t, text, "return BOTH + (int(E.B) + int(E.B))")
         var out : string
         t |> equal(run_tier(converted_path("macro_constant"), "interp", work_root, out, CONVERTED_MODULES), 7, out)
     }
@@ -1400,8 +1400,8 @@ def p5_lua_fixtures(t : T?) {
         // offsetof spelled inside a header's macro, two in one expansion, each its own
         has_text(t, text, "int(0 == 0 ? uint64(typeinfo offsetof < payload > (type<cell0>)) : uint64(typeinfo offsetof < slots > (type<cell>))")
         // das subtracts from a pointer variable only: a computed pointer adds the negated count
-        has_text(t, text, "    var last : uint8? = addr(buff[0]) + 10 + -(n)\n")
-        has_text(t, text, "    var first : uint8? = addr(buff[0]) + 10 + -int64(k)\n")
+        has_text(t, text, "    var last : uint8? = addr(buff[0]) + DIBS + -(n)\n")
+        has_text(t, text, "    var first : uint8? = addr(buff[0]) + DIBS + -int64(k)\n")
         // GCC's branch hint is its first operand, and a truth test of it the comparison inside
         has_text(t, text, "    if (x > 2) \{\n")
         // <ctype.h> without glibc's table macros: the functions the crt module binds
@@ -1590,7 +1590,7 @@ def p5_lua_review_fixtures(t : T?) {
         // setvbuf takes c_exit, which flushes the streams while the program's buffer lives
         has_text(t, text, "require c_runtime/c_exit\n")
         // a label stands on c_label_end() before a statement the optimizer folds
-        has_text(t, text, "        label 1:  // L\n        c_label_end()\n        if (0 != 0) \{\n")
+        has_text(t, text, "        label 1:  // L\n        c_label_end()\n        if (DEBUG != 0) \{\n")
         // a program record holding `struct tm`, and `mbstate_t` with its anonymous union
         has_text(t, text, "struct stamped \{\n    k : int\n    t : tm\n\}\n")
         has_text(t, text, "    var st : _c___mbstate_t\n")
