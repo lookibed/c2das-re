@@ -2307,11 +2307,6 @@ def private dump_expr_node(var d : Dumper; js : JsonValue?) : CirExpr? {
             }
             return new CirExpr(e = "enum_ref", t = t, enum_t = owner, item = item)
         }
-        if (d.tu.types[t].k == "array" && d.tu.types[t].count < 0) {
-            // the object's definition, later in the unit, gives the count the reference lacks
-            fail(d, "a reference to `{js?["referencedDecl"]?["name"] ?? ""}` before a definition gives its array a length (`extern int a[];`) is not lowered yet", at)
-            return null
-        }
         return new CirExpr(e = "ref", t = t, name = bound_name(d, js?["referencedDecl"]), vol = is_volatile_spelling(js))
     }
     if (kind == "ImplicitCastExpr" || kind == "CStyleCastExpr") {

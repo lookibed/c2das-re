@@ -4548,18 +4548,34 @@ def private mark_store_root(var em : Emitter; x : CirExpr const?) {
     }
 }
 
+// statement tree `root` and every statement under it, each before its children (`body`,
+// `then_s`, `else_s`, `body_s`, `init_s`), as a recursive walk visits them; `root` is a `var`
+// `CirStmt const?` or `CirStmt?`, as `walk_subexprs` takes its root
+def private walk_stmts(var root : auto(SP); blk : block<(var st : SP -const) : void>) {
+    var pending : array<SP -const>
+    pending |> push(root)
+    while (!empty(pending)) {
+        var st = pending |> back()
+        pending |> pop()
+        if (st == null) {
+            continue
+        }
+        invoke(blk, st)
+        pending |> reserve(length(pending) + 4 + length(st.body))
+        pending |> push(st.init_s)
+        pending |> push(st.body_s)
+        pending |> push(st.else_s)
+        pending |> push(st.then_s)
+        for (idx in range(length(st.body))) {
+            pending |> push(st.body[length(st.body) - 1 - idx])
+        }
+    }
+}
+
 // statement tree `st` and every statement under it, each before its children
-def private each_stmt(st : CirStmt const?; blk : block<(st : CirStmt const?) : void>) {
-    if (st == null) {
-        return
-    }
-    invoke(blk, st)
-    for (child in st.body) {
-        each_stmt(child, blk)
-    }
-    for (child in fixed_array<CirStmt const?>(st.then_s, st.else_s, st.body_s, st.init_s)) {
-        each_stmt(child, blk)
-    }
+def private each_stmt(st : CirStmt const?; blk : block<(var st : CirStmt const?) : void>) {
+    var root = st
+    walk_stmts(root, blk)
 }
 
 // every expression of statement tree `st`, each before its operands
@@ -4567,6 +4583,15 @@ def private each_expr(st : CirStmt const?; blk : block<(var x : CirExpr const?) 
     each_stmt(st) $(s) {
         for (x in fixed_array<CirExpr const?>(s.init, s.e, s.cond, s.inc)) {
             each_subexpr(x, blk)
+        }
+    }
+}
+
+// `each_expr` over a tree the block may change
+def private each_expr_mut(var st : CirStmt?; blk : block<(var x : CirExpr?) : void>) {
+    walk_stmts(st) $(var s : CirStmt?) {
+        for (x in fixed_array(s.init, s.e, s.cond, s.inc)) {
+            each_subexpr_mut(x, blk)
         }
     }
 }
@@ -5865,9 +5890,46 @@ def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
     em.prog.defined_globals <- {for (d in tu.decls); d.name; where d.k == "global" && !d.is_extern}
 }
 
+// a reference C makes before the definition that gives its array a length (`extern int a[];`,
+// the definition later in the unit or in another one) keeps clang's type of unknown length: it
+// takes the type of the global the dumper's merge or the link binds its name to, so indexing and
+// decay address the definition's storage; a global no unit defines fails naming it
+def private complete_extern_arrays(var em : Emitter; var tu : CirTu) {
+    let globals <- {for (di, d in count(), tu.decls); d.name => di; where d.k == "global"}
+    for (d in tu.decls) {
+        if (d.k == "func") {
+            each_expr_mut(d.body) $(var x) {
+                complete_array_ref(em, tu, globals, x)
+            }
+        } elif (d.k == "global") {
+            each_subexpr_mut(d.init) $(var x) {
+                complete_array_ref(em, tu, globals, x)
+            }
+        }
+    }
+}
+
+// `complete_extern_arrays` for one expression, `globals` each global's index by name
+def private complete_array_ref(var em : Emitter; tu : CirTu; globals : table<string; int>; var x : CirExpr?) {
+    if (x.e != "ref" || kind_of(tu, x.t) != "array" || tu.types[x.t].count >= 0) {
+        return
+    }
+    let di = globals?[x.name] ?? -1
+    if (di < 0) {
+        return
+    }
+    let d = tu.decls[di]
+    if (kind_of(tu, d.t) == "array" && tu.types[d.t].count >= 0) {
+        x.t = d.t
+    } else {
+        fail(em, "`{d.c_name}` is an array of unknown length (`extern int a[];`) that no unit of the program defines", d.loc)
+    }
+}
+
 // the facts of the whole program, before any module of it is spelled: a local that hides another
 // is renamed in `tu` itself first (`unshadow_locals`)
 def private prepare_program(var em : Emitter; var tu : CirTu; side : Sidecar) {
+    complete_extern_arrays(em, tu)
     unshadow_locals(tu, em.prog.carried, em.prog.bound_objects)
     check_reserved_renames(em, tu)
     for (d in tu.decls) {

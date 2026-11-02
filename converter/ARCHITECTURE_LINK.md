@@ -32,7 +32,9 @@ folder; its `defines` reach every unit.
   stays a prototype, the emitter's libc mapping or error); the rest drop, each that drops for a
   definition in another unit a `bound` line. Two definitions of one name, or one name as a
   function in one unit and an object in another, are refused; two definitions at one header
-  location (a header function without `static`, C99 `inline` among them) name both units. Units of
+  location (a header function without `static`, C99 `inline` among them) name both units. An
+  array declaration of another length than its definition's (`extern int a[3];` against `int
+  a[4];`) is refused naming both; one of unknown length takes the definition's. Units of
   two dialects, or of one stem, are refused. Internal linkage belongs to the name: the dumper makes
   a declaration without `static` after a `static` one of its name static too.
 - Scopes: once the externals are bound, the caller's block sees the units, the merged types and
