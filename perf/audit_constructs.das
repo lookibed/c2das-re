@@ -175,7 +175,10 @@ def private folded_masks(text : string; var error : string&) : string {
                                (old = "uint(0 + 7)", by = "7u")], error)
 }
 
-def private plain_test(text : string; var error : string&) : string => replaced(text, "int64(trap != 0 ? 1 : 0) != 0", "trap != 0", error)
+// the test before P7.0e, the hint's operand widened to `long` and tested against 0: the converter
+// writes `trap != 0` since, so the rewrite restores the round trip and the row's factor is the
+// inverse of its cost
+def private expect_roundtrip(text : string; var error : string&) : string => replaced(text, "if (trap != 0) \{", "if (int64(trap != 0 ? 1 : 0) != 0) \{", error)
 
 def private plain_load(text : string; var error : string&) : string => replaced(text, "c_volatile_load(ci.trap)", "ci.trap", error)
 
@@ -247,7 +250,7 @@ def constructs : array<Construct> {
         Construct(name = "`addr(deref(p + i))` indexing", kernel = "node_index", spelling = "pointer", sites = ADDR_DEREF, rewrite = @@unwrap_addr_deref),
         Construct(name = "`enum_from_int` on the opcode", kernel = "enum_cast", spelling = "reinterpret", sites = "enum_from_int(", rewrite = @@enum_reinterpret),
         Construct(name = "macro mask arithmetic on `uint`", kernel = "instr_decode", spelling = "folded", sites = "~(~uint(0) <<", rewrite = @@folded_masks),
-        Construct(name = "`int64(x != 0 ? 1 : 0) != 0` test", kernel = "trap_check", spelling = "plain-test", sites = "? 1 : 0) != 0", rewrite = @@plain_test),
+        Construct(name = "`int64(x != 0 ? 1 : 0) != 0` test", kernel = "trap_check", spelling = "expect-roundtrip", sites = "? 1 : 0) != 0", rewrite = @@expect_roundtrip),
         Construct(name = "`c_volatile_load` of a volatile field", kernel = "trap_check", spelling = "plain-load", sites = "c_volatile_load(", rewrite = @@plain_load),
         Construct(name = "`setjmp` trampoline (`while (_sj_run)`)", kernel = "protected_call", spelling = "flat-try", sites = "while (_sj_run)", rewrite = @@flat_try),
         Construct(name = "`try`/`recover` itself", kernel = "protected_call", spelling = "no-try", sites = "\} recover \{", rewrite = @@no_try),

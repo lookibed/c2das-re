@@ -85,3 +85,15 @@ label and makes a goto that leaves the group, a re-dispatch or a goto out of the
 interpreter its branch is a labelled block that passes no goto outward, and a labelled loop in it
 claims every goto numbered below its label count (F60, F63), so `check_labelled_groups` refuses it
 with the label and the goto named.
+
+### Truth tests {#truth-tests}
+
+A truth test - the condition of an `if` or a loop, an operand of `!`, `&&` or `||`, the condition
+of `?:` - tests what is left past three spellings that cannot change it: a `__builtin_expect(e,
+c)` hint (its value is `e`), an integer conversion to a type no narrower (a value keeps its zero),
+and `!= 0` on a truth value (a comparison, `&&`, `||` or `!`, already 0 or 1). Lua's
+`l_unlikely(trap)`, `__builtin_expect((long) (trap != 0), 0)`, is `if (trap != 0)` and
+`l_likely(a < b)` is `a < b`, where the plain bool view spelled `int64(trap != 0 ? 1 : 0) != 0`;
+the interpreter runs the `trap_check` kernel's test 1.58 times faster so
+(`perf/ARCHITECTURE_AUDIT.md`). A narrowing conversion stays (`(char) 256` is zero), and a hint
+read as a number is its operand's value.
