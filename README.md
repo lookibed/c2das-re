@@ -639,67 +639,66 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-02 01:40 UTC); doomgeneric (Rust `b1d012eb5d26`, 2026-11-02 01:58 UTC); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-02 01:53 UTC); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-02 01:56 UTC); quakegeneric (Rust `b1d012eb5d26`, 2026-11-02 02:08 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-02 01:46 UTC).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-02 23:35 UTC); doomgeneric (Rust `b1d012eb5d26`, 2026-11-02 23:42 UTC); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-02 23:40 UTC); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-02 23:39 UTC); quakegeneric (Rust `b1d012eb5d26`, 2026-11-02 23:32 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-02 23:37 UTC).
 
 | Project       | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------------ | :--- | :----- | ----------: | ------: | ------: | ------: |
-| binjgb        | Ours | pass   |        pass |    pass |    pass | skipped |
-| binjgb        | Rust | pass   |        pass |    pass |    pass | skipped |
+| binjgb        | Ours | pass   |        pass |    pass |    pass | compile |
+| binjgb        | Rust | pass   |        pass |    pass |    pass | compile |
 | doomgeneric   | Ours | pass   |     refused | refused | refused | refused |
-| doomgeneric   | Rust | pass   |        pass |    pass |    pass | skipped |
+| doomgeneric   | Rust | pass   |        pass |    pass |    pass | compile |
 | h264bsd-mp4   | Ours | pass   |     refused | refused | refused | refused |
-| h264bsd-mp4   | Rust | pass   |        pass |    pass |    pass | skipped |
-| plmpeg-stream | Ours | pass   |     refused | refused | refused | refused |
-| plmpeg-stream | Rust | pass   |        pass |    pass |    pass | skipped |
+| h264bsd-mp4   | Rust | pass   |        pass |    pass |    pass | compile |
+| plmpeg-stream | Ours | pass   |        pass |    pass |    pass |    pass |
+| plmpeg-stream | Rust | pass   |        pass |    pass |    pass | compile |
 | quakegeneric  | Ours | pass   |     refused | refused | refused | refused |
-| quakegeneric  | Rust | pass   |        pass |  output |    pass | skipped |
+| quakegeneric  | Rust | pass   |        pass |  output |    pass | compile |
 | wasm3         | Ours | pass   |     refused | refused | refused | refused |
-| wasm3         | Rust | pass   |        pass |    pass |    pass | skipped |
+| wasm3         | Rust | pass   |        pass |    pass |    pass | compile |
 
 Why a lane does not pass:
 
-- binjgb, Ours, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
-- binjgb, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
+- binjgb, Ours, AOT: compile: aot build: the build exited 1 and left no binary: compare/work/projects/binjgb/ours_run/aot/ctx/binjgb_all.das.cpp:8637:9: error: cannot jump from t...
+- binjgb, Rust, AOT: compile: aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073744208 / limit 0
 - doomgeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` ...
-- doomgeneric, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
+- doomgeneric, Rust, AOT: compile: aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073785824 / limit 0
 - h264bsd-mp4, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definiti...
-- h264bsd-mp4, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
-- plmpeg-stream, Ours, interpreter JIT exe AOT: refused: emitter: /root/c2das/tests/manual/plmpeg-stream/src/module.c:226:5: external function `c2da_rt_reset` has no c_runtime mapping
-- plmpeg-stream, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
+- h264bsd-mp4, Rust, AOT: compile: aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073741952 / limit 0
+- plmpeg-stream, Rust, AOT: compile: aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073741952 / limit 0
 - quakegeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` wit...
 - quakegeneric, Rust, JIT: output: line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at compare/work/projects/quakegeneric/rust/host.das.inc:66...
-- quakegeneric, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
+- quakegeneric, Rust, AOT: compile: aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073741824 / limit 0
 - wasm3, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`
-- wasm3, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
+- wasm3, Rust, AOT: compile: aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073745648 / limit 0
 
-The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 3 samples a cell:
+The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), not measured in this capture (`--samples 0`):
 
-| Project       | Side | Native compiler      | Native s | interpreter |      JIT |      exe |      AOT |
-| :------------ | :--- | :------------------- | -------: | ----------: | -------: | -------: | -------: |
-| binjgb        | Ours | clang version 22.1.8 | 0.099588 |       74.11 |     0.99 |     1.25 |  skipped |
-| binjgb        | Rust | clang version 22.1.8 | 0.099588 |       60.08 |     0.83 |     1.14 |  skipped |
-| doomgeneric   | Ours | clang version 22.1.8 | 0.128605 |     refused |  refused |  refused |  refused |
-| doomgeneric   | Rust | clang version 22.1.8 | 0.128605 |       37.70 |     1.23 |     1.09 |  skipped |
-| h264bsd-mp4   | Ours | clang version 22.1.8 | 0.089747 |     refused |  refused |  refused |  refused |
-| h264bsd-mp4   | Rust | clang version 22.1.8 | 0.089747 |       54.93 |     1.10 |     1.18 |  skipped |
-| plmpeg-stream | Ours | clang version 22.1.8 | 0.043238 |     refused |  refused |  refused |  refused |
-| plmpeg-stream | Rust | clang version 22.1.8 | 0.043238 |       36.42 |     0.94 |     1.01 |  skipped |
-| quakegeneric  | Ours | clang version 22.1.8 |      n/a |    no bench | no bench | no bench | no bench |
-| quakegeneric  | Rust | clang version 22.1.8 |      n/a |    no bench | no bench | no bench | no bench |
-| wasm3         | Ours | clang version 22.1.8 | 0.002048 |     refused |  refused |  refused |  refused |
-| wasm3         | Rust | clang version 22.1.8 | 0.002048 |       68.30 |     2.50 |     3.29 |  skipped |
+| Project       | Side | Native compiler      | Native s |  interpreter |          JIT |          exe |          AOT |
+| :------------ | :--- | :------------------- | -------: | -----------: | -----------: | -----------: | -----------: |
+| binjgb        | Ours | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
+| binjgb        | Rust | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
+| doomgeneric   | Ours | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
+| doomgeneric   | Rust | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
+| h264bsd-mp4   | Ours | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
+| h264bsd-mp4   | Rust | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
+| plmpeg-stream | Ours | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
+| plmpeg-stream | Rust | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
+| quakegeneric  | Ours | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
+| quakegeneric  | Rust | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
+| wasm3         | Ours | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
+| wasm3         | Rust | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
 
 The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
 
 | Project       | Side | Code    | Files | Lines | Runtime lines | c_function | goto | label | literal_named | pointer_arith | pointer_index | reinterpret | unsafe_block | unsafe_expr | while_rangeable |
 | :------------ | :--- | :------ | ----: | ----: | ------------: | ---------: | ---: | ----: | ------------: | ------------: | ------------: | ----------: | -----------: | ----------: | --------------: |
-| binjgb        | Ours | ok      |     1 |  7997 |             0 |        110 |   38 |    19 |          1400 |            88 |            43 |         295 |            0 |         119 |              23 |
+| binjgb        | Ours | ok      |     1 |  8260 |             0 |        110 |   38 |    19 |          1778 |            88 |            43 |         295 |            0 |         119 |              23 |
 | binjgb        | Rust | ok      |     1 | 11481 |           956 |          0 |  670 |   867 |          2393 |            33 |           939 |        3818 |            8 |        5049 |              12 |
 | doomgeneric   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | doomgeneric   | Rust | ok      |     1 | 37045 |          1579 |          0 |  435 |   612 |         43595 |           523 |          3454 |       10418 |          260 |       15426 |             169 |
 | h264bsd-mp4   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | h264bsd-mp4   | Rust | ok      |     1 | 24316 |           822 |          0 |  362 |   309 |          7164 |          1738 |          2701 |        5172 |         1208 |        8557 |              73 |
-| plmpeg-stream | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| plmpeg-stream | Ours | ok      |     1 |  3618 |             0 |         64 |    0 |     0 |          2062 |            11 |           387 |          66 |            0 |           6 |               6 |
 | plmpeg-stream | Rust | ok      |     1 |  4988 |           822 |          0 |    0 |     0 |          1891 |            10 |           587 |         505 |            0 |        1259 |              11 |
 | quakegeneric  | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | quakegeneric  | Rust | ok      |    72 | 59613 |          1781 |          0 |  461 |   578 |          2275 |           745 |          5761 |       10506 |          219 |       20287 |             203 |
@@ -753,26 +752,27 @@ Ours:
 def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
     var x : uint8 = e.state.ppu.render_x
     var y : uint8 = e.state.ppu.line_y
-    if (e.state.ppu.stat.mode != PPUMode.PPU_MODE_MODE3 || int(x) >= 160) {
+    if (e.state.ppu.stat.mode != PPUMode.PPU_MODE_MODE3 || int(x) >= SCREEN_WIDTH) {
         return
     }
     var display_bg : Bool = enum_from_int(type<Bool>, (uint(int(e.state.is_cgb)) != 0 || uint(int(e.state.ppu.lcdc.bg_display)) != 0) && !(int(e.config.disable_bg) != 0) ? 1 : 0)
     var display_obj : Bool = enum_from_int(type<Bool>, uint(int(e.state.ppu.lcdc.obj_display)) != 0 && !(int(e.config.disable_obj) != 0) ? 1 : 0)
     var rendering_window : Bool = e.state.ppu.rendering_window
     var window_counter : int = uint(int(rendering_window)) != 0 ? 0 : 255
-    if (!(int(rendering_window) != 0) && uint(int(e.state.ppu.lcdc.window_display)) != 0 && !(int(e.config.disable_window) != 0) && int(e.state.ppu.wx) <= 166 && int(y) >= int(e.state.ppu.wy)) {
+    if (!(int(rendering_window) != 0) && uint(int(e.state.ppu.lcdc.window_display)) != 0 && !(int(e.config.disable_window) != 0) && int(e.state.ppu.wx) <= WINDOW_MAX_X && int(y) >= int(e.state.ppu.wy)) {
         window_counter = 0 > int(e.state.ppu.wx) - (int(x) + 7) ? 0 : int(e.state.ppu.wx) - (int(x) + 7)
     }
     var data_select : TileDataSelect = e.state.ppu.lcdc.bg_tile_data_select
     var mx : uint8 = uint8(int(e.state.ppu.scx) + int(x))
     var my : uint8 = uint8(int(e.state.ppu.scy) + int(y))
-    var map_base : uint16 = uint16(int(binjgb_all__map_select_to_address(e.state.ppu.lcdc.bg_tile_map_select)) | (int(my) >> 3) * 32)
+    var map_base : uint16 = uint16(int(binjgb_all__map_select_to_address(e.state.ppu.lcdc.bg_tile_map_select)) | (int(my) >> 3) * TILE_MAP_WIDTH)
     var pixel : uint?
     if (e.state.sgb.mask != SgbMask.SGB_MASK_CANCEL) {
         pixel = addr(ppu_mode3_synchronize_s_dummy_frame_buffer_line[0])
     } else {
-        pixel = addr(e.frame_buffer[0]) + end_index(int(y) * 160 + int(x), 23040)
+        pixel = addr(e.frame_buffer[0]) + end_index(int(y) * SCREEN_WIDTH + int(x), 23040)
     }
+    // Cache map_addr info.
     var map_addr : uint16 = uint16(0)
     var pal : PaletteRGBA? = null
     var lo : uint8 = uint8(0)
@@ -780,7 +780,7 @@ def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
     var priority : Bool = Bool.FALSE
     var i : int
     {
-        while (e.state.ppu.mode3_render_ticks < e.state.ticks && int(x) < 160) {
+        while (e.state.ppu.mode3_render_ticks < e.state.ticks && int(x) < SCREEN_WIDTH) {
             var bg_is_zero : Bool[4] = fixed_array(Bool.TRUE, Bool.TRUE, Bool.TRUE, Bool.TRUE)
             var bg_priority : Bool[4] = fixed_array(Bool.FALSE, Bool.FALSE, Bool.FALSE, Bool.FALSE)
             {
@@ -788,13 +788,13 @@ def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
                 while (i < 4) {
                     let _t0 = window_counter
                     window_counter--
-                    if (int64(!!(_t0 == 0) ? 1 : 0) != 0) {
+                    if (!!(_t0 == 0)) {
                         display_bg = Bool.TRUE
                         rendering_window = display_bg
                         e.state.ppu.rendering_window = rendering_window
-                        mx = uint8(int(x) + i + 7 - int(e.state.ppu.wx))
+                        mx = uint8(int(x) + i + WINDOW_X_OFFSET - int(e.state.ppu.wx))
                         my = e.state.ppu.win_y
-                        map_base = uint16(int(binjgb_all__map_select_to_address(e.state.ppu.lcdc.window_tile_map_select)) | (int(my) >> 3) * 32)
+                        map_base = uint16(int(binjgb_all__map_select_to_address(e.state.ppu.lcdc.window_tile_map_select)) | (int(my) >> 3) * TILE_MAP_WIDTH)
                         map_addr = uint16(0)
                     }
                     if (int(display_bg) != 0) {
@@ -819,7 +819,7 @@ def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
                                     my7 = uint8(7 - int(my7))
                                 }
                                 priority = enum_from_int(type<Bool>, (int(attr) & 128) != 0 ? 1 : 0)
-                                var tile_addr : uint16 = uint16((int(tile_index) * 8 + int(my7)) * 2)
+                                var tile_addr : uint16 = uint16((int(tile_index) * TILE_HEIGHT + int(my7)) * TILE_ROW_BYTES)
                                 lo = e.state.vram.data[int(tile_addr)]
                                 hi = e.state.vram.data[int(tile_addr) + 1]
                                 if ((int(attr) & 32) != 0) {
@@ -828,14 +828,14 @@ def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
                                 }
                             } else {
                                 if (int(e.state.is_sgb) != 0) {
-                                    var idx : int = (int(y) >> 3) * (160 >> 3) + (int(x) >> 3)
+                                    var idx : int = (int(y) >> 3) * (SCREEN_WIDTH >> 3) + (int(x) >> 3)
                                     var palidx : uint8 = uint8(int(e.state.sgb.attr_map[idx >> 2]) >> 2 * (3 - (idx & 3)) & 3)
                                     pal = addr(e.sgb_pal[0]) + end_index(int(palidx), 4)
                                 } else {
                                     pal = addr(e.pal[0]) + end_index(int(PaletteType.PALETTE_TYPE_BGP), 3)
                                 }
                                 priority = Bool.FALSE
-                                var tile_addr : uint16 = uint16((int(tile_index) * 8 + int(my7)) * 2)
+                                var tile_addr : uint16 = uint16((int(tile_index) * TILE_HEIGHT + int(my7)) * TILE_ROW_BYTES)
                                 lo = e.state.vram.data[int(tile_addr)]
                                 hi = e.state.vram.data[int(tile_addr) + 1]
                             }
@@ -860,6 +860,8 @@ def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
                     mx = uint8(uint(mx) + 1)
                 }
             }
+            // LCDC bit 0 works differently on cgb; when it's cleared OBJ will always
+            // have priority over bg and window.
             if (uint(int(e.state.is_cgb)) != 0 && !(int(e.state.ppu.lcdc.bg_display) != 0)) {
                 crt::memset(reinterpret<void?>(addr(bg_is_zero)), int(Bool.TRUE), uint64(typeinfo sizeof(type<Bool[4]>)))
                 crt::memset(reinterpret<void?>(addr(bg_priority)), int(Bool.FALSE), uint64(typeinfo sizeof(type<Bool[4]>)))
@@ -872,7 +874,10 @@ def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
                     while (n >= 0) {
                         {
                             var o : Obj? = addr(e.state.ppu.line_obj[0]) + end_index(n, 10)
+                            // Does [x, x + 4) intersect [o->x, o->x + 8)? Note that the sums must
+                            // wrap at 256 (i.e. arithmetic is 8-bit).
                             var ox_start : int8 = int8(int(o.x) - int(x))
+                            // ox_end is inclusive.
                             var ox_end : int8 = int8(int(ox_start) + 7)
                             var oy : uint8 = uint8(int(y) - int(o.y))
                             if (int(uint8(ox_start)) >= 4 && int(uint8(ox_end)) >= 8 || int(oy) >= int(obj_height)) {
@@ -884,8 +889,10 @@ def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
                             var tile_index : uint16 = uint16(o.tile)
                             if (int(obj_height) == 16) {
                                 if (int(oy) < 8) {
+                                    // Top tile of 8x16 sprite.
                                     tile_index = uint16(int(tile_index) & 254)
                                 } else {
+                                    // Bottom tile of 8x16 sprite.
                                     tile_index = uint16(int(tile_index) | 1)
                                     oy = uint8(int(oy) - 8)
                                 }
@@ -899,7 +906,7 @@ def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
                             } else {
                                 pal1 = addr(e.pal[0]) + end_index(int(o.palette) + 1, 3)
                             }
-                            var tile_addr : uint16 = uint16((int(tile_index) * 8 + (int(oy) & 7)) * 2)
+                            var tile_addr : uint16 = uint16((int(tile_index) * TILE_HEIGHT + (int(oy) & 7)) * TILE_ROW_BYTES)
                             var lo1 : uint8 = e.state.vram.data[int(tile_addr)]
                             var hi1 : uint8 = e.state.vram.data[int(tile_addr) + 1]
                             if (!(int(o.xflip) != 0)) {
@@ -910,6 +917,7 @@ def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
                             lo1 = uint8(uint(lo1) >> uint(tile_data_offset))
                             hi1 = uint8(uint(hi1) >> uint(tile_data_offset))
                             var start : int = 0 > int(ox_start) ? 0 : int(ox_start)
+                            // end is inclusive.
                             var end : int = 3 < int(ox_end) ? 3 : int(ox_end)
                             {
                                 i = start
@@ -929,7 +937,7 @@ def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
                     }
                 }
             }
-            e.state.ppu.mode3_render_ticks += uint64(4)
+            e.state.ppu.mode3_render_ticks += uint64(CPU_TICK)
             pixel = pixel + 4
             x = uint8(int(x) + 4)
         }
@@ -1497,7 +1505,93 @@ def FilterVerLumaEdge(var data_40 : uint8?; var bS_7 : uint; var thresholds_8 : 
 
 #### `plmpeg-stream`: `plm_video_idct`
 
-Ours: not found in this side's module.
+Ours:
+
+```das
+[c_function]
+def plm_video_idct(var _c_block : int?) {
+    var b1 : int
+    var b3 : int
+    var b4 : int
+    var b6 : int
+    var b7 : int
+    var tmp1 : int
+    var tmp2 : int
+    var m0 : int
+    var x0 : int
+    var x1 : int
+    var x2 : int
+    var x3 : int
+    var x4 : int
+    var y3 : int
+    var y4 : int
+    var y5 : int
+    var y6 : int
+    var y7 : int
+    // Transform columns
+    for (i in range(8)) {
+        b1 = deref(_c_block + (4 * 8 + i))
+        b3 = deref(_c_block + (2 * 8 + i)) + deref(_c_block + (6 * 8 + i))
+        b4 = deref(_c_block + (5 * 8 + i)) - deref(_c_block + (3 * 8 + i))
+        tmp1 = deref(_c_block + (1 * 8 + i)) + deref(_c_block + (7 * 8 + i))
+        tmp2 = deref(_c_block + (3 * 8 + i)) + deref(_c_block + (5 * 8 + i))
+        b6 = deref(_c_block + (1 * 8 + i)) - deref(_c_block + (7 * 8 + i))
+        b7 = tmp1 + tmp2
+        m0 = deref(_c_block + (0 * 8 + i))
+        x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7
+        x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)
+        x1 = m0 - b1
+        x2 = ((deref(_c_block + (2 * 8 + i)) - deref(_c_block + (6 * 8 + i))) * 362 + 128 >> 8) - b3
+        x3 = m0 + b1
+        y3 = x1 + x2
+        y4 = x3 + b3
+        y5 = x1 - x2
+        y6 = x3 - b3
+        y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)
+        deref(_c_block + (0 * 8 + i)) = b7 + y4
+        deref(_c_block + (1 * 8 + i)) = x4 + y3
+        deref(_c_block + (2 * 8 + i)) = y5 - x0
+        deref(_c_block + (3 * 8 + i)) = y6 - y7
+        deref(_c_block + (4 * 8 + i)) = y6 + y7
+        deref(_c_block + (5 * 8 + i)) = x0 + y5
+        deref(_c_block + (6 * 8 + i)) = y3 - x4
+        deref(_c_block + (7 * 8 + i)) = y4 - b7
+    }
+    // Transform rows
+    {
+        var i : int = 0
+        while (i < 64) {
+            b1 = deref(_c_block + (4 + i))
+            b3 = deref(_c_block + (2 + i)) + deref(_c_block + (6 + i))
+            b4 = deref(_c_block + (5 + i)) - deref(_c_block + (3 + i))
+            tmp1 = deref(_c_block + (1 + i)) + deref(_c_block + (7 + i))
+            tmp2 = deref(_c_block + (3 + i)) + deref(_c_block + (5 + i))
+            b6 = deref(_c_block + (1 + i)) - deref(_c_block + (7 + i))
+            b7 = tmp1 + tmp2
+            m0 = deref(_c_block + (0 + i))
+            x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7
+            x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)
+            x1 = m0 - b1
+            x2 = ((deref(_c_block + (2 + i)) - deref(_c_block + (6 + i))) * 362 + 128 >> 8) - b3
+            x3 = m0 + b1
+            y3 = x1 + x2
+            y4 = x3 + b3
+            y5 = x1 - x2
+            y6 = x3 - b3
+            y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)
+            deref(_c_block + (0 + i)) = b7 + y4 + 128 >> 8
+            deref(_c_block + (1 + i)) = x4 + y3 + 128 >> 8
+            deref(_c_block + (2 + i)) = y5 - x0 + 128 >> 8
+            deref(_c_block + (3 + i)) = y6 - y7 + 128 >> 8
+            deref(_c_block + (4 + i)) = y6 + y7 + 128 >> 8
+            deref(_c_block + (5 + i)) = x0 + y5 + 128 >> 8
+            deref(_c_block + (6 + i)) = y3 - x4 + 128 >> 8
+            deref(_c_block + (7 + i)) = y4 - b7 + 128 >> 8
+            i += 8
+        }
+    }
+}
+```
 
 Rust:
 
@@ -1587,7 +1681,194 @@ def plm_video_idct(var block_2 : int?) {
 
 #### `plmpeg-stream`: `plm_video_decode_block`
 
-Ours: not found in this side's module.
+Ours:
+
+```das
+[c_function]
+def plm_video_decode_block(var self : plm_video_t?; _c_block : int) {
+    var n : int = 0
+    var quant_matrix : uint8?
+    // Decode DC coefficient of intra-coded blocks
+    if (self.macroblock_intra != 0) {
+        var predictor : int
+        var dct_size : int
+        // DC prediction
+        var plane_index : int = _c_block > 3 ? _c_block - 3 : 0
+        predictor = self.dc_predictor[plane_index]
+        dct_size = int(plm_buffer_read_vlc(self.buffer, plmpeg_file_all__PLM_VIDEO_DCT_SIZE[plane_index]))
+        // Read DC coeff
+        if (dct_size > 0) {
+            var differential : int = plm_buffer_read(self.buffer, dct_size)
+            if ((differential & 1 << dct_size - 1) != 0) {
+                self.block_data[0] = predictor + differential
+            } else {
+                self.block_data[0] = predictor + (-(1 << dct_size) | differential + 1)
+            }
+        } else {
+            self.block_data[0] = predictor
+        }
+        // Save predictor value
+        self.dc_predictor[plane_index] = self.block_data[0]
+        // Dequantize + premultiply
+        self.block_data[0] <<= 3 + 5
+        quant_matrix = addr(self.intra_quant_matrix[0])
+        n = 1
+    } else {
+        quant_matrix = addr(self.non_intra_quant_matrix[0])
+    }
+    // Decode AC coefficients (+DC for non-intra)
+    var level : int = 0
+    while (TRUE != 0) {
+        var run : int = 0
+        var coeff : uint16 = plm_buffer_read_vlc_uint(self.buffer, addr(plmpeg_file_all__PLM_VIDEO_DCT_COEFF[0]))
+        if (int(coeff) == 1 && n > 0 && plm_buffer_read(self.buffer, 1) == 0) {
+            // end_of_block
+            break
+        }
+        if (int(coeff) == 65535) {
+            // escape
+            run = plm_buffer_read(self.buffer, 6)
+            level = plm_buffer_read(self.buffer, 8)
+            if (level == 0) {
+                level = plm_buffer_read(self.buffer, 8)
+            } elif (level == 128) {
+                level = plm_buffer_read(self.buffer, 8) - 256
+            } elif (level > 128) {
+                level -= 256
+            }
+        } else {
+            run = int(coeff) >> 8
+            level = int(coeff) & 255
+            if (plm_buffer_read(self.buffer, 1) != 0) {
+                level = -level
+            }
+        }
+        n += run
+        if (n < 0 || n >= 64) {
+            // invalid
+            return
+        }
+        var de_zig_zagged : int = int(plmpeg_file_all__PLM_VIDEO_ZIG_ZAG[n])
+        n++
+        // Dequantize, oddify, clip
+        level = int(uint(level) << 1u)
+        if (!(self.macroblock_intra != 0)) {
+            level += level < 0 ? -1 : 1
+        }
+        level = level * self.quantizer_scale * int(deref(quant_matrix + de_zig_zagged)) >> 4
+        if ((level & 1) == 0) {
+            level -= level > 0 ? 1 : -1
+        }
+        if (level > 2047) {
+            level = 2047
+        } elif (level < -2048) {
+            level = -2048
+        }
+        // Save premultiplied coefficient
+        self.block_data[de_zig_zagged] = level * int(plmpeg_file_all__PLM_VIDEO_PREMULTIPLIER_MATRIX[de_zig_zagged])
+    }
+    // Move block to its place
+    var d : uint8?
+    var dw : int
+    var di : int
+    if (_c_block < 4) {
+        d = self.frame_current.y.data
+        dw = self.luma_width
+        di = self.mb_row * self.luma_width + self.mb_col << 4
+        if ((_c_block & 1) != 0) {
+            di += 8
+        }
+        if ((_c_block & 2) != 0) {
+            di += self.luma_width << 3
+        }
+    } else {
+        d = _c_block == 4 ? self.frame_current.cb.data : self.frame_current.cr.data
+        dw = self.chroma_width
+        di = (self.mb_row * self.luma_width << 2) + (self.mb_col << 3)
+    }
+    var s : int? = addr(self.block_data[0])
+    var si : int = 0
+    if (self.macroblock_intra != 0) {
+        // Overwrite (no prediction)
+        if (n == 1) {
+            var clamped : int = int(plmpeg_file_all__plm_clamp(deref(s + 0) + 128 >> 8))
+            var _first = true
+            while (_first || 0 != 0) {
+                _first = false
+                var dest_scan : int = dw - 8
+                var source_scan : int = 8 - 8
+                for (y in range(8)) {
+                    for (x in range(8)) {
+                        deref(d + di) = uint8(clamped)
+                        si++
+                        di++
+                    }
+                    si += source_scan
+                    di += dest_scan
+                }
+            }
+            deref(s + 0) = 0
+        } else {
+            plm_video_idct(s)
+            var _first2 = true
+            while (_first2 || 0 != 0) {
+                _first2 = false
+                var dest_scan : int = dw - 8
+                var source_scan : int = 8 - 8
+                for (y in range(8)) {
+                    for (x in range(8)) {
+                        deref(d + di) = plmpeg_file_all__plm_clamp(deref(s + si))
+                        si++
+                        di++
+                    }
+                    si += source_scan
+                    di += dest_scan
+                }
+            }
+            crt::memset(reinterpret<void?>(addr(self.block_data[0])), 0, uint64(typeinfo sizeof(type<int[64]>)))
+        }
+    } else {
+        // Add data to the predicted macroblock
+        if (n == 1) {
+            var value : int = deref(s + 0) + 128 >> 8
+            var _first3 = true
+            while (_first3 || 0 != 0) {
+                _first3 = false
+                var dest_scan : int = dw - 8
+                var source_scan : int = 8 - 8
+                for (y in range(8)) {
+                    for (x in range(8)) {
+                        deref(d + di) = plmpeg_file_all__plm_clamp(int(deref(d + di)) + value)
+                        si++
+                        di++
+                    }
+                    si += source_scan
+                    di += dest_scan
+                }
+            }
+            deref(s + 0) = 0
+        } else {
+            plm_video_idct(s)
+            var _first4 = true
+            while (_first4 || 0 != 0) {
+                _first4 = false
+                var dest_scan : int = dw - 8
+                var source_scan : int = 8 - 8
+                for (y in range(8)) {
+                    for (x in range(8)) {
+                        deref(d + di) = plmpeg_file_all__plm_clamp(int(deref(d + di)) + deref(s + si))
+                        si++
+                        di++
+                    }
+                    si += source_scan
+                    di += dest_scan
+                }
+            }
+            crt::memset(reinterpret<void?>(addr(self.block_data[0])), 0, uint64(typeinfo sizeof(type<int[64]>)))
+        }
+    }
+}
+```
 
 Rust:
 
@@ -2065,7 +2346,6 @@ def call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Resul
 - va_forward, interpreter: Rust 131.56x native, ours 215.67x.
 - project doomgeneric: Rust passes interpreter, JIT, exe, ours does not.
 - project h264bsd-mp4: Rust passes interpreter, JIT, exe, ours does not.
-- project plmpeg-stream: Rust passes interpreter, JIT, exe, ours does not.
 - project quakegeneric: Rust passes interpreter, exe, ours does not.
 - project wasm3: Rust passes interpreter, JIT, exe, ours does not.
 - counter `pointer_arith`: Rust 606, ours 843 over all keys.
