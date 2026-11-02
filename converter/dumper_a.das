@@ -2099,7 +2099,7 @@ def private dump_literal(var d : Dumper; js : JsonValue?; kind : string; t : int
         return new CirExpr(e = "int_lit", t = t, v = js?["value"] ?? "0")
     }
     if (kind == "CharacterLiteral") {
-        return new CirExpr(e = "int_lit", t = t, v = "{js?["value"] ?? 0l}")
+        return new CirExpr(e = "int_lit", t = t, v = "{js?["value"] ?? 0l}", is_char = true)
     }
     if (kind == "FloatingLiteral") {
         return new CirExpr(e = "float_lit", t = t, v = hex_float(js?["value"] ?? "0"))
@@ -2786,6 +2786,15 @@ let MARKER_KINDS <- {"CaseStmt", "DefaultStmt", "LabelStmt"}
 // `case v:`, `default:` and `name:` are markers in the statement list, each followed by the
 // statement clang nests under it; clang nests shared labels (`case 2: case 3: s`) one under
 // the other
+// whether a case label's constant is a character literal under clang's wrappers
+def private is_char_literal(js : JsonValue?) : bool {
+    let kind = node_kind(js)
+    if (kind == "ConstantExpr" || kind == "ParenExpr" || kind == "ImplicitCastExpr") {
+        return child_count(js) > 0 && is_char_literal((js?["inner"] as _array)[0])
+    }
+    return kind == "CharacterLiteral"
+}
+
 def private dump_case(var d : Dumper; js : JsonValue?; var into : array<CirStmt?>) : bool {
     let at = loc_of(d, js)
     let kind = node_kind(js)
@@ -2802,7 +2811,7 @@ def private dump_case(var d : Dumper; js : JsonValue?; var into : array<CirStmt?
         if (nkids < 1 || !fold_constant(d, (kids as _array)[0], v)) {
             return false
         }
-        into |> push(new CirStmt(s = "case", v = v, loc = at))
+        into |> push(new CirStmt(s = "case", v = v, is_char = is_char_literal((kids as _array)[0]), loc = at))
     } else {
         into |> push(new CirStmt(s = "default", loc = at))
     }

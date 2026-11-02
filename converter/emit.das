@@ -54,6 +54,8 @@ struct Emitter {
     hoisted : table<uint64; Em>
     globals_seen : int
     switch_counter : int
+    // the case values the switch being emitted labels with a character literal
+    char_cases : table<int64>
     setjmp_counter : int
     // the names the function being emitted takes the address of
     addressed : table<string>
@@ -745,6 +747,12 @@ def private literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : E
         }
         return value(digits + "lf", PREC_PRIMARY)
     }
+    if (x.is_char && spelled == "int") {
+        let spelling = char_literal(to_int(x.v))
+        if (!empty(spelling)) {
+            return value(spelling, PREC_PRIMARY)
+        }
+    }
     let negative = x.v |> starts_with("-")
     let prec = negative ? PREC_UNARY : PREC_PRIMARY
     let suffixed = int_literal(spelled, x.v)
@@ -756,6 +764,21 @@ def private literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : E
     }
     return value("{spelled}({x.v})", PREC_PRIMARY)
 }
+
+// the das character literal of C character `c`, "" where das has none: the printable ASCII and
+// the escapes `\n \t \r \b \f \\ \'` (das reads no `\0`, `\a`, `\v`, octal or hex escape)
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#character-literals")]
+def private char_literal(c : int) : string {
+    if (c == '\\' || c == '\'') {
+        return "'\\{to_char(c)}'"
+    }
+    if (c >= 32 && c < 127) {
+        return "'{to_char(c)}'"
+    }
+    return CHAR_ESCAPES?[c] ?? ""
+}
+
+let private CHAR_ESCAPES <- {10 => "'\\n'", 9 => "'\\t'", 13 => "'\\r'", 8 => "'\\b'", 12 => "'\\f'"}
 
 // `digits` as a literal of the das integer type `spelled` by its suffix; "" for a type that has
 // no literal of its own (the small integers, `bool`)
@@ -3667,6 +3690,10 @@ def private case_compare(var em : Emitter; tu : CirTu; cond : string; cond_t : i
         return empty(named) ? "int({cond}) == {v}" : "{cond} == {enum_item(em, tu, cond_t, named)}"
     }
     let spelled = das_type(em, tu, cond_t, CirLoc())
+    let spelling = spelled == "int" && key_exists(em.char_cases, v) ? char_literal(int(v)) : ""
+    if (!empty(spelling)) {
+        return "{cond} == {spelling}"
+    }
     let suffixed = int_literal(spelled, "{v}")
     let literal = v == -2147483648l && spelled == "int" ? "-2147483647 - 1" : (!empty(suffixed) ? suffixed : "{spelled}({v})")
     return "{cond} == {literal}"
@@ -3702,6 +3729,8 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
         return
     }
     em.switch_counter++
+    var outer_chars <- em.char_cases
+    em.char_cases <- char_cases(st.body_s)
     var cond_t = st.cond.t
     let restart = em.flag_switches?[intptr(st.body_s)] ?? 0
     let cond = switch_condition(em, tu, st, cond_t)
@@ -3722,6 +3751,23 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
     } else {
         emit_flag_loop(em, tu, groups, cond, cond_t, st.body_s, restart)
     }
+    em.char_cases <- outer_chars
+}
+
+// the case values switch body `body` labels with a character literal
+def private char_cases(body : CirStmt const?) : table<int64> {
+    var found : table<int64>
+    if (body.s == "case" && body.is_char) {
+        found |> insert(body.v)
+    }
+    if (body.s == "compound") {
+        for (st in body.body) {
+            if (st.s == "case" && st.is_char) {
+                found |> insert(st.v)
+            }
+        }
+    }
+    return <- found
 }
 
 // each label of switch `st` a goto into its group reaches, as a case of its own number (1 up, in

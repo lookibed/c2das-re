@@ -95,6 +95,8 @@ struct CirExpr {
     init : CirExpr?
     // an lvalue (`ref`, `member`, `index`, `un deref`) whose C type is volatile-qualified
     vol : bool
+    // an `int_lit` that the C source spelled as a character literal
+    is_char : bool
     macro : string
 }
 
@@ -117,6 +119,8 @@ struct CirStmt {
     init_s : CirStmt?
     inc : CirExpr?
     v : int64
+    // a `case` whose label the C source spelled as a character literal
+    is_char : bool
     label_name : string
     dims : array<CirDim>
     loc : CirLoc
@@ -597,6 +601,10 @@ def private write_expr(var w : Writer; x : CirExpr) {
         member(w, "vol", false)
         w.out |> push("true")
     }
+    if (x.is_char) {
+        member(w, "char", false)
+        w.out |> push("true")
+    }
     if (!empty(x.macro)) {
         member(w, "macro", false)
         w.out |> push(json_str(x.macro))
@@ -715,6 +723,10 @@ def private write_stmt(var w : Writer; x : CirStmt) {
     } elif (x.s == "case") {
         member(w, "v", false)
         w.out |> push("{x.v}")
+        if (x.is_char) {
+            member(w, "char", false)
+            w.out |> push("true")
+        }
     } elif (x.s == "return") {
         member(w, "e", false)
         write_expr_or_null(w, x.e)
@@ -1067,6 +1079,7 @@ def private read_expr(js : JsonValue?) : CirExpr? {
         read_expr_composite(js, x)
     }
     x.vol = js_bool(js, "vol")
+    x.is_char = js_bool(js, "char")
     x.macro = js_str(js, "macro")
     return x
 }
@@ -1105,6 +1118,7 @@ def private read_stmt(js : JsonValue?) : CirStmt? {
         x.body_s = read_stmt(js?["body"])
     } elif (x.s == "case") {
         x.v = js?["v"] ?? 0l
+        x.is_char = js_bool(js, "char")
     } elif (x.s == "return") {
         x.e = read_expr(js?["e"])
     } elif (x.s == "goto") {
