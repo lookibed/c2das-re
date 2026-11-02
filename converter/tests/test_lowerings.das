@@ -1717,7 +1717,7 @@ def p7_fixtures(t : T?) {
         t |> equal(count(text, "finally"), 1, text)
         has_text(t, text, "    x += n\n    x -= 2\n    x *= 3\n    x &= 255\n    x |= 256\n    x ^= 1\n    y *= int64(5)\n    u += 3u\n    d *= 4.0lf\n")
         has_text(t, text, "    a.sum += x\n    a.cells[1] += 7\n    a.mean += d\n")
-        has_text(t, text, "    c = uint8(int(c) + 1)\n    x = n + x\n    x = x / 2\n")
+        has_text(t, text, "    c = uint8(int(c) + 1)\n    // the variable on the right\n    x = n + x\n    // not one of the six\n    x = x / 2\n")
         // an effect on the right keeps the plain store, its step made once
         has_text(t, text, "    let _t0 = z\n    z++\n    x = x + _t0\n")
         has_text(t, text, "    deref(pz) += 4\n")
