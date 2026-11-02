@@ -13,6 +13,7 @@ require sidecar
 require bit_units
 require layout
 require daslib/rtti
+require daslib/ast
 
 //! The das emitter: C-IR in, gen2 source text out, one pass that spells nodes and lowers the
 //! shapes `docs/lowering-examples.md` names as it meets them (statement-ification, the loop
@@ -69,6 +70,8 @@ struct Emitter {
     constants : table<string; string>
     constant_order : array<string>
     in_body : bool
+    // whether a builtin module (`$`, `math`) holds a global of the name, by name
+    builtin_globals : table<string; bool>
     setjmp_counter : int
     // the names the function being emitted takes the address of
     addressed : table<string>
@@ -2207,6 +2210,9 @@ let private CONSTANT_OPS <- {"add", "sub", "mul", "div", "rem", "shl", "shr", "b
 [arch(at="ARCHITECTURE_EMITTER_TEXT.md#constant-names")]
 def private named_constant(var em : Emitter; macro : string; e : Em) : Em {
     let name = reserved_rename(macro)
+    if (builtin_global(em, name)) {
+        return e
+    }
     let have = em.constants?[name] ?? ""
     if (empty(have)) {
         em.constants[name] = e.text
@@ -2215,6 +2221,19 @@ def private named_constant(var em : Emitter; macro : string; e : Em) : Em {
         return e
     }
     return Em(text = name, prec = PREC_PRIMARY, is_bool = e.is_bool)
+}
+
+// whether a builtin module holds a global named `name` (`math`'s `PI`, `$`'s `INT_MAX`), which a
+// module `let` of the name would make ambiguous
+def private builtin_global(var em : Emitter; name : string) : bool {
+    if (!key_exists(em.builtin_globals, name)) {
+        var found = false
+        program_for_each_registered_module() $(mod) {
+            found = found || find_variable(mod, name) != null
+        }
+        em.builtin_globals[name] = found
+    }
+    return em.builtin_globals?[name] ?? false
 }
 
 // the module's `let` of each `#define` constant its functions name, in first-use order

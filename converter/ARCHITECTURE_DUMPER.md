@@ -277,9 +277,9 @@ pass never saw.
 
 An expression node an object-like macro of the program expands to whole carries the macro's name in
 `macro` (the spec's section 6.2 names the field for a literal; Dumper A writes it on any expression
-node, and Dumper B on none): both ends of the node's range expand from one location, its text an
-identifier no `(` follows (a function-like macro's call is not named), and the begin's spelling lies
-in a file of the program (`in_program`), since a system header's macro may share its name with a das
-builtin (`INT_MAX`). The outermost such node is named, an implicit conversion's operand rather than
-the conversion; a node inside it is not, so `VNUMINT` names `makevariant(TNUMBER, 0)` and `TNUMBER`
-inside it stays its value.
+node): both ends of the node's range expand from one location, its text an identifier no `(` follows
+(a function-like macro's call is not named), and the begin's spelling lies in a file of the program
+(`in_program`), since a system header's macro may share its name with a das builtin (`INT_MAX`); the
+emitter skips a program macro so named (`PI`). The outermost such node is named, an implicit
+conversion's operand rather than the conversion; a node inside it is not, so `VNUMINT` names
+`makevariant(TNUMBER, 0)` and `TNUMBER` inside it stays its value.

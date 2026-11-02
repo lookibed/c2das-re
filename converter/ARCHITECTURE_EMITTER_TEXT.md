@@ -40,7 +40,8 @@ statement, are not carried.
 A node of a function body that carries a `macro` (`ARCHITECTURE_DUMPER.md`, "Macro names") and
 is a numeric constant (literals, enumerators, `sizeof` and `alignof` under arithmetic, bitwise
 and numeric conversions) is spelled by the macro's name, through the `_c_` rule for a das
-keyword (`match` is `_c_match`). The module holds `let private NAME = <value>` for each name
+keyword (`match` is `_c_match`); a name a builtin module holds a global of (`math`'s `PI`,
+found through `program_for_each_registered_module`) keeps its value. The module holds `let private NAME = <value>` for each name
 in first-use order, after its globals (in a cluster's own module, before its `include`s): the
 value is the das text of the first use, and a use whose text differs (the macro redefined, or
 expanded at another type) keeps its value. A global's initializer keeps the value, as does a
