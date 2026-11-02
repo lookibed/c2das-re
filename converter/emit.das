@@ -64,6 +64,11 @@ struct Emitter {
     comments_done : table<string; int>
     // the C file of the function being emitted: a statement carries only that file's comments
     comment_file : string
+    // the `#define` constants the module spells by name, each its das value, in first-use order;
+    // a function body names them, a global's initializer does not
+    constants : table<string; string>
+    constant_order : array<string>
+    in_body : bool
     setjmp_counter : int
     // the names the function being emitted takes the address of
     addressed : table<string>
@@ -2166,10 +2171,56 @@ def emit_expr(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : 
         return em.hoisted?[intptr(x)] ?? Em()
     }
     var e = emit_node(em, tu, x, loc)
+    if (x != null && !empty(x.macro) && em.in_body && is_constant_tree(tu, x)) {
+        e = named_constant(em, x.macro, e)
+    }
     if (x != null && is_c_bool(tu, x.t)) {
         e.is_bool = true
     }
     return e
+}
+
+// whether `x` is a numeric constant das can hold in a module `let`: literals, enumerators, sizeof
+// and alignof under arithmetic, bitwise and numeric conversions
+def private is_constant_tree(tu : CirTu; x : CirExpr const?) : bool {
+    if (x == null || (kind_of(tu, x.t) != "int" && kind_of(tu, x.t) != "float") || is_c_bool(tu, x.t)) {
+        return false
+    }
+    if (x.e == "int_lit" || x.e == "float_lit" || x.e == "enum_ref" || x.e == "sizeof_v" || x.e == "alignof_v") {
+        return true
+    }
+    if (x.e == "cast") {
+        return key_exists(CONSTANT_CASTS, x.cast_kind) && is_constant_tree(tu, x.a)
+    }
+    if (x.e == "un") {
+        return (x.op == "neg" || x.op == "plus" || x.op == "bnot") && is_constant_tree(tu, x.a)
+    }
+    return x.e == "bin" && key_exists(CONSTANT_OPS, x.op) && is_constant_tree(tu, x.a) && is_constant_tree(tu, x.b)
+}
+
+let private CONSTANT_CASTS <- {"IntegralCast", "NoOp", "IntegralToFloating", "FloatingCast", "FloatingToIntegral"}
+let private CONSTANT_OPS <- {"add", "sub", "mul", "div", "rem", "shl", "shr", "band", "bor", "bxor"}
+
+// the `#define` constant `macro` in place of its value `e`: the module's `let` of that name holds
+// the value spelled at the first use; a use spelling another value (the macro redefined, or its
+// type another) keeps the value
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#constant-names")]
+def private named_constant(var em : Emitter; macro : string; e : Em) : Em {
+    let name = reserved_rename(macro)
+    let have = em.constants?[name] ?? ""
+    if (empty(have)) {
+        em.constants[name] = e.text
+        em.constant_order |> push(name)
+    } elif (have != e.text) {
+        return e
+    }
+    return Em(text = name, prec = PREC_PRIMARY, is_bool = e.is_bool)
+}
+
+// the module's `let` of each `#define` constant its functions name, in first-use order
+def private constant_lets(em : Emitter) : string {
+    let lets = join([for (idx in range(length(em.constant_order))); "let private {em.constant_order[idx]} = {em.constants?[em.constant_order[idx]] ?? ""}\n"], "")
+    return empty(lets) ? "" : lets + "\n"
 }
 
 // a cast: the read of a volatile object, C's wrapping signed sum, or the cast table
@@ -4974,7 +5025,9 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
         line(em, "var _c_astack : uint8[{em.prog.alloca_limit}]")
         line(em, "var _c_aoff = 0")
     }
+    em.in_body = true
     emit_body(em, tu, d.body)
+    em.in_body = false
     if (ret != "void" && !ends_in_return(tu, d.body)) {
         line(em, "return {zero_of(em, tu, tu.types[d.t].ret, ret)}")
     }
@@ -5757,7 +5810,12 @@ def private emit_module_body(var em : Emitter; tu : CirTu) {
     order_globals(em, tu)
     emit_globals(em, tu)
     emit_init_globals(em)
+    let constants_at = length(em.out)
     emit_functions(em, tu)
+    let lets = constant_lets(em)
+    if (!empty(lets)) {
+        em.out |> push(lets, constants_at)
+    }
     emit_late_binding(em, tu)
     emit_dialect(em, tu, dialect_at)
     emit_main_wrapper(em, tu)
@@ -5894,6 +5952,10 @@ def private emit_cluster(var em : Emitter; tu : CirTu; plan : LayoutPlan; owners
         includes |> push("include {relative_to(mod.dir, plan.nodes[node].dir, name)}")
         em.out |> clear()
         break if (!empty(em.error))
+    }
+    let lets = constant_lets(em)
+    if (!empty(lets)) {
+        em.out |> push(lets)
     }
     for (inc in includes) {
         line(em, inc)

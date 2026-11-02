@@ -2017,4 +2017,16 @@ def p7_readable_fixtures(t : T?) {
         t |> equal(text |> find("a global's comment") < 0, true, text)
         t |> equal(text |> find("P7.0j") < 0, true, text)
     }
+    t |> run("a #define constant a function uses is a module let of its name; a function-like macro, a system header's and a global's initializer keep the value") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_defines", text)
+        has_text(t, text, "let private VNUMINT = 3 | 0 << 4\nlet private MAXCALLS = 200\nlet private VNUMFLT = 3 | 1 << 4\nlet private _c_match = 7\nlet private HALF = 0.5lf\n\n")
+        has_text(t, text, "    if (tt == VNUMINT) \{\n        return calls >= uint(MAXCALLS) ? 1 : 2\n")
+        has_text(t, text, "        return _c_match\n")
+        has_text(t, text, "    return 1 | 2 << 4\n")
+        has_text(t, text, "var h : double = HALF * double(4)")
+        has_text(t, text, "var private p7_defines__start : int = 11\n")
+        has_text(t, text, "return 2147483647 == 2147483647 ? 0 : 1")
+        t |> equal(text |> find("TNUMBER") < 0, true, text)
+    }
 }

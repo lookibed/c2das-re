@@ -119,6 +119,10 @@ struct Dumper {
     // cursor libclang's walk is at
     offsetof_at : table<string; CirLoc>
     init_lists : int
+    // the text of each file a macro expansion names, read on first use, and one past the offset
+    // of the object-like macro expansion whose node the dump is in (0 outside one)
+    macro_texts : table<string; string>
+    macro_in : int64
     // clang's answer to each `__builtin_constant_p` call by its key (`register_constant_p`): 1 or
     // 0, or `CONSTANT_P_NESTED` or `CONSTANT_P_SPLIT` for a call the conversion refuses
     constant_p_by_loc : table<string; int>
@@ -2113,7 +2117,64 @@ def private dump_literal(var d : Dumper; js : JsonValue?; kind : string; t : int
     return x
 }
 
+// the name of the object-like macro whose expansion is exactly node `js` (both ends of its range
+// expand from one identifier no `(` follows, other than the expansion enclosing the node), and the
+// expansion's offset; "" for any other node
+[arch(at="ARCHITECTURE_DUMPER.md#macro-names")]
+def private macro_expansion(var d : Dumper; js : JsonValue?; var offset : int64&) : string {
+    let a = js?["range"]?["begin"]?["expansionLoc"]
+    let b = js?["range"]?["end"]?["expansionLoc"]
+    if (a == null || b == null || (a?["isMacroArgExpansion"] ?? false)) {
+        return ""
+    }
+    offset = a?["offset"] ?? -1l
+    let file = a?["file"] ?? ""
+    let len = int(a?["tokLen"] ?? 0l)
+    if (offset < 0l || offset + 1l == d.macro_in || (b?["offset"] ?? -1l) != offset || empty(file) || len <= 0) {
+        return ""
+    }
+    // a system header's macro may share its name with a das builtin (`INT_MAX`)
+    let defined_in = js?["range"]?["begin"]?["spellingLoc"]?["file"] ?? ""
+    if (empty(defined_in) || !in_program(d, defined_in)) {
+        return ""
+    }
+    if (!key_exists(d.macro_texts, file)) {
+        d.macro_texts[file] = stat(file).is_reg ? fread(file) : ""
+    }
+    var name = ""
+    peek_data(d.macro_texts[file]) $(t) {
+        let at = int(offset)
+        if (at + len > length(t) || !(is_alpha(int(t[at])) || int(t[at]) == '_')) {
+            return
+        }
+        var after = at + len
+        while (after < length(t) && (int(t[after]) == ' ' || int(t[after]) == '\t')) {
+            after++
+        }
+        if (after >= length(t) || int(t[after]) != '(') {
+            name = slice(t, at, at + len)
+        }
+    }
+    return name
+}
+
 def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
+    var offset = -1l
+    let name = node_kind(js) == "ImplicitCastExpr" ? "" : macro_expansion(d, js, offset)
+    if (empty(name)) {
+        return dump_expr_node(d, js)
+    }
+    let outer = d.macro_in
+    d.macro_in = offset + 1l
+    var x = dump_expr_node(d, js)
+    d.macro_in = outer
+    if (x != null) {
+        x.macro = name
+    }
+    return x
+}
+
+def private dump_expr_node(var d : Dumper; js : JsonValue?) : CirExpr? {
     let at = loc_of(d, js)
     let kind = node_kind(js)
     if (kind == "ParenExpr" || kind == "ConstantExpr" || kind == "PredefinedExpr") {
