@@ -28,6 +28,18 @@ union's list, a sparse array) fails closed, since the stores rely on a zero a se
 the case would not give again; any other declaration keeps its branch's scope (F53). Computed
 goto (O6) is the optimization tier's.
 
+### Plain cases in the flag loop {#plain-cases}
+
+A group of the matched-flag loop that only its own labels enter - the group before it ends in a
+leaving statement, no goto re-dispatches into it, and it ends in one itself or is the last - is a
+plain `if` on its tests (`if (_cond == 5)`, `if (_gotoN == 0 && (_cond == 2 || _cond == 3))`,
+`default` as `if (!(every case value))`): no `_flagN ||=` line, and the flag stays unset, which
+the next group's `_flagN ||=` needs, since control reaches that group only past a group that
+left. The loop declares `_flagN` only when a group still needs it, and a group with no
+statements (the switch's last) writes nothing. The interpreter runs a VM dispatch so 2.08 times
+faster than through the flag chain (`perf/ARCHITECTURE_AUDIT.md`, the `dispatch_switch` kernel),
+and the text is the one a person writes.
+
 ### Labels and goto {#goto-labels}
 
 A C label is `label N:  // name`, numbered per function in order of appearance, and a goto

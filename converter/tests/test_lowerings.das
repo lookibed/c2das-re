@@ -358,13 +358,17 @@ def p3_fixtures(t : T?) {
         has_text(t, text, "if (_cond == 1u) \{\n        return 1\n    \} elif (_cond == 7u) \{\n        return 7\n    \} else \{\n        return 99")
         has_text(t, text, "let _cond = t\n    if (_cond == mobjtype_t.MT_PLAYER) \{")
         has_text(t, text, "_flag ||= _cond == 5\n        if (_flag) \{\n            let _t1 = n\n            n++\n            deref(trace + _t1) = 5\n        \}\n        _flag ||= _cond == 9")
-        has_text(t, text, "_flag ||= !(_cond == 1 || _cond == 5 || _cond == 9)")
+        // a case neither a fall-through nor a goto enters tests its labels alone
+        has_text(t, text, "        var _flag = false\n        if (_cond == 1) \{\n            let _t0 = n\n            n++\n            deref(trace + _t0) = 1\n            break\n        \}\n        _flag ||= _cond == 5\n")
+        has_text(t, text, "        if (!(_cond == 1 || _cond == 5 || _cond == 9)) \{\n")
         has_text(t, text, "var _cont = false\n                while (true) \{")
         has_text(t, text, "_cont = true\n                        break")
         has_text(t, text, "if (_cont) \{\n                    continue\n                \}")
         has_text(t, text, "let _cond2 = b\n        if (_cond2 == 1) \{")
         has_text(t, text, "if (_cond == 8589934592l) \{")
         has_text(t, text, "if (b == 2) \{\n                break\n            \}")
+        // a flag loop whose every case only its own labels enter declares no flag
+        has_text(t, text, "    let _cond = x\n    while (true) \{\n        if (_cond == 1) \{\n            r += 1\n")
     }
     t |> run("goto: labels numbered per function with the C name as a comment, forward and backward jumps, a jump out of nested loops, a block flattened for a goto into it") @(t : T?) {
         var text : string
@@ -1547,6 +1551,10 @@ def p5_lua_expression_fixtures(t : T?) {
         has_text(t, top, "_flag ||= _goto == 0 && !(_cond == 2147483647 || _cond == 5)\n")
         var out : string
         t |> equal(run_tier(converted_path("cross_label_top"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
+        // a plain case of several labels tests them under the pending goto's guard
+        let paired = converts(t, "cross_label_shared", "int f(int x) \{ int r = 0; switch (x) \{ case 1: case 2: r = 1; break; case 3: goto L; default: L: r += 2; \} return r; \}\nint main(void) \{ return f(1) + f(2) * 10 + f(3) * 100 + f(4) * 1000 - 2211; \}\n")
+        has_text(t, paired, "        if (_goto == 0 && (_cond == 1 || _cond == 2)) \{\n            r = 1\n            break\n")
+        t |> equal(run_tier(converted_path("cross_label_shared"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
     }
 }
 
@@ -1556,8 +1564,8 @@ def p5_lua_review_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p5_lua_review", text)
         // the condition is no stand-in for a label: the goto variable selects it, 0 while none is pending
-        has_text(t, text, "    let _cond = x\n    var _goto = 0\n    while (true) \{\n        label 1:  // re-dispatch\n        var _flag = false\n        _flag ||= _goto == 0 && _cond == 1\n")
-        has_text(t, text, "        _flag ||= _goto == 0 && !(_cond == 1 || _cond == 2)\n")
+        has_text(t, text, "    let _cond = x\n    var _goto = 0\n    while (true) \{\n        label 1:  // re-dispatch\n        var _flag = false\n        if (_goto == 0 && _cond == 1) \{\n")
+        has_text(t, text, "        if (_goto == 0 && !(_cond == 1 || _cond == 2)) \{\n")
         // a goto to such a label from its own case re-dispatches too
         has_text(t, text, "            if (_t0 > 0) \{\n                _goto = 1\n                goto label 1\n")
         // a parameter and a local named like a standard stream are the program's
