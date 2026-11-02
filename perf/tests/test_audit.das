@@ -114,7 +114,7 @@ def test_site_counts(t : T?) {
     }
 }
 
-let CAPTURE = "\{'cpu': 'C', 'samples': 5, 'rust_commit': 'R', 'kernels': \{'trap_check': \{'native': \{'time': 0.001\}, 'converted': \{'interp': \{'time': 0.04\}, 'jit': \{'time': 0.002\}\}, 'plain-test': \{'interp': \{'time': 0.02\}, 'jit': \{'time': 0.002\}\}, 'plain-load': \{'interp': \{'time': 0.03\}, 'jit': \{'time': 0.00001\}\}, 'rust': \{'status': 'refused', 'error': 'volatile'\}\}, 'dispatch_switch': \{'native': \{'error': 'clang failed'\}\}, 'small_call': \{'native': \{'time': 0.001\}, 'converted': \{'error': 'convert: boom'\}, 'rust': \{'status': 'ran', 'interp': \{'time': 0.05\}\}\}\}, 'sites': \{'plain-test': \{'lvm': 61, 'ltable': 8, 'lgc': 2, 'ldo': 37\}\}\}"
+let CAPTURE = "\{'cpu': 'C', 'samples': 5, 'rust_commit': 'R', 'kernels': \{'trap_check': \{'native': \{'time': 0.001\}, 'converted': \{'interp': \{'time': 0.04\}, 'jit': \{'time': 0.002\}\}, 'expect-roundtrip': \{'interp': \{'time': 0.02\}, 'jit': \{'time': 0.002\}\}, 'plain-load': \{'interp': \{'time': 0.03\}, 'jit': \{'time': 0.00001\}\}, 'rust': \{'status': 'refused', 'error': 'volatile'\}\}, 'dispatch_switch': \{'native': \{'error': 'clang failed'\}\}, 'small_call': \{'native': \{'time': 0.001\}, 'converted': \{'error': 'convert: boom'\}, 'rust': \{'status': 'ran', 'interp': \{'time': 0.05\}\}\}\}, 'sites': \{'expect-roundtrip': \{'lvm': 61, 'ltable': 8, 'lgc': 2, 'ldo': 37\}\}\}"
 
 // the row of the markdown table `text` whose first cell is `name`, its cells trimmed
 def row_of(text, name : string) : array<string> {
@@ -132,7 +132,7 @@ def test_tables(t : T?) {
     let rows = construct_table(js)
     t |> run("a construct row: native, the interp factor, the rewrite's cost per tier, Rust, the sites") @(t : T?) {
         let row <- row_of(rows, "`int64(x != 0 ? 1 : 0) != 0` test")
-        t |> equal(join(row, "|"), "|`int64(x != 0 ? 1 : 0) != 0` test|trap_check (plain-test)|1000.0 us|40.00x|2.00x|1.00x|refused|61/8/2/37|")
+        t |> equal(join(row, "|"), "|`int64(x != 0 ? 1 : 0) != 0` test|trap_check (expect-roundtrip)|1000.0 us|40.00x|2.00x|1.00x|refused|61/8/2/37|")
     }
     t |> run("a JIT rewrite under a tenth of native is SUSPECT") @(t : T?) {
         let row <- row_of(rows, "`c_volatile_load` of a volatile field")

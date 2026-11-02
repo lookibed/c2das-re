@@ -161,6 +161,7 @@ def test_lowerings(t : T?) {
     p5_lua_library_fixtures(t)
     p7_fixtures(t)
     p7_volatile_fixtures(t)
+    p7_expect_fixtures(t)
     p5_lua_expression_fixtures(t)
     p5_lua_review_fixtures(t)
     p5_skip_audit_fixtures(t)
@@ -1773,6 +1774,24 @@ def p7_fixtures(t : T?) {
         let refused <- convert(c_path, path_join(work_root, "loops_sidecar_for"), "linux", "", "", "", "for")
         t |> equal(refused.ok, false, refused.das_text)
         t |> success(refused.error |> contains("--loops is range or while, not `for`"), refused.error)
+    }
+}
+
+// P7.0e: a truth test past `__builtin_expect` and an integer widening tests the operand itself
+def p7_expect_fixtures(t : T?) {
+    t |> run("`l_likely`/`l_unlikely` in a truth test is the comparison inside; a narrowing cast and a hint read as a number stay") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_expect", text)
+        has_text(t, text, "    if (trap != 0) \{\n        r += 1\n")
+        has_text(t, text, "    if (wide != int64(0)) \{\n")
+        has_text(t, text, "    while (n > 0) \{\n")
+        has_text(t, text, "!(int(c) != 0) ? 1000 : 0")
+        has_text(t, text, "    if (c != 0 && trap != 0) \{\n")
+        // a narrowing conversion can turn a value into zero: its test keeps the cast
+        has_text(t, text, "    if (uint8(trap) != 0) \{\n")
+        t |> equal(text |> find("? 1 : 0) != 0") < 0, true, text)
+        // a hint read as a number is its first operand's value
+        has_text(t, text, "    var hint : int64 = int64(7)\n    var truth : int64 = int64(3 != 0 ? 1 : 0)\n")
     }
 }
 

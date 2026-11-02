@@ -710,6 +710,35 @@ def private to_bool(e_in : Em; tu : CirTu; t : int) : Em {
     return truth("{wrap(e, PREC_EQ + 1)} != {zero}", PREC_EQ)
 }
 
+// the truth test of C expression `x` (an `if`, a loop, `!`, `&&`, `||`, `?:`): the bool view of
+// what is left past a `__builtin_expect` hint, an integer conversion that keeps every value's
+// zero and a truth value's `!= 0`, none of which can change the test (`l_likely(x)`'s
+// `(long) (x != 0)` is `x != 0`, `l_likely(a < b)` is `a < b`)
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#truth-tests")]
+def private truth_of(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
+    var operand = x
+    while (operand != null && !key_exists(em.hoisted, intptr(operand))) {
+        if (operand.e == "call" && called_name(*operand) == EXPECT && length(operand.args) == 2) {
+            operand = operand.args[0]
+        } elif (operand.e == "cast" && operand.cast_kind == "IntegralCast" && keeps_zero(tu, operand.a.t, operand.t)) {
+            operand = operand.a
+        } elif (operand.e == "bin" && operand.op == "ne" && operand.b != null && operand.b.e == "int_lit" && operand.b.v == "0" && is_truth_value(operand.a)) {
+            operand = operand.a
+        } else {
+            break
+        }
+    }
+    return to_bool(emit_expr(em, tu, operand, loc), tu, operand.t)
+}
+
+// whether C expression `x` is a truth value, 0 or 1: a comparison, `&&`, `||` or `!`
+def private is_truth_value(x : CirExpr const?) : bool {
+    return x != null && ((x.e == "bin" && (x.op == "eq" || x.op == "ne" || x.op == "lt" || x.op == "gt" || x.op == "le" || x.op == "ge" || x.op == "land" || x.op == "lor")) || (x.e == "un" && x.op == "not"))
+}
+
+// whether converting integer type `from` to `to` keeps zero and nonzero apart: `to` is no narrower
+def private keeps_zero(tu : CirTu; from, to : int) : bool => kind_of(tu, from) == "int" && kind_of(tu, to) == "int" && tu.types[to].w >= tu.types[from].w
+
 // an enum operand where C reads an integer (an index, a pointer step, a truth test): das
 // enums have no arithmetic, so the value goes through `int`
 def private enum_as_int(e : Em; tu : CirTu; t : int) : Em => kind_of(tu, t) == "enum" ? value(enum_to_integer(tu, t, e.text, "int"), PREC_PRIMARY) : e
@@ -1761,7 +1790,7 @@ def private emit_enum_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
             // the shortcut holds only for pure arms: an arm with hoisted statements needs
             // `emit_cond`'s if-chain, which the generic path below reaches
             let mark = length(em.pre)
-            let c = to_bool(emit_expr(em, tu, arms.c, loc), tu, arms.c.t)
+            let c = truth_of(em, tu, arms.c, loc)
             let a_text = enum_operand_text(em, tu, a, loc, PREC_COND + 1)
             let b_text = enum_operand_text(em, tu, b, loc, PREC_COND + 1)
             if (length(em.pre) == mark) {
@@ -1883,10 +1912,10 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
     let prec = BIN_PREC?[x.op] ?? 0
     let spelled = BIN_SPELLING?[x.op] ?? ""
     if (x.op == "land" || x.op == "lor") {
-        let lhs = to_bool(emit_expr(em, tu, x.a, loc), tu, x.a.t)
+        let lhs = truth_of(em, tu, x.a, loc)
         let mark = length(em.pre)
         em.narrow++
-        let rhs = to_bool(emit_expr(em, tu, x.b, loc), tu, x.b.t)
+        let rhs = truth_of(em, tu, x.b, loc)
         em.narrow--
         if (length(em.pre) == mark) {
             return truth("{wrap(lhs, prec)} {spelled} {wrap(rhs, prec + 1)}", prec)
@@ -1980,7 +2009,7 @@ def private emit_cond(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         fail(em, "a `void` conditional (`c ? f() : g()`) used as a value is not lowered yet", loc)
         return value("", PREC_PRIMARY)
     }
-    let c = to_bool(emit_expr(em, tu, x.c, loc), tu, x.c.t)
+    let c = truth_of(em, tu, x.c, loc)
     let mark = length(em.pre)
     em.narrow++
     var a = emit_expr(em, tu, x.a, loc)
@@ -2024,7 +2053,7 @@ def private address_operand(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
 
 def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     if (x.op == "not") {
-        let a = to_bool(emit_expr(em, tu, x.a, loc), tu, x.a.t)
+        let a = truth_of(em, tu, x.a, loc)
         return truth("!{wrap(a, PREC_UNARY)}", PREC_UNARY)
     }
     // the step and the read of its value go through one pinned target, so an effect in the
@@ -2896,7 +2925,7 @@ def private emit_effect(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc
 // statement, each arm's effects spelled in place, never a temporary, since das has no `void`
 // variable; an arm with no effect drops out (`if (!(c))` when it is the first)
 def private void_conditional(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) {
-    let c = to_bool(emit_expr(em, tu, x.c, loc), tu, x.c.t)
+    let c = truth_of(em, tu, x.c, loc)
     let mark = length(em.pre)
     em.narrow++
     emit_effect(em, tu, x.a, loc)
@@ -3164,7 +3193,7 @@ def private emit_if(var em : Emitter; tu : CirTu; st : CirStmt; head : string) {
         }
         return
     }
-    let c = to_bool(emit_expr(em, tu, st.cond, st.loc), tu, st.cond.t)
+    let c = truth_of(em, tu, st.cond, st.loc)
     flush_pre(em)
     open_block(em, "{head} ({c.text})")
     emit_body(em, tu, st.then_s)
@@ -3173,7 +3202,7 @@ def private emit_if(var em : Emitter; tu : CirTu; st : CirStmt; head : string) {
             let mark = length(em.pre)
             let decls_mark = length(em.literal_decls)
             let case_mark = length(em.case_literal_decls)
-            let probe = to_bool(emit_expr(em, tu, st.else_s.cond, st.else_s.loc), tu, st.else_s.cond.t)
+            let probe = truth_of(em, tu, st.else_s.cond, st.else_s.loc)
             let pure = length(em.pre) == mark
             em.pre |> resize(mark)
             em.literal_decls |> resize(decls_mark)
@@ -3212,7 +3241,7 @@ def private emit_loop_body(var em : Emitter; tu : CirTu; st : CirStmt const?) {
 
 def private emit_while(var em : Emitter; tu : CirTu; st : CirStmt) {
     let mark = length(em.pre)
-    let c = to_bool(emit_expr(em, tu, st.cond, st.loc), tu, st.cond.t)
+    let c = truth_of(em, tu, st.cond, st.loc)
     if (length(em.pre) == mark) {
         open_block(em, "while ({c.text})")
         emit_loop_body(em, tu, st.body_s)
@@ -3237,7 +3266,7 @@ def private numbered(base : string; count : int) : string => count == 1 ? base :
 
 def private emit_do(var em : Emitter; tu : CirTu; st : CirStmt) {
     let mark = length(em.pre)
-    let c = to_bool(emit_expr(em, tu, st.cond, st.loc), tu, st.cond.t)
+    let c = truth_of(em, tu, st.cond, st.loc)
     em.first_counter++
     let flag = numbered("_first", em.first_counter)
     if (length(em.pre) == mark) {
@@ -3299,7 +3328,7 @@ def private emit_for_flag(var em : Emitter; tu : CirTu; st : CirStmt; inc_lines 
     close_block(em)
     line(em, "{flag} = true")
     if (st.cond != null) {
-        let c = to_bool(emit_expr(em, tu, st.cond, st.loc), tu, st.cond.t)
+        let c = truth_of(em, tu, st.cond, st.loc)
         flush_pre(em)
         open_block(em, "if (!({c.text}))")
         line(em, "break")
@@ -3317,7 +3346,7 @@ def private open_for_head(var em : Emitter; tu : CirTu; st : CirStmt) {
         return
     }
     let mark = length(em.pre)
-    let c = to_bool(emit_expr(em, tu, st.cond, st.loc), tu, st.cond.t)
+    let c = truth_of(em, tu, st.cond, st.loc)
     if (length(em.pre) == mark) {
         open_block(em, "while ({c.text})")
         return
