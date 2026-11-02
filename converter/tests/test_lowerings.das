@@ -31,9 +31,9 @@ def native(name : string; program_args : array<string> = array<string>()) : Expe
 
 // `param_writes` is the converter's `--param-writes` and `loops` its `--loops`, "" for their
 // defaults; the program gets `program_args` after its name
-def converted(t : T?; name : string; var das_text : string&; param_writes : string = ""; loops : string = ""; program_args : array<string> = array<string>()) : Expectation {
-    let work = path_join(work_root, "{name}{empty(param_writes) ? "" : "_" + param_writes}{empty(loops) ? "" : "_" + loops}")
-    let res <- convert("{FIXTURES}/{name}.c", work, "linux", "", "", param_writes, loops)
+def converted(t : T?; name : string; var das_text : string&; param_writes : string = ""; loops : string = ""; first_member : string = ""; program_args : array<string> = array<string>()) : Expectation {
+    let work = path_join(work_root, "{name}{empty(param_writes) ? "" : "_" + param_writes}{empty(loops) ? "" : "_" + loops}{empty(first_member) ? "" : "_" + first_member}")
+    let res <- convert("{FIXTURES}/{name}.c", work, "linux", "", "", param_writes, loops, first_member)
     if (!res.ok) {
         t |> failure(res.error)
         return Expectation(rc = -2, out = "")
@@ -87,10 +87,10 @@ def converts(t : T?; name : string; source : string; sidecar : string = ""; para
 }
 
 // both builds of the fixture `name` agree, each run with `program_args` after its name
-def check_fixture(t : T?; name : string; var das_text : string&; param_writes : string = ""; loops : string = ""; program_args : array<string> = array<string>()) {
+def check_fixture(t : T?; name : string; var das_text : string&; param_writes : string = ""; loops : string = ""; first_member : string = ""; program_args : array<string> = array<string>()) {
     let want = native(name, program_args)
     t |> equal(want.rc >= 0, true, want.out)
-    let have = converted(t, name, das_text, param_writes, loops, program_args)
+    let have = converted(t, name, das_text, param_writes, loops, first_member, program_args)
     t |> equal(have.out, want.out)
     t |> equal(have.rc, want.rc)
 }
@@ -163,6 +163,7 @@ def test_lowerings(t : T?) {
     p7_volatile_fixtures(t)
     p7_expect_fixtures(t)
     p7_wrap_fixtures(t)
+    p7_first_member_fixtures(t)
     p5_lua_expression_fixtures(t)
     p5_lua_review_fixtures(t)
     p5_skip_audit_fixtures(t)
@@ -1789,6 +1790,56 @@ def p7_wrap_fixtures(t : T?) {
         // an operand already unsigned is no wrap pair: the casts stay
         has_text(t, text, "    var x : int = int(uint(imm) * 2654435761u) + int(uint(s) + 3u)\n")
         t |> equal(text |> find("int64(uint64(") < 0, true, text)
+    }
+}
+
+// P7.0f: the address of a member at offset 0 is `addr(...)` by default and its record's pointer
+// reinterpreted under `first_member` `reinterpret`; an address no offset proves keeps `addr(...)`
+def p7_first_member_fixtures(t : T?) {
+    t |> run("by default the address of a first member, a union member or a decayed array member is `addr(...)`") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_first_member", text)
+        has_text(t, text, "    return addr((base + a).val)\n")
+        has_text(t, text, "    return addr(reinterpret<GCUnion?>(o).h)\n")
+        has_text(t, text, "    return addr(reinterpret<Cell?>(ip).i)\n")
+        has_text(t, text, "    return addr(deref(p + i).a)\n")
+        has_text(t, text, "    return addr(r.cells[0])\n")
+        has_text(t, text, "    var all : int[4]? = addr(rp.cells)\n")
+        t |> equal(text |> find("reinterpret<int?>(") < 0, true, text)
+    }
+    t |> run("under `--first-member reinterpret` the record's pointer is reinterpreted, and the program prints the same") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_first_member", text, "", "", "reinterpret")
+        // an arrow member, a union's member under its pointer cast, a pointer of the member's type as it is
+        has_text(t, text, "    return reinterpret<TValue?>(base + a)\n")
+        has_text(t, text, "    return reinterpret<Table?>(o)\n")
+        has_text(t, text, "def private p7_first_member__as_cell(var ip : int?) : int? \{\n    return ip\n")
+        // nested first members through `p->` and `(*p).`, a subscripted pointer, an array's decay and address
+        has_text(t, text, "def private p7_first_member__nested(var p : Outer?) : int? \{\n    return reinterpret<int?>(p)\n")
+        has_text(t, text, "def private p7_first_member__deref_first(var p : Outer?) : int? \{\n    return reinterpret<int?>(p)\n")
+        has_text(t, text, "    return reinterpret<Inner?>(p + i)\n")
+        has_text(t, text, "def private p7_first_member__decayed(var r : Row?) : int? \{\n    return reinterpret<int?>(r)\n")
+        has_text(t, text, "    var all : int[4]? = reinterpret<int[4]?>(rp)\n")
+        // a `const` and a volatile member take the pointer type das spells for them
+        has_text(t, text, "def private p7_first_member__constant(var f : Fixed?) : int? \{\n    return reinterpret<int?>(f)\n")
+        has_text(t, text, "def private p7_first_member__ticking(var t : Ticker?) : int? \{\n    return reinterpret<int?>(t)\n")
+        // a later member, a record held by value and an element of an array keep `addr(...)`
+        has_text(t, text, "    return addr(p.d)\n")
+        has_text(t, text, "    return addr(p.a.c)\n")
+        has_text(t, text, "    var kept : int? = addr(held.a.b)\n")
+        has_text(t, text, "    var elem : Inner? = addr(outs[1].a)\n")
+    }
+    t |> run("`first_member` reinterpret leaves a marshal-only record and a member of a marshal-only type to the default") @(t : T?) {
+        let disk = "#pragma pack(1)\ntypedef struct Disk \{ int first; char c; \} Disk;\n#pragma pack()\n"
+        let sidecar = "\{\"marshal\": [\"Disk\"], \"first_member\": \"reinterpret\"\}\n"
+        rejects(t, "first_member_marshal_record", "{disk}int *first_of(Disk *p) \{ return &p->first; \}\nint main(void) \{ return 0; \}\n", "addr(read_Disk_first(p, 0))", sidecar)
+        let holder = "typedef struct Holder \{ Disk d; int n; \} Holder;\nDisk *disk_of(Holder *h) \{ return &h->d; \}\nint main(void) \{ return 0; \}\n"
+        rejects(t, "first_member_marshal_field", "{disk}{holder}", "the address of a value of the marshal-only record `Disk`", sidecar)
+    }
+    t |> run("`--first-member` other than addr or reinterpret is refused naming the option") @(t : T?) {
+        let res <- convert("{FIXTURES}/p7_first_member.c", path_join(work_root, "first_member_bad"), "linux", "", "", "", "", "offset")
+        t |> equal(res.ok, false, res.das_text)
+        t |> success(res.error |> contains("--first-member is addr or reinterpret, not `offset`"), res.error)
     }
 }
 

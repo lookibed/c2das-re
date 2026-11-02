@@ -119,6 +119,24 @@ indexed past its length over a larger allocation (`int columnofs[8]` after `mall
 decay, `deref(addr(p.columnofs[0]) + x)`, and `&p->columnofs[k]` is the address of that read; an
 entry that names no record's trailing array of a fixed length is a sidecar error.
 
+### The address of a member at offset 0 {#first-member-address}
+
+The address of a member, `&p->f`, is `addr(p.f)`, and an array member's decay `addr(p.a[0])`. Under
+the `first_member` option `reinterpret` (`--first-member reinterpret` or the sidecar's
+`"first_member": "reinterpret"`; `addr`, the default, is the idiomatic form) a member at clang's
+offset 0 is its record's pointer reinterpreted to the result's type, which the interpreter runs
+without the field access and the `addr`: `reinterpret<TValue?>(base + a)` for `&(base + a)->val`,
+`reinterpret<int?>(p)` for `&p->a.b` when `a` and `b` both sit at offset 0, for `&(*p).a.b` and
+for the decay of `p->cells`, and `reinterpret<Inner?>(p + i)` for `&p[i].a`. Every union member sits
+at offset 0. A pointer `BitCast` under the record's pointer falls away, `reinterpret<Table?>(o)`
+for `&((union GCUnion *) o)->h`, and a pointer that already has the result's das type is itself
+(`ip` for `&((union Cell *) ip)->i` of an `int *ip`). A `const` or volatile member takes the pointer
+type das spells for it, the qualifier dropped as everywhere. The option keeps `addr(...)` for a
+member at another offset, for a chain that ends at a record held by value (`&s.a`, `&arr[i].a`),
+for a member of a marshal-only record and for one of a marshal-only type; C takes no bitfield's
+address. The readability criteria count each such `reinterpret` as noise, which is why it is
+opt-in (`converter/tests/fixtures/p7_first_member.c`).
+
 ### Function pointers
 
 A C function pointer is a das function value, 8 bytes like C's, so a record or union holding

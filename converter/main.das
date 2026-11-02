@@ -9,7 +9,7 @@ require pipeline
 require sidecar
 require tiers
 
-//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy] [--loops range|while] [--layout source|source-cut|single] [--edge-census]`.
+//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy] [--loops range|while] [--first-member addr|reinterpret] [--layout source|source-cut|single] [--edge-census]`.
 //! Converts one C file into `<dir>/<stem>.das` (default `out/`), several or a manifest's as one
 //! program: by default a module per C file under `<dir>` as the files lie under their common
 //! folder, mutually dependent files one module of fragments (`--layout source`), the cycles among
@@ -39,6 +39,9 @@ struct Args {
     param_writes : string = ""
     @clarg_doc = "a canonical counting for loop: range (a das range loop, the default) or while (the while form every other for takes); overrides the sidecar's loops"
     loops : string = ""
+    @clarg_name = "first-member"
+    @clarg_doc = "the address of a member at offset 0 (a struct's first member, a union's member, nested ones): addr (addr(p.f), the default) or reinterpret (the containing pointer reinterpreted, reinterpret<F?>(p), faster under the interpreter); overrides the sidecar's first_member"
+    first_member : string = ""
     @clarg_doc = "a program of several files: source (the default: a module per C file under --out as the files lie under their common folder, a header's types <header>_h.das, the entry module the one holding main, every cycle among files one module <first stem>_cluster.das of <stem>.das.inc fragments; program.layout.txt reports the partition), source-cut (the same with the cycles cut by late binding through <entry>_link.das, as the sidecar's layout object directs; program.layout.txt reports the cut) or single (one module named by the file holding main); one file is one module in each; overrides the sidecar's layout"
     layout : string = ""
     @clarg_name = "edge-census"
@@ -77,6 +80,10 @@ def main : int {
         to_log(LOG_ERROR, "c2das: --loops is range or while, not `{args.loops}`; -? for help\n")
         return 2
     }
+    if (!empty(args.first_member) && !is_first_member(args.first_member)) {
+        to_log(LOG_ERROR, "c2das: --first-member is addr or reinterpret, not `{args.first_member}`; -? for help\n")
+        return 2
+    }
     if (!empty(args.layout) && !is_layout(args.layout)) {
         to_log(LOG_ERROR, "c2das: --layout is source, source-cut or single, not `{args.layout}`; -? for help\n")
         return 2
@@ -87,7 +94,7 @@ def main : int {
         to_log(LOG_ERROR, "c2das: {error}\n")
         return 1
     }
-    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry, args.layout, args.edge_census)
+    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry, args.layout, args.edge_census, args.first_member)
     if (!res.ok) {
         to_log(LOG_ERROR, "c2das: {res.error}\n")
         return 1

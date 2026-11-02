@@ -25,6 +25,9 @@ struct Sidecar {
     // how a canonical counting `for` is spelled: `range` (a das range loop) or `while` (the
     // `while` form every other `for` takes); "" when the key is absent
     loops : string
+    // how the address of a member at offset 0 is spelled: `addr` (`addr(p.f)`) or `reinterpret` (the
+    // containing pointer reinterpreted, `reinterpret<F?>(p)`); "" when the key is absent
+    first_member : string
     // the macros clang defines for the dump, each `NAME`, `NAME=value` or `NAME(params)=value`,
     // passed as `-D<entry>`
     defines : array<string>
@@ -57,7 +60,7 @@ struct Sidecar {
 }
 
 //! The keys a sidecar may hold; any other is refused naming it.
-let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "layout", "defines", "over_indexed", "include_dirs", "include_files", "program_root"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "layout", "defines", "over_indexed", "include_dirs", "include_files", "program_root"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -70,6 +73,12 @@ let LOOPS <- ["range", "while"]
 
 //! Whether `mode` is a value of `loops`.
 def is_loops(mode : string) : bool => has_value(LOOPS, mode)
+
+//! The values of the `first_member` key and of the converter's `--first-member`.
+let FIRST_MEMBER <- ["addr", "reinterpret"]
+
+//! Whether `mode` is a value of `first_member`.
+def is_first_member(mode : string) : bool => has_value(FIRST_MEMBER, mode)
 
 //! The values of the `layout` key and of the converter's `--layout`.
 let LAYOUTS <- ["source", "source-cut", "single"]
@@ -315,6 +324,12 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
         error = "{path}: `loops` is \"range\" or \"while\", not {write_json(js?["loops"])}"
     } else {
         side.loops = loops
+    }
+    let first_member = js?["first_member"] ?? ""
+    if (key_exists(js, "first_member") && !is_first_member(first_member)) {
+        error = "{path}: `first_member` is \"addr\" or \"reinterpret\", not {write_json(js?["first_member"])}"
+    } else {
+        side.first_member = first_member
     }
     if (key_exists(js, "layout")) {
         read_layout(js?["layout"], path, side, error)

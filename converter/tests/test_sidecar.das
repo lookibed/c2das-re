@@ -135,6 +135,35 @@ def test_sidecar_loops(t : T?) {
 }
 
 [test]
+def test_sidecar_first_member(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_first_member", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`first_member` is \"addr\" or \"reinterpret\"; absent it is empty, the emitter's addr default") @(t : T?) {
+        for (mode in ["addr", "reinterpret"]) {
+            var error : string
+            let side <- read_text(dir, mode, "\{\"first_member\": \"{mode}\"\}\n", error)
+            t |> equal(error, "")
+            t |> equal(side.first_member, mode)
+        }
+        var error : string
+        let side <- read_text(dir, "no_first_member", "\{\"stack\": 65536\}\n", error)
+        t |> equal(error, "")
+        t |> equal(side.first_member, "")
+    }
+    t |> run("any other `first_member` value is refused, naming the key and the value") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "bad_first_member", "\{\"first_member\": \"offset\"\}\n", error)
+        t |> success(error |> ends_with("bad_first_member.c2das: `first_member` is \"addr\" or \"reinterpret\", not \"offset\""), error)
+        t |> equal(side.first_member, "")
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_sidecar_layout(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_sidecar_layout", dir_error)
