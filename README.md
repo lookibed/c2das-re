@@ -638,11 +638,11 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-01 20:17 UTC); doomgeneric (Rust `b1d012eb5d26`, 2026-11-01 22:02 UTC); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-01 20:51 UTC); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-01 21:25 UTC); quakegeneric (Rust `b1d012eb5d26`, 2026-11-01 22:43 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-01 19:52 UTC).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-02 01:40 UTC); doomgeneric (Rust `b1d012eb5d26`, 2026-11-02 01:58 UTC); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-02 01:53 UTC); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-02 01:56 UTC); quakegeneric (Rust `b1d012eb5d26`, 2026-11-02 02:08 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-02 01:46 UTC).
 
 | Project       | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------------ | :--- | :----- | ----------: | ------: | ------: | ------: |
-| binjgb        | Ours | pass   |     refused | refused | refused | refused |
+| binjgb        | Ours | pass   |        pass |    pass |    pass | skipped |
 | binjgb        | Rust | pass   |        pass |    pass |    pass | skipped |
 | doomgeneric   | Ours | pass   |     refused | refused | refused | refused |
 | doomgeneric   | Rust | pass   |        pass |    pass |    pass | skipped |
@@ -657,42 +657,42 @@ Each project of the Rust repository's `tests/manual` on its own fixture, checked
 
 Why a lane does not pass:
 
-- binjgb, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/binjgb/src/all.c:11:10: fatal error: 'common.c' file not found
+- binjgb, Ours, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 - binjgb, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
-- doomgeneric, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/doomgeneric/src/all.c:37:10: fatal error: 'dummy.c' file not found
+- doomgeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` ...
 - doomgeneric, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
-- h264bsd-mp4, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/module.c:38:16: unsupported type spelling `picParamSet_t`
+- h264bsd-mp4, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definiti...
 - h264bsd-mp4, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
-- plmpeg-stream, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/plmpeg-stream/src/module.c:126:22: unsupported type spelling `plm_frame_t`
+- plmpeg-stream, Ours, interpreter JIT exe AOT: refused: emitter: /root/c2das/tests/manual/plmpeg-stream/src/module.c:226:5: external function `c2da_rt_reset` has no c_runtime mapping
 - plmpeg-stream, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
-- quakegeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/common.c:1187:4: unsupported child `FullComment` of function `memsearch`
+- quakegeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` wit...
 - quakegeneric, Rust, JIT: output: line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at compare/work/projects/quakegeneric/rust/host.das.inc:66...
 - quakegeneric, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
-- wasm3, Ours, interpreter JIT exe AOT: refused: dumper: libclang: /root/c2das/tests/manual/wasm3/src/all.c:80:10: fatal error: 'm3_bind.c' file not found
+- wasm3, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`
 - wasm3, Rust, AOT: skipped: the aot host passes the program no arguments, and it reads its input from its last one
 
-The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 5 samples a cell:
+The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 3 samples a cell:
 
 | Project       | Side | Native compiler      | Native s | interpreter |      JIT |      exe |      AOT |
 | :------------ | :--- | :------------------- | -------: | ----------: | -------: | -------: | -------: |
-| binjgb        | Ours | clang version 22.1.8 | 0.062580 |     refused |  refused |  refused |  refused |
-| binjgb        | Rust | clang version 22.1.8 | 0.062580 |       71.34 |     1.07 |     1.05 |  skipped |
-| doomgeneric   | Ours | clang version 22.1.8 | 0.121829 |     refused |  refused |  refused |  refused |
-| doomgeneric   | Rust | clang version 22.1.8 | 0.121829 |       33.47 |     1.08 |     1.07 |  skipped |
-| h264bsd-mp4   | Ours | clang version 22.1.8 | 0.085924 |     refused |  refused |  refused |  refused |
-| h264bsd-mp4   | Rust | clang version 22.1.8 | 0.085924 |       48.69 |     1.03 |     1.01 |  skipped |
-| plmpeg-stream | Ours | clang version 22.1.8 | 0.042030 |     refused |  refused |  refused |  refused |
-| plmpeg-stream | Rust | clang version 22.1.8 | 0.042030 |       31.12 |     0.95 |     1.01 |  skipped |
+| binjgb        | Ours | clang version 22.1.8 | 0.099588 |       74.11 |     0.99 |     1.25 |  skipped |
+| binjgb        | Rust | clang version 22.1.8 | 0.099588 |       60.08 |     0.83 |     1.14 |  skipped |
+| doomgeneric   | Ours | clang version 22.1.8 | 0.128605 |     refused |  refused |  refused |  refused |
+| doomgeneric   | Rust | clang version 22.1.8 | 0.128605 |       37.70 |     1.23 |     1.09 |  skipped |
+| h264bsd-mp4   | Ours | clang version 22.1.8 | 0.089747 |     refused |  refused |  refused |  refused |
+| h264bsd-mp4   | Rust | clang version 22.1.8 | 0.089747 |       54.93 |     1.10 |     1.18 |  skipped |
+| plmpeg-stream | Ours | clang version 22.1.8 | 0.043238 |     refused |  refused |  refused |  refused |
+| plmpeg-stream | Rust | clang version 22.1.8 | 0.043238 |       36.42 |     0.94 |     1.01 |  skipped |
 | quakegeneric  | Ours | clang version 22.1.8 |      n/a |    no bench | no bench | no bench | no bench |
 | quakegeneric  | Rust | clang version 22.1.8 |      n/a |    no bench | no bench | no bench | no bench |
-| wasm3         | Ours | clang version 22.1.8 | 0.002223 |     refused |  refused |  refused |  refused |
-| wasm3         | Rust | clang version 22.1.8 | 0.002223 |       58.07 |     2.23 |     2.10 |  skipped |
+| wasm3         | Ours | clang version 22.1.8 | 0.002048 |     refused |  refused |  refused |  refused |
+| wasm3         | Rust | clang version 22.1.8 | 0.002048 |       68.30 |     2.50 |     3.29 |  skipped |
 
 The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
 
 | Project       | Side | Code    | Files | Lines | Runtime lines | c_function | goto | label | literal_named | pointer_arith | pointer_index | reinterpret | unsafe_block | unsafe_expr | while_rangeable |
 | :------------ | :--- | :------ | ----: | ----: | ------------: | ---------: | ---: | ----: | ------------: | ------------: | ------------: | ----------: | -----------: | ----------: | --------------: |
-| binjgb        | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| binjgb        | Ours | ok      |     1 |  7997 |             0 |        110 |   38 |    19 |          1400 |            88 |            43 |         295 |            0 |         119 |              23 |
 | binjgb        | Rust | ok      |     1 | 11481 |           956 |          0 |  670 |   867 |          2393 |            33 |           939 |        3818 |            8 |        5049 |              12 |
 | doomgeneric   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | doomgeneric   | Rust | ok      |     1 | 37045 |          1579 |          0 |  435 |   612 |         43595 |           523 |          3454 |       10418 |          260 |       15426 |             169 |
@@ -707,7 +707,22 @@ The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std
 
 #### `binjgb`: `emulator_step_internal`
 
-Ours: not found in this side's module.
+Ours:
+
+```das
+def private binjgb_all__emulator_step_internal(var e : Emulator?) {
+    if (e.state.hdma.state == DmaState.DMA_INACTIVE) {
+        if (int(Bool.FALSE) != 0) {
+            return
+        }
+        binjgb_all__execute_instruction(e)
+    } else {
+        binjgb_all__tick(e)
+        binjgb_all__hdma_copy_byte(e)
+        binjgb_all__hdma_copy_byte(e)
+    }
+}
+```
 
 Rust:
 
@@ -730,7 +745,197 @@ def emulator_step_internal(var e_114 : Emulator?) {
 
 #### `binjgb`: `ppu_mode3_synchronize`
 
-Ours: not found in this side's module.
+Ours:
+
+```das
+[c_function]
+def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
+    var x : uint8 = e.state.ppu.render_x
+    var y : uint8 = e.state.ppu.line_y
+    if (e.state.ppu.stat.mode != PPUMode.PPU_MODE_MODE3 || int(x) >= 160) {
+        return
+    }
+    var display_bg : Bool = enum_from_int(type<Bool>, (uint(int(e.state.is_cgb)) != 0 || uint(int(e.state.ppu.lcdc.bg_display)) != 0) && !(int(e.config.disable_bg) != 0) ? 1 : 0)
+    var display_obj : Bool = enum_from_int(type<Bool>, uint(int(e.state.ppu.lcdc.obj_display)) != 0 && !(int(e.config.disable_obj) != 0) ? 1 : 0)
+    var rendering_window : Bool = e.state.ppu.rendering_window
+    var window_counter : int = uint(int(rendering_window)) != 0 ? 0 : 255
+    if (!(int(rendering_window) != 0) && uint(int(e.state.ppu.lcdc.window_display)) != 0 && !(int(e.config.disable_window) != 0) && int(e.state.ppu.wx) <= 166 && int(y) >= int(e.state.ppu.wy)) {
+        window_counter = 0 > int(e.state.ppu.wx) - (int(x) + 7) ? 0 : int(e.state.ppu.wx) - (int(x) + 7)
+    }
+    var data_select : TileDataSelect = e.state.ppu.lcdc.bg_tile_data_select
+    var mx : uint8 = uint8(int(e.state.ppu.scx) + int(x))
+    var my : uint8 = uint8(int(e.state.ppu.scy) + int(y))
+    var map_base : uint16 = uint16(int(binjgb_all__map_select_to_address(e.state.ppu.lcdc.bg_tile_map_select)) | (int(my) >> 3) * 32)
+    var pixel : uint?
+    if (e.state.sgb.mask != SgbMask.SGB_MASK_CANCEL) {
+        pixel = addr(ppu_mode3_synchronize_s_dummy_frame_buffer_line[0])
+    } else {
+        pixel = addr(e.frame_buffer[0]) + end_index(int(y) * 160 + int(x), 23040)
+    }
+    var map_addr : uint16 = uint16(0)
+    var pal : PaletteRGBA? = null
+    var lo : uint8 = uint8(0)
+    var hi : uint8 = uint8(0)
+    var priority : Bool = Bool.FALSE
+    var i : int
+    {
+        while (e.state.ppu.mode3_render_ticks < e.state.ticks && int(x) < 160) {
+            var bg_is_zero : Bool[4] = fixed_array(Bool.TRUE, Bool.TRUE, Bool.TRUE, Bool.TRUE)
+            var bg_priority : Bool[4] = fixed_array(Bool.FALSE, Bool.FALSE, Bool.FALSE, Bool.FALSE)
+            {
+                i = 0
+                while (i < 4) {
+                    let _t0 = window_counter
+                    window_counter--
+                    if (int64(!!(_t0 == 0) ? 1 : 0) != 0) {
+                        display_bg = Bool.TRUE
+                        rendering_window = display_bg
+                        e.state.ppu.rendering_window = rendering_window
+                        mx = uint8(int(x) + i + 7 - int(e.state.ppu.wx))
+                        my = e.state.ppu.win_y
+                        map_base = uint16(int(binjgb_all__map_select_to_address(e.state.ppu.lcdc.window_tile_map_select)) | (int(my) >> 3) * 32)
+                        map_addr = uint16(0)
+                    }
+                    if (int(display_bg) != 0) {
+                        var new_map_addr : uint16 = uint16(int(map_base) | int(mx) >> 3)
+                        if (int(map_addr) == int(new_map_addr)) {
+                            lo = uint8(uint(lo) << 1u)
+                            hi = uint8(uint(hi) << 1u)
+                        } else {
+                            map_addr = new_map_addr
+                            var tile_index : uint16 = uint16(e.state.vram.data[int(map_addr)])
+                            var my7 : uint8 = uint8(int(my) & 7)
+                            if (data_select == TileDataSelect.TILE_DATA_8800_97FF) {
+                                tile_index = uint16(256 + int(int8(tile_index)))
+                            }
+                            if (int(e.state.is_cgb) != 0) {
+                                var attr : uint8 = e.state.vram.data[8192 + int(map_addr)]
+                                pal = addr(e.state.ppu.bgcp.palettes[0]) + end_index(int(attr) & 7, 8)
+                                if ((int(attr) & 8) != 0) {
+                                    tile_index = uint16(int(tile_index) + 512)
+                                }
+                                if ((int(attr) & 64) != 0) {
+                                    my7 = uint8(7 - int(my7))
+                                }
+                                priority = enum_from_int(type<Bool>, (int(attr) & 128) != 0 ? 1 : 0)
+                                var tile_addr : uint16 = uint16((int(tile_index) * 8 + int(my7)) * 2)
+                                lo = e.state.vram.data[int(tile_addr)]
+                                hi = e.state.vram.data[int(tile_addr) + 1]
+                                if ((int(attr) & 32) != 0) {
+                                    lo = binjgb_all__reverse_bits_u8(lo)
+                                    hi = binjgb_all__reverse_bits_u8(hi)
+                                }
+                            } else {
+                                if (int(e.state.is_sgb) != 0) {
+                                    var idx : int = (int(y) >> 3) * (160 >> 3) + (int(x) >> 3)
+                                    var palidx : uint8 = uint8(int(e.state.sgb.attr_map[idx >> 2]) >> 2 * (3 - (idx & 3)) & 3)
+                                    pal = addr(e.sgb_pal[0]) + end_index(int(palidx), 4)
+                                } else {
+                                    pal = addr(e.pal[0]) + end_index(int(PaletteType.PALETTE_TYPE_BGP), 3)
+                                }
+                                priority = Bool.FALSE
+                                var tile_addr : uint16 = uint16((int(tile_index) * 8 + int(my7)) * 2)
+                                lo = e.state.vram.data[int(tile_addr)]
+                                hi = e.state.vram.data[int(tile_addr) + 1]
+                            }
+                            var shift : uint8 = uint8(int(mx) & 7)
+                            lo = uint8(uint(lo) << uint(int(shift)))
+                            hi = uint8(uint(hi) << uint(int(shift)))
+                        }
+                        var palette_index : uint8 = uint8(int(hi) >> 6 & 2 | int(lo) >> 7)
+                        deref(pixel + i) = pal.color[int(palette_index)]
+                        bg_is_zero[i] = enum_from_int(type<Bool>, int(palette_index) == 0 ? 1 : 0)
+                        bg_priority[i] = priority
+                    } else {
+                        if (int(e.state.is_cgb) != 0) {
+                            deref(pixel + i) = e.state.ppu.bgcp.palettes[0].color[0]
+                        } elif (int(e.state.is_sgb) != 0) {
+                            deref(pixel + i) = e.sgb_pal[0].color[0]
+                        } else {
+                            deref(pixel + i) = e.color_to_rgba[0].color[0]
+                        }
+                    }
+                    i++
+                    mx = uint8(uint(mx) + 1)
+                }
+            }
+            if (uint(int(e.state.is_cgb)) != 0 && !(int(e.state.ppu.lcdc.bg_display) != 0)) {
+                crt::memset(reinterpret<void?>(addr(bg_is_zero)), int(Bool.TRUE), uint64(typeinfo sizeof(type<Bool[4]>)))
+                crt::memset(reinterpret<void?>(addr(bg_priority)), int(Bool.FALSE), uint64(typeinfo sizeof(type<Bool[4]>)))
+            }
+            if (int(display_obj) != 0) {
+                var obj_height : uint8 = binjgb_all__s_obj_size_to_height[int(e.state.ppu.lcdc.obj_size)]
+                var n : int
+                {
+                    n = int(e.state.ppu.line_obj_count) - 1
+                    while (n >= 0) {
+                        {
+                            var o : Obj? = addr(e.state.ppu.line_obj[0]) + end_index(n, 10)
+                            var ox_start : int8 = int8(int(o.x) - int(x))
+                            var ox_end : int8 = int8(int(ox_start) + 7)
+                            var oy : uint8 = uint8(int(y) - int(o.y))
+                            if (int(uint8(ox_start)) >= 4 && int(uint8(ox_end)) >= 8 || int(oy) >= int(obj_height)) {
+                                continue
+                            }
+                            if (int(o.yflip) != 0) {
+                                oy = uint8(int(obj_height) - 1 - int(oy))
+                            }
+                            var tile_index : uint16 = uint16(o.tile)
+                            if (int(obj_height) == 16) {
+                                if (int(oy) < 8) {
+                                    tile_index = uint16(int(tile_index) & 254)
+                                } else {
+                                    tile_index = uint16(int(tile_index) | 1)
+                                    oy = uint8(int(oy) - 8)
+                                }
+                            }
+                            var pal1 : PaletteRGBA? = null
+                            if (int(e.state.is_cgb) != 0) {
+                                pal1 = addr(e.state.ppu.obcp.palettes[0]) + end_index(int(o.cgb_palette) & 7, 8)
+                                if (o.bank != 0) {
+                                    tile_index = uint16(int(tile_index) + 512)
+                                }
+                            } else {
+                                pal1 = addr(e.pal[0]) + end_index(int(o.palette) + 1, 3)
+                            }
+                            var tile_addr : uint16 = uint16((int(tile_index) * 8 + (int(oy) & 7)) * 2)
+                            var lo1 : uint8 = e.state.vram.data[int(tile_addr)]
+                            var hi1 : uint8 = e.state.vram.data[int(tile_addr) + 1]
+                            if (!(int(o.xflip) != 0)) {
+                                lo1 = binjgb_all__reverse_bits_u8(lo1)
+                                hi1 = binjgb_all__reverse_bits_u8(hi1)
+                            }
+                            var tile_data_offset : int = 0 > -int(ox_start) ? 0 : -int(ox_start)
+                            lo1 = uint8(uint(lo1) >> uint(tile_data_offset))
+                            hi1 = uint8(uint(hi1) >> uint(tile_data_offset))
+                            var start : int = 0 > int(ox_start) ? 0 : int(ox_start)
+                            var end : int = 3 < int(ox_end) ? 3 : int(ox_end)
+                            {
+                                i = start
+                                while (i <= end) {
+                                    var palette_index : uint8 = uint8((int(hi1) & 1) << 1 | int(lo1) & 1)
+                                    if (int(palette_index) != 0 && (!(int(bg_priority[i]) != 0) || uint(int(bg_is_zero[i])) != 0) && (o.priority == ObjPriority.OBJ_PRIORITY_ABOVE_BG || uint(int(bg_is_zero[i])) != 0)) {
+                                        deref(pixel + i) = pal1.color[int(palette_index)]
+                                    }
+                                    i++
+                                    lo1 = uint8(uint(lo1) >> 1u)
+                                    hi1 = uint8(uint(hi1) >> 1u)
+                                }
+                            }
+                        } finally {
+                            n--
+                        }
+                    }
+                }
+            }
+            e.state.ppu.mode3_render_ticks += uint64(4)
+            pixel = pixel + 4
+            x = uint8(int(x) + 4)
+        }
+    }
+    e.state.ppu.render_x = x
+}
+```
 
 Rust:
 
@@ -1857,7 +2062,6 @@ def call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Resul
 - switch_local, exe: Rust 0.99x native, ours 6.15x.
 - switch_local, AOT: Rust 2.61x native, ours has no cell (compile).
 - va_forward, interpreter: Rust 131.56x native, ours 215.67x.
-- project binjgb: Rust passes interpreter, JIT, exe, ours does not.
 - project doomgeneric: Rust passes interpreter, JIT, exe, ours does not.
 - project h264bsd-mp4: Rust passes interpreter, JIT, exe, ours does not.
 - project plmpeg-stream: Rust passes interpreter, JIT, exe, ours does not.
