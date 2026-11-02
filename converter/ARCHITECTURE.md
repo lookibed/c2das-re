@@ -54,7 +54,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   strings `Record.field`, the trailing arrays the program indexes past their length, a value that
   is no list or an entry of another shape refused naming the key, an entry naming no record's
   trailing array the emitter's error; `include_dirs`, a list of folders both clang passes of the
-  dump search as `-I<dir>` in order, and `program_root`, the folder whose files are the program's
+  dump search as `-I<dir>` in order, `include_files`, the headers both passes read first as
+  `-include <file>` in order, and `program_root`, the folder whose files are the program's
   (`ARCHITECTURE_DUMPER.md`, the file policy), each read beside the sidecar unless absolute, a value
   of another shape refused naming the key). A key outside these is refused naming it. A key's presence is
   `key_exists`, since json_boost's `?[]` of a missing key is a non-null sentinel

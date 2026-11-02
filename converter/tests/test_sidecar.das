@@ -189,9 +189,10 @@ def test_sidecar_layout(t : T?) {
     }
     t |> run("`include_dirs` is a list of folders and `program_root` a folder, each read beside the sidecar unless absolute") @(t : T?) {
         var error : string
-        let side <- read_text(dir, "inputs", "\{\"include_dirs\": [\"inc\", \"/abs/inc\"], \"program_root\": \"..\"\}\n", error)
+        let side <- read_text(dir, "inputs", "\{\"include_dirs\": [\"inc\", \"/abs/inc\"], \"include_files\": [\"config.h\"], \"program_root\": \"..\"\}\n", error)
         t |> equal(error, "")
         t |> equal(join(side.include_dirs, " "), "{path_join(dir, "inc")} /abs/inc")
+        t |> equal(join(side.include_files, " "), path_join(dir, "config.h"))
         t |> equal(side.program_root, path_join(dir, ".."))
         let plain <- read_text(dir, "no_inputs", "\{\}\n", error)
         t |> equal(length(plain.include_dirs), 0)
@@ -201,6 +202,7 @@ def test_sidecar_layout(t : T?) {
         let cases <- [
             ("dirs", "\{\"include_dirs\": \"inc\"\}", "`include_dirs` is a list of strings, not \"inc\""),
             ("dir", "\{\"include_dirs\": [2]\}", "`include_dirs` holds strings, not 2"),
+            ("files", "\{\"include_files\": \"a.h\"\}", "`include_files` is a list of strings, not \"a.h\""),
             ("root", "\{\"program_root\": 3\}", "`program_root` is a folder name, not 3"),
             ("empty_root", "\{\"program_root\": \"\"\}", "`program_root` is a folder name, not \"\""),
             ("unknown", "\{\"includes\": []\}", "`includes` is no sidecar key (marshal, stack"),
