@@ -1166,8 +1166,20 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   structs, alloca/stack sizing; `actionf_t` needs no entry, F32). Instrumentation patch: per-tic
   checksum (players[0].mo x/y/z/angle/health + P_Random index) — applied to the C
   source, so the native build and the converted build share it by construction.
+  Done (branch `p6.1-puredoom`, PR #52, 2026-11-02): PureDOOM fetched at pin 355cfbd
+  (`doom/fetch.sh`, never committed, GPL-2 kept in `doom/`), freedoom 0.13.0 pinned by sha256;
+  `doom/patches/0001-per-tic-checksum.patch` (FNV-1a per tic over player 0's x/y/z/angle/health
+  and `prndindex`, `-DDOOM_TIC_CHECKSUM`; fixes PureDOOM's `-timedemo` falling into the title
+  loop); headless host with a virtual clock; `doom/sources.das` (62 units + host),
+  `doom/doom.c2das` (6 defines, 11 marshal records, 3 over_indexed, no stack/alloca keys: no
+  alloca, native stack under 16 KiB); `doom/run.das` `--fetch-check/--native/--demo`; 20 tests.
+  Eight findings for P6.3 in the PR. Report: the PR.
 - **P6.2 Native baseline build** (MSVC /O2) with instrumentation; record reference
   checksum logs for demo1/2/3 on freedoom2.wad and doom2.wad.
+  Done (PR #52, 2026-11-02): native baseline with the pinned clang at -O2 (MSVC /O2 does not apply
+  on this box); `doom/ref/freedoom2_demo{1,2,3}.log`, 2664 / 5444 / 2743 tics, demo2 a two-player
+  demo; identical across runs and at -O0; no native desync or crash. doom2.wad: harness accepts
+  `--wad`, its logs stay local (owner's file). Report: the PR.
 - **P6.3 Converts + compiles.** First real whole-program stress after Lua; expect
   module-size issues here if anywhere (SCC split is the tool).
 - **P6.4 Boots headless.** `D_DoomMain` to attract screen; framebuffer CRC at fixed
