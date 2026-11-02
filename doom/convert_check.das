@@ -60,7 +60,7 @@ def stage_program(sources, host, dir : string; units : array<string>; var error 
     }
     let host_text = fread(host)
     let host_copy = path_join(dir, base_name(host))
-    var lines <- [for (line in split(host_text, "\n")); line |> starts_with("#include \"") && line |> ends_with("/DOOM.h\"") ? "#include \"DOOM.h\"" : line]
+    let lines <- [for (line in split(host_text, "\n")); line |> starts_with("#include \"") && line |> ends_with("/DOOM.h\"") ? "#include \"DOOM.h\"" : line]
     if (empty(host_text) || !fwrite(host_copy, join(lines, "\n"))) {
         error = "cannot copy {host} into {dir}"
     }
@@ -105,8 +105,10 @@ def convert_units(c_paths : array<string>; side : Sidecar) : array<Verdict> {
     var verdicts : array<Verdict>
     var tus : array<CirTu>
     var defined : table<string>
+    verdicts |> reserve(length(c_paths))
+    tus |> reserve(length(c_paths))
     for (c_path in c_paths) {
-        var d <- dump_tu(c_path, target_by_name(TARGET), default_clang(), side.defines)
+        var d <- dump_tu(c_path, target_by_name(TARGET), default_clang(), dump_inputs(side))
         verdicts |> push(Verdict(name = file_stem(c_path), error = empty(d.error) ? "" : first_error_line("dumper: {d.error}")))
         for (decl in d.tu.decls) {
             if (decl.k == "func" && decl.body != null) {
@@ -141,7 +143,7 @@ def compile_modules(out_dir : string; module_dirs : array<string>; timeout : flo
     }
     for (rel in split(fread(list), "\n")) {
         continue if (empty(rel) || !(rel |> ends_with(".das")))
-        var argv <- daslang_cmd(module_dirs)
+        var inscope argv <- daslang_cmd(module_dirs)
         argv |> push_from(["-compile-only", get_full_file_name(path_join(out_dir, rel))])
         var output : string
         let rc = run_and_capture(argv, output, timeout)
