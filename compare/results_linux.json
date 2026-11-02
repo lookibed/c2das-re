@@ -1,7 +1,7 @@
 {
 	"suites" : {
 		"c_testsuite" : {
-			"rust_pass_of_ours" : 194,
+			"rust_pass_of_skipped" : 0,
 			"date" : "2026-11-01 02:54 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 199,
@@ -1560,13 +1560,13 @@
 			],
 			"rust_pass_of_unlisted" : 8,
 			"ids" : 220,
-			"daslang" : "0.6.4",
-			"rust_pass_of_skipped" : 0,
 			"seconds" : 86.92239379882812,
-			"ours_skipped" : 0
+			"daslang" : "0.6.4",
+			"ours_skipped" : 0,
+			"rust_pass_of_ours" : 194
 		},
 		"gcc_torture" : {
-			"rust_pass_of_ours" : 1089,
+			"rust_pass_of_skipped" : 41,
 			"date" : "2026-11-01 03:04 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 1179,
@@ -13177,13 +13177,13 @@
 			],
 			"rust_pass_of_unlisted" : 67,
 			"ids" : 1656,
-			"daslang" : "0.6.4",
-			"rust_pass_of_skipped" : 41,
 			"seconds" : 645.4718017578125,
-			"ours_skipped" : 321
+			"daslang" : "0.6.4",
+			"ours_skipped" : 321,
+			"rust_pass_of_ours" : 1089
 		},
 		"csmith" : {
-			"rust_pass_of_ours" : 42,
+			"rust_pass_of_skipped" : 5,
 			"date" : "2026-11-01 03:12 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 151,
@@ -14476,10 +14476,10 @@
 			],
 			"rust_pass_of_unlisted" : 0,
 			"ids" : 182,
-			"daslang" : "0.6.4",
-			"rust_pass_of_skipped" : 5,
 			"seconds" : 434.8171081542969,
-			"ours_skipped" : 31
+			"daslang" : "0.6.4",
+			"ours_skipped" : 31,
+			"rust_pass_of_ours" : 42
 		}
 	},
 	"perf" : {
@@ -17294,48 +17294,6 @@
 					}
 				}
 			},
-			"gcc_torture/990525-1" : {
-				"ours" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 40,
-					"runtime_lines" : 0,
-					"program_c2da_lines" : 0,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 0,
-						"unsafe_expr" : 0,
-						"c_function" : 0,
-						"literal_named" : 0,
-						"pointer_arith" : 0,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 0,
-						"pointer_index" : 0
-					}
-				},
-				"rust" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 341,
-					"runtime_lines" : 290,
-					"program_c2da_lines" : 7,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 14,
-						"unsafe_expr" : 34,
-						"c_function" : 0,
-						"literal_named" : 0,
-						"pointer_arith" : 0,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 1,
-						"pointer_index" : 11
-					}
-				}
-			},
 			"gcc_torture/990628-1" : {
 				"ours" : {
 					"status" : "ok",
@@ -17375,6 +17333,48 @@
 						"unsafe_block" : 0,
 						"while_rangeable" : 1,
 						"pointer_index" : 13
+					}
+				}
+			},
+			"gcc_torture/990525-1" : {
+				"ours" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 40,
+					"runtime_lines" : 0,
+					"program_c2da_lines" : 0,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 0,
+						"unsafe_expr" : 0,
+						"c_function" : 0,
+						"literal_named" : 0,
+						"pointer_arith" : 0,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 0,
+						"pointer_index" : 0
+					}
+				},
+				"rust" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 341,
+					"runtime_lines" : 290,
+					"program_c2da_lines" : 7,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 14,
+						"unsafe_expr" : 34,
+						"c_function" : 0,
+						"literal_named" : 0,
+						"pointer_arith" : 0,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 1,
+						"pointer_index" : 11
 					}
 				}
 			},
@@ -74876,7 +74876,7 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-02 01:46 UTC",
+			"date" : "2026-11-02 23:37 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"ours" : {
 				"error" : "dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`",
@@ -74918,7 +74918,7 @@
 				"status" : "pass",
 				"reason" : ""
 			},
-			"samples" : 3,
+			"samples" : 0,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
@@ -74936,125 +74936,41 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "skipped",
-						"reason" : "the aot host passes the program no arguments, and it reads its input from its last one"
+						"status" : "compile",
+						"reason" : "aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073745648 / limit 0"
 					}
 				}
 			},
 			"speed" : {
 				"native" : {
-					"setup" : {
-						"time" : 7.9e-05,
-						"spread" : 0.0506329113924051,
-						"count" : 1,
-						"result" : 0,
-						"samples" : [
-							8.6e-05,
-							7.9e-05,
-							7.8e-05
-						]
-					},
-					"decode" : {
-						"time" : 0.002048,
-						"spread" : 0.015136718749999998,
-						"count" : 1,
-						"result" : 0,
-						"samples" : [
-							0.002005,
-							0.002067,
-							0.002048
-						]
-					}
+					"error" : "not measured: the run timed no bench (--samples 0)"
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"jit" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"exe" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"aot" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					}
 				},
 				"rust" : {
 					"interp" : {
-						"setup" : {
-							"time" : 0.000456,
-							"spread" : 0.09539473684210525,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.000403,
-								0.000456,
-								0.00049
-							]
-						},
-						"decode" : {
-							"time" : 0.139887,
-							"spread" : 0.10640731447525499,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.160292,
-								0.139887,
-								0.130522
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"jit" : {
-						"setup" : {
-							"time" : 8.7e-05,
-							"spread" : 0.13793103448275862,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								8.7e-05,
-								8.6e-05,
-								0.00011
-							]
-						},
-						"decode" : {
-							"time" : 0.005124,
-							"spread" : 0.07435597189695548,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.005071,
-								0.005124,
-								0.005833
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"exe" : {
-						"setup" : {
-							"time" : 6.3e-05,
-							"spread" : 0.08730158730158727,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								5.7e-05,
-								6.3e-05,
-								6.8e-05
-							]
-						},
-						"decode" : {
-							"time" : 0.006731,
-							"spread" : 0.1362353290744317,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.004916,
-								0.006731,
-								0.00675
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"aot" : {
-						"error" : "the lane does not pass: skipped"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					}
 				}
 			},
@@ -75066,7 +74982,7 @@
 					"status" : "ok",
 					"error" : "",
 					"files" : 1,
-					"lines" : 7997,
+					"lines" : 8260,
 					"runtime_lines" : 0,
 					"program_c2da_lines" : 0,
 					"counts" : {
@@ -75074,7 +74990,7 @@
 						"reinterpret" : 295,
 						"unsafe_expr" : 119,
 						"c_function" : 110,
-						"literal_named" : 1400,
+						"literal_named" : 1778,
 						"pointer_arith" : 88,
 						"goto" : 38,
 						"unsafe_block" : 0,
@@ -75109,7 +75025,7 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-02 01:40 UTC",
+			"date" : "2026-11-02 23:35 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"ours" : {
 				"error" : "",
@@ -75127,8 +75043,8 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "skipped",
-						"reason" : "the aot host passes the program no arguments, and it reads its input from its last one"
+						"status" : "compile",
+						"reason" : "aot build: the build exited 1 and left no binary: compare/work/projects/binjgb/ours_run/aot/ctx/binjgb_all.das.cpp:8637:9: error: cannot jump from this goto statement to its label"
 					}
 				}
 			},
@@ -75143,7 +75059,7 @@
 				{
 					"key" : "binjgb",
 					"name" : "ppu_mode3_synchronize",
-					"ours" : "[c_function]\ndef private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {\n    var x : uint8 = e.state.ppu.render_x\n    var y : uint8 = e.state.ppu.line_y\n    if (e.state.ppu.stat.mode != PPUMode.PPU_MODE_MODE3 || int(x) >= 160) {\n        return\n    }\n    var display_bg : Bool = enum_from_int(type<Bool>, (uint(int(e.state.is_cgb)) != 0 || uint(int(e.state.ppu.lcdc.bg_display)) != 0) && !(int(e.config.disable_bg) != 0) ? 1 : 0)\n    var display_obj : Bool = enum_from_int(type<Bool>, uint(int(e.state.ppu.lcdc.obj_display)) != 0 && !(int(e.config.disable_obj) != 0) ? 1 : 0)\n    var rendering_window : Bool = e.state.ppu.rendering_window\n    var window_counter : int = uint(int(rendering_window)) != 0 ? 0 : 255\n    if (!(int(rendering_window) != 0) && uint(int(e.state.ppu.lcdc.window_display)) != 0 && !(int(e.config.disable_window) != 0) && int(e.state.ppu.wx) <= 166 && int(y) >= int(e.state.ppu.wy)) {\n        window_counter = 0 > int(e.state.ppu.wx) - (int(x) + 7) ? 0 : int(e.state.ppu.wx) - (int(x) + 7)\n    }\n    var data_select : TileDataSelect = e.state.ppu.lcdc.bg_tile_data_select\n    var mx : uint8 = uint8(int(e.state.ppu.scx) + int(x))\n    var my : uint8 = uint8(int(e.state.ppu.scy) + int(y))\n    var map_base : uint16 = uint16(int(binjgb_all__map_select_to_address(e.state.ppu.lcdc.bg_tile_map_select)) | (int(my) >> 3) * 32)\n    var pixel : uint?\n    if (e.state.sgb.mask != SgbMask.SGB_MASK_CANCEL) {\n        pixel = addr(ppu_mode3_synchronize_s_dummy_frame_buffer_line[0])\n    } else {\n        pixel = addr(e.frame_buffer[0]) + end_index(int(y) * 160 + int(x), 23040)\n    }\n    var map_addr : uint16 = uint16(0)\n    var pal : PaletteRGBA? = null\n    var lo : uint8 = uint8(0)\n    var hi : uint8 = uint8(0)\n    var priority : Bool = Bool.FALSE\n    var i : int\n    {\n        while (e.state.ppu.mode3_render_ticks < e.state.ticks && int(x) < 160) {\n            var bg_is_zero : Bool[4] = fixed_array(Bool.TRUE, Bool.TRUE, Bool.TRUE, Bool.TRUE)\n            var bg_priority : Bool[4] = fixed_array(Bool.FALSE, Bool.FALSE, Bool.FALSE, Bool.FALSE)\n            {\n                i = 0\n                while (i < 4) {\n                    let _t0 = window_counter\n                    window_counter--\n                    if (int64(!!(_t0 == 0) ? 1 : 0) != 0) {\n                        display_bg = Bool.TRUE\n                        rendering_window = display_bg\n                        e.state.ppu.rendering_window = rendering_window\n                        mx = uint8(int(x) + i + 7 - int(e.state.ppu.wx))\n                        my = e.state.ppu.win_y\n                        map_base = uint16(int(binjgb_all__map_select_to_address(e.state.ppu.lcdc.window_tile_map_select)) | (int(my) >> 3) * 32)\n                        map_addr = uint16(0)\n                    }\n                    if (int(display_bg) != 0) {\n                        var new_map_addr : uint16 = uint16(int(map_base) | int(mx) >> 3)\n                        if (int(map_addr) == int(new_map_addr)) {\n                            lo = uint8(uint(lo) << 1u)\n                            hi = uint8(uint(hi) << 1u)\n                        } else {\n                            map_addr = new_map_addr\n                            var tile_index : uint16 = uint16(e.state.vram.data[int(map_addr)])\n                            var my7 : uint8 = uint8(int(my) & 7)\n                            if (data_select == TileDataSelect.TILE_DATA_8800_97FF) {\n                                tile_index = uint16(256 + int(int8(tile_index)))\n                            }\n                            if (int(e.state.is_cgb) != 0) {\n                                var attr : uint8 = e.state.vram.data[8192 + int(map_addr)]\n                                pal = addr(e.state.ppu.bgcp.palettes[0]) + end_index(int(attr) & 7, 8)\n                                if ((int(attr) & 8) != 0) {\n                                    tile_index = uint16(int(tile_index) + 512)\n                                }\n                                if ((int(attr) & 64) != 0) {\n                                    my7 = uint8(7 - int(my7))\n                                }\n                                priority = enum_from_int(type<Bool>, (int(attr) & 128) != 0 ? 1 : 0)\n                                var tile_addr : uint16 = uint16((int(tile_index) * 8 + int(my7)) * 2)\n                                lo = e.state.vram.data[int(tile_addr)]\n                                hi = e.state.vram.data[int(tile_addr) + 1]\n                                if ((int(attr) & 32) != 0) {\n                                    lo = binjgb_all__reverse_bits_u8(lo)\n                                    hi = binjgb_all__reverse_bits_u8(hi)\n                                }\n                            } else {\n                                if (int(e.state.is_sgb) != 0) {\n                                    var idx : int = (int(y) >> 3) * (160 >> 3) + (int(x) >> 3)\n                                    var palidx : uint8 = uint8(int(e.state.sgb.attr_map[idx >> 2]) >> 2 * (3 - (idx & 3)) & 3)\n                                    pal = addr(e.sgb_pal[0]) + end_index(int(palidx), 4)\n                                } else {\n                                    pal = addr(e.pal[0]) + end_index(int(PaletteType.PALETTE_TYPE_BGP), 3)\n                                }\n                                priority = Bool.FALSE\n                                var tile_addr : uint16 = uint16((int(tile_index) * 8 + int(my7)) * 2)\n                                lo = e.state.vram.data[int(tile_addr)]\n                                hi = e.state.vram.data[int(tile_addr) + 1]\n                            }\n                            var shift : uint8 = uint8(int(mx) & 7)\n                            lo = uint8(uint(lo) << uint(int(shift)))\n                            hi = uint8(uint(hi) << uint(int(shift)))\n                        }\n                        var palette_index : uint8 = uint8(int(hi) >> 6 & 2 | int(lo) >> 7)\n                        deref(pixel + i) = pal.color[int(palette_index)]\n                        bg_is_zero[i] = enum_from_int(type<Bool>, int(palette_index) == 0 ? 1 : 0)\n                        bg_priority[i] = priority\n                    } else {\n                        if (int(e.state.is_cgb) != 0) {\n                            deref(pixel + i) = e.state.ppu.bgcp.palettes[0].color[0]\n                        } elif (int(e.state.is_sgb) != 0) {\n                            deref(pixel + i) = e.sgb_pal[0].color[0]\n                        } else {\n                            deref(pixel + i) = e.color_to_rgba[0].color[0]\n                        }\n                    }\n                    i++\n                    mx = uint8(uint(mx) + 1)\n                }\n            }\n            if (uint(int(e.state.is_cgb)) != 0 && !(int(e.state.ppu.lcdc.bg_display) != 0)) {\n                crt::memset(reinterpret<void?>(addr(bg_is_zero)), int(Bool.TRUE), uint64(typeinfo sizeof(type<Bool[4]>)))\n                crt::memset(reinterpret<void?>(addr(bg_priority)), int(Bool.FALSE), uint64(typeinfo sizeof(type<Bool[4]>)))\n            }\n            if (int(display_obj) != 0) {\n                var obj_height : uint8 = binjgb_all__s_obj_size_to_height[int(e.state.ppu.lcdc.obj_size)]\n                var n : int\n                {\n                    n = int(e.state.ppu.line_obj_count) - 1\n                    while (n >= 0) {\n                        {\n                            var o : Obj? = addr(e.state.ppu.line_obj[0]) + end_index(n, 10)\n                            var ox_start : int8 = int8(int(o.x) - int(x))\n                            var ox_end : int8 = int8(int(ox_start) + 7)\n                            var oy : uint8 = uint8(int(y) - int(o.y))\n                            if (int(uint8(ox_start)) >= 4 && int(uint8(ox_end)) >= 8 || int(oy) >= int(obj_height)) {\n                                continue\n                            }\n                            if (int(o.yflip) != 0) {\n                                oy = uint8(int(obj_height) - 1 - int(oy))\n                            }\n                            var tile_index : uint16 = uint16(o.tile)\n                            if (int(obj_height) == 16) {\n                                if (int(oy) < 8) {\n                                    tile_index = uint16(int(tile_index) & 254)\n                                } else {\n                                    tile_index = uint16(int(tile_index) | 1)\n                                    oy = uint8(int(oy) - 8)\n                                }\n                            }\n                            var pal1 : PaletteRGBA? = null\n                            if (int(e.state.is_cgb) != 0) {\n                                pal1 = addr(e.state.ppu.obcp.palettes[0]) + end_index(int(o.cgb_palette) & 7, 8)\n                                if (o.bank != 0) {\n                                    tile_index = uint16(int(tile_index) + 512)\n                                }\n                            } else {\n                                pal1 = addr(e.pal[0]) + end_index(int(o.palette) + 1, 3)\n                            }\n                            var tile_addr : uint16 = uint16((int(tile_index) * 8 + (int(oy) & 7)) * 2)\n                            var lo1 : uint8 = e.state.vram.data[int(tile_addr)]\n                            var hi1 : uint8 = e.state.vram.data[int(tile_addr) + 1]\n                            if (!(int(o.xflip) != 0)) {\n                                lo1 = binjgb_all__reverse_bits_u8(lo1)\n                                hi1 = binjgb_all__reverse_bits_u8(hi1)\n                            }\n                            var tile_data_offset : int = 0 > -int(ox_start) ? 0 : -int(ox_start)\n                            lo1 = uint8(uint(lo1) >> uint(tile_data_offset))\n                            hi1 = uint8(uint(hi1) >> uint(tile_data_offset))\n                            var start : int = 0 > int(ox_start) ? 0 : int(ox_start)\n                            var end : int = 3 < int(ox_end) ? 3 : int(ox_end)\n                            {\n                                i = start\n                                while (i <= end) {\n                                    var palette_index : uint8 = uint8((int(hi1) & 1) << 1 | int(lo1) & 1)\n                                    if (int(palette_index) != 0 && (!(int(bg_priority[i]) != 0) || uint(int(bg_is_zero[i])) != 0) && (o.priority == ObjPriority.OBJ_PRIORITY_ABOVE_BG || uint(int(bg_is_zero[i])) != 0)) {\n                                        deref(pixel + i) = pal1.color[int(palette_index)]\n                                    }\n                                    i++\n                                    lo1 = uint8(uint(lo1) >> 1u)\n                                    hi1 = uint8(uint(hi1) >> 1u)\n                                }\n                            }\n                        } finally {\n                            n--\n                        }\n                    }\n                }\n            }\n            e.state.ppu.mode3_render_ticks += uint64(4)\n            pixel = pixel + 4\n            x = uint8(int(x) + 4)\n        }\n    }\n    e.state.ppu.render_x = x\n}",
+					"ours" : "[c_function]\ndef private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {\n    var x : uint8 = e.state.ppu.render_x\n    var y : uint8 = e.state.ppu.line_y\n    if (e.state.ppu.stat.mode != PPUMode.PPU_MODE_MODE3 || int(x) >= SCREEN_WIDTH) {\n        return\n    }\n    var display_bg : Bool = enum_from_int(type<Bool>, (uint(int(e.state.is_cgb)) != 0 || uint(int(e.state.ppu.lcdc.bg_display)) != 0) && !(int(e.config.disable_bg) != 0) ? 1 : 0)\n    var display_obj : Bool = enum_from_int(type<Bool>, uint(int(e.state.ppu.lcdc.obj_display)) != 0 && !(int(e.config.disable_obj) != 0) ? 1 : 0)\n    var rendering_window : Bool = e.state.ppu.rendering_window\n    var window_counter : int = uint(int(rendering_window)) != 0 ? 0 : 255\n    if (!(int(rendering_window) != 0) && uint(int(e.state.ppu.lcdc.window_display)) != 0 && !(int(e.config.disable_window) != 0) && int(e.state.ppu.wx) <= WINDOW_MAX_X && int(y) >= int(e.state.ppu.wy)) {\n        window_counter = 0 > int(e.state.ppu.wx) - (int(x) + 7) ? 0 : int(e.state.ppu.wx) - (int(x) + 7)\n    }\n    var data_select : TileDataSelect = e.state.ppu.lcdc.bg_tile_data_select\n    var mx : uint8 = uint8(int(e.state.ppu.scx) + int(x))\n    var my : uint8 = uint8(int(e.state.ppu.scy) + int(y))\n    var map_base : uint16 = uint16(int(binjgb_all__map_select_to_address(e.state.ppu.lcdc.bg_tile_map_select)) | (int(my) >> 3) * TILE_MAP_WIDTH)\n    var pixel : uint?\n    if (e.state.sgb.mask != SgbMask.SGB_MASK_CANCEL) {\n        pixel = addr(ppu_mode3_synchronize_s_dummy_frame_buffer_line[0])\n    } else {\n        pixel = addr(e.frame_buffer[0]) + end_index(int(y) * SCREEN_WIDTH + int(x), 23040)\n    }\n    // Cache map_addr info.\n    var map_addr : uint16 = uint16(0)\n    var pal : PaletteRGBA? = null\n    var lo : uint8 = uint8(0)\n    var hi : uint8 = uint8(0)\n    var priority : Bool = Bool.FALSE\n    var i : int\n    {\n        while (e.state.ppu.mode3_render_ticks < e.state.ticks && int(x) < SCREEN_WIDTH) {\n            var bg_is_zero : Bool[4] = fixed_array(Bool.TRUE, Bool.TRUE, Bool.TRUE, Bool.TRUE)\n            var bg_priority : Bool[4] = fixed_array(Bool.FALSE, Bool.FALSE, Bool.FALSE, Bool.FALSE)\n            {\n                i = 0\n                while (i < 4) {\n                    let _t0 = window_counter\n                    window_counter--\n                    if (!!(_t0 == 0)) {\n                        display_bg = Bool.TRUE\n                        rendering_window = display_bg\n                        e.state.ppu.rendering_window = rendering_window\n                        mx = uint8(int(x) + i + WINDOW_X_OFFSET - int(e.state.ppu.wx))\n                        my = e.state.ppu.win_y\n                        map_base = uint16(int(binjgb_all__map_select_to_address(e.state.ppu.lcdc.window_tile_map_select)) | (int(my) >> 3) * TILE_MAP_WIDTH)\n                        map_addr = uint16(0)\n                    }\n                    if (int(display_bg) != 0) {\n                        var new_map_addr : uint16 = uint16(int(map_base) | int(mx) >> 3)\n                        if (int(map_addr) == int(new_map_addr)) {\n                            lo = uint8(uint(lo) << 1u)\n                            hi = uint8(uint(hi) << 1u)\n                        } else {\n                            map_addr = new_map_addr\n                            var tile_index : uint16 = uint16(e.state.vram.data[int(map_addr)])\n                            var my7 : uint8 = uint8(int(my) & 7)\n                            if (data_select == TileDataSelect.TILE_DATA_8800_97FF) {\n                                tile_index = uint16(256 + int(int8(tile_index)))\n                            }\n                            if (int(e.state.is_cgb) != 0) {\n                                var attr : uint8 = e.state.vram.data[8192 + int(map_addr)]\n                                pal = addr(e.state.ppu.bgcp.palettes[0]) + end_index(int(attr) & 7, 8)\n                                if ((int(attr) & 8) != 0) {\n                                    tile_index = uint16(int(tile_index) + 512)\n                                }\n                                if ((int(attr) & 64) != 0) {\n                                    my7 = uint8(7 - int(my7))\n                                }\n                                priority = enum_from_int(type<Bool>, (int(attr) & 128) != 0 ? 1 : 0)\n                                var tile_addr : uint16 = uint16((int(tile_index) * TILE_HEIGHT + int(my7)) * TILE_ROW_BYTES)\n                                lo = e.state.vram.data[int(tile_addr)]\n                                hi = e.state.vram.data[int(tile_addr) + 1]\n                                if ((int(attr) & 32) != 0) {\n                                    lo = binjgb_all__reverse_bits_u8(lo)\n                                    hi = binjgb_all__reverse_bits_u8(hi)\n                                }\n                            } else {\n                                if (int(e.state.is_sgb) != 0) {\n                                    var idx : int = (int(y) >> 3) * (SCREEN_WIDTH >> 3) + (int(x) >> 3)\n                                    var palidx : uint8 = uint8(int(e.state.sgb.attr_map[idx >> 2]) >> 2 * (3 - (idx & 3)) & 3)\n                                    pal = addr(e.sgb_pal[0]) + end_index(int(palidx), 4)\n                                } else {\n                                    pal = addr(e.pal[0]) + end_index(int(PaletteType.PALETTE_TYPE_BGP), 3)\n                                }\n                                priority = Bool.FALSE\n                                var tile_addr : uint16 = uint16((int(tile_index) * TILE_HEIGHT + int(my7)) * TILE_ROW_BYTES)\n                                lo = e.state.vram.data[int(tile_addr)]\n                                hi = e.state.vram.data[int(tile_addr) + 1]\n                            }\n                            var shift : uint8 = uint8(int(mx) & 7)\n                            lo = uint8(uint(lo) << uint(int(shift)))\n                            hi = uint8(uint(hi) << uint(int(shift)))\n                        }\n                        var palette_index : uint8 = uint8(int(hi) >> 6 & 2 | int(lo) >> 7)\n                        deref(pixel + i) = pal.color[int(palette_index)]\n                        bg_is_zero[i] = enum_from_int(type<Bool>, int(palette_index) == 0 ? 1 : 0)\n                        bg_priority[i] = priority\n                    } else {\n                        if (int(e.state.is_cgb) != 0) {\n                            deref(pixel + i) = e.state.ppu.bgcp.palettes[0].color[0]\n                        } elif (int(e.state.is_sgb) != 0) {\n                            deref(pixel + i) = e.sgb_pal[0].color[0]\n                        } else {\n                            deref(pixel + i) = e.color_to_rgba[0].color[0]\n                        }\n                    }\n                    i++\n                    mx = uint8(uint(mx) + 1)\n                }\n            }\n            // LCDC bit 0 works differently on cgb; when it's cleared OBJ will always\n            // have priority over bg and window.\n            if (uint(int(e.state.is_cgb)) != 0 && !(int(e.state.ppu.lcdc.bg_display) != 0)) {\n                crt::memset(reinterpret<void?>(addr(bg_is_zero)), int(Bool.TRUE), uint64(typeinfo sizeof(type<Bool[4]>)))\n                crt::memset(reinterpret<void?>(addr(bg_priority)), int(Bool.FALSE), uint64(typeinfo sizeof(type<Bool[4]>)))\n            }\n            if (int(display_obj) != 0) {\n                var obj_height : uint8 = binjgb_all__s_obj_size_to_height[int(e.state.ppu.lcdc.obj_size)]\n                var n : int\n                {\n                    n = int(e.state.ppu.line_obj_count) - 1\n                    while (n >= 0) {\n                        {\n                            var o : Obj? = addr(e.state.ppu.line_obj[0]) + end_index(n, 10)\n                            // Does [x, x + 4) intersect [o->x, o->x + 8)? Note that the sums must\n                            // wrap at 256 (i.e. arithmetic is 8-bit).\n                            var ox_start : int8 = int8(int(o.x) - int(x))\n                            // ox_end is inclusive.\n                            var ox_end : int8 = int8(int(ox_start) + 7)\n                            var oy : uint8 = uint8(int(y) - int(o.y))\n                            if (int(uint8(ox_start)) >= 4 && int(uint8(ox_end)) >= 8 || int(oy) >= int(obj_height)) {\n                                continue\n                            }\n                            if (int(o.yflip) != 0) {\n                                oy = uint8(int(obj_height) - 1 - int(oy))\n                            }\n                            var tile_index : uint16 = uint16(o.tile)\n                            if (int(obj_height) == 16) {\n                                if (int(oy) < 8) {\n                                    // Top tile of 8x16 sprite.\n                                    tile_index = uint16(int(tile_index) & 254)\n                                } else {\n                                    // Bottom tile of 8x16 sprite.\n                                    tile_index = uint16(int(tile_index) | 1)\n                                    oy = uint8(int(oy) - 8)\n                                }\n                            }\n                            var pal1 : PaletteRGBA? = null\n                            if (int(e.state.is_cgb) != 0) {\n                                pal1 = addr(e.state.ppu.obcp.palettes[0]) + end_index(int(o.cgb_palette) & 7, 8)\n                                if (o.bank != 0) {\n                                    tile_index = uint16(int(tile_index) + 512)\n                                }\n                            } else {\n                                pal1 = addr(e.pal[0]) + end_index(int(o.palette) + 1, 3)\n                            }\n                            var tile_addr : uint16 = uint16((int(tile_index) * TILE_HEIGHT + (int(oy) & 7)) * TILE_ROW_BYTES)\n                            var lo1 : uint8 = e.state.vram.data[int(tile_addr)]\n                            var hi1 : uint8 = e.state.vram.data[int(tile_addr) + 1]\n                            if (!(int(o.xflip) != 0)) {\n                                lo1 = binjgb_all__reverse_bits_u8(lo1)\n                                hi1 = binjgb_all__reverse_bits_u8(hi1)\n                            }\n                            var tile_data_offset : int = 0 > -int(ox_start) ? 0 : -int(ox_start)\n                            lo1 = uint8(uint(lo1) >> uint(tile_data_offset))\n                            hi1 = uint8(uint(hi1) >> uint(tile_data_offset))\n                            var start : int = 0 > int(ox_start) ? 0 : int(ox_start)\n                            // end is inclusive.\n                            var end : int = 3 < int(ox_end) ? 3 : int(ox_end)\n                            {\n                                i = start\n                                while (i <= end) {\n                                    var palette_index : uint8 = uint8((int(hi1) & 1) << 1 | int(lo1) & 1)\n                                    if (int(palette_index) != 0 && (!(int(bg_priority[i]) != 0) || uint(int(bg_is_zero[i])) != 0) && (o.priority == ObjPriority.OBJ_PRIORITY_ABOVE_BG || uint(int(bg_is_zero[i])) != 0)) {\n                                        deref(pixel + i) = pal1.color[int(palette_index)]\n                                    }\n                                    i++\n                                    lo1 = uint8(uint(lo1) >> 1u)\n                                    hi1 = uint8(uint(hi1) >> 1u)\n                                }\n                            }\n                        } finally {\n                            n--\n                        }\n                    }\n                }\n            }\n            e.state.ppu.mode3_render_ticks += uint64(CPU_TICK)\n            pixel = pixel + 4\n            x = uint8(int(x) + 4)\n        }\n    }\n    e.state.ppu.render_x = x\n}",
 					"rust" : "[sideeffects]\ndef ppu_mode3_synchronize(var e_10 : Emulator?) {\n    var x_2 : uint8\n    var y : uint8\n    var display_bg : Bool = Bool()\n    var display_obj : Bool = Bool()\n    var rendering_window : Bool = Bool()\n    var window_counter : int\n    var data_select : TileDataSelect = TileDataSelect()\n    var mx : uint8\n    var my : uint8\n    var map_base : uint16\n    var pixel : uint?\n    var map_addr : uint16\n    var pal_1 : PaletteRGBA?\n    var lo : uint8\n    var hi : uint8\n    var priority : Bool = Bool()\n    var i_3 : int\n    var bg_is_zero : Bool[4] = fixed_array<Bool>(Bool(), Bool(), Bool(), Bool())\n    var bg_priority : Bool[4] = fixed_array<Bool>(Bool(), Bool(), Bool(), Bool())\n    var new_map_addr : uint16\n    var tile_index : uint16\n    var my7 : uint8\n    var attr : uint8\n    var tile_addr : uint16\n    var idx : int\n    var palidx : uint8\n    var tile_addr_0 : uint16\n    var shift : uint8\n    var palette_index_0 : uint8\n    var obj_height : uint8\n    var n : int\n    var o : Obj?\n    var ox_start : int8\n    var ox_end : int8\n    var oy : uint8\n    var tile_index_0 : uint16\n    var pal_2 : PaletteRGBA?\n    var tile_addr_1 : uint16\n    var lo_0 : uint8\n    var hi_0 : uint8\n    var tile_data_offset : int\n    var start : int\n    var end : int\n    var palette_index_1 : uint8\n    x_2 = e_10.state.ppu.render_x\n    y = e_10.state.ppu.line_y\n    if (uint(e_10.state.ppu.stat.mode) != 3u || int(x_2) >= 160) {\n        return\n    }\n    display_bg = unsafe(reinterpret<Bool>(uint((uint(e_10.state.is_cgb) != 0x0 || uint(e_10.state.ppu.lcdc.bg_display) != 0x0) && uint(e_10.config.disable_bg) == 0u ? 1 : 0)))\n    display_obj = unsafe(reinterpret<Bool>(uint(uint(e_10.state.ppu.lcdc.obj_display) != 0x0 && uint(e_10.config.disable_obj) == 0u ? 1 : 0)))\n    rendering_window = e_10.state.ppu.rendering_window\n    window_counter = uint(rendering_window) != 0x0 ? 0 : 255\n    if (uint(rendering_window) == 0u && uint(e_10.state.ppu.lcdc.window_display) != 0x0 && uint(e_10.config.disable_window) == 0u && int(e_10.state.ppu.wx) <= 166 && int(y) >= int(e_10.state.ppu.wy)) {\n        window_counter = 0 > int(e_10.state.ppu.wx) - (int(x_2) + 7) ? 0 : int(e_10.state.ppu.wx) - (int(x_2) + 7)\n    }\n    data_select = e_10.state.ppu.lcdc.bg_tile_data_select\n    mx = uint8(int(e_10.state.ppu.scx) + int(x_2))\n    my = uint8(int(e_10.state.ppu.scy) + int(y))\n    var c2da_fresh46 : TileMapSelect = e_10.state.ppu.lcdc.bg_tile_map_select\n    map_base = uint16(int(uint16(uint(c2da_fresh46) == 0u ? 6144 : 7168)) | (int(my) >> 3) * 32)\n    if (uint(e_10.state.sgb.mask) != 0u) {\n        pixel = unsafe(addr<uint?>(ppu_mode3_synchronize__s_dummy_frame_buffer_line[0]))\n    } else {\n        var c2da_fresh47 : uint? = unsafe(reinterpret<uint?>(unsafe(reinterpret<uint64>(e_10)) + 212000ul))\n        pixel = unsafe(addr<uint?>(unsafe(unsafe(reinterpret<uint?>(c2da_fresh47))[int(y) * 160 + int(x_2)])))\n    }\n    map_addr = uint16(0)\n    pal_1 = null\n    lo = 0u8\n    hi = 0u8\n    priority = unsafe(reinterpret<Bool>(0u))\n    var c2da_pixel_addr : uint64 = unsafe(reinterpret<uint64>(pixel))\n    while (e_10.state.ppu.mode3_render_ticks < e_10.state.ticks && int(x_2) < 160) {\n        bg_is_zero = fixed_array<Bool>(unsafe(reinterpret<Bool>(1u)), unsafe(reinterpret<Bool>(1u)), unsafe(reinterpret<Bool>(1u)), unsafe(reinterpret<Bool>(1u)))\n        bg_priority = fixed_array<Bool>(unsafe(reinterpret<Bool>(0u)), unsafe(reinterpret<Bool>(0u)), unsafe(reinterpret<Bool>(0u)), unsafe(reinterpret<Bool>(0u)))\n        i_3 = 0\n        while (i_3 < 4) {\n            let c2da_postinc : int = window_counter\n            window_counter--\n            if ((!(!(c2da_postinc == 0)) ? 1l : 0l) != 0) {\n                display_bg = unsafe(reinterpret<Bool>(1u))\n                rendering_window = display_bg\n                e_10.state.ppu.rendering_window = rendering_window\n                mx = uint8(int(x_2) + i_3 + 7 - int(e_10.state.ppu.wx))\n                my = e_10.state.ppu.win_y\n                var c2da_fresh48 : TileMapSelect = e_10.state.ppu.lcdc.window_tile_map_select\n                map_base = uint16(int(uint16(uint(c2da_fresh48) == 0u ? 6144 : 7168)) | (int(my) >> 3) * 32)\n                map_addr = uint16(0)\n            }\n            if (uint(display_bg) != 0u) {\n                new_map_addr = uint16(int(map_base) | int(mx) >> 3)\n                if (int(map_addr) == int(new_map_addr)) {\n                    lo = uint8(int(lo) << 1)\n                    hi = uint8(int(hi) << 1)\n                } else {\n                    map_addr = new_map_addr\n                    var c2da_fresh49 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))\n                    tile_index = uint16(unsafe(unsafe(reinterpret<uint8?>(c2da_fresh49))[int(map_addr)]))\n                    my7 = uint8(int(my) & 7)\n                    if (uint(data_select) == 0u) {\n                        tile_index = uint16(256 + int(int8(tile_index)))\n                    }\n                    if (uint(e_10.state.is_cgb) != 0u) {\n                        var c2da_fresh50 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))\n                        attr = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh50))[8192 + int(map_addr)])\n                        var c2da_fresh51 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 211140ul))\n                        pal_1 = unsafe(addr<PaletteRGBA?>(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh51))[int(attr) & 7])))\n                        if ((int(attr) & 8) != 0) {\n                            tile_index = uint16(int(tile_index) + 512)\n                        }\n                        if ((int(attr) & 64) != 0) {\n                            my7 = uint8(7 - int(my7))\n                        }\n                        priority = unsafe(reinterpret<Bool>(uint((int(attr) & 128) != 0 ? 1 : 0)))\n                        tile_addr = uint16((int(tile_index) * 8 + int(my7)) * 2)\n                        var c2da_fresh52 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))\n                        lo = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh52))[int(tile_addr)])\n                        var c2da_fresh53 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))\n                        hi = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh53))[int(tile_addr) + 1])\n                        if ((int(attr) & 32) != 0) {\n                            lo = reverse_bits_u8(lo)\n                            hi = reverse_bits_u8(hi)\n                        }\n                    } else {\n                        if (uint(e_10.state.is_sgb) != 0u) {\n                            idx = (int(y) >> 3) * (160 >> 3) + (int(x_2) >> 3)\n                            var c2da_fresh54 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 209930ul))\n                            palidx = uint8(int(unsafe(unsafe(reinterpret<uint8?>(c2da_fresh54))[idx >> 2])) >> 2 * (3 - (idx & 3)) & 3)\n                            var c2da_fresh55 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 533688ul))\n                            pal_1 = unsafe(addr<PaletteRGBA?>(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh55))[int(palidx)])))\n                        } else {\n                            var c2da_fresh56 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 533640ul))\n                            pal_1 = unsafe(addr<PaletteRGBA?>(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh56))[0])))\n                        }\n                        priority = unsafe(reinterpret<Bool>(0u))\n                        tile_addr_0 = uint16((int(tile_index) * 8 + int(my7)) * 2)\n                        var c2da_fresh57 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))\n                        lo = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh57))[int(tile_addr_0)])\n                        var c2da_fresh58 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))\n                        hi = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh58))[int(tile_addr_0) + 1])\n                    }\n                    shift = uint8(int(mx) & 7)\n                    lo = uint8(int(lo) << int(shift))\n                    hi = uint8(int(hi) << int(shift))\n                }\n                palette_index_0 = uint8(int(hi) >> 6 & 2 | int(lo) >> 7)\n                var c2da_fresh59 : uint? = unsafe(reinterpret<uint?>(unsafe(reinterpret<uint64>(pal_1))))\n                unsafe(unsafe(reinterpret<uint?>(c2da_pixel_addr))[i_3]) = uint(unsafe(unsafe(reinterpret<uint?>(c2da_fresh59))[int(palette_index_0)]))  // nolint:PERF020\n                bg_is_zero[i_3] = unsafe(reinterpret<Bool>(uint(int(palette_index_0) == 0 ? 1 : 0)))\n                bg_priority[i_3] = priority\n            } elif (uint(e_10.state.is_cgb) != 0u) {\n                var c2da_fresh60 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 211140ul))\n                unsafe(unsafe(reinterpret<uint?>(c2da_pixel_addr))[i_3]) = uint(unsafe(unsafe(addr(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh60))[0]).color[0]))[0]))  // nolint:PERF020\n            } elif (uint(e_10.state.is_sgb) != 0u) {\n                var c2da_fresh61 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 533688ul))\n                unsafe(unsafe(reinterpret<uint?>(c2da_pixel_addr))[i_3]) = uint(unsafe(unsafe(addr(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh61))[0]).color[0]))[0]))  // nolint:PERF020\n            } else {\n                var c2da_fresh62 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 533592ul))\n                unsafe(unsafe(reinterpret<uint?>(c2da_pixel_addr))[i_3]) = uint(unsafe(unsafe(addr(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh62))[0]).color[0]))[0]))  // nolint:PERF020\n            }\n            i_3++\n            mx = uint8(int(mx) + 1)\n        }\n        if (uint(e_10.state.is_cgb) != 0x0 && uint(e_10.state.ppu.lcdc.bg_display) == 0u) {\n            unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(addr<uint8?>(bg_is_zero)))), 1u8, 16ul)))\n            unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(addr<uint8?>(bg_priority)))), 0u8, 16ul)))\n        }\n        if (uint(display_obj) != 0u) {\n            obj_height = s_obj_size_to_height[int(e_10.state.ppu.lcdc.obj_size)]\n            n = int(e_10.state.ppu.line_obj_count) - 1\n            while (n >= 0) {\n                var c2da_fresh63 : Obj? = unsafe(reinterpret<Obj?>(unsafe(reinterpret<uint64>(e_10)) + 211572ul))\n                o = unsafe(addr(unsafe(unsafe(reinterpret<Obj?>(c2da_fresh63))[n])))\n                ox_start = int8(int(o.x) - int(x_2))\n                ox_end = int8(int(ox_start) + 7)\n                oy = uint8(int(y) - int(o.y))\n                if (int(uint8(ox_start)) >= 4 && int(uint8(ox_end)) >= 8 || int(oy) >= int(obj_height)) {\n                    n--\n                    continue\n                }\n                if (uint(o.yflip) != 0u) {\n                    oy = uint8(int(obj_height) - 1 - int(oy))\n                }\n                tile_index_0 = uint16(o.tile)\n                if (int(obj_height) == 16) {\n                    if (int(oy) < 8) {\n                        tile_index_0 = uint16(int(tile_index_0) & 254)\n                    } else {\n                        tile_index_0 = uint16(int(tile_index_0) | 1)\n                        oy = uint8(int(oy) - 8)\n                    }\n                }\n                pal_2 = null\n                if (uint(e_10.state.is_cgb) != 0u) {\n                    var c2da_fresh64 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 211340ul))\n                    pal_2 = unsafe(addr<PaletteRGBA?>(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh64))[int(o.cgb_palette) & 7])))\n                    if (o.bank != 0x0) {\n                        tile_index_0 = uint16(int(tile_index_0) + 512)\n                    }\n                } else {\n                    var c2da_fresh65 : PaletteRGBA? = unsafe(reinterpret<PaletteRGBA?>(unsafe(reinterpret<uint64>(e_10)) + 533640ul))\n                    pal_2 = unsafe(addr<PaletteRGBA?>(unsafe(unsafe(reinterpret<PaletteRGBA?>(c2da_fresh65))[int(o.palette) + 1])))\n                }\n                tile_addr_1 = uint16((int(tile_index_0) * 8 + (int(oy) & 7)) * 2)\n                var c2da_fresh66 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))\n                lo_0 = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh66))[int(tile_addr_1)])\n                var c2da_fresh67 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(e_10)) + 12484ul))\n                hi_0 = unsafe(unsafe(reinterpret<uint8?>(c2da_fresh67))[int(tile_addr_1) + 1])\n                if (uint(o.xflip) == 0u) {\n                    lo_0 = reverse_bits_u8(lo_0)\n                    hi_0 = reverse_bits_u8(hi_0)\n                }\n                tile_data_offset = 0 > -int(ox_start) ? 0 : -int(ox_start)\n                lo_0 = uint8(int(lo_0) >> tile_data_offset)\n                hi_0 = uint8(int(hi_0) >> tile_data_offset)\n                start = 0 > int(ox_start) ? 0 : int(ox_start)\n                end = 3 < int(ox_end) ? 3 : int(ox_end)\n                i_3 = start\n                while (i_3 <= end) {\n                    palette_index_1 = uint8((int(hi_0) & 1) << 1 | int(lo_0) & 1)\n                    if (int(palette_index_1) != 0 && (uint(bg_priority[i_3]) == 0u || uint(bg_is_zero[i_3]) != 0x0) && (uint(o.priority) == 0u || uint(bg_is_zero[i_3]) != 0x0)) {\n                        var c2da_fresh68 : uint? = unsafe(reinterpret<uint?>(unsafe(reinterpret<uint64>(pal_2))))\n                        unsafe(unsafe(reinterpret<uint?>(c2da_pixel_addr))[i_3]) = uint(unsafe(unsafe(reinterpret<uint?>(c2da_fresh68))[int(palette_index_1)]))  // nolint:PERF020\n                    }\n                    i_3++\n                    lo_0 = uint8(int(lo_0) >> 1)\n                    hi_0 = uint8(int(hi_0) >> 1)\n                }\n                n--\n            }\n        }\n        e_10.state.ppu.mode3_render_ticks += 4ul\n        c2da_pixel_addr += 16ul\n        x_2 = uint8(int(x_2) + 4)\n    }\n    e_10.state.ppu.render_x = x_2\n    return\n}"
 				}
 			],
@@ -75151,7 +75067,7 @@
 				"status" : "pass",
 				"reason" : ""
 			},
-			"samples" : 3,
+			"samples" : 0,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
@@ -75169,188 +75085,41 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "skipped",
-						"reason" : "the aot host passes the program no arguments, and it reads its input from its last one"
+						"status" : "compile",
+						"reason" : "aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073744208 / limit 0"
 					}
 				}
 			},
 			"speed" : {
 				"native" : {
-					"setup" : {
-						"time" : 0.000246,
-						"spread" : 0.19715447154471544,
-						"count" : 1,
-						"result" : 0,
-						"samples" : [
-							0.000319,
-							0.000246,
-							0.000222
-						]
-					},
-					"decode" : {
-						"time" : 0.099588,
-						"spread" : 0.11819697152267339,
-						"count" : 1,
-						"result" : 0,
-						"samples" : [
-							0.106748,
-							0.099588,
-							0.083206
-						]
-					}
+					"error" : "not measured: the run timed no bench (--samples 0)"
 				},
 				"ours" : {
 					"interp" : {
-						"setup" : {
-							"time" : 0.002939,
-							"spread" : 0.23358285130996936,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.003975,
-								0.002939,
-								0.002602
-							]
-						},
-						"decode" : {
-							"time" : 7.380694,
-							"spread" : 0.005583214803377526,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								7.380694,
-								7.342532,
-								7.424948
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"jit" : {
-						"setup" : {
-							"time" : 0.000263,
-							"spread" : 0.0893536121673004,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.000293,
-								0.000263,
-								0.000246
-							]
-						},
-						"decode" : {
-							"time" : 0.098186,
-							"spread" : 0.12694274132768424,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.098186,
-								0.097577,
-								0.122505
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"exe" : {
-						"setup" : {
-							"time" : 0.00042,
-							"spread" : 0.22380952380952376,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.00042,
-								0.000479,
-								0.000291
-							]
-						},
-						"decode" : {
-							"time" : 0.124131,
-							"spread" : 0.13995295292876073,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.124131,
-								0.124972,
-								0.090227
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"aot" : {
-						"error" : "the lane does not pass: skipped"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					}
 				},
 				"rust" : {
 					"interp" : {
-						"setup" : {
-							"time" : 0.003409,
-							"spread" : 0.09709592255793491,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.003409,
-								0.003366,
-								0.004028
-							]
-						},
-						"decode" : {
-							"time" : 5.983339,
-							"spread" : 0.012073943996821802,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								5.986704,
-								5.983339,
-								5.842219
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"jit" : {
-						"setup" : {
-							"time" : 0.000186,
-							"spread" : 0.11559139784946233,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.000198,
-								0.000186,
-								0.000155
-							]
-						},
-						"decode" : {
-							"time" : 0.08278,
-							"spread" : 0.06871224933558828,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.090588,
-								0.08278,
-								0.079212
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"exe" : {
-						"setup" : {
-							"time" : 0.000159,
-							"spread" : 0.09433962264150943,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.000172,
-								0.000142,
-								0.000159
-							]
-						},
-						"decode" : {
-							"time" : 0.113694,
-							"spread" : 0.2114315619117983,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.119186,
-								0.071109,
-								0.113694
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"aot" : {
-						"error" : "the lane does not pass: skipped"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					}
 				}
 			},
@@ -75394,7 +75163,7 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-02 01:53 UTC",
+			"date" : "2026-11-02 23:40 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"ours" : {
 				"error" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet",
@@ -75436,7 +75205,7 @@
 				"status" : "pass",
 				"reason" : ""
 			},
-			"samples" : 3,
+			"samples" : 0,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
@@ -75454,125 +75223,41 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "skipped",
-						"reason" : "the aot host passes the program no arguments, and it reads its input from its last one"
+						"status" : "compile",
+						"reason" : "aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073741952 / limit 0"
 					}
 				}
 			},
 			"speed" : {
 				"native" : {
-					"setup" : {
-						"time" : 2.2e-05,
-						"spread" : 0.045454545454545484,
-						"count" : 1,
-						"result" : 0,
-						"samples" : [
-							2.4e-05,
-							2.2e-05,
-							2.2e-05
-						]
-					},
-					"decode" : {
-						"time" : 0.089747,
-						"spread" : 0.09879438867037338,
-						"count" : 1,
-						"result" : 0,
-						"samples" : [
-							0.105501,
-							0.087768,
-							0.089747
-						]
-					}
+					"error" : "not measured: the run timed no bench (--samples 0)"
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"jit" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"exe" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"aot" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					}
 				},
 				"rust" : {
 					"interp" : {
-						"setup" : {
-							"time" : 0.000341,
-							"spread" : 0.03958944281524927,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.000341,
-								0.000368,
-								0.000341
-							]
-						},
-						"decode" : {
-							"time" : 4.929518,
-							"spread" : 0.017340944895626785,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								4.972864,
-								4.801899,
-								4.929518
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"jit" : {
-						"setup" : {
-							"time" : 2.1e-05,
-							"spread" : 0.8571428571428572,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								5.3e-05,
-								1.7e-05,
-								2.1e-05
-							]
-						},
-						"decode" : {
-							"time" : 0.098645,
-							"spread" : 0.0936033250544883,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.112093,
-								0.098645,
-								0.093626
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"exe" : {
-						"setup" : {
-							"time" : 3.4e-05,
-							"spread" : 0.08823529411764701,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								3.4e-05,
-								3.1e-05,
-								3.7e-05
-							]
-						},
-						"decode" : {
-							"time" : 0.105572,
-							"spread" : 0.056558557193195136,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.115492,
-								0.10355,
-								0.105572
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"aot" : {
-						"error" : "the lane does not pass: skipped"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					}
 				}
 			},
@@ -75581,13 +75266,24 @@
 		"plmpeg-stream" : {
 			"code" : {
 				"ours" : {
-					"status" : "refused",
-					"error" : "emitter: /root/c2das/tests/manual/plmpeg-stream/src/module.c:226:5: external function `c2da_rt_reset` has no c_runtime mapping",
-					"files" : 0,
-					"lines" : 0,
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 3618,
 					"runtime_lines" : 0,
 					"program_c2da_lines" : 0,
-					"counts" : {}
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 66,
+						"unsafe_expr" : 6,
+						"c_function" : 64,
+						"literal_named" : 2062,
+						"pointer_arith" : 11,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 6,
+						"pointer_index" : 387
+					}
 				},
 				"rust" : {
 					"status" : "ok",
@@ -75616,26 +75312,26 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-02 01:56 UTC",
+			"date" : "2026-11-02 23:39 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"ours" : {
-				"error" : "emitter: /root/c2das/tests/manual/plmpeg-stream/src/module.c:226:5: external function `c2da_rt_reset` has no c_runtime mapping",
+				"error" : "",
 				"lanes" : {
 					"interp" : {
-						"status" : "refused",
-						"reason" : "emitter: /root/c2das/tests/manual/plmpeg-stream/src/module.c:226:5: external function `c2da_rt_reset` has no c_runtime mapping"
+						"status" : "pass",
+						"reason" : ""
 					},
 					"jit" : {
-						"status" : "refused",
-						"reason" : "emitter: /root/c2das/tests/manual/plmpeg-stream/src/module.c:226:5: external function `c2da_rt_reset` has no c_runtime mapping"
+						"status" : "pass",
+						"reason" : ""
 					},
 					"exe" : {
-						"status" : "refused",
-						"reason" : "emitter: /root/c2das/tests/manual/plmpeg-stream/src/module.c:226:5: external function `c2da_rt_reset` has no c_runtime mapping"
+						"status" : "pass",
+						"reason" : ""
 					},
 					"aot" : {
-						"status" : "refused",
-						"reason" : "emitter: /root/c2das/tests/manual/plmpeg-stream/src/module.c:226:5: external function `c2da_rt_reset` has no c_runtime mapping"
+						"status" : "pass",
+						"reason" : ""
 					}
 				}
 			},
@@ -75644,13 +75340,13 @@
 				{
 					"key" : "plmpeg-stream",
 					"name" : "plm_video_idct",
-					"ours" : "",
+					"ours" : "[c_function]\ndef plm_video_idct(var _c_block : int?) {\n    var b1 : int\n    var b3 : int\n    var b4 : int\n    var b6 : int\n    var b7 : int\n    var tmp1 : int\n    var tmp2 : int\n    var m0 : int\n    var x0 : int\n    var x1 : int\n    var x2 : int\n    var x3 : int\n    var x4 : int\n    var y3 : int\n    var y4 : int\n    var y5 : int\n    var y6 : int\n    var y7 : int\n    // Transform columns\n    for (i in range(8)) {\n        b1 = deref(_c_block + (4 * 8 + i))\n        b3 = deref(_c_block + (2 * 8 + i)) + deref(_c_block + (6 * 8 + i))\n        b4 = deref(_c_block + (5 * 8 + i)) - deref(_c_block + (3 * 8 + i))\n        tmp1 = deref(_c_block + (1 * 8 + i)) + deref(_c_block + (7 * 8 + i))\n        tmp2 = deref(_c_block + (3 * 8 + i)) + deref(_c_block + (5 * 8 + i))\n        b6 = deref(_c_block + (1 * 8 + i)) - deref(_c_block + (7 * 8 + i))\n        b7 = tmp1 + tmp2\n        m0 = deref(_c_block + (0 * 8 + i))\n        x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7\n        x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)\n        x1 = m0 - b1\n        x2 = ((deref(_c_block + (2 * 8 + i)) - deref(_c_block + (6 * 8 + i))) * 362 + 128 >> 8) - b3\n        x3 = m0 + b1\n        y3 = x1 + x2\n        y4 = x3 + b3\n        y5 = x1 - x2\n        y6 = x3 - b3\n        y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)\n        deref(_c_block + (0 * 8 + i)) = b7 + y4\n        deref(_c_block + (1 * 8 + i)) = x4 + y3\n        deref(_c_block + (2 * 8 + i)) = y5 - x0\n        deref(_c_block + (3 * 8 + i)) = y6 - y7\n        deref(_c_block + (4 * 8 + i)) = y6 + y7\n        deref(_c_block + (5 * 8 + i)) = x0 + y5\n        deref(_c_block + (6 * 8 + i)) = y3 - x4\n        deref(_c_block + (7 * 8 + i)) = y4 - b7\n    }\n    // Transform rows\n    {\n        var i : int = 0\n        while (i < 64) {\n            b1 = deref(_c_block + (4 + i))\n            b3 = deref(_c_block + (2 + i)) + deref(_c_block + (6 + i))\n            b4 = deref(_c_block + (5 + i)) - deref(_c_block + (3 + i))\n            tmp1 = deref(_c_block + (1 + i)) + deref(_c_block + (7 + i))\n            tmp2 = deref(_c_block + (3 + i)) + deref(_c_block + (5 + i))\n            b6 = deref(_c_block + (1 + i)) - deref(_c_block + (7 + i))\n            b7 = tmp1 + tmp2\n            m0 = deref(_c_block + (0 + i))\n            x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7\n            x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)\n            x1 = m0 - b1\n            x2 = ((deref(_c_block + (2 + i)) - deref(_c_block + (6 + i))) * 362 + 128 >> 8) - b3\n            x3 = m0 + b1\n            y3 = x1 + x2\n            y4 = x3 + b3\n            y5 = x1 - x2\n            y6 = x3 - b3\n            y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)\n            deref(_c_block + (0 + i)) = b7 + y4 + 128 >> 8\n            deref(_c_block + (1 + i)) = x4 + y3 + 128 >> 8\n            deref(_c_block + (2 + i)) = y5 - x0 + 128 >> 8\n            deref(_c_block + (3 + i)) = y6 - y7 + 128 >> 8\n            deref(_c_block + (4 + i)) = y6 + y7 + 128 >> 8\n            deref(_c_block + (5 + i)) = x0 + y5 + 128 >> 8\n            deref(_c_block + (6 + i)) = y3 - x4 + 128 >> 8\n            deref(_c_block + (7 + i)) = y4 - b7 + 128 >> 8\n            i += 8\n        }\n    }\n}",
 					"rust" : "[sideeffects]\ndef plm_video_idct(var block_2 : int?) {\n    var b1 : int\n    var b3 : int\n    var b4 : int\n    var b6 : int\n    var b7 : int\n    var tmp1 : int\n    var tmp2 : int\n    var m0 : int\n    var x0 : int\n    var x1 : int\n    var x2 : int\n    var x3 : int\n    var x4 : int\n    var y3 : int\n    var y4 : int\n    var y5 : int\n    var y6 : int\n    var y7 : int\n    var i_6 : int\n    for (i_5 in range(0, 8)) {\n        b1 = unsafe(block_2[4 * 8 + i_5])\n        b3 = unsafe(block_2[2 * 8 + i_5]) + unsafe(block_2[6 * 8 + i_5])\n        b4 = unsafe(block_2[5 * 8 + i_5]) - unsafe(block_2[3 * 8 + i_5])\n        tmp1 = unsafe(block_2[1 * 8 + i_5]) + unsafe(block_2[7 * 8 + i_5])\n        tmp2 = unsafe(block_2[3 * 8 + i_5]) + unsafe(block_2[5 * 8 + i_5])\n        b6 = unsafe(block_2[1 * 8 + i_5]) - unsafe(block_2[7 * 8 + i_5])\n        b7 = tmp1 + tmp2\n        m0 = unsafe(block_2[0 * 8 + i_5])\n        x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7\n        x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)\n        x1 = m0 - b1\n        x2 = ((unsafe(block_2[2 * 8 + i_5]) - unsafe(block_2[6 * 8 + i_5])) * 362 + 128 >> 8) - b3\n        x3 = m0 + b1\n        y3 = x1 + x2\n        y4 = x3 + b3\n        y5 = x1 - x2\n        y6 = x3 - b3\n        y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)\n        unsafe(block_2[0 * 8 + i_5]) = b7 + y4\n        unsafe(block_2[1 * 8 + i_5]) = x4 + y3\n        unsafe(block_2[2 * 8 + i_5]) = y5 - x0\n        unsafe(block_2[3 * 8 + i_5]) = y6 - y7\n        unsafe(block_2[4 * 8 + i_5]) = y6 + y7\n        unsafe(block_2[5 * 8 + i_5]) = x0 + y5\n        unsafe(block_2[6 * 8 + i_5]) = y3 - x4\n        unsafe(block_2[7 * 8 + i_5]) = y4 - b7\n    }\n    i_6 = 0\n    while (i_6 < 64) {\n        b1 = unsafe(block_2[4 + i_6])\n        b3 = unsafe(block_2[2 + i_6]) + unsafe(block_2[6 + i_6])\n        b4 = unsafe(block_2[5 + i_6]) - unsafe(block_2[3 + i_6])\n        tmp1 = unsafe(block_2[1 + i_6]) + unsafe(block_2[7 + i_6])\n        tmp2 = unsafe(block_2[3 + i_6]) + unsafe(block_2[5 + i_6])\n        b6 = unsafe(block_2[1 + i_6]) - unsafe(block_2[7 + i_6])\n        b7 = tmp1 + tmp2\n        m0 = unsafe(block_2[0 + i_6])\n        x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7\n        x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)\n        x1 = m0 - b1\n        x2 = ((unsafe(block_2[2 + i_6]) - unsafe(block_2[6 + i_6])) * 362 + 128 >> 8) - b3\n        x3 = m0 + b1\n        y3 = x1 + x2\n        y4 = x3 + b3\n        y5 = x1 - x2\n        y6 = x3 - b3\n        y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)\n        unsafe(block_2[0 + i_6]) = b7 + y4 + 128 >> 8\n        unsafe(block_2[1 + i_6]) = x4 + y3 + 128 >> 8\n        unsafe(block_2[2 + i_6]) = y5 - x0 + 128 >> 8\n        unsafe(block_2[3 + i_6]) = y6 - y7 + 128 >> 8\n        unsafe(block_2[4 + i_6]) = y6 + y7 + 128 >> 8\n        unsafe(block_2[5 + i_6]) = x0 + y5 + 128 >> 8\n        unsafe(block_2[6 + i_6]) = y3 - x4 + 128 >> 8\n        unsafe(block_2[7 + i_6]) = y4 - b7 + 128 >> 8\n        i_6 += 8\n    }\n    return\n}"
 				},
 				{
 					"key" : "plmpeg-stream",
 					"name" : "plm_video_decode_block",
-					"ours" : "",
+					"ours" : "[c_function]\ndef plm_video_decode_block(var self : plm_video_t?; _c_block : int) {\n    var n : int = 0\n    var quant_matrix : uint8?\n    // Decode DC coefficient of intra-coded blocks\n    if (self.macroblock_intra != 0) {\n        var predictor : int\n        var dct_size : int\n        // DC prediction\n        var plane_index : int = _c_block > 3 ? _c_block - 3 : 0\n        predictor = self.dc_predictor[plane_index]\n        dct_size = int(plm_buffer_read_vlc(self.buffer, plmpeg_file_all__PLM_VIDEO_DCT_SIZE[plane_index]))\n        // Read DC coeff\n        if (dct_size > 0) {\n            var differential : int = plm_buffer_read(self.buffer, dct_size)\n            if ((differential & 1 << dct_size - 1) != 0) {\n                self.block_data[0] = predictor + differential\n            } else {\n                self.block_data[0] = predictor + (-(1 << dct_size) | differential + 1)\n            }\n        } else {\n            self.block_data[0] = predictor\n        }\n        // Save predictor value\n        self.dc_predictor[plane_index] = self.block_data[0]\n        // Dequantize + premultiply\n        self.block_data[0] <<= 3 + 5\n        quant_matrix = addr(self.intra_quant_matrix[0])\n        n = 1\n    } else {\n        quant_matrix = addr(self.non_intra_quant_matrix[0])\n    }\n    // Decode AC coefficients (+DC for non-intra)\n    var level : int = 0\n    while (TRUE != 0) {\n        var run : int = 0\n        var coeff : uint16 = plm_buffer_read_vlc_uint(self.buffer, addr(plmpeg_file_all__PLM_VIDEO_DCT_COEFF[0]))\n        if (int(coeff) == 1 && n > 0 && plm_buffer_read(self.buffer, 1) == 0) {\n            // end_of_block\n            break\n        }\n        if (int(coeff) == 65535) {\n            // escape\n            run = plm_buffer_read(self.buffer, 6)\n            level = plm_buffer_read(self.buffer, 8)\n            if (level == 0) {\n                level = plm_buffer_read(self.buffer, 8)\n            } elif (level == 128) {\n                level = plm_buffer_read(self.buffer, 8) - 256\n            } elif (level > 128) {\n                level -= 256\n            }\n        } else {\n            run = int(coeff) >> 8\n            level = int(coeff) & 255\n            if (plm_buffer_read(self.buffer, 1) != 0) {\n                level = -level\n            }\n        }\n        n += run\n        if (n < 0 || n >= 64) {\n            // invalid\n            return\n        }\n        var de_zig_zagged : int = int(plmpeg_file_all__PLM_VIDEO_ZIG_ZAG[n])\n        n++\n        // Dequantize, oddify, clip\n        level = int(uint(level) << 1u)\n        if (!(self.macroblock_intra != 0)) {\n            level += level < 0 ? -1 : 1\n        }\n        level = level * self.quantizer_scale * int(deref(quant_matrix + de_zig_zagged)) >> 4\n        if ((level & 1) == 0) {\n            level -= level > 0 ? 1 : -1\n        }\n        if (level > 2047) {\n            level = 2047\n        } elif (level < -2048) {\n            level = -2048\n        }\n        // Save premultiplied coefficient\n        self.block_data[de_zig_zagged] = level * int(plmpeg_file_all__PLM_VIDEO_PREMULTIPLIER_MATRIX[de_zig_zagged])\n    }\n    // Move block to its place\n    var d : uint8?\n    var dw : int\n    var di : int\n    if (_c_block < 4) {\n        d = self.frame_current.y.data\n        dw = self.luma_width\n        di = self.mb_row * self.luma_width + self.mb_col << 4\n        if ((_c_block & 1) != 0) {\n            di += 8\n        }\n        if ((_c_block & 2) != 0) {\n            di += self.luma_width << 3\n        }\n    } else {\n        d = _c_block == 4 ? self.frame_current.cb.data : self.frame_current.cr.data\n        dw = self.chroma_width\n        di = (self.mb_row * self.luma_width << 2) + (self.mb_col << 3)\n    }\n    var s : int? = addr(self.block_data[0])\n    var si : int = 0\n    if (self.macroblock_intra != 0) {\n        // Overwrite (no prediction)\n        if (n == 1) {\n            var clamped : int = int(plmpeg_file_all__plm_clamp(deref(s + 0) + 128 >> 8))\n            var _first = true\n            while (_first || 0 != 0) {\n                _first = false\n                var dest_scan : int = dw - 8\n                var source_scan : int = 8 - 8\n                for (y in range(8)) {\n                    for (x in range(8)) {\n                        deref(d + di) = uint8(clamped)\n                        si++\n                        di++\n                    }\n                    si += source_scan\n                    di += dest_scan\n                }\n            }\n            deref(s + 0) = 0\n        } else {\n            plm_video_idct(s)\n            var _first2 = true\n            while (_first2 || 0 != 0) {\n                _first2 = false\n                var dest_scan : int = dw - 8\n                var source_scan : int = 8 - 8\n                for (y in range(8)) {\n                    for (x in range(8)) {\n                        deref(d + di) = plmpeg_file_all__plm_clamp(deref(s + si))\n                        si++\n                        di++\n                    }\n                    si += source_scan\n                    di += dest_scan\n                }\n            }\n            crt::memset(reinterpret<void?>(addr(self.block_data[0])), 0, uint64(typeinfo sizeof(type<int[64]>)))\n        }\n    } else {\n        // Add data to the predicted macroblock\n        if (n == 1) {\n            var value : int = deref(s + 0) + 128 >> 8\n            var _first3 = true\n            while (_first3 || 0 != 0) {\n                _first3 = false\n                var dest_scan : int = dw - 8\n                var source_scan : int = 8 - 8\n                for (y in range(8)) {\n                    for (x in range(8)) {\n                        deref(d + di) = plmpeg_file_all__plm_clamp(int(deref(d + di)) + value)\n                        si++\n                        di++\n                    }\n                    si += source_scan\n                    di += dest_scan\n                }\n            }\n            deref(s + 0) = 0\n        } else {\n            plm_video_idct(s)\n            var _first4 = true\n            while (_first4 || 0 != 0) {\n                _first4 = false\n                var dest_scan : int = dw - 8\n                var source_scan : int = 8 - 8\n                for (y in range(8)) {\n                    for (x in range(8)) {\n                        deref(d + di) = plmpeg_file_all__plm_clamp(int(deref(d + di)) + deref(s + si))\n                        si++\n                        di++\n                    }\n                    si += source_scan\n                    di += dest_scan\n                }\n            }\n            crt::memset(reinterpret<void?>(addr(self.block_data[0])), 0, uint64(typeinfo sizeof(type<int[64]>)))\n        }\n    }\n}",
 					"rust" : "[sideeffects]\ndef plm_video_decode_block(var self_92 : plm_video_t?; var block_1 : int) {\n    var n : int\n    var quant_matrix : uint8?\n    var predictor : int\n    var dct_size : int\n    var plane_index : int\n    var differential : int\n    var level : int\n    var run : int\n    var coeff : uint16\n    var de_zig_zagged : int\n    var d_0 : uint8?\n    var dw : int\n    var di : int\n    var s_0 : int?\n    var si : int\n    var clamped : int\n    var dest_scan : int\n    var source_scan : int\n    var dest_scan_0 : int\n    var source_scan_0 : int\n    var value_1 : int\n    var dest_scan_1 : int\n    var source_scan_1 : int\n    var dest_scan_2 : int\n    var source_scan_2 : int\n    n = 0\n    if (self_92.macroblock_intra != 0) {\n        plane_index = block_1 > 3 ? block_1 - 3 : 0\n        var c2da_fresh93 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 144ul))\n        predictor = unsafe(unsafe(reinterpret<int?>(c2da_fresh93))[plane_index])\n        dct_size = int(plm_buffer_read_vlc(self_92.buffer, unsafe(reinterpret<plm_vlc_t const?>(PLM_VIDEO_DCT_SIZE[plane_index]))))\n        if (dct_size > 0) {\n            differential = plm_buffer_read(self_92.buffer, dct_size)\n            if ((differential & 1 << dct_size - 1) != 0) {\n                var c2da_fresh94 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n                unsafe(unsafe(reinterpret<int?>(c2da_fresh94))[0]) = predictor + differential\n            } else {\n                var c2da_fresh95 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n                unsafe(unsafe(reinterpret<int?>(c2da_fresh95))[0]) = predictor + (-(1 << dct_size) | differential + 1)\n            }\n        } else {\n            var c2da_fresh96 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n            unsafe(unsafe(reinterpret<int?>(c2da_fresh96))[0]) = predictor\n        }\n        var c2da_fresh97 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 144ul))\n        var c2da_fresh98 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(unsafe(reinterpret<int?>(c2da_fresh97))[plane_index]) = int(unsafe(unsafe(reinterpret<int?>(c2da_fresh98))[0]))  // nolint:PERF020\n        var c2da_fresh99 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(unsafe(reinterpret<int?>(c2da_fresh99))[0]) <<= 3 + 5\n        var c2da_fresh100 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(self_92)) + 632ul))\n        quant_matrix = unsafe(reinterpret<uint8?>(c2da_fresh100))\n        n = 1\n    } else {\n        var c2da_fresh101 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(self_92)) + 696ul))\n        quant_matrix = unsafe(reinterpret<uint8?>(c2da_fresh101))\n    }\n    level = 0\n    while (true) {\n        run = 0\n        coeff = plm_buffer_read_vlc_uint(self_92.buffer, unsafe(addr<plm_vlc_uint_t const?>(PLM_VIDEO_DCT_COEFF[0])))\n        if (int(coeff) == 1 && n > 0 && plm_buffer_read(self_92.buffer, 1) == 0) {\n            break\n        }\n        if (int(coeff) == 65535) {\n            run = plm_buffer_read(self_92.buffer, 6)\n            level = plm_buffer_read(self_92.buffer, 8)\n            if (level == 0) {\n                level = plm_buffer_read(self_92.buffer, 8)\n            } elif (level == 128) {\n                level = plm_buffer_read(self_92.buffer, 8) - 256\n            } elif (level > 128) {\n                level -= 256\n            }\n        } else {\n            run = int(coeff) >> 8\n            level = int(coeff) & 255\n            if (plm_buffer_read(self_92.buffer, 1) != 0) {\n                level = -level\n            }\n        }\n        n += run\n        if (n < 0 || n >= 64) {\n            return\n        }\n        de_zig_zagged = int(PLM_VIDEO_ZIG_ZAG[n])\n        n++\n        level = int(uint(level) << 1u)\n        if (self_92.macroblock_intra == 0) {\n            level += level < 0 ? -1 : 1\n        }\n        level = level * self_92.quantizer_scale * int(unsafe(quant_matrix[de_zig_zagged])) >> 4\n        if ((level & 1) == 0) {\n            level -= level > 0 ? 1 : -1\n        }\n        if (level > 2047) {\n            level = 2047\n        } elif (level < -2048) {\n            level = -2048\n        }\n        var c2da_fresh102 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(unsafe(reinterpret<int?>(c2da_fresh102))[de_zig_zagged]) = level * int(PLM_VIDEO_PREMULTIPLIER_MATRIX[de_zig_zagged])\n    }\n    if (block_1 < 4) {\n        d_0 = unsafe(reinterpret<uint8?>(self_92.frame_current.y.data))\n        dw = self_92.luma_width\n        di = self_92.mb_row * self_92.luma_width + self_92.mb_col << 4\n        if ((block_1 & 1) != 0) {\n            di += 8\n        }\n        if ((block_1 & 2) != 0) {\n            di += self_92.luma_width << 3\n        }\n    } else {\n        d_0 = unsafe(reinterpret<uint8?>(block_1 == 4 ? self_92.frame_current.cb.data : self_92.frame_current.cr.data))\n        dw = self_92.chroma_width\n        di = (self_92.mb_row * self_92.luma_width << 2) + (self_92.mb_col << 3)\n    }\n    var c2da_fresh103 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n    s_0 = c2da_fresh103\n    si = 0\n    if (self_92.macroblock_intra != 0) {\n        if (n == 1) {\n            let c2da_fresh104 : int = unsafe(s_0[0]) + 128 >> 8\n            clamped = int(uint8(c2da_fresh104 > 255 ? 255 : c2da_fresh104 < 0 ? 0 : c2da_fresh104))\n            dest_scan = dw - 8\n            source_scan = 8 - 8\n            for (y in range(0, 8)) {\n                for (x in range(0, 8)) {\n                    unsafe(d_0[di]) = uint8(clamped)\n                    si++\n                    di++\n                }\n                si += source_scan\n                di += dest_scan\n            }\n            unsafe(s_0[0]) = 0\n        } else {\n            plm_video_idct(s_0)\n            dest_scan_0 = dw - 8\n            source_scan_0 = 8 - 8\n            for (y_0 in range(0, 8)) {\n                for (x_0 in range(0, 8)) {\n                    let c2da_fresh105 : int = unsafe(s_0[si])\n                    unsafe(d_0[di]) = uint8(c2da_fresh105 > 255 ? 255 : c2da_fresh105 < 0 ? 0 : c2da_fresh105)\n                    si++\n                    di++\n                }\n                si += source_scan_0\n                di += dest_scan_0\n            }\n            var c2da_fresh106 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n            unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(reinterpret<uint8?>(c2da_fresh106)))), 0u8, 256ul)))\n        }\n    } elif (n == 1) {\n        value_1 = unsafe(s_0[0]) + 128 >> 8\n        dest_scan_1 = dw - 8\n        source_scan_1 = 8 - 8\n        for (y_1 in range(0, 8)) {\n            for (x_1 in range(0, 8)) {\n                let c2da_fresh107 : int = int(unsafe(d_0[di])) + value_1\n                unsafe(d_0[di]) = uint8(c2da_fresh107 > 255 ? 255 : c2da_fresh107 < 0 ? 0 : c2da_fresh107)\n                si++\n                di++\n            }\n            si += source_scan_1\n            di += dest_scan_1\n        }\n        unsafe(s_0[0]) = 0\n    } else {\n        plm_video_idct(s_0)\n        dest_scan_2 = dw - 8\n        source_scan_2 = 8 - 8\n        for (y_2 in range(0, 8)) {\n            for (x_2 in range(0, 8)) {\n                let c2da_fresh108 : int = int(unsafe(d_0[di])) + unsafe(s_0[si])\n                unsafe(d_0[di]) = uint8(c2da_fresh108 > 255 ? 255 : c2da_fresh108 < 0 ? 0 : c2da_fresh108)\n                si++\n                di++\n            }\n            si += source_scan_2\n            di += dest_scan_2\n        }\n        var c2da_fresh109 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(reinterpret<uint8?>(c2da_fresh109)))), 0u8, 256ul)))\n    }\n    return\n}"
 				}
 			],
@@ -75658,7 +75354,7 @@
 				"status" : "pass",
 				"reason" : ""
 			},
-			"samples" : 3,
+			"samples" : 0,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
@@ -75676,125 +75372,41 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "skipped",
-						"reason" : "the aot host passes the program no arguments, and it reads its input from its last one"
+						"status" : "compile",
+						"reason" : "aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073741952 / limit 0"
 					}
 				}
 			},
 			"speed" : {
 				"native" : {
-					"setup" : {
-						"time" : 0.000172,
-						"spread" : 0.1540697674418605,
-						"count" : 1,
-						"result" : 0,
-						"samples" : [
-							0.000172,
-							0.000203,
-							0.00015
-						]
-					},
-					"decode" : {
-						"time" : 0.043238,
-						"spread" : 0.012026458208057719,
-						"count" : 1,
-						"result" : 0,
-						"samples" : [
-							0.04344,
-							0.043238,
-							0.0424
-						]
-					}
+					"error" : "not measured: the run timed no bench (--samples 0)"
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "bench: emitter: /root/c2das/tests/manual/plmpeg-stream/src/module.c:226:5: external function `c2da_rt_reset` has no c_runtime mapping"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"jit" : {
-						"error" : "bench: emitter: /root/c2das/tests/manual/plmpeg-stream/src/module.c:226:5: external function `c2da_rt_reset` has no c_runtime mapping"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"exe" : {
-						"error" : "bench: emitter: /root/c2das/tests/manual/plmpeg-stream/src/module.c:226:5: external function `c2da_rt_reset` has no c_runtime mapping"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"aot" : {
-						"error" : "bench: emitter: /root/c2das/tests/manual/plmpeg-stream/src/module.c:226:5: external function `c2da_rt_reset` has no c_runtime mapping"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					}
 				},
 				"rust" : {
 					"interp" : {
-						"setup" : {
-							"time" : 0.000128,
-							"spread" : 0.07031250000000001,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.000133,
-								0.000128,
-								0.000115
-							]
-						},
-						"decode" : {
-							"time" : 1.574763,
-							"spread" : 0.009456343589479851,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								1.551874,
-								1.574763,
-								1.581657
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"jit" : {
-						"setup" : {
-							"time" : 7.2e-05,
-							"spread" : 0.2361111111111111,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								7.2e-05,
-								6.7e-05,
-								0.000101
-							]
-						},
-						"decode" : {
-							"time" : 0.040644,
-							"spread" : 0.0043671882688711885,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.040333,
-								0.040688,
-								0.040644
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"exe" : {
-						"setup" : {
-							"time" : 5.4e-05,
-							"spread" : 0.4537037037037037,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								5.4e-05,
-								6.8e-05,
-								1.9e-05
-							]
-						},
-						"decode" : {
-							"time" : 0.04358,
-							"spread" : 0.0015488756310234415,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.043679,
-								0.043544,
-								0.04358
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"aot" : {
-						"error" : "the lane does not pass: skipped"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					}
 				}
 			},
@@ -75838,7 +75450,7 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-02 01:58 UTC",
+			"date" : "2026-11-02 23:42 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"ours" : {
 				"error" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet",
@@ -75880,7 +75492,7 @@
 				"status" : "pass",
 				"reason" : ""
 			},
-			"samples" : 3,
+			"samples" : 0,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
@@ -75898,125 +75510,41 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "skipped",
-						"reason" : "the aot host passes the program no arguments, and it reads its input from its last one"
+						"status" : "compile",
+						"reason" : "aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073785824 / limit 0"
 					}
 				}
 			},
 			"speed" : {
 				"native" : {
-					"setup" : {
-						"time" : 0.006987,
-						"spread" : 0.033347645627594125,
-						"count" : 1,
-						"result" : 0,
-						"samples" : [
-							0.006865,
-							0.006987,
-							0.007331
-						]
-					},
-					"decode" : {
-						"time" : 0.128605,
-						"spread" : 0.10891100657050658,
-						"count" : 1,
-						"result" : 0,
-						"samples" : [
-							0.151192,
-							0.128605,
-							0.123179
-						]
-					}
+					"error" : "not measured: the run timed no bench (--samples 0)"
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"jit" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"exe" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"aot" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					}
 				},
 				"rust" : {
 					"interp" : {
-						"setup" : {
-							"time" : 0.12613,
-							"spread" : 0.15387695235074925,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.151207,
-								0.12613,
-								0.11239
-							]
-						},
-						"decode" : {
-							"time" : 4.848025,
-							"spread" : 0.04581308883514415,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								5.071356,
-								4.848025,
-								4.62715
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"jit" : {
-						"setup" : {
-							"time" : 0.007516,
-							"spread" : 0.4421234699308142,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.013201,
-								0.006555,
-								0.007516
-							]
-						},
-						"decode" : {
-							"time" : 0.15795,
-							"spread" : 0.13934789490345037,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.15795,
-								0.13542,
-								0.17944
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"exe" : {
-						"setup" : {
-							"time" : 0.00668,
-							"spread" : 0.01511976047904191,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.006728,
-								0.006526,
-								0.00668
-							]
-						},
-						"decode" : {
-							"time" : 0.13969,
-							"spread" : 0.0938005583792683,
-							"count" : 1,
-							"result" : 0,
-							"samples" : [
-								0.13969,
-								0.137971,
-								0.164177
-							]
-						}
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"aot" : {
-						"error" : "the lane does not pass: skipped"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					}
 				}
 			},
@@ -76060,7 +75588,7 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-02 02:08 UTC",
+			"date" : "2026-11-02 23:32 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"ours" : {
 				"error" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` with no file-scope declaration before it is not lowered yet",
@@ -76102,7 +75630,7 @@
 				"status" : "pass",
 				"reason" : ""
 			},
-			"samples" : 3,
+			"samples" : 0,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
@@ -76120,41 +75648,41 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "skipped",
-						"reason" : "the aot host passes the program no arguments, and it reads its input from its last one"
+						"status" : "compile",
+						"reason" : "aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073741824 / limit 0"
 					}
 				}
 			},
 			"speed" : {
 				"native" : {
-					"error" : "no bench: the project has no bench unit"
+					"error" : "not measured: the run timed no bench (--samples 0)"
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "no bench: the project has no bench unit"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"jit" : {
-						"error" : "no bench: the project has no bench unit"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"exe" : {
-						"error" : "no bench: the project has no bench unit"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"aot" : {
-						"error" : "no bench: the project has no bench unit"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					}
 				},
 				"rust" : {
 					"interp" : {
-						"error" : "no bench: the project has no bench unit"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"jit" : {
-						"error" : "no bench: the project has no bench unit"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"exe" : {
-						"error" : "no bench: the project has no bench unit"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					},
 					"aot" : {
-						"error" : "no bench: the project has no bench unit"
+						"error" : "not measured: the run timed no bench (--samples 0)"
 					}
 				}
 			},
