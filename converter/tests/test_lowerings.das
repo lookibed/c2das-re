@@ -162,6 +162,7 @@ def test_lowerings(t : T?) {
     p7_fixtures(t)
     p7_volatile_fixtures(t)
     p7_expect_fixtures(t)
+    p7_wrap_fixtures(t)
     p5_lua_expression_fixtures(t)
     p5_lua_review_fixtures(t)
     p5_skip_audit_fixtures(t)
@@ -1774,6 +1775,20 @@ def p7_fixtures(t : T?) {
         let refused <- convert(c_path, path_join(work_root, "loops_sidecar_for"), "linux", "", "", "", "for")
         t |> equal(refused.ok, false, refused.das_text)
         t |> success(refused.error |> contains("--loops is range or while, not `for`"), refused.error)
+    }
+}
+
+// P7.0d: C's wrapping arithmetic through the unsigned twin with a narrower operand or `* & | ^`
+def p7_wrap_fixtures(t : T?) {
+    t |> run("lua's intop folds: a narrower operand widened in the signed type, * & | ^ beside + -, the compound store") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_wrap", text)
+        has_text(t, text, "    acc += int64(imm)\n    acc ^= p7_wrap__regs[0] * int64(3)\n")
+        has_text(t, text, "    var p : int64 = p7_wrap__regs[2] * p7_wrap__regs[2]\n")
+        has_text(t, text, "    var q : int64 = p - int64(u) + (p7_wrap__regs[1] & int64(s)) + (int64(c) | int64(1))\n")
+        // an operand already unsigned is no wrap pair: the casts stay
+        has_text(t, text, "    var x : int = int(uint(imm) * 2654435761u) + int(uint(s) + 3u)\n")
+        t |> equal(text |> find("int64(uint64(") < 0, true, text)
     }
 }
 

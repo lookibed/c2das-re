@@ -1097,8 +1097,7 @@ def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
     let compound = empty(x.op) && of_field < 0 && whole < 0 ? self_operation(tu, x) : null
     if (compound != null) {
         // `x = x op y` is das's `x op= y`, `y` the integer it is in the plain form's sum
-        let operand = compound.b.e == "cast" && wrap_pair(tu, x.b) != null ? compound.b.a : compound.b
-        let y = stored(emit_expr(em, tu, operand, loc), tu, x.a.t)
+        let y = wrap_pair(tu, x.b) != null ? wrap_operand(em, tu, compound.b, x.a.t, loc) : stored(emit_expr(em, tu, compound.b, loc), tu, x.a.t)
         return "{lhs.text} {BIN_SPELLING?[compound.op] ?? ""}= {wrap(y, (BIN_PREC?[compound.op] ?? 0) + 1)}"
     }
     var rhs = stored(emit_expr(em, tu, x.b, loc), tu, x.a.t)
@@ -1713,10 +1712,11 @@ def private decayed(var em : Emitter; tu : CirTu; x : CirExpr; inner : Em; loc :
     return unsafe_value(em, "addr({inner.text}[0])", PREC_PRIMARY)
 }
 
-// C's wrapping signed sum: `(T) ((U) a + (U) b)`, `-` too, with `T` a signed integer of 32 or 64
-// bits, `U` its unsigned twin and `a`, `b` of type `T`; the `bin` node, null for any other cast.
-// das `int` and `int64` arithmetic wraps on every tier (probes/test_scalars.das), so the sum is
-// `a + b` in `T`
+// C's wrapping signed arithmetic: `(T) ((U) a op (U) b)`, `op` one of `+ - * & | ^`, with `T` a
+// signed integer of 32 or 64 bits, `U` its unsigned twin and `a`, `b` of type `T` or a narrower
+// integer (lua's `intop` of an `int` immediate), which `(U)` extends as `(T)` does; the `bin` node,
+// null for any other cast. das `int` and `int64` arithmetic wraps on every tier
+// (probes/test_scalars.das), so the operation is `a op T(b)` in `T`
 def private wrap_pair(tu : CirTu; x : CirExpr const?) : CirExpr const? {
     if (x == null) {
         return null
@@ -1726,11 +1726,11 @@ def private wrap_pair(tu : CirTu; x : CirExpr const?) : CirExpr const? {
 
 def private wrap_pair(tu : CirTu; x : CirExpr) : CirExpr const? {
     let sum = x.a
-    if (x.e != "cast" || x.cast_kind != "IntegralCast" || sum == null || sum.e != "bin" || (sum.op != "add" && sum.op != "sub") || !unsigned_twin(tu, sum.t, x.t)) {
+    if (x.e != "cast" || x.cast_kind != "IntegralCast" || sum == null || sum.e != "bin" || !key_exists(SELF_OPS, sum.op) || !unsigned_twin(tu, sum.t, x.t)) {
         return null
     }
     for (side in fixed_array<CirExpr const?>(sum.a, sum.b)) {
-        if (side == null || side.e != "cast" || side.cast_kind != "IntegralCast" || side.a == null || side.a.t != x.t) {
+        if (side == null || side.e != "cast" || side.cast_kind != "IntegralCast" || side.a == null || !(side.a.t == x.t || narrower_integer(tu, side.a.t, x.t))) {
             return null
         }
     }
@@ -1746,12 +1746,21 @@ def private unsigned_twin(tu : CirTu; u, t : int) : bool {
     return tu.types[t].is_signed && !tu.types[u].is_signed && tu.types[u].w == w && (w == 32 || w == 64)
 }
 
-// the wrapping sum `wrap_pair` matched, spelled in the signed type
-def private emit_wrap_pair(var em : Emitter; tu : CirTu; sum : CirExpr; loc : CirLoc) : Em {
+// an integer type narrower than `t`, a `_Bool` included, whose value `t` holds as it is
+def private narrower_integer(tu : CirTu; from, t : int) : bool => kind_of(tu, from) == "int" && tu.types[from].w < tu.types[t].w
+
+// the wrapping operation `wrap_pair` matched, spelled in the signed type
+def private emit_wrap_pair(var em : Emitter; tu : CirTu; sum : CirExpr; t : int; loc : CirLoc) : Em {
     let prec = BIN_PREC?[sum.op] ?? 0
-    let lhs = to_int(emit_expr(em, tu, sum.a.a, loc))
-    let rhs = to_int(emit_expr(em, tu, sum.b.a, loc))
+    let lhs = wrap_operand(em, tu, sum.a, t, loc)
+    let rhs = wrap_operand(em, tu, sum.b, t, loc)
     return value("{wrap(lhs, prec)} {BIN_SPELLING?[sum.op] ?? ""} {wrap(rhs, prec + 1)}", prec)
+}
+
+// one operand `(U) a` of a wrapping operation in signed type `t`: `a`, or `T(a)` for a narrower one
+def private wrap_operand(var em : Emitter; tu : CirTu; side : CirExpr const?; t : int; loc : CirLoc) : Em {
+    let e = to_int(emit_expr(em, tu, side.a, loc))
+    return side.a.t == t ? e : value("{das_type(em, tu, t, loc)}({e.text})", PREC_PRIMARY)
 }
 
 // `enum_from_int(type<E>, i)` over an int-typed spelling, C's implicit int-to-enum conversion
@@ -2178,7 +2187,7 @@ def private emit_cast_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc
         return volatile_load(em, tu, x.a, loc)
     }
     let wrapped = wrap_pair(tu, x)
-    return wrapped != null ? emit_wrap_pair(em, tu, *wrapped, loc) : emit_cast(em, tu, *x, loc)
+    return wrapped != null ? emit_wrap_pair(em, tu, *wrapped, x.t, loc) : emit_cast(em, tu, *x, loc)
 }
 
 def private emit_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {

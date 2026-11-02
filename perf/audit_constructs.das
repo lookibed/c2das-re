@@ -234,9 +234,12 @@ def private byte_read(text : string; var error : string&) : string => replaced(t
 
 def private enum_reinterpret(text : string; var error : string&) : string => replaced(text, "enum_from_int(type<OpCode>, int((enum_cast__code[pc] ^ uint(r)) & 7u))", "unsafe(reinterpret<OpCode>(int((enum_cast__code[pc] ^ uint(r)) & 7u)))", error)
 
-def private plain_ops(text : string; var error : string&) : string {
-    return replaced_all(text, [(old = "int64(uint64(acc) + uint64(imm))", by = "acc + int64(imm)"),
-                               (old = "int64(uint64(acc) ^ uint64(int64(uint64(wrap_cast__regs[k]) * uint64(3))))", by = "acc ^ wrap_cast__regs[k] * int64(3)")], error)
+// the wrap casts before P7.0d: the converter folds `int64(uint64(a) op uint64(b))` into `a op
+// int64(b)` since, an assignment of it into `a op= int64(b)`, so the rewrite restores the casts and
+// the row's factor is the inverse of their cost
+def private wrap_casts(text : string; var error : string&) : string {
+    return replaced_all(text, [(old = "acc += int64(imm)", by = "acc = int64(uint64(acc) + uint64(imm))"),
+                               (old = "acc ^= wrap_cast__regs[k] * int64(3)", by = "acc = int64(uint64(acc) ^ uint64(int64(uint64(wrap_cast__regs[k]) * uint64(3))))")], error)
 }
 
 def private literal_sizes(text : string; var error : string&) : string => replaced_all(text, [(old = "typeinfo sizeof(type<Pair>)", by = "16"), (old = "typeinfo sizeof(type<int64>)", by = "8")], error)
@@ -256,7 +259,7 @@ def constructs : array<Construct> {
         Construct(name = "`try`/`recover` itself", kernel = "protected_call", spelling = "no-try", sites = "\} recover \{", rewrite = @@no_try),
         Construct(name = "a call of a small function (`luaH_get*`)", kernel = "small_call", spelling = "inlined", sites = "luaH_get", rewrite = @@inlined_call),
         Construct(name = "`uint8(deref(p + i))` byte read", kernel = "string_hash", spelling = "no-cast", sites = "uint8(deref(", rewrite = @@byte_read),
-        Construct(name = "wrap casts `int64(uint64(a) op uint64(b))`", kernel = "wrap_cast", spelling = "plain-op", sites = "int64(uint64(", rewrite = @@plain_ops),
+        Construct(name = "wrap casts `int64(uint64(a) op uint64(b))`", kernel = "wrap_cast", spelling = "wrap-casts", sites = "int64(uint64(", rewrite = @@wrap_casts),
         Construct(name = "`typeinfo sizeof` in a hot loop", kernel = "sizeof_scale", spelling = "literal", sites = "typeinfo sizeof", rewrite = @@literal_sizes)
     ]
 }
