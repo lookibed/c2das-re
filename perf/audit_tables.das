@@ -89,8 +89,9 @@ def construct_table(js : JsonValue?) : string {
 }
 
 //! the net native seconds below which a net factor over native is not shown: a whole run's clock
-//! (the return of `run_and_capture`) lags the exit by up to its 100 ms watchdog tick
-let NET_NATIVE_FLOOR = 0.2lf
+//! (the return of `run_and_capture`) lags the exit by up to its 100 ms watchdog tick, on every lane,
+//! so a native net time under ten ticks reads as noise
+let NET_NATIVE_FLOOR = 1.0lf
 
 // a benchmark lane's seconds less the startup row's in the same lane: the work without the load
 def private net_of(js : JsonValue?; bench, lane : string) : double {
@@ -135,7 +136,7 @@ def bench_table(js : JsonValue?) : string {
 def audit_text(js : JsonValue?) : string {
     var text = "{js?["cpu"] ?? "unknown CPU"}, {js?["samples"] ?? 0} samples per kernel lane, Rust {js?["rust_commit"] ?? "n/a"}\n\n{construct_table(js)}\n"
     if (has_key(js, "benches")) {
-        text += "\n{bench_table(js)}\n"
+        text += "\n{bench_table(js)}\n\nEach whole-run sample resolves to 0.1 s (the clock lags the exit by up to one 100 ms tick, every lane).\n"
     }
     return text
 }

@@ -152,13 +152,14 @@ def test_tables(t : T?) {
     }
     t |> run("no benches key, no bench table; with it, one row per bench measured") @(t : T?) {
         t |> success(!(audit_text(js) |> contains("| bench")), audit_text(js))
-        let with_benches = capture_of(t, "\{'benches': \{'startup': \{'arg': '-e print(1)', 'native': 0.01, 'interp-scc': 5.0, 'interp-source': 1.0\}, 'fib': \{'arg': '27', 'native': 0.41, 'interp-scc': 45.0, 'interp-source': \{'error': 'exited 1: x'\}\}, 'nbody': \{'arg': '9', 'native': 0.11, 'interp-scc': 15.0, 'interp-source': 2.0\}\}\}")
+        let with_benches = capture_of(t, "\{'benches': \{'startup': \{'arg': '-e print(1)', 'native': 0.01, 'interp-scc': 5.0, 'interp-source': 1.0\}, 'fib': \{'arg': '27', 'native': 1.01, 'interp-scc': 45.0, 'interp-source': \{'error': 'exited 1: x'\}\}, 'nbody': \{'arg': '9', 'native': 0.11, 'interp-scc': 15.0, 'interp-source': 2.0\}\}\}")
         let text = bench_table(with_benches)
-        t |> equal(join(row_of(text, "fib"), "|"), "|fib|27|0.410|45.00|error: exited 1: x|100.00x|n/a|n/a|")
-        t |> equal(join(row_of(text, "nbody"), "|"), "|nbody|9|0.110|15.00|2.00|native under 0.2 s|native under 0.2 s|0.10x|")
+        t |> equal(join(row_of(text, "fib"), "|"), "|fib|27|1.010|45.00|error: exited 1: x|40.00x|n/a|n/a|")
+        t |> equal(join(row_of(text, "nbody"), "|"), "|nbody|9|0.110|15.00|2.00|native under 1.0 s|native under 1.0 s|0.10x|")
         t |> equal(join(row_of(text, "startup"), "|"), "|startup|-e print(1)|0.010|5.00|1.00|n/a|n/a|n/a|")
         t |> equal(length(row_of(text, "binary_trees")), 0)
         t |> success(audit_text(with_benches) |> contains("| bench"))
+        t |> success(audit_text(with_benches) |> contains("resolves to 0.1 s"))
     }
 }
 
