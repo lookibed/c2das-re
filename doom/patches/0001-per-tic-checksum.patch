@@ -1,0 +1,104 @@
+c2das-re instrumentation of PureDOOM, applied by doom/fetch.sh to the commit VERSIONS.md pins.
+
+Copyright (C) 2026 the c2das-re authors. This patch modifies PureDOOM, which is distributed
+under the GNU General Public License version 2 (PureDOOM's LICENSE); the patch and the files it
+produces are distributed under the same license, WITHOUT ANY WARRANTY.
+
+- g_game.c: with -DDOOM_TIC_CHECKSUM, G_Ticker ends by printing one line per game tic,
+  "tic=<gametic> cs=<8 hex digits>", the 32-bit FNV-1a (offset basis 2166136261, prime
+  16777619) over the little-endian bytes of players[0].mo->x, y, z, angle (0 without a mobj),
+  players[0].health and prndindex, the index P_Random steps. Without the define the build
+  prints nothing more.
+- d_main.c: -playdemo and -timedemo return from D_DoomMain after I_InitGraphics. PureDOOM's
+  D_DoomLoop runs a single tic and returns, so the call vanilla never returns from fell through
+  to the title loop (or, for a multiplayer demo, to G_InitNew), which replaced the demo.
+
+diff --git a/src/DOOM/d_main.c b/src/DOOM/d_main.c
+index 6cf98c8..d376664 100644
+--- a/src/DOOM/d_main.c
++++ b/src/DOOM/d_main.c
+@@ -1196,14 +1196,20 @@ void D_DoomMain(void)
+     {
+         singledemo = true;              // quit after one demo
+         G_DeferedPlayDemo(myargv[p + 1]);
+-        D_DoomLoop();  // never returns
++        // [c2das] D_DoomLoop runs one tic here and returns, so the title loop below would
++        // replace the demo: the application's loop plays it from its first tic instead.
++        I_InitGraphics();
++        return;
+     }
+ 
+     p = M_CheckParm("-timedemo");
+     if (p && p < myargc - 1)
+     {
+         G_TimeDemo(myargv[p + 1]);
+-        D_DoomLoop();  // never returns
++        // [c2das] D_DoomLoop runs one tic here and returns, so the title loop below would
++        // replace the demo: the application's loop plays it from its first tic instead.
++        I_InitGraphics();
++        return;
+     }
+ 
+     p = M_CheckParm("-loadgame");
+diff --git a/src/DOOM/g_game.c b/src/DOOM/g_game.c
+index 01f68dd..5f49d6d 100644
+--- a/src/DOOM/g_game.c
++++ b/src/DOOM/g_game.c
+@@ -603,6 +603,47 @@ doom_boolean G_Responder(event_t* ev)
+ 
+ 
+ 
++#if defined(DOOM_TIC_CHECKSUM)
++//
++// G_TicChecksum
++// [c2das] One line per game tic, "tic=<gametic> cs=<8 hex digits>": the 32-bit FNV-1a
++// over the little-endian bytes of players[0].mo->x, y, z, angle (0 without a mobj),
++// players[0].health and prndindex, the P_Random index.
++//
++static void G_TicChecksum(void)
++{
++    extern int prndindex;
++    static const char hex[] = "0123456789abcdef";
++    mobj_t* mo = players[0].mo;
++    unsigned int values[6];
++    unsigned int cs = 2166136261u;
++    char digits[9];
++    int i, b;
++
++    values[0] = mo ? (unsigned int)mo->x : 0;
++    values[1] = mo ? (unsigned int)mo->y : 0;
++    values[2] = mo ? (unsigned int)mo->z : 0;
++    values[3] = mo ? (unsigned int)mo->angle : 0;
++    values[4] = (unsigned int)players[0].health;
++    values[5] = (unsigned int)prndindex;
++    for (i = 0; i < 6; i++)
++        for (b = 0; b < 32; b += 8)
++        {
++            cs ^= (values[i] >> b) & 0xff;
++            cs *= 16777619u;
++        }
++    for (i = 0; i < 8; i++)
++        digits[i] = hex[(cs >> (28 - 4 * i)) & 0xf];
++    digits[8] = 0;
++    doom_print("tic=");
++    doom_print(doom_itoa(gametic, 10));
++    doom_print(" cs=");
++    doom_print(digits);
++    doom_print("\n");
++}
++#endif
++
++
+ //
+ // G_Ticker
+ // Make ticcmd_ts for the players.
+@@ -759,6 +800,9 @@ void G_Ticker(void)
+             D_PageTicker();
+             break;
+     }
++#if defined(DOOM_TIC_CHECKSUM)
++    G_TicChecksum();
++#endif
+ }
+ 
+ 
