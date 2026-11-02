@@ -612,7 +612,7 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
         for (layout in ["source", "source-cut"]) {
             let tree = dir_name(module_of(port, m.stem, layout))
             let into = layout_dir(dir, m.stem, layout)
-            var kept <- tree_files(tree)
+            var inscope kept <- tree_files(tree)
             kept |> push("program.layout.txt")
             if (!drop_unlisted(into, kept)) {
                 to_log(LOG_ERROR, "{port.name}: cannot remove a stale file under {into}\n")
