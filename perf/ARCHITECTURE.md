@@ -60,10 +60,10 @@ times them under every lane, and the stored results; the interpreter audit on Lu
 - `run.das` - the harness, by one of two methods (`--method`, section 6). By the default one it
   composes each kernel (`perf_compose.das`), builds the native lane
   with the pinned clang at `-O3 -funsigned-char` (dasProfile's Release build gives its C++
-  kernels `-O3`, and the lane follows its method), converts the same file through `converter/pipeline.das` (three times: the second under
+  kernels `-O3`, and the lane follows its method), converts the same file through `converter/pipeline.das` (four times: the second under
   `--param-writes copy` for the `interp-copy` lane, the third under `--loops while` for the
-  `interp-while` lane), and runs each
-  lane as its own process `--samples` times (five by default). A cell is the median, with ±
+  `interp-while` lane, the fourth under `--first-member reinterpret` for the `interp-reinterpret`
+  lane), and runs each lane as its own process `--samples` times (five by default). A cell is the median, with ±
   half the sample range as a share of it; startup never enters a cell because the program
   times itself; each das lane logs its argv at `info`. The `exe` and `aot` lanes each stand
   only on the binary their build leaves (an earlier run's removed first), since the tier
@@ -125,7 +125,7 @@ times them under every lane, and the stored results; the interpreter audit on Lu
 - `tests/` - the dastest suite over `perf_tables.das`, `perf_cli.das` and the method kernels'
   selection, driven by JSON fixtures and a scratch README, over `perf_lanes.das`'s arithmetic, commands and the AOT tier's refusal of program
   arguments, and `run.das` itself as a child process: `-?`, one sample of `blit` into an
-  `--out` file, whose `interp-copy` and `interp-while` cells must time their conversions and match
+  `--out` file, whose `interp-copy`, `interp-while` and `interp-reinterpret` cells must time their conversions and match
   the native result, one sample of the dasProfile method over `fib_loop` and `fib_recursive`
   whose five lanes must stand and whose `--check` against a far-off baseline must exit 1 naming
   the drifted and the missing cells, the committed method capture under `--table`, `--method
@@ -164,8 +164,8 @@ local faster than an argument slot (`blit` writes its three parameters in its lo
 `interp-while` is `daslang` over a third conversion under `--loops while`, into
 `work/<kernel>/while/`, the `while` forms a canonical counting `for` took before the range
 rewrite (`converter/ARCHITECTURE_EMITTER_LOOPS.md`), so the opt-out of the default is measured
-beside it; `exe` is the
-JIT-linked executable; `aot` is the `-ctx` context compiled with the seven-line host of
+beside it; `interp-reinterpret` is `daslang` over a fourth under `--first-member reinterpret`, into
+`work/<kernel>/reinterpret/` (`converter/ARCHITECTURE_EMITTER_AGGREGATES.md`); `exe` is the JIT-linked executable; `aot` is the `-ctx` context compiled with the seven-line host of
 `converter/tiers.das`, which links `dasCRuntime/src/*.cpp` into the host because the
 generated context declares `Module_CRT` and includes its header. The host compiles with the
 pinned clang's `clang++` at `-O3`, the native lane's compiler and level, so the two lanes

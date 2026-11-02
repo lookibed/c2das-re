@@ -68,6 +68,12 @@ def test_run_blit_lanes(t : T?) {
         t |> success(fread("perf/work/blit/blit.das") |> contains(" in range64(reps)"))
         t |> success(!(fread("perf/work/blit/while/blit.das") |> contains(" in range")))
     }
+    t |> run("the interp-reinterpret lane times the --first-member reinterpret conversion and reproduces the native result") @(t : T?) {
+        let blit = js?["tests"]?["blit"]
+        t |> success((blit?["interp-reinterpret"]?["time"] ?? 0.0lf) > 0.0lf, out)
+        t |> equal(blit?["interp-reinterpret"]?["result"] ?? -1l, blit?["native"]?["result"] ?? -2l, out)
+        t |> success(lane_argv(out, "blit/interp-reinterpret") |> ends_with(" perf/work/blit/reinterpret/blit.das"), out)
+    }
     t |> run("a cell of two samples has their spread") @(t : T?) {
         let native = js?["tests"]?["blit"]?["native"]
         t |> success((native?["spread"] ?? 0.0lf) > 0.0lf, out)
