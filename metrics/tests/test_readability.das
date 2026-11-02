@@ -353,11 +353,16 @@ def test_worker(t : T?) {
         let ranged = fread("metrics/work/perf/primes/das/primes.das")
         t |> success(ranged |> contains("for (i in range(2, n)) \{\n"), ranged)
     }
-    t |> run("--one converts a kernel's `@reinterpret` key under --first-member reinterpret") @(t : T?) {
+    t |> run("--one converts a kernel's `@reinterpret` key under --first-member reinterpret, the plain key with addr") @(t : T?) {
         var counts : string
-        t |> equal(run_worker("perf/blit@reinterpret", counts), 0)
-        t |> success(counts |> starts_with("ok\n"), counts)
-        t |> success(fexist("metrics/work/perf/blit@reinterpret/das/blit.das"), counts)
+        t |> equal(run_worker("perf/first_member@reinterpret", counts), 0)
+        t |> success(counts |> contains("\nreinterpret 7\n"), counts)
+        let reinterpreted = fread("metrics/work/perf/first_member@reinterpret/das/first_member.das")
+        t |> success(reinterpreted |> contains("var v : TValue? = reinterpret<TValue?>(base + a)\n"), reinterpreted)
+        t |> equal(run_worker("perf/first_member", counts), 0)
+        t |> success(counts |> contains("\nreinterpret 5\n"), counts)
+        let kept = fread("metrics/work/perf/first_member/das/first_member.das")
+        t |> success(kept |> contains("var v : TValue? = addr((base + a).val)\n"), kept)
     }
     t |> run("an input that does not convert, and a seed csmith refuses, are errors") @(t : T?) {
         var counts : string

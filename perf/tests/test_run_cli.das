@@ -74,6 +74,20 @@ def test_run_blit_lanes(t : T?) {
         t |> equal(blit?["interp-reinterpret"]?["result"] ?? -1l, blit?["native"]?["result"] ?? -2l, out)
         t |> success(lane_argv(out, "blit/interp-reinterpret") |> ends_with(" perf/work/blit/reinterpret/blit.das"), out)
     }
+    t |> run("first_member's interp-reinterpret lane runs the reinterpret spelling where interp runs addr(...)") @(t : T?) {
+        let fm_results = path_join(dir, "first_member.json")
+        var fm_out : string
+        t |> equal(run_and_capture(["bash", "scripts/run_perf.sh", "--filter", "first_member", "--samples", "1", "--out", fm_results], fm_out, 1200.0), 0, fm_out)
+        var fm_error : string
+        let fm = read_json(fread(fm_results), fm_error)
+        let cells = fm?["tests"]?["first_member"]
+        t |> equal(cells?["interp-reinterpret"]?["result"] ?? -1l, cells?["native"]?["result"] ?? -2l, fm_out)
+        let kept = fread("perf/work/first_member/first_member.das")
+        let reinterpreted = fread("perf/work/first_member/reinterpret/first_member.das")
+        t |> success(kept |> contains("var v : TValue? = addr((base + a).val)\n"), kept)
+        t |> success(reinterpreted |> contains("var v : TValue? = reinterpret<TValue?>(base + a)\n"), reinterpreted)
+        t |> success(reinterpreted |> contains("reinterpret<Table?>(v.value_.gc).size"), reinterpreted)
+    }
     t |> run("a cell of two samples has their spread") @(t : T?) {
         let native = js?["tests"]?["blit"]?["native"]
         t |> success((native?["spread"] ?? 0.0lf) > 0.0lf, out)
