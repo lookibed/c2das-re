@@ -67,8 +67,9 @@ address, so its identity stays one) and whose type spells no unit's record; an o
 an edge from a unit spelling a record another unit defines, in its declarations or in a field of a
 record it owns (its calls or not: the record needs the `require`), a symbol `layout.keep_together`
 names, two units of one `layout.keep_together` group, and an edge whose weight is above
-`layout.threshold` are never cut, and an edge carrying a symbol `layout.cut` names always is. The options are checked before the cut and refused naming the option
-and the value: a `layout.keep_together` stem no file has or symbol no file calls from another, a
+`layout.threshold` are never cut, and an edge carrying a symbol `layout.cut` names always is. The
+options are checked before the cut and refused naming the option and the value: a
+`layout.keep_together` stem no file has or symbol no file calls from another, a
 symbol both options name, a `layout.cut` symbol no edge of a cycle carries, a forced edge out of the
 entry module, carrying a type or a symbol no cut can late-bind, kept by `layout.keep_together`, or
 inside a group no cut parts (the entry's joined group among them), and a profile count that is not

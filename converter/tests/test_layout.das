@@ -360,6 +360,7 @@ def private written(dir : string; files : array<tuple<name : string; text : stri
 def private converted_in(paths : array<string>; dir, sidecar, layout : string) : ConvertResult {
     let side = empty(sidecar) ? "" : path_join(path_join(work_root, dir), "main.c2das")
     if (!empty(side)) {
+        mkdir_rec(path_join(work_root, dir))
         fwrite(side, sidecar)
     }
     return <- convert_program(paths, path_join(path_join(work_root, dir), "out"), "linux", "", side, "", "", "main", layout)
@@ -473,6 +474,8 @@ def test_cut_limits(t : T?) {
         t |> equal(res.error, "")
         t |> equal(cut_lines(res), "cut x_g: y -> x, 1 call sites of the edge's 1")
         agrees(t, paths, res.das_path, "interp", "field")
+        let forced <- converted_in(paths, "field_forced", "\{\"layout\": \{\"cut\": [\"y_f\"]\}\}\n", "source-cut")
+        t |> success(forced.error |> contains("layout.cut forces the edge x -> y, which carries a type y.c defines"), forced.error)
         let source <- converted_in(paths, "field_source", "", "source")
         t |> equal(source.error, "")
         t |> equal(join(source.partition, "\n"), "main\nx_cluster: cluster of 2: x y\nx_cluster: x -> y: y_f, struct S\nx_cluster: y -> x: x_g")
