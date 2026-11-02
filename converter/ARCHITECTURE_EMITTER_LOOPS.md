@@ -49,13 +49,16 @@ bitfield, a member of a `[c_union]` record (a property, F52) or a volatile objec
 the assignment of the sum, and the text is the one a person writes. `y` is the integer the plain
 form adds, a truth value its 0 or 1 (`x += (a < b ? 1 : 0)`), parenthesized at `op`'s precedence.
 
-C's wrapping signed sum, `(T) ((U) a + (U) b)` or `-`, with `T` a signed integer of 32 or 64
-bits, `U` its unsigned twin and both operands of type `T` (`wrap_pair`), is `a + b` in `T`: das
-`int` and `int64` `+` and `-` wrap on every tier (daScript builds with `-fwrapv`, the JIT emits
-`add` without `nsw`, and the AOT host compiles with `-fwrapv`; `probes/test_scalars.das` under the
-interpreter and the JIT, `tests/test_tier_facts.das` under all four tiers). The fold takes the
-cast pair whether the program or clang wrote it, since the bits are the same; `x = (T) ((U) x +
-(U) y)` then is `x += y`. A truth value as an operand is its 0 or 1, as the cast made it.
+C's wrapping signed arithmetic, `(T) ((U) a op (U) b)` with `op` one of `+ - * & | ^`, `T` a
+signed integer of 32 or 64 bits, `U` its unsigned twin and each operand of type `T` or a narrower
+integer (lua's `intop` of an `int` immediate, which `(U)` extends as `(T)` does; `wrap_pair`), is
+`a op T(b)` in `T` (`acc + int64(imm)`): das `int` and `int64` `+` and `-` wrap on every tier
+(daScript builds with `-fwrapv`, the JIT emits `add` without `nsw`, and the AOT host compiles with
+`-fwrapv`; `probes/test_scalars.das` under the interpreter and the JIT,
+`tests/test_tier_facts.das` under all four tiers), `*` under the interpreter and the JIT
+(`probes/test_scalars.das`), and the bitwise operators take the bits as they are. The fold takes
+the cast pair whether the program or clang wrote it, since the bits are the same; `x = (T) ((U) x
+op (U) y)` then is `x op= y`. A truth value as an operand is its 0 or 1, as the cast made it.
 
 ### Volatile access
 
