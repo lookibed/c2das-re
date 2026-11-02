@@ -1162,6 +1162,17 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 
 **Goal: the metric.**
 
+  Done for (a)-(h) (branch `p8.4-inputs`, PR #54, 2026-11-02): sidecar `include_dirs` and
+  `program_root` (both clang passes; `CPATH` folders are user folders; an empty-module path is an
+  error); braced scalar initializers; `musttail` as a plain returned call; the AOT host passes
+  argv; das builtin type names take `_c_`; crt `clock_gettime`; glibc `assert`; `c2da_rt_reset` by
+  a sidecar define. binjgb converts and passes interp/JIT/exe; gcc-torture +2 (`20001011-1`,
+  `pr58831`, recorded with the phase-end readability re-record). Still open: (i) a calling-
+  convention attribute inside a type spelling (`preserve_none` through wasm3's `vectorcall`); (j)
+  a file-scope function-pointer table whose functions read the table back is a das global-
+  initialization loop (emitter). Leftovers: the perf re-record for the AOT host change
+  (`setCommandLineArguments` only), the readability re-record, compare's `aot` skip for argv
+  programs and the ports Lua AOT lane can now run.
 - **P6.1 PureDOOM import.** Vendored, sidecar authored (defines, marshal types for WAD
   structs, alloca/stack sizing; `actionf_t` needs no entry, F32). Instrumentation patch: per-tic
   checksum (players[0].mo x/y/z/angle/health + P_Random index) — applied to the C
