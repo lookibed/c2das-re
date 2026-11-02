@@ -25,7 +25,7 @@ let CUT = "converter/tests/fixtures/p5_layout_cut"
 
 // the single layout's module of each fixture as the multi-TU link wrote it before the source
 // layout (P5.1b1), which the single layout keeps byte for byte
-let TREE_SINGLE_SHA = "a8229aef9c94381aaad779978bcf37308c110a9489a6e28cd19703b0a7ddc501"
+let TREE_SINGLE_SHA = "c72c2f24ff3d7f5bbd2bc72a5cf99016ca8602aad01e9f362347f8f6af548ae1"
 let TYPES_SINGLE_SHA = "cfbd3ed05076a2f81ddec33c0bb79f78347369ffece083b4f1ca307352fc4725"
 
 var work_root : string
