@@ -113,9 +113,9 @@ module `perf/run.das` builds its kernels' lanes with:
 - `aot`: the `-ctx` context with the host of `converter/tiers.das`, compiled by the pinned
   `clang++ -O3`.
 
-Each lane is built once, before the workloads. The AOT host passes the program no arguments, so the
-tier refuses the lane for a program that needs them; that refusal is the lane's reason. A lane
-whose build fails is `not yet` with its first error line for every workload; the publish still
+Each lane is built once, before the workloads, and its binary runs once with the startup
+arguments (the AOT host hands its command line to the program as daslang does). A lane whose
+build fails is `not yet` with its first error line for every workload; the publish still
 exits 0. A lane `--lanes` leaves out is `not measured` in the tables, never `not yet`.
 
 The workloads of `lua` are the startup row (`-e "print(1)"`), the four benchmark scripts, and

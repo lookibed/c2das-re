@@ -61,10 +61,12 @@ def test_commands(t : T?) {
         t |> equal(join(das_lane_command("m.das", "", ["a"]), " "), "{get_das_root()}/bin/daslang -load_module a m.das")
         t |> equal(join(das_lane_command("m.das", "-jit", ["a", "b"]), " "), "{get_das_root()}/bin/daslang -load_module a -load_module b -jit m.das")
     }
-    t |> run("the AOT lane refuses program arguments: no binary, the tier's reason alone, since no build ran") @(t : T?) {
+    t |> run("the AOT lane takes program arguments: the host hands them on, so a missing module fails in the build, not in a refusal") @(t : T?) {
         var error : string
-        t |> equal(build_aot("m.das", "perf/work/none", ["-e", "x"], error), "")
-        t |> equal(error, "the aot tier's host passes the program no arguments")
+        t |> equal(build_aot("m.das", "perf/work/lanes_aot_args", ["-e", "x"], error), "")
+        t |> success(error |> starts_with("the build exited "), error)
+        t |> success(error |> contains("Failed to compile `m.das`"), error)
+        rmdir_rec("perf/work/lanes_aot_args")
     }
     t |> run("the AOT lane removes an earlier binary by the tier's name for it, the stem spelled as a C++ identifier") @(t : T?) {
         let stale = "perf/work/lanes_aot_name/ctx/no_such_module_aot"
