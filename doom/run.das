@@ -1,4 +1,7 @@
 options gen2
+// the pipeline parses clang's JSON dump below its own frames: a deep expression tree overflows
+// the default 16 KB context stack
+options stack = 1048576
 
 require strings
 require daslib/fio
@@ -7,8 +10,10 @@ require daslib/clargs
 require ../converter/pipeline.das
 require ../converter/dumper_a.das
 require ../converter/sidecar.das
+require ../converter/tiers.das
 require sources
 require harness
+require convert_check
 
 //! The PureDOOM harness: `--fetch-check` checks `doom/fetch.sh`'s tree and wad against the pins,
 //! `--native` builds the multi-file form with the patches natively into `doom/work/native/doom`,
@@ -35,6 +40,13 @@ struct Args {
     demo : int = 0
     @clarg_doc = "the IWAD --demo runs on (default the fetched freedoom2.wad)"
     wad : string = ""
+    @clarg_doc = "dump and emit each unit alone, then convert the program in --layout into doom/work/<layout>/, staged in doom/work/src/"
+    convert : bool
+    @clarg_name = "compile-check"
+    @clarg_doc = "compile every module of doom/work/<layout>/ alone with daslang -compile-only"
+    compile_check : bool
+    @clarg_doc = "the layout --convert and --compile-check take: source, source-cut or single"
+    layout : string = "source"
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -123,6 +135,48 @@ def private run_demo(demo : int; wad : string) : bool {
     return true
 }
 
+// each verdict logged under `what`, the passed ones counted, then the classification table
+def private report(what : string; verdicts : array<Verdict>) : bool {
+    var passed = 0
+    for (v in verdicts) {
+        if (empty(v.error)) {
+            passed++
+            to_log(LOG_INFO, "doom: {what} {v.name}: ok\n")
+        } else {
+            to_log(LOG_INFO, "doom: {what} {v.name}: {v.error}\n")
+        }
+    }
+    to_log(LOG_INFO, "doom: {what}: {passed} of {length(verdicts)} pass\n")
+    for (row in blocker_table(verdicts)) {
+        to_log(LOG_INFO, "doom: {what} blocked by: {row}\n")
+    }
+    return passed == length(verdicts)
+}
+
+// the program staged in `doom/work/src/`, each unit converted alone, then the program in `layout`
+def private convert_doom(layout : string) : bool {
+    var error : string
+    let c_paths <- stage_program(SOURCES, HOST, path_join(WORK, "src"), UNITS, error)
+    if (!empty(error)) {
+        to_log(LOG_ERROR, "doom: {error}\n")
+        return false
+    }
+    let side <- read_sidecar(SIDECAR, error)
+    if (!empty(error)) {
+        to_log(LOG_ERROR, "doom: {error}\n")
+        return false
+    }
+    let units_ok = report("unit", convert_units(c_paths, side))
+    let res <- convert_program(c_paths, path_join(WORK, layout), TARGET, "", SIDECAR, "", "", "main", layout)
+    if (!res.ok) {
+        to_log(LOG_INFO, "doom: program ({layout}): {first_error_line(res.error)}\n")
+        to_log(LOG_INFO, "doom: program ({layout}) blocked by: {classify(first_error_line(res.error))}\n")
+        return false
+    }
+    to_log(LOG_INFO, "doom: program ({layout}): {length(res.files)} files, {length(res.partition)} partition lines\n")
+    return units_ok
+}
+
 [export]
 def main : int {
     var args = Args()
@@ -134,6 +188,12 @@ def main : int {
         to_log(LOG_ERROR, "doom: --demo is 1, 2 or 3, not {args.demo}\n")
         return 1
     }
-    let failed = (args.fetch_check && !fetch_check()) || (args.native && !build_native()) || (args.demo != 0 && !run_demo(args.demo, empty(args.wad) ? FREEDOOM2 : args.wad))
+    if (!is_layout(args.layout)) {
+        to_log(LOG_ERROR, "doom: --layout is source, source-cut or single, not `{args.layout}`\n")
+        return 1
+    }
+    let converted = !args.convert || convert_doom(args.layout)
+    let compiled = !args.compile_check || report("module", compile_modules(path_join(WORK, args.layout), CONVERTED_MODULES, 600.0))
+    let failed = !converted || !compiled || (args.fetch_check && !fetch_check()) || (args.native && !build_native()) || (args.demo != 0 && !run_demo(args.demo, empty(args.wad) ? FREEDOOM2 : args.wad))
     return failed ? 1 : 0
 }
