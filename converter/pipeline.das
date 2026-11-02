@@ -332,14 +332,9 @@ def private program_sidecar(c_paths : array<string>; given : string; var sidecar
 //! the edge census of the program's cycles (`EDGE_REPORT`); one file or the single layout is refused.
 def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main"; layout : string = ""; census : bool = false) : ConvertResult {
     if (length(c_paths) == 1 && entry == "main") {
-        if (census) {
+        if (census || (!empty(layout) && !is_layout(layout))) {
             var refused : ConvertResult
-            refused.error = "--edge-census reports the cycles among a program's files; one file has none"
-            return <- refused
-        }
-        if (!empty(layout) && !is_layout(layout)) {
-            var refused : ConvertResult
-            refused.error = option_error("", "", layout)
+            refused.error = census ? "--edge-census reports the cycles among a program's files; one file has none" : option_error("", "", layout)
             return <- refused
         }
         return <- convert(c_paths[0], out_dir, target_name, clang, sidecar_path, param_writes, loops)
