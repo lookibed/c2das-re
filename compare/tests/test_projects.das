@@ -221,7 +221,10 @@ def test_verdicts(t : T?) {
             let broken <- lane_argv(das, "exe", path_join(dir, "w"), none, ["f"], 300.0, error)
             t |> success(empty(broken) && error |> starts_with("exe build: the build exited "), error)
             let broken_aot <- lane_argv(das, "aot", path_join(dir, "a"), none, ["f"], 300.0, error)
-            t |> success(empty(broken_aot) && error |> starts_with("aot build: the build exited "), error)
+            t |> success(empty(broken_aot) && error |> starts_with("aot build: the build exited ") && error |> contains("error["), error)
+            t |> equal(aot_build_line("a\nx.cpp:1:2: error: cannot jump\n3 errors generated.\n"), "x.cpp:1:2: error: cannot jump")
+            t |> equal(aot_build_line("a\nb\n"), "b")
+            t |> equal(aot_build_line("error[50500]: exception during init script\nout of heap memory, requested 8 bytes\n"), "out of heap memory, requested 8 bytes")
         }
     }
     t |> run("a lane's limit: a run, or a build step and its run") @(t : T?) {
