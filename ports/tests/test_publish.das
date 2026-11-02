@@ -28,7 +28,7 @@ let LUA_C = "#include <stdio.h>\n#include <string.h>\nint main(int argc, char **
 // trailer with exit 2 for `binary_trees.lua`, another first line for `nbody.lua`, and `ALL` with
 // the suite's closing line for `all.lua`, whose row compares the exit code and that line alone;
 // every run counts itself in `runs_<lane>.log` of its working folder
-let LUA_DAS = "options gen2\nrequire strings\nrequire daslib/strings_boost\nrequire daslib/fio\ndef count_run(argv : array<string>) \{\n    let lane = has_value(argv, \"-jit\") ? \"jit\" : argv[0] |> ends_with(\"_exe.exe\") || argv[0] |> ends_with(\"_exe\") ? \"exe\" : \"interp\"\n    fopen(\"runs_\{lane\}.log\", \"ab\") $(f) \{\n        if (f != null) \{\n            fwrite(f, \"run\\n\")\n        \}\n    \}\n\}\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    count_run(argv)\n    let last = argv[length(argv) - 1]\n    print(\"[I] stand-in\\n\")\n    if (last |> ends_with(\"binary_trees.lua\")) \{\n        print(\"EXCEPTION: boom\\ntrailer\\n\")\n        return 2\n    \}\n    if (last == \"all.lua\" && !fexist(\"all.lua\")) \{\n        return 1\n    \}\n    if (last |> ends_with(\"nbody.lua\")) \{\n        print(\"drift\\n\{last\}\\n\")\n        return 0\n    \}\n    print(\"\{last == \"all.lua\" ? \"ALL\\nfinal OK !!!\" : last\}\\n\")\n    return 0\n\}\n"
+let LUA_DAS = "options gen2\nrequire strings\nrequire daslib/strings_boost\nrequire daslib/fio\ndef count_run(argv : array<string>) \{\n    let lane = has_value(argv, \"-jit\") ? \"jit\" : argv[0] |> ends_with(\"_exe.exe\") || argv[0] |> ends_with(\"_exe\") ? \"exe\" : argv[0] |> ends_with(\"_aot.exe\") || argv[0] |> ends_with(\"_aot\") ? \"aot\" : \"interp\"\n    fopen(\"runs_\{lane\}.log\", \"ab\") $(f) \{\n        if (f != null) \{\n            fwrite(f, \"run\\n\")\n        \}\n    \}\n\}\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    count_run(argv)\n    let last = argv[length(argv) - 1]\n    print(\"[I] stand-in\\n\")\n    if (last |> ends_with(\"binary_trees.lua\")) \{\n        print(\"EXCEPTION: boom\\ntrailer\\n\")\n        return 2\n    \}\n    if (last == \"all.lua\" && !fexist(\"all.lua\")) \{\n        return 1\n    \}\n    if (last |> ends_with(\"nbody.lua\")) \{\n        print(\"drift\\n\{last\}\\n\")\n        return 0\n    \}\n    print(\"\{last == \"all.lua\" ? \"ALL\\nfinal OK !!!\" : last\}\\n\")\n    return 0\n\}\n"
 
 // the stand-in harness: its report with seconds that differ on every run, a line of seconds
 // alone, and clauses ending in ` s` that are no seconds
@@ -473,7 +473,7 @@ def test_bench(t : T?) {
         let trees <- cell_of(t, c, "binary_trees", "interp")
         t |> success(!empty(trees.error) && length(trees.samples) == 1, "{trees}")
         let readme = fread(path_join(clone, "lua/README.md"))
-        for (fact in ["- `perf/capture_*.json` - every capture", "`scripts/publish_ports.sh --program lua --no-convert --perf --samples 2 --lanes interp,jit,exe,aot --timeout 1800`", "Captured ", " runs of the whole program", "- JIT: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit lua/lua.das --`", "- AOT, every workload: not yet: the aot tier's host passes the program no arguments\n", "- binary_trees, interpreter: not yet: exited 2 where the native build exits 0: EXCEPTION: boom\n", "- nbody, JIT: not yet: line 1 prints `drift` where the native build prints `", "- spectral_norm, clang -O3: not yet: exited 1\n", "- spectral_norm, exe: not yet: no native run to compare with", "- clang -O3: `", " -o lua_native lua.c -lm`"]) {
+        for (fact in ["- `perf/capture_*.json` - every capture", "`scripts/publish_ports.sh --program lua --no-convert --perf --samples 2 --lanes interp,jit,exe,aot --timeout 1800`", "Captured ", " runs of the whole program", "- JIT: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit lua/lua.das --`", "- AOT: `the -ctx context and its host compiled by clang++ -O3 (c2das-re converter/tiers.das), the binary run`", "- binary_trees, AOT: not yet: exited 2 where the native build exits 0: EXCEPTION: boom\n", "- binary_trees, interpreter: not yet: exited 2 where the native build exits 0: EXCEPTION: boom\n", "- nbody, JIT: not yet: line 1 prints `drift` where the native build prints `", "- spectral_norm, clang -O3: not yet: exited 1\n", "- spectral_norm, exe: not yet: no native run to compare with", "- clang -O3: `", " -o lua_native lua.c -lm`"]) {
             t |> success(readme |> contains(fact), "README lacks {fact}:\n{readme}")
         }
         // the test-suite row runs in the test folder and compares the exit code and the closing
@@ -481,13 +481,16 @@ def test_bench(t : T?) {
         t |> success(!(readme |> contains("- test suite, ")), readme)
         // each folder: one warm-up run, then the samples (a failing cell stops at its first)
         let tests = path_join(root, "lua/fetch/lua-5.9.1-tests")
-        for (lane in ["interp", "jit"]) {
+        for (lane in ["interp", "jit", "exe", "aot"]) {
             t |> equal(line_count(path_join(root, "runs_{lane}.log")), 7, "{lane}: warm-up 1, startup 2, fib 2, binary_trees 1, nbody 1")
-            t |> equal(line_count(path_join(tests, "runs_{lane}.log")), 3, "{lane}: warm-up 1, test suite 2")
+            // a binary lane's warm-up is its build's run, in the bench folder
+            let samples = lane == "exe" || lane == "aot" ? 2 : 3
+            t |> equal(line_count(path_join(tests, "runs_{lane}.log")), samples, "{lane}: warm-up {samples - 2}, test suite 2")
         }
+        // every lane stands on 2 of the 5 workloads, the AOT lane's binary run with the arguments too
         let top = fread(path_join(clone, "README.md"))
         t |> success(top |> contains("| [lua](lua/README.md) |"), top)
-        t |> success(top |> contains("not yet |\n"), top)
+        t |> success(top |> contains(" (2 of 5) | ") && top |> contains(" (2 of 5) |\n"), top)
         t |> equal(git(clone, ["status", "--porcelain"]), "")
     }
 }
