@@ -94,6 +94,6 @@ c)` hint (its value is `e`), an integer conversion to a type no narrower (a valu
 and `!= 0` on a truth value (a comparison, `&&`, `||` or `!`, already 0 or 1). Lua's
 `l_unlikely(trap)`, `__builtin_expect((long) (trap != 0), 0)`, is `if (trap != 0)` and
 `l_likely(a < b)` is `a < b`, where the plain bool view spelled `int64(trap != 0 ? 1 : 0) != 0`;
-the interpreter runs the `trap_check` kernel's test 1.58 times faster so
+the interpreter runs the `trap_check` kernel 1.75 times faster so
 (`perf/ARCHITECTURE_AUDIT.md`). A narrowing conversion stays (`(char) 256` is zero), and a hint
 read as a number is its operand's value.

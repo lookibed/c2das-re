@@ -732,9 +732,8 @@ def private truth_of(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : Cir
 }
 
 // whether C expression `x` is a truth value, 0 or 1: a comparison, `&&`, `||` or `!`
-def private is_truth_value(x : CirExpr const?) : bool {
-    return x != null && ((x.e == "bin" && (x.op == "eq" || x.op == "ne" || x.op == "lt" || x.op == "gt" || x.op == "le" || x.op == "ge" || x.op == "land" || x.op == "lor")) || (x.e == "un" && x.op == "not"))
-}
+def private is_truth_value(x : CirExpr const?) : bool =>
+    x != null && ((x.e == "bin" && (x.op == "eq" || x.op == "ne" || x.op == "lt" || x.op == "gt" || x.op == "le" || x.op == "ge" || x.op == "land" || x.op == "lor")) || (x.e == "un" && x.op == "not"))
 
 // whether converting integer type `from` to `to` keeps zero and nonzero apart: `to` is no narrower
 def private keeps_zero(tu : CirTu; from, to : int) : bool => kind_of(tu, from) == "int" && kind_of(tu, to) == "int" && tu.types[to].w >= tu.types[from].w

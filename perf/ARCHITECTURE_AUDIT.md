@@ -88,8 +88,9 @@ samples per kernel lane. Six constructs cost under the interpreter, each measure
 time over the rewrite's: the `_flag` switch chain 2.33x (the converter's plain cases run the
 kernel at 195x native, the chain the `flag-chain` rewrite restores 2.33 times slower, a re-record
 after the fix; the Rust translation's computed `goto` dispatch runs it at 27.0x native), the wrap casts
-`int64(uint64(a) op uint64(b))` 2.10x, the `int64(x != 0 ? 1 : 0) != 0` test 1.58x, `addr((p +
-i).f)` on a stack slot 1.53x, `c_volatile_load` 1.32x, and `try`/`recover` itself 1.25x, of which
+`int64(uint64(a) op uint64(b))` 2.10x, the `int64(x != 0 ? 1 : 0) != 0` test 1.75x (re-recorded after the fix,
+the `expect-roundtrip` rewrite restoring it), `addr((p + i).f)` on a stack slot 1.53x,
+`c_volatile_load` 1.61x (the same re-record), and `try`/`recover` itself 1.25x, of which
 the `while (_sj_run)` trampoline 1.13x; the union member through `reinterpret<GCUnion?>` costs 1.17x
 and `enum_from_int` 1.12x. Five cost nothing measurable (0.93x to 1.02x): `addr(deref(p + i))`,
 the macro mask arithmetic (daslang folds the constants), a small call against its body inlined,
