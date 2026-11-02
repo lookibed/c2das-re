@@ -69,7 +69,11 @@ class CVolatileLoadMacro : AstCallMacro {
         }
         let forwarder = LOAD_FORWARDERS?[arg._type.baseType] ?? ""
         if (empty(forwarder) || !object._type.isRef) {
-            return <- qmacro(c_volatile_read($e(arg)))
+            // the module's own `c_volatile_read` by its qualified name, so a program's function of
+            // that name cannot take the read; the error of a wrong argument names the call site
+            var fallback <- qmacro(c_volatile::c_volatile_read($e(arg)))
+            fallback.at = expr.at
+            return <- fallback
         }
         // the object's address and the forwarder are the expansion's own, safe as the read is
         var ptr = new ExprRef2Ptr(at = expr.at, subexpr = clone_expression(object))

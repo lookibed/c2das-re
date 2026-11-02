@@ -15,6 +15,14 @@ def private twice(v : int) : int => v * 2
 
 def private thrice(v : int) : int => v * 3
 
+// a program's own function under the fallback's name (a unit `c.c` with a `static volatile_read`
+// lands here): the macro's expansion names the module's, never this one
+def c_volatile_read(var p : int?) : int? {
+    unsafe {
+        return p + 1
+    }
+}
+
 // a reinterpret of a crt call's `uint64` result straight to a pointer, which the interpreter
 // refuses and `c_volatile_load` avoids by landing the bits in a local first
 let REINTERPRET_SOURCE = "options gen2\nrequire crt\nvar g : int = 7\nvar p : int? = null\n[export]\ndef main \{\n    unsafe \{\n        p = addr(g)\n        let q = reinterpret<int?>(crt::c_volatile_load_u64(reinterpret<uint64 const?>(addr(p))))\n        print(\"\{*q\}\\n\")\n    \}\n\}\n"
