@@ -99,7 +99,7 @@ the redundant `uint8` cast of a byte read, and `typeinfo sizeof`. Under the JIT 
 `try`/`recover` (5.43x) costs within 16 percent (the small call 1.16x); the `c_volatile_load` JIT
 cell is `SUSPECT` and left out. The `wrap_cast` kernel's values stay under 2^28, so its rewrite
 matching native shows no wrap semantics: the plain operators' wrap on overflow is daslang's
-defined signed arithmetic, which a probe should pin before the fix lands. The whole benchmarks run the source layout's
+defined signed arithmetic, which `probes/test_scalars.das` pins for `+`, `-` and `*` under the interpreter and the JIT. The whole benchmarks run the source layout's
 late-bound calls at 0.95x to 1.00x of the scc layout's net time, so the slots cost nothing
 measurable there, while the scc layout loads in 4.21 s against 0.80 s. Each whole-run sample
 resolves to 0.1 s on every lane (about 5 percent of a 4 s net time). The native benchmark runs
