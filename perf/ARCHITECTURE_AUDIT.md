@@ -21,12 +21,13 @@ row for a fix.
   A rewrite fails, naming the text it did not find, when the converter's output no longer holds
   that text, so a stale rewrite is an error cell, never a silent no-op.
 - `audit_tables.das` - the construct table and the whole-benchmark table of a capture, and
-  `BENCHES`, the four Lua benchmarks with the argument each runs with here. It measures nothing
+  `BENCHES`, the startup row and the four Lua benchmarks with the argument each runs with here. It measures nothing
   and reads no file.
 - `audit_lua.das` - the driver: every kernel measured (section 2), the sites counted, the
   benchmarks timed, the capture written to `audit_linux.json` (or `--out`) and both tables
   printed; `--table` renders a stored capture, `--filter` names kernels, `--no-benches` leaves
-  the benchmarks out, `--lua-work` names the folder `lua/run.das` converted Lua into.
+  the benchmarks out, `--benches-only` times the benchmarks alone into the stored capture,
+  `--lua-work` names the folder `lua/run.das` converted Lua into.
 - `audit_linux.json` - the committed capture: the machine, the versions, the Rust translator's
   commit, per kernel the native cell, the `converted` interpreter and JIT cells, one entry per
   alternative spelling with its two cells, and the Rust entry; the sites; the benchmarks.
@@ -64,7 +65,28 @@ site count beside a cost is a weight for choosing fixes, not a measured share of
 The benchmarks run whole, each sample its own process timed by the wall clock after one
 unmeasured run that fills the module cache, so a cell holds the program's load as well as its
 work: the native build `lua/work/lua_native`, and the converted interpreter under daslang's
-interpreter in the scc and in the source layouts. The source layout over the scc layout is the
-cost of the calls the source layout late-binds through `lua_link.das` and nothing else, since
-the two layouts hold the same functions. A benchmark's factor over native and a construct's
+interpreter in the scc and in the source layouts. The startup row (`-e "print(1)"`) times the
+load alone; a benchmark's net time is its time less the startup row's in the same lane, and the
+net factors are what the table compares, since the warm module cache still leaves the two
+layouts' load seconds apart. The source layout's net time over the scc layout's is the cost of
+the calls the source layout late-binds through `lua_link.das`, since the two layouts hold the
+same functions. A benchmark's factor over native and a construct's
 sites in the same modules correlate; they prove nothing about each other.
+
+## 3. What the capture says
+
+The committed capture is from the Ryzen 7 7435HS, while other jobs shared the machine, five
+samples per kernel lane. Six constructs cost under the interpreter, each measured as the converted
+time over the rewrite's: the `_flag` switch chain 2.08x (419x native as converted; the Rust
+translation's computed `goto` dispatch runs the same kernel at 23.9x native), the wrap casts
+`int64(uint64(a) op uint64(b))` 2.10x, the `int64(x != 0 ? 1 : 0) != 0` test 1.58x, `addr((p +
+i).f)` on a stack slot 1.53x, `c_volatile_load` 1.32x, and `try`/`recover` itself 1.25x, of which
+the `while (_sj_run)` trampoline 1.13x; the union member through `reinterpret<GCUnion?>` costs 1.17x
+and `enum_from_int` 1.12x. Five cost nothing measurable (0.93x to 1.02x): `addr(deref(p + i))`,
+the macro mask arithmetic (daslang folds the constants), a small call against its body inlined,
+the redundant `uint8` cast of a byte read, and `typeinfo sizeof`. Under the JIT every construct but
+`try`/`recover` (5.43x) costs within 11 percent. The whole benchmarks run the source layout's
+late-bound calls at 0.95x to 1.00x of the scc layout's net time, so the slots cost nothing
+measurable there, while the scc layout loads in 4.21 s against 0.80 s. The native benchmark runs
+end within the clock's 0.1 s tick, so their net factors over native show only for
+`binary_trees` (67x scc, 65x source).
