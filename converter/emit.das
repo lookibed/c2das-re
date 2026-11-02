@@ -3062,11 +3062,16 @@ def private emit_body(var em : Emitter; tu : CirTu; st : CirStmt const?) {
 }
 
 // the statements of a block from `first` on; a single-branch setjmp `if` takes the rest of
-// the block as its tail, the trampoline of docs/lowering-examples.md "setjmp / longjmp"
+// the block as its tail, the trampoline of docs/lowering-examples.md "setjmp / longjmp", unless
+// the site is flat
 def private emit_statements(var em : Emitter; tu : CirTu; owner : CirStmt const?; first : int) {
     for (idx in range(first, length(owner.body))) {
         let child = owner.body[idx]
         var first_in_then = false
+        if (flat_setjmp(owner, idx)) {
+            emit_setjmp_site(em, tu, *child, setjmp_site(child.cond, first_in_then), true)
+            continue
+        }
         if (child.s == "if" && child.else_s == null && setjmp_site(child.cond, first_in_then) != null) {
             emit_trampoline(em, tu, owner, idx, first_in_then, null)
             return
@@ -3078,6 +3083,28 @@ def private emit_statements(var em : Emitter; tu : CirTu; owner : CirStmt const?
         }
         emit_stmt(em, tu, child)
     }
+}
+
+// a single-branch setjmp `if` whose branch is the first run (`== 0`, `!`) and whose block tail
+// calls nothing, so no longjmp reaches the buffer once the branch is done: the contained site
+// with an empty `recover` arm, the tail after it run once
+[arch(at="ARCHITECTURE_EMITTER.md#setjmp-general")]
+def private flat_setjmp(owner : CirStmt const?; site : int) : bool {
+    let st = owner.body[site]
+    var first_in_then = false
+    if (st.s != "if" || st.else_s != null || setjmp_site(st.cond, first_in_then) == null || !first_in_then) {
+        return false
+    }
+    for (idx in range(site + 1, length(owner.body))) {
+        var calls = false
+        each_expr(owner.body[idx]) $(x) {
+            calls = calls || x.e == "call"
+        }
+        if (calls) {
+            return false
+        }
+    }
+    return true
 }
 
 // the setjmp call of a statement that re-enters through the general trampoline, null for any
@@ -4850,8 +4877,11 @@ def private ends_in_return(tu : CirTu; st : CirStmt?) : bool {
     if (st.s == "compound") {
         // a single-branch setjmp site turns the rest of the block into a loop, whose end das
         // does not read as a return
-        for (child in st.body) {
+        for (idx, child in count(), st.body) {
             var first_in_then = false
+            if (flat_setjmp(st, idx)) {
+                continue
+            }
             if ((child.s == "if" && child.else_s == null && setjmp_site(child.cond, first_in_then) != null) || general_setjmp(child) != null) {
                 return false
             }

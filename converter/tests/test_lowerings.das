@@ -400,7 +400,7 @@ def p3_fixtures(t : T?) {
         rejects(t, "goto_into_loop", "int main(void) \{ int i = 0, n = 0; goto in; while (i < 3) \{ in: n++; i++; \} return n; \}\n", "Duff's device")
         rejects(t, "goto_into_if", "int main(void) \{ int n = 0; goto in; if (n == 0) \{ in: n = 5; \} return n; \}\n", "Duff's device")
     }
-    t |> run("setjmp: the contained site as try/recover with the target check, the single-branch site as the rerun loop, longjmp as c_longjmp") @(t : T?) {
+    t |> run("setjmp: the contained site as try/recover with the target check, the single-branch site flat when its tail calls nothing and the rerun loop otherwise, longjmp as c_longjmp") @(t : T?) {
         var text : string
         check_fixture(t, "p3_setjmp", text)
         has_text(t, text, "require c_runtime/setjmp")
@@ -409,6 +409,10 @@ def p3_fixtures(t : T?) {
         has_text(t, text, "    try \{\n        if (fail_at != 0) \{\n            p3_setjmp__deep(fail_at, addr(buf), value)\n        \}\n        status = 100\n    \} recover \{\n        if (c_jmp_target != addr(buf)) \{\n            panic(\"longjmp\")\n        \}\n        c_jmp_target = null\n        status = -1\n    \}")
         has_text(t, text, "var _sj_run = true\n    var _sj_val = 0\n    while (_sj_run) \{\n        _sj_run = false\n        try \{\n            if (_sj_val != 0) \{\n                return 1\n            \}\n            c_longjmp(addr(buf), 0)")
         has_text(t, text, "_sj_val = buf.val\n            _sj_run = true")
+        // a single-branch site whose tail calls nothing is flat, the tail once after the `try`
+        has_text(t, text, "    var st : int = 0\n    try \{\n        if (fail != 0) \{\n            p3_setjmp__deep(2, addr(buf), 0)\n        \}\n        c_volatile_store(st, 1)\n    \} recover \{\n        if (c_jmp_target != addr(buf)) \{\n            panic(\"longjmp\")\n        \}\n        c_jmp_target = null\n    \}\n    c_volatile_store(st, c_volatile_load(st) + 20)\n    return c_volatile_load(st) + p3_setjmp__depth_reached\n\}")
+        // one whose tail longjmps to its own buffer keeps the rerun loop
+        has_text(t, text, "    var passes : int = 0\n    var _sj_run = true\n    var _sj_val = 0\n    while (_sj_run) \{\n        _sj_run = false\n        try \{\n            if (_sj_val == 0) \{\n")
         rejects(t, "setjmp_value", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int n = 0; while (setjmp(b) < 2) n++; return n; \}\n", "trampoline form")
         rejects(t, "setjmp_tail_break", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int i = 0; while (i < 3) \{ if (setjmp(b)) \{ i = 9; \} i++; if (i > 1) break; \} return i; \}\n", "tail leaves an enclosing loop")
     }
@@ -1383,13 +1387,13 @@ def p5_program_fixtures(t : T?) {
 
 // the shapes of lua 5.4.8 the conversion met, each with the lua line in the fixture
 def p5_lua_fixtures(t : T?) {
-    t |> run("lua's error recovery: a record holding a jmp_buf padded to clang's layout, the protected runner's trampoline, the throw through the chained handler") @(t : T?) {
+    t |> run("lua's error recovery: a record holding a jmp_buf padded to clang's layout, the protected runner's flat try, the throw through the chained handler") @(t : T?) {
         var text : string
         check_fixture(t, "p5_lua_protect", text)
         has_text(t, text, "struct lua_longjmp \{\n    previous : lua_longjmp?\n    b : CJmpBuf\n    _pad0 : uint8[196]\n    status : int\n\}")
         has_text(t, text, "static_assert(typeinfo sizeof(type<lua_longjmp>) == 216")
         has_text(t, text, "        c_volatile_store(L.errorJmp.status, errcode)\n        c_longjmp(addr(L.errorJmp.b), 1)\n")
-        has_text(t, text, "            if (_sj_val == 0) \{\n                invoke(f, L, ud)\n            \}\n            L.errorJmp = lj.previous\n")
+        has_text(t, text, "    try \{\n        invoke(f, L, ud)\n    \} recover \{\n        if (c_jmp_target != addr(addr(lj).b)) \{\n            panic(\"longjmp\")\n        \}\n        c_jmp_target = null\n    \}\n    L.errorJmp = lj.previous\n    L.calls = old_calls\n    return c_volatile_load(lj.status)\n\}")
     }
     t |> run("lua's shapes: one per defect the conversion of lua 5.4.8 met") @(t : T?) {
         var text : string

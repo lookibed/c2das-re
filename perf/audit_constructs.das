@@ -221,9 +221,11 @@ let private NO_TRY = join([
     "    protected_call__error_jmp = lj.previous",
     "    return c_volatile_load(lj.status)"], "\n")
 
-def private flat_try(text : string; var error : string&) : string => replaced(text, SETJMP_LOOP, FLAT_TRY, error)
+// the single-branch site before P7.0h: the converter writes the flat `try` since, so the rewrite
+// restores the `while (_sj_run)` loop and the row's factor is the inverse of its cost
+def private trampoline(text : string; var error : string&) : string => replaced(text, FLAT_TRY, SETJMP_LOOP, error)
 
-def private no_try(text : string; var error : string&) : string => replaced(text, SETJMP_LOOP, NO_TRY, error)
+def private no_try(text : string; var error : string&) : string => replaced(text, FLAT_TRY, NO_TRY, error)
 
 def private inlined_call(text : string; var error : string&) : string {
     let body = "let key_r = (key + int64(r)) % int64(70)\n                var v : int64? = uint64(key_r) - uint64(1u) < uint64(t.alimit) ? addr(deref(t._c_array + (key_r - int64(1)))) : null"
@@ -255,7 +257,7 @@ def constructs : array<Construct> {
         Construct(name = "macro mask arithmetic on `uint`", kernel = "instr_decode", spelling = "folded", sites = "~(~uint(0) <<", rewrite = @@folded_masks),
         Construct(name = "`int64(x != 0 ? 1 : 0) != 0` test", kernel = "trap_check", spelling = "expect-roundtrip", sites = "? 1 : 0) != 0", rewrite = @@expect_roundtrip),
         Construct(name = "`c_volatile_load` of a volatile field", kernel = "trap_check", spelling = "plain-load", sites = "c_volatile_load(", rewrite = @@plain_load),
-        Construct(name = "`setjmp` trampoline (`while (_sj_run)`)", kernel = "protected_call", spelling = "flat-try", sites = "while (_sj_run)", rewrite = @@flat_try),
+        Construct(name = "`setjmp` trampoline (`while (_sj_run)`)", kernel = "protected_call", spelling = "trampoline", sites = "\} recover \{", rewrite = @@trampoline),
         Construct(name = "`try`/`recover` itself", kernel = "protected_call", spelling = "no-try", sites = "\} recover \{", rewrite = @@no_try),
         Construct(name = "a call of a small function (`luaH_get*`)", kernel = "small_call", spelling = "inlined", sites = "luaH_get", rewrite = @@inlined_call),
         Construct(name = "`uint8(deref(p + i))` byte read", kernel = "string_hash", spelling = "no-cast", sites = "uint8(deref(", rewrite = @@byte_read),
