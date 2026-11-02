@@ -157,7 +157,7 @@ def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var
 // seconds, or the error
 def private dump_unit(c_path, out_dir : string; target : CirTarget; clang : string; side : Sidecar; var res : ConvertResult) : CirTu {
     let dump_started = ref_time_ticks()
-    let inputs = DumpInputs(defines := side.defines, include_dirs := side.include_dirs, program_root = side.program_root)
+    let inputs = DumpInputs(defines := side.defines, include_dirs := side.include_dirs, include_files := side.include_files, program_root = side.program_root)
     var d <- dump_tu(c_path, target, empty(clang) ? default_clang() : clang, inputs)
     res.dump_seconds += seconds_since(dump_started)
     res.json_bytes += d.json_bytes
