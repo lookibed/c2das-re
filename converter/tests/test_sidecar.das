@@ -187,6 +187,17 @@ def test_sidecar_layout(t : T?) {
             t |> success(error |> contains("bad_{c._0}.c2das: {c._2}"), "{c._0}: `{c._2}` not in `{error}`")
         }
     }
+    rmdir_rec(dir)
+}
+
+[test]
+def test_sidecar_inputs(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_inputs", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
     t |> run("`include_dirs` is a list of folders and `program_root` a folder, each read beside the sidecar unless absolute") @(t : T?) {
         var error : string
         let side <- read_text(dir, "inputs", "\{\"include_dirs\": [\"inc\", \"/abs/inc\"], \"include_files\": [\"config.h\"], \"program_root\": \"..\"\}\n", error)
