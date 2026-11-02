@@ -42,7 +42,8 @@ times them under every lane, and the stored results; the interpreter audit on Lu
   since a kernel includes no header; `switch_goto` is P5.1's, lua's VM dispatch: a loop over an
   opcode array whose switch cases jump into another case's block and into the middle of one, so
   every such goto re-dispatches the switch's matched-flag loop; `do_while_effect` is P5.1's too,
-  `do { ... } while (--n > 0)` nested in another, the decrement in the condition. The kernel's parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
+  `do { ... } while (--n > 0)` nested in another, the decrement in the condition; `first_member` is P7.0f's,
+  lua's `s2v(base + a)` and `gco2t(o)` in a hot loop. The kernel's parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
   argument clang hoists the idempotent call out of the rep loop (the native lane reports
   zero), and daslang's optimizer evaluates a pure call with constant arguments at compile
   time whatever `infer_time_folding` says, so the interpreter lane measured a store. The
@@ -62,8 +63,7 @@ times them under every lane, and the stored results; the interpreter audit on Lu
   with the pinned clang at `-O3 -funsigned-char` (dasProfile's Release build gives its C++
   kernels `-O3`, and the lane follows its method), converts the same file through `converter/pipeline.das` (four times: the second under
   `--param-writes copy` for the `interp-copy` lane, the third under `--loops while` for the
-  `interp-while` lane, the fourth under `--first-member reinterpret` for the `interp-reinterpret`
-  lane), and runs each lane as its own process `--samples` times (five by default). A cell is the median, with ±
+  `interp-while` lane, the fourth under `--first-member reinterpret` for the `interp-reinterpret` lane), and runs each lane as its own process `--samples` times (five by default). A cell is the median, with ±
   half the sample range as a share of it; startup never enters a cell because the program
   times itself; each das lane logs its argv at `info`. The `exe` and `aot` lanes each stand
   only on the binary their build leaves (an earlier run's removed first), since the tier

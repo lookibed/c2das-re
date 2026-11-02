@@ -4,7 +4,7 @@
     "csmith": 151,
     "gcc_torture": 1187,
     "lua": 6,
-    "perf": 64
+    "perf": 68
   },
   "modules": {
     "c_testsuite/00001": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -1575,6 +1575,10 @@
     "perf/fib_recursive@copy": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "perf/fib_recursive@reinterpret": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "perf/fib_recursive@while": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
+    "perf/first_member": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 3, "pointer_index": 2, "reinterpret": 5, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "perf/first_member@copy": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 3, "pointer_index": 2, "reinterpret": 5, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "perf/first_member@reinterpret": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 5, "pointer_index": 0, "reinterpret": 7, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "perf/first_member@while": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 3, "pointer_index": 2, "reinterpret": 5, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 5},
     "perf/fixed_mandel": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
     "perf/fixed_mandel@copy": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
     "perf/fixed_mandel@reinterpret": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
@@ -1617,15 +1621,15 @@
     "perf/va_forward@while": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 2, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2}
   },
   "totals": {
-    "c_function": 6897,
+    "c_function": 6909,
     "goto": 610,
     "label": 407,
     "literal_named": 27641,
-    "pointer_arith": 5494,
-    "pointer_index": 4090,
-    "reinterpret": 46953,
+    "pointer_arith": 5508,
+    "pointer_index": 4096,
+    "reinterpret": 46975,
     "unsafe_block": 0,
     "unsafe_expr": 54162,
-    "while_rangeable": 9875
+    "while_rangeable": 9880
   }
 }
