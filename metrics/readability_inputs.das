@@ -69,7 +69,8 @@ def lua_key_parts(key : string; var layout : string&) : string {
 }
 
 //! Input `key` converted into `<dir>/das/` under the `linux` dialect: a `perf/<kernel>@copy` key
-//! under `--param-writes copy`, a `perf/<kernel>@while` key under `--loops while`, a Lua key from
+//! under `--param-writes copy`, a `perf/<kernel>@while` key under `--loops while`, a
+//! `perf/<kernel>@reinterpret` key under `--first-member reinterpret`, a Lua key from
 //! the release's files in the layout it names.
 def convert_input(key, dir : string) : ConvertedInput {
     var out : ConvertedInput
@@ -103,7 +104,7 @@ def convert_input(key, dir : string) : ConvertedInput {
     }
     out.c_paths |> push(c_path)
     out.sidecar = find_sidecar(c_path, "")
-    let res <- convert(c_path, das_dir, "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "")
+    let res <- convert(c_path, das_dir, "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "", key |> ends_with(REINTERPRET_KEY_SUFFIX) ? "reinterpret" : "")
     if (!res.ok) {
         out.error = "convert: {headline(res.error)}"
     } else {

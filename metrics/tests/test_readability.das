@@ -353,6 +353,12 @@ def test_worker(t : T?) {
         let ranged = fread("metrics/work/perf/primes/das/primes.das")
         t |> success(ranged |> contains("for (i in range(2, n)) \{\n"), ranged)
     }
+    t |> run("--one converts a kernel's `@reinterpret` key under --first-member reinterpret") @(t : T?) {
+        var counts : string
+        t |> equal(run_worker("perf/blit@reinterpret", counts), 0)
+        t |> success(counts |> starts_with("ok\n"), counts)
+        t |> success(fexist("metrics/work/perf/blit@reinterpret/das/blit.das"), counts)
+    }
     t |> run("an input that does not convert, and a seed csmith refuses, are errors") @(t : T?) {
         var counts : string
         t |> equal(run_worker("c_testsuite/no_such_test", counts), 0)
