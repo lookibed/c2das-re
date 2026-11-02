@@ -5302,8 +5302,12 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
     em.requires |> insert("crt")
     em.requires |> insert("c_runtime/c_function")
     for (f in tu.types[t].fields) {
-        let k = kind_of(tu, f.t)
-        if (is_record(tu, f.t) || (k == "array" && kind_of(tu, tu.types[f.t].elem) != "int" && kind_of(tu, tu.types[f.t].elem) != "float")) {
+        // an array of arrays (`short bbox[2][4]`) is one block of its innermost scalars
+        var inner = f.t
+        while (kind_of(tu, inner) == "array") {
+            inner = tu.types[inner].elem
+        }
+        if (is_record(tu, f.t) || (inner != f.t && kind_of(tu, inner) != "int" && kind_of(tu, inner) != "float")) {
             fail(em, "field `{name}.{f.name}` of a marshal-only record is a record or an array of records; not lowered yet", loc)
             return
         }

@@ -342,6 +342,12 @@ def p2_memory_fixtures(t : T?) {
         has_text(t, text, "entries = entries + 7")
         has_text(t, text, "read_disk_t_width(entries, 0)")
     }
+    t |> run("marshal: an array of arrays of scalars in a marshal-only record is one block its readers copy") @(t : T?) {
+        var text : string
+        check_fixture(t, "p2_marshal_rows", text)
+        has_text(t, text, "def read_node_t_bbox(bytes : uint8?; ofs : int) : int16[2][4]")
+        has_text(t, text, "uint64(16)")
+    }
     t |> run("marshal: the shapes the emitter refuses, each naming the record") @(t : T?) {
         let packed = "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nint main(void) \{ disk_t d; d.w = 1; return d.w; \}\n"
         rejects(t, "packed_unlisted", packed, "listed under `marshal`")
