@@ -276,25 +276,25 @@ array members, function pointers, `[variadic]` definitions and the `va_list` cur
 
 ### setjmp / longjmp {#setjmp-general}
 
-A `jmp_buf` is `CJmpBuf` (`c_runtime/setjmp`), its decay `addr(buf)` (or the pointer a `*p`
-read it through), and `longjmp` is `c_longjmp`. A record holding one (Lua's `struct lua_longjmp`)
-keeps clang's offsets and size through a padding field after it (`converter/ARCHITECTURE.md`
-section 2, the relaxed search). A setjmp site is an `if` whose condition is
-`setjmp(buf)` tested against zero, below casts, `!` and `== 0` / `!= 0`. With both branches it
-is the contained site of `docs/lowering-examples.md` "setjmp / longjmp": the first run is the
-`try`, the longjmp return the `recover`, which rethrows a longjmp to another buffer or a
-genuine panic (a null `c_jmp_target`) and clears its own. With one branch, met in a block's
-statement walk, it is the trampoline: `_sj_runN`/`_sj_valN`, a `while` that reruns the
-branch, under `if (_sj_val != 0)` (or `== 0` for `!setjmp`), and the rest of the block as its
-tail once per longjmp caught, the `recover` storing `buf.val` into `_sj_val`; such a block
-cannot end in a return das reads, so the function gets its trailing zero. The general form is a
-block's statement that reads the value only where ISO C 7.13.1.1 allows it (`setjmp(buf);`,
-`r = setjmp(buf);`, `int r = setjmp(buf);`, `return setjmp(buf);`, a `switch` or an `if` on it,
-on `!setjmp(buf)` or on it compared with an integer constant), through implicit conversions: it
-opens the tail, setjmp read as `_sj_valN` (0 on the first run, longjmp's value on a rerun), which
-reruns the statement, so nothing in it is read before the call. A branch or a tail that leaves
-an enclosing loop, a site off a block's statement level, a second setjmp, another effect or read
-(`x = g + setjmp(buf)`, `a[i++] = setjmp(buf)`) and a `setjmp` read any other way fail closed.
-The lowering is exact under the interpreter; under the JIT a `return` inside a `try` or `recover`
-arm leaves the arm, not the function (`docs/probe-findings.md` F75), so a trampoline whose tail
-returns runs on past it there.
+A `jmp_buf` is `CJmpBuf` (`c_runtime/setjmp`), its decay `addr(buf)` (or the pointer a `*p` read it
+through), and `longjmp` is `c_longjmp`. A record holding one (Lua's `struct lua_longjmp`) keeps
+clang's offsets and size through a padding field after it (`converter/ARCHITECTURE.md` section 2,
+the relaxed search). A setjmp site is an `if` whose condition is `setjmp(buf)` tested against zero,
+below casts, `!` and `== 0` / `!= 0`. With both branches it is the contained site of
+`docs/lowering-examples.md` "setjmp / longjmp": the first run is the `try`, the longjmp return the
+`recover`, which rethrows a longjmp to another buffer or a genuine panic (a null `c_jmp_target`) and
+clears its own. With one branch, the first run's, and a block tail calling nothing, it is flat:
+`try`, an empty `recover`, then the tail once, as no longjmp reaches the buffer then. Any other
+single-branch site is the trampoline: `_sj_runN`/`_sj_valN`, a `while` that reruns the branch, under
+`if (_sj_val != 0)` (or `== 0` for `!setjmp`), and the rest of the block as its tail once per
+longjmp caught, the `recover` storing `buf.val` into `_sj_val`; such a block cannot end in a return
+das reads, so the function gets its trailing zero. The general form is a block's statement that
+reads the value only where ISO C 7.13.1.1 allows it (`setjmp(buf);`, `r = setjmp(buf);`,
+`int r = setjmp(buf);`, `return setjmp(buf);`, a `switch` or an `if` on it, on `!setjmp(buf)` or on
+it compared with an integer constant), through implicit conversions: it opens the tail, setjmp read
+as `_sj_valN` (0 on the first run, longjmp's value on a rerun), which reruns the statement, so
+nothing in it is read before the call. A branch or a tail that leaves an enclosing loop, a site off
+a block's statement level, a second setjmp, another effect or read (`x = g + setjmp(buf)`,
+`a[i++] = setjmp(buf)`) and a `setjmp` read any other way fail closed. The lowering is exact under
+the interpreter; under the JIT a `return` inside a `try` or `recover` arm leaves the arm, not the
+function (`docs/probe-findings.md` F75), so a trampoline whose tail returns runs on past it there.
