@@ -200,6 +200,16 @@ def test_include_dirs(t : T?) {
         t |> equal(res.ok, false, res.das_text)
         t |> success(res.error |> contains("the main file {root}/app/main.c is no file of the program"), res.error)
     }
+    t |> run("`include_files` reach both clang passes as `-include`, read before the main file") @(t : T?) {
+        let at = path_join(dir, "forced")
+        mkdir_rec(at)
+        fwrite(path_join(at, "forced.h"), "struct forced \{ int v; \};\n#define FORCED_VALUE 17\n")
+        fwrite(path_join(at, "forced.c"), "int main(void) \{ struct forced f; f.v = FORCED_VALUE; return f.v; \}\n")
+        let side = written_sidecar(at, "forced", "\{\"include_files\": [\"forced.h\"]\}\n")
+        let res <- convert(path_join(at, "forced.c"), path_join(at, "out"), "linux", "", side)
+        t |> equal(res.ok, true, res.error)
+        t |> success(res.das_text |> contains("f.v = 17"), res.das_text)
+    }
     t |> run("a folder `CPATH` names holds the user's headers, never the system's: the program in it converts") @(t : T?) {
         let saved = has_env_variable("CPATH") ? get_env_variable("CPATH") : ""
         set_env_variable("CPATH", root)
