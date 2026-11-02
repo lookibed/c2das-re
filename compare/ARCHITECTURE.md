@@ -113,11 +113,11 @@ folder that holds anything is refused before the translator runs, its files left
 Since the wrapper is daslang's default entry `main`, no `-main` is passed in any tier. The
 wrapper takes C's arguments from after a `--`, else from after the script, so
 `converter/tiers.das`'s `run_tier`, which passes `--` before the program's arguments and nothing
-when there are none, runs a Rust translation unchanged under the interpreter, the JIT and `exe`;
-the test runs the interpreter. Under `aot` the host passes no arguments; the wrapper calls
-`main_0` with `argc` 0 when the command line it reads is empty (`translator/libc.rs` lines
-5835-5852). That tier stands on the same wrapper and is checked on the real binary with the
-suites. A Rust translation requires only daslib and its own modules, so it runs with no module
+when there are none, runs a Rust translation unchanged under the interpreter, the JIT, `exe` and
+`aot`, whose host hands its command line to the runtime (`das::setCommandLineArguments`) and runs
+the binary with `--` before the arguments; the test runs the interpreter. Without arguments the
+wrapper calls `main_0` with `argc` 0, the command line it reads being empty (`translator/libc.rs`
+lines 5835-5852). The `aot` tier is checked on the real binary with the suites and the projects. A Rust translation requires only daslib and its own modules, so it runs with no module
 folder loaded.
 
 ## 4. The command line {#command-line}

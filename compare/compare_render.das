@@ -555,7 +555,9 @@ def projects_text(results : JsonValue const?) : string {
             w |> write("\nWhy a lane does not pass:\n\n" + join(reasons, "\n") + "\n")
         }
         if (!empty(names)) {
-            w |> write("\nThe bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), {results?["projects"]?[names[0]]?["samples"] ?? 0} samples a cell:\n\n")
+            let samples = results?["projects"]?[names[0]]?["samples"] ?? 0
+            let timing = samples > 0 ? "{samples} samples a cell" : "not measured in this capture (`--samples 0`)"
+            w |> write("\nThe bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), {timing}:\n\n")
             w |> write(project_speed_table(results))
             w |> write("\nThe code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):\n\n{project_code_table(results)}")
             for (n in names) {

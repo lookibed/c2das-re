@@ -80,14 +80,14 @@ def test_project_row(t : T?) {
         t |> equal("{length(p.rust_flags)} {length(p.bench_free_keys)} {join(p.bench_omitted_keys, " ")}", "0 0 bytes")
         t |> equal(join(p.functions, " "), "h264bsdProcessBlock FilterVerLumaEdge")
     }
-    t |> run("plmpeg-stream with its define and the whole upstream folder included, its bench without `bytes=`") @(t : T?) {
+    t |> run("plmpeg-stream with its define, our side's hook define, the whole upstream folder included, its bench without `bytes=`") @(t : T?) {
         var p : Project
         t |> success(find_project("/m", "plmpeg-stream", p))
         t |> equal("{p.tu} {p.bench_tu} {p.fixture} {p.case_id}", "src/plmpeg_file_all.c src/plmpeg_file_bench_all.c fixtures/testsrc2_320x240.m1v plmpeg-stream-320x240-std")
         t |> equal(join(clang_args(p), " "), "-std=c11 -I/m/tests/manual/plmpeg-stream/include -I/m/tests/manual/plmpeg-stream/upstream -I/m/tests/manual/plmpeg-stream/fixtures -I/m/tests/manual/plmpeg-stream/src -DPLM_NO_STDIO")
         t |> equal(join(p.native_flags, " "), "-O2")
         t |> equal("{length(p.rust_flags)} {length(p.bench_free_keys)} {join(p.bench_omitted_keys, " ")}", "0 0 bytes")
-        t |> equal(join(p.functions, " "), "plm_video_idct plm_video_decode_block")
+        t |> equal("{join(p.functions, " ")} | {join(p.ours_defines, " ")}", "plm_video_idct plm_video_decode_block | c2da_rt_reset(...)=")
     }
     t |> run("doomgeneric with the engine's folder included, the stack the case asks for, its bench's 1000 frames") @(t : T?) {
         var p : Project
@@ -198,7 +198,7 @@ def test_verdicts(t : T?) {
         let died = run_judged(["sh", "-c", "echo 'frame[0]=1'; echo 'segmentation fault' >&2; exit 1"], "a\n", 30.0)
         t |> equal("{died.status} {died.reason}", "exit exit 1: segmentation fault")
     }
-    t |> run("a lane's command: daslang over the module, or the exe binary, the program's arguments last") @(t : T?) {
+    t |> run("a lane's command: daslang over the module, or the exe or aot binary, the program's arguments last") @(t : T?) {
         t |> with_scratch("cmp_projects_lane_argv") $(dir) {
             let none : array<string>
             var error : string
@@ -209,6 +209,9 @@ def test_verdicts(t : T?) {
             let exe <- lane_argv(das, "exe", path_join(dir, "w"), none, ["f"], 300.0, error)
             t |> equal(length(exe), 2, error)
             t |> success(fexist(exe[0]) && exe[1] == "f", join(exe, " "))
+            let aot <- lane_argv(das, "aot", path_join(dir, "a"), none, ["f"], 300.0, error)
+            t |> equal(join([for (i in range(1, length(aot))); aot[i]], " "), "-- f", error)
+            t |> success(length(aot) == 3 && aot[0] == aot_binary(das, path_join(dir, "a")) && fexist(aot[0]), join(aot, " "))
             let slow <- lane_argv(das, "exe", path_join(dir, "w"), none, ["f"], 1.0, error)
             t |> equal("{length(slow)} {error}", "0 timeout: the build or its run took longer than 1 s")
             let lanes <- side_lanes(das, "", path_join(dir, "lanes"), none, ["f"], "", LaneLimits(sample = 60.0, build = 1.0))
@@ -217,6 +220,8 @@ def test_verdicts(t : T?) {
             fwrite(das, "options gen2\n[export]\ndef main() : int \{\n    return undefined_name\n\}\n")
             let broken <- lane_argv(das, "exe", path_join(dir, "w"), none, ["f"], 300.0, error)
             t |> success(empty(broken) && error |> starts_with("exe build: the build exited "), error)
+            let broken_aot <- lane_argv(das, "aot", path_join(dir, "a"), none, ["f"], 300.0, error)
+            t |> success(empty(broken_aot) && error |> starts_with("aot build: the build exited "), error)
         }
     }
     t |> run("a lane's limit: a run, or a build step and its run") @(t : T?) {
@@ -414,6 +419,24 @@ def test_project_entry(t : T?) {
             t |> success(has_value(lines, "p: rust aot: refused no native result: line 1: got `nope`, expected `yes`"), join(lines, "\n"))
         }
     }
+    t |> run("0 samples: no bench built or timed, every speed cell not measured; our side's own define in its sidecar alone") @(t : T?) {
+        t |> with_scratch("cmp_projects_untimed") $(dir) {
+            fwrite(path_join(dir, "prog.c"), "#include <stdio.h>\nint main(void) \{ HOOK(1); printf(\"yes\\n\"); return 0; \}\n")
+            fwrite(path_join(dir, "input"), "")
+            let bin = path_join(dir, "rust")
+            write_script(bin, "#!/bin/sh\necho \"translation failed: x\" >&2\nexit 2\n")
+            let p = Project(name = "p", dir = dir, tu = "prog.c", bench_tu = "prog.c", ours_defines <- ["HOOK(...)="], native_sources <- ["prog.c"], native_bench_sources <- ["prog.c"], c_std = "c11", fixture = "input", expected = "yes\n")
+            let entry = project_entry(p, bin, path_join(dir, "work"), 0, Stamps())
+            t |> equal(entry?["ours"]?["error"] ?? "", "")
+            t |> success((entry?["native"]?["reason"] ?? "") |> starts_with("clang exited 1: "), entry?["native"]?["reason"] ?? "")
+            t |> equal(entry?["speed"]?["native"]?["error"] ?? "", NOT_TIMED)
+            for (lane in DAS_LANES) {
+                t |> equal(entry?["speed"]?["ours"]?[lane]?["error"] ?? "", NOT_TIMED, lane)
+            }
+            t |> equal(entry?["speed"]?["rust"]?["exe"]?["error"] ?? "", NOT_TIMED)
+            t |> success(!fexist(path_join(dir, "work/ours_bench")) && !fexist(path_join(dir, "work/native/p_bench")))
+        }
+    }
 }
 
 [test]
@@ -478,7 +501,7 @@ def test_working_folder(t : T?) {
             let entry = project_entry(p, bin, path_join(dir, "work"), 1, Stamps())
             t |> equal(entry?["native"]?["status"] ?? "", "pass")
             for (side in ["ours", "rust"]) {
-                t |> equal(join([for (lane in DAS_LANES); entry?[side]?["lanes"]?[lane]?["status"] ?? ""], " "), "pass pass pass skipped", side)
+                t |> equal(join([for (lane in DAS_LANES); entry?[side]?["lanes"]?[lane]?["status"] ?? ""], " "), "pass pass pass pass", side)
                 t |> equal(entry?["speed"]?[side]?["exe"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf, side)
             }
             t |> equal(entry?["speed"]?["native"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf)
@@ -580,7 +603,7 @@ def private stand_in_project(dir, name : string) : string {
 
 [test]
 def test_project_run(t : T?) {
-    t |> run("--project wasm3 over a stand-in project to its end: both sides pass, aot skipped, the rest kept") @(t : T?) {
+    t |> run("--project wasm3 over a stand-in project to its end: both sides pass every lane, the rest kept") @(t : T?) {
         t |> with_scratch("cmp_projects_run") $(dir) {
             let bin = stand_in_project(dir, "wasm3")
             let results = path_join(dir, "results.json")
@@ -595,12 +618,12 @@ def test_project_run(t : T?) {
             t |> equal(js?["projects"]?["other"]?["x"] ?? 0, 1)
             t |> equal(entry?["native"]?["status"] ?? "", "pass")
             for (side in ["ours", "rust"]) {
-                t |> equal(join([for (lane in DAS_LANES); entry?[side]?["lanes"]?[lane]?["status"] ?? ""], " "), "pass pass pass skipped", side)
+                t |> equal(join([for (lane in DAS_LANES); entry?[side]?["lanes"]?[lane]?["status"] ?? ""], " "), "pass pass pass pass", side)
                 t |> equal(entry?["speed"]?[side]?["exe"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf, side)
                 t |> equal(entry?["code"]?[side]?["status"] ?? "", "ok", side)
             }
             t |> equal(entry?["speed"]?["native"]?["setup"]?["time"] ?? 0.0lf, 0.000003lf)
-            t |> equal(entry?["speed"]?["rust"]?["aot"]?["error"] ?? "", "the lane does not pass: skipped")
+            t |> equal(entry?["speed"]?["rust"]?["aot"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf)
             t |> success((entry?["functions"]?[1]?["ours"] ?? "") |> contains("call_fib"), out)
             t |> success((entry?["functions"]?[1]?["rust"] ?? "") |> starts_with("def call_fib("), out)
         }
@@ -639,7 +662,8 @@ def test_project_run(t : T?) {
                 fwrite(path_join(dir, "tests/manual/wasm3/src/all_host.c"), "int main(void) \{ return 0; \}\n")
                 t |> equal(run_compare(["--project", "wasm3"], out), 2, out)
                 t |> success(out |> contains("the Rust checkout lacks its canonical cases"), out)
-                t |> equal(run_compare(["--project", "wasm3", "--samples", "0"], out), 1, out)
+                t |> equal(run_compare(["--project", "wasm3", "--samples", "-1"], out), 1, out)
+                t |> success(out |> contains("--samples takes a count of at least 0, not -1"), out)
                 t |> equal(run_compare(["--project", "wasm3", "--perf"], out), 1, out)
                 t |> success(out |> contains("--perf runs alone"), out)
             }
@@ -692,6 +716,9 @@ def test_rendering(t : T?) {
         t |> equal(join(reasons, "\n"), "- w, native: clang exited 1\n- w, Ours, interpreter AOT: refused: r\n- w, Rust, AOT: skipped: no args")
         let text = projects_text(js)
         t |> success(text |> contains("Captured: w (Rust `0123456789ab`, d)."), text)
+        t |> success(text |> contains("lower is faster), 5 samples a cell:"), text)
+        let untimed = projects_text(json_of(t, replace(RENDER_CAPTURE, "\"samples\": 5", "\"samples\": 0")))
+        t |> success(untimed |> contains("lower is faster), not measured in this capture (`--samples 0`):"), untimed)
         t |> success(text |> contains("checked against the `expected.stdout` of its canonical case"), text)
         t |> success(text |> contains("#### `w`: `f`") && text |> contains("Ours: not found"), text)
         t |> success(has_value(rust_ahead(js), "- project w: Rust passes interpreter, ours does not."))
@@ -713,6 +740,7 @@ def test_rendering(t : T?) {
         t |> equal(bench_text_of(null, native), "n/a")
         t |> equal(bench_text_of(json_of(t, "\{\"decode\": \{\"time\": 1.0\}\}"), null), "n/a")
         t |> equal(bench_text_of(json_of(t, "\{\"error\": \"odd\"\}"), native), "odd")
+        t |> equal(bench_text_of(JV({"error" => JV(NOT_TIMED)}), native), "not measured")
         let none = json_of(t, "\{\}")
         t |> equal(projects_text(none), "No project is captured yet.\n")
         t |> equal(project_speed_table(none), "")
