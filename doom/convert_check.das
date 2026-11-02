@@ -81,22 +81,51 @@ def private declares(tu : CirTu; name : string) : bool {
     return false
 }
 
-//! Each of `c_paths` dumped and emitted alone under the sidecar `side`, its `over_indexed` entries
-//! narrowed to the records the unit declares: the unit passes when the dumper and the emitter
-//! take it. Nothing is written and nothing compiled, since the rest of the program is missing.
+//! The prefix of a unit's emitter error naming a function another unit defines: alone the unit
+//! has no binding for it, which the program's link gives.
+let LINK_BOUND = "link-bound: "
+
+// the function `error` names as `external function `<name>``, "" when it names none
+def private external_function(error : string) : string {
+    let at = find(error, "external function `")
+    if (at < 0) {
+        return ""
+    }
+    let rest = slice(error, at + length("external function `"))
+    let close = find(rest, "`")
+    return close < 0 ? "" : slice(rest, 0, close)
+}
+
+//! Each of `c_paths` dumped alone under the sidecar `side`, then each the dumper takes emitted
+//! alone, its `over_indexed` entries narrowed to the records the unit declares: the unit passes
+//! when the dumper and the emitter take it. An emitter error naming a function another unit
+//! defines is marked `LINK_BOUND`. Nothing is written and nothing compiled, since the rest of the
+//! program is missing.
 def convert_units(c_paths : array<string>; side : Sidecar) : array<Verdict> {
     var verdicts : array<Verdict>
+    var tus : array<CirTu>
+    var defined : table<string>
     for (c_path in c_paths) {
         var d <- dump_tu(c_path, target_by_name(TARGET), default_clang(), side.defines)
-        var error = empty(d.error) ? "" : "dumper: {d.error}"
-        if (empty(error)) {
-            var unit_side := side
-            unit_side.over_indexed <- [for (entry in side.over_indexed); entry; where declares(d.tu, slice(entry, 0, find(entry, ".")))]
-            let em <- emit_tu(d.tu, unit_side)
-            error = empty(em.error) ? "" : "emitter: {em.error}"
+        verdicts |> push(Verdict(name = file_stem(c_path), error = empty(d.error) ? "" : first_error_line("dumper: {d.error}")))
+        for (decl in d.tu.decls) {
+            if (decl.k == "func" && decl.body != null) {
+                defined |> insert(decl.name)
+            }
         }
-        delete_tu(d.tu)
-        verdicts |> push(Verdict(name = file_stem(c_path), error = first_error_line(error)))
+        tus |> emplace(d.tu)
+    }
+    for (v, tu in verdicts, tus) {
+        if (empty(v.error)) {
+            var unit_side := side
+            unit_side.over_indexed <- [for (entry in side.over_indexed); entry; where declares(tu, slice(entry, 0, find(entry, ".")))]
+            let em <- emit_tu(tu, unit_side)
+            if (!empty(em.error)) {
+                let error = first_error_line("emitter: {em.error}")
+                v.error = key_exists(defined, external_function(error)) ? LINK_BOUND + error : error
+            }
+        }
+        delete_tu(tu)
     }
     return <- verdicts
 }
@@ -125,10 +154,12 @@ def compile_modules(out_dir : string; module_dirs : array<string>; timeout : flo
 //! and the construct's name, the first match winning; the numbered findings are P6.1's
 //! (`ARCHITECTURE.md` section 7).
 let BLOCKERS <- [
+    (LINK_BOUND, "a function another unit defines, which only the link binds (the unit alone)"),
     ("before a definition gives its array a length", "an `extern T a[];` referenced before the definition giving its length"),
     ("block-scope `extern` declaration", "a block-scope `extern` with no file-scope declaration before it"),
     ("unsupported local declaration `FunctionDecl`", "a block-scope function prototype"),
-    ("of a marshal-only record is a record or an array of records", "a record or array of records, or an array of arrays, in a marshal record (finding 2)"),
+    ("of a marshal-only record is a record or an array of records", "a record or an array of records in a marshal record (finding 2)"),
+    ("an array of the marshal-only record", "an array of a marshal record, `maptexture_t.patches` (finding 2)"),
     ("sidecar `over_indexed`", "an over-indexed trailing array in a marshal record (finding 3)")
 ]
 

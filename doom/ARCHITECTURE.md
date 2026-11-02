@@ -31,6 +31,14 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
   `prlimit --as` 3 GiB and a 600-second timeout, and writes the reference log
   `work/ref/<wad stem>_demo<N>.log`, refusing a run section 6 refuses. `work/` is gitignored; the
 committed references under `ref/` are those files copied by hand after a reference run.
+- `run.das --convert [--layout source|source-cut|single]` and `--compile-check` (section 7):
+  `--convert` stages the program into `work/src/`, dumps and emits each unit alone, then converts
+  the program in the layout (default `source`) into `work/<layout>/`; `--compile-check` compiles
+  every module `work/<layout>/` lists with `daslang -compile-only`. Each logs a verdict per unit or
+  module, the count that pass and the blocker table; either fails the run when one does not pass.
+- `convert_check.das` - the conversion checks `--convert` and `--compile-check` apply:
+  `stage_program`, `convert_units`, `compile_modules`, `first_error_line`, `classify` (the
+  `BLOCKERS` table) and `blocker_table`.
 - `ref/freedoom2_demo1.log`, `ref/freedoom2_demo2.log`, `ref/freedoom2_demo3.log` - the committed
   reference logs (section 6).
 - `REVIEW.das` - the mechanical gate: nothing under `fetch/` or `work/` and no `.wad` file of the repository is
@@ -39,6 +47,9 @@ committed references under `ref/` are those files copied by hand after a referen
   `fetch_problems` over a checkout built from the patch's own pre-image, to which the patch
   applies, and a stand-in wad, `missing_units`, `demo_log`'s format and refusals, and the sidecar
   through the converter's `read_sidecar`.
+- `tests/test_convert.das` - `convert_check.das` over a stand-in program (two units that link, one
+  the dumper refuses, a host outside their folder): the staging, the units alone, the program's
+  modules compiled alone, a module that fails, and the classification.
 
 The IWADs: freedoom2.wad (BSD) is the fetched one every committed log is recorded on;
 `doom2.wad`, id Software's commercial IWAD, is user-supplied, local only, kept under `wads/`
@@ -122,3 +133,26 @@ tic lines. `ref/` holds the logs of demo1, demo2 and demo3 on freedoom2.wad: 266
 two-player demo, `consoleplayer` 1) and 2743 tics; the native build at `-O0` prints the same lines
 as at `-O2`. They are the oracle of the converted build's demo sync (`docs/implementation_order.md`
 P6.5).
+
+## 7. The conversion
+
+`--convert` stages the program into `work/src/`: every file of `src/DOOM/` and the host, its
+`#include` of `DOOM.h` spelled bare. The dumper takes a declaration as the program's when its
+file lies under the unit's own folder (`converter/ARCHITECTURE_DUMPER.md`, "The program's
+files"), and the host in `host/` would hold PureDOOM's headers external; in one folder every
+header is the program's and the output folder is flat.
+
+Two stages report. Each unit alone: dumped under the sidecar's defines, then emitted under the
+sidecar with its `over_indexed` entries narrowed to the records the unit declares, since the
+emitter refuses an entry naming a record it does not see. A unit alone has no binding for a
+function another unit defines; an emitter error naming one is marked `link-bound:` and classed
+apart, and the emitter stops at its first error, so it hides what follows it in that unit. Then
+the program: `convert_program` in the layout, which stops at the first unit the dumper refuses,
+since the link needs every unit. `--compile-check` compiles each module of `work/<layout>/`'s
+module list alone, in a `daslang -compile-only` process with the converted program's module
+folders.
+
+`classify` names the construct of a first line by the `BLOCKERS` fragments, P6.1's numbered
+findings among them (finding 2: an array of records inside a marshal record; finding 3: an
+over-indexed trailing array inside one); a line no fragment matches is `new:` with its stage and
+locations dropped. `blocker_table` counts the units or modules per construct.
