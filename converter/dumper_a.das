@@ -3106,9 +3106,7 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
                     return null
                 }
             } elif (ck |> ends_with("Attr") || ck == "FullComment") {
-                // an attribute is judged by `check_attributes`; a documentation comment clang
-                // attaches to the declaration carries nothing a run observes
-                continue
+                continue // attributes: `check_attributes`; a doc comment changes nothing
             } else {
                 fail(d, "unsupported child `{ck}` of function `{c_name}`", loc_of(d, child))
                 delete_decl(fn)
@@ -3227,6 +3225,7 @@ let NO_CTYPE_MACROS = "-D__NO_CTYPE"
 def private input_flags(inputs : DumpInputs) : array<string> {
     var flags <- [for (entry in inputs.defines); "-D{entry}"]
     flags |> push_from([for (dir in inputs.include_dirs); "-I{dir}"])
+    flags |> reserve(length(flags) + 2 * length(inputs.include_files))
     for (file in inputs.include_files) {
         flags |> push("-include")
         flags |> push(file)
