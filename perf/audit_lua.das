@@ -46,6 +46,8 @@ struct Args {
     bench_samples : int = 3
     @clarg_doc = "leave the whole Lua benchmarks out"
     no_benches : bool
+    @clarg_doc = "time the whole Lua benchmarks alone into the stored capture (--out), its kernels kept"
+    benches_only : bool
     @clarg_doc = "the folder lua/run.das converts Lua into (default lua/work)"
     lua_work : string = "lua/work"
     @clarg_name = "table"
@@ -166,22 +168,24 @@ def private wall_cell(argv : array<string>; samples : int; var oracle : string&;
     return median_of(times)
 }
 
-//! The four Lua benchmarks timed whole: the native build, the interpreter over the scc layout and
-//! over the source layout, each in seconds or an error.
+//! The startup row and the four Lua benchmarks timed whole: the native build, the interpreter over
+//! the scc layout and over the source layout, each in seconds or an error.
 def measure_benches(lua_work : string; samples : int) : JsonValue? {
     let native = path_join(lua_work, "lua_native")
     var rows : table<string; JsonValue?>
     for (b in BENCHES) {
-        let script = "ports/lua/bench/{b.name}.lua"
+        var inscope program_args <- b.name == STARTUP ? ["-e", "print(1)"] : ["ports/lua/bench/{b.name}.lua", b.arg]
         var row : table<string; JsonValue?>
-        row["arg"] = JV(b.arg)
+        row["arg"] = JV(b.name == STARTUP ? "-e print(1)" : b.arg)
         var oracle, error : string
-        let t = wall_cell([native, script, b.arg], samples, oracle, error)
+        var inscope native_argv <- [native]
+        native_argv |> push_from(program_args)
+        let t = wall_cell(native_argv, samples, oracle, error)
         row["native"] = empty(error) ? JV(t) : error_json(error)
         for (layout in ["scc", "source"]) {
             let entry = path_join(layout_dir(lua_work, "lua", layout), "lua.das")
             var inscope argv <- daslang_cmd(CONVERTED_MODULES)
-            argv |> push_from([entry, "--", script, b.arg])
+            argv |> push_from([entry, "--"], program_args)
             var lane_error : string
             let lt = wall_cell(argv, samples, oracle, lane_error)
             row["interp-{layout}"] = empty(lane_error) ? JV(lt) : error_json(lane_error)
@@ -233,6 +237,18 @@ def main : int {
             return 1
         }
         print(audit_text(js))
+        return 0
+    }
+    if (args.benches_only) {
+        var error : string
+        var stored = read_json_file(out, error)
+        if (stored == null || !(stored.value is _object)) {
+            to_log(LOG_ERROR, "--benches-only needs a stored capture: {empty(error) ? out : error}\n")
+            return 1
+        }
+        (stored.value as _object)["benches"] = measure_benches(args.lua_work, args.bench_samples)
+        fwrite(out, write_json(stored) + "\n")
+        print(audit_text(stored))
         return 0
     }
     let js = measure_all(args)

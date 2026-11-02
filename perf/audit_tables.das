@@ -17,9 +17,12 @@ struct Bench {
     arg : string
 }
 
-//! the four benchmarks of `ports/lua/bench/`, each smaller than the ports' default so the
-//! interpreter lanes end in seconds
-let BENCHES <- [Bench(name = "fib", arg = "27"), Bench(name = "binary_trees", arg = "12"), Bench(name = "nbody", arg = "20000"), Bench(name = "spectral_norm", arg = "100")]
+//! the startup row's name: the program loaded and `-e "print(1)"` run, no benchmark
+let STARTUP = "startup"
+
+//! the startup row, then the four benchmarks of `ports/lua/bench/`, each smaller than the ports'
+//! default so the interpreter lanes end in seconds
+let BENCHES <- [Bench(name = STARTUP, arg = "-e"), Bench(name = "fib", arg = "27"), Bench(name = "binary_trees", arg = "12"), Bench(name = "nbody", arg = "20000"), Bench(name = "spectral_norm", arg = "100")]
 
 def time_of(cell : JsonValue?) : double => cell?["time"] ?? 0.0lf
 
@@ -85,11 +88,26 @@ def construct_table(js : JsonValue?) : string {
     return render_md_table(headers, aligns, rows)
 }
 
-//! The whole-benchmark table of a capture: per benchmark the native seconds, the interpreter over
-//! the scc and source layouts with each one's factor over native, and source over scc, the cost of
-//! the source layout's late-bound calls.
+//! the net native seconds below which a net factor over native is not shown: a whole run's clock
+//! (the return of `run_and_capture`) lags the exit by up to its 100 ms watchdog tick
+let NET_NATIVE_FLOOR = 0.2lf
+
+// a benchmark lane's seconds less the startup row's in the same lane: the work without the load
+def private net_of(js : JsonValue?; bench, lane : string) : double {
+    let t = js?["benches"]?[bench]?[lane] ?? 0.0lf
+    let start = js?["benches"]?[STARTUP]?[lane] ?? 0.0lf
+    return t > 0.0lf && start > 0.0lf && t > start ? t - start : 0.0lf
+}
+
+// a layout's net factor over native, or why it is not shown
+def private net_native_text(net, net_native : double) : string => net_native >= NET_NATIVE_FLOOR || net_native <= 0.0lf ? factor_text(net, net_native) : "native under {NET_NATIVE_FLOOR:.1f} s"
+
+//! The whole-benchmark table of a capture: per row the native seconds and the interpreter's over the
+//! scc and source layouts, then, for a benchmark, each layout's net factor over native (each lane
+//! less its startup row, so the load leaves the factor) and source over scc net, the cost of the
+//! source layout's late-bound calls.
 def bench_table(js : JsonValue?) : string {
-    let headers <- ["bench", "arg", "native s", "interp scc s", "scc x native", "interp source s", "source x native", "source / scc"]
+    let headers <- ["bench", "arg", "native s", "interp scc s", "interp source s", "scc net x native", "source net x native", "source / scc net"]
     let aligns <- [for (h in headers); h == "bench" ? ColAlign.left : ColAlign.right]
     var rows : array<array<string>>
     rows |> reserve(length(BENCHES))
@@ -101,10 +119,14 @@ def bench_table(js : JsonValue?) : string {
         let native = row?["native"] ?? 0.0lf
         let scc = row?["interp-scc"] ?? 0.0lf
         let source = row?["interp-source"] ?? 0.0lf
+        let net_native = net_of(js, b.name, "native")
+        let net_scc = net_of(js, b.name, "interp-scc")
+        let net_source = net_of(js, b.name, "interp-source")
         rows |> emplace([b.name, row?["arg"] ?? "",
             native > 0.0lf ? "{native:.3f}" : why(row?["native"]),
-            scc > 0.0lf ? "{scc:.2f}" : why(row?["interp-scc"]), factor_text(scc, native),
-            source > 0.0lf ? "{source:.2f}" : why(row?["interp-source"]), factor_text(source, native), factor_text(source, scc)])
+            scc > 0.0lf ? "{scc:.2f}" : why(row?["interp-scc"]),
+            source > 0.0lf ? "{source:.2f}" : why(row?["interp-source"]),
+            net_native_text(net_scc, net_native), net_native_text(net_source, net_native), factor_text(net_source, net_scc)])
     }
     return render_md_table(headers, aligns, rows)
 }
