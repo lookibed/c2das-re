@@ -368,8 +368,12 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
             run.error = clipped(error)
             if (!empty(bin)) {
                 run.argv <- [get_full_file_name(bin)]
+                // the AOT host is no standalone exe: the program's arguments follow `--`, as under daslang
+                if (lane == "aot") {
+                    run.argv |> push("--")
+                }
             }
-            shown = lane == "exe" ? "daslang -exe {port.runs}/{port.runs}.das, the binary run" : "the -ctx context and its host compiled by clang++ -O3 (c2das-re converter/tiers.das), the binary run"
+            shown = lane == "exe" ? "daslang -exe {port.runs}/{port.runs}.das, the binary run" : "the -ctx context and its host compiled by clang++ -O3 (c2das-re converter/tiers.das), the binary run with `--`"
         }
         into.lanes |> push(Lane(name = lane, command = shown, error = run.error))
         let reported = empty(run.error) ? join(run.argv, " ") : "not yet: {run.error}"
