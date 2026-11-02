@@ -1958,6 +1958,12 @@ def p7_readable_fixtures(t : T?) {
         has_text(t, text, "        // add the odd one,\n        // over two lines\n        s += i\n")
         has_text(t, text, "    // \"a // inside\" stays one comment\n    return s\n")
         has_text(t, text, "    var t : uint8? = reinterpret<uint8?>(\"not /* a comment */ here\")\n    // print it\n")
+        // an apostrophe in `#if 0` prose leaves the later lines' comments on their own lines; a
+        // GNU-style header's comment stands above the specifiers' line
+        has_text(t, text, "// the sign of n, in GNU style\ndef private p7_comments__sign_of(n : int) : int \{\n")
+        has_text(t, text, "    if (_cond == 0) \{\n        // zero\n        r = 0\n    \} else \{\n        // the rest\n        if (n > 0) \{\n")
+        has_text(t, text, "        \} else \{\n            // not positive\n            // negative\n            r = -1\n")
+        has_text(t, text, "    // the sign\n    return r\n")
         t |> equal(text |> find("a global's comment") < 0, true, text)
         t |> equal(text |> find("P7.0j") < 0, true, text)
     }
