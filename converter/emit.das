@@ -3861,7 +3861,6 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
     let all_values <- [for (g in groups); join([for (v in g.values); case_compare(em, tu, cond, cond_t, v)], " || "); where !empty(g.values)]
     // a switch a goto re-dispatches matches a case or `default` only while no goto is pending
     let goto_var = restart > 0 ? numbered("_goto", em.switch_counter) : ""
-    let pending = restart > 0 ? "{goto_var} == 0 && " : ""
     // a compound literal of a group-level statement lives as long as the switch body (C11
     // 6.5.2.5p5), which a later group reached by fallthrough reads: declared before the loop
     let decls_at = length(em.out)
@@ -3880,39 +3879,17 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
         line(em, "label {restart}:  // re-dispatch")
     }
     let plain <- [for (idx in range(length(groups))); plain_case(em, groups, idx, !empty(all_values))]
-    if (has_value(plain, false)) {
+    var needs_flag = false
+    for (idx, g in range(length(groups)), groups) {
+        needs_flag ||= !plain[idx] && !empty(g.stmts)
+    }
+    if (needs_flag) {
         line(em, "var {flag} = false")
     }
     em.cont_flags |> push(cont)
     for (idx, g in range(length(groups)), groups) {
-        if (empty(g.stmts)) {
-            continue
-        }
-        if (plain[idx]) {
-            var tests <- [for (v in g.values); case_compare(em, tu, cond, cond_t, v)]
-            if (g.is_default) {
-                tests |> push("!({join(all_values, " || ")})")
-            }
-            let test = join(tests, " || ")
-            open_block(em, restart == 0 ? "if ({test})" : length(tests) == 1 ? "if ({pending}{test})" : "if ({pending}({test}))")
-            emit_group(em, tu, g, false)
-            close_block(em)
-            continue
-        }
-        for (v in g.values) {
-            line(em, "{flag} ||= {pending}{case_compare(em, tu, cond, cond_t, v)}")
-        }
-        if (g.is_default) {
-            if (empty(all_values)) {
-                line(em, restart > 0 ? "{flag} ||= {goto_var} == 0" : "{flag} = true")
-            } else {
-                line(em, "{flag} ||= {pending}!({join(all_values, " || ")})")
-            }
-        }
-        if (check_group_split(em, g)) {
-            open_block(em, "if ({flag})")
-            emit_group(em, tu, g, false)
-            close_block(em)
+        if (!empty(g.stmts)) {
+            emit_loop_group(em, tu, g, plain[idx], cond, cond_t, all_values, flag, goto_var)
         }
     }
     em.cont_flags |> pop()
@@ -3930,19 +3907,46 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
     }
 }
 
+// one group of the matched-flag loop: a plain case (`plain_case`) as its own `if` on its tests, any
+// other under the flag its labels set; `goto_var` is "" unless a goto re-dispatches the switch
+def private emit_loop_group(var em : Emitter; tu : CirTu; g : CaseGroup; plain : bool; cond : string; cond_t : int; all_values : array<string>; flag, goto_var : string) {
+    let pending = empty(goto_var) ? "" : "{goto_var} == 0 && "
+    if (plain) {
+        var inscope tests <- [for (v in g.values); case_compare(em, tu, cond, cond_t, v)]
+        if (g.is_default) {
+            tests |> push("!({join(all_values, " || ")})")
+        }
+        let test = join(tests, " || ")
+        open_block(em, empty(goto_var) || length(tests) == 1 ? "if ({pending}{test})" : "if ({pending}({test}))")
+        emit_group(em, tu, g, false)
+        close_block(em)
+        return
+    }
+    for (v in g.values) {
+        line(em, "{flag} ||= {pending}{case_compare(em, tu, cond, cond_t, v)}")
+    }
+    if (g.is_default) {
+        if (empty(all_values)) {
+            line(em, empty(goto_var) ? "{flag} = true" : "{flag} ||= {goto_var} == 0")
+        } else {
+            line(em, "{flag} ||= {pending}!({join(all_values, " || ")})")
+        }
+    }
+    if (check_group_split(em, g)) {
+        open_block(em, "if ({flag})")
+        emit_group(em, tu, g, false)
+        close_block(em)
+    }
+}
+
 // whether group `idx` of a matched-flag loop is entered by its own labels alone: the group before
 // it cannot fall into it, no goto re-dispatches into it and it cannot fall into the next, so its
 // branch tests its labels directly and the flag stays unset; `default` needs a case value to
 // negate (`has_values`)
 [arch(at="ARCHITECTURE_EMITTER_CONTROL.md#plain-cases")]
 def private plain_case(em : Emitter; groups : array<CaseGroup>; idx : int; has_values : bool) : bool {
-    if (empty(groups[idx].stmts) || (groups[idx].is_default && !has_values)) {
-        return false
-    }
-    if (idx > 0 && !ends_group(groups[idx - 1].stmts |> back())) {
-        return false
-    }
-    if (idx < length(groups) - 1 && !ends_group(groups[idx].stmts |> back())) {
+    let n = length(groups[idx].stmts)
+    if (n == 0 || (groups[idx].is_default && !has_values) || (idx > 0 && !ends_group(groups[idx - 1].stmts |> back())) || (idx < length(groups) - 1 && !ends_group(groups[idx].stmts[n - 1]))) {
         return false
     }
     var entered = false
