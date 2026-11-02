@@ -91,7 +91,7 @@ kernel at 195x native, the chain the `flag-chain` rewrite restores 2.33 times sl
 after the fix; the Rust translation's computed `goto` dispatch runs it at 27.0x native), the wrap casts
 `int64(uint64(a) op uint64(b))` 2.29x (re-recorded after the fold, `wrap-casts` restoring them), the `int64(x != 0 ? 1 : 0) != 0` test 1.75x (re-recorded after the fix,
 the `expect-roundtrip` rewrite restoring it), `addr((p + i).f)` on a stack slot 1.53x,
-`c_volatile_load` 1.61x (the same re-record), and `try`/`recover` itself 1.25x, of which
+`c_volatile_load` 1.31x (re-recorded after its call macro, 1.61x before), and `try`/`recover` itself 1.25x, of which
 the `while (_sj_run)` trampoline 1.13x; the union member through `reinterpret<GCUnion?>` costs 1.17x
 and `enum_from_int` 1.12x. Five cost nothing measurable (0.93x to 1.02x): `addr(deref(p + i))`,
 the macro mask arithmetic (daslang folds the constants), a small call against its body inlined,
