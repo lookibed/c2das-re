@@ -24,7 +24,8 @@ row for a fix.
   (`converter/ARCHITECTURE_EMITTER_CONTROL.md`), so `flag-chain` restores the former `_flag`
   line on each, and that row's factor is the inverse of the chain's cost; a truth test past
   `__builtin_expect` is the comparison inside, so `expect-roundtrip` restores the
-  `int64(x != 0 ? 1 : 0) != 0` test the same way.
+  `int64(x != 0 ? 1 : 0) != 0` test the same way, and `wrap-casts` the casts of C's wrapping
+  arithmetic through the unsigned twin.
 - `audit_tables.das` - the construct table and the whole-benchmark table of a capture, and
   `BENCHES`, the startup row and the four Lua benchmarks with the argument each runs with here. It measures nothing
   and reads no file.
