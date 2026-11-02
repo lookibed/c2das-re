@@ -1402,8 +1402,8 @@ def p5_lua_fixtures(t : T?) {
         // das subtracts from a pointer variable only: a computed pointer adds the negated count
         has_text(t, text, "    var last : uint8? = addr(buff[0]) + 10 + -(n)\n")
         has_text(t, text, "    var first : uint8? = addr(buff[0]) + 10 + -int64(k)\n")
-        // GCC's branch hint is its first operand
-        has_text(t, text, "    if (int64((x > 2 ? 1 : 0) != 0 ? 1 : 0) != 0) \{\n")
+        // GCC's branch hint is its first operand, and a truth test of it the comparison inside
+        has_text(t, text, "    if (x > 2) \{\n")
         // <ctype.h> without glibc's table macros: the functions the crt module binds
         has_text(t, text, "crt::isalnum(int(uint8(deref(s))))")
         // <math.h>: das math for the surface, the crt module for the exotica

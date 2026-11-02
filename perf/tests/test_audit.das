@@ -86,7 +86,9 @@ def test_rewrites_apply_to_the_kernels(t : T?) {
                     let out = invoke(c.rewrite, text, error)
                     t |> equal(error, "", "{c.spelling}")
                     t |> success(!empty(out) && out != text, "{c.spelling} changes the module")
-                    t |> success(occurrences(text, c.sites) > 0, "{c.spelling}: the kernel holds the site text `{c.sites}`")
+                    // a construct the converter no longer writes rewrites the other way: its site
+                    // text is in the rewrite
+                    t |> success(occurrences(text, c.sites) > 0 || occurrences(out, c.sites) > 0, "{c.spelling}: the kernel or its rewrite holds the site text `{c.sites}`")
                     taken++
                 }
             }
