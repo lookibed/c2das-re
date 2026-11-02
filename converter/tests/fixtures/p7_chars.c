@@ -1,6 +1,7 @@
 /* P7.0i: a character literal is a das character literal where das spells one, in an expression
-   and as a case label; a case a number labels, `'\0'` and a value das has no escape for stay
-   numbers */
+   and as a case label; a case a number labels, `'\0'`, a value das has no escape for (`'\xff'`
+   under the tests' unsigned char), a multi-character constant stay numbers; a wide `L'x'` is an
+   `int` on linux and keeps its spelling */
 #include <stdio.h>
 #include <string.h>
 static int kind(int c) {
@@ -25,5 +26,7 @@ int main(void) {
         if (*p == '{' || *p == '}') n += 10;
     }
     printf("%d %d %c %d %d %d\n", (int)(e - fmt), n, q, '\t', kind('&'), '\x7f');
+    int digit = fmt[0] == 'a' ? '7' - '0' : 0;
+    printf("%d %d %d %d\n", '\xff', 'ab', (int)L'x', digit);
     return n == '\\' ? 1 : 0;
 }
