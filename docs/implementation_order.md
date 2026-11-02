@@ -20,7 +20,7 @@ never block this plan.
    hand-written "as-if-converted" `.das` test first, converter integration second.
 5. No hand edits to converted output, ever. Per-project judgment goes in the sidecar.
 
-**Owner rulings 2026-11-01 (12) to (22)** (after Boris Batkin's framing of 2026-08-22: generate the
+**Owner rulings 2026-11-01 (12) to (23)** (after Boris Batkin's framing of 2026-08-22: generate the
 text, make it all work, then the LLM-assisted port; his words on layout, start-up, speed and text
 stand behind each)
 12. Layout (P7.0a): the default layout keeps every cycle one module of `.das.inc` fragments, a file
@@ -68,6 +68,21 @@ stand behind each)
     `main`; `main` re-measured now, the numbers in the critic file's footnote area and the PR's
     `Кратко`; no translator fixes in the item.
 22. P7.0a's start-up, 5.3 s against 1.0 s for `source-cut` (2026-11-02): accepted, no threshold.
+23. P7.0c-h and the critic's readability items (2026-11-02, decided while the owner slept): where
+    speed and readability pull apart, the readable form is the default and the fast form an opt-in
+    flag (sidecar field and CLI), both tested and measured; where a form is both faster and more
+    readable, it is the default. P7.0c: plain-case switch dispatch without the flag chain default,
+    computed `goto <expr>` for dense switches opt-in; P7.0e: `x != 0` for `l_likely`/`l_unlikely`
+    default; P7.0d: the wrap-cast fold default with its signed-wrap probe; P7.0g: the cheaper
+    volatile load with F65's semantics default; P7.0f: the first-member `reinterpret` opt-in, the
+    default stays `addr(...)`; P7.0h: flat `try` and inline enum cast default if the output reads
+    simpler, low priority. Readability, readable-only so default, each its own small PR: character
+    literals emitted as `'c'` where the C had one, then C comments carried over by source line, then
+    `#define` constant names. Streams: one coder P7.0c, e, d, g, f, h; one coder the three readability
+    items; first-ready-first-merged, the other rebases. Stop at 06:00 MSK (03:00Z) of 2026-11-02:
+    no new coder or pull request after 05:40 MSK; merge what is green and reviewed; stop coders
+    cleanly (WIP committed and pushed), write the handoff, end; no restart after the reset unless
+    the owner says so.
 
 ---
 
@@ -1302,27 +1317,36 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   within 16% (small call 1.16x) but `try` 5.43x, the `c_volatile_load` JIT cell SUSPECT and left
   out; slots 0.95-1.00x of scc net. No IR change needed; fixes are rows P7.0c-P7.0h. Report: the
   item's PR.
-- **P7.0c Switch dispatch without the flag chain.** A case no `goto` and no fall-through enters
+- **P7.0c Switch dispatch without the flag chain** (ruling (23): the plain-case form default, computed `goto` opt-in). A case no `goto` and no fall-through enters
   tests `_goto == 0 && _cond == K` alone (2.08x interp on `dispatch_switch`, 83 flag cases in lvm,
   an upper bound of the plain ones, every VM instruction). Then, opt-in under the speed-vs-
   idiomatic rule, a dense switch as computed `goto <expr>` (the Rust translation's form: 23.9x
   native against our 419x on the same kernel). Both modes tested and measured.
-- **P7.0d Wrap casts on 64-bit mixed operands.** `int64(uint64(a) op uint64(b))` as `a op
+- **P7.0d Wrap casts on 64-bit mixed operands** (ruling (23): default, with the signed-wrap probe). `int64(uint64(a) op uint64(b))` as `a op
   int64(b)`, extending P7.0's `int` fold to lvm's `intop` (OP_ADDI, OP_MUL, bitwise ops): 2.10x
   interp, sites 14/1/5/0. The kernel never overflows (values < 2^28): the fix depends on daslang's
   defined signed wrap, a probe to land with it.
-- **P7.0e `__builtin_expect` truth tests.** `int64(x != 0 ? 1 : 0) != 0` as `x != 0`
+- **P7.0e `__builtin_expect` truth tests** (ruling (23): default). `int64(x != 0 ? 1 : 0) != 0` as `x != 0`
   (`l_likely`/`l_unlikely`): 1.58x interp, sites 61/8/2/37.
-- **P7.0f Address of a first member.** `addr((p + i).val)` and `addr(reinterpret<GCUnion?>(o).h)`
+- **P7.0f Address of a first member** (ruling (23): the `reinterpret` form opt-in; `addr(...)` stays the default). `addr((p + i).val)` and `addr(reinterpret<GCUnion?>(o).h)`
   where the member sits at offset 0: 1.53x and 1.17x interp, sites 106/2/0/11 and 81/10/62/10. The
   fast form is a `reinterpret`, which the readability criteria count as noise: NEEDS RULING
   (default or opt-in).
-- **P7.0g Cheaper volatile load.** `c_volatile_load` (a C++ forwarder) costs 1.32x interp on the
+- **P7.0g Cheaper volatile load** (ruling (23): default, F65's semantics kept). `c_volatile_load` (a C++ forwarder) costs 1.32x interp on the
   `trap` re-read, sites 50/0/0/7 (`updatetrap` per protected instruction); keep F65's semantics,
   find an interpreter-cheap form.
-- **P7.0h Flat setjmp and inline enum cast (low weight).** The `while (_sj_run)` trampoline as a
+- **P7.0h Flat setjmp and inline enum cast** (ruling (23): default if the output reads simpler; low priority). The `while (_sj_run)` trampoline as a
   flat `try` when the setjmp value is only tested against 0 (1.13x; `try` itself 1.25x interp,
   5.43x JIT; 1 site, per pcall); `enum_from_int` inline (1.12x, 5 sites, per instruction).
+- **P7.0i Character literals as `'c'`** (ruling (23), the critic's finding 3): a C character
+  literal reaches the das text as `'c'` where the C had one (the C-IR carries the literal's kind;
+  `probes`/P2.5's ledger line), readable-only, default; one small pull request.
+- **P7.0j C comments carried over by source line** (ruling (23), finding 1): the C source's
+  comments land as `//` lines above the statement of the same source line in the das output;
+  readable-only, default; one small pull request after P7.0i.
+- **P7.0k `#define` constant names kept** (ruling (23), finding 2): a numeric literal that a
+  `#define` of the translation unit names is emitted as a `let` constant of that name (the macro's
+  expansion location names it); readable-only, default; one small pull request after P7.0j.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
