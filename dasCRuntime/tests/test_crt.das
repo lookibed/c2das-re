@@ -183,7 +183,9 @@ def test_crt_environment(t : T?) {
             t |> success(ts.tv_nsec >= 0l && ts.tv_nsec < 1000000000l && ts.tv_sec * 1000000000l + ts.tv_nsec <= crt::c_monotonic_ns(), "monotonic {ts.tv_sec}.{ts.tv_nsec}")
             t |> equal(crt::clock_gettime(0, addr<void?>(ts)), 0)
             t |> success(ts.tv_sec > 1700000000l && ts.tv_nsec < 1000000000l, "realtime {ts.tv_sec}.{ts.tv_nsec}")
+            crt::c_set_errno(0)
             t |> equal(crt::clock_gettime(12345, addr<void?>(ts)), -1)
+            t |> equal(crt::c_errno(), crt::EINVAL)
         }
         t |> equal(crt::CLOCKS_PER_SEC > 0l, true)
         t |> equal(crt::LONG_BITS == 32 || crt::LONG_BITS == 64, true)

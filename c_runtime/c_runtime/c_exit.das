@@ -43,13 +43,19 @@ def c_abort {
 }
 
 //! glibc's `__assert_fail`, which `assert` calls without `NDEBUG` when its expression is zero:
-//! glibc's message on stderr (`<argv[0]>: <file>:<line>: <function>: Assertion `<expression>'
-//! failed.`), then `c_abort`.
+//! glibc's message on stderr (`<program>: <file>:<line>: <function>: Assertion `<expression>'
+//! failed.`, `<program>` the base name of `argv[0]` as glibc's `__progname`, and nothing before
+//! the file when it is empty), then `c_abort`.
 def c_assert_fail(expr, file : uint8?; line : uint; func : uint8?) {
     unsafe {
         let err = crt::c_stderr()
-        if (c_argc() > 0) {
-            crt::fputs(deref(c_argv()), err)
+        var program = c_argc() > 0 ? deref(c_argv()) : null
+        let slash = program != null ? crt::strrchr(program, '/') : null
+        if (slash != null) {
+            program = reinterpret<uint8?>(slash) + 1
+        }
+        if (program != null && deref(program) != uint8(0)) {
+            crt::fputs(program, err)
             crt::fputs(reinterpret<uint8?>(": "), err)
         }
         crt::fputs(file, err)
