@@ -48,13 +48,16 @@ struct Sidecar {
     // the folders clang searches for `#include`, each passed as `-I<dir>` to both passes of the
     // dumper, in order; absolute (a relative entry is read beside the sidecar)
     include_dirs : array<string>
+    // the headers clang reads before the main file, each passed as `-include <file>` to both passes
+    // of the dumper, in order; absolute (a relative entry is read beside the sidecar)
+    include_files : array<string>
     // the folder whose files are the program's (`converter/ARCHITECTURE_DUMPER.md`, the file
     // policy), absolute; "" for the main file's own folder
     program_root : string
 }
 
 //! The keys a sidecar may hold; any other is refused naming it.
-let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "layout", "defines", "over_indexed", "include_dirs", "program_root"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "layout", "defines", "over_indexed", "include_dirs", "include_files", "program_root"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -251,12 +254,18 @@ def private shape_error(js : JsonValue?; path : string) : string {
     return ""
 }
 
-// the `include_dirs` and `program_root` keys, each folder read beside the sidecar at `path`
+// the `include_dirs`, `include_files` and `program_root` keys, each path read beside the sidecar at
+// `path`
 def private read_inputs(js : JsonValue?; path : string; var side : Sidecar; var error : string&) {
     if (key_exists(js, "include_dirs")) {
         var inscope dirs : array<string>
         strings_of(js?["include_dirs"], "{path}: `include_dirs`", dirs, error)
         side.include_dirs |> push_from([for (dir in dirs); beside(path, dir)])
+    }
+    if (key_exists(js, "include_files")) {
+        var inscope files : array<string>
+        strings_of(js?["include_files"], "{path}: `include_files`", files, error)
+        side.include_files |> push_from([for (f in files); beside(path, f)])
     }
     if (key_exists(js, "program_root")) {
         let root = js?["program_root"]

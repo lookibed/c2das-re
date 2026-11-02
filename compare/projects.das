@@ -590,15 +590,29 @@ def native_build(p : Project; sources : array<string>; bin : string) : string {
     return rc == 0 ? "" : "clang exited {rc}: {first_line(out)}"
 }
 
+// the file a `-include` of `p`'s clang arguments names, made absolute: found in the first of the
+// project's include folders that holds it, else under the project folder
+def private absolute_include(p : Project; name : string) : string {
+    for (d in p.include_dirs) {
+        let candidate = path_join(project_path(p, d), name)
+        if (fexist(candidate)) {
+            return absolute_path(candidate)
+        }
+    }
+    return absolute_path(project_path(p, name))
+}
+
 // our side of one unit of `p`, or of its units (`units`, a program in the source layout):
 // converted under `linux` into `out_dir` with a sidecar of the project's defines, its include
-// folders and the project folder as the program root, each folder absolute; the entry module with
+// folders, its forced includes (`-include` in `clang_extra`) and the project folder as the program
+// root, each path absolute; the entry module with
 // every file written into `files`, or "" with `refusal` the converter's first line
 def private ours_module(p : Project; tu, out_dir : string; units : array<string>; var refusal : string&; var files : array<string>) : string {
     mkdir_rec(out_dir)
     let sidecar = path_join(out_dir, "{p.name}.c2das")
     let include_dirs <- [for (d in p.include_dirs); absolute_path(project_path(p, d))]
-    fwrite(sidecar, write_json(JV({"defines" => JV(p.defines), "include_dirs" => JV(include_dirs), "program_root" => JV(absolute_path(p.dir))})))
+    let include_files <- [for (i, a in range(length(p.clang_extra)), p.clang_extra); absolute_include(p, a); where i > 0 && p.clang_extra[i - 1] == "-include"]
+    fwrite(sidecar, write_json(JV({"defines" => JV(p.defines), "include_dirs" => JV(include_dirs), "include_files" => JV(include_files), "program_root" => JV(absolute_path(p.dir))})))
     var res <- empty(units) ? convert(project_path(p, tu), out_dir, "linux", "", sidecar) : convert_program([for (u in units); project_path(p, u)], out_dir, "linux", "", sidecar)
     refusal = res.ok ? "" : first_line(res.error)
     delete files

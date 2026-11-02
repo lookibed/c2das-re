@@ -3210,10 +3210,15 @@ def default_clang : string =>
 // unless `__NO_CTYPE` is defined: with it each is the libc function the crt module binds
 let NO_CTYPE_MACROS = "-D__NO_CTYPE"
 
-// the sidecar's `defines` and `include_dirs` as clang flags, `-D<entry>` and `-I<dir>` each
-def private input_flags(defines, include_dirs : array<string>) : array<string> {
-    var flags <- [for (entry in defines); "-D{entry}"]
-    flags |> push_from([for (dir in include_dirs); "-I{dir}"])
+// the sidecar's `defines`, `include_dirs` and `include_files` as clang flags, `-D<entry>`, `-I<dir>`
+// and `-include <file>` each
+def private input_flags(inputs : DumpInputs) : array<string> {
+    var flags <- [for (entry in inputs.defines); "-D{entry}"]
+    flags |> push_from([for (dir in inputs.include_dirs); "-I{dir}"])
+    for (file in inputs.include_files) {
+        flags |> push("-include")
+        flags |> push(file)
+    }
     return <- flags
 }
 
@@ -3270,11 +3275,13 @@ def private dump_top_level(var d : Dumper; js : JsonValue?) {
 }
 
 //! What a unit is dumped under beyond its file and dialect: the sidecar's `defines` (`-D<entry>`
-//! each), its `include_dirs` (`-I<dir>` each, both passes) and its `program_root` ("" for the main
+//! each), its `include_dirs` (`-I<dir>` each, both passes), its `include_files` (`-include <file>`
+//! each) and its `program_root` ("" for the main
 //! file's folder).
 struct DumpInputs {
     defines : array<string>
     include_dirs : array<string>
+    include_files : array<string>
     program_root : string
 }
 
@@ -3306,7 +3313,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; inputs : DumpIn
         d.error = "the main file {get_full_file_name(c_path)} is no file of the program: it lies outside the program root {d.program_dir} or under a folder clang searches for system headers"
         return <- d
     }
-    let flags <- input_flags(inputs.defines, inputs.include_dirs)
+    let flags <- input_flags(inputs)
     collect_records(d, target.triple, resource_dir, flags)
     if (!empty(d.error)) {
         return <- d
