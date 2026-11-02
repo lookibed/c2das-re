@@ -5,6 +5,7 @@ int printf(const char *, ...);
 int vfp(void);
 int vpointers(void);
 int vtargets(int n);
+int vconst(void);
 typedef volatile int vint;
 struct S { volatile int f; int g; };
 static volatile int a = 3;
@@ -27,7 +28,7 @@ int main(void) {
     struct S *ps = &s2;
     ps->f += 3; ps->f++;
     t += ps->f;
-    (void)a; t += vfp(); t += vpointers(); t += vtargets(40);
+    (void)a; t += vfp(); t += vpointers(); t += vtargets(40); t += vconst();
     loc--;
     printf("%d %d %d %d %d %d %g %d %d %d %d\n", t, a, b, s.f, arr[2], vc, vd, vb, u, loc, *p);
     return 0;
@@ -88,3 +89,6 @@ int vtargets(int n) {
     printf("%d %d %d %d %d %d %d %lld %g %d\n", cb[1], a2, buf[0], buf[1], n1.v, x, va[5], vbig, vd, vc);
     return y + r;
 }
+/* a by-value volatile parameter: a constant argument from a plain caller, folded by the optimizer */
+static int vparam(volatile int x) { return x + 1; }
+int vconst(void) { return vparam(41) * 2; }
