@@ -123,6 +123,10 @@ struct Dumper {
     // of the object-like macro expansion whose node the dump is in (0 outside one)
     macro_texts : table<string; string>
     macro_in : int64
+    // one past the offset each end of the enclosing expression's range expands from: a node that
+    // shares an end's expansion with its parent is a piece of the parent's macro, never the whole
+    parent_begin : int64
+    parent_end : int64
     // clang's answer to each `__builtin_constant_p` call by its key (`register_constant_p`): 1 or
     // 0, or `CONSTANT_P_NESTED` or `CONSTANT_P_SPLIT` for a call the conversion refuses
     constant_p_by_loc : table<string; int>
@@ -2158,17 +2162,112 @@ def private macro_expansion(var d : Dumper; js : JsonValue?; var offset : int64&
     return name
 }
 
+// whether the `#define` of `name` (in the file the node's first token is spelled in, else the
+// main file) has a body that is one operand: a token, a parenthesized group, or a call
+def private atomic_body(var d : Dumper; js : JsonValue?; name : string) : bool {
+    for (file in [js?["range"]?["begin"]?["spellingLoc"]?["file"] ?? "", d.c_path]) {
+        if (empty(file)) {
+            continue
+        }
+        if (!key_exists(d.macro_texts, file)) {
+            d.macro_texts[file] = stat(file).is_reg ? fread(file) : ""
+        }
+        let body = define_body(d.macro_texts?[file] ?? "", name)
+        if (!empty(body)) {
+            return is_one_operand(body)
+        }
+    }
+    return false
+}
+
+// the body of `#define name` in `text`, one line, a trailing comment dropped; "" when absent
+def private define_body(text : string; name : string) : string {
+    for (raw in split(text, "\n")) {
+        let line = strip(raw)
+        if (!(line |> starts_with("#"))) {
+            continue
+        }
+        let rest = strip(slice(line, 1))
+        if (!(rest |> starts_with("define "))) {
+            continue
+        }
+        let decl = strip(slice(rest, 7))
+        if (decl |> starts_with("{name} ") || decl |> starts_with("{name}\t")) {
+            let body = strip(slice(decl, length(name)))
+            let block_at = find(body, "/*")
+            let line_comment = find(body, "//")
+            let cut = block_at >= 0 && (line_comment < 0 || block_at < line_comment) ? block_at : line_comment
+            return cut >= 0 ? strip(slice(body, 0, cut)) : body
+        }
+    }
+    return ""
+}
+
+// whether macro body `body` is one operand: a single token, a parenthesized group, or a name
+// followed by one parenthesized group
+def private is_one_operand(body : string) : bool {
+    var depth = 0
+    var first_open = -1
+    var closes_at = -1
+    var spaced = false
+    peek_data(body) $(b) {
+        for (i in range(length(b))) {
+            let c = int(b[i])
+            if (c == '(') {
+                if (depth == 0 && first_open < 0) {
+                    first_open = i
+                }
+                depth++
+            } elif (c == ')') {
+                depth--
+                if (depth == 0 && closes_at < 0) {
+                    closes_at = i
+                }
+            } elif (depth == 0 && (c == ' ' || c == '\t' || !(is_alnum(c) || c == '_' || c == '.' || c == '\''))) {
+                spaced = true
+            }
+        }
+    }
+    if (first_open < 0) {
+        return !spaced
+    }
+    return !spaced && closes_at == length(body) - 1
+}
+
+// one past the offset location `at` expands from, its own where no macro made it
+def private expansion_at(at : JsonValue?) : int64 {
+    let e = at?["expansionLoc"]
+    return (e != null ? e?["offset"] ?? -1l : at?["offset"] ?? -1l) + 1l
+}
+
 def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
+    let kind = node_kind(js)
+    // a wrapper clang adds spans its operand's range exactly: the operand's parent is the
+    // wrapper's
+    let wrapper = kind == "ImplicitCastExpr" || kind == "ConstantExpr"
     var offset = -1l
-    let name = node_kind(js) == "ImplicitCastExpr" ? "" : macro_expansion(d, js, offset)
-    if (empty(name)) {
-        return dump_expr_node(d, js)
+    var name = wrapper ? "" : macro_expansion(d, js, offset)
+    // `#define X 1 + 2` in `X * 3`: the `1` expands from `X` whole, but its parent `1 + 2 * 3`
+    // starts in that expansion too, so `X` names no node there; a parent sharing an end is
+    // the node's own context only where the body is one operand (`8`, `(...)`, `f(...)`)
+    if (!empty(name) && (d.parent_begin == offset + 1l || d.parent_end == offset + 1l) && !atomic_body(d, js, name)) {
+        name = ""
+    }
+    let outer_begin = d.parent_begin
+    let outer_end = d.parent_end
+    if (!wrapper) {
+        d.parent_begin = expansion_at(js?["range"]?["begin"])
+        d.parent_end = expansion_at(js?["range"]?["end"])
     }
     let outer = d.macro_in
-    d.macro_in = offset + 1l
+    if (!empty(name)) {
+        d.macro_in = offset + 1l
+    }
     var x = dump_expr_node(d, js)
     d.macro_in = outer
-    if (x != null) {
+    d.parent_begin = outer_begin
+    d.parent_end = outer_end
+    if (x != null && !empty(name)) {
         x.macro = name
     }
     return x
