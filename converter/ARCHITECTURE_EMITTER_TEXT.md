@@ -15,3 +15,17 @@ too: `'%'`, `'{'`, the escapes
 `int(deref(p)) != 0`), and so does a marked value of another das type (a `u'x'`, a `char16_t`).
 A conversion of the literal is a cast around it (a `char` slot's `uint8('\'')`). A case label's
 mark is per switch, so a number labelling the same value in another switch stays a number.
+
+### Comments {#comments}
+
+The C comments are absent from clang's AST, so the emitter reads them from the C text a
+statement's location names (`c_comments`, once per file): per line, the comment's text with its
+whitespace collapsed and the `*` and `/` decoration at either end dropped, a block comment's
+lines each their own, a `//` or `/*` inside a string or a character literal no comment. A
+statement other than a block or a label carries, as `//` lines above it, the comments of the
+lines after the last one carried up to its own: a comment on its own line lands above the next
+statement, one after code above the statement of that line. Only the file of the function being
+emitted counts, so a statement a header's macro spells carries nothing. Above a function's `def`
+go the comment lines right above its header (lines holding a comment and no code); the comments
+between functions elsewhere, of globals, types and directives, and after a function's last
+statement, are not carried.
