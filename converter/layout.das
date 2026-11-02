@@ -66,17 +66,28 @@ struct LayoutPlan {
     entry_node : int
     link : int = -1
     cut_report : array<string>
+    // the edge census `--edge-census` asks for (`edge_census`), empty when not asked
+    census : array<string>
     error : string
 }
 
 //! A function or object an edge between two units carries: its name, its call sites in the calling
-//! unit, and why a cut cannot late-bind it ("" when it can: a function every reference of the program calls directly, whose
-//! type spells no unit's record).
+//! unit, why a cut cannot late-bind it ("" when it can: a function every reference of the program calls directly, whose
+//! type spells no unit's record), and its kind: `EDGE_CALL`, `EDGE_ADDRESS` or `EDGE_GLOBAL`.
 struct EdgeSymbol {
     name : string
     calls : int
     why_not : string
+    kind : string
 }
+
+//! The kinds of what makes an edge: a function the calling unit only calls, a function whose
+//! address the calling unit takes (calls of it besides or not), an object, and a record or enum
+//! the source node spells.
+let EDGE_CALL = "call"
+let EDGE_ADDRESS = "address"
+let EDGE_GLOBAL = "global"
+let EDGE_TYPE = "type"
 
 //! The kinds of a node.
 let NODE_UNIT = "unit"
@@ -326,6 +337,10 @@ def private why_not_cut(plan : LayoutPlan; types : array<CirType>; d : CirDecl c
     return why
 }
 
+// the kind of the symbol `name` a unit of uses `r` references, `d` its function's definition (null:
+// an object)
+def private symbol_kind(d : CirDecl const?; r : Refs; name : string) : string => d == null ? EDGE_GLOBAL : key_exists(r.names, name) ? EDGE_ADDRESS : EDGE_CALL
+
 // the edges of the program: unit to unit by the functions and objects it references, each with
 // its symbols (a function's call sites, and whether a cut may late-bind it), every node to the
 // owners of the records and enums it spells
@@ -371,8 +386,9 @@ def private find_edges(var plan : LayoutPlan; tus : array<CirTu>; types : array<
             if (def_unit >= 0 && def_unit != ti) {
                 let to = plan.unit_node[def_unit]
                 add_edge(plan, from, to, name)
-                let why = why_not_cut(plan, types, defined?[name] ?? null, key_exists(addressed, name))
-                plan.symbols["{from}>{to}"] |> push(EdgeSymbol(name = name, calls = refs[ti].calls?[name] ?? 0, why_not = why))
+                let d = defined?[name] ?? null
+                let why = why_not_cut(plan, types, d, key_exists(addressed, name))
+                plan.symbols["{from}>{to}"] |> push(EdgeSymbol(name = name, calls = refs[ti].calls?[name] ?? 0, why_not = why, kind = symbol_kind(d, refs[ti], name)))
             }
         }
         for (t in keys(refs[ti].types)) {
@@ -1184,8 +1200,9 @@ def unbound_module(plan : LayoutPlan) : string {
 //! `<lexically first stem>_cluster` with a fragment per member, the component holding `main` named
 //! by the entry unit's stem; a header's types are `<header stem>_h` (`lobject.h` -> `lobject_h`),
 //! the types no single file defines `c_types`. Two modules of one name are refused.
+//! With `census` the plan carries the edge census of its cycles before any cut (`edge_census`).
 [arch(at="ARCHITECTURE_LAYOUT.md#layout")]
-def plan_layout(tus : array<CirTu>; types : array<CirType>; facts : LinkFacts; c_paths : array<string>; opts : CutOptions) : LayoutPlan {
+def plan_layout(tus : array<CirTu>; types : array<CirType>; facts : LinkFacts; c_paths : array<string>; opts : CutOptions; census : bool = false) : LayoutPlan {
     var plan = LayoutPlan()
     let full <- [for (p in c_paths); get_full_file_name(p)]
     plan.root = common_dir(full)
@@ -1205,6 +1222,9 @@ def plan_layout(tus : array<CirTu>; types : array<CirType>; facts : LinkFacts; c
     plan.entry_node = plan.unit_node[entry_unit]
     own_types(plan, tus, types, by_file)
     find_edges(plan, tus, types, facts)
+    if (census) {
+        plan.census <- edge_census(plan)
+    }
     if (opts.cut_cycles) {
         cut_cycles(plan, opts)
         if (!empty(plan.error)) {
@@ -1272,5 +1292,110 @@ def layout_report(plan : LayoutPlan) : array<string> {
         }
     }
     lines |> push_from(plan.cut_report)
+    return <- lines
+}
+
+// how many symbols of each kind the edge `from` -> `to` carries, the records and enums it spells
+// (its reasons naming none of its symbols) counted as `EDGE_TYPE`
+def private edge_kinds(plan : LayoutPlan; from, to : int) : table<string; int> {
+    var kinds : table<string; int>
+    let key = "{from}>{to}"
+    var inscope named : table<string>
+    for (sym in plan.symbols?[key] ?? array<EdgeSymbol>()) {
+        kinds[sym.kind] = (kinds?[sym.kind] ?? 0) + 1
+        named |> insert(sym.name)
+    }
+    for (why in plan.reasons?[key] ?? array<string>()) {
+        if (!key_exists(named, why)) {
+            kinds[EDGE_TYPE] = (kinds?[EDGE_TYPE] ?? 0) + 1
+        }
+    }
+    return <- kinds
+}
+
+// whether an edge of `kinds` carries a kind `dropped` does not name
+def private kept_by(kinds : table<string; int>; dropped : array<string>) : bool {
+    for (kind in keys(kinds)) {
+        if (!has_value(dropped, kind)) {
+            return true
+        }
+    }
+    return false
+}
+
+// the plan's edges without those carrying only kinds `dropped` names
+def private edges_without(plan : LayoutPlan; dropped : array<string>) : array<table<int>> {
+    var edges : array<table<int>>
+    edges |> resize(length(plan.edges))
+    for (from in range(length(plan.edges))) {
+        for (to in keys(plan.edges[from])) {
+            if (kept_by(edge_kinds(plan, from, to), dropped)) {
+                edges[from] |> insert(to)
+            }
+        }
+    }
+    return <- edges
+}
+
+// the components of more than one node of `edges`, each with its member stems sorted, in the order
+// of their first stems
+def private clusters_of(plan : LayoutPlan; edges : array<table<int>>) : array<array<int>> {
+    var clusters <- [for (comp in components_of(edges)); comp; where length(comp) > 1]
+    for (comp in clusters) {
+        sort(comp) $(a, b) => plan.nodes[a].stem < plan.nodes[b].stem
+    }
+    sort(clusters) $(a, b) => plan.nodes[a[0]].stem < plan.nodes[b[0]].stem
+    return <- clusters
+}
+
+// a cluster's report line: its nodes, its units, its members' stems
+def private cluster_line(plan : LayoutPlan; comp : array<int>) : string {
+    let units = length([for (m in comp); m; where plan.nodes[m].kind == NODE_UNIT])
+    return "  {length(comp)} nodes, {units} units: {join([for (m in comp); plan.nodes[m].stem], " ")}"
+}
+
+// a cluster's census line: its edges, per kind the edges carrying it and the symbols or types of
+// it, and the edges the two what-ifs drop (carrying calls alone, calls and globals alone)
+def private census_line(plan : LayoutPlan; comp : array<int>) : string {
+    var edges, calls_alone, calls_globals_alone = 0
+    var carrying, counted : table<string; int>
+    for (from in comp) {
+        for (to in keys(plan.edges[from])) {
+            if (has_value(comp, to)) {
+                var inscope kinds <- edge_kinds(plan, from, to)
+                edges++
+                for (kind, n in keys(kinds), values(kinds)) {
+                    carrying[kind] = (carrying?[kind] ?? 0) + 1
+                    counted[kind] = (counted?[kind] ?? 0) + n
+                }
+                calls_alone += kept_by(kinds, [EDGE_CALL]) ? 0 : 1
+                calls_globals_alone += kept_by(kinds, [EDGE_CALL, EDGE_GLOBAL]) ? 0 : 1
+            }
+        }
+    }
+    let by_kind = join([for (kind in [EDGE_CALL, EDGE_ADDRESS, EDGE_GLOBAL, EDGE_TYPE]); "{kind} {carrying?[kind] ?? 0} ({counted?[kind] ?? 0})"], ", ")
+    return "    {edges} edges; per kind the edges carrying it (its symbols or types): {by_kind}; {calls_alone} edges of calls alone, {calls_globals_alone} of calls and globals alone"
+}
+
+// the report of the clusters of `edges` under `title`, with each cluster's census when `census`
+def private clusters_report(plan : LayoutPlan; edges : array<table<int>>; title : string; census : bool; var lines : array<string>) {
+    let clusters <- clusters_of(plan, edges)
+    lines |> reserve(length(lines) + 1 + 2 * length(clusters))
+    lines |> push("{title}: clusters {length(clusters)}")
+    for (comp in clusters) {
+        lines |> push(cluster_line(plan, comp))
+        if (census) {
+            lines |> push(census_line(plan, comp))
+        }
+    }
+}
+
+//! The edge census of the plan's cycles before any cut, as report lines.
+[arch(at="ARCHITECTURE_LAYOUT.md#census")]
+def edge_census(plan : LayoutPlan) : array<string> {
+    var lines : array<string>
+    clusters_report(plan, plan.edges, "today", true, lines)
+    clusters_report(plan, edges_without(plan, [EDGE_CALL]), "calls forward-declared", false, lines)
+    clusters_report(plan, edges_without(plan, [EDGE_CALL, EDGE_GLOBAL]), "calls and globals forward-declared", false, lines)
     return <- lines
 }

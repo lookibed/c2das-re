@@ -47,11 +47,17 @@ struct ConvertResult {
     // each fragment's `.das.inc`), relative to it, and the partition's report (`layout_report`)
     files : array<string>
     partition : array<string>
+    // the edge census of its cycles, when asked (`edge_census`)
+    census : array<string>
 }
 
 //! The report of a program's source layout beside its modules: the modules, each cluster's edges,
 //! and the cycle cut's late-bound functions with their edges and weights (`layout_report`).
 let LAYOUT_REPORT = "program.layout.txt"
+
+//! The edge census of a program's cycles beside its modules, written only when asked
+//! (`--edge-census`, `edge_census`).
+let EDGE_REPORT = "program.edges.txt"
 
 //! The files a program's source or source-cut layout wrote under the output folder, one relative
 //! path a line: the modules and fragments a publisher copies, and nothing an earlier conversion
@@ -322,9 +328,15 @@ def private program_sidecar(c_paths : array<string>; given : string; var sidecar
 //! `<out_dir>/program.cir.json` names the units' C-IR files and the entry. The sidecar is
 //! `sidecar_path`, else the entry file's `<stem>.c2das`, else the `.c2das` of the first file's
 //! folder. A file stemmed `program` is refused, since its C-IR would be the manifest's file. One
-//! file is `convert` of it, one module in either layout.
-def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main"; layout : string = "") : ConvertResult {
+//! file is `convert` of it, one module in either layout. With `census` the source layouts also write
+//! the edge census of the program's cycles (`EDGE_REPORT`); one file or the single layout is refused.
+def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main"; layout : string = ""; census : bool = false) : ConvertResult {
     if (length(c_paths) == 1 && entry == "main") {
+        if (census) {
+            var refused : ConvertResult
+            refused.error = "--edge-census reports the cycles among a program's files; one file has none"
+            return <- refused
+        }
         if (!empty(layout) && !is_layout(layout)) {
             var refused : ConvertResult
             refused.error = option_error("", "", layout)
@@ -333,15 +345,9 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
         return <- convert(c_paths[0], out_dir, target_name, clang, sidecar_path, param_writes, loops)
     }
     var res : ConvertResult
-    if (empty(c_paths)) {
-        res.error = "a program needs at least one C file"
+    res.error = refused_files(c_paths, out_dir)
+    if (!empty(res.error)) {
         return <- res
-    }
-    for (c_path in c_paths) {
-        if (file_stem(c_path) == "program") {
-            res.error = "{c_path}: its C-IR would be {out_dir}/program.cir.json, the program manifest's file; rename the file"
-            return <- res
-        }
     }
     var sidecar_stem : string
     let sidecar = program_sidecar(c_paths, sidecar_path, sidecar_stem, res.error)
@@ -353,11 +359,17 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
         return <- res
     }
     let per_file_modules = side.layout != "single"
+    if (census && !per_file_modules) {
+        res.error = "--edge-census reports the cycles among a program's modules; the single layout has one module"
+        return <- res
+    }
     let opts <- cut_options(side, res.error)
     if (!empty(res.error)) {
         return <- res
     }
     clear_owned(out_dir)
+    // an earlier conversion's census never stays beside a conversion that did not ask for one
+    remove(path_join(out_dir, EDGE_REPORT))
     var units : array<CirTu>
     var cir_names : array<string>
     dump_units(c_paths, out_dir, target_by_name(target_name), clang, side, res, units, cir_names)
@@ -369,7 +381,7 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
                 return ""
             }
             delete plan
-            plan <- plan_layout(tus, types, facts, c_paths, opts)
+            plan <- plan_layout(tus, types, facts, c_paths, opts, census)
             scopes := unit_scopes(plan)
             return plan.error
         }
@@ -389,8 +401,7 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
             res.error = "cannot write {res.cir_path}"
             delete_tu(linked.program)
         } elif (per_file_modules) {
-            res.partition <- layout_report(plan)
-            fwrite(path_join(out_dir, LAYOUT_REPORT), join(res.partition, "\n") + "\n")
+            write_layout_reports(plan, census, out_dir, res)
             emit_modules(linked.program, linked.owners, plan, side, out_dir, res)
         } else {
             emit_unit(linked.program, side, out_dir, file_stem(linked.program.tu), res)
@@ -400,6 +411,30 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
         delete_tu(tu)
     }
     return <- res
+}
+
+// why a program of the C files `c_paths` is refused before any is read, "" when it is not: no file,
+// or a file stemmed `program`, whose C-IR would be the manifest's file
+def private refused_files(c_paths : array<string>; out_dir : string) : string {
+    if (empty(c_paths)) {
+        return "a program needs at least one C file"
+    }
+    for (c_path in c_paths) {
+        if (file_stem(c_path) == "program") {
+            return "{c_path}: its C-IR would be {out_dir}/program.cir.json, the program manifest's file; rename the file"
+        }
+    }
+    return ""
+}
+
+// the partition's report beside the modules, and with `census` the edge census of its cycles
+def private write_layout_reports(plan : LayoutPlan; census : bool; out_dir : string; var res : ConvertResult) {
+    res.partition <- layout_report(plan)
+    fwrite(path_join(out_dir, LAYOUT_REPORT), join(res.partition, "\n") + "\n")
+    if (census) {
+        res.census <- clone_to_move(plan.census)
+        fwrite(path_join(out_dir, EDGE_REPORT), join(res.census, "\n") + "\n")
+    }
 }
 
 // every file of a program dumped as `convert` dumps one, into `units`, its C-IR file's name into
