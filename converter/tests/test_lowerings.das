@@ -361,6 +361,8 @@ def p3_fixtures(t : T?) {
         // a case neither a fall-through nor a goto enters tests its labels alone
         has_text(t, text, "        var _flag = false\n        if (_cond == 1) \{\n            let _t0 = n\n            n++\n            deref(trace + _t0) = 1\n            break\n        \}\n        _flag ||= _cond == 5\n")
         has_text(t, text, "        if (!(_cond == 1 || _cond == 5 || _cond == 9)) \{\n")
+        // a plain `default` between a fall-through pair and a plain case
+        has_text(t, text, "            break\n        \}\n        if (!(_cond == 1 || _cond == 2 || _cond == 3)) \{\n            r += 50\n            break\n        \}\n        if (_cond == 3) \{\n            r += 300\n")
         has_text(t, text, "var _cont = false\n                while (true) \{")
         has_text(t, text, "_cont = true\n                        break")
         has_text(t, text, "if (_cont) \{\n                    continue\n                \}")

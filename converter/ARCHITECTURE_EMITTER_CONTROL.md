@@ -36,7 +36,7 @@ plain `if` on its tests (`if (_cond == 5)`, `if (_gotoN == 0 && (_cond == 2 || _
 `default` as `if (!(every case value))`): no `_flagN ||=` line, and the flag stays unset, which
 the next group's `_flagN ||=` needs, since control reaches that group only past a group that
 left. The loop declares `_flagN` only when a group still needs it, and a group with no
-statements (the switch's last) writes nothing. The interpreter runs a VM dispatch so 2.08 times
+statements (the switch's last) writes nothing. The interpreter runs a VM dispatch so 2.33 times
 faster than through the flag chain (`perf/ARCHITECTURE_AUDIT.md`, the `dispatch_switch` kernel),
 and the text is the one a person writes.
 

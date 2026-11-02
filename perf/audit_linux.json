@@ -42,7 +42,7 @@
 			"ldo" : 11
 		},
 		"flag-chain" : {
-			"lvm" : 83,
+			"lvm" : 77,
 			"ltable" : 0,
 			"lgc" : 0,
 			"ldo" : 0
