@@ -9,27 +9,54 @@ require daslib/strings_boost
 require ../pipeline.das
 
 //! The edge census of `--edge-census` (`converter/layout.das`, `ARCHITECTURE_LAYOUT.md#census`): a
-//! program of three cycles, one of calls alone, one of objects and a call, one of function addresses
-//! and a record, reported by kind with the clusters left were functions, then objects too,
-//! forward-declared; the partition and its report untouched; the refusals.
+//! program of four cycles, one of calls alone, one of objects and a call, one of function addresses
+//! (one also called) and a record, one of two headers' records, reported by kind with the
+//! clusters left were functions, then objects too, forward-declared; the clusters before any cut
+//! the partition's; the partition and its report untouched; the refusals.
 
 let CENSUS = "converter/tests/fixtures/p7_census"
 
 // the census of the fixture, `program.edges.txt` line by line
 let CENSUS_LINES <- [
-    "today: clusters 3",
+    "today: clusters 4",
     "  2 nodes, 2 units: a b",
     "    2 edges; per kind the edges carrying it (its symbols or types): call 2 (2), address 0 (0), global 0 (0), type 0 (0); 2 edges of calls alone, 2 of calls and globals alone",
     "  2 nodes, 2 units: c d",
     "    2 edges; per kind the edges carrying it (its symbols or types): call 1 (1), address 0 (0), global 2 (2), type 0 (0); 0 edges of calls alone, 2 of calls and globals alone",
     "  2 nodes, 2 units: e f",
     "    2 edges; per kind the edges carrying it (its symbols or types): call 0 (0), address 2 (2), global 0 (0), type 1 (1); 0 edges of calls alone, 0 of calls and globals alone",
-    "calls forward-declared: clusters 2",
+    "  2 nodes, 0 units: g_h h_h",
+    "    2 edges; per kind the edges carrying it (its symbols or types): call 0 (0), address 0 (0), global 0 (0), type 2 (2); 0 edges of calls alone, 0 of calls and globals alone",
+    "calls forward-declared: clusters 3",
     "  2 nodes, 2 units: c d",
     "  2 nodes, 2 units: e f",
-    "calls and globals forward-declared: clusters 1",
-    "  2 nodes, 2 units: e f"
+    "  2 nodes, 0 units: g_h h_h",
+    "calls and globals forward-declared: clusters 2",
+    "  2 nodes, 2 units: e f",
+    "  2 nodes, 0 units: g_h h_h"
 ]
+
+// the stems of a cluster's report line (after its last `: `), sorted and joined by spaces
+def private stems_of(ln : string) : string {
+    var inscope parts <- split(ln, ": ")
+    var inscope stems <- split(parts[length(parts) - 1], " ")
+    sort(stems)
+    return join(stems, " ")
+}
+
+// the clusters of a census's `today` block, each its stems, sorted
+def private today_clusters(census : array<string>) : array<string> {
+    var clusters : array<string>
+    var inside = false
+    for (ln in census) {
+        inside = ln |> starts_with("today:") || (inside && ln |> starts_with(" "))
+        if (inside && ln |> starts_with("  ") && !(ln |> starts_with("    "))) {
+            clusters |> push(stems_of(ln))
+        }
+    }
+    sort(clusters)
+    return <- clusters
+}
 
 // the C files of the fixture, in its manifest's link order
 def private census_paths : array<string> {
@@ -62,6 +89,12 @@ def test_edge_census(t : T?) {
     t |> run("the census reports each cluster's edges by kind, and the clusters left were functions, then objects too, forward-declared") @(t : T?) {
         t |> equal(join(census.census, "\n"), join(CENSUS_LINES, "\n"))
         t |> equal(fread(path_join(census_dir, "program.edges.txt")), join(CENSUS_LINES, "\n") + "\n")
+    }
+    t |> run("the clusters before any cut are the clusters of the partition the source layout reports") @(t : T?) {
+        var inscope partition <- [for (ln in split(fread(path_join(plain_dir, "program.layout.txt")), "\n")); stems_of(ln); where ln |> contains(": cluster of ")]
+        sort(partition)
+        t |> equal(join(today_clusters(census.census), "; "), join(partition, "; "))
+        t |> equal(length(partition), 4)
     }
     t |> run("without the flag no census is written, and the flag leaves the partition and its report as they are") @(t : T?) {
         t |> success(!fexist(path_join(plain_dir, "program.edges.txt")))

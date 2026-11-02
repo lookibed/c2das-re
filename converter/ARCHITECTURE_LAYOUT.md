@@ -64,10 +64,10 @@ In the `source-cut` layout each strongly connected component of more than one no
 by late binding instead of merged (`cut_cycles`). A candidate is an edge between two units every
 symbol of which is a function the program defines, calls directly everywhere (no reference takes its
 address, so its identity stays one) and whose type spells no unit's record; an object, a type edge,
-an edge from a unit spelling a record another unit defines (its calls or not: the record needs the
-`require`), a symbol `layout.keep_together` names, two units of one `layout.keep_together` group,
-and an edge whose weight is above `layout.threshold` are never cut, and an edge carrying a symbol
-`layout.cut` names always is. The options are checked before the cut and refused naming the option
+an edge from a unit spelling a record another unit defines, in its declarations or in a field of a
+record it owns (its calls or not: the record needs the `require`), a symbol `layout.keep_together`
+names, two units of one `layout.keep_together` group, and an edge whose weight is above
+`layout.threshold` are never cut, and an edge carrying a symbol `layout.cut` names always is. The options are checked before the cut and refused naming the option
 and the value: a `layout.keep_together` stem no file has or symbol no file calls from another, a
 symbol both options name, a `layout.cut` symbol no edge of a cycle carries, a forced edge out of the
 entry module, carrying a type or a symbol no cut can late-bind, kept by `layout.keep_together`, or
