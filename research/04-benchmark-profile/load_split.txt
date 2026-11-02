@@ -1,0 +1,396 @@
+compiler took 0.009786, builtin (/root/daScript/daslib/builtin.das) -- 0 functions
+	parse    0.006531
+	infer    0.001006 (2 passes)
+	optimize 0.000144
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.02367, fio (/root/daScript/daslib/fio.das) -- 25 functions
+	parse    0.002001
+	infer    0.012217 (16 passes)
+	optimize 0.00362
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.00177, rtti (/root/daScript/daslib/rtti.das) -- 5 functions
+	parse    0.000462
+	infer    0.00039 (4 passes)
+	optimize 0.000225
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.007023, ast (/root/daScript/daslib/ast.das) -- 0 functions
+	parse    0.002906
+	infer    0.001664 (3 passes)
+	optimize 0.000307
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.01278, strings_boost (/root/daScript/daslib/strings_boost.das) -- 29 functions
+	parse    0.00058
+	infer    0.006328 (14 passes)
+	optimize 0.002839
+	macro (in infer) 0
+	macro mods 0
+simulate (including init script) took 0.007917, ast_boost (/root/daScript/daslib/ast_boost.das)
+compiler took 0.189433, ast_boost (/root/daScript/daslib/ast_boost.das) -- 178 functions
+	parse    0.005814
+	infer    0.100012 (19 passes)
+	optimize 0.025105
+	macro (in infer) 0
+	macro mods 0.009761
+simulate (including init script) took 0.002031, templates (/root/daScript/daslib/templates.das)
+compiler took 0.017817, templates (/root/daScript/daslib/templates.das) -- 30 functions
+	parse    0.000677
+	infer    0.009259 (13 passes)
+	optimize 0.002483
+	macro (in infer) 0.000197
+	macro mods 0.002774
+simulate (including init script) took 0.005588, contracts (/root/daScript/daslib/contracts.das)
+compiler took 0.067165, contracts (/root/daScript/daslib/contracts.das) -- 124 functions
+	parse    0.002277
+	infer    0.036689 (15 passes)
+	optimize 0.008086
+	macro (in infer) 0.000229
+	macro mods 0.007093
+compiler took 0.004085, array_boost (/root/daScript/daslib/array_boost.das) -- 0 functions
+	parse    0.0016
+	infer    0.000194 (1 passes)
+	optimize 0.000429
+	macro (in infer) 0.00017
+	macro mods 0
+compiler took 0.005656, algorithm (/root/daScript/daslib/algorithm.das) -- 0 functions
+	parse    0.002712
+	infer    0.00048 (1 passes)
+	optimize 0.00037
+	macro (in infer) 0.000302
+	macro mods 0
+simulate (including init script) took 0.006328, quote (/root/daScript/daslib/quote.das)
+compiler took 0.06022, quote (/root/daScript/daslib/quote.das) -- 60 functions
+	parse    0.003163
+	infer    0.031797 (15 passes)
+	optimize 0.00728
+	macro (in infer) 0.000241
+	macro mods 0.00782
+simulate (including init script) took 0.010243, templates_boost (/root/daScript/daslib/templates_boost.das)
+compiler took 0.321996, templates_boost (/root/daScript/daslib/templates_boost.das) -- 105 functions
+	parse    0.004237
+	infer    0.144739 (18 passes)
+	optimize 0.069095
+	macro (in infer) 0.001353
+	macro mods 0.017351
+simulate (including init script) took 0.007169, macro_boost (/root/daScript/daslib/macro_boost.das)
+compiler took 0.076564, macro_boost (/root/daScript/daslib/macro_boost.das) -- 76 functions
+	parse    0.002474
+	infer    0.041985 (22 passes)
+	optimize 0.00746
+	macro (in infer) 0.000517
+	macro mods 0.011066
+simulate (including init script) took 0.011931, typemacro_boost (/root/daScript/daslib/typemacro_boost.das)
+compiler took 0.097177, typemacro_boost (/root/daScript/daslib/typemacro_boost.das) -- 206 functions
+	parse    0.003488
+	infer    0.049081 (15 passes)
+	optimize 0.011903
+	macro (in infer) 0.002146
+	macro mods 0.014595
+simulate (including init script) took 0.005746, option (/root/daScript/daslib/option.das)
+compiler took 0.016404, option (/root/daScript/daslib/option.das) -- 82 functions
+	parse    0.000999
+	infer    0.003011 (15 passes)
+	optimize 0.001632
+	macro (in infer) 0.001032
+	macro mods 0.007362
+simulate (including init script) took 0.004946, result (/root/daScript/daslib/result.das)
+compiler took 0.017887, result (/root/daScript/daslib/result.das) -- 82 functions
+	parse    0.001672
+	infer    0.004487 (15 passes)
+	optimize 0.001688
+	macro (in infer) 0.001413
+	macro mods 0.006238
+simulate (including init script) took 0.007568, enum_trait (/root/daScript/daslib/enum_trait.das)
+compiler took 0.01896, enum_trait (/root/daScript/daslib/enum_trait.das) -- 97 functions
+	parse    0.000563
+	infer    0.004278 (14 passes)
+	optimize 0.001773
+	macro (in infer) 0.000396
+	macro mods 0.009399
+simulate (including init script) took 0.015511, clargs (/root/daScript/daslib/clargs.das)
+compiler took 0.222181, clargs (/root/daScript/daslib/clargs.das) -- 148 functions
+	parse    0.003407
+	infer    0.105815 (26 passes)
+	optimize 0.029865
+	macro (in infer) 0.005809
+	macro mods 0.019985
+compiler took 0.003756, c_args (/root/wt-research/c_runtime/c_runtime/c_args.das) -- 10 functions
+	parse    0.000222
+	infer    0.000782 (3 passes)
+	optimize 0.001267
+	macro (in infer) 2.7e-05
+	macro mods 0
+simulate (including init script) took 0.005594, c_function (/root/wt-research/c_runtime/c_runtime/c_function.das)
+compiler took 0.013505, c_function (/root/wt-research/c_runtime/c_runtime/c_function.das) -- 74 functions
+	parse    0.000273
+	infer    0.001886 (14 passes)
+	optimize 0.001391
+	macro (in infer) 0.000229
+	macro mods 0.007565
+compiler took 0.00426, c_signal (/root/wt-research/c_runtime/c_runtime/c_signal.das) -- 3 functions
+	parse    0.000238
+	infer    0.001044 (4 passes)
+	optimize 0.000776
+	macro (in infer) 0
+	macro mods 0
+simulate (including init script) took 0.014215, apply (/root/daScript/daslib/apply.das)
+compiler took 0.085326, apply (/root/daScript/daslib/apply.das) -- 148 functions
+	parse    0.00229
+	infer    0.035479 (14 passes)
+	optimize 0.011357
+	macro (in infer) 0.00247
+	macro mods 0.018985
+simulate (including init script) took 0.008321, variadic (/root/wt-research/c_runtime/c_runtime/variadic.das)
+compiler took 0.045211, variadic (/root/wt-research/c_runtime/c_runtime/variadic.das) -- 89 functions
+	parse    0.001034
+	infer    0.019679 (19 passes)
+	optimize 0.00376
+	macro (in infer) 0.000829
+	macro mods 0.011085
+compiler took 0.035124, printf (/root/wt-research/c_runtime/c_runtime/printf.das) -- 25 functions
+	parse    0.001497
+	infer    0.012959 (13 passes)
+	optimize 0.008695
+	macro (in infer) 0.000373
+	macro mods 0
+compiler took 0.004231, c_types (lua/work/lua/c_types.das) -- 1 functions
+	parse    0.000426
+	infer    0.00098 (3 passes)
+	optimize 0.000811
+	macro (in infer) 0
+	macro mods 0
+simulate (including init script) took 0.006697, cstr_array (/root/wt-research/c_runtime/c_runtime/cstr_array.das)
+compiler took 0.015923, cstr_array (/root/wt-research/c_runtime/c_runtime/cstr_array.das) -- 77 functions
+	parse    0.000462
+	infer    0.003318 (14 passes)
+	optimize 0.001218
+	macro (in infer) 0.00072
+	macro mods 0.008284
+compiler took 0.002218, c_exit (/root/wt-research/c_runtime/c_runtime/c_exit.das) -- 6 functions
+	parse    0.0002
+	infer    0.000355 (8 passes)
+	optimize 0.000462
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.001892, c_volatile (/root/wt-research/c_runtime/c_runtime/c_volatile.das) -- 22 functions
+	parse    0.000267
+	infer    0.000192 (2 passes)
+	optimize 0.00036
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.001111, enum_from_int (/root/wt-research/c_runtime/c_runtime/enum_from_int.das) -- 0 functions
+	parse    0.000108
+	infer    9e-06 (1 passes)
+	optimize 0.000117
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.00109, setjmp (/root/wt-research/c_runtime/c_runtime/setjmp.das) -- 1 functions
+	parse    8.5e-05
+	infer    9e-05 (2 passes)
+	optimize 0.000153
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.001021, lcode_h (lua/work/lua/lcode_h.das) -- 0 functions
+	parse    6.8e-05
+	infer    9.8e-05 (2 passes)
+	optimize 0.00015
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.001875, lctype (lua/work/lua/lctype.das) -- 0 functions
+	parse    0.000301
+	infer    0.000463 (2 passes)
+	optimize 0.000206
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.002186, math_bits (/root/daScript/daslib/math_bits.das) -- 28 functions
+	parse    0.000225
+	infer    0.000179 (2 passes)
+	optimize 0.000589
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.010463, math_boost (/root/daScript/daslib/math_boost.das) -- 22 functions
+	parse    0.000543
+	infer    0.004267 (7 passes)
+	optimize 0.001988
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.029159, c_storage (/root/wt-research/c_runtime/c_runtime/c_storage.das) -- 114 functions
+	parse    0.000596
+	infer    0.011533 (13 passes)
+	optimize 0.002968
+	macro (in infer) 0.001089
+	macro mods 0
+simulate (including init script) took 0.010176, c_union (/root/wt-research/c_runtime/c_runtime/c_union.das)
+compiler took 0.039811, c_union (/root/wt-research/c_runtime/c_runtime/c_union.das) -- 130 functions
+	parse    0.000648
+	infer    0.009084 (15 passes)
+	optimize 0.006255
+	macro (in infer) 0.000434
+	macro mods 0.01265
+compiler took 0.001174, ltm_h (lua/work/lua/ltm_h.das) -- 0 functions
+	parse    7.7e-05
+	infer    0.000106 (2 passes)
+	optimize 0.000165
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.017261, lobject_h_cluster (lua/work/lua/lobject_h_cluster.das) -- 91 functions
+	parse    0.004213
+	infer    0.006829 (4 passes)
+	optimize 0.003047
+	macro (in infer) 0.002804
+	macro mods 0
+compiler took 0.00248, lzio_h (lua/work/lua/lzio_h.das) -- 1 functions
+	parse    0.000296
+	infer    0.000418 (3 passes)
+	optimize 0.000326
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.007691, llex_h_cluster (lua/work/lua/llex_h_cluster.das) -- 23 functions
+	parse    0.001818
+	infer    0.00232 (3 passes)
+	optimize 0.001508
+	macro (in infer) 0.001216
+	macro mods 0
+compiler took 0.001675, lopcodes_h (lua/work/lua/lopcodes_h.das) -- 0 functions
+	parse    0.000105
+	infer    0.000186 (2 passes)
+	optimize 0.000408
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.005091, lopcodes (lua/work/lua/lopcodes.das) -- 0 functions
+	parse    0.000576
+	infer    0.002498 (2 passes)
+	optimize 0.000479
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.001522, lvm_h (lua/work/lua/lvm_h.das) -- 0 functions
+	parse    8.4e-05
+	infer    8.5e-05 (2 passes)
+	optimize 0.000373
+	macro (in infer) 0
+	macro mods 0
+compiler took 0.00447, lzio (lua/work/lua/lzio.das) -- 3 functions
+	parse    0.000523
+	infer    0.001212 (3 passes)
+	optimize 0.001174
+	macro (in infer) 0.000301
+	macro mods 0
+compiler took 4.828889, lcode_cluster (lua/work/lua/lcode_cluster.das) -- 677 functions
+	parse    0.058863
+	infer    2.507369 (43 passes)
+	optimize 0.453565
+	macro (in infer) 0.042278
+	macro mods 0
+compiler took 0.012468, ldump (lua/work/lua/ldump.das) -- 22 functions
+	parse    0.001444
+	infer    0.005213 (5 passes)
+	optimize 0.002748
+	macro (in infer) 0.000813
+	macro mods 0
+compiler took 0.18728, lapi (lua/work/lua/lapi.das) -- 725 functions
+	parse    0.0088
+	infer    0.058729 (8 passes)
+	optimize 0.060457
+	macro (in infer) 0.006331
+	macro mods 0
+compiler took 0.004701, lauxlib_h (lua/work/lua/lauxlib_h.das) -- 13 functions
+	parse    0.001083
+	infer    0.001271 (3 passes)
+	optimize 0.000814
+	macro (in infer) 0.000905
+	macro mods 0
+compiler took 0.250875, lauxlib (lua/work/lua/lauxlib.das) -- 790 functions
+	parse    0.005129
+	infer    0.060133 (18 passes)
+	optimize 0.034561
+	macro (in infer) 0.004636
+	macro mods 0
+compiler took 0.154789, lbaselib (lua/work/lua/lbaselib.das) -- 764 functions
+	parse    0.002696
+	infer    0.035041 (21 passes)
+	optimize 0.018311
+	macro (in infer) 0.001938
+	macro mods 0
+compiler took 0.048669, lcorolib (lua/work/lua/lcorolib.das) -- 443 functions
+	parse    0.00119
+	infer    0.007184 (14 passes)
+	optimize 0.004169
+	macro (in infer) 0.000674
+	macro mods 0
+compiler took 0.06812, ldblib (lua/work/lua/ldblib.das) -- 794 functions
+	parse    0.002386
+	infer    0.00981 (12 passes)
+	optimize 0.01013
+	macro (in infer) 0.001539
+	macro mods 0
+compiler took 0.063016, liolib (lua/work/lua/liolib.das) -- 510 functions
+	parse    0.004156
+	infer    0.019818 (16 passes)
+	optimize 0.007818
+	macro (in infer) 0.002894
+	macro mods 0
+compiler took 0.07875, lmathlib (lua/work/lua/lmathlib.das) -- 457 functions
+	parse    0.002904
+	infer    0.013639 (5 passes)
+	optimize 0.004834
+	macro (in infer) 0.001281
+	macro mods 0
+compiler took 0.086913, loadlib (lua/work/lua/loadlib.das) -- 758 functions
+	parse    0.002796
+	infer    0.019712 (15 passes)
+	optimize 0.009524
+	macro (in infer) 0.001925
+	macro mods 0
+compiler took 0.037958, loslib (lua/work/lua/loslib.das) -- 475 functions
+	parse    0.001596
+	infer    0.009843 (13 passes)
+	optimize 0.006082
+	macro (in infer) 0.000899
+	macro mods 0
+compiler took 0.194188, lstrlib (lua/work/lua/lstrlib.das) -- 590 functions
+	parse    0.014345
+	infer    0.078101 (17 passes)
+	optimize 0.033408
+	macro (in infer) 0.011542
+	macro mods 0
+compiler took 0.062786, ltablib (lua/work/lua/ltablib.das) -- 469 functions
+	parse    0.003777
+	infer    0.019661 (16 passes)
+	optimize 0.005502
+	macro (in infer) 0.00284
+	macro mods 0
+compiler took 0.049774, lutf8lib (lua/work/lua/lutf8lib.das) -- 452 functions
+	parse    0.00209
+	infer    0.014262 (20 passes)
+	optimize 0.005637
+	macro (in infer) 0.001607
+	macro mods 0
+compiler took 0.043887, linit (lua/work/lua/linit.das) -- 1216 functions
+	parse    0.000497
+	infer    0.001082 (3 passes)
+	optimize 0.001782
+	macro (in infer) 0.00017
+	macro mods 0
+total compile took 8.425796, lua/work/lua/lua.das -- 1307 functions
+	require  0.013169
+	cache read 0 (0 modules, decode 0, finalize 0 of which macro simulate 0)
+	parse    0.179793
+	infer    3.567424
+	optimize 0.895903
+	macro (in infer) 0.109269
+	macro mods 0.172013
+simulate (including init script) took 0.152567, lua/work/lua/lua.das
+1
+startup: main total 8.681599
+	arguments 7.1e-05
+	builtin modules 0.017804
+	module scan 0.001442
+	initialize 0.003321
+	compile  8.426967
+	simulate 0.153113
+	run      0.002585
+	teardown 0.04696
+	shutdown 0.029303

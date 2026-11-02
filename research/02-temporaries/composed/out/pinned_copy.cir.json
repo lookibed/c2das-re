@@ -1,0 +1,2267 @@
+{
+ "cir": "0.1",
+ "producer": "c2das-dumper-a 0.1 / clang 22.1.8",
+ "target": {
+  "triple": "x86_64-pc-windows-msvc",
+  "int": 32,
+  "long": 32,
+  "llong": 64,
+  "ptr": 64,
+  "char_signed": false
+ },
+ "tu": "pinned_copy.c",
+ "types": [
+  {
+   "k": "int",
+   "w": 32,
+   "signed": true,
+   "spell": "int"
+  },
+  {
+   "k": "int",
+   "w": 8,
+   "signed": false,
+   "spell": "char"
+  },
+  {
+   "k": "ptr",
+   "to": 1
+  },
+  {
+   "k": "func",
+   "ret": 0,
+   "params": [2],
+   "variadic": true
+  },
+  {
+   "k": "int",
+   "w": 32,
+   "signed": true,
+   "spell": "long"
+  },
+  {
+   "k": "func",
+   "ret": 4,
+   "params": [],
+   "variadic": false
+  },
+  {
+   "k": "struct",
+   "name": "Cell",
+   "size": 8,
+   "align": 4,
+   "packed": false,
+   "fields": [
+    {
+     "name": "a",
+     "t": 0,
+     "off": 0
+    },
+    {
+     "name": "b",
+     "t": 0,
+     "off": 4
+    }
+   ]
+  },
+  {
+   "k": "typedef",
+   "name": "Cell",
+   "to": 6
+  },
+  {
+   "k": "int",
+   "w": 8,
+   "signed": false,
+   "spell": "unsigned char"
+  },
+  {
+   "k": "array",
+   "elem": 8,
+   "count": 256
+  },
+  {
+   "k": "array",
+   "elem": 6,
+   "count": 256
+  },
+  {
+   "k": "func",
+   "ret": 0,
+   "params": [0],
+   "variadic": false
+  },
+  {
+   "k": "ptr",
+   "to": 8
+  },
+  {
+   "k": "ptr",
+   "to": 6
+  },
+  {
+   "k": "void"
+  },
+  {
+   "k": "ptr",
+   "to": 11
+  },
+  {
+   "k": "func",
+   "ret": 14,
+   "params": [],
+   "variadic": false
+  },
+  {
+   "k": "func",
+   "ret": 0,
+   "params": [],
+   "variadic": false
+  },
+  {
+   "k": "ptr",
+   "to": 5
+  },
+  {
+   "k": "ptr",
+   "to": 16
+  },
+  {
+   "k": "float",
+   "w": 64,
+   "spell": "double"
+  },
+  {
+   "k": "ptr",
+   "to": 3
+  },
+  {
+   "k": "array",
+   "elem": 1,
+   "count": 13
+  },
+  {
+   "k": "ptr",
+   "to": 17
+  }
+ ],
+ "decls": [
+  {
+   "k": "func",
+   "name": "printf",
+   "c_name": "printf",
+   "t": 3,
+   "static": false,
+   "params": [
+    {
+     "name": "",
+     "t": 2
+    }
+   ],
+   "body": null,
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 1,
+    "col": 5
+   }
+  },
+  {
+   "k": "func",
+   "name": "clock",
+   "c_name": "clock",
+   "t": 5,
+   "static": false,
+   "params": [],
+   "body": null,
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 2,
+    "col": 6
+   }
+  },
+  {
+   "k": "record",
+   "t": 6,
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 8,
+    "col": 16
+   }
+  },
+  {
+   "k": "typedefdecl",
+   "t": 7,
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 8,
+    "col": 39
+   }
+  },
+  {
+   "k": "global",
+   "name": "pinned_copy__rounds",
+   "c_name": "rounds",
+   "t": 0,
+   "static": true,
+   "extern": false,
+   "init": {
+    "e": "int_lit",
+    "t": 0,
+    "v": "2000"
+   },
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 9,
+    "col": 21
+   }
+  },
+  {
+   "k": "global",
+   "name": "pinned_copy__src",
+   "c_name": "src",
+   "t": 9,
+   "static": true,
+   "extern": false,
+   "init": null,
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 10,
+    "col": 22
+   }
+  },
+  {
+   "k": "global",
+   "name": "pinned_copy__dst",
+   "c_name": "dst",
+   "t": 9,
+   "static": true,
+   "extern": false,
+   "init": null,
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 11,
+    "col": 22
+   }
+  },
+  {
+   "k": "global",
+   "name": "pinned_copy__arr",
+   "c_name": "arr",
+   "t": 10,
+   "static": true,
+   "extern": false,
+   "init": null,
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 12,
+    "col": 13
+   }
+  },
+  {
+   "k": "global",
+   "name": "pinned_copy__result",
+   "c_name": "result",
+   "t": 0,
+   "static": true,
+   "extern": false,
+   "init": null,
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 13,
+    "col": 12
+   }
+  },
+  {
+   "k": "global",
+   "name": "pinned_copy__fail_calls",
+   "c_name": "fail_calls",
+   "t": 0,
+   "static": true,
+   "extern": false,
+   "init": null,
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 14,
+    "col": 12
+   }
+  },
+  {
+   "k": "func",
+   "name": "pinned_copy__on_fail",
+   "c_name": "on_fail",
+   "t": 11,
+   "static": true,
+   "params": [
+    {
+     "name": "v",
+     "t": 0
+    }
+   ],
+   "body": {
+    "s": "compound",
+    "body": [
+     {
+      "s": "expr",
+      "e": {
+       "e": "assign",
+       "t": 0,
+       "op": "add",
+       "lhs": {
+        "e": "ref",
+        "t": 0,
+        "name": "pinned_copy__fail_calls"
+       },
+       "rhs": {
+        "e": "cast",
+        "t": 0,
+        "kind": "LValueToRValue",
+        "explicit": false,
+        "a": {
+         "e": "ref",
+         "t": 0,
+         "name": "v"
+        }
+       }
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 15,
+       "col": 29
+      }
+     },
+     {
+      "s": "return",
+      "e": {
+       "e": "int_lit",
+       "t": 0,
+       "v": "0"
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 15,
+       "col": 46
+      }
+     }
+    ],
+    "loc": {
+     "file": "pinned_copy.c",
+     "line": 15,
+     "col": 27
+    }
+   },
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 15,
+    "col": 12
+   }
+  },
+  {
+   "k": "func",
+   "name": "pinned_copy__copy_round",
+   "c_name": "copy_round",
+   "t": 11,
+   "static": true,
+   "params": [
+    {
+     "name": "n",
+     "t": 0
+    }
+   ],
+   "body": {
+    "s": "compound",
+    "body": [
+     {
+      "s": "decl",
+      "name": "acc",
+      "t": 0,
+      "init": {
+       "e": "int_lit",
+       "t": 0,
+       "v": "0"
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 17,
+       "col": 9
+      }
+     },
+     {
+      "s": "for",
+      "init": {
+       "s": "compound",
+       "body": [
+        {
+         "s": "decl",
+         "name": "r",
+         "t": 0,
+         "init": {
+          "e": "int_lit",
+          "t": 0,
+          "v": "0"
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 18,
+          "col": 14
+         }
+        }
+       ],
+       "loc": {
+        "file": "pinned_copy.c",
+        "line": 18,
+        "col": 10
+       }
+      },
+      "cond": {
+       "e": "bin",
+       "t": 0,
+       "op": "lt",
+       "a": {
+        "e": "cast",
+        "t": 0,
+        "kind": "LValueToRValue",
+        "explicit": false,
+        "a": {
+         "e": "ref",
+         "t": 0,
+         "name": "r"
+        }
+       },
+       "b": {
+        "e": "cast",
+        "t": 0,
+        "kind": "LValueToRValue",
+        "explicit": false,
+        "a": {
+         "e": "ref",
+         "t": 0,
+         "name": "n"
+        }
+       }
+      },
+      "inc": {
+       "e": "un",
+       "t": 0,
+       "op": "postinc",
+       "a": {
+        "e": "ref",
+        "t": 0,
+        "name": "r"
+       }
+      },
+      "body": {
+       "s": "compound",
+       "body": [
+        {
+         "s": "decl",
+         "name": "s",
+         "t": 12,
+         "init": {
+          "e": "cast",
+          "t": 12,
+          "kind": "NoOp",
+          "explicit": false,
+          "a": {
+           "e": "cast",
+           "t": 12,
+           "kind": "ArrayToPointerDecay",
+           "explicit": false,
+           "a": {
+            "e": "ref",
+            "t": 9,
+            "name": "pinned_copy__src"
+           }
+          }
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 19,
+          "col": 30
+         }
+        },
+        {
+         "s": "decl",
+         "name": "d",
+         "t": 12,
+         "init": {
+          "e": "cast",
+          "t": 12,
+          "kind": "ArrayToPointerDecay",
+          "explicit": false,
+          "a": {
+           "e": "ref",
+           "t": 9,
+           "name": "pinned_copy__dst"
+          }
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 20,
+          "col": 24
+         }
+        },
+        {
+         "s": "while",
+         "cond": {
+          "e": "bin",
+          "t": 0,
+          "op": "land",
+          "a": {
+           "e": "bin",
+           "t": 0,
+           "op": "lt",
+           "a": {
+            "e": "cast",
+            "t": 12,
+            "kind": "LValueToRValue",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 12,
+             "name": "s"
+            }
+           },
+           "b": {
+            "e": "cast",
+            "t": 12,
+            "kind": "BitCast",
+            "explicit": false,
+            "a": {
+             "e": "bin",
+             "t": 12,
+             "op": "add",
+             "a": {
+              "e": "cast",
+              "t": 12,
+              "kind": "ArrayToPointerDecay",
+              "explicit": false,
+              "a": {
+               "e": "ref",
+               "t": 9,
+               "name": "pinned_copy__src"
+              }
+             },
+             "b": {
+              "e": "int_lit",
+              "t": 0,
+              "v": "255"
+             }
+            }
+           }
+          },
+          "b": {
+           "e": "cast",
+           "t": 0,
+           "kind": "IntegralCast",
+           "explicit": false,
+           "a": {
+            "e": "assign",
+            "t": 8,
+            "op": "",
+            "lhs": {
+             "e": "un",
+             "t": 8,
+             "op": "deref",
+             "a": {
+              "e": "un",
+              "t": 12,
+              "op": "postinc",
+              "a": {
+               "e": "ref",
+               "t": 12,
+               "name": "d"
+              }
+             }
+            },
+            "rhs": {
+             "e": "cast",
+             "t": 8,
+             "kind": "LValueToRValue",
+             "explicit": false,
+             "a": {
+              "e": "un",
+              "t": 8,
+              "op": "deref",
+              "a": {
+               "e": "un",
+               "t": 12,
+               "op": "postinc",
+               "a": {
+                "e": "ref",
+                "t": 12,
+                "name": "s"
+               }
+              }
+             }
+            }
+           }
+          }
+         },
+         "body": {
+          "s": "null",
+          "loc": {
+           "file": "pinned_copy.c",
+           "line": 22,
+           "col": 13
+          }
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 21,
+          "col": 9
+         }
+        },
+        {
+         "s": "decl",
+         "name": "k",
+         "t": 0,
+         "init": {
+          "e": "int_lit",
+          "t": 0,
+          "v": "0"
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 23,
+          "col": 13
+         }
+        },
+        {
+         "s": "while",
+         "cond": {
+          "e": "bin",
+          "t": 0,
+          "op": "lt",
+          "a": {
+           "e": "cast",
+           "t": 0,
+           "kind": "LValueToRValue",
+           "explicit": false,
+           "a": {
+            "e": "ref",
+            "t": 0,
+            "name": "k"
+           }
+          },
+          "b": {
+           "e": "int_lit",
+           "t": 0,
+           "v": "255"
+          }
+         },
+         "body": {
+          "s": "compound",
+          "body": [
+           {
+            "s": "expr",
+            "e": {
+             "e": "un",
+             "t": 0,
+             "op": "postinc",
+             "a": {
+              "e": "member",
+              "t": 0,
+              "base": {
+               "e": "index",
+               "t": 6,
+               "base": {
+                "e": "cast",
+                "t": 13,
+                "kind": "ArrayToPointerDecay",
+                "explicit": false,
+                "a": {
+                 "e": "ref",
+                 "t": 10,
+                 "name": "pinned_copy__arr"
+                }
+               },
+               "i": {
+                "e": "un",
+                "t": 0,
+                "op": "postinc",
+                "a": {
+                 "e": "ref",
+                 "t": 0,
+                 "name": "k"
+                }
+               }
+              },
+              "field": 0,
+              "arrow": false
+             }
+            },
+            "loc": {
+             "file": "pinned_copy.c",
+             "line": 25,
+             "col": 13
+            }
+           },
+           {
+            "s": "expr",
+            "e": {
+             "e": "assign",
+             "t": 0,
+             "op": "add",
+             "lhs": {
+              "e": "ref",
+              "t": 0,
+              "name": "acc"
+             },
+             "rhs": {
+              "e": "cast",
+              "t": 0,
+              "kind": "LValueToRValue",
+              "explicit": false,
+              "a": {
+               "e": "member",
+               "t": 0,
+               "base": {
+                "e": "index",
+                "t": 6,
+                "base": {
+                 "e": "cast",
+                 "t": 13,
+                 "kind": "ArrayToPointerDecay",
+                 "explicit": false,
+                 "a": {
+                  "e": "ref",
+                  "t": 10,
+                  "name": "pinned_copy__arr"
+                 }
+                },
+                "i": {
+                 "e": "bin",
+                 "t": 0,
+                 "op": "sub",
+                 "a": {
+                  "e": "cast",
+                  "t": 0,
+                  "kind": "LValueToRValue",
+                  "explicit": false,
+                  "a": {
+                   "e": "ref",
+                   "t": 0,
+                   "name": "k"
+                  }
+                 },
+                 "b": {
+                  "e": "int_lit",
+                  "t": 0,
+                  "v": "1"
+                 }
+                }
+               },
+               "field": 0,
+               "arrow": false
+              }
+             }
+            },
+            "loc": {
+             "file": "pinned_copy.c",
+             "line": 26,
+             "col": 13
+            }
+           }
+          ],
+          "loc": {
+           "file": "pinned_copy.c",
+           "line": 24,
+           "col": 25
+          }
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 24,
+          "col": 9
+         }
+        },
+        {
+         "s": "for",
+         "init": {
+          "s": "compound",
+          "body": [
+           {
+            "s": "decl",
+            "name": "i",
+            "t": 0,
+            "init": {
+             "e": "int_lit",
+             "t": 0,
+             "v": "0"
+            },
+            "loc": {
+             "file": "pinned_copy.c",
+             "line": 28,
+             "col": 18
+            }
+           }
+          ],
+          "loc": {
+           "file": "pinned_copy.c",
+           "line": 28,
+           "col": 14
+          }
+         },
+         "cond": {
+          "e": "bin",
+          "t": 0,
+          "op": "lt",
+          "a": {
+           "e": "cast",
+           "t": 0,
+           "kind": "LValueToRValue",
+           "explicit": false,
+           "a": {
+            "e": "ref",
+            "t": 0,
+            "name": "i"
+           }
+          },
+          "b": {
+           "e": "int_lit",
+           "t": 0,
+           "v": "255"
+          }
+         },
+         "inc": {
+          "e": "un",
+          "t": 0,
+          "op": "postinc",
+          "a": {
+           "e": "ref",
+           "t": 0,
+           "name": "i"
+          }
+         },
+         "body": {
+          "s": "expr",
+          "e": {
+           "e": "cast",
+           "t": 14,
+           "kind": "ToVoid",
+           "explicit": true,
+           "a": {
+            "e": "bin",
+            "t": 0,
+            "op": "lor",
+            "a": {
+             "e": "bin",
+             "t": 0,
+             "op": "eq",
+             "a": {
+              "e": "cast",
+              "t": 0,
+              "kind": "IntegralCast",
+              "explicit": false,
+              "a": {
+               "e": "cast",
+               "t": 8,
+               "kind": "LValueToRValue",
+               "explicit": false,
+               "a": {
+                "e": "index",
+                "t": 8,
+                "base": {
+                 "e": "cast",
+                 "t": 12,
+                 "kind": "ArrayToPointerDecay",
+                 "explicit": false,
+                 "a": {
+                  "e": "ref",
+                  "t": 9,
+                  "name": "pinned_copy__dst"
+                 }
+                },
+                "i": {
+                 "e": "cast",
+                 "t": 0,
+                 "kind": "LValueToRValue",
+                 "explicit": false,
+                 "a": {
+                  "e": "ref",
+                  "t": 0,
+                  "name": "i"
+                 }
+                }
+               }
+              }
+             },
+             "b": {
+              "e": "cast",
+              "t": 0,
+              "kind": "IntegralCast",
+              "explicit": false,
+              "a": {
+               "e": "cast",
+               "t": 8,
+               "kind": "LValueToRValue",
+               "explicit": false,
+               "a": {
+                "e": "index",
+                "t": 8,
+                "base": {
+                 "e": "cast",
+                 "t": 12,
+                 "kind": "ArrayToPointerDecay",
+                 "explicit": false,
+                 "a": {
+                  "e": "ref",
+                  "t": 9,
+                  "name": "pinned_copy__src"
+                 }
+                },
+                "i": {
+                 "e": "cast",
+                 "t": 0,
+                 "kind": "LValueToRValue",
+                 "explicit": false,
+                 "a": {
+                  "e": "ref",
+                  "t": 0,
+                  "name": "i"
+                 }
+                }
+               }
+              }
+             }
+            },
+            "b": {
+             "e": "call",
+             "t": 0,
+             "fn": {
+              "e": "cast",
+              "t": 15,
+              "kind": "FunctionToPointerDecay",
+              "explicit": false,
+              "a": {
+               "e": "ref",
+               "t": 11,
+               "name": "pinned_copy__on_fail"
+              }
+             },
+             "args": [
+              {
+               "e": "int_lit",
+               "t": 0,
+               "v": "1"
+              }
+             ]
+            }
+           }
+          },
+          "loc": {
+           "file": "pinned_copy.c",
+           "line": 29,
+           "col": 13
+          }
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 28,
+          "col": 9
+         }
+        },
+        {
+         "s": "expr",
+         "e": {
+          "e": "assign",
+          "t": 0,
+          "op": "add",
+          "lhs": {
+           "e": "ref",
+           "t": 0,
+           "name": "acc"
+          },
+          "rhs": {
+           "e": "bin",
+           "t": 0,
+           "op": "add",
+           "a": {
+            "e": "cast",
+            "t": 0,
+            "kind": "IntegralCast",
+            "explicit": false,
+            "a": {
+             "e": "cast",
+             "t": 8,
+             "kind": "LValueToRValue",
+             "explicit": false,
+             "a": {
+              "e": "index",
+              "t": 8,
+              "base": {
+               "e": "cast",
+               "t": 12,
+               "kind": "ArrayToPointerDecay",
+               "explicit": false,
+               "a": {
+                "e": "ref",
+                "t": 9,
+                "name": "pinned_copy__dst"
+               }
+              },
+              "i": {
+               "e": "int_lit",
+               "t": 0,
+               "v": "254"
+              }
+             }
+            }
+           },
+           "b": {
+            "e": "cast",
+            "t": 0,
+            "kind": "LValueToRValue",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 0,
+             "name": "k"
+            }
+           }
+          }
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 30,
+          "col": 9
+         }
+        }
+       ],
+       "loc": {
+        "file": "pinned_copy.c",
+        "line": 18,
+        "col": 33
+       }
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 18,
+       "col": 5
+      }
+     },
+     {
+      "s": "return",
+      "e": {
+       "e": "cast",
+       "t": 0,
+       "kind": "LValueToRValue",
+       "explicit": false,
+       "a": {
+        "e": "ref",
+        "t": 0,
+        "name": "acc"
+       }
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 32,
+       "col": 5
+      }
+     }
+    ],
+    "loc": {
+     "file": "pinned_copy.c",
+     "line": 16,
+     "col": 30
+    }
+   },
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 16,
+    "col": 12
+   }
+  },
+  {
+   "k": "func",
+   "name": "pinned_copy__kernel_run",
+   "c_name": "kernel_run",
+   "t": 16,
+   "static": true,
+   "params": [],
+   "body": {
+    "s": "compound",
+    "body": [
+     {
+      "s": "for",
+      "init": {
+       "s": "compound",
+       "body": [
+        {
+         "s": "decl",
+         "name": "k",
+         "t": 0,
+         "init": {
+          "e": "int_lit",
+          "t": 0,
+          "v": "0"
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 35,
+          "col": 14
+         }
+        }
+       ],
+       "loc": {
+        "file": "pinned_copy.c",
+        "line": 35,
+        "col": 10
+       }
+      },
+      "cond": {
+       "e": "bin",
+       "t": 0,
+       "op": "lt",
+       "a": {
+        "e": "cast",
+        "t": 0,
+        "kind": "LValueToRValue",
+        "explicit": false,
+        "a": {
+         "e": "ref",
+         "t": 0,
+         "name": "k"
+        }
+       },
+       "b": {
+        "e": "int_lit",
+        "t": 0,
+        "v": "256"
+       }
+      },
+      "inc": {
+       "e": "un",
+       "t": 0,
+       "op": "postinc",
+       "a": {
+        "e": "ref",
+        "t": 0,
+        "name": "k"
+       }
+      },
+      "body": {
+       "s": "compound",
+       "body": [
+        {
+         "s": "expr",
+         "e": {
+          "e": "assign",
+          "t": 8,
+          "op": "",
+          "lhs": {
+           "e": "index",
+           "t": 8,
+           "base": {
+            "e": "cast",
+            "t": 12,
+            "kind": "ArrayToPointerDecay",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 9,
+             "name": "pinned_copy__src"
+            }
+           },
+           "i": {
+            "e": "cast",
+            "t": 0,
+            "kind": "LValueToRValue",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 0,
+             "name": "k"
+            }
+           }
+          },
+          "rhs": {
+           "e": "cast",
+           "t": 8,
+           "kind": "IntegralCast",
+           "explicit": true,
+           "a": {
+            "e": "bin",
+            "t": 0,
+            "op": "add",
+            "a": {
+             "e": "cast",
+             "t": 0,
+             "kind": "LValueToRValue",
+             "explicit": false,
+             "a": {
+              "e": "ref",
+              "t": 0,
+              "name": "k"
+             }
+            },
+            "b": {
+             "e": "int_lit",
+             "t": 0,
+             "v": "1"
+            }
+           }
+          }
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 35,
+          "col": 37
+         }
+        },
+        {
+         "s": "expr",
+         "e": {
+          "e": "assign",
+          "t": 0,
+          "op": "",
+          "lhs": {
+           "e": "member",
+           "t": 0,
+           "base": {
+            "e": "index",
+            "t": 6,
+            "base": {
+             "e": "cast",
+             "t": 13,
+             "kind": "ArrayToPointerDecay",
+             "explicit": false,
+             "a": {
+              "e": "ref",
+              "t": 10,
+              "name": "pinned_copy__arr"
+             }
+            },
+            "i": {
+             "e": "cast",
+             "t": 0,
+             "kind": "LValueToRValue",
+             "explicit": false,
+             "a": {
+              "e": "ref",
+              "t": 0,
+              "name": "k"
+             }
+            }
+           },
+           "field": 0,
+           "arrow": false
+          },
+          "rhs": {
+           "e": "cast",
+           "t": 0,
+           "kind": "LValueToRValue",
+           "explicit": false,
+           "a": {
+            "e": "ref",
+            "t": 0,
+            "name": "k"
+           }
+          }
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 35,
+          "col": 71
+         }
+        }
+       ],
+       "loc": {
+        "file": "pinned_copy.c",
+        "line": 35,
+        "col": 35
+       }
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 35,
+       "col": 5
+      }
+     },
+     {
+      "s": "expr",
+      "e": {
+       "e": "assign",
+       "t": 0,
+       "op": "",
+       "lhs": {
+        "e": "ref",
+        "t": 0,
+        "name": "pinned_copy__result"
+       },
+       "rhs": {
+        "e": "bin",
+        "t": 0,
+        "op": "band",
+        "a": {
+         "e": "call",
+         "t": 0,
+         "fn": {
+          "e": "cast",
+          "t": 15,
+          "kind": "FunctionToPointerDecay",
+          "explicit": false,
+          "a": {
+           "e": "ref",
+           "t": 11,
+           "name": "pinned_copy__copy_round"
+          }
+         },
+         "args": [
+          {
+           "e": "cast",
+           "t": 0,
+           "kind": "LValueToRValue",
+           "explicit": false,
+           "a": {
+            "e": "ref",
+            "t": 0,
+            "name": "pinned_copy__rounds",
+            "vol": true
+           }
+          }
+         ]
+        },
+        "b": {
+         "e": "int_lit",
+         "t": 0,
+         "v": "2147483647"
+        }
+       }
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 36,
+       "col": 5
+      }
+     }
+    ],
+    "loc": {
+     "file": "pinned_copy.c",
+     "line": 34,
+     "col": 30
+    }
+   },
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 34,
+    "col": 13
+   }
+  },
+  {
+   "k": "func",
+   "name": "pinned_copy__kernel_result",
+   "c_name": "kernel_result",
+   "t": 17,
+   "static": true,
+   "params": [],
+   "body": {
+    "s": "compound",
+    "body": [
+     {
+      "s": "return",
+      "e": {
+       "e": "bin",
+       "t": 0,
+       "op": "add",
+       "a": {
+        "e": "cast",
+        "t": 0,
+        "kind": "LValueToRValue",
+        "explicit": false,
+        "a": {
+         "e": "ref",
+         "t": 0,
+         "name": "pinned_copy__result"
+        }
+       },
+       "b": {
+        "e": "cast",
+        "t": 0,
+        "kind": "LValueToRValue",
+        "explicit": false,
+        "a": {
+         "e": "ref",
+         "t": 0,
+         "name": "pinned_copy__fail_calls"
+        }
+       }
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 38,
+       "col": 34
+      }
+     }
+    ],
+    "loc": {
+     "file": "pinned_copy.c",
+     "line": 38,
+     "col": 32
+    }
+   },
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 38,
+    "col": 12
+   }
+  },
+  {
+   "k": "func",
+   "name": "main",
+   "c_name": "main",
+   "t": 17,
+   "static": false,
+   "params": [],
+   "body": {
+    "s": "compound",
+    "body": [
+     {
+      "s": "decl",
+      "name": "reps",
+      "t": 4,
+      "init": {
+       "e": "cast",
+       "t": 4,
+       "kind": "IntegralCast",
+       "explicit": false,
+       "a": {
+        "e": "int_lit",
+        "t": 0,
+        "v": "1"
+       }
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 41,
+       "col": 10
+      }
+     },
+     {
+      "s": "decl",
+      "name": "total",
+      "t": 4,
+      "init": {
+       "e": "cast",
+       "t": 4,
+       "kind": "IntegralCast",
+       "explicit": false,
+       "a": {
+        "e": "int_lit",
+        "t": 0,
+        "v": "0"
+       }
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 42,
+       "col": 10
+      }
+     },
+     {
+      "s": "for",
+      "init": null,
+      "cond": null,
+      "inc": null,
+      "body": {
+       "s": "compound",
+       "body": [
+        {
+         "s": "decl",
+         "name": "start",
+         "t": 4,
+         "init": {
+          "e": "call",
+          "t": 4,
+          "fn": {
+           "e": "cast",
+           "t": 18,
+           "kind": "FunctionToPointerDecay",
+           "explicit": false,
+           "a": {
+            "e": "ref",
+            "t": 5,
+            "name": "clock"
+           }
+          },
+          "args": []
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 44,
+          "col": 14
+         }
+        },
+        {
+         "s": "for",
+         "init": {
+          "s": "compound",
+          "body": [
+           {
+            "s": "decl",
+            "name": "i",
+            "t": 4,
+            "init": {
+             "e": "cast",
+             "t": 4,
+             "kind": "IntegralCast",
+             "explicit": false,
+             "a": {
+              "e": "int_lit",
+              "t": 0,
+              "v": "0"
+             }
+            },
+            "loc": {
+             "file": "pinned_copy.c",
+             "line": 45,
+             "col": 19
+            }
+           }
+          ],
+          "loc": {
+           "file": "pinned_copy.c",
+           "line": 45,
+           "col": 14
+          }
+         },
+         "cond": {
+          "e": "bin",
+          "t": 0,
+          "op": "lt",
+          "a": {
+           "e": "cast",
+           "t": 4,
+           "kind": "LValueToRValue",
+           "explicit": false,
+           "a": {
+            "e": "ref",
+            "t": 4,
+            "name": "i"
+           }
+          },
+          "b": {
+           "e": "cast",
+           "t": 4,
+           "kind": "LValueToRValue",
+           "explicit": false,
+           "a": {
+            "e": "ref",
+            "t": 4,
+            "name": "reps"
+           }
+          }
+         },
+         "inc": {
+          "e": "un",
+          "t": 4,
+          "op": "postinc",
+          "a": {
+           "e": "ref",
+           "t": 4,
+           "name": "i"
+          }
+         },
+         "body": {
+          "s": "expr",
+          "e": {
+           "e": "call",
+           "t": 14,
+           "fn": {
+            "e": "cast",
+            "t": 19,
+            "kind": "FunctionToPointerDecay",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 16,
+             "name": "pinned_copy__kernel_run"
+            }
+           },
+           "args": []
+          },
+          "loc": {
+           "file": "pinned_copy.c",
+           "line": 45,
+           "col": 41
+          }
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 45,
+          "col": 9
+         }
+        },
+        {
+         "s": "expr",
+         "e": {
+          "e": "assign",
+          "t": 4,
+          "op": "",
+          "lhs": {
+           "e": "ref",
+           "t": 4,
+           "name": "total"
+          },
+          "rhs": {
+           "e": "bin",
+           "t": 4,
+           "op": "sub",
+           "a": {
+            "e": "call",
+            "t": 4,
+            "fn": {
+             "e": "cast",
+             "t": 18,
+             "kind": "FunctionToPointerDecay",
+             "explicit": false,
+             "a": {
+              "e": "ref",
+              "t": 5,
+              "name": "clock"
+             }
+            },
+            "args": []
+           },
+           "b": {
+            "e": "cast",
+            "t": 4,
+            "kind": "LValueToRValue",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 4,
+             "name": "start"
+            }
+           }
+          }
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 46,
+          "col": 9
+         }
+        },
+        {
+         "s": "if",
+         "cond": {
+          "e": "bin",
+          "t": 0,
+          "op": "lor",
+          "a": {
+           "e": "bin",
+           "t": 0,
+           "op": "ge",
+           "a": {
+            "e": "cast",
+            "t": 4,
+            "kind": "LValueToRValue",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 4,
+             "name": "total"
+            }
+           },
+           "b": {
+            "e": "bin",
+            "t": 4,
+            "op": "div",
+            "a": {
+             "e": "int_lit",
+             "t": 4,
+             "v": "1000000"
+            },
+            "b": {
+             "e": "cast",
+             "t": 4,
+             "kind": "IntegralCast",
+             "explicit": false,
+             "a": {
+              "e": "int_lit",
+              "t": 0,
+              "v": "2"
+             }
+            }
+           }
+          },
+          "b": {
+           "e": "bin",
+           "t": 0,
+           "op": "ge",
+           "a": {
+            "e": "cast",
+            "t": 4,
+            "kind": "LValueToRValue",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 4,
+             "name": "reps"
+            }
+           },
+           "b": {
+            "e": "int_lit",
+            "t": 4,
+            "v": "1000000000"
+           }
+          }
+         },
+         "then": {
+          "s": "break",
+          "loc": {
+           "file": "pinned_copy.c",
+           "line": 47,
+           "col": 59
+          }
+         },
+         "else": null,
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 47,
+          "col": 9
+         }
+        },
+        {
+         "s": "decl",
+         "name": "next",
+         "t": 4,
+         "init": {
+          "e": "cond",
+          "t": 4,
+          "c": {
+           "e": "bin",
+           "t": 0,
+           "op": "le",
+           "a": {
+            "e": "cast",
+            "t": 4,
+            "kind": "LValueToRValue",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 4,
+             "name": "total"
+            }
+           },
+           "b": {
+            "e": "cast",
+            "t": 4,
+            "kind": "IntegralCast",
+            "explicit": false,
+            "a": {
+             "e": "int_lit",
+             "t": 0,
+             "v": "0"
+            }
+           }
+          },
+          "a": {
+           "e": "bin",
+           "t": 4,
+           "op": "mul",
+           "a": {
+            "e": "cast",
+            "t": 4,
+            "kind": "IntegralCast",
+            "explicit": false,
+            "a": {
+             "e": "int_lit",
+             "t": 0,
+             "v": "100"
+            }
+           },
+           "b": {
+            "e": "cast",
+            "t": 4,
+            "kind": "LValueToRValue",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 4,
+             "name": "reps"
+            }
+           }
+          },
+          "b": {
+           "e": "cast",
+           "t": 4,
+           "kind": "FloatingToIntegral",
+           "explicit": true,
+           "a": {
+            "e": "bin",
+            "t": 20,
+            "op": "mul",
+            "a": {
+             "e": "bin",
+             "t": 20,
+             "op": "div",
+             "a": {
+              "e": "bin",
+              "t": 20,
+              "op": "mul",
+              "a": {
+               "e": "cast",
+               "t": 20,
+               "kind": "IntegralToFloating",
+               "explicit": true,
+               "a": {
+                "e": "cast",
+                "t": 4,
+                "kind": "LValueToRValue",
+                "explicit": false,
+                "a": {
+                 "e": "ref",
+                 "t": 4,
+                 "name": "reps"
+                }
+               }
+              },
+              "b": {
+               "e": "cast",
+               "t": 20,
+               "kind": "IntegralToFloating",
+               "explicit": true,
+               "a": {
+                "e": "bin",
+                "t": 4,
+                "op": "div",
+                "a": {
+                 "e": "int_lit",
+                 "t": 4,
+                 "v": "1000000"
+                },
+                "b": {
+                 "e": "cast",
+                 "t": 4,
+                 "kind": "IntegralCast",
+                 "explicit": false,
+                 "a": {
+                  "e": "int_lit",
+                  "t": 0,
+                  "v": "2"
+                 }
+                }
+               }
+              }
+             },
+             "b": {
+              "e": "cast",
+              "t": 20,
+              "kind": "IntegralToFloating",
+              "explicit": true,
+              "a": {
+               "e": "cast",
+               "t": 4,
+               "kind": "LValueToRValue",
+               "explicit": false,
+               "a": {
+                "e": "ref",
+                "t": 4,
+                "name": "total"
+               }
+              }
+             }
+            },
+            "b": {
+             "e": "float_lit",
+             "t": 20,
+             "v": "0x1.3333333333333p+0"
+            }
+           }
+          }
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 48,
+          "col": 14
+         }
+        },
+        {
+         "s": "if",
+         "cond": {
+          "e": "bin",
+          "t": 0,
+          "op": "gt",
+          "a": {
+           "e": "cast",
+           "t": 4,
+           "kind": "LValueToRValue",
+           "explicit": false,
+           "a": {
+            "e": "ref",
+            "t": 4,
+            "name": "next"
+           }
+          },
+          "b": {
+           "e": "bin",
+           "t": 4,
+           "op": "mul",
+           "a": {
+            "e": "cast",
+            "t": 4,
+            "kind": "IntegralCast",
+            "explicit": false,
+            "a": {
+             "e": "int_lit",
+             "t": 0,
+             "v": "100"
+            }
+           },
+           "b": {
+            "e": "cast",
+            "t": 4,
+            "kind": "LValueToRValue",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 4,
+             "name": "reps"
+            }
+           }
+          }
+         },
+         "then": {
+          "s": "expr",
+          "e": {
+           "e": "assign",
+           "t": 4,
+           "op": "",
+           "lhs": {
+            "e": "ref",
+            "t": 4,
+            "name": "next"
+           },
+           "rhs": {
+            "e": "bin",
+            "t": 4,
+            "op": "mul",
+            "a": {
+             "e": "cast",
+             "t": 4,
+             "kind": "IntegralCast",
+             "explicit": false,
+             "a": {
+              "e": "int_lit",
+              "t": 0,
+              "v": "100"
+             }
+            },
+            "b": {
+             "e": "cast",
+             "t": 4,
+             "kind": "LValueToRValue",
+             "explicit": false,
+             "a": {
+              "e": "ref",
+              "t": 4,
+              "name": "reps"
+             }
+            }
+           }
+          },
+          "loc": {
+           "file": "pinned_copy.c",
+           "line": 49,
+           "col": 32
+          }
+         },
+         "else": null,
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 49,
+          "col": 9
+         }
+        },
+        {
+         "s": "if",
+         "cond": {
+          "e": "bin",
+          "t": 0,
+          "op": "lt",
+          "a": {
+           "e": "cast",
+           "t": 4,
+           "kind": "LValueToRValue",
+           "explicit": false,
+           "a": {
+            "e": "ref",
+            "t": 4,
+            "name": "next"
+           }
+          },
+          "b": {
+           "e": "bin",
+           "t": 4,
+           "op": "add",
+           "a": {
+            "e": "cast",
+            "t": 4,
+            "kind": "LValueToRValue",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 4,
+             "name": "reps"
+            }
+           },
+           "b": {
+            "e": "cast",
+            "t": 4,
+            "kind": "IntegralCast",
+            "explicit": false,
+            "a": {
+             "e": "int_lit",
+             "t": 0,
+             "v": "1"
+            }
+           }
+          }
+         },
+         "then": {
+          "s": "expr",
+          "e": {
+           "e": "assign",
+           "t": 4,
+           "op": "",
+           "lhs": {
+            "e": "ref",
+            "t": 4,
+            "name": "next"
+           },
+           "rhs": {
+            "e": "bin",
+            "t": 4,
+            "op": "add",
+            "a": {
+             "e": "cast",
+             "t": 4,
+             "kind": "LValueToRValue",
+             "explicit": false,
+             "a": {
+              "e": "ref",
+              "t": 4,
+              "name": "reps"
+             }
+            },
+            "b": {
+             "e": "cast",
+             "t": 4,
+             "kind": "IntegralCast",
+             "explicit": false,
+             "a": {
+              "e": "int_lit",
+              "t": 0,
+              "v": "1"
+             }
+            }
+           }
+          },
+          "loc": {
+           "file": "pinned_copy.c",
+           "line": 50,
+           "col": 30
+          }
+         },
+         "else": null,
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 50,
+          "col": 9
+         }
+        },
+        {
+         "s": "expr",
+         "e": {
+          "e": "assign",
+          "t": 4,
+          "op": "",
+          "lhs": {
+           "e": "ref",
+           "t": 4,
+           "name": "reps"
+          },
+          "rhs": {
+           "e": "cast",
+           "t": 4,
+           "kind": "LValueToRValue",
+           "explicit": false,
+           "a": {
+            "e": "ref",
+            "t": 4,
+            "name": "next"
+           }
+          }
+         },
+         "loc": {
+          "file": "pinned_copy.c",
+          "line": 51,
+          "col": 9
+         }
+        }
+       ],
+       "loc": {
+        "file": "pinned_copy.c",
+        "line": 43,
+        "col": 14
+       }
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 43,
+       "col": 5
+      }
+     },
+     {
+      "s": "expr",
+      "e": {
+       "e": "call",
+       "t": 0,
+       "fn": {
+        "e": "cast",
+        "t": 21,
+        "kind": "FunctionToPointerDecay",
+        "explicit": false,
+        "a": {
+         "e": "ref",
+         "t": 3,
+         "name": "printf"
+        }
+       },
+       "args": [
+        {
+         "e": "cast",
+         "t": 2,
+         "kind": "NoOp",
+         "explicit": false,
+         "a": {
+          "e": "cast",
+          "t": 2,
+          "kind": "ArrayToPointerDecay",
+          "explicit": false,
+          "a": {
+           "e": "str_lit",
+           "t": 22,
+           "bytes": [37, 46, 57, 102, 32, 37, 108, 100, 32, 37, 100, 10, 0]
+          }
+         }
+        },
+        {
+         "e": "bin",
+         "t": 20,
+         "op": "div",
+         "a": {
+          "e": "bin",
+          "t": 20,
+          "op": "div",
+          "a": {
+           "e": "cast",
+           "t": 20,
+           "kind": "IntegralToFloating",
+           "explicit": true,
+           "a": {
+            "e": "cast",
+            "t": 4,
+            "kind": "LValueToRValue",
+            "explicit": false,
+            "a": {
+             "e": "ref",
+             "t": 4,
+             "name": "total"
+            }
+           }
+          },
+          "b": {
+           "e": "cast",
+           "t": 20,
+           "kind": "IntegralToFloating",
+           "explicit": true,
+           "a": {
+            "e": "int_lit",
+            "t": 4,
+            "v": "1000000"
+           }
+          }
+         },
+         "b": {
+          "e": "cast",
+          "t": 20,
+          "kind": "IntegralToFloating",
+          "explicit": true,
+          "a": {
+           "e": "cast",
+           "t": 4,
+           "kind": "LValueToRValue",
+           "explicit": false,
+           "a": {
+            "e": "ref",
+            "t": 4,
+            "name": "reps"
+           }
+          }
+         }
+        },
+        {
+         "e": "cast",
+         "t": 4,
+         "kind": "LValueToRValue",
+         "explicit": false,
+         "a": {
+          "e": "ref",
+          "t": 4,
+          "name": "reps"
+         }
+        },
+        {
+         "e": "call",
+         "t": 0,
+         "fn": {
+          "e": "cast",
+          "t": 23,
+          "kind": "FunctionToPointerDecay",
+          "explicit": false,
+          "a": {
+           "e": "ref",
+           "t": 17,
+           "name": "pinned_copy__kernel_result"
+          }
+         },
+         "args": []
+        }
+       ]
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 53,
+       "col": 5
+      }
+     },
+     {
+      "s": "return",
+      "e": {
+       "e": "int_lit",
+       "t": 0,
+       "v": "0"
+      },
+      "loc": {
+       "file": "pinned_copy.c",
+       "line": 54,
+       "col": 5
+      }
+     }
+    ],
+    "loc": {
+     "file": "pinned_copy.c",
+     "line": 40,
+     "col": 16
+    }
+   },
+   "loc": {
+    "file": "pinned_copy.c",
+    "line": 40,
+    "col": 5
+   }
+  }
+ ]
+}

@@ -1,0 +1,10 @@
+{
+	"exec_backjump_structured_inline" : {
+		"interp" : {
+			"error" : "exec_backjump_structured_inline/interp: a sample took longer than 120 s"
+		},
+		"jit" : {
+			"error" : "exec_backjump_structured_inline/jit: a sample took longer than 120 s"
+		}
+	}
+}

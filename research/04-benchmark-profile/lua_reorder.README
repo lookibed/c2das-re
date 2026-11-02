@@ -1,0 +1,4 @@
+# lua_reorder/ was a full copy of lua/work/lua with lvm.das.inc hand-reordered (16 hot cases first).
+# It is not committed (generated output). Recreate: cp -r lua/work/lua research/04-benchmark-profile/lua_reorder
+#   && patch research/04-benchmark-profile/lua_reorder/lvm.das.inc < research/04-benchmark-profile/lvm_reorder.patch
+# (or run reorder_cases.py, which produced it).

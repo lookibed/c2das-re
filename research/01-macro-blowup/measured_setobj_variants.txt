@@ -1,0 +1,30 @@
+converted: out/research01/setobj_copy/setobj_copy.das
+setobj_copy native 0.00048104 result 515634000
+[I] setobj_copy converted/interp: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime out/research01/setobj_copy/setobj_copy.das
+[I] setobj_copy converted/jit: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime -jit out/research01/setobj_copy/setobj_copy.das
+setobj_copy converted interp 0.028099268
+setobj_copy converted jit 0.000401491
+[I] setobj_copy helper/interp: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime research/01-macro-blowup/setobj_copy_helper.das
+[I] setobj_copy helper/jit: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime -jit research/01-macro-blowup/setobj_copy_helper.das
+setobj_copy helper interp 0.030007965
+setobj_copy helper jit 0.0004323
+[I] setobj_copy outer/interp: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime research/01-macro-blowup/setobj_copy_outer.das
+[I] setobj_copy outer/jit: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime -jit research/01-macro-blowup/setobj_copy_outer.das
+setobj_copy outer interp 0.030688279
+setobj_copy outer jit 0.000467741
+[I] setobj_copy expr/interp: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime research/01-macro-blowup/setobj_copy_expr.das
+[I] setobj_copy expr/jit: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime -jit research/01-macro-blowup/setobj_copy_expr.das
+setobj_copy expr interp 0.036447645
+setobj_copy expr jit 0.000437404
+converted: out/research01/setobj_copy/setobj_copy.das
+setobj_copy native 0.000526259 result 515634000
+setobj_copy converted interp 0.029243106
+setobj_copy converted jit 0.000429535
+setobj_copy helper interp 0.034944465
+setobj_copy helper jit 0.000433598
+setobj_copy outer interp 0.029246096
+setobj_copy outer jit 0.000432463
+setobj_copy expr interp 0.032284855
+setobj_copy expr jit 0.000436021
+setobj_copy inline interp 0.047634254
+setobj_copy inline jit 0.000419212

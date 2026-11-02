@@ -1,0 +1,28 @@
+converted: out/research01/setobj_copy/setobj_copy.das
+setobj_copy native 0.000484331 result 515634000
+[I] setobj_copy converted/interp: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime out/research01/setobj_copy/setobj_copy.das
+[I] setobj_copy converted/jit: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime -jit out/research01/setobj_copy/setobj_copy.das
+setobj_copy converted interp 0.027285007
+setobj_copy converted jit 0.000423989
+[I] setobj_copy helper/interp: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime research/01-macro-blowup/setobj_copy_helper.das
+[I] setobj_copy helper/jit: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime -jit research/01-macro-blowup/setobj_copy_helper.das
+setobj_copy helper interp 0.031883742
+setobj_copy helper jit 0.000419153
+[I] setobj_copy inline/interp: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime research/01-macro-blowup/setobj_copy_inline.das
+[I] setobj_copy inline/jit: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime -jit research/01-macro-blowup/setobj_copy_inline.das
+setobj_copy inline interp 0.046237038
+setobj_copy inline jit 0.000419834
+converted: out/research01/next_fetch/next_fetch.das
+next_fetch native 0.000502878 result 2155130
+[I] next_fetch converted/interp: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime out/research01/next_fetch/next_fetch.das
+[I] next_fetch converted/jit: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime -jit out/research01/next_fetch/next_fetch.das
+next_fetch converted interp 0.038508788
+next_fetch converted jit 0.000767931
+[I] next_fetch helper/interp: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime research/01-macro-blowup/next_fetch_helper.das
+[I] next_fetch helper/jit: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime -jit research/01-macro-blowup/next_fetch_helper.das
+next_fetch helper interp 0.039426067
+next_fetch helper jit 0.000692573
+[I] next_fetch inline/interp: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime research/01-macro-blowup/next_fetch_inline.das
+[I] next_fetch inline/jit: /root/daScript/bin/daslang -load_module c_runtime -load_module dasCRuntime -jit research/01-macro-blowup/next_fetch_inline.das
+next_fetch inline interp 0.041700913
+next_fetch inline jit 0.000682089

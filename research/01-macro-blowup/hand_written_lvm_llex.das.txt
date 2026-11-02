@@ -1,0 +1,160 @@
+// research 01: what a human port of luaV_execute's OP_ADD / OP_GETTABUP and llex's
+// read_numeral writes once the function-like macros are one `def` each. Fragments, not a
+// module: the names and types are the converted Lua's (lua/work/lua/*.das.inc).
+
+// ---- lopcodes.h: the instruction field accessors (one def per macro, from the expansion)
+[c_function]
+def private getarg(i : uint; pos, size : int) : int {
+    return int(i >> uint(pos) & ~(~uint(0) << uint(size)))
+}
+def private GETARG_A(i : uint) : int => getarg(i, POS_A, SIZE_A)
+def private GETARG_B(i : uint) : int => getarg(i, POS_B, SIZE_B)
+def private GETARG_C(i : uint) : int => getarg(i, POS_C, SIZE_C)
+
+// ---- lobject.h: tag tests and value accessors
+def private ttisinteger(o : TValue?) : bool => int(o.tt_) == LUA_VNUMINT
+def private ttisfloat(o : TValue?) : bool => int(o.tt_) == LUA_VNUMFLT
+def private ttistable(o : TValue?) : bool => int(o.tt_) == ctb(LUA_VTABLE)
+def private isempty(o : TValue?) : bool => (int(o.tt_) & 15) == LUA_TNIL
+def private ivalue(o : TValue?) : int64 => o.value_.i
+def private fltvalue(o : TValue?) : double => o.value_.n
+[c_function]
+def private tsvalue(o : TValue?) : TString? => addr(reinterpret<GCUnion?>(o.value_.gc).ts)
+[c_function]
+def private hvalue(o : TValue?) : Table? => addr(reinterpret<GCUnion?>(o.value_.gc).h)
+[c_function]
+def private s2v(var o : StackValue?) : TValue? => addr(o.val)
+
+[c_function]
+def private setobj(var io1 : TValue?; io2 : TValue?) {
+    io1.value_ = io2.value_
+    io1.tt_ = io2.tt_
+}
+[c_function]
+def private setobj2s(var o1 : StackValue?; o2 : TValue?) => setobj(s2v(o1), o2)
+[c_function]
+def private setivalue(var o : TValue?; x : int64) {
+    o.value_.i = x
+    o.tt_ = uint8(LUA_VNUMINT)
+}
+[c_function]
+def private setfltvalue(var o : TValue?; x : double) {
+    o.value_.n = x
+    o.tt_ = uint8(LUA_VNUMFLT)
+}
+
+// ---- llimits.h
+def private luai_numadd(L : lua_State?; a, b : double) : double => a + b
+def private l_addi(L : lua_State?; a, b : int64) : int64 => a + b
+
+// ---- lvm.c: tonumberns is a macro that assigns its second argument: a pointer argument
+// stands for the C lvalue (`n` is `var n : double&` in das)
+[c_function]
+def private tonumberns(o : TValue?; var n : double&) : bool {
+    if (ttisfloat(o)) {
+        n = fltvalue(o)
+        return true
+    } elif (ttisinteger(o)) {
+        n = double(ivalue(o))
+        return true
+    }
+    return false
+}
+
+// ---- lvm.c, luaV_execute: the two cases as a human writes them. `op_arith` cannot be a def:
+// it uses `i`, `base`, `pc`, `ra` of the enclosing function and advances `pc`; it stays
+// expanded, but its own macros are calls. OP_ADD: 64 converted lines become 22.
+        } elif (op == OpCode.OP_ADD) {
+            var v1 = s2v(base + GETARG_B(i))
+            var v2 = s2v(base + GETARG_C(i))
+            var ra = base + GETARG_A(i)
+            if (ttisinteger(v1) && ttisinteger(v2)) {
+                let i1 = ivalue(v1)
+                let i2 = ivalue(v2)
+                pc = pc + 1
+                setivalue(s2v(ra), l_addi(L, i1, i2))
+            } else {
+                var n1, n2 : double
+                if (tonumberns(v1, n1) && tonumberns(v2, n2)) {
+                    pc = pc + 1
+                    setfltvalue(s2v(ra), luai_numadd(L, n1, n2))
+                }
+            }
+        } elif (op == OpCode.OP_GETTABUP) {
+            var ra = base + GETARG_A(i)
+            var slot : TValue?
+            var upval = cl.upvals[GETARG_B(i)].v.p
+            var rc = k + GETARG_C(i)
+            var key = tsvalue(rc)
+            // luaV_fastget assigns `slot`: a pointer-to-pointer argument in das, so it stays
+            // expanded in a first version (or takes `var slot : TValue?&`)
+            if (ttistable(upval) && !isempty(slot = luaH_getshortstr(hvalue(upval), key))) {
+                setobj2s(L, ra, slot)
+            } else {
+                // Protect(exp): savestate, exp, updatetrap: it names `ci`, `pc`, `trap` of the
+                // enclosing function, so it stays expanded too
+                ci.u.l.savedpc = pc
+                L.top.p = ci.top.p
+                luaV_finishget(L, upval, rc, ra, slot)
+                trap = c_volatile_load(ci.u.l.trap)
+            }
+
+// ---- llex.c / lzio.h: the byte fetch chain. `next` overloads daslang's iterator `next`
+// by argument type; it compiles (research/01-macro-blowup/next_fetch_helper.das).
+[c_function]
+def private zgetc(var z : Zio?) : int {
+    let n = z.n
+    z.n--
+    if (n > uint64(0)) {
+        let p = z.p
+        z.p = z.p + 1
+        return int(uint8(deref(p)))
+    }
+    return luaZ_fill(z)
+}
+[c_function]
+def private next(var ls : LexState?) {
+    ls.current = zgetc(ls.z)
+}
+[c_function]
+def private save_and_next(var ls : LexState?) {
+    save(ls, ls.current)
+    next(ls)
+}
+def private lisxdigit(c : int) : bool => (int(luai_ctype_[c + 1]) & (1 << 4)) != 0
+def private lislalpha(c : int) : bool => (int(luai_ctype_[c + 1]) & (1 << 0)) != 0
+
+// read_numeral: 75 converted lines become 31
+[c_function]
+def private read_numeral(var ls : LexState?; var seminfo : SemInfo?) : int {
+    var obj : TValue
+    var expo = cstr("Ee")
+    let first = ls.current
+    save_and_next(ls)
+    if (first == '0' && check_next2(ls, cstr("xX")) != 0) {
+        expo = cstr("Pp")
+    }
+    while (true) {
+        if (check_next2(ls, expo) != 0) {
+            check_next2(ls, cstr("-+"))
+        } elif (lisxdigit(ls.current) || ls.current == '.') {
+            save_and_next(ls)
+        } else {
+            break
+        }
+    }
+    if (lislalpha(ls.current)) {
+        save_and_next(ls)
+    }
+    save(ls, 0)
+    if (luaO_str2num(luaZ_buffer(ls.buff), addr(obj)) == uint64(0)) {
+        lexerror(ls, cstr("malformed number"), int(RESERVED.TK_FLT))
+    }
+    if (ttisinteger(addr(obj))) {
+        seminfo.i = ivalue(addr(obj))
+        return int(RESERVED.TK_INT)
+    } else {
+        seminfo.r = fltvalue(addr(obj))
+        return int(RESERVED.TK_FLT)
+    }
+}

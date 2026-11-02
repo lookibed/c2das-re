@@ -1,0 +1,19 @@
+{
+  "kernel": "pinned_copy.c (composed/pinned_copy.c; converted out/pinned_copy.das; hand-folded out/pinned_copy_folded.das)",
+  "method": "perf_compose.das protocol: 0.5 s budget loop, last line '<s per run> <reps> <result>', five processes per cell, medians; native clang -O3 -w -funsigned-char; das interp and 'das -jit'; run as one heavy job (measure.sh, raw lines in measure.log)",
+  "result_all_lanes": 576045000,
+  "seconds_per_run_median": {
+    "native": 0.000508,
+    "converted_interp": 0.0614,
+    "folded_interp": 0.0536,
+    "converted_jit": 0.000560,
+    "folded_jit": 0.000613
+  },
+  "ratios": {
+    "converted_interp_over_native": 121,
+    "folded_interp_over_native": 106,
+    "converted_interp_over_folded_interp": 1.15,
+    "converted_jit_over_folded_jit": 0.91,
+    "jit_spread_note": "the JIT cells overlap (converted 532..627 us, folded 552..733 us): no measurable difference"
+  }
+}

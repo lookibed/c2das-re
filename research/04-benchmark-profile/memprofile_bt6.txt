@@ -1,0 +1,91 @@
+stretch tree of depth 7 check: 255
+64 trees of depth 4 check: 1984
+16 trees of depth 6 check: 2032
+long lived tree of depth 6 check: 127
+[I] main 1 heap=0 string_heap=0
+[I]   c_main Ci 1<1<u8>?>? 1 heap=0 string_heap=0
+[I]     @lapi::lua_pcallk 1<S<lobject_h_cluster::lua_State>>? Ci Ci Ci Ci64 CN<a0;a1;a2>0<1<S<lobject_h_cluster::lua_State>>?;Ci;Ci64>1<i>@@ 1 heap=0 string_heap=0
+[I]       @lcode_cluster::luaD_pcall 1<S<lobject_h_cluster::lua_State>>? CN<a0;a1>0<1<S<lobject_h_cluster::lua_State>>?;1<v>?>1<v>@@ 1<v>? Ci64 Ci64 1 heap=0 string_heap=0
+[I]         @lcode_cluster::luaD_rawrunprotected 1<S<lobject_h_cluster::lua_State>>? CN<a0;a1>0<1<S<lobject_h_cluster::lua_State>>?;1<v>?>1<v>@@ 1<v>? 1 heap=0 string_heap=0
+[I]           @lapi::f_call 1<S<lobject_h_cluster::lua_State>>? 1<v>? 1 heap=0 string_heap=0
+[I]             @lcode_cluster::luaD_callnoyield 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::StackValue>>? Ci 1 heap=0 string_heap=0
+[I]               @lcode_cluster::ccall 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::StackValue>>? Ci Cu 1 heap=0 string_heap=0
+[I]                 @lcode_cluster::luaD_precall 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::StackValue>>? Ci 1 heap=0 string_heap=0
+[I]                   @lcode_cluster::precallC 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::StackValue>>? Ci CN<a0>0<1<S<lobject_h_cluster::lua_State>>?>1<i>@@ 1 heap=0 string_heap=0
+[I]                     pmain 1<S<lobject_h_cluster::lua_State>>? 1 heap=0 string_heap=0
+[I]                       handle_script 1<S<lobject_h_cluster::lua_State>>? 1<1<u8>?>? 1 heap=0 string_heap=0
+[I]                         docall 1<S<lobject_h_cluster::lua_State>>? Ci Ci 1 heap=0 string_heap=0
+[I]                           @lapi::lua_pcallk 1<S<lobject_h_cluster::lua_State>>? Ci Ci Ci Ci64 CN<a0;a1;a2>0<1<S<lobject_h_cluster::lua_State>>?;Ci;Ci64>1<i>@@ 1 heap=0 string_heap=0
+[I]                             @lcode_cluster::luaD_pcall 1<S<lobject_h_cluster::lua_State>>? CN<a0;a1>0<1<S<lobject_h_cluster::lua_State>>?;1<v>?>1<v>@@ 1<v>? Ci64 Ci64 1 heap=0 string_heap=0
+[I]                               @lcode_cluster::luaD_rawrunprotected 1<S<lobject_h_cluster::lua_State>>? CN<a0;a1>0<1<S<lobject_h_cluster::lua_State>>?;1<v>?>1<v>@@ 1<v>? 1 heap=0 string_heap=0
+[I]                                 @lapi::f_call 1<S<lobject_h_cluster::lua_State>>? 1<v>? 1 heap=0 string_heap=0
+[I]                                   @lcode_cluster::luaD_callnoyield 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::StackValue>>? Ci 1 heap=0 string_heap=0
+[I]                                     @lcode_cluster::ccall 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::StackValue>>? Ci Cu 1 heap=0 string_heap=0
+[I]                                       @lcode_cluster::luaV_execute 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::CallInfo>>? 1 heap=0 string_heap=0
+[I]                                         @lcode_cluster::luaD_precall 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::StackValue>>? Ci 8805 heap=0 string_heap=0
+[I]                                           @lcode_cluster::precallC 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::StackValue>>? Ci CN<a0>0<1<S<lobject_h_cluster::lua_State>>?>1<i>@@ 9 heap=0 string_heap=0
+[I]                                             @lstrlib::str_format 1<S<lobject_h_cluster::lua_State>>? 4 heap=0 string_heap=0
+[I]                                               @lstrlib::printf`snprintf`va`14111591162173715621 1<u8>? Cu64 C1<u8>? X0<i64>U 10 heap=0 string_heap=0
+[I]                                                 @printf::c_vsnprintf 1<u8>? Cu64 C1<u8>? CY<CVaList>1<Y<CVal>N<i;d;p>0<i64;d;1<v>?>V>A 10 heap=0 string_heap=0
+[I]                                                   @printf::c_vformat C1<u8>? CY<CVaList>1<Y<CVal>N<i;d;p>0<i64;d;1<v>?>V>A 10 heap=0 string_heap=0
+[I]                                                     @printf::c_parse_directive C1<u8>? Ci Cb 10 heap=0 string_heap=120
+[I]                                                     @printf::builtin`reserve`12130697888660093679 X1<Y<numT>u8>A Ci 10 heap=160 string_heap=0
+[I]                                                 @lstrlib::variadic`to_cvalist`6326521078749324491 CX0<i64>U 10 heap=0 string_heap=0
+[I]                                                   @lstrlib::builtin`push`3472358209330120892 X1<Y<numT>N<i;d;p>0<i64;d;1<v>?>V>A =Y<numT>N<i;d;p>0<i64;d;1<v>?>V 10 heap=2560 string_heap=0
+[I]                         @lauxlib::luaL_loadfilex 1<S<lobject_h_cluster::lua_State>>? 1<u8>? 1<u8>? 1 heap=0 string_heap=0
+[I]                           @lauxlib::lapi`lua_pushfstring`va`16933955650760763302 1<S<lobject_h_cluster::lua_State>>? 1<u8>? X0<1<u8>?>U 1 heap=0 string_heap=0
+[I]                             @lauxlib::variadic`to_cvalist`6326521078749324491 CX0<1<u8>?>U 1 heap=0 string_heap=0
+[I]                               @lauxlib::builtin`push`3472358209330120892 X1<Y<numT>N<i;d;p>0<i64;d;1<v>?>V>A =Y<numT>N<i;d;p>0<i64;d;1<v>?>V 1 heap=256 string_heap=0
+[I]                       @linit::luaL_openlibs 1<S<lobject_h_cluster::lua_State>>? 1 heap=0 string_heap=0
+[I]                         @lauxlib::luaL_requiref 1<S<lobject_h_cluster::lua_State>>? 1<u8>? CN<a0>0<1<S<lobject_h_cluster::lua_State>>?>1<i>@@ Ci 10 heap=0 string_heap=0
+[I]                           @lapi::lua_callk 1<S<lobject_h_cluster::lua_State>>? Ci Ci Ci64 CN<a0;a1;a2>0<1<S<lobject_h_cluster::lua_State>>?;Ci;Ci64>1<i>@@ 10 heap=0 string_heap=0
+[I]                             @lcode_cluster::luaD_callnoyield 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::StackValue>>? Ci 10 heap=0 string_heap=0
+[I]                               @lcode_cluster::ccall 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::StackValue>>? Ci Cu 10 heap=0 string_heap=0
+[I]                                 @lcode_cluster::luaD_precall 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::StackValue>>? Ci 10 heap=0 string_heap=0
+[I]                                   @lcode_cluster::precallC 1<S<lobject_h_cluster::lua_State>>? 1<S<lobject_h_cluster::StackValue>>? Ci CN<a0>0<1<S<lobject_h_cluster::lua_State>>?>1<i>@@ 10 heap=0 string_heap=0
+[I]                                     @loadlib::luaopen_package 1<S<lobject_h_cluster::lua_State>>? 1 heap=0 string_heap=0
+[I]                                       @loadlib::setpath 1<S<lobject_h_cluster::lua_State>>? 1<u8>? 1<u8>? 1<u8>? 2 heap=0 string_heap=0
+[I]                                         @loadlib::lapi`lua_pushfstring`va`16933955650760763302 1<S<lobject_h_cluster::lua_State>>? 1<u8>? X0<1<u8>?;1<u8>?>U 2 heap=0 string_heap=0
+[I]                                           @loadlib::variadic`to_cvalist`6326521078749324491 CX0<1<u8>?;1<u8>?>U 2 heap=0 string_heap=0
+[I]                                             @loadlib::builtin`push`3472358209330120892 X1<Y<numT>N<i;d;p>0<i64;d;1<v>?>V>A =Y<numT>N<i;d;p>0<i64;d;1<v>?>V 4 heap=512 string_heap=0
+[I]                       lapi`lua_gc`va`2115229412447897573 1<S<lobject_h_cluster::lua_State>>? Ci X0<i;i>U 1 heap=0 string_heap=0
+[I]                         variadic`to_cvalist`6326521078749324491 CX0<i;i>U 1 heap=0 string_heap=0
+[I]                           builtin`push`3472358209330120892 X1<Y<numT>N<i;d;p>0<i64;d;1<v>?>V>A =Y<numT>N<i;d;p>0<i64;d;1<v>?>V 2 heap=256 string_heap=0
+[I]   @c_args::c_runtime_init Cs 1 heap=0 string_heap=0
+[I]     @clargs::get_user_args 1 heap=0 string_heap=0
+[I]       @clargs::get_cli_arguments C1<s>A 1 heap=0 string_heap=0
+[I]         @clargs::builtin`push`4379756157886752001 X1<Y<numT>s>A C=Y<numT>s 2 heap=128 string_heap=0
+[I] 
+Top heap offenders (own allocations):
+[I]   @lstrlib::builtin`push`3472358209330120892 X1<Y<numT>N<i;d;p>0<i64;d;1<v>?>V>A =Y<numT>N<i;d;p>0<i64;d;1<v>?>V heap=2560 count=0xa
+[I]   @loadlib::builtin`push`3472358209330120892 X1<Y<numT>N<i;d;p>0<i64;d;1<v>?>V>A =Y<numT>N<i;d;p>0<i64;d;1<v>?>V heap=512 count=0x4
+[I]   builtin`push`3472358209330120892 X1<Y<numT>N<i;d;p>0<i64;d;1<v>?>V>A =Y<numT>N<i;d;p>0<i64;d;1<v>?>V heap=256 count=0x2
+[I]   @lauxlib::builtin`push`3472358209330120892 X1<Y<numT>N<i;d;p>0<i64;d;1<v>?>V>A =Y<numT>N<i;d;p>0<i64;d;1<v>?>V heap=256 count=0x1
+[I]   @printf::builtin`reserve`12130697888660093679 X1<Y<numT>u8>A Ci heap=160 count=0xa
+[I]   @clargs::builtin`push`4379756157886752001 X1<Y<numT>s>A C=Y<numT>s heap=128 count=0x2
+[I] 
+Top string-heap offenders (own allocations):
+[I]   @printf::c_parse_directive C1<u8>? Ci Cb string_heap=120 count=0xa
+	Command being timed: "/root/daScript/bin/daslang -load_module /root/wt-research/dasCRuntime -load_module /root/wt-research/c_runtime --das-profiler --das-profiler-memory --das-profiler-time-unit us lua/work/lua/lua.das -- ports/lua/bench/binary_trees.lua 6"
+	User time (seconds): 10.37
+	System time (seconds): 0.53
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:10.94
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 670396
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 12
+	Minor (reclaiming a frame) page faults: 87121
+	Voluntary context switches: 82
+	Involuntary context switches: 48
+	Swaps: 0
+	File system inputs: 3520
+	File system outputs: 12336
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

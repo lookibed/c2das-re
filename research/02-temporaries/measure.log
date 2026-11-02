@@ -1,0 +1,27 @@
+/root/wt-research/research/02-temporaries/measure.sh: 7: /root/wt-research/scripts/env.sh: Bad substitution
+/root/wt-research/research/02-temporaries/measure.sh: 13: /root/wt-research/scripts/env.sh: Bad substitution
+native 0.000473615 1277 576045000
+native 0.000514610 1248 576045000
+native 0.000507801 1418 576045000
+native 0.000561904 1194 576045000
+native 0.000495424 1409 576045000
+pinned_copy interp 0.065504111 9 576045000
+pinned_copy interp 0.057468400 10 576045000
+pinned_copy interp 0.060169111 9 576045000
+pinned_copy interp 0.064332500 10 576045000
+pinned_copy interp 0.061388778 9 576045000
+pinned_copy jit 0.000612954 1082 576045000
+pinned_copy jit 0.000560261 1182 576045000
+pinned_copy jit 0.000536770 1322 576045000
+pinned_copy jit 0.000627477 1337 576045000
+pinned_copy jit 0.000532641 1124 576045000
+pinned_copy_folded interp 0.061888583 12 576045000
+pinned_copy_folded interp 0.053099000 11 576045000
+pinned_copy_folded interp 0.059261083 12 576045000
+pinned_copy_folded interp 0.053645182 11 576045000
+pinned_copy_folded interp 0.052346167 12 576045000
+pinned_copy_folded jit 0.000733097 805 576045000
+pinned_copy_folded jit 0.000612715 1059 576045000
+pinned_copy_folded jit 0.000552033 1257 576045000
+pinned_copy_folded jit 0.000566836 1315 576045000
+pinned_copy_folded jit 0.000650334 1304 576045000

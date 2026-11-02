@@ -1,0 +1,16 @@
+box: 16 cores, load 5.63 4.95 4.09, 2026-11-02T00:59:52Z
+startup warm: 7.385546207
+startup: 5.050332594
+startup: 4.687981521
+binary_trees 12: 18.651752426
+binary_trees 9: 5.611444239
+binary_trees 6: 4.539038964
+native startup: .002809200
+native binary_trees 12: .215672503
+profiled binary_trees 6: .004582300 s
+profiled binary_trees 9: .004104200 s
+done
+profiled binary_trees 6: 10.323079306 s, load 6.84
+profiled binary_trees 9: 26.934197881 s, load 6.16
+done2
+done3

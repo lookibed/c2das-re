@@ -1,0 +1,1078 @@
+--- lua/work/lua/lvm.das.inc	2026-11-02 03:52:16.193371133 +0300
++++ research/04-benchmark-profile/lua_reorder/lvm.das.inc	2026-11-02 04:01:17.033371388 +0300
+@@ -937,6 +937,502 @@
+                         break
+                     }
+                 }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_GETUPVAL
++                if (_flag) {
++                    {
++                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                        var b : int = int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)
++                        {
++                            var io1 : TValue? = addr(ra.val)
++                            var io2 : TValue? = deref(addr(cl.upvals[0]) + b).v.p
++                            io1.value_ = io2.value_
++                            io1.tt_ = io2.tt_
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_GETTABUP
++                if (_flag) {
++                    {
++                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                        var slot : TValue?
++                        var upval : TValue? = deref(addr(cl.upvals[0]) + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).v.p
++                        var rc : TValue? = k + int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)
++                        var key : TString? = addr(reinterpret<GCUnion?>(rc.value_.gc).ts)
++                        var _t3 : int
++                        if (!(int(upval.tt_) == (5 | 0 << 4 | 1 << 6))) {
++                            slot = null
++                            _t3 = 0
++                        } else {
++                            slot = luaH_getshortstr(addr(reinterpret<GCUnion?>(upval.value_.gc).h), key)
++                            _t3 = !((int(slot.tt_) & 15) == 0) ? 1 : 0
++                        }
++                        if (_t3 != 0) {
++                            {
++                                var io1 : TValue? = addr(ra.val)
++                                var io2 : TValue? = slot
++                                io1.value_ = io2.value_
++                                io1.tt_ = io2.tt_
++                            }
++                        } else {
++                            ci.u.l.savedpc = pc
++                            L.top.p = ci.top.p
++                            luaV_finishget(L, upval, rc, ra, slot)
++                            trap = c_volatile_load(ci.u.l.trap)
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_GETI
++                if (_flag) {
++                    {
++                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                        var slot : TValue?
++                        var rb : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).val)
++                        var c : int = int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)
++                        var _t7 : int
++                        if (!(int(rb.tt_) == (5 | 0 << 4 | 1 << 6))) {
++                            slot = null
++                            _t7 = 0
++                        } else {
++                            slot = uint64(c) - uint64(1u) < uint64(addr(reinterpret<GCUnion?>(rb.value_.gc).h).alimit) ? reinterpret<TValue?>(addr(deref(addr(reinterpret<GCUnion?>(rb.value_.gc).h)._c_array + (c - 1)))) : luaH_getint(addr(reinterpret<GCUnion?>(rb.value_.gc).h), int64(c))
++                            _t7 = !((int(slot.tt_) & 15) == 0) ? 1 : 0
++                        }
++                        if (_t7 != 0) {
++                            {
++                                var io1 : TValue? = addr(ra.val)
++                                var io2 : TValue? = slot
++                                io1.value_ = io2.value_
++                                io1.tt_ = io2.tt_
++                            }
++                        } else {
++                            var key : TValue
++                            {
++                                var io : TValue? = addr(key)
++                                io.value_.i = int64(c)
++                                io.tt_ = uint8(3 | 0 << 4)
++                            }
++                            ci.u.l.savedpc = pc
++                            L.top.p = ci.top.p
++                            luaV_finishget(L, rb, addr(key), ra, slot)
++                            trap = c_volatile_load(ci.u.l.trap)
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_GETFIELD
++                if (_flag) {
++                    {
++                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                        var slot : TValue?
++                        var rb : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).val)
++                        var rc : TValue? = k + int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)
++                        var key : TString? = addr(reinterpret<GCUnion?>(rc.value_.gc).ts)
++                        var _t8 : int
++                        if (!(int(rb.tt_) == (5 | 0 << 4 | 1 << 6))) {
++                            slot = null
++                            _t8 = 0
++                        } else {
++                            slot = luaH_getshortstr(addr(reinterpret<GCUnion?>(rb.value_.gc).h), key)
++                            _t8 = !((int(slot.tt_) & 15) == 0) ? 1 : 0
++                        }
++                        if (_t8 != 0) {
++                            {
++                                var io1 : TValue? = addr(ra.val)
++                                var io2 : TValue? = slot
++                                io1.value_ = io2.value_
++                                io1.tt_ = io2.tt_
++                            }
++                        } else {
++                            ci.u.l.savedpc = pc
++                            L.top.p = ci.top.p
++                            luaV_finishget(L, rb, rc, ra, slot)
++                            trap = c_volatile_load(ci.u.l.trap)
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_NEWTABLE
++                if (_flag) {
++                    {
++                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                        var b : int = int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)
++                        var c : int = int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)
++                        var t : Table?
++                        if (b > 0) {
++                            b = 1 << b - 1
++                        }
++                        if (int(i & 1u << uint(0 + 7 + 8)) != 0) {
++                            c += int(deref(pc) >> uint(0 + 7) & ~(~uint(0) << uint(8 + 8 + 1 + 8)) << 0u) * ((1 << 8) - 1 + 1)
++                        }
++                        pc = pc + 1
++                        L.top.p = ra + 1
++                        t = luaH_new(L)
++                        {
++                            var io : TValue? = addr(ra.val)
++                            var x_ : Table? = t
++                            io.value_.gc = addr(reinterpret<GCUnion?>(x_).gc)
++                            io.tt_ = uint8(5 | 0 << 4 | 1 << 6)
++                        }
++                        if (b != 0 || c != 0) {
++                            luaH_resize(L, t, uint(c), uint(b))
++                        }
++                        {
++                            {
++                                if (L.l_G.GCdebt > int64(0)) {
++                                    ci.u.l.savedpc = pc
++                                    L.top.p = ra + 1
++                                    luaC_step(L)
++                                    trap = c_volatile_load(ci.u.l.trap)
++                                }
++                            }
++                            {
++                            }
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_ADDI
++                if (_flag) {
++                    {
++                        {
++                            var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                            var v1 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).val)
++                            var imm : int = int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u) - ((1 << 8) - 1 >> 1)
++                            if (int(v1.tt_) == (3 | 0 << 4)) {
++                                var iv1 : int64 = v1.value_.i
++                                pc = pc + 1
++                                {
++                                    var io : TValue? = addr(ra.val)
++                                    io.value_.i = int64(uint64(iv1) + uint64(imm))
++                                    io.tt_ = uint8(3 | 0 << 4)
++                                }
++                            } elif (int(v1.tt_) == (3 | 1 << 4)) {
++                                var nb : double = v1.value_.n
++                                var fimm : double = double(imm)
++                                pc = pc + 1
++                                {
++                                    var io : TValue? = addr(ra.val)
++                                    io.value_.n = nb + fimm
++                                    io.tt_ = uint8(3 | 1 << 4)
++                                }
++                            }
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_ADD
++                if (_flag) {
++                    {
++                        {
++                            var v1 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).val)
++                            var v2 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)).val)
++                            {
++                                var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                                if (int(v1.tt_) == (3 | 0 << 4) && int(v2.tt_) == (3 | 0 << 4)) {
++                                    var i1 : int64 = v1.value_.i
++                                    var i2 : int64 = v2.value_.i
++                                    pc = pc + 1
++                                    {
++                                        var io : TValue? = addr(ra.val)
++                                        io.value_.i = i1 + i2
++                                        io.tt_ = uint8(3 | 0 << 4)
++                                    }
++                                } else {
++                                    var n1 : double
++                                    var n2 : double
++                                    var _t57 : int
++                                    if (int(v1.tt_) == (3 | 1 << 4)) {
++                                        n1 = v1.value_.n
++                                        _t57 = 1
++                                    } else {
++                                        var _t56 : int
++                                        if (int(v1.tt_) == (3 | 0 << 4)) {
++                                            n1 = double(v1.value_.i)
++                                            _t56 = 1
++                                        } else {
++                                            _t56 = 0
++                                        }
++                                        _t57 = _t56
++                                    }
++                                    var _t60 = _t57 != 0
++                                    if (_t60) {
++                                        var _t59 : int
++                                        if (int(v2.tt_) == (3 | 1 << 4)) {
++                                            n2 = v2.value_.n
++                                            _t59 = 1
++                                        } else {
++                                            var _t58 : int
++                                            if (int(v2.tt_) == (3 | 0 << 4)) {
++                                                n2 = double(v2.value_.i)
++                                                _t58 = 1
++                                            } else {
++                                                _t58 = 0
++                                            }
++                                            _t59 = _t58
++                                        }
++                                        _t60 = _t59 != 0
++                                    }
++                                    if (_t60) {
++                                        pc = pc + 1
++                                        {
++                                            var io : TValue? = addr(ra.val)
++                                            io.value_.n = n1 + n2
++                                            io.tt_ = uint8(3 | 1 << 4)
++                                        }
++                                    }
++                                }
++                            }
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_SUB
++                if (_flag) {
++                    {
++                        {
++                            var v1 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).val)
++                            var v2 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)).val)
++                            {
++                                var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                                if (int(v1.tt_) == (3 | 0 << 4) && int(v2.tt_) == (3 | 0 << 4)) {
++                                    var i1 : int64 = v1.value_.i
++                                    var i2 : int64 = v2.value_.i
++                                    pc = pc + 1
++                                    {
++                                        var io : TValue? = addr(ra.val)
++                                        io.value_.i = i1 - i2
++                                        io.tt_ = uint8(3 | 0 << 4)
++                                    }
++                                } else {
++                                    var n1 : double
++                                    var n2 : double
++                                    var _t62 : int
++                                    if (int(v1.tt_) == (3 | 1 << 4)) {
++                                        n1 = v1.value_.n
++                                        _t62 = 1
++                                    } else {
++                                        var _t61 : int
++                                        if (int(v1.tt_) == (3 | 0 << 4)) {
++                                            n1 = double(v1.value_.i)
++                                            _t61 = 1
++                                        } else {
++                                            _t61 = 0
++                                        }
++                                        _t62 = _t61
++                                    }
++                                    var _t65 = _t62 != 0
++                                    if (_t65) {
++                                        var _t64 : int
++                                        if (int(v2.tt_) == (3 | 1 << 4)) {
++                                            n2 = v2.value_.n
++                                            _t64 = 1
++                                        } else {
++                                            var _t63 : int
++                                            if (int(v2.tt_) == (3 | 0 << 4)) {
++                                                n2 = double(v2.value_.i)
++                                                _t63 = 1
++                                            } else {
++                                                _t63 = 0
++                                            }
++                                            _t64 = _t63
++                                        }
++                                        _t65 = _t64 != 0
++                                    }
++                                    if (_t65) {
++                                        pc = pc + 1
++                                        {
++                                            var io : TValue? = addr(ra.val)
++                                            io.value_.n = n1 - n2
++                                            io.tt_ = uint8(3 | 1 << 4)
++                                        }
++                                    }
++                                }
++                            }
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_MUL
++                if (_flag) {
++                    {
++                        {
++                            var v1 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).val)
++                            var v2 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)).val)
++                            {
++                                var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                                if (int(v1.tt_) == (3 | 0 << 4) && int(v2.tt_) == (3 | 0 << 4)) {
++                                    var i1 : int64 = v1.value_.i
++                                    var i2 : int64 = v2.value_.i
++                                    pc = pc + 1
++                                    {
++                                        var io : TValue? = addr(ra.val)
++                                        io.value_.i = int64(uint64(i1) * uint64(i2))
++                                        io.tt_ = uint8(3 | 0 << 4)
++                                    }
++                                } else {
++                                    var n1 : double
++                                    var n2 : double
++                                    var _t67 : int
++                                    if (int(v1.tt_) == (3 | 1 << 4)) {
++                                        n1 = v1.value_.n
++                                        _t67 = 1
++                                    } else {
++                                        var _t66 : int
++                                        if (int(v1.tt_) == (3 | 0 << 4)) {
++                                            n1 = double(v1.value_.i)
++                                            _t66 = 1
++                                        } else {
++                                            _t66 = 0
++                                        }
++                                        _t67 = _t66
++                                    }
++                                    var _t70 = _t67 != 0
++                                    if (_t70) {
++                                        var _t69 : int
++                                        if (int(v2.tt_) == (3 | 1 << 4)) {
++                                            n2 = v2.value_.n
++                                            _t69 = 1
++                                        } else {
++                                            var _t68 : int
++                                            if (int(v2.tt_) == (3 | 0 << 4)) {
++                                                n2 = double(v2.value_.i)
++                                                _t68 = 1
++                                            } else {
++                                                _t68 = 0
++                                            }
++                                            _t69 = _t68
++                                        }
++                                        _t70 = _t69 != 0
++                                    }
++                                    if (_t70) {
++                                        pc = pc + 1
++                                        {
++                                            var io : TValue? = addr(ra.val)
++                                            io.value_.n = n1 * n2
++                                            io.tt_ = uint8(3 | 1 << 4)
++                                        }
++                                    }
++                                }
++                            }
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_JMP
++                if (_flag) {
++                    {
++                        {
++                            pc = pc + (int(i >> uint(0 + 7) & ~(~uint(0) << uint(8 + 8 + 1 + 8)) << 0u) - ((1 << 8 + 8 + 1 + 8) - 1 >> 1) + 0)
++                            trap = c_volatile_load(ci.u.l.trap)
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_EQI
++                if (_flag) {
++                    {
++                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                        var cond : int
++                        var im : int = int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u) - ((1 << 8) - 1 >> 1)
++                        if (int(addr(ra.val).tt_) == (3 | 0 << 4)) {
++                            cond = addr(ra.val).value_.i == int64(im) ? 1 : 0
++                        } elif (int(addr(ra.val).tt_) == (3 | 1 << 4)) {
++                            cond = addr(ra.val).value_.n == double(im) ? 1 : 0
++                        } else {
++                            cond = 0
++                        }
++                        if (cond != int(i >> uint(0 + 7 + 8) & ~(~uint(0) << 1u) << 0u)) {
++                            pc = pc + 1
++                        } else {
++                            var ni : uint = deref(pc)
++                            {
++                                pc = pc + (int(ni >> uint(0 + 7) & ~(~uint(0) << uint(8 + 8 + 1 + 8)) << 0u) - ((1 << 8 + 8 + 1 + 8) - 1 >> 1) + 1)
++                                trap = c_volatile_load(ci.u.l.trap)
++                            }
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_TEST
++                if (_flag) {
++                    {
++                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                        var cond : int = !(int(addr(ra.val).tt_) == (1 | 0 << 4) || (int(addr(ra.val).tt_) & 15) == 0) ? 1 : 0
++                        if (cond != int(i >> uint(0 + 7 + 8) & ~(~uint(0) << 1u) << 0u)) {
++                            pc = pc + 1
++                        } else {
++                            var ni : uint = deref(pc)
++                            {
++                                pc = pc + (int(ni >> uint(0 + 7) & ~(~uint(0) << uint(8 + 8 + 1 + 8)) << 0u) - ((1 << 8 + 8 + 1 + 8) - 1 >> 1) + 1)
++                                trap = c_volatile_load(ci.u.l.trap)
++                            }
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_CALL
++                if (_flag) {
++                    {
++                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                        var newci : CallInfo?
++                        var b : int = int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)
++                        var nresults : int = int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u) - 1
++                        if (b != 0) {
++                            L.top.p = ra + b
++                        }
++                        ci.u.l.savedpc = pc
++                        newci = luaD_precall(L, ra, nresults)
++                        if (newci == null) {
++                            trap = c_volatile_load(ci.u.l.trap)
++                        } else {
++                            ci = newci
++                            goto label 2
++                        }
++                        break
++                    }
++                }
++                _flag ||= _goto == 0 && _cond == OpCode.OP_SETLIST
++                if (_flag) {
++                    {
++                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
++                        var n : int = int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)
++                        var last : uint = uint(int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u))
++                        var h : Table? = addr(reinterpret<GCUnion?>(addr(ra.val).value_.gc).h)
++                        if (n == 0) {
++                            n = int(int64(L.top.p - ra)) - 1
++                        } else {
++                            L.top.p = ci.top.p
++                        }
++                        last += uint(n)
++                        if (int(i & 1u << uint(0 + 7 + 8)) != 0) {
++                            last += uint(int(deref(pc) >> uint(0 + 7) & ~(~uint(0) << uint(8 + 8 + 1 + 8)) << 0u) * ((1 << 8) - 1 + 1))
++                            pc = pc + 1
++                        }
++                        if (last > luaH_realasize(h)) {
++                            luaH_resizearray(L, h, last)
++                        }
++                        {
++                            while (n > 0) {
++                                var val : TValue? = addr((ra + n).val)
++                                {
++                                    var io1 : TValue? = addr(deref(h._c_array + (last - uint(1))))
++                                    var io2 : TValue? = val
++                                    io1.value_ = io2.value_
++                                    io1.tt_ = io2.tt_
++                                }
++                                last--
++                                if ((int(val.tt_) & 1 << 6) != 0) {
++                                    if ((int(addr(reinterpret<GCUnion?>(h).gc).marked) & 1 << 5) != 0 && (int(val.value_.gc.marked) & (1 << 3 | 1 << 4)) != 0) {
++                                        luaC_barrierback_(L, addr(reinterpret<GCUnion?>(h).gc))
++                                    }
++                                }
++                                n--
++                            }
++                        }
++                        break
++                    }
++                }
+                 _flag ||= _goto == 0 && _cond == OpCode.OP_LOADF
+                 if (_flag) {
+                     {
+@@ -1027,20 +1523,6 @@
+                         break
+                     }
+                 }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_GETUPVAL
+-                if (_flag) {
+-                    {
+-                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                        var b : int = int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)
+-                        {
+-                            var io1 : TValue? = addr(ra.val)
+-                            var io2 : TValue? = deref(addr(cl.upvals[0]) + b).v.p
+-                            io1.value_ = io2.value_
+-                            io1.tt_ = io2.tt_
+-                        }
+-                        break
+-                    }
+-                }
+                 _flag ||= _goto == 0 && _cond == OpCode.OP_SETUPVAL
+                 if (_flag) {
+                     {
+@@ -1060,38 +1542,6 @@
+                         break
+                     }
+                 }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_GETTABUP
+-                if (_flag) {
+-                    {
+-                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                        var slot : TValue?
+-                        var upval : TValue? = deref(addr(cl.upvals[0]) + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).v.p
+-                        var rc : TValue? = k + int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)
+-                        var key : TString? = addr(reinterpret<GCUnion?>(rc.value_.gc).ts)
+-                        var _t3 : int
+-                        if (!(int(upval.tt_) == (5 | 0 << 4 | 1 << 6))) {
+-                            slot = null
+-                            _t3 = 0
+-                        } else {
+-                            slot = luaH_getshortstr(addr(reinterpret<GCUnion?>(upval.value_.gc).h), key)
+-                            _t3 = !((int(slot.tt_) & 15) == 0) ? 1 : 0
+-                        }
+-                        if (_t3 != 0) {
+-                            {
+-                                var io1 : TValue? = addr(ra.val)
+-                                var io2 : TValue? = slot
+-                                io1.value_ = io2.value_
+-                                io1.tt_ = io2.tt_
+-                            }
+-                        } else {
+-                            ci.u.l.savedpc = pc
+-                            L.top.p = ci.top.p
+-                            luaV_finishget(L, upval, rc, ra, slot)
+-                            trap = c_volatile_load(ci.u.l.trap)
+-                        }
+-                        break
+-                    }
+-                }
+                 _flag ||= _goto == 0 && _cond == OpCode.OP_GETTABLE
+                 if (_flag) {
+                     {
+@@ -1139,75 +1589,6 @@
+                         break
+                     }
+                 }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_GETI
+-                if (_flag) {
+-                    {
+-                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                        var slot : TValue?
+-                        var rb : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).val)
+-                        var c : int = int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)
+-                        var _t7 : int
+-                        if (!(int(rb.tt_) == (5 | 0 << 4 | 1 << 6))) {
+-                            slot = null
+-                            _t7 = 0
+-                        } else {
+-                            slot = uint64(c) - uint64(1u) < uint64(addr(reinterpret<GCUnion?>(rb.value_.gc).h).alimit) ? reinterpret<TValue?>(addr(deref(addr(reinterpret<GCUnion?>(rb.value_.gc).h)._c_array + (c - 1)))) : luaH_getint(addr(reinterpret<GCUnion?>(rb.value_.gc).h), int64(c))
+-                            _t7 = !((int(slot.tt_) & 15) == 0) ? 1 : 0
+-                        }
+-                        if (_t7 != 0) {
+-                            {
+-                                var io1 : TValue? = addr(ra.val)
+-                                var io2 : TValue? = slot
+-                                io1.value_ = io2.value_
+-                                io1.tt_ = io2.tt_
+-                            }
+-                        } else {
+-                            var key : TValue
+-                            {
+-                                var io : TValue? = addr(key)
+-                                io.value_.i = int64(c)
+-                                io.tt_ = uint8(3 | 0 << 4)
+-                            }
+-                            ci.u.l.savedpc = pc
+-                            L.top.p = ci.top.p
+-                            luaV_finishget(L, rb, addr(key), ra, slot)
+-                            trap = c_volatile_load(ci.u.l.trap)
+-                        }
+-                        break
+-                    }
+-                }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_GETFIELD
+-                if (_flag) {
+-                    {
+-                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                        var slot : TValue?
+-                        var rb : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).val)
+-                        var rc : TValue? = k + int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)
+-                        var key : TString? = addr(reinterpret<GCUnion?>(rc.value_.gc).ts)
+-                        var _t8 : int
+-                        if (!(int(rb.tt_) == (5 | 0 << 4 | 1 << 6))) {
+-                            slot = null
+-                            _t8 = 0
+-                        } else {
+-                            slot = luaH_getshortstr(addr(reinterpret<GCUnion?>(rb.value_.gc).h), key)
+-                            _t8 = !((int(slot.tt_) & 15) == 0) ? 1 : 0
+-                        }
+-                        if (_t8 != 0) {
+-                            {
+-                                var io1 : TValue? = addr(ra.val)
+-                                var io2 : TValue? = slot
+-                                io1.value_ = io2.value_
+-                                io1.tt_ = io2.tt_
+-                            }
+-                        } else {
+-                            ci.u.l.savedpc = pc
+-                            L.top.p = ci.top.p
+-                            luaV_finishget(L, rb, rc, ra, slot)
+-                            trap = c_volatile_load(ci.u.l.trap)
+-                        }
+-                        break
+-                    }
+-                }
+                 _flag ||= _goto == 0 && _cond == OpCode.OP_SETTABUP
+                 if (_flag) {
+                     {
+@@ -1384,46 +1765,6 @@
+                         break
+                     }
+                 }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_NEWTABLE
+-                if (_flag) {
+-                    {
+-                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                        var b : int = int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)
+-                        var c : int = int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)
+-                        var t : Table?
+-                        if (b > 0) {
+-                            b = 1 << b - 1
+-                        }
+-                        if (int(i & 1u << uint(0 + 7 + 8)) != 0) {
+-                            c += int(deref(pc) >> uint(0 + 7) & ~(~uint(0) << uint(8 + 8 + 1 + 8)) << 0u) * ((1 << 8) - 1 + 1)
+-                        }
+-                        pc = pc + 1
+-                        L.top.p = ra + 1
+-                        t = luaH_new(L)
+-                        {
+-                            var io : TValue? = addr(ra.val)
+-                            var x_ : Table? = t
+-                            io.value_.gc = addr(reinterpret<GCUnion?>(x_).gc)
+-                            io.tt_ = uint8(5 | 0 << 4 | 1 << 6)
+-                        }
+-                        if (b != 0 || c != 0) {
+-                            luaH_resize(L, t, uint(c), uint(b))
+-                        }
+-                        {
+-                            {
+-                                if (L.l_G.GCdebt > int64(0)) {
+-                                    ci.u.l.savedpc = pc
+-                                    L.top.p = ra + 1
+-                                    luaC_step(L)
+-                                    trap = c_volatile_load(ci.u.l.trap)
+-                                }
+-                            }
+-                            {
+-                            }
+-                        }
+-                        break
+-                    }
+-                }
+                 _flag ||= _goto == 0 && _cond == OpCode.OP_SELF
+                 if (_flag) {
+                     {
+@@ -1462,35 +1803,6 @@
+                         break
+                     }
+                 }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_ADDI
+-                if (_flag) {
+-                    {
+-                        {
+-                            var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                            var v1 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).val)
+-                            var imm : int = int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u) - ((1 << 8) - 1 >> 1)
+-                            if (int(v1.tt_) == (3 | 0 << 4)) {
+-                                var iv1 : int64 = v1.value_.i
+-                                pc = pc + 1
+-                                {
+-                                    var io : TValue? = addr(ra.val)
+-                                    io.value_.i = int64(uint64(iv1) + uint64(imm))
+-                                    io.tt_ = uint8(3 | 0 << 4)
+-                                }
+-                            } elif (int(v1.tt_) == (3 | 1 << 4)) {
+-                                var nb : double = v1.value_.n
+-                                var fimm : double = double(imm)
+-                                pc = pc + 1
+-                                {
+-                                    var io : TValue? = addr(ra.val)
+-                                    io.value_.n = nb + fimm
+-                                    io.tt_ = uint8(3 | 1 << 4)
+-                                }
+-                            }
+-                        }
+-                        break
+-                    }
+-                }
+                 _flag ||= _goto == 0 && _cond == OpCode.OP_ADDK
+                 if (_flag) {
+                     {
+@@ -2069,204 +2381,6 @@
+                         break
+                     }
+                 }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_ADD
+-                if (_flag) {
+-                    {
+-                        {
+-                            var v1 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).val)
+-                            var v2 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)).val)
+-                            {
+-                                var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                                if (int(v1.tt_) == (3 | 0 << 4) && int(v2.tt_) == (3 | 0 << 4)) {
+-                                    var i1 : int64 = v1.value_.i
+-                                    var i2 : int64 = v2.value_.i
+-                                    pc = pc + 1
+-                                    {
+-                                        var io : TValue? = addr(ra.val)
+-                                        io.value_.i = i1 + i2
+-                                        io.tt_ = uint8(3 | 0 << 4)
+-                                    }
+-                                } else {
+-                                    var n1 : double
+-                                    var n2 : double
+-                                    var _t57 : int
+-                                    if (int(v1.tt_) == (3 | 1 << 4)) {
+-                                        n1 = v1.value_.n
+-                                        _t57 = 1
+-                                    } else {
+-                                        var _t56 : int
+-                                        if (int(v1.tt_) == (3 | 0 << 4)) {
+-                                            n1 = double(v1.value_.i)
+-                                            _t56 = 1
+-                                        } else {
+-                                            _t56 = 0
+-                                        }
+-                                        _t57 = _t56
+-                                    }
+-                                    var _t60 = _t57 != 0
+-                                    if (_t60) {
+-                                        var _t59 : int
+-                                        if (int(v2.tt_) == (3 | 1 << 4)) {
+-                                            n2 = v2.value_.n
+-                                            _t59 = 1
+-                                        } else {
+-                                            var _t58 : int
+-                                            if (int(v2.tt_) == (3 | 0 << 4)) {
+-                                                n2 = double(v2.value_.i)
+-                                                _t58 = 1
+-                                            } else {
+-                                                _t58 = 0
+-                                            }
+-                                            _t59 = _t58
+-                                        }
+-                                        _t60 = _t59 != 0
+-                                    }
+-                                    if (_t60) {
+-                                        pc = pc + 1
+-                                        {
+-                                            var io : TValue? = addr(ra.val)
+-                                            io.value_.n = n1 + n2
+-                                            io.tt_ = uint8(3 | 1 << 4)
+-                                        }
+-                                    }
+-                                }
+-                            }
+-                        }
+-                        break
+-                    }
+-                }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_SUB
+-                if (_flag) {
+-                    {
+-                        {
+-                            var v1 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).val)
+-                            var v2 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)).val)
+-                            {
+-                                var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                                if (int(v1.tt_) == (3 | 0 << 4) && int(v2.tt_) == (3 | 0 << 4)) {
+-                                    var i1 : int64 = v1.value_.i
+-                                    var i2 : int64 = v2.value_.i
+-                                    pc = pc + 1
+-                                    {
+-                                        var io : TValue? = addr(ra.val)
+-                                        io.value_.i = i1 - i2
+-                                        io.tt_ = uint8(3 | 0 << 4)
+-                                    }
+-                                } else {
+-                                    var n1 : double
+-                                    var n2 : double
+-                                    var _t62 : int
+-                                    if (int(v1.tt_) == (3 | 1 << 4)) {
+-                                        n1 = v1.value_.n
+-                                        _t62 = 1
+-                                    } else {
+-                                        var _t61 : int
+-                                        if (int(v1.tt_) == (3 | 0 << 4)) {
+-                                            n1 = double(v1.value_.i)
+-                                            _t61 = 1
+-                                        } else {
+-                                            _t61 = 0
+-                                        }
+-                                        _t62 = _t61
+-                                    }
+-                                    var _t65 = _t62 != 0
+-                                    if (_t65) {
+-                                        var _t64 : int
+-                                        if (int(v2.tt_) == (3 | 1 << 4)) {
+-                                            n2 = v2.value_.n
+-                                            _t64 = 1
+-                                        } else {
+-                                            var _t63 : int
+-                                            if (int(v2.tt_) == (3 | 0 << 4)) {
+-                                                n2 = double(v2.value_.i)
+-                                                _t63 = 1
+-                                            } else {
+-                                                _t63 = 0
+-                                            }
+-                                            _t64 = _t63
+-                                        }
+-                                        _t65 = _t64 != 0
+-                                    }
+-                                    if (_t65) {
+-                                        pc = pc + 1
+-                                        {
+-                                            var io : TValue? = addr(ra.val)
+-                                            io.value_.n = n1 - n2
+-                                            io.tt_ = uint8(3 | 1 << 4)
+-                                        }
+-                                    }
+-                                }
+-                            }
+-                        }
+-                        break
+-                    }
+-                }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_MUL
+-                if (_flag) {
+-                    {
+-                        {
+-                            var v1 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)).val)
+-                            var v2 : TValue? = addr((base + int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u)).val)
+-                            {
+-                                var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                                if (int(v1.tt_) == (3 | 0 << 4) && int(v2.tt_) == (3 | 0 << 4)) {
+-                                    var i1 : int64 = v1.value_.i
+-                                    var i2 : int64 = v2.value_.i
+-                                    pc = pc + 1
+-                                    {
+-                                        var io : TValue? = addr(ra.val)
+-                                        io.value_.i = int64(uint64(i1) * uint64(i2))
+-                                        io.tt_ = uint8(3 | 0 << 4)
+-                                    }
+-                                } else {
+-                                    var n1 : double
+-                                    var n2 : double
+-                                    var _t67 : int
+-                                    if (int(v1.tt_) == (3 | 1 << 4)) {
+-                                        n1 = v1.value_.n
+-                                        _t67 = 1
+-                                    } else {
+-                                        var _t66 : int
+-                                        if (int(v1.tt_) == (3 | 0 << 4)) {
+-                                            n1 = double(v1.value_.i)
+-                                            _t66 = 1
+-                                        } else {
+-                                            _t66 = 0
+-                                        }
+-                                        _t67 = _t66
+-                                    }
+-                                    var _t70 = _t67 != 0
+-                                    if (_t70) {
+-                                        var _t69 : int
+-                                        if (int(v2.tt_) == (3 | 1 << 4)) {
+-                                            n2 = v2.value_.n
+-                                            _t69 = 1
+-                                        } else {
+-                                            var _t68 : int
+-                                            if (int(v2.tt_) == (3 | 0 << 4)) {
+-                                                n2 = double(v2.value_.i)
+-                                                _t68 = 1
+-                                            } else {
+-                                                _t68 = 0
+-                                            }
+-                                            _t69 = _t68
+-                                        }
+-                                        _t70 = _t69 != 0
+-                                    }
+-                                    if (_t70) {
+-                                        pc = pc + 1
+-                                        {
+-                                            var io : TValue? = addr(ra.val)
+-                                            io.value_.n = n1 * n2
+-                                            io.tt_ = uint8(3 | 1 << 4)
+-                                        }
+-                                    }
+-                                }
+-                            }
+-                        }
+-                        break
+-                    }
+-                }
+                 _flag ||= _goto == 0 && _cond == OpCode.OP_MOD
+                 if (_flag) {
+                     {
+@@ -2896,16 +3010,6 @@
+                         break
+                     }
+                 }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_JMP
+-                if (_flag) {
+-                    {
+-                        {
+-                            pc = pc + (int(i >> uint(0 + 7) & ~(~uint(0) << uint(8 + 8 + 1 + 8)) << 0u) - ((1 << 8 + 8 + 1 + 8) - 1 >> 1) + 0)
+-                            trap = c_volatile_load(ci.u.l.trap)
+-                        }
+-                        break
+-                    }
+-                }
+                 _flag ||= _goto == 0 && _cond == OpCode.OP_EQ
+                 if (_flag) {
+                     {
+@@ -3010,31 +3114,6 @@
+                         break
+                     }
+                 }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_EQI
+-                if (_flag) {
+-                    {
+-                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                        var cond : int
+-                        var im : int = int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u) - ((1 << 8) - 1 >> 1)
+-                        if (int(addr(ra.val).tt_) == (3 | 0 << 4)) {
+-                            cond = addr(ra.val).value_.i == int64(im) ? 1 : 0
+-                        } elif (int(addr(ra.val).tt_) == (3 | 1 << 4)) {
+-                            cond = addr(ra.val).value_.n == double(im) ? 1 : 0
+-                        } else {
+-                            cond = 0
+-                        }
+-                        if (cond != int(i >> uint(0 + 7 + 8) & ~(~uint(0) << 1u) << 0u)) {
+-                            pc = pc + 1
+-                        } else {
+-                            var ni : uint = deref(pc)
+-                            {
+-                                pc = pc + (int(ni >> uint(0 + 7) & ~(~uint(0) << uint(8 + 8 + 1 + 8)) << 0u) - ((1 << 8 + 8 + 1 + 8) - 1 >> 1) + 1)
+-                                trap = c_volatile_load(ci.u.l.trap)
+-                            }
+-                        }
+-                        break
+-                    }
+-                }
+                 _flag ||= _goto == 0 && _cond == OpCode.OP_LTI
+                 if (_flag) {
+                     {
+@@ -3167,23 +3246,6 @@
+                         break
+                     }
+                 }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_TEST
+-                if (_flag) {
+-                    {
+-                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                        var cond : int = !(int(addr(ra.val).tt_) == (1 | 0 << 4) || (int(addr(ra.val).tt_) & 15) == 0) ? 1 : 0
+-                        if (cond != int(i >> uint(0 + 7 + 8) & ~(~uint(0) << 1u) << 0u)) {
+-                            pc = pc + 1
+-                        } else {
+-                            var ni : uint = deref(pc)
+-                            {
+-                                pc = pc + (int(ni >> uint(0 + 7) & ~(~uint(0) << uint(8 + 8 + 1 + 8)) << 0u) - ((1 << 8 + 8 + 1 + 8) - 1 >> 1) + 1)
+-                                trap = c_volatile_load(ci.u.l.trap)
+-                            }
+-                        }
+-                        break
+-                    }
+-                }
+                 _flag ||= _goto == 0 && _cond == OpCode.OP_TESTSET
+                 if (_flag) {
+                     {
+@@ -3209,27 +3271,6 @@
+                         break
+                     }
+                 }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_CALL
+-                if (_flag) {
+-                    {
+-                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                        var newci : CallInfo?
+-                        var b : int = int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)
+-                        var nresults : int = int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u) - 1
+-                        if (b != 0) {
+-                            L.top.p = ra + b
+-                        }
+-                        ci.u.l.savedpc = pc
+-                        newci = luaD_precall(L, ra, nresults)
+-                        if (newci == null) {
+-                            trap = c_volatile_load(ci.u.l.trap)
+-                        } else {
+-                            ci = newci
+-                            goto label 2
+-                        }
+-                        break
+-                    }
+-                }
+                 _flag ||= _goto == 0 && _cond == OpCode.OP_TAILCALL
+                 if (_flag) {
+                     {
+@@ -3463,47 +3504,6 @@
+                         }
+                         break
+                     }
+-                }
+-                _flag ||= _goto == 0 && _cond == OpCode.OP_SETLIST
+-                if (_flag) {
+-                    {
+-                        var ra : StackValue? = base + int(i >> uint(0 + 7) & ~(~uint(0) << 8u) << 0u)
+-                        var n : int = int(i >> uint(0 + 7 + 8 + 1) & ~(~uint(0) << 8u) << 0u)
+-                        var last : uint = uint(int(i >> uint(0 + 7 + 8 + 1 + 8) & ~(~uint(0) << 8u) << 0u))
+-                        var h : Table? = addr(reinterpret<GCUnion?>(addr(ra.val).value_.gc).h)
+-                        if (n == 0) {
+-                            n = int(int64(L.top.p - ra)) - 1
+-                        } else {
+-                            L.top.p = ci.top.p
+-                        }
+-                        last += uint(n)
+-                        if (int(i & 1u << uint(0 + 7 + 8)) != 0) {
+-                            last += uint(int(deref(pc) >> uint(0 + 7) & ~(~uint(0) << uint(8 + 8 + 1 + 8)) << 0u) * ((1 << 8) - 1 + 1))
+-                            pc = pc + 1
+-                        }
+-                        if (last > luaH_realasize(h)) {
+-                            luaH_resizearray(L, h, last)
+-                        }
+-                        {
+-                            while (n > 0) {
+-                                var val : TValue? = addr((ra + n).val)
+-                                {
+-                                    var io1 : TValue? = addr(deref(h._c_array + (last - uint(1))))
+-                                    var io2 : TValue? = val
+-                                    io1.value_ = io2.value_
+-                                    io1.tt_ = io2.tt_
+-                                }
+-                                last--
+-                                if ((int(val.tt_) & 1 << 6) != 0) {
+-                                    if ((int(addr(reinterpret<GCUnion?>(h).gc).marked) & 1 << 5) != 0 && (int(val.value_.gc.marked) & (1 << 3 | 1 << 4)) != 0) {
+-                                        luaC_barrierback_(L, addr(reinterpret<GCUnion?>(h).gc))
+-                                    }
+-                                }
+-                                n--
+-                            }
+-                        }
+-                        break
+-                    }
+                 }
+                 _flag ||= _goto == 0 && _cond == OpCode.OP_CLOSURE
+                 if (_flag) {

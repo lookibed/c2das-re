@@ -1,0 +1,12 @@
+reorder delta 01:03:29Z, load 6.16 5.67 4.57
+reordered startup warm: 7.691697442
+reordered startup: 4.978807437
+reordered binary_trees 12: 14.883772836
+converted startup: 5.113560757
+converted binary_trees 12: 19.989723650
+reordered startup: 5.650466010
+reordered binary_trees 12: 15.968303962
+converted startup: 5.670179484
+converted binary_trees 12: 21.377793286
+00c783cb0bddd4f9c960f25edcc59e22  -
+00c783cb0bddd4f9c960f25edcc59e22  -
