@@ -81,25 +81,36 @@ def private declares(tu : CirTu; name : string) : bool {
     return false
 }
 
-//! The prefix of a unit's emitter error naming a function another unit defines: alone the unit
-//! has no binding for it, which the program's link gives.
+//! The prefix of a unit's emitter error naming a function or an array another unit defines: alone
+//! the unit has no binding for it, which the program's link gives.
 let LINK_BOUND = "link-bound: "
 
-// the function `error` names as `external function `<name>``, "" when it names none
-def private external_function(error : string) : string {
-    let at = find(error, "external function `")
+// the name `error` spells in backticks right after `lead`, "" when `lead` is not in it
+def private backticked_after(error, lead : string) : string {
+    let at = find(error, lead)
     if (at < 0) {
         return ""
     }
-    let rest = slice(error, at + length("external function `"))
+    let rest = slice(error, at + length(lead))
     let close = find(rest, "`")
     return close < 0 ? "" : slice(rest, 0, close)
 }
 
+// what `error` says the unit has no definition of: an external function (`external function
+// `<name>``) or an array of unknown length (`` `<name>` is an array of unknown length ... that no
+// unit of the program defines``), "" when it names neither
+def private unbound_name(error : string) : string {
+    let function_name = backticked_after(error, "external function `")
+    if (!empty(function_name) || !(error |> contains("that no unit of the program defines"))) {
+        return function_name
+    }
+    return backticked_after(error, ": `")
+}
+
 //! Each of `c_paths` dumped alone under the sidecar `side`, then each the dumper takes emitted
 //! alone, its `over_indexed` entries narrowed to the records the unit declares: the unit passes
-//! when the dumper and the emitter take it. An emitter error naming a function another unit
-//! defines is marked `LINK_BOUND`. Nothing is written and nothing compiled, since the rest of the
+//! when the dumper and the emitter take it. An emitter error naming a function or an array another
+//! unit defines is marked `LINK_BOUND`. Nothing is written and nothing compiled, since the rest of the
 //! program is missing.
 def convert_units(c_paths : array<string>; side : Sidecar) : array<Verdict> {
     var verdicts : array<Verdict>
@@ -111,7 +122,7 @@ def convert_units(c_paths : array<string>; side : Sidecar) : array<Verdict> {
         var d <- dump_tu(c_path, target_by_name(TARGET), default_clang(), dump_inputs(side))
         verdicts |> push(Verdict(name = file_stem(c_path), error = empty(d.error) ? "" : first_error_line("dumper: {d.error}")))
         for (decl in d.tu.decls) {
-            if (decl.k == "func" && decl.body != null) {
+            if ((decl.k == "func" && decl.body != null) || (decl.k == "global" && !decl.is_extern)) {
                 defined |> insert(decl.name)
             }
         }
@@ -124,7 +135,7 @@ def convert_units(c_paths : array<string>; side : Sidecar) : array<Verdict> {
             let em <- emit_tu(tu, unit_side)
             if (!empty(em.error)) {
                 let error = first_error_line("emitter: {em.error}")
-                v.error = key_exists(defined, external_function(error)) ? LINK_BOUND + error : error
+                v.error = key_exists(defined, unbound_name(error)) ? LINK_BOUND + error : error
             }
         }
         delete_tu(tu)
@@ -156,8 +167,7 @@ def compile_modules(out_dir : string; module_dirs : array<string>; timeout : flo
 //! and the construct's name, the first match winning; the numbered findings are P6.1's
 //! (`ARCHITECTURE.md` section 7).
 let BLOCKERS <- [
-    (LINK_BOUND, "a function another unit defines, which only the link binds (the unit alone)"),
-    ("before a definition gives its array a length", "an `extern T a[];` referenced before the definition giving its length"),
+    (LINK_BOUND, "a function or an array another unit defines, which only the link binds (the unit alone)"),
     ("block-scope `extern` declaration", "a block-scope `extern` with no file-scope declaration before it"),
     ("unsupported local declaration `FunctionDecl`", "a block-scope function prototype"),
     ("of a marshal-only record is a record or an array of records", "a record or an array of records in a marshal record (finding 2)"),

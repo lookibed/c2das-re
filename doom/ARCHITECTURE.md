@@ -145,8 +145,8 @@ header is the program's and the output folder is flat.
 Two stages report. Each unit alone: dumped under the sidecar's defines, then emitted under the
 sidecar with its `over_indexed` entries narrowed to the records the unit declares, since the
 emitter refuses an entry naming a record it does not see. A unit alone has no binding for a
-function another unit defines; an emitter error naming one is marked `link-bound:` and classed
-apart, and the emitter stops at its first error, so it hides what follows it in that unit. Then
+function another unit defines, nor a length for an array another unit defines (`extern T a[];`);
+an emitter error naming one is marked `link-bound:` and classed apart, and the emitter stops at its first error, so it hides what follows it in that unit. Then
 the program: `convert_program` in the layout, which stops at the first unit the dumper refuses,
 since the link needs every unit. `--compile-check` compiles each module of `work/<layout>/`'s
 module list alone, in a `daslang -compile-only` process with the converted program's module
@@ -157,13 +157,11 @@ findings among them (finding 2: an array of records inside a marshal record; fin
 over-indexed trailing array inside one); a line no fragment matches is `new:` with its stage and
 locations dropped. `blocker_table` counts the units or modules per construct.
 
-At the pin, 10 of the 63 units pass alone; 37 stop at a function another unit defines, which the
-link binds; 5 at an `extern T a[];` referenced before a definition that gives its length (the
-definition in another unit: `defaults`, `S_sfx`, `chat_macros`), 3 at a block-scope `extern`
-with no file-scope declaration, 2 at a block-scope function prototype, 1 at finding 2 (`r_data`,
-`maptexture_t.patches`) and 5 at a function of a unit the dumper refuses. The program stops at
-the first of these, in `DOOM.c`, so no module is emitted and `--compile-check` has none to
-compile. Past those gaps, a staged copy patched by hand shows the next: a file-scope `;;`
-(`EmptyDecl`, `m_misc.c`), then a `goto` into a block (`docs/implementation_order.md` P7.7:
+At the pin, 11 of the 63 units pass alone; 44 stop at a function or an array another unit
+defines, which the link binds; 4 at a block-scope `extern` with no file-scope declaration, 2 at a
+block-scope function prototype, 1 at finding 2 (`r_data`, `maptexture_t.patches`) and 1 at a
+file-scope `;;` (`EmptyDecl`, `m_misc.c`). The program stops at the first unit the dumper refuses,
+`DOOM.c` (a block-scope `extern`), so no module is emitted and `--compile-check` has none to
+compile. Past those gaps, a staged copy patched by hand shows the next: a `goto` into a block (`docs/implementation_order.md` P7.7:
 `F_CastTicker`, `P_SlideMove`). Its partition: the `source` layout holds 51 units in one cluster
 (39 modules), `source-cut` 36 (56 modules).
