@@ -172,6 +172,22 @@ def private tree_files(dir : string) : array<string> {
     return <- files
 }
 
+// every file under `into` that `kept` (paths relative to it) does not name removed, so a layout's
+// folder in the clone mirrors the conversion's module list; false when a removal fails
+def private drop_unlisted(into : string; kept : array<string>) : bool {
+    var stale : array<string>
+    dir_rec(into) $(name, is_dir) {
+        if (!is_dir && !has_value(kept, name)) {
+            stale |> push(name)
+        }
+    }
+    var ok = true
+    for (rel in stale) {
+        ok = remove(path_join(into, rel)) && ok
+    }
+    return ok
+}
+
 def private sidecar_of(port : Port) : string => path_join(port.harness, "{port.name}.c2das")
 
 // the stamp a conversion leaves beside its output: the sha, the describe and the date, one a line
@@ -588,10 +604,20 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
     mkdir_rec(path_join(dir, "bench"))
     var ok = true
     mkdir_rec(path_join(dir, "single"))
+    // the folder the cut layout had under its former name `scc`
+    if (fexist(path_join(dir, "scc"))) {
+        rmdir_rec(path_join(dir, "scc"))
+    }
     for (m in port.modules) {
         for (layout in ["source", "source-cut"]) {
             let tree = dir_name(module_of(port, m.stem, layout))
             let into = layout_dir(dir, m.stem, layout)
+            var kept <- tree_files(tree)
+            kept |> push("program.layout.txt")
+            if (!drop_unlisted(into, kept)) {
+                to_log(LOG_ERROR, "{port.name}: cannot remove a stale file under {into}\n")
+                ok = false
+            }
             for (rel in tree_files(tree)) {
                 let target = path_join(into, rel)
                 mkdir_rec(dir_name(target))
