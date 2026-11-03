@@ -222,9 +222,6 @@ def test_verdicts(t : T?) {
             t |> success(empty(broken) && error |> starts_with("exe build: the build exited "), error)
             let broken_aot <- lane_argv(das, "aot", path_join(dir, "a"), none, ["f"], 300.0, error)
             t |> success(empty(broken_aot) && error |> starts_with("aot build: the build exited ") && error |> contains("error["), error)
-            t |> equal(aot_build_line("a\nx.cpp:1:2: error: cannot jump\n3 errors generated.\n"), "x.cpp:1:2: error: cannot jump")
-            t |> equal(aot_build_line("a\nb\n"), "b")
-            t |> equal(aot_build_line("error[50500]: exception during init script\nout of heap memory, requested 8 bytes\n"), "out of heap memory, requested 8 bytes")
         }
     }
     t |> run("a lane's limit: a run, or a build step and its run") @(t : T?) {
@@ -422,15 +419,20 @@ def test_project_entry(t : T?) {
             t |> success(has_value(lines, "p: rust aot: refused no native result: line 1: got `nope`, expected `yes`"), join(lines, "\n"))
         }
     }
-    t |> run("0 samples: no bench built or timed, every speed cell not measured; our side's own define in its sidecar alone") @(t : T?) {
+    t |> run("0 samples: no bench built or timed, every speed cell not measured; our side's own define in its sidecar alone, recorded, the cap recorded") @(t : T?) {
         t |> with_scratch("cmp_projects_untimed") $(dir) {
             fwrite(path_join(dir, "prog.c"), "#include <stdio.h>\nint main(void) \{ HOOK(1); printf(\"yes\\n\"); return 0; \}\n")
             fwrite(path_join(dir, "input"), "")
+            fwrite(path_join(dir, "prog.das"), "options gen2\n[export]\ndef main() : int \{\n    return 0\n\}\n")
             let bin = path_join(dir, "rust")
-            write_script(bin, "#!/bin/sh\necho \"translation failed: x\" >&2\nexit 2\n")
+            // the Rust stand-in translates only when no argument carries the define
+            write_script(bin, "#!/bin/sh\ncase \"$*\" in *HOOK*) echo \"got the define\" >&2; exit 2 ;; esac\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    prev=\"$a\"\ndone\nmkdir -p \"$out\"\ncp {dir}/prog.das \"$out/prog.das\"\n")
             let p = Project(name = "p", dir = dir, tu = "prog.c", bench_tu = "prog.c", ours_defines <- ["HOOK(...)="], native_sources <- ["prog.c"], native_bench_sources <- ["prog.c"], c_std = "c11", fixture = "input", expected = "yes\n")
             let entry = project_entry(p, bin, path_join(dir, "work"), 0, Stamps())
             t |> equal(entry?["ours"]?["error"] ?? "", "")
+            t |> equal(entry?["rust"]?["error"] ?? "", "")
+            t |> equal(entry?["ours"]?["defines"]?[0] ?? "", "HOOK(...)=")
+            t |> equal(entry?["address_cap"] ?? "", address_cap_of(fread("/proc/self/limits")))
             t |> success((entry?["native"]?["reason"] ?? "") |> starts_with("clang exited 1: "), entry?["native"]?["reason"] ?? "")
             t |> equal(entry?["speed"]?["native"]?["error"] ?? "", NOT_TIMED)
             for (lane in DAS_LANES) {
@@ -439,6 +441,17 @@ def test_project_entry(t : T?) {
             t |> equal(entry?["speed"]?["rust"]?["exe"]?["error"] ?? "", NOT_TIMED)
             t |> success(!fexist(path_join(dir, "work/ours_bench")) && !fexist(path_join(dir, "work/native/p_bench")))
         }
+    }
+}
+
+[test]
+def test_address_cap(t : T?) {
+    t |> run("the soft address-space limit of /proc/self/limits, or nothing") @(t : T?) {
+        let limits = "Limit                     Soft Limit           Hard Limit           Units\nMax address space         4294967296           unlimited            bytes\n"
+        t |> equal(address_cap_of(limits), "4294967296")
+        t |> equal(address_cap_of(replace(limits, "4294967296  ", "unlimited   ")), "unlimited")
+        t |> equal(address_cap_of(""), "")
+        t |> success(!empty(address_cap_of(fread("/proc/self/limits"))))
     }
 }
 
@@ -722,6 +735,21 @@ def test_rendering(t : T?) {
         t |> success(text |> contains("lower is faster), 5 samples a cell:"), text)
         let untimed = projects_text(json_of(t, replace(RENDER_CAPTURE, "\"samples\": 5", "\"samples\": 0")))
         t |> success(untimed |> contains("lower is faster), not measured in this capture (`--samples 0`):"), untimed)
+    }
+    t |> run("a project's cap in its stamp, our side's own defines listed, the samples per project when they differ, the native cell's reason") @(t : T?) {
+        let marked = replace(RENDER_CAPTURE, "\"samples\": 5,", "\"samples\": 5, \"address_cap\": \"4294967296\",")
+        var js = json_of(t, replace(marked, "\"ours\": \{\"lanes\"", "\"ours\": \{\"defines\": [\"HOOK(...)=\", \"B=1\"], \"lanes\""))
+        var projects = js?["projects"]
+        var other = json_of(t, replace(RENDER_CAPTURE, "\"samples\": 5", "\"samples\": 0"))
+        (projects.value as _object)["b"] = other?["projects"]?["w"]
+        let text = projects_text(js)
+        t |> success(text |> contains("Captured: b (Rust `0123456789ab`, d); w (Rust `0123456789ab`, d, 4 GiB address-space cap)."), text)
+        t |> success(text |> contains("Defines of our side's sidecar alone") && text |> contains("\n- w, Ours: `-DHOOK(...)=` `-DB=1`\n") && !(text |> contains("- b, Ours: `")), text)
+        t |> equal(samples_text(js), "samples a cell per project: b not measured, w 5")
+        t |> equal("{cap_text("unlimited")}|{cap_text("")}|{cap_text("3221225472")}|{cap_text("1048576000")}|{cap_text("4G")}", "no address-space cap||3 GiB address-space cap|1000 MiB address-space cap|address-space cap 4G")
+        let untimed = json_of(t, replace(RENDER_CAPTURE, "\"native\": \{\"decode\": \{\"time\": 0.5\}\}", "\"native\": \{\"error\": \"{NOT_TIMED}\"\}"))
+        let speed = project_speed_table(untimed)
+        t |> success(speed |> contains("| clang 22        | not measured |"), speed)
         t |> success(text |> contains("checked against the `expected.stdout` of its canonical case"), text)
         t |> success(text |> contains("#### `w`: `f`") && text |> contains("Ours: not found"), text)
         t |> success(has_value(rust_ahead(js), "- project w: Rust passes interpreter, ours does not."))

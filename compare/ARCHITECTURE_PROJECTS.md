@@ -85,14 +85,18 @@ builds. Every program of the run (the native builds, each lane
 and each bench sample of both sides, and the run each `exe` build ends with) runs with the working
 folder `cwd/` there (`enter_working_folder`, every path passed on absolute), so a program writing
 into its working folder writes into the run's scratch, never into the checkout. The run is capped by
-the command that starts it (`prlimit --as=3221225472`), which every child process inherits.
+the command that starts it (`prlimit --as=4294967296`), which every child process inherits: the
+AOT generator's context needs more than 3 GiB of address space for the Rust modules (its 1 GiB
+heap runs out under `--as=3221225472`).
 
 The entry is `{rust_commit, rust_commit_error, daslang, date, samples, lanes, native,
-native_compiler, ours, rust, speed, code, functions}`: `native` the native build's verdict,
+native_compiler, address_cap, ours, rust, speed, code, functions}`: `native` the native build's
+verdict, `address_cap` the soft `Max address space` of the run's `/proc/self/limits`
+(`address_cap_of`: its bytes or `unlimited`, which every lane inherits),
 `native_compiler` the first line of the pinned clang's `--version` (the Rust README builds with
 clang-18, so the native cells are this machine's baseline, not the Rust repository's numbers),
 `ours` and `rust` each `{error, lanes}` with the side's refusal and a verdict per lane of `lanes`
-(`interp`, `jit`, `exe`, `aot`), `speed`, `code` and `functions` as below. The capture's
+(`interp`, `jit`, `exe`, `aot`), `ours` also `defines`, the row's `ours_defines`, `speed`, `code` and `functions` as below. The capture's
 `rust_commit` is the `HEAD` of the checkout holding the binary (`ARCHITECTURE.md` section 2).
 
 ## The verdicts {#verdicts}
@@ -166,10 +170,14 @@ computed per project.
 ## The rendering {#rendering}
 
 `compare_render.das`'s `projects_text` renders the section under `### Real projects`: an intro
-naming the oracle (each project's canonical case's `expected.stdout`) and each capture's stamp, the
-verdicts table (per project and side, the native verdict and each lane's), one line per side and
+naming the oracle (each project's canonical case's `expected.stdout`) and each capture's stamp
+(`project_stamp`: the Rust commit, the date and the address-space cap in words, `cap_text`), the
+verdicts table (per project and side, the native verdict and each lane's), one line per project
+whose sidecar on our side carries defines of its own (`ours_define_lines`), one line per side and
 reason for every lane that does not pass, the lanes sharing a reason named together, the bench table
-(the native compiler's version line without its source, the native decode seconds, each lane's
+under its sample count (`samples_text`: one count, `not measured` for 0, else each project's), (the
+native compiler's version line without its source, the native decode seconds or the native cell's
+error word as a lane's, each lane's
 decode median over it, an error cell as the lane's status, `refused` for a side with no bench
 module, else the error's first word), the code table (status, files, lines, the Rust runtime's lines
 and each counter, `-` for a side not measured) and the functions side by side. A capture without the
