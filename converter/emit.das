@@ -5501,8 +5501,8 @@ def private indent_of(text : string) : int => (length(text) - length(strip_left(
 
 // whether C statement `st` ends, as spelled where it stands, the way daslang's optimizer folds
 // after: a `return`, or a `break` or `continue` that stays das's (one of an open loop or switch is a
-// `goto`), a block whose last statement does, or an `if` whose every arm does (the optimizer spells
-// an `if` whose arms all return as one `return` of a `?:`)
+// `goto`), a block whose last statement does, an `if` whose every arm does (the optimizer spells
+// an `if` whose arms all return as one `return` of a `?:`), or such a switch (`switch_closes`)
 def private closes(em : Emitter; st : CirStmt const?) : bool {
     if (st == null) {
         return false
@@ -5513,6 +5513,9 @@ def private closes(em : Emitter; st : CirStmt const?) : bool {
     if (st.s == "if") {
         return st.else_s != null && closes(em, st.then_s) && closes(em, st.else_s)
     }
+    if (st.s == "switch") {
+        return switch_closes(em, st.body_s)
+    }
     if (st.s == "break") {
         return empty(em.break_gotos) || empty(em.break_gotos |> back())
     }
@@ -5520,6 +5523,29 @@ def private closes(em : Emitter; st : CirStmt const?) : bool {
         return empty(em.cont_flags) || !(em.cont_flags |> back() |> starts_with("goto "))
     }
     return st.s == "return"
+}
+
+// whether switch body `body` cannot be left past its end: it has a `default`, no `break` leaves
+// it, and every case group's last statement `closes`; its if-chain then ends in an `else` whose
+// every arm returns, which the optimizer turns into one `return`
+def private switch_closes(em : Emitter; body : CirStmt const?) : bool {
+    if (body == null || body.s != "compound" || breaks_switch(body)) {
+        return false
+    }
+    var has_default = false
+    var last : CirStmt const? = null
+    for (child in body.body) {
+        if (child.s == "case" || child.s == "default") {
+            has_default ||= child.s == "default"
+            if (last != null && !closes(em, last)) {
+                return false
+            }
+            last = null
+        } else {
+            last = child
+        }
+    }
+    return has_default && last != null && closes(em, last)
 }
 
 // daslang's optimizer moves the statements after an `if` with no `else` whose branch ends in

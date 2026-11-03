@@ -162,7 +162,8 @@ defines, which the link binds; 1 at finding 2 (`r_data`, `maptexture_t.patches`)
 program passes the dumper and the layout and stops in the emitter at `f_finale.c:602`, a pointer
 into the array field `patch_t.columnofs` of a marshal record (`docs/implementation_order.md`
 P6.3e), past the gotos into a branch body P7.7 lowers (`F_CastTicker`, `P_SlideMove`), so no
-module is emitted and `--compile-check` has none to compile. The whole-program
+module is emitted and `--compile-check` has none to compile (`source-cut` stops at the same
+construct in `p_setup.c:235`, `mapsector_t.floorpic`). The whole-program
 conversion needs more than 3 GiB of address space: under `prlimit --as=3G` daslang dies with
 SIGSEGV on an allocation failure, so the harness runs uncapped in a `heavy` scope of its own.
 

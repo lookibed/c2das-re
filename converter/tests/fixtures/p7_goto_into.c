@@ -356,6 +356,26 @@ out:
     return s;
 }
 
+/* a branch that ends in a switch with a default whose every case returns */
+static int switch_returns(int k) {
+    int s = 0;
+    if (k == 5)
+        goto out;
+    if (k < 3) {
+        switch (k) {
+        case 0:
+            return 10;
+        case 1:
+            return 11;
+        default:
+            return 12;
+        }
+    }
+out:
+    s += 7;
+    return s;
+}
+
 int main(void) {
     int src[19], dst[19], k;
     for (k = 0; k < 19; k++) { src[k] = k * 3; dst[k] = -1; }
@@ -378,6 +398,7 @@ int main(void) {
     printf("%d %d %d %d %d\n", into_for_decl(0), into_for_decl(1), bare_arm(9), bare_arm(2), bare_arm(0));
     printf("%d %d\n", nested_breaks(0), nested_breaks(1));
     printf("%d %d %d %d %d %d %d %d\n", out_of_loop(0), out_of_loop(1), out_of_arm(0, 1), out_of_arm(1, 1), out_of_arm(1, 0), arms_return(1), arms_return(2), arms_return(3));
+    printf("%d %d %d %d\n", switch_returns(1), switch_returns(5), switch_returns(4), switch_returns(2));
     printf("%d %d %d %d %d\n", past_return(1, 100), past_return(0, 5), plain_past_return(1), plain_past_return(2), plain_past_return(3));
     return 0;
 }
