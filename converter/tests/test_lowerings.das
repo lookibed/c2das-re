@@ -365,6 +365,19 @@ def p2_marshal_fixtures(t : T?) {
 // the pointer sum with its count on the left and the offset idiom through a null pointer,
 // over natural and marshal-only records
 def p6_pointer_fixtures(t : T?) {
+    t |> run("a global initializer das reads as reaching its own global is stored at module init; an acyclic one stays inline") @(t : T?) {
+        var text : string
+        check_fixture(t, "p6_global_init_loop", text)
+        // through a function value to a later menu pointing back, to itself, through a call
+        has_text(t, text, "var main_menu : Menu\nvar episode_menu : Menu\nvar self_menu : Menu\nvar read_menu : Menu\n")
+        has_text(t, text, "def private c2das_init_globals \{\n    main_menu = Menu(go = @@go_episode, prev = null, items = 3)\n")
+        has_text(t, text, "    self_menu = Menu(go = @@go_self, prev = null, items = 1)\n    read_menu = Menu(go = @@go_read, prev = null, items = 6)\n")
+        // the address link forward, the function link back
+        has_text(t, text, "    options_menu_fwd = Menu(go = @@go_sound, prev = null, items = 5)\n    sound_menu = Menu(")
+        // no cycle, and a cycle the first stored menu ends
+        has_text(t, text, "var help_menu : Menu = Menu(go = @@go_help, prev = unsafe(addr(plain)), items = 8)\n")
+        has_text(t, text, "var x_menu : Menu\nvar y_menu : Menu = Menu(go = @@go_y, prev = null, items = 20)\n")
+    }
     t |> run("a pointer sum with the count on the left, `n + p`, is `p + n`; a marshal pointer scales the count") @(t : T?) {
         var text : string
         check_fixture(t, "p6_commuted_sum", text)

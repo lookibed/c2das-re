@@ -27,10 +27,11 @@ das orders global initialization, so an initializer stays inline only while ever
 address it takes has an explicit initializer and precedes it (`probes/test_globals.das`); an
 address of a zero-initialized or later global moves the whole initializer into
 `c2das_init_globals` as an assignment, which also holds the stores of a sparsely filled
-array (`docs/lowering-examples.md` "Globals & initializers"). A module reaching the printf or
+array (`docs/lowering-examples.md` "Globals & initializers"), and so does one das reads as an
+initialization loop (`ARCHITECTURE_EMITTER_AGGREGATES.md`, Initialization loops). A module reaching the printf or
 the scanf family puts `[init] def private c2das_dialect` (`c_long_bits`, the dialect's `long`
 width) before every other `[init]`, so no initializer that formats runs ahead of it. A function's value (`@@f`, from a decay
-or from `&f`; C `main` is `@@c_main`) and a literal's address need no order. A null function
+or from `&f`; C `main` is `@@c_main`) and a literal's address need no textual order. A null function
 pointer is `default<function<...>>`, since das takes no `null` for a function value
 (`probes/test_globals.das`). A function is `def name(p : T; ...) : ret` with `private` for a C
 `static`. Every data pointer parameter is `var`, and so is every record parameter whose type
