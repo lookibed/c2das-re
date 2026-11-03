@@ -78,7 +78,8 @@ expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed). The ro
   the project has no bench unit. The Eden and SDL hosts are GUI programs and are not built; the
   case under the Eden memory model is not compared.
 
-Everything a run builds sits in `work/projects/<name>/`: `native/` (the pinned clang's builds of
+Everything a run builds sits in `work/projects/<name>/`, or `<name>/` under the folder `--work`
+names (the tests' scratch, so a test never meets a real run's work): `native/` (the pinned clang's builds of
 both units), `ours/` and `ours_bench/` (our conversions), `rust/` and `rust_bench/` (the Rust
 translations; `rust_db/` the compilation database of a project of units), and each side's lane
 builds. Every program of the run (the native builds, each lane

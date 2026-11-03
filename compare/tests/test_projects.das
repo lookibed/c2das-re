@@ -617,16 +617,35 @@ def private stand_in_project(dir, name : string) : string {
     return bin
 }
 
+// the real work folder of the project `name` as found: each entry with its size and modification
+// time, "" without the folder
+def private real_work(name : string) : string {
+    let at = path_join(PROJECTS_WORK, name)
+    if (!fexist(at)) {
+        return ""
+    }
+    var lines : array<string>
+    dir(at) $(entry) {
+        if (entry != "." && entry != "..") {
+            let st = stat(path_join(at, entry))
+            lines |> push("{entry} {st.size} {st.mtime}")
+        }
+    }
+    sort(lines)
+    return join(lines, "\n")
+}
+
 [test]
 def test_project_run(t : T?) {
-    t |> run("--project wasm3 over a stand-in project to its end: both sides pass every lane, the rest kept") @(t : T?) {
+    t |> run("--project wasm3 over a stand-in project to its end: both sides pass every lane, the rest kept, the work in the folder --work names") @(t : T?) {
         t |> with_scratch("cmp_projects_run") $(dir) {
+            let real = real_work("wasm3")
             let bin = stand_in_project(dir, "wasm3")
             let results = path_join(dir, "results.json")
             fwrite(results, "\{\"perf\": \{\"samples\": 5\}, \"projects\": \{\"other\": \{\"x\": 1\}\}\}")
             var out : string
             with_env(bin, dir) {
-                t |> equal(run_compare(["--project", "wasm3", "--samples", "1", "--out", results], out), 0, out)
+                t |> equal(run_compare(["--project", "wasm3", "--samples", "1", "--out", results, "--work", path_join(dir, "work")], out), 0, out)
             }
             let js = json_of(t, fread(results))
             let entry = js?["projects"]?["wasm3"]
@@ -642,6 +661,8 @@ def test_project_run(t : T?) {
             t |> equal(entry?["speed"]?["rust"]?["aot"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf)
             t |> success((entry?["functions"]?[1]?["ours"] ?? "") |> contains("call_fib"), out)
             t |> success((entry?["functions"]?[1]?["rust"] ?? "") |> starts_with("def call_fib("), out)
+            t |> success(stat(path_join(dir, "work/wasm3")).is_dir, "no work folder under {dir}")
+            t |> equal(real_work("wasm3"), real, "the real wasm3 work folder changed")
         }
     }
     t |> run("--project binjgb over a stand-in: its define reaches both builds, the bench timed against the native bench") @(t : T?) {
@@ -651,7 +672,7 @@ def test_project_run(t : T?) {
             fwrite(results, "\{\"projects\": \{\"wasm3\": \{\"x\": 1\}\}\}")
             var out : string
             with_env(bin, dir) {
-                t |> equal(run_compare(["--project", "binjgb", "--samples", "1", "--out", results], out), 0, out)
+                t |> equal(run_compare(["--project", "binjgb", "--samples", "1", "--out", results, "--work", path_join(dir, "work")], out), 0, out)
             }
             let js = json_of(t, fread(results))
             let entry = js?["projects"]?["binjgb"]
@@ -699,7 +720,7 @@ def test_project_run_native_sources(t : T?) {
             fwrite(results, "\{\"projects\": \{\"wasm3\": \{\"x\": 1\}\}\}")
             var out : string
             with_env(bin, dir) {
-                t |> equal(run_compare(["--project", "h264bsd-mp4", "--samples", "1", "--out", results], out), 0, out)
+                t |> equal(run_compare(["--project", "h264bsd-mp4", "--samples", "1", "--out", results, "--work", path_join(dir, "work")], out), 0, out)
             }
             let js = json_of(t, fread(results))
             let entry = js?["projects"]?["h264bsd-mp4"]
