@@ -106,6 +106,37 @@ def test_sidecar_over_indexed(t : T?) {
 }
 
 [test]
+def test_sidecar_padded(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_padded", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`padded` is a list of strings `Record.field`, kept in order, apart from `over_indexed`") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "good", "\{\"padded\": [\"visplane_t.top\", \"visplane_t.bottom\"]\}\n", error)
+        t |> equal(error, "")
+        t |> equal(length(side.padded), 2)
+        t |> equal(side.padded[0], "visplane_t.top")
+        t |> equal(side.padded[1], "visplane_t.bottom")
+        t |> equal(length(side.over_indexed), 0)
+    }
+    t |> run("`padded` that is no list is refused, naming the key and the value") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "string", "\{\"padded\": \"visplane_t.top\"\}\n", error)
+        t |> success(error |> ends_with("string.c2das: `padded` is a list of strings `Record.field`, not \"visplane_t.top\""), error)
+        t |> equal(length(side.padded), 0)
+    }
+    t |> run("a `padded` entry that is not `Record.field` is refused, naming the key and the entry") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "bad", "\{\"padded\": [\"visplane_t.top\", \"top\"]\}\n", error)
+        t |> success(error |> ends_with("bad.c2das: `padded` holds strings `Record.field`, not \"top\""), error)
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_sidecar_loops(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_sidecar_loops", dir_error)

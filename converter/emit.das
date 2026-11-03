@@ -177,6 +177,9 @@ struct EmitProgram {
     // the trailing array members the sidecar lists under `over_indexed`, by record and field
     // (`member_key`)
     over_indexed : table<int64>
+    // the array members the sidecar lists under `padded`, whose index reaches the members on
+    // either side of them, by record and field (`member_key`)
+    padded : table<int64>
     // the references named like a libc object (`stdout`) that a parameter or local binds, which
     // are no libc object (`unshadow_locals`)
     bound_objects : table<uint64>
@@ -2195,7 +2198,7 @@ def private literal_index(i : CirExpr?) : int64 {
 // other operand.
 def private one_past_end_address(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let at = x.a
-    if (x.op != "addr" || at.e != "index" || at.base.e != "cast" || at.base.cast_kind != "ArrayToPointerDecay" || kind_of(tu, at.base.a.t) != "array" || at.base.a.e == "str_lit" || !empty(trailing_access(em, tu, at.base.a))) {
+    if (x.op != "addr" || at.e != "index" || at.base.e != "cast" || at.base.cast_kind != "ArrayToPointerDecay" || kind_of(tu, at.base.a.t) != "array" || at.base.a.e == "str_lit" || !empty(unchecked_access(em, tu, at.base.a))) {
         return Em()
     }
     let count = tu.types[at.base.a.t].count
@@ -2327,7 +2330,7 @@ def private emit_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : Ci
         let as_type = das_type(em, tu, x.t, loc)
         return value(enum_to_integer(tu, x.enum_t, enum_item(em, tu, x.enum_t, x.item), as_type), PREC_PRIMARY)
     }
-    if (x.e == "cast" && x.cast_kind == "ArrayToPointerDecay" && trailing_access(em, tu, x.a) == "flexible") {
+    if (x.e == "cast" && x.cast_kind == "ArrayToPointerDecay" && unchecked_access(em, tu, x.a) == "flexible") {
         return flexible_pointer(em, tu, x.a, loc)
     }
     if (x.e == "cast") {
@@ -2695,9 +2698,10 @@ def private index_value(var em : Emitter; tu : CirTu; i : CirExpr?; loc : CirLoc
 // `a[i]` of an array is the das index, range-checked; of a pointer it is `deref(p + i)`; of a
 // byte pointer to a marshal-only record it is the record read at the scaled offset
 def private emit_index(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
-    // a flexible or an over-indexed trailing array is indexed through its decay, unchecked, and
-    // so is an array field of a marshal-only record in C memory, whose elements lie in its bytes
-    if (x.base.e == "cast" && x.base.cast_kind == "ArrayToPointerDecay" && kind_of(tu, x.base.a.t) == "array" && x.base.a.e != "str_lit" && empty(trailing_access(em, tu, x.base.a)) && !marshal_array_member(em, tu, x.base.a)) {
+    // a flexible, an over-indexed trailing or a padded array is indexed through its decay,
+    // unchecked, and so is an array field of a marshal-only record in C memory, whose elements lie
+    // in its bytes
+    if (x.base.e == "cast" && x.base.cast_kind == "ArrayToPointerDecay" && kind_of(tu, x.base.a.t) == "array" && x.base.a.e != "str_lit" && empty(unchecked_access(em, tu, x.base.a)) && !marshal_array_member(em, tu, x.base.a)) {
         let arr = emit_expr(em, tu, x.base.a, loc)
         let at = index_value(em, tu, x.i, loc)
         return value("{wrap(arr, PREC_PRIMARY)}[{at.text}]", PREC_PRIMARY)
@@ -5882,8 +5886,9 @@ def private member_of(tu : CirTu; x : CirExpr const?) : tuple<rec : int; field :
 
 // how an array member `x` (a member expression) is reached past its declaration: "flexible" for a
 // flexible array member, which the record leaves out, "over" for a trailing array the sidecar
-// lists under `over_indexed`, "" for any other expression
-def private trailing_access(em : Emitter; tu : CirTu; x : CirExpr const?) : string {
+// lists under `over_indexed`, "padded" for an array it lists under `padded`, "" for any other
+// expression
+def private unchecked_access(em : Emitter; tu : CirTu; x : CirExpr const?) : string {
     if (x == null || x.e != "member") {
         return ""
     }
@@ -5891,7 +5896,11 @@ def private trailing_access(em : Emitter; tu : CirTu; x : CirExpr const?) : stri
     if (m.field < 0 || m.field >= length(tu.types[m.rec].fields)) {
         return ""
     }
-    return is_flexible(tu, m.rec, m.field) ? "flexible" : key_exists(em.prog.over_indexed, member_key(m.rec, m.field)) ? "over" : ""
+    if (is_flexible(tu, m.rec, m.field)) {
+        return "flexible"
+    }
+    let key = member_key(m.rec, m.field)
+    return key_exists(em.prog.over_indexed, key) ? "over" : key_exists(em.prog.padded, key) ? "padded" : ""
 }
 
 // the decay of flexible array member `x` (`p->data`, `s.data`): the record's address plus the
@@ -6597,21 +6606,27 @@ def private flag_marshal(var em : Emitter; tu : CirTu; side : Sidecar) {
     }
 }
 
+// the struct a sidecar entry's record name names, by tag or typedef name (the last that does);
+// -1 when none does
+def private record_named(tu : CirTu; name : string) : int {
+    var rec = -1
+    for (d in tu.decls) {
+        if (d.k == "record" && kind_of(tu, d.t) == "struct" && tu.types[d.t].name == name) {
+            rec = d.t
+        } elif (d.k == "typedefdecl" && d.name == name && kind_of(tu, tu.types[d.t].to) == "struct") {
+            rec = tu.types[d.t].to
+        }
+    }
+    return rec
+}
+
 // the sidecar's `over_indexed` entries, each `Record.field` by tag or typedef name, as record and
 // field keys; an entry naming no record's trailing fixed-length array member is an error
 def private flag_over_indexed(var em : Emitter; tu : CirTu; side : Sidecar) {
     for (entry in side.over_indexed) {
         let dot = find(entry, ".")
-        let rec_name = slice(entry, 0, dot)
+        let rec = record_named(tu, slice(entry, 0, dot))
         let field_name = slice(entry, dot + 1)
-        var rec = -1
-        for (d in tu.decls) {
-            if (d.k == "record" && kind_of(tu, d.t) == "struct" && tu.types[d.t].name == rec_name) {
-                rec = d.t
-            } elif (d.k == "typedefdecl" && d.name == rec_name && kind_of(tu, tu.types[d.t].to) == "struct") {
-                rec = tu.types[d.t].to
-            }
-        }
         let n = rec >= 0 ? length(tu.types[rec].fields) : 0
         let last_t = n > 0 ? tu.types[rec].fields[n - 1].t : -1
         if (n == 0 || tu.types[rec].fields[n - 1].name != field_name || kind_of(tu, last_t) != "array" || tu.types[last_t].count <= 0) {
@@ -6620,6 +6635,56 @@ def private flag_over_indexed(var em : Emitter; tu : CirTu; side : Sidecar) {
             return
         }
         em.prog.over_indexed |> insert(member_key(rec, n - 1))
+    }
+}
+
+// whether field `at` of record `rec` is an integer member of `elem`'s width, no bitfield, that lies
+// at byte `off`: the pad a padded array's index reaches past one of its ends
+def private pads_at(tu : CirTu; rec, at, elem, off : int) : bool {
+    if (at < 0 || at >= length(tu.types[rec].fields)) {
+        return false
+    }
+    assume f = tu.types[rec].fields[at]
+    return !f.is_bitfield && f.off == off && kind_of(tu, f.t) == "int" && tu.types[f.t].w == tu.types[elem].w
+}
+
+// the sidecar's `padded` entries, each `Record.field` by tag or typedef name, as record and field
+// keys: an array of integers whose index the program takes one past either end, into the
+// member on that side (`visplane_t.top[-1]` is `pad1`), which das reaches since a plain record
+// keeps clang's offsets; an entry naming no such array, one of a marshal-only record or one with
+// no integer member of its element's width right before and right after it is an error
+[arch(at="ARCHITECTURE_EMITTER_AGGREGATES.md#padded-array-members")]
+def private flag_padded(var em : Emitter; tu : CirTu; side : Sidecar) {
+    for (entry in side.padded) {
+        let dot = find(entry, ".")
+        let rec = record_named(tu, slice(entry, 0, dot))
+        let field_name = slice(entry, dot + 1)
+        var at = -1
+        if (rec >= 0) {
+            for (i, f in count(), tu.types[rec].fields) {
+                if (f.name == field_name) {
+                    at = i
+                }
+            }
+        }
+        let ft = at >= 0 ? tu.types[rec].fields[at].t : -1
+        let elem = kind_of(tu, ft) == "array" ? tu.types[ft].elem : -1
+        // a sidecar's error has no place in the C source
+        if (kind_of(tu, elem) != "int") {
+            em.error = "sidecar `padded`: `{entry}` names no record's array member of integers"
+            return
+        }
+        if (is_marshal(em, tu, rec)) {
+            em.error = "sidecar `padded`: `{entry}` is a member of a marshal-only record, which das reads through its readers"
+            return
+        }
+        let off = tu.types[rec].fields[at].off
+        let width = tu.types[elem].w / 8
+        if (!pads_at(tu, rec, at - 1, elem, off - width) || !pads_at(tu, rec, at + 1, elem, off + tu.types[ft].count * width)) {
+            em.error = "sidecar `padded`: `{entry}` has no integer member of its element's width right before and right after it"
+            return
+        }
+        em.prog.padded |> insert(member_key(rec, at))
     }
 }
 
@@ -6686,6 +6751,7 @@ def private prepare_program(var em : Emitter; var tu : CirTu; side : Sidecar) {
     rename_wrapper_names(em, tu)
     flag_marshal(em, tu, side)
     flag_over_indexed(em, tu, side)
+    flag_padded(em, tu, side)
     take_options(em, tu, side)
 }
 

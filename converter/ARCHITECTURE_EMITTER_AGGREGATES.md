@@ -143,6 +143,22 @@ indexed past its length over a larger allocation (`int columnofs[8]` after `mall
 decay, `deref(addr(p.columnofs[0]) + x)`, and `&p->columnofs[k]` is the address of that read; an
 entry that names no record's trailing array of a fixed length is a sidecar error.
 
+### Padded array members {#padded-array-members}
+
+A program may index an array member one element past either end into the member beside it: Doom's
+`visplane_t` declares `byte pad1; byte top[SCREENWIDTH]; byte pad2;` and writes `pl->top[pl->minx
+- 1]` and `pl->top[pl->maxx + 1]`, C's undefined behaviour that the record's fixed layout makes
+deterministic. das range-checks `pl.top[i]` and panics there, so the sidecar lists such a member
+under `padded` (`"Record.field"`, by tag or typedef name), a key of its own beside `over_indexed`,
+whose trailing array reaches storage past the record, not the record's own members. Every index
+of a listed member goes through its decay, unchecked, as an over-indexed one does:
+`deref(addr(pl.top[0]) + (pl.minx - 1))` reads and stores `pad1`, since a plain record keeps
+clang's offsets (`ARCHITECTURE_EMITTER.md`, the layout law) and so its members' adjacency. An
+entry fails closed unless it names an array of integers, in a record
+that is not marshal-only, with an integer member of the element's width, no bitfield, right before
+and right after it, which is the storage the index -1 and the length reach; an unlisted member
+keeps `pl.top[i]` and its range check.
+
 ### The address of a member at offset 0 {#first-member-address}
 
 The address of a member, `&p->f`, is `addr(p.f)`, and an array member's decay `addr(p.a[0])`. Under
