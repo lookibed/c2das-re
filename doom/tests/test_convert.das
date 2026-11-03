@@ -22,14 +22,14 @@ def private scratch(name : string) : string {
 }
 
 // the stand-in: `src/` holding `DOOM.h` and the units `a` (calls `b`), `b` and `bad` (a
-// block-scope function prototype), and `host/doom_main.c` including `DOOM.h` by its path into `src/`
+// file-scope `;;`), and `host/doom_main.c` including `DOOM.h` by its path into `src/`
 def private write_stand_in(root : string) {
     mkdir_rec(path_join(root, "src"))
     mkdir_rec(path_join(root, "host"))
     fwrite(path_join(root, "src/DOOM.h"), "int b(void);\nint a(void);\n")
     fwrite(path_join(root, "src/a.c"), "#include \"DOOM.h\"\nint a(void) \{ return b() + 1; \}\n")
     fwrite(path_join(root, "src/b.c"), "#include \"DOOM.h\"\nint b(void) \{ return 2; \}\n")
-    fwrite(path_join(root, "src/bad.c"), "int bad(void) \{ int g(void); return g(); \}\nint g(void) \{ return 0; \}\n")
+    fwrite(path_join(root, "src/bad.c"), "int bad(void) \{ return 0; \}\n;\n")
     fwrite(path_join(root, "host/doom_main.c"), "#include \"../src/DOOM.h\"\nint main(void) \{ return a() - 3; \}\n")
 }
 
@@ -59,12 +59,12 @@ def test_units_alone(t : T?) {
     t |> equal(verdicts[0].name, "a")
     t |> success(verdicts[0].error |> starts_with(LINK_BOUND), verdicts[0].error)
     t |> equal(verdicts[1].error, "")
-    t |> success(verdicts[2].error |> contains("unsupported local declaration `FunctionDecl`"), verdicts[2].error)
+    t |> success(verdicts[2].error |> contains("unsupported declaration `EmptyDecl`"), verdicts[2].error)
     t |> success(verdicts[3].error |> starts_with(LINK_BOUND), verdicts[3].error)
     let rows <- blocker_table(verdicts)
     t |> equal(length(rows), 2)
     t |> success(rows[0] |> starts_with("2  a function or an array another unit defines"), rows[0])
-    t |> success(rows[1] |> starts_with("1  a block-scope function prototype  (bad)"), rows[1])
+    t |> success(rows[1] |> starts_with("1  a file-scope `;;`, an empty declaration  (bad)"), rows[1])
 }
 
 [test]
@@ -107,7 +107,7 @@ def test_module_failure(t : T?) {
 [test]
 def test_classify(t : T?) {
     t |> run("a known construct is named, an unknown one is its line without stage and location") @(t : T?) {
-        t |> equal(classify("dumper: /x/d_main.c:915:20: a block-scope `extern` declaration of `f` with no file-scope declaration before it is not lowered yet"), "a block-scope `extern` with no file-scope declaration before it")
+        t |> equal(classify("dumper: /x/m_misc.c:1:2: unsupported declaration `EmptyDecl`"), "a file-scope `;;`, an empty declaration")
         t |> equal(classify("emitter: /x/r_data.c:1:2: an array of the marshal-only record `mappatch_t` is not lowered yet"), "an array of a marshal record, `maptexture_t.patches` (finding 2)")
         t |> equal(classify("emitter: /x/y.c:1:2: something odd"), "new: something odd")
         t |> equal(unlocated("emitter: /x/doomdata.h:179:9: field `f`: why"), "field `f`: why")
