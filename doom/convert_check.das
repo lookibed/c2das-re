@@ -169,8 +169,7 @@ def compile_modules(out_dir : string; module_dirs : array<string>; timeout : flo
 let BLOCKERS <- [
     (LINK_BOUND, "a function or an array another unit defines, which only the link binds (the unit alone)"),
     ("a file-scope asm is machine code", "a file-scope asm statement"),
-    ("of a marshal-only record is a record or an array of records", "a record or an array of records in a marshal record (finding 2)"),
-    ("an array of the marshal-only record", "an array of a marshal record, `maptexture_t.patches` (finding 2)"),
+    ("can't get field 'cmds' of 'void' pointer", "the offsetof idiom through a null pointer, `&((doomdata_t *) 0)->cmds[n]`"),
     ("sidecar `over_indexed`", "an over-indexed trailing array in a marshal record (finding 3)")
 ]
 

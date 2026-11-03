@@ -153,17 +153,20 @@ compiles each module of `work/<layout>/`'s module list alone, in a `daslang -com
 with the converted program's module folders.
 
 `classify` names the construct of a first line by the `BLOCKERS` fragments, P6.1's numbered
-findings among them (finding 2: an array of records inside a marshal record; finding 3: an
-over-indexed trailing array inside one); a line no fragment matches is `new:` with its stage and
-locations dropped. `blocker_table` counts the units or modules per construct.
+findings among them (finding 3: an over-indexed trailing array inside a marshal record); a line no
+fragment matches is `new:` with its stage and locations dropped. `blocker_table` counts the units
+or modules per construct.
 
-At the pin, 11 of the 63 units pass alone; 51 stop at a function or an array another unit
-defines, which the link binds; 1 at finding 2 (`r_data`, `maptexture_t.patches`). The whole
-program passes the dumper and the layout and stops in the emitter at `r_data.c:83`, finding 2
-(`maptexture_t.patches`, an array of the marshal record `mappatch_t` inside one), past the gotos
-into a branch body P7.7 lowers and the array field of a marshal record P6.3e lowers
-(`patch->columnofs[col]`, `f_finale.c:602`), so no module is emitted and `--compile-check` has
-none to compile. The whole-program
+At the pin, 11 of the 63 units pass alone; 52 stop at a function or an array another unit
+defines, which the link binds. The whole program passes the dumper, the layout and the emitter,
+past the gotos into a branch body P7.7 lowers and the array and record fields of a marshal record
+P6.3e and P6.3i lower (`patch->columnofs[col]`, `maptexture_t.patches`), and stops in the
+converter's compile check of the emitted `source` program: `d_net.c:103`'s
+`&(((doomdata_t*)0)->cmds[netbuffer->numtics])`, the offsetof idiom through a null pointer, is
+`addr(null.cmds[0]) + ...`, a field of an untyped `null` das refuses. `--compile-check` then
+compiles 37 of the 39 modules alone; the 51-unit cluster and `doom_main`, which requires it, fail
+on that idiom (`d_net.c:103` and `:122`) and on `p_pspr.c:655`'s `flashstate + psp->state`, an
+integer on the left of a pointer sum, spelled in that order. The whole-program
 conversion needs more than 3 GiB of address space: under `prlimit --as=3G` daslang dies with
 SIGSEGV on an allocation failure, so the harness runs uncapped in a `heavy` scope of its own.
 
