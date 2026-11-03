@@ -83,6 +83,18 @@ def test_units_alone_arrays(t : T?) {
 }
 
 [test]
+def test_units_alone_members(t : T?) {
+    let root = scratch("doom_members")
+    fwrite(path_join(root, "vis.c"), "struct vis \{ char lo; char top[2]; char hi; \};\nint vis(struct vis *v, int k) \{ return v->top[k]; \}\n")
+    fwrite(path_join(root, "pat.c"), "struct pat \{ int w; int cols[1]; \};\nint pat(struct pat *p, int k) \{ return p->cols[k]; \}\n")
+    let side = Sidecar(over_indexed <- ["pat.cols"], padded <- ["vis.top"])
+    let verdicts <- convert_units([for (stem in ["vis", "pat"]); path_join(root, "{stem}.c")], side)
+    // each unit sees only the entries naming a record it declares, which the emitter would refuse otherwise
+    t |> equal(verdicts[0].error, "")
+    t |> equal(verdicts[1].error, "")
+}
+
+[test]
 def test_program_modules(t : T?) {
     var root : string
     let c_paths <- staged_stand_in(root)
