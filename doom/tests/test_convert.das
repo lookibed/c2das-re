@@ -113,6 +113,7 @@ def test_classify(t : T?) {
     }
     t |> run("the first error line, else the first line") @(t : T?) {
         t |> equal(first_error_line("\nnote: a\nerror[1]: b\n"), "error[1]: b")
+        t |> equal(first_error_line("Z_Init: a\nError: b\nerror: c\n"), "Error: b")
         t |> equal(first_error_line("\n  only line\n"), "only line")
         t |> equal(first_error_line(""), "")
     }

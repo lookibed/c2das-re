@@ -156,6 +156,13 @@ def test_demo_log(t : T?) {
 }
 
 [test]
+def test_tic_lines(t : T?) {
+    let text = "# header\ntic=0 cs=00000000\nZ_Init\ntic=1 cs=00000001\n"
+    t |> equal(join(tic_lines(text), "|"), "tic=0 cs=00000000|tic=1 cs=00000001")
+    t |> equal(join(non_tic_lines(text), "|"), "# header|Z_Init|")
+}
+
+[test]
 def test_sidecar(t : T?) {
     t |> run("doom.c2das reads with the converter's reader") @(t : T?) {
         var error : string
