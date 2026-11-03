@@ -3,6 +3,7 @@ require dastest/testing_boost public
 require strings
 require daslib/strings_boost
 require math
+require daslib/json_boost
 require ../ports_render.das
 
 //! The renderer over fixed captures: the times, ratio and not-yet text, the geometric means of
@@ -52,6 +53,14 @@ def test_tables(t : T?) {
         let c <- fixture()
         let lines <- render_not_yet(c)
         t |> equal(join(lines, "\n"), "- nbody, JIT: not yet: prints `x`\n- fib, exe: not yet: exited 3\n- AOT, every workload: not yet: no arguments")
+    }
+    t |> run("the Captured line names the box: the capture's, else its CPU's") @(t : T?) {
+        var boxed <- fixture()
+        boxed.machine.box = "fx"
+        t |> success(render_perf(boxed) |> starts_with("Captured 2026-10-22 10:00 UTC on x86_64, fx (CPU); clang version 22"), render_perf(boxed))
+        var known <- fixture()
+        known.machine.cpu = "AMD Ryzen 3 1200 Quad-Core Processor"
+        t |> success(render_perf(known) |> starts_with("Captured 2026-10-22 10:00 UTC on x86_64, bench (AMD Ryzen 3 1200 Quad-Core Processor); "), render_perf(known))
     }
     t |> run("the perf section names the machine, the samples and every lane's command") @(t : T?) {
         let c <- fixture()
@@ -118,6 +127,23 @@ def test_projects(t : T?) {
         var captures : array<Capture>
         captures |> emplace(fixture())
         t |> equal(render_projects(captures), "| Program              | Captured             | Machine     | Workloads | interpreter |           JIT |     exe |     AOT |\n| :------------------- | :------------------- | :---------- | --------: | ----------: | ------------: | ------: | ------: |\n| [lua](lua/README.md) | 2026-10-22 10:00 UTC | x86_64, CPU |         2 |      100.00 | 8.00 (1 of 2) | not yet | not yet |\n")
+    }
+    t |> run("the Machine column names the box: the capture's, else its CPU's, else the CPU alone") @(t : T?) {
+        var captures : array<Capture>
+        captures |> emplace(fixture())
+        captures[0].machine.box = "PC"
+        t |> success(render_projects(captures) |> contains(" | x86_64, PC (CPU) | "), render_projects(captures))
+        captures[0].machine.box = ""
+        captures[0].machine.cpu = "AMD FX(tm)-6300 Six-Core Processor"
+        t |> success(render_projects(captures) |> contains(" | x86_64, fx (AMD FX(tm)-6300 Six-Core Processor) | "), render_projects(captures))
+    }
+    t |> run("a capture written before the box field reads with an empty box") @(t : T?) {
+        var error : string
+        let js = read_json("\{\"program\": \"lua\", \"machine\": \{\"arch\": \"x86_64\", \"cpu\": \"AMD Ryzen 3 1200\"\}\}", error)
+        t |> equal(error, "")
+        let c <- from_JV(js, type<Capture>)
+        t |> equal(c.machine.box, "")
+        t |> equal(machine_label(c.machine), "bench (AMD Ryzen 3 1200)")
     }
     t |> run("the top-level README keeps the charter above the marker and replaces what is under it") @(t : T?) {
         var captures : array<Capture>

@@ -6,6 +6,7 @@ require daslib/strings_boost
 require daslib/json_boost
 require ../ports_render.das
 require ../../perf/perf_lanes.das
+require ../../perf/boxes.das
 
 //! `ports/publish.das` without the release: a scratch c2das-re root holding a stand-in
 //! `lua/work` (a small C program and a hand-written das module in place of the composed and
@@ -194,6 +195,8 @@ def test_refusals(t : T?) {
         t |> success(out |> contains("--samples takes a count of 1 or more, not 0"), out)
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--timeout", "0"], out), 1, out)
         t |> success(out |> contains("--timeout takes seconds above 0, not 0"), out)
+        t |> equal(publish(root, ["--repo", clone, "--box", "laptop"], out), 1, out)
+        t |> success(out |> contains("ports: --box takes bench, PC, fx, not `laptop`"), out)
         let plain = path_join(root, "plain")
         mkdir_rec(plain)
         t |> equal(publish(root, ["--repo", plain, "--no-convert"], out), 1, out)
@@ -460,6 +463,8 @@ def test_bench(t : T?) {
         t |> equal(c.timeout, 1800)
         t |> success(c.machine.clang |> contains("clang version"), c.machine.clang)
         t |> success(!empty(c.machine.clang_path))
+        t |> equal(c.machine.cpu, cpu_name())
+        t |> equal(c.machine.box, box_of(cpu_name()), "a capture without --box records its CPU's box")
         // the file name and the timestamp name the same moment, the end of the run
         let minute = "{slice(c.timestamp, 0, 10)}T{slice(c.timestamp, 11, 13)}{slice(c.timestamp, 14, 16)}"
         t |> equal(slice(name, length("capture_"), length("capture_YYYY-MM-DDTHHMM")), minute, "{name} {c.timestamp}")
@@ -523,9 +528,10 @@ def test_single_lanes(t : T?) {
         // the source layout's entry fails every workload, the single module runs them
         fwrite(path_join(root, "lua/work/lua/lua.das"), "options gen2\n[export]\ndef main : int \{\n    return 5\n\}\n")
         var out : string
-        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp,interp-source-cut,interp-single,jit-source-cut,jit-single", "--allow-dirty"], out), 0, out)
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp,interp-source-cut,interp-single,jit-source-cut,jit-single", "--allow-dirty", "--box", "fx"], out), 0, out)
         var name : string
         let c <- capture_of(clone, name)
+        t |> equal(c.machine.box, "fx", "--box names the box the capture records")
         let fib <- cell_of(t, c, "fib", "interp-single")
         t |> success(empty(fib.error) && length(fib.samples) == 1, "{fib}")
         let cut_fib <- cell_of(t, c, "fib", "interp-source-cut")

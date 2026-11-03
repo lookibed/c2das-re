@@ -158,10 +158,13 @@ it took, the failing one last. A das cell without a native one is `no native run
 A measuring publish writes `<program>/perf/capture_<UTC timestamp>.json`, the timestamp inside
 and in the name both the end of the run: the c2das-re commit of the conversion it timed (the
 stamp's), the command that reproduces it (`--samples`, `--lanes` and `--timeout` named), the
-machine (`uname -m`, the CPU model of `/proc/cpuinfo`, the clang version line with the path of the
+machine (`uname -m`, the CPU model of `/proc/cpuinfo`, the box, which is the `--box` name else
+`perf/boxes.das`'s `box_of` the CPU, the clang version line with the path of the
 clang the native lane ran, which the lane's command names, and daslang's version line), the
 sample count and the timeout, every lane with its command and error, and every cell with its
-samples. The README's tables render from the latest capture by name; a latest capture that is not
+samples. The perf section's `Captured` line and the projects table's Machine column name the box
+as `perf/boxes.das`'s `box_label` (`machine_label`), a capture without `box` showing its CPU's box. The
+README's tables render from the latest capture by name; a latest capture that is not
 JSON fails the publish. The ratio table holds each das lane over native and the pairs interpreter over JIT, interpreter
 over exe, interpreter over AOT and JIT over AOT; a `-source-cut` or `-single` lane the capture measured
 adds its column and its pair over its source-layout twin, and a column of the projects table; a

@@ -6,6 +6,7 @@ require math
 require strings
 require daslib/strings_boost
 require daslib/md_boost
+require ../perf/boxes.das
 
 //! The text of the ports repository: a program's perf tables rendered from its capture, the
 //! projects table of the top-level README from every program's latest capture, the license block
@@ -39,11 +40,13 @@ struct LaneCell {
     error : string
 }
 
-//! The machine of a capture: `uname -m`, the CPU model, the clang version line with the path of
-//! the clang the native lane ran (the lane's command names that path), and daslang's version line.
+//! The machine of a capture: `uname -m`, the CPU model, the box (`perf/boxes.das`), the clang
+//! version line with the path of the clang the native lane ran (the lane's command names that
+//! path), and daslang's version line.
 struct Machine {
     arch : string
     cpu : string
+    box : string
     clang : string
     clang_path : string
     daslang : string
@@ -198,6 +201,9 @@ def render_ratios(c : Capture) : string {
     return table_of(headers, rows, 2)
 }
 
+//! The box label of machine `m`, a capture written before captures recorded a box showing its CPU's.
+def machine_label(m : Machine) : string => box_label(capture_box(m.box, m.cpu), m.cpu)
+
 //! One line per lane that does not work yet, then one per failed cell of a lane that does.
 def render_not_yet(c : Capture) : array<string> {
     var lines : array<string>
@@ -219,7 +225,7 @@ def render_not_yet(c : Capture) : array<string> {
 //! commands and what does not work yet.
 def render_perf(c : Capture) : string {
     return build_string() $(var w) {
-        w |> write("Captured {c.timestamp} on {c.machine.arch}, {c.machine.cpu}; {c.machine.clang} at `{c.machine.clang_path}`, ")
+        w |> write("Captured {c.timestamp} on {c.machine.arch}, {machine_label(c.machine)}; {c.machine.clang} at `{c.machine.clang_path}`, ")
         w |> write("the native lane's compiler; daslang {c.machine.daslang}; c2das-re `{c.commit}`. Reproduced by `{c.command}`. ")
         w |> write("A cell is the median wall time of {c.samples} runs of the whole program, each its own process spawned by the ")
         w |> write("publisher (the spawn included), ± half the range of the samples as a share of the median; a run past ")
@@ -278,7 +284,7 @@ def render_projects(captures : array<Capture>) : string {
     rows |> reserve(length(captures))
     for (c in captures) {
         let total = length([for (w in c.workloads); w; where !w.startup])
-        var inscope row <- ["[{c.program}]({c.program}/README.md)", c.timestamp, "{c.machine.arch}, {c.machine.cpu}", "{total}"]
+        var inscope row <- ["[{c.program}]({c.program}/README.md)", c.timestamp, "{c.machine.arch}, {machine_label(c.machine)}", "{total}"]
         row |> push_from([for (lane in lanes); lane_mean_text(c, lane, total)])
         rows |> emplace(row)
     }
