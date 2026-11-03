@@ -6060,9 +6060,10 @@ def private unit_init(tu : CirTu; t : int; u : BitUnit; parts : array<tuple<fiel
     return storage == arith_type ? joined : "{storage}({joined})"
 }
 
-// the readers and writers of a marshal-only record: the whole record and each field, over
-// bytes at clang's offsets through `memcpy`, which asks nothing of alignment; the value side
-// is the naturally laid out das struct (docs/lowering-examples.md "Packed structs")
+// the readers and writers of a marshal-only record: the whole record and each scalar field,
+// over bytes at clang's offsets through `memcpy`, which asks nothing of alignment, and a typed
+// pointer to each array field at its offset; the value side is the naturally laid out das struct
+// (docs/lowering-examples.md "Packed structs")
 def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) {
     let name = tag_name(em, tu, t)
     em.requires |> insert("crt")
