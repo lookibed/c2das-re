@@ -6,7 +6,6 @@ require strings
 require daslib/strings_boost
 require daslib/fio
 require daslib/json_boost
-require ../converter/cir.das
 require ../converter/tiers.das
 require ../converter/dumper_a.das
 require ../converter/pipeline.das
@@ -369,7 +368,7 @@ def lane_argv(das_path, lane, work : string; module_dirs, args : array<string>; 
     var argv : array<string>
     if (lane == "exe" || lane == "aot") {
         var why : string
-        let bin = lane_binary(das_path, lane, work, module_dirs, args, timeout, why)
+        let bin = lane_binary(das_path, lane, work, module_dirs, args, why, timeout)
         if (empty(bin)) {
             error = why |> starts_with("the build or its run took longer") ? "timeout: {why}" : "{lane} build: {why}"
             return <- argv
@@ -532,43 +531,6 @@ def native_bench_oracle(p : Project; bin, fixture : string; var oracle : string&
     }
     oracle = text
     return ""
-}
-
-//! The `exe` or `aot` binary of `das_path` built in `work` with `module_dirs` loaded and run once
-//! with `args`, as the lane builds it (`perf_lanes`'s `build_exe` and `build_aot` load
-//! `CONVERTED_MODULES` from the working folder); "" with `error` set when the build leaves none.
-def lane_binary(das_path, lane, work : string; module_dirs, args : array<string>; timeout : float; var error : string&) : string {
-    let bin = lane == "aot" ? aot_binary(das_path, work) : path_join(work, "{file_stem(das_path)}_exe")
-    remove(bin)
-    remove(bin + ".exe")
-    var out : string
-    let no_flags : array<string>
-    let rc = run_tier(das_path, lane, work, out, module_dirs, timeout, no_flags, args)
-    if (rc == popen_timed_out) {
-        error = "the build or its run took longer than {int(timeout)} s"
-        return ""
-    }
-    let built = fexist(bin + ".exe") ? bin + ".exe" : bin
-    if (!fexist(built)) {
-        error = "the build exited {rc} and left no binary: {lane == "aot" ? aot_build_line(out) : exe_build_line(out)}"
-        return ""
-    }
-    return built
-}
-
-//! The line that says why the `aot` build failed: the context generation's `out of heap memory`
-//! line (its `error[...]` line only names the exception), else the first line naming an error
-//! (the host compiler's `error:`), else the last line of `text`.
-def aot_build_line(text : string) : string {
-    let lines <- [for (l in split(text, "\n")); strip(l)]
-    for (key in ["out of heap memory", "error"]) {
-        for (line in lines) {
-            if (find(line, key) >= 0) {
-                return line
-            }
-        }
-    }
-    return last_line(text)
 }
 
 //! The bench cells of each das lane of the bench module `das_path`: `{error}` on every lane with
@@ -797,7 +759,8 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
         "lanes" => JV(DAS_LANES),
         "native" => verdict_json(native, back),
         "native_compiler" => JV(first_line(captured([default_clang(), "--version"]))),
-        "ours" => JV({"error" => JV(ours_refusal), "lanes" => lanes_json(ours_lanes, back)}),
+        "address_cap" => JV(address_cap_of(fexist("/proc/self/limits") ? fread("/proc/self/limits") : "")),
+        "ours" => JV({"error" => JV(ours_refusal), "lanes" => lanes_json(ours_lanes, back), "defines" => JV(p.ours_defines)}),
         "rust" => JV({"error" => JV(rust_refusal), "lanes" => lanes_json(rust_lanes, back)}),
         "speed" => speed,
         "code" => JV({
@@ -807,6 +770,18 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
         "functions" => JV(functions)
     }
     return JV(entry)
+}
+
+//! The address-space cap of a process whose `/proc/self/limits` reads `limits` (the soft `Max
+//! address space`, which every child inherits): its bytes, `unlimited`, or "" when not read.
+def address_cap_of(limits : string) : string {
+    for (line in split(limits, "\n")) {
+        if (line |> starts_with("Max address space")) {
+            var inscope fields <- [for (f in split(slice(line, length("Max address space")), " ")); f; where !empty(f)]
+            return empty(fields) ? "" : fields[0]
+        }
+    }
+    return ""
 }
 
 //! The capture at `path` with its `projects` section's entry `name` set to `entry`, every other

@@ -65,7 +65,7 @@ def test_commands(t : T?) {
         var error : string
         t |> equal(build_aot("m.das", "perf/work/lanes_aot_args", ["-e", "x"], error), "")
         t |> success(error |> starts_with("the build exited "), error)
-        t |> success(error |> contains("Failed to compile `m.das`"), error)
+        t |> success(error |> contains("error[20605]: missing prerequisite 'm.das'"), error)
         rmdir_rec("perf/work/lanes_aot_args")
     }
     t |> run("the AOT lane removes an earlier binary by the tier's name for it, the stem spelled as a C++ identifier") @(t : T?) {
@@ -87,6 +87,17 @@ def test_exe_build_line(t : T?) {
         t |> equal(exe_build_line("[I] LLVM EXE: x\nFailed to link Library a.exe, command 'c++ ...'\nOutput:\n\nld: cannot find -lfoo\nwrite_artifact: link failed\n"), "ld: cannot find -lfoo")
         t |> equal(exe_build_line("[I] LLVM EXE: x\nerror[30304]: no such function\n"), "error[30304]: no such function")
         t |> equal(exe_build_line("Failed to link Library a.exe\nOutput:\n"), "Failed to link Library a.exe")
+    }
+}
+
+[test]
+def test_aot_build_line(t : T?) {
+    t |> run("an aot build's reason: the heap line, else the first error line, else the last reported line") @(t : T?) {
+        t |> equal(aot_build_line("failed to simulate m.das\nerror[50500]: exception during init script\n at aot_cpp.das:1:2\nout of heap memory, requested 8 bytes\ntotal 3 tracked pointers\n"), "out of heap memory, requested 8 bytes")
+        t |> equal(aot_build_line("[I] error in info\nx.cpp:1:2: warning: -Werror=a\nx.cpp:3:4: error: cannot jump\n3 errors generated.\n"), "x.cpp:3:4: error: cannot jump")
+        t |> equal(aot_build_line("compile m.das\nerror[30304]: no such function\ntotal 3 tracked pointers\n"), "error[30304]: no such function")
+        t |> equal(aot_build_line("/usr/lib/strerror.o\nfake link failure\n[I] done\n"), "fake link failure")
+        t |> equal(aot_build_line(""), "")
     }
 }
 

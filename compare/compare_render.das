@@ -499,7 +499,7 @@ def project_speed_table(results : JsonValue const?) : string {
         let native = speed?["native"]
         let native_time = native?["decode"]?["time"] ?? 0.0lf
         for (side in ["ours", "rust"]) {
-            var inscope row <- [name, side_title(side), compiler_name(results?["projects"]?[name]?["native_compiler"] ?? ""), native_time > 0.0lf ? "{native_time:.6f}" : "n/a"]
+            var inscope row <- [name, side_title(side), compiler_name(results?["projects"]?[name]?["native_compiler"] ?? ""), native_time > 0.0lf ? "{native_time:.6f}" : bench_text_of(native, null)]
             row |> push_from([for (lane in lanes); bench_text_of(speed?[side]?[lane], native)])
             rows |> emplace(row)
         }
@@ -547,17 +547,19 @@ def projects_text(results : JsonValue const?) : string {
     return build_string() $(var w) {
         if (!empty(names)) {
             w |> write("Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. ")
-            w |> write("Captured: " + join([for (n in names); "{n} ({stamp_of(results?["projects"]?[n], "date")})"], "; ") + ".\n\n")
+            w |> write("Captured: " + join([for (n in names); "{n} ({project_stamp(results?["projects"]?[n])})"], "; ") + ".\n\n")
         }
         w |> write(projects_table(results))
+        let defines <- ours_define_lines(results)
+        if (!empty(defines)) {
+            w |> write("\nDefines of our side's sidecar alone (the Rust side and the native build do not get them):\n\n" + join(defines, "\n") + "\n")
+        }
         let reasons <- project_reasons(results)
         if (!empty(reasons)) {
             w |> write("\nWhy a lane does not pass:\n\n" + join(reasons, "\n") + "\n")
         }
         if (!empty(names)) {
-            let samples = results?["projects"]?[names[0]]?["samples"] ?? 0
-            let timing = samples > 0 ? "{samples} samples a cell" : "not measured in this capture (`--samples 0`)"
-            w |> write("\nThe bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), {timing}:\n\n")
+            w |> write("\nThe bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), {samples_text(results)}:\n\n")
             w |> write(project_speed_table(results))
             w |> write("\nThe code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):\n\n{project_code_table(results)}")
             for (n in names) {
@@ -565,6 +567,57 @@ def projects_text(results : JsonValue const?) : string {
             }
         }
     }
+}
+
+//! A project's stamp: its Rust commit, its date and the address-space cap its lanes ran under.
+[arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
+def project_stamp(entry : JsonValue const?) : string {
+    let cap = cap_text(entry?["address_cap"] ?? "")
+    return empty(cap) ? stamp_of(entry, "date") : "{stamp_of(entry, "date")}, {cap}"
+}
+
+//! An address-space cap as the capture holds it (`address_cap_of`) in words: "" when not
+//! recorded, `no address-space cap` for `unlimited`, else its size in GiB or MiB.
+def cap_text(cap : string) : string {
+    if (cap == "unlimited") {
+        return "no address-space cap"
+    }
+    var digits = !empty(cap)
+    for (c in cap) {
+        digits = digits && is_number(c)
+    }
+    if (!digits) {
+        return empty(cap) ? "" : "address-space cap {cap}"
+    }
+    let bytes = to_int64(cap)
+    let gib = 1073741824l
+    return bytes % gib == 0l ? "{bytes / gib} GiB address-space cap" : "{bytes / 1048576l} MiB address-space cap"
+}
+
+//! One line per project whose sidecar on our side carries defines of its own.
+[arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
+def ours_define_lines(results : JsonValue const?) : array<string> {
+    var lines : array<string>
+    for (name in keys_of(results?["projects"])) {
+        var inscope list <- [for (d in strings_of(results?["projects"]?[name]?["ours"]?["defines"])); "`-D{d}`"]
+        if (!empty(list)) {
+            lines |> push("- {name}, Ours: {join(list, " ")}")
+        }
+    }
+    return <- lines
+}
+
+//! The sample count of the projects' bench cells: one count for every project, `not measured`
+//! when it is 0, else each project's own.
+[arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
+def samples_text(results : JsonValue const?) : string {
+    let names <- keys_of(results?["projects"])
+    let counts <- [for (n in names); results?["projects"]?[n]?["samples"] ?? 0]
+    let one = empty([for (c in counts); c; where c != counts[0]])
+    if (one) {
+        return counts[0] > 0 ? "{counts[0]} samples a cell" : "not measured in this capture (`--samples 0`)"
+    }
+    return "samples a cell per project: " + join([for (n, c in names, counts); c > 0 ? "{n} {c}" : "{n} not measured"], ", ")
 }
 
 // the stamps of a section: its Rust commit and date

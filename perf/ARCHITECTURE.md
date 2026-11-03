@@ -68,9 +68,9 @@ times them under every lane, and the stored results; the interpreter audit on Lu
   times itself; each das lane logs its argv at `info`. The `exe` and `aot` lanes each stand
   only on the binary their build leaves (an earlier run's removed first), since the tier
   returns the build's exit code when the build fails: a failed build is the lane's error,
-  carrying the exe build's linker message (the first line after daslang's `Output:` line,
-  else its first line past the `info` lines) or the AOT host build's last line; a tier that
-  refuses before any build (the AOT host takes no program arguments) gives its own text alone.
+  carrying the exe build's linker message (daslang's first line after `Output:`, else its first
+  line past the `info` lines) or `aot_build_line` (the AOT generator's `out of heap memory` line,
+  else the first `error[` or `: error:` line, else the last reported line).
   The run writes `results_linux.json` (`results_method_linux.json` under `--method dasprofile`), or
   the `--out <file>` it is given (which `--table` then reads; the delta's default baseline stays
   the method's committed file at HEAD), and prints the results table,
@@ -294,7 +294,7 @@ A capture's cells change with: a file under `kernels/`; the prologue and epilogu
 `perf_compose.das` puts around a kernel; the argv of a timed lane - the native `clang` command
 (`native_build_command` and `NATIVE_FLAGS` in `perf_lanes.das`), `run.das`'s `convert` calls, the
 `interp` and `jit` lanes' `daslang` argv (`das_lane_command`) and the exe and AOT builds'
-`run_tier` call (`built_binary` in `perf_lanes.das`); the sample count (the `samples` default of
+`run_tier` call (`lane_binary` in `perf_lanes.das`); the sample count (the `samples` default of
 `run.das`'s `Args`); the lane list (`LANES` in `perf_tables.das`); and the sample arithmetic -
 `measure`, `cell_of` and `accept_lane` in `perf_measure.das`, `median_of` and `last_line` in
 `perf_lanes.das`.

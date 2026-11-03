@@ -40,16 +40,18 @@ def das_lane_command(das_path, flag : string; module_dirs : array<string>) : arr
     return <- argv
 }
 
-// the `exe` and `aot` tiers return the build's exit code when the build fails, which passes for a
-// run's, so a lane stands only on the binary its build left; an earlier run's goes first. The
-// build and the run it ends with each get `timeout` seconds; a timed-out run leaves a binary but
-// no lane
-def private built_binary(das_path, tier, work, bin : string; program_args : array<string>; var error : string&; timeout : float) : string {
+//! The `exe` or `aot` binary of `das_path` built in `work` with `module_dirs` loaded and run once
+//! with `program_args`; "" with `error` set when the build leaves none. The tiers return the
+//! build's exit code when the build fails, which passes for a run's, so a lane stands only on the
+//! binary its build left; an earlier run's goes first. The build and the run it ends with each get
+//! `timeout` seconds; a timed-out run leaves a binary but no lane.
+def lane_binary(das_path, tier, work : string; module_dirs, program_args : array<string>; var error : string&; timeout : float) : string {
+    let bin = tier == "aot" ? aot_binary(das_path, work) : path_join(work, "{file_stem(das_path)}_exe")
     remove(bin)
     remove(bin + ".exe")
     var out : string
     let no_flags : array<string>
-    let rc = run_tier(das_path, tier, work, out, CONVERTED_MODULES, timeout, no_flags, program_args)
+    let rc = run_tier(das_path, tier, work, out, module_dirs, timeout, no_flags, program_args)
     if (rc == popen_timed_out) {
         error = "the build or its run took longer than {int(timeout)} s"
         return ""
@@ -63,11 +65,27 @@ def private built_binary(das_path, tier, work, bin : string; program_args : arra
         error = first_reported_line(out)
         return ""
     }
-    // the exe build's linker message follows daslang's `Output:` line; the AOT host build's ends
-    // the output
-    let line = tier == "exe" ? exe_build_line(out) : last_line(out)
+    let line = tier == "exe" ? exe_build_line(out) : aot_build_line(out)
     error = "the build exited {rc} and left no binary: {line}"
     return ""
+}
+
+//! The line that says why the `aot` build failed: the context generation's `out of heap memory`
+//! line (its `error[...]` line only names the exception), else the first `error[` line of the
+//! context generation or `: error:` line of the host compiler, else the last reported line.
+def aot_build_line(text : string) : string {
+    let lines <- [for (l in split(text, "\n")); strip(l); where !empty(strip(l)) && !(strip(l) |> starts_with("[I] "))]
+    for (line in lines) {
+        if (line |> starts_with("out of heap memory")) {
+            return line
+        }
+    }
+    for (line in lines) {
+        if (line |> starts_with("error[") || find(line, ": error: ") >= 0) {
+            return line
+        }
+    }
+    return empty(lines) ? "" : lines[length(lines) - 1]
 }
 
 //! The line that says why daslang's `-exe` build failed: the first reported line after its
@@ -83,7 +101,7 @@ def exe_build_line(text : string) : string {
 def build_exe(das_path, work : string; program_args : array<string>; var error : string&) : string => build_exe(das_path, work, program_args, error, BUILD_TIMEOUT)
 
 //! `build_exe` with `timeout` seconds for the build and for the run it ends with.
-def build_exe(das_path, work : string; program_args : array<string>; var error : string&; timeout : float) : string => built_binary(das_path, "exe", work, path_join(work, "{file_stem(das_path)}_exe"), program_args, error, timeout)
+def build_exe(das_path, work : string; program_args : array<string>; var error : string&; timeout : float) : string => lane_binary(das_path, "exe", work, CONVERTED_MODULES, program_args, error, timeout)
 
 //! The `aot` lane's binary of `das_path`: the `-ctx` context and the host `converter/tiers.das`
 //! writes, compiled by the pinned clang++ at `-O3` in `work/ctx`, and run once with
@@ -91,7 +109,7 @@ def build_exe(das_path, work : string; program_args : array<string>; var error :
 def build_aot(das_path, work : string; program_args : array<string>; var error : string&) : string => build_aot(das_path, work, program_args, error, BUILD_TIMEOUT)
 
 //! `build_aot` with `timeout` seconds for each build step and for the run it ends with.
-def build_aot(das_path, work : string; program_args : array<string>; var error : string&; timeout : float) : string => built_binary(das_path, "aot", work, aot_binary(das_path, work), program_args, error, timeout)
+def build_aot(das_path, work : string; program_args : array<string>; var error : string&; timeout : float) : string => lane_binary(das_path, "aot", work, CONVERTED_MODULES, program_args, error, timeout)
 
 //! The merged stdout and stderr of `args`, whatever its exit code.
 def captured(args : array<string>) : string {
