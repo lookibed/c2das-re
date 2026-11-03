@@ -1014,6 +1014,8 @@ def p4_csmith_more_fixtures(t : T?) {
         has_text(t, text, "    return addr(_c_table[0]) + end_index(k, 4)\n")
         has_text(t, text, "var private p6_extern_array__third : int? = unsafe(addr(_c_table[2]))\n")
         has_text(t, text, "    return grid[1][1] + grid[0][1]\n")
+        // the address of the whole array converts to the definition's row pointer
+        has_text(t, text, "    var w : int[4]? = reinterpret<int[4]?>(addr(_c_table))\n")
     }
     t |> run("a file-scope empty declaration, `;;` or the `;` after a function's `}`, declares nothing") @(t : T?) {
         var text : string
@@ -1038,6 +1040,8 @@ def p4_csmith_more_fixtures(t : T?) {
     t |> run("csmith shapes: what the lowering refuses, and the addresses it keeps checked") @(t : T?) {
         rejects(t, "extern_never_defined", "extern int arr[];\nint main(void) \{ return arr[0]; \}\n", "`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines")
         rejects(t, "extern_never_defined_init", "extern int arr[];\nint *p = arr;\nint main(void) \{ return 0; \}\n", "`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines")
+        rejects(t, "extern_never_defined_addr", "extern int arr[];\nint main(void) \{ int (*p)[4] = &arr; return (*p)[0]; \}\n", "`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines")
+        rejects(t, "pointer_to_unknown_length", "int arr[2];\nint main(void) \{ int (*p)[] = &arr; return (*p)[0]; \}\n", "an array of unknown length (`extern int a[];`) is not lowered yet")
         rejects(t, "block_extern_never_defined", "int main(void) \{ extern int arr[]; return arr[0]; \}\n", "`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines")
         // a literal past `int64` is no constant below the length: it takes the checked form
         let huge = converts(t, "past_int64_index", "static int a[3];\nstatic int *far(void) \{ return &a[18446744073709551615ULL]; \}\nint main(void) \{ return far() == 0; \}\n")

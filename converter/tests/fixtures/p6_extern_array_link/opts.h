@@ -10,3 +10,4 @@ extern int grid[][3];
 
 int total(int n);
 int *slot(int k);
+int whole(void);
