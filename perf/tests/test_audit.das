@@ -152,6 +152,11 @@ def test_tables(t : T?) {
     t |> run("a construct whose kernel the capture lacks is n/a throughout") @(t : T?) {
         t |> equal(row_of(rows, "`typeinfo sizeof` in a hot loop")[3], "n/a")
     }
+    t |> run("the machine line labels the capture with its cpu's box, the cpu alone without one") @(t : T?) {
+        t |> success(audit_text(js) |> starts_with("C, 5 samples per kernel lane, Rust R\n"), audit_text(js))
+        let boxed = capture_of(t, "\{'cpu': 'AMD Ryzen 7 7435HS', 'samples': 1\}")
+        t |> success(audit_text(boxed) |> starts_with("PC (AMD Ryzen 7 7435HS), 1 samples per kernel lane"), audit_text(boxed))
+    }
     t |> run("no benches key, no bench table; with it, one row per bench measured") @(t : T?) {
         t |> success(!(audit_text(js) |> contains("| bench")), audit_text(js))
         let with_benches = capture_of(t, "\{'benches': \{'startup': \{'arg': '-e print(1)', 'native': 0.01, 'interp-scc': 5.0, 'interp-source': 1.0\}, 'fib': \{'arg': '27', 'native': 1.01, 'interp-scc': 45.0, 'interp-source': \{'error': 'exited 1: x'\}\}, 'nbody': \{'arg': '9', 'native': 0.11, 'interp-scc': 15.0, 'interp-source': 2.0\}\}\}")

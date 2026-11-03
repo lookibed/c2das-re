@@ -25,3 +25,10 @@ with no `--filter` and no `--samples` in the same change.** `ARCHITECTURE.md` se
 **A diff after which the text between the perf-table markers of `README.md` (repo root) differs
 from the results table `scripts/run_perf.sh --table` prints refreshes it with
 `scripts/run_perf.sh --table --readme` in the same change.**
+
+**A table, report or PR body a diff adds never sets the numbers of two boxes side by side as a
+ratio or a speedup; a speedup it claims is the branch against main before it, measured on one box
+in one run.** `ARCHITECTURE.md` section 5 states the box a capture records.
+
+**A diff that adds a table rendered from a capture labels its provenance line with
+`boxes.das`'s `capture_label`.**

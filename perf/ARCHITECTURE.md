@@ -109,20 +109,21 @@ times them under every lane, and the stored results; the interpreter audit on Lu
   `composed_method_source` is dasProfile's `profile.h` around a method kernel (section 6),
   `write_method_composed` writes it into `work/<kernel>/method/`; its native build takes
   `METHOD_NATIVE_DEFINE`, which compiles the clock's C body.
-- `perf_tables.das` - the lanes and the tables over a capture read as JSON, in the lanes the
-  capture lists (`lanes_of`, every lane for one that lists none): the results
-  table (the fastest lane of a row bold), the ratio table (each lane's median over native's,
-  two decimals, native 1.00) with its `SUSPECT` lines, the delta table against a baseline
-  capture with its `FLAG` lines, the report holding the three, the cells `--check` finds
-  drifted (`drifted_cells`), and the comparison of the dasProfile-method capture with
-  dasProfile's own (`render_method_comparison`, `SHARED_KERNELS`, `DIFFERENT_PROGRAMS`). A missing cell is `n/a`
-  in every table. All of them render through daslib's `md_boost` `render_md_table`. It
-  measures nothing and reads no file.
+- `perf_tables.das` - the lanes and the tables over a capture read as JSON, in the lanes the capture
+  lists (`lanes_of`, every lane for one that lists none): the results table (the fastest lane of a
+  row bold), the ratio table (each lane's median over native's, two decimals, native 1.00) with its
+  `SUSPECT` lines, the delta table against a baseline capture with its `FLAG` lines, the report
+  holding the three, the cells `--check` finds drifted (`drifted_cells`), and the comparison of the
+  dasProfile-method capture with dasProfile's own (`render_method_comparison`, `SHARED_KERNELS`,
+  `DIFFERENT_PROGRAMS`). A missing cell is `n/a` in every table. All of them render through daslib's
+  `md_boost` `render_md_table`. It measures nothing and reads no file.
 - `perf_cli.das` - the file side of the harness: the baseline capture (section 5), the text a
   run prints and writes as its report, the `--check` verdict (`check_drift`), and the README
   section of either method between its markers (`write_readme`); whole files are read and written through daslib
   `fio`'s `fread(path)` and `fwrite(path, text)`.
-- `tests/` - the dastest suite over `perf_tables.das`, `perf_cli.das` and the method kernels'
+- `boxes.das` - the box names, kept here alone: `BOXES` (a CPU-model substring to `bench`, `PC`,
+  `fx`), `box_of`, `capture_box` and `capture_label`, a provenance line's `<box> (<cpu>)` (section 5).
+- `tests/` - the dastest suite over `perf_tables.das`, `perf_cli.das`, `boxes.das` and the method kernels'
   selection, driven by JSON fixtures and a scratch README, over `perf_lanes.das`'s arithmetic, commands and the AOT tier's refusal of program
   arguments, and `run.das` itself as a child process: `-?`, one sample of `blit` into an
   `--out` file, whose `interp-copy`, `interp-while` and `interp-reinterpret` cells must time their conversions and match
@@ -134,7 +135,7 @@ times them under every lane, and the stored results; the interpreter audit on Lu
   whose `aot` error must carry that compiler's output, and one under a `PATH` whose `c++` (the
   linker daslang's `-exe` build calls) fails, whose `exe` error must carry the failed link; the
   preflight tests lane runs it.
-- `results_linux.json` - the committed capture: CPU, platform, timestamp, the method, the clang
+- `results_linux.json` - the committed capture: CPU, box, platform, timestamp, the method, the clang
   and daslang versions, the sample count, the lanes, and per kernel and lane the median, spread,
   rep count, the result and raw samples. `results_method_linux.json` - the same of the
   dasProfile method.
@@ -217,16 +218,15 @@ two cells apart by the samples' spread alone.
 
 ## 4. Exception ledger
 
-- `sieve` and `matmul` / `aot`: 5.4 and 1.4 times native. The generated C++ finds a module
-  global through the context's mangled-name lookup at every access (`das_global<T, mnh>`),
-  and a C file-scope array is a module global. In `sieve` every iteration stores into the
-  array, and the host compiles with `-fno-strict-aliasing`, so any store may alias the
-  lookup table and clang keeps the probe inside the loop. `matmul`'s inner loop stores
-  nothing, yet the probes stay in it too: hoisting the three lookups by hand in the generated
-  C++ with the bounds checks kept takes the cell from 0.864 to 0.599 ms (native 0.600), while
-  keeping the lookups and indexing raw without the bounds check leaves it at 0.84 ms; the
-  lookup is the cost, the bounds check is not (`docs/probe-findings.md` F49,
-  lookibed/daScript#5).
+- `sieve` and `matmul` / `aot`: 5.4 and 1.4 times native. The generated C++ finds a module global
+  through the context's mangled-name lookup at every access (`das_global<T, mnh>`), and a C
+  file-scope array is a module global. In `sieve` every iteration stores into the array, and the
+  host compiles with `-fno-strict-aliasing`, so any store may alias the lookup table and clang keeps
+  the probe inside the loop. `matmul`'s inner loop stores nothing, yet the probes stay in it too:
+  hoisting the three lookups by hand in the generated C++ with the bounds checks kept takes the cell
+  from 0.864 to 0.599 ms (native 0.600), while keeping the lookups and indexing raw without the
+  bounds check leaves it at 0.84 ms; the lookup is the cost, the bounds check is not
+  (`docs/probe-findings.md` F49, lookibed/daScript#5).
 - `switch_local` / `aot`: no cell. daslang's AOT writes the flattened block's `var g1 : int =
   k * 2` as an initialized C++ local after the `goto` that jumps past it, and clang++ refuses
   the jump ("jump bypasses variable initialization"); the interpreter, the JIT and the exe
@@ -235,48 +235,49 @@ two cells apart by the samples' spread alone.
 
 ## 5. Tracking
 
-A capture is compared with the one before it. The baseline is the `--baseline <json>` file
-when given, else `results_linux.json` as committed at `HEAD`, read through `git show` before
-the run overwrites the file; when `HEAD` has no such file there is no delta, and a file that
-is not JSON is an error. A delta cell is `(new - old) / old` as a signed percent, kept in
-hundredths of a percent so the comparison with the bar is exact. When both captures name the
-same CPU, old and new are the two medians. When they name different CPUs, they are the two
-lane/native ratios, the native column is `n/a`, and the delta heading names both CPUs: a
-time measured on one machine says nothing about the tree against a time from another, while
-a ratio carries across. A kernel or lane missing from either capture is `n/a`. A cell more
-than 10 percent slower adds one `- FLAG <kernel>/<lane> +N.NN%` list item under the table,
-else the line `no lane slower than 10%` follows it; a flag leaves the exit code alone,
-because it is a review duty, not a gate. A lane under a tenth of native in the ratio table
-adds one `- SUSPECT` list item: a lane that far ahead of clang measures a different program
-than the kernel. The `--report` file holds the three tables and those list items as one
-markdown block. `--check` holds a cell to `--tolerance` or to twice the baseline cell's own
-spread, whichever is wider: a cell whose samples spread that far in the committed capture (the
-interpreter's `fib_loop` under `--loops while` at 29 percent, its bimodal `x = x + y` loop)
-reproduces anywhere inside the bar.
+A capture records `cpu`, the CPU model of `/proc/cpuinfo`, and `box`, the `--box` name else `box_of`
+the CPU; a provenance line renders `capture_label` (a capture without `box` shows its CPU's). A
+number carries its box; the numbers of two boxes are not compared as a speedup, which is the branch
+against main before it, on one box in one run. A capture is compared with the one before it. The
+baseline is the `--baseline <json>` file when given, else `results_linux.json` as committed at
+`HEAD`, read through `git show` before the run overwrites the file; when `HEAD` has no such file
+there is no delta, and a file that is not JSON is an error. A delta cell is `(new - old) / old` as a
+signed percent, kept in hundredths of a percent so the comparison with the bar is exact. When both
+captures name the same CPU, old and new are the two medians. When they name different CPUs, they are
+the two lane/native ratios, the native column is `n/a`, and the delta heading names both CPUs: a
+time measured on one machine says nothing about the tree against a time from another, while a ratio
+carries across. A kernel or lane missing from either capture is `n/a`. A cell more than 10 percent
+slower adds one `- FLAG <kernel>/<lane> +N.NN%` list item under the table, else the line `no lane
+slower than 10%` follows it; a flag leaves the exit code alone, because it is a review duty, not a
+gate. A lane under a tenth of native in the ratio table adds one `- SUSPECT` list item: a lane that
+far ahead of clang measures a different program than the kernel. The `--report` file holds the three
+tables and those list items as one markdown block. `--check` holds a cell to `--tolerance` or to
+twice the baseline cell's own spread, whichever is wider: a cell whose samples spread that far in
+the committed capture (the interpreter's `fib_loop` under `--loops while` at 29 percent, its bimodal
+`x = x + y` loop) reproduces anywhere inside the bar.
 
 ## 6. Methods and reproduction
 
-The default method is this tree's: the program times the kernel's calls with the CRT clock and
-keeps the result in the kernel's global. The dasProfile method (`--method dasprofile`) follows
+The default method is this tree's: the program times the kernel's calls with the CRT clock and keeps
+the result in the kernel's global. The dasProfile method (`--method dasprofile`) follows
 borisbat/dasProfile's `tests/cpp/profile.h` step for step over dasProfile's own kernels in C
-(`kernels/dasprofile/`), so the two repositories' tables compare one program by one harness:
-the kernel functions carry their `noinline` (dasProfile's `PROFILE_NOINLINE`) and `kernel_run`,
-the body of dasProfile's timed lambda, none, every run stores the kernel's result
-into a `volatile` sink (its `profile::keep`), the budget is 0.5 s of steady-clock time with
-the count regrown as `budget / per-run * 1.2` (at most a hundredfold, at least one more,
-capped at 1e9), and the line printed is the default method's. The das side keeps the sink's
-store and the kernel's `volatile` parameter read through `c_volatile_store` and
-`c_volatile_load`, so it runs with the unknown trip count dasProfile's C++ has; dasProfile's own
-das kernels pass a literal count, which the JIT unrolls where it does not unroll the unknown one
-(`docs/implementation_order.md` P7.0). The das side carries no `noinline`, since the converter
-emits no inline control: the volatile accesses keep each run's work whether the JIT inlines a
-kernel function or not, as dasProfile's own das kernels, which carry `[sideeffects]` instead,
-keep theirs. The method runs the kernels of `kernels/dasprofile/`, which `SHARED_KERNELS` of
-`perf_tables.das` maps to dasProfile's test names; `DIFFERENT_PROGRAMS` names the rest, the
-first table's versions of the three among them, never compared (`fixed_mandel` is not
-dasProfile's `mandelbrot`). `README.md` sets the method's capture beside dasProfile's own from
-the same machine, `dasprofile_linux.json`, one generated table: each hand-written cell over
-dasProfile's C++, each converted one over the composed C program.
+(`kernels/dasprofile/`), so the two repositories' tables compare one program by one harness: the
+kernel functions carry their `noinline` (dasProfile's `PROFILE_NOINLINE`) and `kernel_run`, the body
+of dasProfile's timed lambda, none, every run stores the kernel's result into a `volatile` sink (its
+`profile::keep`), the budget is 0.5 s of steady-clock time with the count regrown as `budget /
+per-run * 1.2` (at most a hundredfold, at least one more, capped at 1e9), and the line printed is
+the default method's. The das side keeps the sink's store and the kernel's `volatile` parameter read
+through `c_volatile_store` and `c_volatile_load`, so it runs with the unknown trip count
+dasProfile's C++ has; dasProfile's own das kernels pass a literal count, which the JIT unrolls where
+it does not unroll the unknown one (`docs/implementation_order.md` P7.0). The das side carries no
+`noinline`, since the converter emits no inline control: the volatile accesses keep each run's work
+whether the JIT inlines a kernel function or not, as dasProfile's own das kernels, which carry
+`[sideeffects]` instead, keep theirs. The method runs the kernels of `kernels/dasprofile/`, which
+`SHARED_KERNELS` of `perf_tables.das` maps to dasProfile's test names; `DIFFERENT_PROGRAMS` names
+the rest, the first table's versions of the three among them, never compared (`fixed_mandel` is not
+dasProfile's `mandelbrot`). `README.md` sets the method's capture beside dasProfile's own from the
+same machine, `dasprofile_linux.json`, one generated table: each hand-written cell over dasProfile's
+C++, each converted one over the composed C program.
 
 `scripts/run_perf.sh --from-scratch` rebuilds the crt, removes `work/`, reruns dasProfile
 (`dasprofile.sh`), and records both captures and both `README.md` sections.
@@ -290,11 +291,10 @@ capture machine's own runner (label `c2das-fx`) for every release tag and on req
 
 ## 7. What a capture depends on
 
-A capture's cells change with: a file under `kernels/`; the prologue and epilogue
-`perf_compose.das` puts around a kernel; the argv of a timed lane - the native `clang` command
-(`native_build_command` and `NATIVE_FLAGS` in `perf_lanes.das`), `run.das`'s `convert` calls, the
-`interp` and `jit` lanes' `daslang` argv (`das_lane_command`) and the exe and AOT builds'
-`run_tier` call (`lane_binary` in `perf_lanes.das`); the sample count (the `samples` default of
-`run.das`'s `Args`); the lane list (`LANES` in `perf_tables.das`); and the sample arithmetic -
-`measure`, `cell_of` and `accept_lane` in `perf_measure.das`, `median_of` and `last_line` in
-`perf_lanes.das`.
+A capture's cells change with: a file under `kernels/`; the prologue and epilogue `perf_compose.das`
+puts around a kernel; the argv of a timed lane - the native `clang` command (`native_build_command`
+and `NATIVE_FLAGS` in `perf_lanes.das`), `run.das`'s `convert` calls, the `interp` and `jit` lanes'
+`daslang` argv (`das_lane_command`) and the exe and AOT builds' `run_tier` call (`lane_binary` in
+`perf_lanes.das`); the sample count (the `samples` default of `run.das`'s `Args`); the lane list
+(`LANES` in `perf_tables.das`); and the sample arithmetic - `measure`, `cell_of` and `accept_lane`
+in `perf_measure.das`, `median_of` and `last_line` in `perf_lanes.das`.
