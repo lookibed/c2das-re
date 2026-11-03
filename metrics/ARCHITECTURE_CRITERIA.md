@@ -23,7 +23,8 @@ needs no compile beyond the conversion's own.
   the lines it keeps; the program's numeric-constant macros (section 3).
 - `criteria_count.das` - the raw counts of one input from its sources and modules (section 4).
 - `criteria_file.das` - the criteria, their formulas, the capture's text, reader and shape check,
-  the tables, the worker file and the sample check. It requires nothing beyond daslib.
+  the capture read from its file, the tables, the worker file and the sample check. It requires
+  nothing beyond daslib, so `ports/publish.das` renders the criteria table with it.
 - `criteria_linux.json` - the committed capture: `compliance` (per column, each criterion's
   percentage, `null` where it does not apply), `raw` (per row, the raw counts), `sample` (the raw
   counts of the four c-testsuite inputs the gate re-measures) and `totals` (per column).

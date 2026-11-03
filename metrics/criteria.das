@@ -125,24 +125,6 @@ def private capture_of(var m : Measured) : CriteriaCapture {
     return <- cap
 }
 
-// the capture in the file at `path`, empty with `error` when it is missing, not JSON or misshapen
-def private capture_at(path : string; var error : string&) : CriteriaCapture {
-    if (!fexist(path)) {
-        error = "{path} is missing"
-        return <- CriteriaCapture()
-    }
-    return <- capture_of_text(fread(path), path, error)
-}
-
-def private capture_of_text(text, path : string; var error : string&) : CriteriaCapture {
-    let findings <- check_criteria(text)
-    if (!empty(findings)) {
-        error = "{path}: {join(findings, "; ")}"
-        return <- CriteriaCapture()
-    }
-    return <- read_criteria(text, error)
-}
-
 // the gate: the committed capture's table, its delta against `ref`'s, the sample re-measured
 def private report(delta_ref : string) : int {
     var error : string
