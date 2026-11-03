@@ -161,7 +161,25 @@ At the pin, 11 of the 63 units pass alone; 51 stop at a function or an array ano
 defines, which the link binds; 1 at finding 2 (`r_data`, `maptexture_t.patches`). The whole
 program passes the dumper and the layout and stops in the emitter at `f_finale.c:408`, a `goto`
 into a loop body (`docs/implementation_order.md` P7.7: `F_CastTicker`, `P_SlideMove`), so no
-module is emitted and `--compile-check` has none to compile. Its partition: the `source` layout
-holds 51 units in one cluster (39 modules), `source-cut` 36 (56 modules). The whole-program
+module is emitted and `--compile-check` has none to compile (`source-cut` stops at `p_map.c:708`,
+`P_SlideMove`, the same construct). The whole-program
 conversion needs more than 3 GiB of address space: under `prlimit --as=3G` daslang dies with
 SIGSEGV on an allocation failure, so the harness runs uncapped in a `heavy` scope of its own.
+
+The partition (`converter/ARCHITECTURE_LAYOUT.md`, the cut and the edge census): the `source` layout
+holds 51 of the 63 units in one cluster and 3 headers (`d_player_h`, `p_mobj_h`, `r_defs_h`) in
+another, 39 modules. The 51-unit cluster has 438 edges: 326 carry calls (698 symbols), 218 objects
+(600), 14 function addresses (93), none a type; 209 carry calls alone. `source-cut` cuts 72 of them
+(132 symbols over 65 functions, 297 call sites; 38 symbol edges into `i_system`, `I_Error` most, 33
+into `z_zone`, 25 into `p_spec`) and leaves 36 units in one cluster, 55 modules with the link
+module. The 36 are the census's cluster with every function forward-declared: objects (`players`,
+`consoleplayer`, `sectors`, `DOOM.c`'s `doom_print` and `error_buf`) tie 29 of them, and function
+addresses tie in 7: `info.c`'s `states` take the `A_*` actions' of `p_enemy` and `p_pspr`,
+`p_saveg.c` the `T_*` thinkers' of `p_doors`, `p_floor`, `p_lights` and `p_plats`, and `info` is
+reached by objects (`states`, `mobjinfo`); with objects forward-declared too no unit cycle is left.
+Every render and sound unit and the play simulation's per-tic core (`p_map`, `p_maputl`, `p_mobj`,
+`p_sight`, `p_enemy`, `p_tick`) are inside the 36, so no call among them is late-bound; the heaviest
+cut edge is `r_data -> z_zone` (21 call sites). The sidecar sets no `layout` object: no profile
+exists until the converted build runs a demo (`docs/implementation_order.md` P6.4), and a
+`layout.threshold` only keeps cut edges, which joins their units to the cluster (a threshold of 10
+leaves 41 units); the defaults give the smallest cluster the cut can reach.
