@@ -682,8 +682,7 @@ def private publish_top_readme(repo : string) : bool {
             captures |> emplace(latest)
         }
     }
-    var head_to_head : string
-    var criteria : string
+    var head_to_head, criteria : string
     if (!compare_section(head_to_head) || !criteria_section(criteria)) {
         return false
     }
