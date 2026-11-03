@@ -87,7 +87,7 @@ let LAYOUT_LANES <- ["interp-source-cut", "jit-source-cut", "interp-single", "ji
 let LAYOUT_PAIRS <- [("interp-source-cut", "interp"), ("jit-source-cut", "jit"), ("interp-single", "interp"), ("jit-single", "jit")]
 //! the line above which the top-level README is the charter's; the publisher owns the rest
 let README_MARKER = "<!-- generated below: c2das-re's scripts/publish_ports.sh renders everything under this line from each program's latest capture -->"
-//! the perf section and the projects table of a publish that measures nothing
+//! the perf section of a program without a capture, and the projects table when no program has one
 let PERF_NOT_YET = "not yet: the publisher measures only under `--perf`, off by default because a capture takes hours and runs only on an idle machine"
 let MISSING = "n/a"
 let NOT_YET = "not yet"
@@ -423,14 +423,14 @@ def render_projects(captures : array<Capture>) : string {
     return table_of(headers, rows, 3)
 }
 
-//! The top-level README: the charter above the marker kept, the projects table below it, or the
-//! `PERF_NOT_YET` line when the publish measures nothing (`perf` false).
-def render_top_readme(old_text : string; captures : array<Capture>; perf : bool) : string {
+//! The top-level README: the charter above the marker kept, the projects table of `captures`
+//! below it, or the `PERF_NOT_YET` line when no program has a capture.
+def render_top_readme(old_text : string; captures : array<Capture>) : string {
     let at = find(old_text, README_MARKER)
     let charter = strip_right(at < 0 ? old_text : slice(old_text, 0, at))
     return build_string() $(var w) {
         w |> write("{charter}\n\n{README_MARKER}\n\n## Programs\n\n")
-        if (!perf) {
+        if (empty(captures)) {
             w |> write("{PERF_NOT_YET}\n")
             return
         }
@@ -438,7 +438,7 @@ def render_top_readme(old_text : string; captures : array<Capture>; perf : bool)
         w |> write("work time over the native build's, a work time being the workload's median less the same lane's startup ")
         w |> write("median; a lane covering only some workloads names how many. A program's README holds its tables, ")
         w |> write("its startup times, its machine and its raw captures.\n\n")
-        w |> write(empty(captures) ? "No program has a capture yet.\n" : render_projects(captures))
+        w |> write(render_projects(captures))
     }
 }
 
