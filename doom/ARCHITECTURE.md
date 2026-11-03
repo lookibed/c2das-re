@@ -223,7 +223,7 @@ there. Held to the whole demo, a run is in sync only when it also ends, not time
 `timed N gametics` line with N the log's tics, the end `demo_log` requires of a native run; under
 `--tics` an exit after the compared tics passes, its exit code reported. The report names the first desynced tic (expected against got) or `N tics in sync`, a run
 short of the compared tics, the exit code or the timeout, the first error line of a run that did
-not end in the `timed N gametics` line (`first_error_line`, matching `error` in any case, since
-PureDOOM's `I_Error` text starts `Error: `), and the seconds per 35 tics over the whole process, start
+not end in the `timed N gametics` line (`first_error_line`, matching `error` or `exception` in any
+case, since PureDOOM's `I_Error` text starts `Error: ` and a daslang panic `EXCEPTION: `), and the seconds per 35 tics over the whole process, start
 included: a sanity number, not P6.7's measure. The host has no tic cap, so `--tics` bounds the
 comparison, not the run: the program plays the demo to its end or to `--timeout`.
