@@ -557,7 +557,9 @@ def private length_mismatch(tus : array<CirTu>; types : array<CirType>; name : s
     for (ref in refs) {
         let d = tus[ref.tu].decls[ref.at]
         if (types[d.t].k == "array" && types[d.t].count >= 0 && types[d.t].count != types[def_decl.t].count) {
-            return "`{name}` is declared an array of {types[d.t].count} at {loc_text(d.loc)} and defined an array of {types[def_decl.t].count} at {loc_text(def_decl.loc)}"
+            // `chosen` is a definition unless no unit defines the array, when it is the first declaration
+            let defined = def_decl.is_extern ? "declared an array of {types[def_decl.t].count} at {loc_text(def_decl.loc)}, and no unit defines it" : "defined an array of {types[def_decl.t].count} at {loc_text(def_decl.loc)}"
+            return "`{name}` is declared an array of {types[d.t].count} at {loc_text(d.loc)} and {defined}"
         }
     }
     return ""

@@ -143,14 +143,14 @@ files"), and the host in `host/` would hold PureDOOM's headers external; in one 
 header is the program's and the output folder is flat.
 
 Two stages report. Each unit alone: dumped under the sidecar's defines, then emitted under the
-sidecar with its `over_indexed` entries narrowed to the records the unit declares, since the
-emitter refuses an entry naming a record it does not see. A unit alone has no binding for a
-function another unit defines, nor a length for an array another unit defines (`extern T a[];`);
-an emitter error naming one is marked `link-bound:` and classed apart, and the emitter stops at its first error, so it hides what follows it in that unit. Then
-the program: `convert_program` in the layout, which stops at the first unit the dumper refuses,
-since the link needs every unit. `--compile-check` compiles each module of `work/<layout>/`'s
-module list alone, in a `daslang -compile-only` process with the converted program's module
-folders.
+sidecar with its `over_indexed` entries narrowed to the records the unit declares, since the emitter
+refuses an entry naming a record it does not see. A unit alone has no binding for a function another
+unit defines, nor a length for an array another unit defines (`extern T a[];`); an emitter error
+naming one is marked `link-bound:` and classed apart, and the emitter stops at its first error, so
+it hides what follows it in that unit. Then the program: `convert_program` in the layout, which
+stops at the first unit the dumper refuses, since the link needs every unit. `--compile-check`
+compiles each module of `work/<layout>/`'s module list alone, in a `daslang -compile-only` process
+with the converted program's module folders.
 
 `classify` names the construct of a first line by the `BLOCKERS` fragments, P6.1's numbered
 findings among them (finding 2: an array of records inside a marshal record; finding 3: an
