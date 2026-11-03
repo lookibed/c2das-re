@@ -639,54 +639,53 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-02 23:35 UTC); doomgeneric (Rust `b1d012eb5d26`, 2026-11-02 23:42 UTC); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-02 23:40 UTC); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-02 23:39 UTC); quakegeneric (Rust `b1d012eb5d26`, 2026-11-02 23:32 UTC); wasm3 (Rust `b1d012eb5d26`, 2026-11-02 23:37 UTC).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-03 00:18 UTC, 4 GiB address-space cap); doomgeneric (Rust `b1d012eb5d26`, 2026-11-03 00:41 UTC, 4 GiB address-space cap); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-03 00:23 UTC, 4 GiB address-space cap); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-03 00:22 UTC, 4 GiB address-space cap); quakegeneric (Rust `b1d012eb5d26`, 2026-11-03 00:33 UTC, 4 GiB address-space cap); wasm3 (Rust `b1d012eb5d26`, 2026-11-03 00:39 UTC, 4 GiB address-space cap).
 
 | Project       | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------------ | :--- | :----- | ----------: | ------: | ------: | ------: |
 | binjgb        | Ours | pass   |        pass |    pass |    pass | compile |
-| binjgb        | Rust | pass   |        pass |    pass |    pass | compile |
+| binjgb        | Rust | pass   |        pass |    pass |    pass |    pass |
 | doomgeneric   | Ours | pass   |     refused | refused | refused | refused |
-| doomgeneric   | Rust | pass   |        pass |    pass |    pass | compile |
+| doomgeneric   | Rust | pass   |        pass |    pass |    pass | timeout |
 | h264bsd-mp4   | Ours | pass   |     refused | refused | refused | refused |
-| h264bsd-mp4   | Rust | pass   |        pass |    pass |    pass | compile |
+| h264bsd-mp4   | Rust | pass   |        pass |    pass |    pass |    pass |
 | plmpeg-stream | Ours | pass   |        pass |    pass |    pass |    pass |
-| plmpeg-stream | Rust | pass   |        pass |    pass |    pass | compile |
+| plmpeg-stream | Rust | pass   |        pass |    pass |    pass |    pass |
 | quakegeneric  | Ours | pass   |     refused | refused | refused | refused |
-| quakegeneric  | Rust | pass   |        pass |  output |    pass | compile |
+| quakegeneric  | Rust | pass   |        pass |  output |    pass |    pass |
 | wasm3         | Ours | pass   |     refused | refused | refused | refused |
-| wasm3         | Rust | pass   |        pass |    pass |    pass | compile |
+| wasm3         | Rust | pass   |        pass |    pass |    pass |    pass |
+
+Defines of our side's sidecar alone (the Rust side and the native build do not get them):
+
+- plmpeg-stream, Ours: `-Dc2da_rt_reset(...)=`
 
 Why a lane does not pass:
 
 - binjgb, Ours, AOT: compile: aot build: the build exited 1 and left no binary: compare/work/projects/binjgb/ours_run/aot/ctx/binjgb_all.das.cpp:8637:9: error: cannot jump from t...
-- binjgb, Rust, AOT: compile: aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073744208 / limit 0
 - doomgeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` ...
-- doomgeneric, Rust, AOT: compile: aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073785824 / limit 0
+- doomgeneric, Rust, AOT: timeout: the build or its run took longer than 300 s
 - h264bsd-mp4, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definiti...
-- h264bsd-mp4, Rust, AOT: compile: aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073741952 / limit 0
-- plmpeg-stream, Rust, AOT: compile: aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073741952 / limit 0
 - quakegeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` wit...
 - quakegeneric, Rust, JIT: output: line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at compare/work/projects/quakegeneric/rust/host.das.inc:66...
-- quakegeneric, Rust, AOT: compile: aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073741824 / limit 0
 - wasm3, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`
-- wasm3, Rust, AOT: compile: aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073745648 / limit 0
 
 The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), not measured in this capture (`--samples 0`):
 
-| Project       | Side | Native compiler      | Native s |  interpreter |          JIT |          exe |          AOT |
-| :------------ | :--- | :------------------- | -------: | -----------: | -----------: | -----------: | -----------: |
-| binjgb        | Ours | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
-| binjgb        | Rust | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
-| doomgeneric   | Ours | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
-| doomgeneric   | Rust | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
-| h264bsd-mp4   | Ours | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
-| h264bsd-mp4   | Rust | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
-| plmpeg-stream | Ours | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
-| plmpeg-stream | Rust | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
-| quakegeneric  | Ours | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
-| quakegeneric  | Rust | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
-| wasm3         | Ours | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
-| wasm3         | Rust | clang version 22.1.8 |      n/a | not measured | not measured | not measured | not measured |
+| Project       | Side | Native compiler      |     Native s |  interpreter |          JIT |          exe |          AOT |
+| :------------ | :--- | :------------------- | -----------: | -----------: | -----------: | -----------: | -----------: |
+| binjgb        | Ours | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
+| binjgb        | Rust | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
+| doomgeneric   | Ours | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
+| doomgeneric   | Rust | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
+| h264bsd-mp4   | Ours | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
+| h264bsd-mp4   | Rust | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
+| plmpeg-stream | Ours | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
+| plmpeg-stream | Rust | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
+| quakegeneric  | Ours | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
+| quakegeneric  | Rust | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
+| wasm3         | Ours | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
+| wasm3         | Rust | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
 
 The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
 
@@ -2344,9 +2343,10 @@ def call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Resul
 - switch_local, exe: Rust 0.99x native, ours 6.15x.
 - switch_local, AOT: Rust 2.61x native, ours has no cell (compile).
 - va_forward, interpreter: Rust 131.56x native, ours 215.67x.
+- project binjgb: Rust passes AOT, ours does not.
 - project doomgeneric: Rust passes interpreter, JIT, exe, ours does not.
-- project h264bsd-mp4: Rust passes interpreter, JIT, exe, ours does not.
-- project quakegeneric: Rust passes interpreter, exe, ours does not.
-- project wasm3: Rust passes interpreter, JIT, exe, ours does not.
+- project h264bsd-mp4: Rust passes interpreter, JIT, exe, AOT, ours does not.
+- project quakegeneric: Rust passes interpreter, exe, AOT, ours does not.
+- project wasm3: Rust passes interpreter, JIT, exe, AOT, ours does not.
 - counter `pointer_arith`: Rust 606, ours 843 over all keys.
 <!-- compare:end -->
