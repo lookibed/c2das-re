@@ -116,9 +116,9 @@ declares the program-wide entity, never a local: one with a `previousDecl` binds
 declaration's name (one outside the program by its file-scope name), and the first declaration
 of its name is dumped as at file scope, the unit-level declaration placed before the function,
 which a later definition in the unit completes as any tentative one does. A parameter or local
-named like one of its function's block-scope `extern`s or prototypes takes a free name
-(`<name>1` and up, past what a hoisted static avoids), since the reference spells the global's
-name and das would bind it to the local. Tentative definitions of one object merge into the
+named like one of its function's block-scope `extern`s or prototypes, wherever in the function
+their block lies, takes a free name (`<name>1` and up, past what a hoisted static avoids), since
+the reference spells the global's name and das would bind it to the local. Tentative definitions of one object merge into the
 declaration carrying the initializer.
 
 Declarations: `FunctionDecl` with `ParmVarDecl` and a `CompoundStmt` body, `VarDecl`.

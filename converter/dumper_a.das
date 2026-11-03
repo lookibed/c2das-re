@@ -2872,7 +2872,8 @@ def private collect_block_externs(js : JsonValue?; var names : table<string>) {
 // the names the program's top-level declarations define: a function with a body, a variable
 // that is not `extern` or carries an initializer
 def private collect_defined_names(var d : Dumper; js : JsonValue?) {
-    // a block-scope `extern` names a unit-level entity a hoisted static must not take
+    // a block-scope `extern` names a unit-level entity a hoisted static must not take; the walk
+    // covers the whole AST, so it meets the top-level declarations the loop below adds again
     collect_block_externs(js, d.file_scope_names)
     for (idx in range(child_count(js))) {
         let decl = (js?["inner"] as _array)[idx]
