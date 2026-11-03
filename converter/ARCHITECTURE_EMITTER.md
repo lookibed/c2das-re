@@ -147,7 +147,14 @@ and the `mem*` family are the CRT's through `crt`, with C's implicit `void *` co
 explicit `reinterpret`. `[c_function]` lands only on a body with an unsafe operation, and the
 emitter counts those bodies against all the unit defines: the port-progress metric `main.das`
 reports; `sizeof` and `offsetof` are `T(typeinfo sizeof(type<S>))` and `T(typeinfo
-offsetof<f>(type<S>))`, never clang's constants, with the cast to the C result type, and
+offsetof<f>(type<S>))`, never clang's constants, with the cast to the C result type (a
+marshal-only record's `offsetof` is clang's offset, `T(5)`, as its `sizeof` is clang's size); the
+offset idiom, a member chain from a null pointer constant cast to a record pointer under `&` and
+a cast to an integer (`(int)(long long)&((T *)0)->f[i]`), is that offset as an integer, never a
+load through null: `int(int64(int64(typeinfo offsetof<f>(type<T>)) + int64(i) * int64(typeinfo
+sizeof(type<E>))))`, a marshal record's terms clang's literals folded where constant, and any
+other member of a null pointer constant (a read, its address as a pointer, a pointer field
+indexed) fails closed; and
 `_Alignof` is `T(typeinfo alignof(type<S>))` where das aligns the type as clang does and
 clang's value `T(4)` where das aligns it lower (a record whose bitfield units align below
 clang's, F5), for a marshal-only record and for a `va_list` (`docs/probe-findings.md` F54). A string
