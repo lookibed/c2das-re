@@ -155,6 +155,7 @@ def test_lowerings(t : T?) {
     p4_matrix_fixtures(t)
     p4_matrix_leftover_fixtures(t)
     p4_matrix_leftover_shapes(t)
+    p6_padded_fixture(t)
     p4_matrix_leftover_rejects(t)
     p5_program_fixtures(t)
     p5_lua_fixtures(t)
@@ -1396,6 +1397,20 @@ def p4_matrix_leftover_fixtures(t : T?) {
     }
 }
 
+// P6.4a: array members the sidecar lists under `padded`, indexed one past either end into the
+// members beside them
+def p6_padded_fixture(t : T?) {
+    t |> run("a sidecar-listed padded array reaches the members beside it, unchecked") @(t : T?) {
+        var text : string
+        check_fixture(t, "p6_padded", text)
+        has_text(t, text, "deref(addr(pl.top[0]) + (pl.minx - 1)) = uint8(77)")
+        has_text(t, text, "deref(addr(pl.bottom[0]) + 8) = uint8(6)")
+        has_text(t, text, "sum += int(deref(addr(pl.top[0]) + (x - 1))) + int(deref(addr(pl.bottom[0]) + (x - 1)))")
+        has_text(t, text, "deref(addr(c.clip[0]) + k) = int16(int(deref(addr(c.clip[0]) + k)) + 1000)")
+        has_text(t, text, "pl.shade[2] = uint8(1)")
+    }
+}
+
 // the rest of the P4.9 fixtures and the shapes beside them: the general setjmp form, flexible
 // members, the void conditional, the jmp_buf tag, the sidecar's over_indexed, literal names, argv[0]
 def p4_matrix_leftover_shapes(t : T?) {
@@ -1450,15 +1465,6 @@ def p4_matrix_leftover_shapes(t : T?) {
         var out : string
         let rc = run_tier(converted_path("over_typedef"), "interp", work_root, out, CONVERTED_MODULES)
         t |> equal(rc, 0, out)
-    }
-    t |> run("a sidecar-listed padded array reaches the members beside it, unchecked") @(t : T?) {
-        var text : string
-        check_fixture(t, "p6_padded", text)
-        has_text(t, text, "deref(addr(pl.top[0]) + (pl.minx - 1)) = uint8(77)")
-        has_text(t, text, "deref(addr(pl.bottom[0]) + 8) = uint8(6)")
-        has_text(t, text, "sum += int(deref(addr(pl.top[0]) + (x - 1))) + int(deref(addr(pl.bottom[0]) + (x - 1)))")
-        has_text(t, text, "deref(addr(c.clip[0]) + k) = int16(int(deref(addr(c.clip[0]) + k)) + 1000)")
-        has_text(t, text, "pl.shade[2] = uint8(1)")
     }
     t |> run("a compound literal's object skips a name the unit spells") @(t : T?) {
         let text = converts(t, "literal_name_taken", "int _cl0 = 3;\nstatic int sum(const int *a) \{ return a[0] + a[1]; \}\nint main(void) \{ return sum((int[])\{ _cl0, 1 \}) - 4; \}\n")
