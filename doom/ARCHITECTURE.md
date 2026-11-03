@@ -87,14 +87,32 @@ the chosen wad under that name.
 
 ## 3. The patch
 
-Two hunks against the pin. `g_game.c`: under `-DDOOM_TIC_CHECKSUM`, `G_Ticker` ends by printing
-`tic=<gametic> cs=<8 hex digits>` through `doom_print`, `gametic` being the tic just run (the
-caller increments it after); without the define the build prints nothing more. The checksum is the
-32-bit FNV-1a (offset basis 2166136261, prime 16777619; per byte `cs = (cs ^ b) * prime` modulo
-2^32) over the little-endian bytes of six 32-bit values in order: `players[0].mo->x`, `y`, `z`,
-`angle` (each 0 while `players[0].mo` is null), `players[0].health` and `prndindex`, the index
-`P_Random` steps (PureDOOM's `rndindex` is `M_Random`'s, which the menus and the screen melt step,
-so it stays out). `d_main.c`: `-playdemo` and `-timedemo` return from `D_DoomMain` after
+Hunks in five files against the pin. `g_game.c` and `d_main.c`, under `-DDOOM_TIC_CHECKSUM`:
+`G_Ticker` ends by storing `gametic`, the tic just run (the caller increments it after), and the
+tic's checksum; `D_DoomLoop`, once `D_Display` has drawn that tic, prints one line through
+`doom_print`, `tic=<gametic> cs=<8 hex digits> fb=<8 hex digits>`; without the define the build
+prints nothing more. The line is printed whole after the frame, so no other output can split it
+and `tic_lines` stays the one reader; a run that dies drawing a tic prints no line for it. Both
+checksums are the 32-bit FNV-1a (offset basis 2166136261, prime 16777619; per byte
+`cs = (cs ^ b) * prime` modulo 2^32). `cs` runs over the little-endian bytes of six 32-bit values
+in order: `players[0].mo->x`, `y`, `z`, `angle` (each 0 while `players[0].mo` is null),
+`players[0].health` and `prndindex`, the index `P_Random` steps (PureDOOM's `rndindex` is
+`M_Random`'s, which the menus and the screen melt step, so it stays out). `fb` runs over the
+`SCREENWIDTH * SCREENHEIGHT` bytes of `screens[0]` as `D_Display` leaves it: the frame of the tic,
+or, on a tic that starts a screen melt, the screen the melt starts from (`wipe_EndScreen` puts it
+back); the melt's own steps run no tic and print nothing. Every tic of a timedemo has its line.
+
+`w_wad.c`, `r_data.c` and `i_video.c` make the frame a function of the game alone. A column
+drawer reads `dc_source[(frac >> FRACBITS) & 127]`, up to 127 bytes past a column's start: a wall
+taller than its texture (freedoom2's 16-row `CRATINY` as a bottom texture) or a sprite post whose
+first row rounds to row -1, which `& 127` wraps to 127. Past the end of a lump that read the
+zone's next block header, its pointers among them, so the frame of such a tic changed with the
+heap's addresses from run to run (3 of demo1's 2664 tics over four runs). So `W_CacheLumpNum`
+allocates each lump with 128 zero bytes past its end, `R_GenerateComposite` zeroes a composite
+texture with the same slack, and `I_InitGraphics` zeroes the screen, which tic 0 does not draw.
+The game state does not read those bytes: `cs` is the same with and without the hunks.
+
+`d_main.c`, unconditionally: `-playdemo` and `-timedemo` return from `D_DoomMain` after
 `I_InitGraphics`. PureDOOM's `D_DoomLoop` runs one tic and returns where vanilla's never returns,
 so `D_DoomMain` went on into the title loop (a single-player demo) or `G_InitNew` (a multiplayer
 one, `demo2` of freedoom2), which replaced the demo; with the return the host's loop plays the
@@ -104,7 +122,9 @@ demo from its first tic. The fix is unconditional, since a timedemo is P6.7's be
 
 `host/doom_main.c` installs a virtual clock (`doom_set_gettime`: it starts at 0 and advances
 1/35 s per update) and an exit callback that flushes stdout and exits with Doom's code, calls
-`doom_init(argc, argv, 0)`, then `doom_force_update` in a loop, at most 2000000 times. Each update
+`doom_init(argc, argv, 0)`, then `doom_force_update` in a loop, at most 2000000 times. `-tics N`,
+the host's own argument (Doom ignores it), ends the run with `host: stopped after N tics` and exit
+code 0 once `gametic` reaches N, so the N tic lines 0 to N-1 are out. Each update
 runs one game tic (PureDOOM's `singletics` is on) or, while the screen melts, one wipe step that
 runs none; no wall time reaches the game, so a run repeats tic for tic. A `-timedemo` run ends in
 `I_Error`'s `Error: timed <N> gametics in <M> realtics` and exit code 255; `M` counts virtual tics.
@@ -154,7 +174,7 @@ defines, the wad's name and sha256, the demo and the exit code. `demo_log` refus
 not end in the `timed N gametics` line (a crash, a hang the timeout kills) or prints other than `N`
 tic lines. `ref/` holds the logs of demo1, demo2 and demo3 on freedoom2.wad: 2664, 5444 (a
 two-player demo, `consoleplayer` 1) and 2743 tics; the native build at `-O0` prints the same lines
-as at `-O2`. They are the oracle of the converted build's demo sync (`docs/implementation_order.md`
+as at `-O2`, and a run prints the same lines as the next, address randomization on. They are the oracle of the converted build's demo sync (`docs/implementation_order.md`
 P6.5).
 
 ## 7. The conversion
