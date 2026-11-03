@@ -2195,6 +2195,8 @@ def p7_goto_into_fixtures(t : T?) {
         has_text(t, text, "    if (!(z != 0)) \{\n        goto label 3\n    \}\n    if (k != 0) \{\n        goto label 1\n    \}\n")
         // a branch ending in an `if` whose arms all return is guarded like one ending in `return`
         has_text(t, text, "            return 7\n        \}\n    \} else \{\n        c_label_end()\n    \}\n    s = 3\n")
+        // and one ending in a switch with a `default` whose every case returns
+        has_text(t, text, "        \} else \{\n            return 12\n        \}\n    \} else \{\n        c_label_end()\n    \}\n    label 1:  // out\n")
         rejects(t, "goto_into_setjmp", "#include <setjmp.h>\nstatic jmp_buf b;\nint main(void) \{ int n = 0; goto in; if (setjmp(b) == 0) \{ in: n = 5; \} else \{ n = 1; \} return n; \}\n", "a goto into an arm of a setjmp `if` is not lowered")
         rejects(t, "goto_open_redispatch", "int main(void) \{ int x = 1, n = 0; switch (x) \{ case 1: goto two; case 2: do \{ two: n++; case 3: n += 2; \} while (0); \} return n; \}\n", "that a goto from another case re-dispatches is not lowered")
     }
