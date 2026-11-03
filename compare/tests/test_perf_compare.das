@@ -105,7 +105,7 @@ def test_perf_section_capture(t : T?) {
             fwrite(path, "\{\"suites\": \{\"csmith\": \{\"ids\": 9\}\}, \"perf\": \{\"kernels\": \{\"old\": 1\}, \"samples\": 3\}\}")
             var kernels : table<string; JsonValue?>
             kernels["k"] = JV(1)
-            let stamps = Stamps(rust_commit = "abc", daslang = "daslang 0.6", date = "2026-11-01 00:00 UTC")
+            let stamps = Stamps(rust_commit = "abc", daslang = "daslang 0.6", date = "2026-11-01 00:00 UTC", cpu = "C", box = "bench")
             var section = perf_section(stamps, 5, kernels)
             t |> equal(write_capture_section(path, "perf", section), "")
             let js = json_of(t, fread(path))
@@ -115,7 +115,9 @@ def test_perf_section_capture(t : T?) {
             t |> equal(js?["perf"]?["samples"] ?? 0, 5)
             t |> equal(js?["perf"]?["rust_commit"] ?? "", "abc")
             t |> equal(js?["perf"]?["timestamp"] ?? "", "2026-11-01 00:00 UTC")
-            t |> success(!empty(js?["perf"]?["versions"]?["clang"] ?? "") && !empty(js?["perf"]?["cpu"] ?? ""))
+            t |> success(!empty(js?["perf"]?["versions"]?["clang"] ?? ""))
+            t |> equal(js?["perf"]?["cpu"] ?? "", "C")
+            t |> equal(js?["perf"]?["box"] ?? "", "bench")
             let lanes = js?["perf"]?["lanes"]
             t |> equal(lanes?[0] ?? "", "native")
             t |> equal(lanes?[4] ?? "", "aot")

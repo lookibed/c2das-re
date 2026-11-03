@@ -18,6 +18,10 @@ the same text, `compare_report`:
   `Head-to-head with the Rust translator` when the c2das-re tree it runs in holds the capture; a
   capture that does not read stops the publish.
 
+Each section's stamp names its box: `perf/boxes.das`'s `capture_label` of the section (a suite or
+project entry for those), `<box> (<cpu>)`, the box of its CPU when it records no `box`, and
+`unlabelled box` when it records neither, as entries written before the fields do.
+
 The tables use `ports/ports_render.das`'s `table_of` (daslib's `md_boost` with the first columns
 aligned left); `STATUSES` and `ALL_GROUPS`, which the suite and quality comparisons write with,
 live in `compare_render.das` so that the writers and the renderer share one list.

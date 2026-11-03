@@ -8,6 +8,8 @@ require ../../suites/suite_runner.das
 require ../../suites/csmith/generate.das
 require ../../converter/tiers.das
 require ../suite_compare.das
+require ../../perf/perf_lanes.das
+require ../../perf/boxes.das
 require _common
 
 //! `compare/suite_compare.das` over a stand-in translator: a shell script that refuses
@@ -262,8 +264,10 @@ def test_suite_capture(t : T?) {
         ratchet.expected <- ["1", "2"]
         ratchet.skips |> insert("3")
         var outcomes <- [CaseOutcome(id = "1", tag = "ours", status = "pass"), CaseOutcome(id = "2", tag = "ours", status = "compile"), CaseOutcome(id = "3", tag = "skipped", status = "pass"), CaseOutcome(id = "4", tag = "unlisted", status = "pass"), CaseOutcome(id = "5", tag = "unlisted", status = "refused")]
-        let c <- suite_capture(ratchet, outcomes, 3.0, Stamps(rust_commit = "abc", daslang = "0.6.4", date = "today"))
+        let c <- suite_capture(ratchet, outcomes, 3.0, Stamps(rust_commit = "abc", daslang = "0.6.4", date = "today", cpu = "C", box = "fx"))
         t |> equal(c.rust_commit, "abc")
+        t |> equal(c.cpu, "C")
+        t |> equal(c.box, "fx")
         t |> equal(c.daslang, "0.6.4")
         t |> equal(c.date, "today")
         t |> equal(c.ids, 5)
@@ -408,10 +412,18 @@ def test_record_run(t : T?) {
 def test_run_stamps(t : T?) {
     t |> run("a binary in no checkout stamps no commit and says why") @(t : T?) {
         t |> with_stand_in("cmp_stamps") $(dir, bin) {
-            let s = run_stamps(bin)
+            let s = run_stamps(bin, "")
             t |> equal(s.rust_commit, "")
             t |> success(s.rust_commit_error |> contains("is in no git checkout"), s.rust_commit_error)
             t |> success(!empty(s.daslang) && !empty(s.date))
+        }
+    }
+    t |> run("the stamps carry the CPU model and the box: the --box name, else the CPU's") @(t : T?) {
+        t |> with_stand_in("cmp_stamps_box") $(dir, bin) {
+            let s = run_stamps(bin, "")
+            t |> equal(s.cpu, cpu_name())
+            t |> equal(s.box, box_of(s.cpu))
+            t |> equal(run_stamps(bin, "fx").box, "fx")
         }
     }
 }

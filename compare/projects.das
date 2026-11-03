@@ -755,6 +755,8 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
         "rust_commit_error" => JV(stamps.rust_commit_error),
         "daslang" => JV(stamps.daslang),
         "date" => JV(stamps.date),
+        "cpu" => JV(stamps.cpu),
+        "box" => JV(stamps.box),
         "samples" => JV(samples),
         "lanes" => JV(DAS_LANES),
         "native" => verdict_json(native, back),

@@ -189,8 +189,10 @@ def test_lua_section(t : T?) {
             let c_paths <- stand_in_program(dir)
             with_env(bin, dir) {
                 var error : string
-                let section = lua_section(bin, c_paths, sidecar, path_join(dir, "work"), Stamps(rust_commit = "abc", date = "today"), error)
+                let section = lua_section(bin, c_paths, sidecar, path_join(dir, "work"), Stamps(rust_commit = "abc", date = "today", cpu = "C", box = "bench"), error)
                 t |> equal(section?["status"] ?? "", "translated")
+                t |> equal(section?["cpu"] ?? "", "C")
+                t |> equal(section?["box"] ?? "", "bench")
                 t |> equal(section?["files"] ?? 0, 1)
                 t |> equal(section?["speed"] ?? "", "not measured here")
                 let missing = path_join(dir, "absent.c2das")

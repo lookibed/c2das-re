@@ -12,6 +12,7 @@ require ../suites/suite_runner.das
 require ../suites/csmith/generate.das
 require ../suites/csmith/verdict.das
 require ../perf/perf_lanes.das
+require ../perf/boxes.das
 require rust_translator
 require compare_render public
 
@@ -277,16 +278,19 @@ def drive_suite(spec : SuiteSpec; ids : array<string>; ratchet : Ratchet; jobs :
 }
 
 //! What a suite's entry records of the run that wrote it: the Rust translator's commit, or why
-//! there is none, the first line of `daslang -version`, and the date.
+//! there is none, the first line of `daslang -version`, the date, the CPU model and the box.
 struct Stamps {
     rust_commit : string
     rust_commit_error : string
     daslang : string
     date : string
+    cpu : string
+    box : string
 }
 
-//! The stamps of a run now, the Rust translator `bin`'s commit logged as a warning when it has none.
-def run_stamps(bin : string) : Stamps {
+//! The stamps of a run now on the box `box_flag` (`--box`, else the CPU's), the Rust translator
+//! `bin`'s commit logged as a warning when it has none.
+def run_stamps(bin, box_flag : string) : Stamps {
     var s : Stamps
     s.rust_commit = rust_version(bin, s.rust_commit_error)
     if (empty(s.rust_commit)) {
@@ -295,6 +299,8 @@ def run_stamps(bin : string) : Stamps {
     var clang_version : string
     tool_versions(clang_version, s.daslang)
     s.date = strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))
+    s.cpu = cpu_name()
+    s.box = capture_box(box_flag, s.cpu)
     return s
 }
 
@@ -304,6 +310,8 @@ struct SuiteCapture {
     rust_commit_error : string
     daslang : string
     date : string
+    cpu : string
+    box : string
     ids : int
     ours_pass : int
     ours_skipped : int
@@ -319,7 +327,7 @@ struct SuiteCapture {
 //! `outcomes`, every status of `STATUSES` counted, stamped with `stamps`.
 [arch(at="ARCHITECTURE.md#capture")]
 def suite_capture(ratchet : Ratchet; var outcomes : array<CaseOutcome>; seconds : float; stamps : Stamps) : SuiteCapture {
-    var c = SuiteCapture(rust_commit = stamps.rust_commit, rust_commit_error = stamps.rust_commit_error, daslang = stamps.daslang, date = stamps.date, ids = length(outcomes), ours_pass = length(ratchet.expected), ours_skipped = length(ratchet.skips), seconds = seconds)
+    var c = SuiteCapture(rust_commit = stamps.rust_commit, rust_commit_error = stamps.rust_commit_error, daslang = stamps.daslang, date = stamps.date, cpu = stamps.cpu, box = stamps.box, ids = length(outcomes), ours_pass = length(ratchet.expected), ours_skipped = length(ratchet.skips), seconds = seconds)
     for (s in STATUSES) {
         c.rust[s] = 0
     }

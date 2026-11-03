@@ -222,6 +222,8 @@ def lua_section(bin : string; c_paths : array<string>; sidecar_path, work : stri
         "rust_commit" => JV(stamps.rust_commit),
         "rust_commit_error" => JV(stamps.rust_commit_error),
         "date" => JV(stamps.date),
+        "cpu" => JV(stamps.cpu),
+        "box" => JV(stamps.box),
         "program" => JV("lua"),
         "units" => JV(length(c_paths)),
         "status" => JV(t.ok ? "translated" : "refused"),

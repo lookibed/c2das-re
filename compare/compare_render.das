@@ -7,6 +7,7 @@ require strings
 require daslib/strings_boost
 require daslib/json_boost
 require ../ports/ports_render.das
+require ../perf/boxes.das
 require ../metrics/readability_file.das
 
 //! The head-to-head as markdown, rendered from the capture `compare/results_linux.json` alone: the
@@ -569,7 +570,7 @@ def projects_text(results : JsonValue const?) : string {
     }
 }
 
-//! A project's stamp: its Rust commit, its date and the address-space cap its lanes ran under.
+//! A project's stamp: its Rust commit, its date, its box and the address-space cap its lanes ran under.
 [arch(at="ARCHITECTURE_PROJECTS.md#rendering")]
 def project_stamp(entry : JsonValue const?) : string {
     let cap = cap_text(entry?["address_cap"] ?? "")
@@ -620,8 +621,8 @@ def samples_text(results : JsonValue const?) : string {
     return "samples a cell per project: " + join([for (n, c in names, counts); c > 0 ? "{n} {c}" : "{n} not measured"], ", ")
 }
 
-// the stamps of a section: its Rust commit and date
-def private stamp_of(section : JsonValue const?; date_key : string) : string => "Rust `{slice(section?["rust_commit"] ?? "", 0, 12)}`, {section?[date_key] ?? ""}"
+// the stamps of a section: its Rust commit, its date and its box
+def private stamp_of(section : JsonValue const?; date_key : string) : string => "Rust `{slice(section?["rust_commit"] ?? "", 0, 12)}`, {section?[date_key] ?? ""}, {capture_label(section)}"
 
 def private list_or(lines : array<string>; none : string) : string => empty(lines) ? "{none}\n" : join(lines, "\n") + "\n"
 
@@ -642,7 +643,7 @@ def compare_report(results : JsonValue const?) : string {
         let perf = results?["perf"]
         w |> write("\n### Speed\n\n")
         if (!absent(perf)) {
-            w |> write("Captured {perf?["timestamp"] ?? ""} on {perf?["platform"] ?? ""}, {perf?["cpu"] ?? ""}; {perf?["versions"]?["clang"] ?? ""}; daslang {perf?["versions"]?["daslang"] ?? ""}; ")
+            w |> write("Captured {perf?["timestamp"] ?? ""} on {perf?["platform"] ?? ""}, {capture_label(perf)}; {perf?["versions"]?["clang"] ?? ""}; daslang {perf?["versions"]?["daslang"] ?? ""}; ")
             w |> write("Rust `{slice(perf?["rust_commit"] ?? "", 0, 12)}`; {perf?["samples"] ?? 0} samples a cell. A cell is a lane's time over the native build's (lower is faster); ")
             w |> write("the geomean row covers the kernels where native and both sides stand, their count in parentheses.\n\n")
         }

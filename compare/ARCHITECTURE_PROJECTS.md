@@ -90,7 +90,7 @@ the command that starts it (`prlimit --as=4294967296`), which every child proces
 AOT generator's context needs more than 3 GiB of address space for the Rust modules (its 1 GiB
 heap runs out under `--as=3221225472`).
 
-The entry is `{rust_commit, rust_commit_error, daslang, date, samples, lanes, native,
+The entry is `{rust_commit, rust_commit_error, daslang, date, cpu, box, samples, lanes, native,
 native_compiler, address_cap, ours, rust, speed, code, functions}`: `native` the native build's
 verdict, `address_cap` the soft `Max address space` of the run's `/proc/self/limits`
 (`address_cap_of`: its bytes or `unlimited`, which every lane inherits),
@@ -172,7 +172,8 @@ computed per project.
 
 `compare_render.das`'s `projects_text` renders the section under `### Real projects`: an intro
 naming the oracle (each project's canonical case's `expected.stdout`) and each capture's stamp
-(`project_stamp`: the Rust commit, the date and the address-space cap in words, `cap_text`), the
+(`project_stamp`: the Rust commit, the date, the box label and the address-space cap in words,
+`cap_text`), the
 verdicts table (per project and side, the native verdict and each lane's), one line per project
 whose sidecar on our side carries defines of its own (`ours_define_lines`), one line per side and
 reason for every lane that does not pass, the lanes sharing a reason named together, the bench table

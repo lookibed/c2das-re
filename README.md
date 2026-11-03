@@ -151,7 +151,7 @@ Rendered from c2das-re's `compare/results_linux.json` alone, never edited by han
 
 ### Suites
 
-Captured: c_testsuite (Rust `ce4647af2826`, 2026-11-01 02:54 UTC); csmith (Rust `ce4647af2826`, 2026-11-01 03:12 UTC); gcc_torture (Rust `ce4647af2826`, 2026-11-01 03:04 UTC). Ours is the ratchet (c2das-re's `suites/<suite>/expected_pass.txt`); the Rust side runs every id under `--libc std --strict`, the interpreter.
+Captured: c_testsuite (Rust `ce4647af2826`, 2026-11-01 02:54 UTC, unlabelled box); csmith (Rust `ce4647af2826`, 2026-11-01 03:12 UTC, unlabelled box); gcc_torture (Rust `ce4647af2826`, 2026-11-01 03:04 UTC, unlabelled box). Ours is the ratchet (c2das-re's `suites/<suite>/expected_pass.txt`); the Rust side runs every id under `--libc std --strict`, the interpreter.
 
 | Suite       |  ids | ours pass (ratchet) | Rust pass | Rust pass of ours | of our skips | of unlisted | Rust refused | Rust compile | Rust timeout | Rust exit | Rust output | Rust native | Rust crash |
 | :---------- | ---: | ------------------: | --------: | ----------------: | -----------: | ----------: | -----------: | -----------: | -----------: | --------: | ----------: | ----------: | ---------: |
@@ -162,7 +162,7 @@ Captured: c_testsuite (Rust `ce4647af2826`, 2026-11-01 02:54 UTC); csmith (Rust 
 
 ### Speed
 
-Captured 2026-11-01 07:27 UTC on linux x86_64, AMD FX(tm)-6300 Six-Core Processor; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.4; Rust `ce4647af2826`; 5 samples a cell. A cell is a lane's time over the native build's (lower is faster); the geomean row covers the kernels where native and both sides stand, their count in parentheses.
+Captured 2026-11-01 07:27 UTC on linux x86_64, fx (AMD FX(tm)-6300 Six-Core Processor); clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.4; Rust `ce4647af2826`; 5 samples a cell. A cell is a lane's time over the native build's (lower is faster); the geomean row covers the kernels where native and both sides stand, their count in parentheses.
 
 | Kernel                   | native (s) | ours interpreter | Rust interpreter |  ours JIT |  Rust JIT |  ours exe |  Rust exe |  ours AOT |  Rust AOT |
 | :----------------------- | ---------: | ---------------: | ---------------: | --------: | --------: | --------: | --------: | --------: | --------: |
@@ -201,7 +201,7 @@ Error cells:
 
 ### Readability and size
 
-Captured Rust `b1d012eb5d26`, 2026-11-01 11:19 UTC, over every input both sides translated into daslang that compiles. The Rust lines hold the runtime it writes into every module; ours sits in `c_runtime` and `crt`. The Rust counters count its whole module, runtime included.
+Captured Rust `b1d012eb5d26`, 2026-11-01 11:19 UTC, unlabelled box, over every input both sides translated into daslang that compiles. The Rust lines hold the runtime it writes into every module; ours sits in `c_runtime` and `crt`. The Rust counters count its whole module, runtime included.
 
 | Group       | keys counted | files ours | files Rust | lines ours | lines Rust | Rust runtime | Rust without runtime | Rust / ours | without runtime / ours |
 | :---------- | -----------: | ---------: | ---------: | ---------: | ---------: | -----------: | -------------------: | ----------: | ---------------------: |
@@ -639,7 +639,7 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-03 12:02 UTC, 4 GiB address-space cap); doomgeneric (Rust `b1d012eb5d26`, 2026-11-03 12:24 UTC, 4 GiB address-space cap); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-03 12:19 UTC, 4 GiB address-space cap); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-03 12:14 UTC, 4 GiB address-space cap); quakegeneric (Rust `b1d012eb5d26`, 2026-11-03 12:37 UTC, 4 GiB address-space cap); wasm3 (Rust `b1d012eb5d26`, 2026-11-03 12:09 UTC, 4 GiB address-space cap).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-03 12:02 UTC, unlabelled box, 4 GiB address-space cap); doomgeneric (Rust `b1d012eb5d26`, 2026-11-03 12:24 UTC, unlabelled box, 4 GiB address-space cap); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-03 12:19 UTC, unlabelled box, 4 GiB address-space cap); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-03 12:14 UTC, unlabelled box, 4 GiB address-space cap); quakegeneric (Rust `b1d012eb5d26`, 2026-11-03 12:37 UTC, unlabelled box, 4 GiB address-space cap); wasm3 (Rust `b1d012eb5d26`, 2026-11-03 12:09 UTC, unlabelled box, 4 GiB address-space cap).
 
 | Project       | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------------ | :--- | :----- | ----------: | ------: | ------: | ------: |

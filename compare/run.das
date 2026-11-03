@@ -18,6 +18,7 @@ require quality_compare
 require lua_compare
 require compare_render
 require projects
+require ../perf/boxes.das
 require ../perf/perf_cli.das
 require ../lua/sources.das
 
@@ -65,6 +66,8 @@ struct CompareArgs {
     jobs : int = 4
     @clarg_doc = "the capture a run writes (default compare/results_linux.json)"
     out : string = ""
+    @clarg_doc = "the box the run measures on, bench, PC or fx (default: the box of the CPU model, none for another CPU)"
+    box : string = ""
     @clarg_doc = "log the reason of every case that does not pass"
     verbose : bool
     @clarg_doc = "worker: judge this case, <suite>/<id>, writing compare/work/<suite>/<id>/verdict"
@@ -103,7 +106,7 @@ def run_suite(spec : SuiteSpec; args : CompareArgs) : SuiteCapture {
             to_log(LOG_INFO, "{spec.name}/{o.id} ({o.tag}): {o.status}: {o.reason}\n")
         }
     }
-    var c <- suite_capture(ratchet, outcomes, seconds_since(started), run_stamps(rust_binary()))
+    var c <- suite_capture(ratchet, outcomes, seconds_since(started), run_stamps(rust_binary(), args.box))
     let counts = join([for (s in STATUSES); "{s} {c.rust?[s] ?? 0}"], ", ")
     to_log(LOG_INFO, "{spec.name}: rust {counts} of {c.ids} (ours {c.ours_pass}, skipped {c.ours_skipped}; rust passes of ours {c.rust_pass_of_ours}, of skipped {c.rust_pass_of_skipped}, of unlisted {c.rust_pass_of_unlisted})\n")
     return <- c
@@ -127,7 +130,7 @@ def run_perf(args : CompareArgs) : int {
         to_log(LOG_INFO, "{kernel_line(k.key, entry)}\n")
         entries[k.key] = entry
     }
-    var section = perf_section(run_stamps(bin), args.samples, entries)
+    var section = perf_section(run_stamps(bin, args.box), args.samples, entries)
     for (line in geomean_lines(section)) {
         to_log(LOG_INFO, "{line}\n")
     }
@@ -154,7 +157,7 @@ def run_quality(args : CompareArgs; out : string) : int {
         return 2
     }
     var entries <- drive_quality(corpus, args.jobs)
-    var section = quality_section(run_stamps(rust_binary()), entries)
+    var section = quality_section(run_stamps(rust_binary(), args.box), entries)
     for (g, totals in keys(section?["totals"] as _object), values(section?["totals"] as _object)) {
         to_log(LOG_INFO, "{g}: {totals?["counted"] ?? 0} of {totals?["keys"] ?? 0} keys counted; lines ours {totals?["ours"]?["lines"] ?? 0}, rust {totals?["rust"]?["lines"] ?? 0}, of them its runtime {totals?["rust"]?["runtime_lines"] ?? 0}\n")
     }
@@ -163,7 +166,7 @@ def run_quality(args : CompareArgs; out : string) : int {
 
 // the Lua comparison over Lua's release, or the C files of `from` when it is set: its `lua` and
 // `doom` sections written
-def run_lua(out, from : string) : int {
+def run_lua(out, from, box : string) : int {
     let missing = empty(from) ? lua_missing(SOURCES, false) : lua_missing(from, true)
     if (!empty(missing)) {
         to_log(LOG_ERROR, "{missing}\n")
@@ -172,7 +175,7 @@ def run_lua(out, from : string) : int {
     let bin = rust_binary()
     var error : string
     let c_paths <- empty(from) ? program_sources("lua") : folder_sources(from)
-    var section = lua_section(bin, c_paths, empty(from) ? SIDECAR : folder_sidecar(from), empty(from) ? LUA_WORK : folder_work(from), run_stamps(bin), error)
+    var section = lua_section(bin, c_paths, empty(from) ? SIDECAR : folder_sidecar(from), empty(from) ? LUA_WORK : folder_work(from), run_stamps(bin, box), error)
     if (section == null) {
         to_log(LOG_ERROR, "{error}\n")
         return 1
@@ -221,7 +224,7 @@ def run_project(args : CompareArgs; out : string) : int {
         return 2
     }
     let bin = rust_binary()
-    var entry = project_entry(p, bin, path_join(empty(args.work) ? PROJECTS_WORK : args.work, p.name), args.samples, run_stamps(bin))
+    var entry = project_entry(p, bin, path_join(empty(args.work) ? PROJECTS_WORK : args.work, p.name), args.samples, run_stamps(bin, args.box))
     for (line in project_lines(p.name, entry)) {
         to_log(LOG_INFO, "{line}\n")
     }
@@ -273,6 +276,11 @@ def main : int {
         to_log(LOG_ERROR, "--lua takes no --filter: it translates the whole program\n")
         return 1
     }
+    let refusal = box_refusal(args.box)
+    if (!empty(refusal)) {
+        to_log(LOG_ERROR, "{refusal}\n")
+        return 1
+    }
     let out = empty(args.out) ? CAPTURE : args.out
     if (args.readme || !empty(args.report)) {
         return run_render(args, out)
@@ -281,7 +289,7 @@ def main : int {
         return run_quality(args, out)
     }
     if (args.lua) {
-        return run_lua(out, args.lua_from)
+        return run_lua(out, args.lua_from, args.box)
     }
     if (!empty(args.project)) {
         return run_project(args, out)
