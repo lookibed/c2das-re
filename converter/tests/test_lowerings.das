@@ -324,6 +324,10 @@ def p2_memory_fixtures(t : T?) {
         has_text(t, text, "p2_globals__fptr != null ? 1 : 0")
         has_text(t, text, "return p2_globals__fptr == null ? 3 : 4")
     }
+    p2_marshal_fixtures(t)
+}
+
+def p2_marshal_fixtures(t : T?) {
     t |> run("marshal: a sidecar-flagged packed record is bytes in C memory, a natural struct as a value, with generated readers and writers at clang's offsets") @(t : T?) {
         var text : string
         check_fixture(t, "p2_marshal", text)
@@ -346,22 +350,49 @@ def p2_memory_fixtures(t : T?) {
         has_text(t, text, "entries = entries + 7")
         has_text(t, text, "read_disk_t_width(entries, 0)")
     }
-    t |> run("marshal: an array of arrays of scalars in a marshal-only record is one block its readers copy") @(t : T?) {
+    t |> run("marshal: an array of arrays of scalars in a marshal-only record is one block the record's readers copy, its elements read where they lie") @(t : T?) {
         var text : string
         check_fixture(t, "p2_marshal_rows", text)
-        has_text(t, text, "def read_node_t_bbox(bytes : uint8?; ofs : int) : int16[2][4] \{\n    var r : int16[2][4]\n    crt::memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + (ofs + 2)), uint64(16))")
+        has_text(t, text, "def ptr_node_t_bbox(bytes : uint8?; ofs : int) : int16[4]? \{\n    return reinterpret<int16[4]?>(bytes + (ofs + 2))\n")
         has_text(t, text, "crt::memcpy(reinterpret<void?>(addr(r.bbox)), reinterpret<void?>(bytes + (ofs + 2)), uint64(16))")
+        has_text(t, text, "total += int(deref(ptr_node_t_bbox(nodes + i * 22, 0) + j)[k]) * (k + 1)")
+        t |> equal(text |> find("read_node_t_bbox") < 0, true, "an array field keeps a copying reader:\n{text}")
+    }
+    t |> run("marshal: an array field's elements are stored, addressed, decayed and stepped through its `ptr_T_f` pointer") @(t : T?) {
+        var text : string
+        check_fixture(t, "p6_marshal_lvalues", text)
+        has_text(t, text, "def ptr_lump_t_name(bytes : uint8?; ofs : int) : uint8? \{\n    return reinterpret<uint8?>(bytes + (ofs + 1))\n")
+        has_text(t, text, "def ptr_pic_t_columnofs(bytes : uint8?; ofs : int) : int? \{")
+        // a store into an element, `op=` and a step
+        has_text(t, text, "deref(ptr_lump_t_name(l, 0) + i) = uint8('a' + i)")
+        has_text(t, text, "deref(ptr_lump_t_name(l + 1 * 25, 0) + 1) = uint8(int(deref(ptr_lump_t_name(l + 1 * 25, 0) + 1)) + 1)")
+        has_text(t, text, "deref(ptr_lump_t_name(l, 0) + 6) = uint8(uint(deref(ptr_lump_t_name(l, 0) + 6)) + 1)")
+        // a target with an effect is pinned once
+        has_text(t, text, "deref(ptr_lump_t_name(_t0, 0) + 2) = uint8(int(deref(ptr_lump_t_name(_t0, 0) + 2)) + 1)")
+        has_text(t, text, "deref(ptr_lump_t_bbox(_t1, 0) + 0)[0] = int16(int(deref(ptr_lump_t_bbox(_t1, 0) + 0)[0]) + 1)")
+        // the decay, walked and stored through, passed, and of a 2-D field
+        has_text(t, text, "walk = ptr_lump_t_name(l, 0)\n")
+        has_text(t, text, "deref(walk) = uint8('B')")
+        has_text(t, text, "p6_marshal_lvalues__name_sum(ptr_lump_t_name(l, 0))")
+        has_text(t, text, "rows = ptr_lump_t_bbox(l, 0)\n")
+        has_text(t, text, "deref(ptr_lump_t_bbox(l, 0) + i / 3)[i % 3] = int16(100 * i)")
+        // the address of an element, of an element of a row, and of the field
+        has_text(t, text, "var col : int? = ptr_pic_t_columnofs(pic, 0) + 2")
+        has_text(t, text, "cell = addr(deref(ptr_lump_t_bbox(l, 0) + 1)[2])")
+        has_text(t, text, "whole = reinterpret<uint8[8]?>(ptr_lump_t_name(l, 0))")
+        has_text(t, text, "ptr_lump_t_name(l, 0) + 8 - ptr_lump_t_name(l, 0)")
+        // a `const` field, and an over-indexed trailing one read past its length
+        has_text(t, text, "deref(ptr_lump_t_code(l, 0) + 2) = uint8('q')")
+        has_text(t, text, "deref(ptr_pic_t_columnofs(pic, 0) + i) = 10 * (i + 1)")
     }
     t |> run("marshal: the shapes the emitter refuses, each naming the record") @(t : T?) {
         let packed = "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nint main(void) \{ disk_t d; d.w = 1; return d.w; \}\n"
         rejects(t, "packed_unlisted", packed, "listed under `marshal`")
         rejects(t, "marshal_addr", "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nint main(void) \{ disk_t d; disk_t *p = &d; return p->w; \}\n", "address of a value of the marshal-only record", "\{ \"marshal\": [\"disk_t\"] \}\n")
         let rows = "#pragma pack(1)\ntypedef struct \{ short x; short bbox[2][4]; \} node_t;\n#pragma pack()\nstatic unsigned char lump[2 * 18];\n"
-        rejects(t, "marshal_row_pointer", rows + "int main(void) \{ node_t *n = (node_t *) lump; short *row = n[1].bbox[1]; row[0] = 9; return row[0]; \}\n", "pointer into array field `node_t.bbox` of a marshal-only record", "\{ \"marshal\": [\"node_t\"] \}\n")
-        rejects(t, "marshal_element_address", rows + "int main(void) \{ node_t *n = (node_t *) lump; short *e = &n->bbox[0][1]; *e = 4; return *e; \}\n", "address of array field `node_t.bbox` of a marshal-only record", "\{ \"marshal\": [\"node_t\"] \}\n")
-        rejects(t, "marshal_element_store", rows + "int main(void) \{ node_t *n = (node_t *) lump; n->bbox[1][2] = 5; return 0; \}\n", "store into an element of array field `node_t.bbox` of a marshal-only record", "\{ \"marshal\": [\"node_t\"] \}\n")
-        rejects(t, "marshal_element_add", rows + "int main(void) \{ node_t *n = (node_t *) lump; n[1].bbox[0][3] += 5; return 0; \}\n", "store into an element of array field `node_t.bbox` of a marshal-only record", "\{ \"marshal\": [\"node_t\"] \}\n")
-        rejects(t, "marshal_element_step", rows + "int main(void) \{ node_t *n = (node_t *) lump; n->bbox[0][0]++; return 0; \}\n", "store into an element of array field `node_t.bbox` of a marshal-only record", "\{ \"marshal\": [\"node_t\"] \}\n")
+        let row = converts(t, "marshal_row_pointer", rows + "int main(void) \{ node_t *n = (node_t *) lump; short *row = n[1].bbox[1]; row[0] = 9; return row[0]; \}\n", "\{ \"marshal\": [\"node_t\"] \}\n")
+        has_text(t, row, "var row : int16? = addr(deref(ptr_node_t_bbox(n + 1 * 18, 0) + 1)[0])")
+        rejects(t, "marshal_record_field", "typedef struct \{ short a; \} in_t;\n#pragma pack(1)\ntypedef struct \{ short x; in_t rows[2]; \} out_t;\n#pragma pack()\nstatic unsigned char lump[8];\nint main(void) \{ out_t *o = (out_t *) lump; return o->x; \}\n", "field `out_t.rows` of a marshal-only record is a record or an array of records", "\{ \"marshal\": [\"out_t\"] \}\n")
         rejects(t, "marshal_array", "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nstatic disk_t table[3];\nint main(void) \{ return table[1].w; \}\n", "array of the marshal-only record", "\{ \"marshal\": [\"disk_t\"] \}\n")
     }
 }

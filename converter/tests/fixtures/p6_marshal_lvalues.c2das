@@ -1,0 +1,4 @@
+{
+ "marshal": ["lump_t", "pic_t"],
+ "over_indexed": ["pic_t.columnofs"]
+}
