@@ -1,0 +1,44 @@
+c2das-re fix of PureDOOM's fine-table overruns, applied by doom/fetch.sh after 0001.
+
+Copyright (C) 2026 the c2das-re authors. This patch modifies PureDOOM, which is distributed
+under the GNU General Public License version 2 (PureDOOM's LICENSE); the patch and the files it
+produces are distributed under the same license, WITHOUT ANY WARRANTY.
+
+- r_main.c, r_segs.c: R_ScaleFromGlobalAngle indexes finesine by an int angle that goes negative
+  past ANG180, and R_RenderSegLoop indexes finetangent up to 8191, past its 4096 entries. tables.c
+  defines finetangent right before finesine, so the native build reads the neighbouring table;
+  the patch spells those reads out, the same values, so a build that range-checks its arrays (the
+  converted one) reads them too.
+
+diff --git a/src/DOOM/r_main.c b/src/DOOM/r_main.c
+index 3a456b8..f13a6eb 100644
+--- a/src/DOOM/r_main.c
++++ b/src/DOOM/r_main.c
+@@ -409,8 +409,10 @@ fixed_t R_ScaleFromGlobalAngle(angle_t visangle)
+     angleb = ANG90 + (visangle - rw_normalangle);
+ 
+     // both sines are allways positive
+-    sinea = finesine[anglea >> ANGLETOFINESHIFT];
+-    sineb = finesine[angleb >> ANGLETOFINESHIFT];
++    // [c2das] An angle past ANG180 makes the int index negative, and the native build reads
++    // finetangent, which tables.c lays right before finesine: that read, spelled out.
++    sinea = (anglea >> ANGLETOFINESHIFT) < 0 ? finetangent[FINEANGLES / 2 + (anglea >> ANGLETOFINESHIFT)] : finesine[anglea >> ANGLETOFINESHIFT];
++    sineb = (angleb >> ANGLETOFINESHIFT) < 0 ? finetangent[FINEANGLES / 2 + (angleb >> ANGLETOFINESHIFT)] : finesine[angleb >> ANGLETOFINESHIFT];
+     num = FixedMul(projection, sineb) << detailshift;
+     den = FixedMul(rw_distance, sinea);
+ 
+diff --git a/src/DOOM/r_segs.c b/src/DOOM/r_segs.c
+index c61872e..d86fdfd 100644
+--- a/src/DOOM/r_segs.c
++++ b/src/DOOM/r_segs.c
+@@ -245,7 +245,9 @@ void R_RenderSegLoop(void)
+         {
+             // calculate texture offset
+             angle = (rw_centerangle + xtoviewangle[rw_x]) >> ANGLETOFINESHIFT;
+-            texturecolumn = rw_offset - FixedMul(finetangent[angle], rw_distance);
++            // [c2das] An angle past FINEANGLES / 2 indexes past finetangent, and the native build
++            // reads finesine, which tables.c lays right after it: that read, spelled out.
++            texturecolumn = rw_offset - FixedMul(angle >= FINEANGLES / 2 ? finesine[angle - FINEANGLES / 2] : finetangent[angle], rw_distance);
+             texturecolumn >>= FRACBITS;
+             // calculate lighting
+             index = rw_scale >> LIGHTSCALESHIFT;

@@ -17,6 +17,7 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
   commit.
 - `patches/0002-tic-trace.patch` - the trace lines under `-DDOOM_TIC_TRACE` (section 3).
 - `patches/0003-signed-ticcmd.patch` - `ticcmd_t`'s moves as `signed char` (section 3).
+- `patches/0004-fine-table-overruns.patch` - the fine tables' overruns spelled out (section 3).
 - `host/doom_main.c` - the headless host (section 4), the program's `main`.
 - `sources.das` - the program's sources (section 2): `UNITS`, `program_sources`, the folder of
   the fetched units and the sidecar's path.
@@ -143,6 +144,14 @@ read back through a plain `char` it stays negative only where `char` is signed, 
 converter's dialect makes plain `char` unsigned (`docs/probe-findings.md` F17), so the converted
 demo1 read the strafe -40 of tic 25 as 216. The native build at `-O2` with or without
 `-funsigned-char` prints the reference lines of all three demos with the patch.
+
+`0004-fine-table-overruns.patch`, `r_main.c` and `r_segs.c`: `R_ScaleFromGlobalAngle` indexes
+`finesine` by an `int` angle shifted right, negative past `ANG180` (demo1's tic 255 reaches
+-4096), and `R_RenderSegLoop` indexes `finetangent[angle]` with `angle` up to 8191, past its 4096
+entries. `tables.c` defines `finetangent` right before `finesine`, so the native build reads the
+other table; das range-checks both reads and panics. The patch spells the neighbouring read out,
+`finetangent[FINEANGLES / 2 + i]` for a negative `i` and `finesine[angle - FINEANGLES / 2]` past
+`finetangent`'s end, the values the native build read: its lines, frames included, are the same.
 
 ## 4. The host
 
@@ -283,8 +292,5 @@ over the whole process, start included: a sanity number, not P6.7's measure. Und
 the host's `-tics N` (`program_argv`), so the program stops after the compared tics with exit code
 0 instead of playing the demo to its end or to `--timeout`.
 
-At the pin, the `source` layout under `interp` plays demo1 on freedoom2.wad through its first
-frames: tics 0 to 254 match the reference log, frames included, and the run panics drawing tic 255
-in `R_ScaleFromGlobalAngle` (r_main.c:413), `finesine[angleb >> 19]` at index -4096: `angleb` is an
-`int`, so the native build reads `finetangent`, which lies right before `finesine`, and
-`R_RenderSegLoop`'s `finetangent[angle]` (r_segs.c) reads `finesine[0]` at index 4096.
+At the pin, the `source` layout under `interp` plays demo1, demo2 and demo3 on freedoom2.wad in
+sync with their reference logs, every tic's checksum and frame, to the `timed N gametics` line.
