@@ -1,7 +1,7 @@
 {
 	"suites" : {
 		"c_testsuite" : {
-			"rust_pass_of_skipped" : 0,
+			"ours_skipped" : 0,
 			"date" : "2026-11-01 02:54 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 199,
@@ -1560,13 +1560,13 @@
 			],
 			"rust_pass_of_unlisted" : 8,
 			"ids" : 220,
-			"daslang" : "0.6.4",
 			"seconds" : 86.92239379882812,
-			"ours_skipped" : 0,
-			"rust_pass_of_ours" : 194
+			"rust_pass_of_ours" : 194,
+			"rust_pass_of_skipped" : 0,
+			"daslang" : "0.6.4"
 		},
 		"gcc_torture" : {
-			"rust_pass_of_skipped" : 41,
+			"ours_skipped" : 321,
 			"date" : "2026-11-01 03:04 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 1179,
@@ -13177,13 +13177,13 @@
 			],
 			"rust_pass_of_unlisted" : 67,
 			"ids" : 1656,
-			"daslang" : "0.6.4",
 			"seconds" : 645.4718017578125,
-			"ours_skipped" : 321,
-			"rust_pass_of_ours" : 1089
+			"rust_pass_of_ours" : 1089,
+			"rust_pass_of_skipped" : 41,
+			"daslang" : "0.6.4"
 		},
 		"csmith" : {
-			"rust_pass_of_skipped" : 5,
+			"ours_skipped" : 31,
 			"date" : "2026-11-01 03:12 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 151,
@@ -14476,10 +14476,10 @@
 			],
 			"rust_pass_of_unlisted" : 0,
 			"ids" : 182,
-			"daslang" : "0.6.4",
 			"seconds" : 434.8171081542969,
-			"ours_skipped" : 31,
-			"rust_pass_of_ours" : 42
+			"rust_pass_of_ours" : 42,
+			"rust_pass_of_skipped" : 5,
+			"daslang" : "0.6.4"
 		}
 	},
 	"perf" : {
@@ -74876,7 +74876,7 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-03 00:39 UTC",
+			"date" : "2026-11-03 12:09 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"address_cap" : "4294967296",
 			"rust_commit_error" : "",
@@ -74920,7 +74920,7 @@
 				"status" : "pass",
 				"reason" : ""
 			},
-			"samples" : 0,
+			"samples" : 3,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
@@ -74945,34 +74945,139 @@
 			},
 			"speed" : {
 				"native" : {
-					"error" : "not measured: the run timed no bench (--samples 0)"
+					"setup" : {
+						"time" : 5e-05,
+						"spread" : 0.39999999999999997,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							8.9e-05,
+							5e-05,
+							4.9e-05
+						]
+					},
+					"decode" : {
+						"time" : 0.003862,
+						"spread" : 0.41869497669601247,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.00706,
+							0.003826,
+							0.003862
+						]
+					}
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "bench: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`"
 					},
 					"jit" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "bench: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`"
 					},
 					"exe" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "bench: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`"
 					},
 					"aot" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "bench: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`"
 					}
 				},
 				"rust" : {
 					"interp" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.000354,
+							"spread" : 0.015536723163841804,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.000363,
+								0.000352,
+								0.000354
+							]
+						},
+						"decode" : {
+							"time" : 0.248693,
+							"spread" : 0.005565094313068764,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.248693,
+								0.246772,
+								0.24954
+							]
+						}
 					},
 					"jit" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 3.7e-05,
+							"spread" : 0.013513513513513568,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								3.7e-05,
+								3.7e-05,
+								3.8e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.007686,
+							"spread" : 0.005009107468123849,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.007686,
+								0.007748,
+								0.007671
+							]
+						}
 					},
 					"exe" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 3.2e-05,
+							"spread" : 0.65625,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								3.2e-05,
+								7.3e-05,
+								3.1e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.007791,
+							"spread" : 0.00757284045693755,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.007827,
+								0.007709,
+								0.007791
+							]
+						}
 					},
 					"aot" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 3.7e-05,
+							"spread" : 0.04054054054054061,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								3.8e-05,
+								3.7e-05,
+								3.5e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.00551,
+							"spread" : 0.004446460980036258,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.00551,
+								0.005515,
+								0.005466
+							]
+						}
 					}
 				}
 			},
@@ -74989,7 +75094,7 @@
 					"program_c2da_lines" : 0,
 					"counts" : {
 						"label" : 19,
-						"reinterpret" : 295,
+						"reinterpret" : 810,
 						"unsafe_expr" : 119,
 						"c_function" : 110,
 						"literal_named" : 1778,
@@ -75027,7 +75132,7 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-03 00:18 UTC",
+			"date" : "2026-11-03 12:02 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"address_cap" : "4294967296",
 			"rust_commit_error" : "",
@@ -75048,7 +75153,7 @@
 					},
 					"aot" : {
 						"status" : "compile",
-						"reason" : "aot build: the build exited 1 and left no binary: compare/work/projects/binjgb/ours_run/aot/ctx/binjgb_all.das.cpp:8637:9: error: cannot jump from this goto statement to its label"
+						"reason" : "aot build: the build exited 1 and left no binary: compare/work/projects/binjgb/ours_run/aot/ctx/binjgb_all.das.cpp:8334:9: error: cannot jump from this goto statement to its label"
 					}
 				},
 				"defines" : []
@@ -75071,7 +75176,7 @@
 				"status" : "pass",
 				"reason" : ""
 			},
-			"samples" : 0,
+			"samples" : 3,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
@@ -75096,34 +75201,202 @@
 			},
 			"speed" : {
 				"native" : {
-					"error" : "not measured: the run timed no bench (--samples 0)"
+					"setup" : {
+						"time" : 0.000226,
+						"spread" : 0.5752212389380532,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.000226,
+							0.00041,
+							0.00015
+						]
+					},
+					"decode" : {
+						"time" : 0.102919,
+						"spread" : 0.004663861871957571,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.102919,
+							0.103272,
+							0.102312
+						]
+					}
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.004028,
+							"spread" : 0.006206554121152006,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.004028,
+								0.004053,
+								0.004003
+							]
+						},
+						"decode" : {
+							"time" : 8.29225,
+							"spread" : 0.0048489854985076354,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								8.29225,
+								8.26187,
+								8.342288
+							]
+						}
 					},
 					"jit" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.000207,
+							"spread" : 0.021739130434782615,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.000209,
+								0.0002,
+								0.000207
+							]
+						},
+						"decode" : {
+							"time" : 0.125936,
+							"spread" : 0.00078611358150173,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.126083,
+								0.125885,
+								0.125936
+							]
+						}
 					},
 					"exe" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.000247,
+							"spread" : 0.034412955465587,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.000246,
+								0.000247,
+								0.000263
+							]
+						},
+						"decode" : {
+							"time" : 0.132412,
+							"spread" : 0.005954898347581772,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.132412,
+								0.133706,
+								0.132129
+							]
+						}
 					},
 					"aot" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "the lane does not pass: compile"
 					}
 				},
 				"rust" : {
 					"interp" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.00384,
+							"spread" : 0.005989583333333337,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.00384,
+								0.003859,
+								0.003813
+							]
+						},
+						"decode" : {
+							"time" : 7.513603,
+							"spread" : 0.00394830549338316,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								7.56148,
+								7.502148,
+								7.513603
+							]
+						}
 					},
 					"jit" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.000189,
+							"spread" : 0.02910052910052916,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.000199,
+								0.000189,
+								0.000188
+							]
+						},
+						"decode" : {
+							"time" : 0.111202,
+							"spread" : 0.033304257117677726,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.110943,
+								0.11835,
+								0.111202
+							]
+						}
 					},
 					"exe" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.000203,
+							"spread" : 0.06403940886699502,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.000182,
+								0.000203,
+								0.000208
+							]
+						},
+						"decode" : {
+							"time" : 0.108413,
+							"spread" : 0.0014435538173465999,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.108413,
+								0.108404,
+								0.108717
+							]
+						}
 					},
 					"aot" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.000199,
+							"spread" : 0.05025125628140703,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.000202,
+								0.000182,
+								0.000199
+							]
+						},
+						"decode" : {
+							"time" : 0.112858,
+							"spread" : 0.012475854613762423,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.115331,
+								0.112515,
+								0.112858
+							]
+						}
 					}
 				}
 			},
@@ -75133,7 +75406,7 @@
 			"code" : {
 				"ours" : {
 					"status" : "refused",
-					"error" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet",
+					"error" : "compile check: error[30341]: too many matching functions or generics malloc",
 					"files" : 0,
 					"lines" : 0,
 					"runtime_lines" : 0,
@@ -75167,28 +75440,28 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-03 00:23 UTC",
+			"date" : "2026-11-03 12:19 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"address_cap" : "4294967296",
 			"rust_commit_error" : "",
 			"ours" : {
-				"error" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet",
+				"error" : "compile check: error[30341]: too many matching functions or generics malloc",
 				"lanes" : {
 					"interp" : {
 						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet"
+						"reason" : "compile check: error[30341]: too many matching functions or generics malloc"
 					},
 					"jit" : {
 						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet"
+						"reason" : "compile check: error[30341]: too many matching functions or generics malloc"
 					},
 					"exe" : {
 						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet"
+						"reason" : "compile check: error[30341]: too many matching functions or generics malloc"
 					},
 					"aot" : {
 						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet"
+						"reason" : "compile check: error[30341]: too many matching functions or generics malloc"
 					}
 				},
 				"defines" : []
@@ -75211,7 +75484,7 @@
 				"status" : "pass",
 				"reason" : ""
 			},
-			"samples" : 0,
+			"samples" : 3,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
@@ -75236,34 +75509,139 @@
 			},
 			"speed" : {
 				"native" : {
-					"error" : "not measured: the run timed no bench (--samples 0)"
+					"setup" : {
+						"time" : 1.5e-05,
+						"spread" : 0,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							1.5e-05,
+							1.5e-05,
+							1.5e-05
+						]
+					},
+					"decode" : {
+						"time" : 0.120014,
+						"spread" : 0.0022789007949072853,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.119974,
+							0.120521,
+							0.120014
+						]
+					}
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "bench: compile check: error[30341]: too many matching functions or generics malloc"
 					},
 					"jit" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "bench: compile check: error[30341]: too many matching functions or generics malloc"
 					},
 					"exe" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "bench: compile check: error[30341]: too many matching functions or generics malloc"
 					},
 					"aot" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "bench: compile check: error[30341]: too many matching functions or generics malloc"
 					}
 				},
 				"rust" : {
 					"interp" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.000423,
+							"spread" : 0.035460992907801386,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.000434,
+								0.000404,
+								0.000423
+							]
+						},
+						"decode" : {
+							"time" : 6.087769,
+							"spread" : 0.005719665118699526,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								6.127429,
+								6.057789,
+								6.087769
+							]
+						}
 					},
 					"jit" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 2.7e-05,
+							"spread" : 0.07407407407407413,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								3e-05,
+								2.7e-05,
+								2.6e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.124538,
+							"spread" : 0.0011241548764232704,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.124356,
+								0.124538,
+								0.124636
+							]
+						}
 					},
 					"exe" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 2.3e-05,
+							"spread" : 0.19565217391304351,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								3.1e-05,
+								2.2e-05,
+								2.3e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.124403,
+							"spread" : 0.0028254945620282282,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.124403,
+								0.124321,
+								0.125024
+							]
+						}
 					},
 					"aot" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 2e-05,
+							"spread" : 0,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								2e-05,
+								2e-05,
+								2e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.13624,
+							"spread" : 0.0005248091603052572,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.136255,
+								0.136112,
+								0.13624
+							]
+						}
 					}
 				}
 			},
@@ -75318,7 +75696,7 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-03 00:22 UTC",
+			"date" : "2026-11-03 12:14 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"address_cap" : "4294967296",
 			"rust_commit_error" : "",
@@ -75364,7 +75742,7 @@
 				"status" : "pass",
 				"reason" : ""
 			},
-			"samples" : 0,
+			"samples" : 3,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
@@ -75389,34 +75767,223 @@
 			},
 			"speed" : {
 				"native" : {
-					"error" : "not measured: the run timed no bench (--samples 0)"
+					"setup" : {
+						"time" : 0.000103,
+						"spread" : 0.02912621359223306,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.000109,
+							0.000103,
+							0.000103
+						]
+					},
+					"decode" : {
+						"time" : 0.06277,
+						"spread" : 0.012099729169985602,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.06257,
+							0.06277,
+							0.064089
+						]
+					}
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 5.7e-05,
+							"spread" : 0.5526315789473684,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								5.7e-05,
+								5.4e-05,
+								0.000117
+							]
+						},
+						"decode" : {
+							"time" : 3.103104,
+							"spread" : 0.003671485067854634,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								3.103104,
+								3.108373,
+								3.085587
+							]
+						}
 					},
 					"jit" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 9.2e-05,
+							"spread" : 0.40760869565217395,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								3.5e-05,
+								0.00011,
+								9.2e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.068056,
+							"spread" : 0.0024685553073939327,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.068056,
+								0.067824,
+								0.06816
+							]
+						}
 					},
 					"exe" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.000111,
+							"spread" : 0.08108108108108103,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.000111,
+								0.000109,
+								0.000127
+							]
+						},
+						"decode" : {
+							"time" : 0.073784,
+							"spread" : 0.0012739889406918005,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.073778,
+								0.073966,
+								0.073784
+							]
+						}
 					},
 					"aot" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.0001,
+							"spread" : 0.015000000000000025,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								9.8e-05,
+								0.0001,
+								0.000101
+							]
+						},
+						"decode" : {
+							"time" : 0.070914,
+							"spread" : 0.009828806723637125,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.071951,
+								0.070557,
+								0.070914
+							]
+						}
 					}
 				},
 				"rust" : {
 					"interp" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 8.8e-05,
+							"spread" : 0.09090909090909088,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								8.8e-05,
+								8.3e-05,
+								9.9e-05
+							]
+						},
+						"decode" : {
+							"time" : 2.457425,
+							"spread" : 0.0018201979714538383,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								2.464664,
+								2.455718,
+								2.457425
+							]
+						}
 					},
 					"jit" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 5.8e-05,
+							"spread" : 0.07758620689655168,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								6.5e-05,
+								5.6e-05,
+								5.8e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.059856,
+							"spread" : 0.021551724137931026,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.059856,
+								0.062269,
+								0.059689
+							]
+						}
 					},
 					"exe" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 3.9e-05,
+							"spread" : 0.1282051282051282,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								4.7e-05,
+								3.7e-05,
+								3.9e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.063204,
+							"spread" : 0.0017720397443199954,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.063042,
+								0.063266,
+								0.063204
+							]
+						}
 					},
 					"aot" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 9.5e-05,
+							"spread" : 0.28421052631578947,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								9.5e-05,
+								0.000121,
+								6.7e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.065974,
+							"spread" : 0.001599114802801125,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.065974,
+								0.06612,
+								0.065909
+							]
+						}
 					}
 				}
 			},
@@ -75426,7 +75993,7 @@
 			"code" : {
 				"ours" : {
 					"status" : "refused",
-					"error" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet",
+					"error" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``",
 					"files" : 0,
 					"lines" : 0,
 					"runtime_lines" : 0,
@@ -75460,28 +76027,28 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-03 00:41 UTC",
+			"date" : "2026-11-03 12:24 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"address_cap" : "4294967296",
 			"rust_commit_error" : "",
 			"ours" : {
-				"error" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet",
+				"error" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``",
 				"lanes" : {
 					"interp" : {
 						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet"
+						"reason" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``"
 					},
 					"jit" : {
 						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet"
+						"reason" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``"
 					},
 					"exe" : {
 						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet"
+						"reason" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``"
 					},
 					"aot" : {
 						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet"
+						"reason" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``"
 					}
 				},
 				"defines" : []
@@ -75504,7 +76071,7 @@
 				"status" : "pass",
 				"reason" : ""
 			},
-			"samples" : 0,
+			"samples" : 3,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
@@ -75529,34 +76096,118 @@
 			},
 			"speed" : {
 				"native" : {
-					"error" : "not measured: the run timed no bench (--samples 0)"
+					"setup" : {
+						"time" : 0.006973,
+						"spread" : 0.025168507098809675,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.006973,
+							0.007298,
+							0.006947
+						]
+					},
+					"decode" : {
+						"time" : 0.173015,
+						"spread" : 0.005389706094847284,
+						"count" : 1,
+						"result" : 0,
+						"samples" : [
+							0.172987,
+							0.173015,
+							0.174852
+						]
+					}
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "bench: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``"
 					},
 					"jit" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "bench: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``"
 					},
 					"exe" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "bench: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``"
 					},
 					"aot" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "bench: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``"
 					}
 				},
 				"rust" : {
 					"interp" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.174414,
+							"spread" : 0.006020158932195783,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.174322,
+								0.174414,
+								0.176422
+							]
+						},
+						"decode" : {
+							"time" : 6.394203,
+							"spread" : 0.004134448030505127,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								6.394203,
+								6.423366,
+								6.370493
+							]
+						}
 					},
 					"jit" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.006761,
+							"spread" : 0.5371986392545481,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.014017,
+								0.006753,
+								0.006761
+							]
+						},
+						"decode" : {
+							"time" : 0.192058,
+							"spread" : 0.0016948005290068954,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.192058,
+								0.192552,
+								0.191901
+							]
+						}
 					},
 					"exe" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"setup" : {
+							"time" : 0.006886,
+							"spread" : 0.002396166134185307,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.006857,
+								0.006886,
+								0.00689
+							]
+						},
+						"decode" : {
+							"time" : 0.192256,
+							"spread" : 0.0025616885818907755,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.192113,
+								0.192256,
+								0.193098
+							]
+						}
 					},
 					"aot" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "the lane does not pass: timeout"
 					}
 				}
 			},
@@ -75566,7 +76217,7 @@
 			"code" : {
 				"ours" : {
 					"status" : "refused",
-					"error" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` with no file-scope declaration before it is not lowered yet",
+					"error" : "emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/sys_null.c:160:2: external function `vfprintf` has no c_runtime mapping",
 					"files" : 0,
 					"lines" : 0,
 					"runtime_lines" : 0,
@@ -75600,28 +76251,28 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-03 00:33 UTC",
+			"date" : "2026-11-03 12:37 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"address_cap" : "4294967296",
 			"rust_commit_error" : "",
 			"ours" : {
-				"error" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` with no file-scope declaration before it is not lowered yet",
+				"error" : "emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/sys_null.c:160:2: external function `vfprintf` has no c_runtime mapping",
 				"lanes" : {
 					"interp" : {
 						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` with no file-scope declaration before it is not lowered yet"
+						"reason" : "emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/sys_null.c:160:2: external function `vfprintf` has no c_runtime mapping"
 					},
 					"jit" : {
 						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` with no file-scope declaration before it is not lowered yet"
+						"reason" : "emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/sys_null.c:160:2: external function `vfprintf` has no c_runtime mapping"
 					},
 					"exe" : {
 						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` with no file-scope declaration before it is not lowered yet"
+						"reason" : "emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/sys_null.c:160:2: external function `vfprintf` has no c_runtime mapping"
 					},
 					"aot" : {
 						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` with no file-scope declaration before it is not lowered yet"
+						"reason" : "emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/sys_null.c:160:2: external function `vfprintf` has no c_runtime mapping"
 					}
 				},
 				"defines" : []
@@ -75644,7 +76295,7 @@
 				"status" : "pass",
 				"reason" : ""
 			},
-			"samples" : 0,
+			"samples" : 3,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
@@ -75669,34 +76320,34 @@
 			},
 			"speed" : {
 				"native" : {
-					"error" : "not measured: the run timed no bench (--samples 0)"
+					"error" : "no bench: the project has no bench unit"
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "no bench: the project has no bench unit"
 					},
 					"jit" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "no bench: the project has no bench unit"
 					},
 					"exe" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "no bench: the project has no bench unit"
 					},
 					"aot" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "no bench: the project has no bench unit"
 					}
 				},
 				"rust" : {
 					"interp" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "no bench: the project has no bench unit"
 					},
 					"jit" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "no bench: the project has no bench unit"
 					},
 					"exe" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "no bench: the project has no bench unit"
 					},
 					"aot" : {
-						"error" : "not measured: the run timed no bench (--samples 0)"
+						"error" : "no bench: the project has no bench unit"
 					}
 				}
 			},

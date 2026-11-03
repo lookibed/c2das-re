@@ -639,7 +639,7 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-03 00:18 UTC, 4 GiB address-space cap); doomgeneric (Rust `b1d012eb5d26`, 2026-11-03 00:41 UTC, 4 GiB address-space cap); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-03 00:23 UTC, 4 GiB address-space cap); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-03 00:22 UTC, 4 GiB address-space cap); quakegeneric (Rust `b1d012eb5d26`, 2026-11-03 00:33 UTC, 4 GiB address-space cap); wasm3 (Rust `b1d012eb5d26`, 2026-11-03 00:39 UTC, 4 GiB address-space cap).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-03 12:02 UTC, 4 GiB address-space cap); doomgeneric (Rust `b1d012eb5d26`, 2026-11-03 12:24 UTC, 4 GiB address-space cap); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-03 12:19 UTC, 4 GiB address-space cap); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-03 12:14 UTC, 4 GiB address-space cap); quakegeneric (Rust `b1d012eb5d26`, 2026-11-03 12:37 UTC, 4 GiB address-space cap); wasm3 (Rust `b1d012eb5d26`, 2026-11-03 12:09 UTC, 4 GiB address-space cap).
 
 | Project       | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------------ | :--- | :----- | ----------: | ------: | ------: | ------: |
@@ -662,36 +662,36 @@ Defines of our side's sidecar alone (the Rust side and the native build do not g
 
 Why a lane does not pass:
 
-- binjgb, Ours, AOT: compile: aot build: the build exited 1 and left no binary: compare/work/projects/binjgb/ours_run/aot/ctx/binjgb_all.das.cpp:8637:9: error: cannot jump from t...
-- doomgeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` ...
+- binjgb, Ours, AOT: compile: aot build: the build exited 1 and left no binary: compare/work/projects/binjgb/ours_run/aot/ctx/binjgb_all.das.cpp:8334:9: error: cannot jump from t...
+- doomgeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``
 - doomgeneric, Rust, AOT: timeout: the build or its run took longer than 300 s
-- h264bsd-mp4, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definiti...
-- quakegeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` wit...
+- h264bsd-mp4, Ours, interpreter JIT exe AOT: refused: compile check: error[30341]: too many matching functions or generics malloc
+- quakegeneric, Ours, interpreter JIT exe AOT: refused: emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/sys_null.c:160:2: external function `vfprintf` has no c_runtime mapping
 - quakegeneric, Rust, JIT: output: line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at compare/work/projects/quakegeneric/rust/host.das.inc:66...
 - wasm3, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`
 
-The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), not measured in this capture (`--samples 0`):
+The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 3 samples a cell:
 
-| Project       | Side | Native compiler      |     Native s |  interpreter |          JIT |          exe |          AOT |
-| :------------ | :--- | :------------------- | -----------: | -----------: | -----------: | -----------: | -----------: |
-| binjgb        | Ours | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
-| binjgb        | Rust | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
-| doomgeneric   | Ours | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
-| doomgeneric   | Rust | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
-| h264bsd-mp4   | Ours | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
-| h264bsd-mp4   | Rust | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
-| plmpeg-stream | Ours | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
-| plmpeg-stream | Rust | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
-| quakegeneric  | Ours | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
-| quakegeneric  | Rust | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
-| wasm3         | Ours | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
-| wasm3         | Rust | clang version 22.1.8 | not measured | not measured | not measured | not measured | not measured |
+| Project       | Side | Native compiler      | Native s | interpreter |      JIT |      exe |      AOT |
+| :------------ | :--- | :------------------- | -------: | ----------: | -------: | -------: | -------: |
+| binjgb        | Ours | clang version 22.1.8 | 0.102919 |       80.57 |     1.22 |     1.29 |  compile |
+| binjgb        | Rust | clang version 22.1.8 | 0.102919 |       73.01 |     1.08 |     1.05 |     1.10 |
+| doomgeneric   | Ours | clang version 22.1.8 | 0.173015 |     refused |  refused |  refused |  refused |
+| doomgeneric   | Rust | clang version 22.1.8 | 0.173015 |       36.96 |     1.11 |     1.11 |  timeout |
+| h264bsd-mp4   | Ours | clang version 22.1.8 | 0.120014 |     refused |  refused |  refused |  refused |
+| h264bsd-mp4   | Rust | clang version 22.1.8 | 0.120014 |       50.73 |     1.04 |     1.04 |     1.14 |
+| plmpeg-stream | Ours | clang version 22.1.8 | 0.062770 |       49.44 |     1.08 |     1.18 |     1.13 |
+| plmpeg-stream | Rust | clang version 22.1.8 | 0.062770 |       39.15 |     0.95 |     1.01 |     1.05 |
+| quakegeneric  | Ours | clang version 22.1.8 | no bench |    no bench | no bench | no bench | no bench |
+| quakegeneric  | Rust | clang version 22.1.8 | no bench |    no bench | no bench | no bench | no bench |
+| wasm3         | Ours | clang version 22.1.8 | 0.003862 |     refused |  refused |  refused |  refused |
+| wasm3         | Rust | clang version 22.1.8 | 0.003862 |       64.39 |     1.99 |     2.02 |     1.43 |
 
 The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
 
 | Project       | Side | Code    | Files | Lines | Runtime lines | c_function | goto | label | literal_named | pointer_arith | pointer_index | reinterpret | unsafe_block | unsafe_expr | while_rangeable |
 | :------------ | :--- | :------ | ----: | ----: | ------------: | ---------: | ---: | ----: | ------------: | ------------: | ------------: | ----------: | -----------: | ----------: | --------------: |
-| binjgb        | Ours | ok      |     1 |  8260 |             0 |        110 |   38 |    19 |          1778 |            88 |            43 |         295 |            0 |         119 |              23 |
+| binjgb        | Ours | ok      |     1 |  8260 |             0 |        110 |   38 |    19 |          1778 |            88 |            43 |         810 |            0 |         119 |              23 |
 | binjgb        | Rust | ok      |     1 | 11481 |           956 |          0 |  670 |   867 |          2393 |            33 |           939 |        3818 |            8 |        5049 |              12 |
 | doomgeneric   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | doomgeneric   | Rust | ok      |     1 | 37045 |          1579 |          0 |  435 |   612 |         43595 |           523 |          3454 |       10418 |          260 |       15426 |             169 |
