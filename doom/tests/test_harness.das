@@ -209,6 +209,16 @@ def test_tic_lines(t : T?) {
 }
 
 [test]
+def test_trace_lines(t : T?) {
+    let text = "tic=0 cs=00000000\ntrace=0 x=00e00000 hp=100\nZ_Init\ntrace=1 x=00e00071 hp=100\n"
+    t |> equal(join(trace_lines(text), "|"), "trace=0 x=00e00000 hp=100|trace=1 x=00e00071 hp=100")
+    t |> equal(join(tic_lines(text), "|"), "tic=0 cs=00000000")
+    let sync = tic_sync(trace_lines(text), ["trace=0 x=00e00000 hp=100", "trace=1 x=00deb79c hp=100"], 0)
+    t |> equal(sync.in_sync, 1)
+    t |> equal(sync.fields, "x")
+}
+
+[test]
 def test_sidecar(t : T?) {
     t |> run("doom.c2das reads with the converter's reader") @(t : T?) {
         var error : string

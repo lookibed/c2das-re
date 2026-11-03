@@ -183,6 +183,9 @@ def tic_sync(expected, got : array<string>; tics : int) : TicSync {
     return sync
 }
 
+//! The `trace=` lines of `text` in order, which the `DOOM_TIC_TRACE` build of patch 0002 prints.
+def trace_lines(text : string) : array<string> => <- [for (line in split(text, "\n")); line; where line |> starts_with("trace=")]
+
 //! One line on `sync`: the first desync with the fields that differ, a run short of the compared tics, or `N tics in sync`.
 def sync_summary(sync : TicSync) : string {
     if (!empty(sync.desync)) {

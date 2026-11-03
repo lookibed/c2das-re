@@ -1,0 +1,69 @@
+c2das-re trace of PureDOOM's tic checksum, applied by doom/fetch.sh after 0001.
+
+Copyright (C) 2026 the c2das-re authors. This patch modifies PureDOOM, which is distributed
+under the GNU General Public License version 2 (PureDOOM's LICENSE); the patch and the files it
+produces are distributed under the same license, WITHOUT ANY WARRANTY.
+
+- p_tick.c: with -DDOOM_TIC_TRACE, P_Ticker ends by printing one line per level tic,
+  "trace=<gametic> x=<hex> y=<hex> z=<hex> ang=<hex> hp=<d> prnd=<d>", the six values the
+  per-tic checksum hashes. Without the define the build prints nothing more; no reference
+  log is recorded with it.
+
+diff --git a/src/DOOM/p_tick.c b/src/DOOM/p_tick.c
+index aa7d50b..0be5869 100644
+--- a/src/DOOM/p_tick.c
++++ b/src/DOOM/p_tick.c
+@@ -105,6 +105,45 @@ void P_RunThinkers(void)
+ }
+ 
+ 
++#if defined(DOOM_TIC_TRACE)
++//
++// P_TicTrace
++// [c2das] One line per level tic, "trace=<gametic> x=<hex> y=<hex> z=<hex> ang=<hex> hp=<d>
++// prnd=<d>": the six values the tic checksum hashes, so a desync names its field.
++//
++static void P_TicTraceField(const char* name, unsigned int value)
++{
++    static const char hex[] = "0123456789abcdef";
++    char digits[9];
++    int i;
++
++    for (i = 0; i < 8; i++)
++        digits[i] = hex[(value >> (28 - 4 * i)) & 0xf];
++    digits[8] = 0;
++    doom_print(name);
++    doom_print(digits);
++}
++
++static void P_TicTrace(void)
++{
++    extern int prndindex;
++    mobj_t* mo = players[0].mo;
++
++    doom_print("trace=");
++    doom_print(doom_itoa(gametic, 10));
++    P_TicTraceField(" x=", mo ? (unsigned int)mo->x : 0);
++    P_TicTraceField(" y=", mo ? (unsigned int)mo->y : 0);
++    P_TicTraceField(" z=", mo ? (unsigned int)mo->z : 0);
++    P_TicTraceField(" ang=", mo ? (unsigned int)mo->angle : 0);
++    doom_print(" hp=");
++    doom_print(doom_itoa(players[0].health, 10));
++    doom_print(" prnd=");
++    doom_print(doom_itoa(prndindex, 10));
++    doom_print("\n");
++}
++#endif
++
++
+ //
+ // P_Ticker
+ //
+@@ -135,4 +174,7 @@ void P_Ticker(void)
+ 
+     // for par times
+     leveltime++;
++#if defined(DOOM_TIC_TRACE)
++    P_TicTrace();
++#endif
+ }
