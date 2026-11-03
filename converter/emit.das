@@ -1731,6 +1731,10 @@ def private decayed(var em : Emitter; tu : CirTu; x : CirExpr; inner : Em; loc :
     if (is_jmp_buf(tu, x.a.t)) {
         return x.a.e == "un" && x.a.op == "deref" ? emit_expr(em, tu, x.a.a, loc) : unsafe_value(em, "addr({inner.text})", PREC_PRIMARY)
     }
+    if (is_marshal(em, tu, element_under(tu, x.a.t))) {
+        // a value's array of the record has das's layout, which is not what a byte pointer reads
+        fail(em, "the decay of an array of the marshal-only record `{tag_name(em, tu, element_under(tu, x.a.t))}` held by value is not lowered yet", loc)
+    }
     return unsafe_value(em, "addr({inner.text}[0])", PREC_PRIMARY)
 }
 
@@ -2426,11 +2430,36 @@ def private is_marshal(em : Emitter; tu : CirTu; t : int) : bool => kind_of(tu, 
 def private marshal_pointee(em : Emitter; tu : CirTu; t : int) : int =>
     kind_of(tu, t) == "ptr" && is_marshal(em, tu, tu.types[t].to) ? tu.types[t].to : -1
 
+// whether `x` is a marshal-only record in C memory (`marshal_site`), spelled nothing
+def private marshal_located(em : Emitter; tu : CirTu; x : CirExpr const?) : bool {
+    if (x == null) {
+        return false
+    }
+    if (x.e == "un" && x.op == "deref") {
+        return marshal_pointee(em, tu, x.a.t) >= 0
+    }
+    if (x.e == "index") {
+        return marshal_pointee(em, tu, x.base.t) >= 0
+    }
+    return x.e == "member" && is_marshal(em, tu, x.t) && marshal_held(em, tu, x)
+}
+
+// whether member `x` is a field of a marshal-only record in C memory
+def private marshal_held(em : Emitter; tu : CirTu; x : CirExpr const?) : bool =>
+    x.arrow ? marshal_pointee(em, tu, x.base.t) >= 0 : marshal_located(em, tu, x.base)
+
 // a marshal-only record located in C memory: `*p`, `p[i]` and `p->` of a byte pointer give
-// the record slot and spell the bytes it starts at; -1 for a value (a local, a literal)
+// the record slot and spell the bytes it starts at, a record field of one (`p->r`) the bytes
+// its `ptr_T_r` gives; -1 for a value (a local, a literal)
 def private marshal_site(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc; var bytes : Em&) : int {
     if (x == null) {
         return -1
+    }
+    if (x.e == "member" && is_marshal(em, tu, x.t) && marshal_held(em, tu, x)) {
+        var outer : Em
+        let holder = marshal_holder(em, tu, *x, loc, outer)
+        bytes = value("{pointer_name(em, tu, holder, x.field)}({outer.text}, 0)", PREC_PRIMARY)
+        return x.t
     }
     if (x.e == "un" && x.op == "deref" && marshal_pointee(em, tu, x.a.t) >= 0) {
         bytes = emit_expr(em, tu, x.a, loc)
@@ -2446,12 +2475,18 @@ def private marshal_site(var em : Emitter; tu : CirTu; x : CirExpr const?; loc :
     return -1
 }
 
-// a field of a marshal-only record in C memory: its record and bytes when `x` is `p->f`,
-// `(*p).f` or `p[i].f` of a byte pointer, -1 for a field of a value
+// a scalar field of a marshal-only record in C memory: its record and bytes when `x` is `p->f`,
+// `(*p).f` or `p[i].f` of a byte pointer, -1 for a field of a value and for a record field,
+// which is a `marshal_site` itself
 def private marshal_field(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc; var bytes : Em&) : int {
-    if (x.e != "member") {
+    if (x.e != "member" || is_marshal(em, tu, x.t)) {
         return -1
     }
+    return marshal_holder(em, tu, x, loc, bytes)
+}
+
+// the marshal-only record in C memory holding member `x`, with its bytes; -1 for a value's
+def private marshal_holder(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc; var bytes : Em&) : int {
     if (x.arrow && marshal_pointee(em, tu, x.base.t) >= 0) {
         bytes = emit_expr(em, tu, x.base, loc)
         return marshal_pointee(em, tu, x.base.t)
@@ -2462,29 +2497,27 @@ def private marshal_field(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLo
 // whether `x` is an array field of a marshal-only record in C memory, `p->a`, `(*p).a` or
 // `p[i].a` of a byte pointer: its elements are read and written where they lie, through
 // `marshal_elements`
-def private marshal_array_member(em : Emitter; tu : CirTu; x : CirExpr const?) : bool {
-    if (x == null || x.e != "member" || kind_of(tu, x.t) != "array") {
-        return false
-    }
-    if (x.arrow) {
-        return marshal_pointee(em, tu, x.base.t) >= 0
-    }
-    let site = x.base
-    return (site.e == "un" && site.op == "deref" && marshal_pointee(em, tu, site.a.t) >= 0) || (site.e == "index" && marshal_pointee(em, tu, site.base.t) >= 0)
-}
+def private marshal_array_member(em : Emitter; tu : CirTu; x : CirExpr const?) : bool =>
+    x != null && x.e == "member" && kind_of(tu, x.t) == "array" && marshal_held(em, tu, x)
 
 // the pointer to the first element of `x`, an array field of a marshal-only record in C memory
 // (`marshal_array_member`): its generated `ptr_T_f` over the record's bytes
 def private marshal_elements(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     var bytes : Em
-    let rec = marshal_field(em, tu, x, loc, bytes)
+    let rec = marshal_holder(em, tu, x, loc, bytes)
     return value("{pointer_name(em, tu, rec, x.field)}({bytes.text}, 0)", PREC_PRIMARY)
 }
 
-// `&p->a[i]` of an array field of a marshal-only record in C memory is its first element's
-// pointer plus `i`, and `&p->a` that pointer as the field's; an empty text for any other operand
+// `&` of a marshal-only record in C memory is the bytes it starts at (`&p->r`, `&p->a[i]` of
+// a record field or element, `&p[i]`); `&p->a[i]` of an array field of scalars is its first
+// element's pointer plus `i`, and `&p->a` that pointer as the field's; an empty text for any
+// other operand
 def private marshal_element_address(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let at = x.a
+    var bytes : Em
+    if (marshal_site(em, tu, at, loc, bytes) >= 0) {
+        return bytes
+    }
     if (marshal_array_member(em, tu, at)) {
         let first = marshal_elements(em, tu, *at, loc)
         return unsafe_value(em, "reinterpret<{das_type(em, tu, x.t, loc)}>({first.text})", PREC_PRIMARY)
@@ -2542,6 +2575,10 @@ def private emit_index(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
 // through its generated reader
 def private emit_member(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     var bytes : Em
+    let whole = marshal_site(em, tu, unsafe(addr(x)), loc, bytes)
+    if (whole >= 0) {
+        return value("{reader_name(em, tu, whole, -1)}({bytes.text}, 0)", PREC_PRIMARY)
+    }
     let marshal = marshal_field(em, tu, x, loc, bytes)
     if (marshal >= 0) {
         return value("{reader_name(em, tu, marshal, x.field)}({bytes.text}, 0)", PREC_PRIMARY)
@@ -5822,7 +5859,7 @@ def private record_lines(var em : Emitter; tu : CirTu; t : int; loc : CirLoc; va
         let pad_here = next_pad < length(pads) && pads[next_pad].before == idx
         var ft = ""
         if (idx < n && !is_unnamed_bitfield(tu.types[t].fields[idx]) && !is_flexible(tu, t, idx)) {
-            ft = das_type_dims(em, tu, tu.types[t].fields[idx].t, loc, tu.types[t].fields[idx].dims)
+            ft = is_marshal(em, tu, t) ? marshal_field_type(em, tu, tu.types[t].fields[idx], loc) : das_type_dims(em, tu, tu.types[t].fields[idx].t, loc, tu.types[t].fields[idx].dims)
         }
         // the end, a padding field or a field of another type closes the line of names
         if (!empty(names) && (idx == n || pad_here || (!empty(ft) && ft != spelled))) {
@@ -5866,7 +5903,7 @@ def private emit_record(var em : Emitter; tu : CirTu; d : CirDecl) {
         line(em, annotation)
     }
     var lines : array<string>
-    if (!record_lines(em, tu, t, d.loc, lines)) {
+    if ((is_marshal(em, tu, t) && !marshal_fields_lowered(em, tu, t, d.loc)) || !record_lines(em, tu, t, d.loc, lines)) {
         return
     }
     open_block(em, "struct {name}")
@@ -6060,6 +6097,40 @@ def private unit_init(tu : CirTu; t : int; u : BitUnit; parts : array<tuple<fiel
     return storage == arith_type ? joined : "{storage}({joined})"
 }
 
+// whether every field of marshal-only record `t` has accessors, with the error set when not: a
+// record field, or a one-dimensional array of records, is one of a marshal-only record, which
+// lies at clang's offsets as the outer one does
+def private marshal_fields_lowered(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : bool {
+    let name = tag_name(em, tu, t)
+    for (f in tu.types[t].fields) {
+        let elem = element_under(tu, f.t)
+        if (kind_of(tu, elem) == "union") {
+            fail(em, "field `{name}.{f.name}` of a marshal-only record holds a union; not lowered yet", loc)
+            return false
+        }
+        if (kind_of(tu, elem) == "struct" && !is_marshal(em, tu, elem)) {
+            fail(em, "field `{name}.{f.name}` of a marshal-only record holds the record `{tag_name(em, tu, elem)}`, which is not listed under `marshal`", loc)
+            return false
+        }
+        if (elem != f.t && kind_of(tu, elem) != "int" && kind_of(tu, elem) != "float" && kind_of(tu, elem) != "struct") {
+            fail(em, "field `{name}.{f.name}` of a marshal-only record is an array of `{kind_of(tu, elem)}`; not lowered yet", loc)
+            return false
+        }
+        if (is_record(tu, elem) && elem != f.t && tu.types[f.t].elem != elem) {
+            fail(em, "field `{name}.{f.name}` of a marshal-only record is an array of arrays of records; not lowered yet", loc)
+            return false
+        }
+    }
+    return true
+}
+
+// the das type of field `f` of marshal-only record `t`: an array of a marshal-only record is
+// the das array of its natural struct, which no other place holds
+def private marshal_field_type(var em : Emitter; tu : CirTu; f : CirField; loc : CirLoc) : string {
+    let elem = element_under(tu, f.t)
+    return is_record(tu, elem) && elem != f.t ? "{tag_name(em, tu, elem)}[{tu.types[f.t].count}]" : das_type_dims(em, tu, f.t, loc, f.dims)
+}
+
 // the readers and writers of a marshal-only record: the whole record and each scalar field,
 // over bytes at clang's offsets through `memcpy`, which asks nothing of alignment, and a typed
 // pointer to each array field at its offset; the value side is the naturally laid out das struct
@@ -6068,22 +6139,21 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
     let name = tag_name(em, tu, t)
     em.requires |> insert("crt")
     em.requires |> insert("c_runtime/c_function")
-    for (f in tu.types[t].fields) {
-        // an array of arrays (`short bbox[2][4]`) is one block of its innermost scalars
-        var inner = f.t
-        while (kind_of(tu, inner) == "array") {
-            inner = tu.types[inner].elem
-        }
-        if (is_record(tu, f.t) || (inner != f.t && kind_of(tu, inner) != "int" && kind_of(tu, inner) != "float")) {
-            fail(em, "field `{name}.{f.name}` of a marshal-only record is a record or an array of records; not lowered yet", loc)
-            return
-        }
-    }
     line(em, "[c_function]")
     open_block(em, "def {reader_name(em, tu, t, -1)}(bytes : uint8?; ofs : int) : {name}")
     line(em, "var r : {name}")
     for (f in tu.types[t].fields) {
-        line(em, "crt::memcpy(reinterpret<void?>(addr(r.{das_name(em, f.name)})), reinterpret<void?>(bytes + (ofs + {f.off})), uint64({type_size(tu, f.t)}))")
+        let rec = element_under(tu, f.t)
+        let field = "r.{das_name(em, f.name)}"
+        if (rec == f.t && is_record(tu, rec)) {
+            line(em, "{field} = {reader_name(em, tu, rec, -1)}(bytes, ofs + {f.off})")
+        } elif (is_record(tu, rec)) {
+            open_block(em, "for (k in range({tu.types[f.t].count}))")
+            line(em, "{field}[k] = {reader_name(em, tu, rec, -1)}(bytes, ofs + {f.off} + k * {type_size(tu, rec)})")
+            close_block(em)
+        } else {
+            line(em, "crt::memcpy(reinterpret<void?>(addr({field})), reinterpret<void?>(bytes + (ofs + {f.off})), uint64({type_size(tu, f.t)}))")
+        }
     }
     line(em, "return r")
     close_block(em)
@@ -6092,11 +6162,31 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
     open_block(em, "def {writer_name(em, tu, t, -1)}(bytes : uint8?; ofs : int; {is_var_parameter(tu, t) ? "var " : ""}v : {name})")
     line(em, "var copy = v")
     for (f in tu.types[t].fields) {
-        line(em, "crt::memcpy(reinterpret<void?>(bytes + (ofs + {f.off})), reinterpret<void?>(addr(copy.{das_name(em, f.name)})), uint64({type_size(tu, f.t)}))")
+        let rec = element_under(tu, f.t)
+        let field = "copy.{das_name(em, f.name)}"
+        if (rec == f.t && is_record(tu, rec)) {
+            line(em, "{writer_name(em, tu, rec, -1)}(bytes, ofs + {f.off}, {field})")
+        } elif (is_record(tu, rec)) {
+            open_block(em, "for (k in range({tu.types[f.t].count}))")
+            line(em, "{writer_name(em, tu, rec, -1)}(bytes, ofs + {f.off} + k * {type_size(tu, rec)}, {field}[k])")
+            close_block(em)
+        } else {
+            line(em, "crt::memcpy(reinterpret<void?>(bytes + (ofs + {f.off})), reinterpret<void?>(addr({field})), uint64({type_size(tu, f.t)}))")
+        }
     }
     close_block(em)
     line(em, "")
     for (idx, f in range(length(tu.types[t].fields)), tu.types[t].fields) {
+        if (is_record(tu, element_under(tu, f.t))) {
+            // a record field, or an array of records, is the inner record's bytes where they lie,
+            // the first element's for an array
+            line(em, "[c_function]")
+            open_block(em, "def {pointer_name(em, tu, t, idx)}(bytes : uint8?; ofs : int) : uint8?")
+            line(em, "return reinterpret<uint8?>(bytes + (ofs + {f.off}))")
+            close_block(em)
+            line(em, "")
+            continue
+        }
         if (kind_of(tu, f.t) == "array") {
             // C reaches an array field only through its decay, its address or `sizeof`: the
             // field's accessor is the pointer to its first element where it lies
