@@ -81,6 +81,14 @@ struct Emitter {
     // into them finds its label in an enclosing scope
     labels : table<string; int>
     flatten : table<uint64>
+    // the `if`, loop and switch statements a goto enters from outside, or whose case labels sit
+    // below their switch's level (Duff's device), spelled open with das labels and gotos at their
+    // parent's level; the `if` arms spelled flat among them; the das label of each case label of an
+    // open switch; and the highest das label number taken
+    opened : table<uint64>
+    entered : table<uint64>
+    case_labels : table<uint64; int>
+    label_count : int
     // a label a goto from another case group of its switch reaches (`goto dflt` in lstrlib.c's
     // `match`), by the switch body it splits; the switch bodies that hold one, which take the
     // matched-flag loop, each with the das label that restarts it; and, once the switch is
@@ -92,8 +100,12 @@ struct Emitter {
     label_flags : table<string; string>
     label_gotos : table<string; string>
     // what a C `continue` spells at the current nesting: "" inside a loop body, the `_cont`
-    // flag inside a matched-flag switch loop whose `continue` reaches the loop around it
+    // flag inside a matched-flag switch loop whose `continue` reaches the loop around it, the
+    // `goto` to the test or increment of an open loop
     cont_flags : array<string>
+    // what a C `break` spells at the current nesting: "" for das's, the `goto` to the end of an
+    // open loop or switch
+    break_gotos : array<string>
     // the name the `[variadic]` prologue binds the trailing arguments to in the function being
     // emitted, "" in a function that is not variadic
     va_name : string
@@ -3361,17 +3373,27 @@ def private emit_continue(var em : Emitter) {
     let flag = empty(em.cont_flags) ? "" : em.cont_flags[length(em.cont_flags) - 1]
     if (empty(flag)) {
         line(em, "continue")
+    } elif (flag |> starts_with("goto ")) {
+        line(em, flag)
     } else {
         line(em, "{flag} = true")
         line(em, "break")
     }
 }
 
-// a loop's body: C `continue` inside it is das's
+// a loop's body: C `continue` and `break` inside it are das's
 def private emit_loop_body(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     em.cont_flags |> push("")
+    em.break_gotos |> push("")
     emit_body(em, tu, st)
+    em.break_gotos |> pop()
     em.cont_flags |> pop()
+}
+
+// C `break`: das's, or the `goto` to the end of the open loop or switch it leaves
+def private emit_break(var em : Emitter) {
+    let jump = empty(em.break_gotos) ? "" : em.break_gotos[length(em.break_gotos) - 1]
+    line(em, empty(jump) ? "break" : jump)
 }
 
 def private emit_while(var em : Emitter; tu : CirTu; st : CirStmt) {
@@ -3722,10 +3744,13 @@ def private for_range(var em : Emitter; tu : CirTu; st : CirStmt) : bool {
 }
 
 // where a label or a goto sits: the compound blocks above it, outermost first, and whether
-// each is a bare block (one that is its parent's statement, not an `if`, loop or switch body)
+// each is a bare block (one that is its parent's statement, not an `if`, loop or switch body);
+// an arm or body that is no block stands in the path too, and `owners` holds the `if`, loop or
+// switch whose arm or body each entry is, null for a bare block
 struct LabelSite {
     path : array<uint64>
     bare : array<bool>
+    owners : array<CirStmt const?>
     // the switches around the site, outermost first, and the case group of each the site is in
     switches : array<uint64>
     groups : array<int>
@@ -3735,18 +3760,23 @@ struct LabelPlan {
     labels : table<string; LabelSite>
     gotos : array<CirStmt const?>
     goto_sites : array<LabelSite>
+    // the case labels, each with its site
+    cases : array<CirStmt const?>
+    case_sites : array<LabelSite>
     // the switch bodies, each once its own walk ends: an inner switch before the one around it
     switch_order : array<uint64>
 }
 
 // das resolves a label lexically upward, so a goto reaches a label in its own block or an
-// enclosing one; the C labels are numbered in order of appearance, and every bare block
-// between a goto and a deeper label is flattened, while an `if`, loop or switch body on
-// that way is Duff's device (P7.7) and fails closed
+// enclosing one; the C labels are numbered in order of appearance, every bare block between a
+// goto and a deeper label is flattened, and every `if`, loop or switch on that way is spelled
+// open, as is every one between a case label and its switch's level
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-into-body")]
 def private plan_labels(var em : Emitter; body : CirStmt const?) {
     var plan : LabelPlan
     var site : LabelSite
-    walk_labels(em, body, true, site, plan)
+    em.label_count = 0
+    walk_labels(em, body, true, null, site, plan)
     for (idx, g in range(length(plan.gotos)), plan.gotos) {
         if (!key_exists(plan.labels, g.label_name)) {
             fail(em, "goto to a label the function does not declare", g.loc)
@@ -3758,17 +3788,73 @@ def private plan_labels(var em : Emitter; body : CirStmt const?) {
         while (common < length(target.path) && common < length(plan.goto_sites[idx].path) && target.path[common] == plan.goto_sites[idx].path[common]) {
             common++
         }
-        for (depth in range(common, length(target.path))) {
-            if (!target.bare[depth]) {
-                fail(em, "goto into a loop, branch or switch body (Duff's device) is not lowered yet (docs/implementation_order.md P7.7)", g.loc)
-                return
-            }
-            em.flatten |> insert(target.path[depth])
-        }
+        open_path(em, target, common)
         plan_cross_group(em, g, target, plan.goto_sites[idx])
+    }
+    for (at in plan.case_sites) {
+        let level = find_index(at.path, at.switches |> back())
+        if (level + 1 < length(at.path)) {
+            open_path(em, at, level)
+        }
+    }
+    for (c, at in plan.cases, plan.case_sites) {
+        if (key_exists(em.flag_switches, at.switches |> back()) && key_exists(em.flatten, at.switches |> back())) {
+            fail(em, "a switch spelled open, for a goto into its body or a case label below its level, that a goto from another case re-dispatches is not lowered", c.loc)
+            return
+        }
     }
     check_labelled_groups(em, plan)
     number_restarts(em, plan)
+    for (n in values(em.labels)) {
+        em.label_count = max(em.label_count, n)
+    }
+}
+
+// every block on `site`'s path from `from` on loses its braces, and every `if`, loop or switch
+// whose arm or body is one is spelled open; an `if` arm holding a label of its own, or ending in
+// a statement that leaves, is spelled flat too: braced under the open `if`, the first would make
+// a labelled block that passes no goto outward (docs/probe-findings.md F63), and the second an
+// `if` whose branch ends in `return`, which daslang's optimizer folds the following labels under
+// (lookibed/daScript#8)
+def private open_path(var em : Emitter; site : LabelSite; from : int) {
+    for (depth in range(from, length(site.path))) {
+        let owner = site.owners[depth]
+        if (owner == null) {
+            em.flatten |> insert(site.path[depth])
+            continue
+        }
+        if (owner.s == "if") {
+            var first_in_then = false
+            if (setjmp_site(owner.cond, first_in_then) != null) {
+                fail(em, "a goto into an arm of a setjmp `if` is not lowered", owner.loc)
+                return
+            }
+            enter_arm(em, owner.then_s, site.path[depth] == intptr(owner.then_s) || holds_label(owner.then_s) || ends_group(owner.then_s))
+            enter_arm(em, owner.else_s, site.path[depth] == intptr(owner.else_s) || holds_label(owner.else_s) || ends_group(owner.else_s))
+        } else {
+            enter_arm(em, owner.body_s, true)
+        }
+        em.opened |> insert(intptr(owner))
+    }
+}
+
+// arm or body `st` of an open statement, when `flat`, spelled at the statement's level
+def private enter_arm(var em : Emitter; st : CirStmt const?; flat : bool) {
+    if (st != null && flat) {
+        em.entered |> insert(intptr(st))
+        if (st.s == "compound") {
+            em.flatten |> insert(intptr(st))
+        }
+    }
+}
+
+// whether statement tree `st` holds a C label
+def private holds_label(st : CirStmt const?) : bool {
+    var found = false
+    each_stmt(st) $(s) {
+        found ||= s.s == "label"
+    }
+    return found
 }
 
 // where a goto lands: its label's site, or for a label another case group's goto reaches, the
@@ -3859,8 +3945,19 @@ def private plan_cross_group(var em : Emitter; g : CirStmt const?; target, from 
     }
 }
 
-def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; var site : LabelSite; var plan : LabelPlan) {
+def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; owner : CirStmt const?; var site : LabelSite; var plan : LabelPlan) {
     if (st == null) {
+        return
+    }
+    if (!bare && st.s != "compound") {
+        // an arm or body that is no block: its own entry in the path
+        site.path |> push(intptr(st))
+        site.bare |> push(false)
+        site.owners |> push(owner)
+        walk_labels(em, st, true, null, site, plan)
+        site.path |> pop()
+        site.bare |> pop()
+        site.owners |> pop()
         return
     }
     if (st.s == "label") {
@@ -3873,18 +3970,26 @@ def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; var 
         var copy : LabelSite
         copy := site
         plan.goto_sites |> emplace(copy)
+    } elif ((st.s == "case" || st.s == "default") && !empty(site.switches)) {
+        plan.cases |> push(st)
+        var copy : LabelSite
+        copy := site
+        plan.case_sites |> emplace(copy)
     } elif (st.s == "compound") {
         site.path |> push(intptr(st))
         site.bare |> push(bare)
+        site.owners |> push(bare ? null : owner)
         for (child in st.body) {
-            walk_labels(em, child, true, site, plan)
+            walk_labels(em, child, true, null, site, plan)
         }
         site.path |> pop()
         site.bare |> pop()
+        site.owners |> pop()
     } elif (st.s == "switch" && st.body_s != null && st.body_s.s == "compound") {
         // the case group of every statement at the body's own level: a run of case labels opens one
         site.path |> push(intptr(st.body_s))
         site.bare |> push(false)
+        site.owners |> push(st)
         site.switches |> push(intptr(st.body_s))
         site.groups |> push(-1)
         var marker = false
@@ -3894,18 +3999,19 @@ def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; var 
                 site.groups[length(site.groups) - 1]++
             }
             marker = is_marker
-            walk_labels(em, child, true, site, plan)
+            walk_labels(em, child, true, null, site, plan)
         }
         site.path |> pop()
         site.bare |> pop()
+        site.owners |> pop()
         site.switches |> pop()
         site.groups |> pop()
         plan.switch_order |> push(intptr(st.body_s))
     } else {
-        walk_labels(em, st.then_s, false, site, plan)
-        walk_labels(em, st.else_s, false, site, plan)
-        walk_labels(em, st.body_s, false, site, plan)
-        walk_labels(em, st.init_s, false, site, plan)
+        walk_labels(em, st.then_s, false, st, site, plan)
+        walk_labels(em, st.else_s, false, st, site, plan)
+        walk_labels(em, st.body_s, false, st, site, plan)
+        walk_labels(em, st.init_s, false, st, site, plan)
     }
 }
 
@@ -3947,23 +4053,6 @@ def private continues_out(st : CirStmt const?) : bool {
         }
     }
     return continues_out(st.then_s) || continues_out(st.else_s) || continues_out(st.body_s)
-}
-
-// a case label below the switch's own level, which only Duff's device produces; a nested
-// switch's labels are its own
-def private has_nested_label(st : CirStmt const?) : bool {
-    if (st == null || st.s == "switch") {
-        return false
-    }
-    if (st.s == "case" || st.s == "default") {
-        return true
-    }
-    for (child in st.body) {
-        if (has_nested_label(child)) {
-            return true
-        }
-    }
-    return has_nested_label(st.then_s) || has_nested_label(st.else_s) || has_nested_label(st.body_s) || has_nested_label(st.init_s)
 }
 
 // a statement after which control cannot fall into the next case: a leaving statement, or a
@@ -4027,10 +4116,6 @@ def private group_statement(var em : Emitter; st : CirStmt const?; loc : CirLoc;
             return true
         }
         fail(em, "a statement before the first case label is unreachable; not lowered", loc)
-        return false
-    }
-    if (has_nested_label(st)) {
-        fail(em, "a case label inside a nested statement (Duff's device) is not lowered yet (docs/implementation_order.md P7.7)", st.loc)
         return false
     }
     groups[length(groups) - 1].stmts |> push(st)
@@ -4272,11 +4357,13 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
         line(em, "var {flag} = false")
     }
     em.cont_flags |> push(cont)
+    em.break_gotos |> push("")
     for (idx, g in range(length(groups)), groups) {
         if (!empty(g.stmts)) {
             emit_loop_group(em, tu, g, plain[idx], cond, cond_t, all_values, flag, goto_var)
         }
     }
+    em.break_gotos |> pop()
     em.cont_flags |> pop()
     line(em, "break")
     close_block(em)
@@ -4451,15 +4538,7 @@ def emit_stmt(var em : Emitter; tu : CirTu; st : CirStmt const?) {
 [arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-labels")]
 def private emit_label(var em : Emitter; st : CirStmt const?) {
     if (!key_exists(em.group_labels, st.label_name)) {
-        line(em, "label {em.labels?[st.label_name] ?? 0}:  // {st.label_name}")
-        // daslang's interpreter jumps only to a statement inside a block other than a loop's body,
-        // and its optimizer folds a statement without effect after the label away
-        // (docs/probe-findings.md F62): the label stands on a `[sideeffects]` no-op the module
-        // defines, which the JIT inlines where a call into a c_runtime piece stays a call
-        if (!in_loop_body(em)) {
-            em.label_end = true
-            line(em, "{LABEL_END}()")
-        }
+        jump_label(em, em.labels?[st.label_name] ?? 0, st.label_name)
         return
     }
     let flag = em.label_flags?[st.label_name] ?? ""
@@ -4477,6 +4556,18 @@ def private emit_label(var em : Emitter; st : CirStmt const?) {
     line(em, "{goto_var} = 0")
 }
 
+// das label `n` with `comment` after it; daslang's interpreter jumps only to a statement inside a
+// block other than a loop's body, and its optimizer folds a statement without effect after the
+// label away (docs/probe-findings.md F62): the label stands on a `[sideeffects]` no-op the module
+// defines, which the JIT inlines where a call into a c_runtime piece stays a call
+def private jump_label(var em : Emitter; n : int; comment : string) {
+    line(em, "label {n}:  // {comment}")
+    if (!in_loop_body(em)) {
+        em.label_end = true
+        line(em, "{LABEL_END}()")
+    }
+}
+
 // a C goto; one to a label a goto from another case group reaches re-dispatches, from that label's
 // own group too: the label's number into the switch's goto variable, then the switch from the top
 def private emit_goto(var em : Emitter; st : CirStmt const?) {
@@ -4489,8 +4580,183 @@ def private emit_goto(var em : Emitter; st : CirStmt const?) {
     }
 }
 
+// a new das label for the open lowering, numbered after every label the function had
+def private new_label(var em : Emitter) : int {
+    em.label_count++
+    return em.label_count
+}
+
+// a case label of an open switch, its das label; the label of a switch whose body is no block
+// cannot sit below the switch's level
+def private emit_case_label(var em : Emitter; st : CirStmt const?) {
+    if (key_exists(em.case_labels, intptr(st))) {
+        jump_label(em, em.case_labels?[intptr(st)] ?? 0, st.s == "case" ? "case {st.v}" : "default")
+    } else {
+        fail(em, "a case label of a switch whose body is no block, below that switch's level; not lowered", st.loc)
+    }
+}
+
+// an `if`, loop or switch a goto enters from outside, or a switch with a case label below its
+// level (Duff's device), spelled open at its parent's level: its entered arms and its body flat,
+// its control flow as das labels and gotos, so every label in it lands in a scope a goto sees
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-into-body")]
+def private emit_open(var em : Emitter; tu : CirTu; st : CirStmt const?) {
+    if (st.s == "if") {
+        emit_open_if(em, tu, st)
+    } elif (st.s == "switch") {
+        emit_open_switch(em, tu, st)
+    } else {
+        emit_open_loop(em, tu, st)
+    }
+}
+
+def private emit_open_if(var em : Emitter; tu : CirTu; st : CirStmt const?) {
+    let then_flat = key_exists(em.entered, intptr(st.then_s))
+    let else_flat = st.else_s != null && key_exists(em.entered, intptr(st.else_s))
+    let c = truth_of(em, tu, st.cond, st.loc)
+    flush_pre(em)
+    let end_at = new_label(em)
+    if (then_flat && else_flat) {
+        let else_at = new_label(em)
+        open_block(em, "if (!({c.text}))")
+        line(em, "goto label {else_at}")
+        close_block(em)
+        emit_body(em, tu, st.then_s)
+        let falls = !ends_group(st.then_s)
+        if (falls) {
+            line(em, "goto label {end_at}")
+        }
+        jump_label(em, else_at, "else")
+        emit_body(em, tu, st.else_s)
+        if (falls) {
+            jump_label(em, end_at, "end if")
+        }
+        return
+    }
+    // the arm no goto enters stays a branch, which jumps past the entered one
+    open_block(em, then_flat ? "if (!({c.text}))" : "if ({c.text})")
+    emit_body(em, tu, then_flat ? st.else_s : st.then_s)
+    line(em, "goto label {end_at}")
+    close_block(em)
+    emit_body(em, tu, then_flat ? st.then_s : st.else_s)
+    jump_label(em, end_at, "end if")
+}
+
+// a loop spelled open: the test at its top label, the body flat, C `continue` a goto to the
+// increment or the test and `break` one to its end
+def private emit_open_loop(var em : Emitter; tu : CirTu; st : CirStmt const?) {
+    if (st.s == "for" && st.init_s != null) {
+        emit_body(em, tu, st.init_s)
+    }
+    let top = new_label(em)
+    let next = st.s == "while" || !continues_loop(st.body_s, false) ? top : new_label(em)
+    let end_at = new_label(em)
+    jump_label(em, top, st.s)
+    let tested = st.s != "do" && st.cond != null
+    if (tested) {
+        let c = truth_of(em, tu, st.cond, st.loc)
+        flush_pre(em)
+        open_block(em, "if (!({c.text}))")
+        line(em, "goto label {end_at}")
+        close_block(em)
+    }
+    em.cont_flags |> push("goto label {next}")
+    em.break_gotos |> push("goto label {end_at}")
+    emit_body(em, tu, st.body_s)
+    em.break_gotos |> pop()
+    em.cont_flags |> pop()
+    if (next != top) {
+        jump_label(em, next, "{st.s} next")
+    }
+    if (st.s == "do") {
+        let c = truth_of(em, tu, st.cond, st.loc)
+        flush_pre(em)
+        open_block(em, "if ({c.text})")
+        line(em, "goto label {top}")
+        close_block(em)
+    } else {
+        if (st.s == "for" && st.inc != null) {
+            let lines <- increment_lines(em, tu, *st)
+            flush_literal_decls(em)
+            for (stmt in lines) {
+                line(em, stmt)
+            }
+        }
+        line(em, "goto label {top}")
+    }
+    if (tested || breaks_switch(st.body_s)) {
+        jump_label(em, end_at, "{st.s} end")
+    }
+}
+
+// the case labels of a switch body `st`, in order, a nested switch's left to it
+def private case_markers(st : CirStmt const?; var out : array<CirStmt const?>) {
+    if (st == null || st.s == "switch") {
+        return
+    }
+    if (st.s == "case" || st.s == "default") {
+        out |> push(st)
+    }
+    for (child in st.body) {
+        case_markers(child, out)
+    }
+    case_markers(st.then_s, out)
+    case_markers(st.else_s, out)
+    case_markers(st.body_s, out)
+}
+
+// a switch spelled open: the condition once, a chain of gotos to its case labels, the body flat
+// with every case label a das label, C `break` a goto to its end
+def private emit_open_switch(var em : Emitter; tu : CirTu; st : CirStmt const?) {
+    em.switch_counter++
+    var outer_chars <- em.char_cases
+    em.char_cases <- char_cases(st.body_s)
+    var cond_t = st.cond.t
+    let cond = switch_condition(em, tu, *st, cond_t)
+    var markers : array<CirStmt const?>
+    case_markers(st.body_s, markers)
+    // a declaration a later case reads, as `emit_switch` declares it
+    for (child in st.body_s.body) {
+        if (child.s == "decl" && key_exists(em.prog.carried, intptr(child))) {
+            line(em, "var {das_name(em, child.name)} : {das_type_dims(em, tu, child.t, child.loc, child.dims)}")
+        }
+    }
+    let end_at = new_label(em)
+    var default_at = end_at
+    var first = true
+    for (m in markers) {
+        let n = new_label(em)
+        em.case_labels[intptr(m)] = n
+        if (m.s == "default") {
+            default_at = n
+            continue
+        }
+        let test = case_compare(em, tu, cond, cond_t, m.v)
+        open_block(em, first ? "if ({test})" : "\} elif ({test})")
+        first = false
+        line(em, "goto label {n}")
+        em.depth--
+    }
+    if (first) {
+        line(em, "goto label {default_at}")
+    } else {
+        open_block(em, "\} else")
+        line(em, "goto label {default_at}")
+        close_block(em)
+    }
+    em.break_gotos |> push("goto label {end_at}")
+    emit_body(em, tu, st.body_s)
+    em.break_gotos |> pop()
+    if (default_at == end_at || breaks_switch(st.body_s)) {
+        jump_label(em, end_at, "switch end")
+    }
+    em.char_cases <- outer_chars
+}
+
 def private emit_stmt_kind(var em : Emitter; tu : CirTu; st : CirStmt const?) {
-    if (st.s == "compound") {
+    if (key_exists(em.opened, intptr(st))) {
+        emit_open(em, tu, st)
+    } elif (st.s == "compound") {
         emit_compound(em, tu, st)
     } elif (st.s == "label") {
         emit_label(em, st)
@@ -4520,13 +4786,13 @@ def private emit_stmt_kind(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     } elif (st.s == "for") {
         emit_for(em, tu, *st)
     } elif (st.s == "break") {
-        line(em, "break")
+        emit_break(em)
     } elif (st.s == "continue") {
         emit_continue(em)
     } elif (st.s == "switch") {
         emit_switch(em, tu, *st)
     } elif (st.s == "case" || st.s == "default") {
-        fail(em, "a case label inside a nested statement (Duff's device) is not lowered yet (docs/implementation_order.md P7.7)", st.loc)
+        emit_case_label(em, st)
     } elif (st.s == "null") {
         return
     } else {
@@ -4759,7 +5025,7 @@ def private unshadow_locals(var tu : CirTu; var carried : table<uint64>; var bou
         // the blocks a goto enters lose their braces, which `plan_labels` decides at emission
         var inscope plan : Emitter
         plan_labels(plan, d.body)
-        moved_decls(d.body, plan.flatten, w.moved, carried)
+        moved_decls(d.body, plan, w.moved, carried)
         w.scopes |> resize(1)
         for (p in d.params) {
             w.scopes[0][p.name] = p.name
@@ -4782,14 +5048,21 @@ def private count_decls(st : CirStmt const?; var counts : table<string; int>) {
 }
 
 // the locals the lowering declares outside their C block: one of a block a goto enters, which
-// loses its braces (`flatten`), and one a lowered switch carries (`carried_decls`), which also
-// lands in `carried`
-def private moved_decls(st : CirStmt const?; flatten : table<uint64>; var moved : table<uint64>; var carried : table<uint64>) {
+// loses its braces (`flatten`), one of an open `for`'s initializer or a flat arm that is a
+// declaration, and one a lowered switch carries (`carried_decls`), which also lands in `carried`
+def private moved_decls(st : CirStmt const?; plan : Emitter; var moved : table<uint64>; var carried : table<uint64>) {
     each_stmt(st) $(s) {
-        if (s.s == "compound" && key_exists(flatten, intptr(s))) {
+        if (s.s == "compound" && key_exists(plan.flatten, intptr(s))) {
             for (child in s.body) {
                 if (child.s == "decl") {
                     moved |> insert(intptr(child))
+                }
+            }
+        }
+        if (s.s == "for" && key_exists(plan.opened, intptr(s))) {
+            each_stmt(s.init_s) $(init) {
+                if (init.s == "decl") {
+                    moved |> insert(intptr(init))
                 }
             }
         }
@@ -5030,8 +5303,12 @@ def private reset_function_state(var em : Emitter; d : CirDecl) {
     em.setjmp_counter = 0
     em.literal_counter = 0
     em.cont_flags |> clear()
+    em.break_gotos |> clear()
     em.labels |> clear()
     em.flatten |> clear()
+    em.opened |> clear()
+    em.entered |> clear()
+    em.case_labels |> clear()
     em.group_labels |> clear()
     em.flag_switches |> clear()
     em.label_index |> clear()
@@ -5145,6 +5422,9 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
         line(em, "return {zero_of(em, tu, tu.types[d.t].ret, ret)}")
     }
     close_block(em)
+    if (em.label_count > 0) {
+        guard_label_folds(em, header_at)
+    }
     line(em, "")
     em.function_count++
     var annotations : array<string>
@@ -5158,6 +5438,91 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     }
     if (!empty(annotations)) {
         em.out[header_at] = "[{join(annotations, ", ")}]\n" + em.out[header_at]
+    }
+}
+
+// the indentation of spelled line `text`, in levels
+def private indent_of(text : string) : int {
+    var spaces = 0
+    while (spaces < length(text) && character_at(text, spaces) == ' ') {
+        spaces++
+    }
+    return spaces / 4
+}
+
+// whether line `at` closes an `if` with no `else` whose branch ends in `return`, `break` or
+// `continue`: the line `}` at the `if`'s indent, the branch's last line one deeper
+def private closes_leaving_if(lines : array<string>; at, depth : int) : bool {
+    if (strip(lines[at]) != "\}" || at < 2 || indent_of(lines[at - 1]) != depth + 1) {
+        return false
+    }
+    let last = strip(lines[at - 1])
+    if (!(last |> starts_with("return")) && last != "break" && last != "continue") {
+        return false
+    }
+    var opener = at - 1
+    while (opener > 0 && indent_of(lines[opener]) > depth) {
+        opener--
+    }
+    return strip(lines[opener]) |> starts_with("if (")
+}
+
+// daslang's optimizer moves the statements after an `if` with no `else` whose branch ends in
+// `return`, `break` or `continue` into an `else`, a label among them too, so a goto from outside
+// that tail misses the label under the interpreter (lookibed/daScript#8, docs/probe-findings.md
+// F60): such an `if` with a label after it in its block that a goto above the `if`'s end reaches,
+// in the function spelled from line `from` of the output on, gets `else { c_label_end() }`, which
+// the optimizer keeps
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-labels")]
+def private guard_label_folds(var em : Emitter; from : int) {
+    var lines <- split(join([for (idx in range(from, length(em.out))); em.out[idx]], ""), "\n")
+    // the lines of the gotos to each label
+    var gotos : table<string; array<int>>
+    for (at, text in range(length(lines)), lines) {
+        let jump = strip(text)
+        if (jump |> starts_with("goto label ")) {
+            gotos[slice(jump, 5)] |> push(at)
+        }
+    }
+    var guarded : table<int>
+    for (at in range(length(lines))) {
+        let text = strip(lines[at])
+        continue if (!(text |> starts_with("label ")))
+        let depth = indent_of(lines[at])
+        let name = slice(text, 0, find(text, ":"))
+        var up = at - 1
+        // the lines above the label in its block, up to the line that opens the block
+        while (up > 0 && (indent_of(lines[up]) >= depth || empty(strip(lines[up])))) {
+            if (indent_of(lines[up]) == depth && closes_leaving_if(lines, up, depth)) {
+                get(gotos, name) $(jumps) {
+                    // a goto after the `if` sits in the tail with the label; a goto reaches its
+                    // label only from the label's block or a deeper one
+                    for (g in jumps) {
+                        if (g <= up) {
+                            guarded |> insert(up)
+                        }
+                    }
+                }
+            }
+            up--
+        }
+    }
+    if (empty(guarded)) {
+        return
+    }
+    var out : array<string>
+    for (at, text in range(length(lines)), lines) {
+        if (key_exists(guarded, at)) {
+            let pad = repeat("    ", indent_of(text))
+            out |> push("{pad}\} else \{\n{pad}    {LABEL_END}()\n{pad}\}\n")
+            em.label_end = true
+        } elif (at < length(lines) - 1) {
+            out |> push(text + "\n")
+        }
+    }
+    em.out |> resize(from)
+    for (text in out) {
+        em.out |> push(text)
     }
 }
 
