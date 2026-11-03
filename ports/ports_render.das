@@ -97,6 +97,9 @@ let NOT_MEASURED = "not measured"
 let WITHIN_START = "within the start"
 //! why a lane whose startup cell does not stand has no work times
 let NO_STARTUP = "no startup cell"
+//! the spread above which a cell or a work time is suspect: never a number, never in a ratio
+let SUSPECT_SPREAD = 0.2lf
+let SUSPECT = "suspect"
 
 def lane_title(lane : string) : string => LANE_TITLES?[lane] ?? lane
 
@@ -140,14 +143,32 @@ def work_of(c : Capture; workload, lane : string) : double {
     return cell != null && start != null ? cell.time - start.time : 0.0lf
 }
 
-//! `lane`'s work time over `base`'s, 0 when either is not above 0.
+//! The spread of the work time of `workload` under `lane`: the half ranges (spread times median)
+//! of its cell and of the lane's startup cell over the work time; 0 when it has no work time
+//! above 0.
+def work_spread(c : Capture; workload, lane : string) : double {
+    let cell = standing(c, workload, lane)
+    let start = standing(c, startup_of(c), lane)
+    let work = work_of(c, workload, lane)
+    return work > 0.0lf ? (cell.spread * cell.time + start.spread * start.time) / work : 0.0lf
+}
+
+//! Whether the work time of `workload` under `lane` is suspect: its spread above `SUSPECT_SPREAD`.
+def work_suspect(c : Capture; workload, lane : string) : bool => work_spread(c, workload, lane) > SUSPECT_SPREAD
+
+//! `lane`'s work time over `base`'s, 0 when either is not above 0 or is suspect.
 def ratio_of(c : Capture; workload, lane, base : string) : double {
     let t = work_of(c, workload, lane)
     let b = work_of(c, workload, base)
-    return t > 0.0lf && b > 0.0lf ? t / b : 0.0lf
+    let suspect = work_suspect(c, workload, lane) || work_suspect(c, workload, base)
+    return t > 0.0lf && b > 0.0lf && !suspect ? t / b : 0.0lf
 }
 
-def private seconds_text(time, spread : double) : string => "{time:.3f} s ±{int(round(spread * 100.0lf))}%"
+// seconds with their spread, or `suspect` with the spread alone when it is above `SUSPECT_SPREAD`
+def private seconds_text(time, spread : double) : string {
+    let percent = int(round(spread * 100.0lf))
+    return spread > SUSPECT_SPREAD ? "{SUSPECT} (±{percent}%)" : "{time:.3f} s ±{percent}%"
+}
 
 def private time_text(c : Capture; workload, lane : string) : string {
     let cell = find_cell(c, workload, lane)
@@ -175,7 +196,7 @@ def private work_text(c : Capture; workload, lane : string) : string {
     if (work <= 0.0lf) {
         return WITHIN_START
     }
-    return seconds_text(work, (cell.spread * cell.time + start.spread * start.time) / work)
+    return seconds_text(work, work_spread(c, workload, lane))
 }
 
 def private ratio_text(r : double) : string => r > 0.0lf ? "{r:.2f}" : MISSING
@@ -190,8 +211,20 @@ def has_lane(c : Capture; lane : string) : bool {
     return false
 }
 
-// `lane` over `base` for `workload`, `not measured` when the capture left either lane out
-def private pair_text(c : Capture; workload, lane, base : string) : string => has_lane(c, lane) && has_lane(c, base) ? ratio_text(ratio_of(c, workload, lane, base)) : NOT_MEASURED
+// `lane` over `base` for `workload`, `not measured` when the capture left either lane out,
+// `suspect` when either work time is
+def private pair_text(c : Capture; workload, lane, base : string) : string {
+    if (!has_lane(c, lane) || !has_lane(c, base)) {
+        return NOT_MEASURED
+    }
+    return work_suspect(c, workload, lane) || work_suspect(c, workload, base) ? SUSPECT : ratio_text(ratio_of(c, workload, lane, base))
+}
+
+// whether the cell of `workload` under `lane` stands with a spread above `SUSPECT_SPREAD`
+def private cell_suspect(c : Capture; workload, lane : string) : bool {
+    let cell = standing(c, workload, lane)
+    return cell != null && cell.spread > SUSPECT_SPREAD
+}
 
 //! A markdown table whose first `text_columns` columns are text, aligned left, the rest numbers.
 def table_of(headers : array<string>; rows : array<array<string>>; text_columns : int) : string {
@@ -222,7 +255,8 @@ def render_startup(c : Capture) : string {
     rows |> reserve(length(c.lanes))
     for (lane in c.lanes) {
         let t = time_of(c, start, lane.name)
-        rows |> emplace([lane_title(lane.name), time_text(c, start, lane.name), ratio_text(native > 0.0lf ? t / native : 0.0lf)])
+        let ratio = cell_suspect(c, start, lane.name) || cell_suspect(c, start, "native") ? SUSPECT : ratio_text(native > 0.0lf ? t / native : 0.0lf)
+        rows |> emplace([lane_title(lane.name), time_text(c, start, lane.name), ratio])
     }
     return table_of(["Lane", "Startup", "Over native"], rows, 1)
 }
@@ -329,7 +363,9 @@ def render_perf(c : Capture) : string {
         w |> write("lane's `startup` cell, the run that loads the program and does no work (under a das lane, the load from ")
         w |> write("the module cache an unmeasured run left in the folder), ± the two cells' half ranges as a share of the ")
         w |> write("work time; one not above 0 is `{WITHIN_START}`, and a lane whose startup cell does not stand has none. ")
-        w |> write("The startup cells stand alone in the startup table; the times table holds the raw medians, the start included.\n\n")
+        w |> write("The startup cells stand alone in the startup table; the times table holds the raw medians, the start included. ")
+        w |> write("A cell or a work time whose spread is above {int(SUSPECT_SPREAD * 100.0lf)}% is `{SUSPECT}`: its spread alone, no ratio, ")
+        w |> write("and out of the projects table's means.\n\n")
         w |> write("Startup:\n\n{render_startup(c)}\n")
         w |> write("Work:\n\n{render_work(c)}\n")
         w |> write("Ratios, a lane's work time over another's (each das lane over native, then interpreter over JIT, ")
