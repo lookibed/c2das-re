@@ -11,3 +11,8 @@ int total(int n) {
 }
 
 int *slot(int k) { return &table[k]; }
+
+int whole(void) {
+    int (*w)[5] = &table;
+    return (*w)[4] + ((int *) &table)[3];
+}
