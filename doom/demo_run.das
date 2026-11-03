@@ -53,7 +53,7 @@ struct DemoSpec {
 
 //! A run's outcome: `error` why the program did not run; else its exit code (`popen_timed_out` past
 //! the timeout), the seconds it took, the tic lines it printed, the first error line of a run that
-//! did not end in the timedemo line and the sync with the reference log `ref_log`. `whole` when the
+//! did not end in the timedemo line or the host's `-tics` stop and the sync with the reference log `ref_log`. `whole` when the
 //! run is held to the whole demo, `ended` when it ended in time in `timed N gametics` with N the
 //! reference's tics.
 struct DemoRun {
@@ -112,7 +112,8 @@ def run_converted(spec : DemoSpec) : DemoRun {
     run.tics = length(got)
     run.whole = spec.tics <= 0
     run.ended = gametics == length(expected) && run.rc != popen_timed_out
-    if (gametics < 0) {
+    // the host's `-tics` stop is an end, not an error
+    if (gametics < 0 && !(output |> contains("host: stopped after "))) {
         run.error_line = first_error_line(join(non_tic_lines(output), "\n"))
     }
     run.sync = tic_sync(expected, got, spec.tics)
