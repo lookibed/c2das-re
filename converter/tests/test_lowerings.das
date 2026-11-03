@@ -1451,6 +1451,15 @@ def p4_matrix_leftover_shapes(t : T?) {
         let rc = run_tier(converted_path("over_typedef"), "interp", work_root, out, CONVERTED_MODULES)
         t |> equal(rc, 0, out)
     }
+    t |> run("a sidecar-listed padded array reaches the members beside it, unchecked") @(t : T?) {
+        var text : string
+        check_fixture(t, "p6_padded", text)
+        has_text(t, text, "deref(addr(pl.top[0]) + (pl.minx - 1)) = uint8(77)")
+        has_text(t, text, "deref(addr(pl.bottom[0]) + 8) = uint8(6)")
+        has_text(t, text, "sum += int(deref(addr(pl.top[0]) + (x - 1))) + int(deref(addr(pl.bottom[0]) + (x - 1)))")
+        has_text(t, text, "deref(addr(c.clip[0]) + k) = int16(int(deref(addr(c.clip[0]) + k)) + 1000)")
+        has_text(t, text, "pl.shade[2] = uint8(1)")
+    }
     t |> run("a compound literal's object skips a name the unit spells") @(t : T?) {
         let text = converts(t, "literal_name_taken", "int _cl0 = 3;\nstatic int sum(const int *a) \{ return a[0] + a[1]; \}\nint main(void) \{ return sum((int[])\{ _cl0, 1 \}) - 4; \}\n")
         has_text(t, text, "    var _cl1 : int[2] = fixed_array(_cl0, 1)\n")
@@ -1506,6 +1515,15 @@ def p4_matrix_leftover_rejects(t : T?) {
         rejects(t, "over_indexed_not_trailing", patch, "sidecar `over_indexed`: `holder.cols` names no record's trailing array member of a fixed length", "\{\"over_indexed\": [\"holder.cols\"]\}\n")
         rejects(t, "over_indexed_no_record", patch, "sidecar `over_indexed`: `nothing.cols` names no record's trailing array member of a fixed length", "\{\"over_indexed\": [\"nothing.cols\"]\}\n")
         rejects(t, "over_indexed_scalar", patch, "sidecar `over_indexed`: `patch.w` names no record's trailing array member of a fixed length", "\{\"over_indexed\": [\"patch.w\"]\}\n")
+        let plane = "struct plane \{ char pad1; char top[4]; char pad2; short wide[2]; char edge[2]; \};\nstruct odd \{ unsigned char lo : 8; unsigned char bits[2]; unsigned char hi; float f; int reals[2]; float g; \};\nstruct __attribute__((packed)) M \{ char a; char top[4]; char b; int n; \};\nint main(void) \{ struct plane p; struct M m; struct odd o; o.hi = 0; p.pad1 = 0; m.a = 0; return p.pad1 + m.a + o.hi; \}\n"
+        rejects(t, "padded_misspelled", plane, "sidecar `padded`: `plane.tops` names no record's array member of integers", "\{\"padded\": [\"plane.tops\"]\}\n")
+        rejects(t, "padded_scalar", plane, "sidecar `padded`: `plane.pad1` names no record's array member of integers", "\{\"padded\": [\"plane.pad1\"]\}\n")
+        rejects(t, "padded_no_record", plane, "sidecar `padded`: `nothing.top` names no record's array member of integers", "\{\"padded\": [\"nothing.top\"]\}\n")
+        rejects(t, "padded_marshal", plane, "sidecar `padded`: `M.top` is a member of a marshal-only record, which das reads through its readers", "\{\"marshal\": [\"M\"], \"padded\": [\"M.top\"]\}\n")
+        rejects(t, "padded_narrow_neighbour", plane, "sidecar `padded`: `plane.wide` has no integer member of its element's width right before and right after it", "\{\"padded\": [\"plane.wide\"]\}\n")
+        rejects(t, "padded_last", plane, "sidecar `padded`: `plane.edge` has no integer member of its element's width right before and right after it", "\{\"padded\": [\"plane.edge\"]\}\n")
+        rejects(t, "padded_bitfield", plane, "sidecar `padded`: `odd.bits` has no integer member of its element's width right before and right after it", "\{\"padded\": [\"odd.bits\"]\}\n")
+        rejects(t, "padded_float_neighbour", plane, "sidecar `padded`: `odd.reals` has no integer member of its element's width right before and right after it", "\{\"padded\": [\"odd.reals\"]\}\n")
     }
 }
 

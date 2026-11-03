@@ -35,6 +35,10 @@ struct Sidecar {
     // larger allocation), each `Record.field`, by tag or typedef name: their accesses go through a
     // pointer with no range check
     over_indexed : array<string>
+    // the array members the program indexes one element past either end, into the members on
+    // either side of them (Doom's `visplane_t.top[-1]` is its `pad1`), each `Record.field`, by tag or
+    // typedef name: their accesses go through a pointer with no range check
+    padded : array<string>
     // how a program of several files lays out its modules: `source` (a module per C file, mutually
     // dependent files one module of fragments), `source-cut` (a module per C file, the cycles cut
     // by late binding) or `single` (one module); "" when the key is absent
@@ -60,7 +64,7 @@ struct Sidecar {
 }
 
 //! The keys a sidecar may hold; any other is refused naming it.
-let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "layout", "defines", "over_indexed", "include_dirs", "include_files", "program_root"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -263,6 +267,28 @@ def private shape_error(js : JsonValue?; path : string) : string {
     return ""
 }
 
+// the list of strings `Record.field` under key `key` into `out`; a value that is no list or an entry
+// of another shape is refused naming the key
+def private read_members(js : JsonValue?; path, key : string; var out : array<string>; var error : string&) {
+    if (!key_exists(js, key)) {
+        return
+    }
+    let list = js?[key]
+    if (!(list is _array)) {
+        error = "{path}: `{key}` is a list of strings `Record.field`, not {write_json(list)}"
+        return
+    }
+    for (entry in list as _array) {
+        let name = entry is _string ? entry ?? "" : ""
+        let dot = find(name, ".")
+        if (dot <= 0 || dot == length(name) - 1 || find(name, ".", dot + 1) >= 0) {
+            error = "{path}: `{key}` holds strings `Record.field`, not {write_json(entry)}"
+            return
+        }
+        out |> push(name)
+    }
+}
+
 // the `include_dirs`, `include_files` and `program_root` keys, each path read beside the sidecar at
 // `path`
 def private read_inputs(js : JsonValue?; path : string; var side : Sidecar; var error : string&) {
@@ -347,20 +373,8 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
         }
     }
     read_inputs(js, path, side, error)
-    let over = js?["over_indexed"]
-    if (key_exists(js, "over_indexed") && !(over is _array)) {
-        error = "{path}: `over_indexed` is a list of strings `Record.field`, not {write_json(over)}"
-    } elif (key_exists(js, "over_indexed")) {
-        for (entry in over as _array) {
-            let name = entry is _string ? entry ?? "" : ""
-            let dot = find(name, ".")
-            if (dot <= 0 || dot == length(name) - 1 || find(name, ".", dot + 1) >= 0) {
-                error = "{path}: `over_indexed` holds strings `Record.field`, not {write_json(entry)}"
-                break
-            }
-            side.over_indexed |> push(name)
-        }
-    }
+    read_members(js, path, "over_indexed", side.over_indexed, error)
+    read_members(js, path, "padded", side.padded, error)
     delete_json(js)
     return <- side
 }
