@@ -110,8 +110,13 @@ def private unbound_name(error : string) : string {
     return backticked_after(error, ": `")
 }
 
+// the sidecar entries `Record.field` among `entries` whose record unit `tu` declares
+def private declared_members(tu : CirTu; entries : array<string>) : array<string> {
+    return <- [for (entry in entries); entry; where declares(tu, slice(entry, 0, find(entry, ".")))]
+}
+
 //! Each of `c_paths` dumped alone under the sidecar `side`, then each the dumper takes emitted
-//! alone, its `over_indexed` entries narrowed to the records the unit declares: the unit passes
+//! alone, its `over_indexed` and `padded` entries narrowed to the records the unit declares: the unit passes
 //! when the dumper and the emitter take it. An emitter error naming a function or an array another
 //! unit defines is marked `LINK_BOUND`. Nothing is written and nothing compiled, since the rest of the
 //! program is missing.
@@ -134,7 +139,8 @@ def convert_units(c_paths : array<string>; side : Sidecar) : array<Verdict> {
     for (v, tu in verdicts, tus) {
         if (empty(v.error)) {
             var unit_side := side
-            unit_side.over_indexed <- [for (entry in side.over_indexed); entry; where declares(tu, slice(entry, 0, find(entry, ".")))]
+            unit_side.over_indexed <- declared_members(tu, side.over_indexed)
+            unit_side.padded <- declared_members(tu, side.padded)
             let em <- emit_tu(tu, unit_side)
             if (!empty(em.error)) {
                 let error = first_error_line("emitter: {em.error}")

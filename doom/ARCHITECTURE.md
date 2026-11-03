@@ -134,6 +134,12 @@ runs none; no wall time reaches the game, so a run repeats tic for tic. A `-time
   The BLOCKMAP lump is read as `short`s, no record.
 - `over_indexed`: `patch_t.columnofs`, `maptexture_t.patches` and `texture_t.patches`, the trailing
   arrays the C indexes past their declared length over a longer lump or allocation.
+- `padded`: `visplane_t.top` and `visplane_t.bottom`, whose index `R_DrawPlanes` takes one past
+  either end (`pl->top[pl->minx - 1]`, `pl->top[pl->maxx + 1]`, and `R_MakeSpans`'s arguments
+  `top[x - 1]`, `bottom[x - 1]` up to `maxx + 1`) into the flanking `pad1` to `pad4` bytes.
+  `openings`, `floorclip`, `ceilingclip`, `negonearray` and `screenheightarray` need no entry: the
+  C reaches them past their start only through pointers (`lastopening - rw_x`, `mfloorclip`),
+  which das indexes unchecked.
 - No `stack` or `alloca_limit`: no unit calls `alloca` (the keys size an alloca arena's module),
   and the native build at `-O0` plays all three demos under `ulimit -s 16` (a 16 KiB C stack;
   12 KiB fails), well inside the emitter's 8 MiB default.
@@ -160,7 +166,7 @@ files"), and the host in `host/` would hold PureDOOM's headers external; in one 
 header is the program's and the output folder is flat.
 
 Two stages report. Each unit alone: dumped under the sidecar's defines, then emitted under the
-sidecar with its `over_indexed` entries narrowed to the records the unit declares, since the emitter
+sidecar with its `over_indexed` and `padded` entries narrowed to the records the unit declares, since the emitter
 refuses an entry naming a record it does not see. A unit alone has no binding for a function another
 unit defines, nor a length for an array another unit defines (`extern T a[];`); an emitter error
 naming one is marked `link-bound:` and classed apart, and the emitter stops at its first error, so

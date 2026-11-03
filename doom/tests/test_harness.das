@@ -171,5 +171,6 @@ def test_sidecar(t : T?) {
         t |> success(has_value(side.defines, "DOOM_TIC_CHECKSUM"))
         t |> equal(length(side.marshal), 11)
         t |> equal(length(side.over_indexed), 3)
+        t |> equal(length(side.padded), 2)
     }
 }
