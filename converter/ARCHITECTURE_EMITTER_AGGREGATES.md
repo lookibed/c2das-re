@@ -87,17 +87,19 @@ struct the emitter writes `read_T(bytes, ofs)`, `write_T(bytes, ofs, v)` and a
 offset, so no alignment is assumed and the value side is a plain struct copy. An array field (C
 reaches one only by decay, `&` or `sizeof`) gets `ptr_T_f(bytes, ofs)`, its decay, the pointer to
 its first element where it lies (a row of a 2-D one): `p->a[i]` is `deref(ptr_T_a(p, 0) + i)` to
-read, store and step, `&p->a[i]` that pointer plus `i`, `&p->a` it reinterpreted. A field holding
-marshal-only records `R`, one or a 1-D array, gets `ptr_T_r(bytes, ofs) : uint8?`, the (first) inner
-record's bytes, a record in C memory like `*p`: `p->r.x` is `read_R_x(ptr_T_r(p, 0), 0)` at any
-depth, `p->a[i]` indexes the pointer `ptr_T_a(p, 0)`, `&` takes the bytes, `read_T`/`write_T` copy
-through `read_R`/`write_R`. A pointer to such a record is `uint8?`: `p->f`, `(*p).f` and `p[i].f`
-read through `read_T_f`, a store or step into them writes through `write_T_f` around the read, `*p`
-is `read_T(p, 0)`, `*p = v` is `write_T(p, 0, v)`, `sizeof` is clang's size as a literal, and a
-pointer step, `p + n`, `p[i]`, `p - q` scale by that size. A packed record the sidecar does not
-list, the address of a marshal-only value, an array of the record outside one or its decay held by
-value, and a field holding a union, an unlisted record, a 2-D array of records or pointers fail
-closed, and so does a packed record holding a `jmp_buf`, which das spells as `CJmpBuf`.
+read, store and step, `&p->a[i]` that pointer plus `i`, `&p->a` it reinterpreted; an element is a
+typed load at the packed offset, unchecked as in C. A field holding marshal-only records `R`, one or
+a 1-D array, gets `ptr_T_r(bytes, ofs) : uint8?`, the (first) inner record's bytes, a record in C
+memory like `*p`: `p->r.x` is `read_R_x(ptr_T_r(p, 0), 0)` at any depth, `p->a[i]` indexes the
+pointer `ptr_T_a(p, 0)`, `&` takes the bytes (not of a whole array), `sizeof` is clang's,
+`read_T`/`write_T` copy through `read_R`/`write_R`. A pointer to such a record is `uint8?`: `p->f`,
+`(*p).f` and `p[i].f` read through `read_T_f`, a store or step into them writes through `write_T_f`
+around the read, `*p` is `read_T(p, 0)`, `*p = v` is `write_T(p, 0, v)`, `sizeof` is clang's size as
+a literal, and a pointer step, `p + n`, `p[i]`, `p - q` scale by that size. A packed record the
+sidecar does not list, the address of a marshal-only value, an array of the record outside one, the
+decay of one held by value (whose elements index the das array), and a field holding a union, an
+unlisted record, a 2-D array of records or pointers fail closed, and so does a packed record holding
+a `jmp_buf`, which das spells as `CJmpBuf`.
 
 ### Compound literals {#compound-literals}
 

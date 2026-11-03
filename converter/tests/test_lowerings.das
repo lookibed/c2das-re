@@ -416,6 +416,11 @@ def p6_marshal_fixtures(t : T?) {
         has_text(t, text, "var held : wrap_t = read_wrap_t(ptr_maptexture_t_outer(t + 3 * 27, 0), 0)")
         has_text(t, text, "var inner : mappatch_t = read_mappatch_t(ptr_wrap_t_first(ptr_maptexture_t_outer(t, 0), 0), 0)")
         has_text(t, text, "int(uint64(7)), int(uint64(6)), int(uint64(27))")
+        // an array of records held by value is the das array, indexed directly
+        has_text(t, text, "pv.two[1].patch = int16(int(pv.two[1].patch) + 2)")
+        has_text(t, text, "var picked : mappatch_t = pv.two[1]")
+        has_text(t, text, "pv.two[0] = held.first")
+        has_text(t, text, "int(pv.two[i % 2].originx), int(uint64(6))")
     }
     t |> run("marshal: the shapes the emitter refuses, each naming the record") @(t : T?) {
         let packed = "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nint main(void) \{ disk_t d; d.w = 1; return d.w; \}\n"
@@ -430,6 +435,7 @@ def p6_marshal_fixtures(t : T?) {
         rejects(t, "marshal_union_field", "typedef union \{ short a; int b; \} in_u;\n#pragma pack(1)\ntypedef struct \{ short x; in_u u; \} out_t;\n#pragma pack()\n{use_out}", "field `out_t.u` of a marshal-only record holds a union", "\{ \"marshal\": [\"out_t\"] \}\n")
         rejects(t, "marshal_record_rows", "{in_t}typedef struct \{ short x; in_t rows[2][2]; \} out_t;\n#pragma pack()\n{use_out}", "field `out_t.rows` of a marshal-only record is an array of arrays of records", "\{ \"marshal\": [\"in_t\", \"out_t\"] \}\n")
         rejects(t, "marshal_pointer_array", "#pragma pack(1)\ntypedef struct \{ short x; char *names[2]; \} out_t;\n#pragma pack()\n{use_out}", "field `out_t.names` of a marshal-only record is an array of `ptr`", "\{ \"marshal\": [\"out_t\"] \}\n")
+        rejects(t, "marshal_records_address", "{in_t}typedef struct \{ short x; in_t rows[2]; \} out_t;\n#pragma pack()\nstatic unsigned char lump[64];\nint main(void) \{ out_t *o = (out_t *) lump; return ((in_t *) &o->rows)[1].a; \}\n", "the address of `out_t.rows`, an array of marshal-only records", "\{ \"marshal\": [\"in_t\", \"out_t\"] \}\n")
         rejects(t, "marshal_records_by_value", "{in_t}typedef struct \{ short x; in_t rows[2]; \} out_t;\n#pragma pack()\nint main(void) \{ out_t v; in_t *p = v.rows; return p->a; \}\n", "the decay of an array of the marshal-only record `in_t` held by value", "\{ \"marshal\": [\"in_t\", \"out_t\"] \}\n")
         rejects(t, "marshal_array", "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nstatic disk_t table[3];\nint main(void) \{ return table[1].w; \}\n", "array of the marshal-only record", "\{ \"marshal\": [\"disk_t\"] \}\n")
     }

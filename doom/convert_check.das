@@ -170,6 +170,7 @@ let BLOCKERS <- [
     (LINK_BOUND, "a function or an array another unit defines, which only the link binds (the unit alone)"),
     ("a file-scope asm is machine code", "a file-scope asm statement"),
     ("can't get field 'cmds' of 'void' pointer", "the offsetof idiom through a null pointer, `&((doomdata_t *) 0)->cmds[n]`"),
+    ("no matching functions or generics: _::+(int", "an integer on the left of a pointer sum, `flashstate + psp->state` (p_pspr.c:655)"),
     ("sidecar `over_indexed`", "an over-indexed trailing array in a marshal record (finding 3)")
 ]
 
