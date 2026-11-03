@@ -108,7 +108,7 @@ def test_module_failure(t : T?) {
 def test_classify(t : T?) {
     t |> run("a known construct is named, an unknown one is its line without stage and location") @(t : T?) {
         t |> equal(classify("dumper: /x/i_asm.c:1:2: a file-scope asm is machine code outside any function; no emulation exists in the das runtime"), "a file-scope asm statement")
-        t |> equal(classify("emitter: /x/r_data.c:1:2: an array of the marshal-only record `mappatch_t` is not lowered yet"), "an array of a marshal record, `maptexture_t.patches` (finding 2)")
+        t |> equal(classify("compile check: error[30929]: can't get field 'cmds' of 'void' pointer"), "the offsetof idiom through a null pointer, `&((doomdata_t *) 0)->cmds[n]`")
         t |> equal(classify("emitter: /x/y.c:1:2: something odd"), "new: something odd")
         t |> equal(unlocated("emitter: /x/doomdata.h:179:9: field `f`: why"), "field `f`: why")
     }
