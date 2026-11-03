@@ -16,6 +16,7 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
 - `patches/0001-per-tic-checksum.patch` - the instrumentation (section 3), against the pinned
   commit.
 - `patches/0002-tic-trace.patch` - the trace lines under `-DDOOM_TIC_TRACE` (section 3).
+- `patches/0003-signed-ticcmd.patch` - `ticcmd_t`'s moves as `signed char` (section 3).
 - `host/doom_main.c` - the headless host (section 4), the program's `main`.
 - `sources.das` - the program's sources (section 2): `UNITS`, `program_sources`, the folder of
   the fetched units and the sidecar's path.
@@ -135,6 +136,13 @@ demo from its first tic. The fix is unconditional, since a timedemo is P6.7's be
 `trace=<gametic> x=<hex> y=<hex> z=<hex> ang=<hex> hp=<d> prnd=<d>`, the six values `cs` hashes, so
 a desync names the value that differs; `tic_lines` skips the line and no reference log is
 recorded with the define.
+
+`0003-signed-ticcmd.patch`, `d_ticcmd.h`: `ticcmd_t`'s `forwardmove` and `sidemove` are `signed
+char`, as in Chocolate Doom. A demo stores a backward move or a strafe left as a negative byte;
+read back through a plain `char` it stays negative only where `char` is signed, and the
+converter's dialect makes plain `char` unsigned (`docs/probe-findings.md` F17), so the converted
+demo1 read the strafe -40 of tic 25 as 216. The native build at `-O2` with or without
+`-funsigned-char` prints the reference lines of all three demos with the patch.
 
 ## 4. The host
 
@@ -275,8 +283,8 @@ over the whole process, start included: a sanity number, not P6.7's measure. Und
 the host's `-tics N` (`program_argv`), so the program stops after the compared tics with exit code
 0 instead of playing the demo to its end or to `--timeout`.
 
-At the pin, the `source` layout under `interp` plays demo1 on freedoom2.wad through its first frames:
-tics 0 to 24 match the reference log, frames included, tic 25 desyncs in both fields (`cs=b66019e2
-fb=908998e0` against `cs=ada955a8 fb=751dc634`), and, uncapped, the run panics drawing a later tic
-in `R_ScaleFromGlobalAngle` (r_main.c:413), `finesine[angleb >> 19]` at index -4096, an angle the
-desynced state makes negative.
+At the pin, the `source` layout under `interp` plays demo1 on freedoom2.wad through its first
+frames: tics 0 to 254 match the reference log, frames included, and the run panics drawing tic 255
+in `R_ScaleFromGlobalAngle` (r_main.c:413), `finesine[angleb >> 19]` at index -4096: `angleb` is an
+`int`, so the native build reads `finetangent`, which lies right before `finesine`, and
+`R_RenderSegLoop`'s `finetangent[angle]` (r_segs.c) reads `finesine[0]` at index 4096.
