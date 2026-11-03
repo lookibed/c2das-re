@@ -486,7 +486,7 @@ def test_bench(t : T?) {
         let trees <- cell_of(t, c, "binary_trees", "interp")
         t |> success(!empty(trees.error) && length(trees.samples) == 1, "{trees}")
         let readme = fread(path_join(clone, "lua/README.md"))
-        for (fact in ["- `perf/capture_*.json` - every capture", "`scripts/publish_ports.sh --program lua --no-convert --perf --samples 2 --lanes interp,jit,exe,aot --timeout 1800`", "Captured ", " runs of the whole program", "- JIT: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit lua/lua.das --`", "- AOT: `the -ctx context and its host compiled by clang++ -O3 (c2das-re converter/tiers.das), the binary run with `--``", "- binary_trees, AOT: not yet: exited 2 where the native build exits 0: EXCEPTION: boom\n", "- binary_trees, interpreter: not yet: exited 2 where the native build exits 0: EXCEPTION: boom\n", "- nbody, JIT: not yet: line 1 prints `drift` where the native build prints `", "- spectral_norm, clang -O3: not yet: exited 1\n", "- spectral_norm, exe: not yet: no native run to compare with", "- clang -O3: `", " -o lua_native lua.c -lm`"]) {
+        for (fact in ["- `perf/capture_*.json` - every capture", "`scripts/publish_ports.sh --program lua --no-convert --perf --samples 2 --lanes interp,jit,exe,aot --timeout 1800`", "Captured ", "A sample is one run of the whole program", "- JIT: `daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime -jit lua/lua.das --`", "- AOT: `the -ctx context and its host compiled by clang++ -O3 (c2das-re converter/tiers.das), the binary run with `--``", "- binary_trees, AOT: not yet: exited 2 where the native build exits 0: EXCEPTION: boom\n", "- binary_trees, interpreter: not yet: exited 2 where the native build exits 0: EXCEPTION: boom\n", "- nbody, JIT: not yet: line 1 prints `drift` where the native build prints `", "- spectral_norm, clang -O3: not yet: exited 1\n", "- spectral_norm, exe: not yet: no native run to compare with", "- clang -O3: `", " -o lua_native lua.c -lm`"]) {
             t |> success(readme |> contains(fact), "README lacks {fact}:\n{readme}")
         }
         // the test-suite row runs in the test folder and compares the exit code and the closing
@@ -500,10 +500,18 @@ def test_bench(t : T?) {
             let samples = lane == "exe" || lane == "aot" ? 2 : 3
             t |> equal(line_count(path_join(tests, "runs_{lane}.log")), samples, "{lane}: warm-up {samples - 2}, test suite 2")
         }
-        // every lane stands on 2 of the 5 workloads, the AOT lane's binary run with the arguments too
+        // every lane stands on fib, the AOT lane's binary run with the arguments too
+        for (lane in ["interp", "jit", "exe", "aot"]) {
+            let lane_fib <- cell_of(t, c, "fib", lane)
+            t |> success(empty(lane_fib.error), "{lane}: {lane_fib}")
+        }
+        // the stand-in's runs are spawns alone, so a work time is noise: the tables stand, the
+        // numbers are the renderer's tests'
+        for (head in ["Startup:\n\n| Lane ", "Work:\n\n| Workload ", "Ratios, a lane's work time over another's", "Times, the raw medians of whole runs"]) {
+            t |> success(readme |> contains(head), "README lacks {head}:\n{readme}")
+        }
         let top = fread(path_join(clone, "README.md"))
         t |> success(top |> contains("| [lua](lua/README.md) |"), top)
-        t |> success(top |> contains(" (2 of 5) | ") && top |> contains(" (2 of 5) |\n"), top)
         t |> equal(git(clone, ["status", "--porcelain"]), "")
     }
 }
