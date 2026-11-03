@@ -6,8 +6,8 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
 
 A `switch` follows the three-tier ladder of `docs/lowering-examples.md`. Its body is read as
 groups, one run of labels and the statements under them; a statement before the first label
-or a label below the switch's own level (Duff's device, P7.7) fails closed, a nested switch's
-labels being its own. The condition is evaluated once into `_condN` (numbered per switch
+fails closed, and a switch with a label below its own level (Duff's device) is spelled open
+(below), a nested switch's labels being its own. The condition is evaluated once into `_condN` (numbered per switch
 within a function), the enum below C's promotion when there is one, so a case compares as
 `_cond == E.X` (`int(_cond) == v` for a value no enumerator has) and otherwise against a
 literal in the condition's type. The if-chain holds when no group falls into the next (each
@@ -48,7 +48,7 @@ upward, so a goto reaches a label in its own block or an enclosing one, and a go
 deeper block has every bare block between them (a block that is its parent's statement)
 emitted without braces, so the label lands in a scope the goto sees, its locals renamed where
 they would meet a global or another local of their name (`ARCHITECTURE_EMITTER.md` section 4); an
-`if`, loop or switch body on that way is Duff's device (P7.7) and fails closed. A goto over a declaration skips its
+`if`, loop or switch on that way is spelled open (below). A goto over a declaration skips its
 initializer, which is C's rule too (`probes/test_goto.das`). A label in a das block other
 than a loop's body (llex.c's `no_save: break;` once a switch's if-chain drops the tail `break`, a
 label ending a function body or an `if` branch, one before `if (DEBUG) {...}`) is followed at once by
@@ -60,7 +60,13 @@ module-local call to nothing, where a call into a c_runtime piece stays a call: 
 kernel's jit lane paid 17 percent for it. A C program that names `c_label_end` itself fails
 closed. A loop body takes a jump to its end as the next iteration and gets
 none; the block is a loop's when the line that opens it is a `while`, the only loop the lowering
-spells.
+spells. daslang's optimizer also moves the statements after an `if` with no `else` whose
+branch ends in `return`, `break` or `continue` into an `else`, a label among them, so a goto above
+that `if` misses the label under the interpreter (lookibed/daScript#8): once a function is spelled,
+`guard_label_folds` gives each such `if` with a label after it in its block, which a goto above the
+`if`'s end names, `else { c_label_end() }`, an `else` the optimizer keeps. A goto after the `if`
+sits in the folded tail with its label and needs none, so Duff's `if (count <= 0) { return 0 }`
+before its dispatch stays as written.
 
 A goto into another case group of a switch around both (`goto dflt` from a `case` of lstrlib.c's
 `match`, `goto l_tforcall` and `goto ret` in lvm.c's `luaV_execute`) re-dispatches the switch:
@@ -85,6 +91,36 @@ label and makes a goto that leaves the group, a re-dispatch or a goto out of the
 interpreter its branch is a labelled block that passes no goto outward, and a labelled loop in it
 claims every goto numbered below its label count (F60, F63), so `check_labelled_groups` refuses it
 with the label and the goto named.
+
+### A goto into a body {#goto-into-body}
+
+An `if`, loop or switch whose arm or body a goto enters from outside, every one between the goto's
+block and the label, and a switch with a case label below its own level together with every
+construct between that label and the switch's level, is spelled open: at its parent's level, its
+control flow as das labels and gotos, its entered body flat like a bare block, so the label lands in
+a scope the goto sees; this is the plan's goto-into-nested-block flattening and its Duff fallback
+(`docs/very-detailed-plan.md` section 3, step 4), and no state variable or dispatch loop is
+involved. Every other construct of the function keeps its structured form. An `if` is
+`if (!(c)) { <the arm no goto enters>; goto label E }`, the entered arm, `label E:  // end if`,
+the test kept as written (`if (c)`) when the entered arm is `else`; both arms flat are
+`if (!(c)) { goto label L }`, the then arm, `goto label E` unless it leaves, `label L:  // else`, the
+else arm, `label E`. An arm no goto enters is flat as well when it holds a label of its own, since
+braced it would be a labelled block passing no goto outward (F63), or ends in a leaving statement,
+since daslang's optimizer moves the statements after an `if` whose branch ends in `return`, `break`
+or `continue` into an `else`, a later label among them (lookibed/daScript#8). A `while` or `for` is
+its initializer, `label T:`, `if (!(c)) { goto label E }`, the body, a `label N:  // for next`
+before the increment when the body holds a `continue` of the loop, `goto label T`, `label E:`; a
+`do` is `label T:`, the body, the `continue` label, `if (c) { goto label T }`, and its end label
+when a `break` needs it. A switch is `let _condN = x` (a declaration a later case reads after it),
+one `if`/`elif` per case label to that label's `goto`, `else` to `default` or the end, then the body
+flat with every case label `label K:  // case v`. A C `break` of an open loop or switch is a goto to
+its end and a `continue` of an open loop one to its test or increment (`break_gotos`, `cont_flags`);
+a das loop or matched-flag switch inside keeps das's own. The labels the lowering adds are numbered
+after the function's C labels, which keep their numbers, and the comment names the construct. A
+goto into an arm of a setjmp `if`, or an open switch that a goto from another case re-dispatches,
+fails closed. The open form is the C's own jumps made explicit: no flag is tested and no loop
+dispatches, so it costs the interpreter what the C's control flow does, and it reads less like the
+C than the structured form, which is why only constructs on a goto's way into a body take it.
 
 ### Truth tests {#truth-tests}
 

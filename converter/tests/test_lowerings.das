@@ -169,6 +169,7 @@ def test_lowerings(t : T?) {
     p5_skip_audit_fixtures(t)
     p8_input_fixtures(t)
     p7_readable_fixtures(t)
+    p7_goto_into_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -397,8 +398,6 @@ def p3_fixtures(t : T?) {
         has_text(t, text, "r += 1\n    r += 10\n    label 1:  // inside\n    c_label_end()\n    r += 100")
         has_text(t, text, "r = 2\n    \{\n        var unused : int = 7\n        r += unused\n    \}\n    label 1:  // skip")
         has_text(t, text, "label 1:  // again\n    c_label_end()\n    n += 2\n    if (n < 7) \{\n        goto label 1")
-        rejects(t, "goto_into_loop", "int main(void) \{ int i = 0, n = 0; goto in; while (i < 3) \{ in: n++; i++; \} return n; \}\n", "Duff's device")
-        rejects(t, "goto_into_if", "int main(void) \{ int n = 0; goto in; if (n == 0) \{ in: n = 5; \} return n; \}\n", "Duff's device")
     }
     t |> run("setjmp: the contained site as try/recover with the target check, the single-branch site flat when its tail calls nothing and the rerun loop otherwise, longjmp as c_longjmp") @(t : T?) {
         var text : string
@@ -2142,5 +2141,55 @@ def p7_readable_fixtures(t : T?) {
         // `#define SUM 1 + 2` in `SUM * 3`: no piece of the body takes the name
         has_text(t, text, "        return 1 + 2 * 3 + 1 + 2\n")
         t |> equal(text |> find("SUM") < 0, true, text)
+    }
+}
+
+def p7_goto_into_fixtures(t : T?) {
+    t |> run("goto into a body: an if, loop or switch on the way spelled open with das labels and gotos, Duff's device a goto chain into its case labels") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_goto_into", text)
+        // Duff's device: the condition once, a goto per case label, the do-while open
+        has_text(t, text, "    let _cond = count % 8\n    if (_cond == 0) \{\n        goto label 2\n    \} elif (_cond == 7) \{\n        goto label 3\n")
+        has_text(t, text, "    \} else \{\n        goto label 1\n    \}\n    label 2:  // case 0\n    c_label_end()\n    label 10:  // do\n")
+        has_text(t, text, "    copied++\n    n--\n    if (n > 0) \{\n        goto label 10\n    \}\n    label 1:  // switch end\n")
+        // a for entered mid-body: `continue` a goto to the increment, `break` one to the end
+        has_text(t, text, "    i = 0\n    label 2:  // for\n    c_label_end()\n    if (!(i < 10)) \{\n        goto label 4\n    \}\n    if (i == 2) \{\n        goto label 3\n    \}\n")
+        has_text(t, text, "    if (sum > 600) \{\n        goto label 4\n    \}\n    label 3:  // for next\n    c_label_end()\n    i++\n    goto label 2\n    label 4:  // for end\n")
+        // the arm no goto enters stays a branch that jumps past the entered one
+        has_text(t, text, "    if (x > 0) \{\n        r = 1\n        goto label 2\n    \}\n    r = 2\n    label 1:  // other\n")
+        // two loops down: both open, the inner one's end the outer one's increment
+        has_text(t, text, "    label 4:  // while\n    c_label_end()\n    if (!(j < 3)) \{\n        goto label 5\n    \}\n    label 1:  // deep\n")
+        has_text(t, text, "    label 5:  // while end\n    c_label_end()\n    i++\n    goto label 2\n")
+        // F_CastTicker: two `if` levels open, the arm the goto leaves from keeps its branch
+        has_text(t, text, "    if (!(p7_goto_into__attacking != 0)) \{\n        goto label 2\n    \}\n    if (!(p7_goto_into__frames == 5 || p7_goto_into__state == 9)) \{\n        goto label 3\n    \}\n    label 1:  // stopattack\n")
+        // P_SlideMove: the entered arm returns, the code after the `if` its end label's
+        has_text(t, text, "    return hits * 100 + v\n    label 3:  // end if\n    c_label_end()\n    v++\n")
+        // a goto that enters no body leaves every construct structured
+        has_text(t, text, "    if (tics == 0) \{\n        p7_goto_into__frames = 0\n    \} else \{\n")
+        // a goto into a case body: `default` a label, `break` a goto to the end, the declaration a
+        // later case reads declared ahead of the gotos
+        has_text(t, text, "    let _cond = x\n    var v : int\n    if (_cond == 1) \{\n        goto label 3\n    \} elif (_cond == 2) \{\n        goto label 4\n    \} else \{\n        goto label 5\n    \}\n")
+        has_text(t, text, "    r = 1\n    v = 4\n    goto label 2\n    label 4:  // case 2\n")
+        has_text(t, text, "    label 5:  // default\n    c_label_end()\n    r = 7\n    label 2:  // switch end\n")
+        // both arms entered, and an unentered arm that returns or holds a label: all flat
+        has_text(t, text, "    r += 2\n    goto label 3\n    label 4:  // else\n    c_label_end()\n    r = 3\n    label 2:  // b\n")
+        has_text(t, text, "    r += x\n    goto label 2\n    label 3:  // else\n    c_label_end()\n    return -1\n    label 2:  // end if\n")
+        has_text(t, text, "    goto label 3\n    label 4:  // else\n    c_label_end()\n    r = 2\n    label 2:  // again\n")
+        // a for with no test ends only where `break` goes; a do's `continue` reaches its test
+        has_text(t, text, "    goto label 1\n    label 2:  // for\n    c_label_end()\n    n += 2\n")
+        has_text(t, text, "        i++\n        goto label 3\n    \}\n    n += 10\n")
+        has_text(t, text, "    label 3:  // do next\n    c_label_end()\n    if (i < k) \{\n        goto label 2\n    \}\n    return n\n")
+        // the open for's counter lands in the function's scope under a name of its own
+        has_text(t, text, "    var i1 : int = 0\n    label 2:  // for\n")
+        // an arm that is a loop with no block around it: the `if` and the loop both open
+        has_text(t, text, "    if (!(x > 0)) \{\n        goto label 2\n    \}\n    label 3:  // while\n")
+        // an `if` that returns, with a label after it a goto from before reaches, keeps an `else`
+        // the optimizer cannot fold the label into (lookibed/daScript#8); one with no such goto
+        // (Duff's `if (count <= 0)`, its gotos after it) does not
+        has_text(t, text, "    if (i > k) \{\n        return -i\n    \} else \{\n        c_label_end()\n    \}\n    label 1:  // mid\n")
+        has_text(t, text, "    if (c == 2) \{\n        return 5\n    \} else \{\n        c_label_end()\n    \}\n    r = 7\n")
+        has_text(t, text, "    if (count <= 0) \{\n        return 0\n    \}\n    let _cond = count % 8\n")
+        rejects(t, "goto_into_setjmp", "#include <setjmp.h>\nstatic jmp_buf b;\nint main(void) \{ int n = 0; goto in; if (setjmp(b) == 0) \{ in: n = 5; \} else \{ n = 1; \} return n; \}\n", "a goto into an arm of a setjmp `if` is not lowered")
+        rejects(t, "goto_open_redispatch", "int main(void) \{ int x = 1, n = 0; switch (x) \{ case 1: goto two; case 2: do \{ two: n++; case 3: n += 2; \} while (0); \} return n; \}\n", "that a goto from another case re-dispatches is not lowered")
     }
 }
