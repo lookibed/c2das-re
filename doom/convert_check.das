@@ -169,7 +169,6 @@ def compile_modules(out_dir : string; module_dirs : array<string>; timeout : flo
 let BLOCKERS <- [
     (LINK_BOUND, "a function or an array another unit defines, which only the link binds (the unit alone)"),
     ("a file-scope asm is machine code", "a file-scope asm statement"),
-    ("global variable initialization loop", "a global initializer whose function values reach it back, das's initialization loop (`m_menu.c`'s menus)"),
     ("sidecar `over_indexed`", "an over-indexed trailing array in a marshal record (finding 3)")
 ]
 
