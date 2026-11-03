@@ -163,7 +163,8 @@ machine (`uname -m`, the CPU model of `/proc/cpuinfo`, the box, which is the `--
 clang the native lane ran, which the lane's command names, and daslang's version line), the
 sample count and the timeout, every lane with its command and error, and every cell with its
 samples. The perf section's `Captured` line and the projects table's Machine column name the box
-as `perf/boxes.das`'s `box_label` (`machine_label`), a capture without `box` showing its CPU's box. The
+as `perf/boxes.das`'s `box_label` (`machine_label`), a capture without `box` showing its CPU's box;
+its `Reproduced by` command adds `--box <box>` when the capture recorded one (`reproduce_command`). The
 README's tables render from the latest capture by name; a latest capture that is not
 JSON fails the publish. The ratio table holds each das lane over native and the pairs interpreter over JIT, interpreter
 over exe, interpreter over AOT and JIT over AOT; a `-source-cut` or `-single` lane the capture measured

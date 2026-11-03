@@ -54,10 +54,12 @@ def test_tables(t : T?) {
         let lines <- render_not_yet(c)
         t |> equal(join(lines, "\n"), "- nbody, JIT: not yet: prints `x`\n- fib, exe: not yet: exited 3\n- AOT, every workload: not yet: no arguments")
     }
-    t |> run("the Captured line names the box: the capture's, else its CPU's") @(t : T?) {
+    t |> run("the Captured line names the box: the capture's, else its CPU's; the command reproduces a recorded box") @(t : T?) {
         var boxed <- fixture()
         boxed.machine.box = "fx"
         t |> success(render_perf(boxed) |> starts_with("Captured 2026-10-22 10:00 UTC on x86_64, fx (CPU); clang version 22"), render_perf(boxed))
+        t |> success(render_perf(boxed) |> contains("Reproduced by `scripts/publish_ports.sh --program lua --perf --samples 3 --box fx`. "), render_perf(boxed))
+        t |> success(render_perf(fixture()) |> contains("Reproduced by `scripts/publish_ports.sh --program lua --perf --samples 3`. "), render_perf(fixture()))
         var known <- fixture()
         known.machine.cpu = "AMD Ryzen 3 1200 Quad-Core Processor"
         t |> success(render_perf(known) |> starts_with("Captured 2026-10-22 10:00 UTC on x86_64, bench (AMD Ryzen 3 1200 Quad-Core Processor); "), render_perf(known))
