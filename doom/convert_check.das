@@ -168,7 +168,7 @@ def compile_modules(out_dir : string; module_dirs : array<string>; timeout : flo
 //! (`ARCHITECTURE.md` section 7).
 let BLOCKERS <- [
     (LINK_BOUND, "a function or an array another unit defines, which only the link binds (the unit alone)"),
-    ("unsupported declaration `EmptyDecl`", "a file-scope `;;`, an empty declaration"),
+    ("a file-scope asm is machine code", "a file-scope asm statement"),
     ("of a marshal-only record is a record or an array of records", "a record or an array of records in a marshal record (finding 2)"),
     ("an array of the marshal-only record", "an array of a marshal record, `maptexture_t.patches` (finding 2)"),
     ("sidecar `over_indexed`", "an over-indexed trailing array in a marshal record (finding 3)")
