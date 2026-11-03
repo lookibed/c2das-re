@@ -11,8 +11,9 @@ require ../../converter/tiers.das
 //! `$DOOM_STAND_IN` (`<tics>,<desynced tic>,<exit code>,<sleep ms>,<missing tic>,<doubled tic>`)
 //! asks for, held to a four-tic stand-in reference log; exit code 255 ends in the timedemo line,
 //! any other in a decoy line, an `Error:` line and a later lowercase error line, then the sleep.
+//! Like the host, it stops with exit code 0 after `-tics N` tics when N is fewer.
 
-let STAND_IN = "options gen2\nrequire daslib/fio\nrequire strings\nrequire daslib/strings_boost\n[export]\ndef main : int \{\n    let args <- get_command_line_arguments()\n    if (length(args) < 2 || args[length(args) - 2] != \"-timedemo\" || args[length(args) - 1] != \"demo1\" || !stat(get_env_variable(\"DOOMWADDIR\") + \"/doom2.wad\").is_reg) \{\n        print(\"error: no -timedemo demo1 or no doom2.wad\\n\")\n        return 2\n    \}\n    let mode <- [for (field in split(get_env_variable(\"DOOM_STAND_IN\"), \",\")); to_int(field)]\n    for (tic in range(mode[0])) \{\n        if (tic != mode[4]) \{\n            print(\"tic=\{tic\} cs=0000000\{tic == mode[1] ? 9 : tic\}\\n\")\n        \}\n        if (tic == mode[5]) \{\n            print(\"tic=\{tic\} cs=0000000\{tic\}\\n\")\n        \}\n    \}\n    print(mode[2] == 255 ? \"Error: timed \{mode[0]\} gametics in \{mode[0]\} realtics\\n\" : \"Z_Init: decoy\\nError: boom\\nerror: later\\n\")\n    if (mode[3] > 0) \{\n        sleep(uint(mode[3]))\n    \}\n    return mode[2]\n\}\n"
+let STAND_IN = "options gen2\nrequire daslib/fio\nrequire strings\nrequire daslib/strings_boost\n[export]\ndef main : int \{\n    let args <- get_command_line_arguments()\n    if (length(args) < 2 || args[length(args) - 2] != \"-timedemo\" || args[length(args) - 1] != \"demo1\" || !stat(get_env_variable(\"DOOMWADDIR\") + \"/doom2.wad\").is_reg) \{\n        print(\"error: no -timedemo demo1 or no doom2.wad\\n\")\n        return 2\n    \}\n    let mode <- [for (field in split(get_env_variable(\"DOOM_STAND_IN\"), \",\")); to_int(field)]\n    let at = find_index(args, \"-tics\")\n    let cap = at >= 0 ? to_int(args[at + 1]) : mode[0]\n    for (tic in range(cap < mode[0] ? cap : mode[0])) \{\n        if (tic != mode[4]) \{\n            print(\"tic=\{tic\} cs=0000000\{tic == mode[1] ? 9 : tic\}\\n\")\n        \}\n        if (tic == mode[5]) \{\n            print(\"tic=\{tic\} cs=0000000\{tic\}\\n\")\n        \}\n    \}\n    if (cap < mode[0]) \{\n        print(\"host: stopped after \{cap\} tics\\n\")\n        return 0\n    \}\n    print(mode[2] == 255 ? \"Error: timed \{mode[0]\} gametics in \{mode[0]\} realtics\\n\" : \"Z_Init: decoy\\nError: boom\\nerror: later\\n\")\n    if (mode[3] > 0) \{\n        sleep(uint(mode[3]))\n    \}\n    return mode[2]\n\}\n"
 
 // a fresh scratch folder, "" when none can be made
 def private scratch(name : string) : string {
@@ -60,6 +61,15 @@ def test_sync(t : T?) {
         t |> success(in_sync(run))
         t |> success(lines[0] |> contains(": 2 tics in sync"), lines[0])
     }
+    t |> run("--tics stops the program: -tics N goes before -timedemo") @(t : T?) {
+        let spec <- stand_in_spec(2)
+        t |> equal(join(program_argv(spec), " "), "-tics 2 -timedemo demo1")
+        let run = run_stand_in(spec, "4,-1,255,0,-1,-1")
+        t |> equal(run.tics, 2)
+        t |> equal(run.rc, 0)
+        t |> success(in_sync(run))
+        t |> equal(join(program_argv(stand_in_spec(0)), " "), "-timedemo demo1")
+    }
 }
 
 [test]
@@ -70,7 +80,7 @@ def test_desync(t : T?) {
         let lines <- run_report(spec, run)
         t |> success(!in_sync(run))
         t |> equal(run.sync.in_sync, 2)
-        t |> success(lines[0] |> contains("desync after 2 tics in sync: expected `tic=2 cs=00000002`, got `tic=2 cs=00000009`"), lines[0])
+        t |> success(lines[0] |> contains("desync after 2 tics in sync on cs: expected `tic=2 cs=00000002`, got `tic=2 cs=00000009`"), lines[0])
     }
     t |> run("a run past the demo's end desyncs there") @(t : T?) {
         let spec <- stand_in_spec(0)
@@ -112,7 +122,7 @@ def test_unended(t : T?) {
     }
     t |> run("under --tics an exit after the compared tics passes") @(t : T?) {
         let spec <- stand_in_spec(2)
-        let run = run_stand_in(spec, "4,-1,1,0,-1,-1")
+        let run = run_stand_in(spec, "2,-1,1,0,-1,-1")
         let lines <- run_report(spec, run)
         t |> success(in_sync(run))
         t |> success(lines[0] |> contains(": 2 tics in sync against "), lines[0])
@@ -125,12 +135,12 @@ def test_missing_and_doubled(t : T?) {
     t |> run("a missing tic desyncs on the tic it lacks") @(t : T?) {
         let spec <- stand_in_spec(0)
         let lines <- run_report(spec, run_stand_in(spec, "4,-1,255,0,1,-1"))
-        t |> success(lines[0] |> contains("desync after 1 tics in sync: expected `tic=1 cs=00000001`, got `tic=2 cs=00000002`"), lines[0])
+        t |> success(lines[0] |> contains("desync after 1 tics in sync on tic cs: expected `tic=1 cs=00000001`, got `tic=2 cs=00000002`"), lines[0])
     }
     t |> run("a doubled tic desyncs on the tic after it") @(t : T?) {
         let spec <- stand_in_spec(0)
         let lines <- run_report(spec, run_stand_in(spec, "4,-1,255,0,-1,1"))
-        t |> success(lines[0] |> contains("desync after 2 tics in sync: expected `tic=2 cs=00000002`, got `tic=1 cs=00000001`"), lines[0])
+        t |> success(lines[0] |> contains("desync after 2 tics in sync on tic cs: expected `tic=2 cs=00000002`, got `tic=1 cs=00000001`"), lines[0])
     }
 }
 

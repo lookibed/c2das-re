@@ -68,6 +68,14 @@ struct DemoRun {
     sync : TicSync
 }
 
+//! The C `argv` of `spec`'s program: `-timedemo demo<demo>`, after the host's `-tics <tics>` when
+//! the comparison is bounded, so the program stops once it has printed the compared tics.
+def program_argv(spec : DemoSpec) : array<string> {
+    var argv <- spec.tics > 0 ? ["-tics", "{spec.tics}"] : array<string>()
+    argv |> push_from(["-timedemo", "demo{spec.demo}"])
+    return <- argv
+}
+
 //! `spec`'s run: the program run by `run_tier` from the current folder, `DOOMWADDIR` set in this
 //! process to the wad's run folder, which the program inherits, the exe and aot builds in its
 //! `<entry's folder name>/`; its tic lines, a timed-out run's included, compared with the reference.
@@ -96,7 +104,7 @@ def run_converted(spec : DemoSpec) : DemoRun {
     mkdir_rec(build_dir)
     var output : string
     let started = ref_time_ticks()
-    run.rc = run_tier(spec.entry, spec.tier, build_dir, output, spec.module_dirs, spec.timeout, array<string>(), ["-timedemo", "demo{spec.demo}"])
+    run.rc = run_tier(spec.entry, spec.tier, build_dir, output, spec.module_dirs, spec.timeout, array<string>(), program_argv(spec))
     run.seconds = double(get_time_usec(started)) / 1000000.0lf
     let got <- tic_lines(output)
     let expected <- tic_lines(fread(run.ref_log))
