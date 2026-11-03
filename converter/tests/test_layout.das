@@ -379,6 +379,8 @@ let AF_MAIN = "#include <stdio.h>\nint a_f(int);\nint main(void) \{ printf(\"%d\
 let FATAL_MAIN = "#include <stdio.h>\n#include <stdlib.h>\nint parse(const char *s);\nvoid fatal(const char *msg) \{ printf(\"fatal: %s\\n\", msg); exit(1); \}\nint main(void) \{ printf(\"%d\\n\", parse(\"12\")); return 0; \}\n"
 let FATAL_UTIL = "void fatal(const char *msg);\nint parse(const char *s) \{\n    if (!s) fatal(\"null\");\n    if (!*s) fatal(\"empty\");\n    return (s[0] - '0') * 10 + (s[1] - '0');\n\}\n"
 
+let KEYWORD_MAIN = "#include <stdio.h>\n#include \"class.h\"\nint a_f(int);\nint c_f(struct Box *b);\nint main(void) \{ struct Box box = \{ 5 \}; printf(\"%d %d\\n\", a_f(3), c_f(&box)); return 0; \}\n"
+
 [test]
 def test_taken_names(t : T?) {
     var dir_error : string
@@ -388,6 +390,16 @@ def test_taken_names(t : T?) {
         let paths <- written("taken", [(name = "main.c", text = "#include <stdio.h>\nint twice(int);\nint main(void) \{ printf(\"%d\\n\", twice(4)); return 0; \}\n"), (name = "math.c", text = "int twice(int x) \{ return 2 * x; \}\n")])
         let res <- converted_in(paths, "taken", "", "source-cut")
         t |> equal(res.error, "link: the module of math.c would be `math.das`, which a module daslang or c2das-re loads by that name takes; rename the file")
+    }
+    t |> run("a C file named like a das keyword is the module `_c_<stem>` in every layout, its fragment and its header keep the stem") @(t : T?) {
+        let paths <- written("keyword", [(name = "main.c", text = KEYWORD_MAIN), (name = "table.c", text = OBJ_A), (name = "for.c", text = OBJ_B), (name = "class.c", text = "#include \"class.h\"\nint c_f(struct Box *b) \{ return b->v * 3; \}\n"), (name = "class.h", text = "struct Box \{ int v; \};\n")])
+        let partitions <- {"source" => "_c_class\nclass_h\nfor_cluster: cluster of 2: table for\nmain\nfor_cluster: table -> for: b_obj, b_g\nfor_cluster: for -> table: a_f", "source-cut" => "_c_class\n_c_for\n_c_table\nclass_h\nmain\nmain_link\ncut a_f: for -> table, 2 call sites of the edge's 2", "single" => ""}
+        for (layout, want in keys(partitions), values(partitions)) {
+            let res <- converted_in(paths, "keyword_{layout}", "", layout)
+            t |> equal(res.error, "", layout)
+            t |> equal(join(res.partition, "\n"), want, layout)
+            agrees(t, paths, res.das_path, "interp", "keyword_{layout}")
+        }
     }
     t |> run("a module the source-cut layout writes that does not compile fails the conversion: a native module's name the refusal does not list (`ast_core`) reaches the compile check") @(t : T?) {
         let paths <- written("native_name", [(name = "main.c", text = "#include <stdio.h>\nint twice(int);\nint main(void) \{ printf(\"%d\\n\", twice(4)); return 0; \}\n"), (name = "ast_core.c", text = "int twice(int x) \{ return 2 * x; \}\n")])

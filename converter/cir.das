@@ -206,6 +206,10 @@ def file_stem(c_path : string) : string {
     return dot < 0 ? name : slice(name, 0, dot)
 }
 
+//! The words das reserves: a C name of one is spelled `_c_<name>` (`emit.das`), and so is a module
+//! a C file of that stem names (`layout.das`).
+let DAS_KEYWORDS <- {"table", "if", "else", "for", "while", "break", "continue", "default", "array", "label", "in", "deref", "addr", "new", "delete", "var", "let", "def", "struct", "class", "enum", "typedef", "return", "yield", "goto", "with", "assume", "unsafe", "try", "recover", "finally", "panic", "static_if", "static_elif", "elif", "cast", "upcast", "reinterpret", "override", "abstract", "sealed", "private", "public", "shared", "where", "expect", "pass", "explicit", "capture", "template", "range", "urange", "range64", "urange64", "block", "function", "lambda", "iterator", "generator", "options", "require", "module", "operator", "true", "false", "null", "string", "int", "uint", "float", "double", "bool", "void", "int8", "uint8", "int16", "uint16", "int64", "uint64", "bitfield", "variant", "tuple", "as", "is", "type", "typeinfo", "sizeof", "typename", "smart_ptr", "invoke", "inscope", "implicit", "const", "static", "match", "generic", "auto", "aka", "defer", "print", "assert", "verify", "debug", "include", "typedecl", "fixed_array", "uninitialized", "int2", "int3", "int4", "uint2", "uint3", "uint4", "float2", "float3", "float4", "float16", "byte2", "byte3", "byte4", "byte8", "byte16", "ubyte2", "ubyte3", "ubyte4", "ubyte8", "ubyte16", "short2", "short3", "short4", "short8", "ushort2", "ushort3", "ushort4", "ushort8", "half2", "half3", "half4", "half8"}
+
 //! A file stem as an identifier: every other character an underscore, a leading digit kept
 //! behind one, since `00099__f` is not a name.
 def ident_of(name : string) : string {
