@@ -13,6 +13,7 @@ require ports_render
 require ../perf/boxes.das
 require ../converter/sidecar.das
 require ../compare/compare_render.das
+require ../metrics/criteria_file.das
 
 //! The publisher of the ports repository (`lookibed/c2das-ports`): for each program it knows,
 //! the converted modules, the sidecar, the upstream license and a README with the release, the
@@ -682,11 +683,12 @@ def private publish_top_readme(repo : string) : bool {
         }
     }
     var head_to_head : string
-    if (!compare_section(head_to_head)) {
+    var criteria : string
+    if (!compare_section(head_to_head) || !criteria_section(criteria)) {
         return false
     }
     let path = path_join(repo, "README.md")
-    return write_or_log(path, render_top_readme(fread(path), captures) + head_to_head)
+    return write_or_log(path, render_top_readme(fread(path), captures) + criteria + head_to_head)
 }
 
 //! the head-to-head's capture in the c2das-re tree
@@ -705,6 +707,25 @@ def private compare_section(var section : string&) : bool {
         return false
     }
     section = "\n## Head-to-head with the Rust translator\n\n{compare_report(results)}"
+    return true
+}
+
+//! the readability criteria's capture in the c2das-re tree
+let CRITERIA_CAPTURE = "metrics/criteria_linux.json"
+
+// the top-level README's readability criteria section rendered from `CRITERIA_CAPTURE` into
+// `section`, "" without the capture; false when it does not read
+def private criteria_section(var section : string&) : bool {
+    if (!fexist(CRITERIA_CAPTURE)) {
+        return true
+    }
+    var error : string
+    let cap <- capture_at(CRITERIA_CAPTURE, error)
+    if (!empty(error)) {
+        to_log(LOG_ERROR, "ports: {error}\n")
+        return false
+    }
+    section = "\n## Readability criteria\n\nThe compliance, in percent, per criterion and per input group, from c2das-re's `{CRITERIA_CAPTURE}`: it counts lines and reads no clock, so it holds on any machine.\n\n{render_criteria(cap)}\n"
     return true
 }
 

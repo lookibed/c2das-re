@@ -703,3 +703,27 @@ def test_earlier_capture(t : T?) {
         t |> equal(captures, 1, "a publish without --perf wrote a capture")
     }
 }
+
+[test]
+def test_criteria_section(t : T?) {
+    t |> run_stand_in("the top-level README carries the readability criteria from metrics/criteria_linux.json after the programs and before the head-to-head, none without the file, and refuses one that does not read", "c2das_ports_criteria") @(t : T?; root, clone : string) {
+        let args <- ["--repo", clone, "--no-convert", "--allow-dirty"]
+        var out : string
+        t |> equal(publish(root, args, out), 0, out)
+        t |> success(!(fread(path_join(clone, "README.md")) |> contains("Readability criteria")), out)
+        mkdir_rec(path_join(root, "metrics"))
+        fwrite(path_join(root, "metrics/criteria_linux.json"), fread("metrics/criteria_linux.json"))
+        mkdir_rec(path_join(root, "compare"))
+        fwrite(path_join(root, "compare/results_linux.json"), "\{\"doom\": \{\"status\": \"pending\", \"reason\": \"P6\"\}\}\n")
+        t |> equal(publish(root, args, out), 0, out)
+        let readme = fread(path_join(clone, "README.md"))
+        let section = "\n\n## Readability criteria\n\nThe compliance, in percent, per criterion and per input group, from c2das-re's `metrics/criteria_linux.json`: it counts lines and reads no clock, so it holds on any machine.\n\n| Criterion "
+        let at = find(readme, section)
+        t |> success(at > find(readme, "## Programs") && at < find(readme, "## Head-to-head"), readme)
+        t |> success(readme |> contains("| **total** "), readme)
+        fwrite(path_join(root, "metrics/criteria_linux.json"), "\{ not json\n")
+        t |> equal(publish(root, args, out), 1, out)
+        t |> success(out |> contains("ports: metrics/criteria_linux.json: "), out)
+        t |> equal(fread(path_join(clone, "README.md")), readme, "a refused capture left the README as it was")
+    }
+}

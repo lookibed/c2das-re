@@ -6,12 +6,14 @@ require strings
 require math
 require daslib/strings_boost
 require daslib/json_boost
+require daslib/fio
 require daslib/md_boost
 require daslib/functional
 
 //! The criteria capture `metrics/criteria_linux.json` as data (`metrics/ARCHITECTURE_CRITERIA.md`):
 //! the criteria and their compliance formulas over the raw counts, the rows they are measured on,
-//! the text a run writes, its reader and shape check, and the tables a run and the gate print.
+//! the text a run writes, its reader and shape check, the capture read from its file, and the
+//! tables a run and the gate print.
 
 //! The raw counts an input records, sorted; `metrics/ARCHITECTURE_CRITERIA.md` defines each.
 let RAW_KEYS <- ["addr_deref_sites", "bool_roundtrip_sites", "c_char_literals", "c_code_lines", "c_comment_lines", "c_constant_uses", "c_includes", "c_renames_sites", "c_repeated_lines", "c_strings", "c_switches", "das_char_literals", "das_code_lines", "das_comment_lines", "das_comments_carried", "das_constant_names", "das_repeated_lines", "das_requires", "das_string_reinterprets", "discarded_temps", "flag_lines", "flag_switches", "fn_addr_deref", "fn_bool_roundtrip", "fn_c_renames", "fn_label_stubs", "fn_literal_arithmetic", "fn_lost_parens", "fn_matched", "fn_median_x100", "fn_qualified_calls", "fn_reinterpret_casts", "fn_stray_braces", "fn_temporaries", "fn_within", "fn_worst_x100", "goto_state_lines", "label_stubs_sites", "layout_check_lines", "literal_arithmetic_sites", "long_lines", "lost_parens_sites", "modules", "modules_late_bound", "modules_layout_check", "modules_long_lines", "qualified_calls_sites", "reinterpret_casts_sites", "self_assignments", "setjmp_loops", "setjmp_sites", "stray_braces_sites", "temporaries_sites"]
@@ -198,6 +200,25 @@ def read_criteria(text : string; var error : string&) : CriteriaCapture {
         cap.sample <- int_rows(js?["sample"])
     }
     return <- cap
+}
+
+//! The capture in the file at `path`, empty with `error` when it is missing, not JSON or misshapen.
+def capture_at(path : string; var error : string&) : CriteriaCapture {
+    if (!fexist(path)) {
+        error = "{path} is missing"
+        return <- CriteriaCapture()
+    }
+    return <- capture_of_text(fread(path), path, error)
+}
+
+//! The capture `text` holds, read from `path`; empty with `error` when it is not JSON or misshapen.
+def capture_of_text(text, path : string; var error : string&) : CriteriaCapture {
+    let findings <- check_criteria(text)
+    if (!empty(findings)) {
+        error = "{path}: {join(findings, "; ")}"
+        return <- CriteriaCapture()
+    }
+    return <- read_criteria(text, error)
 }
 
 // a finding per row of `obj` outside `allowed` (none when `allowed` is empty), per raw key missing
