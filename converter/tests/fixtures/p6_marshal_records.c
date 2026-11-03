@@ -2,6 +2,7 @@ int printf(const char *, ...);
 #pragma pack(push, 1)
 typedef struct { short originx; short originy; short patch; } mappatch_t;
 typedef struct { char tag; mappatch_t first; } wrap_t;
+typedef struct { char k; mappatch_t two[2]; } pair_t;
 typedef struct { char name[8]; int masked; wrap_t outer; short patchcount; mappatch_t patches[1]; } maptexture_t;
 #pragma pack(pop)
 static unsigned char lump[1 + 4 * 27 + 8];
@@ -42,6 +43,12 @@ int main(void) {
     t[3] = v;
     t[3].outer.first.patch = 55;
     wrap_t held = t[3].outer;
+    pair_t pv = {0};
+    pv.two[1].originx = 31;
+    pv.two[1].patch = 4;
+    pv.two[1].patch += 2;
+    mappatch_t picked = pv.two[1];
+    pv.two[0] = held.first;
     mappatch_t inner = t->outer.first;
     printf("%d %c %d %d %d\n", t->masked, t->outer.tag, t->outer.first.originx, t->outer.first.originy, t->outer.first.patch);
     printf("%d %d %d %d\n", t->patches[0].originx, t->patches[0].originy, t->patches[2].originy, t->patches[3].patch);
@@ -49,5 +56,6 @@ int main(void) {
     printf("%d %d %d %d\n", origin_sum(&t->outer.first), origin_sum(&t->patches[2]), origin_sum(&t[3].outer.first), origin_sum(t->patches));
     printf("%d %d %d %d %d\n", (int) sizeof(t->outer), (int) sizeof(t->patches[0]), (int) sizeof(maptexture_t), (int) (&t->patches[3] - t->patches), (int) ((unsigned char *) &t->outer.first - lump));
     printf("%c %d %d\n", held.tag, held.first.patch, inner.originy);
+    printf("%d %d %d %d %d\n", picked.originx, picked.patch, pv.two[0].patch, pv.two[i % 2].originx, (int) sizeof(t->patches));
     return (t->patches[2].originx + v.outer.first.originy) % 256;
 }

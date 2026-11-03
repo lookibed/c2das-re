@@ -2370,8 +2370,9 @@ def private emit_type_operator(var em : Emitter; tu : CirTu; x : CirExpr const?;
         return value("{das_type(em, tu, x.t, loc)}(typeinfo alignof(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
     }
     if (x.e == "sizeof_v") {
-        if (is_marshal(em, tu, x.of_t) || is_va_list(tu, x.of_t)) {
-            // the record's bytes are laid out by clang, not by das; a `va_list` is never laid out
+        if (is_marshal(em, tu, element_under(tu, x.of_t)) || is_va_list(tu, x.of_t)) {
+            // the record's bytes, an array of them included, are laid out by clang, not by das; a
+            // `va_list` is never laid out
             return value("{das_type(em, tu, x.t, loc)}({type_size(tu, x.of_t)})", PREC_PRIMARY)
         }
         return value("{das_type(em, tu, x.t, loc)}(typeinfo sizeof(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
@@ -2439,10 +2440,15 @@ def private marshal_located(em : Emitter; tu : CirTu; x : CirExpr const?) : bool
         return marshal_pointee(em, tu, x.a.t) >= 0
     }
     if (x.e == "index") {
-        return marshal_pointee(em, tu, x.base.t) >= 0
+        return marshal_pointee(em, tu, x.base.t) >= 0 && !value_array_decay(em, tu, x.base)
     }
     return x.e == "member" && is_marshal(em, tu, x.t) && marshal_held(em, tu, x)
 }
+
+// whether `x` is the decay of an array held by value, a das array its index reads directly,
+// not one in C memory
+def private value_array_decay(em : Emitter; tu : CirTu; x : CirExpr const?) : bool =>
+    x.e == "cast" && x.cast_kind == "ArrayToPointerDecay" && kind_of(tu, x.a.t) == "array" && !marshal_array_member(em, tu, x.a)
 
 // whether member `x` is a field of a marshal-only record in C memory
 def private marshal_held(em : Emitter; tu : CirTu; x : CirExpr const?) : bool =>
@@ -2465,7 +2471,7 @@ def private marshal_site(var em : Emitter; tu : CirTu; x : CirExpr const?; loc :
         bytes = emit_expr(em, tu, x.a, loc)
         return marshal_pointee(em, tu, x.a.t)
     }
-    if (x.e == "index" && marshal_pointee(em, tu, x.base.t) >= 0) {
+    if (x.e == "index" && marshal_pointee(em, tu, x.base.t) >= 0 && !value_array_decay(em, tu, x.base)) {
         let rec = marshal_pointee(em, tu, x.base.t)
         let base = emit_expr(em, tu, x.base, loc)
         let i = enum_as_int(to_int(emit_expr(em, tu, x.i, loc)), tu, x.i.t)
@@ -2519,6 +2525,12 @@ def private marshal_element_address(var em : Emitter; tu : CirTu; x : CirExpr; l
         return bytes
     }
     if (marshal_array_member(em, tu, at)) {
+        if (is_record(tu, element_under(tu, at.t))) {
+            // a pointer to the whole array would be a das array of the natural struct
+            let holder = at.arrow ? tu.types[at.base.t].to : at.base.t
+            fail(em, "the address of `{tag_name(em, tu, holder)}.{field_name(em, tu, holder, at.field)}`, an array of marshal-only records, is not lowered yet", loc)
+            return value("", PREC_PRIMARY)
+        }
         let first = marshal_elements(em, tu, *at, loc)
         return unsafe_value(em, "reinterpret<{das_type(em, tu, x.t, loc)}>({first.text})", PREC_PRIMARY)
     }
@@ -6133,8 +6145,9 @@ def private marshal_field_type(var em : Emitter; tu : CirTu; f : CirField; loc :
 
 // the readers and writers of a marshal-only record: the whole record and each scalar field,
 // over bytes at clang's offsets through `memcpy`, which asks nothing of alignment, and a typed
-// pointer to each array field at its offset; the value side is the naturally laid out das struct
-// (docs/lowering-examples.md "Packed structs")
+// pointer to each array field at its offset, an inner marshal record through its own reader and
+// writer; the value side is the naturally laid out das struct (docs/lowering-examples.md
+// "Packed structs")
 def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) {
     let name = tag_name(em, tu, t)
     em.requires |> insert("crt")
