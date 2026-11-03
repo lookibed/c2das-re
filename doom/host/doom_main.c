@@ -9,14 +9,20 @@
 // screen wipe, under a virtual clock that advances one tic (1/35 s) per update, so a run reads
 // no wall time and repeats tic for tic. The program ends where Doom calls its exit callback:
 // `-timedemo demoN` ends in I_Error's "timed N gametics in M realtics" and exit code -1.
+// `-tics N` (the host's argument; Doom ignores it) ends the run with exit code 0 once Doom has
+// run N game tics.
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "../fetch/PureDOOM/src/DOOM/DOOM.h"
 
 // the most updates a run takes before the host gives up on Doom ever exiting
 #define MAX_UPDATES 2000000
+
+// the game tics Doom has run, g_game.c's
+extern int gametic;
 
 static long long virtual_usec = 0;
 
@@ -35,7 +41,12 @@ static void flush_and_exit(int code)
 int main(int argc, char** argv)
 {
     long long update;
+    int tic_cap = 0;
+    int i;
 
+    for (i = 1; i < argc - 1; i++)
+        if (strcmp(argv[i], "-tics") == 0)
+            tic_cap = atoi(argv[i + 1]);
     doom_set_gettime(virtual_gettime);
     doom_set_exit(flush_and_exit);
     doom_init(argc, argv, 0);
@@ -43,6 +54,11 @@ int main(int argc, char** argv)
     {
         doom_force_update();
         virtual_usec += 1000000 / 35;
+        if (tic_cap > 0 && gametic >= tic_cap)
+        {
+            printf("host: stopped after %d tics\n", gametic);
+            flush_and_exit(0);
+        }
     }
     printf("host: Doom did not exit within %d updates\n", MAX_UPDATES);
     return 2;
