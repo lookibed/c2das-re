@@ -157,10 +157,11 @@ findings among them (finding 2: an array of records inside a marshal record; fin
 over-indexed trailing array inside one); a line no fragment matches is `new:` with its stage and
 locations dropped. `blocker_table` counts the units or modules per construct.
 
-At the pin, 11 of the 63 units pass alone; 50 stop at a function or an array another unit
-defines, which the link binds; 1 at finding 2 (`r_data`, `maptexture_t.patches`) and 1 at a
-file-scope `;;` (`EmptyDecl`, `m_misc.c`). The program stops at the first unit the dumper refuses,
-`m_misc.c` (the file-scope `;;`), so no module is emitted and `--compile-check` has none to
-compile. Past those gaps, a staged copy patched by hand shows the next: a `goto` into a block (`docs/implementation_order.md` P7.7:
-`F_CastTicker`, `P_SlideMove`). Its partition: the `source` layout holds 51 units in one cluster
-(39 modules), `source-cut` 36 (56 modules).
+At the pin, 11 of the 63 units pass alone; 51 stop at a function or an array another unit
+defines, which the link binds; 1 at finding 2 (`r_data`, `maptexture_t.patches`). The whole
+program passes the dumper and the layout and stops in the emitter at `f_finale.c:408`, a `goto`
+into a loop body (`docs/implementation_order.md` P7.7: `F_CastTicker`, `P_SlideMove`), so no
+module is emitted and `--compile-check` has none to compile. Its partition: the `source` layout
+holds 51 units in one cluster (39 modules), `source-cut` 36 (56 modules). The whole-program
+conversion needs more than 3 GiB of address space: under `prlimit --as=3G` daslang dies with
+SIGSEGV on an allocation failure, so the harness runs uncapped in a `heavy` scope of its own.
