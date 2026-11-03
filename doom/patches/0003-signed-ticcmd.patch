@@ -1,0 +1,27 @@
+c2das-re fix of PureDOOM's ticcmd_t, applied by doom/fetch.sh after 0001.
+
+Copyright (C) 2026 the c2das-re authors. This patch modifies PureDOOM, which is distributed
+under the GNU General Public License version 2 (PureDOOM's LICENSE); the patch and the files it
+produces are distributed under the same license, WITHOUT ANY WARRANTY.
+
+- d_ticcmd.h: ticcmd_t's forwardmove and sidemove are `signed char`, as in Chocolate Doom. A demo
+  stores a backward or leftward move as a negative byte, which G_ReadDemoTiccmd casts to
+  `signed char`; in a plain `char` field it reads back negative only where `char` is signed. The
+  converter's dialect is unsigned `char` (docs/probe-findings.md F17), so a plain field read the
+  -40 of a strafe as 216.
+
+diff --git a/src/DOOM/d_ticcmd.h b/src/DOOM/d_ticcmd.h
+index bc1623d..54590e7 100644
+--- a/src/DOOM/d_ticcmd.h
++++ b/src/DOOM/d_ticcmd.h
+@@ -32,8 +32,8 @@
+ // plus a checksum for internal state consistency.
+ typedef struct
+ {
+-    char forwardmove;   // *2048 for move
+-    char sidemove;      // *2048 for move
++    signed char forwardmove;   // *2048 for move
++    signed char sidemove;      // *2048 for move
+     short angleturn;    // <<16 for angle delta
+     short consistancy;  // checks for net game
+     byte chatchar;
