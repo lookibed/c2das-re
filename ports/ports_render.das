@@ -204,6 +204,10 @@ def render_ratios(c : Capture) : string {
 //! The box label of machine `m`, a capture written before captures recorded a box showing its CPU's.
 def machine_label(m : Machine) : string => box_label(capture_box(m.box, m.cpu), m.cpu)
 
+//! The command that reproduces capture `c`, with `--box` when the capture recorded a box, so a
+//! rerun records the same label.
+def reproduce_command(c : Capture) : string => empty(c.machine.box) ? c.command : "{c.command} --box {c.machine.box}"
+
 //! One line per lane that does not work yet, then one per failed cell of a lane that does.
 def render_not_yet(c : Capture) : array<string> {
     var lines : array<string>
@@ -226,7 +230,7 @@ def render_not_yet(c : Capture) : array<string> {
 def render_perf(c : Capture) : string {
     return build_string() $(var w) {
         w |> write("Captured {c.timestamp} on {c.machine.arch}, {machine_label(c.machine)}; {c.machine.clang} at `{c.machine.clang_path}`, ")
-        w |> write("the native lane's compiler; daslang {c.machine.daslang}; c2das-re `{c.commit}`. Reproduced by `{c.command}`. ")
+        w |> write("the native lane's compiler; daslang {c.machine.daslang}; c2das-re `{c.commit}`. Reproduced by `{reproduce_command(c)}`. ")
         w |> write("A cell is the median wall time of {c.samples} runs of the whole program, each its own process spawned by the ")
         w |> write("publisher (the spawn included), ± half the range of the samples as a share of the median; a run past ")
         w |> write("{c.timeout} s fails its cell. The `startup` row runs no work: under a das lane it is the module's load from the ")
