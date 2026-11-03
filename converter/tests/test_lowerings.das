@@ -1015,6 +1015,11 @@ def p4_csmith_more_fixtures(t : T?) {
         has_text(t, text, "var private p6_extern_array__third : int? = unsafe(addr(_c_table[2]))\n")
         has_text(t, text, "    return grid[1][1] + grid[0][1]\n")
     }
+    t |> run("a file-scope empty declaration, `;;` or the `;` after a function's `}`, declares nothing") @(t : T?) {
+        var text : string
+        check_fixture(t, "p6_empty_decl", text)
+        has_text(t, text, "var private p6_empty_decl__n : int = 3\n")
+    }
     t |> run("a block-scope `extern` or prototype with no file-scope declaration declares the unit-level entity") @(t : T?) {
         var text : string
         check_fixture(t, "p6_block_extern", text)

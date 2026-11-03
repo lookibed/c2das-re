@@ -3482,6 +3482,10 @@ def private dump_top_level(var d : Dumper; js : JsonValue?) {
             break if (!dump_type_decl(d, decl))
             continue
         }
+        // a file-scope `;` (`;;`, or the `;` after a function's `}`) declares nothing
+        if (kind == "EmptyDecl") {
+            continue
+        }
         var cd = dump_decl(d, decl)
         if (cd == null) {
             break
