@@ -9,10 +9,10 @@ require math
 
 //! The checks and formats `run.das` applies, apart from the processes it starts
 //! (`ARCHITECTURE.md` sections 1, 3 and 5): the pins the `puredoom:` and `freedoom:` lines of
-//! `VERSIONS.md` name, the fetch check of a tree, a wad and the patches, the per-tic checksum and
+//! `VERSIONS.md` name, the fetch check of a tree, a wad and the patches, the tic and frame checksums and
 //! the reference log of a demo run.
 
-//! The FNV-1a offset basis and prime of the per-tic checksum.
+//! The FNV-1a offset basis and prime of the tic and frame checksums.
 let FNV_BASIS = 2166136261u
 let FNV_PRIME = 16777619u
 
@@ -24,6 +24,15 @@ def tic_checksum(values : array<uint>) : uint {
         for (byte_index in range(4)) {
             cs = (cs ^ ((value >> uint(8 * byte_index)) & 0xffu)) * FNV_PRIME
         }
+    }
+    return cs
+}
+
+//! The per-frame checksum the patch prints as `fb=`: the same FNV-1a over the bytes of the screen.
+def frame_checksum(screen : array<uint8>) : uint {
+    var cs = FNV_BASIS
+    for (b in screen) {
+        cs = (cs ^ uint(b)) * FNV_PRIME
     }
     return cs
 }
@@ -131,11 +140,29 @@ def demo_log(output, header : string; var error : string&) : string {
 }
 
 //! How a run's tic lines match a reference's: `compared` the lines held against it, `in_sync`
-//! the leading ones that match, `desync` the first mismatch, "" while none.
+//! the leading ones that match, `desync` the first mismatch, "" while none, and `fields` the
+//! fields of that mismatch that differ (`differing_fields`), "" past the reference's end.
 struct TicSync {
     compared : int
     in_sync : int
     desync : string
+    fields : string
+}
+
+//! The keys (`tic`, `cs`, `fb`) of the fields of tic line `got` that differ from `expected`'s,
+//! field by field in order and space-separated; a field one line lacks differs.
+def differing_fields(expected, got : string) : string {
+    let want <- split(expected, " ")
+    let have <- split(got, " ")
+    var keys : array<string>
+    for (i in range(max(length(want), length(have)))) {
+        let field = i < length(want) ? want[i] : have[i]
+        if (i >= length(want) || i >= length(have) || want[i] != have[i]) {
+            let eq = find(field, "=")
+            keys |> push(eq < 0 ? field : slice(field, 0, eq))
+        }
+    }
+    return join(keys, " ")
 }
 
 //! `got` against `expected` over the first `tics` lines, every line of `expected` when `tics` is 0
@@ -145,6 +172,7 @@ def tic_sync(expected, got : array<string>; tics : int) : TicSync {
     for (i in range(min(sync.compared, length(got)))) {
         if (got[i] != expected[i]) {
             sync.desync = "expected `{expected[i]}`, got `{got[i]}`"
+            sync.fields = differing_fields(expected[i], got[i])
             return sync
         }
         sync.in_sync++
@@ -155,10 +183,11 @@ def tic_sync(expected, got : array<string>; tics : int) : TicSync {
     return sync
 }
 
-//! One line on `sync`: the first desync, a run short of the compared tics, or `N tics in sync`.
+//! One line on `sync`: the first desync with the fields that differ, a run short of the compared tics, or `N tics in sync`.
 def sync_summary(sync : TicSync) : string {
     if (!empty(sync.desync)) {
-        return "desync after {sync.in_sync} tics in sync: {sync.desync}"
+        let on = empty(sync.fields) ? "" : " on {sync.fields}"
+        return "desync after {sync.in_sync} tics in sync{on}: {sync.desync}"
     }
     if (sync.in_sync < sync.compared) {
         return "the run printed {sync.in_sync} of {sync.compared} tics, all in sync"

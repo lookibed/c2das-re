@@ -60,6 +60,19 @@ def test_checksum(t : T?) {
         t |> equal(tic_checksum([1u, 2u, 3u, 4u, 5u, 6u]), 0x8fd0d222u)
         t |> equal(tic_checksum([0x00100000u, 0xfff00000u, 0u, 0x40000000u, 100u, 255u]), 0x46876903u)
     }
+    t |> run("the frame's FNV-1a over the screen's bytes") @(t : T?) {
+        t |> equal(frame_checksum([1u8, 2u8, 3u8]), 0x56cf37abu)
+        t |> equal(frame_checksum([255u8, 255u8, 255u8, 255u8]), 0xe3160fb1u)
+    }
+    t |> run("tic 0 of every reference log is the zeroed 320x200 screen") @(t : T?) {
+        var screen : array<uint8>
+        screen |> resize(320 * 200)
+        let fb = "fb={fmt(":08x", frame_checksum(screen))}"
+        for (demo in range(1, 4)) {
+            let first = tic_lines(fread("doom/ref/freedoom2_demo{demo}.log"))[0]
+            t |> success(first |> ends_with(fb), "{first} against {fb}")
+        }
+    }
 }
 
 [test]
@@ -152,6 +165,39 @@ def test_demo_log(t : T?) {
         var error : string
         t |> equal(demo_log("tic=0 cs=0896c202\nError: timed 2 gametics in 3 realtics\n", "pin", error), "")
         t |> success(find(error, "timed 2 gametics and printed 1") >= 0)
+    }
+    t |> run("a tic line with the frame's checksum") @(t : T?) {
+        var error : string
+        let log = demo_log("tic=0 cs=0896c202 fb=38c165c5\nError: timed 1 gametics in 1 realtics\n", "pin", error)
+        t |> equal(error, "")
+        t |> equal(log, "# pin\ntic=0 cs=0896c202 fb=38c165c5\n")
+    }
+}
+
+// two reference tic lines with the frame's checksum
+def private fb_lines : array<string> => <- ["tic=0 cs=00000000 fb=00000000", "tic=1 cs=00000001 fb=00000001"]
+
+[test]
+def test_tic_sync(t : T?) {
+    t |> run("a desync names the fields that differ") @(t : T?) {
+        let expected <- fb_lines()
+        t |> equal(differing_fields(expected[1], "tic=1 cs=00000001 fb=0000000f"), "fb")
+        t |> equal(differing_fields(expected[1], "tic=1 cs=0000000f fb=00000001"), "cs")
+        t |> equal(differing_fields(expected[1], "tic=2 cs=0000000f fb=0000000f"), "tic cs fb")
+        t |> equal(differing_fields(expected[1], "tic=1 cs=00000001"), "fb")
+        t |> equal(differing_fields("tic=1 cs=00000001", expected[1]), "fb")
+    }
+    t |> run("the summary names them") @(t : T?) {
+        let sync = tic_sync(fb_lines(), ["tic=0 cs=00000000 fb=00000000", "tic=1 cs=00000001 fb=0000000f"], 0)
+        t |> equal(sync.fields, "fb")
+        t |> equal(sync_summary(sync), "desync after 1 tics in sync on fb: expected `tic=1 cs=00000001 fb=00000001`, got `tic=1 cs=00000001 fb=0000000f`")
+    }
+    t |> run("past the reference's end no field is named") @(t : T?) {
+        var got <- fb_lines()
+        got |> push("tic=2 cs=00000002 fb=00000002")
+        let sync = tic_sync(fb_lines(), got, 0)
+        t |> equal(sync.fields, "")
+        t |> success(sync_summary(sync) |> starts_with("desync after 2 tics in sync: expected the demo's end"))
     }
 }
 

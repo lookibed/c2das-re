@@ -21,9 +21,9 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
 - `doom.c2das` - the sidecar (section 5).
 - `harness.das` - the checks and formats `run.das` applies: the pins read from `VERSIONS.md`,
   `fetch_problems` (the checkout off the pin, a patch not applied, the wad missing or of another
-  hash), `missing_units`, `tic_checksum` (the patch's formula), `tic_lines` and `non_tic_lines`,
+  hash), `missing_units`, `tic_checksum` and `frame_checksum` (the patch's formulas), `tic_lines` and `non_tic_lines`,
   the one reader of a run's or a log's tic lines, `timed_gametics`, `demo_log` (section 6), and `tic_sync` with
-  `sync_summary` (section 8).
+  `differing_fields` and `sync_summary` (section 8).
 - `run.das` - the harness, run from the repository root: `daslang -load_module dasCRuntime
   -load_module c_runtime doom/run.das -- [--fetch-check] [--native] [--demo <1|2|3> [--wad
   <path>]]`. `--fetch-check` reports every problem `fetch_problems` and `missing_units` find;
@@ -42,10 +42,11 @@ committed references under `ref/` are those files copied by hand after a referen
 - `run.das --run [--layout L] [--tier interp|jit|exe|aot] [--demo N] [--tics N] [--wad <path>]
   [--timeout S]` (section 8): runs `work/<layout>/doom_main.das`'s `-timedemo demoN` (default
   demo 1, tier `interp`, every tic of the demo, 3600 seconds) and holds its tic lines to the
-  reference log; `--demo N` without `--run` stays the native run above. The run fails unless every
+  reference log, `--tics N` also stopping the program after N tics; `--demo N` without `--run`
+  stays the native run above. The run fails unless every
   compared tic is in sync and, held to the whole demo, the program ends in `timed N gametics`.
 - `demo_run.das` - the demo runs (section 8): `wad_stem`, `wad_dir`, `reference_log`, `DemoSpec`,
-  `run_converted`, `in_sync` and `run_report`.
+  `program_argv`, `run_converted`, `in_sync` and `run_report`.
 - `convert_check.das` - the conversion checks `--convert` and `--compile-check` apply:
   `stage_program`, `convert_units`, `compile_modules`, `first_error_line`, `classify` (the
   `BLOCKERS` table) and `blocker_table`.
@@ -53,17 +54,18 @@ committed references under `ref/` are those files copied by hand after a referen
   reference logs (section 6).
 - `REVIEW.das` - the mechanical gate: nothing under `fetch/` or `work/` and no `.wad` file of the repository is
   tracked.
-- `tests/test_harness.das` - `harness.das` over stand-ins: the checksum on known values, the pins,
+- `tests/test_harness.das` - `harness.das` over stand-ins: the checksums on known values, tic 0
+  of every reference log against the zeroed screen, the pins,
   `fetch_problems` over a checkout built from the patch's own pre-image, to which the patch
-  applies, and a stand-in wad, `missing_units`, `demo_log`'s format and refusals, and the sidecar
+  applies, and a stand-in wad, `missing_units`, `demo_log`'s format and refusals, the desync's differing fields, and the sidecar
   through the converter's `read_sidecar`.
 - `tests/test_demo_run.das` - `demo_run.das` over a stand-in program, a das module that checks its
   `argv` and `$DOOMWADDIR/doom2.wad` and prints the tic lines an environment variable asks for,
-  held to a four-tic stand-in log: sync, the comparison bounded by `--tics`, the first desynced
-  tic, a missing and a doubled tic, a run past the demo's end, an early exit with its first error
-  line, every tic in sync then an exit or a timeout without the timedemo line, a timeout, the
-  converted program's module folders, a wad link that fails, no reference log, no entry module,
-  no wad and an empty log. Only the `interp` tier runs there.
+  held to a four-tic stand-in log: sync, the comparison bounded by `--tics` and the program
+  stopped there, the first desynced tic, a missing and a doubled tic, a run past the demo's end,
+  an early exit with its first error line, every tic in sync then an exit or a timeout without
+  the timedemo line, a timeout, the converted program's module folders, a wad link that fails, no
+  reference log, no entry module, no wad and an empty log. Only the `interp` tier runs there.
 - `tests/test_convert.das` - `convert_check.das` over a stand-in program (two units that link, one
   the dumper refuses, a host outside their folder): the staging, the units alone, the program's
   modules compiled alone, a module that fails, and the classification.
@@ -247,12 +249,14 @@ reference, a `doom2.wad` one among them). The run's tic lines, a timed-out run's
 the first `--tics` lines, or all of them, a run that goes on past the demo's last tic desyncing
 there. Held to the whole demo, a run is in sync only when it also ends, not timed out, in the
 `timed N gametics` line with N the log's tics, the end `demo_log` requires of a native run; under
-`--tics` an exit after the compared tics passes, its exit code reported. The report names the first desynced tic (expected against got) or `N tics in sync`, a run
+`--tics` an exit after the compared tics passes, its exit code reported. The report names the first desynced tic, the fields that differ (`tic`, `cs`, `fb`) and the lines,
+expected against got, or `N tics in sync`, a run
 short of the compared tics, the exit code or the timeout, the first error line of a run that did
 not end in the `timed N gametics` line (`first_error_line`, matching `error` or `exception` in any
 case, since PureDOOM's `I_Error` text starts `Error: ` and a daslang panic `EXCEPTION: `), and the seconds per 35 tics over the whole process, start
-included: a sanity number, not P6.7's measure. The host has no tic cap, so `--tics` bounds the
-comparison, not the run: the program plays the demo to its end or to `--timeout`.
+included: a sanity number, not P6.7's measure. Under `--tics N` the program's `argv` starts with
+the host's `-tics N` (`program_argv`), so the program stops after the compared tics with exit code
+0 instead of playing the demo to its end or to `--timeout`.
 
 At the pin, the `source` layout under `interp` plays demo1 on freedoom2.wad through its first frames:
 tics 0 to 24 match the reference log, tic 25 desyncs (`cs=b66019e2` against `cs=ada955a8`), and the
