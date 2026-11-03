@@ -192,8 +192,12 @@ def drifted_cells(current, baseline : JsonValue?; tolerance_cents : int64) : arr
     }
 }
 
-//! The delta table over the kernels of either current, then its `FLAG` list or the all-clear.
+//! The delta table over the kernels of either current, then its `FLAG` list or the all-clear;
+//! for captures of two boxes the one line saying there is no delta.
 def render_delta(current, baseline : JsonValue?; baseline_name : string) : string {
+    if (!same_box(current, baseline)) {
+        return "no delta: {capture_label(current)} against {capture_label(baseline)}, numbers of two boxes are not compared (ruling 27)\n"
+    }
     var names <- kernel_names(current)
     names |> push_from(kernel_names(baseline))
     names |> sort_unique()

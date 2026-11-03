@@ -122,7 +122,7 @@ times them under every lane, and the stored results; the interpreter audit on Lu
   section of either method between its markers (`write_readme`); whole files are read and written through daslib
   `fio`'s `fread(path)` and `fwrite(path, text)`.
 - `boxes.das` - the box names, kept here alone: `BOXES` (a CPU-model substring to `bench`, `PC`,
-  `fx`), `box_of`, `capture_box` and `capture_label`, a provenance line's `<box> (<cpu>)` (section 5).
+  `fx`), `box_of`, `capture_box`, `same_box` and `capture_label`, a provenance line's `<box> (<cpu>)` (section 5).
 - `tests/` - the dastest suite over `perf_tables.das`, `perf_cli.das`, `boxes.das` and the method kernels'
   selection, driven by JSON fixtures and a scratch README, over `perf_lanes.das`'s arithmetic, commands and the AOT tier's refusal of program
   arguments, and `run.das` itself as a child process: `-?`, one sample of `blit` into an
@@ -237,8 +237,8 @@ two cells apart by the samples' spread alone.
 
 A capture records `cpu`, the CPU model of `/proc/cpuinfo`, and `box`, the `--box` name else `box_of`
 the CPU; a provenance line renders `capture_label` (a capture without `box` shows its CPU's). A
-number carries its box; the numbers of two boxes are not compared as a speedup, which is the branch
-against main before it, on one box in one run. A capture is compared with the one before it. The
+number carries its box: the delta renders only for captures of one box (`same_box`), for two the
+line `no delta: <label> against <label>, ...`. A capture is compared with the one before it. The
 baseline is the `--baseline <json>` file when given, else `results_linux.json` as committed at
 `HEAD`, read through `git show` before the run overwrites the file; when `HEAD` has no such file
 there is no delta, and a file that is not JSON is an error. A delta cell is `(new - old) / old` as a
