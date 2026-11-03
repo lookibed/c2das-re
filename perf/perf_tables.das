@@ -8,6 +8,7 @@ require daslib/algorithm
 require daslib/functional
 require daslib/json_boost
 require daslib/md_boost
+require boxes
 
 //! The tables of a perf current, `results_linux.json` read as JSON: the results table, the
 //! ratio of every lane's time to native's, the delta of every cell against a baseline capture
@@ -119,7 +120,7 @@ def render_results(js : JsonValue?) : string {
         return t == best ? md_bold(text) : text
     }
     let versions = js?["versions"]
-    let head = "Captured on {js?["timestamp"] ?? ""}, {js?["platform"] ?? ""}, {js?["cpu"] ?? ""}; {versions?["clang"] ?? ""}, {versions?["daslang"] ?? ""}. A cell is the median of {js?["samples"] ?? 0l} samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.\n\n"
+    let head = "Captured on {js?["timestamp"] ?? ""}, {js?["platform"] ?? ""}, {capture_label(js)}; {versions?["clang"] ?? ""}, {versions?["daslang"] ?? ""}. A cell is the median of {js?["samples"] ?? 0l} samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.\n\n"
     return head + grid + "\n"
 }
 
@@ -202,7 +203,7 @@ def render_delta(current, baseline : JsonValue?; baseline_name : string) : strin
     }
     let flags <- flagged_cells(current, baseline)
     let verdict = empty(flags) ? "no lane slower than {FLAG_CENTS / 100l}%\n" : join([for (f in flags); "- FLAG {f}\n"], "")
-    let cpu_note = same_cpu(current, baseline) ? "" : " The baseline ran on {baseline?["cpu"] ?? ""}, this capture on {current?["cpu"] ?? ""}: the delta compares lane/native ratios."
+    let cpu_note = same_cpu(current, baseline) ? "" : " The baseline ran on {capture_label(baseline)}, this capture on {capture_label(current)}: the delta compares lane/native ratios."
     return "Delta against {baseline_name}, (new - old) / old per kernel and lane.{cpu_note}\n\n" + grid + "\n\n" + verdict
 }
 
@@ -265,7 +266,7 @@ def render_method_comparison(method, dp : JsonValue?) : string {
         row |> push_from([for (lane in ["interp", "jit", "aot", "exe"]); timed_ratio(time_of(method, kernel, lane), native)])
         rows |> emplace(row)
     }
-    let head = "The dasProfile method on {method?["cpu"] ?? ""} ({method?["timestamp"] ?? ""}; {method?["versions"]?["clang"] ?? ""}, daslang {method?["versions"]?["daslang"] ?? ""}) beside borisbat/dasProfile {dp?["dasprofile_commit"] ?? ""} run on {dp?["cpu"] ?? ""} ({dp?["timestamp"] ?? ""}; {dp?["toolchain"] ?? ""}). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).\n\n"
+    let head = "The dasProfile method on {capture_label(method)} ({method?["timestamp"] ?? ""}; {method?["versions"]?["clang"] ?? ""}, daslang {method?["versions"]?["daslang"] ?? ""}) beside borisbat/dasProfile {dp?["dasprofile_commit"] ?? ""} run on {capture_label(dp)} ({dp?["timestamp"] ?? ""}; {dp?["toolchain"] ?? ""}). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).\n\n"
     let different = join([for (line in DIFFERENT_PROGRAMS); "- {line}: different programs, not compared\n"], "")
     return head + render_md_table(headers, aligns, rows) + "\n\n" + different
 }

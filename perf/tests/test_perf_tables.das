@@ -86,6 +86,10 @@ def test_delta_across_cpus(t : T?) {
     t |> run("another cpu is named in the delta heading") @(t : T?) {
         t |> success(render_delta(other_cpu, old, "old") |> starts_with("Delta against old, (new - old) / old per kernel and lane. The baseline ran on X, this capture on Y: the delta compares lane/native ratios.\n\n"))
     }
+    t |> run("the delta heading names each capture's box") @(t : T?) {
+        let boxed = capture_of(t, "\{'cpu': 'Y', 'box': 'PC', 'tests': \{\}\}")
+        t |> success(render_delta(boxed, old, "old") |> contains(" The baseline ran on X, this capture on PC (Y): "), render_delta(boxed, old, "old"))
+    }
     t |> run("the same cpu compares times, native included, under a plain heading") @(t : T?) {
         var cents = 0l
         t |> success(delta_cents(same_cpu_run, old, "a", "native", cents))
@@ -121,6 +125,12 @@ def test_markdown(t : T?) {
     let ratios = "Lane time / native, per kernel.\n\n| Test | C (clang -O3) | DAS interpreter | DAS interp, copied params | DAS JIT | DAS exe | DAS AOT |\n| :--- | ------------: | --------------: | ------------------------: | ------: | ------: | ------: |\n| a    |          1.00 |             n/a |                      4.00 |    3.00 |     n/a |     n/a |\n| b    |          1.00 |             n/a |                       n/a |    0.50 |     n/a |     n/a |\n"
     t |> run("results: sorted kernels, the fastest lane bold, the spread rounded, a missing lane n/a") @(t : T?) {
         t |> equal(render_results(js), results)
+    }
+    t |> run("the provenance line labels the capture with its box, a capture without one with its cpu's") @(t : T?) {
+        let boxed = capture_of(t, "\{'cpu': 'C', 'box': 'fx', 'tests': \{\}\}")
+        t |> success(render_results(boxed) |> starts_with("Captured on , , fx (C); "), render_results(boxed))
+        let bench = capture_of(t, "\{'cpu': 'AMD Ryzen 3 1200 Quad-Core Processor', 'tests': \{\}\}")
+        t |> success(render_results(bench) |> starts_with("Captured on , , bench (AMD Ryzen 3 1200 Quad-Core Processor); "), render_results(bench))
     }
     t |> run("a capture without tests has no kernels") @(t : T?) {
         t |> equal(length(kernel_names(capture_of(t, "\{'cpu': 'C'\}"))), 0)
@@ -279,6 +289,9 @@ def test_method_comparison(t : T?) {
         // five significant digits keep apart cells a microsecond apart
         t |> success(text |> contains("| fib_loop |    0.0019063s |     0.0019058s |      0.06s (31.48x) |   0.002s (1.05x) |   0.002s (1.05x) |   0.06s (31.47x) | 0.004s (2.10x) | 0.0019064s (1.00x) | 0.004s (2.10x) |"), text)
         t |> success(!(text |> contains("| sieve")), text)
+        let boxed = render_method_comparison(capture_of(t, "\{'cpu': 'AMD FX(tm)-6300', 'tests': \{\}\}"), capture_of(t, "\{'cpu': 'C', 'box': 'bench'\}"))
+        t |> success(boxed |> starts_with("The dasProfile method on fx (AMD FX(tm)-6300) ("), boxed)
+        t |> success(boxed |> contains(" run on bench (C) ("), boxed)
         let bare = render_method_comparison(method, capture_of(t, "\{'dasprofile_commit': 'x'\}"))
         t |> success(bare |> contains("| fib_loop |    0.0019063s |            n/a |                 n/a |"), bare)
         // the hand-written columns time a literal count

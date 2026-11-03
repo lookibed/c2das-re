@@ -4,6 +4,7 @@ require strings
 require daslib/fio
 require daslib/strings_boost
 require daslib/json_boost
+require ../boxes.das
 
 [test]
 def test_run_help(t : T?) {
@@ -50,6 +51,10 @@ def test_run_blit_lanes(t : T?) {
         t |> equal(error, "", "{results}: {out}")
         t |> equal(js?["samples"] ?? 0l, 2l)
         t |> success(fread("perf/results_linux.json") == committed, "the run rewrote perf/results_linux.json")
+    }
+    t |> run("a run without --box records the box of its cpu beside it") @(t : T?) {
+        t |> equal(js?["cpu"] ?? "", cpu_name_line(), out)
+        t |> equal(js?["box"] ?? "-", box_of(cpu_name_line()), out)
     }
     t |> run("the interp-copy lane times the copy conversion and reproduces the native result") @(t : T?) {
         let blit = js?["tests"]?["blit"]
@@ -112,17 +117,23 @@ def test_run_method(t : T?) {
         t |> equal(run_and_capture(["bash", "scripts/run_perf.sh", "--method", "nope"], out, 60.0), 2, out)
         t |> success(out |> contains("--method is default or dasprofile, not `nope`"), out)
     }
+    t |> run("--box takes a box name: another one is a usage error") @(t : T?) {
+        var out : string
+        t |> equal(run_and_capture(["bash", "scripts/run_perf.sh", "--box", "laptop"], out, 60.0), 2, out)
+        t |> success(out |> contains("--box takes bench, PC, fx, not `laptop`"), out)
+    }
     let results = path_join(dir, "method.json")
     let baseline = path_join(dir, "baseline.json")
     // a baseline whose every time is far off, so --check finds every cell drifted
     fwrite(baseline, "\{\"cpu\": \"{cpu_name_line()}\", \"lanes\": [\"native\", \"interp\"], \"tests\": \{\"fib_recursive\": \{\"native\": \{\"time\": 100.0\}, \"interp\": \{\"time\": 100.0\}\}\}\}\n")
     var out : string
-    let rc = run_and_capture(["bash", "scripts/run_perf.sh", "--method", "dasprofile", "--filter", "fib", "--samples", "1", "--out", results, "--baseline", baseline, "--check"], out, 1800.0)
+    let rc = run_and_capture(["bash", "scripts/run_perf.sh", "--method", "dasprofile", "--filter", "fib", "--samples", "1", "--out", results, "--baseline", baseline, "--check", "--box", "bench"], out, 1800.0)
     var error : string
     let js = read_json(fread(results), error)
     t |> run("the dasprofile method measures the shared kernels' five lanes on the method's program") @(t : T?) {
         t |> equal(error, "", "{results}: {out}")
         t |> equal(js?["method"] ?? "", "dasprofile", out)
+        t |> equal(js?["box"] ?? "", "bench", "--box names the box the capture records: {out}")
         t |> equal(join([for (lane in (js?["lanes"]).value as _array); lane ?? ""], " "), "native interp jit exe aot", out)
         for (kernel in ["fib_loop", "fib_recursive"]) {
             let row = js?["tests"]?[kernel]

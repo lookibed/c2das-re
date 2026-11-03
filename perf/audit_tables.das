@@ -7,6 +7,7 @@ require daslib/strings_boost
 require daslib/json_boost
 require daslib/md_boost
 require audit_constructs
+require boxes
 
 //! The tables of the interpreter audit's capture (`perf/audit_linux.json`): the construct table and
 //! the whole-benchmark table. It measures nothing and reads no file.
@@ -134,7 +135,7 @@ def bench_table(js : JsonValue?) : string {
 
 //! Both tables of a capture with the machine line above them.
 def audit_text(js : JsonValue?) : string {
-    var text = "{js?["cpu"] ?? "unknown CPU"}, {js?["samples"] ?? 0} samples per kernel lane, Rust {js?["rust_commit"] ?? "n/a"}\n\n{construct_table(js)}\n"
+    var text = "{capture_label(js)}, {js?["samples"] ?? 0} samples per kernel lane, Rust {js?["rust_commit"] ?? "n/a"}\n\n{construct_table(js)}\n"
     if (has_key(js, "benches")) {
         text += "\n{bench_table(js)}\n\nEach whole-run sample resolves to 0.1 s (the clock lags the exit by up to one 100 ms tick, every lane).\n"
     }

@@ -12,6 +12,7 @@ require ../converter/pipeline.das
 require ../converter/tiers.das
 require ../converter/sidecar.das
 require perf_tables
+require boxes
 require ../suites/suite_files.das
 require perf_cli
 require perf_compose
@@ -58,6 +59,8 @@ struct Args {
     out : string = ""
     @clarg_doc = "default (this tree's harness, every kernel) or dasprofile (dasProfile's harness and its kernels in C, perf/kernels/dasprofile: noinline kernel functions, volatile sink, steady clock)"
     method : string = "default"
+    @clarg_doc = "the box the run measures on, bench, PC or fx (default: the box of the CPU model, none for another CPU)"
+    box : string = ""
     @clarg_doc = "exit 1 when a cell drifts from the baseline past --tolerance either way, or one capture lacks a cell the other has"
     check : bool
     @clarg_doc = "the --check bar in percent (default 10, the FLAG rule's)"
@@ -153,12 +156,14 @@ def measure_kernels(args : Args; lanes : array<string>; var errors : array<strin
     return <- tests
 }
 
-// the capture of a run: the machine, the versions, the method, its lanes and the rows
+// the capture of a run: the machine and its box, the versions, the method, its lanes and the rows
 def capture_of(args : Args; lanes : array<string>; var tests : table<string; JsonValue?>) : JsonValue? {
     var clang_version, daslang_version : string
     tool_versions(clang_version, daslang_version)
+    let cpu = cpu_name()
     var root <- {
-        "cpu" => JV(cpu_name()),
+        "cpu" => JV(cpu),
+        "box" => JV(capture_box(args.box, cpu)),
         "platform" => JV("{get_platform_name()} {strip(captured(["uname", "-m"]))}"),
         "timestamp" => JV(strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))),
         "samples" => JV(args.samples),
@@ -186,6 +191,11 @@ def main : int {
     }
     if (!has_value(METHODS, args.method)) {
         to_log(LOG_ERROR, "--method is default or dasprofile, not `{args.method}`\n")
+        return 2
+    }
+    let refusal = box_refusal(args.box)
+    if (!empty(refusal)) {
+        to_log(LOG_ERROR, "{refusal}\n")
         return 2
     }
     let committed = args.method == "dasprofile" ? METHOD_RESULTS : RESULTS
