@@ -1,0 +1,4 @@
+{
+ "marshal": ["mappatch_t", "wrap_t", "maptexture_t"],
+ "over_indexed": ["maptexture_t.patches"]
+}
