@@ -495,6 +495,8 @@ def quality_section(stamps : Stamps; var entries : table<string; KeyQuality>) : 
         "rust_commit_error" => JV(stamps.rust_commit_error),
         "daslang" => JV(stamps.daslang),
         "date" => JV(stamps.date),
+        "cpu" => JV(stamps.cpu),
+        "box" => JV(stamps.box),
         "keys" => JV(keyed),
         "totals" => quality_totals(entries),
         "functions" => JV(functions)

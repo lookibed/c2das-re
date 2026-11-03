@@ -200,7 +200,8 @@ def perf_section(stamps : Stamps; samples : int; var kernels : table<string; Jso
     tool_versions(clang_version, daslang_version)
     let kernels_json = JV(kernels)
     var root <- {
-        "cpu" => JV(cpu_name()),
+        "cpu" => JV(stamps.cpu),
+        "box" => JV(stamps.box),
         "platform" => JV("{get_platform_name()} {strip(captured(["uname", "-m"]))}"),
         "versions" => JV({"clang" => JV(clang_version), "daslang" => JV(daslang_version)}),
         "rust_commit" => JV(stamps.rust_commit),

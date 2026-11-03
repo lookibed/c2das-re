@@ -179,6 +179,19 @@ def test_rust_ahead(t : T?) {
 
 [test]
 def test_report(t : T?) {
+    t |> run("each section's stamp names its box: a capture with its box, one with its cpu alone, one with neither") @(t : T?) {
+        let boxed = compare_report(json_of(t, "\{\"suites\": \{\"s\": \{\"rust_commit\": \"r\", \"date\": \"d\", \"cpu\": \"C\", \"box\": \"bench\"\}\}, \"perf\": \{\"timestamp\": \"t\", \"platform\": \"p\", \"cpu\": \"C\", \"box\": \"bench\"\}, \"quality\": \{\"rust_commit\": \"q\", \"date\": \"d\", \"cpu\": \"C\", \"box\": \"bench\"\}, \"projects\": \{\"w\": \{\"rust_commit\": \"r\", \"date\": \"d\", \"cpu\": \"C\", \"box\": \"bench\"\}\}\}"))
+        t |> success(boxed |> contains("Captured: s (Rust `r`, d, bench (C)). "), boxed)
+        t |> success(boxed |> contains("Captured t on p, bench (C); "), boxed)
+        t |> success(boxed |> contains("Captured Rust `q`, d, bench (C), over every input"), boxed)
+        t |> success(boxed |> contains("Captured: w (Rust `r`, d, bench (C))."), boxed)
+        let cpu_only = compare_report(json_of(t, "\{\"suites\": \{\"s\": \{\"rust_commit\": \"r\", \"date\": \"d\", \"cpu\": \"AMD FX(tm)-6300 Six-Core Processor\"\}\}, \"perf\": \{\"timestamp\": \"t\", \"platform\": \"p\", \"cpu\": \"Other\"\}\}"))
+        t |> success(cpu_only |> contains("Captured: s (Rust `r`, d, fx (AMD FX(tm)-6300 Six-Core Processor)). "), cpu_only)
+        t |> success(cpu_only |> contains("Captured t on p, Other; "), cpu_only)
+        let neither = compare_report(json_of(t, "\{\"perf\": \{\"timestamp\": \"t\", \"platform\": \"p\"\}, \"quality\": \{\"rust_commit\": \"q\", \"date\": \"d\"\}\}"))
+        t |> success(neither |> contains("Captured t on p, unlabelled box; "), neither)
+        t |> success(neither |> contains("Captured Rust `q`, d, unlabelled box, over every input"), neither)
+    }
     t |> run("the whole report: every section in order, an empty capture rendered without a crash") @(t : T?) {
         let text = compare_report(json_of(t, full_capture()))
         var at = 0
@@ -187,7 +200,7 @@ def test_report(t : T?) {
             t |> success(next > at, "{heading}: {text}")
             at = next
         }
-        t |> success(text |> contains("s1 (Rust `abcdef012345`, d1)"), text)
+        t |> success(text |> contains("s1 (Rust `abcdef012345`, d1, unlabelled box)"), text)
         let empty_text = compare_report(json_of(t, "\{\}"))
         t |> success(empty_text |> contains("No suite is captured yet."), empty_text)
         t |> success(empty_text |> ends_with("Nowhere in this capture.\n"), empty_text)
@@ -252,13 +265,15 @@ def test_command_line(t : T?) {
             t |> success(ruled |> starts_with("# c2das-re against the Rust translator\n\n## Rulings pending\n\n- P8.1: a question; 2026-11-01.\n\n## Head-to-head\n\n"), ruled)
         }
     }
-    t |> run("an unreadable capture, and the rendering beside another mode, are refused") @(t : T?) {
+    t |> run("an unreadable capture, the rendering beside another mode, and an unknown --box are refused") @(t : T?) {
         t |> with_scratch("cmp_render_refused") $(dir) {
             var out : string
             t |> equal(run_compare_in(dir, ["--report", "r.md", "--out", "missing.json"], out), 1, out)
             t |> success(!fexist(path_join(dir, "r.md")), out)
             t |> equal(run_compare_in(dir, ["--readme", "--perf", "--out", "results.json"], out), 1, out)
             t |> success(out |> contains("runs alone"), out)
+            t |> equal(run_compare_in(dir, ["--readme", "--box", "laptop", "--out", "results.json"], out), 1, out)
+            t |> success(out |> contains("--box takes bench, PC, fx, not `laptop`"), out)
         }
     }
 }

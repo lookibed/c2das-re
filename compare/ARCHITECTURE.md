@@ -79,13 +79,12 @@ LLVM 18, and the daScript commit lookibed/c2das's CI runs its own output on. Tha
 fork commit, 3 commits ahead of an upstream master older than this repository's pin; the Rust side's output runs here on this repository's
 daScript, so both sides run on one daslang.
 
-`scripts/build_c2das_rust.sh` clones the checkout when it is absent, refuses one at another
-commit than the pin unless `--allow-other`, checks rustup, the toolchain and `llvm-config-18`,
-and builds the release binary; `--check` builds nothing. The binary the module runs is
-`$C2DAS_RUST_BIN`, else `target/release/c2dascript-transpile` under `$C2DAS_RUST`, else under
-`/root/c2das` (`rust_binary`). The commit a capture records is the `HEAD` of the git work tree
-holding the binary, accepted only when that tree has `c2dascript-transpile/Cargo.toml`
-(`rust_version`).
+`scripts/build_c2das_rust.sh` clones the checkout when it is absent, refuses one at another commit
+than the pin unless `--allow-other`, checks rustup, the toolchain and `llvm-config-18`, and builds
+the release binary; `--check` builds nothing. The binary the module runs is `$C2DAS_RUST_BIN`, else
+`target/release/c2dascript-transpile` under `$C2DAS_RUST`, else under `/root/c2das` (`rust_binary`).
+The commit a capture records is the `HEAD` of the git work tree holding the binary, accepted only
+when that tree has `c2dascript-transpile/Cargo.toml` (`rust_version`).
 
 ## 3. The entry module {#entry}
 
@@ -199,7 +198,8 @@ over one suite keeps the others' entries from earlier runs. A suite's entry:
 
 - `rust_commit` - `rust_version` of the binary, "" when it has none, with `rust_commit_error`
   saying why (the run logs it as a warning); `daslang` - the first line of `daslang -version`, as
-  the perf capture records it; `date`;
+  the perf capture records it; `date`; `cpu` and `box`, the CPU model and the `--box` name else
+  the CPU's box (`perf/boxes.das`), as every section records them;
 - `ids` - the cases run; `ours_pass` and `ours_skipped` - the ratchet's and the ledger's id counts;
 - `rust` - the count per status, every status present;
 - `rust_pass_of_ours`, `rust_pass_of_skipped`, `rust_pass_of_unlisted` - the Rust passes per tag;
@@ -247,7 +247,7 @@ native build of the same C text ends once its 0.5 s budget is spent. The Rust si
 time a program the optimizer may reshape; the oracle checks the result only, and the 120 s sample
 limit is what catches the endless loop.
 
-The section `perf` is `{cpu, platform, versions {clang, daslang}, rust_commit, rust_commit_error,
+The section `perf` is `{cpu, box, platform, versions {clang, daslang}, rust_commit, rust_commit_error,
 samples, timestamp, lanes, kernels, geomean}`. `lanes` is `native` and the four das lanes;
 `kernels` maps each key to `{native, ours: {lane: cell}, rust: {status, error?, lanes?}}`, a cell
 as the perf capture writes it (`time`, `spread`, `count`, `result`, `samples`). `geomean` maps
