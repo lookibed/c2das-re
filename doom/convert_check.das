@@ -111,9 +111,8 @@ def private unbound_name(error : string) : string {
 }
 
 // the sidecar entries `Record.field` among `entries` whose record unit `tu` declares
-def private declared_members(tu : CirTu; entries : array<string>) : array<string> {
-    return <- [for (entry in entries); entry; where declares(tu, slice(entry, 0, find(entry, ".")))]
-}
+def private declared_members(tu : CirTu; entries : array<string>) : array<string> =>
+    <- [for (entry in entries); entry; where declares(tu, slice(entry, 0, find(entry, ".")))]
 
 //! Each of `c_paths` dumped alone under the sidecar `side`, then each the dumper takes emitted
 //! alone, its `over_indexed` and `padded` entries narrowed to the records the unit declares: the unit passes

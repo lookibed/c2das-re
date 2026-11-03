@@ -278,6 +278,7 @@ def private read_members(js : JsonValue?; path, key : string; var out : array<st
         error = "{path}: `{key}` is a list of strings `Record.field`, not {write_json(list)}"
         return
     }
+    out |> reserve(length(out) + length(list as _array))
     for (entry in list as _array) {
         let name = entry is _string ? entry ?? "" : ""
         let dot = find(name, ".")
