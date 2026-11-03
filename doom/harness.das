@@ -5,6 +5,7 @@ module harness public
 require strings
 require daslib/fio
 require daslib/strings_boost
+require math
 
 //! The checks and formats `run.das` applies, apart from the processes it starts
 //! (`ARCHITECTURE.md` sections 1, 3 and 5): the pins the `puredoom:` and `freedoom:` lines of
@@ -93,19 +94,25 @@ def fetch_problems(tree, pin : string; patches : array<string>; wad, wad_sha : s
 //! The units of `units` with no `<unit>.c` in `dir`.
 def missing_units(dir : string; units : array<string>) : array<string> => <- [for (unit in units); unit; where !stat(path_join(dir, "{unit}.c")).is_reg]
 
+//! The `tic=` lines of `text` in order: a run's output or a reference log, its header left out.
+def tic_lines(text : string) : array<string> => <- [for (line in split(text, "\n")); line; where line |> starts_with("tic=")]
+
+//! The N of the `Error: timed N gametics` line a `-timedemo` run ends in, -1 without one.
+def timed_gametics(output : string) : int {
+    for (line in split(output, "\n")) {
+        if (line |> starts_with("Error: timed ")) {
+            return to_int(split(slice(line, 13), " ")[0])
+        }
+    }
+    return -1
+}
+
 //! The reference log of a `-timedemo` run's `output`: `header` as a `# ` line, then every
 //! `tic=` line in order; "" with `error` set when the run did not end in the timedemo's
 //! `timed N gametics` line or printed other than N tic lines.
 def demo_log(output, header : string; var error : string&) : string {
-    var tics : array<string>
-    var gametics = -1
-    for (line in split(output, "\n")) {
-        if (line |> starts_with("tic=")) {
-            tics |> push(line)
-        } elif (line |> starts_with("Error: timed ")) {
-            gametics = to_int(split(slice(line, 13), " ")[0])
-        }
-    }
+    let tics <- tic_lines(output)
+    let gametics = timed_gametics(output)
     if (gametics < 0) {
         error = "the run did not end in `timed N gametics` after {length(tics)} tic lines"
         return ""
@@ -115,4 +122,40 @@ def demo_log(output, header : string; var error : string&) : string {
         return ""
     }
     return "# {header}\n" + join(tics, "\n") + "\n"
+}
+
+//! How a run's tic lines match a reference's: `compared` the lines held against it, `in_sync`
+//! the leading ones that match, `desync` the first mismatch, "" while none.
+struct TicSync {
+    compared : int
+    in_sync : int
+    desync : string
+}
+
+//! `got` against `expected` over the first `tics` lines, every line of `expected` when `tics` is 0
+//! or past it; held to the whole reference, a run that goes on past its last line desyncs there.
+def tic_sync(expected, got : array<string>; tics : int) : TicSync {
+    var sync = TicSync(compared = tics > 0 ? min(tics, length(expected)) : length(expected))
+    for (i in range(min(sync.compared, length(got)))) {
+        if (got[i] != expected[i]) {
+            sync.desync = "expected `{expected[i]}`, got `{got[i]}`"
+            return sync
+        }
+        sync.in_sync++
+    }
+    if (sync.compared == length(expected) && length(got) > length(expected)) {
+        sync.desync = "expected the demo's end after {length(expected)} tics, got `{got[length(expected)]}`"
+    }
+    return sync
+}
+
+//! One line on `sync`: the first desync, a run short of the compared tics, or `N tics in sync`.
+def sync_summary(sync : TicSync) : string {
+    if (!empty(sync.desync)) {
+        return "desync after {sync.in_sync} tics in sync: {sync.desync}"
+    }
+    if (sync.in_sync < sync.compared) {
+        return "the run printed {sync.in_sync} of {sync.compared} tics, all in sync"
+    }
+    return "{sync.in_sync} tics in sync"
 }
