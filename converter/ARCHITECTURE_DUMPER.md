@@ -111,11 +111,15 @@ again without `static` keeps its internal linkage (C11 6.2.2p4). A reference bin
 declaration id clang resolved it to (`referencedDecl.id`), never by its spelling, so a local
 that hides a static, or a later block's local named like an earlier block's static, keeps its
 own binding (`docs/probe-findings.md` F47); an id outside the program (a libc function,
-`stderr`) binds by its file-scope name. A block-scope `extern` declares nothing: its id binds to
-the declaration its `previousDecl` names, and it fails closed with no file-scope declaration
-before it, or when a local of the function spells the same name, since a non-static global and
-that local share the C-IR name and the reference would bind to the local. Tentative definitions of one object merge into the declaration
-carrying the initializer.
+`stderr`) binds by its file-scope name. A block-scope `extern` object or function prototype
+declares the program-wide entity, never a local: one with a `previousDecl` binds its id to that
+declaration's name (one outside the program by its file-scope name), and the first declaration
+of its name is dumped as at file scope, the unit-level declaration placed before the function,
+which a later definition in the unit completes as any tentative one does. A parameter or local
+named like one of its function's block-scope `extern`s or prototypes takes a free name
+(`<name>1` and up, past what a hoisted static avoids), since the reference spells the global's
+name and das would bind it to the local. Tentative definitions of one object merge into the
+declaration carrying the initializer.
 
 Declarations: `FunctionDecl` with `ParmVarDecl` and a `CompoundStmt` body, `VarDecl`.
 Statements: compound, `DeclStmt` (one `decl` per variable), expression statements,
