@@ -2034,6 +2034,10 @@ def private pointer_arithmetic(var em : Emitter; tu : CirTu; x : CirExpr; lhs, r
         let negated = is_unsigned(tu, x.b.t) ? "-int64({rhs.text})" : "-({rhs.text})"
         return unsafe_value(em, "{wrap(lhs, prec)} + {negated}", prec)
     }
+    if (!pointer_lhs) {
+        // das adds a count to a pointer only: `n + p` is the sum commuted, `p + n`
+        return unsafe_value(em, "{wrap(rhs, prec)} + {wrap(lhs, prec + 1)}", prec)
+    }
     return unsafe_value(em, "{wrap(lhs, prec)} {spelled} {wrap(rhs, prec + 1)}", prec)
 }
 
