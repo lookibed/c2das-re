@@ -233,3 +233,8 @@ not end in the `timed N gametics` line (`first_error_line`, matching `error` or 
 case, since PureDOOM's `I_Error` text starts `Error: ` and a daslang panic `EXCEPTION: `), and the seconds per 35 tics over the whole process, start
 included: a sanity number, not P6.7's measure. The host has no tic cap, so `--tics` bounds the
 comparison, not the run: the program plays the demo to its end or to `--timeout`.
+
+At the pin, the `source` layout under `interp` plays demo1 on freedoom2.wad through its first frames:
+tics 0 to 24 match the reference log, tic 25 desyncs (`cs=b66019e2` against `cs=ada955a8`), and the
+run panics after 137 tic lines in `R_ScaleFromGlobalAngle` (r_main.c:413), `finesine[angleb >> 19]`
+at index -4096, an angle the desynced state makes negative.
