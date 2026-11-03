@@ -159,11 +159,11 @@ locations dropped. `blocker_table` counts the units or modules per construct.
 
 At the pin, 11 of the 63 units pass alone; 51 stop at a function or an array another unit
 defines, which the link binds; 1 at finding 2 (`r_data`, `maptexture_t.patches`). The whole
-program passes the dumper and the layout and stops in the emitter at `f_finale.c:602`, a pointer
-into the array field `patch_t.columnofs` of a marshal record (`docs/implementation_order.md`
-P6.3e), past the gotos into a branch body P7.7 lowers (`F_CastTicker`, `P_SlideMove`), so no
-module is emitted and `--compile-check` has none to compile (`source-cut` stops at the same
-construct in `p_setup.c:235`, `mapsector_t.floorpic`). The whole-program
+program passes the dumper and the layout and stops in the emitter at `r_data.c:83`, finding 2
+(`maptexture_t.patches`, an array of the marshal record `mappatch_t` inside one), past the gotos
+into a branch body P7.7 lowers and the array field of a marshal record P6.3e lowers
+(`patch->columnofs[col]`, `f_finale.c:602`), so no module is emitted and `--compile-check` has
+none to compile. The whole-program
 conversion needs more than 3 GiB of address space: under `prlimit --as=3G` daslang dies with
 SIGSEGV on an allocation failure, so the harness runs uncapped in a `heavy` scope of its own.
 
