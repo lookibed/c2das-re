@@ -171,7 +171,9 @@ JSON fails the publish. The capture holds whole runs; every speed number the tab
 work alone. A workload's work time under a lane is its cell's median less the median of the same
 lane's startup cell, native included, its spread the two cells' half ranges over the work time; a
 work time not above 0 is `within the start`, and a lane whose startup cell is missing or failed
-has no work times, its cells `not yet` with the reason `no startup cell`. The startup table holds
+has no work times, its cells `not yet` with the reason `no startup cell`. A cell or a work time
+whose spread is above 20% is suspect and never a number: it renders `suspect (±N%)`, its ratios
+`suspect`, and it leaves the projects table's means as a missing cell does. The startup table holds
 each lane's startup cell and its ratio to native's, the only place a startup number appears; the
 work table holds the work times of the other rows; the times table holds the raw medians, the
 startup row included. The ratio table holds work times only, no startup row: each das lane over

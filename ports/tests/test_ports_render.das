@@ -159,6 +159,27 @@ def test_work(t : T?) {
 }
 
 [test]
+def test_suspect(t : T?) {
+    t |> run("a cell whose spread is above 20% is suspect: its spread alone, no ratio, out of the geometric mean") @(t : T?) {
+        var c <- fixture()
+        c.cells[4].spread = 0.3lf // the interpreter's fib: 63 s of its 210 s, 63.2 s of its 200 s of work
+        t |> equal(row_of(render_times(c), "fib")[2], "suspect (±30%)")
+        t |> equal(render_work(c), "| Workload | Arguments         |    clang -O3 |     interpreter |          JIT |     exe |     AOT |\n| :------- | :---------------- | -----------: | --------------: | -----------: | ------: | ------: |\n| fib      | `bench/fib.lua`   | 1.000 s ±4% | suspect (±32%) | 8.000 s ±3% | not yet | not yet |\n| nbody    | `bench/nbody.lua` | 2.000 s ±3% |  100.000 s ±2% |      not yet |     n/a |     n/a |\n")
+        t |> equal(join(row_of(render_ratios(c), "fib"), ","), "`bench/fib.lua`,suspect,8.00,n/a,n/a,suspect,suspect,suspect,n/a")
+        var count = 0
+        t |> equal(round(geomean_ratio(c, "interp", count) * 1000.0lf), 50000.0lf)
+        t |> equal(count, 1)
+    }
+    t |> run("a suspect startup cell: its row names its spread and no ratio, the work times keep their own spread") @(t : T?) {
+        var c <- fixture()
+        c.cells[1].spread = 0.25lf // the interpreter's startup: 2.5 s of 10 s, 6.7 s of fib's 200 s of work
+        t |> equal(join(row_of(render_startup(c), "interpreter"), ","), "suspect (±25%),suspect")
+        t |> equal(row_of(render_work(c), "fib")[2], "200.000 s ±3%")
+        t |> equal(row_of(render_ratios(c), "fib")[1], "200.00")
+    }
+}
+
+[test]
 def test_layout_lanes(t : T?) {
     t |> run("a layout lane (source-cut or single) the capture measured adds its column and its ratio to its source-layout twin; without one the tables keep their columns") @(t : T?) {
         var c <- fixture()
