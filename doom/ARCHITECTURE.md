@@ -55,8 +55,8 @@ committed references under `ref/` are those files copied by hand after a referen
   `work/trace/<wad stem>_demo<N>.native.log`, no reference log; `--convert` and `--compile-check`
   take `work/<layout>-trace/`, converted under `work/doom-trace.c2das`, the sidecar with the
   define added; `--run` runs that conversion, writes its trace lines to
-  `work/trace/<wad stem>_demo<N>.<tier>.log` and logs their `tic_sync` against the native ones
-  over the same `--tics`, the tic lines still held to the reference log.
+  `work/trace/<wad stem>_demo<N>.<tier>.log` and holds them to the native ones over the same
+  `--tics` (a traced desync fails the run), the tic lines still held to the reference log.
 - `demo_run.das` - the demo runs (section 8): `wad_stem`, `wad_dir`, `reference_log`, `DemoSpec`,
   `program_argv`, `run_converted`, `in_sync` and `run_report`.
 - `convert_check.das` - the conversion checks `--convert` and `--compile-check` apply:
@@ -99,7 +99,7 @@ The native build is the pinned clang (`VERSIONS.md` libclang) at `-O2 -w` with t
 linked. PureDOOM has no `-iwad`: it opens `$DOOMWADDIR/doom2.wad`, which is why the harness links
 the chosen wad under that name.
 
-## 3. The patch
+## 3. The patches
 
 `0001-per-tic-checksum.patch`: hunks in five files against the pin. `g_game.c` and `d_main.c`, under `-DDOOM_TIC_CHECKSUM`:
 `G_Ticker` ends by storing `gametic`, the tic just run (the caller increments it after), and the
@@ -141,8 +141,8 @@ recorded with the define.
 `0003-signed-ticcmd.patch`, `d_ticcmd.h`: `ticcmd_t`'s `forwardmove` and `sidemove` are `signed
 char`, as in Chocolate Doom. A demo stores a backward move or a strafe left as a negative byte;
 read back through a plain `char` it stays negative only where `char` is signed, and the
-converter's dialect makes plain `char` unsigned (`docs/probe-findings.md` F17), so the converted
-demo1 read the strafe -40 of tic 25 as 216. The native build at `-O2` with or without
+converter's dialect makes plain `char` unsigned (`docs/probe-findings.md` F17), under which a
+plain field reads a strafe of -40 as 216. The native build at `-O2` with or without
 `-funsigned-char` prints the reference lines of all three demos with the patch.
 
 `0004-fine-table-overruns.patch`, `r_main.c` and `r_segs.c`: `R_ScaleFromGlobalAngle` indexes
@@ -151,7 +151,7 @@ demo1 read the strafe -40 of tic 25 as 216. The native build at `-O2` with or wi
 entries. `tables.c` defines `finetangent` right before `finesine`, so the native build reads the
 other table; das range-checks both reads and panics. The patch spells the neighbouring read out,
 `finetangent[FINEANGLES / 2 + i]` for a negative `i` and `finesine[angle - FINEANGLES / 2]` past
-`finetangent`'s end, the values the native build read: its lines, frames included, are the same.
+`finetangent`'s end, the values the native build reads: its lines, frames included, are the same.
 
 ## 4. The host
 

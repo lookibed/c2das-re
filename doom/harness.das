@@ -186,6 +186,20 @@ def tic_sync(expected, got : array<string>; tics : int) : TicSync {
 //! The `trace=` lines of `text` in order, which the `DOOM_TIC_TRACE` build of patch 0002 prints.
 def trace_lines(text : string) : array<string> => <- [for (line in split(text, "\n")); line; where line |> starts_with("trace=")]
 
+//! `sidecar`'s text with `define` first among its defines; "" with `error` set when the text has no
+//! single `"defines": [` to put it after.
+def with_define(sidecar, define : string; var error : string&) : string {
+    let mark = "\"defines\": ["
+    if (length(split(sidecar, mark)) != 2) {
+        error = "no single `{mark}` to add {define} to"
+        return ""
+    }
+    return replace(sidecar, mark, "{mark}\"{define}\", ")
+}
+
+//! The patches a reference log's header names: each path with its sha256, joined by ` + `.
+def patch_list(patches : array<string>) : string => join([for (patch in patches); "{patch} (sha256 {file_sha256(patch)})"], " + ")
+
 //! One line on `sync`: the first desync with the fields that differ, a run short of the compared tics, or `N tics in sync`.
 def sync_summary(sync : TicSync) : string {
     if (!empty(sync.desync)) {
