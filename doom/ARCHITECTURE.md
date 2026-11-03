@@ -21,13 +21,16 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
 - `doom.c2das` - the sidecar (section 5).
 - `harness.das` - the checks and formats `run.das` applies: the pins read from `VERSIONS.md`,
   `fetch_problems` (the checkout off the pin, a patch not applied, the wad missing or of another
-  hash), `missing_units`, `tic_checksum` (the patch's formula) and `demo_log` (section 6).
+  hash), `missing_units`, `tic_checksum` (the patch's formula), `tic_lines`, the one reader of a
+  run's or a log's tic lines, `timed_gametics`, `demo_log` (section 6), and `tic_sync` with
+  `sync_summary` (section 8).
 - `run.das` - the harness, run from the repository root: `daslang -load_module dasCRuntime
   -load_module c_runtime doom/run.das -- [--fetch-check] [--native] [--demo <1|2|3> [--wad
   <path>]]`. `--fetch-check` reports every problem `fetch_problems` and `missing_units` find;
   `--native` builds the program natively into `work/native/doom` (section 2); `--demo N` runs
   `-timedemo demoN` on that build over `--wad` (default `fetch/wads/freedoom2.wad`) in
-  `work/run/<wad stem>/`, where `doom2.wad` links to the wad and `DOOMWADDIR` is `.`, under
+  `work/run/<wad stem>/` (`demo_run.das`'s `wad_dir`), where `doom2.wad` links to the wad and
+  `DOOMWADDIR` is `.`, under
   `prlimit --as` 3 GiB and a 600-second timeout, and writes the reference log
   `work/ref/<wad stem>_demo<N>.log`, refusing a run section 6 refuses. `work/` is gitignored; the
 committed references under `ref/` are those files copied by hand after a reference run.
@@ -36,6 +39,13 @@ committed references under `ref/` are those files copied by hand after a referen
   the program in the layout (default `source`) into `work/<layout>/`; `--compile-check` compiles
   every module `work/<layout>/` lists with `daslang -compile-only`. Each logs a verdict per unit or
   module, the count that pass and the blocker table; either fails the run when one does not pass.
+- `run.das --run [--layout L] [--tier interp|jit|exe|aot] [--demo N] [--tics N] [--wad <path>]
+  [--timeout S]` (section 8): runs `work/<layout>/doom_main.das`'s `-timedemo demoN` (default
+  demo 1, tier `interp`, every tic of the demo, 3600 seconds) and holds its tic lines to the
+  reference log; `--demo N` without `--run` stays the native run above. The run fails unless every
+  compared tic is in sync.
+- `demo_run.das` - the demo runs (section 8): `wad_stem`, `wad_dir`, `reference_log`, `DemoSpec`,
+  `run_converted`, `in_sync` and `run_report`.
 - `convert_check.das` - the conversion checks `--convert` and `--compile-check` apply:
   `stage_program`, `convert_units`, `compile_modules`, `first_error_line`, `classify` (the
   `BLOCKERS` table) and `blocker_table`.
@@ -47,6 +57,11 @@ committed references under `ref/` are those files copied by hand after a referen
   `fetch_problems` over a checkout built from the patch's own pre-image, to which the patch
   applies, and a stand-in wad, `missing_units`, `demo_log`'s format and refusals, and the sidecar
   through the converter's `read_sidecar`.
+- `tests/test_demo_run.das` - `demo_run.das` over a stand-in program, a das module that checks its
+  `argv` and `$DOOMWADDIR/doom2.wad` and prints the tic lines an environment variable asks for,
+  held to a four-tic stand-in log: sync, the comparison bounded by `--tics`, the first desynced
+  tic, a run past the demo's end, an early exit with its first error line, a timeout, no
+  reference log, no entry module, no wad and an empty log.
 - `tests/test_convert.das` - `convert_check.das` over a stand-in program (two units that link, one
   the dumper refuses, a host outside their folder): the staging, the units alone, the program's
   modules compiled alone, a module that fails, and the classification.
@@ -189,3 +204,19 @@ cut edge is `r_data -> z_zone` (21 call sites). The sidecar sets no `layout` obj
 exists until the converted build runs a demo (`docs/implementation_order.md` P6.4), and a
 `layout.threshold` only keeps cut edges, which joins their units to the cluster (a threshold of 10
 leaves 41 units); the defaults give the smallest cluster the cut can reach.
+
+## 8. The converted run
+
+`run_converted` runs the converted program's entry module, `doom_main.das` in every layout (the
+module holding `main`), through `converter/tiers.das`'s `run_tier` from the repository root with
+the converted program's module folders and the native run's C `argv`, `-timedemo demoN`; the
+process inherits `DOOMWADDIR` naming the wad's run folder, absolute, so the wad opens as in the
+native run. The reference log is `<wad stem>_demo<N>.log` in `ref/`, else in `work/ref/` (a local
+reference, a `doom2.wad` one among them). The run's tic lines, a timed-out run's included, since
+`run_and_capture` keeps the output a killed process wrote, are held to the log's by `tic_sync`:
+the first `--tics` lines, or all of them, a run that goes on past the demo's last tic desyncing
+there. The report names the first desynced tic (expected against got) or `N tics in sync`, a run
+short of the compared tics, the exit code or the timeout, the first error line of a run that did
+not end in the `timed N gametics` line, and the seconds per 35 tics over the whole process, start
+included: a sanity number, not P6.7's measure. The host has no tic cap, so `--tics` bounds the
+comparison, not the run: the program plays the demo to its end or to `--timeout`.
