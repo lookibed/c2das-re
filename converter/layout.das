@@ -602,7 +602,8 @@ def private name_modules(var plan : LayoutPlan; tus : array<CirTu>; types : arra
         sort(stems)
         let entry_node = plan.unit_node[entry_unit]
         let holds_entry = has_value(comp, entry_node)
-        let name = holds_entry ? plan.nodes[entry_node].stem : length(comp) == 1 ? stems[0] : "{stems[0]}_cluster"
+        let stem_name = holds_entry ? plan.nodes[entry_node].stem : length(comp) == 1 ? stems[0] : "{stems[0]}_cluster"
+        let name = key_exists(DAS_KEYWORDS, stem_name) ? "_c_{stem_name}" : stem_name
         var lead = holds_entry ? entry_node : comp[0]
         for (m in comp) {
             if (plan.nodes[m].stem == stems[0] && !holds_entry) {
@@ -1205,7 +1206,8 @@ def unbound_module(plan : LayoutPlan) : string {
 //! A singleton component is the module of its node, `<stem>`; a component of several nodes is
 //! `<lexically first stem>_cluster` with a fragment per member, the component holding `main` named
 //! by the entry unit's stem; a header's types are `<header stem>_h` (`lobject.h` -> `lobject_h`),
-//! the types no single file defines `c_types`. Two modules of one name are refused.
+//! the types no single file defines `c_types`; a module name das reserves is `_c_<name>`. Two
+//! modules of one name are refused.
 //! With `census` the plan carries the edge census of its cycles before any cut (`edge_census`).
 [arch(at="ARCHITECTURE_LAYOUT.md#layout")]
 def plan_layout(tus : array<CirTu>; types : array<CirType>; facts : LinkFacts; c_paths : array<string>; opts : CutOptions; census : bool = false) : LayoutPlan {
