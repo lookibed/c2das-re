@@ -62,7 +62,7 @@ struct Args {
     tics : int = 0
     @clarg_doc = "the seconds --run's program may take"
     timeout : int = 3600
-    @clarg_doc = "with DOOM_TIC_TRACE: --native builds doom/work/native/doom-trace, --demo runs it into doom/work/trace/<wad>_demo<N>.native.log in place of a reference log, --convert converts into doom/work/<layout>-trace/ and --run runs that, writes its trace lines beside the native ones and holds them to those as tic lines are held"
+    @clarg_doc = "with DOOM_TIC_TRACE: --native builds doom/work/native/doom-trace, --demo runs it into doom/work/trace/<wad>_demo<N>.native.log in place of a reference log, --convert converts into doom/work/<layout>-trace/ and --run runs that, writes its trace lines beside the native ones and holds them to those as tic lines are held: a traced desync fails the run"
     trace : bool
     @clarg_short = "?"
     @clarg_name = "show-help"
@@ -106,12 +106,11 @@ def private sidecar_defines(trace : bool; var error : string&) : array<string> {
 // its defines; "" with `error` set when it cannot be written
 def private trace_sidecar(var error : string&) : string {
     mkdir_rec(WORK)
-    let text = fread(SIDECAR)
-    let mark = "\"defines\": ["
     let path = path_join(WORK, "doom-trace.c2das")
-    if (length(split(text, mark)) != 2) {
-        error = "{SIDECAR} has no single `{mark}` to add {TRACE_DEFINE} to"
-    } elif (!fwrite(path, replace(text, mark, "{mark}\"{TRACE_DEFINE}\", "))) {
+    let text = with_define(fread(SIDECAR), TRACE_DEFINE, error)
+    if (!empty(error)) {
+        error = "{SIDECAR}: {error}"
+    } elif (!fwrite(path, text)) {
         error = "cannot write {path}"
     }
     return empty(error) ? path : ""
@@ -163,8 +162,7 @@ def private run_demo(demo : int; wad : string; trace : bool) : bool {
     run_and_capture([default_clang(), "--version"], clang_version, 60.0)
     let versions = fread("VERSIONS.md")
     let build = join([default_clang(), join(NATIVE_FLAGS, " "), join([for (define in defines); "-D{define}"], " ")], " ")
-    let patches = join([for (patch in PATCHES); "{patch} (sha256 {file_sha256(patch)})"], " + ")
-    let header = "PureDOOM {puredoom_pin(versions)} + {patches}; {split(clang_version, "\n")[0]}; build: {build} over sources.das's units and host; wad {base_name(wad)} sha256 {wad_sha}; -timedemo demo{demo}, exit {rc}"
+    let header = "PureDOOM {puredoom_pin(versions)} + {patch_list(PATCHES)}; {split(clang_version, "\n")[0]}; build: {build} over sources.das's units and host; wad {base_name(wad)} sha256 {wad_sha}; -timedemo demo{demo}, exit {rc}"
     let log = demo_log(output, header, error)
     if (empty(log)) {
         to_log(LOG_ERROR, "doom: demo{demo} on {base_name(wad)}: {error}\n")
@@ -190,21 +188,29 @@ def private layout_dir(layout : string; trace : bool) : string => path_join(WORK
 
 // the converted program of `layout` run under `tier` on `demo` over `wad` and held to its reference
 // log; true when every compared tic is in sync. With `trace` the traced conversion runs, its trace
-// lines written to TRACES and held to the native run's as its tic lines are to the reference.
+// lines written to TRACES and held to the native run's as its tic lines are to the reference: a
+// missing native trace or a traced desync fails the run too.
 def private run_converted_demo(layout, tier : string; demo, tics, timeout : int; wad : string; trace : bool) : bool {
     let spec <- DemoSpec(entry = path_join(layout_dir(layout, trace), "doom_main.das"), tier = tier, wad = wad, demo = demo, tics = tics, timeout = float(timeout), work = WORK, ref_dirs <- clone_to_move(REF_DIRS), module_dirs <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)])
     let run = run_converted(spec)
     for (line in run_report(spec, run)) {
         to_log(LOG_INFO, "doom: {line}\n")
     }
+    var traced = true
     if (trace) {
         let stem = wad_stem(wad)
-        write_traces(path_join(TRACES, "{stem}_demo{demo}.{tier}.log"), split(run.traces, "\n"))
+        write_traces(path_join(TRACES, "{stem}_demo{demo}.{tier}.log"), trace_lines(run.traces))
         let native = path_join(TRACES, "{stem}_demo{demo}.native.log")
-        let sync = tic_sync(trace_lines(fread(native)), trace_lines(run.traces), tics)
-        to_log(LOG_INFO, "doom: trace against {native}: {sync_summary(sync)}\n")
+        if (!stat(native).is_reg) {
+            to_log(LOG_ERROR, "doom: no {native}; run --trace --demo {demo} first\n")
+            traced = false
+        } else {
+            let sync = tic_sync(trace_lines(fread(native)), trace_lines(run.traces), tics)
+            to_log(LOG_INFO, "doom: trace against {native}: {sync_summary(sync)}\n")
+            traced = empty(sync.desync)
+        }
     }
-    return in_sync(run)
+    return in_sync(run) && traced
 }
 
 // each verdict logged under `what`, the passed ones counted, then the classification table

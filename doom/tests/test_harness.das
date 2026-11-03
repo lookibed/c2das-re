@@ -219,6 +219,26 @@ def test_trace_lines(t : T?) {
 }
 
 [test]
+def test_with_define(t : T?) {
+    var error : string
+    t |> equal(with_define("\{\n    \"defines\": [\"A\", \"B\"],\n\}", "T", error), "\{\n    \"defines\": [\"T\", \"A\", \"B\"],\n\}")
+    t |> equal(error, "")
+    t |> equal(with_define("\{\"flags\": []\}", "T", error), "")
+    t |> equal(error, "no single `\"defines\": [` to add T to")
+    error = ""
+    t |> equal(with_define("\"defines\": [] \"defines\": []", "T", error), "")
+    t |> equal(error, "no single `\"defines\": [` to add T to")
+}
+
+[test]
+def test_patch_list(t : T?) {
+    let sha = file_sha256(PATCH)
+    t |> equal(patch_list([PATCH, PATCH]), "{PATCH} (sha256 {sha}) + {PATCH} (sha256 {sha})")
+    let none : array<string>
+    t |> equal(patch_list(none), "")
+}
+
+[test]
 def test_sidecar(t : T?) {
     t |> run("doom.c2das reads with the converter's reader") @(t : T?) {
         var error : string
