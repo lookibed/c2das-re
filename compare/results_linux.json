@@ -1560,8 +1560,8 @@
 			],
 			"rust_pass_of_unlisted" : 8,
 			"ids" : 220,
-			"seconds" : 86.92239379882812,
 			"daslang" : "0.6.4",
+			"seconds" : 86.92239379882812,
 			"ours_skipped" : 0,
 			"rust_pass_of_ours" : 194
 		},
@@ -13177,8 +13177,8 @@
 			],
 			"rust_pass_of_unlisted" : 67,
 			"ids" : 1656,
-			"seconds" : 645.4718017578125,
 			"daslang" : "0.6.4",
+			"seconds" : 645.4718017578125,
 			"ours_skipped" : 321,
 			"rust_pass_of_ours" : 1089
 		},
@@ -14476,8 +14476,8 @@
 			],
 			"rust_pass_of_unlisted" : 0,
 			"ids" : 182,
-			"seconds" : 434.8171081542969,
 			"daslang" : "0.6.4",
+			"seconds" : 434.8171081542969,
 			"ours_skipped" : 31,
 			"rust_pass_of_ours" : 42
 		}
@@ -74876,8 +74876,10 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-02 23:37 UTC",
+			"date" : "2026-11-03 00:39 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"address_cap" : "4294967296",
+			"rust_commit_error" : "",
 			"ours" : {
 				"error" : "dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`",
 				"lanes" : {
@@ -74897,9 +74899,9 @@
 						"status" : "refused",
 						"reason" : "dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`"
 					}
-				}
+				},
+				"defines" : []
 			},
-			"rust_commit_error" : "",
 			"functions" : [
 				{
 					"key" : "wasm3",
@@ -74936,8 +74938,8 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "compile",
-						"reason" : "aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073745648 / limit 0"
+						"status" : "pass",
+						"reason" : ""
 					}
 				}
 			},
@@ -75025,8 +75027,10 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-02 23:35 UTC",
+			"date" : "2026-11-03 00:18 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"address_cap" : "4294967296",
+			"rust_commit_error" : "",
 			"ours" : {
 				"error" : "",
 				"lanes" : {
@@ -75046,9 +75050,9 @@
 						"status" : "compile",
 						"reason" : "aot build: the build exited 1 and left no binary: compare/work/projects/binjgb/ours_run/aot/ctx/binjgb_all.das.cpp:8637:9: error: cannot jump from this goto statement to its label"
 					}
-				}
+				},
+				"defines" : []
 			},
-			"rust_commit_error" : "",
 			"functions" : [
 				{
 					"key" : "binjgb",
@@ -75085,8 +75089,8 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "compile",
-						"reason" : "aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073744208 / limit 0"
+						"status" : "pass",
+						"reason" : ""
 					}
 				}
 			},
@@ -75163,8 +75167,10 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-02 23:40 UTC",
+			"date" : "2026-11-03 00:23 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"address_cap" : "4294967296",
+			"rust_commit_error" : "",
 			"ours" : {
 				"error" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet",
 				"lanes" : {
@@ -75184,9 +75190,9 @@
 						"status" : "refused",
 						"reason" : "dumper: /root/c2das/tests/manual/h264bsd-mp4/src/../upstream/h264bsd/src/h264bsd_deblocking.c:669:21: a reference to `h264bsdClip` before a definition gives its array a length (`extern int a[];`) is not lowered yet"
 					}
-				}
+				},
+				"defines" : []
 			},
-			"rust_commit_error" : "",
 			"functions" : [
 				{
 					"key" : "h264bsd-mp4",
@@ -75223,8 +75229,8 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "compile",
-						"reason" : "aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073741952 / limit 0"
+						"status" : "pass",
+						"reason" : ""
 					}
 				}
 			},
@@ -75312,8 +75318,10 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-02 23:39 UTC",
+			"date" : "2026-11-03 00:22 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"address_cap" : "4294967296",
+			"rust_commit_error" : "",
 			"ours" : {
 				"error" : "",
 				"lanes" : {
@@ -75333,9 +75341,11 @@
 						"status" : "pass",
 						"reason" : ""
 					}
-				}
+				},
+				"defines" : [
+					"c2da_rt_reset(...)="
+				]
 			},
-			"rust_commit_error" : "",
 			"functions" : [
 				{
 					"key" : "plmpeg-stream",
@@ -75372,8 +75382,8 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "compile",
-						"reason" : "aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073741952 / limit 0"
+						"status" : "pass",
+						"reason" : ""
 					}
 				}
 			},
@@ -75450,8 +75460,10 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-02 23:42 UTC",
+			"date" : "2026-11-03 00:41 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"address_cap" : "4294967296",
+			"rust_commit_error" : "",
 			"ours" : {
 				"error" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet",
 				"lanes" : {
@@ -75471,9 +75483,9 @@
 						"status" : "refused",
 						"reason" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/d_main.c:1336:13: a block-scope `extern` declaration of `forwardmove` with no file-scope declaration before it is not lowered yet"
 					}
-				}
+				},
+				"defines" : []
 			},
-			"rust_commit_error" : "",
 			"functions" : [
 				{
 					"key" : "doomgeneric",
@@ -75510,8 +75522,8 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "compile",
-						"reason" : "aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073785824 / limit 0"
+						"status" : "timeout",
+						"reason" : "the build or its run took longer than 300 s"
 					}
 				}
 			},
@@ -75588,8 +75600,10 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-02 23:32 UTC",
+			"date" : "2026-11-03 00:33 UTC",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"address_cap" : "4294967296",
+			"rust_commit_error" : "",
 			"ours" : {
 				"error" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` with no file-scope declaration before it is not lowered yet",
 				"lanes" : {
@@ -75609,9 +75623,9 @@
 						"status" : "refused",
 						"reason" : "dumper: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/console.c:520:14: a block-scope `extern` declaration of `chat_buffer` with no file-scope declaration before it is not lowered yet"
 					}
-				}
+				},
+				"defines" : []
 			},
-			"rust_commit_error" : "",
 			"functions" : [
 				{
 					"key" : "quakegeneric",
@@ -75648,8 +75662,8 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "compile",
-						"reason" : "aot build: the build exited 1 and left no binary: out of heap memory, requested 128 bytes, used 1073741824 / limit 0"
+						"status" : "pass",
+						"reason" : ""
 					}
 				}
 			},
