@@ -93,6 +93,10 @@ let MISSING = "n/a"
 let NOT_YET = "not yet"
 //! a das lane the capture's `--lanes` left out
 let NOT_MEASURED = "not measured"
+//! a work time not above 0: the cell's median at or below the startup cell's
+let WITHIN_START = "within the start"
+//! why a lane whose startup cell does not stand has no work times
+let NO_STARTUP = "no startup cell"
 
 def lane_title(lane : string) : string => LANE_TITLES?[lane] ?? lane
 
@@ -112,12 +116,38 @@ def time_of(c : Capture; workload, lane : string) : double {
     return cell != null && empty(cell.error) ? cell.time : 0.0lf
 }
 
-//! `lane`'s time over `base`'s, 0 when either cell does not stand.
+//! The name of the capture's startup row, "" when it has none.
+def startup_of(c : Capture) : string {
+    for (w in c.workloads) {
+        if (w.startup) {
+            return w.name
+        }
+    }
+    return ""
+}
+
+// the cell of `workload` under `lane` when it stands, null for a missing or failed one
+def private standing(c : Capture; workload, lane : string) : LaneCell const? {
+    let cell = find_cell(c, workload, lane)
+    return cell != null && empty(cell.error) ? cell : null
+}
+
+//! The work seconds of `workload` under `lane`: its cell's median less the median of the same
+//! lane's startup cell; 0 when either cell does not stand.
+def work_of(c : Capture; workload, lane : string) : double {
+    let cell = standing(c, workload, lane)
+    let start = standing(c, startup_of(c), lane)
+    return cell != null && start != null ? cell.time - start.time : 0.0lf
+}
+
+//! `lane`'s work time over `base`'s, 0 when either is not above 0.
 def ratio_of(c : Capture; workload, lane, base : string) : double {
-    let t = time_of(c, workload, lane)
-    let b = time_of(c, workload, base)
+    let t = work_of(c, workload, lane)
+    let b = work_of(c, workload, base)
     return t > 0.0lf && b > 0.0lf ? t / b : 0.0lf
 }
+
+def private seconds_text(time, spread : double) : string => "{time:.3f} s ±{int(round(spread * 100.0lf))}%"
 
 def private time_text(c : Capture; workload, lane : string) : string {
     let cell = find_cell(c, workload, lane)
@@ -127,7 +157,25 @@ def private time_text(c : Capture; workload, lane : string) : string {
     if (!empty(cell.error)) {
         return NOT_YET
     }
-    return "{cell.time:.3f} s ±{int(round(cell.spread * 100.0lf))}%"
+    return seconds_text(cell.time, cell.spread)
+}
+
+// the work time of a cell: n/a without the cell, `not yet` when it or the lane's startup cell does
+// not stand; its spread the two cells' half ranges (spread times median) over the work time
+def private work_text(c : Capture; workload, lane : string) : string {
+    let cell = find_cell(c, workload, lane)
+    if (cell == null) {
+        return MISSING
+    }
+    let start = standing(c, startup_of(c), lane)
+    if (!empty(cell.error) || start == null) {
+        return NOT_YET
+    }
+    let work = cell.time - start.time
+    if (work <= 0.0lf) {
+        return WITHIN_START
+    }
+    return seconds_text(work, (cell.spread * cell.time + start.spread * start.time) / work)
 }
 
 def private ratio_text(r : double) : string => r > 0.0lf ? "{r:.2f}" : MISSING
@@ -151,7 +199,8 @@ def table_of(headers : array<string>; rows : array<array<string>>; text_columns 
     return render_md_table(headers, aligns, rows) + "\n"
 }
 
-//! The times table: one row per workload, one column per lane of the capture.
+//! The times table: the raw medians, the start included, one row per workload (the startup row
+//! too), one column per lane of the capture.
 def render_times(c : Capture) : string {
     var headers <- ["Workload", "Arguments"]
     headers |> push_from([for (lane in c.lanes); lane_title(lane.name)])
@@ -160,6 +209,37 @@ def render_times(c : Capture) : string {
     for (w in c.workloads) {
         var inscope row <- [w.name, "`{w.args}`"]
         row |> push_from([for (lane in c.lanes); time_text(c, w.name, lane.name)])
+        rows |> emplace(row)
+    }
+    return table_of(headers, rows, 2)
+}
+
+//! The startup table: one row per lane of the capture, its startup cell and that over native's.
+def render_startup(c : Capture) : string {
+    let start = startup_of(c)
+    let native = time_of(c, start, "native")
+    var rows : array<array<string>>
+    rows |> reserve(length(c.lanes))
+    for (lane in c.lanes) {
+        let t = time_of(c, start, lane.name)
+        rows |> emplace([lane_title(lane.name), time_text(c, start, lane.name), ratio_text(native > 0.0lf ? t / native : 0.0lf)])
+    }
+    return table_of(["Lane", "Startup", "Over native"], rows, 1)
+}
+
+//! The work table: one row per workload but the startup row, one column per lane of the capture,
+//! each cell its work time.
+def render_work(c : Capture) : string {
+    var headers <- ["Workload", "Arguments"]
+    headers |> push_from([for (lane in c.lanes); lane_title(lane.name)])
+    var rows : array<array<string>>
+    rows |> reserve(length(c.workloads))
+    for (w in c.workloads) {
+        if (w.startup) {
+            continue
+        }
+        var inscope row <- [w.name, "`{w.args}`"]
+        row |> push_from([for (lane in c.lanes); work_text(c, w.name, lane.name)])
         rows |> emplace(row)
     }
     return table_of(headers, rows, 2)
@@ -177,8 +257,9 @@ def private shown_lanes(captures : array<Capture>) : array<string> {
     return <- lanes
 }
 
-//! The ratio table: each das lane over native, then the lane-to-lane pairs; a layout lane the
-//! capture measured adds its column and its pair with its source-layout twin.
+//! The ratio table of the work times, the startup row aside: each das lane over native, then the
+//! lane-to-lane pairs; a layout lane the capture measured adds its column and its pair with its
+//! source-layout twin.
 def render_ratios(c : Capture) : string {
     var one : array<Capture>
     one |> push_clone(c)
@@ -194,6 +275,9 @@ def render_ratios(c : Capture) : string {
     var rows : array<array<string>>
     rows |> reserve(length(c.workloads))
     for (w in c.workloads) {
+        if (w.startup) {
+            continue
+        }
         var inscope row <- [w.name, "`{w.args}`"]
         row |> push_from([for (lane in lanes); pair_text(c, w.name, lane, "native")], [for (pair in pairs); pair_text(c, w.name, pair._0, pair._1)])
         rows |> emplace(row)
@@ -208,7 +292,8 @@ def machine_label(m : Machine) : string => box_label(capture_box(m.box, m.cpu), 
 //! rerun records the same label.
 def reproduce_command(c : Capture) : string => empty(c.machine.box) ? c.command : "{c.command} --box {c.machine.box}"
 
-//! One line per lane that does not work yet, then one per failed cell of a lane that does.
+//! One line per lane that does not work yet, then one per failed cell of a lane that does, then
+//! one for such a lane whose startup cell does not stand, so it has no work times.
 def render_not_yet(c : Capture) : array<string> {
     var lines : array<string>
     for (lane in c.lanes) {
@@ -221,28 +306,35 @@ def render_not_yet(c : Capture) : array<string> {
                 lines |> push("- {cell.workload}, {lane_title(lane.name)}: not yet: {cell.error}")
             }
         }
+        if (standing(c, startup_of(c), lane.name) == null) {
+            lines |> push("- {lane_title(lane.name)}, every work time: not yet: {NO_STARTUP}")
+        }
     }
     return <- lines
 }
 
-//! The perf section of a program's README: the machine, the method, both tables, the lanes'
-//! commands and what does not work yet.
+//! The perf section of a program's README: the machine, the method, the startup, work, ratio and
+//! times tables, the lanes' commands and what does not work yet.
 def render_perf(c : Capture) : string {
     return build_string() $(var w) {
         w |> write("Captured {c.timestamp} on {c.machine.arch}, {machine_label(c.machine)}; {c.machine.clang} at `{c.machine.clang_path}`, ")
         w |> write("the native lane's compiler; daslang {c.machine.daslang}; c2das-re `{c.commit}`. Reproduced by `{reproduce_command(c)}`. ")
-        w |> write("A cell is the median wall time of {c.samples} runs of the whole program, each its own process spawned by the ")
-        w |> write("publisher (the spawn included), ± half the range of the samples as a share of the median; a run past ")
-        w |> write("{c.timeout} s fails its cell. The `startup` row runs no work: under a das lane it is the module's load from the ")
-        w |> write("cache an unmeasured run of the same arguments left in the folder (a cache load, not a compile), which every ")
-        w |> write("other row of that lane includes, so a workload's own time is its cell less the startup cell, and the row is ")
-        w |> write("an upper bound of the load. A das lane's cell stands only when every run prints what the native ")
+        w |> write("A sample is one run of the whole program, its own process spawned by the publisher (the spawn included); ")
+        w |> write("a cell is the median of {c.samples} samples, ± half their range as a share of the median; a run past ")
+        w |> write("{c.timeout} s fails its cell. A das lane's cell stands only when every run prints what the native ")
         w |> write("build prints and exits as it does (the test-suite row compares the exit code and requires the line the ")
         w |> write("suite prints after its last test passes, not the output: it prints its random seeds and timings). ")
         w |> write("A lane the run left out is `{NOT_MEASURED}`.\n\n")
-        w |> write("Times:\n\n{render_times(c)}\n")
-        w |> write("Ratios, a lane's time over another's (each das lane over native, then interpreter over JIT, ")
+        w |> write("Every speed number is the work alone: a workload's work time under a lane is its cell less the same ")
+        w |> write("lane's `startup` cell, the run that loads the program and does no work (under a das lane, the load from ")
+        w |> write("the module cache an unmeasured run left in the folder), ± the two cells' half ranges as a share of the ")
+        w |> write("work time; one not above 0 is `{WITHIN_START}`, and a lane whose startup cell does not stand has none. ")
+        w |> write("The startup cells stand alone in the startup table; the times table holds the raw medians, the start included.\n\n")
+        w |> write("Startup:\n\n{render_startup(c)}\n")
+        w |> write("Work:\n\n{render_work(c)}\n")
+        w |> write("Ratios, a lane's work time over another's (each das lane over native, then interpreter over JIT, ")
         w |> write("interpreter over exe, interpreter over AOT and JIT over AOT):\n\n{render_ratios(c)}\n")
+        w |> write("Times, the raw medians of whole runs, the start included:\n\n{render_times(c)}\n")
         w |> write("Lanes:\n\n")
         for (lane in c.lanes) {
             w |> write("- {lane_title(lane.name)}: `{lane.command}`\n")
@@ -254,8 +346,8 @@ def render_perf(c : Capture) : string {
     }
 }
 
-//! The geometric mean over the capture's workloads, the startup row aside, of `lane`'s ratio to
-//! native; `count` the workloads it covers, 0 with a result of 0 when none has the lane.
+//! The geometric mean over the capture's workloads, the startup row aside, of `lane`'s work time
+//! over native's; `count` the workloads it covers, 0 with a result of 0 when none has the lane.
 def geomean_ratio(c : Capture; lane : string; var count : int&) : double {
     var log_sum = 0.0lf
     count = 0
@@ -278,8 +370,8 @@ def private lane_mean_text(c : Capture; lane : string; total : int) : string {
     return count == 0 ? NOT_YET : count < total ? "{g:.2f} ({count} of {total})" : "{g:.2f}"
 }
 
-//! The projects table: one row per program, the geometric mean of each lane's ratio to native; a
-//! layout lane a capture measured adds its column.
+//! The projects table: one row per program, the geometric mean of each lane's work-time ratio to
+//! native; a layout lane a capture measured adds its column.
 def render_projects(captures : array<Capture>) : string {
     let lanes <- shown_lanes(captures)
     var headers <- ["Program", "Captured", "Machine", "Workloads"]
@@ -307,8 +399,9 @@ def render_top_readme(old_text : string; captures : array<Capture>; perf : bool)
             return
         }
         w |> write("Each cell is the geometric mean, over the program's workloads (its startup row aside), of the lane's ")
-        w |> write("time over the native build's; a lane covering only some workloads names how many. A program's ")
-        w |> write("README holds its tables, its machine and its raw captures.\n\n")
+        w |> write("work time over the native build's, a work time being the workload's median less the same lane's startup ")
+        w |> write("median; a lane covering only some workloads names how many. A program's README holds its tables, ")
+        w |> write("its startup times, its machine and its raw captures.\n\n")
         w |> write(empty(captures) ? "No program has a capture yet.\n" : render_projects(captures))
     }
 }

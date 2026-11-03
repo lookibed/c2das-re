@@ -16,9 +16,9 @@ code; this repository holds only the generator and its inputs.
   `Port` records): the harness folder, the converted modules, the module the workloads run, the
   libraries the native build links, the header holding the license, the upstream-test claims with
   the c2das-re item that recorded them, and the workloads.
-- `ports_render.das` - the text: the capture records, the times, ratio and not-yet text of a
-  capture, the projects table and the top-level README below its marker, the license block of a C
-  header, and the `VERSIONS.md` pin of a program. It measures nothing and reads no file.
+- `ports_render.das` - the text: the capture records, the startup, work, times, ratio and not-yet
+  text of a capture, the projects table and the top-level README below its marker, the license
+  block of a C header, and the `VERSIONS.md` pin of a program. It measures nothing and reads no file.
 - `lua/bench/*.lua` - the Lua benchmark workloads (`fib`, `binary_trees`, `nbody`,
   `spectral_norm`): plain scripts that print their result, take their size from `arg[1]` and
   default to about one second under the native build. They use no `pcall` and no
@@ -131,7 +131,8 @@ unmeasured run of the startup arguments precedes each lane's samples in each fol
 warm-up that fails or times out fails the lane (in the repository root) or the cell (in the
 test-suite folder) with its first reported line. The startup row times the program's load and no
 work: under a das lane that is the load from the warm cache, not a compile, which every other row
-includes; with the spawn inside it, the row is an upper bound of the load. A cell is the median
+includes; with the spawn inside it, the row is an upper bound of the load, and the tables take
+it out of every other row (below). A cell is the median
 of `--samples` samples (5 by default), with the spread as half the sample range over the median,
 perf's rule.
 
@@ -166,11 +167,19 @@ samples. The perf section's `Captured` line and the projects table's Machine col
 as `perf/boxes.das`'s `box_label` (`machine_label`), a capture without `box` showing its CPU's box;
 its `Reproduced by` command adds `--box <box>` when the capture recorded one (`reproduce_command`). The
 README's tables render from the latest capture by name; a latest capture that is not
-JSON fails the publish. The ratio table holds each das lane over native and the pairs interpreter over JIT, interpreter
-over exe, interpreter over AOT and JIT over AOT; a `-source-cut` or `-single` lane the capture measured
-adds its column and its pair over its source-layout twin, and a column of the projects table; a
-capture without such a lane renders neither. The top-level README keeps the text above its
-marker line and holds below it one row per program with a capture: its timestamp and machine, and
-the geometric mean, over the workloads other than the startup row, of each das lane's ratio to
-native, with the count when a lane covers only some workloads, `not yet` when it covers none, and
-`not measured` when the capture left the lane out.
+JSON fails the publish. The capture holds whole runs; every speed number the tables show is the
+work alone. A workload's work time under a lane is its cell's median less the median of the same
+lane's startup cell, native included, its spread the two cells' half ranges over the work time; a
+work time not above 0 is `within the start`, and a lane whose startup cell is missing or failed
+has no work times, its cells `not yet` with the reason `no startup cell`. The startup table holds
+each lane's startup cell and its ratio to native's, the only place a startup number appears; the
+work table holds the work times of the other rows; the times table holds the raw medians, the
+startup row included. The ratio table holds work times only, no startup row: each das lane over
+native and the pairs interpreter over JIT, interpreter over exe, interpreter over AOT and JIT over
+AOT; a `-source-cut` or `-single` lane the capture measured adds its column and its pair over its
+source-layout twin, and a column of the projects table; a capture without such a lane renders
+neither. The top-level README keeps the text above its marker line and holds below it one row per
+program with a capture: its timestamp and machine, and the geometric mean, over the workloads other
+than the startup row, of each das lane's work-time ratio to native, with the count when a lane
+covers only some workloads, `not yet` when it covers none, and `not measured` when the capture left
+the lane out.
