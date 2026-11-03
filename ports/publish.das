@@ -10,6 +10,7 @@ require ../converter/tiers.das
 require ../converter/dumper_a.das
 require ../perf/perf_lanes.das
 require ports_render
+require ../perf/boxes.das
 require ../converter/sidecar.das
 require ../compare/compare_render.das
 
@@ -101,6 +102,8 @@ struct Args {
     @clarg_name = "allow-dirty"
     @clarg_doc = "publish from a c2das-re tree with uncommitted changes (the README names the commit -dirty)"
     allow_dirty : bool
+    @clarg_doc = "the box the capture measures on, bench, PC or fx (default: the box of the CPU model, none for another CPU)"
+    box : string = ""
     @clarg_doc = "commit the program's folder and the top-level README in the clone"
     commit : bool
     @clarg_doc = "push the clone's HEAD to origin after the commit (needs --commit)"
@@ -386,7 +389,8 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
 // a capture of every workload under every lane of `lanes`, written into the clone
 def private measure_program(args : Args; port : Port; release : Release; lanes : array<string>; repo_dir : string; gen : Generation) : bool {
     var measured = Capture(program = port.name, commit = gen.sha, command = publish_command(args, port), samples = args.samples, timeout = args.timeout)
-    measured.machine = Machine(arch = strip(captured(["uname", "-m"])), cpu = cpu_name(), clang_path = default_clang())
+    let cpu = cpu_name()
+    measured.machine = Machine(arch = strip(captured(["uname", "-m"])), cpu = cpu, box = capture_box(args.box, cpu), clang_path = default_clang())
     tool_versions(measured.machine.clang, measured.machine.daslang)
     var runs <- build_lanes(port, lanes, measured)
     let tests = get_full_file_name(tests_of(port, release))
@@ -764,6 +768,11 @@ def main : int {
     }
     if (args.timeout <= 0) {
         to_log(LOG_ERROR, "ports: --timeout takes seconds above 0, not {args.timeout}\n")
+        return 1
+    }
+    let refusal = box_refusal(args.box)
+    if (!empty(refusal)) {
+        to_log(LOG_ERROR, "ports: {refusal}\n")
         return 1
     }
     let repo = repo_of(args)
