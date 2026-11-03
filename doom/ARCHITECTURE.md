@@ -104,7 +104,8 @@ in order: `players[0].mo->x`, `y`, `z`, `angle` (each 0 while `players[0].mo` is
 or, on a tic that starts a screen melt, the screen the melt starts from (`wipe_EndScreen` puts it
 back); the melt's own steps run no tic and print nothing. Every tic of a timedemo has its line.
 
-`w_wad.c`, `r_data.c` and `i_video.c` make the frame a function of the game alone. A column
+`w_wad.c`, `r_data.c` and `i_video.c` make the frame a function of the game alone, so the
+reference frames are the patched source's, not vanilla's, at the pixels below. A column
 drawer reads `dc_source[(frac >> FRACBITS) & 127]`, up to 127 bytes past a column's start: a wall
 taller than its texture (freedoom2's 16-row `CRATINY` as a bottom texture) or a sprite post whose
 first row rounds to row -1, which `& 127` wraps to 127. Past the end of a lump that read the
@@ -261,5 +262,6 @@ the host's `-tics N` (`program_argv`), so the program stops after the compared t
 
 At the pin, the `source` layout under `interp` plays demo1 on freedoom2.wad through its first frames:
 tics 0 to 24 match the reference log, frames included, tic 25 desyncs in both fields (`cs=b66019e2
-fb=908998e0` against `cs=ada955a8 fb=751dc634`), and, uncapped, the run panics after 137 tic lines in `R_ScaleFromGlobalAngle` (r_main.c:413), `finesine[angleb >> 19]`
-at index -4096, an angle the desynced state makes negative.
+fb=908998e0` against `cs=ada955a8 fb=751dc634`), and, uncapped, the run panics drawing a later tic
+in `R_ScaleFromGlobalAngle` (r_main.c:413), `finesine[angleb >> 19]` at index -4096, an angle the
+desynced state makes negative.
