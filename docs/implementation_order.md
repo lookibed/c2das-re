@@ -1204,6 +1204,23 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   ours-only sidecar define (`c2da_rt_reset(...)=`) in the projects table. Projects rerun (branch
   `p8.4-projects`, PR #61): binjgb passes interp/JIT/exe through our converter (74.1x / 0.99x /
   1.25x native).
+  Projects table (branch `p8.4-projects-table`, PR #76): compare's `aot` lane runs for a program
+  with arguments (after `--`); ours-only per-project defines (plmpeg-stream `c2da_rt_reset(...)=`,
+  recorded in the capture and the README); `--samples 0` leaves the speed cells "not measured"
+  (owed to the bench, `bench-queue.md`); an AOT build failure is recorded by its heap line, else
+  its first error; the capture records the address-space cap, 4 GiB (the Rust AOT generator's 1 GiB
+  heap starves under 3 GiB). Table at 4 GiB (ours / Rust; interp, JIT, exe, AOT): binjgb pass pass
+  pass COMPILE / all pass; plmpeg-stream all pass / all pass; wasm3 refused (i) / all pass;
+  h264bsd-mp4 refused (l) / all pass; doomgeneric refused (k) / pass pass pass TIMEOUT (the 300 s
+  build limit); quakegeneric refused (k) / pass OUTPUT pass pass. (k) and (l) are fixed on `main`
+  since (P6.3b, P6.3a): quakegeneric, doomgeneric and h264bsd-mp4 pass the dumper; doomgeneric
+  needs a sidecar marshal entry for the packed `mapvertex_t` (doomdata.h:57), h264bsd-mp4 stops at
+  minimp4.h:2377, a `goto` into a loop body (P7.7): rerun the table after P7.7. New: (m) ours
+  binjgb AOT: the generated C++ has a `goto` over a variable initialization
+  (`binjgb_all.das.cpp:8637`, 10 errors) where the interpreter accepts the das, a daslang AOT gap
+  beside `switch_local` (`perf/ARCHITECTURE.md`), an upstream issue candidate; (n) doomgeneric's
+  Rust AOT build against the 300 s build limit; (o) `test_projects`' stand-in wasm3 run shares the
+  real wasm3 work folder (a concurrent run wiped it once): give the test its own folder.
 
 ## P6 — Doom
 
@@ -1233,16 +1250,49 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   blocker table; 10 of 63 units convert alone, the whole program stops at the dumper (DOOM.c
   `defaults[]`); 0 modules compile. Also hit: P7.7 (a `goto` into a block: F_CastTicker,
   P_SlideMove) and P6.1's finding 2 (`maptexture_t.patches`). The blockers are the rows below.
+  After P6.3a-d (`doom/ARCHITECTURE.md` section 7): 11 of the 63 units pass alone, 51 stop at a
+  function or an array another unit defines (link-bound), 1 at finding 2 (`r_data`); the whole
+  program passes the dumper and the layout and stops in the emitter at `f_finale.c:408`, a `goto`
+  into a loop body (P7.7), so no module is emitted and none compiles; the `source` layout holds 51
+  units in one cluster (39 modules), `source-cut` 36 (56 modules). The whole-program conversion
+  needs more than 3 GiB of address space (under `prlimit --as=3G` daslang dies with SIGSEGV on an
+  allocation failure), so the harness runs it uncapped in a `heavy` scope of its own. P6.4 is
+  blocked by P7.7, which the ledger places after P6.5 (rulings-pending).
 - **P6.3a Dumper: `extern T a[]` sized by another unit** (5 units; DOOM.c:468 `extern int
   defaults[]`, where the whole-program dump stops; P8.4 (l)).
+  Done (branch `p6.3a-extern-array`, PR #74): the dumper keeps clang's incomplete `int[]` on a
+  reference before the definition (`c-ir-spec.md` section 7: dumpers never link); the emitter's
+  `complete_extern_arrays` pass gives the reference the type of the global its name binds to (the
+  tentative merge within a unit, the link across units), only a definition completes it (either
+  unit order); refused: an array no unit defines (emitter), a declared length differing from the
+  definition's (link). Doom units alone 10 -> 11, the program then stopped at DOOM.c:607 (P6.3b);
+  the harness marks a unit alone stopping at another unit's array link-bound; h264bsd-mp4 passes
+  `h264bsd_deblocking.c:669`. Found: the two rows P6.3g and P6.3h.
 - **P6.3b Block-scope `extern` without a file-scope declaration** (3 units and DOOM.c; also
   quakegeneric and doomgeneric in P8.2: P8.4 (k)).
-- **P6.3c Block-scope function prototype** (2 units).
-- **P6.3d File-scope `;;`**.
+  Done with P6.3c (branch `p6.3b-block-extern`, PR #75): the first block-scope `extern` object or
+  function prototype of a name is dumped as a unit-level declaration before the function (a later
+  one binds by clang's previousDecl; a later definition in the unit completes it, the link binds
+  another unit's; stdout-like names bind by file-scope name); a parameter or local named like one
+  takes a free name; a hoisted static skips those names. Doom link-bound 44 -> 50, the block-scope
+  rows 0, the program then stopped at `m_misc.c:193` (P6.3d); quakegeneric `console.c` and
+  doomgeneric `d_main.c` pass the dumper (doomgeneric stops at doomdata.h:57, the packed
+  `mapvertex_t`: a sidecar marshal entry, P8.4). Review leftover (no test): `dumper_a.das`'s
+  `defines ? local_name(...) : raw` on a prototype's parameters changes nothing observable; a
+  fixture case, or drop the condition.
+- **P6.3c Block-scope function prototype** (2 units). Done with P6.3b (PR #75).
+- **P6.3d File-scope `;;`**. Done (branch `p6.3d-empty-decl`, PR #77): clang reports a stray `;;`
+  or the `;` after a function's `}` as an `EmptyDecl`, which the dumper skips; fixture
+  `p6_empty_decl`; the doom stand-in's refused unit is a file-scope `asm` now.
 - **P6.3e A marshal record's array field as an lvalue** (store, address, decay; fails closed since
   PR #59; PureDOOM's `mtexture->name` reads need the decay).
 - **P6.3f The `source` layout's 51-unit Doom cluster** (`source-cut`: 36): the cut's thresholds and
   profile for Doom before P6.4 (ruling 6).
+- **P6.3g A C file named like a daslang keyword** (found by P6.3a): `table.c` becomes `require
+  table`, which breaks the `source` layouts; the module names are checked against `DAS_KEYWORDS`
+  and such a unit's module renamed.
+- **P6.3h `&a` of an `extern int a[]`** (found by P6.3a): the address of the whole array, type
+  `int (*)[]`, still fails closed; nothing converted so far needs it.
 - **P6.3 harness fix: `doom/run.das` does not compile on `main`** (found by P7.0l):
   `doom/convert_check.das:109` passes `side.defines` to `dump_tu`, which takes a `DumpInputs`
   since P8.4, and the compile gate does not reach `doom/`; fix the call and add `doom/` to the
@@ -1351,7 +1401,14 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   lands on a copy (gcc 8, das 3 on the second pass's `v5.c`); with a volatile read inside the
   literal the store now fails closed instead. Owner ruling 2026-11-01 (13): the range form and the
   trailing increment are the default, `--loops while` the option; section 6 and "General for" are
-  corrected by the B pull request.
+  corrected by the B pull request. Bench captures (ruling (25), AMD Ryzen 3 1200): the default
+  method re-recorded at `main` 551fba8 (branch `perf/bench-rerecord-551fba8`, PR #68; the first
+  capture since the AOT host passes arguments, P7.0c's dispatch and the P7.0d/e/g kernels, so its
+  deltas against the fx6300 baseline mix machine and code; `switch_local/aot` has no cell, the
+  known AOT gap) and at 504ca55 with the `interp-reinterpret` lane and the `first_member` kernel
+  (PR #73). The dasProfile method's section and its column stay at the fx6300 capture until the
+  bench has cmake >= 3.24 (dasProfile 436d58d's CMakeLists needs `DOWNLOAD_EXTRACT_TIMESTAMP`; the
+  bench has 3.22; rulings-pending); the audit entries owed per item are in `bench-queue.md`.
 - **P7.0a Default layout: cycles as one module** (owner ruling 2026-11-01 (12); after P8.1, before
   P6: ruling (14)). The default layout keeps every cycle one module of `.das.inc` fragments, a file
   per member (P5.1b2's `scc`), branches separate modules, header clusters as they are; the cycle cut
@@ -1433,6 +1490,16 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   where the member sits at offset 0: 1.53x and 1.17x interp, sites 106/2/0/11 and 81/10/62/10. The
   fast form is a `reinterpret`, which the readability criteria count as noise: NEEDS RULING
   (default or opt-in).
+  Done (branch `p7.0f-first-member-v2`, PR #70; opt-in per ruling (23), the default output
+  unchanged): `--first-member addr|reinterpret` and the sidecar's `first_member`; under
+  `reinterpret` the emitter spells `&p->f`, a nested first member, `(*p).f`, `p[i].f` and an array
+  member's decay as `reinterpret<F?>(pointer)` when clang's offsets put the member at 0, anything
+  else keeps `addr(...)`; the `p7_first_member` fixture runs in both modes (a pointer, a function
+  pointer, a union, a `char` first member, a stepped subscript, an anonymous union kept). The
+  `interp-reinterpret` perf lane, the `first_member` kernel and the `@reinterpret` readability keys
+  (converter/REVIEW.md); the lane's cells are in the bench capture at 504ca55 (PR #73), the
+  `perf/audit_linux.json` entries (`union_access`, `stack_ptr`) are owed to the bench
+  (`bench-queue.md`).
 - **P7.0g Cheaper volatile load** (ruling (23): default, F65's semantics kept). `c_volatile_load` (a C++ forwarder) costs 1.32x interp on the
   `trap` re-read, sites 50/0/0/7 (`updatetrap` per protected instruction); keep F65's semantics,
   find an interpreter-cheap form.
@@ -1445,6 +1512,19 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 - **P7.0h Flat setjmp and inline enum cast** (ruling (23): default if the output reads simpler; low priority). The `while (_sj_run)` trampoline as a
   flat `try` when the setjmp value is only tested against 0 (1.13x; `try` itself 1.25x interp,
   5.43x JIT; 1 site, per pcall); `enum_from_int` inline (1.12x, 5 sites, per instruction).
+  Done (branch `p7.0h-flat-setjmp`, PR #72; default, it reads simpler): `if (setjmp(b) == 0) { A }`
+  and `if (!setjmp(b))` with no `else` and no call in the tail lower to the contained `try`/`recover`
+  of `lowering-examples.md`, the tail after it (a `longjmp` back from a tail that calls is valid C,
+  so such a tail and every other shape keep the trampoline, and a `break`/`continue` leaving the
+  loop is refused as the trampoline refuses it; negative-control fixture `again`); Lua's
+  `luaD_rawrunprotected` 20 -> 9 lines. `enum_from_int` is
+  a call macro expanding in place to its safe `reinterpret`, the text unchanged; a program's own
+  call without a type witness is left to overload resolution. Dev-box ratios: the trampoline
+  1.14x interp, `try` itself 1.20x interp / 4.91x JIT, the enum macro 0.99x. Leftovers: `r =
+  setjmp(b); if (r == 0)` keeps the trampoline, as does a tail calling a function that never
+  longjmps; the `perf/audit_linux.json` flat-try entry is stale until the bench re-records
+  (`bench-queue.md`); the fixture `p5_lua_protect` printed `out` in the printf of the call setting
+  it (argument-order dependent), fixed to read it in its own statement.
 - **P7.0i Character literals as `'c'`** (ruling (23), the critic's finding 3): a C character
   literal reaches the das text as `'c'` where the C had one (the C-IR carries the literal's kind;
   `probes`/P2.5's ledger line), readable-only, default; one small pull request.
@@ -1452,7 +1532,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   character `case` label `"char": true` (an optional C-IR field; rulings-pending); the emitter
   spells a marked `int` as das `'c'` where das has the spelling (printable ASCII, `\n \t \r \b
   \f \\ \'`); char_literals 0 -> 89.6 (lua/lua 88.6). `'\0'`, `'\a'`, `'\v'`, octal and hex
-  escapes stay numbers: a daslang lexer gap, an issue for lookibed/daScript to file.
+  escapes stay numbers: a daslang lexer gap, lookibed/daScript#34.
 - **P7.0j C comments carried over by source line** (ruling (23), finding 1): the C source's
   comments land as `//` lines above the statement of the same source line in the das output;
   readable-only, default; one small pull request after P7.0i.
@@ -1478,7 +1558,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   and globals; report cluster count and sizes per case beside today's. Input: the cut edge list
   `program.layout.txt` records. Output: a table in the pull request and `probe-findings.md`; it
   feeds the mutual-require question (F76, lookibed/daScript#32).
-  State (branch `p7.0l-scc-edges` 46ee398, PR pending): `--edge-census` writes `program.edges.txt`
+  Done (branch `p7.0l-scc-edges`, PR #69): `--edge-census` writes `program.edges.txt`
   beside `program.layout.txt` (the default output unchanged). Lua 5.4.8, `lua` and `luac` alike:
   the one `.c` cycle (15 units: lcode ldebug ldo lfunc lgc llex lmem lobject lparser lstate
   lstring ltable ltm lundump lvm) is 99 edges, all function calls (249 symbols), 0 address, 0
@@ -1496,6 +1576,9 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   x.das fails with "don't know what 'S' is". Fix: field-type reasons join `type_edges`; test: the
   repro. P7.0l test gaps to close with it: a unit that both calls and addresses a function, a
   header node inside a fixture cycle, the "today" clusters asserted against `program.layout.txt`.
+  Done (branch `p7.0l2-type-edges`, PR #71): a record field's type reason joins `type_edges` in
+  `find_edges`, so `uncuttable` and a forced cut refuse it; fixture `p7_type_edge` (the repro) and
+  the three census test gaps closed.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
