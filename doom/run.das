@@ -24,7 +24,10 @@ require demo_run
 
 let WORK = "doom/work"
 let NATIVE = "doom/work/native/doom"
-let PATCHES <- ["doom/patches/0001-per-tic-checksum.patch"]
+let PATCHES <- ["doom/patches/0001-per-tic-checksum.patch", "doom/patches/0002-tic-trace.patch"]
+// the define of the patch's trace lines, the folder of the traces --trace runs write
+let TRACE_DEFINE = "DOOM_TIC_TRACE"
+let TRACES = "doom/work/trace"
 let FREEDOOM2 = "doom/fetch/wads/freedoom2.wad"
 let NATIVE_FLAGS <- ["-O2", "-w"]
 // the address space a demo run gets (3 GiB) and the seconds it may take
@@ -59,6 +62,8 @@ struct Args {
     tics : int = 0
     @clarg_doc = "the seconds --run's program may take"
     timeout : int = 3600
+    @clarg_doc = "with DOOM_TIC_TRACE: --native builds doom/work/native/doom-trace, --demo runs it into doom/work/trace/<wad>_demo<N>.native.log in place of a reference log, --convert converts into doom/work/<layout>-trace/ and --run runs that, writes its trace lines beside the native ones and holds them to those as tic lines are held"
+    trace : bool
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -76,62 +81,90 @@ def private fetch_check : bool {
     return empty(problems)
 }
 
+// the native build, the traced one apart
+def private native_path(trace : bool) : string => trace ? "{NATIVE}-trace" : NATIVE
+
 // the native build's command line: the pinned clang, the flags, the sidecar's defines
-def private native_command(defines : array<string>) : array<string> {
+def private native_command(defines : array<string>; trace : bool) : array<string> {
     var argv <- [default_clang()]
-    argv |> push_from(NATIVE_FLAGS, [for (define in defines); "-D{define}"], ["-o", NATIVE], program_sources())
+    argv |> push_from(NATIVE_FLAGS, [for (define in defines); "-D{define}"], ["-o", native_path(trace)], program_sources())
     argv |> push("-lm")
     return <- argv
 }
 
-// the sidecar's defines, "" in `error` when it reads
-def private sidecar_defines(var error : string&) : array<string> {
+// the sidecar's defines, TRACE_DEFINE after them with `trace`, "" in `error` when it reads
+def private sidecar_defines(trace : bool; var error : string&) : array<string> {
     let side = read_sidecar(SIDECAR, error)
-    return <- clone_to_move(side.defines)
+    var defines <- clone_to_move(side.defines)
+    if (trace) {
+        defines |> push(TRACE_DEFINE)
+    }
+    return <- defines
 }
 
-// the native build at NATIVE; false with the compiler's text logged when it fails
-def private build_native : bool {
+// the sidecar a traced conversion takes, written into WORK: SIDECAR with TRACE_DEFINE first among
+// its defines; "" with `error` set when it cannot be written
+def private trace_sidecar(var error : string&) : string {
+    mkdir_rec(WORK)
+    let text = fread(SIDECAR)
+    let mark = "\"defines\": ["
+    let path = path_join(WORK, "doom-trace.c2das")
+    if (length(split(text, mark)) != 2) {
+        error = "{SIDECAR} has no single `{mark}` to add {TRACE_DEFINE} to"
+    } elif (!fwrite(path, replace(text, mark, "{mark}\"{TRACE_DEFINE}\", "))) {
+        error = "cannot write {path}"
+    }
+    return empty(error) ? path : ""
+}
+
+// the native build, traced with `trace`; false with the compiler's text logged when it fails
+def private build_native(trace : bool) : bool {
     var error : string
-    let defines <- sidecar_defines(error)
+    let defines <- sidecar_defines(trace, error)
     if (!empty(error)) {
         to_log(LOG_ERROR, "doom: {error}\n")
         return false
     }
     mkdir_rec(dir_name(NATIVE))
     var output : string
-    if (run_and_capture(native_command(defines), output, 600.0) != 0) {
+    if (run_and_capture(native_command(defines, trace), output, 600.0) != 0) {
         to_log(LOG_ERROR, "doom: native build failed:\n{output}\n")
         return false
     }
-    to_log(LOG_INFO, "doom: {NATIVE}: {int64(stat(NATIVE).size)} bytes\n")
+    to_log(LOG_INFO, "doom: {native_path(trace)}: {int64(stat(native_path(trace)).size)} bytes\n")
     return true
 }
 
 // `-timedemo demo<demo>` on the native build over `wad`, run in `doom/work/run/<stem>/` where
-// `doom2.wad` links to it, capped; the reference log written to `doom/work/ref/`
-def private run_demo(demo : int; wad : string) : bool {
+// `doom2.wad` links to it, capped; the reference log written to `doom/work/ref/`, or with `trace`
+// the traced build's trace lines to TRACES
+def private run_demo(demo : int; wad : string; trace : bool) : bool {
     let wad_sha = file_sha256(wad)
     if (empty(wad_sha)) {
         to_log(LOG_ERROR, "doom: no wad {wad}\n")
         return false
     }
-    if (!stat(NATIVE).is_reg) {
-        to_log(LOG_ERROR, "doom: no {NATIVE}; run with --native\n")
+    let native = native_path(trace)
+    if (!stat(native).is_reg) {
+        to_log(LOG_ERROR, "doom: no {native}; run with --native\n")
         return false
     }
     let stem = wad_stem(wad)
     let dir = wad_dir(WORK, wad)
-    let argv <- ["bash", "-c", "cd \"$0\" && DOOMWADDIR=. exec prlimit --as={DEMO_MEMORY} \"$1\" -timedemo \"$2\"", dir, get_full_file_name(NATIVE), "demo{demo}"]
+    let argv <- ["bash", "-c", "cd \"$0\" && DOOMWADDIR=. exec prlimit --as={DEMO_MEMORY} \"$1\" -timedemo \"$2\"", dir, get_full_file_name(native), "demo{demo}"]
     var output : string
     let rc = run_and_capture(argv, output, DEMO_TIMEOUT)
+    if (trace) {
+        return write_traces(path_join(TRACES, "{stem}_demo{demo}.native.log"), trace_lines(output))
+    }
     var error : string
-    let defines <- sidecar_defines(error)
+    let defines <- sidecar_defines(false, error)
     var clang_version : string
     run_and_capture([default_clang(), "--version"], clang_version, 60.0)
     let versions = fread("VERSIONS.md")
     let build = join([default_clang(), join(NATIVE_FLAGS, " "), join([for (define in defines); "-D{define}"], " ")], " ")
-    let header = "PureDOOM {puredoom_pin(versions)} + {join(PATCHES, " ")} (sha256 {file_sha256(PATCHES[0])}); {split(clang_version, "\n")[0]}; build: {build} over sources.das's units and host; wad {base_name(wad)} sha256 {wad_sha}; -timedemo demo{demo}, exit {rc}"
+    let patches = join([for (patch in PATCHES); "{patch} (sha256 {file_sha256(patch)})"], " + ")
+    let header = "PureDOOM {puredoom_pin(versions)} + {patches}; {split(clang_version, "\n")[0]}; build: {build} over sources.das's units and host; wad {base_name(wad)} sha256 {wad_sha}; -timedemo demo{demo}, exit {rc}"
     let log = demo_log(output, header, error)
     if (empty(log)) {
         to_log(LOG_ERROR, "doom: demo{demo} on {base_name(wad)}: {error}\n")
@@ -144,13 +177,32 @@ def private run_demo(demo : int; wad : string) : bool {
     return true
 }
 
+// `traces` written to `path`, one per line, its count logged; false when none was printed
+def private write_traces(path : string; traces : array<string>) : bool {
+    mkdir_rec(dir_name(path))
+    fwrite(path, join(traces, "\n") + "\n")
+    to_log(LOG_INFO, "doom: {path}: {length(traces)} trace lines\n")
+    return !empty(traces)
+}
+
+// the folder a conversion in `layout` writes, the traced one apart
+def private layout_dir(layout : string; trace : bool) : string => path_join(WORK, trace ? "{layout}-trace" : layout)
+
 // the converted program of `layout` run under `tier` on `demo` over `wad` and held to its reference
-// log; true when every compared tic is in sync
-def private run_converted_demo(layout, tier : string; demo, tics, timeout : int; wad : string) : bool {
-    let spec <- DemoSpec(entry = path_join(WORK, "{layout}/doom_main.das"), tier = tier, wad = wad, demo = demo, tics = tics, timeout = float(timeout), work = WORK, ref_dirs <- clone_to_move(REF_DIRS), module_dirs <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)])
+// log; true when every compared tic is in sync. With `trace` the traced conversion runs, its trace
+// lines written to TRACES and held to the native run's as its tic lines are to the reference.
+def private run_converted_demo(layout, tier : string; demo, tics, timeout : int; wad : string; trace : bool) : bool {
+    let spec <- DemoSpec(entry = path_join(layout_dir(layout, trace), "doom_main.das"), tier = tier, wad = wad, demo = demo, tics = tics, timeout = float(timeout), work = WORK, ref_dirs <- clone_to_move(REF_DIRS), module_dirs <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)])
     let run = run_converted(spec)
     for (line in run_report(spec, run)) {
         to_log(LOG_INFO, "doom: {line}\n")
+    }
+    if (trace) {
+        let stem = wad_stem(wad)
+        write_traces(path_join(TRACES, "{stem}_demo{demo}.{tier}.log"), split(run.traces, "\n"))
+        let native = path_join(TRACES, "{stem}_demo{demo}.native.log")
+        let sync = tic_sync(trace_lines(fread(native)), trace_lines(run.traces), tics)
+        to_log(LOG_INFO, "doom: trace against {native}: {sync_summary(sync)}\n")
     }
     return in_sync(run)
 }
@@ -174,20 +226,21 @@ def private report(what : string; verdicts : array<Verdict>) : bool {
 }
 
 // the program staged in `doom/work/src/`, each unit converted alone, then the program in `layout`
-def private convert_doom(layout : string) : bool {
+def private convert_doom(layout : string; trace : bool) : bool {
     var error : string
     let c_paths <- stage_program(SOURCES, HOST, path_join(WORK, "src"), UNITS, error)
     if (!empty(error)) {
         to_log(LOG_ERROR, "doom: {error}\n")
         return false
     }
-    let side <- read_sidecar(SIDECAR, error)
+    let sidecar = trace ? trace_sidecar(error) : SIDECAR
+    let side <- empty(error) ? read_sidecar(sidecar, error) : Sidecar()
     if (!empty(error)) {
         to_log(LOG_ERROR, "doom: {error}\n")
         return false
     }
     let units_ok = report("unit", convert_units(c_paths, side))
-    let res <- convert_program(c_paths, path_join(WORK, layout), TARGET, "", SIDECAR, "", "", "main", layout)
+    let res <- convert_program(c_paths, layout_dir(layout, trace), TARGET, "", sidecar, "", "", "main", layout)
     if (!res.ok) {
         to_log(LOG_INFO, "doom: program ({layout}): {first_error_line(res.error)}\n")
         to_log(LOG_INFO, "doom: program ({layout}) blocked by: {classify(first_error_line(res.error))}\n")
@@ -216,10 +269,10 @@ def main : int {
         to_log(LOG_ERROR, "doom: --layout is source, source-cut or single, not `{args.layout}`\n")
         return 1
     }
-    let converted = !args.convert || convert_doom(args.layout)
-    let compiled = !args.compile_check || report("module", compile_modules(path_join(WORK, args.layout), CONVERTED_MODULES, 600.0))
+    let converted = !args.convert || convert_doom(args.layout, args.trace)
+    let compiled = !args.compile_check || report("module", compile_modules(layout_dir(args.layout, args.trace), CONVERTED_MODULES, 600.0))
     let wad = empty(args.wad) ? FREEDOOM2 : args.wad
-    let native_failed = (args.fetch_check && !fetch_check()) || (args.native && !build_native()) || (args.demo != 0 && !args.run && !run_demo(args.demo, wad))
-    let failed = !converted || !compiled || native_failed || (args.run && !run_converted_demo(args.layout, args.tier, args.demo == 0 ? 1 : args.demo, args.tics, args.timeout, wad))
+    let native_failed = (args.fetch_check && !fetch_check()) || (args.native && !build_native(args.trace)) || (args.demo != 0 && !args.run && !run_demo(args.demo, wad, args.trace))
+    let failed = !converted || !compiled || native_failed || (args.run && !run_converted_demo(args.layout, args.tier, args.demo == 0 ? 1 : args.demo, args.tics, args.timeout, wad, args.trace))
     return failed ? 1 : 0
 }

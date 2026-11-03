@@ -55,7 +55,7 @@ struct DemoSpec {
 //! the timeout), the seconds it took, the tic lines it printed, the first error line of a run that
 //! did not end in the timedemo line or the host's `-tics` stop and the sync with the reference log `ref_log`. `whole` when the
 //! run is held to the whole demo, `ended` when it ended in time in `timed N gametics` with N the
-//! reference's tics.
+//! reference's tics; `traces` the `trace=` lines it printed, one per line.
 struct DemoRun {
     error : string
     ref_log : string
@@ -66,6 +66,7 @@ struct DemoRun {
     tics : int
     error_line : string
     sync : TicSync
+    traces : string
 }
 
 //! The C `argv` of `spec`'s program: `-timedemo demo<demo>`, after the host's `-tics <tics>` when
@@ -117,6 +118,7 @@ def run_converted(spec : DemoSpec) : DemoRun {
         run.error_line = first_error_line(join(non_tic_lines(output), "\n"))
     }
     run.sync = tic_sync(expected, got, spec.tics)
+    run.traces = join(trace_lines(output), "\n")
     return run
 }
 

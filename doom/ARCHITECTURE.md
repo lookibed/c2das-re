@@ -15,6 +15,7 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
   zip's and the wad's sha256 against the line and extracts the wad. `fetch/` is gitignored.
 - `patches/0001-per-tic-checksum.patch` - the instrumentation (section 3), against the pinned
   commit.
+- `patches/0002-tic-trace.patch` - the trace lines under `-DDOOM_TIC_TRACE` (section 3).
 - `host/doom_main.c` - the headless host (section 4), the program's `main`.
 - `sources.das` - the program's sources (section 2): `UNITS`, `program_sources`, the folder of
   the fetched units and the sidecar's path.
@@ -23,7 +24,8 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
   `fetch_problems` (the checkout off the pin, a patch not applied, the wad missing or of another
   hash), `missing_units`, `tic_checksum` and `frame_checksum` (the patch's formulas), `tic_lines` and `non_tic_lines`,
   the one reader of a run's or a log's tic lines, `timed_gametics`, `demo_log` (section 6), and `tic_sync` with
-  `differing_fields` and `sync_summary` (section 8).
+  `differing_fields` and `sync_summary` (section 8), and `trace_lines`, the reader of the trace
+  lines (section 3).
 - `run.das` - the harness, run from the repository root: `daslang -load_module dasCRuntime
   -load_module c_runtime doom/run.das -- [--fetch-check] [--native] [--demo <1|2|3> [--wad
   <path>]]`. `--fetch-check` reports every problem `fetch_problems` and `missing_units` find;
@@ -45,6 +47,14 @@ committed references under `ref/` are those files copied by hand after a referen
   reference log, `--tics N` also stopping the program after N tics; `--demo N` without `--run`
   stays the native run above. The run fails unless every
   compared tic is in sync and, held to the whole demo, the program ends in `timed N gametics`.
+- `run.das --trace` with any of the above: the build, the conversion and the runs of the trace
+  (section 3), apart from the reference ones. `--native` builds `work/native/doom-trace` with
+  `DOOM_TIC_TRACE` after the sidecar's defines; `--demo N` runs it and writes its trace lines to
+  `work/trace/<wad stem>_demo<N>.native.log`, no reference log; `--convert` and `--compile-check`
+  take `work/<layout>-trace/`, converted under `work/doom-trace.c2das`, the sidecar with the
+  define added; `--run` runs that conversion, writes its trace lines to
+  `work/trace/<wad stem>_demo<N>.<tier>.log` and logs their `tic_sync` against the native ones
+  over the same `--tics`, the tic lines still held to the reference log.
 - `demo_run.das` - the demo runs (section 8): `wad_stem`, `wad_dir`, `reference_log`, `DemoSpec`,
   `program_argv`, `run_converted`, `in_sync` and `run_report`.
 - `convert_check.das` - the conversion checks `--convert` and `--compile-check` apply:
@@ -89,7 +99,7 @@ the chosen wad under that name.
 
 ## 3. The patch
 
-Hunks in five files against the pin. `g_game.c` and `d_main.c`, under `-DDOOM_TIC_CHECKSUM`:
+`0001-per-tic-checksum.patch`: hunks in five files against the pin. `g_game.c` and `d_main.c`, under `-DDOOM_TIC_CHECKSUM`:
 `G_Ticker` ends by storing `gametic`, the tic just run (the caller increments it after), and the
 tic's checksum; `D_DoomLoop`, once `D_Display` has drawn that tic, prints one line through
 `doom_print`, `tic=<gametic> cs=<8 hex digits> fb=<8 hex digits>`; without the define the build
@@ -120,6 +130,11 @@ The game state does not read those bytes: `cs` is the same with and without the 
 so `D_DoomMain` went on into the title loop (a single-player demo) or `G_InitNew` (a multiplayer
 one, `demo2` of freedoom2), which replaced the demo; with the return the host's loop plays the
 demo from its first tic. The fix is unconditional, since a timedemo is P6.7's benchmark too.
+
+`0002-tic-trace.patch`, `p_tick.c`: under `-DDOOM_TIC_TRACE`, `P_Ticker` ends by printing
+`trace=<gametic> x=<hex> y=<hex> z=<hex> ang=<hex> hp=<d> prnd=<d>`, the six values `cs` hashes, so
+a desync names the value that differs; `tic_lines` skips the line and no reference log is
+recorded with the define.
 
 ## 4. The host
 
@@ -172,7 +187,7 @@ runs none; no wall time reaches the game, so a run repeats tic for tic. A `-time
 ## 6. The reference logs
 
 A reference log is the `tic=` lines of a `-timedemo` run in order under one `# ` header line: the
-PureDOOM pin with the patch and its sha256, clang's version line, the build's compiler, flags and
+PureDOOM pin with each patch and its sha256, clang's version line, the build's compiler, flags and
 defines, the wad's name and sha256, the demo and the exit code. `demo_log` refuses a run that does
 not end in the `timed N gametics` line (a crash, a hang the timeout kills) or prints other than `N`
 tic lines. `ref/` holds the logs of demo1, demo2 and demo3 on freedoom2.wad: 2664, 5444 (a
