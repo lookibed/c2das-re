@@ -407,6 +407,9 @@ def test_extern_arrays(t : T?) {
     t |> run("an array no unit defines, or one declared with another length than its definition's, is refused") @(t : T?) {
         refused(t, "never_defined", [(name = "a.c", text = "extern int arr[];\nint main(void) \{ return arr[0]; \}\n"), (name = "b.c", text = "extern int arr[];\nint *at(int k) \{ return &arr[k]; \}\n")], ["`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines", "a.c:1"])
         refused(t, "never_sized", [(name = "a.c", text = "extern int arr[];\nint main(void) \{ return arr[0]; \}\n"), (name = "b.c", text = "extern int arr[3];\nint get(int k) \{ return arr[k]; \}\n")], ["`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines", "a.c:1"])
+        // the sized declaration first: the link binds to it, and it is still no definition
+        refused(t, "never_sized_first", [(name = "b.c", text = "extern int arr[3];\nint get(int k) \{ return arr[k]; \}\n"), (name = "a.c", text = "extern int arr[];\nint main(void) \{ return arr[0]; \}\n")], ["`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines"])
+        refused(t, "sizes_differ_undefined", [(name = "b.c", text = "extern int arr[3];\nint get(int k) \{ return arr[k]; \}\n"), (name = "c.c", text = "extern int arr[2];\nint put(int k) \{ return arr[k] + 1; \}\n"), (name = "a.c", text = "extern int arr[];\nint main(void) \{ return arr[0]; \}\n")], ["`arr` is declared an array of 2 at ", "c.c:1 and declared an array of 3 at ", "b.c:1, and no unit defines it"])
         refused(t, "length", [(name = "a.c", text = "extern int arr[3];\nint main(void) \{ return arr[0]; \}\n"), (name = "b.c", text = "\nint arr[4] = \{1, 2, 3, 4\};\n")], ["link: `arr` is declared an array of 3 at ", "a.c:1 and defined an array of 4 at ", "b.c:2"])
     }
     rmdir_rec(work_root)

@@ -5919,7 +5919,9 @@ def private complete_array_ref(var em : Emitter; tu : CirTu; globals : table<str
         return
     }
     let d = tu.decls[di]
-    if (kind_of(tu, d.t) == "array" && tu.types[d.t].count >= 0) {
+    // only a definition completes the reference: a sized `extern` declaration another unit makes
+    // is no storage, whichever unit the link saw first
+    if (!d.is_extern && kind_of(tu, d.t) == "array" && tu.types[d.t].count >= 0) {
         x.t = d.t
     } else {
         fail(em, "`{d.c_name}` is an array of unknown length (`extern int a[];`) that no unit of the program defines", d.loc)
