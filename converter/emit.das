@@ -1097,11 +1097,6 @@ def private quoted_literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
 // (`lhs = lhs op v`, a marshal record's reader and writer), so a target with an effect is pinned
 // first and every spelling reads the same temporaries
 def private assignment_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
-    let array_field = x.a.e == "index" ? marshal_array_field(em, tu, x.a) : ""
-    if (!empty(array_field)) {
-        fail(em, "store into an element of array field `{array_field}` of a marshal-only record; not lowered yet (P6.3e)", loc)
-        return ""
-    }
     var keys : array<uint64>
     if (!empty(x.op)) {
         pin_lvalue(em, tu, x.a, loc, keys)
@@ -1338,11 +1333,6 @@ def private promoted_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) :
 // the statement of step `x`; every step but das's own `x++` spells its target twice
 // (`x = x + 1`), so a target with an effect is pinned first
 def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
-    let field = marshal_array_field(em, tu, x.a)
-    if (!empty(field)) {
-        fail(em, "store into an element of array field `{field}` of a marshal-only record; not lowered yet (P6.3e)", loc)
-        return ""
-    }
     var keys : array<uint64>
     pin_lvalue(em, tu, x.a, loc, keys)
     let text = volatile_kept(em, tu, x.a) ? volatile_step(em, tu, x, x.op == "preinc" || x.op == "postinc", "", loc) : step_text(em, tu, x, loc)
@@ -1670,7 +1660,7 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return string_literal(em, tu, *x.a, loc)
     }
     if (k == "ArrayToPointerDecay") {
-        let first = first_member_address(em, tu, x, loc)
+        let first = decay_in_place(em, tu, x, loc)
         if (!empty(first.text)) {
             return first
         }
@@ -1729,17 +1719,17 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     return inner
 }
 
+// a decay spelled without its array's value: an array field of a marshal-only record in C memory
+// (`marshal_elements`), a member at offset 0 under `first_member` `reinterpret`
+// (`first_member_address`); an empty text for any other
+def private decay_in_place(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em =>
+    marshal_array_member(em, tu, x.a) ? marshal_elements(em, tu, *x.a, loc) : first_member_address(em, tu, x, loc)
+
 // an array's decay to a pointer to its first element; a `jmp_buf` is one record here, not
-// glibc's one-element array: its decay is its address, or the pointer a `*p` read it through; an
-// array field of a marshal-only record in C memory is refused, since its reader gives a copy
+// glibc's one-element array: its decay is its address, or the pointer a `*p` read it through
 def private decayed(var em : Emitter; tu : CirTu; x : CirExpr; inner : Em; loc : CirLoc) : Em {
     if (is_jmp_buf(tu, x.a.t)) {
         return x.a.e == "un" && x.a.op == "deref" ? emit_expr(em, tu, x.a.a, loc) : unsafe_value(em, "addr({inner.text})", PREC_PRIMARY)
-    }
-    let field = marshal_array_field(em, tu, x.a)
-    if (!empty(field)) {
-        fail(em, "pointer into array field `{field}` of a marshal-only record; not lowered yet (P6.3e)", loc)
-        return inner
     }
     return unsafe_value(em, "addr({inner.text}[0])", PREC_PRIMARY)
 }
@@ -2080,16 +2070,9 @@ def private emit_cond(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     return value(tmp, PREC_PRIMARY)
 }
 
-// the operand of `&x`: a compound literal's object; refused for an array field of a marshal-only
-// record in C memory or an element of one, whose reader gives a copy
-def private address_operand(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
-    let field = marshal_array_field(em, tu, x.a)
-    if (!empty(field)) {
-        fail(em, "address of array field `{field}` of a marshal-only record, or of an element of it; not lowered yet (P6.3e)", loc)
-        return value("", PREC_PRIMARY)
-    }
-    return x.a.e == "compound_lit" ? literal_object(em, tu, *x.a, loc) : emit_expr(em, tu, x.a, loc)
-}
+// the operand of `&x`: a compound literal's object
+def private address_operand(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em =>
+    x.a.e == "compound_lit" ? literal_object(em, tu, *x.a, loc) : emit_expr(em, tu, x.a, loc)
 
 def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     if (x.op == "not") {
@@ -2163,12 +2146,17 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     return a
 }
 
-// `&x` (`x` the `&`) spelled without `addr` of its operand: one past an array's end
+// `&x` (`x` the `&`) spelled without `addr` of its operand: an array field of a marshal-only
+// record in C memory or its element (`marshal_element_address`), one past an array's end
 // (`one_past_end_address`), a member at offset 0 under `first_member` `reinterpret`
 // (`first_member_address`); an empty text for any other operand
 def private direct_address(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     if (x.op != "addr") {
         return Em()
+    }
+    let marshal = marshal_element_address(em, tu, x, loc)
+    if (!empty(marshal.text)) {
+        return marshal
     }
     let past_end = one_past_end_address(em, tu, x, loc)
     return empty(past_end.text) ? first_member_address(em, tu, x, loc) : past_end
@@ -2471,25 +2459,42 @@ def private marshal_field(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLo
     return x.arrow ? -1 : marshal_site(em, tu, x.base, loc, bytes)
 }
 
-// `T.f` when `x`, under its subscripts and decays, is an array field of a marshal-only record in
-// C memory, else "": its reader copies the field, so an element is a temporary's
-def private marshal_array_field(var em : Emitter; tu : CirTu; x : CirExpr const?) : string {
-    var at = x
-    while (at != null && (at.e == "index" || (at.e == "cast" && at.cast_kind == "ArrayToPointerDecay"))) {
-        at = at.e == "index" ? at.base : at.a
+// whether `x` is an array field of a marshal-only record in C memory, `p->a`, `(*p).a` or
+// `p[i].a` of a byte pointer: its elements are read and written where they lie, through
+// `marshal_elements`
+def private marshal_array_member(em : Emitter; tu : CirTu; x : CirExpr const?) : bool {
+    if (x == null || x.e != "member" || kind_of(tu, x.t) != "array") {
+        return false
     }
-    if (at == null || at.e != "member" || kind_of(tu, at.t) != "array") {
-        return ""
+    if (x.arrow) {
+        return marshal_pointee(em, tu, x.base.t) >= 0
     }
-    var rec = -1
-    if (at.arrow) {
-        rec = marshal_pointee(em, tu, at.base.t)
-    } elif (at.base.e == "un" && at.base.op == "deref") {
-        rec = marshal_pointee(em, tu, at.base.a.t)
-    } elif (at.base.e == "index") {
-        rec = marshal_pointee(em, tu, at.base.base.t)
+    let site = x.base
+    return (site.e == "un" && site.op == "deref" && marshal_pointee(em, tu, site.a.t) >= 0) || (site.e == "index" && marshal_pointee(em, tu, site.base.t) >= 0)
+}
+
+// the pointer to the first element of `x`, an array field of a marshal-only record in C memory
+// (`marshal_array_member`): its generated `ptr_T_f` over the record's bytes
+def private marshal_elements(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    var bytes : Em
+    let rec = marshal_field(em, tu, x, loc, bytes)
+    return value("{pointer_name(em, tu, rec, x.field)}({bytes.text}, 0)", PREC_PRIMARY)
+}
+
+// `&p->a[i]` of an array field of a marshal-only record in C memory is its first element's
+// pointer plus `i`, and `&p->a` that pointer as the field's; an empty text for any other operand
+def private marshal_element_address(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    let at = x.a
+    if (marshal_array_member(em, tu, at)) {
+        let first = marshal_elements(em, tu, *at, loc)
+        return unsafe_value(em, "reinterpret<{das_type(em, tu, x.t, loc)}>({first.text})", PREC_PRIMARY)
     }
-    return rec < 0 ? "" : "{tag_name(em, tu, rec)}.{field_name(em, tu, rec, at.field)}"
+    if (at.e != "index" || at.base.e != "cast" || at.base.cast_kind != "ArrayToPointerDecay" || !marshal_array_member(em, tu, at.base.a)) {
+        return Em()
+    }
+    let first = marshal_elements(em, tu, *at.base.a, loc)
+    let i = index_value(em, tu, at.i, loc)
+    return unsafe_value(em, "{first.text} + {wrap(i, PREC_ADD + 1)}", PREC_ADD)
 }
 
 def private reader_name(var em : Emitter; tu : CirTu; rec : int; field : int) : string =>
@@ -2497,6 +2502,9 @@ def private reader_name(var em : Emitter; tu : CirTu; rec : int; field : int) : 
 
 def private writer_name(var em : Emitter; tu : CirTu; rec : int; field : int) : string =>
     field < 0 ? "write_{tag_name(em, tu, rec)}" : "write_{tag_name(em, tu, rec)}_{field_name(em, tu, rec, field)}"
+
+def private pointer_name(var em : Emitter; tu : CirTu; rec : int; field : int) : string =>
+    "ptr_{tag_name(em, tu, rec)}_{field_name(em, tu, rec, field)}"
 
 // a subscript as das takes it: C subscripts by any integer as it is, never promoted, and das
 // indexes by `int`, `int64`, `uint` or `uint64` alone (`docs/probe-findings.md` F43), so an enum
@@ -2509,8 +2517,9 @@ def private index_value(var em : Emitter; tu : CirTu; i : CirExpr?; loc : CirLoc
 // `a[i]` of an array is the das index, range-checked; of a pointer it is `deref(p + i)`; of a
 // byte pointer to a marshal-only record it is the record read at the scaled offset
 def private emit_index(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
-    // a flexible or an over-indexed trailing array is indexed through its decay, unchecked
-    if (x.base.e == "cast" && x.base.cast_kind == "ArrayToPointerDecay" && kind_of(tu, x.base.a.t) == "array" && x.base.a.e != "str_lit" && empty(trailing_access(em, tu, x.base.a))) {
+    // a flexible or an over-indexed trailing array is indexed through its decay, unchecked, and
+    // so is an array field of a marshal-only record in C memory, whose elements lie in its bytes
+    if (x.base.e == "cast" && x.base.cast_kind == "ArrayToPointerDecay" && kind_of(tu, x.base.a.t) == "array" && x.base.a.e != "str_lit" && empty(trailing_access(em, tu, x.base.a)) && !marshal_array_member(em, tu, x.base.a)) {
         let arr = emit_expr(em, tu, x.base.a, loc)
         let at = index_value(em, tu, x.i, loc)
         return value("{wrap(arr, PREC_PRIMARY)}[{at.text}]", PREC_PRIMARY)
@@ -6087,6 +6096,17 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
     close_block(em)
     line(em, "")
     for (idx, f in range(length(tu.types[t].fields)), tu.types[t].fields) {
+        if (kind_of(tu, f.t) == "array") {
+            // C reaches an array field only through its decay, its address or `sizeof`: the
+            // field's accessor is the pointer to its first element where it lies
+            let elem = das_type(em, tu, tu.types[f.t].elem, loc)
+            line(em, "[c_function]")
+            open_block(em, "def {pointer_name(em, tu, t, idx)}(bytes : uint8?; ofs : int) : {elem}?")
+            line(em, "return reinterpret<{elem}?>(bytes + (ofs + {f.off}))")
+            close_block(em)
+            line(em, "")
+            continue
+        }
         let ft = das_type_dims(em, tu, f.t, loc, f.dims)
         line(em, "[c_function]")
         open_block(em, "def {reader_name(em, tu, t, idx)}(bytes : uint8?; ofs : int) : {ft}")
