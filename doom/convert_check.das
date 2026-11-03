@@ -26,13 +26,14 @@ struct Verdict {
     error : string
 }
 
-//! The first line of `text` that names an error, else its first non-empty line, else "".
+//! The first line of `text` that names an error in any case (daslang's `error[...]`, PureDOOM's
+//! `I_Error` text `Error: ...`), else its first non-empty line, else "".
 def first_error_line(text : string) : string {
     var first = ""
     for (line in split(text, "\n")) {
         let trimmed = strip(line)
         continue if (empty(trimmed))
-        if (trimmed |> contains("error")) {
+        if (to_lower(trimmed) |> contains("error")) {
             return trimmed
         }
         if (empty(first)) {

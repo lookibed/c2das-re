@@ -53,10 +53,14 @@ struct DemoSpec {
 
 //! A run's outcome: `error` why the program did not run; else its exit code (`popen_timed_out` past
 //! the timeout), the seconds it took, the tic lines it printed, the first error line of a run that
-//! did not end in the timedemo line and the sync with the reference log `ref_log`.
+//! did not end in the timedemo line and the sync with the reference log `ref_log`. `whole` when the
+//! run is held to the whole demo, `ended` when it ended in time in `timed N gametics` with N the
+//! reference's tics.
 struct DemoRun {
     error : string
     ref_log : string
+    whole : bool
+    ended : bool
     rc : int
     seconds : double
     tics : int
@@ -64,8 +68,9 @@ struct DemoRun {
     sync : TicSync
 }
 
-//! `spec`'s run: the program run by `run_tier` from the current folder with `DOOMWADDIR` naming the
-//! wad's run folder, its tic lines, those of a timed-out run included, compared with the reference.
+//! `spec`'s run: the program run by `run_tier` from the current folder, `DOOMWADDIR` set in this
+//! process to the wad's run folder, which the program inherits, the exe and aot builds in its
+//! `<entry's folder name>/`; its tic lines, a timed-out run's included, compared with the reference.
 def run_converted(spec : DemoSpec) : DemoRun {
     var run = DemoRun()
     let stem = wad_stem(spec.wad)
@@ -81,22 +86,36 @@ def run_converted(spec : DemoSpec) : DemoRun {
         return run
     }
     let dir = wad_dir(spec.work, spec.wad)
+    if (empty(dir)) {
+        let link = path_join(spec.work, "run/{stem}/doom2.wad")
+        run.error = "cannot link {spec.wad} as {link}"
+        return run
+    }
     set_env_variable("DOOMWADDIR", get_full_file_name(dir))
+    let build_dir = path_join(dir, base_name(dir_name(spec.entry)))
+    mkdir_rec(build_dir)
     var output : string
     let started = ref_time_ticks()
-    run.rc = run_tier(spec.entry, spec.tier, dir, output, spec.module_dirs, spec.timeout, array<string>(), ["-timedemo", "demo{spec.demo}"])
+    run.rc = run_tier(spec.entry, spec.tier, build_dir, output, spec.module_dirs, spec.timeout, array<string>(), ["-timedemo", "demo{spec.demo}"])
     run.seconds = double(get_time_usec(started)) / 1000000.0lf
     let got <- tic_lines(output)
+    let expected <- tic_lines(fread(run.ref_log))
+    let gametics = timed_gametics(output)
     run.tics = length(got)
-    if (timed_gametics(output) < 0) {
-        run.error_line = first_error_line(join([for (line in split(output, "\n")); line; where !(line |> starts_with("tic="))], "\n"))
+    run.whole = spec.tics <= 0
+    run.ended = gametics == length(expected) && run.rc != popen_timed_out
+    if (gametics < 0) {
+        run.error_line = first_error_line(join(non_tic_lines(output), "\n"))
     }
-    run.sync = tic_sync(tic_lines(fread(run.ref_log)), got, spec.tics)
+    run.sync = tic_sync(expected, got, spec.tics)
     return run
 }
 
-//! Whether `run` ran and held every compared tic in sync.
-def in_sync(run : DemoRun) : bool => empty(run.error) && empty(run.sync.desync) && run.sync.compared > 0 && run.sync.in_sync == run.sync.compared
+// whether every compared tic of `run` is in sync, the run's end aside
+def private tics_in_sync(run : DemoRun) : bool => empty(run.sync.desync) && run.sync.compared > 0 && run.sync.in_sync == run.sync.compared
+
+//! Whether `run` ran and held every compared tic in sync and, held to the whole demo, ended in it.
+def in_sync(run : DemoRun) : bool => empty(run.error) && tics_in_sync(run) && (run.ended || !run.whole)
 
 //! The lines `run.das` logs on `spec`'s `run`: the sync, the exit, the first error line and the
 //! seconds per 35 tics, a sanity number that counts the program's start.
@@ -105,7 +124,8 @@ def run_report(spec : DemoSpec; run : DemoRun) : array<string> {
     if (!empty(run.error)) {
         return <- ["{what}: {run.error}"]
     }
-    var lines <- ["{what}: {sync_summary(run.sync)} against {run.ref_log}"]
+    let unended = run.whole && !run.ended && tics_in_sync(run) ? ", then the run did not end in `timed {run.sync.compared} gametics`" : ""
+    var lines <- ["{what}: {sync_summary(run.sync)}{unended} against {run.ref_log}"]
     lines |> push(run.rc == popen_timed_out ? "{what}: timed out after {spec.timeout} s" : "{what}: exit {run.rc}")
     if (!empty(run.error_line)) {
         lines |> push("{what}: first error: {run.error_line}")

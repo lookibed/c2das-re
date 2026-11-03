@@ -95,7 +95,13 @@ def fetch_problems(tree, pin : string; patches : array<string>; wad, wad_sha : s
 def missing_units(dir : string; units : array<string>) : array<string> => <- [for (unit in units); unit; where !stat(path_join(dir, "{unit}.c")).is_reg]
 
 //! The `tic=` lines of `text` in order: a run's output or a reference log, its header left out.
-def tic_lines(text : string) : array<string> => <- [for (line in split(text, "\n")); line; where line |> starts_with("tic=")]
+def tic_lines(text : string) : array<string> => <- [for (line in split(text, "\n")); line; where is_tic_line(line)]
+
+//! The lines of `text` other than its `tic=` lines, in order.
+def non_tic_lines(text : string) : array<string> => <- [for (line in split(text, "\n")); line; where !is_tic_line(line)]
+
+// whether `line` is a tic line the patch prints
+def private is_tic_line(line : string) : bool => line |> starts_with("tic=")
 
 //! The N of the `Error: timed N gametics` line a `-timedemo` run ends in, -1 without one.
 def timed_gametics(output : string) : int {
