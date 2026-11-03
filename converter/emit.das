@@ -5442,13 +5442,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
 }
 
 // the indentation of spelled line `text`, in levels
-def private indent_of(text : string) : int {
-    var spaces = 0
-    while (spaces < length(text) && character_at(text, spaces) == ' ') {
-        spaces++
-    }
-    return spaces / 4
-}
+def private indent_of(text : string) : int => (length(text) - length(strip_left(text))) / 4
 
 // whether line `at` closes an `if` with no `else` whose branch ends in `return`, `break` or
 // `continue`: the line `}` at the `if`'s indent, the branch's last line one deeper
@@ -5521,9 +5515,7 @@ def private guard_label_folds(var em : Emitter; from : int) {
         }
     }
     em.out |> resize(from)
-    for (text in out) {
-        em.out |> push(text)
-    }
+    em.out |> push_from(out)
 }
 
 // whether record `t` is refused, with the error set: a marshal-only record with a bitfield, named
