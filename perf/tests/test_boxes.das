@@ -62,6 +62,20 @@ def private parsed(t : T?; text : string) : JsonValue? {
 }
 
 [test]
+def test_same_box(t : T?) {
+    t |> run("one box: the same box field, the box of the cpu, or the same cpu without a box") @(t : T?) {
+        t |> success(same_box(parsed(t, "\{'box': 'bench', 'cpu': 'X'\}"), parsed(t, "\{'cpu': 'AMD Ryzen 3 1200'\}")))
+        t |> success(same_box(parsed(t, "\{'cpu': 'Other'\}"), parsed(t, "\{'cpu': 'Other', 'box': ''\}")))
+        t |> success(same_box(parsed(t, "\{\}"), null))
+    }
+    t |> run("two boxes, or two cpus without a box") @(t : T?) {
+        t |> success(!same_box(parsed(t, "\{'cpu': 'AMD FX(tm)-6300'\}"), parsed(t, "\{'cpu': 'AMD Ryzen 3 1200'\}")))
+        t |> success(!same_box(parsed(t, "\{'cpu': 'X', 'box': 'PC'\}"), parsed(t, "\{'cpu': 'X'\}")))
+        t |> success(!same_box(parsed(t, "\{'cpu': 'X'\}"), parsed(t, "\{'cpu': 'Y'\}")))
+    }
+}
+
+[test]
 def test_capture_label(t : T?) {
     t |> run("a capture with its box") @(t : T?) {
         t |> equal(capture_label(parsed(t, "\{'box': 'fx', 'cpu': 'AMD Ryzen 3 1200'\}")), "fx (AMD Ryzen 3 1200)")

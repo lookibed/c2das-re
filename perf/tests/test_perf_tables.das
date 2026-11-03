@@ -83,12 +83,21 @@ def test_delta_across_cpus(t : T?) {
         t |> equal(length(flags), 1)
         t |> equal(flags[0], "a/jit +15.00%")
     }
-    t |> run("another cpu is named in the delta heading") @(t : T?) {
-        t |> success(render_delta(other_cpu, old, "old") |> starts_with("Delta against old, (new - old) / old per kernel and lane. The baseline ran on X, this capture on Y: the delta compares lane/native ratios.\n\n"))
+    t |> run("another cpu without a box renders no delta, one line naming both") @(t : T?) {
+        t |> equal(render_delta(other_cpu, old, "old"), "no delta: Y against X, numbers of two boxes are not compared (ruling 27)\n")
     }
-    t |> run("the delta heading names each capture's box") @(t : T?) {
+    t |> run("captures of two boxes render no delta table, one box renders it") @(t : T?) {
         let boxed = capture_of(t, "\{'cpu': 'Y', 'box': 'PC', 'tests': \{\}\}")
-        t |> success(render_delta(boxed, old, "old") |> contains(" The baseline ran on X, this capture on PC (Y): "), render_delta(boxed, old, "old"))
+        let bench = capture_of(t, "\{'cpu': 'AMD Ryzen 3 1200 Quad-Core Processor', 'tests': \{'a': \{'native': \{'time': 1.0\}\}\}\}")
+        let fx = capture_of(t, "\{'cpu': 'AMD FX(tm)-6300', 'tests': \{'a': \{'native': \{'time': 1.0\}\}\}\}")
+        let two_boxes = render_delta(fx, bench, "old")
+        t |> equal(two_boxes, "no delta: fx (AMD FX(tm)-6300) against bench (AMD Ryzen 3 1200 Quad-Core Processor), numbers of two boxes are not compared (ruling 27)\n")
+        t |> success(!(two_boxes |> contains("|")), two_boxes)
+        t |> equal(render_delta(boxed, old, "old"), "no delta: PC (Y) against X, numbers of two boxes are not compared (ruling 27)\n")
+        let bench_named = capture_of(t, "\{'cpu': 'Other CPU', 'box': 'bench', 'tests': \{'a': \{'native': \{'time': 1.0\}\}\}\}")
+        let one_box = render_delta(bench_named, bench, "old")
+        t |> success(one_box |> starts_with("Delta against old, (new - old) / old per kernel and lane."), one_box)
+        t |> success(one_box |> contains("| a    |"), one_box)
     }
     t |> run("the same cpu compares times, native included, under a plain heading") @(t : T?) {
         var cents = 0l

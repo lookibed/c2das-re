@@ -50,6 +50,18 @@ def box_refusal(flag : string) : string {
     return "--box takes " + join([for (b in BOXES); b._1], ", ") + ", not `{flag}`"
 }
 
+//! The box of the capture `js`, else its CPU model when it names no box: what tells two
+//! captures' machines apart.
+def private machine_key(js : JsonValue const?) : string {
+    let cpu = js?["cpu"] ?? ""
+    let box = capture_box(js?["box"] ?? "", cpu)
+    return empty(box) ? cpu : box
+}
+
+//! True when captures `a` and `b` ran on one box: the same box, or, where neither names one, the
+//! same CPU model.
+def same_box(a, b : JsonValue const?) : bool => machine_key(a) == machine_key(b)
+
 //! The label of the capture or section `js` from its `box` and `cpu` fields, a capture written
 //! before captures recorded a box showing the box of its cpu.
 def capture_label(js : JsonValue const?) : string {
