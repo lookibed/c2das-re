@@ -160,13 +160,16 @@ or modules per construct.
 At the pin, 11 of the 63 units pass alone; 52 stop at a function or an array another unit
 defines, which the link binds. The whole program passes the dumper, the layout and the emitter,
 past the gotos into a branch body P7.7 lowers and the array and record fields of a marshal record
-P6.3e and P6.3i lower (`patch->columnofs[col]`, `maptexture_t.patches`), and stops in the
-converter's compile check of the emitted `source` program: `d_net.c:103`'s
-`&(((doomdata_t*)0)->cmds[netbuffer->numtics])`, the offsetof idiom through a null pointer, is
-`addr(null.cmds[0]) + ...`, a field of an untyped `null` das refuses. `--compile-check` then
-compiles 37 of the 39 modules alone; the 51-unit cluster and `doom_main`, which requires it, fail
-on that idiom (`d_net.c:103` and `:122`) and on `p_pspr.c:655`'s `flashstate + psp->state`, an
-integer on the left of a pointer sum, spelled in that order. The whole-program
+P6.3e and P6.3i lower (`patch->columnofs[col]`, `maptexture_t.patches`), the offset idiom
+through a null pointer (`d_net.c:103`'s `&(((doomdata_t*)0)->cmds[netbuffer->numtics])`) and the
+sum with its count on the left (`p_pspr.c:655`'s `flashstate + psp->state`) P6.3j lowers, and
+stops in the converter's compile check of the emitted `source` program: `m_menu.c`'s menu
+globals hold function values (`MainMenu`'s `@@M_NewGame`) whose bodies take the address of
+another menu global, and a chain of them closes on itself (`MainMenu` -> `M_NewGame` ->
+`EpiDef` -> `EpisodeMenu` -> `M_Episode` -> `ReadDef1` -> `MainDef` -> `MainMenu`), which das
+refuses as a global variable initialization loop (error 31104). `--compile-check` then compiles
+37 of the 39 modules alone; the 51-unit cluster and `doom_main`, which requires it, fail on that
+loop. The whole-program
 conversion needs more than 3 GiB of address space: under `prlimit --as=3G` daslang dies with
 SIGSEGV on an allocation failure, so the harness runs uncapped in a `heavy` scope of its own.
 
