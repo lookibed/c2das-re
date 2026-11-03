@@ -326,6 +326,7 @@ def p2_memory_fixtures(t : T?) {
     }
     p2_marshal_fixtures(t)
     p6_marshal_fixtures(t)
+    p6_pointer_fixtures(t)
 }
 
 def p2_marshal_fixtures(t : T?) {
@@ -358,6 +359,50 @@ def p2_marshal_fixtures(t : T?) {
         has_text(t, text, "crt::memcpy(reinterpret<void?>(addr(r.bbox)), reinterpret<void?>(bytes + (ofs + 2)), uint64(16))")
         has_text(t, text, "total += int(deref(ptr_node_t_bbox(nodes + i * 22, 0) + j)[k]) * (k + 1)")
         t |> equal(text |> find("read_node_t_bbox") < 0, true, "an array field keeps a copying reader:\n{text}")
+    }
+}
+
+// the pointer sum with its count on the left and the offset idiom through a null pointer,
+// over natural and marshal-only records
+def p6_pointer_fixtures(t : T?) {
+    t |> run("a pointer sum with the count on the left, `n + p`, is `p + n`; a marshal pointer scales the count") @(t : T?) {
+        var text : string
+        check_fixture(t, "p6_commuted_sum", text)
+        has_text(t, text, "var ip : int? = addr(p6_commuted_sum__ia[0]) + 1\n")
+        has_text(t, text, "var sp : uint8? = addr(p6_commuted_sum__cs[0]) + i\n")
+        has_text(t, text, "var rp : rec_t? = addr(p6_commuted_sum__states[0]) + n\n")
+        has_text(t, text, "deref(addr(p6_commuted_sum__cs[0]) + u)")
+        has_text(t, text, "var third : uint8? = cp + 2 * 3\n")
+        has_text(t, text, "read_cell_t_v(cp + 1 * 3 + 1 * 3, 0)")
+        // p_pspr.c's state offset, an enum plus a pointer less a pointer, converted to the enum
+        has_text(t, text, "enum_from_int(type<st_t>, int(int64(psp.state + uint(int(p6_commuted_sum__info.flash)) - (addr(p6_commuted_sum__states[0]) + end_index(int(st_t.S_A), 8)))))")
+    }
+    t |> run("the offset idiom `(integer)&((T *)0)->f[i]` is the offset as an integer, a marshal record's clang's; `offsetof` beside it") @(t : T?) {
+        var text : string
+        check_fixture(t, "p6_null_offset", text)
+        // d_net.c's packet size: a variable index, through `long long` to `int`
+        has_text(t, text, "return int(int64(int64(typeinfo offsetof < cmds > (type<data_t>)) + int64(int(p6_null_offset__nb.numtics)) * int64(typeinfo sizeof(type<cmd_t>))))")
+        // a lone field, a constant index as `size_t`, a nested record, a row of a matrix, a union
+        has_text(t, text, "int(int64(typeinfo offsetof < retrans > (type<data_t>)))")
+        has_text(t, text, "int(uint64(int64(typeinfo offsetof < cmds > (type<data_t>)) + 3l * int64(typeinfo sizeof(type<cmd_t>))))")
+        has_text(t, text, "int64(typeinfo offsetof < at > (type<data_t>)) + int64(typeinfo offsetof < y > (type<anon_")
+        has_text(t, text, "int64(typeinfo offsetof < grid > (type<data_t>)) + 1l * int64(typeinfo sizeof(type<int[5]>)) + int64(i) * int64(typeinfo sizeof(type<int>))")
+        has_text(t, text, "int(uint64(typeinfo offsetof < n > (type<data_t>)))")
+        // through `(void *)0`, a 64-bit unsigned index, a field past the element
+        has_text(t, text, "int64(n) * int64(typeinfo sizeof(type<cmd_t>)) + int64(typeinfo offsetof < s > (type<cmd_t>))")
+        // a marshal record: clang's packed offsets, folded where constant
+        has_text(t, text, "int(uint64(1)), int(uint64(12)), int(uint64(int64(read_lump_t_count(l, 0)) * 3l + 5l))")
+        // `offsetof` of a marshal record is clang's offset, of a natural one das's
+        has_text(t, text, "int(uint64(typeinfo offsetof < n > (type<data_t>))), int(uint64(1)), int(uint64(5))")
+    }
+    t |> run("a member of a null pointer constant outside the offset idiom is refused, named") @(t : T?) {
+        let rec = "typedef struct \{ int a; char c; char *p; \} rec_t;\n"
+        let needle = "a member of a null pointer constant (`((T *)0)->f`) is lowered only as the offset idiom"
+        rejects(t, "null_member_pointer", rec + "int main(void) \{ char *p = (char *) &((rec_t *) 0)->c; return p != 0; \}\n", needle)
+        rejects(t, "null_member_read", rec + "int main(void) \{ return ((rec_t *) 0)->c; \}\n", needle)
+        rejects(t, "null_member_pointer_field", rec + "int main(void) \{ return (int) (long) &((rec_t *) 0)->p[1]; \}\n", needle)
+        let packed = "#pragma pack(1)\ntypedef struct \{ char k; int n; \} lump_t;\n#pragma pack()\n"
+        rejects(t, "null_member_marshal_read", packed + "int main(void) \{ return ((lump_t *) 0)->n; \}\n", needle, "\{ \"marshal\": [\"lump_t\"] \}\n")
     }
 }
 

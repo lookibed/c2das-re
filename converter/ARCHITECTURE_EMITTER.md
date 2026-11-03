@@ -140,14 +140,21 @@ In a global initializer the decay and the sum each wrap themselves, `unsafe(unsa
 pointer is a das function value, `function<(a0 : T; ...) : R>` with the parameters named by
 position, a function's name decays to `@@name`, and a call through a pointer, `fp(...)` or
 `(*fp)(...)`, is `invoke(fp, ...)` (`ARCHITECTURE_EMITTER_AGGREGATES.md`, Function pointers). A pointer difference is `int64(p - q)`, in elements as C
-counts them, the subtrahend parenthesized as the right operand of `-` (`top - 1 - (base + a)`); a pointer less a count whose pointer is no load of an object (a decay, a sum, a cast, a call) is the sum with the negated count, `addr(b[0]) + 10 + -(n)` (`-int64(n)` for an unsigned one), since das subtracts from a pointer variable only (F59); a pointer relation goes through `intptr`, and so does `==` or `!=` between two
+counts them, the subtrahend parenthesized as the right operand of `-` (`top - 1 - (base + a)`); a pointer less a count whose pointer is no load of an object (a decay, a sum, a cast, a call) is the sum with the negated count, `addr(b[0]) + 10 + -(n)` (`-int64(n)` for an unsigned one), since das subtracts from a pointer variable only (F59); a sum with the count on the left, `n + p`, is commuted, `p + n`, since das adds a count to a pointer only; a pointer relation goes through `intptr`, and so does `==` or `!=` between two
 data pointers, since das compares only pointers of one constness and a `let` pointer's pointee
 is const (F44), while a null constant on either side compares with `null`; `malloc`, `calloc`, `realloc`, `free`
 and the `mem*` family are the CRT's through `crt`, with C's implicit `void *` conversions as
 explicit `reinterpret`. `[c_function]` lands only on a body with an unsafe operation, and the
 emitter counts those bodies against all the unit defines: the port-progress metric `main.das`
 reports; `sizeof` and `offsetof` are `T(typeinfo sizeof(type<S>))` and `T(typeinfo
-offsetof<f>(type<S>))`, never clang's constants, with the cast to the C result type, and
+offsetof<f>(type<S>))`, never clang's constants, with the cast to the C result type (a
+marshal-only record's `offsetof` is clang's offset, `T(5)`, as its `sizeof` is clang's size); the
+offset idiom, a member chain from a null pointer constant cast to a record pointer under `&` and
+a cast to an integer (`(int)(long long)&((T *)0)->f[i]`), is that offset as an integer, never a
+load through null: `int(int64(int64(typeinfo offsetof<f>(type<T>)) + int64(i) * int64(typeinfo
+sizeof(type<E>))))`, a marshal record's terms clang's literals folded where constant, and any
+other member of a null pointer constant (a read, its address as a pointer, a pointer field
+indexed) fails closed; and
 `_Alignof` is `T(typeinfo alignof(type<S>))` where das aligns the type as clang does and
 clang's value `T(4)` where das aligns it lower (a record whose bitfield units align below
 clang's, F5), for a marshal-only record and for a `va_list` (`docs/probe-findings.md` F54). A string

@@ -2034,6 +2034,10 @@ def private pointer_arithmetic(var em : Emitter; tu : CirTu; x : CirExpr; lhs, r
         let negated = is_unsigned(tu, x.b.t) ? "-int64({rhs.text})" : "-({rhs.text})"
         return unsafe_value(em, "{wrap(lhs, prec)} + {negated}", prec)
     }
+    if (!pointer_lhs) {
+        // das adds a count to a pointer only: `n + p` is the sum commuted, `p + n`
+        return unsafe_value(em, "{wrap(rhs, prec)} + {wrap(lhs, prec + 1)}", prec)
+    }
     return unsafe_value(em, "{wrap(lhs, prec)} {spelled} {wrap(rhs, prec + 1)}", prec)
 }
 
@@ -2283,6 +2287,10 @@ def private emit_cast_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc
     if (x.cast_kind == "LValueToRValue" && volatile_kept(em, tu, x.a)) {
         return volatile_load(em, tu, x.a, loc)
     }
+    let offset = null_offset_cast(em, tu, *x, loc)
+    if (!empty(offset.text)) {
+        return offset
+    }
     let wrapped = wrap_pair(tu, x)
     return wrapped != null ? emit_wrap_pair(em, tu, *wrapped, x.t, loc) : emit_cast(em, tu, *x, loc)
 }
@@ -2297,6 +2305,11 @@ def private emit_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : Ci
     }
     if (x.e == "str_lit") {
         fail(em, "a string literal outside a pointer context is not lowered yet", loc)
+        return value("", PREC_PRIMARY)
+    }
+    if ((x.e == "member" || x.e == "index" || (x.e == "un" && x.op == "addr")) && null_rooted(x)) {
+        // `null_offset_cast` folds the one shape C defines by practice, the offset as an integer
+        fail(em, "a member of a null pointer constant (`((T *)0)->f`) is lowered only as the offset idiom, its address cast to an integer", loc)
         return value("", PREC_PRIMARY)
     }
     if (x.e == "ref") {
@@ -2382,9 +2395,123 @@ def private emit_type_operator(var em : Emitter; tu : CirTu; x : CirExpr const?;
             // a union's members are operators over one storage at 0
             return value("{das_type(em, tu, x.t, loc)}(0)", PREC_PRIMARY)
         }
+        if (is_marshal(em, tu, x.of_t)) {
+            // the record's bytes are laid out by clang, not by das
+            return value("{das_type(em, tu, x.t, loc)}({tu.types[x.of_t].fields[x.field].off})", PREC_PRIMARY)
+        }
         return value("{das_type(em, tu, x.t, loc)}(typeinfo offsetof<{field_name(em, tu, x.of_t, x.field)}>(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
     }
     return emit_va_arg(em, tu, *x, loc)
+}
+
+// a byte offset into a record: `k` its constant part, `terms` the das ones, an `int` field
+// offset or an `int64` element step
+struct private NullOffset {
+    k : int64
+    terms : array<string>
+}
+
+// the offset as one das integer: a lone term as it is, a sum in `int64`
+def private offset_text(offset : NullOffset) : string {
+    if (empty(offset.terms)) {
+        return "{offset.k}"
+    }
+    if (length(offset.terms) == 1 && offset.k == 0l) {
+        return offset.terms[0]
+    }
+    var parts <- [for (term in offset.terms); term |> starts_with("typeinfo") ? "int64({term})" : term]
+    if (offset.k != 0l) {
+        parts |> push("{offset.k}l")
+    }
+    return join(parts, " + ")
+}
+
+// the offset of field `field` of record `rec` added to `offset`: a union's members are operators
+// over one storage at 0, a marshal-only record's fields lie where clang puts them, a natural
+// record's where das does, which is clang's (the layout law)
+def private add_field_offset(var em : Emitter; tu : CirTu; rec, field : int; loc : CirLoc; var offset : NullOffset) {
+    if (kind_of(tu, rec) == "union") {
+        return
+    }
+    if (is_marshal(em, tu, rec)) {
+        offset.k += int64(tu.types[rec].fields[field].off)
+        return
+    }
+    offset.terms |> push("typeinfo offsetof<{field_name(em, tu, rec, field)}>(type<{das_type(em, tu, rec, loc)}>)")
+}
+
+// the byte offset C's `&((T *)0)->f...` names, `x` the `&`'s operand: a member chain (`.f`,
+// `[i]` of an array) from a member of a null pointer constant cast to a record pointer; true with
+// the offset in `offset` and whether a marshal-only record holds it in `marshal`, false for any
+// other lvalue
+def private null_offset(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc; var offset : NullOffset; var marshal : bool&) : bool {
+    if (x == null) {
+        return false
+    }
+    if (x.e == "member" && x.arrow) {
+        if (!(reaches_null(x.base) && kind_of(tu, x.base.t) == "ptr")) {
+            return false
+        }
+        let rec = tu.types[x.base.t].to
+        marshal = is_marshal(em, tu, rec)
+        add_field_offset(em, tu, rec, x.field, loc, offset)
+        return true
+    }
+    if (x.e == "member") {
+        if (!null_offset(em, tu, x.base, loc, offset, marshal)) {
+            return false
+        }
+        add_field_offset(em, tu, x.base.t, x.field, loc, offset)
+        return true
+    }
+    let decay = x.e == "index" ? x.base : null
+    if (decay == null || decay.e != "cast" || decay.cast_kind != "ArrayToPointerDecay" || kind_of(tu, decay.a.t) != "array" || !null_offset(em, tu, decay.a, loc, offset, marshal)) {
+        return false
+    }
+    // an element lies `i` elements in: C's size in marshal memory, das's (clang's) elsewhere
+    let elem = tu.types[decay.a.t].elem
+    let k = literal_index(x.i)
+    if (marshal && k >= 0l) {
+        offset.k += k * type_size(tu, elem)
+        return true
+    }
+    let size = marshal ? "{type_size(tu, elem)}l" : "int64(typeinfo sizeof(type<{das_type(em, tu, elem, loc)}>))"
+    let count = k >= 0l ? "{k}l" : "int64({index_value(em, tu, x.i, loc).text})"
+    offset.terms |> push("{count} * {size}")
+    return true
+}
+
+// `(integer)&((T *)0)->f...`, the offset idiom, `x` the cast: the offset as an integer of the
+// cast's type, never a load through null; an empty text for any other cast
+def private null_offset_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    if (x.cast_kind != "PointerToIntegral" || x.a == null || x.a.e != "un" || x.a.op != "addr") {
+        return Em()
+    }
+    var offset = NullOffset()
+    var marshal = false
+    if (!null_offset(em, tu, x.a.a, loc, offset, marshal)) {
+        return Em()
+    }
+    return value("{das_type(em, tu, x.t, loc)}({offset_text(offset)})", PREC_PRIMARY)
+}
+
+// whether `x`, a member, an index or an `&`, reaches a member of a null pointer constant
+// (`((T *)0)->f`) through its member chain
+def private null_rooted(x : CirExpr const?) : bool {
+    var at = x
+    while (at != null) {
+        if (at.e == "member" && at.arrow) {
+            return reaches_null(at.base)
+        }
+        if (at.e == "member" || at.e == "index") {
+            at = at.base
+        } elif ((at.e == "un" && at.op == "addr") || (at.e == "cast" && (at.cast_kind == "ArrayToPointerDecay" || at.cast_kind == "LValueToRValue"))) {
+            at = at.a
+        } else {
+            return false
+        }
+    }
+    return false
 }
 
 // `va_arg(v, T)`: the pop of the class C's default promotions gave the argument, `va_i` for
