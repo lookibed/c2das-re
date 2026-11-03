@@ -67,6 +67,7 @@ def test_sync(t : T?) {
         let run = run_stand_in(spec, "4,-1,255,0,-1,-1")
         t |> equal(run.tics, 2)
         t |> equal(run.rc, 0)
+        t |> equal(run.error_line, "")
         t |> success(in_sync(run))
         t |> equal(join(program_argv(stand_in_spec(0)), " "), "-timedemo demo1")
     }

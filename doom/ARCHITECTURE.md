@@ -249,16 +249,17 @@ reference, a `doom2.wad` one among them). The run's tic lines, a timed-out run's
 the first `--tics` lines, or all of them, a run that goes on past the demo's last tic desyncing
 there. Held to the whole demo, a run is in sync only when it also ends, not timed out, in the
 `timed N gametics` line with N the log's tics, the end `demo_log` requires of a native run; under
-`--tics` an exit after the compared tics passes, its exit code reported. The report names the first desynced tic, the fields that differ (`tic`, `cs`, `fb`) and the lines,
-expected against got, or `N tics in sync`, a run
-short of the compared tics, the exit code or the timeout, the first error line of a run that did
-not end in the `timed N gametics` line (`first_error_line`, matching `error` or `exception` in any
-case, since PureDOOM's `I_Error` text starts `Error: ` and a daslang panic `EXCEPTION: `), and the seconds per 35 tics over the whole process, start
-included: a sanity number, not P6.7's measure. Under `--tics N` the program's `argv` starts with
+`--tics` an exit after the compared tics passes, its exit code reported. The report names the
+first desynced tic, the fields that differ (`tic`, `cs`, `fb`) and the lines, expected against
+got, or `N tics in sync`, a run short of the compared tics, the exit code or the timeout, the first
+error line of a run that ended in neither the `timed N gametics` line nor the host's `host: stopped
+after N tics` (`first_error_line`, matching `error` or `exception` in any case, since PureDOOM's
+`I_Error` text starts `Error: ` and a daslang panic `EXCEPTION: `), and the seconds per 35 tics
+over the whole process, start included: a sanity number, not P6.7's measure. Under `--tics N` the program's `argv` starts with
 the host's `-tics N` (`program_argv`), so the program stops after the compared tics with exit code
 0 instead of playing the demo to its end or to `--timeout`.
 
 At the pin, the `source` layout under `interp` plays demo1 on freedoom2.wad through its first frames:
-tics 0 to 24 match the reference log, tic 25 desyncs (`cs=b66019e2` against `cs=ada955a8`), and the
-run panics after 137 tic lines in `R_ScaleFromGlobalAngle` (r_main.c:413), `finesine[angleb >> 19]`
+tics 0 to 24 match the reference log, frames included, tic 25 desyncs in both fields (`cs=b66019e2
+fb=908998e0` against `cs=ada955a8 fb=751dc634`), and, uncapped, the run panics after 137 tic lines in `R_ScaleFromGlobalAngle` (r_main.c:413), `finesine[angleb >> 19]`
 at index -4096, an angle the desynced state makes negative.
