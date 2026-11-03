@@ -52,6 +52,12 @@ struct Emitter {
     empty_literal : bool
     global_order : table<string; int>
     global_initialized : table<string>
+    // das's initialization-loop graph over the part: its globals with an initializer and its
+    // functions, each by C name to its index in the unit's declarations, and the names each
+    // function's body references, filled on first use (`init_reaches_itself`)
+    init_globals : table<string; int>
+    body_functions : table<string; int>
+    body_refs : table<string; array<string>>
     // values already evaluated into temporaries, by node: `hoist_items` and `pin_value` write it,
     // `unpin` erases
     hoisted : table<uint64; Em>
@@ -6444,9 +6450,10 @@ def private emit_global(var em : Emitter; tu : CirTu; d : CirDecl) {
         em.global_stores |> push_from(stores)
         return
     }
-    if (!inline_legal(em, tu, d.init)) {
+    if (!inline_legal(em, tu, d.init) || init_reaches_itself(em, tu, d)) {
         // das orders global initialization: an address of a global that is zero-initialized
-        // or declared later is taken at module init (docs/lowering-examples.md "Globals")
+        // or declared later is taken at module init (docs/lowering-examples.md "Globals"), and
+        // so is an initializer das reads as reaching its own global
         line(em, head)
         em.global_stores |> push("{das_name(em, d.name)} = {init}")
     } else {
@@ -6455,6 +6462,52 @@ def private emit_global(var em : Emitter; tu : CirTu; d : CirDecl) {
         em.global_initialized |> insert(d.name)
     }
     em.global_stores |> push_from(stores)
+}
+
+// whether das reads global `d`'s initializer as reaching `d` itself, its initialization loop
+// (`probes/test_globals.das`): an initializer depends on every global and function of the module it
+// names, a function on every one its body names, a global on its own initializer while that stays
+// inline; C's static data has no such order. The globals are decided in order, so every walk
+// sees the edges of the final module and more. A body's local named like a global counts as the
+// global, which only moves an initializer that could have stayed
+[arch(at="ARCHITECTURE_EMITTER_AGGREGATES.md#initialization-loops")]
+def private init_reaches_itself(var em : Emitter; tu : CirTu; d : CirDecl) : bool {
+    var seen : table<string>
+    var pending : array<string>
+    each_subexpr(d.init) $(x) {
+        if (x.e == "ref") {
+            pending |> push(x.name)
+        }
+    }
+    while (!empty(pending)) {
+        let name = pending |> back()
+        pending |> pop()
+        if (name == d.name) {
+            return true
+        }
+        continue if (key_exists(seen, name))
+        seen |> insert(name)
+        let gi = em.init_globals?[name] ?? -1
+        if (gi >= 0) {
+            // a global spelled before `d` ends the walk: a stored one has no initializer, and an
+            // inline one's own walk, over these edges and more, found no loop through it
+            if (em.global_order[name] > em.globals_seen) {
+                each_subexpr(tu.decls[gi].init) $(x) {
+                    if (x.e == "ref") {
+                        pending |> push(x.name)
+                    }
+                }
+            }
+        } elif (key_exists(em.body_functions, name)) {
+            if (!key_exists(em.body_refs, name)) {
+                var inscope names : table<string>
+                collect_spelled_names(tu.decls[em.body_functions[name]].body, names)
+                em.body_refs[name] <- [for (n in keys(names)); n]
+            }
+            pending |> push_from(em.body_refs[name])
+        }
+    }
+    return false
 }
 
 // whether a global initializer may stay inline: every global whose address it takes has an
@@ -6641,6 +6694,11 @@ def private order_globals(var em : Emitter; tu : CirTu) {
     for (di, d in count(), tu.decls) {
         if (d.k == "global" && !d.is_extern && in_part(em, di)) {
             em.global_order[d.name] = length(em.global_order)
+            if (d.init != null) {
+                em.init_globals[d.name] = di
+            }
+        } elif (d.k == "func" && d.body != null && in_part(em, di)) {
+            em.body_functions[d.name] = di
         }
     }
 }

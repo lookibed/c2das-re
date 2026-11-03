@@ -102,3 +102,31 @@ def test_aot_globals(t : T?) {
         }
     }
 }
+
+// two menus, each holding a function value and a pointer: `HEAD` is the first menu's initializer,
+// `GO_BODY` the body of the function it holds, `TAIL` what follows the second menu
+let menu_source = "options gen2\nstruct Menu \{\n    go : function<() : void>\n    prev : Menu?\n\}\nvar current : Menu?\nvar first : Menu = HEAD\ndef go_second \{\n    GO_BODY\n\}\nvar second : Menu = Menu(prev = unsafe(addr(first)))\nTAIL\n[export]\ndef main \{\n    invoke(first.go)\n    assert(current == unsafe(addr(second)) && deref(current).prev == unsafe(addr(first)))\n\}\n"
+
+def menus(head, go_body, tail : string) : string => menu_source |> replace("HEAD", head) |> replace("GO_BODY", go_body) |> replace("TAIL", tail)
+
+[test]
+def test_global_init_loop(t : T?) {
+    t |> run("a function value in a global initializer depends on every global its body reaches, through calls too: a cycle back is error 31104") @(t : T?) {
+        let direct = menus("Menu(go = @@go_second)", "unsafe \{\n        current = addr(second)\n    \}", "")
+        child_rejects(t, "address in the body", daslang_child("init_loop_direct", direct, true), "global variable initialization loop")
+        let called = menus("Menu(go = @@go_second)", "pick()", "def pick \{\n    unsafe \{\n        current = addr(second)\n    \}\n\}\n")
+        child_rejects(t, "address in a callee", daslang_child("init_loop_called", called, true), "global variable initialization loop")
+        let read = "options gen2\nstruct Menu \{\n    go : function<() : int>\n    n : int\n\}\nvar first : Menu = Menu(go = @@size, n = 3)\ndef size : int => first.n\n"
+        child_rejects(t, "a read of the global itself", daslang_child("init_loop_read", read, true), "global variable initialization loop")
+    }
+    t |> run("the same initializer stored by an [init] function compiles and holds C's values before main") @(t : T?) {
+        let stored = menus("default<Menu>", "unsafe \{\n        current = addr(second)\n    \}", "[init]\ndef init_globals \{\n    first = Menu(go = @@go_second)\n\}\n")
+        let r = daslang_child("init_loop_stored", stored, false)
+        t |> equal(r.rc, 0, r.out)
+    }
+    t |> run("a function value whose body reaches no global of the cycle stays inline") @(t : T?) {
+        let acyclic = "options gen2\nstruct Menu \{\n    go : function<() : void>\n    prev : Menu?\n\}\nvar current : Menu?\nvar other : Menu = Menu()\nvar first : Menu = Menu(go = @@go_other)\ndef go_other \{\n    unsafe \{\n        current = addr(other)\n    \}\n\}\nvar second : Menu = Menu(prev = unsafe(addr(first)))\n[export]\ndef main \{\n    invoke(first.go)\n    assert(current == unsafe(addr(other)) && second.prev == unsafe(addr(first)))\n\}\n"
+        let r = daslang_child("init_loop_acyclic", acyclic, false)
+        t |> equal(r.rc, 0, r.out)
+    }
+}

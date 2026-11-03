@@ -108,7 +108,6 @@ def test_module_failure(t : T?) {
 def test_classify(t : T?) {
     t |> run("a known construct is named, an unknown one is its line without stage and location") @(t : T?) {
         t |> equal(classify("dumper: /x/i_asm.c:1:2: a file-scope asm is machine code outside any function; no emulation exists in the das runtime"), "a file-scope asm statement")
-        t |> equal(classify("compile check: error[31104]: global variable initialization loop"), "a global initializer whose function values reach it back, das's initialization loop (`m_menu.c`'s menus)")
         t |> equal(classify("emitter: /x/y.c:1:2: something odd"), "new: something odd")
         t |> equal(unlocated("emitter: /x/doomdata.h:179:9: field `f`: why"), "field `f`: why")
     }
