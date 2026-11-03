@@ -36,32 +36,32 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `is_storage_bitfield`. Every answer about a record lands in a `LayoutMemo` the dumper and the
   emitter each own, so a nest of records is measured once per record; a unit search never
   retries a failed state (field, offset, alignment so far). Nothing here knows clang or das syntax.
-- `sidecar.das` - the per-project `.c2das` file as a `Sidecar` value: `find_sidecar` (the
-  path given, else `<stem>.c2das` beside the C file, else `.c2das` in its folder) and
-  `read_sidecar` (JSON; a key the row that needs it adds - `marshal`, the records read and
-  written as bytes; `stack` and `alloca_limit`; `param_writes`, `in-place` or `copy`, the
-  parameter write mode, any other value refused naming the key; `loops`, `range` or `while`, how
-  a canonical counting `for` is spelled, any other value refused naming the key; `first_member`,
-  `addr` or `reinterpret`, how the address of a member at offset 0 is spelled, any other value
-  refused naming the key; `layout`, `source`,
-  `source-cut` or `single`, the module layout of a program of several files, or an object of `mode` (one of
-  those), `threshold` (a count), `keep_together` (symbols and lists of file stems), `cut` (symbols)
-  and `profile` (a file beside the sidecar), the cycle cut's choices, any other value or key refused
-  naming it; `defines`, a list of strings
-  `NAME`, `NAME=value` or the function-like `NAME(params)=value` (params identifiers separated by
-  commas, `...` last) the dump and the libclang pass give clang as one `-D<entry>` argument each
-  (a function a host defines outside the unit, plmpeg's test hook `c2da_rt_reset`, is nothing
-  under `NAME(...)=`, its prototype and its calls alike),
-  a value that is no list or an entry of another shape refused naming the key; `over_indexed`, a list of
-  strings `Record.field`, the trailing arrays the program indexes past their length, a value that
-  is no list or an entry of another shape refused naming the key, an entry naming no record's
-  trailing array the emitter's error; `include_dirs`, a list of folders both clang passes of the
-  dump search as `-I<dir>` in order, `include_files`, the headers both passes read first as
-  `-include <file>` in order, and `program_root`, the folder whose files are the program's
-  (`ARCHITECTURE_DUMPER.md`, the file policy), each read beside the sidecar unless absolute, a value
-  of another shape refused naming the key). A key outside these is refused naming it. A key's presence is
-  `key_exists`, since json_boost's `?[]` of a missing key is a non-null sentinel
-  (`probes/test_stdlib.das`). Nothing here knows the C-IR or the emitter.
+- `sidecar.das` - the per-project `.c2das` file as a `Sidecar` value: `find_sidecar` (the path
+  given, else `<stem>.c2das` beside the C file, else `.c2das` in its folder) and `read_sidecar`
+  (JSON; a key the row that needs it adds - `marshal`, the records read and written as bytes;
+  `stack` and `alloca_limit`; `param_writes`, `in-place` or `copy`, the parameter write mode, any
+  other value refused naming the key; `loops`, `range` or `while`, how a canonical counting `for` is
+  spelled, any other value refused naming the key; `first_member`, `addr` or `reinterpret`, how the
+  address of a member at offset 0 is spelled, any other value refused naming the key; `layout`,
+  `source`, `source-cut` or `single`, the module layout of a program of several files, or an object
+  of `mode` (one of those), `threshold` (a count), `keep_together` (symbols and lists of file
+  stems), `cut` (symbols) and `profile` (a file beside the sidecar), the cycle cut's choices, any
+  other value or key refused naming it; `defines`, a list of strings `NAME`, `NAME=value` or the
+  function-like `NAME(params)=value` (params identifiers separated by commas, `...` last) the dump
+  and the libclang pass give clang as one `-D<entry>` argument each (a function a host defines
+  outside the unit, plmpeg's test hook `c2da_rt_reset`, is nothing under `NAME(...)=`, its prototype
+  and its calls alike), a value that is no list or an entry of another shape refused naming the key;
+  `over_indexed`, a list of strings `Record.field`, the trailing arrays the program indexes past
+  their length, a value that is no list or an entry of another shape refused naming the key, an
+  entry naming no record's trailing array the emitter's error; `padded`, the same for the arrays
+  indexed one past either end into the members beside them, an entry naming no integer array flanked
+  by integers of its element's width the emitter's error; `include_dirs`, a list of folders both
+  clang passes of the dump search as `-I<dir>` in order, `include_files`, the headers both passes
+  read first as `-include <file>` in order, and `program_root`, the folder whose files are the
+  program's (`ARCHITECTURE_DUMPER.md`, the file policy), each read beside the sidecar unless
+  absolute, a value of another shape refused naming the key). A key outside these is refused naming
+  it. A key's presence is `key_exists`, since json_boost's `?[]` of a missing key is a non-null
+  sentinel (`probes/test_stdlib.das`). Nothing here knows the C-IR or the emitter.
 - `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes, loops,
   first_member])`: read the sidecar (a `param_writes`, `loops` or `first_member` argument other
   than "" overrides the sidecar's key, and
@@ -130,8 +130,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `tests/fixtures/p4_main_args.c`: `--arg` reaches the C `argv` under `interp` as the native
   build's arguments do, under `jit`, under `exe` and under `aot`.
 - `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list,
-  its function-like entries and the shapes it refuses, the `over_indexed` list and the shapes it
-  refuses, the `loops`, `first_member` and `layout` values (the latter as a mode and as an object) and the ones
+  its function-like entries and the shapes it refuses, the `over_indexed` and `padded` lists and the
+  shapes they refuse, the `loops`, `first_member` and `layout` values (the latter as a mode and as an object) and the ones
   they refuse, `include_dirs` and `program_root` read beside the sidecar and the shapes they
   refuse, and an unknown key.
 - `tests/test_tier_facts.das` - the das facts the emitter relies on, each a program run under the
