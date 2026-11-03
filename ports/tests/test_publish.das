@@ -675,3 +675,31 @@ def test_head_to_head(t : T?) {
         t |> equal(fread(path_join(clone, "README.md")), readme, "a refused capture left the README as it was")
     }
 }
+
+[test]
+def test_earlier_capture(t : T?) {
+    t |> run_stand_in("a publish without --perf renders the tables and the projects row from the directory's latest capture, and writes none", "c2das_ports_earlier") @(t : T?; root, clone : string) {
+        var c = Capture(program = "lua", commit = OTHER_SHA, command = "scripts/publish_ports.sh --program lua --perf", timestamp = "2026-01-02 03:04 UTC", samples = 1, timeout = 60, machine = Machine(arch = "x86_64", cpu = "Bench CPU"))
+        c.lanes <- [Lane(name = "native", command = "run native"), Lane(name = "interp", command = "run interp")]
+        c.workloads <- [Workload(name = "startup", args = "-e", startup = true), Workload(name = "fib", args = "bench/fib.lua")]
+        c.cells <- [LaneCell(workload = "startup", lane = "native", time = 0.5lf), LaneCell(workload = "startup", lane = "interp", time = 10.0lf), LaneCell(workload = "fib", lane = "native", time = 1.5lf), LaneCell(workload = "fib", lane = "interp", time = 210.0lf)]
+        mkdir_rec(path_join(clone, "lua/perf"))
+        fwrite(path_join(clone, "lua/perf/capture_2026-01-02T030405Z.json"), write_json(JV(c)) + "\n")
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--no-convert"], out), 0, out)
+        let readme = fread(path_join(clone, "lua/README.md"))
+        for (fact in ["## Performance\n\nCaptured 2026-01-02 03:04 UTC on x86_64, Bench CPU", "- `perf/capture_*.json` - every capture", "| fib      | `bench/fib.lua` | 1.000 s ±0% | 200.000 s ±0% |", "| interpreter | 10.000 s ±0% |       20.00 |"]) {
+            t |> success(readme |> contains(fact), "README lacks {fact}:\n{readme}")
+        }
+        t |> success(!(readme |> contains(PERF_NOT_YET)), readme)
+        let top = fread(path_join(clone, "README.md"))
+        t |> success(top |> contains("| [lua](lua/README.md) | 2026-01-02 03:04 UTC | x86_64, Bench CPU |         1 |      200.00 | not measured |"), top)
+        var captures = 0
+        dir(path_join(clone, "lua/perf")) $(name) {
+            if (name |> ends_with(".json")) {
+                captures++
+            }
+        }
+        t |> equal(captures, 1, "a publish without --perf wrote a capture")
+    }
+}

@@ -238,17 +238,16 @@ def test_projects(t : T?) {
     t |> run("the top-level README keeps the charter above the marker and replaces what is under it") @(t : T?) {
         var captures : array<Capture>
         captures |> emplace(fixture())
-        let first = render_top_readme("# ports\n\ncharter\n", captures, true)
+        let first = render_top_readme("# ports\n\ncharter\n", captures)
         t |> success(first |> starts_with("# ports\n\ncharter\n\n{README_MARKER}\n\n## Programs\n\n"), first)
         t |> success(first |> contains("[lua](lua/README.md)"), first)
-        let again = render_top_readme(first + "stale\n", captures, true)
+        let again = render_top_readme(first + "stale\n", captures)
         t |> equal(again, first)
+        // without a capture the projects section is the perf method's one line
         var none : array<Capture>
-        t |> success(render_top_readme(first, none, true) |> ends_with("No program has a capture yet.\n"))
-        // without --perf the projects section is the one line the perf method audit leaves
-        t |> equal(render_top_readme(first, captures, false), "# ports\n\ncharter\n\n{README_MARKER}\n\n## Programs\n\n{PERF_NOT_YET}\n")
+        t |> equal(render_top_readme(first, none), "# ports\n\ncharter\n\n{README_MARKER}\n\n## Programs\n\n{PERF_NOT_YET}\n")
         // a README without the marker is the charter whole, its trailing blanks trimmed
-        t |> equal(render_top_readme("# ports\ncharter", captures, false), "# ports\ncharter\n\n{README_MARKER}\n\n## Programs\n\n{PERF_NOT_YET}\n")
+        t |> equal(render_top_readme("# ports\ncharter", none), "# ports\ncharter\n\n{README_MARKER}\n\n## Programs\n\n{PERF_NOT_YET}\n")
     }
 }
 

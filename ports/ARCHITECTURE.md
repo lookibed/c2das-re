@@ -91,11 +91,12 @@ commit, or, without a stamp, as converted at an unrecorded commit and published 
 
 ## 4. The measurement {#measurement}
 
-`--perf` is off by default. Without `--perf` the publisher measures nothing and writes
-no capture, and the program's perf section and the top-level projects section are the one line
-``not yet: the publisher measures only under `--perf`, off by default because a capture takes
-hours and runs only on an idle machine`` (`PERF_NOT_YET`). With `--perf` it
-measures as this section states and renders the tables.
+`--perf` is off by default. Without `--perf` the publisher measures nothing and writes no
+capture; with it, it measures as this section states and writes one. Either way the program's perf
+section and its row of the top-level projects table render from the directory's latest capture.
+A program with no capture has the perf section ``not yet: the publisher measures only under
+`--perf`, off by default because a capture takes hours and runs only on an idle machine``
+(`PERF_NOT_YET`), and the projects section is that line when no program has a capture.
 
 The lanes are perf's (`perf/ARCHITECTURE.md` section 2), built by `perf/perf_lanes.das`, the
 module `perf/run.das` builds its kernels' lanes with:
