@@ -62,9 +62,12 @@ closed. A loop body takes a jump to its end as the next iteration and gets
 none; the block is a loop's when the line that opens it is a `while`, the only loop the lowering
 spells. daslang's optimizer also moves the statements after an `if` with no `else` whose
 branch ends in `return`, `break` or `continue` into an `else`, a label among them, so a goto above
-that `if` misses the label under the interpreter (lookibed/daScript#8): once a function is spelled,
-`guard_label_folds` gives each such `if` with a label after it in its block, which a goto above the
-`if`'s end names, `else { c_label_end() }`, an `else` the optimizer keeps. A goto after the `if`
+that `if` misses the label under the interpreter (lookibed/daScript#8). `emit_if` marks the closing
+line of each C `if` with no `else` whose branch ends so as spelled (`closes`: a `return`, a `break`
+or `continue` that stays das's, or an `if` whose every arm does, which the optimizer turns into one
+`return` of a `?:`), and once a function with labels is spelled `guard_label_folds` gives each
+marked `if` with a label after it in its block, which a goto above the `if`'s end names,
+`else { c_label_end() }`, an `else` the optimizer keeps. A goto after the `if`
 sits in the folded tail with its label and needs none, so Duff's `if (count <= 0) { return 0 }`
 before its dispatch stays as written.
 
@@ -115,7 +118,12 @@ when a `break` needs it. A switch is `let _condN = x` (a declaration a later cas
 one `if`/`elif` per case label to that label's `goto`, `else` to `default` or the end, then the body
 flat with every case label `label K:  // case v`. A C `break` of an open loop or switch is a goto to
 its end and a `continue` of an open loop one to its test or increment (`break_gotos`, `cont_flags`);
-a das loop or matched-flag switch inside keeps das's own. The labels the lowering adds are numbered
+a das loop or matched-flag switch inside keeps das's own. A block left braced that holds an open
+construct holds its labels, and a goto leaving such a block fails under the interpreter: a das
+loop's body claims a goto numbered below its label count and jumps to a slot of -1 (F60,
+lookibed/daScript#19), any other labelled block passes no goto outward (F63); so every such block a
+goto leaves is opened as well (`open_left_blocks`: a bare block loses its braces, an arm or body
+opens its `if`, loop or switch), until none is left. The labels the lowering adds are numbered
 after the function's C labels, which keep their numbers, and the comment names the construct. A
 goto into an arm of a setjmp `if`, or an open switch that a goto from another case re-dispatches,
 fails closed. The open form is the C's own jumps made explicit: no flag is tested and no loop
