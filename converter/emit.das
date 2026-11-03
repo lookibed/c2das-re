@@ -89,6 +89,8 @@ struct Emitter {
     entered : table<uint64>
     case_labels : table<uint64; int>
     label_count : int
+    // whether the function being spelled holds a `FOLD_MARK`
+    fold_marks : bool
     // a label a goto from another case group of its switch reaches (`goto dflt` in lstrlib.c's
     // `match`), by the switch body it splits; the switch bodies that hold one, which take the
     // matched-flag loop, each with the das label that restarts it; and, once the switch is
@@ -197,6 +199,9 @@ let ARGC = "c_argc"
 let ARGV = "c_argv"
 let C_MAIN = "c_main"
 let LABEL_END = "c_label_end"
+// the end of the closing line of an `if` `guard_label_folds` may give an `else`, dropped once the
+// function is spelled
+let FOLD_MARK = "\t"
 let LAYOUT_CHECK = "c2das_layout_check"
 let LATE_BIND = "c2das_late_bind"
 let INIT_GLOBALS = "c2das_init_globals"
@@ -3363,8 +3368,14 @@ def private emit_if(var em : Emitter; tu : CirTu; st : CirStmt; head : string) {
         em.depth--
         open_block(em, "\} else")
         emit_body(em, tu, st.else_s)
+        close_block(em)
+        return
     }
-    close_block(em)
+    // daslang's optimizer may fold what follows this `if` into an `else` (`guard_label_folds`)
+    let foldable = head == "if" && closes(em, st.then_s)
+    em.depth--
+    line(em, foldable ? "\}{FOLD_MARK}" : "\}")
+    em.fold_marks ||= foldable
 }
 
 // C `continue`: das's inside a loop body; inside a matched-flag switch loop it sets the
@@ -3760,6 +3771,8 @@ struct LabelPlan {
     labels : table<string; LabelSite>
     gotos : array<CirStmt const?>
     goto_sites : array<LabelSite>
+    // the statement of every path entry
+    nodes : table<uint64; CirStmt const?>
     // the case labels, each with its site
     cases : array<CirStmt const?>
     case_sites : array<LabelSite>
@@ -3788,15 +3801,16 @@ def private plan_labels(var em : Emitter; body : CirStmt const?) {
         while (common < length(target.path) && common < length(plan.goto_sites[idx].path) && target.path[common] == plan.goto_sites[idx].path[common]) {
             common++
         }
-        open_path(em, target, common)
+        open_path(em, target, common, length(target.path))
         plan_cross_group(em, g, target, plan.goto_sites[idx])
     }
     for (at in plan.case_sites) {
         let level = find_index(at.path, at.switches |> back())
         if (level + 1 < length(at.path)) {
-            open_path(em, at, level)
+            open_path(em, at, level, length(at.path))
         }
     }
+    open_left_blocks(em, plan)
     for (c, at in plan.cases, plan.case_sites) {
         if (key_exists(em.flag_switches, at.switches |> back()) && key_exists(em.flatten, at.switches |> back())) {
             fail(em, "a switch spelled open, for a goto into its body or a case label below its level, that a goto from another case re-dispatches is not lowered", c.loc)
@@ -3816,8 +3830,8 @@ def private plan_labels(var em : Emitter; body : CirStmt const?) {
 // a labelled block that passes no goto outward (docs/probe-findings.md F63), and the second an
 // `if` whose branch ends in `return`, which daslang's optimizer folds the following labels under
 // (lookibed/daScript#8)
-def private open_path(var em : Emitter; site : LabelSite; from : int) {
-    for (depth in range(from, length(site.path))) {
+def private open_path(var em : Emitter; site : LabelSite; from, to : int) {
+    for (depth in range(from, to)) {
         let owner = site.owners[depth]
         if (owner == null) {
             em.flatten |> insert(site.path[depth])
@@ -3836,6 +3850,43 @@ def private open_path(var em : Emitter; site : LabelSite; from : int) {
         }
         em.opened |> insert(intptr(owner))
     }
+}
+
+// a block that keeps its braces and holds an open construct holds that construct's labels, and a
+// goto that leaves it then fails under the interpreter: a das loop's body claims every goto
+// numbered below its label count and jumps a goto out to a slot of -1 (F60, lookibed/daScript#19),
+// any other block claims every goto raised in it (F63); so every such block a goto leaves is
+// opened too, up to the goto's common block with its label, until no such block is left
+def private open_left_blocks(var em : Emitter; plan : LabelPlan) {
+    var changed = true
+    while (changed && empty(em.error)) {
+        changed = false
+        for (g, from in plan.gotos, plan.goto_sites) {
+            var common = 0
+            get(plan.labels, g.label_name) $(target) {
+                while (common < length(target.path) && common < length(from.path) && target.path[common] == from.path[common]) {
+                    common++
+                }
+            }
+            for (depth in range(common, length(from.path))) {
+                let key = from.path[depth]
+                continue if (key_exists(em.flatten, key) || key_exists(em.entered, key))
+                if (holds_open(em, plan.nodes?[key] ?? null)) {
+                    open_path(em, from, depth, depth + 1)
+                    changed = true
+                }
+            }
+        }
+    }
+}
+
+// whether statement tree `st` holds a construct spelled open
+def private holds_open(em : Emitter; st : CirStmt const?) : bool {
+    var found = false
+    each_stmt(st) $(s) {
+        found ||= key_exists(em.opened, intptr(s))
+    }
+    return found
 }
 
 // arm or body `st` of an open statement, when `flat`, spelled at the statement's level
@@ -3954,6 +4005,7 @@ def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; owne
         site.path |> push(intptr(st))
         site.bare |> push(false)
         site.owners |> push(owner)
+        plan.nodes[intptr(st)] = st
         walk_labels(em, st, true, null, site, plan)
         site.path |> pop()
         site.bare |> pop()
@@ -3979,6 +4031,7 @@ def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; owne
         site.path |> push(intptr(st))
         site.bare |> push(bare)
         site.owners |> push(bare ? null : owner)
+        plan.nodes[intptr(st)] = st
         for (child in st.body) {
             walk_labels(em, child, true, null, site, plan)
         }
@@ -3990,6 +4043,7 @@ def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; owne
         site.path |> push(intptr(st.body_s))
         site.bare |> push(false)
         site.owners |> push(st)
+        plan.nodes[intptr(st.body_s)] = st.body_s
         site.switches |> push(intptr(st.body_s))
         site.groups |> push(-1)
         var marker = false
@@ -5422,8 +5476,9 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
         line(em, "return {zero_of(em, tu, tu.types[d.t].ret, ret)}")
     }
     close_block(em)
-    if (em.label_count > 0) {
+    if (em.fold_marks) {
         guard_label_folds(em, header_at)
+        em.fold_marks = false
     }
     line(em, "")
     em.function_count++
@@ -5444,29 +5499,36 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
 // the indentation of spelled line `text`, in levels
 def private indent_of(text : string) : int => (length(text) - length(strip_left(text))) / 4
 
-// whether line `at` closes an `if` with no `else` whose branch ends in `return`, `break` or
-// `continue`: the line `}` at the `if`'s indent, the branch's last line one deeper
-def private closes_leaving_if(lines : array<string>; at, depth : int) : bool {
-    if (strip(lines[at]) != "\}" || at < 2 || indent_of(lines[at - 1]) != depth + 1) {
+// whether C statement `st` ends, as spelled where it stands, the way daslang's optimizer folds
+// after: a `return`, or a `break` or `continue` that stays das's (one of an open loop or switch is a
+// `goto`), a block whose last statement does, or an `if` whose every arm does (the optimizer spells
+// an `if` whose arms all return as one `return` of a `?:`)
+def private closes(em : Emitter; st : CirStmt const?) : bool {
+    if (st == null) {
         return false
     }
-    let last = strip(lines[at - 1])
-    if (!(last |> starts_with("return")) && last != "break" && last != "continue") {
-        return false
+    if (st.s == "compound") {
+        return !empty(st.body) && closes(em, st.body |> back())
     }
-    var opener = at - 1
-    while (opener > 0 && indent_of(lines[opener]) > depth) {
-        opener--
+    if (st.s == "if") {
+        return st.else_s != null && closes(em, st.then_s) && closes(em, st.else_s)
     }
-    return strip(lines[opener]) |> starts_with("if (")
+    if (st.s == "break") {
+        return empty(em.break_gotos) || empty(em.break_gotos |> back())
+    }
+    if (st.s == "continue") {
+        return empty(em.cont_flags) || !(em.cont_flags |> back() |> starts_with("goto "))
+    }
+    return st.s == "return"
 }
 
 // daslang's optimizer moves the statements after an `if` with no `else` whose branch ends in
 // `return`, `break` or `continue` into an `else`, a label among them too, so a goto from outside
 // that tail misses the label under the interpreter (lookibed/daScript#8, docs/probe-findings.md
-// F60): such an `if` with a label after it in its block that a goto above the `if`'s end reaches,
-// in the function spelled from line `from` of the output on, gets `else { c_label_end() }`, which
-// the optimizer keeps
+// F60): `emit_if` marks the closing line of every C `if` with no `else` whose branch `closes`, and
+// such an `if` with a label after it in its block that a goto above the `if`'s end reaches, in the
+// function spelled from line `from` of the output on, gets `else { c_label_end() }`, which the
+// optimizer keeps; every mark is dropped, and only a function with labels is guarded
 [arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-labels")]
 def private guard_label_folds(var em : Emitter; from : int) {
     var lines <- split(join([for (idx in range(from, length(em.out))); em.out[idx]], ""), "\n")
@@ -5487,7 +5549,7 @@ def private guard_label_folds(var em : Emitter; from : int) {
         var up = at - 1
         // the lines above the label in its block, up to the line that opens the block
         while (up > 0 && (indent_of(lines[up]) >= depth || empty(strip(lines[up])))) {
-            if (indent_of(lines[up]) == depth && closes_leaving_if(lines, up, depth)) {
+            if (indent_of(lines[up]) == depth && lines[up] |> ends_with(FOLD_MARK) && em.label_count > 0) {
                 get(gotos, name) $(jumps) {
                     // a goto after the `if` sits in the tail with the label; a goto reaches its
                     // label only from the label's block or a deeper one
@@ -5501,9 +5563,6 @@ def private guard_label_folds(var em : Emitter; from : int) {
             up--
         }
     }
-    if (empty(guarded)) {
-        return
-    }
     var out : array<string>
     for (at, text in range(length(lines)), lines) {
         if (key_exists(guarded, at)) {
@@ -5511,7 +5570,7 @@ def private guard_label_folds(var em : Emitter; from : int) {
             out |> push("{pad}\} else \{\n{pad}    {LABEL_END}()\n{pad}\}\n")
             em.label_end = true
         } elif (at < length(lines) - 1) {
-            out |> push(text + "\n")
+            out |> push((text |> ends_with(FOLD_MARK) ? slice(text, 0, length(text) - length(FOLD_MARK)) : text) + "\n")
         }
     }
     em.out |> resize(from)

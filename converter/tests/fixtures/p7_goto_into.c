@@ -297,6 +297,65 @@ out:
     return r + 1;
 }
 
+/* an open loop inside a das loop's body, and a goto out of that body: the outer loop opens too */
+static int out_of_loop(int k) {
+    int s = 0;
+    for (int r = 0; r < 3; r++) {
+        int i = 0;
+        if (k)
+            goto in;
+        while (i < 5) {
+            i++;
+        in:
+            s += i;
+            if (s > 12)
+                goto out;
+        }
+        s += 100;
+    }
+    s = -s;
+out:
+    return s;
+}
+
+/* an open loop inside an if's arm, and a goto out of the arm: the if opens too */
+static int out_of_arm(int k, int z) {
+    int s = 0, i = 0;
+    if (z) {
+        if (k)
+            goto in;
+        while (i < 5) {
+            i++;
+        in:
+            s += i;
+            if (s > 6)
+                goto out;
+        }
+        s += 100;
+    }
+    s = -s;
+out:
+    return s;
+}
+
+/* a branch that ends in an if whose arms all return, before a label a goto above names */
+static int arms_return(int k) {
+    int s = 0;
+    if (k == 1)
+        goto out;
+    if (k == 2) {
+        s = 1;
+        if (k)
+            return 5;
+        else
+            return 7;
+    }
+    s = 3;
+out:
+    s += 10;
+    return s;
+}
+
 int main(void) {
     int src[19], dst[19], k;
     for (k = 0; k < 19; k++) { src[k] = k * 3; dst[k] = -1; }
@@ -318,6 +377,7 @@ int main(void) {
     printf("%d %d %d %d\n", into_forever(0), into_forever(7), into_do(1), into_do(5));
     printf("%d %d %d %d %d\n", into_for_decl(0), into_for_decl(1), bare_arm(9), bare_arm(2), bare_arm(0));
     printf("%d %d\n", nested_breaks(0), nested_breaks(1));
+    printf("%d %d %d %d %d %d %d %d\n", out_of_loop(0), out_of_loop(1), out_of_arm(0, 1), out_of_arm(1, 1), out_of_arm(1, 0), arms_return(1), arms_return(2), arms_return(3));
     printf("%d %d %d %d %d\n", past_return(1, 100), past_return(0, 5), plain_past_return(1), plain_past_return(2), plain_past_return(3));
     return 0;
 }
