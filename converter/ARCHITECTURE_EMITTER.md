@@ -230,20 +230,20 @@ are in `ARCHITECTURE_EMITTER_LOOPS.md`; `if` chains spell `elif` when the nested
 A string literal outside a pointer or `char[N]` context (where the empty one has no das spelling
 either, F10) fails closed.
 
-A marshal-only record - one the sidecar lists under `marshal`, by tag or typedef name - lives
-in C memory as bytes at clang's offsets and as a value is the naturally laid out das struct of
-its fields, which carries no layout assertion (`docs/lowering-examples.md` "Packed structs").
-Beside the struct the emitter writes `read_T(bytes, ofs)`, `write_T(bytes, ofs, v)` and a
+A marshal-only record - one the sidecar lists under `marshal`, by tag or typedef name - lives in C
+memory as bytes at clang's offsets and as a value is the naturally laid out das struct of its
+fields, which carries no layout assertion (`docs/lowering-examples.md` "Packed structs"). Beside the
+struct the emitter writes `read_T(bytes, ofs)`, `write_T(bytes, ofs, v)` and a
 `read_T_f`/`write_T_f` pair per scalar field, each a `crt::memcpy` of the field's C size at its
-offset, so no alignment is assumed and the value side is a plain struct copy. An array field
-(C reaches one only by decay, `&` or `sizeof`) gets `ptr_T_f(bytes, ofs)`, its decay, the pointer
-to its first element where it lies (a row of a 2-D one): `p->a[i]` is `deref(ptr_T_a(p, 0) + i)`
-to read, store and step, `&p->a[i]` that pointer plus `i`, `&p->a` it reinterpreted. A pointer to such a record is
-`uint8?`: `p->f`, `(*p).f` and `p[i].f` read through `read_T_f`, a store or step into them
-writes through `write_T_f` around the read, `*p` is `read_T(p, 0)`, `*p = v` is `write_T(p, 0,
-v)`, `sizeof` is clang's size as a literal, and a pointer step, `p + n`, `p[i]`, `p - q` scale
-by that size. A packed record the sidecar does not list, the address of a marshal-only value,
-an array of the record and a record or array-of-records field inside one fail closed, and so
+offset (no alignment assumed), the value side a plain struct copy. An array field (reached by decay,
+`&` or `sizeof`) gets `ptr_T_f(bytes, ofs)`, the pointer to its first element (a row of a 2-D one):
+`p->a[i]` is `deref(ptr_T_a(p, 0) + i)` to read, store and step, `&p->a[i]` that pointer plus `i`,
+`&p->a` it reinterpreted; an element is a typed load at the packed offset, unchecked as in C. A
+pointer to such a record is `uint8?`: `p->f`, `(*p).f` and `p[i].f` read through `read_T_f`, a store
+or step into them writes through `write_T_f` around the read, `*p` is `read_T(p, 0)`, `*p = v` is
+`write_T(p, 0, v)`, `sizeof` is clang's size as a literal, and a pointer step, `p + n`, `p[i]`, `p -
+q` scale by that size. A packed record the sidecar does not list, the address of a marshal-only
+value, an array of the record and a record or array-of-records field inside one fail closed, and so
 does a packed record holding a `jmp_buf`, which das spells as `CJmpBuf`.
 
 The switch ladder and the labels (`switch`, `goto`, a goto into another case) are in
