@@ -1015,11 +1015,25 @@ def p4_csmith_more_fixtures(t : T?) {
         has_text(t, text, "var private p6_extern_array__third : int? = unsafe(addr(_c_table[2]))\n")
         has_text(t, text, "    return grid[1][1] + grid[0][1]\n")
     }
+    t |> run("a block-scope `extern` or prototype with no file-scope declaration declares the unit-level entity") @(t : T?) {
+        var text : string
+        check_fixture(t, "p6_block_extern", text)
+        // the first declaration is the unit's, before the function; the later definition completes it
+        has_text(t, text, "var counter : int = 40\nvar limit : int = 2\nvar squares : int[4] = fixed_array(0, 1, 4, 9)\n")
+        // a local and a parameter named like the function's block-scope `extern` take free names
+        has_text(t, text, "def private p6_block_extern__hidden(limit1 : int) : int \{\n    var counter1 : int = 100\n    \{\n        counter += limit\n")
+        has_text(t, text, "    return squares[3] + int(int64(addr(squares[3]) - addr(squares[0])))\n")
+        // a prototype hides a local too, and a static after it hoists under the enclosing function
+        has_text(t, text, "    var scale1 : int = 2\n    \{\n        twice_calls++\n        return scale(k) * twice_calls + scale(1)\n")
+        // a name declared outside the program binds by its file-scope name
+        has_text(t, text, "fprintf(crt::c_stdout(), ")
+        // a hoisted static skips the name a block-scope `extern` gives a global
+        has_text(t, text, "var private tally_n1 : int = 5\nvar tally_n : int = 7\n")
+    }
     t |> run("csmith shapes: what the lowering refuses, and the addresses it keeps checked") @(t : T?) {
         rejects(t, "extern_never_defined", "extern int arr[];\nint main(void) \{ return arr[0]; \}\n", "`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines")
         rejects(t, "extern_never_defined_init", "extern int arr[];\nint *p = arr;\nint main(void) \{ return 0; \}\n", "`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines")
-        rejects(t, "hidden_block_extern", "int x = 40;\nint main(void) \{ int x = 1; \{ extern int x; return x; \} \}\n", "a block-scope `extern` declaration of `x`, which a local of the function also names, is not lowered yet")
-        rejects(t, "late_block_extern", "int main(void) \{ \{ extern int y; return y; \} \}\nint y = 3;\n", "a block-scope `extern` declaration of `y` with no file-scope declaration before it is not lowered yet")
+        rejects(t, "block_extern_never_defined", "int main(void) \{ extern int arr[]; return arr[0]; \}\n", "`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines")
         // a literal past `int64` is no constant below the length: it takes the checked form
         let huge = converts(t, "past_int64_index", "static int a[3];\nstatic int *far(void) \{ return &a[18446744073709551615ULL]; \}\nint main(void) \{ return far() == 0; \}\n")
         has_text(t, huge, "addr(past_int64_index__a[0]) + end_index(18446744073709551615ul, 3)")

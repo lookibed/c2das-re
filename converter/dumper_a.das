@@ -97,8 +97,8 @@ struct Dumper {
     // hoisted local static's name passes both
     file_scope_names : table<string>
     fn_all_locals : table<string>
-    // the names of the current function's locals declared so far
-    fn_locals : table<string>
+    // the names the current function's block-scope `extern` declarations and prototypes declare
+    fn_extern_names : table<string>
     records : array<ClangRecord>
     record_by_spelling : table<string; int>
     record_by_loc : table<string; int>
@@ -2493,19 +2493,55 @@ def private slot_expr(var d : Dumper; kids : JsonValue?; idx : int; var ok : boo
     return e
 }
 
+// `want` when no hoisted static, file-scope name of the unit, or parameter or local of the
+// function takes it, else `<want>1` and up
+def private free_fn_name(d : Dumper; want : string) : string {
+    var name = want
+    var n = 1
+    while (key_exists(d.hoisted_names, name) || key_exists(d.file_scope_names, name) || key_exists(d.fn_all_locals, name)) {
+        name = "{want}{n}"
+        n++
+    }
+    return name
+}
+
+// the C-IR name of a parameter or local: its own, or a free one when a block-scope `extern` or
+// prototype of the function names it, since that declaration's references spell the
+// program-wide name and must not bind to the local
+def private local_name(var d : Dumper; c_name : string) : string {
+    if (!key_exists(d.fn_extern_names, c_name)) {
+        return c_name
+    }
+    let name = free_fn_name(d, c_name)
+    d.fn_all_locals |> insert(name)
+    return name
+}
+
+// a block-scope `extern` declaration or function prototype declares the program-wide entity: one
+// declared before binds to that declaration (one outside the program by its file-scope name, as a
+// reference does), and the first is the unit-level declaration it would be at file scope, placed
+// before the function
+def private dump_block_extern(var d : Dumper; js : JsonValue?) : bool {
+    let previous = js?["previousDecl"] ?? ""
+    if (!empty(previous)) {
+        d.decl_names[js?["id"] ?? ""] = d.decl_names?[previous] ?? linkage_name(d, js?["name"] ?? "")
+        return true
+    }
+    var cd = dump_decl(d, js)
+    if (cd == null) {
+        return false
+    }
+    d.tu.decls |> push(cd)
+    return true
+}
+
 // a local `static` is a module global named `<fn>_<name>` (docs/c-feature-matrix.md section 2):
 // the dumper hoists it into `decls` with `from_func` and the body refers to the hoisted name
 def private hoist_static(var d : Dumper; js : JsonValue?; at : CirLoc; t : int) : bool {
     let c_name = js?["name"] ?? ""
     // `<fn>_<name>` first, numbered past another hoisted static, a file-scope name of the unit and
     // a parameter or local of the function
-    let want = "{d.current_fn}_{c_name}"
-    var hoisted = want
-    var n = 1
-    while (key_exists(d.hoisted_names, hoisted) || key_exists(d.file_scope_names, hoisted) || key_exists(d.fn_all_locals, hoisted)) {
-        hoisted = "{want}{n}"
-        n++
-    }
+    let hoisted = free_fn_name(d, "{d.current_fn}_{c_name}")
     d.hoisted_names |> insert(hoisted)
     d.decl_names[js?["id"] ?? ""] = hoisted
     var ok = true
@@ -2548,30 +2584,15 @@ def private dump_var(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
         return new CirStmt(s = "null", loc = at)
     }
     if ((js?["storageClass"] ?? "") == "extern") {
-        // a block-scope `extern` declares no object: its references bind to the file-scope
-        // entity it redeclares
-        let bound = d.decl_names?[js?["previousDecl"] ?? ""] ?? ""
-        if (key_exists(d.fn_locals, bound)) {
-            // the C-IR names the file-scope entity and the local alike, so the reference
-            // would bind to the local
-            fail(d, "a block-scope `extern` declaration of `{bound}`, which a local of the function also names, is not lowered yet", at)
-            return null
-        }
-        if (empty(bound)) {
-            fail(d, "a block-scope `extern` declaration of `{js?["name"] ?? ""}` with no file-scope declaration before it is not lowered yet", at)
-            return null
-        }
-        d.decl_names[js?["id"] ?? ""] = bound
-        return new CirStmt(s = "null", loc = at)
+        return dump_block_extern(d, js) ? new CirStmt(s = "null", loc = at) : null
     }
     var ok = true
     let init = initializer_of(d, js, at, ok)
     if (!ok) {
         return null
     }
-    var st = new CirStmt(s = "decl", name = js?["name"] ?? "", t = t, loc = at)
+    var st = new CirStmt(s = "decl", name = local_name(d, js?["name"] ?? ""), t = t, loc = at)
     d.decl_names[js?["id"] ?? ""] = st.name
-    d.fn_locals |> insert(st.name)
     if (!enum_dims(d, node_key(d, js), t, at, st.dims)) {
         delete_stmt(st)
         return null
@@ -2606,6 +2627,12 @@ def private dump_decl_stmt(var d : Dumper; js : JsonValue?; var into : array<Cir
         let v = (vars as _array)[vidx]
         if (node_kind(v) == "RecordDecl" || node_kind(v) == "EnumDecl" || node_kind(v) == "TypedefDecl") {
             if (!dump_type_decl(d, v)) {
+                return false
+            }
+            continue
+        }
+        if (node_kind(v) == "FunctionDecl") {
+            if (!dump_block_extern(d, v)) {
                 return false
             }
             continue
@@ -2830,9 +2857,23 @@ def private collect_local_names(js : JsonValue?; var names : table<string>) {
     }
 }
 
+// the names the block-scope `extern` declarations and function prototypes under `js` declare
+def private collect_block_externs(js : JsonValue?; var names : table<string>) {
+    for (idx in range(child_count(js))) {
+        let kid = (js?["inner"] as _array)[idx]
+        let kind = node_kind(kid)
+        if (kind == "FunctionDecl" || (kind == "VarDecl" && (kid?["storageClass"] ?? "") == "extern")) {
+            names |> insert(kid?["name"] ?? "")
+        }
+        collect_block_externs(kid, names)
+    }
+}
+
 // the names the program's top-level declarations define: a function with a body, a variable
 // that is not `extern` or carries an initializer
 def private collect_defined_names(var d : Dumper; js : JsonValue?) {
+    // a block-scope `extern` names a unit-level entity a hoisted static must not take
+    collect_block_externs(js, d.file_scope_names)
     for (idx in range(child_count(js))) {
         let decl = (js?["inner"] as _array)[idx]
         let kind = node_kind(decl)
@@ -3217,6 +3258,39 @@ def private initializer_of(var d : Dumper; js : JsonValue?; at : CirLoc; var ok 
     return init
 }
 
+// a function's parameters and body into `fn`; the parameters of a definition (`defines`) are
+// locals of the function being dumped
+def private dump_fn_children(var d : Dumper; js : JsonValue?; var fn : CirDecl?; defines : bool) : bool {
+    let kids = js?["inner"]
+    for (idx in range(child_count(js))) {
+        let child = (kids as _array)[idx]
+        let ck = node_kind(child)
+        if (ck == "ParmVarDecl") {
+            let pat = loc_of(d, child)
+            let pt = node_type(d, child, pat)
+            if (pt < 0) {
+                return false
+            }
+            let pname = defines ? local_name(d, child?["name"] ?? "") : child?["name"] ?? ""
+            fn.params |> push(CirParam(name = pname, t = pt))
+            d.decl_names[child?["id"] ?? ""] = pname
+        } elif (ck == "CompoundStmt") {
+            d.label_names |> clear()
+            collect_labels(d, child)
+            fn.body = dump_stmt(d, child)
+            if (fn.body == null) {
+                return false
+            }
+        } elif (ck |> ends_with("Attr") || ck == "FullComment") {
+            continue // attributes: `check_attributes`; a doc comment changes nothing
+        } else {
+            fail(d, "unsupported child `{ck}` of function `{fn.c_name}`", loc_of(d, child))
+            return false
+        }
+    }
+    return true
+}
+
 def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
     let at = loc_of(d, js)
     let kind = node_kind(js)
@@ -3235,38 +3309,17 @@ def dump_decl(var d : Dumper; js : JsonValue?) : CirDecl? {
             return null
         }
         var fn = new CirDecl(k = "func", name = name, c_name = c_name, t = t, is_static = is_static, loc = at)
-        d.current_fn = c_name
-        d.fn_locals |> clear()
-        d.fn_all_locals <- local_names(js)
-        let kids = js?["inner"]
-        for (idx in range(child_count(js))) {
-            let child = (kids as _array)[idx]
-            let ck = node_kind(child)
-            if (ck == "ParmVarDecl") {
-                let pat = loc_of(d, child)
-                let pt = node_type(d, child, pat)
-                if (pt < 0) {
-                    delete_decl(fn)
-                    return null
-                }
-                fn.params |> push(CirParam(name = child?["name"] ?? "", t = pt))
-                d.decl_names[child?["id"] ?? ""] = child?["name"] ?? ""
-                d.fn_locals |> insert(child?["name"] ?? "")
-            } elif (ck == "CompoundStmt") {
-                d.label_names |> clear()
-                collect_labels(d, child)
-                fn.body = dump_stmt(d, child)
-                if (fn.body == null) {
-                    delete_decl(fn)
-                    return null
-                }
-            } elif (ck |> ends_with("Attr") || ck == "FullComment") {
-                continue // attributes: `check_attributes`; a doc comment changes nothing
-            } else {
-                fail(d, "unsupported child `{ck}` of function `{c_name}`", loc_of(d, child))
-                delete_decl(fn)
-                return null
-            }
+        // a prototype (a block-scope one among them) leaves the function being dumped alone
+        let defines = has_child_kind(js, "CompoundStmt")
+        if (defines) {
+            d.current_fn = c_name
+            d.fn_all_locals <- local_names(js)
+            d.fn_extern_names |> clear()
+            collect_block_externs(js, d.fn_extern_names)
+        }
+        if (!dump_fn_children(d, js, fn, defines)) {
+            delete_decl(fn)
+            return null
         }
         return fn
     }

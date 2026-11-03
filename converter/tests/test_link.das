@@ -378,6 +378,7 @@ def test_hoisted(t : T?) {
 }
 
 let EXTERN_ARRAYS = "converter/tests/fixtures/p6_extern_array_link"
+let BLOCK_EXTERNS = "converter/tests/fixtures/p6_block_extern_link"
 
 [test]
 def test_extern_arrays(t : T?) {
@@ -403,6 +404,24 @@ def test_extern_arrays(t : T?) {
         let use_text = fread(path_join(path_join(work_root, "source"), "use.das"))
         t |> success(use_text |> contains("var private middle : int? = unsafe(addr(_c_table[2]))\n"), use_text)
         t |> success(use_text |> contains("    return addr(_c_table[0]) + end_index(k, 5)\n"), use_text)
+    }
+    t |> run("names one unit declares only in blocks (`extern` objects, an array without a length, a prototype) bind to another unit's definitions") @(t : T?) {
+        let paths <- [for (stem in ["data", "prog"]); "{BLOCK_EXTERNS}/{stem}.c"]
+        let native = native_run(default_clang(), ["-w", "-funsigned-char"], paths, path_join(work_root, "block_native"), 60.0, array<string>())
+        t |> equal(native.built, true, native.output)
+        for (layout in ["single", "source"]) {
+            let out_dir = path_join(work_root, "block_{layout}")
+            let res <- convert_program(paths, out_dir, "linux", "", "", "", "", "main", layout)
+            if (!res.ok) {
+                t |> failure("{layout}: {res.error}")
+                continue
+            }
+            var out : string
+            t |> equal(run_tier(res.das_path, "interp", out_dir, out, CONVERTED_MODULES), native.rc, layout)
+            t |> equal(out, native.output, layout)
+        }
+        let prog_text = fread(path_join(path_join(work_root, "block_source"), "prog.das"))
+        t |> success(prog_text |> contains("    return addr(_c_table[0]) + end_index(k, 5)\n"), prog_text)
     }
     t |> run("an array no unit defines, or one declared with another length than its definition's, is refused") @(t : T?) {
         refused(t, "never_defined", [(name = "a.c", text = "extern int arr[];\nint main(void) \{ return arr[0]; \}\n"), (name = "b.c", text = "extern int arr[];\nint *at(int k) \{ return &arr[k]; \}\n")], ["`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines", "a.c:1"])
