@@ -197,6 +197,16 @@ arguments as C gives them and the converted comparator's `@@` value; the CRT bin
 since its `qsort` cannot call back into das (F33). The value of a function the unit does not
 define (`strcmp` passed as a comparator) and a pointer to a variadic function fail closed.
 
+### Initialization loops {#initialization-loops}
+
+das refuses a global whose initializer reaches the global itself (error 31104), where an initializer
+depends on every global and function of its module it names, `@@f` included, a function on every one
+its body names, transitively (`probes/test_globals.das`); C's static data has no such order. So,
+globals in C order, an initializer that reaches its own global through the module's function bodies
+and the initializers still inline is stored in `c2das_init_globals` like an address of a later global
+(`init_reaches_itself`, `converter/tests/fixtures/p6_global_init_loop.c`); a stored global has no
+initializer, which ends every loop through it, and every acyclic initializer stays inline.
+
 ### Variadics
 
 A C variadic definition is `[variadic] def f(fixed...; va : va_args)` (`c_runtime/variadic`,
