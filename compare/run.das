@@ -64,7 +64,7 @@ struct CompareArgs {
     report : string = ""
     @clarg_doc = "samples per perf lane, each its own process (default 5); 0 with --project times no bench"
     samples : int = 5
-    @clarg_doc = "run only the ids (perf: the kernels) that contain this text; a filtered run writes no capture"
+    @clarg_doc = "run only the ids that contain this text, writing no capture; --perf: the kernels holding a part of this comma-separated list, re-measured into the capture"
     filter : string = ""
     @clarg_doc = "cases judged at once, one worker process each"
     jobs : int = 4
@@ -116,8 +116,8 @@ def run_suite(spec : SuiteSpec; args : CompareArgs) : SuiteCapture {
     return <- c
 }
 
-// the perf comparison over the kernels `--filter` names, the geometric means logged; the capture's
-// `perf` section written
+// the perf comparison over every kernel, the geometric means logged, the capture's `perf` section
+// written; under `--filter` the kernels it names re-measured into the section (`merge_perf_rerun`)
 def run_perf(args : CompareArgs) : int {
     if (samples_refused(args.samples, 1)) {
         return 1
@@ -134,11 +134,22 @@ def run_perf(args : CompareArgs) : int {
         to_log(LOG_INFO, "{kernel_line(k.key, entry)}\n")
         entries[k.key] = entry
     }
-    var section = perf_section(run_stamps(bin, args.box), args.samples, entries)
+    let stamps = run_stamps(bin, args.box)
+    let out = empty(args.out) ? CAPTURE : args.out
+    if (!empty(args.filter)) {
+        let error = merge_perf_rerun(out, stamps, args.samples, entries)
+        if (!empty(error)) {
+            to_log(LOG_ERROR, "{error}\n")
+            return 1
+        }
+        to_log(LOG_INFO, "re-measured {length(entries)} kernels into {out}\n")
+        return 0
+    }
+    var section = perf_section(stamps, args.samples, entries)
     for (line in geomean_lines(section)) {
         to_log(LOG_INFO, "{line}\n")
     }
-    return record_run(empty(args.out) ? CAPTURE : args.out, args.filter) $(path) => write_capture_section(path, "perf", section)
+    return record_run(out, "") $(path) => write_capture_section(path, "perf", section)
 }
 
 // the quality comparison over the corpus the capture `out` and the ratchets name, `--filter`

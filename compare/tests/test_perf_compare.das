@@ -302,6 +302,59 @@ def test_compare_kernel_refused(t : T?) {
     }
 }
 
+// a cell as a capture holds it, its spread one the JSON writer must keep digit for digit
+def private fixture_cell() : JsonValue? {
+    return JV({"time" => JV(0.5lf), "spread" => JV(0.007192701757091496lf), "samples" => JV([0.5lf])})
+}
+
+// a capture's `perf` section of box `box`, Rust commit `commit` and `samples`, holding `sieve` and an
+// old `dasprofile/fib_loop`
+def private rerun_fixture(box, commit : string; samples : int) : JsonValue? {
+    var kernels = JV({"sieve" => JV({"native" => fixture_cell(), "ours" => JV({"jit" => fixture_cell()})}), "dasprofile/fib_loop" => JV({"native" => JV({"error" => JV("old")})})})
+    return JV({"box" => JV(box), "rust_commit" => JV(commit), "samples" => JV(samples), "timestamp" => JV("first"), "kernels" => kernels})
+}
+
+[test]
+def test_perf_rerun(t : T?) {
+    t |> run("a re-run merges its kernels, keeps the others and the first run's stamps, and records itself") @(t : T?) {
+        t |> with_scratch("cmp_perf_rerun") $(dir) {
+            let path = path_join(dir, "results.json")
+            fwrite(path, write_json(JV({"perf" => rerun_fixture("PC", "abc", 5)})))
+            var entries : table<string; JsonValue?>
+            entries["dasprofile/fib_loop"] = JV({"native" => JV({"error" => JV("new")})})
+            t |> equal(merge_perf_rerun(path, Stamps(box = "PC", rust_commit = "abc", date = "d2"), 5, entries), "")
+            let js = json_of(t, fread(path))
+            t |> equal(js?["perf"]?["kernels"]?["dasprofile/fib_loop"]?["native"]?["error"] ?? "", "new")
+            t |> equal(js?["perf"]?["kernels"]?["sieve"]?["native"]?["spread"] ?? 0.0lf, 0.007192701757091496lf)
+            t |> equal(js?["perf"]?["timestamp"] ?? "", "first")
+            t |> equal(js?["perf"]?["reruns"]?[0]?["timestamp"] ?? "", "d2")
+            t |> equal(js?["perf"]?["geomean"]?["jit"]?["kernels"] ?? -1, 0)
+        }
+    }
+    t |> run("a re-run refuses another box, Rust commit or sample count, and a capture without perf, the file untouched") @(t : T?) {
+        t |> with_scratch("cmp_perf_rerun_refused") $(dir) {
+            let path = path_join(dir, "results.json")
+            let text = write_json(JV({"perf" => rerun_fixture("PC", "abc", 5)}))
+            fwrite(path, text)
+            var entries : table<string; JsonValue?>
+            entries["sieve"] = JV(1)
+            for (stamps, samples in [Stamps(box = "fx", rust_commit = "abc"), Stamps(box = "PC", rust_commit = "def"), Stamps(box = "PC", rust_commit = "abc")], [5, 5, 3]) {
+                let error = merge_perf_rerun(path, stamps, samples, entries)
+                t |> success(error |> contains("a re-run joins only a capture of its own box and parameters"), error)
+            }
+            t |> equal(fread(path), text)
+            let other = path_join(dir, "other.json")
+            fwrite(other, "\{\"suites\": \{\}\}")
+            t |> equal(merge_perf_rerun(other, Stamps(), 5, entries), "no perf section in {other} to re-measure kernels into")
+            let none = path_join(dir, "none.json")
+            t |> equal(merge_perf_rerun(none, Stamps(), 5, entries), "no perf section in {none} to re-measure kernels into")
+        }
+    }
+    t |> run("the filter is a comma-separated list, each part a text a key holds") @(t : T?) {
+        t |> equal(join([for (k in perf_kernels("sieve,dasprofile/primes")); k.key], " "), "sieve dasprofile/primes")
+    }
+}
+
 [test]
 def test_perf_command_line(t : T?) {
     t |> run("--perf with a suite or under one sample exits 1; --perf without the Rust translator exits 2") @(t : T?) {
@@ -350,22 +403,30 @@ def test_compare_limits(t : T?) {
 
 [test]
 def test_perf_run(t : T?) {
-    t |> run("one kernel, one sample, a stand-in translator: the kernel line, four geomean lines, no capture") @(t : T?) {
+    t |> run("one kernel, one sample, a stand-in translator: the kernel line, the kernel merged into the capture, the rest kept") @(t : T?) {
         t |> with_scratch("cmp_perf_run") $(dir) {
             let bin = path_join(dir, "rust")
             fwrite(bin, STAND_IN)
             var out : string
             run_and_capture(["chmod", "+x", bin], out, 30.0)
+            let results = path_join(dir, "results.json")
+            fwrite(results, write_json(JV({"suites" => JV({"csmith" => JV({"ids" => JV(9)})}), "perf" => rerun_fixture(flag_box(), "", 1)})) + "\n")
+            let before = json_of(t, fread(results))
             var argv <- ["env", "DAS_LOG_LEVEL=info"]
-            argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["compare/run.das", "--", "--perf", "--filter", "dasprofile/fib_loop", "--samples", "1"])
+            argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["compare/run.das", "--", "--perf", "--filter", "nope,dasprofile/fib_loop", "--samples", "1", "--out", results, "--box", flag_box()])
             with_env(bin, "") {
                 t |> equal(run_and_capture(argv, out, 900.0), 0, out)
             }
             let lines <- split(out, "\n")
             t |> equal(length([for (ln in lines); ln; where ln |> contains("dasprofile/fib_loop: native ")]), 1, out)
-            t |> equal(length([for (ln in lines); ln; where ln |> contains(" times native over ")]), 4, out)
-            t |> success(out |> contains("a --filter run writes no capture"), out)
+            t |> success(out |> contains("re-measured 1 kernels into {results}"), out)
             t |> success(!(out |> contains("dasprofile/fib_recursive: native")), out)
+            let after = json_of(t, fread(results))
+            t |> equal(write_json(after?["suites"]), write_json(before?["suites"]))
+            t |> equal(write_json(after?["perf"]?["kernels"]?["sieve"]), write_json(before?["perf"]?["kernels"]?["sieve"]))
+            t |> success((after?["perf"]?["kernels"]?["dasprofile/fib_loop"]?["native"]?["time"] ?? 0.0lf) > 0.0lf, out)
+            t |> equal(after?["perf"]?["reruns"]?[0]?["kernels"]?[0] ?? "", "dasprofile/fib_loop")
+            t |> equal(after?["perf"]?["timestamp"] ?? "", "first")
         }
     }
 }
