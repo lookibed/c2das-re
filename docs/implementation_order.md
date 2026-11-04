@@ -1535,10 +1535,28 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   soundfont.
 - **P6.7 timedemo.** `-timedemo demo3` realtics for native / interp; publish table v1.
   Ruling 29 item 1, first in the order: Doom fps under interp and JIT on one machine next to Rust
-  doomgeneric on the same machine (Rust doomgeneric interp 37x); if slower than Rust, find out why
+  doomgeneric on the same machine (Rust doomgeneric interp 32.0x its native, measured on box PC below); if slower than Rust, find out why
   first; the P6.5 rungs it needs come with it. Ruling 28: the speed number is realtics, in-process,
   never the process's wall time (startup is its own row); the per-tic framebuffer hash costs the
   interp tier (P6.4b), measured apart.
+  State (branch `p6.7-doom-fps`, box PC, Ryzen 7 7435HS, WSL2): the host times the playback with
+  `clock()` (`host: timed N gametics in S s`); `doom/run.das --run --fps` holds every run of demo1-3
+  to the reference log under native, interp and JIT, all in sync (JIT demo1/2/3 2664/5444/2743 tics
+  to the timedemo line), 3 runs a cell, every spread at or under 2%: native 6015-6607 fps, interp
+  127-140 fps (47.3-47.7x native), JIT 2165-2731 fps (2.4-2.8x). The Rust doomgeneric on the same
+  box (`compare/run.das --project doomgeneric --samples 3 --box PC`, `-timedemo demo1` on doom1.wad):
+  interp 32.0x its native, JIT 1.04x. Engines, wads and demos differ; only the ratio to native compares.
+  Why interp is slower (measured one construct at a time on PC, interp): (1) the patch's per-tic `fb`
+  checksum is inside every lane's window: 57 us per frame natively (about 35% of a native tic) and
+  970 us under interp (about 12%), so without it our interp ratio is about 64x, not 47x; a timing
+  run without the checksum needs a ruling (the sync check reads it). (2) `do { ... } while (count--)`,
+  the inner loop of `R_DrawColumn` and `R_DrawSpan`, lowers to the `_first` flag loop with a
+  temporary per pixel; the same body as a counted `range` loop is 1.33x faster under interp (JIT
+  equal, 0.96x), where Rust emits `for (urange64(0, count + 1))`: candidate row, a `do-while` whose
+  condition is a post-decrement of a local counter lowered as a counted range. (3) the frame
+  checksum's own `for` with its counter declared outside stays a `while`. Not found in two hours:
+  a per-function profile (the daslang profiler prints no summary when the program leaves through C
+  `exit`, and its trace of 700 tics exhausts 4 GiB).
 - **Exit criterion:** demo-sync 100%, playable with sound and music, perf table v1.
 
 ## P7 — Performance + tiers
