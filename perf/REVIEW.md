@@ -26,9 +26,11 @@ with no `--filter` and no `--samples` in the same change.** `ARCHITECTURE.md` se
 from the results table `scripts/run_perf.sh --table` prints refreshes it with
 `scripts/run_perf.sh --table --readme` in the same change.**
 
-**A table, report or PR body a diff adds never sets the numbers of two boxes side by side as a
-ratio or a speedup; a speedup it claims is the branch against main before it, measured on one box
-in one run.** `ARCHITECTURE.md` section 5 states the box a capture records.
+**A table or report a diff adds never sets the numbers of two boxes side by side as a ratio.**
+`ARCHITECTURE.md` section 5 states the box a capture records.
+
+**A speedup a diff claims is the branch against main before it, measured on one box in one run.**
+`ARCHITECTURE.md` section 5 states that a number carries its box.
 
 **A diff that adds a table rendered from a capture labels its provenance line with
-`boxes.das`'s `capture_label`.**
+`boxes.das`'s `capture_label`.** `ARCHITECTURE.md` section 5 states the label.

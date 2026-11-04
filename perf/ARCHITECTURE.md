@@ -117,12 +117,13 @@ times them under every lane, and the stored results; the interpreter audit on Lu
   dasProfile-method capture with dasProfile's own (`render_method_comparison`, `SHARED_KERNELS`,
   `DIFFERENT_PROGRAMS`). A missing cell is `n/a` in every table. All of them render through daslib's
   `md_boost` `render_md_table`. It measures nothing and reads no file.
-- `perf_cli.das` - the file side of the harness: the baseline capture (section 5), the text a
-  run prints and writes as its report, the `--check` verdict (`check_drift`), and the README
-  section of either method between its markers (`write_readme`); whole files are read and written through daslib
-  `fio`'s `fread(path)` and `fwrite(path, text)`.
+- `perf_cli.das` - the file side of the harness: the baseline capture (section 5), the text a run
+  prints and writes as its report, the `--check` verdict (`check_drift`), and the README section of
+  either method between its markers (`write_readme`); whole files are read and written through
+  daslib `fio`'s `fread(path)` and `fwrite(path, text)`.
 - `boxes.das` - the box names, kept here alone: `BOXES` (a CPU-model substring to `bench`, `PC`,
-  `fx`), `box_of`, `capture_box`, `same_box` and `capture_label`, a provenance line's `<box> (<cpu>)` (section 5).
+  `fx`), `box_of`, `box_label`, `capture_box`, `box_refusal` (a `--box` the CPU contradicts),
+  `same_box`, `two_boxes_line` and `capture_label`, a provenance line's `<box> (<cpu>)` (section 5).
 - `tests/` - the dastest suite over `perf_tables.das`, `perf_cli.das`, `boxes.das` and the method kernels'
   selection, driven by JSON fixtures and a scratch README, over `perf_lanes.das`'s arithmetic, commands and the AOT tier's refusal of program
   arguments, and `run.das` itself as a child process: `-?`, one sample of `blit` into an
@@ -237,22 +238,21 @@ two cells apart by the samples' spread alone.
 
 A capture records `cpu`, the CPU model of `/proc/cpuinfo`, and `box`, the `--box` name else `box_of`
 the CPU; a provenance line renders `capture_label` (a capture without `box` shows its CPU's). A
-number carries its box: the delta renders only for captures of one box (`same_box`), for two the
-line `no delta: <label> against <label>, ...`. A capture is compared with the one before it. The
-baseline is the `--baseline <json>` file when given, else `results_linux.json` as committed at
-`HEAD`, read through `git show` before the run overwrites the file; when `HEAD` has no such file
-there is no delta, and a file that is not JSON is an error. A delta cell is `(new - old) / old` as a
-signed percent, kept in hundredths of a percent so the comparison with the bar is exact. When both
-captures name the same CPU, old and new are the two medians. When they name different CPUs, they are
-the two lane/native ratios, the native column is `n/a`, and the delta heading names both CPUs: a
-time measured on one machine says nothing about the tree against a time from another, while a ratio
-carries across. A kernel or lane missing from either capture is `n/a`. A cell more than 10 percent
-slower adds one `- FLAG <kernel>/<lane> +N.NN%` list item under the table, else the line `no lane
-slower than 10%` follows it; a flag leaves the exit code alone, because it is a review duty, not a
-gate. A lane under a tenth of native in the ratio table adds one `- SUSPECT` list item: a lane that
-far ahead of clang measures a different program than the kernel. The `--report` file holds the three
-tables and those list items as one markdown block. `--check` holds a cell to `--tolerance` or to
-twice the baseline cell's own spread, whichever is wider: a cell whose samples spread that far in
+number carries its box: the delta and `--check` run only for captures of one box (`same_box`), else
+they print `no delta: <label> against <label>` (`no check:`, a failure). A capture is compared with
+the one before it. The baseline is the `--baseline <json>` file when given, else
+`results_linux.json` as committed at `HEAD`, read through `git show` before the run overwrites the
+file; when `HEAD` has no such file there is no delta, and a file that is not JSON is an error. A
+delta cell is `(new - old) / old` as a signed percent, kept in hundredths of a percent so the
+comparison with the bar is exact. When both captures name the same CPU, old and new are the two
+medians; two CPUs under one box (only through `--box` on a CPU `BOXES` does not name) compare
+lane/native ratios. A kernel or lane missing from either capture is `n/a`. A cell more than 10
+percent slower adds one `- FLAG <kernel>/<lane> +N.NN%` list item under the table, else the line `no
+lane slower than 10%` follows it; a flag leaves the exit code alone, because it is a review duty,
+not a gate. A lane under a tenth of native in the ratio table adds one `- SUSPECT` list item: a lane
+that far ahead of clang measures a different program than the kernel. The `--report` file holds the
+three tables and those list items as one markdown block. `--check` holds a cell to `--tolerance` or
+to twice the baseline cell's own spread, whichever is wider: a cell whose samples spread that far in
 the committed capture (the interpreter's `fib_loop` under `--loops while` at 29 percent, its bimodal
 `x = x + y` loop) reproduces anywhere inside the bar.
 
@@ -280,14 +280,14 @@ same machine, `dasprofile_linux.json`, one generated table: each hand-written ce
 C++, each converted one over the composed C program.
 
 `scripts/run_perf.sh --from-scratch` rebuilds the crt, removes `work/`, reruns dasProfile
-(`dasprofile.sh`), and records both captures and both `README.md` sections.
-`scripts/run_perf.sh --check` reruns both methods into a scratch folder and passes `--check` to
-each run, so it exits 1 when a cell drifts from its committed capture past 10 percent or twice
-its committed spread either way (`--tolerance <percent>` sets the 10) or a cell is missing from
-either side; on another CPU the comparison is of lane/native ratios (section 5). It reruns this
-tree's lanes only: the hand-written and dasProfile C++ columns of the comparison come from
-`dasprofile_linux.json`, which `--from-scratch` alone reruns. `.github/workflows/perf.yml` runs it on the
-capture machine's own runner (label `c2das-fx`) for every release tag and on request.
+(`dasprofile.sh`), and records both captures and both `README.md` sections. `scripts/run_perf.sh
+--check` reruns both methods into a scratch folder and passes `--check` to each run, so it exits 1
+when a cell drifts from its committed capture past 10 percent or twice its committed spread either
+way (`--tolerance <percent>` sets the 10) or a cell is missing from either side; against a capture
+of another box it is no check (section 5). It reruns this tree's lanes only: the hand-written and
+dasProfile C++ columns of the comparison come from `dasprofile_linux.json`, which `--from-scratch`
+alone reruns. `.github/workflows/perf.yml` runs it on the capture machine's own runner (label
+`c2das-fx`) for every release tag and on request.
 
 ## 7. What a capture depends on
 

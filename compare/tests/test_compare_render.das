@@ -6,6 +6,7 @@ require daslib/strings_boost
 require daslib/json_boost
 require ../../perf/perf_lanes.das
 require ../compare_render.das
+require ../../perf/boxes.das
 
 //! `compare/compare_render.das` over captures the test writes: every table and list, each section
 //! missing, and `compare/run.das --readme` and `--report` over scratch files in a scratch folder.
@@ -274,6 +275,12 @@ def test_command_line(t : T?) {
             t |> success(out |> contains("runs alone"), out)
             t |> equal(run_compare_in(dir, ["--readme", "--box", "laptop", "--out", "results.json"], out), 1, out)
             t |> success(out |> contains("--box takes bench, PC, fx, not `laptop`"), out)
+            let own = box_of(cpu_name())
+            if (!empty(own)) {
+                let other = own == "bench" ? "fx" : "bench"
+                t |> equal(run_compare_in(dir, ["--readme", "--box", other, "--out", "results.json"], out), 1, out)
+                t |> success(out |> contains("--box {other} names another box than this CPU's"), out)
+            }
         }
     }
 }

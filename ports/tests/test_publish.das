@@ -197,6 +197,12 @@ def test_refusals(t : T?) {
         t |> success(out |> contains("--timeout takes seconds above 0, not 0"), out)
         t |> equal(publish(root, ["--repo", clone, "--box", "laptop"], out), 1, out)
         t |> success(out |> contains("ports: --box takes bench, PC, fx, not `laptop`"), out)
+        let own = box_of(cpu_name())
+        if (!empty(own)) {
+            let other = own == "bench" ? "fx" : "bench"
+            t |> equal(publish(root, ["--repo", clone, "--box", other], out), 1, out)
+            t |> success(out |> contains("ports: --box {other} names another box than this CPU's"), out)
+        }
         let plain = path_join(root, "plain")
         mkdir_rec(plain)
         t |> equal(publish(root, ["--repo", plain, "--no-convert"], out), 1, out)
@@ -522,16 +528,22 @@ def test_stale_modules(t : T?) {
     }
 }
 
+// a --box this machine accepts: its own box, any box on an unknown CPU
+def private flag_box : string {
+    let own = box_of(cpu_name())
+    return empty(own) ? "fx" : own
+}
+
 [test]
 def test_single_lanes(t : T?) {
     t |> run_stand_in("the -source-cut and -single lanes run those layouts' modules, a column each beside the source layout's", "c2das_ports_single_lanes") @(t : T?; root, clone : string) {
         // the source layout's entry fails every workload, the single module runs them
         fwrite(path_join(root, "lua/work/lua/lua.das"), "options gen2\n[export]\ndef main : int \{\n    return 5\n\}\n")
         var out : string
-        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp,interp-source-cut,interp-single,jit-source-cut,jit-single", "--allow-dirty", "--box", "fx"], out), 0, out)
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp,interp-source-cut,interp-single,jit-source-cut,jit-single", "--allow-dirty", "--box", flag_box()], out), 0, out)
         var name : string
         let c <- capture_of(clone, name)
-        t |> equal(c.machine.box, "fx", "--box names the box the capture records")
+        t |> equal(c.machine.box, flag_box(), "--box names the box the capture records")
         let fib <- cell_of(t, c, "fib", "interp-single")
         t |> success(empty(fib.error) && length(fib.samples) == 1, "{fib}")
         let cut_fib <- cell_of(t, c, "fib", "interp-source-cut")

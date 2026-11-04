@@ -37,7 +37,7 @@ row for a fix.
   `--lua-work` names the folder `lua/run.das` converted Lua into.
 - `audit_linux.json` - the committed capture, a one-off: it is re-recorded by hand when a kernel
   or a rewrite changes, and the `results_linux.json` rules of `REVIEW.md` (the `--report` text,
-  the `FLAG` lines, the re-record duty) do not apply to it. It holds the machine, the versions,
+  the `FLAG` lines, the re-record duty) do not apply to it. It holds the machine and its box (`boxes.das`'s `box_of` the CPU), the versions,
   the Rust translator's commit, per kernel the native cell, the `converted` interpreter and JIT
   cells, one entry per alternative spelling with its two cells, and the Rust entry; the sites;
   the benchmarks.

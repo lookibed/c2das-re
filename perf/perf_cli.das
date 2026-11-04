@@ -7,6 +7,7 @@ require daslib/fio
 require daslib/json_boost
 require ../converter/sidecar.das
 require perf_tables
+require boxes
 
 //! The file side of the perf harness: the baseline capture a delta compares against, the tables
 //! a run prints and reports, the `--check` verdict, and the README sections a run rewrites.
@@ -52,6 +53,10 @@ def show_tables(current, baseline : JsonValue?; baseline_name : string; ratios :
 def check_drift(js, baseline : JsonValue?; baseline_name : string; tolerance : int) : bool {
     if (baseline == null) {
         to_log(LOG_ERROR, "--check: no baseline capture to compare with\n")
+        return false
+    }
+    if (!same_box(js, baseline)) {
+        to_log(LOG_ERROR, "--check: {two_boxes_line("check", js, baseline)}\n")
         return false
     }
     let drifted <- drifted_cells(js, baseline, int64(tolerance) * 100l)

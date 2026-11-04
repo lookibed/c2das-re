@@ -37,17 +37,17 @@ def box_label(box, cpu : string) : string {
 //! capture stored) when there is one, else the box of `cpu`.
 def capture_box(named, cpu : string) : string => empty(named) ? box_of(cpu) : named
 
-//! "" when `flag` is empty or the name of a box of `BOXES`, else the refusal of `--box`.
-def box_refusal(flag : string) : string {
+//! "" when `flag` is empty, or names a box of `BOXES` that `cpu`, the CPU the run is on, does not
+//! contradict; else the refusal of `--box`: a wrong label is worse than none.
+def box_refusal(flag, cpu : string) : string {
     if (empty(flag)) {
         return ""
     }
-    for (b in BOXES) {
-        if (b._1 == flag) {
-            return ""
-        }
+    if (!has_value([for (b in BOXES); b._1], flag)) {
+        return "--box takes " + join([for (b in BOXES); b._1], ", ") + ", not `{flag}`"
     }
-    return "--box takes " + join([for (b in BOXES); b._1], ", ") + ", not `{flag}`"
+    let own = box_of(cpu)
+    return empty(own) || own == flag ? "" : "--box {flag} names another box than this CPU's: {cpu} is {own}"
 }
 
 //! The box of the capture `js`, else its CPU model when it names no box: what tells two
@@ -59,8 +59,14 @@ def private machine_key(js : JsonValue const?) : string {
 }
 
 //! True when captures `a` and `b` ran on one box: the same box, or, where neither names one, the
-//! same CPU model.
-def same_box(a, b : JsonValue const?) : bool => machine_key(a) == machine_key(b)
+//! same CPU model; false when either names neither.
+def same_box(a, b : JsonValue const?) : bool {
+    let key = machine_key(a)
+    return !empty(key) && key == machine_key(b)
+}
+
+//! The line a renderer or a check prints in place of a comparison of captures `a` and `b` from two boxes.
+def two_boxes_line(what : string; a, b : JsonValue const?) : string => "no {what}: {capture_label(a)} against {capture_label(b)}, numbers of two boxes are not compared"
 
 //! The label of the capture or section `js` from its `box` and `cpu` fields, a capture written
 //! before captures recorded a box showing the box of its cpu.

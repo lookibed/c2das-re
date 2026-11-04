@@ -170,7 +170,11 @@ def flagged_cells(current, baseline : JsonValue?) : array<string> {
 //! missing`: a rerun that does not reproduce the committed capture. A cell's bar is
 //! `tolerance_cents`, or twice the baseline cell's own spread when that is wider: a cell whose
 //! samples already spread that far reproduces anywhere inside it.
+//! Captures of two boxes are not compared: their one item is the line saying so.
 def drifted_cells(current, baseline : JsonValue?; tolerance_cents : int64) : array<string> {
+    if (!same_box(current, baseline)) {
+        return <- [two_boxes_line("check", current, baseline)]
+    }
     var names <- kernel_names(current)
     names |> push_from(kernel_names(baseline))
     names |> sort_unique()
@@ -196,7 +200,7 @@ def drifted_cells(current, baseline : JsonValue?; tolerance_cents : int64) : arr
 //! for captures of two boxes the one line saying there is no delta.
 def render_delta(current, baseline : JsonValue?; baseline_name : string) : string {
     if (!same_box(current, baseline)) {
-        return "no delta: {capture_label(current)} against {capture_label(baseline)}, numbers of two boxes are not compared (ruling 27)\n"
+        return two_boxes_line("delta", current, baseline) + "\n"
     }
     var names <- kernel_names(current)
     names |> push_from(kernel_names(baseline))
@@ -253,6 +257,9 @@ def private timed_ratio(t, base : double) : string {
 //! the converted kernel under the interpreter, the JIT, AOT and the exe, each over the C program;
 //! then the kernels that are not the same program, named and not compared.
 def render_method_comparison(method, dp : JsonValue?) : string {
+    if (!same_box(method, dp)) {
+        return two_boxes_line("comparison", method, dp) + "\n"
+    }
     let headers <- ["Test", "C (clang -O3)", "dasProfile C++", "hand-written interp", "hand-written JIT", "hand-written AOT", "converted interp", "converted JIT", "converted AOT", "converted exe"]
     let aligns <- [for (idx in range(length(headers))); idx == 0 ? ColAlign.left : ColAlign.right]
     var rows : array<array<string>>
@@ -270,7 +277,7 @@ def render_method_comparison(method, dp : JsonValue?) : string {
         row |> push_from([for (lane in ["interp", "jit", "aot", "exe"]); timed_ratio(time_of(method, kernel, lane), native)])
         rows |> emplace(row)
     }
-    let head = "The dasProfile method on {capture_label(method)} ({method?["timestamp"] ?? ""}; {method?["versions"]?["clang"] ?? ""}, daslang {method?["versions"]?["daslang"] ?? ""}) beside borisbat/dasProfile {dp?["dasprofile_commit"] ?? ""} run on {capture_label(dp)} ({dp?["timestamp"] ?? ""}; {dp?["toolchain"] ?? ""}). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).\n\n"
+    let head = "The dasProfile method on {capture_label(method)}, {method?["timestamp"] ?? ""} ({method?["versions"]?["clang"] ?? ""}, daslang {method?["versions"]?["daslang"] ?? ""}) beside borisbat/dasProfile {dp?["dasprofile_commit"] ?? ""} run on {capture_label(dp)}, {dp?["timestamp"] ?? ""} ({dp?["toolchain"] ?? ""}). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).\n\n"
     let different = join([for (line in DIFFERENT_PROGRAMS); "- {line}: different programs, not compared\n"], "")
     return head + render_md_table(headers, aligns, rows) + "\n\n" + different
 }

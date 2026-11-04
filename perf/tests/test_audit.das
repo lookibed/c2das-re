@@ -12,6 +12,7 @@ require ../../suites/suite_files.das
 require ../perf_compose.das
 require ../audit_constructs.das
 require ../audit_tables.das
+require ../boxes.das
 
 // fixtures spell JSON quotes as single quotes
 def capture_of(t : T?; text : string) : JsonValue? {
@@ -198,6 +199,7 @@ def test_driver(t : T?) {
         t |> success((js?["sites"]?["error"] ?? "") |> contains("convert Lua first"), out)
         t |> success(out |> contains("| `typeinfo sizeof` in a hot loop"), out)
         t |> success(has_key(js, "kernels") && !has_key(js, "benches"), out)
+        t |> equal(js?["box"] ?? "-", box_of(js?["cpu"] ?? ""), "the capture records its CPU's box: {out}")
     }
     t |> run("--table renders a stored capture; a missing one exits 1, as does --benches-only") @(t : T?) {
         let stored = path_join(dir, "stored.json")

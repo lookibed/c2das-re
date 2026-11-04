@@ -18,3 +18,12 @@ hand in the ports repository instead.**
 **A diff that changes how `publish.das` times a run under `--perf`, its warm-up runs, the median or
 spread of a cell (one program and lane's samples), or the check of a run against the native
 build's first run, restates the change in `ARCHITECTURE.md` section 4, in the same change.**
+
+**A table or report a diff adds never sets the numbers of two boxes side by side as a ratio.**
+`perf/ARCHITECTURE.md` section 5 states the box a capture records.
+
+**A speedup a diff claims is the branch against main before it, measured on one box in one run.**
+`perf/ARCHITECTURE.md` section 5 states that a number carries its box.
+
+**A diff that adds a table rendered from a capture labels its provenance line with
+`perf/boxes.das`'s `box_label` (`machine_label`).** `perf/ARCHITECTURE.md` section 5 states the label.

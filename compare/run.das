@@ -19,6 +19,7 @@ require lua_compare
 require compare_render
 require projects
 require ../perf/boxes.das
+require ../perf/perf_lanes.das
 require ../perf/perf_cli.das
 require ../lua/sources.das
 
@@ -276,7 +277,7 @@ def main : int {
         to_log(LOG_ERROR, "--lua takes no --filter: it translates the whole program\n")
         return 1
     }
-    let refusal = box_refusal(args.box)
+    let refusal = box_refusal(args.box, cpu_name())
     if (!empty(refusal)) {
         to_log(LOG_ERROR, "{refusal}\n")
         return 1

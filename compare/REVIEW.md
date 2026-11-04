@@ -39,3 +39,12 @@ write it there and keep `/compare/work/` in `.gitignore` (repo root) instead.**
 
 **A diff to the suites comparison never writes a file under `suites/` (a csmith program, a
 build, a verdict) - write it under `work/<suite>/<id>/` instead.**
+
+**A table or report a diff adds never sets the numbers of two boxes side by side as a ratio.**
+`perf/ARCHITECTURE.md` section 5 states the box a capture records.
+
+**A speedup a diff claims is the branch against main before it, measured on one box in one run.**
+`perf/ARCHITECTURE.md` section 5 states that a number carries its box.
+
+**A diff that adds a table rendered from a capture labels its provenance line with
+`perf/boxes.das`'s `capture_label`.** `perf/ARCHITECTURE.md` section 5 states the label.

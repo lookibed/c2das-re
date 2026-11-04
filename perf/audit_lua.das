@@ -15,6 +15,7 @@ require ../suites/suite_files.das
 require ../compare/rust_translator.das
 require perf_compose
 require perf_lanes
+require boxes
 require perf_measure
 require audit_constructs
 require audit_tables
@@ -195,7 +196,7 @@ def measure_benches(lua_work : string; samples : int) : JsonValue? {
     return JV(rows)
 }
 
-// the capture of a run: the machine, the versions, the kernels, the sites and the benchmarks
+// the capture of a run: the machine and its box, the versions, the kernels, the sites and the benchmarks
 def private measure_all(args : Args) : JsonValue? {
     var kernels : table<string; JsonValue?>
     for (name in c_file_ids(AUDIT_KERNELS, args.filter)) {
@@ -205,8 +206,10 @@ def private measure_all(args : Args) : JsonValue? {
     var clang_version, daslang_version, reason : string
     tool_versions(clang_version, daslang_version)
     let rust_commit = rust_available(reason) ? rust_version(rust_binary(), reason) : ""
+    let cpu = cpu_name()
     var root <- {
-        "cpu" => JV(cpu_name()),
+        "cpu" => JV(cpu),
+        "box" => JV(box_of(cpu)),
         "platform" => JV("{get_platform_name()} {strip(captured(["uname", "-m"]))}"),
         "timestamp" => JV(strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))),
         "samples" => JV(args.samples),

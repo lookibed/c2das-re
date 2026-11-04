@@ -193,7 +193,7 @@ def main : int {
         to_log(LOG_ERROR, "--method is default or dasprofile, not `{args.method}`\n")
         return 2
     }
-    let refusal = box_refusal(args.box)
+    let refusal = box_refusal(args.box, cpu_name())
     if (!empty(refusal)) {
         to_log(LOG_ERROR, "{refusal}\n")
         return 2
