@@ -1,0 +1,204 @@
+{
+	"command" : "daslang -load_module dasCRuntime -load_module c_runtime doom/run.das -- --run --fps --layout source --tiers interp,jit --samples 3",
+	"workloads" : [
+		"demo1",
+		"demo2",
+		"demo3"
+	],
+	"platform" : "linux x86_64",
+	"clock" : "the process CPU time (`clock()`) of the host's update loop",
+	"cpu" : "AMD Ryzen 7 7435HS",
+	"lanes" : [
+		{
+			"name" : "native",
+			"command" : "prlimit --as=3221225472 doom/work/native/doom -timedemo demo<N>"
+		},
+		{
+			"name" : "interp",
+			"command" : "daslang -load_module c_runtime -load_module dasCRuntime doom/work/source/doom_main.das -- -timedemo demo<N>"
+		},
+		{
+			"name" : "jit",
+			"command" : "daslang -load_module c_runtime -load_module dasCRuntime -jit doom/work/source/doom_main.das -- -timedemo demo<N>"
+		}
+	],
+	"box" : "PC",
+	"clang" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+	"cells" : [
+		{
+			"tics" : 2664,
+			"spread" : 0.018307252650045916,
+			"desync" : false,
+			"error" : "",
+			"samples" : [
+				5946.149845654556,
+				6118.624136410407,
+				6170.180241526425
+			],
+			"workload" : "demo1",
+			"seconds" : [
+				0.448021,
+				0.435392,
+				0.431754
+			],
+			"fps" : 6118.624136410407,
+			"lane" : "native"
+		},
+		{
+			"tics" : 2664,
+			"spread" : 0.0075416598233465455,
+			"desync" : false,
+			"error" : "",
+			"samples" : [
+				128.15486957956978,
+				129.8675721257391,
+				127.93457126359017
+			],
+			"workload" : "demo1",
+			"seconds" : [
+				20.787349,
+				20.513204,
+				20.823144
+			],
+			"fps" : 128.15486957956978,
+			"lane" : "interp"
+		},
+		{
+			"tics" : 2664,
+			"spread" : 0.007886084985618637,
+			"desync" : false,
+			"error" : "",
+			"samples" : [
+				2135.316890965782,
+				2164.3597224354894,
+				2169.4535403869345
+			],
+			"workload" : "demo1",
+			"seconds" : [
+				1.24759,
+				1.230849,
+				1.227959
+			],
+			"fps" : 2164.3597224354894,
+			"lane" : "jit"
+		},
+		{
+			"tics" : 5444,
+			"spread" : 0.005119968733440478,
+			"desync" : false,
+			"error" : "",
+			"samples" : [
+				6542.144799631795,
+				6609.804219153134,
+				6607.405537403935
+			],
+			"workload" : "demo2",
+			"seconds" : [
+				0.832143,
+				0.823625,
+				0.823924
+			],
+			"fps" : 6607.405537403935,
+			"lane" : "native"
+		},
+		{
+			"tics" : 5444,
+			"spread" : 0.010249672564892957,
+			"desync" : false,
+			"error" : "",
+			"samples" : [
+				139.46279668506872,
+				136.70352555981776,
+				139.56242156183015
+			],
+			"workload" : "demo2",
+			"seconds" : [
+				39.0355,
+				39.823406,
+				39.007635
+			],
+			"fps" : 139.46279668506872,
+			"lane" : "interp"
+		},
+		{
+			"tics" : 5444,
+			"spread" : 0.010350498450349578,
+			"desync" : false,
+			"error" : "",
+			"samples" : [
+				2764.775219813342,
+				2708.2421299797033,
+				2730.9356213530673
+			],
+			"workload" : "demo2",
+			"seconds" : [
+				1.969057,
+				2.01016,
+				1.993456
+			],
+			"fps" : 2730.9356213530673,
+			"lane" : "jit"
+		},
+		{
+			"tics" : 2743,
+			"spread" : 0.004093284975276114,
+			"desync" : false,
+			"error" : "",
+			"samples" : [
+				6019.059990915454,
+				6014.98153622146,
+				5969.817923817897
+			],
+			"workload" : "demo3",
+			"seconds" : [
+				0.455719,
+				0.456028,
+				0.459478
+			],
+			"fps" : 6014.98153622146,
+			"lane" : "native"
+		},
+		{
+			"tics" : 2743,
+			"spread" : 0.0023455682852349517,
+			"desync" : false,
+			"error" : "",
+			"samples" : [
+				127.32294162134046,
+				126.72671501716654,
+				127.09640728157233
+			],
+			"workload" : "demo3",
+			"seconds" : [
+				21.543643,
+				21.645002,
+				21.582042
+			],
+			"fps" : 127.09640728157233,
+			"lane" : "interp"
+		},
+		{
+			"tics" : 2743,
+			"spread" : 0.006589399067111484,
+			"desync" : false,
+			"error" : "",
+			"samples" : [
+				2470.521268278975,
+				2464.8115133565284,
+				2438.038014905541
+			],
+			"workload" : "demo3",
+			"seconds" : [
+				1.110292,
+				1.112864,
+				1.125085
+			],
+			"fps" : 2464.8115133565284,
+			"lane" : "jit"
+		}
+	],
+	"commit" : "70eeb8f3da4f",
+	"samples" : 3,
+	"timestamp" : "2026-11-04 03:24 UTC",
+	"daslang" : "0.6.4"
+}
