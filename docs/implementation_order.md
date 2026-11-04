@@ -1531,9 +1531,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   interp tier (P6.4b), measured apart.
   State (branch `p6.7-doom-fps-2`, box PC, Ryzen 7 7435HS, WSL2): the host times the playback with
   `clock()` (`host: timed N gametics in S s`); `doom/run.das --run --fps` holds every run of demo1-3
-  to the reference log under native, interp and JIT, all in sync (JIT demo1/2/3 2664/5444/2743 tics
-  to the timedemo line), 3 runs a cell, every spread at or under 2% (`doom/results_linux.json`):
-  native 6015-6607 fps, interp 127-139 fps (47.3-47.7x native), JIT 2164-2731 fps (2.4-2.8x). The
+  to the reference log under native, interp and JIT with the sync build, all in sync (JIT demo1/2/3
+  2664/5444/2743 tics to the timedemo line), then times the speed build, `DOOM_TIC_CHECKSUM` left
+  out (ruling 30), 3 runs a cell, every spread at or under 1% (`doom/results_linux.json`): native
+  9029-10508 fps, interp 149-166 fps (59.2-63.3x native), JIT 2454-2855 fps (3.6-3.8x). With the
+  checksum in the window (the first capture, 70eeb8f3da4f) the ratios read 47.3-47.7x and 2.4-2.8x:
+  the checksum's cost hid part of the gap. The
   Rust doomgeneric on the same box (`compare/run.das --project doomgeneric --samples 3 --box PC`,
   `-timedemo demo1` on doom1.wad): interp 32.0x its native, JIT 1.04x. Engines, wads and demos
   differ; only the ratio to native compares.
@@ -1542,8 +1545,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   loop alone over a 64000-byte buffer: 57 us per frame as C at the pinned clang `-O2` (20000 frames,
   one run, `clock()`) and 970 us as its converted body (the `while` of `d_main.das.inc`) under interp
   (500 frames, one run); set against the capture's per-tic times that is about 35% of a native tic
-  and 12% of an interp one, so without it the interp ratio would be about 64x, not 47x. No build
-  without the checksum was timed: a timing run without it needs a ruling (the sync check reads it).
+  and 12% of an interp one; the speed build measures the interp ratio without it at 59.2-63.3x.
   (2) `do { ... } while (count--)`, the inner loop of `R_DrawColumn` and `R_DrawSpan`, lowers to the
   `_first` flag loop with a temporary per pixel; a scratch kernel with `R_DrawColumn`'s body over
   module arrays, 200000 columns of 151 pixels, the converted loop against the same body in a
