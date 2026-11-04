@@ -305,11 +305,11 @@ def test_compare_kernel_refused(t : T?) {
 // a cell as a capture holds it, its spread one the JSON writer must keep digit for digit
 def private fixture_cell() : JsonValue? => JV({"time" => JV(0.5lf), "spread" => JV(0.007192701757091496lf), "samples" => JV([0.5lf])})
 
-// a capture's `perf` section of box `box`, Rust commit `commit` and `samples`, holding `sieve` and an
-// old `dasprofile/fib_loop`
-def private rerun_fixture(box, commit : string; samples : int) : JsonValue? {
+// a capture's `perf` section of box `box`, Rust commit `commit`, `samples` and the `clang` and
+// `daslang` version lines, holding `sieve` and an old `dasprofile/fib_loop`
+def private rerun_fixture(box, commit : string; samples : int; clang, daslang : string) : JsonValue? {
     var kernels = JV({"sieve" => JV({"native" => fixture_cell(), "ours" => JV({"jit" => fixture_cell()})}), "dasprofile/fib_loop" => JV({"native" => JV({"error" => JV("old")})})})
-    return JV({"box" => JV(box), "rust_commit" => JV(commit), "samples" => JV(samples), "timestamp" => JV("first"), "kernels" => kernels})
+    return JV({"box" => JV(box), "rust_commit" => JV(commit), "samples" => JV(samples), "versions" => JV({"clang" => JV(clang), "daslang" => JV(daslang)}), "timestamp" => JV("first"), "kernels" => kernels})
 }
 
 [test]
@@ -317,35 +317,37 @@ def test_perf_rerun(t : T?) {
     t |> run("a re-run merges its kernels, keeps the others and the first run's stamps, and records itself") @(t : T?) {
         t |> with_scratch("cmp_perf_rerun") $(dir) {
             let path = path_join(dir, "results.json")
-            fwrite(path, write_json(JV({"perf" => rerun_fixture("PC", "abc", 5)})))
+            fwrite(path, write_json(JV({"perf" => rerun_fixture("PC", "abc", 5, "c1", "d1")})))
             var entries : table<string; JsonValue?>
             entries["dasprofile/fib_loop"] = JV({"native" => JV({"error" => JV("new")})})
-            t |> equal(merge_perf_rerun(path, Stamps(box = "PC", rust_commit = "abc", date = "d2"), 5, entries), "")
+            t |> equal(merge_perf_rerun(path, Stamps(box = "PC", rust_commit = "abc", daslang = "d1", date = "d2"), 5, "c1", entries), "")
             let js = json_of(t, fread(path))
             t |> equal(js?["perf"]?["kernels"]?["dasprofile/fib_loop"]?["native"]?["error"] ?? "", "new")
             t |> equal(js?["perf"]?["kernels"]?["sieve"]?["native"]?["spread"] ?? 0.0lf, 0.007192701757091496lf)
             t |> equal(js?["perf"]?["timestamp"] ?? "", "first")
-            t |> equal(js?["perf"]?["reruns"]?[0]?["timestamp"] ?? "", "d2")
+            let rerun = js?["perf"]?["reruns"]?[0]
+            t |> equal("{rerun?["timestamp"] ?? ""} {rerun?["kernels"]?[0] ?? ""} {rerun?["box"] ?? ""} {rerun?["rust_commit"] ?? ""} {rerun?["versions"]?["clang"] ?? ""} {rerun?["versions"]?["daslang"] ?? ""}", "d2 dasprofile/fib_loop PC abc c1 d1")
             t |> equal(js?["perf"]?["geomean"]?["jit"]?["kernels"] ?? -1, 0)
         }
     }
-    t |> run("a re-run refuses another box, Rust commit or sample count, and a capture without perf, the file untouched") @(t : T?) {
+    t |> run("a re-run refuses another box, Rust commit, sample count, clang or daslang, and a capture without perf, the file untouched") @(t : T?) {
         t |> with_scratch("cmp_perf_rerun_refused") $(dir) {
             let path = path_join(dir, "results.json")
-            let text = write_json(JV({"perf" => rerun_fixture("PC", "abc", 5)}))
+            let text = write_json(JV({"perf" => rerun_fixture("PC", "abc", 5, "c1", "d1")}))
             fwrite(path, text)
             var entries : table<string; JsonValue?>
             entries["sieve"] = JV(1)
-            for (stamps, samples in [Stamps(box = "fx", rust_commit = "abc"), Stamps(box = "PC", rust_commit = "def"), Stamps(box = "PC", rust_commit = "abc")], [5, 5, 3]) {
-                let error = merge_perf_rerun(path, stamps, samples, entries)
-                t |> success(error |> contains("a re-run joins only a capture of its own box and parameters"), error)
+            let runs = [Stamps(box = "fx", rust_commit = "abc", daslang = "d1"), Stamps(box = "PC", rust_commit = "def", daslang = "d1"), Stamps(box = "PC", rust_commit = "abc", daslang = "d1"), Stamps(box = "PC", rust_commit = "abc", daslang = "d1"), Stamps(box = "PC", rust_commit = "abc", daslang = "d2")]
+            for (stamps, samples, clang, field in runs, [5, 5, 3, 5, 5], ["c1", "c1", "c1", "c2", "c1"], ["box `PC` against this run's `fx`", "rust_commit `abc` against this run's `def`", "samples `5` against this run's `3`", "clang `c1` against this run's `c2`", "daslang `d1` against this run's `d2`"]) {
+                let error = merge_perf_rerun(path, stamps, samples, clang, entries)
+                t |> equal(error, "{path} holds {field}: a re-run joins only a capture of its own box, translator, toolchain and samples")
             }
             t |> equal(fread(path), text)
             let other = path_join(dir, "other.json")
             fwrite(other, "\{\"suites\": \{\}\}")
-            t |> equal(merge_perf_rerun(other, Stamps(), 5, entries), "no perf section in {other} to re-measure kernels into")
+            t |> equal(merge_perf_rerun(other, Stamps(), 5, "", entries), "no perf section in {other} to re-measure kernels into")
             let none = path_join(dir, "none.json")
-            t |> equal(merge_perf_rerun(none, Stamps(), 5, entries), "no perf section in {none} to re-measure kernels into")
+            t |> equal(merge_perf_rerun(none, Stamps(), 5, "", entries), "no perf section in {none} to re-measure kernels into")
         }
     }
     t |> run("the filter is a comma-separated list, each part a text a key holds") @(t : T?) {
@@ -408,7 +410,9 @@ def test_perf_run(t : T?) {
             var out : string
             run_and_capture(["chmod", "+x", bin], out, 30.0)
             let results = path_join(dir, "results.json")
-            fwrite(results, write_json(JV({"suites" => JV({"csmith" => JV({"ids" => JV(9)})}), "perf" => rerun_fixture("fx", "", 1)})) + "\n")
+            var clang, daslang : string
+            tool_versions(clang, daslang)
+            fwrite(results, write_json(JV({"suites" => JV({"csmith" => JV({"ids" => JV(9)})}), "perf" => rerun_fixture("fx", "", 1, clang, daslang)})) + "\n")
             let before = json_of(t, fread(results))
             // a CPU no box names, so only `--box` can make the run's box the capture's
             var argv <- ["env", "DAS_LOG_LEVEL=info", "C2DAS_CPU_NAME=stand-in cpu"]
@@ -427,6 +431,26 @@ def test_perf_run(t : T?) {
             t |> equal(after?["perf"]?["reruns"]?[0]?["kernels"]?[0] ?? "", "dasprofile/fib_loop")
             t |> equal(after?["perf"]?["timestamp"] ?? "", "first")
             t |> equal(after?["perf"]?["box"] ?? "", "fx")
+        }
+    }
+    t |> run("a re-run refused before any kernel is measured: a filter naming no kernel, a capture of another box") @(t : T?) {
+        t |> with_scratch("cmp_perf_rerun_cli") $(dir) {
+            let bin = path_join(dir, "rust")
+            fwrite(bin, STAND_IN)
+            var out : string
+            run_and_capture(["chmod", "+x", bin], out, 30.0)
+            let results = path_join(dir, "results.json")
+            let text = write_json(JV({"perf" => rerun_fixture("bench", "", 1, "", "")}))
+            fwrite(results, text)
+            for (filter, why in ["no_such_kernel", "sieve"], ["--filter `no_such_kernel` names no kernel", "box `bench` against this run's `fx`"]) {
+                var inscope argv <- ["env", "C2DAS_CPU_NAME=stand-in cpu"]
+                argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["compare/run.das", "--", "--perf", "--filter", filter, "--samples", "1", "--out", results, "--box", "fx"])
+                with_env(bin, "") {
+                    t |> equal(run_and_capture(argv, out, 300.0), 1, out)
+                }
+                t |> success(out |> contains(why) && !(out |> contains(": native ")), out)
+            }
+            t |> equal(fread(results), text)
         }
     }
 }

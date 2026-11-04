@@ -60,8 +60,13 @@ which reaches the translation's `error`.
 
 A `--perf` run with `--filter`, a comma-separated list whose every part names the kernels whose
 key holds it, re-measures only those kernels into the capture `--out` names (`merge_perf_rerun`),
-so a suspect cell runs again alone: each such kernel's entry is replaced, every other kernel stays
-as read, `geomean` covers them all, and the re-run appends `{timestamp, kernels}` to the section's
-`reruns`, while the section's own stamps stay the first run's. A capture holds one box (ruling 27)
-and one set of parameters, so the re-run refuses, exit 1 with the file untouched, a capture
-without a `perf` section and one whose `box`, `rust_commit` or `samples` is not the re-run's.
+so a suspect cell runs again alone: each such kernel's entry is replaced, every other kernel keeps
+its values as read, `geomean` covers them all, and the re-run appends `{timestamp, kernels, box,
+rust_commit, versions}` to the section's `reruns`, while the section's own stamps stay the first
+run's. The untouched kernels are identical by value, not by bytes: the capture is rewritten from
+the parsed JSON, whose objects are hash tables, so the order of keys in the file moves, as it does
+under every writer of the capture. A capture holds one box (ruling 27), one translator and one
+toolchain, so before it measures anything the run refuses, exit 1 with the file untouched
+(`rerun_refusal`), a filter naming no kernel, a capture without a `perf` section, and one whose
+`box`, `rust_commit`, `samples` or `versions` (`clang`, `daslang`) is not the re-run's. The capture
+records no converter commit, so a re-run from another commit of this repository is not refused.

@@ -51,24 +51,37 @@ def perf_kernels(filter : string) : array<PerfKernel> {
     return <- [for (k in all); k; where empty(parts) || find_index_if(parts, $(part) => k.key |> contains(part)) >= 0]
 }
 
-//! The capture `path` with the re-measured kernels of `entries` merged into its `perf` section:
-//! each entry replacing its kernel's, every other kernel kept as read, `geomean` over them all, and
-//! the re-run's date and keys appended to `reruns`; "" or why not: no such capture or section, or
-//! one whose box, Rust commit or sample count is not the re-run's.
+//! Why the capture `path` takes no re-run of `samples` samples under `stamps` and the clang version
+//! line `clang`: no such capture or `perf` section, or one whose box, Rust commit, sample count,
+//! clang or daslang version is not the re-run's; "" when it takes one.
 [arch(at="ARCHITECTURE_PERF.md#perf")]
-def merge_perf_rerun(path : string; stamps : Stamps; samples : int; var entries : table<string; JsonValue?>) : string {
+def rerun_refusal(path : string; stamps : Stamps; samples : int; clang : string) : string {
     var error : string
     var root = fexist(path) ? capture_root(path, error) : null
-    var section = root?["perf"]
+    let section = root?["perf"]
     if (section == null || !(section.value is _object) || !((section?["kernels"]).value is _object)) {
         return empty(error) ? "no perf section in {path} to re-measure kernels into" : error
     }
-    let box = section?["box"] ?? ""
-    let commit = section?["rust_commit"] ?? ""
-    let had = section?["samples"] ?? 0
-    if (box != stamps.box || commit != stamps.rust_commit || had != samples) {
-        return "{path} holds box `{box}`, Rust commit `{commit}`, {had} samples; this re-run box `{stamps.box}`, Rust commit `{stamps.rust_commit}`, {samples} samples: a re-run joins only a capture of its own box and parameters"
+    let fields = ["box", "rust_commit", "samples", "clang", "daslang"]
+    let had = [section?["box"] ?? "", section?["rust_commit"] ?? "", "{section?["samples"] ?? 0}", section?["versions"]?["clang"] ?? "", section?["versions"]?["daslang"] ?? ""]
+    let now = [stamps.box, stamps.rust_commit, "{samples}", clang, stamps.daslang]
+    let differ <- [for (field, a, b in fields, had, now); "{field} `{a}` against this run's `{b}`"; where a != b]
+    return empty(differ) ? "" : "{path} holds {join(differ, ", ")}: a re-run joins only a capture of its own box, translator, toolchain and samples"
+}
+
+//! The capture `path` with the re-measured kernels of `entries` merged into its `perf` section:
+//! each entry replacing its kernel's, every other kernel kept as read, `geomean` over them all, and
+//! the re-run's date, keys, box, Rust commit and versions appended to `reruns`; "" or why not
+//! (`rerun_refusal`).
+[arch(at="ARCHITECTURE_PERF.md#perf")]
+def merge_perf_rerun(path : string; stamps : Stamps; samples : int; clang : string; var entries : table<string; JsonValue?>) : string {
+    let refusal = rerun_refusal(path, stamps, samples, clang)
+    if (!empty(refusal)) {
+        return refusal
     }
+    var error : string
+    var root = capture_root(path, error)
+    var section = root?["perf"]
     var kernels = section?["kernels"]
     for (key, entry in keys(entries), values(entries)) {
         (kernels.value as _object)[key] = entry
@@ -81,7 +94,7 @@ def merge_perf_rerun(path : string; stamps : Stamps; samples : int; var entries 
     }
     var rerun_keys <- [for (key in keys(entries)); key]
     sort(rerun_keys)
-    (reruns.value as _array) |> push(JV({"timestamp" => JV(stamps.date), "kernels" => JV(rerun_keys)}))
+    (reruns.value as _array) |> push(JV({"timestamp" => JV(stamps.date), "kernels" => JV(rerun_keys), "box" => JV(stamps.box), "rust_commit" => JV(stamps.rust_commit), "versions" => JV({"clang" => JV(clang), "daslang" => JV(stamps.daslang)})}))
     (section.value as _object)["reruns"] = reruns
     return write_capture_section(path, "perf", section)
 }

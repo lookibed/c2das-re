@@ -128,16 +128,24 @@ def run_perf(args : CompareArgs) : int {
         return 2
     }
     let bin = rust_binary()
+    let stamps = run_stamps(bin, args.box)
+    let out = empty(args.out) ? CAPTURE : args.out
+    let kernels <- perf_kernels(args.filter)
+    var clang, daslang : string
+    tool_versions(clang, daslang)
+    let refusal = empty(args.filter) ? "" : empty(kernels) ? "--filter `{args.filter}` names no kernel" : rerun_refusal(out, stamps, args.samples, clang)
+    if (!empty(refusal)) {
+        to_log(LOG_ERROR, "{refusal}\n")
+        return 1
+    }
     var entries : table<string; JsonValue?>
-    for (k in perf_kernels(args.filter)) {
+    for (k in kernels) {
         var entry = compare_kernel(k, bin, args.samples)
         to_log(LOG_INFO, "{kernel_line(k.key, entry)}\n")
         entries[k.key] = entry
     }
-    let stamps = run_stamps(bin, args.box)
-    let out = empty(args.out) ? CAPTURE : args.out
     if (!empty(args.filter)) {
-        let error = merge_perf_rerun(out, stamps, args.samples, entries)
+        let error = merge_perf_rerun(out, stamps, args.samples, clang, entries)
         if (!empty(error)) {
             to_log(LOG_ERROR, "{error}\n")
             return 1
