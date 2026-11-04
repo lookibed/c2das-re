@@ -43,14 +43,18 @@ def test_capture_box(t : T?) {
 
 [test]
 def test_box_refusal(t : T?) {
-    t |> run("no flag and every box name pass") @(t : T?) {
-        t |> equal(box_refusal(""), "")
+    t |> run("no flag, every box name on an unknown CPU, and the CPU's own box pass") @(t : T?) {
+        t |> equal(box_refusal("", "AMD Ryzen 3 1200"), "")
         for (name in ["bench", "PC", "fx"]) {
-            t |> equal(box_refusal(name), "")
+            t |> equal(box_refusal(name, "unknown cpu"), "")
         }
+        t |> equal(box_refusal("bench", "AMD Ryzen 3 1200 Quad-Core Processor"), "")
     }
     t |> run("another name is refused, naming the boxes") @(t : T?) {
-        t |> equal(box_refusal("laptop"), "--box takes bench, PC, fx, not `laptop`")
+        t |> equal(box_refusal("laptop", "unknown cpu"), "--box takes bench, PC, fx, not `laptop`")
+    }
+    t |> run("a box the CPU contradicts is refused: a wrong label is worse than none") @(t : T?) {
+        t |> equal(box_refusal("fx", "AMD Ryzen 7 7435HS"), "--box fx names another box than this CPU's: AMD Ryzen 7 7435HS is PC")
     }
 }
 
@@ -66,12 +70,15 @@ def test_same_box(t : T?) {
     t |> run("one box: the same box field, the box of the cpu, or the same cpu without a box") @(t : T?) {
         t |> success(same_box(parsed(t, "\{'box': 'bench', 'cpu': 'X'\}"), parsed(t, "\{'cpu': 'AMD Ryzen 3 1200'\}")))
         t |> success(same_box(parsed(t, "\{'cpu': 'Other'\}"), parsed(t, "\{'cpu': 'Other', 'box': ''\}")))
-        t |> success(same_box(parsed(t, "\{\}"), null))
     }
     t |> run("two boxes, or two cpus without a box") @(t : T?) {
         t |> success(!same_box(parsed(t, "\{'cpu': 'AMD FX(tm)-6300'\}"), parsed(t, "\{'cpu': 'AMD Ryzen 3 1200'\}")))
         t |> success(!same_box(parsed(t, "\{'cpu': 'X', 'box': 'PC'\}"), parsed(t, "\{'cpu': 'X'\}")))
         t |> success(!same_box(parsed(t, "\{'cpu': 'X'\}"), parsed(t, "\{'cpu': 'Y'\}")))
+    }
+    t |> run("a capture naming neither box nor cpu matches none, not even another such") @(t : T?) {
+        t |> success(!same_box(parsed(t, "\{\}"), parsed(t, "\{\}")))
+        t |> success(!same_box(null, parsed(t, "\{'cpu': 'X'\}")))
     }
 }
 

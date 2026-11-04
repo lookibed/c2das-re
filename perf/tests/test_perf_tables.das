@@ -44,8 +44,8 @@ def test_ratio(t : T?) {
 
 [test]
 def test_delta(t : T?) {
-    let old = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.0\}\}, 'c': \{'native': \{'time': 1.0\}\}\}\}")
-    let js = capture_of(t, "\{'lanes': ['native', 'interp', 'interp-copy', 'jit', 'exe', 'aot'], 'tests': \{'a': \{'native': \{'time': 0.95\}, 'interp-copy': \{'time': 3.0\}, 'jit': \{'time': 2.0\}, 'aot': \{'time': 1.0\}\}, 'b': \{'native': \{'time': 1.0\}\}\}\}")
+    let old = capture_of(t, "\{'cpu': 'X', 'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.0\}\}, 'c': \{'native': \{'time': 1.0\}\}\}\}")
+    let js = capture_of(t, "\{'cpu': 'X', 'lanes': ['native', 'interp', 'interp-copy', 'jit', 'exe', 'aot'], 'tests': \{'a': \{'native': \{'time': 0.95\}, 'interp-copy': \{'time': 3.0\}, 'jit': \{'time': 2.0\}, 'aot': \{'time': 1.0\}\}, 'b': \{'native': \{'time': 1.0\}\}\}\}")
     t |> run("a cell on both sides is a signed percent") @(t : T?) {
         var cents = 0l
         t |> success(delta_cents(js, old, "a", "native", cents))
@@ -84,20 +84,27 @@ def test_delta_across_cpus(t : T?) {
         t |> equal(flags[0], "a/jit +15.00%")
     }
     t |> run("another cpu without a box renders no delta, one line naming both") @(t : T?) {
-        t |> equal(render_delta(other_cpu, old, "old"), "no delta: Y against X, numbers of two boxes are not compared (ruling 27)\n")
+        t |> equal(render_delta(other_cpu, old, "old"), "no delta: Y against X, numbers of two boxes are not compared\n")
     }
     t |> run("captures of two boxes render no delta table, one box renders it") @(t : T?) {
         let boxed = capture_of(t, "\{'cpu': 'Y', 'box': 'PC', 'tests': \{\}\}")
         let bench = capture_of(t, "\{'cpu': 'AMD Ryzen 3 1200 Quad-Core Processor', 'tests': \{'a': \{'native': \{'time': 1.0\}\}\}\}")
         let fx = capture_of(t, "\{'cpu': 'AMD FX(tm)-6300', 'tests': \{'a': \{'native': \{'time': 1.0\}\}\}\}")
         let two_boxes = render_delta(fx, bench, "old")
-        t |> equal(two_boxes, "no delta: fx (AMD FX(tm)-6300) against bench (AMD Ryzen 3 1200 Quad-Core Processor), numbers of two boxes are not compared (ruling 27)\n")
+        t |> equal(two_boxes, "no delta: fx (AMD FX(tm)-6300) against bench (AMD Ryzen 3 1200 Quad-Core Processor), numbers of two boxes are not compared\n")
         t |> success(!(two_boxes |> contains("|")), two_boxes)
-        t |> equal(render_delta(boxed, old, "old"), "no delta: PC (Y) against X, numbers of two boxes are not compared (ruling 27)\n")
+        t |> equal(render_delta(boxed, old, "old"), "no delta: PC (Y) against X, numbers of two boxes are not compared\n")
         let bench_named = capture_of(t, "\{'cpu': 'Other CPU', 'box': 'bench', 'tests': \{'a': \{'native': \{'time': 1.0\}\}\}\}")
         let one_box = render_delta(bench_named, bench, "old")
         t |> success(one_box |> starts_with("Delta against old, (new - old) / old per kernel and lane."), one_box)
         t |> success(one_box |> contains("| a    |"), one_box)
+    }
+    t |> run("one box, two CPU strings: the heading notes both labels and the ratios; one CPU, no note") @(t : T?) {
+        let a = capture_of(t, "\{'cpu': 'A', 'box': 'bench', 'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.0\}\}\}\}")
+        let b = capture_of(t, "\{'cpu': 'B', 'box': 'bench', 'tests': \{'a': \{'native': \{'time': 2.0\}, 'jit': \{'time': 4.0\}\}\}\}")
+        t |> success(render_delta(a, b, "old") |> starts_with("Delta against old, (new - old) / old per kernel and lane. The baseline ran on bench (B), this capture on bench (A): the delta compares lane/native ratios.\n\n"), render_delta(a, b, "old"))
+        let b_same = capture_of(t, "\{'cpu': 'A', 'box': 'bench', 'tests': \{'a': \{'native': \{'time': 2.0\}, 'jit': \{'time': 4.0\}\}\}\}")
+        t |> success(render_delta(a, b_same, "old") |> starts_with("Delta against old, (new - old) / old per kernel and lane.\n\n"), render_delta(a, b_same, "old"))
     }
     t |> run("the same cpu compares times, native included, under a plain heading") @(t : T?) {
         var cents = 0l
@@ -110,14 +117,14 @@ def test_delta_across_cpus(t : T?) {
 
 [test]
 def test_flag(t : T?) {
-    let old = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.0\}, 'interp-copy': \{'time': 1.0\}, 'jit': \{'time': 1.0\}\}\}\}")
+    let old = capture_of(t, "\{'cpu': 'X', 'tests': \{'a': \{'native': \{'time': 1.0\}, 'interp-copy': \{'time': 1.0\}, 'jit': \{'time': 1.0\}\}\}\}")
     t |> run("exactly 10 percent slower is not flagged") @(t : T?) {
-        let js = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 1.1\}\}\}\}")
+        let js = capture_of(t, "\{'cpu': 'X', 'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 1.1\}\}\}\}")
         t |> equal(length(flagged_cells(js, old)), 0)
         t |> success(render_delta(js, old, "old") |> ends_with("\n\nno lane slower than 10%\n"))
     }
     t |> run("10.01 percent slower is flagged, one FLAG list item per cell") @(t : T?) {
-        let js = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.2\}, 'interp-copy': \{'time': 1.5\}, 'jit': \{'time': 1.1001\}\}\}\}")
+        let js = capture_of(t, "\{'cpu': 'X', 'tests': \{'a': \{'native': \{'time': 1.2\}, 'interp-copy': \{'time': 1.5\}, 'jit': \{'time': 1.1001\}\}\}\}")
         let flags <- flagged_cells(js, old)
         t |> equal(length(flags), 3)
         t |> equal(flags[0], "a/native +20.00%")
@@ -258,6 +265,11 @@ def test_drift(t : T?) {
         t |> success(check_drift(js, old, "old", 10))
         t |> success(!check_drift(js, old, "old", 4))
     }
+    t |> run("captures of two boxes: no check, drifted_cells names the two boxes and --check fails") @(t : T?) {
+        let other = capture_of(t, "\{'cpu': 'AMD FX(tm)-6300', 'lanes': ['native'], 'tests': \{'a': \{'native': \{'time': 1.0\}\}\}\}")
+        t |> equal(join(drifted_cells(other, old, 1000l), "; "), "no check: fx (AMD FX(tm)-6300) against X, numbers of two boxes are not compared")
+        t |> success(!check_drift(other, old, "old", 1000))
+    }
 }
 
 let METHOD_CAPTURE = "\{'cpu': 'C', 'timestamp': 'T', 'versions': \{'clang': 'clang 22', 'daslang': '0.6.4'\}, 'lanes': ['native', 'interp', 'jit', 'exe', 'aot'], 'tests': \{'fib_loop': \{'native': \{'time': 0.00190631\}, 'interp': \{'time': 0.06\}, 'jit': \{'time': 0.004\}, 'exe': \{'time': 0.004\}, 'aot': \{'time': 0.001906438\}\}, 'sieve': \{'native': \{'time': 0.1\}\}\}\}"
@@ -294,14 +306,16 @@ def test_method_comparison(t : T?) {
     }
     t |> run("one row per shared kernel: each hand-written cell over dasProfile's C++, each converted one over the C program; the different programs named") @(t : T?) {
         let text = render_method_comparison(method, dp)
-        t |> success(text |> starts_with("The dasProfile method on C (T; clang 22, daslang 0.6.4) beside borisbat/dasProfile abc run on C (D; Clang 22)."), text)
+        t |> success(text |> starts_with("The dasProfile method on C, T (clang 22, daslang 0.6.4) beside borisbat/dasProfile abc run on C, D (Clang 22)."), text)
         // five significant digits keep apart cells a microsecond apart
         t |> success(text |> contains("| fib_loop |    0.0019063s |     0.0019058s |      0.06s (31.48x) |   0.002s (1.05x) |   0.002s (1.05x) |   0.06s (31.47x) | 0.004s (2.10x) | 0.0019064s (1.00x) | 0.004s (2.10x) |"), text)
         t |> success(!(text |> contains("| sieve")), text)
-        let boxed = render_method_comparison(capture_of(t, "\{'cpu': 'AMD FX(tm)-6300', 'tests': \{\}\}"), capture_of(t, "\{'cpu': 'C', 'box': 'bench'\}"))
-        t |> success(boxed |> starts_with("The dasProfile method on fx (AMD FX(tm)-6300) ("), boxed)
-        t |> success(boxed |> contains(" run on bench (C) ("), boxed)
-        let bare = render_method_comparison(method, capture_of(t, "\{'dasprofile_commit': 'x'\}"))
+        let two_boxes = render_method_comparison(capture_of(t, "\{'cpu': 'AMD FX(tm)-6300', 'tests': \{\}\}"), capture_of(t, "\{'cpu': 'C', 'box': 'bench'\}"))
+        t |> equal(two_boxes, "no comparison: fx (AMD FX(tm)-6300) against bench (C), numbers of two boxes are not compared\n")
+        let labelled = render_method_comparison(capture_of(t, "\{'cpu': 'AMD Ryzen 3 1200 Quad-Core Processor', 'timestamp': 'T', 'tests': \{\}\}"), capture_of(t, "\{'cpu': 'AMD Ryzen 3 1200 Quad-Core', 'timestamp': 'D'\}"))
+        t |> success(labelled |> starts_with("The dasProfile method on bench (AMD Ryzen 3 1200 Quad-Core Processor), T ("), labelled)
+        t |> success(labelled |> contains(" run on bench (AMD Ryzen 3 1200 Quad-Core), D ("), labelled)
+        let bare = render_method_comparison(method, capture_of(t, "\{'cpu': 'C', 'dasprofile_commit': 'x'\}"))
         t |> success(bare |> contains("| fib_loop |    0.0019063s |            n/a |                 n/a |"), bare)
         // the hand-written columns time a literal count
         t |> success(text |> contains("dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one"), text)

@@ -770,7 +770,7 @@ def main : int {
         to_log(LOG_ERROR, "ports: --timeout takes seconds above 0, not {args.timeout}\n")
         return 1
     }
-    let refusal = box_refusal(args.box)
+    let refusal = box_refusal(args.box, cpu_name())
     if (!empty(refusal)) {
         to_log(LOG_ERROR, "ports: {refusal}\n")
         return 1
