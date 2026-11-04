@@ -25,7 +25,8 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
 - `harness.das` - the checks and formats `run.das` applies: the pins read from `VERSIONS.md`,
   `fetch_problems` (the checkout off the pin, a patch not applied, the wad missing or of another
   hash), `missing_units`, `tic_checksum` and `frame_checksum` (the patch's formulas), `tic_lines` and `non_tic_lines`,
-  the one reader of a run's or a log's tic lines, `timed_gametics`, `demo_log` (section 6), and `tic_sync` with
+  the one reader of a run's or a log's tic lines, `timed_gametics`, `host_timing`, the reader of the
+  host's timing line (section 4), `demo_log` (section 6), and `tic_sync` with
   `differing_fields` and `sync_summary` (section 8), and `trace_lines`, the reader of the trace
   lines (section 3).
 - `run.das` - the harness, run from the repository root: `daslang -load_module dasCRuntime
@@ -49,6 +50,10 @@ committed references under `ref/` are those files copied by hand after a referen
   reference log, `--tics N` also stopping the program after N tics; `--demo N` without `--run`
   stays the native run above. The run fails unless every
   compared tic is in sync and, held to the whole demo, the program ends in `timed N gametics`.
+- `run.das --run --fps [--tiers T,...] [--samples N] [--demo N]` and `--readme` (section 9): `--fps`
+  times every demo, or `--demo`'s, natively and under each of `--tiers` (default `interp,jit`),
+  `--samples` runs a cell (default 3), and writes `results_linux.json`; `--readme` rewrites
+  `README.md`'s Doom fps section from that capture. A cell that does not stand fails the run.
 - `run.das --trace` with any of the above: the build, the conversion and the runs of the trace
   (section 3), apart from the reference ones. `--native` builds `work/native/doom-trace` with
   `DOOM_TIC_TRACE` after the sidecar's defines; `--demo N` runs it and writes its trace lines to
@@ -58,7 +63,12 @@ committed references under `ref/` are those files copied by hand after a referen
   `work/trace/<wad stem>_demo<N>.<tier>.log` and holds them to the native ones over the same
   `--tics` (a traced desync fails the run), the tic lines still held to the reference log.
 - `demo_run.das` - the demo runs (section 8): `wad_stem`, `wad_dir`, `reference_log`, `DemoSpec`,
-  `program_argv`, `run_converted`, `in_sync` and `run_report`.
+  `program_argv`, `run_converted` (the converted program under a tier, or the native build under
+  `NATIVE_LANE`), `in_sync` and `run_report`.
+- `fps.das` - the frame rate (section 9): `run_problem` and `add_run`, a run's fps into a cell,
+  `FpsCapture`, `lane_command`, `slowdown` and `render_fps`. It runs and reads nothing.
+- `results_linux.json` - the committed fps capture `--fps` writes (section 9).
+- `ARCHITECTURE_RUN.md` - sections 8 and 9.
 - `convert_check.das` - the conversion checks `--convert` and `--compile-check` apply:
   `stage_program`, `convert_units`, `compile_modules`, `first_error_line`, `classify` (the
   `BLOCKERS` table) and `blocker_table`.
@@ -77,7 +87,12 @@ committed references under `ref/` are those files copied by hand after a referen
   stopped there, the first desynced tic, a missing and a doubled tic, a run past the demo's end,
   an early exit with its first error line, every tic in sync then an exit or a timeout without
   the timedemo line, a timeout, the converted program's module folders, a wad link that fails, no
-  reference log, no entry module, no wad and an empty log. Only the `interp` tier runs there.
+  reference log, no entry module, no wad and an empty log, the host's timing line read from a run;
+  and the native lane over a shell stand-in, with and without the build. Only the `interp` tier
+  runs there.
+- `tests/test_fps.das` - `fps.das` over fixed runs and captures: a run's fps and each reason it
+  gives none, a desync among them, the median and spread, the suspect bar at and above 20%, the
+  rendered table, a missing cell, the lane commands and the capture's JSON shape.
 - `tests/test_convert.das` - `convert_check.das` over a stand-in program (two units that link, one
   the dumper refuses, a host outside their folder): the staging, the units alone, the program's
   modules compiled alone, a module that fails, and the classification.
@@ -163,6 +178,9 @@ code 0 once `gametic` reaches N, so the N tic lines 0 to N-1 are out. Each updat
 runs one game tic (PureDOOM's `singletics` is on) or, while the screen melts, one wipe step that
 runs none; no wall time reaches the game, so a run repeats tic for tic. A `-timedemo` run ends in
 `I_Error`'s `Error: timed <N> gametics in <M> realtics` and exit code 255; `M` counts virtual tics.
+The host reads `clock()` once `doom_init` returns and, at the exit callback or the `-tics` stop,
+prints `host: timed <N> gametics in <S> s`: `N` is `gametic`, `S` the process CPU seconds of the
+update loop, the playback's own time and the frame rate's measure (section 9).
 
 ## 5. The sidecar keys
 
@@ -268,29 +286,7 @@ exists until the converted build runs a demo (`docs/implementation_order.md` P6.
 `layout.threshold` only keeps cut edges, which joins their units to the cluster (a threshold of 10
 leaves 41 units); the defaults give the smallest cluster the cut can reach.
 
-## 8. The converted run
+## 8. The converted run and 9. The frame rate
 
-`run_converted` runs the converted program's entry module, `doom_main.das` in every layout (the
-module holding `main`), through `converter/tiers.das`'s `run_tier` from the repository root with
-the converted program's module folders and the native run's C `argv`, `-timedemo demoN`.
-`run_tier` takes no environment for the child, so the harness process sets `DOOMWADDIR` to the
-wad's run folder, absolute, and the program inherits it: the wad opens as in the native run. A
-wad link that fails stops the run. The `exe` and `aot` builds go to `work/run/<wad stem>/<layout>/`,
-one folder per layout. The reference log is `<wad stem>_demo<N>.log` in `ref/`, else in `work/ref/` (a local
-reference, a `doom2.wad` one among them). The run's tic lines, a timed-out run's included, since
-`run_and_capture` keeps the output a killed process wrote, are held to the log's by `tic_sync`:
-the first `--tics` lines, or all of them, a run that goes on past the demo's last tic desyncing
-there. Held to the whole demo, a run is in sync only when it also ends, not timed out, in the
-`timed N gametics` line with N the log's tics, the end `demo_log` requires of a native run; under
-`--tics` an exit after the compared tics passes, its exit code reported. The report names the
-first desynced tic, the fields that differ (`tic`, `cs`, `fb`) and the lines, expected against
-got, or `N tics in sync`, a run short of the compared tics, the exit code or the timeout, the first
-error line of a run that ended in neither the `timed N gametics` line nor the host's `host: stopped
-after N tics` (`first_error_line`, matching `error` or `exception` in any case, since PureDOOM's
-`I_Error` text starts `Error: ` and a daslang panic `EXCEPTION: `), and the seconds per 35 tics
-over the whole process, start included: a sanity number, not P6.7's measure. Under `--tics N` the program's `argv` starts with
-the host's `-tics N` (`program_argv`), so the program stops after the compared tics with exit code
-0 instead of playing the demo to its end or to `--timeout`.
-
-At the pin, the `source` layout under `interp` plays demo1, demo2 and demo3 on freedoom2.wad in
-sync with their reference logs, every tic's checksum and frame, to the `timed N gametics` line.
+In `ARCHITECTURE_RUN.md`: the converted program's demo run held to the reference log (section 8),
+and the frame rate `--fps` measures and publishes (section 9).

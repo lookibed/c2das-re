@@ -9,7 +9,7 @@ require ../converter/tiers.das
 require harness
 require convert_check
 
-//! The demo runs `run.das` starts (`ARCHITECTURE.md` section 8): the folder a run opens its wad
+//! The demo runs `run.das` starts (`ARCHITECTURE_RUN.md` section 8): the folder a run opens its wad
 //! in, the reference log a run is held to, and the converted program's `-timedemo` run under one
 //! tier, its tic lines compared with that log.
 
@@ -55,7 +55,8 @@ struct DemoSpec {
 //! the timeout), the seconds it took, the tic lines it printed, the first error line of a run that
 //! did not end in the timedemo line or the host's `-tics` stop and the sync with the reference log `ref_log`. `whole` when the
 //! run is held to the whole demo, `ended` when it ended in time in `timed N gametics` with N the
-//! reference's tics; `traces` the `trace=` lines it printed, one per line.
+//! reference's tics; `traces` the `trace=` lines it printed, one per line; `timing` the host's
+//! line on the playback's own time (`host_timing`).
 struct DemoRun {
     error : string
     ref_log : string
@@ -67,6 +68,7 @@ struct DemoRun {
     error_line : string
     sync : TicSync
     traces : string
+    timing : HostTiming = HostTiming()
 }
 
 //! The C `argv` of `spec`'s program: `-timedemo demo<demo>`, after the host's `-tics <tics>` when
@@ -77,15 +79,23 @@ def program_argv(spec : DemoSpec) : array<string> {
     return <- argv
 }
 
-//! `spec`'s run: the program run by `run_tier` from the current folder, `DOOMWADDIR` set in this
-//! process to the wad's run folder, which the program inherits, the exe and aot builds in its
-//! `<entry's folder name>/`; its tic lines, a timed-out run's included, compared with the reference.
+//! The tier of the native build, run alone, beside `run_tier`'s; every other lane's ratio is over it.
+let NATIVE_LANE = "native"
+
+//! The memory a native run gets: 3 GiB of address space, as `prlimit --as` takes it.
+let NATIVE_MEMORY = "3221225472"
+
+//! `spec`'s run, the program run by `run_tier` from the current folder, or, under the tier
+//! `NATIVE_LANE`, `spec.entry` the native build run alone under `prlimit --as` `NATIVE_MEMORY`;
+//! `DOOMWADDIR` set in this process to the wad's run folder, which the program inherits, the exe
+//! and aot builds in its `<entry's folder name>/`; its tic lines, a timed-out run's included,
+//! compared with the reference.
 def run_converted(spec : DemoSpec) : DemoRun {
     var run = DemoRun()
     let stem = wad_stem(spec.wad)
     run.ref_log = reference_log(spec.ref_dirs, stem, spec.demo)
     if (!stat(spec.entry).is_reg) {
-        run.error = "no {spec.entry}; run --convert"
+        run.error = spec.tier == NATIVE_LANE ? "no {spec.entry}; run --native" : "no {spec.entry}; run --convert"
     } elif (empty(run.ref_log)) {
         run.error = "no reference log {stem}_demo{spec.demo}.log in {join(spec.ref_dirs, " or ")}"
     } elif (!stat(spec.wad).is_reg) {
@@ -101,11 +111,17 @@ def run_converted(spec : DemoSpec) : DemoRun {
         return run
     }
     set_env_variable("DOOMWADDIR", get_full_file_name(dir))
-    let build_dir = path_join(dir, base_name(dir_name(spec.entry)))
-    mkdir_rec(build_dir)
     var output : string
     let started = ref_time_ticks()
-    run.rc = run_tier(spec.entry, spec.tier, build_dir, output, spec.module_dirs, spec.timeout, array<string>(), program_argv(spec))
+    if (spec.tier == NATIVE_LANE) {
+        var argv <- ["prlimit", "--as={NATIVE_MEMORY}", get_full_file_name(spec.entry)]
+        argv |> push_from(program_argv(spec))
+        run.rc = run_and_capture(argv, output, spec.timeout)
+    } else {
+        let build_dir = path_join(dir, base_name(dir_name(spec.entry)))
+        mkdir_rec(build_dir)
+        run.rc = run_tier(spec.entry, spec.tier, build_dir, output, spec.module_dirs, spec.timeout, array<string>(), program_argv(spec))
+    }
     run.seconds = double(get_time_usec(started)) / 1000000.0lf
     let got <- tic_lines(output)
     let expected <- tic_lines(fread(run.ref_log))
@@ -119,6 +135,7 @@ def run_converted(spec : DemoSpec) : DemoRun {
     }
     run.sync = tic_sync(expected, got, spec.tics)
     run.traces = join(trace_lines(output), "\n")
+    run.timing = host_timing(output)
     return run
 }
 

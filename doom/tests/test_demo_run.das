@@ -10,10 +10,14 @@ require ../../converter/tiers.das
 //! that checks its C `argv` and `$DOOMWADDIR/doom2.wad`, then prints the tic lines
 //! `$DOOM_STAND_IN` (`<tics>,<desynced tic>,<exit code>,<sleep ms>,<missing tic>,<doubled tic>`)
 //! asks for, held to a four-tic stand-in reference log; exit code 255 ends in the timedemo line,
-//! any other in a decoy line, an `Error:` line and a later lowercase error line, then the sleep.
+//! with the host's timing line after it, any other in a decoy line, an `Error:` line and a later
+//! lowercase error line, then the sleep. The native stand-in is a shell script that checks the
+//! same and prints the four tic lines, the timedemo line and the host's.
 //! Like the host, it stops with exit code 0 after `-tics N` tics when N is fewer.
 
-let STAND_IN = "options gen2\nrequire daslib/fio\nrequire strings\nrequire daslib/strings_boost\n[export]\ndef main : int \{\n    let args <- get_command_line_arguments()\n    if (length(args) < 2 || args[length(args) - 2] != \"-timedemo\" || args[length(args) - 1] != \"demo1\" || !stat(get_env_variable(\"DOOMWADDIR\") + \"/doom2.wad\").is_reg) \{\n        print(\"error: no -timedemo demo1 or no doom2.wad\\n\")\n        return 2\n    \}\n    let mode <- [for (field in split(get_env_variable(\"DOOM_STAND_IN\"), \",\")); to_int(field)]\n    let at = find_index(args, \"-tics\")\n    let cap = at >= 0 ? to_int(args[at + 1]) : mode[0]\n    for (tic in range(cap < mode[0] ? cap : mode[0])) \{\n        if (tic != mode[4]) \{\n            print(\"tic=\{tic\} cs=0000000\{tic == mode[1] ? 9 : tic\}\\n\")\n        \}\n        if (tic == mode[5]) \{\n            print(\"tic=\{tic\} cs=0000000\{tic\}\\n\")\n        \}\n    \}\n    if (cap < mode[0]) \{\n        print(\"host: stopped after \{cap\} tics\\n\")\n        return 0\n    \}\n    print(mode[2] == 255 ? \"Error: timed \{mode[0]\} gametics in \{mode[0]\} realtics\\n\" : \"Z_Init: decoy\\nError: boom\\nerror: later\\n\")\n    if (mode[3] > 0) \{\n        sleep(uint(mode[3]))\n    \}\n    return mode[2]\n\}\n"
+let STAND_IN = "options gen2\nrequire daslib/fio\nrequire strings\nrequire daslib/strings_boost\n[export]\ndef main : int \{\n    let args <- get_command_line_arguments()\n    if (length(args) < 2 || args[length(args) - 2] != \"-timedemo\" || args[length(args) - 1] != \"demo1\" || !stat(get_env_variable(\"DOOMWADDIR\") + \"/doom2.wad\").is_reg) \{\n        print(\"error: no -timedemo demo1 or no doom2.wad\\n\")\n        return 2\n    \}\n    let mode <- [for (field in split(get_env_variable(\"DOOM_STAND_IN\"), \",\")); to_int(field)]\n    let at = find_index(args, \"-tics\")\n    let cap = at >= 0 ? to_int(args[at + 1]) : mode[0]\n    for (tic in range(cap < mode[0] ? cap : mode[0])) \{\n        if (tic != mode[4]) \{\n            print(\"tic=\{tic\} cs=0000000\{tic == mode[1] ? 9 : tic\}\\n\")\n        \}\n        if (tic == mode[5]) \{\n            print(\"tic=\{tic\} cs=0000000\{tic\}\\n\")\n        \}\n    \}\n    if (cap < mode[0]) \{\n        print(\"host: stopped after \{cap\} tics\\n\")\n        return 0\n    \}\n    print(mode[2] == 255 ? \"Error: timed \{mode[0]\} gametics in \{mode[0]\} realtics\\nhost: timed \{mode[0]\} gametics in 0.250000 s\\n\" : \"Z_Init: decoy\\nError: boom\\nerror: later\\n\")\n    if (mode[3] > 0) \{\n        sleep(uint(mode[3]))\n    \}\n    return mode[2]\n\}\n"
+
+let NATIVE_STAND_IN = "#!/bin/sh\n[ \"$1 $2\" = \"-timedemo demo1\" ] && [ -f \"$DOOMWADDIR/doom2.wad\" ] || exit 2\nfor tic in 0 1 2 3; do echo \"tic=$tic cs=0000000$tic\"; done\necho \"Error: timed 4 gametics in 4 realtics\"\necho \"host: timed 4 gametics in 0.125000 s\"\nexit 255\n"
 
 // a fresh scratch folder, "" when none can be made
 def private scratch(name : string) : string {
@@ -53,6 +57,8 @@ def test_sync(t : T?) {
         t |> success(lines[0] |> ends_with("ref/stand_demo1.log"), lines[0])
         t |> success(lines[1] |> ends_with(": exit 255"), lines[1])
         t |> success(lines[2] |> contains(" s per 35 tics (4 tics in "), lines[2])
+        t |> equal(run.timing.tics, 4)
+        t |> equal(run.timing.seconds, 0.25lf)
     }
     t |> run("--tics bounds the comparison: a desync past it is not held") @(t : T?) {
         let spec <- stand_in_spec(2)
@@ -70,6 +76,31 @@ def test_sync(t : T?) {
         t |> equal(run.error_line, "")
         t |> success(in_sync(run))
         t |> equal(join(program_argv(stand_in_spec(0)), " "), "-timedemo demo1")
+    }
+}
+
+[test]
+def test_native(t : T?) {
+    t |> run("the native lane runs the build alone, held to the reference as a tier is") @(t : T?) {
+        var spec <- stand_in_spec(0)
+        spec.entry = path_join(dir_name(spec.wad), "doom")
+        fwrite(spec.entry, NATIVE_STAND_IN)
+        var out : string
+        t |> equal(run_and_capture(["chmod", "+x", spec.entry], out, 30.0), 0)
+        spec.tier = NATIVE_LANE
+        let run = run_converted(spec)
+        t |> equal(run.error, "")
+        t |> equal(run.rc, 255)
+        t |> success(in_sync(run))
+        t |> equal(run.timing.tics, 4)
+        t |> equal(run.timing.seconds, 0.125lf)
+    }
+    t |> run("no native build") @(t : T?) {
+        var spec <- stand_in_spec(0)
+        spec.entry = path_join(dir_name(spec.wad), "doom")
+        spec.tier = NATIVE_LANE
+        let run = run_converted(spec)
+        t |> success(run.error |> ends_with("/doom; run --native"), run.error)
     }
 }
 

@@ -137,6 +137,16 @@ The dasProfile method on bench (AMD Ryzen 3 1200 Quad-Core Processor), 2026-11-0
 - `matmul`, `sieve`, `blit` and the construct kernels have no dasProfile twin; dasProfile's `n-bodies`, `spectral norm`, `sha256`, `sort`, `tree`, `queen`, `dictionary`, `exp loop`, `particles kinematics`, `string2float`, `float2string` and `interop host calls` have no kernel here: different programs, not compared
 <!-- perf-method:end -->
 
+## Doom
+
+PureDOOM's `-timedemo` frame rate on freedoom2.wad, natively and converted, every run held tic for
+tic to the reference log (`doom/ARCHITECTURE_RUN.md` section 9). `doom/run.das --run --fps` measures
+it into `doom/results_linux.json`; `doom/run.das --readme` renders the table below from that file.
+
+<!-- doom-fps:begin -->
+Not measured yet.
+<!-- doom-fps:end -->
+
 ## Head-to-head with the Rust translator
 
 Ledger item P8.1 runs this converter and the Rust translator
