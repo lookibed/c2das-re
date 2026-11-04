@@ -23,6 +23,14 @@ let PERF = "\"perf\": \{\"lanes\": [\"native\", \"interp\", \"jit\"], \"timestam
 \"k2\": \{\"native\": \{\"error\": \"convert: no\"\}, \"ours\": \{\"interp\": \{\"error\": \"convert: no\"\}\}, \"rust\": \{\"status\": \"refused\", \"error\": \"translation failed: x; cause=unsupported external call: qsort\"\}\}\},
 \"geomean\": \{\"interp\": \{\"ours\": 2.0, \"rust\": 1.0, \"kernels\": 1\}, \"jit\": \{\"ours\": 0.0, \"rust\": 0.0, \"kernels\": 0\}\}\}"
 
+// three kernels: `k1` our interpreter's cell at a 21% spread, the Rust one at 20%; `k2` its native
+// cell at 21%; `k3` native at 20%, nothing suspect. The capture's geomean counts all three
+let SUSPECT_PERF = "\{\"perf\": \{\"lanes\": [\"native\", \"interp\"], \"kernels\": \{
+\"k1\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"interp\": \{\"time\": 2.0, \"spread\": 0.21\}\}, \"rust\": \{\"status\": \"ran\", \"lanes\": \{\"interp\": \{\"time\": 1.0, \"spread\": 0.2\}\}\}\},
+\"k2\": \{\"native\": \{\"time\": 1.0, \"spread\": 0.21\}, \"ours\": \{\"interp\": \{\"time\": 3.0\}\}, \"rust\": \{\"status\": \"ran\", \"lanes\": \{\"interp\": \{\"time\": 3.0\}\}\}\},
+\"k3\": \{\"native\": \{\"time\": 1.0, \"spread\": 0.2\}, \"ours\": \{\"interp\": \{\"time\": 4.0\}\}, \"rust\": \{\"status\": \"ran\", \"lanes\": \{\"interp\": \{\"time\": 2.0\}\}\}\}\},
+\"geomean\": \{\"interp\": \{\"ours\": 3.0, \"rust\": 1.8, \"kernels\": 3\}\}\}\}"
+
 // one group and `all`: the Rust side lower on `goto` and on its lines without its runtime; one
 // key left out
 let QUALITY = "\"quality\": \{\"rust_commit\": \"q\", \"date\": \"d\", \"totals\": \{
@@ -87,6 +95,17 @@ def test_perf(t : T?) {
     }
     t |> run("no kernel: said so") @(t : T?) {
         t |> equal(perf_table(json_of(t, "\{\}")), "No kernel is timed yet.\n")
+    }
+    t |> run("a cell of spread above 20% is suspect with its spread, a lane over a suspect native one too, both out of the geomean; 20% exactly is a number") @(t : T?) {
+        let js = json_of(t, SUSPECT_PERF)
+        let md = perf_table(js)
+        t |> success(md |> contains("| k1                |          1.000000 | suspect (±21.0%) |             1.00 |"), md)
+        t |> success(md |> contains("| k2                | suspect (±21.0%) |  suspect (native) | suspect (native) |"), md)
+        t |> success(md |> contains("| k3                |          1.000000 |              4.00 |             2.00 |"), md)
+        t |> success(md |> contains("| geomean (kernels) |                   |          4.00 (1) |         2.00 (1) |"), md)
+        // the capture's own geomean (over all three) is not what the row shows
+        t |> success(!(md |> contains("3.00")), md)
+        t |> equal(join(rust_ahead(js), "\n"), "- k3, interpreter: Rust 2.00x native, ours 4.00x.\n- geomean, interpreter: Rust 2.00x native, ours 4.00x over 1 kernels.")
     }
 }
 

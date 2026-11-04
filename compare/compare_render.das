@@ -135,6 +135,9 @@ def cell_ratio(cell, native : JsonValue const?) : double {
     return !key_exists(cell, "error") && t > 0.0lf && n > 0.0lf ? t / n : 0.0lf
 }
 
+// whether `cell` stands with a spread above `SUSPECT_SPREAD`
+def private suspect_cell(cell : JsonValue const?) : bool => !absent(cell) && !key_exists(cell, "error") && is_suspect(cell?["spread"] ?? 0.0lf)
+
 // the das lanes of the perf section, its `lanes` less `native`
 def private das_lanes(perf : JsonValue const?) : array<string> => <- [for (lane in strings_of(perf?["lanes"])); lane; where lane != "native"]
 
@@ -142,7 +145,8 @@ def private das_lanes(perf : JsonValue const?) : array<string> => <- [for (lane 
 def private rust_cell(entry : JsonValue const?; lane : string) : JsonValue const? => entry?["rust"]?["lanes"]?[lane]
 
 // the text of one side's cell: its ratio to native, `refused` for a refused Rust translation, the
-// error's short form, else `n/a`
+// error's short form, `suspect` with its spread for a suspect cell and `suspect (native)` over a
+// suspect native one, else `n/a`
 def private side_text(entry, cell : JsonValue const?; refused : bool) : string {
     if (refused) {
         return "refused"
@@ -151,7 +155,33 @@ def private side_text(entry, cell : JsonValue const?; refused : bool) : string {
         return "n/a"
     }
     let error = cell?["error"] ?? ""
-    return empty(error) ? ratio_cell(cell_ratio(cell, entry?["native"])) : error_word(error)
+    if (!empty(error)) {
+        return error_word(error)
+    }
+    if (suspect_cell(cell)) {
+        return suspect_text(cell?["spread"] ?? 0.0lf)
+    }
+    return suspect_cell(entry?["native"]) ? "{SUSPECT} (native)" : ratio_cell(cell_ratio(cell, entry?["native"]))
+}
+
+//! The geometric mean of `lane`'s ratio to native for each side over the kernels of `kernels`
+//! where native and both sides' cells stand and none is suspect; `count` how many, both 0 for none.
+def published_geomean(kernels : JsonValue const?; lane : string; var ours, rust : double&; var count : int&) {
+    var ours_log, rust_log = 0.0lf
+    count = 0
+    for (name in keys_of(kernels)) {
+        let entry = kernels?[name]
+        let native = entry?["native"]
+        let o = cell_ratio(entry?["ours"]?[lane], native)
+        let r = cell_ratio(rust_cell(entry, lane), native)
+        if (o > 0.0lf && r > 0.0lf && !suspect_cell(native) && !suspect_cell(entry?["ours"]?[lane]) && !suspect_cell(rust_cell(entry, lane))) {
+            ours_log += log(o)
+            rust_log += log(r)
+            count++
+        }
+    }
+    ours = count == 0 ? 0.0lf : exp(ours_log / double(count))
+    rust = count == 0 ? 0.0lf : exp(rust_log / double(count))
 }
 
 def private is_refused(entry : JsonValue const?) : bool => (entry?["rust"]?["status"] ?? "") == "refused"
@@ -175,7 +205,7 @@ def perf_table(results : JsonValue const?) : string {
     for (name in names) {
         let entry = kernels?[name]
         let native = entry?["native"]
-        var inscope row <- [name, key_exists(native, "error") ? error_word(native?["error"] ?? "") : "{native?["time"] ?? 0.0lf:.6f}"]
+        var inscope row <- [name, key_exists(native, "error") ? error_word(native?["error"] ?? "") : suspect_cell(native) ? suspect_text(native?["spread"] ?? 0.0lf) : "{native?["time"] ?? 0.0lf:.6f}"]
         for (lane in lanes) {
             row |> push_from([side_text(entry, entry?["ours"]?[lane], false), side_text(entry, rust_cell(entry, lane), is_refused(entry))])
         }
@@ -183,9 +213,10 @@ def perf_table(results : JsonValue const?) : string {
     }
     var inscope mean_row <- ["geomean (kernels)", ""]
     for (lane in lanes) {
-        let g = perf?["geomean"]?[lane]
-        let n = g?["kernels"] ?? 0
-        mean_row |> push_from(n == 0 ? ["n/a", "n/a"] : ["{ratio_cell(g?["ours"] ?? 0.0lf)} ({n})", "{ratio_cell(g?["rust"] ?? 0.0lf)} ({n})"])
+        var ours, rust : double
+        var n : int
+        published_geomean(kernels, lane, ours, rust, n)
+        mean_row |> push_from(n == 0 ? ["n/a", "n/a"] : ["{ratio_cell(ours)} ({n})", "{ratio_cell(rust)} ({n})"])
     }
     rows |> emplace(mean_row)
     return table_of(headers, rows, 1)
@@ -350,10 +381,10 @@ def rust_ahead(results : JsonValue const?) : array<string> {
         for (lane in lanes) {
             let rust_cell_of = rust_cell(entry, lane)
             let rust = cell_ratio(rust_cell_of, entry?["native"])
-            if (rust == 0.0lf) {
+            let ours_cell = entry?["ours"]?[lane]
+            if (rust == 0.0lf || suspect_cell(rust_cell_of) || suspect_cell(ours_cell) || suspect_cell(entry?["native"])) {
                 continue
             }
-            let ours_cell = entry?["ours"]?[lane]
             let ours = cell_ratio(ours_cell, entry?["native"])
             if (ours == 0.0lf) {
                 lines |> push("- {name}, {lane_title(lane)}: Rust {ratio_cell(rust)}x native, ours has no cell ({error_word(ours_cell?["error"] ?? "")}).")
@@ -363,11 +394,11 @@ def rust_ahead(results : JsonValue const?) : array<string> {
         }
     }
     for (lane in lanes) {
-        let g = perf?["geomean"]?[lane]
-        let rust = g?["rust"] ?? 0.0lf
-        let ours = g?["ours"] ?? 0.0lf
-        if ((g?["kernels"] ?? 0) > 0 && ahead_by_margin(rust, ours)) {
-            lines |> push("- geomean, {lane_title(lane)}: Rust {ratio_cell(rust)}x native, ours {ratio_cell(ours)}x over {g?["kernels"] ?? 0} kernels.")
+        var ours, rust : double
+        var n : int
+        published_geomean(kernels, lane, ours, rust, n)
+        if (n > 0 && ahead_by_margin(rust, ours)) {
+            lines |> push("- geomean, {lane_title(lane)}: Rust {ratio_cell(rust)}x native, ours {ratio_cell(ours)}x over {n} kernels.")
         }
     }
     for (name in keys_of(results?["projects"])) {
@@ -465,8 +496,11 @@ def bench_text_of(cell, native : JsonValue const?) : string {
     }
     let error = cell?["error"] ?? ""
     if (empty(error)) {
+        if (suspect_cell(cell?["decode"])) {
+            return suspect_text(cell?["decode"]?["spread"] ?? 0.0lf)
+        }
         let r = cell_ratio(cell?["decode"], native?["decode"])
-        return r > 0.0lf ? ratio_cell(r) : "n/a"
+        return r <= 0.0lf ? "n/a" : suspect_cell(native?["decode"]) ? "{SUSPECT} (native)" : ratio_cell(r)
     }
     let lane_fails = "the lane does not pass: "
     if (error |> starts_with(lane_fails)) {
@@ -498,7 +532,7 @@ def project_speed_table(results : JsonValue const?) : string {
     for (name in names) {
         let speed = results?["projects"]?[name]?["speed"]
         let native = speed?["native"]
-        let native_time = native?["decode"]?["time"] ?? 0.0lf
+        let native_time = suspect_cell(native?["decode"]) ? 0.0lf : native?["decode"]?["time"] ?? 0.0lf
         for (side in ["ours", "rust"]) {
             var inscope row <- [name, side_title(side), compiler_name(results?["projects"]?[name]?["native_compiler"] ?? ""), native_time > 0.0lf ? "{native_time:.6f}" : bench_text_of(native, null)]
             row |> push_from([for (lane in lanes); bench_text_of(speed?[side]?[lane], native)])
@@ -560,7 +594,8 @@ def projects_text(results : JsonValue const?) : string {
             w |> write("\nWhy a lane does not pass:\n\n" + join(reasons, "\n") + "\n")
         }
         if (!empty(names)) {
-            w |> write("\nThe bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), {samples_text(results)}:\n\n")
+            w |> write("\nThe bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), {samples_text(results)}; ")
+            w |> write("a cell whose spread is above {int(SUSPECT_SPREAD * 100.0lf)}% is `{SUSPECT}` with its spread, no ratio, as is a lane over a suspect native build:\n\n")
             w |> write(project_speed_table(results))
             w |> write("\nThe code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):\n\n{project_code_table(results)}")
             for (n in names) {
@@ -645,7 +680,8 @@ def compare_report(results : JsonValue const?) : string {
         if (!absent(perf)) {
             w |> write("Captured {perf?["timestamp"] ?? ""} on {perf?["platform"] ?? ""}, {capture_label(perf)}; {perf?["versions"]?["clang"] ?? ""}; daslang {perf?["versions"]?["daslang"] ?? ""}; ")
             w |> write("Rust `{slice(perf?["rust_commit"] ?? "", 0, 12)}`; {perf?["samples"] ?? 0} samples a cell. A cell is a lane's time over the native build's (lower is faster); ")
-            w |> write("the geomean row covers the kernels where native and both sides stand, their count in parentheses.\n\n")
+            w |> write("the geomean row covers the kernels where native and both sides stand, their count in parentheses. ")
+            w |> write("A cell whose spread is above {int(SUSPECT_SPREAD * 100.0lf)}% is `{SUSPECT}` with its spread, no ratio, and out of the geomean, as is a cell over a suspect native one.\n\n")
         }
         w |> write(perf_table(results))
         let errors <- perf_errors(results)
