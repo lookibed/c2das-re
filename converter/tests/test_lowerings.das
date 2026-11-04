@@ -169,6 +169,7 @@ def test_lowerings(t : T?) {
     p5_lua_review_fixtures(t)
     p5_skip_audit_fixtures(t)
     p8_input_fixtures(t)
+    p8_refusal_fixtures(t)
     p7_readable_fixtures(t)
     p7_goto_into_fixtures(t)
     rmdir_rec(work_root)
@@ -2221,35 +2222,6 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "struct timespec \{\n    tv_sec, tv_nsec : int64\n\}\n")
         has_text(t, text, "crt::clock_gettime(1, reinterpret<void?>(addr(a)))")
     }
-    t |> run("vfprintf forwards its va_list to c_vfprintf, the stream a `void?`, in order with printf (quakegeneric's `Sys_Error`)") @(t : T?) {
-        var text : string
-        check_fixture(t, "p8_vfprintf", text)
-        has_text(t, text, "    n = c_vfprintf(reinterpret<void?>(f), fmt, va_rest(ap))\n")
-        has_text(t, text, "p8_vfprintf__report`va(reinterpret<_IO_FILE?>(crt::c_stdout()), ")
-    }
-    t |> run("a function the program defines named like a mapped libc one (h264bsd's `malloc`) takes a free name its calls bind to, through a pointer too") @(t : T?) {
-        var text : string
-        check_fixture(t, "p8_libc_shadow", text)
-        has_text(t, text, "def malloc1(size : uint64) : void? \{\n")
-        has_text(t, text, "def strlen1(")
-        has_text(t, text, "= @@malloc1\n")
-        has_text(t, text, "calloc1(uint64(4), ")
-        has_text(t, text, "crt::strcpy(")
-        has_text(t, text, "crt::memcpy(")
-    }
-    t |> run("a calling convention in a type (wasm3's `vectorcall` macro over `preserve_none`, the attribute itself) drops: the function type keeps its result and parameters") @(t : T?) {
-        var text : string
-        check_fixture(t, "p8_vectorcall", text)
-        has_text(t, text, "var private p8_vectorcall__direct : function<(var a0 : int?; a1 : int) : int> = @@p8_vectorcall__op_mul\n")
-        has_text(t, text, "var private p8_vectorcall__by_macro : function<(var a0 : int?; a1 : int) : int> = @@p8_vectorcall__op_add\n")
-        has_text(t, text, "def private p8_vectorcall__op_add(var pc : int?; acc : int) : int \{\n")
-        has_text(t, text, "def private p8_vectorcall__run(f : function<(var a0 : int?; a1 : int) : int>; ")
-    }
-    t |> run("a `_Static_assert` at file and block scope (wasm3's table sizes) is clang's check alone: it leaves nothing in the module") @(t : T?) {
-        let text = converts(t, "file_asserts", "static const int tab[3] = \{ 1, 2, 3 \};\n_Static_assert(sizeof(tab) / sizeof(*tab) == 3, \"one entry per type\");\nint main(void) \{\n    _Static_assert(sizeof(int) == 4, \"int\");\n    return tab[2] - 3;\n\}\n")
-        has_text(t, text, "def c_main : int \{\n    return file_asserts__tab[2] - 3\n\}\n")
-        t |> success(!(text |> contains("one entry")), text)
-    }
     t |> run("`musttail` on a return converts as a plain call whose value is returned: through a function pointer and direct") @(t : T?) {
         var text : string
         check_fixture(t, "p8_musttail", text)
@@ -2280,6 +2252,39 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "var private doc_global__list : default_t[1] = fixed_array(default_t(name = ")
         has_text(t, text, "var private doc_global__k : int = 2\n")
         has_text(t, text, "var private doc_global__u : int\n")
+    }
+}
+
+// the holes the real projects of P8.4 found (ruling 29): each a project the Rust translator passes
+def p8_refusal_fixtures(t : T?) {
+    t |> run("vfprintf forwards its va_list to c_vfprintf, the stream a `void?`, in order with printf (quakegeneric's `Sys_Error`)") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_vfprintf", text)
+        has_text(t, text, "    n = c_vfprintf(reinterpret<void?>(f), fmt, va_rest(ap))\n")
+        has_text(t, text, "p8_vfprintf__report`va(reinterpret<_IO_FILE?>(crt::c_stdout()), ")
+    }
+    t |> run("a function the program defines named like a mapped libc one (h264bsd's `malloc`) takes a free name its calls bind to, through a pointer too") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_libc_shadow", text)
+        has_text(t, text, "def malloc1(size : uint64) : void? \{\n")
+        has_text(t, text, "def strlen1(")
+        has_text(t, text, "= @@malloc1\n")
+        has_text(t, text, "calloc1(uint64(4), ")
+        has_text(t, text, "crt::strcpy(")
+        has_text(t, text, "crt::memcpy(")
+    }
+    t |> run("a calling convention in a type (wasm3's `vectorcall` macro over `preserve_none`, the attribute itself) drops: the function type keeps its result and parameters") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_vectorcall", text)
+        has_text(t, text, "var private p8_vectorcall__direct : function<(var a0 : int?; a1 : int) : int> = @@p8_vectorcall__op_mul\n")
+        has_text(t, text, "var private p8_vectorcall__by_macro : function<(var a0 : int?; a1 : int) : int> = @@p8_vectorcall__op_add\n")
+        has_text(t, text, "def private p8_vectorcall__op_add(var pc : int?; acc : int) : int \{\n")
+        has_text(t, text, "def private p8_vectorcall__run(f : function<(var a0 : int?; a1 : int) : int>; ")
+    }
+    t |> run("a `_Static_assert` at file and block scope (wasm3's table sizes) is clang's check alone: it leaves nothing in the module") @(t : T?) {
+        let text = converts(t, "file_asserts", "static const int tab[3] = \{ 1, 2, 3 \};\n_Static_assert(sizeof(tab) / sizeof(*tab) == 3, \"one entry per type\");\nint main(void) \{\n    _Static_assert(sizeof(int) == 4, \"int\");\n    return tab[2] - 3;\n\}\n")
+        has_text(t, text, "def c_main : int \{\n    return file_asserts__tab[2] - 3\n\}\n")
+        t |> success(!(text |> contains("one entry")), text)
     }
 }
 
