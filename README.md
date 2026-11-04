@@ -100,7 +100,7 @@ interpreter's `fib_loop` under `--loops while` spreads 29%), which CI runs on ev
 it reruns this tree's lanes only, and dasProfile's columns rerun under `--from-scratch` alone.
 
 <!-- perf-table:begin -->
-Captured on 2026-11-03 09:17 UTC, linux x86_64, bench (AMD Ryzen 3 1200 Quad-Core Processor); clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.
+Captured on 2026-11-03 09:17 UTC, linux x86_64, bench (AMD Ryzen 3 1200 Quad-Core Processor); clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), 0.6.4. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold; a cell whose spread is above 20% is `suspect` with its spread, no time, and in no ratio or delta.
 
 | Test            |      C (clang -O3) | DAS interpreter | DAS interp, copied params | DAS interp, while loops | DAS interp, reinterpreted first members |            DAS JIT |            DAS exe |            DAS AOT |
 | :-------------- | -----------------: | --------------: | ------------------------: | ----------------------: | --------------------------------------: | -----------------: | -----------------: | -----------------: |
@@ -120,11 +120,11 @@ Captured on 2026-11-03 09:17 UTC, linux x86_64, bench (AMD Ryzen 3 1200 Quad-Cor
 | str_copy        |     0.000515s ±1% |  0.037570s ±1% |           0.036191s ±14% |          0.037499s ±0% |                          0.037556s ±1% | **0.000511s ±0%** |     0.000516s ±0% |     0.001729s ±0% |
 | switch_goto     |     0.003673s ±0% |  0.105842s ±0% |            0.105729s ±2% |          0.104194s ±2% |                          0.105456s ±1% |     0.001581s ±0% | **0.001533s ±1%** |     0.002173s ±0% |
 | switch_local    | **0.000765s ±0%** |  0.059477s ±0% |            0.059569s ±0% |          0.059618s ±0% |                          0.059453s ±0% |     0.004853s ±0% |     0.004778s ±5% |                n/a |
-| va_forward      | **0.000399s ±0%** |  0.096239s ±3% |            0.090737s ±2% |          0.097180s ±3% |                          0.096524s ±2% |    0.008984s ±29% |    0.004219s ±58% |    0.005142s ±49% |
+| va_forward      | **0.000399s ±0%** |  0.096239s ±3% |            0.090737s ±2% |          0.097180s ±3% |                          0.096524s ±2% |  suspect (±28.7%) |  suspect (±58.4%) |  suspect (±49.2%) |
 <!-- perf-table:end -->
 
 <!-- perf-method:begin -->
-The dasProfile method on bench (AMD Ryzen 3 1200 Quad-Core Processor), 2026-11-03 09:19 UTC (clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), daslang 0.6.4) beside borisbat/dasProfile 436d58d2840ff839550d44d32f98e10a15b57bf2 run on bench (AMD Ryzen 3 1200 Quad-Core), Tue Nov  3 11:59:00 2026 (Clang 22.1.8, daslang 0.6.4, LLVM 22.1.5). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).
+The dasProfile method on bench (AMD Ryzen 3 1200 Quad-Core Processor), 2026-11-03 09:19 UTC (clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), daslang 0.6.4) beside borisbat/dasProfile 436d58d2840ff839550d44d32f98e10a15b57bf2 run on bench (AMD Ryzen 3 1200 Quad-Core), Tue Nov  3 11:59:00 2026 (Clang 22.1.8, daslang 0.6.4, LLVM 22.1.5). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program; a cell of this tree's capture whose spread is above 20% is `suspect` with its spread, and one over a suspect C cell has no ratio. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).
 
 | Test          | C (clang -O3) | dasProfile C++ | hand-written interp |   hand-written JIT |   hand-written AOT |   converted interp |      converted JIT |      converted AOT |      converted exe |
 | :------------ | ------------: | -------------: | ------------------: | -----------------: | -----------------: | -----------------: | -----------------: | -----------------: | -----------------: |
@@ -181,30 +181,30 @@ Captured: c_testsuite (Rust `ce4647af2826`, 2026-11-01 02:54 UTC, unlabelled box
 
 ### Speed
 
-Captured 2026-11-01 07:27 UTC on linux x86_64, fx (AMD FX(tm)-6300 Six-Core Processor); clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.4; Rust `ce4647af2826`; 5 samples a cell. A cell is a lane's time over the native build's (lower is faster); the geomean row covers the kernels where native and both sides stand, their count in parentheses.
+Captured 2026-11-01 07:27 UTC on linux x86_64, fx (AMD FX(tm)-6300 Six-Core Processor); clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.4; Rust `ce4647af2826`; 5 samples a cell. A cell is a lane's time over the native build's (lower is faster); the geomean row covers the kernels where native and both sides stand, their count in parentheses. A cell whose spread is above 20% is `suspect` with its spread, no ratio, and out of the geomean, as is a cell over a suspect native one.
 
-| Kernel                   | native (s) | ours interpreter | Rust interpreter |  ours JIT |  Rust JIT |  ours exe |  Rust exe |  ours AOT |  Rust AOT |
-| :----------------------- | ---------: | ---------------: | ---------------: | --------: | --------: | --------: | --------: | --------: | --------: |
-| bit_pack                 |   0.000213 |           330.27 |           638.52 |      1.06 |      exit |      1.07 |      exit |      1.09 |     45.37 |
-| blit                     |   0.000428 |            96.71 |            53.86 |      8.65 |      9.21 |     10.40 |     10.77 |      0.99 |      1.66 |
-| compound_lit             |   0.000531 |           111.19 |            94.11 |      1.04 |      1.32 |      1.07 |      1.16 |      1.05 |      2.44 |
-| dasprofile/fib_loop      |   0.001905 |            31.44 |           116.98 |      2.28 |      2.29 |      2.29 |      2.29 |      1.00 |      1.00 |
-| dasprofile/fib_recursive |   0.008354 |             8.66 |            12.00 |      1.05 |   timeout |      1.01 |   timeout |      1.06 |      1.04 |
-| dasprofile/primes        |   0.049542 |             4.44 |             4.44 |      0.94 |      0.96 |      0.94 |      0.94 |      0.63 |      0.58 |
-| do_while_effect          |   0.003408 |            22.14 |            18.89 |      1.02 |      1.02 |      1.00 |      1.02 |      0.99 |      1.01 |
-| fib_loop                 |   0.001906 |            31.51 |           117.26 |      2.28 |      2.30 |      2.30 |      2.29 |      1.00 |      1.00 |
-| fib_recursive            |   0.007529 |             9.94 |            13.46 |      1.17 |   timeout |      1.12 |   timeout |      1.17 |      1.17 |
-| fixed_mandel             |   0.000844 |            39.84 |            48.35 |      0.69 |      0.69 |      0.70 |      0.69 |      0.95 |      0.92 |
-| matmul                   |   0.000597 |            92.91 |            38.11 |      0.58 |      0.58 |      0.97 |      0.96 |      1.43 |      1.40 |
-| primes                   |   0.049269 |             2.73 |             2.85 |      0.95 |      0.95 |      0.95 |      0.95 |      0.63 |      0.59 |
-| qsort_cmp                |   0.000210 |             9.26 |          refused |      2.56 |   refused |      2.53 |   refused |      2.65 |   refused |
-| setjmp_general           |   0.000211 |            42.96 |          refused |     22.01 |   refused |     21.16 |   refused |     17.59 |   refused |
-| sieve                    |   0.006701 |            22.61 |            11.84 |      1.06 |      1.18 |      1.04 |      1.15 |      5.15 |      5.15 |
-| str_copy                 |   0.000720 |            65.51 |            55.17 |      1.20 |      1.21 |      1.22 |      1.22 |      5.68 |      5.56 |
-| switch_goto              |   0.004559 |            42.01 |            16.87 |      0.43 |      0.29 |      0.43 |      0.29 |      0.51 |      0.85 |
-| switch_local             |   0.001164 |            73.51 |            60.15 |      5.96 |      0.98 |      6.15 |      0.99 |   compile |      2.61 |
-| va_forward               |   0.000603 |           215.67 |           131.56 |     13.55 |     47.21 |     10.45 |     47.37 |     13.42 |     14.76 |
-| geomean (kernels)        |            |       36.08 (17) |       35.92 (17) | 1.61 (14) | 1.55 (14) | 1.66 (14) | 1.60 (14) | 1.37 (16) | 1.92 (16) |
+| Kernel                   | native (s) | ours interpreter | Rust interpreter |  ours JIT |  Rust JIT |  ours exe |  Rust exe |  ours AOT |          Rust AOT |
+| :----------------------- | ---------: | ---------------: | ---------------: | --------: | --------: | --------: | --------: | --------: | ----------------: |
+| bit_pack                 |   0.000213 |           330.27 |           638.52 |      1.06 |      exit |      1.07 |      exit |      1.09 |             45.37 |
+| blit                     |   0.000428 |            96.71 |            53.86 |      8.65 |      9.21 |     10.40 |     10.77 |      0.99 |              1.66 |
+| compound_lit             |   0.000531 |           111.19 |            94.11 |      1.04 |      1.32 |      1.07 |      1.16 |      1.05 |              2.44 |
+| dasprofile/fib_loop      |   0.001905 |            31.44 |           116.98 |      2.28 |      2.29 |      2.29 |      2.29 |      1.00 |              1.00 |
+| dasprofile/fib_recursive |   0.008354 |             8.66 |            12.00 |      1.05 |   timeout |      1.01 |   timeout |      1.06 |              1.04 |
+| dasprofile/primes        |   0.049542 |             4.44 |             4.44 |      0.94 |      0.96 |      0.94 |      0.94 |      0.63 |              0.58 |
+| do_while_effect          |   0.003408 |            22.14 |            18.89 |      1.02 |      1.02 |      1.00 |      1.02 |      0.99 |              1.01 |
+| fib_loop                 |   0.001906 |            31.51 |           117.26 |      2.28 |      2.30 |      2.30 |      2.29 |      1.00 |              1.00 |
+| fib_recursive            |   0.007529 |             9.94 |            13.46 |      1.17 |   timeout |      1.12 |   timeout |      1.17 |              1.17 |
+| fixed_mandel             |   0.000844 |            39.84 |            48.35 |      0.69 |      0.69 |      0.70 |      0.69 |      0.95 |              0.92 |
+| matmul                   |   0.000597 |            92.91 |            38.11 |      0.58 |      0.58 |      0.97 |      0.96 |      1.43 |              1.40 |
+| primes                   |   0.049269 |             2.73 |             2.85 |      0.95 |      0.95 |      0.95 |      0.95 |      0.63 |              0.59 |
+| qsort_cmp                |   0.000210 |             9.26 |          refused |      2.56 |   refused |      2.53 |   refused |      2.65 |           refused |
+| setjmp_general           |   0.000211 |            42.96 |          refused |     22.01 |   refused |     21.16 |   refused |     17.59 |           refused |
+| sieve                    |   0.006701 |            22.61 |            11.84 |      1.06 |      1.18 |      1.04 |      1.15 |      5.15 |              5.15 |
+| str_copy                 |   0.000720 |            65.51 |            55.17 |      1.20 |      1.21 |      1.22 |      1.22 |      5.68 |              5.56 |
+| switch_goto              |   0.004559 |            42.01 |            16.87 |      0.43 |      0.29 |      0.43 |      0.29 |      0.51 |              0.85 |
+| switch_local             |   0.001164 |            73.51 |            60.15 |      5.96 |      0.98 |      6.15 |      0.99 |   compile | suspect (±24.6%) |
+| va_forward               |   0.000603 |           215.67 |           131.56 |     13.55 |     47.21 |     10.45 |     47.37 |     13.42 |             14.76 |
+| geomean (kernels)        |            |       36.08 (17) |       35.92 (17) | 1.61 (14) | 1.55 (14) | 1.66 (14) | 1.60 (14) | 1.37 (16) |         1.92 (16) |
 
 Error cells:
 
@@ -689,22 +689,22 @@ Why a lane does not pass:
 - quakegeneric, Rust, JIT: output: line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at compare/work/projects/quakegeneric/rust/host.das.inc:66...
 - wasm3, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`
 
-The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 3 samples a cell:
+The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 3 samples a cell; a cell whose spread is above 20% is `suspect` with its spread, no ratio, as is a lane over a suspect native build:
 
-| Project       | Side | Native compiler      | Native s | interpreter |      JIT |      exe |      AOT |
-| :------------ | :--- | :------------------- | -------: | ----------: | -------: | -------: | -------: |
-| binjgb        | Ours | clang version 22.1.8 | 0.102919 |       80.57 |     1.22 |     1.29 |  compile |
-| binjgb        | Rust | clang version 22.1.8 | 0.102919 |       73.01 |     1.08 |     1.05 |     1.10 |
-| doomgeneric   | Ours | clang version 22.1.8 | 0.124779 |     refused |  refused |  refused |  refused |
-| doomgeneric   | Rust | clang version 22.1.8 | 0.124779 |       32.05 |     1.04 |     1.04 |  timeout |
-| h264bsd-mp4   | Ours | clang version 22.1.8 | 0.120014 |     refused |  refused |  refused |  refused |
-| h264bsd-mp4   | Rust | clang version 22.1.8 | 0.120014 |       50.73 |     1.04 |     1.04 |     1.14 |
-| plmpeg-stream | Ours | clang version 22.1.8 | 0.062770 |       49.44 |     1.08 |     1.18 |     1.13 |
-| plmpeg-stream | Rust | clang version 22.1.8 | 0.062770 |       39.15 |     0.95 |     1.01 |     1.05 |
-| quakegeneric  | Ours | clang version 22.1.8 | no bench |    no bench | no bench | no bench | no bench |
-| quakegeneric  | Rust | clang version 22.1.8 | no bench |    no bench | no bench | no bench | no bench |
-| wasm3         | Ours | clang version 22.1.8 | 0.003862 |     refused |  refused |  refused |  refused |
-| wasm3         | Rust | clang version 22.1.8 | 0.003862 |       64.39 |     1.99 |     2.02 |     1.43 |
+| Project       | Side | Native compiler      |          Native s |      interpreter |              JIT |              exe |              AOT |
+| :------------ | :--- | :------------------- | ----------------: | ---------------: | ---------------: | ---------------: | ---------------: |
+| binjgb        | Ours | clang version 22.1.8 |          0.102919 |            80.57 |             1.22 |             1.29 |          compile |
+| binjgb        | Rust | clang version 22.1.8 |          0.102919 |            73.01 |             1.08 |             1.05 |             1.10 |
+| doomgeneric   | Ours | clang version 22.1.8 |          0.124779 |          refused |          refused |          refused |          refused |
+| doomgeneric   | Rust | clang version 22.1.8 |          0.124779 |            32.05 |             1.04 |             1.04 |          timeout |
+| h264bsd-mp4   | Ours | clang version 22.1.8 |          0.120014 |          refused |          refused |          refused |          refused |
+| h264bsd-mp4   | Rust | clang version 22.1.8 |          0.120014 |            50.73 |             1.04 |             1.04 |             1.14 |
+| plmpeg-stream | Ours | clang version 22.1.8 |          0.062770 |            49.44 |             1.08 |             1.18 |             1.13 |
+| plmpeg-stream | Rust | clang version 22.1.8 |          0.062770 |            39.15 |             0.95 |             1.01 |             1.05 |
+| quakegeneric  | Ours | clang version 22.1.8 |          no bench |         no bench |         no bench |         no bench |         no bench |
+| quakegeneric  | Rust | clang version 22.1.8 |          no bench |         no bench |         no bench |         no bench |         no bench |
+| wasm3         | Ours | clang version 22.1.8 | suspect (±41.9%) |          refused |          refused |          refused |          refused |
+| wasm3         | Rust | clang version 22.1.8 | suspect (±41.9%) | suspect (native) | suspect (native) | suspect (native) | suspect (native) |
 
 The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
 
@@ -2360,7 +2360,6 @@ def call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Resul
 - switch_local, interpreter: Rust 60.15x native, ours 73.51x.
 - switch_local, JIT: Rust 0.98x native, ours 5.96x.
 - switch_local, exe: Rust 0.99x native, ours 6.15x.
-- switch_local, AOT: Rust 2.61x native, ours has no cell (compile).
 - va_forward, interpreter: Rust 131.56x native, ours 215.67x.
 - project binjgb: Rust passes AOT, ours does not.
 - project doomgeneric: Rust passes interpreter, JIT, exe, ours does not.
