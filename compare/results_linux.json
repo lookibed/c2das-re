@@ -1,7 +1,7 @@
 {
 	"suites" : {
 		"c_testsuite" : {
-			"ours_skipped" : 0,
+			"daslang" : "0.6.4",
 			"date" : "2026-11-01 02:54 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 199,
@@ -1561,12 +1561,12 @@
 			"rust_pass_of_unlisted" : 8,
 			"ids" : 220,
 			"seconds" : 86.92239379882812,
+			"ours_skipped" : 0,
 			"rust_pass_of_ours" : 194,
-			"rust_pass_of_skipped" : 0,
-			"daslang" : "0.6.4"
+			"rust_pass_of_skipped" : 0
 		},
 		"gcc_torture" : {
-			"ours_skipped" : 321,
+			"daslang" : "0.6.4",
 			"date" : "2026-11-01 03:04 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 1179,
@@ -13178,12 +13178,12 @@
 			"rust_pass_of_unlisted" : 67,
 			"ids" : 1656,
 			"seconds" : 645.4718017578125,
+			"ours_skipped" : 321,
 			"rust_pass_of_ours" : 1089,
-			"rust_pass_of_skipped" : 41,
-			"daslang" : "0.6.4"
+			"rust_pass_of_skipped" : 41
 		},
 		"csmith" : {
-			"ours_skipped" : 31,
+			"daslang" : "0.6.4",
 			"date" : "2026-11-01 03:12 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 151,
@@ -14477,9 +14477,9 @@
 			"rust_pass_of_unlisted" : 0,
 			"ids" : 182,
 			"seconds" : 434.8171081542969,
+			"ours_skipped" : 31,
 			"rust_pass_of_ours" : 42,
-			"rust_pass_of_skipped" : 5,
-			"daslang" : "0.6.4"
+			"rust_pass_of_skipped" : 5
 		}
 	},
 	"perf" : {
@@ -17294,48 +17294,6 @@
 					}
 				}
 			},
-			"gcc_torture/990628-1" : {
-				"ours" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 65,
-					"runtime_lines" : 0,
-					"program_c2da_lines" : 0,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 3,
-						"unsafe_expr" : 0,
-						"c_function" : 3,
-						"literal_named" : 0,
-						"pointer_arith" : 1,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 0,
-						"pointer_index" : 2
-					}
-				},
-				"rust" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 391,
-					"runtime_lines" : 290,
-					"program_c2da_lines" : 34,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 25,
-						"unsafe_expr" : 47,
-						"c_function" : 0,
-						"literal_named" : 0,
-						"pointer_arith" : 0,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 1,
-						"pointer_index" : 13
-					}
-				}
-			},
 			"gcc_torture/990525-1" : {
 				"ours" : {
 					"status" : "ok",
@@ -17375,6 +17333,48 @@
 						"unsafe_block" : 0,
 						"while_rangeable" : 1,
 						"pointer_index" : 11
+					}
+				}
+			},
+			"gcc_torture/990628-1" : {
+				"ours" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 65,
+					"runtime_lines" : 0,
+					"program_c2da_lines" : 0,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 3,
+						"unsafe_expr" : 0,
+						"c_function" : 3,
+						"literal_named" : 0,
+						"pointer_arith" : 1,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 0,
+						"pointer_index" : 2
+					}
+				},
+				"rust" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 391,
+					"runtime_lines" : 290,
+					"program_c2da_lines" : 34,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 25,
+						"unsafe_expr" : 47,
+						"c_function" : 0,
+						"literal_named" : 0,
+						"pointer_arith" : 0,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 1,
+						"pointer_index" : 13
 					}
 				}
 			},
@@ -76027,10 +76027,16 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-03 12:24 UTC",
+			"date" : "2026-11-04 03:25 UTC",
+			"cpu" : "AMD Ryzen 7 7435HS",
+			"box" : "PC",
+			"rust_commit_error" : "",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 			"address_cap" : "4294967296",
-			"rust_commit_error" : "",
+			"native" : {
+				"status" : "pass",
+				"reason" : ""
+			},
 			"ours" : {
 				"error" : "dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``",
 				"lanes" : {
@@ -76067,10 +76073,6 @@
 					"rust" : "[sideeffects]\ndef R_DrawSpan() {\n    var position_1 : uint\n    var step : uint\n    var dest_14 : uint8?\n    var count_16 : int\n    if (ds_x2 < ds_x1 || ds_x1 < 0 || ds_x2 >= 320 || uint(ds_y) > 200u) {\n        I_Error(unsafe(addr<int8?>(c2da_str_395[0])), [C2daVaArg(tag = 1, i64 = int64(ds_x1), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(ds_x2), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(ds_y), f64 = 0.0lf, raw = 0x0)])\n    }\n    position_1 = uint(ds_xfrac << 10) & 0xffff0000u | uint(ds_yfrac >> 6 & 65535)\n    step = uint(ds_xstep << 10) & 0xffff0000u | uint(ds_ystep >> 6 & 65535)\n    dest_14 = unsafe(reinterpret<uint8?>(unsafe(ylookup[ds_y] + columnofs[ds_x1])))\n    count_16 = ds_x2 - ds_x1\n    var c2da_dest_14_addr : uint64 = unsafe(reinterpret<uint64>(dest_14))\n    for (c2da_iter_5 in urange64(0ul, uint64(uint(count_16)) + 1ul)) {\n        *unsafe(reinterpret<uint8?>(c2da_dest_14_addr)) = uint8(unsafe(ds_colormap[int(unsafe(ds_source[int(position_1 >> 26u | position_1 >> 4u & 0xfc0u)]))]))  // nolint:PERF020\n        c2da_dest_14_addr++\n        position_1 += step\n    }\n    return\n}"
 				}
 			],
-			"native" : {
-				"status" : "pass",
-				"reason" : ""
-			},
 			"samples" : 3,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
@@ -76097,25 +76099,25 @@
 			"speed" : {
 				"native" : {
 					"setup" : {
-						"time" : 0.006973,
-						"spread" : 0.025168507098809675,
+						"time" : 0.006822,
+						"spread" : 0.002272060979185037,
 						"count" : 1,
 						"result" : 0,
 						"samples" : [
-							0.006973,
-							0.007298,
-							0.006947
+							0.006822,
+							0.006838,
+							0.006807
 						]
 					},
 					"decode" : {
-						"time" : 0.173015,
-						"spread" : 0.005389706094847284,
+						"time" : 0.124779,
+						"spread" : 0.0038307728063215704,
 						"count" : 1,
 						"result" : 0,
 						"samples" : [
-							0.172987,
-							0.173015,
-							0.174852
+							0.123849,
+							0.124779,
+							0.124805
 						]
 					}
 				},
@@ -76136,73 +76138,73 @@
 				"rust" : {
 					"interp" : {
 						"setup" : {
-							"time" : 0.174414,
-							"spread" : 0.006020158932195783,
+							"time" : 0.107997,
+							"spread" : 0.01994499847217981,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.174322,
-								0.174414,
-								0.176422
+								0.107997,
+								0.105221,
+								0.109529
 							]
 						},
 						"decode" : {
-							"time" : 6.394203,
-							"spread" : 0.004134448030505127,
+							"time" : 3.998685,
+							"spread" : 0.0028233031609141384,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								6.394203,
-								6.423366,
-								6.370493
+								4.008476,
+								3.998685,
+								3.985897
 							]
 						}
 					},
 					"jit" : {
 						"setup" : {
-							"time" : 0.006761,
-							"spread" : 0.5371986392545481,
+							"time" : 0.006589,
+							"spread" : 1.6206556381848534,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.014017,
-								0.006753,
-								0.006761
+								0.027547,
+								0.00619,
+								0.006589
 							]
 						},
 						"decode" : {
-							"time" : 0.192058,
-							"spread" : 0.0016948005290068954,
+							"time" : 0.129438,
+							"spread" : 0.012079142137548552,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.192058,
-								0.192552,
-								0.191901
+								0.128464,
+								0.129438,
+								0.131591
 							]
 						}
 					},
 					"exe" : {
 						"setup" : {
-							"time" : 0.006886,
-							"spread" : 0.002396166134185307,
+							"time" : 0.006173,
+							"spread" : 0.03742102705329659,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.006857,
-								0.006886,
-								0.00689
+								0.00594,
+								0.006173,
+								0.006402
 							]
 						},
 						"decode" : {
-							"time" : 0.192256,
-							"spread" : 0.0025616885818907755,
+							"time" : 0.129673,
+							"spread" : 0.012319449692688543,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.192113,
-								0.192256,
-								0.193098
+								0.131249,
+								0.129673,
+								0.128054
 							]
 						}
 					},
