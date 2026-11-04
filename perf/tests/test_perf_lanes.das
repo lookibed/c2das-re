@@ -128,3 +128,38 @@ def test_time_limits(t : T?) {
         rmdir_rec(work)
     }
 }
+
+[test]
+def test_guarded_samples(t : T?) {
+    t |> run("a guarded run: sh waiting on prlimit with no core file, the address space capped only when asked") @(t : T?) {
+        t |> equal(join(guarded(["k", "a b"], 0l), "|"), "sh|-c|\"$@\"; exit $?|sh|prlimit|--core=0|--|k|a b")
+        t |> equal(join(guarded(["k"], 1073741824l), "|"), "sh|-c|\"$@\"; exit $?|sh|prlimit|--core=0|--as=1073741824|--|k")
+        var out : string
+        t |> equal(run_and_capture(guarded(["sh", "-c", "ulimit -c; ulimit -v"], 1073741824l), out, 30.0), 0, out)
+        t |> equal(out, "0\n1048576\n")
+    }
+    t |> run("an exit code in words: a signal from 129 to 192, named up to 15, else the code") @(t : T?) {
+        t |> equal(exit_text(139), "signal 11 (SEGV)")
+        t |> equal(exit_text(133), "signal 5 (TRAP)")
+        t |> equal(exit_text(158), "signal 30")
+        t |> equal(exit_text(3), "exited 3")
+        t |> equal(exit_text(128), "exited 128")
+        t |> equal(exit_text(193), "exited 193")
+        t |> equal(run_error(134, "\n[I] jit\n"), "signal 6 (ABRT), no output")
+    }
+    t |> run("a sample dying of a signal: the signal named with its first reported line, never a bare exit code") @(t : T?) {
+        var error : string
+        let segv <- measure(["sh", "-c", "echo; echo boom >&2; kill -SEGV $$"], 1, error, 30.0)
+        t |> equal(error, "signal 11 (SEGV): boom")
+        t |> equal(length(segv.samples), 0)
+        var abrt_error, exit_error, no_error : string
+        let abrt <- measure(["sh", "-c", "kill -ABRT $$"], 1, abrt_error, 30.0)
+        t |> success(abrt_error |> starts_with("signal 6 (ABRT)"), abrt_error)
+        let exited <- measure(["sh", "-c", "echo why; exit 5"], 1, exit_error, 30.0)
+        t |> equal(exit_error, "exited 5: why")
+        let timed <- measure(["sh", "-c", "echo 0.25 4 7"], 2, no_error, 30.0)
+        t |> equal(no_error, "")
+        t |> equal(length(timed.samples), 2, no_error)
+        t |> equal(timed.result, 7)
+    }
+}

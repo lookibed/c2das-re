@@ -35,6 +35,39 @@ struct LaneLimits {
 //! the perf harness's limits
 let PERF_LIMITS = LaneLimits(sample = SAMPLE_TIMEOUT, build = BUILD_TIMEOUT)
 
+//! the names of the signals 1 to 15 by number, Linux's
+let SIGNAL_NAMES <- ["", "HUP", "INT", "QUIT", "ILL", "TRAP", "ABRT", "BUS", "FPE", "KILL", "USR1", "SEGV", "USR2", "PIPE", "ALRM", "TERM"]
+
+//! `argv` as a guarded run starts it (`ARCHITECTURE_SAMPLES.md`): under `prlimit` with no core file
+//! and, when `address_space` is above 0, that many bytes of address space, inside `sh`, which waits
+//! for it and so reports a death by signal N as the exit code 128 + N.
+def guarded(argv : array<string>; address_space : int64) : array<string> {
+    var full <- ["sh", "-c", "\"$@\"; exit $?", "sh", "prlimit", "--core=0"]
+    full |> reserve(length(full) + 2 + length(argv))
+    if (address_space > 0l) {
+        full |> push("--as={address_space}")
+    }
+    full |> push("--")
+    full |> push_from(argv)
+    return <- full
+}
+
+//! The exit code `rc` of a guarded run in words: `signal N (<name>)` for a code from 129 to 192,
+//! the shell's report of a death by signal N, else `exited <rc>`.
+def exit_text(rc : int) : string {
+    let signal = rc - 128
+    if (signal < 1 || signal > 64) {
+        return "exited {rc}"
+    }
+    return signal < length(SIGNAL_NAMES) ? "signal {signal} ({SIGNAL_NAMES[signal]})" : "signal {signal}"
+}
+
+//! A failed guarded run's error: its exit in words and the first line it reported, or `no output`.
+def run_error(rc : int; output : string) : string {
+    let line = first_reported_line(output)
+    return empty(line) ? "{exit_text(rc)}, no output" : "{exit_text(rc)}: {line}"
+}
+
 // the kernel's line is the last one: a tier may log before the program runs
 def parse_sample(out : string; var seconds : double&; var reps : int64&; var result : int&) : bool {
     let fields <- split(last_line(out), " ")
@@ -58,7 +91,8 @@ def cell_of(samples : array<double>; count : int64; result : int) : Cell {
 //! `samples` launches of `argv`, each a process; the kernel's own line gives the per-run time.
 def measure(argv : array<string>; samples : int; var error : string&) : Cell => measure(argv, samples, error, SAMPLE_TIMEOUT)
 
-//! `measure` with `timeout` seconds per sample; a sample past it is the error.
+//! `measure` with `timeout` seconds per sample, each sample `guarded` with no address-space cap; a
+//! sample past the timeout is the error, as is one that fails (`run_error`).
 def measure(argv : array<string>; samples : int; var error : string&; timeout : float) : Cell {
     var times : array<double>
     var count = 0l
@@ -66,7 +100,7 @@ def measure(argv : array<string>; samples : int; var error : string&; timeout : 
     times |> reserve(samples)
     for (_s in range(samples)) {
         var out : string
-        let rc = run_and_capture(argv, out, timeout)
+        let rc = run_and_capture(guarded(argv, 0l), out, timeout)
         var seconds = 0.0lf
         var sample_result = 0
         if (rc == popen_timed_out) {
@@ -74,7 +108,7 @@ def measure(argv : array<string>; samples : int; var error : string&; timeout : 
             break
         }
         if (rc != 0 || !parse_sample(out, seconds, count, sample_result)) {
-            error = "exited {rc}: {first_line(out)}"
+            error = run_error(rc, out)
             break
         }
         if (!empty(times) && sample_result != result) {
