@@ -53,10 +53,10 @@ def replaced_all(text : string; pairs : array<tuple<old : string; by : string>>;
     return out
 }
 
-let private PLAIN_CASE = "if (_goto == 0 && _cond == "
+let private PLAIN_CASE = "if (_cond == "
 
 //! The former `_flag` switch chain (before P7.0c) of a switch a goto re-dispatches: every plain case
-//! of one label `if (_goto == 0 && _cond == K) \{` (a case of several labels, `(_cond == A ||
+//! of one label `if (_cond == K) \{` (a case of several labels, `(_cond == A ||
 //! _cond == B)`, is left as it is: the audit kernel has none) becomes `_flag ||= _goto == 0 && _cond == K` followed by
 //! `if (_flag) \{`, which the flag loop's `var _flag = false` serves. A plain case leaves the switch
 //! at its end, so the flag it sets is never read: the two spellings run the same program, and the
@@ -249,7 +249,7 @@ def private literal_sizes(text : string; var error : string&) : string => replac
 //! Every construct the audit measures, in the table's order.
 def constructs : array<Construct> {
     return <- [
-        Construct(name = "`_flag` switch chain", kernel = "dispatch_switch", spelling = "flag-chain", sites = "if (_goto == 0 && _cond ==", rewrite = @@flag_chain),
+        Construct(name = "`_flag` switch chain", kernel = "dispatch_switch", spelling = "flag-chain", sites = "if (_cond ==", rewrite = @@flag_chain),
         Construct(name = "union member through `reinterpret<GCUnion?>`", kernel = "union_access", spelling = "member-cast", sites = "reinterpret<GCUnion?>(", rewrite = @@union_members),
         Construct(name = "`addr((p + i).f)` on a stack slot", kernel = "stack_ptr", spelling = "slot-cast", sites = "addr((", rewrite = @@slot_casts),
         Construct(name = "`addr(deref(p + i))` indexing", kernel = "node_index", spelling = "pointer", sites = ADDR_DEREF, rewrite = @@unwrap_addr_deref),

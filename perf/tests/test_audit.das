@@ -32,11 +32,11 @@ def scratch(t : T?) : string {
 [test]
 def test_rewrites(t : T?) {
     t |> run("flag_chain: a plain case takes the flag line and the flag test; a flag case stays") @(t : T?) {
-        let text = join(["    if (_goto == 0 && _cond == 3) \{", "        a()", "    _flag ||= _goto == 0 && _cond == 4", "    _flag ||= _goto == 1", "    if (_flag) \{"], "\n")
+        let text = join(["    if (_cond == 3) \{", "        a()", "    _flag ||= _cond == 4", "    _flag ||= _goto == 1", "    if (_flag) \{"], "\n")
         var error : string
         let out = flag_chain(text, error)
         t |> equal(error, "")
-        t |> equal(out, join(["    _flag ||= _goto == 0 && _cond == 3", "    if (_flag) \{", "        a()", "    _flag ||= _goto == 0 && _cond == 4", "    _flag ||= _goto == 1", "    if (_flag) \{"], "\n"))
+        t |> equal(out, join(["    _flag ||= _goto == 0 && _cond == 3", "    if (_flag) \{", "        a()", "    _flag ||= _cond == 4", "    _flag ||= _goto == 1", "    if (_flag) \{"], "\n"))
     }
     t |> run("flag_chain: no plain case is an error") @(t : T?) {
         var error : string
