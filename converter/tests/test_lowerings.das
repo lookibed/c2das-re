@@ -2246,6 +2246,12 @@ def p8_input_fixtures(t : T?) {
         let text = converts(t, "doc_comment", "/**\n * Twice the value.\n * @param v the value\n */\nstatic int twice(int v) \{ return v * 2; \}\nint main(void) \{ return twice(2) - 4; \}\n")
         has_text(t, text, "return v * 2")
     }
+    t |> run("a documentation comment on a global (`FullComment`, doomgeneric's `//!`) is no initializer: an array its initializer sizes, a scalar, one without") @(t : T?) {
+        let text = converts(t, "doc_global", "typedef struct \{ char *name; int v; \} default_t;\n//! @begin_config_file default\nstatic default_t list[] = \{ \{ \"a\", 1 \} \};\n/// two\nstatic int k = 2;\n//! zero\nstatic int u;\nint main(void) \{ return list[0].v + k + u - 3; \}\n")
+        has_text(t, text, "var private doc_global__list : default_t[1] = fixed_array(default_t(name = ")
+        has_text(t, text, "var private doc_global__k : int = 2\n")
+        has_text(t, text, "var private doc_global__u : int\n")
+    }
 }
 
 def p7_readable_fixtures(t : T?) {

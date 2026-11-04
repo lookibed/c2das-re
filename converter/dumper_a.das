@@ -3242,8 +3242,8 @@ def private dump_type_decl(var d : Dumper; js : JsonValue?) : bool {
 }
 
 // the child index of a variable's initializer, the last child that is no attribute (`visibility`
-// adds one); -1 when it has none. An alignment the variable asks for (`_Alignas`, `aligned`) fails
-// closed into `ok`, since das places a variable by its type
+// adds one) and no doc comment (`FullComment`); -1 when it has none. An alignment the variable
+// asks for (`_Alignas`, `aligned`) fails closed into `ok`, since das places a variable by its type
 def private initializer_of(var d : Dumper; js : JsonValue?; at : CirLoc; var ok : bool&) : int {
     var init = -1
     for (idx in range(child_count(js))) {
@@ -3252,7 +3252,7 @@ def private initializer_of(var d : Dumper; js : JsonValue?; at : CirLoc; var ok 
         if (kind == "AlignedAttr") {
             fail(d, "`{js?["name"] ?? ""}`: an alignment on a variable (`_Alignas`, `aligned`) is not lowered yet", at)
             ok = false
-        } elif (!(kind |> ends_with("Attr"))) {
+        } elif (!(kind |> ends_with("Attr")) && kind != "FullComment") {
             init = idx
         }
     }
