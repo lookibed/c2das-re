@@ -3,6 +3,7 @@ options gen2
 require strings
 require daslib/strings_boost
 require daslib/fio
+require daslib/strings_convert
 require daslib/clargs
 require daslib/json_boost
 require ../converter/pipeline.das
@@ -25,7 +26,8 @@ require ../metrics/criteria_file.das
 //! them, whether it runs in the release's test-suite folder (else in the repository root), whether
 //! a das lane's output must equal the native build's (else the exit code alone is compared), the
 //! line every run, the native oracle's too, must print ("" for none), since a test suite that stops
-//! early can exit 0, and whether it is the startup row (no work: the program's load alone)
+//! early can exit 0, whether it is the startup row (no work: the program's load alone), and
+//! whether it runs under `TIMED_LUA`, whose `c2das_work_s=` line every run must print
 struct WorkloadSpec {
     name : string
     args : array<string>
@@ -34,6 +36,7 @@ struct WorkloadSpec {
     compare_output : bool
     closing_line : string
     startup : bool
+    timed : bool
 }
 
 //! one program the publisher knows: its harness folder, the composed modules it publishes, the
@@ -55,9 +58,12 @@ struct Port {
 let ALL_LANES <- ["native", "interp", "jit", "exe", "aot", "interp-source-cut", "jit-source-cut", "interp-single", "jit-single"]
 let STARTUP_ARGS <- ["-e", "print(1)"]
 let WARM_UP_TIMEOUT = 3600.0
+//! the wrapper that times a workload inside its process, and the line it reports the seconds on
+let TIMED_LUA = "ports/lua/bench/timed.lua"
+let WORK_MARK = "c2das_work_s="
 let IDENTITY <- ["-c", "user.name=lookibed", "-c", "user.email=93531352+lookibed@users.noreply.github.com"]
 
-def private bench(name : string) : WorkloadSpec => <- WorkloadSpec(name = name, args <- [get_full_file_name("ports/lua/bench/{name}.lua")], shown = "bench/{name}.lua", compare_output = true)
+def private bench(name : string) : WorkloadSpec => <- WorkloadSpec(name = name, args <- [get_full_file_name(TIMED_LUA), get_full_file_name("ports/lua/bench/{name}.lua")], shown = "bench/timed.lua bench/{name}.lua", compare_output = true, timed = true)
 
 def private lua_port : Port => <- Port(
     name = "lua", title = "Lua", harness = "lua", runs = "lua", license_header = "lua.h", claims_item = "P5.1",
@@ -77,7 +83,7 @@ def private lua_port : Port => <- Port(
         bench("binary_trees"),
         bench("nbody"),
         bench("spectral_norm"),
-        WorkloadSpec(name = "test suite", args <- ["-e", "_port=true", "all.lua"], shown = "-e \"_port=true\" all.lua", in_tests = true, closing_line = "final OK !!!")
+        WorkloadSpec(name = "test suite", args <- ["-e", "_port=true", get_full_file_name(TIMED_LUA), "all.lua"], shown = "-e \"_port=true\" bench/timed.lua all.lua", in_tests = true, closing_line = "final OK !!!", timed = true)
     ])
 
 [CommandLineArgs]
@@ -161,6 +167,8 @@ def private sources_of(port : Port; release : Release) : string => path_join(por
 def private tests_of(port : Port; release : Release) : string => path_join(port.harness, "fetch/{trim_suffix(base_name(release.tarballs[1].url), ".tar.gz")}")
 def private log_of(port : Port) : string => path_join(port.harness, "work/publish_run.log")
 def private stamp_of(port : Port) : string => path_join(port.harness, "work/publish.generation")
+// the empty script the warm-up runs under `TIMED_LUA`
+def private empty_script_of(port : Port) : string => get_full_file_name(path_join(port.harness, "work/bench/empty.lua"))
 def private module_of(port : Port; stem, layout : string) : string => path_join(layout_dir(path_join(port.harness, "work"), stem, layout), "{stem}.das")
 
 // the layout a das lane runs: the -source-cut and -single lanes those layouts' modules, the others the
@@ -253,18 +261,42 @@ struct Oracle {
     output : string
 }
 
-// the interpreter and the JIT compile the module on its first run in a folder and cache it there:
-// one unmeasured run of the startup arguments keeps the compile out of the cells; "" or why it
-// failed
-def private warm_up(argv : array<string>; cwd : string) : string {
+// one unmeasured run of `TIMED_LUA` over the empty script `script`: the interpreter and the JIT
+// compile the module on its first run in a folder and cache it there, so the run keeps the
+// compile out of the cells, and under every lane it shows that the wrapper's clock and stderr
+// work there; "" or why it failed
+def private warm_up(argv : array<string>; cwd, script : string) : string {
     var warm <- clone_to_move(argv)
-    warm |> push_from(STARTUP_ARGS)
+    warm |> push_from([get_full_file_name(TIMED_LUA), script])
     var out : string
     let rc = run_and_capture(in_folder(cwd, warm), out, WARM_UP_TIMEOUT)
     if (rc == popen_timed_out) {
         return "the warm-up run timed out after {int(WARM_UP_TIMEOUT)} s"
     }
-    return rc == 0 ? "" : clipped(with_line("the warm-up run exited {rc}", first_reported_line(out)))
+    if (rc != 0) {
+        return clipped(with_line("the warm-up run exited {rc}", first_reported_line(out)))
+    }
+    var rest : string
+    var seconds = 0.0lf
+    let missing = take_work_seconds(out, rest, seconds)
+    return empty(missing) ? "" : clipped(with_line("the warm-up run of bench/timed.lua over an empty script printed {missing}", last_line(program_output(rest))))
+}
+
+// the work seconds `TIMED_LUA` reports in `text` into `seconds`, its `WORK_MARK` line taken out
+// into `rest` wherever the merged streams put it; "" when the line holds seconds, else what was
+// printed instead
+def private take_work_seconds(text : string; var rest : string&; var seconds : double&) : string {
+    let at = find(text, WORK_MARK)
+    if (at < 0) {
+        rest = text
+        return "no `{WORK_MARK}` line"
+    }
+    let stop = find(text, "\n", at)
+    let value_end = stop < 0 ? length(text) : stop
+    let value = slice(text, at + length(WORK_MARK), value_end)
+    rest = slice(text, 0, at) + slice(text, stop < 0 ? value_end : stop + 1)
+    seconds = try_to_double(value) ?? -1.0lf
+    return seconds >= 0.0lf ? "" : "`{WORK_MARK}{value}`, no seconds"
 }
 
 def private with_line(text, line : string) : string => empty(line) ? text : "{text}: {line}"
@@ -282,13 +314,16 @@ def private first_difference(output, native : string) : string {
     return "line {idx + 1} prints {got} where the native build prints {want}"
 }
 
-// `samples` runs of `argv` in `cwd` ("" for here), each timed as a whole process; a run that
-// differs from `oracle` (the native lane's first, when `oracle.rc` is not -1), or that leaves out
-// the closing line `spec` names, fails the cell, which keeps the samples taken, the failing one last
+// `samples` runs of `argv` in `cwd` ("" for here), each timed as a whole process and, for a
+// workload under `TIMED_LUA`, inside it by the wrapper's line, which the comparison does not see;
+// a run that differs from `oracle` (the native lane's first, when `oracle.rc` is not -1), that
+// leaves out the closing line `spec` names, or that prints no work seconds under the wrapper,
+// fails the cell, which keeps the samples taken, the failing one last
 [arch(at="ARCHITECTURE.md#measurement")]
 def private measure_cell(argv : array<string>; cwd : string; samples, timeout : int; spec : WorkloadSpec; var oracle : Oracle; var cell : LaneCell) {
     let full <- in_folder(cwd, argv)
     cell.samples |> reserve(samples)
+    cell.work_samples |> reserve(spec.timed ? samples : 0)
     for (_s in range(samples)) {
         var out : string
         var seconds = 0.0lf
@@ -301,7 +336,13 @@ def private measure_cell(argv : array<string>; cwd : string; samples, timeout : 
             }
             seconds = double(get_time_nsec(started)) / 1000000000.0lf
         }))
-        let output = program_output(out)
+        var rest = out
+        var work = 0.0lf
+        let missing = spec.timed ? take_work_seconds(out, rest, work) : ""
+        if (spec.timed && empty(missing)) {
+            cell.work_samples |> push(work)
+        }
+        let output = program_output(rest)
         cell.samples |> push(seconds)
         if (rc == popen_timed_out) {
             cell.error = "timed out after {timeout} s"
@@ -313,6 +354,8 @@ def private measure_cell(argv : array<string>; cwd : string; samples, timeout : 
             cell.error = clipped(first_difference(output, oracle.output))
         } elif (!empty(spec.closing_line) && !has_value(split(output, "\n"), spec.closing_line)) {
             cell.error = clipped(with_line("exited {rc} without the line `{spec.closing_line}`; its last line", last_line(output)))
+        } elif (!empty(missing)) {
+            cell.error = clipped(with_line("exited {rc} under bench/timed.lua with {missing}; its last line", last_line(output)))
         } elif (oracle.rc == -1) {
             oracle = Oracle(rc = rc, output = output)
         }
@@ -322,6 +365,10 @@ def private measure_cell(argv : array<string>; cwd : string; samples, timeout : 
     }
     cell.time = median_of(cell.samples)
     cell.spread = spread_of(cell.samples, cell.time)
+    if (spec.timed) {
+        cell.work_time = median_of(cell.work_samples)
+        cell.work_time_spread = spread_of(cell.work_samples, cell.work_time)
+    }
 }
 
 //! one lane ready to measure: the argv the program's arguments follow, or the reason it is not
@@ -338,6 +385,8 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
     let work = path_join(port.harness, "work")
     let bench_work = path_join(work, "bench")
     mkdir_rec(bench_work)
+    let empty_script = empty_script_of(port)
+    fwrite(empty_script, "")
     let manifest = path_join(work, "{port.runs}.program.json")
     let das_path = get_full_file_name(module_of(port, port.runs, "source"))
     let modules <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)]
@@ -365,7 +414,7 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
             run.argv |> push("--")
             let shown_module = layout == "single" ? "single/{port.runs}.das" : "{layout_dir("", port.runs, layout)}/{port.runs}.das"
             shown = join(["daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime", flag, "{shown_module} --"], " ") |> replace("  ", " ")
-            run.error = warm_up(run.argv, "")
+            run.error = warm_up(run.argv, "", empty_script)
         } else {
             var error : string
             let bin = lane == "exe" ? build_exe(das_path, bench_work, STARTUP_ARGS, error) : build_aot(das_path, bench_work, STARTUP_ARGS, error)
@@ -375,6 +424,9 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
                 // the AOT host is no standalone exe: the program's arguments follow `--`, as under daslang
                 if (lane == "aot") {
                     run.argv |> push("--")
+                }
+                if (empty(run.error)) {
+                    run.error = warm_up(run.argv, "", empty_script)
                 }
             }
             shown = lane == "exe" ? "daslang -exe {port.runs}/{port.runs}.das, the binary run" : "the -ctx context and its host compiled by clang++ -O3 (c2das-re converter/tiers.das), the binary run with `--`"
@@ -412,7 +464,7 @@ def private measure_program(args : Args; port : Port; release : Release; lanes :
                 } else {
                     // the test-suite folder has a module cache of its own to warm
                     if (spec.in_tests && (lane == "interp" || lane == "jit" || lane |> ends_with("-source-cut") || lane |> ends_with("-single"))) {
-                        cell.error = warm_up(run.argv, tests)
+                        cell.error = warm_up(run.argv, tests, empty_script_of(port))
                     }
                     if (empty(cell.error)) {
                         var inscope argv <- clone_to_move(run.argv)
@@ -489,10 +541,10 @@ def private readme_text(port : Port; release : Release; gen : Generation; comman
         w |> write("- `{port.name}.c2das` - the sidecar both were converted under.\n")
         w |> write("- `LICENSE` - {port.title}'s license, from `src/{port.license_header}` of the release; the conversion is a derived work.\n")
         if (captured) {
-            w |> write("- `bench/` - the benchmark scripts the tables below run.\n")
+            w |> write("- `bench/` - the benchmark scripts the tables below run, and `timed.lua`, which runs each and reports its work seconds measured inside the process.\n")
             w |> write("- `perf/capture_*.json` - every capture the tables were rendered from, every sample of every lane.\n\n")
         } else {
-            w |> write("- `bench/` - the benchmark scripts the perf tables will run.\n\n")
+            w |> write("- `bench/` - the benchmark scripts the perf tables will run, and `timed.lua`, which runs each and reports its work seconds measured inside the process.\n\n")
         }
         w |> write("## Source\n\n")
         w |> write("- Upstream: {port.title} {release.version}\n")
@@ -644,9 +696,11 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
     }
     ok = ok && write_or_log(path_join(dir, "LICENSE"), license)
     ok = ok && write_or_log(path_join(dir, "{port.name}.c2das"), fread(sidecar_of(port)))
+    ok = ok && write_or_log(path_join(dir, "bench/{base_name(TIMED_LUA)}"), fread(TIMED_LUA))
     for (spec in port.workloads) {
         if (!spec.startup && !spec.in_tests) {
-            ok = ok && write_or_log(path_join(dir, spec.shown), fread(spec.args[0]))
+            let script = spec.args[length(spec.args) - 1]
+            ok = ok && write_or_log(path_join(dir, "bench/{base_name(script)}"), fread(script))
         }
     }
     if (ok && args.perf) {

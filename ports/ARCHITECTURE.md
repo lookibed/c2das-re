@@ -23,7 +23,8 @@ code; this repository holds only the generator and its inputs.
   `spectral_norm`): plain scripts that print their result, take their size from `arg[1]` and
   default to about one second under the native build. They use no `pcall` and no
   `string.format` beyond `%d` and `%.9f`, since under the JIT the converted interpreter's protected
-  calls report success (`docs/probe-findings.md` F75).
+  calls report success (`docs/probe-findings.md` F75). Beside them `timed.lua`, the wrapper that
+  times a workload inside its process (section 4).
 - `tests/` - `test_ports_render.das` over fixed captures (golden tables), and
   `test_publish.das`, the publisher as a child process over a scratch c2das-re root (a stand-in
   release, harness and work tree with its stamp, its own git repository) and a scratch bare
@@ -132,21 +133,34 @@ exits 0. A lane `--lanes` leaves out is `not measured` in the tables, never `not
 
 The workloads of `lua` are the startup row (`-e "print(1)"`), the four benchmark scripts, and
 the release's test suite (`-e "_port=true" all.lua` in the fetched test folder; `_port` skips the
-tests that assume a POSIX build, and the ANSI build passes the rest). A sample is one process: its
+tests that assume a POSIX build, and the ANSI build passes the rest). The scripts and the suite run
+under `bench/timed.lua` (`timed.lua <script> [arguments]`; the suite `-e "_port=true" timed.lua
+all.lua`, which changes nothing for `all.lua`: under `_port` no test reads the interpreter's own
+`arg` entries). The wrapper shifts `arg` by one, reads `os.clock()`, runs the script with `dofile`,
+reads the clock again and writes `c2das_work_s=<seconds>` (`%.6f`) to stderr; it holds `os.clock`,
+`io.stderr` and `string.format` before the script runs, since `all.lua` ends by clearing the
+globals. `os.clock()` is C `clock()`, the process's CPU time: libc's under the native lane,
+`crt::clock` under every converted lane, the clock perf's default method reads too, so every
+lane's work seconds come from one clock. The startup row runs bare. A sample is one process: its
 time is the wall time from the spawn to the end of its output, which the child closes on exit
-(popen's return lags the exit by up to its 100 ms watchdog tick, so the return is not the clock).
+(popen's return lags the exit by up to its 100 ms watchdog tick, so the return is not the clock),
+and under the wrapper also its work seconds, the line taken out of the merged stdout and stderr
+wherever it lands before any check reads the output.
 The spawn is the publisher's, so every sample includes it: on the reference machine, the FX-6300
 the captures run on, a null spawn costs about 24 ms the first time and about 7 ms after, and the
 `sh -c` that enters the test-suite folder adds about 8 ms more; these figures are that machine's.
 The interpreter and the JIT each cache the compiled module in the folder they run in, so one
-unmeasured run of the startup arguments precedes each lane's samples in each folder, and a
-warm-up that fails or times out fails the lane (in the repository root) or the cell (in the
-test-suite folder) with its first reported line. The startup row times the program's load and no
-work: under a das lane that is the load from the warm cache, not a compile, which every other row
-includes; with the spawn inside it, the row is an upper bound of the load, and the tables take
-it out of every other row (below). A cell is the median
-of `--samples` samples (5 by default), with the spread as half the sample range over the median,
-perf's rule.
+unmeasured run of the wrapper over an empty script (`work/bench/empty.lua`) precedes each lane's
+samples in each folder; the exe and AOT lanes, with no cache, take that run once in the
+repository root after their build's own run, so the wrapper's clock and stderr are shown working
+under every das lane before its samples (the native lane, the reference build, takes none). A warm-up that fails, times out or prints no
+`c2das_work_s=` line with seconds fails the lane (in the repository root) or the cell (in the
+test-suite folder) with its first reported line, or for the missing line its last. The startup
+row times the program's load and no work: under a das lane that is the load from the warm cache,
+not a compile; with the spawn inside it, the row is an upper bound of the load. A cell is the
+median of `--samples` samples (5 by default), with the spread as half the sample range over the
+median, perf's rule; under the wrapper its work time is the median of the samples' work seconds,
+with their spread by the same rule.
 
 The native lane's first sample is the oracle. A sample fails the cell when:
 
@@ -163,6 +177,9 @@ The native lane's first sample is the oracle. A sample fails the cell when:
   more as the state closes. The check is there because a suite that stops early can exit 0: under
   the JIT an uncaught Lua error exits 0 (`docs/probe-findings.md` F75), and `all.lua` stops in
   `db.lua`, the third file it runs.
+- it runs under the wrapper and prints no `c2das_work_s=` line, or one without seconds; this holds
+  for the native lane's first sample too, and is checked after the closing line. The cell names
+  what it printed and the sample's last line.
 - it runs past `--timeout` seconds.
 
 A native first sample without the closing line leaves no oracle. A failed cell keeps the samples
@@ -179,14 +196,20 @@ samples. The perf section's `Captured` line and the projects table's Machine col
 as `perf/boxes.das`'s `box_label` (`machine_label`), a capture without `box` showing its CPU's box;
 its `Reproduced by` command adds `--box <box>` when the capture recorded one (`reproduce_command`). The
 README's tables render from the latest capture by name; a latest capture that is not
-JSON fails the publish. The capture holds whole runs; every speed number the tables show is the
-work alone. A workload's work time under a lane is its cell's median less the median of the same
-lane's startup cell, native included, its spread the two cells' half ranges over the work time; a
-work time not above 0 is `within the start`, and a lane whose startup cell is missing or failed
-has no work times, its cells `not yet` with the reason `no startup cell`. A cell or a work time
-whose spread is above 20% is suspect and never a number: it renders `suspect (±N%)`, its ratios
-`suspect`, and it leaves the projects table's means as a missing cell does; a suspect startup cell
-makes every work time of its lane `suspect (startup)`, since each inherits its noise. The startup table holds
+JSON fails the publish. A cell of the capture holds its whole runs' seconds (`samples`) and, under
+the wrapper, their work seconds (`work_samples`) with their median and spread (`work_time`,
+`work_time_spread`); every speed number the tables show is the work alone. A workload's work time
+under a lane is its cell's in-process work time. A cell without work seconds, which only a capture
+written before the wrapper holds, has a work time by subtraction: its median less the median of
+the same lane's startup cell, native included, its spread the two cells' half ranges over the work
+time; such a work time renders `(by subtraction)`, as does every ratio with it on either side and
+every projects mean over such a ratio, so the two methods never look alike. A work time by
+subtraction not above 0 is `within the start`, and where the lane's startup cell is missing or
+failed it is `not yet`, the lane's not-yet line giving the reason `no startup cell`. A cell or a
+work time whose spread is above 20% is suspect and never a number: it renders `suspect (±N%)`, its
+ratios `suspect`, and it leaves the projects table's means as a missing cell does; a suspect
+startup cell makes every work time by subtraction of its lane `suspect (startup)`, since each
+inherits its noise. The startup table holds
 each lane's startup cell and its ratio to native's, the only place a startup number appears; the
 work table holds the work times of the other rows; the times table holds the raw medians, the
 startup row included. The ratio table holds work times only, no startup row: each das lane over
