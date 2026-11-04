@@ -20,7 +20,7 @@ never block this plan.
    hand-written "as-if-converted" `.das` test first, converter integration second.
 5. No hand edits to converted output, ever. Per-project judgment goes in the sidecar.
 
-**Owner rulings 2026-11-01 and 2026-11-02, (12) to (26)** (after Boris Batkin's framing of 2026-08-22: generate the
+**Owner rulings 2026-11-01 to 2026-11-04, (12) to (29)** (after Boris Batkin's framing of 2026-08-22: generate the
 text, make it all work, then the LLM-assisted port; his words on layout, start-up, speed and text
 stand behind each)
 12. Layout (P7.0a): the default layout keeps every cycle one module of `.das.inc` fragments, a file
@@ -113,6 +113,35 @@ stand behind each)
     `program.layout.txt` already holds the cut edge list, so the work is small. Placed after the
     three open pull requests drain and the ledger docs pull request, before P7.0f/h; it feeds the
     mutual-require question (F76, lookibed/daScript#32).
+27. Boxes (2026-11-03): three measurement boxes, PC (the owner's WSL, Ryzen 7 7435HS), fx
+    (FX-6300, when back) and bench (Ryzen 3 1200); use whichever is free and write the box name
+    next to every number; what matters is the delta against the previous transpiler version on the
+    same box, measured in one run; numbers from different boxes are never compared directly. Rows:
+    (a) the ports publisher labels every table and capture with the box, (b) `perf/` and `compare/`
+    captures carry a `box` field beside `cpu`, rendered into every "Captured on" line and table
+    (both Done, PR #93, `perf/boxes.das` and `--box`), (c) a speed claim's PR carries main-before
+    and the branch measured on one box in one run, the delta table from the two captures (open,
+    under P7.0).
+28. Startup is never inside a speed number (2026-11-04): every published or compared speed number
+    is the work only, timed inside the process like dasProfile or at least the cell less the same
+    lane's startup cell on the same box; startup (load, JIT compile, cache load) is its own row.
+    The ports Lua tables had the program start inside every cell (JIT read 1.5-2x worse than on
+    2026-10-31 while the work did not change): fixed first (PR #94, under P5.1a), then the
+    startup study of the default layout against the cut one on one box, then every other harness
+    audited (`perf/` and `compare/` clean, under P7.0). Addendum: c2das-ports holds everything
+    measured, kernels and projects speed from the bench, the criteria table and the raw captures
+    beside the tables; the bench is off for the night, measurements run on the PC, labelled.
+29. The order after the two ruling-28 branches merge (2026-11-04): kernels are parity with Rust,
+    not a win (interp geomean 36.08 / 35.92, JIT 1.61 / 1.55, AOT 1.37 / 1.92 the one win);
+    projects 2 of 6 against 6 of 6 and ours slower; Lua interp 112-290x of C while kernels are
+    7-30x. Nothing goes to Boris now; the one thing worth showing: Doom fps under interp and JIT
+    next to Rust doomgeneric on the same machine (Rust 37x interp); if slower, find out why first.
+    Order: (1) P6.7, with the P6.5 demo-sync rungs it needs; (2) the four P8.4 refusals
+    (doomgeneric `m_config.c:109`, h264bsd `malloc`, quakegeneric `vfprintf`, wasm3 `vectorcall`),
+    converter holes Rust passes; (3) the Lua gap between kernels and the program (P7.0b2); (4)
+    compare re-captured, kernels and projects, on one box, labelled. Text: short tables, few
+    columns, no walls. Publish: a SUSPECT cell (spread over 20%) is re-run or dropped, never
+    published (the ports, perf and compare renderers).
 
 ---
 
@@ -388,6 +417,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   down, and a commit that raises one says why in its message; `metrics/REVIEW.das` gates
   the file's shape. Every item's progress log entry prints the totals beside the test and
   perf numbers.
+  Red on `main` (found by the ports coder, reproduced through `heavy`, 63 of 65):
+  `metrics/tests/test_readability.das` `test_literal_counts` fails two checks (every integer width
+  matches an enumerator or a let constant, got 0; a site names the first name of its value, 9
+  expected, 8 got); older than the ruling-28 branches, unseen because the fast tier runs no tests
+  lane. Row: bisect over the P6.3/P6.4 converter commits (`literal_named` counting), fix or
+  re-expect; a fast-tier `tests` lane over `metrics/tests` would have caught it.
 - **P4.6 Pointer constness: the uniform `var` policy.** A pointer parameter is `var` only where
   the body writes through it (F3), and das takes no `let` pointer for a `var` parameter, so a
   `let` pointer a caller holds - its own parameter that it never writes through, a field of a
@@ -686,6 +721,29 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   match (`--allow-stale` otherwise). `perf/run.das`'s clang and daslang version lines now read
   past `info` lines (`first_reported_line`, the same text on this machine), and its exe and AOT
   builds take the 3600 s build timeout `converter/tiers.das` now passes to every build step.
+  Regenerated from `main` (dc53a85: the `source` layout with `_cluster` modules and `.das.inc`
+  fragments, `source-cut`, `single`, the head-to-head section) and the bench Lua tables published
+  (46393ba, box bench): interp fib 190x, JIT 14x, exe 5.1x; the test suite interp 39.6x, JIT 2.6x;
+  the exe test-suite and every AOT cell `not yet` (the Module_CRT load from the exe folder,
+  lookibed/daScript#18). The Lua conversion dies in `heavy`'s 4G scope: a publish needs `--max 8G
+  --mem 6500`.
+  Ruling 28 Done (branch `fix/ports-work-only`, PR #94): a cell is the work, the whole-process
+  time less the lane's startup cell; Startup and Work tables, ratios from work; a publish without
+  `--perf` renders the directory's latest capture (it rendered PERF_NOT_YET while `lua/perf/` held
+  two) and names its machine; the criteria table from `metrics/criteria_linux.json` and the raw
+  captures beside the tables; a SUSPECT cell (spread over 20%) makes its lane's work suspect and
+  is never published (ruling 29). Ruling 27 (a) Done with PR #93: `--box` in the capture, the
+  machine column and the "Captured ... on" line.
+  Startup study (ruling 28 item 3, box PC): v0.5.0 and `main` start equally fast per layout (warm
+  interp monolith 4.9 s, cut 0.9 s, single 7.0 s; cold JIT compiles 28 / 14.5 / 36 s); the JIT
+  startup rise between the two ports tables is P5.1b2's default-layout swap, not a regression.
+  OWNER DECISION: the headline lane, the monolith (fastest JIT work, 1.6-1.9x over the cut) or the
+  cut layout (5x faster start, interp work within 1.07x); the 8-lane capture renders both.
+  Rows: in-process timing, a `bench/timed.lua` wrapper printing `os.clock()` deltas on stderr (the
+  oracle compares stdout; the test-suite row keeps the subtraction; decision 2 of
+  `/root/notes/plan-measure-setup.md`); a progress/ETA line per cell here and in the compare
+  projects (the plan, section 3); a perf kernels table in the top README if the owner wants
+  ours-only kernels there; `ports/ARCHITECTURE.md` section 4 states the warm-start fact.
 - **P5.1b1 Multi-TU link** (owner rulings 2026-10-23, 4 and 5: the P5.1b split, the link on the
   dumper's in-memory trees with no C-IR spec change; branch `p5.1b1-multi-tu-link`). `c2das <a.c>
   <b.c> ...` and `c2das --program <p.json>` convert several C files as one program: each file is
@@ -1124,6 +1182,14 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   Rust lines 1.33x ours without its emitted runtime, 5.10x with it. Lua: the Rust side refuses it
   at `ldexp`, 20 libc names in the gap, so it has no Lua speed (deferred to the owner, ruling (19); the report says refused); Doom pending P6.
   The gaps where Rust is ahead: P8.3.
+  Compare on the bench: the Rust binary b1d012eb5 (3 commits past the pin, `scripts/` and
+  `tests/manual` only) translates all six projects there once its exporter and libclang were in
+  place; its `protected_call` audit kernel fails there ("translation failed: operation=top-level
+  declaration lowering") where the dev box translated it. Rows: ruling 29 item 4, kernels and
+  projects re-captured on one box with `cpu` and `box` (the bench entries carry neither; the ports
+  head-to-head Speed table is fx's); PR #93's tdd leftover: compare's `--box` wiring into
+  `--suites`, `--suite` and `--perf` has no test (a `--filter` run writes no capture, and on a known
+  box the CPU fallback masks the flag): a cpu-name env override for tests, low priority.
 - **P8.1b Readability metric by the critic's criteria** (owner ruling 2026-11-01 (21); after P8.1,
   before P8.2). `metrics/readability.das` gains a criterion for every finding and blind spot of the
   critic's review (`/root/notes/owner/2026-11-01_readability-critic.md`, the agent's footnotes
@@ -1231,6 +1297,18 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   folders, use the test's scratch too. Leftovers: `--work` unvalidated (an unwritable folder;
   ignored without `--project`; `rmdir_rec` on a user-named folder); the untouched check covers
   wasm3 only.
+  Bench capture (PR #92, box bench; closes `bench-queue.md`'s projects-table line): Rust b1d012eb5
+  translates and passes all six (quakegeneric JIT output differs, doomgeneric AOT times out); ours
+  passes binjgb (AOT (m)) and plmpeg-stream. Speed over native `decode_us`, ours / Rust: binjgb
+  interp 80.57 / 73.01, JIT 1.22 / 1.08, exe 1.29 / 1.05, AOT - / 1.10; plmpeg-stream 49.44 /
+  39.15, 1.08 / 0.95, 1.18 / 1.01, 1.13 / 1.05. The entries carry no `cpu` or `box`: re-captured
+  under ruling 29 item 4.
+  Ours-side stops, ruling 29 item 2 (converter holes Rust passes; each its own row): (i) wasm3
+  `vectorcall m3ret_t` in a type spelling (dumper); (p) doomgeneric `m_config.c:109` type spelling
+  (dumper); (q) h264bsd-mp4 error[30341] too many matching functions or generics `malloc`, a
+  project defining its own `malloc` beside crt's (compile check; a P6.3-class item); (r)
+  quakegeneric `sys_null.c:160` `vfprintf` without a c_runtime map (emitter; a stdlib row, the
+  vfprintf/vprintf family).
 
 ## P6 — Doom
 
@@ -1422,10 +1500,34 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 - **P6.5 Demo sync.** The ladder: first desynced tic → bisect → fix → repeat until
   demo1/2/3 are 100% on both wads. This is the semantics endgame; every desync is a
   real bug with a tic number attached.
+  Rungs 1-2 Done (branch `p6.5-tic25`, PR #90): the tic-25 desync was no converter bug: ticcmd_t's
+  plain `char` forwardmove/sidemove read demo1's strafe -40 as 216 under the converter's
+  unsigned-char dialect (F17) against a signed-char native build; patch 0003 makes them `signed
+  char` (Chocolate Doom's shape). Rung 2: vanilla's `finesine[negative]` (`r_main.c:413`) and
+  `finetangent[>=4096]` (`r_segs.c`) read the neighbouring table, which das range-checks; patch
+  0004 spells the neighbour read out (same bytes, native frames identical). Patch 0002
+  (`-DDOOM_TIC_TRACE`): P_Ticker prints the six checksummed values per tic and `run.das --trace`
+  holds the converted traces to the native ones apart from the reference path. Result: freedoom2
+  demo1/2/3 under interp, `source` layout, in sync to the end (2664 / 5444 / 2743 tics, `cs` and
+  `fb`), each ending in the timedemo line.
+  RULINGS (owner): (a) the native reference built under `-funsigned-char` (F17) or `-O2 -w` signed
+  as kept; (b) rung 2 by patch 0004 or by a converter mechanism for neighbour-table reads (a
+  sidecar key aliasing two globals as one storage; 0004 is one commit, easy to drop); (c) "both
+  wads": only freedoom2.wad is on the box, doom2.wad needs the owner.
+  Next rung: jit, exe and aot and the `source-cut` and `single` layouts on freedoom2 demo1-3, then
+  doom2.wad; ruling 29 item 1 takes the rungs P6.7 needs with it. Leftovers: the native trace run's
+  exit code is not checked (a partial `.native.log` passes); `native_path`, `layout_dir` and
+  `sidecar_defines(true)` have no direct test; `doom/ARCHITECTURE.md` is at 296 of 300 lines (the
+  next addition splits section 8 into a companion).
 - **P6.6 Playable harness.** dasImgui window (framebuffer texture blit, key mapping),
   PCM SFX to the native audio path, MIDI music via dasAudio strudel_midi_player + GM
   soundfont.
 - **P6.7 timedemo.** `-timedemo demo3` realtics for native / interp; publish table v1.
+  Ruling 29 item 1, first in the order: Doom fps under interp and JIT on one machine next to Rust
+  doomgeneric on the same machine (Rust doomgeneric interp 37x); if slower than Rust, find out why
+  first; the P6.5 rungs it needs come with it. Ruling 28: the speed number is realtics, in-process,
+  never the process's wall time (startup is its own row); the per-tic framebuffer hash costs the
+  interp tier (P6.4b), measured apart.
 - **Exit criterion:** demo-sync 100%, playable with sound and music, perf table v1.
 
 ## P7 — Performance + tiers
@@ -1528,6 +1630,20 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   (PR #73). The dasProfile method's section and its column stay at the fx6300 capture until the
   bench has cmake >= 3.24 (dasProfile 436d58d's CMakeLists needs `DOWNLOAD_EXTRACT_TIMESTAMP`; the
   bench has 3.22; rulings-pending); the audit entries owed per item are in `bench-queue.md`.
+  Ruling 27 (b) Done (branch `fix/box-labels`, PR #93): `perf/boxes.das` maps the CPU to a box
+  name, `--box` overrides it; a `box` field beside `cpu` in the perf and compare captures, on every
+  "Captured on" line and table; the rendered delta refuses two boxes in one line. Open: (c), the
+  one-box before/after renderer `scripts/ab_measure.sh` (two worktrees measured interleaved in one
+  run, the delta table from the two captures; `/root/notes/plan-measure-setup.md` section 4) and
+  `scripts/bench_check.sh`, the dependency check before any timing (section 2). Leftover:
+  `scripts/run_perf.sh --check` and the FLAG lines still compare a run against a committed capture
+  of another box (print "no check: <label a> against <label b>" and pass, or refuse: owner's call)
+  and the script names the box it expects. Lint opportunity: a gate flagging a `["cpu"]` read in a
+  renderer outside `perf/boxes.das`.
+  Ruling 28 audit: `perf/` is clean, the default method times the kernel's calls with the CRT clock
+  in the process and the dasProfile method with the steady clock (`perf/ARCHITECTURE.md` sections 2
+  and 6); `compare/` is clean, kernels by the dasProfile method, projects by the bench entry's
+  in-process `setup_us`/`decode_us`; the compare `lua` section defers to ports.
 - **P7.0a Default layout: cycles as one module** (owner ruling 2026-11-01 (12); after P8.1, before
   P6: ruling (14)). The default layout keeps every cycle one module of `.das.inc` fragments, a file
   per member (P5.1b2's `scc`), branches separate modules, header clusters as they are; the cycle cut
@@ -1571,6 +1687,17 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   within 16% (small call 1.16x) but `try` 5.43x, the `c_volatile_load` JIT cell SUSPECT and left
   out; slots 0.95-1.00x of scc net. No IR change needed; fixes are rows P7.0c-P7.0h. Report: the
   item's PR.
+  Found by the bench audit (`perf/audit_lua.das`): (1) `--filter X` rewrites `perf/audit_linux.json`
+  with X alone (a one-kernel capture replaced the 12-kernel file, so the bench audit is not
+  committed); (2) `--benches-only` still runs a `lua/work/scc/` lane, "missing prerequisite" since
+  P5.1b2 renamed the layout; (3) the Rust side fails `protected_call` on the bench (P8.1). Row:
+  merge per-filter runs into the file or forbid `--filter` with a write, rename the lane, then the
+  owed bench audit entries (P7.0f, P7.0h) again.
+- **P7.0b2 The Lua gap between kernels and the program** (owner ruling 29, item 3): Lua runs
+  112-290x of C under the interpreter while the kernels run 7-30x, and the P7.0b constructs (1.5-2x
+  each) do not explain a 10x gap; profile the live program one construct at a time as P7.0b did,
+  the Rust translation beside, and open rows for what costs. The main argument against the project
+  today; runs after the P8.4 refusals, before the compare re-capture.
 - **P7.0c Switch dispatch without the flag chain** (ruling (23): the plain-case form default, computed `goto` opt-in). A case no `goto` and no fall-through enters
   tests `_goto == 0 && _cond == K` alone (2.08x interp on `dispatch_switch`, 83 flag cases in lvm,
   an upper bound of the plain ones, every VM instruction). Then, opt-in under the speed-vs-
@@ -1618,7 +1745,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `interp-reinterpret` perf lane, the `first_member` kernel and the `@reinterpret` readability keys
   (converter/REVIEW.md); the lane's cells are in the bench capture at 504ca55 (PR #73), the
   `perf/audit_linux.json` entries (`union_access`, `stack_ptr`) are owed to the bench
-  (`bench-queue.md`).
+  (`bench-queue.md`; the bench audit ran but is not committed, P7.0b's `--filter` finding).
 - **P7.0g Cheaper volatile load** (ruling (23): default, F65's semantics kept). `c_volatile_load` (a C++ forwarder) costs 1.32x interp on the
   `trap` re-read, sites 50/0/0/7 (`updatetrap` per protected instruction); keep F65's semantics,
   find an interpreter-cheap form.
@@ -1642,7 +1769,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   1.14x interp, `try` itself 1.20x interp / 4.91x JIT, the enum macro 0.99x. Leftovers: `r =
   setjmp(b); if (r == 0)` keeps the trampoline, as does a tail calling a function that never
   longjmps; the `perf/audit_linux.json` flat-try entry is stale until the bench re-records
-  (`bench-queue.md`); the fixture `p5_lua_protect` printed `out` in the printf of the call setting
+  (`bench-queue.md`; the bench audit ran but is not committed, P7.0b's `--filter` finding); the
+  fixture `p5_lua_protect` printed `out` in the printf of the call setting
   it (argument-order dependent), fixed to read it in its own statement.
 - **P7.0i Character literals as `'c'`** (ruling (23), the critic's finding 3): a C character
   literal reaches the das text as `'c'` where the C had one (the C-IR carries the literal's kind;
