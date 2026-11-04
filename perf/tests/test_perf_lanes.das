@@ -144,6 +144,8 @@ def test_guarded_samples(t : T?) {
         t |> equal(exit_text(139), "signal 11 (SEGV)")
         t |> equal(exit_text(133), "signal 5 (TRAP)")
         t |> equal(exit_text(158), "signal 30")
+        t |> equal(exit_text(129), "signal 1 (HUP)")
+        t |> equal(exit_text(192), "signal 64")
         t |> equal(exit_text(3), "exited 3")
         t |> equal(exit_text(128), "exited 128")
         t |> equal(exit_text(193), "exited 193")
@@ -189,5 +191,35 @@ def test_guarded_build_run(t : T?) {
             t |> success(length(space) == 1 && space[0] |> contains(" 8589934592 "), "{tier}: {limits}")
         }
         rmdir_rec(work)
+    }
+}
+
+[test]
+def test_cpu_override(t : T?) {
+    t |> run("$C2DAS_CPU_NAME stands in for the machine's CPU, whatever the box") @(t : T?) {
+        let saved = get_env_variable("C2DAS_CPU_NAME")
+        set_env_variable("C2DAS_CPU_NAME", "stand-in cpu A")
+        let first = cpu_name()
+        set_env_variable("C2DAS_CPU_NAME", "stand-in cpu B")
+        let second = cpu_name()
+        set_env_variable("C2DAS_CPU_NAME", saved)
+        t |> equal("{first}|{second}", "stand-in cpu A|stand-in cpu B")
+    }
+}
+
+[test]
+def test_env_gate_prlimit(t : T?) {
+    t |> run("the env gate names a missing prlimit") @(t : T?) {
+        var dir_error : string
+        let shim = create_temp_directory("c2das_no_prlimit", dir_error)
+        t |> equal(dir_error, "")
+        var out : string
+        for (tool in ["bash", "dirname", "cmake", "sed", "head", "git", "ls"]) {
+            run_and_capture(["sh", "-c", "ln -s \"$(command -v \"$1\")\" \"$0/$1\"", shim, tool], out, 30.0)
+        }
+        t |> equal(run_and_capture(["/usr/bin/env", "PATH={shim}", "bash", "scripts/verify_daslang.sh"], out, 60.0), 1, out)
+        t |> success(out |> contains("verify: prlimit is not on PATH"), out)
+        t |> success(!(out |> contains("cmake is not on PATH")), out)
+        rmdir_rec(shim)
     }
 }
