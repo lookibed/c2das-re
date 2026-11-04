@@ -2032,10 +2032,11 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   module's global costs the JIT a `jit_get_global_mnh` call per access, a perfect-hash probe LLVM
   cannot hoist out of a conditional path in a loop (F80: the repro 5.4x native, 11.7x of the solid
   build; Doom demo1 JIT 4.18x -> 1.30x, box PC, 7 interleaved rounds). The emitter writes
-  `options solid_context` in every generated module: the default if a probe shows the AOT lane
-  still builds and runs with it (daslang's doc says it prohibits AOT and patches; F49 says the AOT
-  emitter ignores it), else a converter option (CLI flag and sidecar field, default off); both
-  modes tested and measured (ruling 23). Upstream beside it: lookibed/daScript#36.
+  `options solid_context` in every generated module, the default: `probes/test_solid_context.das`
+  builds and runs a solid two-module program requiring `c_runtime` under interp, JIT and the AOT
+  host alike (daslang's doc says it prohibits AOT and patches; the AOT context is the generated
+  C++, F80, F49). Tested on the fixtures, measured per demo (P7.0b4 step 3). Upstream beside it:
+  lookibed/daScript#36.
 - **P7.0n Constant-size marshal reads through the builtin `memcpy`** (from P7.0b4, place 2): a
   marshal accessor (`read_post_t_topdelta`, `read_patch_t_width`) spells a one-byte read
   `crt::memcpy(addr(r), bytes + ofs, uint64(1))`, an indirect call into dasCRuntime per byte under
