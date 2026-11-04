@@ -102,3 +102,21 @@ def test_constant_p_evaluation(t : T?) {
         }
     }
 }
+
+// a calling convention through a macro, as wasm3 spells `vectorcall` (P8.4 i)
+let CONVENTION_PROGRAM = "#define vectorcall __attribute__((preserve_none))\ntypedef int m3ret_t;\ntypedef m3ret_t(vectorcall *op_t)(int *pc, int acc);\nstatic m3ret_t vectorcall op(int *pc, int acc) \{ return acc + *pc; \}\nop_t first = op;\n"
+
+[test]
+def test_convention_spelling(t : T?) {
+    t |> run("clang -ast-dump=json spells a calling convention a macro names by the macro before the result, its attribute after the parameters, and the macro's MacroQualifiedType over the AttributedType that leads with the attribute") @(t : T?) {
+        let path = "{temp_directory_result() as value}/c2das_probe_convention.c"
+        fwrite(path, CONVENTION_PROGRAM)
+        var out : string
+        let rc = run_and_capture([battery_clang(), "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-target", "x86_64-pc-linux-gnu", path], out, 120.0)
+        remove(path)
+        t |> equal(rc, 0, out)
+        for (needle in ["\"qualType\": \"vectorcall m3ret_t (*)(int *, int)\"", "\"macroName\": \"vectorcall\"", "\"qualType\": \"__attribute__((preserve_none)) m3ret_t (int *, int)\"", "\"qualType\": \"vectorcall m3ret_t (int *, int) __attribute__((preserve_none))\"", "\"desugaredQualType\": \"m3ret_t (int *, int) __attribute__((preserve_none))\""]) {
+            t |> equal(find(out, needle) >= 0, true, "missing {needle}")
+        }
+    }
+}

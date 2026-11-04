@@ -145,6 +145,9 @@ struct Dumper {
     // does not read: no value, or an array's element), and their names
     aligned_ids : table<string; int>
     aligned_names : table<string>
+    // the macro names clang spells in a type in place of the calling convention they expand to
+    // (wasm3's `vectorcall` for `__attribute__((preserve_none))`), from its `MacroQualifiedType`s
+    convention_macros : table<string>
     // the bytes of clang's JSON dump
     json_bytes : int64
     // why the conversion refuses each asm statement by its key (`register_asm`), "" for a barrier
@@ -1183,6 +1186,44 @@ def private aligning_words(qual : string) : array<string> {
     return <- [for (idx, word in range(length(words)), words); word; where !(idx > 0 && (words[idx - 1] == "struct" || words[idx - 1] == "union" || words[idx - 1] == "enum"))]
 }
 
+// the calling conventions clang spells as a type attribute: das has one convention, so a function
+// type keeps its result and parameters and drops the attribute
+let CALLING_CONVENTIONS <- {"cdecl", "stdcall", "fastcall", "thiscall", "vectorcall", "pascal", "regcall", "ms_abi", "sysv_abi", "preserve_none", "preserve_most", "preserve_all", "swiftcall", "swiftasynccall"}
+
+// the calling convention `qual` opens with as `__attribute__((cc)) `, "" for none
+def private leading_convention(qual : string) : string {
+    if (!(qual |> starts_with("__attribute__(("))) {
+        return ""
+    }
+    let close = find(qual, ")) ")
+    let name = close < 0 ? "" : slice(qual, length("__attribute__(("), close)
+    return key_exists(CALLING_CONVENTIONS, name) ? name : ""
+}
+
+// the macro names a `MacroQualifiedType` spells over a calling convention (`convention_macros`)
+def private collect_convention_macros(var d : Dumper; js : JsonValue?) {
+    if (node_kind(js) == "MacroQualifiedType" && child_count(js) > 0) {
+        let under = (js?["inner"] as _array)[0]
+        if (node_kind(under) == "AttributedType" && !empty(leading_convention(under?["type"]?["qualType"] ?? ""))) {
+            d.convention_macros |> insert(js?["macroName"] ?? "")
+        }
+    }
+    for (idx in range(child_count(js))) {
+        collect_convention_macros(d, (js?["inner"] as _array)[idx])
+    }
+}
+
+// `qual` without the calling conventions clang spells before a function type's result: a macro
+// over one (`vectorcall m3ret_t (int *, int)`) or the attribute itself
+def private without_conventions(d : Dumper; qual : string) : string {
+    let cc = leading_convention(qual)
+    var bare = empty(cc) ? qual : slice(qual, length("__attribute__(({cc})) "))
+    for (name in keys(d.convention_macros)) {
+        bare = slice(replace(" {bare}", " {name} ", " ") |> replace("({name} ", "("), 1)
+    }
+    return bare
+}
+
 // the typedef declarations whose type an `aligned` attribute sets (`aligned_ids`), in tree order,
 // so a typedef's own chain is known before the typedefs over it: a typedef's own attribute (the
 // largest, when it has several) gives clang's alignment, even one below the type's, and a typedef
@@ -1288,7 +1329,7 @@ def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
     if (special != -2) {
         return special
     }
-    let qt = unqualified(without_attributes(qual))
+    let qt = unqualified(without_attributes(without_conventions(d, qual)))
     let scalar = scalar_from_qual(d, qt)
     if (scalar != -2) {
         return scalar
@@ -3561,6 +3602,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; inputs : DumpIn
     complete_locs(js, last)
     collect_va_ids(d, js)
     collect_aligned_typedefs(d, js)
+    collect_convention_macros(d, js)
     collect_defined_names(d, js)
     dump_top_level(d, js)
     delete_json(js)

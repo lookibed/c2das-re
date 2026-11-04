@@ -52,7 +52,10 @@ The dumper walks `TranslationUnitDecl.inner`, skipping `isImplicit` nodes (clang
 typedefs and `_GUID`) and every declaration of an external file. Types are interned by a structural key (`int:32:true:int`, `ptr:3`,
 `func:0:1,2:false`) in first-use order, which is the spec's order. Type spellings come from
 `desugaredQualType` when clang gives one, else `qualType`, with `const`, `volatile`, `restrict`
-and `__attribute__` text stripped (a `volatile` the node's own type carries at the top level,
+and `__attribute__` text stripped, a calling convention's too, since das has one: one leading the
+spelling (`__attribute__((preserve_none)) R (P)`) and a macro clang spells in its place
+(`vectorcall R (P)`, wasm3), known by the `macroName` of a `MacroQualifiedType` over the
+convention (`collect_convention_macros`) (a `volatile` the node's own type carries at the top level,
 `volatile int`, `int *volatile` or `int (*volatile)(char *)` but not `volatile int *` or
 `void (*)(int *volatile)`, marks a `ref`, `member`, `index` or `un deref` node `vol` instead,
 `is_volatile_spelling`: the qualifiers after the last `*` of the innermost declarator group, a
