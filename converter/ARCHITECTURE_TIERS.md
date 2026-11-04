@@ -21,7 +21,9 @@ them, `exe` loads them while it builds the executable, and `aot` uses them twice
 as sources, where a folder holding `src/*.cpp` (`dasCRuntime`) compiles into the host with its
 `src/` on the include path, because the generated context declares the module and includes
 its header. The exit code is the program's own on every tier,
-which is why the wrapper returns from `main`. An unhandled exception exits 1 with `EXCEPTION:
+which is why the wrapper returns from `main`. A caller's `wrapper` (perf's sample guard) goes
+before the program's own command line on every tier, `daslang` or the built binary, never before
+a build step. An unhandled exception exits 1 with `EXCEPTION:
 <text>` on every compiled tier: the `-exe` binary's entry runs `main` inside the context's
 `runWithCatch`, and the AOT host does the same around `<stem>_main` and prints the text on
 stderr, since a context called with no catch frame reports the exception and raises SIGTRAP,

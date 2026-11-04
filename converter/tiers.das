@@ -48,8 +48,8 @@ def private run(args : array<string>; var output : string&; timeout : float = 60
     return rc
 }
 
-// the build and the run each get `timeout` seconds
-def private run_exe(das_path, work_dir : string; var output : string&; module_dirs : array<string>; program_args : array<string>; timeout : float) : int {
+// the build and the run each get `timeout` seconds, the run started after `wrapper`
+def private run_exe(das_path, work_dir : string; var output : string&; module_dirs : array<string>; program_args : array<string>; timeout : float; wrapper : array<string>) : int {
     let exe = path_join(work_dir, file_stem(das_path) + "_exe")
     var cmd <- daslang_cmd(module_dirs)
     cmd |> push_from(["-exe", "{das_path}", "-output", "{exe}"])
@@ -58,7 +58,8 @@ def private run_exe(das_path, work_dir : string; var output : string&; module_di
         return rc
     }
     let built = fexist(exe + ".exe") ? exe + ".exe" : exe
-    var bin <- ["{built}"]
+    var bin := wrapper
+    bin |> push(built)
     bin |> push_from(program_args)
     return run(bin, output, timeout)
 }
@@ -119,8 +120,8 @@ def aot_host_source(das_path : string) : string {
 }
 
 // the context generation, the host's build and the run each get `timeout` seconds; the binary
-// runs with `--` and `program_args` after it when there are any
-def private run_aot(das_path, work_dir : string; var output : string&; module_dirs : array<string>; program_args : array<string>; timeout : float) : int {
+// runs after `wrapper`, with `--` and `program_args` after it when there are any
+def private run_aot(das_path, work_dir : string; var output : string&; module_dirs : array<string>; program_args : array<string>; timeout : float; wrapper : array<string>) : int {
     let ctx_dir = path_join(work_dir, "ctx")
     mkdir_rec(ctx_dir)
     var cmd <- daslang_cmd(module_dirs)
@@ -136,7 +137,8 @@ def private run_aot(das_path, work_dir : string; var output : string&; module_di
     if (crc != 0) {
         return crc
     }
-    var argv <- ["{bin}"]
+    var argv := wrapper
+    argv |> push(bin)
     if (!empty(program_args)) {
         argv |> push("--")
         argv |> push_from(program_args)
@@ -167,9 +169,17 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
 //! under `exe`. `timeout` bounds every process the tier starts: the run, and
 //! under `exe` and `aot` each build step as well.
 def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>; timeout : float; flags : array<string>; program_args : array<string>) : int {
+    let no_wrapper : array<string>
+    return run_tier(das_path, tier, work_dir, output, module_dirs, timeout, flags, program_args, no_wrapper)
+}
+
+//! `wrapper` goes before the program's own command line wherever the program runs: the
+//! interpreter's or the JIT's `daslang`, or the binary `exe` and `aot` build (perf's `guarded`
+//! prefix, which keeps a crash from dumping core); the build steps run bare.
+def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>; timeout : float; flags : array<string>; program_args : array<string>; wrapper : array<string>) : int {
     if (tier == "interp" || tier == "jit") {
-        var cmd <- daslang_cmd(module_dirs)
-        cmd |> push_from(flags)
+        var cmd := wrapper
+        cmd |> push_from(daslang_cmd(module_dirs), flags)
         if (tier == "jit") {
             cmd |> push("-jit")
         }
@@ -181,10 +191,10 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
         return run(cmd, output, timeout)
     }
     if (tier == "exe") {
-        return run_exe(das_path, work_dir, output, module_dirs, program_args, timeout)
+        return run_exe(das_path, work_dir, output, module_dirs, program_args, timeout, wrapper)
     }
     if (tier == "aot") {
-        return run_aot(das_path, work_dir, output, module_dirs, program_args, timeout)
+        return run_aot(das_path, work_dir, output, module_dirs, program_args, timeout, wrapper)
     }
     output += "unknown tier `{tier}`; one of interp, jit, exe, aot\n"
     return -1

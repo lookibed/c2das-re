@@ -40,18 +40,59 @@ def das_lane_command(das_path, flag : string; module_dirs : array<string>) : arr
     return <- argv
 }
 
+//! the names of the signals 1 to 15 by number, Linux's
+let SIGNAL_NAMES <- ["", "HUP", "INT", "QUIT", "ILL", "TRAP", "ABRT", "BUS", "FPE", "KILL", "USR1", "SEGV", "USR2", "PIPE", "ALRM", "TERM"]
+
+//! `argv` as a guarded run starts it (`ARCHITECTURE_SAMPLES.md`): under `prlimit` with a core limit
+//! of one byte, which writes no core file even to a pipe handler, and, when `address_space` is
+//! above 0, that many bytes of address space, inside `sh`, which waits for it and so reports a
+//! death by signal N as the exit code 128 + N.
+def guarded(argv : array<string>; address_space : int64) : array<string> {
+    var full <- ["sh", "-c", "\"$@\"; exit $?", "sh", "prlimit", "--core=1"]
+    full |> reserve(length(full) + 2 + length(argv))
+    if (address_space > 0l) {
+        full |> push("--as={address_space}")
+    }
+    full |> push("--")
+    full |> push_from(argv)
+    return <- full
+}
+
+//! The death the exit code `rc` of a guarded run reports: `signal N (<name>)` for a code from 129
+//! to 192, the shell's report of a death by signal N, else "".
+def signal_text(rc : int) : string {
+    let signal = rc - 128
+    if (signal < 1 || signal > 64) {
+        return ""
+    }
+    return signal < length(SIGNAL_NAMES) ? "signal {signal} ({SIGNAL_NAMES[signal]})" : "signal {signal}"
+}
+
+//! The exit code `rc` of a guarded run in words: its `signal_text`, else `exited <rc>`.
+def exit_text(rc : int) : string {
+    let signal = signal_text(rc)
+    return empty(signal) ? "exited {rc}" : signal
+}
+
+//! A failed guarded run's error: its exit in words and the first line it reported, or `no output`.
+def run_error(rc : int; output : string) : string {
+    let line = first_reported_line(output)
+    return empty(line) ? "{exit_text(rc)}, no output" : "{exit_text(rc)}: {line}"
+}
+
 //! The `exe` or `aot` binary of `das_path` built in `work` with `module_dirs` loaded and run once
 //! with `program_args`; "" with `error` set when the build leaves none. The tiers return the
 //! build's exit code when the build fails, which passes for a run's, so a lane stands only on the
 //! binary its build left; an earlier run's goes first. The build and the run it ends with each get
-//! `timeout` seconds; a timed-out run leaves a binary but no lane.
-def lane_binary(das_path, tier, work : string; module_dirs, program_args : array<string>; var error : string&; timeout : float) : string {
+//! `timeout` seconds; a timed-out run leaves a binary but no lane. The run is `guarded` under
+//! `address_space` bytes, so a program that crashes there dumps no core either.
+def lane_binary(das_path, tier, work : string; module_dirs, program_args : array<string>; var error : string&; timeout : float; address_space : int64 = 0l) : string {
     let bin = tier == "aot" ? aot_binary(das_path, work) : path_join(work, "{file_stem(das_path)}_exe")
     remove(bin)
     remove(bin + ".exe")
     var out : string
-    let no_flags : array<string>
-    let rc = run_tier(das_path, tier, work, out, module_dirs, timeout, no_flags, program_args)
+    let no_flags, no_program : array<string>
+    let rc = run_tier(das_path, tier, work, out, module_dirs, timeout, no_flags, program_args, guarded(no_program, address_space))
     if (rc == popen_timed_out) {
         error = "the build or its run took longer than {int(timeout)} s"
         return ""
