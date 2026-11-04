@@ -469,6 +469,13 @@ def test_address_cap(t : T?) {
         t |> equal(address_cap_of(""), "")
         t |> success(!empty(address_cap_of(fread("/proc/self/limits"))))
     }
+    t |> run("the cap in force: the requested one, or a lower one the runner inherited") @(t : T?) {
+        t |> equal(cap_in_force(6l, "unlimited"), "6")
+        t |> equal(cap_in_force(6l, ""), "6")
+        t |> equal(cap_in_force(6l, "4"), "4")
+        t |> equal(cap_in_force(6l, "8"), "6")
+        t |> equal(cap_in_force(0l, "4"), "4")
+    }
 }
 
 [test]
