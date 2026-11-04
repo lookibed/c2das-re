@@ -20,7 +20,7 @@ never block this plan.
    hand-written "as-if-converted" `.das` test first, converter integration second.
 5. No hand edits to converted output, ever. Per-project judgment goes in the sidecar.
 
-**Owner rulings 2026-11-01 to 2026-11-04, (12) to (29)** (after Boris Batkin's framing of 2026-08-22: generate the
+**Owner rulings 2026-11-01 to 2026-11-05, (12) to (31)** (after Boris Batkin's framing of 2026-08-22: generate the
 text, make it all work, then the LLM-assisted port; his words on layout, start-up, speed and text
 stand behind each)
 12. Layout (P7.0a): the default layout keeps every cycle one module of `.das.inc` fragments, a file
@@ -154,6 +154,18 @@ stand behind each)
     the one IWAD; (3) the native build questions (`-funsigned-char`, patch 0004 against a converter
     mechanism) answered from the research report `/root/notes/research/doom-native-questions.md`:
     keep the signed native build with patch 0003, keep patch 0004; the rows are under P6.5.
+31. The JIT profile (2026-11-05): P7.0c3 runs first (the coder); beside it, after Boris Batkin's
+    words on the Lua numbers ("надо будет попрофайлить - чтобы понять где говно. может оказаться в
+    паре мест - про алиасинг ... или ... выключи векторизацию"), P7.0b3's Doom half narrows to the
+    JIT and his two hypotheses, by his method: a sampling profile (self time per function, native
+    against JIT, one demo, the speed build), the hot loops' IR or asm against clang's, each cause
+    confirmed by a hand edit of a temporary copy of the output with the whole demo re-timed, a
+    minimal repro for every cause that sits in daslang, rows for the fixes (none in the item: the
+    output forms do not change; profiling tools and the host flag of P6.7 (b) may land, with tests).
+    Dispatch: lead Fable owns the item, the ledger row and the report's summary; one Opus researcher
+    samples and reads the IR; the coder finishes P7.0c3, then takes the host flag and the hand-edit
+    re-timings; Fable subagents write the probe-findings lines, the fork issues, the ledger and the
+    report drafts. Full text: `/root/notes/owner/2026-11-05_jit-profile-aliasing.md`. Done as P7.0b4.
 
 ---
 
@@ -1638,8 +1650,9 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   Rows: (b) a per-function profile of a converted demo under interp, blocked: the daslang profiler
   prints no summary when the program exits through C `exit`, and a 700-tic trace exceeds 4 GiB: a
   host flag that returns from `main` instead of `exit` for profiling runs; (c) the JIT gap, 3.6-3.8x
-  against Rust doomgeneric's 1.04x, unexplained: P7.0b2 did not reach it, P7.0b3 takes Doom beside
-  Lua's residue.
+  against Rust doomgeneric's 1.04x, unexplained: P7.0b2 did not reach it; P7.0b4 took it (Done: the
+  JIT's per-access lookup of module globals, then the marshal `crt::memcpy` calls), P7.0b3 keeps Lua's
+  interpreter residue.
 - **Exit criterion:** demo-sync 100%, playable with sound and music, perf table v1.
 
 ## P7 — Performance + tiers
@@ -1827,7 +1840,34 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   with a raw array-index exception at `converter/emit.das:3057` instead of an error message.
 - **P7.0b3 The Lua residue after the dispatch rows** (from P7.0b2): profile what remains after
   P7.0c2/P7.0c3 (the 31% unexplained, about 220 ns per VM instruction, and the `[c_union]`
-  accessor calls) and Doom's JIT gap (P6.7 (c)) beside it, the Rust translation beside both.
+  accessor calls) under the interpreter, the Rust translation beside. Doom's JIT gap (P6.7 (c)) and
+  Lua's JIT residue went to P7.0b4 (ruling 31): this row keeps the interpreter residue.
+- **P7.0b4 JIT profile: aliasing and vectorization** (ruling 31; the JIT half of P7.0b3): where
+  Doom's and Lua's JIT code loses 2-4x against native while Rust doomgeneric loses 4%; a sampling
+  profile, the hot loops' IR against clang's, Boris's two hypotheses tested, a hand edit per cause
+  in a temporary copy of the output with the whole demo re-timed, a repro per daslang cause.
+  Done as an investigation (branch `p7.0b4-jit-profile`; report
+  `/root/notes/research/p7.0b4-jit-profile.md`, data `/root/notes/research/p7.0b4/`; box PC, speed
+  build, demo1, every cell the median of an interleaved A/B run through `heavy`, spreads at or under
+  6.1% but the last row's 12.4%). Method: `perf/sampler/`, an `LD_PRELOAD` timer sampler (100 us,
+  RIP and the stack-top word, gated on the host's two `clock()` calls) symbolized offline against
+  the JIT's cached `.dll`, self time per function on native and JIT. Doom demo1 JIT 4.18x native as
+  converted (47.5% of all JIT samples in `jit_get_global_mnh`, the hash lookup of a module global
+  per access, 67 calls in `R_RenderSegLoop`'s loop) -> 1.30x with `options solid_context` in all 39
+  modules -> 1.10x with the builtin `memcpy` in the constant-size marshal accessors
+  (`crt::memcpy(..., uint64(1))` is an indirect call per byte, 14% of the solid build) -> 1.02x
+  with `unsafe_deref` + `hint(unsafe_range_check)` (per-pixel null and range checks, about 8%).
+  Aliasing: no (clang reloads the same globals in `R_DrawColumn`'s loop, the JIT emits no TBAA at
+  all and it costs nothing measurable, F83). Vectorization: no (native with `-fno-vectorize
+  -fno-slp-vectorize` 0.2783 s against 0.2782 s; the JIT vectorizes none of the hot Doom loops,
+  `--jit-opt-level 2` equals 3). Lua fib 30 10.8x and nbody 5.5x under JIT: 62-69% of the samples
+  on the dispatch chain's compare lines (P7.0c3/P7.0c2), no global lookups. Unexplained:
+  `R_RenderSegLoop` + `R_StoreWallRange` 1.3x and the `W_CheckNumForName` scan 1.7x after the
+  edits, Lua's residue (about 3.4x of fib's 10.8x if the chain cost went to zero). Open, the
+  coder's: a test for the sampler, the host flag P6.7 (b), the per-demo re-timing of each edit.
+  Facts F80-F83; upstream lookibed/daScript#36 (the lookup), #37 (`run_and_capture` reads a signal
+  death as an exit code, found by the compare runner), #31 (das-fmt and `def f : T? =>`, re-confirmed).
+  Rows: P7.0m, P7.0n, P7.0o, P7.0p.
 - **P7.0c Switch dispatch without the flag chain** (ruling (23): the plain-case form default, computed `goto` opt-in). A case no `goto` and no fall-through enters
   tests `_goto == 0 && _cond == K` alone (2.08x interp on `dispatch_switch`, 83 flag cases in lvm,
   an upper bound of the plain ones, every VM instruction). Then, opt-in under the speed-vs-
@@ -1988,6 +2028,37 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   Done (branch `p7.0l2-type-edges`, PR #71): a record field's type reason joins `type_edges` in
   `find_edges`, so `uncuttable` and a forced cut refuse it; fixture `p7_type_edge` (the repro) and
   the three census test gaps closed.
+- **P7.0m `options solid_context` in generated modules** (from P7.0b4, place 1): a non-solid
+  module's global costs the JIT a `jit_get_global_mnh` call per access, a perfect-hash probe LLVM
+  cannot hoist out of a conditional path in a loop (F80: the repro 5.4x native, 11.7x of the solid
+  build; Doom demo1 JIT 4.18x -> 1.30x, box PC, 7 interleaved rounds). The emitter writes
+  `options solid_context` in every generated module: the default if a probe shows the AOT lane
+  still builds and runs with it (daslang's doc says it prohibits AOT and patches; F49 says the AOT
+  emitter ignores it), else a converter option (CLI flag and sidecar field, default off); both
+  modes tested and measured (ruling 23). Upstream beside it: lookibed/daScript#36.
+- **P7.0n Constant-size marshal reads through the builtin `memcpy`** (from P7.0b4, place 2): a
+  marshal accessor (`read_post_t_topdelta`, `read_patch_t_width`) spells a one-byte read
+  `crt::memcpy(addr(r), bytes + ofs, uint64(1))`, an indirect call into dasCRuntime per byte under
+  the JIT, 14% of the solid build's samples; the builtin `memcpy` is an LLVM intrinsic that folds
+  to a load (F81: 0.22 s against 0.011 s on 1e8 reads, C 0.018 s). The emitter writes
+  `memcpy(dst, src, N)` with an `int` size (the builtin, not crt's `uint64` overload) or a typed
+  load for a constant size; Doom demo1 JIT 1.30x -> 1.10x (box PC). Shorter and faster, so the
+  default; tested on the marshal fixtures, measured on the kernel and the demo.
+- **P7.0o Speed opt-in: `unsafe_deref` and `hint(unsafe_range_check)` on `[c_function]`** (from
+  P7.0b4, place 3; P7.1's O2 and O3, now measured): per-pixel `null_check` on `dest`,
+  `dc_source + x`, `dc_colormap + x` (a GEP result is never provably non-null) and fixed-array
+  range checks in `R_DrawColumn`, `R_DrawSpan` and `R_RenderSegLoop`, about 8% of the solid+memcpy
+  build; Doom demo1 JIT 1.10x -> 1.02x (box PC, spread 12.4%: re-measure). A converter option (CLI
+  flag and sidecar field, default off) adds both annotations to every `[c_function]`; the checked
+  form stays the default (ruling 23), both modes tested and measured, demo sync re-verified with
+  the flag on (P7.1).
+- **P7.0p The Lua JIT residue after the dispatch rows** (from P7.0b4, place 4): the dispatch chain
+  is 62-69% of fib's and nbody's JIT samples (P7.0c3 default, P7.0c2 opt-in); fib 30 stays about
+  3.4x native if the chain cost went to zero. The remaining JIT symbols: `[c_union]` and field
+  accessor calls (`.val`, `.p`, `.i`: 3-5%), `das::i_das_ptr_diff` and `crt::c_volatile_load_i32`
+  as runtime calls (about 1%). After P7.0c3 and P7.0c2 land: re-sample fib and nbody with
+  `perf/sampler/` (`--lines` over a `--jit-debug` dll) and open a row per cause, P7.0b3's
+  interpreter residue beside it.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
