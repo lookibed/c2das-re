@@ -551,6 +551,31 @@ def test_working_folder(t : T?) {
 }
 
 [test]
+def test_project_cap(t : T?) {
+    t |> run("--as reaches every measured run: the native run, the lanes, the native bench's oracle and cells, each lane's bench") @(t : T?) {
+        t |> with_scratch("cmp_projects_cap") $(dir) {
+            // each program prints the soft address-space limit it runs under, which is the expected output
+            let c_prog = "#include <stdio.h>\n#include <string.h>\nint main(void) \{\n    char line[256], cap[64];\n    FILE *f = fopen(\"/proc/self/limits\", \"r\");\n    while (f && fgets(line, sizeof line, f)) \{\n        if (strncmp(line, \"Max address space\", 17) == 0 && sscanf(line + 17, \"%63s\", cap) == 1) printf(\"%s\\n\", cap);\n    \}\n    printf(\"%s\");\n    return 0;\n\}\n"
+            fwrite(path_join(dir, "prog.c"), replace(c_prog, "printf(\"%s\");", "printf(\"\");"))
+            fwrite(path_join(dir, "bench.c"), replace(c_prog, "printf(\"%s\");", "printf(\"setup_us=3\\ndecode_us=6\\n\");"))
+            fwrite(path_join(dir, "input"), "")
+            let program = "options gen2\nrequire strings\nrequire daslib/strings_boost\nrequire daslib/fio\n[export]\ndef main() : int \{\n    for (ln in split(fread(\"/proc/self/limits\"), \"\\n\")) \{\n        if (ln |> starts_with(\"Max address space\")) \{\n            var inscope fields <- [for (x in split(slice(ln, 17), \" \")); x; where !empty(x)]\n            print(\"\{fields[0]\}\\n%s\")\n        \}\n    \}\n    return 0\n\}\n"
+            fwrite(path_join(dir, "prog.das"), replace(program, "%s", ""))
+            fwrite(path_join(dir, "bench.das"), replace(program, "%s", "setup_us=3\\ndecode_us=6\\n"))
+            let bin = path_join(dir, "rust")
+            write_script(bin, "#!/bin/sh\nprev=\"\"\nfor a in \"$@\"; do\n    if [ \"$prev\" = \"--output-dir\" ]; then out=\"$a\"; fi\n    if [ \"$prev\" = \"--file\" ]; then src=\"$a\"; fi\n    prev=\"$a\"\ndone\nmkdir -p \"$out\"\ncp {dir}/$(basename \"$src\" .c).das \"$out/prog.das\"\n")
+            let p = Project(name = "p", dir = dir, tu = "prog.c", bench_tu = "bench.c", native_sources <- ["prog.c"], native_bench_sources <- ["bench.c"], c_std = "c11", fixture = "input", expected = "6442450944\n", bench_free_keys <- ["setup_us", "decode_us"])
+            let entry = project_entry(p, bin, path_join(dir, "work"), 1, Stamps(), 6442450944l)
+            t |> equal("{entry?["native"]?["status"] ?? ""} {entry?["native"]?["reason"] ?? ""}", "pass ", "the native run")
+            t |> equal(join([for (lane in DAS_LANES); entry?["rust"]?["lanes"]?[lane]?["status"] ?? ""], " "), "pass pass pass pass", "the lanes")
+            t |> equal(entry?["speed"]?["native"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf, "the native bench's oracle and cells: {write_json(entry?["speed"]?["native"])}")
+            t |> equal(entry?["speed"]?["rust"]?["interp"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf, "a lane's bench: {write_json(entry?["speed"]?["rust"])}")
+            t |> equal(entry?["speed"]?["rust"]?["aot"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf, "the aot lane's bench: {write_json(entry?["speed"]?["rust"])}")
+        }
+    }
+}
+
+[test]
 def test_refusals(t : T?) {
     t |> run("a unit neither side takes, and a native build that fails") @(t : T?) {
         t |> with_scratch("cmp_projects_refusals") $(dir) {
