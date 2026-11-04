@@ -1833,6 +1833,21 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 - **P7.0c3 One `_goto` test per dispatch** (default; from P7.0b2): the matched-flag loop tests
   `_goto == 0` once per dispatch instead of once per case (about 1.28x fib, 1.13x binary_trees);
   for every build, the opt-in P7.0c2 above it.
+  Done (branch `p7.0c3-one-goto-test`): a goto into another case stores a value no case holds into
+  the condition (`var _condN`; one below the smallest case value, else one above the largest, an
+  enum's through `enum_from_int`) before the re-dispatch, so every case test reads `_cond == K` alone
+  and only `default` keeps `_goto == 0 &&`; cases spanning the condition's type keep the old form.
+  The goto's own plain case cannot match on the restart (the `noconj` loop; a run test hangs without
+  the store). The divergence from `docs/lowering-examples.md` (its Tier 2 tests carry no goto
+  variable) is as P7.0c's. One sample each, box PC, in-process work, main vs branch (marked: one
+  sample, two runs of `/root/notes/parallel/pc-p7.0c3-ab.sh` while another coder's jobs shared the
+  box; the 3-sample run is owed): interpreter fib 30 1.19-1.30x, binary_trees 12 1.14-1.16x, nbody
+  20000 1.11-1.15x, spectral_norm 100 1.18-1.22x; JIT fib 1.89-3.71x, binary_trees 1.27-1.81x, nbody
+  2.70-2.81x, spectral_norm 3.05-3.30x (the JIT outputs equal main's on nbody and spectral_norm).
+  `dispatch_switch` under the interpreter 197.9x -> 115.4x native, JIT 0.45x -> 0.28x;
+  perf's `flag-chain` rewrite now finds the new plain case. `lua/tests`' suite-check test failed once
+  on this box with `sort.lua pass 4.9` where its spinning fixture wants a timeout past 5 s, a timing
+  margin unrelated to the switch.
 - **P7.0c4 A binary split of the case chain** (candidate; from P7.0b2): a dense switch's case found
   by a binary split of the chain (7 tests for 83 cases) for builds without the P7.0c2 opt-in;
   measured against P7.0c3 before it is scheduled.
