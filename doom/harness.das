@@ -5,6 +5,7 @@ module harness public
 require strings
 require daslib/fio
 require daslib/strings_boost
+require daslib/strings_convert
 require math
 
 //! The checks and formats `run.das` applies, apart from the processes it starts
@@ -120,6 +121,32 @@ def timed_gametics(output : string) : int {
         }
     }
     return -1
+}
+
+//! The playback's own time a run's host prints at its end (`ARCHITECTURE.md` section 4): the tics
+//! Doom ran and the CPU seconds of the update loop, both -1 without the line.
+struct HostTiming {
+    tics : int = -1
+    seconds : double = -1.0lf
+}
+
+//! The first `host: timed <N> gametics in <S> s` line of `output`; -1 for both without one, or
+//! when either number does not parse whole or is negative.
+def host_timing(output : string) : HostTiming {
+    let prefix = "host: timed "
+    for (line in split(output, "\n")) {
+        if (!(line |> starts_with(prefix))) {
+            continue
+        }
+        var inscope words <- split(slice(line, length(prefix)), " ")
+        if (length(words) != 5 || words[1] != "gametics" || words[2] != "in" || words[4] != "s") {
+            return HostTiming()
+        }
+        let tics = try_to_int(words[0]) ?? -1
+        let seconds = try_to_double(words[3]) ?? -1.0lf
+        return tics < 0 || seconds < 0.0lf ? HostTiming() : HostTiming(tics = tics, seconds = seconds)
+    }
+    return HostTiming()
 }
 
 //! The reference log of a `-timedemo` run's `output`: `header` as a `# ` line, then every
