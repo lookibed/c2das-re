@@ -11,6 +11,25 @@ require ../ports_render.das
 
 def private cell(workload, lane : string; time : double) : LaneCell => <- LaneCell(workload = workload, lane = lane, time = time, spread = 0.02lf, samples <- [time])
 
+// a cell of a run under the wrapper: `time` the whole run, `work` the seconds it measured inside
+def private timed_cell(workload, lane : string; time, work : double) : LaneCell {
+    var c <- cell(workload, lane, time)
+    c.work_samples <- [work]
+    c.work_time = work
+    c.work_time_spread = 0.02lf
+    return <- c
+}
+
+// capture `c` as one made before the wrapper: no cell carries in-process seconds
+def private subtracted(var c : Capture) : Capture {
+    for (cl in c.cells) {
+        cl.work_samples |> clear()
+        cl.work_time = 0.0lf
+        cl.work_time_spread = 0.0lf
+    }
+    return <- c
+}
+
 def private failed(workload, lane, error : string) : LaneCell => <- LaneCell(workload = workload, lane = lane, error = error)
 
 // the cells after the first of the row of markdown table `text` whose first cell is `first`,
@@ -26,7 +45,8 @@ def private row_of(text, first : string) : array<string> {
 }
 
 // two workloads and the startup row; interp everywhere, jit on one workload, aot a lane error,
-// exe a failed cell and no startup cell; each work time a round number, the startup cell taken out
+// exe a failed cell and no startup cell; each work time a round number timed inside the run, and
+// the same number by subtraction, the startup cell taken out (`subtracted`)
 def private fixture : Capture => <- Capture(
     program = "lua", commit = "abc123", command = "scripts/publish_ports.sh --program lua --perf --samples 3", timestamp = "2026-10-22 10:00 UTC", samples = 3, timeout = 60,
     machine = Machine(arch = "x86_64", cpu = "CPU", clang = "clang version 22", clang_path = "/opt/clang/bin/clang", daslang = "0.6.4"),
@@ -40,13 +60,13 @@ def private fixture : Capture => <- Capture(
         cell("startup", "native", 0.5lf),
         cell("startup", "interp", 10.0lf),
         cell("startup", "jit", 2.0lf),
-        cell("fib", "native", 1.5lf),
-        cell("fib", "interp", 210.0lf),
-        cell("fib", "jit", 10.0lf),
+        timed_cell("fib", "native", 1.5lf, 1.0lf),
+        timed_cell("fib", "interp", 210.0lf, 200.0lf),
+        timed_cell("fib", "jit", 10.0lf, 8.0lf),
         failed("fib", "exe", "exited 3"),
         failed("fib", "aot", "no arguments"),
-        cell("nbody", "native", 2.5lf),
-        cell("nbody", "interp", 110.0lf),
+        timed_cell("nbody", "native", 2.5lf, 2.0lf),
+        timed_cell("nbody", "interp", 110.0lf, 100.0lf),
         failed("nbody", "jit", "prints `x`")
     ])
 
@@ -62,11 +82,14 @@ def test_tables(t : T?) {
         t |> success(text |> starts_with("| Workload | Arguments         | interpreter / native | JIT / native | exe / native | AOT / native | interpreter / JIT | interpreter / exe | interpreter / AOT | JIT / AOT |"), text)
         t |> success(text |> contains("| fib      | `bench/fib.lua`   |               200.00 |         8.00 |          n/a |          n/a |             25.00 |               n/a |               n/a |       n/a |"), text)
         t |> success(!(text |> contains("startup")), text)
+        // a capture made before the wrapper: every ratio over a work time by subtraction is marked
+        let old = render_ratios(subtracted(fixture()))
+        t |> equal(join(row_of(old, "fib"), ","), "`bench/fib.lua`,200.00 (by subtraction),8.00 (by subtraction),n/a,n/a,25.00 (by subtraction),n/a,n/a,n/a")
     }
     t |> run("not yet: a lane error once for every workload, a failed cell of a working lane on its own line") @(t : T?) {
         let c <- fixture()
         let lines <- render_not_yet(c)
-        t |> equal(join(lines, "\n"), "- nbody, JIT: not yet: prints `x`\n- fib, exe: not yet: exited 3\n- exe, every work time: not yet: no startup cell\n- AOT, every workload: not yet: no arguments")
+        t |> equal(join(lines, "\n"), "- nbody, JIT: not yet: prints `x`\n- fib, exe: not yet: exited 3\n- AOT, every workload: not yet: no arguments")
     }
     t |> run("the Captured line names the box: the capture's, else its CPU's; the command reproduces a recorded box") @(t : T?) {
         var boxed <- fixture()
@@ -84,12 +107,13 @@ def test_tables(t : T?) {
         t |> success(text |> starts_with("Captured 2026-10-22 10:00 UTC on x86_64, CPU; clang version 22 at `/opt/clang/bin/clang`, the native lane's compiler; daslang 0.6.4; c2das-re `abc123`. Reproduced by `scripts/publish_ports.sh --program lua --perf --samples 3`. A sample is one run of the whole program"), text)
         t |> success(text |> contains("a cell is the median of 3 samples"), text)
         t |> success(text |> contains("a run past 60 s fails its cell"), text)
-        t |> success(text |> contains("Every speed number is the work alone: a workload's work time under a lane is its cell less the same lane's `startup` cell"), text)
+        t |> success(text |> contains("Every speed number is the work alone, timed inside the process: a workload runs under `bench/timed.lua`, which reads `os.clock()` (C `clock()`, the process's CPU time, under every lane) before and after the script"), text)
+        t |> success(text |> contains("A cell without them (a capture made before the wrapper) is `(by subtraction)`, its work time the cell less the same lane's `startup` cell"), text)
         // the tables in order: startup, work, the work ratios, the raw times
         let order <- [for (head in ["Startup:\n\n| Lane ", "Work:\n\n| Workload ", "Ratios, a lane's work time over another's", "Times, the raw medians of whole runs, the start included:\n\n| Workload ", "Lanes:\n\n"]); find(text, head)]
         t |> success(order[0] > 0 && order[0] < order[1] && order[1] < order[2] && order[2] < order[3] && order[3] < order[4], "{order}\n{text}")
         t |> success(text |> contains("- JIT: `run jit`\n"), text)
-        t |> success(text |> ends_with("Not yet:\n\n- nbody, JIT: not yet: prints `x`\n- fib, exe: not yet: exited 3\n- exe, every work time: not yet: no startup cell\n- AOT, every workload: not yet: no arguments\n"), text)
+        t |> success(text |> ends_with("Not yet:\n\n- nbody, JIT: not yet: prints `x`\n- fib, exe: not yet: exited 3\n- AOT, every workload: not yet: no arguments\n"), text)
     }
     t |> run("a capture where every cell stands has no not-yet list") @(t : T?) {
         var c <- fixture()
@@ -117,100 +141,155 @@ def test_work(t : T?) {
         let c <- fixture()
         t |> equal(render_startup(c), "| Lane        |       Startup | Over native |\n| :---------- | ------------: | ----------: |\n| clang -O3   |  0.500 s ±2% |        1.00 |\n| interpreter | 10.000 s ±2% |       20.00 |\n| JIT         |  2.000 s ±2% |        4.00 |\n| exe         |           n/a |         n/a |\n| AOT         |           n/a |         n/a |\n")
     }
-    t |> run("the work table: each cell less its lane's startup cell, the startup row aside, the spread both half ranges over the work time") @(t : T?) {
+    t |> run("the work table: each cell's in-process seconds, the startup row aside, their own spread") @(t : T?) {
         let c <- fixture()
-        t |> equal(render_work(c), "| Workload | Arguments         |    clang -O3 |    interpreter |          JIT |     exe |     AOT |\n| :------- | :---------------- | -----------: | -------------: | -----------: | ------: | ------: |\n| fib      | `bench/fib.lua`   | 1.000 s ±4% | 200.000 s ±2% | 8.000 s ±3% | not yet | not yet |\n| nbody    | `bench/nbody.lua` | 2.000 s ±3% | 100.000 s ±2% |      not yet |     n/a |     n/a |\n")
+        t |> equal(render_work(c), "| Workload | Arguments         |    clang -O3 |    interpreter |          JIT |     exe |     AOT |\n| :------- | :---------------- | -----------: | -------------: | -----------: | ------: | ------: |\n| fib      | `bench/fib.lua`   | 1.000 s ±2% | 200.000 s ±2% | 8.000 s ±2% | not yet | not yet |\n| nbody    | `bench/nbody.lua` | 2.000 s ±2% | 100.000 s ±2% |      not yet |     n/a |     n/a |\n")
+        t |> equal(work_of(c, "fib", "interp"), 200.0lf)
+        // the in-process seconds stand even where the whole run says otherwise
+        var other <- fixture()
+        other.cells[4].time = 500.0lf
+        t |> equal(row_of(render_work(other), "fib")[2], "200.000 s ±2%")
+    }
+    t |> run("a capture made before the wrapper: each cell less its lane's startup cell, marked, the spread both half ranges over the work time") @(t : T?) {
+        let c <- subtracted(fixture())
+        t |> equal(render_work(c), "| Workload | Arguments         |                     clang -O3 |                     interpreter |                           JIT |     exe |     AOT |\n| :------- | :---------------- | ----------------------------: | ------------------------------: | ----------------------------: | ------: | ------: |\n| fib      | `bench/fib.lua`   | 1.000 s ±4% (by subtraction) | 200.000 s ±2% (by subtraction) | 8.000 s ±3% (by subtraction) | not yet | not yet |\n| nbody    | `bench/nbody.lua` | 2.000 s ±3% (by subtraction) | 100.000 s ±2% (by subtraction) |                       not yet |     n/a |     n/a |\n")
         t |> equal(work_of(c, "fib", "interp"), 200.0lf)
         // half of 210's 5% range and half of 10's 10% range, 10.5 + 1 s over the 200 s of work
-        var spread <- fixture()
+        var spread <- subtracted(fixture())
         for (cl in spread.cells) {
             if (cl.lane == "interp") {
                 cl.spread = cl.workload == "startup" ? 0.1lf : 0.05lf
             }
         }
-        t |> success(render_work(spread) |> contains("| 200.000 s ±6% |"), render_work(spread))
+        t |> success(render_work(spread) |> contains("| 200.000 s ±6% (by subtraction) |"), render_work(spread))
     }
-    t |> run("a lane without a startup cell has no work times, no ratios, and a not-yet line") @(t : T?) {
-        var c <- fixture()
+    t |> run("by subtraction, a lane without a startup cell has no work times, no ratios, and a not-yet line") @(t : T?) {
+        var c <- subtracted(fixture())
         c.cells |> erase(2) // the JIT's startup cell
         t |> equal(work_of(c, "fib", "jit"), 0.0lf)
-        t |> equal(join(row_of(render_work(c), "fib"), ","), "`bench/fib.lua`,1.000 s ±4%,200.000 s ±2%,not yet,not yet,not yet")
-        t |> equal(join(row_of(render_ratios(c), "fib"), ","), "`bench/fib.lua`,200.00,n/a,n/a,n/a,n/a,n/a,n/a,n/a")
+        t |> equal(join(row_of(render_work(c), "fib"), ","), "`bench/fib.lua`,1.000 s ±4% (by subtraction),200.000 s ±2% (by subtraction),not yet,not yet,not yet")
+        t |> equal(join(row_of(render_ratios(c), "fib"), ","), "`bench/fib.lua`,200.00 (by subtraction),n/a,n/a,n/a,n/a,n/a,n/a,n/a")
         t |> success(has_value(render_not_yet(c), "- JIT, every work time: not yet: no startup cell"), join(render_not_yet(c), "\n"))
         var count = 0
         geomean_ratio(c, "jit", count)
         t |> equal(count, 0)
     }
-    t |> run("a failed startup cell: the lane's work times and ratios are not yet, the cell and the lane each named") @(t : T?) {
+    t |> run("timed inside the process, a lane without a startup cell keeps its work times and ratios, with no not-yet line") @(t : T?) {
         var c <- fixture()
+        c.cells |> erase(2) // the JIT's startup cell
+        t |> equal(work_of(c, "fib", "jit"), 8.0lf)
+        t |> equal(join(row_of(render_work(c), "fib"), ","), "`bench/fib.lua`,1.000 s ±2%,200.000 s ±2%,8.000 s ±2%,not yet,not yet")
+        t |> equal(join(row_of(render_ratios(c), "fib"), ","), "`bench/fib.lua`,200.00,8.00,n/a,n/a,25.00,n/a,n/a,n/a")
+        t |> success(!has_value(render_not_yet(c), "- JIT, every work time: not yet: no startup cell"), join(render_not_yet(c), "\n"))
+    }
+    t |> run("by subtraction, a failed startup cell: the lane's work times and ratios are not yet, the cell and the lane each named") @(t : T?) {
+        var c <- subtracted(fixture())
         c.cells[1] <- failed("startup", "interp", "exited 9")
-        t |> equal(join(row_of(render_work(c), "fib"), ","), "`bench/fib.lua`,1.000 s ±4%,not yet,8.000 s ±3%,not yet,not yet")
-        t |> equal(join(row_of(render_ratios(c), "fib"), ","), "`bench/fib.lua`,n/a,8.00,n/a,n/a,n/a,n/a,n/a,n/a")
+        t |> equal(join(row_of(render_work(c), "fib"), ","), "`bench/fib.lua`,1.000 s ±4% (by subtraction),not yet,8.000 s ±3% (by subtraction),not yet,not yet")
+        t |> equal(join(row_of(render_ratios(c), "fib"), ","), "`bench/fib.lua`,n/a,8.00 (by subtraction),n/a,n/a,n/a,n/a,n/a,n/a")
         t |> equal(join(row_of(render_startup(c), "interpreter"), ","), "not yet,n/a")
         let lines <- render_not_yet(c)
         t |> success(has_value(lines, "- startup, interpreter: not yet: exited 9") && has_value(lines, "- interpreter, every work time: not yet: no startup cell"), join(lines, "\n"))
     }
-    t |> run("a cell at or below its lane's startup cell is within the start, with no ratio") @(t : T?) {
-        var c <- fixture()
+    t |> run("by subtraction, a cell at or below its lane's startup cell is within the start, with no ratio") @(t : T?) {
+        var c <- subtracted(fixture())
         c.cells[5].time = 2.0lf // the JIT's fib, equal to its startup
-        t |> equal(row_of(render_work(c), "fib")[3], "within the start")
+        t |> equal(row_of(render_work(c), "fib")[3], "within the start (by subtraction)")
         t |> equal(row_of(render_ratios(c), "fib")[2], "n/a")
+    }
+    t |> run("a ratio with one side by subtraction is marked, and so is a mean over it") @(t : T?) {
+        var c <- fixture()
+        c.cells[3].work_samples |> clear() // native fib: 1.5 s less native's 0.5 s startup
+        t |> equal(row_of(render_ratios(c), "fib")[1], "200.00 (by subtraction)")
+        t |> equal(row_of(render_ratios(c), "fib")[5], "25.00")
+        var captures : array<Capture>
+        captures |> emplace(c)
+        t |> success(render_projects(captures) |> contains("| 100.00 (by subtraction) |"), render_projects(captures))
     }
 }
 
 [test]
 def test_suspect(t : T?) {
-    t |> run("a cell whose spread is above 20% is suspect: its spread alone, no ratio, out of the geometric mean") @(t : T?) {
+    t |> run("an in-process work time whose spread is above 20% is suspect: its spread alone, no ratio, out of the geometric mean") @(t : T?) {
         var c <- fixture()
-        c.cells[4].spread = 0.3lf // the interpreter's fib: 63 s of its 210 s, 63.2 s of its 200 s of work
-        t |> equal(row_of(render_times(c), "fib")[2], "suspect (±30.0%)")
-        t |> equal(render_work(c), "| Workload | Arguments         |    clang -O3 |       interpreter |          JIT |     exe |     AOT |\n| :------- | :---------------- | -----------: | ----------------: | -----------: | ------: | ------: |\n| fib      | `bench/fib.lua`   | 1.000 s ±4% | suspect (±31.6%) | 8.000 s ±3% | not yet | not yet |\n| nbody    | `bench/nbody.lua` | 2.000 s ±3% |    100.000 s ±2% |      not yet |     n/a |     n/a |\n")
+        c.cells[4].work_time_spread = 0.3lf // the interpreter's fib
+        t |> equal(row_of(render_times(c), "fib")[2], "210.000 s ±2%")
+        t |> equal(row_of(render_work(c), "fib")[2], "suspect (±30.0%)")
         t |> equal(join(row_of(render_ratios(c), "fib"), ","), "`bench/fib.lua`,suspect,8.00,n/a,n/a,suspect,suspect,suspect,n/a")
         var count = 0
         t |> equal(round(geomean_ratio(c, "interp", count) * 1000.0lf), 50000.0lf)
         t |> equal(count, 1)
     }
-    t |> run("a suspect startup cell makes every work time of its lane suspect: no number, no ratio, out of the geometric mean") @(t : T?) {
-        var c <- fixture()
+    t |> run("by subtraction, a cell whose spread is above 20% is suspect: its spread alone, no ratio, out of the geometric mean") @(t : T?) {
+        var c <- subtracted(fixture())
+        c.cells[4].spread = 0.3lf // the interpreter's fib: 63 s of its 210 s, 63.2 s of its 200 s of work
+        t |> equal(row_of(render_times(c), "fib")[2], "suspect (±30.0%)")
+        t |> equal(render_work(c), "| Workload | Arguments         |                     clang -O3 |                        interpreter |                           JIT |     exe |     AOT |\n| :------- | :---------------- | ----------------------------: | ---------------------------------: | ----------------------------: | ------: | ------: |\n| fib      | `bench/fib.lua`   | 1.000 s ±4% (by subtraction) | suspect (±31.6%) (by subtraction) | 8.000 s ±3% (by subtraction) | not yet | not yet |\n| nbody    | `bench/nbody.lua` | 2.000 s ±3% (by subtraction) |    100.000 s ±2% (by subtraction) |                       not yet |     n/a |     n/a |\n")
+        t |> equal(join(row_of(render_ratios(c), "fib"), ","), "`bench/fib.lua`,suspect (by subtraction),8.00 (by subtraction),n/a,n/a,suspect (by subtraction),suspect (by subtraction),suspect (by subtraction),n/a")
+        var count = 0
+        t |> equal(round(geomean_ratio(c, "interp", count) * 1000.0lf), 50000.0lf)
+        t |> equal(count, 1)
+    }
+    t |> run("by subtraction, a suspect startup cell makes every work time of its lane suspect: no number, no ratio, out of the geometric mean") @(t : T?) {
+        var c <- subtracted(fixture())
         c.cells[1].spread = 0.25lf // the interpreter's startup: 2.5 s of 10 s; fib's own work spread stays 3%
         t |> equal(join(row_of(render_startup(c), "interpreter"), ","), "suspect (±25.0%),suspect")
-        t |> equal(row_of(render_work(c), "fib")[2], "suspect (startup)")
-        t |> equal(row_of(render_ratios(c), "fib")[1], "suspect")
+        t |> equal(row_of(render_work(c), "fib")[2], "suspect (startup) (by subtraction)")
+        t |> equal(row_of(render_ratios(c), "fib")[1], "suspect (by subtraction)")
         var count = 0
         t |> equal(geomean_ratio(c, "interp", count), 0.0lf)
         t |> equal(count, 0)
+    }
+    t |> run("timed inside the process, a suspect startup cell leaves the lane's work times and ratios standing") @(t : T?) {
+        var c <- fixture()
+        c.cells[1].spread = 0.25lf
+        t |> equal(join(row_of(render_startup(c), "interpreter"), ","), "suspect (±25.0%),suspect")
+        t |> equal(row_of(render_work(c), "fib")[2], "200.000 s ±2%")
+        t |> equal(row_of(render_ratios(c), "fib")[1], "200.00")
+        var count = 0
+        t |> equal(round(geomean_ratio(c, "interp", count) * 1000.0lf), round(sqrt(200.0lf * 50.0lf) * 1000.0lf))
+        t |> equal(count, 2)
     }
 }
 
 [test]
 def test_suspect_edges(t : T?) {
-    t |> run("a spread of exactly 20% is a number, above it suspect: a cell and its work time") @(t : T?) {
+    t |> run("an in-process spread of exactly 20% is a number, above it suspect") @(t : T?) {
         var c <- fixture()
+        c.cells[4].work_time_spread = 0.2lf
+        t |> equal(row_of(render_work(c), "fib")[2], "200.000 s ±20%")
+        t |> equal(row_of(render_ratios(c), "fib")[1], "200.00")
+        c.cells[4].work_time_spread = 0.21lf
+        t |> equal(row_of(render_work(c), "fib")[2], "suspect (±21.0%)")
+        t |> equal(row_of(render_ratios(c), "fib")[1], "suspect")
+    }
+    t |> run("by subtraction, a spread of exactly 20% is a number, above it suspect: a cell and its work time") @(t : T?) {
+        var c <- subtracted(fixture())
         // the interpreter's startup at 0 s without spread, so fib's work spread is its cell's
         c.cells[1].time = 0.0lf
         c.cells[1].spread = 0.0lf
         c.cells[4].spread = 0.2lf
         t |> equal(row_of(render_times(c), "fib")[2], "210.000 s ±20%")
-        t |> equal(row_of(render_work(c), "fib")[2], "210.000 s ±20%")
-        t |> equal(row_of(render_ratios(c), "fib")[1], "210.00")
+        t |> equal(row_of(render_work(c), "fib")[2], "210.000 s ±20% (by subtraction)")
+        t |> equal(row_of(render_ratios(c), "fib")[1], "210.00 (by subtraction)")
         c.cells[4].spread = 0.21lf
         t |> equal(row_of(render_times(c), "fib")[2], "suspect (±21.0%)")
-        t |> equal(row_of(render_work(c), "fib")[2], "suspect (±21.0%)")
-        t |> equal(row_of(render_ratios(c), "fib")[1], "suspect")
+        t |> equal(row_of(render_work(c), "fib")[2], "suspect (±21.0%) (by subtraction)")
+        t |> equal(row_of(render_ratios(c), "fib")[1], "suspect (by subtraction)")
     }
-    t |> run("a startup cell of exactly 20% is a number with its ratio, above it suspect") @(t : T?) {
-        var c <- fixture()
+    t |> run("by subtraction, a startup cell of exactly 20% is a number with its ratio, above it suspect") @(t : T?) {
+        var c <- subtracted(fixture())
         c.cells[1].spread = 0.2lf
         t |> equal(join(row_of(render_startup(c), "interpreter"), ","), "10.000 s ±20%,20.00")
-        t |> equal(row_of(render_work(c), "fib")[2], "200.000 s ±3%")
-        t |> equal(row_of(render_ratios(c), "fib")[1], "200.00")
+        t |> equal(row_of(render_work(c), "fib")[2], "200.000 s ±3% (by subtraction)")
+        t |> equal(row_of(render_ratios(c), "fib")[1], "200.00 (by subtraction)")
         c.cells[1].spread = 0.21lf
         t |> equal(join(row_of(render_startup(c), "interpreter"), ","), "suspect (±21.0%),suspect")
-        t |> equal(row_of(render_work(c), "fib")[2], "suspect (startup)")
+        t |> equal(row_of(render_work(c), "fib")[2], "suspect (startup) (by subtraction)")
     }
-    t |> run("a suspect native cell, the base of a ratio: the das lanes' ratios over it are suspect, out of the mean") @(t : T?) {
+    t |> run("a suspect native work time, the base of a ratio: the das lanes' ratios over it are suspect, out of the mean") @(t : T?) {
         var c <- fixture()
-        c.cells[3].spread = 0.3lf // native fib
+        c.cells[3].work_time_spread = 0.3lf // native fib
         t |> equal(ratio_of(c, "fib", "interp", "native"), 0.0lf)
         t |> equal(join(row_of(render_ratios(c), "fib"), ","), "`bench/fib.lua`,suspect,suspect,suspect,suspect,25.00,n/a,n/a,n/a")
         var count = 0
@@ -229,8 +308,8 @@ def test_suspect_edges(t : T?) {
         t |> equal(join(row_of(render_startup(c), "clang -O3"), ","), "not yet,n/a")
         t |> equal(join(row_of(render_startup(c), "interpreter"), ","), "10.000 s ±2%,n/a")
     }
-    t |> run("a capture without a startup row has no startup cell under any lane") @(t : T?) {
-        var c <- fixture()
+    t |> run("by subtraction, a capture without a startup row has no startup cell under any lane") @(t : T?) {
+        var c <- subtracted(fixture())
         c.workloads |> erase(0)
         t |> equal(startup_of(c), "")
         t |> equal(join(row_of(render_startup(c), "clang -O3"), ","), "n/a,n/a")
@@ -245,8 +324,8 @@ def test_layout_lanes(t : T?) {
         var c <- fixture()
         c.lanes |> push(Lane(name = "interp-single", command = "run interp-single"))
         c.cells |> emplace(cell("startup", "interp-single", 10.0lf)) // nolint:STYLE012 - appends to the fixture's cells
-        c.cells |> emplace(cell("fib", "interp-single", 410.0lf))
-        c.cells |> emplace(cell("nbody", "interp-single", 60.0lf))
+        c.cells |> emplace(timed_cell("fib", "interp-single", 410.0lf, 400.0lf))
+        c.cells |> emplace(timed_cell("nbody", "interp-single", 60.0lf, 50.0lf))
         let ratios = render_ratios(c)
         t |> success(ratios |> contains("| interpreter, single module / native | interpreter / JIT | interpreter / exe | interpreter / AOT | JIT / AOT | interpreter, single module / interpreter |"), ratios)
         t |> success(ratios |> contains(" 400.00 |             25.00 |"), ratios)
@@ -277,6 +356,10 @@ def test_projects(t : T?) {
         var captures : array<Capture>
         captures |> emplace(fixture())
         t |> equal(render_projects(captures), "| Program              | Captured             | Machine     | Workloads | interpreter |           JIT |     exe |     AOT |\n| :------------------- | :------------------- | :---------- | --------: | ----------: | ------------: | ------: | ------: |\n| [lua](lua/README.md) | 2026-10-22 10:00 UTC | x86_64, CPU |         2 |      100.00 | 8.00 (1 of 2) | not yet | not yet |\n")
+        // a capture made before the wrapper: each mean over ratios by subtraction is marked
+        var old : array<Capture>
+        old |> emplace(subtracted(fixture()))
+        t |> equal(join(row_of(render_projects(old), "[lua](lua/README.md)"), ","), "2026-10-22 10:00 UTC,x86_64, CPU,2,100.00 (by subtraction),8.00 (1 of 2) (by subtraction),not yet,not yet")
     }
     t |> run("the Machine column names the box: the capture's, else its CPU's, else the CPU alone") @(t : T?) {
         var captures : array<Capture>
@@ -294,6 +377,14 @@ def test_projects(t : T?) {
         let c <- from_JV(js, type<Capture>)
         t |> equal(c.machine.box, "")
         t |> equal(machine_label(c.machine), "bench (AMD Ryzen 3 1200)")
+    }
+    t |> run("a capture written before the wrapper reads with no in-process seconds, so it renders by subtraction") @(t : T?) {
+        var error : string
+        let js = read_json("\{\"program\": \"lua\", \"workloads\": [\{\"name\": \"startup\", \"startup\": true\}, \{\"name\": \"fib\"\}], \"lanes\": [\{\"name\": \"native\"\}], \"cells\": [\{\"workload\": \"startup\", \"lane\": \"native\", \"time\": 0.5, \"samples\": [0.5]\}, \{\"workload\": \"fib\", \"lane\": \"native\", \"time\": 1.5, \"samples\": [1.5]\}]\}", error)
+        t |> equal(error, "")
+        let c <- from_JV(js, type<Capture>)
+        t |> success(empty(c.cells[1].work_samples) && by_subtraction(c, "fib", "native"))
+        t |> equal(row_of(render_work(c), "fib")[1], "1.000 s ±0% (by subtraction)")
     }
     t |> run("the top-level README keeps the charter above the marker and replaces what is under it") @(t : T?) {
         var captures : array<Capture>

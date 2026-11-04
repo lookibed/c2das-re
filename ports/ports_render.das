@@ -29,14 +29,19 @@ struct Workload {
     startup : bool
 }
 
-//! One workload under one lane: the median of the samples and their spread, or the error that
-//! kept the cell from standing; a failed cell keeps the samples it took, the failing one last.
+//! One workload under one lane: the median of the samples (whole runs) and their spread, the
+//! in-process work seconds each sample reported (`work_samples`, empty for the startup row and in
+//! a capture made before the wrapper) with their median and spread, or the error that kept the
+//! cell from standing; a failed cell keeps the samples it took, the failing one last.
 struct LaneCell {
     workload : string
     lane : string
     time : double
     spread : double
     samples : array<double>
+    work_samples : array<double>
+    work_time : double
+    work_time_spread : double
     error : string
 }
 
@@ -95,8 +100,11 @@ let NOT_YET = "not yet"
 let NOT_MEASURED = "not measured"
 //! a work time not above 0: the cell's median at or below the startup cell's
 let WITHIN_START = "within the start"
-//! why a lane whose startup cell does not stand has no work times
+//! why a lane whose startup cell does not stand has no work times by subtraction
 let NO_STARTUP = "no startup cell"
+//! the marker of a work time, a ratio or a mean that subtracts the startup cell from a cell with
+//! no in-process seconds, so it never looks like one timed inside the process
+let BY_SUBTRACTION = "(by subtraction)"
 
 def lane_title(lane : string) : string => LANE_TITLES?[lane] ?? lane
 
@@ -132,27 +140,51 @@ def private standing(c : Capture; workload, lane : string) : LaneCell const? {
     return cell != null && empty(cell.error) ? cell : null
 }
 
-//! The work seconds of `workload` under `lane`: its cell's median less the median of the same
-//! lane's startup cell; 0 when either cell does not stand.
-def work_of(c : Capture; workload, lane : string) : double {
-    let cell = standing(c, workload, lane)
-    let start = standing(c, startup_of(c), lane)
-    return cell != null && start != null ? cell.time - start.time : 0.0lf
+//! Whether the cell of `workload` under `lane` carries in-process work seconds.
+def timed_inside(c : Capture; workload, lane : string) : bool {
+    let cell = find_cell(c, workload, lane)
+    return cell != null && !empty(cell.work_samples)
 }
 
-//! The spread of the work time of `workload` under `lane`: the half ranges (spread times median)
-//! of its cell and of the lane's startup cell over the work time; 0 when it has no work time
-//! above 0.
+//! Whether the work time of `workload` under `lane` is by subtraction: its cell stands without
+//! in-process work seconds.
+def by_subtraction(c : Capture; workload, lane : string) : bool => standing(c, workload, lane) != null && !timed_inside(c, workload, lane)
+
+//! The work seconds of `workload` under `lane`: the median of its cell's in-process seconds, else
+//! its cell's median less the median of the same lane's startup cell; 0 when a cell it needs does
+//! not stand.
+def work_of(c : Capture; workload, lane : string) : double {
+    let cell = standing(c, workload, lane)
+    if (cell == null) {
+        return 0.0lf
+    }
+    if (!empty(cell.work_samples)) {
+        return cell.work_time
+    }
+    let start = standing(c, startup_of(c), lane)
+    return start != null ? cell.time - start.time : 0.0lf
+}
+
+//! The spread of the work time of `workload` under `lane`: its in-process seconds' own, else the
+//! half ranges (spread times median) of its cell and of the lane's startup cell over the work
+//! time; 0 when it has no work time above 0.
 def work_spread(c : Capture; workload, lane : string) : double {
     let cell = standing(c, workload, lane)
-    let start = standing(c, startup_of(c), lane)
     let work = work_of(c, workload, lane)
-    return work > 0.0lf ? (cell.spread * cell.time + start.spread * start.time) / work : 0.0lf
+    if (work <= 0.0lf) {
+        return 0.0lf
+    }
+    if (!empty(cell.work_samples)) {
+        return cell.work_time_spread
+    }
+    let start = standing(c, startup_of(c), lane)
+    return (cell.spread * cell.time + start.spread * start.time) / work
 }
 
 //! Whether the work time of `workload` under `lane` is suspect: its spread above `SUSPECT_SPREAD`,
-//! or the lane's startup cell suspect, whose noise every work time of the lane inherits.
-def work_suspect(c : Capture; workload, lane : string) : bool => work_spread(c, workload, lane) > SUSPECT_SPREAD || cell_suspect(c, startup_of(c), lane)
+//! or, for a cell without in-process seconds, the lane's startup cell suspect, whose noise every
+//! work time by subtraction inherits.
+def work_suspect(c : Capture; workload, lane : string) : bool => is_suspect(work_spread(c, workload, lane)) || (!timed_inside(c, workload, lane) && cell_suspect(c, startup_of(c), lane))
 
 //! `lane`'s work time over `base`'s, 0 when either is not above 0 or is suspect.
 def ratio_of(c : Capture; workload, lane, base : string) : double {
@@ -177,23 +209,31 @@ def private time_text(c : Capture; workload, lane : string) : string {
     return seconds_text(cell.time, cell.spread)
 }
 
-// the work time of a cell: n/a without the cell, `not yet` when it or the lane's startup cell does
-// not stand; its spread the two cells' half ranges (spread times median) over the work time
+// the work time of a cell: n/a without the cell, `not yet` when it does not stand; its in-process
+// seconds when it has them, else, marked, its median less the lane's startup cell (`not yet` when
+// that does not stand), its spread the two cells' half ranges (spread times median) over it
 def private work_text(c : Capture; workload, lane : string) : string {
     let cell = find_cell(c, workload, lane)
     if (cell == null) {
         return MISSING
     }
+    if (!empty(cell.error)) {
+        return NOT_YET
+    }
+    if (!empty(cell.work_samples)) {
+        return seconds_text(cell.work_time, cell.work_time_spread)
+    }
     let start = standing(c, startup_of(c), lane)
-    if (!empty(cell.error) || start == null) {
+    if (start == null) {
         return NOT_YET
     }
     let work = cell.time - start.time
     if (work <= 0.0lf) {
-        return WITHIN_START
+        return "{WITHIN_START} {BY_SUBTRACTION}"
     }
     // a work time over a suspect startup cell is suspect whatever its own spread
-    return cell_suspect(c, startup_of(c), lane) ? "{SUSPECT} (startup)" : seconds_text(work, work_spread(c, workload, lane))
+    let text = cell_suspect(c, startup_of(c), lane) ? "{SUSPECT} (startup)" : seconds_text(work, work_spread(c, workload, lane))
+    return "{text} {BY_SUBTRACTION}"
 }
 
 def private ratio_text(r : double) : string => r > 0.0lf ? "{r:.2f}" : MISSING
@@ -209,18 +249,19 @@ def has_lane(c : Capture; lane : string) : bool {
 }
 
 // `lane` over `base` for `workload`, `not measured` when the capture left either lane out,
-// `suspect` when either work time is
+// `suspect` when either work time is, marked when either is by subtraction
 def private pair_text(c : Capture; workload, lane, base : string) : string {
     if (!has_lane(c, lane) || !has_lane(c, base)) {
         return NOT_MEASURED
     }
-    return work_suspect(c, workload, lane) || work_suspect(c, workload, base) ? SUSPECT : ratio_text(ratio_of(c, workload, lane, base))
+    let text = work_suspect(c, workload, lane) || work_suspect(c, workload, base) ? SUSPECT : ratio_text(ratio_of(c, workload, lane, base))
+    return text != MISSING && (by_subtraction(c, workload, lane) || by_subtraction(c, workload, base)) ? "{text} {BY_SUBTRACTION}" : text
 }
 
 // whether the cell of `workload` under `lane` stands with a spread above `SUSPECT_SPREAD`
 def private cell_suspect(c : Capture; workload, lane : string) : bool {
     let cell = standing(c, workload, lane)
-    return cell != null && cell.spread > SUSPECT_SPREAD
+    return cell != null && is_suspect(cell.spread)
 }
 
 //! A markdown table whose first `text_columns` columns are text, aligned left, the rest numbers.
@@ -324,7 +365,8 @@ def machine_label(m : Machine) : string => box_label(capture_box(m.box, m.cpu), 
 def reproduce_command(c : Capture) : string => empty(c.machine.box) ? c.command : "{c.command} --box {c.machine.box}"
 
 //! One line per lane that does not work yet, then one per failed cell of a lane that does, then
-//! one for such a lane whose startup cell does not stand, so it has no work times.
+//! one for such a lane whose startup cell does not stand while a cell of it stands without
+//! in-process seconds, so that cell has no work time.
 def render_not_yet(c : Capture) : array<string> {
     var lines : array<string>
     for (lane in c.lanes) {
@@ -337,7 +379,7 @@ def render_not_yet(c : Capture) : array<string> {
                 lines |> push("- {cell.workload}, {lane_title(lane.name)}: not yet: {cell.error}")
             }
         }
-        if (standing(c, startup_of(c), lane.name) == null) {
+        if (standing(c, startup_of(c), lane.name) == null && has_value([for (w in c.workloads); !w.startup && by_subtraction(c, w.name, lane.name)], true)) {
             lines |> push("- {lane_title(lane.name)}, every work time: not yet: {NO_STARTUP}")
         }
     }
@@ -356,14 +398,17 @@ def render_perf(c : Capture) : string {
         w |> write("build prints and exits as it does (the test-suite row compares the exit code and requires the line the ")
         w |> write("suite prints after its last test passes, not the output: it prints its random seeds and timings). ")
         w |> write("A lane the run left out is `{NOT_MEASURED}`.\n\n")
-        w |> write("Every speed number is the work alone: a workload's work time under a lane is its cell less the same ")
-        w |> write("lane's `startup` cell, the run that loads the program and does no work (under a das lane, the load from ")
-        w |> write("the module cache an unmeasured run left in the folder), ± the two cells' half ranges as a share of the ")
-        w |> write("work time; one not above 0 is `{WITHIN_START}`, and a lane whose startup cell does not stand has none. ")
+        w |> write("Every speed number is the work alone, timed inside the process: a workload runs under `bench/timed.lua`, ")
+        w |> write("which reads `os.clock()` (C `clock()`, the process's CPU time, under every lane) before and after the ")
+        w |> write("script and reports the seconds between, and its work time is the median of those, ± half their range as a ")
+        w |> write("share of it. A cell without them (a capture made before the wrapper) is `{BY_SUBTRACTION}`, its work time ")
+        w |> write("the cell less the same lane's `startup` cell, the run that loads the program and does no work, ± the two ")
+        w |> write("cells' half ranges as a share of the work time, and the mark follows it into every ratio and mean; one not ")
+        w |> write("above 0 is `{WITHIN_START}`, and a lane whose startup cell does not stand has none. ")
         w |> write("The startup cells stand alone in the startup table, their ratio to native's with them, in no other ratio or mean; ")
         w |> write("the times table holds the raw medians, the start included. ")
         w |> write("A cell or a work time whose spread is above {int(SUSPECT_SPREAD * 100.0lf)}% is `{SUSPECT}`: its spread alone, no ratio, ")
-        w |> write("and out of the projects table's means; a suspect startup cell makes every work time of its lane `{SUSPECT} (startup)`.\n\n")
+        w |> write("and out of the projects table's means; a suspect startup cell makes every work time of its lane by subtraction `{SUSPECT} (startup)`.\n\n")
         w |> write("Startup:\n\n{render_startup(c)}\n")
         w |> write("Work:\n\n{render_work(c)}\n")
         w |> write("Ratios, a lane's work time over another's (each das lane over native, then interpreter over JIT, ")
@@ -401,7 +446,13 @@ def private lane_mean_text(c : Capture; lane : string; total : int) : string {
     }
     var count = 0
     let g = geomean_ratio(c, lane, count)
-    return count == 0 ? NOT_YET : count < total ? "{g:.2f} ({count} of {total})" : "{g:.2f}"
+    if (count == 0) {
+        return NOT_YET
+    }
+    let text = count < total ? "{g:.2f} ({count} of {total})" : "{g:.2f}"
+    // a mean over a ratio by subtraction carries its mark
+    let subtracted = has_value([for (w in c.workloads); !w.startup && ratio_of(c, w.name, lane, "native") > 0.0lf && (by_subtraction(c, w.name, lane) || by_subtraction(c, w.name, "native"))], true)
+    return subtracted ? "{text} {BY_SUBTRACTION}" : text
 }
 
 //! The projects table: one row per program, the geometric mean of each lane's work-time ratio to
@@ -433,8 +484,9 @@ def render_top_readme(old_text : string; captures : array<Capture>; raw : array<
             w |> write("{PERF_NOT_YET}\n")
         } else {
             w |> write("Each cell is the geometric mean, over the program's workloads (its startup row aside), of the lane's ")
-            w |> write("work time over the native build's, a work time being the workload's median less the same lane's startup ")
-            w |> write("median; a lane covering only some workloads names how many. A program's README holds its tables, ")
+            w |> write("work time over the native build's, a work time being the seconds the workload's run measured inside its ")
+            w |> write("process; a mean `{BY_SUBTRACTION}` takes a capture made before that clock, its work times the workload's ")
+            w |> write("median less the same lane's startup median. A lane covering only some workloads names how many. A program's README holds its tables, ")
             w |> write("its startup times, its machine and its raw captures.\n\n")
             w |> write(render_projects(captures))
         }
