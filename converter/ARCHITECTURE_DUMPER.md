@@ -49,7 +49,8 @@ dump's, and a key the two walks count apart once the dump is walked, one in an a
 a designator's index, which the dump keeps only in a type or drops.
 
 The dumper walks `TranslationUnitDecl.inner`, skipping `isImplicit` nodes (clang's builtin
-typedefs and `_GUID`) and every declaration of an external file. Types are interned by a structural key (`int:32:true:int`, `ptr:3`,
+typedefs and `_GUID`), every declaration of an external file and a `_Static_assert` at file or
+block scope, which clang has checked. Types are interned by a structural key (`int:32:true:int`, `ptr:3`,
 `func:0:1,2:false`) in first-use order, which is the spec's order. Type spellings come from
 `desugaredQualType` when clang gives one, else `qualType`, with `const`, `volatile`, `restrict`
 and `__attribute__` text stripped, a calling convention's too, since das has one: one leading the

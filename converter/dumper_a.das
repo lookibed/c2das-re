@@ -2678,6 +2678,10 @@ def private dump_decl_stmt(var d : Dumper; js : JsonValue?; var into : array<Cir
             }
             continue
         }
+        // clang has checked a `_Static_assert`: it leaves nothing to run
+        if (node_kind(v) == "StaticAssertDecl") {
+            continue
+        }
         if (node_kind(v) != "VarDecl") {
             fail(d, "unsupported local declaration `{node_kind(v)}`", loc_of(d, v))
             return false
@@ -3523,8 +3527,9 @@ def private dump_top_level(var d : Dumper; js : JsonValue?) {
             break if (!dump_type_decl(d, decl))
             continue
         }
-        // a file-scope `;` (`;;`, or the `;` after a function's `}`) declares nothing
-        if (kind == "EmptyDecl") {
+        // a file-scope `;` (`;;`, or the `;` after a function's `}`) declares nothing, and a
+        // `_Static_assert` clang has already checked (wasm3's table sizes) leaves nothing to run
+        if (kind == "EmptyDecl" || kind == "StaticAssertDecl") {
             continue
         }
         var cd = dump_decl(d, decl)
