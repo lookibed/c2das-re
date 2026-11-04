@@ -7,49 +7,47 @@ times them under every lane, and the stored results; the interpreter audit on Lu
 
 ## 1. File charters
 
-- `kernels/<name>.c` - one kernel each: a `static void kernel_run(void)` and a
-  `static int kernel_result(void)` over file-scope variables, nothing else; no kernel knows
-  its expected result, the native lane measures it and every das lane must reproduce it or
-  its cell is an error. The first three are this tree's versions of dasProfile's scalar kernels
-  with its parameters (`primes` 14000, `fib_loop` 6511134, `fib_recursive` 31): `primes` tests
-  `i < n` in `isprime` and returns `int` where dasProfile's tests `i != n` and returns `bool`, and
-  no kernel function is `noinline`, so a cell here reads beside dasProfile's row without being its
-  program; `kernels/dasprofile/` holds its programs.
-  The other kernels each cover one ledger item's constructs: `fixed_mandel` is
-  P2.1's, a 16.16 fixed-point Mandelbrot over struct vectors passed and returned by value;
-  `sieve` and `matmul` are P2.2's, a sieve over a fixed byte array and a 96x96 product over
-  two-dimensional arrays; `blit` is P2.3's, a byte copy through walking pointers over
-  malloc'd buffers; `qsort_cmp` is P4.6's, an array of records sorted by `qsort` through a
-  converted comparator, a function value with `var` pointer positions; `bit_pack` is P4.7's,
-  read-modify-writes of bitfields under the `linux` dialect in a record of naturally aligned
-  units, in a record whose bitfield takes a two-byte unit and that each round is built from an
-  initializer folding that unit's word through `c_unit_bytes`, in a record holding an
-  underaligned bitfield record that takes a padding field, and in a union whose bitfield member
-  puns with a plain one beside an unnamed bitfield; `str_copy` is P4.8's, assignments read as
-  values: a fill whose stored byte feeds a sum through an index the store steps (`sum +=
-  (text[i++] = b)`) and a NUL-terminated copy whose loop tests the byte it stored (`while ((*d++
-  = *s++))`); `va_forward` is P4.4's, a variadic sum called in a hot loop whose list `va_copy`
-  copies, both copies forwarded to a consumer taking a `va_list`, and a format helper forwarding
-  its list to `vsnprintf`; `switch_local` is P4.8's, a switch in a hot loop whose case-level
-  local a later case assigns and reads, and a goto into a block whose local hides a global of
-  external linkage, so the flattened local takes a free name (`g1`); `compound_lit` is P4.9's,
-  compound literals as call arguments (a record by value, an array as a pointer, a record's
+- `kernels/<name>.c` - one kernel each: a `static void kernel_run(void)` and a `static int
+  kernel_result(void)` over file-scope variables, nothing else; no kernel knows its expected result,
+  the native lane measures it and every das lane must reproduce it or its cell is an error. The
+  first three are this tree's versions of dasProfile's scalar kernels with its parameters (`primes`
+  14000, `fib_loop` 6511134, `fib_recursive` 31): `primes` tests `i < n` in `isprime` and returns
+  `int` where dasProfile's tests `i != n` and returns `bool`, and no kernel function is `noinline`,
+  so a cell here reads beside dasProfile's row without being its program; `kernels/dasprofile/`
+  holds its programs. The other kernels each cover one ledger item's constructs: `fixed_mandel` is
+  P2.1's, a 16.16 fixed-point Mandelbrot over struct vectors passed and returned by value; `sieve`
+  and `matmul` are P2.2's, a sieve over a fixed byte array and a 96x96 product over two-dimensional
+  arrays; `blit` is P2.3's, a byte copy through walking pointers over malloc'd buffers; `qsort_cmp`
+  is P4.6's, an array of records sorted by `qsort` through a converted comparator, a function value
+  with `var` pointer positions; `bit_pack` is P4.7's, read-modify-writes of bitfields under the
+  `linux` dialect in a record of naturally aligned units, in a record whose bitfield takes a
+  two-byte unit and that each round is built from an initializer folding that unit's word through
+  `c_unit_bytes`, in a record holding an underaligned bitfield record that takes a padding field,
+  and in a union whose bitfield member puns with a plain one beside an unnamed bitfield; `str_copy`
+  is P4.8's, assignments read as values: a fill whose stored byte feeds a sum through an index the
+  store steps (`sum += (text[i++] = b)`) and a NUL-terminated copy whose loop tests the byte it
+  stored (`while ((*d++ = *s++))`); `va_forward` is P4.4's, a variadic sum called in a hot loop
+  whose list `va_copy` copies, both copies forwarded to a consumer taking a `va_list`, and a format
+  helper forwarding its list to `vsnprintf`; `switch_local` is P4.8's, a switch in a hot loop whose
+  case-level local a later case assigns and reads, and a goto into a block whose local hides a
+  global of external linkage, so the flattened local takes a free name (`g1`); `compound_lit` is
+  P4.9's, compound literals as call arguments (a record by value, an array as a pointer, a record's
   address) and as assigned values in a hot loop, an `_Alignof` in the arithmetic, a pointer to a
-  record the unit never defines passed through, a two-dimensional `char` table from string
-  literals read through its rows, and a flexible array member filled and summed;
-  `setjmp_general` is P4.9's too, `r = setjmp(buf)` re-entered by a longjmp on every pass of a
-  hot loop and the value accumulated, glibc's `struct __jmp_buf_tag` declared in the kernel
-  since a kernel includes no header; `switch_goto` is P5.1's, lua's VM dispatch: a loop over an
-  opcode array whose switch cases jump into another case's block and into the middle of one, so
-  every such goto re-dispatches the switch's matched-flag loop; `do_while_effect` is P5.1's too,
-  `do { ... } while (--n > 0)` nested in another, the decrement in the condition; `first_member` is P7.0f's,
-  lua's `s2v(base + a)` and `gco2t(o)` in a hot loop. The kernel's parameter is a `volatile` static that `kernel_run` reads on every call: with a literal
-  argument clang hoists the idempotent call out of the rep loop (the native lane reports
-  zero), and daslang's optimizer evaluates a pure call with constant arguments at compile
-  time whatever `infer_time_folding` says, so the interpreter lane measured a store. The
+  record the unit never defines passed through, a two-dimensional `char` table from string literals
+  read through its rows, and a flexible array member filled and summed; `setjmp_general` is P4.9's
+  too, `r = setjmp(buf)` re-entered by a longjmp on every pass of a hot loop and the value
+  accumulated, glibc's `struct __jmp_buf_tag` declared in the kernel since a kernel includes no
+  header; `switch_goto` is P5.1's, lua's VM dispatch: a loop over an opcode array whose switch cases
+  jump into another case's block and into the middle of one, so every such goto re-dispatches the
+  switch's matched-flag loop; `do_while_effect` is P5.1's too, `do { ... } while (--n > 0)` nested
+  in another, the decrement in the condition; `first_member` is P7.0f's, lua's `s2v(base + a)` and
+  `gco2t(o)` in a hot loop. The kernel's parameter is a `volatile` static that `kernel_run` reads on
+  every call: with a literal argument clang hoists the idempotent call out of the rep loop (the
+  native lane reports zero), and daslang's optimizer evaluates a pure call with constant arguments
+  at compile time whatever `infer_time_folding` says, so the interpreter lane measured a store. The
   converter keeps `volatile` (`converter/ARCHITECTURE_EMITTER_LOOPS.md`): the das read is a
-  `c_volatile_load` no tier folds, one per call, so the das program has the unknown trip count
-  the native one has.
+  `c_volatile_load` no tier folds, one per call, so the das program has the unknown trip count the
+  native one has.
   A kernel holds no `main`, no `#include` and no `printf` or `clock` prototype, since the
   harness supplies `main` and those two prototypes (`perf_compose.das`), and no expected result,
   since the native lane's result is the value every das lane must match; it declares every
@@ -254,7 +252,9 @@ that far ahead of clang measures a different program than the kernel. The `--rep
 three tables and those list items as one markdown block. `--check` holds a cell to `--tolerance` or
 to twice the baseline cell's own spread, whichever is wider: a cell whose samples spread that far in
 the committed capture (the interpreter's `fib_loop` under `--loops while` at 29 percent, its bimodal
-`x = x + y` loop) reproduces anywhere inside the bar.
+`x = x + y` loop) reproduces anywhere inside the bar. A cell whose spread is above 20%
+(`SUSPECT_SPREAD`, ruling 29) is `suspect` with its spread, never bold, with no ratio or delta: it neither
+flags nor drifts.
 
 ## 6. Methods and reproduction
 
