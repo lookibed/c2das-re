@@ -1212,7 +1212,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   declaration lowering") where the dev box translated it. Row: PR #93's tdd leftover: compare's
   `--box` wiring into `--suites`, `--suite` and `--perf` has no test (a `--filter` run writes no
   capture, and on a known box the CPU fallback masks the flag): a cpu-name env override for tests,
-  low priority.
+  low priority. The override Done (branch `fix/compare-crash-rows`): `cpu_name` answers
+  `$C2DAS_CPU_NAME` when set, and the filtered `--perf` run's test, on a CPU no box names, merges
+  only because `--box fx` reached its stamps; `--suites` and `--suite` still lack a `--box` test
+  (each needs a suite run that writes a capture).
   Ruling 29 item 4 Done (branch `perf/compare-recapture-pc-2`, PR #104; box PC, Rust b1d012eb5, 5
   samples a kernel cell, 3 a project): geomean ours / Rust interp 30.52 / 30.40 (17 kernels), JIT
   1.13 / 0.96 (14), exe 1.46 / 1.40 (15), AOT 1.22 / 1.23 (15); two cells suspect (bit_pack ours
@@ -1236,6 +1239,17 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   exits 1 with the message: exit with the message, no trap; (5) va_forward AOT crashes
   intermittently on PC in both translations (fine alone, rc 0; fx ran it at 13.4x / 14.8x): watch
   the next capture, with (3) in place the cell says what.
+  Rows (1)-(4) Done (branch `fix/compare-crash-rows`): (3) every sample runs `guarded`, `sh` around
+  `prlimit --core=0`, a signal death read as `signal N (<name>)` with the first reported line
+  (`perf/ARCHITECTURE_SAMPLES.md`; daslib's `run_and_capture` reports signal N as exit code N, so
+  the capture's "exited 5: " was SIGTRAP with the report's empty first line), `prlimit` checked
+  by the `env` gate; (4) the AOT host runs `main` inside `runWithCatch` and exits 1 with
+  `EXCEPTION: <text>` on stderr; (1) `--project --as <GiB>` (6 by default) caps every measured run
+  through the same guard, the runner and the builds uncapped, a crash under the cap the lane's
+  `exit` verdict with its signal; (2) `--perf --filter a,b` re-measures the named kernels into the
+  capture (`merge_perf_rerun`, `reruns` recorded), refusing another box, Rust commit or sample
+  count; the perf section moved into `compare/ARCHITECTURE_PERF.md`. Row (5) stays open: watch the
+  next capture.
 - **P8.1b Readability metric by the critic's criteria** (owner ruling 2026-11-01 (21); after P8.1,
   before P8.2). `metrics/readability.das` gains a criterion for every finding and blind spot of the
   critic's review (`/root/notes/owner/2026-11-01_readability-critic.md`, the agent's footnotes
