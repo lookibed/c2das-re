@@ -68,6 +68,9 @@ def run_problem(run : DemoRun) : string {
     if (!empty(run.error)) {
         return run.error
     }
+    if (run.speed && !in_sync(run)) {
+        return "{speed_summary(run)} (exit {run.rc})"
+    }
     if (!in_sync(run)) {
         let unended = empty(run.sync.desync) ? ", then the run did not end in `timed {run.sync.compared} gametics` (exit {run.rc})" : ""
         return "{sync_summary(run.sync)}{unended}"
@@ -188,7 +191,7 @@ def render_fps(c : FpsCapture) : string {
     }
     let machine = box_label(capture_box(c.box, c.cpu), c.cpu)
     var text = "Box {machine}, {c.platform}; c2das-re `{c.commit}`, captured {c.timestamp}; {c.clang}; daslang {c.daslang}.\n\n"
-    text += "PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over {FPS_CLOCK}: the playback, with the patch's per-tic checksums (the frame's over its 64000 bytes) and the tic lines inside it, the module load, the JIT compile and `doom_init` outside it. A cell is the median of {c.samples} runs, each its own process holding every tic to the reference log, ± half the range over the median; above {int(SUSPECT_SPREAD * 100.0lf)}% it is `{SUSPECT}`, without a ratio. `X / native` is native fps over X's.\n\n"
+    text += "PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over {FPS_CLOCK} in the speed build, which leaves the patch's per-tic checksums and tic lines out: the playback alone, the module load, the JIT compile and `doom_init` outside it. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of {c.samples} speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median; above {int(SUSPECT_SPREAD * 100.0lf)}% it is `{SUSPECT}`, without a ratio. `X / native` is native fps over X's.\n\n"
     let failed <- [for (cell in c.cells); "\n- {cell.workload}, {fps_title(cell.lane)}: {cell.error}"; where !empty(cell.error)]
     return text + table_of(headers, rows, 1) + join(failed, "") + "\n"
 }

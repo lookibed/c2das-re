@@ -24,11 +24,10 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
 - `doom.c2das` - the sidecar (section 5).
 - `harness.das` - the checks and formats `run.das` applies: the pins read from `VERSIONS.md`,
   `fetch_problems` (the checkout off the pin, a patch not applied, the wad missing or of another
-  hash), `missing_units`, `tic_checksum` and `frame_checksum` (the patch's formulas), `tic_lines` and `non_tic_lines`,
-  the one reader of a run's or a log's tic lines, `timed_gametics`, `host_timing`, the reader of the
-  host's timing line (section 4), `demo_log` (section 6), and `tic_sync` with
-  `differing_fields` and `sync_summary` (section 8), and `trace_lines`, the reader of the trace
-  lines (section 3).
+  hash), `missing_units`, `tic_checksum` and `frame_checksum` (the patch's formulas), `tic_lines`
+  and `non_tic_lines`, the one reader of a run's or a log's tic lines, `timed_gametics`,
+  `host_timing` (section 4), `demo_log` (section 6), `tic_sync` with `differing_fields` and
+  `sync_summary` (section 8), `trace_lines` (section 3), `with_define` and `without_define`.
 - `run.das` - the harness, run from the repository root: `daslang -load_module dasCRuntime
   -load_module c_runtime doom/run.das -- [--fetch-check] [--native] [--demo <1|2|3> [--wad
   <path>]]`. `--fetch-check` reports every problem `fetch_problems` and `missing_units` find;
@@ -51,9 +50,11 @@ committed references under `ref/` are those files copied by hand after a referen
   stays the native run above. The run fails unless every
   compared tic is in sync and, held to the whole demo, the program ends in `timed N gametics`.
 - `run.das --run --fps [--tiers T,...] [--samples N] [--demo N]` and `--readme` (section 9): `--fps`
-  times every demo, or `--demo`'s, natively and under each of `--tiers` (default `interp,jit`),
-  `--samples` runs a cell (default 3), and writes `results_linux.json`; `--readme` rewrites
-  `README.md`'s Doom fps section from that capture. A cell that does not stand fails the run.
+  checks each demo (or `--demo`'s) natively and under `--tiers` (default `interp,jit`) with the sync
+  build, times the speed build `--samples` runs a cell (default 3) into `results_linux.json`, a
+  cell that does not stand failing the run; `--readme` renders it into `README.md`. `--speed` with
+  `--native`, `--convert` or `--compile-check` takes the speed build: `work/native/doom-speed`,
+  `work/<layout>-speed/`.
 - `run.das --trace` with any of the above: the build, the conversion and the runs of the trace
   (section 3), apart from the reference ones. `--native` builds `work/native/doom-trace` with
   `DOOM_TIC_TRACE` after the sidecar's defines; `--demo N` runs it and writes its trace lines to
@@ -67,7 +68,7 @@ committed references under `ref/` are those files copied by hand after a referen
   `NATIVE_LANE`), `in_sync` and `run_report`.
 - `fps.das` - the frame rate (section 9): `run_problem` and `add_run`, a run's fps into a cell,
   `FpsCapture`, `fps_command`, `lane_command`, `slowdown` and `render_fps`. It runs and reads nothing.
-- `fps_run.das` - the runs of `--fps` over an `FpsPlan` (section 9): `fps_refusal`, `fps_demos`,
+- `fps_run.das` - `--fps`'s runs over an `FpsPlan` (section 9): `fps_refusal`, `fps_demos`,
   `commit_label`, `new_capture`, `fps_cell`, `time_demos` and `write_fps_readme`.
 - `results_linux.json` - the committed fps capture `--fps` writes (section 9).
 - `ARCHITECTURE_RUN.md` - sections 8 and 9.
@@ -79,10 +80,10 @@ committed references under `ref/` are those files copied by hand after a referen
 - `REVIEW.das` - the mechanical gate: nothing under `fetch/` or `work/` and no `.wad` file of the repository is
   tracked.
 - `tests/test_harness.das` - `harness.das` over stand-ins: the checksums on known values, tic 0
-  of every reference log against the zeroed screen, the pins,
-  `fetch_problems` over a checkout built from the patch's own pre-image, to which the patch
-  applies, and a stand-in wad, `missing_units`, `demo_log`'s format and refusals, the desync's differing fields, and the sidecar
-  through the converter's `read_sidecar`.
+  of every reference log against the zeroed screen, the pins, `fetch_problems` over a checkout
+  built from the patch's own pre-image, to which the patch applies, and a stand-in wad,
+  `missing_units`, `demo_log`'s format and refusals, the desync's differing fields, the host's
+  line, `without_define`, and the sidecar through the converter's `read_sidecar`.
 - `tests/test_demo_run.das` - `demo_run.das` over a stand-in program, a das module that checks its
   `argv` and `$DOOMWADDIR/doom2.wad` and prints the tic lines an environment variable asks for,
   held to a four-tic stand-in log: sync, the comparison bounded by `--tics` and the program
@@ -90,8 +91,8 @@ committed references under `ref/` are those files copied by hand after a referen
   an early exit with its first error line, every tic in sync then an exit or a timeout without
   the timedemo line, a timeout, the converted program's module folders, a wad link that fails, no
   reference log, no entry module, no wad and an empty log, the host's timing line read from a run;
-  and the native lane over a shell stand-in, with and without the build. Only the `interp` tier
-  runs there.
+  the native lane over a shell stand-in, with and without the build, and speed runs held to the
+  demo's end. Only the `interp` tier runs there.
 - `tests/test_fps.das` - `fps.das` over fixed runs and captures: a run's fps and each reason it
   gives none, a desync among them, the median and spread, the suspect bar at and above 20%, the
   rendered table, a missing cell, the lane commands, the recorded command with and without

@@ -18,10 +18,13 @@ require fps
 //! rewritten from it. `run.das` fills the plan from its flags and the machine; the tests fill it
 //! with stand-ins.
 
-//! One `--fps` run: the native build and the converted entry module, the wad, the work folder, the
+//! One `--fps` run: the sync builds (the native one and the converted entry module, which print the
+//! tic lines) and the speed builds (the same without the per-tic checksum), the wad, the work folder, the
 //! reference folders and the converted program's module folders, the tiers after native, the demos,
 //! the runs a cell, the seconds a run may take and the path the capture is written to.
 struct FpsPlan {
+    sync_native : string
+    sync_entry : string
     native : string
     entry : string
     wad : string
@@ -68,17 +71,28 @@ def commit_label(sha, status : string) : string => empty(strip(status)) ? sha : 
 //! of `cpu`), the tools' version lines and the runs a cell.
 def new_capture(sha, status, command, cpu, platform, clang, daslang : string; samples : int) : FpsCapture => FpsCapture(commit = commit_label(sha, status), command = command, cpu = cpu, box = box_of(cpu), platform = platform, clang = clang, daslang = daslang, samples = samples, clock = FPS_CLOCK)
 
-//! The cell of `demo` under `lane`: `plan.samples` runs of the native build (the lane
-//! `NATIVE_LANE`) or of the converted entry under the tier `lane`, each held to the whole demo; the
-//! first run that gives no fps ends the cell.
+//! The cell of `demo` under `lane`: one run of the sync build held to every tic of the reference
+//! log, then `plan.samples` runs of the speed build, each held to the demo's end, the native builds
+//! under the lane `NATIVE_LANE`, the converted entries under the tier `lane`; a sync run out of sync
+//! or the first run without fps ends the cell.
 def fps_cell(plan : FpsPlan; lane : string; demo : int) : FpsCell {
-    let spec <- DemoSpec(entry = lane == NATIVE_LANE ? plan.native : plan.entry, tier = lane, wad = plan.wad, demo = demo, timeout = float(plan.timeout), work = plan.work, ref_dirs <- clone_to_move(plan.ref_dirs), module_dirs <- clone_to_move(plan.module_dirs))
+    let native = lane == NATIVE_LANE
+    var spec <- DemoSpec(entry = native ? plan.sync_native : plan.sync_entry, tier = lane, wad = plan.wad, demo = demo, timeout = float(plan.timeout), work = plan.work, ref_dirs <- clone_to_move(plan.ref_dirs), module_dirs <- clone_to_move(plan.module_dirs))
     var cell = FpsCell(workload = "demo{demo}", lane = lane)
+    let synced = run_converted(spec)
+    log_run(spec, synced)
+    let problem = run_problem(synced)
+    if (!empty(problem)) {
+        cell.error = "sync build: {problem}"
+        cell.desync = !empty(synced.sync.desync)
+        to_log(LOG_ERROR, "doom: {cell.workload}, {lane}: {cell.error}\n")
+        return <- cell
+    }
+    spec.entry = native ? plan.native : plan.entry
+    spec.speed = true
     for (_ in range(plan.samples)) {
         let run = run_converted(spec)
-        for (line in run_report(spec, run)) {
-            to_log(LOG_INFO, "doom: {line}\n")
-        }
+        log_run(spec, run)
         if (!add_run(cell, run)) {
             to_log(LOG_ERROR, "doom: {cell.workload}, {lane}: {cell.error}\n")
             break
@@ -86,6 +100,13 @@ def fps_cell(plan : FpsPlan; lane : string; demo : int) : FpsCell {
         to_log(LOG_INFO, "doom: {cell.workload}, {lane}: {run.timing.tics} gametics in {run.timing.seconds} s\n")
     }
     return <- cell
+}
+
+// `run_report`'s lines on `run`, logged
+def private log_run(spec : DemoSpec; run : DemoRun) {
+    for (line in run_report(spec, run)) {
+        to_log(LOG_INFO, "doom: {line}\n")
+    }
 }
 
 //! Every demo of `plan` under native and each of its tiers into `c`, stamped `timestamp` and

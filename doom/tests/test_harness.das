@@ -247,6 +247,24 @@ def test_with_define(t : T?) {
 }
 
 [test]
+def test_without_define(t : T?) {
+    var error : string
+    t |> equal(without_define("\"defines\": [\"A\", \"B\", \"C\"]", "B", error), "\"defines\": [\"A\", \"C\"]")
+    t |> equal(without_define("\"defines\": [\"A\", \"B\"]", "B", error), "\"defines\": [\"A\"]")
+    t |> equal(without_define("\"defines\": [\"B\", \"A\"]", "B", error), "\"defines\": [\"A\"]")
+    t |> equal(without_define("\"defines\": [\"B\"]", "B", error), "\"defines\": []")
+    t |> equal(error, "")
+    t |> equal(without_define("\"defines\": [\"A\"]", "B", error), "")
+    t |> equal(error, "no single `\"B\"` to take out")
+    error = ""
+    t |> equal(without_define("[\"B\", \"B\"]", "B", error), "")
+    t |> success(!empty(error))
+    error = ""
+    t |> equal(without_define(fread("doom/doom.c2das"), "DOOM_TIC_CHECKSUM", error) |> find("DOOM_TIC_CHECKSUM"), -1)
+    t |> equal(error, "")
+}
+
+[test]
 def test_patch_list(t : T?) {
     let sha = file_sha256(PATCH)
     t |> equal(patch_list([PATCH, PATCH]), "{PATCH} (sha256 {sha}) + {PATCH} (sha256 {sha})")
