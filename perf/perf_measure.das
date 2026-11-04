@@ -40,11 +40,12 @@ let PERF_LIMITS = LaneLimits(sample = SAMPLE_TIMEOUT, build = BUILD_TIMEOUT)
 //! the names of the signals 1 to 15 by number, Linux's
 let SIGNAL_NAMES <- ["", "HUP", "INT", "QUIT", "ILL", "TRAP", "ABRT", "BUS", "FPE", "KILL", "USR1", "SEGV", "USR2", "PIPE", "ALRM", "TERM"]
 
-//! `argv` as a guarded run starts it (`ARCHITECTURE_SAMPLES.md`): under `prlimit` with no core file
-//! and, when `address_space` is above 0, that many bytes of address space, inside `sh`, which waits
-//! for it and so reports a death by signal N as the exit code 128 + N.
+//! `argv` as a guarded run starts it (`ARCHITECTURE_SAMPLES.md`): under `prlimit` with a core limit
+//! of one byte, which writes no core file even to a pipe handler, and, when `address_space` is
+//! above 0, that many bytes of address space, inside `sh`, which waits for it and so reports a
+//! death by signal N as the exit code 128 + N.
 def guarded(argv : array<string>; address_space : int64) : array<string> {
-    var full <- ["sh", "-c", "\"$@\"; exit $?", "sh", "prlimit", "--core=0"]
+    var full <- ["sh", "-c", "\"$@\"; exit $?", "sh", "prlimit", "--core=1"]
     full |> reserve(length(full) + 2 + length(argv))
     if (address_space > 0l) {
         full |> push("--as={address_space}")

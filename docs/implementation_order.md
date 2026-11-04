@@ -1240,7 +1240,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   intermittently on PC in both translations (fine alone, rc 0; fx ran it at 13.4x / 14.8x): watch
   the next capture, with (3) in place the cell says what.
   Rows (1)-(4) Done (branch `fix/compare-crash-rows`): (3) every sample runs `guarded`, `sh` around
-  `prlimit --core=0`, a signal death read as `signal N (<name>)` with the first reported line
+  `prlimit --core=1` (a limit of 0 still feeds WSL's pipe handler), a signal death read as `signal N (<name>)` with the first reported line
   (`perf/ARCHITECTURE_SAMPLES.md`; daslib's `run_and_capture` reports signal N as exit code N, so
   the capture's "exited 5: " was SIGTRAP with the report's empty first line), `prlimit` checked
   by the `env` gate; (4) the AOT host runs `main` inside `runWithCatch` and exits 1 with

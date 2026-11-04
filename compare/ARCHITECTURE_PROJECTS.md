@@ -87,7 +87,7 @@ and each bench sample of both sides, and the run each `exe` build ends with) run
 folder `cwd/` there (`enter_working_folder`, every path passed on absolute), so a program writing
 into its working folder writes into the run's scratch, never into the checkout. Every measured
 run (the native runs, each lane and each bench sample of both sides) starts `guarded`
-(`perf/ARCHITECTURE_SAMPLES.md`): no core file, and `--as <GiB>` (6 by default, 0 for none) of
+(`perf/ARCHITECTURE_SAMPLES.md`): no core dump, and `--as <GiB>` (6 by default, 0 for none) of
 address space, so a run that dies under the cap is that lane's `exit` verdict with `signal 11
 (SEGV)` and its error line, while the runner, which converts in its own process, and the builds
 run with no cap of the runner's own: under a cap on the whole run (doomgeneric under 4 GiB) a
