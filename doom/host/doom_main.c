@@ -10,10 +10,14 @@
 // no wall time and repeats tic for tic. The program ends where Doom calls its exit callback:
 // `-timedemo demoN` ends in I_Error's "timed N gametics in M realtics" and exit code -1.
 // `-tics N` (the host's argument; Doom ignores it) ends the run with exit code 0 once Doom has
-// run N game tics. Around the update loop the host reads the process CPU clock, `clock()`, and
-// at the end prints "host: timed N gametics in S s": the playback's own seconds, doom_init and
-// whatever ran before main outside them, the number fps is computed from.
+// run N game tics. `-return-from-main` (the host's too) turns each of those exits into a return
+// from main with the same exit code, through a longjmp back into play, which main called, so a
+// converted run ends as its main returns and daslang's instrumenting profiler prints its summary. Around the update
+// loop the host reads the process CPU clock, `clock()`, and at the end prints "host: timed N
+// gametics in S s": the playback's own seconds, doom_init and whatever ran before main outside
+// them, the number fps is computed from.
 
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +36,11 @@ static long long virtual_usec = 0;
 // the CPU clock when the update loop started, -1 before it
 static clock_t work_started = -1;
 
+// under -return-from-main: the exit code main returns and the point in play the exit jumps to
+static int return_from_main = 0;
+static int exit_code = 0;
+static jmp_buf leave_main;
+
 static void virtual_gettime(int* sec, int* usec)
 {
     *sec = (int)(virtual_usec / 1000000);
@@ -49,32 +58,54 @@ static void flush_and_exit(int code)
 {
     report_work();
     fflush(stdout);
+    if (return_from_main)
+    {
+        exit_code = code;
+        longjmp(leave_main, 1);
+    }
     exit(code);
+}
+
+// doom_init and the update loop; under -return-from-main the exit callback's longjmp lands at the
+// setjmp and play returns, exit_code set. No return sits after the setjmp: under daslang's JIT a
+// return inside the try arm the setjmp lowers to leaves the arm, not the function (F75).
+static void play(int argc, char** argv, int tic_cap)
+{
+    long long update;
+
+    if (setjmp(leave_main) == 0)
+    {
+        doom_set_gettime(virtual_gettime);
+        doom_set_exit(flush_and_exit);
+        doom_init(argc, argv, 0);
+        work_started = clock();
+        for (update = 0; update < MAX_UPDATES; update++)
+        {
+            doom_force_update();
+            virtual_usec += 1000000 / 35;
+            if (tic_cap > 0 && gametic >= tic_cap)
+            {
+                printf("host: stopped after %d tics\n", gametic);
+                flush_and_exit(0);
+            }
+        }
+        printf("host: Doom did not exit within %d updates\n", MAX_UPDATES);
+        exit_code = 2;
+    }
 }
 
 int main(int argc, char** argv)
 {
-    long long update;
     int tic_cap = 0;
     int i;
 
-    for (i = 1; i < argc - 1; i++)
-        if (strcmp(argv[i], "-tics") == 0)
-            tic_cap = atoi(argv[i + 1]);
-    doom_set_gettime(virtual_gettime);
-    doom_set_exit(flush_and_exit);
-    doom_init(argc, argv, 0);
-    work_started = clock();
-    for (update = 0; update < MAX_UPDATES; update++)
+    for (i = 1; i < argc; i++)
     {
-        doom_force_update();
-        virtual_usec += 1000000 / 35;
-        if (tic_cap > 0 && gametic >= tic_cap)
-        {
-            printf("host: stopped after %d tics\n", gametic);
-            flush_and_exit(0);
-        }
+        if (strcmp(argv[i], "-tics") == 0 && i + 1 < argc)
+            tic_cap = atoi(argv[i + 1]);
+        if (strcmp(argv[i], "-return-from-main") == 0)
+            return_from_main = 1;
     }
-    printf("host: Doom did not exit within %d updates\n", MAX_UPDATES);
-    return 2;
+    play(argc, argv, tic_cap);
+    return exit_code;
 }
