@@ -13,8 +13,9 @@
 - `symbolize.sh` - names the samples offline: each PC's mapping gives its file offset, the
   file's `LOAD` segments (`readelf -lW`) its virtual address, `nm` its function (the JIT's cached
   `.dll` carries its symbols). Self samples per function; `--addr` per instruction of one
-  function, `--callers` the stack-top word of a frameless leaf's samples (its caller), `--dso`
-  one mapped file.
+  function, `--lines` per source line (`addr2line`, a JIT `.dll` built under `--jit-debug`),
+  `--callers` the stack-top word of a frameless leaf's samples (its caller), `--dso` one mapped
+  file.
 
 ## 2. Why sampling here
 
