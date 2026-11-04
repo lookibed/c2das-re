@@ -183,6 +183,63 @@ def test_suspect(t : T?) {
 }
 
 [test]
+def test_suspect_edges(t : T?) {
+    t |> run("a spread of exactly 20% is a number, above it suspect: a cell and its work time") @(t : T?) {
+        var c <- fixture()
+        // the interpreter's startup at 0 s without spread, so fib's work spread is its cell's
+        c.cells[1].time = 0.0lf
+        c.cells[1].spread = 0.0lf
+        c.cells[4].spread = 0.2lf
+        t |> equal(row_of(render_times(c), "fib")[2], "210.000 s ±20%")
+        t |> equal(row_of(render_work(c), "fib")[2], "210.000 s ±20%")
+        t |> equal(row_of(render_ratios(c), "fib")[1], "210.00")
+        c.cells[4].spread = 0.21lf
+        t |> equal(row_of(render_times(c), "fib")[2], "suspect (±21.0%)")
+        t |> equal(row_of(render_work(c), "fib")[2], "suspect (±21.0%)")
+        t |> equal(row_of(render_ratios(c), "fib")[1], "suspect")
+    }
+    t |> run("a startup cell of exactly 20% is a number with its ratio, above it suspect") @(t : T?) {
+        var c <- fixture()
+        c.cells[1].spread = 0.2lf
+        t |> equal(join(row_of(render_startup(c), "interpreter"), ","), "10.000 s ±20%,20.00")
+        t |> equal(row_of(render_work(c), "fib")[2], "200.000 s ±3%")
+        t |> equal(row_of(render_ratios(c), "fib")[1], "200.00")
+        c.cells[1].spread = 0.21lf
+        t |> equal(join(row_of(render_startup(c), "interpreter"), ","), "suspect (±21.0%),suspect")
+        t |> equal(row_of(render_work(c), "fib")[2], "suspect (startup)")
+    }
+    t |> run("a suspect native cell, the base of a ratio: the das lanes' ratios over it are suspect, out of the mean") @(t : T?) {
+        var c <- fixture()
+        c.cells[3].spread = 0.3lf // native fib
+        t |> equal(ratio_of(c, "fib", "interp", "native"), 0.0lf)
+        t |> equal(join(row_of(render_ratios(c), "fib"), ","), "`bench/fib.lua`,suspect,suspect,suspect,suspect,25.00,n/a,n/a,n/a")
+        var count = 0
+        t |> equal(round(geomean_ratio(c, "interp", count) * 1000.0lf), 50000.0lf)
+        t |> equal(count, 1)
+    }
+    t |> run("a suspect native startup cell: every lane's startup ratio is suspect") @(t : T?) {
+        var c <- fixture()
+        c.cells[0].spread = 0.3lf
+        t |> equal(join(row_of(render_startup(c), "clang -O3"), ","), "suspect (±30.0%),suspect")
+        t |> equal(join(row_of(render_startup(c), "interpreter"), ","), "10.000 s ±2%,suspect")
+    }
+    t |> run("no standing native startup cell: the startup ratios are missing") @(t : T?) {
+        var c <- fixture()
+        c.cells[0] <- failed("startup", "native", "exited 1")
+        t |> equal(join(row_of(render_startup(c), "clang -O3"), ","), "not yet,n/a")
+        t |> equal(join(row_of(render_startup(c), "interpreter"), ","), "10.000 s ±2%,n/a")
+    }
+    t |> run("a capture without a startup row has no startup cell under any lane") @(t : T?) {
+        var c <- fixture()
+        c.workloads |> erase(0)
+        t |> equal(startup_of(c), "")
+        t |> equal(join(row_of(render_startup(c), "clang -O3"), ","), "n/a,n/a")
+        t |> equal(join(row_of(render_work(c), "fib"), ","), "`bench/fib.lua`,not yet,not yet,not yet,not yet,not yet")
+        t |> success(has_value(render_not_yet(c), "- clang -O3, every work time: not yet: no startup cell"), join(render_not_yet(c), "\n"))
+    }
+}
+
+[test]
 def test_layout_lanes(t : T?) {
     t |> run("a layout lane (source-cut or single) the capture measured adds its column and its ratio to its source-layout twin; without one the tables keep their columns") @(t : T?) {
         var c <- fixture()
