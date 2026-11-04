@@ -767,7 +767,7 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
         "lanes" => JV(DAS_LANES),
         "native" => verdict_json(native, back),
         "native_compiler" => JV(first_line(captured([default_clang(), "--version"]))),
-        "address_cap" => JV(address_space > 0l ? "{address_space}" : address_cap_of(fexist("/proc/self/limits") ? fread("/proc/self/limits") : "")),
+        "address_cap" => JV(cap_in_force(address_space, address_cap_of(fexist("/proc/self/limits") ? fread("/proc/self/limits") : ""))),
         "ours" => JV({"error" => JV(ours_refusal), "lanes" => lanes_json(ours_lanes, back), "defines" => JV(p.ours_defines)}),
         "rust" => JV({"error" => JV(rust_refusal), "lanes" => lanes_json(rust_lanes, back)}),
         "speed" => speed,
@@ -790,6 +790,17 @@ def address_cap_of(limits : string) : string {
         }
     }
     return ""
+}
+
+//! The address-space cap a run guarded under `requested` bytes (0: none of its own) runs under when
+//! the runner itself has `inherited` (`address_cap_of`): the smaller, since `prlimit` cannot raise
+//! an inherited limit and exits 0 when asked to.
+def cap_in_force(requested : int64; inherited : string) : string {
+    if (requested <= 0l) {
+        return inherited
+    }
+    let below = inherited != "unlimited" && !empty(inherited) && to_int64(inherited, false) < requested
+    return below ? inherited : "{requested}"
 }
 
 //! The capture at `path` with its `projects` section's entry `name` set to `entry`, every other

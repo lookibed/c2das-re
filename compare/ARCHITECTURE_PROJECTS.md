@@ -97,8 +97,9 @@ runs out under `--as=3221225472`).
 
 The entry is `{rust_commit, rust_commit_error, daslang, date, cpu, box, samples, lanes, native,
 native_compiler, address_cap, ours, rust, speed, code, functions}`: `native` the native build's
-verdict, `address_cap` the bytes `--as` names, else the soft `Max address space` of the run's
-`/proc/self/limits` (`address_cap_of`: its bytes or `unlimited`, which every lane inherits),
+verdict, `address_cap` the cap in force (`cap_in_force`): the bytes `--as` names, unless the soft
+`Max address space` of the run's `/proc/self/limits` (`address_cap_of`: its bytes or `unlimited`,
+which every lane inherits and `prlimit` cannot raise) is lower, and that one without `--as`,
 `native_compiler` the first line of the pinned clang's `--version` (the Rust README builds with
 clang-18, so the native cells are this machine's baseline, not the Rust repository's numbers),
 `ours` and `rust` each `{error, lanes}` with the side's refusal and a verdict per lane of `lanes`
