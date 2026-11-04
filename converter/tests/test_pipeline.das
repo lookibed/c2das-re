@@ -208,7 +208,9 @@ def test_include_dirs(t : T?) {
         let side = written_sidecar(at, "forced", "\{\"include_files\": [\"forced.h\"]\}\n")
         let res <- convert(path_join(at, "forced.c"), path_join(at, "out"), "linux", "", side)
         t |> equal(res.ok, true, res.error)
-        t |> success(res.das_text |> contains("f.v = 17"), res.das_text)
+        // the forced header is the program's: its constant keeps its name (`let private`)
+        t |> success(res.das_text |> contains("let private FORCED_VALUE = 17\n"), res.das_text)
+        t |> success(res.das_text |> contains("f.v = FORCED_VALUE\n"), res.das_text)
     }
     t |> run("a folder `CPATH` names holds the user's headers, never the system's: the program in it converts") @(t : T?) {
         // a child converter under `env CPATH=<root>`, so this process's environment stays as it was
