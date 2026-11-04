@@ -132,8 +132,8 @@ times them under every lane, and the stored results; the interpreter audit on Lu
   nope` a usage error, `dasprofile_capture.das`'s usage error, refusal and stamp, and one sample of
   `fib_recursive` under a `PATH_TO_LIBCLANG` whose `clang++` (the AOT host's compiler) fails,
   whose `aot` error must carry that compiler's output, and one under a `PATH` whose `c++` (the
-  linker daslang's `-exe` build calls) fails, whose `exe` error must carry the failed link; the
-  preflight tests lane runs it.
+  linker daslang's `-exe` build calls) fails, whose `exe` error must carry the failed link, and
+  `sampler/` (its `ARCHITECTURE.md` section 3); the preflight tests lane runs it.
 - `results_linux.json` - the committed capture: CPU, box, platform, timestamp, the method, the clang
   and daslang versions, the sample count, the lanes, and per kernel and lane the median, spread,
   rep count, the result and raw samples. `results_method_linux.json` - the same of the
