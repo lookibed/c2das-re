@@ -1,0 +1,189 @@
+options gen2
+require dastest/testing_boost public
+require strings
+require daslib/fio
+require daslib/strings_boost
+require daslib/json_boost
+require ../demo_run.das
+require ../fps.das
+require ../fps_run.das
+require ../../converter/tiers.das
+require _stand_in
+
+//! `fps_run.das` over the stand-ins of `_stand_in.das`: the flag check, the demos, the capture's
+//! head, a cell's runs (the entry each lane takes, the stop at the first run without fps, a native
+//! desync), the capture written or not, the README section; and `run.das` itself as a child
+//! process, the `--fps` switch against the plain `--run` and a refusal.
+
+// a plan over the stand-ins in a fresh folder: the native script, the das entry, demo1, `samples`
+// runs a cell, the capture beside them
+def private stand_in_plan(samples : int) : FpsPlan {
+    let spec <- stand_in_spec(0)
+    let root = dir_name(spec.wad)
+    write_native_stand_in(path_join(root, "doom"))
+    set_env_variable("DOOM_STAND_IN", "4,-1,255,0,-1,-1")
+    set_env_variable("DOOM_NATIVE_DESYNC", "")
+    return <- FpsPlan(native = path_join(root, "doom"), entry = spec.entry, wad = spec.wad, work = spec.work, ref_dirs <- clone_to_move(spec.ref_dirs), tiers <- ["interp"], demos <- [1], samples = samples, timeout = 60, capture_path = path_join(root, "results.json"))
+}
+
+// the native stand-in's run count, from the `runs` file beside it
+def private native_runs(plan : FpsPlan) : int {
+    let path = path_join(dir_name(plan.native), "runs")
+    return stat(path).is_reg ? length(split(strip(fread(path)), "\n")) : 0
+}
+
+[test]
+def test_refusal(t : T?) {
+    t |> equal(fps_refusal(false, false, ["bogus"], 0, 5, true), "")
+    t |> equal(fps_refusal(true, true, ["interp", "jit"], 3, 0, false), "")
+    t |> equal(fps_refusal(true, true, ["interp", "bogus"], 3, 0, false), "--tiers takes interp, jit, exe and aot, not `bogus`")
+    t |> equal(fps_refusal(true, true, ["interp"], 0, 0, false), "--samples takes at least 1, not 0")
+    t |> equal(fps_refusal(true, false, ["interp"], 3, 0, false), "--fps goes with --run")
+    t |> equal(fps_refusal(true, true, ["interp"], 3, 10, false), "--fps times the whole demo, not --tics 10")
+    t |> equal(fps_refusal(true, true, ["interp"], 3, 0, true), "--fps does not go with --trace")
+}
+
+[test]
+def test_demos_and_head(t : T?) {
+    t |> equal(join([for (d in fps_demos(0)); "{d}"], ","), "1,2,3")
+    t |> equal(join([for (d in fps_demos(2)); "{d}"], ","), "2")
+    t |> equal(commit_label("0123456789ab", ""), "0123456789ab")
+    t |> equal(commit_label("0123456789ab", " M doom/run.das\n"), "0123456789ab-dirty")
+    let c <- new_capture("0123456789ab", " M x", "cmd", "AMD Ryzen 7 7435HS", "linux x86_64", "clang 22", "0.6.4", 3)
+    t |> equal(c.commit, "0123456789ab-dirty")
+    t |> equal(c.box, "PC")
+    t |> equal(c.cpu, "AMD Ryzen 7 7435HS")
+    t |> equal(c.samples, 3)
+    t |> equal(c.clock, FPS_CLOCK)
+    t |> equal(new_capture("a", "", "cmd", "some other cpu", "p", "c", "d", 1).box, "")
+}
+
+[test]
+def test_cell(t : T?) {
+    t |> run("native runs the native build, a tier the converted entry, every sample") @(t : T?) {
+        let plan <- stand_in_plan(2)
+        let native <- fps_cell(plan, NATIVE_LANE, 1)
+        t |> equal(native.error, "")
+        t |> equal(length(native.samples), 2)
+        t |> equal(native.fps, 32.0lf)
+        t |> equal(native_runs(plan), 2)
+        let interp <- fps_cell(plan, "interp", 1)
+        t |> equal(interp.error, "")
+        t |> equal(interp.fps, 16.0lf)
+        t |> equal(native_runs(plan), 2)
+    }
+    t |> run("a native desync is no cell, and the first run without fps ends it") @(t : T?) {
+        let plan <- stand_in_plan(3)
+        set_env_variable("DOOM_NATIVE_DESYNC", "1")
+        let cell <- fps_cell(plan, NATIVE_LANE, 1)
+        set_env_variable("DOOM_NATIVE_DESYNC", "")
+        t |> success(cell.desync)
+        t |> success(cell.error |> starts_with("desync after 2 tics in sync on cs"), cell.error)
+        t |> equal(length(cell.samples), 0)
+        t |> equal(native_runs(plan), 1)
+    }
+}
+
+[test]
+def test_time_demos(t : T?) {
+    t |> run("the capture written: the head, a lane per tier after native, a cell per demo and lane") @(t : T?) {
+        let plan <- stand_in_plan(1)
+        var c <- new_capture("0123456789ab", "", "cmd", "AMD Ryzen 7 7435HS", "linux x86_64", "clang 22", "0.6.4", 1)
+        t |> success(time_demos(plan, c, "2026-11-04 12:00 UTC"))
+        var error : string
+        let js = read_json(fread(plan.capture_path), error)
+        t |> equal(error, "")
+        let back <- from_JV(js, type<FpsCapture>)
+        t |> equal(back.commit, "0123456789ab")
+        t |> equal(back.box, "PC")
+        t |> equal(back.timestamp, "2026-11-04 12:00 UTC")
+        t |> equal(join([for (lane in back.lanes); lane.name], ","), "native,interp")
+        t |> equal(join(back.workloads, ","), "demo1")
+        t |> equal(join([for (cell in back.cells); "{cell.lane}={cell.fps}"], ","), "native=32,interp=16")
+    }
+    t |> run("a cell that does not stand fails the run, the capture still written") @(t : T?) {
+        let plan <- stand_in_plan(1)
+        set_env_variable("DOOM_NATIVE_DESYNC", "1")
+        var c <- new_capture("a", "", "cmd", "cpu", "p", "c", "d", 1)
+        let ok = time_demos(plan, c, "now")
+        set_env_variable("DOOM_NATIVE_DESYNC", "")
+        t |> success(!ok)
+        t |> success(stat(plan.capture_path).is_reg)
+    }
+    t |> run("a capture that cannot be written fails the run") @(t : T?) {
+        var plan <- stand_in_plan(1)
+        plan.capture_path = path_join(plan.work, "no/such/folder/results.json")
+        var c <- new_capture("a", "", "cmd", "cpu", "p", "c", "d", 1)
+        t |> success(!time_demos(plan, c, "now"))
+    }
+}
+
+// a capture timed over the stand-ins into `c`, its path returned
+def private timed_capture(var c : FpsCapture) : string {
+    let plan <- stand_in_plan(1)
+    delete c
+    c <- new_capture("0123456789ab", "", "cmd", "AMD Ryzen 7 7435HS", "linux x86_64", "clang 22", "0.6.4", 1)
+    time_demos(plan, c, "now")
+    return plan.capture_path
+}
+
+[test]
+def test_readme(t : T?) {
+    t |> run("the section between the markers rewritten, the text around it kept") @(t : T?) {
+        var c : FpsCapture
+        let capture_path = timed_capture(c)
+        let readme = path_join(dir_name(capture_path), "README.md")
+        fwrite(readme, "# top\n{FPS_BEGIN}\nold\n{FPS_END}\nafter\n")
+        t |> equal(write_fps_readme(capture_path, readme), "")
+        t |> equal(fread(readme), "# top\n{FPS_BEGIN}\n{render_fps(c)}{FPS_END}\nafter\n")
+    }
+    t |> run("a README without the markers") @(t : T?) {
+        var c : FpsCapture
+        let capture_path = timed_capture(c)
+        let readme = path_join(dir_name(capture_path), "README.md")
+        fwrite(readme, "# no markers\n")
+        t |> equal(write_fps_readme(capture_path, readme), "{readme} has no doom-fps markers")
+        t |> equal(fread(readme), "# no markers\n")
+    }
+    t |> run("a capture that does not read") @(t : T?) {
+        let root = scratch("doom_fps_readme")
+        let bad = path_join(root, "bad.json")
+        fwrite(bad, "\{")
+        t |> success(write_fps_readme(bad, path_join(root, "README.md")) |> starts_with("{bad}: "))
+        t |> success(write_fps_readme(path_join(root, "none.json"), path_join(root, "README.md")) |> starts_with(path_join(root, "none.json")))
+    }
+}
+
+// `doom/run.das` with `args` as a child process in the empty folder `dir`; its exit code, the
+// output in `out`
+def private run_das(dir : string; args : array<string>; var out : string&) : int {
+    var argv <- ["bash", "-c", "cd \"$0\" && DAS_LOG_LEVEL=info exec \"$@\"", dir]
+    argv |> push_from(daslang_cmd([for (m in CONVERTED_MODULES); get_full_file_name(m)]))
+    argv |> push(get_full_file_name("doom/run.das"))
+    argv |> push("--")
+    argv |> push_from(args)
+    return run_and_capture(argv, out, 300.0)
+}
+
+[test]
+def test_run_das(t : T?) {
+    let dir = scratch("doom_run_das")
+    t |> run("--fps times every lane: native first, no native build there") @(t : T?) {
+        var out : string
+        t |> equal(run_das(dir, ["--run", "--fps", "--demo", "1", "--tiers", "interp", "--samples", "1"], out), 1)
+        t |> success(out |> contains("doom: demo1, native: no doom/work/native/doom; run --native"), out)
+        t |> success(out |> contains("doom: cannot write doom/results_linux.json"), out)
+    }
+    t |> run("--run without --fps runs the converted demo alone") @(t : T?) {
+        var out : string
+        t |> equal(run_das(dir, ["--run", "--demo", "1"], out), 1)
+        t |> success(out |> contains("interp demo1 on freedoom2.wad: no doom/work/source/doom_main.das; run --convert"), out)
+        t |> success(!(out |> contains("doom: demo1, native")), out)
+    }
+    t |> run("a refused --fps stops before any run") @(t : T?) {
+        var out : string
+        t |> equal(run_das(dir, ["--run", "--fps", "--tiers", "bogus"], out), 1)
+        t |> success(out |> contains("doom: --tiers takes interp, jit, exe and aot, not `bogus`"), out)
+        t |> success(!(out |> contains("demo1")), out)
+    }
+}

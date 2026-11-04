@@ -44,7 +44,7 @@ each frame, which the converted build pays at its own speed.
 (default `interp,jit`), `--samples` runs a cell (default 3), each run its own process through
 `run_converted`, whose tier `native` runs `work/native/doom` alone under `prlimit --as` 3 GiB; the
 converted runs take `--layout`'s conversion. Each run is held to the whole demo as section 8 holds
-one, and `fps.das`'s `run_problem` refuses a run that is out of sync, did not end in `timed N
+one (`fps_run.das`, over an `FpsPlan` `run.das` fills), and `fps.das`'s `run_problem` refuses a run that is out of sync, did not end in `timed N
 gametics`, printed no host line, or timed other tics than the demo's or no time: the cell then
 records the error (`desync` when the run desynced) and takes no further run, since the fps of a
 wrong replay is never published. A cell's fps is the median of the runs' `N / S`, its spread half
