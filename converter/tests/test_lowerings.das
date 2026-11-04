@@ -1723,7 +1723,8 @@ def p5_lua_expression_fixtures(t : T?) {
         has_text(t, text, "reinterpret<uint8?>(\"[\\x00-\\x7f\\xc2-\\xfd][\\x80-\\xbf]*\")")
         has_text(t, text, "var row : uint8[6] = fixed_array(uint8(97), uint8(0), uint8(98), uint8(0), uint8(99), uint8(0))\n")
         // a goto into another case re-dispatches: the label is a case of its number in the
-        // switch's goto variable, which every case test and `default` require unset
+        // switch's goto variable, which `default` requires unset, while the goto stores a value no case
+        // holds into the condition
         has_text(t, text, "        var _cond = int(deref(p))\n        var _goto = 0\n        while (true) \{\n            label 1:  // re-dispatch\n")
         has_text(t, text, "                        _goto = 1\n                        _cond = 35\n                        goto label 1\n")
         has_text(t, text, "            _flag ||= _goto == 0 && !(_cond == '(' || _cond == '$' || _cond == '%')\n            _flag ||= _goto == 1  // dflt\n            if (_flag) \{\n                _goto = 0\n")
@@ -1786,7 +1787,17 @@ def p5_lua_expression_fixtures(t : T?) {
         let span = converts(t, "restart_sentinel_span", "int f(int x) \{ int r = 0; switch (x) \{ case -2147483647 - 1: r += 1; goto L; case 2147483647: L: r += 100; break; \} return r; \}\nint main(void) \{ return f(-2147483647 - 1) - 101 + f(2147483647) - 100 + f(0); \}\n")
         has_text(t, span, "    let _cond = x\n")
         has_text(t, span, "        if (_goto == 0 && _cond == -2147483647 - 1) \{\n")
+        has_text(t, span, "            _goto = 1\n            goto label 1\n")
         t |> equal(run_tier(converted_path("restart_sentinel_span"), "interp", work_root, out, CONVERTED_MODULES, 60.0), 0, out)
+        // an unsigned condition whose cases reach both of its ends keeps the old form
+        let uspan = converts(t, "restart_sentinel_uspan", "int f(unsigned x) \{ int r = 0; switch (x) \{ case 0: r += 1; goto L; case 4294967295u: L: r += 100; break; \} return r; \}\nint main(void) \{ return f(0) - 101 + f(4294967295u) - 100 + f(7); \}\n")
+        has_text(t, uspan, "    let _cond = x\n")
+        has_text(t, uspan, "        if (_goto == 0 && _cond == 0u) \{\n")
+        t |> equal(run_tier(converted_path("restart_sentinel_uspan"), "interp", work_root, out, CONVERTED_MODULES, 60.0), 0, out)
+        // a 64-bit condition's sentinel below its smallest case
+        let wide = converts(t, "restart_sentinel_wide", "int f(long long x) \{ int r = 0; switch (x) \{ case 0: r += 1; goto L; case 5: L: r += 100; break; \} return r; \}\nint main(void) \{ return f(0) - 101 + f(5) - 100; \}\n")
+        has_text(t, wide, "            _cond = -1l\n")
+        t |> equal(run_tier(converted_path("restart_sentinel_wide"), "interp", work_root, out, CONVERTED_MODULES, 60.0), 0, out)
         // an enum's sentinel at `int`'s smallest value is spelled so daslang reads it as an `int`
         let low_enum = converts(t, "restart_sentinel_enum_min", "enum E \{ LO = -2147483647, HI = 3 \};\nint f(enum E e) \{ int r = 0; switch (e) \{ case LO: r += 1; goto L; case HI: L: r += 100; break; \} return r; \}\nint main(void) \{ return f(LO) - 101 + f(HI) - 100; \}\n")
         has_text(t, low_enum, "_cond = enum_from_int(type<E>, -2147483647 - 1)\n")

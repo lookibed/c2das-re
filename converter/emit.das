@@ -4445,10 +4445,6 @@ def private restart_sentinel(var em : Emitter; tu : CirTu; cond_t : int; groups 
     let spelled = on_enum ? "int" : das_type(em, tu, cond_t, CirLoc())
     let type_lo = spelled == "int" ? int64(INT_MIN) : (spelled == "int64" ? LONG_MIN : 0l)
     let type_hi = spelled == "int" ? int64(INT_MAX) : (spelled == "uint" ? int64(UINT_MAX) : LONG_MAX)
-    if (lo > hi) {
-        // no case value: any value is no case's
-        lo = 1l
-    }
     if (lo <= type_lo && hi >= type_hi) {
         return ""
     }
