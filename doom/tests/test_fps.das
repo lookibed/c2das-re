@@ -144,6 +144,35 @@ def test_render(t : T?) {
     }
 }
 
+// the cells of `workload`'s row in `text`, trimmed
+def private row_cells(text, workload : string) : string {
+    let rows <- [for (line in split(text, "\n")); line; where line |> starts_with("| {workload} ")]
+    return length(rows) == 1 ? join([for (cell in split(rows[0], "|")); strip(cell)], ",") : ""
+}
+
+[test]
+def test_rendered_bars(t : T?) {
+    t |> run("a lane cell at a 20% spread renders its fps and ratio, above it `suspect`") @(t : T?) {
+        var c <- stand_in_capture()
+        c.cells[1].spread = 0.2lf
+        t |> equal(row_cells(render_fps(c), "demo1"), ",demo1,1000.0 ±0%,25.0 ±20%,250.0 ±0%,40.0,4.0,")
+        c.cells[1].spread = 0.21lf
+        t |> equal(row_cells(render_fps(c), "demo1"), ",demo1,1000.0 ±0%,suspect (±21.0%),250.0 ±0%,suspect,4.0,")
+    }
+    t |> run("a suspect native cell makes every ratio of its row `suspect`") @(t : T?) {
+        var c <- stand_in_capture()
+        c.cells[0].spread = 0.2lf
+        t |> equal(row_cells(render_fps(c), "demo1"), ",demo1,1000.0 ±20%,25.0 ±3%,250.0 ±0%,40.0,4.0,")
+        c.cells[0].spread = 0.21lf
+        t |> equal(row_cells(render_fps(c), "demo1"), ",demo1,suspect (±21.0%),25.0 ±3%,250.0 ±0%,suspect,suspect,")
+    }
+    t |> run("a cell whose run failed other than by a desync renders `failed`") @(t : T?) {
+        var c <- stand_in_capture()
+        c.cells[2].error = "no `host: timed N gametics in S s` line"
+        t |> equal(row_cells(render_fps(c), "demo1"), ",demo1,1000.0 ±0%,25.0 ±3%,failed,40.0,n/a,")
+    }
+}
+
 [test]
 def test_lane_command(t : T?) {
     t |> equal(lane_command("native", "doom/work/native/doom", "e.das"), "prlimit --as=3221225472 doom/work/native/doom -timedemo demo<N>")

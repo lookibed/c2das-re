@@ -67,6 +67,8 @@ committed references under `ref/` are those files copied by hand after a referen
   `NATIVE_LANE`), `in_sync` and `run_report`.
 - `fps.das` - the frame rate (section 9): `run_problem` and `add_run`, a run's fps into a cell,
   `FpsCapture`, `fps_command`, `lane_command`, `slowdown` and `render_fps`. It runs and reads nothing.
+- `fps_run.das` - the runs of `--fps` over an `FpsPlan` (section 9): `fps_refusal`, `fps_demos`,
+  `commit_label`, `new_capture`, `fps_cell`, `time_demos` and `write_fps_readme`.
 - `results_linux.json` - the committed fps capture `--fps` writes (section 9).
 - `ARCHITECTURE_RUN.md` - sections 8 and 9.
 - `convert_check.das` - the conversion checks `--convert` and `--compile-check` apply:
@@ -94,6 +96,10 @@ committed references under `ref/` are those files copied by hand after a referen
   gives none, a desync among them, the median and spread, the suspect bar at and above 20%, the
   rendered table, a missing cell, the lane commands, the recorded command with and without
   `--demo` and the capture's JSON shape.
+- `tests/test_fps_run.das` - `fps_run.das` over the stand-ins, every function of it, and `run.das`
+  as a child process: `--fps` against the plain `--run`, and a refusal.
+- `tests/_stand_in.das` - the stand-ins the demo-run tests share: the das program, the native
+  script and the spec of a run of them.
 - `tests/test_convert.das` - `convert_check.das` over a stand-in program (two units that link, one
   the dumper refuses, a host outside their folder): the staging, the units alone, the program's
   modules compiled alone, a module that fails, and the classification.

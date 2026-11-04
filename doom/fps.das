@@ -90,7 +90,7 @@ def add_run(var cell : FpsCell; run : DemoRun) : bool {
     let problem = run_problem(run)
     if (!empty(problem)) {
         cell.error = problem
-        cell.desync = empty(run.error) && !empty(run.sync.desync)
+        cell.desync = !empty(run.sync.desync)
         return false
     }
     cell.tics = run.timing.tics

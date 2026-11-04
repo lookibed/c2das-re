@@ -5,37 +5,10 @@ require daslib/fio
 require daslib/strings_boost
 require ../demo_run.das
 require ../../converter/tiers.das
+require _stand_in
 
-//! The converted program's demo run of `run.das --run` over a stand-in program: a das module
-//! that checks its C `argv` and `$DOOMWADDIR/doom2.wad`, then prints the tic lines
-//! `$DOOM_STAND_IN` (`<tics>,<desynced tic>,<exit code>,<sleep ms>,<missing tic>,<doubled tic>`)
-//! asks for, held to a four-tic stand-in reference log; exit code 255 ends in the timedemo line,
-//! with the host's timing line after it, any other in a decoy line, an `Error:` line and a later
-//! lowercase error line, then the sleep. The native stand-in is a shell script that checks the
-//! same and prints the four tic lines, the timedemo line and the host's.
-//! Like the host, it stops with exit code 0 after `-tics N` tics when N is fewer.
-
-let STAND_IN = "options gen2\nrequire daslib/fio\nrequire strings\nrequire daslib/strings_boost\n[export]\ndef main : int \{\n    let args <- get_command_line_arguments()\n    if (length(args) < 2 || args[length(args) - 2] != \"-timedemo\" || args[length(args) - 1] != \"demo1\" || !stat(get_env_variable(\"DOOMWADDIR\") + \"/doom2.wad\").is_reg) \{\n        print(\"error: no -timedemo demo1 or no doom2.wad\\n\")\n        return 2\n    \}\n    let mode <- [for (field in split(get_env_variable(\"DOOM_STAND_IN\"), \",\")); to_int(field)]\n    let at = find_index(args, \"-tics\")\n    let cap = at >= 0 ? to_int(args[at + 1]) : mode[0]\n    for (tic in range(cap < mode[0] ? cap : mode[0])) \{\n        if (tic != mode[4]) \{\n            print(\"tic=\{tic\} cs=0000000\{tic == mode[1] ? 9 : tic\}\\n\")\n        \}\n        if (tic == mode[5]) \{\n            print(\"tic=\{tic\} cs=0000000\{tic\}\\n\")\n        \}\n    \}\n    if (cap < mode[0]) \{\n        print(\"host: stopped after \{cap\} tics\\n\")\n        return 0\n    \}\n    print(mode[2] == 255 ? \"Error: timed \{mode[0]\} gametics in \{mode[0]\} realtics\\nhost: timed \{mode[0]\} gametics in 0.250000 s\\n\" : \"Z_Init: decoy\\nError: boom\\nerror: later\\n\")\n    if (mode[3] > 0) \{\n        sleep(uint(mode[3]))\n    \}\n    return mode[2]\n\}\n"
-
-let NATIVE_STAND_IN = "#!/bin/sh\n[ \"$1 $2\" = \"-timedemo demo1\" ] && [ -f \"$DOOMWADDIR/doom2.wad\" ] || exit 2\nfor tic in 0 1 2 3; do echo \"tic=$tic cs=0000000$tic\"; done\necho \"Error: timed 4 gametics in 4 realtics\"\necho \"host: timed 4 gametics in 0.125000 s\"\nexit 255\n"
-
-// a fresh scratch folder, "" when none can be made
-def private scratch(name : string) : string {
-    var error : string
-    let dir = create_temp_directory(name, error)
-    return empty(error) ? dir : ""
-}
-
-// the spec of a run of the stand-in under a fresh folder: the program, a wad, the four-tic
-// reference log in the second of two reference folders, `tics` tic lines compared
-def private stand_in_spec(tics : int) : DemoSpec {
-    let root = scratch("doom_demo_run")
-    fwrite(path_join(root, "doom_main.das"), STAND_IN)
-    fwrite(path_join(root, "stand.wad"), "IWAD")
-    mkdir_rec(path_join(root, "ref"))
-    fwrite(path_join(root, "ref/stand_demo1.log"), "# stand-in\n" + join([for (tic in range(4)); "tic={tic} cs=0000000{tic}"], "\n") + "\n")
-    return <- DemoSpec(entry = path_join(root, "doom_main.das"), tier = "interp", wad = path_join(root, "stand.wad"), demo = 1, tics = tics, timeout = 60.0, work = path_join(root, "work"), ref_dirs <- [path_join(root, "none"), path_join(root, "ref")])
-}
+//! The converted program's demo run of `run.das --run` over the stand-ins of `_stand_in.das`, held
+//! to their four-tic reference log.
 
 // the stand-in run in `mode` against `spec`
 def private run_stand_in(spec : DemoSpec; mode : string) : DemoRun {
@@ -84,16 +57,27 @@ def test_native(t : T?) {
     t |> run("the native lane runs the build alone, held to the reference as a tier is") @(t : T?) {
         var spec <- stand_in_spec(0)
         spec.entry = path_join(dir_name(spec.wad), "doom")
-        fwrite(spec.entry, NATIVE_STAND_IN)
-        var out : string
-        t |> equal(run_and_capture(["chmod", "+x", spec.entry], out, 30.0), 0)
+        t |> success(write_native_stand_in(spec.entry))
         spec.tier = NATIVE_LANE
+        set_env_variable("DOOM_NATIVE_DESYNC", "")
         let run = run_converted(spec)
         t |> equal(run.error, "")
         t |> equal(run.rc, 255)
         t |> success(in_sync(run))
         t |> equal(run.timing.tics, 4)
         t |> equal(run.timing.seconds, 0.125lf)
+    }
+    t |> run("a native tic line off the reference is a desync") @(t : T?) {
+        var spec <- stand_in_spec(0)
+        spec.entry = path_join(dir_name(spec.wad), "doom")
+        t |> success(write_native_stand_in(spec.entry))
+        spec.tier = NATIVE_LANE
+        set_env_variable("DOOM_NATIVE_DESYNC", "1")
+        let run = run_converted(spec)
+        set_env_variable("DOOM_NATIVE_DESYNC", "")
+        t |> success(!in_sync(run))
+        t |> equal(run.sync.in_sync, 2)
+        t |> equal(run.sync.fields, "cs")
     }
     t |> run("no native build") @(t : T?) {
         var spec <- stand_in_spec(0)
