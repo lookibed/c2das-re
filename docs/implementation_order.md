@@ -141,7 +141,19 @@ stand behind each)
     converter holes Rust passes; (3) the Lua gap between kernels and the program (P7.0b2); (4)
     compare re-captured, kernels and projects, on one box, labelled. Text: short tables, few
     columns, no walls. Publish: a SUSPECT cell (spread over 20%) is re-run or dropped, never
-    published (the ports, perf and compare renderers).
+    published (the ports, perf and compare renderers). Done, all four: (1) P6.7 (PR #101); (2) the
+    four refusals (PRs #96, #98, #99, #102; the next stops P8.4 (s), (t), (v), h264bsd-mp4 passes);
+    (3) P7.0b2 as an investigation (its rows P7.0c2 first, P7.0c3, P7.0c4, P7.0b3); (4) the compare
+    re-capture on box PC (PR #104). Open for the owner: the force-push reading for a PR branch; a
+    replayed branch's original stays on origin for the owner to delete (`fix/ports-work-only`,
+    `p6.7-doom-fps`, `p8.4q-malloc-shadow`, `fix/ports-in-process-timing`).
+30. The open Doom questions (2026-11-04): (1) the per-tic frame checksum is the sync test's alone;
+    the speed run has no checksum inside the timed window, and fps and the ratios against native
+    and Rust doomgeneric come from the speed run (P6.7 re-timed that way); (2) doom2.wad is dropped
+    entirely, no fetch script and no tests for it (PR #97 reverted by PR #100): freedoom2.wad is
+    the one IWAD; (3) the native build questions (`-funsigned-char`, patch 0004 against a converter
+    mechanism) answered from the research report `/root/notes/research/doom-native-questions.md`:
+    keep the signed native build with patch 0003, keep patch 0004; the rows are under P6.5.
 
 ---
 
@@ -739,11 +751,23 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   startup rise between the two ports tables is P5.1b2's default-layout swap, not a regression.
   OWNER DECISION: the headline lane, the monolith (fastest JIT work, 1.6-1.9x over the cut) or the
   cut layout (5x faster start, interp work within 1.07x); the 8-lane capture renders both.
-  Rows: in-process timing, a `bench/timed.lua` wrapper printing `os.clock()` deltas on stderr (the
-  oracle compares stdout; the test-suite row keeps the subtraction; decision 2 of
-  `/root/notes/plan-measure-setup.md`); a progress/ETA line per cell here and in the compare
-  projects (the plan, section 3); a perf kernels table in the top README if the owner wants
-  ours-only kernels there; `ports/ARCHITECTURE.md` section 4 states the warm-start fact.
+  Ruling 28 item 2 Done (c2das-ports fb88940, the 8-lane Lua capture on box PC, 3 samples): JIT
+  work 4.1-8.9x native (the test suite 1.6x), interp 105-266x; the cut layout starts in 0.65/0.98 s
+  against the monolith's 3.57/4.16 s with its work within 1.02x (interp) and 1.00-1.14x (JIT); the
+  AOT lane not yet (`lua.das.cpp:22309` "cannot jump from this goto statement to its label": an
+  AOT row). Finding: by subtraction the JIT work spreads run 10-20% and two single-module JIT cells
+  are suspect, the 4-6 s startup dominating 1.4-2.5 s of work: in-process timing is the fix, not
+  more samples.
+  In-process timing Done (branch `fix/ports-in-process-timing-2`, PR #106; decision 2 of
+  `/root/notes/plan-measure-setup.md`): `bench/timed.lua` times a benchmark inside the process, its
+  `os.clock` seconds one stderr line, the test suite run under it too; the Work table, ratios and
+  means render the work seconds, a capture without them by subtraction and marked. A one-sample
+  publish on box PC gives converted JIT work at 4.0-9.5x native (fib 9.5, binary_trees 4.0, nbody
+  5.6, spectral_norm 8.7) and 1.55x on the test suite, close to fb88940's subtraction tables: the
+  published JIT column was not inflated.
+  Rows: a progress/ETA line per cell here and in the compare projects (the plan, section 3); a
+  perf kernels table in the top README if the owner wants ours-only kernels there;
+  `ports/ARCHITECTURE.md` section 4 states the warm-start fact.
 - **P5.1b1 Multi-TU link** (owner rulings 2026-10-23, 4 and 5: the P5.1b split, the link on the
   dumper's in-memory trees with no C-IR spec change; branch `p5.1b1-multi-tu-link`). `c2das <a.c>
   <b.c> ...` and `c2das --program <p.json>` convert several C files as one program: each file is
@@ -1185,11 +1209,33 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   Compare on the bench: the Rust binary b1d012eb5 (3 commits past the pin, `scripts/` and
   `tests/manual` only) translates all six projects there once its exporter and libclang were in
   place; its `protected_call` audit kernel fails there ("translation failed: operation=top-level
-  declaration lowering") where the dev box translated it. Rows: ruling 29 item 4, kernels and
-  projects re-captured on one box with `cpu` and `box` (the bench entries carry neither; the ports
-  head-to-head Speed table is fx's); PR #93's tdd leftover: compare's `--box` wiring into
-  `--suites`, `--suite` and `--perf` has no test (a `--filter` run writes no capture, and on a known
-  box the CPU fallback masks the flag): a cpu-name env override for tests, low priority.
+  declaration lowering") where the dev box translated it. Row: PR #93's tdd leftover: compare's
+  `--box` wiring into `--suites`, `--suite` and `--perf` has no test (a `--filter` run writes no
+  capture, and on a known box the CPU fallback masks the flag): a cpu-name env override for tests,
+  low priority.
+  Ruling 29 item 4 Done (branch `perf/compare-recapture-pc-2`, PR #104; box PC, Rust b1d012eb5, 5
+  samples a kernel cell, 3 a project): geomean ours / Rust interp 30.52 / 30.40 (17 kernels), JIT
+  1.13 / 0.96 (14), exe 1.46 / 1.40 (15), AOT 1.22 / 1.23 (15); two cells suspect (bit_pack ours
+  interp, va_forward ours JIT). Projects: ours passes binjgb, plmpeg-stream and h264bsd-mp4 on
+  every lane; decode over native ours / Rust interp binjgb 4.80 / 4.42, plmpeg-stream 1.63 / 1.38,
+  h264bsd-mp4 6.63 / 4.24; wasm3 (v), doomgeneric (s) and quakegeneric (t) refused on our side. The
+  first pass ran beside an investigation and had 10 suspect kernel cells: discarded, the kernels
+  repeated on a quiet box. The suspect rule in the compare and perf renderers is Done (branch
+  `fix/suspect-cells`, PR #103): a cell with a spread over 20% is suspect, never a number, out of
+  the means and deltas; the rule lives in `perf/boxes.das` for ports, compare and perf alike.
+  Rows from the capture: (1) compare's project runs take their address-space cap from a flag
+  (default 6 GiB on a box with the memory; doomgeneric died with SIGSEGV under 4 GiB, an allocation
+  failure under the cap, the second crash after (u)), and a crash is a recorded cell error, not an
+  rc 139 of the whole run; (2) a filtered `--perf` run re-measures only the named kernels into the
+  capture (today it writes nothing), so a suspect cell re-runs alone; (3) `perf/perf_measure.das`
+  (compare and perf share it) records a signal death as "signal N (<name>)" with the first stderr
+  line, never a bare exit code with an empty message, and spawns every sample under `prlimit
+  --core=0` (the kernels runs left 25 GB of crash dumps); (4) the AOT host (`converter/tiers.das`)
+  traps and dumps core on an unhandled daslang exception (bit_pack Rust AOT's "array resize ...
+  grows past max_unreserved_size", a cell reading "exited 5: " with no message) where the exe lane
+  exits 1 with the message: exit with the message, no trap; (5) va_forward AOT crashes
+  intermittently on PC in both translations (fine alone, rc 0; fx ran it at 13.4x / 14.8x): watch
+  the next capture, with (3) in place the cell says what.
 - **P8.1b Readability metric by the critic's criteria** (owner ruling 2026-11-01 (21); after P8.1,
   before P8.2). `metrics/readability.das` gains a criterion for every finding and blind spot of the
   critic's review (`/root/notes/owner/2026-11-01_readability-critic.md`, the agent's footnotes
@@ -1308,19 +1354,23 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   (dumper); (q) h264bsd-mp4 error[30341] too many matching functions or generics `malloc`, a
   project defining its own `malloc` beside crt's (compile check; a P6.3-class item); (r)
   quakegeneric `sys_null.c:160` `vfprintf` without a c_runtime map (emitter; a stdlib row, the
-  vfprintf/vprintf family). (p) Done (branch `p8.4p-doomgeneric-type`): the empty spelling was a
+  vfprintf/vprintf family). (p) Done (branch `p8.4p-doomgeneric-type`, PR #96): the empty spelling was a
   doc comment (`//!`, a `FullComment` child) taken as a global's initializer; doomgeneric now
   passes the dumper and stops in the emitter at `doomdata.h:57:9`, "record `mapvertex_t` is not laid
   out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar":
   (s) the projects table gives our side a per-project sidecar `marshal` list (the PureDOOM records,
   `doom/doom.c2das`, as the model), then the next stop is read. (r) Done (branch
-  `p8.4r-vfprintf`): `vfprintf` is c_runtime's `c_vfprintf`; quakegeneric now stops in the emitter
+  `p8.4r-vfprintf`, PR #98): `vfprintf` is c_runtime's `c_vfprintf`; quakegeneric now stops in the emitter
   at `host_cmd.c:63:10`, "a pointer to a variadic function is not lowered yet" (`void (*print)
   (char *fmt, ...)` in `Host_Status_f`): (t) a function pointer of variadic type, its `invoke`
   passing the trailing tuple; Rust passes interp, exe and AOT there (JIT output differs). One of
   two compare runs of the project crashed (SIGSEGV in `compare/run.das` after the Rust lanes'
   module list), the rerun did not: (u) watch for it in the ruling 29 item 4 re-capture.
-  (i) Done (branch `p8.4i-vectorcall`): a calling convention in a type spelling drops, through
+  (q) Done (branch `p8.4q2-malloc-shadow`, PR #99): a function the program defines named like a
+  libc function c_runtime maps takes the next free numbered name (`malloc1`, `strlen1`) and every
+  call and `@@` reference binds to it (`rename_taken_names`, the `c_argc1` mechanism); h264bsd-mp4
+  passes interp, JIT, exe and AOT, no next stop.
+  (i) Done (branch `p8.4i-vectorcall`, PR #102): a calling convention in a type spelling drops, through
   the macro clang spells in its place too, and a `_Static_assert` at file or block scope is
   skipped (the next stop, `m3_compile.c:204`); wasm3 now stops in the dumper at `m3_parse.c:305:22`, "`m3type_t
   argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)": (v) a VLA
@@ -1527,10 +1577,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   holds the converted traces to the native ones apart from the reference path. Result: freedoom2
   demo1/2/3 under interp, `source` layout, in sync to the end (2664 / 5444 / 2743 tics, `cs` and
   `fb`), each ending in the timedemo line.
-  RULINGS (owner): (a) the native reference built under `-funsigned-char` (F17) or `-O2 -w` signed
-  as kept; (b) rung 2 by patch 0004 or by a converter mechanism for neighbour-table reads (a
-  sidecar key aliasing two globals as one storage; 0004 is one commit, easy to drop); (c) "both
-  wads": closed, dropped by the owner (ruling 30): freedoom2.wad is the one IWAD.
+  RULINGS (owner, ruling 30 item 3, from `/root/notes/research/doom-native-questions.md`): (a) the
+  native reference stays the signed-char build with patch 0003, not `-funsigned-char`; (b) rung 2
+  stays patch 0004; rows: an alias sidecar key (two globals as one storage) when a second program
+  needs it, and the emitter flags a constant out-of-range index with its C location instead of das
+  failing at simulate time (error 50300); (c) "both wads": closed, dropped by the owner (ruling
+  30): freedoom2.wad is the one IWAD.
   Next rung: jit, exe and aot and the `source-cut` and `single` layouts on freedoom2 demo1-3 (doom2.wad
   dropped by the owner, ruling 30); ruling 29 item 1 takes the rungs P6.7 needs with it. Leftovers: the native trace run's
   exit code is not checked (a partial `.native.log` passes); `native_path`, `layout_dir` and
@@ -1545,7 +1597,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   first; the P6.5 rungs it needs come with it. Ruling 28: the speed number is realtics, in-process,
   never the process's wall time (startup is its own row); the per-tic framebuffer hash costs the
   interp tier (P6.4b), measured apart.
-  State (branch `p6.7-doom-fps-2`, box PC, Ryzen 7 7435HS, WSL2): the host times the playback with
+  Done (branch `p6.7-doom-fps-2`, PR #101; box PC, Ryzen 7 7435HS, WSL2): the host times the playback with
   `clock()` (`host: timed N gametics in S s`); `doom/run.das --run --fps` holds every run of demo1-3
   to the reference log under native, interp and JIT with the sync build, all in sync (JIT demo1/2/3
   2664/5444/2743 tics to the timedemo line), then times the speed build, `DOOM_TIC_CHECKSUM` left
@@ -1566,11 +1618,14 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `_first` flag loop with a temporary per pixel; a scratch kernel with `R_DrawColumn`'s body over
   module arrays, 200000 columns of 151 pixels, the converted loop against the same body in a
   counted `range` loop, 3 runs in one process: 1.33-1.36x slower under interp, 0.94-0.98x under
-  JIT. Rust emits `for (urange64(0, count + 1))`. Candidate row: a `do-while` whose condition is a
-  post-decrement of a local counter lowered as a counted range. (3) the frame checksum's own `for`,
+  JIT. Rust emits `for (urange64(0, count + 1))`. Row (a): a `do-while` whose condition is a
+  post-decrement of a local counter lowered as a counted range (the converter; idiomatic default). (3) the frame checksum's own `for`,
   its counter declared outside, stays a `while` (not timed apart).
-  Open: a per-function profile of a converted demo under interp. Blocked: the daslang profiler
-  prints no summary on a C `exit`, and a 700-tic trace exceeds 4 GiB.
+  Rows: (b) a per-function profile of a converted demo under interp, blocked: the daslang profiler
+  prints no summary when the program exits through C `exit`, and a 700-tic trace exceeds 4 GiB: a
+  host flag that returns from `main` instead of `exit` for profiling runs; (c) the JIT gap, 3.6-3.8x
+  against Rust doomgeneric's 1.04x, unexplained: P7.0b2 did not reach it, P7.0b3 takes Doom beside
+  Lua's residue.
 - **Exit criterion:** demo-sync 100%, playable with sound and music, perf table v1.
 
 ## P7 — Performance + tiers
@@ -1741,6 +1796,24 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   each) do not explain a 10x gap; profile the live program one construct at a time as P7.0b did,
   the Rust translation beside, and open rows for what costs. The main argument against the project
   today; runs after the P8.4 refusals, before the compare re-capture.
+  Done as an investigation (report `/root/notes/research/p7.0b2-lua-gap.md`; no code): the gap is
+  the opcode dispatch: the converted `luaV_execute` tests every opcode in turn, up to 83 tests per
+  instruction, 64% of fib's interpreter time (10.1 ns a test, 249 tests per Lua call, 2.5 of 3.94
+  us); the kernels have no such loop, which is why they sit at 7-30x and Lua at 105-266x;
+  `[c_union]` accessor calls about 5%; das call overhead and `c_label_end` nothing measurable; 31%
+  unexplained (about 220 ns per VM instruction). Computed-goto dispatch (P7.0c2) under the JIT on a
+  quiet box: 1.82x fib, 1.43x binary_trees, 1.31x nbody, 1.54x spectral_norm (spreads at or under
+  3%); under the interpreter it is blocked by a daslang bug (a computed `goto` to a label inside a
+  `while` body followed by an `if` without `else` lands wrong, a larger body segfaults;
+  lookibed/daScript#35). Rows: P7.0c2 first, P7.0c3, P7.0c4 and P7.0b3 below; a daScript issue
+  for the inliner splicing `[c_union]` accessors (the 5%). The report's section on the ports
+  tables (JIT work 1.3-2.6x native inside the process) is not reproduced by the in-process publish
+  (4.0-9.5x, PR #106; other bench sizes or the variant modules): re-check it before it is cited.
+  Doom's JIT gap (P6.7 (c)) not reached. Also a row: `lua/run.das` without `scripts/env.sh` dies
+  with a raw array-index exception at `converter/emit.das:3057` instead of an error message.
+- **P7.0b3 The Lua residue after the dispatch rows** (from P7.0b2): profile what remains after
+  P7.0c2/P7.0c3 (the 31% unexplained, about 220 ns per VM instruction, and the `[c_union]`
+  accessor calls) and Doom's JIT gap (P6.7 (c)) beside it, the Rust translation beside both.
 - **P7.0c Switch dispatch without the flag chain** (ruling (23): the plain-case form default, computed `goto` opt-in). A case no `goto` and no fall-through enters
   tests `_goto == 0 && _cond == K` alone (2.08x interp on `dispatch_switch`, 83 flag cases in lvm,
   an upper bound of the plain ones, every VM instruction). Then, opt-in under the speed-vs-
@@ -1753,7 +1826,16 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 - **P7.0c2 Computed `goto` dispatch for a dense switch** (opt-in, ruling (23); split from P7.0c):
   `goto <expr>` over a jump table, the Rust translation's form (27.0x native on `dispatch_switch`
   against our 195x), behind a converter option (CLI flag and sidecar field, default off), both
-  modes tested and measured.
+  modes tested and measured. First after P7.0b2 (its finding: the dispatch is 64% of the
+  interpreter time; 1.31-1.82x under the JIT on the four benches); under the interpreter it needs
+  the daslang fix for lookibed/daScript#35 or a probe-guarded shape. OWNER DECISION: its place in
+  the order now that ruling 29's four items are done.
+- **P7.0c3 One `_goto` test per dispatch** (default; from P7.0b2): the matched-flag loop tests
+  `_goto == 0` once per dispatch instead of once per case (about 1.28x fib, 1.13x binary_trees);
+  for every build, the opt-in P7.0c2 above it.
+- **P7.0c4 A binary split of the case chain** (candidate; from P7.0b2): a dense switch's case found
+  by a binary split of the chain (7 tests for 83 cases) for builds without the P7.0c2 opt-in;
+  measured against P7.0c3 before it is scheduled.
 - **P7.0d Wrap casts on 64-bit mixed operands** (ruling (23): default, with the signed-wrap probe). `int64(uint64(a) op uint64(b))` as `a op
   int64(b)`, extending P7.0's `int` fold to lvm's `intop` (OP_ADDI, OP_MUL, bitwise ops): 2.10x
   interp, sites 14/1/5/0. The kernel never overflows (values < 2^28): the fix depends on daslang's
