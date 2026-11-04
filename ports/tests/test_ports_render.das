@@ -206,6 +206,14 @@ def test_work(t : T?) {
         captures |> emplace(c)
         t |> success(render_projects(captures) |> contains("| 100.00 (by subtraction) |"), render_projects(captures))
     }
+    t |> run("a mean is marked only over a ratio by subtraction that enters it") @(t : T?) {
+        var c <- fixture()
+        c.cells[9].work_samples |> clear() // the interpreter's nbody by subtraction
+        c.cells[8] <- failed("nbody", "native", "exited 1") // so its ratio is missing, out of the mean
+        var captures : array<Capture>
+        captures |> emplace(c)
+        t |> equal(row_of(render_projects(captures), "[lua](lua/README.md)")[3], "200.00 (1 of 2)")
+    }
 }
 
 [test]
