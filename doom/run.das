@@ -31,6 +31,8 @@ let NATIVE = "doom/work/native/doom"
 let PATCHES <- ["doom/patches/0001-per-tic-checksum.patch", "doom/patches/0002-tic-trace.patch", "doom/patches/0003-signed-ticcmd.patch", "doom/patches/0004-fine-table-overruns.patch"]
 // the define of the patch's trace lines, the folder of the traces --trace runs write
 let TRACE_DEFINE = "DOOM_TIC_TRACE"
+// the define of the patch's tic lines and checksums, which the speed builds leave out
+let CHECKSUM_DEFINE = "DOOM_TIC_CHECKSUM"
 let TRACES = "doom/work/trace"
 let FREEDOOM2 = "doom/fetch/wads/freedoom2.wad"
 let NATIVE_FLAGS <- ["-O2", "-w"]
@@ -70,7 +72,9 @@ struct Args {
     timeout : int = 3600
     @clarg_doc = "with DOOM_TIC_TRACE: --native builds doom/work/native/doom-trace, --demo runs it into doom/work/trace/<wad>_demo<N>.native.log in place of a reference log, --convert converts into doom/work/<layout>-trace/ and --run runs that, writes its trace lines beside the native ones and holds them to those as tic lines are held: a traced desync fails the run"
     trace : bool
-    @clarg_doc = "with --run: time every demo (or --demo's) natively and under each of --tiers, --samples runs each, every run held to the reference log, and write doom/results_linux.json"
+    @clarg_doc = "without DOOM_TIC_CHECKSUM, the speed build --fps times: --native builds doom/work/native/doom-speed, --convert and --compile-check take doom/work/<layout>-speed/"
+    speed : bool
+    @clarg_doc = "with --run: for every demo (or --demo's), natively and under each of --tiers, one run of the sync build held to the reference log, then --samples runs of the speed build timed; writes doom/results_linux.json"
     fps : bool
     @clarg_doc = "the tiers --fps times after native, comma-separated"
     tiers : string = "interp,jit"
@@ -95,33 +99,41 @@ def private fetch_check : bool {
     return empty(problems)
 }
 
-// the native build, the traced one apart
-def private native_path(trace : bool) : string => trace ? "{NATIVE}-trace" : NATIVE
+// the build form of `--trace` and `--speed`, "" for the sync build
+def private form_of(trace, speed : bool) : string => trace ? "trace" : speed ? "speed" : ""
+
+// the native build of `form`
+def private native_path(form : string) : string => empty(form) ? NATIVE : "{NATIVE}-{form}"
 
 // the native build's command line: the pinned clang, the flags, the sidecar's defines
-def private native_command(defines : array<string>; trace : bool) : array<string> {
+def private native_command(defines : array<string>; form : string) : array<string> {
     var argv <- [default_clang()]
-    argv |> push_from(::NATIVE_FLAGS, [for (define in defines); "-D{define}"], ["-o", native_path(trace)], program_sources())
+    argv |> push_from(::NATIVE_FLAGS, [for (define in defines); "-D{define}"], ["-o", native_path(form)], program_sources())
     argv |> push("-lm")
     return <- argv
 }
 
-// the sidecar's defines, TRACE_DEFINE after them with `trace`, "" in `error` when it reads
-def private sidecar_defines(trace : bool; var error : string&) : array<string> {
+// the sidecar's defines for `form`: TRACE_DEFINE after them for the traced build, CHECKSUM_DEFINE
+// left out for the speed build; `error` set when the sidecar does not read
+def private sidecar_defines(form : string; var error : string&) : array<string> {
     let side = read_sidecar(SIDECAR, error)
-    var defines <- clone_to_move(side.defines)
-    if (trace) {
+    var defines <- [for (define in side.defines); define; where form != "speed" || define != CHECKSUM_DEFINE]
+    if (form == "trace") {
         defines |> push(TRACE_DEFINE)
     }
     return <- defines
 }
 
-// the sidecar a traced conversion takes, written into WORK: SIDECAR with TRACE_DEFINE first among
-// its defines; "" with `error` set when it cannot be written
-def private trace_sidecar(var error : string&) : string {
+// the sidecar a conversion of `form` takes: SIDECAR itself for the sync build, else written into
+// WORK, with TRACE_DEFINE first among its defines for the traced build, without CHECKSUM_DEFINE for
+// the speed build; "" with `error` set when it cannot be written
+def private form_sidecar(form : string; var error : string&) : string {
+    if (empty(form)) {
+        return SIDECAR
+    }
     mkdir_rec(WORK)
-    let path = path_join(WORK, "doom-trace.c2das")
-    let text = with_define(fread(SIDECAR), TRACE_DEFINE, error)
+    let path = path_join(WORK, "doom-{form}.c2das")
+    let text = form == "trace" ? with_define(fread(SIDECAR), TRACE_DEFINE, error) : without_define(fread(SIDECAR), CHECKSUM_DEFINE, error)
     if (!empty(error)) {
         error = "{SIDECAR}: {error}"
     } elif (!fwrite(path, text)) {
@@ -130,21 +142,21 @@ def private trace_sidecar(var error : string&) : string {
     return empty(error) ? path : ""
 }
 
-// the native build, traced with `trace`; false with the compiler's text logged when it fails
-def private build_native(trace : bool) : bool {
+// the native build of `form`; false with the compiler's text logged when it fails
+def private build_native(form : string) : bool {
     var error : string
-    let defines <- sidecar_defines(trace, error)
+    let defines <- sidecar_defines(form, error)
     if (!empty(error)) {
         to_log(LOG_ERROR, "doom: {error}\n")
         return false
     }
     mkdir_rec(dir_name(NATIVE))
     var output : string
-    if (run_and_capture(native_command(defines, trace), output, 600.0) != 0) {
+    if (run_and_capture(native_command(defines, form), output, 600.0) != 0) {
         to_log(LOG_ERROR, "doom: native build failed:\n{output}\n")
         return false
     }
-    to_log(LOG_INFO, "doom: {native_path(trace)}: {int64(stat(native_path(trace)).size)} bytes\n")
+    to_log(LOG_INFO, "doom: {native_path(form)}: {int64(stat(native_path(form)).size)} bytes\n")
     return true
 }
 
@@ -157,7 +169,7 @@ def private run_demo(demo : int; wad : string; trace : bool) : bool {
         to_log(LOG_ERROR, "doom: no wad {wad}\n")
         return false
     }
-    let native = native_path(trace)
+    let native = native_path(form_of(trace, false))
     if (!stat(native).is_reg) {
         to_log(LOG_ERROR, "doom: no {native}; run with --native\n")
         return false
@@ -171,7 +183,7 @@ def private run_demo(demo : int; wad : string; trace : bool) : bool {
         return write_traces(path_join(TRACES, "{stem}_demo{demo}.native.log"), trace_lines(output))
     }
     var error : string
-    let defines <- sidecar_defines(false, error)
+    let defines <- sidecar_defines("", error)
     var clang_version : string
     run_and_capture([default_clang(), "--version"], clang_version, 60.0)
     let versions = fread("VERSIONS.md")
@@ -197,15 +209,15 @@ def private write_traces(path : string; traces : array<string>) : bool {
     return !empty(traces)
 }
 
-// the folder a conversion in `layout` writes, the traced one apart
-def private layout_dir(layout : string; trace : bool) : string => path_join(WORK, trace ? "{layout}-trace" : layout)
+// the folder a conversion of `form` in `layout` writes
+def private layout_dir(layout, form : string) : string => path_join(WORK, empty(form) ? layout : "{layout}-{form}")
 
 // the converted program of `layout` run under `tier` on `demo` over `wad` and held to its reference
 // log; true when every compared tic is in sync. With `trace` the traced conversion runs, its trace
 // lines written to TRACES and held to the native run's as its tic lines are to the reference: a
 // missing native trace or a traced desync fails the run too.
 def private run_converted_demo(layout, tier : string; demo, tics, timeout : int; wad : string; trace : bool) : bool {
-    let spec <- DemoSpec(entry = path_join(layout_dir(layout, trace), "doom_main.das"), tier = tier, wad = wad, demo = demo, tics = tics, timeout = float(timeout), work = WORK, ref_dirs <- clone_to_move(REF_DIRS), module_dirs <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)])
+    let spec <- DemoSpec(entry = path_join(layout_dir(layout, form_of(trace, false)), "doom_main.das"), tier = tier, wad = wad, demo = demo, tics = tics, timeout = float(timeout), work = WORK, ref_dirs <- clone_to_move(REF_DIRS), module_dirs <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)])
     let run = run_converted(spec)
     for (line in run_report(spec, run)) {
         to_log(LOG_INFO, "doom: {line}\n")
@@ -239,8 +251,7 @@ def private git_line(args : array<string>) : string {
 // `--fps`: the plan of `args` over `demos`, the capture stamped with this tree's commit and this
 // machine, timed by `time_demos` into FPS_CAPTURE
 def private time_flags(args : Args; tiers : array<string>; demos : array<int>; wad : string) : bool {
-    let entry = path_join(layout_dir(args.layout, false), "doom_main.das")
-    let plan <- FpsPlan(native = NATIVE, entry = entry, wad = wad, work = WORK, ref_dirs <- clone_to_move(REF_DIRS), module_dirs <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)], tiers <- clone_to_move(tiers), demos <- clone_to_move(demos), samples = args.samples, timeout = args.timeout, capture_path = FPS_CAPTURE)
+    let plan <- FpsPlan(sync_native = NATIVE, sync_entry = path_join(layout_dir(args.layout, ""), "doom_main.das"), native = native_path("speed"), entry = path_join(layout_dir(args.layout, "speed"), "doom_main.das"), wad = wad, work = WORK, ref_dirs <- clone_to_move(REF_DIRS), module_dirs <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)], tiers <- clone_to_move(tiers), demos <- clone_to_move(demos), samples = args.samples, timeout = args.timeout, capture_path = FPS_CAPTURE)
     var clang, daslang : string
     tool_versions(clang, daslang)
     let platform = "{get_platform_name()} {strip(captured(["uname", "-m"]))}"
@@ -276,21 +287,21 @@ def private report(what : string; verdicts : array<Verdict>) : bool {
 }
 
 // the program staged in `doom/work/src/`, each unit converted alone, then the program in `layout`
-def private convert_doom(layout : string; trace : bool) : bool {
+def private convert_doom(layout, form : string) : bool {
     var error : string
     let c_paths <- stage_program(SOURCES, HOST, path_join(WORK, "src"), UNITS, error)
     if (!empty(error)) {
         to_log(LOG_ERROR, "doom: {error}\n")
         return false
     }
-    let sidecar = trace ? trace_sidecar(error) : SIDECAR
+    let sidecar = form_sidecar(form, error)
     let side <- empty(error) ? read_sidecar(sidecar, error) : Sidecar()
     if (!empty(error)) {
         to_log(LOG_ERROR, "doom: {error}\n")
         return false
     }
     let units_ok = report("unit", convert_units(c_paths, side))
-    let res <- convert_program(c_paths, layout_dir(layout, trace), TARGET, "", sidecar, "", "", "main", layout)
+    let res <- convert_program(c_paths, layout_dir(layout, form), TARGET, "", sidecar, "", "", "main", layout)
     if (!res.ok) {
         to_log(LOG_INFO, "doom: program ({layout}): {first_error_line(res.error)}\n")
         to_log(LOG_INFO, "doom: program ({layout}) blocked by: {classify(first_error_line(res.error))}\n")
@@ -319,10 +330,15 @@ def main : int {
         to_log(LOG_ERROR, "doom: --layout is source, source-cut or single, not `{args.layout}`\n")
         return 1
     }
-    let converted = !args.convert || convert_doom(args.layout, args.trace)
-    let compiled = !args.compile_check || report("module", compile_modules(layout_dir(args.layout, args.trace), CONVERTED_MODULES, 600.0))
+    if (args.speed && (args.trace || args.run || args.demo != 0)) {
+        to_log(LOG_ERROR, "doom: --speed goes with --native, --convert and --compile-check alone; --fps runs the speed builds\n")
+        return 1
+    }
+    let form = form_of(args.trace, args.speed)
+    let converted = !args.convert || convert_doom(args.layout, form)
+    let compiled = !args.compile_check || report("module", compile_modules(layout_dir(args.layout, form), CONVERTED_MODULES, 600.0))
     let wad = empty(args.wad) ? FREEDOOM2 : args.wad
-    let native_failed = (args.fetch_check && !fetch_check()) || (args.native && !build_native(args.trace)) || (args.demo != 0 && !args.run && !run_demo(args.demo, wad, args.trace))
+    let native_failed = (args.fetch_check && !fetch_check()) || (args.native && !build_native(form)) || (args.demo != 0 && !args.run && !run_demo(args.demo, wad, args.trace))
     let tiers <- [for (tier in split(args.tiers, ",")); strip(tier)]
     let refusal = fps_refusal(args.fps, args.run, tiers, args.samples, args.tics, args.trace)
     if (!empty(refusal)) {

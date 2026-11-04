@@ -31,32 +31,42 @@ P6.5 and P6.7), not this document's.
 
 ## 9. The frame rate
 
+Two builds of the program serve the frame rate. The sync build is the one every other section
+describes: under `DOOM_TIC_CHECKSUM` it hashes each tic's state and frame and prints the tic lines
+the reference log holds. The speed build is the same program without that define, natively
+(`work/native/doom-speed`) and converted (`work/<layout>-speed/`, under `work/doom-speed.c2das`,
+the sidecar with the define taken out): it hashes nothing and prints no tic line, so the timed
+window holds the game alone.
+
 The host times the playback (section 4 of `ARCHITECTURE.md`): it reads `clock()`, the process CPU
 time, after `doom_init` returns and again at the end, and prints `host: timed <N> gametics in <S> s`.
 `clock()` is the clock the converter maps (`crt::clock`, the clock perf's default method reads,
 `perf/ARCHITECTURE.md` section 2), so the native build and every tier time themselves with the same
-clock; the process start, the module load, the JIT compile, the wad load and `R_Init` stay outside
-the window, which holds the demo's tics, their screen melts, the patch's checksums and the tic lines
-printed. The checksums are part of the timed work in every lane: `fb` hashes the 64000 bytes of
-each frame, which the converted build pays at its own speed.
+clock. In the speed build's window: the demo's tics, their screen melts and their drawing. Outside
+it: the process start, the module load, the JIT compile, the wad load and `R_Init`; and, having no
+part in the speed build, the per-tic checksums and the tic lines.
 
-`run.das --run --fps` times every demo (or `--demo`'s) natively and under each tier of `--tiers`
-(default `interp,jit`), `--samples` runs a cell (default 3), each run its own process through
-`run_converted`, whose tier `native` runs `work/native/doom` alone under `prlimit --as` 3 GiB; the
-converted runs take `--layout`'s conversion. Each run is held to the whole demo as section 8 holds
-one (`fps_run.das`, over an `FpsPlan` `run.das` fills), and `fps.das`'s `run_problem` refuses a run that is out of sync, did not end in `timed N
-gametics`, printed no host line, or timed other tics than the demo's or no time: the cell then
-records the error (`desync` when the run desynced) and takes no further run, since the fps of a
-wrong replay is never published. A cell's fps is the median of the runs' `N / S`, its spread half
-their range over the median (`perf_lanes.das`'s `median_of` and `spread_of`).
+`run.das --run --fps` takes every demo (or `--demo`'s) natively and under each tier of `--tiers`
+(default `interp,jit`), each run its own process through `run_converted`, whose tier `native` runs
+a native build alone under `prlimit --as` 3 GiB; the converted runs take `--layout`'s conversions.
+`fps_run.das` runs it over an `FpsPlan` `run.das` fills. Per demo and lane one run of the sync build
+comes first, held to every tic of the reference log as section 8 holds a run; a run out of sync
+leaves the cell an error (`desync`) and no speed run follows, since the fps of a wrong replay is
+never published. Then `--samples` runs of the speed build (default 3), each held to the demo's end:
+`run_converted` under `DemoSpec.speed` compares no tic line, and `in_sync` passes a speed run only
+when it ends in the demo's `timed N gametics` and prints no tic line. `fps.das`'s `run_problem`
+also refuses a run without the host line, or whose host line times other tics than the reference's
+or no time; the first speed run refused ends the cell. A cell's fps is the median of the speed runs'
+`N / S`, its spread half their range over the median (`perf_lanes.das`'s `median_of` and
+`spread_of`).
 
 The capture is `results_linux.json` in this folder (`FpsCapture`): the c2das-re commit (`-dirty`
 with tracked changes), the command, the end of the run, the platform, the CPU model and its box
 (`perf/boxes.das`), clang's and daslang's version lines, the runs per cell, the clock, the lanes
-with the command one run of each is, the demos and one cell per demo and lane with every run's fps
-and seconds. `render_fps` turns a capture into the provenance line, the method line and one table,
-demo by lane, each das lane's native fps over its own after the fps columns, and one line per cell
-that does not stand; it reads no clock and no file. A cell whose spread is above 20% (`SUSPECT_SPREAD`
-of `ports/ports_render.das`) renders `suspect (±N.N%)` and its ratio `suspect`. `run.das --readme`
-rewrites `README.md` (repository root) between `<!-- doom-fps:begin -->` and `<!-- doom-fps:end -->`
-from the committed capture.
+with the command one timed run of each is, the demos and one cell per demo and lane with every
+speed run's fps and seconds. `render_fps` turns a capture into the provenance line, the method line
+and one table, demo by lane, each das lane's native fps over its own after the fps columns, and one
+line per cell that does not stand; it reads no clock and no file. A cell whose spread is above 20%
+(`SUSPECT_SPREAD` of `ports/ports_render.das`) renders `suspect (±N.N%)` and its ratio `suspect`.
+`run.das --readme` rewrites `README.md` (repository root) between `<!-- doom-fps:begin -->` and
+`<!-- doom-fps:end -->` from the committed capture.

@@ -224,6 +224,18 @@ def with_define(sidecar, define : string; var error : string&) : string {
     return replace(sidecar, mark, "{mark}\"{define}\", ")
 }
 
+//! `sidecar`'s text with `define` gone from its defines; "" with `error` set when the text does not
+//! name `"<define>"` exactly once.
+def without_define(sidecar, define : string; var error : string&) : string {
+    let quoted = "\"{define}\""
+    if (length(split(sidecar, quoted)) != 2) {
+        error = "no single `{quoted}` to take out"
+        return ""
+    }
+    let gone = replace(replace(sidecar, ", {quoted}", ""), "{quoted}, ", "")
+    return gone != sidecar ? gone : replace(sidecar, quoted, "")
+}
+
 //! The patches a reference log's header names: each path with its sha256, joined by ` + `.
 def patch_list(patches : array<string>) : string => join([for (patch in patches); "{patch} (sha256 {file_sha256(patch)})"], " + ")
 

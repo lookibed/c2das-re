@@ -89,6 +89,38 @@ def test_native(t : T?) {
 }
 
 [test]
+def test_speed(t : T?) {
+    t |> run("a speed build is held to the demo's end alone, printing no tic line") @(t : T?) {
+        var spec <- stand_in_spec(0)
+        spec.entry = path_join(dir_name(spec.wad), "doom_main_speed.das")
+        fwrite(spec.entry, STAND_IN)
+        spec.speed = true
+        let run = run_stand_in(spec, "4,-1,255,0,-1,-1")
+        let lines <- run_report(spec, run)
+        t |> equal(run.tics, 0)
+        t |> success(in_sync(run))
+        t |> equal(run.timing.tics, 4)
+        t |> success(lines[0] |> contains(": speed build ended in `timed 4 gametics` against "), lines[0])
+    }
+    t |> run("a speed run that prints tic lines is the sync build in its place") @(t : T?) {
+        var spec <- stand_in_spec(0)
+        spec.speed = true
+        let run = run_stand_in(spec, "4,-1,255,0,-1,-1")
+        t |> success(!in_sync(run))
+        t |> equal(speed_summary(run), "speed build ended in `timed 4 gametics`, yet printed 4 tic lines")
+    }
+    t |> run("a speed run that does not end in the timedemo line") @(t : T?) {
+        var spec <- stand_in_spec(0)
+        spec.entry = path_join(dir_name(spec.wad), "doom_main_speed.das")
+        fwrite(spec.entry, STAND_IN)
+        spec.speed = true
+        let run = run_stand_in(spec, "4,-1,0,0,-1,-1")
+        t |> success(!in_sync(run))
+        t |> equal(speed_summary(run), "speed build did not end in `timed 4 gametics`")
+    }
+}
+
+[test]
 def test_desync(t : T?) {
     t |> run("the first desynced tic, expected against got") @(t : T?) {
         let spec <- stand_in_spec(0)

@@ -38,7 +38,8 @@ def reference_log(dirs : array<string>; stem : string; demo : int) : string {
 
 //! A converted program's demo run: `entry` its entry module under `tier`, `-timedemo demo<demo>`
 //! over `wad`, held to the first `tics` tic lines of the reference log (all of them when 0) found
-//! in `ref_dirs`; `work` takes the run folder and the tier's builds, `timeout` bounds each process.
+//! in `ref_dirs`; `work` takes the run folder and the tier's builds, `timeout` bounds each process;
+//! `speed` when `entry` is the speed build, which prints no tic line and is held to the demo's end.
 struct DemoSpec {
     entry : string
     tier : string
@@ -49,6 +50,7 @@ struct DemoSpec {
     work : string
     ref_dirs : array<string>
     module_dirs : array<string>
+    speed : bool
 }
 
 //! A run's outcome: `error` why the program did not run; else its exit code (`popen_timed_out` past
@@ -56,7 +58,7 @@ struct DemoSpec {
 //! did not end in the timedemo line or the host's `-tics` stop and the sync with the reference log `ref_log`. `whole` when the
 //! run is held to the whole demo, `ended` when it ended in time in `timed N gametics` with N the
 //! reference's tics; `traces` the `trace=` lines it printed, one per line; `timing` the host's
-//! line on the playback's own time (`host_timing`).
+//! line on the playback's own time (`host_timing`); `speed` a run of the speed build.
 struct DemoRun {
     error : string
     ref_log : string
@@ -69,6 +71,7 @@ struct DemoRun {
     sync : TicSync
     traces : string
     timing : HostTiming = HostTiming()
+    speed : bool
 }
 
 //! The C `argv` of `spec`'s program: `-timedemo demo<demo>`, after the host's `-tics <tics>` when
@@ -133,7 +136,8 @@ def run_converted(spec : DemoSpec) : DemoRun {
     if (gametics < 0 && !(output |> contains("host: stopped after "))) {
         run.error_line = first_error_line(join(non_tic_lines(output), "\n"))
     }
-    run.sync = tic_sync(expected, got, spec.tics)
+    run.speed = spec.speed
+    run.sync = spec.speed ? TicSync(compared = length(expected)) : tic_sync(expected, got, spec.tics)
     run.traces = join(trace_lines(output), "\n")
     run.timing = host_timing(output)
     return run
@@ -143,7 +147,22 @@ def run_converted(spec : DemoSpec) : DemoRun {
 def private tics_in_sync(run : DemoRun) : bool => empty(run.sync.desync) && run.sync.compared > 0 && run.sync.in_sync == run.sync.compared
 
 //! Whether `run` ran and held every compared tic in sync and, held to the whole demo, ended in it.
-def in_sync(run : DemoRun) : bool => empty(run.error) && tics_in_sync(run) && (run.ended || !run.whole)
+//! A speed build prints no tic line: it is held to the demo's end alone, and a tic line means the
+//! sync build ran in its place.
+def in_sync(run : DemoRun) : bool {
+    if (run.speed) {
+        return empty(run.error) && run.ended && run.tics == 0
+    }
+    return empty(run.error) && tics_in_sync(run) && (run.ended || !run.whole)
+}
+
+//! The line on a speed build's `run`: whether it ended in the demo's `timed N gametics` and printed
+//! no tic line.
+def speed_summary(run : DemoRun) : string {
+    let ended = run.ended ? "ended in `timed {run.sync.compared} gametics`" : "did not end in `timed {run.sync.compared} gametics`"
+    let lines = run.tics > 0 ? ", yet printed {run.tics} tic lines" : ""
+    return "speed build {ended}{lines}"
+}
 
 //! The lines `run.das` logs on `spec`'s `run`: the sync, the exit, the first error line and the
 //! seconds per 35 tics, a sanity number that counts the program's start.
@@ -153,7 +172,7 @@ def run_report(spec : DemoSpec; run : DemoRun) : array<string> {
         return <- ["{what}: {run.error}"]
     }
     let unended = run.whole && !run.ended && tics_in_sync(run) ? ", then the run did not end in `timed {run.sync.compared} gametics`" : ""
-    var lines <- ["{what}: {sync_summary(run.sync)}{unended} against {run.ref_log}"]
+    var lines <- [run.speed ? "{what}: {speed_summary(run)} against {run.ref_log}" : "{what}: {sync_summary(run.sync)}{unended} against {run.ref_log}"]
     lines |> push(run.rc == popen_timed_out ? "{what}: timed out after {spec.timeout} s" : "{what}: exit {run.rc}")
     if (!empty(run.error_line)) {
         lines |> push("{what}: first error: {run.error_line}")

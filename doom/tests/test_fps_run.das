@@ -15,18 +15,21 @@ require _stand_in
 //! desync), the capture written or not, the README section; and `run.das` itself as a child
 //! process, the `--fps` switch against the plain `--run` and a refusal.
 
-// a plan over the stand-ins in a fresh folder: the native script, the das entry, demo1, `samples`
-// runs a cell, the capture beside them
+// a plan over the stand-ins in a fresh folder: the native scripts and the das entries, sync and
+// speed, demo1, `samples` runs a cell, the capture beside them
 def private stand_in_plan(samples : int) : FpsPlan {
     let spec <- stand_in_spec(0)
     let root = dir_name(spec.wad)
     write_native_stand_in(path_join(root, "doom"))
+    write_native_stand_in(path_join(root, "doom-speed"))
+    fwrite(path_join(root, "doom_main_speed.das"), STAND_IN)
     set_env_variable("DOOM_STAND_IN", "4,-1,255,0,-1,-1")
     set_env_variable("DOOM_NATIVE_DESYNC", "")
-    return <- FpsPlan(native = path_join(root, "doom"), entry = spec.entry, wad = spec.wad, work = spec.work, ref_dirs <- clone_to_move(spec.ref_dirs), tiers <- ["interp"], demos <- [1], samples = samples, timeout = 60, capture_path = path_join(root, "results.json"))
+    set_env_variable("DOOM_NATIVE_SPEED_FAIL", "")
+    return <- FpsPlan(sync_native = path_join(root, "doom"), sync_entry = spec.entry, native = path_join(root, "doom-speed"), entry = path_join(root, "doom_main_speed.das"), wad = spec.wad, work = spec.work, ref_dirs <- clone_to_move(spec.ref_dirs), tiers <- ["interp"], demos <- [1], samples = samples, timeout = 60, capture_path = path_join(root, "results.json"))
 }
 
-// the native stand-in's run count, from the `runs` file beside it
+// the native stand-ins' run count, sync and speed, from the `runs` file beside them
 def private native_runs(plan : FpsPlan) : int {
     let path = path_join(dir_name(plan.native), "runs")
     return stat(path).is_reg ? length(split(strip(fread(path)), "\n")) : 0
@@ -60,27 +63,37 @@ def test_demos_and_head(t : T?) {
 
 [test]
 def test_cell(t : T?) {
-    t |> run("native runs the native build, a tier the converted entry, every sample") @(t : T?) {
+    t |> run("native runs the native builds, a tier the converted entries: one sync run, then every sample of the speed build") @(t : T?) {
         let plan <- stand_in_plan(2)
         let native <- fps_cell(plan, NATIVE_LANE, 1)
         t |> equal(native.error, "")
         t |> equal(length(native.samples), 2)
         t |> equal(native.fps, 32.0lf)
-        t |> equal(native_runs(plan), 2)
+        t |> equal(native_runs(plan), 3)
         let interp <- fps_cell(plan, "interp", 1)
         t |> equal(interp.error, "")
         t |> equal(interp.fps, 16.0lf)
-        t |> equal(native_runs(plan), 2)
+        t |> equal(native_runs(plan), 3)
     }
-    t |> run("a native desync is no cell, and the first run without fps ends it") @(t : T?) {
+    t |> run("a sync run out of sync is no cell: no speed run follows") @(t : T?) {
         let plan <- stand_in_plan(3)
         set_env_variable("DOOM_NATIVE_DESYNC", "1")
         let cell <- fps_cell(plan, NATIVE_LANE, 1)
         set_env_variable("DOOM_NATIVE_DESYNC", "")
         t |> success(cell.desync)
-        t |> success(cell.error |> starts_with("desync after 2 tics in sync on cs"), cell.error)
+        t |> success(cell.error |> starts_with("sync build: desync after 2 tics in sync on cs"), cell.error)
         t |> equal(length(cell.samples), 0)
         t |> equal(native_runs(plan), 1)
+    }
+    t |> run("the first speed run without fps ends the cell, not a desync") @(t : T?) {
+        let plan <- stand_in_plan(3)
+        set_env_variable("DOOM_NATIVE_SPEED_FAIL", "1")
+        let cell <- fps_cell(plan, NATIVE_LANE, 1)
+        set_env_variable("DOOM_NATIVE_SPEED_FAIL", "")
+        t |> success(!cell.desync)
+        t |> equal(cell.error, "speed build did not end in `timed 4 gametics` (exit 0)")
+        t |> equal(length(cell.samples), 0)
+        t |> equal(native_runs(plan), 2)
     }
 }
 
@@ -171,7 +184,7 @@ def test_run_das(t : T?) {
     t |> run("--fps times every lane: native first, no native build there") @(t : T?) {
         var out : string
         t |> equal(run_das(dir, ["--run", "--fps", "--demo", "1", "--tiers", "interp", "--samples", "1"], out), 1)
-        t |> success(out |> contains("doom: demo1, native: no doom/work/native/doom; run --native"), out)
+        t |> success(out |> contains("doom: demo1, native: sync build: no doom/work/native/doom; run --native"), out)
         t |> success(out |> contains("doom: cannot write doom/results_linux.json"), out)
     }
     t |> run("--run without --fps runs the converted demo alone") @(t : T?) {
