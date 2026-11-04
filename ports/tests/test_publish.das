@@ -617,14 +617,22 @@ def test_closing_line(t : T?) {
 def test_work_line(t : T?) {
     t |> run_stand_in("under the wrapper a run without its work seconds fails its cell, so does a line without seconds, and a lane whose warm-up prints none fails whole, the exe lane too", "c2das_ports_work_line") @(t : T?; root, clone : string) {
         let lua_module = path_join(root, "lua/work/lua/lua.das")
-        // the line under the warm-up's empty script alone, and one without seconds for nbody.lua
-        fwrite(lua_module, "options gen2\nrequire strings\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    let last = argv[length(argv) - 1]\n    if (last |> ends_with(\"empty.lua\")) \{\n        print(\"c2das_work_s=0.002000\\n\")\n    \} elif (last |> ends_with(\"nbody.lua\")) \{\n        print(\"c2das_work_s=soon\\n\")\n    \}\n    print(\"\{last\}\\n\")\n    return 0\n\}\n")
+        // the line under the warm-up's empty script alone, one without seconds for nbody.lua, the
+        // line amid binary_trees.lua's only output line (its halves around it), and two lines for
+        // the test suite, as from a program that prints the mark itself
+        fwrite(lua_module, "options gen2\nrequire strings\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    let last = argv[length(argv) - 1]\n    if (last |> ends_with(\"binary_trees.lua\")) \{\n        print(slice(last, 0, 5))\n        print(\"c2das_work_s=0.002000\\n\")\n        print(\"\{slice(last, 5)\}\\n\")\n        return 0\n    \}\n    if (last == \"all.lua\") \{\n        print(\"c2das_work_s=0.002000\\nc2das_work_s=0.002000\\nfinal OK !!!\\n\")\n        return 0\n    \}\n    if (last |> ends_with(\"empty.lua\")) \{\n        print(\"c2das_work_s=0.002000\\n\")\n    \} elif (last |> ends_with(\"nbody.lua\")) \{\n        print(\"c2das_work_s=soon\\n\")\n    \}\n    print(\"\{last\}\\n\")\n    return 0\n\}\n")
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp", "--allow-dirty"], out), 0, out)
         var readme = fread(path_join(clone, "lua/README.md"))
         t |> success(readme |> contains("- fib, interpreter: not yet: exited 0 under bench/timed.lua with no `c2das_work_s=` line; its last line: "), readme)
         t |> success(readme |> contains("- nbody, interpreter: not yet: exited 0 under bench/timed.lua with `c2das_work_s=soon`, no seconds; its last line: "), readme)
         t |> success(!(readme |> contains("- startup, interpreter")), readme)
+        t |> success(readme |> contains("- test suite, interpreter: not yet: exited 0 under bench/timed.lua with 2 `c2das_work_s=` lines; its last line: final OK !!!\n"), readme)
+        // the cut joins the halves, so the row matches the native build's
+        var name : string
+        let c <- capture_of(clone, name)
+        let trees <- cell_of(t, c, "binary_trees", "interp")
+        t |> success(empty(trees.error) && length(trees.work_samples) == 1 && trees.work_time == 0.002lf, "{trees}")
         // no line even under the empty script: the wrapper does not run there, the lane fails whole
         fwrite(lua_module, "options gen2\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    print(\"\{argv[length(argv) - 1]\}\\n\")\n    return 0\n\}\n")
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp,exe", "--allow-dirty"], out), 0, out)

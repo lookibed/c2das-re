@@ -141,7 +141,9 @@ reads the clock again and writes `c2das_work_s=<seconds>` (`%.6f`) to stderr; it
 `io.stderr` and `string.format` before the script runs, since `all.lua` ends by clearing the
 globals. `os.clock()` is C `clock()`, the process's CPU time: libc's under the native lane,
 `crt::clock` under every converted lane, the clock perf's default method reads too, so every
-lane's work seconds come from one clock. The startup row runs bare. A sample is one process: its
+lane's work seconds come from one clock. The work seconds are process CPU time (`clock()`, user
+plus system), unlike dasProfile's steady wall clock, because stock Lua has no in-process wall clock
+finer than `os.time()`'s whole seconds. The startup row runs bare. A sample is one process: its
 time is the wall time from the spawn to the end of its output, which the child closes on exit
 (popen's return lags the exit by up to its 100 ms watchdog tick, so the return is not the clock),
 and under the wrapper also its work seconds, the line taken out of the merged stdout and stderr
