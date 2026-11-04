@@ -1313,7 +1313,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   passes the dumper and stops in the emitter at `doomdata.h:57:9`, "record `mapvertex_t` is not laid
   out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar":
   (s) the projects table gives our side a per-project sidecar `marshal` list (the PureDOOM records,
-  `doom/doom.c2das`, as the model), then the next stop is read.
+  `doom/doom.c2das`, as the model), then the next stop is read. (r) Done (branch
+  `p8.4r-vfprintf`): `vfprintf` is c_runtime's `c_vfprintf`; quakegeneric now stops in the emitter
+  at `host_cmd.c:63:10`, "a pointer to a variadic function is not lowered yet" (`void (*print)
+  (char *fmt, ...)` in `Host_Status_f`): (t) a function pointer of variadic type, its `invoke`
+  passing the trailing tuple; Rust passes interp, exe and AOT there (JIT output differs). One of
+  two compare runs of the project crashed (SIGSEGV in `compare/run.das` after the Rust lanes'
+  module list), the rerun did not: (u) watch for it in the ruling 29 item 4 re-capture.
 
 ## P6 — Doom
 
