@@ -164,9 +164,7 @@ def ratio_of(c : Capture; workload, lane, base : string) : double {
 
 // seconds with their spread, or `suspect` with the spread alone, to a tenth of a percent, when it
 // is above `SUSPECT_SPREAD`
-def private seconds_text(time, spread : double) : string {
-    return is_suspect(spread) ? suspect_text(spread) : "{time:.3f} s ±{int(round(spread * 100.0lf))}%"
-}
+def private seconds_text(time, spread : double) : string => is_suspect(spread) ? suspect_text(spread) : "{time:.3f} s ±{int(round(spread * 100.0lf))}%"
 
 def private time_text(c : Capture; workload, lane : string) : string {
     let cell = find_cell(c, workload, lane)
