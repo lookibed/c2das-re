@@ -98,6 +98,28 @@ def test_aot_host_command(t : T?) {
     }
 }
 
+[test]
+def test_aot_host_exception(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_aot_throw", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("an unhandled exception under aot exits 1 with its text on stderr, as under exe, where it would trap") @(t : T?) {
+        let das_path = path_join(dir, "throws.das")
+        fwrite(das_path, "options gen2\n[export]\ndef main() : int \{\n    var a : array<int>\n    a |> resize(2)\n    print(\"before\\n\")\n    return a[length(a) + 3]\n\}\n")
+        let no_modules : array<string>
+        for (tier in ["exe", "aot"]) {
+            var output : string
+            t |> equal(run_tier(das_path, tier, path_join(dir, tier), output, no_modules), 1, "{tier}: {output}")
+            t |> success(output |> contains("before\n"), "{tier}: {output}")
+            t |> success(output |> contains("EXCEPTION: ") && output |> contains("index out of range"), "{tier}: {output}")
+        }
+    }
+    rmdir_rec(dir)
+}
+
 // a program whose `#if FOO == 2` branch prints another value than its `#else`
 let DEFINES_SOURCE = "int printf(const char *, ...);\n#ifndef FOO\n#define FOO 1\n#endif\n#if FOO == 2\nstruct pick \{ int a; int b; \};\nstatic int value(void) \{ struct pick p = \{ 20, 2 \}; return p.a + p.b; \}\n#else\nstatic int value(void) \{ return 11; \}\n#endif\nint main(void) \{ printf(\"FOO picks %d\\n\", value()); return 0; \}\n"
 

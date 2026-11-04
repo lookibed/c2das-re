@@ -99,11 +99,23 @@ def aot_binary(das_path, work_dir : string) : string => path_join(path_join(work
 
 //! The AOT host's C++ source for the context of `das_path`: it hands its command line to the
 //! runtime (`das::setCommandLineArguments`, as `daslang` and an `-exe` binary do), so the program
-//! reads its arguments after `--` (`get_user_args`), then creates the context, runs `main` and
-//! returns its code.
+//! reads its arguments after `--` (`get_user_args`), then creates the context, runs `main` inside
+//! the context's `runWithCatch` and returns its code; an unhandled exception prints `EXCEPTION:
+//! <text>` on stderr and exits 1, as an `-exe` binary does, where it would otherwise trap.
 def aot_host_source(das_path : string) : string {
     let prefix = bare_ident_of(file_stem(das_path))
-    return "#include \"{base_name(das_path)}.h\"\nnamespace das \{ void setCommandLineArguments(int argc, char * argv[]); \}\nint main(int argc, char * argv[]) \{\n    das::setCommandLineArguments(argc, argv);\n    {prefix}_ctx * ctx = {prefix}_create();\n    if (!ctx) return 125;\n    const int rc = {prefix}_main(ctx);\n    {prefix}_destroy(ctx);\n    return rc;\n\}\n"
+    return build_string() $(var w) {
+        w |> write("#include \"{base_name(das_path)}.h\"\n#include \"daScript/simulate/simulate.h\"\n#include <cstdio>\n")
+        w |> write("namespace das \{ void setCommandLineArguments(int argc, char * argv[]); \}\n")
+        w |> write("int main(int argc, char * argv[]) \{\n    das::setCommandLineArguments(argc, argv);\n")
+        w |> write("    {prefix}_ctx * ctx = {prefix}_create();\n    if (!ctx) return 125;\n")
+        // the generated context class derives from das::Context alone, so the handle is one
+        w |> write("    das::Context * context = (das::Context *) ctx;\n    int rc = 0;\n")
+        w |> write("    if (!context->runWithCatch([&]() \{ rc = {prefix}_main(ctx); \})) \{\n")
+        w |> write("        const char * text = context->getException();\n")
+        w |> write("        fprintf(stderr, \"EXCEPTION: %s\\n\", text ? text : \"unknown\");\n        return 1;\n    \}\n")
+        w |> write("    {prefix}_destroy(ctx);\n    return rc;\n\}\n")
+    }
 }
 
 // the context generation, the host's build and the run each get `timeout` seconds; the binary
