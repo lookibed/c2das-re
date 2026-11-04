@@ -131,12 +131,14 @@ def test_time_limits(t : T?) {
 
 [test]
 def test_guarded_samples(t : T?) {
-    t |> run("a guarded run: sh waiting on prlimit with no core file, the address space capped only when asked") @(t : T?) {
-        t |> equal(join(guarded(["k", "a b"], 0l), "|"), "sh|-c|\"$@\"; exit $?|sh|prlimit|--core=0|--|k|a b")
-        t |> equal(join(guarded(["k"], 1073741824l), "|"), "sh|-c|\"$@\"; exit $?|sh|prlimit|--core=0|--as=1073741824|--|k")
+    t |> run("a guarded run: sh waiting on prlimit with a one-byte core limit, no core file written, the address space capped only when asked") @(t : T?) {
+        t |> equal(join(guarded(["k", "a b"], 0l), "|"), "sh|-c|\"$@\"; exit $?|sh|prlimit|--core=1|--|k|a b")
+        t |> equal(join(guarded(["k"], 1073741824l), "|"), "sh|-c|\"$@\"; exit $?|sh|prlimit|--core=1|--as=1073741824|--|k")
         var out : string
         t |> equal(run_and_capture(guarded(["sh", "-c", "ulimit -c; ulimit -v"], 1073741824l), out, 30.0), 0, out)
         t |> equal(out, "0\n1048576\n")
+        t |> equal(run_and_capture(guarded(["sh", "-c", "kill -SEGV $$"], 0l), out, 30.0), 139, out)
+        t |> success(!(out |> contains("core dumped")), out)
     }
     t |> run("an exit code in words: a signal from 129 to 192, named up to 15, else the code") @(t : T?) {
         t |> equal(exit_text(139), "signal 11 (SEGV)")
