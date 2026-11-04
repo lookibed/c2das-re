@@ -7,6 +7,7 @@ require strings
 require daslib/fio
 require daslib/strings_boost
 require daslib/clargs
+require daslib/json_boost
 require ../converter/pipeline.das
 require ../converter/dumper_a.das
 require ../converter/sidecar.das
@@ -15,6 +16,10 @@ require sources
 require harness
 require convert_check
 require demo_run
+require fps
+require ../perf/boxes.das
+require ../perf/perf_lanes.das
+require ../perf/perf_cli.das
 
 //! The PureDOOM harness: `--fetch-check` checks `doom/fetch.sh`'s tree and wad against the pins,
 //! `--native` builds the multi-file form with the patches natively into `doom/work/native/doom`,
@@ -30,11 +35,15 @@ let TRACE_DEFINE = "DOOM_TIC_TRACE"
 let TRACES = "doom/work/trace"
 let FREEDOOM2 = "doom/fetch/wads/freedoom2.wad"
 let NATIVE_FLAGS <- ["-O2", "-w"]
-// the address space a demo run gets (3 GiB) and the seconds it may take
-let DEMO_MEMORY = "3221225472"
+// the seconds a native demo run may take
 let DEMO_TIMEOUT = 600.0
 // the folders a converted run's reference log is looked for in: the committed ones, then the local
 let REF_DIRS <- ["doom/ref", "doom/work/ref"]
+// the capture --fps writes and --readme renders, the README and the markers of its fps section
+let FPS_CAPTURE = "doom/results_linux.json"
+let README = "README.md"
+let FPS_BEGIN = "<!-- doom-fps:begin -->"
+let FPS_END = "<!-- doom-fps:end -->"
 
 [CommandLineArgs]
 struct Args {
@@ -64,6 +73,14 @@ struct Args {
     timeout : int = 3600
     @clarg_doc = "with DOOM_TIC_TRACE: --native builds doom/work/native/doom-trace, --demo runs it into doom/work/trace/<wad>_demo<N>.native.log in place of a reference log, --convert converts into doom/work/<layout>-trace/ and --run runs that, writes its trace lines beside the native ones and holds them to those as tic lines are held: a traced desync fails the run"
     trace : bool
+    @clarg_doc = "with --run: time every demo (or --demo's) natively and under each of --tiers, --samples runs each, every run held to the reference log, and write doom/results_linux.json"
+    fps : bool
+    @clarg_doc = "the tiers --fps times after native, comma-separated"
+    tiers : string = "interp,jit"
+    @clarg_doc = "the runs --fps takes per demo and lane, each its own process"
+    samples : int = 3
+    @clarg_doc = "rewrite README.md's Doom fps section from doom/results_linux.json"
+    readme : bool
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -87,7 +104,7 @@ def private native_path(trace : bool) : string => trace ? "{NATIVE}-trace" : NAT
 // the native build's command line: the pinned clang, the flags, the sidecar's defines
 def private native_command(defines : array<string>; trace : bool) : array<string> {
     var argv <- [default_clang()]
-    argv |> push_from(NATIVE_FLAGS, [for (define in defines); "-D{define}"], ["-o", native_path(trace)], program_sources())
+    argv |> push_from(::NATIVE_FLAGS, [for (define in defines); "-D{define}"], ["-o", native_path(trace)], program_sources())
     argv |> push("-lm")
     return <- argv
 }
@@ -150,7 +167,7 @@ def private run_demo(demo : int; wad : string; trace : bool) : bool {
     }
     let stem = wad_stem(wad)
     let dir = wad_dir(WORK, wad)
-    let argv <- ["bash", "-c", "cd \"$0\" && DOOMWADDIR=. exec prlimit --as={DEMO_MEMORY} \"$1\" -timedemo \"$2\"", dir, get_full_file_name(native), "demo{demo}"]
+    let argv <- ["bash", "-c", "cd \"$0\" && DOOMWADDIR=. exec prlimit --as={NATIVE_MEMORY} \"$1\" -timedemo \"$2\"", dir, get_full_file_name(native), "demo{demo}"]
     var output : string
     let rc = run_and_capture(argv, output, DEMO_TIMEOUT)
     if (trace) {
@@ -161,7 +178,7 @@ def private run_demo(demo : int; wad : string; trace : bool) : bool {
     var clang_version : string
     run_and_capture([default_clang(), "--version"], clang_version, 60.0)
     let versions = fread("VERSIONS.md")
-    let build = join([default_clang(), join(NATIVE_FLAGS, " "), join([for (define in defines); "-D{define}"], " ")], " ")
+    let build = join([default_clang(), join(::NATIVE_FLAGS, " "), join([for (define in defines); "-D{define}"], " ")], " ")
     let header = "PureDOOM {puredoom_pin(versions)} + {patch_list(PATCHES)}; {split(clang_version, "\n")[0]}; build: {build} over sources.das's units and host; wad {base_name(wad)} sha256 {wad_sha}; -timedemo demo{demo}, exit {rc}"
     let log = demo_log(output, header, error)
     if (empty(log)) {
@@ -211,6 +228,91 @@ def private run_converted_demo(layout, tier : string; demo, tics, timeout : int;
         }
     }
     return in_sync(run) && traced
+}
+
+// one line of `git` in the current folder, stripped
+def private git_line(args : array<string>) : string {
+    var argv <- ["git"]
+    argv |> push_from(args)
+    var out : string
+    run_and_capture(argv, out, 60.0)
+    return strip(out)
+}
+
+// the cell of `demo` under `lane`: `samples` runs of the native build or of the conversion in
+// `layout`, each held to the whole demo; the first run that gives no fps ends the cell
+def private fps_cell(layout, lane : string; demo, samples, timeout : int; wad : string) : FpsCell {
+    let entry = lane == NATIVE_LANE ? NATIVE : path_join(layout_dir(layout, false), "doom_main.das")
+    let spec <- DemoSpec(entry = entry, tier = lane, wad = wad, demo = demo, timeout = float(timeout), work = WORK, ref_dirs <- clone_to_move(REF_DIRS), module_dirs <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)])
+    var cell = FpsCell(workload = "demo{demo}", lane = lane)
+    for (_ in range(samples)) {
+        let run = run_converted(spec)
+        for (line in run_report(spec, run)) {
+            to_log(LOG_INFO, "doom: {line}\n")
+        }
+        if (!add_run(cell, run)) {
+            to_log(LOG_ERROR, "doom: {cell.workload}, {lane}: {cell.error}\n")
+            break
+        }
+        to_log(LOG_INFO, "doom: {cell.workload}, {lane}: {run.timing.tics} gametics in {run.timing.seconds} s\n")
+    }
+    return <- cell
+}
+
+// `--fps`: every demo `demos` names under native and each of `tiers`, the capture written to
+// FPS_CAPTURE and its table logged; false when a cell does not stand or the capture is not written
+def private time_demos(args : Args; tiers : array<string>; demos : array<int>; wad : string) : bool {
+    let dirty = empty(git_line(["status", "--porcelain", "--untracked-files=no"])) ? "" : "-dirty"
+    var c = FpsCapture(commit = git_line(["rev-parse", "--short=12", "HEAD"]) + dirty, samples = args.samples, clock = FPS_CLOCK)
+    c.command = "daslang -load_module dasCRuntime -load_module c_runtime doom/run.das -- --run --fps --layout {args.layout} --tiers {join(tiers, ",")} --samples {args.samples}"
+    c.cpu = cpu_name()
+    c.box = box_of(c.cpu)
+    c.platform = "{get_platform_name()} {machine_arch()}"
+    tool_versions(c.clang, c.daslang)
+    let entry = path_join(layout_dir(args.layout, false), "doom_main.das")
+    var lanes <- [NATIVE_LANE]
+    lanes |> push_from(tiers)
+    c.lanes <- [for (lane in lanes); FpsLane(name = lane, command = lane_command(lane, NATIVE, entry))]
+    var ok = true
+    c.workloads |> reserve(length(demos))
+    c.cells |> reserve(length(demos) * length(lanes))
+    for (demo in demos) {
+        c.workloads |> push("demo{demo}")
+        for (lane in lanes) {
+            var cell <- fps_cell(args.layout, lane, demo, args.samples, args.timeout, wad)
+            ok = ok && empty(cell.error)
+            c.cells |> emplace(cell)
+        }
+    }
+    c.timestamp = utc_now()
+    if (!fwrite(FPS_CAPTURE, write_json(JV(c)) + "\n")) {
+        to_log(LOG_ERROR, "doom: cannot write {FPS_CAPTURE}\n")
+        return false
+    }
+    to_log(LOG_INFO, "doom: {FPS_CAPTURE}:\n{render_fps(c)}")
+    return ok
+}
+
+// `uname -m`, stripped
+def private machine_arch : string => strip(captured(["uname", "-m"]))
+
+// the UTC time now as a capture records it
+def private utc_now : string => strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))
+
+// `--readme`: README's fps section rewritten from FPS_CAPTURE; false when either does not read
+def private write_fps_readme : bool {
+    var error : string
+    let js = read_json_file(FPS_CAPTURE, error)
+    if (js == null) {
+        to_log(LOG_ERROR, "doom: {FPS_CAPTURE}: {error}\n")
+        return false
+    }
+    let c <- from_JV(js, type<FpsCapture>)
+    if (!update_readme(README, render_fps(c), FPS_BEGIN, FPS_END)) {
+        to_log(LOG_ERROR, "doom: {README} has no doom-fps markers\n")
+        return false
+    }
+    return true
 }
 
 // each verdict logged under `what`, the passed ones counted, then the classification table
@@ -279,6 +381,14 @@ def main : int {
     let compiled = !args.compile_check || report("module", compile_modules(layout_dir(args.layout, args.trace), CONVERTED_MODULES, 600.0))
     let wad = empty(args.wad) ? FREEDOOM2 : args.wad
     let native_failed = (args.fetch_check && !fetch_check()) || (args.native && !build_native(args.trace)) || (args.demo != 0 && !args.run && !run_demo(args.demo, wad, args.trace))
-    let failed = !converted || !compiled || native_failed || (args.run && !run_converted_demo(args.layout, args.tier, args.demo == 0 ? 1 : args.demo, args.tics, args.timeout, wad, args.trace))
+    let tiers <- [for (tier in split(args.tiers, ",")); strip(tier)]
+    let bad_tiers <- [for (tier in tiers); tier; where !key_exists(TIERS, tier)]
+    if (args.fps && (!empty(bad_tiers) || args.samples < 1 || !args.run || args.tics != 0 || args.trace)) {
+        to_log(LOG_ERROR, "doom: --fps goes with --run, without --tics or --trace, --tiers among interp, jit, exe and aot, --samples at least 1\n")
+        return 1
+    }
+    let demos <- args.demo == 0 ? [1, 2, 3] : [args.demo]
+    let played = !args.run || (args.fps ? time_demos(args, tiers, demos, wad) : run_converted_demo(args.layout, args.tier, args.demo == 0 ? 1 : args.demo, args.tics, args.timeout, wad, args.trace))
+    let failed = !converted || !compiled || native_failed || !played || (args.readme && !write_fps_readme())
     return failed ? 1 : 0
 }
