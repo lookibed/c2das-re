@@ -32,16 +32,28 @@ def scratch(t : T?) : string {
 [test]
 def test_rewrites(t : T?) {
     t |> run("flag_chain: a plain case takes the flag line and the flag test; a flag case stays") @(t : T?) {
-        let text = join(["    if (_cond == 3) \{", "        a()", "    _flag ||= _cond == 4", "    _flag ||= _goto == 1", "    if (_flag) \{"], "\n")
+        let text = join(["    var _goto = 0", "    if (_cond == 3) \{", "        a()", "    _flag ||= _cond == 4", "    _flag ||= _goto == 1", "    if (_flag) \{"], "\n")
         var error : string
         let out = flag_chain(text, error)
         t |> equal(error, "")
-        t |> equal(out, join(["    _flag ||= _goto == 0 && _cond == 3", "    if (_flag) \{", "        a()", "    _flag ||= _cond == 4", "    _flag ||= _goto == 1", "    if (_flag) \{"], "\n"))
+        t |> equal(out, join(["    var _goto = 0", "    _flag ||= _goto == 0 && _cond == 3", "    if (_flag) \{", "        a()", "    _flag ||= _cond == 4", "    _flag ||= _goto == 1", "    if (_flag) \{"], "\n"))
     }
     t |> run("flag_chain: no plain case is an error") @(t : T?) {
         var error : string
         t |> equal(flag_chain("if (x) \{\n\}", error), "")
         t |> success(error |> contains("no plain switch case"), error)
+    }
+    t |> run("flag_chain: a plain case of several labels stays as it is") @(t : T?) {
+        let text = join(["    var _goto = 0", "    if (_cond == 1 || _cond == 2) \{", "    if (_cond == 3) \{"], "\n")
+        var error : string
+        let out = flag_chain(text, error)
+        t |> equal(error, "")
+        t |> equal(out, join(["    var _goto = 0", "    if (_cond == 1 || _cond == 2) \{", "    _flag ||= _goto == 0 && _cond == 3", "    if (_flag) \{"], "\n"))
+    }
+    t |> run("flag_chain: a module whose switch no goto re-dispatches is an error: an if-chain has no flag loop") @(t : T?) {
+        var error : string
+        t |> equal(flag_chain("    if (_cond == 3) \{\n    \}", error), "")
+        t |> success(error |> contains("no switch a goto re-dispatches"), error)
     }
     t |> run("unwrap_addr_deref: each addr(deref(p)) is (p), nested parentheses kept") @(t : T?) {
         var error : string

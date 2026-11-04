@@ -55,10 +55,12 @@ def replaced_all(text : string; pairs : array<tuple<old : string; by : string>>;
 
 let private PLAIN_CASE = "if (_cond == "
 
-//! The former `_flag` switch chain (before P7.0c) of a switch a goto re-dispatches: every plain case
-//! of one label `if (_cond == K) \{` (a case of several labels, `(_cond == A ||
-//! _cond == B)`, is left as it is: the audit kernel has none) becomes `_flag ||= _goto == 0 && _cond == K` followed by
-//! `if (_flag) \{`, which the flag loop's `var _flag = false` serves. A plain case leaves the switch
+//! The plain cases restored to the former `_flag` switch chain (before P7.0c) in a module whose
+//! switch a goto re-dispatches (it holds `var _goto`): every plain case of one label `if (_cond == K)
+//! \{` (a case of several labels, `if (_cond == A || _cond == B)`, is left as it is: the audit kernel
+//! has none) becomes `_flag ||= _goto == 0 && _cond == K` followed by `if (_flag) \{`, which the flag
+//! loop's `var _flag = false` serves; the flag cases keep `_flag ||= _cond == K`, which the
+//! re-dispatch's sentinel makes run the same. A plain case leaves the switch
 //! at its end, so the flag it sets is never read: the two spellings run the same program, and the
 //! converted time over this rewrite's is the inverse of the chain's cost.
 def flag_chain(text : string; var error : string&) : string {
@@ -68,7 +70,7 @@ def flag_chain(text : string; var error : string&) : string {
     var taken = 0
     for (line in lines) {
         let head = strip_left(line)
-        if (head |> starts_with(PLAIN_CASE) && head |> ends_with(") \{")) {
+        if (head |> starts_with(PLAIN_CASE) && head |> ends_with(") \{") && find(head, "||") < 0) {
             let indent = slice(line, 0, length(line) - length(head))
             out |> push("{indent}_flag ||= _goto == 0 && _cond == {slice(head, length(PLAIN_CASE), length(head) - 3)}")
             out |> push("{indent}if (_flag) \{")
@@ -79,6 +81,10 @@ def flag_chain(text : string; var error : string&) : string {
     }
     if (taken == 0) {
         error = "no plain switch case in the converted module"
+        return ""
+    }
+    if (find(text, "var _goto") < 0) {
+        error = "no switch a goto re-dispatches in the converted module: its plain cases have no flag loop to join"
         return ""
     }
     return join(out, "\n")
