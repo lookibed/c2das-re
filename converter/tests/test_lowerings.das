@@ -1787,6 +1787,10 @@ def p5_lua_expression_fixtures(t : T?) {
         has_text(t, span, "    let _cond = x\n")
         has_text(t, span, "        if (_goto == 0 && _cond == -2147483647 - 1) \{\n")
         t |> equal(run_tier(converted_path("restart_sentinel_span"), "interp", work_root, out, CONVERTED_MODULES, 60.0), 0, out)
+        // an enum's sentinel at `int`'s smallest value is spelled so daslang reads it as an `int`
+        let low_enum = converts(t, "restart_sentinel_enum_min", "enum E \{ LO = -2147483647, HI = 3 \};\nint f(enum E e) \{ int r = 0; switch (e) \{ case LO: r += 1; goto L; case HI: L: r += 100; break; \} return r; \}\nint main(void) \{ return f(LO) - 101 + f(HI) - 100; \}\n")
+        has_text(t, low_enum, "_cond = enum_from_int(type<E>, -2147483647 - 1)\n")
+        t |> equal(run_tier(converted_path("restart_sentinel_enum_min"), "interp", work_root, out, CONVERTED_MODULES, 60.0), 0, out)
     }
 }
 

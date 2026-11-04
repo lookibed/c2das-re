@@ -4453,7 +4453,8 @@ def private restart_sentinel(var em : Emitter; tu : CirTu; cond_t : int; groups 
         return ""
     }
     let sentinel = lo > type_lo ? lo - 1l : hi + 1l
-    return on_enum ? int_to_enum(em, tu, cond_t, "{sentinel}") : case_literal(em, tu, cond_t, sentinel)
+    // daslang reads `-2147483648` as a negated constant out of `int`'s range
+    return on_enum ? int_to_enum(em, tu, cond_t, sentinel == int64(INT_MIN) ? "-2147483647 - 1" : "{sentinel}") : case_literal(em, tu, cond_t, sentinel)
 }
 
 // the switch's condition, evaluated once: the enum below C's promotion when there is one,
