@@ -148,6 +148,9 @@ def test_guarded_samples(t : T?) {
         t |> equal(exit_text(128), "exited 128")
         t |> equal(exit_text(193), "exited 193")
         t |> equal(run_error(134, "\n[I] jit\n"), "signal 6 (ABRT), no output")
+        t |> equal(run_error(139, "Segmentation fault (core dumped)\n"), "signal 11 (SEGV), no output")
+        t |> equal(run_error(135, "Bus error\nwhy\n"), "signal 7 (BUS): why")
+        t |> success(!shell_signal_line("Segmentation fault in f") && shell_signal_line("Aborted"))
     }
     t |> run("a sample dying of a signal: the signal named with its first reported line, never a bare exit code") @(t : T?) {
         var error : string
