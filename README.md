@@ -144,7 +144,16 @@ tic to the reference log (`doom/ARCHITECTURE_RUN.md` section 9). `doom/run.das -
 it into `doom/results_linux.json`; `doom/run.das --readme` renders the table below from that file.
 
 <!-- doom-fps:begin -->
-Not measured yet.
+Box PC (AMD Ryzen 7 7435HS), linux x86_64; c2das-re `70eeb8f3da4f`, captured 2026-11-04 03:24 UTC; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.4.
+
+PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the process CPU time (`clock()`) of the host's update loop: the playback alone, the module load, the JIT compile and `doom_init` outside it. A cell is the median of 3 runs, each its own process holding every tic to the reference log, ± half the range over the median; above 20% it is `suspect`, without a ratio. `X / native` is native fps over X's.
+
+| Workload |  native fps | interp fps |     JIT fps | interp / native | JIT / native |
+| :------- | ----------: | ---------: | ----------: | --------------: | -----------: |
+| demo1    | 6118.6 ±2% | 128.2 ±1% | 2164.4 ±1% |            47.7 |          2.8 |
+| demo2    | 6607.4 ±1% | 139.5 ±1% | 2730.9 ±1% |            47.4 |          2.4 |
+| demo3    | 6015.0 ±0% | 127.1 ±0% | 2464.8 ±1% |            47.3 |          2.4 |
+
 <!-- doom-fps:end -->
 
 ## Head-to-head with the Rust translator
