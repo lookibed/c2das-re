@@ -1724,15 +1724,17 @@ def p5_lua_expression_fixtures(t : T?) {
         has_text(t, text, "var row : uint8[6] = fixed_array(uint8(97), uint8(0), uint8(98), uint8(0), uint8(99), uint8(0))\n")
         // a goto into another case re-dispatches: the label is a case of its number in the
         // switch's goto variable, which every case test and `default` require unset
-        has_text(t, text, "        let _cond = int(deref(p))\n        var _goto = 0\n        while (true) \{\n            label 1:  // re-dispatch\n")
-        has_text(t, text, "                        _goto = 1\n                        goto label 1\n")
+        has_text(t, text, "        var _cond = int(deref(p))\n        var _goto = 0\n        while (true) \{\n            label 1:  // re-dispatch\n")
+        has_text(t, text, "                        _goto = 1\n                        _cond = 35\n                        goto label 1\n")
         has_text(t, text, "            _flag ||= _goto == 0 && !(_cond == '(' || _cond == '$' || _cond == '%')\n            _flag ||= _goto == 1  // dflt\n            if (_flag) \{\n                _goto = 0\n")
         has_text(t, text, "                _flag ||= _goto == 3  // ret\n")
-        has_text(t, text, "                _flag ||= _goto == 0 && _cond == OpCode.OP_TFORCALL\n                _flag ||= _goto == 1  // l_tforcall\n")
+        // an enum condition's sentinel: an int no enumerator of the cases holds, through enum_from_int
+        has_text(t, text, "                        _goto = 1\n                        _cond = enum_from_int(type<OpCode>, -1)\n                        goto label 1\n")
+        has_text(t, text, "                _flag ||= _cond == OpCode.OP_TFORCALL\n                _flag ||= _goto == 1  // l_tforcall\n")
         // an inner switch's re-dispatch label is numbered below the outer one's, each switch
         // with its own goto variable
-        has_text(t, text, "    let _cond = a\n    var _goto = 0\n    while (true) \{\n        label 2:  // re-dispatch\n")
-        has_text(t, text, "            let _cond2 = b\n            var _goto2 = 0\n            while (true) \{\n                label 1:  // re-dispatch\n")
+        has_text(t, text, "    var _cond = a\n    var _goto = 0\n    while (true) \{\n        label 2:  // re-dispatch\n")
+        has_text(t, text, "            var _cond2 = b\n            var _goto2 = 0\n            while (true) \{\n                label 1:  // re-dispatch\n")
         // a label in a branch or a function body stands on c_label_end(), at the block's end too;
         // the module defines the no-op (a call into a c_runtime piece stays a call under the JIT)
         has_text(t, text, "\n[sideeffects]\ndef private c_label_end \{\n    pass\n\}\n\n")
@@ -1762,10 +1764,29 @@ def p5_lua_expression_fixtures(t : T?) {
         has_text(t, top, "_flag ||= _goto == 0 && !(_cond == 2147483647 || _cond == 5)\n")
         var out : string
         t |> equal(run_tier(converted_path("cross_label_top"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
-        // a plain case of several labels tests them under the pending goto's guard
+        // a plain case of several labels tests them alone: the re-dispatch stores a value no case holds
         let paired = converts(t, "cross_label_shared", "int f(int x) \{ int r = 0; switch (x) \{ case 1: case 2: r = 1; break; case 3: goto L; default: L: r += 2; \} return r; \}\nint main(void) \{ return f(1) + f(2) * 10 + f(3) * 100 + f(4) * 1000 - 2211; \}\n")
-        has_text(t, paired, "        if (_goto == 0 && (_cond == 1 || _cond == 2)) \{\n            r = 1\n            break\n")
+        has_text(t, paired, "        if (_cond == 1 || _cond == 2) \{\n            r = 1\n            break\n")
         t |> equal(run_tier(converted_path("cross_label_shared"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
+    }
+    t |> run("a re-dispatch stores a value no case holds into the condition, so a case tests its value alone and the case the goto left never matches again") @(t : T?) {
+        // the goto's own case would match the unchanged condition and loop forever
+        let left = converts(t, "restart_sentinel", "int f(int x) \{ int r = 0; switch (x) \{ case 1: r += 1; goto L; case 2: r += 10; L: r += 100; break; default: r += 1000; \} return r; \}\nint main(void) \{ return f(1) - 101 + f(2) - 110 + f(3) - 1000; \}\n")
+        has_text(t, left, "    var _cond = x\n    var _goto = 0\n")
+        has_text(t, left, "        if (_cond == 1) \{\n            r += 1\n            _goto = 1\n            _cond = 0\n            goto label 1\n")
+        has_text(t, left, "        _flag ||= _cond == 2\n        if (_flag) \{\n            r += 10\n        \}\n        _flag ||= _goto == 1  // L\n")
+        has_text(t, left, "        if (_goto == 0 && !(_cond == 1 || _cond == 2)) \{\n")
+        var out : string
+        t |> equal(run_tier(converted_path("restart_sentinel"), "interp", work_root, out, CONVERTED_MODULES, 60.0), 0, out)
+        // no value below the smallest case in the type: one above the largest
+        let above = converts(t, "restart_sentinel_above", "int f(unsigned x) \{ int r = 0; switch (x) \{ case 0: r += 1; goto L; case 1: L: r += 100; break; \} return r; \}\nint main(void) \{ return f(0) - 101 + f(1) - 100 + f(2); \}\n")
+        has_text(t, above, "            _cond = 2u\n            goto label 1\n")
+        t |> equal(run_tier(converted_path("restart_sentinel_above"), "interp", work_root, out, CONVERTED_MODULES, 60.0), 0, out)
+        // the cases span the type: every case test keeps the pending goto's test
+        let span = converts(t, "restart_sentinel_span", "int f(int x) \{ int r = 0; switch (x) \{ case -2147483647 - 1: r += 1; goto L; case 2147483647: L: r += 100; break; \} return r; \}\nint main(void) \{ return f(-2147483647 - 1) - 101 + f(2147483647) - 100 + f(0); \}\n")
+        has_text(t, span, "    let _cond = x\n")
+        has_text(t, span, "        if (_goto == 0 && _cond == -2147483647 - 1) \{\n")
+        t |> equal(run_tier(converted_path("restart_sentinel_span"), "interp", work_root, out, CONVERTED_MODULES, 60.0), 0, out)
     }
 }
 
@@ -1775,10 +1796,10 @@ def p5_lua_review_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p5_lua_review", text)
         // the condition is no stand-in for a label: the goto variable selects it, 0 while none is pending
-        has_text(t, text, "    let _cond = x\n    var _goto = 0\n    while (true) \{\n        label 1:  // re-dispatch\n        var _flag = false\n        if (_goto == 0 && _cond == 1) \{\n")
+        has_text(t, text, "    var _cond = x\n    var _goto = 0\n    while (true) \{\n        label 1:  // re-dispatch\n        var _flag = false\n        if (_cond == 1) \{\n")
         has_text(t, text, "        if (_goto == 0 && !(_cond == 1 || _cond == 2)) \{\n")
         // a goto to such a label from its own case re-dispatches too
-        has_text(t, text, "            if (_t0 > 0) \{\n                _goto = 1\n                goto label 1\n")
+        has_text(t, text, "            if (_t0 > 0) \{\n                _goto = 1\n                _cond = 0\n                goto label 1\n")
         // a parameter and a local named like a standard stream are the program's
         has_text(t, text, "    while (deref(stdin + n) != 0) \{\n")
         has_text(t, text, "    var stderr : uint8? = reinterpret<uint8?>(\"hello\")\n")
