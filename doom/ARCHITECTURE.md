@@ -104,6 +104,10 @@ committed references under `ref/` are those files copied by hand after a referen
 - `tests/test_convert.das` - `convert_check.das` over a stand-in program (two units that link, one
   the dumper refuses, a host outside their folder): the staging, the units alone, the program's
   modules compiled alone, a module that fails, and the classification.
+- `tests/test_host.das` - `host/doom_main.c` converted over a stand-in Doom (the four calls the
+  host makes, the fourth update ending in the timedemo's line and the exit callback) and run under
+  `interp`: the C exit's code 255 and timing line, the same under `-return-from-main`, `-tics` with
+  it ending in 0, and the profiler's summary printed under the flag and not through C exit.
 
 The IWAD is freedoom2.wad (BSD), the fetched one every committed log is recorded on; `--wad`
 takes another path for a local run.
@@ -176,17 +180,7 @@ other table; das range-checks both reads and panics. The patch spells the neighb
 
 ## 4. The host
 
-`host/doom_main.c` installs a virtual clock (`doom_set_gettime`: it starts at 0 and advances
-1/35 s per update) and an exit callback that flushes stdout and exits with Doom's code, calls
-`doom_init(argc, argv, 0)`, then `doom_force_update` in a loop, at most 2000000 times. `-tics N`,
-the host's own argument (Doom ignores it), ends the run with `host: stopped after N tics` and exit
-code 0 once `gametic` reaches N, so the N tic lines 0 to N-1 are out. Each update
-runs one game tic (PureDOOM's `singletics` is on) or, while the screen melts, one wipe step that
-runs none; no wall time reaches the game, so a run repeats tic for tic. A `-timedemo` run ends in
-`I_Error`'s `Error: timed <N> gametics in <M> realtics` and exit code 255; `M` counts virtual tics.
-The host reads `clock()` once `doom_init` returns and, at the exit callback or the `-tics` stop,
-prints `host: timed <N> gametics in <S> s`: `N` is `gametic`, `S` the process CPU seconds of the
-update loop, the playback's own time and the frame rate's measure (section 9).
+In `ARCHITECTURE_RUN.md`: the headless host, its arguments and its timing line.
 
 ## 5. The sidecar keys
 

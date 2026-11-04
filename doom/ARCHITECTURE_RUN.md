@@ -1,6 +1,26 @@
 # doom Architecture - the runs
 
-Companion to `ARCHITECTURE.md` in this folder, its sections 8 and 9.
+Companion to `ARCHITECTURE.md` in this folder, its sections 4, 8 and 9.
+
+## 4. The host
+
+`host/doom_main.c` installs a virtual clock (`doom_set_gettime`: it starts at 0 and advances 1/35 s
+per update) and an exit callback that flushes stdout and exits with Doom's code, calls
+`doom_init(argc, argv, 0)`, then `doom_force_update` in a loop, at most 2000000 times. `-tics N`,
+the host's own argument (Doom ignores it), ends the run with `host: stopped after N tics` and exit
+code 0 once `gametic` reaches N, so the N tic lines 0 to N-1 are out. Each update runs one game tic
+(PureDOOM's `singletics` is on) or, while the screen melts, one wipe step that runs none; no wall
+time reaches the game, so a run repeats tic for tic. A `-timedemo` run ends in `I_Error`'s `Error:
+timed <N> gametics in <M> realtics` and exit code 255; `M` counts virtual tics. The host reads
+`clock()` once `doom_init` returns and, at the exit callback or the `-tics` stop, prints `host:
+timed <N> gametics in <S> s`: `N` is `gametic`, `S` the process CPU seconds of the update loop, the
+playback's own time and the frame rate's measure (section 9). `-return-from-main`, the host's too,
+turns either end into a return from `main` with the same exit code: the exit callback `longjmp`s to
+the `setjmp` of `play`, the function `main` calls for `doom_init` and the loop, and `main` returns
+the code, so a converted run leaves as its `main` returns and daslang's instrumenting profiler
+(`--das-profiler`) prints its summary, which a C `exit` (crt's `_exit`) skips. No `return` follows
+the `setjmp`: under the JIT a `return` in the `try` arm the lowering makes leaves the arm alone
+(`docs/probe-findings.md` F75).
 
 ## 8. The converted run
 
@@ -38,7 +58,7 @@ the reference log holds. The speed build is the same program without that define
 the sidecar with the define taken out): it hashes nothing and prints no tic line, so the timed
 window holds the game alone.
 
-The host times the playback (section 4 of `ARCHITECTURE.md`): it reads `clock()`, the process CPU
+The host times the playback (section 4): it reads `clock()`, the process CPU
 time, after `doom_init` returns and again at the end, and prints `host: timed <N> gametics in <S> s`.
 `clock()` is the clock the converter maps (`crt::clock`, the clock perf's default method reads,
 `perf/ARCHITECTURE.md` section 2), so the native build and every tier time themselves with the same

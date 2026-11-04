@@ -123,8 +123,8 @@ def timed_gametics(output : string) : int {
     return -1
 }
 
-//! The playback's own time a run's host prints at its end (`ARCHITECTURE.md` section 4): the tics
-//! Doom ran and the CPU seconds of the update loop, both -1 without the line.
+//! The playback's own time a run's host prints at its end (`ARCHITECTURE_RUN.md` section 4): the
+//! tics Doom ran and the CPU seconds of the update loop, both -1 without the line.
 struct HostTiming {
     tics : int = -1
     seconds : double = -1.0lf
