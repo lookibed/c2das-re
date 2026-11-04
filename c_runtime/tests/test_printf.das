@@ -123,6 +123,21 @@ def test_printf(t : T?) {
             t |> equal(reinterpret<string>(p), "42")
         }
     }
+    t |> run("c_vfprintf writes a forwarded va_list to a CRT stream, a FILE * as void?, and returns the count") @(t : T?) {
+        let lst <- [CVal(i = 9l), CVal(i = 42l), CVal(p = unsafe(reinterpret<void?>("go")))]
+        var v = va_begin(lst)
+        va_i(v)
+        unsafe {
+            var f = crt::tmpfile()
+            t |> equal(c_vfprintf(f, cstr("%d-%s"), va_rest(v)), 5)
+            t |> equal(c_vfprintf(f, cstr(""), va_rest(v)), 0)
+            crt::fseek(f, 0l, 0)
+            var back : uint8[8]
+            t |> equal(crt::fread(addr<void?>(back[0]), 1ul, 8ul, f), 5ul)
+            t |> equal(reinterpret<string>(addr(back[0])), "42-go")
+            crt::fclose(f)
+        }
+    }
     t |> run("printf writes the bytes to the CRT stdout and returns their count") @(t : T?) {
         t |> equal(printf(cstr("ok\n")), 3)
         t |> equal(printf(cstr("%d%s"), 5, cstr("\n")), 2)
