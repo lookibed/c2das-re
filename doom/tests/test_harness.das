@@ -209,6 +209,22 @@ def test_tic_lines(t : T?) {
 }
 
 [test]
+def test_host_timing(t : T?) {
+    t |> run("the host's line among the others: its tics and seconds") @(t : T?) {
+        let timing = host_timing("tic=0 cs=00000000 fb=00000000\nError: timed 2664 gametics in 2664 realtics\nhost: timed 2664 gametics in 12.345678 s\n")
+        t |> equal(timing.tics, 2664)
+        t |> equal(timing.seconds, 12.345678lf)
+    }
+    t |> run("no line, a word out of place, a number that does not parse whole, a negative one: -1 both") @(t : T?) {
+        for (text in ["Error: timed 4 gametics in 4 realtics", "host: timed 4 gametics in 1.5 s extra", "host: timed 4 tics in 1.5 s", "host: timed 4x gametics in 1.5 s", "host: timed 4 gametics in 1.5x s", "host: timed -4 gametics in 1.5 s", "host: timed 4 gametics in -1.5 s"]) {
+            let timing = host_timing(text)
+            t |> equal(timing.tics, -1, text)
+            t |> equal(timing.seconds, -1.0lf, text)
+        }
+    }
+}
+
+[test]
 def test_trace_lines(t : T?) {
     let text = "tic=0 cs=00000000\ntrace=0 x=00e00000 hp=100\nZ_Init\ntrace=1 x=00e00071 hp=100\n"
     t |> equal(join(trace_lines(text), "|"), "trace=0 x=00e00000 hp=100|trace=1 x=00e00071 hp=100")

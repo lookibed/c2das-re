@@ -10,11 +10,14 @@
 // no wall time and repeats tic for tic. The program ends where Doom calls its exit callback:
 // `-timedemo demoN` ends in I_Error's "timed N gametics in M realtics" and exit code -1.
 // `-tics N` (the host's argument; Doom ignores it) ends the run with exit code 0 once Doom has
-// run N game tics.
+// run N game tics. Around the update loop the host reads the process CPU clock, `clock()`, and
+// at the end prints "host: timed N gametics in S s": the playback's own seconds, doom_init and
+// whatever ran before main outside them, the number fps is computed from.
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "../fetch/PureDOOM/src/DOOM/DOOM.h"
 
@@ -26,14 +29,25 @@ extern int gametic;
 
 static long long virtual_usec = 0;
 
+// the CPU clock when the update loop started, -1 before it
+static clock_t work_started = -1;
+
 static void virtual_gettime(int* sec, int* usec)
 {
     *sec = (int)(virtual_usec / 1000000);
     *usec = (int)(virtual_usec % 1000000);
 }
 
+// the playback's line: the tics Doom has run and the CPU seconds since the update loop started
+static void report_work(void)
+{
+    if (work_started >= 0)
+        printf("host: timed %d gametics in %.6f s\n", gametic, (double)(clock() - work_started) / (double)CLOCKS_PER_SEC);
+}
+
 static void flush_and_exit(int code)
 {
+    report_work();
     fflush(stdout);
     exit(code);
 }
@@ -50,6 +64,7 @@ int main(int argc, char** argv)
     doom_set_gettime(virtual_gettime);
     doom_set_exit(flush_and_exit);
     doom_init(argc, argv, 0);
+    work_started = clock();
     for (update = 0; update < MAX_UPDATES; update++)
     {
         doom_force_update();
