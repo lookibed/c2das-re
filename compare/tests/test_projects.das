@@ -198,6 +198,10 @@ def test_verdicts(t : T?) {
         let died = run_judged(["sh", "-c", "echo 'frame[0]=1'; echo 'segmentation fault' >&2; exit 1"], "a\n", 30.0)
         t |> equal("{died.status} {died.reason}", "exit exit 1: segmentation fault")
     }
+}
+
+[test]
+def test_lane_verdicts(t : T?) {
     t |> run("a guarded run that crashes is the lane's exit with the signal named; the run sees the address-space cap") @(t : T?) {
         let crashed = run_judged(guarded(["sh", "-c", "echo 'out of memory' >&2; kill -SEGV $$"], 1073741824l), "a\n", 30.0)
         t |> equal("{crashed.status} {crashed.reason}", "exit signal 11 (SEGV): out of memory")
