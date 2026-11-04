@@ -3,8 +3,8 @@
 # and apply doom/patches/*.patch to it, and the freedoom release the `freedoom:` line pins into
 # doom/fetch/wads/, its freedoom2.wad extracted; both folders are gitignored. The zip and the wad
 # are checked against the line's sha256 hashes. Idempotent: a checkout at the pin with the patches
-# applied and a wad of the right hash are left as they are; a mismatch stops it. doom2.wad is
-# never fetched (doom/ARCHITECTURE.md section 1).
+# applied and a wad of the right hash are left as they are; a mismatch stops it. doom2.wad comes
+# through doom/fetch_doom2.sh from a source the owner names (doom/ARCHITECTURE.md section 1).
 set -euo pipefail
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$here/.." && pwd)"

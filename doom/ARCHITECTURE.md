@@ -13,6 +13,10 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
   (a patch that neither applies nor is applied stops it), downloads the freedoom release zip the
   `freedoom:` line names into `fetch/wads/` unless `fetch/wads/freedoom2.wad` is there, checks the
   zip's and the wad's sha256 against the line and extracts the wad. `fetch/` is gitignored.
+- `fetch_doom2.sh [<source>]` - copies (a path) or downloads (an http(s) URL) the owner's doom2.wad,
+  the argument or `$DOOM2_WAD_SOURCE`, into `fetch/wads/doom2.wad` and checks its size and sha256
+  against the `doom2:` line of `VERSIONS.md`; without a source, with a wrong size or hash, or while
+  the line pins no sha256 (it prints the file's hash to pin) it stops and keeps no unverified copy.
 - `patches/0001-per-tic-checksum.patch` - the instrumentation (section 3), against the pinned
   commit.
 - `patches/0002-tic-trace.patch` - the trace lines under `-DDOOM_TIC_TRACE` (section 3).
@@ -83,9 +87,9 @@ committed references under `ref/` are those files copied by hand after a referen
   modules compiled alone, a module that fails, and the classification.
 
 The IWADs: freedoom2.wad (BSD) is the fetched one every committed log is recorded on;
-`doom2.wad`, id Software's commercial IWAD, is user-supplied, local only, kept under `wads/`
-by convention and never fetched or committed (`.gitignore` ignores `doom/wads/*.wad`); the
-harness takes it through `--wad` and no log of it is committed.
+`doom2.wad`, id Software's commercial IWAD, comes only from a source the owner names
+(`fetch_doom2.sh`, below) into the gitignored `fetch/wads/`, never from a mirror and never
+committed; the harness takes it through `--wad` and no log of it is committed.
 
 ## 2. The program
 
