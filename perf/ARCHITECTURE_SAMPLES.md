@@ -23,6 +23,6 @@ death by signal N as 128 + N. `exit_text` reads a code from 129 to 192 as `signa
 the name for the signals 1 to 15 (`SIGNAL_NAMES`), and any other code as `exited <code>`; a
 program that exits with a code above 128 itself reads as that signal, which no kernel does.
 `run_error` adds the first line of the output that is neither empty nor an `info` line, or `no
-output` when there is none: the AOT host's runtime starts an unhandled exception's report with
-an empty line, and the shell reports the death (`Segmentation fault`) after everything the
-program printed. A sample that exits 0 without the kernel's line is `exited 0` with that line.
+output` when there is none: daslang's report of an exception it cannot unwind starts with an
+empty line, and the shell reports the death (`Segmentation fault`) after everything the program
+printed. A sample that exits 0 without the kernel's line is `exited 0` with that line.
