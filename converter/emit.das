@@ -107,6 +107,9 @@ struct Emitter {
     label_index : table<string; int>
     label_flags : table<string; string>
     label_gotos : table<string; string>
+    // the assignment a goto to such a label makes before the restart so no case value matches,
+    // "" when the switch's case tests keep the pending goto's test (`restart_sentinel`)
+    label_conds : table<string; string>
     // what a C `continue` spells at the current nesting: "" inside a loop body, the `_cont`
     // flag inside a matched-flag switch loop whose `continue` reaches the loop around it, the
     // `goto` to the test or increment of an open loop
@@ -4410,25 +4413,74 @@ def private case_compare(var em : Emitter; tu : CirTu; cond : string; cond_t : i
         let named = enumerator_of(tu, cond_t, "{v}")
         return empty(named) ? "int({cond}) == {v}" : "{cond} == {enum_item(em, tu, cond_t, named)}"
     }
+    return "{cond} == {case_literal(em, tu, cond_t, v)}"
+}
+
+// value `v` as a literal of the condition's integer type, a character literal where the switch
+// labels it with one
+def private case_literal(var em : Emitter; tu : CirTu; cond_t : int; v : int64) : string {
     let spelled = das_type(em, tu, cond_t, CirLoc())
     let spelling = spelled == "int" && key_exists(em.char_cases, v) ? char_literal(int(v)) : ""
     if (!empty(spelling)) {
-        return "{cond} == {spelling}"
+        return spelling
     }
     let suffixed = int_literal(spelled, "{v}")
-    let literal = v == -2147483648l && spelled == "int" ? "-2147483647 - 1" : (!empty(suffixed) ? suffixed : "{spelled}({v})")
-    return "{cond} == {literal}"
+    return v == int64(INT_MIN) && spelled == "int" ? "-2147483647 - 1" : (!empty(suffixed) ? suffixed : "{spelled}({v})")
+}
+
+// the value a re-dispatch stores into the condition so that no case test matches it: one below
+// the smallest case value, else one above the largest, in the condition's type (an enum's is
+// `int`, out-of-range values surviving `enum_from_int`); "" when both fall outside the type
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-labels")]
+def private restart_sentinel(var em : Emitter; tu : CirTu; cond_t : int; groups : array<CaseGroup>) : string {
+    var lo = LONG_MAX
+    var hi = LONG_MIN
+    for (g in groups) {
+        for (v in g.values) {
+            lo = min(lo, v)
+            hi = max(hi, v)
+        }
+    }
+    let on_enum = kind_of(tu, cond_t) == "enum"
+    let spelled = on_enum ? "int" : das_type(em, tu, cond_t, CirLoc())
+    let type_lo = spelled == "int" ? int64(INT_MIN) : (spelled == "int64" ? LONG_MIN : 0l)
+    let type_hi = spelled == "int" ? int64(INT_MAX) : (spelled == "uint" ? int64(UINT_MAX) : LONG_MAX)
+    if (lo > hi) {
+        // no case value: any value is no case's
+        lo = 1l
+    }
+    if (lo <= type_lo && hi >= type_hi) {
+        return ""
+    }
+    let sentinel = lo > type_lo ? lo - 1l : hi + 1l
+    return on_enum ? int_to_enum(em, tu, cond_t, "{sentinel}") : case_literal(em, tu, cond_t, sentinel)
 }
 
 // the switch's condition, evaluated once: the enum below C's promotion when there is one,
 // so cases compare symbolically; returns the name of the local and its type
-def private switch_condition(var em : Emitter; tu : CirTu; st : CirStmt; var cond_t : int&) : string {
+def private switch_condition(var em : Emitter; tu : CirTu; st : CirStmt; var cond_t : int&) : string =>
+    switch_condition(em, tu, st, cond_t, false)
+
+// the enum operand below C's promotion of switch `st`'s condition, null when there is none
+def private switch_enum_operand(tu : CirTu; st : CirStmt) : CirExpr const? {
     var operand = st.cond
     while (operand != null && operand.e == "cast" && (operand.cast_kind == "IntegralCast" || operand.cast_kind == "LValueToRValue" || operand.cast_kind == "NoOp") && kind_of(tu, operand.a.t) == "enum") {
         operand = operand.a
     }
-    let on_enum = operand != null && kind_of(tu, operand.t) == "enum"
-    cond_t = on_enum ? operand.t : st.cond.t
+    return operand != null && kind_of(tu, operand.t) == "enum" ? operand : null
+}
+
+// the type the condition of switch `st` is compared in: its enum when it has one
+def private switch_cond_type(tu : CirTu; st : CirStmt) : int {
+    let operand = switch_enum_operand(tu, st)
+    return operand != null ? operand.t : st.cond.t
+}
+
+// the same, the local a `var` when `mutable`: a re-dispatch stores its sentinel into it
+def private switch_condition(var em : Emitter; tu : CirTu; st : CirStmt; var cond_t : int&; mutable : bool) : string {
+    let operand = switch_enum_operand(tu, st)
+    let on_enum = operand != null
+    cond_t = switch_cond_type(tu, st)
     var c : Em
     if (on_enum) {
         c = emit_expr(em, tu, operand, st.loc)
@@ -4437,7 +4489,7 @@ def private switch_condition(var em : Emitter; tu : CirTu; st : CirStmt; var con
     }
     flush_pre(em)
     let name = numbered("_cond", em.switch_counter)
-    line(em, "let {name} = {c.text}")
+    line(em, "{mutable ? "var" : "let"} {name} = {c.text}")
     return name
 }
 
@@ -4454,9 +4506,12 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
     em.char_cases <- char_cases(st.body_s)
     var cond_t = st.cond.t
     let restart = em.flag_switches?[intptr(st.body_s)] ?? 0
-    let cond = switch_condition(em, tu, st, cond_t)
+    // a re-dispatch stores a value no case holds into the condition, so the case tests need not
+    // test the pending goto
+    let sentinel = restart > 0 ? restart_sentinel(em, tu, switch_cond_type(tu, st), groups) : ""
+    let cond = switch_condition(em, tu, st, cond_t, !empty(sentinel))
     if (restart > 0) {
-        label_cases(em, st)
+        label_cases(em, st, empty(sentinel) ? "" : "{cond} = {sentinel}")
     }
     // C scopes a declaration at the body's own level to the whole body, the lowering a group
     // to its own branch: a declaration a later group reaches is declared here
@@ -4470,7 +4525,7 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
     if (is_if_chain(groups) && restart == 0) {
         emit_if_chain(em, tu, groups, cond, cond_t)
     } else {
-        emit_flag_loop(em, tu, groups, cond, cond_t, st.body_s, restart)
+        emit_flag_loop(em, tu, groups, cond, cond_t, st.body_s, restart, !empty(sentinel))
     }
     em.char_cases <- outer_chars
 }
@@ -4494,13 +4549,14 @@ def private char_cases(body : CirStmt const?) : table<int64> {
 // each label of switch `st` a goto into its group reaches, as a case of its own number (1 up, in
 // the order the labels appear) in the switch's goto variable, which is 0 while no goto is pending:
 // no value of the condition stands in for a label, since the condition can hold any of them
-def private label_cases(var em : Emitter; st : CirStmt) {
+def private label_cases(var em : Emitter; st : CirStmt; reset : string) {
     var names <- [for (name in keys(em.group_labels)); name; where(em.group_labels?[name] ?? 0ul) == intptr(st.body_s)]
     sort(names) $(a, b) => (em.labels?[a] ?? 0) < (em.labels?[b] ?? 0)
     for (idx, name in range(length(names)), names) {
         em.label_index[name] = idx + 1
         em.label_flags[name] = numbered("_flag", em.switch_counter)
         em.label_gotos[name] = numbered("_goto", em.switch_counter)
+        em.label_conds[name] = reset
     }
 }
 
@@ -4575,7 +4631,7 @@ def private emit_without_tail_break(var em : Emitter; tu : CirTu; st : CirStmt c
     close_block(em)
 }
 
-def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGroup>; cond : string; cond_t : int; body : CirStmt const?; restart : int) {
+def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGroup>; cond : string; cond_t : int; body : CirStmt const?; restart : int; sentinel : bool) {
     let flag = numbered("_flag", em.switch_counter)
     let cont = continues_out(body) ? numbered("_cont", em.switch_counter) : ""
     // every case value of the switch, for `default`'s match-none test
@@ -4611,7 +4667,7 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
     em.break_gotos |> push("")
     for (idx, g in range(length(groups)), groups) {
         if (!empty(g.stmts)) {
-            emit_loop_group(em, tu, g, plain[idx], cond, cond_t, all_values, flag, goto_var)
+            emit_loop_group(em, tu, g, plain[idx], cond, cond_t, all_values, flag, goto_var, sentinel)
         }
     }
     em.break_gotos |> pop()
@@ -4631,22 +4687,24 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
 }
 
 // one group of the matched-flag loop: a plain case (`plain_case`) as its own `if` on its tests, any
-// other under the flag its labels set; `goto_var` is "" unless a goto re-dispatches the switch
-def private emit_loop_group(var em : Emitter; tu : CirTu; g : CaseGroup; plain : bool; cond : string; cond_t : int; all_values : array<string>; flag, goto_var : string) {
-    let pending = empty(goto_var) ? "" : "{goto_var} == 0 && "
+// other under the flag its labels set; `goto_var` is "" unless a goto re-dispatches the switch, and
+// under a re-dispatch that stores a `sentinel` into the condition only `default` tests the goto
+def private emit_loop_group(var em : Emitter; tu : CirTu; g : CaseGroup; plain : bool; cond : string; cond_t : int; all_values : array<string>; flag, goto_var : string; sentinel : bool) {
+    let pending = empty(goto_var) || (sentinel && !g.is_default) ? "" : "{goto_var} == 0 && "
+    let value_pending = sentinel ? "" : pending
     if (plain) {
         var inscope tests <- [for (v in g.values); case_compare(em, tu, cond, cond_t, v)]
         if (g.is_default) {
             tests |> push("!({join(all_values, " || ")})")
         }
         let test = join(tests, " || ")
-        open_block(em, empty(goto_var) || length(tests) == 1 ? "if ({pending}{test})" : "if ({pending}({test}))")
+        open_block(em, empty(pending) || length(tests) == 1 ? "if ({pending}{test})" : "if ({pending}({test}))")
         emit_group(em, tu, g, false)
         close_block(em)
         return
     }
     for (v in g.values) {
-        line(em, "{flag} ||= {pending}{case_compare(em, tu, cond, cond_t, v)}")
+        line(em, "{flag} ||= {value_pending}{case_compare(em, tu, cond, cond_t, v)}")
     }
     if (g.is_default) {
         if (empty(all_values)) {
@@ -4825,6 +4883,10 @@ def private emit_goto(var em : Emitter; st : CirStmt const?) {
     let sw = em.group_labels?[st.label_name] ?? 0ul
     if (sw != 0ul) {
         line(em, "{em.label_gotos?[st.label_name] ?? ""} = {em.label_index?[st.label_name] ?? 0}")
+        let reset = em.label_conds?[st.label_name] ?? ""
+        if (!empty(reset)) {
+            line(em, reset)
+        }
         line(em, "goto label {em.flag_switches?[sw] ?? 0}")
     } else {
         line(em, "goto label {em.labels?[st.label_name] ?? 0}")
@@ -5566,6 +5628,7 @@ def private reset_function_state(var em : Emitter; d : CirDecl) {
     em.label_index |> clear()
     em.label_flags |> clear()
     em.label_gotos |> clear()
+    em.label_conds |> clear()
     plan_labels(em, d.body)
     em.unsafe_used = false
     em.addressed |> clear()

@@ -32,8 +32,8 @@ goto (O6) is the optimization tier's.
 
 A group of the matched-flag loop that only its own labels enter - the group before it ends in a
 leaving statement, no goto re-dispatches into it, and it ends in one itself or is the last - is a
-plain `if` on its tests (`if (_cond == 5)`, `if (_gotoN == 0 && (_cond == 2 || _cond == 3))`,
-`default` as `if (!(every case value))`): no `_flagN ||=` line, and the flag stays unset, which
+plain `if` on its tests (`if (_cond == 5)`, `if (_cond == 2 || _cond == 3)`, `default` as
+`if (!(every case value))`): no `_flagN ||=` line, and the flag stays unset, which
 the next group's `_flagN ||=` needs, since control reaches that group only past a group that
 left. The loop declares `_flagN` only when a group still needs it, and a group with no
 statements (the switch's last) writes nothing. The interpreter runs a VM dispatch so 2.33 times
@@ -77,8 +77,15 @@ each group lands in its own branch, so the label could sit in no scope the goto 
 takes the matched-flag loop whatever its groups, with `var _gotoN = 0` before the loop, and each
 such label (at its group's level once the bare blocks on the way lose their braces) becomes a case
 of its own number, 1 up in order of appearance, in that variable: no value of the condition stands
-in for a label, since the condition can hold any value of its type. Every ordinary case test and
-`default`'s reads `_gotoN == 0 && ...`. The label splits its group's `if (_flag)` branch with
+in for a label, since the condition can hold any value of its type. The goto also stores into the
+condition, then `var _condN`, a value no case holds: one below the smallest case value, else one
+above the largest, in the condition's type (an enum's an `int` through `enum_from_int`, whose
+out-of-range value compares by value). So a case test reads `_cond == v` alone and the case the goto
+left cannot match again on the restart, where with the condition unchanged it would loop forever;
+`default`, which that value would match, reads `_gotoN == 0 && !(every case value)`, the one goto
+test of a dispatch, and the plain cases of lvm's 83 skip a test each (`restart_sentinel`). Cases
+spanning the condition's whole type leave no such value, and every test reads `_gotoN == 0 && ...`.
+The label splits its group's `if (_flag)` branch with
 `_flag ||= _gotoN == k  // name`, so control falling into it keeps the flag, and the branch opens
 with `_gotoN = 0`, which consumes the pending goto; every goto to the label, one from the label's
 own group too, stores `k` into `_gotoN` and jumps to `label K:  // re-dispatch`, the first
