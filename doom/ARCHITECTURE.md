@@ -66,7 +66,7 @@ committed references under `ref/` are those files copied by hand after a referen
   `program_argv`, `run_converted` (the converted program under a tier, or the native build under
   `NATIVE_LANE`), `in_sync` and `run_report`.
 - `fps.das` - the frame rate (section 9): `run_problem` and `add_run`, a run's fps into a cell,
-  `FpsCapture`, `lane_command`, `slowdown` and `render_fps`. It runs and reads nothing.
+  `FpsCapture`, `fps_command`, `lane_command`, `slowdown` and `render_fps`. It runs and reads nothing.
 - `results_linux.json` - the committed fps capture `--fps` writes (section 9).
 - `ARCHITECTURE_RUN.md` - sections 8 and 9.
 - `convert_check.das` - the conversion checks `--convert` and `--compile-check` apply:
@@ -92,7 +92,8 @@ committed references under `ref/` are those files copied by hand after a referen
   runs there.
 - `tests/test_fps.das` - `fps.das` over fixed runs and captures: a run's fps and each reason it
   gives none, a desync among them, the median and spread, the suspect bar at and above 20%, the
-  rendered table, a missing cell, the lane commands and the capture's JSON shape.
+  rendered table, a missing cell, the lane commands, the recorded command with and without
+  `--demo` and the capture's JSON shape.
 - `tests/test_convert.das` - `convert_check.das` over a stand-in program (two units that link, one
   the dumper refuses, a host outside their folder): the staging, the units alone, the program's
   modules compiled alone, a module that fails, and the classification.

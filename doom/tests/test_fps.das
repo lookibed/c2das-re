@@ -125,7 +125,7 @@ def test_slowdown(t : T?) {
 def test_render(t : T?) {
     t |> run("the provenance, the table and a line per cell that does not stand") @(t : T?) {
         let text = render_fps(stand_in_capture())
-        let want = "Box PC (AMD Ryzen 7 7435HS), linux x86_64; c2das-re `0123456789ab`, captured 2026-11-04 12:00 UTC; clang version 22.1.8; daslang 0.6.4.\n\nPureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the process CPU time (`clock()`) of the host's update loop: the playback alone, the module load, the JIT compile and `doom_init` outside it. A cell is the median of 3 runs, each its own process holding every tic to the reference log, ± half the range over the median; above 20% it is `suspect`, without a ratio. `X / native` is native fps over X's.\n\n| Workload |  native fps |        interp fps |    JIT fps | interp / native | JIT / native |\n| :------- | ----------: | ----------------: | ---------: | --------------: | -----------: |\n| demo1    | 1000.0 ±0% |         25.0 ±3% | 250.0 ±0% |            40.0 |          4.0 |\n| demo2    |  500.0 ±0% | suspect (±37.5%) |     desync |         suspect |          n/a |\n\n- demo2, JIT: desync after 25 tics in sync on cs: expected `tic=25 cs=1`, got `tic=25 cs=2`\n"
+        let want = "Box PC (AMD Ryzen 7 7435HS), linux x86_64; c2das-re `0123456789ab`, captured 2026-11-04 12:00 UTC; clang version 22.1.8; daslang 0.6.4.\n\nPureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the process CPU time (`clock()`) of the host's update loop: the playback, with the patch's per-tic checksums (the frame's over its 64000 bytes) and the tic lines inside it, the module load, the JIT compile and `doom_init` outside it. A cell is the median of 3 runs, each its own process holding every tic to the reference log, ± half the range over the median; above 20% it is `suspect`, without a ratio. `X / native` is native fps over X's.\n\n| Workload |  native fps |        interp fps |    JIT fps | interp / native | JIT / native |\n| :------- | ----------: | ----------------: | ---------: | --------------: | -----------: |\n| demo1    | 1000.0 ±0% |         25.0 ±3% | 250.0 ±0% |            40.0 |          4.0 |\n| demo2    |  500.0 ±0% | suspect (±37.5%) |     desync |         suspect |          n/a |\n\n- demo2, JIT: desync after 25 tics in sync on cs: expected `tic=25 cs=1`, got `tic=25 cs=2`\n"
         t |> equal(text, want)
     }
     t |> run("a suspect cell shows its spread alone, a ratio over it `suspect`, a desync `desync`") @(t : T?) {
@@ -150,6 +150,12 @@ def test_lane_command(t : T?) {
     t |> equal(lane_command("interp", "n", "e.das"), "daslang -load_module c_runtime -load_module dasCRuntime e.das -- -timedemo demo<N>")
     t |> equal(lane_command("jit", "n", "e.das"), "daslang -load_module c_runtime -load_module dasCRuntime -jit e.das -- -timedemo demo<N>")
     t |> equal(lane_command("exe", "n", "e.das"), "run_tier exe e.das -- -timedemo demo<N>")
+}
+
+[test]
+def test_fps_command(t : T?) {
+    t |> equal(fps_command("source", ["interp", "jit"], 3, 0), "daslang -load_module dasCRuntime -load_module c_runtime doom/run.das -- --run --fps --layout source --tiers interp,jit --samples 3")
+    t |> equal(fps_command("source", ["jit"], 5, 2), "daslang -load_module dasCRuntime -load_module c_runtime doom/run.das -- --run --fps --layout source --tiers jit --samples 5 --demo 2")
 }
 
 [test]

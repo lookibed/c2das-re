@@ -26,8 +26,8 @@ over the whole process, start included: a sanity number, not P6.7's measure. Und
 the host's `-tics N` (`program_argv`), so the program stops after the compared tics with exit code
 0 instead of playing the demo to its end or to `--timeout`.
 
-At the pin, the `source` layout under `interp` plays demo1, demo2 and demo3 on freedoom2.wad in
-sync with their reference logs, every tic's checksum and frame, to the `timed N gametics` line.
+Which tiers and layouts hold which demos in sync is the ledger's record (`docs/implementation_order.md`
+P6.5 and P6.7), not this document's.
 
 ## 9. The frame rate
 

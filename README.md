@@ -146,7 +146,7 @@ it into `doom/results_linux.json`; `doom/run.das --readme` renders the table bel
 <!-- doom-fps:begin -->
 Box PC (AMD Ryzen 7 7435HS), linux x86_64; c2das-re `70eeb8f3da4f`, captured 2026-11-04 03:24 UTC; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.4.
 
-PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the process CPU time (`clock()`) of the host's update loop: the playback alone, the module load, the JIT compile and `doom_init` outside it. A cell is the median of 3 runs, each its own process holding every tic to the reference log, ± half the range over the median; above 20% it is `suspect`, without a ratio. `X / native` is native fps over X's.
+PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the process CPU time (`clock()`) of the host's update loop: the playback, with the patch's per-tic checksums (the frame's over its 64000 bytes) and the tic lines inside it, the module load, the JIT compile and `doom_init` outside it. A cell is the median of 3 runs, each its own process holding every tic to the reference log, ± half the range over the median; above 20% it is `suspect`, without a ratio. `X / native` is native fps over X's.
 
 | Workload |  native fps | interp fps |     JIT fps | interp / native | JIT / native |
 | :------- | ----------: | ---------: | ----------: | --------------: | -----------: |
@@ -658,7 +658,7 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-03 12:02 UTC, unlabelled box, 4 GiB address-space cap); doomgeneric (Rust `b1d012eb5d26`, 2026-11-03 12:24 UTC, unlabelled box, 4 GiB address-space cap); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-03 12:19 UTC, unlabelled box, 4 GiB address-space cap); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-03 12:14 UTC, unlabelled box, 4 GiB address-space cap); quakegeneric (Rust `b1d012eb5d26`, 2026-11-03 12:37 UTC, unlabelled box, 4 GiB address-space cap); wasm3 (Rust `b1d012eb5d26`, 2026-11-03 12:09 UTC, unlabelled box, 4 GiB address-space cap).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-03 12:02 UTC, unlabelled box, 4 GiB address-space cap); doomgeneric (Rust `b1d012eb5d26`, 2026-11-04 03:25 UTC, PC (AMD Ryzen 7 7435HS), 4 GiB address-space cap); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-03 12:19 UTC, unlabelled box, 4 GiB address-space cap); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-03 12:14 UTC, unlabelled box, 4 GiB address-space cap); quakegeneric (Rust `b1d012eb5d26`, 2026-11-03 12:37 UTC, unlabelled box, 4 GiB address-space cap); wasm3 (Rust `b1d012eb5d26`, 2026-11-03 12:09 UTC, unlabelled box, 4 GiB address-space cap).
 
 | Project       | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------------ | :--- | :----- | ----------: | ------: | ------: | ------: |
@@ -695,8 +695,8 @@ The bench entry's timed loop (`decode_us`), a lane's median over the native buil
 | :------------ | :--- | :------------------- | -------: | ----------: | -------: | -------: | -------: |
 | binjgb        | Ours | clang version 22.1.8 | 0.102919 |       80.57 |     1.22 |     1.29 |  compile |
 | binjgb        | Rust | clang version 22.1.8 | 0.102919 |       73.01 |     1.08 |     1.05 |     1.10 |
-| doomgeneric   | Ours | clang version 22.1.8 | 0.173015 |     refused |  refused |  refused |  refused |
-| doomgeneric   | Rust | clang version 22.1.8 | 0.173015 |       36.96 |     1.11 |     1.11 |  timeout |
+| doomgeneric   | Ours | clang version 22.1.8 | 0.124779 |     refused |  refused |  refused |  refused |
+| doomgeneric   | Rust | clang version 22.1.8 | 0.124779 |       32.05 |     1.04 |     1.04 |  timeout |
 | h264bsd-mp4   | Ours | clang version 22.1.8 | 0.120014 |     refused |  refused |  refused |  refused |
 | h264bsd-mp4   | Rust | clang version 22.1.8 | 0.120014 |       50.73 |     1.04 |     1.04 |     1.14 |
 | plmpeg-stream | Ours | clang version 22.1.8 | 0.062770 |       49.44 |     1.08 |     1.18 |     1.13 |

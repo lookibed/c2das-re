@@ -114,6 +114,13 @@ def lane_command(lane, native, entry : string) : string {
     return "run_tier {lane} {entry} -- -timedemo demo<N>"
 }
 
+//! The `run.das` command a capture records: `--fps` over `layout` and `tiers`, `samples` runs a
+//! cell, and `--demo <demo>` when one demo was timed (`demo` 0 for all three).
+def fps_command(layout : string; tiers : array<string>; samples, demo : int) : string {
+    let one = demo != 0 ? " --demo {demo}" : ""
+    return "daslang -load_module dasCRuntime -load_module c_runtime doom/run.das -- --run --fps --layout {layout} --tiers {join(tiers, ",")} --samples {samples}{one}"
+}
+
 //! The cell of `workload` under `lane`, null when the capture has none.
 def find_fps_cell(c : FpsCapture; workload, lane : string) : FpsCell const? {
     for (cell in c.cells) {
@@ -181,7 +188,7 @@ def render_fps(c : FpsCapture) : string {
     }
     let machine = box_label(capture_box(c.box, c.cpu), c.cpu)
     var text = "Box {machine}, {c.platform}; c2das-re `{c.commit}`, captured {c.timestamp}; {c.clang}; daslang {c.daslang}.\n\n"
-    text += "PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over {FPS_CLOCK}: the playback alone, the module load, the JIT compile and `doom_init` outside it. A cell is the median of {c.samples} runs, each its own process holding every tic to the reference log, ± half the range over the median; above {int(SUSPECT_SPREAD * 100.0lf)}% it is `{SUSPECT}`, without a ratio. `X / native` is native fps over X's.\n\n"
+    text += "PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over {FPS_CLOCK}: the playback, with the patch's per-tic checksums (the frame's over its 64000 bytes) and the tic lines inside it, the module load, the JIT compile and `doom_init` outside it. A cell is the median of {c.samples} runs, each its own process holding every tic to the reference log, ± half the range over the median; above {int(SUSPECT_SPREAD * 100.0lf)}% it is `{SUSPECT}`, without a ratio. `X / native` is native fps over X's.\n\n"
     let failed <- [for (cell in c.cells); "\n- {cell.workload}, {fps_title(cell.lane)}: {cell.error}"; where !empty(cell.error)]
     return text + table_of(headers, rows, 1) + join(failed, "") + "\n"
 }
