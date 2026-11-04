@@ -2237,6 +2237,14 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "crt::strcpy(")
         has_text(t, text, "crt::memcpy(")
     }
+    t |> run("a calling convention in a type (wasm3's `vectorcall` macro over `preserve_none`, the attribute itself) drops: the function type keeps its result and parameters") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_vectorcall", text)
+        has_text(t, text, "var private p8_vectorcall__direct : function<(var a0 : int?; a1 : int) : int> = @@p8_vectorcall__op_mul\n")
+        has_text(t, text, "var private p8_vectorcall__by_macro : function<(var a0 : int?; a1 : int) : int> = @@p8_vectorcall__op_add\n")
+        has_text(t, text, "def private p8_vectorcall__op_add(var pc : int?; acc : int) : int \{\n")
+        has_text(t, text, "def private p8_vectorcall__run(f : function<(var a0 : int?; a1 : int) : int>; ")
+    }
     t |> run("`musttail` on a return converts as a plain call whose value is returned: through a function pointer and direct") @(t : T?) {
         var text : string
         check_fixture(t, "p8_musttail", text)
