@@ -264,7 +264,7 @@ def private fps_cell(layout, lane : string; demo, samples, timeout : int; wad : 
 def private time_demos(args : Args; tiers : array<string>; demos : array<int>; wad : string) : bool {
     let dirty = empty(git_line(["status", "--porcelain", "--untracked-files=no"])) ? "" : "-dirty"
     var c = FpsCapture(commit = git_line(["rev-parse", "--short=12", "HEAD"]) + dirty, samples = args.samples, clock = FPS_CLOCK)
-    c.command = "daslang -load_module dasCRuntime -load_module c_runtime doom/run.das -- --run --fps --layout {args.layout} --tiers {join(tiers, ",")} --samples {args.samples}"
+    c.command = fps_command(args.layout, tiers, args.samples, args.demo)
     c.cpu = cpu_name()
     c.box = box_of(c.cpu)
     c.platform = "{get_platform_name()} {machine_arch()}"

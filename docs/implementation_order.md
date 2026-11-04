@@ -1464,7 +1464,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   tics in sync", the exit code or timeout, the first error line (any-case error, exception or a
   daslang EXCEPTION) and the seconds per 35 tics; a whole-demo run passes only in sync to the end
   with the timedemo line; one tic-line reader (`harness.das`); per-layout exe and aot folders;
-  `doom/ARCHITECTURE.md` section 8. The framebuffer half Done (branch `p6.4b-framebuffer-crc`, PR
+  `doom/ARCHITECTURE_RUN.md` section 8. The framebuffer half Done (branch `p6.4b-framebuffer-crc`, PR
   #88): the tic line is `tic=<gametic> cs=<8 hex> fb=<8 hex>`, fb FNV-1a over `screens[0]`'s
   64000 bytes, printed whole by `D_DoomLoop` after `D_Display`; the host takes `-tics N`
   (`--tics` passes it, a capped run ends clean); the harness names the differing fields; the
@@ -1496,7 +1496,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   reached through pointers only). Review leftovers: `pads_at`'s offset test lacks a reject case
   (an `aligned` member); a `_Bool` neighbour is accepted; the `+ -1` spelling;
   `doom/ARCHITECTURE.md` section 8's run paragraph states a dated result (the mood test: the
-  tic numbers belong here).
+  tic numbers belong here); closed by P6.7: the paragraph, now `doom/ARCHITECTURE_RUN.md` section 8,
+  names no result, and the tic counts are in P6.5 and P6.7.
 - **P6.5 Demo sync.** The ladder: first desynced tic → bisect → fix → repeat until
   demo1/2/3 are 100% on both wads. This is the semantics endgame; every desync is a
   real bug with a tic number attached.
@@ -1517,8 +1518,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   Next rung: jit, exe and aot and the `source-cut` and `single` layouts on freedoom2 demo1-3, then
   doom2.wad; ruling 29 item 1 takes the rungs P6.7 needs with it. Leftovers: the native trace run's
   exit code is not checked (a partial `.native.log` passes); `native_path`, `layout_dir` and
-  `sidecar_defines(true)` have no direct test; `doom/ARCHITECTURE.md` is at 296 of 300 lines (the
-  next addition splits section 8 into a companion).
+  `sidecar_defines(true)` have no direct test; `doom/ARCHITECTURE.md` at 296 of 300 lines,
+  closed by P6.7: sections 8 and 9 are `doom/ARCHITECTURE_RUN.md`.
 - **P6.6 Playable harness.** dasImgui window (framebuffer texture blit, key mapping),
   PCM SFX to the native audio path, MIDI music via dasAudio strudel_midi_player + GM
   soundfont.
@@ -1528,24 +1529,30 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   first; the P6.5 rungs it needs come with it. Ruling 28: the speed number is realtics, in-process,
   never the process's wall time (startup is its own row); the per-tic framebuffer hash costs the
   interp tier (P6.4b), measured apart.
-  State (branch `p6.7-doom-fps`, box PC, Ryzen 7 7435HS, WSL2): the host times the playback with
+  State (branch `p6.7-doom-fps-2`, box PC, Ryzen 7 7435HS, WSL2): the host times the playback with
   `clock()` (`host: timed N gametics in S s`); `doom/run.das --run --fps` holds every run of demo1-3
   to the reference log under native, interp and JIT, all in sync (JIT demo1/2/3 2664/5444/2743 tics
-  to the timedemo line), 3 runs a cell, every spread at or under 2%: native 6015-6607 fps, interp
-  127-140 fps (47.3-47.7x native), JIT 2165-2731 fps (2.4-2.8x). The Rust doomgeneric on the same
-  box (`compare/run.das --project doomgeneric --samples 3 --box PC`, `-timedemo demo1` on doom1.wad):
-  interp 32.0x its native, JIT 1.04x. Engines, wads and demos differ; only the ratio to native compares.
-  Why interp is slower (measured one construct at a time on PC, interp): (1) the patch's per-tic `fb`
-  checksum is inside every lane's window: 57 us per frame natively (about 35% of a native tic) and
-  970 us under interp (about 12%), so without it our interp ratio is about 64x, not 47x; a timing
-  run without the checksum needs a ruling (the sync check reads it). (2) `do { ... } while (count--)`,
-  the inner loop of `R_DrawColumn` and `R_DrawSpan`, lowers to the `_first` flag loop with a
-  temporary per pixel; the same body as a counted `range` loop is 1.33x faster under interp (JIT
-  equal, 0.96x), where Rust emits `for (urange64(0, count + 1))`: candidate row, a `do-while` whose
-  condition is a post-decrement of a local counter lowered as a counted range. (3) the frame
-  checksum's own `for` with its counter declared outside stays a `while`. Not found in two hours:
-  a per-function profile (the daslang profiler prints no summary when the program leaves through C
-  `exit`, and its trace of 700 tics exhausts 4 GiB).
+  to the timedemo line), 3 runs a cell, every spread at or under 2% (`doom/results_linux.json`):
+  native 6015-6607 fps, interp 127-139 fps (47.3-47.7x native), JIT 2164-2731 fps (2.4-2.8x). The
+  Rust doomgeneric on the same box (`compare/run.das --project doomgeneric --samples 3 --box PC`,
+  `-timedemo demo1` on doom1.wad): interp 32.0x its native, JIT 1.04x. Engines, wads and demos
+  differ; only the ratio to native compares.
+  Why interp is slower, measured on PC with scratch kernels, one construct each (not committed; the
+  method is this text): (1) the patch's per-tic `fb` checksum is inside every lane's window. Its
+  loop alone over a 64000-byte buffer: 57 us per frame as C at the pinned clang `-O2` (20000 frames,
+  one run, `clock()`) and 970 us as its converted body (the `while` of `d_main.das.inc`) under interp
+  (500 frames, one run); set against the capture's per-tic times that is about 35% of a native tic
+  and 12% of an interp one, so without it the interp ratio would be about 64x, not 47x. No build
+  without the checksum was timed: a timing run without it needs a ruling (the sync check reads it).
+  (2) `do { ... } while (count--)`, the inner loop of `R_DrawColumn` and `R_DrawSpan`, lowers to the
+  `_first` flag loop with a temporary per pixel; a scratch kernel with `R_DrawColumn`'s body over
+  module arrays, 200000 columns of 151 pixels, the converted loop against the same body in a
+  counted `range` loop, 3 runs in one process: 1.33-1.36x slower under interp, 0.94-0.98x under
+  JIT. Rust emits `for (urange64(0, count + 1))`. Candidate row: a `do-while` whose condition is a
+  post-decrement of a local counter lowered as a counted range. (3) the frame checksum's own `for`,
+  its counter declared outside, stays a `while` (not timed apart).
+  Open: a per-function profile of a converted demo under interp. Blocked: the daslang profiler
+  prints no summary on a C `exit`, and a 700-tic trace exceeds 4 GiB.
 - **Exit criterion:** demo-sync 100%, playable with sound and music, perf table v1.
 
 ## P7 — Performance + tiers
