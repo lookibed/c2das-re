@@ -511,7 +511,7 @@ def test_bench(t : T?) {
             t |> success(readme |> contains(head), "README lacks {head}:\n{readme}")
         }
         let top = fread(path_join(clone, "README.md"))
-        t |> success(top |> contains("| [lua](lua/README.md) |"), top)
+        t |> success(top |> contains("| [lua](lua/README.md) |") && top |> contains("|         5 |"), top)
         t |> equal(git(clone, ["status", "--porcelain"]), "")
     }
 }
@@ -725,5 +725,33 @@ def test_criteria_section(t : T?) {
         t |> equal(publish(root, args, out), 1, out)
         t |> success(out |> contains("ports: metrics/criteria_linux.json: "), out)
         t |> equal(fread(path_join(clone, "README.md")), readme, "a refused capture left the README as it was")
+    }
+}
+
+[test]
+def test_raw_captures(t : T?) {
+    t |> run_stand_in("the raw captures present in the c2das-re tree are copied whole under their own paths, named in the top README and committed", "c2das_ports_raw") @(t : T?; root, clone : string) {
+        let present <- ["compare/results_linux.json", "metrics/criteria_linux.json", "perf/results_linux.json", "perf/dasprofile_linux.json"]
+        for (rel in present) {
+            mkdir_rec(path_join(root, dir_name(rel)))
+        }
+        fwrite(path_join(root, "compare/results_linux.json"), "\{\"doom\": \{\"status\": \"pending\", \"reason\": \"P6\"\}\}\n")
+        fwrite(path_join(root, "metrics/criteria_linux.json"), fread("metrics/criteria_linux.json"))
+        fwrite(path_join(root, "perf/results_linux.json"), "\{\"tests\": \{\}\}\n")
+        fwrite(path_join(root, "perf/dasprofile_linux.json"), "\{\"profile\": 1\}\n")
+        // a stale copy in the clone is replaced whole
+        mkdir_rec(path_join(clone, "perf"))
+        fwrite(path_join(clone, "perf/results_linux.json"), "stale\n")
+        fwrite(path_join(clone, "perf/results_method_linux.json"), "earlier\n")
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--allow-dirty", "--commit"], out), 0, out)
+        for (rel in present) {
+            t |> equal(fread(path_join(clone, rel)), fread(path_join(root, rel)), rel)
+        }
+        // a copy the tree no longer has stays, and is named
+        t |> equal(fread(path_join(clone, "perf/results_method_linux.json")), "earlier\n")
+        let top = fread(path_join(clone, "README.md"))
+        t |> success(top |> contains("\nRaw captures beside this README, each copied whole from c2das-re when its tree holds it: `compare/results_linux.json`, `metrics/criteria_linux.json`, `perf/results_linux.json`, `perf/results_method_linux.json`, `perf/dasprofile_linux.json`.\n"), top)
+        t |> equal(git(clone, ["status", "--porcelain"]), "", "the raw copies are committed")
     }
 }

@@ -661,8 +661,8 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
 }
 
 // the top-level README: the charter kept above the marker, the projects table of every program's
-// latest capture (or the perf method line when no program has one) below it, then the
-// head-to-head when its capture exists
+// latest capture (or the perf method line when no program has one) below it with the raw
+// captures it copies beside it, then the criteria and the head-to-head when their captures exist
 def private publish_top_readme(repo : string) : bool {
     var captures : array<Capture>
     var names : array<string>
@@ -686,8 +686,18 @@ def private publish_top_readme(repo : string) : bool {
     if (!compare_section(head_to_head) || !criteria_section(criteria)) {
         return false
     }
+    let raw <- [for (rel in RAW_CAPTURES); rel; where fexist(rel)]
+    for (rel in raw) {
+        let target = path_join(repo, rel)
+        mkdir_rec(dir_name(target))
+        if (!write_or_log(target, fread(rel))) {
+            return false
+        }
+    }
+    // every raw capture the clone holds, a copy the tree no longer has included
+    let held <- [for (rel in RAW_CAPTURES); rel; where fexist(path_join(repo, rel))]
     let path = path_join(repo, "README.md")
-    return write_or_log(path, render_top_readme(fread(path), captures) + criteria + head_to_head)
+    return write_or_log(path, render_top_readme(fread(path), captures, held) + criteria + head_to_head)
 }
 
 //! the head-to-head's capture in the c2das-re tree
@@ -728,9 +738,14 @@ def private criteria_section(var section : string&) : bool {
     return true
 }
 
+//! c2das-re's raw captures, each copied into the clone under its own path when present
+let RAW_CAPTURES <- [COMPARE_CAPTURE, CRITERIA_CAPTURE, "perf/results_linux.json", "perf/results_method_linux.json", "perf/dasprofile_linux.json"]
+
 def private commit_program(port : Port; repo : string; gen : Generation) : bool {
     var out : string
-    if (git_in(repo, ["add", "-A", "{port.name}/", "README.md"], out) != 0) {
+    var paths <- ["add", "-A", "{port.name}/", "README.md"]
+    paths |> push_from([for (rel in RAW_CAPTURES); rel; where fexist(path_join(repo, rel))])
+    if (git_in(repo, paths, out) != 0) {
         to_log(LOG_ERROR, "{port.name}: git add failed: {out}\n")
         return false
     }
