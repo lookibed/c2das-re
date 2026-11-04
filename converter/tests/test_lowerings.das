@@ -166,6 +166,7 @@ def test_lowerings(t : T?) {
     p7_wrap_fixtures(t)
     p7_first_member_fixtures(t)
     p5_lua_expression_fixtures(t)
+    p7_restart_sentinel_fixtures(t)
     p5_lua_review_fixtures(t)
     p5_skip_audit_fixtures(t)
     p8_input_fixtures(t)
@@ -1770,6 +1771,10 @@ def p5_lua_expression_fixtures(t : T?) {
         has_text(t, paired, "        if (_cond == 1 || _cond == 2) \{\n            r = 1\n            break\n")
         t |> equal(run_tier(converted_path("cross_label_shared"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
     }
+}
+
+// P7.0c3: the value a re-dispatch stores into the condition, so a case tests its value alone
+def p7_restart_sentinel_fixtures(t : T?) {
     t |> run("a re-dispatch stores a value no case holds into the condition, so a case tests its value alone and the case the goto left never matches again") @(t : T?) {
         // the goto's own case would match the unchanged condition and loop forever
         let left = converts(t, "restart_sentinel", "int f(int x) \{ int r = 0; switch (x) \{ case 1: r += 1; goto L; case 2: r += 10; L: r += 100; break; default: r += 1000; \} return r; \}\nint main(void) \{ return f(1) - 101 + f(2) - 110 + f(3) - 1000; \}\n")
