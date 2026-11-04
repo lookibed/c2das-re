@@ -181,42 +181,46 @@ Captured: c_testsuite (Rust `ce4647af2826`, 2026-11-01 02:54 UTC, unlabelled box
 
 ### Speed
 
-Captured 2026-11-01 07:27 UTC on linux x86_64, fx (AMD FX(tm)-6300 Six-Core Processor); clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.4; Rust `ce4647af2826`; 5 samples a cell. A cell is a lane's time over the native build's (lower is faster); the geomean row covers the kernels where native and both sides stand, their count in parentheses. A cell whose spread is above 20% is `suspect` with its spread, no ratio, and out of the geomean, as is a cell over a suspect native one.
+Captured 2026-11-04 08:31 UTC on linux x86_64, PC (AMD Ryzen 7 7435HS); clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.4; Rust `b1d012eb5d26`; 5 samples a cell. A cell is a lane's time over the native build's (lower is faster); the geomean row covers the kernels where native and both sides stand, their count in parentheses. A cell whose spread is above 20% is `suspect` with its spread, no ratio, and out of the geomean, as is a cell over a suspect native one.
 
-| Kernel                   | native (s) | ours interpreter | Rust interpreter |  ours JIT |  Rust JIT |  ours exe |  Rust exe |  ours AOT |          Rust AOT |
-| :----------------------- | ---------: | ---------------: | ---------------: | --------: | --------: | --------: | --------: | --------: | ----------------: |
-| bit_pack                 |   0.000213 |           330.27 |           638.52 |      1.06 |      exit |      1.07 |      exit |      1.09 |             45.37 |
-| blit                     |   0.000428 |            96.71 |            53.86 |      8.65 |      9.21 |     10.40 |     10.77 |      0.99 |              1.66 |
-| compound_lit             |   0.000531 |           111.19 |            94.11 |      1.04 |      1.32 |      1.07 |      1.16 |      1.05 |              2.44 |
-| dasprofile/fib_loop      |   0.001905 |            31.44 |           116.98 |      2.28 |      2.29 |      2.29 |      2.29 |      1.00 |              1.00 |
-| dasprofile/fib_recursive |   0.008354 |             8.66 |            12.00 |      1.05 |   timeout |      1.01 |   timeout |      1.06 |              1.04 |
-| dasprofile/primes        |   0.049542 |             4.44 |             4.44 |      0.94 |      0.96 |      0.94 |      0.94 |      0.63 |              0.58 |
-| do_while_effect          |   0.003408 |            22.14 |            18.89 |      1.02 |      1.02 |      1.00 |      1.02 |      0.99 |              1.01 |
-| fib_loop                 |   0.001906 |            31.51 |           117.26 |      2.28 |      2.30 |      2.30 |      2.29 |      1.00 |              1.00 |
-| fib_recursive            |   0.007529 |             9.94 |            13.46 |      1.17 |   timeout |      1.12 |   timeout |      1.17 |              1.17 |
-| fixed_mandel             |   0.000844 |            39.84 |            48.35 |      0.69 |      0.69 |      0.70 |      0.69 |      0.95 |              0.92 |
-| matmul                   |   0.000597 |            92.91 |            38.11 |      0.58 |      0.58 |      0.97 |      0.96 |      1.43 |              1.40 |
-| primes                   |   0.049269 |             2.73 |             2.85 |      0.95 |      0.95 |      0.95 |      0.95 |      0.63 |              0.59 |
-| qsort_cmp                |   0.000210 |             9.26 |          refused |      2.56 |   refused |      2.53 |   refused |      2.65 |           refused |
-| setjmp_general           |   0.000211 |            42.96 |          refused |     22.01 |   refused |     21.16 |   refused |     17.59 |           refused |
-| sieve                    |   0.006701 |            22.61 |            11.84 |      1.06 |      1.18 |      1.04 |      1.15 |      5.15 |              5.15 |
-| str_copy                 |   0.000720 |            65.51 |            55.17 |      1.20 |      1.21 |      1.22 |      1.22 |      5.68 |              5.56 |
-| switch_goto              |   0.004559 |            42.01 |            16.87 |      0.43 |      0.29 |      0.43 |      0.29 |      0.51 |              0.85 |
-| switch_local             |   0.001164 |            73.51 |            60.15 |      5.96 |      0.98 |      6.15 |      0.99 |   compile | suspect (±24.6%) |
-| va_forward               |   0.000603 |           215.67 |           131.56 |     13.55 |     47.21 |     10.45 |     47.37 |     13.42 |             14.76 |
-| geomean (kernels)        |            |       36.08 (17) |       35.92 (17) | 1.61 (14) | 1.55 (14) | 1.66 (14) | 1.60 (14) | 1.37 (16) |         1.92 (16) |
+| Kernel                   | native (s) |  ours interpreter | Rust interpreter |          ours JIT |  Rust JIT |  ours exe |  Rust exe |  ours AOT |  Rust AOT |
+| :----------------------- | ---------: | ----------------: | ---------------: | ----------------: | --------: | --------: | --------: | --------: | --------: |
+| bit_pack                 |   0.000089 | suspect (±41.8%) |           322.78 |              1.09 |      exit |      1.14 |      exit |      1.14 |      exit |
+| blit                     |   0.000364 |             44.99 |            28.38 |              1.24 |      1.48 |      2.22 |      1.73 |      0.82 |      0.65 |
+| compound_lit             |   0.000188 |             92.81 |            86.00 |              1.00 |      0.98 |      1.06 |      1.04 |      1.01 |      2.10 |
+| dasprofile/fib_loop      |   0.001504 |             20.50 |            63.43 |              0.98 |      0.97 |      1.02 |      1.00 |      0.98 |      0.97 |
+| dasprofile/fib_recursive |   0.003322 |              7.93 |            10.78 |              0.95 |   timeout |      0.91 |   timeout |      1.00 |      1.00 |
+| dasprofile/primes        |   0.014695 |              4.54 |             4.70 |              1.02 |      1.00 |      1.00 |      1.00 |      0.55 |      0.55 |
+| do_while_effect          |   0.001963 |             19.22 |            15.26 |              0.99 |      0.99 |      1.00 |      1.00 |      1.00 |      1.00 |
+| fib_loop                 |   0.001462 |             20.95 |            65.49 |              1.00 |      1.00 |      1.03 |      1.04 |      1.00 |      1.00 |
+| fib_recursive            |   0.003205 |              8.26 |            11.32 |              0.98 |   timeout |      0.94 |   timeout |      0.94 |      1.06 |
+| first_member             |   0.000591 |            103.04 |            80.01 |              1.45 |      1.15 |      1.31 |      1.43 |      1.61 |      1.10 |
+| fixed_mandel             |   0.000272 |             51.49 |            49.13 |              0.89 |      0.88 |      0.78 |      0.74 |      0.94 |      0.94 |
+| matmul                   |   0.000224 |             81.47 |            40.03 |              0.58 |      0.55 |      0.95 |      0.97 |      1.60 |      1.58 |
+| primes                   |   0.014612 |              2.59 |             2.62 |              1.02 |      1.00 |      1.00 |      1.02 |      0.55 |      0.54 |
+| qsort_cmp                |   0.000092 |             10.00 |          refused |              2.47 |   refused |      2.59 |   refused |      2.39 |   refused |
+| setjmp_general           |   0.000116 |             25.31 |          refused |             16.62 |   refused |     16.97 |   refused |     14.13 |   refused |
+| sieve                    |   0.001866 |             30.99 |            19.22 |              0.99 |      1.16 |      1.11 |      1.15 |      7.90 |      7.86 |
+| str_copy                 |   0.000299 |             57.70 |            51.14 |              1.03 |      1.18 |      1.09 |      1.05 |      3.79 |      3.62 |
+| switch_goto              |   0.000704 |             71.81 |            43.53 |              1.07 |      0.53 |      1.07 |      0.63 |      1.13 |      1.15 |
+| switch_local             |   0.000536 |             56.70 |            52.80 |              5.38 |      1.01 |      6.17 |      0.98 |   compile |      1.46 |
+| va_forward               |   0.000208 |            206.92 |           195.47 | suspect (±21.4%) |    110.17 |     15.83 |    109.89 |      exit |      exit |
+| geomean (kernels)        |            |        30.52 (17) |       30.40 (17) |         1.13 (14) | 0.96 (14) | 1.46 (15) | 1.40 (15) | 1.22 (15) | 1.23 (15) |
 
 Error cells:
 
+- bit_pack, Rust AOT: exited 5: 
 - bit_pack, Rust exe: exited 1: EXCEPTION: array resize to 8388609 elements of 8 bytes each grows past max_unreserved_size (67108864 bytes); reserve the final size first, ensure_c...
-- bit_pack, Rust JIT: exited 1: [I] LLVM JIT: DLL cache hit .cache/daslang/_anon_3100298793229362603/0x39ac7f92b83497ee.dll
+- bit_pack, Rust JIT: exited 1: [I] LLVM JIT: DLL cache hit .cache/daslang/_anon_3100298793229362603/0xcdf5ad2375feaa9f.dll
 - dasprofile/fib_recursive, Rust exe: the build or its run took longer than 300 s
 - dasprofile/fib_recursive, Rust JIT: a sample took longer than 120 s
 - fib_recursive, Rust exe: the build or its run took longer than 300 s
 - fib_recursive, Rust JIT: a sample took longer than 120 s
 - qsort_cmp, Rust: refused: translation failed: operation=top-level declaration lowering; c_type=Function(CQualTypeId { qualifiers: Qualifiers { is_const: false, is_restrict: false, is_...
 - setjmp_general, Rust: refused: translation failed: operation=top-level declaration lowering; c_type=Function(CQualTypeId { qualifiers: Qualifiers { is_const: false, is_restrict: false, is_...
-- switch_local, ours AOT: the build exited 1 and left no binary: 1 error generated.
+- switch_local, ours AOT: the build exited 1 and left no binary: compare/work/perf/switch_local/ours/ctx/switch_local.das.cpp:638:9: error: cannot jump from this goto statement to its...
+- va_forward, ours AOT: exited 5: 
+- va_forward, Rust AOT: exited 5: 
 
 ### Readability and size
 
@@ -658,7 +662,7 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-03 12:02 UTC, unlabelled box, 4 GiB address-space cap); doomgeneric (Rust `b1d012eb5d26`, 2026-11-04 03:25 UTC, PC (AMD Ryzen 7 7435HS), 4 GiB address-space cap); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-03 12:19 UTC, unlabelled box, 4 GiB address-space cap); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-03 12:14 UTC, unlabelled box, 4 GiB address-space cap); quakegeneric (Rust `b1d012eb5d26`, 2026-11-03 12:37 UTC, unlabelled box, 4 GiB address-space cap); wasm3 (Rust `b1d012eb5d26`, 2026-11-03 12:09 UTC, unlabelled box, 4 GiB address-space cap).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-04 08:32 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap); doomgeneric (Rust `b1d012eb5d26`, 2026-11-04 07:12 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-04 06:48 UTC, PC (AMD Ryzen 7 7435HS), 4 GiB address-space cap); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-04 06:45 UTC, PC (AMD Ryzen 7 7435HS), 4 GiB address-space cap); quakegeneric (Rust `b1d012eb5d26`, 2026-11-04 07:01 UTC, PC (AMD Ryzen 7 7435HS), 4 GiB address-space cap); wasm3 (Rust `b1d012eb5d26`, 2026-11-04 06:55 UTC, PC (AMD Ryzen 7 7435HS), 4 GiB address-space cap).
 
 | Project       | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------------ | :--- | :----- | ----------: | ------: | ------: | ------: |
@@ -666,7 +670,7 @@ Each project of the Rust repository's `tests/manual` on its own fixture, checked
 | binjgb        | Rust | pass   |        pass |    pass |    pass |    pass |
 | doomgeneric   | Ours | pass   |     refused | refused | refused | refused |
 | doomgeneric   | Rust | pass   |        pass |    pass |    pass | timeout |
-| h264bsd-mp4   | Ours | pass   |     refused | refused | refused | refused |
+| h264bsd-mp4   | Ours | pass   |        pass |    pass |    pass |    pass |
 | h264bsd-mp4   | Rust | pass   |        pass |    pass |    pass |    pass |
 | plmpeg-stream | Ours | pass   |        pass |    pass |    pass |    pass |
 | plmpeg-stream | Rust | pass   |        pass |    pass |    pass |    pass |
@@ -682,29 +686,28 @@ Defines of our side's sidecar alone (the Rust side and the native build do not g
 Why a lane does not pass:
 
 - binjgb, Ours, AOT: compile: aot build: the build exited 1 and left no binary: compare/work/projects/binjgb/ours_run/aot/ctx/binjgb_all.das.cpp:8334:9: error: cannot jump from t...
-- doomgeneric, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/m_config.c:109:4: unsupported type spelling ``
+- doomgeneric, Ours, interpreter JIT exe AOT: refused: emitter: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/doomdata.h:57:9: record `mapvertex_t` is not laid out naturally: a pa...
 - doomgeneric, Rust, AOT: timeout: the build or its run took longer than 300 s
-- h264bsd-mp4, Ours, interpreter JIT exe AOT: refused: compile check: error[30341]: too many matching functions or generics malloc
-- quakegeneric, Ours, interpreter JIT exe AOT: refused: emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/sys_null.c:160:2: external function `vfprintf` has no c_runtime mapping
+- quakegeneric, Ours, interpreter JIT exe AOT: refused: emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/host_cmd.c:63:10: a pointer to a variadic function is not lowered yet
 - quakegeneric, Rust, JIT: output: line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at compare/work/projects/quakegeneric/rust/host.das.inc:66...
-- wasm3, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_exec_defs.h:55:29: unsupported type spelling `vectorcall m3ret_t`
+- wasm3, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_parse.c:305:22: `m3type_t argTypes[numArgs + 1]`: a variable-length array is not low...
 
 The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 3 samples a cell; a cell whose spread is above 20% is `suspect` with its spread, no ratio, as is a lane over a suspect native build:
 
-| Project       | Side | Native compiler      |          Native s |      interpreter |              JIT |              exe |              AOT |
-| :------------ | :--- | :------------------- | ----------------: | ---------------: | ---------------: | ---------------: | ---------------: |
-| binjgb        | Ours | clang version 22.1.8 |          0.102919 |            80.57 |             1.22 |             1.29 |          compile |
-| binjgb        | Rust | clang version 22.1.8 |          0.102919 |            73.01 |             1.08 |             1.05 |             1.10 |
-| doomgeneric   | Ours | clang version 22.1.8 |          0.124779 |          refused |          refused |          refused |          refused |
-| doomgeneric   | Rust | clang version 22.1.8 |          0.124779 |            32.05 |             1.04 |             1.04 |          timeout |
-| h264bsd-mp4   | Ours | clang version 22.1.8 |          0.120014 |          refused |          refused |          refused |          refused |
-| h264bsd-mp4   | Rust | clang version 22.1.8 |          0.120014 |            50.73 |             1.04 |             1.04 |             1.14 |
-| plmpeg-stream | Ours | clang version 22.1.8 |          0.062770 |            49.44 |             1.08 |             1.18 |             1.13 |
-| plmpeg-stream | Rust | clang version 22.1.8 |          0.062770 |            39.15 |             0.95 |             1.01 |             1.05 |
-| quakegeneric  | Ours | clang version 22.1.8 |          no bench |         no bench |         no bench |         no bench |         no bench |
-| quakegeneric  | Rust | clang version 22.1.8 |          no bench |         no bench |         no bench |         no bench |         no bench |
-| wasm3         | Ours | clang version 22.1.8 | suspect (±41.9%) |          refused |          refused |          refused |          refused |
-| wasm3         | Rust | clang version 22.1.8 | suspect (±41.9%) | suspect (native) | suspect (native) | suspect (native) | suspect (native) |
+| Project       | Side | Native compiler      | Native s | interpreter |      JIT |      exe |      AOT |
+| :------------ | :--- | :------------------- | -------: | ----------: | -------: | -------: | -------: |
+| binjgb        | Ours | clang version 22.1.8 | 0.062039 |       77.41 |     1.22 |     1.24 |  compile |
+| binjgb        | Rust | clang version 22.1.8 | 0.062039 |       71.32 |     1.07 |     1.06 |     1.08 |
+| doomgeneric   | Ours | clang version 22.1.8 | 0.123320 |     refused |  refused |  refused |  refused |
+| doomgeneric   | Rust | clang version 22.1.8 | 0.123320 |       34.00 |     1.11 |     1.08 |  timeout |
+| h264bsd-mp4   | Ours | clang version 22.1.8 | 0.101862 |       65.06 |     1.16 |     1.12 |     0.99 |
+| h264bsd-mp4   | Rust | clang version 22.1.8 | 0.101862 |       41.59 |     0.87 |     0.87 |     0.94 |
+| plmpeg-stream | Ours | clang version 22.1.8 | 0.043508 |       37.50 |     1.14 |     1.16 |     1.13 |
+| plmpeg-stream | Rust | clang version 22.1.8 | 0.043508 |       31.63 |     0.98 |     1.03 |     1.11 |
+| quakegeneric  | Ours | clang version 22.1.8 | no bench |    no bench | no bench | no bench | no bench |
+| quakegeneric  | Rust | clang version 22.1.8 | no bench |    no bench | no bench | no bench | no bench |
+| wasm3         | Ours | clang version 22.1.8 | 0.001970 |     refused |  refused |  refused |  refused |
+| wasm3         | Rust | clang version 22.1.8 | 0.001970 |       64.80 |     2.61 |     2.54 |     1.46 |
 
 The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
 
@@ -714,7 +717,7 @@ The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std
 | binjgb        | Rust | ok      |     1 | 11481 |           956 |          0 |  670 |   867 |          2393 |            33 |           939 |        3818 |            8 |        5049 |              12 |
 | doomgeneric   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | doomgeneric   | Rust | ok      |     1 | 37045 |          1579 |          0 |  435 |   612 |         43595 |           523 |          3454 |       10418 |          260 |       15426 |             169 |
-| h264bsd-mp4   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
+| h264bsd-mp4   | Ours | ok      |     1 | 21829 |             0 |        306 |    5 |     3 |          6619 |          1970 |          2079 |         363 |            0 |           0 |             133 |
 | h264bsd-mp4   | Rust | ok      |     1 | 24316 |           822 |          0 |  362 |   309 |          7164 |          1738 |          2701 |        5172 |         1208 |        8557 |              73 |
 | plmpeg-stream | Ours | ok      |     1 |  3618 |             0 |         64 |    0 |     0 |          2062 |            11 |           387 |          66 |            0 |           6 |               6 |
 | plmpeg-stream | Rust | ok      |     1 |  4988 |           822 |          0 |    0 |     0 |          1891 |            10 |           587 |         505 |            0 |        1259 |              11 |
@@ -1277,7 +1280,172 @@ def R_DrawSpan() {
 
 #### `h264bsd-mp4`: `h264bsdProcessBlock`
 
-Ours: not found in this side's module.
+Ours:
+
+```das
+[c_function]
+def h264bsdProcessBlock(var data : int?; qp : uint; skip : uint; coeffMap : uint) : uint {
+    // Variables
+    var tmp0 : int
+    var tmp1 : int
+    var tmp2 : int
+    var tmp3 : int
+    var d1 : int
+    var d2 : int
+    var d3 : int
+    var row : uint
+    var col : uint
+    var qpDiv : uint
+    var ptr : int?
+    // Code
+    qpDiv = uint(h264_file_all__qpDiv6[qp])
+    tmp1 = h264_file_all__levelScale[int(h264_file_all__qpMod6[qp])][0] << int(qpDiv)
+    tmp2 = h264_file_all__levelScale[int(h264_file_all__qpMod6[qp])][1] << int(qpDiv)
+    tmp3 = h264_file_all__levelScale[int(h264_file_all__qpMod6[qp])][2] << int(qpDiv)
+    if (!(skip != 0)) {
+        deref(data + 0) *= tmp1
+    }
+    // at least one of the rows 1, 2 or 3 contain non-zero coeffs, mask takes
+    // the scanning order into account
+    if ((coeffMap & uint(65436)) != 0) {
+        // do the zig-zag scan and inverse quantization
+        d1 = deref(data + 1)
+        d2 = deref(data + 14)
+        d3 = deref(data + 15)
+        deref(data + 1) = d1 * tmp2
+        deref(data + 14) = d2 * tmp2
+        deref(data + 15) = d3 * tmp3
+        d1 = deref(data + 2)
+        d2 = deref(data + 5)
+        d3 = deref(data + 4)
+        deref(data + 4) = d1 * tmp2
+        deref(data + 2) = d2 * tmp1
+        deref(data + 5) = d3 * tmp3
+        d1 = deref(data + 8)
+        d2 = deref(data + 3)
+        d3 = deref(data + 6)
+        tmp0 = d1 * tmp2
+        deref(data + 8) = d2 * tmp1
+        deref(data + 3) = d3 * tmp2
+        d1 = deref(data + 7)
+        d2 = deref(data + 12)
+        d3 = deref(data + 9)
+        deref(data + 6) = d1 * tmp2
+        deref(data + 7) = d2 * tmp3
+        deref(data + 12) = d3 * tmp2
+        deref(data + 9) = tmp0
+        d1 = deref(data + 10)
+        d2 = deref(data + 11)
+        d3 = deref(data + 13)
+        deref(data + 13) = d1 * tmp3
+        deref(data + 10) = d2 * tmp1
+        deref(data + 11) = d3 * tmp2
+        // horizontal transform
+        {
+            row = uint(4)
+            ptr = data
+            while (true) {
+                let _t0 = row
+                row--
+                if (!(_t0 != 0)) {
+                    break
+                }
+                tmp0 = deref(ptr + 0) + deref(ptr + 2)
+                tmp1 = deref(ptr + 0) - deref(ptr + 2)
+                tmp2 = (deref(ptr + 1) >> 1) - deref(ptr + 3)
+                tmp3 = deref(ptr + 1) + (deref(ptr + 3) >> 1)
+                deref(ptr + 0) = tmp0 + tmp3
+                deref(ptr + 1) = tmp1 + tmp2
+                deref(ptr + 2) = tmp1 - tmp2
+                deref(ptr + 3) = tmp0 - tmp3
+                ptr = ptr + 4
+            }
+        }
+        // lint +e661 +e662
+        // then vertical transform
+        {
+            col = uint(4)
+            while (true) {
+                let _t1 = col
+                col--
+                if (!(_t1 != 0)) {
+                    break
+                }
+                tmp0 = deref(data + 0) + deref(data + 8)
+                tmp1 = deref(data + 0) - deref(data + 8)
+                tmp2 = (deref(data + 4) >> 1) - deref(data + 12)
+                tmp3 = deref(data + 4) + (deref(data + 12) >> 1)
+                deref(data + 0) = tmp0 + tmp3 + 32 >> 6
+                deref(data + 4) = tmp1 + tmp2 + 32 >> 6
+                deref(data + 8) = tmp1 - tmp2 + 32 >> 6
+                deref(data + 12) = tmp0 - tmp3 + 32 >> 6
+                // check that each value is in the range [-512,511]
+                if (uint(deref(data + 0) + 512) > uint(1023) || uint(deref(data + 4) + 512) > uint(1023) || uint(deref(data + 8) + 512) > uint(1023) || uint(deref(data + 12) + 512) > uint(1023)) {
+                    return uint(HANTRO_NOK)
+                }
+                data = data + 1
+            }
+        }
+    } else {
+        // rows 1, 2 and 3 are zero
+        // only dc-coeff is non-zero, i.e. coeffs at original positions
+        // 1, 5 and 6 are zero
+        if ((coeffMap & uint(98)) == uint(0)) {
+            tmp0 = deref(data + 0) + 32 >> 6
+            // check that value is in the range [-512,511]
+            if (uint(tmp0 + 512) > uint(1023)) {
+                return uint(HANTRO_NOK)
+            }
+            deref(data + 15) = tmp0
+            deref(data + 14) = deref(data + 15)
+            deref(data + 13) = deref(data + 14)
+            deref(data + 12) = deref(data + 13)
+            deref(data + 11) = deref(data + 12)
+            deref(data + 10) = deref(data + 11)
+            deref(data + 9) = deref(data + 10)
+            deref(data + 8) = deref(data + 9)
+            deref(data + 7) = deref(data + 8)
+            deref(data + 6) = deref(data + 7)
+            deref(data + 5) = deref(data + 6)
+            deref(data + 4) = deref(data + 5)
+            deref(data + 3) = deref(data + 4)
+            deref(data + 2) = deref(data + 3)
+            deref(data + 1) = deref(data + 2)
+            deref(data + 0) = deref(data + 1)
+        } else {
+            // at least one of the coeffs 1, 5 or 6 is non-zero
+            deref(data + 1) *= tmp2
+            deref(data + 2) = deref(data + 5) * tmp1
+            deref(data + 3) = deref(data + 6) * tmp2
+            tmp0 = deref(data + 0) + deref(data + 2)
+            tmp1 = deref(data + 0) - deref(data + 2)
+            tmp2 = (deref(data + 1) >> 1) - deref(data + 3)
+            tmp3 = deref(data + 1) + (deref(data + 3) >> 1)
+            deref(data + 0) = tmp0 + tmp3 + 32 >> 6
+            deref(data + 1) = tmp1 + tmp2 + 32 >> 6
+            deref(data + 2) = tmp1 - tmp2 + 32 >> 6
+            deref(data + 3) = tmp0 - tmp3 + 32 >> 6
+            deref(data + 12) = deref(data + 0)
+            deref(data + 8) = deref(data + 12)
+            deref(data + 4) = deref(data + 8)
+            deref(data + 13) = deref(data + 1)
+            deref(data + 9) = deref(data + 13)
+            deref(data + 5) = deref(data + 9)
+            deref(data + 14) = deref(data + 2)
+            deref(data + 10) = deref(data + 14)
+            deref(data + 6) = deref(data + 10)
+            deref(data + 15) = deref(data + 3)
+            deref(data + 11) = deref(data + 15)
+            deref(data + 7) = deref(data + 11)
+            // check that each value is in the range [-512,511]
+            if (uint(deref(data + 0) + 512) > uint(1023) || uint(deref(data + 1) + 512) > uint(1023) || uint(deref(data + 2) + 512) > uint(1023) || uint(deref(data + 3) + 512) > uint(1023)) {
+                return uint(HANTRO_NOK)
+            }
+        }
+    }
+    return uint(HANTRO_OK)
+}
+```
 
 Rust:
 
@@ -1423,7 +1591,100 @@ def h264bsdProcessBlock(var data_28 : int?; var qp : uint; var skip : uint; var 
 
 #### `h264bsd-mp4`: `FilterVerLumaEdge`
 
-Ours: not found in this side's module.
+Ours:
+
+```das
+[c_function]
+def private h264_file_all__FilterVerLumaEdge(var data : uint8?; bS : uint; var thresholds : edgeThreshold_t?; imageWidth : uint) {
+    // Variables
+    var delta : int
+    var tc : int
+    var tmp : int
+    var i : uint
+    var p0 : int
+    var q0 : int
+    var p1 : int
+    var q1 : int
+    var p2 : int
+    var q2 : int
+    var tmpFlag : uint
+    var clp : uint8? = addr(h264bsdClip[0]) + 512
+    var alpha : uint = thresholds.alpha
+    var beta : uint = thresholds.beta
+    var val : int
+    // Code
+    if (bS < uint(4)) {
+        tc = int(deref(thresholds.tc0 + (bS - uint(1))))
+        tmp = tc
+        {
+            i = uint(4)
+            while (i != 0) {
+                p1 = int(deref(data + -2))
+                p0 = int(deref(data + -1))
+                q0 = int(deref(data + 0))
+                q1 = int(deref(data + 1))
+                if (uint(p0 - q0 < 0 ? -(p0 - q0) : p0 - q0) < alpha && uint(p1 - p0 < 0 ? -(p1 - p0) : p1 - p0) < beta && uint(q1 - q0 < 0 ? -(q1 - q0) : q1 - q0) < beta) {
+                    p2 = int(deref(data + -3))
+                    q2 = int(deref(data + 2))
+                    if (uint(p2 - p0 < 0 ? -(p2 - p0) : p2 - p0) < beta) {
+                        val = p2 + (p0 + q0 + 1 >> 1) - (p1 << 1) >> 1
+                        deref(data + -2) = uint8(p1 + (val < -tc ? -tc : (val > tc ? tc : val)))
+                        tmp++
+                    }
+                    if (uint(q2 - q0 < 0 ? -(q2 - q0) : q2 - q0) < beta) {
+                        val = q2 + (p0 + q0 + 1 >> 1) - (q1 << 1) >> 1
+                        deref(data + 1) = uint8(q1 + (val < -tc ? -tc : (val > tc ? tc : val)))
+                        tmp++
+                    }
+                    val = (q0 - p0 << 2) + (p1 - q1) + 4 >> 3
+                    delta = val < -tmp ? -tmp : (val > tmp ? tmp : val)
+                    p0 = int(deref(clp + (p0 + delta)))
+                    q0 = int(deref(clp + (q0 - delta)))
+                    tmp = tc
+                    deref(data + -1) = uint8(p0)
+                    deref(data + 0) = uint8(q0)
+                }
+                i--
+                data = data + imageWidth
+            }
+        }
+    } else {
+        // hashA += data[-2] + data[-1] + data[0] + data[1];
+        {
+            i = uint(4)
+            while (i != 0) {
+                p1 = int(deref(data + -2))
+                p0 = int(deref(data + -1))
+                q0 = int(deref(data + 0))
+                q1 = int(deref(data + 1))
+                if (uint(p0 - q0 < 0 ? -(p0 - q0) : p0 - q0) < alpha && uint(p1 - p0 < 0 ? -(p1 - p0) : p1 - p0) < beta && uint(q1 - q0 < 0 ? -(q1 - q0) : q1 - q0) < beta) {
+                    tmpFlag = uint(uint(p0 - q0 < 0 ? -(p0 - q0) : p0 - q0) < (alpha >> 2u) + uint(2) ? HANTRO_TRUE : HANTRO_FALSE)
+                    p2 = int(deref(data + -3))
+                    q2 = int(deref(data + 2))
+                    if (tmpFlag != 0 && uint(p2 - p0 < 0 ? -(p2 - p0) : p2 - p0) < beta) {
+                        tmp = p1 + p0 + q0
+                        deref(data + -1) = uint8(p2 + 2 * tmp + q1 + 4 >> 3)
+                        deref(data + -2) = uint8(p2 + tmp + 2 >> 2)
+                        deref(data + -3) = uint8(2 * int(deref(data + -4)) + 3 * p2 + tmp + 4 >> 3)
+                    } else {
+                        deref(data + -1) = uint8(2 * p1 + p0 + q1 + 2 >> 2)
+                    }
+                    if (tmpFlag != 0 && uint(q2 - q0 < 0 ? -(q2 - q0) : q2 - q0) < beta) {
+                        tmp = p0 + q0 + q1
+                        deref(data + 0) = uint8(p1 + 2 * tmp + q2 + 4 >> 3)
+                        deref(data + 1) = uint8(tmp + q2 + 2 >> 2)
+                        deref(data + 2) = uint8(2 * int(deref(data + 3)) + 3 * q2 + tmp + 4 >> 3)
+                    } else {
+                        deref(data + 0) = uint8(2 * q1 + q0 + p1 + 2 >> 2)
+                    }
+                }
+                i--
+                data = data + imageWidth
+            }
+        }
+    }
+}
+```
 
 Rust:
 
@@ -2346,24 +2607,30 @@ def call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Resul
 
 - c_testsuite: Rust passes 202 of 220 ids, our ratchet 199; of the Rust passes 0 are ids we skip and 8 ids our ratchet does not list.
 - gcc_torture: Rust passes 1197 of 1656 ids, our ratchet 1179; of the Rust passes 41 are ids we skip and 67 ids our ratchet does not list.
-- blit, interpreter: Rust 53.86x native, ours 96.71x.
-- compound_lit, interpreter: Rust 94.11x native, ours 111.19x.
-- dasprofile/primes, AOT: Rust 0.58x native, ours 0.63x.
-- do_while_effect, interpreter: Rust 18.89x native, ours 22.14x.
-- matmul, interpreter: Rust 38.11x native, ours 92.91x.
-- primes, AOT: Rust 0.59x native, ours 0.63x.
-- sieve, interpreter: Rust 11.84x native, ours 22.61x.
-- str_copy, interpreter: Rust 55.17x native, ours 65.51x.
-- switch_goto, interpreter: Rust 16.87x native, ours 42.01x.
-- switch_goto, JIT: Rust 0.29x native, ours 0.43x.
-- switch_goto, exe: Rust 0.29x native, ours 0.43x.
-- switch_local, interpreter: Rust 60.15x native, ours 73.51x.
-- switch_local, JIT: Rust 0.98x native, ours 5.96x.
-- switch_local, exe: Rust 0.99x native, ours 6.15x.
-- va_forward, interpreter: Rust 131.56x native, ours 215.67x.
+- blit, interpreter: Rust 28.38x native, ours 44.99x.
+- blit, exe: Rust 1.73x native, ours 2.22x.
+- blit, AOT: Rust 0.65x native, ours 0.82x.
+- compound_lit, interpreter: Rust 86.00x native, ours 92.81x.
+- do_while_effect, interpreter: Rust 15.26x native, ours 19.22x.
+- first_member, interpreter: Rust 80.01x native, ours 103.04x.
+- first_member, JIT: Rust 1.15x native, ours 1.45x.
+- first_member, AOT: Rust 1.10x native, ours 1.61x.
+- fixed_mandel, exe: Rust 0.74x native, ours 0.78x.
+- matmul, interpreter: Rust 40.03x native, ours 81.47x.
+- matmul, JIT: Rust 0.55x native, ours 0.58x.
+- sieve, interpreter: Rust 19.22x native, ours 30.99x.
+- str_copy, interpreter: Rust 51.14x native, ours 57.70x.
+- switch_goto, interpreter: Rust 43.53x native, ours 71.81x.
+- switch_goto, JIT: Rust 0.53x native, ours 1.07x.
+- switch_goto, exe: Rust 0.63x native, ours 1.07x.
+- switch_local, interpreter: Rust 52.80x native, ours 56.70x.
+- switch_local, JIT: Rust 1.01x native, ours 5.38x.
+- switch_local, exe: Rust 0.98x native, ours 6.17x.
+- switch_local, AOT: Rust 1.46x native, ours has no cell (compile).
+- va_forward, interpreter: Rust 195.47x native, ours 206.92x.
+- geomean, JIT: Rust 0.96x native, ours 1.13x over 14 kernels.
 - project binjgb: Rust passes AOT, ours does not.
 - project doomgeneric: Rust passes interpreter, JIT, exe, ours does not.
-- project h264bsd-mp4: Rust passes interpreter, JIT, exe, AOT, ours does not.
 - project quakegeneric: Rust passes interpreter, exe, AOT, ours does not.
 - project wasm3: Rust passes interpreter, JIT, exe, AOT, ours does not.
 - counter `pointer_arith`: Rust 606, ours 843 over all keys.
