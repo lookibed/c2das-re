@@ -153,8 +153,9 @@ def work_spread(c : Capture; workload, lane : string) : double {
     return work > 0.0lf ? (cell.spread * cell.time + start.spread * start.time) / work : 0.0lf
 }
 
-//! Whether the work time of `workload` under `lane` is suspect: its spread above `SUSPECT_SPREAD`.
-def work_suspect(c : Capture; workload, lane : string) : bool => work_spread(c, workload, lane) > SUSPECT_SPREAD
+//! Whether the work time of `workload` under `lane` is suspect: its spread above `SUSPECT_SPREAD`,
+//! or the lane's startup cell suspect, whose noise every work time of the lane inherits.
+def work_suspect(c : Capture; workload, lane : string) : bool => work_spread(c, workload, lane) > SUSPECT_SPREAD || cell_suspect(c, startup_of(c), lane)
 
 //! `lane`'s work time over `base`'s, 0 when either is not above 0 or is suspect.
 def ratio_of(c : Capture; workload, lane, base : string) : double {
@@ -164,10 +165,11 @@ def ratio_of(c : Capture; workload, lane, base : string) : double {
     return t > 0.0lf && b > 0.0lf && !suspect ? t / b : 0.0lf
 }
 
-// seconds with their spread, or `suspect` with the spread alone when it is above `SUSPECT_SPREAD`
+// seconds with their spread, or `suspect` with the spread alone, to a tenth of a percent, when it
+// is above `SUSPECT_SPREAD`
 def private seconds_text(time, spread : double) : string {
-    let percent = int(round(spread * 100.0lf))
-    return spread > SUSPECT_SPREAD ? "{SUSPECT} (±{percent}%)" : "{time:.3f} s ±{percent}%"
+    let percent = spread * 100.0lf
+    return spread > SUSPECT_SPREAD ? "{SUSPECT} (±{percent:.1f}%)" : "{time:.3f} s ±{int(round(percent))}%"
 }
 
 def private time_text(c : Capture; workload, lane : string) : string {
@@ -196,7 +198,8 @@ def private work_text(c : Capture; workload, lane : string) : string {
     if (work <= 0.0lf) {
         return WITHIN_START
     }
-    return seconds_text(work, work_spread(c, workload, lane))
+    // a work time over a suspect startup cell is suspect whatever its own spread
+    return cell_suspect(c, startup_of(c), lane) ? "{SUSPECT} (startup)" : seconds_text(work, work_spread(c, workload, lane))
 }
 
 def private ratio_text(r : double) : string => r > 0.0lf ? "{r:.2f}" : MISSING
@@ -363,9 +366,10 @@ def render_perf(c : Capture) : string {
         w |> write("lane's `startup` cell, the run that loads the program and does no work (under a das lane, the load from ")
         w |> write("the module cache an unmeasured run left in the folder), ± the two cells' half ranges as a share of the ")
         w |> write("work time; one not above 0 is `{WITHIN_START}`, and a lane whose startup cell does not stand has none. ")
-        w |> write("The startup cells stand alone in the startup table; the times table holds the raw medians, the start included. ")
+        w |> write("The startup cells stand alone in the startup table, their ratio to native's with them, in no other ratio or mean; ")
+        w |> write("the times table holds the raw medians, the start included. ")
         w |> write("A cell or a work time whose spread is above {int(SUSPECT_SPREAD * 100.0lf)}% is `{SUSPECT}`: its spread alone, no ratio, ")
-        w |> write("and out of the projects table's means.\n\n")
+        w |> write("and out of the projects table's means; a suspect startup cell makes every work time of its lane `{SUSPECT} (startup)`.\n\n")
         w |> write("Startup:\n\n{render_startup(c)}\n")
         w |> write("Work:\n\n{render_work(c)}\n")
         w |> write("Ratios, a lane's work time over another's (each das lane over native, then interpreter over JIT, ")
@@ -424,21 +428,25 @@ def render_projects(captures : array<Capture>) : string {
 }
 
 //! The top-level README: the charter above the marker kept, the projects table of `captures`
-//! below it, or the `PERF_NOT_YET` line when no program has a capture.
-def render_top_readme(old_text : string; captures : array<Capture>) : string {
+//! below it, or the `PERF_NOT_YET` line when no program has a capture, then the line naming the
+//! `raw` captures copied beside it when there are any.
+def render_top_readme(old_text : string; captures : array<Capture>; raw : array<string>) : string {
     let at = find(old_text, README_MARKER)
     let charter = strip_right(at < 0 ? old_text : slice(old_text, 0, at))
     return build_string() $(var w) {
         w |> write("{charter}\n\n{README_MARKER}\n\n## Programs\n\n")
         if (empty(captures)) {
             w |> write("{PERF_NOT_YET}\n")
-            return
+        } else {
+            w |> write("Each cell is the geometric mean, over the program's workloads (its startup row aside), of the lane's ")
+            w |> write("work time over the native build's, a work time being the workload's median less the same lane's startup ")
+            w |> write("median; a lane covering only some workloads names how many. A program's README holds its tables, ")
+            w |> write("its startup times, its machine and its raw captures.\n\n")
+            w |> write(render_projects(captures))
         }
-        w |> write("Each cell is the geometric mean, over the program's workloads (its startup row aside), of the lane's ")
-        w |> write("work time over the native build's, a work time being the workload's median less the same lane's startup ")
-        w |> write("median; a lane covering only some workloads names how many. A program's README holds its tables, ")
-        w |> write("its startup times, its machine and its raw captures.\n\n")
-        w |> write(render_projects(captures))
+        if (!empty(raw)) {
+            w |> write("\nRaw captures beside this README, each copied whole from c2das-re when its tree holds it: " + join([for (rel in raw); "`{rel}`"], ", ") + ".\n")
+        }
     }
 }
 

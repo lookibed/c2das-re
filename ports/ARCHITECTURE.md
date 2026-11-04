@@ -54,6 +54,17 @@ the publisher deletes nothing: a file it no longer writes stays until removed by
 repository, which is the only hand edit that repository takes. The captures under `perf/` accumulate, one per
 measuring publish.
 
+Beside the program directories the clone holds the top-level `README.md` and c2das-re's raw
+captures, each copied under its own path and replaced whole on every publish when the c2das-re
+tree holds it: `compare/results_linux.json` (the head-to-head), `metrics/criteria_linux.json` (the
+readability criteria), `perf/results_linux.json` and `perf/results_method_linux.json` (perf's two
+methods) and `perf/dasprofile_linux.json` (the dasProfile lane). The top-level README names, in
+one line under the projects table, every one of these the clone holds, a copy the tree no longer
+has included (it stays, as above), then renders the readability criteria table from
+`metrics/criteria_linux.json` (`render_criteria` of `metrics/criteria_file.das`) and the
+head-to-head from `compare/results_linux.json`, each section absent without its file; a file that
+does not read fails the publish before the top-level README and the copies are written.
+
 The README states the release and both tarballs with their sha256 as the `lua:` line of
 `VERSIONS.md` names them (the publisher holds no version of its own), the commit the published
 conversion ran at (the stamp's, section 3: `git describe --tags --always --dirty`, the full sha
@@ -174,7 +185,8 @@ lane's startup cell, native included, its spread the two cells' half ranges over
 work time not above 0 is `within the start`, and a lane whose startup cell is missing or failed
 has no work times, its cells `not yet` with the reason `no startup cell`. A cell or a work time
 whose spread is above 20% is suspect and never a number: it renders `suspect (±N%)`, its ratios
-`suspect`, and it leaves the projects table's means as a missing cell does. The startup table holds
+`suspect`, and it leaves the projects table's means as a missing cell does; a suspect startup cell
+makes every work time of its lane `suspect (startup)`, since each inherits its noise. The startup table holds
 each lane's startup cell and its ratio to native's, the only place a startup number appears; the
 work table holds the work times of the other rows; the times table holds the raw medians, the
 startup row included. The ratio table holds work times only, no startup row: each das lane over
