@@ -105,10 +105,8 @@ committed references under `ref/` are those files copied by hand after a referen
   the dumper refuses, a host outside their folder): the staging, the units alone, the program's
   modules compiled alone, a module that fails, and the classification.
 
-The IWADs: freedoom2.wad (BSD) is the fetched one every committed log is recorded on;
-`doom2.wad`, id Software's commercial IWAD, is user-supplied, local only, kept under `wads/`
-by convention and never fetched or committed (`.gitignore` ignores `doom/wads/*.wad`); the
-harness takes it through `--wad` and no log of it is committed.
+The IWAD is freedoom2.wad (BSD), the fetched one every committed log is recorded on; `--wad`
+takes another path for a local run.
 
 ## 2. The program
 

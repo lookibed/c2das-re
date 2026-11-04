@@ -11,7 +11,7 @@ the converted program's module folders and the native run's C `argv`, `-timedemo
 wad's run folder, absolute, and the program inherits it: the wad opens as in the native run. A
 wad link that fails stops the run. The `exe` and `aot` builds go to `work/run/<wad stem>/<layout>/`,
 one folder per layout. The reference log is `<wad stem>_demo<N>.log` in `ref/`, else in `work/ref/` (a local
-reference, a `doom2.wad` one among them). The run's tic lines, a timed-out run's included, since
+reference). The run's tic lines, a timed-out run's included, since
 `run_and_capture` keeps the output a killed process wrote, are held to the log's by `tic_sync`:
 the first `--tics` lines, or all of them, a run that goes on past the demo's last tic desyncing
 there. Held to the whole demo, a run is in sync only when it also ends, not timed out, in the

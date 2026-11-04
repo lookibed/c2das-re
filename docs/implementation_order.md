@@ -1510,7 +1510,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   tic numbers belong here); closed by P6.7: the paragraph, now `doom/ARCHITECTURE_RUN.md` section 8,
   names no result, and the tic counts are in P6.5 and P6.7.
 - **P6.5 Demo sync.** The ladder: first desynced tic → bisect → fix → repeat until
-  demo1/2/3 are 100% on both wads. This is the semantics endgame; every desync is a
+  demo1/2/3 are 100% on both wads (doom2.wad dropped by the owner, ruling 30: freedoom2.wad alone). This is the semantics endgame; every desync is a
   real bug with a tic number attached.
   Rungs 1-2 Done (branch `p6.5-tic25`, PR #90): the tic-25 desync was no converter bug: ticcmd_t's
   plain `char` forwardmove/sidemove read demo1's strafe -40 as 216 under the converter's
@@ -1525,9 +1525,9 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   RULINGS (owner): (a) the native reference built under `-funsigned-char` (F17) or `-O2 -w` signed
   as kept; (b) rung 2 by patch 0004 or by a converter mechanism for neighbour-table reads (a
   sidecar key aliasing two globals as one storage; 0004 is one commit, easy to drop); (c) "both
-  wads": only freedoom2.wad is on the box, doom2.wad needs the owner.
-  Next rung: jit, exe and aot and the `source-cut` and `single` layouts on freedoom2 demo1-3, then
-  doom2.wad; ruling 29 item 1 takes the rungs P6.7 needs with it. Leftovers: the native trace run's
+  wads": closed, dropped by the owner (ruling 30): freedoom2.wad is the one IWAD.
+  Next rung: jit, exe and aot and the `source-cut` and `single` layouts on freedoom2 demo1-3 (doom2.wad
+  dropped by the owner, ruling 30); ruling 29 item 1 takes the rungs P6.7 needs with it. Leftovers: the native trace run's
   exit code is not checked (a partial `.native.log` passes); `native_path`, `layout_dir` and
   `sidecar_defines(true)` have no direct test; `doom/ARCHITECTURE.md` at 296 of 300 lines,
   closed by P6.7: sections 8 and 9 are `doom/ARCHITECTURE_RUN.md`.
