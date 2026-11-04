@@ -283,13 +283,19 @@ def private warm_up(argv : array<string>; cwd, script : string) : string {
 }
 
 // the work seconds `TIMED_LUA` reports in `text` into `seconds`, its `WORK_MARK` line taken out
-// into `rest` wherever the merged streams put it; "" when the line holds seconds, else what was
-// printed instead
+// into `rest` wherever the merged streams put it; "" when exactly one line holds seconds, else
+// what was printed instead (a program that prints the mark itself makes more than one)
 def private take_work_seconds(text : string; var rest : string&; var seconds : double&) : string {
     let at = find(text, WORK_MARK)
-    if (at < 0) {
+    var marks = 0
+    var next = at
+    while (next >= 0) {
+        marks++
+        next = find(text, WORK_MARK, next + length(WORK_MARK))
+    }
+    if (marks != 1) {
         rest = text
-        return "no `{WORK_MARK}` line"
+        return marks == 0 ? "no `{WORK_MARK}` line" : "{marks} `{WORK_MARK}` lines"
     }
     let stop = find(text, "\n", at)
     let value_end = stop < 0 ? length(text) : stop
