@@ -165,3 +165,26 @@ def test_guarded_samples(t : T?) {
         t |> equal(timed.result, 7)
     }
 }
+
+[test]
+def test_guarded_build_run(t : T?) {
+    t |> run("the run an exe or aot build ends with is guarded: a one-byte core limit and the address-space cap asked for") @(t : T?) {
+        let work = "perf/work/lanes_guarded_run"
+        mkdir_rec(work)
+        let limits_path = get_full_file_name(work) + "/limits.txt"
+        let das_path = path_join(work, "limits.das")
+        fwrite(das_path, "options gen2\nrequire daslib/fio\n[export]\ndef main() : int \{\n    fwrite(\"{limits_path}\", fread(\"/proc/self/limits\"))\n    return 0\n\}\n")
+        let no_modules, no_args : array<string>
+        for (tier in ["exe", "aot"]) {
+            remove(limits_path)
+            var error : string
+            t |> success(!empty(lane_binary(das_path, tier, path_join(work, tier), no_modules, no_args, error, 600.0, 8589934592l)), "{tier}: {error}")
+            let limits = fexist(limits_path) ? fread(limits_path) : ""
+            var inscope core <- [for (ln in split(limits, "\n")); ln; where ln |> starts_with("Max core file size")]
+            var inscope space <- [for (ln in split(limits, "\n")); ln; where ln |> starts_with("Max address space")]
+            t |> success(length(core) == 1 && core[0] |> contains(" 1 "), "{tier}: {limits}")
+            t |> success(length(space) == 1 && space[0] |> contains(" 8589934592 "), "{tier}: {limits}")
+        }
+        rmdir_rec(work)
+    }
+}

@@ -364,13 +364,14 @@ def private verdict_json(v : Verdict; root : string) : JsonValue? => JV({"status
 
 //! The command of a lane of `DAS_LANES` over the module `das_path` with `module_dirs` loaded and
 //! the program given `args`: daslang over the module, or the binary `lane_binary` builds in `work`
-//! (the `aot` host's program reads its arguments after `--`); empty with `error` the build's
+//! and runs once `guarded` under `address_space` bytes (the `aot` host's program reads its
+//! arguments after `--`); empty with `error` the build's
 //! failure, prefixed `timeout: ` or `<lane> build: `.
-def lane_argv(das_path, lane, work : string; module_dirs, args : array<string>; timeout : float; var error : string&) : array<string> {
+def lane_argv(das_path, lane, work : string; module_dirs, args : array<string>; timeout : float; var error : string&; address_space : int64 = 0l) : array<string> {
     var argv : array<string>
     if (lane == "exe" || lane == "aot") {
         var why : string
-        let bin = lane_binary(das_path, lane, work, module_dirs, args, why, timeout)
+        let bin = lane_binary(das_path, lane, work, module_dirs, args, why, timeout, address_space)
         if (empty(bin)) {
             error = why |> starts_with("the build or its run took longer") ? "timeout: {why}" : "{lane} build: {why}"
             return <- argv
@@ -410,7 +411,7 @@ def side_lanes(das_path, refusal, work : string; module_dirs, args : array<strin
         } else {
             to_log(LOG_INFO, "{das_path}: {lane}\n")
             var error : string
-            var inscope argv <- lane_argv(das_path, lane, path_join(work, lane), module_dirs, args, lane_timeout(lane, limits), error)
+            var inscope argv <- lane_argv(das_path, lane, path_join(work, lane), module_dirs, args, lane_timeout(lane, limits), error, limits.address_space)
             if (empty(argv)) {
                 let timed_out = error |> starts_with("timeout: ")
                 lanes[lane] = Verdict(status = timed_out ? "timeout" : "compile", reason = timed_out ? slice(error, length("timeout: ")) : error)
@@ -549,7 +550,7 @@ def side_speed(das_path, refusal, work : string; module_dirs, args : array<strin
             cells[lane] = error_json("the lane does not pass: {v.status}")
         } else {
             var error : string
-            var inscope argv <- lane_argv(das_path, lane, path_join(work, lane), module_dirs, args, lane_timeout(lane, limits), error)
+            var inscope argv <- lane_argv(das_path, lane, path_join(work, lane), module_dirs, args, lane_timeout(lane, limits), error, limits.address_space)
             cells[lane] = empty(argv) ? error_json(error) : bench_cells(guarded(argv, limits.address_space), expected, samples, lane_timeout(lane, limits))
         }
     }

@@ -9,6 +9,7 @@ require daslib/strings_boost
 require daslib/json_boost
 require ../../converter/tiers.das
 require ../suite_compare.das
+require ../../perf/perf_lanes.das
 require ../../perf/perf_measure.das
 require ../perf_compare.das
 require ../projects.das

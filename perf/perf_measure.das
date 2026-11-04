@@ -37,46 +37,6 @@ struct LaneLimits {
 //! the perf harness's limits
 let PERF_LIMITS = LaneLimits(sample = SAMPLE_TIMEOUT, build = BUILD_TIMEOUT)
 
-//! the names of the signals 1 to 15 by number, Linux's
-let SIGNAL_NAMES <- ["", "HUP", "INT", "QUIT", "ILL", "TRAP", "ABRT", "BUS", "FPE", "KILL", "USR1", "SEGV", "USR2", "PIPE", "ALRM", "TERM"]
-
-//! `argv` as a guarded run starts it (`ARCHITECTURE_SAMPLES.md`): under `prlimit` with a core limit
-//! of one byte, which writes no core file even to a pipe handler, and, when `address_space` is
-//! above 0, that many bytes of address space, inside `sh`, which waits for it and so reports a
-//! death by signal N as the exit code 128 + N.
-def guarded(argv : array<string>; address_space : int64) : array<string> {
-    var full <- ["sh", "-c", "\"$@\"; exit $?", "sh", "prlimit", "--core=1"]
-    full |> reserve(length(full) + 2 + length(argv))
-    if (address_space > 0l) {
-        full |> push("--as={address_space}")
-    }
-    full |> push("--")
-    full |> push_from(argv)
-    return <- full
-}
-
-//! The death the exit code `rc` of a guarded run reports: `signal N (<name>)` for a code from 129
-//! to 192, the shell's report of a death by signal N, else "".
-def signal_text(rc : int) : string {
-    let signal = rc - 128
-    if (signal < 1 || signal > 64) {
-        return ""
-    }
-    return signal < length(SIGNAL_NAMES) ? "signal {signal} ({SIGNAL_NAMES[signal]})" : "signal {signal}"
-}
-
-//! The exit code `rc` of a guarded run in words: its `signal_text`, else `exited <rc>`.
-def exit_text(rc : int) : string {
-    let signal = signal_text(rc)
-    return empty(signal) ? "exited {rc}" : signal
-}
-
-//! A failed guarded run's error: its exit in words and the first line it reported, or `no output`.
-def run_error(rc : int; output : string) : string {
-    let line = first_reported_line(output)
-    return empty(line) ? "{exit_text(rc)}, no output" : "{exit_text(rc)}: {line}"
-}
-
 // the kernel's line is the last one: a tier may log before the program runs
 def parse_sample(out : string; var seconds : double&; var reps : int64&; var result : int&) : bool {
     let fields <- split(last_line(out), " ")
