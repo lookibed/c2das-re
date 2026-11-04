@@ -28,7 +28,10 @@ death by signal N as 128 + N. `exit_text` reads a code from 129 to 192 as `signa
 the name for the signals 1 to 15 (`SIGNAL_NAMES`), and any other code as `exited <code>`. The
 reading is ambiguous: a program that itself exits with a code from 129 to 192 (`exit(134)`) reads
 as that signal (`signal 6 (ABRT)`), since the shell reports both alike; no kernel exits so.
-`run_error` adds the first line of the output that is neither empty nor an `info` line, or `no
-output` when there is none: daslang's report of an exception it cannot unwind starts with an
-empty line, and the shell reports the death (`Segmentation fault`) after everything the program
-printed. A sample that exits 0 without the kernel's line is `exited 0` with that line.
+`run_error` adds the first line of the output that is neither empty, nor an `info` line, nor the
+shell's own report of the death (`shell_signal_line`: `Segmentation fault`, `Aborted`, `Bus error`
+and the rest, with or without ` (core dumped)`), or `no output` when none is left: daslang's
+report of an exception it cannot unwind starts with an empty line, and the shell prints its
+report after everything the program printed, so it would otherwise name a silent crash.
+`compare/projects.das`'s `error_line` skips the shell's report as well. A sample that exits 0
+without the kernel's line is `exited 0` with that line.

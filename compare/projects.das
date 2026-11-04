@@ -294,10 +294,11 @@ def first_difference(got, expected : string) : string {
     return "line {i + 1}: got `{i < length(a) ? a[i] : "(none)"}`, expected `{i < length(b) ? b[i] : "(none)"}`"
 }
 
-//! The first line of `text` naming an error, else its first non-empty line.
+//! The first line of `text` naming an error, else its first non-empty line, neither a shell's
+//! report of a signal death (`shell_signal_line`: `Bus error`).
 def error_line(text : string) : string {
     for (ln in split(text, "\n")) {
-        if (to_lower(ln) |> contains("error")) {
+        if (to_lower(ln) |> contains("error") && !shell_signal_line(strip(ln))) {
             return strip(ln)
         }
     }

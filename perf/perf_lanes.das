@@ -159,11 +159,22 @@ def captured(args : array<string>) : string {
     return out
 }
 
-//! The first line of `text` that is not empty and not an `info` line (`[I] `).
+//! the texts a shell prints when a child dies of a signal, dash's and bash's alike
+let SHELL_SIGNAL_LINES <- ["Hangup", "Quit", "Illegal instruction", "Trace/breakpoint trap", "Aborted", "Bus error", "Floating point exception", "Killed", "Segmentation fault", "Terminated"]
+
+//! True when `line` is a shell's report of a child's death by signal (`Segmentation fault (core
+//! dumped)`), which a guarded run's shell prints after the program's own output.
+def shell_signal_line(line : string) : bool {
+    let text = line |> ends_with(" (core dumped)") ? slice(line, 0, length(line) - length(" (core dumped)")) : line
+    return has_value(SHELL_SIGNAL_LINES, text)
+}
+
+//! The first line of `text` that is not empty, not an `info` line (`[I] `) and not a shell's
+//! report of a signal death (`shell_signal_line`).
 def first_reported_line(text : string) : string {
     for (l in split(text, "\n")) {
         let line = strip(l)
-        if (!empty(line) && !(line |> starts_with("[I] "))) {
+        if (!empty(line) && !(line |> starts_with("[I] ")) && !shell_signal_line(line)) {
             return line
         }
     }

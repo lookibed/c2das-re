@@ -207,6 +207,7 @@ def test_lane_verdicts(t : T?) {
         let crashed = run_judged(guarded(["sh", "-c", "echo 'out of memory' >&2; kill -SEGV $$"], 1073741824l), "a\n", 30.0)
         t |> equal("{crashed.status} {crashed.reason}", "exit signal 11 (SEGV): out of memory")
         t |> equal(judge_run(134, "", "", "a\n", 9.0).reason, "signal 6 (ABRT): ")
+        t |> equal(judge_run(135, "", "Bus error (core dumped)\nmapped\n", "a\n", 9.0).reason, "signal 7 (BUS): mapped")
         t |> equal(run_judged(guarded(["sh", "-c", "ulimit -v; ulimit -c"], 2147483648l), "2097152\n0\n", 30.0).status, "pass")
     }
     t |> run("a lane's command: daslang over the module, or the exe or aot binary, the program's arguments last") @(t : T?) {
