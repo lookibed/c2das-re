@@ -35,9 +35,13 @@ live in `compare_render.das` so that the writers and the renderer share one list
   `perf.lanes` less `native` gives the other columns; a cell is the lane's `time` over the
   kernel's native `time`, two decimals, or the error in short form (`differs`, `timeout`,
   `compile` for a build that left no binary, `exit`, `convert`, else `error`; a refused Rust
-  translation is `refused` in each Rust column); the geomean row is the capture's `perf.geomean`,
-  not recomputed, with its kernel count, `n/a` when the count is 0. Every error cell is listed in
-  full below the table, clipped at 160 characters.
+  translation is `refused` in each Rust column); a cell whose `spread` is above `SUSPECT_SPREAD`
+  (20%, `perf/boxes.das`, ruling 29's publish rule) is `suspect` with its spread, a cell over a suspect
+  native one `suspect (native)`, and neither is a number anywhere: the geomean row is recomputed
+  over the kernels where native and both sides stand unsuspected (`published_geomean`), with its
+  kernel count, `n/a` when the count is 0, and `rust_ahead` skips them. The projects' bench table
+  takes the same rule over the `decode` cells. Every error cell is listed in full below the
+  table, clipped at 160 characters.
 - Readability and size: `quality.totals` per group, sorted, `all` last: the keys counted, both
   sides' files and lines, the Rust runtime lines and the Rust lines without them, `line_ratio` and
   `program_line_ratio`; the groups' `excluded` counts; then each counter of `metrics/`'s

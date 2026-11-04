@@ -756,9 +756,9 @@ def test_rendering(t : T?) {
         t |> equal(join(reasons, "\n"), "- w, native: clang exited 1\n- w, Ours, interpreter AOT: refused: r\n- w, Rust, AOT: skipped: no args")
         let text = projects_text(js)
         t |> success(text |> contains("Captured: w (Rust `0123456789ab`, d, unlabelled box)."), text)
-        t |> success(text |> contains("lower is faster), 5 samples a cell:"), text)
+        t |> success(text |> contains("lower is faster), 5 samples a cell; a cell whose spread is above 20% is `suspect` with its spread, no ratio, as is a lane over a suspect native build:"), text)
         let untimed = projects_text(json_of(t, replace(RENDER_CAPTURE, "\"samples\": 5", "\"samples\": 0")))
-        t |> success(untimed |> contains("lower is faster), not measured in this capture (`--samples 0`):"), untimed)
+        t |> success(untimed |> contains("lower is faster), not measured in this capture (`--samples 0`); "), untimed)
     }
     t |> run("a project's cap in its stamp, our side's own defines listed, the samples per project when they differ, the native cell's reason") @(t : T?) {
         let marked = replace(RENDER_CAPTURE, "\"samples\": 5,", "\"samples\": 5, \"address_cap\": \"4294967296\",")
@@ -796,6 +796,14 @@ def test_rendering(t : T?) {
         t |> equal(bench_text_of(json_of(t, "\{\"decode\": \{\"time\": 1.0\}\}"), null), "n/a")
         t |> equal(bench_text_of(json_of(t, "\{\"error\": \"odd\"\}"), native), "odd")
         t |> equal(bench_text_of(JV({"error" => JV(NOT_TIMED)}), native), "not measured")
+        // a spread above 20% is suspect, 20% exactly a number; over a suspect native build no ratio
+        t |> equal(bench_text_of(json_of(t, "\{\"decode\": \{\"time\": 1.0, \"spread\": 0.21\}\}"), native), "suspect (±21.0%)")
+        t |> equal(bench_text_of(json_of(t, "\{\"decode\": \{\"time\": 1.0, \"spread\": 0.2\}\}"), native), "2.00")
+        let shaky = json_of(t, "\{\"decode\": \{\"time\": 0.5, \"spread\": 0.21\}\}")
+        t |> equal(bench_text_of(json_of(t, "\{\"decode\": \{\"time\": 1.0\}\}"), shaky), "suspect (native)")
+        let suspect_native = json_of(t, replace(RENDER_CAPTURE, "\"native\": \{\"decode\": \{\"time\": 0.5\}\}", "\"native\": \{\"decode\": \{\"time\": 0.5, \"spread\": 0.21\}\}"))
+        let speed = project_speed_table(suspect_native)
+        t |> success(speed |> contains("| w       | Rust | clang 22        | suspect (±21.0%) | suspect (native) | timeout |"), speed)
         let none = json_of(t, "\{\}")
         t |> equal(projects_text(none), "No project is captured yet.\n")
         t |> equal(project_speed_table(none), "")
