@@ -1844,7 +1844,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   box; the 3-sample run is owed): interpreter fib 30 1.19-1.30x, binary_trees 12 1.14-1.16x, nbody
   20000 1.11-1.15x, spectral_norm 100 1.18-1.22x; JIT fib 1.89-3.71x, binary_trees 1.27-1.81x, nbody
   2.70-2.81x, spectral_norm 3.05-3.30x (the JIT outputs equal main's on nbody and spectral_norm).
-  `dispatch_switch` under the interpreter 197.9x -> 115.4x native, JIT 0.45x -> 0.28x;
+  `dispatch_switch` under the interpreter 197.9x -> 115.4x native (converted over the restored
+  chain 0.45x -> 0.28x);
   perf's `flag-chain` rewrite now finds the new plain case. `lua/tests`' suite-check test failed once
   on this box with `sort.lua pass 4.9` where its spinning fixture wants a timeout past 5 s, a timing
   margin unrelated to the switch.
