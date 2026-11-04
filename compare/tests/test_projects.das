@@ -647,13 +647,14 @@ def test_project_run(t : T?) {
             fwrite(results, "\{\"perf\": \{\"samples\": 5\}, \"projects\": \{\"other\": \{\"x\": 1\}\}\}")
             var out : string
             with_env(bin, dir) {
-                t |> equal(run_compare(["--project", "wasm3", "--samples", "1", "--out", results, "--work", path_join(dir, "work")], out), 0, out)
+                t |> equal(run_compare(["--project", "wasm3", "--samples", "1", "--out", results, "--work", path_join(dir, "work"), "--box", flag_box()], out), 0, out)
             }
             let js = json_of(t, fread(results))
             let entry = js?["projects"]?["wasm3"]
             t |> equal(js?["perf"]?["samples"] ?? 0, 5)
             t |> equal(js?["projects"]?["other"]?["x"] ?? 0, 1)
             t |> equal(entry?["native"]?["status"] ?? "", "pass")
+            t |> equal(entry?["box"] ?? "", flag_box(), "--box reaches the project entry")
             for (side in ["ours", "rust"]) {
                 t |> equal(join([for (lane in DAS_LANES); entry?[side]?["lanes"]?[lane]?["status"] ?? ""], " "), "pass pass pass pass", side)
                 t |> equal(entry?["speed"]?[side]?["exe"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf, side)

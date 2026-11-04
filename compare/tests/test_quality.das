@@ -354,12 +354,13 @@ def test_quality_command_line(t : T?) {
             fwrite(results, "\{\"suites\": \{\}, \"perf\": \{\"samples\": 5, \"kernels\": \{\"dasprofile/fib_loop\": \{\"rust\": \{\"status\": \"ran\"\}\}\}\}, \"lua\": \{\"status\": \"refused\"\}, \"doom\": \{\"status\": \"pending\"\}\}")
             var out : string
             var argv <- ["env", "DAS_LOG_LEVEL=info"]
-            argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["compare/run.das", "--", "--quality", "--out", results, "--jobs", "1"])
+            argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["compare/run.das", "--", "--quality", "--out", results, "--jobs", "1", "--box", flag_box()])
             with_env(bin, "") {
                 t |> equal(run_and_capture(argv, out, 900.0), 0, out)
             }
             let js = json_of(t, fread(results))
             t |> equal(js?["quality"]?["keys"]?["perf/dasprofile/fib_loop"]?["rust"]?["status"] ?? "", "ok")
+            t |> equal(js?["quality"]?["box"] ?? "", flag_box(), "--box reaches the quality section")
             t |> equal(js?["perf"]?["samples"] ?? 0, 5)
             t |> equal(js?["lua"]?["status"] ?? "", "refused")
             t |> equal(js?["doom"]?["status"] ?? "", "pending")
