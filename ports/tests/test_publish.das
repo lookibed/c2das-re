@@ -633,6 +633,18 @@ def test_work_line(t : T?) {
         let c <- capture_of(clone, name)
         let trees <- cell_of(t, c, "binary_trees", "interp")
         t |> success(empty(trees.error) && length(trees.work_samples) == 1 && trees.work_time == 0.002lf, "{trees}")
+        // a failed cell records no work sample for a run whose line it could not read
+        for (bench in ["fib", "nbody"]) {
+            let failed <- cell_of(t, c, bench, "interp")
+            t |> success(!empty(failed.error) && length(failed.samples) == 1 && empty(failed.work_samples), "{bench}: {failed}")
+        }
+        // the work line as the very last bytes of the output, no newline after it
+        fwrite(lua_module, "options gen2\nrequire strings\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    print(\"\{argv[length(argv) - 1]\}\\nc2das_work_s=0.003000\")\n    return 0\n\}\n")
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp", "--allow-dirty"], out), 0, out)
+        var last_name : string
+        let last_capture <- capture_of(clone, last_name)
+        let fib <- cell_of(t, last_capture, "fib", "interp")
+        t |> success(empty(fib.error) && length(fib.work_samples) == 1 && fib.work_time == 0.003lf, "{fib}")
         // no line even under the empty script: the wrapper does not run there, the lane fails whole
         fwrite(lua_module, "options gen2\n[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    print(\"\{argv[length(argv) - 1]\}\\n\")\n    return 0\n\}\n")
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp,exe", "--allow-dirty"], out), 0, out)
