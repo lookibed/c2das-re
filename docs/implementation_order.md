@@ -1844,11 +1844,11 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   box; the 3-sample run is owed): interpreter fib 30 1.19-1.30x, binary_trees 12 1.14-1.16x, nbody
   20000 1.11-1.15x, spectral_norm 100 1.18-1.22x; JIT fib 1.89-3.71x, binary_trees 1.27-1.81x, nbody
   2.70-2.81x, spectral_norm 3.05-3.30x (the JIT outputs equal main's on nbody and spectral_norm).
-  `dispatch_switch` under the interpreter 197.9x -> 115.4x native (converted over the restored
-  chain 0.45x -> 0.28x);
-  perf's `flag-chain` rewrite now finds the new plain case. `lua/tests`' suite-check test failed once
-  on this box with `sort.lua pass 4.9` where its spinning fixture wants a timeout past 5 s, a timing
-  margin unrelated to the switch.
+  `dispatch_switch` under the interpreter 197.9x -> 115.4x native (converted over the plain
+  cases restored to the chain 0.45x -> 0.28x); perf's `flag-chain` rewrite now finds the new
+  plain case, restores plain cases only (the flag cases keep `_flag ||= _cond == K`). `lua/tests`' `spin`
+  stand-in returns at once natively and counts forever converted, so the suite-check test's timeout
+  verdict no longer depends on the box's speed (it passed in 4.9 s on this box).
 - **P7.0c4 A binary split of the case chain** (candidate; from P7.0b2): a dense switch's case found
   by a binary split of the chain (7 tests for 83 cases) for builds without the P7.0c2 opt-in;
   measured against P7.0c3 before it is scheduled.
