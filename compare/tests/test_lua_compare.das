@@ -260,13 +260,14 @@ def test_lua_run(t : T?) {
             fwrite(results, "\{\"perf\": \{\"samples\": 5\}\}")
             let committed = fread(CAPTURE)
             with_env(bin, dir) {
-                t |> equal(run_compare(["--lua", "--lua-from", path_join(dir, "prog"), "--out", results], out), 0, out)
+                t |> equal(run_compare(["--lua", "--lua-from", path_join(dir, "prog"), "--out", results, "--box", flag_box()], out), 0, out)
             }
             var read_error : string
             let js = read_json(fread(results), read_error)
             t |> equal(read_error, "")
             t |> equal(js?["lua"]?["status"] ?? "", "refused")
             t |> equal(js?["lua"]?["units"] ?? 0, 2)
+            t |> equal(js?["lua"]?["box"] ?? "", flag_box(), "--box reaches the lua section")
             t |> equal(js?["lua"]?["gap_error"] ?? "x", "")
             t |> equal(js?["lua"]?["gap"]?[0] ?? "", "ldexp")
             t |> equal(js?["lua"]?["gap"]?[1] ?? "none", "none")
