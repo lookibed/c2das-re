@@ -42,12 +42,48 @@ struct PerfKernel {
 }
 
 //! The kernels of `perf/kernels/` keyed by name, then those of `perf/kernels/dasprofile/` keyed
-//! `dasprofile/<name>`, the ones whose key holds `filter`.
-[arch(at="ARCHITECTURE.md#perf")]
+//! `dasprofile/<name>`, the ones whose key holds a part of the comma-separated `filter`.
+[arch(at="ARCHITECTURE_PERF.md#perf")]
 def perf_kernels(filter : string) : array<PerfKernel> {
     var all <- [for (name in c_file_ids(KERNELS, "")); PerfKernel(key = name, name = name, dir = KERNELS)]
     all |> push_from([for (name in c_file_ids(METHOD_KERNELS, "")); PerfKernel(key = "dasprofile/{name}", name = name, dir = METHOD_KERNELS)])
-    return <- [for (k in all); k; where empty(filter) || k.key |> contains(filter)]
+    let parts <- [for (part in split(filter, ",")); part; where !empty(part)]
+    return <- [for (k in all); k; where empty(parts) || find_index_if(parts, $(part) => k.key |> contains(part)) >= 0]
+}
+
+//! The capture `path` with the re-measured kernels of `entries` merged into its `perf` section:
+//! each entry replacing its kernel's, every other kernel kept as read, `geomean` over them all, and
+//! the re-run's date and keys appended to `reruns`; "" or why not: no such capture or section, or
+//! one whose box, Rust commit or sample count is not the re-run's.
+[arch(at="ARCHITECTURE_PERF.md#perf")]
+def merge_perf_rerun(path : string; stamps : Stamps; samples : int; var entries : table<string; JsonValue?>) : string {
+    var error : string
+    var root = fexist(path) ? capture_root(path, error) : null
+    var section = root?["perf"]
+    if (section == null || !(section.value is _object) || !((section?["kernels"]).value is _object)) {
+        return empty(error) ? "no perf section in {path} to re-measure kernels into" : error
+    }
+    let box = section?["box"] ?? ""
+    let commit = section?["rust_commit"] ?? ""
+    let had = section?["samples"] ?? 0
+    if (box != stamps.box || commit != stamps.rust_commit || had != samples) {
+        return "{path} holds box `{box}`, Rust commit `{commit}`, {had} samples; this re-run box `{stamps.box}`, Rust commit `{stamps.rust_commit}`, {samples} samples: a re-run joins only a capture of its own box and parameters"
+    }
+    var kernels = section?["kernels"]
+    for (key, entry in keys(entries), values(entries)) {
+        (kernels.value as _object)[key] = entry
+    }
+    (section.value as _object)["geomean"] = geomeans(kernels)
+    var reruns = section?["reruns"]
+    if (reruns == null || !(reruns.value is _array)) {
+        var none : array<JsonValue?>
+        reruns = JV(none)
+    }
+    var rerun_keys <- [for (key in keys(entries)); key]
+    sort(rerun_keys)
+    (reruns.value as _array) |> push(JV({"timestamp" => JV(stamps.date), "kernels" => JV(rerun_keys)}))
+    (section.value as _object)["reruns"] = reruns
+    return write_capture_section(path, "perf", section)
 }
 
 //! A cell as the perf capture writes it.
@@ -77,7 +113,7 @@ def lane_error(errors : array<string>; side, lane : string) : string {
 }
 
 //! Each lane of `lanes`: its cell from `cells`, else the error `lane_error` finds under `side`.
-[arch(at="ARCHITECTURE.md#perf")]
+[arch(at="ARCHITECTURE_PERF.md#perf")]
 def lane_entries(cells : table<string; Cell>; errors : array<string>; side : string; lanes : array<string>) : table<string; JsonValue?> {
     var entries : table<string; JsonValue?>
     for (lane in lanes) {
@@ -93,7 +129,7 @@ def lane_entries(cells : table<string; Cell>; errors : array<string>; side : str
 //! Every das lane of `das_path` against `oracle`, its builds in `work`: the interpreter and the JIT
 //! with `module_dirs` loaded, `exe` and `aot` through `measure_tiers`, each under `limits`; the
 //! errors under `side`.
-[arch(at="ARCHITECTURE.md#perf")]
+[arch(at="ARCHITECTURE_PERF.md#perf")]
 def das_lane_entries(side, das_path, work : string; module_dirs : array<string>; samples, oracle : int; limits : LaneLimits) : table<string; JsonValue?> {
     var inscope cells : table<string; Cell>
     var errors : array<string>
@@ -109,7 +145,7 @@ def failed_lanes(error : string) : table<string; JsonValue?> {
 
 //! The Rust side of a kernel: `refused` with the translator's error and no lanes, else `ran` with
 //! the lanes of its entry run with no module folder, or `lanes_error` on every lane when it is set.
-[arch(at="ARCHITECTURE.md#perf")]
+[arch(at="ARCHITECTURE_PERF.md#perf")]
 def rust_entry(t : RustTranslation; work : string; samples, oracle : int; lanes_error : string) : JsonValue? {
     if (!t.ok || empty(t.entry)) {
         let error = !t.ok ? t.error : "the translation defines no main in {t.out_dir}"
@@ -136,7 +172,7 @@ def private ours_lanes(c_path, work, no_oracle : string; samples, oracle : int) 
 
 //! One kernel compared: composed by the method into `compare/work/perf/<key>/`, its native lane
 //! (the oracle), our conversion's lanes and the Rust translation's, translated by `bin`.
-[arch(at="ARCHITECTURE.md#perf")]
+[arch(at="ARCHITECTURE_PERF.md#perf")]
 def compare_kernel(k : PerfKernel; bin : string; samples : int) : JsonValue? {
     let work = path_join(PERF_WORK, k.key)
     rmdir_rec(work)
@@ -160,7 +196,7 @@ def private time_in(cell : JsonValue?) : double => cell?["time"] ?? 0.0lf
 
 //! The geometric mean of `lane`'s time over native for each side, over the kernels of `kernels`
 //! where the native and both sides' `lane` cells stand; `count` how many, both means 0 for none.
-[arch(at="ARCHITECTURE.md#perf")]
+[arch(at="ARCHITECTURE_PERF.md#perf")]
 def lane_geomean(kernels : JsonValue?; lane : string; var ours, rust : double&; var count : int&) {
     var ours_log, rust_log = 0.0lf
     count = 0
@@ -181,7 +217,7 @@ def lane_geomean(kernels : JsonValue?; lane : string; var ours, rust : double&; 
 }
 
 //! The `geomean` of a capture's `kernels`: per das lane `{ours, rust, kernels}`.
-[arch(at="ARCHITECTURE.md#perf")]
+[arch(at="ARCHITECTURE_PERF.md#perf")]
 def geomeans(kernels : JsonValue?) : JsonValue? {
     var by_lane : table<string; JsonValue?>
     for (lane in DAS_LANES) {
@@ -194,7 +230,7 @@ def geomeans(kernels : JsonValue?) : JsonValue? {
 }
 
 //! The `perf` section: the run's stamps, the lanes, every kernel's entry and the geometric means.
-[arch(at="ARCHITECTURE.md#perf")]
+[arch(at="ARCHITECTURE_PERF.md#perf")]
 def perf_section(stamps : Stamps; samples : int; var kernels : table<string; JsonValue?>) : JsonValue? {
     var clang_version, daslang_version : string
     tool_versions(clang_version, daslang_version)

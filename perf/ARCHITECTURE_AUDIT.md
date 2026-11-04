@@ -65,7 +65,7 @@ program; the call it sits on is the construct (`small_call`, the call inlined by
 The Rust side is the same composed program through `compare/rust_translator.das`'s
 `translate_file` (`--libc std --strict`, `-DC2DAS_NATIVE`), timed under the interpreter only:
 the translator drops a file-scope `volatile`, so its JIT cells measure what the optimizer leaves
-(`compare/ARCHITECTURE.md` section 8). A translation it refuses is `refused` with its error.
+(`compare/ARCHITECTURE_PERF.md` section 8). A translation it refuses is `refused` with its error.
 
 A construct's sites are the occurrences of its text in the scc layout's fragments of the four
 modules the benchmarks spend their time in (`lvm`, `ltable`, `lgc`, `ldo`), counted in the text,
