@@ -151,7 +151,8 @@ struct Emitter {
 //! options, the layout memo, and the scoping facts `unshadow_locals` finds.
 struct EmitProgram {
     functions : table<string>
-    // a function of the unit named like one the `main` wrapper calls, to the free name it takes
+    // a function of the unit named like a mapped libc one or one the `main` wrapper calls, to the
+    // free name it takes
     function_renames : table<string; string>
     // the globals the program defines (no `extern` declaration), and every global name it declares
     defined_globals : table<string>
@@ -5488,8 +5489,8 @@ def private das_func_name(var em : Emitter; d : CirDecl) : string {
     return function_name(em, d.name)
 }
 
-// the das name of function `name` of the unit: C `main` is `c_main`, a function named like one the
-// wrapper calls takes its free name (`rename_wrapper_names`)
+// the das name of function `name` of the unit: C `main` is `c_main`, a function named like a mapped
+// libc one or one the wrapper calls takes its free name (`rename_taken_names`)
 def private function_name(em : Emitter; name : string) : string {
     if (name == "main") {
         return C_MAIN
@@ -5500,12 +5501,13 @@ def private function_name(em : Emitter; name : string) : string {
 // the functions the `main` wrapper calls: C `main` itself and the `c_runtime/c_args` ones
 let WRAPPER_CALLS <- {C_MAIN, RUNTIME_INIT, ARGC, ARGV}
 
-// a function of a unit that has a `main` named like one the wrapper calls would make its call
-// ambiguous (or redefine `c_main`): it takes the next free numbered name (`c_argc1`)
-def private rename_wrapper_names(var em : Emitter; tu : CirTu) {
-    if (!key_exists(em.prog.functions, "main")) {
-        return
-    }
+// a function the program defines named like a libc function c_runtime maps (h264bsd's own
+// `malloc`) would make its calls ambiguous with the mapped one and das's builtin of the name, and
+// one of a unit that has a `main` named like one the wrapper calls would make that call ambiguous
+// (or redefine `c_main`): each takes the next free numbered name (`malloc1`, `c_argc1`), and C's
+// calls of the name bind to it, as the link binds them to the program's definition
+def private rename_taken_names(var em : Emitter; tu : CirTu) {
+    let wrapped = key_exists(em.prog.functions, "main")
     var taken : table<string>
     for (d in tu.decls) {
         taken |> insert(d.name)
@@ -5514,7 +5516,7 @@ def private rename_wrapper_names(var em : Emitter; tu : CirTu) {
         taken |> insert(name)
     }
     for (d in tu.decls) {
-        if (d.k == "func" && d.body != null && key_exists(WRAPPER_CALLS, d.name)) {
+        if (d.k == "func" && d.body != null && ((wrapped && key_exists(WRAPPER_CALLS, d.name)) || !empty(libc_call(d.name)))) {
             em.prog.function_renames[d.name] = free_name(taken, d.name)
         }
     }
@@ -6749,7 +6751,7 @@ def private prepare_program(var em : Emitter; var tu : CirTu; side : Sidecar) {
             em.prog.functions |> insert(d.name)
         }
     }
-    rename_wrapper_names(em, tu)
+    rename_taken_names(em, tu)
     flag_marshal(em, tu, side)
     flag_over_indexed(em, tu, side)
     flag_padded(em, tu, side)

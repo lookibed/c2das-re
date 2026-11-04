@@ -75,7 +75,10 @@ becomes `c_main` and the module ends with `[export] def main : int { return c_ma
 **argv)` is `c_main(argc : int; var argv : uint8??)`; the wrapper calls `c_runtime_init("<stem>")`
 (`c_runtime/c_args`: `argv` built once in C-allocator memory, `argv[0]` the source's stem, a
 native build's name on every tier), then returns `c_main(c_argc(), c_argv())` (F56); a unit's
-function named like one of these four takes the next free name (`c_argc1`). A `main` taking
+function named like one of these four takes the next free name (`c_argc1`), and so does a
+function the program defines named like a libc one c_runtime maps (h264bsd's own `malloc` is
+`malloc1`), since its calls would be ambiguous with the mapped one and das's builtin of the name;
+C's calls of the name bind to it, as the link binds them to the program's definition. A `main` taking
 `envp` or other parameters, and a `static` one, fail closed. A C name that is a das
 keyword or a name of a das builtin type (every token of the gen2 lexer a C identifier can spell:
 `include`, `fixed_array`, the vector types `int2` to `ushort8` and `byte3`, `DAS_KEYWORDS`), or that starts with `__`, which das reserves (glibc's `__tm_gmtoff`), takes the `_c_`

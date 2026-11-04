@@ -2227,6 +2227,16 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "    n = c_vfprintf(reinterpret<void?>(f), fmt, va_rest(ap))\n")
         has_text(t, text, "p8_vfprintf__report`va(reinterpret<_IO_FILE?>(crt::c_stdout()), ")
     }
+    t |> run("a function the program defines named like a mapped libc one (h264bsd's `malloc`) takes a free name its calls bind to, through a pointer too") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_libc_shadow", text)
+        has_text(t, text, "def malloc1(size : uint64) : void? \{\n")
+        has_text(t, text, "def strlen1(")
+        has_text(t, text, "= @@malloc1\n")
+        has_text(t, text, "calloc1(uint64(4), ")
+        has_text(t, text, "crt::strcpy(")
+        has_text(t, text, "crt::memcpy(")
+    }
     t |> run("`musttail` on a return converts as a plain call whose value is returned: through a function pointer and direct") @(t : T?) {
         var text : string
         check_fixture(t, "p8_musttail", text)
