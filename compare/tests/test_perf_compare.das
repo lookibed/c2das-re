@@ -303,9 +303,7 @@ def test_compare_kernel_refused(t : T?) {
 }
 
 // a cell as a capture holds it, its spread one the JSON writer must keep digit for digit
-def private fixture_cell() : JsonValue? {
-    return JV({"time" => JV(0.5lf), "spread" => JV(0.007192701757091496lf), "samples" => JV([0.5lf])})
-}
+def private fixture_cell() : JsonValue? => JV({"time" => JV(0.5lf), "spread" => JV(0.007192701757091496lf), "samples" => JV([0.5lf])})
 
 // a capture's `perf` section of box `box`, Rust commit `commit` and `samples`, holding `sieve` and an
 // old `dasprofile/fib_loop`
@@ -410,10 +408,11 @@ def test_perf_run(t : T?) {
             var out : string
             run_and_capture(["chmod", "+x", bin], out, 30.0)
             let results = path_join(dir, "results.json")
-            fwrite(results, write_json(JV({"suites" => JV({"csmith" => JV({"ids" => JV(9)})}), "perf" => rerun_fixture(flag_box(), "", 1)})) + "\n")
+            fwrite(results, write_json(JV({"suites" => JV({"csmith" => JV({"ids" => JV(9)})}), "perf" => rerun_fixture("fx", "", 1)})) + "\n")
             let before = json_of(t, fread(results))
-            var argv <- ["env", "DAS_LOG_LEVEL=info"]
-            argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["compare/run.das", "--", "--perf", "--filter", "nope,dasprofile/fib_loop", "--samples", "1", "--out", results, "--box", flag_box()])
+            // a CPU no box names, so only `--box` can make the run's box the capture's
+            var argv <- ["env", "DAS_LOG_LEVEL=info", "C2DAS_CPU_NAME=stand-in cpu"]
+            argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["compare/run.das", "--", "--perf", "--filter", "nope,dasprofile/fib_loop", "--samples", "1", "--out", results, "--box", "fx"])
             with_env(bin, "") {
                 t |> equal(run_and_capture(argv, out, 900.0), 0, out)
             }
@@ -427,6 +426,7 @@ def test_perf_run(t : T?) {
             t |> success((after?["perf"]?["kernels"]?["dasprofile/fib_loop"]?["native"]?["time"] ?? 0.0lf) > 0.0lf, out)
             t |> equal(after?["perf"]?["reruns"]?[0]?["kernels"]?[0] ?? "", "dasprofile/fib_loop")
             t |> equal(after?["perf"]?["timestamp"] ?? "", "first")
+            t |> equal(after?["perf"]?["box"] ?? "", "fx")
         }
     }
 }

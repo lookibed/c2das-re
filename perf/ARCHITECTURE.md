@@ -234,27 +234,27 @@ two cells apart by the samples' spread alone.
 
 ## 5. Tracking
 
-A capture records `cpu`, the CPU model of `/proc/cpuinfo`, and `box`, the `--box` name else `box_of`
-the CPU; a provenance line renders `capture_label` (a capture without `box` shows its CPU's). A
-number carries its box: the delta and `--check` run only for captures of one box (`same_box`), else
-they print `no delta: <label> against <label>` (`no check:`, a failure). A capture is compared with
-the one before it. The baseline is the `--baseline <json>` file when given, else
-`results_linux.json` as committed at `HEAD`, read through `git show` before the run overwrites the
-file; when `HEAD` has no such file there is no delta, and a file that is not JSON is an error. A
-delta cell is `(new - old) / old` as a signed percent, kept in hundredths of a percent so the
-comparison with the bar is exact. When both captures name the same CPU, old and new are the two
-medians; two CPUs under one box (only through `--box` on a CPU `BOXES` does not name) compare
-lane/native ratios. A kernel or lane missing from either capture is `n/a`. A cell more than 10
-percent slower adds one `- FLAG <kernel>/<lane> +N.NN%` list item under the table, else the line `no
-lane slower than 10%` follows it; a flag leaves the exit code alone, because it is a review duty,
-not a gate. A lane under a tenth of native in the ratio table adds one `- SUSPECT` list item: a lane
-that far ahead of clang measures a different program than the kernel. The `--report` file holds the
-three tables and those list items as one markdown block. `--check` holds a cell to `--tolerance` or
-to twice the baseline cell's own spread, whichever is wider: a cell whose samples spread that far in
-the committed capture (the interpreter's `fib_loop` under `--loops while` at 29 percent, its bimodal
-`x = x + y` loop) reproduces anywhere inside the bar. A cell whose spread is above 20%
-(`SUSPECT_SPREAD`, ruling 29) is `suspect` with its spread, never bold, with no ratio or delta: it neither
-flags nor drifts.
+A capture records `cpu`, the CPU model of `/proc/cpuinfo` (`$C2DAS_CPU_NAME` when set, which tests
+set), and `box`, the `--box` name else `box_of` the CPU; a provenance line renders `capture_label`
+(a capture without `box` shows its CPU's). A number carries its box: the delta and `--check` run
+only for captures of one box (`same_box`), else they print `no delta: <label> against <label>` (`no
+check:`, a failure). A capture is compared with the one before it. The baseline is the `--baseline
+<json>` file when given, else `results_linux.json` as committed at `HEAD`, read through `git show`
+before the run overwrites the file; when `HEAD` has no such file there is no delta, and a file that
+is not JSON is an error. A delta cell is `(new - old) / old` as a signed percent, kept in hundredths
+of a percent so the comparison with the bar is exact. When both captures name the same CPU, old and
+new are the two medians; two CPUs under one box (only through `--box` on a CPU `BOXES` does not
+name) compare lane/native ratios. A kernel or lane missing from either capture is `n/a`. A cell more
+than 10 percent slower adds one `- FLAG <kernel>/<lane> +N.NN%` list item under the table, else the
+line `no lane slower than 10%` follows it; a flag leaves the exit code alone, because it is a review
+duty, not a gate. A lane under a tenth of native in the ratio table adds one `- SUSPECT` list item:
+a lane that far ahead of clang measures a different program than the kernel. The `--report` file
+holds the three tables and those list items as one markdown block. `--check` holds a cell to
+`--tolerance` or to twice the baseline cell's own spread, whichever is wider: a cell whose samples
+spread that far in the committed capture (the interpreter's `fib_loop` under `--loops while` at 29
+percent, its bimodal `x = x + y` loop) reproduces anywhere inside the bar. A cell whose spread is
+above 20% (`SUSPECT_SPREAD`, ruling 29) is `suspect` with its spread, never bold, with no ratio or
+delta: it neither flags nor drifts.
 
 ## 6. Methods and reproduction
 

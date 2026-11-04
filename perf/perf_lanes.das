@@ -179,8 +179,13 @@ def spread_of(samples : array<double>; median : double) : double {
     return (hi - lo) * 0.5lf / median
 }
 
-//! The CPU model `/proc/cpuinfo` names, "unknown cpu" without one.
+//! The CPU model `/proc/cpuinfo` names, "unknown cpu" without one; `$C2DAS_CPU_NAME` when set, a
+//! test's stand-in for a machine no box names.
 def cpu_name : string {
+    let forced = get_env_variable("C2DAS_CPU_NAME")
+    if (!empty(forced)) {
+        return forced
+    }
     for (line in split(fread("/proc/cpuinfo"), "\n")) {
         if (line |> starts_with("model name")) {
             let colon = find(line, ":")
