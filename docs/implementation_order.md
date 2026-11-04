@@ -1320,6 +1320,11 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   passing the trailing tuple; Rust passes interp, exe and AOT there (JIT output differs). One of
   two compare runs of the project crashed (SIGSEGV in `compare/run.das` after the Rust lanes'
   module list), the rerun did not: (u) watch for it in the ruling 29 item 4 re-capture.
+  (i) Done (branch `p8.4i-vectorcall`): a calling convention in a type spelling drops, through
+  the macro clang spells in its place too, and a `_Static_assert` at file or block scope is
+  skipped (the next stop, `m3_compile.c:204`); wasm3 now stops in the dumper at `m3_parse.c:305:22`, "`m3type_t
+  argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)": (v) a VLA
+  local, out of scope in v1 (`docs/very-detailed-plan.md`); Rust passes all four lanes there.
 
 ## P6 — Doom
 
