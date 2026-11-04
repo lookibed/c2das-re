@@ -343,7 +343,9 @@ def judge_run(rc : int; output, errors, expected : string; timeout : float) : Ve
     }
     if (rc != 0) {
         let text = empty(errors) ? output : "{errors}\n{output}"
-        return Verdict(status = "exit", reason = "exit {rc}: {error_line(text)}")
+        let signal = signal_text(rc)
+        let how = empty(signal) ? "exit {rc}" : signal
+        return Verdict(status = "exit", reason = "{how}: {error_line(text)}")
     }
     let differ = first_difference(program_output(output), expected)
     return empty(differ) ? Verdict(status = "pass") : Verdict(status = "output", reason = differ)
@@ -413,7 +415,7 @@ def side_lanes(das_path, refusal, work : string; module_dirs, args : array<strin
                 let timed_out = error |> starts_with("timeout: ")
                 lanes[lane] = Verdict(status = timed_out ? "timeout" : "compile", reason = timed_out ? slice(error, length("timeout: ")) : error)
             } else {
-                lanes[lane] = run_judged(argv, expected, lane_timeout(lane, limits))
+                lanes[lane] = run_judged(guarded(argv, limits.address_space), expected, lane_timeout(lane, limits))
             }
         }
     }
@@ -514,14 +516,14 @@ def bench_disagreement(bench, expected : string; free, omitted : array<string>) 
 }
 
 //! The bench's oracle into `oracle`: the text of one run of the native bench `bin` on `fixture`,
-//! its time lines dropped, checked by `bench_disagreement` against `p`'s expected output; "" when
+//! `guarded` under `limits`, its time lines dropped, checked by `bench_disagreement` against `p`'s expected output; "" when
 //! it stands, else why not.
 [arch(at="ARCHITECTURE_PROJECTS.md#speed")]
-def native_bench_oracle(p : Project; bin, fixture : string; var oracle : string&) : string {
+def native_bench_oracle(p : Project; bin, fixture : string; var oracle : string&; limits : LaneLimits = COMPARE_LIMITS) : string {
     var out, err : string
-    let rc = run_split([bin, fixture], COMPARE_LIMITS.sample, out, err)
+    let rc = run_split(guarded([bin, fixture], limits.address_space), limits.sample, out, err)
     if (rc != 0) {
-        let v = judge_run(rc, out, err, "", COMPARE_LIMITS.sample)
+        let v = judge_run(rc, out, err, "", limits.sample)
         return "{v.status}: {v.reason}"
     }
     let text = bench_text(out)
@@ -548,7 +550,7 @@ def side_speed(das_path, refusal, work : string; module_dirs, args : array<strin
         } else {
             var error : string
             var inscope argv <- lane_argv(das_path, lane, path_join(work, lane), module_dirs, args, lane_timeout(lane, limits), error)
-            cells[lane] = empty(argv) ? error_json(error) : bench_cells(argv, expected, samples, lane_timeout(lane, limits))
+            cells[lane] = empty(argv) ? error_json(error) : bench_cells(guarded(argv, limits.address_space), expected, samples, lane_timeout(lane, limits))
         }
     }
     return <- cells
@@ -695,7 +697,7 @@ def private bench_modules(p : Project; bin, work : string) : BenchModules {
 // the speed section of `p`'s entry, timed in the working folder: `NOT_TIMED` in every cell when
 // `samples` is 0, `NO_BENCH` without a bench, else the native bench the oracle (`native_bench_oracle`) and timed, and each side's
 // bench module timed where its lane in `ours_lanes` or `rust_lanes` passes (`side_speed`)
-def private project_speed(p : Project; work : string; b : BenchModules; modules, args : array<string>; ours_lanes, rust_lanes : table<string; Verdict>; samples : int) : JsonValue? {
+def private project_speed(p : Project; work : string; b : BenchModules; modules, args : array<string>; ours_lanes, rust_lanes : table<string; Verdict>; samples : int; limits : LaneLimits) : JsonValue? {
     if (samples == 0 || !b.has) {
         let why = samples == 0 ? NOT_TIMED : NO_BENCH
         return JV({
@@ -705,12 +707,12 @@ def private project_speed(p : Project; work : string; b : BenchModules; modules,
         })
     }
     var oracle : string
-    let error = empty(b.native_error) ? native_bench_oracle(p, b.native, args[0], oracle) : b.native_error
+    let error = empty(b.native_error) ? native_bench_oracle(p, b.native, args[0], oracle, limits) : b.native_error
     let no_oracle = empty(error) ? "" : "no native bench result: {error}"
     let no_modules : array<string>
-    var native = empty(error) ? bench_cells([b.native, args[0]], oracle, samples, COMPARE_LIMITS.sample) : error_json(error)
-    var ours <- side_speed(b.ours, empty(b.ours_refusal) ? no_oracle : b.ours_refusal, path_join(work, "ours_bench_run"), modules, args, ours_lanes, oracle, samples, COMPARE_LIMITS)
-    var rust <- side_speed(b.rust, empty(b.rust_refusal) ? no_oracle : b.rust_refusal, path_join(work, "rust_bench_run"), no_modules, args, rust_lanes, oracle, samples, COMPARE_LIMITS)
+    var native = empty(error) ? bench_cells(guarded([b.native, args[0]], limits.address_space), oracle, samples, limits.sample) : error_json(error)
+    var ours <- side_speed(b.ours, empty(b.ours_refusal) ? no_oracle : b.ours_refusal, path_join(work, "ours_bench_run"), modules, args, ours_lanes, oracle, samples, limits)
+    var rust <- side_speed(b.rust, empty(b.rust_refusal) ? no_oracle : b.rust_refusal, path_join(work, "rust_bench_run"), no_modules, args, rust_lanes, oracle, samples, limits)
     return JV({
         "native" => native,
         "ours" => JV(ours),
@@ -720,9 +722,11 @@ def private project_speed(p : Project; work : string; b : BenchModules; modules,
 
 //! Project `p` through both sides, built in `work` and run with the working folder `<work>/cwd`,
 //! the Rust side by `bin`, each bench lane timed over `samples` runs (none built or timed when
-//! `samples` is 0): its capture entry.
+//! `samples` is 0), every native run, lane and bench sample `guarded` under `address_space` bytes
+//! (0: no cap of its own): its capture entry.
 [arch(at="ARCHITECTURE_PROJECTS.md#projects")]
-def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : Stamps) : JsonValue? {
+def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : Stamps; address_space : int64 = 0l) : JsonValue? {
+    let limits = LaneLimits(sample = COMPARE_LIMITS.sample, build = COMPARE_LIMITS.build, address_space = address_space)
     let work = absolute_path(work_dir)
     rmdir_rec(work)
     mkdir_rec(work)
@@ -739,13 +743,13 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
     let bench = samples > 0 ? bench_modules(p, bin, work) : BenchModules()
     let back = enter_working_folder(path_join(work, "cwd"))
     if (empty(native.reason)) {
-        native = run_judged([native_bin, args[0]], p.expected, COMPARE_LIMITS.sample)
+        native = run_judged(guarded([native_bin, args[0]], address_space), p.expected, limits.sample)
         native.status = native.status == "pass" ? "pass" : "native"
     }
     let no_oracle = native.status == "pass" ? "" : "no native result: {native.reason}"
-    let ours_lanes <- side_lanes(ours_das, empty(no_oracle) ? ours_refusal : no_oracle, path_join(work, "ours_run"), modules, args, p.expected, COMPARE_LIMITS)
-    let rust_lanes <- side_lanes(rust_das, empty(no_oracle) ? rust_refusal : no_oracle, path_join(work, "rust_run"), no_modules, args, p.expected, COMPARE_LIMITS)
-    let speed = project_speed(p, work, bench, modules, args, ours_lanes, rust_lanes, samples)
+    let ours_lanes <- side_lanes(ours_das, empty(no_oracle) ? ours_refusal : no_oracle, path_join(work, "ours_run"), modules, args, p.expected, limits)
+    let rust_lanes <- side_lanes(rust_das, empty(no_oracle) ? rust_refusal : no_oracle, path_join(work, "rust_run"), no_modules, args, p.expected, limits)
+    let speed = project_speed(p, work, bench, modules, args, ours_lanes, rust_lanes, samples, limits)
     chdir(back)
     let ours_text = empty(ours_refusal) ? files_text(ours_files) : ""
     let rust_text = empty(rust_refusal) ? files_text(rust_files) : ""
@@ -761,7 +765,7 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
         "lanes" => JV(DAS_LANES),
         "native" => verdict_json(native, back),
         "native_compiler" => JV(first_line(captured([default_clang(), "--version"]))),
-        "address_cap" => JV(address_cap_of(fexist("/proc/self/limits") ? fread("/proc/self/limits") : "")),
+        "address_cap" => JV(address_space > 0l ? "{address_space}" : address_cap_of(fexist("/proc/self/limits") ? fread("/proc/self/limits") : "")),
         "ours" => JV({"error" => JV(ours_refusal), "lanes" => lanes_json(ours_lanes, back), "defines" => JV(p.ours_defines)}),
         "rust" => JV({"error" => JV(rust_refusal), "lanes" => lanes_json(rust_lanes, back)}),
         "speed" => speed,

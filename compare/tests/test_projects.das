@@ -198,6 +198,12 @@ def test_verdicts(t : T?) {
         let died = run_judged(["sh", "-c", "echo 'frame[0]=1'; echo 'segmentation fault' >&2; exit 1"], "a\n", 30.0)
         t |> equal("{died.status} {died.reason}", "exit exit 1: segmentation fault")
     }
+    t |> run("a guarded run that crashes is the lane's exit with the signal named; the run sees the address-space cap") @(t : T?) {
+        let crashed = run_judged(guarded(["sh", "-c", "echo 'out of memory' >&2; kill -SEGV $$"], 1073741824l), "a\n", 30.0)
+        t |> equal("{crashed.status} {crashed.reason}", "exit signal 11 (SEGV): out of memory")
+        t |> equal(judge_run(134, "", "", "a\n", 9.0).reason, "signal 6 (ABRT): ")
+        t |> equal(run_judged(guarded(["sh", "-c", "ulimit -v; ulimit -c"], 2147483648l), "2097152\n0\n", 30.0).status, "pass")
+    }
     t |> run("a lane's command: daslang over the module, or the exe or aot binary, the program's arguments last") @(t : T?) {
         t |> with_scratch("cmp_projects_lane_argv") $(dir) {
             let none : array<string>
@@ -435,6 +441,8 @@ def test_project_entry(t : T?) {
             t |> equal(entry?["rust"]?["error"] ?? "", "")
             t |> equal(entry?["ours"]?["defines"]?[0] ?? "", "HOOK(...)=")
             t |> equal(entry?["address_cap"] ?? "", address_cap_of(fread("/proc/self/limits")))
+            let capped = project_entry(p, bin, path_join(dir, "work"), 0, Stamps(), 6442450944l)
+            t |> equal(capped?["address_cap"] ?? "", "6442450944")
             t |> success((entry?["native"]?["reason"] ?? "") |> starts_with("clang exited 1: "), entry?["native"]?["reason"] ?? "")
             t |> equal(entry?["speed"]?["native"]?["error"] ?? "", NOT_TIMED)
             for (lane in DAS_LANES) {
@@ -655,6 +663,7 @@ def test_project_run(t : T?) {
             t |> equal(js?["projects"]?["other"]?["x"] ?? 0, 1)
             t |> equal(entry?["native"]?["status"] ?? "", "pass")
             t |> equal(entry?["box"] ?? "", flag_box(), "--box reaches the project entry")
+            t |> equal(entry?["address_cap"] ?? "", "6442450944", "every measured run under the default 6 GiB")
             for (side in ["ours", "rust"]) {
                 t |> equal(join([for (lane in DAS_LANES); entry?[side]?["lanes"]?[lane]?["status"] ?? ""], " "), "pass pass pass pass", side)
                 t |> equal(entry?["speed"]?[side]?["exe"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf, side)
@@ -704,6 +713,8 @@ def test_project_run(t : T?) {
                 t |> success(out |> contains("the Rust checkout lacks its canonical cases"), out)
                 t |> equal(run_compare(["--project", "wasm3", "--samples", "-1"], out), 1, out)
                 t |> success(out |> contains("--samples takes a count of at least 0, not -1"), out)
+                t |> equal(run_compare(["--project", "wasm3", "--as", "-1"], out), 1, out)
+                t |> success(out |> contains("--as takes a count of GiB of at least 0, not -1"), out)
                 t |> equal(run_compare(["--project", "wasm3", "--perf"], out), 1, out)
                 t |> success(out |> contains("--perf runs alone"), out)
             }

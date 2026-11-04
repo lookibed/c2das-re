@@ -53,6 +53,9 @@ struct CompareArgs {
     lua_from : string = ""
     @clarg_doc = "run one real project of the Rust checkout's tests/manual through both translators: wasm3, binjgb, h264bsd-mp4, plmpeg-stream, doomgeneric or quakegeneric"
     project : string = ""
+    @clarg_doc = "the GiB of address space each measured run of --project may map (default 6); 0 for no cap"
+    @clarg_name = "as"
+    address_space : int = 6
     @clarg_doc = "the folder --project writes its work into, one subfolder per project (default compare/work/projects)"
     work : string = ""
     @clarg_doc = "rewrite the comparison rendered from the capture between the compare markers of README.md"
@@ -204,6 +207,10 @@ def run_project(args : CompareArgs; out : string) : int {
     if (samples_refused(args.samples, 0)) {
         return 1
     }
+    if (args.address_space < 0) {
+        to_log(LOG_ERROR, "--as takes a count of GiB of at least 0, not {args.address_space}\n")
+        return 1
+    }
     var reason : string
     if (!rust_available(reason)) {
         to_log(LOG_ERROR, "{reason}\n")
@@ -225,7 +232,7 @@ def run_project(args : CompareArgs; out : string) : int {
         return 2
     }
     let bin = rust_binary()
-    var entry = project_entry(p, bin, path_join(empty(args.work) ? PROJECTS_WORK : args.work, p.name), args.samples, run_stamps(bin, args.box))
+    var entry = project_entry(p, bin, path_join(empty(args.work) ? PROJECTS_WORK : args.work, p.name), args.samples, run_stamps(bin, args.box), int64(args.address_space) * 1073741824l)
     for (line in project_lines(p.name, entry)) {
         to_log(LOG_INFO, "{line}\n")
     }

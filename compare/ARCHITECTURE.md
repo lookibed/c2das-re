@@ -37,7 +37,7 @@ daslang; this repository never builds it inside a test and never vendors it.
   `--one quality/<key>`, and `--lua-from <folder>`, which gives `--lua` the `.c` files of a folder
   (its `lua.c` holding `main`) and its `lua.c2das`, when present, as the sidecar (no defines without
   one; never Lua's) in place of Lua's release, translated into `<folder>/work`; `--lua` takes no
-  `--filter`; `--project <name>` runs one real project with `--samples`; `--readme`
+  `--filter`; `--project <name>` runs one real project with `--samples` and `--as`; `--readme`
   and `--report <path>` render the capture `--out` names (section 11), in a run of their own. Exit
   0 when it ran, 2 when the Rust translator or an input (a suite's, a project's, Lua's release) is
   missing, 1 on a bad command line, an unreadable capture, an unreadable sidecar or a README

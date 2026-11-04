@@ -26,10 +26,12 @@ struct Cell {
 //! the seconds a sample may take
 let SAMPLE_TIMEOUT = 600.0
 
-//! The seconds a das lane's sample and its `exe` or `aot` build (with the run it ends with) may take.
+//! The seconds a das lane's sample and its `exe` or `aot` build (with the run it ends with) may take,
+//! and the bytes of address space a guarded run of it may map, 0 for no cap.
 struct LaneLimits {
     sample : float
     build : float
+    address_space : int64
 }
 
 //! the perf harness's limits
@@ -52,14 +54,20 @@ def guarded(argv : array<string>; address_space : int64) : array<string> {
     return <- full
 }
 
-//! The exit code `rc` of a guarded run in words: `signal N (<name>)` for a code from 129 to 192,
-//! the shell's report of a death by signal N, else `exited <rc>`.
-def exit_text(rc : int) : string {
+//! The death the exit code `rc` of a guarded run reports: `signal N (<name>)` for a code from 129
+//! to 192, the shell's report of a death by signal N, else "".
+def signal_text(rc : int) : string {
     let signal = rc - 128
     if (signal < 1 || signal > 64) {
-        return "exited {rc}"
+        return ""
     }
     return signal < length(SIGNAL_NAMES) ? "signal {signal} ({SIGNAL_NAMES[signal]})" : "signal {signal}"
+}
+
+//! The exit code `rc` of a guarded run in words: its `signal_text`, else `exited <rc>`.
+def exit_text(rc : int) : string {
+    let signal = signal_text(rc)
+    return empty(signal) ? "exited {rc}" : signal
 }
 
 //! A failed guarded run's error: its exit in words and the first line it reported, or `no output`.

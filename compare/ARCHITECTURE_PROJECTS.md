@@ -85,15 +85,20 @@ translations; `rust_db/` the compilation database of a project of units), and ea
 builds. Every program of the run (the native builds, each lane
 and each bench sample of both sides, and the run each `exe` build ends with) runs with the working
 folder `cwd/` there (`enter_working_folder`, every path passed on absolute), so a program writing
-into its working folder writes into the run's scratch, never into the checkout. The run is capped by
-the command that starts it (`prlimit --as=4294967296`), which every child process inherits: the
-AOT generator's context needs more than 3 GiB of address space for the Rust modules (its 1 GiB
-heap runs out under `--as=3221225472`).
+into its working folder writes into the run's scratch, never into the checkout. Every measured
+run (the native runs, each lane and each bench sample of both sides) starts `guarded`
+(`perf/ARCHITECTURE_SAMPLES.md`): no core file, and `--as <GiB>` (6 by default, 0 for none) of
+address space, so a run that dies under the cap is that lane's `exit` verdict with `signal 11
+(SEGV)` and its error line, while the runner, which converts in its own process, and the builds
+run with no cap of the runner's own: under a cap on the whole run (doomgeneric under 4 GiB) a
+crash in the runner ends the run with exit code 139 and no entry, and the AOT
+generator's context needs more than 3 GiB of address space for the Rust modules (its 1 GiB heap
+runs out under `--as=3221225472`).
 
 The entry is `{rust_commit, rust_commit_error, daslang, date, cpu, box, samples, lanes, native,
 native_compiler, address_cap, ours, rust, speed, code, functions}`: `native` the native build's
-verdict, `address_cap` the soft `Max address space` of the run's `/proc/self/limits`
-(`address_cap_of`: its bytes or `unlimited`, which every lane inherits),
+verdict, `address_cap` the bytes `--as` names, else the soft `Max address space` of the run's
+`/proc/self/limits` (`address_cap_of`: its bytes or `unlimited`, which every lane inherits),
 `native_compiler` the first line of the pinned clang's `--version` (the Rust README builds with
 clang-18, so the native cells are this machine's baseline, not the Rust repository's numbers),
 `ours` and `rust` each `{error, lanes}` with the side's refusal and a verdict per lane of `lanes`
