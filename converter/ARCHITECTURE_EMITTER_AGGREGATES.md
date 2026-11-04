@@ -249,8 +249,9 @@ callee copy: the callee's pops advance the caller's cursor, as linux's decayed a
 (msvc copies its `char *`, after which C leaves the caller's list indeterminate, so the two
 agree on every defined program); a function type's `va_list` position is `var` alike, so
 `int (*)(va_list)` holds such a function. A library function taking a `va_list` takes
-`va_rest(v)`, the arguments from the cursor on (F36): `vprintf`, `vsprintf`, `vsnprintf` and
-`vsscanf` are `c_vprintf`, `c_vsprintf`, `c_vsnprintf` and `c_vsscanf`, and `sscanf` is the
+`va_rest(v)`, the arguments from the cursor on (F36): `vprintf`, `vsprintf`, `vsnprintf`,
+`vfprintf` and `vsscanf` are `c_vprintf`, `c_vsprintf`, `c_vsnprintf`, `c_vfprintf` (the stream
+a `void?`) and `c_vsscanf`, and `sscanf` is the
 `[variadic]` front of `c_runtime/scanf`. A module reaching the printf or the scanf family opens
 with `[init] def private c2das_dialect`, its first `[init]`, setting `c_long_bits` to the
 dialect's `long` width, which every `l` directive then reads. `sizeof(va_list)` is clang's size. Fail closed: `va_arg` of a

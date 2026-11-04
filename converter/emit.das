@@ -265,6 +265,7 @@ let C_RUNTIME_CALLS <- {
     "longjmp" => RuntimeCall(piece = "c_runtime/setjmp", das_name = "c_longjmp"),
     "_longjmp" => RuntimeCall(piece = "c_runtime/setjmp", das_name = "c_longjmp"),
     "fprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "fprintf"),
+    "vfprintf" => RuntimeCall(piece = "c_runtime/printf", das_name = "c_vfprintf"),
     "qsort" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_qsort"),
     "bsearch" => RuntimeCall(piece = "c_runtime/c_sort", das_name = "c_bsearch"),
     // the GCC builtins with a direct meaning (c_runtime/c_builtins.das); an `l` or `ll` spelling

@@ -174,7 +174,7 @@ which ends at the first NUL; a `signed char` one fails closed, and one in braces
 indexed in place (`"abcdef"[2]`) is read through its pointer, `deref(p + i)`; a literal under `sizeof` is its
 array type. A call to a libc function the C program declares resolves through two tables:
 `C_RUNTIME_CALLS`, the functions a `c_runtime` piece lowers (`printf`, `sprintf`, `snprintf`,
-`vprintf`, `vsprintf`, `vsnprintf`, `fprintf`, `sscanf`, `vsscanf`, `exit`, `abort`, `signal`, `qsort`, `bsearch`; `<math.h>`'s surface das math covers, `floor` as `math::floor` and `fabs` as `math::abs`, as `docs/stdlib-examples.md` "math.h" rules; glibc's `__errno_location`, which `errno` expands to, as `crt::c_errno_location`),
+`vprintf`, `vsprintf`, `vsnprintf`, `fprintf`, `vfprintf`, `sscanf`, `vsscanf`, `exit`, `abort`, `signal`, `qsort`, `bsearch`; `<math.h>`'s surface das math covers, `floor` as `math::floor` and `fabs` as `math::abs`, as `docs/stdlib-examples.md` "math.h" rules; glibc's `__errno_location`, which `errno` expands to, as `crt::c_errno_location`),
 one row each naming the module that holds the piece and the das name, and `CRT_CALLS`, the
 functions the `crt` module binds under their C names (the memory, string.h, ctype, conversion,
 libm exotica, time, locale, stdio and random families of `dasCRuntime/ARCHITECTURE.md`), spelled

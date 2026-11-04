@@ -2221,6 +2221,12 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "struct timespec \{\n    tv_sec, tv_nsec : int64\n\}\n")
         has_text(t, text, "crt::clock_gettime(1, reinterpret<void?>(addr(a)))")
     }
+    t |> run("vfprintf forwards its va_list to c_vfprintf, the stream a `void?`, in order with printf (quakegeneric's `Sys_Error`)") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_vfprintf", text)
+        has_text(t, text, "    n = c_vfprintf(reinterpret<void?>(f), fmt, va_rest(ap))\n")
+        has_text(t, text, "p8_vfprintf__report`va(reinterpret<_IO_FILE?>(crt::c_stdout()), ")
+    }
     t |> run("`musttail` on a return converts as a plain call whose value is returned: through a function pointer and direct") @(t : T?) {
         var text : string
         check_fixture(t, "p8_musttail", text)
