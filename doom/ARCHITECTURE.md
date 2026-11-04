@@ -263,8 +263,8 @@ sum with its count on the left (`p_pspr.c:655`'s `flashstate + psp->state`) P6.3
 alone, `m_menu.c`'s menus among them, whose function values reach their own globals back
 (`MainMenu` -> `M_NewGame` -> `EpiDef` -> ... -> `MainMenu`), das's initialization loop, so the
 emitter stores them at module init (`converter/ARCHITECTURE_EMITTER_AGGREGATES.md`,
-Initialization loops). The harness runs the native build alone (`--demo`); the converted program
-has no run mode yet. The whole-program
+Initialization loops). The harness runs the native build with `--demo` and the converted program
+with `--run` (section 8). The whole-program
 conversion needs more than 3 GiB of address space: under `prlimit --as=3G` daslang dies with
 SIGSEGV on an allocation failure, so the harness runs uncapped in a `heavy` scope of its own.
 
