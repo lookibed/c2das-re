@@ -2245,6 +2245,11 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "def private p8_vectorcall__op_add(var pc : int?; acc : int) : int \{\n")
         has_text(t, text, "def private p8_vectorcall__run(f : function<(var a0 : int?; a1 : int) : int>; ")
     }
+    t |> run("a `_Static_assert` at file and block scope (wasm3's table sizes) is clang's check alone: it leaves nothing in the module") @(t : T?) {
+        let text = converts(t, "file_asserts", "static const int tab[3] = \{ 1, 2, 3 \};\n_Static_assert(sizeof(tab) / sizeof(*tab) == 3, \"one entry per type\");\nint main(void) \{\n    _Static_assert(sizeof(int) == 4, \"int\");\n    return tab[2] - 3;\n\}\n")
+        has_text(t, text, "def c_main : int \{\n    return file_asserts__tab[2] - 3\n\}\n")
+        t |> success(!(text |> contains("one entry")), text)
+    }
     t |> run("`musttail` on a return converts as a plain call whose value is returned: through a function pointer and direct") @(t : T?) {
         var text : string
         check_fixture(t, "p8_musttail", text)
