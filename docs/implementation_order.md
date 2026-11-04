@@ -1308,7 +1308,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   (dumper); (q) h264bsd-mp4 error[30341] too many matching functions or generics `malloc`, a
   project defining its own `malloc` beside crt's (compile check; a P6.3-class item); (r)
   quakegeneric `sys_null.c:160` `vfprintf` without a c_runtime map (emitter; a stdlib row, the
-  vfprintf/vprintf family).
+  vfprintf/vprintf family). (p) Done (branch `p8.4p-doomgeneric-type`): the empty spelling was a
+  doc comment (`//!`, a `FullComment` child) taken as a global's initializer; doomgeneric now
+  passes the dumper and stops in the emitter at `doomdata.h:57:9`, "record `mapvertex_t` is not laid
+  out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar":
+  (s) the projects table gives our side a per-project sidecar `marshal` list (the PureDOOM records,
+  `doom/doom.c2das`, as the model), then the next stop is read.
 
 ## P6 — Doom
 
