@@ -137,7 +137,7 @@ def test_flag(t : T?) {
 [test]
 def test_markdown(t : T?) {
     let js = capture_of(t, TWO_BY_TWO)
-    let results = "Captured on T, P, C; clang, das. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.\n\n| Test |      C (clang -O3) | DAS interpreter | DAS interp, copied params |            DAS JIT | DAS exe | DAS AOT |\n| :--- | -----------------: | --------------: | ------------------------: | -----------------: | ------: | ------: |\n| a    | **0.001000s ±0%** |             n/a |            0.004000s ±0% |     0.003000s ±3% |     n/a |     n/a |\n| b    |     0.002000s ±1% |             n/a |                       n/a | **0.001000s ±0%** |     n/a |     n/a |\n"
+    let results = "Captured on T, P, C; clang, das. A cell is the median of 5 samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold; a cell whose spread is above 20% is `suspect` with its spread, no time, and in no ratio or delta.\n\n| Test |      C (clang -O3) | DAS interpreter | DAS interp, copied params |            DAS JIT | DAS exe | DAS AOT |\n| :--- | -----------------: | --------------: | ------------------------: | -----------------: | ------: | ------: |\n| a    | **0.001000s ±0%** |             n/a |            0.004000s ±0% |     0.003000s ±3% |     n/a |     n/a |\n| b    |     0.002000s ±1% |             n/a |                       n/a | **0.001000s ±0%** |     n/a |     n/a |\n"
     let ratios = "Lane time / native, per kernel.\n\n| Test | C (clang -O3) | DAS interpreter | DAS interp, copied params | DAS JIT | DAS exe | DAS AOT |\n| :--- | ------------: | --------------: | ------------------------: | ------: | ------: | ------: |\n| a    |          1.00 |             n/a |                      4.00 |    3.00 |     n/a |     n/a |\n| b    |          1.00 |             n/a |                       n/a |    0.50 |     n/a |     n/a |\n"
     t |> run("results: sorted kernels, the fastest lane bold, the spread rounded, a missing lane n/a") @(t : T?) {
         t |> equal(render_results(js), results)
@@ -160,6 +160,43 @@ def test_markdown(t : T?) {
     t |> run("the report with a baseline carries the delta table") @(t : T?) {
         let report = render_report(js, js, "same")
         t |> success(report |> ends_with("**Delta**\n\n{render_delta(js, js, "same")}"))
+    }
+}
+
+// `a` with its native cell at a 21% spread, `b` with its native and interpreter cells at 20% and
+// its JIT cell at 21%; the baseline has the same cells without spreads, `b`'s JIT twice as fast
+let SUSPECT_CAPTURE = "\{'cpu': 'X', 'lanes': ['native', 'interp', 'jit'], 'samples': 5, 'tests': \{'a': \{'native': \{'time': 1.0, 'spread': 0.21\}, 'jit': \{'time': 2.0, 'spread': 0.0\}\}, 'b': \{'native': \{'time': 1.0, 'spread': 0.2\}, 'interp': \{'time': 3.0, 'spread': 0.2\}, 'jit': \{'time': 0.5, 'spread': 0.21\}\}\}\}"
+let SUSPECT_BASELINE = "\{'cpu': 'X', 'tests': \{'a': \{'native': \{'time': 1.0\}, 'jit': \{'time': 2.0\}\}, 'b': \{'native': \{'time': 1.0\}, 'interp': \{'time': 3.0\}, 'jit': \{'time': 0.25\}\}\}\}"
+
+[test]
+def test_suspect(t : T?) {
+    let js = capture_of(t, SUSPECT_CAPTURE)
+    let old = capture_of(t, SUSPECT_BASELINE)
+    t |> run("results: a cell of spread above 20% is suspect with its spread and never the bold one; 20% exactly is a time") @(t : T?) {
+        let text = render_results(js)
+        t |> success(text |> contains("| a    |   suspect (±21.0%) |             n/a | **2.000000s ±0%** |"), text)
+        t |> success(text |> contains("| b    | **1.000000s ±20%** | 3.000000s ±20% |  suspect (±21.0%) |"), text)
+    }
+    t |> run("ratios: a suspect lane or a suspect native cell has no ratio, and no lane under the bar is listed over one") @(t : T?) {
+        let text = render_ratios(js)
+        t |> success(text |> contains("| a    |       suspect |             n/a | suspect |"), text)
+        t |> success(text |> contains("| b    |          1.00 |            3.00 | suspect |"), text)
+        t |> equal(length(suspect_cells(js)), 0)
+    }
+    t |> run("delta: a suspect cell of either capture has none, so it neither flags nor drifts") @(t : T?) {
+        let text = render_delta(js, old, "old")
+        t |> success(text |> contains("| a    |       suspect |             n/a |  +0.00% |"), text)
+        t |> success(text |> contains("| b    |        +0.00% |          +0.00% | suspect |"), text)
+        t |> success(text |> ends_with("no lane slower than 10%\n"), text)
+        t |> success(render_delta(old, js, "new") |> contains("| b    |        +0.00% |          +0.00% |                       n/a |"), render_delta(old, js, "new"))
+        var cents = 0l
+        t |> success(!delta_cents(js, old, "b", "jit", cents))
+        t |> equal(length(drifted_cells(js, old, 1000l)), 0)
+    }
+    t |> run("the method comparison: a suspect cell has its spread, a converted one over a suspect C cell its seconds alone") @(t : T?) {
+        let m = capture_of(t, "\{'cpu': 'C', 'tests': \{'fib_loop': \{'native': \{'time': 0.002, 'spread': 0.21\}, 'interp': \{'time': 0.06, 'spread': 0.21\}, 'jit': \{'time': 0.004\}, 'exe': \{'time': 0.004\}, 'aot': \{'time': 0.002\}\}\}\}")
+        let text = render_method_comparison(m, capture_of(t, "\{'cpu': 'C'\}"))
+        t |> success(text |> contains("| fib_loop | suspect (±21.0%) |            n/a |                 n/a |              n/a |              n/a | suspect (±21.0%) |        0.004s |        0.002s |        0.004s |"), text)
     }
 }
 

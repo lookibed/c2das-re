@@ -45,7 +45,13 @@ def kernel_names(js : JsonValue?) : array<string> {
     return <- names
 }
 
-def cell_text(time, spread : double) : string => "{time:.6f}s ±{int(round(spread * 100.0lf))}%"
+def cell_text(time, spread : double) : string => is_suspect(spread) ? suspect_text(spread) : "{time:.6f}s ±{int(round(spread * 100.0lf))}%"
+
+//! The spread of one cell, 0 when the capture has no such kernel or lane.
+def spread_of(js : JsonValue?; kernel, lane : string) : double => js?["tests"]?[kernel]?[lane]?["spread"] ?? 0.0lf
+
+//! Whether the cell of `kernel` under `lane` stands with a spread above `SUSPECT_SPREAD`.
+def cell_suspect(js : JsonValue?; kernel, lane : string) : bool => time_of(js, kernel, lane) > 0.0lf && is_suspect(spread_of(js, kernel, lane))
 
 //! Lane time over native time, 0 when either cell is missing.
 def ratio_of(js : JsonValue?; kernel, lane : string) : double {
@@ -64,8 +70,21 @@ def private compared_value(js : JsonValue?; kernel, lane : string; by_ratio : bo
     return lane == "native" ? 0.0lf : ratio_of(js, kernel, lane)
 }
 
-//! `(new - old) / old` in hundredths of a percent; false when either capture lacks the cell.
+// whether the value `compared_value` reads is suspect: the cell, or under `by_ratio` native's too
+def private compared_suspect(js : JsonValue?; kernel, lane : string; by_ratio : bool) : bool => cell_suspect(js, kernel, lane) || (by_ratio && cell_suspect(js, kernel, "native"))
+
+//! Whether the delta of `kernel` under `lane` stands on a suspect value of either capture: it has none.
+def delta_suspect(current, baseline : JsonValue?; kernel, lane : string) : bool {
+    let by_ratio = !same_cpu(current, baseline)
+    return compared_suspect(current, kernel, lane, by_ratio) || compared_suspect(baseline, kernel, lane, by_ratio)
+}
+
+//! `(new - old) / old` in hundredths of a percent; false when either capture lacks the cell or
+//! the value either compares is suspect.
 def delta_cents(current, baseline : JsonValue?; kernel, lane : string; var cents : int64&) : bool {
+    if (delta_suspect(current, baseline, kernel, lane)) {
+        return false
+    }
     let by_ratio = !same_cpu(current, baseline)
     let old_value = compared_value(baseline, kernel, lane, by_ratio)
     let new_value = compared_value(current, kernel, lane, by_ratio)
@@ -112,15 +131,15 @@ def render_results(js : JsonValue?) : string {
         var best = t
         for (other in lanes) {
             let o = time_of(js, kernel, other)
-            if (o > 0.0lf) {
+            if (o > 0.0lf && !cell_suspect(js, kernel, other)) {
                 best = min(best, o)
             }
         }
-        let text = cell_text(t, js?["tests"]?[kernel]?[lane]?["spread"] ?? 0.0lf)
-        return t == best ? md_bold(text) : text
+        let text = cell_text(t, spread_of(js, kernel, lane))
+        return t == best && !cell_suspect(js, kernel, lane) ? md_bold(text) : text
     }
     let versions = js?["versions"]
-    let head = "Captured on {js?["timestamp"] ?? ""}, {js?["platform"] ?? ""}, {capture_label(js)}; {versions?["clang"] ?? ""}, {versions?["daslang"] ?? ""}. A cell is the median of {js?["samples"] ?? 0l} samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold.\n\n"
+    let head = "Captured on {js?["timestamp"] ?? ""}, {js?["platform"] ?? ""}, {capture_label(js)}; {versions?["clang"] ?? ""}, {versions?["daslang"] ?? ""}. A cell is the median of {js?["samples"] ?? 0l} samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold; a cell whose spread is above {int(SUSPECT_SPREAD * 100.0lf)}% is `{SUSPECT}` with its spread, no time, and in no ratio or delta.\n\n"
     return head + grid + "\n"
 }
 
@@ -142,7 +161,8 @@ def private picked_cells(lanes, names : array<string>; cell : block<(kernel, lan
 def suspect_cells(js : JsonValue?) : array<string> {
     return <- picked_cells(lanes_of(js), kernel_names(js)) $(name, lane) {
         let r = ratio_of(js, name, lane)
-        return r > 0.0lf && r < SUSPECT_RATIO ? "{name}/{lane} at {r:.2f}x native" : ""
+        let published = !cell_suspect(js, name, lane) && !cell_suspect(js, name, "native")
+        return r > 0.0lf && r < SUSPECT_RATIO && published ? "{name}/{lane} at {r:.2f}x native" : ""
     }
 }
 
@@ -150,7 +170,7 @@ def suspect_cells(js : JsonValue?) : array<string> {
 def render_ratios(js : JsonValue?) : string {
     let grid = lane_table(lanes_of(js), kernel_names(js)) $(kernel, lane) {
         let r = ratio_of(js, kernel, lane)
-        return r > 0.0lf ? "{r:.2f}" : MISSING
+        return r <= 0.0lf ? MISSING : cell_suspect(js, kernel, lane) || cell_suspect(js, kernel, "native") ? SUSPECT : "{r:.2f}"
     }
     let suspects <- suspect_cells(js)
     let notes = empty(suspects) ? "" : "\n" + join([for (c in suspects); "- SUSPECT {c}: a lane this far under native measures a different program\n"], "")
@@ -207,7 +227,7 @@ def render_delta(current, baseline : JsonValue?; baseline_name : string) : strin
     names |> sort_unique()
     let grid = lane_table(lanes_of(current), names) $(kernel, lane) {
         var cents = 0l
-        return delta_cents(current, baseline, kernel, lane, cents) ? percent_text(cents) : MISSING
+        return delta_cents(current, baseline, kernel, lane, cents) ? percent_text(cents) : delta_suspect(current, baseline, kernel, lane) ? SUSPECT : MISSING
     }
     let flags <- flagged_cells(current, baseline)
     let verdict = empty(flags) ? "no lane slower than {FLAG_CENTS / 100l}%\n" : join([for (f in flags); "- FLAG {f}\n"], "")
@@ -251,6 +271,16 @@ def private timed_ratio(t, base : double) : string {
     return base > 0.0lf ? "{t:.5g}s ({t / base:.2f}x)" : "{t:.5g}s"
 }
 
+// a cell of the method capture, a converted one over its C cell: `timed_ratio`, `suspect` with its
+// spread for a suspect cell, and its seconds alone over a suspect C cell
+def private method_cell(js : JsonValue?; kernel, lane : string) : string {
+    if (cell_suspect(js, kernel, lane)) {
+        return suspect_text(spread_of(js, kernel, lane))
+    }
+    let base = lane == "native" || cell_suspect(js, kernel, "native") ? 0.0lf : time_of(js, kernel, "native")
+    return timed_ratio(time_of(js, kernel, lane), base)
+}
+
 //! The comparison of the dasProfile-method capture `method` with dasProfile's own capture `dp`
 //! from the same machine, one row per shared kernel: the composed C program and dasProfile's C++,
 //! dasProfile's hand-written das under the interpreter, the JIT and AOT, each over its C++, and
@@ -268,16 +298,15 @@ def render_method_comparison(method, dp : JsonValue?) : string {
         if (empty(category)) {
             continue
         }
-        let native = time_of(method, kernel, "native")
         let cpp = dasprofile_time(dp, "AOT or JIT", category, "C++")
-        var inscope row <- [kernel, timed_ratio(native, 0.0lf), timed_ratio(cpp, 0.0lf)]
+        var inscope row <- [kernel, method_cell(method, kernel, "native"), timed_ratio(cpp, 0.0lf)]
         row |> push(timed_ratio(dasprofile_time(dp, "Interpreted", category, "DAS INTERPRETER"), cpp))
         row |> push(timed_ratio(dasprofile_time(dp, "AOT or JIT", category, "DAS JIT"), cpp))
         row |> push(timed_ratio(dasprofile_time(dp, "AOT or JIT", category, "DAS AOT"), cpp))
-        row |> push_from([for (lane in ["interp", "jit", "aot", "exe"]); timed_ratio(time_of(method, kernel, lane), native)])
+        row |> push_from([for (lane in ["interp", "jit", "aot", "exe"]); method_cell(method, kernel, lane)])
         rows |> emplace(row)
     }
-    let head = "The dasProfile method on {capture_label(method)}, {method?["timestamp"] ?? ""} ({method?["versions"]?["clang"] ?? ""}, daslang {method?["versions"]?["daslang"] ?? ""}) beside borisbat/dasProfile {dp?["dasprofile_commit"] ?? ""} run on {capture_label(dp)}, {dp?["timestamp"] ?? ""} ({dp?["toolchain"] ?? ""}). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).\n\n"
+    let head = "The dasProfile method on {capture_label(method)}, {method?["timestamp"] ?? ""} ({method?["versions"]?["clang"] ?? ""}, daslang {method?["versions"]?["daslang"] ?? ""}) beside borisbat/dasProfile {dp?["dasprofile_commit"] ?? ""} run on {capture_label(dp)}, {dp?["timestamp"] ?? ""} ({dp?["toolchain"] ?? ""}). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program; a cell of this tree's capture whose spread is above {int(SUSPECT_SPREAD * 100.0lf)}% is `{SUSPECT}` with its spread, and one over a suspect C cell has no ratio. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).\n\n"
     let different = join([for (line in DIFFERENT_PROGRAMS); "- {line}: different programs, not compared\n"], "")
     return head + render_md_table(headers, aligns, rows) + "\n\n" + different
 }
