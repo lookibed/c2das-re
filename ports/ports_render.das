@@ -97,9 +97,6 @@ let NOT_MEASURED = "not measured"
 let WITHIN_START = "within the start"
 //! why a lane whose startup cell does not stand has no work times
 let NO_STARTUP = "no startup cell"
-//! the spread above which a cell or a work time is suspect: never a number, never in a ratio
-let SUSPECT_SPREAD = 0.2lf
-let SUSPECT = "suspect"
 
 def lane_title(lane : string) : string => LANE_TITLES?[lane] ?? lane
 
@@ -168,8 +165,7 @@ def ratio_of(c : Capture; workload, lane, base : string) : double {
 // seconds with their spread, or `suspect` with the spread alone, to a tenth of a percent, when it
 // is above `SUSPECT_SPREAD`
 def private seconds_text(time, spread : double) : string {
-    let percent = spread * 100.0lf
-    return spread > SUSPECT_SPREAD ? "{SUSPECT} (±{percent:.1f}%)" : "{time:.3f} s ±{int(round(percent))}%"
+    return is_suspect(spread) ? suspect_text(spread) : "{time:.3f} s ±{int(round(spread * 100.0lf))}%"
 }
 
 def private time_text(c : Capture; workload, lane : string) : string {

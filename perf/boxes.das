@@ -14,6 +14,16 @@ require daslib/json_boost
 let BOXES <- [("Ryzen 3 1200", "bench"), ("Ryzen 7 7435HS", "PC"), ("FX(tm)-6300", "fx")]
 //! the label of a capture that records neither its box nor its CPU
 let UNLABELLED = "unlabelled box"
+//! the spread above which a cell is suspect, ruling 29's publish rule for every table of a capture
+//! (ports, compare, perf): never a number, never in a ratio, a mean or a delta
+let SUSPECT_SPREAD = 0.2lf
+let SUSPECT = "suspect"
+
+//! Whether a cell of spread `spread` is suspect: above `SUSPECT_SPREAD`.
+def is_suspect(spread : double) : bool => spread > SUSPECT_SPREAD
+
+//! A suspect cell's text: `suspect` with its spread to a tenth of a percent.
+def suspect_text(spread : double) : string => "{SUSPECT} (±{spread * 100.0lf:.1f}%)"
 
 //! The box of the first `BOXES` substring `cpu` contains, "" when none does.
 def box_of(cpu : string) : string {
