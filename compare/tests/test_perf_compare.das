@@ -350,8 +350,26 @@ def test_perf_rerun(t : T?) {
             t |> equal(merge_perf_rerun(none, Stamps(), 5, "", entries), "no perf section in {none} to re-measure kernels into")
         }
     }
-    t |> run("the filter is a comma-separated list, each part a text a key holds") @(t : T?) {
+    t |> run("a second re-run appends to reruns; a capture that is no JSON is the read error") @(t : T?) {
+        t |> with_scratch("cmp_perf_rerun_twice") $(dir) {
+            let path = path_join(dir, "results.json")
+            fwrite(path, write_json(JV({"perf" => rerun_fixture("PC", "abc", 5, "c1", "d1")})))
+            for (date in ["d2", "d3"]) {
+                var entries : table<string; JsonValue?>
+                entries["sieve"] = JV({"native" => JV({"error" => JV(date)})})
+                t |> equal(merge_perf_rerun(path, Stamps(box = "PC", rust_commit = "abc", daslang = "d1", date = date), 5, "c1", entries), "")
+            }
+            let js = json_of(t, fread(path))
+            t |> equal("{js?["perf"]?["reruns"]?[0]?["timestamp"] ?? ""} {js?["perf"]?["reruns"]?[1]?["timestamp"] ?? ""}", "d2 d3")
+            let bad = path_join(dir, "bad.json")
+            fwrite(bad, "nope")
+            var no_entries : table<string; JsonValue?>
+            t |> success(merge_perf_rerun(bad, Stamps(), 5, "", no_entries) |> starts_with("cannot read {bad}"))
+        }
+    }
+    t |> run("the filter is a comma-separated list, each part a text a key holds, an empty part none") @(t : T?) {
         t |> equal(join([for (k in perf_kernels("sieve,dasprofile/primes")); k.key], " "), "sieve dasprofile/primes")
+        t |> equal(join([for (k in perf_kernels("sieve,")); k.key], " "), "sieve")
     }
 }
 
@@ -442,15 +460,17 @@ def test_perf_run(t : T?) {
             let results = path_join(dir, "results.json")
             let text = write_json(JV({"perf" => rerun_fixture("bench", "", 1, "", "")}))
             fwrite(results, text)
-            for (filter, why in ["no_such_kernel", "sieve"], ["--filter `no_such_kernel` names no kernel", "box `bench` against this run's `fx`"]) {
+            let missing = path_join(dir, "missing.json")
+            for (filter, at, why in ["no_such_kernel", "sieve", "sieve"], [results, results, missing], ["--filter `no_such_kernel` names no kernel", "box `bench` against this run's `fx`", "no perf section in {missing}"]) {
                 var inscope argv <- ["env", "C2DAS_CPU_NAME=stand-in cpu"]
-                argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["compare/run.das", "--", "--perf", "--filter", filter, "--samples", "1", "--out", results, "--box", "fx"])
+                argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["compare/run.das", "--", "--perf", "--filter", filter, "--samples", "1", "--out", at, "--box", "fx"])
                 with_env(bin, "") {
                     t |> equal(run_and_capture(argv, out, 300.0), 1, out)
                 }
                 t |> success(out |> contains(why) && !(out |> contains(": native ")), out)
             }
             t |> equal(fread(results), text)
+            t |> success(!fexist(missing))
         }
     }
 }
