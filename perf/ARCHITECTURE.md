@@ -235,7 +235,7 @@ two cells apart by the samples' spread alone.
 ## 5. Tracking
 
 A capture records `cpu`, the CPU model of `/proc/cpuinfo` (`$C2DAS_CPU_NAME` when set, which tests
-set), and `box`, the `--box` name else `box_of` the CPU; a provenance line renders `capture_label`
+set, logged as a warning), and `box`, the `--box` name else `box_of` the CPU; a provenance line renders `capture_label`
 (a capture without `box` shows its CPU's). A number carries its box: the delta and `--check` run
 only for captures of one box (`same_box`), else they print `no delta: <label> against <label>` (`no
 check:`, a failure). A capture is compared with the one before it. The baseline is the `--baseline

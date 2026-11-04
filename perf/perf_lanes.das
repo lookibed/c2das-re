@@ -232,10 +232,11 @@ def spread_of(samples : array<double>; median : double) : double {
 }
 
 //! The CPU model `/proc/cpuinfo` names, "unknown cpu" without one; `$C2DAS_CPU_NAME` when set, a
-//! test's stand-in for a machine no box names.
+//! test's stand-in for a machine no box names, with a warning, since it changes a capture's stamps.
 def cpu_name : string {
     let forced = get_env_variable("C2DAS_CPU_NAME")
     if (!empty(forced)) {
+        to_log(LOG_WARNING, "C2DAS_CPU_NAME is set: the CPU is `{forced}`, not this machine's\n")
         return forced
     }
     for (line in split(fread("/proc/cpuinfo"), "\n")) {
