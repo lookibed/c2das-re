@@ -106,8 +106,9 @@ committed references under `ref/` are those files copied by hand after a referen
   modules compiled alone, a module that fails, and the classification.
 - `tests/test_host.das` - `host/doom_main.c` converted over a stand-in Doom (the four calls the
   host makes, the fourth update ending in the timedemo's line and the exit callback) and run under
-  `interp`: the C exit's code 255 and timing line, the same under `-return-from-main`, `-tics` with
-  it ending in 0, and the profiler's summary printed under the flag and not through C exit.
+  every tier, the JIT uncached: the C exit's code 255 and timing line, the same under
+  `-return-from-main` with no F75 warning, `-tics` with it ending in 0, and under `interp` the
+  profiler's summary printed under the flag and not through C exit.
 
 The IWAD is freedoom2.wad (BSD), the fetched one every committed log is recorded on; `--wad`
 takes another path for a local run.

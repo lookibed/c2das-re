@@ -9,7 +9,7 @@ require ../convert_check.das
 require ../../converter/pipeline.das
 require ../../converter/tiers.das
 
-//! `doom/host/doom_main.c` converted over a stand-in Doom and run under the interpreter: the
+//! `doom/host/doom_main.c` converted over a stand-in Doom and run under every tier: the
 //! timedemo's exit callback, `-tics N`, and `-return-from-main`, under which each exit is a return
 //! from `main` with the same exit code and daslang's instrumenting profiler prints its summary.
 
@@ -39,6 +39,10 @@ def private host_run(entry, tier : string; profiled : bool; args : array<string>
     if (profiled) {
         flags |> push("--das-profiler")
     }
+    if (tier == "jit") {
+        // compiled afresh each run: a cached build never prints the JIT's compile-time warnings (F82)
+        flags |> push("-jit-no-cache")
+    }
     let level = get_env_variable("DAS_LOG_LEVEL")
     // the profiler's summary is a LOG_INFO line
     set_env_variable("DAS_LOG_LEVEL", "info")
@@ -58,7 +62,7 @@ def private has_summary(out : string) : bool {
     return false
 }
 
-let HOST_TIERS = fixed_array("interp", "jit")
+let HOST_TIERS = fixed_array("interp", "jit", "exe", "aot")
 
 [test]
 def test_host_exits(tt : T?) {
