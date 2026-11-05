@@ -1649,7 +1649,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   its counter declared outside, stays a `while` (not timed apart).
   Rows: (b) a per-function profile of a converted demo under interp, blocked: the daslang profiler
   prints no summary when the program exits through C `exit`, and a 700-tic trace exceeds 4 GiB: a
-  host flag that returns from `main` instead of `exit` for profiling runs; (c) the JIT gap, 3.6-3.8x
+  host flag that returns from `main` instead of `exit` for profiling runs (done in P7.0b4: the
+  host's `-return-from-main`); (c) the JIT gap, 3.6-3.8x
   against Rust doomgeneric's 1.04x, unexplained: P7.0b2 did not reach it; P7.0b4 took it (Done: the
   JIT's per-access lookup of module globals, then the marshal `crt::memcpy` calls), P7.0b3 keeps Lua's
   interpreter residue.
@@ -1863,8 +1864,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `--jit-opt-level 2` equals 3). Lua fib 30 10.8x and nbody 5.5x under JIT: 62-69% of the samples
   on the dispatch chain's compare lines (P7.0c3/P7.0c2), no global lookups. Unexplained:
   `R_RenderSegLoop` + `R_StoreWallRange` 1.3x and the `W_CheckNumForName` scan 1.7x after the
-  edits, Lua's residue (about 3.4x of fib's 10.8x if the chain cost went to zero). Open, the
-  coder's: a test for the sampler, the host flag P6.7 (b), the per-demo re-timing of each edit.
+  edits, Lua's residue (about 3.4x of fib's 10.8x if the chain cost went to zero). The coder's
+  part, done: `perf/tests/test_sampler.das`; the host's `-return-from-main` (P6.7 (b),
+  `doom/tests/test_host.das`; real Doom under the profiler segfaults after the summary, 2.7 GB
+  trace for 3 tics); the solid_context probe (P7.0m: default). Per demo (box PC, 3 interleaved
+  rounds, report "Step 3"): demo1/2/3 JIT 3.90/3.47/3.44x -> solid 1.35/1.43/1.33x -> +memcpy
+  1.10/1.14/1.27x (demo3 noisy, ±11.2%) -> +checks off 1.02/1.04/1.04x; the new host 3.97/3.28/3.39x.
   Facts F80-F83; upstream lookibed/daScript#36 (the lookup), #37 (`run_and_capture` reads a signal
   death as an exit code, found by the compare runner), #31 (das-fmt and `def f : T? =>`, re-confirmed).
   Rows: P7.0m, P7.0n, P7.0o, P7.0p.
