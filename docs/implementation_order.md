@@ -1923,6 +1923,16 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   plain case, restores plain cases only (the flag cases keep `_flag ||= _cond == K`). `lua/tests`' `spin`
   stand-in returns at once natively and counts forever converted, so the suite-check test's timeout
   verdict no longer depends on the box's speed (it passed in 4.9 s on this box).
+- **P7.0b5 TBAA and vectorization under the JIT** (ruling 33 items 1-2; the compiler's own answers in place
+  of P7.0b4's timing argument). Done as research (branch `research/r33-tbaa`, report
+  `/root/notes/research/r33-tbaa-vectorize.md`, box PC, 3 interleaved rounds through `heavy --low`): the JIT
+  emits no `!tbaa` (F89, lookibed/daScript#39), so a float loop bounded through an `int*` runs 8.55x native
+  where clang with strict aliasing vectorizes and without it is "uncountable" (the JIT is 1.21x that no-TBAA
+  native); where TBAA is not the gate the JIT vectorizes on its own at AVX2 width (sum 0.72-0.80x perf's
+  generic native, 1.01x `-march=native`). Clang's remarks refuse every hot Doom renderer loop (gathers
+  without bounds, calls, a global counter) and the JIT's dump holds no vector type there: the renderer's
+  1.07-1.31x is not a vectorization gap. dasLLVM exposes no remarks (F90, lookibed/daScript#40). Probe
+  `probes/test_jit_tbaa.das`. No converter change follows; `blit`'s 1.23x is a loop-form residual (P7.0v).
 - **P7.0c4 Goto as the JIT default, or a chain order fix** (candidate; from P7.0b2, measured by
   P7.0p place 4): under the JIT LLVM recovers a jump table from P7.0c3's chain for the opcodes up
   to 0x44 only (`cmp $0x44,%eax; jbe; jmp *%rax`, F88): its switch recovery stops at the first
