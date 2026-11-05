@@ -141,7 +141,7 @@ def private option_error(param_writes, loops, layout, first_member : string; swi
 
 // the sidecar of a conversion, read from `sidecar` ("" for none), the options' values over its
 // keys; `error` the refusal of the options, the output folder or the sidecar
-def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var error : string&; layout : string = ""; first_member : string = ""; switch_dispatch : string = "") : Sidecar {
+def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var error : string&; layout : string = ""; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false) : Sidecar {
     error = option_error(param_writes, loops, layout, first_member, switch_dispatch)
     if (empty(error) && !mkdir_rec(out_dir) && !stat(out_dir).is_dir) {
         error = "cannot create {out_dir}"
@@ -165,6 +165,9 @@ def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var
     }
     if (!empty(switch_dispatch)) {
         side.switch_dispatch = switch_dispatch
+    }
+    if (no_solid_context) {
+        side.solid_context = false
     }
     return <- side
 }
@@ -288,9 +291,9 @@ def private emit_modules(var tu : CirTu; owners : array<int>; plan : LayoutPlan;
     res.ok = true
 }
 
-def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; first_member : string = ""; switch_dispatch : string = "") : ConvertResult {
+def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false) : ConvertResult {
     var res : ConvertResult
-    let side <- conversion_setup(out_dir, find_sidecar(c_path, sidecar_path), param_writes, loops, res.error, "", first_member, switch_dispatch)
+    let side <- conversion_setup(out_dir, find_sidecar(c_path, sidecar_path), param_writes, loops, res.error, "", first_member, switch_dispatch, no_solid_context)
     if (!empty(res.error)) {
         return <- res
     }
@@ -342,14 +345,15 @@ def private program_sidecar(c_paths : array<string>; given : string; var sidecar
 //! folder. A file stemmed `program` is refused, since its C-IR would be the manifest's file. One
 //! file is `convert` of it, one module in either layout. With `census` the source layouts also write
 //! the edge census of the program's cycles (`EDGE_REPORT`); one file or the single layout is refused.
-def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main"; layout : string = ""; census : bool = false; first_member : string = ""; switch_dispatch : string = "") : ConvertResult {
+//! With `no_solid_context` no module carries `options solid_context` (the sidecar's `solid_context`).
+def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main"; layout : string = ""; census : bool = false; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false) : ConvertResult {
     if (length(c_paths) == 1 && entry == "main") {
         if (census || (!empty(layout) && !is_layout(layout))) {
             var refused : ConvertResult
             refused.error = census ? "--edge-census reports the cycles among a program's files; one file has none" : option_error("", "", layout, "")
             return <- refused
         }
-        return <- convert(c_paths[0], out_dir, target_name, clang, sidecar_path, param_writes, loops, first_member, switch_dispatch)
+        return <- convert(c_paths[0], out_dir, target_name, clang, sidecar_path, param_writes, loops, first_member, switch_dispatch, no_solid_context)
     }
     var res : ConvertResult
     res.error = refused_files(c_paths, out_dir)
@@ -361,7 +365,7 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
     if (!empty(res.error)) {
         return <- res
     }
-    let side <- conversion_setup(out_dir, sidecar, param_writes, loops, res.error, layout, first_member, switch_dispatch)
+    let side <- conversion_setup(out_dir, sidecar, param_writes, loops, res.error, layout, first_member, switch_dispatch, no_solid_context)
     if (!empty(res.error)) {
         return <- res
     }

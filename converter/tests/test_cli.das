@@ -241,6 +241,31 @@ def test_cli_layout(t : T?) {
 }
 
 [test]
+def test_cli_solid_context(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_cli_solid", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("a module carries `options solid_context` by default, none with --no-solid-context") @(t : T?) {
+        for (opt_out in [false, true]) {
+            let at = path_join(dir, opt_out ? "off" : "on")
+            var out : string
+            var inscope argv <- daslang_cmd(CONVERTED_MODULES)
+            argv |> push_from(["converter/main.das", "--", "converter/tests/fixtures/ret42.c", "--out", at, "--target", "linux"])
+            if (opt_out) {
+                argv |> push("--no-solid-context")
+            }
+            t |> equal(run_and_capture(argv, out, 300.0), 0, out)
+            let text = fread(path_join(at, "ret42.das"))
+            t |> equal(text |> contains("\noptions solid_context\n"), !opt_out, text)
+        }
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_cli_program_args(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_cli_args", dir_error)

@@ -218,6 +218,35 @@ def test_sidecar_switch_dispatch(t : T?) {
 }
 
 [test]
+def test_sidecar_solid_context(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_solid", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`solid_context` is true or false; absent it is true, the converter's default") @(t : T?) {
+        for (on in [true, false]) {
+            var error : string
+            let side <- read_text(dir, "solid_{on}", "\{\"solid_context\": {on}\}\n", error)
+            t |> equal(error, "")
+            t |> equal(side.solid_context, on)
+        }
+        var error : string
+        let side <- read_text(dir, "no_solid", "\{\"stack\": 65536\}\n", error)
+        t |> equal(error, "")
+        t |> equal(side.solid_context, true)
+    }
+    t |> run("a `solid_context` that is no boolean is refused, naming the key and the value") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "bad_solid", "\{\"solid_context\": \"no\"\}\n", error)
+        t |> success(error |> ends_with("bad_solid.c2das: `solid_context` is true or false, not \"no\""), error)
+        t |> equal(side.solid_context, true)
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_sidecar_layout(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_sidecar_layout", dir_error)

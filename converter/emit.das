@@ -170,6 +170,8 @@ struct EmitProgram {
     // `options stack` (the sidecar's `stack`)
     alloca_limit : int
     stack_option : int
+    // the sidecar's `solid_context`: every module carries `options solid_context`
+    solid_context : bool
     // the sidecar's or the option's `param_writes` is `copy`: a written scalar or pointer
     // parameter gets a local copy instead of being written in place
     param_copy : bool
@@ -6897,6 +6899,7 @@ def private flag_padded(var em : Emitter; tu : CirTu; side : Sidecar) {
 def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
     em.prog.alloca_limit = side.alloca_limit > 0 ? side.alloca_limit : ALLOCA_LIMIT
     em.prog.stack_option = side.stack
+    em.prog.solid_context = side.solid_context
     em.prog.param_copy = side.param_writes == "copy"
     em.prog.range_loops = side.loops != "while"
     em.prog.reinterpret_members = side.first_member == "reinterpret"
@@ -7093,7 +7096,8 @@ def private program_name(file : string) : string {
 }
 
 // the module text: banner, options, requires, the empty literal's byte (which precedes every
-// global whose initializer takes its address), then everything emitted
+// global whose initializer takes its address), then everything emitted; a cluster's fragments get
+// no options, since they are text its module includes and the module's options cover them
 def private assemble_module(var em : Emitter) {
     var required <- [for (name in keys(em.requires)); name]
     required |> sort()
@@ -7102,7 +7106,8 @@ def private assemble_module(var em : Emitter) {
     let label_end = em.label_end ? LABEL_END_DEF : ""
     let stack = em.prog.stack_option > 0 ? em.prog.stack_option : MODULE_STACK
     let stack_line = "options stack = {stack}\n"
-    em.text = GENERATED_BANNER + "\noptions gen2\noptions indenting = 4\n" + stack_line + header + "\n" + empty + label_end + join(em.out, "")
+    let solid_line = em.prog.solid_context ? "options solid_context\n" : ""
+    em.text = GENERATED_BANNER + "\noptions gen2\noptions indenting = 4\n" + solid_line + stack_line + header + "\n" + empty + label_end + join(em.out, "")
 }
 
 //! One file of a converted program: its path under the output folder (a module's `.das`, a

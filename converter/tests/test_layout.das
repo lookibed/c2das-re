@@ -12,6 +12,7 @@ require ../pipeline.das
 require ../layout.das
 require ../tiers.das
 require ../dumper_a.das
+require ../emit.das
 
 //! The source module layout (`converter/layout.das`, `ARCHITECTURE_LAYOUT.md`): a program of four
 //! files in two folders converted into a module per file, a cluster of two fragments, a header's
@@ -26,9 +27,10 @@ let CUT = "converter/tests/fixtures/p5_layout_cut"
 let TYPE_FIELD = "converter/tests/fixtures/p7_type_edge"
 
 // the single layout's module of each fixture: the multi-TU link's text before the source layout
-// (P5.1b1), which the single layout keeps byte for byte, plus the C comments it carries (P7.0j)
-let TREE_SINGLE_SHA = "c72c2f24ff3d7f5bbd2bc72a5cf99016ca8602aad01e9f362347f8f6af548ae1"
-let TYPES_SINGLE_SHA = "cfbd3ed05076a2f81ddec33c0bb79f78347369ffece083b4f1ca307352fc4725"
+// (P5.1b1), which the single layout keeps byte for byte, plus the C comments it carries (P7.0j) and
+// `options solid_context` (P7.0m)
+let TREE_SINGLE_SHA = "0c1db2444f152c2d1b496154d84f8fbb4886ad2520016b423ab9b660677d6efd"
+let TYPES_SINGLE_SHA = "7c329cf995fd03aaf142a6854dd9a3ab4ef3e07df257504022c5905690185fe4"
 
 var work_root : string
 
@@ -77,7 +79,25 @@ def private agrees(t : T?; paths : array<string>; das_path, tier, name : string)
     // the JIT reports its compilation on `info` lines among the program's output
     out = join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
     t |> equal(rc, native.rc, out)
-    t |> equal(out, native.output)
+    // the aot tier links its host first, and the linker's warnings come before the program's output
+    if (tier == "aot") {
+        t |> success(out |> ends_with(native.output), out)
+    } else {
+        t |> equal(out, native.output)
+    }
+}
+
+// the tree's modules in the source layout each carry `options solid_context` once in the header,
+// its fragments no options
+def private solid_headers(t : T?) {
+    for (rel in ["sub/shapes_h.das", "c_types.das", "ring_a_cluster.das", "sub/solo.das", "main.das"]) {
+        let text = text_of("tree", rel)
+        t |> success(text |> starts_with("{GENERATED_BANNER}\noptions gen2\noptions indenting = 4\noptions solid_context\noptions stack = "), "{rel}:\n{text}")
+        occurs(t, text, "options solid_context", 1)
+    }
+    for (rel in ["ring_a.das.inc", "sub/ring_b.das.inc"]) {
+        occurs(t, text_of("tree", rel), "options ", 0)
+    }
 }
 
 [test]
@@ -98,10 +118,13 @@ def test_source_tree(t : T?) {
         t |> equal(tree.das_path, path_join(path_join(work_root, "tree"), "main.das"))
         t |> equal(join(tree.partition, "\n"), "c_types\nmain\nring_a_cluster: cluster of 2: ring_a ring_b\nshapes_h\nsolo\nring_a_cluster: ring_a -> ring_b: ring_b\nring_a_cluster: ring_b -> ring_a: a_value, ring_a")
     }
-    for (tier in ["interp", "jit"]) {
-        t |> run("the modules print what the native build of the files prints under {tier}") @(t : T?) {
+    for (tier in ["interp", "jit", "exe", "aot"]) {
+        t |> run("the modules print what the native build of the files prints under {tier}, a global of one module written and read in another") @(t : T?) {
             agrees(t, tree_files, tree.das_path, tier, "tree")
         }
+    }
+    t |> run("every module carries `options solid_context` once, after the lint options and before `options stack`; a fragment carries no options") @(t : T?) {
+        solid_headers(t)
     }
     t |> run("a module requires another by name in its folder and by its relative path elsewhere; a cluster includes its fragments, the one holding a global another's initializer takes the address of first, and carries their digest") @(t : T?) {
         let main = text_of("tree", "main.das")
@@ -169,6 +192,7 @@ def test_single_layout(t : T?) {
         t |> equal(length(res.files), 0)
         t |> equal(res.das_path, path_join(path_join(work_root, "single"), "main.das"))
         t |> equal(sha256_hex(res.das_text), TREE_SINGLE_SHA, res.das_text)
+        occurs(t, res.das_text, "\noptions solid_context\n", 1)
         agrees(t, paths, res.das_path, "interp", "single")
         let types <- converted(["{TYPES}/main.c", "{TYPES}/weigh.c"], "types_single", "single")
         t |> equal(sha256_hex(types.das_text), TYPES_SINGLE_SHA, types.das_text)
@@ -264,9 +288,36 @@ def test_cut_tree(t : T?) {
         t |> success(ring_b |> contains("[init]\ndef private c2das_late_bind \{\n    ring_b_slot = @@__::ring_b\n\}\n"), ring_b)
         // the entry module requires the defining module, so it loads and binds before main runs
         t |> success(text_of("tree", "main.das") |> contains("require ./sub/ring_b.das\n"))
-        agrees(t, paths, res.das_path, "interp", "cut_tree")
-        agrees(t, paths, res.das_path, "jit", "cut_tree")
+        // the link module is a module like the others: its slots are globals the defining module's
+        // [init] writes and its wrappers read
+        t |> success(link |> starts_with("{GENERATED_BANNER}\noptions gen2\noptions indenting = 4\noptions solid_context\noptions stack = "), link)
+        for (tier in ["interp", "jit", "exe", "aot"]) {
+            agrees(t, paths, res.das_path, tier, "cut_tree")
+        }
         t |> equal(fread(path_join(path_join(work_root, "tree"), "program.layout.txt")), join(res.partition, "\n") + "\n")
+    }
+    rmdir_rec(work_root)
+}
+
+[test]
+def test_solid_context_opt_out(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_layout_no_solid", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("with the opt-out, the option's or the sidecar's `solid_context: false`, no module of the cut program carries `options solid_context`, and it prints what the native build prints") @(t : T?) {
+        let paths <- tree_paths()
+        let flagged <- convert_program(paths, path_join(work_root, "flag"), "linux", "", "", "", "", "main", "source-cut", false, "", "", true)
+        t |> equal(flagged.error, "")
+        let sided <- converted_with(paths, "side", "\{\"solid_context\": false\}\n")
+        t |> equal(sided.error, "")
+        for (dir in ["flag", "side/out"]) {
+            for (rel in ["sub/shapes_h.das", "c_types.das", "ring_a.das", "sub/ring_b.das", "sub/solo.das", "main.das", "main_link.das"]) {
+                let text = text_of(dir, rel)
+                t |> success(text |> starts_with("{GENERATED_BANNER}\noptions gen2\noptions indenting = 4\noptions stack = "), "{dir}/{rel}:\n{text}")
+                occurs(t, text, "solid_context", 0)
+            }
+        }
+        agrees(t, paths, flagged.das_path, "jit", "no_solid")
     }
     rmdir_rec(work_root)
 }

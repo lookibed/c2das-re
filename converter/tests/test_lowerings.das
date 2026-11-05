@@ -557,7 +557,7 @@ def p3_fixtures(t : T?) {
     t |> run("alloca: the per-function arena with its guard, allocations accumulating to the function's exit, __builtin_ names through the shim list, options stack") @(t : T?) {
         var text : string
         check_fixture(t, "p3_alloca", text)
-        has_text(t, text, "options indenting = 4\noptions stack = 8388608\n")
+        has_text(t, text, "options indenting = 4\noptions solid_context\noptions stack = 8388608\n")
         has_text(t, text, "def private p3_alloca__variable(n : int) : int \{\n    var _c_astack : uint8[65536]\n    var _c_aoff = 0")
         has_text(t, text, "if (_c_aoff + int(uint64(n)) > 65536) \{\n        panic(\"alloca past the function's 65536 byte arena\")\n    \}\n    var _t0 = reinterpret<void?>(addr(_c_astack[_c_aoff]))\n    _c_aoff += (int(uint64(n)) + 15) & ~15")
         has_text(t, text, "crt::memset(reinterpret<void?>(buf), 3, uint64(n))")
