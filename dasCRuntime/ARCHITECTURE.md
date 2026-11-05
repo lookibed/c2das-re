@@ -87,21 +87,26 @@ C11 7.22.1.4's range rule at 32 (LONG_MAX, LONG_MIN or ULONG_MAX with `errno` ER
 Every bind that takes or returns a raw pointer is registered `unsafeOperation`, matching
 daslang's own `memcpy` and `malloc`: converted bodies that use them carry `[c_function]`,
 which makes the whole body unsafe, and a hand-written caller writes `unsafe`. Pure scalar
-entries (ctype, `abs`, and the libm entries that never set `errno`: `cbrt`, `copysign`, `trunc`,
-`round`) are `SideEffects::none` and safe. Anything that writes memory, reads or writes CRT state
-(`errno`, the `rand` seed, the environment, the clock, the `strerror` buffer, a signal's
-disposition) is `modifyExternal`: the optimizer may not fold or drop it. The volatile forwarders
-are too, each an extern call the JIT cannot see into, and under AOT an inline body whose
-`volatile` access clang++ keeps. The libm entries glibc
-reports a domain or range error through `errno` from (`fmod`, `fmodf`, `ldexp`, `nextafter`,
-`hypot`, `expm1`, `log1p`, `remainder`, `erf`, `erfc`, `tgamma`, `lgamma`, `fma`) are among them,
-so a call whose result the program discards, or whose arguments are constant, still runs.
-A bind that may write through a pointer argument (`memcpy`, `memmove`, `memset`, the `str*cpy` and
-`str*cat` family, the `strto*` end pointers, `frexp`'s and `modf`'s out-parameters, `time`, the
-`snprintf` and `sscanf` families, `fgets`, `fread`, `strftime`, `mktime`, `realloc`, `free`,
-`tmpnam`, `setvbuf`, `clock_gettime`, the volatile stores) is `modifyArgumentAndExternal`: with
-`modifyExternal` alone the JIT keeps a caller's local whose address reaches the call as it was
-before it, and the write is lost (`docs/probe-findings.md` F85, `probes/test_crt_writes.das`).
+entries (ctype, `abs`, `difftime`, and the libm entries that never set `errno`: `cbrt`, `copysign`,
+`trunc`, `round`) are `SideEffects::none` and safe. A reader through a pointer (`strlen`, `memcmp`,
+`memchr`, `strcmp`, `strncmp`, `strchr`, `strrchr`, `strstr`, `strpbrk`, `strspn`, `atoi`,
+`atol`, `atof`) is `accessExternal`: bound `none`, daslang's optimizer merged two of its calls on
+the same pointer across a write the program made through another pointer to the same memory, under
+the interpreter and the JIT alike. A bind that may write through a pointer argument (`memcpy`,
+`memmove`, `memset`, the `str*cpy` and `str*cat` family, the `strto*` end pointers, `frexp`'s and
+`modf`'s out-parameters, `time`, the `snprintf` and `sscanf` families, `fgets`, `fread`,
+`strftime`, `mktime`, `realloc`, `free`, `tmpnam`, `setvbuf`, `clock_gettime`, the volatile stores)
+is `modifyArgumentAndExternal`: bound `modifyExternal` alone, a reader on both sides of it in one
+function was merged on every tier, and under the JIT a caller's local passed to a helper whose
+pointer parameter is not `var` kept its bytes as they were. Anything else that reads or writes CRT
+state (`errno`, the `rand` seed, the environment, the clock, the `strerror` buffer, a signal's
+disposition, a `FILE` or a `tm` the CRT owns) is `modifyExternal`: the optimizer may not fold or
+drop it (`docs/probe-findings.md` F85, `probes/test_crt_writes.das`). The volatile loads are too,
+each an extern call the JIT cannot see into, and under AOT an inline body whose `volatile` access
+clang++ keeps. The libm entries glibc reports a domain or range error through `errno` from (`fmod`,
+`fmodf`, `ldexp`, `nextafter`, `hypot`, `expm1`, `log1p`, `remainder`, `erf`, `erfc`, `tgamma`,
+`lgamma`, `fma`) are among them, so a call whose result the program discards, or whose arguments
+are constant, still runs.
 
 ## 5. `snprintf` and `sscanf` as per-directive families
 
