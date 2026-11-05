@@ -6,20 +6,24 @@ require daslib/strings_boost
 require ../converter/tiers.das
 
 //! `options solid_context` in a converted program's modules: daslang's option list says it
-//! "prohibits AOT and patches"; a program of two solid modules, each holding module globals, the
-//! entry one requiring `c_runtime` modules as converted output does, compiles and runs with the same
-//! output under the interpreter, the JIT and the AOT host of `converter/tiers.das`
+//! "prohibits AOT and patches"; a program of two solid modules, each holding module globals and
+//! function values taken across them with `@@`, the entry one requiring `c_runtime` modules as
+//! converted output does, compiles and runs with the same output under the interpreter, the JIT,
+//! the JIT-linked executable and the AOT host of `converter/tiers.das`
 //! (docs/probe-findings.md F80, P7.0m); the AOT context is the generated C++, its initializers
 //! solid (F49).
 
-// the required module: a global table and a counter written through a function
-let PART_SOURCE = "options gen2\noptions solid_context\nmodule solid_part public\n\nvar part_table : int[8]\nvar part_count : int = 0\n\ndef part_bump(n : int) \{\n    part_count += n\n    part_table[n & 7] += 1\n\}\n"
+// the required module: a global table and a counter written through a function, and a callback
+// stored in a module global and invoked through it, as Doom's `doom_exit` is
+let PART_SOURCE = "options gen2\noptions solid_context\nmodule solid_part public\n\nvar part_table : int[8]\nvar part_count : int = 0\nvar part_callback : function<(a0 : int) : void> = default<function<(a0 : int) : void>>\n\ndef part_bump(n : int) \{\n    part_count += n\n    part_table[n & 7] += 1\n\}\n\ndef part_set_callback(fn : function<(a0 : int) : void>) \{\n    part_callback = fn\n\}\n\ndef part_fire(n : int) \{\n    if (part_callback != null) \{\n        invoke(part_callback, n)\n    \}\n\}\n"
 
 // the entry module: its own globals read under a branch in a loop (F80's shape), the other
-// module's written through calls, the printed sums the same at every tier
-let MAIN_SOURCE = "options gen2\noptions solid_context\nrequire solid_part\nrequire c_runtime/c_function\nrequire c_runtime/printf\n\nvar private scale : int = 3\nvar private lut : int[4] = fixed_array(1, 2, 3, 4)\n\n[c_function]\ndef private c_main : int \{\n    var s = 0\n    for (i in range(1000)) \{\n        if ((i & 3) != 0) \{\n            s += scale * lut[i & 3]\n        \}\n        part_bump(i)\n    \}\n    print(\"\{s\} \{part_count\} \{part_table[5]\}\\n\")\n    return 0\n\}\n\n[export]\ndef main : int => c_main()\n"
+// module's function taken as `@@` into a global and invoked through it, its own `@@` handed to the
+// other module as the callback (the converter takes every function address as `@@`); the printed
+// sums the same at every tier
+let MAIN_SOURCE = "options gen2\noptions solid_context\nrequire solid_part\nrequire c_runtime/c_function\nrequire c_runtime/printf\n\nvar private scale : int = 3\nvar private lut : int[4] = fixed_array(1, 2, 3, 4)\nvar private fired : int = 0\nvar private bump : function<(n : int) : void> = default<function<(n : int) : void>>\n\n[c_function]\ndef private on_fire(code : int) \{\n    fired += code\n\}\n\n[c_function]\ndef private c_main : int \{\n    bump = @@part_bump\n    part_set_callback(@@on_fire)\n    var s = 0\n    for (i in range(1000)) \{\n        if ((i & 3) != 0) \{\n            s += scale * lut[i & 3]\n        \}\n        invoke(bump, i)\n        part_fire(i & 1)\n    \}\n    print(\"\{s\} \{part_count\} \{part_table[5]\} \{fired\}\\n\")\n    return 0\n\}\n\n[export]\ndef main : int => c_main()\n"
 
-let SOLID_TIERS = fixed_array("interp", "jit", "aot")
+let SOLID_TIERS = fixed_array("interp", "jit", "exe", "aot")
 
 [test]
 def test_solid_context(tt : T?) {
@@ -33,7 +37,7 @@ def test_solid_context(tt : T?) {
             let rc = run_tier(entry, tier, path_join(work, tier), out, CONVERTED_MODULES)
             t |> equal(rc, 0, "{tier}: {out}")
             let lines <- [for (l in split(out, "\n")); strip(l); where !empty(strip(l))]
-            t |> equal(empty(lines) ? "" : lines[length(lines) - 1], "6750 499500 125", "{tier}: {out}")
+            t |> equal(empty(lines) ? "" : lines[length(lines) - 1], "6750 499500 125 500", "{tier}: {out}")
             if (tier == "aot") {
                 // the host runs the generated C++, solid initializers in it (F49), not an interpreter
                 let cpp = fread(path_join(work, "aot/ctx/solid_main.das.cpp"))
