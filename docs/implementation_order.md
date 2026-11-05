@@ -1897,10 +1897,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   own das label (no re-dispatch, no sentinel). The interpreter runs it as the JIT does: the probe
   (`probes/test_goto.das` `test_goto_dispatch`) showed daScript#35 to be #8's fold, which an `else`
   on every case branch avoids, and lvm's segfault the loop's label claim (F60), which numbering the
-  table below every C label avoids. One sample, box PC, in-process work, default vs opt-in on the
-  same commit (`/root/notes/parallel/pc-p7.0c2-ab.sh`; the 3-sample run is owed): interpreter fib 30
-  8.09 -> 4.16 s (1.94x), binary_trees 12 6.59 -> 4.38 s (1.50x), nbody 20000 6.08 -> 4.21 s (1.44x),
-  spectral_norm 100 2.96 -> 1.80 s (1.65x); JIT 1.33x, 1.03x, 1.15x, 1.30x. `dispatch_switch`'s
+  table below every C label avoids. Default vs opt-in on the same commit, in-process work: JIT, 7
+  samples on a quiet box PC (`/root/notes/parallel/p7.0c2_ab3jit/table.md`): goto faster by fib 30
+  1.32x, binary_trees 12 1.09x, nbody 20000 1.25x, spectral_norm 100 1.28x (spreads 1-7%);
+  interpreter, 3 samples: 1.98x, 1.38x, 1.48x, 1.66x (spreads 1-5%). `dispatch_switch`'s
   composed program under the interpreter 22.3 -> 6.4 ms a run (3.5x; 121x -> 35x native), under
   the JIT 0.151 -> 0.177 ms (0.85x, one sample). Not a perf lane yet: perf's lanes carry the
   `--param-writes`, `--loops` and `--first-member` options only.
