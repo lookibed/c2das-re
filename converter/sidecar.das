@@ -28,6 +28,9 @@ struct Sidecar {
     // how the address of a member at offset 0 is spelled: `addr` (`addr(p.f)`) or `reinterpret` (the
     // containing pointer reinterpreted, `reinterpret<F?>(p)`); "" when the key is absent
     first_member : string
+    // how a dense switch is dispatched: `chain` (its cases tested in turn) or `goto` (a jump table of
+    // das labels, `goto int(_cond) + base`); "" when the key is absent
+    switch_dispatch : string
     // the macros clang defines for the dump, each `NAME`, `NAME=value` or `NAME(params)=value`,
     // passed as `-D<entry>`
     defines : array<string>
@@ -64,7 +67,7 @@ struct Sidecar {
 }
 
 //! The keys a sidecar may hold; any other is refused naming it.
-let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -83,6 +86,12 @@ let FIRST_MEMBER <- ["addr", "reinterpret"]
 
 //! Whether `mode` is a value of `first_member`.
 def is_first_member(mode : string) : bool => has_value(FIRST_MEMBER, mode)
+
+//! The values of the `switch_dispatch` key and of the converter's `--switch-dispatch`.
+let SWITCH_DISPATCH <- ["chain", "goto"]
+
+//! Whether `mode` is a value of `switch_dispatch`.
+def is_switch_dispatch(mode : string) : bool => has_value(SWITCH_DISPATCH, mode)
 
 //! The values of the `layout` key and of the converter's `--layout`.
 let LAYOUTS <- ["source", "source-cut", "single"]
@@ -357,6 +366,12 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
         error = "{path}: `first_member` is \"addr\" or \"reinterpret\", not {write_json(js?["first_member"])}"
     } else {
         side.first_member = first_member
+    }
+    let switch_dispatch = js?["switch_dispatch"] ?? ""
+    if (key_exists(js, "switch_dispatch") && !is_switch_dispatch(switch_dispatch)) {
+        error = "{path}: `switch_dispatch` is \"chain\" or \"goto\", not {write_json(js?["switch_dispatch"])}"
+    } else {
+        side.switch_dispatch = switch_dispatch
     }
     if (key_exists(js, "layout")) {
         read_layout(js?["layout"], path, side, error)

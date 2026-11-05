@@ -167,6 +167,7 @@ def test_lowerings(t : T?) {
     p7_first_member_fixtures(t)
     p5_lua_expression_fixtures(t)
     p7_restart_sentinel_fixtures(t)
+    p7_goto_dispatch_fixtures(t)
     p5_lua_review_fixtures(t)
     p5_skip_audit_fixtures(t)
     p8_input_fixtures(t)
@@ -1770,6 +1771,51 @@ def p5_lua_expression_fixtures(t : T?) {
         let paired = converts(t, "cross_label_shared", "int f(int x) \{ int r = 0; switch (x) \{ case 1: case 2: r = 1; break; case 3: goto L; default: L: r += 2; \} return r; \}\nint main(void) \{ return f(1) + f(2) * 10 + f(3) * 100 + f(4) * 1000 - 2211; \}\n")
         has_text(t, paired, "        if (_cond == 1 || _cond == 2) \{\n            r = 1\n            break\n")
         t |> equal(run_tier(converted_path("cross_label_shared"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
+    }
+}
+
+// P7.0c2: `switch_dispatch` `goto`, a dense switch's jump table, against the default chain
+def p7_goto_dispatch_fixtures(t : T?) {
+    t |> run("switch_dispatch goto: a dense switch jumps to its case past a bounds guard, its labels below the function's, an else after every case; the rest keep their forms") @(t : T?) {
+        let source = fread(path_join(FIXTURES, "p7_goto_dispatch.c"))
+        let text = converts(t, "p7_goto_dispatch", source, "\{\"switch_dispatch\": \"goto\"\}\n")
+        // the enum dispatch: the guard to the out-of-range label, the jump, a label per case value
+        has_text(t, text, "            var _flag = false\n            if (int(_cond) < 0 || int(_cond) > 9) \{\n                goto label 11\n            \}\n            goto int(_cond) + 1\n            label 1:  // case 0\n            if (_cond == Op.A) \{\n                acc += 1\n                break\n            \} else \{\n                c_label_end()\n            \}\n")
+        // a goto into another case jumps to that label's own das label, no re-dispatch, no sentinel
+        has_text(t, text, "                acc -= 4\n                _goto = 1\n                goto label 12\n")
+        has_text(t, text, "            _flag ||= _cond == Op.F\n            label 12:  // shared\n            _flag ||= _goto == 1  // shared\n")
+        t |> equal(text |> find("re-dispatch") >= 0, false, text)
+        // a value no case holds lands at default with the out-of-range ones
+        has_text(t, text, "            label 9:  // no case 8\n            label 11:  // default\n")
+        // an int condition jumps by itself, a switch without default to its end
+        has_text(t, text, "    let _cond = x\n    while (true) \{\n        if (_cond < 3 || _cond > 11) \{\n            goto label 10\n        \}\n        goto _cond - 2\n")
+        has_text(t, text, "        label 10:  // no case: switch end\n        break\n")
+        // an unsigned one compares in its type and jumps by its int value
+        has_text(t, text, "        if (_cond < 1u || _cond > 8u) \{\n            goto label 9\n        \}\n        goto int(_cond)\n")
+        // an inner switch's labels below the outer one's
+        has_text(t, text, "        goto _cond + 10\n")
+        has_text(t, text, "                goto _cond2 + 1\n")
+        // sparse, falling through, under 8 values, past int and Duff's device keep their forms
+        has_text(t, text, "    \} elif (_cond == 2) \{\n        return 3\n")
+        for (fn in ["fall", "small", "wide", "duff"]) {
+            let at = text |> find("def private p7_goto_dispatch__{fn}(")
+            let end = text |> find("\n\}\n", at)
+            let plain = text |> find("goto _cond", at)
+            let converted = text |> find("goto int(_cond", at)
+            t |> success(at >= 0 && (plain < 0 || plain > end) && (converted < 0 || converted > end), fn)
+        }
+        let goto_path = converted_path("p7_goto_dispatch")
+        for (tier in ["interp", "jit"]) {
+            var out : string
+            t |> equal(run_tier(goto_path, tier, path_join(work_root, "goto_dispatch_{tier}"), out, CONVERTED_MODULES), 0, "{tier}: {out}")
+        }
+        let refused <- convert("{FIXTURES}/p7_goto_dispatch.c", path_join(work_root, "goto_dispatch_bad"), "linux", "", "", "", "", "", "table")
+        t |> success(refused.error |> contains("--switch-dispatch is chain or goto, not `table`"), refused.error)
+        // the default: no jump table
+        let chain = converts(t, "goto_dispatch_chain", source)
+        t |> equal(chain |> find("goto _cond") >= 0 || chain |> find("goto int(_cond") >= 0, false, chain)
+        var out : string
+        t |> equal(run_tier(converted_path("goto_dispatch_chain"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
     }
 }
 

@@ -26,7 +26,7 @@ declared right after `_condN` as a bare `var v : T` (das's zero where C leaves i
 and its initializer is the assignment that stands where C declares it; one filled by stores (a
 union's list, a sparse array) fails closed, since the stores rely on a zero a second pass through
 the case would not give again; any other declaration keeps its branch's scope (F53). Computed
-goto (O6) is the optimization tier's.
+goto (O6) is the opt-in below.
 
 ### Plain cases in the flag loop {#plain-cases}
 
@@ -39,6 +39,31 @@ left. The loop declares `_flagN` only when a group still needs it, and a group w
 statements (the switch's last) writes nothing. The interpreter runs a VM dispatch so 2.33 times
 faster than through the flag chain (`perf/ARCHITECTURE_AUDIT.md`, the `dispatch_switch` kernel),
 and the text is the one a person writes.
+
+### Computed goto dispatch {#goto-dispatch}
+
+Under `switch_dispatch` `goto` (the sidecar key, the converter's `--switch-dispatch`; `chain` is the
+default), a dense switch takes the matched-flag loop with a jump table in front: 8 or more case
+values in `int`'s range filling at least half of [lo, hi], no group falling into the next (each but
+the last `leaves_at_end`), the switch not spelled open (`dispatch_plan`). The loop body opens with a
+bounds guard, `if (_cond < lo || _cond > hi) { goto label D }`, then `goto _cond + (base - lo)`
+(`int(_cond)` for an enum or another integer type, compared as `int(_cond)` for an enum and in its
+type otherwise); each group stands after `label base + v - lo:  // case v` for each of its values,
+and at `default`, or before the loop's closing `break` when the switch has none, stand a label per
+value of [lo, hi] no case holds and `label D`. A plain case keeps its `if (_cond == v)`, a flag
+case its `_flag ||=` lines, so the text still names every case; under the jump no case test runs
+before the matching one. A goto into another case group jumps straight to the das label put before
+the label's `_flag ||= _gotoN == k` line: no re-dispatch label, no chain walk, no sentinel, and
+every case test reads `_cond == v` alone; `_gotoN` still selects and clears the split. Every group's
+branch ends in `else { c_label_end() }`: daslang's optimizer moves what follows an `if` with no
+`else` whose branch ends in `break`, `return` or `continue` into one, the next labels too, and the
+jump would then miss them under the interpreter (lookibed/daScript#35, the fold of #8). The jump
+table's labels take the numbers below every C label of the function, after the inner switches',
+and the C labels move up past them: a loop takes a goto whose number is below its body's label
+count as its own, so case labels above `startfunc` would capture lvm's `goto startfunc` (F60). Both
+facts are `probes/test_goto.das`'s; the interpreter and the JIT run the form alike. A sparse
+switch, one that falls through, one under 8 values or past `int`, and Duff's device keep the forms
+above.
 
 ### Labels and goto {#goto-labels}
 

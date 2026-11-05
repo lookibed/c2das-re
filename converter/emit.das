@@ -110,6 +110,10 @@ struct Emitter {
     // the assignment a goto to such a label makes before the restart so no case value matches,
     // "" when the switch's case tests keep the pending goto's test (`restart_sentinel`)
     label_conds : table<string; string>
+    // each switch body that takes the jump table (`dispatch_plan`), and the das label a goto to a
+    // label of such a switch's case group jumps to, in place of the re-dispatch
+    goto_switches : table<uint64; GotoDispatch>
+    label_jumps : table<string; int>
     // what a C `continue` spells at the current nesting: "" inside a loop body, the `_cont`
     // flag inside a matched-flag switch loop whose `continue` reaches the loop around it, the
     // `goto` to the test or increment of an open loop
@@ -175,6 +179,9 @@ struct EmitProgram {
     // the sidecar's or the option's `first_member` is `reinterpret`: the address of a member at
     // offset 0 reinterprets its record's pointer (`first_member_address`)
     reinterpret_members : bool
+    // the sidecar's or the option's `switch_dispatch` is `goto`: a dense switch jumps to its case
+    // (`dispatch_plan`)
+    goto_dispatch : bool
     // the declarations at a switch body's own level that a statement under a later label reads
     // or writes, which the lowered switch declares before itself (`carried_decls`)
     carried : table<uint64>
@@ -3976,8 +3983,10 @@ struct LabelPlan {
     // the case labels, each with its site
     cases : array<CirStmt const?>
     case_sites : array<LabelSite>
-    // the switch bodies, each once its own walk ends: an inner switch before the one around it
+    // the switch bodies, each once its own walk ends: an inner switch before the one around it,
+    // and the switch of each
     switch_order : array<uint64>
+    switch_stmts : table<uint64; CirStmt const?>
 }
 
 // das resolves a label lexically upward, so a goto reaches a label in its own block or an
@@ -4163,7 +4172,16 @@ def private check_labelled_groups(var em : Emitter; var plan : LabelPlan) {
 def private number_restarts(var em : Emitter; plan : LabelPlan) {
     var count = 0
     for (sw in plan.switch_order) {
-        if (key_exists(em.flag_switches, sw)) {
+        var dispatch = dispatch_plan(em, plan.switch_stmts?[sw] ?? null)
+        if (dispatch.span > 0) {
+            // the case values, the out-of-range target, then one per label a goto re-dispatches to
+            dispatch.base = count + 1
+            count += dispatch.span + 1 + length([for (name in keys(em.group_labels)); name; where(em.group_labels?[name] ?? 0ul) == sw])
+            em.goto_switches[sw] = dispatch
+            if (key_exists(em.flag_switches, sw)) {
+                em.flag_switches[sw] = dispatch.base
+            }
+        } elif (key_exists(em.flag_switches, sw)) {
             count++
             em.flag_switches[sw] = count
         }
@@ -4261,6 +4279,7 @@ def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; owne
         site.switches |> pop()
         site.groups |> pop()
         plan.switch_order |> push(intptr(st.body_s))
+        plan.switch_stmts[intptr(st.body_s)] = st
     } else {
         walk_labels(em, st.then_s, false, st, site, plan)
         walk_labels(em, st.else_s, false, st, site, plan)
@@ -4274,6 +4293,42 @@ struct CaseGroup {
     values : array<int64>
     is_default : bool
     stmts : array<CirStmt const?>
+}
+
+// the jump table of a dense switch: das label `base + v - lo` before the group of case value `v`,
+// `base + span` the target of every value outside [lo, hi]; `span` 0 for a switch without one
+struct GotoDispatch {
+    base : int
+    lo : int64
+    span : int
+}
+
+// whether switch `st` takes the jump table under `switch_dispatch` `goto`: 8 or more case values
+// in `int`'s range filling at least half of [lo, hi], no group falling into the next, the switch not
+// spelled open; its range, else a zero `span`
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-dispatch")]
+def private dispatch_plan(var em : Emitter; st : CirStmt const?) : GotoDispatch {
+    var groups : array<CaseGroup>
+    if (!em.prog.goto_dispatch || st == null || key_exists(em.opened, intptr(st)) || !case_groups(em, st.body_s, st.loc, groups)) {
+        return GotoDispatch()
+    }
+    var lo = LONG_MAX
+    var hi = LONG_MIN
+    var n = 0
+    for (idx, g in range(length(groups)), groups) {
+        if (idx < length(groups) - 1 && (empty(g.stmts) || !leaves_at_end(g.stmts |> back()))) {
+            return GotoDispatch()
+        }
+        for (v in g.values) {
+            n++
+            lo = min(lo, v)
+            hi = max(hi, v)
+        }
+    }
+    if (n < 8 || lo < int64(INT_MIN) || hi > int64(INT_MAX) || hi - lo + 1l > 2l * int64(n)) {
+        return GotoDispatch()
+    }
+    return GotoDispatch(lo = lo, span = int(hi - lo + 1l))
 }
 
 // a `break` that leaves the switch: one at this level, or inside an `if` or a block here,
@@ -4503,12 +4558,16 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
     em.char_cases <- char_cases(st.body_s)
     var cond_t = st.cond.t
     let restart = em.flag_switches?[intptr(st.body_s)] ?? 0
+    var dispatch : GotoDispatch
+    get(em.goto_switches, intptr(st.body_s)) $(d) {
+        dispatch = d
+    }
     // a re-dispatch stores a value no case holds into the condition, so the case tests need not
-    // test the pending goto
-    let sentinel = restart > 0 ? restart_sentinel(em, tu, switch_cond_type(tu, st), groups) : ""
+    // test the pending goto; under the jump table it jumps to its label and tests no case
+    let sentinel = restart > 0 && dispatch.span == 0 ? restart_sentinel(em, tu, switch_cond_type(tu, st), groups) : ""
     let cond = switch_condition(em, tu, st, cond_t, !empty(sentinel))
     if (restart > 0) {
-        label_cases(em, st, empty(sentinel) ? "" : "{cond} = {sentinel}")
+        label_cases(em, st, empty(sentinel) ? "" : "{cond} = {sentinel}", dispatch)
     }
     // C scopes a declaration at the body's own level to the whole body, the lowering a group
     // to its own branch: a declaration a later group reaches is declared here
@@ -4519,10 +4578,10 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
             }
         }
     }
-    if (is_if_chain(groups) && restart == 0) {
+    if (is_if_chain(groups) && restart == 0 && dispatch.span == 0) {
         emit_if_chain(em, tu, groups, cond, cond_t)
     } else {
-        emit_flag_loop(em, tu, groups, cond, cond_t, st.body_s, restart, !empty(sentinel))
+        emit_flag_loop(em, tu, groups, cond, cond_t, st.body_s, restart, !empty(sentinel), dispatch)
     }
     em.char_cases <- outer_chars
 }
@@ -4546,7 +4605,7 @@ def private char_cases(body : CirStmt const?) : table<int64> {
 // each label of switch `st` a goto into its group reaches, as a case of its own number (1 up, in
 // the order the labels appear) in the switch's goto variable, which is 0 while no goto is pending:
 // no value of the condition stands in for a label, since the condition can hold any of them
-def private label_cases(var em : Emitter; st : CirStmt; reset : string) {
+def private label_cases(var em : Emitter; st : CirStmt; reset : string; dispatch : GotoDispatch) {
     var names <- [for (name in keys(em.group_labels)); name; where(em.group_labels?[name] ?? 0ul) == intptr(st.body_s)]
     sort(names) $(a, b) => (em.labels?[a] ?? 0) < (em.labels?[b] ?? 0)
     for (idx, name in range(length(names)), names) {
@@ -4554,6 +4613,9 @@ def private label_cases(var em : Emitter; st : CirStmt; reset : string) {
         em.label_flags[name] = numbered("_flag", em.switch_counter)
         em.label_gotos[name] = numbered("_goto", em.switch_counter)
         em.label_conds[name] = reset
+        if (dispatch.span > 0) {
+            em.label_jumps[name] = dispatch.base + dispatch.span + idx + 1
+        }
     }
 }
 
@@ -4628,7 +4690,7 @@ def private emit_without_tail_break(var em : Emitter; tu : CirTu; st : CirStmt c
     close_block(em)
 }
 
-def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGroup>; cond : string; cond_t : int; body : CirStmt const?; restart : int; sentinel : bool) {
+def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGroup>; cond : string; cond_t : int; body : CirStmt const?; restart : int; sentinel : bool; dispatch : GotoDispatch) {
     let flag = numbered("_flag", em.switch_counter)
     let cont = continues_out(body) ? numbered("_cont", em.switch_counter) : ""
     // every case value of the switch, for `default`'s match-none test
@@ -4649,7 +4711,7 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
         line(em, "var {goto_var} = 0")
     }
     open_block(em, "while (true)")
-    if (restart > 0) {
+    if (restart > 0 && dispatch.span == 0) {
         line(em, "label {restart}:  // re-dispatch")
     }
     let plain <- [for (idx in range(length(groups))); plain_case(em, groups, idx, !empty(all_values))]
@@ -4662,11 +4724,7 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
     }
     em.cont_flags |> push(cont)
     em.break_gotos |> push("")
-    for (idx, g in range(length(groups)), groups) {
-        if (!empty(g.stmts)) {
-            emit_loop_group(em, tu, g, plain[idx], cond, cond_t, all_values, flag, goto_var, sentinel)
-        }
-    }
+    emit_loop_groups(em, tu, groups, plain, cond, cond_t, all_values, flag, goto_var, sentinel, dispatch)
     em.break_gotos |> pop()
     em.cont_flags |> pop()
     line(em, "break")
@@ -4683,11 +4741,37 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
     }
 }
 
+// the groups of the matched-flag loop, under a jump table (`dispatch`'s `span` above 0) behind its
+// entry and each after its labels
+def private emit_loop_groups(var em : Emitter; tu : CirTu; groups : array<CaseGroup>; plain : array<bool>; cond : string; cond_t : int; all_values : array<string>; flag, goto_var : string; sentinel : bool; dispatch : GotoDispatch) {
+    let jumped = dispatch.span > 0
+    var cases : table<int64>
+    if (jumped) {
+        for (g in groups) {
+            for (v in g.values) {
+                cases |> insert(v)
+            }
+        }
+        dispatch_jump(em, tu, dispatch, cond, cond_t)
+    }
+    for (idx, g in range(length(groups)), groups) {
+        if (jumped) {
+            dispatch_labels(em, dispatch, g.values, g.is_default, cases, "default")
+        }
+        if (!empty(g.stmts)) {
+            emit_loop_group(em, tu, g, plain[idx], cond, cond_t, all_values, flag, goto_var, sentinel, jumped)
+        }
+    }
+    if (jumped && !has_value([for (g in groups); g.is_default], true)) {
+        dispatch_labels(em, dispatch, array<int64>(), true, cases, "no case: switch end")
+    }
+}
+
 // one group of the matched-flag loop: a plain case (`plain_case`) as its own `if` on its tests, any
 // other under the flag its labels set; `goto_var` is "" unless a goto re-dispatches the switch, and
 // under a re-dispatch that stores a `sentinel` into the condition only `default` tests the goto
-def private emit_loop_group(var em : Emitter; tu : CirTu; g : CaseGroup; plain : bool; cond : string; cond_t : int; all_values : array<string>; flag, goto_var : string; sentinel : bool) {
-    let pending = empty(goto_var) || (sentinel && !g.is_default) ? "" : "{goto_var} == 0 && "
+def private emit_loop_group(var em : Emitter; tu : CirTu; g : CaseGroup; plain : bool; cond : string; cond_t : int; all_values : array<string>; flag, goto_var : string; sentinel, jumped : bool) {
+    let pending = empty(goto_var) || jumped || (sentinel && !g.is_default) ? "" : "{goto_var} == 0 && "
     let value_pending = sentinel ? "" : pending
     if (plain) {
         var inscope tests <- [for (v in g.values); case_compare(em, tu, cond, cond_t, v)]
@@ -4697,7 +4781,7 @@ def private emit_loop_group(var em : Emitter; tu : CirTu; g : CaseGroup; plain :
         let test = join(tests, " || ")
         open_block(em, empty(pending) || length(tests) == 1 ? "if ({pending}{test})" : "if ({pending}({test}))")
         emit_group(em, tu, g, false)
-        close_block(em)
+        close_branch(em, jumped)
         return
     }
     for (v in g.values) {
@@ -4713,7 +4797,55 @@ def private emit_loop_group(var em : Emitter; tu : CirTu; g : CaseGroup; plain :
     if (check_group_split(em, g)) {
         open_block(em, "if ({flag})")
         emit_group(em, tu, g, false)
-        close_block(em)
+        close_branch(em, jumped)
+    }
+}
+
+// the end of a group's branch in the matched-flag loop; under the jump table an `else` too, which
+// daslang's optimizer keeps: it moves the statements after an `if` with no `else` whose branch ends
+// in `break`, `return` or `continue` into one, the next group's labels among them, which the jump
+// then misses under the interpreter (lookibed/daScript#35, #8; `probes/test_goto.das`)
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-dispatch")]
+def private close_branch(var em : Emitter; jumped : bool) {
+    if (jumped) {
+        em.depth--
+        open_block(em, "\} else")
+        em.label_end = true
+        line(em, "{LABEL_END}()")
+    }
+    close_block(em)
+}
+
+// the jump table's entry: a value outside [lo, hi] to the out-of-range label, any other to its case's
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-dispatch")]
+def private dispatch_jump(var em : Emitter; tu : CirTu; d : GotoDispatch; cond : string; cond_t : int) {
+    let on_enum = kind_of(tu, cond_t) == "enum"
+    let hi = d.lo + int64(d.span - 1)
+    let value = on_enum ? "int({cond})" : cond
+    let lo_text = on_enum ? "{d.lo}" : case_literal(em, tu, cond_t, d.lo)
+    let hi_text = on_enum ? "{hi}" : case_literal(em, tu, cond_t, hi)
+    open_block(em, "if ({value} < {lo_text} || {value} > {hi_text})")
+    line(em, "goto label {d.base + d.span}")
+    close_block(em)
+    let offset = int64(d.base) - d.lo
+    let target = das_type(em, tu, cond_t, CirLoc()) == "int" && !on_enum ? cond : "int({cond})"
+    line(em, offset == 0l ? "goto {target}" : (offset > 0l ? "goto {target} + {offset}" : "goto {target} - {-offset}"))
+}
+
+// the jump table's labels before a group: one per case value of `values`, and at `default`, or the
+// loop's end when the switch has none, one per value of [lo, hi] no case holds, then the
+// out-of-range target
+def private dispatch_labels(var em : Emitter; d : GotoDispatch; values : array<int64>; at_default : bool; cases : table<int64>; target : string) {
+    for (v in values) {
+        line(em, "label {d.base + int(v - d.lo)}:  // case {v}")
+    }
+    if (at_default) {
+        for (off in range(d.span)) {
+            if (!key_exists(cases, d.lo + int64(off))) {
+                line(em, "label {d.base + off}:  // no case {d.lo + int64(off)}")
+            }
+        }
+        line(em, "label {d.base + d.span}:  // {target}")
     }
 }
 
@@ -4849,12 +4981,16 @@ def private emit_label(var em : Emitter; st : CirStmt const?) {
     }
     let flag = em.label_flags?[st.label_name] ?? ""
     let opened = repeat("    ", em.depth - 1) + "if ({flag}) \{\n"
+    let jump = em.label_jumps?[st.label_name] ?? 0
     if (!empty(em.out) && em.out[length(em.out) - 1] == opened) {
         // the label heads its group: no empty branch before it
         em.out |> pop()
         em.depth--
     } else {
-        close_block(em)
+        close_branch(em, jump > 0)
+    }
+    if (jump > 0) {
+        line(em, "label {jump}:  // {st.label_name}")
     }
     let goto_var = em.label_gotos?[st.label_name] ?? ""
     line(em, "{flag} ||= {goto_var} == {em.label_index?[st.label_name] ?? 0}  // {st.label_name}")
@@ -4884,7 +5020,9 @@ def private emit_goto(var em : Emitter; st : CirStmt const?) {
         if (!empty(reset)) {
             line(em, reset)
         }
-        line(em, "goto label {em.flag_switches?[sw] ?? 0}")
+        // under the jump table straight to the label's own das label
+        let jump = em.label_jumps?[st.label_name] ?? 0
+        line(em, "goto label {jump > 0 ? jump : (em.flag_switches?[sw] ?? 0)}")
     } else {
         line(em, "goto label {em.labels?[st.label_name] ?? 0}")
     }
@@ -5626,6 +5764,8 @@ def private reset_function_state(var em : Emitter; d : CirDecl) {
     em.label_flags |> clear()
     em.label_gotos |> clear()
     em.label_conds |> clear()
+    em.goto_switches |> clear()
+    em.label_jumps |> clear()
     plan_labels(em, d.body)
     em.unsafe_used = false
     em.addressed |> clear()
@@ -6758,6 +6898,7 @@ def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
     em.prog.param_copy = side.param_writes == "copy"
     em.prog.range_loops = side.loops != "while"
     em.prog.reinterpret_members = side.first_member == "reinterpret"
+    em.prog.goto_dispatch = side.switch_dispatch == "goto"
     em.prog.global_names <- {for (d in tu.decls); d.name; where d.k == "global"}
     em.prog.defined_globals <- {for (d in tu.decls); d.name; where d.k == "global" && !d.is_extern}
 }

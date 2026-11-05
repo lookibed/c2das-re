@@ -50,6 +50,9 @@ struct Args {
     filter : string = ""
     @clarg_doc = "the layouts to convert: source (a module per C file, every cycle one module, into lua/work/<stem>/), source-cut (the cycles cut by late binding, into lua/work/source-cut/<stem>/), single (one module, into lua/work/single/<stem>/) or all, the default"
     layout : string = "all"
+    @clarg_name = "switch-dispatch"
+    @clarg_doc = "the converter's --switch-dispatch: chain or goto (a dense switch as a jump table, lvm's dispatch among them); default the sidecar's, which is chain"
+    switch_dispatch : string = ""
     @clarg_name = "luac-check"
     @clarg_doc = "a folder of Lua scripts: the converted luac compiles each with -o under --tier, and its bytes must be the native luac's"
     luac_check : string = ""
@@ -563,7 +566,7 @@ def private das_lines(res : ConvertResult; dir : string) : int {
 // the interpreter run against the native oracle `bin`, with `--luac-check` the compiler over the folder it names
 def private convert_layout(stem, main_source : string; input : ProgramInput; bin, layout : string; args : Args) : bool {
     let dir = layout_dir(WORK, stem, layout)
-    let res <- convert_program(input.c_paths, dir, args.target, "", SIDECAR, "", "", input.entry, layout)
+    let res <- convert_program(input.c_paths, dir, args.target, "", SIDECAR, "", "", input.entry, layout, false, "", args.switch_dispatch)
     let head = "lua: {stem} ({layout})"
     to_log(LOG_INFO, "{head}: {length(input.c_paths)} files, dumper {fmt(":.1f", res.dump_seconds)} s, JSON {res.json_bytes} bytes\n")
     if (!res.ok) {

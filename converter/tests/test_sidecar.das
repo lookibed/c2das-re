@@ -195,6 +195,29 @@ def test_sidecar_first_member(t : T?) {
 }
 
 [test]
+def test_sidecar_switch_dispatch(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_switch_dispatch", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`switch_dispatch` is \"chain\" or \"goto\"; absent it is empty, the emitter's chain default; any other value is refused") @(t : T?) {
+        for (mode in ["chain", "goto"]) {
+            var error : string
+            let side <- read_text(dir, mode, "\{\"switch_dispatch\": \"{mode}\"\}\n", error)
+            t |> equal(error, "")
+            t |> equal(side.switch_dispatch, mode)
+        }
+        var error : string
+        let side <- read_text(dir, "bad_switch_dispatch", "\{\"switch_dispatch\": \"table\"\}\n", error)
+        t |> success(error |> ends_with("bad_switch_dispatch.c2das: `switch_dispatch` is \"chain\" or \"goto\", not \"table\""), error)
+        t |> equal(side.switch_dispatch, "")
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_sidecar_layout(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_sidecar_layout", dir_error)

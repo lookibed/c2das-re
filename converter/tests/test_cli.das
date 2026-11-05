@@ -158,6 +158,35 @@ def test_cli_first_member(t : T?) {
     rmdir_rec(dir)
 }
 
+let DISPATCH_FIXTURE = "converter/tests/fixtures/p7_goto_dispatch.c"
+
+// `converter/main.das -- <DISPATCH_FIXTURE> --out <dir>/dispatch_<mode> --target linux
+// --switch-dispatch <mode>` as a child process
+def run_switch_dispatch(dir, mode : string; var out : string&) : int {
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from(["converter/main.das", "--", DISPATCH_FIXTURE, "--out", path_join(dir, "dispatch_{mode}"), "--target", "linux", "--switch-dispatch", mode])
+    return run_and_capture(argv, out, 300.0)
+}
+
+[test]
+def test_cli_switch_dispatch(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_cli_switch_dispatch", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("--switch-dispatch goto gives a dense switch its jump table; any other value but chain is a usage error") @(t : T?) {
+        var out : string
+        t |> equal(run_switch_dispatch(dir, "goto", out), 0, out)
+        let jumped = fread(path_join(path_join(dir, "dispatch_goto"), "p7_goto_dispatch.das"))
+        t |> success(jumped |> contains("            goto int(_cond) + 1\n"), jumped)
+        t |> equal(run_switch_dispatch(dir, "table", out), 2, out)
+        t |> success(out |> contains("--switch-dispatch is chain or goto, not `table`"), out)
+    }
+    rmdir_rec(dir)
+}
+
 let LAYOUT_FIXTURE = "converter/tests/fixtures/p5_layout_cut"
 
 // `converter/main.das -- <LAYOUT_FIXTURE>/{main,a,b}.c --out <dir>/layout_<mode> --target linux
