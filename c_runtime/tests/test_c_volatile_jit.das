@@ -9,7 +9,7 @@ require ../../converter/tiers.das
 //! The `[llvm_code]` generators of `c_volatile_jit.das` under every tier: each width of
 //! `c_volatile_load` and `c_volatile_store` reads back what it stored, and under the JIT and the
 //! exe (one LLVM module, or one per das module as the cached DLL) each is one inlined `load volatile` or
-//! `store volatile` of its LLVM type, `bool` a forwarder call (docs/probe-findings.md F89).
+//! `store volatile` of its LLVM type, `bool` a forwarder call (docs/probe-findings.md F91).
 //! One scalar width of `widths_source`: the field `name` of das type `das_type`, which the JIT's
 //! IR spells `llvm`.
 struct Width {

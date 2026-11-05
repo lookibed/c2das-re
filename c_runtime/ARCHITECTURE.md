@@ -198,7 +198,7 @@ as-if-converted fixture test landing first.
   allows, and counts elements and bytes in `int`, so a call past that panics. `bsearch` is a binary search calling `cmp(key, element)` in C's order.
 - `c_runtime/c_volatile.das` - C's volatile access (`converter/ARCHITECTURE_EMITTER_LOOPS.md`):
   `c_volatile_load(x)` and `c_volatile_store(x, v)` take the object by reference and read or
-  write it once, so no tier folds a read or drops a store (`probes/test_volatile.das`, F89). The
+  write it once, so no tier folds a read or drops a store (`probes/test_volatile.das`, F91). The
   interpreter and the AOT host access the object through the `crt` forwarders, which read or write
   it through a `volatile` pointer (clang++ inlines them under AOT: one `mov` each). Under the JIT
   and the exe the load is `c_volatile_load_jit` and the store the generic `c_volatile_store`, each

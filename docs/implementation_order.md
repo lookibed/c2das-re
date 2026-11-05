@@ -2206,7 +2206,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   every tier (ruling 23: it is the shorter form too); the extern call stays for a width the
   intrinsic lacks.
   Done (branch `p7.0r-volatile`, converter output unchanged): dasLLVM's `[llvm_code]` rail is the
-  mechanism, no upstream change (F89: `accessExternal` is `modifyExternal`'s bit; a das `deref`
+  mechanism, no upstream change (F91: `accessExternal` is `modifyExternal`'s bit; a das `deref`
   folds on the JIT and AOT). Under the JIT `c_volatile_load` and `c_volatile_store` are generics
   whose generated body is one inlined `load volatile`/`store volatile`, generic so the split build
   of the cached DLL inlines them too; the interpreter and AOT keep the forwarders; `bool` keeps them

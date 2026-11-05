@@ -7,7 +7,7 @@ require ../converter/tiers.das
 require _daslang_child
 
 //! A C volatile access is one load or store on every tier, none merged, dropped or hoisted
-//! (docs/probe-findings.md F89). The proof is a count in the code each tier runs: the JIT's and
+//! (docs/probe-findings.md F91). The proof is a count in the code each tier runs: the JIT's and
 //! the exe's IR (`--jit-dump-to`), the AOT host's machine code (objdump of the linked binary).
 //! The interpreter runs every access as written; it checks the values only. The three candidate
 //! mechanisms, each a function of `SOURCE` reading one field four times:
