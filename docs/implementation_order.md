@@ -2117,9 +2117,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   instructions against native's 48 in 4770, and the unsafe copy grows to 62.8 KB (the annotations
   change inlining too, so the number is the net of both); nbody's inlined `luaH_getshortstr` (1.5x
   native, 3 of its 7 `jit_exception` sites on the node walk) is covered by the same flag.
-  In progress (branch `p7.0o-unsafe-checks`): the probe landed (`probes/test_unchecked.das`, F84:
-  the annotations drop both checks under interp, JIT and exe, the AOT host keeps the range check,
-  a null dereference is SIGSEGV on every tier); the option (CLI, sidecar, header note, tests) is next.
+  In progress (branch `p7.0o-unsafe-checks`): the probe (`probes/test_unchecked.das`, F84: the
+  annotations drop both checks under interp, JIT and exe, the AOT host keeps the range check, a
+  null dereference is SIGSEGV on every tier); `--checks safe|off` and the sidecar's `checks`,
+  default `safe`, under `off` both annotations on every converted function and a line under the
+  banner (`converter/tests/test_checks.das`). The risk: a wrong C program reads its neighbor or
+  dies by SIGSEGV instead of panicking; the AOT lane keeps its range checks. Doom's sync demos 1-3
+  replay under the JIT with `checks: "off"`. The A/B is next.
 - **P7.0p The Lua JIT residue after the dispatch rows** (from P7.0b4, place 4): the dispatch chain
   is 62-69% of fib's and nbody's JIT samples (P7.0c3 default, P7.0c2 opt-in); fib 30 stays about
   3.4x native if the chain cost went to zero. The remaining JIT symbols: `[c_union]` and field
