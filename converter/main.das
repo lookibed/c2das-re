@@ -51,7 +51,7 @@ struct Args {
     @clarg_doc = "a program in a source layout: also write program.edges.txt, the edges of each cycle among its files by kind (call, address, global, type) and the cycles left were every function, then every function and object, forward-declared; changes no converted text"
     edge_census : bool
     @clarg_name = "no-solid-context"
-    @clarg_doc = "write no `options solid_context` in the modules (by default each carries it: a global and a function are reached by index, never looked up by name, 3x faster under the JIT on Doom); only for a module that runs in another context or is patched or reloaded, which the option forbids; overrides the sidecar's solid_context"
+    @clarg_doc = "write no `options solid_context` in the modules (by default each carries it: a global and a function are reached by index, never looked up by name: Doom under the JIT 3.2-3.9x -> 1.3-1.4x native); only for a module that runs in another context or is patched or reloaded, which the option forbids; overrides the sidecar's solid_context"
     no_solid_context : bool
     @clarg_short = "?"
     @clarg_name = "show-help"
