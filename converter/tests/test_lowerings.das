@@ -174,6 +174,17 @@ def test_lowerings(t : T?) {
     p8_refusal_fixtures(t)
     p7_readable_fixtures(t)
     p7_goto_into_fixtures(t)
+    rmdir_rec(work_root)
+}
+
+[test]
+def test_crt_writes(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_crt_writes", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure(dir_error)
+        return
+    }
     p7_crt_writes_fixtures(t)
     rmdir_rec(work_root)
 }
