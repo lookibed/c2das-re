@@ -2104,35 +2104,28 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   load for a constant size; Doom demo1 JIT 1.30x -> 1.10x (box PC). Shorter and faster, so the
   default; tested on the marshal fixtures, measured on the kernel and the demo.
   Done (branch `p7.0n-builtin-memcpy`): every marshal reader and writer copies through the builtin `memcpy` with an `int` size (62 Doom sites, 0 left; no `require crt` for it); probe `test_stdlib.das`; JIT/exe/AOT runs of three marshal fixtures. A/B on the solid build (main 784b0a3 against the rebased branch), box PC, 3 samples interleaved, median and spread: Doom JIT demo1 0.358 s ±19% -> 0.313 s ±5% (1.15x; 1.27x -> 1.11x native), demo2 0.738 ±8% -> 0.577 ±14% (1.28x; 1.44x -> 1.12x), demo3 0.389 ±13% -> 0.324 ±13% (1.20x; 1.31x -> 1.09x); the interpreter 0.98-1.04x, inside its spreads. Before P7.0m (no solid context) the JIT gain was 1.05x, 1.09x and 0.95x (inside the spread): the call is a larger share once the context is solid. perf/kernels has no marshal-read kernel.
-- **P7.0o Speed opt-in: `unsafe_deref` and `hint(unsafe_range_check)` on `[c_function]`** (from
+- **P7.0o Speed opt-in: `unsafe_deref` and `hint(unsafe_range_check)` on every converted function** (from
   P7.0b4, place 3; P7.1's O2 and O3, now measured): per-pixel `null_check` on `dest`,
   `dc_source + x`, `dc_colormap + x` (a GEP result is never provably non-null) and fixed-array
   range checks in `R_DrawColumn`, `R_DrawSpan` and `R_RenderSegLoop`, about 8% of the solid+memcpy
   build; Doom demo1 JIT 1.10x -> 1.02x (box PC, spread 12.4%: re-measure). A converter option (CLI
-  flag and sidecar field, default off) adds both annotations to every `[c_function]`; the checked
-  form stays the default (ruling 23), both modes tested and measured, demo sync re-verified with
-  the flag on (P7.1). Measured on Lua by P7.0p (box PC, in-process work, 3 interleaved samples;
+  flag and sidecar field, default off) adds both annotations to every converted function, with or
+  without `[c_function]`; the checked form stays the default (ruling 23), both modes tested and
+  measured, demo sync re-verified with the flag on (P7.1). Measured on Lua by P7.0p (box PC, in-process work, 3 interleaved samples;
   both annotations hand-added to all 776 functions of the single-layout build): fib 30 -3% chain /
   -10% goto, nbody 20000 -2% / -5%. `luaV_execute` carries 400 `test/je` null-check pairs in 9642
   instructions against native's 48 in 4770, and the unsafe copy grows to 62.8 KB (the annotations
   change inlining too, so the number is the net of both); nbody's inlined `luaH_getshortstr` (1.5x
   native, 3 of its 7 `jit_exception` sites on the node walk) is covered by the same flag.
-  In progress (branch `p7.0o-unsafe-checks`): the probe (`probes/test_unchecked.das`, F84: the
-  annotations drop both checks under interp, JIT and exe, the AOT host keeps the range check, a
-  null dereference is SIGSEGV on every tier); `--checks safe|off` and the sidecar's `checks`,
-  default `safe`, under `off` both annotations on every converted function and a line under the
-  banner (`converter/tests/test_checks.das`). The risk: a wrong C program reads its neighbor or
-  dies by SIGSEGV instead of panicking; the AOT lane keeps its range checks. Doom's sync demos 1-3
-  replay under the JIT with `checks: "off"`.
-  A/B (box PC, same converter, A default, B `checks: "off"` in the program's sidecar, 3 interleaved
-  samples, median, change B against A; data `/root/notes/parallel/p7.0o_ab/`): Doom JIT demo1-3
-  -6.5% / -6.7% / -2.6% (0.302 -> 0.282 s, 0.576 -> 0.537, 0.324 -> 0.315), interpreter -4.6% / -2.9% / -3.8%.
-  Lua (in-process work) JIT fib 30 -10.8%, nbody 20000 -5.0%, binary_trees 12 -3.0%, spectral_norm 100
-  -5.0% (7-sample re-run; 3 samples spread 51%); interpreter -3.4%, -7.5%, -2.3%, +1.6%. Kernels:
-  blit interpreter -5.0%, JIT +3.1%; matmul interpreter +0.7%, JIT +7.7% (spread 5.5%): no gain where
-  the elision pass already proves the indices or LLVM keeps the null test out of the copy loop. The
-  timestamped predictions hit 6 of 18 cells within 25% of the expected change; the Lua JIT cells
-  ran at P7.0p's goto-mode share, not its chain-mode one. Default stays `safe` (ruling 23).
+  Done (branch `p7.0o-unsafe-checks`): `--checks safe|off` and the sidecar's `checks`, default `safe`; under `off` both annotations
+  on every converted function (Lua 1080, Doom 762) and a banner line; probe `test_unchecked.das` (F84), tests `test_checks.das`. Risk: a
+  wrong C program reads its neighbor or dies by SIGSEGV instead of panicking; the AOT host keeps its range checks. Doom's sync demos
+  replay with it on. A/B, box PC, same converter, 3 interleaved samples, B (`off`) against A (`safe`), data `/root/notes/parallel/p7.0o_ab/`:
+  Doom JIT demo1-3 -6.5% / -6.7% / -2.6%, interpreter -4.6% / -2.9% / -3.8%.
+  Lua JIT fib 30 -10.8%, nbody -5.0%, binary_trees -3.0%, spectral_norm -5.0% (7-sample re-run); interpreter -3.4%, -7.5%, -2.3%, +1.6%.
+  Kernels: blit interpreter -5.0%, JIT +3.1%; matmul interpreter +0.7%, JIT +7.7% (spread 5.5%). Why the kernels gain nothing under the
+  JIT is not analysed; a candidate cause: the elision pass already proves matmul's indices and LLVM keeps blit's null tests out of its loop.
+  Timestamped predictions hit 6 of 18 cells; Lua's JIT cells ran at P7.0p's goto-mode share, not its chain-mode one.
 - **P7.0p The Lua JIT residue after the dispatch rows** (from P7.0b4, place 4): the dispatch chain
   is 62-69% of fib's and nbody's JIT samples (P7.0c3 default, P7.0c2 opt-in); fib 30 stays about
   3.4x native if the chain cost went to zero. The remaining JIT symbols: `[c_union]` and field
