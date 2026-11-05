@@ -104,8 +104,8 @@ disposition, a `FILE` or a `tm` the CRT owns) is `modifyExternal`: the optimizer
 drop it (`docs/probe-findings.md` F85, `probes/test_crt_writes.das`). The volatile loads are too:
 under the interpreter each is an extern call, under AOT an inline body whose `volatile` access
 clang++ keeps. The JIT reads no memory effect from a bind's flags (an extern call is opaque to it
-whatever they say), so it never calls the volatile forwarders: `c_runtime/c_volatile.das` gives it
-an inlined LLVM `load volatile` or `store volatile` instead (F89). The libm entries glibc reports a domain or range error through `errno` from (`fmod`,
+whatever they say), so for a number or a pointer it never calls the volatile forwarders:
+`c_runtime/c_volatile.das` gives it an inlined LLVM `load volatile` or `store volatile` instead (F89). The libm entries glibc reports a domain or range error through `errno` from (`fmod`,
 `fmodf`, `ldexp`, `nextafter`, `hypot`, `expm1`, `log1p`, `remainder`, `erf`, `erfc`, `tgamma`,
 `lgamma`, `fma`) are among them, so a call whose result the program discards, or whose arguments
 are constant, still runs.

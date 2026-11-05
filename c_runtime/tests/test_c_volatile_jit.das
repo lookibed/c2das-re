@@ -8,7 +8,8 @@ require ../../converter/tiers.das
 
 //! The `[llvm_code]` generators of `c_volatile_jit.das` under every tier: each width of
 //! `c_volatile_load` and `c_volatile_store` reads back what it stored, and under the JIT and the
-//! exe each is one inlined `load volatile` or `store volatile` of its LLVM type (docs/probe-findings.md F89).
+//! exe (one LLVM module, or one per das module as the cached DLL) each is one inlined `load volatile` or
+//! `store volatile` of its LLVM type, `bool` a forwarder call (docs/probe-findings.md F89).
 //! One scalar width of `widths_source`: the field `name` of das type `das_type`, which the JIT's
 //! IR spells `llvm`.
 struct Width {
@@ -67,27 +68,29 @@ def test_c_volatile_jit(tt : T?) {
             t |> success(out |> contains(WIDTHS_EXPECTED), out)
         }
     }
-    for (tier in ["jit", "exe"]) {
-        tt |> run("under {tier} every width is an inlined volatile store, load, store, load of its LLVM type, and a declined signature compiles its body") @(t : T?) {
+    for (tier in ["jit", "exe", "exe-split"]) {
+        tt |> run("under {tier} every width and a pointer is an inlined volatile store, load, store, load of its LLVM type, bool four forwarder calls, and a declined signature compiles its body") @(t : T?) {
             let ir = path_join(work, "{tier}.ll")
             let r = runtime_child_ir("volatile_widths_{tier}", source, tier, ir)
             t |> equal(r.rc, 0, r.out)
             var out = r.out
-            if (tier == "exe") {
+            if (tier != "jit") {
                 let bin = fexist("{ir}_exe.exe") ? "{ir}_exe.exe" : "{ir}_exe"
                 t |> equal(run_and_capture([bin], out, 60.0), 0, out)
             }
             t |> success(out |> contains(WIDTHS_EXPECTED), out)
             let dump = fread(ir)
             var cases <- [for (c in WIDTHS); (name = c.name, llvm = c.llvm)]
-            cases |> push((name = "b", llvm = "i8"))
-            cases |> push((name = "p", llvm = "i64"))
+            cases |> push((name = "p", llvm = "ptr"))
             for (c in cases) {
                 var inscope body <- ir_function(dump, "rw_{c.name}", 1)
                 t |> equal(ir_volatile_order(body), "SLSL", "{c.name}: {join(body, "\n")}")
                 t |> equal(ir_count(body, "load volatile {c.llvm},") + ir_count(body, "store volatile {c.llvm} "), 4, "{c.name}: {join(body, "\n")}")
                 t |> equal(ir_calls(body), 0, "{c.name}: {join(body, "\n")}")
             }
+            // `bool` keeps the forwarders: one call per access, none merged
+            var inscope flag <- ir_function(dump, "rw_b", 1)
+            t |> equal(ir_calls(flag), 4, "b: {join(flag, "\n")}")
             remove(ir)
         }
     }

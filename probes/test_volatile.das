@@ -71,7 +71,7 @@ def private aot_memory_ops(bin, name : string) : int {
 }
 
 // the tiers whose LLVM IR the probe reads
-let IR_TIERS = fixed_array("jit", "exe")
+let IR_TIERS = fixed_array("jit", "exe", "exe-split")
 
 [test]
 def test_volatile(tt : T?) {
@@ -89,7 +89,7 @@ def test_volatile(tt : T?) {
             let r = runtime_child_ir("volatile_{tier}", SOURCE, tier, ir)
             t |> equal(r.rc, 0, r.out)
             var out = r.out
-            if (tier == "exe") {
+            if (tier != "jit") {
                 let bin = fexist("{ir}_exe.exe") ? "{ir}_exe.exe" : "{ir}_exe"
                 t |> equal(run_and_capture([bin], out, 60.0), 0, out)
             }

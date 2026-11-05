@@ -18,40 +18,30 @@ require daslib/tune
 //! scalar width, `bool` (C's `_Bool`) through its byte, and a pointer or function value through
 //! its eight bytes.
 
-[llvm_code(name = "c_volatile::load")]
 def c_volatile_read(x : int8 const&) : int8 => unsafe(crt::c_volatile_load_i8(unsafe(addr(x))))
-[llvm_code(name = "c_volatile::load")]
 def c_volatile_read(x : uint8 const&) : uint8 => unsafe(crt::c_volatile_load_u8(unsafe(addr(x))))
-[llvm_code(name = "c_volatile::load")]
 def c_volatile_read(x : int16 const&) : int16 => unsafe(crt::c_volatile_load_i16(unsafe(addr(x))))
-[llvm_code(name = "c_volatile::load")]
 def c_volatile_read(x : uint16 const&) : uint16 => unsafe(crt::c_volatile_load_u16(unsafe(addr(x))))
-[llvm_code(name = "c_volatile::load")]
 def c_volatile_read(x : int const&) : int => unsafe(crt::c_volatile_load_i32(unsafe(addr(x))))
-[llvm_code(name = "c_volatile::load")]
 def c_volatile_read(x : uint const&) : uint => unsafe(crt::c_volatile_load_u32(unsafe(addr(x))))
-[llvm_code(name = "c_volatile::load")]
 def c_volatile_read(x : int64 const&) : int64 => unsafe(crt::c_volatile_load_i64(unsafe(addr(x))))
-[llvm_code(name = "c_volatile::load")]
 def c_volatile_read(x : uint64 const&) : uint64 => unsafe(crt::c_volatile_load_u64(unsafe(addr(x))))
-[llvm_code(name = "c_volatile::load")]
 def c_volatile_read(x : float const&) : float => unsafe(crt::c_volatile_load_f32(unsafe(addr(x))))
-[llvm_code(name = "c_volatile::load")]
 def c_volatile_read(x : double const&) : double => unsafe(crt::c_volatile_load_f64(unsafe(addr(x))))
 
 def c_volatile_read(x : bool const&) : bool {
     unsafe {
-        return c_volatile_read(*addr<uint8 const?>(x)) != 0u8
+        return crt::c_volatile_load_u8(addr<uint8 const?>(x)) != 0u8
     }
 }
 
 //! A pointer or a function value read once through its bits; the type rides through the reinterpret.
 def c_volatile_read(x : auto(TT) const&) : TT -const -& {
     static_assert(typeinfo sizeof(type<TT>) == 8, "c_volatile_read: a scalar, a pointer or a function value")
-    // the bits land in a local first: the interpreter refuses a reinterpret of an extern call's
-    // result itself ("typed eval on wrong extern return kind"), which the read is outside the JIT
+    // the bits land in a local first: the interpreter refuses a reinterpret of the extern call's
+    // result itself ("typed eval on wrong extern return kind")
     unsafe {
-        let bits = c_volatile_read(*addr<uint64 const?>(x))
+        let bits = crt::c_volatile_load_u64(addr<uint64 const?>(x))
         return reinterpret<TT -const -&>(bits)
     }
 }
@@ -67,8 +57,8 @@ let private LOAD_FORWARDERS <- {
 
 //! `c_volatile_load(x)`: one read of object `x`. A number expands in place to its `crt` forwarder
 //! over `addr(x)`, so the interpreter makes one extern call where a function around it would add a
-//! das call; `bool`, a pointer, a function value, a by-value parameter and every load under the
-//! JIT go through `c_volatile_read`.
+//! das call; `bool`, a pointer, a function value and a by-value parameter go through
+//! `c_volatile_read`. Under the JIT every load goes through `c_volatile_load_jit`.
 [call_macro(name = "c_volatile_load")]
 class CVolatileLoadMacro : AstCallMacro {
     def override visit(prog : ProgramPtr; mod : Module?; var expr : ExprCallMacro?) : ExpressionPtr {
@@ -85,7 +75,12 @@ class CVolatileLoadMacro : AstCallMacro {
         // a by-value parameter is a reference the optimizer may replace with a caller's constant,
         // which has no address: its read goes through the fallback, whose `const&` binds anything
         let parameter = object is ExprVar && (object as ExprVar).varFlags.argument
-        if (empty(forwarder) || !object._type.isRef || parameter || prog.policies.jit_enabled) {
+        if (prog.policies.jit_enabled) {
+            var generated <- qmacro(c_volatile::c_volatile_load_jit($e(arg)))
+            generated.at = expr.at
+            return <- generated
+        }
+        if (empty(forwarder) || !object._type.isRef || parameter) {
             // the module's own `c_volatile_read` by its qualified name, so a program's function of
             // that name cannot take the read; the error of a wrong argument names the call site
             var fallback <- qmacro(c_volatile::c_volatile_read($e(arg)))
@@ -102,37 +97,37 @@ class CVolatileLoadMacro : AstCallMacro {
     }
 }
 
-[llvm_code(name = "c_volatile::store")]
-def c_volatile_store(var x : int8&; v : int8) => unsafe(crt::c_volatile_store_i8(unsafe(addr(x)), v))
-[llvm_code(name = "c_volatile::store")]
-def c_volatile_store(var x : uint8&; v : uint8) => unsafe(crt::c_volatile_store_u8(unsafe(addr(x)), v))
-[llvm_code(name = "c_volatile::store")]
-def c_volatile_store(var x : int16&; v : int16) => unsafe(crt::c_volatile_store_i16(unsafe(addr(x)), v))
-[llvm_code(name = "c_volatile::store")]
-def c_volatile_store(var x : uint16&; v : uint16) => unsafe(crt::c_volatile_store_u16(unsafe(addr(x)), v))
-[llvm_code(name = "c_volatile::store")]
-def c_volatile_store(var x : int&; v : int) => unsafe(crt::c_volatile_store_i32(unsafe(addr(x)), v))
-[llvm_code(name = "c_volatile::store")]
-def c_volatile_store(var x : uint&; v : uint) => unsafe(crt::c_volatile_store_u32(unsafe(addr(x)), v))
-[llvm_code(name = "c_volatile::store")]
-def c_volatile_store(var x : int64&; v : int64) => unsafe(crt::c_volatile_store_i64(unsafe(addr(x)), v))
-[llvm_code(name = "c_volatile::store")]
-def c_volatile_store(var x : uint64&; v : uint64) => unsafe(crt::c_volatile_store_u64(unsafe(addr(x)), v))
-[llvm_code(name = "c_volatile::store")]
-def c_volatile_store(var x : float&; v : float) => unsafe(crt::c_volatile_store_f32(unsafe(addr(x)), v))
-[llvm_code(name = "c_volatile::store")]
-def c_volatile_store(var x : double&; v : double) => unsafe(crt::c_volatile_store_f64(unsafe(addr(x)), v))
+//! The JIT's load: a generic, so each instance lands in the das module of its caller and the
+//! JIT's per-module partitions (`--jit-split-modules`, the cached DLL's default) still inline the
+//! one `load volatile` its `[llvm_code]` generator emits; the body is the read on every other path.
+[llvm_code(name = "c_volatile::load")]
+def c_volatile_load_jit(x : auto(TT) const&) : TT -const -& => c_volatile_read(x)
 
+//! `bool` written as its byte: the JIT rejects a reinterpret of a `bool` to `uint8` (an `i1` to
+//! `i8` bitcast), so it stays outside the generic.
 def c_volatile_store(var x : bool&; v : bool) {
     unsafe {
-        c_volatile_store(*addr<uint8?>(x), v ? 1u8 : 0u8)
+        crt::c_volatile_store_u8(addr<uint8?>(x), v ? 1u8 : 0u8)
     }
 }
 
-//! A pointer or a function value written once through its bits.
+//! `c_volatile_store(x, v)`: one write of object `x`, its bits through the unsigned forwarder of
+//! its size (a pointer or a function value as its eight bytes). A generic for
+//! the reason `c_volatile_load_jit` is one: under the JIT its `[llvm_code]` generator emits one
+//! `store volatile` in the caller's module.
+[llvm_code(name = "c_volatile::store")]
 def c_volatile_store(var x : auto(TT)&; v : TT) {
-    static_assert(typeinfo sizeof(type<TT>) == 8, "c_volatile_store: a scalar, a pointer or a function value")
+    static_assert(typeinfo sizeof(type<TT>) == 1 || typeinfo sizeof(type<TT>) == 2 || typeinfo sizeof(type<TT>) == 4 || typeinfo sizeof(type<TT>) == 8,
+        "c_volatile_store: a scalar, a pointer or a function value")
     unsafe {
-        c_volatile_store(*addr<uint64?>(x), reinterpret<uint64>(v))
+        static_if (typeinfo sizeof(type<TT>) == 1) {
+            crt::c_volatile_store_u8(addr<uint8?>(x), reinterpret<uint8>(v))
+        } static_elif (typeinfo sizeof(type<TT>) == 2) {
+            crt::c_volatile_store_u16(addr<uint16?>(x), reinterpret<uint16>(v))
+        } static_elif (typeinfo sizeof(type<TT>) == 4) {
+            crt::c_volatile_store_u32(addr<uint?>(x), reinterpret<uint>(v))
+        } else {
+            crt::c_volatile_store_u64(addr<uint64?>(x), reinterpret<uint64>(v))
+        }
     }
 }
