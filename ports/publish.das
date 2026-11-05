@@ -166,6 +166,7 @@ def private publish_command(args : Args; port : Port) : string {
 def private sources_of(port : Port; release : Release) : string => path_join(port.harness, "fetch/{trim_suffix(base_name(release.tarballs[0].url), ".tar.gz")}/src")
 def private tests_of(port : Port; release : Release) : string => path_join(port.harness, "fetch/{trim_suffix(base_name(release.tarballs[1].url), ".tar.gz")}")
 def private log_of(port : Port) : string => path_join(port.harness, "work/publish_run.log")
+def private goto_log_of(port : Port) : string => path_join(port.harness, "work/publish_goto_run.log")
 def private stamp_of(port : Port) : string => path_join(port.harness, "work/publish.generation")
 // the empty script the warm-up runs under `TIMED_LUA`
 def private empty_script_of(port : Port) : string => get_full_file_name(path_join(port.harness, "work/bench/empty.lua"))
@@ -232,8 +233,8 @@ def private generation_for(args : Args; port : Port; var gen : Generation) : boo
     return true
 }
 
-// the fetch and the harness's conversion with its native oracle and run, the log kept beside
-// the converted output for the README
+// the fetch, the harness's conversion with its native oracle and run, the log kept beside the
+// converted output for the README, then the goto lane's conversion
 def private run_harness(port : Port) : bool {
     var out : string
     if (run_and_capture(["bash", path_join(port.harness, "fetch.sh")], out, 3600.0) != 0) {
@@ -247,6 +248,17 @@ def private run_harness(port : Port) : bool {
     fwrite(log_of(port), out)
     if (rc != 0) {
         to_log(LOG_ERROR, "{port.name}: the conversion exited {rc}; {log_of(port)} holds its log\n")
+        return false
+    }
+    // the goto lane's tree: the source layout of the program the workloads run, converted with
+    // the jump-table dispatch into `work/goto/`, its log apart from the one the README quotes
+    var goto_argv <- daslang_cmd(CONVERTED_MODULES)
+    goto_argv |> push_from([path_join(port.harness, "run.das"), "--", "--filter", port.runs, "--layout", "source", "--switch-dispatch", "goto"])
+    to_log(LOG_INFO, "{port.name}: " + join(goto_argv, " ") + "\n")
+    let goto_rc = run_and_capture(goto_argv, out, 7200.0)
+    fwrite(goto_log_of(port), out)
+    if (goto_rc != 0) {
+        to_log(LOG_ERROR, "{port.name}: the goto-dispatch conversion exited {goto_rc}; {goto_log_of(port)} holds its log\n")
         return false
     }
     let gen = tree_generation()

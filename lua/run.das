@@ -22,7 +22,8 @@ require sources
 //! `lua/work/<stem>.program.json` and `converter/pipeline.das`'s `convert_program` with
 //! `lua/lua.c2das`, its compile check included, and timed, in the source layout into
 //! `lua/work/<stem>/`, in the source-cut layout into `lua/work/source-cut/<stem>/` and in the
-//! single layout into `lua/work/single/<stem>/`. `--native` builds the
+//! single layout into `lua/work/single/<stem>/`, each under `lua/work/goto/` with
+//! `--switch-dispatch goto`. `--native` builds the
 //! native oracle of each, `--run` runs the converted interpreter against it, `--error-check` the
 //! interpreter's error-recovery checks against it, `--luac-check` the
 //! converted compiler's `-o` over a folder of scripts, `--suite-check` the release's test suite file
@@ -51,7 +52,7 @@ struct Args {
     @clarg_doc = "the layouts to convert: source (a module per C file, every cycle one module, into lua/work/<stem>/), source-cut (the cycles cut by late binding, into lua/work/source-cut/<stem>/), single (one module, into lua/work/single/<stem>/) or all, the default"
     layout : string = "all"
     @clarg_name = "switch-dispatch"
-    @clarg_doc = "the converter's --switch-dispatch: chain or goto (a dense switch as a jump table, lvm's dispatch among them); default the sidecar's, which is chain"
+    @clarg_doc = "the converter's --switch-dispatch: chain or goto (a dense switch as a jump table, lvm's dispatch among them, each layout's folder then under lua/work/goto/); default the sidecar's, which is chain"
     switch_dispatch : string = ""
     @clarg_name = "luac-check"
     @clarg_doc = "a folder of Lua scripts: the converted luac compiles each with -o under --tier, and its bytes must be the native luac's"
@@ -562,10 +563,14 @@ def private das_lines(res : ConvertResult; dir : string) : int {
     return lines
 }
 
+// the folder the layouts' folders sit in: `WORK`, or under `--switch-dispatch goto` its `goto/`, so
+// the goto conversion's trees and module caches stay apart from the default ones
+def private work_of(args : Args) : string => args.switch_dispatch == "goto" ? path_join(WORK, "goto") : WORK
+
 // one program converted in `layout` and reported; with `--error-check`, `--suite-check` and `--run`
 // the interpreter run against the native oracle `bin`, with `--luac-check` the compiler over the folder it names
 def private convert_layout(stem, main_source : string; input : ProgramInput; bin, layout : string; args : Args) : bool {
-    let dir = layout_dir(WORK, stem, layout)
+    let dir = layout_dir(work_of(args), stem, layout)
     let res <- convert_program(input.c_paths, dir, args.target, "", SIDECAR, "", "", input.entry, layout, false, "", args.switch_dispatch)
     let head = "lua: {stem} ({layout})"
     to_log(LOG_INFO, "{head}: {length(input.c_paths)} files, dumper {fmt(":.1f", res.dump_seconds)} s, JSON {res.json_bytes} bytes\n")

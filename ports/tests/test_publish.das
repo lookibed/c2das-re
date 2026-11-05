@@ -39,9 +39,10 @@ let WORK_LINE_DAS = "def work_line \{\n    for (a in get_command_line_arguments(
 // under an exe), so a lane that hands them on wrongly fails its cells
 let LUA_DAS = "options gen2\nrequire strings\nrequire daslib/strings_boost\nrequire daslib/fio\nrequire daslib/clargs\ndef count_run(argv : array<string>) \{\n    let lane = has_value(argv, \"-jit\") ? \"jit\" : argv[0] |> ends_with(\"_exe.exe\") || argv[0] |> ends_with(\"_exe\") ? \"exe\" : argv[0] |> ends_with(\"_aot.exe\") || argv[0] |> ends_with(\"_aot\") ? \"aot\" : \"interp\"\n    fopen(\"runs_\{lane\}.log\", \"ab\") $(f) \{\n        if (f != null) \{\n            fwrite(f, \"run\\n\")\n        \}\n    \}\n\}\n{WORK_LINE_DAS}[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    count_run(argv)\n    let args <- get_user_args()\n    if (empty(args)) \{\n        print(\"no arguments\\n\")\n        return 3\n    \}\n    let last = args[length(args) - 1]\n    print(\"[I] stand-in\\n\")\n    work_line()\n    if (last |> ends_with(\"binary_trees.lua\")) \{\n        print(\"EXCEPTION: boom\\ntrailer\\n\")\n        return 2\n    \}\n    if (last == \"all.lua\" && !fexist(\"all.lua\")) \{\n        return 1\n    \}\n    if (last |> ends_with(\"nbody.lua\")) \{\n        print(\"drift\\n\{last\}\\n\")\n        return 0\n    \}\n    print(\"\{last == \"all.lua\" ? \"ALL\\nfinal OK !!!\" : last\}\\n\")\n    return 0\n\}\n"
 
-// the stand-in harness: its report with seconds that differ on every run, a line of seconds
-// alone, and clauses ending in ` s` that are no seconds
-let RUN_DAS = "options gen2\n[export]\ndef main : int \{\n    to_log(LOG_WARNING, \"lua: lua_all: dumper \{ref_time_ticks()\} s, JSON 10 bytes\\n\")\n    to_log(LOG_WARNING, \"lua: lua_all: emitter 0.\{ref_time_ticks() % 10l\} s, compile check 2.5 s, 3 lines of das\\n\")\n    to_log(LOG_WARNING, \"lua: total 7 s\\n\")\n    to_log(LOG_WARNING, \"lua: lua_all: units of s, dots . s\\n\")\n    return 0\n\}\n"
+// the stand-in harness: each run's arguments a line of `lua/work/harness_runs.log`, then its report
+// with seconds that differ on every run, a line of seconds alone, and clauses ending in ` s` that
+// are no seconds
+let RUN_DAS = "options gen2\nrequire daslib/strings_boost\nrequire daslib/fio\nrequire daslib/clargs\n[export]\ndef main : int \{\n    fopen(\"lua/work/harness_runs.log\", \"ab\") $(f) \{\n        if (f != null) \{\n            fwrite(f, join(get_user_args(), \" \") + \"\\n\")\n        \}\n    \}\n    to_log(LOG_WARNING, \"lua: lua_all: dumper \{ref_time_ticks()\} s, JSON 10 bytes\\n\")\n    to_log(LOG_WARNING, \"lua: lua_all: emitter 0.\{ref_time_ticks() % 10l\} s, compile check 2.5 s, 3 lines of das\\n\")\n    to_log(LOG_WARNING, \"lua: total 7 s\\n\")\n    to_log(LOG_WARNING, \"lua: lua_all: units of s, dots . s\\n\")\n    return 0\n\}\n"
 
 def private run_in(dir : string; argv : array<string>; var out : string&) : int => run_and_capture(in_folder(dir, argv), out, 1200.0)
 
@@ -122,7 +123,7 @@ def private stand_in_root(name : string) : string {
     for (bench in ["fib", "binary_trees", "nbody", "spectral_norm", "timed"]) {
         fwrite(path_join(root, "ports/lua/bench/{bench}.lua"), fread("ports/lua/bench/{bench}.lua"))
     }
-    fwrite(path_join(root, ".gitignore"), "/lua/work/bench/\n/lua/work/publish_run.log\n/lua/work/publish.generation\nruns_*.log\n.cache/\n.jitted_scripts/\n/clone/\n/ports.git/\n/plain/\n")
+    fwrite(path_join(root, ".gitignore"), "/lua/work/bench/\n/lua/work/publish_run.log\n/lua/work/publish_goto_run.log\n/lua/work/harness_runs.log\n/lua/work/publish.generation\nruns_*.log\n.cache/\n.jitted_scripts/\n/clone/\n/ports.git/\n/plain/\n")
     git(root, ["init", "-q"])
     git(root, ["add", "-A"])
     git(root, ["commit", "-q", "-m", "stand-in"])
@@ -427,6 +428,9 @@ def test_convert(t : T?) {
         t |> success(readme |> contains("```\n[W] lua: lua_all: JSON 10 bytes\n[W] lua: lua_all: 3 lines of das\n[W] lua: lua_all: units of s, dots . s\n```"), readme)
         t |> success(readme |> contains("`scripts/publish_ports.sh --program lua`"), readme)
         t |> success(fread(path_join(root, "lua/work/publish_run.log")) |> contains("lua: lua_all: dumper"), out)
+        // the harness runs twice: the conversion with its oracle, then the goto lane's tree, its log apart
+        t |> equal(fread(path_join(root, "lua/work/harness_runs.log")), "--native --run\n--filter lua --layout source --switch-dispatch goto\n", out)
+        t |> success(fread(path_join(root, "lua/work/publish_goto_run.log")) |> contains("lua: lua_all: dumper"), out)
         let head = git(clone, ["rev-parse", "HEAD"])
         t |> equal(publish(root, ["--repo", clone, "--commit"], out), 0, out)
         t |> equal(git(clone, ["rev-parse", "HEAD"]), head, out)
@@ -443,6 +447,13 @@ def test_convert(t : T?) {
         fwrite(path_join(root, "lua/run.das"), "options gen2\n[export]\ndef main : int \{\n    return 1\n\}\n")
         t |> equal(publish(root, ["--repo", clone, "--allow-dirty"], out), 1, out)
         t |> success(out |> contains("lua: the conversion exited 1; lua/work/publish_run.log holds its log"), out)
+        t |> equal(git(clone, ["status", "--porcelain"]), "")
+        // the goto lane's conversion failing stops the publish too, and leaves no stamp
+        remove(stamp_path(root))
+        fwrite(path_join(root, "lua/run.das"), "options gen2\nrequire daslib/clargs\n[export]\ndef main : int \{\n    return has_value(get_user_args(), \"goto\") ? 4 : 0\n\}\n")
+        t |> equal(publish(root, ["--repo", clone, "--allow-dirty"], out), 1, out)
+        t |> success(out |> contains("lua: the goto-dispatch conversion exited 4; lua/work/publish_goto_run.log holds its log"), out)
+        t |> success(!fexist(stamp_path(root)), out)
         t |> equal(git(clone, ["status", "--porcelain"]), "")
     }
 }

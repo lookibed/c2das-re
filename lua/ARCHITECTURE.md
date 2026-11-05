@@ -24,7 +24,8 @@ late binding (the source-cut layout), and one module (the single layout).
   `source`, `source-cut` or `single`): the source layout into the tree `work/<stem>/`, its entry
   `work/<stem>/<stem>.das`, the source-cut layout into `work/source-cut/<stem>/`, the single layout into
   `work/single/<stem>/<stem>.das`, a folder each so each run's module caches stay apart (`--switch-dispatch` hands the converter's
-  option on, `lua.c2das` leaving it at `chain`); it reports
+  option on, `lua.c2das` leaving it at `chain`; under `goto` each layout's folder sits under `work/goto/`, so
+  the two conversions and their caches stay apart); it reports
   the numbers of section 4 per layout, an error at the Lua source and line the dumper names.
   `--native` builds each native oracle from the same sources into `work/<stem>_native`; `--run` runs
   the converted interpreter of each layout under the tier `--tier` names (`interp`, the default, or
