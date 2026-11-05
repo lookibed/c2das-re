@@ -31,6 +31,10 @@ struct Sidecar {
     // how a dense switch is dispatched: `chain` (its cases tested in turn) or `goto` (a jump table of
     // das labels, `goto int(_cond) + base`); "" when the key is absent
     switch_dispatch : string
+    // whether converted functions keep das's null and range checks: `safe` (they panic on a null
+    // dereference or an index past its array) or `off` (`unsafe_deref` and
+    // `hint(unsafe_range_check)` on every converted function); "" when the key is absent
+    checks : string
     // the macros clang defines for the dump, each `NAME`, `NAME=value` or `NAME(params)=value`,
     // passed as `-D<entry>`
     defines : array<string>
@@ -71,7 +75,7 @@ struct Sidecar {
 }
 
 //! The keys a sidecar may hold; any other is refused naming it.
-let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -96,6 +100,12 @@ let SWITCH_DISPATCH <- ["chain", "goto"]
 
 //! Whether `mode` is a value of `switch_dispatch`.
 def is_switch_dispatch(mode : string) : bool => has_value(SWITCH_DISPATCH, mode)
+
+//! The values of the `checks` key and of the converter's `--checks`.
+let CHECKS <- ["safe", "off"]
+
+//! Whether `mode` is a value of `checks`.
+def is_checks(mode : string) : bool => has_value(CHECKS, mode)
 
 //! The values of the `layout` key and of the converter's `--layout`.
 let LAYOUTS <- ["source", "source-cut", "single"]
@@ -326,6 +336,17 @@ def private read_inputs(js : JsonValue?; path : string; var side : Sidecar; var 
     }
 }
 
+// a key whose value is one of `modes` into `field`, left "" when the key is absent
+def private read_mode(js : JsonValue?; path, key : string; modes : array<string>; var field : string&; var error : string&) {
+    let value = js?[key] ?? ""
+    if (key_exists(js, key) && !has_value(modes, value)) {
+        let quoted = join([for (m in modes); "\"{m}\""], " or ")
+        error = "{path}: `{key}` is {quoted}, not {write_json(js?[key])}"
+    } else {
+        field = value
+    }
+}
+
 //! Reads a sidecar file; `error` names a file that is not JSON, a key it does not know or a key of
 //! the wrong shape.
 def read_sidecar(path : string; var error : string&) : Sidecar {
@@ -353,30 +374,11 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
     }
     side.stack = int(js?["stack"] ?? 0l)
     side.alloca_limit = int(js?["alloca_limit"] ?? 0l)
-    let param_writes = js?["param_writes"] ?? ""
-    if (key_exists(js, "param_writes") && !is_param_writes(param_writes)) {
-        error = "{path}: `param_writes` is \"in-place\" or \"copy\", not {write_json(js?["param_writes"])}"
-    } else {
-        side.param_writes = param_writes
-    }
-    let loops = js?["loops"] ?? ""
-    if (key_exists(js, "loops") && !is_loops(loops)) {
-        error = "{path}: `loops` is \"range\" or \"while\", not {write_json(js?["loops"])}"
-    } else {
-        side.loops = loops
-    }
-    let first_member = js?["first_member"] ?? ""
-    if (key_exists(js, "first_member") && !is_first_member(first_member)) {
-        error = "{path}: `first_member` is \"addr\" or \"reinterpret\", not {write_json(js?["first_member"])}"
-    } else {
-        side.first_member = first_member
-    }
-    let switch_dispatch = js?["switch_dispatch"] ?? ""
-    if (key_exists(js, "switch_dispatch") && !is_switch_dispatch(switch_dispatch)) {
-        error = "{path}: `switch_dispatch` is \"chain\" or \"goto\", not {write_json(js?["switch_dispatch"])}"
-    } else {
-        side.switch_dispatch = switch_dispatch
-    }
+    read_mode(js, path, "param_writes", PARAM_WRITES, side.param_writes, error)
+    read_mode(js, path, "loops", LOOPS, side.loops, error)
+    read_mode(js, path, "first_member", FIRST_MEMBER, side.first_member, error)
+    read_mode(js, path, "switch_dispatch", SWITCH_DISPATCH, side.switch_dispatch, error)
+    read_mode(js, path, "checks", CHECKS, side.checks, error)
     if (key_exists(js, "layout")) {
         read_layout(js?["layout"], path, side, error)
     }

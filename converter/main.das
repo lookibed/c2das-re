@@ -9,7 +9,7 @@ require pipeline
 require sidecar
 require tiers
 
-//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy] [--loops range|while] [--first-member addr|reinterpret] [--switch-dispatch chain|goto] [--layout source|source-cut|single] [--edge-census] [--no-solid-context]`.
+//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy] [--loops range|while] [--first-member addr|reinterpret] [--switch-dispatch chain|goto] [--layout source|source-cut|single] [--edge-census] [--no-solid-context] [--checks safe|off]`.
 //! Converts one C file into `<dir>/<stem>.das` (default `out/`), several or a manifest's as one
 //! program: by default a module per C file under `<dir>` as the files lie under their common
 //! folder, mutually dependent files one module of fragments (`--layout source`), the cycles among
@@ -53,6 +53,8 @@ struct Args {
     @clarg_name = "no-solid-context"
     @clarg_doc = "write no `options solid_context` in the modules (by default each carries it: a global and a function are reached by index, never looked up by name: Doom under the JIT 3.2-3.9x -> 1.3-1.4x native); only for a module that runs in another context or is patched or reloaded, which the option forbids; overrides the sidecar's solid_context"
     no_solid_context : bool
+    @clarg_doc = "das's checks in the converted functions: safe (the default: a null dereference or an index past its array panics naming the access) or off (every converted function carries `unsafe_deref` and `hint(unsafe_range_check)`, faster under the interpreter and the JIT; a wrong C program then reads garbage or dies by SIGSEGV instead of panicking, and the AOT host keeps its range checks); overrides the sidecar's checks"
+    checks : string = ""
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -94,6 +96,10 @@ def main : int {
         to_log(LOG_ERROR, "c2das: --switch-dispatch is chain or goto, not `{args.switch_dispatch}`; -? for help\n")
         return 2
     }
+    if (!empty(args.checks) && !is_checks(args.checks)) {
+        to_log(LOG_ERROR, "c2das: --checks is safe or off, not `{args.checks}`; -? for help\n")
+        return 2
+    }
     if (!empty(args.layout) && !is_layout(args.layout)) {
         to_log(LOG_ERROR, "c2das: --layout is source, source-cut or single, not `{args.layout}`; -? for help\n")
         return 2
@@ -104,7 +110,7 @@ def main : int {
         to_log(LOG_ERROR, "c2das: {error}\n")
         return 1
     }
-    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry, args.layout, args.edge_census, args.first_member, args.switch_dispatch, args.no_solid_context)
+    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry, args.layout, args.edge_census, args.first_member, args.switch_dispatch, args.no_solid_context, args.checks)
     if (!res.ok) {
         to_log(LOG_ERROR, "c2das: {res.error}\n")
         return 1
