@@ -2123,7 +2123,16 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   default `safe`, under `off` both annotations on every converted function and a line under the
   banner (`converter/tests/test_checks.das`). The risk: a wrong C program reads its neighbor or
   dies by SIGSEGV instead of panicking; the AOT lane keeps its range checks. Doom's sync demos 1-3
-  replay under the JIT with `checks: "off"`. The A/B is next.
+  replay under the JIT with `checks: "off"`.
+  A/B (box PC, same converter, A default, B `checks: "off"` in the program's sidecar, 3 interleaved
+  samples, median, change B against A; data `/root/notes/parallel/p7.0o_ab/`): Doom JIT demo1-3
+  -6.5% / -6.7% / -2.6% (0.302 -> 0.282 s, 0.576 -> 0.537, 0.324 -> 0.315), interpreter -4.6% / -2.9% / -3.8%.
+  Lua (in-process work) JIT fib 30 -10.8%, nbody 20000 -5.0%, binary_trees 12 -3.0%, spectral_norm 100
+  -5.0% (7-sample re-run; 3 samples spread 51%); interpreter -3.4%, -7.5%, -2.3%, +1.6%. Kernels:
+  blit interpreter -5.0%, JIT +3.1%; matmul interpreter +0.7%, JIT +7.7% (spread 5.5%): no gain where
+  the elision pass already proves the indices or LLVM keeps the null test out of the copy loop. The
+  timestamped predictions hit 6 of 18 cells within 25% of the expected change; the Lua JIT cells
+  ran at P7.0p's goto-mode share, not its chain-mode one. Default stays `safe` (ruling 23).
 - **P7.0p The Lua JIT residue after the dispatch rows** (from P7.0b4, place 4): the dispatch chain
   is 62-69% of fib's and nbody's JIT samples (P7.0c3 default, P7.0c2 opt-in); fib 30 stays about
   3.4x native if the chain cost went to zero. The remaining JIT symbols: `[c_union]` and field
