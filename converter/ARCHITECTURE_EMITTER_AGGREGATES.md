@@ -83,8 +83,13 @@ A marshal-only record - one the sidecar lists under `marshal`, by tag or typedef
 memory as bytes at clang's offsets and as a value is the naturally laid out das struct of its
 fields, which carries no layout assertion (`docs/lowering-examples.md` "Packed structs"). Beside the
 struct the emitter writes `read_T(bytes, ofs)`, `write_T(bytes, ofs, v)` and a
-`read_T_f`/`write_T_f` pair per scalar field, each a `crt::memcpy` of the field's C size at its
-offset, so no alignment is assumed and the value side is a plain struct copy. An array field (C
+`read_T_f`/`write_T_f` pair per scalar field, each daslang's builtin `memcpy` of the field's C
+size at its offset, so no alignment is assumed and the value side is a plain struct copy. The size
+is an `int` literal, which selects the builtin over crt's `uint64` `memcpy`: the JIT folds the
+builtin to one unaligned load or store, where `crt::memcpy` is an indirect call per field, 14
+percent of Doom's JIT samples before (`docs/probe-findings.md` F81, `probes/test_stdlib.das`); a
+typed load through `reinterpret` would assume x86-64's unaligned loads, the builtin assumes nothing.
+A copy whose size is the program's (C's own `memcpy`) stays `crt::memcpy`. An array field (C
 reaches one only by decay, `&` or `sizeof`) gets `ptr_T_f(bytes, ofs)`, its decay, the pointer to
 its first element where it lies (a row of a 2-D one): `p->a[i]` is `deref(ptr_T_a(p, 0) + i)` to
 read, store and step, `&p->a[i]` that pointer plus `i`, `&p->a` it reinterpreted; an element is a

@@ -333,12 +333,29 @@ def p2_memory_fixtures(t : T?) {
     p6_pointer_fixtures(t)
 }
 
+// the converted fixture `name` under the JIT, exe and AOT tiers, each as the native build runs
+def each_marshal_tier(t : T?; name : string) {
+    let want = native(name)
+    for (tier in ["jit", "exe", "aot"]) {
+        var out : string
+        let rc = run_tier(path_join(path_join(work_root, name), "{name}.das"), tier, path_join(work_root, "{name}_{tier}"), out, CONVERTED_MODULES)
+        t |> equal(rc, want.rc, "{tier}: {out}")
+        t |> equal(out |> find(want.out) >= 0, true, "{tier}: {out}")
+    }
+}
+
 def p2_marshal_fixtures(t : T?) {
     t |> run("marshal: a sidecar-flagged packed record is bytes in C memory, a natural struct as a value, with generated readers and writers at clang's offsets") @(t : T?) {
         var text : string
         check_fixture(t, "p2_marshal", text)
         has_text(t, text, "struct disk_t \{\n    width : int16\n    ofs : int\n    tag : uint8\n\}")
-        has_text(t, text, "def read_disk_t(bytes : uint8?; ofs : int) : disk_t \{\n    var r : disk_t\n    crt::memcpy(reinterpret<void?>(addr(r.width)), reinterpret<void?>(bytes + (ofs + 0)), uint64(2))")
+        has_text(t, text, "def read_disk_t(bytes : uint8?; ofs : int) : disk_t \{\n    var r : disk_t\n    memcpy(reinterpret<void?>(addr(r.width)), reinterpret<void?>(bytes + (ofs + 0)), 2)\n    memcpy(reinterpret<void?>(addr(r.ofs)), reinterpret<void?>(bytes + (ofs + 2)), 4)\n    memcpy(reinterpret<void?>(addr(r.tag)), reinterpret<void?>(bytes + (ofs + 6)), 1)\n")
+        // each field through daslang's builtin `memcpy` with an `int` size, which the JIT folds to one
+        // load or store; the crt module is no longer needed for it (docs/probe-findings.md F81)
+        has_text(t, text, "    memcpy(reinterpret<void?>(addr(r.p)), reinterpret<void?>(bytes + (ofs + 1)), 8)\n")
+        has_text(t, text, "    var copy = v\n    memcpy(reinterpret<void?>(bytes + (ofs + 2)), reinterpret<void?>(addr(copy)), 4)\n")
+        t |> equal(text |> find("crt::memcpy") < 0 && text |> find("require crt\n") < 0, true, text)
+        each_marshal_tier(t, "p2_marshal")
         has_text(t, text, "def write_disk_t_ofs(bytes : uint8?; ofs : int; v : int)")
         // a packed record holding a pointer is a `var` record parameter of its writer (F3)
         has_text(t, text, "def write_pref_t(bytes : uint8?; ofs : int; var v : pref_t)")
@@ -360,7 +377,8 @@ def p2_marshal_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p2_marshal_rows", text)
         has_text(t, text, "def ptr_node_t_bbox(bytes : uint8?; ofs : int) : int16[4]? \{\n    return reinterpret<int16[4]?>(bytes + (ofs + 2))\n")
-        has_text(t, text, "crt::memcpy(reinterpret<void?>(addr(r.bbox)), reinterpret<void?>(bytes + (ofs + 2)), uint64(16))")
+        has_text(t, text, "memcpy(reinterpret<void?>(addr(r.bbox)), reinterpret<void?>(bytes + (ofs + 2)), 16)")
+        each_marshal_tier(t, "p2_marshal_rows")
         has_text(t, text, "total += int(deref(ptr_node_t_bbox(nodes + i * 22, 0) + j)[k]) * (k + 1)")
         t |> equal(text |> find("read_node_t_bbox") < 0, true, "an array field keeps a copying reader:\n{text}")
     }
@@ -454,6 +472,7 @@ def p6_marshal_fixtures(t : T?) {
     t |> run("marshal: a record field and an array-of-records field are the inner record's bytes through `ptr_T_f`, read, stored, addressed and copied whole") @(t : T?) {
         var text : string
         check_fixture(t, "p6_marshal_records", text)
+        each_marshal_tier(t, "p6_marshal_records")
         has_text(t, text, "struct maptexture_t \{\n    name : uint8[8]\n    masked : int\n    outer : wrap_t\n    patchcount : int16\n    patches : mappatch_t[1]\n\}")
         has_text(t, text, "def ptr_maptexture_t_patches(bytes : uint8?; ofs : int) : uint8? \{\n    return reinterpret<uint8?>(bytes + (ofs + 21))\n")
         // the whole record's reader and writer copy an inner record through its own
