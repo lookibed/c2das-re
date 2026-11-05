@@ -22,9 +22,12 @@ while [ $# -gt 0 ]; do
 done
 work="$(mktemp -d)"
 trap 'rm -rf "${work:?}"' EXIT
-# the executable mappings of every snapshot, once each: start end offset path
-awk '/^# maps/{m=1; next} m && $2 ~ /x/ && NF >= 6 {print $1, $3, $6}' "$file" | sort -u |
-    awk '{split($1, r, "-"); print r[1], r[2], $2, $3}' > "$work/maps"
+# the executable mappings of every snapshot, once each, the last snapshot first: start end offset
+# path. A snapshot lists ascending starts, so a start below the one before begins the next; a range
+# a later library reuses after a dlclose is credited to that library, the first match winning
+awk 'function before(a, b) { return length(a) < length(b) || (length(a) == length(b) && a < b) }
+     /^# maps/{m=1; next} m && $2 ~ /x/ && NF >= 6 {split($1, r, "-"); if (prev != "" && before(r[1], prev)) snap++; prev = r[1]; print snap + 0, r[1], r[2], $3, $6}' "$file" |
+    sort -k1,1nr -s | awk '!seen[$2 FS $3 FS $4 FS $5]++ {print $2, $3, $4, $5}' > "$work/maps"
 awk '/^# maps/{exit} !/^#/' "$file" > "$work/raw"
 
 # name_list <in: "count hexpc" lines> <out: "hexpc TAB name TAB path TAB vaddr TAB count" lines>
@@ -42,18 +45,21 @@ name_list() {
             continue
         fi
         # file offset to virtual address through the LOAD segments
-        readelf -lW "$path" | awk '$1 == "LOAD" {print $2, $3, $5}' > "$work/loads"
-        # nm pads the address: text order is address order
-        { nm -n --defined-only "$path" 2>/dev/null; nm -n -D --defined-only "$path" 2>/dev/null; } |
-            awk '$2 ~ /^[tTwWiI]$/ {a = $1; $1 = ""; $2 = ""; sub(/^  /, ""); print a "\t" $0}' | sort -u > "$work/syms"
+        readelf -lW "$path" 2>/dev/null | awk '$1 == "LOAD" {print $2, $3, $5}' > "$work/loads"
+        # nm pads the address: text order is address order; the size is 0 where nm gives none
+        { nm -n -S --defined-only "$path" 2>/dev/null; nm -n -S -D --defined-only "$path" 2>/dev/null; } |
+            awk '$3 ~ /^[tTwWiI]$/ && NF >= 4 {a = $1; z = $2; $1 = ""; $2 = ""; $3 = ""; sub(/^   /, ""); print a "\t" z "\t" $0; next}
+                 $2 ~ /^[tTwWiI]$/ {a = $1; $1 = ""; $2 = ""; sub(/^  /, ""); print a "\t0\t" $0}' | sort -u > "$work/syms"
         awk -v p="$path" -v loads="$work/loads" -v syms="$work/syms" '
             function hex(s,   i, c, v) { s = tolower(s); sub(/^0x/, "", s); v = 0; for (i = 1; i <= length(s); i++) { c = index("0123456789abcdef", substr(s, i, 1)) - 1; v = v * 16 + c }; return v }
             BEGIN { nl = 0; while ((getline line < loads) > 0) { split(line, f, " "); lo_off[nl] = hex(f[1]); va[nl] = hex(f[2]); sz[nl] = hex(f[3]); nl++ }
-                    ns = 0; while ((getline line < syms) > 0) { t = index(line, "\t"); sa[ns] = hex(substr(line, 1, t - 1)); sn[ns] = substr(line, t + 1); ns++ } }
+                    ns = 0; while ((getline line < syms) > 0) { split(line, q, "\t"); sa[ns] = hex(q[1]); ssz[ns] = hex(q[2]); sn[ns] = substr(line, length(q[1]) + length(q[2]) + 3); ns++ } }
             $1 == p { o = $2 + 0; v = o
                       for (i = 0; i < nl; i++) if (o >= lo_off[i] && o < lo_off[i] + sz[i]) { v = o - lo_off[i] + va[i]; break }
                       l = 0; h = ns - 1; best = -1
                       while (l <= h) { m = int((l + h) / 2); if (sa[m] <= v) { best = m; l = m + 1 } else h = m - 1 }
+                      # past a sized symbol is code nm does not name (a static function of a stripped library)
+                      if (best >= 0 && ssz[best] > 0 && v >= sa[best] + ssz[best]) best = -1
                       printf "%s\t%s\t%s\t%x\t%s\n", $4, best >= 0 ? sn[best] : "?", p, v, $3 }' "$work/located" >> "$2"
     done
 }
