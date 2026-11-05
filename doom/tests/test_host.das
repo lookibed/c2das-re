@@ -14,9 +14,10 @@ require ../../converter/tiers.das
 //! from `main` with the same exit code and daslang's instrumenting profiler prints its summary.
 
 // the stand-in Doom: the four calls the host makes and `gametic`; each update is a tic, the
-// fourth ends in the timedemo's line and the exit callback with -1, as I_Error does
+// fourth ends in the timedemo's line and the exit callback with -1, as I_Error does, unless the
+// argv holds `-never`: then Doom never exits
 let STAND_IN_H = "typedef void (*doom_gettime_fn)(int *sec, int *usec);\ntypedef void (*doom_exit_fn)(int code);\nvoid doom_set_gettime(doom_gettime_fn fn);\nvoid doom_set_exit(doom_exit_fn fn);\nvoid doom_init(int argc, char **argv, int flags);\nvoid doom_force_update(void);\n"
-let STAND_IN_C = "#include <stdio.h>\n#include \"DOOM.h\"\nint gametic = 0;\nstatic doom_exit_fn exit_fn;\nvoid doom_set_gettime(doom_gettime_fn fn) \{ (void)fn; \}\nvoid doom_set_exit(doom_exit_fn fn) \{ exit_fn = fn; \}\nvoid doom_init(int argc, char **argv, int flags) \{ (void)argc; (void)argv; (void)flags; \}\nvoid doom_force_update(void) \{\n    gametic++;\n    if (gametic == 4) \{\n        printf(\"Error: timed 4 gametics in 4 realtics\\n\");\n        exit_fn(-1);\n    \}\n\}\n"
+let STAND_IN_C = "#include <stdio.h>\n#include <string.h>\n#include \"DOOM.h\"\nint gametic = 0;\nstatic int never = 0;\nstatic doom_exit_fn exit_fn;\nvoid doom_set_gettime(doom_gettime_fn fn) \{ (void)fn; \}\nvoid doom_set_exit(doom_exit_fn fn) \{ exit_fn = fn; \}\nvoid doom_init(int argc, char **argv, int flags) \{\n    (void)flags;\n    for (int i = 1; i < argc; i++)\n        if (strcmp(argv[i], \"-never\") == 0)\n            never = 1;\n\}\nvoid doom_force_update(void) \{\n    gametic++;\n    if (gametic == 4 && !never) \{\n        printf(\"Error: timed 4 gametics in 4 realtics\\n\");\n        exit_fn(-1);\n    \}\n\}\n"
 
 // the host and the stand-in converted into a fresh folder: its `doom_main.das`, "" on failure
 def private converted_host(t : T?) : string {
@@ -86,6 +87,19 @@ def test_host_exits(tt : T?) {
             t |> success(out |> contains("host: stopped after 2 tics"), out)
             t |> success(out |> contains("host: timed 2 gametics in "), out)
         }
+    }
+    tt |> run("-tics as the last argument is ignored: the timedemo ends as without it") @(t : T?) {
+        var out : string
+        t |> equal(host_run(entry, "interp", false, ["-timedemo", "demo1", "-tics"], out), 255, out)
+        t |> success(out |> contains("host: timed 4 gametics in "), out)
+    }
+    tt |> run("a Doom that never exits ends after the update cap with exit code 2, through play under -return-from-main") @(t : T?) {
+        var out : string
+        t |> equal(host_run(entry, "jit", false, ["-timedemo", "demo1", "-never"], out), 2, out)
+        t |> success(out |> contains("host: Doom did not exit within 2000000 updates"), out)
+        var returned : string
+        t |> equal(host_run(entry, "jit", false, ["-timedemo", "demo1", "-never", "-return-from-main"], returned), 2, returned)
+        t |> success(returned |> contains("host: Doom did not exit within 2000000 updates"), returned)
     }
     tt |> run("the instrumenting profiler prints its summary under -return-from-main, none through C exit") @(t : T?) {
         var out : string
