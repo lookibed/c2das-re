@@ -2058,6 +2058,24 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   doc says it prohibits AOT and patches; the AOT context is the generated C++, F80, F49; nothing
   in `c_runtime` reloads code or runs in another context, so the patch caveat does not apply). Tested on the fixtures, measured per demo (P7.0b4 step 3). Upstream beside it:
   lookibed/daScript#36.
+  Done (branch `p7.0m-solid-context`): `assemble_module` writes `options solid_context` after
+  `options indenting = 4` in every module of every layout, the `<entry>_link.das` slot module
+  included, a `.das.inc` fragment none (included text); opt-out `--no-solid-context` and the
+  sidecar's `solid_context: false` (default true), for a module another context runs or a patch
+  reloads. Tests: the header in the source, source-cut and single layouts and the slot module, both
+  opt-outs, the sidecar key, the fragments; the tree and cut fixtures (a global of one module written
+  and read in another, the slots written at `[init]`) run under interp, jit, exe and aot. Doom's 39
+  speed modules carry it; the sync build holds demos 1-3 under the JIT. A/B, A main c36ba64, B the
+  branch, box PC, 3 interleaved samples (`/root/notes/parallel/pc-p7.0m-ab.sh`, `p7.0m_ab/`):
+  Doom JIT demo1/2/3 3.86/3.28/3.18x -> 1.30/1.38/1.29x native (spreads under 6%); interp 62.7/63.4/
+  60.3x -> 59.0/59.5/57.6x (1.05-1.06x faster). Lua interp unchanged (0.97-1.03); Lua JIT 0.91-0.99
+  (fib 30 and nbody 20000 6% and 9% slower in a 5-sample re-run, spreads 7-8%; binary_trees 1.09x
+  at 13%). Kernels, B over A: switch_local JIT 5.59x -> 1.02x native, exe 6.34x -> 1.14x; matmul
+  interp 84.4x -> 56.9x; fib_loop flat; blit exe 7% slower (2.05x -> 2.24x, spreads 1-2%, re-run
+  2.17x); va_forward JIT 8-20% slower at 15-21% spread; dispatch_switch interp 1.00, JIT 1.06x;
+  switch_local's aot lane fails to build on both sides (`goto` across an initialization, pre-existing).
+  The JIT and exe slowdowns are unexplained: row P7.0q. The published READMEs (perf, compare, ports) keep
+  their captures: the re-capture is a phase-end item.
 - **P7.0n Constant-size marshal reads through the builtin `memcpy`** (from P7.0b4, place 2): a
   marshal accessor (`read_post_t_topdelta`, `read_patch_t_width`) spells a one-byte read
   `crt::memcpy(addr(r), bytes + ofs, uint64(1))`, an indirect call into dasCRuntime per byte under
@@ -2081,6 +2099,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   as runtime calls (about 1%). After P7.0c3 and P7.0c2 land: re-sample fib and nbody with
   `perf/sampler/` (`--lines` over a `--jit-debug` dll) and open a row per cause, P7.0b3's
   interpreter residue beside it.
+- **P7.0q Where `options solid_context` costs the JIT and the exe** (from P7.0m): the solid build
+  of Lua runs fib 30 6% and nbody 20000 9% slower under the JIT (5 interleaved samples, spreads
+  7-8%, box PC), the blit kernel 7% slower under the exe (spreads 1-2%) and va_forward 8-20% slower
+  under the JIT (spreads 15-21%), while Doom, switch_local and matmul gain. Profile the solid and the
+  non-solid build of each with `perf/sampler` (P7.0b4's method) and read the IR of the hot function
+  under `-jit-no-cache --jit-dump-to` (F82); a daslang cause goes upstream to lookibed/daScript.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
