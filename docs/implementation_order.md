@@ -1923,9 +1923,18 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   plain case, restores plain cases only (the flag cases keep `_flag ||= _cond == K`). `lua/tests`' `spin`
   stand-in returns at once natively and counts forever converted, so the suite-check test's timeout
   verdict no longer depends on the box's speed (it passed in 4.9 s on this box).
-- **P7.0c4 A binary split of the case chain** (candidate; from P7.0b2): a dense switch's case found
-  by a binary split of the chain (7 tests for 83 cases) for builds without the P7.0c2 opt-in;
-  measured against P7.0c3 before it is scheduled.
+- **P7.0c4 Goto as the JIT default, or a chain order fix** (candidate; from P7.0b2, measured by
+  P7.0p place 4): under the JIT LLVM recovers a jump table from P7.0c3's chain for the opcodes up
+  to 0x44 only (`cmp $0x44,%eax; jbe; jmp *%rax`, F88): its switch recovery stops at the first
+  flag-merged case (`_flag ||= _cond == OP_RETURN1`), so the cases above 0x44 (RETURN1 72 and
+  FORLOOP 73 among them, up to EXTRAARG 82) fall through `cmp $0x45; je; cmp $0x46; je; cmp $0x47;
+  jne` and the compare chain. Goto mode (P7.0c2) removes it: fib 30 2.50x -> 2.02x native, nbody
+  20000 1.34x -> 1.05x (box PC, in-process work, 3 interleaved samples). The candidate is one of
+  two, measured against P7.0c3: goto as the default under the JIT (ruling 23 keeps the plain-case
+  form the idiomatic default, so a per-tier default needs a ruling), or the flag cases emitted after
+  the plain ones so every plain `_cond == K` test sits first and the recovery covers all 83 cases.
+  The old candidate, a binary split of the chain (7 tests for 83 cases), stays the interpreter's
+  option for builds without the P7.0c2 opt-in.
 - **P7.0d Wrap casts on 64-bit mixed operands** (ruling (23): default, with the signed-wrap probe). `int64(uint64(a) op uint64(b))` as `a op
   int64(b)`, extending P7.0's `int` fold to lvm's `intop` (OP_ADDI, OP_MUL, bitwise ops): 2.10x
   interp, sites 14/1/5/0. The kernel never overflows (values < 2^28): the fix depends on daslang's
@@ -2092,7 +2101,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   build; Doom demo1 JIT 1.10x -> 1.02x (box PC, spread 12.4%: re-measure). A converter option (CLI
   flag and sidecar field, default off) adds both annotations to every `[c_function]`; the checked
   form stays the default (ruling 23), both modes tested and measured, demo sync re-verified with
-  the flag on (P7.1).
+  the flag on (P7.1). Measured on Lua by P7.0p (box PC, in-process work, 3 interleaved samples;
+  both annotations hand-added to all 776 functions of the single-layout build): fib 30 -3% chain /
+  -10% goto, nbody 20000 -2% / -5%. `luaV_execute` carries 400 `test/je` null-check pairs in 9642
+  instructions against native's 48 in 4770, and the unsafe copy grows to 62.8 KB (the annotations
+  change inlining too, so the number is the net of both); nbody's inlined `luaH_getshortstr` (1.5x
+  native, 3 of its 7 `jit_exception` sites on the node walk) is covered by the same flag.
 - **P7.0p The Lua JIT residue after the dispatch rows** (from P7.0b4, place 4): the dispatch chain
   is 62-69% of fib's and nbody's JIT samples (P7.0c3 default, P7.0c2 opt-in); fib 30 stays about
   3.4x native if the chain cost went to zero. The remaining JIT symbols: `[c_union]` and field
@@ -2100,6 +2114,36 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   as runtime calls (about 1%). After P7.0c3 and P7.0c2 land: re-sample fib and nbody with
   `perf/sampler/` (`--lines` over a `--jit-debug` dll) and open a row per cause, P7.0b3's
   interpreter residue beside it.
+  Done as research (branch `p7.0p-lua-jit-residue`, no converter change; report
+  `/root/notes/research/p7.0p-lua-jit-residue.md`, data `/root/notes/research/p7.0p/`; box PC,
+  in-process work, 3 interleaved samples through `heavy`, spreads at or under 8.2%, clang -O3 the
+  oracle): fib 30 native 0.0367 s, chain 2.50x, goto 2.02x; nbody 20000 chain 1.34x, goto 1.05x.
+  P7.0b4's 10.8x and 5.5x are gone: P7.0c3's one test per dispatch lets LLVM recover a jump table
+  for the opcodes up to 0x44 (F88). Five places (fib chain unless said): (1) `luaV_execute`'s head
+  (startfunc/returning, run twice per Lua call, 3.2M times), 37-40% of its samples, 29 ms of 92
+  against native's 2-4, about half of the excess: `trap = c_volatile_load(L.hookmask)` is an
+  indirect call bound `modifyExternal` after which every live value reloads from the stack (F87;
+  copies without the call: fib -10% chain / -16% goto, nbody -2% / -4%), a null check per link of
+  `cl = ci.func.p.val.gc.cl.l; k = cl.p.k; pc = ci.u.l.savedpc`, and 10 extern slots reloaded per
+  loop entry (42 samples) -> P7.0r; (2) `luaD_precall` 1.8x native plus `das::i_das_ptr_diff` as a
+  leaf call per Lua call (F86, lookibed/daScript#38); (3) 400 `test/je` null-check pairs in
+  `luaV_execute` against native's 48: `unsafe_deref` + range check fib -3% / -10%, nbody -2% / -5%
+  -> P7.0o, no new row; (4) chain mode's fall-through compares for the opcodes above 0x44 (RETURN1
+  72, FORLOOP 73): goto mode fib 2.50x -> 2.02x, nbody 1.34x -> 1.05x -> P7.0c4; (5)
+  `luaH_getshortstr` inlined into nbody's GETFIELD/SETFIELD, 1.5x native on its node-walk null
+  checks -> P7.0o. The opcode bodies run at native speed (1.1x). Explained, of fib chain's 55 ms
+  excess per run: the head 25-27 ms, `luaD_precall` 4.5, the two leaf calls 6.4, fetch + dispatch
+  9-21, RETURN1 3, the bodies 1-2; by edits in copies: the volatile call 9.4 ms, the null checks 3,
+  the goto table 17, all three together about 1.6x native (goto + no volatile call measured 1.67x).
+  Unexplained: how native's 122 unattributed samples (lvm.c:0, hoisted code) split between the head
+  and dispatch, so the head is 2-14x and fetch + dispatch 1.0-1.7x; why the solid build's identical
+  head block runs slower (P7.0q). Not done: binary_trees, spectral_norm, the interpreter residue
+  (P7.0b3). Leftover, the sampler: `symbolize.sh --lines` under-attributes, since binutils
+  `addr2line` fails on the dll's DWARF 5 (form 0x23) and `llvm-addr2line` gives line 0 for merged
+  instructions; `addr_lines.sh` in the data folder reads objdump's line table instead (the candidate
+  fix); and `--jit-debug` cannot be passed to a converted program (lua.c refuses the flag; the debug
+  dll comes from a refused run, cached before argv is parsed, and is copied under the release
+  build's hash name: `dbg_build.sh`).
 - **P7.0q Where `options solid_context` costs the JIT and the exe** (from P7.0m): the solid build
   of Lua runs fib 30 6% and nbody 20000 9% slower under the JIT (5 interleaved samples, spreads
   7-8%, box PC), the blit kernel 7% slower under the exe (spreads 1-2%) and va_forward 8-20% slower
@@ -2109,7 +2153,39 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `interp-copy` runs `--param-writes copy`) that re-runs the cost on every kernel from the tree. Then
   profile the solid and the non-solid build of each with `perf/sampler` (P7.0b4's method) and read
   the IR of the hot function under `-jit-no-cache --jit-dump-to` (F82); a daslang cause goes
-  upstream to lookibed/daScript.
+  upstream to lookibed/daScript. P7.0p's finding on Lua (box PC, in-process work, 3 interleaved
+  samples, spreads under 8.2%): solid +6.3% on fib 30 (0.0916 against 0.0862 s) and +5.6% on nbody
+  20000, visible in the profile as `luaV_execute` +11% self samples and `luaD_precall` -27%, the
+  leaf calls equal. The solid build folds the 7 module globals `luaV_execute` touches
+  (`absentkey` 34 sites, `strupval` 21, `c2das_empty` 14, `LUAI_MAXSTACK` 12, `LUA_HOOKTAILCALL`
+  4, `dummynode_` 3, `luaO_ceillog2_log_2` 2: 90 `jit_get_global_mnh` calls in the no-solid IR)
+  into constants, the F80 gain and real here too (`luaD_precall`, RETURN1 faster), yet LLVM
+  compiles the 45 KB function differently throughout: 6673 of 13531 normalized IR lines differ,
+  9642 against 9787 instructions, 789 against 976 stack reloads, 537 against 549 null checks, and
+  the loss sits in blocks whose instructions are identical in both builds (the head's
+  call-reload chain). No construct, call or check of the output form: no converter row; a
+  dasLLVM-side item with `/root/notes/research/p7.0p/ir/chain.ll` against `ir/nosolid.ll` as its
+  inputs (`llc -print-after` and `llvm-mca` on the head block, `--jit-split-modules 0` to see
+  whether inlining moved). The variant lane above stays this row's tool for the kernels (blit under
+  the exe, va_forward).
+- **P7.0r A JIT-visible volatile load and store** (from P7.0p, place 1): `c_volatile_load(x)` and
+  `c_volatile_store(x, v)` expand to the `crt::c_volatile_load_*`/`c_volatile_store_*` externs
+  (`c_runtime/c_volatile.das`, `dasCRuntime/src/dasCRuntime.cpp`), an indirect call the JIT knows
+  nothing of, bound `modifyExternal`, so after each one every live value reloads from the stack;
+  clang emits one `mov`. Sites: the head of `luaV_execute` (`trap = c_volatile_load(L.hookmask)`,
+  twice per Lua call, 3.2M times in fib 30) and the 47 `updatetrap` sites, 63 in Lua; every C
+  `volatile` access. Measured in situ by copies with the call replaced by the plain read (valid for
+  the benches: no hook is set): fib 30 -10% chain / -16% goto (1.67x native), nbody 20000 -2% /
+  -4% (box PC, in-process work, 3 interleaved samples); repro 2.1x in a tight loop (F87); the
+  call's own samples are half the cost, the reloads after it the other half. The row decides the
+  mechanism: a daslang-side intrinsic the JIT lowers to LLVM `load volatile`/`store volatile`
+  (upstream lookibed/daScript; the extern slot loads hoisted once per function beside it), or an
+  `unsafe` typed `deref` through the object's address on the das side that every tier is proven
+  not to fold or drop (the interpreter folds nothing, the JIT and AOT need the volatile marking),
+  and proves it with `c_runtime/tests/test_c_volatile.das` under interp, jit, exe and aot plus a
+  read-after-store check each tier's optimizer would merge. Default once the semantics hold on
+  every tier (ruling 23: it is the shorter form too); the extern call stays for a width the
+  intrinsic lacks.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
