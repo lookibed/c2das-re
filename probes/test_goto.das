@@ -147,9 +147,11 @@ def test_goto_in_loops(t : T?) {
 
 [test]
 def test_goto_dispatch(t : T?) {
-    t |> run("a computed goto to a label after an `if` whose branch ends in `break` and has no `else` misses it under the interpreter; an `else` keeps it (lookibed/daScript#35, docs/probe-findings.md F60)") @(t : T?) {
+    t |> run("a computed goto to a label after an `if` whose branch ends in `break` and has no `else` misses it under the interpreter; an `else` keeps it (lookibed/daScript#35, the fold of lookibed/daScript#8)") @(t : T?) {
         let bare = daslang_child("goto_fold_bare", FOLD_BARE, false)
-        t |> equal(bare.out == "10 11 \n", false, bare.out)
+        // run(0) lands right, run(1) misses its label and returns what the folded tail leaves
+        t |> equal(bare.rc, 0, bare.out)
+        t |> success(bare.out |> starts_with("10 ") && !(bare.out |> starts_with("10 11 ")), bare.out)
         let guarded = daslang_child("goto_fold_guarded", FOLD_GUARDED, false)
         t |> equal(guarded.out, "10 11 \n")
         let jit = daslang_child_flags("goto_fold_guarded_jit", FOLD_GUARDED, jit_flags())
@@ -160,6 +162,9 @@ def test_goto_dispatch(t : T?) {
         t |> equal(low.out, "1010 2010 1020 1020 1040 1020 1020\n")
         let jit = daslang_child_flags("goto_dispatch_low_jit", DISPATCH_LOW, jit_flags())
         t |> equal(jit.out |> ends_with("1010 2010 1020 1020 1040 1020 1020\n"), true, jit.out)
+        // it compiles; the run crashes on the claimed goto
+        let compiled = daslang_child("goto_dispatch_high_compile", DISPATCH_HIGH, true)
+        t |> equal(compiled.rc, 0, compiled.out)
         let high = daslang_child("goto_dispatch_high", DISPATCH_HIGH, false)
         t |> equal(high.rc != 0 || high.out != "1010 2010 1020 1020 1040 1020 1020\n", true, high.out)
     }
