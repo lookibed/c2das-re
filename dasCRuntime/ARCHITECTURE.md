@@ -90,7 +90,7 @@ which makes the whole body unsafe, and a hand-written caller writes `unsafe`. Pu
 entries (ctype, `abs`, `difftime`, and the libm entries that never set `errno`: `cbrt`, `copysign`,
 `trunc`, `round`) are `SideEffects::none` and safe. A reader through a pointer (`strlen`, `memcmp`,
 `memchr`, `strcmp`, `strncmp`, `strchr`, `strrchr`, `strstr`, `strpbrk`, `strspn`, `atoi`,
-`atol`, `atof`) is `accessExternal`: bound `none`, daslang's optimizer merged two of its calls on
+`atol`, `atof`) is `accessExternal`, which daslang defines as the same bit as `modifyExternal`: bound `none`, daslang's optimizer merged two of its calls on
 the same pointer across a write the program made through another pointer to the same memory, under
 the interpreter and the JIT alike. A bind that may write through a pointer argument (`memcpy`,
 `memmove`, `memset`, the `str*cpy` and `str*cat` family, the `strto*` end pointers, `frexp`'s and
@@ -101,9 +101,11 @@ function was merged on every tier, and under the JIT a caller's local passed to 
 pointer parameter is not `var` kept its bytes as they were. Anything else that reads or writes CRT
 state (`errno`, the `rand` seed, the environment, the clock, the `strerror` buffer, a signal's
 disposition, a `FILE` or a `tm` the CRT owns) is `modifyExternal`: the optimizer may not fold or
-drop it (`docs/probe-findings.md` F85, `probes/test_crt_writes.das`). The volatile loads are too,
-each an extern call the JIT cannot see into, and under AOT an inline body whose `volatile` access
-clang++ keeps. The libm entries glibc reports a domain or range error through `errno` from (`fmod`,
+drop it (`docs/probe-findings.md` F85, `probes/test_crt_writes.das`). The volatile loads are too:
+under the interpreter each is an extern call, under AOT an inline body whose `volatile` access
+clang++ keeps. The JIT reads no memory effect from a bind's flags (an extern call is opaque to it
+whatever they say), so it never calls the volatile forwarders: `c_runtime/c_volatile.das` gives it
+an inlined LLVM `load volatile` or `store volatile` instead (F89). The libm entries glibc reports a domain or range error through `errno` from (`fmod`,
 `fmodf`, `ldexp`, `nextafter`, `hypot`, `expm1`, `log1p`, `remainder`, `erf`, `erfc`, `tgamma`,
 `lgamma`, `fma`) are among them, so a call whose result the program discards, or whose arguments
 are constant, still runs.

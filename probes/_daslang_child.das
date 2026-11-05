@@ -134,3 +134,38 @@ def native_battery(stem : string; flags : array<string>; source : string) : stri
     remove(bin)
     return native
 }
+
+//! A child with `dasCRuntime` and `c_runtime` loaded under the JIT (`tier` "jit") or built as an
+//! executable (`tier` "exe", into `ir` with `_exe` after it), the module's LLVM IR written to `ir`
+//! (`--jit-dump-to`, docs/probe-findings.md F82).
+def runtime_child_ir(name, source, tier, ir : string) : tuple<rc : int; out : string> {
+    var after <- tier == "jit" ? array<string>() : ["-output", "{ir}_exe"]
+    after |> push_from(["--", "--jit-dump", "--jit-dump-to", ir])
+    let flags <- tier == "jit" ? jit_flags() : ["-exe"]
+    return daslang_run(name, source, flags, [for (m in RUNTIME_MODULES); m], "c2das_c_runtime", after)
+}
+
+//! The lines of the IR function the JIT compiled for the das function `name` of `arity` arguments.
+def ir_function(dump, name : string; arity : int) : array<string> {
+    var body : array<string>
+    var inside = false
+    for (l in split(dump, "\n")) {
+        inside = inside || (l |> starts_with("define ") && l |> contains("`{name} {arity}`"))
+        if (inside) {
+            body |> push(l)
+            if (l == "\}") {
+                break
+            }
+        }
+    }
+    return <- body
+}
+
+//! The lines of an IR function that carry `needle`.
+def ir_count(lines : array<string>; needle : string) : int => length([for (l in lines); l; where l |> contains(needle)])
+
+//! The calls of an IR function but a null check's `jit_exception`.
+def ir_calls(lines : array<string>) : int => length([for (l in lines); l; where l |> contains(" call ") && !(l |> contains("@jit_exception"))])
+
+//! The volatile accesses of an IR function in order, `S` a store and `L` a load.
+def ir_volatile_order(lines : array<string>) : string => join([for (l in lines); l |> contains("store volatile") ? "S" : "L"; where l |> contains(" volatile ")], "")

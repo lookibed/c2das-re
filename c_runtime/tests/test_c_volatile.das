@@ -85,3 +85,4 @@ def test_c_volatile(t : T?) {
         t |> equal(program_output(jit.out), "7\n", jit.out)
     }
 }
+
