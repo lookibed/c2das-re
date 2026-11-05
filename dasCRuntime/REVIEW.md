@@ -11,11 +11,13 @@ defect.** Logic belongs in `c_runtime/` (das), never here.
 sets `unsafeOperation = true` on it.**
 
 **A diff that adds or changes an `addExtern` registers it `SideEffects::none` only when the
-call reads nothing but its arguments and changes nothing but its return value,
-`SideEffects::modifyArgumentAndExternal` when it may write through a pointer argument (a
-destination buffer, an out-parameter, an end pointer, memory it frees or moves), and
-`SideEffects::modifyExternal` otherwise - `errno`, the `rand` seed, the environment, the clock,
-streams and memory all count; no other `SideEffects` value.**
+call reads nothing but its scalar arguments and changes nothing but its return value;
+`SideEffects::modifyArgumentAndExternal` when it may write memory the program can name through a
+pointer argument (a destination buffer, an out-parameter, an end pointer, a block it reallocates
+or frees); `SideEffects::accessExternal` when it reads through a pointer argument and writes
+nothing; and `SideEffects::modifyExternal` otherwise - `errno`, the `rand` seed, the environment,
+the clock and an opaque handle the CRT owns (a `FILE`, the `tm` `localtime` returns) all count; no
+other `SideEffects` value.**
 
 **A forwarder spells each CRT integer type as the fixed-width type of the same width and
 signedness on the building platform (`size_t` as `uint64_t`, `long` as `int64_t`), each `char`
