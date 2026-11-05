@@ -52,7 +52,9 @@ type otherwise); each group stands after `label base + v - lo:  // case v` for e
 and at `default`, or before the loop's closing `break` when the switch has none, stand a label per
 value of [lo, hi] no case holds and `label D`. A plain case keeps its `if (_cond == v)`, a flag
 case its `_flag ||=` lines, so the text still names every case; under the jump no case test runs
-before the matching one. A goto into another case group jumps straight to the das label put before
+before the matching one; the jump lands on a group whose test holds, since the guard keeps
+every other value out and each value's label stands before its own group, so a failing test there,
+which would fall into the next group, never runs. A goto into another case group jumps straight to the das label put before
 the label's `_flag ||= _gotoN == k` line: no re-dispatch label, no chain walk, no sentinel, and
 every case test reads `_cond == v` alone; `_gotoN` still selects and clears the split. Every group's
 branch ends in `else { c_label_end() }`: daslang's optimizer moves what follows an `if` with no
