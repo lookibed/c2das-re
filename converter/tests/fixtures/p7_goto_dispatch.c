@@ -49,12 +49,34 @@ static int both(int x, int n) {
     switch (n % 4) { case 0: do { r += 10; case 3: r += 10; case 2: r += 10; case 1: r += 10; } while ((n -= 4) > 0); }
     return r;
 }
+static int wide_low(long long x) { switch (x) { case -3000000008LL: return 1; case -3000000007LL: return 2; case -3000000006LL: return 3; case -3000000005LL: return 4; case -3000000004LL: return 5; case -3000000003LL: return 6; case -3000000002LL: return 7; case -3000000001LL: return 8; } return 0; }
+static int entered(int x, int k) {
+    int r = 0;
+    if (k) goto inside;
+    switch (x) { case 0: r = 1; break; case 1: r = 2; break; case 2: r = 3; break; case 3: r = 4; break; case 4: r = 5; break; case 5: r = 6; break; case 6: inside: r += 7; break; case 7: r = 8; break; }
+    return r;
+}
+static int mid(int x) {
+    int r = 0;
+    switch (x) { case 0: r = 1; break; case 1: r = 2; goto mid; case 2: r = 3; break; case 3: r = 4; break; case 4: r = 5; break; case 5: r += 1; break; mid: r += 50; break; case 6: r = 7; break; case 7: r = 8; break; }
+    return r;
+}
+static int relabel(int x) {
+    int r = 0, n = 0;
+again:
+    n++;
+    switch (x) { case 0: r += 1; break; case 1: r += 2; goto shared; case 2: r += 3; break; case 3: r += 4; break; case 4: r += 5; break; case 5: shared: r += 10; break; case 6: if (n < 3) goto again; r += 100; break; case 7: r += 8; break; }
+    return r * 10 + n;
+}
+static int sparse_shared(int x) { int r = 0; switch (x) { case 1: r = 1; goto shared; case 50: shared: r += 5; break; case 900: r = 9; break; } return r; }
 int main(void) {
     unsigned char code[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 200};
     int ok = run(code, 12) == 392 && sparse(5) + sparse(99) * 10 + sparse(3) * 100 == 64;
     ok = ok && ints(3) + ints(6) * 10 + ints(11) * 100 + ints(12) * 1000 + ints(-5) * 10000 == 801;
     ok = ok && fall(0) == 3 && fall(3) == 4 && small(4) == 9 && wide(1099511627779LL) == 4 && uints(5) == 5 && uints(9) == 0;
     ok = ok && duff(13) == 13 && nested(3, 0) == 4 && nested(7, 6) == 16 && nested(7, 99) == 19 && nested(9, 0) == 0;
-    ok = ok && both(3, 6) == 64;
+    ok = ok && both(3, 6) == 64 && wide_low(-3000000005LL) == 4 && entered(6, 1) == 7 && entered(2, 0) == 3;
+    ok = ok && mid(1) == 52 && mid(5) == 1 && relabel(1) == 121 && relabel(6) == 1003;
+    ok = ok && sparse_shared(1) == 6 && sparse_shared(50) == 5 && sparse_shared(900) == 9;
     return ok ? 0 : 1;
 }
