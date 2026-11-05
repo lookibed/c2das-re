@@ -100,7 +100,7 @@ class CVolatileLoadMacro : AstCallMacro {
 //! The JIT's load: a generic, so each instance lands in the das module of its caller and the
 //! JIT's per-module partitions (`--jit-split-modules`, the cached DLL's default) still inline the
 //! one `load volatile` its `[llvm_code]` generator emits; the body is the read on every other path.
-[llvm_code(name = "c_volatile::load")]
+[llvm_code(name = "c_volatile::load", version = 1)]
 def c_volatile_load_jit(x : auto(TT) const&) : TT -const -& => c_volatile_read(x)
 
 //! `bool` written as its byte: the JIT rejects a reinterpret of a `bool` to `uint8` (an `i1` to
@@ -115,7 +115,7 @@ def c_volatile_store(var x : bool&; v : bool) {
 //! its size (a pointer or a function value as its eight bytes). A generic for
 //! the reason `c_volatile_load_jit` is one: under the JIT its `[llvm_code]` generator emits one
 //! `store volatile` in the caller's module.
-[llvm_code(name = "c_volatile::store")]
+[llvm_code(name = "c_volatile::store", version = 1)]
 def c_volatile_store(var x : auto(TT)&; v : TT) {
     static_assert(typeinfo sizeof(type<TT>) == 1 || typeinfo sizeof(type<TT>) == 2 || typeinfo sizeof(type<TT>) == 4 || typeinfo sizeof(type<TT>) == 8,
         "c_volatile_store: a scalar, a pointer or a function value")

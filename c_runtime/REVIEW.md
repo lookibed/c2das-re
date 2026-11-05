@@ -20,6 +20,10 @@ in `docs/lowering-examples.md` or `docs/stdlib-examples.md`.
 `converter/tests/fixtures/` (repo root), no `docs/probe-findings.md` row and no `docs/` example
 calls tests it by a direct call in the piece's fixture test.**
 
+**A diff that changes what a generator of `c_runtime/c_volatile_jit.das` (repo root) emits also
+increments the `version` argument of every `[llvm_code]` site naming that generator.** The JIT's
+DLL cache key does not see generator code, so without the bump a warm cache serves the old code.
+
 **Never weaken `REVIEW.das` - fix what it flags instead.**
 
 **A diff that makes a piece's function, or code a piece's macro generates, store on the das heap
