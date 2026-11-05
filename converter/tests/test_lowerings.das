@@ -174,7 +174,24 @@ def test_lowerings(t : T?) {
     p8_refusal_fixtures(t)
     p7_readable_fixtures(t)
     p7_goto_into_fixtures(t)
+    p7_crt_writes_fixtures(t)
     rmdir_rec(work_root)
+}
+
+def p7_crt_writes_fixtures(t : T?) {
+    t |> run("CRT calls that write through a pointer, each in a helper on its caller's local, reach the caller under interp, jit, exe and aot as natively (F85)") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_crt_writes", text)
+        let want = native("p7_crt_writes")
+        for (tier in ["jit", "exe", "aot"]) {
+            var out : string
+            let rc = run_tier(path_join(path_join(work_root, "p7_crt_writes"), "p7_crt_writes.das"), tier, path_join(work_root, "p7_crt_writes_{tier}"), out, CONVERTED_MODULES)
+            t |> equal(rc, want.rc, "{tier}: {out}")
+            // the JIT's `info` lines and the aot host link's linker warnings are no program output
+            let program = join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] ") || ln |> starts_with("/usr/bin/ld:") || ln |> contains("): warning: "))], "\n")
+            t |> equal(program, want.out, tier)
+        }
+    }
 }
 
 def p2_fixtures(t : T?) {
