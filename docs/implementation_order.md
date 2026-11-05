@@ -2084,6 +2084,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `memcpy(dst, src, N)` with an `int` size (the builtin, not crt's `uint64` overload) or a typed
   load for a constant size; Doom demo1 JIT 1.30x -> 1.10x (box PC). Shorter and faster, so the
   default; tested on the marshal fixtures, measured on the kernel and the demo.
+  Done (branch `p7.0n-builtin-memcpy`): every marshal reader and writer copies through the builtin `memcpy` with an `int` size (62 Doom sites, 0 left; no `require crt` for it); probe `test_stdlib.das`; JIT/exe/AOT runs of three marshal fixtures. A/B on main's build (no solid context), box PC, 3 samples interleaved, median and spread: Doom JIT demo1 1.069 s ±3% -> 1.020 s ±3% (1.05x; 3.86x -> 3.69x native), demo2 1.684 ±6% -> 1.541 ±9% (1.09x), demo3 0.954 ±2% -> 1.002 ±11% (0.95x, inside the spread); the interpreter 0.99-1.01x. The 1.30x -> 1.10x of P7.0b4 was on the solid build, where the call was 14% of the samples; with P7.0m merged it wants a re-measure. perf/kernels has no marshal-read kernel.
 - **P7.0o Speed opt-in: `unsafe_deref` and `hint(unsafe_range_check)` on `[c_function]`** (from
   P7.0b4, place 3; P7.1's O2 and O3, now measured): per-pixel `null_check` on `dest`,
   `dc_source + x`, `dc_colormap + x` (a GEP result is never provably non-null) and fixed-array
