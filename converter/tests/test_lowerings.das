@@ -353,6 +353,8 @@ def p2_marshal_fixtures(t : T?) {
         // each field through daslang's builtin `memcpy` with an `int` size, which the JIT folds to one
         // load or store; the crt module is no longer needed for it (docs/probe-findings.md F81)
         has_text(t, text, "    memcpy(reinterpret<void?>(addr(r.p)), reinterpret<void?>(bytes + (ofs + 1)), 8)\n")
+        has_text(t, text, "    var r : int\n    memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + (ofs + 2)), 4)\n")
+        has_text(t, text, "    memcpy(reinterpret<void?>(bytes + (ofs + 0)), reinterpret<void?>(addr(copy.width)), 2)\n")
         has_text(t, text, "    var copy = v\n    memcpy(reinterpret<void?>(bytes + (ofs + 2)), reinterpret<void?>(addr(copy)), 4)\n")
         t |> equal(text |> find("crt::memcpy") < 0 && text |> find("require crt\n") < 0, true, text)
         each_marshal_tier(t, "p2_marshal")
