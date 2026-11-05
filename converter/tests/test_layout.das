@@ -76,15 +76,11 @@ def private agrees(t : T?; paths : array<string>; das_path, tier, name : string)
     t |> equal(native.built, true, native.output)
     var out : string
     let rc = run_tier(das_path, tier, path_join(work_root, "{name}_{tier}"), out, CONVERTED_MODULES)
-    // the JIT reports its compilation on `info` lines among the program's output
-    out = join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
+    // the JIT reports its compilation on `info` lines among the program's output, and the aot tier's
+    // host link its linker's warnings (`/usr/bin/ld: ...`, `<object>:(<section>): warning: ...`)
+    out = join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] ") || ln |> starts_with("/usr/bin/ld:") || ln |> contains("): warning: "))], "\n")
     t |> equal(rc, native.rc, out)
-    // the aot tier links its host first, and the linker's warnings come before the program's output
-    if (tier == "aot") {
-        t |> success(out |> ends_with(native.output), out)
-    } else {
-        t |> equal(out, native.output)
-    }
+    t |> equal(out, native.output)
 }
 
 // the tree's modules in the source layout each carry `options solid_context` once in the header,
