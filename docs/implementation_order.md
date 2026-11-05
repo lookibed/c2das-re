@@ -2205,6 +2205,14 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   read-after-store check each tier's optimizer would merge. Default once the semantics hold on
   every tier (ruling 23: it is the shorter form too); the extern call stays for a width the
   intrinsic lacks.
+  Done (branch `p7.0r-volatile`, converter output unchanged): dasLLVM's `[llvm_code]` rail is the
+  mechanism, no upstream change (F89: `accessExternal` is `modifyExternal`'s bit; a das `deref`
+  folds on the JIT and AOT). Under the JIT `c_volatile_load` and `c_volatile_store` are generics
+  whose generated body is one inlined `load volatile`/`store volatile`, generic so the split build
+  of the cached DLL inlines them too; the interpreter and AOT keep the forwarders; `bool` keeps them
+  everywhere (lookibed/daScript#41). A/B against main, box PC, in-process work, medians: Lua JIT fib
+  30 chain 0.90x, goto 0.87-0.89x, nbody 20000 chain 1.00x, goto 0.96x; interpreter 0.98-1.01x; the
+  F87 repro 0.193 -> 0.045 s (clang 0.090); Doom demo1 JIT 1.01x (no volatile site).
 - **P7.0s Fused loops for C89 shapes** (ruling 33 item 3, the Rust reference diff rows 13-15; report
   `/root/notes/research/r33-rust-reference-diff.md`): a counted `for` whose counter is declared before
   the loop and dead after it takes the range loop (Rust's liveness walk; same C: h264bsd 0 range loops
