@@ -1889,6 +1889,21 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   interpreter time; 1.31-1.82x under the JIT on the four benches); under the interpreter it needs
   the daslang fix for lookibed/daScript#35 or a probe-guarded shape. OWNER DECISION: its place in
   the order now that ruling 29's four items are done.
+  Done (branch `p7.0c2-goto-dispatch`): `switch_dispatch` `goto` (sidecar key, `--switch-dispatch`,
+  `lua/run.das --switch-dispatch`; `chain` the default, `lua.c2das` unchanged) gives a dense switch
+  (8 or more values in `int`'s range filling half of [lo, hi], no group falling into the next, not
+  spelled open) a bounds guard and `goto _cond + (base - lo)`, a label per value, holes and the
+  out-of-range target at `default` or the loop's end; a goto into another case jumps to its label's
+  own das label (no re-dispatch, no sentinel). The interpreter runs it as the JIT does: the probe
+  (`probes/test_goto.das` `test_goto_dispatch`) showed daScript#35 to be #8's fold, which an `else`
+  on every case branch avoids, and lvm's segfault the loop's label claim (F60), which numbering the
+  table below every C label avoids. One sample, box PC, in-process work, default vs opt-in on the
+  same commit (`/root/notes/parallel/pc-p7.0c2-ab.sh`; the 3-sample run is owed): interpreter fib 30
+  8.09 -> 4.16 s (1.94x), binary_trees 12 6.59 -> 4.38 s (1.50x), nbody 20000 6.08 -> 4.21 s (1.44x),
+  spectral_norm 100 2.96 -> 1.80 s (1.65x); JIT 1.33x, 1.03x, 1.15x, 1.30x. `dispatch_switch`'s
+  composed program under the interpreter 22.3 -> 6.4 ms a run (3.5x; 121x -> 35x native), under
+  the JIT 0.151 -> 0.177 ms (0.85x, one sample). Not a perf lane yet: perf's lanes carry the
+  `--param-writes`, `--loops` and `--first-member` options only.
 - **P7.0c3 One `_goto` test per dispatch** (default; from P7.0b2): the matched-flag loop tests
   `_goto == 0` once per dispatch instead of once per case (about 1.28x fib, 1.13x binary_trees);
   for every build, the opt-in P7.0c2 above it.

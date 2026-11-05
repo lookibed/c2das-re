@@ -42,7 +42,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `stack` and `alloca_limit`; `param_writes`, `in-place` or `copy`, the parameter write mode, any
   other value refused naming the key; `loops`, `range` or `while`, how a canonical counting `for` is
   spelled, any other value refused naming the key; `first_member`, `addr` or `reinterpret`, how the
-  address of a member at offset 0 is spelled, any other value refused naming the key; `layout`,
+  address of a member at offset 0 is spelled, and `switch_dispatch`, `chain` or `goto`, how a dense switch dispatches, each other value refused naming the key; `layout`,
   `source`, `source-cut` or `single`, the module layout of a program of several files, or an object
   of `mode` (one of those), `threshold` (a count), `keep_together` (symbols and lists of file
   stems), `cut` (symbols) and `profile` (a file beside the sidecar), the cycle cut's choices, any
@@ -115,7 +115,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   over the sidecar's `loops` and refuses any other value the same way. `--first-member` chooses how
   the address of a member at offset 0 is spelled: `addr`, the default and the idiomatic form,
   `addr(p.f)`; `reinterpret`, the record's pointer reinterpreted, which the interpreter runs faster
-  (`ARCHITECTURE_EMITTER_AGGREGATES.md`); it wins over the sidecar's `first_member` the same way.
+  (`ARCHITECTURE_EMITTER_AGGREGATES.md`); it wins over the sidecar's `first_member` the same way, as `--switch-dispatch` (`chain`, the default, or `goto`, the jump table of `ARCHITECTURE_EMITTER_CONTROL.md`) over `switch_dispatch`.
 - `benchmarks/bench_for_shapes.das` - the loop-shape race behind section 4
   (`ARCHITECTURE_EMITTER.md`), run with `dastest -- --bench` under the interpreter and
   under `-jit`.
@@ -125,13 +125,13 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `tests/test_cli.das` - `main.das` run as a child process over `tests/fixtures/p4_param_writes.c`:
   `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2; over
   `tests/fixtures/p7_loops.c`: `--loops range` and `while` reach the emitter, and a bad value
-  exits 2, as `--first-member` over `tests/fixtures/p7_first_member.c`; over `tests/fixtures/p5_layout_cut/`: `--layout source`, `source-cut` and `single` reach the
+  exits 2, as `--first-member` over `tests/fixtures/p7_first_member.c` and `--switch-dispatch` over `tests/fixtures/p7_goto_dispatch.c`; over `tests/fixtures/p5_layout_cut/`: `--layout source`, `source-cut` and `single` reach the
   converter, and a bad value or the old name `scc` exits 2; and over
   `tests/fixtures/p4_main_args.c`: `--arg` reaches the C `argv` under `interp` as the native
   build's arguments do, under `jit`, under `exe` and under `aot`.
 - `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list,
   its function-like entries and the shapes it refuses, the `over_indexed` and `padded` lists and the
-  shapes they refuse, the `loops`, `first_member` and `layout` values (the latter as a mode and as an object) and the ones
+  shapes they refuse, the `loops`, `first_member`, `switch_dispatch` and `layout` values (the latter as a mode and as an object) and the ones
   they refuse, `include_dirs` and `program_root` read beside the sidecar and the shapes they
   refuse, and an unknown key.
 - `tests/test_tier_facts.das` - the das facts the emitter relies on, each a program run under the
