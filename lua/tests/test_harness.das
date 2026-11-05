@@ -230,9 +230,12 @@ def test_switch_dispatch(t : T?) {
         t |> success(!empty(root))
         var out : string
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua", "--layout", "single", "--switch-dispatch", "goto"]), out), 0, out)
-        t |> success(fread(path_join(root, "lua/work/single/lua/lua.das")) |> contains("goto _cond + 1\n"), out)
+        // the goto conversion lands under work/goto/, beside the default one, never over it
+        t |> success(fread(path_join(root, "lua/work/goto/single/lua/lua.das")) |> contains("goto _cond + 1\n"), out)
+        t |> success(!fexist(path_join(root, "lua/work/single/lua/lua.das")), out)
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua", "--layout", "single"]), out), 0, out)
         t |> success(!(fread(path_join(root, "lua/work/single/lua/lua.das")) |> contains("goto _cond")), out)
+        t |> success(fread(path_join(root, "lua/work/goto/single/lua/lua.das")) |> contains("goto _cond + 1\n"), out)
         rmdir_rec(root)
     }
 }
