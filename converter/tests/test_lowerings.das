@@ -1795,6 +1795,9 @@ def p7_goto_dispatch_fixtures(t : T?) {
         // an inner switch's labels below the outer one's
         has_text(t, text, "        goto _cond + 10\n")
         has_text(t, text, "                goto _cond2 + 1\n")
+        // an open switch beside a jump table in a function without C labels numbers after the table
+        has_text(t, text, "        label 9:  // no case: switch end\n        break\n")
+        has_text(t, text, "    label 11:  // case 0\n    c_label_end()\n    label 15:  // do\n")
         // sparse, falling through, under 8 values, past int and Duff's device keep their forms
         has_text(t, text, "    \} elif (_cond == 2) \{\n        return 3\n")
         for (fn in ["fall", "small", "wide", "duff"]) {

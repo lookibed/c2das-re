@@ -4189,6 +4189,8 @@ def private number_restarts(var em : Emitter; plan : LabelPlan) {
     if (count == 0) {
         return
     }
+    // the open lowering's labels number after these too, a function with no C label included
+    em.label_count = max(em.label_count, count)
     let names <- [for (name in keys(em.labels)); name]
     for (name in names) {
         em.labels[name] = em.labels[name] + count
