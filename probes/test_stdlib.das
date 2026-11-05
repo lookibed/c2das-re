@@ -14,8 +14,9 @@ def cmp_desc(a, b : void?) : int {
 }
 
 // a marshal accessor's reads and write as the builtin `memcpy` with an `int` size, `crt` in scope
-// (bytes 1..16: the byte at 3 is 4, the int at 1 is 0x05040302 = 84148994, and 1.5 back)
-let private BUILTIN_MEMCPY = "options gen2\nrequire crt\nrequire c_runtime/c_function\n\n[c_function]\ndef read_one(bytes : uint8?; ofs : int) : uint8 \{\n    var r : uint8\n    memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + ofs), 1)\n    return r\n\}\n\n[c_function]\ndef read_four(bytes : uint8?; ofs : int) : int \{\n    var r : int\n    memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + ofs), 4)\n    return r\n\}\n\n[c_function]\ndef write_eight(bytes : uint8?; ofs : int; v : double) \{\n    var copy = v\n    memcpy(reinterpret<void?>(bytes + ofs), reinterpret<void?>(addr(copy)), 8)\n\}\n\n[export]\ndef main \{\n    var buf : uint8[16]\n    for (i in range(16)) \{\n        buf[i] = uint8(i + 1)\n    \}\n    let p = unsafe(addr(buf[0]))\n    write_eight(p, 5, 1.5lf)\n    var d : double\n    unsafe \{\n        memcpy(addr(d), p + 5, 8)\n    \}\n    print(\"\{read_one(p, 3)\} \{read_four(p, 1)\} \{d\}\\n\")\n\}\n"
+// (bytes 1..16: the byte at 3 is 4, the int at 1 is 0x05040302 = 84148994, 1.5 back, and the int16 at
+// 0 read through crt::memcpy's uint64 size beside them, 0x0201 = 513)
+let private BUILTIN_MEMCPY = "options gen2\nrequire crt\nrequire c_runtime/c_function\n\n[c_function]\ndef read_one(bytes : uint8?; ofs : int) : uint8 \{\n    var r : uint8\n    memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + ofs), 1)\n    return r\n\}\n\n[c_function]\ndef read_four(bytes : uint8?; ofs : int) : int \{\n    var r : int\n    memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + ofs), 4)\n    return r\n\}\n\n[c_function]\ndef write_eight(bytes : uint8?; ofs : int; v : double) \{\n    var copy = v\n    memcpy(reinterpret<void?>(bytes + ofs), reinterpret<void?>(addr(copy)), 8)\n\}\n\n[c_function]\ndef read_crt(bytes : uint8?; ofs : int) : int16 \{\n    var r : int16\n    crt::memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + ofs), uint64(2))\n    return r\n\}\n\n[export]\ndef main \{\n    var buf : uint8[16]\n    for (i in range(16)) \{\n        buf[i] = uint8(i + 1)\n    \}\n    let p = unsafe(addr(buf[0]))\n    write_eight(p, 5, 1.5lf)\n    var d : double\n    unsafe \{\n        memcpy(addr(d), p + 5, 8)\n    \}\n    print(\"\{read_one(p, 3)\} \{read_four(p, 1)\} \{d\} \{read_crt(p, 0)\}\\n\")\n\}\n"
 
 [test]
 def test_stdlib(t : T?) {
@@ -34,9 +35,9 @@ def test_stdlib(t : T?) {
     t |> run("memcpy with an `int` size is daslang's builtin beside crt's `uint64` one, right under the interpreter and the JIT, which folds a one-byte copy to one unaligned load (docs/probe-findings.md F81, F82)") @(t : T?) {
         let ir = "{temp_directory_result() as value}/c2das_probe_builtin_memcpy.ll"
         let interp = runtime_child("builtin_memcpy", BUILTIN_MEMCPY, false)
-        t |> equal(interp.out, "0x4 84148994 1.5\n")
+        t |> equal(interp.out, "0x4 84148994 1.5 513\n")
         let jit = daslang_run("builtin_memcpy_jit", BUILTIN_MEMCPY, jit_flags(), [for (m in RUNTIME_MODULES); m], "c2das_probe", ["--", "--jit-dump", "--jit-dump-to", ir])
-        t |> equal(jit.out |> ends_with("0x4 84148994 1.5\n"), true, jit.out)
+        t |> equal(jit.out |> ends_with("0x4 84148994 1.5 513\n"), true, jit.out)
         let dump = fread(ir)
         let at = dump |> find("read_one")
         let body = at >= 0 ? slice(dump, at, dump |> find("\n\}\n", at)) : ""
