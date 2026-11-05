@@ -222,6 +222,21 @@ def test_run_stand_in(t : T?) {
     }
 }
 
+[test]
+def test_switch_dispatch(t : T?) {
+    t |> run("--switch-dispatch goto reaches the converter: a dense switch of the program takes the jump table, which the default leaves out") @(t : T?) {
+        let cases = join([for (v in range(8)); "case {v}: return {v + 40};"], " ")
+        let root = stand_in_root("c2das_lua_dispatch", "#include \"lua.h\"\nstatic int pick(int x) \{ switch (x) \{ {cases} \} return 0; \}\nint lua_answer(void) \{ return pick(1); \}\n")
+        t |> success(!empty(root))
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua", "--layout", "single", "--switch-dispatch", "goto"]), out), 0, out)
+        t |> success(fread(path_join(root, "lua/work/single/lua/lua.das")) |> contains("goto _cond + 1\n"), out)
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua", "--layout", "single"]), out), 0, out)
+        t |> success(!(fread(path_join(root, "lua/work/single/lua/lua.das")) |> contains("goto _cond")), out)
+        rmdir_rec(root)
+    }
+}
+
 // a stand-in interpreter whose stream differs from run to run: it appends a byte to the file at
 // `path` and prints its last argument, to stderr on an odd run (the native build's, which runs
 // first) and to stdout on an even one: the merged outputs agree, the streams do not
