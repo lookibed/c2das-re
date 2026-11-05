@@ -123,7 +123,7 @@ def private compile_errors(das_path : string) : string {
 }
 
 // why an option value given to `convert` is refused, "" when each is empty or a mode
-def private option_error(param_writes, loops, layout, first_member : string; switch_dispatch : string = "") : string {
+def private option_error(param_writes, loops, layout, first_member : string; switch_dispatch : string = ""; checks : string = "") : string {
     if (!empty(param_writes) && !is_param_writes(param_writes)) {
         return "--param-writes is in-place or copy, not `{param_writes}`"
     }
@@ -136,13 +136,16 @@ def private option_error(param_writes, loops, layout, first_member : string; swi
     if (!empty(switch_dispatch) && !is_switch_dispatch(switch_dispatch)) {
         return "--switch-dispatch is chain or goto, not `{switch_dispatch}`"
     }
+    if (!empty(checks) && !is_checks(checks)) {
+        return "--checks is safe or off, not `{checks}`"
+    }
     return !empty(loops) && !is_loops(loops) ? "--loops is range or while, not `{loops}`" : ""
 }
 
 // the sidecar of a conversion, read from `sidecar` ("" for none), the options' values over its
 // keys; `error` the refusal of the options, the output folder or the sidecar
-def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var error : string&; layout : string = ""; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false) : Sidecar {
-    error = option_error(param_writes, loops, layout, first_member, switch_dispatch)
+def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var error : string&; layout : string = ""; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = "") : Sidecar {
+    error = option_error(param_writes, loops, layout, first_member, switch_dispatch, checks)
     if (empty(error) && !mkdir_rec(out_dir) && !stat(out_dir).is_dir) {
         error = "cannot create {out_dir}"
     }
@@ -168,6 +171,9 @@ def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var
     }
     if (no_solid_context) {
         side.solid_context = false
+    }
+    if (!empty(checks)) {
+        side.checks = checks
     }
     return <- side
 }
@@ -291,9 +297,9 @@ def private emit_modules(var tu : CirTu; owners : array<int>; plan : LayoutPlan;
     res.ok = true
 }
 
-def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false) : ConvertResult {
+def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = "") : ConvertResult {
     var res : ConvertResult
-    let side <- conversion_setup(out_dir, find_sidecar(c_path, sidecar_path), param_writes, loops, res.error, "", first_member, switch_dispatch, no_solid_context)
+    let side <- conversion_setup(out_dir, find_sidecar(c_path, sidecar_path), param_writes, loops, res.error, "", first_member, switch_dispatch, no_solid_context, checks)
     if (!empty(res.error)) {
         return <- res
     }
@@ -346,14 +352,16 @@ def private program_sidecar(c_paths : array<string>; given : string; var sidecar
 //! file is `convert` of it, one module in either layout. With `census` the source layouts also write
 //! the edge census of the program's cycles (`EDGE_REPORT`); one file or the single layout is refused.
 //! With `no_solid_context` no module carries `options solid_context` (the sidecar's `solid_context`).
-def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main"; layout : string = ""; census : bool = false; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false) : ConvertResult {
+//! With `checks` `off` every converted function drops das's null and range checks (the sidecar's
+//! `checks`).
+def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main"; layout : string = ""; census : bool = false; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = "") : ConvertResult {
     if (length(c_paths) == 1 && entry == "main") {
         if (census || (!empty(layout) && !is_layout(layout))) {
             var refused : ConvertResult
             refused.error = census ? "--edge-census reports the cycles among a program's files; one file has none" : option_error("", "", layout, "")
             return <- refused
         }
-        return <- convert(c_paths[0], out_dir, target_name, clang, sidecar_path, param_writes, loops, first_member, switch_dispatch, no_solid_context)
+        return <- convert(c_paths[0], out_dir, target_name, clang, sidecar_path, param_writes, loops, first_member, switch_dispatch, no_solid_context, checks)
     }
     var res : ConvertResult
     res.error = refused_files(c_paths, out_dir)
@@ -365,7 +373,7 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
     if (!empty(res.error)) {
         return <- res
     }
-    let side <- conversion_setup(out_dir, sidecar, param_writes, loops, res.error, layout, first_member, switch_dispatch, no_solid_context)
+    let side <- conversion_setup(out_dir, sidecar, param_writes, loops, res.error, layout, first_member, switch_dispatch, no_solid_context, checks)
     if (!empty(res.error)) {
         return <- res
     }

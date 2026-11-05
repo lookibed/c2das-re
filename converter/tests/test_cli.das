@@ -195,6 +195,34 @@ def test_cli_switch_dispatch(t : T?) {
     rmdir_rec(dir)
 }
 
+[test]
+def test_cli_checks(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_cli_checks", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("--checks off puts both annotations on the converted function; any other value but safe is a usage error; the help names the risk") @(t : T?) {
+        var out : string
+        var inscope argv <- daslang_cmd(CONVERTED_MODULES)
+        argv |> push_from(["converter/main.das", "--", "converter/tests/fixtures/ret42.c", "--out", path_join(dir, "off"), "--target", "linux", "--checks", "off"])
+        t |> equal(run_and_capture(argv, out, 300.0), 0, out)
+        let text = fread(path_join(path_join(dir, "off"), "ret42.das"))
+        t |> success(text |> contains("\n[unsafe_deref, hint(unsafe_range_check)]\ndef c_main : int \{\n"), text)
+        var inscope refused <- daslang_cmd(CONVERTED_MODULES)
+        refused |> push_from(["converter/main.das", "--", "converter/tests/fixtures/ret42.c", "--out", path_join(dir, "fast"), "--target", "linux", "--checks", "fast"])
+        t |> equal(run_and_capture(refused, out, 300.0), 2, out)
+        t |> success(out |> contains("--checks is safe or off, not `fast`"), out)
+        t |> success(!fexist(path_join(path_join(dir, "fast"), "ret42.das")), out)
+        var inscope help <- daslang_cmd(CONVERTED_MODULES)
+        help |> push_from(["converter/main.das", "--", "-?"])
+        t |> equal(run_and_capture(help, out, 300.0), 0, out)
+        t |> success(out |> contains("a wrong C program then reads garbage or dies by SIGSEGV instead of panicking"), out)
+    }
+    rmdir_rec(dir)
+}
+
 let LAYOUT_FIXTURE = "converter/tests/fixtures/p5_layout_cut"
 
 // `converter/main.das -- <LAYOUT_FIXTURE>/{main,a,b}.c --out <dir>/layout_<mode> --target linux

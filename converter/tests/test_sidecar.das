@@ -218,6 +218,32 @@ def test_sidecar_switch_dispatch(t : T?) {
 }
 
 [test]
+def test_sidecar_checks(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_checks", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`checks` is \"safe\" or \"off\"; absent it is empty, the emitter's safe default; any other value is refused") @(t : T?) {
+        for (mode in ["safe", "off"]) {
+            var error : string
+            let side <- read_text(dir, "checks_{mode}", "\{\"checks\": \"{mode}\"\}\n", error)
+            t |> equal(error, "")
+            t |> equal(side.checks, mode)
+        }
+        var error : string
+        let absent <- read_text(dir, "no_checks", "\{\"stack\": 65536\}\n", error)
+        t |> equal(error, "")
+        t |> equal(absent.checks, "")
+        let side <- read_text(dir, "bad_checks", "\{\"checks\": false\}\n", error)
+        t |> success(error |> ends_with("bad_checks.c2das: `checks` is \"safe\" or \"off\", not false"), error)
+        t |> equal(side.checks, "")
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_sidecar_solid_context(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_sidecar_solid", dir_error)
