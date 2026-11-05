@@ -18,7 +18,7 @@ require ../dumper_a.das
 
 let FIXTURE = "converter/tests/fixtures/p7_unchecked.c"
 let SAFE_SHA = "70b0f715ca4bde5a0cb12b034f87c0459ee8663db2f3eed3adb8e033c5825abf"
-let OFF_SHA = "867cebe8d2fd087c57603a303499f91f35b336768b59dbd4e7a627b64bee1c04"
+let OFF_SHA = "ba24523389ba57e2fa7ac670e4e5867b0dc2d34983f6eae6c5ea77f8748a44a1"
 
 var work_root : string
 var safe : ConvertResult
@@ -53,7 +53,7 @@ def test_checks(t : T?) {
         t |> equal(off.error, "")
         t |> success(!(safe.das_text |> contains("unsafe_deref")) && !(safe.das_text |> contains("--checks off")), safe.das_text)
         t |> success(safe.das_text |> starts_with("{GENERATED_BANNER}\noptions gen2\n"), safe.das_text)
-        t |> success(off.das_text |> starts_with("{GENERATED_BANNER}\n// converted with --checks off: no null or range checks, a wrong C program reads garbage or dies by SIGSEGV instead of panicking\noptions gen2\n"), off.das_text)
+        t |> success(off.das_text |> starts_with("{GENERATED_BANNER}\n// converted with --checks off: no null or range checks (the AOT host keeps its range checks), a wrong C program reads garbage or dies by SIGSEGV instead of panicking\noptions gen2\n"), off.das_text)
         t |> success(off.das_text |> contains("\n[unsafe_deref, hint(unsafe_range_check)]\ndef private p7_unchecked__at(var s : S?; i : int) : int \{\n"), off.das_text)
         t |> success(off.das_text |> contains("\n[unsafe_deref, hint(unsafe_range_check)]\ndef private p7_unchecked__sum(n : int) : int \{\n"), off.das_text)
         t |> success(off.das_text |> contains("\n[c_function, unsafe_deref, hint(unsafe_range_check)]\ndef c_main("), off.das_text)
@@ -92,6 +92,23 @@ def test_checks(t : T?) {
         let refused <- converted("refused", "fast")
         t |> equal(refused.ok, false)
         t |> equal(refused.error, "--checks is safe or off, not `fast`")
+    }
+    t |> run("a program of several files converted with `off` carries both annotations and the banner line in its module") @(t : T?) {
+        let cut = "converter/tests/fixtures/p5_layout_cut"
+        let paths <- ["{cut}/main.c", "{cut}/a.c", "{cut}/b.c"]
+        let program <- convert_program(paths, path_join(work_root, "program"), "linux", "", "", "", "", "main", "single", false, "", "", false, "off")
+        t |> equal(program.error, "")
+        t |> success(program.das_text |> contains("{GENERATED_BANNER}\n{UNCHECKED_BANNER}\noptions gen2\n"), program.das_text)
+        t |> success(program.das_text |> contains("\n[unsafe_deref, hint(unsafe_range_check)]\ndef a_run(n : int) : int \{\n"), program.das_text)
+        t |> success(program.das_text |> contains("\n[c_function, unsafe_deref, hint(unsafe_range_check)]\ndef c_main("), program.das_text)
+    }
+    t |> run("under `off` the marshal accessors stay plain `[c_function]`, the converted functions take both annotations") @(t : T?) {
+        let marshal <- convert("converter/tests/fixtures/p2_marshal.c", path_join(work_root, "marshal"), "linux", "", "", "", "", "", "", false, "off")
+        t |> equal(marshal.error, "")
+        for (accessor in ["read_disk_t(", "write_disk_t_width(", "read_pref_t_p("]) {
+            t |> success(marshal.das_text |> contains("\n[c_function]\ndef {accessor}"), "{accessor}\n{marshal.das_text}")
+        }
+        t |> success(marshal.das_text |> contains("\n[c_function, unsafe_deref, hint(unsafe_range_check)]\ndef private p2_marshal__sum_widths("), marshal.das_text)
     }
     rmdir_rec(work_root)
 }
