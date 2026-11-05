@@ -2038,9 +2038,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   cannot hoist out of a conditional path in a loop (F80: the repro 5.4x native, 11.7x of the solid
   build; Doom demo1 JIT 4.18x -> 1.30x, box PC, 7 interleaved rounds). The emitter writes
   `options solid_context` in every generated module, the default: `probes/test_solid_context.das`
-  builds and runs a solid two-module program requiring `c_runtime` under interp, JIT and the AOT
-  host alike (daslang's doc says it prohibits AOT and patches; the AOT context is the generated
-  C++, F80, F49). Tested on the fixtures, measured per demo (P7.0b4 step 3). Upstream beside it:
+  builds and runs a solid two-module program requiring `c_runtime`, globals and cross-module `@@`
+  callbacks stored in a global included, under interp, JIT, exe and the AOT host alike (daslang's
+  doc says it prohibits AOT and patches; the AOT context is the generated C++, F80, F49; nothing
+  in `c_runtime` reloads code or runs in another context, so the patch caveat does not apply). Tested on the fixtures, measured per demo (P7.0b4 step 3). Upstream beside it:
   lookibed/daScript#36.
 - **P7.0n Constant-size marshal reads through the builtin `memcpy`** (from P7.0b4, place 2): a
   marshal accessor (`read_post_t_topdelta`, `read_patch_t_width`) spells a one-byte read
