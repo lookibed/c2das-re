@@ -5,10 +5,13 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 ## 4. What the emitter spells
 
 The module opens with the generated banner, `options gen2`, `options indenting = 4`, `options
-stack` and one `require c_runtime/<name>` per piece the body reached (`printf`, `c_exit`,
-`c_function`). The stack is the sidecar's `stack`, else 8388608, C's 8 MiB default on linux:
-das's own context stack is 16 KiB (`probes/test_process.das`), which a record parameter's copy
-on entry or an alloca arena outgrows, and a recursion multiplies.
+solid_context` (globals and functions reached by index, never looked up by name per JIT access, F80;
+`--no-solid-context` or the sidecar's `solid_context: false` drops it, for code another context runs
+or a patch reloads), `options stack` and a `require c_runtime/<name>` per piece the body reached.
+Every module carries the options, the link module too; a `.das.inc` fragment none, being text its
+module includes. The stack is the sidecar's `stack`, else 8388608, C's 8 MiB on linux: das's context
+stack is 16 KiB (`probes/test_process.das`), which a record parameter's copy on entry or an alloca
+arena outgrows, and a recursion multiplies.
 Records come first: `struct Name` with adjacent fields of one type on one line, an unnamed
 record named `anon_<slot>`, in declaration order, after an empty `struct Name {}` per record the
 unit declares and never defines (an opaque handle, reached through pointers alone, since clang

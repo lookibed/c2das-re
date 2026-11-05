@@ -9,7 +9,7 @@ require pipeline
 require sidecar
 require tiers
 
-//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy] [--loops range|while] [--first-member addr|reinterpret] [--switch-dispatch chain|goto] [--layout source|source-cut|single] [--edge-census]`.
+//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy] [--loops range|while] [--first-member addr|reinterpret] [--switch-dispatch chain|goto] [--layout source|source-cut|single] [--edge-census] [--no-solid-context]`.
 //! Converts one C file into `<dir>/<stem>.das` (default `out/`), several or a manifest's as one
 //! program: by default a module per C file under `<dir>` as the files lie under their common
 //! folder, mutually dependent files one module of fragments (`--layout source`), the cycles among
@@ -50,6 +50,9 @@ struct Args {
     @clarg_name = "edge-census"
     @clarg_doc = "a program in a source layout: also write program.edges.txt, the edges of each cycle among its files by kind (call, address, global, type) and the cycles left were every function, then every function and object, forward-declared; changes no converted text"
     edge_census : bool
+    @clarg_name = "no-solid-context"
+    @clarg_doc = "write no `options solid_context` in the modules (by default each carries it: a global and a function are reached by index, never looked up by name, 3x faster under the JIT on Doom); only for a module that runs in another context or is patched or reloaded, which the option forbids; overrides the sidecar's solid_context"
+    no_solid_context : bool
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -101,7 +104,7 @@ def main : int {
         to_log(LOG_ERROR, "c2das: {error}\n")
         return 1
     }
-    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry, args.layout, args.edge_census, args.first_member, args.switch_dispatch)
+    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry, args.layout, args.edge_census, args.first_member, args.switch_dispatch, args.no_solid_context)
     if (!res.ok) {
         to_log(LOG_ERROR, "c2das: {res.error}\n")
         return 1

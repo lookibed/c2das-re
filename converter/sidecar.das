@@ -64,10 +64,14 @@ struct Sidecar {
     // the folder whose files are the program's (`converter/ARCHITECTURE_DUMPER.md`, the file
     // policy), absolute; "" for the main file's own folder
     program_root : string
+    // whether every module of the program carries `options solid_context` (a global and a
+    // function reached by index, never a lookup by name): false only for code another context
+    // runs or a patch reloads, which the option forbids
+    solid_context : bool = true
 }
 
 //! The keys a sidecar may hold; any other is refused naming it.
-let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -387,6 +391,12 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
             }
             side.defines |> push(entry ?? "")
         }
+    }
+    let solid = js?["solid_context"]
+    if (key_exists(js, "solid_context") && !(solid is _bool)) {
+        error = "{path}: `solid_context` is true or false, not {write_json(solid)}"
+    } else {
+        side.solid_context = solid ?? true
     }
     read_inputs(js, path, side, error)
     read_members(js, path, "over_indexed", side.over_indexed, error)
