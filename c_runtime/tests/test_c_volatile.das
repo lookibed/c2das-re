@@ -29,6 +29,9 @@ def c_volatile_read(var p : int?) : int? {
 // refuses and `c_volatile_load` avoids by landing the bits in a local first
 let REINTERPRET_SOURCE = "options gen2\nrequire crt\nvar g : int = 7\nvar p : int? = null\n[export]\ndef main \{\n    unsafe \{\n        p = addr(g)\n        let q = reinterpret<int?>(crt::c_volatile_load_u64(reinterpret<uint64 const?>(addr(p))))\n        print(\"\{*q\}\\n\")\n    \}\n\}\n"
 
+// a store of a 16-byte value, which no forwarder width holds
+let WIDE_STORE_SOURCE = "options gen2\nrequire c_runtime/c_volatile\nvar v : float4\n[export]\ndef main \{\n    c_volatile_store(v, float4(1.0))\n\}\n"
+
 [test]
 def test_c_volatile(t : T?) {
     t |> run("a by-value parameter's read takes the fallback: a constant argument from a plain caller compiles under the optimizer") @(t : T?) {
@@ -83,5 +86,8 @@ def test_c_volatile(t : T?) {
         let jit = runtime_child_flags("volatile_reinterpret_jit", REINTERPRET_SOURCE, jit_flags())
         t |> equal(jit.rc, 0, jit.out)
         t |> equal(program_output(jit.out), "7\n", jit.out)
+    }
+    t |> run("a store of a width no forwarder holds is refused at compile time") @(t : T?) {
+        child_rejects(t, "volatile_wide_store", runtime_child("volatile_wide_store", WIDE_STORE_SOURCE, true), "c_volatile_store: a scalar, a pointer or a function value")
     }
 }
