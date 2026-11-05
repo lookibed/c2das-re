@@ -63,6 +63,20 @@ let private BLOCK_TRAP = "options gen2\ndef f(c : int) : int \{\n    var r = 0\n
 // `tail`
 def private block_end(tail : string) : string => "options gen2\nvar r = 0\ndef b(c : int) : int \{\n    var q = 0\n    if (c > 0) \{\n        if (c == 1) \{\n            goto label 3\n        \}\n        q += 100\n        label 3:\n        {tail}\n    \}\n    return q\n\}\ndef f(c : int) \{\n    if (c == 1) \{\n        goto label 3\n    \}\n    r += 100\n    label 3:\n    {tail}\n\}\n[export]\ndef main : int \{\n    print(\"\{b(1)\} \{b(2)\}\\n\")\n    f(1)\n    f(2)\n    print(\"\{r\}\\n\")\n    return 0\n\}\n"
 
+// a computed goto to labels each after an `if` whose branch ends in `break`, the issue's numbers: no `else`
+let private FOLD_BARE = "options gen2\nvar g = 0\n[sideeffects]\ndef private label_end() \{\n    g += 0\n\}\ndef run(c : int) : int \{\n    var r = 0\n    while (true) \{\n        goto c + 1000\n        label 1000:\n        if (c == 0) \{\n            r = 10\n            break\n        \}\n        label 1001:\n        if (c == 1) \{\n            r = 11\n            break\n        \}\n        r = -1\n        break\n    \}\n    return r\n\}\n[export]\ndef main() \{\n    for (j in range(2)) \{\n        print(\"\{run(j)\} \")\n    \}\n    print(\"\\n\")\n\}\n"
+
+// the same, each `if` with an `else` the optimizer keeps
+let private FOLD_GUARDED = "options gen2\nvar g = 0\n[sideeffects]\ndef private label_end() \{\n    g += 0\n\}\ndef run(c : int) : int \{\n    var r = 0\n    while (true) \{\n        goto c + 1000\n        label 1000:\n        if (c == 0) \{\n            r = 10\n            break\n        \} else \{\n            label_end()\n        \}\n        label 1001:\n        if (c == 1) \{\n            r = 11\n            break\n        \} else \{\n            label_end()\n        \}\n        r = -1\n        break\n    \}\n    return r\n\}\n[export]\ndef main() \{\n    for (j in range(2)) \{\n        print(\"\{run(j)\} \")\n    \}\n    print(\"\\n\")\n\}\n"
+
+// a jump table in a loop: a bounds guard, case labels 1-5 with an `else` on each case, two labels
+// in a row for the values no case holds, a goto out of the loop to label 9 (C: 1010 2010 1020 1020
+// 1040 1020 1020)
+let private DISPATCH_LOW = "options gen2\nvar r = 0\n[sideeffects]\ndef private label_end() \{\n    r += 0\n\}\ndef run(c0 : int) : int \{\n    var n = 0\n    var c = c0\n    label 9:\n    n += 1000\n    while (true) \{\n        if (c < 0 || c > 4) \{\n            goto label 3\n        \}\n        goto c + 1\n        label 1:\n        if (c == 0) \{\n            n += 10\n            break\n        \} else \{\n            label_end()\n        \}\n        label 2:\n        if (c == 1) \{\n            c = 0\n            goto label 9\n        \} else \{\n            label_end()\n        \}\n        label 3:\n        label 4:\n        if (!(c == 0 || c == 1 || c == 4)) \{\n            n += 20\n            break\n        \} else \{\n            label_end()\n        \}\n        label 5:\n        if (c == 4) \{\n            n += 40\n            break\n        \}\n        break\n    \}\n    return n\n\}\n[export]\ndef main() \{\n    print(\"\{run(0)\} \{run(1)\} \{run(2)\} \{run(3)\} \{run(4)\} \{run(9)\} \{run(-1)\}\\n\")\n\}\n"
+
+// the same with the case labels numbered 11-15, above the label outside
+let private DISPATCH_HIGH = "options gen2\nvar r = 0\n[sideeffects]\ndef private label_end() \{\n    r += 0\n\}\ndef run(c0 : int) : int \{\n    var n = 0\n    var c = c0\n    label 9:\n    n += 1000\n    while (true) \{\n        if (c < 0 || c > 4) \{\n            goto label 13\n        \}\n        goto c + 11\n        label 11:\n        if (c == 0) \{\n            n += 10\n            break\n        \} else \{\n            label_end()\n        \}\n        label 12:\n        if (c == 1) \{\n            c = 0\n            goto label 9\n        \} else \{\n            label_end()\n        \}\n        label 13:\n        label 14:\n        if (!(c == 0 || c == 1 || c == 4)) \{\n            n += 20\n            break\n        \} else \{\n            label_end()\n        \}\n        label 15:\n        if (c == 4) \{\n            n += 40\n            break\n        \}\n        break\n    \}\n    return n\n\}\n[export]\ndef main() \{\n    print(\"\{run(0)\} \{run(1)\} \{run(2)\} \{run(3)\} \{run(4)\} \{run(9)\} \{run(-1)\}\\n\")\n\}\n"
+
 [test]
 def test_goto_in_loops(t : T?) {
     t |> run("a label with nothing after it in a non-loop block is no goto target under the interpreter, and an empty block after it is folded away (docs/probe-findings.md F62)") @(t : T?) {
@@ -128,5 +142,25 @@ def test_goto_in_loops(t : T?) {
         child_rejects(t, "goto_block_trap", daslang_child("goto_block_trap", BLOCK_TRAP, false), "jump to label 1 failed")
         let jit = daslang_child_flags("goto_block_trap_jit", BLOCK_TRAP, jit_flags())
         t |> equal(jit.out |> ends_with("23\n"), true, jit.out)
+    }
+}
+
+[test]
+def test_goto_dispatch(t : T?) {
+    t |> run("a computed goto to a label after an `if` whose branch ends in `break` and has no `else` misses it under the interpreter; an `else` keeps it (lookibed/daScript#35, docs/probe-findings.md F60)") @(t : T?) {
+        let bare = daslang_child("goto_fold_bare", FOLD_BARE, false)
+        t |> equal(bare.out == "10 11 \n", false, bare.out)
+        let guarded = daslang_child("goto_fold_guarded", FOLD_GUARDED, false)
+        t |> equal(guarded.out, "10 11 \n")
+        let jit = daslang_child_flags("goto_fold_guarded_jit", FOLD_GUARDED, jit_flags())
+        t |> equal(jit.out |> ends_with("10 11 \n"), true, jit.out)
+    }
+    t |> run("a jump table's case labels numbered below the labels outside its loop run under the interpreter and the JIT; numbered above, the loop claims the goto out (docs/probe-findings.md F60)") @(t : T?) {
+        let low = daslang_child("goto_dispatch_low", DISPATCH_LOW, false)
+        t |> equal(low.out, "1010 2010 1020 1020 1040 1020 1020\n")
+        let jit = daslang_child_flags("goto_dispatch_low_jit", DISPATCH_LOW, jit_flags())
+        t |> equal(jit.out |> ends_with("1010 2010 1020 1020 1040 1020 1020\n"), true, jit.out)
+        let high = daslang_child("goto_dispatch_high", DISPATCH_HIGH, false)
+        t |> equal(high.rc != 0 || high.out != "1010 2010 1020 1020 1040 1020 1020\n", true, high.out)
     }
 }
