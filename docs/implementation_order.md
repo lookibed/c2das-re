@@ -1898,11 +1898,11 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   and only `default` keeps `_goto == 0 &&`; cases spanning the condition's type keep the old form.
   The goto's own plain case cannot match on the restart (the `noconj` loop; a run test hangs without
   the store). The divergence from `docs/lowering-examples.md` (its Tier 2 tests carry no goto
-  variable) is as P7.0c's. One sample each, box PC, in-process work, main vs branch (marked: one
-  sample, two runs of `/root/notes/parallel/pc-p7.0c3-ab.sh` while another coder's jobs shared the
-  box; the 3-sample run is owed): interpreter fib 30 1.19-1.30x, binary_trees 12 1.14-1.16x, nbody
-  20000 1.11-1.15x, spectral_norm 100 1.18-1.22x; JIT fib 1.89-3.71x, binary_trees 1.27-1.81x, nbody
-  2.70-2.81x, spectral_norm 3.05-3.30x (the JIT outputs equal main's on nbody and spectral_norm).
+  variable) is as P7.0c's. Measured on box PC (3 samples, interleaved A/B, in-process work, the
+  converter at 2444a73 against main 9c6248f, every spread at or under 9%; table
+  `/root/notes/parallel/p7.0c3_ab3/table.md`): interpreter fib 30 1.21x, binary_trees 12 1.16x, nbody
+  20000 1.22x, spectral_norm 100 1.24x faster; JIT fib 3.52x (0.307 -> 0.087 s work), binary_trees
+  1.58x, nbody 2.45x, spectral_norm 3.07x faster, outputs equal.
   `dispatch_switch` under the interpreter 197.9x -> 115.4x native (converted over the plain
   cases restored to the chain 0.45x -> 0.28x); perf's `flag-chain` rewrite now finds the new
   plain case, restores plain cases only (the flag cases keep `_flag ||= _cond == K`). `lua/tests`' `spin`
