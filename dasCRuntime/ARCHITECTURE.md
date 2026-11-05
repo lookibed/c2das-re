@@ -96,6 +96,12 @@ are too, each an extern call the JIT cannot see into, and under AOT an inline bo
 reports a domain or range error through `errno` from (`fmod`, `fmodf`, `ldexp`, `nextafter`,
 `hypot`, `expm1`, `log1p`, `remainder`, `erf`, `erfc`, `tgamma`, `lgamma`, `fma`) are among them,
 so a call whose result the program discards, or whose arguments are constant, still runs.
+A bind that may write through a pointer argument (`memcpy`, `memmove`, `memset`, the `str*cpy` and
+`str*cat` family, the `strto*` end pointers, `frexp`'s and `modf`'s out-parameters, `time`, the
+`snprintf` and `sscanf` families, `fgets`, `fread`, `strftime`, `mktime`, `realloc`, `free`,
+`tmpnam`, `setvbuf`, `clock_gettime`, the volatile stores) is `modifyArgumentAndExternal`: with
+`modifyExternal` alone the JIT keeps a caller's local whose address reaches the call as it was
+before it, and the write is lost (`docs/probe-findings.md` F85, `probes/test_crt_writes.das`).
 
 ## 5. `snprintf` and `sscanf` as per-directive families
 
