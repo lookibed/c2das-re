@@ -224,9 +224,13 @@ as-if-converted fixture test landing first.
   type, a store of the second argument, each marked volatile and aligned to the das type, for a C
   scalar width or a pointer; any other signature declines and keeps its das body. The module
   joins dasLLVM's `llvm_code_generator` module group from `.das_module`, so the JIT finds the
-  generators without naming this repository; only the JIT compiles it. Its fixture test
+  generators without naming this repository; only the JIT compiles it. The JIT's DLL cache key
+  sees a generated function's das body and its `[llvm_code]` arguments, never the generator's
+  code, so both sites carry a `version` argument the generators ignore: a changed generator with
+  the same `version` keeps serving the DLLs and partition objects built before it (else only
+  clearing `.cache/daslang` under the run's working folder drops them). Its fixture test
   `tests/test_c_volatile_jit.das` runs every width under the four tiers and counts the IR, the
-  split build's too.
+  split build's too, and runs the cached JIT once from a scratch cache.
 - `tests/` - one dastest file per piece, written as the converter will emit the code,
   including a control that the same code without the piece is rejected or wrong. A test that
   compiles or runs a child program does so through `probes/_daslang_child.das`, the one child
