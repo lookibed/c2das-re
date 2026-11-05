@@ -6493,13 +6493,14 @@ def private marshal_field_type(var em : Emitter; tu : CirTu; f : CirField; loc :
 }
 
 // the readers and writers of a marshal-only record: the whole record and each scalar field,
-// over bytes at clang's offsets through `memcpy`, which asks nothing of alignment, and a typed
+// over bytes at clang's offsets through daslang's builtin `memcpy` with an `int` size, which asks
+// nothing of alignment and which the JIT folds to one load or store (`crt::memcpy` is a call per
+// field there; docs/probe-findings.md F81), and a typed
 // pointer to each array field at its offset, an inner marshal record through its own reader and
 // writer; the value side is the naturally laid out das struct (docs/lowering-examples.md
 // "Packed structs")
 def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) {
     let name = tag_name(em, tu, t)
-    em.requires |> insert("crt")
     em.requires |> insert("c_runtime/c_function")
     line(em, "[c_function]")
     open_block(em, "def {reader_name(em, tu, t, -1)}(bytes : uint8?; ofs : int) : {name}")
@@ -6514,7 +6515,7 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
             line(em, "{field}[k] = {reader_name(em, tu, rec, -1)}(bytes, ofs + {f.off} + k * {type_size(tu, rec)})")
             close_block(em)
         } else {
-            line(em, "crt::memcpy(reinterpret<void?>(addr({field})), reinterpret<void?>(bytes + (ofs + {f.off})), uint64({type_size(tu, f.t)}))")
+            line(em, "memcpy(reinterpret<void?>(addr({field})), reinterpret<void?>(bytes + (ofs + {f.off})), {type_size(tu, f.t)})")
         }
     }
     line(em, "return r")
@@ -6533,7 +6534,7 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
             line(em, "{writer_name(em, tu, rec, -1)}(bytes, ofs + {f.off} + k * {type_size(tu, rec)}, {field}[k])")
             close_block(em)
         } else {
-            line(em, "crt::memcpy(reinterpret<void?>(bytes + (ofs + {f.off})), reinterpret<void?>(addr({field})), uint64({type_size(tu, f.t)}))")
+            line(em, "memcpy(reinterpret<void?>(bytes + (ofs + {f.off})), reinterpret<void?>(addr({field})), {type_size(tu, f.t)})")
         }
     }
     close_block(em)
@@ -6564,14 +6565,14 @@ def private emit_marshal_readers(var em : Emitter; tu : CirTu; t : int; loc : Ci
         line(em, "[c_function]")
         open_block(em, "def {reader_name(em, tu, t, idx)}(bytes : uint8?; ofs : int) : {ft}")
         line(em, "var r : {ft}")
-        line(em, "crt::memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + (ofs + {f.off})), uint64({type_size(tu, f.t)}))")
+        line(em, "memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + (ofs + {f.off})), {type_size(tu, f.t)})")
         line(em, "return r")
         close_block(em)
         line(em, "")
         line(em, "[c_function]")
         open_block(em, "def {writer_name(em, tu, t, idx)}(bytes : uint8?; ofs : int; {is_var_parameter(tu, f.t) ? "var " : ""}v : {ft})")
         line(em, "var copy = v")
-        line(em, "crt::memcpy(reinterpret<void?>(bytes + (ofs + {f.off})), reinterpret<void?>(addr(copy)), uint64({type_size(tu, f.t)}))")
+        line(em, "memcpy(reinterpret<void?>(bytes + (ofs + {f.off})), reinterpret<void?>(addr(copy)), {type_size(tu, f.t)})")
         close_block(em)
         line(em, "")
     }
