@@ -45,6 +45,17 @@ in the row - carries in the pull request body the `--report` output of its `scri
 run, with the fix or a reason for every `FLAG` and every `SUSPECT` line.** Each reason names a
 command a reviewer can rerun to confirm it.
 
+**A pull request body that says in a sentence that the diff made a lane faster or slower shows, in
+that body and in this order: the reference pass, the profile, and the predictions.** A lane is the
+interpreter, JIT, AOT or exe; a table the body carries as tool output is not such a sentence. The
+reference pass is how the Rust translator's
+output and daslang's options, JIT and AOT flags treat the same C construct. The profile is a
+`perf/sampler` profile of the native C build and of that lane, listing the top functions by self
+time with each one's share and its lane-to-native ratio. The predictions put beside every measured
+number the value predicted for it before the run, in the item's ledger row committed before the run
+or in the dated predictions file the body names. A claim missing any of these is a
+MAJOR finding, fixed by adding the missing part, not by dropping or weakening the claim.
+
 **A diff that changes, beyond comments, the readability run's input - the C source or the id list
 of a suite whose `expected_pass.txt` feeds the run, a kernel under `perf/kernels/`, or a Lua
 program `lua/sources.das` lists - or a `.das` file under `converter/` outside `converter/tests/`
