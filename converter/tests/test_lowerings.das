@@ -1784,7 +1784,9 @@ def p7_goto_dispatch_fixtures(t : T?) {
         // a goto into another case jumps to that label's own das label, no re-dispatch, no sentinel
         has_text(t, text, "                acc -= 4\n                _goto = 1\n                goto label 12\n")
         has_text(t, text, "            _flag ||= _cond == Op.F\n            label 12:  // shared\n            _flag ||= _goto == 1  // shared\n")
-        t |> equal(text |> find("re-dispatch") >= 0, false, text)
+        let run_at = text |> find("def private p7_goto_dispatch__run(")
+        let restart = text |> find("re-dispatch", run_at)
+        t |> success(run_at >= 0 && (restart < 0 || restart > text |> find("\n\}\n", run_at)), text)
         // a value no case holds lands at default with the out-of-range ones
         has_text(t, text, "            label 9:  // no case 8\n            label 11:  // default\n")
         // an int condition jumps by itself, a switch without default to its end
@@ -1800,7 +1802,16 @@ def p7_goto_dispatch_fixtures(t : T?) {
         has_text(t, text, "    label 11:  // case 0\n    c_label_end()\n    label 15:  // do\n")
         // sparse, falling through, under 8 values, past int and Duff's device keep their forms
         has_text(t, text, "    \} elif (_cond == 2) \{\n        return 3\n")
-        for (fn in ["fall", "small", "wide", "duff"]) {
+        // a label that does not open its case: the branch before it ends in an `else` too
+        has_text(t, text, "            r += 1\n            break\n        \} else \{\n            c_label_end()\n        \}\n        label 10:  // mid\n        _flag ||= _goto == 1  // mid\n")
+        // a C label numbers above the table's labels and their goto-target slot, and a goto out of
+        // the dispatch loop reaches it
+        has_text(t, text, "    label 11:  // again\n")
+        has_text(t, text, "            _goto = 1\n            goto label 10\n")
+        has_text(t, text, "            if (n < 3) \{\n                goto label 11\n")
+        // a flag switch after a dispatched one reuses the label name with its own re-dispatch
+        has_text(t, text, "        label 1:  // re-dispatch\n")
+        for (fn in ["fall", "small", "wide", "duff", "wide_low", "entered", "sparse_shared"]) {
             let at = text |> find("def private p7_goto_dispatch__{fn}(")
             let end = text |> find("\n\}\n", at)
             let plain = text |> find("goto _cond", at)
@@ -1814,6 +1825,13 @@ def p7_goto_dispatch_fixtures(t : T?) {
         }
         let refused <- convert("{FIXTURES}/p7_goto_dispatch.c", path_join(work_root, "goto_dispatch_bad"), "linux", "", "", "", "", "", "table")
         t |> success(refused.error |> contains("--switch-dispatch is chain or goto, not `table`"), refused.error)
+        // a program of several files takes the option to every file
+        let cases = join([for (v in range(8)); "case {v}: return {v + 1};"], " ")
+        let first = written_source("goto_dispatch_two", "two_main", "int pick(int x);\nstatic int local(int x) \{ switch (x) \{ {cases} \} return 0; \}\nint main(void) \{ return pick(3) + local(4) == 9 ? 0 : 1; \}\n", "")
+        let second = written_source("goto_dispatch_two", "two_pick", "int pick(int x) \{ switch (x) \{ {cases} \} return 0; \}\n", "")
+        let two <- convert_program([first, second], path_join(work_root, "goto_dispatch_two_out"), "linux", "", "", "", "", "main", "single", false, "", "goto")
+        t |> equal(two.ok, true, two.error)
+        t |> equal(length(split(two.das_text, "goto _cond + 1\n")) - 1, 2, two.das_text)
         // the default: no jump table
         let chain = converts(t, "goto_dispatch_chain", source)
         t |> equal(chain |> find("goto _cond") >= 0 || chain |> find("goto int(_cond") >= 0, false, chain)

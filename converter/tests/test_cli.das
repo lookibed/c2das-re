@@ -181,6 +181,14 @@ def test_cli_switch_dispatch(t : T?) {
         t |> equal(run_switch_dispatch(dir, "goto", out), 0, out)
         let jumped = fread(path_join(path_join(dir, "dispatch_goto"), "p7_goto_dispatch.das"))
         t |> success(jumped |> contains("            goto int(_cond) + 1\n"), jumped)
+        // the option wins over the sidecar's key
+        let sidecar = path_join(dir, "goto.c2das")
+        fwrite(sidecar, "\{\"switch_dispatch\": \"goto\"\}\n")
+        var argv <- daslang_cmd(CONVERTED_MODULES)
+        argv |> push_from(["converter/main.das", "--", DISPATCH_FIXTURE, "--out", path_join(dir, "dispatch_over"), "--target", "linux", "--sidecar", sidecar, "--switch-dispatch", "chain"])
+        t |> equal(run_and_capture(argv, out, 300.0), 0, out)
+        let kept = fread(path_join(path_join(dir, "dispatch_over"), "p7_goto_dispatch.das"))
+        t |> success(!(kept |> contains("goto _cond")) && !(kept |> contains("goto int(_cond")), kept)
         t |> equal(run_switch_dispatch(dir, "table", out), 2, out)
         t |> success(out |> contains("--switch-dispatch is chain or goto, not `table`"), out)
     }
