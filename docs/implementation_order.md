@@ -2102,9 +2102,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 - **P7.0q Where `options solid_context` costs the JIT and the exe** (from P7.0m): the solid build
   of Lua runs fib 30 6% and nbody 20000 9% slower under the JIT (5 interleaved samples, spreads
   7-8%, box PC), the blit kernel 7% slower under the exe (spreads 1-2%) and va_forward 8-20% slower
-  under the JIT (spreads 15-21%), while Doom, switch_local and matmul gain. Profile the solid and the
-  non-solid build of each with `perf/sampler` (P7.0b4's method) and read the IR of the hot function
-  under `-jit-no-cache --jit-dump-to` (F82); a daslang cause goes upstream to lookibed/daScript.
+  under the JIT (spreads 15-21%), while Doom, switch_local and matmul gain. The P7.0m A/B ran from
+  outside the tree (`/root/notes/parallel/pc-p7.0m-ab.sh`), so the measuring tool comes first: a
+  `--no-solid-context` variant lane in `perf/run.das` (interp and JIT beside the default lanes, as
+  `interp-copy` runs `--param-writes copy`) that re-runs the cost on every kernel from the tree. Then
+  profile the solid and the non-solid build of each with `perf/sampler` (P7.0b4's method) and read
+  the IR of the hot function under `-jit-no-cache --jit-dump-to` (F82); a daslang cause goes
+  upstream to lookibed/daScript.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
