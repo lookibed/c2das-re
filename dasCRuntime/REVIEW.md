@@ -11,7 +11,9 @@ defect.** Logic belongs in `c_runtime/` (das), never here.
 sets `unsafeOperation = true` on it.**
 
 **A diff that adds or changes an `addExtern` registers it `SideEffects::none` only when the
-call reads nothing but its arguments and changes nothing but its return value, and
+call reads nothing but its arguments and changes nothing but its return value,
+`SideEffects::modifyArgumentAndExternal` when it may write through a pointer argument (a
+destination buffer, an out-parameter, an end pointer, memory it frees or moves), and
 `SideEffects::modifyExternal` otherwise - `errno`, the `rand` seed, the environment, the clock,
 streams and memory all count; no other `SideEffects` value.**
 
