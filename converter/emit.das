@@ -231,7 +231,7 @@ let DIALECT_INIT = "c2das_dialect"
 let EMPTY_LITERAL = "c2das_empty"
 
 //! Every name the emitter spells bare in a module besides the program's own (`reserved_das_names`).
-let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, JMP_TARGET, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LABEL_END, LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL]
+let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, JMP_TARGET, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LABEL_END, LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL, "memcpy"]
 
 //! The public names of the c_runtime modules a converted module may require, each top-level
 //! function, global, type and call macro of `c_runtime/c_runtime/*.das` (repo root);
