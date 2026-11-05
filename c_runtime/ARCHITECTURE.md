@@ -201,27 +201,32 @@ as-if-converted fixture test landing first.
   write it once, so no tier folds a read or drops a store (`probes/test_volatile.das`, F89). The
   interpreter and the AOT host access the object through the `crt` forwarders, which read or write
   it through a `volatile` pointer (clang++ inlines them under AOT: one `mov` each). Under the JIT
-  and the exe each numeric `c_volatile_read` and `c_volatile_store` overload is `[llvm_code]`:
-  `c_volatile_jit.das` emits its body as one LLVM `load volatile` or `store volatile`, which the
-  JIT inlines, where the forwarder would be an opaque call after which every live value reloads
-  from the stack (F87); a das `deref` is no substitute, the JIT and clang++ fold and hoist it.
-  `c_volatile_load` is a call macro: under the interpreter and AOT a number's load expands in
-  place to its forwarder over the object's address (the interpreter makes the one extern call,
-  no das call around it: 1.3x on a load loop), which is why the piece re-exports `crt`; under
-  the JIT (`policies.jit_enabled`, set for the exe too), and for `bool` and an eight-byte value
-  on every tier, it goes through `c_volatile_read`, whose `bool` and eight-byte overloads call
-  the `uint8` and `uint64` ones. One overload of `c_volatile_read` and of the
-  store per C scalar width, `bool` through its byte, and a generic over any eight-byte value (a
-  pointer, a function value) through its bits, whose load lands the bits in a local before the
-  reinterpret: the interpreter refuses a reinterpret
-  of a `crt` call's `uint64` result straight to a pointer ("typed eval on wrong extern return
-  kind", F67), which the JIT takes.
+  and the exe the load is `c_volatile_load_jit` and the store the generic `c_volatile_store`, each
+  `[llvm_code]`: `c_volatile_jit.das` emits its body as one LLVM `load volatile` or `store
+  volatile`, which the JIT inlines, where a forwarder would be an opaque call after which every
+  live value reloads from the stack (F87); a das `deref` is no substitute, the JIT and clang++ fold
+  and hoist it. Both are generics so that each instance lands in its caller's das module: the
+  cached JIT DLL is built one LLVM module per das module (`--jit-split-modules`), and a call into
+  `c_volatile`'s own partition would not inline. `bool` and a function value keep the forwarders
+  under the JIT too; `bool`'s store is its own overload, since the JIT rejects a reinterpret of a
+  `bool` to `uint8`. `c_volatile_load` is a call macro: under the JIT (`policies.jit_enabled`, set
+  for the exe too) it expands to `c_volatile_load_jit`; elsewhere a number's load expands in
+  place to its forwarder over the object's address (the interpreter makes the one extern call, no
+  das call around it: 1.3x on a load loop), which is why the piece re-exports `crt`, and `bool`,
+  an eight-byte value and a by-value parameter go through `c_volatile_read`, one overload per C
+  scalar width, `bool` through its byte, and a generic over any eight-byte value (a pointer, a
+  function value) through its bits, whose load lands the bits in a local before the reinterpret:
+  the interpreter refuses a reinterpret of a `crt` call's `uint64` result straight to a pointer
+  ("typed eval on wrong extern return kind", F67), which the JIT takes. The generic store writes
+  any value's bits through the unsigned forwarder of its size.
 - `c_runtime/c_volatile_jit.das` - the `[llvm_code]` generators `c_volatile::load` and
   `c_volatile::store`: a load through the reference or pointer argument with the result's LLVM
-  type, a store of the second argument, each marked volatile and aligned to the das type. The
-  module joins dasLLVM's `llvm_code_generator` module group from `.das_module`, so the JIT finds
-  the generators without naming this repository; only the JIT compiles it. Its fixture test
-  `tests/test_c_volatile_jit.das` runs every width under the four tiers and counts the IR.
+  type, a store of the second argument, each marked volatile and aligned to the das type, for a C
+  scalar width or a pointer; any other signature declines and keeps its das body. The module
+  joins dasLLVM's `llvm_code_generator` module group from `.das_module`, so the JIT finds the
+  generators without naming this repository; only the JIT compiles it. Its fixture test
+  `tests/test_c_volatile_jit.das` runs every width under the four tiers and counts the IR, the
+  split build's too.
 - `tests/` - one dastest file per piece, written as the converter will emit the code,
   including a control that the same code without the piece is rejected or wrong. A test that
   compiles or runs a child program does so through `probes/_daslang_child.das`, the one child
