@@ -58,6 +58,27 @@ gates and the review machinery. Codex sessions take their MCP wiring from
 - The implementer sets no threshold: an item that makes any perf lane worse than `main` by more
   than 5%, or trades speed against the output's shape, is a `NEEDS RULING` line, not the agent's
   decision.
+- An item that aims to change a perf number, and any answer to "why is X slower", starts with a
+  reference pass and shows it first in its report: how the Rust translator emits the same C
+  construct (its output under `compare/work`, its source in `/root/c2das`, both read-only), and
+  what daslang's options, JIT and AOT flags and dasProfile (daScript's own benchmark method,
+  `perf/ARCHITECTURE.md` section 6) do for that construct. Our own idea comes after the pass.
+- The same item or answer then profiles the native C build and the slow lane with `perf/sampler`
+  and shows, second, the top functions by self time, each with its share of the run and its
+  lane-to-native time ratio. A per-construct cost table is built only for a function in that list.
+- Every `perf/sampler` profile of the interpreter lane that a report shows or a commit adds also
+  gets a das-level profile that names das functions and lines: daslang's own profiler, or
+  `perf/sampler` with das line attribution when that profiler cannot run the program.
+- Before a run whose numbers a report will quote (an item's A/B, a phase-end re-capture), the
+  expected value of every number the report will quote is written with one line of reasoning: for
+  an item in its row of `docs/implementation_order.md`, in a commit made before the run; for a
+  phase-end re-capture in the capture's predictions file, dated before the run and named by the
+  report. The report shows each expected value beside the measured one, one line on the cause of
+  every miss over 25%, and the hit rate: the share of numbers within 25% of their prediction.
+- The last pull request of a phase also commits, under `perf/profiles/`, a top-10 self-time
+  profile of the native build and of each lane in the speed tables, for each of Lua fib, Lua
+  nbody, Doom demo1 and every compare project, so that a change in where the time goes shows up
+  like a change in speed.
 - A pull request merges only when the `preflight` check is green AND the pull request's review
   pass is closed with no BLOCKING or MAJOR finding open; a green check never overrides an open
   review.
@@ -97,3 +118,6 @@ gates and the review machinery. Codex sessions take their MCP wiring from
   Keep active process logs, user data and one useful rollback artifact unless asked otherwise.
 - `git status` is clean of untracked files when a session ends: commit, ignore with a reason,
   or delete.
+- A lesson about the box, the tools or the method that a later session needs is written to the
+  session's memory file in the same session, not only into a report. For Claude Code that is the
+  project's auto-memory `MEMORY.md` and the notes it links.
