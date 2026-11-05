@@ -2186,6 +2186,45 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   read-after-store check each tier's optimizer would merge. Default once the semantics hold on
   every tier (ruling 23: it is the shorter form too); the extern call stays for a width the
   intrinsic lacks.
+- **P7.0s Fused loops for C89 shapes** (ruling 33 item 3, the Rust reference diff rows 13-15; report
+  `/root/notes/research/r33-rust-reference-diff.md`): a counted `for` whose counter is declared before
+  the loop and dead after it takes the range loop (Rust's liveness walk; same C: h264bsd 0 range loops
+  against Rust's 46, Doom 4 against 164), `do { } while (c)` is tested at the bottom instead of the
+  `_first` flag on every pass (the flag stays only with a `continue`), `do { } while (count--)` with
+  `count` dead after becomes a range over `count + 1`. Expected before measuring (box PC, interp, x
+  native): matmul 57 -> about 40, sieve 31 -> about 20, do_while_effect 19.2 -> about 15 (the Rust
+  cells), Doom interp fps up; JIT, exe and AOT flat (LLVM rotates the loop either way). Readable: the
+  C names stay. Default (ruling 23).
+- **P7.0t Flat label CFG for a function with `goto` into case groups** (reference diff row 21): the
+  `while (true)` re-dispatch loop with `_goto` and `_flag ||=` tests walked on every jump (switch_goto's
+  `run_code`) becomes native `label N:` / `goto label N` with a computed `goto` for the case dispatch, as
+  P7.7 did for a goto into a loop body. Expected before measuring (box PC, x native): switch_goto interp
+  72 -> about 45, JIT 1.07 -> about 0.55 (the Rust cells: the re-dispatch loop defeats LLVM's switch
+  recovery); binjgb interp and JIT as the program check (its opcode switch has gotos). Depends on
+  lookibed/daScript#35 the way P7.0c2 does for the interpreter.
+- **P7.0u Builtin `memcpy`, `memmove` and `memset8` for the program's own calls** (reference diff
+  rows 5-6; extends P7.0n, which moved the constant-size marshal reads): a C `memcpy`/`memmove` of a
+  program size calls daslang's builtin with the size guarded against zero, a C `memset` calls `memset8`
+  (the Rust translator's `c2da_rt_memset`), in place of the `crt::` externs, whose `modifyExternal`
+  bind is an indirect call plus the F87 reload barrier under the JIT and the exe. Expected before
+  measuring: h264bsd (56 memset sites, block clears per macroblock) and plmpeg JIT and exe a few
+  percent faster, interp flat (libc does the copy either way); the kernels have no such site, so a
+  kernel with a `memset` per block is the measurement. The crt binds stay for the AOT host's widths.
+- **P7.0v A `uint64` mirror for a stepped pointer and `p[i]` for `deref(p + i)`** (reference diff rows
+  16-17, 19 measured beside them): a pointer stepped in a loop is mirrored in a `uint64` local (one
+  fused add per step) and an element access through a pointer is das's pointer index (one node) in
+  place of a pointer-add call node plus a dereference (h264bsd 1240 `_t` temporaries against Rust's
+  294). Expected before measuring (box PC, interp, x native): blit 45 -> about 30, str_copy and Doom
+  interp up, plmpeg interp 37.5 towards 31.6 with P7.0w; JIT flat. Probe the node counts of the two
+  spellings first (one perf kernel, interp lane). The mirror hides the pointer, so readability decides
+  default or opt-in (ruling 23); `p[i]` reads better and is a default candidate.
+- **P7.0w Expression inlining of pure `static` helpers** (reference diff row 28): a `static` function
+  whose body is `return <expr>` or the clamp shape over scalar parameters is substituted as one
+  expression at every direct call site (Rust's inline.rs, on in every mode); daslang's `[inline]` is
+  no substitute (1.69x slower under the interpreter, memory note). Expected before measuring (box PC,
+  interp, x native): plmpeg 37.5 -> about 33 (77 `plm_clamp` sites, 19M calls per 7 frames),
+  fixed_mandel 51 flat or better; JIT lanes flat (LLVM inlines them). The helper's name vanishes at the
+  site, so the default is decided after the measurement (ruling 23).
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
