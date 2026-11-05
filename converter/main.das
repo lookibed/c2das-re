@@ -53,7 +53,7 @@ struct Args {
     @clarg_name = "no-solid-context"
     @clarg_doc = "write no `options solid_context` in the modules (by default each carries it: a global and a function are reached by index, never looked up by name: Doom under the JIT 3.2-3.9x -> 1.3-1.4x native); only for a module that runs in another context or is patched or reloaded, which the option forbids; overrides the sidecar's solid_context"
     no_solid_context : bool
-    @clarg_doc = "das's checks in the converted functions: safe (the default: a null dereference or an index past its array panics naming the access) or off (every converted function carries `unsafe_deref` and `hint(unsafe_range_check)`, faster under the interpreter and the JIT; a wrong C program then reads garbage or dies by SIGSEGV instead of panicking, and the AOT host keeps its range checks); overrides the sidecar's checks"
+    @clarg_doc = "das's checks in the converted functions: safe (the default: a null dereference or an index past its array panics naming the access) or off (every converted function carries `unsafe_deref` and `hint(unsafe_range_check)`, dropping the checks: faster where they are hot, Doom 3-7% and Lua 2-11% under the interpreter and the JIT, not on every kernel; a wrong C program then reads garbage or dies by SIGSEGV instead of panicking, and the AOT host keeps its range checks); overrides the sidecar's checks"
     checks : string = ""
     @clarg_short = "?"
     @clarg_name = "show-help"
