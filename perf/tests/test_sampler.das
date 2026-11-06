@@ -250,11 +250,11 @@ def test_sampler_writes(tt : T?) {
     }
 }
 
-// the shim's window over `stand_in_gettime` opened at its `open`-th and closed at its `close`-th
-// clock_gettime: the sample file's header and the function holding most of its samples
-def private shim_window(t : T?; dir, out : string; open, close : int; var name : string&) : string {
+// the shim's window over `stand_in_gettime` under `env` (the SHIM_* words): the sample file's
+// header and the function holding most of its samples
+def private shim_window(t : T?; dir, out, env : string; var name : string&) : string {
     let libs = "libsampler.so:{path_join(dir, "libgate_shim.so")}"
-    sampled_run(t, dir, libs, "stand_in_gettime", out, true, array<string>(), "SHIM_CALLER=stand_in_gettime SHIM_OPEN={open} SHIM_CLOSE={close}")
+    sampled_run(t, dir, libs, "stand_in_gettime", out, true, array<string>(), env)
     let file = only_file(dir, out)
     let header = header_line(file)
     var at : string
@@ -268,15 +268,23 @@ def test_gate_shim(tt : T?) {
     let dir = built_dir(tt)
     tt |> run("gate_shim.c makes the named caller's SHIM_OPEN-th and SHIM_CLOSE-th clock_gettime the gate's clock() pair") @(t : T?) {
         var name : string
-        let header = shim_window(t, dir, "shim_hot", 2, 3, name)
+        let header = shim_window(t, dir, "shim_hot", "SHIM_CALLER=stand_in_gettime SHIM_OPEN=2 SHIM_CLOSE=3", name)
         t |> equal(header_number(header, 6), 2, "two clock() calls seen: {header}")
         t |> equal(name, "hot_leaf", "the window between the second and the third call")
-        shim_window(t, dir, "shim_cold", 1, 2, name)
+        shim_window(t, dir, "shim_cold", "SHIM_CALLER=stand_in_gettime SHIM_OPEN=1 SHIM_CLOSE=2", name)
         t |> equal(name, "cold_leaf", "the window between the first and the second call")
     }
-    tt |> run("a caller SHIM_CALLER does not name never opens the gate: no file") @(t : T?) {
+    tt |> run("SHIM_CALLER is a comma-separated list, any entry matching; the window defaults to calls 1 and 2") @(t : T?) {
+        var name : string
+        let header = shim_window(t, dir, "shim_list", "SHIM_CALLER=no_such_caller,stand_in_gettime", name)
+        t |> equal(header_number(header, 6), 2, "two clock() calls seen: {header}")
+        t |> equal(name, "cold_leaf", "the default window, the first two calls")
+    }
+    tt |> run("a caller SHIM_CALLER does not name, or no SHIM_CALLER at all, never opens the gate: no file, a clean exit") @(t : T?) {
         let libs = "libsampler.so:{path_join(dir, "libgate_shim.so")}"
         sampled_run(t, dir, libs, "stand_in_gettime", "shim_none", true, array<string>(), "SHIM_CALLER=no_such_caller")
         t |> equal(length(sample_files(dir, "shim_none")), 0)
+        sampled_run(t, dir, libs, "stand_in_gettime", "shim_unset", true, array<string>())
+        t |> equal(length(sample_files(dir, "shim_unset")), 0)
     }
 }

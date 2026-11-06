@@ -20,7 +20,10 @@
   substrings (the bench's executable; `libstdc++` for the crt bind, which reaches libc through
   chrono), so the sampler records between the bench's own two reads; `SHIM_LOG=1` reports each
   counted call. It gates nothing on its own: without `SAMPLER_GATE=clock` the extra `clock()`
-  calls are two more calls.
+  calls are two more calls. Its limits: the count and the `strtok` buffer are not thread-safe
+  (one sampled thread), every call pays `getenv`, `dladdr` and `strtok`, and `libstdc++` also
+  matches the daslang host's own chrono reads, so a bench's window is counted after them (calls
+  3-4 for binjgb, 2-3 for h264bsd-mp4 and plmpeg-stream; `SHIM_LOG=1` shows the count).
 - `symbolize.sh` - names the samples offline: each PC's mapping gives its file offset, the
   file's `LOAD` segments (`readelf -lW`) its virtual address, `nm -S` its function (the JIT's cached
   `.dll` carries its symbols), `?` past a sized symbol's end (a static function of a stripped
