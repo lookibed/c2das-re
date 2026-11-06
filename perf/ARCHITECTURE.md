@@ -3,7 +3,8 @@
 Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder is
 the performance comparison of `docs/very-detailed-plan.md` section 2: C kernels, the harness that
 times them under every lane, and the stored results; the interpreter audit on Lua is in
-`ARCHITECTURE_AUDIT.md`, the guard every sample runs under in `ARCHITECTURE_SAMPLES.md`.
+`ARCHITECTURE_AUDIT.md`, the guard every sample runs under in `ARCHITECTURE_SAMPLES.md`, the
+exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
 
 ## 1. File charters
 
@@ -138,6 +139,18 @@ times them under every lane, and the stored results; the interpreter audit on Lu
   and daslang versions, the sample count, the lanes, and per kernel and lane the median, spread,
   rep count, the result and raw samples. `results_method_linux.json` - the same of the
   dasProfile method.
+- `profiles/<program>_<lane>.txt` - the phase-end profiles `AGENTS.md` asks for: the top-10
+  functions by self time of each program and lane in the speed tables (Lua fib and nbody through
+  the ports' `bench/timed.lua`, Doom demo1, the compare projects, a kernel whose cell moved against
+  its prediction, with the hot function's IR as `<kernel>_jit_ir_<form>.txt`), each naming the
+  command, the commit, the re-capture's lane/native ratio and the sample count. The native and JIT
+  lanes are `sampler/` runs at 100 us gated on the host's `clock()` pair where the program makes
+  one (Lua's `os.clock`, Doom's host; a compare bench reads `clock_gettime`, which
+  `sampler/gate_shim.c` turns into the pair; a kernel's budget loop calls `clock()` every round, so
+  a kernel is sampled ungated with the daslang host's own files set apart), symbolized against the
+  JIT's cached `.dll`; the interpreter lane is daslang's `--das-profiler` over the host's
+  `-return-from-main` run, folded to self time, at an argument whose per-call event store fits the
+  memory cap.
 - `dasprofile_linux.json` - borisbat/dasProfile's own capture (`profile_results_linux.json`)
   from this machine, with `dasprofile_commit` and `toolchain` stamped on by
   `dasprofile_capture.das`; `dasprofile.sh` makes it (section 6).
@@ -209,7 +222,7 @@ against 0.58), and AOT `fib_recursive` runs ahead (1.05 against 1.13). A volatil
 per pass and runs 24 percent slower under the interpreter than with the volatile dropped, and
 `compound_lit`'s JIT cell is 18 percent slower than the same module with its volatile parameter
 dropped (0.00066 against 0.00055 s, the cell before the volatile was kept), one read per run
-that bounds the run's loop. The AOT `sieve` and `matmul` cells are ledgered in section 4.
+that bounds the run's loop. The AOT `sieve` and `matmul` cells are ledgered in `ARCHITECTURE_EXCEPTIONS.md`.
 Of the kernels only `blit` writes a parameter, so its module is the only one the copy mode
 changes (its three parameters copied on entry); the `interp-copy` lane runs it about 10 percent
 faster than `interp`, and every other row of the lane times the same module as `interp`, the
@@ -217,20 +230,7 @@ two cells apart by the samples' spread alone.
 
 ## 4. Exception ledger
 
-- `sieve` and `matmul` / `aot`: 5.4 and 1.4 times native. The generated C++ finds a module global
-  through the context's mangled-name lookup at every access (`das_global<T, mnh>`), and a C
-  file-scope array is a module global. In `sieve` every iteration stores into the array, and the
-  host compiles with `-fno-strict-aliasing`, so any store may alias the lookup table and clang keeps
-  the probe inside the loop. `matmul`'s inner loop stores nothing, yet the probes stay in it too:
-  hoisting the three lookups by hand in the generated C++ with the bounds checks kept takes the cell
-  from 0.864 to 0.599 ms (native 0.600), while keeping the lookups and indexing raw without the
-  bounds check leaves it at 0.84 ms; the lookup is the cost, the bounds check is not
-  (`docs/probe-findings.md` F49, lookibed/daScript#5).
-- `switch_local` / `aot`: no cell. daslang's AOT writes the flattened block's `var g1 : int =
-  k * 2` as an initialized C++ local after the `goto` that jumps past it, and clang++ refuses
-  the jump ("jump bypasses variable initialization"); the interpreter, the JIT and the exe
-  take the same module. Every das `goto` past a `var` declaration under AOT meets it, a
-  daScript issue (`docs/implementation_order.md` P4.9).
+In `ARCHITECTURE_EXCEPTIONS.md`, a companion of this document.
 
 ## 5. Tracking
 

@@ -13,6 +13,7 @@ let SAMPLER_C = "perf/sampler/sampler.c"
 let SYMBOLIZE = "perf/sampler/symbolize.sh"
 let STAND_IN = "perf/tests/sampler_stand_in.c"
 let STAND_IN_LIB = "perf/tests/sampler_stand_in_lib.c"
+let GATE_SHIM = "perf/sampler/gate_shim.c"
 
 // `argv` run: its exit code, the merged output in `out`
 def private run_argv(argv : array<string>; var out : string&) : int => run_and_capture(argv, out, 120.0)
@@ -39,6 +40,8 @@ def private build_all(t : T?; dir : string) {
     build(t, dir, "libsampler_cap.so", SAMPLER_C, ["-fPIC", "-shared", "-DMAX_SAMPLES=16"])
     build(t, dir, "libsampler_small_maps.so", SAMPLER_C, ["-fPIC", "-shared", "-DMAPS_BYTES=2048", "-DMAPS_FINAL_RESERVE=512"])
     build(t, dir, "libspin.so", STAND_IN_LIB, ["-fPIC", "-shared", "-s"])
+    build(t, dir, "libgate_shim.so", GATE_SHIM, ["-fPIC", "-shared", "-ldl"])
+    build(t, dir, "stand_in_gettime", STAND_IN, ["-DGETTIME"])
     build(t, dir, "stand_in", STAND_IN, ["-gdwarf-4"])
     for (name, define in ["no_clock", "exit", "sleep", "fork", "dlopen"], ["NO_CLOCK", "EXIT_AFTER", "SLEEP_AFTER", "FORK", "DLOPEN"]) {
         build(t, dir, "stand_in_{name}", STAND_IN, ["-D{define}", "-ldl"])
@@ -46,11 +49,12 @@ def private build_all(t : T?; dir : string) {
 }
 
 // `bin` (with `args`) run under `lib` at 100 us from `dir`, its sample files prefixed
-// `out` in `dir` ("" leaves SAMPLER_OUT empty), with `gated` the clock gate; the merged output
-def private sampled_run(t : T?; dir, lib, bin, out : string; gated : bool; args : array<string>) : string {
+// `out` in `dir` ("" leaves SAMPLER_OUT empty), with `gated` the clock gate and `env` more
+// `NAME=value` words for the environment; the merged output
+def private sampled_run(t : T?; dir, lib, bin, out : string; gated : bool; args : array<string>; env : string = "") : string {
     // from `dir`: an empty SAMPLER_OUT would name `.<pid>` there
-    var argv <- ["env", "-C", dir, "SAMPLER_OUT={empty(out) ? "" : path_join(dir, out)}", "SAMPLER_US=100", "SAMPLER_GATE={gated ? "clock" : ""}", "LD_PRELOAD={path_join(dir, lib)}", path_join(dir, bin)]
-    argv |> push_from(args)
+    var argv <- ["env", "-C", dir, "SAMPLER_OUT={empty(out) ? "" : path_join(dir, out)}", "SAMPLER_US=100", "SAMPLER_GATE={gated ? "clock" : ""}", "LD_PRELOAD={path_join(dir, lib)}"]
+    argv |> push_from([for (w in split(env, " ")); w; where !empty(w)], [path_join(dir, bin)], args)
     return checked_run(t, argv)
 }
 
@@ -243,5 +247,36 @@ def test_sampler_writes(tt : T?) {
         sampled_run(t, dir, "libsampler_small_maps.so", "stand_in_dlopen", "small_maps", true, [path_join(dir, "libspin.so")])
         t |> success(fread(only_file(dir, "small_maps")) |> contains("\n# maps truncated: "), "the marker")
         t |> success(!(fread(file) |> contains("# maps truncated")), "no marker in the full buffer")
+    }
+}
+
+// the shim's window over `stand_in_gettime` opened at its `open`-th and closed at its `close`-th
+// clock_gettime: the sample file's header and the function holding most of its samples
+def private shim_window(t : T?; dir, out : string; open, close : int; var name : string&) : string {
+    let libs = "libsampler.so:{path_join(dir, "libgate_shim.so")}"
+    sampled_run(t, dir, libs, "stand_in_gettime", out, true, array<string>(), "SHIM_CALLER=stand_in_gettime SHIM_OPEN={open} SHIM_CLOSE={close}")
+    let file = only_file(dir, out)
+    let header = header_line(file)
+    var at : string
+    let count = top_row(checked_run(t, ["bash", SYMBOLIZE, file, "--top", "5"]), at, name)
+    t |> success(count * 10 >= header_number(header, 2) * 8, "{count} of {header}: {name}")
+    return header
+}
+
+[test]
+def test_gate_shim(tt : T?) {
+    let dir = built_dir(tt)
+    tt |> run("gate_shim.c makes the named caller's SHIM_OPEN-th and SHIM_CLOSE-th clock_gettime the gate's clock() pair") @(t : T?) {
+        var name : string
+        let header = shim_window(t, dir, "shim_hot", 2, 3, name)
+        t |> equal(header_number(header, 6), 2, "two clock() calls seen: {header}")
+        t |> equal(name, "hot_leaf", "the window between the second and the third call")
+        shim_window(t, dir, "shim_cold", 1, 2, name)
+        t |> equal(name, "cold_leaf", "the window between the first and the second call")
+    }
+    tt |> run("a caller SHIM_CALLER does not name never opens the gate: no file") @(t : T?) {
+        let libs = "libsampler.so:{path_join(dir, "libgate_shim.so")}"
+        sampled_run(t, dir, libs, "stand_in_gettime", "shim_none", true, array<string>(), "SHIM_CALLER=no_such_caller")
+        t |> equal(length(sample_files(dir, "shim_none")), 0)
     }
 }

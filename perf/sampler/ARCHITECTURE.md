@@ -14,6 +14,13 @@
   the second; writing deletes the timer, so no signal interrupts what runs after. A forked child
   writes nothing. Build: `clang -O2 -fPIC -shared -o libsampler.so sampler.c -ldl -lrt`; the caps
   are `-D` overridable.
+- `gate_shim.c` - the gate for a program that reads `clock_gettime` and never `clock()`: preloaded
+  after `sampler.c`, it calls `clock()` at the `SHIM_OPEN`-th and the `SHIM_CLOSE`-th
+  `clock_gettime` whose caller's mapped file holds one of `SHIM_CALLER`'s comma-separated
+  substrings (the bench's executable; `libstdc++` for the crt bind, which reaches libc through
+  chrono), so the sampler records between the bench's own two reads; `SHIM_LOG=1` reports each
+  counted call. It gates nothing on its own: without `SAMPLER_GATE=clock` the extra `clock()`
+  calls are two more calls.
 - `symbolize.sh` - names the samples offline: each PC's mapping gives its file offset, the
   file's `LOAD` segments (`readelf -lW`) its virtual address, `nm -S` its function (the JIT's cached
   `.dll` carries its symbols), `?` past a sized symbol's end (a static function of a stripped
@@ -35,8 +42,11 @@ at a finer period than the CPU-time timers, which expire on the scheduler tick.
 build line of section 1, no script between, three times (as is, `MAX_SAMPLES=16`, a 2 KiB maps
 buffer), the stand-in `perf/tests/sampler_stand_in.c` once per define its header names (`main`
 timing `hot_caller` between two `clock()` calls, `hot_caller` calling `hot_leaf`, a loop in
-registers that keeps no frame), and `sampler_stand_in_lib.c` stripped. It holds the file's format
-and every way it is written or not: gated, ungated at exit, through `_exit` both ways, never when
+registers that keeps no frame), `sampler_stand_in_lib.c` stripped, and `gate_shim.c` once
+(`GETTIME` reads `clock_gettime` three times, `cold_leaf` between the first two, `hot_caller`
+between the last two; the shim's window at calls 2-3 holds `hot_leaf`, at 1-2 `cold_leaf`, a
+caller it does not name writes no file). It holds the file's format and every way it is written or
+not: gated, ungated at exit, through `_exit` both ways, never when
 the gate never opens or `SAMPLER_OUT` is empty or unset, once across a fork, the default and a
 zero period sampling, dropped samples past the cap, a sleep after the window not interrupted, a
 dlclosed library's PCs and the truncation marker; and `symbolize.sh`'s self samples (80% in
