@@ -1,0 +1,21 @@
+program: kernel sieve (perf/kernels/sieve.c, the composed program's 0.5 s budget loop)
+lane: jit, the module without options solid_context (the 11-04 side's form; otherwise the same text)
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: daslang -load_module dasCRuntime -load_module c_runtime -jit <perf/work/sieve/sieve.das with the options solid_context line removed>
+sampler: perf/sampler at 100 us, ungated, the whole process (the kernel's budget loop calls clock() once per round, so the clock gate would hold one round); symbolized against the JIT's cached .dll
+samples: 10700 located (samples 10700 dropped 0 clock_calls 6); 1747 of them in the daslang host's own files (liblibDaScriptDyn|LLVM|libstdc|ld-linux|daslang$: the module's compile and load before main and the runtime library, set apart), the shares below are of the other 8953
+ratio: the whole run 0.001797 s against the solid module's 0.001968 s in this session's gated pair (one run each)
+
+ samples  share  file                     function
+    7943  88.7%  0xff7f2316aa95c392.dll c_main
+     883   9.9%  libc.so.6 ?
+      47   0.5%  libc.so.6 malloc@@GLIBC_2.2.5
+      32   0.4%  libc.so.6 free@@GLIBC_2.2.5
+      15   0.2%  libc.so.6 brk@@GLIBC_2.2.5
+      13   0.1%  libc.so.6 read@@GLIBC_2.2.5
+       7   0.1%  libc.so.6 munmap@@GLIBC_2.2.5
+       3   0.0%  libc.so.6 open@@GLIBC_2.2.5
+       2   0.0%  [vdso] ?
+       1   0.0%  libc.so.6 write@@GLIBC_2.2.5

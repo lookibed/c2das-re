@@ -1,0 +1,653 @@
+program: kernel sieve (perf/kernels/sieve.c, the composed program), the JIT's optimized LLVM IR of sieve__kernel_run (the hot loops inlined into it)
+module: the same module with the options solid_context line removed (the 11-04 form)
+box: PC (AMD Ryzen 7 7435HS, WSL2), date: 2026-11-06, commit: 2bf0ecf
+command: daslang -load_module dasCRuntime -load_module c_runtime -jit -jit-no-cache <module> -- --jit-dump --jit-dump-to <file> (F82), the function cut from the dump
+what differs: without solid_context the addresses of the globals limit and flags are two jit_get_global_mnh calls hoisted to the function entry and the fill loop's preheader; with it they are one load of the context's globals block (+152) and offsets; the loop bodies are the same shape (the fill vectorized in both, the sieve's inner loop with its range check)
+
+define dllexport <4 x float> @"_anon_893966376449687341`sieve__kernel_run"(ptr align 16 captures(none) %0, ptr readnone align 16 captures(none) %1, ptr readnone captures(none) %2) local_unnamed_addr #3 {
+entry:
+  %global_var_sieve__limit_mnh_ptr.i = tail call ptr @jit_get_global_mnh(i64 -3171509618786106187, ptr align 16 %0)
+  %c_volatile.load.i.i = load volatile i32, ptr %global_var_sieve__limit_mnh_ptr.i, align 4, !noalias !167
+  %.not48.i = icmp slt i32 %c_volatile.load.i.i, 0
+  br i1 %.not48.i, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %while_body.lr.ph.i
+
+while_body.lr.ph.i:                               ; preds = %entry
+  %global_var_sieve__flags_mnh_ptr.i = tail call ptr @jit_get_global_mnh(i64 7663890385710725837, ptr align 16 %0)
+  %3 = add nuw i32 %c_volatile.load.i.i, 1
+  %wide.trip.count.i = zext i32 %3 to i64
+  %min.iters.check = icmp ult i32 %c_volatile.load.i.i, 128
+  br i1 %min.iters.check, label %while_body.i.preheader, label %vector.ph
+
+while_body.i.preheader:                           ; preds = %vector.body, %while_body.lr.ph.i
+  %indvars.iv.i.ph = phi i64 [ 0, %while_body.lr.ph.i ], [ %n.vec, %vector.body ]
+  br label %while_body.i
+
+vector.ph:                                        ; preds = %while_body.lr.ph.i
+  %4 = tail call i32 @llvm.umin.i32(i32 %c_volatile.load.i.i, i32 1000001)
+  %narrow = add nuw nsw i32 %4, 1
+  %5 = zext nneg i32 %narrow to i64
+  %n.mod.vf = and i64 %5, 127
+  %6 = icmp eq i64 %n.mod.vf, 0
+  %7 = select i1 %6, i64 128, i64 %n.mod.vf
+  %n.vec = sub nsw i64 %5, %7
+  br label %vector.body
+
+vector.body:                                      ; preds = %vector.body, %vector.ph
+  %index = phi i64 [ 0, %vector.ph ], [ %index.next, %vector.body ]
+  %8 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %index
+  %9 = getelementptr inbounds nuw i8, ptr %8, i64 32
+  %10 = getelementptr inbounds nuw i8, ptr %8, i64 64
+  %11 = getelementptr inbounds nuw i8, ptr %8, i64 96
+  store <32 x i8> splat (i8 1), ptr %8, align 1, !noalias !167
+  store <32 x i8> splat (i8 1), ptr %9, align 1, !noalias !167
+  store <32 x i8> splat (i8 1), ptr %10, align 1, !noalias !167
+  store <32 x i8> splat (i8 1), ptr %11, align 1, !noalias !167
+  %index.next = add nuw i64 %index, 128
+  %12 = icmp eq i64 %index.next, %n.vec
+  br i1 %12, label %while_body.i.preheader, label %vector.body, !llvm.loop !170
+
+while_start2.preheader.i:                         ; preds = %check_end.i
+  %.not4352.i = icmp slt i32 %c_volatile.load.i.i, 2
+  br i1 %.not4352.i, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %if_cond_at_37_.lr.ph.i
+
+if_cond_at_37_.lr.ph.i:                           ; preds = %while_start2.preheader.i
+  %13 = zext nneg i32 %c_volatile.load.i.i to i64
+  br label %if_cond_at_37_.i
+
+while_body.i:                                     ; preds = %while_body.i.preheader, %check_end.i
+  %indvars.iv.i = phi i64 [ %indvars.iv.next.i, %check_end.i ], [ %indvars.iv.i.ph, %while_body.i.preheader ]
+  %exitcond.i = icmp eq i64 %indvars.iv.i, 1000001
+  br i1 %exitcond.i, label %check_true.i, label %check_end.i
+
+check_true.i:                                     ; preds = %while_body.i
+  tail call void @jit_exception(ptr nonnull @".str.dim index out of range", ptr align 16 %0, ptr nonnull @li_30_24)
+  unreachable
+
+check_end.i:                                      ; preds = %while_body.i
+  %dim_at.i = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.i
+  store i8 1, ptr %dim_at.i, align 1, !noalias !167
+  %indvars.iv.next.i = add nuw nsw i64 %indvars.iv.i, 1
+  %exitcond57.not.i = icmp eq i64 %indvars.iv.next.i, %wide.trip.count.i
+  br i1 %exitcond57.not.i, label %while_start2.preheader.i, label %while_body.i, !llvm.loop !173
+
+if_cond_at_37_.i:                                 ; preds = %if_end_at_line_37_.i.15, %if_cond_at_37_.lr.ph.i
+  %indvars.iv60.i = phi i64 [ 2, %if_cond_at_37_.lr.ph.i ], [ %indvars.iv.next61.i.15, %if_end_at_line_37_.i.15 ]
+  %indvars.iv58.i = phi i64 [ 4, %if_cond_at_37_.lr.ph.i ], [ %indvars.iv.next59.i.15, %if_end_at_line_37_.i.15 ]
+  %variable_count.055.i = phi i32 [ 0, %if_cond_at_37_.lr.ph.i ], [ %variable_count.1.i.15, %if_end_at_line_37_.i.15 ]
+  %dim_at13.i = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv60.i
+  %dim_at_r2v.i = load i8, ptr %dim_at13.i, align 1, !noalias !167
+  %.not44.i = icmp eq i8 %dim_at_r2v.i, 0
+  br i1 %.not44.i, label %if_end_at_line_37_.i, label %if_true_at_line_37_.i
+
+if_true_at_line_37_.i:                            ; preds = %if_cond_at_37_.i
+  %14 = shl nuw nsw i64 %indvars.iv60.i, 1
+  %.not4550.i = icmp samesign ugt i64 %14, %13
+  br i1 %.not4550.i, label %while_end18.i, label %while_body17.i
+
+if_end_at_line_37_.i:                             ; preds = %while_end18.i, %if_cond_at_37_.i
+  %variable_count.1.i = phi i32 [ %60, %while_end18.i ], [ %variable_count.055.i, %if_cond_at_37_.i ]
+  %indvars.iv.next61.i = or disjoint i64 %indvars.iv60.i, 1
+  %indvars.iv.next59.i = or disjoint i64 %indvars.iv58.i, 2
+  %exitcond68.not.i = icmp eq i64 %indvars.iv.next61.i, %wide.trip.count.i
+  br i1 %exitcond68.not.i, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.1, !llvm.loop !174
+
+check_end11.i.1:                                  ; preds = %if_end_at_line_37_.i
+  %dim_at13.i.1 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i
+  %dim_at_r2v.i.1 = load i8, ptr %dim_at13.i.1, align 1, !noalias !167
+  %.not44.i.1 = icmp eq i8 %dim_at_r2v.i.1, 0
+  br i1 %.not44.i.1, label %if_end_at_line_37_.i.1, label %if_true_at_line_37_.i.1
+
+if_true_at_line_37_.i.1:                          ; preds = %check_end11.i.1
+  %15 = shl nuw nsw i64 %indvars.iv.next61.i, 1
+  %.not4550.i.1 = icmp samesign ugt i64 %15, %13
+  br i1 %.not4550.i.1, label %while_end18.i.1, label %while_body17.i.1
+
+while_body17.i.1:                                 ; preds = %if_true_at_line_37_.i.1, %check_end24.i.1
+  %indvars.iv62.i.1 = phi i64 [ %indvars.iv.next63.i.1, %check_end24.i.1 ], [ %indvars.iv.next59.i, %if_true_at_line_37_.i.1 ]
+  %range_check25.i.1 = icmp samesign ugt i64 %indvars.iv62.i.1, 1000000
+  br i1 %range_check25.i.1, label %check_true23.i, label %check_end24.i.1
+
+check_end24.i.1:                                  ; preds = %while_body17.i.1
+  %dim_at26.i.1 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.1
+  store i8 0, ptr %dim_at26.i.1, align 1, !noalias !167
+  %indvars.iv.next63.i.1 = add nuw nsw i64 %indvars.iv62.i.1, %indvars.iv.next61.i
+  %16 = trunc nuw i64 %indvars.iv.next63.i.1 to i32
+  %.not45.i.1 = icmp slt i32 %c_volatile.load.i.i, %16
+  br i1 %.not45.i.1, label %while_end18.i.1, label %while_body17.i.1, !llvm.loop !175
+
+while_end18.i.1:                                  ; preds = %check_end24.i.1, %if_true_at_line_37_.i.1
+  %17 = add i32 %variable_count.1.i, 1
+  br label %if_end_at_line_37_.i.1
+
+if_end_at_line_37_.i.1:                           ; preds = %while_end18.i.1, %check_end11.i.1
+  %variable_count.1.i.1 = phi i32 [ %17, %while_end18.i.1 ], [ %variable_count.1.i, %check_end11.i.1 ]
+  %indvars.iv.next61.i.1 = add nuw nsw i64 %indvars.iv60.i, 2
+  %indvars.iv.next59.i.1 = add nuw nsw i64 %indvars.iv58.i, 4
+  %exitcond68.not.i.1 = icmp eq i64 %indvars.iv.next61.i.1, %wide.trip.count.i
+  br i1 %exitcond68.not.i.1, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.2, !llvm.loop !174
+
+check_end11.i.2:                                  ; preds = %if_end_at_line_37_.i.1
+  %dim_at13.i.2 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.1
+  %dim_at_r2v.i.2 = load i8, ptr %dim_at13.i.2, align 1, !noalias !167
+  %.not44.i.2 = icmp eq i8 %dim_at_r2v.i.2, 0
+  br i1 %.not44.i.2, label %if_end_at_line_37_.i.2, label %if_true_at_line_37_.i.2
+
+if_true_at_line_37_.i.2:                          ; preds = %check_end11.i.2
+  %18 = shl nuw nsw i64 %indvars.iv.next61.i.1, 1
+  %.not4550.i.2 = icmp samesign ugt i64 %18, %13
+  br i1 %.not4550.i.2, label %while_end18.i.2, label %while_body17.i.2
+
+while_body17.i.2:                                 ; preds = %if_true_at_line_37_.i.2, %check_end24.i.2
+  %indvars.iv62.i.2 = phi i64 [ %indvars.iv.next63.i.2, %check_end24.i.2 ], [ %indvars.iv.next59.i.1, %if_true_at_line_37_.i.2 ]
+  %range_check25.i.2 = icmp samesign ugt i64 %indvars.iv62.i.2, 1000000
+  br i1 %range_check25.i.2, label %check_true23.i, label %check_end24.i.2
+
+check_end24.i.2:                                  ; preds = %while_body17.i.2
+  %dim_at26.i.2 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.2
+  store i8 0, ptr %dim_at26.i.2, align 1, !noalias !167
+  %indvars.iv.next63.i.2 = add nuw nsw i64 %indvars.iv62.i.2, %indvars.iv.next61.i.1
+  %19 = trunc nuw i64 %indvars.iv.next63.i.2 to i32
+  %.not45.i.2 = icmp slt i32 %c_volatile.load.i.i, %19
+  br i1 %.not45.i.2, label %while_end18.i.2, label %while_body17.i.2, !llvm.loop !175
+
+while_end18.i.2:                                  ; preds = %check_end24.i.2, %if_true_at_line_37_.i.2
+  %20 = add i32 %variable_count.1.i.1, 1
+  br label %if_end_at_line_37_.i.2
+
+if_end_at_line_37_.i.2:                           ; preds = %while_end18.i.2, %check_end11.i.2
+  %variable_count.1.i.2 = phi i32 [ %20, %while_end18.i.2 ], [ %variable_count.1.i.1, %check_end11.i.2 ]
+  %indvars.iv.next61.i.2 = add nuw nsw i64 %indvars.iv60.i, 3
+  %indvars.iv.next59.i.2 = add nuw nsw i64 %indvars.iv58.i, 6
+  %exitcond68.not.i.2 = icmp eq i64 %indvars.iv.next61.i.2, %wide.trip.count.i
+  br i1 %exitcond68.not.i.2, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.3, !llvm.loop !174
+
+check_end11.i.3:                                  ; preds = %if_end_at_line_37_.i.2
+  %dim_at13.i.3 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.2
+  %dim_at_r2v.i.3 = load i8, ptr %dim_at13.i.3, align 1, !noalias !167
+  %.not44.i.3 = icmp eq i8 %dim_at_r2v.i.3, 0
+  br i1 %.not44.i.3, label %if_end_at_line_37_.i.3, label %if_true_at_line_37_.i.3
+
+if_true_at_line_37_.i.3:                          ; preds = %check_end11.i.3
+  %21 = shl nuw nsw i64 %indvars.iv.next61.i.2, 1
+  %.not4550.i.3 = icmp samesign ugt i64 %21, %13
+  br i1 %.not4550.i.3, label %while_end18.i.3, label %while_body17.i.3
+
+while_body17.i.3:                                 ; preds = %if_true_at_line_37_.i.3, %check_end24.i.3
+  %indvars.iv62.i.3 = phi i64 [ %indvars.iv.next63.i.3, %check_end24.i.3 ], [ %indvars.iv.next59.i.2, %if_true_at_line_37_.i.3 ]
+  %range_check25.i.3 = icmp samesign ugt i64 %indvars.iv62.i.3, 1000000
+  br i1 %range_check25.i.3, label %check_true23.i, label %check_end24.i.3
+
+check_end24.i.3:                                  ; preds = %while_body17.i.3
+  %dim_at26.i.3 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.3
+  store i8 0, ptr %dim_at26.i.3, align 1, !noalias !167
+  %indvars.iv.next63.i.3 = add nuw nsw i64 %indvars.iv62.i.3, %indvars.iv.next61.i.2
+  %22 = trunc nuw i64 %indvars.iv.next63.i.3 to i32
+  %.not45.i.3 = icmp slt i32 %c_volatile.load.i.i, %22
+  br i1 %.not45.i.3, label %while_end18.i.3, label %while_body17.i.3, !llvm.loop !175
+
+while_end18.i.3:                                  ; preds = %check_end24.i.3, %if_true_at_line_37_.i.3
+  %23 = add i32 %variable_count.1.i.2, 1
+  br label %if_end_at_line_37_.i.3
+
+if_end_at_line_37_.i.3:                           ; preds = %while_end18.i.3, %check_end11.i.3
+  %variable_count.1.i.3 = phi i32 [ %23, %while_end18.i.3 ], [ %variable_count.1.i.2, %check_end11.i.3 ]
+  %indvars.iv.next61.i.3 = add nuw nsw i64 %indvars.iv60.i, 4
+  %indvars.iv.next59.i.3 = add nuw nsw i64 %indvars.iv58.i, 8
+  %exitcond68.not.i.3 = icmp eq i64 %indvars.iv.next61.i.3, %wide.trip.count.i
+  br i1 %exitcond68.not.i.3, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.4, !llvm.loop !174
+
+check_end11.i.4:                                  ; preds = %if_end_at_line_37_.i.3
+  %dim_at13.i.4 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.3
+  %dim_at_r2v.i.4 = load i8, ptr %dim_at13.i.4, align 1, !noalias !167
+  %.not44.i.4 = icmp eq i8 %dim_at_r2v.i.4, 0
+  br i1 %.not44.i.4, label %if_end_at_line_37_.i.4, label %if_true_at_line_37_.i.4
+
+if_true_at_line_37_.i.4:                          ; preds = %check_end11.i.4
+  %24 = shl nuw nsw i64 %indvars.iv.next61.i.3, 1
+  %.not4550.i.4 = icmp samesign ugt i64 %24, %13
+  br i1 %.not4550.i.4, label %while_end18.i.4, label %while_body17.i.4
+
+while_body17.i.4:                                 ; preds = %if_true_at_line_37_.i.4, %check_end24.i.4
+  %indvars.iv62.i.4 = phi i64 [ %indvars.iv.next63.i.4, %check_end24.i.4 ], [ %indvars.iv.next59.i.3, %if_true_at_line_37_.i.4 ]
+  %range_check25.i.4 = icmp samesign ugt i64 %indvars.iv62.i.4, 1000000
+  br i1 %range_check25.i.4, label %check_true23.i, label %check_end24.i.4
+
+check_end24.i.4:                                  ; preds = %while_body17.i.4
+  %dim_at26.i.4 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.4
+  store i8 0, ptr %dim_at26.i.4, align 1, !noalias !167
+  %indvars.iv.next63.i.4 = add nuw nsw i64 %indvars.iv62.i.4, %indvars.iv.next61.i.3
+  %25 = trunc nuw i64 %indvars.iv.next63.i.4 to i32
+  %.not45.i.4 = icmp slt i32 %c_volatile.load.i.i, %25
+  br i1 %.not45.i.4, label %while_end18.i.4, label %while_body17.i.4, !llvm.loop !175
+
+while_end18.i.4:                                  ; preds = %check_end24.i.4, %if_true_at_line_37_.i.4
+  %26 = add i32 %variable_count.1.i.3, 1
+  br label %if_end_at_line_37_.i.4
+
+if_end_at_line_37_.i.4:                           ; preds = %while_end18.i.4, %check_end11.i.4
+  %variable_count.1.i.4 = phi i32 [ %26, %while_end18.i.4 ], [ %variable_count.1.i.3, %check_end11.i.4 ]
+  %indvars.iv.next61.i.4 = add nuw nsw i64 %indvars.iv60.i, 5
+  %indvars.iv.next59.i.4 = add nuw nsw i64 %indvars.iv58.i, 10
+  %exitcond68.not.i.4 = icmp eq i64 %indvars.iv.next61.i.4, %wide.trip.count.i
+  br i1 %exitcond68.not.i.4, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.5, !llvm.loop !174
+
+check_end11.i.5:                                  ; preds = %if_end_at_line_37_.i.4
+  %dim_at13.i.5 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.4
+  %dim_at_r2v.i.5 = load i8, ptr %dim_at13.i.5, align 1, !noalias !167
+  %.not44.i.5 = icmp eq i8 %dim_at_r2v.i.5, 0
+  br i1 %.not44.i.5, label %if_end_at_line_37_.i.5, label %if_true_at_line_37_.i.5
+
+if_true_at_line_37_.i.5:                          ; preds = %check_end11.i.5
+  %27 = shl nuw nsw i64 %indvars.iv.next61.i.4, 1
+  %.not4550.i.5 = icmp samesign ugt i64 %27, %13
+  br i1 %.not4550.i.5, label %while_end18.i.5, label %while_body17.i.5
+
+while_body17.i.5:                                 ; preds = %if_true_at_line_37_.i.5, %check_end24.i.5
+  %indvars.iv62.i.5 = phi i64 [ %indvars.iv.next63.i.5, %check_end24.i.5 ], [ %indvars.iv.next59.i.4, %if_true_at_line_37_.i.5 ]
+  %range_check25.i.5 = icmp samesign ugt i64 %indvars.iv62.i.5, 1000000
+  br i1 %range_check25.i.5, label %check_true23.i, label %check_end24.i.5
+
+check_end24.i.5:                                  ; preds = %while_body17.i.5
+  %dim_at26.i.5 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.5
+  store i8 0, ptr %dim_at26.i.5, align 1, !noalias !167
+  %indvars.iv.next63.i.5 = add nuw nsw i64 %indvars.iv62.i.5, %indvars.iv.next61.i.4
+  %28 = trunc nuw i64 %indvars.iv.next63.i.5 to i32
+  %.not45.i.5 = icmp slt i32 %c_volatile.load.i.i, %28
+  br i1 %.not45.i.5, label %while_end18.i.5, label %while_body17.i.5, !llvm.loop !175
+
+while_end18.i.5:                                  ; preds = %check_end24.i.5, %if_true_at_line_37_.i.5
+  %29 = add i32 %variable_count.1.i.4, 1
+  br label %if_end_at_line_37_.i.5
+
+if_end_at_line_37_.i.5:                           ; preds = %while_end18.i.5, %check_end11.i.5
+  %variable_count.1.i.5 = phi i32 [ %29, %while_end18.i.5 ], [ %variable_count.1.i.4, %check_end11.i.5 ]
+  %indvars.iv.next61.i.5 = add nuw nsw i64 %indvars.iv60.i, 6
+  %indvars.iv.next59.i.5 = add nuw nsw i64 %indvars.iv58.i, 12
+  %exitcond68.not.i.5 = icmp eq i64 %indvars.iv.next61.i.5, %wide.trip.count.i
+  br i1 %exitcond68.not.i.5, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.6, !llvm.loop !174
+
+check_end11.i.6:                                  ; preds = %if_end_at_line_37_.i.5
+  %dim_at13.i.6 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.5
+  %dim_at_r2v.i.6 = load i8, ptr %dim_at13.i.6, align 1, !noalias !167
+  %.not44.i.6 = icmp eq i8 %dim_at_r2v.i.6, 0
+  br i1 %.not44.i.6, label %if_end_at_line_37_.i.6, label %if_true_at_line_37_.i.6
+
+if_true_at_line_37_.i.6:                          ; preds = %check_end11.i.6
+  %30 = shl nuw nsw i64 %indvars.iv.next61.i.5, 1
+  %.not4550.i.6 = icmp samesign ugt i64 %30, %13
+  br i1 %.not4550.i.6, label %while_end18.i.6, label %while_body17.i.6
+
+while_body17.i.6:                                 ; preds = %if_true_at_line_37_.i.6, %check_end24.i.6
+  %indvars.iv62.i.6 = phi i64 [ %indvars.iv.next63.i.6, %check_end24.i.6 ], [ %indvars.iv.next59.i.5, %if_true_at_line_37_.i.6 ]
+  %range_check25.i.6 = icmp samesign ugt i64 %indvars.iv62.i.6, 1000000
+  br i1 %range_check25.i.6, label %check_true23.i, label %check_end24.i.6
+
+check_end24.i.6:                                  ; preds = %while_body17.i.6
+  %dim_at26.i.6 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.6
+  store i8 0, ptr %dim_at26.i.6, align 1, !noalias !167
+  %indvars.iv.next63.i.6 = add nuw nsw i64 %indvars.iv62.i.6, %indvars.iv.next61.i.5
+  %31 = trunc nuw i64 %indvars.iv.next63.i.6 to i32
+  %.not45.i.6 = icmp slt i32 %c_volatile.load.i.i, %31
+  br i1 %.not45.i.6, label %while_end18.i.6, label %while_body17.i.6, !llvm.loop !175
+
+while_end18.i.6:                                  ; preds = %check_end24.i.6, %if_true_at_line_37_.i.6
+  %32 = add i32 %variable_count.1.i.5, 1
+  br label %if_end_at_line_37_.i.6
+
+if_end_at_line_37_.i.6:                           ; preds = %while_end18.i.6, %check_end11.i.6
+  %variable_count.1.i.6 = phi i32 [ %32, %while_end18.i.6 ], [ %variable_count.1.i.5, %check_end11.i.6 ]
+  %indvars.iv.next61.i.6 = add nuw nsw i64 %indvars.iv60.i, 7
+  %indvars.iv.next59.i.6 = add nuw nsw i64 %indvars.iv58.i, 14
+  %exitcond68.not.i.6 = icmp eq i64 %indvars.iv.next61.i.6, %wide.trip.count.i
+  br i1 %exitcond68.not.i.6, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.7, !llvm.loop !174
+
+check_end11.i.7:                                  ; preds = %if_end_at_line_37_.i.6
+  %dim_at13.i.7 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.6
+  %dim_at_r2v.i.7 = load i8, ptr %dim_at13.i.7, align 1, !noalias !167
+  %.not44.i.7 = icmp eq i8 %dim_at_r2v.i.7, 0
+  br i1 %.not44.i.7, label %if_end_at_line_37_.i.7, label %if_true_at_line_37_.i.7
+
+if_true_at_line_37_.i.7:                          ; preds = %check_end11.i.7
+  %33 = shl nuw nsw i64 %indvars.iv.next61.i.6, 1
+  %.not4550.i.7 = icmp samesign ugt i64 %33, %13
+  br i1 %.not4550.i.7, label %while_end18.i.7, label %while_body17.i.7
+
+while_body17.i.7:                                 ; preds = %if_true_at_line_37_.i.7, %check_end24.i.7
+  %indvars.iv62.i.7 = phi i64 [ %indvars.iv.next63.i.7, %check_end24.i.7 ], [ %indvars.iv.next59.i.6, %if_true_at_line_37_.i.7 ]
+  %range_check25.i.7 = icmp samesign ugt i64 %indvars.iv62.i.7, 1000000
+  br i1 %range_check25.i.7, label %check_true23.i, label %check_end24.i.7
+
+check_end24.i.7:                                  ; preds = %while_body17.i.7
+  %dim_at26.i.7 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.7
+  store i8 0, ptr %dim_at26.i.7, align 1, !noalias !167
+  %indvars.iv.next63.i.7 = add nuw nsw i64 %indvars.iv62.i.7, %indvars.iv.next61.i.6
+  %34 = trunc nuw i64 %indvars.iv.next63.i.7 to i32
+  %.not45.i.7 = icmp slt i32 %c_volatile.load.i.i, %34
+  br i1 %.not45.i.7, label %while_end18.i.7, label %while_body17.i.7, !llvm.loop !175
+
+while_end18.i.7:                                  ; preds = %check_end24.i.7, %if_true_at_line_37_.i.7
+  %35 = add i32 %variable_count.1.i.6, 1
+  br label %if_end_at_line_37_.i.7
+
+if_end_at_line_37_.i.7:                           ; preds = %while_end18.i.7, %check_end11.i.7
+  %variable_count.1.i.7 = phi i32 [ %35, %while_end18.i.7 ], [ %variable_count.1.i.6, %check_end11.i.7 ]
+  %indvars.iv.next61.i.7 = add nuw nsw i64 %indvars.iv60.i, 8
+  %indvars.iv.next59.i.7 = add nuw nsw i64 %indvars.iv58.i, 16
+  %exitcond68.not.i.7 = icmp eq i64 %indvars.iv.next61.i.7, %wide.trip.count.i
+  br i1 %exitcond68.not.i.7, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.8, !llvm.loop !174
+
+check_end11.i.8:                                  ; preds = %if_end_at_line_37_.i.7
+  %dim_at13.i.8 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.7
+  %dim_at_r2v.i.8 = load i8, ptr %dim_at13.i.8, align 1, !noalias !167
+  %.not44.i.8 = icmp eq i8 %dim_at_r2v.i.8, 0
+  br i1 %.not44.i.8, label %if_end_at_line_37_.i.8, label %if_true_at_line_37_.i.8
+
+if_true_at_line_37_.i.8:                          ; preds = %check_end11.i.8
+  %36 = shl nuw nsw i64 %indvars.iv.next61.i.7, 1
+  %.not4550.i.8 = icmp samesign ugt i64 %36, %13
+  br i1 %.not4550.i.8, label %while_end18.i.8, label %while_body17.i.8
+
+while_body17.i.8:                                 ; preds = %if_true_at_line_37_.i.8, %check_end24.i.8
+  %indvars.iv62.i.8 = phi i64 [ %indvars.iv.next63.i.8, %check_end24.i.8 ], [ %indvars.iv.next59.i.7, %if_true_at_line_37_.i.8 ]
+  %range_check25.i.8 = icmp samesign ugt i64 %indvars.iv62.i.8, 1000000
+  br i1 %range_check25.i.8, label %check_true23.i, label %check_end24.i.8
+
+check_end24.i.8:                                  ; preds = %while_body17.i.8
+  %dim_at26.i.8 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.8
+  store i8 0, ptr %dim_at26.i.8, align 1, !noalias !167
+  %indvars.iv.next63.i.8 = add nuw nsw i64 %indvars.iv62.i.8, %indvars.iv.next61.i.7
+  %37 = trunc nuw i64 %indvars.iv.next63.i.8 to i32
+  %.not45.i.8 = icmp slt i32 %c_volatile.load.i.i, %37
+  br i1 %.not45.i.8, label %while_end18.i.8, label %while_body17.i.8, !llvm.loop !175
+
+while_end18.i.8:                                  ; preds = %check_end24.i.8, %if_true_at_line_37_.i.8
+  %38 = add i32 %variable_count.1.i.7, 1
+  br label %if_end_at_line_37_.i.8
+
+if_end_at_line_37_.i.8:                           ; preds = %while_end18.i.8, %check_end11.i.8
+  %variable_count.1.i.8 = phi i32 [ %38, %while_end18.i.8 ], [ %variable_count.1.i.7, %check_end11.i.8 ]
+  %indvars.iv.next61.i.8 = add nuw nsw i64 %indvars.iv60.i, 9
+  %indvars.iv.next59.i.8 = add nuw nsw i64 %indvars.iv58.i, 18
+  %exitcond68.not.i.8 = icmp eq i64 %indvars.iv.next61.i.8, %wide.trip.count.i
+  br i1 %exitcond68.not.i.8, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.9, !llvm.loop !174
+
+check_end11.i.9:                                  ; preds = %if_end_at_line_37_.i.8
+  %dim_at13.i.9 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.8
+  %dim_at_r2v.i.9 = load i8, ptr %dim_at13.i.9, align 1, !noalias !167
+  %.not44.i.9 = icmp eq i8 %dim_at_r2v.i.9, 0
+  br i1 %.not44.i.9, label %if_end_at_line_37_.i.9, label %if_true_at_line_37_.i.9
+
+if_true_at_line_37_.i.9:                          ; preds = %check_end11.i.9
+  %39 = shl nuw nsw i64 %indvars.iv.next61.i.8, 1
+  %.not4550.i.9 = icmp samesign ugt i64 %39, %13
+  br i1 %.not4550.i.9, label %while_end18.i.9, label %while_body17.i.9
+
+while_body17.i.9:                                 ; preds = %if_true_at_line_37_.i.9, %check_end24.i.9
+  %indvars.iv62.i.9 = phi i64 [ %indvars.iv.next63.i.9, %check_end24.i.9 ], [ %indvars.iv.next59.i.8, %if_true_at_line_37_.i.9 ]
+  %range_check25.i.9 = icmp samesign ugt i64 %indvars.iv62.i.9, 1000000
+  br i1 %range_check25.i.9, label %check_true23.i, label %check_end24.i.9
+
+check_end24.i.9:                                  ; preds = %while_body17.i.9
+  %dim_at26.i.9 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.9
+  store i8 0, ptr %dim_at26.i.9, align 1, !noalias !167
+  %indvars.iv.next63.i.9 = add nuw nsw i64 %indvars.iv62.i.9, %indvars.iv.next61.i.8
+  %40 = trunc nuw i64 %indvars.iv.next63.i.9 to i32
+  %.not45.i.9 = icmp slt i32 %c_volatile.load.i.i, %40
+  br i1 %.not45.i.9, label %while_end18.i.9, label %while_body17.i.9, !llvm.loop !175
+
+while_end18.i.9:                                  ; preds = %check_end24.i.9, %if_true_at_line_37_.i.9
+  %41 = add i32 %variable_count.1.i.8, 1
+  br label %if_end_at_line_37_.i.9
+
+if_end_at_line_37_.i.9:                           ; preds = %while_end18.i.9, %check_end11.i.9
+  %variable_count.1.i.9 = phi i32 [ %41, %while_end18.i.9 ], [ %variable_count.1.i.8, %check_end11.i.9 ]
+  %indvars.iv.next61.i.9 = add nuw nsw i64 %indvars.iv60.i, 10
+  %indvars.iv.next59.i.9 = add nuw nsw i64 %indvars.iv58.i, 20
+  %exitcond68.not.i.9 = icmp eq i64 %indvars.iv.next61.i.9, %wide.trip.count.i
+  br i1 %exitcond68.not.i.9, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.10, !llvm.loop !174
+
+check_end11.i.10:                                 ; preds = %if_end_at_line_37_.i.9
+  %dim_at13.i.10 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.9
+  %dim_at_r2v.i.10 = load i8, ptr %dim_at13.i.10, align 1, !noalias !167
+  %.not44.i.10 = icmp eq i8 %dim_at_r2v.i.10, 0
+  br i1 %.not44.i.10, label %if_end_at_line_37_.i.10, label %if_true_at_line_37_.i.10
+
+if_true_at_line_37_.i.10:                         ; preds = %check_end11.i.10
+  %42 = shl nuw nsw i64 %indvars.iv.next61.i.9, 1
+  %.not4550.i.10 = icmp samesign ugt i64 %42, %13
+  br i1 %.not4550.i.10, label %while_end18.i.10, label %while_body17.i.10
+
+while_body17.i.10:                                ; preds = %if_true_at_line_37_.i.10, %check_end24.i.10
+  %indvars.iv62.i.10 = phi i64 [ %indvars.iv.next63.i.10, %check_end24.i.10 ], [ %indvars.iv.next59.i.9, %if_true_at_line_37_.i.10 ]
+  %range_check25.i.10 = icmp samesign ugt i64 %indvars.iv62.i.10, 1000000
+  br i1 %range_check25.i.10, label %check_true23.i, label %check_end24.i.10
+
+check_end24.i.10:                                 ; preds = %while_body17.i.10
+  %dim_at26.i.10 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.10
+  store i8 0, ptr %dim_at26.i.10, align 1, !noalias !167
+  %indvars.iv.next63.i.10 = add nuw nsw i64 %indvars.iv62.i.10, %indvars.iv.next61.i.9
+  %43 = trunc nuw i64 %indvars.iv.next63.i.10 to i32
+  %.not45.i.10 = icmp slt i32 %c_volatile.load.i.i, %43
+  br i1 %.not45.i.10, label %while_end18.i.10, label %while_body17.i.10, !llvm.loop !175
+
+while_end18.i.10:                                 ; preds = %check_end24.i.10, %if_true_at_line_37_.i.10
+  %44 = add i32 %variable_count.1.i.9, 1
+  br label %if_end_at_line_37_.i.10
+
+if_end_at_line_37_.i.10:                          ; preds = %while_end18.i.10, %check_end11.i.10
+  %variable_count.1.i.10 = phi i32 [ %44, %while_end18.i.10 ], [ %variable_count.1.i.9, %check_end11.i.10 ]
+  %indvars.iv.next61.i.10 = add nuw nsw i64 %indvars.iv60.i, 11
+  %indvars.iv.next59.i.10 = add nuw nsw i64 %indvars.iv58.i, 22
+  %exitcond68.not.i.10 = icmp eq i64 %indvars.iv.next61.i.10, %wide.trip.count.i
+  br i1 %exitcond68.not.i.10, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.11, !llvm.loop !174
+
+check_end11.i.11:                                 ; preds = %if_end_at_line_37_.i.10
+  %dim_at13.i.11 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.10
+  %dim_at_r2v.i.11 = load i8, ptr %dim_at13.i.11, align 1, !noalias !167
+  %.not44.i.11 = icmp eq i8 %dim_at_r2v.i.11, 0
+  br i1 %.not44.i.11, label %if_end_at_line_37_.i.11, label %if_true_at_line_37_.i.11
+
+if_true_at_line_37_.i.11:                         ; preds = %check_end11.i.11
+  %45 = shl nuw nsw i64 %indvars.iv.next61.i.10, 1
+  %.not4550.i.11 = icmp samesign ugt i64 %45, %13
+  br i1 %.not4550.i.11, label %while_end18.i.11, label %while_body17.i.11
+
+while_body17.i.11:                                ; preds = %if_true_at_line_37_.i.11, %check_end24.i.11
+  %indvars.iv62.i.11 = phi i64 [ %indvars.iv.next63.i.11, %check_end24.i.11 ], [ %indvars.iv.next59.i.10, %if_true_at_line_37_.i.11 ]
+  %range_check25.i.11 = icmp samesign ugt i64 %indvars.iv62.i.11, 1000000
+  br i1 %range_check25.i.11, label %check_true23.i, label %check_end24.i.11
+
+check_end24.i.11:                                 ; preds = %while_body17.i.11
+  %dim_at26.i.11 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.11
+  store i8 0, ptr %dim_at26.i.11, align 1, !noalias !167
+  %indvars.iv.next63.i.11 = add nuw nsw i64 %indvars.iv62.i.11, %indvars.iv.next61.i.10
+  %46 = trunc nuw i64 %indvars.iv.next63.i.11 to i32
+  %.not45.i.11 = icmp slt i32 %c_volatile.load.i.i, %46
+  br i1 %.not45.i.11, label %while_end18.i.11, label %while_body17.i.11, !llvm.loop !175
+
+while_end18.i.11:                                 ; preds = %check_end24.i.11, %if_true_at_line_37_.i.11
+  %47 = add i32 %variable_count.1.i.10, 1
+  br label %if_end_at_line_37_.i.11
+
+if_end_at_line_37_.i.11:                          ; preds = %while_end18.i.11, %check_end11.i.11
+  %variable_count.1.i.11 = phi i32 [ %47, %while_end18.i.11 ], [ %variable_count.1.i.10, %check_end11.i.11 ]
+  %indvars.iv.next61.i.11 = add nuw nsw i64 %indvars.iv60.i, 12
+  %indvars.iv.next59.i.11 = add nuw nsw i64 %indvars.iv58.i, 24
+  %exitcond68.not.i.11 = icmp eq i64 %indvars.iv.next61.i.11, %wide.trip.count.i
+  br i1 %exitcond68.not.i.11, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.12, !llvm.loop !174
+
+check_end11.i.12:                                 ; preds = %if_end_at_line_37_.i.11
+  %dim_at13.i.12 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.11
+  %dim_at_r2v.i.12 = load i8, ptr %dim_at13.i.12, align 1, !noalias !167
+  %.not44.i.12 = icmp eq i8 %dim_at_r2v.i.12, 0
+  br i1 %.not44.i.12, label %if_end_at_line_37_.i.12, label %if_true_at_line_37_.i.12
+
+if_true_at_line_37_.i.12:                         ; preds = %check_end11.i.12
+  %48 = shl nuw nsw i64 %indvars.iv.next61.i.11, 1
+  %.not4550.i.12 = icmp samesign ugt i64 %48, %13
+  br i1 %.not4550.i.12, label %while_end18.i.12, label %while_body17.i.12
+
+while_body17.i.12:                                ; preds = %if_true_at_line_37_.i.12, %check_end24.i.12
+  %indvars.iv62.i.12 = phi i64 [ %indvars.iv.next63.i.12, %check_end24.i.12 ], [ %indvars.iv.next59.i.11, %if_true_at_line_37_.i.12 ]
+  %range_check25.i.12 = icmp samesign ugt i64 %indvars.iv62.i.12, 1000000
+  br i1 %range_check25.i.12, label %check_true23.i, label %check_end24.i.12
+
+check_end24.i.12:                                 ; preds = %while_body17.i.12
+  %dim_at26.i.12 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.12
+  store i8 0, ptr %dim_at26.i.12, align 1, !noalias !167
+  %indvars.iv.next63.i.12 = add nuw nsw i64 %indvars.iv62.i.12, %indvars.iv.next61.i.11
+  %49 = trunc nuw i64 %indvars.iv.next63.i.12 to i32
+  %.not45.i.12 = icmp slt i32 %c_volatile.load.i.i, %49
+  br i1 %.not45.i.12, label %while_end18.i.12, label %while_body17.i.12, !llvm.loop !175
+
+while_end18.i.12:                                 ; preds = %check_end24.i.12, %if_true_at_line_37_.i.12
+  %50 = add i32 %variable_count.1.i.11, 1
+  br label %if_end_at_line_37_.i.12
+
+if_end_at_line_37_.i.12:                          ; preds = %while_end18.i.12, %check_end11.i.12
+  %variable_count.1.i.12 = phi i32 [ %50, %while_end18.i.12 ], [ %variable_count.1.i.11, %check_end11.i.12 ]
+  %indvars.iv.next61.i.12 = add nuw nsw i64 %indvars.iv60.i, 13
+  %indvars.iv.next59.i.12 = add nuw nsw i64 %indvars.iv58.i, 26
+  %exitcond68.not.i.12 = icmp eq i64 %indvars.iv.next61.i.12, %wide.trip.count.i
+  br i1 %exitcond68.not.i.12, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.13, !llvm.loop !174
+
+check_end11.i.13:                                 ; preds = %if_end_at_line_37_.i.12
+  %dim_at13.i.13 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.12
+  %dim_at_r2v.i.13 = load i8, ptr %dim_at13.i.13, align 1, !noalias !167
+  %.not44.i.13 = icmp eq i8 %dim_at_r2v.i.13, 0
+  br i1 %.not44.i.13, label %if_end_at_line_37_.i.13, label %if_true_at_line_37_.i.13
+
+if_true_at_line_37_.i.13:                         ; preds = %check_end11.i.13
+  %51 = shl nuw nsw i64 %indvars.iv.next61.i.12, 1
+  %.not4550.i.13 = icmp samesign ugt i64 %51, %13
+  br i1 %.not4550.i.13, label %while_end18.i.13, label %while_body17.i.13
+
+while_body17.i.13:                                ; preds = %if_true_at_line_37_.i.13, %check_end24.i.13
+  %indvars.iv62.i.13 = phi i64 [ %indvars.iv.next63.i.13, %check_end24.i.13 ], [ %indvars.iv.next59.i.12, %if_true_at_line_37_.i.13 ]
+  %range_check25.i.13 = icmp samesign ugt i64 %indvars.iv62.i.13, 1000000
+  br i1 %range_check25.i.13, label %check_true23.i, label %check_end24.i.13
+
+check_end24.i.13:                                 ; preds = %while_body17.i.13
+  %dim_at26.i.13 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.13
+  store i8 0, ptr %dim_at26.i.13, align 1, !noalias !167
+  %indvars.iv.next63.i.13 = add nuw nsw i64 %indvars.iv62.i.13, %indvars.iv.next61.i.12
+  %52 = trunc nuw i64 %indvars.iv.next63.i.13 to i32
+  %.not45.i.13 = icmp slt i32 %c_volatile.load.i.i, %52
+  br i1 %.not45.i.13, label %while_end18.i.13, label %while_body17.i.13, !llvm.loop !175
+
+while_end18.i.13:                                 ; preds = %check_end24.i.13, %if_true_at_line_37_.i.13
+  %53 = add i32 %variable_count.1.i.12, 1
+  br label %if_end_at_line_37_.i.13
+
+if_end_at_line_37_.i.13:                          ; preds = %while_end18.i.13, %check_end11.i.13
+  %variable_count.1.i.13 = phi i32 [ %53, %while_end18.i.13 ], [ %variable_count.1.i.12, %check_end11.i.13 ]
+  %indvars.iv.next61.i.13 = add nuw nsw i64 %indvars.iv60.i, 14
+  %indvars.iv.next59.i.13 = add nuw nsw i64 %indvars.iv58.i, 28
+  %exitcond68.not.i.13 = icmp eq i64 %indvars.iv.next61.i.13, %wide.trip.count.i
+  br i1 %exitcond68.not.i.13, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %check_end11.i.14, !llvm.loop !174
+
+check_end11.i.14:                                 ; preds = %if_end_at_line_37_.i.13
+  %dim_at13.i.14 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.13
+  %dim_at_r2v.i.14 = load i8, ptr %dim_at13.i.14, align 1, !noalias !167
+  %.not44.i.14 = icmp eq i8 %dim_at_r2v.i.14, 0
+  br i1 %.not44.i.14, label %if_end_at_line_37_.i.14, label %if_true_at_line_37_.i.14
+
+if_true_at_line_37_.i.14:                         ; preds = %check_end11.i.14
+  %54 = shl nuw nsw i64 %indvars.iv.next61.i.13, 1
+  %.not4550.i.14 = icmp samesign ugt i64 %54, %13
+  br i1 %.not4550.i.14, label %while_end18.i.14, label %while_body17.i.14
+
+while_body17.i.14:                                ; preds = %if_true_at_line_37_.i.14, %check_end24.i.14
+  %indvars.iv62.i.14 = phi i64 [ %indvars.iv.next63.i.14, %check_end24.i.14 ], [ %indvars.iv.next59.i.13, %if_true_at_line_37_.i.14 ]
+  %range_check25.i.14 = icmp samesign ugt i64 %indvars.iv62.i.14, 1000000
+  br i1 %range_check25.i.14, label %check_true23.i, label %check_end24.i.14
+
+check_end24.i.14:                                 ; preds = %while_body17.i.14
+  %dim_at26.i.14 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.14
+  store i8 0, ptr %dim_at26.i.14, align 1, !noalias !167
+  %indvars.iv.next63.i.14 = add nuw nsw i64 %indvars.iv62.i.14, %indvars.iv.next61.i.13
+  %55 = trunc nuw i64 %indvars.iv.next63.i.14 to i32
+  %.not45.i.14 = icmp slt i32 %c_volatile.load.i.i, %55
+  br i1 %.not45.i.14, label %while_end18.i.14, label %while_body17.i.14, !llvm.loop !175
+
+while_end18.i.14:                                 ; preds = %check_end24.i.14, %if_true_at_line_37_.i.14
+  %56 = add i32 %variable_count.1.i.13, 1
+  br label %if_end_at_line_37_.i.14
+
+if_end_at_line_37_.i.14:                          ; preds = %while_end18.i.14, %check_end11.i.14
+  %variable_count.1.i.14 = phi i32 [ %56, %while_end18.i.14 ], [ %variable_count.1.i.13, %check_end11.i.14 ]
+  %indvars.iv.next61.i.14 = add nuw nsw i64 %indvars.iv60.i, 15
+  %indvars.iv.next59.i.14 = add nuw nsw i64 %indvars.iv58.i, 30
+  %exitcond68.not.i.14 = icmp eq i64 %indvars.iv.next61.i.14, %wide.trip.count.i
+  br i1 %exitcond68.not.i.14, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %if_cond_at_37_.i.15, !llvm.loop !174
+
+if_cond_at_37_.i.15:                              ; preds = %if_end_at_line_37_.i.14
+  %exitcond66.i.15 = icmp eq i64 %indvars.iv.next61.i.14, 1000001
+  br i1 %exitcond66.i.15, label %check_true10.i, label %check_end11.i.15
+
+check_end11.i.15:                                 ; preds = %if_cond_at_37_.i.15
+  %dim_at13.i.15 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv.next61.i.14
+  %dim_at_r2v.i.15 = load i8, ptr %dim_at13.i.15, align 1, !noalias !167
+  %.not44.i.15 = icmp eq i8 %dim_at_r2v.i.15, 0
+  br i1 %.not44.i.15, label %if_end_at_line_37_.i.15, label %if_true_at_line_37_.i.15
+
+if_true_at_line_37_.i.15:                         ; preds = %check_end11.i.15
+  %57 = shl nuw nsw i64 %indvars.iv.next61.i.14, 1
+  %.not4550.i.15 = icmp samesign ugt i64 %57, %13
+  br i1 %.not4550.i.15, label %while_end18.i.15, label %while_body17.i.15
+
+while_body17.i.15:                                ; preds = %if_true_at_line_37_.i.15, %check_end24.i.15
+  %indvars.iv62.i.15 = phi i64 [ %indvars.iv.next63.i.15, %check_end24.i.15 ], [ %indvars.iv.next59.i.14, %if_true_at_line_37_.i.15 ]
+  %range_check25.i.15 = icmp samesign ugt i64 %indvars.iv62.i.15, 1000000
+  br i1 %range_check25.i.15, label %check_true23.i, label %check_end24.i.15
+
+check_end24.i.15:                                 ; preds = %while_body17.i.15
+  %dim_at26.i.15 = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i.15
+  store i8 0, ptr %dim_at26.i.15, align 1, !noalias !167
+  %indvars.iv.next63.i.15 = add nuw nsw i64 %indvars.iv62.i.15, %indvars.iv.next61.i.14
+  %58 = trunc nuw i64 %indvars.iv.next63.i.15 to i32
+  %.not45.i.15 = icmp slt i32 %c_volatile.load.i.i, %58
+  br i1 %.not45.i.15, label %while_end18.i.15, label %while_body17.i.15, !llvm.loop !175
+
+while_end18.i.15:                                 ; preds = %check_end24.i.15, %if_true_at_line_37_.i.15
+  %59 = add i32 %variable_count.1.i.14, 1
+  br label %if_end_at_line_37_.i.15
+
+if_end_at_line_37_.i.15:                          ; preds = %while_end18.i.15, %check_end11.i.15
+  %variable_count.1.i.15 = phi i32 [ %59, %while_end18.i.15 ], [ %variable_count.1.i.14, %check_end11.i.15 ]
+  %indvars.iv.next61.i.15 = add nuw nsw i64 %indvars.iv60.i, 16
+  %indvars.iv.next59.i.15 = add nuw nsw i64 %indvars.iv58.i, 32
+  %exitcond68.not.i.15 = icmp eq i64 %indvars.iv.next61.i.15, %wide.trip.count.i
+  br i1 %exitcond68.not.i.15, label %"_anon_893966376449687341`sieve__kernel_run implementation.exit", label %if_cond_at_37_.i, !llvm.loop !174
+
+check_true10.i:                                   ; preds = %if_cond_at_37_.i.15
+  tail call void @jit_exception(ptr nonnull @".str.dim index out of range", ptr align 16 %0, ptr nonnull @li_37_28)
+  unreachable
+
+while_body17.i:                                   ; preds = %if_true_at_line_37_.i, %check_end24.i
+  %indvars.iv62.i = phi i64 [ %indvars.iv.next63.i, %check_end24.i ], [ %indvars.iv58.i, %if_true_at_line_37_.i ]
+  %range_check25.i = icmp samesign ugt i64 %indvars.iv62.i, 1000000
+  br i1 %range_check25.i, label %check_true23.i, label %check_end24.i
+
+while_end18.i:                                    ; preds = %check_end24.i, %if_true_at_line_37_.i
+  %60 = add i32 %variable_count.055.i, 1
+  br label %if_end_at_line_37_.i
+
+check_true23.i:                                   ; preds = %while_body17.i.15, %while_body17.i.14, %while_body17.i.13, %while_body17.i.12, %while_body17.i.11, %while_body17.i.10, %while_body17.i.9, %while_body17.i.8, %while_body17.i.7, %while_body17.i.6, %while_body17.i.5, %while_body17.i.4, %while_body17.i.3, %while_body17.i.2, %while_body17.i.1, %while_body17.i
+  tail call void @jit_exception(ptr nonnull @".str.dim index out of range", ptr align 16 %0, ptr nonnull @li_41_36)
+  unreachable
+
+check_end24.i:                                    ; preds = %while_body17.i
+  %dim_at26.i = getelementptr inbounds nuw i8, ptr %global_var_sieve__flags_mnh_ptr.i, i64 %indvars.iv62.i
+  store i8 0, ptr %dim_at26.i, align 1, !noalias !167
+  %indvars.iv.next63.i = add nuw nsw i64 %indvars.iv62.i, %indvars.iv60.i
+  %61 = trunc nuw i64 %indvars.iv.next63.i to i32
+  %.not45.i = icmp slt i32 %c_volatile.load.i.i, %61
+  br i1 %.not45.i, label %while_end18.i, label %while_body17.i, !llvm.loop !175
+
+"_anon_893966376449687341`sieve__kernel_run implementation.exit": ; preds = %if_end_at_line_37_.i, %if_end_at_line_37_.i.1, %if_end_at_line_37_.i.2, %if_end_at_line_37_.i.3, %if_end_at_line_37_.i.4, %if_end_at_line_37_.i.5, %if_end_at_line_37_.i.6, %if_end_at_line_37_.i.7, %if_end_at_line_37_.i.8, %if_end_at_line_37_.i.9, %if_end_at_line_37_.i.10, %if_end_at_line_37_.i.11, %if_end_at_line_37_.i.12, %if_end_at_line_37_.i.13, %if_end_at_line_37_.i.14, %if_end_at_line_37_.i.15, %entry, %while_start2.preheader.i
+  %variable_count.0.lcssa.i = phi i32 [ 0, %while_start2.preheader.i ], [ 0, %entry ], [ %variable_count.1.i, %if_end_at_line_37_.i ], [ %variable_count.1.i.1, %if_end_at_line_37_.i.1 ], [ %variable_count.1.i.2, %if_end_at_line_37_.i.2 ], [ %variable_count.1.i.3, %if_end_at_line_37_.i.3 ], [ %variable_count.1.i.4, %if_end_at_line_37_.i.4 ], [ %variable_count.1.i.5, %if_end_at_line_37_.i.5 ], [ %variable_count.1.i.6, %if_end_at_line_37_.i.6 ], [ %variable_count.1.i.7, %if_end_at_line_37_.i.7 ], [ %variable_count.1.i.8, %if_end_at_line_37_.i.8 ], [ %variable_count.1.i.9, %if_end_at_line_37_.i.9 ], [ %variable_count.1.i.10, %if_end_at_line_37_.i.10 ], [ %variable_count.1.i.11, %if_end_at_line_37_.i.11 ], [ %variable_count.1.i.12, %if_end_at_line_37_.i.12 ], [ %variable_count.1.i.13, %if_end_at_line_37_.i.13 ], [ %variable_count.1.i.14, %if_end_at_line_37_.i.14 ], [ %variable_count.1.i.15, %if_end_at_line_37_.i.15 ]
+  %global_var_sieve__result_mnh_ptr.i = tail call ptr @jit_get_global_mnh(i64 -8982433498458319816, ptr align 16 %0)
+  store i32 %variable_count.0.lcssa.i, ptr %global_var_sieve__result_mnh_ptr.i, align 4, !noalias !167
+  ret <4 x float> undef
+}
