@@ -2210,9 +2210,11 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   folds on the JIT and AOT). Under the JIT `c_volatile_load` and `c_volatile_store` are generics
   whose generated body is one inlined `load volatile`/`store volatile`, generic so the split build
   of the cached DLL inlines them too; the interpreter and AOT keep the forwarders; `bool` keeps them
-  everywhere (lookibed/daScript#41). A/B against main, box PC, in-process work, medians: Lua JIT fib
-  30 chain 0.90x, goto 0.87-0.89x, nbody 20000 chain 1.00x, goto 0.96x; interpreter 0.98-1.01x; the
-  F87 repro 0.193 -> 0.045 s (clang 0.090); Doom demo1 JIT 1.01x (no volatile site).
+  everywhere (lookibed/daScript#41); both `[llvm_code]` sites carry a `version` the cache key sees.
+  A/B against main 642f366 and 41b152c (c_runtime and crt as b4e2ccd), box PC, in-process work,
+  medians: Lua JIT fib 30 goto 0.86x (spreads 1.4% / 2.1%), chain 0.91x suspect (+-29%: one B
+  sample of 7; every run's chain cell passed 20%), nbody 20000 chain 1.00x, goto 0.96x; interpreter
+  0.98-1.01x; the F87 repro 0.193 -> 0.045 s; Doom demo1 JIT 1.01x (PureDOOM has no volatile site).
 - **P7.0s Fused loops for C89 shapes** (ruling 33 item 3, the Rust reference diff rows 13-15; report
   `/root/notes/research/r33-rust-reference-diff.md`): a counted `for` whose counter is declared before
   the loop and dead after it takes the range loop (Rust's liveness walk; same C: h264bsd 0 range loops
