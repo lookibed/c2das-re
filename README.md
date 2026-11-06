@@ -124,17 +124,7 @@ Captured on 2026-11-06 01:49 UTC, linux x86_64, PC (AMD Ryzen 7 7435HS); clang v
 <!-- perf-table:end -->
 
 <!-- perf-method:begin -->
-The dasProfile method on bench (AMD Ryzen 3 1200 Quad-Core Processor), 2026-11-03 09:19 UTC (clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1), daslang 0.6.4) beside borisbat/dasProfile 436d58d2840ff839550d44d32f98e10a15b57bf2 run on bench (AMD Ryzen 3 1200 Quad-Core), Tue Nov  3 11:59:00 2026 (Clang 22.1.8, daslang 0.6.4, LLVM 22.1.5). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program; a cell of this tree's capture whose spread is above 20% is `suspect` with its spread, and one over a suspect C cell has no ratio. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).
-
-| Test          | C (clang -O3) | dasProfile C++ | hand-written interp |   hand-written JIT |   hand-written AOT |   converted interp |      converted JIT |      converted AOT |      converted exe |
-| :------------ | ------------: | -------------: | ------------------: | -----------------: | -----------------: | -----------------: | -----------------: | -----------------: | -----------------: |
-| fib_loop      |    0.0019707s |     0.0019432s |  0.040912s (21.05x) | 0.0019564s (1.01x) | 0.0019869s (1.02x) | 0.041038s (20.82x) | 0.0023287s (1.18x) |  0.001941s (0.98x) | 0.0023297s (1.18x) |
-| fib_recursive |     0.006385s |     0.0063855s |   0.046477s (7.28x) | 0.0061979s (0.97x) | 0.0073895s (1.16x) |  0.046485s (7.28x) | 0.0058767s (0.92x) | 0.0062197s (0.97x) | 0.0055476s (0.87x) |
-| primes        |     0.047105s |      0.047025s |   0.056156s (1.19x) |  0.047027s (1.00x) |  0.014731s (0.31x) |   0.09296s (1.97x) |   0.04702s (1.00x) |  0.014733s (0.31x) |   0.04701s (1.00x) |
-
-- the first table's `fib_loop`, `fib_recursive` and `primes` are this tree's versions of the three (`primes` tests `i < n` in `isprime` and returns `int`, and no kernel function is `noinline`): different programs, not compared
-- `fixed_mandel` (16.16 fixed point, 96x96, 48 iterations, struct vectors by value) is not dasProfile's `mandelbrot` (double, 64x64, 255 iterations): different programs, not compared
-- `matmul`, `sieve`, `blit` and the construct kernels have no dasProfile twin; dasProfile's `n-bodies`, `spectral norm`, `sha256`, `sort`, `tree`, `queen`, `dictionary`, `exp loop`, `particles kinematics`, `string2float`, `float2string` and `interop host calls` have no kernel here: different programs, not compared
+no comparison: PC (AMD Ryzen 7 7435HS) against bench (AMD Ryzen 3 1200 Quad-Core), numbers of two boxes are not compared
 <!-- perf-method:end -->
 
 ## Doom
