@@ -35,3 +35,12 @@ report of an exception it cannot unwind starts with an empty line, and the shell
 report after everything the program printed, so it would otherwise name a silent crash.
 `compare/projects.das`'s `error_line` skips the shell's report as well. A sample that exits 0
 without the kernel's line is `exited 0` with that line.
+
+## 3. The exclusive run
+
+A capture runs as `heavy --exclusive` (the box's queue, owner rule 2026-11-06): the job waits for
+every other job to end and for the CPU to be quiet (under 4 percent busy, twice over 5 s), runs
+alone, and `/var/log/heavy-exclusive.log` keeps the busy share; a capture from a run that was not
+exclusive, or that the log marks `NOT quiet`, is not recorded. The runners convert and build inside
+the run today (the kernels' conversions, the exe and AOT builds), which the rule tolerates until a
+build-only step exists (`docs/implementation_order.md`).

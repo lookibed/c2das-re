@@ -75,6 +75,11 @@ gates and the review machinery. Codex sessions take their MCP wiring from
   phase-end re-capture in the capture's predictions file, dated before the run and named by the
   report. The report shows each expected value beside the measured one, one line on the cause of
   every miss over 25%, and the hit rate: the share of numbers within 25% of their prediction.
+- A run whose numbers a report quotes (a perf capture, `compare --perf`, an A/B, Doom fps, the
+  ports publish's timing) runs as `heavy --exclusive --label TIMING-<item>-<what> ...` (owner rule
+  2026-11-06): it waits for every other job to end and for a quiet CPU, then runs alone; its stderr
+  says `machine quiet` or `NOT quiet`. A number from a run that was not exclusive, or not quiet, is
+  not quoted as a result. Builds and conversions run before it as ordinary heavy jobs.
 - The last pull request of a phase also commits, under `perf/profiles/`, a top-10 self-time
   profile of the native build and of each lane in the speed tables, for each of Lua fib, Lua
   nbody, Doom demo1 and every compare project, so that a change in where the time goes shows up
