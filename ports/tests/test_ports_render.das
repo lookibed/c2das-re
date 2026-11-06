@@ -401,12 +401,16 @@ def test_goto_lane(t : T?) {
         var captures : array<Capture>
         captures |> emplace(c)
         t |> equal(row_of(render_projects(captures), "[lua](lua/README.md)")[7], "2.00 (1 of 2)")
+        // the ratio heading names the pairs the table renders, the AOT ones included
+        let text = render_perf(with_aot(""))
+        t |> success(text |> contains("; JIT over JIT, goto dispatch; interpreter over AOT; JIT over AOT):"), text)
     }
     t |> run("the perf section names the goto lane's conversion and its pairs, and the AOT lane only when asked for") @(t : T?) {
         let text = render_perf(fixture())
         t |> success(text |> contains("The JIT, goto dispatch lane runs the JIT over the source layout converted with c2das-re's `--switch-dispatch goto`"), text)
         t |> success(text |> contains("The AOT lane is measured only when asked for and has a column only where its build stood."), text)
-        t |> success(text |> contains("interpreter over exe, and the interpreter and the JIT each over the JIT, goto dispatch):"), text)
+        t |> success(text |> contains("(each das lane over native, then interpreter over JIT; interpreter over exe; interpreter over JIT, goto dispatch; JIT over JIT, goto dispatch):"), text)
+        t |> success(!(text |> contains("interpreter over AOT")) && !(text |> contains("JIT over AOT")), text)
     }
 }
 
