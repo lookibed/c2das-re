@@ -4,7 +4,9 @@
    Each define is one more case: NO_CLOCK never calls clock(); EXIT_AFTER leaves through _exit
    after the window; SLEEP_AFTER sleeps after it and prints whether the sleep was interrupted;
    FORK forks a child that runs hot_caller and leaves through exit; DLOPEN runs lib_run of the
-   library argv[1] names in the window and dlcloses it before the second clock(). */
+   library argv[1] names in the window and dlcloses it before the second clock(); GETTIME never
+   calls clock(): it reads clock_gettime three times, cold_leaf between the first two and
+   hot_caller between the last two, the pair gate_shim.c turns into the gate. */
 #include <stdio.h>
 #include <time.h>
 #ifdef DLOPEN
@@ -33,12 +35,36 @@ __attribute__((noinline)) unsigned hot_caller(unsigned n)
     return hot_leaf(n) ^ 7u;
 }
 
+#ifdef GETTIME
+static long now_ns(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000000000L + ts.tv_nsec;
+}
+
+__attribute__((noinline)) unsigned cold_leaf(unsigned n)
+{
+    unsigned x = 0;
+    for (unsigned i = 0; i < n; i++)
+        x += i ^ (x >> 3);
+    return x;
+}
+#endif
+
 int main(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
 #ifdef NO_CLOCK
     printf("%u\n", hot_caller(rounds));
+#elif defined(GETTIME)
+    long t0 = now_ns();
+    unsigned c = cold_leaf(rounds / 2);
+    long t1 = now_ns();
+    unsigned r = hot_caller(rounds);
+    long t2 = now_ns();
+    printf("%u %u %ld %ld\n", c, r, t1 - t0, t2 - t1);
 #else
     clock_t start = clock();
 #ifdef DLOPEN
