@@ -12,6 +12,7 @@
 20000314-2
 20000314-3
 20000402-1
+20000403-1
 20000412-1
 20000412-2
 20000412-4
@@ -108,6 +109,7 @@
 20011113-1
 20011114-1
 20011115-1
+20011121-1
 20011126-1
 20011126-2
 20011128-1
@@ -202,6 +204,7 @@
 20030828-1
 20030828-2
 20030903-1
+20030909-1
 20030913-1
 20030914-1
 20030914-2
@@ -234,6 +237,7 @@
 20040409-3w
 20040629-1
 20040703-1
+20040704-1
 20040705-1
 20040705-2
 20040706-1
@@ -253,6 +257,7 @@
 20041213-2
 20041218-1
 20050104-1
+20050106-1
 20050107-1
 20050111-1
 20050119-1
@@ -581,6 +586,7 @@ bitops-1
 bswap-1
 bswap-2
 bswap-3
+builtin-bitops-1
 builtin-constant
 builtin-prefetch-1
 builtin-prefetch-3
@@ -615,6 +621,7 @@ ffs-2
 float-floor
 floatunsisf-1
 fprintf-1
+fprintf-chk-1
 func-ptr-1
 gofast
 ifcvt-onecmpl-abs-1
@@ -694,6 +701,7 @@ pr111422
 pr111431-1
 pr111469-1
 pr111863-1
+pr112581-1
 pr112758
 pr113010
 pr113787
@@ -704,6 +712,7 @@ pr15262
 pr15262-1
 pr15262-2
 pr16790-1
+pr17078-1
 pr17252
 pr19005
 pr19515
@@ -796,6 +805,7 @@ pr36691
 pr36765
 pr37102
 pr37125
+pr37573
 pr37780
 pr37882
 pr37924
@@ -1024,6 +1034,7 @@ pr71550
 pr71631
 pr71700
 pr7284-1
+pr77766
 pr78170
 pr78378
 pr78436
@@ -1133,6 +1144,7 @@ pushpop_macro
 regstack-1
 restrict-1
 return-addr
+scope-1
 shiftdi
 shiftdi-2
 shiftopt-1
@@ -1141,6 +1153,7 @@ ssad-run
 stdarg-4
 strcpy-2
 string-opt-17
+string-opt-5
 strlen-2
 strlen-3
 strlen-4
@@ -1177,6 +1190,8 @@ va-arg-6
 va-arg-7
 va-arg-8
 va-arg-9
+vfprintf-1
+vfprintf-chk-1
 vprintf-1
 vprintf-chk-1
 vrp-1
