@@ -81,6 +81,15 @@ struct Emitter {
     setjmp_counter : int
     // the names the function being emitted takes the address of
     addressed : table<string>
+    // the function being emitted: its body, whether it holds a `goto`, the type of each parameter
+    // and of each local it declares once, by name, the counters whose every reference sits in a
+    // counted loop that assigns them, whose declaration the range loops replace, and the free
+    // name of every other counter a range loop counts in (`plan_counted_loops`)
+    @do_not_delete fn_body : CirStmt const?
+    has_goto : bool
+    local_types : table<string; int>
+    range_counters : table<string>
+    range_fresh : table<string; string>
     // a label stands on `c_label_end()`: the module defines the no-op
     label_end : bool
     // the function's C labels by das number, and the blocks emitted without braces so a goto
@@ -3651,7 +3660,39 @@ def private emit_while(var em : Emitter; tu : CirTu; st : CirStmt) {
 
 def private numbered(base : string; count : int) : string => count == 1 ? base : "{base}{count}"
 
-def private emit_do(var em : Emitter; tu : CirTu; st : CirStmt) {
+// `do { body } while (c)`: under the default `loops` option the count-down range (`count_down`),
+// a block for `do { body } while (0)` whose body leaves by no `break`, `return`, `goto` or
+// `continue` in a function with no `goto`, which plans its labels on the C loop, else, with no `continue` of the loop in the body, the body and then the test at
+// the bottom of `while (true)`; otherwise the `_first` flag, which lets a `continue` reach the
+// test
+def private emit_do(var em : Emitter; tu : CirTu; st : CirStmt const?) {
+    if (em.prog.range_loops && count_down(em, tu, st)) {
+        return
+    }
+    let never = below_casts(st.cond)
+    let once = never != null && never.e == "int_lit" && never.v == "0"
+    if (em.prog.range_loops && once && !em.has_goto && !leaves_loop(st.body_s, false) && !continues_loop(st.body_s, false)) {
+        open_block(em, "")
+        emit_body(em, tu, st.body_s)
+        close_block(em)
+        return
+    }
+    if (em.prog.range_loops && !continues_loop(st.body_s, false)) {
+        open_block(em, "while (true)")
+        emit_loop_body(em, tu, st.body_s)
+        // a body that always leaves never reaches the test, and `while (0)` is no test
+        if (once) {
+            line(em, "break")
+        } elif (!leaves_at_end(st.body_s)) {
+            let c = truth_of(em, tu, st.cond, st.loc)
+            flush_pre(em)
+            open_block(em, "if (!({c.text}))")
+            line(em, "break")
+            close_block(em)
+        }
+        close_block(em)
+        return
+    }
     let mark = length(em.pre)
     let c = truth_of(em, tu, st.cond, st.loc)
     em.first_counter++
@@ -3682,6 +3723,31 @@ def private emit_do(var em : Emitter; tu : CirTu; st : CirStmt) {
     line(em, "{flag} = false")
     emit_loop_body(em, tu, st.body_s)
     close_block(em)
+}
+
+// `do { body } while (count--)` with `count` an `int` or `unsigned` parameter or local the
+// function declares once, never takes the address of and holds no `goto`, that the body never
+// names and that is dead after the loop (`dead_after`), is
+// `for (_t0 in urange64(uint64(uint(count)) + 1ul))`: the body runs `count + 1` times from a
+// start at or above 0 and, by the wrap C's decrement takes, `2^32 + count + 1` times from a
+// negative one, which that sum is in both cases. False, with nothing spelled, for any other loop
+def private count_down(var em : Emitter; tu : CirTu; st : CirStmt const?) : bool {
+    let step = below_casts(st.cond)
+    let root = step != null && step.e == "un" && step.op == "postdec" ? below_casts(step.a) : null
+    if (root == null || root.e != "ref" || root.vol || em.has_goto || key_exists(em.addressed, root.name)) {
+        return false
+    }
+    let t = em.local_types?[root.name] ?? -1
+    let kind = t >= 0 ? range_kind(em, tu, t, st.loc) : ""
+    if ((kind != "range" && kind != "urange") || name_count(st.body_s, root.name) > 0 || !dead_after(em, st, root.name)) {
+        return false
+    }
+    let count = das_name(em, root.name)
+    let passes = kind == "range" ? "uint64(uint({count})) + 1ul" : "uint64({count}) + 1ul"
+    open_block(em, "for ({temp_name(em)} in urange64({passes}))")
+    emit_loop_body(em, tu, st.body_s)
+    close_block(em)
+    return true
 }
 
 // true when the body can leave the loop in a way C's increment must not follow: a `break` at
@@ -3791,7 +3857,7 @@ def private holds_compound_literal(x : CirExpr const?) : bool {
 // canonical counting loop is a das range loop (`for_range`); the increment of any other is the
 // body's last statement when the body holds no `continue` of the loop, else the `finally` block
 // when the body never leaves the loop, else the increment-first flag
-def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
+def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (for_range(em, tu, st)) {
         return
     }
@@ -3800,28 +3866,28 @@ def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt) {
         emit_body(em, tu, st.init_s)
     }
     let ahead = st.inc != null && holds_compound_literal(st.inc)
-    let inc_lines <- ahead ? increment_lines(em, tu, st) : array<string>()
+    let inc_lines <- ahead ? increment_lines(em, tu, *st) : array<string>()
     if (ahead) {
         flush_literal_decls(em)
     }
     if (st.inc != null && continues_loop(st.body_s, false) && leaves_loop(st.body_s, false)) {
-        emit_for_flag(em, tu, st, inc_lines)
+        emit_for_flag(em, tu, *st, inc_lines)
     } else {
-        open_for_head(em, tu, st)
+        open_for_head(em, tu, *st)
         if (st.inc == null) {
             emit_loop_body(em, tu, st.body_s)
         } elif (!continues_loop(st.body_s, false)) {
             emit_loop_body(em, tu, st.body_s)
             // a body ending in a `break`, a `return` or a `goto` never reaches the increment
             if (!leaves_at_end(st.body_s)) {
-                write_increment(em, tu, st, inc_lines)
+                write_increment(em, tu, *st, inc_lines)
             }
         } else {
             open_block(em, "")
             emit_loop_body(em, tu, st.body_s)
             em.depth--
             open_block(em, "\} finally")
-            write_increment(em, tu, st, inc_lines)
+            write_increment(em, tu, *st, inc_lines)
             close_block(em)
         }
         close_block(em)
@@ -3927,34 +3993,100 @@ def private invariant_bound(em : Emitter; x : CirExpr const?; written : table<st
     return ok
 }
 
+// a counted `for` loop `for_range` takes: the counter's C name and C type, its start and the
+// das range that counts it; `kind` is "" for any other loop
+struct CountedFor {
+    name : string
+    t : int
+    start : CirExpr const?
+    kind : string
+    // the initializer declares the counter (C99), else it assigns a local declared before (C89)
+    declared : bool
+}
+
+// the plain store `i = a` a `for`'s initializer is, into a variable that `a` does not read;
+// null for any other initializer
+def private counter_store(st : CirStmt const?) : CirExpr const? {
+    if (st != null && st.s == "compound" && length(st.body) == 1) {
+        return counter_store(st.body[0])
+    }
+    if (st == null || st.s != "expr" || st.e.e != "assign" || st.e.op != "") {
+        return null
+    }
+    let root = below_casts(st.e.a)
+    return root != null && root.e == "ref" && !root.vol && !reads_name(st.e.b, root.name) ? st.e : null
+}
+
+// whether expression `x` names variable `name`
+def private reads_name(x : CirExpr const?; name : string) : bool {
+    var found = false
+    each_subexpr(x) $(sub) {
+        found ||= sub.e == "ref" && sub.name == name
+    }
+    return found
+}
+
+// how many times statement tree `st` names variable `name`
+def private name_count(st : CirStmt const?; name : string) : int {
+    var n = 0
+    each_expr(st) $(x) {
+        if (x.e == "ref" && x.name == name) {
+            n++
+        }
+    }
+    return n
+}
+
 // O1 of the plan, the "General for" of docs/lowering-examples.md: `for (T i = a; i < n; ++i)`
 // with `i` an integer of 32 or 64 bits that the body never writes or takes the address of and
-// `n` an invariant bound (`invariant_bound`) of `i`'s type is `for (i in range(a, n))`; das
-// evaluates `a` then `n` once, C's order, and `i` dies with the loop as C99's does. False, with
-// nothing spelled, for any other loop or under `loops` `while`
-def private for_range(var em : Emitter; tu : CirTu; st : CirStmt) : bool {
-    if (!em.prog.range_loops) {
-        return false
+// `n` an invariant bound (`invariant_bound`) of `i`'s type; `for (i = a; i < n; ++i)` too when
+// `i` is a parameter or a local the function declares once, holds no `goto` and reads no more after the loop
+// (`dead_after`). Under `loops` `while` no loop is one
+def private counted_for(var em : Emitter; tu : CirTu; st : CirStmt const?) : CountedFor {
+    var loop : CountedFor
+    if (!em.prog.range_loops || st.cond == null || st.cond.e != "bin" || st.cond.op != "lt") {
+        return loop
     }
     let decl = counter_decl(st.init_s)
-    if (decl == null || st.cond == null || st.cond.e != "bin" || st.cond.op != "lt" || !steps_by_one(st.inc, decl.name)) {
-        return false
+    let store = decl == null ? counter_store(st.init_s) : null
+    if (decl != null) {
+        loop = CountedFor(name = decl.name, t = decl.t, start = decl.init, declared = true)
+    } elif (store != null && !em.has_goto) {
+        let name = below_casts(store.a).name
+        loop = CountedFor(name = name, t = em.local_types?[name] ?? -1, start = store.b)
+        if (loop.t < 0 || store.b.t != loop.t) {
+            return CountedFor()
+        }
+    } else {
+        return loop
     }
-    let kind = range_kind(em, tu, decl.t, st.loc)
-    if (empty(kind) || !reads_variable(st.cond.a, decl.name) || st.cond.a.t != decl.t || st.cond.b.t != decl.t) {
-        return false
+    if (!steps_by_one(st.inc, loop.name) || !reads_variable(st.cond.a, loop.name) || st.cond.a.t != loop.t || st.cond.b.t != loop.t) {
+        return CountedFor()
     }
     var written <- written_names(st.body_s)
-    if (key_exists(written, decl.name) || key_exists(em.addressed, decl.name)) {
-        return false
+    if (key_exists(written, loop.name) || key_exists(em.addressed, loop.name)) {
+        return CountedFor()
     }
     // the increment writes the counter, so a bound that reads it is no invariant
-    written |> insert(decl.name)
-    if (!invariant_bound(em, st.cond.b, written)) {
+    written |> insert(loop.name)
+    if (!invariant_bound(em, st.cond.b, written) || (!loop.declared && !dead_after(em, st, loop.name))) {
+        return CountedFor()
+    }
+    loop.kind = range_kind(em, tu, loop.t, st.loc)
+    return loop
+}
+
+// a counted loop (`counted_for`) is `for (i in range(a, n))`; das evaluates `a` then `n` once,
+// C's order, and `i` dies with the loop as C99's does and as C89's is dead after it. das refuses
+// a loop variable that shadows a local, so a C89 counter whose declaration stays counts in a
+// free name. False, with nothing spelled, for any other loop
+def private for_range(var em : Emitter; tu : CirTu; st : CirStmt const?) : bool {
+    let loop = counted_for(em, tu, st)
+    if (empty(loop.kind)) {
         return false
     }
     let mark = length(em.pre)
-    let first = emit_expr(em, tu, decl.init, st.loc)
+    let first = emit_expr(em, tu, loop.start, st.loc)
     let bound = emit_expr(em, tu, st.cond.b, st.loc)
     // the start's statements go before the loop, in a block of its own as C scopes them
     let scoped = length(em.pre) != mark
@@ -3962,15 +4094,207 @@ def private for_range(var em : Emitter; tu : CirTu; st : CirStmt) : bool {
         open_block(em, "")
         flush_pre(em)
     }
-    let zero = below_casts(decl.init)
+    let zero = below_casts(loop.start)
     let start = zero.e == "int_lit" && zero.v == "0" ? "" : "{first.text}, "
-    open_block(em, "for ({das_name(em, decl.name)} in {kind}({start}{bound.text}))")
+    let kept = em.renames?[loop.name] ?? ""
+    if (!loop.declared && !key_exists(em.range_counters, loop.name)) {
+        em.renames[loop.name] = fresh_counter(em, loop.name)
+    }
+    open_block(em, "for ({das_name(em, loop.name)} in {loop.kind}({start}{bound.text}))")
     emit_loop_body(em, tu, st.body_s)
     close_block(em)
+    if (empty(kept)) {
+        em.renames |> erase(loop.name)
+    } else {
+        em.renames[loop.name] = kept
+    }
     if (scoped) {
         close_block(em)
     }
     return true
+}
+
+// the name C89 counter `name` counts in where its declaration stays: the first numbered name
+// neither the function nor a global spells, the same for every loop of the counter
+def private fresh_counter(var em : Emitter; name : string) : string {
+    if (!key_exists(em.range_fresh, name)) {
+        var fresh = free_name(em.spelled, name)
+        while (key_exists(em.prog.global_names, fresh)) {
+            fresh = free_name(em.spelled, name)
+        }
+        em.range_fresh[name] = fresh
+    }
+    return em.range_fresh[name]
+}
+
+// the per-function facts the counted loops read (the `Emitter` fields above `fn_body`): a C89
+// counter whose every reference sits in counted loops that assign it, whose declaration holds no
+// initializer or a literal one and is no switch's carried one, loses its declaration and counts
+// in its own name
+def private plan_counted_loops(var em : Emitter; tu : CirTu; d : CirDecl) {
+    let body = d.body
+    em.fn_body = body
+    em.has_goto = false
+    em.local_types |> clear()
+    em.range_counters |> clear()
+    em.range_fresh |> clear()
+    for (p in d.params) {
+        em.local_types[p.name] = p.t
+    }
+    var counts : table<string; int>
+    count_decls(body, counts)
+    var decls : table<string; CirStmt const?>
+    each_stmt(body) $(s) {
+        em.has_goto ||= s.s == "goto"
+        if (s.s == "decl" && (counts?[s.name] ?? 0) == 1) {
+            em.local_types[s.name] = s.t
+            decls[s.name] = s
+        }
+    }
+    var in_loops : table<string; int>
+    each_stmt(body) $(s) {
+        if (s.s == "for" && !key_exists(em.opened, intptr(s))) {
+            let loop = counted_for(em, tu, s)
+            if (!empty(loop.kind) && !loop.declared) {
+                in_loops[loop.name] = (in_loops?[loop.name] ?? 0) + name_count(s, loop.name)
+            }
+        }
+    }
+    for (name, n in keys(in_loops), values(in_loops)) {
+        let decl = decls?[name] ?? null
+        let init = decl != null ? below_casts(decl.init) : null
+        if (decl != null && n == name_count(body, name) && !key_exists(em.prog.carried, intptr(decl)) && (init == null || init.e == "int_lit")) {
+            em.range_counters |> insert(name)
+        }
+    }
+}
+
+// what the statements a path runs after a loop do with a variable: `not_found` when the loop is
+// not among them, `fell_off` when the path reaches their end without naming it, `dead` when it
+// assigns the variable or returns before any read, `live` when it may read it first
+enum LoopFlow {
+    not_found
+    fell_off
+    dead
+    live
+}
+
+// whether local `name` is dead once loop `target` of the function being emitted exits: on every
+// path from the loop's end it is assigned, or the function returns, before any read. The walk
+// follows the statements after the loop in order, around every enclosing loop (its test, then
+// its body from the top) and out of it; a `break` or `continue` on the way counts as a read.
+// The function holds no `goto` and takes no address of `name`, which the caller checks
+def private dead_after(em : Emitter; target : CirStmt const?; name : string) : bool {
+    let flow = flow_around(em.fn_body, target, name)
+    return flow == LoopFlow.dead || flow == LoopFlow.fell_off
+}
+
+// statement `st` holds loop `target`: what the path from the loop's end does with `name` until
+// it leaves `st`
+def private flow_around(st : CirStmt const?; target : CirStmt const?; name : string) : LoopFlow {
+    if (st == null) {
+        return LoopFlow.not_found
+    }
+    if (st == target) {
+        return LoopFlow.fell_off
+    }
+    if (st.s == "compound") {
+        for (idx, child in range(length(st.body)), st.body) {
+            let flow = flow_around(child, target, name)
+            if (flow == LoopFlow.fell_off) {
+                return flow_list(st.body, idx + 1, name, false)
+            } elif (flow != LoopFlow.not_found) {
+                return flow
+            }
+        }
+        return LoopFlow.not_found
+    }
+    if (st.s == "if") {
+        let flow = flow_around(st.then_s, target, name)
+        return flow != LoopFlow.not_found ? flow : flow_around(st.else_s, target, name)
+    }
+    if (st.s == "switch") {
+        return flow_around(st.body_s, target, name)
+    }
+    if (st.s == "while" || st.s == "do" || st.s == "for") {
+        let flow = flow_around(st.body_s, target, name)
+        if (flow != LoopFlow.fell_off) {
+            return flow
+        }
+        if (reads_name(st.cond, name) || reads_name(st.inc, name)) {
+            return LoopFlow.live
+        }
+        // the next pass from the top: with no read before an assignment, the path leaves the loop
+        return flow_through(st.body_s, name) == LoopFlow.live ? LoopFlow.live : LoopFlow.fell_off
+    }
+    return LoopFlow.not_found
+}
+
+// the statements of `list` from `first` on, run in order, inside a loop of the walked statements
+// when `nested`
+def private flow_list(list : array<CirStmt?>; first : int; name : string; nested : bool) : LoopFlow {
+    for (idx in range(first, length(list))) {
+        let flow = flow_through(list[idx], name, nested)
+        if (flow != LoopFlow.fell_off) {
+            return flow
+        }
+    }
+    return LoopFlow.fell_off
+}
+
+// statement `st`, run from its start: `dead`, `live` or `fell_off`. A plain store into `name`
+// that reads nothing of it, its declaration and a `for` whose initializer is one assign it; an
+// `if` takes the worse of its arms; a `break` or `continue` is a read unless it binds to a loop
+// inside the walked statements (`nested`), where it ends the pass; a loop or switch that names
+// `name` is `flow_loop`'s
+def private flow_through(st : CirStmt const?; name : string; nested : bool = false) : LoopFlow {
+    if (st == null) {
+        return LoopFlow.fell_off
+    }
+    if (st.s == "compound") {
+        return flow_list(st.body, 0, name, nested)
+    }
+    if (st.s == "decl" && st.name == name) {
+        return LoopFlow.dead
+    }
+    if (st.s == "expr" || st.s == "for") {
+        let store = st.s == "expr" ? counter_store(st) : counter_store(st.init_s)
+        if (store != null && below_casts(store.a).name == name) {
+            return LoopFlow.dead
+        }
+    }
+    if (st.s == "return") {
+        return reads_name(st.e, name) ? LoopFlow.live : LoopFlow.dead
+    }
+    if (st.s == "break" || st.s == "continue") {
+        return nested ? LoopFlow.fell_off : LoopFlow.live
+    }
+    if (name_count(st, name) == 0) {
+        return st.s == "switch" && continues_loop(st.body_s, false) && !nested ? LoopFlow.live : LoopFlow.fell_off
+    }
+    if (st.s == "if" && !reads_name(st.cond, name)) {
+        let a = flow_through(st.then_s, name, nested)
+        let b = flow_through(st.else_s, name, nested)
+        return a == LoopFlow.live || b == LoopFlow.live ? LoopFlow.live : a == LoopFlow.dead && b == LoopFlow.dead ? LoopFlow.dead : LoopFlow.fell_off
+    }
+    return flow_loop(st, name)
+}
+
+// loop or switch `st` that names `name`, run from its start: a `while` or `for` whose head reads
+// nothing of it takes its body's first pass, which it may skip, a `do` its body's, which a
+// `break` may leave early; any other is a read
+def private flow_loop(st : CirStmt const?; name : string) : LoopFlow {
+    if ((st.s == "while" || st.s == "for") && name_count(st.init_s, name) == 0 && !reads_name(st.cond, name) && !reads_name(st.inc, name)) {
+        return flow_through(st.body_s, name, true) == LoopFlow.live ? LoopFlow.live : LoopFlow.fell_off
+    }
+    if (st.s == "do") {
+        let flow = flow_through(st.body_s, name, true)
+        if (flow == LoopFlow.dead) {
+            return leaves_loop(st.body_s, false) ? LoopFlow.fell_off : LoopFlow.dead
+        }
+        return flow == LoopFlow.fell_off && !reads_name(st.cond, name) ? LoopFlow.fell_off : LoopFlow.live
+    }
+    return LoopFlow.live
 }
 
 // where a label or a goto sits: the compound blocks above it, outermost first, and whether
@@ -5226,6 +5550,8 @@ def private emit_stmt_kind(var em : Emitter; tu : CirTu; st : CirStmt const?) {
         emit_goto(em, st)
     } elif (st.s == "decl" && key_exists(em.prog.carried, intptr(st))) {
         emit_carried_init(em, tu, *st, das_name(em, st.name))
+    } elif (st.s == "decl" && key_exists(em.range_counters, st.name)) {
+        pass
     } elif (st.s == "decl") {
         emit_decl(em, tu, *st)
     } elif (st.s == "expr") {
@@ -5244,9 +5570,9 @@ def private emit_stmt_kind(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     } elif (st.s == "while") {
         emit_while(em, tu, *st)
     } elif (st.s == "do") {
-        emit_do(em, tu, *st)
+        emit_do(em, tu, st)
     } elif (st.s == "for") {
-        emit_for(em, tu, *st)
+        emit_for(em, tu, st)
     } elif (st.s == "break") {
         emit_break(em)
     } elif (st.s == "continue") {
@@ -5857,6 +6183,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     var taken <- body_names(em, d)
     function_params(em, tu, d, taken, params, copies)
     em.spelled := taken
+    plan_counted_loops(em, tu, d)
     // the trailing arguments arrive as the list the `[variadic]` prologue binds, under a name
     // the body leaves free
     if (variadic && key_exists(taken, VA_TUPLE)) {

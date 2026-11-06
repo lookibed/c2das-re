@@ -125,6 +125,24 @@ def test_range_loops(t : T?) {
         t |> equal(unsigned_sum, 3u)
         t |> equal(big, 5ul)
     }
+    t |> run("urange64 over uint64(uint(count)) + 1 passes count + 1 times from count >= 0 and 2^32 + count + 1 from a negative count, as C's `do while (count--)`; an unsigned count at its maximum does not wrap the sum") @(t : T?) {
+        var passes : array<int>
+        passes |> reserve(4)
+        for (count in fixed_array(0, 3, -1, -5)) {
+            var n = 0ul
+            for (_k in urange64(uint64(uint(count)) + 1ul)) {
+                n++
+                if (n == 10ul) {
+                    break
+                }
+            }
+            passes |> push(int(n))
+        }
+        t |> equal("{passes}", "[ 1, 4, 10, 10]")
+        t |> equal(uint64(uint(-1)) + 1ul, 4294967296ul)
+        t |> equal(uint64(uint(-5)) + 1ul, 4294967292ul)
+        t |> equal(uint64(0xffffffffu) + 1ul, 4294967296ul)
+    }
     t |> run("a range loop evaluates its start and its end once, start first, and continue goes to the next value") @(t : T?) {
         trace |> clear()
         var visited : array<int>

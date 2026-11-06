@@ -120,17 +120,17 @@ def test_lowerings(t : T?) {
         t |> equal(text |> find("c = next()\n    if (c != 5)") >= 0, true, text)
         t |> equal(text |> find("var _t") >= 0 && text |> find("\} else \{") >= 0, true, text)
     }
-    t |> run("loops: while, do-while with the first-pass flag, for with the increment-first flag, if chains") @(t : T?) {
+    t |> run("loops: while, do-while with the first-pass flag, for with the finally block and the trailing increment, if chains") @(t : T?) {
         var text : string
         check_fixture(t, "p1_loops", text)
         t |> equal(text |> find("var _first = true") >= 0, true, text)
         t |> equal(text |> find("while (_first || ") >= 0, true, text)
         t |> equal(text |> find("} elif (") >= 0, true, text)
-        // a canonical counting loop is a range loop; a body with `continue` that leaves the loop
-        // takes the flag, one that never leaves it the `finally`, one with no `continue` the
-        // increment as its last statement
+        // a canonical counting loop is a range loop, a C89 one whose counter is dead after it in
+        // a free name; a body with `continue` that never leaves the loop takes the `finally`, one
+        // with no `continue` the increment as its last statement
         has_text(t, text, "    for (j in range(10)) \{\n        if (j == 1) \{\n            continue\n")
-        has_text(t, text, "        var _f = false\n        while (true) \{\n            if (_f) \{\n                i++\n")
+        has_text(t, text, "    for (i1 in range(6)) \{\n        if (i1 == 1) \{\n            continue\n")
         has_text(t, text, "            \} finally \{\n                i++\n")
         has_text(t, text, "        while (i < n) \{\n            i += 3\n            n--\n        \}\n")
     }
@@ -160,11 +160,11 @@ def test_lowerings(t : T?) {
     p5_program_fixtures(t)
     p5_lua_fixtures(t)
     p5_lua_library_fixtures(t)
-    p7_fixtures(t)
+    p7_first_member_fixtures(t)
     p7_volatile_fixtures(t)
     p7_expect_fixtures(t)
     p7_wrap_fixtures(t)
-    p7_first_member_fixtures(t)
+    p7_fixtures(t)
     p5_lua_expression_fixtures(t)
     p7_restart_sentinel_fixtures(t)
     p7_goto_dispatch_fixtures(t)
@@ -565,9 +565,9 @@ def p3_fixtures(t : T?) {
         has_text(t, text, "        if (!(_cond == 1 || _cond == 5 || _cond == 9)) \{\n")
         // a plain `default` between a fall-through pair and a plain case
         has_text(t, text, "            break\n        \}\n        if (!(_cond == 1 || _cond == 2 || _cond == 3)) \{\n            r += 50\n            break\n        \}\n        if (_cond == 3) \{\n            r += 300\n")
-        has_text(t, text, "var _cont = false\n                while (true) \{")
-        has_text(t, text, "_cont = true\n                        break")
-        has_text(t, text, "if (_cont) \{\n                    continue\n                \}")
+        has_text(t, text, "    for (i in range(6)) \{\n        let _cond = i % 3\n        var _cont = false\n        while (true) \{")
+        has_text(t, text, "_cont = true\n                break")
+        has_text(t, text, "if (_cont) \{\n            continue\n        \}")
         has_text(t, text, "let _cond2 = b\n        if (_cond2 == 1) \{")
         has_text(t, text, "if (_cond == 8589934592l) \{")
         has_text(t, text, "if (b == 2) \{\n                break\n            \}")
@@ -2089,7 +2089,7 @@ def p7_fixtures(t : T?) {
         has_text(t, text, "            total += j\n            return total * 10 + j\n        \}\n")
         has_text(t, text, "                return 2000 + j\n            \}\n        \}\n    \}\n    return j\n")
         // a `continue` of a nested loop is not the outer loop's: the outer takes the increment last
-        has_text(t, text, "            total += j\n            j++\n        \}\n    \}\n    return total\n")
+        has_text(t, text, "            total += j\n            j++\n        \}\n    \}\n    // both counters read after\n    return total + j * 100 + k\n")
         t |> equal(count(text, "finally"), 1, text)
         has_text(t, text, "    x += n\n    x -= 2\n    x *= 3\n    x &= 255\n    x |= 256\n    x ^= 1\n    y *= int64(5)\n    u += 3u\n    d *= 4.0lf\n")
         has_text(t, text, "    a.sum += x\n    a.cells[1] += 7\n    a.mean += d\n")
@@ -2128,6 +2128,7 @@ def p7_fixtures(t : T?) {
         t |> equal(refused.ok, false, refused.das_text)
         t |> success(refused.error |> contains("--loops is range or while, not `for`"), refused.error)
     }
+    p7_fused_loop_fixtures(t)
 }
 
 // P7.0d: C's wrapping arithmetic through the unsigned twin with a narrower operand or `* & | ^`
@@ -2141,6 +2142,53 @@ def p7_wrap_fixtures(t : T?) {
         // an operand already unsigned is no wrap pair: the casts stay
         has_text(t, text, "    var x : int = int(uint(imm) * 2654435761u) + int(uint(s) + 3u)\n")
         t |> equal(text |> find("int64(uint64(") < 0, true, text)
+    }
+}
+
+// the fused loops of P7.0s: the C89 range loop, the bottom-tested `do`, the count-down range,
+// each exclusion, and none of them under `--loops while`
+def p7_fused_loop_fixtures(t : T?) {
+    t |> run("fused loops: a C89 counter dead after its loop counts in a range, `do` tests at the bottom, `do while (count--)` is a range over count + 1") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_fused_loops", text)
+        // every reference in counted loops: the declaration goes, the loops count in the C name,
+        // a loop after the last one that names `j` only inside its body included
+        has_text(t, text, "def c89_only(n : int) : int \{\n    var total : int = 0\n    for (i in range(n)) \{\n        for (j in range(2, n)) \{\n")
+        has_text(t, text, "    for (i in range(2)) \{\n        for (j in range(2)) \{\n")
+        // dead after the loop but read elsewhere: a free name, the declaration stays
+        has_text(t, text, "    var i : int = sink(n)\n    var total : int = i\n    for (i1 in range(n)) \{\n        total += i1\n")
+        // read after, address taken, a goto out, the next pass reads, a `do` left early by its
+        // `break`, a switch's `continue`, an `if` arm: the loop keeps its `while` form
+        has_text(t, text, "        i = 0\n        var _f = false\n")
+        has_text(t, text, "        while (i < n) \{\n            t += deref(p)\n")
+        has_text(t, text, "        while (i < n) \{\n            if (deref(a + i) == 2) \{\n")
+        has_text(t, text, "        t += i\n        \{\n            i = 0\n            while (i < n) \{\n                t++\n                i++\n            \}\n        \}\n    \}\n")
+        has_text(t, text, "        while (i < n) \{\n            t++\n            i++\n        \}\n    \}\n    while (true) \{\n        if (t > 2) \{\n")
+        has_text(t, text, "            \}\n        \}\n        let _cond = k\n")
+        has_text(t, text, "        while (i < n) \{\n            t += 2\n")
+        // `do`: the test at the bottom, the flag with a `continue`, `while (0)` a block, a body
+        // that always leaves no test, a condition's effects before the test
+        has_text(t, text, "    while (true) \{\n        t += n\n        n--\n        if (!(n > 0)) \{\n            break\n")
+        has_text(t, text, "    var _first = true\n    while (_first || k < 4) \{\n")
+        has_text(t, text, "    \{\n        i = 7\n    \}\n")
+        has_text(t, text, "    \{\n        t++\n    \}\n")
+        has_text(t, text, "    while (true) \{\n        n--\n        break\n    \}\n")
+        has_text(t, text, "        t += 100\n        break\n    \}\n")
+        has_text(t, text, "        k--\n        if (!(sink(k) > 1)) \{\n")
+        // `count--`: from any start and unsigned, the exact pass count; kept when read after or
+        // named in the body
+        has_text(t, text, "    for (_t0 in urange64(uint64(uint(count)) + 1ul)) \{\n        t++\n")
+        has_text(t, text, "    for (_t1 in urange64(uint64(uint(count)) + 1ul)) \{\n        guard++\n")
+        has_text(t, text, "    for (_t2 in urange64(uint64(u) + 1ul)) \{\n")
+        has_text(t, text, "        let _t3 = kept\n")
+        has_text(t, text, "        let _t4 = named\n")
+    }
+    t |> run("fused loops under `--loops while`: no range loop, every `do` the first-pass flag") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_fused_loops", text, "", "while")
+        t |> equal(text |> find(" in range(") < 0 && text |> find(" in urange64(") < 0, true, text)
+        has_text(t, text, "    var _first = true\n    while (true) \{\n        if (!_first) \{\n            n--\n")
+        has_text(t, text, "    var _first3 = true\n    while (_first3 || 0 != 0) \{\n")
     }
 }
 
