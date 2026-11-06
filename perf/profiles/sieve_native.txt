@@ -1,0 +1,13 @@
+program: kernel sieve (perf/kernels/sieve.c, the composed program's 0.5 s budget loop)
+lane: native
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: perf/work/sieve/sieve_native
+sampler: perf/sampler at 100 us, ungated, the whole process (the kernel's budget loop calls clock() once per round, so the clock gate would hold one round)
+samples: 7773 located (samples 7773 dropped 0 clock_calls 6); 0 of them in the daslang host's own files (liblibDaScriptDyn|LLVM|libstdc|ld-linux|daslang$: the module's compile and load before main and the runtime library, set apart), the shares below are of the other 7773
+ratio: 1.00 (the re-capture: 0.001830 s a run)
+
+ samples  share  file                     function
+    7707  99.2%  sieve_native main
+      66   0.8%  libc.so.6 ?
