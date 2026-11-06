@@ -1,0 +1,21 @@
+program: Lua nbody (bench/timed.lua bench/nbody.lua, 500: the profiler keeps one event per call and the ports size 200000 runs out of the 3G cap)
+lane: interp
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: daslang -load_module dasCRuntime -load_module c_runtime --das-profiler lua/work/lua/lua.das -- ports/lua/bench/timed.lua ports/lua/bench/nbody.lua 500
+profiler: daslang --das-profiler (the interpreter's own instrumenting profile, every call counted), inclusive times folded to self time per function (fold.py of the P7.0b2 notes, the total the largest inclusive time); the shares are the shape of the run, the seconds carry the profiler's own cost
+total (main, inclusive): 1.147822291 s
+ratio: 167.5x native at the ports size (work 58.43 s against 0.3489 s, one plain run each this session; the ports re-capture's cell is pending)
+
+     self s  share      calls  function
+    0.474 s  41.3%          2  @lcode_cluster::luaV_execute
+    0.183 s  15.9%      93838  @lcode_cluster::luaH_getshortstr
+    0.102 s   8.9%     770201  @lobject_h_cluster::.`val
+    0.055 s   4.8%     413397  @lobject_h_cluster::.`u
+    0.053 s   4.6%     416593  @lobject_h_cluster::.`n
+    0.051 s   4.4%     373723  @lobject_h_cluster::.`gc
+    0.048 s   4.2%     340344  @lcode_cluster::builtin`intptr`423335042520041948
+    0.033 s   2.9%     261329  @lobject_h_cluster::.`ts
+    0.016 s   1.4%      97158  @lobject_h_cluster::.`i_val
+    0.015 s   1.3%     108608  @lobject_h_cluster::.`h

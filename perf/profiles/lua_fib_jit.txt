@@ -1,0 +1,21 @@
+program: Lua fib (bench/timed.lua bench/fib.lua, 34)
+lane: jit
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: daslang -load_module dasCRuntime -load_module c_runtime -jit lua/work/lua/lua.das -- ports/lua/bench/timed.lua ports/lua/bench/fib.lua
+sampler: perf/sampler at 100 us, gated on the host's clock() calls (the gate's window holds the whole timed run); symbolized against the JIT's cached .dll
+samples: 13009 located (samples 13009 dropped 0 clock_calls 2)
+ratio: 4.87x native (work 1.2237 s against 0.2512 s, one plain run each this session; the ports re-capture's cell is pending). The source layout's JIT is a split build (30 das-module partitions, one cached DLL): the same converter's single-layout module runs fib 30 at 2.24x (0.0824 s against 0.0368 s), the figure P7.0p measured and the prediction took
+
+ samples  share  file                     function
+    9496  73.0%  0x42e75a1efb883a7f.dll lcode_cluster::luaV_execute
+    1916  14.7%  0x42e75a1efb883a7f.dll lcode_cluster::luaD_precall
+     442   3.4%  0x42e75a1efb883a7f.dll lobject_h_cluster::.`val
+     391   3.0%  liblibDaScriptDyn_runtime.so _ZN3das14i_das_ptr_diffEPvS0_i
+     233   1.8%  0x42e75a1efb883a7f.dll lobject_h_cluster::.`p
+     191   1.5%  0x42e75a1efb883a7f.dll lobject_h_cluster::.`l
+     130   1.0%  0x42e75a1efb883a7f.dll lobject_h_cluster::.`gc
+     113   0.9%  0x42e75a1efb883a7f.dll lobject_h_cluster::.`cl
+      96   0.7%  0x42e75a1efb883a7f.dll lobject_h_cluster::.`i
+       1   0.0%  [vdso] ?
