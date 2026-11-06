@@ -2,7 +2,7 @@ program: Doom demo1 (freedoom2, speed build)
 lane: native
 box: PC (AMD Ryzen 7 7435HS, WSL2)
 date: 2026-11-06
-commit: 2bf0ecf (branch perf/recapture-11-06)
+commit: main 6d4f7d7 plus the re-capture branch perf/recapture-11-06
 command: DOOMWADDIR=. doom/work/native/doom-speed -timedemo demo1, in doom/work/run/freedoom2
 sampler: perf/sampler at 100 us, gated on the host's clock() calls (the gate's window holds the whole timed run) (the host's clock() pair)
 samples: 2994 located (samples 2994 dropped 0 clock_calls 2)

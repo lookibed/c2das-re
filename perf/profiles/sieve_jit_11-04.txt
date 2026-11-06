@@ -2,7 +2,7 @@ program: kernel sieve (perf/kernels/sieve.c, the composed program's 0.5 s budget
 lane: jit, the 11-04 side: main at 81aa06f's converter and c_runtime over the same composed program (no options solid_context; the module text is otherwise identical to today's)
 box: PC (AMD Ryzen 7 7435HS, WSL2)
 date: 2026-11-06
-commit: 2bf0ecf (branch perf/recapture-11-06)
+commit: main 6d4f7d7 plus the re-capture branch perf/recapture-11-06
 command: daslang -load_module dasCRuntime -load_module <81aa06f>/c_runtime -jit <81aa06f's conversion of perf/work/sieve/sieve.c>
 sampler: perf/sampler at 100 us, ungated, the whole process (the kernel's budget loop calls clock() once per round, so the clock gate would hold one round); symbolized against the JIT's cached .dll
 samples: 10195 located (samples 10195 dropped 0 clock_calls 6); 1419 of them in the daslang host's own files (liblibDaScriptDyn|LLVM|libstdc|ld-linux|daslang$: the module's compile and load before main and the runtime library, set apart), the shares below are of the other 8776

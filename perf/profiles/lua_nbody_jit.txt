@@ -2,11 +2,11 @@ program: Lua nbody (bench/timed.lua bench/nbody.lua, 200000)
 lane: jit
 box: PC (AMD Ryzen 7 7435HS, WSL2)
 date: 2026-11-06
-commit: 2bf0ecf (branch perf/recapture-11-06)
+commit: main 6d4f7d7 plus the re-capture branch perf/recapture-11-06
 command: daslang -load_module dasCRuntime -load_module c_runtime -jit lua/work/lua/lua.das -- ports/lua/bench/timed.lua ports/lua/bench/nbody.lua
 sampler: perf/sampler at 100 us, gated on the host's clock() calls (the gate's window holds the whole timed run); symbolized against the JIT's cached .dll
 samples: 15378 located (samples 15378 dropped 0 clock_calls 2)
-ratio: 4.11x native (work 1.4338 s against 0.3489 s, one plain run each this session; the ports re-capture's cell is pending). The single-layout module (one JIT partition, cross-module inlining kept) runs nbody 20000 at 1.37x (0.0478 s against 0.0349 s), the figure P7.0p measured
+ratio: 4.11x native (work 1.4338 s against 0.3489 s, one plain run each this session; the ports re-capture's cell is pending). The source layout's JIT is a split build (30 das-module partitions, one cached DLL); the single-layout module (one partition, cross-module inlining kept) runs nbody 20000 at 1.37x (0.0478 s against 0.0349 s), the figure P7.0p measured
 
  samples  share  file                     function
    13093  85.1%  0x42e75a1efb883a7f.dll lcode_cluster::luaV_execute

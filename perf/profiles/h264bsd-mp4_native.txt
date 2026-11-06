@@ -2,7 +2,7 @@ program: compare project h264bsd-mp4 (the bench unit over fixtures/test_640x360.
 lane: native
 box: PC (AMD Ryzen 7 7435HS, WSL2)
 date: 2026-11-06
-commit: 2bf0ecf (branch perf/recapture-11-06)
+commit: main 6d4f7d7 plus the re-capture branch perf/recapture-11-06
 command: compare/work/projects/h264bsd-mp4/native/h264bsd-mp4_bench /root/c2das/tests/manual/h264bsd-mp4/fixtures/test_640x360.mp4, in compare/work/projects/h264bsd-mp4/cwd
 sampler: perf/sampler at 100 us, SHIM_OPEN=2 SHIM_CLOSE=3: the bench's clock_gettime pair around its decode loop turned into the gate's clock() pair by perf/sampler/gate_shim.c (SAMPLER_GATE=clock), SHIM_CALLER=h264bsd-mp4_bench
 samples: 850 located (samples 850 dropped 0 clock_calls 2)
