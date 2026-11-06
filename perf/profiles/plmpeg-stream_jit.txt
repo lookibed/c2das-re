@@ -1,0 +1,21 @@
+program: compare project plmpeg-stream (the bench unit over fixtures/testsrc2_320x240.m1v, its decode phase)
+lane: jit
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: daslang -load_module dasCRuntime -load_module c_runtime -jit compare/work/projects/plmpeg-stream/ours_bench/plmpeg_file_bench_all.das -- /root/c2das/tests/manual/plmpeg-stream/fixtures/testsrc2_320x240.m1v, in compare/work/projects/plmpeg-stream/cwd
+sampler: perf/sampler at 100 us, SHIM_OPEN=2 SHIM_CLOSE=3: the bench's clock_gettime pair around its decode loop turned into the gate's clock() pair by perf/sampler/gate_shim.c (SAMPLER_GATE=clock), SHIM_CALLER=libstdc++ (crt's clock_gettime bind reaches libc through libstdc++'s chrono); symbolized against the JIT's cached .dll
+samples: 456 located (samples 456 dropped 0 clock_calls 2)
+ratio: 1.06x native (the re-capture's decode cells, ours jit over native)
+
+ samples  share  file                     function
+     160  35.1%  0x21dd8ffda3b35c7a.dll c_main
+     131  28.7%  0x21dd8ffda3b35c7a.dll plm_frame_to_rgb
+      97  21.3%  0x21dd8ffda3b35c7a.dll plm_video_decode_block
+      40   8.8%  0x21dd8ffda3b35c7a.dll plm_video_process_macroblock
+      17   3.7%  0x21dd8ffda3b35c7a.dll plm_video_idct
+       5   1.1%  0x21dd8ffda3b35c7a.dll plm_video_decode_macroblock
+       3   0.7%  0x21dd8ffda3b35c7a.dll plm_video_decode
+       1   0.2%  libc.so.6 ?
+       1   0.2%  0x21dd8ffda3b35c7a.dll plm_video_predict_macroblock
+       1   0.2%  0x21dd8ffda3b35c7a.dll plm_video_decode_slice
