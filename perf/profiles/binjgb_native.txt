@@ -1,0 +1,21 @@
+program: compare project binjgb (the bench unit over fixtures/cgb-acid2.gbc, its decode phase)
+lane: native
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: compare/work/projects/binjgb/native/binjgb_bench /root/c2das/tests/manual/binjgb/fixtures/cgb-acid2.gbc, in compare/work/projects/binjgb/cwd
+sampler: perf/sampler at 100 us, SHIM_OPEN=3 SHIM_CLOSE=4: the bench's clock_gettime pair around its decode loop turned into the gate's clock() pair by perf/sampler/gate_shim.c (SAMPLER_GATE=clock), SHIM_CALLER=binjgb_bench
+samples: 660 located (samples 660 dropped 0 clock_calls 2)
+ratio: 1.00 (the re-capture's decode cell)
+
+ samples  share  file                     function
+     216  32.7%  binjgb_bench ppu_mode3_synchronize
+     141  21.4%  binjgb_bench main
+     114  17.3%  binjgb_bench execute_instruction
+     108  16.4%  binjgb_bench ppu_synchronize
+      23   3.5%  binjgb_bench apu_synchronize
+      18   2.7%  binjgb_bench write_audio_frame
+      13   2.0%  binjgb_bench emulator_run_until
+       7   1.1%  binjgb_bench mode3_tick_count
+       7   1.1%  binjgb_bench do_ppu_mode2
+       5   0.8%  binjgb_bench check_stat
