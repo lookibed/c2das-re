@@ -369,8 +369,18 @@ def private number_end(text : array<int>; i : int) : int {
     return j
 }
 
+// the end of the run of dots starting at `i` of `text`, short of a dot a number starts with
+def private dots_end(text : array<int>; i : int) : int {
+    var j = i
+    while (j < length(text) && text[j] == '.' && !digit_at(text, j + 1)) {
+        j++
+    }
+    return j
+}
+
 // `line` with every number one `#`, whatever its sign, digits or notation: the suite prints seeds,
-// timings and dates, `%g` choosing the notation by the value
+// timings and dates, `%g` choosing the notation by the value; and every run of dots one dot, the
+// progress dots `all.lua`'s collections print running as many as the collector's timing makes
 def private masked(line : string) : string {
     let text <- [for (ch in line); ch]
     return build_string() $(var w) {
@@ -380,6 +390,9 @@ def private masked(line : string) : string {
             if (is_number(ch) || ((ch == '.' || ch == '+' || ch == '-') && digit_at(text, i + 1))) {
                 w |> write("#")
                 i = number_end(text, i)
+            } elif (ch == '.') {
+                w |> write(".")
+                i = dots_end(text, i)
             } else {
                 w |> write_char(ch)
                 i++
@@ -391,9 +404,25 @@ def private masked(line : string) : string {
 // the warning `all.lua` prints when its time differs from the one the previous run left
 let TIME_WARNING = "Lua warning: #time difference from previous test"
 
-// the lines of a run's output the comparison reads: all but `TIME_WARNING`, since the previous run
+// `output` without each `TIME_WARNING`, from its text to the end of its line, newline included: the
+// warning lands mid-line after the progress dots, which stay, and a warning on its own line goes whole
+def private without_time_warning(output : string) : string {
+    return build_string() $(var w) {
+        var start = 0
+        var at = find(output, TIME_WARNING, start)
+        while (at >= 0) {
+            w |> write(slice(output, start, at))
+            let eol = find(output, "\n", at)
+            start = eol >= 0 ? eol + 1 : length(output)
+            at = find(output, TIME_WARNING, start)
+        }
+        w |> write(slice(output, start))
+    }
+}
+
+// the lines of a run's output the comparison reads: without `TIME_WARNING`, since the previous run
 // in the suite's folder is the other build's
-def private compared_lines(output : string) : array<string> => <- lines_without(output, TIME_WARNING)
+def private compared_lines(output : string) : array<string> => <- split(without_time_warning(output), "\n")
 
 // the first line of `stream` where `native` and `das` differ once masked, quoted from each
 def private first_line_difference(stream, native, das, tier : string) : string {
