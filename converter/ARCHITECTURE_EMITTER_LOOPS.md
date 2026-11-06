@@ -5,7 +5,23 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
 ### Loops
 
 `while` is `while`, with a side-effecting condition spelled `while (true)` plus the test and
-`break`; `do` is the `_first` flag. A `for` is one of four shapes, the first that applies:
+`break`. A `do` is one of four shapes, the first that applies (`emit_do`):
+
+- **The count-down range** (`count_down`): `do { body } while (count--)` with `count` an `int` or
+  `unsigned` parameter or local that the body never names and that is dead after the loop (below)
+  is `for (_t0 in urange64(uint64(uint(count)) + 1ul))`. The sum is C's pass count from every
+  start: `count + 1` from 0 or above, `2^32 + count + 1` by the wrap from a negative one, and no
+  wrap at an unsigned maximum (`probes/test_loops.das`); a `continue` reaches the next pass as
+  C's test does. This is Doom's `R_DrawColumn` and `R_DrawSpan` pixel loop.
+- **The block**: `do { body } while (0)` whose body leaves by no `break`, `continue`, `return`
+  or `goto` is `{ body }`, in a function with no `goto` (the label plan reads the C loop).
+- **The bottom test**: a body with no `continue` of the loop is
+  `while (true) { body; if (!(c)) { break } }`, the condition's hoisted statements before the
+  test; a body that always leaves takes no test, and `while (0)` a plain `break`.
+- **The first-pass flag** `_first` otherwise, tested on every pass so that a `continue` reaches
+  the condition.
+
+A `for` is one of four shapes, the first that applies:
 
 - **The range loop** (`for_range`), O1 of `docs/very-detailed-plan.md` section 6 in the shape the
   "General for" of `docs/lowering-examples.md` prescribes: `for (T i = a; i < n; ++i)` (or `i++`,
@@ -20,8 +36,15 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
   bound invariant, C's every-pass test; `i` dies with the loop as C99's does, `continue` reaches
   the next value as C's increment does, and a start past the bound runs no pass
   (`probes/test_loops.das`). The start's hoisted statements, when it has any, go in a block of
-  their own before the loop. Under the `loops` option `while` (the CLI's `--loops while`, the
-  sidecar's `"loops": "while"`) no loop takes this shape.
+  their own before the loop. The C89 spelling `for (i = a; i < n; ++i)` takes the shape too when
+  `i` is a parameter or a local the function declares once, the function holds no `goto` and
+  `i` is dead after the loop: das refuses a loop variable that shadows a local
+  (`probes/test_scalars.das`), so a counter whose every reference sits in such loops loses its
+  declaration (when it has no initializer or a literal one and is no switch's carried one) and
+  counts in its C name, and any other counts in a free numbered name (`i1`), the same for each
+  of its loops (`plan_counted_loops`). Under the `loops` option `while` (the CLI's
+  `--loops while`, the sidecar's `"loops": "while"`) no loop takes this shape, and every `do`
+  takes the first-pass flag.
 - **The trailing increment**: a body that holds no `continue` of the loop (one outside every
   nested loop, a switch's included) is `while (cond) { body; inc }`. A `break`, a `return` or a
   `goto` out of the body skips the increment, as C's does, and a body ending in one takes no
@@ -30,6 +53,18 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
   level, no `return`, no `goto`) is `while (cond) { { body } finally { inc } }`, since `finally`
   runs on `continue` and on every pass but also on `break`.
 - **The increment-first flag** `_f` otherwise.
+
+**Dead after the loop** (`dead_after`): on every path from the loop's end the variable is
+assigned, or the function returns, before any read. The walk follows the statements after the
+loop in order: a plain store `i = e` with no `i` in `e`, a declaration of `i` and a `for` whose
+initializer is such a store assign it; a `return` ends the path; an `if` takes the worse of its
+arms; a loop that names `i` with a head that reads nothing of it takes its body's first pass,
+which a `while` or `for` may skip and a `do` may leave early by a `break`; a `break` or
+`continue` of a loop around the walked statements, a switch with such a `continue`, and every
+other naming of `i` are reads. At the end of an enclosing loop's body the walk reads its test
+and step, then its body from the top, and leaves the loop when that pass reads nothing first.
+The function holds no `goto` and takes no address of `i`, the callers' checks, so no other
+path reaches a read.
 
 The split is measured: `benchmarks/bench_for_shapes.das` times one body under the four
 spellings; the interpreter runs the range loop fastest, then the trailing increment, the

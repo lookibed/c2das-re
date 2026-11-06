@@ -157,8 +157,9 @@ def test_csmith_scalars(t : T?) {
         t |> equal(5l << int64(n), 10l)
         t |> equal(0xFFFFul >> uint64(n), 0x7FFFul)
     }
-    t |> run("a local that shadows an enclosing local is refused, `_` included; sibling blocks reuse a name") @(t : T?) {
+    t |> run("a local that shadows an enclosing local is refused, a range loop's variable and `_` included; sibling blocks reuse a name") @(t : T?) {
         child_rejects(t, "shadow_nested", daslang_child("shadow_nested", "options gen2\n[export]\ndef main \{\n    var i = 1\n    \{\n        var i = 2\n        assert(i == 2)\n    \}\n    assert(i == 1)\n\}\n", true), "local variable i is shadowed by another local variable")
+        child_rejects(t, "shadow_loop_variable", daslang_child("shadow_loop_variable", "options gen2\n[export]\ndef main \{\n    var i = 0\n    for (i in range(3)) \{\n        assert(i < 3)\n    \}\n\}\n", true), "for loop iterator variable i is shadowed by another local variable")
         child_rejects(t, "shadow_discard", daslang_child("shadow_discard", "options gen2\n[export]\ndef main \{\n    let _ = 1\n    \{\n        let _ = 2\n    \}\n\}\n", true), "local variable _ is shadowed by another local variable")
         let siblings = daslang_child("shadow_siblings", "options gen2\n[export]\ndef main \{\n    \{\n        var i = 1\n        assert(i == 1)\n    \}\n    \{\n        var i = 2\n        assert(i == 2)\n    \}\n\}\n", false)
         t |> equal(siblings.rc, 0, siblings.out)

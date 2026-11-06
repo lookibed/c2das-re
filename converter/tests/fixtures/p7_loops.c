@@ -62,7 +62,7 @@ static int both_return(int n) {                                           /* bot
 static int nested_continue(int n) {                                       /* the inner loop's continue is its own */
     int total = 0, j, k;
     for (j = 0; j < n; j++) { for (k = 0; k < 3; k++) { if (k == 1) continue; total += k; } total += j; }
-    return total;
+    return total + j * 100 + k;                                           /* both counters read after */
 }
 struct acc { int sum; double mean; int cells[3]; };
 static int compound(int n) {
