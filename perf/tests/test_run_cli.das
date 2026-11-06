@@ -156,14 +156,34 @@ def test_run_method(t : T?) {
         t |> success(out |> contains("--check: fib_recursive/native -"), out)
         t |> success(out |> contains("--check: fib_loop/native missing"), out)
     }
-    t |> run("--table under the method renders the committed capture, its delta against HEAD's and the comparison with dasProfile's") @(t : T?) {
+    t |> run("--table under the method renders the committed capture, its delta against HEAD's and the comparison with dasProfile's, or names the two boxes when the hand-written capture is another box's") @(t : T?) {
         var shown : string
         t |> equal(run_and_capture(["bash", "scripts/run_perf.sh", "--method", "dasprofile", "--table"], shown, 120.0), 0, shown)
         t |> success(shown |> contains("Delta against HEAD:perf/results_method_linux.json"), shown)
-        t |> success(shown |> contains("The dasProfile method on "), shown)
-        t |> success(shown |> contains("| primes "), shown)
+        let method_cpu = capture_cpu("perf/results_method_linux.json")
+        let hand_cpu = capture_cpu("perf/dasprofile_linux.json")
+        if (method_cpu == hand_cpu) {
+            t |> success(shown |> contains("The dasProfile method on "), shown)
+            t |> success(shown |> contains("| primes "), shown)
+        } else {
+            // owner ruling 34: the hand-written capture stays the bench's while this tree's runs on PC
+            t |> success(shown |> contains("no comparison: "), shown)
+            t |> success(shown |> contains(hand_cpu), shown)
+            t |> success(!(shown |> contains("The dasProfile method on ")), shown)
+        }
     }
     rmdir_rec(dir)
+}
+
+// the `cpu` a committed capture names, the first `"cpu" : "..."` of its json text
+def private capture_cpu(path : string) : string {
+    let text = fread(path)
+    let at = find(text, "\"cpu\" : \"")
+    if (at < 0) {
+        return ""
+    }
+    let from = at + length("\"cpu\" : \"")
+    return slice(text, from, find(text, "\"", from))
 }
 
 // a --box this machine accepts: its own box, any box on an unknown CPU
