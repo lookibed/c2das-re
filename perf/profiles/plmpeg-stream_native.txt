@@ -1,0 +1,21 @@
+program: compare project plmpeg-stream (the bench unit over fixtures/testsrc2_320x240.m1v, its decode phase)
+lane: native
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: compare/work/projects/plmpeg-stream/native/plmpeg-stream_bench /root/c2das/tests/manual/plmpeg-stream/fixtures/testsrc2_320x240.m1v, in compare/work/projects/plmpeg-stream/cwd
+sampler: perf/sampler at 100 us, SHIM_OPEN=2 SHIM_CLOSE=3: the bench's clock_gettime pair around its decode loop turned into the gate's clock() pair by perf/sampler/gate_shim.c (SAMPLER_GATE=clock), SHIM_CALLER=plmpeg-stream_bench
+samples: 434 located (samples 434 dropped 0 clock_calls 2)
+ratio: 1.00 (the re-capture's decode cell)
+
+ samples  share  file                     function
+     161  37.1%  plmpeg-stream_bench plmpeg_frames_next
+     136  31.3%  plmpeg-stream_bench plm_frame_to_rgb
+      82  18.9%  plmpeg-stream_bench plm_video_decode_block
+      30   6.9%  plmpeg-stream_bench plm_video_process_macroblock
+      14   3.2%  plmpeg-stream_bench plm_video_idct
+       3   0.7%  plmpeg-stream_bench plm_video_decode_motion_vector
+       3   0.7%  plmpeg-stream_bench plm_video_decode_macroblock
+       3   0.7%  plmpeg-stream_bench plm_video_decode
+       1   0.2%  plmpeg-stream_bench plm_video_decode_motion_vectors
+       1   0.2%  plmpeg-stream_bench memmove
