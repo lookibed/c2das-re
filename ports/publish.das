@@ -55,7 +55,7 @@ struct Port {
     workloads : array<WorkloadSpec>
 }
 
-let ALL_LANES <- ["native", "interp", "jit", "exe", "aot", "interp-source-cut", "jit-source-cut", "interp-single", "jit-single"]
+let ALL_LANES <- ["native", "interp", "jit", "exe", "jit-goto", "aot", "interp-source-cut", "jit-source-cut", "interp-single", "jit-single"]
 let STARTUP_ARGS <- ["-e", "print(1)"]
 let WARM_UP_TIMEOUT = 3600.0
 //! the wrapper that times a workload inside its process, and the line it reports the seconds on
@@ -99,8 +99,8 @@ struct Args {
     perf : bool
     @clarg_doc = "samples per workload and lane, each its own process (default 5)"
     samples : int = 5
-    @clarg_doc = "the das lanes to measure, comma-separated, out of interp,jit,exe,aot,interp-source-cut,jit-source-cut,interp-single,jit-single (default all): the -source-cut and -single lanes run those layouts' modules"
-    lanes : string = "interp,jit,exe,aot,interp-source-cut,jit-source-cut,interp-single,jit-single"
+    @clarg_doc = "the das lanes to measure, comma-separated, out of interp,jit,exe,jit-goto,aot,interp-source-cut,jit-source-cut,interp-single,jit-single (default all but aot): the -source-cut and -single lanes run those layouts' modules, jit-goto the source layout converted with --switch-dispatch goto"
+    lanes : string = "interp,jit,exe,jit-goto,interp-source-cut,jit-source-cut,interp-single,jit-single"
     @clarg_doc = "seconds one sample may run before its cell fails (default 1800)"
     timeout : int = 1800
     @clarg_name = "allow-stale"
@@ -172,9 +172,14 @@ def private stamp_of(port : Port) : string => path_join(port.harness, "work/publ
 def private empty_script_of(port : Port) : string => get_full_file_name(path_join(port.harness, "work/bench/empty.lua"))
 def private module_of(port : Port; stem, layout : string) : string => path_join(layout_dir(path_join(port.harness, "work"), stem, layout), "{stem}.das")
 
-// the layout a das lane runs: the -source-cut and -single lanes those layouts' modules, the others the
-// source layout's
-def private lane_layout(lane : string) : string => lane |> ends_with("-single") ? "single" : lane |> ends_with("-source-cut") ? "source-cut" : "source"
+// the layout a das lane runs: the -source-cut and -single lanes those layouts' modules, `jit-goto`
+// the source layout's converted with `--switch-dispatch goto` (its folder `work/goto/`), the others
+// the source layout's
+def private lane_layout(lane : string) : string => lane |> ends_with("-single") ? "single" : lane |> ends_with("-source-cut") ? "source-cut" : lane == "jit-goto" ? "goto" : "source"
+
+// whether daslang runs `lane` over a converted module, which it caches in the folder it runs in;
+// the exe and AOT lanes run a binary, the native lane the C build
+def private runs_module(lane : string) : bool => lane != "native" && lane != "exe" && lane != "aot"
 
 // the das files of a program's source or source-cut layout under `dir` (its modules and fragments), each
 // relative to `dir`: the ones the conversion's `program.modules.txt` lists, so a file an earlier
@@ -425,13 +430,17 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
             run.argv <- [get_full_file_name(bin)]
             var inscope listed <- empty(error) ? [for (c_path in input.c_paths); base_name(c_path)] : ["<the C files of {manifest}>"]
             shown = join(native_build_command(listed, "{port.runs}_native", port.libs), " ")
-        } elif (lane == "interp" || lane == "jit" || lane |> ends_with("-source-cut") || lane |> ends_with("-single")) {
+        } elif (runs_module(lane)) {
             let layout = lane_layout(lane)
             let flag = lane |> starts_with("jit") ? "-jit" : ""
             run.argv <- das_lane_command(get_full_file_name(module_of(port, port.runs, layout)), flag, modules)
             run.argv |> push("--")
-            let shown_module = layout == "single" ? "single/{port.runs}.das" : "{layout_dir("", port.runs, layout)}/{port.runs}.das"
+            let shown_module = layout == "single" ? "single/{port.runs}.das" : layout == "goto" ? "{port.runs}/{port.runs}.das" : "{layout_dir("", port.runs, layout)}/{port.runs}.das"
             shown = join(["daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime", flag, "{shown_module} --"], " ") |> replace("  ", " ")
+            // the goto tree is not published: the command names the conversion that regenerates it
+            if (layout == "goto") {
+                shown += ", {port.runs}/ converted by c2das-re's {port.harness}/run.das -- --filter {port.runs} --layout source --switch-dispatch goto"
+            }
             run.error = warm_up(run.argv, "", empty_script)
         } else {
             var error : string
@@ -481,7 +490,7 @@ def private measure_program(args : Args; port : Port; release : Release; lanes :
                     cell.error = "no {tests_of(port, release)}"
                 } else {
                     // the test-suite folder has a module cache of its own to warm
-                    if (spec.in_tests && (lane == "interp" || lane == "jit" || lane |> ends_with("-source-cut") || lane |> ends_with("-single"))) {
+                    if (spec.in_tests && runs_module(lane)) {
                         cell.error = warm_up(run.argv, tests, empty_script_of(port))
                     }
                     if (empty(cell.error)) {
@@ -862,7 +871,7 @@ def main : int {
     lanes |> reserve(1 + length(das_lanes))
     for (lane in das_lanes) {
         if (lane == "native" || !has_value(ALL_LANES, lane)) {
-            to_log(LOG_ERROR, "ports: no das lane `{lane}`; --lanes takes interp, jit, exe, aot, interp-source-cut, jit-source-cut, interp-single and jit-single\n")
+            to_log(LOG_ERROR, "ports: no das lane `{lane}`; --lanes takes interp, jit, exe, jit-goto, aot, interp-source-cut, jit-source-cut, interp-single and jit-single\n")
             return 1
         }
         lanes |> push(lane)
