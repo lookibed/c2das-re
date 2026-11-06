@@ -1,0 +1,16 @@
+program: Lua fib (bench/timed.lua bench/fib.lua, 34)
+lane: native
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: lua_O3 ports/lua/bench/timed.lua ports/lua/bench/fib.lua (lua_O3: the ports native lane's build, clang -O3 -w -funsigned-char of lua.program.json's units, -lm; lua/work/lua_native is the -O0 oracle)
+sampler: perf/sampler at 100 us, gated on the host's clock() calls (the gate's window holds the whole timed run)
+samples: 2664 located (samples 2664 dropped 0 clock_calls 2)
+ratio: 1.00 (native work 0.2512 s this session; the ports table's native cell 0.254 s)
+
+ samples  share  file                     function
+    2324  87.2%  lua_O3 luaV_execute
+     337  12.7%  lua_O3 luaD_precall
+       1   0.0%  lua_O3 luaH_get
+       1   0.0%  libc.so.6 read@@GLIBC_2.2.5
+       1   0.0%  libc.so.6 ?

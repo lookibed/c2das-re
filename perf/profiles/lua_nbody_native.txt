@@ -1,0 +1,21 @@
+program: Lua nbody (bench/timed.lua bench/nbody.lua, 200000)
+lane: native
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: lua_O3 ports/lua/bench/timed.lua ports/lua/bench/nbody.lua (lua_O3 as in lua_fib_native.txt)
+sampler: perf/sampler at 100 us, gated on the host's clock() calls (the gate's window holds the whole timed run)
+samples: 3544 located (samples 3544 dropped 0 clock_calls 2)
+ratio: 1.00 (native work 0.3489 s this session)
+
+ samples  share  file                     function
+    2402  67.8%  lua_O3 luaV_execute
+     905  25.5%  lua_O3 luaH_getshortstr
+     109   3.1%  lua_O3 math_sqrt
+      34   1.0%  lua_O3 lua_tonumberx
+      28   0.8%  lua_O3 precallC
+      21   0.6%  lua_O3 luaD_poscall
+      20   0.6%  lua_O3 luaL_checknumber
+      17   0.5%  lua_O3 luaD_precall
+       4   0.1%  lua_O3 lua_pushnumber
+       1   0.0%  lua_O3 luaS_newlstr
