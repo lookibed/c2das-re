@@ -413,9 +413,7 @@ def private without_time_warning(line : string) : string {
 
 // the lines of a run's output the comparison reads, each without `TIME_WARNING` and a line it held
 // alone gone, since the previous run in the suite's folder is the other build's
-def private compared_lines(output : string) : array<string> {
-    return <- [for (line in split(output, "\n")); without_time_warning(line); where !(line |> starts_with(TIME_WARNING))]
-}
+def private compared_lines(output : string) : array<string> => <- [for (line in split(output, "\n")); without_time_warning(line); where !(line |> starts_with(TIME_WARNING))]
 
 // the first line of `stream` where `native` and `das` differ once masked, quoted from each
 def private first_line_difference(stream, native, das, tier : string) : string {
