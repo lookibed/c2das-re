@@ -5,7 +5,7 @@ would take for a defect, each with its reason (`ARCHITECTURE_COMMON.md`, the exc
 
 ## 1. The ledger
 
-- `sieve` and `matmul` / `aot`: 5.4 and 1.4 times native. The generated C++ finds a module global
+- `sieve` and `matmul` / `aot`: 8.0 and 1.6 times native. The generated C++ finds a module global
   through the context's mangled-name lookup at every access (`das_global<T, mnh>`), and a C
   file-scope array is a module global. In `sieve` every iteration stores into the array, and the
   host compiles with `-fno-strict-aliasing`, so any store may alias the lookup table and clang keeps
