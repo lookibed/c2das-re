@@ -279,7 +279,6 @@ dasProfile's `mandelbrot`). `README.md` sets the method's capture beside dasProf
 same machine, `dasprofile_linux.json`, one generated table: each hand-written cell over dasProfile's
 C++, each converted one over the composed C program.
 
-Every capture runs under `heavy --exclusive` (`ARCHITECTURE_SAMPLES.md` section 3).
 `scripts/run_perf.sh --from-scratch` rebuilds the crt, removes `work/`, reruns dasProfile
 (`dasprofile.sh`), and records both captures and both `README.md` sections. `scripts/run_perf.sh
 --check` reruns both methods into a scratch folder and passes `--check` to each run, so it exits 1
