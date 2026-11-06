@@ -58,10 +58,11 @@ rate, which this table gains when P6 lands, and none is published before then.
 eight cores) under WSL2, Linux x86_64, the clang 22.1.8 of the libclang archive and the daScript
 commit `VERSIONS.md` pins (the captures record daslang 0.6.4, dasProfile's its LLVM 22.1.5), with
 no other timing job on it while it runs (the box's `heavy` queue admits one timing job at a time).
-One exception: the dasProfile method's hand-written column (`perf/dasprofile_linux.json`) is still the
-bench box's capture of 2026-11-03, since `perf/dasprofile.sh` installs the daScript SDK outside this
-repository (`VERSIONS.md`, `daScript SDK`), which this box's rules do not allow without a ruling; that
-section says so where it would compare the two boxes. Times from another machine do not compare; ratios to native on the same machine do, which is what
+One exception, by owner ruling 34: the dasProfile method's hand-written column
+(`perf/dasprofile_linux.json`) is the bench box's capture (AMD Ryzen 3 1200, 2026-11-03) and is
+re-run only there at a phase end, since `perf/dasprofile.sh` installs a daScript SDK outside this
+repository, which box PC does not host; the dasProfile section therefore names the two boxes and
+compares nothing across them. Times from another machine do not compare; ratios to native on the same machine do, which is what
 the delta against an earlier capture on another CPU uses (`perf/ARCHITECTURE.md` section 5).
 
 **Samples.** A cell is the median of five samples, each its own process, ± half the sample range

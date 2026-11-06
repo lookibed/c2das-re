@@ -2281,6 +2281,17 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   (`--jit-split-modules` off or a link-time inline pass, dasLLVM side: a fork issue with the number),
   or the hot cluster kept in one module by the layout (P5.1b2's cluster rules). The ports tables carry
   both layouts, so the gap is visible there; the predictions file scores the `jit` column against it.
+- **P7.0y Hand-written daslang references beside the Rust translator's output** (owner note
+  2026-11-06, the reference pass of ruling 33 item 3 widened): the owner's plmpeg port
+  (lookibed/plmpeg-stream, checkout `/root/plmpeg-stream`, bench `/root/plmpeg_bench`) against our
+  and Rust's plmpeg, the owner's wasm3das (lookibed/wasm3das, `/root/wasm3das`) against wasm3's
+  translation (ours refused: VLA, P8.4 row i), and spiiin/dasSDL3 (cloned under `perf/work/` or
+  `compare/work/`, read-only) as an idiom and speed reference. From each: how a human writes the
+  same hot path (loops, pointers and arrays, structs, globals, options), the speed per lane where
+  a like-for-like run exists, and every construct our output could adopt, one ledger row each with
+  its expected effect written before measuring. After the current P7.0 speed rows.
+- Owner ruling 34 (2026-11-06): the dasProfile-method hand-written column stays the bench's
+  capture; no daScript SDK on box PC; re-run only on the bench at a phase end, never a PR blocker.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
