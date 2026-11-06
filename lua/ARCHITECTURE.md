@@ -167,8 +167,8 @@ seeds, timings and the date, `%g` picking the notation by the value), and every 
 dot (the progress dots of `all.lua`'s collections run as long as the collector's timing makes),
 and without the warning `all.lua` prints when its time differs from the one the previous run left
 in `time.txt` of the folder, the other build's: the warning's text goes up to the end of its line,
-newline included, so a warning after the progress dots leaves the dots and one on its own line
-leaves no line; `fail` with the first line that differs, stdout before stderr, quoted
+so a warning after the progress dots leaves the dots on their line and one on its own line leaves
+no line; `fail` with the first line that differs, stdout before stderr, quoted
 from both runs and naming its stream, or the two exit codes; `timeout` or `memory` naming the run
 the timeout or the cap ended, or `oracle` with the exit code and the first non-empty line of the native stderr, stripped,
 when the native build fails on its own (in both the converted one does not run: an oracle's failure
