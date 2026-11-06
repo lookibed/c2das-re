@@ -54,13 +54,12 @@ C kernels under `perf/kernels/`, each timed alone, which say how the converted c
 loop or call runs, not how a program does; the program-level number is Doom's timedemo frame
 rate, which this table gains when P6 lands, and none is published before then.
 
-**Machine.** Every number below is from one machine: an AMD FX-6300 (Piledriver, six cores,
-`bdver2`), Linux x86_64, the clang 22.1.8 of the libclang archive and the daScript commit
-`VERSIONS.md` pins (the captures record daslang 0.6.4, dasProfile's its LLVM 22.1.5), with no
-other job on it while it runs (the self-hosted Actions runner shares the machine, so a capture
-waits for it to idle). Times from another machine do not compare; ratios to
-native on the same machine do, which is what the delta against an earlier capture on another CPU
-uses (`perf/ARCHITECTURE.md` section 5).
+**Machine.** Every number below is from one machine, the box `PC`: an AMD Ryzen 7 7435HS (Zen 3+,
+eight cores) under WSL2, Linux x86_64, the clang 22.1.8 of the libclang archive and the daScript
+commit `VERSIONS.md` pins (the captures record daslang 0.6.4, dasProfile's its LLVM 22.1.5), with
+no other timing job on it while it runs (the box's `heavy` queue admits one timing job at a time).
+Times from another machine do not compare; ratios to native on the same machine do, which is what
+the delta against an earlier capture on another CPU uses (`perf/ARCHITECTURE.md` section 5).
 
 **Samples.** A cell is the median of five samples, each its own process, ± half the sample range
 as a share of the median. Inside a sample the program runs the kernel as many times as fit a
