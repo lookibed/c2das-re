@@ -1,0 +1,21 @@
+program: compare project binjgb (the bench unit over fixtures/cgb-acid2.gbc, its decode phase)
+lane: jit
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: daslang -load_module dasCRuntime -load_module c_runtime -jit compare/work/projects/binjgb/ours_bench/binjgb_bench_all.das -- /root/c2das/tests/manual/binjgb/fixtures/cgb-acid2.gbc, in compare/work/projects/binjgb/cwd
+sampler: perf/sampler at 100 us, SHIM_OPEN=3 SHIM_CLOSE=4: the bench's clock_gettime pair around its decode loop turned into the gate's clock() pair by perf/sampler/gate_shim.c (SAMPLER_GATE=clock), SHIM_CALLER=libstdc++ (crt's clock_gettime bind reaches libc through libstdc++'s chrono); symbolized against the JIT's cached .dll
+samples: 772 located (samples 772 dropped 0 clock_calls 2)
+ratio: 1.19x native (the re-capture's decode cells, ours jit over native)
+
+ samples  share  file                     function
+     236  30.6%  0x857eeddd48cee5ab.dll binjgb_bench_all__ppu_mode3_synchronize
+     151  19.6%  0x857eeddd48cee5ab.dll binjgb_bench_all__execute_instruction
+     131  17.0%  0x857eeddd48cee5ab.dll c_main
+     130  16.8%  0x857eeddd48cee5ab.dll binjgb_bench_all__ppu_synchronize
+      59   7.6%  0x857eeddd48cee5ab.dll emulator_run_until
+      56   7.3%  0x857eeddd48cee5ab.dll binjgb_bench_all__apu_update_channels
+       2   0.3%  libc.so.6 ?
+       2   0.3%  0x857eeddd48cee5ab.dll binjgb_bench_all__map_address
+       2   0.3%  0x857eeddd48cee5ab.dll binjgb_bench_all__dma_synchronize
+       1   0.1%  dasModuleCRuntime.shared_module _init
