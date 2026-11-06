@@ -137,15 +137,15 @@ tic to the reference log (`doom/ARCHITECTURE_RUN.md` section 9). `doom/run.das -
 it into `doom/results_linux.json`; `doom/run.das --readme` renders the table below from that file.
 
 <!-- doom-fps:begin -->
-Box PC (AMD Ryzen 7 7435HS), linux x86_64; c2das-re `1ab381cbf0fb`, captured 2026-11-06 03:14 UTC; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.4.
+Box PC (AMD Ryzen 7 7435HS), linux x86_64; c2das-re `6a4c690a53db`, captured 2026-11-06 22:24 UTC; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.4.
 
 PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the process CPU time (`clock()`) of the host's update loop in the speed build, which leaves the patch's per-tic checksums and tic lines out: the playback alone, the module load, the JIT compile and `doom_init` outside it. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of 3 speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median; above 20% it is `suspect`, without a ratio. `X / native` is native fps over X's.
 
 | Workload |   native fps | interp fps |     JIT fps | interp / native | JIT / native |
 | :------- | -----------: | ---------: | ----------: | --------------: | -----------: |
-| demo1    |  9928.9 ±2% | 168.4 ±0% | 9053.3 ±0% |            59.0 |          1.1 |
-| demo2    | 10948.8 ±0% | 185.6 ±0% | 9761.2 ±0% |            59.0 |          1.1 |
-| demo3    |  9677.8 ±0% | 166.6 ±0% | 8632.9 ±0% |            58.1 |          1.1 |
+| demo1    |  9639.3 ±0% | 164.4 ±1% | 8862.1 ±0% |            58.6 |          1.1 |
+| demo2    | 10766.0 ±0% | 180.3 ±0% | 9489.9 ±2% |            59.7 |          1.1 |
+| demo3    |  9379.7 ±0% | 160.7 ±1% | 8479.2 ±0% |            58.4 |          1.1 |
 
 <!-- doom-fps:end -->
 
