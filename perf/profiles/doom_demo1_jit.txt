@@ -1,0 +1,21 @@
+program: Doom demo1 (freedoom2, speed build)
+lane: jit
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: DOOMWADDIR=. daslang -load_module dasCRuntime -load_module c_runtime -jit doom/work/source-speed/doom_main.das -- -timedemo demo1, in doom/work/run/freedoom2
+sampler: perf/sampler at 100 us, gated on the host's clock() calls (the gate's window holds the whole timed run) (the host's clock() pair); symbolized against the JIT's cached .dll
+samples: 3241 located (samples 3241 dropped 0 clock_calls 2)
+ratio: 1.10x native (the re-capture: 9053.3 against 9928.9 fps)
+
+ samples  share  file                     function
+     685  21.1%  0xdb1a81b9062bd799.dll DOOM_cluster::R_DrawColumn
+     469  14.5%  0xdb1a81b9062bd799.dll DOOM_cluster::R_RenderSegLoop
+     461  14.2%  0xdb1a81b9062bd799.dll DOOM_cluster::R_DrawSpan
+     348  10.7%  0xdb1a81b9062bd799.dll DOOM_cluster::R_DrawPlanes
+     169   5.2%  0xdb1a81b9062bd799.dll DOOM_cluster::R_MapPlane
+     157   4.8%  0xdb1a81b9062bd799.dll DOOM_cluster::R_StoreWallRange
+      88   2.7%  0xdb1a81b9062bd799.dll DOOM_cluster::R_AddLine
+      80   2.5%  0xdb1a81b9062bd799.dll DOOM_cluster::R_DrawVisSprite
+      66   2.0%  0xdb1a81b9062bd799.dll DOOM_cluster::W_CacheLumpNum
+      65   2.0%  0xdb1a81b9062bd799.dll DOOM_cluster::R_Subsector

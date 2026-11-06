@@ -1,0 +1,21 @@
+program: Doom demo1 (freedoom2, speed build)
+lane: native
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: DOOMWADDIR=. doom/work/native/doom-speed -timedemo demo1, in doom/work/run/freedoom2
+sampler: perf/sampler at 100 us, gated on the host's clock() calls (the gate's window holds the whole timed run) (the host's clock() pair)
+samples: 2994 located (samples 2994 dropped 0 clock_calls 2)
+ratio: 1.00 (the re-capture: 9928.9 fps, 0.268 s)
+
+ samples  share  file                     function
+     679  22.7%  doom-speed R_DrawColumn
+     421  14.1%  doom-speed R_DrawSpan
+     348  11.6%  doom-speed R_MakeSpans
+     300  10.0%  doom-speed R_RenderSegLoop
+     127   4.2%  doom-speed R_MapPlane
+      85   2.8%  doom-speed FixedMul
+      74   2.5%  doom-speed W_CheckNumForName
+      67   2.2%  doom-speed R_DrawPlanes
+      62   2.1%  doom-speed R_DrawVisSprite
+      58   1.9%  doom-speed W_CacheLumpNum
