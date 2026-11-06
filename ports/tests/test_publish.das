@@ -293,6 +293,14 @@ def test_input_refusals(t : T?) {
         t |> success(out |> contains("lua/fetch/lua-5.9.1/src/lua.h holds no license block"), out)
         untouched(t, clone, head, "no license block")
         fwrite(path_join(root, "lua/fetch/lua-5.9.1/src/lua.h"), LUA_H)
+        // the goto lane's tree, which only the program the workloads run has
+        let goto_module = path_join(root, "lua/work/goto/lua/lua.das")
+        let goto_text = fread(goto_module)
+        remove(goto_module)
+        t |> equal(publish(root, args, out), 1, out)
+        t |> success(out |> contains("no lua/work/goto/lua/lua.das; run without --no-convert"), out)
+        untouched(t, clone, head, "no goto tree")
+        fwrite(goto_module, goto_text)
         let luac_module = path_join(root, "lua/work/luac/luac.das")
         remove(luac_module)
         t |> equal(publish(root, args, out), 1, out)
@@ -452,8 +460,9 @@ def test_convert(t : T?) {
         t |> equal(publish(root, ["--repo", clone, "--allow-dirty"], out), 1, out)
         t |> success(out |> contains("lua: the conversion exited 1; lua/work/publish_run.log holds its log"), out)
         t |> equal(git(clone, ["status", "--porcelain"]), "")
-        // the goto lane's conversion failing stops the publish too, and leaves no stamp
-        remove(stamp_path(root))
+        // the goto lane's conversion failing stops the publish too, and takes away the stamp an
+        // earlier conversion at this HEAD left, so --no-convert refuses the half-written work folder
+        fwrite(stamp_path(root), "{git(root, ["rev-parse", "HEAD"])}\nv9.9.9\n2020-01-01\n")
         fwrite(path_join(root, "lua/run.das"), "options gen2\nrequire daslib/clargs\n[export]\ndef main : int \{\n    return has_value(get_user_args(), \"goto\") ? 4 : 0\n\}\n")
         t |> equal(publish(root, ["--repo", clone, "--allow-dirty"], out), 1, out)
         t |> success(out |> contains("lua: the goto-dispatch conversion exited 4; lua/work/publish_goto_run.log holds its log"), out)
@@ -545,6 +554,18 @@ def test_bench(t : T?) {
         let top = fread(path_join(clone, "README.md"))
         t |> success(top |> contains("| [lua](lua/README.md) |") && top |> contains("|         5 |"), top)
         t |> equal(git(clone, ["status", "--porcelain"]), "")
+    }
+}
+
+[test]
+def test_default_lanes(t : T?) {
+    t |> run_stand_in("--perf without --lanes measures every das lane but aot, the goto lane among them", "c2das_ports_default_lanes") @(t : T?; root, clone : string) {
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--allow-dirty"], out), 0, out)
+        var name : string
+        let c <- capture_of(clone, name)
+        t |> equal(c.command, "scripts/publish_ports.sh --program lua --no-convert --perf --samples 1 --lanes interp,jit,exe,jit-goto,interp-source-cut,jit-source-cut,interp-single,jit-single --timeout 1800")
+        t |> equal(join([for (lane in c.lanes); lane.name], ","), "native,interp,jit,exe,jit-goto,interp-source-cut,jit-source-cut,interp-single,jit-single")
     }
 }
 

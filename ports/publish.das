@@ -241,6 +241,9 @@ def private generation_for(args : Args; port : Port; var gen : Generation) : boo
 // the fetch, the harness's conversion with its native oracle and run, the log kept beside the
 // converted output for the README, then the goto lane's conversion
 def private run_harness(port : Port) : bool {
+    // a stamp an earlier conversion left would name this HEAD over a work folder this run leaves
+    // half written
+    remove(stamp_of(port))
     var out : string
     if (run_and_capture(["bash", path_join(port.harness, "fetch.sh")], out, 3600.0) != 0) {
         to_log(LOG_ERROR, "{port.name}: {port.harness}/fetch.sh failed: {last_line(out)}\n")
@@ -661,6 +664,22 @@ def private write_or_log(path, text : string) : bool {
     return true
 }
 
+// every file of the conversion the publish reads or the goto lane runs: each module's three layouts
+// with the module lists, and the goto tree's entry module; false with the first missing one logged
+def private converted_files_exist(port : Port) : bool {
+    var paths <- [module_of(port, port.runs, "goto")]
+    for (m in port.modules) {
+        paths |> push_from([module_of(port, m.stem, "source"), module_of(port, m.stem, "source-cut"), module_of(port, m.stem, "single"), path_join(dir_name(module_of(port, m.stem, "source")), "program.modules.txt"), path_join(dir_name(module_of(port, m.stem, "source-cut")), "program.modules.txt")])
+    }
+    for (path in paths) {
+        if (!fexist(path)) {
+            to_log(LOG_ERROR, "{port.name}: no {path}; run without --no-convert\n")
+            return false
+        }
+    }
+    return true
+}
+
 // the program's directory in the clone: every file of the fixed set replaced whole, every input
 // checked before the first write; `gen` the commit the published conversion ran at
 def private publish_program(args : Args; port : Port; lanes : array<string>; repo : string; var gen : Generation) : bool {
@@ -669,16 +688,8 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
         to_log(LOG_ERROR, "{port.name}: VERSIONS.md names no `{port.name}:` line with the release and the test-suite tarballs\n")
         return false
     }
-    if ((!args.no_convert && !run_harness(port)) || !generation_for(args, port, gen)) {
+    if ((!args.no_convert && !run_harness(port)) || !generation_for(args, port, gen) || !converted_files_exist(port)) {
         return false
-    }
-    for (m in port.modules) {
-        for (path in [module_of(port, m.stem, "source"), module_of(port, m.stem, "source-cut"), module_of(port, m.stem, "single"), path_join(dir_name(module_of(port, m.stem, "source")), "program.modules.txt"), path_join(dir_name(module_of(port, m.stem, "source-cut")), "program.modules.txt")]) {
-            if (!fexist(path)) {
-                to_log(LOG_ERROR, "{port.name}: no {path}; run without --no-convert\n")
-                return false
-            }
-        }
     }
     let license = license_block(fread(path_join(sources_of(port, release), port.license_header)))
     if (empty(license)) {
