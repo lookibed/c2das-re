@@ -1,0 +1,21 @@
+program: compare project h264bsd-mp4 (the bench unit over fixtures/test_640x360.mp4, its decode phase)
+lane: native
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-06
+commit: 2bf0ecf (branch perf/recapture-11-06)
+command: compare/work/projects/h264bsd-mp4/native/h264bsd-mp4_bench /root/c2das/tests/manual/h264bsd-mp4/fixtures/test_640x360.mp4, in compare/work/projects/h264bsd-mp4/cwd
+sampler: perf/sampler at 100 us, SHIM_OPEN=2 SHIM_CLOSE=3: the bench's clock_gettime pair around its decode loop turned into the gate's clock() pair by perf/sampler/gate_shim.c (SAMPLER_GATE=clock), SHIM_CALLER=h264bsd-mp4_bench
+samples: 850 located (samples 850 dropped 0 clock_calls 2)
+ratio: 1.00 (the re-capture's decode cell)
+
+ samples  share  file                     function
+     310  36.5%  h264bsd-mp4_bench h264mp4_frames_next
+      77   9.1%  h264bsd-mp4_bench h264bsdFilterPicture
+      65   7.6%  h264bsd-mp4_bench h264bsdDecodeResidualBlockCavlc
+      55   6.5%  h264bsd-mp4_bench FilterVerLumaEdge
+      29   3.4%  h264bsd-mp4_bench memcpy
+      20   2.4%  h264bsd-mp4_bench h264bsdInterPrediction
+      20   2.4%  h264bsd-mp4_bench FilterHorLumaEdge
+      19   2.2%  h264bsd-mp4_bench h264bsdInterpolateHorVerQuarter
+      17   2.0%  h264bsd-mp4_bench h264bsdWriteOutputBlocks
+      14   1.6%  h264bsd-mp4_bench h264bsdInterpolateVerQuarter
