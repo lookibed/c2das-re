@@ -367,6 +367,18 @@ def table_lanes(c : Capture) : array<string> {
     return <- lanes
 }
 
+// the lane-to-lane pairs of the ratio table over the das lanes `lanes` it shows: `LANE_PAIRS`,
+// then each of `OPTIONAL_PAIRS` whose two lanes are shown
+def private ratio_pairs(lanes : array<string>) : array<tuple<string; string>> {
+    var pairs <- clone_to_move(LANE_PAIRS)
+    for (pair in OPTIONAL_PAIRS) {
+        if (has_value(lanes, pair._0) && has_value(lanes, pair._1)) {
+            pairs |> push(pair)
+        }
+    }
+    return <- pairs
+}
+
 //! The ratio table of the work times, the startup row aside: each das lane over native, then the
 //! lane-to-lane pairs; an AOT lane that stood or a layout lane the capture measured adds its column
 //! and its pairs.
@@ -374,12 +386,7 @@ def render_ratios(c : Capture) : string {
     var one : array<Capture>
     one |> push_clone(c)
     let lanes <- shown_lanes(one)
-    var pairs <- clone_to_move(LANE_PAIRS)
-    for (pair in OPTIONAL_PAIRS) {
-        if (has_value(lanes, pair._0) && has_value(lanes, pair._1)) {
-            pairs |> push(pair)
-        }
-    }
+    let pairs <- ratio_pairs(lanes)
     var headers <- ["Workload", "Arguments"]
     headers |> push_from([for (lane in lanes); "{lane_title(lane)} / native"], [for (pair in pairs); "{lane_title(pair._0)} / {lane_title(pair._1)}"])
     var rows : array<array<string>>
@@ -453,8 +460,12 @@ def render_perf(c : Capture) : string {
         w |> write("and out of the projects table's means; a suspect startup cell makes every work time of its lane by subtraction `{SUSPECT} (startup)`.\n\n")
         w |> write("Startup:\n\n{render_startup(c)}\n")
         w |> write("Work:\n\n{render_work(c)}\n")
-        w |> write("Ratios, a lane's work time over another's (each das lane over native, then interpreter over JIT, ")
-        w |> write("interpreter over exe, and the interpreter and the JIT each over the {lane_title("jit-goto")}):\n\n{render_ratios(c)}\n")
+        // the pairs named as the table renders them, `;` apart since a lane title holds a comma
+        var one : array<Capture>
+        one |> push_clone(c)
+        let pairs <- ratio_pairs(shown_lanes(one))
+        let named = join([for (pair in pairs); "{lane_title(pair._0)} over {lane_title(pair._1)}"], "; ")
+        w |> write("Ratios, a lane's work time over another's (each das lane over native, then {named}):\n\n{render_ratios(c)}\n")
         w |> write("Times, the raw medians of whole runs, the start included:\n\n{render_times(c)}\n")
         w |> write("Lanes:\n\n")
         for (lane in c.lanes) {
