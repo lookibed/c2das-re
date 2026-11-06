@@ -2198,10 +2198,11 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   inputs (`llc -print-after` and `llvm-mca` on the head block, `--jit-split-modules 0` to see
   whether inlining moved). The variant lane above stays this row's tool for the kernels (blit under
   the exe, va_forward).
-  Re-capture profile (2026-11-06, `perf/profiles/sieve_*`): sieve JIT 0.99x -> 1.23x native in both
-  tables; the no-solid IR hoists two `jit_get_global_mnh` calls before the loop, the solid one loads
-  the context once, and the loop bodies are identical, so the 10% (0.00179 against 0.00197 s) sits
-  outside the loop body: the next step reads the prologue and the exit path, not the loop.
+  Re-capture profile (2026-11-06, `perf/profiles/sieve_*`): sieve JIT 0.99x -> 1.17x (perf table, 5
+  samples, spread 13%) and 1.23x (compare table) native; the no-solid IR hoists two `jit_get_global_mnh`
+  calls before the loop, the solid one loads the context once, and the loop bodies are identical, so
+  the 10% (0.00179 against 0.00197 s, single ungated runs) sits outside the loop body: the next step
+  reads the prologue and the exit path, not the loop.
 - **P7.0r A JIT-visible volatile load and store** (from P7.0p, place 1): `c_volatile_load(x)` and
   `c_volatile_store(x, v)` expand to the `crt::c_volatile_load_*`/`c_volatile_store_*` externs
   (`c_runtime/c_volatile.das`, `dasCRuntime/src/dasCRuntime.cpp`), an indirect call the JIT knows
@@ -2271,10 +2272,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   site, so the default is decided after the measurement (ruling 23).
 - **P7.0x The source layout's split JIT build loses cross-module inlining** (found by the re-capture's
   profiles, 2026-11-06): the ports `jit` lane runs the source layout (30 modules, the cached JIT a
-  partition per module) at Lua fib 30 4.9x and nbody 4.1x native, where the single layout runs 2.24x
-  and 1.37x on the same box and runtime (P7.0p measured the single layout; the 11-04 ports module
-  reproduces its 9.46x, the runtime and priority ruled out). The loss is inlining across module
-  boundaries in the per-module build. Candidates: a whole-program JIT build for the published lanes
+  partition per module) at Lua fib 4.9x (the ports size, fib 34) and nbody 4.1x (200000) native, where
+  the single layout runs 2.24x (fib 30) and 1.37x (nbody 20000) on the same box and runtime (P7.0p
+  measured the single layout; the 11-04 ports module reproduces its 9.46x, the runtime and priority
+  ruled out; the sizes differ, so the first step is one like-for-like pair). The loss is inlining
+  across module boundaries in the per-module build (the `lobject_h_cluster` accessors stand as
+  separate JIT symbols in the source layout's profile). Candidates: a whole-program JIT build for the published lanes
   (`--jit-split-modules` off or a link-time inline pass, dasLLVM side: a fork issue with the number),
   or the hot cluster kept in one module by the layout (P5.1b2's cluster rules). The ports tables carry
   both layouts, so the gap is visible there; the predictions file scores the `jit` column against it.
