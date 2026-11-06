@@ -1904,6 +1904,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   composed program under the interpreter 22.3 -> 6.4 ms a run (3.5x; 121x -> 35x native), under
   the JIT 0.151 -> 0.177 ms (0.85x, one sample). Not a perf lane yet: perf's lanes carry the
   `--param-writes`, `--loops` and `--first-member` options only.
+  The ports Lua tables carry the goto lane as the JIT, goto dispatch column in place of AOT
+  (ruling 32; branch `fix/ports-goto-lane`): the publisher converts `lua` with
+  `--switch-dispatch goto` into `lua/work/goto/`, the lane `jit-goto` runs it, `aot` is asked for
+  by name only; the re-capture measures it.
 - **P7.0c3 One `_goto` test per dispatch** (default; from P7.0b2): the matched-flag loop tests
   `_goto == 0` once per dispatch instead of once per case (about 1.28x fib, 1.13x binary_trees);
   for every build, the opt-in P7.0c2 above it.

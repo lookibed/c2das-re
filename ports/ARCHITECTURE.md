@@ -93,8 +93,13 @@ which a refused publish leaves as it was. The clone is `--repo`, else `$C2DAS_PO
 Without `--no-convert` the publisher runs `lua/fetch.sh` and then `lua/run.das -- --native --run`
 as a child process, its output kept in `lua/work/publish_run.log`. A child rather than a
 `require`: `lua/run.das` is a command-line program whose `main`, `Args` and relative paths make
-it one, and its report reaches the README as the lines it logs. A failed fetch or conversion
-stops the publish before the clone is touched. A finished conversion leaves its stamp,
+it one, and its report reaches the README as the lines it logs. A second run of the harness,
+`lua/run.das -- --filter <runs> --layout source --switch-dispatch goto`, converts the program the
+workloads run with the converter's jump-table dispatch into its own folder `lua/work/goto/<runs>/`,
+which the `jit-goto` lane runs (section 4), its output kept in `lua/work/publish_goto_run.log`,
+which the README does not quote; that tree is not published, the program's directory holding the
+three layouts of section 2. A failed fetch or either failed conversion stops the publish before the
+clone is touched. Both finished, the conversion leaves its stamp,
 `lua/work/publish.generation`: the sha, the describe and the date of the tree it ran in, one a
 line. `--no-convert` publishes what `lua/work/` holds and reuses the log an earlier conversion
 left, under the stamp's commit, and only when the stamp names `HEAD`: a work folder converted at
@@ -122,9 +127,11 @@ module `perf/run.das` builds its kernels' lanes with:
   (`work/source-cut/<runs>/<runs>.das`).
 - `interp-single` and `jit-single`: over the single layout's module
   (`work/single/<runs>/<runs>.das`).
+- `jit-goto`: daslang `-jit` over the goto tree's entry module (`work/goto/<runs>/<runs>.das`,
+  section 3); its command in the README names the harness run that regenerates the tree.
 - `exe`: daslang's `-exe` build.
 - `aot`: the `-ctx` context with the host of `converter/tiers.das`, compiled by the pinned
-  `clang++ -O3`.
+  `clang++ -O3`; measured only when `--lanes` names it, whose default is every other das lane.
 
 Each lane is built once, before the workloads, and its binary runs once with the startup
 arguments (the AOT host hands its command line to the program as daslang does). A lane whose
@@ -211,14 +218,18 @@ failed it is `not yet`, the lane's not-yet line giving the reason `no startup ce
 work time whose spread is above 20% is suspect and never a number: it renders `suspect (±N%)`, its
 ratios `suspect`, and it leaves the projects table's means as a missing cell does; a suspect
 startup cell makes every work time by subtraction of its lane `suspect (startup)`, since each
-inherits its noise. The startup table holds
-each lane's startup cell and its ratio to native's, the only place a startup number appears; the
-work table holds the work times of the other rows; the times table holds the raw medians, the
-startup row included. The ratio table holds work times only, no startup row: each das lane over
-native and the pairs interpreter over JIT, interpreter over exe, interpreter over AOT and JIT over
-AOT; a `-source-cut` or `-single` lane the capture measured adds its column and its pair over its
-source-layout twin, and a column of the projects table; a capture without such a lane renders
-neither. The top-level README keeps the text above its marker line and holds below it one row per
+inherits its noise. The tables' das lanes
+are `interp`, `jit`, `exe` and `jit-goto`, each `not measured` where the capture left it out (a
+capture written before the goto lane renders its column so), then an `aot` lane whose build stood
+(a lane that did not build is its not-yet line alone, never a column), then each `-source-cut` or
+`-single` lane the capture measured. The startup table holds native's and each such lane's startup
+cell and its ratio to native's, the only place a startup number appears; the work table holds the
+work times of the other rows; the times table holds the raw medians, the startup row included. The
+ratio table holds work times only, no startup row: each das lane over native and the pairs
+interpreter over JIT, interpreter over exe, interpreter over `jit-goto` and JIT over `jit-goto`;
+an `aot` column adds interpreter over AOT and JIT over AOT, a `-source-cut` or `-single` column its
+pair over its source-layout twin. The projects table has the same das lanes over every capture it
+shows. The top-level README keeps the text above its marker line and holds below it one row per
 program with a capture: its timestamp and machine, and the geometric mean, over the workloads other
 than the startup row, of each das lane's work-time ratio to native, with the count when a lane
 covers only some workloads, `not yet` when it covers none, and `not measured` when the capture left
