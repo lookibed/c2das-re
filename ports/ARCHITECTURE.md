@@ -83,14 +83,16 @@ The publisher refuses a `--repo` that is not the top of a git work tree, a c2das
 uncommitted changes unless `--allow-dirty`, an unknown `--program` or lane, `--push` without
 `--commit`, `--samples` below 1, a `--timeout` of 0 seconds or less, a `VERSIONS.md` without the
 program's line naming two tarballs, under `--no-convert` a missing stamp or one naming another
-commit than `HEAD` unless `--allow-stale`, a missing converted module, a header without its
+commit than `HEAD` unless `--allow-stale`, a missing converted module (the goto tree's entry
+module of section 3 among them), a header without its
 license block, and a missing sidecar. Every refusal comes before the first write into the clone,
 which a refused publish leaves as it was. The clone is `--repo`, else `$C2DAS_PORTS`, else
 `../c2das-ports` beside the repository root.
 
 ## 3. The conversion
 
-Without `--no-convert` the publisher runs `lua/fetch.sh` and then `lua/run.das -- --native --run`
+Without `--no-convert` the publisher removes the stamp an earlier conversion left, so a
+conversion that fails leaves none naming `HEAD`, and runs `lua/fetch.sh` and then `lua/run.das -- --native --run`
 as a child process, its output kept in `lua/work/publish_run.log`. A child rather than a
 `require`: `lua/run.das` is a command-line program whose `main`, `Args` and relative paths make
 it one, and its report reaches the README as the lines it logs. A second run of the harness,
