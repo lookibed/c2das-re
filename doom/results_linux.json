@@ -26,107 +26,179 @@
 	"clang" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
 	"cells" : [
 		{
-			"tics" : 0,
-			"spread" : 0,
+			"tics" : 2664,
+			"spread" : 0.023922425423604645,
 			"desync" : false,
-			"error" : "no doom/work/native/doom-speed; run --native",
-			"samples" : [],
+			"error" : "",
+			"samples" : [
+				9928.887696229707,
+				9456.432610493659,
+				9931.47876139846
+			],
 			"workload" : "demo1",
-			"seconds" : [],
-			"fps" : 0,
+			"seconds" : [
+				0.268308,
+				0.281713,
+				0.268238
+			],
+			"fps" : 9928.887696229707,
 			"lane" : "native"
 		},
 		{
-			"tics" : 0,
-			"spread" : 0,
+			"tics" : 2664,
+			"spread" : 0.004346563151538339,
 			"desync" : false,
-			"error" : "no doom/work/source-speed/doom_main.das; run --convert",
-			"samples" : [],
+			"error" : "",
+			"samples" : [
+				168.36790510825318,
+				167.16287392888538,
+				168.62651739337585
+			],
 			"workload" : "demo1",
-			"seconds" : [],
-			"fps" : 0,
+			"seconds" : [
+				15.822493,
+				15.936553,
+				15.798227
+			],
+			"fps" : 168.36790510825318,
 			"lane" : "interp"
 		},
 		{
-			"tics" : 0,
-			"spread" : 0,
+			"tics" : 2664,
+			"spread" : 0.004404241258782499,
 			"desync" : false,
-			"error" : "no doom/work/source-speed/doom_main.das; run --convert",
-			"samples" : [],
+			"error" : "",
+			"samples" : [
+				9053.310541465455,
+				8987.369102882436,
+				9067.115030513021
+			],
 			"workload" : "demo1",
-			"seconds" : [],
-			"fps" : 0,
+			"seconds" : [
+				0.294257,
+				0.296416,
+				0.293809
+			],
+			"fps" : 9053.310541465455,
 			"lane" : "jit"
 		},
 		{
-			"tics" : 0,
-			"spread" : 0,
+			"tics" : 5444,
+			"spread" : 0.0018474723367940488,
 			"desync" : false,
-			"error" : "no doom/work/native/doom-speed; run --native",
-			"samples" : [],
+			"error" : "",
+			"samples" : [
+				10975.651553304691,
+				10948.809689012776,
+				10935.196307262144
+			],
 			"workload" : "demo2",
-			"seconds" : [],
-			"fps" : 0,
+			"seconds" : [
+				0.496007,
+				0.497223,
+				0.497842
+			],
+			"fps" : 10948.809689012776,
 			"lane" : "native"
 		},
 		{
-			"tics" : 0,
-			"spread" : 0,
+			"tics" : 5444,
+			"spread" : 0.002688430950897393,
 			"desync" : false,
-			"error" : "no doom/work/source-speed/doom_main.das; run --convert",
-			"samples" : [],
+			"error" : "",
+			"samples" : [
+				185.62695025081803,
+				185.41153817636854,
+				186.40962865311852
+			],
 			"workload" : "demo2",
-			"seconds" : [],
-			"fps" : 0,
+			"seconds" : [
+				29.327638,
+				29.361711,
+				29.2045
+			],
+			"fps" : 185.62695025081803,
 			"lane" : "interp"
 		},
 		{
-			"tics" : 0,
-			"spread" : 0,
+			"tics" : 5444,
+			"spread" : 0.004768961069217805,
 			"desync" : false,
-			"error" : "no doom/work/source-speed/doom_main.das; run --convert",
-			"samples" : [],
+			"error" : "",
+			"samples" : [
+				9713.380342002341,
+				9806.482293751338,
+				9761.240487990304
+			],
 			"workload" : "demo2",
-			"seconds" : [],
-			"fps" : 0,
+			"seconds" : [
+				0.560464,
+				0.555143,
+				0.557716
+			],
+			"fps" : 9761.240487990304,
 			"lane" : "jit"
 		},
 		{
-			"tics" : 0,
-			"spread" : 0,
+			"tics" : 2743,
+			"spread" : 0.0030159905988985333,
 			"desync" : false,
-			"error" : "no doom/work/native/doom-speed; run --native",
-			"samples" : [],
+			"error" : "",
+			"samples" : [
+				9656.206656199616,
+				9677.840462052493,
+				9714.583207901997
+			],
 			"workload" : "demo3",
-			"seconds" : [],
-			"fps" : 0,
+			"seconds" : [
+				0.284066,
+				0.283431,
+				0.282359
+			],
+			"fps" : 9677.840462052493,
 			"lane" : "native"
 		},
 		{
-			"tics" : 0,
-			"spread" : 0,
+			"tics" : 2743,
+			"spread" : 0.0007344698896545933,
 			"desync" : false,
-			"error" : "no doom/work/source-speed/doom_main.das; run --convert",
-			"samples" : [],
+			"error" : "",
+			"samples" : [
+				166.6484100690634,
+				166.68634533776833,
+				166.44154885905925
+			],
 			"workload" : "demo3",
-			"seconds" : [],
-			"fps" : 0,
+			"seconds" : [
+				16.459803,
+				16.456057,
+				16.48026
+			],
+			"fps" : 166.6484100690634,
 			"lane" : "interp"
 		},
 		{
-			"tics" : 0,
-			"spread" : 0,
+			"tics" : 2743,
+			"spread" : 0.0032981754477657502,
 			"desync" : false,
-			"error" : "no doom/work/source-speed/doom_main.das; run --convert",
-			"samples" : [],
+			"error" : "",
+			"samples" : [
+				8632.925973367912,
+				8653.024142031994,
+				8596.078333056512
+			],
 			"workload" : "demo3",
-			"seconds" : [],
-			"fps" : 0,
+			"seconds" : [
+				0.317737,
+				0.316999,
+				0.319099
+			],
+			"fps" : 8632.925973367912,
 			"lane" : "jit"
 		}
 	],
-	"commit" : "dcb72401ab03",
+	"commit" : "1ab381cbf0fb",
 	"samples" : 3,
-	"timestamp" : "2026-11-06 03:06 UTC",
+	"timestamp" : "2026-11-06 03:14 UTC",
 	"daslang" : "0.6.4"
 }
