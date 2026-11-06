@@ -2,7 +2,7 @@ program: Lua fib (bench/timed.lua bench/fib.lua, 34)
 lane: native
 box: PC (AMD Ryzen 7 7435HS, WSL2)
 date: 2026-11-06
-commit: 2bf0ecf (branch perf/recapture-11-06)
+commit: main 6d4f7d7 plus the re-capture branch perf/recapture-11-06
 command: lua_O3 ports/lua/bench/timed.lua ports/lua/bench/fib.lua (lua_O3: the ports native lane's build, clang -O3 -w -funsigned-char of lua.program.json's units, -lm; lua/work/lua_native is the -O0 oracle)
 sampler: perf/sampler at 100 us, gated on the host's clock() calls (the gate's window holds the whole timed run)
 samples: 2664 located (samples 2664 dropped 0 clock_calls 2)

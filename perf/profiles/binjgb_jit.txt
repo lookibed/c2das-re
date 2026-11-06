@@ -2,7 +2,7 @@ program: compare project binjgb (the bench unit over fixtures/cgb-acid2.gbc, its
 lane: jit
 box: PC (AMD Ryzen 7 7435HS, WSL2)
 date: 2026-11-06
-commit: 2bf0ecf (branch perf/recapture-11-06)
+commit: main 6d4f7d7 plus the re-capture branch perf/recapture-11-06
 command: daslang -load_module dasCRuntime -load_module c_runtime -jit compare/work/projects/binjgb/ours_bench/binjgb_bench_all.das -- /root/c2das/tests/manual/binjgb/fixtures/cgb-acid2.gbc, in compare/work/projects/binjgb/cwd
 sampler: perf/sampler at 100 us, SHIM_OPEN=3 SHIM_CLOSE=4: the bench's clock_gettime pair around its decode loop turned into the gate's clock() pair by perf/sampler/gate_shim.c (SAMPLER_GATE=clock), SHIM_CALLER=libstdc++ (crt's clock_gettime bind reaches libc through libstdc++'s chrono); symbolized against the JIT's cached .dll
 samples: 772 located (samples 772 dropped 0 clock_calls 2)

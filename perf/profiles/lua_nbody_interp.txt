@@ -2,7 +2,7 @@ program: Lua nbody (bench/timed.lua bench/nbody.lua, 500: the profiler keeps one
 lane: interp
 box: PC (AMD Ryzen 7 7435HS, WSL2)
 date: 2026-11-06
-commit: 2bf0ecf (branch perf/recapture-11-06)
+commit: main 6d4f7d7 plus the re-capture branch perf/recapture-11-06
 command: daslang -load_module dasCRuntime -load_module c_runtime --das-profiler lua/work/lua/lua.das -- ports/lua/bench/timed.lua ports/lua/bench/nbody.lua 500
 profiler: daslang --das-profiler (the interpreter's own instrumenting profile, every call counted), inclusive times folded to self time per function (fold.py of the P7.0b2 notes, the total the largest inclusive time); the shares are the shape of the run, the seconds carry the profiler's own cost
 total (main, inclusive): 1.147822291 s

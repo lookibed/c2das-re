@@ -2,7 +2,7 @@ program: Lua nbody (bench/timed.lua bench/nbody.lua, 200000)
 lane: jit-goto
 box: PC (AMD Ryzen 7 7435HS, WSL2)
 date: 2026-11-06
-commit: 2bf0ecf (branch perf/recapture-11-06)
+commit: main 6d4f7d7 plus the re-capture branch perf/recapture-11-06
 command: daslang -load_module dasCRuntime -load_module c_runtime -jit lua/work/goto/lua/lua.das -- ports/lua/bench/timed.lua ports/lua/bench/nbody.lua
 sampler: perf/sampler at 100 us, gated on the host's clock() calls (the gate's window holds the whole timed run); symbolized against the JIT's cached .dll
 samples: 14277 located (samples 14277 dropped 0 clock_calls 2)

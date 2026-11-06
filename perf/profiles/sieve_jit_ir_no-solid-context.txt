@@ -1,6 +1,6 @@
 program: kernel sieve (perf/kernels/sieve.c, the composed program), the JIT's optimized LLVM IR of sieve__kernel_run (the hot loops inlined into it)
 module: the same module with the options solid_context line removed (the 11-04 form)
-box: PC (AMD Ryzen 7 7435HS, WSL2), date: 2026-11-06, commit: 2bf0ecf
+box: PC (AMD Ryzen 7 7435HS, WSL2), date: 2026-11-06, commit: main 6d4f7d7 plus the re-capture branch perf/recapture-11-06
 command: daslang -load_module dasCRuntime -load_module c_runtime -jit -jit-no-cache <module> -- --jit-dump --jit-dump-to <file> (F82), the function cut from the dump
 what differs: without solid_context the addresses of the globals limit and flags are two jit_get_global_mnh calls hoisted to the function entry and the fill loop's preheader; with it they are one load of the context's globals block (+152) and offsets; the loop bodies are the same shape (the fill vectorized in both, the sieve's inner loop with its range check)
 

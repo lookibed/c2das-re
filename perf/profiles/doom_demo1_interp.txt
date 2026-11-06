@@ -2,7 +2,7 @@ program: Doom demo1 (freedoom2, speed build; -tics 600 of the demo's 2664: the p
 lane: interp
 box: PC (AMD Ryzen 7 7435HS, WSL2)
 date: 2026-11-06
-commit: 2bf0ecf (branch perf/recapture-11-06)
+commit: main 6d4f7d7 plus the re-capture branch perf/recapture-11-06
 command: DOOMWADDIR=. daslang -load_module dasCRuntime -load_module c_runtime --das-profiler doom/work/source-speed/doom_main.das -- -timedemo demo1 -tics 600 -return-from-main, in doom/work/run/freedoom2
 profiler: daslang --das-profiler (the interpreter's own instrumenting profile, every call counted), inclusive times folded to self time per function (fold.py of the P7.0b2 notes, the total the largest inclusive time); the run leaves through SIGSEGV after the dump (daslang, see the report); the shares are the shape of the run, the seconds carry the profiler's own cost
 total (main, inclusive): 13.138791566 s
