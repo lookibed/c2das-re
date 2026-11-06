@@ -79,17 +79,23 @@ struct Release {
     tarballs : array<tuple<url : string; sha256 : string>>
 }
 
-let LANE_TITLES <- {"native" => "clang -O3", "interp" => "interpreter", "jit" => "JIT", "exe" => "exe", "aot" => "AOT", "interp-source-cut" => "interpreter, source-cut layout", "jit-source-cut" => "JIT, source-cut layout", "interp-single" => "interpreter, single module", "jit-single" => "JIT, single module"}
-//! the das lanes, each with a ratio to native and a column of the projects table
-let DAS_LANES <- ["interp", "jit", "exe", "aot"]
+let LANE_TITLES <- {"native" => "clang -O3", "interp" => "interpreter", "jit" => "JIT", "exe" => "exe", "jit-goto" => "JIT, goto dispatch", "aot" => "AOT", "interp-source-cut" => "interpreter, source-cut layout", "jit-source-cut" => "JIT, source-cut layout", "interp-single" => "interpreter, single module", "jit-single" => "JIT, single module"}
+//! the das lanes, each a column of every table, with a ratio to native and a column of the
+//! projects table; `not measured` where a capture left one out
+let DAS_LANES <- ["interp", "jit", "exe", "jit-goto"]
 //! the lane-to-lane ratios of the ratio table, slower lane first
-let LANE_PAIRS <- [("interp", "jit"), ("interp", "exe"), ("interp", "aot"), ("jit", "aot")]
+let LANE_PAIRS <- [("interp", "jit"), ("interp", "exe"), ("interp", "jit-goto"), ("jit", "jit-goto")]
 //! the lanes over the source-cut layout's modules and the single layout's module, where the others run the
 //! source layout's: a column of the ratio table and of the projects table only where a capture
 //! measured them
 let LAYOUT_LANES <- ["interp-source-cut", "jit-source-cut", "interp-single", "jit-single"]
-//! each such lane over its source-layout twin, a ratio-table column where both stand
-let LAYOUT_PAIRS <- [("interp-source-cut", "interp"), ("jit-source-cut", "jit"), ("interp-single", "interp"), ("jit-single", "jit")]
+//! the AOT lane, asked for only by name: a column only where a capture measured it and its build
+//! stood, so a lane that does not build is a not-yet line, never a column of `not yet`
+let AOT_LANE = "aot"
+//! the pairs of the lanes a table shows only when a capture has them: the AOT lane under the
+//! interpreter and the JIT, each layout lane over its source-layout twin; a ratio-table column
+//! where both lanes are shown
+let OPTIONAL_PAIRS <- [("interp", "aot"), ("jit", "aot"), ("interp-source-cut", "interp"), ("jit-source-cut", "jit"), ("interp-single", "interp"), ("jit-single", "jit")]
 //! the line above which the top-level README is the charter's; the publisher owns the rest
 let README_MARKER = "<!-- generated below: c2das-re's scripts/publish_ports.sh renders everything under this line from each program's latest capture -->"
 //! the perf section of a program without a capture, and the projects table when no program has one
@@ -199,6 +205,9 @@ def ratio_of(c : Capture; workload, lane, base : string) : double {
 def private seconds_text(time, spread : double) : string => is_suspect(spread) ? suspect_text(spread) : "{time:.3f} s ±{int(round(spread * 100.0lf))}%"
 
 def private time_text(c : Capture; workload, lane : string) : string {
+    if (!has_lane(c, lane)) {
+        return NOT_MEASURED
+    }
     let cell = find_cell(c, workload, lane)
     if (cell == null) {
         return MISSING
@@ -209,10 +218,14 @@ def private time_text(c : Capture; workload, lane : string) : string {
     return seconds_text(cell.time, cell.spread)
 }
 
-// the work time of a cell: n/a without the cell, `not yet` when it does not stand; its in-process
-// seconds when it has them, else, marked, its median less the lane's startup cell (`not yet` when
-// that does not stand), its spread the two cells' half ranges (spread times median) over it
+// the work time of a cell: `not measured` when the capture left its lane out, n/a without the
+// cell, `not yet` when it does not stand; its in-process seconds when it has them, else, marked,
+// its median less the lane's startup cell (`not yet` when that does not stand), its spread the two
+// cells' half ranges (spread times median) over it
 def private work_text(c : Capture; workload, lane : string) : string {
+    if (!has_lane(c, lane)) {
+        return NOT_MEASURED
+    }
     let cell = find_cell(c, workload, lane)
     if (cell == null) {
         return MISSING
@@ -248,6 +261,16 @@ def has_lane(c : Capture; lane : string) : bool {
     return false
 }
 
+// whether the capture measured `lane` and its build stood
+def private lane_stood(c : Capture; lane : string) : bool {
+    for (l in c.lanes) {
+        if (l.name == lane) {
+            return empty(l.error)
+        }
+    }
+    return false
+}
+
 // `lane` over `base` for `workload`, `not measured` when the capture left either lane out,
 // `suspect` when either work time is, marked when either is by subtraction
 def private pair_text(c : Capture; workload, lane, base : string) : string {
@@ -271,39 +294,42 @@ def table_of(headers : array<string>; rows : array<array<string>>; text_columns 
 }
 
 //! The times table: the raw medians, the start included, one row per workload (the startup row
-//! too), one column per lane of the capture.
+//! too), one column per lane of `table_lanes`.
 def render_times(c : Capture) : string {
+    let lanes <- table_lanes(c)
     var headers <- ["Workload", "Arguments"]
-    headers |> push_from([for (lane in c.lanes); lane_title(lane.name)])
+    headers |> push_from([for (lane in lanes); lane_title(lane)])
     var rows : array<array<string>>
     rows |> reserve(length(c.workloads))
     for (w in c.workloads) {
         var inscope row <- [w.name, "`{w.args}`"]
-        row |> push_from([for (lane in c.lanes); time_text(c, w.name, lane.name)])
+        row |> push_from([for (lane in lanes); time_text(c, w.name, lane)])
         rows |> emplace(row)
     }
     return table_of(headers, rows, 2)
 }
 
-//! The startup table: one row per lane of the capture, its startup cell and that over native's.
+//! The startup table: one row per lane of `table_lanes`, its startup cell and that over native's.
 def render_startup(c : Capture) : string {
     let start = startup_of(c)
     let native = time_of(c, start, "native")
+    let lanes <- table_lanes(c)
     var rows : array<array<string>>
-    rows |> reserve(length(c.lanes))
-    for (lane in c.lanes) {
-        let t = time_of(c, start, lane.name)
-        let ratio = cell_suspect(c, start, lane.name) || cell_suspect(c, start, "native") ? SUSPECT : ratio_text(native > 0.0lf ? t / native : 0.0lf)
-        rows |> emplace([lane_title(lane.name), time_text(c, start, lane.name), ratio])
+    rows |> reserve(length(lanes))
+    for (lane in lanes) {
+        let t = time_of(c, start, lane)
+        let ratio = !has_lane(c, lane) ? NOT_MEASURED : cell_suspect(c, start, lane) || cell_suspect(c, start, "native") ? SUSPECT : ratio_text(native > 0.0lf ? t / native : 0.0lf)
+        rows |> emplace([lane_title(lane), time_text(c, start, lane), ratio])
     }
     return table_of(["Lane", "Startup", "Over native"], rows, 1)
 }
 
-//! The work table: one row per workload but the startup row, one column per lane of the capture,
-//! each cell its work time.
+//! The work table: one row per workload but the startup row, one column per lane of
+//! `table_lanes`, each cell its work time.
 def render_work(c : Capture) : string {
+    let lanes <- table_lanes(c)
     var headers <- ["Workload", "Arguments"]
-    headers |> push_from([for (lane in c.lanes); lane_title(lane.name)])
+    headers |> push_from([for (lane in lanes); lane_title(lane)])
     var rows : array<array<string>>
     rows |> reserve(length(c.workloads))
     for (w in c.workloads) {
@@ -311,16 +337,19 @@ def render_work(c : Capture) : string {
             continue
         }
         var inscope row <- [w.name, "`{w.args}`"]
-        row |> push_from([for (lane in c.lanes); work_text(c, w.name, lane.name)])
+        row |> push_from([for (lane in lanes); work_text(c, w.name, lane)])
         rows |> emplace(row)
     }
     return table_of(headers, rows, 2)
 }
 
-// the das lanes a table shows for `captures`: every one of `DAS_LANES`, then each layout lane
-// one of them measured
+// the das lanes a table shows for `captures`: every one of `DAS_LANES`, the AOT lane when one of
+// them measured it and its build stood, then each layout lane one of them measured
 def private shown_lanes(captures : array<Capture>) : array<string> {
     var lanes <- clone_to_move(DAS_LANES)
+    if (has_value([for (c in captures); lane_stood(c, AOT_LANE)], true)) {
+        lanes |> push(AOT_LANE)
+    }
     for (lane in LAYOUT_LANES) {
         if (has_value([for (c in captures); has_lane(c, lane)], true)) {
             lanes |> push(lane)
@@ -329,16 +358,25 @@ def private shown_lanes(captures : array<Capture>) : array<string> {
     return <- lanes
 }
 
+//! The lanes of a capture's startup, work and times tables: native, then `shown_lanes`.
+def table_lanes(c : Capture) : array<string> {
+    var one : array<Capture>
+    one |> push_clone(c)
+    var lanes <- ["native"]
+    lanes |> push_from(shown_lanes(one))
+    return <- lanes
+}
+
 //! The ratio table of the work times, the startup row aside: each das lane over native, then the
-//! lane-to-lane pairs; a layout lane the capture measured adds its column and its pair with its
-//! source-layout twin.
+//! lane-to-lane pairs; an AOT lane that stood or a layout lane the capture measured adds its column
+//! and its pairs.
 def render_ratios(c : Capture) : string {
     var one : array<Capture>
     one |> push_clone(c)
     let lanes <- shown_lanes(one)
     var pairs <- clone_to_move(LANE_PAIRS)
-    for (pair in LAYOUT_PAIRS) {
-        if (has_value(lanes, pair._0)) {
+    for (pair in OPTIONAL_PAIRS) {
+        if (has_value(lanes, pair._0) && has_value(lanes, pair._1)) {
             pairs |> push(pair)
         }
     }
@@ -397,7 +435,10 @@ def render_perf(c : Capture) : string {
         w |> write("{c.timeout} s fails its cell. A das lane's cell stands only when every run prints what the native ")
         w |> write("build prints and exits as it does (the test-suite row compares the exit code and requires the line the ")
         w |> write("suite prints after its last test passes, not the output: it prints its random seeds and timings). ")
-        w |> write("A lane the run left out is `{NOT_MEASURED}`.\n\n")
+        w |> write("A lane the run left out is `{NOT_MEASURED}`. The {lane_title("jit-goto")} lane runs the JIT over the source layout ")
+        w |> write("converted with c2das-re's `--switch-dispatch goto`, a dense switch (the interpreter's dispatch among them) as a jump ")
+        w |> write("table; the modules published here are the default conversion, and the lane's command below names the one that ")
+        w |> write("regenerates its tree. The AOT lane is measured only when asked for and has a column only where its build stood.\n\n")
         w |> write("Every speed number is the work alone, timed inside the process: a workload runs under `bench/timed.lua`, ")
         w |> write("which reads `os.clock()` (C `clock()`, the process's CPU time, under every lane) before and after the ")
         w |> write("script and reports the seconds between, and its work time is the median of those, ± half their range as a ")
@@ -413,7 +454,7 @@ def render_perf(c : Capture) : string {
         w |> write("Startup:\n\n{render_startup(c)}\n")
         w |> write("Work:\n\n{render_work(c)}\n")
         w |> write("Ratios, a lane's work time over another's (each das lane over native, then interpreter over JIT, ")
-        w |> write("interpreter over exe, interpreter over AOT and JIT over AOT):\n\n{render_ratios(c)}\n")
+        w |> write("interpreter over exe, and the interpreter and the JIT each over the {lane_title("jit-goto")}):\n\n{render_ratios(c)}\n")
         w |> write("Times, the raw medians of whole runs, the start included:\n\n{render_times(c)}\n")
         w |> write("Lanes:\n\n")
         for (lane in c.lanes) {
