@@ -48,7 +48,8 @@ late binding (the source-cut layout), and one module (the single layout).
   stderr, the two streams apart, each run's stderr going to `work/run.stderr`, read and removed
   after the run, its stdin a pipe whose writer has exited (it reads at its end at once and does not
   seek), and the JIT's `[I]` lines, which land on stdout, dropped from it; `--filter <stem>`
-  converts that program alone. Run from the repository root: `daslang -load_module dasCRuntime
+  converts that program alone; a run of more than one conversion makes each in a process of its own
+  (section 7). Run from the repository root: `daslang -load_module dasCRuntime
   -load_module c_runtime lua/run.das -- [--native] [--run] [--error-check] [--suite-check] [--tier
   jit] [--luac-check lua/fetch/lua-5.4.8-tests]`.
 - `lua.c2das` - the sidecar both programs convert under (section 3).
@@ -182,3 +183,16 @@ never passes by agreement); `missing` for a file the folder lacks. The verdicts 
 file, and the totals to a `lua: suite under <tier> (<layout>): ...` line. A cap none of the three
 applies (`--suite-memory lots`: no manager takes it, and it is no byte count) refuses the lane
 before any run, naming each attempt, as does a `lua` launcher the lane cannot write.
+
+## 7. A process per conversion {#apart}
+
+A daslang context keeps every string it allocates until the process exits, and its heaps never
+shrink, so the conversions of one process add up: each conversion of `lua` holds about 1.9 GB at its
+peak, and the six of a plain `run.das` (two programs, three layouts) would hold 7.7 GB in one
+process. A run that makes more than one conversion therefore makes each in a process of its own:
+`run.das` writes each program's manifest and builds its oracle, then runs itself once per layout
+with its own arguments and `--filter <stem> --layout <layout> --oracle-built` last, which override
+any earlier ones, the child sharing its stdout and stderr, flushed before each child starts, so the
+report is the one a single process prints, line for line and in order. `--oracle-built` skips the
+oracle build, so the oracle is built once per program. A run of one conversion (`--filter` and a
+single `--layout`) converts in its own process.

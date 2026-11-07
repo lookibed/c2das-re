@@ -162,6 +162,28 @@ def private manifest_tus(root : string; sources : array<string>) : string {
 }
 
 [test]
+def test_run_apart(t : T?) {
+    t |> run("a run of more than one conversion makes each in a process of its own with the run's arguments, a quote among them, the oracle built once before them and each one's lines in the order of the layouts") @(t : T?) {
+        let root = stand_in_root("c2das_lua_apart", LOBJECT)
+        t |> success(!empty(root))
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--native", "--run", "--filter", "lua", "--layout", "all", "--arg", "it's"]), out), 0, out)
+        t |> equal(length(split(out, "lua: lua/work/lua_native: ")) - 1, 1, out)
+        t |> equal(length(split(out, "lua: interp exited 0: 43 it's\n")) - 1, 3, out)
+        let native = find(out, "lua_native: ")
+        let source = find(out, "lua: lua (source): ")
+        let cut = find(out, "lua: lua (source-cut): ")
+        let single = find(out, "lua: lua (single): ")
+        t |> success(native >= 0 && native < source && source < cut && cut < single, out)
+        // a failing conversion fails the run, and the conversions after it still run
+        fwrite(path_join(root, "lua/fetch/lua-5.4.8/src/lobject.c"), "#include \"lua.h\"\nint lua_answer(void) \{ return L\"x\"[0]; \}\n")
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--layout", "source"]), out), 1, out)
+        t |> success(out |> contains("lua: lua (source): ") && out |> contains("lua: luac (source): "), out)
+        rmdir_rec(root)
+    }
+}
+
+[test]
 def test_run_stand_in(t : T?) {
     t |> run("run.das converts each program from its separate sources through a manifest in all three layouts, and each agrees with the native build under the interpreter and the JIT") @(t : T?) {
         let root = stand_in_root("c2das_lua_stand_in", LOBJECT)
