@@ -59,7 +59,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   clang passes of the dump search as `-I<dir>` in order, `include_files`, the headers both passes
   read first as `-include <file>` in order, and `program_root`, the folder whose files are the
   program's (`ARCHITECTURE_DUMPER.md`, the file policy), each read beside the sidecar unless
-  absolute, a value of another shape refused naming the key). A key outside these is refused naming
+  absolute, a value of another shape refused naming the key; `solid_context` and `jit_whole_program`, booleans, the latter the entry module's JIT pin of `ARCHITECTURE_EMITTER.md` section 4). A key outside these is refused naming
   it. A key's presence is `key_exists`, since json_boost's `?[]` of a missing key is a non-null
   sentinel (`probes/test_stdlib.das`). Nothing here knows the C-IR or the emitter.
 - `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes, loops,
@@ -131,7 +131,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   build's arguments do, under `jit`, under `exe` and under `aot`.
 - `tests/test_sidecar.das` - `read_sidecar` over written `.c2das` files: the `defines` list,
   its function-like entries and the shapes it refuses, the `over_indexed` and `padded` lists and the
-  shapes they refuse, the `loops`, `first_member`, `switch_dispatch` and `layout` values (the latter as a mode and as an object) and the ones
+  shapes they refuse, the `loops`, `first_member`, `switch_dispatch`, `layout` (as a mode and as an object), `solid_context` and `jit_whole_program` values and the ones
   they refuse, `include_dirs` and `program_root` read beside the sidecar and the shapes they
   refuse, and an unknown key.
 - `tests/test_tier_facts.das` - the das facts the emitter relies on, each a program run under the
@@ -158,7 +158,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   run against its native build under the interpreter and the JIT, with the requires, the include
   order, the renames, the header copies and the literal objects the text must carry; the single
   layout's text against the recorded hash of the link's one module; one file as one
-  module; `tests/fixtures/p5_layout_types/` (two headers whose records point at each other); the
+  module; the tree under the sidecar's `jit_whole_program`, its entry module alone pinned; `tests/fixtures/p5_layout_types/` (two headers whose records point at each other); the
   refusals; and `tests/fixtures/p5_layout_cut/` (two files calling each other, a variadic callee, a
   header pointing at a record a unit defines): the cut by the static count, by a profile, under
   `layout.keep_together`, `layout.cut` and `layout.threshold`, the refused cut of an object, a file

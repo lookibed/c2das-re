@@ -181,6 +181,9 @@ struct EmitProgram {
     stack_option : int
     // the sidecar's `solid_context`: every module carries `options solid_context`
     solid_context : bool
+    // the sidecar's `jit_whole_program`: the module holding `main` pins the cached JIT's one-unit
+    // build, `options jit_split_modules = 0` and `require c_runtime/c_jit_build`
+    jit_whole_program : bool
     // the sidecar's or the option's `checks` is `off`: every converted function carries
     // `unsafe_deref` and `hint(unsafe_range_check)`, the module a comment saying so
     unchecked : bool
@@ -7274,6 +7277,7 @@ def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
     em.prog.alloca_limit = side.alloca_limit > 0 ? side.alloca_limit : ALLOCA_LIMIT
     em.prog.stack_option = side.stack
     em.prog.solid_context = side.solid_context
+    em.prog.jit_whole_program = side.jit_whole_program
     em.prog.unchecked = side.checks == "off"
     em.prog.param_copy = side.param_writes == "copy"
     em.prog.range_loops = side.loops != "while"
@@ -7474,6 +7478,10 @@ def private program_name(file : string) : string {
 // global whose initializer takes its address), then everything emitted; a cluster's fragments get
 // no options, since they are text its module includes and the module's options cover them
 def private assemble_module(var em : Emitter) {
+    let jit_pin = em.prog.jit_whole_program && em.has_c_main
+    if (jit_pin) {
+        em.requires |> insert("c_runtime/c_jit_build")
+    }
     var required <- [for (name in keys(em.requires)); name]
     required |> sort()
     let header = join([for (name in required); "require {name}\n"], "")
@@ -7482,8 +7490,9 @@ def private assemble_module(var em : Emitter) {
     let stack = em.prog.stack_option > 0 ? em.prog.stack_option : MODULE_STACK
     let stack_line = "options stack = {stack}\n"
     let solid_line = em.prog.solid_context ? "options solid_context\n" : ""
+    let jit_line = jit_pin ? "options jit_split_modules = 0\n" : ""
     let banner = em.prog.unchecked ? "{GENERATED_BANNER}\n{UNCHECKED_BANNER}" : GENERATED_BANNER
-    em.text = banner + "\noptions gen2\noptions indenting = 4\n" + solid_line + stack_line + header + "\n" + empty + label_end + join(em.out, "")
+    em.text = banner + "\noptions gen2\noptions indenting = 4\n" + solid_line + stack_line + jit_line + header + "\n" + empty + label_end + join(em.out, "")
 }
 
 //! One file of a converted program: its path under the output folder (a module's `.das`, a

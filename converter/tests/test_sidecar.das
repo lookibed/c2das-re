@@ -244,6 +244,35 @@ def test_sidecar_checks(t : T?) {
 }
 
 [test]
+def test_sidecar_jit_whole_program(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_jit_pin", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`jit_whole_program` is true or false; absent it is false") @(t : T?) {
+        for (on in [true, false]) {
+            var error : string
+            let side <- read_text(dir, "pin_{on}", "\{\"jit_whole_program\": {on}\}\n", error)
+            t |> equal(error, "")
+            t |> equal(side.jit_whole_program, on)
+        }
+        var error : string
+        let side <- read_text(dir, "no_pin", "\{\"stack\": 65536\}\n", error)
+        t |> equal(error, "")
+        t |> equal(side.jit_whole_program, false)
+    }
+    t |> run("a `jit_whole_program` that is no boolean is refused, naming the key and the value") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "bad_pin", "\{\"jit_whole_program\": 1\}\n", error)
+        t |> success(error |> ends_with("bad_pin.c2das: `jit_whole_program` is true or false, not 1"), error)
+        t |> equal(side.jit_whole_program, false)
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_sidecar_solid_context(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_sidecar_solid", dir_error)

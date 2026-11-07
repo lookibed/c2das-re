@@ -319,6 +319,31 @@ def test_solid_context_opt_out(t : T?) {
 }
 
 [test]
+def test_jit_whole_program(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_layout_jit_pin", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("under the sidecar's `jit_whole_program` the module holding `main`, and no other, pins the JIT's one-unit build and requires its piece, and the program prints what the native build prints") @(t : T?) {
+        let paths <- tree_paths()
+        let res <- converted_with(paths, "pin", "\{\"jit_whole_program\": true\}\n")
+        t |> equal(res.error, "")
+        for (rel in ["sub/shapes_h.das", "c_types.das", "ring_a.das", "sub/ring_b.das", "sub/solo.das", "main.das", "main_link.das"]) {
+            let text = text_of("pin/out", rel)
+            let entry = rel == "main.das"
+            occurs(t, text, "\noptions jit_split_modules = 0\n", entry ? 1 : 0)
+            occurs(t, text, "\nrequire c_runtime/c_jit_build\n", entry ? 1 : 0)
+        }
+        for (tier in ["interp", "jit"]) {
+            agrees(t, paths, res.das_path, tier, "jit_pin")
+        }
+        let plain <- converted_with(paths, "plain", "")
+        t |> equal(plain.error, "")
+        occurs(t, text_of("plain/out", "main.das"), "jit_split_modules", 0)
+    }
+    rmdir_rec(work_root)
+}
+
+[test]
 def test_cut_choices(t : T?) {
     var dir_error : string
     work_root = create_temp_directory("c2das_layout_cut", dir_error)
