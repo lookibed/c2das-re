@@ -2380,6 +2380,19 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   kept until the link, the JSON tree at the parse), not the emitter or the compile check. The harness
   test pins the arguments, the one oracle build and the order, not the separate processes, which the
   bench peak shows.
+- **P7.0zb `&a[k]` without the `end_index` call** (binjgb profile, `/root/notes/research/binjgb-profile.md`
+  candidate 1): binjgb's interpreter spends 12.6% of its das-profiled time in `c_bounds::end_index`, 1.43 M
+  calls per 60 frames (1.04 M from mode3's sprite loop `addr(e.state.ppu.line_obj[0]) + end_index(n, 10)`),
+  because `&a[k]` lowers to the decayed array plus `end_index(k, N)` (F45). Rust's form is unchecked:
+  `addr(reinterpret<Obj?>(p)[n])`. The change: an index that is an integer constant under integer casts
+  (an enumerator, `int(E.X)`) folds at emit time as a literal does (below the length `addr(a[k])`, the
+  length `addr(a[0]) + N`); an index that is a plain load (a variable or a field, under casts) of an array
+  without effects is `k == N ? addr(a[0]) + N : addr(a[k])`, das's own range check on every index but
+  the length, no call; any other index keeps `end_index`. Expected before measuring (box PC, x native):
+  binjgb interp -4 to -5% (7.2 M calls x ~35 ns of 4.9 s, three quarters of them on plain-load
+  indexes), JIT and exe flat (LLVM inlines the call already). Readable: the fold is shorter, the
+  plain-load conditional spells C's one-past-the-end rule in das's own index; a compound index stays
+  the call, since the conditional would spell it twice. Default (ruling 23).
 - Owner ruling 34 (2026-11-06): the dasProfile-method hand-written column stays the bench's
   capture; no daScript SDK on box PC; re-run only on the bench at a phase end, never a PR blocker.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
