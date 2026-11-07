@@ -17,7 +17,7 @@ def private c_label_end {
 }
 
 def step(v : int) : Color {
-    var n = c_volatile_load(level)
+    let n = c_volatile_load(level)
     c_volatile_store(level, n + v)
     let name = cstr_array("ab", 8)
     var i = 0
