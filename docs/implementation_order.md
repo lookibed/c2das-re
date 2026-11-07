@@ -2010,6 +2010,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   (`bench-queue.md`; the bench audit ran but is not committed, P7.0b's `--filter` finding); the
   fixture `p5_lua_protect` printed `out` in the printf of the call setting
   it (argument-order dependent), fixed to read it in its own statement.
+  Over-count (found 2026-11-07, `metrics/tests` `test_literal_counts` red on main): the
+  readability counter walked the macro's expansion, a `reinterpret` at the call the text does not
+  spell, so every converted `enum_from_int` call counted as a reinterpret site in the captures
+  since this item. Fix (branch `fix/readability-macro-sites`): a `reinterpret`, `unsafe_block`,
+  `goto` or `label` site counts only where the text at its column spells its keyword (daslang
+  marks no call-macro expansion: `probes/test_ast_facts.das`, lookibed/daScript#42); a bare
+  literal argument folds with the expansion and is no `literal_named` site.
 - **P7.0i Character literals as `'c'`** (ruling (23), the critic's finding 3): a C character
   literal reaches the das text as `'c'` where the C had one (the C-IR carries the literal's kind;
   `probes`/P2.5's ledger line), readable-only, default; one small pull request.
