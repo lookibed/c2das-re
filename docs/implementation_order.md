@@ -2242,6 +2242,14 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   native): matmul 57 -> about 40, sieve 31 -> about 20, do_while_effect 19.2 -> about 15 (the Rust
   cells), Doom interp fps up; JIT, exe and AOT flat (LLVM rotates the loop either way). Readable: the
   C names stay. Default (ruling 23).
+  Done (branch `p7.0s-fused-loops`): `dead_after` walks the statements after the loop (a `for` whose
+  init assigns the counter kills it, so nested C89 loops fuse, which Rust's walk misses); a counter
+  whose every reference sits in such loops loses its declaration, any other counts in a free name;
+  `do {} while (0)` is a block. Box PC, exclusive and quiet, x native, A main / B: matmul interp 55.4
+  -> 40.5, do_while_effect 19.3 -> 13.6, sieve, blit, str_copy flat (no shape: `<=`, step 7, read
+  after); JIT/exe/AOT flat; Doom interp fps +11 to +15% (demo1 169 -> 189), JIT flat. Range loops:
+  h264bsd 0 -> 73 (Rust 46), binjgb 22 (22), Doom 4 -> 174 (164), Lua 0 -> 55; `_first` left only
+  with a `continue`. Predictions 26 of 26 within 25%.
 - **P7.0t Flat label CFG for a function with `goto` into case groups** (reference diff row 21): the
   `while (true)` re-dispatch loop with `_goto` and `_flag ||=` tests walked on every jump (switch_goto's
   `run_code`) becomes native `label N:` / `goto label N` with a computed `goto` for the case dispatch, as
