@@ -66,6 +66,36 @@ int switch_continue(int n) {
     }
     return t;
 }
+int do_continue(int n, int x) {
+    int i = 0;
+    for (i = 0; i < n; i++) ;
+    do { if (x) continue; i = 0; } while (0);
+    return i;
+}
+int while_continue(int n, int x) {
+    int i = 0, k = 0;
+    for (i = 0; i < n; i++) ;
+    while (k < 1) { k++; if (x) continue; i = 0; }
+    return i;
+}
+int volatile_counter(int n) { volatile int i; int t = 0; for (i = 0; i < n; i++) t += i; return t; }
+int outer_reads(int n) {
+    int i = 0, k, t = 0;
+    for (k = 0; k < 3 + i; k++) { for (i = 0; i < n; i++) t++; }
+    for (k = 0; k < 3; k += i) { for (i = 0; i < n; i++) t++; }
+    return t;
+}
+int under_case(int n, int c) {
+    int i, t = 0;
+    switch (c) {
+    case 1:
+        for (i = 0; i < n; i++) t += i;
+        break;
+    default:
+        t = -1;
+    }
+    return t;
+}
 int arm_return(int n) {
     int i, t = 0;
     for (i = 0; i < n; i++) t += 2;
@@ -99,11 +129,35 @@ int count_down(int count, unsigned u) {
     return t + kept;
 }
 
+/* count-down kept: a cast on the test, the address taken, a goto in the function */
+int count_cast(int n) {
+    int t = 0;
+    do { t++; if (t > 1000) break; } while ((unsigned char) n--);
+    return t;
+}
+int count_kept(int m, int g) {
+    int t = 0, *p = &m;
+    do { t += 2; } while (m--);
+    if (g) goto out;
+    do { t += 3; } while (g--);
+out:
+    return t + *p;
+}
+/* do-while (0) with a continue or a return keeps the loop */
+int once_kept(int n) {
+    int t = 0;
+    do { t++; if (n > 1) continue; t += 10; } while (0);
+    do { t += 5; if (n > 2) return t; t++; } while (0);
+    return t;
+}
+
 int main(void) {
     int a[4] = {1, 5, 2, 9};
     printf("%d %d %d\n", c89_only(5), c89_fresh(4), keyword_counter(3));
     printf("%d %d %d %d %d\n", read_after(9), address(3), goto_out(a, 4), next_pass(4), arm_return(5));
     printf("%d %d\n", do_break(4), switch_continue(3));
+    printf("%d %d %d %d %d %d\n", do_continue(3, 1), while_continue(3, 1), volatile_counter(4), outer_reads(2), under_case(4, 1), under_case(4, 2));
+    printf("%d %d %d %d %d\n", count_cast(256), count_kept(2, 0), count_kept(1, 1), once_kept(2), once_kept(3));
     printf("%d\n", bottom(3));
     printf("%d %d\n", count_down(0, 0xffffffffu), count_down(4, 1u));
     return 0;
