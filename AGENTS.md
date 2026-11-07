@@ -87,17 +87,31 @@ gates and the review machinery. Codex sessions take their MCP wiring from
 - A pull request merges only when the `preflight` check is green AND the pull request's review
   pass is closed with no BLOCKING or MAJOR finding open; a green check never overrides an open
   review.
-- Every pull request runs `scripts/preflight.sh`, the `ports/tests` suite and the dastest suites
-  of the folders it touches locally before it is opened, and gets one review pass plus a re-check
-  of each BLOCKING or MAJOR fix. A pull request that does not close a phase runs no
-  per-document dragon audit.
-- A pull request adding a plan item's feature, or changing `converter/` outside
-  `converter/tests/`, `c_runtime/` or `dasCRuntime/`, also runs the gcc-torture, c-testsuite and
-  csmith suites before it merges.
-- A pull request touching the suite and port runners or their tests (`suites/`, `perf/`, `lua/`,
-  `ports/`, `converter/tests/test_suite_audit.das`, `converter/tests/test_torture_filter.das`,
-  `converter/tests/test_csmith_verdict.das`) runs `scripts/preflight.sh --full` before it
-  merges.
+- Every pull request gets one review pass plus a re-check of each BLOCKING or MAJOR fix. A pull
+  request that does not close a phase runs no per-document dragon audit.
+- Every pull request runs, before it is opened, the fast tier (`scripts/preflight.sh`) and the
+  suites of the folders its diff touches by this map; a diff touching several folders runs the
+  union. A subset runs as `PREFLIGHT_TEST_GROUPS="<suite>;<suite>" scripts/preflight.sh --only
+  tests`, the suites in parallel (`skills/internal/preflight.md`).
+
+  | The diff touches | Suites |
+  |---|---|
+  | `converter/` (or adds a plan item's feature) | `converter/tests`, `lua/tests`, `doom/tests`, gcc-torture, c-testsuite, csmith |
+  | `c_runtime/`, `dasCRuntime/` | `c_runtime/tests`, `dasCRuntime/tests`, `probes`, `converter/tests` |
+  | `probes/` | `probes` |
+  | `perf/` | `perf/tests` |
+  | `ports/` | `ports/tests` |
+  | `metrics/` | `metrics/tests` |
+  | `lua/` | `lua/tests` |
+  | `doom/` | `doom/tests` |
+  | `compare/` | `compare/tests` |
+  | `suites/` | `converter/tests` (the runners' tests) and the C suite whose runner changed |
+  | `tests/`, `scripts/` | the full tier, `scripts/preflight.sh --full` |
+
+  The full tier also runs once at the start of each night on clean `main`, so a red already on
+  `main` shows before it blocks a pull request, and in the last pull request of a phase.
+  gcc-torture, c-testsuite and csmith run under `heavy --low`, never beside a build: a csmith
+  seed times out under load.
 - The last pull request of a phase runs `scripts/preflight.sh --full`, a dragon-agent audit of
   every `REVIEW*.md`, `ARCHITECTURE*.md` and `AGENTS.md` the phase changed, an archivist pass
   over each of those architecture documents, the dupe-sweeper and style-hygiene audits over the
