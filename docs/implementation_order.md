@@ -2297,6 +2297,19 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   2.14x / 1.40x / 1.36x / 1.91x (one linked program): the gap is the layout's, not the runtime's. The `jit-goto` column
   (source layout) reads 4.84x / 2.55x / 3.77x / 4.52x: the goto dispatch's single-layout gain (P7.0c2) does not show
   through the split build, which P7.0c4 weighs before any JIT default.
+  Reference pass (2026-11-08): the Rust translator's output is one file per program (`compare/work/projects/*/rust/*_all.das`), so
+  it never meets the split; dasLLVM's `--jit-split-modules` takes 0 for monolithic emission (one LLVM context, full cross-module
+  inlining) beside its default -1 (a partition per das module), with the script pin `options jit_split_modules`; `--jit-lto` is an
+  exe-only flag and `DAS_JIT_PROBE_LTO` a dev probe for the DLL rail; `-jit-no-cache` runs in memory, one unit; the `exe` lane is
+  one unit by default (an exe splits only when its build command asks), which is why it tracks the single layout. Profile cited:
+  perf/profiles/lua_fib_jit.txt (source layout) spends 8.6% in six `lobject_h_cluster` accessors standing as JIT symbols
+  (`val` 3.4%, `p` 1.8%, `l` 1.5%, `gc` 1.0%, `cl` 0.9%, `i` 0.7%) that lua_fib_native.txt and the single layout inline away.
+  Predictions (2026-11-08 00:15 MSK, before any timing run; fib 30 and nbody 20000, in-process work, 7 interleaved samples, box PC):
+  the default split JIT runs the source layout 2.2x slower than the single layout on fib and 2.9x on nbody; under
+  `--jit-split-modules=0` (and `-jit-no-cache`) the source layout runs at the single layout's speed, 2.24x / 1.38x native (within
+  10%), the single layout unchanged (it is one module either way); the goto source layout under the monolithic build then shows
+  its single-layout gain, about 1.3x on fib over chain; the cached `-e "print(1)"` startup moves less than 10% (one DLL loaded
+  either way), the no-cache startup pays the whole compile on every run.
 - **P7.0y Hand-written daslang references beside the Rust translator's output** (owner note
   2026-11-06, the reference pass of ruling 33 item 3 widened): the owner's plmpeg port
   (lookibed/plmpeg-stream, checkout `/root/plmpeg-stream`, bench `/root/plmpeg_bench`) against our
