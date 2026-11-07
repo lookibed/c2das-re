@@ -2156,6 +2156,7 @@ def p7_fused_loop_fixtures(t : T?) {
         has_text(t, text, "def c89_only(n : int) : int \{\n    var total : int = 0\n    for (i in range(n)) \{\n        for (j in range(2, n)) \{\n")
         has_text(t, text, "    for (i in range(2)) \{\n        for (j in range(2)) \{\n")
         // dead after the loop but read elsewhere: a free name, the declaration stays
+        has_text(t, text, "    for (_c_block1 in range(n)) \{\n        total += _c_block1\n")
         has_text(t, text, "    var i : int = sink(n)\n    var total : int = i\n    for (i1 in range(n)) \{\n        total += i1\n")
         // read after, address taken, a goto out, the next pass reads, a `do` left early by its
         // `break`, a switch's `continue`, an `if` arm: the loop keeps its `while` form
