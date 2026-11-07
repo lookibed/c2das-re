@@ -97,7 +97,7 @@ gates and the review machinery. Codex sessions take their MCP wiring from
   | The diff touches | Suites |
   |---|---|
   | `converter/` (or adds a plan item's feature) | `converter/tests`, `lua/tests`, `doom/tests`, gcc-torture, c-testsuite, csmith |
-  | `c_runtime/`, `dasCRuntime/` | `c_runtime/tests`, `dasCRuntime/tests`, `probes`, `converter/tests` |
+  | `c_runtime/`, `dasCRuntime/` | `c_runtime/tests`, `dasCRuntime/tests`, `probes`, `converter/tests`, gcc-torture, c-testsuite, csmith |
   | `probes/` | `probes` |
   | `perf/` | `perf/tests` |
   | `ports/` | `ports/tests` |
@@ -110,8 +110,8 @@ gates and the review machinery. Codex sessions take their MCP wiring from
 
   The full tier also runs once at the start of each night on clean `main`, so a red already on
   `main` shows before it blocks a pull request, and in the last pull request of a phase.
-  gcc-torture, c-testsuite and csmith run under `heavy --low`, never beside a build: a csmith
-  seed times out under load.
+  gcc-torture, c-testsuite and csmith run under `heavy --low` (on the bench once it is up), never
+  beside a build: a csmith seed times out under load.
 - The last pull request of a phase runs `scripts/preflight.sh --full`, a dragon-agent audit of
   every `REVIEW*.md`, `ARCHITECTURE*.md` and `AGENTS.md` the phase changed, an archivist pass
   over each of those architecture documents, the dupe-sweeper and style-hygiene audits over the
