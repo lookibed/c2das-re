@@ -82,7 +82,8 @@ int volatile_counter(int n) { volatile int i; int t = 0; for (i = 0; i < n; i++)
 int outer_reads(int n) {
     int i = 0, k, t = 0;
     for (k = 0; k < 3 + i; k++) { for (i = 0; i < n; i++) t++; }
-    for (k = 0; k < 3; k += i) { for (i = 0; i < n; i++) t++; }
+    i = 0;
+    for (k = 0; k < 3; k += i + 2) { for (i = 0; i < n; i++) t++; }
     return t;
 }
 int under_case(int n, int c) {
@@ -93,6 +94,82 @@ int under_case(int n, int c) {
         break;
     default:
         t = -1;
+    }
+    return t;
+}
+/* a `break` or `continue` in a statement that never names the counter leaves the loop around
+   it, whose next statements or test may read it */
+int if_break(int n) {
+    int i = 0, k, t = 0;
+    for (k = 0; k < 3; k++) { for (i = 0; i < n; i++) t++; if (k == 1) break; i = 0; }
+    return i * 100 + t;
+}
+int if_continue(int n) {
+    int i = 0, k, t = 0;
+    for (k = 0; k < 3; k++) { t += i; for (i = 0; i < n; i++) t++; if (k == 1) continue; i = 0; }
+    return t;
+}
+/* the body writes the counter */
+int body_writes(int n) { int i, t = 0; for (i = 0; i < n; i++) { if (i == 1) i++; t += i; } return t; }
+/* an initializer with an effect keeps the declaration: the loop counts in a free name */
+int init_effect(int n) { int i = sink(9), t = 0; for (i = 0; i < n; i++) t += i; return t; }
+/* two declarations of one name: neither counter fuses */
+int two_decls(int n) {
+    int t = 0;
+    { int i; for (i = 0; i < n; i++) t += i; }
+    { int i; for (i = 1; i < n; i++) t += i; }
+    return t;
+}
+/* a declaration a switch carries to a later case keeps it: a free name */
+int carried(int n, int c) {
+    int t = 0;
+    switch (c) {
+    case 0:
+        t = 2;
+        int i;
+    case 1:
+        for (i = 0; i < n; i++) t += i;
+        t++;
+        return t;
+    default:
+        t = -1;
+    }
+    return t;
+}
+/* a later loop whose first pass reads the counter, a later `do` whose test reads it */
+int later_while_reads(int n) {
+    int i = 0, k = 0, t = 0;
+    for (i = 0; i < n; i++) t++;
+    while (k < 2) { t += i; i = 0; k++; }
+    return t;
+}
+int later_do_test(int n) {
+    int i = 0, k = 0;
+    for (i = 0; i < n; i++) ;
+    do { k++; } while (k < i);
+    return k;
+}
+/* a store that reads the counter, a compound store: no assignment of it */
+int self_store(int n) { int i = 0; for (i = 0; i < n; i++) ; i = i + 1; return i; }
+int compound_store(int n) { int i = 0; for (i = 0; i < n; i++) ; i += 1; return i; }
+/* a free name a global spells is skipped; every loop of a counter counts in one free name */
+int i1 = 5;
+int global_named(int n) {
+    int i = n, t = 0;
+    for (i = 0; i < n; i++) t += i;
+    for (i = 2; i < n; i++) t += i;
+    i = 0;
+    return t + i + i1;
+}
+/* Duff's device: the loop a case label enters is spelled open, its counter keeps its declaration */
+int duff(int n, int c) {
+    int i = 0, t = 0;
+    switch (c) {
+    case 0:
+        for (i = 0; i < n; i++) {
+    case 1:
+            t++;
+        }
     }
     return t;
 }
@@ -135,13 +212,26 @@ int count_cast(int n) {
     do { t++; if (t > 1000) break; } while ((unsigned char) n--);
     return t;
 }
-int count_kept(int m, int g) {
+int count_addr(int m) {
     int t = 0, *p = &m;
     do { t += 2; } while (m--);
+    return t + *p;
+}
+int count_kept(int g) {
+    int t = 0;
     if (g) goto out;
     do { t += 3; } while (g--);
 out:
-    return t + *p;
+    return t;
+}
+/* count-down kept: a volatile count, a 64-bit count */
+int count_wide(int n) {
+    volatile int v = n;
+    long long w = n;
+    int t = 0;
+    do { t++; } while (v--);
+    do { t += 10; } while (w--);
+    return t;
 }
 /* do-while (0) with a continue or a return keeps the loop */
 int once_kept(int n) {
@@ -157,7 +247,10 @@ int main(void) {
     printf("%d %d %d %d %d\n", read_after(9), address(3), goto_out(a, 4), next_pass(4), arm_return(5));
     printf("%d %d\n", do_break(4), switch_continue(3));
     printf("%d %d %d %d %d %d\n", do_continue(3, 1), while_continue(3, 1), volatile_counter(4), outer_reads(2), under_case(4, 1), under_case(4, 2));
-    printf("%d %d %d %d %d\n", count_cast(256), count_kept(2, 0), count_kept(1, 1), once_kept(2), once_kept(3));
+    printf("%d %d %d %d %d %d\n", if_break(4), if_continue(3), body_writes(5), init_effect(4), two_decls(4), carried(4, 1) * 100 + carried(4, 0));
+    printf("%d %d %d %d %d %d %d\n", later_while_reads(3), later_do_test(3), self_store(3), compound_store(3), global_named(4), duff(3, 0), duff(3, 1));
+    printf("%d\n", count_wide(2));
+    printf("%d %d %d %d %d %d\n", count_cast(256), count_addr(2), count_kept(0), count_kept(1), once_kept(2), once_kept(3));
     printf("%d\n", bottom(3));
     printf("%d %d\n", count_down(0, 0xffffffffu), count_down(4, 1u));
     return 0;
