@@ -4,6 +4,7 @@ require strings
 require daslib/fio
 require daslib/strings_boost
 require ../../perf/perf_lanes.das
+require ../../converter/sidecar.das
 
 //! The lua harness without the release: `lua/run.das` over a scratch tree holding a stand-in
 //! `lua/fetch/lua-5.4.8/src` of small C files, `lua/fetch.sh`'s refusals over a scratch
@@ -64,6 +65,16 @@ let LUA_PROTECTED_C = "#include <stdio.h>\n#include <setjmp.h>\n#include <string
 // `path`, wherever the run's folder is, and prints the file's size
 def private lua_runs_c(path : string) : string =>
     "#include <stdio.h>\nint main(void) \{\n    FILE *f = fopen(\"{path}\", \"ab\");\n    if (f == 0) return 2;\n    fwrite(\"x\", 1, 1, f);\n    printf(\"%ld\\n\", ftell(f));\n    fclose(f);\n    return 0;\n\}\n"
+
+[test]
+def test_sidecar_pins_jit(t : T?) {
+    t |> run("lua.c2das reads clean and sets jit_whole_program, the ports' jit lanes' one-unit build") @(t : T?) {
+        var error : string
+        let side <- read_sidecar("lua/lua.c2das", error)
+        t |> equal(error, "")
+        t |> equal(side.jit_whole_program, true)
+    }
+}
 
 [test]
 def test_run_refusals(t : T?) {
