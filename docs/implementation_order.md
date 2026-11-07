@@ -2205,6 +2205,24 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   calls before the loop, the solid one loads the context once, and the loop bodies are identical, so
   the 10% (0.00179 against 0.00197 s, single ungated runs) sits outside the loop body: the next step
   reads the prologue and the exit path, not the loop.
+  Mechanism (2026-11-08, F92, `probes/test_jit_solid_lsr.das`): not the prologue. The hot code is
+  `kernel_run` inlined into `main` (solid) or `c_main implementation` (not), and the two IRs are the
+  same instruction for instruction but for the base of `flags`: `gep %globals, 16` against the opaque
+  `jit_get_global_mnh` result. LLVM's loop strength reduction in the code generator rebases the solid
+  build's inner store to a pointer induction variable per unrolled copy of the outer loop: one more
+  `add` per inner step (7 instructions against 6, the samples on the `add` after the store) and 16
+  start pointers spilled, 55 stack references in the hot function against 20 (`.dll`, objdump); `llc
+  -O3 -disable-lsr` on the solid dump gives back `movb $0, 16(%base,%k)` and 4 stack references
+  against 67. The array at offset 0 of the block, or no `solid_context`, and LSR changes nothing. No
+  converter form avoids it (a local `&` reference compiles to the same code; a pointer drops the
+  range check): a dasLLVM item, lookibed/daScript#43 (a candidate there: the solid base through
+  `llvm.launder.invariant.group`, which on the dump gives back the folded store). `str_copy` is a
+  different case: its copy loop is one instruction shorter solid and `-disable-lsr` leaves it, so its
+  1.15-1.31x stays open. Lua's diffuse difference (above) is not checked against F92.
+  Predictions for the A/B (`/root/notes/parallel/pc-p7.0q-ab.sh`, solid against the same conversion
+  without the option, interleaved, not run): sieve JIT solid/no-solid 1.08-1.12 and the F92 repro the
+  same; interp solid at or under no-solid on every kernel; matmul and fib_loop JIT solid at or under;
+  str_copy JIT unexplained by F92 whatever it shows.
 - **P7.0r A JIT-visible volatile load and store** (from P7.0p, place 1): `c_volatile_load(x)` and
   `c_volatile_store(x, v)` expand to the `crt::c_volatile_load_*`/`c_volatile_store_*` externs
   (`c_runtime/c_volatile.das`, `dasCRuntime/src/dasCRuntime.cpp`), an indirect call the JIT knows
