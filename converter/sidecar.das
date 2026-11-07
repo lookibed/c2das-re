@@ -72,10 +72,13 @@ struct Sidecar {
     // function reached by index, never a lookup by name): false only for code another context
     // runs or a patch reloads, which the option forbids
     solid_context : bool = true
+    // whether the entry module pins the cached JIT's build to one unit (`options
+    // jit_split_modules = 0`, the piece `c_runtime/c_jit_build`), keeping inlining across modules
+    jit_whole_program : bool = false
 }
 
 //! The keys a sidecar may hold; any other is refused naming it.
-let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks", "jit_whole_program"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -337,6 +340,17 @@ def private read_inputs(js : JsonValue?; path : string; var side : Sidecar; var 
 }
 
 // a key whose value is one of `modes` into `field`, left "" when the key is absent
+// the boolean `key` into `field` when present, else `field` kept; a value of another shape refused
+// naming the key
+def private read_flag(js : JsonValue?; path, key : string; var field : bool&; var error : string&) {
+    let value = js?[key]
+    if (key_exists(js, key) && !(value is _bool)) {
+        error = "{path}: `{key}` is true or false, not {write_json(value)}"
+    } elif (key_exists(js, key)) {
+        field = value ?? field
+    }
+}
+
 def private read_mode(js : JsonValue?; path, key : string; modes : array<string>; var field : string&; var error : string&) {
     let value = js?[key] ?? ""
     if (key_exists(js, key) && !has_value(modes, value)) {
@@ -394,12 +408,8 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
             side.defines |> push(entry ?? "")
         }
     }
-    let solid = js?["solid_context"]
-    if (key_exists(js, "solid_context") && !(solid is _bool)) {
-        error = "{path}: `solid_context` is true or false, not {write_json(solid)}"
-    } else {
-        side.solid_context = solid ?? true
-    }
+    read_flag(js, path, "solid_context", side.solid_context, error)
+    read_flag(js, path, "jit_whole_program", side.jit_whole_program, error)
     read_inputs(js, path, side, error)
     read_members(js, path, "over_indexed", side.over_indexed, error)
     read_members(js, path, "padded", side.padded, error)
