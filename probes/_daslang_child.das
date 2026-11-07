@@ -107,11 +107,15 @@ def struct_rejected(t : T?; src : StructSource; name, annotation, needle, fields
     child_rejects(t, name, compile_struct(src, name, annotation, fields, after, kind), needle)
 }
 
-//! The pinned clang for a child C program: the libclang archive's own binary when
-//! `PATH_TO_LIBCLANG` is set (`scripts/env.sh`), else whatever `clang` is on PATH. The converter
-//! has its own, `default_clang` in `converter/dumper_a.das`, which this folder does not require.
-def battery_clang : string =>
-    has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
+//! The pinned LLVM tool `name` (`clang`, `llc`): the libclang archive's own binary when
+//! `PATH_TO_LIBCLANG` is set (`scripts/env.sh`), the LLVM dasLLVM is built against, else whatever
+//! `name` is on PATH. The converter has its own clang, `default_clang` in `converter/dumper_a.das`,
+//! which this folder does not require.
+def pinned_llvm_tool(name : string) : string =>
+    has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/" + name : name
+
+//! The pinned clang for a child C program.
+def battery_clang : string => pinned_llvm_tool("clang")
 
 //! The output of the C program `source`, built by the pinned clang with `-w` and `flags` and
 //! run once: the native side of a byte-for-byte battery. A build failure returns the compiler's
