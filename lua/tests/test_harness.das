@@ -161,13 +161,47 @@ def private manifest_tus(root : string; sources : array<string>) : string {
     return join([for (source in sources); "\"{src}/{source}.c\""], ", ")
 }
 
+// `daslang` started through a wrapper under `root` that appends each start's arguments to
+// `root/starts.log` and execs daslang under the wrapper's name, which a run of each conversion in a
+// process of its own starts again; under `C2DAS_TEST_KILL` a start marked `--oracle-built` kills
+// itself with that signal instead
+def private counted_daslang(root : string) : string {
+    let wrapper = path_join(get_full_file_name(root), "das_counted")
+    let log = path_join(get_full_file_name(root), "starts.log")
+    fwrite(wrapper, "#!/bin/bash\necho \"$*\" >> '{log}'\ncase \" $* \" in *\" --oracle-built \"*) [ -z \"$C2DAS_TEST_KILL\" ] || kill -\"$C2DAS_TEST_KILL\" $$ ;; esac\nexec -a \"$0\" '{get_das_root()}/bin/daslang' \"$@\"\n")
+    var out : string
+    run_and_capture(["chmod", "+x", wrapper], out, 30.0)
+    return wrapper
+}
+
+// the starts `counted_daslang` logged under `root` since the last call, the log cleared
+def private starts(root : string) : array<string> {
+    let log = path_join(root, "starts.log")
+    var lines <- [for (line in split(fexist(log) ? fread(log) : "", "\n")); line; where !empty(line)]
+    remove(log)
+    return <- lines
+}
+
+def private counted_argv(root : string; dashes : bool; args : array<string>) : array<string> {
+    var argv <- [counted_daslang(root), "-load_module", get_full_file_name("dasCRuntime"), "-load_module", get_full_file_name("c_runtime"), get_full_file_name("lua/run.das")]
+    if (dashes) {
+        argv |> push("--")
+    }
+    argv |> push_from(args)
+    return <- argv
+}
+
 [test]
 def test_run_apart(t : T?) {
     t |> run("a run of more than one conversion makes each in a process of its own with the run's arguments, a quote among them, the oracle built once before them and each one's lines in the order of the layouts") @(t : T?) {
         let root = stand_in_root("c2das_lua_apart", LOBJECT)
         t |> success(!empty(root))
         var out : string
-        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--native", "--run", "--filter", "lua", "--layout", "all", "--arg", "it's"]), out), 0, out)
+        t |> equal(run_in(root, counted_argv(root, true, ["--native", "--run", "--filter", "lua", "--layout", "all", "--arg", "it's"]), out), 0, out)
+        // the run and a process per layout, each marked
+        let all <- starts(root)
+        t |> equal(length(all), 4, join(all, "\n"))
+        t |> equal(length([for (line in all); line; where line |> ends_with("--filter lua --layout source --oracle-built") || line |> ends_with("--filter lua --layout source-cut --oracle-built") || line |> ends_with("--filter lua --layout single --oracle-built")]), 3, join(all, "\n"))
         t |> equal(length(split(out, "lua: lua/work/lua_native: ")) - 1, 1, out)
         t |> equal(length(split(out, "lua: interp exited 0: 43 it's\n")) - 1, 3, out)
         let native = find(out, "lua_native: ")
@@ -175,10 +209,48 @@ def test_run_apart(t : T?) {
         let cut = find(out, "lua: lua (source-cut): ")
         let single = find(out, "lua: lua (single): ")
         t |> success(native >= 0 && native < source && source < cut && cut < single, out)
-        // a failing conversion fails the run, and the conversions after it still run
+        // one conversion stays in the run's process
+        t |> equal(run_in(root, counted_argv(root, true, ["--filter", "lua", "--layout", "source"]), out), 0, out)
+        t |> equal(length(starts(root)), 1, out)
+        // a process marked `--oracle-built` converts every layout itself
+        t |> equal(run_in(root, counted_argv(root, true, ["--oracle-built", "--filter", "lua"]), out), 0, out)
+        t |> equal(length(starts(root)), 1, out)
+        t |> success(out |> contains("lua: lua (source): ") && out |> contains("lua: lua (source-cut): ") && out |> contains("lua: lua (single): "), out)
+        // a run started with no `--` gives each process one before the arguments it adds: the run,
+        // then the two programs in three layouts each
+        t |> equal(run_in(root, counted_argv(root, false, array<string>()), out), 0, out)
+        let plain <- starts(root)
+        t |> equal(length(plain), 7, join(plain, "\n"))
+        t |> equal(length([for (line in plain); line; where line |> ends_with("run.das -- --filter lua --layout source --oracle-built")]), 1, join(plain, "\n"))
+        rmdir_rec(root)
+    }
+    t |> run("a conversion process that fails or dies is logged by how it ended and fails the run, the next layout still converted; one ended by SIGINT stops the run") @(t : T?) {
+        let root = stand_in_root("c2das_lua_apart_ends", LOBJECT)
+        t |> success(!empty(root))
+        var out : string
+        var argv <- ["env", "C2DAS_TEST_KILL=KILL"]
+        argv |> push_from(counted_argv(root, true, ["--filter", "lua"]))
+        t |> equal(run_in(root, argv, out), 1, out)
+        t |> equal(length(starts(root)), 4, out)
+        t |> success(out |> contains("lua: lua (source): the conversion process was killed by signal 9") && out |> contains("lua: lua (single): the conversion process was killed by signal 9"), out)
+        var int_argv <- ["env", "C2DAS_TEST_KILL=INT"]
+        int_argv |> push_from(counted_argv(root, true, array<string>()))
+        t |> equal(run_in(root, int_argv, out), 1, out)
+        t |> equal(length(starts(root)), 2, out)
+        t |> success(out |> contains("lua: lua (source): the conversion process was killed by signal 2") && out |> contains("lua: interrupted; no further conversion starts"), out)
+        t |> success(!(out |> contains("(source-cut)")) && !(out |> contains("luac")), out)
+        // a conversion error: the child's exit code, and the conversions after it still run
         fwrite(path_join(root, "lua/fetch/lua-5.4.8/src/lobject.c"), "#include \"lua.h\"\nint lua_answer(void) \{ return L\"x\"[0]; \}\n")
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--layout", "source"]), out), 1, out)
-        t |> success(out |> contains("lua: lua (source): ") && out |> contains("lua: luac (source): "), out)
+        t |> success(out |> contains("lua: lua (source): the conversion process exited 1") && out |> contains("lua: luac (source): "), out)
+        rmdir_rec(root)
+    }
+    t |> run("--oracle-built with no oracle to use is refused, naming the missing binary") @(t : T?) {
+        let root = stand_in_root("c2das_lua_no_oracle", LOBJECT)
+        t |> success(!empty(root))
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--oracle-built", "--run", "--filter", "lua", "--layout", "source"]), out), 1, out)
+        t |> success(out |> contains("lua: --oracle-built, but no native oracle at lua/work/lua_native"), out)
         rmdir_rec(root)
     }
 }

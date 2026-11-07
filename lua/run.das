@@ -648,28 +648,50 @@ def private convert_layout(stem, main_source : string; input : ProgramInput; bin
 // escaped and reopened
 def private shell_word(text : string) : string => "'" + replace(text, "'", "'\\''") + "'"
 
-// `stem` converted in `layout` by this script run again in a process of its own, with this run's
-// arguments, `--filter`, `--layout` and `--oracle-built` last, so each wins: the process's heaps,
-// which hold every string the conversion made until it exits, go with it. The child shares this
-// run's stdout and stderr, flushed first so its lines follow this run's; true when it exits 0
-[arch(at="ARCHITECTURE.md#apart")]
-def private convert_apart(stem, layout : string) : bool {
-    let argv <- get_command_line_arguments()
+// the shell command that runs this script again as `argv` ran it, with `--filter`, `--layout` and
+// `--oracle-built` last, so each wins; a `--` opens the script's arguments when `argv` has none.
+// The shell `exec`s it, so a signal that ends the process shows in the status `system` returns
+def private apart_command(argv : array<string>; stem, layout : string) : string {
     var words <- [for (word in argv); shell_word(word)]
     if (!has_value(argv, "--")) {
         words |> push("--")
     }
     words |> push_from([for (word in ["--filter", stem, "--layout", layout, "--oracle-built"]); shell_word(word)])
-    fflush(fstdout())
-    fflush(fstderr())
-    return unsafe(system(join(words, " "))) == 0
+    return "exec " + join(words, " ")
+}
+
+let SIGINT_STATUS = 2
+
+// how a conversion process ended, from the wait status `system` returns: "" when it exited 0
+def private ended(status : int) : string {
+    if (status == -1) {
+        return "could not start"
+    }
+    let signal = status & 0x7f
+    return signal != 0 ? "was killed by signal {signal}" : (status >> 8) != 0 ? "exited {status >> 8}" : ""
+}
+
+// `stem` converted in `layout` by this script run again in a process of its own (`apart_command`):
+// the process's heaps, which hold every string the conversion made until it exits, go with it. The
+// child shares this run's stdout and stderr, whose lines `to_log` flushes one by one, so the child's
+// follow this run's. A process that does not exit 0 is logged by how it ended; `interrupted` is
+// set when SIGINT ended it, at the shell or the conversion, so the run stops. True when it exits 0
+[arch(at="ARCHITECTURE.md#apart")]
+def private convert_apart(stem, layout : string; var interrupted : bool&) : bool {
+    let status = unsafe(system(apart_command(get_command_line_arguments(), stem, layout)))
+    let how = ended(status)
+    if (!empty(how)) {
+        to_log(LOG_ERROR, "lua: {stem} ({layout}): the conversion process {how}\n")
+    }
+    interrupted = status != -1 && (status & 0x7f) == SIGINT_STATUS
+    return empty(how)
 }
 
 // one program's manifest written, the program converted in each layout `--layout` names and
 // reported, each in a process of its own (`convert_apart`) when `apart`; with `--native`, `--run`,
 // `--error-check`, `--suite-check` or `--luac-check` its oracle built first unless `--oracle-built`
 // says it is
-def private build_program(stem, main_source : string; args : Args; apart : bool) : bool {
+def private build_program(stem, main_source : string; args : Args; apart : bool; var interrupted : bool&) : bool {
     let manifest = write_manifest(stem)
     if (empty(manifest)) {
         to_log(LOG_ERROR, "lua: cannot write {WORK}/{stem}.program.json\n")
@@ -682,12 +704,18 @@ def private build_program(stem, main_source : string; args : Args; apart : bool)
         return false
     }
     let bin = path_join(WORK, "{stem}_native")
-    if (!args.oracle_built && (args.native || args.run || args.error_check || args.suite_check || !empty(args.luac_check)) && !build_native(input.c_paths, bin)) {
+    let oracle = args.native || args.run || args.error_check || args.suite_check || !empty(args.luac_check)
+    if (args.oracle_built && oracle && !fexist(bin)) {
+        to_log(LOG_ERROR, "lua: --oracle-built, but no native oracle at {bin}: run without --oracle-built to build it\n")
+        return false
+    }
+    if (!args.oracle_built && oracle && !build_native(input.c_paths, bin)) {
         return false
     }
     var ok = true
     for (layout in layouts_of(args)) {
-        ok = (apart ? convert_apart(stem, layout) : convert_layout(stem, main_source, input, bin, layout, args)) && ok
+        ok = (apart ? convert_apart(stem, layout, interrupted) : convert_layout(stem, main_source, input, bin, layout, args)) && ok
+        break if (interrupted)
     }
     return ok
 }
@@ -728,13 +756,19 @@ def main : int {
         return 1
     }
     // more than one conversion: each in a process of its own, so no conversion's garbage adds to
-    // the next one's
+    // the next one's; such a process, marked `--oracle-built`, converts in its own process whatever
+    // its arguments, so none forks again
     let programs = length([for (program in PROGRAMS); program; where empty(args.filter) || program._0 == args.filter])
-    let apart = programs * length(layouts_of(args)) > 1
+    let apart = !args.oracle_built && programs * length(layouts_of(args)) > 1
     var ok = true
+    var interrupted = false
     for (program in PROGRAMS) {
         if (empty(args.filter) || program._0 == args.filter) {
-            ok = build_program(program._0, program._1, args, apart) && ok
+            ok = build_program(program._0, program._1, args, apart, interrupted) && ok
+            if (interrupted) {
+                to_log(LOG_ERROR, "lua: interrupted; no further conversion starts\n")
+                break
+            }
         }
     }
     return ok ? 0 : 1
