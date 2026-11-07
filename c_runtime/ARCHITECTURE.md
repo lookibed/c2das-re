@@ -231,6 +231,15 @@ as-if-converted fixture test landing first.
   clearing `.cache/daslang` under the run's working folder drops them). Its fixture test
   `tests/test_c_volatile_jit.das` runs every width under the four tiers and counts the IR, the
   split build's too, and runs the cached JIT once from a scratch cache.
+- `c_runtime/c_jit_build.das` - the JIT build of a converted program: a `[_macro]` declares the
+  program option `jit_split_modules` (`add_module_option`), dasLLVM's script pin of its partition
+  count, so the entry module the converter writes under the sidecar's `jit_whole_program` carries
+  `options jit_split_modules = 0` and compiles under every tier. daslang refuses an undeclared
+  option, and dasLLVM declares this one only for a program requiring `llvm/llvm_jit`, which would
+  load the JIT compiler into every tier's startup (`docs/probe-findings.md` F92). The cached JIT
+  reads the pin from the entry module's options and builds the program's DLL as one LLVM module,
+  the DLL `--jit-split-modules=0` builds, where its default builds a partition per das module and
+  loses inlining across them; the interpreter, the AOT host and the exe ignore it.
 - `tests/` - one dastest file per piece, written as the converter will emit the code,
   including a control that the same code without the piece is rejected or wrong. A test that
   compiles or runs a child program does so through `probes/_daslang_child.das`, the one child
