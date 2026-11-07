@@ -72,6 +72,9 @@ struct Args {
     @clarg_name = "suite-memory"
     @clarg_doc = "the memory each run of a test file gets under --suite-check: anything systemd's MemoryMax takes; the prlimit fallback needs bytes with K, M, G or T"
     suite_memory : string = "4G"
+    @clarg_name = "oracle-built"
+    @clarg_doc = "the native oracle of the program is already at lua/work/<stem>_native, built by the run that converts each layout in a process of its own: no oracle is built"
+    oracle_built : bool
     @clarg_doc = "dialect: linux (this host, the native oracle's) or msvc"
     target : string = "linux"
     @clarg_short = "?"
@@ -641,10 +644,32 @@ def private convert_layout(stem, main_source : string; input : ProgramInput; bin
     return true
 }
 
+// `text` as one word of a POSIX shell's command line: single-quoted, each quote of its own closed,
+// escaped and reopened
+def private shell_word(text : string) : string => "'" + replace(text, "'", "'\\''") + "'"
+
+// `stem` converted in `layout` by this script run again in a process of its own, with this run's
+// arguments, `--filter`, `--layout` and `--oracle-built` last, so each wins: the process's heaps,
+// which hold every string the conversion made until it exits, go with it. The child shares this
+// run's stdout and stderr, flushed first so its lines follow this run's; true when it exits 0
+[arch(at="ARCHITECTURE.md#apart")]
+def private convert_apart(stem, layout : string) : bool {
+    let argv <- get_command_line_arguments()
+    var words <- [for (word in argv); shell_word(word)]
+    if (!has_value(argv, "--")) {
+        words |> push("--")
+    }
+    words |> push_from([for (word in ["--filter", stem, "--layout", layout, "--oracle-built"]); shell_word(word)])
+    fflush(fstdout())
+    fflush(fstderr())
+    return unsafe(system(join(words, " "))) == 0
+}
+
 // one program's manifest written, the program converted in each layout `--layout` names and
-// reported; with `--native`, `--run`, `--error-check`, `--suite-check` or `--luac-check` its oracle
-// built first
-def private build_program(stem, main_source : string; args : Args) : bool {
+// reported, each in a process of its own (`convert_apart`) when `apart`; with `--native`, `--run`,
+// `--error-check`, `--suite-check` or `--luac-check` its oracle built first unless `--oracle-built`
+// says it is
+def private build_program(stem, main_source : string; args : Args; apart : bool) : bool {
     let manifest = write_manifest(stem)
     if (empty(manifest)) {
         to_log(LOG_ERROR, "lua: cannot write {WORK}/{stem}.program.json\n")
@@ -657,12 +682,12 @@ def private build_program(stem, main_source : string; args : Args) : bool {
         return false
     }
     let bin = path_join(WORK, "{stem}_native")
-    if ((args.native || args.run || args.error_check || args.suite_check || !empty(args.luac_check)) && !build_native(input.c_paths, bin)) {
+    if (!args.oracle_built && (args.native || args.run || args.error_check || args.suite_check || !empty(args.luac_check)) && !build_native(input.c_paths, bin)) {
         return false
     }
     var ok = true
     for (layout in layouts_of(args)) {
-        ok = convert_layout(stem, main_source, input, bin, layout, args) && ok
+        ok = (apart ? convert_apart(stem, layout) : convert_layout(stem, main_source, input, bin, layout, args)) && ok
     }
     return ok
 }
@@ -702,10 +727,14 @@ def main : int {
         to_log(LOG_ERROR, "lua: cannot create {WORK}\n")
         return 1
     }
+    // more than one conversion: each in a process of its own, so no conversion's garbage adds to
+    // the next one's
+    let programs = length([for (program in PROGRAMS); program; where empty(args.filter) || program._0 == args.filter])
+    let apart = programs * length(layouts_of(args)) > 1
     var ok = true
     for (program in PROGRAMS) {
         if (empty(args.filter) || program._0 == args.filter) {
-            ok = build_program(program._0, program._1, args) && ok
+            ok = build_program(program._0, program._1, args, apart) && ok
         }
     }
     return ok ? 0 : 1
