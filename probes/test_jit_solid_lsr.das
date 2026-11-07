@@ -21,7 +21,8 @@ def private machine_code(t : T?; name, source : string; llc_flags : array<string
     var args <- [pinned_llvm_tool("llc"), "-O3"]
     args |> push_from(llc_flags, [ir, "-o", s_path])
     var out : string
-    t |> equal(run_and_capture(args, out, 120.0), 0, "{name}: llc: {out}")
+    let rc = run_and_capture(args, out, 120.0)
+    t |> equal(rc, 0, "{name}: llc: {out}")
     let asm = fread(s_path)
     remove(ir)
     remove(s_path)
