@@ -2318,6 +2318,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `main`: every tier runs it, and the cached JIT builds the very DLL (the same cache key) `--jit-split-modules=0` builds, so
   the predictions above stand for B. Added before any run: binary_trees 14 and spectral_norm 500 under B at the single
   layout's 2.28x / 2.00x native within 10% (A as published, 2.57x / 4.79x); the startup row runs under B unchanged.
+  Review (2026-11-08, before any run of B): the single layout is split too by default (a partition per c_runtime
+  module, 9), so "one module either way" is wrong as a reason; the predicted single-layout numbers stand as written.
   The A/B (`/root/notes/parallel/pc-p7.0x-ab.sh`, the lead's batch): A the split default, B the pin, source, single and goto
   layouts, fib 30, nbody 20000, binary_trees 14, spectral_norm 500 and the startup row, 7 interleaved samples.
 - **P7.0y Hand-written daslang references beside the Rust translator's output** (owner note
