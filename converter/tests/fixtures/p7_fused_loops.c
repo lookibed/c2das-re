@@ -21,6 +21,13 @@ int c89_fresh(int n) {
     return total + i;
 }
 
+/* a counter named like a das keyword counts in its das name's free variant */
+int keyword_counter(int n) {
+    int block = n, total = block;
+    for (block = 0; block < n; block++) total += block;
+    return total;
+}
+
 /* exclusions: read after the loop, address taken, a goto out of the body, read on the next
    pass of an enclosing loop, read after a `do` its `break` leaves early, read on the next pass
    through a switch's `continue`, read after an `if` arm that returns */
@@ -94,7 +101,7 @@ int count_down(int count, unsigned u) {
 
 int main(void) {
     int a[4] = {1, 5, 2, 9};
-    printf("%d %d\n", c89_only(5), c89_fresh(4));
+    printf("%d %d %d\n", c89_only(5), c89_fresh(4), keyword_counter(3));
     printf("%d %d %d %d %d\n", read_after(9), address(3), goto_out(a, 4), next_pass(4), arm_return(5));
     printf("%d %d\n", do_break(4), switch_continue(3));
     printf("%d\n", bottom(3));

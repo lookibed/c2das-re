@@ -4114,13 +4114,15 @@ def private for_range(var em : Emitter; tu : CirTu; st : CirStmt const?) : bool 
     return true
 }
 
-// the name C89 counter `name` counts in where its declaration stays: the first numbered name
-// neither the function nor a global spells, the same for every loop of the counter
+// the name C89 counter `name` counts in where its declaration stays: its das name (`_c_block`
+// for a das keyword) with the first number neither the function nor a global spells, the same
+// for every loop of the counter
 def private fresh_counter(var em : Emitter; name : string) : string {
     if (!key_exists(em.range_fresh, name)) {
-        var fresh = free_name(em.spelled, name)
+        let base = das_name(em, name)
+        var fresh = free_name(em.spelled, base)
         while (key_exists(em.prog.global_names, fresh)) {
-            fresh = free_name(em.spelled, name)
+            fresh = free_name(em.spelled, base)
         }
         em.range_fresh[name] = fresh
     }
