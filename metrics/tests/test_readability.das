@@ -91,6 +91,16 @@ def test_literal_counts(t : T?) {
 }
 
 [test]
+def test_call_macro_counts(t : T?) {
+    t |> run("a c_runtime call macro's expansion adds no site, its literal argument counts once, a spelled reinterpret beside it counts") @(t : T?) {
+        let mc <- count_module("{FIXTURES}/call_macros.das")
+        expect_counts(t, mc, {"reinterpret" => 1, "unsafe_expr" => 1, "goto" => 1, "label" => 1, "literal_named" => 1})
+        let sites <- [for (s in mc.sites); "{s.line} {s.metric} {s.suggested_name}"]
+        t |> equal(sites, ["24 label ", "28 goto ", "30 unsafe_expr ", "30 reinterpret ", "31 literal_named Color.GREEN"])
+    }
+}
+
+[test]
 def test_named_counts(t : T?) {
     t |> run("an unwritten var global names its value, a written one does not, a folded literal whose text is not its value and the dialect init do not count") @(t : T?) {
         let mc <- count_module("{FIXTURES}/named.das")
