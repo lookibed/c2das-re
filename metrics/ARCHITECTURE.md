@@ -90,8 +90,8 @@ emitter's per-module `[init] c2das_dialect`. A `c_runtime` call macro's expansio
 reinterpret `enum_from_int(type<E>, i)` expands to) leaves no mark on its nodes and sits at the
 call (`probes/test_ast_facts.das`), so a site of `reinterpret`, `unsafe_block`, `goto` or `label`
 counts only where the text at its column starts with its keyword; a literal inside the call's
-argument counts as the program's, and a bare literal argument folds with the expansion into one
-constant at the call, which is no site. A generic the module defines is counted once:
+argument counts as the program's, and a bare literal argument (`enum_from_int(type<E>, 7)`) is no
+`literal_named` site under either counter: the cast node is visited, the literal is not. A generic the module defines is counted once:
 through its first instance when it has one, since one instance per call signature would count
 its text again, and as written when it has none. A generic without an instance is not
 inferred, so it gets only the counters that read the parser's nodes: `c_function`,

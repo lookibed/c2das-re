@@ -2016,7 +2016,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   since this item. Fix (branch `fix/readability-macro-sites`): a `reinterpret`, `unsafe_block`,
   `goto` or `label` site counts only where the text at its column spells its keyword (daslang
   marks no call-macro expansion: `probes/test_ast_facts.das`, lookibed/daScript#42); a bare
-  literal argument folds with the expansion and is no `literal_named` site.
+  literal argument (`enum_from_int(type<E>, 7)`) is no `literal_named` site: the walk visits the cast, not the literal.
 - **P7.0i Character literals as `'c'`** (ruling (23), the critic's finding 3): a C character
   literal reaches the das text as `'c'` where the C had one (the C-IR carries the literal's kind;
   `probes`/P2.5's ledger line), readable-only, default; one small pull request.
