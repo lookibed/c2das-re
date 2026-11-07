@@ -192,8 +192,12 @@ one process add up: each conversion of `lua` holds about 1.4 GB at its peak, and
 `run.das` (two programs, three layouts) would hold about their sum in one process. A run that makes
 more than one conversion therefore makes each in a process of its own: `run.das` writes each
 program's manifest and builds its oracle, then runs itself once per layout with its own arguments
-and `--filter <stem> --layout <layout> --oracle-built` last, which override any earlier ones, the
-child sharing its stdout and stderr, flushed before each child starts, so the report is the one a
-single process prints, line for line and in order. `--oracle-built` skips the oracle build, so the
-oracle is built once per program. A run of one conversion (`--filter` and a single `--layout`)
-converts in its own process.
+and `--filter <stem> --layout <layout> --oracle-built` last, which override any earlier ones, a `--`
+before them when the run had none; the child shares its stdout and stderr, whose lines `to_log`
+flushes one by one, so the report is the one a single process prints, line for line and in order.
+`--oracle-built` marks the child: it skips the oracle build, so the oracle is built once per
+program, refuses a run whose oracle is missing, and converts in its own process whatever else its
+arguments name, so no child starts another. A child that does not exit 0 fails the run and is logged
+as `lua: <stem> (<layout>): the conversion process exited <code>` or `was killed by signal <n>`, the
+next layout still converted; one ended by SIGINT stops the run, which starts no further conversion.
+A run of one conversion (`--filter` and a single `--layout`) converts in its own process.
