@@ -61,10 +61,12 @@ collide, so every group is one suite. A new suite, or a test that writes a fixed
 | `doom/tests` | temp folders (`doom_demo_run_*`, `doom_convert_*`) | none |
 | `tests` | temp stand-in suites | none |
 
-Every suite also writes three shared caches, safe under concurrency: `.cache/daslang/` (the JIT's
-objects, named by content hash, and the module cache), and `dasCRuntime/.das_module.manifest`
-and `c_runtime/.das_module.manifest` (rewritten through a temp file and a rename, the same rows
-from every writer). No suite binds a port.
+Every suite also writes three shared caches. `.cache/daslang/` (the JIT's objects, named by
+content hash, and the module cache) is safe under concurrency. `dasCRuntime/.das_module.manifest`
+and `c_runtime/.das_module.manifest` are rewritten through one fixed temp name and a rename
+(daScript `src/ast/dyn_modules.cpp`, `write_manifest`): two writers at once can collide on that
+name, and a reader that then finds the manifest missing or torn recompiles the descriptor. That
+costs a compile, never a wrong result, and every writer writes the same rows. No suite binds a port.
 
 `isolated_suites` run each test file in its own dastest worker (`--isolated-mode`, `iso_threads`
 workers): `probes`, `converter/tests`, `c_runtime/tests` and `doom/tests`, whose files write only
