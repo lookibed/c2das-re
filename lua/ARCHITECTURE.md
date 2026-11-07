@@ -186,13 +186,14 @@ before any run, naming each attempt, as does a `lua` launcher the lane cannot wr
 
 ## 7. A process per conversion {#apart}
 
-A daslang context keeps every string it allocates until the process exits, and its heaps never
-shrink, so the conversions of one process add up: each conversion of `lua` holds about 1.9 GB at its
-peak, and the six of a plain `run.das` (two programs, three layouts) would hold 7.7 GB in one
-process. A run that makes more than one conversion therefore makes each in a process of its own:
-`run.das` writes each program's manifest and builds its oracle, then runs itself once per layout
-with its own arguments and `--filter <stem> --layout <layout> --oracle-built` last, which override
-any earlier ones, the child sharing its stdout and stderr, flushed before each child starts, so the
-report is the one a single process prints, line for line and in order. `--oracle-built` skips the
-oracle build, so the oracle is built once per program. A run of one conversion (`--filter` and a
-single `--layout`) converts in its own process.
+A daslang context keeps every string it allocates until the process exits, unless the code frees it
+(the dumper frees clang's JSON text once parsed), and its heaps never shrink, so the conversions of
+one process add up: each conversion of `lua` holds about 1.4 GB at its peak, and the six of a plain
+`run.das` (two programs, three layouts) would hold about their sum in one process. A run that makes
+more than one conversion therefore makes each in a process of its own: `run.das` writes each
+program's manifest and builds its oracle, then runs itself once per layout with its own arguments
+and `--filter <stem> --layout <layout> --oracle-built` last, which override any earlier ones, the
+child sharing its stdout and stderr, flushed before each child starts, so the report is the one a
+single process prints, line for line and in order. `--oracle-built` skips the oracle build, so the
+oracle is built once per program. A run of one conversion (`--filter` and a single `--layout`)
+converts in its own process.

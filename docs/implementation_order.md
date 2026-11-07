@@ -2362,6 +2362,22 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   same hot path (loops, pointers and arrays, structs, globals, options), the speed per lane where
   a like-for-like run exists, and every construct our output could adopt, one ledger row each with
   its expected effect written before measuring. After the current P7.0 speed rows.
+- **P7.0za The Lua conversion's memory** (owner ruling 35, second item) - Done: `lua/run.das --native
+  --run` (both programs, three layouts, one process) peaked at 7.7 GB RSS and the 11-07 ports publish
+  was OOM-killed. Cause: a daslang context frees no string it is not told to and its heaps never
+  shrink, so the six conversions of one run added up, about 1.9 GB each, and within one conversion
+  clang's JSON text (500 MB over `lua`'s 33 files) stayed on the string heap after its parse. Fix:
+  a run of more than one conversion makes each in a process of its own (`lua/ARCHITECTURE.md`
+  section 7, the oracle built once by the parent, `--oracle-built` in the child), and the dumper
+  frees the JSON text once parsed. Peak RSS (bench, `/usr/bin/time -v` with a 1 s sampler summing the
+  process tree), before / after: `--filter lua --layout source` 1.87 / 1.40 GB, `single` 1.91 /
+  1.43 GB, `source-cut` 1.84 / 1.35 GB, the whole run (`--native`, both programs, three layouts)
+  7.96 / 1.61 GB (the parent and one child; the largest process 1.43 GB). The six output trees hash
+  the same before and after and the run's log is the same line for line, its seconds aside. Under
+  heavy's default 4G cap now. Left: the per-conversion floor is the dump phase (each unit's CirTu
+  kept until the link, the JSON tree at the parse), not the emitter or the compile check. The harness
+  test pins the arguments, the one oracle build and the order, not the separate processes, which the
+  bench peak shows.
 - Owner ruling 34 (2026-11-06): the dasProfile-method hand-written column stays the bench's
   capture; no daScript SDK on box PC; re-run only on the bench at a phase end, never a PR blocker.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
