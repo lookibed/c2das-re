@@ -2225,31 +2225,74 @@ def private literal_index(i : CirExpr?) : int64 {
     return try_to_int64(i.v) ?? -1l
 }
 
+// the value of a subscript that is a `literal_index` or an enumerator of at least 0, under
+// integer casts each of which holds it (`int(E.X)`); -1 for any other subscript
+def private constant_index(tu : CirTu; i : CirExpr?) : int64 {
+    if (i != null && i.e == "cast") {
+        let v = constant_index(tu, i.a)
+        return v >= 0l && holds_value(tu, i.t, v) ? v : -1l
+    }
+    if (i != null && i.e == "enum_ref") {
+        for (item in tu.types[i.enum_t].items) {
+            if (item.name == i.item && item.v >= 0l) {
+                return item.v
+            }
+        }
+        return -1l
+    }
+    return literal_index(i)
+}
+
+// whether integer type `t` (not `_Bool`) holds the value `v`, which is at least 0
+def private holds_value(tu : CirTu; t : int; v : int64) : bool {
+    if (kind_of(tu, t) != "int" || is_c_bool(tu, t)) {
+        return false
+    }
+    let bits = tu.types[t].w - (tu.types[t].is_signed ? 1 : 0)
+    return bits >= 63 || v < (1l << int64(bits))
+}
+
+// whether subscript `i` is a plain load: a variable or a field, under casts, read without a
+// volatile access, which a spelling may repeat
+def private plain_load(tu : CirTu; i : CirExpr const?) : bool {
+    var at = i
+    while (at != null && (at.e == "cast" || at.e == "member")) {
+        at = at.e == "cast" ? at.a : at.base
+    }
+    return at != null && at.e == "ref" && !is_c_bool(tu, i.t) && !reads_volatile(i)
+}
+
 // `&a[k]` of an array (`x` the `&`): C may form the address one past the end, and das
-// range-checks `addr(a[N])` (`docs/probe-findings.md` F45), so an index that can reach the
-// length is the decayed array plus `end_index(k, N)` (`c_runtime/c_bounds`), and the length
-// itself is the decayed array plus `N`; a constant index below or past the length keeps
-// `addr(a[k])`, das's range check standing for C's undefined behaviour past the end. In a
-// global initializer the decay and the sum each wrap themselves (F48). An empty text for any
-// other operand.
+// range-checks `addr(a[N])` (`docs/probe-findings.md` F45). A constant index (`constant_index`)
+// that is the length is the decayed array plus `N`; one below or past the length keeps
+// `addr(a[k])`, das's range check standing for C's undefined behaviour past the end. A plain
+// load of an array without effects is `k == N ? addr(a[0]) + N : addr(a[k])`, das's own range
+// check on every index but the length, with no call; any other index is the decayed array plus
+// `end_index(k, N)` (`c_runtime/c_bounds`), which spells the index once. In a global initializer
+// the decay and the sum each wrap themselves (F48). An empty text for any other operand.
 def private one_past_end_address(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let at = x.a
     if (x.op != "addr" || at.e != "index" || at.base.e != "cast" || at.base.cast_kind != "ArrayToPointerDecay" || kind_of(tu, at.base.a.t) != "array" || at.base.a.e == "str_lit" || !empty(unchecked_access(em, tu, at.base.a))) {
         return Em()
     }
     let count = tu.types[at.base.a.t].count
-    let k = literal_index(at.i)
+    let k = constant_index(tu, at.i)
     if (count <= 0 || (k >= 0l && k != int64(count))) {
         return Em()
     }
     let arr = emit_expr(em, tu, at.base.a, loc)
     let decay = unsafe_value(em, "addr({wrap(arr, PREC_PRIMARY)}[0])", PREC_PRIMARY)
-    var offset = "{count}"
-    if (k < 0l) {
-        em.requires |> insert("c_runtime/c_bounds")
-        offset = "{END_INDEX}({index_value(em, tu, at.i, loc).text}, {count})"
+    if (k >= 0l) {
+        return unsafe_value(em, "{decay.text} + {count}", PREC_ADD)
     }
-    return unsafe_value(em, "{decay.text} + {offset}", PREC_ADD)
+    let index = index_value(em, tu, at.i, loc)
+    if (plain_load(tu, at.i) && !has_effects(at.base.a) && !reads_volatile(at.base.a)) {
+        let length = int_literal(index_type(em, tu, at.i, loc), "{count}")
+        let element = unsafe_value(em, "addr({wrap(arr, PREC_PRIMARY)}[{index.text}])", PREC_PRIMARY)
+        return value("{wrap(index, PREC_EQ + 1)} == {length} ? {decay.text} + {count} : {element.text}", PREC_COND)
+    }
+    em.requires |> insert("c_runtime/c_bounds")
+    return unsafe_value(em, "{decay.text} + {END_INDEX}({index.text}, {count})", PREC_ADD)
 }
 
 //! The das text of expression `x`; a `_Bool` expression is a das `bool` (`is_bool`), so a truth
@@ -2730,6 +2773,10 @@ def private index_value(var em : Emitter; tu : CirTu; i : CirExpr?; loc : CirLoc
     let at = enum_as_int(to_int(emit_expr(em, tu, i, loc)), tu, i.t)
     return is_small_int(tu, i.t) ? value("int({at.text})", PREC_PRIMARY) : at
 }
+
+// the das type `index_value` spells subscript `i` in: `int` for an enum or a small integer
+def private index_type(var em : Emitter; tu : CirTu; i : CirExpr?; loc : CirLoc) : string =>
+    kind_of(tu, i.t) == "enum" || is_small_int(tu, i.t) ? "int" : das_type(em, tu, i.t, loc)
 
 // `a[i]` of an array is the das index, range-checked; of a pointer it is `deref(p + i)`; of a
 // byte pointer to a marshal-only record it is the record read at the scaled offset

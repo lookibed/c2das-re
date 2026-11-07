@@ -174,6 +174,7 @@ def test_lowerings(t : T?) {
     p8_refusal_fixtures(t)
     p7_readable_fixtures(t)
     p7_goto_into_fixtures(t)
+    p7_end_index_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -228,10 +229,10 @@ def p2_fixtures(t : T?) {
         t |> equal(text |> find("var ptrs : int? [2] = fixed_array<int?>(unsafe(addr(full[1])), null)") >= 0, true, text)
         t |> equal(text |> find("var row : int[3]? = addr(m[1])") >= 0, true, text)
         t |> equal(text |> find("deref(row)[2]") >= 0, true, text)
-        // an address that may be one past the end is the decayed array plus the checked index (F45)
+        // an address that may be one past the end is the decayed array plus the length there, das's
+        // own index elsewhere (F45)
         has_text(t, text, "addr(full[0]) + 3")
-        has_text(t, text, "addr(local[1]), addr(local[0]) + end_index(n, 4)")
-        has_text(t, text, "require c_runtime/c_bounds")
+        has_text(t, text, "addr(local[1]), n == 4 ? addr(local[0]) + 4 : addr(local[n])")
         // in a global initializer the decay and the sum each take their own unsafe (F48)
         has_text(t, text, "var gend : int? = unsafe(unsafe(addr(full[0])) + 3)")
         has_text(t, text, "var ends : int? [2] = fixed_array<int?>(unsafe(addr(full[0])), unsafe(unsafe(addr(full[0])) + 3))")
@@ -440,7 +441,7 @@ def p6_pointer_fixtures(t : T?) {
         has_text(t, text, "var third : uint8? = cp + 2 * 3\n")
         has_text(t, text, "read_cell_t_v(cp + 1 * 3 + 1 * 3, 0)")
         // p_pspr.c's state offset, an enum plus a pointer less a pointer, converted to the enum
-        has_text(t, text, "enum_from_int(type<st_t>, int(int64(psp.state + uint(int(p6_commuted_sum__info.flash)) - (addr(p6_commuted_sum__states[0]) + end_index(int(st_t.S_A), 8)))))")
+        has_text(t, text, "enum_from_int(type<st_t>, int(int64(psp.state + uint(int(p6_commuted_sum__info.flash)) - (addr(p6_commuted_sum__states[int(st_t.S_A)])))))")
     }
     t |> run("the offset idiom `(integer)&((T *)0)->f[i]` is the offset as an integer, a marshal record's clang's; `offsetof` beside it") @(t : T?) {
         var text : string
@@ -1196,7 +1197,7 @@ def p4_csmith_more_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p6_extern_array", text)
         // a function and a file-scope initializer before the definition index and decay its storage
-        has_text(t, text, "    return addr(_c_table[0]) + end_index(k, 4)\n")
+        has_text(t, text, "    return k == 4 ? addr(_c_table[0]) + 4 : addr(_c_table[k])\n")
         has_text(t, text, "var private p6_extern_array__third : int? = unsafe(addr(_c_table[2]))\n")
         has_text(t, text, "    return grid[1][1] + grid[0][1]\n")
         // the address of the whole array converts to the definition's row pointer
@@ -2643,5 +2644,58 @@ def p7_goto_into_fixtures(t : T?) {
         has_text(t, text, "        \} else \{\n            return 12\n        \}\n    \} else \{\n        c_label_end()\n    \}\n    label 1:  // out\n")
         rejects(t, "goto_into_setjmp", "#include <setjmp.h>\nstatic jmp_buf b;\nint main(void) \{ int n = 0; goto in; if (setjmp(b) == 0) \{ in: n = 5; \} else \{ n = 1; \} return n; \}\n", "a goto into an arm of a setjmp `if` is not lowered")
         rejects(t, "goto_open_redispatch", "int main(void) \{ int x = 1, n = 0; switch (x) \{ case 1: goto two; case 2: do \{ two: n++; case 3: n += 2; \} while (0); \} return n; \}\n", "that a goto from another case re-dispatches is not lowered")
+    }
+}
+
+// P7.0zb: `&a[k]` of an array without the `end_index` call where the index allows it
+def p7_end_index_fixtures(t : T?) {
+    t |> run("`&a[k]`: a constant folds, a plain load is das's own index but at the length, any other index takes end_index; one past the end as natively under interp and jit") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_end_index", text)
+        // a plain load in each index type compares with the length in its own type
+        has_text(t, text, "    return k == 4 ? addr(p7_end_index__a[0]) + 4 : addr(p7_end_index__a[k])\n")
+        has_text(t, text, "    return k == 4u ? addr(p7_end_index__a[0]) + 4 : addr(p7_end_index__a[k])\n")
+        has_text(t, text, "    return k == 4l ? addr(p7_end_index__a[0]) + 4 : addr(p7_end_index__a[k])\n")
+        has_text(t, text, "    return k == 4ul ? addr(p7_end_index__a[0]) + 4 : addr(p7_end_index__a[k])\n")
+        // a field, through a pointer and widened from a small integer
+        has_text(t, text, "    return int(e.small) == 4 ? addr(e.oam[0]) + 4 : addr(e.oam[int(e.small)])\n")
+        has_text(t, text, "    return e.k == 4 ? addr(e.oam[0]) + 4 : addr(e.oam[e.k])\n")
+        // an enumerator and a literal under a cast that holds it fold as a literal does
+        has_text(t, text, "    return addr(p7_end_index__a[int(Ch.CH2)])\n")
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + 4\n")
+        has_text(t, text, "    return addr(p7_end_index__a[int(uint8(3))])\n")
+        // a cast that changes the value, a compound, a `_Bool` or a volatile index, an array
+        // with an effect or behind a volatile load keep the call
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(int(uint8(260)), 4)\n")
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(i + j, 4)\n")
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(b ? 1 : 0, 4)\n")
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(c_volatile_load(vk), 4)\n")
+        has_text(t, text, "    return addr(p7_end_index__next_emu().oam[0]) + end_index(k, 4)\n")
+        has_text(t, text, "    return addr(c_volatile_load(vp).oam[0]) + end_index(k, 4)\n")
+        // as an operand the conditional takes parentheses
+        has_text(t, text, "int(int64((p7_end_index__g_emu.k == 4 ? addr(p7_end_index__a[0]) + 4 : addr(p7_end_index__a[p7_end_index__g_emu.k])) - addr(p7_end_index__a[1])))")
+        let path = converted_path("p7_end_index")
+        let want = native("p7_end_index")
+        var out : string
+        let no_flags : array<string>
+        t |> equal(run_tier(path, "jit", path_join(work_root, "end_index_jit"), out, CONVERTED_MODULES), want.rc, out)
+        let program = join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
+        t |> equal(program, want.out, "jit")
+        // past the end and below zero the conditional's own index panics as the range check
+        for (tier in ["interp", "jit"]) {
+            for (args in [["past"], ["below", "zero"]]) {
+                var panicked : string
+                let rc = run_tier(path, tier, path_join(work_root, "end_index_{tier}_{length(args)}"), panicked, CONVERTED_MODULES, 600.0, no_flags, args)
+                t |> success(rc != 0 && panicked |> contains("index out of range"), "{tier} {args}: {rc} {panicked}")
+            }
+        }
+    }
+    t |> run("`&a[k]`: a constant that its casts change, a cast to an enum or a negative enumerator keeps the call; a wide cast folds") @(t : T?) {
+        let source = "enum Ch \{ CH0, CH1, CH2 \};\nenum Neg \{ NEG = -1 \};\nstatic int a[4];\nstatic int *sc(void) \{ return &a[(signed char)128]; \}\nstatic int *en(void) \{ return &a[(enum Ch)2]; \}\nstatic int *ng(void) \{ return &a[NEG]; \}\nstatic int *wide(void) \{ return &a[(long)4]; \}\nint main(void) \{ return (sc() != 0) + (en() != 0) + (ng() != 0) - 3 + (wide() == &a[4]); \}\n"
+        let text = converts(t, "end_index_casts", source)
+        has_text(t, text, "    return addr(end_index_casts__a[0]) + end_index(int(int8(128)), 4)\n")
+        has_text(t, text, "end_index(int(Ch.CH2), 4)")
+        has_text(t, text, "end_index(int(Neg.NEG), 4)")
+        has_text(t, text, "    return addr(end_index_casts__a[0]) + 4\n")
     }
 }

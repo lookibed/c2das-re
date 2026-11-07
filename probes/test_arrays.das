@@ -94,6 +94,22 @@ def test_csmith_arrays(t : T?) {
             t |> equal(intptr(wide) == intptr(end), true)
         }
     }
+    t |> run("k == N ? addr(a[0]) + N : addr(a[k]) is the address one past the end at N and range-checks a negative or past index (F45)") @(t : T?) {
+        var big : int[3]
+        unsafe {
+            for (k in [3, 2, -1, 4]) {
+                g_idx = k
+                var caught = false
+                try {
+                    let p = g_idx == 3 ? addr(big[0]) + 3 : addr(big[read_idx()])
+                    t |> equal(int(intptr(p) - intptr(addr(big[0]))), 4 * k)
+                } recover {
+                    caught = true
+                }
+                t |> equal(caught, k < 0 || k > 3, "{k}")
+            }
+        }
+    }
     t |> run("a pointer steps by an int, uint, int64 or uint64 offset; uint64 of a negative is past any length") @(t : T?) {
         var big : int[3]
         g_idx = 3

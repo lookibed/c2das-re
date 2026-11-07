@@ -137,12 +137,12 @@ bare declaration followed by one store per written element (at module init for a
 index, range-checked (the documents' safety oracle); a subscript of a pointer is `deref(p +
 i)`; an index of a small integer type widens to `int`, since das indexes by `int`, `int64`,
 `uint` and `uint64` alone and C does not promote a subscript (F43); `&a[k]` of an array whose
-index can reach the length is `addr(a[0]) + end_index(k, N)` (`c_runtime/c_bounds`, which
-panics past `N` with das's own range-check wording), and a constant `N` is `addr(a[0]) + N`,
-since C may form the address one past the end and das range-checks `addr(a[N])` (F45); a
-constant below the length keeps `addr(a[k])`, and so does a constant past it, whose range
-check stands for C's undefined behaviour, while a literal past `int64` counts as no constant.
-In a global initializer the decay and the sum each wrap themselves, `unsafe(unsafe(addr(a[0]))
+index is the constant `N` is `addr(a[0]) + N`, since C may form the address one past the end and das range-checks `addr(a[N])` (F45); a
+constant below or past the length keeps `addr(a[k])`, das's range check standing for C's undefined behaviour past it, a constant being a
+decimal literal within `int64` or a non-negative enumerator under integer casts that each hold it (`addr(a[int(E.X)])`); a plain load (a
+variable or a field under casts, no volatile access) into an array without effects is `k == N ? addr(a[0]) + N : addr(a[k])`, das's own
+check on every index but the length with no call per access; any other index, which that form would spell or evaluate twice, is
+`addr(a[0]) + end_index(k, N)` (`c_runtime/c_bounds`, panicking past `N` in das's range-check wording). In a global initializer the decay and the sum each wrap themselves, `unsafe(unsafe(addr(a[0]))
 + k)` (F48). A reference C makes before the definition that gives its array a length (`extern int a[];`, the definition later in the unit or in another unit) keeps clang's type of unknown length in the C-IR and takes the type of the global its name binds to before anything is spelled (`complete_extern_arrays`), so it indexes and decays the definition's storage, and its address `&a` (`int (*)[]`) converts to a sized row pointer or an element pointer as C converts it, the conversion spelling the target type; a declarator of a pointer to an array of unknown length (`int (*p)[] = &a;`) fails closed; one no unit defines fails closed naming it; a row pointer is `T[N]?` and reads as `deref(row)[i]`; decay is `addr(a[0])`. A function
 pointer is a das function value, `function<(a0 : T; ...) : R>` with the parameters named by
 position, a function's name decays to `@@name`, and a call through a pointer, `fp(...)` or
