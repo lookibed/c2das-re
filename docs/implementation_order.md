@@ -2310,6 +2310,16 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   10%), the single layout unchanged (it is one module either way); the goto source layout under the monolithic build then shows
   its single-layout gain, about 1.3x on fib over chain; the cached `-e "print(1)"` startup moves less than 10% (one DLL loaded
   either way), the no-cache startup pays the whole compile on every run.
+  Mechanism (2026-11-08, before any timing of it; F92): daslang takes no partitioning flag before the script, the JIT reads
+  `--jit-split-modules` only after `--`, where the converted program reads it as its own argument (Lua's `-e "print(1)"`
+  refuses it), no environment variable sets it, and the script pin `options jit_split_modules` is an invalid option unless
+  the program requires `llvm/llvm_jit`. `c_runtime/c_jit_build` declares the option, so the sidecar's `jit_whole_program`
+  (set in `lua/lua.c2das`) has the converter write `options jit_split_modules = 0` and the require into the module holding
+  `main`: every tier runs it, and the cached JIT builds the very DLL (the same cache key) `--jit-split-modules=0` builds, so
+  the predictions above stand for B. Added before any run: binary_trees 14 and spectral_norm 500 under B at the single
+  layout's 2.28x / 2.00x native within 10% (A as published, 2.57x / 4.79x); the startup row runs under B unchanged.
+  The A/B (`/root/notes/parallel/pc-p7.0x-ab.sh`, the lead's batch): A the split default, B the pin, source, single and goto
+  layouts, fib 30, nbody 20000, binary_trees 14, spectral_norm 500 and the startup row, 7 interleaved samples.
 - **P7.0y Hand-written daslang references beside the Rust translator's output** (owner note
   2026-11-06, the reference pass of ruling 33 item 3 widened): the owner's plmpeg port
   (lookibed/plmpeg-stream, checkout `/root/plmpeg-stream`, bench `/root/plmpeg_bench`) against our
