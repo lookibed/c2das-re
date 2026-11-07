@@ -43,7 +43,8 @@ A `for` is one of four shapes, the first that applies:
   (`probes/test_scalars.das`), so a counter whose every reference sits in such loops loses its
   declaration (when it has no initializer or a literal one and is no switch's carried one) and
   counts in its C name, and any other counts in a free numbered name (`i1`), the same for each
-  of its loops (`plan_counted_loops`). Under the `loops` option `while` (the CLI's
+  of its loops (`plan_counted_loops`), past a global of that name. A loop a case label below its
+switch's level enters (Duff's device) is spelled open and never counts. Under the `loops` option `while` (the CLI's
   `--loops while`, the sidecar's `"loops": "while"`) no loop takes this shape, and every `do`
   takes the first-pass flag.
 - **The trailing increment**: a body that holds no `continue` of the loop (one outside every
@@ -61,8 +62,8 @@ loop in order: a plain store `i = e` with no `i` in `e`, a declaration of `i` an
 initializer is such a store assign it; a `return` ends the path; an `if` takes the worse of its
 arms; a loop that names `i` with a head that reads nothing of it takes its body's first pass,
 which a `while` or `for` may skip and a `do` may leave early by a `break` or a `continue`; a `break` or
-`continue` of a loop around the walked statements, a switch with such a `continue`, and every
-other naming of `i` are reads. At the end of an enclosing loop's body the walk reads its test
+`continue` of a loop around the walked statements, any statement holding one (`escapes`), and
+every other naming of `i` are reads: a structure the walk does not follow is a read. At the end of an enclosing loop's body the walk reads its test
 and step, then its body from the top, and leaves the loop when that pass reads nothing first.
 The function holds no `goto` and takes no address of `i`, the callers' checks, so no other
 path reaches a read.

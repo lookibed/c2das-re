@@ -160,11 +160,11 @@ def test_lowerings(t : T?) {
     p5_program_fixtures(t)
     p5_lua_fixtures(t)
     p5_lua_library_fixtures(t)
-    p7_first_member_fixtures(t)
+    p7_fixtures(t)
     p7_volatile_fixtures(t)
     p7_expect_fixtures(t)
     p7_wrap_fixtures(t)
-    p7_fixtures(t)
+    p7_first_member_fixtures(t)
     p5_lua_expression_fixtures(t)
     p7_restart_sentinel_fixtures(t)
     p7_goto_dispatch_fixtures(t)
@@ -2129,6 +2129,7 @@ def p7_fixtures(t : T?) {
         t |> success(refused.error |> contains("--loops is range or while, not `for`"), refused.error)
     }
     p7_fused_loop_fixtures(t)
+    p7_fused_loop_while_fixtures(t)
 }
 
 // P7.0d: C's wrapping arithmetic through the unsigned twin with a narrower operand or `* & | ^`
@@ -2145,6 +2146,17 @@ def p7_wrap_fixtures(t : T?) {
     }
 }
 
+// the fused loops under `--loops while`
+def p7_fused_loop_while_fixtures(t : T?) {
+    t |> run("fused loops under `--loops while`: no range loop, every `do` the first-pass flag") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_fused_loops", text, "", "while")
+        t |> equal(text |> find(" in range(") < 0 && text |> find(" in urange64(") < 0, true, text)
+        has_text(t, text, "    var _first = true\n    while (true) \{\n        if (!_first) \{\n            n--\n")
+        has_text(t, text, "    var _first3 = true\n    while (_first3 || 0 != 0) \{\n")
+    }
+}
+
 // the fused loops of P7.0s: the C89 range loop, the bottom-tested `do`, the count-down range,
 // each exclusion, and none of them under `--loops while`
 def p7_fused_loop_fixtures(t : T?) {
@@ -2155,9 +2167,10 @@ def p7_fused_loop_fixtures(t : T?) {
         // a loop after the last one that names `j` only inside its body included
         has_text(t, text, "def c89_only(n : int) : int \{\n    var total : int = 0\n    for (i in range(n)) \{\n        for (j in range(2, n)) \{\n")
         has_text(t, text, "    for (i in range(2)) \{\n        for (j in range(2)) \{\n")
-        // dead after the loop but read elsewhere: a free name, the declaration stays
+        // dead after the loop but read elsewhere: a free name (`i2`, the global `i1` taken), the
+        // declaration stays
         has_text(t, text, "    for (_c_block1 in range(n)) \{\n        total += _c_block1\n")
-        has_text(t, text, "    var i : int = sink(n)\n    var total : int = i\n    for (i1 in range(n)) \{\n        total += i1\n")
+        has_text(t, text, "    var i : int = sink(n)\n    var total : int = i\n    for (i2 in range(n)) \{\n        total += i2\n")
         // read after, address taken, a goto out, the next pass reads, a `do` left early by its
         // `break`, a switch's `continue`, an `if` arm: the loop keeps its `while` form
         has_text(t, text, "        i = 0\n        var _f = false\n")
@@ -2173,12 +2186,32 @@ def p7_fused_loop_fixtures(t : T?) {
         has_text(t, text, "def while_continue(n : int; x : int) : int \{\n    var i : int = 0\n    var k : int = 0\n    \{\n        i = 0\n        while (i < n) \{\n")
         has_text(t, text, "        c_volatile_store(i, 0)\n        while (c_volatile_load(i) < n) \{\n")
         has_text(t, text, "        while (k < 3 + i) \{\n            \{\n                i = 0\n")
-        has_text(t, text, "            k += i\n")
+        has_text(t, text, "            k += i + 2\n")
         has_text(t, text, "    if (_cond == 1) \{\n        \{\n            i = 0\n            while (i < n) \{\n")
+        // a `break` or `continue` in a statement that never names the counter, a body that writes
+        // it, two declarations of the name, a later loop's first pass or a later `do`'s test
+        // reading it, a store that reads it or a compound one, Duff's device: `while`
+        has_text(t, text, "        if (k == 1) \{\n            break\n        \}\n        i = 0\n    \}\n    return i * 100 + t\n")
+        has_text(t, text, "            while (i < n) \{\n                t++\n                i++\n            \}\n        \}\n        if (k == 1) \{\n            continue\n")
+        has_text(t, text, "            if (i == 1) \{\n                i++\n            \}\n")
+        has_text(t, text, "    \{\n        var i : int\n        \{\n            i = 1\n            while (i < n) \{\n")
+        has_text(t, text, "            t++\n            i++\n        \}\n    \}\n    while (k < 2) \{\n        t += i\n")
+        has_text(t, text, "    \}\n    while (true) \{\n        k++\n        if (!(k < i)) \{\n")
+        has_text(t, text, "def self_store(n : int) : int \{\n    var i : int = 0\n    \{\n        i = 0\n        while (i < n) \{\n")
+        has_text(t, text, "def compound_store(n : int) : int \{\n    var i : int = 0\n    \{\n        i = 0\n        while (i < n) \{\n")
+        has_text(t, text, "    var i : int = 0\n    var t : int = 0\n    let _cond = c\n    if (_cond == 0) \{\n        goto label 2\n")
+        // an initializer with an effect or a switch's carried declaration stays: a free name;
+        // a global `i1` is skipped, and each loop of the counter takes the same free name
+        has_text(t, text, "    var i : int = sink(9)\n    var t : int = 0\n    for (i2 in range(n)) \{\n")
+        has_text(t, text, "        if (_flag) \{\n            for (i2 in range(n)) \{\n                t += i2\n")
+        has_text(t, text, "    for (i2 in range(n)) \{\n        t += i2\n    \}\n    for (i2 in range(2, n)) \{\n")
+        // count-down kept: a volatile count, a 64-bit count
+        has_text(t, text, "        let _t0 = c_volatile_load(v)\n")
+        has_text(t, text, "        t += 10\n        let _t1 = w\n")
         // count-down kept: a cast on the test, the address taken, a goto in the function
         has_text(t, text, "        n--\n        if (!(uint8(_t0) != 0)) \{\n")
-        has_text(t, text, "        let _t0 = m\n")
-        has_text(t, text, "        let _t1 = g\n")
+        has_text(t, text, "        t += 2\n        let _t0 = m\n")
+        has_text(t, text, "        t += 3\n        let _t0 = g\n")
         // `do while (0)` with a `continue` keeps the flag, with a `return` the loop
         has_text(t, text, "    var _first = true\n    while (_first || 0 != 0) \{\n        _first = false\n        t++\n")
         has_text(t, text, "            return t\n        \}\n        t++\n        break\n    \}\n")
@@ -2198,13 +2231,6 @@ def p7_fused_loop_fixtures(t : T?) {
         has_text(t, text, "    for (_t2 in urange64(uint64(u) + 1ul)) \{\n")
         has_text(t, text, "        let _t3 = kept\n")
         has_text(t, text, "        let _t4 = named\n")
-    }
-    t |> run("fused loops under `--loops while`: no range loop, every `do` the first-pass flag") @(t : T?) {
-        var text : string
-        check_fixture(t, "p7_fused_loops", text, "", "while")
-        t |> equal(text |> find(" in range(") < 0 && text |> find(" in urange64(") < 0, true, text)
-        has_text(t, text, "    var _first = true\n    while (true) \{\n        if (!_first) \{\n            n--\n")
-        has_text(t, text, "    var _first3 = true\n    while (_first3 || 0 != 0) \{\n")
     }
 }
 

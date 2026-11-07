@@ -4055,7 +4055,7 @@ def private counted_for(var em : Emitter; tu : CirTu; st : CirStmt const?) : Cou
     } elif (store != null && !em.has_goto) {
         let name = below_casts(store.a).name
         loop = CountedFor(name = name, t = em.local_types?[name] ?? -1, start = store.b)
-        if (loop.t < 0 || store.b.t != loop.t) {
+        if (loop.t < 0) {
             return CountedFor()
         }
     } else {
@@ -4097,17 +4097,15 @@ def private for_range(var em : Emitter; tu : CirTu; st : CirStmt const?) : bool 
     }
     let zero = below_casts(loop.start)
     let start = zero.e == "int_lit" && zero.v == "0" ? "" : "{first.text}, "
-    let kept = em.renames?[loop.name] ?? ""
-    if (!loop.declared && !key_exists(em.range_counters, loop.name)) {
+    let fresh = !loop.declared && !key_exists(em.range_counters, loop.name)
+    if (fresh) {
         em.renames[loop.name] = fresh_counter(em, loop.name)
     }
     open_block(em, "for ({das_name(em, loop.name)} in {loop.kind}({start}{bound.text}))")
     emit_loop_body(em, tu, st.body_s)
     close_block(em)
-    if (empty(kept)) {
+    if (fresh) {
         em.renames |> erase(loop.name)
-    } else {
-        em.renames[loop.name] = kept
     }
     if (scoped) {
         close_block(em)
@@ -4156,6 +4154,7 @@ def private plan_counted_loops(var em : Emitter; tu : CirTu; d : CirDecl) {
     }
     var in_loops : table<string; int>
     each_stmt(body) $(s) {
+        // a loop a case label below its switch's level enters is spelled open, never a range
         if (s.s == "for" && !key_exists(em.opened, intptr(s))) {
             let loop = counted_for(em, tu, s)
             if (!empty(loop.kind) && !loop.declared) {
@@ -4248,7 +4247,8 @@ def private flow_list(list : array<CirStmt?>; first : int; name : string; nested
 // statement `st`, run from its start: `dead`, `live` or `fell_off`. A plain store into `name`
 // that reads nothing of it, its declaration and a `for` whose initializer is one assign it; an
 // `if` takes the worse of its arms; a `break` or `continue` is a read unless it binds to a loop
-// inside the walked statements (`nested`), where it ends the pass; a loop or switch that names
+// inside the walked statements (`nested`), where it ends the pass, and so is a statement that
+// does not name `name` but holds one that leaves it (`escapes`); a loop or switch that names
 // `name` is `flow_loop`'s
 def private flow_through(st : CirStmt const?; name : string; nested : bool = false) : LoopFlow {
     if (st == null) {
@@ -4273,7 +4273,7 @@ def private flow_through(st : CirStmt const?; name : string; nested : bool = fal
         return nested ? LoopFlow.fell_off : LoopFlow.live
     }
     if (name_count(st, name) == 0) {
-        return st.s == "switch" && continues_loop(st.body_s, false) && !nested ? LoopFlow.live : LoopFlow.fell_off
+        return !nested && escapes(st) ? LoopFlow.live : LoopFlow.fell_off
     }
     if (st.s == "if" && !reads_name(st.cond, name)) {
         let a = flow_through(st.then_s, name, nested)
@@ -4281,6 +4281,36 @@ def private flow_through(st : CirStmt const?; name : string; nested : bool = fal
         return a == LoopFlow.live || b == LoopFlow.live ? LoopFlow.live : a == LoopFlow.dead && b == LoopFlow.dead ? LoopFlow.dead : LoopFlow.fell_off
     }
     return flow_loop(st, name)
+}
+
+// whether statement `st` holds a `break` or a `continue` that leaves it: one outside every loop
+// and switch inside it, a `continue` inside a switch included
+def private escapes(st : CirStmt const?) : bool {
+    var found = false
+    walk_escapes(st, false, false, found)
+    return found
+}
+
+def private walk_escapes(st : CirStmt const?; in_loop, in_switch : bool; var found : bool&) {
+    if (st == null || found) {
+        return
+    }
+    if (st.s == "break") {
+        found = !in_loop && !in_switch
+        return
+    }
+    if (st.s == "continue") {
+        found = !in_loop
+        return
+    }
+    let loop = in_loop || st.s == "while" || st.s == "do" || st.s == "for"
+    let switch_ = in_switch || st.s == "switch"
+    for (child in st.body) {
+        walk_escapes(child, loop, switch_, found)
+    }
+    walk_escapes(st.then_s, loop, switch_, found)
+    walk_escapes(st.else_s, loop, switch_, found)
+    walk_escapes(st.body_s, loop, switch_, found)
 }
 
 // loop or switch `st` that names `name`, run from its start: a `while` or `for` whose head reads
