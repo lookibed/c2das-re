@@ -3662,9 +3662,9 @@ def private numbered(base : string; count : int) : string => count == 1 ? base :
 
 // `do { body } while (c)`: under the default `loops` option the count-down range (`count_down`),
 // a block for `do { body } while (0)` whose body leaves by no `break`, `return`, `goto` or
-// `continue` in a function with no `goto`, which plans its labels on the C loop, else, with no `continue` of the loop in the body, the body and then the test at
-// the bottom of `while (true)`; otherwise the `_first` flag, which lets a `continue` reach the
-// test
+// `continue` in a function with no `goto`, which plans its labels on the C loop, else, with no
+// `continue` of the loop in the body, the body and then the test at the bottom of `while (true)`;
+// otherwise the `_first` flag, which lets a `continue` reach the test
 def private emit_do(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (em.prog.range_loops && count_down(em, tu, st)) {
         return
@@ -3725,14 +3725,15 @@ def private emit_do(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     close_block(em)
 }
 
-// `do { body } while (count--)` with `count` an `int` or `unsigned` parameter or local the
-// function declares once, never takes the address of and holds no `goto`, that the body never
-// names and that is dead after the loop (`dead_after`), is
+// `do { body } while (count--)`, the test uncast, with `count` an `int` or `unsigned` parameter
+// or local the function declares once, never takes the address of and holds no `goto`, that the
+// body never names and that is dead after the loop (`dead_after`), is
 // `for (_t0 in urange64(uint64(uint(count)) + 1ul))`: the body runs `count + 1` times from a
 // start at or above 0 and, by the wrap C's decrement takes, `2^32 + count + 1` times from a
 // negative one, which that sum is in both cases. False, with nothing spelled, for any other loop
 def private count_down(var em : Emitter; tu : CirTu; st : CirStmt const?) : bool {
-    let step = below_casts(st.cond)
+    // a cast on the test (`(unsigned char) n--`) tests fewer bits than the count holds
+    let step = st.cond
     let root = step != null && step.e == "un" && step.op == "postdec" ? below_casts(step.a) : null
     if (root == null || root.e != "ref" || root.vol || em.has_goto || key_exists(em.addressed, root.name)) {
         return false
@@ -4284,7 +4285,7 @@ def private flow_through(st : CirStmt const?; name : string; nested : bool = fal
 
 // loop or switch `st` that names `name`, run from its start: a `while` or `for` whose head reads
 // nothing of it takes its body's first pass, which it may skip, a `do` its body's, which a
-// `break` may leave early; any other is a read
+// `break` or a `continue` may leave early; any other is a read
 def private flow_loop(st : CirStmt const?; name : string) : LoopFlow {
     if ((st.s == "while" || st.s == "for") && name_count(st.init_s, name) == 0 && !reads_name(st.cond, name) && !reads_name(st.inc, name)) {
         return flow_through(st.body_s, name, true) == LoopFlow.live ? LoopFlow.live : LoopFlow.fell_off
@@ -4292,7 +4293,7 @@ def private flow_loop(st : CirStmt const?; name : string) : LoopFlow {
     if (st.s == "do") {
         let flow = flow_through(st.body_s, name, true)
         if (flow == LoopFlow.dead) {
-            return leaves_loop(st.body_s, false) ? LoopFlow.fell_off : LoopFlow.dead
+            return leaves_loop(st.body_s, false) || continues_loop(st.body_s, false) ? LoopFlow.fell_off : LoopFlow.dead
         }
         return flow == LoopFlow.fell_off && !reads_name(st.cond, name) ? LoopFlow.fell_off : LoopFlow.live
     }

@@ -2167,6 +2167,21 @@ def p7_fused_loop_fixtures(t : T?) {
         has_text(t, text, "        while (i < n) \{\n            t++\n            i++\n        \}\n    \}\n    while (true) \{\n        if (t > 2) \{\n")
         has_text(t, text, "            \}\n        \}\n        let _cond = k\n")
         has_text(t, text, "        while (i < n) \{\n            t += 2\n")
+        // a later `do` or `while` whose `continue` skips the store, a volatile counter, an enclosing
+        // loop's test or step reading it, a loop under a case label followed by `break`: `while`
+        has_text(t, text, "def do_continue(n : int; x : int) : int \{\n    var i : int = 0\n    \{\n        i = 0\n        while (i < n) \{\n")
+        has_text(t, text, "def while_continue(n : int; x : int) : int \{\n    var i : int = 0\n    var k : int = 0\n    \{\n        i = 0\n        while (i < n) \{\n")
+        has_text(t, text, "        c_volatile_store(i, 0)\n        while (c_volatile_load(i) < n) \{\n")
+        has_text(t, text, "        while (k < 3 + i) \{\n            \{\n                i = 0\n")
+        has_text(t, text, "            k += i\n")
+        has_text(t, text, "    if (_cond == 1) \{\n        \{\n            i = 0\n            while (i < n) \{\n")
+        // count-down kept: a cast on the test, the address taken, a goto in the function
+        has_text(t, text, "        n--\n        if (!(uint8(_t0) != 0)) \{\n")
+        has_text(t, text, "        let _t0 = m\n")
+        has_text(t, text, "        let _t1 = g\n")
+        // `do while (0)` with a `continue` keeps the flag, with a `return` the loop
+        has_text(t, text, "    var _first = true\n    while (_first || 0 != 0) \{\n        _first = false\n        t++\n")
+        has_text(t, text, "            return t\n        \}\n        t++\n        break\n    \}\n")
         // `do`: the test at the bottom, the flag with a `continue`, `while (0)` a block, a body
         // that always leaves no test, a condition's effects before the test
         has_text(t, text, "    while (true) \{\n        t += n\n        n--\n        if (!(n > 0)) \{\n            break\n")

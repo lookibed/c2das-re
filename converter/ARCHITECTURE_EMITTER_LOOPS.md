@@ -7,7 +7,8 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
 `while` is `while`, with a side-effecting condition spelled `while (true)` plus the test and
 `break`. A `do` is one of four shapes, the first that applies (`emit_do`):
 
-- **The count-down range** (`count_down`): `do { body } while (count--)` with `count` an `int` or
+- **The count-down range** (`count_down`): `do { body } while (count--)`, the test uncast (a
+  `(unsigned char) n--` tests the low byte), with `count` an `int` or
   `unsigned` parameter or local that the body never names and that is dead after the loop (below)
   is `for (_t0 in urange64(uint64(uint(count)) + 1ul))`. The sum is C's pass count from every
   start: `count + 1` from 0 or above, `2^32 + count + 1` by the wrap from a negative one, and no
@@ -59,7 +60,7 @@ assigned, or the function returns, before any read. The walk follows the stateme
 loop in order: a plain store `i = e` with no `i` in `e`, a declaration of `i` and a `for` whose
 initializer is such a store assign it; a `return` ends the path; an `if` takes the worse of its
 arms; a loop that names `i` with a head that reads nothing of it takes its body's first pass,
-which a `while` or `for` may skip and a `do` may leave early by a `break`; a `break` or
+which a `while` or `for` may skip and a `do` may leave early by a `break` or a `continue`; a `break` or
 `continue` of a loop around the walked statements, a switch with such a `continue`, and every
 other naming of `i` are reads. At the end of an enclosing loop's body the walk reads its test
 and step, then its body from the top, and leaves the loop when that pass reads nothing first.
