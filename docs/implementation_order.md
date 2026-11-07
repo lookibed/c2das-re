@@ -2281,6 +2281,11 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   (`--jit-split-modules` off or a link-time inline pass, dasLLVM side: a fork issue with the number),
   or the hot cluster kept in one module by the layout (P5.1b2's cluster rules). The ports tables carry
   both layouts, so the gap is visible there; the predictions file scores the `jit` column against it.
+  Ports publish 2026-11-07 (c2das-ports, exclusive, in-process work): source layout JIT fib 4.87x, binary_trees
+  2.57x, nbody 3.98x, spectral_norm 4.79x native against the single module's 2.24x / 2.28x / 1.38x / 2.00x and the exe's
+  2.14x / 1.40x / 1.36x / 1.91x (one linked program): the gap is the layout's, not the runtime's. The `jit-goto` column
+  (source layout) reads 4.84x / 2.55x / 3.77x / 4.52x: the goto dispatch's single-layout gain (P7.0c2) does not show
+  through the split build, which P7.0c4 weighs before any JIT default.
 - **P7.0y Hand-written daslang references beside the Rust translator's output** (owner note
   2026-11-06, the reference pass of ruling 33 item 3 widened): the owner's plmpeg port
   (lookibed/plmpeg-stream, checkout `/root/plmpeg-stream`, bench `/root/plmpeg_bench`) against our
