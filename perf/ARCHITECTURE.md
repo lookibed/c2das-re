@@ -168,7 +168,7 @@ exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
 ## 2. The lanes
 
 `native` is the C program; `interp` and `jit` are `daslang` and `daslang -jit` over the
-converted module with `-load_module` for `c_runtime` and `dasCRuntime`; `interp-copy` is
+converted module with `-load_module` for `c_runtime` and `dasCRuntime`, the `jit` lane's DLL built as the conversion's entry module says (one LLVM module under the sidecar's `jit_whole_program`, `converter/ARCHITECTURE_EMITTER.md` section 4, else a partition per das module), the lane adding no flag, which after `--` the program would read as its argument (F92); `interp-copy` is
 `daslang` over a second conversion of the kernel under `--param-writes copy`, into
 `work/<kernel>/copy/`, the faster form of the "speed vs idiomatic" pair the converter offers
 (`converter/ARCHITECTURE_EMITTER.md` section 4): every other lane runs the default `in-place`

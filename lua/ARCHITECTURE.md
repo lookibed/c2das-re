@@ -103,6 +103,11 @@ module of one program.
   C89 `T a[1]` trailing arrays `lobject.h` indexes past their length over a larger allocation (a
   string's bytes, a userdata's user values, a closure's upvalues); das would range-check them at
   one element.
+- `jit_whole_program`: true, so each layout's entry module pins the cached JIT's DLL to one LLVM
+  module (`converter/ARCHITECTURE_EMITTER.md` section 4): the source layout's 30 modules then keep
+  the inlining across modules that the default partition per das module loses (the `lobject_h_cluster`
+  accessors, called from every core file), which is what the ports' `jit` lanes measure
+  (`ports/ARCHITECTURE.md` section 4). The interpreter, the exe and AOT ignore the pin.
 
 ## 4. The numbers
 

@@ -135,6 +135,12 @@ module `perf/run.das` builds its kernels' lanes with:
 - `aot`: the `-ctx` context with the host of `converter/tiers.das`, compiled by the pinned
   `clang++ -O3`; measured only when `--lanes` names it, whose default is every other das lane.
 
+Every layout converts under the harness's sidecar (`lua/lua.c2das` for `lua`), whose `jit_whole_program`
+pins the entry module's cached JIT build to one LLVM module (`converter/ARCHITECTURE_EMITTER.md` section 4),
+so the `jit` lanes keep the inlining across the program's modules that the default partition per das module
+loses and that the `exe` lane's one-unit build has; the lane passes no `--jit-split-modules` after `--`, where
+the converted program would read it as its own argument and Lua's `-e` startup row refuses it (F92).
+
 Each lane is built once, before the workloads, and its binary runs once with the startup
 arguments (the AOT host hands its command line to the program as daslang does). A lane whose
 build fails is `not yet` with its first error line for every workload; the publish still
