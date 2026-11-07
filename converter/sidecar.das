@@ -339,7 +339,6 @@ def private read_inputs(js : JsonValue?; path : string; var side : Sidecar; var 
     }
 }
 
-// a key whose value is one of `modes` into `field`, left "" when the key is absent
 // the boolean `key` into `field` when present, else `field` kept; a value of another shape refused
 // naming the key
 def private read_flag(js : JsonValue?; path, key : string; var field : bool&; var error : string&) {
@@ -351,6 +350,7 @@ def private read_flag(js : JsonValue?; path, key : string; var field : bool&; va
     }
 }
 
+// a key whose value is one of `modes` into `field`, left "" when the key is absent
 def private read_mode(js : JsonValue?; path, key : string; modes : array<string>; var field : string&; var error : string&) {
     let value = js?[key] ?? ""
     if (key_exists(js, key) && !has_value(modes, value)) {
