@@ -18,7 +18,7 @@ while [ $# -gt 0 ]; do
         --only) only+=("$2"); shift ;;
         --skip) skip+=("$2"); shift ;;
         --jobs)
-            case "${2:-}" in ""|*[!0-9]*|0) echo "preflight: --jobs takes a positive count" >&2; exit 2 ;; esac
+            case "${2:-}" in ""|*[!0-9]*|0*) echo "preflight: --jobs takes a positive count" >&2; exit 2 ;; esac
             jobs="$2"; shift ;;
         --list-gates)
             cat <<'TABLE'
@@ -106,7 +106,8 @@ gate_criteria() {
 # isolated_suites run each test file in its own dastest worker: their files share no path.
 suite_order=(probes dasCRuntime/tests c_runtime/tests converter/tests lua/tests perf/tests ports/tests metrics/tests compare/tests doom/tests tests)
 test_groups=(converter/tests compare/tests lua/tests ports/tests probes perf/tests c_runtime/tests doom/tests metrics/tests tests dasCRuntime/tests)
-isolated_suites=(probes converter/tests c_runtime/tests doom/tests)
+# PREFLIGHT_ISOLATED_SUITES replaces the list (a space between suites), for a test of the arm
+read -ra isolated_suites <<< "${PREFLIGHT_ISOLATED_SUITES-probes converter/tests c_runtime/tests doom/tests}"
 iso_threads=2
 run_suite() {
     local iso=() s
@@ -114,26 +115,39 @@ run_suite() {
     das "$DASLANG_ROOT/dastest/dastest.das" -- --test "$1" --failures-only "${iso[@]}"
 }
 suite_file() { echo "$tests_logs/${1//\//_}.$2"; }
-# prints, in suite_order, every suite whose run has ended and that no unfinished suite precedes
+# prints, in suite_order, every suite whose run has ended and that no unfinished suite precedes; with
+# `final`, every group has ended, so a suite without a status is reported and the printing goes on
 print_ended_suites() {
     local d
     while [ "$tests_printed" -lt ${#tests_order[@]} ]; do
         d="${tests_order[$tests_printed]}"
         if [ -d "$d" ]; then
-            [ -f "$(suite_file "$d" rc)" ] || return 0
-            cat "$(suite_file "$d" log)"
-            [ "$(cat "$(suite_file "$d" rc)")" = 0 ] || tests_rc=1
+            if [ -f "$(suite_file "$d" rc)" ]; then
+                cat "$(suite_file "$d" log)"
+                [ "$(cat "$(suite_file "$d" rc)")" = 0 ] || tests_rc=1
+            elif [ "${1:-}" = final ]; then
+                [ -f "$(suite_file "$d" log)" ] && cat "$(suite_file "$d" log)"
+                echo "preflight: suite $d ended without a status"
+                tests_rc=1
+            else
+                return 0
+            fi
         fi
         tests_printed=$((tests_printed + 1))
     done
 }
+remove_tests_logs() { [ -n "${tests_logs:-}" ] && [ -d "$tests_logs" ] && find "$tests_logs" -mindepth 1 -delete && rmdir "$tests_logs"; tests_logs=""; }
 gate_tests() {
     local groups d g running=0 next=0
     tests_rc=0; tests_printed=0
     if [ -n "${PREFLIGHT_TEST_GROUPS:-}" ]; then
-        # named groups replace the lane's: `;` between groups, a space between the suites of one, in print order
+        # named groups replace the lane's: `;` between groups, a space between the suites of one, in
+        # print order; a named folder that does not exist is a red lane (the default list skips one)
         IFS=';' read -ra groups <<< "$PREFLIGHT_TEST_GROUPS"
         tests_order=(); for g in "${groups[@]}"; do for d in $g; do tests_order+=("$d"); done; done
+        for d in "${tests_order[@]}"; do
+            [ -d "$d" ] || { fail tests "PREFLIGHT_TEST_GROUPS names $d, no such suite folder"; return 1; }
+        done
     else
         groups=("${test_groups[@]}"); tests_order=("${suite_order[@]}")
     fi
@@ -145,13 +159,15 @@ gate_tests() {
         done
     else
         tests_logs=$(mktemp -d) || { fail tests "no scratch folder for the suites' output"; return 1; }
+        trap remove_tests_logs EXIT
+        trap 'kill $(jobs -p) 2>/dev/null; remove_tests_logs; exit 130' INT TERM
         while [ $next -lt ${#groups[@]} ] || [ $running -gt 0 ]; do
             while [ $running -lt "$jobs" ] && [ $next -lt ${#groups[@]} ]; do
                 (
                     for d in ${groups[$next]}; do
                         [ -d "$d" ] || continue
                         run_suite "$d" > "$(suite_file "$d" log)" 2>&1
-                        echo $? > "$(suite_file "$d" rc)"
+                        echo $? > "$(suite_file "$d" rc.tmp)" && mv "$(suite_file "$d" rc.tmp)" "$(suite_file "$d" rc)"
                     done
                 ) &
                 running=$((running + 1)); next=$((next + 1))
@@ -159,9 +175,9 @@ gate_tests() {
             wait -n; running=$((running - 1))
             print_ended_suites
         done
-        # a suite in suite_order that no group ran stops the printing: the lane is then red
-        [ "$tests_printed" = ${#tests_order[@]} ] || { echo "preflight: no group runs ${tests_order[$tests_printed]}"; tests_rc=1; }
-        [ -n "$tests_logs" ] && find "$tests_logs" -mindepth 1 -delete && rmdir "$tests_logs"
+        print_ended_suites final
+        remove_tests_logs
+        trap - EXIT INT TERM
     fi
     [ $tests_rc = 0 ] && pass tests || fail tests "a suite is red"
 }
