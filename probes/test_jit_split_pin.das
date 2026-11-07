@@ -3,7 +3,6 @@ require dastest/testing_boost public
 require strings
 require daslib/fio
 require daslib/strings_boost
-require _daslang_child
 
 //! The ways a run can turn off the cached JIT's per-module partitioning (`--jit-split-modules`,
 //! dasLLVM's `llvm_jit_cli.das`) without the converted program seeing it (docs/probe-findings.md
