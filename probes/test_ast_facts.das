@@ -30,6 +30,25 @@ class private Facts : AstVisitor {
     }
 }
 
+// a module whose one reinterpret is a c_runtime call macro's expansion: line 7 spells
+// `enum_from_int` from column 22
+let MACRO_SOURCE = "options gen2\nrequire c_runtime/enum_from_int\n\nenum E \{\n    A\n\}\ndef f(v : int) : E => enum_from_int(type<E>, v)\n"
+
+class private MacroFacts : AstVisitor {
+    casts : int
+    generated : bool
+    line : int
+    column : int
+    def override preVisitExprCast(expr : ExprCast?) {
+        if (expr.castFlags.reinterpretCast) {
+            casts++
+            generated ||= expr.genFlags.generated
+            line = int(expr.at.line)
+            column = int(expr.at.column)
+        }
+    }
+}
+
 [test]
 def test_ast_facts(t : T?) {
     var dir_error : string
@@ -55,6 +74,32 @@ def test_ast_facts(t : T?) {
                     // the step sits at its operator: `var gp = unsafe(unsafe(addr(arr[0])) + 3)`
                     t |> equal(facts.step_column, 37)
                     t |> equal(facts.folded_enum, true)
+                    unsafe {
+                        delete facts
+                    }
+                }
+            }
+        }
+    }
+    t |> run("a call macro's expansion carries no generated flag: its reinterpret sits at the call, the text there the macro's name") @(t : T?) {
+        let macro_path = path_join(dir, "macro_facts.das")
+        fwrite(macro_path, MACRO_SOURCE)
+        var inscope access <- make_file_access("")
+        using() $(var mg : ModuleGroup) {
+            using() $(var cop : CodeOfPolicies) {
+                cop.no_fold_unsafe = true
+                cop.no_optimizations = true
+                cop.export_all = true
+                compile_file(macro_path, access, unsafe(addr(mg)), cop) $(ok, program, output) {
+                    t |> success(ok, string(output))
+                    var facts = new MacroFacts()
+                    make_visitor(*facts) $(adapter) {
+                        visit(program, adapter)
+                    }
+                    t |> equal(facts.casts, 1)
+                    t |> equal(facts.generated, false)
+                    t |> equal(facts.line, 7)
+                    t |> equal(facts.column, 22)
                     unsafe {
                         delete facts
                     }
