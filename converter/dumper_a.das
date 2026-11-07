@@ -3599,6 +3599,9 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; inputs : DumpIn
     d.json_bytes = long_length(out)
     var err : string
     var js = read_json(out, err)
+    // the dump's text, the largest string of the conversion, freed once parsed: the string heap
+    // keeps every other string until the process ends
+    unsafe(delete_string(out))
     if (js == null) {
         d.error = "clang dump is not JSON: {err}"
         return <- d
