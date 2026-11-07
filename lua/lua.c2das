@@ -1,5 +1,6 @@
 {
     "defines": ["LUA_USE_JUMPTABLE=0"],
     "over_indexed": ["TString.contents", "Udata.uv", "CClosure.upvalue", "LClosure.upvals"],
-    "layout": {"profile": "lua.profile.json"}
+    "layout": {"profile": "lua.profile.json"},
+    "jit_whole_program": true
 }
