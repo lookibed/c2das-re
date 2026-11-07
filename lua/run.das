@@ -369,19 +369,16 @@ def private number_end(text : array<int>; i : int) : int {
     return j
 }
 
-// the end of the run of dots starting at `i` of `text`, short of a dot a number starts with
-def private dots_end(text : array<int>; i : int) : int {
-    var j = i
-    while (j < length(text) && text[j] == '.' && !digit_at(text, j + 1)) {
-        j++
-    }
-    return j
-}
+// whether `line` is one of the progress lines `all.lua`'s collections print: dots alone, as many
+// as the collector's timing makes
+def private dots_only(line : string) : bool => !empty(line) && empty(replace(line, ".", ""))
 
 // `line` with every number one `#`, whatever its sign, digits or notation: the suite prints seeds,
-// timings and dates, `%g` choosing the notation by the value; and every run of dots one dot, the
-// progress dots `all.lua`'s collections print running as many as the collector's timing makes
+// timings and dates, `%g` choosing the notation by the value; a line of dots alone is one dot
 def private masked(line : string) : string {
+    if (dots_only(line)) {
+        return "."
+    }
     let text <- [for (ch in line); ch]
     return build_string() $(var w) {
         var i = 0
@@ -390,9 +387,6 @@ def private masked(line : string) : string {
             if (is_number(ch) || ((ch == '.' || ch == '+' || ch == '-') && digit_at(text, i + 1))) {
                 w |> write("#")
                 i = number_end(text, i)
-            } elif (ch == '.') {
-                w |> write(".")
-                i = dots_end(text, i)
             } else {
                 w |> write_char(ch)
                 i++
