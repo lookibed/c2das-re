@@ -174,6 +174,17 @@ def test_lowerings(t : T?) {
     p8_refusal_fixtures(t)
     p7_readable_fixtures(t)
     p7_goto_into_fixtures(t)
+    rmdir_rec(work_root)
+}
+
+[test]
+def test_end_index(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_end_index", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure(dir_error)
+        return
+    }
     p7_end_index_fixtures(t)
     rmdir_rec(work_root)
 }
@@ -2674,7 +2685,7 @@ def p7_end_index_fixtures(t : T?) {
         has_text(t, text, "    return addr(c_volatile_load(vp).oam[0]) + end_index(k, 4)\n")
         // as an operand the conditional takes parentheses
         has_text(t, text, "int(int64((p7_end_index__g_emu.k == 4 ? addr(p7_end_index__a[0]) + 4 : addr(p7_end_index__a[p7_end_index__g_emu.k])) - addr(p7_end_index__a[1])))")
-        let path = converted_path("p7_end_index")
+        let path = path_join(path_join(work_root, "p7_end_index"), "p7_end_index.das")
         let want = native("p7_end_index")
         var out : string
         let no_flags : array<string>
