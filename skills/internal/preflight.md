@@ -9,7 +9,8 @@ script lists, which `--list-gates` prints (`probes/`, `dasCRuntime/tests`, `c_ru
 paragraph. The lane runs up to `--jobs N` suites at once (default 4) inside the preflight's own
 process tree, so one `heavy` job covers it; each suite's output is buffered and printed in
 `suite_order` once it and every suite before it have ended, and the lane is red when any suite
-is. `--jobs 1` is the sequential lane: one suite after another, single-threaded, output
+is. At `--jobs 4` the full tier peaks near 4 GB (2 GB sequential), so its `heavy` job takes
+`--max 6G`. `--jobs 1` is the sequential lane: one suite after another, single-threaded, output
 streamed. `PREFLIGHT_TEST_GROUPS="<a> <b>;<c>"` replaces the lane's suites (`;` between groups
 that may run at once, a space between suites that run one after another, printed in the order
 named): the way a pull request runs only the suites its diff touches (`AGENTS.md`), and the hook
