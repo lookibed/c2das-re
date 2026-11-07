@@ -2289,7 +2289,7 @@ def private one_past_end_address(var em : Emitter; tu : CirTu; x : CirExpr; loc 
     if (plain_load(tu, at.i) && !has_effects(at.base.a) && !reads_volatile(at.base.a)) {
         let length = int_literal(index_type(em, tu, at.i, loc), "{count}")
         let element = unsafe_value(em, "addr({wrap(arr, PREC_PRIMARY)}[{index.text}])", PREC_PRIMARY)
-        return value("{wrap(index, PREC_EQ + 1)} == {length} ? {decay.text} + {count} : {element.text}", PREC_COND)
+        return value("{index.text} == {length} ? {decay.text} + {count} : {element.text}", PREC_COND)
     }
     em.requires |> insert("c_runtime/c_bounds")
     return unsafe_value(em, "{decay.text} + {END_INDEX}({index.text}, {count})", PREC_ADD)
