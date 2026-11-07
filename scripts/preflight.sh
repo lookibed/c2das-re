@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Preflight: the gates a change clears before it is pushed, the same gates CI would run.
 # `scripts/preflight.sh` runs the fast tier; `--full` adds the test lanes; `--only <gate>`
-# runs one gate whatever changed; `--skip <gate>` drops one; `--list-gates` prints the table.
+# runs one gate whatever changed; `--skip <gate>` drops one; `--list-gates` prints the table;
+# `--jobs N` runs up to N test suites at once (1: one after another).
 # Every gate prints `[PASS] name`, `[FAIL] name` or `[SKIP] name - reason`; the run exits
 # nonzero on the first FAIL of the fast tier and after the lanes otherwise.
 set -uo pipefail
@@ -10,12 +11,15 @@ cd "$repo_root"
 . scripts/env.sh
 base="${PREFLIGHT_BASE:-origin/main}"
 git rev-parse --verify -q "$base" >/dev/null 2>&1 || base="$(git rev-list --max-parents=0 HEAD 2>/dev/null | tail -1)"
-full=0; only=(); skip=()
+full=0; jobs=4; only=(); skip=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --full) full=1 ;;
         --only) only+=("$2"); shift ;;
         --skip) skip+=("$2"); shift ;;
+        --jobs)
+            case "${2:-}" in ""|*[!0-9]*|0) echo "preflight: --jobs takes a positive count" >&2; exit 2 ;; esac
+            jobs="$2"; shift ;;
         --list-gates)
             cat <<'TABLE'
 env          fast   DASLANG_ROOT is a built daScript with dastest, lint, das-fmt, the review-md walker, the watchdog and dasClangBind, at or past the VERSIONS.md pin
@@ -28,7 +32,7 @@ ast-verify   fast   -dry-run --ast-verify of every changed .das (a verify line o
 md-ascii     fast   no em-dash, arrow or ellipsis added to a rule document (docs/ is exempt: authored elsewhere)
 review-md    fast   the REVIEW.das gates of every folder the diff touches
 criteria     fast   a report: the readability criteria of metrics/criteria_linux.json, the delta against the base's and the sample's freshness; red only when the capture is missing or unreadable
-tests        lane   every dastest suite: probes/, dasCRuntime/tests, c_runtime/tests, converter/tests, lua/tests, perf/tests, ports/tests, metrics/tests, compare/tests, tests/
+tests        lane   every dastest suite, --jobs N at once (default 4): probes/, dasCRuntime/tests, c_runtime/tests, converter/tests, lua/tests, perf/tests, ports/tests, metrics/tests, compare/tests, doom/tests, tests/
 TABLE
             exit 0 ;;
         *) echo "preflight: unknown flag $1" >&2; exit 2 ;;
@@ -96,13 +100,70 @@ gate_criteria() {
     echo "$out"
     [ $rc = 0 ] && pass criteria || fail criteria "metrics/criteria_linux.json is missing or unreadable: run scripts/run_criteria.sh"
 }
-gate_tests() {
-    local d rc=0
-    for d in probes dasCRuntime/tests c_runtime/tests converter/tests lua/tests perf/tests ports/tests metrics/tests compare/tests doom/tests tests; do
-        [ -d "$d" ] || continue
-        das "$DASLANG_ROOT/dastest/dastest.das" -- --test "$d" --failures-only || rc=1
+# The tests lane. suite_order is the order the suites' output prints in. A test_groups entry is the
+# suites that run one after another because they write the same paths (the collision map,
+# skills/internal/preflight.md); up to --jobs groups run at once, started longest first. The
+# isolated_suites run each test file in its own dastest worker: their files share no path.
+suite_order=(probes dasCRuntime/tests c_runtime/tests converter/tests lua/tests perf/tests ports/tests metrics/tests compare/tests doom/tests tests)
+test_groups=(converter/tests compare/tests lua/tests ports/tests probes perf/tests c_runtime/tests doom/tests metrics/tests tests dasCRuntime/tests)
+isolated_suites=(probes converter/tests c_runtime/tests doom/tests)
+iso_threads=2
+run_suite() {
+    local iso=() s
+    for s in "${isolated_suites[@]}"; do [ "$s" = "$1" ] && iso=(--isolated-mode --isolated-mode-threads "$iso_threads"); done
+    das "$DASLANG_ROOT/dastest/dastest.das" -- --test "$1" --failures-only "${iso[@]}"
+}
+suite_file() { echo "$tests_logs/${1//\//_}.$2"; }
+# prints, in suite_order, every suite whose run has ended and that no unfinished suite precedes
+print_ended_suites() {
+    local d
+    while [ "$tests_printed" -lt ${#tests_order[@]} ]; do
+        d="${tests_order[$tests_printed]}"
+        if [ -d "$d" ]; then
+            [ -f "$(suite_file "$d" rc)" ] || return 0
+            cat "$(suite_file "$d" log)"
+            [ "$(cat "$(suite_file "$d" rc)")" = 0 ] || tests_rc=1
+        fi
+        tests_printed=$((tests_printed + 1))
     done
-    [ $rc = 0 ] && pass tests || fail tests "a suite is red"
+}
+gate_tests() {
+    local groups d g running=0 next=0
+    tests_rc=0; tests_printed=0
+    if [ -n "${PREFLIGHT_TEST_GROUPS:-}" ]; then
+        # named groups replace the lane's: `;` between groups, a space between the suites of one, in print order
+        IFS=';' read -ra groups <<< "$PREFLIGHT_TEST_GROUPS"
+        tests_order=(); for g in "${groups[@]}"; do for d in $g; do tests_order+=("$d"); done; done
+    else
+        groups=("${test_groups[@]}"); tests_order=("${suite_order[@]}")
+    fi
+    if [ "$jobs" = 1 ]; then
+        # one suite after another in print order, each single-threaded, its output streamed
+        for d in "${tests_order[@]}"; do
+            [ -d "$d" ] || continue
+            das "$DASLANG_ROOT/dastest/dastest.das" -- --test "$d" --failures-only || tests_rc=1
+        done
+    else
+        tests_logs=$(mktemp -d) || { fail tests "no scratch folder for the suites' output"; return 1; }
+        while [ $next -lt ${#groups[@]} ] || [ $running -gt 0 ]; do
+            while [ $running -lt "$jobs" ] && [ $next -lt ${#groups[@]} ]; do
+                (
+                    for d in ${groups[$next]}; do
+                        [ -d "$d" ] || continue
+                        run_suite "$d" > "$(suite_file "$d" log)" 2>&1
+                        echo $? > "$(suite_file "$d" rc)"
+                    done
+                ) &
+                running=$((running + 1)); next=$((next + 1))
+            done
+            wait -n; running=$((running - 1))
+            print_ended_suites
+        done
+        # a suite in suite_order that no group ran stops the printing: the lane is then red
+        [ "$tests_printed" = ${#tests_order[@]} ] || { echo "preflight: no group runs ${tests_order[$tests_printed]}"; tests_rc=1; }
+        [ -n "$tests_logs" ] && find "$tests_logs" -mindepth 1 -delete && rmdir "$tests_logs"
+    fi
+    [ $tests_rc = 0 ] && pass tests || fail tests "a suite is red"
 }
 fast=(env native untracked format lint compile ast-verify md-ascii review-md criteria)
 red=0
