@@ -1146,9 +1146,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   (the converted interpreter dies with SIGSEGV under `--as=512M` where native lua prints `not
   enough memory`, the dying path unprobed) stay ledgered; no libc exactness bug surfaced, so no
   fixture landed for one.
-  Fix (branch `fix/lua-lane-time-warning`, 2026-11-07): the time warning is stripped from its
-  line, the dots kept, and a run of dots compares as one dot (all.lua's false `fail` when `--tier
-  jit` ran after `--tier interp`: the warning mid-line among the dots dropped the whole line).
+  Fix (branch `fix/lua-lane-time-warning`, 2026-11-07): the time warning is stripped with its
+  newline, the dots on either side of it kept and joined, and a run of dots compares as one dot
+  (all.lua's false `fail` when the tiers ran back to back: the warning lands mid-line among the
+  dots, which go on after it on the next line, and the old filter dropped only a line it starts).
 - **P5.4 Perf snapshot:** fib/nbody/binary-trees, converted-interp vs native lua. Data
   point only; no bar. Done (branch `p5.4-perf-snapshot`, main 81b5379): the ports publisher's
   capture of 2026-10-30 (`scripts/publish_ports.sh --program lua --perf --samples 5 --lanes
