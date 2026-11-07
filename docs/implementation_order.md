@@ -2247,9 +2247,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   whose every reference sits in such loops loses its declaration, any other counts in a free name;
   `do {} while (0)` is a block. Box PC, exclusive and quiet, x native, A main / B: matmul interp 55.4
   -> 40.5, do_while_effect 19.3 -> 13.6, sieve, blit, str_copy flat (no shape: `<=`, step 7, read
-  after); JIT/exe/AOT flat; Doom interp fps +11 to +15% (demo1 169 -> 189), JIT flat. Range loops:
-  h264bsd 0 -> 73 (Rust 46), binjgb 22 (22), Doom 4 -> 174 (164), Lua 0 -> 55; `_first` left only
-  with a `continue`. Predictions 26 of 26 within 25%.
+  after); JIT/exe/AOT flat; Doom interp fps +10 to +12% (demo1 172 -> 190, re-run after the review
+  fixes), JIT within the run-order drift. Range loops: h264bsd 0 -> 73 (Rust 46), binjgb 22 (22),
+  Doom 4 -> 169 (164), Lua 0 -> 55; `_first` left only with a `continue`. The liveness walk counts any
+  `break`/`continue` it cannot follow as a read; 20 negative controls guard its branches.
 - **P7.0t Flat label CFG for a function with `goto` into case groups** (reference diff row 21): the
   `while (true)` re-dispatch loop with `_goto` and `_flag ||=` tests walked on every jump (switch_goto's
   `run_code`) becomes native `label N:` / `goto label N` with a computed `goto` for the case dispatch, as
