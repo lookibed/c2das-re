@@ -253,7 +253,7 @@ let DIALECT_INIT = "c2das_dialect"
 let EMPTY_LITERAL = "c2das_empty"
 
 //! Every name the emitter spells bare in a module besides the program's own (`reserved_das_names`).
-let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, JMP_TARGET, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LABEL_END, LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL, "memcpy"]
+let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, JMP_TARGET, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LABEL_END, LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL, "memcpy", "memmove", "memset8"]
 
 //! The public names of the c_runtime modules a converted module may require, each top-level
 //! function, global, type and call macro of `c_runtime/c_runtime/*.das` (repo root);
@@ -2428,12 +2428,7 @@ def private emit_type_operator(var em : Emitter; tu : CirTu; x : CirExpr const?;
         return value("{das_type(em, tu, x.t, loc)}(typeinfo alignof(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
     }
     if (x.e == "sizeof_v") {
-        if (is_marshal(em, tu, element_under(tu, x.of_t)) || is_va_list(tu, x.of_t)) {
-            // the record's bytes, an array of them included, are laid out by clang, not by das; a
-            // `va_list` is never laid out
-            return value("{das_type(em, tu, x.t, loc)}({type_size(tu, x.of_t)})", PREC_PRIMARY)
-        }
-        return value("{das_type(em, tu, x.t, loc)}(typeinfo sizeof(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
+        return value("{das_type(em, tu, x.t, loc)}({int_sizeof(em, tu, *x, loc)})", PREC_PRIMARY)
     }
     if (x.e == "offsetof") {
         if (kind_of(tu, x.of_t) == "union") {
@@ -2447,6 +2442,15 @@ def private emit_type_operator(var em : Emitter; tu : CirTu; x : CirExpr const?;
         return value("{das_type(em, tu, x.t, loc)}(typeinfo offsetof<{field_name(em, tu, x.of_t, x.field)}>(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
     }
     return emit_va_arg(em, tu, *x, loc)
+}
+
+// `sizeof` as das's `int`: the record's bytes, an array of them included, are laid out by clang,
+// not by das, and a `va_list` is never laid out, so theirs is clang's number
+def private int_sizeof(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
+    if (is_marshal(em, tu, element_under(tu, x.of_t)) || is_va_list(tu, x.of_t)) {
+        return "{type_size(tu, x.of_t)}"
+    }
+    return "typeinfo sizeof(type<{das_type(em, tu, x.of_t, loc)}>)"
 }
 
 // a byte offset into a record: `k` its constant part, `terms` the das ones, an `int` field
@@ -3229,6 +3233,100 @@ def private decl_init_text(var em : Emitter; tu : CirTu; name : string; t : int;
 
 // an expression evaluated for its effect alone: the statement forms of assignment, the
 // steps and calls, everything else through its pre-statements
+// the libc copies and fill a call statement spells as daslang's builtins
+let private BUILTIN_MEM_CALLS <- {"memcpy", "memmove", "memset"}
+
+// the largest count `memset8` takes, an `int`
+let private BUILTIN_COUNT_MAX = 2147483647l
+
+// the value of the integer constant size `x`: a literal, `sizeof` or `_Alignof`, through integral
+// casts to 32 bits or more and `+`, `*`; -1 for any other, and for a value its C type would wrap
+def private constant_size(tu : CirTu; x : CirExpr const?) : int64 {
+    if (x == null) {
+        return -1l
+    }
+    if (x.e == "int_lit") {
+        return try_to_int64(x.v) ?? -1l
+    }
+    if (x.e == "sizeof_v" || x.e == "alignof_v") {
+        return int64(x.trait_v)
+    }
+    var v = -1l
+    if (x.e == "cast" && (x.cast_kind == "IntegralCast" || x.cast_kind == "NoOp") && type_size(tu, x.t) >= 4l) {
+        v = constant_size(tu, x.a)
+    } elif (x.e == "bin" && (x.op == "add" || x.op == "mul")) {
+        let a = constant_size(tu, x.a)
+        let b = constant_size(tu, x.b)
+        if (a >= 0l && b >= 0l && a <= BUILTIN_COUNT_MAX && b <= BUILTIN_COUNT_MAX) {
+            v = x.op == "add" ? a + b : a * b
+        }
+    }
+    return v > BUILTIN_COUNT_MAX && type_size(tu, x.t) < 8l ? -1l : v
+}
+
+// the node of size `x` the builtin takes: below C's widening to `size_t`, an `int` (and for a
+// copy a `uint` or an `int64`), an overload of the builtin crt's `uint64` one lacks
+def private builtin_size_node(var em : Emitter; tu : CirTu; x : CirExpr const?; fill : bool; loc : CirLoc) : CirExpr const? {
+    if (x.e == "cast" && x.cast_kind == "IntegralCast" && empty(x.macro)) {
+        let inner = das_type(em, tu, x.a.t, loc)
+        if (inner == "int" || (!fill && (inner == "uint" || inner == "int64"))) {
+            return x.a
+        }
+    }
+    return x
+}
+
+// a C `memcpy`, `memmove` or `memset` of libc the program calls for its effect alone, as daslang's
+// builtin; false, with nothing spelled, for a call that stays crt's
+[arch(at="ARCHITECTURE_EMITTER_LOOPS.md#builtin-memory-calls")]
+def private builtin_mem_effect(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : bool {
+    let name = libc_name(called_name(x))
+    if (!key_exists(BUILTIN_MEM_CALLS, name) || key_exists(em.prog.functions, called_name(x)) || length(x.args) != 3) {
+        return false
+    }
+    let fill = name == "memset"
+    let dst = x.args[0]
+    let src = x.args[1]
+    let size = x.args[2]
+    if (!is_data_pointer(tu, dst.t) || (fill ? das_type(em, tu, src.t, loc) != "int" : !is_data_pointer(tu, src.t)) || das_type(em, tu, size.t, loc) != "uint64") {
+        return false
+    }
+    let known = constant_size(tu, size)
+    // the guard of a size known only at run time evaluates the pointers under it
+    let guarded = known < 0l
+    if (fill ? known <= 0l || known > BUILTIN_COUNT_MAX : known == 0l || (guarded && (has_effects(dst) || reads_volatile(dst) || has_effects(src) || reads_volatile(src)))) {
+        return false
+    }
+    em.unsafe_used = true
+    let node = builtin_size_node(em, tu, size, fill, loc)
+    let whole = intptr(node) == intptr(size)
+    let dst_text = stored(emit_expr(em, tu, dst, loc), tu, dst.t).text
+    let src_text = stored(emit_expr(em, tu, src, loc), tu, src.t).text
+    var tested = ""
+    var count = ""
+    if (whole && size.e == "sizeof_v" && empty(size.macro)) {
+        count = int_sizeof(em, tu, *size, loc)
+    } else {
+        var e = stored(emit_expr(em, tu, node, loc), tu, node.t)
+        // a name is a temporary the effect already went to
+        if (guarded && (has_effects(node) || reads_volatile(node)) && !is_identifier(e.text)) {
+            let tmp = temp_name(em)
+            hoist(em, ["let {tmp} = {e.text}"])
+            e = value(tmp, PREC_PRIMARY)
+        }
+        tested = wrap(e, PREC_REL)
+        count = whole ? "{fill ? "int" : "int64"}({e.text})" : e.text
+    }
+    if (fill) {
+        hoist(em, ["memset8({dst_text}, uint8({src_text}), {count})"])
+    } elif (guarded) {
+        hoist(em, ["if ({tested} != {int_literal(das_type(em, tu, node.t, loc), "0")}) \{", "    {name}({dst_text}, {src_text}, {count})", "\}"])
+    } else {
+        hoist(em, ["{name}({dst_text}, {src_text}, {count})"])
+    }
+    return true
+}
+
 def private emit_effect(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc) {
     // a value evaluated ahead (a general setjmp site's) has no effect left
     if (x == null || key_exists(em.hoisted, intptr(x))) {
@@ -3245,7 +3343,9 @@ def private emit_effect(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc
             em.pre |> push(text)
         }
     } elif (x.e == "call") {
-        em.pre |> push(emit_call(em, tu, *x, loc).text)
+        if (!builtin_mem_effect(em, tu, *x, loc)) {
+            em.pre |> push(emit_call(em, tu, *x, loc).text)
+        }
     } elif (x.e == "comma") {
         emit_effect(em, tu, x.a, loc)
         emit_effect(em, tu, x.b, loc)

@@ -89,7 +89,7 @@ is an `int` literal, which selects the builtin over crt's `uint64` `memcpy`: the
 builtin to one unaligned load or store, where `crt::memcpy` is an indirect call per field, 14
 percent of Doom's JIT samples before (`docs/probe-findings.md` F81, `probes/test_stdlib.das`); a
 typed load through `reinterpret` would assume x86-64's unaligned loads, the builtin assumes nothing.
-A copy whose size is the program's (C's own `memcpy`) stays `crt::memcpy`. An array field (C
+A copy whose size is the program's (C's own `memcpy`) is `ARCHITECTURE_EMITTER_LOOPS.md`'s. An array field (C
 reaches one only by decay, `&` or `sizeof`) gets `ptr_T_f(bytes, ofs)`, its decay, the pointer to
 its first element where it lies (a row of a 2-D one): `p->a[i]` is `deref(ptr_T_a(p, 0) + i)` to
 read, store and step, `&p->a[i]` that pointer plus `i`, `&p->a` it reinterpreted; an element is a

@@ -279,7 +279,7 @@ Section 3, Dumper A's subset (what the dumper reads from clang and libclang), is
 Section 4, what the emitter spells (the das text of every construct), is in
 `ARCHITECTURE_EMITTER.md`, with bitfields, unions, function pointers and variadics in
 `ARCHITECTURE_EMITTER_AGGREGATES.md`, the switch and the labels in
-`ARCHITECTURE_EMITTER_CONTROL.md`, the loops, the compound stores and the volatile access in
+`ARCHITECTURE_EMITTER_CONTROL.md`, the loops, the compound stores, the volatile access and the memory calls in
 `ARCHITECTURE_EMITTER_LOOPS.md`, and the C spelling it carries in `ARCHITECTURE_EMITTER_TEXT.md`.
 
 ## 5. The four tiers

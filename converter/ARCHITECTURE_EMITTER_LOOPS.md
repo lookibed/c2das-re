@@ -1,4 +1,4 @@
-# converter Architecture - the emitter's loops, compound stores and volatile access
+# converter Architecture - the emitter's loops, compound stores, volatile access and memory calls
 
 Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITECTURE_EMITTER.md`.
 
@@ -121,3 +121,25 @@ access stays the plain one, the volatile access no tier keeps. A volatile pointe
 as the plain one does, a step back as the sum of the negated count, since das's pointer `-`
 takes only a variable (`probes/test_pointers.das`); a volatile `_Bool`'s compound store stores the
 truth of the promoted result; its step fails closed as the plain one's does.
+
+### The program's memory calls {#builtin-memory-calls}
+
+A call of libc's `memcpy`, `memmove` or `memset` (or its `__builtin_` twin) that a statement
+makes for its effect alone is daslang's builtin of the name, which the JIT and the exe lower to
+LLVM's own copy, move or fill, where `crt::memcpy` is an indirect call (`builtin_mem_effect`).
+crt's `memcpy` and `memmove` take a `uint64` size and the builtins an `int`, `uint`, `int64` or
+`uint64` one, so an unqualified call with a `uint64` size is ambiguous wherever `require crt`
+is in scope and daslang has no qualified spelling of a builtin: the size goes as the value C
+widened to `size_t` when that is an `int`, `uint` or `int64` (`memcpy(d, s, len)`), `sizeof` as
+das's `int` (`typeinfo sizeof(type<T>)`), any other through `int64(n)`, which keeps its every
+bit. A constant size above zero (a literal, `sizeof` or `_Alignof` under integral casts, `+` and
+`*`) is the call alone; any other size is tested against zero first (`if (n != 0ul)` around
+`memcpy(d, s, int64(n))`), so a null pointer with a zero size reaches no builtin, after a size
+with an effect or a volatile read lands in a temporary. A pointer argument with an effect or a
+volatile read under that test keeps the crt call, since C evaluates it whatever the size. A
+`memset` of a constant count from 1 to 2^31 - 1 is `memset8(d, uint8(c), count)`, the value
+truncated to its byte as C's `unsigned char` conversion does; `memset8` counts in an `int`, so
+any other count keeps `crt::memset`. The builtin `memmove` is libc's under the interpreter and
+AOT and LLVM's `memmove` under the JIT, overlap included (`probes/test_stdlib.das`). The value of
+a call read as an expression (`p = memcpy(...)`), a call through a pointer, and a function of
+the program with one of these names (h264bsd's own `memset`) keep their calls.

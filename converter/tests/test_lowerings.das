@@ -186,7 +186,35 @@ def test_crt_writes(t : T?) {
         return
     }
     p7_crt_writes_fixtures(t)
+    p7_builtin_mem_fixtures(t)
     rmdir_rec(work_root)
+}
+
+def p7_builtin_mem_fixtures(t : T?) {
+    t |> run("the program's memcpy, memmove and memset for their effect are daslang's builtins, a run-time size tested against zero, under interp, jit, exe and aot as natively; a used result, a pointer with an effect under the test and a fill of a run-time count keep crt's") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_builtin_mem", text)
+        // a constant size is the call alone: `sizeof` as das's `int`, a fill value truncated to its byte
+        has_text(t, text, "    memset8(reinterpret<void?>(addr(b)), uint8(0), typeinfo sizeof(type<_c_block>))\n")
+        has_text(t, text, "    memset8(reinterpret<void?>(addr(b.flags[0])), uint8(-1), 3)\n")
+        has_text(t, text, "    memcpy(reinterpret<void?>(addr(b.coef[0])), reinterpret<void?>(addr(buf[0])), int64(uint64(4) * uint64(typeinfo sizeof(type<int>))))\n")
+        // a run-time size: `size_t` through `int64`, an `int`, `unsigned` or `long long` as C widened it
+        has_text(t, text, "    if (n != 0ul) \{\n        memmove(reinterpret<void?>(addr(buf[0]) + 1), reinterpret<void?>(addr(buf[0])), int64(n))\n    \}\n")
+        has_text(t, text, "    if (len != 0) \{\n        memcpy(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(addr(buf[0]) + 10), len)\n    \}\n")
+        has_text(t, text, "    if (ulen != 0u) \{\n")
+        has_text(t, text, "    if (wide != 0l) \{\n")
+        has_text(t, text, "        memcpy(null, null, int64(zero))\n")
+        has_text(t, text, "        memcpy(reinterpret<void?>(addr(buf[0]) + 8), reinterpret<void?>(addr(buf[0])), int64(n))\n")
+        // a size with an effect is made once, ahead of the test
+        has_text(t, text, "    let _t0 = n\n    n++\n    if (_t0 != 0ul) \{\n        memcpy(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(addr(buf[0]) + 1), int64(_t0))\n")
+        has_text(t, text, "        memset8(reinterpret<void?>(addr(b)), uint8(k), typeinfo sizeof(type<_c_block>))\n")
+        has_text(t, text, "    var r : uint8? = reinterpret<uint8?>(crt::memcpy(")
+        has_text(t, text, "    crt::memcpy(reinterpret<void?>(p7_builtin_mem__counted(")
+        has_text(t, text, "    crt::memset(reinterpret<void?>(addr(buf[0])), 7, n)\n")
+        t |> equal(text |> find("__builtin_memcpy") < 0, true, text)
+        each_marshal_tier(t, "p7_builtin_mem")
+        rejects(t, "memcpy_value", "#include <string.h>\nint main(void) \{ void *(*c)(void *, const void *, size_t) = memcpy; char a[2] = \"x\", b[2]; c(b, a, 2); return b[0] != 'x'; \}\n", "the value of external function `memcpy`")
+    }
 }
 
 def p7_crt_writes_fixtures(t : T?) {
@@ -2518,7 +2546,7 @@ def p8_refusal_fixtures(t : T?) {
         has_text(t, text, "= @@malloc1\n")
         has_text(t, text, "calloc1(uint64(4), ")
         has_text(t, text, "crt::strcpy(")
-        has_text(t, text, "crt::memcpy(")
+        has_text(t, text, "            memcpy(q, p, int64(size))\n")
     }
     t |> run("a calling convention in a type (wasm3's `vectorcall` macro over `preserve_none`, the attribute itself) drops: the function type keeps its result and parameters") @(t : T?) {
         var text : string

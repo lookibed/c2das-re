@@ -180,6 +180,19 @@ def is_digit_run(text : string; from : int) : bool {
     return digits
 }
 
+//! Whether `name` is a C identifier, which is a das one too.
+def is_identifier(name : string) : bool {
+    if (empty(name)) {
+        return false
+    }
+    for (idx, ch in count(), name) {
+        if (!(ch == '_' || is_alpha(ch) || (idx > 0 && is_number(ch)))) {
+            return false
+        }
+    }
+    return true
+}
+
 //! The C name a call's callee spells, below the decay of a function to its pointer; "" for a
 //! call through a pointer.
 def called_name(x : CirExpr) : string {

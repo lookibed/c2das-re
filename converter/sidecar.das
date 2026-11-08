@@ -143,19 +143,6 @@ def read_json_file(path : string; var error : string&) : JsonValue? {
     return js
 }
 
-// whether `name` is a C identifier
-def private is_identifier(name : string) : bool {
-    if (empty(name)) {
-        return false
-    }
-    for (idx, ch in count(), name) {
-        if (!(ch == '_' || is_alpha(ch) || (idx > 0 && is_number(ch)))) {
-            return false
-        }
-    }
-    return true
-}
-
 // whether `entry` is what `-D` takes as a macro: `NAME`, `NAME=value`, or a function-like
 // `NAME(params)=value` whose params are identifiers separated by commas, `...` last
 def private is_define(entry : string) : bool {
