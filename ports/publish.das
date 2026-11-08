@@ -761,7 +761,7 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
 // the top-level README: the charter kept above the marker, the projects table of every program's
 // latest capture (or the perf method line when no program has one) below it with the raw
 // captures it copies beside it, then the criteria and the head-to-head when their captures exist
-def private publish_top_readme(repo : string) : bool {
+def private publish_top_readme(repo : string; failures : array<string>) : bool {
     var captures : array<Capture>
     var names : array<string>
     dir(repo) $(name) {
@@ -795,8 +795,12 @@ def private publish_top_readme(repo : string) : bool {
     // every raw capture the clone holds, a copy the tree no longer has included
     let held <- [for (rel in RAW_CAPTURES); rel; where fexist(path_join(repo, rel))]
     let path = path_join(repo, "README.md")
-    return write_or_log(path, render_top_readme(fread(path), captures, held) + criteria + head_to_head)
+    let programs <- [for (name in names); name; where !has_value(RAW_DIRS, name)]
+    return write_or_log(path, render_top_readme(fread(path), captures, held) + render_programs(programs, failures) + criteria + head_to_head)
 }
+
+//! the folders of the clone that hold c2das-re's raw captures, not a program
+let RAW_DIRS <- ["compare", "metrics", "perf"]
 
 //! the head-to-head's capture in the c2das-re tree
 let COMPARE_CAPTURE = "compare/results_linux.json"
@@ -1072,16 +1076,15 @@ def private project_readme_text(p : Project; gen : Generation; rust_sha, refusal
 
 // a compare project's directory in the clone: converted whole, else file by file, every input
 // read and the conversion done before the first write into the clone
-def private publish_project(p_row : Project; repo : string; var gen : Generation) : bool {
+def private publish_project(p_row : Project; repo : string; var gen : Generation; var why : string&) : bool {
     var p := p_row
-    let expected_error = load_expected(p)
-    if (!empty(expected_error)) {
-        to_log(LOG_ERROR, "{p.name}: {expected_error}\n")
+    why = load_expected(p)
+    if (!empty(why)) {
         return false
     }
     let license = project_license(p)
     if (empty(license)) {
-        to_log(LOG_ERROR, "{p.name}: no license file or SPDX notice under {project_path(p, "upstream")}\n")
+        why = "no license file or SPDX notice under {project_path(p, "upstream")}"
         return false
     }
     let work = project_work(p.name)
@@ -1108,6 +1111,7 @@ def private publish_project(p_row : Project; repo : string; var gen : Generation
     ok = ok && write_or_log(path_join(dir, "LICENSE"), license)
     let command = "scripts/publish_ports.sh --program {p.name}"
     let rust_sha = git_line(rust_checkout(), ["rev-parse", "HEAD"])
+    why = ok ? "" : "a file of its directory was not written"
     return ok && write_or_log(path_join(dir, "README.md"), project_readme_text(p, gen, rust_sha, refusal, per_file, command, project_perf_text(p, gen)))
 }
 
@@ -1120,7 +1124,7 @@ def private repo_of(args : Args) : string {
 
 // every compare project of `projects` that `--program` names (all without it) published, the
 // top-level README after each, and committed with `--commit`; false at the first that fails
-def private publish_projects(args : Args; projects : array<Project>; repo : string) : bool {
+def private publish_projects(args : Args; projects : array<Project>; repo : string; var failures : array<string>) {
     for (p in projects) {
         if (!empty(args.program) && args.program != p.name) {
             continue
@@ -1134,15 +1138,21 @@ def private publish_projects(args : Args; projects : array<Project>; repo : stri
             continue
         }
         var gen : Generation
-        if (!publish_project(p, repo, gen) || !publish_top_readme(repo)) {
-            return false
+        var why : string
+        if (!publish_project(p, repo, gen, why)) {
+            failures |> push("{p.name}: {why}")
+            to_log(LOG_ERROR, "{p.name}: not published: {why}\n")
+            continue
+        }
+        if (!publish_top_readme(repo, failures)) {
+            failures |> push("{p.name}: the top-level README was not written")
+            continue
         }
         to_log(LOG_INFO, "{p.name}: published into {path_join(repo, p.name)}\n")
         if (args.commit && !commit_program(p.name, repo, gen)) {
-            return false
+            failures |> push("{p.name}: the commit failed")
         }
     }
-    return true
 }
 
 [export]
@@ -1202,26 +1212,45 @@ def main : int {
         to_log(LOG_ERROR, "ports: the c2das-re tree has uncommitted changes; commit them or pass --allow-dirty\n")
         return 1
     }
+    var failures : array<string>
     for (port in ports) {
         if (!empty(args.program) && args.program != port.name) {
             continue
         }
         var gen : Generation
-        if (!publish_program(args, port, lanes, repo, gen) || !publish_top_readme(repo)) {
-            return 1
+        if (!publish_program(args, port, lanes, repo, gen) || !publish_top_readme(repo, failures)) {
+            failures |> push("{port.name}: the publish failed (its log names why)")
+            continue
         }
         to_log(LOG_INFO, "{port.name}: published into {path_join(repo, port.name)}\n")
         if (args.commit && !commit_program(port.name, repo, gen)) {
-            return 1
+            failures |> push("{port.name}: the commit failed")
         }
     }
-    if (!publish_projects(args, projects, repo)) {
-        return 1
+    publish_projects(args, projects, repo, failures)
+    return finish(args, repo, failures)
+}
+
+// the end of a publish: the failures named in the top-level README and committed with `--commit`,
+// whatever was committed pushed with `--push`, the failures logged; 1 when any program failed or
+// the push did
+def private finish(args : Args; repo : string; failures : array<string>) : int {
+    if (!empty(failures) && publish_top_readme(repo, failures) && args.commit) {
+        var out : string
+        if (git_in(repo, ["add", "README.md"], out) == 0 && git_in(repo, ["diff", "--cached", "--quiet"], out) != 0) {
+            var argv <- clone_to_move(IDENTITY)
+            argv |> push_from(["commit", "-q", "-m", "README: the programs this publish failed: " + join(failures, "; ")])
+            git_in(repo, argv, out)
+        }
     }
+    var rc = empty(failures) ? 0 : 1
     var out : string
     if (args.push && git_in(repo, ["push", "-q", "origin", "HEAD"], out) != 0) {
         to_log(LOG_ERROR, "ports: git push failed: {out}\n")
-        return 1
+        rc = 1
     }
-    return 0
+    for (f in failures) {
+        to_log(LOG_ERROR, "ports: failed: {f}\n")
+    }
+    return rc
 }
