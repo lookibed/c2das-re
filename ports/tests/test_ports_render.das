@@ -517,3 +517,16 @@ def test_sources(t : T?) {
         t |> equal(length(no_url.tarballs), 0)
     }
 }
+
+[test]
+def test_project_notes(t : T?) {
+    t |> run("an SPDX notice runs through the first non-empty line after the SPDX line") @(t : T?) {
+        t |> equal(spdx_notice("/*\nPL_MPEG\nSPDX-License-Identifier: MIT\n\nDominic - https://x\n\nrest\n"), "/*\nPL_MPEG\nSPDX-License-Identifier: MIT\n\nDominic - https://x\n")
+        t |> equal(spdx_notice("int x;\n"), "")
+        t |> equal(spdx_notice("SPDX-License-Identifier: MIT"), "SPDX-License-Identifier: MIT")
+    }
+    t |> run("the measured-at line names the commit, the date, and that the output changed since only when the converter did") @(t : T?) {
+        t |> equal(measured_at_line("0123456789abcdef", "2026-11-07", false), "Measured at c2das-re `0123456789ab` (2026-11-07).\n\n")
+        t |> equal(measured_at_line("0123456789abcdef", "", true), "Measured at c2das-re `0123456789ab`, output changed since: the converter changed between that commit and the one this directory was converted at; no new timing yet.\n\n")
+    }
+}

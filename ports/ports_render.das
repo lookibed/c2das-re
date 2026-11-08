@@ -598,3 +598,31 @@ def release_of(versions, program : string; var release : Release) : bool {
     }
     return false
 }
+
+//! The line a table measured at another commit than the published conversion's carries: the
+//! commit it was measured at, and when the converter changed between that commit and the
+//! published one, that the output changed since, so the numbers are not read as this output's.
+def measured_at_line(sha, date : string; changed : bool) : string {
+    let at = "Measured at c2das-re `{slice(sha, 0, 12)}`" + (empty(date) ? "" : " ({date})")
+    return changed ? "{at}, output changed since: the converter changed between that commit and the one this directory was converted at; no new timing yet.\n\n" : "{at}.\n\n"
+}
+
+//! The notice of an upstream file that names its license by an SPDX line alone: the file's lines
+//! from the first through the first non-empty one after the `SPDX-License-Identifier` line (the
+//! author); "" when the file has no such line.
+def spdx_notice(text : string) : string {
+    let lines <- split(text, "\n")
+    var spdx = -1
+    for (line, i in lines, count()) {
+        if (spdx < 0 && line |> contains("SPDX-License-Identifier")) {
+            spdx = i
+        } elif (spdx >= 0 && !empty(strip(line))) {
+            return join([for (l, j in lines, count()); l; where j <= i], "\n") + "\n"
+        }
+    }
+    return spdx < 0 ? "" : join(lines, "\n")
+}
+
+//! The criteria line of a compare project's README: the readability criteria are not computed per
+//! project yet.
+let PROJECT_CRITERIA_NOT_YET = "not yet: c2das-re's `scripts/run_criteria.sh` measures its own inputs (the Lua programs and the suites) and takes no single project, so `metrics/criteria_linux.json` holds no row for this program."
