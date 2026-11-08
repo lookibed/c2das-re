@@ -42,7 +42,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `stack` and `alloca_limit`; `param_writes`, `in-place` or `copy`, the parameter write mode, any
   other value refused naming the key; `loops`, `range` or `while`, how a canonical counting `for` is
   spelled, any other value refused naming the key; `first_member`, `addr` or `reinterpret`, how the
-  address of a member at offset 0 is spelled, and `switch_dispatch`, `chain` or `goto`, how a dense switch dispatches, each other value refused naming the key; `layout`,
+  address of a member at offset 0 is spelled, `switch_dispatch`, `chain` or `goto`, how a dense switch dispatches, and `past_end`, `call` or `inline`, how `&a[k]` of a plain-load index is spelled, each other value refused naming the key; `layout`,
   `source`, `source-cut` or `single`, the module layout of a program of several files, or an object
   of `mode` (one of those), `threshold` (a count), `keep_together` (symbols and lists of file
   stems), `cut` (symbols) and `profile` (a file beside the sidecar), the cycle cut's choices, any
@@ -115,7 +115,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   over the sidecar's `loops` and refuses any other value the same way. `--first-member` chooses how
   the address of a member at offset 0 is spelled: `addr`, the default and the idiomatic form,
   `addr(p.f)`; `reinterpret`, the record's pointer reinterpreted, which the interpreter runs faster
-  (`ARCHITECTURE_EMITTER_AGGREGATES.md`); it wins over the sidecar's `first_member` the same way, as `--switch-dispatch` (`chain`, the default, or `goto`, the jump table of `ARCHITECTURE_EMITTER_CONTROL.md`) over `switch_dispatch`.
+  (`ARCHITECTURE_EMITTER_AGGREGATES.md`); it wins over the sidecar's `first_member` the same way, as `--switch-dispatch` (`chain`, the default, or `goto`, the jump table of `ARCHITECTURE_EMITTER_CONTROL.md`) over `switch_dispatch` and `--past-end` (`call`, the default, or `inline`, the conditional of `ARCHITECTURE_EMITTER_AGGREGATES.md`, One past an array's end) over `past_end`.
 - `benchmarks/bench_for_shapes.das` - the loop-shape race behind section 4
   (`ARCHITECTURE_EMITTER.md`), run with `dastest -- --bench` under the interpreter and
   under `-jit`.

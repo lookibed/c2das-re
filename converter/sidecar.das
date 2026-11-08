@@ -35,6 +35,10 @@ struct Sidecar {
     // dereference or an index past its array) or `off` (`unsafe_deref` and
     // `hint(unsafe_range_check)` on every converted function); "" when the key is absent
     checks : string
+    // how `&a[k]` of an array spells an index that is a plain load: `call` (`addr(a[0]) +
+    // end_index(k, N)`) or `inline` (`k == N ? addr(a[0]) + N : addr(a[k])`, no call per access);
+    // "" when the key is absent
+    past_end : string
     // the macros clang defines for the dump, each `NAME`, `NAME=value` or `NAME(params)=value`,
     // passed as `-D<entry>`
     defines : array<string>
@@ -79,6 +83,7 @@ struct Sidecar {
 
 //! The keys a sidecar may hold; any other is refused naming it.
 let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks", "jit_whole_program"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks", "past_end"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -109,6 +114,12 @@ let CHECKS <- ["safe", "off"]
 
 //! Whether `mode` is a value of `checks`.
 def is_checks(mode : string) : bool => has_value(CHECKS, mode)
+
+//! The values of the `past_end` key and of the converter's `--past-end`.
+let PAST_END <- ["call", "inline"]
+
+//! Whether `mode` is a value of `past_end`.
+def is_past_end(mode : string) : bool => has_value(PAST_END, mode)
 
 //! The values of the `layout` key and of the converter's `--layout`.
 let LAYOUTS <- ["source", "source-cut", "single"]
@@ -393,6 +404,7 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
     read_mode(js, path, "first_member", FIRST_MEMBER, side.first_member, error)
     read_mode(js, path, "switch_dispatch", SWITCH_DISPATCH, side.switch_dispatch, error)
     read_mode(js, path, "checks", CHECKS, side.checks, error)
+    read_mode(js, path, "past_end", PAST_END, side.past_end, error)
     if (key_exists(js, "layout")) {
         read_layout(js?["layout"], path, side, error)
     }

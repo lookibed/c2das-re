@@ -9,7 +9,7 @@ require pipeline
 require sidecar
 require tiers
 
-//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy] [--loops range|while] [--first-member addr|reinterpret] [--switch-dispatch chain|goto] [--layout source|source-cut|single] [--edge-census] [--no-solid-context] [--checks safe|off]`.
+//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy] [--loops range|while] [--first-member addr|reinterpret] [--switch-dispatch chain|goto] [--layout source|source-cut|single] [--edge-census] [--no-solid-context] [--checks safe|off] [--past-end call|inline]`.
 //! Converts one C file into `<dir>/<stem>.das` (default `out/`), several or a manifest's as one
 //! program: by default a module per C file under `<dir>` as the files lie under their common
 //! folder, mutually dependent files one module of fragments (`--layout source`), the cycles among
@@ -55,6 +55,9 @@ struct Args {
     no_solid_context : bool
     @clarg_doc = "das's checks in the converted functions: safe (the default: a null dereference or an index past its array panics naming the access) or off (every converted function carries `unsafe_deref` and `hint(unsafe_range_check)`, dropping the checks: faster where they are hot, Doom 3-7% and Lua 2-11% under the interpreter and the JIT, not on every kernel; a wrong C program then reads garbage or dies by SIGSEGV instead of panicking, and the AOT host keeps its range checks); overrides the sidecar's checks"
     checks : string = ""
+    @clarg_name = "past-end"
+    @clarg_doc = "`&a[k]` of an array whose index is a plain load (a variable or a field), which C may take one past the end: call (`addr(a[0]) + end_index(k, N)`, the default) or inline (`k == N ? addr(a[0]) + N : addr(a[k])`, das's own index with no call per access: faster under the interpreter, the index and the array spelled twice); overrides the sidecar's past_end"
+    past_end : string = ""
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -100,6 +103,10 @@ def main : int {
         to_log(LOG_ERROR, "c2das: --checks is safe or off, not `{args.checks}`; -? for help\n")
         return 2
     }
+    if (!empty(args.past_end) && !is_past_end(args.past_end)) {
+        to_log(LOG_ERROR, "c2das: --past-end is call or inline, not `{args.past_end}`; -? for help\n")
+        return 2
+    }
     if (!empty(args.layout) && !is_layout(args.layout)) {
         to_log(LOG_ERROR, "c2das: --layout is source, source-cut or single, not `{args.layout}`; -? for help\n")
         return 2
@@ -110,7 +117,7 @@ def main : int {
         to_log(LOG_ERROR, "c2das: {error}\n")
         return 1
     }
-    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry, args.layout, args.edge_census, args.first_member, args.switch_dispatch, args.no_solid_context, args.checks)
+    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry, args.layout, args.edge_census, args.first_member, args.switch_dispatch, args.no_solid_context, args.checks, args.past_end)
     if (!res.ok) {
         to_log(LOG_ERROR, "c2das: {res.error}\n")
         return 1

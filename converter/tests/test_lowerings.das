@@ -240,10 +240,10 @@ def p2_fixtures(t : T?) {
         t |> equal(text |> find("var ptrs : int? [2] = fixed_array<int?>(unsafe(addr(full[1])), null)") >= 0, true, text)
         t |> equal(text |> find("var row : int[3]? = addr(m[1])") >= 0, true, text)
         t |> equal(text |> find("deref(row)[2]") >= 0, true, text)
-        // an address that may be one past the end is the decayed array plus the length there, das's
-        // own index elsewhere (F45)
+        // an address that may be one past the end is the decayed array plus the checked index (F45)
         has_text(t, text, "addr(full[0]) + 3")
-        has_text(t, text, "addr(local[1]), n == 4 ? addr(local[0]) + 4 : addr(local[n])")
+        has_text(t, text, "addr(local[1]), addr(local[0]) + end_index(n, 4)")
+        has_text(t, text, "require c_runtime/c_bounds")
         // in a global initializer the decay and the sum each take their own unsafe (F48)
         has_text(t, text, "var gend : int? = unsafe(unsafe(addr(full[0])) + 3)")
         has_text(t, text, "var ends : int? [2] = fixed_array<int?>(unsafe(addr(full[0])), unsafe(unsafe(addr(full[0])) + 3))")
@@ -1208,7 +1208,7 @@ def p4_csmith_more_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p6_extern_array", text)
         // a function and a file-scope initializer before the definition index and decay its storage
-        has_text(t, text, "    return k == 4 ? addr(_c_table[0]) + 4 : addr(_c_table[k])\n")
+        has_text(t, text, "    return addr(_c_table[0]) + end_index(k, 4)\n")
         has_text(t, text, "var private p6_extern_array__third : int? = unsafe(addr(_c_table[2]))\n")
         has_text(t, text, "    return grid[1][1] + grid[0][1]\n")
         // the address of the whole array converts to the definition's row pointer
@@ -2660,9 +2660,27 @@ def p7_goto_into_fixtures(t : T?) {
 
 // P7.0zb: `&a[k]` of an array without the `end_index` call where the index allows it
 def p7_end_index_fixtures(t : T?) {
-    t |> run("`&a[k]`: a constant folds, a plain load is das's own index but at the length, any other index takes end_index; one past the end as natively under interp and jit, a panic past it under interp, jit and aot") @(t : T?) {
+    t |> run("`&a[k]` by default: a constant folds, any other index takes end_index; as natively under interp") @(t : T?) {
         var text : string
         check_fixture(t, "p7_end_index", text)
+        // an enumerator and a literal under a cast that holds it fold as a literal does
+        has_text(t, text, "    return addr(p7_end_index__a[int(Ch.CH2)])\n")
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + int(Ch.CH_COUNT)\n")
+        has_text(t, text, "    return addr(p7_end_index__a[int(uint8(3))])\n")
+        // a cast that changes the value keeps the call; a `_Bool` cast makes any nonzero 1, so it
+        // is no constant: C means `a + 1`
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(int(uint8(260)), 4)\n")
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(4 != 0 ? 1 : 0, 4)\n")
+        // a plain load keeps the call unless `past_end` is `inline`
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(k, 4)\n")
+        has_text(t, text, "    return addr(e.oam[0]) + end_index(e.k, 4)\n")
+        t |> equal(text |> find(" == 4 ?"), -1, text)
+    }
+    t |> run("`&a[k]` under past_end inline: a plain load is das's own index but at the length; one past the end as natively under interp and jit, a panic past it under interp, jit and aot") @(t : T?) {
+        let work = path_join(work_root, "p7_end_index_inline")
+        let res <- convert("{FIXTURES}/p7_end_index.c", work, "linux", "", "", "", "", "", "", false, "", "inline")
+        t |> equal(res.ok, true, res.error)
+        let text = res.das_text
         // a plain load in each index type compares with the length in its own type
         has_text(t, text, "    return k == 4 ? addr(p7_end_index__a[0]) + 4 : addr(p7_end_index__a[k])\n")
         has_text(t, text, "    return k == 4u ? addr(p7_end_index__a[0]) + 4 : addr(p7_end_index__a[k])\n")
@@ -2671,18 +2689,13 @@ def p7_end_index_fixtures(t : T?) {
         // a field, through a pointer and widened from a small integer
         has_text(t, text, "    return int(e.small) == 4 ? addr(e.oam[0]) + 4 : addr(e.oam[int(e.small)])\n")
         has_text(t, text, "    return e.k == 4 ? addr(e.oam[0]) + 4 : addr(e.oam[e.k])\n")
-        // an enumerator and a literal under a cast that holds it fold as a literal does
-        has_text(t, text, "    return addr(p7_end_index__a[int(Ch.CH2)])\n")
-        has_text(t, text, "    return addr(p7_end_index__a[0]) + int(Ch.CH_COUNT)\n")
-        has_text(t, text, "    return addr(p7_end_index__a[int(uint8(3))])\n")
         // an enum variable compares as the `int` its index spells
         has_text(t, text, "    return int(c) == 4 ? addr(p7_end_index__a[0]) + 4 : addr(p7_end_index__a[int(c)])\n")
-        // a cast that changes the value, a compound, a `_Bool` or a volatile index, an array
-        // with an effect or behind a volatile load keep the call
-        has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(int(uint8(260)), 4)\n")
-        // a `_Bool` cast makes any nonzero 1, so it is no constant: C means `a + 1`
+        // constants fold as by default
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + int(Ch.CH_COUNT)\n")
         has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(4 != 0 ? 1 : 0, 4)\n")
-        // a bitfield or a union member reads through an accessor call
+        // a bitfield or a union member reads through an accessor call, and a compound, a `_Bool`
+        // or a volatile index, an array with an effect or behind a volatile load keep the call
         has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(b.lo, 4)\n")
         has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(p.k, 4)\n")
         has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(i + j, 4)\n")
@@ -2692,13 +2705,14 @@ def p7_end_index_fixtures(t : T?) {
         has_text(t, text, "    return addr(c_volatile_load(vp).oam[0]) + end_index(k, 4)\n")
         // as an operand the conditional takes parentheses
         has_text(t, text, "int(int64((p7_end_index__g_emu.k == 4 ? addr(p7_end_index__a[0]) + 4 : addr(p7_end_index__a[p7_end_index__g_emu.k])) - addr(p7_end_index__a[1])))")
-        let path = path_join(path_join(work_root, "p7_end_index"), "p7_end_index.das")
         let want = native("p7_end_index")
-        var out : string
         let no_flags : array<string>
-        t |> equal(run_tier(path, "jit", path_join(work_root, "end_index_jit"), out, CONVERTED_MODULES), want.rc, out)
-        let program = join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
-        t |> equal(program, want.out, "jit")
+        for (tier in ["interp", "jit"]) {
+            var out : string
+            t |> equal(run_tier(res.das_path, tier, path_join(work_root, "end_index_{tier}"), out, CONVERTED_MODULES), want.rc, out)
+            let program = join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
+            t |> equal(program, want.out, tier)
+        }
         // past the end (`int`, `uint`, `int64`) and below zero the conditional's own index panics
         // as the range check
         for (tier in ["interp", "jit", "aot"]) {
@@ -2707,10 +2721,12 @@ def p7_end_index_fixtures(t : T?) {
                     continue
                 }
                 var panicked : string
-                let rc = run_tier(path, tier, path_join(work_root, "end_index_{tier}_{length(args)}"), panicked, CONVERTED_MODULES, 600.0, no_flags, args)
+                let rc = run_tier(res.das_path, tier, path_join(work_root, "end_index_{tier}_{length(args)}"), panicked, CONVERTED_MODULES, 600.0, no_flags, args)
                 t |> success(rc != 0 && panicked |> contains("out of range"), "{tier} {args}: {rc} {panicked}")
             }
         }
+        let refused <- convert("{FIXTURES}/p7_end_index.c", path_join(work_root, "p7_end_index_bad"), "linux", "", "", "", "", "", "", false, "", "fast")
+        t |> success(refused.error |> contains("--past-end is call or inline, not `fast`"), refused.error)
     }
     t |> run("`&a[k]`: a constant that its casts change, a cast to an enum, a floating cast or a negative enumerator keeps the call; a wide cast folds") @(t : T?) {
         let source = "enum Ch \{ CH0, CH1, CH2 \};\nenum Neg \{ NEG = -1 \};\nstatic int a[4];\nstatic int *sc(void) \{ return &a[(signed char)128]; \}\nstatic int *en(void) \{ return &a[(enum Ch)2]; \}\nstatic int *ng(void) \{ return &a[NEG]; \}\nstatic int *wide(void) \{ return &a[(long)4]; \}\nstatic int *dbl(void) \{ return &a[(long)(double)4]; \}\nint main(void) \{ return (sc() != 0) + (en() != 0) + (ng() != 0) - 3 + (wide() == &a[4]) + (dbl() == &a[4]) - 1; \}\n"

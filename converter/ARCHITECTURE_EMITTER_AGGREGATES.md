@@ -192,11 +192,14 @@ undefined behaviour past the end. A constant is a decimal literal within `int64`
 enumerator, under integer casts that each hold its value; a `_Bool` cast holds none, since it
 makes any nonzero value 1. A plain load (a variable or a field under casts, read without a
 volatile access, never a bitfield or a union member, which read through an accessor call) into
-an array without effects is `k == N ? addr(a[0]) + N : addr(a[k])`: das's own range check on
-every index but the length, with no call per access (`end_index` was 12.6% of binjgb's
-interpreter profile), the length typed as the index (`4u`, `4l`, `4ul`). Any other index, which
-that form would spell or evaluate twice, is `addr(a[0]) + end_index(k, N)` (`c_runtime/c_bounds`,
-an unsigned compare against `N` that panics in das's range-check wording).
+an array without effects is, under the `past_end` option `inline` (`--past-end inline` or the
+sidecar's `"past_end": "inline"`), `k == N ? addr(a[0]) + N : addr(a[k])`: das's own range
+check on every index but the length, with no call per access (`end_index` was 12.6% of binjgb's
+interpreter profile), the length typed as the index (`4u`, `4l`, `4ul`). By default (`call`), and
+for any other index, which that form would spell or evaluate twice, it is `addr(a[0]) +
+end_index(k, N)` (`c_runtime/c_bounds`, an unsigned compare against `N` that panics in das's
+range-check wording): the conditional spells the index, the array and the length twice, and the
+readability capture counts the repeated length (`literal_named` +59 over its inputs).
 
 ### Function pointers
 
