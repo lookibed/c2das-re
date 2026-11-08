@@ -405,7 +405,7 @@ def test_publish_commit_push(t : T?) {
         }
         let top = fread(path_join(clone, "README.md"))
         t |> success(top |> starts_with("# ports\n\nThe charter.\n\n<!-- generated below"), top)
-        t |> success(top |> ends_with("## Programs\n\nnot yet: the publisher measures only under `--perf`, off by default because a capture takes hours and runs only on an idle machine\n"), top)
+        t |> success(top |> ends_with("## Programs\n\nnot yet: the publisher measures only under `--perf`, off by default because a capture takes hours and runs only on an idle machine\n\n## Directories\n\n- [lua](lua/)\n"), top)
         t |> equal(git(clone, ["log", "-1", "--format=%s %an"]), "lua: regenerated from c2das-re v9.9.9 ({sha}) lookibed")
         t |> equal(git(clone, ["status", "--porcelain"]), "")
         let head = git(clone, ["rev-parse", "HEAD"])
@@ -954,13 +954,21 @@ def test_projects(t : T?) {
         t |> equal(publish(root, ["--repo", clone, "--program", "wasm3", "--no-convert"], out), 0, out)
         t |> success(out |> contains("wasm3: not published: a compare project converts on every publish"), out)
     }
-    t |> run_stand_in("a project without a license refuses before the first write into the clone", "c2das_ports_project_refusal") @(t : T?; root, clone : string) {
+    t |> run_stand_in("a project without a license refuses before the first write into the clone; the others publish, commit and push, and the top README names the failure", "c2das_ports_project_refusal") @(t : T?; root, clone : string) {
         stand_in_projects(root)
         remove(path_join(root, "rust/tests/manual/binjgb/upstream/binjgb/LICENSE"))
+        git(root, ["add", "-A"])
+        git(root, ["commit", "-q", "-m", "projects"])
         var out : string
-        t |> equal(publish(root, ["--repo", clone, "--program", "binjgb", "--allow-dirty"], out), 1, out)
-        t |> success(out |> contains("binjgb: no license file or SPDX notice under "), out)
+        t |> equal(publish(root, ["--repo", clone, "--commit", "--push"], out), 1, out)
+        t |> success(out |> contains("ports: failed: binjgb: no license file or SPDX notice under "), out)
         t |> success(!fexist(path_join(clone, "binjgb")), out)
+        t |> success(fexist(path_join(clone, "lua/README.md")) && fexist(path_join(clone, "wasm3/README.md")), out)
+        let top = fread(path_join(clone, "README.md"))
+        t |> success(top |> contains("## Directories\n\n- [lua](lua/)\n- [wasm3](wasm3/)\n"), top)
+        t |> success(top |> contains("\n- binjgb: no license file or SPDX notice under "), top)
+        t |> equal(git(clone, ["status", "--porcelain"]), "", "the failure line is committed")
+        t |> equal(git(path_join(root, "ports.git"), ["rev-parse", "HEAD"]), git(clone, ["rev-parse", "HEAD"]), "what was committed is pushed")
     }
 }
 

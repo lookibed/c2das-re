@@ -626,3 +626,21 @@ def spdx_notice(text : string) : string {
 //! The criteria line of a compare project's README: the readability criteria are not computed per
 //! project yet.
 let PROJECT_CRITERIA_NOT_YET = "not yet: c2das-re's `scripts/run_criteria.sh` measures its own inputs (the Lua programs and the suites) and takes no single project, so `metrics/criteria_linux.json` holds no row for this program."
+
+//! The top-level README's programs section: a link per program directory of the clone, then each
+//! failure of the publish that wrote it (`<program>: <why>`), whose directory keeps what an earlier
+//! publish left.
+def render_programs(programs : array<string>; failures : array<string>) : string {
+    return build_string() $(var w) {
+        w |> write("\n## Directories\n\n")
+        for (name in programs) {
+            w |> write("- [{name}]({name}/)\n")
+        }
+        if (!empty(failures)) {
+            w |> write("\nNot republished by the last publish, each directory as an earlier publish left it:\n\n")
+            for (f in failures) {
+                w |> write("- {f}\n")
+            }
+        }
+    }
+}
