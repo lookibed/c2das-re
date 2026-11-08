@@ -135,8 +135,8 @@ def worker_argv(script, key : string) : array<string> {
 //! Input `key` converted into `<dir>/das/` under the `linux` dialect: a `perf/<kernel>@copy` key
 //! under `--param-writes copy`, a `perf/<kernel>@while` key under `--loops while`, a
 //! `perf/<kernel>@reinterpret` key under `--first-member reinterpret`, a Lua key from
-//! the release's files in the layout it names, a `project/<name>` key by `convert_project` into
-//! `<dir>/` as the ports publisher converts it.
+//! the release's files in the layout it names; a key ending `@inline` under `--inline-helpers`; a
+//! `project/<name>` key by `convert_project` into `<dir>/` as the ports publisher converts it.
 def convert_input(key, dir : string) : ConvertedInput {
     if (key |> starts_with(PROJECT_PREFIX)) {
         return <- convert_project_input(slice(key, length(PROJECT_PREFIX)), dir)
