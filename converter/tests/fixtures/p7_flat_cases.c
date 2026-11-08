@@ -3,7 +3,10 @@
    into the middle of the last, a return before a case label), a returning `default` first and a
    return before the next case label, an enum with a default and holes, a continue of the loop
    around it, a goto from a nested switch's default to the outer one's, a sparse one, one case
-   value, one past int, holes with no default in an open switch inside another, a switch a goto
+   value, one past int, holes with no default in an open switch inside another, an unsigned
+   subject with `case -1` (open and dense), INT_MIN-based tables (open and dense), one below int,
+   a continuing nested switch above a case label, one whose end no break reaches, a
+   case group's declaration a later block's local would hide, a switch a goto
    enters from outside; main prints every result */
 #include <stdio.h>
 
@@ -128,6 +131,64 @@ static int first_default(int x, int k) {
     return r;
 }
 
+static int e1(unsigned u) {
+    int r = 0;
+    switch (u) { case -1: r = 1; goto ex; case 0: r = 2; break; case 1: ex: r += 10; break; }
+    return r;
+}
+
+static int udense(unsigned u) {
+    switch (u) { case -1: return 9; case 0: return 1; case 1: return 2; case 2: return 3; case 3: return 4; case 4: return 5; case 5: return 6; case 6: return 7; }
+    return 0;
+}
+
+static int imin3(int x) {
+    int r = 0;
+    switch (x) { case -2147483647 - 1: r = 1; goto m; case -2147483647: m: r += 10; break; case -2147483646: r = 3; break; }
+    return r;
+}
+
+static int imin8(int x) {
+    switch (x) {
+    case -2147483647 - 1: return 1; case -2147483647: return 2; case -2147483646: return 3; case -2147483645: return 4;
+    case -2147483644: return 5; case -2147483643: return 6; case -2147483642: return 7; case -2147483641: return 8;
+    }
+    return 0;
+}
+
+static int wide_low(long long x) {
+    int r = 0;
+    switch (x) { case -3000000002LL: r = 1; goto w; case -3000000001LL: w: r += 2; break; case -3000000000LL: r = 3; break; }
+    return r;
+}
+
+static int nested_cont(int n, int m) {
+    int r = 0;
+    for (int i = 0; i < n; i++) {
+        switch (i % 3) {
+        case 0:
+            switch (m) { case 0: r += 1; case 1: r += 2; if (i > 3) continue; break; case 2: r += 4; break; }
+            goto k2;
+        case 1: r += 10; break;
+        case 2: k2: r += 100; break;
+        }
+        r += 1000;
+    }
+    return r;
+}
+
+static int no_break(int x) {
+    int r = 0;
+    switch (x) { case 0: r = 1; goto t; case 1: t: return r + 5; default: return 9; }
+}
+
+static int shadow(int x) {
+    int r = 0;
+    switch (x) { case 0: r = 1; goto s; case 1: s: r += 2; int k = r + 3; r = k; break; }
+    { int k = 7; r += k; }
+    return r;
+}
+
 static int entered(int x, int k) {
     int r = 0;
     if (k) goto inside;
@@ -145,6 +206,11 @@ int main(void) {
     printf("%d %d %d %d\n", wide(4000000000LL), wide(4000000001LL), wide(4000000002LL), wide(5));
     printf("%d %d %d %d %d %d\n", twice(0, 0), twice(1, 0), twice(2, 0), twice(2, 1), twice(2, 3), twice(3, 0));
     printf("%d %d %d %d %d\n", first_default(0, 0), first_default(0, 1), first_default(1, 0), first_default(2, 0), first_default(7, 0));
+    printf("%d %d %d %d | %d %d %d %d\n", e1(-1), e1(0), e1(1), e1(2), udense(-1), udense(0), udense(6), udense(7));
+    printf("%d %d %d %d | %d %d %d\n", imin3(-2147483647 - 1), imin3(-2147483647), imin3(-2147483646), imin3(0), imin8(-2147483647 - 1), imin8(-2147483641), imin8(5));
+    printf("%d %d %d %d\n", wide_low(-3000000002LL), wide_low(-3000000001LL), wide_low(-3000000000LL), wide_low(0));
+    printf("%d %d %d %d | %d %d %d\n", nested_cont(8, 0), nested_cont(8, 1), nested_cont(8, 2), nested_cont(8, 3), no_break(0), no_break(1), no_break(4));
+    printf("%d %d %d\n", shadow(0), shadow(1), shadow(2));
     printf("%d %d %d %d\n", entered(0, 0), entered(2, 0), entered(2, 1), entered(5, 0));
     return 0;
 }
