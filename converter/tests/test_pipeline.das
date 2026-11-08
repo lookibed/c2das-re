@@ -11,7 +11,7 @@ require daslib/strings_boost
 
 let FIXTURE = "converter/tests/fixtures/ret42.c"
 let CIR_SHA = "0fc98ecbfd57f8acb5f340ca4b934f85c84b624ec962c1262aaf488bb92e9bca"
-let DAS_SHA = "85e8a115d3c40a44c2e16493355badcfa34d87f4b10e89c687e50c1cace1ef2d"
+let DAS_SHA = "56ecb7d9a210e8d789de2f2e3df9c0292c80fefe22f6d416cb7095c833392225"
 
 var res : ConvertResult
 var out : string

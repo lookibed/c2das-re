@@ -296,6 +296,35 @@ def test_sidecar_jit_whole_program(t : T?) {
 }
 
 [test]
+def test_sidecar_strict_aliasing(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_strict_aliasing", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`strict_aliasing` is true or false; absent it is false, the model off") @(t : T?) {
+        for (on in [true, false]) {
+            var error : string
+            let side <- read_text(dir, "alias_{on}", "\{\"strict_aliasing\": {on}\}\n", error)
+            t |> equal(error, "")
+            t |> equal(side.strict_aliasing, on)
+        }
+        var error : string
+        let side <- read_text(dir, "no_alias", "\{\"stack\": 65536\}\n", error)
+        t |> equal(error, "")
+        t |> equal(side.strict_aliasing, false)
+    }
+    t |> run("a `strict_aliasing` that is no boolean is refused, naming the key and the value") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "bad_alias", "\{\"strict_aliasing\": \"on\"\}\n", error)
+        t |> success(error |> ends_with("bad_alias.c2das: `strict_aliasing` is true or false, not \"on\""), error)
+        t |> equal(side.strict_aliasing, false)
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_sidecar_inline_helpers(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_sidecar_inline_helpers", dir_error)

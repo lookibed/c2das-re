@@ -8,7 +8,8 @@ The module opens with the generated banner, `options gen2`, `options indenting =
 reached by index, never looked up by name per JIT access, F80; `--no-solid-context` or the sidecar's `solid_context: false` drops it,
 for code another context runs or a patch reloads), `options stack` and a `require c_runtime/<name>` per piece the body reached; under
 the sidecar's `jit_whole_program` the module holding `main` adds `options jit_split_modules = 0` and `require c_runtime/c_jit_build`,
-the cached JIT's one-unit build, which keeps inlining across das modules (F92). Every module carries the options, the link module too;
+the cached JIT's one-unit build, which keeps inlining across das modules (F92); unless the sidecar's `strict_aliasing` is true it adds
+`options strict_aliasing = false`, the JIT's and the exe's typed aliasing off (`ARCHITECTURE_TIERS.md` section 9). Every module carries the options, the link module too;
 a `.das.inc` fragment none, being text its module includes. The stack is the sidecar's `stack`, else 8388608, C's 8 MiB on linux:
 das's context stack is 16 KiB (`probes/test_process.das`), which a record parameter's copy on entry or an alloca arena outgrows, and a
 recursion multiplies.

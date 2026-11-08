@@ -17,8 +17,8 @@ require ../dumper_a.das
 //! a fixed array panics in the checked module and reads the next field in the unchecked one.
 
 let FIXTURE = "converter/tests/fixtures/p7_unchecked.c"
-let SAFE_SHA = "1ee21501a3940bfef93191a47e138c04674366887cbef6078c00523e64903f79"
-let OFF_SHA = "d4c3d87c549f0b515b48773d8915581b4663afe8e0bda5fa16d6a02dc4532e38"
+let SAFE_SHA = "55b9a23e84d9b18a4ebfe5a82041704dcb17bdec8513412dd50c1c03ee55115b"
+let OFF_SHA = "ece2775d45dd7164977a426296d9cd47d32df8dfee859378520cd811a902e55e"
 
 var work_root : string
 var safe : ConvertResult
