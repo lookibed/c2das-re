@@ -2738,6 +2738,9 @@ def p7_end_index_fixtures(t : T?) {
         has_text(t, text, "    return addr(end_index_casts__a[0]) + 4\n")
         // a floating cast between them is no integer cast: the value keeps the call
         has_text(t, text, "end_index(int64(double(4)), 4)")
+    }
+}
+
 def p7_empty_case_fixtures(t : T?) {
     t |> run("a case whose body does nothing joins the next case's labels; default, a C label, a declaration, a volatile read and a nested case label keep their forms") @(t : T?) {
         var text : string
