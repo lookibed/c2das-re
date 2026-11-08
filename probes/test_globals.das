@@ -103,6 +103,52 @@ def test_aot_globals(t : T?) {
     }
 }
 
+// the `let private` shapes the emitter writes for a `#define` constant (P7.0k), read by `named`, and a
+// `var` of the same value read by `kept`, the control
+let private constant_let_source = "options gen2\nlet private MASK = 8191\nlet private TICKS = 456 * 154\nlet private UMASK = 0xffu\nlet private WIDE = uint64(3) * uint64(4)\nlet private NEG = -7\nlet private HALF = 0.5lf\nlet private BIG = int64(1) << int64(40)\nvar private VMASK = 8191\n[export]\ndef named(a : int; b : uint; c : uint64; d : double; e : int64) : int \{\n    return (a & MASK) + TICKS + int(b & UMASK) + int(c * WIDE) + NEG + int(d * HALF) + int(e + BIG)\n\}\n[export]\ndef kept(a : int) : int \{\n    return a & VMASK\n\}\n[export]\ndef main \{\n    print(\"\{named(1, 2u, 3ul, 4.0lf, 5l)\} \{kept(5)\}\\n\")\n\}\n"
+
+//! The JIT IR function for the das function `name` (its symbol "`name <argument types>"), its `define` line to its end.
+def private jit_body(dump, name : string) : string {
+    var lines : array<string>
+    var inside = false
+    for (l in split(dump, "\n")) {
+        inside = inside || (l |> starts_with("define ") && l |> contains("`{name} "))
+        if (inside) {
+            lines |> push(l)
+            if (l == "\}") {
+                break
+            }
+        }
+    }
+    return join(lines, "\n")
+}
+
+[test]
+def test_constant_let_folds(t : T?) {
+    t |> run("a read of a module `let` of a constant is that constant before simulation: AOT spells the literal where a `var` reads the global (P7.0zd)") @(t : T?) {
+        let cpp = aot_context_cpp(t, "constant_let", constant_let_source)
+        let named = definition_body(cpp, "inline int32_t named_")
+        t |> success(!(named |> contains("das_global")), named)
+        for (folded in ["& 8191)", "+ 70224)", "& 0xffu)", "* UINT64_C(0xc))", "+ -7)", "* 5.00000000000000000e-01)", "+ INT64_C(1099511627776))"]) {
+            t |> success(named |> contains(folded), "{folded}: {named}")
+        }
+        let kept = definition_body(cpp, "inline int32_t kept_")
+        t |> success(kept |> contains("das_global<int32_t,0x"), kept)
+    }
+    t |> run("the JIT compiles the folded constant as an immediate and a `var` as a global load (P7.0zd)") @(t : T?) {
+        let ir = "{temp_directory_result() as value}/c2das_probe_constant_let.ll"
+        let jit = daslang_run("constant_let", constant_let_source, jit_flags(), array<string>(), "c2das_probe", ["--", "--jit-dump", "--jit-dump-to", ir])
+        t |> equal(jit.out |> ends_with("70263 5\n"), true, jit.out)
+        let dump = fread(ir)
+        let named = jit_body(dump, "named")
+        t |> success(named |> contains("and i32 %arg_value_0, 8191"), named)
+        t |> success(!(named |> contains("jit_get_global")), named)
+        let kept = jit_body(dump, "kept")
+        t |> success(kept |> contains("jit_get_global"), kept)
+        remove(ir)
+    }
+}
+
 // two menus, each holding a function value and a pointer: `HEAD` is the first menu's initializer,
 // `GO_BODY` the body of the function it holds, `TAIL` what follows the second menu
 let menu_source = "options gen2\nstruct Menu \{\n    go : function<() : void>\n    prev : Menu?\n\}\nvar current : Menu?\nvar first : Menu = HEAD\ndef go_second \{\n    GO_BODY\n\}\nvar second : Menu = Menu(prev = unsafe(addr(first)))\nTAIL\n[export]\ndef main \{\n    invoke(first.go)\n    assert(current == unsafe(addr(second)) && deref(current).prev == unsafe(addr(first)))\n\}\n"
