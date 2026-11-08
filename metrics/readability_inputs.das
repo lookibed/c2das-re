@@ -12,16 +12,21 @@ require ../perf/perf_compose.das
 require ../converter/pipeline.das
 require ../converter/sidecar.das
 require ../lua/sources.das
+require ../compare/projects.das
+require ../compare/rust_translator.das
 require readability_file
+require criteria_file
 
 //! One input key converted the way the readability metric and the criteria measure it
 //! (`metrics/ARCHITECTURE.md` section 2): the C files it came from and the das files emitted.
 
 //! A converted input: `error` when it did not generate or convert, else the C files in link
 //! order, the sidecar they converted under ("" for none), the emitted modules (`.das`) and the
-//! cluster fragments (`.das.inc`), each by its path.
+//! cluster fragments (`.das.inc`), each by its path; `c_files` counts the C files of the program,
+//! more than `c_paths` holds when a project converts only file by file and some files refuse.
 struct ConvertedInput {
     error : string
+    c_files : int
     c_paths : array<string>
     sidecar : string
     das_paths : array<string>
@@ -72,17 +77,67 @@ def lua_key_parts(key : string; var layout : string&) : string {
     return id
 }
 
+// the compare project `name` of the Rust checkout converted into `dir` by `convert_project`, as the
+// ports publisher converts it: the whole program's C files and modules, else the files that
+// convert alone with their modules
+def private convert_project_input(name, dir : string) : ConvertedInput {
+    var out : ConvertedInput
+    var p : Project
+    if (!find_project(rust_checkout(), name, p)) {
+        out.error = "no compare project {name}"
+        return <- out
+    }
+    if (!stat(p.dir).is_dir) {
+        out.error = "the Rust checkout has no {p.dir}"
+        return <- out
+    }
+    out.error = load_expected(p)
+    if (!empty(out.error)) {
+        return <- out
+    }
+    var inscope conv <- convert_project(p, dir)
+    out.sidecar = path_join(dir, "whole/{p.name}.c2das")
+    let sources <- program_files(p)
+    out.c_files = length(sources)
+    if (empty(conv.refusal)) {
+        out.c_paths <- [for (s in sources); project_path(p, s)]
+        for (f in conv.files) {
+            if (f |> ends_with(".das")) {
+                out.das_paths |> push(f)
+            } elif (f |> ends_with(".das.inc")) {
+                out.fragments |> push(f)
+            }
+        }
+        return <- out
+    }
+    for (f in conv.per_file) {
+        if (!empty(f.das_path)) {
+            out.c_paths |> push(project_path(p, f.c_path))
+            out.das_paths |> push(f.das_path)
+        }
+    }
+    if (empty(out.das_paths)) {
+        out.error = "convert: no file of {p.name} converts: {conv.refusal}"
+    }
+    return <- out
+}
+
 //! Input `key` converted into `<dir>/das/` under the `linux` dialect: a `perf/<kernel>@copy` key
 //! under `--param-writes copy`, a `perf/<kernel>@while` key under `--loops while`, a
 //! `perf/<kernel>@reinterpret` key under `--first-member reinterpret`, a Lua key from
-//! the release's files in the layout it names; a key ending `@inline` under `--inline-helpers`.
+//! the release's files in the layout it names, a `project/<name>` key by `convert_project` into
+//! `<dir>/` as the ports publisher converts it.
 def convert_input(key, dir : string) : ConvertedInput {
+    if (key |> starts_with(PROJECT_PREFIX)) {
+        return <- convert_project_input(slice(key, length(PROJECT_PREFIX)), dir)
+    }
     var out : ConvertedInput
     let das_dir = path_join(dir, "das")
     if (group_of(key) == "lua") {
         var layout : string
         let stem = lua_key_parts(key, layout)
         out.c_paths <- program_sources(stem)
+        out.c_files = length(out.c_paths)
         out.sidecar = SIDECAR
         let res <- convert_program(out.c_paths, das_dir, "linux", "", SIDECAR, "", "", "main", layout, false, "", "", false, "", "", key |> ends_with(INLINE_KEY_SUFFIX))
         if (!res.ok) {
@@ -107,6 +162,7 @@ def convert_input(key, dir : string) : ConvertedInput {
         return <- out
     }
     out.c_paths |> push(c_path)
+    out.c_files = 1
     out.sidecar = find_sidecar(c_path, "")
     let res <- convert(c_path, das_dir, "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "", key |> ends_with(REINTERPRET_KEY_SUFFIX) ? "reinterpret" : "", "", false, "", "", key |> ends_with(INLINE_KEY_SUFFIX))
     if (!res.ok) {

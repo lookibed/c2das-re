@@ -10,13 +10,16 @@ needs no compile beyond the conversion's own.
 ## 1. File charters
 
 - `criteria.das` - the driver (`scripts/run_criteria.sh`): every Lua key and every ratchet suite
-  key `expected_input_keys` names (the readability inputs without the `perf` group), one worker
-  process per input (`--one <key>`), the Lua inputs one at a time and the rest `--jobs` at a time
+  key `expected_input_keys` names (the readability inputs without the `perf` group) and every
+  compare project row of `ROWS` (`project/<name>`), one worker process per input (`--one <key>`),
+  the Lua and project inputs one at a time and the rest `--jobs` at a time
   (4 by default), each writing `work/<key>/criteria.txt`; it sums the rows (section 2), prints the
   table, with `--delta <capture>` the delta table, and a complete run (no `--filter`, no failed
   input) writes `criteria_linux.json`. `--report` is the preflight gate (section 5).
 - `readability_inputs.das` - one input key converted as both metrics convert it: the C file or
-  the Lua program's files, the sidecar, the emitted modules and fragments.
+  the Lua program's files, the sidecar, the emitted modules and fragments; a `project/<name>` key
+  through `convert_project` of `compare/projects.das`, the conversion the ports publisher
+  publishes, over the Rust checkout (`$C2DAS_RUST`, else `/root/c2das`).
 - `criteria_scan.das` - the lexer of C and das text and the facts of one C source and one emitted
   module.
 - `criteria_defines.das` - a unit preprocessed by the pinned clang (`-E -C -dD`): its macros and
@@ -35,9 +38,13 @@ needs no compile beyond the conversion's own.
 ## 2. Rows, columns and the total {#rows}
 
 A row is one Lua program in one layout (`lua/lua`, `lua/lua@source-cut`, `lua/lua@single`, the same for
-`luac`), one Lua program under an opt-in (`lua/lua@inline`, `--inline-helpers`, the opt-in's readability
-price, which the `all` column leaves out) or one ratchet suite (`c_testsuite`, `csmith`, `gcc_torture`), whose raw counts are the
-sum over its inputs. A per-function ratio's median and worst are taken over the row's pooled
+`luac`), one ratchet suite (`c_testsuite`, `csmith`, `gcc_torture`), whose raw counts are the
+sum over its inputs, or one compare project (`project/wasm3`, `project/binjgb`,
+`project/h264bsd-mp4`, `project/plmpeg-stream`, `project/doomgeneric`, `project/quakegeneric`, the
+order of `project_table`). A project that converts whole is measured over every C file it compiles
+and its modules; one that refuses whole over the files that convert alone and their modules, the
+others in no count. `c_files` and `c_files_converted` record the program's C files and the ones
+measured, the coverage the ports README states; they enter no criterion. A per-function ratio's median and worst are taken over the row's pooled
 functions. Each criterion's compliance is computed per row from the row's raw counts; a criterion
 whose denominator is zero in a row does not apply there (`n/a`). The `all` column is each
 criterion's unweighted mean over the rows where it applies, every row weighing the same: a Lua
@@ -57,9 +64,17 @@ logic operators, once each cast (identifiers and `*` in parentheses before an op
 a sign) and each `sizeof(...)` is dropped. A function-like macro is expanded with its arguments; a
 macro already being expanded stays a name, which leaves the expression non-constant.
 
+A unit is preprocessed with the sidecar's include folders (`-I`) and forced includes (`-include`)
+too, and a quoted include not beside the including file is found in the first include folder that
+holds it, so a project's own headers are found where its build finds them.
+
 The same preprocessing gives the lines a unit keeps: a conditional branch (`#if`, `#ifdef`,
 `#ifndef`, `#elif`, `#else`) none of whose lines the preprocessor emitted is inactive, and every C
-count but the `#include` and `#define` lines skips it, as the conversion never sees it.
+count but the `#include` and `#define` lines skips it, as the conversion never sees it. An own
+header from which some unit emits a function definition (a single-header library whose
+implementation a `.c` file enables, pl_mpeg's or minimp4's) is C source of the program beside its
+`.c` files, its lines kept as the units emit them; the line markers name a header as its include
+resolved it, so the names compare as full paths.
 
 ## 4. The criteria {#criteria}
 

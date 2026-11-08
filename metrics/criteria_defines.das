@@ -51,15 +51,25 @@ def private is_line_marker(ln : string) : bool {
     return digit
 }
 
-//! One translation unit preprocessed: the macros defined at its end, and by line of the main file
-//! (from 0) whether the preprocessor emitted the line.
+//! One translation unit preprocessed: the macros defined at its end, by line of the main file
+//! (from 0) whether the preprocessor emitted the line, and the same per other file it includes, by
+//! the name its line markers spell.
 struct Preprocessed {
     macros : table<string; Macro>
     emitted : array<bool>
+    included : table<string; array<bool>>
+}
+
+// line `line` of `lines` marked emitted
+def private mark(var lines : array<bool>; line : int) {
+    if (line >= length(lines)) {
+        lines |> resize(line + 1)
+    }
+    lines[line] = true
 }
 
 //! The output of `clang -E -C -dD` over the file `main_path`: each `#define` and `#undef` in order,
-//! and every non-empty line the line markers place in the main file.
+//! and every non-empty line the line markers place in the main file or in another file.
 def read_preprocessed(text, main_path : string) : Preprocessed {
     var pp : Preprocessed
     var file = ""
@@ -78,21 +88,24 @@ def read_preprocessed(text, main_path : string) : Preprocessed {
         } elif (ln |> starts_with("#undef ")) {
             pp.macros |> erase(strip(slice(ln, length("#undef "))))
         } elif (file == main_path && !empty(strip(ln))) {
-            if (line >= length(pp.emitted)) {
-                pp.emitted |> resize(line + 1)
-            }
-            pp.emitted[line] = true
+            mark(pp.emitted, line)
+        } elif (!empty(file) && !empty(strip(ln))) {
+            mark(pp.included[file], line)
         }
         line++
     }
     return <- pp
 }
 
-//! `c_path` preprocessed by the pinned clang with `-D` for each of `defines`; `error` names a unit
-//! clang refused.
-def preprocess(c_path : string; defines : array<string>; var error : string&) : Preprocessed {
+//! `c_path` preprocessed by the pinned clang with `-D` for each of `defines`, `-I` for each of
+//! `include_dirs` and `-include` for each of `include_files`, as the dumper passes a sidecar's;
+//! `error` names a unit clang refused.
+def preprocess(c_path : string; defines, include_dirs, include_files : array<string>; var error : string&) : Preprocessed {
     var argv <- [default_clang(), "-E", "-C", "-dD", "-D__NO_CTYPE"]
-    argv |> push_from([for (d in defines); "-D{d}"])
+    argv |> push_from([for (d in defines); "-D{d}"], [for (d in include_dirs); "-I{d}"])
+    for (f in include_files) {
+        argv |> push_from(["-include", f])
+    }
     argv |> push(c_path)
     var text : string
     if (run_and_capture(argv, text, 120.0) != 0) {
@@ -242,16 +255,32 @@ def constant_names(own : array<string>; macros : table<string; Macro>) : table<s
     return <- names
 }
 
+// the file a quoted `#include` of `inc` in a file of the folder `dir` names: beside it, else in the
+// first of `include_dirs` holding it; "" when none does
+def private quoted_include(dir, inc : string; include_dirs : array<string>) : string {
+    let beside = path_join(dir, inc)
+    if (fexist(beside)) {
+        return beside
+    }
+    for (d in include_dirs) {
+        let path = path_join(d, inc)
+        if (fexist(path)) {
+            return path
+        }
+    }
+    return ""
+}
+
 //! The program's own files: `c_paths` and every header they include by a quoted name, found
-//! beside the file that includes it, transitively.
-def own_files(c_paths : array<string>) : array<string> {
+//! beside the file that includes it or in the first of `include_dirs` holding it, transitively.
+def own_files(c_paths, include_dirs : array<string>) : array<string> {
     var files := c_paths
     var i = 0
     while (i < length(files)) {
         let dir = dir_name(files[i])
         for (inc in scan_c(fread(files[i]), array<bool>()).quoted_includes) {
-            let path = path_join(dir, inc)
-            if (fexist(path) && !has_value(files, path)) {
+            let path = quoted_include(dir, inc, include_dirs)
+            if (!empty(path) && !has_value(files, path)) {
                 files |> push(path)
             }
         }
@@ -260,12 +289,12 @@ def own_files(c_paths : array<string>) : array<string> {
     return <- files
 }
 
-//! The numeric-constant macros of a program of `c_paths`, preprocessed as `units`: the names its
-//! own files define whose macro is a numeric constant in some unit.
+//! The numeric-constant macros of a program of `c_paths` with the include folders `include_dirs`,
+//! preprocessed as `units`: the names its own files define whose macro is a numeric constant in some unit.
 [arch(at="ARCHITECTURE_CRITERIA.md#constants")]
-def program_constants(c_paths : array<string>; units : array<Preprocessed>) : table<string; bool> {
+def program_constants(c_paths, include_dirs : array<string>; units : array<Preprocessed>) : table<string; bool> {
     var own : array<string>
-    for (f in own_files(c_paths)) {
+    for (f in own_files(c_paths, include_dirs)) {
         own |> push_from(scan_c(fread(f), array<bool>()).defined)
     }
     var inscope found : array<string>
@@ -273,4 +302,24 @@ def program_constants(c_paths : array<string>; units : array<Preprocessed>) : ta
         found |> push_from([for (k in keys(constant_names(own, pp.macros))); k])
     }
     return <- {for (k in found); k => true}
+}
+
+//! The lines of the file `path` the preprocessing of any of `units` emitted, by line (from 0); empty
+//! when none emitted any. A unit's line markers name a file as its include resolved it, so the
+//! names compare as full paths.
+def emitted_lines(path : string; units : array<Preprocessed>) : array<bool> {
+    let full = get_full_file_name(path)
+    var lines : array<bool>
+    for (pp in units) {
+        for (name, marked in keys(pp.included), values(pp.included)) {
+            if (get_full_file_name(name) == full) {
+                for (l, on in range(length(marked)), marked) {
+                    if (on) {
+                        mark(lines, l)
+                    }
+                }
+            }
+        }
+    }
+    return <- lines
 }

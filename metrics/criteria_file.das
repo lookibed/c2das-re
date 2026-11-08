@@ -16,7 +16,7 @@ require daslib/functional
 //! tables a run and the gate print.
 
 //! The raw counts an input records, sorted; `metrics/ARCHITECTURE_CRITERIA.md` defines each.
-let RAW_KEYS <- ["addr_deref_sites", "bool_roundtrip_sites", "c_char_literals", "c_code_lines", "c_comment_lines", "c_constant_uses", "c_includes", "c_renames_sites", "c_repeated_lines", "c_strings", "c_switches", "das_char_literals", "das_code_lines", "das_comment_lines", "das_comments_carried", "das_constant_names", "das_repeated_lines", "das_requires", "das_string_reinterprets", "discarded_temps", "flag_lines", "flag_switches", "fn_addr_deref", "fn_bool_roundtrip", "fn_c_renames", "fn_label_stubs", "fn_literal_arithmetic", "fn_lost_parens", "fn_matched", "fn_median_x100", "fn_qualified_calls", "fn_reinterpret_casts", "fn_stray_braces", "fn_temporaries", "fn_within", "fn_worst_x100", "goto_state_lines", "label_stubs_sites", "layout_check_lines", "literal_arithmetic_sites", "long_lines", "lost_parens_sites", "modules", "modules_late_bound", "modules_layout_check", "modules_long_lines", "qualified_calls_sites", "reinterpret_casts_sites", "self_assignments", "setjmp_loops", "setjmp_sites", "stray_braces_sites", "temporaries_sites"]
+let RAW_KEYS <- ["addr_deref_sites", "bool_roundtrip_sites", "c_char_literals", "c_code_lines", "c_comment_lines", "c_constant_uses", "c_files", "c_files_converted", "c_includes", "c_renames_sites", "c_repeated_lines", "c_strings", "c_switches", "das_char_literals", "das_code_lines", "das_comment_lines", "das_comments_carried", "das_constant_names", "das_repeated_lines", "das_requires", "das_string_reinterprets", "discarded_temps", "flag_lines", "flag_switches", "fn_addr_deref", "fn_bool_roundtrip", "fn_c_renames", "fn_label_stubs", "fn_literal_arithmetic", "fn_lost_parens", "fn_matched", "fn_median_x100", "fn_qualified_calls", "fn_reinterpret_casts", "fn_stray_braces", "fn_temporaries", "fn_within", "fn_worst_x100", "goto_state_lines", "label_stubs_sites", "layout_check_lines", "literal_arithmetic_sites", "long_lines", "lost_parens_sites", "modules", "modules_late_bound", "modules_layout_check", "modules_long_lines", "qualified_calls_sites", "reinterpret_casts_sites", "self_assignments", "setjmp_loops", "setjmp_sites", "stray_braces_sites", "temporaries_sites"]
 
 //! One input's raw counts by name, and the das-to-C line ratio of each matched function, x100.
 struct CriteriaRaw {
@@ -27,13 +27,12 @@ struct CriteriaRaw {
 //! The criteria in the critic's order of findings.
 let CRITERIA <- ["comments", "constant_names", "char_literals", "macro_blowup", "repeated_blocks", "switch_flags", "temporaries", "addr_deref", "reinterpret_casts", "late_binding", "qualified_calls", "require_lines", "setjmp", "layout_checks", "stray_braces", "label_stubs", "string_literals", "lost_parens", "literal_arithmetic", "bool_roundtrip", "c_renames", "long_lines"]
 
-//! The rows of the capture: each Lua program in each layout and under each opt-in, then each
-//! ratchet suite.
-let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/lua@inline", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "lua/luac@inline", "c_testsuite", "csmith", "gcc_torture"]
+//! The prefix of a compare project's input key and row, `project/<name>`.
+let PROJECT_PREFIX = "project/"
 
-//! The suffix of a row converted under an opt-in (`--inline-helpers`): its readability price,
-//! which the `all` column leaves out, so the default's total moves only with the default.
-let OPT_IN_ROW_SUFFIX = "@inline"
+//! The rows of the capture: each Lua program in each layout, each ratchet suite, then each compare
+//! project of `compare/projects.das`'s `project_table`, in its order.
+let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "c_testsuite", "csmith", "gcc_torture", "project/wasm3", "project/binjgb", "project/h264bsd-mp4", "project/plmpeg-stream", "project/doomgeneric", "project/quakegeneric"]
 
 //! The c-testsuite inputs the gate re-measures against the capture's `sample`: a switch with
 //! character literals and comments, defines, a plain switch.
@@ -45,8 +44,8 @@ let ALL = "all"
 //! A compliance a criterion has no measure of: its denominator is zero.
 let NOT_APPLICABLE = -1.0lf
 
-//! The row an input key counts in: a Lua key is its own row, a suite key its suite's.
-def row_of(key : string) : string => key |> starts_with("lua/") || find(key, "/") < 0 ? key : slice(key, 0, find(key, "/"))
+//! The row an input key counts in: a Lua or project key is its own row, a suite key its suite's.
+def row_of(key : string) : string => key |> starts_with("lua/") || key |> starts_with(PROJECT_PREFIX) || find(key, "/") < 0 ? key : slice(key, 0, find(key, "/"))
 
 def private raw(counts : table<string; int>; key : string) : double => double(counts?[key] ?? 0)
 
@@ -296,6 +295,26 @@ def render_criteria(cap : CriteriaCapture) : string {
     let table_ <- compliance_table(cap)
     var columns <- [for (row in ROWS); row; where key_exists(table_, row)]
     columns |> push(ALL)
+    return render_columns(table_, columns)
+}
+
+//! The criteria table of the capture's row `row` alone, its total last.
+def render_row_criteria(cap : CriteriaCapture; row : string) : string => render_columns(compliance_table(cap), [row])
+
+//! What the capture's row `row` measured: the whole program's C files, or the files that convert
+//! alone out of all; "" for a row the capture lacks.
+def coverage_text(cap : CriteriaCapture; row : string) : string {
+    if (!key_exists(cap.rows, row)) {
+        return ""
+    }
+    let all = cap.rows?[row]?["c_files"] ?? 0
+    let converted = cap.rows?[row]?["c_files_converted"] ?? 0
+    let files = all == 1 ? "C file" : "C files"
+    return converted == all ? "the whole program, its {all} {files}" : "the {converted} of {all} {files} that convert alone, since the program does not convert whole; the other files are in no count"
+}
+
+// the criteria table over `columns` of `table_`, the totals last
+def private render_columns(table_ : table<string; table<string; double>>; columns : array<string>) : string {
     var rows <- [for (cr in CRITERIA); criterion_cells(cr, columns, table_)]
     var total_line <- ["**total**"]
     total_line |> push_from([for (col in columns); "**{cell(column_total(table_?[col] ?? default<table<string; double>>))}**"])
