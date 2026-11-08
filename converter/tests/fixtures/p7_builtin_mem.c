@@ -11,7 +11,16 @@ struct block {
     unsigned char flags[6];
 };
 
+#define FOUR (sizeof(int))
+#define TWO ((size_t) 2)
+
 static int calls;
+static int sizes;
+
+static size_t sized(size_t n) {
+    sizes++;
+    return n;
+}
 
 static char *counted(char *p) {
     calls++;
@@ -69,7 +78,45 @@ int main(void) {
         sum += b.flags[5] + (b.coef[2] & 0xff);
     }
     printf("sum %d\n", sum);
+    /* a size from a call is made once, ahead of the test */
+    memcpy(buf + 8, buf, sized(3));
+    printf("sizes %d\n", sizes);
+    /* a fill count C widened from `unsigned` or `long long`, a copy size of a lower precedence */
+    unsigned m = 6u;
+    memset(b.flags, 5, 3u);
+    memset(b.flags + 3, 6, (long long) 2);
+    memcpy(buf, buf + 4, m & 3u);
+    show("widths", b.flags, 6);
+    /* constant sizes through `+`, `_Alignof` and the macros */
+    memcpy(b.flags, buf, sizeof(short) + 1);
+    memcpy(buf + 10, buf, _Alignof(int));
+    memcpy(buf + 2, buf + 12, FOUR);
+    memcpy(buf + 6, buf, TWO);
+    show("constants", buf, 16);
+    /* sizes no constant holds: a cast to a byte, a product C wraps at 32 bits, an operand past int */
+    unsigned char wide_src[48];
+    unsigned char wide_dst[48];
+    for (int i = 0; i < 48; i++) {
+        wide_src[i] = (unsigned char) (3 * i);
+        wide_dst[i] = 0;
+    }
+    memcpy(wide_dst, wide_src, (unsigned char) 300);
+    memcpy(wide_dst, wide_src, 65536u * 65536u);
+    memcpy(wide_dst, wide_src, 0x100000000ull * 0);
+    show("wrapped", wide_dst + 40, 8);
+    /* a volatile size is read once into the temporary */
+    volatile size_t vn = 2;
+    memcpy(buf, buf + 1, vn);
+    show("volatile size", buf, 4);
     /* the forms that keep the crt call */
+    memcpy(buf, buf + 1, 0);
+    if (calls < 0) {
+        memset(buf, 0, 0x80000000ull);
+    }
+    unsigned char *volatile vp = buf;
+    memcpy(vp, buf + 1, n);
+    memcpy(buf, counted((char *) buf + 2), n);
+
     unsigned char *r = memcpy(buf, "AB", 2);
     memcpy(counted((char *) buf), buf + 3, n);
     memset(buf, 7, n);

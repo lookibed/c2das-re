@@ -197,7 +197,18 @@ def p7_builtin_mem_fixtures(t : T?) {
         // a constant size is the call alone: `sizeof` as das's `int`, a fill value truncated to its byte
         has_text(t, text, "    memset8(reinterpret<void?>(addr(b)), uint8(0), typeinfo sizeof(type<_c_block>))\n")
         has_text(t, text, "    memset8(reinterpret<void?>(addr(b.flags[0])), uint8(-1), 3)\n")
-        has_text(t, text, "    memcpy(reinterpret<void?>(addr(b.coef[0])), reinterpret<void?>(addr(buf[0])), int64(uint64(4) * uint64(typeinfo sizeof(type<int>))))\n")
+        // `*`, `+` and `_Alignof` hold constants too: no zero test before the call (the line above it is a statement)
+        has_text(t, text, "addr(b.flags[0]), 6)\n    memcpy(reinterpret<void?>(addr(b.coef[0])), reinterpret<void?>(addr(buf[0])), int64(uint64(4) * uint64(typeinfo sizeof(type<int>))))\n")
+        has_text(t, text, "the macros\n    memcpy(reinterpret<void?>(addr(b.flags[0])), reinterpret<void?>(addr(buf[0])), int64(uint64(typeinfo sizeof(type<int16>)) + uint64(1)))\n    memcpy(reinterpret<void?>(addr(buf[0]) + 10), reinterpret<void?>(addr(buf[0])), int64(uint64(typeinfo alignof(type<int>))))\n")
+        // a size a macro names keeps the name: `sizeof` under one, and a cast under one is not unwrapped
+        has_text(t, text, "    memcpy(reinterpret<void?>(addr(buf[0]) + 2), reinterpret<void?>(addr(buf[0]) + 12), int64(FOUR))\n    memcpy(reinterpret<void?>(addr(buf[0]) + 6), reinterpret<void?>(addr(buf[0])), int64(TWO))\n")
+        // a fill count C widened from `unsigned` or `long long` is spelled `int`; a copy size of `&` is wrapped in the test
+        has_text(t, text, "    memset8(reinterpret<void?>(addr(b.flags[0])), uint8(5), int(uint64(3u)))\n    memset8(reinterpret<void?>(addr(b.flags[0]) + 3), uint8(6), int(uint64(int64(2))))\n")
+        has_text(t, text, "    if ((m & 3u) != 0u) \{\n        memcpy(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(addr(buf[0]) + 4), m & 3u)\n")
+        // no constant: a cast to a byte, a product C wraps at 32 bits, an operand past `int`
+        has_text(t, text, "    if (uint64(uint8(300)) != 0ul) \{\n")
+        has_text(t, text, "    if (65536u * 65536u != 0u) \{\n")
+        has_text(t, text, "    if (uint64(4294967296ul * uint64(0)) != 0ul) \{\n")
         // a run-time size: `size_t` through `int64`, an `int`, `unsigned` or `long long` as C widened it
         has_text(t, text, "    if (n != 0ul) \{\n        memmove(reinterpret<void?>(addr(buf[0]) + 1), reinterpret<void?>(addr(buf[0])), int64(n))\n    \}\n")
         has_text(t, text, "    if (len != 0) \{\n        memcpy(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(addr(buf[0]) + 10), len)\n    \}\n")
@@ -208,11 +219,25 @@ def p7_builtin_mem_fixtures(t : T?) {
         // a size with an effect is made once, ahead of the test
         has_text(t, text, "    let _t0 = n\n    n++\n    if (_t0 != 0ul) \{\n        memcpy(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(addr(buf[0]) + 1), int64(_t0))\n")
         has_text(t, text, "        memset8(reinterpret<void?>(addr(b)), uint8(k), typeinfo sizeof(type<_c_block>))\n")
+        // a size from a call or a volatile read lands in a temporary: the call made once (`sizes 1` natively too)
+        has_text(t, text, "    let _t1 = p7_builtin_mem__sized(uint64(3))\n    if (_t1 != 0ul) \{\n        memcpy(reinterpret<void?>(addr(buf[0]) + 8), reinterpret<void?>(addr(buf[0])), int64(_t1))\n")
+        has_text(t, text, "    let _t2 = c_volatile_load(vn)\n    if (_t2 != 0ul) \{\n")
+        // crt's: a zero copy, a fill past `int`, a volatile or effectful pointer under the zero test
+        has_text(t, text, "    crt::memcpy(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(addr(buf[0]) + 1), uint64(0))\n")
+        has_text(t, text, "        crt::memset(reinterpret<void?>(addr(buf[0])), 0, uint64(2147483648ul))\n")
+        has_text(t, text, "    crt::memcpy(reinterpret<void?>(c_volatile_load(vp)), ")
+        has_text(t, text, "    crt::memcpy(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(p7_builtin_mem__counted(")
         has_text(t, text, "    var r : uint8? = reinterpret<uint8?>(crt::memcpy(")
         has_text(t, text, "    crt::memcpy(reinterpret<void?>(p7_builtin_mem__counted(")
         has_text(t, text, "    crt::memset(reinterpret<void?>(addr(buf[0])), 7, n)\n")
         t |> equal(text |> find("__builtin_memcpy") < 0, true, text)
         each_marshal_tier(t, "p7_builtin_mem")
+        // a program's own `memset` takes its calls; libc's `memcpy` beside it is the builtin
+        var own : string
+        check_fixture(t, "p7_own_mem", own)
+        has_text(t, own, "    memset1(reinterpret<void?>(addr(buf[0])), 4, ")
+        has_text(t, own, "    memcpy(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(addr(buf[0]) + 4), 2)\n")
+        t |> equal(own |> find("memset8") < 0, true, own)
         rejects(t, "memcpy_value", "#include <string.h>\nint main(void) \{ void *(*c)(void *, const void *, size_t) = memcpy; char a[2] = \"x\", b[2]; c(b, a, 2); return b[0] != 'x'; \}\n", "the value of external function `memcpy`")
     }
 }
