@@ -2223,6 +2223,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   without the option, interleaved, not run): sieve JIT solid/no-solid 1.08-1.12 and the F93 repro the
   same; interp solid at or under no-solid on every kernel; matmul and fib_loop JIT solid at or under;
   str_copy JIT unexplained by F93 whatever it shows.
+  Measured (the 2026-11-08 batch, `heavy --exclusive`, machine quiet 1%, 5 interleaved samples, solid against the same
+  conversion without the option, S/N of the medians): JIT sieve 1.084 (predicted 1.08-1.12, hit: the F93 LSR cost),
+  str_copy 1.079 (unexplained, not F93), matmul 1.003, fib_loop 1.000; interpreter sieve 0.615, matmul 0.621, str_copy
+  0.927, fib_loop 0.985 (solid much faster, as predicted); Lua JIT fib 30 0.926, nbody 20000 0.990: the 6-9% Lua loss
+  P7.0m measured is gone on today's main (after P7.0r and P7.0x). Kept as the default (ruling 32); the remaining JIT
+  cost is dasLLVM's (lookibed/daScript#43). Raw: `/root/notes/parallel/p7.0q_ab/`.
 - **P7.0r A JIT-visible volatile load and store** (from P7.0p, place 1): `c_volatile_load(x)` and
   `c_volatile_store(x, v)` expand to the `crt::c_volatile_load_*`/`c_volatile_store_*` externs
   (`c_runtime/c_volatile.das`, `dasCRuntime/src/dasCRuntime.cpp`), an indirect call the JIT knows
