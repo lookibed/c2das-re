@@ -77,6 +77,11 @@ let private DISPATCH_LOW = "options gen2\nvar r = 0\n[sideeffects]\ndef private 
 // the same with the case labels numbered 11-15, above the label outside
 let private DISPATCH_HIGH = "options gen2\nvar r = 0\n[sideeffects]\ndef private label_end() \{\n    r += 0\n\}\ndef run(c0 : int) : int \{\n    var n = 0\n    var c = c0\n    label 9:\n    n += 1000\n    while (true) \{\n        if (c < 0 || c > 4) \{\n            goto label 13\n        \}\n        goto c + 11\n        label 11:\n        if (c == 0) \{\n            n += 10\n            break\n        \} else \{\n            label_end()\n        \}\n        label 12:\n        if (c == 1) \{\n            c = 0\n            goto label 9\n        \} else \{\n            label_end()\n        \}\n        label 13:\n        label 14:\n        if (!(c == 0 || c == 1 || c == 4)) \{\n            n += 20\n            break\n        \} else \{\n            label_end()\n        \}\n        label 15:\n        if (c == 4) \{\n            n += 40\n            break\n        \}\n        break\n    \}\n    return n\n\}\n[export]\ndef main() \{\n    print(\"\{run(0)\} \{run(1)\} \{run(2)\} \{run(3)\} \{run(4)\} \{run(9)\} \{run(-1)\}\\n\")\n\}\n"
 
+// switch_goto's `run_code` as a flat label CFG in its loop body: a bounds guard, a computed goto to
+// case labels 4-8, gotos between the cases to the C labels 1-2, `label 9` the switch's end; case 0's
+// `if` returns and ends with `arm_end` (C: 11701 31076 -1 -1)
+def private flat_cfg(arm_end : string) : string => "options gen2\nvar g = 0\nlet code = fixed_array<uint8>(uint8(0), uint8(1), uint8(2), uint8(3), uint8(4), uint8(1), uint8(0), uint8(2), uint8(3), uint8(4), uint8(0), uint8(0), uint8(1), uint8(2), uint8(4), uint8(3))\n[sideeffects]\ndef private label_end() \{\n    g += 0\n\}\ndef run(seed : int) : int \{\n    var acc = seed\n    var pc = 0\n    var n = 0\n    while (pc < 16) \{\n        let c = int(code[pc])\n        pc++\n        if (c < 0 || c > 4) \{\n            goto label 9\n        \}\n        goto c + 4\n        label 4:\n        acc += 3\n        if (acc > 60000) \{\n            return -1\n{arm_end}\n        goto label 9\n        label 5:\n        acc ^= pc\n        goto label 1\n        label 6:\n        label 1:\n        acc = acc * 5 + 1\n        goto label 2\n        label 7:\n        label 2:\n        acc -= n\n        n++\n        goto label 9\n        label 8:\n        if ((acc & 1) != 0) \{\n            acc >>= 1\n        \} else \{\n            acc += 7\n        \}\n        label 3:\n        acc &= 65535\n        label 9:\n    \}\n    return acc\n\}\n[export]\ndef main() \{\n    print(\"\{run(0)\} \{run(7)\} \{run(1000)\} \{run(59999)\}\\n\")\n\}\n"
+
 [test]
 def test_goto_in_loops(t : T?) {
     t |> run("a label with nothing after it in a non-loop block is no goto target under the interpreter, and an empty block after it is folded away (docs/probe-findings.md F62)") @(t : T?) {
@@ -167,5 +172,12 @@ def test_goto_dispatch(t : T?) {
         t |> equal(compiled.rc, 0, compiled.out)
         let high = daslang_child("goto_dispatch_high", DISPATCH_HIGH, false)
         t |> equal(high.rc != 0 || high.out != "1010 2010 1020 1020 1040 1020 1020\n", true, high.out)
+    }
+    t |> run("a flat label CFG in a loop body, a computed goto to its case labels and gotos between the cases, runs under the interpreter and the JIT once an `if` that returns before a case label has an `else`; without it the interpreter misses the label (lookibed/daScript#35)") @(t : T?) {
+        let guarded = daslang_child("goto_flat_cfg", flat_cfg("        \} else \{\n            label_end()\n        \}"), false)
+        t |> equal(guarded.out, "11701 31076 -1 -1\n")
+        let jit = daslang_child_flags("goto_flat_cfg_jit", flat_cfg("        \}"), jit_flags())
+        t |> equal(jit.out |> ends_with("11701 31076 -1 -1\n"), true, jit.out)
+        child_rejects(t, "goto_flat_cfg_bare", daslang_child("goto_flat_cfg_bare", flat_cfg("        \}"), false), "jump to label 9 failed")
     }
 }
