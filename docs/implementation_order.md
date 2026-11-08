@@ -2314,6 +2314,19 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   value to no-case), tables from `INT_MIN` jump by the distance from `lo`, the `_contN` epilogue
   guarded above a flat label, the unshadow pre-pass under goto mode; the `interp-goto` perf lane
   (its cells come with the next re-record, a timing run).
+  Done (batch 5, `/root/notes/parallel/p7.0t_ab/ab.txt`; one exclusive job, quiet at 1% busy, box PC,
+  M=dd60478 T=466b657, both under `goto`, 5 samples, every result native's; medians T/M): switch_goto
+  interp 0.555 (predicted 0.62, hit; 44.6x -> 24.7x native), JIT 0.919 (predicted 1.00 +-5%, a miss:
+  0.45x -> 0.41x, the flat CFG drops the restart's stores, which LLVM had not removed); binjgb JIT
+  1.003 (1.00, hit; text identical); Doom demos 1-3 JIT 1.002 / 1.003 / 1.007 (1.00, hit). The
+  prep's "Doom text differs in 9 files" is a miss of the check, not of the code: the 82 lines are
+  `__FILE__` paths naming each arm's own worktree in `Z_CT` error strings and the cluster's
+  fragments' digest; with the path set aside the trees are identical (0 sites, as predicted);
+  demos 1-3 sync under T's JIT. Hit rate 5 of 5 within 25% (the JIT cell outside its own +-5% band).
+  Readability: `run_code` 67 -> 47 lines (0.70), labels 3 -> 9, gotos 4 -> 9 (one computed);
+  criteria `lua@goto` 79.6 and `luac@goto` 79.2 against the defaults' 79.7 and 79.3 (switch_flags
+  +2.2 on lua, label_stubs -1.0 and -1.3, macro_blowup -0.7 and -1.0). Decision: stays inside the
+  `goto` opt-in (ruling 36 section 1); the default `chain` output is byte-identical.
 - **P7.0u Builtin `memcpy`, `memmove` and `memset8` for the program's own calls** (reference diff
   rows 5-6; extends P7.0n, which moved the constant-size marshal reads): a C `memcpy`/`memmove` of a
   program size calls daslang's builtin with the size guarded against zero, a C `memset` calls `memset8`
