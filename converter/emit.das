@@ -4886,11 +4886,8 @@ def private join_inert_groups(var groups : array<CaseGroup>) {
     var idx = length(groups) - 2
     while (idx >= 0) {
         if (!groups[idx].is_default && !groups[idx + 1].is_default && !has_value([for (st in groups[idx].stmts); is_inert(st)], false)) {
-            var values <- groups[idx].values
-            for (v in groups[idx + 1].values) {
-                values |> push(v)
-            }
-            groups[idx + 1].values <- values
+            groups[idx].values |> push_from(groups[idx + 1].values)
+            groups[idx + 1].values <- groups[idx].values
             groups |> erase(idx)
         }
         idx--

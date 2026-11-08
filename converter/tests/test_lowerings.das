@@ -174,7 +174,6 @@ def test_lowerings(t : T?) {
     p8_refusal_fixtures(t)
     p7_readable_fixtures(t)
     p7_goto_into_fixtures(t)
-    p7_empty_case_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -1900,6 +1899,7 @@ def p7_goto_dispatch_fixtures(t : T?) {
         var out : string
         t |> equal(run_tier(converted_path("goto_dispatch_chain"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
     }
+    p7_empty_case_fixtures(t)
 }
 
 // P7.0c3: the value a re-dispatch stores into the condition, so a case tests its value alone
