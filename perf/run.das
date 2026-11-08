@@ -73,7 +73,7 @@ struct Args {
 
 //! Every lane of one kernel under the default method: the native build, the four converter tiers,
 //! and the interpreter over the conversions under `--param-writes copy`, `--loops while`,
-//! `--first-member reinterpret` and `--inline-helpers`.
+//! `--first-member reinterpret`, `--inline-helpers` and `--switch-dispatch goto`.
 def run_kernel(name : string; samples : int; var errors : array<string>) : table<string; Cell> {
     var cells : table<string; Cell>
     let work = path_join(WORK, name)
@@ -90,8 +90,8 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
     }
     measure_lane(cells, errors, name, "interp", das_lane_command(res.das_path, "", CONVERTED_MODULES), samples, oracle)
     // the same lane over the conversions under the non-default options, each in its own folder
-    for (lane, sub, param_writes, loops, first_member, inline_helpers in ["interp-copy", "interp-while", "interp-reinterpret", "interp-inline"], ["copy", "while", "reinterpret", "inline"], ["copy", "", "", ""], ["", "while", "", ""], ["", "", "reinterpret", ""], [false, false, false, true]) {
-        let other <- convert(c_path, path_join(work, sub), "linux", "", "", param_writes, loops, first_member, "", false, "", "", inline_helpers)
+    for (lane, sub, param_writes, loops, first_member, switch_dispatch, inline_helpers in ["interp-copy", "interp-while", "interp-reinterpret", "interp-inline", "interp-goto"], ["copy", "while", "reinterpret", "inline", "goto"], ["copy", "", "", "", ""], ["", "while", "", "", ""], ["", "", "reinterpret", "", ""], ["", "", "", "", "goto"], [false, false, false, true, false]) {
+        let other <- convert(c_path, path_join(work, sub), "linux", "", "", param_writes, loops, first_member, switch_dispatch, false, "", "", inline_helpers)
         if (other.ok) {
             measure_lane(cells, errors, name, lane, das_lane_command(other.das_path, "", CONVERTED_MODULES), samples, oracle)
         } else {
