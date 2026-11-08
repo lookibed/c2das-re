@@ -874,6 +874,16 @@ def private converter_changed(from, to : string) : bool {
     return git_in(".", ["diff", "--quiet", from, to, "--", "converter", "c_runtime", "dasCRuntime"], out) != 0
 }
 
+// whether a commit of this tree after `date` (its committer date) changed the converter,
+// `c_runtime` or `dasCRuntime`; true when `date` does not read as one
+def private converter_changed_since(date : string) : bool {
+    var out : string
+    if (empty(date) || git_in(".", ["log", "--since={date}", "--format=%H", "HEAD", "--", "converter", "c_runtime", "dasCRuntime"], out) != 0) {
+        return true
+    }
+    return !empty(strip(out))
+}
+
 // the line a table measured at `sha` on `date` carries in a publish of the conversion `gen`: none
 // when it was measured at the published commit
 def private measured_note(sha, date : string; gen : Generation) : string => sha == gen.sha ? "" : measured_at_line(sha, date, converter_changed(sha, gen.sha))
@@ -1016,7 +1026,8 @@ def private project_perf_text(p : Project; gen : Generation) : string {
         return "not yet: c2das-re's `{COMPARE_CAPTURE}` holds no entry for {p.name}.\n"
     }
     let one = JV({"projects" => JV({p.name => entry})})
-    let note = measured_note(compare_recorded_at(), entry?["date"] ?? "", gen)
+    let date = entry?["date"] ?? ""
+    let note = measured_on_line(date, compare_recorded_at(), converter_changed_since(date))
     return "{note}From c2das-re's `{COMPARE_CAPTURE}` (`compare/run.das --project {p.name}`), our side against the Rust translator's:\n\n{projects_text(one)}"
 }
 
