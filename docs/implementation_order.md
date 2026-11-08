@@ -2305,6 +2305,22 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   interp, x native): plmpeg 37.5 -> about 33 (77 `plm_clamp` sites, 19M calls per 7 frames),
   fixed_mandel 51 flat or better; JIT lanes flat (LLVM inlines them). The helper's name vanishes at the
   site, so the default is decided after the measurement (ruling 23).
+  Reference pass (2026-11-08): Rust's `inline.rs` takes a `static`, non-variadic function of at most 4
+  arithmetic parameters and result whose body is `return <expr>` or the clamp chain, every expression
+  pure (parameters, literals, enumerators, value casts, operators, `?:`, calls of other candidates),
+  not self-recursive (mutual recursion stopped by an expansion stack); arguments cross at the parameter
+  types, a non-leaf argument binds a `var` temp and then every argument does; a site in an unused, a
+  constant or a conditional-arm context that would need statements keeps the call; the definition
+  stays; on in every mode (15% of pl_mpeg's interpreter time, compiled lanes within noise). daslang's
+  `[inline]` rejects `goto` bodies and measured no faster on statement bodies (Rust's probe, the memory
+  note's 1.69x); daslang has no expression-level substitution. Ours (the opt-in `inline_helpers`,
+  `--inline-helpers`, the call the default): the same candidates without enums, `_Bool` or K&R
+  definitions, and none whose value is taken; a temporary only for an argument with an effect (or a
+  volatile read) and for a non-plain one the body reads twice, the others spelled in place; the clamp
+  calls nothing. Predictions for the A/B (`/root/notes/parallel/pc-p7.0w-ab.sh`, arms D default and I
+  inline, box PC, `heavy --exclusive`): plmpeg interp I/D 0.90 (0.86-0.94: the 77 sites trade a call
+  node for a `?:` chain plus, for a sum argument, one `let`; Rust saved 15%), JIT I/D 1.00 (+-3%);
+  fixed_mandel interp I/D 0.85 (5 `fmul` calls of about 30 nodes per iteration gone), JIT 1.00.
 - **P7.0x The source layout's split JIT build loses cross-module inlining** (found by the re-capture's
   profiles, 2026-11-06): the ports `jit` lane runs the source layout (30 modules, the cached JIT a
   partition per module) at Lua fib 4.9x (the ports size, fib 34) and nbody 4.1x (200000) native, where
