@@ -2833,6 +2833,13 @@ def p7_inline_helpers_fixtures(t : T?) {
         // does a call evaluated for its effect alone
         has_text(t, text, "invoke(fp, 1) + p7_inline_helpers__taken(2) + p7_inline_helpers__reads_global(k) + p7_inline_helpers__fact(5) + p7_inline_helpers__deref(addr(k))")
         has_text(t, text, "    p7_inline_helpers__clamp8(i)\n")
+        // an argument that is itself a call of a helper, directly or through another helper, is spelled
+        // before the outer helper's parameters are bound: none of them reads the caller's `a`
+        has_text(t, text, "        let _t9 = 2 + 3\n        let _t10 = 2 + 2\n        s += 1 + _t9 + (1 + _t10) + a\n")
+        // a truth value crosses as C's `int`, a volatile read is one load even where the body never
+        // reads its parameter, the clamp's values take the parameter's type and the result its own
+        has_text(t, text, "        let _t11 = k < i ? 1 : 0\n        let _t12 = c_volatile_load(vv)\n        let _t13 = c_volatile_load(vv)\n")
+        has_text(t, text, "_t11 * _t11 + _t12 * _t12 + int(int(small) > 200 ? uint8(300) : small) + int(int(uint8(150)) > 200 ? uint8(300) : uint8(150)) + int(int16(i * 1000)) + k\n")
         // the definitions stay
         has_text(t, text, "def private p7_inline_helpers__clamp8(var n : int) : uint8 \{")
         let want = native("p7_inline_helpers")
@@ -2842,5 +2849,32 @@ def p7_inline_helpers_fixtures(t : T?) {
             t |> equal(rc, want.rc, "{tier}: {out}")
             t |> equal(out |> find(want.out) >= 0, true, "{tier}: {out}")
         }
+    }
+    t |> run("functions that are no pure helper keep their calls under inline_helpers, each refused by one rule; as natively under interp") @(t : T?) {
+        let res <- convert("{FIXTURES}/p7_inline_refused.c", path_join(work_root, "p7_inline_refused"), "linux", "", "", "", "", "", "", false, "", "", true)
+        t |> equal(res.ok, true, res.error)
+        let text = res.das_text
+        let body = slice(text, text |> find("def c_main"))
+        for (name in ["r_preinc", "r_assign", "r_comma", "r_cast", "r_three", "r_first_expr", "r_ret_sum", "r_two_assign", "r_compound", "r_other", "r_else_block", "r_else_step", "r_clamp_call", "r_kr", "r_bool", "r_bool_ret", "r_enum", "r_ptr", "r_libc", "r_odd", "r_gtaken", "r_var`va", "r_five"]) {
+            has_text(t, body, "p7_inline_refused__{name}(")
+        }
+        has_text(t, body, " + r_extern(k)")
+        // a variadic function keeps its call with no trailing argument too
+        has_text(t, body, "p7_inline_refused__r_var`va(k, VaNone())")
+        let want = native("p7_inline_refused")
+        var out : string
+        t |> equal(run_tier(res.das_path, "interp", path_join(work_root, "inline_refused_interp"), out, CONVERTED_MODULES), want.rc, out)
+        t |> equal(out |> find(want.out) >= 0, true, out)
+    }
+    t |> run("a program of several files takes inline_helpers to each file's own helpers, but not to a name two files define; as natively under interp") @(t : T?) {
+        let first = written_source("inline_two", "two_main", "int scaled(int x);\nstatic int sq(int a) \{ return a * a; \}\nstatic int cube(int a) \{ return a * a * a; \}\nint main(void) \{ return sq(3) + cube(2) + scaled(2) == 37 ? 0 : 1; \}\n", "")
+        let second = written_source("inline_two", "two_scaled", "static int sq(int a) \{ return a * a * 5; \}\nstatic int inc(int a) \{ return a + 1; \}\nint scaled(int x) \{ return sq(inc(x) - 1); \}\n", "")
+        let out_dir = path_join(work_root, "inline_two_out")
+        let two <- convert_program([first, second], out_dir, "linux", "", "", "", "", "main", "", false, "", "", false, "", "", true)
+        t |> equal(two.ok, true, two.error)
+        has_text(t, two.das_text, "return sq(3) + 2 * 2 * 2 + scaled(2) == 37 ? 0 : 1")
+        has_text(t, fread(path_join(out_dir, "two_scaled.das")), "    return sq(x + 1 - 1)\n")
+        var out : string
+        t |> equal(run_tier(two.das_path, "interp", path_join(work_root, "inline_two_interp"), out, CONVERTED_MODULES), 0, out)
     }
 }

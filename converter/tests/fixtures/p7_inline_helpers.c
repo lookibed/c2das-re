@@ -32,6 +32,14 @@ static unsigned wrap_add(unsigned a, unsigned b) { return a + b; }
 static int pick(int c, int a, int b) { return c ? a : b; }
 static int ignore_second(int a, int b) { return a; }
 static int both(int a, int b) { return a < b && b < 100; }
+static int add(int a, int b) { return a + b; }
+static int twice(int x) { return add(x, x); }
+static unsigned char clampu(unsigned char n) {
+    if (n > 200)
+        n = 300;
+    return n;
+}
+static short narrow(int a) { return a * 1000; }
 /* no pure helper: its value is taken, it reads a global, it recurses, it takes a pointer */
 static int taken(int a) { return a + 1; }
 static int reads_global(int a) { return a + g; }
@@ -57,6 +65,14 @@ int main(void) {
     s += (int) (wrap_add(4000000000u, 500000000u) % 1000u);
     s += fp(1) + taken(2) + reads_global(k) + fact(5) + deref(&k);
     clamp8(i);
+    {
+        /* an argument that is itself a call of the helper, directly or through another helper,
+           next to a caller's local named like the helper's parameter */
+        int a = 100;
+        volatile int vv = 7;
+        s += add(1, add(2, 3)) + add(1, twice(2)) + a;
+        s += sq(k < i) + sq(vv) + clampu(small) + clampu(150) + narrow(i) + ignore_second(k, vv);
+    }
     printf("%d %d %d %d %d %d\n", buf[0], buf[1], buf[2], buf[3], s, counter);
     return 0;
 }

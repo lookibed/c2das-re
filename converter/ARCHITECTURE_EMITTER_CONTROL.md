@@ -194,7 +194,8 @@ Under the sidecar's `inline_helpers` (`--inline-helpers`), a direct call of a pu
 helper's expression at the call site, where the interpreter otherwise pays a call per use (pl_mpeg's
 `plm_clamp`, 19 M calls per 7 frames, the Rust translator's `inline.rs`). A pure helper is a `static`
 function of at most four parameters, each an integer other than `_Bool` or a floating type, with
-such a result, never K&R, whose value the program never takes (`@@f` anywhere keeps every call),
+such a result, never K&R, whose value the program never takes (`@@f` anywhere keeps every call)
+and whose name no other file of the program defines `static` too (each module's own `sq`),
 whose body is `return <expr>;` or the clamp shape (`if (n > 255) n = 255; else if (n < 0) n = 0;
 return n;`, every arm assigning one parameter, the `return` reading it under casts), and whose
 expressions read only its parameters, literals and enumerators through operators, value casts and
@@ -205,7 +206,9 @@ reads twice that is not a variable, a literal or an enumerator, lands in a `let 
 statement; the others are spelled where the body reads them. The clamp is a chain of `?:`, `c0 ? v0
 : (c1 ? v1 : n)`, at the parameter's type, which the `return`'s conversion takes; `return <expr>`
 is the expression under its own conversion, so the call's result keeps C's type. A call evaluated
-for its effect alone, one in a global's initializer, one inside the same helper's expansion, and
-one in a conditional arm (`?:`, the right of `&&` or `||`) that would need a temporary stay calls.
+for its effect alone (an expression statement, a `for`'s increment, an arm of a `void` `?:`), one in
+a global's initializer, and one in a conditional arm (`?:`, the right of `&&` or `||`) that would need
+a temporary stay calls. Every argument is spelled before any parameter is bound, so an argument that
+is itself a helper's call, which binds and drops that helper's parameters, never meets the outer ones.
 The definition stays for those. The default keeps every call: the site then names the helper, which
 the expression does not (owner ruling 23).

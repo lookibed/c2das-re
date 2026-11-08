@@ -160,8 +160,6 @@ struct Emitter {
     // `[init]` binds to their slots, each with its slot
     late_quals : table<string; string>
     late_defs : table<string; string>
-    // the helpers whose expression the call being spelled is inside of, innermost last
-    inline_stack : array<string>
 }
 
 //! The facts of a whole program the emitter reads in each of its modules: the functions it
@@ -1767,7 +1765,7 @@ def private helper_shape(d : CirDecl; var shape : HelperShape) : bool {
         return true
     }
     let read = below_casts(last.e)
-    if (read == null || read.e != "ref" || !has_value([for (p in d.params); p.name], read.name) || stmts[0].s != "if") {
+    if (read == null || !has_value([for (p in d.params); p.name], read.name) || stmts[0].s != "if") {
         return false
     }
     shape.param = read.name
@@ -1898,11 +1896,23 @@ def private taken_functions(tu : CirTu) : table<string> {
 // the pure helpers of the program under `inline_helpers`: each `static` function of at most four
 // integer or floating parameters and such a result, whose body is `return <expr>` or the clamp
 // shape over its parameters, literals and enumerators (the clamp calling nothing, `return <expr>`
-// only other such helpers), whose value the program never takes
+// only other such helpers), whose value the program never takes and whose name no other function of
+// the program defines
 [arch(at="ARCHITECTURE_EMITTER_CONTROL.md#inline-helpers")]
 def private flag_inline_helpers(var em : Emitter; tu : CirTu) {
     let functions <- {for (di, d in count(), tu.decls); d.name => di; where d.k == "func" && d.body != null}
-    let taken <- taken_functions(tu)
+    var taken <- taken_functions(tu)
+    // a name two files of a program each define `static` names one function per module, which a call
+    // names by its module alone: neither is substituted
+    var defined : table<string>
+    for (d in tu.decls) {
+        if (d.k == "func" && d.body != null) {
+            if (key_exists(defined, d.name)) {
+                taken |> insert(d.name)
+            }
+            defined |> insert(d.name)
+        }
+    }
     var memo : table<string; bool>
     for (name, di in keys(functions), values(functions)) {
         if (is_pure_helper(tu, di, functions, taken, memo)) {
@@ -1970,13 +1980,12 @@ def private clamp_value(var em : Emitter; tu : CirTu; shape : HelperShape; param
 // a direct call of a pure helper (`flag_inline_helpers`) as the helper's expression into `out`:
 // each argument crosses at its parameter's type as a call's does, evaluated once, ahead, into a
 // temporary when it has an effect or the body reads a non-plain one twice; false keeps the call,
-// for a function that is no such helper, one whose expression is being spelled around this call,
-// and a site in a conditional arm that would need a temporary
+// for a function that is no such helper and a site in a conditional arm that would need a temporary
 [arch(at="ARCHITECTURE_EMITTER_CONTROL.md#inline-helpers")]
 def private inline_helper(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc; var out : Em&) : bool {
     let name = called_name(x)
     let di = em.prog.inline_helpers?[name] ?? -1
-    if (di < 0 || !em.in_body || em.in_global_init || has_value(em.inline_stack, name)) {
+    if (di < 0 || !em.in_body || em.in_global_init) {
         return false
     }
     let d = tu.decls[di]
@@ -1988,16 +1997,23 @@ def private inline_helper(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLo
     if (em.narrow > 0 && has_value(needs_temp, true)) {
         return false
     }
-    var keys : array<uint64>
-    var chain_param : Em
-    var param_t = -1
-    for (p, arg, temp in d.params, x.args, needs_temp) {
+    // every argument is spelled before any parameter is bound: an argument that is itself a call of a
+    // helper binds and drops that helper's parameters, which a binding made earlier would lose
+    var args : array<Em>
+    args |> reserve(length(x.args))
+    for (arg, temp in x.args, needs_temp) {
         var e = stored(emit_expr(em, tu, arg, loc), tu, arg.t)
         if (temp) {
             let tmp = temp_name(em)
             em.pre |> push("let {tmp} = {e.text}")
             e = value(tmp, PREC_PRIMARY)
         }
+        args |> push(e)
+    }
+    var keys : array<uint64>
+    var chain_param : Em
+    var param_t = -1
+    for (p, e in d.params, args) {
         for (operand in helper_operands(shape)) {
             bind_parameter(em, operand, p.name, e, keys)
         }
@@ -2006,12 +2022,10 @@ def private inline_helper(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLo
             param_t = p.t
         }
     }
-    em.inline_stack |> push(name)
     if (!empty(shape.param)) {
         bind_parameter(em, shape.result, shape.param, clamp_value(em, tu, shape, chain_param, param_t, loc), keys)
     }
     out = stored(emit_expr(em, tu, shape.result, loc), tu, shape.result.t)
-    em.inline_stack |> pop()
     unpin(em, keys)
     return true
 }
