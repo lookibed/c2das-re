@@ -32,11 +32,22 @@ let PROJECT_PREFIX = "project/"
 
 //! The rows of the capture: each Lua program in each layout and under each opt-in, each ratchet
 //! suite, then each compare project of `compare/projects.das`'s `project_table`, in its order.
-let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/lua@inline", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "lua/luac@inline", "c_testsuite", "csmith", "gcc_torture", "project/wasm3", "project/binjgb", "project/h264bsd-mp4", "project/plmpeg-stream", "project/doomgeneric", "project/quakegeneric"]
+let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/lua@inline", "lua/lua@goto", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "lua/luac@inline", "lua/luac@goto", "c_testsuite", "csmith", "gcc_torture", "project/wasm3", "project/binjgb", "project/h264bsd-mp4", "project/plmpeg-stream", "project/doomgeneric", "project/quakegeneric"]
 
-//! The suffix of a row converted under an opt-in (`--inline-helpers`): its readability price,
-//! which the `all` column leaves out, so the default's total moves only with the default.
-let OPT_IN_ROW_SUFFIX = "@inline"
+//! The suffixes of a row converted under an opt-in (`--inline-helpers`, `--switch-dispatch goto`):
+//! its readability price, which the `all` column leaves out, so the default's total moves only with
+//! the default.
+let OPT_IN_ROW_SUFFIXES <- ["@inline", "@goto"]
+
+//! Whether `row` is converted under an opt-in.
+def opt_in_row(row : string) : bool {
+    for (suffix in OPT_IN_ROW_SUFFIXES) {
+        if (row |> ends_with(suffix)) {
+            return true
+        }
+    }
+    return false
+}
 
 //! The c-testsuite inputs the gate re-measures against the capture's `sample`: a switch with
 //! character literals and comments, defines, a plain switch.
@@ -123,7 +134,7 @@ struct CriteriaCapture {
 //! Whether the row `row` counts in the `all` column: an opt-in's row is its readability price and a
 //! compare project's may cover only the files that convert alone, so the `all` column keeps the
 //! default output of the Lua programs and the suites.
-def in_all(row : string) : bool => !(row |> ends_with(OPT_IN_ROW_SUFFIX)) && !(row |> starts_with(PROJECT_PREFIX))
+def in_all(row : string) : bool => !opt_in_row(row) && !(row |> starts_with(PROJECT_PREFIX))
 
 //! The compliance of every criterion per row, and the `all` column: each criterion's mean over the
 //! rows where it applies.
