@@ -5,6 +5,7 @@ require daslib/strings_boost
 require math
 require daslib/json_boost
 require ../ports_render.das
+require ../../metrics/criteria_file.das
 
 //! The renderer over fixed captures: the times, ratio and not-yet text, the geometric means of
 //! the projects table, the top-level README's marker, the license block and the VERSIONS.md pin.
@@ -538,5 +539,47 @@ def test_project_notes(t : T?) {
         t |> success(mit |> starts_with("Copyright (c) Dominic Szablewski\n\nPermission is hereby granted"), mit)
         t |> success(mit |> ends_with("DEALINGS IN THE SOFTWARE.\n"), mit)
         t |> equal(spdx_license("SPDX-License-Identifier: Zlib\nme\n"), "SPDX-License-Identifier: Zlib\nme\n")
+    }
+}
+
+// a criteria capture with the project rows `rows`, each with `converted` of 3 C files measured
+def private criteria_capture(rows : array<string>; converted : int) : CriteriaCapture {
+    var cap : CriteriaCapture
+    for (row in rows) {
+        cap.rows[row] <- sum_raw([{"c_files" => 3, "c_files_converted" => converted, "fn_matched" => 4, "fn_stray_braces" => 1, "c_comment_lines" => 2, "das_comments_carried" => 1}], array<int>())
+    }
+    return <- cap
+}
+
+[test]
+def test_project_criteria(t : T?) {
+    t |> run("a project's criteria: its row's table under the commit that recorded it, what it measured, the counters' place") @(t : T?) {
+        let cap <- criteria_capture(["project/binjgb"], 3)
+        let text = project_criteria_text("binjgb", cap, true, "", "0123456789abcdef", false)
+        t |> success(text |> starts_with("From c2das-re's `metrics/criteria_linux.json` (`scripts/run_criteria.sh`), its row `project/binjgb`, recorded at c2das-re `0123456789ab`. Measured on the whole program, its 3 C files, converted as this directory's conversion is. "), text)
+        t |> success(text |> contains("| Criterion "), text)
+        t |> success(text |> contains("project/binjgb |"), text)
+        t |> success(text |> contains("| comments "), text)
+        t |> success(text |> contains("|           50.0 |"), text)
+        t |> success(text |> contains("| stray_braces "), text)
+        t |> success(text |> contains("|           75.0 |"), text)
+        t |> success(text |> contains("| **total** "), text)
+        t |> success(text |> contains("\nThe readability counters of the converted modules (`goto`, `label`, "), text)
+        let changed = project_criteria_text("binjgb", cap, true, "", "0123456789abcdef", true)
+        t |> success(changed |> contains("recorded at c2das-re `0123456789ab`, output changed since: the converter changed after that commit; not re-measured yet. "), changed)
+        let uncommitted = project_criteria_text("binjgb", cap, true, "", "", false)
+        t |> success(uncommitted |> contains("its row `project/binjgb`, not committed in c2das-re. "), uncommitted)
+    }
+    t |> run("a project measured file by file names the files that convert out of all") @(t : T?) {
+        let cap <- criteria_capture(["project/wasm3"], 2)
+        let text = project_criteria_text("wasm3", cap, true, "", "0123456789abcdef", false)
+        t |> success(text |> contains("Measured on the 2 of 3 C files that convert alone, since the program does not convert whole; the other files are in no count, "), text)
+        t |> equal(coverage_text(cap, "project/doomgeneric"), "")
+    }
+    t |> run("no capture, a capture that does not read and a capture without the row are not-yet lines") @(t : T?) {
+        let cap <- criteria_capture(["project/binjgb"], 3)
+        t |> equal(project_criteria_text("wasm3", cap, false, "", "", false), "not yet: c2das-re holds no `metrics/criteria_linux.json`, the readability criteria capture.\n")
+        t |> equal(project_criteria_text("wasm3", cap, true, "bad: not JSON", "", false), "not yet: bad: not JSON\n")
+        t |> equal(project_criteria_text("wasm3", cap, true, "", "0123456789abcdef", false), "not yet: c2das-re's `metrics/criteria_linux.json` holds no row `project/wasm3`; `scripts/run_criteria.sh` records it.\n")
     }
 }

@@ -253,9 +253,8 @@ of `compare/projects.das`'s `project_table` over the Rust checkout (`$C2DAS_RUST
 a checkout without `tests/manual` publishes Lua alone. `--program` takes `lua` or a project's name.
 
 A project converts on every publish, in the publisher's process, through `convert_project` of
-`compare/projects.das` (`ours_module`: the sidecar of the row's defines, include folders and program
-root, its units in the source layout when the canonical case lists them), into
-`compare/work/ports/<name>/whole/`. Under `--no-convert` a project is not published, with a warning.
+`compare/projects.das` (`ours_module`: the row's sidecar, its units in the source layout when the
+case lists them), into `compare/work/ports/<name>/whole/`; under `--no-convert` it is not published.
 A program the converter refuses converts file by file into `compare/work/ports/<name>/files/`: its
 units, else every `.c` file its unit includes by quotes, followed through the `all.c` graphs that
 include `.c` files themselves.
@@ -277,7 +276,7 @@ The project's directory `<name>/` in the clone holds:
 - `README.md`: the conversion's result (whole, or the refusal and a row per file), the files, the
   Rust checkout's commit, the generating commit, how to run the module on the fixture in the Rust
   checkout (no fixture is copied: game data and fixtures keep their own licenses there) and the
-  native build, the speed and the criteria.
+  native build, the speed and the readability criteria (below).
 
 Both folders mirror their conversion as the layouts of section 2 do. The speed is the project's
 entry of `compare/results_linux.json`, rendered by `compare_render.das`'s `projects_text` over that
@@ -292,5 +291,10 @@ A project that fails (its canonical case, its license, a write) does not stop th
 other programs publish and commit, the top-level README's `Directories` section (`render_programs`)
 links every program directory of the clone and names each failure when some program published (a
 run that published nothing leaves the clone as it was), a commit with `--commit` holds that line, `--push` pushes what was committed, and the run then exits 1. A failed Lua publish is
-collected the same way. The criteria are `PROJECT_CRITERIA_NOT_YET`: `scripts/run_criteria.sh` takes no
-single project.
+collected the same way.
+
+The criteria section (`project_criteria_text`) renders the row `project/<name>` of
+`metrics/criteria_linux.json`, measured on the same `convert_project` conversion: its table, what it
+covered (`coverage_text`), the commit that last changed the capture, and that the output changed
+since when the converter differs from the published conversion's; else a not-yet line. A project's
+readability counters are the head-to-head's code table in its speed section (whole conversions only).

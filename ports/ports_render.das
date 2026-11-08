@@ -7,6 +7,7 @@ require strings
 require daslib/strings_boost
 require daslib/md_boost
 require ../perf/boxes.das
+require ../metrics/criteria_file.das
 
 //! The text of the ports repository: a program's perf tables rendered from its capture, the
 //! projects table of the top-level README from every program's latest capture, the license block
@@ -647,9 +648,28 @@ def spdx_license(notice : string) : string {
 //! The MIT license's permission and warranty text, below its copyright line.
 let MIT_BODY = "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n"
 
-//! The criteria line of a compare project's README: the readability criteria are not computed per
-//! project yet.
-let PROJECT_CRITERIA_NOT_YET = "not yet: c2das-re's `scripts/run_criteria.sh` measures its own inputs (the Lua programs and the suites) and takes no single project, so `metrics/criteria_linux.json` holds no row for this program."
+//! The criteria section of a compare project's README from the criteria capture `cap` (`error` when
+//! it does not read, `present` false when c2das-re holds none): its row `project/<name>`, what the
+//! row measured, the commit `recorded_sha` that recorded the capture and, when `changed`, that the
+//! converter changed since; a not-yet line without the row.
+def project_criteria_text(name : string; cap : CriteriaCapture; present : bool; error, recorded_sha : string; changed : bool) : string {
+    let row = "{PROJECT_PREFIX}{name}"
+    if (!present) {
+        return "not yet: c2das-re holds no `metrics/criteria_linux.json`, the readability criteria capture.\n"
+    } elif (!empty(error)) {
+        return "not yet: {error}\n"
+    } elif (!key_exists(cap.rows, row)) {
+        return "not yet: c2das-re's `metrics/criteria_linux.json` holds no row `{row}`; `scripts/run_criteria.sh` records it.\n"
+    }
+    return build_string() $(var w) {
+        let at = empty(recorded_sha) ? "not committed in c2das-re" : "recorded at c2das-re `{slice(recorded_sha, 0, 12)}`"
+        w |> write("From c2das-re's `metrics/criteria_linux.json` (`scripts/run_criteria.sh`), its row `{row}`, " + (changed ? "{at}, output changed since: the converter changed after that commit; not re-measured yet" : at) + ". ")
+        w |> write("Measured on {coverage_text(cap, row)}, converted as this directory's conversion is. ")
+        w |> write("The compliance in percent per criterion, 100 being what a human port would have (c2das-re's `metrics/ARCHITECTURE_CRITERIA.md` defines each); it counts lines and reads no clock.\n\n")
+        w |> write(render_row_criteria(cap, row))
+        w |> write("\nThe readability counters of the converted modules (`goto`, `label`, `reinterpret`, `unsafe`, `literal_named`, raw `while`) are the code table of the Performance section, from the head-to-head; a program that converts only file by file has none there, since its modules do not compile alone.\n")
+    }
+}
 
 //! The top-level README's programs section: a link per program directory of the clone, then each
 //! failure of the publish that wrote it (`<program>: <why>`), whose directory keeps what an earlier

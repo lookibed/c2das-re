@@ -970,9 +970,20 @@ def private project_perf_text(p : Project) : string {
     return "{note}From c2das-re's `{COMPARE_CAPTURE}` (`compare/run.das --project {p.name}`), our side against the Rust translator's:\n\n{projects_text(one)}"
 }
 
+// the criteria section of a project's README: its row of `CRITERIA_CAPTURE` under the commit that
+// recorded the capture, the output changed since when the converter differs between that commit and
+// the published conversion's
+def private project_criteria(p : Project; gen : Generation) : string {
+    var error : string
+    let present = fexist(CRITERIA_CAPTURE)
+    let cap <- present ? capture_at(CRITERIA_CAPTURE, error) : CriteriaCapture()
+    let recorded = git_line(".", ["log", "-1", "--format=%H", "--", CRITERIA_CAPTURE])
+    return project_criteria_text(p.name, cap, present, error, recorded, present && empty(error) && converter_changed(recorded, gen.sha))
+}
+
 // a project's README: what was converted (or what refused and the per-file results), the sources,
 // how to run it, the speed from the head-to-head's capture and the criteria line
-def private project_readme_text(p : Project; gen : Generation; rust_sha, refusal : string; files : array<FileConversion>; command, perf_text : string) : string {
+def private project_readme_text(p : Project; gen : Generation; rust_sha, refusal : string; files : array<FileConversion>; command, perf_text, criteria_text : string) : string {
     let stem = trim_suffix(base_name(p.tu), ".c")
     let fixture = "<c2das>/{MANUAL_DIR}/{p.name}/{p.fixture}"
     return build_string() $(var w) {
@@ -1020,7 +1031,7 @@ def private project_readme_text(p : Project; gen : Generation; rust_sha, refusal
         w |> write("# the native build the tables compare with, in <c2das>/{MANUAL_DIR}/{p.name}:\n" + replace(join(native, " "), "{p.dir}/", "") + " -o {p.name}\n```\n\n")
         w |> write("Its output must equal `expected.stdout` of the canonical case `{p.case_id}` in the Rust repository's `{CASES_FILE}`.\n\n")
         w |> write("## Performance\n\n{perf_text}\n")
-        w |> write("## Readability criteria\n\n{PROJECT_CRITERIA_NOT_YET}\n")
+        w |> write("## Readability criteria\n\n{criteria_text}")
     }
 }
 
@@ -1058,7 +1069,7 @@ def private publish_project(p_row : Project; repo : string; var gen : Generation
     let command = "scripts/publish_ports.sh --program {p.name}"
     let rust_sha = git_line(rust_checkout(), ["rev-parse", "HEAD"])
     why = ok ? "" : "a file of its directory was not written"
-    return ok && write_or_log(path_join(dir, "README.md"), project_readme_text(p, gen, rust_sha, refusal, conv.per_file, command, project_perf_text(p)))
+    return ok && write_or_log(path_join(dir, "README.md"), project_readme_text(p, gen, rust_sha, refusal, conv.per_file, command, project_perf_text(p), project_criteria(p, gen)))
 }
 
 def private repo_of(args : Args) : string {
