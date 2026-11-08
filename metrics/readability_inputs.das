@@ -61,11 +61,11 @@ def private c_file_of(key, dir : string; var error : string&) : string {
 }
 
 //! The Lua program stem and layout (`source`, `source-cut` or `single`) a
-//! `lua/<program>[@source-cut|@single|@inline|@goto]` key names (`@inline` and `@goto` the source
-//! layout).
+//! `lua/<program>[@source-cut|@single|@inline|@goto|@checks-off|@past-end-inline]` key names (each
+//! opt-in's suffix the source layout).
 def lua_key_parts(key : string; var layout : string&) : string {
     let id = slice(key, length("lua/"))
-    for (suffix in [INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX]) {
+    for (suffix in LUA_OPT_IN_SUFFIXES) {
         if (id |> ends_with(suffix)) {
             layout = "source"
             return slice(id, 0, length(id) - length(suffix))
@@ -135,11 +135,19 @@ def worker_argv(script, key : string) : array<string> {
     return <- argv
 }
 
+//! The `--checks` value input `key` names: `off` for a key ending `@checks-off`, else the default.
+def checks_of(key : string) : string => key |> ends_with(CHECKS_OFF_KEY_SUFFIX) ? "off" : ""
+
+//! The `--past-end` value input `key` names: `inline` for a key ending `@past-end-inline`, else the
+//! default.
+def past_end_of(key : string) : string => key |> ends_with(PAST_END_KEY_SUFFIX) ? "inline" : ""
+
 //! Input `key` converted into `<dir>/das/` under the `linux` dialect: a `perf/<kernel>@copy` key
 //! under `--param-writes copy`, a `perf/<kernel>@while` key under `--loops while`, a
 //! `perf/<kernel>@reinterpret` key under `--first-member reinterpret`, a Lua key from
 //! the release's files in the layout it names; a key ending `@inline` under `--inline-helpers`, one
-//! ending `@goto` under `--switch-dispatch goto`; a
+//! ending `@goto` under `--switch-dispatch goto`, `@checks-off` under `--checks off`,
+//! `@past-end-inline` under `--past-end inline`; a
 //! `project/<name>` key by `convert_project` into `<dir>/` as the ports publisher converts it.
 def convert_input(key, dir : string) : ConvertedInput {
     if (key |> starts_with(PROJECT_PREFIX)) {
@@ -153,7 +161,7 @@ def convert_input(key, dir : string) : ConvertedInput {
         out.c_paths <- program_sources(stem)
         out.c_files = length(out.c_paths)
         out.sidecar = SIDECAR
-        let res <- convert_program(out.c_paths, das_dir, "linux", "", SIDECAR, "", "", "main", layout, false, "", key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : "", false, "", "", key |> ends_with(INLINE_KEY_SUFFIX))
+        let res <- convert_program(out.c_paths, das_dir, "linux", "", SIDECAR, "", "", "main", layout, false, "", key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : "", false, checks_of(key), past_end_of(key), key |> ends_with(INLINE_KEY_SUFFIX))
         if (!res.ok) {
             out.error = "convert: {headline(res.error)}"
         } elif (layout == "single") {
@@ -178,7 +186,7 @@ def convert_input(key, dir : string) : ConvertedInput {
     out.c_paths |> push(c_path)
     out.c_files = 1
     out.sidecar = find_sidecar(c_path, "")
-    let res <- convert(c_path, das_dir, "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "", key |> ends_with(REINTERPRET_KEY_SUFFIX) ? "reinterpret" : "", key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : "", false, "", "", key |> ends_with(INLINE_KEY_SUFFIX))
+    let res <- convert(c_path, das_dir, "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "", key |> ends_with(REINTERPRET_KEY_SUFFIX) ? "reinterpret" : "", key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : "", false, checks_of(key), past_end_of(key), key |> ends_with(INLINE_KEY_SUFFIX))
     if (!res.ok) {
         out.error = "convert: {headline(res.error)}"
     } else {
