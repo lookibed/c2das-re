@@ -18,6 +18,14 @@ def cmp_desc(a, b : void?) : int {
 // 0 read through crt::memcpy's uint64 size beside them, 0x0201 = 513)
 let private BUILTIN_MEMCPY = "options gen2\nrequire crt\nrequire c_runtime/c_function\n\n[c_function]\ndef read_one(bytes : uint8?; ofs : int) : uint8 \{\n    var r : uint8\n    memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + ofs), 1)\n    return r\n\}\n\n[c_function]\ndef read_four(bytes : uint8?; ofs : int) : int \{\n    var r : int\n    memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + ofs), 4)\n    return r\n\}\n\n[c_function]\ndef write_eight(bytes : uint8?; ofs : int; v : double) \{\n    var copy = v\n    memcpy(reinterpret<void?>(bytes + ofs), reinterpret<void?>(addr(copy)), 8)\n\}\n\n[c_function]\ndef read_crt(bytes : uint8?; ofs : int) : int16 \{\n    var r : int16\n    crt::memcpy(reinterpret<void?>(addr(r)), reinterpret<void?>(bytes + ofs), uint64(2))\n    return r\n\}\n\n[export]\ndef main \{\n    var buf : uint8[16]\n    for (i in range(16)) \{\n        buf[i] = uint8(i + 1)\n    \}\n    let p = unsafe(addr(buf[0]))\n    write_eight(p, 5, 1.5lf)\n    var d : double\n    unsafe \{\n        memcpy(addr(d), p + 5, 8)\n    \}\n    print(\"\{read_one(p, 3)\} \{read_four(p, 1)\} \{d\} \{read_crt(p, 0)\}\\n\")\n\}\n"
 
+// the program's own copies as the builtins with `crt` in scope (docs/probe-findings.md F94): an
+// `int64` size, moves up and down over an overlap, `memset8` truncating its `int` value to a byte,
+// null pointers with a zero size
+let private BUILTIN_MEM = "options gen2\nrequire crt\n\n[export]\ndef main \{\n    var buf : uint8[8] = fixed_array<uint8>(1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8)\n    let n = 5ul\n    let none = 0ul\n    let fill = -1\n    let wide = 0x1ab\n    unsafe \{\n        memmove(reinterpret<void?>(addr(buf[1])), reinterpret<void?>(addr(buf[0])), int64(n))\n        print(\"\{buf\}\\n\")\n        memmove(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(addr(buf[2])), int64(n))\n        print(\"\{buf\}\\n\")\n        memcpy(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(addr(buf[6])), int64(2ul))\n        memset8(reinterpret<void?>(addr(buf[2])), uint8(fill), 1)\n        memset8(reinterpret<void?>(addr(buf[3])), uint8(wide), 1)\n        memcpy(null, null, int64(none))\n        memmove(null, null, int64(none))\n        memset8(null, uint8(0), 0)\n    \}\n    print(\"\{buf\}\\n\")\n\}\n"
+
+// the same copy with C's `size_t` as it is: crt's `memcpy` takes it too
+let private BUILTIN_MEM_UINT64 = "options gen2\nrequire crt\n\n[export]\ndef main \{\n    var buf : uint8[8]\n    unsafe \{\n        memcpy(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(addr(buf[4])), 4ul)\n    \}\n\}\n"
+
 [test]
 def test_stdlib(t : T?) {
     t |> run("malloc, free, memcpy and memset8 are builtins over raw memory") @(t : T?) {
@@ -43,6 +51,14 @@ def test_stdlib(t : T?) {
         let body = at >= 0 ? slice(dump, at, dump |> find("\n\}\n", at)) : ""
         t |> success(body |> contains("load i8, ptr") && body |> contains("align 1") && !(body |> contains(" call ")), body)
         remove(ir)
+    }
+    t |> run("memcpy and memmove with an `int64` size and memset8 are the builtins beside crt, overlap and a zero size with null pointers right under the interpreter and the JIT; a `uint64` size is ambiguous with crt's (docs/probe-findings.md F94)") @(t : T?) {
+        let want = "[ 0x1, 0x1, 0x2, 0x3, 0x4, 0x5, 0x7, 0x8]\n[ 0x2, 0x3, 0x4, 0x5, 0x7, 0x5, 0x7, 0x8]\n[ 0x7, 0x8, 0xff, 0xab, 0x7, 0x5, 0x7, 0x8]\n"
+        let interp = runtime_child("builtin_mem", BUILTIN_MEM, false)
+        t |> equal(interp.out, want)
+        let jit = runtime_child_flags("builtin_mem_jit", BUILTIN_MEM, jit_flags())
+        t |> equal(program_output(jit.out) |> ends_with(want), true, jit.out)
+        child_rejects(t, "builtin_mem_uint64", runtime_child("builtin_mem_uint64", BUILTIN_MEM_UINT64, true), "too many matching functions or generics memcpy")
     }
     t |> run("json_boost's `?[]` of a missing key is a non-null sentinel, so `key_exists` tells a sidecar key's presence") @(t : T?) {
         var err : string
