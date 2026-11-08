@@ -2322,6 +2322,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   module, 9), so "one module either way" is wrong as a reason; the predicted single-layout numbers stand as written.
   The A/B (`/root/notes/parallel/pc-p7.0x-ab.sh`, the lead's batch): A the split default, B the pin, source, single and goto
   layouts, fib 30, nbody 20000, binary_trees 14, spectral_norm 500 and the startup row, 7 interleaved samples.
+  Done (branch `p7.0x-split-jit`, the 2026-11-08 batch, `heavy --exclusive` machine quiet 1%, 7 interleaved samples,
+  x native in-process work): fib 30 source layout A 4.96x -> B 2.22x (predicted 2.24x, hit), nbody 20000 3.92x -> 1.38x
+  (1.38x, hit), binary_trees 14 2.63x -> 1.75x (predicted 2.28x: better than the single layout's 2.44x, which still splits
+  per runtime module: a miss in the good direction), spectral_norm 500 4.86x -> 1.91x (2.00x, hit); the goto layout under B
+  fib 1.72x, nbody 1.04x, binary_trees 1.52x, spectral_norm 1.49x (the predicted ~1.3x goto gain over chain: 1.29x on
+  fib, hit); the single layout A/B within 3%; the cached `-e "print(1)"` startup within 2% (hit). Raw:
+  `/root/notes/parallel/p7.0x_ab/ab.txt`. Hit rate 6 of 7.
 - **P7.0y Hand-written daslang references beside the Rust translator's output** (owner note
   2026-11-06, the reference pass of ruling 33 item 3 widened): the owner's plmpeg port
   (lookibed/plmpeg-stream, checkout `/root/plmpeg-stream`, bench `/root/plmpeg_bench`) against our
