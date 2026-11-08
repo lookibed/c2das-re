@@ -42,7 +42,7 @@ exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
   jump into another case's block and into the middle of one, so every such goto re-dispatches the
   switch's matched-flag loop; `do_while_effect` is P5.1's too, `do { ... } while (--n > 0)` nested
   in another, the decrement in the condition; `first_member` is P7.0f's, lua's `s2v(base + a)` and
-  `gco2t(o)` in a hot loop. The kernel's parameter is a `volatile` static that `kernel_run` reads on
+  `gco2t(o)` in a hot loop; `block_clear` is P7.0u's, h264bsd's per-macroblock clear: a record `memset` and filled by `memcpy` of a constant and of a run-time length per block. The kernel's parameter is a `volatile` static that `kernel_run` reads on
   every call: with a literal argument clang hoists the idempotent call out of the rep loop (the
   native lane reports zero), and daslang's optimizer evaluates a pure call with constant arguments
   at compile time whatever `infer_time_folding` says, so the interpreter lane measured a store. The
