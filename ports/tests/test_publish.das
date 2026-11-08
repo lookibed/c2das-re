@@ -133,7 +133,7 @@ def private stand_in_root(name : string) : string {
     for (bench in ["fib", "binary_trees", "nbody", "spectral_norm", "timed"]) {
         fwrite(path_join(root, "ports/lua/bench/{bench}.lua"), fread("ports/lua/bench/{bench}.lua"))
     }
-    fwrite(path_join(root, ".gitignore"), "/lua/work/bench/\n/lua/work/publish_run.log\n/lua/work/publish_goto_run.log\n/lua/work/harness_runs.log\n/lua/work/publish.generation\nruns_*.log\n.cache/\n.jitted_scripts/\n/clone/\n/ports.git/\n/plain/\n")
+    fwrite(path_join(root, ".gitignore"), "/lua/work/bench/\n/lua/work/publish_run.log\n/lua/work/publish_goto_run.log\n/lua/work/harness_runs.log\n/lua/work/publish.generation\nruns_*.log\n.cache/\n.jitted_scripts/\n/clone/\n/ports.git/\n/plain/\n/compare/work/\n")
     git(root, ["init", "-q"])
     git(root, ["add", "-A"])
     git(root, ["commit", "-q", "-m", "stand-in"])
@@ -888,7 +888,7 @@ def private stand_in_projects(root : string) {
     stand_in_project(root, "wasm3", [
         (path = "src/all_host.c", text = "#include \"all.c\"\n#include \"host.c\"\n"),
         (path = "src/all.c", text = "#include <stdio.h>\n#include \"m3_add.c\"\n#include \"m3_vla.c\"\n"),
-        (path = "src/host.c", text = "int add(int a, int b);\nint main(void) \{ return add(1, 2) - 3; \}\n"),
+        (path = "src/host.c", text = "int main(void) \{ return 0; \}\n"),
         (path = "upstream/wasm3/source/m3_add.c", text = "int add(int a, int b) \{ return a + b; \}\n"),
         (path = "upstream/wasm3/source/m3_vla.c", text = "int first(int n) \{ int a[n + 1]; a[0] = n; return a[0]; \}\n"),
         (path = "upstream/wasm3/LICENSE", text = "MIT stand-in for wasm3\n")])

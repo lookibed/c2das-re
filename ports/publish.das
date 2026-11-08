@@ -1,4 +1,7 @@
 options gen2
+// a compare project converts in this process: the pipeline parses clang's JSON dump below its own
+// frames, and a deep expression tree overflows the default 16 KB context stack
+options stack = 1048576
 
 require strings
 require daslib/strings_boost
@@ -1027,12 +1030,12 @@ def private project_readme_text(p : Project; gen : Generation; rust_sha, refusal
             w |> write("The program converts whole: `{stem}/` holds it (`{stem}/{stem}.das` holds `main`).\n\n")
         } else {
             let converted = length([for (f in files); f; where empty(f.refusal)])
-            w |> write("The program does not convert whole yet: {refusal}\n\n")
+            w |> write("The program does not convert whole yet: {path_free(refusal, p.dir)}\n\n")
             w |> write("What does convert: each C file of the program converted alone, {converted} of {length(files)} (`files/`, a module per file at its path under the project folder; ")
             w |> write("a file alone is no program, so these modules show the conversion and do not run):\n\n")
             var rows : array<array<string>>
             for (f in files) {
-                rows |> emplace([f.c_path, empty(f.refusal) ? "converted" : "refused: {f.refusal}"])
+                rows |> emplace([f.c_path, empty(f.refusal) ? "converted" : "refused: {path_free(f.refusal, p.dir)}"])
             }
             w |> write(table_of(["C file", "Result"], rows, 2))
             w |> write("\n")
