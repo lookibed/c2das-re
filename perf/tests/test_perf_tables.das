@@ -262,7 +262,7 @@ def test_lanes(t : T?) {
         t |> equal(render_ratios(listed), "Lane time / native, per kernel.\n\n| Test | C (clang -O3) | DAS JIT |\n| :--- | ------------: | ------: |\n| a    |          1.00 |    2.00 |\n")
         let unlisted = capture_of(t, "\{'tests': \{'a': \{'native': \{'time': 1.0\}, 'interp-while': \{'time': 4.0\}\}\}\}")
         let lanes <- lanes_of(unlisted)
-        t |> equal(join(lanes, " "), "native interp interp-copy interp-while interp-reinterpret jit exe aot")
+        t |> equal(join(lanes, " "), "native interp interp-copy interp-while interp-reinterpret interp-inline jit exe aot")
         t |> success(render_ratios(unlisted) |> contains("| DAS interp, while loops |"), render_ratios(unlisted))
         t |> success(render_ratios(unlisted) |> contains("|                    4.00 |"), render_ratios(unlisted))
     }
