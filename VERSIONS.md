@@ -7,6 +7,7 @@ daScript commit: 0fd34f17fcb8b96e228276a81066a93e314b06d8 (GaijinEntertainment/d
 libclang: LLVM 22.1.8 Linux x86_64 release archive, extracted at PATH_TO_LIBCLANG (`lib/cmake/clang/ClangConfig.cmake` present); `DAS_CLANG_INCLUDE` names its `include/`
 ast-grep: 0.44.1 (`sg` on PATH; sgconfig.yml maps `.das` to daScript's tree-sitter grammar and `.c/.h/.hpp` to C++)
 clang-format: 22.1.8 (the libclang archive's `bin/clang-format`)
+llc: 22.1.8 (the libclang archive's `bin/llc`, the LLVM dasLLVM links; `probes/test_jit_solid_lsr.das` compiles the JIT's IR dump with it)
 vendored skills: `skills/DASLANG_SKILLS_PIN` (the daScript commit `scripts/sync_daslang_skills.sh` last copied from)
 dasCRuntime: built by `scripts/build_crt.sh` (cmake 3.16+, a C++17 compiler) against `DASLANG_ROOT/include` and `lib/liblibDaScriptDyn*`, with the checkout's ABI: no RTTI, `DAS_ENABLE_DYN_INCLUDES=1`, `DAS_FUSION=2`, `SIZE_OF_VOID_P` = the pointer width
 gcc-torture: 04696df09633baf97cdbbdd6e9929b9d472161d3 (gcc-mirror/gcc releases/gcc-14.2.0, the subtree `gcc/testsuite/gcc.c-torture/execute`; `suites/gcc_torture/fetch.sh` sparse-clones it)
