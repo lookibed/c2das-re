@@ -4875,7 +4875,46 @@ def private case_groups(var em : Emitter; body : CirStmt const?; loc : CirLoc; v
             return false
         }
     }
+    join_inert_groups(groups)
     return true
+}
+
+// a group whose statements do nothing falls into the next with no effect on the way: it joins the
+// next group's labels, so the fall-through is gone; neither group may hold `default`
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#inert-cases")]
+def private join_inert_groups(var groups : array<CaseGroup>) {
+    var idx = length(groups) - 2
+    while (idx >= 0) {
+        if (!groups[idx].is_default && !groups[idx + 1].is_default && !has_value([for (st in groups[idx].stmts); is_inert(st)], false)) {
+            var values <- groups[idx].values
+            for (v in groups[idx + 1].values) {
+                values |> push(v)
+            }
+            groups[idx + 1].values <- values
+            groups |> erase(idx)
+        }
+        idx--
+    }
+}
+
+// whether statement `st` does nothing: a `;`, an expression statement with no effect and no
+// volatile read (an `assert` emptied by NDEBUG is `(void)0`), a block of such statements
+def private is_inert(st : CirStmt const?) : bool {
+    if (st == null || st.s == "null") {
+        return true
+    }
+    if (st.s == "expr") {
+        return !has_effects(st.e) && !reads_volatile(st.e)
+    }
+    if (st.s == "compound") {
+        for (child in st.body) {
+            if (!is_inert(child)) {
+                return false
+            }
+        }
+        return true
+    }
+    return false
 }
 
 // the readable if-chain holds when no group falls into the next and every `break` that
