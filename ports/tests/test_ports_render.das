@@ -573,7 +573,7 @@ def test_project_criteria(t : T?) {
     t |> run("a project measured file by file names the files that convert out of all") @(t : T?) {
         let cap <- criteria_capture(["project/wasm3"], 2)
         let text = project_criteria_text("wasm3", cap, true, "", "0123456789abcdef", false)
-        t |> success(text |> contains("Measured on the 2 of 3 C files that convert alone, since the program does not convert whole; the other files are in no count, "), text)
+        t |> success(text |> contains("Measured on the 2 of 3 C files that convert alone, since the program does not convert whole; the other files are in no count, so these criteria describe only the converted files, "), text)
         t |> equal(coverage_text(cap, "project/doomgeneric"), "")
     }
     t |> run("no capture, a capture that does not read and a capture without the row are not-yet lines") @(t : T?) {

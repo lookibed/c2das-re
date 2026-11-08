@@ -116,6 +116,11 @@ struct CriteriaCapture {
     sample : table<string; table<string; int>>
 }
 
+//! Whether the row `row` counts in the `all` column: an opt-in's row is its readability price and a
+//! compare project's may cover only the files that convert alone, so the `all` column keeps the
+//! default output of the Lua programs and the suites.
+def in_all(row : string) : bool => !(row |> ends_with(OPT_IN_ROW_SUFFIX)) && !(row |> starts_with(PROJECT_PREFIX))
+
 //! The compliance of every criterion per row, and the `all` column: each criterion's mean over the
 //! rows where it applies.
 [arch(at="ARCHITECTURE_CRITERIA.md#rows")]
@@ -126,7 +131,7 @@ def compliance_table(cap : CriteriaCapture) : table<string; table<string; double
             out[row] <- {for (cr in CRITERIA); cr => compliance(cr, c)}
         }
     }
-    var all <- {for (cr in CRITERIA); cr => mean_applicable([for (row in keys(out)); out?[row]?[cr] ?? NOT_APPLICABLE; where !(row |> ends_with(OPT_IN_ROW_SUFFIX))])}
+    var all <- {for (cr in CRITERIA); cr => mean_applicable([for (row in keys(out)); out?[row]?[cr] ?? NOT_APPLICABLE; where in_all(row)])}
     out[ALL] <- all
     return <- out
 }
@@ -310,7 +315,7 @@ def coverage_text(cap : CriteriaCapture; row : string) : string {
     let all = cap.rows?[row]?["c_files"] ?? 0
     let converted = cap.rows?[row]?["c_files_converted"] ?? 0
     let files = all == 1 ? "C file" : "C files"
-    return converted == all ? "the whole program, its {all} {files}" : "the {converted} of {all} {files} that convert alone, since the program does not convert whole; the other files are in no count"
+    return converted == all ? "the whole program, its {all} {files}" : "the {converted} of {all} {files} that convert alone, since the program does not convert whole; the other files are in no count, so these criteria describe only the converted files"
 }
 
 // the criteria table over `columns` of `table_`, the totals last
