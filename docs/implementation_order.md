@@ -2298,6 +2298,28 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   interp up, plmpeg interp 37.5 towards 31.6 with P7.0w; JIT flat. Probe the node counts of the two
   spellings first (one perf kernel, interp lane). The mirror hides the pointer, so readability decides
   default or opt-in (ruling 23); `p[i]` reads better and is a default candidate.
+  Probe (2026-11-08, F94, `probes/test_pointer_index.das`): `p[i]` reaches the element `deref(p + i)` does for every
+  index type and sign, one `PtrAt` node against an `i_das_ptr_add` call node under a null-checked `Ptr2Ref`; the JIT
+  null-checks `p` once before a `p[i]` loop where the sum is checked per element (the IR differs, `p[i]` the simpler);
+  under the interpreter a null `p` at index 0 is SIGSEGV for `p[i]` where the sum panics, C's undefined behaviour
+  either way. A scratch micro-kernel (`heavy --low`, indicative, not quoted): 8.5 against 11.4 ns per `int` read,
+  12.8 against 16.5 per byte copied by index; blit's own step shape (`var _t1 = dst`, `dst = dst + 1`) 23.4 ns per
+  byte, the same with `dst++` 20.6, a `uint64` mirror (`dst_a += 1ul`, `deref(reinterpret<uint8?>(dst_a))`) 15.2:
+  the step is a cost. Landed: a pointer subscript and `*(p + i)` / `*(i + p)` are `p[i]`, the default (one spelling
+  shorter and C's own); a marshal-only record's pointee and `*(p - n)` keep their forms. The kernels' share is small:
+  blit indexes only its checksum read (`dst[i]` per 7 bytes) and str_copy none, so the A/B predictions for this
+  change alone (box PC, x native): blit and str_copy flat within noise on every lane; plmpeg interp a few percent
+  faster (its `deref(_c_block + k)` sites, 1139 class), JIT and exe flat. The mirror is not in this item: it rewrites
+  every read, store and step of a mirrored local and its declaration or parameter (a prologue copy), behind a
+  sidecar/CLI option with both modes tested, past the small-PR size; it is P7.0v2 below, with the readable `p++` step
+  spelling measured beside it. A/B function: /root/notes/parallel/pc-p7.0v-ab.sh (not run by the coder).
+- **P7.0v2 The `uint64` mirror of a stepped pointer, opt-in, and the `p++` step spelling** (split from P7.0v, whose
+  probe measured the step): a local or parameter pointer that is only dereferenced, indexed, compared and stepped by
+  a constant (never addressed, passed or stored, not volatile) is mirrored in a `uint64` local under an opt-in
+  (`--pointer-steps=mirror`, sidecar key), the default staying the pointer; the default's step `p = p + 1` becomes
+  `p++` / `p += n` where the readability re-record agrees. Expected before measuring (box PC, interp, x native): blit
+  45 -> about 30 and str_copy down by a like share under the mirror, about a third of that from `p++` alone; JIT flat
+  or worse under the mirror (the `inttoptr` hides the pointer from alias analysis: check the IR first).
 - **P7.0w Expression inlining of pure `static` helpers** (reference diff row 28): a `static` function
   whose body is `return <expr>` or the clamp shape over scalar parameters is substituted as one
   expression at every direct call site (Rust's inline.rs, on in every mode); daslang's `[inline]` is
