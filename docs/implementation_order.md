@@ -1951,6 +1951,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   the plain ones so every plain `_cond == K` test sits first and the recovery covers all 83 cases.
   The old candidate, a binary split of the chain (7 tests for 83 cases), stays the interpreter's
   option for builds without the P7.0c2 opt-in.
+  Closed by owner ruling 36 section 1 (2026-11-08): goto stays an opt-in (`--switch-dispatch goto`),
+  no per-tier default, by the rule "readable by default, fast as an option". Its readability price on
+  Lua (the 11-06 trees, source layout): 225 more `label N:` and 22 more `goto` across the program (14
+  -> 239 labels, 55 -> 77 gotos, 29 355 -> 30 089 lines), `luaV_execute` 2731 -> 2984 lines with 89
+  labels. The ports' `jit-goto` column stays a column; the criteria rows `lua/lua@goto` and
+  `lua/luac@goto` carry the price in `metrics/criteria_linux.json`: totals 79.7 and 79.2 against the
+  defaults' 79.7 and 79.3.
 - **P7.0d Wrap casts on 64-bit mixed operands** (ruling (23): default, with the signed-wrap probe). `int64(uint64(a) op uint64(b))` as `a op
   int64(b)`, extending P7.0's `int` fold to lvm's `intop` (OP_ADDI, OP_MUL, bitwise ops): 2.10x
   interp, sites 14/1/5/0. The kernel never overflows (values < 2^28): the fix depends on daslang's
