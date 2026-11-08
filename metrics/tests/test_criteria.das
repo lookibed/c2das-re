@@ -251,15 +251,15 @@ def test_defines(t : T?) {
         let c_path = path_join(dir, "m.c")
         fwrite(c_path, "#include \"own.h\"\n#define LIMIT 10\n#ifdef NOPE\nint dead;\n#endif\nint f(void) \{ return LIMIT + FROM_HEADER + INT_MAX; \}\n")
         var error : string
-        var pp <- preprocess(c_path, ["X=1"], error)
+        var pp <- preprocess(c_path, ["X=1"], array<string>(), array<string>(), error)
         t |> equal(error, "")
         t |> success(length(pp.emitted) > 5 && pp.emitted[5] && !pp.emitted[3], "{pp.emitted}")
         var units : array<Preprocessed>
         units |> emplace(pp)
-        let names <- program_constants([c_path], units)
+        let names <- program_constants([c_path], array<string>(), units)
         t |> equal(sorted([for (k in keys(names)); k]), ["FROM_HEADER", "LIMIT"])
         var refused : string
-        preprocess(path_join(dir, "missing.c"), array<string>(), refused)
+        preprocess(path_join(dir, "missing.c"), array<string>(), array<string>(), array<string>(), refused)
         t |> success(refused |> contains("missing.c"), refused)
         rmdir_rec(dir)
     }
@@ -267,6 +267,60 @@ def test_defines(t : T?) {
 
 def private full_raw(fill : int) : table<string; int> {
     return <- {for (k in RAW_KEYS); k => fill}
+}
+
+[test]
+def test_project_preprocessing(t : T?) {
+    t |> run("the lines a unit emits from a header it includes, under the header's own path") @(t : T?) {
+        var dir_error : string
+        let dir = create_temp_directory("c2das_criteria_header", dir_error)
+        t |> equal(dir_error, "")
+        mkdir_rec(path_join(dir, "lib"))
+        mkdir_rec(path_join(dir, "src"))
+        let header = path_join(dir, "lib/one.h")
+        fwrite(header, "int one(void);\n#ifdef ONE_IMPL\nint one(void) \{ return 1; \}\n#endif\n")
+        fwrite(path_join(dir, "src/a.c"), "#define ONE_IMPL\n#include \"../lib/one.h\"\n")
+        fwrite(path_join(dir, "src/b.c"), "#include \"../lib/one.h\"\n")
+        var error : string
+        var with_impl <- preprocess(path_join(dir, "src/a.c"), array<string>(), array<string>(), array<string>(), error)
+        var without <- preprocess(path_join(dir, "src/b.c"), array<string>(), array<string>(), array<string>(), error)
+        t |> equal(error, "")
+        var units : array<Preprocessed>
+        units |> emplace(without)
+        let declared <- emitted_lines(header, units)
+        t |> success(!empty(declared) && declared[0] && (length(declared) < 3 || !declared[2]), "{declared}")
+        t |> equal(length(scan_c(fread(header), declared).functions), 0)
+        units |> emplace(with_impl)
+        let defined <- emitted_lines(header, units)
+        t |> success(length(defined) > 2 && defined[0] && defined[2], "{defined}")
+        t |> equal(length(scan_c(fread(header), defined).functions), 1)
+        t |> equal(length(emitted_lines(path_join(dir, "src/b.c"), units)), 0, "a main file is no included file")
+        rmdir_rec(dir)
+    }
+    t |> run("a project's include folders and forced includes reach the preprocessing and its own headers") @(t : T?) {
+        var dir_error : string
+        let dir = create_temp_directory("c2das_criteria_inc", dir_error)
+        t |> equal(dir_error, "")
+        mkdir_rec(path_join(dir, "inc"))
+        fwrite(path_join(dir, "inc/far.h"), "#define FAR_LIMIT 64\n")
+        fwrite(path_join(dir, "inc/forced.h"), "#define FORCED 1\n")
+        let c_path = path_join(dir, "m.c")
+        fwrite(c_path, "#include \"far.h\"\n#ifdef FORCED\nint live;\n#endif\nint f(void) \{ return FAR_LIMIT; \}\n")
+        var error : string
+        var pp <- preprocess(c_path, array<string>(), [path_join(dir, "inc")], [path_join(dir, "inc/forced.h")], error)
+        t |> equal(error, "")
+        t |> success(length(pp.emitted) > 2 && pp.emitted[2], "the forced include's macro keeps the branch: {pp.emitted}")
+        t |> equal(own_files([c_path], [path_join(dir, "inc")]), [c_path, path_join(dir, "inc/far.h")])
+        t |> equal(own_files([c_path], array<string>()), [c_path])
+        var units : array<Preprocessed>
+        units |> emplace(pp)
+        let names <- program_constants([c_path], [path_join(dir, "inc")], units)
+        t |> equal(sorted([for (k in keys(names)); k]), ["FAR_LIMIT"])
+        var unfound : string
+        preprocess(c_path, array<string>(), array<string>(), array<string>(), unfound)
+        t |> success(unfound |> contains("far.h"), "without the include folder clang refuses: {unfound}")
+        rmdir_rec(dir)
+    }
 }
 
 [test]
@@ -303,8 +357,9 @@ def test_compliance(t : T?) {
         t |> equal(summed?["fn_worst_x100"] ?? 0, 300)
         t |> equal(length(summed), length(RAW_KEYS))
     }
-    t |> run("a Lua key is its own row, a suite key its suite's") @(t : T?) {
+    t |> run("a Lua or project key is its own row, a suite key its suite's") @(t : T?) {
         t |> equal(row_of("lua/lua@source-cut"), "lua/lua@source-cut")
+        t |> equal(row_of("project/h264bsd-mp4"), "project/h264bsd-mp4")
         t |> equal(row_of("csmith/123"), "csmith")
         t |> equal(row_of("bare"), "bare")
     }
@@ -426,10 +481,11 @@ def test_worker_file(t : T?) {
     }
 }
 
-// the worker run on one input key, and the result file it wrote
-def private run_worker(key : string; var result : string&) : int {
-    var argv <- daslang_cmd(CONVERTED_MODULES)
-    argv |> push_from(["metrics/criteria.das", "--", "--one", key])
+// the worker run on one input key, and the result file it wrote; `rust` the Rust checkout it reads
+// the compare projects from, its default when ""
+def private run_worker(key : string; var result : string&; rust : string = "") : int {
+    var argv <- empty(rust) ? array<string>() : ["env", "C2DAS_RUST={rust}"]
+    argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["metrics/criteria.das", "--", "--one", key])
     var out : string
     let rc = run_and_capture(argv, out, 300.0)
     let path = "metrics/work/{key}/criteria.txt"
@@ -491,4 +547,70 @@ def test_gate(t : T?) {
         t |> success(out |> contains("sample: not re-measured"), out)
     }
     rmdir_rec(dir)
+}
+
+// a stand-in Rust checkout under `dir`: binjgb converts whole from its `all.c` graph, wasm3's graph
+// holds a variable-length array, so it converts file by file, one file refused
+def private stand_in_rust(dir : string) {
+    let cases = "\{\"cases\": [\{\"id\": \"binjgb-cgb-acid2-std\", \"expected\": \{\"stdout\": \"\"\}\}, \{\"id\": \"wasm3-fib32-std\", \"expected\": \{\"stdout\": \"\"\}\}]\}\n"
+    mkdir_rec(path_join(dir, "tests/canonical"))
+    fwrite(path_join(dir, "tests/canonical/cases.json"), cases)
+    let files <- [
+        (path = "binjgb/src/binjgb_all.c", text = "#include \"all.c\"\n#include \"entry.c\"\n"),
+        (path = "binjgb/src/all.c", text = "#include \"cpu.c\"\n"),
+        (path = "binjgb/src/entry.c", text = "#include \"cpu.h\"\nint main(void) \{ return step(MAX_STEPS); \}\n"),
+        (path = "binjgb/upstream/binjgb/src/cpu.h", text = "#define MAX_STEPS 40\nint step(int n);\n"),
+        (path = "binjgb/upstream/binjgb/src/cpu.c", text = "#include \"cpu.h\"\n#define LIB_IMPLEMENTATION\n#include \"lib.h\"\n// one step\nint step(int n) \{ return twice(n) > MAX_STEPS ? 0 : n; \}\n"),
+        (path = "binjgb/upstream/binjgb/src/lib.h", text = "int twice(int x);\n#ifdef LIB_IMPLEMENTATION\n// doubled\nint twice(int x) \{ return 2 * x; \}\n#endif\n"),
+        (path = "wasm3/src/all_host.c", text = "#include \"all.c\"\n#include \"host.c\"\n"),
+        (path = "wasm3/src/all.c", text = "#include \"m3_add.c\"\n#include \"m3_vla.c\"\n"),
+        (path = "wasm3/src/host.c", text = "int main(void) \{ return 0; \}\n"),
+        (path = "wasm3/upstream/wasm3/source/m3_add.c", text = "int add(int a, int b) \{ return a + b; \}\n"),
+        (path = "wasm3/upstream/wasm3/source/m3_vla.c", text = "int first(int n) \{ int a[n + 1]; a[0] = n; return a[0]; \}\n")]
+    for (f in files) {
+        let path = path_join(dir, "tests/manual/{f.path}")
+        mkdir_rec(dir_name(path))
+        fwrite(path, f.text)
+    }
+}
+
+// the raw count `key` of a worker file
+def private count_of(result, key : string) : int {
+    var error : string
+    return read_result_text(result, error).counts?[key] ?? -1
+}
+
+[test]
+def test_project_worker(t : T?) {
+    var dir_error : string
+    let rust = create_temp_directory("c2das_criteria_rust", dir_error)
+    t |> equal(dir_error, "")
+    stand_in_rust(rust)
+    t |> run("a project that converts whole is measured over every C file its graph compiles, its include folders followed") @(t : T?) {
+        var result : string
+        t |> equal(run_worker("project/binjgb", result, rust), 0)
+        t |> success(result |> starts_with("ok\n"), result)
+        t |> equal(count_of(result, "c_files"), 2, "cpu.c through all.c, and entry.c: {result}")
+        t |> equal(count_of(result, "c_files_converted"), 2)
+        t |> equal(count_of(result, "c_constant_uses"), 2, "MAX_STEPS of the header in an include folder: {result}")
+        t |> equal(count_of(result, "c_comment_lines"), 2, "the single-header implementation's comment counts: {result}")
+        t |> equal(count_of(result, "fn_matched"), 3, "step, main and the header's twice: {result}")
+        t |> success(fexist("metrics/work/project/binjgb/whole/binjgb_all.das"), "the publisher's whole tree")
+    }
+    t |> run("a project that refuses whole is measured over the files that convert alone, the coverage recorded") @(t : T?) {
+        var result : string
+        t |> equal(run_worker("project/wasm3", result, rust), 0)
+        t |> success(result |> starts_with("ok\n"), result)
+        t |> equal(count_of(result, "c_files"), 3)
+        t |> equal(count_of(result, "c_files_converted"), 2)
+        t |> equal(count_of(result, "fn_matched"), 2, result)
+    }
+    t |> run("a project the table lacks, and one the checkout lacks, are errors") @(t : T?) {
+        var result : string
+        t |> equal(run_worker("project/nethack", result, rust), 0)
+        t |> equal(result, "error no compare project nethack\n")
+        t |> equal(run_worker("project/doomgeneric", result, rust), 0)
+        t |> success(result |> starts_with("error the Rust checkout has no "), result)
+    }
+    rmdir_rec(rust)
 }

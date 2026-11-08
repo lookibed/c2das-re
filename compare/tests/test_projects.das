@@ -13,6 +13,7 @@ require ../../perf/perf_lanes.das
 require ../../perf/perf_measure.das
 require ../perf_compare.das
 require ../projects.das
+require ../../metrics/criteria_file.das
 require ../compare_render.das
 require _common
 
@@ -886,5 +887,13 @@ def test_convert_project(t : T?) {
             t |> equal(whole.refusal, "")
             t |> success(empty(whole.per_file) && length([for (f in whole.files); f; where f |> ends_with(".das")]) == 2, join(whole.files, " "))
         }
+    }
+}
+
+[test]
+def test_criteria_rows(t : T?) {
+    t |> run("the readability criteria hold a row per compare project, in the table's order") @(t : T?) {
+        let rows <- [for (row in ROWS); slice(row, length(PROJECT_PREFIX)); where row |> starts_with(PROJECT_PREFIX)]
+        t |> equal(rows, [for (p in project_table("")); p.name])
     }
 }

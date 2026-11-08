@@ -18,7 +18,8 @@ require criteria_defines
 require criteria_file
 
 //! The readability criteria (`scripts/run_criteria.sh`, `metrics/ARCHITECTURE_CRITERIA.md`): every
-//! Lua key and every ratchet suite key of `expected_input_keys`, converted by `convert_input` as
+//! Lua key and every ratchet suite key of `expected_input_keys` and every compare project of `ROWS`
+//! (`project/<name>`), converted by `convert_input` as
 //! the readability metric converts it, one worker process per input, its C sources and emitted
 //! modules scanned into raw counts; the rows summed, each criterion's compliance printed, and a
 //! complete run recorded in `metrics/criteria_linux.json`. `--report` is the preflight gate.
@@ -51,6 +52,22 @@ struct CriteriaArgs {
 
 def private result_path(key : string) : string => "{WORK}/{key}/criteria.txt"
 
+// every own header of the program of `c_paths` the units emit a function definition from (a
+// single-header library's implementation) scanned into `sources`: C source of the program too
+def private header_sources(c_paths, include_dirs : array<string>; units : array<Preprocessed>; var sources : array<CSource>) {
+    for (h in own_files(c_paths, include_dirs)) {
+        if (!has_value(c_paths, h)) {
+            var inscope lines <- emitted_lines(h, units)
+            if (!empty(lines)) {
+                var header <- scan_c(fread(h), lines)
+                if (!empty(header.functions)) {
+                    sources |> emplace(header)
+                }
+            }
+        }
+    }
+}
+
 //! The raw counts of the input `key`, converted under `dir`; `error` names what failed.
 def measure_input(key, dir : string; var error : string&) : CriteriaRaw {
     let conv <- convert_input(key, dir)
@@ -69,17 +86,21 @@ def measure_input(key, dir : string; var error : string&) : CriteriaRaw {
     units |> reserve(length(conv.c_paths))
     sources |> reserve(length(conv.c_paths))
     for (c in conv.c_paths) {
-        units |> emplace(preprocess(c, side.defines, error))
+        units |> emplace(preprocess(c, side.defines, side.include_dirs, side.include_files, error))
         if (!empty(error)) {
             return <- CriteriaRaw()
         }
         sources |> emplace(scan_c(fread(c), units[length(units) - 1].emitted))
     }
-    let constants <- program_constants(conv.c_paths, units)
+    header_sources(conv.c_paths, side.include_dirs, units, sources)
+    let constants <- program_constants(conv.c_paths, side.include_dirs, units)
     var paths := conv.das_paths
     paths |> push_from(conv.fragments)
     let modules <- [for (path in paths); scan_das(fread(path), file_stem(path), path |> ends_with(".das.inc"))]
-    return <- count_criteria(sources, modules, constants)
+    var raw <- count_criteria(sources, modules, constants)
+    raw.counts["c_files"] = conv.c_files
+    raw.counts["c_files_converted"] = length(conv.c_paths)
+    return <- raw
 }
 
 // what the workers measured: the raw counts and pooled ratios per row, the sample's raw counts,
@@ -165,6 +186,14 @@ def private report(delta_ref : string) : int {
     return 0
 }
 
+// every input the criteria measure whose key holds `filter`: the readability inputs without the
+// `perf` group, then the compare projects of `ROWS`
+def private input_keys(filter : string) : array<string> {
+    var every <- [for (k in expected_input_keys()); k; where !(k |> starts_with("perf/"))]
+    every |> push_from([for (row in ROWS); row; where row |> starts_with(PROJECT_PREFIX)])
+    return <- [for (k in every); k; where empty(filter) || find(k, filter) >= 0]
+}
+
 [export]
 def main : int {
     var args = CriteriaArgs()
@@ -175,16 +204,19 @@ def main : int {
     if (!empty(args.one)) {
         var error : string
         let raw <- measure_input(args.one, "{WORK}/{args.one}", error)
+        mkdir_rec(dir_name(result_path(args.one)))
         fwrite(result_path(args.one), result_text(raw, empty(error) ? "" : headline(error)))
         return 0
     }
     if (args.report) {
         return report(args.delta_ref)
     }
-    let keys <- [for (k in expected_input_keys()); k; where !(k |> starts_with("perf/")) && (empty(args.filter) || find(k, args.filter) >= 0)]
+    let keys <- input_keys(args.filter)
     var m : Measured
-    run_batch([for (k in keys); k; where k |> starts_with("lua/")], 1, m)
-    run_batch([for (k in keys); k; where !(k |> starts_with("lua/"))], args.jobs, m)
+    // a Lua program or a compare project takes up to 3 GB to convert: one at a time
+    let one_by_one <- [for (k in keys); k; where k |> starts_with("lua/") || k |> starts_with(PROJECT_PREFIX)]
+    run_batch(one_by_one, 1, m)
+    run_batch([for (k in keys); k; where !has_value(one_by_one, k)], args.jobs, m)
     let cap <- capture_of(m)
     print("**Readability criteria**\n\n{length(keys)} inputs attempted, {length(m.failures)} failed\n\n{render_criteria(cap)}\n")
     if (!empty(args.delta)) {
