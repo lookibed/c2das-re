@@ -2282,6 +2282,26 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   72 -> about 45, JIT 1.07 -> about 0.55 (the Rust cells: the re-dispatch loop defeats LLVM's switch
   recovery); binjgb interp and JIT as the program check (its opcode switch has gotos). Depends on
   lookibed/daScript#35 the way P7.0c2 does for the interpreter.
+  Predictions (2026-11-08, ruling 36 section 5, written before any code or run; box PC, exclusive, x
+  native). Form: an opt-in, the `switch_dispatch` `goto` value widened (ruling 36 section 1 keeps goto
+  forms opt-in): under it a switch that a goto from another case group re-dispatches and that P7.0c2's
+  jump table refuses is spelled open (P7.7's form) with a computed `goto` dispatch when its values fill
+  half of [lo, hi], an `if`/`elif` goto chain otherwise; `chain` output is unchanged. Arms: M = main's
+  converter, T = the branch's, both under `goto`. Sites, from main's output (chain and goto trees):
+  switch_goto `run_code` 1; Lua 2 (lstrlib `match`, `str_format`, goto tree only); Doom (PureDOOM
+  source-speed, 159 files) 0, binjgb 0 (its opcode switch has no goto: emulator.c's only goto outside
+  `CHECK` is `get_cart_infos`'s `goto done`, no switch around it; the row's claim above is wrong), the
+  other compare projects 0; no open switch in Doom or binjgb either. The row's base cells are stale: the
+  11-07 perf record has switch_goto interp 45.7x, JIT 0.44x (Rust 43.5x / 0.53x). Expected: switch_goto
+  interp 45.7 -> about 28 (T/M 0.62: about 14 dispatch nodes an opcode, the chain tests, `_flag ||=`,
+  the `_goto`/`_cond` stores and the restart of op 1 and 2's gotos, become a bounds test, the jump and
+  a goto to the end, about 4, against about 10 of body and loop), JIT 0.44 -> 0.44 (T/M 1.00 +-5%: LLVM
+  already threads the restart into direct branches at 0.44x); binjgb JIT 1.14x -> 1.14x and Doom demos
+  1-3 JIT (about 1.05-1.15x native, fps unchanged) T/M 1.00 +-2%: the converted text is byte-identical,
+  the run a noise control. Readability price: `run_code` 69 -> about 45 lines (ratio 0.65), labels 3 ->
+  9 (a label per case value and the end), gotos 4 -> 9 (one computed), `while (true)` 1 -> 0, `_flag ||=`
+  6 -> 0; Lua's goto tree about +25 labels and +45 gotos in the two functions, line ratio about 1.0
+  (`match` 180) to 1.1 (`str_format` 176, 17 sparse values as an `elif` chain); Doom, binjgb none.
 - **P7.0u Builtin `memcpy`, `memmove` and `memset8` for the program's own calls** (reference diff
   rows 5-6; extends P7.0n, which moved the constant-size marshal reads): a C `memcpy`/`memmove` of a
   program size calls daslang's builtin with the size guarded against zero, a C `memset` calls `memset8`
