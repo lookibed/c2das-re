@@ -267,9 +267,12 @@ The project's directory `<name>/` in the clone holds:
   nothing when the program refuses.
 - `files/`: each file that converts alone, its module at its C path under the project folder with
   the `.c` dropped; nothing when the program converts whole.
-- `<name>.c2das`: the sidecar of the whole conversion, its paths those of the Rust checkout.
+- `<name>.c2das`: the sidecar of the whole conversion, the project folder in its paths written
+  `<c2das>/tests/manual/<name>`, the README's name for the Rust checkout.
 - `LICENSE`: every license file under the project's `upstream/`, each under its path, else the
-  notice of each upstream file naming its license by an SPDX line (`spdx_notice`).
+  license each upstream file names by an SPDX line (`spdx_notice`; for MIT its full text under the
+  notice's author, `spdx_license`), then the Rust checkout's own `LICENSE` for the project's glue
+  files under `src/` and `include/`.
 - `README.md`: the conversion's result (whole, or the refusal and a row per file), the files, the
   Rust checkout's commit, the generating commit, how to run the module on the fixture in the Rust
   checkout (no fixture is copied: game data and fixtures keep their own licenses there) and the
@@ -277,9 +280,16 @@ The project's directory `<name>/` in the clone holds:
 
 Both folders mirror their conversion as the layouts of section 2 do. The speed is the project's
 entry of `compare/results_linux.json`, rendered by `compare_render.das`'s `projects_text` over that
-entry alone. Its commit is the one that last changed the capture: when that is not the published
-conversion's commit, the section opens with `measured_at_line`, which says the output changed
-since when `converter/`, `c_runtime/` or `dasCRuntime/` differ between the two (or the capture's
-commit is not in the tree); a Lua README's perf section opens with the same line for its latest
-capture's commit. The criteria are `PROJECT_CRITERIA_NOT_YET`: `scripts/run_criteria.sh` takes no
+entry alone. The section opens with `measured_on_line`: the entry's own `date` (the entries of one
+capture are measured on different dates), the commit that last changed the capture, and that the
+output changed since when a commit after that date changed `converter/`, `c_runtime/` or
+`dasCRuntime/`. A Lua README's perf section opens with `measured_at_line` when its latest capture's
+commit is not the published conversion's, saying the output changed since when those folders differ
+between the two (or the capture's commit is not in the tree).
+
+A project that fails (its canonical case, its license, a write) does not stop the publish: the
+other programs publish and commit, the top-level README's `Directories` section (`render_programs`)
+links every program directory of the clone and names each failure, a commit with `--commit` holds
+that line, `--push` pushes what was committed, and the run then exits 1. A failed Lua publish is
+collected the same way. The criteria are `PROJECT_CRITERIA_NOT_YET`: `scripts/run_criteria.sh` takes no
 single project.

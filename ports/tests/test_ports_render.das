@@ -533,4 +533,10 @@ def test_project_notes(t : T?) {
         t |> equal(measured_on_line("2026-11-06 22:11 UTC", "0123456789abcdef", false), "Measured 2026-11-06 22:11 UTC (capture committed at c2das-re `0123456789ab`).\n\n")
         t |> equal(measured_on_line("2026-11-06 22:11 UTC", "0123456789abcdef", true), "Measured 2026-11-06 22:11 UTC (capture committed at c2das-re `0123456789ab`), output changed since: the converter changed after that date; no new timing yet.\n\n")
     }
+    t |> run("an MIT SPDX notice becomes the full MIT text under its author's copyright; another notice stays") @(t : T?) {
+        let mit = spdx_license("/*\nPL_MPEG\nSPDX-License-Identifier: MIT\n\nDominic Szablewski - https://phoboslab.org\n")
+        t |> success(mit |> starts_with("Copyright (c) Dominic Szablewski\n\nPermission is hereby granted"), mit)
+        t |> success(mit |> ends_with("DEALINGS IN THE SOFTWARE.\n"), mit)
+        t |> equal(spdx_license("SPDX-License-Identifier: Zlib\nme\n"), "SPDX-License-Identifier: Zlib\nme\n")
+    }
 }

@@ -1002,9 +1002,14 @@ def private project_license(p : Project) : string {
         for (f in notices) {
             let notice = spdx_notice(fread(path_join(upstream, f)))
             if (!empty(notice)) {
-                parts |> push("upstream/{f}:\n\n{notice}")
+                parts |> push("upstream/{f}:\n\n{spdx_license(notice)}")
             }
         }
+    }
+    // the Rust repository's own glue (`src/`, `include/`), converted with the upstream code
+    let own = path_join(rust_checkout(), "LICENSE")
+    if (!empty(parts) && fexist(own)) {
+        parts |> push("src/ and include/ of {MANUAL_DIR}/{p.name} (the files of lookibed/c2das itself, its LICENSE):\n\n{fread(own)}")
     }
     return join(parts, "\n")
 }
@@ -1061,7 +1066,7 @@ def private project_readme_text(p : Project; gen : Generation; rust_sha, refusal
         } else {
             w |> write("- `files/` - each C file that converts alone, as its module.\n")
         }
-        w |> write("- `{p.name}.c2das` - the sidecar the conversion ran under (its paths name the C sources in the Rust checkout it was converted from).\n")
+        w |> write("- `{p.name}.c2das` - the sidecar the conversion ran under, its paths in the Rust checkout written under `<c2das>`, that checkout.\n")
         w |> write("- `LICENSE` - the license of the upstream code under `{MANUAL_DIR}/{p.name}/upstream/`; the conversion is a derived work.\n\n")
         w |> write("## Source\n\n")
         w |> write("- The C sources: `{MANUAL_DIR}/{p.name}/` of lookibed/c2das at `{rust_sha}`; its `UPSTREAM.md` names each upstream and its revision.\n")
@@ -1118,7 +1123,7 @@ def private publish_project(p_row : Project; repo : string; var gen : Generation
         }
     }
     ok = mirror_tree(path_join(work, "files"), path_join(dir, "files"), converted) && ok
-    ok = ok && write_or_log(path_join(dir, "{p.name}.c2das"), fread(path_join(whole, "{p.name}.c2das")))
+    ok = ok && write_or_log(path_join(dir, "{p.name}.c2das"), replace(fread(path_join(whole, "{p.name}.c2das")), p.dir, "<c2das>/{MANUAL_DIR}/{p.name}"))
     ok = ok && write_or_log(path_join(dir, "LICENSE"), license)
     let command = "scripts/publish_ports.sh --program {p.name}"
     let rust_sha = git_line(rust_checkout(), ["rev-parse", "HEAD"])

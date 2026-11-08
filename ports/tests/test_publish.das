@@ -881,6 +881,7 @@ def private stand_in_project(root, name : string; files : array<tuple<path : str
 def private stand_in_projects(root : string) {
     let cases = "\{\"cases\": [\{\"id\": \"binjgb-cgb-acid2-std\", \"expected\": \{\"stdout\": \"hi\\n\"\}\}, \{\"id\": \"wasm3-fib32-std\", \"expected\": \{\"stdout\": \"\"\}\}]\}\n"
     mkdir_rec(path_join(root, "rust/tests/canonical"))
+    fwrite(path_join(root, "rust/LICENSE"), "BSD stand-in\n")
     fwrite(path_join(root, "rust/tests/canonical/cases.json"), cases)
     stand_in_project(root, "binjgb", [
         (path = "src/binjgb_all.c", text = "#include <stdio.h>\nint main(void) \{ printf(\"hi\\n\"); return 0; \}\n"),
@@ -915,7 +916,9 @@ def test_projects(t : T?) {
         t |> success(readme |> contains("The program converts whole: `binjgb_all/` holds it"), readme)
         t |> success(fexist(path_join(clone, "binjgb/binjgb_all/binjgb_all.das")), out)
         t |> success(fread(path_join(clone, "binjgb/LICENSE")) |> contains("upstream/binjgb/LICENSE:\n\nMIT stand-in for binjgb\n"))
-        t |> success(fread(path_join(clone, "binjgb/binjgb.c2das")) |> contains("\"defines\""))
+        let sidecar = fread(path_join(clone, "binjgb/binjgb.c2das"))
+        t |> success(sidecar |> contains("\"<c2das>/tests/manual/binjgb/include\"") && !(sidecar |> contains(root)), sidecar)
+        t |> success(fread(path_join(clone, "binjgb/LICENSE")) |> contains("src/ and include/ of tests/manual/binjgb (the files of lookibed/c2das itself, its LICENSE):\n\nBSD stand-in\n"))
         t |> success(readme |> contains("| binjgb | Ours | clang version 99 | 0.500000 | 8.00 |"), readme)
         t |> success(readme |> contains("## Readability criteria\n\n{PROJECT_CRITERIA_NOT_YET}\n"), readme)
         // no converter commit since the entry's date: its date and the capture's commit, no change

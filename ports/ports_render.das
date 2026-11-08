@@ -631,6 +631,22 @@ def spdx_notice(text : string) : string {
     return spdx < 0 ? "" : join(lines, "\n")
 }
 
+//! The license an SPDX notice names (`spdx_notice`): for `MIT` the license's full text under the
+//! copyright of the notice's last line (the author, before ` - `), else the notice itself.
+def spdx_license(notice : string) : string {
+    if (!(notice |> contains("SPDX-License-Identifier: MIT"))) {
+        return notice
+    }
+    let lines <- [for (l in split(notice, "\n")); strip(l); where !empty(strip(l))]
+    let author = lines[length(lines) - 1]
+    let dash = find(author, " - ")
+    let holder = dash < 0 ? author : slice(author, 0, dash)
+    return "Copyright (c) {holder}\n\n{MIT_BODY}"
+}
+
+//! The MIT license's permission and warranty text, below its copyright line.
+let MIT_BODY = "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n"
+
 //! The criteria line of a compare project's README: the readability criteria are not computed per
 //! project yet.
 let PROJECT_CRITERIA_NOT_YET = "not yet: c2das-re's `scripts/run_criteria.sh` measures its own inputs (the Lua programs and the suites) and takes no single project, so `metrics/criteria_linux.json` holds no row for this program."
