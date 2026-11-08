@@ -2372,7 +2372,9 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   frees the JSON text once parsed. Peak RSS (bench, `/usr/bin/time -v` with a 1 s sampler summing the
   process tree), before / after: `--filter lua --layout source` 1.87 / 1.40 GB, `single` 1.91 /
   1.43 GB, `source-cut` 1.84 / 1.35 GB, the whole run (`--native`, both programs, three layouts)
-  7.96 / 1.61 GB (the parent and one child; the largest process 1.43 GB). The six output trees hash
+  7.96 / 1.61 GB (the parent and one child; the largest process 1.43 GB); the publish's `--native --run`
+  1.89 GB (the parent, a child and the converted interpreter it runs; the largest process 1.43 GB).
+  The tree peaks come from a 1 s sampler and are lower bounds; `time -v` gives the largest process. The six output trees hash
   the same before and after and the run's log is the same line for line, its seconds aside. Under
   heavy's default 4G cap now. Left: the per-conversion floor is the dump phase (each unit's CirTu
   kept until the link, the JSON tree at the parse), not the emitter or the compile check. The harness
