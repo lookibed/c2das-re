@@ -2417,6 +2417,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   the `--past-end inline` opt-in interp 0.973 (predicted -4 to -5%: a miss, half the predicted gain: the profiled
   per-call cost overstated what the conditional saves), JIT 1.026 (inside main's 7% spread). Raw:
   `/root/notes/parallel/endidx_ab/ab.txt`.
+  Measured (the 2026-11-08 batch 2, `heavy --exclusive` machine quiet 2%, binjgb's built bench, 5 samples alternating
+  arm order): interp 0.987 of main (predicted -2 to -4%: half the gain, a miss: the HALT path's flag loop costs less
+  than the profile's share suggested), JIT 1.002 and native 0.995 (predicted flat, hits). Raw:
+  `/root/notes/parallel/emptycase_ab/`.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
