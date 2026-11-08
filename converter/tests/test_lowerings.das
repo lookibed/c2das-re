@@ -226,6 +226,57 @@ def test_crt_writes(t : T?) {
     rmdir_rec(work_root)
 }
 
+[test]
+def test_setjmp_returns(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_setjmp_returns", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure(dir_error)
+        return
+    }
+    p8_setjmp_return_fixtures(t)
+    rmdir_rec(work_root)
+}
+
+// P8.7: setjmp arms that return, which das refuses inside a `try` or `recover` (F96)
+def p8_setjmp_return_fixtures(t : T?) {
+    t |> run("setjmp arms that return are blocks answering whether they returned, the value returned after the pair; under interp, jit and exe as natively") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_setjmp_return", text)
+        // the idiom: the longjmp return's `return -1` and the tail's `return 7` both in the block
+        has_text(t, text, "def private p8_setjmp_return__idiom(fail : int) : int \{\n    var _sj_ret : int\n    var _sj_returned = false\n    var _sj_run = true\n    var _sj_val = 0\n    while (_sj_run) \{\n        _sj_run = false\n        try \{\n            _sj_returned = invoke($() : bool \{\n                if (_sj_val != 0) \{\n                    _sj_ret = -1\n                    return true\n                \}\n")
+        // the contained site: each arm its own block, one result after the pair
+        has_text(t, text, "            _sj_ret = 1\n            return true\n        \})\n    \} recover \{\n        if (c_jmp_target != addr(p8_setjmp_return__outer_buf)) \{\n            panic(\"longjmp\")\n        \}\n        c_jmp_target = null\n        _sj_returned = invoke($() : bool \{\n            _sj_ret = 2\n            return true\n        \})\n    \}\n    if (_sj_returned) \{\n        return _sj_ret\n    \}\n")
+        // the inner site in the outer block shares the result and answers the outer block
+        has_text(t, text, "                        _sj_run2 = true\n                    \}\n                \}\n                if (_sj_returned) \{\n                    return true\n                \}\n                return false\n            \})\n")
+        // a void function has no value, and a block falling off its end answers false
+        has_text(t, text, "def private p8_setjmp_return__void_return(fail : int; var out : int?) \{\n    var _sj_returned = false\n")
+        has_text(t, text, "                deref(out) += 10\n                return false\n            \})")
+        has_text(t, text, "    if (_sj_returned) \{\n        return\n    \}\n")
+        // a record is the value
+        has_text(t, text, "    var _sj_ret : pair\n")
+        // the flat site: the block, then the tail once
+        has_text(t, text, "            n = 5\n            return false\n        \})\n")
+        let want = native("p8_setjmp_return")
+        for (tier in ["jit", "exe"]) {
+            var out : string
+            let rc = run_tier(path_join(path_join(work_root, "p8_setjmp_return"), "p8_setjmp_return.das"), tier, path_join(work_root, "p8_setjmp_return_{tier}"), out, CONVERTED_MODULES)
+            t |> equal(rc, want.rc, "{tier}: {out}")
+            let program = join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
+            t |> equal(program, want.out, tier)
+        }
+    }
+    t |> run("an arm that returns and leaves an enclosing loop, or that a goto crosses, is refused") @(t : T?) {
+        let sj = "#include <setjmp.h>\nstatic jmp_buf b;\n"
+        rejects(t, "setjmp_return_arm_break", sj + "int main(void) \{ int i; for (i = 0; i < 3; i++) \{ if (setjmp(b) == 0) \{ if (i == 1) break; if (i == 2) return 5; \} else \{ return 1; \} \} return 0; \}\n", "a setjmp arm that returns and leaves an enclosing loop is not lowered yet")
+        rejects(t, "setjmp_return_arm_continue", sj + "int main(void) \{ int i; for (i = 0; i < 3; i++) \{ if (setjmp(b) == 0) \{ if (i == 1) continue; return 5; \} else \{ return 1; \} \} return 0; \}\n", "a setjmp arm that returns and leaves an enclosing loop is not lowered yet")
+        rejects(t, "setjmp_return_goto_out", sj + "int main(void) \{ int n = 0; again: n++; if (setjmp(b)) \{ return 1; \} if (n < 3) goto again; return n; \}\n", "a setjmp arm that returns and a goto across its edge is not lowered yet")
+        // the same arms without a return keep the `try` as they were
+        let kept = converts(t, "setjmp_arm_break_kept", sj + "int main(void) \{ int i, n = 0; for (i = 0; i < 3; i++) \{ if (setjmp(b) == 0) \{ if (i == 1) break; n++; \} else \{ n = 9; \} \} return n; \}\n")
+        t |> equal(kept |> find("_sj_returned") < 0, true, kept)
+    }
+}
+
 def p7_crt_writes_fixtures(t : T?) {
     t |> run("CRT calls that write through a pointer, each in a helper on its caller's local, reach the caller under interp, jit, exe and aot as natively (F85)") @(t : T?) {
         var text : string
@@ -673,12 +724,14 @@ def p3_fixtures(t : T?) {
         has_text(t, text, "var private p3_setjmp__outer : CJmpBuf")
         has_text(t, text, "def private p3_setjmp__deep(n : int; var target : CJmpBuf?; v : int) \{\n    p3_setjmp__depth_reached = n\n    if (n == 0) \{\n        c_longjmp(target, v)")
         has_text(t, text, "    try \{\n        if (fail_at != 0) \{\n            p3_setjmp__deep(fail_at, addr(buf), value)\n        \}\n        status = 100\n    \} recover \{\n        if (c_jmp_target != addr(buf)) \{\n            panic(\"longjmp\")\n        \}\n        c_jmp_target = null\n        status = -1\n    \}")
-        has_text(t, text, "var _sj_run = true\n    var _sj_val = 0\n    while (_sj_run) \{\n        _sj_run = false\n        try \{\n            if (_sj_val != 0) \{\n                return 1\n            \}\n            c_longjmp(addr(buf), 0)")
+        // the tail returns, which das refuses in an arm: the arm is a block answering whether it returned
+        has_text(t, text, "    var _sj_ret : int\n    var _sj_returned = false\n    var _sj_run = true\n    var _sj_val = 0\n    while (_sj_run) \{\n        _sj_run = false\n        try \{\n            _sj_returned = invoke($() : bool \{\n                if (_sj_val != 0) \{\n                    _sj_ret = 1\n                    return true\n                \}\n                c_longjmp(addr(buf), 0)\n                _sj_ret = 2\n                return true\n            \})\n        \} recover \{")
+        has_text(t, text, "            _sj_run = true\n        \}\n    \}\n    if (_sj_returned) \{\n        return _sj_ret\n    \}\n")
         has_text(t, text, "_sj_val = buf.val\n            _sj_run = true")
         // a single-branch site whose tail calls nothing is flat, the tail once after the `try`
         has_text(t, text, "    var st : int = 0\n    try \{\n        if (fail != 0) \{\n            p3_setjmp__deep(2, addr(buf), 0)\n        \}\n        c_volatile_store(st, 1)\n    \} recover \{\n        if (c_jmp_target != addr(buf)) \{\n            panic(\"longjmp\")\n        \}\n        c_jmp_target = null\n    \}\n    c_volatile_store(st, c_volatile_load(st) + 20)\n    return c_volatile_load(st) + p3_setjmp__depth_reached\n\}")
         // one whose tail longjmps to its own buffer keeps the rerun loop
-        has_text(t, text, "    var passes : int = 0\n    var _sj_run = true\n    var _sj_val = 0\n    while (_sj_run) \{\n        _sj_run = false\n        try \{\n            if (_sj_val == 0) \{\n")
+        has_text(t, text, "    var passes : int = 0\n    var _sj_ret : int\n    var _sj_returned = false\n    var _sj_run = true\n    var _sj_val = 0\n    while (_sj_run) \{\n        _sj_run = false\n        try \{\n            _sj_returned = invoke($() : bool \{\n                if (_sj_val == 0) \{\n")
         rejects(t, "setjmp_value", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int n = 0; while (setjmp(b) < 2) n++; return n; \}\n", "trampoline form")
         rejects(t, "setjmp_flat_branch_break", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int i = 0, n = 0; while (i < 5) \{ i++; if (!setjmp(b)) \{ if (i == 3) break; n++; \} n += 100; \} return n; \}\n", "tail leaves an enclosing loop")
         rejects(t, "setjmp_flat_tail_continue", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int i = 0, n = 0; while (i < 5) \{ i++; if (setjmp(b) == 0) \{ n++; \} if (i == 2) continue; n += 100; \} return n; \}\n", "tail leaves an enclosing loop")
@@ -1553,11 +1606,11 @@ def p4_matrix_leftover_shapes(t : T?) {
         has_text(t, text, "        try \{\n            r = _sj_val\n            p4_setjmp_general__sum += r\n")
         has_text(t, text, "        try \{\n            var r : int = _sj_val\n")
         has_text(t, text, "        try \{\n            let _cond = _sj_val\n")
-        has_text(t, text, "        try \{\n            if (_sj_val == 4) \{\n")
-        has_text(t, text, "        try \{\n            if (2 == _sj_val) \{\n")
+        has_text(t, text, "        try \{\n            _sj_returned = invoke($() : bool \{\n                if (_sj_val == 4) \{\n")
+        has_text(t, text, "        try \{\n            _sj_returned = invoke($() : bool \{\n                if (2 == _sj_val) \{\n")
         has_text(t, text, "        try \{\n            var c : uint8 = uint8(_sj_val)\n")
-        has_text(t, text, "        try \{\n            if (!(discarded_stop != 0)) \{\n")
-        has_text(t, text, "        try \{\n            return _sj_val\n")
+        has_text(t, text, "        try \{\n            _sj_returned = invoke($() : bool \{\n                if (!(discarded_stop != 0)) \{\n")
+        has_text(t, text, "        try \{\n            _sj_returned = invoke($() : bool \{\n                _sj_ret = _sj_val\n                return true\n            \})\n")
     }
     t |> run("flexible array members read past the record; a sidecar-listed trailing array goes unchecked") @(t : T?) {
         var text : string
