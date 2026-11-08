@@ -55,9 +55,13 @@ def private c_file_of(key, dir : string; var error : string&) : string {
 }
 
 //! The Lua program stem and layout (`source`, `source-cut` or `single`) a
-//! `lua/<program>[@source-cut|@single]` key names.
+//! `lua/<program>[@source-cut|@single|@inline]` key names (`@inline` the source layout).
 def lua_key_parts(key : string; var layout : string&) : string {
     let id = slice(key, length("lua/"))
+    if (id |> ends_with(INLINE_KEY_SUFFIX)) {
+        layout = "source"
+        return slice(id, 0, length(id) - length(INLINE_KEY_SUFFIX))
+    }
     for (suffix in [SINGLE_KEY_SUFFIX, CUT_KEY_SUFFIX]) {
         if (id |> ends_with(suffix)) {
             layout = slice(suffix, 1)
@@ -71,7 +75,7 @@ def lua_key_parts(key : string; var layout : string&) : string {
 //! Input `key` converted into `<dir>/das/` under the `linux` dialect: a `perf/<kernel>@copy` key
 //! under `--param-writes copy`, a `perf/<kernel>@while` key under `--loops while`, a
 //! `perf/<kernel>@reinterpret` key under `--first-member reinterpret`, a Lua key from
-//! the release's files in the layout it names.
+//! the release's files in the layout it names; a key ending `@inline` under `--inline-helpers`.
 def convert_input(key, dir : string) : ConvertedInput {
     var out : ConvertedInput
     let das_dir = path_join(dir, "das")
@@ -80,7 +84,7 @@ def convert_input(key, dir : string) : ConvertedInput {
         let stem = lua_key_parts(key, layout)
         out.c_paths <- program_sources(stem)
         out.sidecar = SIDECAR
-        let res <- convert_program(out.c_paths, das_dir, "linux", "", SIDECAR, "", "", "main", layout)
+        let res <- convert_program(out.c_paths, das_dir, "linux", "", SIDECAR, "", "", "main", layout, false, "", "", false, "", "", key |> ends_with(INLINE_KEY_SUFFIX))
         if (!res.ok) {
             out.error = "convert: {headline(res.error)}"
         } elif (layout == "single") {
@@ -104,7 +108,7 @@ def convert_input(key, dir : string) : ConvertedInput {
     }
     out.c_paths |> push(c_path)
     out.sidecar = find_sidecar(c_path, "")
-    let res <- convert(c_path, das_dir, "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "", key |> ends_with(REINTERPRET_KEY_SUFFIX) ? "reinterpret" : "")
+    let res <- convert(c_path, das_dir, "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "", key |> ends_with(REINTERPRET_KEY_SUFFIX) ? "reinterpret" : "", "", false, "", "", key |> ends_with(INLINE_KEY_SUFFIX))
     if (!res.ok) {
         out.error = "convert: {headline(res.error)}"
     } else {

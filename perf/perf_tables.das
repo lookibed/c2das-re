@@ -14,10 +14,10 @@ require boxes
 //! ratio of every lane's time to native's, the delta of every cell against a baseline capture
 //! with the cells slower than the flag bar, and the markdown report holding all three.
 
-let LANES <- ["native", "interp", "interp-copy", "interp-while", "interp-reinterpret", "jit", "exe", "aot"]
+let LANES <- ["native", "interp", "interp-copy", "interp-while", "interp-reinterpret", "interp-inline", "jit", "exe", "aot"]
 //! the lanes of the dasProfile-method capture: the composed program's own build and its conversion
 let METHOD_LANES <- ["native", "interp", "jit", "exe", "aot"]
-let LANE_TITLES <- {"native" => "C (clang -O3)", "interp" => "DAS interpreter", "interp-copy" => "DAS interp, copied params", "interp-while" => "DAS interp, while loops", "interp-reinterpret" => "DAS interp, reinterpreted first members", "jit" => "DAS JIT", "exe" => "DAS exe", "aot" => "DAS AOT"}
+let LANE_TITLES <- {"native" => "C (clang -O3)", "interp" => "DAS interpreter", "interp-copy" => "DAS interp, copied params", "interp-while" => "DAS interp, while loops", "interp-reinterpret" => "DAS interp, reinterpreted first members", "interp-inline" => "DAS interp, inlined helpers", "jit" => "DAS JIT", "exe" => "DAS exe", "aot" => "DAS AOT"}
 //! a delta is kept in hundredths of a percent, so exactly 10 percent never flags by rounding
 let FLAG_CENTS = 1000l
 //! a lane this far under native measures a different program

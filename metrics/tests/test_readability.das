@@ -5,6 +5,7 @@ require daslib/fio
 require daslib/strings_boost
 require ../readability_count.das
 require ../readability_file.das
+require ../readability_inputs.das
 require ../../converter/tiers.das
 
 let FIXTURES = "metrics/tests/fixtures"
@@ -373,6 +374,23 @@ def test_worker(t : T?) {
         t |> success(counts |> contains("\nreinterpret 5\n"), counts)
         let kept = fread("metrics/work/perf/first_member/das/first_member.das")
         t |> success(kept |> contains("var v : TValue? = addr((base + a).val)\n"), kept)
+    }
+    t |> run("--one converts a kernel's `@inline` key under --inline-helpers, the plain key with the helper's calls") @(t : T?) {
+        var counts : string
+        t |> equal(run_worker("perf/fixed_mandel@inline", counts), 0)
+        t |> success(counts |> starts_with("ok\n"), counts)
+        let inlined = fread("metrics/work/perf/fixed_mandel@inline/das/fixed_mandel.das")
+        t |> success(!(inlined |> contains("fmul(z.x, z.x)")) && inlined |> contains("int(int64(z.x) * int64(z.x) >> 16l)"), inlined)
+        t |> equal(run_worker("perf/fixed_mandel", counts), 0)
+        let kept = fread("metrics/work/perf/fixed_mandel/das/fixed_mandel.das")
+        t |> success(kept |> contains("fmul(z.x, z.x)"), kept)
+    }
+    t |> run("a Lua key's `@inline` names the source layout under --inline-helpers") @(t : T?) {
+        var layout : string
+        t |> equal(lua_key_parts("lua/luac@inline", layout), "luac")
+        t |> equal(layout, "source")
+        t |> equal(lua_key_parts("lua/luac@single", layout), "luac")
+        t |> equal(layout, "single")
     }
     t |> run("an input that does not convert, and a seed csmith refuses, are errors") @(t : T?) {
         var counts : string
