@@ -61,7 +61,13 @@ def private publish_argv(args : array<string>) : array<string> {
     return <- argv
 }
 
-def private publish(root : string; args : array<string>; var out : string&) : int => run_in(root, publish_argv(args), out)
+// the publisher run in `root` with the Rust checkout `<root>/rust`, which holds no project unless
+// a test writes one, so a publish of every program converts the stand-in projects alone
+def private publish(root : string; args : array<string>; var out : string&) : int {
+    var argv <- ["env", "C2DAS_RUST={path_join(root, "rust")}"]
+    argv |> push_from(publish_argv(args))
+    return run_in(root, argv, out)
+}
 
 // `--no-convert` under `env` with `setting`
 def private with_env(setting : array<string>) : array<string> {
@@ -857,5 +863,117 @@ def test_raw_captures(t : T?) {
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--allow-dirty"], out), 1, out)
         t |> success(out |> contains("ports: cannot write {path_join(clone, "perf/results_linux.json")}"), out)
+    }
+}
+
+// a stand-in project of the Rust checkout `<root>/rust`: its folder's `files` (paths under it, then
+// text)
+def private stand_in_project(root, name : string; files : array<tuple<path : string; text : string>>) {
+    let dir = path_join(root, "rust/tests/manual/{name}")
+    for (f in files) {
+        mkdir_rec(dir_name(path_join(dir, f.path)))
+        fwrite(path_join(dir, f.path), f.text)
+    }
+}
+
+// binjgb converts whole; wasm3's unit includes the `all.c` graph, one file of which holds a
+// variable-length array, so the program refuses and its files convert one by one
+def private stand_in_projects(root : string) {
+    let cases = "\{\"cases\": [\{\"id\": \"binjgb-cgb-acid2-std\", \"expected\": \{\"stdout\": \"hi\\n\"\}\}, \{\"id\": \"wasm3-fib32-std\", \"expected\": \{\"stdout\": \"\"\}\}]\}\n"
+    mkdir_rec(path_join(root, "rust/tests/canonical"))
+    fwrite(path_join(root, "rust/tests/canonical/cases.json"), cases)
+    stand_in_project(root, "binjgb", [
+        (path = "src/binjgb_all.c", text = "#include <stdio.h>\nint main(void) \{ printf(\"hi\\n\"); return 0; \}\n"),
+        (path = "upstream/binjgb/LICENSE", text = "MIT stand-in for binjgb\n")])
+    stand_in_project(root, "wasm3", [
+        (path = "src/all_host.c", text = "#include \"all.c\"\n#include \"host.c\"\n"),
+        (path = "src/all.c", text = "#include <stdio.h>\n#include \"m3_add.c\"\n#include \"m3_vla.c\"\n"),
+        (path = "src/host.c", text = "int add(int a, int b);\nint main(void) \{ return add(1, 2) - 3; \}\n"),
+        (path = "upstream/wasm3/source/m3_add.c", text = "int add(int a, int b) \{ return a + b; \}\n"),
+        (path = "upstream/wasm3/source/m3_vla.c", text = "int first(int n) \{ int a[n + 1]; a[0] = n; return a[0]; \}\n"),
+        (path = "upstream/wasm3/LICENSE", text = "MIT stand-in for wasm3\n")])
+}
+
+// the head-to-head capture of the stand-in root, an entry for binjgb alone, committed
+def private stand_in_compare(root : string) {
+    let entry = "\{\"date\": \"2026-11-06 22:11 UTC\", \"box\": \"PC\", \"samples\": 3, \"lanes\": [\"interp\"], \"native\": \{\"status\": \"pass\"\}, \"native_compiler\": \"clang version 99\", \"ours\": \{\"error\": \"\", \"lanes\": \{\"interp\": \{\"status\": \"pass\"\}\}\}, \"rust\": \{\"error\": \"\", \"lanes\": \{\"interp\": \{\"status\": \"pass\"\}\}\}, \"speed\": \{\"native\": \{\"decode\": \{\"time\": 0.5, \"spread\": 0.01\}\}, \"ours\": \{\"interp\": \{\"decode\": \{\"time\": 4.0, \"spread\": 0.01\}\}\}, \"rust\": \{\"interp\": \{\"decode\": \{\"time\": 3.0, \"spread\": 0.01\}\}\}\}\}"
+    mkdir_rec(path_join(root, "compare"))
+    fwrite(path_join(root, "compare/results_linux.json"), "\{\"projects\": \{\"binjgb\": {entry}\}\}\n")
+    git(root, ["add", "-A"])
+    git(root, ["commit", "-q", "-m", "capture"])
+}
+
+[test]
+def test_projects(t : T?) {
+    t |> run_stand_in("a compare project converts whole, or file by file with the refusal named; the speed from the head-to-head under the commit that recorded it", "c2das_ports_projects") @(t : T?; root, clone : string) {
+        stand_in_projects(root)
+        stand_in_compare(root)
+        let captured_at = git(root, ["rev-parse", "HEAD"])
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--program", "binjgb", "--commit"], out), 0, out)
+        let readme = fread(path_join(clone, "binjgb/README.md"))
+        t |> success(readme |> contains("The program converts whole: `binjgb_all/` holds it"), readme)
+        t |> success(fexist(path_join(clone, "binjgb/binjgb_all/binjgb_all.das")), out)
+        t |> success(fread(path_join(clone, "binjgb/LICENSE")) |> contains("upstream/binjgb/LICENSE:\n\nMIT stand-in for binjgb\n"))
+        t |> success(fread(path_join(clone, "binjgb/binjgb.c2das")) |> contains("\"defines\""))
+        t |> success(readme |> contains("| binjgb | Ours | clang version 99 | 0.500000 | 8.00 |"), readme)
+        t |> success(readme |> contains("## Readability criteria\n\n{PROJECT_CRITERIA_NOT_YET}\n"), readme)
+        // measured at the published commit: no label
+        t |> success(!(readme |> contains("Measured at c2das-re")), readme)
+        t |> equal(git(clone, ["log", "-1", "--format=%s"]), "binjgb: regenerated from c2das-re v9.9.9-1-g{slice(captured_at, 0, 7)} ({captured_at})")
+        // a later commit that leaves the converter as it was: the commit named, the output the same
+        fwrite(path_join(root, "notes.txt"), "a note\n")
+        git(root, ["add", "-A"])
+        git(root, ["commit", "-q", "-m", "a note"])
+        t |> equal(publish(root, ["--repo", clone, "--program", "binjgb"], out), 0, out)
+        let same = fread(path_join(clone, "binjgb/README.md"))
+        t |> success(same |> contains("Measured at c2das-re `{slice(captured_at, 0, 12)}` (2026-11-06 22:11 UTC).\n"), same)
+        t |> success(!(same |> contains("output changed since")), same)
+        // a converter change after the capture: the output changed since
+        mkdir_rec(path_join(root, "converter"))
+        fwrite(path_join(root, "converter/changed.das"), "// changed\n")
+        git(root, ["add", "-A"])
+        git(root, ["commit", "-q", "-m", "converter"])
+        t |> equal(publish(root, ["--repo", clone, "--program", "binjgb"], out), 0, out)
+        let stale = fread(path_join(clone, "binjgb/README.md"))
+        t |> success(stale |> contains("Measured at c2das-re `{slice(captured_at, 0, 12)}` (2026-11-06 22:11 UTC), output changed since"), stale)
+        // wasm3 refuses whole; its files convert one by one, the refused one named
+        t |> equal(publish(root, ["--repo", clone, "--program", "wasm3"], out), 0, out)
+        let wasm3 = fread(path_join(clone, "wasm3/README.md"))
+        t |> success(wasm3 |> contains("The program does not convert whole yet: "), wasm3)
+        t |> success(wasm3 |> contains("variable-length array"), wasm3)
+        t |> success(wasm3 |> contains("2 of 3"), wasm3)
+        t |> success(wasm3 |> contains("| upstream/wasm3/source/m3_add.c | converted |"), wasm3)
+        t |> success(wasm3 |> contains("| upstream/wasm3/source/m3_vla.c | refused: "), wasm3)
+        t |> success(wasm3 |> contains("not yet: c2das-re's `compare/results_linux.json` holds no entry for wasm3."), wasm3)
+        t |> success(fexist(path_join(clone, "wasm3/files/upstream/wasm3/source/m3_add/m3_add.das")), out)
+        t |> success(fexist(path_join(clone, "wasm3/files/src/host/host.das")), out)
+        t |> success(!fexist(path_join(clone, "wasm3/files/upstream/wasm3/source/m3_vla/m3_vla.das")), out)
+        t |> success(!fexist(path_join(clone, "wasm3/all_host")), out)
+        // --no-convert publishes no project
+        t |> equal(publish(root, ["--repo", clone, "--program", "wasm3", "--no-convert"], out), 0, out)
+        t |> success(out |> contains("wasm3: not published: a compare project converts on every publish"), out)
+    }
+    t |> run_stand_in("a project without a license refuses before the first write into the clone", "c2das_ports_project_refusal") @(t : T?; root, clone : string) {
+        stand_in_projects(root)
+        remove(path_join(root, "rust/tests/manual/binjgb/upstream/binjgb/LICENSE"))
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--program", "binjgb", "--allow-dirty"], out), 1, out)
+        t |> success(out |> contains("binjgb: no license file or SPDX notice under "), out)
+        t |> success(!fexist(path_join(clone, "binjgb")), out)
+    }
+}
+
+[test]
+def test_stale_capture(t : T?) {
+    t |> run_stand_in("a capture measured at another commit carries that commit, and the output changed since", "c2das_ports_stale_capture") @(t : T?; root, clone : string) {
+        var c = Capture(program = "lua", commit = OTHER_SHA, timestamp = "2026-11-07 04:04 UTC", samples = 1, timeout = 1)
+        c.workloads |> push(Workload(name = "startup", startup = true))
+        mkdir_rec(path_join(clone, "lua/perf"))
+        fwrite(path_join(clone, "lua/perf/capture_2026-11-07T040400Z.json"), write_json(JV(c)) + "\n")
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--program", "lua"], out), 0, out)
+        let readme = fread(path_join(clone, "lua/README.md"))
+        t |> success(readme |> contains("## Performance\n\nMeasured at c2das-re `{slice(OTHER_SHA, 0, 12)}`, output changed since"), readme)
     }
 }

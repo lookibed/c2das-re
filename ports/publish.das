@@ -15,12 +15,15 @@ require ../perf/boxes.das
 require ../converter/sidecar.das
 require ../compare/compare_render.das
 require ../metrics/criteria_file.das
+require ../compare/projects.das
+require ../compare/rust_translator.das
 
 //! The publisher of the ports repository (`lookibed/c2das-ports`): for each program it knows,
 //! the converted modules, the sidecar, the upstream license and a README with the release, the
 //! generating commit, how to run it, which upstream tests pass and the perf tables of a capture it
 //! measures; then the top-level README's projects table, and with `--commit` a commit in the
-//! clone. Run from the repository root through `scripts/publish_ports.sh`.
+//! clone. Run from the repository root through `scripts/publish_ports.sh`. Beside Lua it publishes
+//! every real project of compare's `project_table`, converted as compare converts our side.
 
 //! one workload of a program: its name, its program arguments, the arguments as the README shows
 //! them, whether it runs in the release's test-suite folder (else in the repository root), whether
@@ -90,7 +93,7 @@ def private lua_port : Port => <- Port(
 struct Args {
     @clarg_doc = "the clone of the ports repository (default: $C2DAS_PORTS, else ../c2das-ports beside this repository)"
     repo : string = ""
-    @clarg_doc = "publish only this program (default: every program the publisher knows: lua)"
+    @clarg_doc = "publish only this program (default: every program the publisher knows: lua and the compare projects)"
     program : string = ""
     @clarg_name = "no-convert"
     @clarg_doc = "skip the fetch and the conversion: publish what the harness's work/ folder holds"
@@ -328,7 +331,7 @@ def private take_work_seconds(text : string; var rest : string&; var seconds : d
 def private with_line(text, line : string) : string => empty(line) ? text : "{text}: {line}"
 
 // the first line where a sample's output and the native build's part
-def private first_difference(output, native : string) : string {
+def private output_parting(output, native : string) : string {
     let lines <- split(output, "\n")
     let expected <- split(native, "\n")
     var idx = 0
@@ -377,7 +380,7 @@ def private measure_cell(argv : array<string>; cwd : string; samples, timeout : 
         } elif (oracle.rc != -1 && rc != oracle.rc) {
             cell.error = clipped(with_line("exited {rc} where the native build exits {oracle.rc}", first_reported_line(output)))
         } elif (oracle.rc != -1 && spec.compare_output && output != oracle.output) {
-            cell.error = clipped(first_difference(output, oracle.output))
+            cell.error = clipped(output_parting(output, oracle.output))
         } elif (!empty(spec.closing_line) && !has_value(split(output, "\n"), spec.closing_line)) {
             cell.error = clipped(with_line("exited {rc} without the line `{spec.closing_line}`; its last line", last_line(output)))
         } elif (!empty(missing)) {
@@ -748,7 +751,7 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
     var latest : Capture
     var found = false
     ok = ok && latest_capture(dir, latest, found)
-    let perf_text = found ? render_perf(latest) : "{PERF_NOT_YET}\n"
+    let perf_text = found ? measured_note(latest.commit, "", gen) + render_perf(latest) : "{PERF_NOT_YET}\n"
     return ok && write_or_log(path_join(dir, "README.md"), readme_text(port, release, gen, publish_command(args, port), perf_text, harness_report(port), found))
 }
 
@@ -833,28 +836,276 @@ def private criteria_section(var section : string&) : bool {
 //! c2das-re's raw captures, each copied into the clone under its own path when present
 let RAW_CAPTURES <- [COMPARE_CAPTURE, CRITERIA_CAPTURE, "perf/results_linux.json", "perf/results_method_linux.json", "perf/dasprofile_linux.json"]
 
-def private commit_program(port : Port; repo : string; gen : Generation) : bool {
+def private commit_program(name : string; repo : string; gen : Generation) : bool {
     var out : string
-    var paths <- ["add", "-A", "{port.name}/", "README.md"]
+    var paths <- ["add", "-A", "{name}/", "README.md"]
     paths |> push_from([for (rel in RAW_CAPTURES); rel; where fexist(path_join(repo, rel))])
     if (git_in(repo, paths, out) != 0) {
-        to_log(LOG_ERROR, "{port.name}: git add failed: {out}\n")
+        to_log(LOG_ERROR, "{name}: git add failed: {out}\n")
         return false
     }
     if (git_in(repo, ["diff", "--cached", "--quiet"], out) == 0) {
-        to_log(LOG_INFO, "{port.name}: nothing to commit\n")
+        to_log(LOG_INFO, "{name}: nothing to commit\n")
         return true
     }
-    let message = gen.recorded ? "{port.name}: regenerated from c2das-re {gen.describe} ({gen.sha})" : "{port.name}: republished from c2das-re {gen.describe} ({gen.sha}), the conversion's commit unrecorded"
+    let message = gen.recorded ? "{name}: regenerated from c2das-re {gen.describe} ({gen.sha})" : "{name}: republished from c2das-re {gen.describe} ({gen.sha}), the conversion's commit unrecorded"
     var argv <- clone_to_move(IDENTITY)
     argv |> push_from(["commit", "-q", "-m", message])
     if (git_in(repo, argv, out) != 0) {
-        to_log(LOG_ERROR, "{port.name}: git commit failed: {out}\n")
+        to_log(LOG_ERROR, "{name}: git commit failed: {out}\n")
         return false
     }
     let head = git_line(repo, ["rev-parse", "--short", "HEAD"])
-    to_log(LOG_INFO, "{port.name}: committed {head}\n")
+    to_log(LOG_INFO, "{name}: committed {head}\n")
     return true
+}
+
+// whether the conversion can differ between the c2das-re commits `from` and `to`: the converter,
+// `c_runtime` or `dasCRuntime` changed between them, or `from` is no commit of this tree
+def private converter_changed(from, to : string) : bool {
+    var out : string
+    return git_in(".", ["diff", "--quiet", from, to, "--", "converter", "c_runtime", "dasCRuntime"], out) != 0
+}
+
+// the line a table measured at `sha` on `date` carries in a publish of the conversion `gen`: none
+// when it was measured at the published commit
+def private measured_note(sha, date : string; gen : Generation) : string => sha == gen.sha ? "" : measured_at_line(sha, date, converter_changed(sha, gen.sha))
+
+//! one C file of a compare project converted alone: its path under the project folder, the module
+//! written, or the converter's first line when it refused
+struct FileConversion {
+    c_path : string
+    das_path : string
+    refusal : string
+}
+
+// the folder a project's publish converts in: the whole program in `whole/`, each C file alone in
+// `files/`
+def private project_work(name : string) : string => path_join("compare/work/ports", name)
+
+// the file an `#include "name"` in `from` names: beside `from`, else in the first of `dirs` that
+// holds it; "" when none does
+def private resolve_quoted(from, name : string; dirs : array<string>) : string {
+    let beside = path_join(dir_name(from), name)
+    if (fexist(beside)) {
+        return beside
+    }
+    for (d in dirs) {
+        let candidate = path_join(d, name)
+        if (fexist(candidate)) {
+            return candidate
+        }
+    }
+    return ""
+}
+
+// the C files the translation unit `path` compiles: every `.c` file it includes by quotes,
+// followed through the ones that include `.c` files themselves (the projects' `all.c` graphs);
+// the unit itself when it includes none
+def private compiled_files(path : string; dirs : array<string>) : array<string> {
+    var found : array<string>
+    for (ln in split(fread(path), "\n")) {
+        let line = strip(ln)
+        let open = find(line, "\"")
+        let close = open < 0 ? -1 : find(line, "\"", open + 1)
+        if (line |> starts_with("#include") && close > open && slice(line, open + 1, close) |> ends_with(".c")) {
+            let included = resolve_quoted(path, slice(line, open + 1, close), dirs)
+            if (!empty(included)) {
+                found |> push_from(compiled_files(included, dirs))
+            }
+        }
+    }
+    if (empty(found)) {
+        found |> push(path)
+    }
+    return <- found
+}
+
+// `path` relative to the folder `dir` it lies under
+def private relative_to(path, dir : string) : string => path |> starts_with("{dir}/") ? slice(path, length(dir) + 1) : path
+
+// each C file of `p` converted alone into `<work>/files/`: its units, else the files its unit's
+// `all.c` graph compiles
+def private convert_files(p : Project; work : string) : array<FileConversion> {
+    let dirs <- [for (d in p.include_dirs); project_path(p, d)]
+    var paths <- empty(p.units) ? [for (f in compiled_files(project_path(p, p.tu), dirs)); relative_to(f, p.dir)] : clone_to_move(p.units)
+    var results : array<FileConversion>
+    results |> reserve(length(paths))
+    let none : array<string>
+    for (rel in paths) {
+        var refusal : string
+        var inscope files : array<string>
+        let das_path = ours_module(p, rel, path_join(work, "files/{trim_suffix(rel, ".c")}"), none, refusal, files)
+        to_log(LOG_INFO, "{p.name}: {rel}: " + (empty(refusal) ? "converted" : refusal) + "\n")
+        results |> push(FileConversion(c_path = rel, das_path = empty(refusal) ? das_path : "", refusal = refusal))
+    }
+    return <- results
+}
+
+// every file of `files` (paths under `from`) written into `into` at its path under `from`, every
+// other file under `into` removed, the layout report kept when `from` holds one
+def private mirror_tree(from, into : string; files : array<string>) : bool {
+    var kept <- [for (f in files); relative_to(f, from)]
+    let report = path_join(from, LAYOUT_REPORT)
+    if (fexist(report)) {
+        kept |> push(LAYOUT_REPORT)
+    }
+    var ok = drop_unlisted(into, kept)
+    if (!ok) {
+        to_log(LOG_ERROR, "ports: cannot remove a stale file under {into}\n")
+    }
+    for (rel in kept) {
+        let target = path_join(into, rel)
+        mkdir_rec(dir_name(target))
+        ok = ok && write_or_log(target, fread(path_join(from, rel)))
+    }
+    return ok
+}
+
+// the license of a project's upstream code: every `LICENSE*` or `COPYING*` file under its
+// `upstream/` folder, each under its path, else the notice of each file there that names its
+// license by an SPDX line; "" when there is neither
+def private project_license(p : Project) : string {
+    let upstream = project_path(p, "upstream")
+    var files, notices : array<string>
+    if (stat(upstream).is_dir) {
+        dir_rec(upstream) $(name, is_dir) {
+            let base = to_upper(base_name(name))
+            if (!is_dir && (base |> starts_with("LICENSE") || base |> starts_with("COPYING"))) {
+                files |> push(name)
+            } elif (!is_dir && (name |> ends_with(".h") || name |> ends_with(".c"))) {
+                notices |> push(name)
+            }
+        }
+    }
+    sort(files)
+    sort(notices)
+    var parts <- [for (f in files); "upstream/{f}:\n\n{fread(path_join(upstream, f))}"]
+    if (empty(parts)) {
+        for (f in notices) {
+            let notice = spdx_notice(fread(path_join(upstream, f)))
+            if (!empty(notice)) {
+                parts |> push("upstream/{f}:\n\n{notice}")
+            }
+        }
+    }
+    return join(parts, "\n")
+}
+
+// the commit that recorded the head-to-head's capture, "" outside a git tree
+def private compare_recorded_at : string => git_line(".", ["log", "-1", "--format=%H", "--", COMPARE_CAPTURE])
+
+// the perf section of a project's README: its entry of the head-to-head's capture, rendered as the
+// compare report renders the projects, under the commit that recorded it; a not-yet line without
+// an entry
+def private project_perf_text(p : Project; gen : Generation) : string {
+    if (!fexist(COMPARE_CAPTURE)) {
+        return "not yet: c2das-re holds no `{COMPARE_CAPTURE}`, the capture of the head-to-head that times the projects.\n"
+    }
+    var error : string
+    var results = read_json_file(COMPARE_CAPTURE, error)
+    var entry = results?["projects"]?[p.name]
+    if (entry == null) {
+        return "not yet: c2das-re's `{COMPARE_CAPTURE}` holds no entry for {p.name}.\n"
+    }
+    let one = JV({"projects" => JV({p.name => entry})})
+    let note = measured_note(compare_recorded_at(), entry?["date"] ?? "", gen)
+    return "{note}From c2das-re's `{COMPARE_CAPTURE}` (`compare/run.das --project {p.name}`), our side against the Rust translator's:\n\n{projects_text(one)}"
+}
+
+// a project's README: what was converted (or what refused and the per-file results), the sources,
+// how to run it, the speed from the head-to-head's capture and the criteria line
+def private project_readme_text(p : Project; gen : Generation; rust_sha, refusal : string; files : array<FileConversion>; command, perf_text : string) : string {
+    let stem = trim_suffix(base_name(p.tu), ".c")
+    let fixture = "<c2das>/{MANUAL_DIR}/{p.name}/{p.fixture}"
+    return build_string() $(var w) {
+        w |> write("# {p.name}\n\n")
+        w |> write("The real project {p.name} of the Rust translator's `{MANUAL_DIR}` ([lookibed/c2das](https://github.com/lookibed/c2das)) converted to daslang by [c2das-re](https://github.com/lookibed/c2das-re), as its head-to-head converts our side. ")
+        w |> write("Everything in this directory is generated by `{command}` in c2das-re; never edit it, a fix belongs in c2das-re.\n\n")
+        w |> write("## Conversion\n\n")
+        if (empty(refusal)) {
+            w |> write("The program converts whole: `{stem}/` holds it (`{stem}/{stem}.das` holds `main`).\n\n")
+        } else {
+            let converted = length([for (f in files); f; where empty(f.refusal)])
+            w |> write("The program does not convert whole yet: {refusal}\n\n")
+            w |> write("What does convert: each C file of the program converted alone, {converted} of {length(files)} (`files/`, a module per file at its path under the project folder; ")
+            w |> write("a file alone is no program, so these modules show the conversion and do not run):\n\n")
+            var rows : array<array<string>>
+            for (f in files) {
+                rows |> emplace([f.c_path, empty(f.refusal) ? "converted" : "refused: {f.refusal}"])
+            }
+            w |> write(table_of(["C file", "Result"], rows, 2))
+            w |> write("\n")
+        }
+        w |> write("## Files\n\n")
+        if (empty(refusal)) {
+            w |> write("- `{stem}/` - the program converted from `{p.tu}`" + (empty(p.units) ? "" : " and the other units of its canonical case, a module per C file (c2das-re's source layout; `{stem}/{LAYOUT_REPORT}` lists the modules)") + ".\n")
+        } else {
+            w |> write("- `files/` - each C file that converts alone, as its module.\n")
+        }
+        w |> write("- `{p.name}.c2das` - the sidecar the conversion ran under (its paths name the C sources in the Rust checkout it was converted from).\n")
+        w |> write("- `LICENSE` - the license of the upstream code under `{MANUAL_DIR}/{p.name}/upstream/`; the conversion is a derived work.\n\n")
+        w |> write("## Source\n\n")
+        w |> write("- The C sources: `{MANUAL_DIR}/{p.name}/` of lookibed/c2das at `{rust_sha}`; its `UPSTREAM.md` names each upstream and its revision.\n")
+        w |> write("- {generation_line(gen)}\n\n")
+        w |> write("## Running\n\n")
+        w |> write("The modules require c2das-re's `crt` and `c_runtime` modules: a c2das-re checkout at the commit above, with the daScript its `VERSIONS.md` pins built and `scripts/build_crt.sh` run. ")
+        w |> write("The program reads its fixture `{p.fixture}` from the Rust repository's project folder; no fixture is copied here (game data and fixtures stay with their own licenses there). ")
+        w |> write("With `<c2das-re>` and `<c2das>` the two checkouts:\n\n```\n")
+        let load = "daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime"
+        if (empty(refusal)) {
+            w |> write("{load} {stem}/{stem}.das -- {fixture}\n{load} -jit {stem}/{stem}.das -- {fixture}\n")
+        } else {
+            w |> write("# not runnable yet: the program does not convert whole\n")
+        }
+        var native <- ["clang"]
+        native |> push_from(clang_args(p), p.native_flags, p.native_sources, p.link_flags)
+        w |> write("# the native build the tables compare with, in <c2das>/{MANUAL_DIR}/{p.name}:\n" + replace(join(native, " "), "{p.dir}/", "") + " -o {p.name}\n```\n\n")
+        w |> write("Its output must equal `expected.stdout` of the canonical case `{p.case_id}` in the Rust repository's `{CASES_FILE}`.\n\n")
+        w |> write("## Performance\n\n{perf_text}\n")
+        w |> write("## Readability criteria\n\n{PROJECT_CRITERIA_NOT_YET}\n")
+    }
+}
+
+// a compare project's directory in the clone: converted whole, else file by file, every input
+// read and the conversion done before the first write into the clone
+def private publish_project(p_row : Project; repo : string; var gen : Generation) : bool {
+    var p := p_row
+    let expected_error = load_expected(p)
+    if (!empty(expected_error)) {
+        to_log(LOG_ERROR, "{p.name}: {expected_error}\n")
+        return false
+    }
+    let license = project_license(p)
+    if (empty(license)) {
+        to_log(LOG_ERROR, "{p.name}: no license file or SPDX notice under {project_path(p, "upstream")}\n")
+        return false
+    }
+    let work = project_work(p.name)
+    rmdir_rec(work)
+    let whole = path_join(work, "whole")
+    var refusal : string
+    var inscope files : array<string>
+    ours_module(p, p.tu, whole, p.units, refusal, files)
+    to_log(LOG_INFO, "{p.name}: " + (empty(refusal) ? "converted whole" : refusal) + "\n")
+    var inscope per_file <- empty(refusal) ? array<FileConversion>() : convert_files(p, work)
+    gen = tree_generation()
+    let dir = path_join(repo, p.name)
+    mkdir_rec(dir)
+    let stem = trim_suffix(base_name(p.tu), ".c")
+    var ok = mirror_tree(whole, path_join(dir, stem), empty(refusal) ? files : array<string>())
+    var inscope converted : array<string>
+    for (f in per_file) {
+        if (!empty(f.das_path)) {
+            converted |> push(f.das_path)
+        }
+    }
+    ok = mirror_tree(path_join(work, "files"), path_join(dir, "files"), converted) && ok
+    ok = ok && write_or_log(path_join(dir, "{p.name}.c2das"), fread(path_join(whole, "{p.name}.c2das")))
+    ok = ok && write_or_log(path_join(dir, "LICENSE"), license)
+    let command = "scripts/publish_ports.sh --program {p.name}"
+    let rust_sha = git_line(rust_checkout(), ["rev-parse", "HEAD"])
+    return ok && write_or_log(path_join(dir, "README.md"), project_readme_text(p, gen, rust_sha, refusal, per_file, command, project_perf_text(p, gen)))
 }
 
 def private repo_of(args : Args) : string {
@@ -862,6 +1113,33 @@ def private repo_of(args : Args) : string {
         return args.repo
     }
     return has_env_variable("C2DAS_PORTS") ? get_env_variable("C2DAS_PORTS") : "../c2das-ports"
+}
+
+// every compare project of `projects` that `--program` names (all without it) published, the
+// top-level README after each, and committed with `--commit`; false at the first that fails
+def private publish_projects(args : Args; projects : array<Project>; repo : string) : bool {
+    for (p in projects) {
+        if (!empty(args.program) && args.program != p.name) {
+            continue
+        }
+        if (args.no_convert) {
+            to_log(LOG_WARNING, "{p.name}: not published: a compare project converts on every publish, and --no-convert converts nothing\n")
+            continue
+        }
+        if (!stat(p.dir).is_dir) {
+            to_log(LOG_WARNING, "{p.name}: not published: the Rust checkout has no {p.dir}\n")
+            continue
+        }
+        var gen : Generation
+        if (!publish_project(p, repo, gen) || !publish_top_readme(repo)) {
+            return false
+        }
+        to_log(LOG_INFO, "{p.name}: published into {path_join(repo, p.name)}\n")
+        if (args.commit && !commit_program(p.name, repo, gen)) {
+            return false
+        }
+    }
+    return true
 }
 
 [export]
@@ -873,8 +1151,11 @@ def main : int {
     }
     var ports : array<Port>
     ports |> emplace(lua_port())
-    if (!empty(args.program) && !has_value([for (p in ports); p.name], args.program)) {
-        to_log(LOG_ERROR, "ports: no program `{args.program}`; the publisher knows " + join([for (p in ports); p.name], ", ") + "\n")
+    var projects <- project_table(rust_checkout())
+    var known <- [for (p in ports); p.name]
+    known |> push_from([for (p in projects); p.name])
+    if (!empty(args.program) && !has_value(known, args.program)) {
+        to_log(LOG_ERROR, "ports: no program `{args.program}`; the publisher knows " + join(known, ", ") + "\n")
         return 1
     }
     let das_lanes <- split(args.lanes, ",")
@@ -919,14 +1200,20 @@ def main : int {
         return 1
     }
     for (port in ports) {
+        if (!empty(args.program) && args.program != port.name) {
+            continue
+        }
         var gen : Generation
         if (!publish_program(args, port, lanes, repo, gen) || !publish_top_readme(repo)) {
             return 1
         }
         to_log(LOG_INFO, "{port.name}: published into {path_join(repo, port.name)}\n")
-        if (args.commit && !commit_program(port, repo, gen)) {
+        if (args.commit && !commit_program(port.name, repo, gen)) {
             return 1
         }
+    }
+    if (!publish_projects(args, projects, repo)) {
+        return 1
     }
     var out : string
     if (args.push && git_in(repo, ["push", "-q", "origin", "HEAD"], out) != 0) {

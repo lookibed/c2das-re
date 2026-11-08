@@ -581,13 +581,13 @@ def private absolute_include(p : Project; name : string) : string {
     return absolute_path(project_path(p, name))
 }
 
-// our side of one unit of `p`, or of its units (`units`, a program in the source layout):
-// converted under `linux` into `out_dir` with a sidecar of the project's defines and
-// `ours_defines`, its include
-// folders, its forced includes (`-include` in `clang_extra`) and the project folder as the program
-// root, each path absolute; the entry module with
-// every file written into `files`, or "" with `refusal` the converter's first line
-def private ours_module(p : Project; tu, out_dir : string; units : array<string>; var refusal : string&; var files : array<string>) : string {
+//! Our side of one unit of `p`, or of its units (`units`, a program in the source layout):
+//! converted under `linux` into `out_dir` with a sidecar `<out_dir>/<name>.c2das` of the project's
+//! defines and `ours_defines`, its include folders, its forced includes (`-include` in
+//! `clang_extra`) and the project folder as the program root, each path absolute; the entry module
+//! with every file written into `files`, or "" with `refusal` the converter's first line. The
+//! ports publisher converts a project through it too.
+def ours_module(p : Project; tu, out_dir : string; units : array<string>; var refusal : string&; var files : array<string>) : string {
     mkdir_rec(out_dir)
     let sidecar = path_join(out_dir, "{p.name}.c2das")
     let include_dirs <- [for (d in p.include_dirs); absolute_path(project_path(p, d))]

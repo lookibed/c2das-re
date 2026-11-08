@@ -15,7 +15,8 @@ code; this repository holds only the generator and its inputs.
   modules and passes its flags through. The programs it knows are a constant table in it (the
   `Port` records): the harness folder, the converted modules, the module the workloads run, the
   libraries the native build links, the header holding the license, the upstream-test claims with
-  the c2das-re item that recorded them, and the workloads.
+  the c2das-re item that recorded them, and the workloads. Beside them it publishes every real
+  project of `compare/projects.das`'s `project_table` (section 5).
 - `ports_render.das` - the text: the capture records, the startup, work, times, ratio and not-yet
   text of a capture, the projects table and the top-level README below its marker, the license
   block of a C header, and the `VERSIONS.md` pin of a program. It measures nothing and reads no file.
@@ -27,8 +28,9 @@ code; this repository holds only the generator and its inputs.
   times a workload inside its process (section 4).
 - `tests/` - `test_ports_render.das` over fixed captures (golden tables), and
   `test_publish.das`, the publisher as a child process over a scratch c2das-re root (a stand-in
-  release, harness and work tree with its stamp, its own git repository) and a scratch bare
-  repository cloned as the ports clone. The stand-in interpreter counts its runs in a file of the
+  release, harness and work tree with its stamp, its own git repository, and a stand-in Rust
+  checkout `rust/` whose projects a test writes) and a scratch bare repository cloned as the ports
+  clone. The stand-in interpreter counts its runs in a file of the
   folder it runs in, so the warm-ups and the test-suite folder are observable.
 
 ## 2. What a publish writes
@@ -242,3 +244,42 @@ program with a capture: its timestamp and machine, and the geometric mean, over 
 than the startup row, of each das lane's work-time ratio to native, with the count when a lane
 covers only some workloads, `not yet` when it covers none, and `not measured` when the capture left
 the lane out.
+
+## 5. The compare projects
+
+A compare project (wasm3, binjgb, h264bsd-mp4, plmpeg-stream, doomgeneric, quakegeneric) is a row
+of `compare/projects.das`'s `project_table` over the Rust checkout (`$C2DAS_RUST`, else
+`/root/c2das`), read in place; a row whose folder the checkout lacks is skipped with a warning, so
+a checkout without `tests/manual` publishes Lua alone. `--program` takes `lua` or a project's name.
+
+A project converts on every publish, in the publisher's process, as compare converts our side
+(`ours_module`: the sidecar of the row's defines, include folders and program root, its units in
+the source layout when the canonical case lists them), into `compare/work/ports/<name>/whole/`.
+Under `--no-convert` a project is not published, with a warning. A program the converter refuses
+converts file by file into `compare/work/ports/<name>/files/`: its units, else every `.c` file its
+unit includes by quotes, followed through the `all.c` graphs that include `.c` files themselves.
+The canonical case not read (`load_expected`) and an upstream folder with neither a `LICENSE*` or
+`COPYING*` file nor an SPDX line refuse the project before the first write into the clone.
+
+The project's directory `<name>/` in the clone holds:
+
+- `<stem>/`, the unit's stem: every file of the whole conversion with its `program.layout.txt`, or
+  nothing when the program refuses.
+- `files/`: each file that converts alone, its module at its C path under the project folder with
+  the `.c` dropped; nothing when the program converts whole.
+- `<name>.c2das`: the sidecar of the whole conversion, its paths those of the Rust checkout.
+- `LICENSE`: every license file under the project's `upstream/`, each under its path, else the
+  notice of each upstream file naming its license by an SPDX line (`spdx_notice`).
+- `README.md`: the conversion's result (whole, or the refusal and a row per file), the files, the
+  Rust checkout's commit, the generating commit, how to run the module on the fixture in the Rust
+  checkout (no fixture is copied: game data and fixtures keep their own licenses there) and the
+  native build, the speed and the criteria.
+
+Both folders mirror their conversion as the layouts of section 2 do. The speed is the project's
+entry of `compare/results_linux.json`, rendered by `compare_render.das`'s `projects_text` over that
+entry alone. Its commit is the one that last changed the capture: when that is not the published
+conversion's commit, the section opens with `measured_at_line`, which says the output changed
+since when `converter/`, `c_runtime/` or `dasCRuntime/` differ between the two (or the capture's
+commit is not in the tree); a Lua README's perf section opens with the same line for its latest
+capture's commit. The criteria are `PROJECT_CRITERIA_NOT_YET`: `scripts/run_criteria.sh` takes no
+single project.
