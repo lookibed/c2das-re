@@ -2397,6 +2397,19 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   the fold is the default and the conditional the opt-in `past_end` `inline` (`--past-end inline`, the
   sidecar key); the A/B times A (base), B (default) and C (inline). The predictions above are C's; B is
   expected within noise of A.
+- **P7.0zc A case whose body does nothing joins the next case's labels** (binjgb profile,
+  `/root/notes/research/binjgb-profile.md` candidate 2): binjgb's CpuState switch in
+  `execute_instruction` (the HALT path, 5.2 M steps per bench, 97% of the calls) takes the matched-flag
+  loop (`while (true)`, `var _flag`, `_flag ||= _cond == K`) only because `case CPU_STATE_NORMAL:
+  assert(0);` is `((void)0)` under NDEBUG and falls into `case CPU_STATE_STOP`. Rust's form: a bounds
+  guard and `goto int(state) + 6`, the NORMAL label adjacent to STOP's (its assert dropped), one jump.
+  The change: a group with no default label whose statements do nothing (a `;`, an expression
+  statement with no effect and no volatile read, a block of those) joins the next group's label set
+  when that group has no default label; a group that holds a label, a declaration, a case label in
+  a nested block or anything that acts keeps the flag form. Once no group falls through, the switch is
+  the if-chain (`_cond == A || _cond == B`). Expected before measuring (box PC, x native): binjgb
+  interp -2 to -4%, JIT and exe flat (LLVM folds the flag loop already). Readable: fewer constructs,
+  the empty `if (_flag) {}` gone. Default (ruling 23).
 - Owner ruling 34 (2026-11-06): the dasProfile-method hand-written column stays the bench's
   capture; no daScript SDK on box PC; re-run only on the bench at a phase end, never a PR blocker.
   Measured (the 2026-11-08 batch 2, `heavy --exclusive` machine quiet 2%, binjgb's built bench, 5 samples alternating
