@@ -198,6 +198,7 @@ def test_inline_helpers(t : T?) {
         return
     }
     p7_inline_helpers_fixtures(t)
+    p7_inline_refused_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -2850,6 +2851,10 @@ def p7_inline_helpers_fixtures(t : T?) {
             t |> equal(out |> find(want.out) >= 0, true, "{tier}: {out}")
         }
     }
+}
+
+// P7.0w: the functions `inline_helpers` refuses, and a program of several files
+def p7_inline_refused_fixtures(t : T?) {
     t |> run("functions that are no pure helper keep their calls under inline_helpers, each refused by one rule; as natively under interp") @(t : T?) {
         let res <- convert("{FIXTURES}/p7_inline_refused.c", path_join(work_root, "p7_inline_refused"), "linux", "", "", "", "", "", "", false, "", "", true)
         t |> equal(res.ok, true, res.error)
