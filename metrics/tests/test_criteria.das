@@ -640,3 +640,19 @@ def test_worker_argv(t : T?) {
         t |> equal(lua[0], daslang_cmd(CONVERTED_MODULES)[0])
     }
 }
+
+[test]
+def test_base_capture(t : T?) {
+    t |> run("a delta base recorded before c_files existed reads with them 0; any other finding refuses it") @(t : T?) {
+        let text = criteria_text(sample_capture())
+        let older = replace(replace(text, "\"c_files\": 0, ", ""), "\"c_files_converted\": 0, ", "")
+        t |> success(older != text && !empty(check_criteria(older)), older)
+        var error : string
+        let base <- base_capture_of_text(older, "main", error)
+        t |> equal(error, "")
+        t |> equal(length(base.rows), length(sample_capture().rows))
+        var refused : string
+        base_capture_of_text(replace(older, "\"fn_matched\": ", "\"fn_unknown\": "), "main", refused)
+        t |> success(refused |> starts_with("main: ") && refused |> contains("fn_unknown"), refused)
+    }
+}

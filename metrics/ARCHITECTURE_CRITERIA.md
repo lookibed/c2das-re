@@ -133,7 +133,8 @@ annotation is the C context's mechanism, not noise) and `typeinfo sizeof` (dasla
 
 `criteria.das --report --delta-ref <base>` reads the committed capture: missing, not JSON or
 failing the shape check, it exits 1 naming why; otherwise it prints the table, the delta against
-the capture `git show <base>:metrics/criteria_linux.json` gives (a line saying there is none when
+the capture `git show <base>:metrics/criteria_linux.json` gives (`base_capture_of_text`: a base recorded
+before a raw key of `LATER_RAW_KEYS` existed reads it as 0) (a line saying there is none when
 the base has no capture) and re-measures the `sample` inputs, printing one `stale:` line per
 input whose raw counts differ from the capture's, and exits 0. The full measurement converts
 every Lua layout and about 1,500 suite inputs, over half an hour, which is past the fast tier's
