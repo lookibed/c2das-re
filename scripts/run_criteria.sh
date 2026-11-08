@@ -2,7 +2,8 @@
 # Run metrics/criteria.das from the repository root with both modules loaded, fetching the suites
 # and the Lua release first unless the help or the gate's --report is asked:
 # `scripts/run_criteria.sh [--filter lua/] [--jobs 6] [--delta <capture>]`. The Lua inputs need
-# up to 3 GB each; cap the run (`prlimit --as=3221225472`) on a shared box.
+# up to 3 GB each and a compare project up to 6; cap the run on a shared box with a soft and a hard
+# limit (`prlimit --as=3221225472:6442450944`): a project's worker raises its soft limit to the hard.
 set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"

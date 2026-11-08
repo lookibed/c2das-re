@@ -10,6 +10,7 @@ require ../suites/suite_runner.das
 require ../suites/csmith/generate.das
 require ../perf/perf_compose.das
 require ../converter/pipeline.das
+require ../converter/tiers.das
 require ../converter/sidecar.das
 require ../lua/sources.das
 require ../compare/projects.das
@@ -120,6 +121,15 @@ def private convert_project_input(name, dir : string) : ConvertedInput {
         out.error = "convert: no file of {p.name} converts: {conv.refusal}"
     }
     return <- out
+}
+
+//! The command of the worker `script` measuring the input `key`: a project's raises its soft address-space limit to the
+//! hard one, since converting doomgeneric or quakegeneric file by file in one process takes more
+//! than the 3 GB a Lua input does; a run capped `prlimit --as=<soft>:<hard>` keeps the rest at soft.
+def worker_argv(script, key : string) : array<string> {
+    var argv <- key |> starts_with(PROJECT_PREFIX) ? ["bash", "-c", "ulimit -S -v \"$(ulimit -H -v)\" && exec \"$@\"", "worker"] : array<string>()
+    argv |> push_from(daslang_cmd(CONVERTED_MODULES), [script, "--", "--one", key])
+    return <- argv
 }
 
 //! Input `key` converted into `<dir>/das/` under the `linux` dialect: a `perf/<kernel>@copy` key

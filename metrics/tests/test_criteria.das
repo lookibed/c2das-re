@@ -8,6 +8,7 @@ require ../criteria_scan.das
 require ../criteria_count.das
 require ../criteria_defines.das
 require ../criteria_file.das
+require ../readability_inputs.das
 require ../../converter/tiers.das
 
 // the raw counts of one C text and one emitted module named `m`, under the constant names given
@@ -613,4 +614,19 @@ def test_project_worker(t : T?) {
         t |> success(result |> starts_with("error the Rust checkout has no "), result)
     }
     rmdir_rec(rust)
+}
+
+[test]
+def test_worker_argv(t : T?) {
+    t |> run("a project's worker raises its soft address-space limit to the hard one; any other worker runs daslang as is") @(t : T?) {
+        let argv <- worker_argv("metrics/criteria.das", "project/doomgeneric")
+        t |> equal(argv[length(argv) - 1], "project/doomgeneric")
+        var probe <- ["prlimit", "--as=1073741824:2147483648"]
+        probe |> push_from([for (a, i in argv, count()); a; where i < 4], ["bash", "-c", "ulimit -S -v"])
+        var out : string
+        t |> equal(run_and_capture(probe, out, 60.0), 0, out)
+        t |> equal(strip(out), "2097152")
+        let lua <- worker_argv("metrics/criteria.das", "lua/lua")
+        t |> equal(lua[0], daslang_cmd(CONVERTED_MODULES)[0])
+    }
 }

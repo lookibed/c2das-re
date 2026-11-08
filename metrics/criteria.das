@@ -112,9 +112,16 @@ struct Measured {
     failures : array<string>
 }
 
+// the worker of `key` spawned, its stale result file removed first
+def private spawn_worker(key : string) : process {
+    let noenv : array<string>
+    remove(result_path(key))
+    return unsafe(spawn_process(worker_argv("metrics/criteria.das", key), "", noenv))
+}
+
 // `keys` through workers, `jobs` at a time, into `m`
 def private run_batch(keys : array<string>; jobs : int; var m : Measured) {
-    run_workers(length(keys), jobs, WORKER_TIMEOUT, $(index) => spawn_one("metrics/criteria.das", keys[index], result_path(keys[index]))) $(index, killed, rc, output) {
+    run_workers(length(keys), jobs, WORKER_TIMEOUT, $(index) => spawn_worker(keys[index])) $(index, killed, rc, output) {
         let key = keys[index]
         var error = killed ? "killed past {int(WORKER_TIMEOUT)} s" : ""
         var raw <- read_result_text(fexist(result_path(key)) ? fread(result_path(key)) : "", error)
