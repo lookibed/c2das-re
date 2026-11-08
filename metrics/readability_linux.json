@@ -4,7 +4,7 @@
     "csmith": 182,
     "gcc_torture": 1204,
     "lua": 6,
-    "perf": 68
+    "perf": 72
   },
   "modules": {
     "c_testsuite/00001": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -606,7 +606,7 @@
     "gcc_torture/20030928-1": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 8, "pointer_index": 16, "reinterpret": 8, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20031010-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20031011-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
-    "gcc_torture/20031012-1": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 2, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "gcc_torture/20031012-1": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 1, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20031020-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20031201-1": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 2, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/20031204-1": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 4, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -1048,7 +1048,7 @@
     "gcc_torture/mayalias-3": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/memchr-1": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 46, "pointer_index": 0, "reinterpret": 156, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/memcpy-1": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 11, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 7},
-    "gcc_torture/memset-4": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 1, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "gcc_torture/memset-4": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 1, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/minmaxcmp-1": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/mode-dependent-address": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 7, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "gcc_torture/mul-sext": {"c_function": 0, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -1610,6 +1610,10 @@
     "perf/blit@copy": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 5, "pointer_index": 1, "reinterpret": 5, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
     "perf/blit@reinterpret": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 5, "pointer_index": 1, "reinterpret": 5, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 1},
     "perf/blit@while": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 5, "pointer_index": 1, "reinterpret": 5, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
+    "perf/block_clear": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 6, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "perf/block_clear@copy": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 6, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "perf/block_clear@reinterpret": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 6, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
+    "perf/block_clear@while": {"c_function": 3, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 6, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 3},
     "perf/compound_lit": {"c_function": 6, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 5, "pointer_index": 7, "reinterpret": 13, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
     "perf/compound_lit@copy": {"c_function": 6, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 5, "pointer_index": 7, "reinterpret": 13, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
     "perf/compound_lit@reinterpret": {"c_function": 6, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 5, "pointer_index": 7, "reinterpret": 13, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2},
@@ -1672,15 +1676,15 @@
     "perf/va_forward@while": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 2, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2}
   },
   "totals": {
-    "c_function": 7359,
+    "c_function": 7371,
     "goto": 916,
     "label": 692,
-    "literal_named": 24390,
+    "literal_named": 24388,
     "pointer_arith": 5735,
     "pointer_index": 4174,
-    "reinterpret": 56178,
+    "reinterpret": 56202,
     "unsafe_block": 0,
     "unsafe_expr": 70831,
-    "while_rangeable": 4736
+    "while_rangeable": 4739
   }
 }
