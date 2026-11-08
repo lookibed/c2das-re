@@ -682,7 +682,9 @@ def convert_project(p : Project; work : string) : ProjectConversion {
         return <- conv
     }
     let none : array<string>
-    for (rel in program_files(p)) {
+    let sources <- program_files(p)
+    conv.per_file |> reserve(length(sources))
+    for (rel in sources) {
         var refusal : string
         var inscope files : array<string>
         let das_path = ours_module(p, rel, path_join(work, "files/{trim_suffix(rel, ".c")}"), none, refusal, files)
