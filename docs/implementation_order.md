@@ -2302,6 +2302,15 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   9 (a label per case value and the end), gotos 4 -> 9 (one computed), `while (true)` 1 -> 0, `_flag ||=`
   6 -> 0; Lua's goto tree about +25 labels and +45 gotos in the two functions, line ratio about 1.0
   (`match` 180) to 1.1 (`str_format` 176, 17 sparse values as an `elif` chain); Doom, binjgb none.
+  Implemented (branch `p7.0t-flat-label-cfg`, timing is the lead's exclusive batch,
+  `/root/notes/parallel/pc-p7.0t-ab.sh`): `open_redispatched` and `open_table`
+  (`converter/ARCHITECTURE_EMITTER_CONTROL.md#flat-cases`); under `goto` an open switch (Duff's device,
+  one a goto enters) takes its own table too, and P7.7b's "open switch re-dispatched from another case"
+  converts; `chain` output unchanged. The interpreter needs no daScript#35 fix: `guard_label_folds`
+  reads the computed goto as naming its table's labels (probe `test_goto.das`, the flat label CFG).
+  `run_code` measured 67 -> 47 lines (0.70), labels 3 -> 9, gotos 4 -> 9 (one computed); readability
+  `@goto` keys for every kernel and Lua program and the criteria rows `lua/lua@goto`, `lua/luac@goto`
+  recorded. Owed: a goto lane in perf's cells (a timing run).
 - **P7.0u Builtin `memcpy`, `memmove` and `memset8` for the program's own calls** (reference diff
   rows 5-6; extends P7.0n, which moved the constant-size marshal reads): a C `memcpy`/`memmove` of a
   program size calls daslang's builtin with the size guarded against zero, a C `memset` calls `memset8`
