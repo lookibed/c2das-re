@@ -2321,6 +2321,12 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   inline, box PC, `heavy --exclusive`): plmpeg interp I/D 0.90 (0.86-0.94: the 77 sites trade a call
   node for a `?:` chain plus, for a sum argument, one `let`; Rust saved 15%), JIT I/D 1.00 (+-3%);
   fixed_mandel interp I/D 0.85 (5 `fmul` calls of about 30 nodes per iteration gone), JIT 1.00.
+  Ruling 36 (2026-11-08), program-level under the JIT, box PC, exclusive, before any run: binjgb JIT I/D 1.00
+  (+-3%) and Doom demos 1-3 JIT I/D 1.00 (+-3%), since LLVM inlines a direct call of a small static function
+  either way and the expression only reaches the interpreter; Doom's hot `FixedMul` is external, no candidate.
+  The opt-in's readability price is the `@inline` rows (`perf/<kernel>@inline`, `lua/<program>@inline`) of
+  `metrics/readability_linux.json` and `metrics/criteria_linux.json` against their default rows; its perf lane
+  is `interp-inline`.
 - **P7.0x The source layout's split JIT build loses cross-module inlining** (found by the re-capture's
   profiles, 2026-11-06): the ports `jit` lane runs the source layout (30 modules, the cached JIT a
   partition per module) at Lua fib 4.9x (the ports size, fib 34) and nbody 4.1x (200000) native, where
