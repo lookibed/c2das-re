@@ -452,7 +452,7 @@ def p6_pointer_fixtures(t : T?) {
         has_text(t, text, "var third : uint8? = cp + 2 * 3\n")
         has_text(t, text, "read_cell_t_v(cp + 1 * 3 + 1 * 3, 0)")
         // p_pspr.c's state offset, an enum plus a pointer less a pointer, converted to the enum
-        has_text(t, text, "enum_from_int(type<st_t>, int(int64(psp.state + uint(int(p6_commuted_sum__info.flash)) - (addr(p6_commuted_sum__states[int(st_t.S_A)])))))")
+        has_text(t, text, "enum_from_int(type<st_t>, int(int64(psp.state + uint(int(p6_commuted_sum__info.flash)) - addr(p6_commuted_sum__states[int(st_t.S_A)]))))")
     }
     t |> run("the offset idiom `(integer)&((T *)0)->f[i]` is the offset as an integer, a marshal record's clang's; `offsetof` beside it") @(t : T?) {
         var text : string
