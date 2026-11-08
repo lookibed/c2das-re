@@ -230,15 +230,59 @@ def p7_crt_writes_fixtures(t : T?) {
     t |> run("CRT calls that write through a pointer, each in a helper on its caller's local, reach the caller under interp, jit, exe and aot as natively (F85)") @(t : T?) {
         var text : string
         check_fixture(t, "p7_crt_writes", text)
-        let want = native("p7_crt_writes")
-        for (tier in ["jit", "exe", "aot"]) {
-            var out : string
-            let rc = run_tier(path_join(path_join(work_root, "p7_crt_writes"), "p7_crt_writes.das"), tier, path_join(work_root, "p7_crt_writes_{tier}"), out, CONVERTED_MODULES)
-            t |> equal(rc, want.rc, "{tier}: {out}")
-            // the JIT's `info` lines and the aot host link's linker warnings are no program output
-            let program = join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] ") || ln |> starts_with("/usr/bin/ld:") || ln |> contains("): warning: "))], "\n")
-            t |> equal(program, want.out, tier)
-        }
+        check_compiled_tiers(t, "p7_crt_writes")
+    }
+}
+
+// the fixture `name`, converted by `check_fixture`, gives the native rc and output under jit, exe and aot
+def check_compiled_tiers(t : T?; name : string) {
+    let want = native(name)
+    for (tier in ["jit", "exe", "aot"]) {
+        var out : string
+        let rc = run_tier(path_join(path_join(work_root, name), "{name}.das"), tier, path_join(work_root, "{name}_{tier}"), out, CONVERTED_MODULES)
+        t |> equal(rc, want.rc, "{tier}: {out}")
+        // the JIT's `info` lines and the aot host's compiler and linker warnings are no program output
+        let program = join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] ") || ln |> starts_with("/usr/bin/ld:") || ln |> contains("): warning: ") || ln |> contains(": warning: ") || ln |> starts_with(" ") || ln |> ends_with("warning generated."))], "\n")
+        t |> equal(program, want.out, tier)
+    }
+}
+
+[test]
+def test_literal_nul(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_literal_nul", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure(dir_error)
+        return
+    }
+    p8_literal_nul_fixtures(t)
+    rmdir_rec(work_root)
+}
+
+// ruling 37 B: the C escape set of daslang abf1d40e35 (docs/probe-findings.md F94)
+def p8_literal_nul_fixtures(t : T?) {
+    t |> run("every byte of a literal survives, an interior NUL and the bytes after it, under interp, jit, exe and aot as natively; the character constants are das escapes") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_literal_nul", text)
+        check_compiled_tiers(t, "p8_literal_nul")
+        // a NUL is `\0`, `\x00` where an octal digit follows; `\x0` before a hex letter is `\0f`
+        has_text(t, text, "reinterpret<uint8?>(\"ab\\0cd\\0\\0e\")")
+        has_text(t, text, "var joined : uint8? = reinterpret<uint8?>(\"ab\\0cd\")")
+        has_text(t, text, "var octal_split : uint8? = reinterpret<uint8?>(\"\\x0012\")")
+        has_text(t, text, "var hex_split : uint8? = reinterpret<uint8?>(\"\\0f\")")
+        has_text(t, text, "\"\\0\\x01\\x02\\x03\\x04\\x05\\x06\\a\\b\\t\\n\\v\\f\\r\\x0e")
+        has_text(t, text, "\\x1f !\\\"#$%&'()*+,-./0123456789:;<=>?@ABC")
+        has_text(t, text, "[\\\\]^_`abc")
+        has_text(t, text, "xyz\\\{|\\\}~\\x7f\\x80")
+        // an array with no NUL before its end is `cstr_array` of every other byte, one holding a
+        // NUL the row of its bytes
+        has_text(t, text, "var private p8_literal_nul__no_nul : uint8[256] = cstr_array(\"\\x01\\x02")
+        has_text(t, text, "\\xfe\\xff\", 256)\n")
+        has_text(t, text, "var private p8_literal_nul__exact : uint8[3] = fixed_array(uint8(97), uint8(0), uint8(98))\n")
+        // a character constant is its das escape, a case label too
+        has_text(t, text, "    if (_cond == '\\0') \{\n")
+        has_text(t, text, "    \} elif (_cond == '\\x1b') \{\n")
+        has_text(t, text, "'\\0', '\\a', '\\v', '\\x7f', '\\x1b', '\\xff', '\\x01')")
     }
 }
 
