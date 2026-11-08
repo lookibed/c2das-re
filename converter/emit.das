@@ -199,6 +199,9 @@ struct EmitProgram {
     // the sidecar's or the option's `switch_dispatch` is `goto`: a dense switch jumps to its case
     // (`dispatch_plan`)
     goto_dispatch : bool
+    // the sidecar's or the option's `past_end` is `inline`: `&a[k]` of a plain-load index is
+    // `k == N ? addr(a[0]) + N : addr(a[k])` (`one_past_end_address`)
+    past_end_inline : bool
     // the declarations at a switch body's own level that a statement under a later label reads
     // or writes, which the lowered switch declares before itself (`carried_decls`)
     carried : table<uint64>
@@ -2272,10 +2275,11 @@ def private plain_load(tu : CirTu; i : CirExpr const?) : bool {
 // `&a[k]` of an array (`x` the `&`): C may form the address one past the end, and das
 // range-checks `addr(a[N])` (`docs/probe-findings.md` F45). A constant index (`constant_index`)
 // that is the length is the decayed array plus `N`; one below or past the length keeps
-// `addr(a[k])`, das's range check standing for C's undefined behaviour past the end. A plain
-// load of an array without effects is `k == N ? addr(a[0]) + N : addr(a[k])`, das's own range
-// check on every index but the length, with no call; any other index is the decayed array plus
-// `end_index(k, N)` (`c_runtime/c_bounds`), which spells the index once. In a global initializer
+// `addr(a[k])`, das's range check standing for C's undefined behaviour past the end. Under
+// `past_end` `inline` a plain load of an array without effects is `k == N ? addr(a[0]) + N :
+// addr(a[k])`, das's own range check on every index but the length, with no call; any other
+// index is the decayed array plus `end_index(k, N)` (`c_runtime/c_bounds`), which spells the
+// index once. In a global initializer
 // the decay and the sum each wrap themselves (F48). An empty text for any other operand.
 def private one_past_end_address(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let at = x.a
@@ -2295,7 +2299,7 @@ def private one_past_end_address(var em : Emitter; tu : CirTu; x : CirExpr; loc 
         let offset = below_casts(at.i).e == "enum_ref" ? index.text : "{count}"
         return unsafe_value(em, "{decay.text} + {offset}", PREC_ADD)
     }
-    if (plain_load(tu, at.i) && !has_effects(at.base.a) && !reads_volatile(at.base.a)) {
+    if (em.prog.past_end_inline && plain_load(tu, at.i) && !has_effects(at.base.a) && !reads_volatile(at.base.a)) {
         let length = int_literal(index_type(em, tu, at.i, loc), "{count}")
         let element = unsafe_value(em, "addr({wrap(arr, PREC_PRIMARY)}[{index.text}])", PREC_PRIMARY)
         return value("{index.text} == {length} ? {decay.text} + {count} : {element.text}", PREC_COND)
@@ -7339,6 +7343,7 @@ def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
     em.prog.range_loops = side.loops != "while"
     em.prog.reinterpret_members = side.first_member == "reinterpret"
     em.prog.goto_dispatch = side.switch_dispatch == "goto"
+    em.prog.past_end_inline = side.past_end == "inline"
     em.prog.global_names <- {for (d in tu.decls); d.name; where d.k == "global"}
     em.prog.defined_globals <- {for (d in tu.decls); d.name; where d.k == "global" && !d.is_extern}
 }

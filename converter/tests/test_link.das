@@ -403,7 +403,7 @@ def test_extern_arrays(t : T?) {
         // use.c's references index and decay the storage data.c defines, with its length
         let use_text = fread(path_join(path_join(work_root, "source"), "use.das"))
         t |> success(use_text |> contains("var private middle : int? = unsafe(addr(_c_table[2]))\n"), use_text)
-        t |> success(use_text |> contains("    return k == 5 ? addr(_c_table[0]) + 5 : addr(_c_table[k])\n"), use_text)
+        t |> success(use_text |> contains("    return addr(_c_table[0]) + end_index(k, 5)\n"), use_text)
     }
     t |> run("names one unit declares only in blocks (`extern` objects, an array without a length, a prototype) bind to another unit's definitions") @(t : T?) {
         let paths <- [for (stem in ["data", "prog"]); "{BLOCK_EXTERNS}/{stem}.c"]
@@ -421,7 +421,7 @@ def test_extern_arrays(t : T?) {
             t |> equal(out, native.output, layout)
         }
         let prog_text = fread(path_join(path_join(work_root, "block_source"), "prog.das"))
-        t |> success(prog_text |> contains("    return k == 5 ? addr(_c_table[0]) + 5 : addr(_c_table[k])\n"), prog_text)
+        t |> success(prog_text |> contains("    return addr(_c_table[0]) + end_index(k, 5)\n"), prog_text)
     }
     t |> run("an array no unit defines, or one declared with another length than its definition's, is refused") @(t : T?) {
         refused(t, "never_defined", [(name = "a.c", text = "extern int arr[];\nint main(void) \{ return arr[0]; \}\n"), (name = "b.c", text = "extern int arr[];\nint *at(int k) \{ return &arr[k]; \}\n")], ["`arr` is an array of unknown length (`extern int a[];`) that no unit of the program defines", "a.c:1"])

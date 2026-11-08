@@ -195,6 +195,43 @@ def test_cli_switch_dispatch(t : T?) {
     rmdir_rec(dir)
 }
 
+let PAST_END_FIXTURE = "converter/tests/fixtures/p7_end_index.c"
+
+// `converter/main.das -- <PAST_END_FIXTURE> --out <dir>/past_end_<mode> --target linux
+// --past-end <mode>`, with `sidecar` when given, as a child process
+def run_past_end(dir, mode : string; var out : string&; sidecar : string = "") : int {
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from(["converter/main.das", "--", PAST_END_FIXTURE, "--out", path_join(dir, "past_end_{mode}"), "--target", "linux", "--past-end", mode])
+    if (!empty(sidecar)) {
+        argv |> push_from(["--sidecar", sidecar])
+    }
+    return run_and_capture(argv, out, 300.0)
+}
+
+[test]
+def test_cli_past_end(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_cli_past_end", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("--past-end inline spells a plain-load `&a[k]` as the conditional, call wins over the sidecar's inline; any other value is a usage error") @(t : T?) {
+        var out : string
+        t |> equal(run_past_end(dir, "inline", out), 0, out)
+        let inline = fread(path_join(path_join(dir, "past_end_inline"), "p7_end_index.das"))
+        t |> success(inline |> contains("    return k == 4 ? addr(p7_end_index__a[0]) + 4 : addr(p7_end_index__a[k])\n"), inline)
+        let sidecar = path_join(dir, "inline.c2das")
+        fwrite(sidecar, "\{\"past_end\": \"inline\"\}\n")
+        t |> equal(run_past_end(dir, "call", out, sidecar), 0, out)
+        let kept = fread(path_join(path_join(dir, "past_end_call"), "p7_end_index.das"))
+        t |> success(kept |> contains("    return addr(p7_end_index__a[0]) + end_index(k, 4)\n"), kept)
+        t |> equal(run_past_end(dir, "fast", out), 2, out)
+        t |> success(out |> contains("--past-end is call or inline, not `fast`"), out)
+    }
+    rmdir_rec(dir)
+}
+
 [test]
 def test_cli_checks(t : T?) {
     var dir_error : string

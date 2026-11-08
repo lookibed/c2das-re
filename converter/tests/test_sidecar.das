@@ -218,6 +218,29 @@ def test_sidecar_switch_dispatch(t : T?) {
 }
 
 [test]
+def test_sidecar_past_end(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_past_end", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`past_end` is \"call\" or \"inline\"; absent it is empty, the emitter's call default; any other value is refused") @(t : T?) {
+        for (mode in ["call", "inline"]) {
+            var error : string
+            let side <- read_text(dir, mode, "\{\"past_end\": \"{mode}\"\}\n", error)
+            t |> equal(error, "")
+            t |> equal(side.past_end, mode)
+        }
+        var error : string
+        let side <- read_text(dir, "bad_past_end", "\{\"past_end\": \"fast\"\}\n", error)
+        t |> success(error |> ends_with("bad_past_end.c2das: `past_end` is \"call\" or \"inline\", not \"fast\""), error)
+        t |> equal(side.past_end, "")
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_sidecar_checks(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_sidecar_checks", dir_error)
