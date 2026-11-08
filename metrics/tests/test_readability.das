@@ -391,6 +391,8 @@ def test_worker(t : T?) {
         t |> equal(layout, "source")
         t |> equal(lua_key_parts("lua/luac@single", layout), "luac")
         t |> equal(layout, "single")
+        t |> equal(lua_key_parts("lua/lua@goto", layout), "lua")
+        t |> equal(layout, "source")
     }
     t |> run("an input that does not convert, and a seed csmith refuses, are errors") @(t : T?) {
         var counts : string
@@ -398,6 +400,27 @@ def test_worker(t : T?) {
         t |> success(counts |> starts_with("error convert: "), counts)
         t |> equal(run_worker("csmith/not-a-seed", counts), 0)
         t |> success(counts |> starts_with("error csmith refused the seed"), counts)
+    }
+}
+
+// P7.0t: the `@goto` keys under `--switch-dispatch goto`
+[test]
+def test_worker_goto(t : T?) {
+    t |> run("--one converts a Lua `@goto` key under --switch-dispatch goto in the source layout: lstrlib's match is flat") @(t : T?) {
+        var counts : string
+        t |> equal(run_worker("lua/lua@goto", counts), 0)
+        t |> success(counts |> starts_with("ok\n"), counts)
+        let lstrlib = fread("metrics/work/lua/lua@goto/das/lstrlib.das")
+        t |> success(!(lstrlib |> contains("re-dispatch")) && lstrlib |> contains("  // case 36\n"), lstrlib)
+    }
+    t |> run("--one converts a kernel's `@goto` key under --switch-dispatch goto: switch_goto's cases are labels, the plain key's the re-dispatch loop") @(t : T?) {
+        var counts : string
+        t |> equal(run_worker("perf/switch_goto@goto", counts), 0)
+        let flat = fread("metrics/work/perf/switch_goto@goto/das/switch_goto.das")
+        t |> success(flat |> contains("        goto _cond + 4\n") && !(flat |> contains("re-dispatch")), flat)
+        t |> equal(run_worker("perf/switch_goto", counts), 0)
+        let kept = fread("metrics/work/perf/switch_goto/das/switch_goto.das")
+        t |> success(kept |> contains("label 1:  // re-dispatch\n"), kept)
     }
 }
 

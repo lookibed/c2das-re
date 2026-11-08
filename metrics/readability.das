@@ -18,7 +18,7 @@ require readability_count
 //! The readability metric (`scripts/run_readability.sh`): every input key `expected_input_keys`
 //! names, converted under the `linux` dialect (a `perf/<kernel>@copy` key under `--param-writes
 //! copy`, a `perf/<kernel>@while` key under `--loops while`, a `perf/<kernel>@reinterpret` key under
-//! `--first-member reinterpret`, a `lua/<program>` key from the
+//! `--first-member reinterpret`, a `perf/<kernel>@goto` key under `--switch-dispatch goto`, a `lua/<program>` key from the
 //! release's files in the source layout, its `@source-cut` and `@single` twins in those layouts) and counted by
 //! `readability_count`, one worker
 //! process per input, `--jobs` at a time. The totals ratchet against the committed
