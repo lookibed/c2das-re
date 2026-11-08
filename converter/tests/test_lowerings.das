@@ -2660,7 +2660,7 @@ def p7_goto_into_fixtures(t : T?) {
 
 // P7.0zb: `&a[k]` of an array without the `end_index` call where the index allows it
 def p7_end_index_fixtures(t : T?) {
-    t |> run("`&a[k]`: a constant folds, a plain load is das's own index but at the length, any other index takes end_index; one past the end as natively under interp and jit") @(t : T?) {
+    t |> run("`&a[k]`: a constant folds, a plain load is das's own index but at the length, any other index takes end_index; one past the end as natively under interp and jit, a panic past it under interp, jit and aot") @(t : T?) {
         var text : string
         check_fixture(t, "p7_end_index", text)
         // a plain load in each index type compares with the length in its own type
@@ -2673,11 +2673,18 @@ def p7_end_index_fixtures(t : T?) {
         has_text(t, text, "    return e.k == 4 ? addr(e.oam[0]) + 4 : addr(e.oam[e.k])\n")
         // an enumerator and a literal under a cast that holds it fold as a literal does
         has_text(t, text, "    return addr(p7_end_index__a[int(Ch.CH2)])\n")
-        has_text(t, text, "    return addr(p7_end_index__a[0]) + 4\n")
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + int(Ch.CH_COUNT)\n")
         has_text(t, text, "    return addr(p7_end_index__a[int(uint8(3))])\n")
+        // an enum variable compares as the `int` its index spells
+        has_text(t, text, "    return int(c) == 4 ? addr(p7_end_index__a[0]) + 4 : addr(p7_end_index__a[int(c)])\n")
         // a cast that changes the value, a compound, a `_Bool` or a volatile index, an array
         // with an effect or behind a volatile load keep the call
         has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(int(uint8(260)), 4)\n")
+        // a `_Bool` cast makes any nonzero 1, so it is no constant: C means `a + 1`
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(4 != 0 ? 1 : 0, 4)\n")
+        // a bitfield or a union member reads through an accessor call
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(b.lo, 4)\n")
+        has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(p.k, 4)\n")
         has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(i + j, 4)\n")
         has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(b ? 1 : 0, 4)\n")
         has_text(t, text, "    return addr(p7_end_index__a[0]) + end_index(c_volatile_load(vk), 4)\n")
@@ -2692,21 +2699,27 @@ def p7_end_index_fixtures(t : T?) {
         t |> equal(run_tier(path, "jit", path_join(work_root, "end_index_jit"), out, CONVERTED_MODULES), want.rc, out)
         let program = join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
         t |> equal(program, want.out, "jit")
-        // past the end and below zero the conditional's own index panics as the range check
-        for (tier in ["interp", "jit"]) {
-            for (args in [["past"], ["below", "zero"]]) {
+        // past the end (`int`, `uint`, `int64`) and below zero the conditional's own index panics
+        // as the range check
+        for (tier in ["interp", "jit", "aot"]) {
+            for (args in [["int"], ["int", "below"], ["uint", "past", "end"], ["int64", "past", "the", "end"]]) {
+                if (tier == "aot" && length(args) < 3) {
+                    continue
+                }
                 var panicked : string
                 let rc = run_tier(path, tier, path_join(work_root, "end_index_{tier}_{length(args)}"), panicked, CONVERTED_MODULES, 600.0, no_flags, args)
-                t |> success(rc != 0 && panicked |> contains("index out of range"), "{tier} {args}: {rc} {panicked}")
+                t |> success(rc != 0 && panicked |> contains("out of range"), "{tier} {args}: {rc} {panicked}")
             }
         }
     }
-    t |> run("`&a[k]`: a constant that its casts change, a cast to an enum or a negative enumerator keeps the call; a wide cast folds") @(t : T?) {
-        let source = "enum Ch \{ CH0, CH1, CH2 \};\nenum Neg \{ NEG = -1 \};\nstatic int a[4];\nstatic int *sc(void) \{ return &a[(signed char)128]; \}\nstatic int *en(void) \{ return &a[(enum Ch)2]; \}\nstatic int *ng(void) \{ return &a[NEG]; \}\nstatic int *wide(void) \{ return &a[(long)4]; \}\nint main(void) \{ return (sc() != 0) + (en() != 0) + (ng() != 0) - 3 + (wide() == &a[4]); \}\n"
+    t |> run("`&a[k]`: a constant that its casts change, a cast to an enum, a floating cast or a negative enumerator keeps the call; a wide cast folds") @(t : T?) {
+        let source = "enum Ch \{ CH0, CH1, CH2 \};\nenum Neg \{ NEG = -1 \};\nstatic int a[4];\nstatic int *sc(void) \{ return &a[(signed char)128]; \}\nstatic int *en(void) \{ return &a[(enum Ch)2]; \}\nstatic int *ng(void) \{ return &a[NEG]; \}\nstatic int *wide(void) \{ return &a[(long)4]; \}\nstatic int *dbl(void) \{ return &a[(long)(double)4]; \}\nint main(void) \{ return (sc() != 0) + (en() != 0) + (ng() != 0) - 3 + (wide() == &a[4]) + (dbl() == &a[4]) - 1; \}\n"
         let text = converts(t, "end_index_casts", source)
         has_text(t, text, "    return addr(end_index_casts__a[0]) + end_index(int(int8(128)), 4)\n")
         has_text(t, text, "end_index(int(Ch.CH2), 4)")
         has_text(t, text, "end_index(int(Neg.NEG), 4)")
         has_text(t, text, "    return addr(end_index_casts__a[0]) + 4\n")
+        // a floating cast between them is no integer cast: the value keeps the call
+        has_text(t, text, "end_index(int64(double(4)), 4)")
     }
 }

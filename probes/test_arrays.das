@@ -101,7 +101,7 @@ def test_csmith_arrays(t : T?) {
                 g_idx = k
                 var caught = false
                 try {
-                    let p = g_idx == 3 ? addr(big[0]) + 3 : addr(big[read_idx()])
+                    let p = g_idx == 3 ? addr(big[0]) + 3 : addr(big[g_idx])
                     t |> equal(int(intptr(p) - intptr(addr(big[0]))), 4 * k)
                 } recover {
                     caught = true

@@ -2225,8 +2225,8 @@ def private literal_index(i : CirExpr?) : int64 {
     return try_to_int64(i.v) ?? -1l
 }
 
-// the value of a subscript that is a `literal_index` or an enumerator of at least 0, under
-// integer casts each of which holds it (`int(E.X)`); -1 for any other subscript
+// the value of a subscript that is a `literal_index` or an enumerator, under integer casts each
+// of which holds it (`int(E.X)`); below 0 for any other subscript or a negative enumerator
 def private constant_index(tu : CirTu; i : CirExpr?) : int64 {
     if (i != null && i.e == "cast") {
         let v = constant_index(tu, i.a)
@@ -2234,7 +2234,7 @@ def private constant_index(tu : CirTu; i : CirExpr?) : int64 {
     }
     if (i != null && i.e == "enum_ref") {
         for (item in tu.types[i.enum_t].items) {
-            if (item.name == i.item && item.v >= 0l) {
+            if (item.name == i.item) {
                 return item.v
             }
         }
@@ -2253,10 +2253,17 @@ def private holds_value(tu : CirTu; t : int; v : int64) : bool {
 }
 
 // whether subscript `i` is a plain load: a variable or a field, under casts, read without a
-// volatile access, which a spelling may repeat
+// volatile access, which a spelling may repeat; a bitfield or a union member reads through an
+// accessor call, so it is none
 def private plain_load(tu : CirTu; i : CirExpr const?) : bool {
     var at = i
     while (at != null && (at.e == "cast" || at.e == "member")) {
+        if (at.e == "member") {
+            let rec = at.arrow ? tu.types[at.base.t].to : at.base.t
+            if (kind_of(tu, rec) == "union" || tu.types[rec].fields[at.field].is_bitfield) {
+                return false
+            }
+        }
         at = at.e == "cast" ? at.a : at.base
     }
     return at != null && at.e == "ref" && !is_c_bool(tu, i.t) && !reads_volatile(i)
@@ -2282,10 +2289,12 @@ def private one_past_end_address(var em : Emitter; tu : CirTu; x : CirExpr; loc 
     }
     let arr = emit_expr(em, tu, at.base.a, loc)
     let decay = unsafe_value(em, "addr({wrap(arr, PREC_PRIMARY)}[0])", PREC_PRIMARY)
-    if (k >= 0l) {
-        return unsafe_value(em, "{decay.text} + {count}", PREC_ADD)
-    }
     let index = index_value(em, tu, at.i, loc)
+    if (k >= 0l) {
+        // an enumerator keeps its name
+        let offset = below_casts(at.i).e == "enum_ref" ? index.text : "{count}"
+        return unsafe_value(em, "{decay.text} + {offset}", PREC_ADD)
+    }
     if (plain_load(tu, at.i) && !has_effects(at.base.a) && !reads_volatile(at.base.a)) {
         let length = int_literal(index_type(em, tu, at.i, loc), "{count}")
         let element = unsafe_value(em, "addr({wrap(arr, PREC_PRIMARY)}[{index.text}])", PREC_PRIMARY)
