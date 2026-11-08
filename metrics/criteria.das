@@ -168,7 +168,7 @@ def private report(delta_ref : string) : int {
             print("no capture at {delta_ref}: no delta\n")
         } else {
             var base_error : string
-            let base <- capture_of_text(shown, "{delta_ref}:{CAPTURE}", base_error)
+            let base <- base_capture_of_text(shown, "{delta_ref}:{CAPTURE}", base_error)
             print(empty(base_error) ? "Delta against {delta_ref}:\n\n{render_delta(base, committed)}\n" : "no delta: {base_error}\n")
         }
     }
@@ -228,7 +228,7 @@ def main : int {
     print("**Readability criteria**\n\n{length(keys)} inputs attempted, {length(m.failures)} failed\n\n{render_criteria(cap)}\n")
     if (!empty(args.delta)) {
         var error : string
-        let base <- capture_at(args.delta, error)
+        let base <- fexist(args.delta) ? base_capture_of_text(fread(args.delta), args.delta, error) : capture_at(args.delta, error)
         print(empty(error) ? "Delta against {args.delta}:\n\n{render_delta(base, cap)}\n" : "no delta: {error}\n")
     }
     m.failures |> sort()

@@ -211,6 +211,20 @@ def read_criteria(text : string; var error : string&) : CriteriaCapture {
     return <- cap
 }
 
+//! The raw keys a capture recorded before they existed lacks: a base the delta reads them as 0.
+let LATER_RAW_KEYS <- ["c_files", "c_files_converted"]
+
+//! The capture `text` holds as the base of a delta, read from `path`: a capture recorded before a
+//! key of `LATER_RAW_KEYS` existed reads with it 0; empty with `error` on any other finding.
+def base_capture_of_text(text, path : string; var error : string&) : CriteriaCapture {
+    let findings <- [for (f in check_criteria(text)); f; where !has_value([for (k in LATER_RAW_KEYS); f |> ends_with(" lacks `{k}`")], true)]
+    if (!empty(findings)) {
+        error = "{path}: {join(findings, "; ")}"
+        return <- CriteriaCapture()
+    }
+    return <- read_criteria(text, error)
+}
+
 //! The capture in the file at `path`, empty with `error` when it is missing, not JSON or misshapen.
 def capture_at(path : string; var error : string&) : CriteriaCapture {
     if (!fexist(path)) {
