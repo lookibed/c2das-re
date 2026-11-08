@@ -989,7 +989,7 @@ def test_projects(t : T?) {
 
 [test]
 def test_project_criteria_provenance(t : T?) {
-    t |> run_stand_in("a project's criteria: a change to metrics/ after the capture is a change since; a dirty capture names no commit", "c2das_ports_criteria_provenance") @(t : T?; root, clone : string) {
+    t |> run_stand_in("a project's criteria: a change to the criteria's computation after the capture is a change since, a metrics-only commit is not; a dirty capture names no commit", "c2das_ports_criteria_provenance") @(t : T?; root, clone : string) {
         stand_in_projects(root)
         stand_in_compare(root)
         let captured_at = git(root, ["rev-parse", "HEAD"])
@@ -997,7 +997,14 @@ def test_project_criteria_provenance(t : T?) {
         t |> equal(publish(root, ["--repo", clone, "--program", "wasm3"], out), 0, out)
         let same = fread(path_join(clone, "wasm3/README.md"))
         t |> success(same |> contains("its row `project/wasm3`, recorded at c2das-re `{slice(captured_at, 0, 12)}`. Measured on "), same)
-        mkdir_rec(path_join(root, "metrics"))
+        mkdir_rec(path_join(root, "metrics/tests"))
+        fwrite(path_join(root, "metrics/tests/test_criteria.das"), "// changed\n")
+        fwrite(path_join(root, "metrics/ARCHITECTURE.md"), "# changed\n")
+        git(root, ["add", "-A"])
+        git(root, ["commit", "-q", "-m", "metrics only"])
+        t |> equal(publish(root, ["--repo", clone, "--program", "wasm3"], out), 0, out)
+        let metrics_only = fread(path_join(clone, "wasm3/README.md"))
+        t |> success(metrics_only |> contains("its row `project/wasm3`, recorded at c2das-re `{slice(captured_at, 0, 12)}`. Measured on "), metrics_only)
         fwrite(path_join(root, "metrics/criteria_count.das"), "// changed\n")
         git(root, ["add", "-A"])
         git(root, ["commit", "-q", "-m", "criteria"])
