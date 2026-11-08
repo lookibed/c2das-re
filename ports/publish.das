@@ -1020,7 +1020,7 @@ def private compare_recorded_at : string => git_line(".", ["log", "-1", "--forma
 // the perf section of a project's README: its entry of the head-to-head's capture, rendered as the
 // compare report renders the projects, under the commit that recorded it; a not-yet line without
 // an entry
-def private project_perf_text(p : Project; gen : Generation) : string {
+def private project_perf_text(p : Project) : string {
     if (!fexist(COMPARE_CAPTURE)) {
         return "not yet: c2das-re holds no `{COMPARE_CAPTURE}`, the capture of the head-to-head that times the projects.\n"
     }
@@ -1128,7 +1128,7 @@ def private publish_project(p_row : Project; repo : string; var gen : Generation
     let command = "scripts/publish_ports.sh --program {p.name}"
     let rust_sha = git_line(rust_checkout(), ["rev-parse", "HEAD"])
     why = ok ? "" : "a file of its directory was not written"
-    return ok && write_or_log(path_join(dir, "README.md"), project_readme_text(p, gen, rust_sha, refusal, per_file, command, project_perf_text(p, gen)))
+    return ok && write_or_log(path_join(dir, "README.md"), project_readme_text(p, gen, rust_sha, refusal, per_file, command, project_perf_text(p)))
 }
 
 def private repo_of(args : Args) : string {
