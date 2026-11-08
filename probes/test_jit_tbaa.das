@@ -5,7 +5,7 @@ require strings
 require daslib/fio
 require daslib/strings_boost
 
-//! The JIT's typed aliasing model (docs/probe-findings.md F94): every load and store of a jitted
+//! The JIT's typed aliasing model (docs/probe-findings.md F95): every load and store of a jitted
 //! function carries a `!tbaa` tag of its class (`float`, `double`, one class for every wider integer
 //! and pointer); a function whose body holds a punning `reinterpret` is left untagged; the program
 //! option `strict_aliasing` and the hints `strict_aliasing` and `no_strict_aliasing` switch it.

@@ -189,6 +189,9 @@ struct EmitProgram {
     // the sidecar's `jit_whole_program`: the module holding `main` pins the cached JIT's one-unit
     // build, `options jit_split_modules = 0` and `require c_runtime/c_jit_build`
     jit_whole_program : bool
+    // the sidecar's `strict_aliasing`: false makes the module holding `main` turn the JIT's typed
+    // aliasing off for the whole program, `options strict_aliasing = false`
+    strict_aliasing : bool
     // the sidecar's or the option's `checks` is `off`: every converted function carries
     // `unsafe_deref` and `hint(unsafe_range_check)`, the module a comment saying so
     unchecked : bool
@@ -7864,6 +7867,7 @@ def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
     em.prog.stack_option = side.stack
     em.prog.solid_context = side.solid_context
     em.prog.jit_whole_program = side.jit_whole_program
+    em.prog.strict_aliasing = side.strict_aliasing
     em.prog.unchecked = side.checks == "off"
     em.prog.param_copy = side.param_writes == "copy"
     em.prog.range_loops = side.loops != "while"
@@ -8066,7 +8070,10 @@ def private program_name(file : string) : string {
 
 // the module text: banner, options, requires, the empty literal's byte (which precedes every
 // global whose initializer takes its address), then everything emitted; a cluster's fragments get
-// no options, since they are text its module includes and the module's options cover them
+// no options, since they are text its module includes and the module's options cover them; the
+// program-wide options (`jit_split_modules`, `strict_aliasing`) go to the module holding `main`,
+// the root, since daslang reads them from the root alone
+[arch(at="ARCHITECTURE_TIERS.md#typed-aliasing")]
 def private assemble_module(var em : Emitter) {
     let jit_pin = em.prog.jit_whole_program && em.has_c_main
     if (jit_pin) {
@@ -8081,8 +8088,9 @@ def private assemble_module(var em : Emitter) {
     let stack_line = "options stack = {stack}\n"
     let solid_line = em.prog.solid_context ? "options solid_context\n" : ""
     let jit_line = jit_pin ? "options jit_split_modules = 0\n" : ""
+    let alias_line = em.has_c_main && !em.prog.strict_aliasing ? "options strict_aliasing = false\n" : ""
     let banner = em.prog.unchecked ? "{GENERATED_BANNER}\n{UNCHECKED_BANNER}" : GENERATED_BANNER
-    em.text = banner + "\noptions gen2\noptions indenting = 4\n" + solid_line + stack_line + jit_line + header + "\n" + empty + label_end + join(em.out, "")
+    em.text = banner + "\noptions gen2\noptions indenting = 4\n" + solid_line + stack_line + alias_line + jit_line + header + "\n" + empty + label_end + join(em.out, "")
 }
 
 //! One file of a converted program: its path under the output folder (a module's `.das`, a

@@ -30,7 +30,7 @@ stderr, since a context called with no catch frame reports the exception and rai
 which a bare spawn reads as exit code 5 (the generated context class derives from `das::Context` alone, so the host
 reads the handle as one).
 
-## 9. Typed aliasing under the JIT and exe
+## 9. Typed aliasing under the JIT and exe {#typed-aliasing}
 
 The JIT and `-exe` tag every load and store with a `!tbaa` class: `float`, `double`, and one
 class for every integer wider than a byte and every pointer; bytes, bools, vectors and
@@ -43,7 +43,7 @@ lambda or a shared global. Two tagged accesses of different classes never alias,
 other floating type) can be miscompiled; a program with no floating data has nothing to lose.
 The converter spells every C pointer cast as a `reinterpret`, which puts each converted shape in
 one of two groups (`probes/test_jit_tbaa.das`, `converter/tests/fixtures/p8_alias_safe.c` and
-`p8_alias_unsafe.c`, docs/probe-findings.md F94).
+`p8_alias_unsafe.c`, docs/probe-findings.md F95).
 
 Shapes the model keeps right with its tags on:
 
@@ -76,3 +76,14 @@ what the C program means:
 Both are strict-aliasing violations in C, which a program compiled with `-fno-strict-aliasing`
 (Doom, Quake and most game code) is entitled to make; the interpreter never reorders by type,
 and the AOT host is compiled with `-fno-strict-aliasing` (section 5).
+
+The module holding `main` carries `options strict_aliasing = false` (`assemble_module`), so a
+converted program runs with no tags under `-jit` and `-exe`, as it does under the interpreter.
+The option sits in the root because daslang reads it from the root program alone: a required
+module's line is ignored, and the converted entry module is the root on every tier and harness
+(`run_tier`, perf, ports, the Lua and Doom runners). One line covers every module, where
+`[hint(no_strict_aliasing)]` would be one line per function. The sidecar's `strict_aliasing:
+true` drops the line and keeps the model, for a program whose C is clean under
+`-fstrict-aliasing`: none of the shapes above that the model misses, and a native build at `-O2`
+that prints what `-O0` prints. A program rooted in a hand-written module that requires converted
+ones carries the option in that root itself.

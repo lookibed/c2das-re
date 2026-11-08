@@ -29,8 +29,8 @@ let TYPE_FIELD = "converter/tests/fixtures/p7_type_edge"
 // the single layout's module of each fixture: the multi-TU link's text before the source layout
 // (P5.1b1), which the single layout keeps byte for byte, plus the C comments it carries (P7.0j) and
 // `options solid_context` (P7.0m)
-let TREE_SINGLE_SHA = "0c1db2444f152c2d1b496154d84f8fbb4886ad2520016b423ab9b660677d6efd"
-let TYPES_SINGLE_SHA = "7c329cf995fd03aaf142a6854dd9a3ab4ef3e07df257504022c5905690185fe4"
+let TREE_SINGLE_SHA = "d4de39c994d25808a30d5100af6aae0c4c126dbde8c8401eb210d3826f20aa5c"
+let TYPES_SINGLE_SHA = "a41aac0cfac7d93c798f966f2dac9b6ab4b27f5f4b39ba2935904704de3ba774"
 
 var work_root : string
 
@@ -339,6 +339,26 @@ def test_jit_whole_program(t : T?) {
         let plain <- converted_with(paths, "plain", "")
         t |> equal(plain.error, "")
         occurs(t, text_of("plain/out", "main.das"), "jit_split_modules", 0)
+    }
+    rmdir_rec(work_root)
+}
+
+[test]
+def test_strict_aliasing_entry(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_layout_strict_aliasing", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("by default the module holding `main`, and no other, turns the JIT's typed aliasing off, the root being where daslang reads it; the sidecar's `strict_aliasing: true` leaves every module without it, and the program prints what the native build prints") @(t : T?) {
+        let paths <- tree_paths()
+        let plain <- converted_with(paths, "plain", "")
+        t |> equal(plain.error, "")
+        let kept <- converted_with(paths, "kept", "\{\"strict_aliasing\": true\}\n")
+        t |> equal(kept.error, "")
+        for (rel in ["sub/shapes_h.das", "c_types.das", "ring_a.das", "sub/ring_b.das", "sub/solo.das", "main.das", "main_link.das"]) {
+            occurs(t, text_of("plain/out", rel), "\noptions strict_aliasing = false\n", rel == "main.das" ? 1 : 0)
+            occurs(t, text_of("kept/out", rel), "strict_aliasing", 0)
+        }
+        agrees(t, paths, kept.das_path, "jit", "alias_kept")
     }
     rmdir_rec(work_root)
 }
