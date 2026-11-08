@@ -85,6 +85,12 @@ def test_run_blit_lanes(t : T?) {
         t |> equal(blit?["interp-inline"]?["result"] ?? -1l, blit?["native"]?["result"] ?? -2l, out)
         t |> success(lane_argv(out, "blit/interp-inline") |> ends_with(" perf/work/blit/inline/blit.das"), out)
     }
+    t |> run("the interp-goto lane times the --switch-dispatch goto conversion and reproduces the native result") @(t : T?) {
+        let blit = js?["tests"]?["blit"]
+        t |> success((blit?["interp-goto"]?["time"] ?? 0.0lf) > 0.0lf, out)
+        t |> equal(blit?["interp-goto"]?["result"] ?? -1l, blit?["native"]?["result"] ?? -2l, out)
+        t |> success(lane_argv(out, "blit/interp-goto") |> ends_with(" perf/work/blit/goto/blit.das"), out)
+    }
     t |> run("first_member's interp-reinterpret lane runs the reinterpret spelling where interp runs addr(...)") @(t : T?) {
         let fm_results = path_join(dir, "first_member.json")
         var fm_out : string
