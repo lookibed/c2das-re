@@ -90,8 +90,9 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
     }
     measure_lane(cells, errors, name, "interp", das_lane_command(res.das_path, "", CONVERTED_MODULES), samples, oracle)
     // the same lane over the conversions under the non-default options, each in its own folder
-    for (lane, sub, param_writes, loops, first_member, switch_dispatch, inline_helpers in ["interp-copy", "interp-while", "interp-reinterpret", "interp-inline", "interp-goto"], ["copy", "while", "reinterpret", "inline", "goto"], ["copy", "", "", "", ""], ["", "while", "", "", ""], ["", "", "reinterpret", "", ""], ["", "", "", "", "goto"], [false, false, false, true, false]) {
-        let other <- convert(c_path, path_join(work, sub), "linux", "", "", param_writes, loops, first_member, switch_dispatch, false, "", "", inline_helpers)
+    for (sub, param_writes, loops, first_member, switch_dispatch, checks, past_end, inline_helpers in ["copy", "while", "reinterpret", "inline", "goto", "checks-off", "past-end-inline"], ["copy", "", "", "", "", "", ""], ["", "while", "", "", "", "", ""], ["", "", "reinterpret", "", "", "", ""], ["", "", "", "", "goto", "", ""], ["", "", "", "", "", "off", ""], ["", "", "", "", "", "", "inline"], [false, false, false, true, false, false, false]) {
+        let lane = "interp-{sub}"
+        let other <- convert(c_path, path_join(work, sub), "linux", "", "", param_writes, loops, first_member, switch_dispatch, false, checks, past_end, inline_helpers)
         if (other.ok) {
             measure_lane(cells, errors, name, lane, das_lane_command(other.das_path, "", CONVERTED_MODULES), samples, oracle)
         } else {

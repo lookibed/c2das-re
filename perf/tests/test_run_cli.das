@@ -73,9 +73,11 @@ def test_run_blit_lanes(t : T?) {
         t |> success(fread("perf/work/blit/blit.das") |> contains(" in range64(reps)"))
         t |> success(!(fread("perf/work/blit/while/blit.das") |> contains(" in range")))
     }
-    t |> run("the interp-reinterpret, interp-inline and interp-goto lanes time the --first-member reinterpret, --inline-helpers and --switch-dispatch goto conversions and reproduce the native result") @(t : T?) {
+    t |> run("the interp-reinterpret, interp-inline, interp-goto, interp-checks-off and interp-past-end-inline lanes time the --first-member reinterpret, --inline-helpers, --switch-dispatch goto, --checks off and --past-end inline conversions and reproduce the native result") @(t : T?) {
         let blit = js?["tests"]?["blit"]
-        for (sub in ["reinterpret", "inline", "goto"]) {
+        t |> success(fread("perf/work/blit/checks-off/blit.das") |> contains("[c_function, unsafe_deref, hint(unsafe_range_check)]\n"))
+        t |> success(!(fread("perf/work/blit/blit.das") |> contains("unsafe_deref")))
+        for (sub in ["reinterpret", "inline", "goto", "checks-off", "past-end-inline"]) {
             t |> success((blit?["interp-{sub}"]?["time"] ?? 0.0lf) > 0.0lf, out)
             t |> equal(blit?["interp-{sub}"]?["result"] ?? -1l, blit?["native"]?["result"] ?? -2l, out)
             t |> success(lane_argv(out, "blit/interp-{sub}") |> ends_with(" perf/work/blit/{sub}/blit.das"), out)
