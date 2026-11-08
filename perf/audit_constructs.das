@@ -92,76 +92,6 @@ def flag_chain(text : string; var error : string&) : string {
 
 let private ADDR_DEREF = "addr(deref("
 
-// what a closing parenthesis ends in `unwrap_addr_deref`'s scan
-enum private Paren {
-    plain
-    addr_call
-    deref_call
-}
-
-// whether `bytes` holds `word` at `at`
-def private holds_at(bytes : array<uint8>#; at : int; word : array<uint8>#) : bool {
-    if (at + length(word) > length(bytes)) {
-        return false
-    }
-    for (i in range(length(word))) {
-        if (bytes[at + i] != word[i]) {
-            return false
-        }
-    }
-    return true
-}
-
-//! Every `addr(deref(<pointer>))` as `(<pointer>)`: the address of what a pointer points at is the
-//! pointer. One pass over the bytes with a stack of open parentheses, so a nested one unwraps too.
-def unwrap_addr_deref(text : string; var error : string&) : string {
-    if (find(text, ADDR_DEREF) < 0) {
-        error = "no `{ADDR_DEREF}` in the converted module"
-        return ""
-    }
-    var out : string
-    peek_data(ADDR_DEREF) $(word) {
-        peek_data(text) $(bytes) {
-            out = unwrapped(bytes, word, error)
-        }
-    }
-    return empty(error) ? out : ""
-}
-
-// the scan of `unwrap_addr_deref` over the text's `bytes`, `word` the bytes of `ADDR_DEREF`
-def private unwrapped(bytes, word : array<uint8>#; var error : string&) : string {
-    var inscope stack : array<Paren>
-    return build_string() $(writer) {
-        var i = 0
-        while (i < length(bytes) && empty(error)) {
-            let c = int(bytes[i])
-            if (holds_at(bytes, i, word)) {
-                write_char(writer, '(')
-                stack |> push_from([Paren.addr_call, Paren.deref_call])
-                i += length(word)
-                continue
-            }
-            if (c == '(') {
-                stack |> push(Paren.plain)
-            } elif (c == ')' && !empty(stack)) {
-                let top = stack |> back()
-                stack |> pop()
-                if (top == Paren.deref_call) {
-                    if (i + 1 >= length(bytes) || int(bytes[i + 1]) != ')') {
-                        error = "an unbalanced `{ADDR_DEREF}` before byte {i}"
-                    }
-                    stack |> pop()
-                    write_char(writer, ')')
-                    i += 2
-                    continue
-                }
-            }
-            write_char(writer, c)
-            i++
-        }
-    }
-}
-
 def private union_members(text : string; var error : string&) : string {
     return replaced_all(text, [(old = "addr(reinterpret<GCUnion?>(v.value_.gc).h)", by = "reinterpret<Table?>(v.value_.gc)"),
                                (old = "addr(reinterpret<GCUnion?>(v.value_.gc).cl)", by = "reinterpret<Closure?>(v.value_.gc)")], error)
@@ -234,11 +164,18 @@ def private trampoline(text : string; var error : string&) : string => replaced(
 def private no_try(text : string; var error : string&) : string => replaced(text, FLAT_TRY, NO_TRY, error)
 
 def private inlined_call(text : string; var error : string&) : string {
-    let body = "let key_r = (key + int64(r)) % int64(70)\n                var v : int64? = uint64(key_r) - uint64(1u) < uint64(t.alimit) ? addr(deref(t._c_array + (key_r - int64(1)))) : null"
+    let body = "let key_r = (key + int64(r)) % int64(70)\n                var v : int64? = uint64(key_r) - uint64(1u) < uint64(t.alimit) ? addr(t._c_array[key_r - int64(1)]) : null"
     return replaced(text, "var v : int64? = small_call__luaH_getint(t, (key + int64(r)) % int64(70))", body, error)
 }
 
-def private byte_read(text : string; var error : string&) : string => replaced(text, "uint(uint8(deref(str + (l - uint64(1)))))", "uint(deref(str + (l - uint64(1))))", error)
+def private byte_read(text : string; var error : string&) : string => replaced(text, "uint(uint8(str[l - uint64(1)]))", "uint(str[l - uint64(1)])", error)
+
+// the pointer subscripts before P7.0v: the converter writes das's pointer index `addr(p[i])` since,
+// so the rewrite restores `addr(deref(p + i))` and the row's factor is the inverse of its cost
+def private deref_sums(text : string; var error : string&) : string {
+    return replaced_all(text, [(old = "addr(t.node[int(h * 2654435761u & (1u << uint(int(t.lsizenode))) - uint(1))])", by = "addr(deref(t.node + int(h * 2654435761u & (1u << uint(int(t.lsizenode))) - uint(1))))"),
+                               (old = "addr(t._c_array[int64(h) % int64(t.alimit)])", by = "addr(deref(t._c_array + int64(h) % int64(t.alimit)))")], error)
+}
 
 def private enum_reinterpret(text : string; var error : string&) : string => replaced(text, "enum_from_int(type<OpCode>, int((enum_cast__code[pc] ^ uint(r)) & 7u))", "unsafe(reinterpret<OpCode>(int((enum_cast__code[pc] ^ uint(r)) & 7u)))", error)
 
@@ -258,7 +195,7 @@ def constructs : array<Construct> {
         Construct(name = "`_flag` switch chain", kernel = "dispatch_switch", spelling = "flag-chain", sites = "if (_cond ==", rewrite = @@flag_chain),
         Construct(name = "union member through `reinterpret<GCUnion?>`", kernel = "union_access", spelling = "member-cast", sites = "reinterpret<GCUnion?>(", rewrite = @@union_members),
         Construct(name = "`addr((p + i).f)` on a stack slot", kernel = "stack_ptr", spelling = "slot-cast", sites = "addr((", rewrite = @@slot_casts),
-        Construct(name = "`addr(deref(p + i))` indexing", kernel = "node_index", spelling = "pointer", sites = ADDR_DEREF, rewrite = @@unwrap_addr_deref),
+        Construct(name = "`addr(p[i])` against the former `addr(deref(p + i))`", kernel = "node_index", spelling = "deref-sum", sites = ADDR_DEREF, rewrite = @@deref_sums),
         Construct(name = "`enum_from_int` on the opcode", kernel = "enum_cast", spelling = "reinterpret", sites = "enum_from_int(", rewrite = @@enum_reinterpret),
         Construct(name = "macro mask arithmetic on `uint`", kernel = "instr_decode", spelling = "folded", sites = "~(~uint(0) <<", rewrite = @@folded_masks),
         Construct(name = "`int64(x != 0 ? 1 : 0) != 0` test", kernel = "trap_check", spelling = "expect-roundtrip", sites = "? 1 : 0) != 0", rewrite = @@expect_roundtrip),
@@ -266,7 +203,7 @@ def constructs : array<Construct> {
         Construct(name = "`setjmp` trampoline (`while (_sj_run)`)", kernel = "protected_call", spelling = "trampoline", sites = "\} recover \{", rewrite = @@trampoline),
         Construct(name = "`try`/`recover` itself", kernel = "protected_call", spelling = "no-try", sites = "\} recover \{", rewrite = @@no_try),
         Construct(name = "a call of a small function (`luaH_get*`)", kernel = "small_call", spelling = "inlined", sites = "luaH_get", rewrite = @@inlined_call),
-        Construct(name = "`uint8(deref(p + i))` byte read", kernel = "string_hash", spelling = "no-cast", sites = "uint8(deref(", rewrite = @@byte_read),
+        Construct(name = "`uint(uint8(p[i]))` byte read", kernel = "string_hash", spelling = "no-cast", sites = "uint(uint8(", rewrite = @@byte_read),
         Construct(name = "wrap casts `int64(uint64(a) op uint64(b))`", kernel = "wrap_cast", spelling = "wrap-casts", sites = "int64(uint64(", rewrite = @@wrap_casts),
         Construct(name = "`typeinfo sizeof` in a hot loop", kernel = "sizeof_scale", spelling = "literal", sites = "typeinfo sizeof", rewrite = @@literal_sizes)
     ]

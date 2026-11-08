@@ -280,7 +280,7 @@ def p2_fixtures(t : T?) {
         has_text(t, text, "int64(crt::strchr(addr(local[0]), ',') - addr(local[0]))")
         has_text(t, text, "deref(reinterpret<uint8?>(crt::memchr(reinterpret<void?>(p2_strings__greeting), 'e', uint64(5))))")
         has_text(t, text, "crt::atoi(addr(num[0])) + int(crt::atol(reinterpret<uint8?>(\"100\")))")
-        has_text(t, text, "deref(reinterpret<uint8?>(\"abcdef\") + 2)")
+        has_text(t, text, "reinterpret<uint8?>(\"abcdef\")[2]")
         has_text(t, text, "typeinfo sizeof(type<uint8[4]>)")
         has_text(t, text, "sprintf(addr(local[0]), reinterpret<uint8?>(\"%d-%s\"), 7, addr(p2_strings__buf[0]))")
         has_text(t, text, "crt::isdigit(int(num[0])) != 0")
@@ -334,7 +334,7 @@ def p2_enum_fixtures(t : T?) {
         has_text(t, text, "int(anon_18.L_A)\n}")
         has_text(t, text, "var same : color = c")
         has_text(t, text, "var fromd : color = enum_from_int(type<color>, int(d))")
-        has_text(t, text, "deref(p + int(t))")
+        has_text(t, text, "p[int(t)]")
         has_text(t, text, "fixed_array(neg.N_HIGH, enum_from_int(type<neg>, 0))")
     }
     t |> run("enums the dumper refuses, each with a located message naming the construct") @(t : T?) {
@@ -421,7 +421,7 @@ def p2_marshal_fixtures(t : T?) {
         has_text(t, text, "def ptr_node_t_bbox(bytes : uint8?; ofs : int) : int16[4]? \{\n    return reinterpret<int16[4]?>(bytes + (ofs + 2))\n")
         has_text(t, text, "memcpy(reinterpret<void?>(addr(r.bbox)), reinterpret<void?>(bytes + (ofs + 2)), 16)")
         each_marshal_tier(t, "p2_marshal_rows")
-        has_text(t, text, "total += int(deref(ptr_node_t_bbox(nodes + i * 22, 0) + j)[k]) * (k + 1)")
+        has_text(t, text, "total += int(ptr_node_t_bbox(nodes + i * 22, 0)[j][k]) * (k + 1)")
         t |> equal(text |> find("read_node_t_bbox") < 0, true, "an array field keeps a copying reader:\n{text}")
     }
 }
@@ -448,7 +448,12 @@ def p6_pointer_fixtures(t : T?) {
         has_text(t, text, "var ip : int? = addr(p6_commuted_sum__ia[0]) + 1\n")
         has_text(t, text, "var sp : uint8? = addr(p6_commuted_sum__cs[0]) + i\n")
         has_text(t, text, "var rp : rec_t? = addr(p6_commuted_sum__states[0]) + n\n")
-        has_text(t, text, "deref(addr(p6_commuted_sum__cs[0]) + u)")
+        has_text(t, text, "addr(p6_commuted_sum__cs[0])[u]")
+        // `*(p + i)` and `*(i + p)` are das's pointer index; a marshal-only record's is its reader, a difference the sum
+        has_text(t, text, "deref(ip), addr(p6_commuted_sum__ia[0])[i], int(deref(sp))")
+        has_text(t, text, "printf(reinterpret<uint8?>(\"%d %d\\n\"), addr(p6_commuted_sum__ia[0])[i], int(addr(p6_commuted_sum__cs[0])[u]))")
+        has_text(t, text, "var whole : cell_t = read_cell_t(cp + 2 * 3, 0)")
+        has_text(t, text, "deref(addr(p6_commuted_sum__ia[0]) + 5 + -(i))")
         has_text(t, text, "var third : uint8? = cp + 2 * 3\n")
         has_text(t, text, "read_cell_t_v(cp + 1 * 3 + 1 * 3, 0)")
         // p_pspr.c's state offset, an enum plus a pointer less a pointer, converted to the enum
@@ -490,26 +495,26 @@ def p6_marshal_fixtures(t : T?) {
         has_text(t, text, "def ptr_lump_t_name(bytes : uint8?; ofs : int) : uint8? \{\n    return reinterpret<uint8?>(bytes + (ofs + 1))\n")
         has_text(t, text, "def ptr_pic_t_columnofs(bytes : uint8?; ofs : int) : int? \{")
         // a store into an element, `op=` and a step
-        has_text(t, text, "deref(ptr_lump_t_name(l, 0) + i) = uint8('a' + i)")
-        has_text(t, text, "deref(ptr_lump_t_name(l + 1 * 25, 0) + 1) = uint8(int(deref(ptr_lump_t_name(l + 1 * 25, 0) + 1)) + 1)")
-        has_text(t, text, "deref(ptr_lump_t_name(l, 0) + 6) = uint8(uint(deref(ptr_lump_t_name(l, 0) + 6)) + 1)")
+        has_text(t, text, "ptr_lump_t_name(l, 0)[i] = uint8('a' + i)")
+        has_text(t, text, "ptr_lump_t_name(l + 1 * 25, 0)[1] = uint8(int(ptr_lump_t_name(l + 1 * 25, 0)[1]) + 1)")
+        has_text(t, text, "ptr_lump_t_name(l, 0)[6] = uint8(uint(ptr_lump_t_name(l, 0)[6]) + 1)")
         // a target with an effect is pinned once
-        has_text(t, text, "deref(ptr_lump_t_name(_t0, 0) + 2) = uint8(int(deref(ptr_lump_t_name(_t0, 0) + 2)) + 1)")
-        has_text(t, text, "deref(ptr_lump_t_bbox(_t1, 0) + 0)[0] = int16(int(deref(ptr_lump_t_bbox(_t1, 0) + 0)[0]) + 1)")
+        has_text(t, text, "ptr_lump_t_name(_t0, 0)[2] = uint8(int(ptr_lump_t_name(_t0, 0)[2]) + 1)")
+        has_text(t, text, "ptr_lump_t_bbox(_t1, 0)[0][0] = int16(int(ptr_lump_t_bbox(_t1, 0)[0][0]) + 1)")
         // the decay, walked and stored through, passed, and of a 2-D field
         has_text(t, text, "walk = ptr_lump_t_name(l, 0)\n")
         has_text(t, text, "deref(walk) = uint8('B')")
         has_text(t, text, "p6_marshal_lvalues__name_sum(ptr_lump_t_name(l, 0))")
         has_text(t, text, "rows = ptr_lump_t_bbox(l, 0)\n")
-        has_text(t, text, "deref(ptr_lump_t_bbox(l, 0) + i / 3)[i % 3] = int16(100 * i)")
+        has_text(t, text, "ptr_lump_t_bbox(l, 0)[i / 3][i % 3] = int16(100 * i)")
         // the address of an element, of an element of a row, and of the field
         has_text(t, text, "var col : int? = ptr_pic_t_columnofs(pic, 0) + 2")
-        has_text(t, text, "cell = addr(deref(ptr_lump_t_bbox(l, 0) + 1)[2])")
+        has_text(t, text, "cell = addr(ptr_lump_t_bbox(l, 0)[1][2])")
         has_text(t, text, "whole = reinterpret<uint8[8]?>(ptr_lump_t_name(l, 0))")
         has_text(t, text, "ptr_lump_t_name(l, 0) + 8 - ptr_lump_t_name(l, 0)")
         // a `const` field, and an over-indexed trailing one read past its length
-        has_text(t, text, "deref(ptr_lump_t_code(l, 0) + 2) = uint8('q')")
-        has_text(t, text, "deref(ptr_pic_t_columnofs(pic, 0) + i) = 10 * (i + 1)")
+        has_text(t, text, "ptr_lump_t_code(l, 0)[2] = uint8('q')")
+        has_text(t, text, "ptr_pic_t_columnofs(pic, 0)[i] = 10 * (i + 1)")
     }
     t |> run("marshal: a record field and an array-of-records field are the inner record's bytes through `ptr_T_f`, read, stored, addressed and copied whole") @(t : T?) {
         var text : string
@@ -551,7 +556,7 @@ def p6_marshal_fixtures(t : T?) {
         rejects(t, "marshal_addr", "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nint main(void) \{ disk_t d; disk_t *p = &d; return p->w; \}\n", "address of a value of the marshal-only record", "\{ \"marshal\": [\"disk_t\"] \}\n")
         let rows = "#pragma pack(1)\ntypedef struct \{ short x; short bbox[2][4]; \} node_t;\n#pragma pack()\nstatic unsigned char lump[2 * 18];\n"
         let row = converts(t, "marshal_row_pointer", rows + "int main(void) \{ node_t *n = (node_t *) lump; short *row = n[1].bbox[1]; row[0] = 9; return row[0]; \}\n", "\{ \"marshal\": [\"node_t\"] \}\n")
-        has_text(t, row, "var row : int16? = addr(deref(ptr_node_t_bbox(n + 1 * 18, 0) + 1)[0])")
+        has_text(t, row, "var row : int16? = addr(ptr_node_t_bbox(n + 1 * 18, 0)[1][0])")
         let use_out = "static unsigned char lump[64];\nint main(void) \{ out_t *o = (out_t *) lump; return o->x; \}\n"
         let in_t = "#pragma pack(1)\ntypedef struct \{ short a; \} in_t;\n"
         rejects(t, "marshal_record_field", "typedef struct \{ short a; \} in_t;\n#pragma pack(1)\ntypedef struct \{ short x; in_t rows[2]; \} out_t;\n#pragma pack()\n{use_out}", "field `out_t.rows` of a marshal-only record holds the record `in_t`, which is not listed under `marshal`", "\{ \"marshal\": [\"out_t\"] \}\n")
@@ -571,9 +576,9 @@ def p3_fixtures(t : T?) {
         has_text(t, text, "let _cond = x\n    if (_cond == 1) \{\n        r = 10\n    \} elif (_cond == 2 || _cond == 3) \{\n        r = 20\n    \} elif (_cond == -4) \{")
         has_text(t, text, "if (_cond == 1u) \{\n        return 1\n    \} elif (_cond == 7u) \{\n        return 7\n    \} else \{\n        return 99")
         has_text(t, text, "let _cond = t\n    if (_cond == mobjtype_t.MT_PLAYER) \{")
-        has_text(t, text, "_flag ||= _cond == 5\n        if (_flag) \{\n            let _t1 = n\n            n++\n            deref(trace + _t1) = 5\n        \}\n        _flag ||= _cond == 9")
+        has_text(t, text, "_flag ||= _cond == 5\n        if (_flag) \{\n            let _t1 = n\n            n++\n            trace[_t1] = 5\n        \}\n        _flag ||= _cond == 9")
         // a case neither a fall-through nor a goto enters tests its labels alone
-        has_text(t, text, "        var _flag = false\n        if (_cond == 1) \{\n            let _t0 = n\n            n++\n            deref(trace + _t0) = 1\n            break\n        \}\n        _flag ||= _cond == 5\n")
+        has_text(t, text, "        var _flag = false\n        if (_cond == 1) \{\n            let _t0 = n\n            n++\n            trace[_t0] = 1\n            break\n        \}\n        _flag ||= _cond == 5\n")
         has_text(t, text, "        if (!(_cond == 1 || _cond == 5 || _cond == 9)) \{\n")
         // a plain `default` between a fall-through pair and a plain case
         has_text(t, text, "            break\n        \}\n        if (!(_cond == 1 || _cond == 2 || _cond == 3)) \{\n            r += 50\n            break\n        \}\n        if (_cond == 3) \{\n            r += 300\n")
@@ -789,10 +794,10 @@ def p4_layout_leftovers(t : T?) {
         has_text(t, text, "    p4_layout_leftovers__gpun.f0 = -3\n")
         has_text(t, text, "a.f0 = a.f0 + 1\n    a.f0 = a.f0 + 3\n    a.f0 = a.f0 - 1\n")
         has_text(t, text, "pin.u.f0 = pin.u.f0 - 1\n")
-        has_text(t, text, "deref(p + 2).bf.a = deref(p + 2).bf.a + 1u\n")
-        has_text(t, text, "deref(p + 2).u.s = deref(p + 2).u.s + 1u\n")
-        has_text(t, text, "deref(p + 2).bf.b = deref(p + 2).bf.b + 3\n")
-        has_text(t, text, "deref(p + 1).u.s = deref(p + 1).u.s | 2\n")
+        has_text(t, text, "p[2].bf.a = p[2].bf.a + 1u\n")
+        has_text(t, text, "p[2].u.s = p[2].u.s + 1u\n")
+        has_text(t, text, "p[2].bf.b = p[2].bf.b + 3\n")
+        has_text(t, text, "p[1].u.s = p[1].u.s | 2\n")
         has_text(t, text, "[c_bitfields(_bits0 = \"uint8[6]\", a = 3, b = 40)]\nstruct WideJoin \{")
         has_text(t, text, "[c_bitfields(_bits0 = \"uint8[3]\", a = 12, b = 12, _bits1 = \"uint\", d = 7, e = 20)]\nstruct SplitJoin \{")
         has_text(t, text, "[c_bitfields(_bits0 = \"uint8[2]\", a = 9)]\nstruct ZeroSkip \{\n    c : uint8\n    a : uint\n    _pad0 : uint8[1]\n    d : uint8\n    _pad1 : uint8[3]\n\}")
@@ -1174,7 +1179,7 @@ def p4_csmith_fixtures(t : T?) {
         has_text(t, text, "for (i3 in range(1, 3)) \{")
         // das indexes by `int`, `int64`, `uint` or `uint64` alone (F43)
         has_text(t, text, "p4_csmith_scopes__g[int(k)] + p4_csmith_scopes__g[int(m)] + p4_csmith_scopes__g[int(n)]")
-        has_text(t, text, "def private p4_csmith_scopes__at(var p : int?; c : uint8) : int \{\n    return deref(p + int(c))")
+        has_text(t, text, "def private p4_csmith_scopes__at(var p : int?; c : uint8) : int \{\n    return p[int(c)]")
     }
 }
 
@@ -1248,7 +1253,7 @@ def p4_csmith_more_fixtures(t : T?) {
         has_text(t, far, "return addr(int64_index__a[1000000000000000000l])")
         // a string literal's address is through its pointer, never the decayed array
         let literal = converts(t, "literal_address", "static const char *at(int k) \{ return &\"abcdef\"[k]; \}\nint main(void) \{ return at(6) - at(0) - 6; \}\n")
-        has_text(t, literal, "return addr(deref(reinterpret<uint8?>(\"abcdef\") + k))")
+        has_text(t, literal, "return addr(reinterpret<uint8?>(\"abcdef\")[k])")
     }
 }
 
@@ -1282,7 +1287,7 @@ def p4_scope_fidelity_fixtures(t : T?) {
         has_text(t, text, "    deref(_t2) = deref(_t3)\n    if (deref(_t2) != 0) \{\n")
         has_text(t, text, "    a[_t6] = 9\n    var got : int = a[_t6]\n")
         // a bitfield's getter and setter, spelled apart (F52), share the pinned index
-        has_text(t, text, "    let _t0 = p4_scope_fidelity__pick(1)\n    deref(p + _t0).bf = uint(int(deref(p + _t0).bf) + 5)\n")
+        has_text(t, text, "    let _t0 = p4_scope_fidelity__pick(1)\n    p[_t0].bf = uint(int(p[_t0].bf) + 5)\n")
         has_text(t, text, "    bytes[_t3] = int8(int(bytes[_t3]) + 7)\n")
         // a target spelled by a variable's own name is pinned too: a call later in the
         // statement changes the variable
@@ -1467,10 +1472,10 @@ def p6_padded_fixture(t : T?) {
     t |> run("a sidecar-listed padded array reaches the members beside it, unchecked") @(t : T?) {
         var text : string
         check_fixture(t, "p6_padded", text)
-        has_text(t, text, "deref(addr(pl.top[0]) + (pl.minx - 1)) = uint8(77)")
-        has_text(t, text, "deref(addr(pl.bottom[0]) + 8) = uint8(6)")
-        has_text(t, text, "sum += int(deref(addr(pl.top[0]) + (x - 1))) + int(deref(addr(pl.bottom[0]) + (x - 1)))")
-        has_text(t, text, "deref(addr(c.clip[0]) + k) = int16(int(deref(addr(c.clip[0]) + k)) + 1000)")
+        has_text(t, text, "addr(pl.top[0])[pl.minx - 1] = uint8(77)")
+        has_text(t, text, "addr(pl.bottom[0])[8] = uint8(6)")
+        has_text(t, text, "sum += int(addr(pl.top[0])[x - 1]) + int(addr(pl.bottom[0])[x - 1])")
+        has_text(t, text, "addr(c.clip[0])[k] = int16(int(addr(c.clip[0])[k]) + 1000)")
         has_text(t, text, "pl.shade[2] = uint8(1)")
     }
 }
@@ -1494,12 +1499,12 @@ def p4_matrix_leftover_shapes(t : T?) {
         var text : string
         check_fixture(t, "p4_flexible", text)
         has_text(t, text, "struct samples \{\n    n : int\n\}\n")
-        has_text(t, text, "deref(reinterpret<int?>(reinterpret<uint8?>(s) + 4) + i) = i * i")
-        has_text(t, text, "deref(reinterpret<int?>(reinterpret<uint8?>(s) + 4) + 0) += 100")
+        has_text(t, text, "reinterpret<int?>(reinterpret<uint8?>(s) + 4)[i] = i * i")
+        has_text(t, text, "reinterpret<int?>(reinterpret<uint8?>(s) + 4)[0] += 100")
         has_text(t, text, "var row : int? = reinterpret<int?>(reinterpret<uint8?>(s) + 4)")
         has_text(t, text, "struct patch \{\n    width, height : int16\n    columnofs : int[8]\n\}\n")
-        has_text(t, text, "deref(addr(p.columnofs[0]) + x) = 1000 + x")
-        has_text(t, text, "var col : int? = addr(deref(addr(p.columnofs[0]) + (width - 1)))")
+        has_text(t, text, "addr(p.columnofs[0])[x] = 1000 + x")
+        has_text(t, text, "var col : int? = addr(addr(p.columnofs[0])[width - 1])")
     }
     t |> run("a flexible array member of a record value decays from the record's address") @(t : T?) {
         let value = converts(t, "flexible_value", "struct S \{ int n; int d[]; \};\nstatic int first(struct S *p) \{ struct S s = *p; int *q = s.d; return s.n + (q == 0); \}\nint main(void) \{ struct S s = \{ 2 \}; return first(&s) - 2; \}\n")
@@ -1723,7 +1728,7 @@ def p5_lua_library_fixtures(t : T?) {
         has_text(t, text, "static_assert(typeinfo offsetof < decimal_point > (type<lconv>) == 0")
         has_text(t, text, "    stm = reinterpret<tm?>(crt::gmtime(addr(t)))\n")
         has_text(t, text, "crt::mktime(reinterpret<void?>(addr(ts)))")
-        has_text(t, text, "deref(reinterpret<lconv?>(crt::localeconv()).decimal_point + 0)")
+        has_text(t, text, "reinterpret<lconv?>(crt::localeconv()).decimal_point[0]")
         has_text(t, text, "crt::time(null)")
         // signal keeps the handler and returns the one before; SIG_DFL is the null function value
         has_text(t, text, "    var prev : function<(a0 : int) : void> = c_signal(2, @@p5_lua_stdio__laction)\n")
@@ -1949,9 +1954,9 @@ def p5_lua_review_fixtures(t : T?) {
         // a goto to such a label from its own case re-dispatches too
         has_text(t, text, "            if (_t0 > 0) \{\n                _goto = 1\n                _cond = 0\n                goto label 1\n")
         // a parameter and a local named like a standard stream are the program's
-        has_text(t, text, "    while (deref(stdin + n) != 0) \{\n")
+        has_text(t, text, "    while (stdin[n] != 0) \{\n")
         has_text(t, text, "    var stderr : uint8? = reinterpret<uint8?>(\"hello\")\n")
-        has_text(t, text, "int(deref(stderr + 1))")
+        has_text(t, text, "int(stderr[1])")
         // setvbuf takes c_exit, which flushes the streams while the program's buffer lives
         has_text(t, text, "require c_runtime/c_exit\n")
         // a label stands on c_label_end() before a statement the optimizer folds
@@ -2113,8 +2118,8 @@ def p7_fixtures(t : T?) {
         has_text(t, text, "    x += (a < b ? 1 : 0)\n    x |= (!(a != 0) ? 1 : 0)\n    x *= (a != 0 && b != 0 ? 1 : 0)\n    d += double(a > b ? 1 : 0)\n    var _cl0 : int[2] = fixed_array(7, 8)\n    x += deref(addr(_cl0[0]))\n")
         t |> equal(text |> find("_cl1") < 0, true, text)
         // a bitfield and a `[c_union]` member keep the plain store (F52)
-        has_text(t, text, "    deref(p + 2).bf.b = uint(int(deref(p + 2).bf.b) + 3)\n    deref(p + 2).bf.c = deref(p + 2).bf.c + uint(3)\n")
-        has_text(t, text, "    deref(pu + 1).i = deref(pu + 1).i + 5\n")
+        has_text(t, text, "    p[2].bf.b = uint(int(p[2].bf.b) + 3)\n    p[2].bf.c = p[2].bf.c + uint(3)\n")
+        has_text(t, text, "    pu[1].i = pu[1].i + 5\n")
         has_text(t, text, "    var s : int = a + b\n    var t : int = a - b\n    var w : int64 = p + q\n    var m : uint = uint(a) * uint(b)\n")
         has_text(t, text, "    cur += b\n")
         // a small integer's sum is no wrapping pair; a truth value in one is the int
@@ -2187,7 +2192,7 @@ def p7_fused_loop_fixtures(t : T?) {
         // `break`, a switch's `continue`, an `if` arm: the loop keeps its `while` form
         has_text(t, text, "        i = 0\n        var _f = false\n")
         has_text(t, text, "        while (i < n) \{\n            t += deref(p)\n")
-        has_text(t, text, "        while (i < n) \{\n            if (deref(a + i) == 2) \{\n")
+        has_text(t, text, "        while (i < n) \{\n            if (a[i] == 2) \{\n")
         has_text(t, text, "        t += i\n        \{\n            i = 0\n            while (i < n) \{\n                t++\n                i++\n            \}\n        \}\n    \}\n")
         has_text(t, text, "        while (i < n) \{\n            t++\n            i++\n        \}\n    \}\n    while (true) \{\n        if (t > 2) \{\n")
         has_text(t, text, "            \}\n        \}\n        let _cond = k\n")
@@ -2255,7 +2260,7 @@ def p7_first_member_fixtures(t : T?) {
         has_text(t, text, "    return addr((base + a).val)\n")
         has_text(t, text, "    return addr(reinterpret<GCUnion?>(o).h)\n")
         has_text(t, text, "    return addr(reinterpret<Cell?>(ip).i)\n")
-        has_text(t, text, "    return addr(deref(p + i).a)\n")
+        has_text(t, text, "    return addr(p[i].a)\n")
         has_text(t, text, "    return addr(r.cells[0])\n")
         has_text(t, text, "    var all : int[4]? = addr(rp.cells)\n")
         t |> equal(text |> find("reinterpret<int?>(") < 0, true, text)
@@ -2563,7 +2568,7 @@ def p7_readable_fixtures(t : T?) {
         has_text(t, text, "int(deref(p)) != 0")
         has_text(t, text, "'\\t', p7_chars__kind('&'), 127)")
         has_text(t, text, "'7' - '0'")
-        has_text(t, text, "var digit : int = int(deref(fmt + 0)) == 'a' ? '7' - '0' : 0")
+        has_text(t, text, "var digit : int = int(fmt[0]) == 'a' ? '7' - '0' : 0")
         has_text(t, text, "\"), 255, 24930, 'x', digit)")
     }
     t |> run("the C comments land as `//` lines above the statement of their line, a block comment line by line") @(t : T?) {

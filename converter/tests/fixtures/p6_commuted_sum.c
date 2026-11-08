@@ -30,6 +30,9 @@ int main(void) {
     printf("%d %d %c %c %d\n", *ip, *(i + ia), *sp, *(u + cs), (int) (rp - states));
     printf("%d %c %d\n", (1 + cp + 1)->v, cells[2 * 3], (int) (third - cp));
     printf("%d %d\n", *(ia + i), *(cs + u));
+    /* a dereferenced sum is the pointer index but for a marshal-only record's pointer or a difference */
+    cell_t whole = *(cp + 2);
+    printf("%d %d\n", whole.v, *(ia + 5 - i));
     /* p_pspr.c: the state an enum offset past another, converted back to the enum */
     set(info.flash + psp.state - &states[S_A]);
     printf("%d\n", (int) last);
