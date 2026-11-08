@@ -79,10 +79,13 @@ struct Sidecar {
     // whether the entry module pins the cached JIT's build to one unit (`options
     // jit_split_modules = 0`, the piece `c_runtime/c_jit_build`), keeping inlining across modules
     jit_whole_program : bool = false
+    // whether a direct call of a pure `static` helper (`return <expr>` or the clamp shape over
+    // integer and floating parameters) is spelled as the helper's expression at the call site
+    inline_helpers : bool = false
 }
 
 //! The keys a sidecar may hold; any other is refused naming it.
-let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks", "jit_whole_program", "past_end"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks", "jit_whole_program", "past_end", "inline_helpers"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -421,6 +424,7 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
     }
     read_flag(js, path, "solid_context", side.solid_context, error)
     read_flag(js, path, "jit_whole_program", side.jit_whole_program, error)
+    read_flag(js, path, "inline_helpers", side.inline_helpers, error)
     read_inputs(js, path, side, error)
     read_members(js, path, "over_indexed", side.over_indexed, error)
     read_members(js, path, "padded", side.padded, error)

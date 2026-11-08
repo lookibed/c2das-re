@@ -331,6 +331,37 @@ def test_cli_solid_context(t : T?) {
 }
 
 [test]
+def test_cli_inline_helpers(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_cli_inline_helpers", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("a pure helper's call stays by default and is its expression with --inline-helpers, as with the sidecar's inline_helpers") @(t : T?) {
+        let sidecar = path_join(dir, "inline.c2das")
+        fwrite(sidecar, "\{\"inline_helpers\": true\}\n")
+        for (how in ["default", "flag", "sidecar"]) {
+            let at = path_join(dir, how)
+            var out : string
+            var inscope argv <- daslang_cmd(CONVERTED_MODULES)
+            argv |> push_from(["converter/main.das", "--", "converter/tests/fixtures/p7_inline_helpers.c", "--out", at, "--target", "linux"])
+            if (how == "flag") {
+                argv |> push("--inline-helpers")
+            } elif (how == "sidecar") {
+                argv |> push_from(["--sidecar", sidecar])
+            }
+            t |> equal(run_and_capture(argv, out, 300.0), 0, out)
+            let text = fread(path_join(at, "p7_inline_helpers.das"))
+            let inlined = text |> contains("    buf[0] = uint8(i > 255 ? 255 : (i < 0 ? 0 : i))\n")
+            t |> equal(inlined, how != "default", text)
+            t |> equal(text |> contains("    buf[0] = p7_inline_helpers__clamp8(i)\n"), how == "default", text)
+        }
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_cli_program_args(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_cli_args", dir_error)

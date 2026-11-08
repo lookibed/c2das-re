@@ -190,6 +190,18 @@ def test_end_index(t : T?) {
 }
 
 [test]
+def test_inline_helpers(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_inline_helpers", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure(dir_error)
+        return
+    }
+    p7_inline_helpers_fixtures(t)
+    rmdir_rec(work_root)
+}
+
+[test]
 def test_crt_writes(t : T?) {
     var dir_error : string
     work_root = create_temp_directory("c2das_crt_writes", dir_error)
@@ -2777,6 +2789,58 @@ def p7_empty_case_fixtures(t : T?) {
         has_text(t, jumped.das_text, "        label 1:  // case 0\n        label 2:  // case 1\n        if (_cond == 0 || _cond == 1) \{\n")
         for (tier in ["interp", "jit"]) {
             t |> equal(run_tier(jumped.das_path, tier, path_join(work_root, "empty_case_dense_{tier}"), out, CONVERTED_MODULES), 0, "{tier}: {out}")
+        }
+    }
+}
+
+// P7.0w: the pure `static` helpers under `inline_helpers`
+def p7_inline_helpers_fixtures(t : T?) {
+    t |> run("pure helpers by default: every call stays; as natively under interp") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_inline_helpers", text)
+        has_text(t, text, "    buf[0] = p7_inline_helpers__clamp8(i)\n")
+        has_text(t, text, "p7_inline_helpers__sum_sq(k, i)")
+        t |> equal(text |> find(" > 255 ? "), -1, text)
+    }
+    t |> run("pure helpers under inline_helpers: the expression at the site, arguments evaluated once; as natively under interp, jit, exe and aot") @(t : T?) {
+        let work = path_join(work_root, "p7_inline_helpers_on")
+        let res <- convert("{FIXTURES}/p7_inline_helpers.c", work, "linux", "", "", "", "", "", "", false, "", "", true)
+        t |> equal(res.ok, true, res.error)
+        let text = res.das_text
+        // the clamp is a chain of conditionals under the result's conversion; a plain argument is
+        // read in place, a compound one or one with an effect lands in a temporary first
+        has_text(t, text, "    buf[0] = uint8(i > 255 ? 255 : (i < 0 ? 0 : i))\n")
+        has_text(t, text, "    let _t0 = -5 + i - 400\n    buf[1] = uint8(_t0 > 255 ? 255 : (_t0 < 0 ? 0 : _t0))\n")
+        has_text(t, text, "    let _t1 = p7_inline_helpers__next() * 100\n    buf[2] = uint8(_t1 > 255 ? 255 : (_t1 < 0 ? 0 : _t1))\n")
+        // the argument crosses at the parameter's type
+        has_text(t, text, "    buf[3] = uint8(int(small) > 255 ? 255 : (int(small) < 0 ? 0 : int(small)))\n")
+        // a bare `else` ends the chain, an enumerator keeps its name
+        has_text(t, text, "(k > int(Lim.LIM_HI) ? int(Lim.LIM_HI) : (k < int(Lim.LIM_LO) ? int(Lim.LIM_LO) : k * 2))")
+        // `return <expr>` under its own conversions
+        has_text(t, text, "int(int64(int(small)) * int64(k << 16) >> 16l)")
+        has_text(t, text, "int(double(small) / double(2))")
+        has_text(t, text, "int((4000000000u + 500000000u) % 1000u)")
+        // a helper calling a helper: the inner call's argument, a sum the outer one reads as its
+        // parameter, takes a temporary when the inner body reads it twice
+        has_text(t, text, "    let _t5 = k + 1\n    let _t6 = k - 1\n")
+        has_text(t, text, "(k * k + i * i + k * k) + (_t5 * _t5 + _t6 * _t6 + _t5 * _t5)")
+        // an argument the body never reads still runs; a truth value as the `int` it is in C
+        has_text(t, text, "    let _t7 = p7_inline_helpers__next()\n    let _t8 = p7_inline_helpers__next()\n    s += (_t7 != 0 ? 1 : 2) + k + (k < i && i < 100 ? 1 : 0)\n")
+        // a conditional arm keeps a call that would need a temporary, and inlines a plain one
+        has_text(t, text, "    s += k > 1 ? p7_inline_helpers__sq(p7_inline_helpers__next()) : k * k\n")
+        has_text(t, text, "    s += k > 1 && k * k > 3 ? 1 : 0\n")
+        // a taken value, a global read, recursion and a pointer parameter keep their calls, and so
+        // does a call evaluated for its effect alone
+        has_text(t, text, "invoke(fp, 1) + p7_inline_helpers__taken(2) + p7_inline_helpers__reads_global(k) + p7_inline_helpers__fact(5) + p7_inline_helpers__deref(addr(k))")
+        has_text(t, text, "    p7_inline_helpers__clamp8(i)\n")
+        // the definitions stay
+        has_text(t, text, "def private p7_inline_helpers__clamp8(var n : int) : uint8 \{")
+        let want = native("p7_inline_helpers")
+        for (tier in ["interp", "jit", "exe", "aot"]) {
+            var out : string
+            let rc = run_tier(res.das_path, tier, path_join(work_root, "inline_helpers_{tier}"), out, CONVERTED_MODULES)
+            t |> equal(rc, want.rc, "{tier}: {out}")
+            t |> equal(out |> find(want.out) >= 0, true, "{tier}: {out}")
         }
     }
 }
