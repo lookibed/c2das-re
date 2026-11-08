@@ -607,6 +607,14 @@ def measured_at_line(sha, date : string; changed : bool) : string {
     return changed ? "{at}, output changed since: the converter changed between that commit and the one this directory was converted at; no new timing yet.\n\n" : "{at}.\n\n"
 }
 
+//! The line a compare project's table carries: the date its entry was measured, the commit that
+//! committed the capture holding it (the entries of one capture are measured on different dates),
+//! and that the output changed since when the converter changed after that date.
+def measured_on_line(date, capture_sha : string; changed : bool) : string {
+    let at = "Measured {date} (capture committed at c2das-re `{slice(capture_sha, 0, 12)}`)"
+    return changed ? "{at}, output changed since: the converter changed after that date; no new timing yet.\n\n" : "{at}.\n\n"
+}
+
 //! The notice of an upstream file that names its license by an SPDX line alone: the file's lines
 //! from the first through the first non-empty one after the `SPDX-License-Identifier` line (the
 //! author); "" when the file has no such line.

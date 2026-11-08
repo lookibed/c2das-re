@@ -918,8 +918,8 @@ def test_projects(t : T?) {
         t |> success(fread(path_join(clone, "binjgb/binjgb.c2das")) |> contains("\"defines\""))
         t |> success(readme |> contains("| binjgb | Ours | clang version 99 | 0.500000 | 8.00 |"), readme)
         t |> success(readme |> contains("## Readability criteria\n\n{PROJECT_CRITERIA_NOT_YET}\n"), readme)
-        // measured at the published commit: no label
-        t |> success(!(readme |> contains("Measured at c2das-re")), readme)
+        // no converter commit since the entry's date: its date and the capture's commit, no change
+        t |> success(readme |> contains("Measured 2026-11-06 22:11 UTC (capture committed at c2das-re `{slice(captured_at, 0, 12)}`).\n"), readme)
         t |> equal(git(clone, ["log", "-1", "--format=%s"]), "binjgb: regenerated from c2das-re v9.9.9-1-g{slice(captured_at, 0, 7)} ({captured_at})")
         // a later commit that leaves the converter as it was: the commit named, the output the same
         fwrite(path_join(root, "notes.txt"), "a note\n")
@@ -927,7 +927,7 @@ def test_projects(t : T?) {
         git(root, ["commit", "-q", "-m", "a note"])
         t |> equal(publish(root, ["--repo", clone, "--program", "binjgb"], out), 0, out)
         let same = fread(path_join(clone, "binjgb/README.md"))
-        t |> success(same |> contains("Measured at c2das-re `{slice(captured_at, 0, 12)}` (2026-11-06 22:11 UTC).\n"), same)
+        t |> success(same |> contains("Measured 2026-11-06 22:11 UTC (capture committed at c2das-re `{slice(captured_at, 0, 12)}`).\n"), same)
         t |> success(!(same |> contains("output changed since")), same)
         // a converter change after the capture: the output changed since
         mkdir_rec(path_join(root, "converter"))
@@ -936,7 +936,7 @@ def test_projects(t : T?) {
         git(root, ["commit", "-q", "-m", "converter"])
         t |> equal(publish(root, ["--repo", clone, "--program", "binjgb"], out), 0, out)
         let stale = fread(path_join(clone, "binjgb/README.md"))
-        t |> success(stale |> contains("Measured at c2das-re `{slice(captured_at, 0, 12)}` (2026-11-06 22:11 UTC), output changed since"), stale)
+        t |> success(stale |> contains("Measured 2026-11-06 22:11 UTC (capture committed at c2das-re `{slice(captured_at, 0, 12)}`), output changed since: the converter changed after that date"), stale)
         // wasm3 refuses whole; its files convert one by one, the refused one named
         t |> equal(publish(root, ["--repo", clone, "--program", "wasm3"], out), 0, out)
         let wasm3 = fread(path_join(clone, "wasm3/README.md"))

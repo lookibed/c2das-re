@@ -529,4 +529,8 @@ def test_project_notes(t : T?) {
         t |> equal(measured_at_line("0123456789abcdef", "2026-11-07", false), "Measured at c2das-re `0123456789ab` (2026-11-07).\n\n")
         t |> equal(measured_at_line("0123456789abcdef", "", true), "Measured at c2das-re `0123456789ab`, output changed since: the converter changed between that commit and the one this directory was converted at; no new timing yet.\n\n")
     }
+    t |> run("the measured-on line names the entry's date and the capture's commit, and the change only when the converter changed") @(t : T?) {
+        t |> equal(measured_on_line("2026-11-06 22:11 UTC", "0123456789abcdef", false), "Measured 2026-11-06 22:11 UTC (capture committed at c2das-re `0123456789ab`).\n\n")
+        t |> equal(measured_on_line("2026-11-06 22:11 UTC", "0123456789abcdef", true), "Measured 2026-11-06 22:11 UTC (capture committed at c2das-re `0123456789ab`), output changed since: the converter changed after that date; no new timing yet.\n\n")
+    }
 }
