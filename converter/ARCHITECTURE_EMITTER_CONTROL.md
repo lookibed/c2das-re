@@ -28,6 +28,16 @@ union's list, a sparse array) fails closed, since the stores rely on a zero a se
 the case would not give again; any other declaration keeps its branch's scope (F53). Computed
 goto (O6) is the opt-in below.
 
+### Cases that do nothing {#inert-cases}
+
+A group whose statements do nothing - a `;`, an expression statement with no effect and no volatile
+read (`((void)0)`, an `assert` under `NDEBUG`), a block of only those - falls into the next group
+with nothing on the way, so it joins that group's labels (`_cond == A || _cond == B`) and its
+fall-through is gone; a run of such groups joins the first group after it that acts. The rule
+covers case labels only: a group holding `default`, or followed by one, keeps its own branch, as
+does a group holding a C label, a declaration, a nested switch or any statement that acts. With no fall-through left, the switch
+is the if-chain; binjgb's CpuState switch, whose first case is an emptied `assert`, is one.
+
 ### Plain cases in the flag loop {#plain-cases}
 
 A group of the matched-flag loop that only its own labels enter - the group before it ends in a

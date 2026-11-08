@@ -174,6 +174,7 @@ def test_lowerings(t : T?) {
     p8_refusal_fixtures(t)
     p7_readable_fixtures(t)
     p7_goto_into_fixtures(t)
+    p7_empty_case_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -2737,5 +2738,35 @@ def p7_end_index_fixtures(t : T?) {
         has_text(t, text, "    return addr(end_index_casts__a[0]) + 4\n")
         // a floating cast between them is no integer cast: the value keeps the call
         has_text(t, text, "end_index(int64(double(4)), 4)")
+def p7_empty_case_fixtures(t : T?) {
+    t |> run("a case whose body does nothing joins the next case's labels; default, a C label, a declaration, a volatile read and a nested case label keep their forms") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_empty_case", text)
+        // an NDEBUG assert: the switch is the if-chain
+        has_text(t, text, "    let _cond = s\n    if (_cond == State.NORMAL || _cond == State.STOP) \{\n        r = 1\n    \} elif (_cond == State.IME) \{\n")
+        // a `;`, a discarded read and an empty block in a run join the first case that acts
+        has_text(t, text, "    let _cond = x\n    if (_cond == 1 || _cond == 2 || _cond == 3 || _cond == 4) \{\n        r = 4\n    \} elif (_cond == 5) \{\n")
+        // a default in either group, a label, a declaration, a volatile read: the flag form
+        has_text(t, text, "        _flag ||= _cond == 1\n        if (_flag) \{\n        \}\n        _flag ||= !(_cond == 1 || _cond == 2)\n")
+        has_text(t, text, "        _flag ||= !(_cond == 2 || _cond == 3)\n        if (_flag) \{\n        \}\n        _flag ||= _cond == 2\n")
+        has_text(t, text, "        _flag ||= _cond == 1\n        _flag ||= _goto == 1  // here\n")
+        has_text(t, text, "        _flag ||= _cond == 1\n        if (_flag) \{\n            \{\n                var k : int\n")
+        has_text(t, text, "        _flag ||= _cond == 1\n        if (_flag) \{\n            let _t0 = c_volatile_load(p7_empty_case__port)\n")
+        // a case label in a nested block: the switch spelled open
+        has_text(t, text, "    label 2:  // case 1\n    c_label_end()\n    label 3:  // case 2\n")
+        let want = native("p7_empty_case")
+        var out : string
+        t |> equal(run_tier(path_join(path_join(work_root, "p7_empty_case"), "p7_empty_case.das"), "jit", path_join(work_root, "empty_case_jit"), out, CONVERTED_MODULES), 0, out)
+        // the JIT's own log lines come first
+        t |> success(out |> ends_with(want.out), "jit: {out}\nnative: {want.out}")
+        // a dense switch the join leaves with no fall-through takes the jump table
+        let cases = join([for (v in range(1, 9)); "case {v}: return {v * 3};"], " ")
+        let dense = written_source("empty_case_dense", "empty_case_dense", "static int f(int x) \{ switch (x) \{ case 0: (void)0; {cases} \} return -1; \}\nint main(void) \{ return f(0) == 3 && f(8) == 24 && f(9) == -1 ? 0 : 1; \}\n", "")
+        let jumped <- convert(dense, path_join(work_root, "empty_case_dense_out"), "linux", "", "", "", "", "", "goto")
+        t |> equal(jumped.ok, true, jumped.error)
+        has_text(t, jumped.das_text, "        label 1:  // case 0\n        label 2:  // case 1\n        if (_cond == 0 || _cond == 1) \{\n")
+        for (tier in ["interp", "jit"]) {
+            t |> equal(run_tier(jumped.das_path, tier, path_join(work_root, "empty_case_dense_{tier}"), out, CONVERTED_MODULES), 0, "{tier}: {out}")
+        }
     }
 }
