@@ -88,7 +88,9 @@ is spelled open, as a goto into a body is (below), in place of the matched-flag 
 each goto is `goto label N`, so no `_gotoN`, no `_flag ||=` test and no restart is left; a switch
 both entered from outside and re-dispatched, which the default refuses, is lowered so too. Under the
 option an open switch dispatches through a table when two or more case values in `int`'s range fill
-at least half of [lo, hi] (`open_table`): `if (_cond < lo || _cond > hi) { goto label D }`, `goto
+at least half of [lo, hi] (`open_table`), each value taken as the subject's type holds it
+(`held_value`: the C-IR keeps an unsigned subject's `case -1` as -1, which the subject holds as its
+largest value, past `int`; `dispatch_plan` reads its values so too): `if (_cond < lo || _cond > hi) { goto label D }`, `goto
 _cond + (base - lo)`, case value `v` at `label base + v - lo:  // case v`, and `label D` at `default`
 with a `label K:  // no case v` before it for each value of [lo, hi] no case holds, or at the end
 when the switch has none; any other keeps the `if`/`elif` goto chain. switch_goto's `run_code` is so
@@ -96,7 +98,12 @@ a flat label CFG in its loop body, the Rust translation's form. An `if` with no 
 ends in `return` before a case label needs `guard_label_folds`'s `else` here too
 (lookibed/daScript#35); the guard reads the computed goto as a goto to every label of its table,
 since with `default` first, or a returning one, no `goto label` above the `if` names the labels after
-it (`probes/test_goto.das`, the flat label CFG). The default, `chain`, keeps the re-dispatch below:
+it (`probes/test_goto.das`, the flat label CFG), and a matched-flag switch's `if (_contN) { continue }`
+epilogue is marked like a C `if`, since it can stand right above a flat case label. A table whose
+`base - lo` is past `int` (cases from `INT_MIN`) jumps by `goto (_cond - (lo)) + base`, the value's
+distance from `lo`. The pass that renames hiding locals before emission plans the labels under the
+same option, so a case group's declaration that the flat switch moves to its parent's level is
+renamed past a later local of its name. The default, `chain`, keeps the re-dispatch below:
 the open form adds a label per case value and a goto per group, which ruling 36 prices as an
 opt-in's.
 

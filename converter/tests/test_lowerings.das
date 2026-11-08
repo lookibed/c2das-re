@@ -2907,7 +2907,7 @@ def p7_flat_case_fixtures(t : T?) {
         let res <- convert("{FIXTURES}/p7_flat_cases.c", path_join(work_root, "flat_cases"), "linux", "", "", "", "", "", "goto")
         t |> equal(res.ok, true, res.error)
         let text = res.das_text
-        t |> equal(text |> find("re-dispatch") < 0 && text |> find("_flag") < 0, true, text)
+        t |> equal(text |> find("re-dispatch") < 0 && text |> find("_goto") < 0, true, text)
         // switch_goto's loop: a bounds guard, the jump, a goto into another case's block to its C
         // label, the last group's goto from outside the switch, the end at the loop body's end
         has_text(t, text, "        let _cond = int(p7_flat_cases__code[_t0])\n        if (_cond < 0 || _cond > 4) \{\n            goto label 9\n        \}\n        goto _cond + 4\n        label 4:  // case 0\n")
@@ -2938,6 +2938,26 @@ def p7_flat_case_fixtures(t : T?) {
         // holes and no default in a switch inside another: each switch's own holes before its end
         has_text(t, text, "    label 9:  // no case 1\n    label 12:  // no case: switch end\n")
         has_text(t, text, "    label 4:  // no case 1\n    label 7:  // no case: switch end\n")
+        // an unsigned subject's `case -1` is its largest value, past `int`: no table, the open one's
+        // elif chain and the dense one's if-chain
+        for (fn in ["e1", "udense"]) {
+            let at = text |> find("def private p7_flat_cases__{fn}(")
+            let jump = text |> find("goto int(_cond)", at)
+            t |> success(at >= 0 && text |> find("if (_cond == -1u) \{\n", at) > at && (jump < 0 || jump > text |> find("\n\}\n", at)), fn)
+        }
+        // a table from INT_MIN jumps by the value's distance from it, open and dense
+        has_text(t, text, "    goto(_cond - (-2147483647 - 1)) + 2\n")
+        has_text(t, text, "        goto(_cond - (-2147483647 - 1)) + 1\n")
+        // below int: the elif chain
+        has_text(t, text, "    if (_cond == -3000000002l) \{\n        goto label 3\n")
+        // a nested switch's `continue` epilogue above a case label keeps an `else`
+        has_text(t, text, "        if (_cont2) \{\n            continue\n        \} else \{\n            c_label_end()\n        \}\n")
+        // no end label where no break reaches the end
+        let nb = text |> find("def private p7_flat_cases__no_break(")
+        let nb_end = text |> find("switch end", nb)
+        t |> success(nb >= 0 && (nb_end < 0 || nb_end > text |> find("\n\}\n", nb)), "no_break")
+        // a case group's declaration moved to the switch's level is renamed past a later block's
+        has_text(t, text, "    var k1 : int = r + 3\n")
         // a switch a goto enters from outside and a goto from another case re-dispatches
         has_text(t, text, "    if (k != 0) \{\n        goto label 1\n    \}\n    let _cond = x\n")
         for (tier in ["interp", "jit"]) {
