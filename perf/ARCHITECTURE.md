@@ -60,9 +60,9 @@ exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
 - `run.das` - the harness, by one of two methods (`--method`, section 6). By the default one it
   composes each kernel (`perf_compose.das`), builds the native lane
   with the pinned clang at `-O3 -funsigned-char` (dasProfile's Release build gives its C++
-  kernels `-O3`, and the lane follows its method), converts the same file through `converter/pipeline.das` (six times: the second under
+  kernels `-O3`, and the lane follows its method), converts the same file through `converter/pipeline.das` (eight times: the second under
   `--param-writes copy` for the `interp-copy` lane, the third under `--loops while` for the
-  `interp-while` lane, the fourth under `--first-member reinterpret` for the `interp-reinterpret` lane, the fifth under `--inline-helpers` for the `interp-inline` lane, the sixth under `--switch-dispatch goto` for the `interp-goto` lane), and runs each lane as its own process `--samples` times (five by default). A cell is the median, with ±
+  `interp-while` lane, the fourth under `--first-member reinterpret` for the `interp-reinterpret` lane, the fifth under `--inline-helpers` for the `interp-inline` lane, the sixth under `--switch-dispatch goto` for the `interp-goto` lane, the seventh under `--checks off` for the `interp-checks-off` lane, the eighth under `--past-end inline` for the `interp-past-end-inline` lane), and runs each lane as its own process `--samples` times (five by default). A cell is the median, with ±
   half the sample range as a share of it; startup never enters a cell because the program
   times itself; each das lane logs its argv at `info`. The `exe` and `aot` lanes each stand
   only on the binary their build leaves (an earlier run's removed first), since the tier
@@ -126,7 +126,7 @@ exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
 - `tests/` - the dastest suite over `perf_tables.das`, `perf_cli.das`, `boxes.das` and the method kernels'
   selection, driven by JSON fixtures and a scratch README, over `perf_lanes.das`'s arithmetic, commands and the AOT tier's refusal of program
   arguments, and `run.das` itself as a child process: `-?`, one sample of `blit` into an
-  `--out` file, whose `interp-copy`, `interp-while`, `interp-reinterpret`, `interp-inline` and `interp-goto` cells must time their conversions and match
+  `--out` file, whose `interp-copy`, `interp-while`, `interp-reinterpret`, `interp-inline`, `interp-goto`, `interp-checks-off` and `interp-past-end-inline` cells must time their conversions and match
   the native result, one sample of the dasProfile method over `fib_loop` and `fib_recursive`
   whose five lanes must stand and whose `--check` against a far-off baseline must exit 1 naming
   the drifted and the missing cells, the committed method capture under `--table`, `--method
@@ -178,7 +178,7 @@ local faster than an argument slot (`blit` writes its three parameters in its lo
 `work/<kernel>/while/`, the `while` forms a canonical counting `for` took before the range
 rewrite (`converter/ARCHITECTURE_EMITTER_LOOPS.md`), so the opt-out of the default is measured
 beside it; `interp-reinterpret` is `daslang` over a fourth under `--first-member reinterpret`, into
-`work/<kernel>/reinterpret/` (`converter/ARCHITECTURE_EMITTER_AGGREGATES.md`); `interp-inline` over a fifth under `--inline-helpers`, into `work/<kernel>/inline/` (`converter/ARCHITECTURE_EMITTER_CONTROL.md`); `interp-goto` over a sixth under `--switch-dispatch goto`, into `work/<kernel>/goto/` (`converter/ARCHITECTURE_EMITTER_CONTROL.md`, the jump table and the flat case groups); `exe` is the JIT-linked executable; `aot` is the `-ctx` context compiled with the seven-line host of
+`work/<kernel>/reinterpret/` (`converter/ARCHITECTURE_EMITTER_AGGREGATES.md`); `interp-inline` over a fifth under `--inline-helpers`, into `work/<kernel>/inline/` (`converter/ARCHITECTURE_EMITTER_CONTROL.md`); `interp-goto` over a sixth under `--switch-dispatch goto`, into `work/<kernel>/goto/` (`converter/ARCHITECTURE_EMITTER_CONTROL.md`, the jump table and the flat case groups); `interp-checks-off` over a seventh under `--checks off`, into `work/<kernel>/checks-off/`, every converted function carrying `unsafe_deref` and `hint(unsafe_range_check)`; `interp-past-end-inline` over an eighth under `--past-end inline`, into `work/<kernel>/past-end-inline/` (no kernel takes `&a[k]` with a plain-load index, so its text is the default's until one does); `exe` is the JIT-linked executable; `aot` is the `-ctx` context compiled with the seven-line host of
 `converter/tiers.das`, which links `dasCRuntime/src/*.cpp` into the host because the
 generated context declares `Module_CRT` and includes its header. The host compiles with the
 pinned clang's `clang++` at `-O3`, the native lane's compiler and level, so the two lanes
