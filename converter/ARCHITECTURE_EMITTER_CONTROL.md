@@ -33,10 +33,12 @@ goto (O6) is the opt-in below.
 A group whose statements do nothing - a `;`, an expression statement with no effect and no volatile
 read (`((void)0)`, an `assert` under `NDEBUG`), a block of only those - falls into the next group
 with nothing on the way, so it joins that group's labels (`_cond == A || _cond == B`) and its
-fall-through is gone; a run of such groups joins the first group after it that acts. The rule
-covers case labels only: a group holding `default`, or followed by one, keeps its own branch, as
-does a group holding a C label, a declaration, a nested switch or any statement that acts. With no fall-through left, the switch
-is the if-chain; binjgb's CpuState switch, whose first case is an emptied `assert`, is one.
+fall-through is gone; a run of such groups joins the first group after it that acts, the last
+group included. The rule covers case labels only: a group holding `default`, or followed by one,
+keeps its own branch, as does a group holding a C label, a declaration, a `break`, a nested switch
+or any statement that acts (a step, a call, an assignment, a comma). A switch with a case label in a
+nested block is spelled open (below) before any grouping. With no fall-through left, the switch is
+the if-chain; binjgb's CpuState switch, whose first case is an emptied `assert`, is one.
 
 ### Plain cases in the flag loop {#plain-cases}
 
