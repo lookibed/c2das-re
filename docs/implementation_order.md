@@ -2393,6 +2393,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   indexes), JIT and exe flat (LLVM inlines the call already). Readable: the fold is shorter, the
   plain-load conditional spells C's one-past-the-end rule in das's own index; a compound index stays
   the call, since the conditional would spell it twice. Default (ruling 23).
+  After review: the readability capture counts the conditional's repeated length (`literal_named` +59), so
+  the fold is the default and the conditional the opt-in `past_end` `inline` (`--past-end inline`, the
+  sidecar key); the A/B times A (base), B (default) and C (inline). The predictions above are C's; B is
+  expected within noise of A.
 - Owner ruling 34 (2026-11-06): the dasProfile-method hand-written column stays the bench's
   capture; no daScript SDK on box PC; re-run only on the bench at a phase end, never a PR blocker.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
