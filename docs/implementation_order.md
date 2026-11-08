@@ -2388,6 +2388,26 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   fib 1.72x, nbody 1.04x, binary_trees 1.52x, spectral_norm 1.49x (the predicted ~1.3x goto gain over chain: 1.29x on
   fib, hit); the single layout A/B within 3%; the cached `-e "print(1)"` startup within 2% (hit). Raw:
   `/root/notes/parallel/p7.0x_ab/ab.txt`. Hit rate 6 of 7.
+- **P7.0zd A numeric `#define` as the literal at its use** (ruling 36 section 5, item 3): where P7.0k
+  spells a `#define` constant by name over a module `let private NAME = <value>`, emit the value at
+  every use, the Rust translator's form (its `macros.rs` lowers the expanded AST and never names a
+  macro: binjgb's `ADDR_MASK_8K` is `8191` at its six uses there). The readable default stays the name
+  if the criteria say the name matters; the literal is then an opt-in (`converter/REVIEW.md`'s option
+  duties). Sites: binjgb's bench module holds 123 such `let`s spelled at 272 uses (190 macro names over
+  1308 marked nodes in its C-IR); doomgeneric's C-IR marks 2226 nodes under 529 names (FRACBITS,
+  FRACUNIT, SCREENWIDTH in the column and span drawers among them, the hot paths).
+  Expected before measuring (box PC, program-level, x native, the A/B the literal arm against main):
+  flat on every lane, interp, JIT and exe, within 2%, binjgb and Doom demos 1-3 alike. Reason: the
+  output declares each constant `let` (const) with a literal or a literal expression (`456 * 154`,
+  `~0ul`, `uint64(a) * uint64(b)`), and daslang's constant folding (`ast_const_folding.cpp`,
+  `visit(ExprVar)`) replaces every read of a const foldable global whose initializer folds to a
+  constant with that constant before simulation, so the interpreter, the JIT and AOT already see the
+  literal; the probe of the next commit pins it. Readability price of the literal form: criteria
+  `constant_names` to about 0 (lua/lua 61.8, lua/luac 53.5), so the criteria total of lua/lua 79.7 ->
+  about 76.9 and lua/luac 79.3 -> about 76.9 (one of 22 criteria), nothing else moved; `literal_named`
+  falls, since the counter matches literals against the module's own names and the `#define` lets
+  leave, an artifact of the counter and not a gain. If the probe holds, nothing is implemented: the
+  name costs nothing at run time.
 - **P7.0y Hand-written daslang references beside the Rust translator's output** (owner note
   2026-11-06, the reference pass of ruling 33 item 3 widened): the owner's plmpeg port
   (lookibed/plmpeg-stream, checkout `/root/plmpeg-stream`, bench `/root/plmpeg_bench`) against our
