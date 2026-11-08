@@ -39,8 +39,9 @@ needs no compile beyond the conversion's own.
 ## 2. Rows, columns and the total {#rows}
 
 A row is one Lua program in one layout (`lua/lua`, `lua/lua@source-cut`, `lua/lua@single`, the same for
-`luac`), one ratchet suite (`c_testsuite`, `csmith`, `gcc_torture`), whose raw counts are the
-sum over its inputs, or one compare project (`project/wasm3`, `project/binjgb`,
+`luac`), one Lua program under an opt-in (`lua/lua@inline`, `--inline-helpers`, the opt-in's readability
+price, which the `all` column leaves out), one ratchet suite (`c_testsuite`, `csmith`, `gcc_torture`),
+whose raw counts are the sum over its inputs, or one compare project (`project/wasm3`, `project/binjgb`,
 `project/h264bsd-mp4`, `project/plmpeg-stream`, `project/doomgeneric`, `project/quakegeneric`, the
 order of `project_table`). A project that converts whole is measured over every C file it compiles
 and its modules; one that refuses whole over the files that convert alone and their modules, the

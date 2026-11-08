@@ -30,9 +30,13 @@ let CRITERIA <- ["comments", "constant_names", "char_literals", "macro_blowup", 
 //! The prefix of a compare project's input key and row, `project/<name>`.
 let PROJECT_PREFIX = "project/"
 
-//! The rows of the capture: each Lua program in each layout, each ratchet suite, then each compare
-//! project of `compare/projects.das`'s `project_table`, in its order.
-let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "c_testsuite", "csmith", "gcc_torture", "project/wasm3", "project/binjgb", "project/h264bsd-mp4", "project/plmpeg-stream", "project/doomgeneric", "project/quakegeneric"]
+//! The rows of the capture: each Lua program in each layout and under each opt-in, each ratchet
+//! suite, then each compare project of `compare/projects.das`'s `project_table`, in its order.
+let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/lua@inline", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "lua/luac@inline", "c_testsuite", "csmith", "gcc_torture", "project/wasm3", "project/binjgb", "project/h264bsd-mp4", "project/plmpeg-stream", "project/doomgeneric", "project/quakegeneric"]
+
+//! The suffix of a row converted under an opt-in (`--inline-helpers`): its readability price,
+//! which the `all` column leaves out, so the default's total moves only with the default.
+let OPT_IN_ROW_SUFFIX = "@inline"
 
 //! The c-testsuite inputs the gate re-measures against the capture's `sample`: a switch with
 //! character literals and comments, defines, a plain switch.
