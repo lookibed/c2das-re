@@ -138,6 +138,16 @@ struct Emitter {
     // the name the `[variadic]` prologue binds the trailing arguments to in the function being
     // emitted, "" in a function that is not variadic
     va_name : string
+    // the das result type of the function being emitted, "void" for none
+    fn_ret : string
+    // a `return` in a setjmp site's `try` or `recover` arm, which das refuses: such an arm is a
+    // block invoked for whether it returned, the value left in `sj_ret` ("" in a void function)
+    // and the answer in `sj_returned`, both declared by the outermost site ("" outside one);
+    // `sj_arms` counts the arm blocks open around the statement being spelled
+    sj_ret : string
+    sj_returned : string
+    sj_arms : int
+    sj_result_counter : int
     // the compound literal objects: the next number a function's `_cl<N>` tries, the module
     // globals a file-scope literal declares (their names and the lines that go before the global
     // that reads them), the declarations of the objects a conditional arm initializes, which go
@@ -3881,17 +3891,27 @@ def private emit_trampoline(var em : Emitter; tu : CirTu; owner : CirStmt const?
     if (call != null) {
         buf = call.args[0]
     }
+    var arm : array<CirStmt const?>
+    for (idx in range(site, length(owner.body))) {
+        arm |> push(owner.body[idx])
+    }
+    var returns = false
+    if (!arm_returns(em, arm, st.loc, returns)) {
+        return
+    }
     em.requires |> insert("c_runtime/setjmp")
     em.setjmp_counter++
     let run = numbered("_sj_run", em.setjmp_counter)
     let val = numbered("_sj_val", em.setjmp_counter)
     let target = emit_expr(em, tu, buf, st.loc)
     flush_pre(em)
+    let declared = open_sj_result(em, returns)
     line(em, "var {run} = true")
     line(em, "var {val} = 0")
     open_block(em, "while ({run})")
     line(em, "{run} = false")
     open_block(em, "try")
+    open_sj_arm(em, returns)
     if (call != null) {
         em.hoisted[intptr(call)] = value(val, PREC_PRIMARY)
         emit_stmt(em, tu, st)
@@ -3904,6 +3924,7 @@ def private emit_trampoline(var em : Emitter; tu : CirTu; owner : CirStmt const?
     em.cont_flags |> push("")
     emit_statements(em, tu, owner, site + 1)
     em.cont_flags |> pop()
+    close_sj_arm(em, returns, site + 1 < length(owner.body) ? statements_end_in_return(tu, owner, site + 1) : call != null && ends_in_return(tu, st))
     em.depth--
     open_block(em, "\} recover")
     open_block(em, "if ({JMP_TARGET} != {target.text})")
@@ -3918,6 +3939,100 @@ def private emit_trampoline(var em : Emitter; tu : CirTu; owner : CirStmt const?
     line(em, "{run} = true")
     close_block(em)
     close_block(em)
+    close_sj_result(em, returns, declared)
+}
+
+// whether the statements `arm`, which go into a `try` or `recover` arm, hold a `return`, in
+// `returns`; false when they do and a `goto` crosses the arm's edge, which the arm's block
+// cannot carry (`ARCHITECTURE_EMITTER.md`, setjmp / longjmp)
+[arch(at="ARCHITECTURE_EMITTER.md#setjmp-general")]
+def private arm_returns(var em : Emitter; arm : array<CirStmt const?>; loc : CirLoc; var returns : bool&) : bool {
+    var labels : table<string>
+    var gotos : table<uint64>
+    returns = false
+    for (top in arm) {
+        each_stmt(top) $(s) {
+            returns = returns || s.s == "return"
+            if (s.s == "label") {
+                labels |> insert(s.label_name)
+            } elif (s.s == "goto") {
+                gotos |> insert(intptr(s))
+            }
+        }
+    }
+    if (!returns) {
+        return true
+    }
+    var crosses = false
+    each_stmt(em.fn_body) $(s) {
+        crosses = crosses || (s.s == "goto" && key_exists(gotos, intptr(s)) != key_exists(labels, s.label_name))
+    }
+    if (crosses) {
+        fail(em, "a setjmp arm that returns and a goto across its edge is not lowered yet", loc)
+        return false
+    }
+    return true
+}
+
+// the result the outermost setjmp site whose arms return declares before its `try`: the value
+// `_sj_ret` (none in a void function) and the flag `_sj_returned`; true when this site declared them
+def private open_sj_result(var em : Emitter; returns : bool) : bool {
+    if (!returns || !empty(em.sj_returned)) {
+        return false
+    }
+    em.sj_result_counter++
+    em.sj_returned = numbered("_sj_returned", em.sj_result_counter)
+    em.sj_ret = em.fn_ret == "void" ? "" : numbered("_sj_ret", em.sj_result_counter)
+    if (!empty(em.sj_ret)) {
+        line(em, "var {em.sj_ret} : {em.fn_ret}")
+    }
+    line(em, "var {em.sj_returned} = false")
+    return true
+}
+
+// an arm that returns opens as the block whose answer is whether it returned
+def private open_sj_arm(var em : Emitter; returns : bool) {
+    if (returns) {
+        open_block(em, "{em.sj_returned} = invoke($() : bool")
+        em.sj_arms++
+    }
+}
+
+// the arm's block closes, answering false when its statements fall off its end (`ended` false)
+def private close_sj_arm(var em : Emitter; returns, ended : bool) {
+    if (returns) {
+        if (!ended) {
+            line(em, "return false")
+        }
+        em.sj_arms--
+        em.depth--
+        line(em, "\})")
+    }
+}
+
+// after the site's `try` and `recover`: a return an arm took leaves the function, or the arm of
+// an enclosing site, which then answers true; the outermost site's declaration ends with it
+def private close_sj_result(var em : Emitter; returns, declared : bool) {
+    if (!returns) {
+        return
+    }
+    open_block(em, "if ({em.sj_returned})")
+    line(em, em.sj_arms > 0 ? "return true" : empty(em.sj_ret) ? "return" : "return {em.sj_ret}")
+    close_block(em)
+    if (declared) {
+        em.sj_ret = ""
+        em.sj_returned = ""
+    }
+}
+
+// a C `return` inside a setjmp arm's block: the value into `_sj_ret`, the block answering true
+def private emit_arm_return(var em : Emitter; tu : CirTu; st : CirStmt const?) {
+    if (st.e != null) {
+        let e = stored(emit_expr(em, tu, st.e, st.loc), tu, st.e.t)
+        flush_pre(em)
+        line(em, empty(em.sj_ret) ? e.text : "{em.sj_ret} = {e.text}")
+    }
+    line(em, "return true")
 }
 
 def private open_block(var em : Emitter; head : string) {
@@ -3962,20 +4077,39 @@ def private setjmp_site(x : CirExpr const?; var first_in_then : bool&) : CirExpr
 // longjmp return the `recover`, which rethrows a longjmp to another buffer or a genuine
 // panic (a null target) and clears its own
 def private emit_setjmp_site(var em : Emitter; tu : CirTu; st : CirStmt; buf : CirExpr const?; first_in_then : bool) {
+    let first = first_in_then ? st.then_s : st.else_s
+    let again = first_in_then ? st.else_s : st.then_s
+    var first_returns, again_returns : bool
+    if (!arm_returns(em, array<CirStmt const?>(first), st.loc, first_returns) || !arm_returns(em, array<CirStmt const?>(again), st.loc, again_returns)) {
+        return
+    }
+    if ((first_returns && leaves_arm(first)) || (again_returns && leaves_arm(again))) {
+        fail(em, "a setjmp arm that returns and leaves an enclosing loop is not lowered yet", st.loc)
+        return
+    }
     em.requires |> insert("c_runtime/setjmp")
     let target = emit_expr(em, tu, buf, st.loc)
     flush_pre(em)
+    let declared = open_sj_result(em, first_returns || again_returns)
     open_block(em, "try")
-    emit_body(em, tu, first_in_then ? st.then_s : st.else_s)
+    open_sj_arm(em, first_returns)
+    emit_body(em, tu, first)
+    close_sj_arm(em, first_returns, ends_in_return(tu, first))
     em.depth--
     open_block(em, "\} recover")
     open_block(em, "if ({JMP_TARGET} != {target.text})")
     line(em, "panic(\"longjmp\")")
     close_block(em)
     line(em, "{JMP_TARGET} = null")
-    emit_body(em, tu, first_in_then ? st.else_s : st.then_s)
+    open_sj_arm(em, again_returns)
+    emit_body(em, tu, again)
+    close_sj_arm(em, again_returns, ends_in_return(tu, again))
     close_block(em)
+    close_sj_result(em, first_returns || again_returns, declared)
 }
+
+// whether an arm leaves an enclosing loop or switch, which its block cannot carry
+def private leaves_arm(arm : CirStmt const?) : bool => breaks_switch(arm) || continues_out(arm)
 
 def private emit_if(var em : Emitter; tu : CirTu; st : CirStmt; head : string) {
     var first_in_then = false
@@ -6173,6 +6307,8 @@ def private emit_stmt_kind(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     } elif (st.s == "expr") {
         emit_effect(em, tu, st.e, st.loc)
         flush_pre(em)
+    } elif (st.s == "return" && em.sj_arms > 0) {
+        emit_arm_return(em, tu, st)
     } elif (st.s == "return") {
         if (st.e == null) {
             line(em, "return")
@@ -6581,6 +6717,22 @@ def private is_step(op : string) : bool => op == "preinc" || op == "predec" || o
 
 // C lets a non-void function fall off its end (the value is then unspecified, and main's is
 // 0); das wants every path to return, so the body gets a trailing zero
+// whether block `owner`'s statements from `first` on end in a return das reads: a single-branch
+// setjmp site turns the rest of the block into a loop, whose end das does not read as one
+def private statements_end_in_return(tu : CirTu; owner : CirStmt const?; first : int) : bool {
+    for (idx in range(first, length(owner.body))) {
+        let child = owner.body[idx]
+        var first_in_then = false
+        if (flat_setjmp(owner, idx)) {
+            continue
+        }
+        if ((child.s == "if" && child.else_s == null && setjmp_site(child.cond, first_in_then) != null) || general_setjmp(child) != null) {
+            return false
+        }
+    }
+    return length(owner.body) > first && ends_in_return(tu, owner.body[length(owner.body) - 1])
+}
+
 def private ends_in_return(tu : CirTu; st : CirStmt?) : bool {
     if (st == null) {
         return false
@@ -6589,21 +6741,12 @@ def private ends_in_return(tu : CirTu; st : CirStmt?) : bool {
         return true
     }
     if (st.s == "compound") {
-        // a single-branch setjmp site turns the rest of the block into a loop, whose end das
-        // does not read as a return
-        for (idx, child in count(), st.body) {
-            var first_in_then = false
-            if (flat_setjmp(st, idx)) {
-                continue
-            }
-            if ((child.s == "if" && child.else_s == null && setjmp_site(child.cond, first_in_then) != null) || general_setjmp(child) != null) {
-                return false
-            }
-        }
-        return !empty(st.body) && ends_in_return(tu, st.body[length(st.body) - 1])
+        return statements_end_in_return(tu, st, 0)
     }
     if (st.s == "if") {
-        return ends_in_return(tu, st.then_s) && ends_in_return(tu, st.else_s)
+        // a setjmp site's arms return through `_sj_returned`, after which das reads no return
+        var first_in_then = false
+        return setjmp_site(st.cond, first_in_then) == null && ends_in_return(tu, st.then_s) && ends_in_return(tu, st.else_s)
     }
     return false
 }
@@ -6708,6 +6851,10 @@ def private reset_function_state(var em : Emitter; tu : CirTu; d : CirDecl) {
     em.for_counter = 0
     em.switch_counter = 0
     em.setjmp_counter = 0
+    em.sj_ret = ""
+    em.sj_returned = ""
+    em.sj_arms = 0
+    em.sj_result_counter = 0
     em.literal_counter = 0
     em.cont_flags |> clear()
     em.break_gotos |> clear()
@@ -6816,6 +6963,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
         params |> push("{em.va_name} : va_args")
     }
     let ret = das_type(em, tu, tu.types[d.t].ret, d.loc)
+    em.fn_ret = ret
     let header = "def {d.is_static ? "private " : ""}{das_func_name(em, d)}" + (empty(params) ? "" : "({join(params, "; ")})") + (ret == "void" ? "" : " : {ret}")
     carry_comments_above(em, d.loc)
     let header_at = length(em.out)

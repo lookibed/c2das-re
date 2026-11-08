@@ -1421,6 +1421,23 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   both ways; per-function `[hint(no_strict_aliasing)]` is not emitted (one line per function, and the
   root option covers every module). Unblocks when lookibed/daScript#44 lands: re-probe F95, then
   the `void *` shape moves to the safe group and the default can be revisited.
+- **P8.7 setjmp arms that return** (ruling 37 phase 1, the triage's correctness item; P8.5 is item A,
+  P8.6 left for item B). daScript `21316206e9` (#4472) answers F75 by refusing a `return` inside
+  a `try` or `recover` arm on every tier (error 30299, F96), and the setjmp lowering kept the C code
+  after the site, its returns included, inside the `try`: every converted site whose tail or branch
+  returns stopped compiling, `if (setjmp(b)) return -1;` first. Design: an arm holding a `return` is
+  a block the arm invokes, `_sj_returned = invoke($() : bool { ... })`, a C `return v` in it
+  `_sj_ret = v; return true`; the outermost such site declares `_sj_ret` (none in a void function)
+  and `_sj_returned` before its `try`, the sites in its arms share them, and after the pair
+  `if (_sj_returned)` returns `_sj_ret`, or `true` from the enclosing arm's block. A block returns
+  from inside its loops, so no break-and-flag ladder is needed; a `goto`, `break` or `continue`
+  across the block's edge fails closed. An arm without a return keeps its `try` as before (Lua's
+  `luaD_rawrunprotected` is the flat site and does not change). Fixture
+  `converter/tests/fixtures/p8_setjmp_return.c` (the idiom, a return in the longjmp arm and after it,
+  a loop's return in the tail, the contained site with both arms returning, nested sites, a void
+  function, a record result, the general form's `return setjmp(b)`, the flat site's returning
+  branch) matches the native build under interp, JIT and exe. Unblocks the setjmp JIT lane parked on
+  F75 (P5.2): the lowering puts no `return` in an arm, so the JIT runs what the interpreter runs.
 
 ## P6 — Doom
 

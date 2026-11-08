@@ -293,6 +293,10 @@ it compared with an integer constant), through implicit conversions: it opens th
 as `_sj_valN` (0 on the first run, longjmp's value on a rerun), which reruns the statement, so
 nothing in it is read before the call. A branch or a tail that leaves an enclosing loop, a site off
 a block's statement level, a second setjmp, another effect or read (`x = g + setjmp(buf)`,
-`a[i++] = setjmp(buf)`) and a `setjmp` read any other way fail closed. The lowering is exact in the
-interpreter; under the JIT a `return` in a `try` or `recover` arm leaves only the arm
-(`docs/probe-findings.md` F75), so a trampoline's tail or a flat branch that returns runs on there.
+`a[i++] = setjmp(buf)`) and a `setjmp` read any other way fail closed. das refuses a `return` in an
+arm (error 30299, `docs/probe-findings.md` F96), so an arm holding one is a block invoked for
+whether it returned, `_sj_returned = invoke($() : bool { ... })`, a C `return v` in it `_sj_ret = v`
+and `return true`. The outermost such site declares `_sj_ret` and `_sj_returned` before its `try`,
+the sites in its arms share them, and after the pair `if (_sj_returned)` returns `_sj_ret`, or
+`true` inside an enclosing arm; a `goto`, `break` or `continue` across the block's edge fails
+closed. The lowering is exact under the interpreter, the JIT and the exe.
