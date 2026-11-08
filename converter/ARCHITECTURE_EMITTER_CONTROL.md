@@ -77,7 +77,28 @@ and the C labels move up past them: a loop takes a goto whose number is below it
 count as its own, so case labels above `startfunc` would capture lvm's `goto startfunc` (F60). Both
 facts are `probes/test_goto.das`'s; the interpreter and the JIT run the form alike. A sparse
 switch, one that falls through, one under 8 values or past `int`, and Duff's device keep the forms
-above.
+above, except that under the option a switch spelled open takes its own table (below).
+
+### Flat case groups {#flat-cases}
+
+Under `switch_dispatch` `goto`, a switch that a goto from another case group re-dispatches and that
+the jump table above refuses (`dispatch_plan`: sparse, under 8 values, falling through, past `int`)
+is spelled open, as a goto into a body is (below), in place of the matched-flag loop
+(`open_redispatched`): its labels that such gotos reach are das labels at the switch's level and
+each goto is `goto label N`, so no `_gotoN`, no `_flag ||=` test and no restart is left; a switch
+both entered from outside and re-dispatched, which the default refuses, is lowered so too. Under the
+option an open switch dispatches through a table when two or more case values in `int`'s range fill
+at least half of [lo, hi] (`open_table`): `if (_cond < lo || _cond > hi) { goto label D }`, `goto
+_cond + (base - lo)`, case value `v` at `label base + v - lo:  // case v`, and `label D` at `default`
+with a `label K:  // no case v` before it for each value of [lo, hi] no case holds, or at the end
+when the switch has none; any other keeps the `if`/`elif` goto chain. switch_goto's `run_code` is so
+a flat label CFG in its loop body, the Rust translation's form. An `if` with no `else` whose branch
+ends in `return` before a case label needs `guard_label_folds`'s `else` here too
+(lookibed/daScript#35); the guard reads the computed goto as a goto to every label of its table,
+since with `default` first, or a returning one, no `goto label` above the `if` names the labels after
+it (`probes/test_goto.das`, the flat label CFG). The default, `chain`, keeps the re-dispatch below:
+the open form adds a label per case value and a goto per group, which ruling 36 prices as an
+opt-in's.
 
 ### Labels and goto {#goto-labels}
 
@@ -171,8 +192,8 @@ lookibed/daScript#19), any other labelled block passes no goto outward (F63); so
 goto leaves is opened as well (`open_left_blocks`: a bare block loses its braces, an arm or body
 opens its `if`, loop or switch), until none is left. The labels the lowering adds are numbered
 after the function's C labels, which keep their numbers, and the comment names the construct. A
-goto into an arm of a setjmp `if`, or an open switch that a goto from another case re-dispatches,
-fails closed. The open form is the C's own jumps made explicit: no flag is tested and no loop
+goto into an arm of a setjmp `if` fails closed, as does, under `chain`, an open switch that a goto
+from another case re-dispatches (`switch_dispatch` `goto` lowers it, above). The open form is the C's own jumps made explicit: no flag is tested and no loop
 dispatches, so it costs the interpreter what the C's control flow does, and it reads less like the
 C than the structured form, which is why only constructs on a goto's way into a body take it.
 

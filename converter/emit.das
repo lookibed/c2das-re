@@ -123,6 +123,11 @@ struct Emitter {
     // label of such a switch's case group jumps to, in place of the re-dispatch
     goto_switches : table<uint64; GotoDispatch>
     label_jumps : table<string; int>
+    // an open switch's jump table under `switch_dispatch` `goto` (`open_table`): the labels of the
+    // values no case holds, by the `default` they stand before, else by the switch body, and each
+    // table by its computed goto's text, which `guard_label_folds` reads as a goto to every label
+    case_holes : table<uint64; array<string>>
+    table_jumps : table<string; GotoDispatch>
     // what a C `continue` spells at the current nesting: "" inside a loop body, the `_cont`
     // flag inside a matched-flag switch loop whose `continue` reaches the loop around it, the
     // `goto` to the test or increment of an open loop
@@ -197,7 +202,8 @@ struct EmitProgram {
     // offset 0 reinterprets its record's pointer (`first_member_address`)
     reinterpret_members : bool
     // the sidecar's or the option's `switch_dispatch` is `goto`: a dense switch jumps to its case
-    // (`dispatch_plan`)
+    // (`dispatch_plan`), and a switch a goto from another case re-dispatches is spelled open, by a
+    // table where it can (`open_redispatched`, `open_table`)
     goto_dispatch : bool
     // the sidecar's or the option's `past_end` is `inline`: `&a[k]` of a plain-load index is
     // `k == N ? addr(a[0]) + N : addr(a[k])` (`one_past_end_address`)
@@ -4795,6 +4801,9 @@ def private plan_labels(var em : Emitter; body : CirStmt const?) {
             open_path(em, at, level, length(at.path))
         }
     }
+    if (em.prog.goto_dispatch) {
+        open_redispatched(em, plan)
+    }
     open_left_blocks(em, plan)
     for (c, at in plan.cases, plan.case_sites) {
         if (key_exists(em.flag_switches, at.switches |> back()) && key_exists(em.flatten, at.switches |> back())) {
@@ -4806,6 +4815,25 @@ def private plan_labels(var em : Emitter; body : CirStmt const?) {
     number_restarts(em, plan)
     for (n in values(em.labels)) {
         em.label_count = max(em.label_count, n)
+    }
+}
+
+// under `switch_dispatch` `goto`, a switch that a goto from another case group re-dispatches and
+// the jump table refuses is spelled open in place of the matched-flag loop: each label such a goto
+// reaches is then a das label at the switch's level, which the goto jumps to
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#flat-cases")]
+def private open_redispatched(var em : Emitter; plan : LabelPlan) {
+    let switches <- [for (sw in keys(em.flag_switches)); sw]
+    for (sw in switches) {
+        let st = plan.switch_stmts?[sw] ?? null
+        continue if (st == null || dispatch_plan(em, st).span > 0)
+        em.opened |> insert(intptr(st))
+        enter_arm(em, st.body_s, true)
+        em.flag_switches |> erase(sw)
+        var inscope names <- [for (name in keys(em.group_labels)); name; where(em.group_labels?[name] ?? 0ul) == sw]
+        for (name in names) {
+            em.group_labels |> erase(name)
+        }
     }
 }
 
@@ -5852,6 +5880,9 @@ def private new_label(var em : Emitter) : int {
 // cannot sit below the switch's level
 def private emit_case_label(var em : Emitter; st : CirStmt const?) {
     if (key_exists(em.case_labels, intptr(st))) {
+        if (st.s == "default") {
+            emit_holes(em, intptr(st))
+        }
         jump_label(em, em.case_labels?[intptr(st)] ?? 0, st.s == "case" ? "case {st.v}" : "default")
     } else {
         fail(em, "a case label of a switch whose body is no block, below that switch's level; not lowered", st.loc)
@@ -5967,8 +5998,9 @@ def private case_markers(st : CirStmt const?; var out : array<CirStmt const?>) {
     case_markers(st.body_s, out)
 }
 
-// a switch spelled open: the condition once, a chain of gotos to its case labels, the body flat
-// with every case label a das label, C `break` a goto to its end
+// a switch spelled open: the condition once, a chain of gotos to its case labels or, under
+// `switch_dispatch` `goto`, a jump table (`open_table`), the body flat with every case label a das
+// label, C `break` a goto to its end
 def private emit_open_switch(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     em.switch_counter++
     var outer_chars <- em.char_cases
@@ -5982,6 +6014,12 @@ def private emit_open_switch(var em : Emitter; tu : CirTu; st : CirStmt const?) 
         if (child.s == "decl" && key_exists(em.prog.carried, intptr(child))) {
             line(em, "var {das_name(em, child.name)} : {das_type_dims(em, tu, child.t, child.loc, child.dims)}")
         }
+    }
+    var jumps = open_table(em, markers)
+    if (jumps.span > 0) {
+        emit_open_table(em, tu, st, markers, cond, cond_t, jumps)
+        em.char_cases <- outer_chars
+        return
     }
     let end_at = new_label(em)
     var default_at = end_at
@@ -6013,6 +6051,76 @@ def private emit_open_switch(var em : Emitter; tu : CirTu; st : CirStmt const?) 
         jump_label(em, end_at, "switch end")
     }
     em.char_cases <- outer_chars
+}
+
+// the jump table of an open switch under `switch_dispatch` `goto`: two or more case values in
+// `int`'s range filling at least half of [lo, hi]; else a zero `span`
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#flat-cases")]
+def private open_table(em : Emitter; markers : array<CirStmt const?>) : GotoDispatch {
+    if (!em.prog.goto_dispatch) {
+        return GotoDispatch()
+    }
+    var lo = LONG_MAX
+    var hi = LONG_MIN
+    var n = 0
+    for (m in markers) {
+        if (m.s == "case") {
+            n++
+            lo = min(lo, m.v)
+            hi = max(hi, m.v)
+        }
+    }
+    if (n < 2 || lo < int64(INT_MIN) || hi > int64(INT_MAX) || hi - lo + 1l > 2l * int64(n)) {
+        return GotoDispatch()
+    }
+    return GotoDispatch(lo = lo, span = int(hi - lo + 1l))
+}
+
+// an open switch through its jump table: das label `base + v - lo` at case value `v`, `base + span`
+// at `default`, or at the end when the switch has none, with the labels of the values no case holds
+// before it; the computed goto is recorded for `guard_label_folds`
+def private emit_open_table(var em : Emitter; tu : CirTu; st : CirStmt const?; markers : array<CirStmt const?>; cond : string; cond_t : int; var jumps : GotoDispatch) {
+    var cases : table<int64>
+    var default_key = 0ul
+    let holes_key = intptr(st.body_s)
+    for (m in markers) {
+        if (m.s == "case") {
+            cases |> insert(m.v)
+        } else {
+            default_key = intptr(m)
+        }
+    }
+    let end_at = default_key != 0ul ? new_label(em) : 0
+    jumps.base = em.label_count + 1
+    em.label_count += jumps.span + 1
+    for (m in markers) {
+        em.case_labels[intptr(m)] = m.s == "case" ? jumps.base + int(m.v - jumps.lo) : jumps.base + jumps.span
+    }
+    var holes <- [for (off in range(jumps.span)); "label {jumps.base + off}:  // no case {jumps.lo + int64(off)}"; where !key_exists(cases, jumps.lo + int64(off))]
+    em.case_holes[default_key != 0ul ? default_key : holes_key] <- holes
+    dispatch_jump(em, tu, jumps, cond, cond_t)
+    em.table_jumps[strip(em.out |> back())] = jumps
+    let finish = default_key != 0ul ? end_at : jumps.base + jumps.span
+    em.break_gotos |> push("goto label {finish}")
+    emit_body(em, tu, st.body_s)
+    em.break_gotos |> pop()
+    if (default_key == 0ul) {
+        emit_holes(em, holes_key)
+        jump_label(em, finish, "no case: switch end")
+    } elif (breaks_switch(st.body_s)) {
+        jump_label(em, finish, "switch end")
+    }
+}
+
+// the labels of the values no case of an open switch's jump table holds, before its `default`, by
+// its key, or before its end, by its body's
+def private emit_holes(var em : Emitter; key : uint64) {
+    get(em.case_holes, key) $(holes) {
+        for (hole in holes) {
+            line(em, hole)
+        }
+    }
+    em.case_holes |> erase(key)
 }
 
 def private emit_stmt_kind(var em : Emitter; tu : CirTu; st : CirStmt const?) {
@@ -6582,6 +6690,8 @@ def private reset_function_state(var em : Emitter; d : CirDecl) {
     em.label_conds |> clear()
     em.goto_switches |> clear()
     em.label_jumps |> clear()
+    em.case_holes |> clear()
+    em.table_jumps |> clear()
     plan_labels(em, d.body)
     em.unsafe_used = false
     em.addressed |> clear()
@@ -6782,6 +6892,11 @@ def private guard_label_folds(var em : Emitter; from : int) {
         let jump = strip(text)
         if (jump |> starts_with("goto label ")) {
             gotos[slice(jump, 5)] |> push(at)
+        }
+        get(em.table_jumps, jump) $(jumps) {
+            for (n in range(jumps.base, jumps.base + jumps.span + 1)) {
+                gotos["label {n}"] |> push(at)
+            }
         }
     }
     var guarded : table<int>

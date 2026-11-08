@@ -1,7 +1,7 @@
 /* P7.0c2: switches under switch_dispatch goto: dense ones take the jump table (an enum VM dispatch with a
    goto into another case, a continue and a default; an int switch without default; an unsigned one; one
-   nested in another's case), the rest keep their forms (sparse, falling through, under 8 values, past int,
-   Duff's device); main returns 0 when every result is C's */
+   nested in another's case), the rest keep their forms (sparse, falling through, under 8 values, past int),
+   an open switch (Duff's device, one a goto enters) its own table; main returns 0 when every result is C's */
 enum Op { A, B, C, D, E, F, G, H, I, J };
 static int run(const unsigned char *code, int n) {
     int acc = 0;
