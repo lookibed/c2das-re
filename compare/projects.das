@@ -602,6 +602,96 @@ def ours_module(p : Project; tu, out_dir : string; units : array<string>; var re
     return res.das_path
 }
 
+//! One C file of a project converted alone: its path under the project folder, the module
+//! written, or the converter's first line when it refused.
+struct FileConversion {
+    c_path : string
+    das_path : string
+    refusal : string
+}
+
+//! A project converted as the ports publisher publishes it and the readability criteria measure it:
+//! `refusal` the whole program's, "" with `files` every file the whole conversion wrote; else
+//! `per_file`, each C file of `program_files` converted alone.
+struct ProjectConversion {
+    refusal : string
+    files : array<string>
+    per_file : array<FileConversion>
+}
+
+// the file an `#include "name"` in `from` names: beside `from`, else in the first of `dirs` that
+// holds it; "" when none does
+def private resolve_quoted(from, name : string; dirs : array<string>) : string {
+    let beside = path_join(dir_name(from), name)
+    if (fexist(beside)) {
+        return beside
+    }
+    for (d in dirs) {
+        let candidate = path_join(d, name)
+        if (fexist(candidate)) {
+            return candidate
+        }
+    }
+    return ""
+}
+
+// the C files the translation unit `path` compiles: every `.c` file it includes by quotes,
+// followed through the ones that include `.c` files themselves (the projects' `all.c` graphs);
+// the unit itself when it includes none
+def private compiled_files(path : string; dirs : array<string>) : array<string> {
+    var found : array<string>
+    for (ln in split(fread(path), "\n")) {
+        let line = strip(ln)
+        let open = find(line, "\"")
+        let close = open < 0 ? -1 : find(line, "\"", open + 1)
+        if (line |> starts_with("#include") && close > open && slice(line, open + 1, close) |> ends_with(".c")) {
+            let included = resolve_quoted(path, slice(line, open + 1, close), dirs)
+            if (!empty(included)) {
+                found |> push_from(compiled_files(included, dirs))
+            }
+        }
+    }
+    if (empty(found)) {
+        found |> push(path)
+    }
+    return <- found
+}
+
+//! `path` relative to the folder `dir` it lies under, `path` itself when it lies elsewhere.
+def relative_to(path, dir : string) : string => path |> starts_with("{dir}/") ? slice(path, length(dir) + 1) : path
+
+//! The C files `p` compiles, each relative to its folder: its units, else the files its unit's
+//! `all.c` graph compiles.
+def program_files(p : Project) : array<string> {
+    if (!empty(p.units)) {
+        return <- clone_to_move(p.units)
+    }
+    let dirs <- [for (d in p.include_dirs); project_path(p, d)]
+    return <- [for (f in compiled_files(project_path(p, p.tu), dirs)); relative_to(f, p.dir)]
+}
+
+//! `p` converted into the emptied folder `work`: whole into `<work>/whole/` (`ours_module`), and
+//! when that refuses, each file of `program_files` alone into `<work>/files/` at its path with the
+//! `.c` dropped.
+def convert_project(p : Project; work : string) : ProjectConversion {
+    var conv : ProjectConversion
+    rmdir_rec(work)
+    ours_module(p, p.tu, path_join(work, "whole"), p.units, conv.refusal, conv.files)
+    to_log(LOG_INFO, "{p.name}: " + (empty(conv.refusal) ? "converted whole" : conv.refusal) + "\n")
+    if (empty(conv.refusal)) {
+        return <- conv
+    }
+    let none : array<string>
+    for (rel in program_files(p)) {
+        var refusal : string
+        var inscope files : array<string>
+        let das_path = ours_module(p, rel, path_join(work, "files/{trim_suffix(rel, ".c")}"), none, refusal, files)
+        to_log(LOG_INFO, "{p.name}: {rel}: " + (empty(refusal) ? "converted" : refusal) + "\n")
+        conv.per_file |> push(FileConversion(c_path = rel, das_path = empty(refusal) ? das_path : "", refusal = refusal))
+    }
+    return <- conv
+}
+
 // the units `units` of `p` translated by `bin` into `out_dir` in the source layout, through a
 // compilation database in `<out_dir>_db`
 def private rust_units(p : Project; bin, out_dir : string; units : array<string>) : RustTranslation {

@@ -859,3 +859,32 @@ def test_rendering(t : T?) {
         t |> equal(project_code_table(none), "")
     }
 }
+
+[test]
+def test_convert_project(t : T?) {
+    t |> run("a project's files are its units, else its unit's `all.c` graph; it converts whole, else each file alone") @(t : T?) {
+        t |> with_scratch("cmp_projects_convert") $(dir) {
+            mkdir_rec(path_join(dir, "src"))
+            mkdir_rec(path_join(dir, "upstream/lib"))
+            fwrite(path_join(dir, "src/prog_all.c"), "#include \"all.c\"\n#include \"entry.c\"\n")
+            fwrite(path_join(dir, "src/all.c"), "#include <stdio.h>\n#include \"add.c\"\n#include \"vla.c\"\n")
+            fwrite(path_join(dir, "src/entry.c"), "int main(void) \{ return 0; \}\n")
+            fwrite(path_join(dir, "upstream/lib/add.c"), "int add(int a, int b) \{ return a + b; \}\n")
+            fwrite(path_join(dir, "upstream/lib/vla.c"), "int first(int n) \{ int a[n + 1]; a[0] = n; return a[0]; \}\n")
+            var p = Project(name = "p", dir = dir, tu = "src/prog_all.c", include_dirs <- ["upstream/lib"], c_std = "c11")
+            t |> equal(join(program_files(p), " "), "upstream/lib/add.c upstream/lib/vla.c src/entry.c")
+            let work = path_join(dir, "work")
+            mkdir_rec(path_join(work, "stale"))
+            var conv <- convert_project(p, work)
+            t |> success(conv.refusal |> contains("variable-length array"), conv.refusal)
+            t |> success(!stat(path_join(work, "stale")).is_dir, "the work folder is emptied first")
+            t |> equal(join([for (f in conv.per_file); "{f.c_path}={empty(f.refusal) ? relative_to(f.das_path, work) : "refused"}"], " "), "upstream/lib/add.c=files/upstream/lib/add/add.das upstream/lib/vla.c=refused src/entry.c=files/src/entry/entry.das")
+            // a unit list is the program, in its order
+            p.units <- ["upstream/lib/add.c", "src/entry.c"]
+            t |> equal(join(program_files(p), " "), "upstream/lib/add.c src/entry.c")
+            var whole <- convert_project(p, work)
+            t |> equal(whole.refusal, "")
+            t |> success(empty(whole.per_file) && length([for (f in whole.files); f; where f |> ends_with(".das")]) == 2, join(whole.files, " "))
+        }
+    }
+}

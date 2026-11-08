@@ -78,6 +78,12 @@ expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed). The ro
   the project has no bench unit. The Eden and SDL hosts are GUI programs and are not built; the
   case under the Eden memory model is not compared.
 
+`convert_project` converts a project as the ports publisher publishes it and the readability
+criteria measure it (`ports/ARCHITECTURE.md` section 5, `metrics/ARCHITECTURE_CRITERIA.md`): whole
+through `ours_module`, and when the program refuses, each file of `program_files` (the case's units,
+else every `.c` file the unit includes by quotes, followed through the `all.c` graphs that include
+`.c` files themselves) alone, so both read one conversion.
+
 Everything a run builds sits in `work/projects/<name>/`, or `<name>/` under the folder `--work`
 names (the tests' scratch, so a test never meets a real run's work): `native/` (the pinned clang's builds of
 both units), `ours/` and `ours_bench/` (our conversions), `rust/` and `rust_bench/` (the Rust
