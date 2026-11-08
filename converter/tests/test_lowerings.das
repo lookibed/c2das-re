@@ -217,7 +217,7 @@ def p7_builtin_mem_fixtures(t : T?) {
         has_text(t, text, "        memcpy(null, null, int64(zero))\n")
         has_text(t, text, "        memcpy(reinterpret<void?>(addr(buf[0]) + 8), reinterpret<void?>(addr(buf[0])), int64(n))\n")
         // a size with an effect is made once, ahead of the test
-        has_text(t, text, "    let _t0 = n\n    n++\n    if (_t0 != 0ul) \{\n        memcpy(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(addr(buf[0]) + 1), int64(_t0))\n")
+        has_text(t, text, "    let _t0 = n\n    n++\n    if (_t0 != 0ul) \{\n        memcpy(reinterpret<void?>(addr(buf[0])), reinterpret<void?>(addr(buf[0]) + 8), int64(_t0))\n")
         has_text(t, text, "        memset8(reinterpret<void?>(addr(b)), uint8(k), typeinfo sizeof(type<_c_block>))\n")
         // a size from a call or a volatile read lands in a temporary: the call made once (`sizes 1` natively too)
         has_text(t, text, "    let _t1 = p7_builtin_mem__sized(uint64(3))\n    if (_t1 != 0ul) \{\n        memcpy(reinterpret<void?>(addr(buf[0]) + 8), reinterpret<void?>(addr(buf[0])), int64(_t1))\n")

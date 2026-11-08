@@ -2,7 +2,7 @@
    sizes, sizes of every width C widens to size_t, zero sizes with null pointers, overlapping
    moves both ways, a fill value truncated to its byte, a size with an effect, and the forms that
    keep the crt call (a used result, a pointer with an effect under the zero test, a fill of a
-   run-time count) */
+   run-time count); no copy overlaps, which C leaves undefined and libc and AOT copy differently */
 #include <stdio.h>
 #include <string.h>
 
@@ -69,7 +69,7 @@ int main(void) {
     __builtin_memcpy(buf + 8, buf, n);
     show("builtin", buf + 8, 6);
     /* a size with an effect, made once */
-    memcpy(buf, buf + 1, n++);
+    memcpy(buf, buf + 8, n++);
     printf("n %d\n", (int) n);
     /* a block clear per step */
     int sum = 0;
@@ -106,7 +106,7 @@ int main(void) {
     show("wrapped", wide_dst + 40, 8);
     /* a volatile size is read once into the temporary */
     volatile size_t vn = 2;
-    memcpy(buf, buf + 1, vn);
+    memcpy(buf, buf + 4, vn);
     show("volatile size", buf, 4);
     /* the forms that keep the crt call */
     memcpy(buf, buf + 1, 0);
@@ -114,11 +114,11 @@ int main(void) {
         memset(buf, 0, 0x80000000ull);
     }
     unsigned char *volatile vp = buf;
-    memcpy(vp, buf + 1, n);
-    memcpy(buf, counted((char *) buf + 2), n);
+    memcpy(vp, buf + 8, n);
+    memcpy(buf, counted((char *) buf + 8), n);
 
     unsigned char *r = memcpy(buf, "AB", 2);
-    memcpy(counted((char *) buf), buf + 3, n);
+    memcpy(counted((char *) buf), buf + 8, n);
     memset(buf, 7, n);
     show("crt", r, 8);
     printf("calls %d\n", calls);
