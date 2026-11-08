@@ -2752,7 +2752,14 @@ def p7_empty_case_fixtures(t : T?) {
         has_text(t, text, "        _flag ||= _cond == 1\n        _flag ||= _goto == 1  // here\n")
         has_text(t, text, "        _flag ||= _cond == 1\n        if (_flag) \{\n            \{\n                var k : int\n")
         has_text(t, text, "        _flag ||= _cond == 1\n        if (_flag) \{\n            let _t0 = c_volatile_load(p7_empty_case__port)\n")
-        // a case label in a nested block: the switch spelled open
+        // a `break` alone, a step, a call and a comma act or leave: their groups keep their branches
+        has_text(t, text, "    let _cond = x\n    if (_cond == 1) \{\n    \} elif (_cond == 2) \{\n        r += 10\n")
+        has_text(t, text, "        _flag ||= _cond == 1\n        if (_flag) \{\n            n++\n        \}\n")
+        has_text(t, text, "        _flag ||= _cond == 1\n        if (_flag) \{\n            p7_empty_case__bump()\n        \}\n")
+        has_text(t, text, "    var n : int = 4\n    let _cond = x\n    while (true) \{\n        var _flag = false\n        _flag ||= _cond == 1\n")
+        // an inert group joins the last group
+        has_text(t, text, "        r = 1\n    \} elif (_cond == 2 || _cond == 3) \{\n        r = 3\n")
+        // a case label in a nested block: the switch spelled open before any grouping
         has_text(t, text, "    label 2:  // case 1\n    c_label_end()\n    label 3:  // case 2\n")
         let want = native("p7_empty_case")
         var out : string
