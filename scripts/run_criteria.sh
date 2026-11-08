@@ -4,6 +4,8 @@
 # `scripts/run_criteria.sh [--filter lua/] [--jobs 6] [--delta <capture>]`. The Lua inputs need
 # up to 3 GB each and a compare project up to 6; cap the run on a shared box with a soft and a hard
 # limit (`prlimit --as=3221225472:6442450944`): a project's worker raises its soft limit to the hard.
+# On this box run it through the heavy queue:
+# `heavy --label criteria --max 8G -- prlimit --as=3221225472:6442450944 scripts/run_criteria.sh`.
 set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
