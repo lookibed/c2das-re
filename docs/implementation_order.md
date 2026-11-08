@@ -2310,7 +2310,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   reads the computed goto as naming its table's labels (probe `test_goto.das`, the flat label CFG).
   `run_code` measured 67 -> 47 lines (0.70), labels 3 -> 9, gotos 4 -> 9 (one computed); readability
   `@goto` keys for every kernel and Lua program and the criteria rows `lua/lua@goto`, `lua/luac@goto`
-  recorded. Owed: a goto lane in perf's cells (a timing run).
+  recorded. Review fixes: an unsigned subject's `case -1` read as its held value (no table; was every
+  value to no-case), tables from `INT_MIN` jump by the distance from `lo`, the `_contN` epilogue
+  guarded above a flat label, the unshadow pre-pass under goto mode; the `interp-goto` perf lane
+  (its cells come with the next re-record, a timing run).
 - **P7.0u Builtin `memcpy`, `memmove` and `memset8` for the program's own calls** (reference diff
   rows 5-6; extends P7.0n, which moved the constant-size marshal reads): a C `memcpy`/`memmove` of a
   program size calls daslang's builtin with the size guarded against zero, a C `memset` calls `memset8`
