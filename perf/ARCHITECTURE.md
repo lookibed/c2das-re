@@ -42,17 +42,17 @@ exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
   jump into another case's block and into the middle of one, so every such goto re-dispatches the
   switch's matched-flag loop; `do_while_effect` is P5.1's too, `do { ... } while (--n > 0)` nested
   in another, the decrement in the condition; `first_member` is P7.0f's, lua's `s2v(base + a)` and
-  `gco2t(o)` in a hot loop; `block_clear` is P7.0u's, h264bsd's per-macroblock clear: a record `memset` and filled by `memcpy` of a constant and of a run-time length per block. The kernel's parameter is a `volatile` static that `kernel_run` reads on
-  every call: with a literal argument clang hoists the idempotent call out of the rep loop (the
-  native lane reports zero), and daslang's optimizer evaluates a pure call with constant arguments
-  at compile time whatever `infer_time_folding` says, so the interpreter lane measured a store. The
-  converter keeps `volatile` (`converter/ARCHITECTURE_EMITTER_LOOPS.md`): the das read is a
-  `c_volatile_load` no tier folds, one per call, so the das program has the unknown trip count the
-  native one has.
-  A kernel holds no `main`, no `#include` and no `printf` or `clock` prototype, since the
-  harness supplies `main` and those two prototypes (`perf_compose.das`), and no expected result,
-  since the native lane's result is the value every das lane must match; it declares every
-  other libc function it calls with a prototype of its own.
+  `gco2t(o)` in a hot loop; `block_clear` is P7.0u's, a record cleared by `memset` and filled by two
+  `memcpy`s, one of a run-time length, per block. The kernel's parameter is a `volatile` static that
+  `kernel_run` reads on every call: with a literal argument clang hoists the idempotent call out of
+  the rep loop (the native lane reports zero), and daslang's optimizer evaluates a pure call with
+  constant arguments at compile time whatever `infer_time_folding` says, so the interpreter lane
+  measured a store. The converter keeps `volatile` (`converter/ARCHITECTURE_EMITTER_LOOPS.md`): the
+  das read is a `c_volatile_load` no tier folds, one per call, so the das program has the unknown
+  trip count the native one has. A kernel holds no `main`, no `#include` and no `printf` or `clock`
+  prototype, since the harness supplies `main` and those two prototypes (`perf_compose.das`), and no
+  expected result, since the native lane's result is the value every das lane must match; it
+  declares every other libc function it calls with a prototype of its own.
 - `kernels/dasprofile/<name>.c` - the dasProfile method's kernels: dasProfile 436d58d's
   `tests/cpp/<name>.cpp` in C, file for file, for `fib_loop`, `fib_recursive` and `primes`: the
   same functions with external linkage, the same loops and parameter, `PROFILE_NOINLINE` as
