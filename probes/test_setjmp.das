@@ -1,7 +1,5 @@
 options gen2
 require dastest/testing_boost public
-require strings
-require daslib/strings_boost
 require _daslang_child
 
 struct CJmpBuf {

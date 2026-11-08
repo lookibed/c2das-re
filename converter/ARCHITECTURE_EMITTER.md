@@ -296,7 +296,6 @@ a block's statement level, a second setjmp, another effect or read (`x = g + set
 `a[i++] = setjmp(buf)`) and a `setjmp` read any other way fail closed. das refuses a `return` in an
 arm (error 30299, `docs/probe-findings.md` F96), so an arm holding one is a block invoked for
 whether it returned, `_sj_returned = invoke($() : bool { ... })`, a C `return v` in it `_sj_ret = v`
-and `return true`. The outermost such site declares `_sj_ret` and `_sj_returned` before its `try`,
-the sites in its arms share them, and after the pair `if (_sj_returned)` returns `_sj_ret`, or
-`true` inside an enclosing arm; a `goto`, `break` or `continue` across the block's edge fails
-closed. The lowering is exact under the interpreter, the JIT and the exe.
+and `return true`; the outermost such site declares both before its `try`, the sites in its arms
+share them, and after the pair `if (_sj_returned)` returns `_sj_ret` (or `true` inside an enclosing
+arm). A `goto`, `break` or `continue` across the block's edge fails closed. Exact on every tier.
