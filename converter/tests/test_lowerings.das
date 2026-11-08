@@ -203,6 +203,18 @@ def test_inline_helpers(t : T?) {
 }
 
 [test]
+def test_flat_cases(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_flat_cases", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure(dir_error)
+        return
+    }
+    p7_flat_case_fixtures(t)
+    rmdir_rec(work_root)
+}
+
+[test]
 def test_crt_writes(t : T?) {
     var dir_error : string
     work_root = create_temp_directory("c2das_crt_writes", dir_error)
@@ -1850,7 +1862,7 @@ def p5_lua_expression_fixtures(t : T?) {
 
 // P7.0c2: `switch_dispatch` `goto`, a dense switch's jump table, against the default chain
 def p7_goto_dispatch_fixtures(t : T?) {
-    t |> run("switch_dispatch goto: a dense switch jumps to its case past a bounds guard, its labels below the function's, an else after every case; the rest keep their forms") @(t : T?) {
+    t |> run("switch_dispatch goto: a dense switch jumps to its case past a bounds guard, its labels below the function's, an else after every case; an open one takes its own table; the rest keep their forms") @(t : T?) {
         let source = fread(path_join(FIXTURES, "p7_goto_dispatch.c"))
         let text = converts(t, "p7_goto_dispatch", source, "\{\"switch_dispatch\": \"goto\"\}\n")
         // the enum dispatch: the guard to the out-of-range label, the jump, a label per case value
@@ -1873,7 +1885,7 @@ def p7_goto_dispatch_fixtures(t : T?) {
         has_text(t, text, "                goto _cond2 + 1\n")
         // an open switch beside a jump table in a function without C labels numbers after the table
         has_text(t, text, "        label 9:  // no case: switch end\n        break\n")
-        has_text(t, text, "    label 11:  // case 0\n    c_label_end()\n    label 15:  // do\n")
+        has_text(t, text, "    label 10:  // case 0\n    c_label_end()\n    label 15:  // do\n")
         // sparse, falling through, under 8 values, past int and Duff's device keep their forms
         has_text(t, text, "    \} elif (_cond == 2) \{\n        return 3\n")
         // a label that does not open its case: the branch before it ends in an `else` too
@@ -1883,9 +1895,11 @@ def p7_goto_dispatch_fixtures(t : T?) {
         has_text(t, text, "    label 11:  // again\n")
         has_text(t, text, "            _goto = 1\n            goto label 10\n")
         has_text(t, text, "            if (n < 3) \{\n                goto label 11\n")
-        // a flag switch after a dispatched one reuses the label name with its own re-dispatch
-        has_text(t, text, "        label 1:  // re-dispatch\n")
-        for (fn in ["fall", "small", "wide", "duff", "wide_low", "entered", "sparse_shared"]) {
+        // a switch a goto from another case re-dispatches that the table refuses is spelled open
+        // (P7.0t), Duff's device and a switch a goto enters take their own table
+        has_text(t, text, "    \} elif (_cond == 50) \{\n        goto label 4\n")
+        has_text(t, text, "    goto _cond + 1\n    label 1:  // case 0\n    c_label_end()\n    label 10:  // do\n")
+        for (fn in ["fall", "small", "wide", "wide_low", "sparse_shared"]) {
             let at = text |> find("def private p7_goto_dispatch__{fn}(")
             let end = text |> find("\n\}\n", at)
             let plain = text |> find("goto _cond", at)
@@ -2881,5 +2895,55 @@ def p7_inline_refused_fixtures(t : T?) {
         has_text(t, fread(path_join(out_dir, "two_scaled.das")), "    return sq(x + 1 - 1)\n")
         var out : string
         t |> equal(run_tier(two.das_path, "interp", path_join(work_root, "inline_two_interp"), out, CONVERTED_MODULES), 0, out)
+    }
+}
+
+// P7.0t: under `switch_dispatch` `goto` a switch a goto from another case group re-dispatches, which
+// the jump table refuses, is spelled open
+def p7_flat_case_fixtures(t : T?) {
+    t |> run("switch_dispatch goto: a switch a goto from another case re-dispatches is spelled open, a jump table where its values fill half their range, an elif chain elsewhere; runs as C under the interpreter and the JIT") @(t : T?) {
+        let want = native("p7_flat_cases")
+        t |> equal(want.rc, 0, want.out)
+        let res <- convert("{FIXTURES}/p7_flat_cases.c", path_join(work_root, "flat_cases"), "linux", "", "", "", "", "", "goto")
+        t |> equal(res.ok, true, res.error)
+        let text = res.das_text
+        t |> equal(text |> find("re-dispatch") < 0 && text |> find("_flag") < 0, true, text)
+        // switch_goto's loop: a bounds guard, the jump, a goto into another case's block to its C
+        // label, the last group's goto from outside the switch, the end at the loop body's end
+        has_text(t, text, "        let _cond = int(p7_flat_cases__code[_t0])\n        if (_cond < 0 || _cond > 4) \{\n            goto label 9\n        \}\n        goto _cond + 4\n        label 4:  // case 0\n")
+        has_text(t, text, "        label 5:  // case 1\n        acc ^= pc\n        goto label 1\n        label 6:  // case 2\n        label 1:  // l_call\n")
+        has_text(t, text, "        label 9:  // no case: switch end\n        if (acc == 12345) \{\n            goto label 3\n")
+        // an `if` that returns before a case label keeps an `else`: the jump names every label of
+        // its table (lookibed/daScript#35)
+        has_text(t, text, "            return -1\n        \} else \{\n            c_label_end()\n        \}\n        goto label 9\n        label 5:  // case 1\n")
+        // only the jump reaches the case labels after such an `if` when `default` comes first and
+        // returns
+        has_text(t, text, "    return 9\n    label 3:  // case 0\n    c_label_end()\n    if (k != 0) \{\n        return 100\n    \} else \{\n        c_label_end()\n    \}\n")
+        // an enum jumps by its value; a value no case holds lands at default
+        has_text(t, text, "    goto int(_cond) + 2\n")
+        has_text(t, text, "    label 5:  // no case 3\n    label 8:  // default\n")
+        // a `continue` is the loop's own
+        has_text(t, text, "        if ((i & 1) != 0) \{\n            continue\n")
+        // a goto from a nested switch's default to the outer one's label
+        has_text(t, text, "    \} else \{\n        goto label 1\n    \}\n    goto label 2\n    label 5:  // case 2\n")
+        // sparse, a single case value, past int: an elif chain to the case labels
+        has_text(t, text, "    if (_cond == 1) \{\n        goto label 3\n    \} elif (_cond == 50) \{\n")
+        has_text(t, text, "    if (_cond == 7) \{\n        goto label 3\n    \} else \{\n        goto label 4\n")
+        has_text(t, text, "    if (_cond == 4000000000l) \{\n        goto label 3\n")
+        for (fn in ["sparse", "single", "wide"]) {
+            let at = text |> find("def private p7_flat_cases__{fn}(")
+            let plain = text |> find("goto _cond", at)
+            t |> success(at >= 0 && (plain < 0 || plain > text |> find("\n\}\n", at)), fn)
+        }
+        // holes and no default in a switch inside another: each switch's own holes before its end
+        has_text(t, text, "    label 9:  // no case 1\n    label 12:  // no case: switch end\n")
+        has_text(t, text, "    label 4:  // no case 1\n    label 7:  // no case: switch end\n")
+        // a switch a goto enters from outside and a goto from another case re-dispatches
+        has_text(t, text, "    if (k != 0) \{\n        goto label 1\n    \}\n    let _cond = x\n")
+        for (tier in ["interp", "jit"]) {
+            var out : string
+            t |> equal(run_tier(res.das_path, tier, path_join(work_root, "flat_cases_{tier}"), out, CONVERTED_MODULES), 0, "{tier}: {out}")
+            t |> success(out |> ends_with(want.out), "{tier}: {out}")
+        }
     }
 }
