@@ -2291,8 +2291,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   percent faster, interp flat (libc does the copy either way); the kernels have no such site, so a
   kernel with a `memset` per block is the measurement. The crt binds stay for the AOT host's widths.
   Reference pass (2026-11-08): h264bsd-mp4's sites call its own `memset`/`memcpy`/`memmove` (shim.c, our `memset1`), not
-  libc's, so this item leaves h264bsd flat on every lane (the Rust output lowers them as reserved names: a ruling,
-  `rulings-pending.md`); plmpeg's 9 memset, 7 memcpy and 1 memmove sites and the kernel `block_clear` are the measurement.
+  libc's, and keep calling them: a program's own definition is the function C names, which the emitter keeps faithfully
+  (the Rust output lowers them as reserved names; the fast form would be an opt-in under the standing rule), so h264bsd
+  stays flat; plmpeg's 9 memset, 7 memcpy and 1 memmove sites and the kernel `block_clear` are the measurement.
+  Predictions (B/A time, before any run): block_clear JIT 0.90 and exe 0.90 (three indirect crt calls and their reload
+  barriers per block become inline copies and a fill; the 1 KB fill itself stays libc's), interp 1.00 (an extern call
+  either way); plmpeg JIT and exe 0.98 (its sites are per-frame setup and buffer moves, not per block), interp 1.00;
+  h264bsd 1.00 on every lane (no site changes).
 - **P7.0v A `uint64` mirror for a stepped pointer and `p[i]` for `deref(p + i)`** (reference diff rows
   16-17, 19 measured beside them): a pointer stepped in a loop is mirrored in a `uint64` local (one
   fused add per step) and an element access through a pointer is das's pointer index (one node) in
