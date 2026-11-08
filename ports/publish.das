@@ -888,76 +888,9 @@ def private converter_changed_since(date : string) : bool {
 // when it was measured at the published commit
 def private measured_note(sha, date : string; gen : Generation) : string => sha == gen.sha ? "" : measured_at_line(sha, date, converter_changed(sha, gen.sha))
 
-//! one C file of a compare project converted alone: its path under the project folder, the module
-//! written, or the converter's first line when it refused
-struct FileConversion {
-    c_path : string
-    das_path : string
-    refusal : string
-}
-
 // the folder a project's publish converts in: the whole program in `whole/`, each C file alone in
 // `files/`
 def private project_work(name : string) : string => path_join("compare/work/ports", name)
-
-// the file an `#include "name"` in `from` names: beside `from`, else in the first of `dirs` that
-// holds it; "" when none does
-def private resolve_quoted(from, name : string; dirs : array<string>) : string {
-    let beside = path_join(dir_name(from), name)
-    if (fexist(beside)) {
-        return beside
-    }
-    for (d in dirs) {
-        let candidate = path_join(d, name)
-        if (fexist(candidate)) {
-            return candidate
-        }
-    }
-    return ""
-}
-
-// the C files the translation unit `path` compiles: every `.c` file it includes by quotes,
-// followed through the ones that include `.c` files themselves (the projects' `all.c` graphs);
-// the unit itself when it includes none
-def private compiled_files(path : string; dirs : array<string>) : array<string> {
-    var found : array<string>
-    for (ln in split(fread(path), "\n")) {
-        let line = strip(ln)
-        let open = find(line, "\"")
-        let close = open < 0 ? -1 : find(line, "\"", open + 1)
-        if (line |> starts_with("#include") && close > open && slice(line, open + 1, close) |> ends_with(".c")) {
-            let included = resolve_quoted(path, slice(line, open + 1, close), dirs)
-            if (!empty(included)) {
-                found |> push_from(compiled_files(included, dirs))
-            }
-        }
-    }
-    if (empty(found)) {
-        found |> push(path)
-    }
-    return <- found
-}
-
-// `path` relative to the folder `dir` it lies under
-def private relative_to(path, dir : string) : string => path |> starts_with("{dir}/") ? slice(path, length(dir) + 1) : path
-
-// each C file of `p` converted alone into `<work>/files/`: its units, else the files its unit's
-// `all.c` graph compiles
-def private convert_files(p : Project; work : string) : array<FileConversion> {
-    let dirs <- [for (d in p.include_dirs); project_path(p, d)]
-    var paths <- empty(p.units) ? [for (f in compiled_files(project_path(p, p.tu), dirs)); relative_to(f, p.dir)] : clone_to_move(p.units)
-    var results : array<FileConversion>
-    results |> reserve(length(paths))
-    let none : array<string>
-    for (rel in paths) {
-        var refusal : string
-        var inscope files : array<string>
-        let das_path = ours_module(p, rel, path_join(work, "files/{trim_suffix(rel, ".c")}"), none, refusal, files)
-        to_log(LOG_INFO, "{p.name}: {rel}: " + (empty(refusal) ? "converted" : refusal) + "\n")
-        results |> push(FileConversion(c_path = rel, das_path = empty(refusal) ? das_path : "", refusal = refusal))
-    }
-    return <- results
-}
 
 // every file of `files` (paths under `from`) written into `into` at its path under `from`, every
 // other file under `into` removed, the layout report kept when `from` holds one
@@ -1105,20 +1038,16 @@ def private publish_project(p_row : Project; repo : string; var gen : Generation
         return false
     }
     let work = project_work(p.name)
-    rmdir_rec(work)
     let whole = path_join(work, "whole")
-    var refusal : string
-    var inscope files : array<string>
-    ours_module(p, p.tu, whole, p.units, refusal, files)
-    to_log(LOG_INFO, "{p.name}: " + (empty(refusal) ? "converted whole" : refusal) + "\n")
-    var inscope per_file <- empty(refusal) ? array<FileConversion>() : convert_files(p, work)
+    var inscope conv <- convert_project(p, work)
+    let refusal = conv.refusal
     gen = tree_generation()
     let dir = path_join(repo, p.name)
     mkdir_rec(dir)
     let stem = trim_suffix(base_name(p.tu), ".c")
-    var ok = mirror_tree(whole, path_join(dir, stem), empty(refusal) ? files : array<string>())
+    var ok = mirror_tree(whole, path_join(dir, stem), empty(refusal) ? conv.files : array<string>())
     var inscope converted : array<string>
-    for (f in per_file) {
+    for (f in conv.per_file) {
         if (!empty(f.das_path)) {
             converted |> push(f.das_path)
         }
@@ -1129,7 +1058,7 @@ def private publish_project(p_row : Project; repo : string; var gen : Generation
     let command = "scripts/publish_ports.sh --program {p.name}"
     let rust_sha = git_line(rust_checkout(), ["rev-parse", "HEAD"])
     why = ok ? "" : "a file of its directory was not written"
-    return ok && write_or_log(path_join(dir, "README.md"), project_readme_text(p, gen, rust_sha, refusal, per_file, command, project_perf_text(p)))
+    return ok && write_or_log(path_join(dir, "README.md"), project_readme_text(p, gen, rust_sha, refusal, conv.per_file, command, project_perf_text(p)))
 }
 
 def private repo_of(args : Args) : string {

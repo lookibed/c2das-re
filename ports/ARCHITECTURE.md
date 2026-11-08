@@ -252,12 +252,13 @@ of `compare/projects.das`'s `project_table` over the Rust checkout (`$C2DAS_RUST
 `/root/c2das`), read in place; a row whose folder the checkout lacks is skipped with a warning, so
 a checkout without `tests/manual` publishes Lua alone. `--program` takes `lua` or a project's name.
 
-A project converts on every publish, in the publisher's process, as compare converts our side
-(`ours_module`: the sidecar of the row's defines, include folders and program root, its units in
-the source layout when the canonical case lists them), into `compare/work/ports/<name>/whole/`.
-Under `--no-convert` a project is not published, with a warning. A program the converter refuses
-converts file by file into `compare/work/ports/<name>/files/`: its units, else every `.c` file its
-unit includes by quotes, followed through the `all.c` graphs that include `.c` files themselves.
+A project converts on every publish, in the publisher's process, through `convert_project` of
+`compare/projects.das` (`ours_module`: the sidecar of the row's defines, include folders and program
+root, its units in the source layout when the canonical case lists them), into
+`compare/work/ports/<name>/whole/`. Under `--no-convert` a project is not published, with a warning.
+A program the converter refuses converts file by file into `compare/work/ports/<name>/files/`: its
+units, else every `.c` file its unit includes by quotes, followed through the `all.c` graphs that
+include `.c` files themselves.
 The canonical case not read (`load_expected`) and an upstream folder with neither a `LICENSE*` or
 `COPYING*` file nor an SPDX line refuse the project before the first write into the clone.
 
