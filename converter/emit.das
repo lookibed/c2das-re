@@ -3891,10 +3891,7 @@ def private emit_trampoline(var em : Emitter; tu : CirTu; owner : CirStmt const?
     if (call != null) {
         buf = call.args[0]
     }
-    var arm : array<CirStmt const?>
-    for (idx in range(site, length(owner.body))) {
-        arm |> push(owner.body[idx])
-    }
+    let arm <- [for (idx in range(site, length(owner.body))); owner.body[idx]]
     var returns = false
     if (!arm_returns(em, arm, st.loc, returns)) {
         return
@@ -4025,14 +4022,19 @@ def private close_sj_result(var em : Emitter; returns, declared : bool) {
     }
 }
 
-// a C `return` inside a setjmp arm's block: the value into `_sj_ret`, the block answering true
-def private emit_arm_return(var em : Emitter; tu : CirTu; st : CirStmt const?) {
+// a C `return`; inside a setjmp arm's block the value goes into `_sj_ret` and the block answers true
+def private emit_return(var em : Emitter; tu : CirTu; st : CirStmt const?) {
+    let in_arm = em.sj_arms > 0
     if (st.e != null) {
         let e = stored(emit_expr(em, tu, st.e, st.loc), tu, st.e.t)
         flush_pre(em)
-        line(em, empty(em.sj_ret) ? e.text : "{em.sj_ret} = {e.text}")
+        line(em, !in_arm ? "return {e.text}" : empty(em.sj_ret) ? e.text : "{em.sj_ret} = {e.text}")
+    } elif (!in_arm) {
+        line(em, "return")
     }
-    line(em, "return true")
+    if (in_arm) {
+        line(em, "return true")
+    }
 }
 
 def private open_block(var em : Emitter; head : string) {
@@ -6307,16 +6309,8 @@ def private emit_stmt_kind(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     } elif (st.s == "expr") {
         emit_effect(em, tu, st.e, st.loc)
         flush_pre(em)
-    } elif (st.s == "return" && em.sj_arms > 0) {
-        emit_arm_return(em, tu, st)
     } elif (st.s == "return") {
-        if (st.e == null) {
-            line(em, "return")
-        } else {
-            let e = stored(emit_expr(em, tu, st.e, st.loc), tu, st.e.t)
-            flush_pre(em)
-            line(em, "return {e.text}")
-        }
+        emit_return(em, tu, st)
     } elif (st.s == "if") {
         emit_if(em, tu, *st, "if")
     } elif (st.s == "while") {
