@@ -2327,6 +2327,19 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   The opt-in's readability price is the `@inline` rows (`perf/<kernel>@inline`, `lua/<program>@inline`) of
   `metrics/readability_linux.json` and `metrics/criteria_linux.json` against their default rows; its perf lane
   is `interp-inline`.
+  Measured (2026-11-08 batch 4, one `heavy --exclusive` job, machine quiet 1%, box PC, tree a7f569d, 5 samples,
+  every result equal to native; raw `/root/notes/parallel/p7.0w_ab/ab.txt`), inlined/default: plmpeg-stream interp
+  0.941 (predicted 0.90, 0.86-0.94: at the range's edge, the temporaries of sum arguments eat part of the saved call),
+  JIT 1.002; fixed_mandel interp 0.872 (predicted 0.85, hit), JIT 1.006; binjgb JIT 1.002 and Doom demos 1-3 JIT
+  1.004 / 1.007 / 1.000 (predicted 1.00 +-3%, hits). Every number within 25% of its prediction (8/8). Readability
+  price (criteria capture): lua 79.7 -> 79.6 (bool_roundtrip 92.3 -> 91.9, literal_arithmetic 70.5 -> 70.3,
+  temporaries and macro_blowup -0.1, constant_names +0.2), luac 79.3 unchanged, the per-function line ratio's median
+  and worst unchanged; the readability counters equal on every `@inline` row. gcc-torture 1204 and c-testsuite 203,
+  equal to main. Decision: the JIT is flat on every program and the gain is interpreter-only, so the form stays the
+  opt-in `inline_helpers` and the default stays the call (ruling 23; ruling 36 section 1, readable by default).
+  Follow-up (review 2026-11-08, minor): a static helper of a header several files include is defined in each and
+  never inlined; `--inline-helpers` cannot switch a sidecar's `inline_helpers: true` off; two guards of
+  `inline_helper` are unreachable from valid C.
 - **P7.0x The source layout's split JIT build loses cross-module inlining** (found by the re-capture's
   profiles, 2026-11-06): the ports `jit` lane runs the source layout (30 modules, the cached JIT a
   partition per module) at Lua fib 4.9x (the ports size, fib 34) and nbody 4.1x (200000) native, where
