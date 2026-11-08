@@ -2408,6 +2408,14 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   falls, since the counter matches literals against the module's own names and the `#define` lets
   leave, an artifact of the counter and not a gain. If the probe holds, nothing is implemented: the
   name costs nothing at run time.
+  Closed without the literal form (coordinator's decision 2026-11-08, the owner may overrule): the
+  probe `test_constant_let_folds` (`probes/test_globals.das`) pins the fold on all seven `let` shapes
+  above: AOT spells each literal with no `das_global` read, the JIT IR holds the immediate (`and i32
+  %arg_value_0, 8191`) with no `jit_get_global`, and the `var` control reads the global on both (a
+  mutation making the function read the `var` fails both cases). The literal form buys no speed and
+  costs the predicted readability (`constant_names` to about 0, lua/lua 79.7 -> about 76.9); the name
+  stays the default and no opt-in is added. No timing run: nothing differs to time. Caveat: the Doom
+  site count is doomgeneric's C-IR (the compare project), not the PureDOOM tree `doom/run.das` converts.
 - **P7.0y Hand-written daslang references beside the Rust translator's output** (owner note
   2026-11-06, the reference pass of ruling 33 item 3 widened): the owner's plmpeg port
   (lookibed/plmpeg-stream, checkout `/root/plmpeg-stream`, bench `/root/plmpeg_bench`) against our
