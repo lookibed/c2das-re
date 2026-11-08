@@ -337,6 +337,16 @@ def test_capture_text(t : T?) {
         t |> success(text |> contains("\"totals\": \{\n    \"lua/lua\": "), text)
         t |> success(find(text, "\"lua/lua\": \{\"comments\"") < find(text, "\"csmith\": \{\"comments\""), text)
     }
+    t |> run("an opt-in row has its own column and leaves `all` as the default rows make it") @(t : T?) {
+        var cap <- sample_capture()
+        var inlined <- full_raw(0)
+        inlined["c_comment_lines"] = 10
+        inlined["das_comments_carried"] = 10
+        cap.rows["lua/lua@inline"] <- inlined
+        let with_opt_in = criteria_text(cap)
+        t |> success(with_opt_in |> contains("\n    \"lua/lua@inline\": \{\"comments\": 100.0,"), with_opt_in)
+        t |> success(with_opt_in |> contains("\n    \"all\": \{\"comments\": 25.0,"), with_opt_in)
+    }
     t |> run("the text passes the shape check and reads back") @(t : T?) {
         t |> equal(check_criteria(text), array<string>())
         var error : string

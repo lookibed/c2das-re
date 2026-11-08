@@ -27,8 +27,13 @@ struct CriteriaRaw {
 //! The criteria in the critic's order of findings.
 let CRITERIA <- ["comments", "constant_names", "char_literals", "macro_blowup", "repeated_blocks", "switch_flags", "temporaries", "addr_deref", "reinterpret_casts", "late_binding", "qualified_calls", "require_lines", "setjmp", "layout_checks", "stray_braces", "label_stubs", "string_literals", "lost_parens", "literal_arithmetic", "bool_roundtrip", "c_renames", "long_lines"]
 
-//! The rows of the capture: each Lua program in each layout, then each ratchet suite.
-let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "c_testsuite", "csmith", "gcc_torture"]
+//! The rows of the capture: each Lua program in each layout and under each opt-in, then each
+//! ratchet suite.
+let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/lua@inline", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "lua/luac@inline", "c_testsuite", "csmith", "gcc_torture"]
+
+//! The suffix of a row converted under an opt-in (`--inline-helpers`): its readability price,
+//! which the `all` column leaves out, so the default's total moves only with the default.
+let OPT_IN_ROW_SUFFIX = "@inline"
 
 //! The c-testsuite inputs the gate re-measures against the capture's `sample`: a switch with
 //! character literals and comments, defines, a plain switch.
@@ -122,7 +127,7 @@ def compliance_table(cap : CriteriaCapture) : table<string; table<string; double
             out[row] <- {for (cr in CRITERIA); cr => compliance(cr, c)}
         }
     }
-    var all <- {for (cr in CRITERIA); cr => mean_applicable([for (row in keys(out)); out?[row]?[cr] ?? NOT_APPLICABLE])}
+    var all <- {for (cr in CRITERIA); cr => mean_applicable([for (row in keys(out)); out?[row]?[cr] ?? NOT_APPLICABLE; where !(row |> ends_with(OPT_IN_ROW_SUFFIX))])}
     out[ALL] <- all
     return <- out
 }

@@ -35,7 +35,8 @@ needs no compile beyond the conversion's own.
 ## 2. Rows, columns and the total {#rows}
 
 A row is one Lua program in one layout (`lua/lua`, `lua/lua@source-cut`, `lua/lua@single`, the same for
-`luac`) or one ratchet suite (`c_testsuite`, `csmith`, `gcc_torture`), whose raw counts are the
+`luac`), one Lua program under an opt-in (`lua/lua@inline`, `--inline-helpers`, the opt-in's readability
+price, which the `all` column leaves out) or one ratchet suite (`c_testsuite`, `csmith`, `gcc_torture`), whose raw counts are the
 sum over its inputs. A per-function ratio's median and worst are taken over the row's pooled
 functions. Each criterion's compliance is computed per row from the row's raw counts; a criterion
 whose denominator is zero in a row does not apply there (`n/a`). The `all` column is each
