@@ -789,7 +789,7 @@ def test_earlier_capture(t : T?) {
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--no-convert"], out), 0, out)
         let readme = fread(path_join(clone, "lua/README.md"))
-        for (fact in ["## Performance\n\nCaptured 2026-01-02 03:04 UTC on x86_64, Bench CPU", "- `perf/capture_*.json` - every capture", "| fib      | `bench/fib.lua` | 1.000 s ±0% (by subtraction) | 200.000 s ±0% (by subtraction) |", "| interpreter        | 10.000 s ±0% |        20.00 |", "| JIT, goto dispatch |  not measured | not measured |"]) {
+        for (fact in ["## Performance\n\nMeasured at c2das-re `{slice(OTHER_SHA, 0, 12)}`, output changed since", "Captured 2026-01-02 03:04 UTC on x86_64, Bench CPU", "- `perf/capture_*.json` - every capture", "| fib      | `bench/fib.lua` | 1.000 s ±0% (by subtraction) | 200.000 s ±0% (by subtraction) |", "| interpreter        | 10.000 s ±0% |        20.00 |", "| JIT, goto dispatch |  not measured | not measured |"]) {
             t |> success(readme |> contains(fact), "README lacks {fact}:\n{readme}")
         }
         t |> success(!(readme |> contains(PERF_NOT_YET)), readme)
@@ -897,7 +897,7 @@ def private stand_in_projects(root : string) {
 
 // the head-to-head capture of the stand-in root, an entry for binjgb alone, committed
 def private stand_in_compare(root : string) {
-    let entry = "\{\"date\": \"2026-11-06 22:11 UTC\", \"box\": \"PC\", \"samples\": 3, \"lanes\": [\"interp\"], \"native\": \{\"status\": \"pass\"\}, \"native_compiler\": \"clang version 99\", \"ours\": \{\"error\": \"\", \"lanes\": \{\"interp\": \{\"status\": \"pass\"\}\}\}, \"rust\": \{\"error\": \"\", \"lanes\": \{\"interp\": \{\"status\": \"pass\"\}\}\}, \"speed\": \{\"native\": \{\"decode\": \{\"time\": 0.5, \"spread\": 0.01\}\}, \"ours\": \{\"interp\": \{\"decode\": \{\"time\": 4.0, \"spread\": 0.01\}\}\}, \"rust\": \{\"interp\": \{\"decode\": \{\"time\": 3.0, \"spread\": 0.01\}\}\}\}\}"
+    let entry = "\{\"date\": \"2029-01-01 00:00 UTC\", \"box\": \"PC\", \"samples\": 3, \"lanes\": [\"interp\"], \"native\": \{\"status\": \"pass\"\}, \"native_compiler\": \"clang version 99\", \"ours\": \{\"error\": \"\", \"lanes\": \{\"interp\": \{\"status\": \"pass\"\}\}\}, \"rust\": \{\"error\": \"\", \"lanes\": \{\"interp\": \{\"status\": \"pass\"\}\}\}, \"speed\": \{\"native\": \{\"decode\": \{\"time\": 0.5, \"spread\": 0.01\}\}, \"ours\": \{\"interp\": \{\"decode\": \{\"time\": 4.0, \"spread\": 0.01\}\}\}, \"rust\": \{\"interp\": \{\"decode\": \{\"time\": 3.0, \"spread\": 0.01\}\}\}\}\}"
     mkdir_rec(path_join(root, "compare"))
     fwrite(path_join(root, "compare/results_linux.json"), "\{\"projects\": \{\"binjgb\": {entry}\}\}\n")
     git(root, ["add", "-A"])
@@ -919,10 +919,10 @@ def test_projects(t : T?) {
         let sidecar = fread(path_join(clone, "binjgb/binjgb.c2das"))
         t |> success(sidecar |> contains("\"<c2das>/tests/manual/binjgb/include\"") && !(sidecar |> contains(root)), sidecar)
         t |> success(fread(path_join(clone, "binjgb/LICENSE")) |> contains("src/ and include/ of tests/manual/binjgb (the files of lookibed/c2das itself, its LICENSE):\n\nBSD stand-in\n"))
-        t |> success(readme |> contains("| binjgb | Ours | clang version 99 | 0.500000 | 8.00 |"), readme)
+        t |> success(readme |> contains("| Ours | clang version 99 | 0.500000 |        8.00 |"), readme)
         t |> success(readme |> contains("## Readability criteria\n\n{PROJECT_CRITERIA_NOT_YET}\n"), readme)
         // no converter commit since the entry's date: its date and the capture's commit, no change
-        t |> success(readme |> contains("Measured 2026-11-06 22:11 UTC (capture committed at c2das-re `{slice(captured_at, 0, 12)}`).\n"), readme)
+        t |> success(readme |> contains("Measured 2029-01-01 00:00 UTC (capture committed at c2das-re `{slice(captured_at, 0, 12)}`).\n"), readme)
         t |> equal(git(clone, ["log", "-1", "--format=%s"]), "binjgb: regenerated from c2das-re v9.9.9-1-g{slice(captured_at, 0, 7)} ({captured_at})")
         // a later commit that leaves the converter as it was: the commit named, the output the same
         fwrite(path_join(root, "notes.txt"), "a note\n")
@@ -930,23 +930,25 @@ def test_projects(t : T?) {
         git(root, ["commit", "-q", "-m", "a note"])
         t |> equal(publish(root, ["--repo", clone, "--program", "binjgb"], out), 0, out)
         let same = fread(path_join(clone, "binjgb/README.md"))
-        t |> success(same |> contains("Measured 2026-11-06 22:11 UTC (capture committed at c2das-re `{slice(captured_at, 0, 12)}`).\n"), same)
+        t |> success(same |> contains("Measured 2029-01-01 00:00 UTC (capture committed at c2das-re `{slice(captured_at, 0, 12)}`).\n"), same)
         t |> success(!(same |> contains("output changed since")), same)
         // a converter change after the capture: the output changed since
         mkdir_rec(path_join(root, "converter"))
         fwrite(path_join(root, "converter/changed.das"), "// changed\n")
         git(root, ["add", "-A"])
-        git(root, ["commit", "-q", "-m", "converter"])
+        // committed after the entry's date, as a converter change after a capture is
+        var committed : string
+        run_and_capture(["env", "GIT_COMMITTER_DATE=2030-01-01T00:00:00Z", "git", "-C", root, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "converter"], committed, 60.0)
         t |> equal(publish(root, ["--repo", clone, "--program", "binjgb"], out), 0, out)
         let stale = fread(path_join(clone, "binjgb/README.md"))
-        t |> success(stale |> contains("Measured 2026-11-06 22:11 UTC (capture committed at c2das-re `{slice(captured_at, 0, 12)}`), output changed since: the converter changed after that date"), stale)
+        t |> success(stale |> contains("Measured 2029-01-01 00:00 UTC (capture committed at c2das-re `{slice(captured_at, 0, 12)}`), output changed since: the converter changed after that date"), stale)
         // wasm3 refuses whole; its files convert one by one, the refused one named
         t |> equal(publish(root, ["--repo", clone, "--program", "wasm3"], out), 0, out)
         let wasm3 = fread(path_join(clone, "wasm3/README.md"))
         t |> success(wasm3 |> contains("The program does not convert whole yet: "), wasm3)
         t |> success(wasm3 |> contains("variable-length array"), wasm3)
         t |> success(wasm3 |> contains("2 of 3"), wasm3)
-        t |> success(wasm3 |> contains("| upstream/wasm3/source/m3_add.c | converted |"), wasm3)
+        t |> success(wasm3 |> contains("| upstream/wasm3/source/m3_add.c | converted "), wasm3)
         t |> success(wasm3 |> contains("| upstream/wasm3/source/m3_vla.c | refused: "), wasm3)
         t |> success(wasm3 |> contains("not yet: c2das-re's `compare/results_linux.json` holds no entry for wasm3."), wasm3)
         t |> success(fexist(path_join(clone, "wasm3/files/upstream/wasm3/source/m3_add/m3_add.das")), out)

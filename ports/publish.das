@@ -1027,7 +1027,8 @@ def private project_perf_text(p : Project) : string {
     var error : string
     var results = read_json_file(COMPARE_CAPTURE, error)
     var entry = results?["projects"]?[p.name]
-    if (entry == null) {
+    // a project the capture lacks reads as a null value, not as no value
+    if (entry == null || !(entry.value is _object)) {
         return "not yet: c2das-re's `{COMPARE_CAPTURE}` holds no entry for {p.name}.\n"
     }
     let one = JV({"projects" => JV({p.name => entry})})
@@ -1140,7 +1141,7 @@ def private repo_of(args : Args) : string {
 
 // every compare project of `projects` that `--program` names (all without it) published, the
 // top-level README after each, and committed with `--commit`; false at the first that fails
-def private publish_projects(args : Args; projects : array<Project>; repo : string; var failures : array<string>) {
+def private publish_projects(args : Args; projects : array<Project>; repo : string; var failures : array<string>; var published : int&) {
     for (p in projects) {
         if (!empty(args.program) && args.program != p.name) {
             continue
@@ -1165,6 +1166,7 @@ def private publish_projects(args : Args; projects : array<Project>; repo : stri
             continue
         }
         to_log(LOG_INFO, "{p.name}: published into {path_join(repo, p.name)}\n")
+        published++
         if (args.commit && !commit_program(p.name, repo, gen)) {
             failures |> push("{p.name}: the commit failed")
         }
@@ -1229,6 +1231,7 @@ def main : int {
         return 1
     }
     var failures : array<string>
+    var published = 0
     for (port in ports) {
         if (!empty(args.program) && args.program != port.name) {
             continue
@@ -1239,19 +1242,20 @@ def main : int {
             continue
         }
         to_log(LOG_INFO, "{port.name}: published into {path_join(repo, port.name)}\n")
+        published++
         if (args.commit && !commit_program(port.name, repo, gen)) {
             failures |> push("{port.name}: the commit failed")
         }
     }
-    publish_projects(args, projects, repo, failures)
-    return finish(args, repo, failures)
+    publish_projects(args, projects, repo, failures, published)
+    return finish(args, repo, failures, published)
 }
 
-// the end of a publish: the failures named in the top-level README and committed with `--commit`,
-// whatever was committed pushed with `--push`, the failures logged; 1 when any program failed or
-// the push did
-def private finish(args : Args; repo : string; failures : array<string>) : int {
-    if (!empty(failures) && publish_top_readme(repo, failures) && args.commit) {
+// the end of a publish: when some program published, the failures named in the top-level README
+// and committed with `--commit` (a run that published nothing leaves the clone as it was), whatever
+// was committed pushed with `--push`, the failures logged; 1 when any program failed or the push did
+def private finish(args : Args; repo : string; failures : array<string>; published : int) : int {
+    if (!empty(failures) && published > 0 && publish_top_readme(repo, failures) && args.commit) {
         var out : string
         if (git_in(repo, ["add", "README.md"], out) == 0 && git_in(repo, ["diff", "--cached", "--quiet"], out) != 0) {
             var argv <- clone_to_move(IDENTITY)

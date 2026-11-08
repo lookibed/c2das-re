@@ -289,7 +289,7 @@ between the two (or the capture's commit is not in the tree).
 
 A project that fails (its canonical case, its license, a write) does not stop the publish: the
 other programs publish and commit, the top-level README's `Directories` section (`render_programs`)
-links every program directory of the clone and names each failure, a commit with `--commit` holds
-that line, `--push` pushes what was committed, and the run then exits 1. A failed Lua publish is
+links every program directory of the clone and names each failure when some program published (a
+run that published nothing leaves the clone as it was), a commit with `--commit` holds that line, `--push` pushes what was committed, and the run then exits 1. A failed Lua publish is
 collected the same way. The criteria are `PROJECT_CRITERIA_NOT_YET`: `scripts/run_criteria.sh` takes no
 single project.
