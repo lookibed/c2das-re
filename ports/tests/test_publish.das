@@ -7,6 +7,7 @@ require daslib/json_boost
 require ../ports_render.das
 require ../../perf/perf_lanes.das
 require ../../perf/boxes.das
+require ../../metrics/criteria_file.das
 
 //! `ports/publish.das` without the release: a scratch c2das-re root holding a stand-in
 //! `lua/work` (a small C program and a hand-written das module in place of the composed and
@@ -900,6 +901,11 @@ def private stand_in_compare(root : string) {
     let entry = "\{\"date\": \"2029-01-01 00:00 UTC\", \"box\": \"PC\", \"samples\": 3, \"lanes\": [\"interp\"], \"native\": \{\"status\": \"pass\"\}, \"native_compiler\": \"clang version 99\", \"ours\": \{\"error\": \"\", \"lanes\": \{\"interp\": \{\"status\": \"pass\"\}\}\}, \"rust\": \{\"error\": \"\", \"lanes\": \{\"interp\": \{\"status\": \"pass\"\}\}\}, \"speed\": \{\"native\": \{\"decode\": \{\"time\": 0.5, \"spread\": 0.01\}\}, \"ours\": \{\"interp\": \{\"decode\": \{\"time\": 4.0, \"spread\": 0.01\}\}\}, \"rust\": \{\"interp\": \{\"decode\": \{\"time\": 3.0, \"spread\": 0.01\}\}\}\}\}"
     mkdir_rec(path_join(root, "compare"))
     fwrite(path_join(root, "compare/results_linux.json"), "\{\"projects\": \{\"binjgb\": {entry}\}\}\n")
+    // the criteria capture, with a row for wasm3 alone
+    var cap : CriteriaCapture
+    cap.rows["project/wasm3"] <- sum_raw([{"c_files" => 3, "c_files_converted" => 2, "fn_matched" => 2}], array<int>())
+    mkdir_rec(path_join(root, "metrics"))
+    fwrite(path_join(root, "metrics/criteria_linux.json"), criteria_text(cap))
     git(root, ["add", "-A"])
     git(root, ["commit", "-q", "-m", "capture"])
 }
@@ -920,7 +926,7 @@ def test_projects(t : T?) {
         t |> success(sidecar |> contains("\"<c2das>/tests/manual/binjgb/include\"") && !(sidecar |> contains(root)), sidecar)
         t |> success(fread(path_join(clone, "binjgb/LICENSE")) |> contains("src/ and include/ of tests/manual/binjgb (the files of lookibed/c2das itself, its LICENSE):\n\nBSD stand-in\n"))
         t |> success(readme |> contains("| Ours | clang version 99 | 0.500000 |        8.00 |"), readme)
-        t |> success(readme |> contains("## Readability criteria\n\n{PROJECT_CRITERIA_NOT_YET}\n"), readme)
+        t |> success(readme |> contains("## Readability criteria\n\nnot yet: c2das-re's `metrics/criteria_linux.json` holds no row `project/binjgb`; "), readme)
         // no converter commit since the entry's date: its date and the capture's commit, no change
         t |> success(readme |> contains("Measured 2029-01-01 00:00 UTC (capture committed at c2das-re `{slice(captured_at, 0, 12)}`).\n"), readme)
         t |> equal(git(clone, ["log", "-1", "--format=%s"]), "binjgb: regenerated from c2das-re v9.9.9-1-g{slice(captured_at, 0, 7)} ({captured_at})")
@@ -951,6 +957,10 @@ def test_projects(t : T?) {
         t |> success(wasm3 |> contains("| upstream/wasm3/source/m3_add.c | converted "), wasm3)
         t |> success(wasm3 |> contains("| upstream/wasm3/source/m3_vla.c | refused: "), wasm3)
         t |> success(wasm3 |> contains("not yet: c2das-re's `compare/results_linux.json` holds no entry for wasm3."), wasm3)
+        // the criteria from the capture's row, recorded before the converter change
+        t |> success(wasm3 |> contains("## Readability criteria\n\nFrom c2das-re's `metrics/criteria_linux.json` (`scripts/run_criteria.sh`), its row `project/wasm3`, recorded at c2das-re `{slice(captured_at, 0, 12)}`, output changed since: "), wasm3)
+        t |> success(wasm3 |> contains("Measured on the 2 of 3 C files that convert alone"), wasm3)
+        t |> success(wasm3 |> contains("| project/wasm3 |"), wasm3)
         t |> success(fexist(path_join(clone, "wasm3/files/upstream/wasm3/source/m3_add/m3_add.das")), out)
         t |> success(fexist(path_join(clone, "wasm3/files/src/host/host.das")), out)
         t |> success(!fexist(path_join(clone, "wasm3/files/upstream/wasm3/source/m3_vla/m3_vla.das")), out)
