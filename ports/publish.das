@@ -824,6 +824,11 @@ def private compare_section(var section : string&) : bool {
 //! the readability criteria's capture in the c2das-re tree
 let CRITERIA_CAPTURE = "metrics/criteria_linux.json"
 
+//! The files beside the converter whose change can move a project's criteria row: the project
+//! conversion and the criteria's own computation (`metrics/ARCHITECTURE_CRITERIA.md`); a commit to
+//! another `metrics/` file (a capture, a test, a document) leaves the row as recorded.
+let CRITERIA_SOURCES <- ["compare/projects.das", "metrics/criteria.das", "metrics/criteria_count.das", "metrics/criteria_defines.das", "metrics/criteria_file.das", "metrics/criteria_scan.das", "metrics/readability_inputs.das"]
+
 // the top-level README's readability criteria section rendered from `CRITERIA_CAPTURE` into
 // `section`, "" without the capture; false when it does not read
 def private criteria_section(var section : string&) : bool {
@@ -978,8 +983,8 @@ def private project_perf_text(p : Project) : string {
 
 // the criteria section of a project's README: its row of `CRITERIA_CAPTURE` under the commit that
 // recorded the capture (none for a capture with uncommitted changes), the output changed since when
-// the converter, the project conversion or the criteria differ between that commit and the
-// published conversion's
+// the converter or one of `CRITERIA_SOURCES` differs between that commit and the published
+// conversion's
 def private project_criteria(p : Project; gen : Generation) : string {
     var error : string
     let present = fexist(CRITERIA_CAPTURE)
@@ -987,7 +992,7 @@ def private project_criteria(p : Project; gen : Generation) : string {
     // a capture with uncommitted changes (a publish under --allow-dirty) was recorded at no commit
     let dirty = !empty(git_line(".", ["status", "--porcelain", "--", CRITERIA_CAPTURE]))
     let recorded = dirty ? "" : git_line(".", ["log", "-1", "--format=%H", "--", CRITERIA_CAPTURE])
-    let changed = !empty(recorded) && present && empty(error) && output_changed(recorded, gen.sha, ["compare/projects.das", "metrics"])
+    let changed = !empty(recorded) && present && empty(error) && output_changed(recorded, gen.sha, CRITERIA_SOURCES)
     return project_criteria_text(p.name, cap, present, error, recorded, changed)
 }
 
