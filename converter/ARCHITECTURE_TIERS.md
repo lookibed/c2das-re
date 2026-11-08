@@ -74,5 +74,5 @@ what the C program means:
   `modules/dasLLVM/ARCHITECTURE.md` names).
 
 Both are strict-aliasing violations in C, which a program compiled with `-fno-strict-aliasing`
-(Doom, Quake and most game code) is entitled to make; the interpreter and the AOT host never
-reorder by type.
+(Doom, Quake and most game code) is entitled to make; the interpreter never reorders by type,
+and the AOT host is compiled with `-fno-strict-aliasing` (section 5).

@@ -1403,6 +1403,24 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   skipped (the next stop, `m3_compile.c:204`); wasm3 now stops in the dumper at `m3_parse.c:305:22`, "`m3type_t
   argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)": (v) a VLA
   local, out of scope in v1 (`docs/very-detailed-plan.md`); Rust passes all four lanes there.
+- **P8.5 Strict aliasing under the JIT and exe** (ruling 37 phase 1, checklist item A; correctness
+  before any timing). daScript `abf1d40e35` tags every typed load and store with `!tbaa` by class
+  (`float`, `double`, one class for the wider integers and pointers) and leaves a function untagged
+  when its body holds a punning `reinterpret` (F94). Inventory: `converter/ARCHITECTURE_TIERS.md`
+  section 9. Decision per shape: unions (`[c_union]` accessors are punning reinterprets returning a
+  reference), typed pointer casts, the `first_member` reinterpret, byte views, `memcpy` and the CRT,
+  and integer-width or pointer views are right with the tags on (`p8_alias_safe.c`, JIT and exe
+  as natively with the model on); a cast from `void *` (the model's hole, lookibed/daScript#44) and
+  views loaded from a record (the escape daslang documents) are wrong with it on (`p8_alias_unsafe.c`
+  prints `2 2` for `1 3` under JIT and exe). The model's switch is the root program's
+  `options strict_aliasing` alone (a required module's line is ignored), so the converter writes
+  `options strict_aliasing = false` into the module holding `main` by default, the status quo of
+  every recorded JIT and exe number; the sidecar key `strict_aliasing: true` keeps the model for a
+  program whose C is clean under `-fstrict-aliasing` (one line less, the tagged loops vectorize).
+  Which kernels and projects take the key is a timing question for the phase-1 re-capture, measured
+  both ways; per-function `[hint(no_strict_aliasing)]` is not emitted (one line per function, and the
+  root option covers every module). Unblocks when lookibed/daScript#44 lands: re-probe F94, then
+  the `void *` shape moves to the safe group and the default can be revisited.
 
 ## P6 — Doom
 
