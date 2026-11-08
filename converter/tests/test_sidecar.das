@@ -296,6 +296,35 @@ def test_sidecar_jit_whole_program(t : T?) {
 }
 
 [test]
+def test_sidecar_inline_helpers(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_inline_helpers", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`inline_helpers` is true or false; absent it is false, the calls' default") @(t : T?) {
+        for (on in [true, false]) {
+            var error : string
+            let side <- read_text(dir, "inline_{on}", "\{\"inline_helpers\": {on}\}\n", error)
+            t |> equal(error, "")
+            t |> equal(side.inline_helpers, on)
+        }
+        var error : string
+        let side <- read_text(dir, "no_inline", "\{\"stack\": 65536\}\n", error)
+        t |> equal(error, "")
+        t |> equal(side.inline_helpers, false)
+    }
+    t |> run("an `inline_helpers` that is no boolean is refused, naming the key and the value") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "bad_inline", "\{\"inline_helpers\": \"on\"\}\n", error)
+        t |> success(error |> ends_with("bad_inline.c2das: `inline_helpers` is true or false, not \"on\""), error)
+        t |> equal(side.inline_helpers, false)
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_sidecar_solid_context(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_sidecar_solid", dir_error)

@@ -160,6 +160,8 @@ struct Emitter {
     // `[init]` binds to their slots, each with its slot
     late_quals : table<string; string>
     late_defs : table<string; string>
+    // the helpers whose expression the call being spelled is inside of, innermost last
+    inline_stack : array<string>
 }
 
 //! The facts of a whole program the emitter reads in each of its modules: the functions it
@@ -202,6 +204,10 @@ struct EmitProgram {
     // the sidecar's or the option's `past_end` is `inline`: `&a[k]` of a plain-load index is
     // `k == N ? addr(a[0]) + N : addr(a[k])` (`one_past_end_address`)
     past_end_inline : bool
+    // the sidecar's or the option's `inline_helpers`: each pure `static` helper a direct call
+    // spells as its expression, by C name to its index in the unit's declarations
+    // (`flag_inline_helpers`)
+    inline_helpers : table<string; int>
     // the declarations at a switch body's own level that a statement under a later label reads
     // or writes, which the lowered switch declares before itself (`carried_decls`)
     carried : table<uint64>
@@ -1692,6 +1698,330 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     return value("{name}({join(args, ", ")})", PREC_PRIMARY)
 }
 
+// the body of a pure helper (`inline_helper`): `return <result>`, or the clamp shape, an `if`
+// chain whose every arm assigns `param` (`guards[k]` true assigns `values[k]`, a last bare `else`
+// assigns `otherwise`) followed by `return <result>`, the result a read of `param` under casts
+struct private HelperShape {
+    @do_not_delete result : CirExpr const?
+    param : string
+    @do_not_delete guards : array<CirExpr const?>
+    @do_not_delete values : array<CirExpr const?>
+    @do_not_delete otherwise : CirExpr const?
+}
+
+// the one statement a branch holds, below one level of braces; null for any other branch
+def private only_statement(st : CirStmt const?) : CirStmt const? {
+    if (st == null || st.s != "compound") {
+        return st
+    }
+    let kept <- [for (child in st.body); child; where child.s != "null"]
+    return length(kept) == 1 ? kept[0] : null
+}
+
+// the value statement `st` assigns parameter `param` (`param = v;`), null for any other statement
+def private param_assignment(st : CirStmt const?; param : string) : CirExpr const? {
+    let only = only_statement(st)
+    if (only == null || only.s != "expr" || only.e == null || only.e.e != "assign" || !empty(only.e.op)) {
+        return null
+    }
+    let target = only.e.a
+    return target != null && target.e == "ref" && target.name == param ? only.e.b : null
+}
+
+// the clamp shape's `if` chain from `st` on into `shape`: false when an arm is anything but an
+// assignment of `shape.param`
+def private clamp_chain(st : CirStmt const?; var shape : HelperShape) : bool {
+    var at = st
+    while (at != null && at.s == "if") {
+        let assigned = param_assignment(at.then_s, shape.param)
+        if (at.cond == null || assigned == null) {
+            return false
+        }
+        shape.guards |> push(at.cond)
+        shape.values |> push(assigned)
+        let next = only_statement(at.else_s)
+        if (at.else_s != null && next == null) {
+            return false
+        }
+        if (next != null && next.s != "if") {
+            shape.otherwise = param_assignment(next, shape.param)
+            return shape.otherwise != null
+        }
+        at = next
+    }
+    return true
+}
+
+// helper `d`'s body as a `HelperShape`: false for a body of any other shape
+def private helper_shape(d : CirDecl; var shape : HelperShape) : bool {
+    if (d.body == null || d.body.s != "compound") {
+        return false
+    }
+    let stmts <- [for (st in d.body.body); st; where st.s != "null"]
+    let last = !empty(stmts) ? stmts[length(stmts) - 1] : null
+    if (last == null || last.s != "return" || last.e == null || length(stmts) > 2) {
+        return false
+    }
+    shape.result = last.e
+    if (length(stmts) == 1) {
+        return true
+    }
+    let read = below_casts(last.e)
+    if (read == null || read.e != "ref" || !has_value([for (p in d.params); p.name], read.name) || stmts[0].s != "if") {
+        return false
+    }
+    shape.param = read.name
+    return clamp_chain(stmts[0], shape)
+}
+
+// the expressions of `shape` a call site's arguments reach: everything but the clamp's result,
+// which reads the chain
+def private helper_operands(shape : HelperShape) : array<CirExpr const?> {
+    var out : array<CirExpr const?>
+    if (empty(shape.param)) {
+        out |> push(shape.result)
+    }
+    out |> push_from(shape.guards, shape.values)
+    if (shape.otherwise != null) {
+        out |> push(shape.otherwise)
+    }
+    return <- out
+}
+
+// a parameter or result type a helper substitutes: an integer other than `_Bool`, or a floating type
+def private helper_scalar(tu : CirTu; t : int) : bool => (kind_of(tu, t) == "int" && !is_c_bool(tu, t)) || kind_of(tu, t) == "float"
+
+let private HELPER_CASTS <- {"LValueToRValue", "NoOp", "IntegralCast", "IntegralToFloating", "FloatingToIntegral", "FloatingCast", "IntegralToBoolean", "FloatingToBoolean"}
+let private HELPER_UNARY <- {"neg", "plus", "bnot", "not"}
+
+// whether `x` reads only `params`, literals and enumerators through operators, value casts, a
+// conditional and the calls of other helpers (`calls` collects their names), with no call at all
+// when `calls_allowed` is false
+def private pure_helper_expr(tu : CirTu; x : CirExpr const?; params : array<string>; calls_allowed : bool; var calls : array<string>) : bool {
+    var pure = true
+    // a call's callee, which the walk reaches after the call
+    var callees : table<uint64>
+    each_subexpr(x) $(sub) {
+        if (key_exists(callees, intptr(sub))) {
+            pass
+        } elif (sub.e == "ref") {
+            pure = pure && has_value(params, sub.name) && helper_scalar(tu, sub.t)
+        } elif (sub.e == "cast") {
+            pure = pure && key_exists(HELPER_CASTS, sub.cast_kind)
+        } elif (sub.e == "un") {
+            pure = pure && key_exists(HELPER_UNARY, sub.op)
+        } elif (sub.e == "call") {
+            pure = pure && calls_allowed && !empty(called_name(*sub))
+            calls |> push(called_name(*sub))
+            callees |> insert(intptr(sub.fn))
+            if (sub.fn != null && sub.fn.e == "cast") {
+                callees |> insert(intptr(sub.fn.a))
+            }
+        } else {
+            pure = pure && (sub.e == "int_lit" || sub.e == "float_lit" || sub.e == "enum_ref" || sub.e == "bin" || sub.e == "cond" || sub.e == "sizeof_v" || sub.e == "alignof_v")
+        }
+    }
+    return pure
+}
+
+// whether function `di` of `tu` is a pure helper (`inline_helper`), `functions` each defined
+// function's index by name, `taken` the functions whose value the program takes; `memo` holds the
+// answers, false for a helper being decided, so recursion through helpers is none
+def private is_pure_helper(tu : CirTu; di : int; functions : table<string; int>; taken : table<string>; var memo : table<string; bool>) : bool {
+    let d = tu.decls[di]
+    if (key_exists(memo, d.name)) {
+        return memo?[d.name] ?? false
+    }
+    memo[d.name] = false
+    let ft = d.t
+    if (!d.is_static || key_exists(taken, d.name) || kind_of(tu, ft) != "func" || tu.types[ft].variadic || !helper_scalar(tu, tu.types[ft].ret) || length(d.params) > 4 || length(d.params) != length(tu.types[ft].params)) {
+        return false
+    }
+    for (p, pt in d.params, tu.types[ft].params) {
+        // a K&R definition's parameter arrives at its promoted type and converts on entry
+        if (!helper_scalar(tu, p.t) || p.t != pt) {
+            return false
+        }
+    }
+    var shape : HelperShape
+    if (!helper_shape(*d, shape)) {
+        return false
+    }
+    let params <- [for (p in d.params); p.name]
+    var calls : array<string>
+    let calls_allowed = empty(shape.param)
+    var pure = pure_helper_expr(tu, shape.result, params, calls_allowed, calls)
+    for (x in helper_operands(shape)) {
+        pure = pure && pure_helper_expr(tu, x, params, calls_allowed, calls)
+    }
+    for (callee in calls) {
+        let at = functions?[callee] ?? -1
+        pure = pure && at >= 0 && is_pure_helper(tu, at, functions, taken, memo)
+    }
+    memo[d.name] = pure
+    return pure
+}
+
+// the functions whose value the program takes: a reference to a function anywhere but as the
+// callee of a direct call
+def private taken_functions(tu : CirTu) : table<string> {
+    var exprs : array<CirExpr const?>
+    for (d in tu.decls) {
+        if (d.k == "func") {
+            each_expr(d.body) $(x) {
+                exprs |> push(x)
+            }
+        } elif (d.k == "global") {
+            each_subexpr(d.init) $(x) {
+                exprs |> push(x)
+            }
+        }
+    }
+    var direct : table<uint64>
+    for (x in exprs) {
+        if (x.e == "call" && x.fn != null) {
+            direct |> insert(intptr(x.fn))
+            if (x.fn.e == "cast" && x.fn.cast_kind == "FunctionToPointerDecay") {
+                direct |> insert(intptr(x.fn.a))
+            }
+        }
+    }
+    var taken : table<string>
+    for (x in exprs) {
+        if (x.e == "ref" && kind_of(tu, x.t) == "func" && !key_exists(direct, intptr(x))) {
+            taken |> insert(x.name)
+        }
+    }
+    return <- taken
+}
+
+// the pure helpers of the program under `inline_helpers`: each `static` function of at most four
+// integer or floating parameters and such a result, whose body is `return <expr>` or the clamp
+// shape over its parameters, literals and enumerators (the clamp calling nothing, `return <expr>`
+// only other such helpers), whose value the program never takes
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#inline-helpers")]
+def private flag_inline_helpers(var em : Emitter; tu : CirTu) {
+    let functions <- {for (di, d in count(), tu.decls); d.name => di; where d.k == "func" && d.body != null}
+    let taken <- taken_functions(tu)
+    var memo : table<string; bool>
+    for (name, di in keys(functions), values(functions)) {
+        if (is_pure_helper(tu, di, functions, taken, memo)) {
+            em.prog.inline_helpers[name] = di
+        }
+    }
+}
+
+// whether argument `x` reads as often as it is spelled: a variable, a literal or an enumerator
+// under value casts; a parameter of an enclosing helper's expansion only while what it reads as is
+// one operand (`k`, `_t0`), never a sum it spells again at every read
+def private plain_argument(em : Emitter; x : CirExpr const?) : bool {
+    let at = below_casts(x)
+    if (at == null || has_effects(x) || reads_volatile(x)) {
+        return false
+    }
+    if (at.e == "ref" && key_exists(em.hoisted, intptr(at))) {
+        return (em.hoisted?[intptr(at)] ?? Em()).prec == PREC_PRIMARY
+    }
+    return at.e == "ref" || at.e == "int_lit" || at.e == "float_lit" || at.e == "enum_ref"
+}
+
+// how many times the operands of `shape` read parameter `name`; the clamp's chain falls through to
+// it once more when it has no bare `else`
+def private parameter_reads(shape : HelperShape; name : string) : int {
+    var reads = name == shape.param && shape.otherwise == null ? 1 : 0
+    for (x in helper_operands(shape)) {
+        each_subexpr(x) $(sub) {
+            if (sub.e == "ref" && sub.name == name) {
+                reads++
+            }
+        }
+    }
+    return reads
+}
+
+// every reference to parameter `name` in `x` read as `e` until `unpin` drops `keys`
+def private bind_parameter(var em : Emitter; x : CirExpr const?; name : string; e : Em; var keys : array<uint64>) {
+    each_subexpr(x) $(sub) {
+        if (sub.e == "ref" && sub.name == name) {
+            em.hoisted[intptr(sub)] = e
+            keys |> push(intptr(sub))
+        }
+    }
+}
+
+// the clamp shape's chain over the bound parameters, `c0 ? v0 : (c1 ? v1 : p)`, each value at the
+// parameter's type
+def private clamp_value(var em : Emitter; tu : CirTu; shape : HelperShape; param : Em; param_t : int; loc : CirLoc) : Em {
+    var guards, values : array<Em>
+    guards |> reserve(length(shape.guards))
+    values |> reserve(length(shape.values))
+    for (guard, v in shape.guards, shape.values) {
+        guards |> push(truth_of(em, tu, guard, loc))
+        values |> push(stored(emit_expr(em, tu, v, loc), tu, param_t))
+    }
+    var chain = shape.otherwise != null ? stored(emit_expr(em, tu, shape.otherwise, loc), tu, param_t) : param
+    for (idx in range(length(guards))) {
+        let at = length(guards) - 1 - idx
+        chain = value("{wrap(guards[at], PREC_COND + 1)} ? {wrap(values[at], PREC_COND + 1)} : {wrap(chain, PREC_COND + 1)}", PREC_COND)
+    }
+    return chain
+}
+
+// a direct call of a pure helper (`flag_inline_helpers`) as the helper's expression into `out`:
+// each argument crosses at its parameter's type as a call's does, evaluated once, ahead, into a
+// temporary when it has an effect or the body reads a non-plain one twice; false keeps the call,
+// for a function that is no such helper, one whose expression is being spelled around this call,
+// and a site in a conditional arm that would need a temporary
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#inline-helpers")]
+def private inline_helper(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc; var out : Em&) : bool {
+    let name = called_name(x)
+    let di = em.prog.inline_helpers?[name] ?? -1
+    if (di < 0 || !em.in_body || em.in_global_init || has_value(em.inline_stack, name)) {
+        return false
+    }
+    let d = tu.decls[di]
+    var shape : HelperShape
+    if (length(d.params) != length(x.args) || !helper_shape(*d, shape)) {
+        return false
+    }
+    let needs_temp <- [for (p, arg in d.params, x.args); has_effects(arg) || reads_volatile(arg) || (parameter_reads(shape, p.name) > 1 && !plain_argument(em, arg))]
+    if (em.narrow > 0 && has_value(needs_temp, true)) {
+        return false
+    }
+    var keys : array<uint64>
+    var chain_param : Em
+    var param_t = -1
+    for (p, arg, temp in d.params, x.args, needs_temp) {
+        var e = stored(emit_expr(em, tu, arg, loc), tu, arg.t)
+        if (temp) {
+            let tmp = temp_name(em)
+            em.pre |> push("let {tmp} = {e.text}")
+            e = value(tmp, PREC_PRIMARY)
+        }
+        for (operand in helper_operands(shape)) {
+            bind_parameter(em, operand, p.name, e, keys)
+        }
+        if (p.name == shape.param) {
+            chain_param = e
+            param_t = p.t
+        }
+    }
+    em.inline_stack |> push(name)
+    if (!empty(shape.param)) {
+        bind_parameter(em, shape.result, shape.param, clamp_value(em, tu, shape, chain_param, param_t, loc), keys)
+    }
+    out = stored(emit_expr(em, tu, shape.result, loc), tu, shape.result.t)
+    em.inline_stack |> pop()
+    unpin(em, keys)
+    return true
+}
+
+// a call read for its value: a pure helper's expression under `inline_helpers`, else the call
+def private call_value(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    var inlined : Em
+    return inline_helper(em, tu, x, loc, inlined) ? inlined : emit_call(em, tu, x, loc)
+}
+
 // a `BitCast` is a `reinterpret`, except between two C function pointer types that spell one
 // das type (they differ in a pointee's `const`), which is the value itself; the operand comes
 // as its text, since a caller returning this result may hold its own operand in the result slot
@@ -2451,7 +2781,7 @@ def private emit_node(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : Ci
         return emit_expr(em, tu, x.b, loc)
     }
     if (x.e == "call") {
-        return emit_call(em, tu, *x, loc)
+        return call_value(em, tu, *x, loc)
     }
     if (x.e == "member") {
         return emit_member(em, tu, *x, loc)
@@ -7438,6 +7768,9 @@ def private prepare_program(var em : Emitter; var tu : CirTu; side : Sidecar) {
     flag_over_indexed(em, tu, side)
     flag_padded(em, tu, side)
     take_options(em, tu, side)
+    if (side.inline_helpers) {
+        flag_inline_helpers(em, tu)
+    }
 }
 
 // the order das initializes the globals of the part in, which is the order they are spelled
