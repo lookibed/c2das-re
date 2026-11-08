@@ -988,6 +988,32 @@ def test_projects(t : T?) {
 }
 
 [test]
+def test_project_criteria_provenance(t : T?) {
+    t |> run_stand_in("a project's criteria: a change to metrics/ after the capture is a change since; a dirty capture names no commit", "c2das_ports_criteria_provenance") @(t : T?; root, clone : string) {
+        stand_in_projects(root)
+        stand_in_compare(root)
+        let captured_at = git(root, ["rev-parse", "HEAD"])
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--program", "wasm3"], out), 0, out)
+        let same = fread(path_join(clone, "wasm3/README.md"))
+        t |> success(same |> contains("its row `project/wasm3`, recorded at c2das-re `{slice(captured_at, 0, 12)}`. Measured on "), same)
+        mkdir_rec(path_join(root, "metrics"))
+        fwrite(path_join(root, "metrics/criteria_count.das"), "// changed\n")
+        git(root, ["add", "-A"])
+        git(root, ["commit", "-q", "-m", "criteria"])
+        t |> equal(publish(root, ["--repo", clone, "--program", "wasm3"], out), 0, out)
+        let changed = fread(path_join(clone, "wasm3/README.md"))
+        t |> success(changed |> contains("recorded at c2das-re `{slice(captured_at, 0, 12)}`, output changed since: "), changed)
+        var cap : CriteriaCapture
+        cap.rows["project/wasm3"] <- sum_raw([{"c_files" => 4, "c_files_converted" => 2, "fn_matched" => 2}], array<int>())
+        fwrite(path_join(root, "metrics/criteria_linux.json"), criteria_text(cap))
+        t |> equal(publish(root, ["--repo", clone, "--program", "wasm3", "--allow-dirty"], out), 0, out)
+        let dirty = fread(path_join(clone, "wasm3/README.md"))
+        t |> success(dirty |> contains("its row `project/wasm3`, not committed yet. Measured on the 2 of 4 C files"), dirty)
+    }
+}
+
+[test]
 def test_stale_capture(t : T?) {
     t |> run_stand_in("a capture measured at another commit carries that commit, and the output changed since", "c2das_ports_stale_capture") @(t : T?; root, clone : string) {
         var c = Capture(program = "lua", commit = OTHER_SHA, timestamp = "2026-11-07 04:04 UTC", samples = 1, timeout = 1)

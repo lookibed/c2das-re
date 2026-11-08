@@ -294,7 +294,7 @@ run that published nothing leaves the clone as it was), a commit with `--commit`
 collected the same way.
 
 The criteria section (`project_criteria_text`) renders the row `project/<name>` of
-`metrics/criteria_linux.json`, measured on the same `convert_project` conversion: its table, what it
-covered (`coverage_text`), the commit that last changed the capture, and that the output changed
-since when the converter differs from the published conversion's; else a not-yet line. A project's
-readability counters are the head-to-head's code table in its speed section (whole conversions only).
+`metrics/criteria_linux.json` (same `convert_project` conversion): its table, coverage (`coverage_text`),
+the commit that last changed the capture (`not committed yet` while it is dirty), and that the output
+changed since when the converter, `compare/projects.das` or `metrics/` differ from the published
+conversion's; else a not-yet line. Counters: the head-to-head's code table (whole conversions only).

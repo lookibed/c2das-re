@@ -567,8 +567,9 @@ def test_project_criteria(t : T?) {
         t |> success(text |> contains("\nThe readability counters of the converted modules (`goto`, `label`, "), text)
         let changed = project_criteria_text("binjgb", cap, true, "", "0123456789abcdef", true)
         t |> success(changed |> contains("recorded at c2das-re `0123456789ab`, output changed since: the converter changed after that commit; not re-measured yet. "), changed)
-        let uncommitted = project_criteria_text("binjgb", cap, true, "", "", false)
-        t |> success(uncommitted |> contains("its row `project/binjgb`, not committed in c2das-re. "), uncommitted)
+        let uncommitted = project_criteria_text("binjgb", cap, true, "", "", true)
+        t |> success(uncommitted |> contains("its row `project/binjgb`, not committed yet. Measured on "), uncommitted)
+        t |> success(!(uncommitted |> contains("changed since")), uncommitted)
     }
     t |> run("a project measured file by file names the files that convert out of all") @(t : T?) {
         let cap <- criteria_capture(["project/wasm3"], 2)

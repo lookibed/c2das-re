@@ -869,9 +869,15 @@ def private commit_program(name : string; repo : string; gen : Generation) : boo
 
 // whether the conversion can differ between the c2das-re commits `from` and `to`: the converter,
 // `c_runtime` or `dasCRuntime` changed between them, or `from` is no commit of this tree
-def private converter_changed(from, to : string) : bool {
+def private converter_changed(from, to : string) : bool => output_changed(from, to, array<string>())
+
+// whether the converter, `c_runtime`, `dasCRuntime` or any of `more` (paths from the tree's root)
+// differ between the commits `from` and `to`
+def private output_changed(from, to : string; more : array<string>) : bool {
     var out : string
-    return git_in(".", ["diff", "--quiet", from, to, "--", "converter", "c_runtime", "dasCRuntime"], out) != 0
+    var argv <- ["diff", "--quiet", from, to, "--", "converter", "c_runtime", "dasCRuntime"]
+    argv |> push_from(more)
+    return git_in(".", argv, out) != 0
 }
 
 // whether a commit of this tree after `date` (its committer date) changed the converter,
@@ -971,14 +977,18 @@ def private project_perf_text(p : Project) : string {
 }
 
 // the criteria section of a project's README: its row of `CRITERIA_CAPTURE` under the commit that
-// recorded the capture, the output changed since when the converter differs between that commit and
-// the published conversion's
+// recorded the capture (none for a capture with uncommitted changes), the output changed since when
+// the converter, the project conversion or the criteria differ between that commit and the
+// published conversion's
 def private project_criteria(p : Project; gen : Generation) : string {
     var error : string
     let present = fexist(CRITERIA_CAPTURE)
     let cap <- present ? capture_at(CRITERIA_CAPTURE, error) : CriteriaCapture()
-    let recorded = git_line(".", ["log", "-1", "--format=%H", "--", CRITERIA_CAPTURE])
-    return project_criteria_text(p.name, cap, present, error, recorded, present && empty(error) && converter_changed(recorded, gen.sha))
+    // a capture with uncommitted changes (a publish under --allow-dirty) was recorded at no commit
+    let dirty = !empty(git_line(".", ["status", "--porcelain", "--", CRITERIA_CAPTURE]))
+    let recorded = dirty ? "" : git_line(".", ["log", "-1", "--format=%H", "--", CRITERIA_CAPTURE])
+    let changed = !empty(recorded) && present && empty(error) && output_changed(recorded, gen.sha, ["compare/projects.das", "metrics"])
+    return project_criteria_text(p.name, cap, present, error, recorded, changed)
 }
 
 // a project's README: what was converted (or what refused and the per-file results), the sources,

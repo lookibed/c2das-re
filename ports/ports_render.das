@@ -651,7 +651,8 @@ let MIT_BODY = "Permission is hereby granted, free of charge, to any person obta
 //! The criteria section of a compare project's README from the criteria capture `cap` (`error` when
 //! it does not read, `present` false when c2das-re holds none): its row `project/<name>`, what the
 //! row measured, the commit `recorded_sha` that recorded the capture and, when `changed`, that the
-//! converter changed since; a not-yet line without the row.
+//! converter changed since ("" for a capture not committed yet, which names no commit and no
+//! change); a not-yet line without the row.
 def project_criteria_text(name : string; cap : CriteriaCapture; present : bool; error, recorded_sha : string; changed : bool) : string {
     let row = "{PROJECT_PREFIX}{name}"
     if (!present) {
@@ -662,8 +663,8 @@ def project_criteria_text(name : string; cap : CriteriaCapture; present : bool; 
         return "not yet: c2das-re's `metrics/criteria_linux.json` holds no row `{row}`; `scripts/run_criteria.sh` records it.\n"
     }
     return build_string() $(var w) {
-        let at = empty(recorded_sha) ? "not committed in c2das-re" : "recorded at c2das-re `{slice(recorded_sha, 0, 12)}`"
-        w |> write("From c2das-re's `metrics/criteria_linux.json` (`scripts/run_criteria.sh`), its row `{row}`, " + (changed ? "{at}, output changed since: the converter changed after that commit; not re-measured yet" : at) + ". ")
+        let at = empty(recorded_sha) ? "not committed yet" : changed ? "recorded at c2das-re `{slice(recorded_sha, 0, 12)}`, output changed since: the converter changed after that commit; not re-measured yet" : "recorded at c2das-re `{slice(recorded_sha, 0, 12)}`"
+        w |> write("From c2das-re's `metrics/criteria_linux.json` (`scripts/run_criteria.sh`), its row `{row}`, {at}. ")
         w |> write("Measured on {coverage_text(cap, row)}, converted as this directory's conversion is. ")
         w |> write("The compliance in percent per criterion, 100 being what a human port would have (c2das-re's `metrics/ARCHITECTURE_CRITERIA.md` defines each); it counts lines and reads no clock.\n\n")
         w |> write(render_row_criteria(cap, row))
