@@ -6,6 +6,7 @@ require daslib/strings_boost
 require ../readability_count.das
 require ../readability_file.das
 require ../readability_inputs.das
+require ../../suites/suite_files.das
 require ../../converter/tiers.das
 
 let FIXTURES = "metrics/tests/fixtures"
@@ -421,6 +422,43 @@ def test_worker_goto(t : T?) {
         t |> equal(run_worker("perf/switch_goto", counts), 0)
         let kept = fread("metrics/work/perf/switch_goto/das/switch_goto.das")
         t |> success(kept |> contains("label 1:  // re-dispatch\n"), kept)
+    }
+}
+
+// ruling 36 section 2: the `@checks-off` and `@past-end-inline` keys under `--checks off` and
+// `--past-end inline`
+[test]
+def test_worker_checks_past_end(t : T?) {
+    t |> run("--one converts a kernel's `@checks-off` key under --checks off, the plain key with das's checks") @(t : T?) {
+        var counts : string
+        t |> equal(run_worker("perf/first_member@checks-off", counts), 0)
+        t |> success(counts |> starts_with("ok\n"), counts)
+        let unchecked = fread("metrics/work/perf/first_member@checks-off/das/first_member.das")
+        t |> success(unchecked |> contains("[c_function, unsafe_deref, hint(unsafe_range_check)]\n"), unchecked)
+        t |> equal(run_worker("perf/first_member", counts), 0)
+        let kept = fread("metrics/work/perf/first_member/das/first_member.das")
+        t |> success(!(kept |> contains("unsafe_deref")), kept)
+    }
+    t |> run("--one converts a Lua `@checks-off` key under --checks off in the source layout") @(t : T?) {
+        var counts : string
+        t |> equal(run_worker("lua/luac@checks-off", counts), 0)
+        t |> success(counts |> starts_with("ok\n"), counts)
+        let lapi = fread("metrics/work/lua/luac@checks-off/das/lapi.das")
+        t |> success(lapi |> contains("[c_function, unsafe_deref, hint(unsafe_range_check)]\n"), lapi)
+    }
+    t |> run("a key's suffix names its --checks and --past-end values, else the defaults") @(t : T?) {
+        t |> equal(checks_of("perf/blit@checks-off"), "off")
+        t |> equal(checks_of("lua/lua@past-end-inline"), "")
+        t |> equal(past_end_of("lua/lua@past-end-inline"), "inline")
+        t |> equal(past_end_of("perf/blit@inline"), "")
+        var layout : string
+        t |> equal(lua_key_parts("lua/lua@checks-off", layout), "lua")
+        t |> equal(layout, "source")
+        layout = ""
+        t |> equal(lua_key_parts("lua/luac@past-end-inline", layout), "luac")
+        t |> equal(layout, "source")
+        t |> equal(kernel_of_key("blit@past-end-inline"), "blit")
+        t |> equal(kernel_of_key("blit@checks-off"), "blit")
     }
 }
 

@@ -93,6 +93,21 @@ let INLINE_KEY_SUFFIX = "@inline"
 //! (`perf/switch_goto@goto`, `lua/lua@goto`, the source layout).
 let GOTO_KEY_SUFFIX = "@goto"
 
+//! The suffix of a kernel's or a Lua program's input key converted under `--checks off`
+//! (`perf/sieve@checks-off`, `lua/lua@checks-off`, the source layout).
+let CHECKS_OFF_KEY_SUFFIX = "@checks-off"
+
+//! The suffix of a kernel's or a Lua program's input key converted under `--past-end inline`
+//! (`perf/blit@past-end-inline`, `lua/lua@past-end-inline`, the source layout).
+let PAST_END_KEY_SUFFIX = "@past-end-inline"
+
+//! The suffixes of a kernel's input key converted under a non-default option, each kernel's key
+//! once per suffix.
+let KERNEL_MODE_SUFFIXES <- [COPY_KEY_SUFFIX, WHILE_KEY_SUFFIX, REINTERPRET_KEY_SUFFIX, INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX, CHECKS_OFF_KEY_SUFFIX, PAST_END_KEY_SUFFIX]
+
+//! The suffixes of a Lua program's input key converted in the source layout under an opt-in.
+let LUA_OPT_IN_SUFFIXES <- [INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX, CHECKS_OFF_KEY_SUFFIX, PAST_END_KEY_SUFFIX]
+
 //! The suffix of a Lua input key converted in the single layout (`lua/lua@single`), and of one in
 //! the source-cut layout (`lua/lua@source-cut`); the bare key (`lua/lua`) is the source layout, the
 //! converter's default.
@@ -104,7 +119,7 @@ let LUA_PROGRAMS <- ["lua", "luac"]
 
 //! The kernel id a perf input key names: the key's id less its mode suffix.
 def kernel_of_key(id : string) : string {
-    for (suffix in [COPY_KEY_SUFFIX, WHILE_KEY_SUFFIX, REINTERPRET_KEY_SUFFIX, INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX]) {
+    for (suffix in KERNEL_MODE_SUFFIXES) {
         if (id |> ends_with(suffix)) {
             return slice(id, 0, length(id) - length(suffix))
         }
@@ -114,16 +129,20 @@ def kernel_of_key(id : string) : string {
 
 //! Every input key (`<group>/<id>`) the readability metric converts, sorted: each ratchet
 //! suite's listed ids less its ledgered ones, and every kernel converted by default, under
-//! `--param-writes copy`, under `--loops while`, under `--first-member reinterpret` and under
-//! `--inline-helpers` and under `--switch-dispatch goto`, and each Lua program in the three layouts,
-//! under `--inline-helpers` and under `--switch-dispatch goto`.
+//! `--param-writes copy`, under `--loops while`, under `--first-member reinterpret`, under
+//! `--inline-helpers`, under `--switch-dispatch goto`, under `--checks off` and under `--past-end
+//! inline`, and each Lua program in the three layouts and, in the source layout, under each of the
+//! last four.
 def expected_input_keys : array<string> {
     let kernels <- c_file_ids(KERNELS, "")
     var keys <- [for (name in kernels); "perf/{name}"]
-    for (suffix in [COPY_KEY_SUFFIX, WHILE_KEY_SUFFIX, REINTERPRET_KEY_SUFFIX, INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX]) {
+    for (suffix in KERNEL_MODE_SUFFIXES) {
         keys |> push_from([for (name in kernels); "perf/{name}{suffix}"])
     }
-    for (suffix in ["", SINGLE_KEY_SUFFIX, CUT_KEY_SUFFIX, INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX]) {
+    for (suffix in ["", SINGLE_KEY_SUFFIX, CUT_KEY_SUFFIX]) {
+        keys |> push_from([for (name in LUA_PROGRAMS); "lua/{name}{suffix}"])
+    }
+    for (suffix in LUA_OPT_IN_SUFFIXES) {
         keys |> push_from([for (name in LUA_PROGRAMS); "lua/{name}{suffix}"])
     }
     for (suite in RATCHET_SUITES) {
