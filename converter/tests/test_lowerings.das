@@ -266,14 +266,28 @@ def p8_setjmp_return_fixtures(t : T?) {
             t |> equal(program, want.out, tier)
         }
     }
-    t |> run("an arm that returns and leaves an enclosing loop, or that a goto crosses, is refused") @(t : T?) {
+    t |> run("an arm that leaves the site's enclosing loop, returning or not, and a returning arm a goto crosses are refused") @(t : T?) {
         let sj = "#include <setjmp.h>\nstatic jmp_buf b;\n"
-        rejects(t, "setjmp_return_arm_break", sj + "int main(void) \{ int i; for (i = 0; i < 3; i++) \{ if (setjmp(b) == 0) \{ if (i == 1) break; if (i == 2) return 5; \} else \{ return 1; \} \} return 0; \}\n", "a setjmp arm that returns and leaves an enclosing loop is not lowered yet")
-        rejects(t, "setjmp_return_arm_continue", sj + "int main(void) \{ int i; for (i = 0; i < 3; i++) \{ if (setjmp(b) == 0) \{ if (i == 1) continue; return 5; \} else \{ return 1; \} \} return 0; \}\n", "a setjmp arm that returns and leaves an enclosing loop is not lowered yet")
+        rejects(t, "setjmp_return_arm_break", sj + "int main(void) \{ int i; for (i = 0; i < 3; i++) \{ if (setjmp(b) == 0) \{ if (i == 1) break; if (i == 2) return 5; \} else \{ return 1; \} \} return 0; \}\n", "a setjmp arm that leaves an enclosing loop is not lowered yet")
+        rejects(t, "setjmp_return_arm_continue", sj + "int main(void) \{ int i; for (i = 0; i < 3; i++) \{ if (setjmp(b) == 0) \{ if (i == 1) continue; return 5; \} else \{ return 1; \} \} return 0; \}\n", "a setjmp arm that leaves an enclosing loop is not lowered yet")
+        // no return: the JIT takes the break as leaving the `try` alone (F97)
+        rejects(t, "setjmp_arm_break", sj + "int main(void) \{ int i, s = 0; for (i = 0; i < 5; i++) \{ if (setjmp(b) == 0) \{ if (i == 2) break; s++; \} else \{ s = 9; \} \} return s; \}\n", "a setjmp arm that leaves an enclosing loop is not lowered yet")
+        rejects(t, "setjmp_recover_arm_continue", sj + "int main(void) \{ int i, s = 0; for (i = 0; i < 5; i++) \{ if (setjmp(b) == 0) \{ s++; \} else \{ continue; \} s += 10; \} return s; \}\n", "a setjmp arm that leaves an enclosing loop is not lowered yet")
+        // a break after a label in the arm (the dumper flattens the label beside its statement)
+        rejects(t, "setjmp_labelled_break", sj + "int main(void) \{ int i, s = 0; for (i = 0; i < 5; i++) \{ if (setjmp(b) == 0) \{ if (i == 2) \{ L: break; \} s++; \} else \{ return 5; \} \} return s; \}\n", "a setjmp arm that leaves an enclosing loop is not lowered yet")
         rejects(t, "setjmp_return_goto_out", sj + "int main(void) \{ int n = 0; again: n++; if (setjmp(b)) \{ return 1; \} if (n < 3) goto again; return n; \}\n", "a setjmp arm that returns and a goto across its edge is not lowered yet")
-        // the same arms without a return keep the `try` as they were
-        let kept = converts(t, "setjmp_arm_break_kept", sj + "int main(void) \{ int i, n = 0; for (i = 0; i < 3; i++) \{ if (setjmp(b) == 0) \{ if (i == 1) break; n++; \} else \{ n = 9; \} \} return n; \}\n")
-        t |> equal(kept |> find("_sj_returned") < 0, true, kept)
+    }
+    t |> run("a break and a continue inside a loop of the arm stay the arm's own; under interp, jit and exe as natively") @(t : T?) {
+        var text : string
+        check_fixture(t, "p8_setjmp_arm_loop", text)
+        let want = native("p8_setjmp_arm_loop")
+        for (tier in ["jit", "exe"]) {
+            var out : string
+            let rc = run_tier(path_join(path_join(work_root, "p8_setjmp_arm_loop"), "p8_setjmp_arm_loop.das"), tier, path_join(work_root, "p8_setjmp_arm_loop_{tier}"), out, CONVERTED_MODULES)
+            t |> equal(rc, want.rc, "{tier}: {out}")
+            let program = join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n")
+            t |> equal(program, want.out, tier)
+        }
     }
 }
 

@@ -4085,8 +4085,10 @@ def private emit_setjmp_site(var em : Emitter; tu : CirTu; st : CirStmt; buf : C
     if (!arm_returns(em, array<CirStmt const?>(first), st.loc, first_returns) || !arm_returns(em, array<CirStmt const?>(again), st.loc, again_returns)) {
         return
     }
-    if ((first_returns && leaves_arm(first)) || (again_returns && leaves_arm(again))) {
-        fail(em, "a setjmp arm that returns and leaves an enclosing loop is not lowered yet", st.loc)
+    // the JIT takes a `break` or `continue` out of a `try` whose `recover` can rethrow as leaving
+    // the `try` alone (docs/probe-findings.md F97), and a block carries neither
+    if (leaves_arm(first) || leaves_arm(again)) {
+        fail(em, "a setjmp arm that leaves an enclosing loop is not lowered yet", st.loc)
         return
     }
     em.requires |> insert("c_runtime/setjmp")
@@ -4110,7 +4112,7 @@ def private emit_setjmp_site(var em : Emitter; tu : CirTu; st : CirStmt; buf : C
     close_sj_result(em, first_returns || again_returns, declared)
 }
 
-// whether an arm leaves an enclosing loop or switch, which its block cannot carry
+// whether an arm leaves an enclosing loop or switch
 def private leaves_arm(arm : CirStmt const?) : bool => breaks_switch(arm) || continues_out(arm)
 
 def private emit_if(var em : Emitter; tu : CirTu; st : CirStmt; head : string) {
@@ -5302,7 +5304,7 @@ def private breaks_switch(st : CirStmt const?) : bool {
             return true
         }
     }
-    return breaks_switch(st.then_s) || breaks_switch(st.else_s)
+    return breaks_switch(st.then_s) || breaks_switch(st.else_s) || breaks_switch(st.body_s)
 }
 
 // a `continue` that reaches the loop around the switch: anywhere below but inside a loop

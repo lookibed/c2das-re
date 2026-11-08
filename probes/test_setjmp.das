@@ -1,5 +1,7 @@
 options gen2
 require dastest/testing_boost public
+require strings
+require daslib/strings_boost
 require _daslang_child
 
 struct CJmpBuf {
@@ -111,6 +113,10 @@ let RETURN_IN_TRY = "options gen2\ndef thrower(n : int) \{\n    if (n > 0) \{\n 
 // from inside a loop of the block
 let RETURN_IN_BLOCK = "options gen2\ndef thrower(n : int) \{\n    if (n > 0) \{\n        panic(\"x\")\n    \}\n\}\ndef in_try : int \{\n    var ret : int\n    var returned = false\n    try \{\n        returned = invoke($() : bool \{\n            thrower(0)\n            ret = 1\n            return true\n        \})\n    \} recover \{\n        pass\n    \}\n    if (returned) \{\n        return ret\n    \}\n    return 10\n\}\ndef in_recover : int \{\n    var ret : int\n    var returned = false\n    try \{\n        thrower(1)\n    \} recover \{\n        returned = invoke($() : bool \{\n            ret = 7\n            return true\n        \})\n    \}\n    if (returned) \{\n        return ret\n    \}\n    return 20\n\}\ndef in_loop : int \{\n    var ret : int\n    var returned = false\n    try \{\n        returned = invoke($() : bool \{\n            for (i in range(10)) \{\n                if (i == 3) \{\n                    ret = i * 10\n                    return true\n                \}\n            \}\n            return false\n        \})\n    \} recover \{\n        pass\n    \}\n    if (returned) \{\n        return ret\n    \}\n    return 40\n\}\n[export]\ndef main \{\n    print(\"\{in_try()\} \{in_recover()\} \{in_loop()\}\\n\")\n\}\n"
 
+// a `break` inside a `try` in a loop, its `recover` able to rethrow (the setjmp lowering's
+// target check), and the same with a `recover` that cannot: daslang's answer is 2 for both
+let BREAK_IN_TRY = "options gen2\ndef f(n : int) : int \{\n    var s = 0\n    for (i in range(n)) \{\n        try \{\n            if (i == 2) \{\n                break\n            \}\n            s++\n        \} recover \{\n            RECOVER\n        \}\n    \}\n    return s\n\}\n[export]\ndef main \{\n    print(\"\{f(5)\}\\n\")\n\}\n"
+
 [test]
 def test_setjmp_tiers(t : T?) {
     t |> run("under the JIT a panic crosses from a [no_jit] function to a JIT-compiled recover and back") @(t : T?) {
@@ -123,6 +129,18 @@ def test_setjmp_tiers(t : T?) {
     t |> run("a return inside a try or a recover arm is compile error 30299 under the interpreter and the JIT alike (docs/probe-findings.md F75, F96)") @(t : T?) {
         child_rejects(t, "setjmp_return", daslang_child_flags("setjmp_return", RETURN_IN_TRY, array<string>()), "error[30299]: return inside a try/recover arm")
         child_rejects(t, "setjmp_return_jit", daslang_child_flags("setjmp_return_jit", RETURN_IN_TRY, jit_flags()), "error[30299]: return inside a try/recover arm")
+    }
+    t |> run("under the JIT a break inside a try in a loop whose recover can panic fails the macro pass on a cold cache and leaves only the try from the cached DLL; a recover that cannot panic breaks the loop (docs/probe-findings.md F97, lookibed/daScript#45)") @(t : T?) {
+        let rethrows = BREAK_IN_TRY |> replace("RECOVER", "panic(\"again\")")
+        let interp = daslang_child_flags("setjmp_break", rethrows, array<string>())
+        t |> equal(interp.out, "2\n", interp.out)
+        // cold or cached, the JIT never answers 2: the first run stops in the macro pass, a later one prints 4
+        for (attempt in range(2)) {
+            let jit = daslang_child_flags("setjmp_break_jit", rethrows, jit_flags())
+            t |> success(jit.out |> contains("back empty array") || program_output(jit.out) == "4\n", "run {attempt}: {jit.out}")
+        }
+        let plain = daslang_child_flags("setjmp_break_plain_jit", BREAK_IN_TRY |> replace("RECOVER", "s = 9"), jit_flags())
+        t |> equal(program_output(plain.out), "2\n", plain.out)
     }
     t |> run("a return inside a block an arm invokes leaves the block, which answers whether it returned, under the interpreter and the JIT (docs/probe-findings.md F96)") @(t : T?) {
         let interp = daslang_child_flags("setjmp_block_return", RETURN_IN_BLOCK, array<string>())

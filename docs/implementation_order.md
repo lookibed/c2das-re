@@ -1430,8 +1430,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `_sj_ret = v; return true`; the outermost such site declares `_sj_ret` (none in a void function)
   and `_sj_returned` before its `try`, the sites in its arms share them, and after the pair
   `if (_sj_returned)` returns `_sj_ret`, or `true` from the enclosing arm's block. A block returns
-  from inside its loops, so no break-and-flag ladder is needed; a `goto`, `break` or `continue`
-  across the block's edge fails closed. An arm without a return keeps its `try` as before (Lua's
+  from inside its loops, so no break-and-flag ladder is needed; a `goto` across the block's edge
+  fails closed, and so does any arm, returning or not, whose `break` or `continue` leaves the site's
+  loop: under the JIT and the exe such a `break` fails the cold compile and then leaves only the
+  `try` (F97, lookibed/daScript#45; main converted it when the arm did not return). An arm without a return keeps its `try` as before (Lua's
   `luaD_rawrunprotected` is the flat site and does not change). Fixture
   `converter/tests/fixtures/p8_setjmp_return.c` (the idiom, a return in the longjmp arm and after it,
   a loop's return in the tail, the contained site with both arms returning, nested sites, a void
