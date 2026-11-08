@@ -182,6 +182,22 @@ for a member of a marshal-only record and for one of a marshal-only type; C take
 address. The readability criteria count each such `reinterpret` as noise, which is why it is
 opt-in (`converter/tests/fixtures/p7_first_member.c`).
 
+### One past an array's end
+
+C may form `&a[N]`, the address one past the end of `T a[N]`, and das range-checks
+`addr(a[N])` (`docs/probe-findings.md` F45), so `&a[k]` of an array takes one of three forms. A
+constant index is folded: at the length it is `addr(a[0]) + N` (an enumerator keeps its name,
+`addr(a[0]) + int(E.X)`), below or past it `addr(a[k])`, whose range check stands for C's
+undefined behaviour past the end. A constant is a decimal literal within `int64` or an
+enumerator, under integer casts that each hold its value; a `_Bool` cast holds none, since it
+makes any nonzero value 1. A plain load (a variable or a field under casts, read without a
+volatile access, never a bitfield or a union member, which read through an accessor call) into
+an array without effects is `k == N ? addr(a[0]) + N : addr(a[k])`: das's own range check on
+every index but the length, with no call per access (`end_index` was 12.6% of binjgb's
+interpreter profile), the length typed as the index (`4u`, `4l`, `4ul`). Any other index, which
+that form would spell or evaluate twice, is `addr(a[0]) + end_index(k, N)` (`c_runtime/c_bounds`,
+an unsigned compare against `N` that panics in das's range-check wording).
+
 ### Function pointers
 
 A C function pointer is a das function value, 8 bytes like C's, so a record or union holding
