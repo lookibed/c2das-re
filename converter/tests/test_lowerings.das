@@ -1807,8 +1807,8 @@ def p5_lua_expression_fixtures(t : T?) {
         // the subtrahend of a pointer difference keeps its parentheses
         has_text(t, text, "int(int64(top - 1 - (base + k)))")
         has_text(t, text, "int(int64(top - (addr(a[0]) + int(h))))")
-        // an interior NUL: `\\x00` in a pointer's literal, a byte row in an array
-        has_text(t, text, "reinterpret<uint8?>(\"[\\x00-\\x7f\\xc2-\\xfd][\\x80-\\xbf]*\")")
+        // an interior NUL: `\\0` in a pointer's literal, a byte row in an array
+        has_text(t, text, "reinterpret<uint8?>(\"[\\0-\\x7f\\xc2-\\xfd][\\x80-\\xbf]*\")")
         has_text(t, text, "var row : uint8[6] = fixed_array(uint8(97), uint8(0), uint8(98), uint8(0), uint8(99), uint8(0))\n")
         // a goto into another case re-dispatches: the label is a case of its number in the
         // switch's goto variable, which `default` requires unset, while the goto stores a value no case
@@ -2576,7 +2576,7 @@ def p8_refusal_fixtures(t : T?) {
 }
 
 def p7_readable_fixtures(t : T?) {
-    t |> run("a C character literal is a das one where das spells it, a case label too; the rest stay numbers") @(t : T?) {
+    t |> run("a C character literal is a das one, a case label too, escapes included; a case a number labels and a multi-character constant stay numbers") @(t : T?) {
         var text : string
         check_fixture(t, "p7_chars", text)
         has_text(t, text, "    if (_cond == 's') \{\n        return 1\n    \} elif (_cond == '%') \{\n")
@@ -2584,15 +2584,15 @@ def p7_readable_fixtures(t : T?) {
         has_text(t, text, "    \} elif (_cond == '\\\\') \{\n")
         has_text(t, text, "    \} elif (_cond == '\\'') \{\n")
         has_text(t, text, "    \} elif (_cond == 38) \{\n")
-        has_text(t, text, "    \} elif (_cond == 7) \{\n")
+        has_text(t, text, "    \} elif (_cond == '\\a') \{\n")
         has_text(t, text, "crt::strchr(fmt, '%')")
         has_text(t, text, "var q : uint8 = uint8('\\'')")
         has_text(t, text, "int(deref(p)) == '\{' || int(deref(p)) == '\}'")
-        has_text(t, text, "int(deref(p)) != 0")
-        has_text(t, text, "'\\t', p7_chars__kind('&'), 127)")
+        has_text(t, text, "int(deref(p)) != '\\0'")
+        has_text(t, text, "'\\t', p7_chars__kind('&'), '\\x7f')")
         has_text(t, text, "'7' - '0'")
         has_text(t, text, "var digit : int = int(deref(fmt + 0)) == 'a' ? '7' - '0' : 0")
-        has_text(t, text, "\"), 255, 24930, 'x', digit)")
+        has_text(t, text, "\"), '\\xff', 24930, 'x', digit)")
     }
     t |> run("the C comments land as `//` lines above the statement of their line, a block comment line by line") @(t : T?) {
         var text : string

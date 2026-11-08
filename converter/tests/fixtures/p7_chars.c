@@ -1,6 +1,6 @@
-/* P7.0i: a character literal is a das character literal where das spells one, in an expression
-   and as a case label; a case a number labels, `'\0'`, a value das has no escape for (`'\xff'`
-   under the tests' unsigned char), a multi-character constant stay numbers; a wide `L'x'` is an
+/* P7.0i: a character literal is a das character literal, in an expression and as a case label;
+   das reads C's escapes, so `'\0'`, `'\a'` and `'\xff'` (under the tests' unsigned char) keep
+   them; a case a number labels and a multi-character constant stay numbers; a wide `L'x'` is an
    `int` on linux and keeps its spelling */
 #include <stdio.h>
 #include <string.h>

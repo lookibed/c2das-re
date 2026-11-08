@@ -1046,8 +1046,9 @@ def private carry_comments_above(var em : Emitter; loc : CirLoc) {
     em.comments_done[loc.file] = max(done, loc.line - 1)
 }
 
-// the das character literal of C character `c`, "" where das has none: the printable ASCII and
-// the escapes `\n \t \r \b \f \\ \'` (das reads no `\0`, `\a`, `\v`, octal or hex escape)
+// the das character literal of C character `c`, "" where das has none (a negative value, a
+// multi-character one): the printable ASCII, the named escapes `\0 \a \b \t \n \v \f \r \\ \'`,
+// and `\xHH` for any other byte (docs/probe-findings.md F94)
 [arch(at="ARCHITECTURE_EMITTER_TEXT.md#character-literals")]
 def private char_literal(c : int) : string {
     if (c == '\\' || c == '\'') {
@@ -1056,10 +1057,15 @@ def private char_literal(c : int) : string {
     if (c >= 32 && c < 127) {
         return "'{to_char(c)}'"
     }
-    return CHAR_ESCAPES?[c] ?? ""
+    if (c < 0 || c > 255) {
+        return ""
+    }
+    let named = NAMED_ESCAPES?[c] ?? ""
+    return empty(named) ? "'\\x{hex_byte(c)}'" : "'\\{named}'"
 }
 
-let private CHAR_ESCAPES <- {10 => "'\\n'", 9 => "'\\t'", 13 => "'\\r'", 8 => "'\\b'", 12 => "'\\f'"}
+// the letter of a C escape das reads the same way, by the byte it spells
+let private NAMED_ESCAPES <- {0 => "0", 7 => "a", 8 => "b", 9 => "t", 10 => "n", 11 => "v", 12 => "f", 13 => "r"}
 
 // `digits` as a literal of the das integer type `spelled` by its suffix; "" for a type that has
 // no literal of its own (the small integers, `bool`)
@@ -1112,8 +1118,9 @@ def private interior_nul(x : CirExpr; limit : int) : bool {
 def private hex_byte(b : int) : string => "{hex_digit(b >> 4)}{hex_digit(b & 15)}"
 
 // the das literal spelling of the bytes before the terminating NUL, at most `limit` of them when
-// it is not negative; an interior NUL is `\x00`, which das keeps with the bytes after it
-// (probes/test_strings.das)
+// it is not negative: the named escapes, an interior NUL `\0` unless an octal digit follows,
+// which `\0` would swallow (`\012` is a newline), then `\x00`, and `\xHH` for any other byte
+// outside the printable ASCII; das keeps the bytes after a NUL (docs/probe-findings.md F94)
 def private quoted_literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc; limit : int = -1) : string {
     if (kind_of(tu, x.t) == "array" && tu.types[tu.types[x.t].elem].w != 8) {
         // the bytes are the dump's narrow ones: a wide element needs its own literal
@@ -1125,22 +1132,14 @@ def private quoted_literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
         w |> write("\"")
         for (idx in range(n)) {
             let b = int(x.bytes[idx])
-            if (b == '"') {
-                w |> write("\\\"")
-            } elif (b == '\\') {
-                w |> write("\\\\")
-            } elif (b == 123) {
+            if (b == '"' || b == '\\' || b == '{' || b == '}') {
                 w |> write("\\")
-                w |> write("\{")
-            } elif (b == 125) {
-                w |> write("\\")
-                w |> write("\}")
-            } elif (b == 10) {
-                w |> write("\\n")
-            } elif (b == 9) {
-                w |> write("\\t")
-            } elif (b == 13) {
-                w |> write("\\r")
+                w |> write(to_char(b))
+            } elif (b == 0) {
+                let next = idx + 1 < n ? int(x.bytes[idx + 1]) : 0
+                w |> write(next >= '0' && next <= '7' ? "\\x00" : "\\0")
+            } elif (key_exists(NAMED_ESCAPES, b)) {
+                w |> write("\\{NAMED_ESCAPES?[b] ?? ""}")
             } elif (b < 32 || b >= 127) {
                 w |> write("\\x{hex_byte(b)}")
             } else {

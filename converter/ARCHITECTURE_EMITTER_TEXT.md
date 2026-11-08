@@ -9,10 +9,11 @@ A C character literal is an integer to clang, so Dumper A marks the `int_lit` it
 `"char": true`, an optional field `cir.das` writes after the kind's members and before `macro`
 (absent otherwise; the spec's section 6 does not list it, and Dumper B does not write it). The
 emitter spells a marked value of das type `int` as the das character literal, which is an `int`
-too: `'%'`, `'{'`, the escapes
-`'\n' '\t' '\r' '\b' '\f' '\\' '\''`, the same spelling the C had for these. das reads no `\0`,
-`\a`, `\v`, octal or hex escape, so any other value stays its number (`*p != '\0'` is
-`int(deref(p)) != 0`), and so does a marked value of another das type (a `u'x'`, a `char16_t`).
+too: `'%'`, `'{'`, the named escapes `'\0' '\a' '\b' '\t' '\n' '\v' '\f' '\r' '\\' '\''`, and
+`'\xHH'` for any other byte, since das reads C's escape set (`docs/probe-findings.md` F94): `*p !=
+'\0'` is `int(deref(p)) != '\0'`, and C's octal `'\033'` is `'\x1b'`. A negative value (a
+`'\xff'` under signed `char`) or one past a byte (a multi-character constant) stays its number,
+and so does a marked value of another das type (a `u'x'`, a `char16_t`).
 A conversion of the literal is a cast around it (a `char` slot's `uint8('\'')`). A case label's
 mark is per switch, so a number labelling the same value in another switch stays a number.
 
