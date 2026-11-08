@@ -73,23 +73,13 @@ def test_run_blit_lanes(t : T?) {
         t |> success(fread("perf/work/blit/blit.das") |> contains(" in range64(reps)"))
         t |> success(!(fread("perf/work/blit/while/blit.das") |> contains(" in range")))
     }
-    t |> run("the interp-reinterpret lane times the --first-member reinterpret conversion and reproduces the native result") @(t : T?) {
+    t |> run("the interp-reinterpret, interp-inline and interp-goto lanes time the --first-member reinterpret, --inline-helpers and --switch-dispatch goto conversions and reproduce the native result") @(t : T?) {
         let blit = js?["tests"]?["blit"]
-        t |> success((blit?["interp-reinterpret"]?["time"] ?? 0.0lf) > 0.0lf, out)
-        t |> equal(blit?["interp-reinterpret"]?["result"] ?? -1l, blit?["native"]?["result"] ?? -2l, out)
-        t |> success(lane_argv(out, "blit/interp-reinterpret") |> ends_with(" perf/work/blit/reinterpret/blit.das"), out)
-    }
-    t |> run("the interp-inline lane times the --inline-helpers conversion and reproduces the native result") @(t : T?) {
-        let blit = js?["tests"]?["blit"]
-        t |> success((blit?["interp-inline"]?["time"] ?? 0.0lf) > 0.0lf, out)
-        t |> equal(blit?["interp-inline"]?["result"] ?? -1l, blit?["native"]?["result"] ?? -2l, out)
-        t |> success(lane_argv(out, "blit/interp-inline") |> ends_with(" perf/work/blit/inline/blit.das"), out)
-    }
-    t |> run("the interp-goto lane times the --switch-dispatch goto conversion and reproduces the native result") @(t : T?) {
-        let blit = js?["tests"]?["blit"]
-        t |> success((blit?["interp-goto"]?["time"] ?? 0.0lf) > 0.0lf, out)
-        t |> equal(blit?["interp-goto"]?["result"] ?? -1l, blit?["native"]?["result"] ?? -2l, out)
-        t |> success(lane_argv(out, "blit/interp-goto") |> ends_with(" perf/work/blit/goto/blit.das"), out)
+        for (sub in ["reinterpret", "inline", "goto"]) {
+            t |> success((blit?["interp-{sub}"]?["time"] ?? 0.0lf) > 0.0lf, out)
+            t |> equal(blit?["interp-{sub}"]?["result"] ?? -1l, blit?["native"]?["result"] ?? -2l, out)
+            t |> success(lane_argv(out, "blit/interp-{sub}") |> ends_with(" perf/work/blit/{sub}/blit.das"), out)
+        }
     }
     t |> run("first_member's interp-reinterpret lane runs the reinterpret spelling where interp runs addr(...)") @(t : T?) {
         let fm_results = path_join(dir, "first_member.json")
