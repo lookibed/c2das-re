@@ -12,7 +12,8 @@ needs no compile beyond the conversion's own.
 - `criteria.das` - the driver (`scripts/run_criteria.sh`): every Lua key and every ratchet suite
   key `expected_input_keys` names (the readability inputs without the `perf` group) and every
   compare project row of `ROWS` (`project/<name>`), one worker process per input (`--one <key>`),
-  the Lua and project inputs one at a time and the rest `--jobs` at a time
+  the Lua and project inputs one at a time and the rest `--jobs` at a time, a project's worker
+  with its soft address-space limit raised to the hard one (`worker_argv`)
   (4 by default), each writing `work/<key>/criteria.txt`; it sums the rows (section 2), prints the
   table, with `--delta <capture>` the delta table, and a complete run (no `--filter`, no failed
   input) writes `criteria_linux.json`. `--report` is the preflight gate (section 5).
