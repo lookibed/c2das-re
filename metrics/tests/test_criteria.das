@@ -403,6 +403,16 @@ def test_capture_text(t : T?) {
         t |> success(with_opt_in |> contains("\n    \"lua/lua@inline\": \{\"comments\": 100.0,"), with_opt_in)
         t |> success(with_opt_in |> contains("\n    \"all\": \{\"comments\": 25.0,"), with_opt_in)
     }
+    t |> run("a project row has its own column and leaves `all` as the default rows make it") @(t : T?) {
+        var cap <- sample_capture()
+        var project <- full_raw(0)
+        project["c_comment_lines"] = 10
+        cap.rows["project/wasm3"] <- project
+        let with_project = criteria_text(cap)
+        t |> success(with_project |> contains("\n    \"project/wasm3\": \{\"comments\": 0.0,"), with_project)
+        t |> success(with_project |> contains("\n    \"all\": \{\"comments\": 25.0,"), with_project)
+        t |> success(in_all("lua/lua") && in_all("csmith") && !in_all("lua/luac@inline") && !in_all("project/binjgb"))
+    }
     t |> run("the text passes the shape check and reads back") @(t : T?) {
         t |> equal(check_criteria(text), array<string>())
         var error : string

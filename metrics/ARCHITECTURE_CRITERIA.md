@@ -45,7 +45,9 @@ sum over its inputs, or one compare project (`project/wasm3`, `project/binjgb`,
 order of `project_table`). A project that converts whole is measured over every C file it compiles
 and its modules; one that refuses whole over the files that convert alone and their modules, the
 others in no count. `c_files` and `c_files_converted` record the program's C files and the ones
-measured, the coverage the ports README states; they enter no criterion. A per-function ratio's median and worst are taken over the row's pooled
+measured, the coverage the ports README states; they enter no criterion. The `all` column leaves the
+project rows out as it leaves the opt-in rows out (`in_all`): a partly converted project's criteria
+describe only its converted files, so `all` stays the default output of the Lua programs and suites. A per-function ratio's median and worst are taken over the row's pooled
 functions. Each criterion's compliance is computed per row from the row's raw counts; a criterion
 whose denominator is zero in a row does not apply there (`n/a`). The `all` column is each
 criterion's unweighted mean over the rows where it applies, every row weighing the same: a Lua
