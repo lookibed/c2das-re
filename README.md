@@ -137,15 +137,15 @@ tic to the reference log (`doom/ARCHITECTURE_RUN.md` section 9). `doom/run.das -
 it into `doom/results_linux.json`; `doom/run.das --readme` renders the table below from that file.
 
 <!-- doom-fps:begin -->
-Box PC (AMD Ryzen 7 7435HS), linux x86_64; c2das-re `cceb40136b47`, captured 2026-11-09 17:04 UTC; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.5.
+Box PC (AMD Ryzen 7 7435HS), linux x86_64; c2das-re `3259e3b46569`, captured 2026-11-09 18:10 UTC; clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.5.
 
-PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the process CPU time (`clock()`) of the host's update loop in the speed build, which leaves the patch's per-tic checksums and tic lines out: the playback alone, the module load, the JIT compile and `doom_init` outside it. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of 3 speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median; above 20% it is `suspect`, without a ratio. `X / native` is native fps over X's.
+PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the process CPU time (`clock()`) of the host's update loop in the speed build, which leaves the patch's per-tic checksums and tic lines out: the playback alone, the module load, the JIT compile and `doom_init` outside it. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of 5 speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median; above 20% it is `suspect`, without a ratio. `X / native` is native fps over X's.
 
-| Workload |   native fps | interp fps |      JIT fps | interp / native | JIT / native |
-| :------- | -----------: | ---------: | -----------: | --------------: | -----------: |
-| demo1    |  9848.1 ±1% | 189.8 ±4% | 8032.1 ±14% |            51.9 |          1.2 |
-| demo2    | 9902.6 ±11% | 203.1 ±2% |  9634.8 ±0% |            48.8 |          1.0 |
-| demo3    |  9313.7 ±1% | 190.0 ±1% |  8649.6 ±1% |            49.0 |          1.1 |
+| Workload |   native fps | interp fps |     JIT fps | interp / native | JIT / native |
+| :------- | -----------: | ---------: | ----------: | --------------: | -----------: |
+| demo1    |  9371.3 ±1% | 186.5 ±1% | 8912.3 ±1% |            50.2 |          1.1 |
+| demo2    | 10826.1 ±2% | 208.4 ±1% | 9584.9 ±1% |            52.0 |          1.1 |
+| demo3    |  9228.6 ±1% | 183.7 ±2% | 8316.8 ±2% |            50.2 |          1.1 |
 
 <!-- doom-fps:end -->
 
