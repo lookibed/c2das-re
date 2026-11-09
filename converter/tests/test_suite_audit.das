@@ -234,6 +234,14 @@ def test_tier_cli(t : T?) {
         t |> equal(run_torture(root, "--tier exe --filter plain", out), 0, out)
         t |> success(fexist(exe), out)
     }
+    t |> run("a newly passing id under the JIT names the interpreter's run as the one that records it") @(t : T?) {
+        fwrite(path_join(root, "suites/gcc_torture/fetch/gcc/gcc/testsuite/gcc.c-torture/execute/fresh.c"), "int main(void) \{ return 0; \}\n")
+        var out : string
+        t |> equal(run_torture(root, "--tier jit --filter fresh", out), 0, out)
+        t |> success(out |> contains("newly passing: fresh (a jit run does not record: run --tier interp --update)"), out)
+        t |> equal(run_torture(root, "--filter fresh", out), 0, out)
+        t |> success(out |> contains("newly passing: fresh (run with --update to record)"), out)
+    }
     t |> run("a listed id that fails under a tier breaks the ratchet under that tier") @(t : T?) {
         fwrite(path_join(root, "suites/gcc_torture/fetch/gcc/gcc/testsuite/gcc.c-torture/execute/plain.c"), "int main(void) \{ return 5; \}\n")
         var out : string

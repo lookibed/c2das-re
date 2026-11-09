@@ -105,12 +105,14 @@ def record(var tally : Tally; ratchet : Ratchet; out : Outcome; verbose : bool) 
 //! The end of a run: the summary and the newly passing ids are logged, `ratchet_ids` (which
 //! arrive sorted) become `expected_pass` under `update` unless the run was `filtered`, and the
 //! exit code is 1 when a listed id stopped passing.
-def finish_run(name, expected_pass : string; tally : Tally; update, filtered : bool; ratchet_ids : array<string>) : int {
+//! `tier` is the run's tier when it is not the interpreter's, "" otherwise: a newly passing id
+//! under it is recorded by the interpreter's run, never by `--update` under it.
+def finish_run(name, expected_pass : string; tally : Tally; update, filtered : bool; ratchet_ids : array<string>; tier : string) : int {
     let summary = join([for (k, v in keys(tally.counts), values(tally.counts)); "{k} {v}"], ", ")
     to_log(LOG_INFO, "{name}: {summary}\n")
     let write = update && !filtered
     if (!empty(tally.gained)) {
-        let how = write ? "recorded" : update ? "a --filter run does not record" : "run with --update to record"
+        let how = !empty(tier) ? "a {tier} run does not record: run --tier interp --update" : write ? "recorded" : update ? "a --filter run does not record" : "run with --update to record"
         to_log(LOG_INFO, "newly passing: {join(tally.gained, " ")} ({how})\n")
     }
     if (write) {
@@ -358,7 +360,7 @@ def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : s
         }
         record(tally, ratchet, run_one(spec, id, args.target, args.tier, verdict), args.verbose)
     }
-    return finish_run(spec.name, spec.expected_pass, tally, args.update, !empty(args.filter), tally.passed)
+    return finish_run(spec.name, spec.expected_pass, tally, args.update, !empty(args.filter), tally.passed, args.tier == "interp" ? "" : args.tier)
 }
 
 //! The seconds since `t0`, a `ref_time_ticks` reading.

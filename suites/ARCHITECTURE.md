@@ -18,7 +18,9 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   interpreter and fail under that tier, and `tier_refusal` refuses an unknown tier and
   `--update` under any tier but `interp` (exit 2). The run's children log at `warning`
   whatever `DAS_LOG_LEVEL` the runner has: the JIT and the exe build report themselves at
-  `info`, and their lines would join the output a verdict judges. Each test ends in one status: `pass`, `convert` (the dumper, the emitter or the
+  `info`, and their lines would join the output a verdict judges. Every tier writes the same
+  `work/<id>/` folders and `work/skip_audit.tsv` (csmith: `work/<seed>/` and its verdict), so two
+  runs of one suite under different tiers never run at the same time. Each test ends in one status: `pass`, `convert` (the dumper, the emitter or the
   compile check refused it), `timeout` (the module ran past the suite's limit), `exit`,
   `output`, or `skip`. The ratchet and the ledger live
   here too: a listed id that stops passing fails the run; an id that starts passing is
