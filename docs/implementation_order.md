@@ -2741,6 +2741,16 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   arm order): interp 0.987 of main (predicted -2 to -4%: half the gain, a miss: the HALT path's flag loop costs less
   than the profile's share suggested), JIT 1.002 and native 0.995 (predicted flat, hits). Raw:
   `/root/notes/parallel/emptycase_ab/`.
+- **P7.0ze The density metric** (owner ruling 38 part 3, 2026-11-09; the readability note
+  `/root/notes/research/readability-architecture.md` step 0) - Done (branch `r38-metric-density`):
+  beside the 22 compliance percentages, `metrics/criteria_linux.json` records 24 densities, sites per
+  1000 das code lines (casts, literal casts, `addr`, `deref`, `reinterpret`, `_tN` names, expanded
+  function-like macros, blow-up lines, the rest of the criteria's sites), pooled over `lua/lua` and the
+  six compare projects by their lines (`programs`), with the function-length distribution and the
+  hand-written plmpeg port (`hand/plmpeg-stream`) beside as the base; `label_stubs` counts `label N:`
+  and `goto label N` since `c_label_end` is gone (P8.10). The "before" for the forms pack: `programs`
+  1465.7 per 1000 lines (das-side 980.6, the hand port 79.8); Lua 1571.0, Doom 1080.1, binjgb 1386.8,
+  quake 1584.8; the old `all` on the same output 78.3 (77.9 was recorded before P8.10).
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
