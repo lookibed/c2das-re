@@ -138,6 +138,16 @@ static int nested_dispatch(int a, int b) {
 
 /* lobject.c:520 luaO_pushvfstring's `%p`, read back as `va_arg(argp, void *)`: a void pointer among
    the trailing arguments */
+/* the first trailing argument is a null pointer or not, whatever its pointer type: called with
+   an int *, a float * and then a void * (docs/probe-findings.md F61) */
+static int first_set(int n, ...) {
+    va_list ap;
+    void *p;
+    va_start(ap, n);
+    p = va_arg(ap, void *);
+    va_end(ap);
+    return n + (p != NULL);
+}
 static int count_set(int n, ...) {
     va_list ap;
     int set = 0;
@@ -213,6 +223,10 @@ int main(void) {
     printf("execute %d %d %d\n", execute(code, 1), execute(code, 2), execute(code + 6, 1));
     printf("nested %d %d %d\n", nested_dispatch(1, 1), nested_dispatch(1, 2), nested_dispatch(2, 0));
     printf("set %d\n", count_set(3, (void *) slots, (void *) NULL, (void *) &t));
+    {
+        float f = 1.5f;
+        printf("shapes %d %d %d\n", first_set(1, slots), first_set(2, &f), first_set(3, (void *) &f));
+    }
     {
         char buf[32];
         int r = 0, len = read_string("ab\\ncd\\z   e\\qf\\tg\"", buf);

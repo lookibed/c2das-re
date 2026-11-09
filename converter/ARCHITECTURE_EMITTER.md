@@ -197,9 +197,8 @@ since crt binds C's `long` as 64 bits; a result C ranges at the dialect's `long`
 `strtol`, `strtoul`, `atol` and `ftell` call crt's 32-bit forms (`crt::c_strtol32(...)`,
 `LONG32_CALLS`), which clamp with ERANGE as a 32-bit CRT does (`dasCRuntime/ARCHITECTURE.md`
 section 3). A program calling `setvbuf` requires `c_runtime/c_exit`, whose
-`[finalize]` flushes every stream while a buffer the program handed it, das memory, still lives. A `void *` among a call's trailing arguments travels as `reinterpret<uint8?>(p)`, since
-daslang meets a tuple holding `void?` after two tuples of other pointers with two generic
-instances (`docs/probe-findings.md` F61); the list holds every pointer as `void?` either way. A caller's `var` pointer reaches a piece's
+`[finalize]` flushes every stream while a buffer the program handed it, das memory, still lives. A `void *` among a call's trailing arguments travels as the `void?` it is, after tuples of
+other pointers too (`docs/probe-findings.md` F61); the list holds every pointer as `void?`. A caller's `var` pointer reaches a piece's
 pointer argument as it reaches a converted function's. A `size_t` result is `uint64`, so an index or a count it feeds carries the cast C gives
 it. Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
 cast, `IntegralToBoolean` is `x != 0` (`!= null` for a pointer), `BooleanToSignedIntegral` is

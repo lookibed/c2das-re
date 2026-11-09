@@ -1941,8 +1941,10 @@ def p5_lua_expression_fixtures(t : T?) {
         has_text(t, text, "                label 3:  // no_save\n            \}\n")
         has_text(t, text, "    label 1:  // done\n\}\n")
         has_text(t, text, "    label 2:  // returning\n    acc += 1000\n")
-        // a `void *` among the trailing arguments travels as a byte pointer
-        has_text(t, text, "p5_lua_exprs__count_set`va(3, (reinterpret<uint8?>(reinterpret<void?>(addr(slots[0]))), reinterpret<uint8?>(null), reinterpret<uint8?>(reinterpret<void?>(addr(t)))))")
+        // a `void *` among the trailing arguments stays a `void?`, after tuples of other pointers too (F61 fixed)
+        has_text(t, text, "p5_lua_exprs__count_set`va(3, (reinterpret<void?>(addr(slots[0])), null, reinterpret<void?>(addr(t))))")
+        has_text(t, text, "p5_lua_exprs__first_set`va(3, (reinterpret<void?>(addr(f)),))")
+        t |> equal(text |> find("reinterpret<uint8?>(reinterpret<void?>") >= 0, false, text)
     }
     t |> run("a label that ends a loop's body is a goto target: the loop takes the jump as its next iteration") @(t : T?) {
         let text = converts(t, "label_loop_end", "int main(void) \{ int i = 0, r = 0; while (i < 4) \{ i++; if (i == 2) goto next; r++; next: ; \} return r - 3; \}\n")
