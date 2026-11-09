@@ -1585,14 +1585,7 @@ def private variadic_call(name : string; fixed : int; args : array<string>) : st
 // the spelling of argument `arg` (spelled `text`) of a call, `fixed` when it meets a parameter of
 // the prototype, `library` when the callee is a libc function, `crt` when the crt module binds it
 def private call_argument(var em : Emitter; tu : CirTu; arg : CirExpr const?; text : string; fixed, library, crt : bool) : string {
-    if (!fixed && is_data_pointer(tu, arg.t) && kind_of(tu, tu.types[arg.t].to) == "void") {
-        // a `void?` among a call's trailing arguments makes daslang find two generic
-        // instances for the tuple once two other pointer tuples have one (error 50609,
-        // docs/probe-findings.md F61): it travels as a byte pointer, which the list holds as
-        // the same `void?`
-        em.unsafe_used = true
-        return "reinterpret<uint8?>({text})"
-    } elif (library && is_va_list(tu, arg.t)) {
+    if (library && is_va_list(tu, arg.t)) {
         // a library function taking a `va_list` takes the list from the cursor on, as a
         // `CVaList` (`c_vprintf`): the forwarding of a `va_list`
         return "{VA_REST}({text})"
