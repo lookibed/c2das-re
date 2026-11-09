@@ -444,17 +444,18 @@ def private first_difference(native, das : Streams; tier : string) : string {
     return empty(out) ? first_line_difference("stderr", native.err, das.err, tier) : out
 }
 
-// the signal a cgroup cap kills a run with, which `run_and_capture` returns as its exit code
+// the signal a cgroup cap kills a run with; `run_and_capture` reports a death by signal N as the
+// exit code 128 + N (daScript f386f92a35, lookibed/daScript#37), so such a run exits 137
 let SIGKILL = 9
 
 // one run's verdict when the cap or the timeout ended it: `memory`, `timeout`, or "" when it
-// exited; a cap that kills ended the run with `SIGKILL`, one that fails allocations with the
+// exited; a cap that kills ended the run by `SIGKILL`, one that fails allocations with the
 // `not enough memory` of `lua.c` on stderr `err`
 def private limit_verdict(rc : int; cap : Cap; err, side, memory : string; timeout : float) : string {
     if (rc == popen_timed_out) {
         return "timeout {side} past {timeout} s"
     }
-    let over = cap.kills ? rc == SIGKILL : rc != 0 && err |> contains("not enough memory")
+    let over = cap.kills ? rc == 128 + SIGKILL : rc != 0 && err |> contains("not enough memory")
     return over ? "memory {side} over {memory}" : ""
 }
 
