@@ -546,7 +546,7 @@ def test_project_notes(t : T?) {
 def private criteria_capture(rows : array<string>; converted : int) : CriteriaCapture {
     var cap : CriteriaCapture
     for (row in rows) {
-        cap.rows[row] <- sum_raw([{"c_files" => 3, "c_files_converted" => converted, "fn_matched" => 4, "fn_stray_braces" => 1, "c_comment_lines" => 2, "das_comments_carried" => 1}], array<int>())
+        cap.rows[row] <- sum_raw([{"c_files" => 3, "c_files_converted" => converted, "fn_matched" => 4, "fn_stray_braces" => 1, "c_comment_lines" => 2, "das_comments_carried" => 1}], array<int>(), array<int>())
     }
     return <- cap
 }
