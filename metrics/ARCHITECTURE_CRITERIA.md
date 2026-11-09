@@ -183,7 +183,8 @@ port is the base shown beside: the densities a human's das has.
 
 | Density | Sites | Needs C |
 |---|---|---|
-| `casts` | a numeric type, `intptr`, `uintptr` or `enum_from_int` called (`int(x)`), not after `.` | |
+| `casts` | a numeric type, `intptr`, `uintptr` or `enum_from_int` called on anything but a bare number literal (`int(x)`), not after `.` | |
+| `literal_casts` | lines with a cast of a bare number literal (`uint8(7)`, `uint64(0)`): a table of a thousand entries is a few lines a reader skips, and a suffix is what would replace the cast | |
 | `addr`, `deref` | every `addr(` and `deref(` | |
 | `reinterpret` | `reinterpret<T>(...)` of anything but a string literal | |
 | `string_casts` | `reinterpret<T>("...")` | |
@@ -191,13 +192,13 @@ port is the base shown beside: the densities a human's das has.
 | `stray_braces`, `labels`, `qualified_calls`, `c_renames`, `bool_roundtrip`, `lost_parens`, `literal_arithmetic`, `long_lines` | the criterion's sites | |
 | `switch_machinery` | `var _flag = false` switches, `_flag ||=` and `_goto` lines | |
 | `setjmp_loops` | `while (_sj_run)` trampolines | |
-| `repeated_lines` | the code lines a repeated block covers | |
 | `layout_checks` | `static_assert(typeinfo ...)` lines | |
 | `lost_comments` | C comment lines less the das lines that carried one | yes |
 | `unnamed_constants` | C uses of a numeric-constant macro less the das uses of its name | yes |
 | `macro_expansions` | C uses of a function-like macro less the das uses of its name | yes |
 | `lost_chars` | C character literals less the das ones kept | yes |
 | `blowup_lines` | per matched function, its das lines past 1.5 times its C lines | yes |
+| `excess_repeats` | the code lines a repeated block covers, beyond the C source's own repeated share of the output's lines (a table repeats in C too) | yes |
 
 A density needing C is `n/a` where a row has no C code lines, the hand port among them, so a
 column has two totals: `total`, every applicable density summed, and `das_side`, the ones read off
