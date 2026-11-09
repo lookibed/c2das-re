@@ -23,7 +23,7 @@ def private machine_code(t : T?; name, source : string; llc_flags : array<string
     let dir = "{temp_directory_result() as value}"
     let ir = "{dir}/c2das_probe_solid_lsr_{name}.ll"
     let s_path = "{dir}/c2das_probe_solid_lsr_{name}.s"
-    let jit = daslang_run("solid_lsr_{name}", source, jit_flags(), array<string>(), "c2das_probe", ["--", "--jit-dump", "--jit-dump-to", ir])
+    let jit = daslang_run("solid_lsr_{name}", source, jit_flags(), array<string>(), "c2das_probe", ["--", "--jit-dump={ir}"])
     t |> success(jit.out |> ends_with("1229\n"), "{name}: {jit.out}")
     let llc = pinned_llc()
     if (empty(llc)) {

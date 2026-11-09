@@ -137,7 +137,7 @@ def native_battery(stem : string; flags : array<string>; source : string) : stri
 
 //! A child with `dasCRuntime` and `c_runtime` loaded under the JIT (`tier` "jit") or built as an
 //! executable (`tier` "exe", into `ir` with `_exe` after it; "exe-split" with one LLVM module per
-//! das module, as the cached JIT DLL is built), its LLVM IR written to `ir` (`--jit-dump-to`,
+//! das module, as the cached JIT DLL is built), its LLVM IR written to `ir` (`--jit-dump=<file>`,
 //! docs/probe-findings.md F82).
 def runtime_child_ir(name, source, tier, ir : string) : tuple<rc : int; out : string> {
     var after <- tier == "jit" ? array<string>() : ["-output", "{ir}_exe"]
@@ -145,7 +145,7 @@ def runtime_child_ir(name, source, tier, ir : string) : tuple<rc : int; out : st
     if (tier == "exe-split") {
         after |> push_from(["--jit-split-modules", "1"])
     }
-    after |> push_from(["--jit-dump", "--jit-dump-to", ir])
+    after |> push_from(["--jit-dump={ir}"])
     let flags <- tier == "jit" ? jit_flags() : ["-exe"]
     return daslang_run(name, source, flags, [for (m in RUNTIME_MODULES); m], "c2das_c_runtime", after)
 }

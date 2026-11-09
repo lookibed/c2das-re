@@ -36,7 +36,7 @@ def test_stdlib(t : T?) {
         let ir = "{temp_directory_result() as value}/c2das_probe_builtin_memcpy.ll"
         let interp = runtime_child("builtin_memcpy", BUILTIN_MEMCPY, false)
         t |> equal(interp.out, "0x4 84148994 1.5 513\n")
-        let jit = daslang_run("builtin_memcpy_jit", BUILTIN_MEMCPY, jit_flags(), [for (m in RUNTIME_MODULES); m], "c2das_probe", ["--", "--jit-dump", "--jit-dump-to", ir])
+        let jit = daslang_run("builtin_memcpy_jit", BUILTIN_MEMCPY, jit_flags(), [for (m in RUNTIME_MODULES); m], "c2das_probe", ["--", "--jit-dump={ir}"])
         t |> equal(jit.out |> ends_with("0x4 84148994 1.5 513\n"), true, jit.out)
         let dump = fread(ir)
         let at = dump |> find("read_one")
