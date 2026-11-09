@@ -29,7 +29,7 @@ let TYPE_FIELD = "converter/tests/fixtures/p7_type_edge"
 // the single layout's module of each fixture: the multi-TU link's text before the source layout
 // (P5.1b1), which the single layout keeps byte for byte, plus the C comments it carries (P7.0j) and
 // `options solid_context` (P7.0m)
-let TREE_SINGLE_SHA = "d4de39c994d25808a30d5100af6aae0c4c126dbde8c8401eb210d3826f20aa5c"
+let TREE_SINGLE_SHA = "505d5c3c0c082bb3a6883ca4842a6d5c468d8b8f0b1356752c3bc6cb8f606d47"
 let TYPES_SINGLE_SHA = "a41aac0cfac7d93c798f966f2dac9b6ab4b27f5f4b39ba2935904704de3ba774"
 
 var work_root : string
@@ -413,7 +413,7 @@ def test_cut_choices(t : T?) {
         for (name in ["cut.h", "a.c", "b.c"]) {
             fwrite(path_join(dir, name), fread("{CUT}/{name}"))
         }
-        fwrite(path_join(dir, "main.c"), "#include <stdio.h>\n#include \"cut.h\"\n\nint main(int argc, char **argv) \{\n    printf(\"%d %d\\n\", a_run(argc + 2), argv[argc] == 0);\n    return 0;\n\}\n")
+        fwrite(path_join(dir, "main.c"), "#include <stdio.h>\n#include \"cut.h\"\n\nint main(int argc, char **argv) \{\n    printf(\"%d %d\\n\", a_run(3), argv[argc] == 0);\n    return 0;\n\}\n")
         var inscope files <- [for (name in ["main.c", "a.c", "b.c"]); path_join(dir, name)]
         let res <- convert_program(files, path_join(dir, "out"), "linux", "", "", "", "", "main", "source-cut")
         t |> equal(res.error, "")

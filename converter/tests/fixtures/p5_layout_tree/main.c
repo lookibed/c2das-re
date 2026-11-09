@@ -15,8 +15,8 @@ static int add(int a, int b) {
     return a + b;
 }
 
-/* the ring's depths come from argc: a constant argument would let daslang's optimizer fold the
-   mutually recursive calls before the globals they read hold their values (probe-findings F73) */
+/* the ring's depths are constants: daslang's optimizer folds the mutually recursive calls only
+   once the globals they read hold their values (probe-findings F73) */
 int main(int argc, char **argv) {
     union number u;
     struct point p = { 2, 3 };
@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
     u.f = 1.5f;
     solo_count += 10;
     *main_count += 1;
-    fprintf(out, "%d %d %d %d\n", ring_a(argc + 2), ring_b(argc + 1), *ring_cell(), argv[argc] == 0);
+    fprintf(out, "%d %d %d %d\n", ring_a(3), ring_b(2), *ring_cell(), argv[argc] == 0);
     fprintf(out, "%d %d\n", solo_apply(add, p.x, p.y), solo_apply(ring_mul, p.x, p.y));
     printf("%d %d %d %d\n", solo_count, solo_sum(3, 1, 2, 3), helper((int) m), twice(4));
     printf("%d %s %d\n", u.i != 0, solo_name(), ring_words());
