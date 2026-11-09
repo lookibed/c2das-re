@@ -294,8 +294,7 @@ as `_sj_valN` (0 on the first run, longjmp's value on a rerun), which reruns the
 nothing in it is read before the call. A branch or a tail that leaves an enclosing loop, a site off
 a block's statement level, a second setjmp, another effect or read (`x = g + setjmp(buf)`,
 `a[i++] = setjmp(buf)`) and a `setjmp` read any other way fail closed. das refuses a `return` in an
-arm (error 30299, F96), so an arm holding one is a block invoked for whether it returned,
-`_sj_returned = invoke($() : bool { ... })`, a C `return v` in it `_sj_ret = v; return true`; the
-outermost such site declares both before its `try`, nested sites share them, and after the pair
-`if (_sj_returned)` returns `_sj_ret` (`true` in an enclosing arm). A `goto` across the block's edge
-and an arm leaving the site's loop (the JIT's `break` leaves only the `try`, F97) fail closed.
+arm (error 30299, F96): an arm holding one is a block invoked for whether it returned, a C `return
+v` in it `_sj_ret = v; return true`, `_sj_ret` and `_sj_returned` declared by the outermost such
+site and shared by nested ones, and after the pair `if (_sj_returned)` returns `_sj_ret` (`true` in
+an enclosing arm). A `goto` across the block's edge and an arm leaving the site's loop (F97) fail closed.
