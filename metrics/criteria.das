@@ -21,7 +21,8 @@ require criteria_file
 //! Lua key and every ratchet suite key of `expected_input_keys` and every compare project of `ROWS`
 //! (`project/<name>`), converted by `convert_input` as
 //! the readability metric converts it, one worker process per input, its C sources and emitted
-//! modules scanned into raw counts; the rows summed, each criterion's compliance printed, and a
+//! modules scanned into raw counts, and every hand-written port of `HAND_PORTS` scanned as it is;
+//! the rows summed, each criterion's compliance and each density printed, and a
 //! complete run recorded in `metrics/criteria_linux.json`. `--report` is the preflight gate.
 
 let CAPTURE = "metrics/criteria_linux.json"
@@ -68,8 +69,47 @@ def private header_sources(c_paths, include_dirs : array<string>; units : array<
     }
 }
 
-//! The raw counts of the input `key`, converted under `dir`; `error` names what failed.
+// the folder of the hand-written port `key`: its environment variable's value, else its default
+def private hand_dir(key : string; var error : string&) : string {
+    for (port in HAND_PORTS) {
+        if (port.row == key) {
+            return has_env_variable(port.env) ? get_env_variable(port.env) : port.dir
+        }
+    }
+    error = "no hand-written port {key}"
+    return ""
+}
+
+//! The raw counts of the hand-written port `key`: every `.das` file of its folder scanned as a
+//! module, with no C source and no macro; `error` names a port `HAND_PORTS` lacks or a folder with
+//! no `.das` file.
+def measure_hand(key : string; var error : string&) : CriteriaRaw {
+    let dir = hand_dir(key, error)
+    if (!empty(error)) {
+        return <- CriteriaRaw()
+    }
+    var paths : array<string>
+    dir(dir) $(name) {
+        if (name |> ends_with(".das")) {
+            paths |> push(path_join(dir, name))
+        }
+    }
+    sort(paths)
+    if (empty(paths)) {
+        error = "no .das file under {dir}"
+        return <- CriteriaRaw()
+    }
+    let modules <- [for (path in paths); scan_das(fread(path), file_stem(path), false)]
+    let none : table<string; bool>
+    return <- count_criteria(array<CSource>(), modules, none, none)
+}
+
+//! The raw counts of the input `key`, converted under `dir`; `error` names what failed. A
+//! hand-written port is read where it lies.
 def measure_input(key, dir : string; var error : string&) : CriteriaRaw {
+    if (key |> starts_with(HAND_PREFIX)) {
+        return <- measure_hand(key, error)
+    }
     let conv <- convert_input(key, dir)
     if (!empty(conv.error)) {
         error = conv.error
@@ -94,20 +134,22 @@ def measure_input(key, dir : string; var error : string&) : CriteriaRaw {
     }
     header_sources(conv.c_paths, side.include_dirs, units, sources)
     let constants <- program_constants(conv.c_paths, side.include_dirs, units)
+    let macros <- program_function_macros(conv.c_paths, side.include_dirs, units)
     var paths := conv.das_paths
     paths |> push_from(conv.fragments)
     let modules <- [for (path in paths); scan_das(fread(path), file_stem(path), path |> ends_with(".das.inc"))]
-    var raw <- count_criteria(sources, modules, constants)
+    var raw <- count_criteria(sources, modules, constants, macros)
     raw.counts["c_files"] = conv.c_files
     raw.counts["c_files_converted"] = length(conv.c_paths)
     return <- raw
 }
 
-// what the workers measured: the raw counts and pooled ratios per row, the sample's raw counts,
-// and a line per input that failed
+// what the workers measured: the raw counts, pooled ratios and pooled function lengths per row, the
+// sample's raw counts, and a line per input that failed
 struct Measured {
     rows : table<string; array<table<string; int>>>
     ratios : table<string; array<int>>
+    lengths : table<string; array<int>>
     sample : table<string; table<string; int>>
     failures : array<string>
 }
@@ -133,19 +175,21 @@ def private run_batch(keys : array<string>; jobs : int; var m : Measured) {
         let row = row_of(key)
         m.rows[row] |> push_clone(raw.counts)
         m.ratios[row] |> push_from(raw.ratios)
+        m.lengths[row] |> push_from(raw.lengths)
         if (has_value(SAMPLE_KEYS, key)) {
             m.sample[key] := raw.counts
         }
     }
 }
 
-// the capture of what the workers measured: each row's raw counts summed, its ratios pooled
+// the capture of what the workers measured: each row's raw counts summed, its ratios and function
+// lengths pooled
 def private capture_of(var m : Measured) : CriteriaCapture {
     var cap : CriteriaCapture
     for (row, counts in keys(m.rows), values(m.rows)) {
         var inscope ratios <- clone_to_move(m.ratios?[row] ?? array<int>())
         sort(ratios)
-        cap.rows[row] <- sum_raw(counts, ratios)
+        cap.rows[row] <- sum_raw(counts, ratios, m.lengths?[row] ?? array<int>())
     }
     for (k, v in keys(m.sample), values(m.sample)) {
         cap.sample[k] := v
@@ -161,7 +205,7 @@ def private report(delta_ref : string) : int {
         to_log(LOG_ERROR, "{error}: run scripts/run_criteria.sh\n")
         return 1
     }
-    print("**Readability criteria** ({CAPTURE})\n\n{render_criteria(committed)}\n")
+    print("**Readability criteria** ({CAPTURE})\n\n{render_tables(committed)}")
     if (!empty(delta_ref)) {
         var shown : string
         if (run_and_capture(["git", "show", "{delta_ref}:{CAPTURE}"], shown, 60.0) != 0) {
@@ -169,7 +213,7 @@ def private report(delta_ref : string) : int {
         } else {
             var base_error : string
             let base <- base_capture_of_text(shown, "{delta_ref}:{CAPTURE}", base_error)
-            print(empty(base_error) ? "Delta against {delta_ref}:\n\n{render_delta(base, committed)}\n" : "no delta: {base_error}\n")
+            print(empty(base_error) ? "Delta against {delta_ref}:\n\n{render_deltas(base, committed)}" : "no delta: {base_error}\n")
         }
     }
     if (!fexist(C_TESTSUITE_TESTS)) {
@@ -193,11 +237,17 @@ def private report(delta_ref : string) : int {
     return 0
 }
 
+// the compliance table, the density table and the length table, each under its heading
+def private render_tables(cap : CriteriaCapture) : string => "{render_criteria(cap)}\n\n**Densities** (sites per 1000 das code lines; `programs` pools lua/lua and the projects by their lines)\n\n{render_density(cap)}\n\n**Function lengths**\n\n{render_lengths(cap)}\n"
+
+// the compliance delta and the density delta over the `programs` column
+def private render_deltas(base, now : CriteriaCapture) : string => "{render_delta(base, now)}\n\nDensity delta over `programs`:\n\n{render_density_delta(base, now)}\n"
+
 // every input the criteria measure whose key holds `filter`: the readability inputs without the
-// `perf` group, then the compare projects of `ROWS`
+// `perf` group, then the compare projects and the hand-written ports of `ROWS`
 def private input_keys(filter : string) : array<string> {
     var every <- [for (k in expected_input_keys()); k; where !(k |> starts_with("perf/"))]
-    every |> push_from([for (row in ROWS); row; where row |> starts_with(PROJECT_PREFIX)])
+    every |> push_from([for (row in ROWS); row; where row |> starts_with(PROJECT_PREFIX) || row |> starts_with(HAND_PREFIX)])
     return <- [for (k in every); k; where empty(filter) || find(k, filter) >= 0]
 }
 
@@ -225,11 +275,11 @@ def main : int {
     run_batch(one_by_one, 1, m)
     run_batch([for (k in keys); k; where !has_value(one_by_one, k)], args.jobs, m)
     let cap <- capture_of(m)
-    print("**Readability criteria**\n\n{length(keys)} inputs attempted, {length(m.failures)} failed\n\n{render_criteria(cap)}\n")
+    print("**Readability criteria**\n\n{length(keys)} inputs attempted, {length(m.failures)} failed\n\n{render_tables(cap)}")
     if (!empty(args.delta)) {
         var error : string
         let base <- fexist(args.delta) ? base_capture_of_text(fread(args.delta), args.delta, error) : capture_at(args.delta, error)
-        print(empty(error) ? "Delta against {args.delta}:\n\n{render_delta(base, cap)}\n" : "no delta: {error}\n")
+        print(empty(error) ? "Delta against {args.delta}:\n\n{render_deltas(base, cap)}" : "no delta: {error}\n")
     }
     m.failures |> sort()
     for (f in m.failures) {

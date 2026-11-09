@@ -17,7 +17,8 @@ def private raw_of(c_text, das_text : string; constants : table<string; bool>) :
     sources |> emplace(scan_c(c_text, array<bool>()))
     var modules : array<DasModule>
     modules |> emplace(scan_das(das_text, "m", false))
-    let raw <- count_criteria(sources, modules, constants)
+    let none : table<string; bool>
+    let raw <- count_criteria(sources, modules, constants, none)
     return <- clone_to_move(raw.counts)
 }
 
@@ -171,20 +172,47 @@ def test_function_criteria(t : T?) {
     t |> run("qualified calls: `__::` and a program module, not an outside one") @(t : T?) {
         let sources <- [scan_c("int f(void) \{ return 1; \}\n", array<bool>())]
         let modules <- [scan_das("def f : int \{\n    return __::g() + lgc::h() + crt::strlen(s)\n\}\n", "m", false), scan_das("def h : int \{\n    return 0\n\}\n", "lgc", false)]
-        let raw <- count_criteria(sources, modules, default<table<string; bool>>)
+        let none : table<string; bool>
+        let raw <- count_criteria(sources, modules, none, none)
         t |> equal(raw.counts?["qualified_calls_sites"] ?? 0, 2)
     }
     t |> run("stray braces: a lone `\{` opens a bare block, a statement's `\{` does not") @(t : T?) {
         t |> equal(got(in_f("    \{\n        x = 1\n    \}"), "stray_braces_sites"), 1)
         t |> equal(got(in_f("    if (x) \{\n        x = 1\n    \}"), "stray_braces_sites"), 0)
     }
-    t |> run("label stubs, `_c_` renames, `? 1 : 0` round trips") @(t : T?) {
-        let c = in_f("    c_label_end()\n    x = t._c_array\n    y = (x ? 1 : 0) != 0")
-        t |> equal(got(c, "label_stubs_sites"), 1)
+    t |> run("label stubs (`label N:` and `goto label N`, not the gone `c_label_end()`), `_c_` renames, `? 1 : 0` round trips") @(t : T?) {
+        let c = in_f("    label 1:\n    goto label 1\n    c_label_end()\n    x = t._c_array\n    y = (x ? 1 : 0) != 0")
+        t |> equal(got(c, "label_stubs_sites"), 2)
+        t |> equal(got(c, "fn_label_stubs"), 1)
         t |> equal(got(c, "c_renames_sites"), 1)
         t |> equal(got(c, "bool_roundtrip_sites"), 1)
-        let none = in_f("    x = t.array_c\n    y = x ? 2 : 0")
+        let none = in_f("    x = t.array_c\n    y = x ? 2 : 0\n    var label = 3")
         t |> equal(got(none, "c_renames_sites") + got(none, "bool_roundtrip_sites") + got(none, "label_stubs_sites"), 0)
+    }
+    t |> run("casts: a numeric type, intptr or enum_from_int called; not a declaration, a field or another call") @(t : T?) {
+        let c = in_f("    x = int(y) + uint8(z) * uint64(w)\n    p = intptr(q)\n    e = enum_from_int(type<E>, 7)")
+        t |> equal(got(c, "cast_sites"), 5)
+        let none = in_f("    var n : int = 3\n    x = o.int(y)\n    y = float3(1.0, 2.0, 3.0)\n    z = type<int>")
+        t |> equal(got(none, "cast_sites"), 0)
+    }
+    t |> run("addr and deref sites, all of them; the pair criterion stays the pairs") @(t : T?) {
+        let c = in_f("    x = addr(b).n + addr(deref(p + i)) + deref(addr(a[0]) + i)\n    y = deref(p) + addr(q)")
+        t |> equal(got(c, "addr_sites"), 4)
+        t |> equal(got(c, "deref_sites"), 3)
+        t |> equal(got(c, "addr_deref_sites"), 3)
+        let none = in_f("    x = address.n + dereference(p)")
+        t |> equal(got(none, "addr_sites") + got(none, "deref_sites"), 0)
+    }
+    t |> run("temporary names: every `_tN` spelled, declared or used; the declarations stay the temporaries") @(t : T?) {
+        let c = in_f("    var _t0 = p\n    let _t1 = _t0 + 1\n    return _t0 + _t1")
+        t |> equal(got(c, "temp_name_sites"), 5)
+        t |> equal(got(c, "temporaries_sites"), 2)
+        t |> equal(got(in_f("    var t0 = p\n    return _tx + _t"), "temp_name_sites"), 0)
+    }
+    t |> run("the sites count over the whole module, the function flags over matched functions only") @(t : T?) {
+        let c = raw_of("int f(void) \{\n  return 1;\n\}\n", "var g = int(7)\ndef f : int \{\n    return int(1)\n\}\ndef helper : int \{\n    return int(2) + int(3)\n\}\n")
+        t |> equal(got(c, "cast_sites"), 4)
+        t |> equal(got(c, "fn_matched"), 1)
     }
     t |> run("literal arithmetic: an operator between two literals, not a literal and a name") @(t : T?) {
         t |> equal(got(in_f("    x = uint(0 + 7 + 8)"), "literal_arithmetic_sites"), 2)
@@ -216,7 +244,8 @@ def test_module_criteria(t : T?) {
         t |> equal(got(plain, "modules_layout_check") + got(plain, "modules_late_bound") + got(plain, "modules_long_lines"), 0)
         var modules : array<DasModule>
         modules |> emplace(scan_das("var x = 1\n", "lua_link", false))
-        let raw <- count_criteria(array<CSource>(), modules, default<table<string; bool>>)
+        let none : table<string; bool>
+        let raw <- count_criteria(array<CSource>(), modules, none, none)
         t |> equal(raw.counts?["modules_late_bound"] ?? 0, 1)
     }
     t |> run("repeated blocks: a window of four lines seen twice covers its lines") @(t : T?) {
@@ -268,6 +297,140 @@ def test_defines(t : T?) {
 
 def private full_raw(fill : int) : table<string; int> {
     return <- {for (k in RAW_KEYS); k => fill}
+}
+
+[test]
+def test_macro_calls(t : T?) {
+    t |> run("C uses of the program's function-like macros, and the das uses that keep the name, capped") @(t : T?) {
+        var sources : array<CSource>
+        sources |> emplace(scan_c("#define twice(x) ((x) * 2)\nint f(int a) \{\n  return twice(a) + twice(1) + g(a);\n\}\n", array<bool>()))
+        t |> equal(sources[0].calls?["twice"] ?? 0, 2)
+        t |> equal(sources[0].calls?["g"] ?? 0, 1)
+        var modules : array<DasModule>
+        modules |> emplace(scan_das("def f(a : int) : int \{\n    return twice(a) + twice(1) + twice(2) + g(a)\n\}\n", "m", false))
+        let none : table<string; bool>
+        let raw <- count_criteria(sources, modules, none, {"twice" => true})
+        t |> equal(raw.counts?["c_macro_calls"] ?? 0, 2)
+        t |> equal(raw.counts?["das_macro_calls"] ?? 0, 2, "capped at the C uses")
+        let unnamed <- count_criteria(sources, modules, none, none)
+        t |> equal(unnamed.counts?["c_macro_calls"] ?? 0, 0, "a name no macro has is a call")
+    }
+    t |> run("the program's function-like macros: the own defines that take parameters in some unit") @(t : T?) {
+        var dir_error : string
+        let dir = create_temp_directory("c2das_criteria_macros", dir_error)
+        t |> equal(dir_error, "")
+        let c_path = path_join(dir, "m.c")
+        fwrite(c_path, "#define LIMIT 10\n#define twice(x) ((x) * 2)\nint f(int a) \{ return twice(a) + LIMIT; \}\n")
+        var error : string
+        var pp <- preprocess(c_path, array<string>(), array<string>(), array<string>(), error)
+        t |> equal(error, "")
+        var units : array<Preprocessed>
+        units |> emplace(pp)
+        let names <- program_function_macros([c_path], array<string>(), units)
+        t |> equal(sorted([for (k in keys(names)); k]), ["twice"])
+        rmdir_rec(dir)
+    }
+}
+
+[test]
+def test_lengths(t : T?) {
+    t |> run("the functions' body lines: how many, the median, the 90th percentile, the longest, the long ones; the converter's own left out") @(t : T?) {
+        let body = join([for (i in range(101)); "    x = {i}"], "\n")
+        let das = "def a : int \{\n    return 1\n\}\ndef b : int \{\n    x = 1\n    x = 2\n    return x\n\}\ndef c : int \{\n{body}\n    return x\n\}\n[init] def private c2das_layout_check \{\n    static_assert(1 == 1, \"x\")\n\}\n"
+        let c = raw_of("int a(void) \{\n  return 1;\n\}\n", das)
+        t |> equal(got(c, "fn_total"), 3)
+        t |> equal(got(c, "fn_lines_median"), 3)
+        t |> equal(got(c, "fn_lines_p90"), 102)
+        t |> equal(got(c, "fn_lines_max"), 102)
+        t |> equal(got(c, "fn_long"), 1)
+    }
+    t |> run("the matched functions' ratios: the lines past 1.5x the C lines, the 90th percentile") @(t : T?) {
+        let c_text = "int a(void) \{\n  return 1;\n\}\nint b(void) \{\n  return 2;\n\}\n"
+        let das = "def a : int \{\n    return 1\n\}\ndef b : int \{\n    x = 1\n    x = 2\n    x = 3\n    return x\n\}\n"
+        let c = raw_of(c_text, das)
+        t |> equal(got(c, "fn_matched"), 2)
+        t |> equal(got(c, "fn_within"), 1)
+        t |> equal(got(c, "blowup_lines"), 2, "b: 6 das lines against 3 C lines, 4 allowed")
+        t |> equal(got(c, "fn_p90_x100"), 200)
+        t |> equal(got(c, "fn_median_x100"), 200)
+    }
+    t |> run("a percentile of a sorted list, and the distributions of an empty one") @(t : T?) {
+        t |> equal(percentile([1, 2, 3, 4], 50), 3)
+        t |> equal(percentile([1, 2, 3, 4], 90), 4)
+        t |> equal(percentile([1, 2, 3, 4], 100), 4)
+        t |> equal(percentile(array<int>(), 50), 0)
+        var c : table<string; int>
+        distribution_counts(array<int>(), array<int>(), c)
+        t |> equal(c?["fn_total"] ?? -1, 0)
+        t |> equal(c?["fn_worst_x100"] ?? -1, 0)
+    }
+}
+
+[test]
+def test_density(t : T?) {
+    t |> run("a density is sites per thousand das code lines; a C-side one needs C code; an unknown name is n/a") @(t : T?) {
+        t |> equal(density("casts", {"cast_sites" => 5, "das_code_lines" => 2000}), 2.5lf)
+        t |> equal(density("switch_machinery", {"flag_switches" => 1, "flag_lines" => 2, "goto_state_lines" => 3, "das_code_lines" => 1000}), 6.0lf)
+        t |> equal(density("lost_comments", {"c_comment_lines" => 10, "das_comments_carried" => 4, "das_code_lines" => 1000, "c_code_lines" => 1}), 6.0lf)
+        t |> equal(density("unnamed_constants", {"c_constant_uses" => 10, "das_constant_names" => 4, "das_code_lines" => 1000, "c_code_lines" => 1}), 6.0lf)
+        t |> equal(density("macro_expansions", {"c_macro_calls" => 3, "das_macro_calls" => 0, "das_code_lines" => 1000, "c_code_lines" => 1}), 3.0lf)
+        t |> equal(density("lost_chars", {"c_char_literals" => 2, "das_char_literals" => 5, "das_code_lines" => 1000, "c_code_lines" => 1}), 0.0lf)
+        t |> equal(density("lost_comments", {"c_comment_lines" => 10, "das_code_lines" => 1000}), NOT_APPLICABLE, "no C code: a hand-written port")
+        t |> equal(density("casts", {"cast_sites" => 5}), NOT_APPLICABLE)
+        t |> equal(density("no_such_density", full_raw(1)), NOT_APPLICABLE)
+        t |> equal(length(DENSITIES), length([for (d in DENSITIES); d; where density(d, full_raw(1)) >= 0.0lf]), "every density applies to full counts")
+    }
+    t |> run("the totals sum what applies; the das side leaves the C-side densities out") @(t : T?) {
+        var cap : CriteriaCapture
+        var hand <- full_raw(0)
+        hand["das_code_lines"] = 1000
+        hand["cast_sites"] = 40
+        hand["addr_sites"] = 2
+        cap.rows["hand/plmpeg-stream"] <- hand
+        var lua <- full_raw(0)
+        lua["das_code_lines"] = 1000
+        lua["c_code_lines"] = 500
+        lua["cast_sites"] = 100
+        lua["c_comment_lines"] = 30
+        cap.rows["lua/lua"] <- lua
+        let table_ <- density_table(cap)
+        t |> equal(table_?["hand/plmpeg-stream"]?[TOTAL] ?? -2.0lf, 42.0lf)
+        t |> equal(table_?["hand/plmpeg-stream"]?[DAS_SIDE] ?? -2.0lf, 42.0lf)
+        t |> equal(table_?["hand/plmpeg-stream"]?["lost_comments"] ?? -2.0lf, NOT_APPLICABLE)
+        t |> equal(table_?["lua/lua"]?[TOTAL] ?? -2.0lf, 130.0lf)
+        t |> equal(table_?["lua/lua"]?[DAS_SIDE] ?? -2.0lf, 100.0lf)
+        t |> equal(sum_applicable([NOT_APPLICABLE]), NOT_APPLICABLE)
+    }
+    t |> run("the programs column pools lua/lua and the projects by their lines; the suites, luac, the layouts, opt-ins and the hand ports stay out") @(t : T?) {
+        var cap : CriteriaCapture
+        var lua <- full_raw(0)
+        lua["das_code_lines"] = 1000
+        lua["cast_sites"] = 100
+        cap.rows["lua/lua"] <- lua
+        var project <- full_raw(0)
+        project["das_code_lines"] = 3000
+        project["cast_sites"] = 60
+        cap.rows["project/binjgb"] <- project
+        for (row in ["lua/luac", "lua/lua@single", "lua/lua@inline", "csmith", "hand/plmpeg-stream"]) {
+            var other <- full_raw(0)
+            other["das_code_lines"] = 1000
+            other["cast_sites"] = 900
+            cap.rows[row] <- other
+        }
+        let table_ <- density_table(cap)
+        t |> equal(table_?[PROGRAMS]?["casts"] ?? -2.0lf, 40.0lf, "160 sites over 4000 lines, not the mean of 100 and 20")
+        t |> success(in_programs("lua/lua") && in_programs("project/quakegeneric") && !in_programs("lua/luac") && !in_programs("lua/lua@single") && !in_programs("csmith") && !in_programs("hand/plmpeg-stream"))
+        t |> success(layout_row("lua/lua@single") && layout_row("lua/luac@source-cut") && !layout_row("lua/lua") && !layout_row("lua/lua@goto"))
+        t |> equal(row_of("hand/plmpeg-stream"), "hand/plmpeg-stream")
+        t |> success(!in_all("hand/plmpeg-stream"))
+        let columns <- density_columns(table_)
+        t |> equal(columns, ["lua/lua", "lua/luac", "csmith", "project/binjgb", PROGRAMS, "hand/plmpeg-stream"])
+    }
+    t |> run("no program row, no programs column") @(t : T?) {
+        var cap : CriteriaCapture
+        cap.rows["csmith"] <- full_raw(1)
+        t |> success(!key_exists(density_table(cap), PROGRAMS))
+    }
 }
 
 [test]
@@ -352,7 +515,7 @@ def test_compliance(t : T?) {
         t |> equal(column_total({"comments" => 0.0lf, "temporaries" => 50.0lf}), 25.0lf)
     }
     t |> run("a row's sum pools the ratios for the median and the worst") @(t : T?) {
-        let summed <- sum_raw([{"fn_matched" => 2, "fn_median_x100" => 7}, {"fn_matched" => 3}], [50, 100, 300])
+        let summed <- sum_raw([{"fn_matched" => 2, "fn_median_x100" => 7}, {"fn_matched" => 3}], [50, 100, 300], [4, 9])
         t |> equal(summed?["fn_matched"] ?? 0, 5)
         t |> equal(summed?["fn_median_x100"] ?? 0, 100)
         t |> equal(summed?["fn_worst_x100"] ?? 0, 300)
@@ -413,6 +576,23 @@ def test_capture_text(t : T?) {
         t |> success(with_project |> contains("\n    \"all\": \{\"comments\": 25.0,"), with_project)
         t |> success(in_all("lua/lua") && in_all("csmith") && !in_all("lua/luac@inline") && !in_all("project/binjgb"))
     }
+    t |> run("the density section: a column per measured row then `programs`, the totals last, a hand port's C-side densities null") @(t : T?) {
+        var cap <- sample_capture()
+        var hand <- full_raw(0)
+        hand["das_code_lines"] = 500
+        hand["cast_sites"] = 25
+        cap.rows["hand/plmpeg-stream"] <- hand
+        let with_hand = criteria_text(cap)
+        t |> success(with_hand |> contains("\n  \"density\": \{\n    \"lua/lua\": \{\"casts\": "), with_hand)
+        t |> success(with_hand |> contains("\n    \"hand/plmpeg-stream\": \{\"casts\": 50.0, "), with_hand)
+        t |> success(with_hand |> contains("\"lost_comments\": null, \"unnamed_constants\": null, \"macro_expansions\": null, \"lost_chars\": null, \"blowup_lines\": null, \"total\": 50.0, \"das_side\": 50.0\}"), with_hand)
+        t |> success(with_hand |> contains("\n    \"programs\": \{\"casts\": "), with_hand)
+        t |> success(find(with_hand, "\"hand/plmpeg-stream\": \{\"casts\"") < find(with_hand, "\"programs\": \{\"casts\""), "`programs` closes the section as `all` does")
+        t |> success(find(with_hand, "\"density\":") < find(with_hand, "\"raw\":"), with_hand)
+        t |> equal(check_criteria(with_hand), array<string>())
+        t |> success(join(check_criteria(replace(with_hand, "\"total\": 50.0", "\"total\": 49.0")), "") |> contains("not the writer's spelling"))
+        t |> success(join(check_criteria(replace(with_hand, "\"hand/plmpeg-stream\": \{\"casts\": 50.0", "\"hand/other\": \{\"casts\": 50.0")), "") |> contains("not the writer's spelling"))
+    }
     t |> run("the text passes the shape check and reads back") @(t : T?) {
         t |> equal(check_criteria(text), array<string>())
         var error : string
@@ -430,6 +610,9 @@ def test_capture_text(t : T?) {
         t |> success(join(check_criteria(replace(text, "\"addr_deref_sites\": 1,", "\"addr_deref_sites\": 1, \"zz\": 1,")), "") |> contains("unknown key `zz`"))
         t |> success(join(check_criteria(replace(text, "\"comments\": 25.0", "\"comments\": 99.0")), "") |> contains("not the writer's spelling"))
         t |> success(join(check_criteria(replace(text, "\"raw\": \{", "\"raw\": [], \"x\": \{")), "") |> contains("raw is not an object"))
+        let density_start = find(text, "  \"density\":")
+        let without = slice(text, 0, density_start) + slice(text, find(text, "  \"raw\":"))
+        t |> success(join(check_criteria(without), "") |> contains("the missing section `density`"), without)
     }
 }
 
@@ -442,6 +625,38 @@ def test_tables(t : T?) {
         t |> success(table_text |> contains("n/a"), table_text)
         t |> success(table_text |> contains("**total**"), table_text)
         t |> success(!(table_text |> contains("lua/luac")), table_text)
+    }
+    t |> run("the density table: a row per density, the columns of `density_columns`, the two totals; the length table beside it") @(t : T?) {
+        var cap <- sample_capture()
+        var hand <- full_raw(0)
+        hand["das_code_lines"] = 500
+        hand["cast_sites"] = 25
+        hand["fn_total"] = 3
+        hand["fn_lines_median"] = 7
+        cap.rows["hand/plmpeg-stream"] <- hand
+        let density_text = render_density(cap)
+        t |> success(density_text |> contains("| Per 1000 lines ") && density_text |> contains(" hand/plmpeg-stream |"), density_text)
+        t |> success(density_text |> contains("| casts ") && density_text |> contains("**total**") && density_text |> contains("**das-side**"), density_text)
+        t |> success(density_text |> contains(" programs "), density_text)
+        let lengths_text = render_lengths(cap)
+        t |> success(lengths_text |> contains("| Function lengths ") && lengths_text |> contains("| functions ") && lengths_text |> contains("| over 100 lines "), lengths_text)
+        t |> success(lengths_text |> contains("| das/C median ") && lengths_text |> contains("n/a"), lengths_text)
+        t |> success(!(lengths_text |> contains(" programs ")), lengths_text)
+    }
+    t |> run("the density delta: main, now and the signed difference over `programs`; a base before the density keys says so") @(t : T?) {
+        var before <- sample_capture()
+        before.rows["lua/lua"]["das_code_lines"] = 1000
+        before.rows["lua/lua"]["cast_sites"] = 100
+        var after := before
+        after.rows["lua/lua"]["cast_sites"] = 50
+        let delta = render_density_delta(before, after)
+        t |> success(delta |> contains("| casts ") && delta |> contains("100.0 |") && delta |> contains("50.0 |") && delta |> contains("-50.0 |"), delta)
+        t |> success(delta |> contains("**total**") && delta |> contains("**das-side**"), delta)
+        var old := before
+        old.lacks <- ["c_files", "density"]
+        t |> success(render_density_delta(old, after) |> contains("| casts "), "a base lacking only the coverage keys and the section still gives a delta")
+        old.lacks <- ["cast_sites"]
+        t |> success(render_density_delta(old, after) |> starts_with("no density delta: the base capture predates the keys cast_sites"))
     }
     t |> run("the delta: main, now and the signed difference on the `all` column") @(t : T?) {
         var after <- sample_capture()
@@ -460,12 +675,13 @@ def test_tables(t : T?) {
 [test]
 def test_worker_file(t : T?) {
     t |> run("the worker file reads back as written, its ratios included") @(t : T?) {
-        let raw = CriteriaRaw(counts <- full_raw(2), ratios <- [50, 150])
+        let raw = CriteriaRaw(counts <- full_raw(2), ratios <- [50, 150], lengths <- [3, 40])
         var error : string
         let back <- read_result_text(result_text(raw, ""), error)
         t |> equal(error, "")
         t |> equal(back.counts?["fn_matched"] ?? 0, 2)
         t |> equal(back.ratios, [50, 150])
+        t |> equal(back.lengths, [3, 40])
     }
     t |> run("an error keeps its text on one line; a file with no status is an error") @(t : T?) {
         var error : string
@@ -493,9 +709,15 @@ def test_worker_file(t : T?) {
 }
 
 // the worker run on one input key, and the result file it wrote; `rust` the Rust checkout it reads
-// the compare projects from, its default when ""
-def private run_worker(key : string; var result : string&; rust : string = "") : int {
-    var argv <- empty(rust) ? array<string>() : ["env", "C2DAS_RUST={rust}"]
+// the compare projects from, `hand` the folder of the plmpeg hand port, each its default when ""
+def private run_worker(key : string; var result : string&; rust : string = ""; hand : string = "") : int {
+    var argv <- empty(rust) && empty(hand) ? array<string>() : ["env"]
+    if (!empty(rust)) {
+        argv |> push("C2DAS_RUST={rust}")
+    }
+    if (!empty(hand)) {
+        argv |> push("C2DAS_HAND_PLMPEG={hand}")
+    }
     argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["metrics/criteria.das", "--", "--one", key])
     var out : string
     let rc = run_and_capture(argv, out, 300.0)
@@ -627,6 +849,37 @@ def test_project_worker(t : T?) {
 }
 
 [test]
+def test_hand_worker(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_criteria_hand", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("a hand-written port is scanned where its variable points: every .das file, no C side, no conversion") @(t : T?) {
+        fwrite(path_join(dir, "a.das"), "def f(p : int?) : int \{\n    return int(deref(p)) + 1\n\}\n")
+        fwrite(path_join(dir, "b.das"), "def g : int \{\n    return 2\n\}\n")
+        fwrite(path_join(dir, "notes.md"), "not das\n")
+        var result : string
+        t |> equal(run_worker("hand/plmpeg-stream", result, "", dir), 0)
+        t |> success(result |> starts_with("ok\n"), result)
+        t |> equal(count_of(result, "modules"), 2)
+        t |> equal(count_of(result, "cast_sites"), 1)
+        t |> equal(count_of(result, "deref_sites"), 1)
+        t |> equal(count_of(result, "fn_total"), 2)
+        t |> equal(count_of(result, "c_code_lines"), 0)
+        t |> equal(count_of(result, "c_files"), 0)
+    }
+    t |> run("a folder with no .das file, and a port the table lacks, are errors") @(t : T?) {
+        let empty_dir = path_join(dir, "empty")
+        mkdir_rec(empty_dir)
+        var result : string
+        t |> equal(run_worker("hand/plmpeg-stream", result, "", empty_dir), 0)
+        t |> equal(result, "error no .das file under {empty_dir}\n")
+        t |> equal(run_worker("hand/nethack", result, "", dir), 0)
+        t |> equal(result, "error no hand-written port hand/nethack\n")
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_worker_argv(t : T?) {
     t |> run("a project's worker raises its soft address-space limit to the hard one; any other worker runs daslang as is") @(t : T?) {
         let argv <- worker_argv("metrics/criteria.das", "project/doomgeneric")
@@ -651,6 +904,13 @@ def test_base_capture(t : T?) {
         let base <- base_capture_of_text(older, "main", error)
         t |> equal(error, "")
         t |> equal(length(base.rows), length(sample_capture().rows))
+        t |> equal(base.lacks, ["c_files", "c_files_converted"])
+        let density_start = find(text, "  \"density\":")
+        let before_density = slice(text, 0, density_start) + slice(text, find(text, "  \"raw\":"))
+        var section_error : string
+        let old <- base_capture_of_text(before_density, "main", section_error)
+        t |> equal(section_error, "")
+        t |> equal(old.lacks, ["density"])
         var refused : string
         base_capture_of_text(replace(older, "\"fn_matched\": ", "\"fn_unknown\": "), "main", refused)
         t |> success(refused |> starts_with("main: ") && refused |> contains("fn_unknown"), refused)

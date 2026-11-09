@@ -304,6 +304,25 @@ def program_constants(c_paths, include_dirs : array<string>; units : array<Prepr
     return <- {for (k in found); k => true}
 }
 
+//! The function-like macros of a program of `c_paths` with the include folders `include_dirs`,
+//! preprocessed as `units`: the names its own files define whose macro takes parameters in some
+//! unit. Every C use of one is an expansion the output spells in place.
+def program_function_macros(c_paths, include_dirs : array<string>; units : array<Preprocessed>) : table<string; bool> {
+    var names : table<string; bool>
+    for (f in own_files(c_paths, include_dirs)) {
+        for (name in scan_c(fread(f), array<bool>()).defined) {
+            for (pp in units) {
+                pp.macros |> get(name) $(m) {
+                    if (m.function_like) {
+                        names[name] = true
+                    }
+                }
+            }
+        }
+    }
+    return <- names
+}
+
 //! The lines of the file `path` the preprocessing of any of `units` emitted, by line (from 0); empty
 //! when none emitted any. A unit's line markers name a file as its include resolved it, so the
 //! names compare as full paths.

@@ -3,9 +3,11 @@
 Companion to `ARCHITECTURE.md` in this folder. The criteria measure what a reader of the
 converted output misses against a port a human would write: one criterion per finding and blind
 spot of the owner's readability review of the Lua output (owner ruling 21). Each criterion is a
-compliance percentage, 100 meaning the output has what a human port would have. The counts are
-read off the text of the C sources and the emitted modules, never off a compiled AST, so a run
-needs no compile beyond the conversion's own.
+compliance percentage, 100 meaning the output has what a human port would have; the densities
+(section 6) count the same sites, and the ones the criteria had no measure of, per thousand lines
+of output, beside a port a human wrote. The counts are read off the text of the C sources and
+the emitted modules, never off a compiled AST, so a run needs no compile beyond the conversion's
+own.
 
 daslang's lint never runs on converted output: the repository's `.lint_config` and the preflight
 lint gate cover house code only, and the generated modules carry no lint options. A lint rule
@@ -15,13 +17,16 @@ only as a criterion here, decided per rule by what a human port would write.
 ## 1. File charters
 
 - `criteria.das` - the driver (`scripts/run_criteria.sh`): every Lua key and every ratchet suite
-  key `expected_input_keys` names (the readability inputs without the `perf` group) and every
-  compare project row of `ROWS` (`project/<name>`), one worker process per input (`--one <key>`),
+  key `expected_input_keys` names (the readability inputs without the `perf` group), every
+  compare project row of `ROWS` (`project/<name>`) and every hand-written port (`hand/<name>`,
+  `HAND_PORTS`: the `.das` files of a folder an environment variable names, read where they lie,
+  no C side), one worker process per input (`--one <key>`),
   the Lua and project inputs one at a time and the rest `--jobs` at a time, a project's worker
   with its soft address-space limit raised to the hard one (`worker_argv`)
   (4 by default), each writing `work/<key>/criteria.txt`; it sums the rows (section 2), prints the
-  table, with `--delta <capture>` the delta table, and a complete run (no `--filter`, no failed
-  input) writes `criteria_linux.json`. `--report` is the preflight gate (section 5).
+  criteria, density and length tables, with `--delta <capture>` the delta tables, and a complete
+  run (no `--filter`, no failed input) writes `criteria_linux.json`. `--report` is the preflight
+  gate (section 5).
 - `readability_inputs.das` - one input key converted as both metrics convert it: the C file or
   the Lua program's files, the sidecar, the emitted modules and fragments; a `project/<name>` key
   through `convert_project` of `compare/projects.das`, the conversion the ports publisher
@@ -29,17 +34,21 @@ only as a criterion here, decided per rule by what a human port would write.
 - `criteria_scan.das` - the lexer of C and das text and the facts of one C source and one emitted
   module.
 - `criteria_defines.das` - a unit preprocessed by the pinned clang (`-E -C -dD`): its macros and
-  the lines it keeps; the program's numeric-constant macros (section 3).
-- `criteria_count.das` - the raw counts of one input from its sources and modules (section 4).
-- `criteria_file.das` - the criteria, their formulas, the capture's text, reader and shape check,
-  the capture read from its file, the tables, the worker file and the sample check. It requires
-  nothing beyond daslib, so `ports/publish.das` renders the criteria table with it.
+  the lines it keeps; the program's numeric-constant macros and its function-like macros
+  (section 3).
+- `criteria_count.das` - the raw counts of one input from its sources and modules (section 4),
+  the functions' lengths among them (section 6).
+- `criteria_file.das` - the criteria, their formulas, the densities and their pooled column, the
+  capture's text, reader and shape check, the capture read from its file, the tables, the worker
+  file and the sample check. It requires nothing beyond daslib, so `ports/publish.das` renders the
+  criteria table with it.
 - `criteria_linux.json` - the committed capture: `compliance` (per column, each criterion's
-  percentage, `null` where it does not apply), `raw` (per row, the raw counts), `sample` (the raw
-  counts of the four c-testsuite inputs the gate re-measures) and `totals` (per column).
+  percentage, `null` where it does not apply), `density` (per row and the `programs` column, each
+  density and the two totals), `raw` (per row, the raw counts), `sample` (the raw counts of the
+  four c-testsuite inputs the gate re-measures) and `totals` (per column).
 - `tests/test_criteria.das` - every counter on small C and das texts, a positive and a negative
-  case each, the formulas, the capture's text and shape check, the tables, the worker file and
-  the gate's three outcomes.
+  case each, the formulas, the densities, the capture's text and shape check, the tables, the
+  worker file, the hand-port worker and the gate's three outcomes.
 
 ## 2. Rows, columns and the total {#rows}
 
@@ -52,17 +61,21 @@ whose raw counts are the sum over its inputs, or one compare project (`project/w
 order of `project_table`). A project that converts whole is measured over every C file it compiles
 and its modules; one that refuses whole over the files that convert alone and their modules, the
 others in no count. `c_files` and `c_files_converted` record the program's C files and the ones
-measured, the coverage the ports README states; they enter no criterion. The `all` column leaves the
-project rows out as it leaves the opt-in rows out (`in_all`): a partly converted project's criteria
-describe only its converted files, so `all` stays the default output of the Lua programs and suites. A per-function ratio's median and worst are taken over the row's pooled
-functions. Each criterion's compliance is computed per row from the row's raw counts; a criterion
+measured, the coverage the ports README states; they enter no criterion. A hand-written port
+(`hand/plmpeg-stream`, the plmpeg port a human wrote) is a row with no C side: only the counts read
+off das text apply to it. The `all` column leaves the project and hand rows out as it leaves the
+opt-in rows out (`in_all`): a partly converted project's criteria describe only its converted
+files and a hand port is no output, so `all` stays the default output of the Lua programs and
+suites; the densities' `programs` column (section 6) is where the projects count. A per-function
+ratio's median, 90th percentile and worst, and a row's function lengths, are taken over the row's
+pooled functions. Each criterion's compliance is computed per row from the row's raw counts; a criterion
 whose denominator is zero in a row does not apply there (`n/a`). The `all` column is each
 criterion's unweighted mean over the rows where it applies, every row weighing the same: a Lua
 layout weighs as much as a whole suite, since each is one way a reader meets the output. A
 column's total is the unweighted mean of its applicable criteria: the review argues no weight
 between its findings, so none is applied.
 
-## 3. The numeric-constant macros {#constants}
+## 3. The numeric-constant and function-like macros {#constants}
 
 Clang expands every `#define` before the converter sees the program, so the output spells a
 macro's value where the C source spells its name. The program's numeric-constant macros are the
@@ -73,6 +86,10 @@ the dumper passes them), is numbers and character literals under arithmetic, com
 logic operators, once each cast (identifiers and `*` in parentheses before an operand that is not
 a sign) and each `sizeof(...)` is dropped. A function-like macro is expanded with its arguments; a
 macro already being expanded stays a name, which leaves the expression non-constant.
+
+The program's function-like macros are the `#define`s of its own files that take parameters in
+some unit, whatever their body: every C use of one (its name before a `(`, outside directives) is
+an expansion the output spells in place, since the converter sees clang's expanded program.
 
 A unit is preprocessed with the sidecar's include folders (`-I`) and forced includes (`-include`)
 too, and a quoted include not beside the including file is found in the first include folder that
@@ -95,7 +112,9 @@ file-level `{` that follows a head ending in `)` with no `=` and no `struct`, `u
 `typedef` before it. A das function is matched to the first unmatched C function of its name, with
 a `_c_` prefix dropped and `c_main` read as `main`; the per-function criteria count over matched
 functions only, so a converter-made function (a link wrapper, the layout check) is in none of
-them. "Clean share" is the share of the denominator free of the defect.
+them. The `<name>_sites` counts behind them, and the densities' own, are taken over every line
+of every module, since a density reads the whole text a reader meets. "Clean share" is the share
+of the denominator free of the defect.
 
 | Criterion | Counted | Human port | Compliance |
 |---|---|---|---|
@@ -114,7 +133,7 @@ them. "Clean share" is the share of the denominator free of the defect.
 | `setjmp` | `try` lines inside a `while (_sj_run)` trampoline | a flat `try`/`recover` | clean share of the `try` lines |
 | `layout_checks` | `static_assert(typeinfo ...)` lines | in a test, not the module | clean share of modules |
 | `stray_braces` | a line holding `{` alone | none | clean share of matched functions |
-| `label_stubs` | `c_label_end` | none | clean share of matched functions |
+| `label_stubs` | `label N:` and `goto label N` lines | none | clean share of matched functions |
 | `string_literals` | `reinterpret<T>("...")` | a C string as a string | clean share of the C string literals |
 | `lost_parens` | a shift beside `+`, `-`, `&`, `\|` or `^` at one parenthesis level | the author's parentheses | clean share of matched functions |
 | `literal_arithmetic` | an arithmetic operator between two number literals (`0 + 7`) | a named value | clean share of matched functions |
@@ -134,7 +153,8 @@ line takes a Lua `single` row to 0 where the source layout's many modules read a
 What the criteria leave out: the unreachable `return` the emitter adds after a function whose end
 is formally reachable (no text shape tells it from a reachable one), `[c_function]` (the
 annotation is the C context's mechanism, not noise) and `typeinfo sizeof` (daslang's spelling of
-`sizeof`).
+`sizeof`). The casts, `addr`, `deref`, expanded macros and `_tN` names the review found the
+criteria blind to are densities (section 6).
 
 ## 5. The gate
 
@@ -148,3 +168,44 @@ every Lua layout and about 1,500 suite inputs, over half an hour, which is past 
 budget; the four c-testsuite inputs (a switch with character literals and comments, defines, a
 plain switch) convert in seconds and show whether the converter's output moved since the capture
 was recorded.
+
+## 6. The densities {#density}
+
+A criterion's clean share reads a function with one `_t` and `luaV_execute` with forty as equally
+dirty, and the `all` column weighs a Lua layout as a whole suite, six Lua rows against three. The
+densities read the same text the other way: each is a count of sites per thousand das code lines
+of the row, so a row's total is the sites a reader meets per thousand lines, and the `programs`
+column pools the raw counts of `lua/lua` (the published program in the default layout; `luac`
+shares its files, the other layouts and opt-ins its functions) and every compare project, each
+row weighing its lines of output. The suites stay rows and out of the column: a csmith program is
+nobody's reading, and its 350 thousand lines would weigh eight real programs. The hand-written
+port is the base shown beside: the densities a human's das has.
+
+| Density | Sites | Needs C |
+|---|---|---|
+| `casts` | a numeric type, `intptr`, `uintptr` or `enum_from_int` called (`int(x)`), not after `.` | |
+| `addr`, `deref` | every `addr(` and `deref(` | |
+| `reinterpret` | `reinterpret<T>(...)` of anything but a string literal | |
+| `string_casts` | `reinterpret<T>("...")` | |
+| `temp_names` | every `_tN` identifier, declared or used | |
+| `stray_braces`, `labels`, `qualified_calls`, `c_renames`, `bool_roundtrip`, `lost_parens`, `literal_arithmetic`, `long_lines` | the criterion's sites | |
+| `switch_machinery` | `var _flag = false` switches, `_flag ||=` and `_goto` lines | |
+| `setjmp_loops` | `while (_sj_run)` trampolines | |
+| `repeated_lines` | the code lines a repeated block covers | |
+| `layout_checks` | `static_assert(typeinfo ...)` lines | |
+| `lost_comments` | C comment lines less the das lines that carried one | yes |
+| `unnamed_constants` | C uses of a numeric-constant macro less the das uses of its name | yes |
+| `macro_expansions` | C uses of a function-like macro less the das uses of its name | yes |
+| `lost_chars` | C character literals less the das ones kept | yes |
+| `blowup_lines` | per matched function, its das lines past 1.5 times its C lines | yes |
+
+A density needing C is `n/a` where a row has no C code lines, the hand port among them, so a
+column has two totals: `total`, every applicable density summed, and `das_side`, the ones read off
+das text alone, the number the hand port's compares with. The pairs `addr(x).f` and
+`addr(deref(...))` stay a criterion only: they are inside `addr` and `deref`. The lengths beside
+the densities (the length table) are the das functions' body code lines, the converter's own
+`c2das_*` functions left out: how many, the median, the 90th percentile, the longest and the ones
+past 100 lines, with the matched functions' das-to-C ratio at the median, the 90th percentile and
+the worst; `programs` has no length column, since a pooled percentile needs the functions, which
+the capture does not keep. A delta's base recorded before a density's raw key existed gives no
+density delta and says which keys it lacks.
