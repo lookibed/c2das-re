@@ -80,38 +80,32 @@ def test_regex_alternation(t : T?) {
 [test]
 def test_c_escapes(t : T?) {
     t |> run("a string literal takes the C escapes: \\0, \\a, \\v, \\?, \\xHH and octal (F94)") @(t : T?) {
-        unsafe {
-            let p = reinterpret<uint8?>("\a\v\?\b\f\0")
-            t |> equal(byte_at(p, 0), 7)
-            t |> equal(byte_at(p, 1), 11)
-            t |> equal(byte_at(p, 2), '?')
-            t |> equal(byte_at(p, 3), 8)
-            t |> equal(byte_at(p, 4), 12)
-            t |> equal(byte_at(p, 5), 0)
-        }
+        let p = unsafe(reinterpret<uint8?>("\a\v\?\b\f\0"))
+        t |> equal(byte_at(p, 0), 7)
+        t |> equal(byte_at(p, 1), 11)
+        t |> equal(byte_at(p, 2), '?')
+        t |> equal(byte_at(p, 3), 8)
+        t |> equal(byte_at(p, 4), 12)
+        t |> equal(byte_at(p, 5), 0)
     }
     t |> run("\\x takes at most two hex digits, so \\x00 before a digit or a hex letter is one NUL") @(t : T?) {
-        unsafe {
-            let p = reinterpret<uint8?>("\x0012\x41BC\x0f")
-            t |> equal(byte_at(p, 0), 0)
-            t |> equal(byte_at(p, 1), '1')
-            t |> equal(byte_at(p, 2), '2')
-            t |> equal(byte_at(p, 3), 'A')
-            t |> equal(byte_at(p, 4), 'B')
-            t |> equal(byte_at(p, 6), 15)
-        }
+        let p = unsafe(reinterpret<uint8?>("\x0012\x41BC\x0f"))
+        t |> equal(byte_at(p, 0), 0)
+        t |> equal(byte_at(p, 1), '1')
+        t |> equal(byte_at(p, 2), '2')
+        t |> equal(byte_at(p, 3), 'A')
+        t |> equal(byte_at(p, 4), 'B')
+        t |> equal(byte_at(p, 6), 15)
     }
     t |> run("\\0 before an octal digit is an octal escape: \\012 is a newline, so a NUL before a digit 0-7 is never \\0") @(t : T?) {
-        unsafe {
-            let p = reinterpret<uint8?>("\012|\0009|\1012|\4777")
-            t |> equal(byte_at(p, 0), 10, "the control: \\0 then 12 reads as one byte")
-            t |> equal(byte_at(p, 2), 0)
-            t |> equal(byte_at(p, 3), '9', "8 and 9 are no octal digits")
-            t |> equal(byte_at(p, 5), 'A', "an octal escape takes at most three digits")
-            t |> equal(byte_at(p, 6), '2')
-            t |> equal(byte_at(p, 8), 39, "one starting 4-7 takes at most two")
-            t |> equal(byte_at(p, 9), '7')
-        }
+        let p = unsafe(reinterpret<uint8?>("\012|\0009|\1012|\4777"))
+        t |> equal(byte_at(p, 0), 10, "the control: \\0 then 12 reads as one byte")
+        t |> equal(byte_at(p, 2), 0)
+        t |> equal(byte_at(p, 3), '9', "8 and 9 are no octal digits")
+        t |> equal(byte_at(p, 5), 'A', "an octal escape takes at most three digits")
+        t |> equal(byte_at(p, 6), '2')
+        t |> equal(byte_at(p, 8), 39, "one starting 4-7 takes at most two")
+        t |> equal(byte_at(p, 9), '7')
     }
     t |> run("a byte past 0x7f is \\xHH, a raw UTF-8 byte stays itself, \\u0000 is a NUL") @(t : T?) {
         unsafe {
@@ -128,12 +122,10 @@ def test_c_escapes(t : T?) {
     t |> run("an embedded NUL ends the string as a string, the literal's bytes after it stay") @(t : T?) {
         t |> equal(length("a\0b"), 1)
         t |> equal("a\0b" == "a\0c", true)
-        unsafe {
-            let p = reinterpret<uint8?>("a\0b")
-            t |> equal(byte_at(p, 1), 0)
-            t |> equal(byte_at(p, 2), 'b')
-            t |> equal(byte_at(p, 3), 0)
-        }
+        let p = unsafe(reinterpret<uint8?>("a\0b"))
+        t |> equal(byte_at(p, 1), 0)
+        t |> equal(byte_at(p, 2), 'b')
+        t |> equal(byte_at(p, 3), 0)
     }
     t |> run("a character literal takes the C escapes too: '\\0' '\\a' '\\v' '\\xHH' octal, all of type int") @(t : T?) {
         t |> equal('\0', 0)

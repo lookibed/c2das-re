@@ -30,8 +30,8 @@ def cmp_int(var a : void?; var b : void?) : int {
 
 [c_function]
 def cmp_rec(var a : void?; var b : void?) : int {
-    var x : Rec? = reinterpret<Rec?>(a)
-    var y : Rec? = reinterpret<Rec?>(b)
+    let x : Rec? = reinterpret<Rec?>(a)
+    let y : Rec? = reinterpret<Rec?>(b)
     return x.key < y.key ? -1 : x.key > y.key ? 1 : 0
 }
 

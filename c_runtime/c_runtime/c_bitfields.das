@@ -2,6 +2,7 @@ options gen2
 
 module c_bitfields public
 
+require daslib/cmp
 require strings
 require daslib/ast
 require daslib/ast_boost
@@ -205,7 +206,7 @@ class CBitfieldsAnnotation : AstStructureAnnotation {
         // each unit's first field becomes its storage and the rest go, the unit furthest down
         // the struct first, so the indices of the units above it hold
         var order <- [for (ui in range(length(units))); ui]
-        sort(order) $(lhs, rhs) => units[lhs].members[0].fidx > units[rhs].members[0].fidx
+        sort(order) <| cmp_by(-units[_].members[0].fidx)
         for (u in order) {
             let first = units[u].members[0].fidx
             for (mi in range(length(units[u].members) - 1)) {

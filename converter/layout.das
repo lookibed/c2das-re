@@ -2,6 +2,7 @@ options gen2
 
 module layout public
 
+require daslib/cmp
 require strings
 require daslib/strings_boost
 require daslib/fio
@@ -651,7 +652,7 @@ def private require_modules(var plan : LayoutPlan) {
             }
         }
         plan.modules[m].requires <- [for (r in keys(required)); r]
-        sort(plan.modules[m].requires) $(a, b) => plan.modules[a].name < plan.modules[b].name
+        sort(plan.modules[m].requires) <| cmp_by(plan.modules[_].name)
     }
 }
 
@@ -1098,7 +1099,7 @@ def private add_link_module(var plan : LayoutPlan; types : array<CirType>; tus :
         }
     }
     plan.modules |> emplace(LayoutModule(name = name, requires <- [for (r in keys(required)); r]))
-    sort(plan.modules[plan.link].requires) $(a, b) => plan.modules[a].name < plan.modules[b].name
+    sort(plan.modules[plan.link].requires) <| cmp_by(plan.modules[_].name)
     for (from in range(length(plan.nodes))) {
         for (key, syms in keys(plan.symbols), values(plan.symbols)) {
             if (key |> starts_with("{from}>")) {
@@ -1123,7 +1124,7 @@ def private add_link_module(var plan : LayoutPlan; types : array<CirType>; tus :
             unique |> insert(r)
         }
         mod.requires <- [for (r in keys(unique)); r]
-        sort(mod.requires) $(a, b) => plan.modules[a].name < plan.modules[b].name
+        sort(mod.requires) <| cmp_by(plan.modules[_].name)
     }
 }
 
@@ -1280,7 +1281,7 @@ def layout_report(plan : LayoutPlan) : array<string> {
     var lines : array<string>
     lines |> reserve(length(plan.modules) + length(plan.cut_report))
     var order <- [for (m in range(length(plan.modules))); m]
-    sort(order) $(a, b) => plan.modules[a].name < plan.modules[b].name
+    sort(order) <| cmp_by(plan.modules[_].name)
     for (m in order) {
         assume mod = plan.modules[m]
         let members = join([for (n in mod.members); plan.nodes[n].stem], " ")
@@ -1350,9 +1351,9 @@ def private edges_without(plan : LayoutPlan; dropped : array<string>) : array<ta
 def private clusters_of(plan : LayoutPlan; edges : array<table<int>>) : array<array<int>> {
     var clusters <- [for (comp in components_of(edges)); comp; where length(comp) > 1]
     for (comp in clusters) {
-        sort(comp) $(a, b) => plan.nodes[a].stem < plan.nodes[b].stem
+        sort(comp) <| cmp_by(plan.nodes[_].stem)
     }
-    sort(clusters) $(a, b) => plan.nodes[a[0]].stem < plan.nodes[b[0]].stem
+    sort(clusters) <| cmp_by(plan.nodes[_[0]].stem)
     return <- clusters
 }
 
