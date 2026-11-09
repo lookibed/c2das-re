@@ -134,7 +134,7 @@ def private stand_in_root(name : string) : string {
     for (bench in ["fib", "binary_trees", "nbody", "spectral_norm", "timed"]) {
         fwrite(path_join(root, "ports/lua/bench/{bench}.lua"), fread("ports/lua/bench/{bench}.lua"))
     }
-    fwrite(path_join(root, ".gitignore"), "/lua/work/bench/\n/lua/work/publish_run.log\n/lua/work/publish_goto_run.log\n/lua/work/harness_runs.log\n/lua/work/publish.generation\nruns_*.log\n.cache/\n.jitted_scripts/\n/clone/\n/ports.git/\n/plain/\n/compare/work/\n")
+    fwrite(path_join(root, ".gitignore"), "/lua/work/bench/\n/lua/work/publish_run.log\n/lua/work/publish_goto_run.log\n/lua/work/harness_runs.log\n/lua/work/publish.generation\nruns_*.log\n.cache/\n/clone/\n/ports.git/\n/plain/\n/compare/work/\n")
     git(root, ["init", "-q"])
     git(root, ["add", "-A"])
     git(root, ["commit", "-q", "-m", "stand-in"])
