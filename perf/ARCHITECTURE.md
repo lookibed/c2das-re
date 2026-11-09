@@ -18,7 +18,12 @@ exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
   holds its programs. The other kernels each cover one ledger item's constructs: `fixed_mandel` is
   P2.1's, a 16.16 fixed-point Mandelbrot over struct vectors passed and returned by value; `sieve`
   and `matmul` are P2.2's, a sieve over a fixed byte array and a 96x96 product over two-dimensional
-  arrays; `blit` is P2.3's, a byte copy through walking pointers over malloc'd buffers; `qsort_cmp`
+  arrays; `blit` is P2.3's, a byte copy through walking pointers over malloc'd buffers that the
+  first call allocates and every later call reuses: a 256 KiB pair freed and allocated on every
+  call makes glibc's heap trim (`brk` down, then up with fresh pages to fault in) part of a rep in
+  one process and not in another, as the dynamic mmap and trim thresholds a process's own earlier
+  frees raise decide, and on daScript `abf1d40e35` the native build trimmed on every rep (about
+  300 of its 360 us) while the JIT's daslang process did not, so the cell read 0.17x; `qsort_cmp`
   is P4.6's, an array of records sorted by `qsort` through a converted comparator, a function value
   with `var` pointer positions; `bit_pack` is P4.7's, read-modify-writes of bitfields under the
   `linux` dialect in a record of naturally aligned units, in a record whose bitfield takes a
