@@ -57,9 +57,8 @@ def private run_exe(das_path, work_dir : string; var output : string&; module_di
     if (rc != 0) {
         return rc
     }
-    let built = fexist(exe + ".exe") ? exe + ".exe" : exe
     var bin := wrapper
-    bin |> push(built)
+    bin |> push(exe)
     bin |> push_from(program_args)
     return run(bin, output, timeout)
 }

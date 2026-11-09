@@ -90,7 +90,7 @@ def test_volatile(tt : T?) {
             t |> equal(r.rc, 0, r.out)
             var out = r.out
             if (tier != "jit") {
-                let bin = fexist("{ir}_exe.exe") ? "{ir}_exe.exe" : "{ir}_exe"
+                let bin = "{ir}_exe"
                 t |> equal(run_and_capture([bin], out, 60.0), 0, out)
             }
             t |> success(out |> contains(EXPECTED), "{tier}: {out}")
