@@ -903,7 +903,7 @@ def private stand_in_compare(root : string) {
     fwrite(path_join(root, "compare/results_linux.json"), "\{\"projects\": \{\"binjgb\": {entry}\}\}\n")
     // the criteria capture, with a row for wasm3 alone
     var cap : CriteriaCapture
-    cap.rows["project/wasm3"] <- sum_raw([{"c_files" => 3, "c_files_converted" => 2, "fn_matched" => 2}], array<int>())
+    cap.rows["project/wasm3"] <- sum_raw([{"c_files" => 3, "c_files_converted" => 2, "fn_matched" => 2}], array<int>(), array<int>())
     mkdir_rec(path_join(root, "metrics"))
     fwrite(path_join(root, "metrics/criteria_linux.json"), criteria_text(cap))
     git(root, ["add", "-A"])
@@ -1012,7 +1012,7 @@ def test_project_criteria_provenance(t : T?) {
         let changed = fread(path_join(clone, "wasm3/README.md"))
         t |> success(changed |> contains("recorded at c2das-re `{slice(captured_at, 0, 12)}`, output changed since: "), changed)
         var cap : CriteriaCapture
-        cap.rows["project/wasm3"] <- sum_raw([{"c_files" => 4, "c_files_converted" => 2, "fn_matched" => 2}], array<int>())
+        cap.rows["project/wasm3"] <- sum_raw([{"c_files" => 4, "c_files_converted" => 2, "fn_matched" => 2}], array<int>(), array<int>())
         fwrite(path_join(root, "metrics/criteria_linux.json"), criteria_text(cap))
         t |> equal(publish(root, ["--repo", clone, "--program", "wasm3", "--allow-dirty"], out), 0, out)
         let dirty = fread(path_join(clone, "wasm3/README.md"))
