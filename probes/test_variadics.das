@@ -152,16 +152,16 @@ def test_variadics(t : T?) {
         let src = "options gen2\nrequire daslib/apply\nvariant CVal \{\n    i : int64\n    p : void?\n\}\ndef to_list(va : auto) : array<CVal> \{\n    var lst : array<CVal>\n    apply(va) $(name, field) \{\n        static_if (typeinfo is_pointer(field)) \{\n            lst |> push(CVal(p = unsafe(reinterpret<void?>(field))))\n        \} else \{\n            lst |> push(CVal(i = int64(field)))\n        \}\n    \}\n    return <- lst\n\}\ndef nine(a : int) : int => a + 9\n[export]\ndef main \{\n    let lst <- to_list((@@nine, 1))\n\}\n"
         child_rejects(t, "cvalist_function", daslang_child("cvalist_function", src, true), "no matching functions or generics: int64")
     }
-    t |> run("a module cache write refuses a same-module [variadic] call macro inside a generic body; the macro's own `va spelling writes cold") @(t : T?) {
+    t |> run("a module cache write takes a same-module [variadic] call macro inside a generic body (F37's cache half, fixed upstream), as it takes the macro's own `va spelling") @(t : T?) {
         let head = "options gen2\nrequire c_runtime/variadic\n[variadic]\ndef inner(n : int; va : va_args) : int \{\n    var v = va_begin(va)\n    return n + int(va_i(v))\n\}\n[variadic]\ndef outer(n : int; va : va_args) : int \{\n    return "
         let tail = "\n\}\n[export]\ndef main \{\n    print(\"outer=\{outer`va(1, VaNone())\}\\n\")\n\}\n"
         let cache = "{temp_directory_result() as value}/c2das_probe_cold_cache"
         remove(cache)
         let by_macro = runtime_child_flags("cold_cache_macro", "{head}inner(n, 5){tail}", ["-module-cache", cache])
         remove(cache)
-        t |> equal(by_macro.rc, 1, by_macro.out)
-        t |> equal(by_macro.out |> find("did not expect to find macro from the current module") >= 0, true, by_macro.out)
-        t |> equal(by_macro.out |> find("outer=6") < 0, true, by_macro.out)
+        t |> equal(by_macro.rc, 0, by_macro.out)
+        t |> equal(by_macro.out |> find("did not expect to find macro from the current module") < 0, true, by_macro.out)
+        t |> equal(by_macro.out |> find("outer=6") >= 0, true, by_macro.out)
         let spelled = runtime_child_flags("cold_cache_spelled", "{head}inner`va(n, (5,)){tail}", ["-module-cache", cache])
         remove(cache)
         t |> equal(spelled.rc, 0, spelled.out)
@@ -171,11 +171,11 @@ def test_variadics(t : T?) {
 
 [test]
 def test_variadic_instances(t : T?) {
-    t |> run("a generic over a tuple holding `void?`, met after two tuples of other pointers, is an internal compiler error; a byte pointer in its place is not (docs/probe-findings.md F61)") @(t : T?) {
+    t |> run("a generic over a tuple holding `void?`, met after two tuples of other pointers, instantiates once per shape (docs/probe-findings.md F61, fixed upstream), as a byte pointer in its place does") @(t : T?) {
         let head = "options gen2\ndef tc(va : auto) : int \{\n    return 1\n\}\ndef user(x : auto) : int \{\n    return tc(x)\n\}\n[export]\ndef main : int \{\n    var a : int?\n    var b : float?\n"
         let tail = "    print(\"\{user((a,))\} \{user((b,))\} \{user((c,))\}\\n\")\n    return 0\n\}\n"
         let with_void = daslang_child("tuple_void_last", "{head}    var c : void?\n{tail}", false)
-        t |> equal(with_void.out |> find("error[50609]") >= 0, true, with_void.out)
+        t |> equal(with_void.out, "1 1 1\n")
         let with_bytes = daslang_child("tuple_bytes_last", "{head}    var c : uint8?\n{tail}", false)
         t |> equal(with_bytes.out, "1 1 1\n")
     }

@@ -38,11 +38,8 @@ def c_volatile_read(x : bool const&) : bool {
 //! A pointer or a function value read once through its bits; the type rides through the reinterpret.
 def c_volatile_read(x : auto(TT) const&) : TT -const -& {
     static_assert(typeinfo sizeof(type<TT>) == 8, "c_volatile_read: a scalar, a pointer or a function value")
-    // the bits land in a local first: the interpreter refuses a reinterpret of the extern call's
-    // result itself ("typed eval on wrong extern return kind")
     unsafe {
-        let bits = crt::c_volatile_load_u64(addr<uint64 const?>(x))
-        return reinterpret<TT -const -&>(bits)
+        return reinterpret<TT -const -&>(crt::c_volatile_load_u64(addr<uint64 const?>(x)))
     }
 }
 

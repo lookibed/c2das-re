@@ -1447,6 +1447,20 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   exited 137") instead of `memory`: `lua/run.das` now takes 137. The probes that pinned 11 for a
   SIGSEGV (`probes/test_unchecked.das`, F84) pin 139; `perf/perf_lanes.das` already read 128 + N
   through its `sh` wrapper. No other harness compares a run's code with a bare signal number.
+- **P8.9 Workarounds of fixed daslang findings** (ruling 37 phase 1, repin PR3). Under daScript
+  `abf1d40e35` the probes of F1, F37 (its cache half), F52 (lookibed/daScript#17), F61, F64, F67,
+  F70, F71, F72 and F73 are re-pinned to the fixed behaviour, each row updated. Removed in the same
+  PR: F67's local before the reinterpret in `c_volatile_read`. Removable, each its own change with
+  its tests (readability phase first where the generated text changes): (a) F72, the cluster
+  module's `// the fragments' digest:` line (`converter/ARCHITECTURE_LAYOUT.md`, its layout tests);
+  (b) F61, the emitter's `uint8?` for a `void *` among a variadic call's arguments; (c) F52, the
+  bitfield and compound-store spelling `x = x op v` through a pointer step, where `x op= v` now
+  runs; (d) F73, `p5_layout_tree/main.c`'s depths through `argc`; (e) F70, `[sideeffects]` on
+  `c_prefetch` and the no-op shims (harmless, keep unless a reader asks); (f) F71,
+  `suites/gcc_torture/filter_rules.das`'s optional-suffix spellings; (g) F64, the ports capture's
+  flat cells (no change needed). Stays: F1's `exit_now` in `c_exit` (`exit(N)` exits N now but
+  still prints its call stack on stdout); F37's `f`va(…)` spelling (a call above the
+  definition still binds before the macro exists).
 
 ## P6 — Doom
 

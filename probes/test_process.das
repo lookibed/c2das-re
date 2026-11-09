@@ -38,9 +38,9 @@ def test_process(t : T?) {
         let r = daslang_child("return", "options gen2\n[export]\ndef main : int \{\n    return 42\n\}\n", false)
         t |> equal(r.rc, 42)
     }
-    t |> run("exit(N) from a deep stack reports exit code 1 and prints its call stack on stdout") @(t : T?) {
+    t |> run("exit(N) from a deep stack sets the process exit code and still prints its call stack on stdout (F1)") @(t : T?) {
         let r = daslang_child("exit", deep_exit |> replace("EXIT_CALL", "exit(42)"), false)
-        t |> equal(r.rc, 1)
+        t |> equal(r.rc, 42)
         t |> equal(r.out |> find("deep\n") >= 0, true)
         t |> equal(r.out |> find("after") < 0, true)
         let so = stdout_of("exit_stdout", deep_exit |> replace("EXIT_CALL", "exit(42)"))

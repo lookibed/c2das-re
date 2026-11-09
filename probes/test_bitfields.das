@@ -148,14 +148,13 @@ def test_bitfields(t : T?) {
         let single = daslang_child("literal_single", "options gen2\n" + PROPERTY_PAIR + "var g = BF(a = 2u)\n[export]\ndef main : int \{\n    return int(g.a)\n\}\n", false)
         t |> equal(single.rc, 2, single.out)
     }
-    t |> run("a compound store to a property through a field of deref(p + k) passes -compile-only and crashes before main (lookibed/daScript#17)") @(t : T?) {
-        // https://github.com/lookibed/daScript/issues/17
+    t |> run("a compound store to a property through a field of deref(p + k) runs (lookibed/daScript#17, fixed upstream)") @(t : T?) {
+        // https://github.com/lookibed/daScript/issues/17: it passed -compile-only and crashed before main
         let source = POINTER_STEP |> replace("STORE", "deref(p + 2).u.s += 1")
         let checked = daslang_child("pointer_step_check", source, true)
         t |> equal(checked.rc, 0, checked.out)
-        let crash = daslang_child("pointer_step_crash", source, false)
-        t |> equal(crash.rc != 0, true, crash.out)
-        t |> equal(crash.out |> find("SIGSEGV") >= 0, true, crash.out)
+        let ran = daslang_child("pointer_step_run", source, false)
+        t |> equal(ran.rc, 1, ran.out)
     }
     t |> run("the same store with the getter and the setter spelled apart, x = x + 1, runs") @(t : T?) {
         let apart = daslang_child("pointer_step_apart", POINTER_STEP |> replace("STORE", "deref(p + 2).u.s = deref(p + 2).u.s + 1"), false)
