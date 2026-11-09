@@ -1,6 +1,5 @@
 # daslang run artifacts: the JIT cache and the module cache land in the working directory of
 # whatever ran (daScript ignores its own .cache/ the same way)
-.jitted_scripts/
 .cache/
 *.aot.cpp
 *.aot.h
