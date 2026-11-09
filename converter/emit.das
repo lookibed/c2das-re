@@ -8055,9 +8055,7 @@ def private select_node(var em : Emitter; tu : CirTu; plan : LayoutPlan; owners 
 
 // a cluster module: one fragment per member, each its types, globals and functions, and the
 // module's own file with the dialect's `[init]`, one `include` per fragment in include order, the
-// fragments' digest (daslang's module cache sees no change to an included file, only one to the
-// including file's text: docs/probe-findings.md F72), the layout check of every member's records,
-// the module-init stores and the `main` wrapper
+// layout check of every member's records, the module-init stores and the `main` wrapper
 def private emit_cluster(var em : Emitter; tu : CirTu; plan : LayoutPlan; owners : array<int>; mi : int; var files : array<ModuleFile>) {
     assume mod = plan.modules[mi]
     for (node in mod.members) {
@@ -8065,9 +8063,8 @@ def private emit_cluster(var em : Emitter; tu : CirTu; plan : LayoutPlan; owners
         order_globals(em, tu)
     }
     var records : array<int>
-    var includes, hashes : array<string>
+    var includes : array<string>
     includes |> reserve(length(mod.members))
-    hashes |> reserve(length(mod.members))
     files |> reserve(length(files) + length(mod.members) + 1)
     for (node in mod.members) {
         select_node(em, tu, plan, owners, node)
@@ -8076,7 +8073,6 @@ def private emit_cluster(var em : Emitter; tu : CirTu; plan : LayoutPlan; owners
         emit_functions(em, tu)
         let name = "{plan.nodes[node].stem}.das.inc"
         let text = GENERATED_BANNER + "\n" + join(em.out, "")
-        hashes |> push("{hash(text)}")
         files |> push(ModuleFile(path = in_dir(plan.nodes[node].dir, name), text = text))
         includes |> push("include {relative_to(mod.dir, plan.nodes[node].dir, name)}")
         em.out |> clear()
@@ -8089,7 +8085,6 @@ def private emit_cluster(var em : Emitter; tu : CirTu; plan : LayoutPlan; owners
     for (inc in includes) {
         line(em, inc)
     }
-    line(em, "// the fragments' digest: {hash(join(hashes, " "))}")
     line(em, "")
     if (!empty(records) && empty(em.error)) {
         emit_layout_check(em, tu, records)

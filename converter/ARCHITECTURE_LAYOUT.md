@@ -141,14 +141,13 @@ A cluster shares one module scope: one `Emitter` spells every member in include 
 member's types, globals and functions into its fragment, so the compound literal objects
 (`_cl<N>`), the empty literal and the label statement are declared once and named apart. The
 cluster's own file holds the requires, the empty literal, the dialect's `[init]`, one `include`
-per fragment, the fragments' digest, the layout check of every member's records, the module-init
+per fragment, the layout check of every member's records, the module-init
 stores and the `main` wrapper. daslang initializes every module's globals in `require` order, a
 required module's before the requiring one's, and runs the `[init]` functions after all of them
 in the same order (`probes/test_modules.das`): an initializer takes the address of another
 module's global inline, and inside a module the order of the `include` lines is the order of its
-globals. The digest is a comment line of the fragments' hashes: daslang's module cache keys a
-module by its own file's text and serves a stale module when only an included fragment changed
-(`docs/probe-findings.md` F72), so a changed fragment changes the cluster's file.
+globals. daslang's module cache serves a module anew when only an included fragment changed
+(`docs/probe-findings.md` F72), so the cluster's file carries nothing of its fragments' text.
 
 A module requires the program modules its nodes' edges reach (a superset of the names its text
 spells, acyclic by construction) and the c_runtime pieces its text reaches; a caller of a variadic
