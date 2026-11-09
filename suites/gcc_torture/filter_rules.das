@@ -34,9 +34,9 @@ struct Rule {
 
 let REFUSED_INPUT = "the pinned clang refuses the input and the pipeline has no other frontend"
 
-// an asm keyword, then its qualifiers in any order, each spelling with underscores an optional
-// suffix: an alternative that extends another one misses matches (`docs/probe-findings.md` F71)
-let ASM_HEAD = "\\b(__asm(__)?|asm)(\\s|__volatile(__)?|volatile|__inline(__)?|inline)*"
+// an asm keyword, then its qualifiers in any order, each in its spellings with and without
+// underscores, the longer first
+let ASM_HEAD = "\\b(__asm__|__asm|asm)(\\s|__volatile__|__volatile|volatile|__inline__|__inline|inline)*"
 
 //! The rules in the order they fire, the first match naming the line: the constructs no emulation
 //! reaches (`never`), then the rows that will carry one, in the order a test meets them; so a test
