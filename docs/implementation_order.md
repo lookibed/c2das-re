@@ -1461,6 +1461,17 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   flat cells (no change needed). Stays: F1's `exit_now` in `c_exit` (`exit(N)` exits N now but
   still prints its call stack on stdout); F37's `f`va(…)` spelling (a call above the
   definition still binds before the macro exists).
+- **P8.10 Goto workarounds of fixed daslang findings** (ruling 37 phase 1, repin PR4a). Under
+  daScript `abf1d40e35` the seven goto probes of F60, F62 and F63 (lookibed/daScript#8, #19, #21,
+  #22 and #35; upstream `41ee7d60b4`, the label-aware `if` fold, and `6394f6046a`, a block
+  resolving only its own labels) are re-pinned to the fixed behaviour, the rows updated. The
+  emitter's three workarounds stay until each is probed against the converter's own output shapes
+  under the interpreter and the JIT, then removed with tests (native-compared fixtures that still
+  pass, a negative control showing the old daslang failure gone), or ledgered on its own if large:
+  (a) `guard_label_folds`' `else { c_label_end() }` after a closing `if` before a label (#8, #35,
+  `FOLD_MARK`); (b) the `c_label_end()` after a label outside a loop body (F62); (c) the
+  re-dispatch and jump-table labels numbered below every C label (F60, #19) and
+  `check_labelled_groups`' refusal of a labelled case group that a goto leaves (F63).
 
 ## P6 — Doom
 
