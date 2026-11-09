@@ -48,13 +48,16 @@ def private run(args : array<string>; var output : string&; timeout : float = 60
     return rc
 }
 
-// the build and the run each get `timeout` seconds, the run started after `wrapper`
-def private run_exe(das_path, work_dir : string; var output : string&; module_dirs : array<string>; program_args : array<string>; timeout : float; wrapper : array<string>) : int {
+// the build and the run each get `timeout` seconds, the build under `flags`, the run started after
+// `wrapper`; the build's own log reaches `output` only when the build fails
+def private run_exe(das_path, work_dir : string; var output : string&; module_dirs : array<string>; flags : array<string>; program_args : array<string>; timeout : float; wrapper : array<string>) : int {
     let exe = path_join(work_dir, file_stem(das_path) + "_exe")
     var cmd <- daslang_cmd(module_dirs)
-    cmd |> push_from(["-exe", "{das_path}", "-output", "{exe}"])
-    let rc = run(cmd, output, timeout)
+    cmd |> push_from(flags, ["-exe", "{das_path}", "-output", "{exe}"])
+    var build_log : string
+    let rc = run(cmd, build_log, timeout)
     if (rc != 0) {
+        output += build_log
         return rc
     }
     var bin := wrapper
@@ -157,7 +160,7 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
     return run_tier(das_path, tier, work_dir, output, module_dirs, timeout, no_flags)
 }
 
-//! `flags` go to the interpreter and the JIT before the script (`-no-module-cache`).
+//! `flags` go to the interpreter, the JIT and the exe build before the script (`-no-module-cache`).
 def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>; timeout : float; flags : array<string>) : int {
     let no_args : array<string>
     return run_tier(das_path, tier, work_dir, output, module_dirs, timeout, flags, no_args)
@@ -190,7 +193,7 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
         return run(cmd, output, timeout)
     }
     if (tier == "exe") {
-        return run_exe(das_path, work_dir, output, module_dirs, program_args, timeout, wrapper)
+        return run_exe(das_path, work_dir, output, module_dirs, flags, program_args, timeout, wrapper)
     }
     if (tier == "aot") {
         return run_aot(das_path, work_dir, output, module_dirs, program_args, timeout, wrapper)
