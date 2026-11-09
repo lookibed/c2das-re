@@ -84,9 +84,11 @@ def private flat_cfg(arm_end : string) : string => "options gen2\nvar g = 0\nlet
 
 [test]
 def test_goto_in_loops(t : T?) {
-    t |> run("a label with nothing after it in a non-loop block is no goto target under the interpreter, and an empty block after it is folded away (docs/probe-findings.md F62)") @(t : T?) {
-        child_rejects(t, "goto_block_end", daslang_child("goto_block_end", block_end(""), false), "jump to label 3 failed")
-        child_rejects(t, "goto_block_end_empty", daslang_child("goto_block_end_empty", block_end("\{\}"), false), "jump to label 3 failed")
+    t |> run("a label with nothing after it in a non-loop block is a goto target under the interpreter, as with an empty block or a store after it (docs/probe-findings.md F62, fixed upstream)") @(t : T?) {
+        let bare = daslang_child("goto_block_end", block_end(""), false)
+        t |> equal(bare.out, "0 100\n100\n")
+        let empty = daslang_child("goto_block_end_empty", block_end("\{\}"), false)
+        t |> equal(empty.out, "0 100\n100\n")
         let assigned = daslang_child("goto_block_end_store", block_end("r += 0"), false)
         t |> equal(assigned.out, "0 100\n100\n")
     }
@@ -101,15 +103,15 @@ def test_goto_in_loops(t : T?) {
         }
         t |> equal(r, 20)
     }
-    t |> run("an `if` whose branch ends in `break` takes the rest of its block as an else, a label in it too: a goto from the branch misses the label (docs/probe-findings.md F60)") @(t : T?) {
+    t |> run("a goto from an `if` whose branch ends in `break` reaches a label in the rest of the block (docs/probe-findings.md F60, lookibed/daScript#8 fixed upstream)") @(t : T?) {
         let res = daslang_child("goto_folded_tail", FOLDED_TAIL, false)
-        t |> equal(res.out |> starts_with("10\n"), false, res.out)
+        t |> equal(res.out, "10\n")
     }
-    t |> run("a loop takes a goto whose number is below its body's label count as its own: one to a label outside numbered above them leaves the loop") @(t : T?) {
+    t |> run("a goto out of a loop body that holds a label leaves the loop whether the outer label is numbered above or below the body's labels (docs/probe-findings.md F60, lookibed/daScript#19 fixed upstream)") @(t : T?) {
         let above = daslang_child("goto_out_above", outer_goto(9), false)
         t |> equal(above.out, "103\n")
         let below = daslang_child("goto_out_below", outer_goto(1), false)
-        t |> equal(below.rc != 0 || below.out != "103\n", true, below.out)
+        t |> equal(below.out, "103\n")
     }
     t |> run("the re-dispatch: a label at the top of a loop body restarts it, the case chosen by the goto variable while every case test requires it unset") @(t : T?) {
         var trace : array<int>
@@ -143,8 +145,9 @@ def test_goto_in_loops(t : T?) {
         t |> equal(steps, 2)
         t |> equal(pending, 0)
     }
-    t |> run("a labelled block that is not a loop passes no goto outward under the interpreter, the JIT does (docs/probe-findings.md F63)") @(t : T?) {
-        child_rejects(t, "goto_block_trap", daslang_child("goto_block_trap", BLOCK_TRAP, false), "jump to label 1 failed")
+    t |> run("a labelled block that is not a loop passes a goto outward under the interpreter and the JIT (docs/probe-findings.md F63, fixed upstream)") @(t : T?) {
+        let interp = daslang_child("goto_block_trap", BLOCK_TRAP, false)
+        t |> equal(interp.out, "23\n")
         let jit = daslang_child_flags("goto_block_trap_jit", BLOCK_TRAP, jit_flags())
         t |> equal(jit.out |> ends_with("23\n"), true, jit.out)
     }
@@ -152,32 +155,30 @@ def test_goto_in_loops(t : T?) {
 
 [test]
 def test_goto_dispatch(t : T?) {
-    t |> run("a computed goto to a label after an `if` whose branch ends in `break` and has no `else` misses it under the interpreter; an `else` keeps it (lookibed/daScript#35, the fold of lookibed/daScript#8)") @(t : T?) {
+    t |> run("a computed goto to a label after an `if` whose branch ends in `break` reaches it under the interpreter and the JIT with or without an `else` on the `if` (lookibed/daScript#35, the fold of lookibed/daScript#8, fixed upstream)") @(t : T?) {
         let bare = daslang_child("goto_fold_bare", FOLD_BARE, false)
-        // run(0) lands right, run(1) misses its label and returns what the folded tail leaves
-        t |> equal(bare.rc, 0, bare.out)
-        t |> success(bare.out |> starts_with("10 ") && !(bare.out |> starts_with("10 11 ")), bare.out)
+        t |> equal(bare.out, "10 11 \n")
         let guarded = daslang_child("goto_fold_guarded", FOLD_GUARDED, false)
         t |> equal(guarded.out, "10 11 \n")
-        let jit = daslang_child_flags("goto_fold_guarded_jit", FOLD_GUARDED, jit_flags())
+        let jit = daslang_child_flags("goto_fold_bare_jit", FOLD_BARE, jit_flags())
         t |> equal(jit.out |> ends_with("10 11 \n"), true, jit.out)
     }
-    t |> run("a jump table's case labels numbered below the labels outside its loop run under the interpreter and the JIT; numbered above, the loop claims the goto out (docs/probe-findings.md F60)") @(t : T?) {
+    t |> run("a jump table's case labels numbered below or above the labels outside its loop run under the interpreter and the JIT (docs/probe-findings.md F60, lookibed/daScript#19 fixed upstream)") @(t : T?) {
         let low = daslang_child("goto_dispatch_low", DISPATCH_LOW, false)
         t |> equal(low.out, "1010 2010 1020 1020 1040 1020 1020\n")
         let jit = daslang_child_flags("goto_dispatch_low_jit", DISPATCH_LOW, jit_flags())
         t |> equal(jit.out |> ends_with("1010 2010 1020 1020 1040 1020 1020\n"), true, jit.out)
-        // it compiles; the run crashes on the claimed goto
-        let compiled = daslang_child("goto_dispatch_high_compile", DISPATCH_HIGH, true)
-        t |> equal(compiled.rc, 0, compiled.out)
         let high = daslang_child("goto_dispatch_high", DISPATCH_HIGH, false)
-        t |> equal(high.rc != 0 || high.out != "1010 2010 1020 1020 1040 1020 1020\n", true, high.out)
+        t |> equal(high.out, "1010 2010 1020 1020 1040 1020 1020\n")
+        let high_jit = daslang_child_flags("goto_dispatch_high_jit", DISPATCH_HIGH, jit_flags())
+        t |> equal(high_jit.out |> ends_with("1010 2010 1020 1020 1040 1020 1020\n"), true, high_jit.out)
     }
-    t |> run("a flat label CFG in a loop body, a computed goto to its case labels and gotos between the cases, runs under the interpreter and the JIT once an `if` that returns before a case label has an `else`; without it the interpreter misses the label (lookibed/daScript#35)") @(t : T?) {
+    t |> run("a flat label CFG in a loop body, a computed goto to its case labels and gotos between the cases, runs under the interpreter and the JIT, an `if` that returns before a case label with or without an `else` (lookibed/daScript#35, fixed upstream)") @(t : T?) {
         let guarded = daslang_child("goto_flat_cfg", flat_cfg("        \} else \{\n            label_end()\n        \}"), false)
         t |> equal(guarded.out, "11701 31076 -1 -1\n")
+        let bare = daslang_child("goto_flat_cfg_bare", flat_cfg("        \}"), false)
+        t |> equal(bare.out, "11701 31076 -1 -1\n")
         let jit = daslang_child_flags("goto_flat_cfg_jit", flat_cfg("        \}"), jit_flags())
         t |> equal(jit.out |> ends_with("11701 31076 -1 -1\n"), true, jit.out)
-        child_rejects(t, "goto_flat_cfg_bare", daslang_child("goto_flat_cfg_bare", flat_cfg("        \}"), false), "jump to label 9 failed")
     }
 }
