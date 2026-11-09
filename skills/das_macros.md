@@ -14,6 +14,7 @@ the moment a macro misbehaves. Which entry point depends on how much of the tree
 |---|---|
 | `daslang --ast-verify file.das` | first move on any unexplained crash - checks the module being compiled before each infer pass, so a break is reported on the pass right after it happens (`options log_infer_passes` shows the pass), repaired so the scan finishes, and the compile fails with every finding printed; after inference it sweeps every module on each firing. `require daslib/ast_verify` pins the same per-pass check in the source; `verify_module(prog, mod)` runs it at the end of your `apply()` |
 | `daslang --ast-verify-batch file.das` | the cheap form for gating many files (CI): no pre-infer checks, and the module being compiled is walked once, right after inference (the ~10 post-infer firings per module all walk one tree). A tree a macro breaks mid-inference then surfaces as a compiler crash, which a batch gate must count as a failure |
+| `daslang --ast-verify-each-pass file.das` | also runs the verifier after every inference pass; combines with either mode above |
 | `verify_expression(expr)` | you BUILD and RETURN a subtree - call / for-loop / variant / reader macros run inside inference, where the module-level form cannot see your result yet |
 | `verify_function(fn)` | you BUILD a function - `add_function` mangles the signature immediately, so a malformed result or argument type crashes there, before any pass could run |
 
@@ -77,6 +78,35 @@ twice (an overload, a same-named function in a required module) is an error, not
 macros stay out of the caller - which is the point when the callee is expensive to bring up and
 only sometimes needed: a hit on a cache decides in the caller, and the emitter comes in on a miss.
 
+## Programs built from nodes - `make_program`
+
+A host script can build a whole program without source text. `make_program(cop) $ { ... }` is the
+scope every build call runs in: it loads `builtin.das` into its own module group and holds the
+policies `cop`. `make_module(name) $(mod) { ... }` builds and compiles one named module and
+returns it, or null on failure. `make_main_module() $(mod) { ... }` builds the program's own
+module and returns the finished `ProgramPtr` for `simulate` (tutorial:
+`tutorials/macros/21_build_program.das`).
+
+- Build every node inside the block of the module that uses it. A function built outside that
+  block fails the build; a node one block built and did not attach is freed when that module
+  ends.
+- `add_module_require(mod, other, false)` lets `mod` reach `other` - a module built earlier in
+  the same `make_program`, or a loaded C++ module from `get_module("math")`. `false` keeps the
+  require private; `true` also exposes `other` to any module that requires `mod`. It returns
+  false for a null `other` (`get_module` on a module that is not loaded) and for `other == mod`.
+  Every module reaches `builtin.das` without a require.
+- `add_function` moves the `FunctionPtr` out of its argument: pass a `var`, set every flag on it
+  first, and do not touch it after - it is null.
+- A function the host calls by name needs `fn.flags.exports = true` - the compile removes every
+  function nothing in the program calls, unless `cop.export_all` is set.
+- Once one `make_module` fails, every later `make_module` returns null and `make_main_module`
+  returns the failed program, neither running its block - so check `program.failed` /
+  `program.errors` once, on the program `make_main_module` returns.
+- Simulate and run the program inside the `make_program` block that built it - its modules are
+  freed when that block returns, and a program still referenced then makes `make_program` panic.
+  `invoke_in_context` on the simulated context needs `cop.threadlock_context = true` passed to
+  `make_program`.
+
 ## Pass macros - which hook sees what
 
 - `[infer_macro]` fires only AFTER inference succeeds - it never sees a program with errors, so it
@@ -122,7 +152,7 @@ only-one restriction is for handled-type annotations.
 - **Annotation argument NAMES accept only three keywords** - `type`, `in`, `default`. Any other
   keyword or type token is `error[30151] syntax error, unexpected <token>, expecting type or in or
   default or name`, and the same whitelist governs field annotations, so `@range = 5` fails too -
-  pick a synonym (`span`, `kind`, `fallback`). Extending the whitelist is one `src/parser/ds2_parser.ypp` line plus the twin `_annotation_argument_name` line in `tree-sitter-daslang/grammar.js`; keep both grammars in lockstep. (repo-only)
+  pick a synonym (`span`, `kind`, `fallback`). Extending the whitelist is one `src/parser/ds2_parser.ypp` line plus the twin `name` field of `annotation_argument` in `tree-sitter-daslang/grammar.js`; keep both grammars in lockstep. (repo-only)
 - **`add_structure_field(st, name, type, default)`** (in `daslib/templates_boost`, not `ast`)
   returns the new field's **index** - keep it when you must touch the field again.
 - **`ExprFieldFieldFlags.no_promotion` / `ExprAtFlags.no_promotion`** stop the compiler promoting a
@@ -197,25 +227,28 @@ grammar. Canonical adoption is `daslib/sql_linq.das` (37+ sites).
 For AST work the two matchers divide by what the pattern looks like: **`qmatch`** when it is
 *daslang source syntax* (`qmatch(that, $e(fa) * $e(fb))`) - operator trees, call shapes, field
 chains spelled as code; **`match`** when it is *node classes and fields*, or plain value dispatch
-(`match (op) { if ("*") ... }`, enum tables).
+(`match (op) { "*" => ... }`, enum tables).
 
 ```das
-match (keySide) {                   // null guard, is/as and ExprRef2Value peel are emitted for you
-    if (ExprField(name = "key", value = ExprVar(name = match_expr(bindName)))) { return true }
-    if (_) { return false }
+return match (keySide) {            // null guard, is/as and ExprRef2Value peel are emitted for you
+    ExprField(name = "key", value = ExprVar(name = match_expr(bindName))) => true
+    _ => false
 }
-return false   // match is statement-shaped; flow analysis wants the trailing return
 ```
 
-- **Alternation `||` works in field position** - `ExprOp2(op = "+" || "-")` - and at arm level;
-  guards compose with `&&` over captures and locals. **`match_expr(localVar)`** compares a field
-  against a runtime expression (a `das_string` field compares against a `string` local directly).
+- **Alternation `|` works in field position** - `ExprOp2(op = "+" | "-")` - and at arm level;
+  guards compose with `&&` over bound names and locals. A bare name binds; **`match_expr(localVar)`**
+  compares a field against a runtime expression (a `das_string` field compares against a `string`
+  local directly).
+- **`name & ExprX(...)` (either order) binds the node at class `ExprX`** - peeled, so `name.field`
+  needs no `as`. `ExprX()` with no fields tests the class only. `x as name` is NOT a binding: it
+  selects a variant alternative.
 - **das-vector fields can NOT be destructured** - `ExprCall.arguments` and `ExprBlock.list` are
   `dasvector`-backed and the array-pattern arm rejects them ("is not an array"). Capture the node
   and index it by hand; this is why deep block-shape probes stay hand-rolled.
-- **Statement-shaped, not expression-shaped** - a tuple-returning recognizer mixing name dispatch
-  with structural probes usually reads better hand-rolled; convert only when the ladder *is* the
-  function.
+- **Value form when the arms only produce values** - `return match (...) { ... _ => ... }` inlines to
+  the same if-chain as the statement form. A tuple-returning recognizer mixing name dispatch with
+  structural probes usually reads better hand-rolled; convert only when the ladder *is* the function.
 
 Canonical conversions: `component_read_of` + `zero_const_of` in `daslib/flatten_opt_common.das`.
 flatten_opt and the linq_fold family require BOTH libraries and use each where it fits.

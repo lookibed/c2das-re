@@ -44,11 +44,12 @@ an existing lint, the lint compels - an unnoted rule is the reviewer's.
 
 ## Comments
 
-**.das in a folder whose `.lint_config` arms `force_clean_comments`: ABSOLUTELY NO comments
+**.das in a folder whose `.lint_config` arms `force_clean_comments` (the nearest `.lint_config` that declares the key
+walking up from the file): ABSOLUTELY NO comments
 that are not documentation or lint suppression.** The kept set is exactly: `//!` docs on a
 contract a CALLER must know - public API always, a private helper only when callers inside
 the module need the contract (narration of an implementation goes to a name, a test, or the
-module's `.md`), and only where the contract is not reachable from the declaration's own
+module's `.md`), and only where the contract is not reachable from the declaration's (for a class, any of its methods')
 `[arch]` citation: a `//!` that restates the section its citation names is a duplicate and
 goes - the one-line `//!` site contract above a top-level definition (the rule below),
 `// nolint:CODE` / `@nolint` suppressions carrying their one-line why,
@@ -67,12 +68,18 @@ execute) the prose carrying the lesson passes that test, and a comment that adds
 to its line still goes.
 
 **A `//!` has two homes. Where one attaches - the file's header block, anywhere inside a `def`
-body, anywhere in a `struct` / `class` body outside its methods (it lands on the struct), or
-trailing on a struct field - it is a doc and lands in the generated reference. Above a
+body, anywhere in a `struct` / `class` body outside its methods (it lands on the struct),
+trailing on a struct field, or trailing on a global's declaration line (it lands on that
+variable's entry) - it is a doc and lands in the generated reference. A `//!` directly above
+a top-level `struct`, `class`, `enum` or `typedef` is a doc too - that declaration's reference
+entry is its home - so it is a kept comment. Above a
 top-level `def` or a global it attaches to nothing and is the SITE CONTRACT spelling: one line
 (a private one caps at three under STYLE015) stating a constraint the site needs and the code
 cannot say - a bar's derivation, a guard's reason, a layout a caller relies on - which the
-comment harvest keeps and the deletion test passes as a kept-set line.** A top-level `//!`
+comment harvest keeps and the deletion test passes as a kept-set line.** A public contract
+longer than one line goes into the body as its first-line `//!`. STYLE015 is on by default
+only under a `daslib/` folder (elsewhere opt-in, `options _comment_hygiene = true`), so outside
+one the reviewer holds the three-line private cap. A top-level `//!`
 that narrates goes like any `//`, its spelling no reason to keep it; a reviewer who reads one
 asks whether the line states a constraint, never whether it attaches. On an `options` /
 `require` line a `//!` documents nothing; above a method inside a class body it lands on the
@@ -93,10 +100,11 @@ it in a name, a shape, or a test, or documents itself in the module's `.md`. Kep
 is earned: `//!` and `/** */` docs on a contract a CALLER must know - public API always, a
 non-public helper when callers inside the module need the contract - `NOLINT` /
 `clang-format` suppressions, the leading header block, and the bare section pointer
-`// <folder>/ARCHITECTURE.md#<anchor>` on the function that implements the section (C++ has no
-`[arch]` annotation, so the pointer is its citation; LINT026 resolves it exactly as a .das
-citation - the path is root-relative, walked up from the citing file, so a header under
-`include/` reaches the `src/` document that owns its mechanism - and a `sec.N` spelling is a
+`// <folder>/ARCHITECTURE*.md#<anchor>` (`<folder>`'s `ARCHITECTURE.md` or an
+`ARCHITECTURE_<CONCERN>.md` companion there) on the function that implements the section;
+C++ has no `[arch]` annotation, so the pointer is its citation, and LINT026 resolves it
+exactly as a .das citation - the path is root-relative, walked up from the citing file, so a
+header under `include/` reaches the `src/` document that owns its mechanism - and a `sec.N` spelling is a
 number nothing checks). Existing comments answer to the
 deletion test; editing one so it stays true is not a new comment, and the edited comment
 answers to that test as a whole.
@@ -164,6 +172,11 @@ build it stays expanded, and that's not a mix.
 block of aliases computed long before their consumers is a list of promises the
 reader must carry. When the values live in a struct already in scope, reading them at
 the use site beats aliasing them at all.
+
+**A function sits above its first caller.** A file reads top to bottom with every helper
+already known: define the callee, then the code that calls it - a new helper goes above
+the function (or visitor override) that needs it, never below. Mutual recursion is the
+one order that cannot follow this.
 
 **Member-assembly is a constructor written inline.** `Thing t; t.x = ...; t.y = ...;`
 at every call site is a ctor the type refused to write - write it, and the null-checks

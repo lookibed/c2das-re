@@ -47,9 +47,8 @@ use(unwrap(r))
   clean.
 - **`try_to_int` / `try_to_float`** *(strings_convert)* cover `int8`...`uint64`, `float`, `double`
   and distinguish `invalid_argument`, `out_of_range`, `trailing_garbage`. Accessors (`is_ok` /
-  `unwrap` / `unwrap_or` / `map` / `and_then` / `??`) arrive transitively. `Result` is a structural
-  **tuple**, not a variant - `r is value` is `error[30190]`; never touch the raw `_is_ok` /
-  `_value` / `_error` fields.
+  `unwrap` / `unwrap_or` / `map` / `and_then` / `??`) arrive transitively. `Result` is the variant
+  `variant<err : E; ok : T>`: `r is ok` tests it, and `match` takes `ok(x)` / `err(e)` patterns.
 - **Raw builtins do not flag trailing garbage.** `int(s, var conv, var consumed, accept_hex)`
   (3-arg for `float` / `double`) reports `conv = ok` on `"12abc"`, `consumed = 2`; only
   `consumed != length(s)` catches it.
@@ -135,6 +134,11 @@ heap string - a slice-per-element loop over a big string is O(n^2).
 
 - **`find` returns `int`** - `>= 0` means found, never compare to `false`. `find(s, ch)` matches
   `ch` as an unsigned byte: a code outside `0..255` matches nothing.
+- **A literal can embed a null byte** - `\x00` or `\u0000`. The constant keeps every byte,
+  but a runtime `string` ends at the first null: `length("a\x00b")` is `1`, and interpolation
+  drops the tail (`"{"a\x00b"}tail"` is `"atail"`). Carry the byte count beside it and read the
+  bytes through a pointer. In a macro, `escape(expr.value)` on the constant's `das_string` keeps
+  them all; `peek` hands back a `string` and stops at the null.
 - **Escape a literal brace as `\{` / `\}`** - an unescaped `{` starts an interpolation even in
   JSON-looking text, and the errors point somewhere else entirely.
 - **A nested string literal inside an interpolation is written plain** - `"{s == "abc"}"` works;

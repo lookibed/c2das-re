@@ -353,15 +353,15 @@ generated C header instead:
 
 ```sh
 daslang -lib script.das -output build/script     # build/script.so (.dylib/.dll) + build/script.h
-daslang -lib script.das -output build/script -- --jit-lib-static   # build/script.a instead
+daslang -lib script.das -output build/script -- --jit-static   # build/script.a instead
 ```
 
 Three ways to pick what crosses: mark each function `[export_c]` (an `[export]` the library also
 surfaces in C); pass `-- --jit-lib-export-marked` to take whatever the program already marks
 `[export]`; or pass `-lib-export-all` for every public function of the entry module whose signature
 C can spell - only export-all skips an unspellable one with a warning, the other two make it a hard
-error. `-lib` carries the annotation itself; add `require daslib/export_c` to compile that same
-source without the JIT, which the linter and the AOT pass both do. `examples/c_api_library/` builds
+error. `[export_c]` lives in `daslib/export_c` - a source using it requires that module, under
+`-lib` as everywhere else. `examples/c_api_library/` builds
 one library each way and binds all three at once.
 
 A daslang host needs no C at all: `-- --jit-lib-bindings out/script_c.das` writes the daslang twin

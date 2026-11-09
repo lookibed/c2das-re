@@ -13,11 +13,18 @@ message - fix the text in `daslib/perf_lint.das`, don't document around it.
 ```bash
 bin/daslang utils/lint/main.das -- file.das [dir ...] \
   [--quiet] [--silent] [--perf-only|--style-only|--paranoid-only] \
-  [--disable CODE,...] [--enable CODE,...] [--workers N]
+  [--disable CODE,...] [--enable CODE,...] [--workers N] [--fix] [--json] \
+  [--no-shared-modules] [--project FILE] [--exclude PATH ...]
 ```
 
 The MCP `lint` tool runs the same three passes. `--enable` is a whitelist (only the listed rules
-run); on overlap `--disable` wins.
+run); on overlap `--disable` wins. A run compiles each shared module once per process and lints
+the files in require order; `--no-shared-modules` compiles every file's modules in its own group,
+and so does `--project FILE`, which resolves every compile through that `.das_project` module map.
+`--exclude PATH` leaves a folder out of a directory walk. `--fix` writes the edits rules attach to their findings and
+re-lints; a fix that breaks the compile is rolled back. Pair it with `--enable CODE` to sweep one
+rule, and review the diff - a fix only proves the file still compiles. `--json` prints one JSON
+document instead of text: every finding with its position and its edit, and the totals.
 
 Four ways to silence a rule, narrowest first:
 
@@ -108,6 +115,10 @@ def reserve_resize(@exact_size var a : array<numT>; n : int64) {
 
 Not a runtime flag: the annotation changes nothing about how the array grows - it makes the
 reserve-first spelling a checked contract at every site that touches the buffer.
+
+On a hot path a `@scratch @exact_size` buffer sizes through a helper whose own parameter is `@scratch` too (an
+`ensure_capacity` then `resize` body, which also satisfies PERF032): a helper with an unmarked parameter is descended
+into, so the example's `reserve_resize` called on such a buffer reports PERF026 at its `reserve`.
 
 ### Escape hatches, in order of preference
 

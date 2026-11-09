@@ -25,7 +25,8 @@ The only enforced ordering is `module` before any type declaration; `options` / 
 `[export]` makes a function callable from the host by name, and `[export_c]` is an `[export]` that
 `daslang -lib` also surfaces as a C function in the header it generates (`-lib`/`-jit`/`-exe` carry
 the annotation; a non-JIT compile of that source needs `require daslib/export_c`) (`[export_c(name = "...")]`
-picks the C symbol, which is how two overloads both reach C); `[init]` / `[finalize]` run at context
+picks the C symbol, which is how two overloads both reach C; `comment = "..."` is written as `//`
+lines above the function in the C header and the daslang bindings); `[init]` / `[finalize]` run at context
 init / shutdown (no arguments, no return). `main` is a convention, not a keyword: it returns `void`
 unless declared `def main() : int`, whose return value is the process exit code (do not `panic` to
 force one).
@@ -271,8 +272,9 @@ module's public symbols with a one-line description - search it by intent (`uri`
 | `regex` / `regex_boost` | Regex engine; `regex_boost` compiles patterns at compile time via a reader macro. |
 | `linq` / `linq_boost` | Chainable queries: `where_` (trailing underscore - `where` is a keyword), `select`, `order_by`, `group_by`, `zip`, `to_array`. `linq_boost` adds the `\|>` rewrite fusing a chain into one pass. |
 | `algorithm` / `sort_boost` | `unique`, `sort_unique`, `reverse`, `combine`; `partial_sort`, `nth_element`, heap ops. |
+| `cmp` | `[ordered(field, field = greater, key = fn)]` generates a struct's `<` (every field when none listed); `sort(a) <\| cmp_by(-_.score, _.name)` writes a comparator over `_`, the element, `-` for descending. |
 | `functional` | Lazy `filter`/`map`/`reduce`/`scan`. Legacy - prefer comprehensions or `linq`. |
-| `match` | `match` / `static_match` / `multi_match` over values, enums, variants, structs. |
+| `match` | `match` / `static_match` over values, enums, variants, structs. |
 | `option` / `result` | Monadic `Option<T>` and `Result<T; E>`. |
 | `defer` / `safe_addr` / `static_let` | LIFO scope-exit cleanup; `safe_addr(x)` giving `T?#` with no `unsafe`; locals promoted to globals. |
 | `class_boost` / `interfaces` / `dynamic_cast_rtti` / `contracts` | `[class_method]` on structs; `[interface]` classes; `is_instance_of` / `as_instance_of`; `[expect_*]` argument contracts. |

@@ -26,6 +26,18 @@ def test_something(t : T?) {
 
 `[test]` also accepts a no-argument form (`[test] def test_x()`) when the body needs no assertions object.
 
+`[test(description = "...", timeout = seconds)]` - both optional. The description is one sentence
+stating what the test proves, printed under the test's `--- FAIL` line and nowhere else; write the
+claim, not the function name again. `timeout` is this one test's budget: a test that finishes past
+it fails naming the budget, and the file's limits (`--max-file-time`, the isolated-mode deadline)
+grow by the same amount, so one slow test raises its own limit without loosening any other file's.
+Write `timeout = 1200` (the suite default) on a test that builds, spawns or waits, and no other
+number: CI runs several times slower than your box, so a measured value is a flake there, and the
+suite's own `--timeout` still catches a hang. `name = "..."` renames the test
+in reports. `standalone = "why"` states why the test's file cannot share a program with any
+other (a program-wide registry it fills, a deliberate duplicate); dastest ignores it, a test-tree
+gate reads it.
+
 ## Key test functions
 
 - `t |> equal(actual, expected)` - value equality assertion (reports "values differ"). **Label caveat:** on failure it prints `expected:` for argument 1 and `got:` for argument 2 - the reverse of XUnit. Keep writing `equal(actualExpr, wantValue)` (house idiom); just read `expected:` as *the live result*
@@ -82,6 +94,32 @@ When a `[test]` function calls helper functions that need assertions:
 Avoid naming local variables `t` in helpers - it shadows the test object parameter.
 Use `ii`, `idx`, `val`, `sptr` etc. instead.
 
+## Files a test writes
+
+A test writes only under `test_temp_dir()` (`dastest/testing_boost`) - a directory private to
+this run of the test file, removed when the run ends - or under a directory it makes with
+`create_temp_directory` (`daslib/fio`) and removes itself; never under `get_das_root()` or the
+working directory: two runs of one test file can overlap on one tree, and a fixed path is shared
+between them.
+
+```das
+let out = path_join(test_temp_dir(), "out.png")
+```
+
+A `new_thread` body or a job gets its own `test_temp_dir()` (`dastest/README.md`). Call it in the
+test, not in the thread, and hand the path over as a field of a struct pushed with `push_archive`
+and read back with `pop_archive` on a `Stream?` (`daslib/jobque_boost`) - a captured string still
+points into the test context's heap.
+
+## Run in this process
+
+A test does its work in the test's own process - `compile_file` then `simulate` (`rtti`), not a
+spawned `daslang`. A child process costs a full startup per run, hides its failures behind an
+exit code and scraped output, and needs the binary path, `-dasroot` and the environment passed
+by hand. Spawn a child only for what a running process cannot reset: process-wide state such as
+built-in modules extended at compile time or a cache read by a fresh run, the exit code, a
+crash, or startup itself - and name that reason in the test's `//!` comment.
+
 ## Common test options
 
 - `options no_unused_function_arguments = false` - suppress warnings for test params
@@ -110,8 +148,11 @@ bin/daslang dastest/dastest.das -- --test dastest/tests
 ```
 
 Useful flags: `--failures-only` to quieten passing output, `--color`, `--timeout <seconds>`,
-`--compile-only` to compile the test files without executing them, and `--isolated-mode` to
-run each file in its own process (slower, but survives a crash in one file).
+`--compile-only` to compile the test files without executing them, `--isolated-mode` to
+run each file in its own process (slower, but survives a crash in one file), and
+`--together <file>` (repeatable) to compile the listed files as one program, so a heavy module
+graph is parsed and JIT'd once for the list, each file then running in a fresh context of it and
+reporting on its own.
 
 ## Benchmarks
 

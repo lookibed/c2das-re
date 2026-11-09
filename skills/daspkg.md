@@ -23,7 +23,7 @@ The `--root` flag sets the project root directory (default: current directory). 
 | `upgrade` | `upgrade [name] [--global]` | Upgrade to latest version. Without name, upgrades all |
 | `list` | `list [--json] [--global]` | List installed packages |
 | `check` | `check [--json] [--global]` | Verify installed packages match lockfile |
-| `build` | `build [--global]` | Build native (CMake) packages |
+| `build` | `build [name] [--global]` | Build native (CMake) packages, or only the named one |
 | `build --wasm` | `build --wasm [--wasm-lib-dir <dir>]` | Build the wasm64 runtime + module archives `release wasm` links against (see WebAssembly section) |
 | `cleanup` | `cleanup [--force] [--global]` | Remove `modules/` and `daspkg.lock` to reset a project |
 | `doctor` | `doctor` | Check environment (git, cmake, gh) |
@@ -32,6 +32,7 @@ The `--root` flag sets the project root directory (default: current directory). 
 | `release wasm` | `release wasm --root <dir> [--out <dir>] [--wasm-lib-dir <dir>]` | Cross-compile the project to a standalone wasm64 web app (`<name>.{html,js,wasm}`) - see WebAssembly section |
 | `introduce` | `introduce` | Register package in the public index (creates PR on daspkg-index) |
 | `withdraw` | `withdraw` | Remove package from the public index |
+| `update-index` | `update-index [--commit \| --dry-run]` | Re-read every index entry's manifest and refresh the index: a PR by default, `--commit` pushes to the index's main, `--dry-run` prints the diff |
 
 ## Install Sources
 
@@ -45,7 +46,7 @@ The `--root` flag sets the project root directory (default: current directory). 
 | Flag | Description |
 |---|---|
 | `--root <path>` | Project root directory (default: current directory) |
-| `--force` | Force reinstall (overrides duplicate/version checks) |
+| `--force` | Force reinstall (overrides duplicate/version checks); also lets `install`, `update` and `upgrade` take a package whose manifest declares other platforms only |
 | `--global`, `-g` | Operate on global modules in `{das_root}/modules/` (see below) |
 | `--fat <class>` | `release` only: build a fat exe for the CPU class (`x86-avx2`, `arm-neon`, ...) - no mint, no sidecar; a kernel with no profile for its baseline clone refuses |
 | `--color` | Enable colored output |
@@ -136,7 +137,8 @@ def package() {
     package_source("github.com/user/repo")
     package_license("MIT")
     package_tag("networking")
-    package_min_sdk("0.4")
+    package_min_sdk("0.4")          // install refuses an older SDK (--force overrides)
+    package_platform("windows")     // optional, repeatable; or package_platforms([...]); none = every platform
 }
 
 [export]
@@ -159,6 +161,13 @@ def build() {
     cmake_build()       // or: custom_build("make all"), or: no_build() (default)
 }
 ```
+
+**Platforms.** `package_platform(name)` names a platform the package installs and releases on -
+`windows`, `darwin`, `linux`, `emscripten` (the `get_platform_name()` vocabulary; `wasm` and
+`macos` are accepted spellings). No declaration means every platform. On a host outside the list
+`install` refuses with exit code 3 before anything lands in `modules/`, for a dependency too;
+`--force` installs anyway. `release wasm` checks the list against `emscripten`. The index sweep
+skips such packages instead of failing.
 
 ## `.das_module` for Packages
 
@@ -184,7 +193,7 @@ def initialize(project_path : string) {
 
 The recipient can run the bundled exe **without daslang installed** - the runtime resolves dylibs against the exe's own directory first.
 
-**Build-time tuning (the `[tune]` framework):** the `-exe` build's deps JSON reports every `[tune_scope]` with per-key completeness against the app tune sidecar; `cmd_release` always mints: it runs the tuners (`DAS_TUNE_MODE=tune`, `DAS_TUNE_MANIFEST=<sidecar>`), REBUILDS so the exe bakes the measured winners, and ships the sidecar beside the exe as `<bundle>.tune.json` (touched newer than the exe - a sidecar older than the binary reads as stale). `--quick` is the only inheriting mode, and only from a complete, fresh sidecar; a tuner refusal (noise gate / validation) fails the release rather than shipping fallbacks. The exe self-reports its baked stamps via `tune_status()`. See `skills/tune.md`.
+**Build-time tuning (the `[tune]` framework):** the `-exe` build's deps JSON reports every `[tune_scope]` with per-key completeness against the app tune sidecar; `cmd_release` always mints: it runs the tuners (`DAS_TUNE_MODE=tune`, `DAS_TUNE_MANIFEST=<sidecar>`), REBUILDS so the exe bakes the measured winners, and ships the sidecar beside the exe as `<bundle>.tune.json` (touched newer than the exe - a sidecar older than the binary reads as stale). A `DAS_TUNE_MANIFEST` the shell exports is ignored for the whole release (the mint, the rebuild, the ship). `--quick` is the only inheriting mode, and only from a complete, fresh sidecar; a tuner refusal (noise gate / validation) fails the release rather than shipping fallbacks. The exe self-reports its baked stamps via `tune_status()`. See `skills/tune.md`.
 
 **A fat release (`--fat <class>`):** the exe is built under `DAS_JIT_BASELINE=<class>` and `DAS_TUNE_MODE=fat` - its plain code targets the class, every `[tune]` kernel carries one clone per class the library ships a profile for, at or above the baseline, and the exe picks the clone from cpuid at startup. Nothing mints and no sidecar ships: the deps JSON's `fat_unprofiled` list names any kernel whose baseline clone came from no profile, and one such kernel refuses the release. A library that registers a first-start hook (dasLLAMA's `set_runtime_race_hook`) races its runtime section - the Metal twin crowns among the knobs - at the exe's first start on the box it runs on and keeps it beside the exe; a library without one runs the knob defaults. `skills/tune.md`, *The fat exe*.
 
@@ -356,7 +365,7 @@ def release() {
 |---|---|
 | `release_emcc_arg("-sUSE_GLFW=3")` | Append an emcc link flag (dasGlfw declares this) |
 | `release_embed_file(src, dst)` | `--embed-file src@dst` into MEMFS (dasStbImage embeds its HUD font) |
-| `release_web_shell("path.html")` | Override the default canvas shell (`web/templates/wasm_canvas_shell.html`). The link exports `FS` and `ENV`, so a shell's `Module.preRun` can stage files into MEMFS (`Module.FS.writeFile`) and set environment knobs (`Module.ENV.X = ...` - the C environment is built from it at startup, later writes never reach `getenv`); hold the run with `addRunDependency` while fetching |
+| `release_web_shell("path.html")` | Override the default canvas shell (`web/templates/wasm_canvas_shell.html`). A shell that carries `<!-- @wasm-gate -->` gets the browser gate (`window.dasWasmGate`) inlined there at release. Put emcc's `{{{ SCRIPT }}}` in `<template id="loader">` and call `dasWasmGate.reason()`: an empty string means start the program with `dasWasmGate.loadProgram()`; `"wasm"` (a missing WebAssembly feature), `"32bit"` (a 32-bit browser) or `"isolation"` (the page lacks cross-origin isolation - the COOP/COEP headers a threaded build needs) means show the `title` and `text` of `dasWasmGate.refusal(reason)` instead - plain text, set through `textContent`. The default shell does all of this. The link exports `FS` and `ENV`, so a shell's `Module.preRun` can stage files into MEMFS (`Module.FS.writeFile`) and set environment knobs (`Module.ENV.X = ...` - the C environment is built from it at startup, later writes never reach `getenv`); hold the run with `addRunDependency` while fetching |
 | `release_wasm_disable_module("dasvulkan")` | Keep a host module out of the cross-compile so its guarded `require ?name` resolves as absent, as the wasm build sees it (the rail disables dashv itself; an app reaching vulkan, das_metal or das_accelerate names those) |
 
 ### Game source contract (cross-compiles UNCHANGED)

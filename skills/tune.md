@@ -207,7 +207,7 @@ them, not of its class.
 
 The class names follow the features `requires=` can gate: `x86-amx` (AMX-INT8 +
 AMX-TILE over the 512-bit VNNI gate) / `x86-vnni512` / `x86-vnni256` / `x86-avx2` /
-`x86-base`, `arm-i8mm` / `arm-neon`; any other
+`x86-base`, `arm-sve` / `arm-i8mm` / `arm-neon`; any other
 architecture gets `<platform>-<arch>`, a key no shipped profile matches, so
 such a box always races (`tune_cpu_class()` computes this box's,
 `tune_class_chain()` its adoption ladder). The profile is read at **compile
@@ -407,8 +407,8 @@ DAS_JIT_BASELINE=x86-avx2 DAS_TUNE_MODE=fat daslang -exe -output myapp myapp.das
 ```
 
 `DAS_JIT_BASELINE` names the class the exe's plain code targets - `x86-base`,
-`x86-avx2`, `x86-vnni256`, `x86-vnni512`, `x86-amx`, `arm-neon` (M1) or
-`arm-i8mm` (M2 and later); a class is a feature set, never a box model, and
+`x86-avx2`, `x86-vnni256`, `x86-vnni512`, `x86-amx`, `arm-neon` (M1),
+`arm-i8mm` (M2 and later) or `arm-sve` (Graviton3+); a class is a feature set, never a box model, and
 every profile is keyed by one. Under `fat`, every `[tune]` function gets one
 clone per class of its arch's ladder that a `[tune_scope(defaults=)]` ships a
 profile for, at or above the baseline, plus the baseline itself - adding a
@@ -456,8 +456,9 @@ manifest a runner pinned for it.
 
 A sidecar whose mtime **predates the running binary's** is stale: its
 `"kernels"` read as absent (stamps fall back, the policy rail re-tunes), and
-the first `tune_manifest_set` resets the whole document - the `"runtime"`
-section included. Measurements never outlive the binary that made them. A sidecar carrying another box's
+the first `tune_manifest_set` resets the document - every section but this
+box's own `"runtime"`, whose knobs and crowns are facts of the box, not of the
+binary. Measurements never outlive the binary that made them. A sidecar carrying another box's
 identity is stale too - measurements are a property of the box - unless
 `provenance.applied_box` names this box, which is how a scope resolver (below)
 adopts a compatible sibling box's mint deliberately. That identity is the
@@ -470,7 +471,9 @@ library version reads incomplete for that scope alone.
 
 Every "untuned" refusal **names its reason** via `tune_sidecar_verdict`
 (`TuneSidecarReason`) - `absent` (no sidecar at the path), `stale_binary`
-(both dates), `foreign_box` (both identities), `unreadable` (not a tune
+(both dates), `foreign_box` (both identities; checked before the date, so a sidecar another box minted whose
+`provenance.applied_box` does not name this box reports `foreign_box` whatever its mtime),
+`unreadable` (not a tune
 sidecar), `version` (both values), `missing` (the kernel names), so a bare
 "untuned" never leaves the operator to diff provenance by hand. And when `DAS_TUNE_MANIFEST`
 points at a file that reads untuned, the compile prints one loud warning per
@@ -714,5 +717,5 @@ same-direction twin flips = an estimator change.
 `modules/dasLLAMA/tune_for_this_box.md` - a worked application of this
 framework (the dasLLAMA gen GEMM family), including the measurement
 discipline that separates a real win from a benchmark artifact, and the
-`dasllama-server` / `ask` / `wav2txt` trio sharing one box's winners.
+`dasllama-server` / `dasllama-cli` pair sharing one box's winners.
 ```

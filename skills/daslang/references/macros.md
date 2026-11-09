@@ -230,7 +230,10 @@ patterns spelled as node classes and fields rather than as source syntax.
 
 ## Annotations
 
-Bracketed before the declaration; several combine with commas (`[export, no_aot]`).
+Bracketed before the declaration; several combine with commas (`[export, no_aot]`). Two bracket
+lines in a row do not parse - the second `[` is read as the start of a struct or class
+annotation (`error[30151] ... expecting struct or class`), so a new annotation joins the
+existing list, never its own line.
 
 **Function.** Lifecycle: `[export]` (callable from the host), `[init]` / `[init(tag=...)]` /
 `[init(before=...)]` / `[init(after=...)]`, `[finalize]`, `[run]` (runs at compile time). Safety:
@@ -240,7 +243,9 @@ Diagnostics: `[unused_argument(x, y)]`, `[nodiscard]`, `[deprecated(message=...)
 `[local_only(arg=true)]`. Codegen: `[inline]`, `[never_inline]`, `[no_aot]`, `[no_jit]`, `[jit]`,
 `[hybrid]`, `[alias_cmres]`, `[never_alias_cmres]`, `[pinvoke]`, `[type_function]`. Macro
 plumbing: `[_macro]`, `[macro_function]` (exists only in the macro context), plus `[macro]` and
-`[tag_function(t)]` from `daslib/ast_boost`. Inert carriers: `[hint(k=v)]`, `[marker]`.
+`[tag_function(t)]` from `daslib/ast_boost`. Inert carrier: `[marker]`. `[hint(...)]` is inert to
+the interpreter and AOT; the LLVM tiers read its arguments as function attributes (`noinline`,
+`alwaysinline`, `noalias = p`, ...; the alias hints are in `memory.md` sec.1).
 
 **Structure / class:** `[cpp_layout]` (`pod=false` allows non-POD), `[persistent]`
 (`non_pod=true`), `[safe_when_uninitialized]`, `[no_default_initializer]`, `[macro_interface]`,

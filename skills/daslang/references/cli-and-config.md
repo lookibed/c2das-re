@@ -32,7 +32,8 @@ def main : int {
 a standalone `-exe` binary, the post-`--` slice under the interpreter or the JIT.
 `get_program_args()` / `get_cli_arguments()` force one slice regardless of host. A program that
 spawns the daslang it runs under takes the path from `get_host_binary()` - `argv[0]` resolved to an
-absolute path - never from `get_command_line_arguments()` itself.
+absolute path when it names an existing file, else unchanged (a bare name PATH resolves again at
+spawn) - never from `get_command_line_arguments()` itself.
 
 Field types: `string`, `int`, `float`, `bool`, an enum (clargs validates the value), `array<T>` for
 a repeatable flag. The long name is the field name with underscores as hyphens; clargs adds the
@@ -47,6 +48,7 @@ a repeatable flag. The long name is the field name with underscores as hyphens; 
 | `@clarg_env = "NAME"` | Environment twin. |
 | `@clarg_positional` | Consumed in declaration order. `string`, `Option<string>`, `array<string>` only; an array positional must be last; a required positional cannot follow an optional one; not combinable with `@clarg_short` or `@clarg_count`. |
 | `@clarg_count` | Plain `int`; sums occurrences, so `-v -v -v` gives `3`. **Short-flag bundling is not implemented** - `-vvv` parses as nothing and leaves the field `0`. |
+| `@clarg_optional_value` | An `Option<string>` flag whose value is optional: absent gives `none`, the bare flag `some("")`, `--flag=x` `some("x")`; the next token is never taken as the value. Help shows `--flag[=STRING]`. |
 | `@clarg_mutex_group = "name"` | Mutually exclusive group. |
 | `@clarg_skip` | Excludes the field from the CLI schema. |
 | `Option<T>` field type | Distinguishes "not supplied" from the zero value (`require daslib/option`). |
@@ -54,7 +56,7 @@ a repeatable flag. The long name is the field name with underscores as hyphens; 
 ## Parsing and help
 
 `parse_args_with_help(cfg, "tool-name")` is generated for every `[CommandLineArgs]` struct that
-declares no `--help` / `-h` field of its own; it intercepts those flags, prints the help, and
+declares no `--help` / `-h` flag of its own; it intercepts those flags, prints the help, and
 returns **`0`** = help printed, **`-1`** = clean parse (struct populated), **`1`** = parse error
 (already logged at error level).
 
@@ -70,13 +72,23 @@ if (r |> is_err) {
 let cfg <- r |> move_unwrap
 ```
 
-`parse_args` returns `Result<Config, string>`; `parse_args(type<Config>, args)` takes an explicit
-`array<string>`. Unknown flag-shaped tokens are ignored, not errors. `format_help` returns the help
-as a string instead of printing it. Field defaults are **not** rendered in help text.
+`parse_args` returns `Result<Config, string>`;
+`parse_args(type<Config>, args)` takes an explicit `array<string>`.
+A token consumed as a flag's value cannot also set another field.
 
-**The help-flag pitfall.** Under the script host, `daslang` intercepts `-h` / `--help` itself before
-forwarding script arguments, even after the `--` separator. A script that must offer help under the
-interpreter wires it to `-?` instead:
+Unknown flag-shaped tokens are ignored, not errors - with one exception: a
+`--help` or `-h` in the parsed arguments, before any `--` among them, that is neither a declared
+flag nor a declared flag's value sets a bool field named `help` whose flag the struct renamed
+(`--show-help` below), so the tool sees the help request instead of losing it. `format_help`
+returns the help as a string instead of printing it. Field defaults are **not** rendered in help
+text.
+
+**The help-flag pitfall.** Under the script host every script argument goes after the `--`
+separator: `daslang tool.das --help` prints the host's own help, and `daslang tool.das -- --help`
+reaches the script. An `-exe` binary owns its whole argv, so there `-h` / `--help` need no
+separator.
+
+A struct may give its `help` field another flag name:
 
 ```das
 @clarg_short = "?"
@@ -85,11 +97,12 @@ interpreter wires it to `-?` instead:
 help : bool
 ```
 
+Under `parse_args`, `--show-help`, `-?`, `--help` and `-h` all set that field. The struct declares
+no `--help` / `-h` flag, so `parse_args_with_help` is generated for it too, and there the same
+unclaimed `--help` / `-h` prints the generated help and returns `0` before any field is set.
+
 A `-lib` library never owns argv at all: the host's process arguments are whatever the host was
 started with, so a library reads its configuration from its C parameters, not from `clargs`.
-
-Only an `-exe` binary owns argv, so `-h` / `--help` - and `parse_args_with_help`'s automatic help
-flag - are reachable only there.
 
 ## Environment twins
 
