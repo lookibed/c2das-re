@@ -11,9 +11,12 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
 - `suite_runner.das` - the runner every suite shares: `run_suite_main(spec, verdict)` converts
   every `<id>.c` directly under the suite's tests folder into `work/<id>/` through
   `converter/pipeline.das` under the `linux` dialect (the baseline of a differential run is a
-  native build on this host), runs the module under the interpreter with both module folders
-  loaded and a per-suite timeout, and hands the exit code and merged output to the suite's
-  verdict. Each test ends in one status: `pass`, `convert` (the dumper, the emitter or the
+  native build on this host), runs the module under `--tier` (`SUITE_TIERS`: `interp`, the
+  default, `jit` or `exe`) with both module folders loaded and a per-suite timeout, and hands
+  the exit code and merged output to the suite's verdict. The ratchet is the interpreter's: a
+  `jit` or `exe` run judges the same list, so its regressions are the ids that pass under the
+  interpreter and fail under that tier, and `tier_refusal` refuses an unknown tier and
+  `--update` under any tier but `interp` (exit 2). Each test ends in one status: `pass`, `convert` (the dumper, the emitter or the
   compile check refused it), `timeout` (the module ran past the suite's limit), `exit`,
   `output`, or `skip`. The ratchet and the ledger live
   here too: a listed id that stops passing fails the run; an id that starts passing is
@@ -31,10 +34,11 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   stay until the ledger is rewritten, by `gcc_torture/filter.das` for the torture suite and by
   hand for csmith's. Its pieces serve the csmith driver too: `record` and `count_status` (one outcome into the `Tally`),
   `finish_run` (the summary, `--update`'s write of the ids it is handed unless the run was
-  filtered, the exit code), `convert_and_run` (one C file converted and run under the
-  interpreter, with extra interpreter flags when a suite needs them), `compare_output` (an
+  filtered, the exit code), `convert_and_run` (one C file converted and run under a
+  tier, with extra interpreter or JIT flags when a suite needs them), `tier_refusal`, `compare_output` (an
   exit code and output judged against the expected output), and `run_workers` with
-  `spawn_one` (indices through worker processes of a script's `--one`, a number at a time, each
+  `spawn_one` (indices through worker processes of a script's `--one` and the worker's own
+  arguments, csmith's `--tier`, a number at a time, each
   killed past a limit, its printed output kept), which the readability metric runs on too;
   `C_TESTSUITE_TESTS` and `GCC_TORTURE_TESTS` name the folders the two file-based suites'
   tests sit in.
@@ -152,7 +156,8 @@ dialect's wrapping, so the oracle states `-fwrapv` and `-O0` outright (no optimi
 expression another way) and pins its compiler, gcc, whose version the run checks. A
 native run gets 2 seconds, since the interpreter runs csmith's code a hundred times slower; a
 gcc refusal or a non-zero native exit ends the seed as `native`, which is no divergence. The
-converted module runs under the interpreter with both module folders loaded,
+converted module runs under `--tier` (the interpreter unless given; every worker of a run gets
+the driver's tier) with both module folders loaded,
 `-no-module-cache` (a seed's module is never compiled twice, so a cache record would only churn
 the cache the test lanes share, and a cache message on stdout would be judged as output) and
 300 seconds, and its complete merged output is compared with the native one. The default 16 KB

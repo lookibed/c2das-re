@@ -1,5 +1,7 @@
 options gen2
 require dastest/testing_boost public
+require strings
+require daslib/strings_boost
 require daslib/fio
 require ../../suites/csmith/verdict.das
 require ../../suites/suite_runner.das
@@ -47,6 +49,33 @@ def test_csmith_verdict(t : T?) {
         t |> equal(audit_row("f", worker_outcome("9", false, 3, 900.0, Verdict())).status, "crash")
         if (!empty(dir)) {
             rmdir_rec(dir)
+        }
+    }
+}
+
+[test]
+def test_csmith_tier(t : T?) {
+    t |> run("a worker gets its args after `--one <id>`") @(t : T?) {
+        var dir_error : string
+        let dir = create_temp_directory("c2das_csmith_worker", dir_error)
+        t |> equal(dir_error, "")
+        let script = path_join(dir, "echo.das")
+        fwrite(script, "options gen2\nrequire daslib/strings_boost\n[export]\ndef main \{\n    let args <- get_command_line_arguments()\n    print(\"\{join(args, \" \")\}\\n\")\n\}\n")
+        var seen : string
+        run_workers(1, 1, 120.0, $(_index) => spawn_one(script, "7", path_join(dir, "stale"), ["--tier", "jit"])) $(_index, _killed, _rc, output) {
+            seen = output
+        }
+        t |> success(seen |> contains("-- --one 7 --tier jit"), seen)
+        if (!empty(dir)) {
+            rmdir_rec(dir)
+        }
+    }
+    t |> run("an unknown tier exits 2 naming the tiers, --update under the exe exits 2, before any seed") @(t : T?) {
+        for (flags in fixed_array("--tier aot", "--tier exe --update --seeds 0")) {
+            var out : string
+            let rc = run_and_capture(["bash", "-c", "\"$1\" -load_module dasCRuntime -load_module c_runtime suites/csmith/run.das -- $2", "csmith", get_das_root() + "/bin/daslang", flags], out, 120.0)
+            t |> equal(rc, 2, out)
+            t |> success(out |> contains(flags == "--tier aot" ? "unknown tier `aot`: one of interp, jit, exe" : "--update records the interpreter's ratchet"), out)
         }
     }
 }
