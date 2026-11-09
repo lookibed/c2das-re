@@ -1,6 +1,5 @@
 options gen2
 require dastest/testing_boost public
-require strings
 require c_runtime/c_volatile
 require ../../probes/_daslang_child.das
 
