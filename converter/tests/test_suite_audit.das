@@ -181,6 +181,32 @@ def has_jit_library(root : string) : bool {
 }
 
 [test]
+def test_tier_output(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_tier_output", dir_error)
+    t |> equal(dir_error, "")
+    if (empty(dir)) {
+        return
+    }
+    let c_path = path_join(dir, "hello.c")
+    fwrite(c_path, "int printf(const char *, ...);\nint main(void) \{ printf(\"hi\\n\"); return 0; \}\n")
+    t |> run("under DAS_LOG_LEVEL=info every tier's output is the program's alone, no JIT or exe build line in it, and the level is restored") @(t : T?) {
+        let level = get_env_variable("DAS_LOG_LEVEL")
+        set_env_variable("DAS_LOG_LEVEL", "info")
+        let no_flags : array<string>
+        for (tier in SUITE_TIERS) {
+            let run = convert_and_run(c_path, path_join(dir, tier), "linux", tier, 120.0, no_flags)
+            t |> equal(run.converted, true, run.error)
+            t |> equal(run.rc, 0, run.output)
+            t |> equal(run.output, "hi\n", tier)
+        }
+        t |> equal(get_env_variable("DAS_LOG_LEVEL"), "info")
+        set_env_variable("DAS_LOG_LEVEL", level)
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_tier_cli(t : T?) {
     var dir_error : string
     let root = create_temp_directory("c2das_tier_cli", dir_error)

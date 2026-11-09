@@ -139,7 +139,9 @@ struct ConvertedRun {
     output : string
 }
 
-//! `flags` go to the interpreter or the JIT before the module (`-no-module-cache`).
+//! `flags` go to the interpreter or the JIT before the module (`-no-module-cache`). The run's
+//! children log at `warning`: the JIT and the exe build report themselves at `info`, which
+//! `scripts/env.sh` sets, and those lines would land in the output a verdict judges.
 def convert_and_run(c_path, work, target, tier : string; timeout : float; flags : array<string>) : ConvertedRun {
     var run : ConvertedRun
     let res <- convert(c_path, work, target)
@@ -148,7 +150,10 @@ def convert_and_run(c_path, work, target, tier : string; timeout : float; flags 
         return run
     }
     run.converted = true
+    let level = get_env_variable("DAS_LOG_LEVEL")
+    set_env_variable("DAS_LOG_LEVEL", "warning")
     run.rc = run_tier(res.das_path, tier, work, run.output, CONVERTED_MODULES, timeout, flags)
+    set_env_variable("DAS_LOG_LEVEL", level)
     return run
 }
 
