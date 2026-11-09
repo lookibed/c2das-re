@@ -421,7 +421,7 @@ def test_worker_goto(t : T?) {
         t |> success(flat |> contains("        goto _cond + 4\n") && !(flat |> contains("re-dispatch")), flat)
         t |> equal(run_worker("perf/switch_goto", counts), 0)
         let kept = fread("metrics/work/perf/switch_goto/das/switch_goto.das")
-        t |> success(kept |> contains("label 1:  // re-dispatch\n"), kept)
+        t |> success(kept |> contains("label 4:  // re-dispatch\n"), kept)
     }
 }
 
