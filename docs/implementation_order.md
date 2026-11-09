@@ -1522,6 +1522,15 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `without_define` edits the sidecar as text and leaves a trailing comma when the removed define is the last of a
   multi-line array (the committed one-line sidecar is not affected); (c) blit's JIT at 0.17x native (Rust 0.48x):
   read the JIT's code before quoting it as a win (profile phase).
+  (c) Done 2026-11-10 (branch `p8.15-blit-check`): no fold, the result is native's; the native build freed and
+  allocated 2 x 256 KiB per rep and glibc's heap trim faulted the pages in again each rep (about 300 of its 360 us),
+  while the 0.6.5 daslang process, its thresholds raised by its own earlier frees, kept them (JIT 397 us under
+  glibc's static thresholds, 1.10x). The kernel allocates its buffers once; diagnostic, not exclusive: native 56 us,
+  JIT 80 us (about 1.4x), the cell in the item 8 batch. Rust's arena allocator never trimmed: its 0.48 is its code
+  (uint64 address walks, not vectorized). Corrections to P8.12: the JIT gain is blit's artifact, without blit ours
+  1.196 -> 1.171 (15 kernels); the TBAA classes put every integer over 8 bits and every pointer in one class and the
+  hot accesses are plain typed derefs; solid_context's JIT S/N geomean is 0.983 (3 of 17 gain), its interpreter
+  0.62-0.64 is 2 of 4 cells. Report: `/root/notes/parallel/repin/report.md`, "The blit check".
 - **P8.16 The Lua ports perf on abf1d40e35** (from P8.12): re-capture the ports' Lua tables under
   `heavy --exclusive` once /mnt/d has 8 GB free; the conversion at 1b3ea8d is in /root/wt-c2das-ports.
   Done 2026-11-10 on box PC at 2a7bab3 (`capture_2026-11-09T231608Z.json` in the ports clone, uncommitted until the
