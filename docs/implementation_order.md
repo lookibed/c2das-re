@@ -1480,6 +1480,19 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   texts and needs each shape run under the interpreter and the JIT against native. Not done in
   P8.10: the removal reshapes the goto-into-body output, which the readability forms price.
 
+- **P8.12 The repin re-capture** (ruling 38 addendum 5, steps 4-7; after P8.5-P8.11 and repin PR5). Every
+  timing number of the tables re-measured on daScript `abf1d40e35` (0.6.5) under `heavy --exclusive` on box PC,
+  against the last pre-repin exclusive captures on 0.6.4 (perf `abbd5ad`, compare `4e63dc0`, Doom `5f84ae9`, the
+  Lua ports 2026-11-07 at `9748560`). Step 4 (no timing, main `90abb14`): Lua suite 30/30 interp, error checks 8/8
+  interp and JIT, luac 33/33 interp, JIT and exe, Doom demo1-3 in sync under interp, JIT and exe; compare binjgb,
+  h264bsd-mp4 and plmpeg-stream pass every lane on both sides (ours binjgb AOT builds now); the Rust side's
+  quakegeneric stops at error 30299 (a `return` inside a try arm, upstream #4472) on every lane. Predictions written
+  before any timing run: `/root/notes/predictions/2026-11-09-repin.md`, sha256 `37cfee5fd02e405a3e6d2b75ddeb7b4a22ff1ed03dbaf4d46e87987ef0b2e853`: interp x0.97 everywhere;
+  default JIT/exe flat but blit and Lua's call-heavy workloads (#38 `ptr_diff` inline); AOT sieve, str_copy and
+  matmul down to the JIT's level (#5); the #43 solid/no-solid JIT A/B at 1.03 (close #43 when it holds); the
+  `strict_aliasing: true` lane (A/S) at 0.85 on matmul, 0.95-1.00 elsewhere, Doom 0.98-1.00. Workarounds judged by
+  the capture, none removed here: `options solid_context` (F80, the #43 lane), the root `strict_aliasing = false`
+  (F95, the A lane); #38, #39 and #5 had no converter workaround.
 ## P6 — Doom
 
 **Goal: the metric.**
