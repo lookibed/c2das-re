@@ -16,7 +16,9 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   the exit code and merged output to the suite's verdict. The ratchet is the interpreter's: a
   `jit` or `exe` run judges the same list, so its regressions are the ids that pass under the
   interpreter and fail under that tier, and `tier_refusal` refuses an unknown tier and
-  `--update` under any tier but `interp` (exit 2). Each test ends in one status: `pass`, `convert` (the dumper, the emitter or the
+  `--update` under any tier but `interp` (exit 2). The run's children log at `warning`
+  whatever `DAS_LOG_LEVEL` the runner has: the JIT and the exe build report themselves at
+  `info`, and their lines would join the output a verdict judges. Each test ends in one status: `pass`, `convert` (the dumper, the emitter or the
   compile check refused it), `timeout` (the module ran past the suite's limit), `exit`,
   `output`, or `skip`. The ratchet and the ledger live
   here too: a listed id that stops passing fails the run; an id that starts passing is
