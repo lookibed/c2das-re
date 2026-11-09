@@ -34,14 +34,13 @@ The first five groups pass by value, everything else by reference; `string` is i
 | `1.52d`, `1.e2lf` | `double` |
 | `1.5h` | `float16` |
 
-Strings use `"..."`, may span lines, escapes `\t \n \r \\ \" \' \b \f \v \xHH \uHHHH
-\UHHHHHHHH`, and interpolate `{expr}` with an optional format spec (`"{pi:5.2f}"`). A nested
+Strings use `"..."`, may span lines, escapes `\a \b \f \n \r \t \v \\ \" \' \? \xHH`, octal
+`\0`-`\377`, `\uHHHH \UHHHHHHHH`, and interpolate `{expr}` with an optional format spec (`"{pi:5.2f}"`). A nested
 literal inside an interpolation stays plain - `"{s == "abc"}"`; escaping it (`"{s == \"abc\"}"`)
 is a syntax error.
 
-**Character literals take a smaller escape set** - `\b \t \n \f \r \\ \'` only. `'\v'` is
-`error[30151] syntax error, unexpected invalid token` though `"\v"` works; write the number,
-`11`.
+**Character literals take the same C escapes**, minus `\u` / `\U`: `'\0'` is `0`, `'\x41'` and
+`'\101'` are `65`. A string is NUL-terminated, so `"a\0b"` is `"a"`.
 
 ## Conversions
 
@@ -175,6 +174,15 @@ not change the index. Anonymous form `variant<i_value:uint; f_value:float>`; two
 when named cases, types, and order all match. A case value takes the struct-field sigils:
 `=` copies a copyable value, `<-` moves, `:=` clones and leaves the source intact.
 
+A case written without a type carries no value: `variant Maybe { nothing; value : int }`
+(anonymous: `variant<nothing; value:int>`). Construct it by name alone, `Maybe(nothing)`; test with
+`is`; inside a `match` (`require daslib/match`), the pattern `Maybe(nothing) => ...` tests it. It has
+no `as`, `?as`, or field read (compile errors) and costs no bytes and no alignment (a variant whose
+cases all lack a type is one `int`). A default-initialized variant is zeroed and so holds case 0:
+list the case without a type first to make it the default. `apply` (`require daslib/apply`) does
+not call its block for it; `print` writes `nothing`, `sprint_json` writes `{"nothing":null}` and
+`sscan_json` reads it back.
+
 ## Fixed arrays
 
 `T[N]` is one type node per dimension, outermost first: `float[4][4]` is 4 rows of `float[4]`.
@@ -262,13 +270,20 @@ print("{*id}\n")          // only way out: '*' peels one distinct level, yields 
 def operator + (a, b : Meters) : Meters => Meters(*a + *b)
 ```
 
-Only `==` and `!=` are borrowed (same distinct both sides); define the rest yourself. Overloads
+Only `==` and `!=` are borrowed (same distinct both sides), and an `operator ==` / `operator !=`
+you define for the distinct type wins over the borrow; define the rest yourself. Overloads
 on a distinct and on its underlying type coexist. Two distincts over the same underlying type
 are unrelated, as are same-named distincts in two modules. `var id : EntityId` and
-`default<EntityId>` zero-initialize. Distinct types cannot be table keys but work as array
-elements, struct fields, and tuple/variant members. Printing and RTTI show the underlying value.
+`default<EntityId>` zero-initialize. A distinct keys a table when its underlying type can (it
+hashes as the underlying value; `table<EntityId; string>` still refuses an `int` key and a key of
+any other distinct over `int`), and works
+as array elements, struct fields, and tuple/variant members. Printing and RTTI show the
+underlying value.
 For a distinct over a pointer, `*` peels the distinct, not the pointer.
 `typedef private distinct Foo = int` limits visibility to the declaring module.
+The wall opens only through an operator you write: `def operator = (var dst : EntityId&; src : int)`
+makes `var id : EntityId = 0`, `id = 0` and a field default `id : EntityId = 0` compile (see
+"Copy, move and clone" in functions.md); `def operator != (a : EntityId; z : int)` covers `id != 0`.
 
 ## Type aliases
 

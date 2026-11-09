@@ -26,6 +26,21 @@ reference parameter is read-only memory to it - so `var q = unsafe(reinterpret<P
 `q.x = 5` compiles and performs a write the declared type denies; routed through `intptr` and
 back it vanishes in optimized builds. Declare the parameter `var P?`.
 
+**Types alias by class under the JIT; same-class pointers alias unless promised otherwise.** A
+`float` store cannot change what an `int?` points at (`float` and `double` are each a class; every
+wider integer, pointer and `half` share one; bytes, bools, vectors and aggregates alias
+everything), so a loop that reads its bound through an `int?` beside `float` stores hoists the
+read. A function that reinterprets memory under another type - `reinterpret` to a pointer other
+than `void?` or a byte pointer, or to a reference of another type - is taken out of the model
+automatically, and so is every function the view reaches through a call, a return, an out
+argument, a lambda, a callback or a shared global - not one that loads it from a heap object's
+field: that reader takes
+`[hint(no_strict_aliasing)]` by hand, and `[hint(strict_aliasing)]` keeps a function in despite a
+`reinterpret`. Two
+`float?` parameters still alias: `[hint(noalias = p)]` on the one the loop writes through is the
+promise that they do not (`[hint(unsafe_alias)]` promises it for every parameter); a hint naming
+no parameter is a compile error.
+
 ---
 
 ## 2. Copy, move, clone

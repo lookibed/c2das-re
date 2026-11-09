@@ -38,10 +38,11 @@ primitives. **Unknown keys are silently ignored** - validate required fields you
 
 `JV` / `from_JV` read the same annotations.
 
-**Field initializers apply only to the top-level struct you construct.** Elements `sscan_json`
-allocates inside a nested `array<Struct>` are **zero-filled**, so
-`rotation : float4 = float4(0,0,0,1)` comes back all-zero, silently, for any element whose JSON
-omits the key. `read_json` + `from_JV(js, type<T>)` honors element defaults.
+**Values `sscan_json` creates get their field initializers.** A new array element, table value,
+pointee or variant alternative runs its struct's initializer before the scan, so a key the JSON
+omits keeps the declared default. A variant that already holds the scanned alternative is updated
+in place. `sscan_json_at` gets its type only at run time, so it runs an initializer only when the
+program keeps it for another reason (some code calls `T()`); otherwise the value is zero-filled.
 
 ## JV / from_JV and JsonValue?
 
@@ -82,7 +83,7 @@ key write `js?["value"]`.
 `is` / `as` test the underlying variant through the pointer; `as` on the wrong case crashes.
 
 Cases: `_object` (`table<string; JsonValue?>`), `_array` (`array<JsonValue?>`), `_string`
-(`string`), `_number` (`double`), `_longint` (`int64`), `_bool` (`bool`), `_null` (`void?`).
+(`string`), `_number` (`double`), `_longint` (`int64`), `_bool` (`bool`), `_null` (a case with no value).
 
 A missing key or index through `?[]` / `?.` yields a NON-null node of the `_null` case, not a null
 pointer: `js?["absent"] == null` is false, so `== null` cannot detect a missing key (`read_json`
@@ -99,7 +100,8 @@ a panic and never a silent zero.
 ## Parsing, writing, embedding
 
 - `read_json(text, var error)` takes a `string` or an `array<uint8>`; `write_json(js)` serializes,
-  a null pointer as `"null"`. `\uXXXX` escapes decode to UTF-8, a surrogate pair folding into one
+  a null pointer as `"null"`; `write_json(js, true)` prints every object's keys sorted, for a file that is
+  diffed and merged. `\uXXXX` escapes decode to UTF-8, a surrogate pair folding into one
   code point; an unpaired surrogate becomes U+FFFD.
 - `try_fixing_broken_json(text)` repairs model-generated output before `read_json` - concatenation
   (`"a" + "b"`), trailing commas, double-quoted nesting.
