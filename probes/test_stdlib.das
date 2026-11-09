@@ -106,11 +106,12 @@ def test_math(t : T?) {
 
 [test]
 def test_json_nesting(t : T?) {
-    t |> run("json_boost's JV of a struct holding an array of structs that holds an array of structs fails type inference; one level less converts (docs/probe-findings.md F64)") @(t : T?) {
+    t |> run("json_boost's JV of a struct holding an array of structs that holds an array of structs converts (docs/probe-findings.md F64, fixed upstream), as one level less does") @(t : T?) {
         let cell = "struct Cell \{\n    time : double\n    samples : array<double>\n\}\n"
         let main = "[export]\ndef main \{\n    var c : Capture\n    print(\"\{write_json(JV(c))\}\\n\")\n\}\n"
-        let nested = daslang_child("json_nested", "options gen2\nrequire daslib/json_boost\n{cell}struct Row \{\n    cells : array<Cell>\n\}\nstruct Capture \{\n    rows : array<Row>\n\}\n{main}", true)
-        t |> success(nested.out |> find("error[30507]") >= 0, nested.out)
+        let nested = daslang_child("json_nested", "options gen2\nrequire daslib/json_boost\n{cell}struct Row \{\n    cells : array<Cell>\n\}\nstruct Capture \{\n    rows : array<Row>\n\}\n{main}", false)
+        t |> equal(nested.rc, 0, nested.out)
+        t |> success(nested.out |> find("\"rows\" : []") >= 0, nested.out)
         let flat = daslang_child("json_flat", "options gen2\nrequire daslib/json_boost\n{cell}struct Capture \{\n    cells : array<Cell>\n\}\n{main}", false)
         t |> equal(flat.rc, 0, flat.out)
         t |> success(flat.out |> find("\"cells\" : []") >= 0, flat.out)

@@ -80,9 +80,10 @@ def test_c_volatile(t : T?) {
         c_volatile_store(hook, @@thrice)
         t |> equal(invoke(hook, 4), 12)
     }
-    t |> run("the interpreter refuses a reinterpret of a crt call's uint64 result to a pointer; the JIT takes it") @(t : T?) {
+    t |> run("a reinterpret of a crt call's uint64 result to a pointer runs under the interpreter (F67, fixed upstream) and the JIT") @(t : T?) {
         let interp = runtime_child("volatile_reinterpret", REINTERPRET_SOURCE, false)
-        t |> equal(interp.out |> find("typed eval on wrong extern return kind") >= 0, true, interp.out)
+        t |> equal(interp.rc, 0, interp.out)
+        t |> equal(program_output(interp.out), "7\n", interp.out)
         let jit = runtime_child_flags("volatile_reinterpret_jit", REINTERPRET_SOURCE, jit_flags())
         t |> equal(jit.rc, 0, jit.out)
         t |> equal(program_output(jit.out), "7\n", jit.out)

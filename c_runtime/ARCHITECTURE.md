@@ -215,9 +215,8 @@ as-if-converted fixture test landing first.
   das call around it: 1.3x on a load loop), which is why the piece re-exports `crt`, and `bool`,
   an eight-byte value and a by-value parameter go through `c_volatile_read`, one overload per C
   scalar width, `bool` through its byte, and a generic over any eight-byte value (a pointer, a
-  function value) through its bits, whose load lands the bits in a local before the reinterpret:
-  the interpreter refuses a reinterpret of a `crt` call's `uint64` result straight to a pointer
-  ("typed eval on wrong extern return kind", F67), which the JIT takes. The generic store writes
+  function value) through its bits, the `crt` call's `uint64` result reinterpreted straight to the
+  type (F67 re-probed green). The generic store writes
   any value's bits through the unsigned forwarder of its size.
 - `c_runtime/c_volatile_jit.das` - the `[llvm_code]` generators `c_volatile::load` and
   `c_volatile::store`: a load through the reference or pointer argument with the result's LLVM

@@ -136,13 +136,13 @@ def private kept_hint(_x : int?) {
 
 [test]
 def test_empty_call_effects(t : T?) {
-    t |> run("a call to an empty function whose argument hides an effect inside `addr` goes with the effect; [sideeffects] keeps both (c_prefetch)") @(t : T?) {
+    t |> run("a call to an empty function whose argument hides an effect inside `addr` keeps the effect (F70, fixed upstream); [sideeffects] keeps it too (c_prefetch)") @(t : T?) {
         var i = 0
         var arr : int[3]
         empty_hint(unsafe(addr(arr[i++])))
-        t |> equal(i, 0)
-        kept_hint(unsafe(addr(arr[i++])))
         t |> equal(i, 1)
+        kept_hint(unsafe(addr(arr[i++])))
+        t |> equal(i, 2)
     }
 }
 
@@ -151,12 +151,13 @@ let FOLDED_RECURSION = "options gen2\nvar step : int = 4\n\ndef through(n : int)
 
 [test]
 def test_folded_global_read(t : T?) {
-    t |> run("the optimizer folds a constant-argument call into mutually recursive functions reading a global before the global holds its value (docs/probe-findings.md F73); -no-optimization prints the program's own answer") @(t : T?) {
+    t |> run("a constant-argument call into mutually recursive functions reading a global computes what -no-optimization computes (docs/probe-findings.md F73, fixed upstream)") @(t : T?) {
         // looks_pure(2) = through(1) * 2 = (looks_pure(0) + 4) * 2 = 12
         let honest = daslang_child_flags("folded_recursion_noopt", FOLDED_RECURSION, ["-no-optimization"])
         t |> equal(honest.rc, 0, honest.out)
         t |> equal(honest.out, "12\n")
         let folded = daslang_child_flags("folded_recursion", FOLDED_RECURSION, array<string>())
-        t |> success(folded.out != "12\n", "the fold now reads the initialized global: {folded.out}; F73 is fixed upstream, the probe and the finding change")
+        t |> equal(folded.rc, 0, folded.out)
+        t |> equal(folded.out, "12\n")
     }
 }

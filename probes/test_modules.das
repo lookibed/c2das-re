@@ -184,12 +184,12 @@ def test_caches(t : T?) {
         t |> equal(program_output(second.out), program_output(first.out))
         rmdir_rec(dir)
     }
-    t |> run("daslang's module cache serves a module whose included fragment changed from the stale cache (docs/probe-findings.md F72); a change to the including file's own text refreshes it") @(t : T?) {
+    t |> run("daslang's module cache refreshes a module whose included fragment changed (docs/probe-findings.md F72, fixed upstream); so does a change to the including file's own text") @(t : T?) {
         let dir = write_tree("module_cache", [probe_file("k_cluster.das", CLUSTER), probe_file("f1.das.inc", FRAGMENT_ONE), probe_file("f2.das.inc", FRAGMENT_TWO), probe_file("main.das", "options gen2\nrequire k_cluster\n[export]\ndef main \{\n    print(\"\{f1(3)\}\\n\")\n\}\n")])
         runs_as(t, "first run", run_plain(dir), "init f1\ninit f2\n12\n")
         fwrite(path_join(dir, "f1.das.inc"), FRAGMENT_ONE |> replace("* 2", "* 3"))
         // f1(3) = (f1(1) + 4) * 3 with f1(1) = 3: 21 is the edited fragment's answer
-        runs_as(t, "stale", run_plain(dir), "init f1\ninit f2\n12\n")
+        runs_as(t, "fresh", run_plain(dir), "init f1\ninit f2\n21\n")
         runs_as(t, "uncached", run_main(dir, ["-no-module-cache"]), "init f1\ninit f2\n21\n")
         fwrite(path_join(dir, "k_cluster.das"), CLUSTER + "// fragments 1\n")
         runs_as(t, "refreshed", run_plain(dir), "init f1\ninit f2\n21\n")

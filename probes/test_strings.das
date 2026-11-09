@@ -67,9 +67,11 @@ def test_strings(t : T?) {
 
 [test]
 def test_regex_alternation(t : T?) {
-    t |> run("daslib regex: a repeated group whose alternatives share a prefix misses a match (F71); an optional suffix finds it") @(t : T?) {
+    t |> run("daslib regex: a repeated group whose alternatives share a prefix backtracks into them (F71, fixed upstream); an optional suffix finds it too") @(t : T?) {
         var prefixed <- regex_compile("x(aba|ab|b)*c")
-        t |> equal(regex_search(prefixed, "xabac").x, -1, "the engine settles on the first alternative and never retries the group")
+        t |> equal(regex_search(prefixed, "xabac").x, 0, "the quantifier retries the group's other alternatives")
+        var alternation <- regex_compile("\\b(__asm__|__asm|asm)(\\s|__volatile__|__volatile|volatile)*\\(")
+        t |> equal(regex_search(alternation, "x __asm __volatile__ (").x, 2)
         var optional <- regex_compile("x(ab(a)?|b)*c")
         t |> equal(regex_search(optional, "xabac").x, 0)
         var keyword <- regex_compile("\\b(__asm(__)?|asm)(\\s|__volatile(__)?|volatile)*\\(")
