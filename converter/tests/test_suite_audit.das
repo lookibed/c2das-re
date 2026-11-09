@@ -7,7 +7,8 @@ require ../../suites/suite_runner.das
 
 //! The runner's skip audit (`--audit-skips`) over a stand-in suite: only the ledgered ids run,
 //! each outcome lands in `work/skip_audit.tsv` with its feature, and the ratchet is untouched but
-//! under `--update`, which only adds the ids that passed.
+//! under `--update`, which only adds the ids that passed. The runner's `--tier`: each tier runs
+//! the suite, an unknown tier and `--update` under any but the interpreter are refused.
 
 def torture_verdict(id : string; _c_path : string; rc : int; output : string) : Outcome =>
     rc != 0 ? Outcome(id = id, status = "exit", reason = "exited {rc}: {first_line(output)}") : Outcome(id = id, status = "pass", reason = "")
@@ -64,7 +65,7 @@ def test_audit_suite(t : T?) {
     }
     t |> run("only the ledgered ids run, each with its feature, into work/skip_audit.tsv; a ledgered id with no file is missing") @(t : T?) {
         let spec = make_suite(dir, 60.0)
-        let rows <- audit_suite(spec, "", "linux", @@torture_verdict)
+        let rows <- audit_suite(spec, "", "linux", "interp", @@torture_verdict)
         let seen = join([for (r in rows); "{r.id}:{r.feature}:{r.status}"], " ")
         t |> equal(seen, "bad:feature b:exit ghost:feature a:missing ok:feature a:pass spin:feature c:missing")
         t |> success(find(fread(path_join(spec.work_dir, "skip_audit.tsv")), "ghost\tfeature a\tmissing\tno ghost.c in ") >= 0)
@@ -77,7 +78,7 @@ def test_audit_suite(t : T?) {
     }
     t |> run("a filter narrows the missing ids too") @(t : T?) {
         let spec = make_suite(dir, 60.0)
-        let rows <- audit_suite(spec, "ok", "linux", @@torture_verdict)
+        let rows <- audit_suite(spec, "ok", "linux", "interp", @@torture_verdict)
         t |> equal(join([for (r in rows); "{r.id}:{r.status}"], " "), "ok:pass")
     }
     t |> run("--update joins the audited ids that pass to the ratchet, sorted; a failure, a timeout or a missing file joins nothing") @(t : T?) {
@@ -90,7 +91,7 @@ def test_audit_suite(t : T?) {
     t |> run("a run past the suite's timeout is `timeout`, not `exit`") @(t : T?) {
         let spec = make_suite(dir, 3.0)
         fwrite(path_join(spec.tests_dir, "spin.c"), "int main(void) \{ volatile int x = 1; while (x) \{ \} return 0; \}\n")
-        let rows <- audit_suite(spec, "spin", "linux", @@torture_verdict)
+        let rows <- audit_suite(spec, "spin", "linux", "interp", @@torture_verdict)
         t |> equal(length(rows), 1)
         if (length(rows) == 1) {
             t |> equal(rows[0].status, "timeout")
@@ -154,6 +155,74 @@ def test_audit_cli(t : T?) {
         var out : string
         t |> equal(run_torture(root, "--audit-skips --update", out), 0, out)
         t |> equal(fread(ratchet), "# gcc_torture tests that pass under the interpreter; the ratchet, kept sorted\nok\nplain\n")
+    }
+    rmdir_rec(root)
+}
+
+[test]
+def test_tier_refusal(t : T?) {
+    t |> run("every tier of SUITE_TIERS runs, --update only under the interpreter; any other tier is refused by name") @(t : T?) {
+        for (tier in SUITE_TIERS) {
+            t |> equal(tier_refusal(tier, false), "", tier)
+        }
+        t |> equal(tier_refusal("interp", true), "")
+        t |> equal(tier_refusal("jit", true), "--update records the interpreter's ratchet; run it under --tier interp")
+        t |> equal(tier_refusal("exe", true), "--update records the interpreter's ratchet; run it under --tier interp")
+        t |> equal(tier_refusal("aot", false), "unknown tier `aot`: one of interp, jit, exe")
+        t |> equal(tier_refusal("", false), "unknown tier ``: one of interp, jit, exe")
+    }
+}
+
+// whether a JIT library sits under `root`'s `.cache/daslang`: the interpreter caches only modules there
+def has_jit_library(root : string) : bool {
+    var out : string
+    run_and_capture(["bash", "-c", "find \"$1/.cache/daslang\" -name '*.dll' 2>/dev/null | head -1", "jit", root], out, 60.0)
+    return !empty(strip(out))
+}
+
+[test]
+def test_tier_cli(t : T?) {
+    var dir_error : string
+    let root = create_temp_directory("c2das_tier_cli", dir_error)
+    t |> equal(dir_error, "")
+    if (empty(root)) {
+        return
+    }
+    let ratchet = make_torture_tree(root)
+    let exe = path_join(root, "suites/gcc_torture/work/plain/plain_exe")
+    t |> run("--tier interp, the default, runs the ratchet's id in the interpreter: no JIT library, no exe") @(t : T?) {
+        var out : string
+        t |> equal(run_torture(root, "--tier interp --filter plain", out), 0, out)
+        t |> success(fexist(path_join(root, "suites/gcc_torture/work/plain/plain.das")), out)
+        t |> equal(has_jit_library(root), false, out)
+        t |> equal(fexist(exe), false, out)
+    }
+    t |> run("--tier jit runs it under the JIT, whose library lands in the working folder's cache") @(t : T?) {
+        var out : string
+        t |> equal(run_torture(root, "--tier jit --filter plain", out), 0, out)
+        t |> success(has_jit_library(root), out)
+        t |> equal(fexist(exe), false, out)
+    }
+    t |> run("--tier exe builds the module's executable beside it and runs that") @(t : T?) {
+        var out : string
+        t |> equal(run_torture(root, "--tier exe --filter plain", out), 0, out)
+        t |> success(fexist(exe), out)
+    }
+    t |> run("a listed id that fails under a tier breaks the ratchet under that tier") @(t : T?) {
+        fwrite(path_join(root, "suites/gcc_torture/fetch/gcc/gcc/testsuite/gcc.c-torture/execute/plain.c"), "int main(void) \{ return 5; \}\n")
+        var out : string
+        t |> equal(run_torture(root, "--tier jit --filter plain", out), 1, out)
+        t |> success(out |> contains("ratchet broken, these passed before: plain"), out)
+    }
+    t |> run("an unknown tier exits 2 naming the tiers, --update under the JIT exits 2; neither runs a test") @(t : T?) {
+        rmdir_rec(path_join(root, "suites/gcc_torture/work"))
+        var out : string
+        t |> equal(run_torture(root, "--tier aot", out), 2, out)
+        t |> success(out |> contains("unknown tier `aot`: one of interp, jit, exe"), out)
+        t |> equal(run_torture(root, "--tier jit --update", out), 2, out)
+        t |> success(out |> contains("--update records the interpreter's ratchet"), out)
+        t |> equal(fexist(path_join(root, "suites/gcc_torture/work")), false, out)
+        t |> equal(fread(ratchet), RATCHET_TEXT)
     }
     rmdir_rec(root)
 }
