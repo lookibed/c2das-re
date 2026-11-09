@@ -63,7 +63,8 @@ gate_lint() {
     [ ${#das_dirs[@]} -gt 0 ] || { skipped lint "no .das folders"; return 0; }
     local files; mapfile -t files < <(das_files)
     local out; out=$(das "$DASLANG_ROOT/utils/lint/main.das" -- "${files[@]}" --quiet --disable LINT019 2>&1) || { echo "$out" | tail -20; fail lint "findings above"; return 1; }
-    echo "$out" | grep -q " 0 issue(s)" && pass lint || { echo "$out" | tail -20; fail lint "findings above"; }
+    # under --quiet a clean run prints nothing at all (daScript abf1d40e35), else its summary
+    { [ -z "$out" ] || echo "$out" | grep -q " 0 issue(s)"; } && pass lint || { echo "$out" | tail -20; fail lint "findings above"; }
 }
 gate_compile() {
     local n=0 f
