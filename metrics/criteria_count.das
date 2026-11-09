@@ -127,16 +127,54 @@ def private span_text(toks : array<Tok>; a, b : int) : string => join([for (i in
 // whether the call opened at `open` (the index of `(`) takes a bare number literal and nothing else
 def private literal_argument(toks : array<Tok>; open : int) : bool => open + 2 < length(toks) && toks[open + 1].kind == TokKind.number && toks[open + 2].text == ")"
 
+// the defects an identifier token at `i` spells, into `sites`; a cast of a bare literal sets
+// `literal_cast` instead of a site
+def private ident_defects(toks : array<Tok>; i : int; modules : table<string; bool>; var sites : table<string; int>; var literal_cast : bool&) {
+    let t = toks[i]
+    let n = length(toks)
+    let next = i + 1 < n ? toks[i + 1].text : ""
+    if (is_temp_name(t.text)) {
+        sites["temp_name"]++
+    }
+    if (t.text |> starts_with("_c_")) {
+        sites["c_renames"]++
+    } elif (t.text == "label" && i + 1 < n && toks[i + 1].kind == TokKind.number) {
+        sites["label_stubs"]++
+    } elif (next == "(" && has_value(CAST_NAMES, t.text) && !(i > 0 && toks[i - 1].text == ".")) {
+        if (literal_argument(toks, i + 1)) {
+            literal_cast = true
+        } else {
+            sites["cast"]++
+        }
+    } elif (t.text == "addr" && next == "(") {
+        sites["addr"]++
+        if (i + 3 < n && ((toks[i + 2].text == "deref" && toks[i + 3].text == "(") || (toks[i + 2].kind == TokKind.ident && toks[i + 3].text == ")" && i + 4 < n && toks[i + 4].text == "."))) {
+            sites["addr_deref"]++
+        }
+    } elif (t.text == "deref" && next == "(") {
+        sites["deref"]++
+        if (i + 3 < n && toks[i + 2].text == "addr" && toks[i + 3].text == "(") {
+            sites["addr_deref"]++
+        }
+    } elif (t.text == "reinterpret" && !string_reinterpret(toks, i)) {
+        sites["reinterpret_casts"]++
+    } elif ((t.text == "var" || t.text == "let") && i + 1 < n && (is_temp_name(next) || is_numbered(next, "_first"))) {
+        sites["temporaries"]++
+    } elif (next == "::" && (t.text == "__" || key_exists(modules, t.text))) {
+        sites["qualified_calls"]++
+    }
+}
+
 // the per-function defects of one line, added into `sites` by criterion
 def private line_defects(toks : array<Tok>; modules : table<string; bool>; var sites : table<string; int>) {
     let n = length(toks)
     if (n == 1 && toks[0].text == "\{") {
         sites["stray_braces"]++
     }
-    var literal_cast = false
     sites["lost_parens"] += lost_parens(toks)
     var assigns = 0
     var assign_at = -1
+    var literal_cast = false
     for (i, t in count(), toks) {
         if (t.text == "=") {
             assigns++
@@ -144,36 +182,7 @@ def private line_defects(toks : array<Tok>; modules : table<string; bool>; var s
         }
         let next = i + 1 < n ? toks[i + 1].text : ""
         if (t.kind == TokKind.ident) {
-            if (is_temp_name(t.text)) {
-                sites["temp_name"]++
-            }
-            if (t.text |> starts_with("_c_")) {
-                sites["c_renames"]++
-            } elif (t.text == "label" && i + 1 < n && toks[i + 1].kind == TokKind.number) {
-                sites["label_stubs"]++
-            } elif (next == "(" && has_value(CAST_NAMES, t.text) && !(i > 0 && toks[i - 1].text == ".")) {
-                if (literal_argument(toks, i + 1)) {
-                    literal_cast = true
-                } else {
-                    sites["cast"]++
-                }
-            } elif (t.text == "addr" && next == "(") {
-                sites["addr"]++
-                if (i + 3 < n && ((toks[i + 2].text == "deref" && toks[i + 3].text == "(") || (toks[i + 2].kind == TokKind.ident && toks[i + 3].text == ")" && i + 4 < n && toks[i + 4].text == "."))) {
-                    sites["addr_deref"]++
-                }
-            } elif (t.text == "deref" && next == "(") {
-                sites["deref"]++
-                if (i + 3 < n && toks[i + 2].text == "addr" && toks[i + 3].text == "(") {
-                    sites["addr_deref"]++
-                }
-            } elif (t.text == "reinterpret" && !string_reinterpret(toks, i)) {
-                sites["reinterpret_casts"]++
-            } elif ((t.text == "var" || t.text == "let") && i + 1 < n && (is_temp_name(next) || is_numbered(next, "_first"))) {
-                sites["temporaries"]++
-            } elif (next == "::" && (t.text == "__" || key_exists(modules, t.text))) {
-                sites["qualified_calls"]++
-            }
+            ident_defects(toks, i, modules, sites, literal_cast)
         } elif (t.kind == TokKind.number && i + 2 < n && toks[i + 2].kind == TokKind.number && has_value(ARITH_OPS, next) && !(i > 0 && toks[i - 1].text == ".")) {
             sites["literal_arithmetic"]++
         } elif (t.text == "?" && i + 3 < n && next == "1" && toks[i + 2].text == ":" && toks[i + 3].text == "0") {
