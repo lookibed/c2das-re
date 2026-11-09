@@ -68,14 +68,9 @@ before the matching one; the jump lands on a group whose test holds, since the g
 every other value out and each value's label stands before its own group, so a failing test there,
 which would fall into the next group, never runs. A goto into another case group jumps straight to the das label put before
 the label's `_flag ||= _gotoN == k` line: no re-dispatch label, no chain walk, no sentinel, and
-every case test reads `_cond == v` alone; `_gotoN` still selects and clears the split. Every group's
-branch ends in `else { c_label_end() }`: daslang's optimizer moves what follows an `if` with no
-`else` whose branch ends in `break`, `return` or `continue` into one, the next labels too, and the
-jump would then miss them under the interpreter (lookibed/daScript#35, the fold of #8). The jump
-table's labels take the numbers below every C label of the function, after the inner switches',
-and the C labels move up past them: a loop takes a goto whose number is below its body's label
-count as its own, so case labels above `startfunc` would capture lvm's `goto startfunc` (F60). Both
-facts are `probes/test_goto.das`'s; the interpreter and the JIT run the form alike. A sparse
+every case test reads `_cond == v` alone; `_gotoN` still selects and clears the split. The jump
+table's labels take the numbers after the function's C labels, an inner switch's before the one
+around it (`number_restarts`); the interpreter and the JIT run the form alike. A sparse
 switch, one that falls through, one under 8 values or past `int`, and Duff's device keep the forms
 above, except that under the option a switch spelled open takes its own table (below).
 
@@ -94,12 +89,7 @@ largest value, past `int`; `dispatch_plan` reads its values so too): `if (_cond 
 _cond + (base - lo)`, case value `v` at `label base + v - lo:  // case v`, and `label D` at `default`
 with a `label K:  // no case v` before it for each value of [lo, hi] no case holds, or at the end
 when the switch has none; any other keeps the `if`/`elif` goto chain. switch_goto's `run_code` is so
-a flat label CFG in its loop body, the Rust translation's form. An `if` with no `else` whose branch
-ends in `return` before a case label needs `guard_label_folds`'s `else` here too
-(lookibed/daScript#35); the guard reads the computed goto as a goto to every label of its table,
-since with `default` first, or a returning one, no `goto label` above the `if` names the labels after
-it (`probes/test_goto.das`, the flat label CFG), and a matched-flag switch's `if (_contN) { continue }`
-epilogue is marked like a C `if`, since it can stand right above a flat case label. A table whose
+a flat label CFG in its loop body, the Rust translation's form. A table whose
 `base - lo` is past `int` (cases from `INT_MIN`) jumps by `goto (_cond - (lo)) + base`, the value's
 distance from `lo`. The pass that renames hiding locals before emission plans the labels under the
 same option, so a case group's declaration that the flat switch moves to its parent's level is
@@ -116,27 +106,14 @@ deeper block has every bare block between them (a block that is its parent's sta
 emitted without braces, so the label lands in a scope the goto sees, its locals renamed where
 they would meet a global or another local of their name (`ARCHITECTURE_EMITTER.md` section 4); an
 `if`, loop or switch on that way is spelled open (below). A goto over a declaration skips its
-initializer, which is C's rule too (`probes/test_goto.das`). A label in a das block other
-than a loop's body (llex.c's `no_save: break;` once a switch's if-chain drops the tail `break`, a
-label ending a function body or an `if` branch, one before `if (DEBUG) {...}`) is followed at once by
-`c_label_end()`, a `[sideeffects]` no-op the module itself defines (`def private`): daslang's
-interpreter jumps only to a statement inside such a block, and its optimizer folds an empty block
-or a statement without effect away, an `if` or `while` whose body it can drop included
-(`docs/probe-findings.md` F62). The definition lives in the module because the JIT inlines a
-module-local call to nothing, where a call into a c_runtime piece stays a call: the switch_local
-kernel's jit lane paid 17 percent for it. A C program that names `c_label_end` itself fails
-closed. A loop body takes a jump to its end as the next iteration and gets
-none; the block is a loop's when the line that opens it is a `while`, the only loop the lowering
-spells. daslang's optimizer also moves the statements after an `if` with no `else` whose
-branch ends in `return`, `break` or `continue` into an `else`, a label among them, so a goto above
-that `if` misses the label under the interpreter (lookibed/daScript#8). `emit_if` marks the closing
-line of each C `if` with no `else` whose branch ends so as spelled (`closes`: a `return`, a `break`
-or `continue` that stays das's, or an `if` whose every arm does, which the optimizer turns into one
-`return` of a `?:`), and once a function with labels is spelled `guard_label_folds` gives each
-marked `if` with a label after it in its block, which a goto above the `if`'s end names,
-`else { c_label_end() }`, an `else` the optimizer keeps. A goto after the `if`
-sits in the folded tail with its label and needs none, so Duff's `if (count <= 0) { return 0 }`
-before its dispatch stays as written.
+initializer, which is C's rule too (`probes/test_goto.das`). A label stands bare wherever it
+falls, the last statement of an `if` branch or a function body included (llex.c's
+`no_save: break;` once a switch's if-chain drops the tail `break`), and an `if` with no `else`
+whose branch ends in `return`, `break` or `continue` keeps no `else` for a label after it: daslang
+since `abf1d40e35` jumps to a label that ends a block and folds no early-exit `if` when a label
+follows it in the block (`probes/test_goto.das`, `docs/probe-findings.md` F62 and F60; the
+`c_label_end()` statement and the `else { c_label_end() }` guard the earlier daslang needed are
+gone, P8.10).
 
 A goto into another case group of a switch around both (`goto dflt` from a `case` of lstrlib.c's
 `match`, `goto l_tforcall` and `goto ret` in lvm.c's `luaV_execute`) re-dispatches the switch:
@@ -158,16 +135,12 @@ with `_gotoN = 0`, which consumes the pending goto; every goto to the label, one
 own group too, stores `k` into `_gotoN` and jumps to `label K:  // re-dispatch`, the first
 statement of the loop body, before the flag's declaration. A label after a declaration of its own
 group fails closed, since the split would end the declaration's scope. The re-dispatch label stands
-at the top of the loop body because daslang's optimizer moves the statements after an `if` whose
-branch ends in `break` into an `else`, so a label among them escapes a goto from that branch, and
-no such tail holds the top; the re-dispatch labels take the numbers below the C labels, an inner
-switch's below the one around it, because daslang's loop node takes a goto whose number is below
-the count of its body's labels as one of its own (`docs/probe-findings.md` F60,
-`probes/test_goto.das`). No numbering serves a case group of such a switch that holds a plain C
-label and makes a goto that leaves the group, a re-dispatch or a goto out of the switch: under the
-interpreter its branch is a labelled block that passes no goto outward, and a labelled loop in it
-claims every goto numbered below its label count (F60, F63), so `check_labelled_groups` refuses it
-with the label and the goto named.
+at the top of the loop body, before the flag's declaration, and the re-dispatch labels take the
+numbers after the C labels, an inner switch's before the one around it (`number_restarts`). A case
+group of such a switch that holds a plain C label and makes a goto that leaves the group, a
+re-dispatch or a goto out of the switch, is lowered like any other: daslang since `abf1d40e35`
+passes a goto out of a labelled block or loop body to the block around it
+(`docs/probe-findings.md` F60, F63; `converter/tests/test_lowerings.das`, the labelled case groups).
 
 ### A goto into a body {#goto-into-body}
 
@@ -181,10 +154,10 @@ involved. Every other construct of the function keeps its structured form. An `i
 `if (!(c)) { <the arm no goto enters>; goto label E }`, the entered arm, `label E:  // end if`,
 the test kept as written (`if (c)`) when the entered arm is `else`; both arms flat are
 `if (!(c)) { goto label L }`, the then arm, `goto label E` unless it leaves, `label L:  // else`, the
-else arm, `label E`. An arm no goto enters is flat as well when it holds a label of its own, since
-braced it would be a labelled block passing no goto outward (F63), or ends in a leaving statement,
-since daslang's optimizer moves the statements after an `if` whose branch ends in `return`, `break`
-or `continue` into an `else`, a later label among them (lookibed/daScript#8). A `while` or `for` is
+else arm, `label E`. An arm no goto enters is flat as well when it holds a label of its own or ends
+in a leaving statement (`open_path`): the form the earlier daslang needed, which lost a goto out of
+a labelled block (F63) and folded a label after such an `if` into an `else` (lookibed/daScript#8);
+`abf1d40e35` fixed both, and keeping such arms braced is P8.11's. A `while` or `for` is
 its initializer, `label T:`, `if (!(c)) { goto label E }`, the body, a `label N:  // for next`
 before the increment when the body holds a `continue` of the loop, `goto label T`, `label E:`; a
 `do` is `label T:`, the body, the `continue` label, `if (c) { goto label T }`, and its end label
@@ -193,11 +166,11 @@ one `if`/`elif` per case label to that label's `goto`, `else` to `default` or th
 flat with every case label `label K:  // case v`. A C `break` of an open loop or switch is a goto to
 its end and a `continue` of an open loop one to its test or increment (`break_gotos`, `cont_flags`);
 a das loop or matched-flag switch inside keeps das's own. A block left braced that holds an open
-construct holds its labels, and a goto leaving such a block fails under the interpreter: a das
-loop's body claims a goto numbered below its label count and jumps to a slot of -1 (F60,
-lookibed/daScript#19), any other labelled block passes no goto outward (F63); so every such block a
-goto leaves is opened as well (`open_left_blocks`: a bare block loses its braces, an arm or body
-opens its `if`, loop or switch), until none is left. The labels the lowering adds are numbered
+construct holds its labels, and every such block a goto leaves is opened as well
+(`open_left_blocks`: a bare block loses its braces, an arm or body opens its `if`, loop or switch),
+until none is left: the earlier daslang lost a goto out of a labelled block or loop body (F60,
+lookibed/daScript#19, F63), `abf1d40e35` passes it outward, and leaving such blocks braced is
+P8.11's. The labels the lowering adds are numbered
 after the function's C labels, which keep their numbers, and the comment names the construct. A
 goto into an arm of a setjmp `if` fails closed, as does, under `chain`, an open switch that a goto
 from another case re-dispatches (`switch_dispatch` `goto` lowers it, above). The open form is the C's own jumps made explicit: no flag is tested and no loop
