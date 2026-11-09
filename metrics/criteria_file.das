@@ -17,7 +17,7 @@ require daslib/functional
 //! the gate print.
 
 //! The raw counts an input records, sorted; `metrics/ARCHITECTURE_CRITERIA.md` defines each.
-let RAW_KEYS <- ["addr_deref_sites", "addr_sites", "blowup_lines", "bool_roundtrip_sites", "c_char_literals", "c_code_lines", "c_comment_lines", "c_constant_uses", "c_files", "c_files_converted", "c_includes", "c_macro_calls", "c_renames_sites", "c_repeated_lines", "c_strings", "c_switches", "cast_sites", "das_char_literals", "das_code_lines", "das_comment_lines", "das_comments_carried", "das_constant_names", "das_macro_calls", "das_repeated_lines", "das_requires", "das_string_reinterprets", "deref_sites", "discarded_temps", "flag_lines", "flag_switches", "fn_addr_deref", "fn_bool_roundtrip", "fn_c_renames", "fn_label_stubs", "fn_lines_max", "fn_lines_median", "fn_lines_p90", "fn_literal_arithmetic", "fn_long", "fn_lost_parens", "fn_matched", "fn_median_x100", "fn_p90_x100", "fn_qualified_calls", "fn_reinterpret_casts", "fn_stray_braces", "fn_temporaries", "fn_total", "fn_within", "fn_worst_x100", "goto_state_lines", "label_stubs_sites", "layout_check_lines", "literal_arithmetic_sites", "long_lines", "lost_parens_sites", "modules", "modules_late_bound", "modules_layout_check", "modules_long_lines", "qualified_calls_sites", "reinterpret_casts_sites", "self_assignments", "setjmp_loops", "setjmp_sites", "stray_braces_sites", "temp_name_sites", "temporaries_sites"]
+let RAW_KEYS <- ["addr_deref_sites", "addr_sites", "blowup_lines", "bool_roundtrip_sites", "c_char_literals", "c_code_lines", "c_comment_lines", "c_constant_uses", "c_files", "c_files_converted", "c_includes", "c_macro_calls", "c_renames_sites", "c_repeated_lines", "c_strings", "c_switches", "cast_sites", "das_char_literals", "das_code_lines", "das_comment_lines", "das_comments_carried", "das_constant_names", "das_macro_calls", "das_repeated_lines", "das_requires", "das_string_reinterprets", "deref_sites", "discarded_temps", "flag_lines", "flag_switches", "fn_addr_deref", "fn_bool_roundtrip", "fn_c_renames", "fn_label_stubs", "fn_lines_max", "fn_lines_median", "fn_lines_p90", "fn_literal_arithmetic", "fn_long", "fn_lost_parens", "fn_matched", "fn_median_x100", "fn_p90_x100", "fn_qualified_calls", "fn_reinterpret_casts", "fn_stray_braces", "fn_temporaries", "fn_total", "fn_within", "fn_worst_x100", "goto_state_lines", "label_stubs_sites", "layout_check_lines", "literal_arithmetic_sites", "literal_cast_lines", "long_lines", "lost_parens_sites", "modules", "modules_late_bound", "modules_layout_check", "modules_long_lines", "qualified_calls_sites", "reinterpret_casts_sites", "self_assignments", "setjmp_loops", "setjmp_sites", "stray_braces_sites", "temp_name_sites", "temporaries_sites"]
 
 //! One input's raw counts by name, the das-to-C line ratio of each matched function, x100, and the
 //! body code lines of each das function of the program's own.
@@ -173,11 +173,11 @@ def compliance(criterion : string; c : table<string; int>) : double {
 
 //! The densities, each a count of sites per thousand das code lines, in the order of the table: what
 //! the das text spells first, then what the C source had and the output lost.
-let DENSITIES <- ["casts", "addr", "deref", "reinterpret", "string_casts", "temp_names", "stray_braces", "labels", "switch_machinery", "setjmp_loops", "qualified_calls", "c_renames", "bool_roundtrip", "lost_parens", "literal_arithmetic", "repeated_lines", "long_lines", "layout_checks", "lost_comments", "unnamed_constants", "macro_expansions", "lost_chars", "blowup_lines"]
+let DENSITIES <- ["casts", "literal_casts", "addr", "deref", "reinterpret", "string_casts", "temp_names", "stray_braces", "labels", "switch_machinery", "setjmp_loops", "qualified_calls", "c_renames", "bool_roundtrip", "lost_parens", "literal_arithmetic", "long_lines", "layout_checks", "lost_comments", "unnamed_constants", "macro_expansions", "lost_chars", "blowup_lines", "excess_repeats"]
 
 //! The densities a C source is needed for: not applicable where a row has no C code lines, the
 //! hand-written ports among them.
-let C_SIDE_DENSITIES <- ["lost_comments", "unnamed_constants", "macro_expansions", "lost_chars", "blowup_lines"]
+let C_SIDE_DENSITIES <- ["lost_comments", "unnamed_constants", "macro_expansions", "lost_chars", "blowup_lines", "excess_repeats"]
 
 //! The total of the densities read off the das text alone, the one a hand-written port has too.
 let DAS_SIDE = "das_side"
@@ -185,7 +185,7 @@ let DAS_SIDE = "das_side"
 //! The total of every applicable density.
 let TOTAL = "total"
 
-let private DENSITY_SITES <- {"casts" => "cast_sites", "addr" => "addr_sites", "deref" => "deref_sites", "reinterpret" => "reinterpret_casts_sites", "string_casts" => "das_string_reinterprets", "temp_names" => "temp_name_sites", "stray_braces" => "stray_braces_sites", "labels" => "label_stubs_sites", "setjmp_loops" => "setjmp_loops", "qualified_calls" => "qualified_calls_sites", "c_renames" => "c_renames_sites", "bool_roundtrip" => "bool_roundtrip_sites", "lost_parens" => "lost_parens_sites", "literal_arithmetic" => "literal_arithmetic_sites", "repeated_lines" => "das_repeated_lines", "long_lines" => "long_lines", "layout_checks" => "layout_check_lines", "blowup_lines" => "blowup_lines"}
+let private DENSITY_SITES <- {"casts" => "cast_sites", "literal_casts" => "literal_cast_lines", "addr" => "addr_sites", "deref" => "deref_sites", "reinterpret" => "reinterpret_casts_sites", "string_casts" => "das_string_reinterprets", "temp_names" => "temp_name_sites", "stray_braces" => "stray_braces_sites", "labels" => "label_stubs_sites", "setjmp_loops" => "setjmp_loops", "qualified_calls" => "qualified_calls_sites", "c_renames" => "c_renames_sites", "bool_roundtrip" => "bool_roundtrip_sites", "lost_parens" => "lost_parens_sites", "literal_arithmetic" => "literal_arithmetic_sites", "long_lines" => "long_lines", "layout_checks" => "layout_check_lines", "blowup_lines" => "blowup_lines"}
 
 // what the C source had that the output lost: the C count less the das count that kept it
 def private lost(c : table<string; int>; had, kept : string) : double => max(raw(c, had) - raw(c, kept), 0.0lf)
@@ -204,6 +204,10 @@ def density_sites(criterion : string; c : table<string; int>) : double {
         return lost(c, "c_macro_calls", "das_macro_calls")
     } elif (criterion == "lost_chars") {
         return lost(c, "c_char_literals", "das_char_literals")
+    } elif (criterion == "excess_repeats") {
+        let c_lines = raw(c, "c_code_lines")
+        let own_share = c_lines <= 0.0lf ? 0.0lf : raw(c, "c_repeated_lines") / c_lines
+        return max(raw(c, "das_repeated_lines") - own_share * raw(c, "das_code_lines"), 0.0lf)
     }
     return NOT_APPLICABLE
 }
@@ -392,7 +396,7 @@ def read_criteria(text : string; var error : string&) : CriteriaCapture {
 
 //! The raw keys a capture recorded before they existed lacks: a base the delta reads them as 0,
 //! and the density delta says so when the base lacks a density's key.
-let LATER_RAW_KEYS <- ["c_files", "c_files_converted", "addr_sites", "blowup_lines", "c_macro_calls", "cast_sites", "das_macro_calls", "deref_sites", "fn_lines_max", "fn_lines_median", "fn_lines_p90", "fn_long", "fn_p90_x100", "fn_total", "temp_name_sites"]
+let LATER_RAW_KEYS <- ["c_files", "c_files_converted", "addr_sites", "blowup_lines", "c_macro_calls", "cast_sites", "das_macro_calls", "deref_sites", "fn_lines_max", "fn_lines_median", "fn_lines_p90", "fn_long", "fn_p90_x100", "fn_total", "literal_cast_lines", "temp_name_sites"]
 
 //! The top-level keys a capture recorded before the `density` section existed may lack.
 let LATER_SECTIONS <- ["density"]

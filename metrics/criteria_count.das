@@ -20,7 +20,9 @@ let BLOWUP_LIMIT = 1.5
 let CONVERTER_FUNCTION_PREFIX = "c2das_"
 
 //! The type names whose call is a cast: the numeric types, the pointer-sized integers and the
-//! `c_runtime` enum cast.
+//! `c_runtime` enum cast. A cast of a bare number literal (`uint8(7)`, a table entry or a typed
+//! zero) is a `literal_cast_lines` line, not a `cast` site: a table of a thousand entries is a few
+//! lines a reader skips, and the literal's own spelling is what a suffix would replace.
 let CAST_NAMES <- ["int", "uint", "int8", "uint8", "int16", "uint16", "int64", "uint64", "float", "double", "intptr", "uintptr", "enum_from_int"]
 
 //! A line longer than this many bytes is a long line.
@@ -122,12 +124,16 @@ def lost_parens(toks : array<Tok>) : int {
 
 def private span_text(toks : array<Tok>; a, b : int) : string => join([for (i in range(a, b)); toks[i].text], " ")
 
+// whether the call opened at `open` (the index of `(`) takes a bare number literal and nothing else
+def private literal_argument(toks : array<Tok>; open : int) : bool => open + 2 < length(toks) && toks[open + 1].kind == TokKind.number && toks[open + 2].text == ")"
+
 // the per-function defects of one line, added into `sites` by criterion
 def private line_defects(toks : array<Tok>; modules : table<string; bool>; var sites : table<string; int>) {
     let n = length(toks)
     if (n == 1 && toks[0].text == "\{") {
         sites["stray_braces"]++
     }
+    var literal_cast = false
     sites["lost_parens"] += lost_parens(toks)
     var assigns = 0
     var assign_at = -1
@@ -146,7 +152,11 @@ def private line_defects(toks : array<Tok>; modules : table<string; bool>; var s
             } elif (t.text == "label" && i + 1 < n && toks[i + 1].kind == TokKind.number) {
                 sites["label_stubs"]++
             } elif (next == "(" && has_value(CAST_NAMES, t.text) && !(i > 0 && toks[i - 1].text == ".")) {
-                sites["cast"]++
+                if (literal_argument(toks, i + 1)) {
+                    literal_cast = true
+                } else {
+                    sites["cast"]++
+                }
             } elif (t.text == "addr" && next == "(") {
                 sites["addr"]++
                 if (i + 3 < n && ((toks[i + 2].text == "deref" && toks[i + 3].text == "(") || (toks[i + 2].kind == TokKind.ident && toks[i + 3].text == ")" && i + 4 < n && toks[i + 4].text == "."))) {
@@ -174,6 +184,7 @@ def private line_defects(toks : array<Tok>; modules : table<string; bool>; var s
         sites["temporaries"]++
         sites["self_assignments"]++
     }
+    sites["literal_cast_lines"] += literal_cast ? 1 : 0
 }
 
 //! Whether the `reinterpret` at `at` casts a string literal: `reinterpret<T>("...")`.
@@ -406,6 +417,7 @@ def count_criteria(sources : array<CSource>; modules : array<DasModule>; constan
         c["{d}_sites"] = sites?[d] ?? 0
     }
     c["self_assignments"] = sites?["self_assignments"] ?? 0
+    c["literal_cast_lines"] = sites?["literal_cast_lines"] ?? 0
     for (d in FUNCTION_DEFECTS) {
         c["fn_{d}"] = fn_count?[d] ?? 0
     }

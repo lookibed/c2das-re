@@ -195,6 +195,12 @@ def test_function_criteria(t : T?) {
         let none = in_f("    var n : int = 3\n    x = o.int(y)\n    y = float3(1.0, 2.0, 3.0)\n    z = type<int>")
         t |> equal(got(none, "cast_sites"), 0)
     }
+    t |> run("a cast of a bare number literal is a literal-cast line, once per line, not a cast site") @(t : T?) {
+        let c = in_f("    t = [[uint8 uint8(0); uint8(1); uint8(8)]]\n    x = uint64(0) + uint(y)\n    z = int(0x10 + 1)")
+        t |> equal(got(c, "literal_cast_lines"), 2)
+        t |> equal(got(c, "cast_sites"), 2, "`uint(y)` and `int(0x10 + 1)`: an expression is no bare literal")
+        t |> equal(got(in_f("    x = int(y)"), "literal_cast_lines"), 0)
+    }
     t |> run("addr and deref sites, all of them; the pair criterion stays the pairs") @(t : T?) {
         let c = in_f("    x = addr(b).n + addr(deref(p + i)) + deref(addr(a[0]) + i)\n    y = deref(p) + addr(q)")
         t |> equal(got(c, "addr_sites"), 4)
@@ -210,7 +216,7 @@ def test_function_criteria(t : T?) {
         t |> equal(got(in_f("    var t0 = p\n    return _tx + _t"), "temp_name_sites"), 0)
     }
     t |> run("the sites count over the whole module, the function flags over matched functions only") @(t : T?) {
-        let c = raw_of("int f(void) \{\n  return 1;\n\}\n", "var g = int(7)\ndef f : int \{\n    return int(1)\n\}\ndef helper : int \{\n    return int(2) + int(3)\n\}\n")
+        let c = raw_of("int f(void) \{\n  return 1;\n\}\n", "var g = int(h)\ndef f : int \{\n    return int(a)\n\}\ndef helper : int \{\n    return int(b) + int(d)\n\}\n")
         t |> equal(got(c, "cast_sites"), 4)
         t |> equal(got(c, "fn_matched"), 1)
     }
@@ -375,6 +381,10 @@ def test_density(t : T?) {
         t |> equal(density("unnamed_constants", {"c_constant_uses" => 10, "das_constant_names" => 4, "das_code_lines" => 1000, "c_code_lines" => 1}), 6.0lf)
         t |> equal(density("macro_expansions", {"c_macro_calls" => 3, "das_macro_calls" => 0, "das_code_lines" => 1000, "c_code_lines" => 1}), 3.0lf)
         t |> equal(density("lost_chars", {"c_char_literals" => 2, "das_char_literals" => 5, "das_code_lines" => 1000, "c_code_lines" => 1}), 0.0lf)
+        t |> equal(density("literal_casts", {"literal_cast_lines" => 3, "das_code_lines" => 1000}), 3.0lf)
+        t |> equal(density("excess_repeats", {"das_repeated_lines" => 300, "das_code_lines" => 1000, "c_repeated_lines" => 100, "c_code_lines" => 500}), 100.0lf, "300 repeated, the C's own share 20% of 1000 is 200")
+        t |> equal(density("excess_repeats", {"das_repeated_lines" => 100, "das_code_lines" => 1000, "c_repeated_lines" => 400, "c_code_lines" => 500}), 0.0lf)
+        t |> equal(density("excess_repeats", {"das_repeated_lines" => 100, "das_code_lines" => 1000}), NOT_APPLICABLE)
         t |> equal(density("lost_comments", {"c_comment_lines" => 10, "das_code_lines" => 1000}), NOT_APPLICABLE, "no C code: a hand-written port")
         t |> equal(density("casts", {"cast_sites" => 5}), NOT_APPLICABLE)
         t |> equal(density("no_such_density", full_raw(1)), NOT_APPLICABLE)
@@ -585,7 +595,7 @@ def test_capture_text(t : T?) {
         let with_hand = criteria_text(cap)
         t |> success(with_hand |> contains("\n  \"density\": \{\n    \"lua/lua\": \{\"casts\": "), with_hand)
         t |> success(with_hand |> contains("\n    \"hand/plmpeg-stream\": \{\"casts\": 50.0, "), with_hand)
-        t |> success(with_hand |> contains("\"lost_comments\": null, \"unnamed_constants\": null, \"macro_expansions\": null, \"lost_chars\": null, \"blowup_lines\": null, \"total\": 50.0, \"das_side\": 50.0\}"), with_hand)
+        t |> success(with_hand |> contains("\"lost_comments\": null, \"unnamed_constants\": null, \"macro_expansions\": null, \"lost_chars\": null, \"blowup_lines\": null, \"excess_repeats\": null, \"total\": 50.0, \"das_side\": 50.0\}"), with_hand)
         t |> success(with_hand |> contains("\n    \"programs\": \{\"casts\": "), with_hand)
         t |> success(find(with_hand, "\"hand/plmpeg-stream\": \{\"casts\"") < find(with_hand, "\"programs\": \{\"casts\""), "`programs` closes the section as `all` does")
         t |> success(find(with_hand, "\"density\":") < find(with_hand, "\"raw\":"), with_hand)
