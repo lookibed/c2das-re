@@ -1493,6 +1493,37 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `strict_aliasing: true` lane (A/S) at 0.85 on matmul, 0.95-1.00 elsewhere, Doom 0.98-1.00. Workarounds judged by
   the capture, none removed here: `options solid_context` (F80, the #43 lane), the root `strict_aliasing = false`
   (F95, the A lane); #38, #39 and #5 had no converter workaround.
+  Measured (branch `perf/recapture-abf1d40e35`: perf 437bf3a, compare cceb401, Doom 0c5b5f4 (5 samples; the
+  3-sample 98480bf had one disturbed sample in two cells), criteria 3259e3b; every group `heavy --exclusive`, machine
+  quiet 1-2%): compare geomeans ours interp 31.30 -> 30.99, JIT 1.20 -> 1.03, exe 1.21 -> 1.12, AOT 1.18 -> 1.19 (16
+  kernels now, switch_local builds); Rust interp 34.62 -> 35.39, JIT 1.32 -> 1.23, exe 1.41 -> 1.29. The JIT gain
+  is blit (1.25 -> 0.17 ours, 1.48 -> 0.48 Rust: the pin's, both sides), va_forward and first_member. Doom interp
+  58.6 / 59.7 / 58.4 -> 50.2 / 52.0 / 50.2 (P7.0s and the pin), JIT 1.09 / 1.13 / 1.11 -> 1.05 / 1.13 / 1.11.
+  Interp kernels: flat to +7% under the pin (the 11-07 text and today's measure the same on abf1d40e35), primes
+  2.65 -> 4.42 (lookibed/daScript#49: an inlined callee whose range loop returns early runs the caller 1.85x
+  slower). AOT sieve 8.80 -> 8.17, str_copy 3.71 -> 3.61, matmul 1.57 -> 1.60: the AOT half of #5 is not fixed
+  (lookibed/daScript#48: `aot_cpp.das` reads every global through the hash probe under solid_context). #43: sieve
+  JIT solid/no-solid 1.063, the F93 repro 1.074 (spreads 1%): still reproduces, the issue stays open; solid pays on
+  compound_lit 0.864, switch_local 0.853, setjmp_general 0.945 under the JIT and 0.62-0.64 under the interpreter.
+  strict_aliasing:true: every kernel and Doom's demos right, JIT and exe A/S 0.99-1.02, Doom JIT fps 0.7-4% lower:
+  no gain (the tags put every wider integer and pointer in one class), so no per-function
+  `[hint(no_strict_aliasing)]` row. Lua ports perf not re-measured: /mnt/d fell under the 8 GB floor (7 GB) before
+  that group; its 11-07 numbers stand, marked. Criteria +0.3 to +1.0 per program (label stubs, P8.10). Report:
+  `/root/notes/parallel/repin/report.md`.
+- **P8.13 The interpreter cost of an inlined early-return loop** (from P8.12, lookibed/daScript#49). Under
+  abf1d40e35 a small callee whose range loop returns early, called directly, runs its caller 1.85x slower under the
+  interpreter than with `[hint(noinline)]` on the callee (perf `primes` 2.65 -> 4.42x native; sieve, fib_loop and
+  str_copy +4-7% are candidates of the same cause, unproven). Wait for the fork issue; if it stays, A/B a converter
+  `[hint(noinline)]` on leaf functions holding a returning loop (interp gain against JIT cost), measured both ways.
+- **P8.14 AOT global reads** (from P8.12, lookibed/daScript#48). P7.3's parked AOT cells (sieve, matmul, now
+  str_copy) wait on `aot_cpp.das` emitting `das_global_solid` for reads under solid_context; no converter change.
+- **P8.15 Harness gaps found by the repin** (from P8.12 step 4 and the capture): (a) `lua/run.das --luac-check`
+  refuses `--tier exe` though `luac_check` goes through `run_tier` (exe checked by hand: 33/33); (b) `doom/run.das`
+  `without_define` edits the sidecar as text and leaves a trailing comma when the removed define is the last of a
+  multi-line array (the committed one-line sidecar is not affected); (c) blit's JIT at 0.17x native (Rust 0.48x):
+  read the JIT's code before quoting it as a win (profile phase).
+- **P8.16 The Lua ports perf on abf1d40e35** (from P8.12): re-capture the ports' Lua tables under
+  `heavy --exclusive` once /mnt/d has 8 GB free; the conversion at 1b3ea8d is in /root/wt-c2das-ports.
 ## P6 — Doom
 
 **Goal: the metric.**
