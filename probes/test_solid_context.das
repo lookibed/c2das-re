@@ -4,6 +4,7 @@ require strings
 require daslib/fio
 require daslib/strings_boost
 require ../converter/tiers.das
+require _daslang_child
 
 //! `options solid_context` in a converted program's modules: daslang's option list says it
 //! "prohibits AOT and patches"; a program of two solid modules, each holding module globals and
@@ -48,5 +49,24 @@ def test_solid_context(tt : T?) {
                 t |> success(cpp |> contains("inline int32_t c_main_"), "c_main compiled to C++")
             }
         }
+    }
+}
+
+// a global pointer assigned its own address, then written through and compared with it: 0 when the
+// assignment holds (gcc-torture pr17252's shape); `{SOLID}` is where the option goes
+let private SELF_ADDRESS = "options gen2\n\{SOLID\}\nvar a : uint8?\n\n[export]\ndef main : int \{\n    unsafe \{\n        a = reinterpret<uint8?>(addr(a))\n        deref(a) = uint8(uint(deref(a)) + 1u)\n        return intptr(a) == intptr(reinterpret<uint8?>(addr(a))) ? 3 : 0\n    \}\n\}\n"
+
+[test]
+def test_solid_self_address(t : T?) {
+    t |> run("under solid_context the JIT drops the store of a global pointer assigned its own address: the next deref reads null (F99, lookibed/daScript#47); the interpreter and a plain JIT keep it") @(t : T?) {
+        let solid = SELF_ADDRESS |> replace("\{SOLID\}", "options solid_context\n")
+        let interp = daslang_child_flags("self_address_interp", solid, array<string>())
+        t |> equal(interp.rc, 0, interp.out)
+        let jit = daslang_child_flags("self_address_jit", solid, jit_flags())
+        t |> success(jit_ran(jit.out), jit.out)
+        t |> success(jit.out |> contains("dereferencing null pointer, a is null"), jit.out)
+        let plain = daslang_child_flags("self_address_plain_jit", SELF_ADDRESS |> replace("\{SOLID\}", ""), jit_flags())
+        t |> success(jit_ran(plain.out), plain.out)
+        t |> equal(plain.rc, 0, plain.out)
     }
 }
