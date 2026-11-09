@@ -58,13 +58,20 @@ let private SELF_ADDRESS = "options gen2\n\{SOLID\}\nvar a : uint8?\n\n[export]\
 
 [test]
 def test_solid_self_address(t : T?) {
-    t |> run("under solid_context the JIT drops the store of a global pointer assigned its own address: the next deref reads null (F99, lookibed/daScript#47); the interpreter and a plain JIT keep it") @(t : T?) {
+    t |> run("under solid_context the JIT drops the store of a global pointer assigned its own address: the next deref reads null, under -exe alike (F99, lookibed/daScript#47); the interpreter and a plain JIT keep it") @(t : T?) {
         let solid = SELF_ADDRESS |> replace("\{SOLID\}", "options solid_context\n")
         let interp = daslang_child_flags("self_address_interp", solid, array<string>())
         t |> equal(interp.rc, 0, interp.out)
         let jit = daslang_child_flags("self_address_jit", solid, jit_flags())
         t |> success(jit_ran(jit.out), jit.out)
         t |> success(jit.out |> contains("dereferencing null pointer, a is null"), jit.out)
+        let exe = "{temp_directory_result() as value}/c2das_probe_self_address_exe"
+        let build = daslang_run("self_address_exe", solid, ["-exe"], array<string>(), "c2das_probe", ["-output", exe])
+        t |> equal(build.rc, 0, build.out)
+        var ran : string
+        t |> equal(run_and_capture([exe], ran, 60.0), 1, ran)
+        t |> success(ran |> contains("dereferencing null pointer, a is null"), ran)
+        remove(exe)
         let plain = daslang_child_flags("self_address_plain_jit", SELF_ADDRESS |> replace("\{SOLID\}", ""), jit_flags())
         t |> success(jit_ran(plain.out), plain.out)
         t |> equal(plain.rc, 0, plain.out)
