@@ -7,6 +7,11 @@ compliance percentage, 100 meaning the output has what a human port would have. 
 read off the text of the C sources and the emitted modules, never off a compiled AST, so a run
 needs no compile beyond the conversion's own.
 
+daslang's lint never runs on converted output: the repository's `.lint_config` and the preflight
+lint gate cover house code only, and the generated modules carry no lint options. A lint rule
+(the `STYLE047` comparators, `LINT003` on pointers, the line-length gate) reaches generated code
+only as a criterion here, decided per rule by what a human port would write.
+
 ## 1. File charters
 
 - `criteria.das` - the driver (`scripts/run_criteria.sh`): every Lua key and every ratchet suite

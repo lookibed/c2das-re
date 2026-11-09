@@ -2,6 +2,7 @@ options gen2
 
 module emit public
 
+require daslib/cmp
 require strings
 require daslib/strings_boost
 require daslib/strings_convert
@@ -5088,7 +5089,7 @@ def private in_group(site : LabelSite; depth : int; sw : uint64; group : int) : 
 [arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-labels")]
 def private check_labelled_groups(var em : Emitter; var plan : LabelPlan) {
     var names <- [for (name in keys(plan.labels)); name; where !key_exists(em.group_labels, name)]
-    sort(names) $(a, b) => (em.labels?[a] ?? 0) < (em.labels?[b] ?? 0)
+    sort(names) <| cmp_by(em.labels?[_] ?? 0)
     for (name in names) {
         var site : LabelSite
         site := plan.labels[name]
@@ -5602,7 +5603,7 @@ def private char_cases(body : CirStmt const?) : table<int64> {
 // no value of the condition stands in for a label, since the condition can hold any of them
 def private label_cases(var em : Emitter; st : CirStmt; reset : string; dispatch : GotoDispatch) {
     var names <- [for (name in keys(em.group_labels)); name; where(em.group_labels?[name] ?? 0ul) == intptr(st.body_s)]
-    sort(names) $(a, b) => (em.labels?[a] ?? 0) < (em.labels?[b] ?? 0)
+    sort(names) <| cmp_by(em.labels?[_] ?? 0)
     for (idx, name in range(length(names)), names) {
         em.label_index[name] = idx + 1
         em.label_flags[name] = numbered("_flag", em.switch_counter)

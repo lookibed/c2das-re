@@ -2,6 +2,7 @@ options gen2
 
 module suite_compare public
 
+require daslib/cmp
 require strings
 require daslib/strings_boost
 require daslib/fio
@@ -273,7 +274,7 @@ def drive_suite(spec : SuiteSpec; ids : array<string>; ratchet : Ratchet; jobs :
         let id = ids[index]
         outcomes |> push(case_outcome(id, id_tag(ratchet, id), killed, rc, limit, read_case_verdict(case_verdict_path(spec, id))))
     }
-    outcomes |> sort() $(a, b) => a.id < b.id
+    outcomes |> sort() <| cmp_by(_.id)
     return <- outcomes
 }
 

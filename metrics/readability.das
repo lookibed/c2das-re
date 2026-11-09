@@ -3,6 +3,7 @@ options gen2
 // the default 16 KB context stack, and dastest gives its tests this much
 options stack = 1048576
 
+require daslib/cmp
 require strings
 require daslib/strings_boost
 require daslib/fio
@@ -115,7 +116,7 @@ def private measure_all(keys : array<string>; jobs : int) : Measured {
         m.cap.inputs[g] = length([for (k in keys(m.cap.modules)); k; where group_of(k) == g])
     }
     m.failures |> sort()
-    m.sites |> sort() $(a, b) => a.key < b.key || (a.key == b.key && a.line < b.line)
+    m.sites |> sort() <| cmp_by(_.key, _.line)
     return <- m
 }
 

@@ -2,6 +2,7 @@ options gen2
 
 module suite_runner public
 
+require daslib/cmp
 require strings
 require daslib/strings_boost
 require daslib/fio
@@ -191,7 +192,7 @@ def audited_lines(lines : array<SkipLine>; filter : string) : array<SkipLine> {
             kept |> push(line)
         }
     }
-    kept |> sort() $(a, b) => a.id < b.id
+    kept |> sort() <| cmp_by(_.id)
     return <- kept
 }
 
@@ -248,7 +249,7 @@ def private status_counts(counts : table<string; int>) : string {
 //! feature, status, the reason's first line) and the per-feature tally logged.
 def finish_audit(name, work_dir : string; rows : array<AuditRow>) {
     var sorted := rows
-    sorted |> sort() $(a, b) => a.id < b.id
+    sorted |> sort() <| cmp_by(_.id)
     mkdir_rec(work_dir)
     let path = "{work_dir}/skip_audit.tsv"
     let text = build_string() $(writer) {
