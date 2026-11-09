@@ -1440,6 +1440,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   function, a record result, the general form's `return setjmp(b)`, the flat site's returning
   branch) matches the native build under interp, JIT and exe. Unblocks the setjmp JIT lane parked on
   F75 (P5.2): the lowering puts no `return` in an arm, so the JIT runs what the interpreter runs.
+- **P8.8 Exit codes of a death by signal** (ruling 37 phase 1, repin PR2). daScript `f386f92a35`
+  (lookibed/daScript#37) makes `run_and_capture` report a child killed by signal N as exit code
+  128 + N, as a shell does, where it reported N. The Lua suite check read a cgroup cap's kill as
+  `SIGKILL` (9), so a native run killed at the memory cap read as a native failure (`oracle`, "native
+  exited 137") instead of `memory`: `lua/run.das` now takes 137. The probes that pinned 11 for a
+  SIGSEGV (`probes/test_unchecked.das`, F84) pin 139; `perf/perf_lanes.das` already read 128 + N
+  through its `sh` wrapper. No other harness compares a run's code with a bare signal number.
 
 ## P6 — Doom
 
