@@ -13,10 +13,10 @@ require ../converter/tiers.das
 require suite_files public
 
 //! The runner every suite shares: each `<id>.c` of the suite is converted into `work/<id>/`
-//! under the `linux` dialect, run under the interpreter, and judged by the suite's own
-//! verdict; `expected_pass.txt` is the ratchet (a listed id that stops passing fails the run, a
-//! newly passing one is reported and `--update` records it) and `skip.txt` the ledger of the
-//! ids never run. A suite is a `SuiteSpec` and a verdict function.
+//! under the `linux` dialect, run under `--tier` (the interpreter unless given), and judged by
+//! the suite's own verdict; `expected_pass.txt` is the ratchet (a listed id that stops passing
+//! fails the run, a newly passing one is reported and `--update` records it) and `skip.txt` the
+//! ledger of the ids never run. A suite is a `SuiteSpec` and a verdict function.
 
 [CommandLineArgs]
 struct Args {
@@ -28,12 +28,26 @@ struct Args {
     verbose : bool
     @clarg_doc = "dialect for the conversion: linux (this host's baseline) or msvc"
     target : string = "linux"
+    @clarg_doc = "tier the converted tests run under: interp (default), jit or exe; the ratchet is the interpreter's, so --update needs interp"
+    tier : string = "interp"
     @clarg_doc = "run only the ids skip.txt lists, writing work/skip_audit.tsv; the ratchet is not judged, and only --update writes it, adding the audited ids that pass"
     audit_skips : bool
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
     show_help : bool
+}
+
+//! The tiers a suite runs under (`--tier`).
+let SUITE_TIERS <- ["interp", "jit", "exe"]
+
+//! Why a run under `tier` is refused, "" when it is not: a tier outside `SUITE_TIERS`, or
+//! `update` under any tier but the interpreter's, whose ratchet `expected_pass.txt` is.
+def tier_refusal(tier : string; update : bool) : string {
+    if (!has_value(SUITE_TIERS, tier)) {
+        return "unknown tier `{tier}`: one of {join(SUITE_TIERS, ", ")}"
+    }
+    return update && tier != "interp" ? "--update records the interpreter's ratchet; run it under --tier interp" : ""
 }
 
 //! the folder each file-based suite's tests sit in, from the repository root
@@ -115,9 +129,9 @@ def write_ratchet(name, expected_pass : string; ids : array<string>) {
     fwrite(expected_pass, "# {name} tests that pass under the interpreter; the ratchet, kept sorted\n{join(lines, "")}")
 }
 
-//! A C file converted into `work` under `target` and, when it converts, run under the
-//! interpreter with both module folders loaded: `converted` false with the error's first line,
-//! or the exit code and merged output of the run.
+//! A C file converted into `work` under `target` and, when it converts, run under `tier` (one of
+//! `SUITE_TIERS`) with both module folders loaded: `converted` false with the error's first
+//! line, or the exit code and merged output of the run.
 struct ConvertedRun {
     converted : bool
     error : string
@@ -125,13 +139,8 @@ struct ConvertedRun {
     output : string
 }
 
-def convert_and_run(c_path, work, target : string; timeout : float) : ConvertedRun {
-    let no_flags : array<string>
-    return convert_and_run(c_path, work, target, timeout, no_flags)
-}
-
-//! `flags` go to the interpreter before the module (`-no-module-cache`).
-def convert_and_run(c_path, work, target : string; timeout : float; flags : array<string>) : ConvertedRun {
+//! `flags` go to the interpreter or the JIT before the module (`-no-module-cache`).
+def convert_and_run(c_path, work, target, tier : string; timeout : float; flags : array<string>) : ConvertedRun {
     var run : ConvertedRun
     let res <- convert(c_path, work, target)
     if (!res.ok) {
@@ -139,7 +148,7 @@ def convert_and_run(c_path, work, target : string; timeout : float; flags : arra
         return run
     }
     run.converted = true
-    run.rc = run_tier(res.das_path, "interp", work, run.output, CONVERTED_MODULES, timeout, flags)
+    run.rc = run_tier(res.das_path, tier, work, run.output, CONVERTED_MODULES, timeout, flags)
     return run
 }
 
@@ -155,10 +164,11 @@ def compare_output(id : string; rc : int; output, expected : string) : Outcome {
     return Outcome(id = id, status = "pass", reason = "")
 }
 
-// convert and run one test; the suite's verdict judges a module that ran within the timeout
-def private run_one(spec : SuiteSpec; id : string; target : string; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : Outcome {
+// convert and run one test under `tier`; the suite's verdict judges a module that ran within the timeout
+def private run_one(spec : SuiteSpec; id : string; target, tier : string; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : Outcome {
     let c_path = "{spec.tests_dir}/{id}.c"
-    let run = convert_and_run(c_path, "{spec.work_dir}/{id}", target, spec.run_timeout)
+    let no_flags : array<string>
+    let run = convert_and_run(c_path, "{spec.work_dir}/{id}", target, tier, spec.run_timeout, no_flags)
     if (!run.converted) {
         return Outcome(id = id, status = "convert", reason = run.error)
     }
@@ -266,9 +276,9 @@ def finish_audit(name, work_dir : string; rows : array<AuditRow>) {
 }
 
 //! The skip audit of a file-based suite: every id `skip.txt` lists whose name holds `filter`
-//! is converted and run as an unlisted id would be, and a listed id with no `.c` file is
-//! `missing`; the rows, which `finish_audit` wrote too.
-def audit_suite(spec : SuiteSpec; filter, target : string; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : array<AuditRow> {
+//! is converted and run under `tier` as an unlisted id would be, and a listed id with no `.c` file
+//! is `missing`; the rows, which `finish_audit` wrote too.
+def audit_suite(spec : SuiteSpec; filter, target, tier : string; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : array<AuditRow> {
     var present : table<string>
     for (id in c_file_ids(spec.tests_dir, filter)) {
         present |> insert(id)
@@ -276,7 +286,7 @@ def audit_suite(spec : SuiteSpec; filter, target : string; verdict : function<(i
     var rows : array<AuditRow>
     for (line in audited_lines(read_skip_lines(spec.skip_ledger), filter)) {
         if (key_exists(present, line.id)) {
-            rows |> push(audit_row(line.feature, run_one(spec, line.id, target, verdict)))
+            rows |> push(audit_row(line.feature, run_one(spec, line.id, target, tier, verdict)))
         } else {
             rows |> push(AuditRow(id = line.id, feature = line.feature, status = "missing", reason = "no {line.id}.c in {spec.tests_dir}"))
         }
@@ -318,12 +328,17 @@ def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : s
     if (parsed >= 0) {
         return parsed
     }
+    let refusal = tier_refusal(args.tier, args.update)
+    if (!empty(refusal)) {
+        to_log(LOG_ERROR, "{refusal}\n")
+        return 2
+    }
     if (!fexist(spec.tests_dir)) {
         to_log(LOG_ERROR, "{spec.tests_dir} is missing: run suites/{spec.name}/fetch.sh\n")
         return 2
     }
     if (args.audit_skips) {
-        let rows <- audit_suite(spec, args.filter, args.target, verdict)
+        let rows <- audit_suite(spec, args.filter, args.target, args.tier, verdict)
         if (args.update) {
             join_audit_passes(spec.name, spec.expected_pass, rows)
         }
@@ -336,7 +351,7 @@ def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : s
             count_status(tally, "skip")
             continue
         }
-        record(tally, ratchet, run_one(spec, id, args.target, verdict), args.verbose)
+        record(tally, ratchet, run_one(spec, id, args.target, args.tier, verdict), args.verbose)
     }
     return finish_run(spec.name, spec.expected_pass, tally, args.update, !empty(args.filter), tally.passed)
 }
@@ -396,8 +411,14 @@ def run_workers(count, jobs : int; timeout : float; start : block<(index : int) 
 //! A worker of `script`: the script run with both module folders loaded and `--one <id>`, the
 //! file `stale` it writes removed first, so a worker that dies leaves none behind.
 def spawn_one(script, id, stale : string) : process {
+    let no_args : array<string>
+    return spawn_one(script, id, stale, no_args)
+}
+
+//! `worker_args` follow `--one <id>` on the worker's command line (`--tier jit`).
+def spawn_one(script, id, stale : string; worker_args : array<string>) : process {
     var argv <- daslang_cmd(CONVERTED_MODULES)
-    argv |> push_from([script, "--", "--one", id])
+    argv |> push_from([script, "--", "--one", id], worker_args)
     let noenv : array<string>
     remove(stale)
     return unsafe(spawn_process(argv, "", noenv))
