@@ -594,10 +594,10 @@ def private readme_text(port : Port; release : Release; gen : Generation; comman
         let load = "daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime"
         w |> write("{load} lua/lua.das -- -e \"print(1+1)\"\n")
         w |> write("{load} -jit lua/lua.das -- bench/fib.lua\n")
-        w |> write("{load} -exe lua/lua.das -output lua && ./lua.exe bench/fib.lua\n")
+        w |> write("{load} -exe lua/lua.das -output lua && ./lua bench/fib.lua\n")
         w |> write("{load} luac/luac.das -- -o out.luac script.lua\n")
         w |> write("{load} single/lua.das -- -e \"print(1+1)\"\n```\n\n")
-        w |> write("Everything after `--` is the program's own command line; daslang names the `-exe` binary with `.exe` on every platform.\n\n")
+        w |> write("Everything after `--` is the program's own command line; daslang writes the `-exe` binary at the `-output` path as given.\n\n")
         w |> write("## Upstream tests\n\n")
         w |> write("The results c2das-re's {port.claims_item} recorded for this program, not results of this publish's run; ")
         w |> write("the perf section's test-suite row runs the release's test suite once the perf tables are on:\n\n")

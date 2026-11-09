@@ -5,8 +5,8 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 ## 5. The four tiers
 
 `interp` runs `daslang <module>`, `jit` runs `daslang -jit <module>`, `exe` runs `daslang -exe
-<module> -output <work>/<stem>_exe` and executes the binary (the JIT names it `.exe` on every
-platform), `aot` runs `daslang utils/aot/main.das -- -ctx <module> <work>/ctx/` and compiles
+<module> -output <work>/<stem>_exe` and executes the binary (written at the `-output` path as given),
+`aot` runs `daslang utils/aot/main.das -- -ctx <module> <work>/ctx/` and compiles
 the generated context with a C++ host (`aot_host_source`: `das::setCommandLineArguments(argc,
 argv)` as `daslang` and an `-exe` binary call it, so the program's arguments, passed after `--`,
 reach `get_user_args`; then `<stem>_create`, `<stem>_main`, `<stem>_destroy` from the generated

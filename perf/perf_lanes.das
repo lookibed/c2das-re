@@ -89,7 +89,6 @@ def run_error(rc : int; output : string) : string {
 def lane_binary(das_path, tier, work : string; module_dirs, program_args : array<string>; var error : string&; timeout : float; address_space : int64 = 0l) : string {
     let bin = tier == "aot" ? aot_binary(das_path, work) : path_join(work, "{file_stem(das_path)}_exe")
     remove(bin)
-    remove(bin + ".exe")
     var out : string
     let no_flags, no_program : array<string>
     let rc = run_tier(das_path, tier, work, out, module_dirs, timeout, no_flags, program_args, guarded(no_program, address_space))
@@ -97,9 +96,8 @@ def lane_binary(das_path, tier, work : string; module_dirs, program_args : array
         error = "the build or its run took longer than {int(timeout)} s"
         return ""
     }
-    let built = fexist(bin + ".exe") ? bin + ".exe" : bin
-    if (rc >= 0 && fexist(built)) {
-        return built
+    if (rc >= 0 && fexist(bin)) {
+        return bin
     }
     // the tier refused before any build ran: its text is the reason
     if (rc == -1) {
