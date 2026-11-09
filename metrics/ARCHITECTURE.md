@@ -107,8 +107,8 @@ counters and `while_rangeable` need types it does not have.
 - `unsafe_expr` - an `unsafe(...)` expression. daslang keeps no node for it: the parser flags
   the wrapped expression `userSaidItsSafe`, and that flag is what counts. Inference turns
   `unsafe(p + i)` and `unsafe(p - i)` into a pointer-step call without the flag, located at its
-  operator (`probes/test_ast_facts.das`), so a pointer step also counts when the nearest open
-  parenthesis before its operator follows the word `unsafe`.
+  left operand (`probes/test_ast_facts.das`), so a pointer step also counts when the nearest open
+  parenthesis before its left operand follows the word `unsafe`.
 - `pointer_arith` - a pointer step: daslang infers `p + i`, `p - i`, `p - q`, `p++`, `p--`,
   `p += i` and `p -= i` into calls of the `i_das_ptr_` builtins, and each call counts once. The
   `addr(a[0]) + end_index(k, N)` form is one of them.

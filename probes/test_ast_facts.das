@@ -71,8 +71,10 @@ def test_ast_facts(t : T?) {
                     t |> equal(facts.unsafe_blocks, 1)
                     t |> equal(facts.addr_flagged, true)
                     t |> equal(facts.step_flagged, false)
-                    // the step sits at its operator: `var gp = unsafe(unsafe(addr(arr[0])) + 3)`
-                    t |> equal(facts.step_column, 37)
+                    // the step sits at its left operand, `unsafe(addr(arr[0]))` of
+                    // `var gp = unsafe(unsafe(addr(arr[0])) + 3)`, where daScript before abf1d40e35
+                    // put it at the operator (37)
+                    t |> equal(facts.step_column, 16)
                     t |> equal(facts.folded_enum, true)
                     unsafe {
                         delete facts

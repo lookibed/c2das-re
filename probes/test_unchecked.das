@@ -39,8 +39,9 @@ def test_unchecked(tt : T?) {
             t |> success(has_value(lines, "checked null panicked"), "{tier}: {out}")
             t |> success(has_value(lines, "unchecked null next"), "{tier}: {out}")
             t |> success(!(out |> contains("unchecked null 0")) && rc != 0, "{tier}: rc {rc}: {out}")
-            // the runner reads a death by signal 11 as exit code 11 (lookibed/daScript#37)
-            t |> equal(rc, 11, "{tier}: {out}")
+            // the runner reads a death by signal 11 as exit code 128 + 11 (daScript f386f92a35 fixed
+            // lookibed/daScript#37, where it read 11)
+            t |> equal(rc, 139, "{tier}: {out}")
         }
     }
 }
