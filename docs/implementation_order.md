@@ -1524,6 +1524,16 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   read the JIT's code before quoting it as a win (profile phase).
 - **P8.16 The Lua ports perf on abf1d40e35** (from P8.12): re-capture the ports' Lua tables under
   `heavy --exclusive` once /mnt/d has 8 GB free; the conversion at 1b3ea8d is in /root/wt-c2das-ports.
+  Done 2026-11-10 on box PC at 2a7bab3 (`capture_2026-11-09T231608Z.json` in the ports clone, uncommitted until the
+  next ports publish; 3 samples, `heavy --exclusive`, machine quiet 1%, Lua under a 3 GB address cap). Work x native
+  against the 11-07 capture at 9748560: JIT fib 4.88 -> 1.95, binary_trees 2.57 -> 1.44, nbody 3.98 -> 1.19,
+  spectral_norm 4.79 -> 1.62, test suite 1.44 -> 1.24 (P7.0x `jit_whole_program` plus the pin); jit-goto 1.58 / 1.29
+  / 1.05 / 1.43 / 1.20; exe 1.77 / 1.34 / 1.22 / 1.62 (-5 to -17%); interp lanes -5 to +8% (fib 216, test suite
+  26.6); startup from the module cache about halved on 0.6.5 (interp 3.42 -> 1.55 s, JIT 3.85 -> 1.96 s, single
+  5.57 -> 2.57 s). The predictions hit 23 of 37 cells within 10%: the work misses are compiled cells 11-15% better
+  than predicted and spectral_norm interp-single (+12%, inside the 8% run-to-run band of a second run), the startup
+  misses the faster cache. The exe test-suite cell still fails (the exe loads `dasCRuntime/` relative to the test
+  folder), as on 11-07.
 ## P6 — Doom
 
 **Goal: the metric.**
