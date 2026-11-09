@@ -174,31 +174,31 @@ Captured: c_testsuite (Rust `ce4647af2826`, 2026-11-01 02:54 UTC, unlabelled box
 
 ### Speed
 
-Captured 2026-11-06 21:34 UTC on linux x86_64, PC (AMD Ryzen 7 7435HS); clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.4; Rust `b1d012eb5d26`; 5 samples a cell. A cell is a lane's time over the native build's (lower is faster); the geomean row covers the kernels where native and both sides stand, their count in parentheses. A cell whose spread is above 20% is `suspect` with its spread, no ratio, and out of the geomean, as is a cell over a suspect native one.
+Captured 2026-11-09 16:02 UTC on linux x86_64, PC (AMD Ryzen 7 7435HS); clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1); daslang 0.6.5; Rust `b1d012eb5d26`; 5 samples a cell. A cell is a lane's time over the native build's (lower is faster); the geomean row covers the kernels where native and both sides stand, their count in parentheses. A cell whose spread is above 20% is `suspect` with its spread, no ratio, and out of the geomean, as is a cell over a suspect native one.
 
-| Kernel                   | native (s) | ours interpreter | Rust interpreter |           ours JIT |  Rust JIT |  ours exe |  Rust exe |  ours AOT |  Rust AOT |
-| :----------------------- | ---------: | ---------------: | ---------------: | -----------------: | --------: | --------: | --------: | --------: | --------: |
-| bit_pack                 |   0.000086 |           141.27 |           340.92 |               1.17 |      exit |      1.18 |      exit |      1.17 |      exit |
-| blit                     |   0.000364 |            44.83 |            28.53 |               1.25 |      1.48 |      2.09 |      1.76 |      0.84 |      0.74 |
-| compound_lit             |   0.000188 |            92.37 |            87.17 |               1.01 |      1.00 |      1.05 |      1.06 |      0.99 |      2.00 |
-| dasprofile/fib_loop      |   0.001463 |            20.64 |            62.43 |               1.00 |      1.00 |      1.00 |      1.02 |      1.00 |      1.00 |
-| dasprofile/fib_recursive |   0.003318 |             7.80 |            10.68 |               0.95 |   timeout |      1.00 |   timeout |      1.01 |      0.91 |
-| dasprofile/primes        |   0.014652 |             4.46 |             4.47 |               1.00 |      1.00 |      1.00 |      1.00 |      0.54 |      0.54 |
-| do_while_effect          |   0.001970 |            19.37 |            14.80 |               0.99 |      0.99 |      0.99 |      0.99 |      0.99 |      0.99 |
-| fib_loop                 |   0.001463 |            20.57 |            62.97 |               1.00 |      1.00 |      1.00 |      1.04 |      1.00 |      1.00 |
-| fib_recursive            |   0.003158 |             8.24 |            11.63 |               1.00 |   timeout |      1.06 |   timeout |      1.00 |      0.96 |
-| first_member             |   0.000581 |           101.75 |            80.20 |               1.28 |      1.16 |      1.28 |      1.45 |      1.09 |      1.03 |
-| fixed_mandel             |   0.000271 |            50.72 |            49.78 |               0.84 |      0.89 |      0.81 |      0.74 |      0.94 |      0.96 |
-| matmul                   |   0.000224 |            54.98 |            40.10 |               0.58 |      0.55 |      0.58 |      0.96 |      1.60 |      1.58 |
-| primes                   |   0.014649 |             2.63 |             2.59 |               1.00 |      1.00 |      1.00 |      1.00 |      0.54 |      0.54 |
-| qsort_cmp                |   0.000092 |             9.68 |          refused |               2.45 |   refused |      2.56 |   refused |      2.39 |   refused |
-| setjmp_general           |   0.000117 |            30.97 |          refused |              15.56 |   refused |     15.66 |   refused |     14.46 |   refused |
-| sieve                    |   0.001856 |            19.14 |            19.17 |               1.12 |      1.15 |      1.06 |      1.15 |      7.87 |      7.91 |
-| str_copy                 |   0.000302 |            54.57 |            50.12 |               1.15 |      1.15 |      1.08 |      1.02 |      3.59 |      3.61 |
-| switch_goto              |   0.000707 |            60.76 |            43.36 |               0.61 |      0.52 |      0.60 |      0.63 |      1.14 |      1.17 |
-| switch_local             |   0.000528 |            56.61 |            54.57 |               1.00 |      1.00 |      1.00 |      1.00 |   compile |      1.59 |
-| va_forward               |   0.000204 |           224.75 |           197.40 | suspect (±133.1%) |    114.15 |     18.93 |    112.55 |      exit |      exit |
-| geomean (kernels)        |            |       31.30 (18) |       34.62 (18) |          0.97 (14) | 0.96 (14) | 1.21 (15) | 1.41 (15) | 1.18 (15) | 1.22 (15) |
+| Kernel                   | native (s) | ours interpreter | Rust interpreter |  ours JIT |  Rust JIT |  ours exe |  Rust exe |  ours AOT |  Rust AOT |
+| :----------------------- | ---------: | ---------------: | ---------------: | --------: | --------: | --------: | --------: | --------: | --------: |
+| bit_pack                 |   0.000083 |           135.23 |           351.91 |      1.24 |      exit |      1.18 |      exit |      1.06 |      exit |
+| blit                     |   0.000358 |            45.40 |            28.99 |      0.17 |      0.48 |      0.80 |      0.49 |      0.83 |      0.73 |
+| compound_lit             |   0.000182 |            89.66 |            83.83 |      1.01 |      0.98 |      1.02 |      1.04 |      1.02 |      2.08 |
+| dasprofile/fib_loop      |   0.001453 |            21.39 |            66.03 |      1.00 |      1.00 |      1.00 |      1.02 |      1.00 |      1.00 |
+| dasprofile/fib_recursive |   0.003259 |             7.48 |            10.91 |      0.99 |   timeout |      0.90 |   timeout |      1.00 |      0.90 |
+| dasprofile/primes        |   0.014648 |             4.41 |             4.40 |      1.00 |      1.00 |      1.00 |      1.00 |      0.54 |      0.54 |
+| do_while_effect          |   0.001941 |            14.31 |            15.80 |      1.01 |      1.00 |      1.00 |      1.00 |      1.00 |      1.00 |
+| fib_loop                 |   0.001454 |            21.96 |            67.28 |      1.00 |      1.00 |      1.00 |      1.02 |      1.00 |      1.00 |
+| fib_recursive            |   0.003054 |             8.25 |            11.55 |      1.06 |   timeout |      0.96 |   timeout |      0.97 |      0.97 |
+| first_member             |   0.000571 |           102.32 |            81.26 |      1.16 |      1.17 |      1.16 |      1.43 |      1.12 |      1.03 |
+| fixed_mandel             |   0.000270 |            48.33 |            51.51 |      0.80 |      0.88 |      0.82 |      0.74 |      0.94 |      0.96 |
+| matmul                   |   0.000220 |            41.02 |            41.11 |      0.58 |      0.55 |      0.58 |      0.96 |      1.60 |      1.58 |
+| primes                   |   0.014617 |             4.42 |             2.41 |      1.00 |      1.00 |      1.00 |      1.00 |      0.54 |      0.54 |
+| qsort_cmp                |   0.000089 |             9.77 |          refused |      2.38 |   refused |      2.60 |   refused |      2.47 |   refused |
+| setjmp_general           |   0.000114 |            32.48 |          refused |     15.09 |   refused |     15.17 |   refused |     15.25 |   refused |
+| sieve                    |   0.001803 |            20.33 |            20.33 |      1.09 |      1.15 |      1.08 |      1.16 |      7.98 |      7.93 |
+| str_copy                 |   0.000294 |            57.96 |            53.48 |      1.15 |      1.15 |      0.99 |      1.02 |      3.55 |      3.62 |
+| switch_goto              |   0.000697 |            61.41 |            44.90 |      0.62 |      0.52 |      0.60 |      0.62 |      0.97 |      1.16 |
+| switch_local             |   0.000515 |            49.74 |            57.08 |      1.00 |      1.00 |      1.17 |      1.00 |      1.46 |      1.58 |
+| va_forward               |   0.000200 |           214.22 |           196.98 |     20.98 |    115.02 |     16.39 |    112.14 |      exit |      exit |
+| geomean (kernels)        |            |       30.99 (18) |       35.39 (18) | 1.03 (15) | 1.23 (15) | 1.12 (15) | 1.29 (15) | 1.19 (16) | 1.24 (16) |
 
 Error cells:
 
@@ -211,7 +211,6 @@ Error cells:
 - fib_recursive, Rust JIT: a sample took longer than 120 s
 - qsort_cmp, Rust: refused: translation failed: operation=top-level declaration lowering; c_type=Function(CQualTypeId { qualifiers: Qualifiers { is_const: false, is_restrict: false, is_...
 - setjmp_general, Rust: refused: translation failed: operation=top-level declaration lowering; c_type=Function(CQualTypeId { qualifiers: Qualifiers { is_const: false, is_restrict: false, is_...
-- switch_local, ours AOT: the build exited 1 and left no binary: compare/work/perf/switch_local/ours/ctx/switch_local.das.cpp:837:9: error: cannot jump from this goto statement to its...
 - va_forward, ours AOT: exited 1: EXCEPTION: out of heap memory, requested 256 bytes, used 4294900416 / limit 0
 - va_forward, Rust AOT: exited 1: EXCEPTION: out of heap memory, requested 512 bytes, used 3221225264 / limit 0
 
@@ -655,20 +654,20 @@ Doom: pending (P6).
 
 ### Real projects
 
-Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-06 22:11 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap); doomgeneric (Rust `b1d012eb5d26`, 2026-11-06 02:52 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-06 22:15 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-06 22:21 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap); quakegeneric (Rust `b1d012eb5d26`, 2026-11-06 02:41 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap); wasm3 (Rust `b1d012eb5d26`, 2026-11-06 02:48 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap).
+Each project of the Rust repository's `tests/manual` on its own fixture, checked against the `expected.stdout` of its canonical case in the Rust repository's `tests/canonical/cases.json`; the native build (the pinned clang with the README's flags) must print it too. Captured: binjgb (Rust `b1d012eb5d26`, 2026-11-09 16:37 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap); doomgeneric (Rust `b1d012eb5d26`, 2026-11-09 16:48 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap); h264bsd-mp4 (Rust `b1d012eb5d26`, 2026-11-09 16:41 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap); plmpeg-stream (Rust `b1d012eb5d26`, 2026-11-09 16:46 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap); quakegeneric (Rust `b1d012eb5d26`, 2026-11-09 17:02 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap); wasm3 (Rust `b1d012eb5d26`, 2026-11-09 16:58 UTC, PC (AMD Ryzen 7 7435HS), 6 GiB address-space cap).
 
 | Project       | Side | Native | interpreter |     JIT |     exe |     AOT |
 | :------------ | :--- | :----- | ----------: | ------: | ------: | ------: |
-| binjgb        | Ours | pass   |        pass |    pass |    pass | compile |
+| binjgb        | Ours | pass   |        pass |    pass |    pass |    pass |
 | binjgb        | Rust | pass   |        pass |    pass |    pass |    pass |
 | doomgeneric   | Ours | pass   |     refused | refused | refused | refused |
-| doomgeneric   | Rust | pass   |        pass |    pass |    pass |    pass |
+| doomgeneric   | Rust | pass   |        pass |    pass |    pass | timeout |
 | h264bsd-mp4   | Ours | pass   |        pass |    pass |    pass |    pass |
 | h264bsd-mp4   | Rust | pass   |        pass |    pass |    pass |    pass |
 | plmpeg-stream | Ours | pass   |        pass |    pass |    pass |    pass |
 | plmpeg-stream | Rust | pass   |        pass |    pass |    pass |    pass |
 | quakegeneric  | Ours | pass   |     refused | refused | refused | refused |
-| quakegeneric  | Rust | pass   |        pass |  output |    pass |    pass |
+| quakegeneric  | Rust | pass   |     compile | compile | compile | compile |
 | wasm3         | Ours | pass   |     refused | refused | refused | refused |
 | wasm3         | Rust | pass   |        pass |    pass |    pass |    pass |
 
@@ -678,45 +677,45 @@ Defines of our side's sidecar alone (the Rust side and the native build do not g
 
 Why a lane does not pass:
 
-- binjgb, Ours, AOT: compile: aot build: the build exited 1 and left no binary: compare/work/projects/binjgb/ours_run/aot/ctx/binjgb_all.das.cpp:8334:9: error: cannot jump from t...
 - doomgeneric, Ours, interpreter JIT exe AOT: refused: emitter: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/doomdata.h:57:9: record `mapvertex_t` is not laid out naturally: a pa...
+- doomgeneric, Rust, AOT: timeout: the build or its run took longer than 300 s
 - quakegeneric, Ours, interpreter JIT exe AOT: refused: emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/host_cmd.c:63:10: a pointer to a variadic function is not lowered yet
-- quakegeneric, Rust, JIT: output: line 1: got `[W] LLVM JIT: return inside try/recover leaves the try arm, not the function. at compare/work/projects/quakegeneric/rust/host.das.inc:66...
+- quakegeneric, Rust, interpreter JIT exe AOT: compile: error[30299]: return inside a try/recover arm; set a variable in the arm and return after the pair
 - wasm3, Ours, interpreter JIT exe AOT: refused: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_parse.c:305:22: `m3type_t argTypes[numArgs + 1]`: a variable-length array is not low...
 
 The bench entry's timed loop (`decode_us`), a lane's median over the native build's (lower is faster), 3 samples a cell; a cell whose spread is above 20% is `suspect` with its spread, no ratio, as is a lane over a suspect native build:
 
 | Project       | Side | Native compiler      | Native s | interpreter |      JIT |      exe |      AOT |
 | :------------ | :--- | :------------------- | -------: | ----------: | -------: | -------: | -------: |
-| binjgb        | Ours | clang version 22.1.8 | 0.063250 |       78.06 |     1.18 |     1.19 |  compile |
-| binjgb        | Rust | clang version 22.1.8 | 0.063250 |       71.64 |     1.07 |     1.04 |     1.07 |
-| doomgeneric   | Ours | clang version 22.1.8 | 0.117686 |     refused |  refused |  refused |  refused |
-| doomgeneric   | Rust | clang version 22.1.8 | 0.117686 |       33.58 |     1.07 |     1.08 |  timeout |
-| h264bsd-mp4   | Ours | clang version 22.1.8 | 0.081033 |       75.49 |     1.19 |     1.16 |     1.13 |
-| h264bsd-mp4   | Rust | clang version 22.1.8 | 0.081033 |       50.16 |     1.03 |     1.04 |     1.14 |
-| plmpeg-stream | Ours | clang version 22.1.8 | 0.041275 |       36.76 |     1.06 |     1.10 |     1.12 |
-| plmpeg-stream | Rust | clang version 22.1.8 | 0.041275 |       32.00 |     0.96 |     1.02 |     1.08 |
+| binjgb        | Ours | clang version 22.1.8 | 0.061238 |       73.00 |     1.20 |     1.24 |     1.30 |
+| binjgb        | Rust | clang version 22.1.8 | 0.061238 |       71.52 |     1.04 |     1.05 |     1.07 |
+| doomgeneric   | Ours | clang version 22.1.8 | 0.117230 |     refused |  refused |  refused |  refused |
+| doomgeneric   | Rust | clang version 22.1.8 | 0.117230 |       33.26 |     1.07 |     1.08 |  timeout |
+| h264bsd-mp4   | Ours | clang version 22.1.8 | 0.079643 |       67.37 |     1.16 |     1.14 |     1.13 |
+| h264bsd-mp4   | Rust | clang version 22.1.8 | 0.079643 |       49.65 |     1.03 |     1.04 |     1.14 |
+| plmpeg-stream | Ours | clang version 22.1.8 | 0.041427 |       34.42 |     1.06 |     1.07 |     1.06 |
+| plmpeg-stream | Rust | clang version 22.1.8 | 0.041427 |       29.54 |     0.95 |     1.00 |     1.05 |
 | quakegeneric  | Ours | clang version 22.1.8 | no bench |    no bench | no bench | no bench | no bench |
 | quakegeneric  | Rust | clang version 22.1.8 | no bench |    no bench | no bench | no bench | no bench |
-| wasm3         | Ours | clang version 22.1.8 | 0.001832 |     refused |  refused |  refused |  refused |
-| wasm3         | Rust | clang version 22.1.8 | 0.001832 |       65.58 |     2.67 |     2.49 |     1.49 |
+| wasm3         | Ours | clang version 22.1.8 | 0.001818 |     refused |  refused |  refused |  refused |
+| wasm3         | Rust | clang version 22.1.8 | 0.001818 |       65.08 |     2.69 |     2.71 |     1.53 |
 
 The code of each side's module (the Rust runtime is its `c2da_rt_` and `c2da_std_` declarations):
 
 | Project       | Side | Code    | Files | Lines | Runtime lines | c_function | goto | label | literal_named | pointer_arith | pointer_index | reinterpret | unsafe_block | unsafe_expr | while_rangeable |
 | :------------ | :--- | :------ | ----: | ----: | ------------: | ---------: | ---: | ----: | ------------: | ------------: | ------------: | ----------: | -----------: | ----------: | --------------: |
-| binjgb        | Ours | ok      |     1 |  8261 |             0 |        110 |   38 |    19 |          1778 |            88 |            43 |         810 |            0 |         119 |              23 |
-| binjgb        | Rust | ok      |     1 | 11481 |           956 |          0 |  670 |   867 |          2393 |            33 |           939 |        3818 |            8 |        5049 |              12 |
+| binjgb        | Ours | ok      |     1 |  8170 |             0 |        110 |   38 |    19 |          1744 |            54 |            43 |         295 |            0 |         119 |              14 |
+| binjgb        | Rust | ok      |     1 | 11481 |           956 |          0 |  670 |   867 |          2393 |            33 |           939 |        3705 |            8 |        5049 |              12 |
 | doomgeneric   | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
-| doomgeneric   | Rust | ok      |     1 | 37045 |          1579 |          0 |  435 |   612 |         43595 |           523 |          3454 |       10418 |          260 |       15426 |             169 |
-| h264bsd-mp4   | Ours | ok      |     1 | 21830 |             0 |        306 |    5 |     3 |          6619 |          1970 |          2079 |         363 |            0 |           0 |             133 |
-| h264bsd-mp4   | Rust | ok      |     1 | 24316 |           822 |          0 |  362 |   309 |          7164 |          1738 |          2701 |        5172 |         1208 |        8557 |              73 |
-| plmpeg-stream | Ours | ok      |     1 |  3619 |             0 |         64 |    0 |     0 |          2062 |            11 |           387 |          66 |            0 |           6 |               6 |
-| plmpeg-stream | Rust | ok      |     1 |  4988 |           822 |          0 |    0 |     0 |          1891 |            10 |           587 |         505 |            0 |        1259 |              11 |
+| doomgeneric   | Rust | ok      |     1 | 37045 |          1579 |          0 |  435 |   612 |         43595 |           523 |          3454 |        9882 |          260 |       15426 |             169 |
+| h264bsd-mp4   | Ours | ok      |     1 | 21478 |             0 |        306 |    5 |     3 |          6618 |          1970 |          2079 |         358 |            0 |           0 |              63 |
+| h264bsd-mp4   | Rust | ok      |     1 | 24316 |           822 |          0 |  362 |   309 |          7178 |          1738 |          2701 |        4495 |         1208 |        8557 |              73 |
+| plmpeg-stream | Ours | ok      |     1 |  3600 |             0 |         64 |    0 |     0 |          2062 |            11 |           387 |          66 |            0 |           6 |               5 |
+| plmpeg-stream | Rust | ok      |     1 |  4988 |           822 |          0 |    0 |     0 |          1891 |            10 |           587 |         474 |            0 |        1259 |              11 |
 | quakegeneric  | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
-| quakegeneric  | Rust | ok      |    72 | 59613 |          1781 |          0 |  461 |   578 |          2275 |           745 |          5761 |       10506 |          219 |       20287 |             203 |
+| quakegeneric  | Rust | compile |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
 | wasm3         | Ours | refused |     - |     - |             - |          - |    - |     - |             - |             - |             - |           - |            - |           - |               - |
-| wasm3         | Rust | ok      |     1 | 25827 |          1009 |          0 | 2393 |  2162 |          1827 |          2074 |           430 |        4550 |          814 |        6589 |              24 |
+| wasm3         | Rust | ok      |     1 | 25827 |          1009 |          0 | 2393 |  2162 |          1827 |          2074 |           430 |        4055 |          814 |        6589 |              24 |
 
 #### `binjgb`: `emulator_step_internal`
 
@@ -845,7 +844,7 @@ def private binjgb_all__ppu_mode3_synchronize(var e : Emulator?) {
                                     var palidx : uint8 = uint8(int(e.state.sgb.attr_map[idx >> 2]) >> 2 * (3 - (idx & 3)) & 3)
                                     pal = addr(e.sgb_pal[0]) + end_index(int(palidx), 4)
                                 } else {
-                                    pal = addr(e.pal[0]) + end_index(int(PaletteType.PALETTE_TYPE_BGP), 3)
+                                    pal = addr(e.pal[int(PaletteType.PALETTE_TYPE_BGP)])
                                 }
                                 priority = Bool.FALSE
                                 var tile_addr : uint16 = uint16((int(tile_index) * TILE_HEIGHT + int(my7)) * TILE_ROW_BYTES)
@@ -2063,9 +2062,7 @@ def plm_video_decode_block(var self : plm_video_t?; _c_block : int) {
         // Overwrite (no prediction)
         if (n == 1) {
             var clamped : int = int(plmpeg_file_all__plm_clamp(deref(s + 0) + 128 >> 8))
-            var _first = true
-            while (_first || 0 != 0) {
-                _first = false
+            {
                 var dest_scan : int = dw - 8
                 var source_scan : int = 8 - 8
                 for (y in range(8)) {
@@ -2081,9 +2078,7 @@ def plm_video_decode_block(var self : plm_video_t?; _c_block : int) {
             deref(s + 0) = 0
         } else {
             plm_video_idct(s)
-            var _first2 = true
-            while (_first2 || 0 != 0) {
-                _first2 = false
+            {
                 var dest_scan : int = dw - 8
                 var source_scan : int = 8 - 8
                 for (y in range(8)) {
@@ -2102,9 +2097,7 @@ def plm_video_decode_block(var self : plm_video_t?; _c_block : int) {
         // Add data to the predicted macroblock
         if (n == 1) {
             var value : int = deref(s + 0) + 128 >> 8
-            var _first3 = true
-            while (_first3 || 0 != 0) {
-                _first3 = false
+            {
                 var dest_scan : int = dw - 8
                 var source_scan : int = 8 - 8
                 for (y in range(8)) {
@@ -2120,9 +2113,7 @@ def plm_video_decode_block(var self : plm_video_t?; _c_block : int) {
             deref(s + 0) = 0
         } else {
             plm_video_idct(s)
-            var _first4 = true
-            while (_first4 || 0 != 0) {
-                _first4 = false
+            {
                 var dest_scan : int = dw - 8
                 var source_scan : int = 8 - 8
                 for (y in range(8)) {
@@ -2599,27 +2590,22 @@ def call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Resul
 
 - c_testsuite: Rust passes 202 of 220 ids, our ratchet 199; of the Rust passes 0 are ids we skip and 8 ids our ratchet does not list.
 - gcc_torture: Rust passes 1197 of 1656 ids, our ratchet 1179; of the Rust passes 41 are ids we skip and 67 ids our ratchet does not list.
-- blit, interpreter: Rust 28.53x native, ours 44.83x.
-- blit, exe: Rust 1.76x native, ours 2.09x.
-- blit, AOT: Rust 0.74x native, ours 0.84x.
-- compound_lit, interpreter: Rust 87.17x native, ours 92.37x.
-- dasprofile/fib_recursive, AOT: Rust 0.91x native, ours 1.01x.
-- do_while_effect, interpreter: Rust 14.80x native, ours 19.37x.
-- first_member, interpreter: Rust 80.20x native, ours 101.75x.
-- first_member, JIT: Rust 1.16x native, ours 1.28x.
-- first_member, AOT: Rust 1.03x native, ours 1.09x.
-- fixed_mandel, exe: Rust 0.74x native, ours 0.81x.
-- matmul, interpreter: Rust 40.10x native, ours 54.98x.
+- blit, interpreter: Rust 28.99x native, ours 45.40x.
+- blit, exe: Rust 0.49x native, ours 0.80x.
+- blit, AOT: Rust 0.73x native, ours 0.83x.
+- compound_lit, interpreter: Rust 83.83x native, ours 89.66x.
+- dasprofile/fib_recursive, AOT: Rust 0.90x native, ours 1.00x.
+- first_member, interpreter: Rust 81.26x native, ours 102.32x.
+- first_member, AOT: Rust 1.03x native, ours 1.12x.
+- fixed_mandel, exe: Rust 0.74x native, ours 0.82x.
 - matmul, JIT: Rust 0.55x native, ours 0.58x.
-- str_copy, interpreter: Rust 50.12x native, ours 54.57x.
-- str_copy, exe: Rust 1.02x native, ours 1.08x.
-- switch_goto, interpreter: Rust 43.36x native, ours 60.76x.
-- switch_goto, JIT: Rust 0.52x native, ours 0.61x.
-- switch_local, AOT: Rust 1.59x native, ours has no cell (compile).
-- va_forward, interpreter: Rust 197.40x native, ours 224.75x.
-- project binjgb: Rust passes AOT, ours does not.
-- project doomgeneric: Rust passes interpreter, JIT, exe, AOT, ours does not.
-- project quakegeneric: Rust passes interpreter, exe, AOT, ours does not.
+- primes, interpreter: Rust 2.41x native, ours 4.42x.
+- str_copy, interpreter: Rust 53.48x native, ours 57.96x.
+- switch_goto, interpreter: Rust 44.90x native, ours 61.41x.
+- switch_goto, JIT: Rust 0.52x native, ours 0.62x.
+- switch_local, exe: Rust 1.00x native, ours 1.17x.
+- va_forward, interpreter: Rust 196.98x native, ours 214.22x.
+- project doomgeneric: Rust passes interpreter, JIT, exe, ours does not.
 - project wasm3: Rust passes interpreter, JIT, exe, AOT, ours does not.
 - counter `pointer_arith`: Rust 606, ours 843 over all keys.
 <!-- compare:end -->
