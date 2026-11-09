@@ -223,7 +223,8 @@ struct FnExtent {
 
 //! A C source's facts: comment lines and their texts, character literals by spelling, string
 //! literals, `#include` lines and the quoted ones, `switch` statements, the names its `#define`s
-//! give, identifier uses outside directives, its function definitions and its code lines.
+//! give, identifier uses outside directives and the ones a `(` follows (a call or a function-like
+//! macro's use), its function definitions and its code lines.
 struct CSource {
     comment_lines : int
     comment_texts : array<string>
@@ -234,6 +235,7 @@ struct CSource {
     switches : int
     defined : array<string>
     idents : table<string; int>
+    calls : table<string; int>
     functions : array<FnExtent>
     code : array<array<Tok>>
 }
@@ -387,6 +389,8 @@ def scan_c(text : string; emitted : array<bool>) : CSource {
             cs.idents[t.text]++
             if (t.text == "switch") {
                 cs.switches++
+            } elif (i + 1 < length(lx.toks) && lx.toks[i + 1].text == "(") {
+                cs.calls[t.text]++
             }
         }
     }

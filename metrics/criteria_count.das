@@ -9,10 +9,19 @@ require criteria_scan
 require criteria_file
 
 //! The raw counts of one converted input (`metrics/ARCHITECTURE_CRITERIA.md`, the criteria): what
-//! the C sources hold, what the emitted modules spell, and each das function's lines per C line.
+//! the C sources hold, what the emitted modules spell, each das function's lines per C line and
+//! the das functions' lengths.
 
 //! The lines a function's body may stretch to before it counts as blown up: das lines per C line.
 let BLOWUP_LIMIT = 1.5
+
+//! The prefix of the functions the converter adds to a module (the layout check, the globals'
+//! init, the dialect): in no length distribution.
+let CONVERTER_FUNCTION_PREFIX = "c2das_"
+
+//! The type names whose call is a cast: the numeric types, the pointer-sized integers and the
+//! `c_runtime` enum cast.
+let CAST_NAMES <- ["int", "uint", "int8", "uint8", "int16", "uint16", "int64", "uint64", "float", "double", "intptr", "uintptr", "enum_from_int"]
 
 //! A line longer than this many bytes is a long line.
 let LONG_LINE = 160
@@ -129,14 +138,25 @@ def private line_defects(toks : array<Tok>; modules : table<string; bool>; var s
         }
         let next = i + 1 < n ? toks[i + 1].text : ""
         if (t.kind == TokKind.ident) {
+            if (is_temp_name(t.text)) {
+                sites["temp_name"]++
+            }
             if (t.text |> starts_with("_c_")) {
                 sites["c_renames"]++
-            } elif (t.text == "c_label_end") {
+            } elif (t.text == "label" && i + 1 < n && toks[i + 1].kind == TokKind.number) {
                 sites["label_stubs"]++
-            } elif (t.text == "addr" && next == "(" && i + 3 < n && ((toks[i + 2].text == "deref" && toks[i + 3].text == "(") || (toks[i + 2].kind == TokKind.ident && toks[i + 3].text == ")" && i + 4 < n && toks[i + 4].text == "."))) {
-                sites["addr_deref"]++
-            } elif (t.text == "deref" && next == "(" && i + 3 < n && toks[i + 2].text == "addr" && toks[i + 3].text == "(") {
-                sites["addr_deref"]++
+            } elif (next == "(" && has_value(CAST_NAMES, t.text) && !(i > 0 && toks[i - 1].text == ".")) {
+                sites["cast"]++
+            } elif (t.text == "addr" && next == "(") {
+                sites["addr"]++
+                if (i + 3 < n && ((toks[i + 2].text == "deref" && toks[i + 3].text == "(") || (toks[i + 2].kind == TokKind.ident && toks[i + 3].text == ")" && i + 4 < n && toks[i + 4].text == "."))) {
+                    sites["addr_deref"]++
+                }
+            } elif (t.text == "deref" && next == "(") {
+                sites["deref"]++
+                if (i + 3 < n && toks[i + 2].text == "addr" && toks[i + 3].text == "(") {
+                    sites["addr_deref"]++
+                }
             } elif (t.text == "reinterpret" && !string_reinterpret(toks, i)) {
                 sites["reinterpret_casts"]++
             } elif ((t.text == "var" || t.text == "let") && i + 1 < n && (is_temp_name(next) || is_numbered(next, "_first"))) {
@@ -177,6 +197,10 @@ def string_reinterpret(toks : array<Tok>; at : int) : bool {
 //! The criteria noted per function: a function with a site of one counts once under `fn_<name>`.
 let FUNCTION_DEFECTS <- ["addr_deref", "bool_roundtrip", "c_renames", "label_stubs", "literal_arithmetic", "lost_parens", "qualified_calls", "reinterpret_casts", "stray_braces", "temporaries"]
 
+//! The sites counted over every line of every module under `<name>_sites`: the function criteria's
+//! and the densities' own (`cast`, `addr`, `deref`, `temp_name`).
+let SITE_DEFECTS <- ["addr", "addr_deref", "bool_roundtrip", "c_renames", "cast", "deref", "label_stubs", "literal_arithmetic", "lost_parens", "qualified_calls", "reinterpret_casts", "stray_braces", "temp_name", "temporaries"]
+
 // a discarded temporary: `let _tN = ...` whose name the function never reads again
 def private discarded_temps(code : array<array<Tok>>; fn : FnExtent) : int {
     var uses : table<string; int>
@@ -197,15 +221,16 @@ def private discarded_temps(code : array<array<Tok>>; fn : FnExtent) : int {
 // the code lines of a span of token lines
 def private span_lines(code : array<array<Tok>>; first, last : int) : int => length([for (l in range(first, last + 1)); l; where !empty(code[l])])
 
-// the C side's facts summed over the sources: the counts into `c`, characters and constant uses by
-// spelling, each function's code lines by name in source order, and the comment texts
+// the C side's facts summed over the sources: the counts into `c`, characters, constant uses and
+// function-like macro uses by spelling, each function's code lines by name in source order, and the
+// comment texts
 struct CSide {
-    chars, consts : table<string; int>
+    chars, consts, macro_calls : table<string; int>
     fns : table<string; array<int>>
     corpus : array<string>
 }
 
-def private c_side(sources : array<CSource>; constants : table<string; bool>; var c : table<string; int>) : CSide {
+def private c_side(sources : array<CSource>; constants, macros : table<string; bool>; var c : table<string; int>) : CSide {
     var side : CSide
     var inscope code : array<string>
     for (cs in sources) {
@@ -222,6 +247,12 @@ def private c_side(sources : array<CSource>; constants : table<string; bool>; va
             if (key_exists(constants, k)) {
                 side.consts[k] += v
                 c["c_constant_uses"] += v
+            }
+        }
+        for (k, v in keys(cs.calls), values(cs.calls)) {
+            if (key_exists(macros, k)) {
+                side.macro_calls[k] += v
+                c["c_macro_calls"] += v
             }
         }
         for (fn in cs.functions) {
@@ -245,7 +276,7 @@ def private is_carried(corpus : CorpusIndex; comment : string) : bool => key_exi
 
 // the module-wide counts of one line: comments, long lines, layout checks, slots, string casts,
 // switch flags and setjmp trampolines; whether the module is late-bound or layout-checked so far
-def private module_line(toks : array<Tok>; constants : table<string; bool>; var c, das_chars, das_consts : table<string; int>; var late_bound, layout_check : bool&) {
+def private module_line(toks : array<Tok>; constants, macros : table<string; bool>; var c, das_chars, das_consts, das_macros : table<string; int>; var late_bound, layout_check : bool&) {
     for (i, t in count(), toks) {
         let next = i + 1 < length(toks) ? toks[i + 1].text : ""
         if (t.kind == TokKind.chr) {
@@ -255,6 +286,9 @@ def private module_line(toks : array<Tok>; constants : table<string; bool>; var 
         }
         if (key_exists(constants, t.text)) {
             das_consts[t.text]++
+        }
+        if (next == "(" && key_exists(macros, t.text)) {
+            das_macros[t.text]++
         }
         if (t.text |> ends_with("_slot")) {
             late_bound = true
@@ -277,8 +311,10 @@ def private module_line(toks : array<Tok>; constants : table<string; bool>; var 
     }
 }
 
-// one module's lines into `c`: carried comments against the C comments, long lines, the module flags
-def private module_counts(dm : DasModule; corpus : CorpusIndex; constants : table<string; bool>; var c, das_chars, das_consts : table<string; int>) {
+// one module's lines into `c`: carried comments against the C comments, long lines, the module
+// flags, every site of `SITE_DEFECTS` into `sites` and the length of each function of the program's
+// own into `lengths`
+def private module_counts(dm : DasModule; corpus : CorpusIndex; constants, macros : table<string; bool>; stems : table<string; bool>; var c, das_chars, das_consts, das_macros, sites : table<string; int>; var lengths : array<int>) {
     var layout_check = false
     var late_bound = dm.stem |> ends_with("_link")
     var long_line = false
@@ -293,7 +329,13 @@ def private module_counts(dm : DasModule; corpus : CorpusIndex; constants : tabl
             c["long_lines"]++
             long_line = true
         }
-        module_line(toks, constants, c, das_chars, das_consts, late_bound, layout_check)
+        module_line(toks, constants, macros, c, das_chars, das_consts, das_macros, late_bound, layout_check)
+        line_defects(toks, stems, sites)
+    }
+    for (fn in dm.functions) {
+        if (!(fn.name |> starts_with(CONVERTER_FUNCTION_PREFIX))) {
+            lengths |> push(span_lines(dm.code, fn.first + 1, fn.last - 1))
+        }
     }
     c["modules"]++
     c["modules_layout_check"] += layout_check ? 1 : 0
@@ -301,9 +343,9 @@ def private module_counts(dm : DasModule; corpus : CorpusIndex; constants : tabl
     c["modules_long_lines"] += long_line ? 1 : 0
 }
 
-// one module's functions matched to the C functions of their name: the lines per C line, and per
-// function criterion whether the function has a site
-def private function_counts(dm : DasModule; stems : table<string; bool>; var side : CSide; var c, fn_sites, fn_count : table<string; int>; var ratios : array<int>) {
+// one module's functions matched to the C functions of their name: the lines per C line, the lines
+// past the blow-up limit, and per function criterion whether the function has a site
+def private function_counts(dm : DasModule; stems : table<string; bool>; var side : CSide; var c, fn_count : table<string; int>; var ratios : array<int>) {
     for (fn in dm.functions) {
         let c_name = fn.name == "c_main" ? "main" : fn.name |> starts_with("_c_") ? slice(fn.name, 3) : fn.name
         var c_lines = 0
@@ -316,37 +358,38 @@ def private function_counts(dm : DasModule; stems : table<string; bool>; var sid
         side.fns[c_name] |> erase(0)
         let das_lines = span_lines(dm.code, fn.first, fn.last)
         c["fn_matched"]++
-        c["fn_within"] += float(das_lines) <= BLOWUP_LIMIT * float(c_lines) ? 1 : 0
+        let allowed = int(BLOWUP_LIMIT * float(c_lines))
+        c["fn_within"] += das_lines <= allowed ? 1 : 0
+        c["blowup_lines"] += max(das_lines - allowed, 0)
         ratios |> push(das_lines * 100 / c_lines)
         var inscope sites : table<string; int>
         for (l in range(fn.first + 1, fn.last + 1)) {
             line_defects(dm.code[l], stems, sites)
         }
         c["discarded_temps"] += discarded_temps(dm.code, fn)
-        c["self_assignments"] += sites?["self_assignments"] ?? 0
         for (d in FUNCTION_DEFECTS) {
-            let n = sites?[d] ?? 0
-            fn_sites[d] += n
-            fn_count[d] += n > 0 ? 1 : 0
+            fn_count[d] += (sites?[d] ?? 0) > 0 ? 1 : 0
         }
     }
 }
 
+
 //! The raw counts of one input: its C sources (`.c` files, in link order), its emitted modules and
-//! fragments, and the names of the program's integer-constant macros.
+//! fragments, the names of the program's integer-constant macros and of its function-like macros.
+//! A hand-written port has no sources and no macros: only the das side is counted.
 [arch(at="ARCHITECTURE_CRITERIA.md#criteria")]
-def count_criteria(sources : array<CSource>; modules : array<DasModule>; constants : table<string; bool>) : CriteriaRaw {
+def count_criteria(sources : array<CSource>; modules : array<DasModule>; constants, macros : table<string; bool>) : CriteriaRaw {
     var raw : CriteriaRaw
     var c <- {for (k in RAW_KEYS); k => 0}
-    var side <- c_side(sources, constants, c)
+    var side <- c_side(sources, constants, macros, c)
     let corpus = CorpusIndex(lines <- {for (line in side.corpus); line => true}, joined = join(side.corpus, "\n"))
     let stems <- {for (dm in modules); dm.stem => true}
-    var das_chars, das_consts, fn_sites, fn_count : table<string; int>
+    var das_chars, das_consts, das_macros, sites, fn_count : table<string; int>
     var inscope das_code : array<string>
     for (dm in modules) {
-        module_counts(dm, corpus, constants, c, das_chars, das_consts)
+        module_counts(dm, corpus, constants, macros, stems, c, das_chars, das_consts, das_macros, sites, raw.lengths)
         das_code |> push_from(code_lines(dm.code))
-        function_counts(dm, stems, side, c, fn_sites, fn_count, raw.ratios)
+        function_counts(dm, stems, side, c, fn_count, raw.ratios)
     }
     c["das_code_lines"] = length(das_code)
     c["das_repeated_lines"] = repeated_lines(das_code)
@@ -356,13 +399,18 @@ def count_criteria(sources : array<CSource>; modules : array<DasModule>; constan
     for (k, v in keys(side.consts), values(side.consts)) {
         c["das_constant_names"] += min(v, das_consts?[k] ?? 0)
     }
+    for (k, v in keys(side.macro_calls), values(side.macro_calls)) {
+        c["das_macro_calls"] += min(v, das_macros?[k] ?? 0)
+    }
+    for (d in SITE_DEFECTS) {
+        c["{d}_sites"] = sites?[d] ?? 0
+    }
+    c["self_assignments"] = sites?["self_assignments"] ?? 0
     for (d in FUNCTION_DEFECTS) {
-        c["{d}_sites"] = fn_sites?[d] ?? 0
         c["fn_{d}"] = fn_count?[d] ?? 0
     }
     sort(raw.ratios)
-    c["fn_median_x100"] = empty(raw.ratios) ? 0 : raw.ratios[length(raw.ratios) / 2]
-    c["fn_worst_x100"] = empty(raw.ratios) ? 0 : raw.ratios[length(raw.ratios) - 1]
+    distribution_counts(raw.ratios, raw.lengths, c)
     raw.counts <- c
     return <- raw
 }
