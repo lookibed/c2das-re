@@ -329,7 +329,7 @@ def main : int {
     var failed : table<string>
     let diverged = tally_outcomes(outcomes, ratchet, args.verbose, tally, failed)
     let ratchet_ids <- ratchet_after(ratchet, failed, tally)
-    let rc = finish_run("csmith", EXPECTED_PASS, tally, args.update, !empty(args.filter), ratchet_ids)
+    let rc = finish_run("csmith", EXPECTED_PASS, tally, args.update, !empty(args.filter), ratchet_ids, args.tier == "interp" ? "" : args.tier)
     if (diverged) {
         to_log(LOG_ERROR, "a converted program diverged from its native build: a converter bug by construction\n")
         return 1
