@@ -454,7 +454,7 @@ def test_reserved(t : T?) {
         var out : string
         t |> equal(run_tier(res.das_path, "interp", out_dir, out, CONVERTED_MODULES), native.rc)
         t |> equal(out, native.output)
-        t |> equal(join(res.renamed, "\n"), "end.c: index -> end_index1\nc.c: label_end -> c_label_end1\nc.c: volatile_load -> c_volatile_load1\nc2das.c: dialect -> c2das_dialect1\nb.c: dialect -> b_dialect\nb.c: index -> b_index\nb.c: label_end -> b_label_end\nb.c: volatile_load -> b_volatile_load")
+        t |> equal(join(res.renamed, "\n"), "end.c: index -> end_index1\nc.c: label_end -> c_label_end\nc.c: volatile_load -> c_volatile_load1\nc2das.c: dialect -> c2das_dialect1\nb.c: dialect -> b_dialect\nb.c: index -> b_index\nb.c: label_end -> b_label_end\nb.c: volatile_load -> b_volatile_load")
     }
     t |> run("the reserved names hold every name the emitter spells bare, every crt binding and every public c_runtime definition") @(t : T?) {
         let reserved <- reserved_das_names()

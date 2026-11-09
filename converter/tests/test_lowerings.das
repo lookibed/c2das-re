@@ -723,13 +723,13 @@ def p3_fixtures(t : T?) {
     t |> run("goto: labels numbered per function with the C name as a comment, forward and backward jumps, a jump out of nested loops, a block flattened for a goto into it") @(t : T?) {
         var text : string
         check_fixture(t, "p3_goto", text)
-        has_text(t, text, "label 1:  // retry\n    c_label_end()\n    if (!(p3_goto__try_lock() != 0)) \{\n        n++\n        goto label 1\n    \}")
-        has_text(t, text, "return n\n    label 2:  // fail\n    c_label_end()\n    n = -n")
+        has_text(t, text, "label 1:  // retry\n    if (!(p3_goto__try_lock() != 0)) \{\n        n++\n        goto label 1\n    \}")
+        has_text(t, text, "return n\n    label 2:  // fail\n    n = -n")
         has_text(t, text, "found = i * 10 + j\n                        goto label 1\n")
-        has_text(t, text, "    label 1:  // done\n    c_label_end()\n    return found")
-        has_text(t, text, "r += 1\n    r += 10\n    label 1:  // inside\n    c_label_end()\n    r += 100")
+        has_text(t, text, "    label 1:  // done\n    return found")
+        has_text(t, text, "r += 1\n    r += 10\n    label 1:  // inside\n    r += 100")
         has_text(t, text, "r = 2\n    \{\n        var unused : int = 7\n        r += unused\n    \}\n    label 1:  // skip")
-        has_text(t, text, "label 1:  // again\n    c_label_end()\n    n += 2\n    if (n < 7) \{\n        goto label 1")
+        has_text(t, text, "label 1:  // again\n    n += 2\n    if (n < 7) \{\n        goto label 1")
     }
     t |> run("setjmp: the contained site as try/recover with the target check, the single-branch site flat when its tail calls nothing and the rerun loop otherwise, longjmp as c_longjmp") @(t : T?) {
         var text : string
@@ -1395,7 +1395,7 @@ def p4_scope_fidelity_fixtures(t : T?) {
         check_fixture(t, "p4_scope_fidelity", text)
         // a block a goto enters loses its braces: its local leaves the global and a later
         // block's local their names
-        has_text(t, text, "    var g1 : int = 3\n    n += g1\n    label 1:  // in\n    c_label_end()\n    n += 1\n    return n * 100 + g\n")
+        has_text(t, text, "    var g1 : int = 3\n    n += g1\n    label 1:  // in\n    n += 1\n    return n * 100 + g\n")
         has_text(t, text, "    var t1 : int = 2\n    n += t1\n")
         // a local a later case reaches is declared before the lowered switch
         has_text(t, text, "    let _cond = k\n    var v : int\n    while (true) \{")
@@ -1924,28 +1924,27 @@ def p5_lua_expression_fixtures(t : T?) {
         // a goto into another case re-dispatches: the label is a case of its number in the
         // switch's goto variable, which `default` requires unset, while the goto stores a value no case
         // holds into the condition
-        has_text(t, text, "        var _cond = int(deref(p))\n        var _goto = 0\n        while (true) \{\n            label 1:  // re-dispatch\n")
-        has_text(t, text, "                        _goto = 1\n                        _cond = 35\n                        goto label 1\n")
+        has_text(t, text, "        var _cond = int(deref(p))\n        var _goto = 0\n        while (true) \{\n            label 3:  // re-dispatch\n")
+        has_text(t, text, "                        _goto = 1\n                        _cond = 35\n                        goto label 3\n")
         has_text(t, text, "            _flag ||= _goto == 0 && !(_cond == '(' || _cond == '$' || _cond == '%')\n            _flag ||= _goto == 1  // dflt\n            if (_flag) \{\n                _goto = 0\n")
         has_text(t, text, "                _flag ||= _goto == 3  // ret\n")
         // an enum condition's sentinel: an int no enumerator of the cases holds, through enum_from_int
-        has_text(t, text, "                        _goto = 1\n                        _cond = enum_from_int(type<OpCode>, -1)\n                        goto label 1\n")
+        has_text(t, text, "                        _goto = 1\n                        _cond = enum_from_int(type<OpCode>, -1)\n                        goto label 6\n")
         has_text(t, text, "                _flag ||= _cond == OpCode.OP_TFORCALL\n                _flag ||= _goto == 1  // l_tforcall\n")
         // an inner switch's re-dispatch label is numbered below the outer one's, each switch
         // with its own goto variable
-        has_text(t, text, "    var _cond = a\n    var _goto = 0\n    while (true) \{\n        label 2:  // re-dispatch\n")
-        has_text(t, text, "            var _cond2 = b\n            var _goto2 = 0\n            while (true) \{\n                label 1:  // re-dispatch\n")
-        // a label in a branch or a function body stands on c_label_end(), at the block's end too;
-        // the module defines the no-op (a call into a c_runtime piece stays a call under the JIT)
-        has_text(t, text, "\n[sideeffects]\ndef private c_label_end \{\n    pass\n\}\n\n")
-        t |> equal(text |> find("require c_runtime/c_label") >= 0, false, text)
-        has_text(t, text, "                label 3:  // no_save\n                c_label_end()\n            \}\n")
-        has_text(t, text, "    label 1:  // done\n    c_label_end()\n\}\n")
-        has_text(t, text, "    label 3:  // returning\n    c_label_end()\n    acc += 1000\n")
+        has_text(t, text, "    var _cond = a\n    var _goto = 0\n    while (true) \{\n        label 4:  // re-dispatch\n")
+        has_text(t, text, "            var _cond2 = b\n            var _goto2 = 0\n            while (true) \{\n                label 3:  // re-dispatch\n")
+        // a label stands bare, at a branch's or the function body's end too: no `c_label_end()`
+        // statement, no module no-op (P8.10)
+        t |> equal(text |> find("c_label_end") >= 0, false, text)
+        has_text(t, text, "                label 3:  // no_save\n            \}\n")
+        has_text(t, text, "    label 1:  // done\n\}\n")
+        has_text(t, text, "    label 2:  // returning\n    acc += 1000\n")
         // a `void *` among the trailing arguments travels as a byte pointer
         has_text(t, text, "p5_lua_exprs__count_set`va(3, (reinterpret<uint8?>(reinterpret<void?>(addr(slots[0]))), reinterpret<uint8?>(null), reinterpret<uint8?>(reinterpret<void?>(addr(t)))))")
     }
-    t |> run("a label that ends a loop's body needs no c_label_end(): the loop takes the jump as its next iteration") @(t : T?) {
+    t |> run("a label that ends a loop's body is a goto target: the loop takes the jump as its next iteration") @(t : T?) {
         let text = converts(t, "label_loop_end", "int main(void) \{ int i = 0, r = 0; while (i < 4) \{ i++; if (i == 2) goto next; r++; next: ; \} return r - 3; \}\n")
         has_text(t, text, "        label 1:  // next\n    \}\n")
         t |> equal(text |> find("c_label_end") >= 0, false, text)
@@ -1977,15 +1976,15 @@ def p7_goto_dispatch_fixtures(t : T?) {
         let source = fread(path_join(FIXTURES, "p7_goto_dispatch.c"))
         let text = converts(t, "p7_goto_dispatch", source, "\{\"switch_dispatch\": \"goto\"\}\n")
         // the enum dispatch: the guard to the out-of-range label, the jump, a label per case value
-        has_text(t, text, "            var _flag = false\n            if (int(_cond) < 0 || int(_cond) > 9) \{\n                goto label 11\n            \}\n            goto int(_cond) + 1\n            label 1:  // case 0\n            if (_cond == Op.A) \{\n                acc += 1\n                break\n            \} else \{\n                c_label_end()\n            \}\n")
+        has_text(t, text, "            var _flag = false\n            if (int(_cond) < 0 || int(_cond) > 9) \{\n                goto label 12\n            \}\n            goto int(_cond) + 2\n            label 2:  // case 0\n            if (_cond == Op.A) \{\n                acc += 1\n                break\n            \}\n")
         // a goto into another case jumps to that label's own das label, no re-dispatch, no sentinel
-        has_text(t, text, "                acc -= 4\n                _goto = 1\n                goto label 12\n")
-        has_text(t, text, "            _flag ||= _cond == Op.F\n            label 12:  // shared\n            _flag ||= _goto == 1  // shared\n")
+        has_text(t, text, "                acc -= 4\n                _goto = 1\n                goto label 13\n")
+        has_text(t, text, "            _flag ||= _cond == Op.F\n            label 13:  // shared\n            _flag ||= _goto == 1  // shared\n")
         let run_at = text |> find("def private p7_goto_dispatch__run(")
         let restart = text |> find("re-dispatch", run_at)
         t |> success(run_at >= 0 && (restart < 0 || restart > text |> find("\n\}\n", run_at)), text)
         // a value no case holds lands at default with the out-of-range ones
-        has_text(t, text, "            label 9:  // no case 8\n            label 11:  // default\n")
+        has_text(t, text, "            label 10:  // no case 8\n            label 12:  // default\n")
         // an int condition jumps by itself, a switch without default to its end
         has_text(t, text, "    let _cond = x\n    while (true) \{\n        if (_cond < 3 || _cond > 11) \{\n            goto label 10\n        \}\n        goto _cond - 2\n")
         has_text(t, text, "        label 10:  // no case: switch end\n        break\n")
@@ -1996,20 +1995,20 @@ def p7_goto_dispatch_fixtures(t : T?) {
         has_text(t, text, "                goto _cond2 + 1\n")
         // an open switch beside a jump table in a function without C labels numbers after the table
         has_text(t, text, "        label 9:  // no case: switch end\n        break\n")
-        has_text(t, text, "    label 10:  // case 0\n    c_label_end()\n    label 15:  // do\n")
+        has_text(t, text, "    label 10:  // case 0\n    label 15:  // do\n")
         // sparse, falling through, under 8 values, past int and Duff's device keep their forms
         has_text(t, text, "    \} elif (_cond == 2) \{\n        return 3\n")
         // a label that does not open its case: the branch before it ends in an `else` too
-        has_text(t, text, "            r += 1\n            break\n        \} else \{\n            c_label_end()\n        \}\n        label 10:  // mid\n        _flag ||= _goto == 1  // mid\n")
+        has_text(t, text, "            r += 1\n            break\n        \}\n        label 11:  // mid\n        _flag ||= _goto == 1  // mid\n")
         // a C label numbers above the table's labels and their goto-target slot, and a goto out of
         // the dispatch loop reaches it
-        has_text(t, text, "    label 11:  // again\n")
-        has_text(t, text, "            _goto = 1\n            goto label 10\n")
-        has_text(t, text, "            if (n < 3) \{\n                goto label 11\n")
+        has_text(t, text, "    label 1:  // again\n")
+        has_text(t, text, "            _goto = 1\n            goto label 11\n")
+        has_text(t, text, "            if (n < 3) \{\n                goto label 1\n")
         // a switch a goto from another case re-dispatches that the table refuses is spelled open
         // (P7.0t), Duff's device and a switch a goto enters take their own table
         has_text(t, text, "    \} elif (_cond == 50) \{\n        goto label 4\n")
-        has_text(t, text, "    goto _cond + 1\n    label 1:  // case 0\n    c_label_end()\n    label 10:  // do\n")
+        has_text(t, text, "    goto _cond + 1\n    label 1:  // case 0\n    label 10:  // do\n")
         for (fn in ["fall", "small", "wide", "wide_low", "sparse_shared"]) {
             let at = text |> find("def private p7_goto_dispatch__{fn}(")
             let end = text |> find("\n\}\n", at)
@@ -2046,20 +2045,20 @@ def p7_restart_sentinel_fixtures(t : T?) {
         // the goto's own case would match the unchanged condition and loop forever
         let left = converts(t, "restart_sentinel", "int f(int x) \{ int r = 0; switch (x) \{ case 1: r += 1; goto L; case 2: r += 10; L: r += 100; break; default: r += 1000; \} return r; \}\nint main(void) \{ return f(1) - 101 + f(2) - 110 + f(3) - 1000; \}\n")
         has_text(t, left, "    var _cond = x\n    var _goto = 0\n")
-        has_text(t, left, "        if (_cond == 1) \{\n            r += 1\n            _goto = 1\n            _cond = 0\n            goto label 1\n")
+        has_text(t, left, "        if (_cond == 1) \{\n            r += 1\n            _goto = 1\n            _cond = 0\n            goto label 2\n")
         has_text(t, left, "        _flag ||= _cond == 2\n        if (_flag) \{\n            r += 10\n        \}\n        _flag ||= _goto == 1  // L\n")
         has_text(t, left, "        if (_goto == 0 && !(_cond == 1 || _cond == 2)) \{\n")
         var out : string
         t |> equal(run_tier(converted_path("restart_sentinel"), "interp", work_root, out, CONVERTED_MODULES, 60.0), 0, out)
         // no value below the smallest case in the type: one above the largest
         let above = converts(t, "restart_sentinel_above", "int f(unsigned x) \{ int r = 0; switch (x) \{ case 0: r += 1; goto L; case 1: L: r += 100; break; \} return r; \}\nint main(void) \{ return f(0) - 101 + f(1) - 100 + f(2); \}\n")
-        has_text(t, above, "            _cond = 2u\n            goto label 1\n")
+        has_text(t, above, "            _cond = 2u\n            goto label 2\n")
         t |> equal(run_tier(converted_path("restart_sentinel_above"), "interp", work_root, out, CONVERTED_MODULES, 60.0), 0, out)
         // the cases span the type: every case test keeps the pending goto's test
         let span = converts(t, "restart_sentinel_span", "int f(int x) \{ int r = 0; switch (x) \{ case -2147483647 - 1: r += 1; goto L; case 2147483647: L: r += 100; break; \} return r; \}\nint main(void) \{ return f(-2147483647 - 1) - 101 + f(2147483647) - 100 + f(0); \}\n")
         has_text(t, span, "    let _cond = x\n")
         has_text(t, span, "        if (_goto == 0 && _cond == -2147483647 - 1) \{\n")
-        has_text(t, span, "            _goto = 1\n            goto label 1\n")
+        has_text(t, span, "            _goto = 1\n            goto label 2\n")
         t |> equal(run_tier(converted_path("restart_sentinel_span"), "interp", work_root, out, CONVERTED_MODULES, 60.0), 0, out)
         // an unsigned condition whose cases reach both of its ends keeps the old form
         let uspan = converts(t, "restart_sentinel_uspan", "int f(unsigned x) \{ int r = 0; switch (x) \{ case 0: r += 1; goto L; case 4294967295u: L: r += 100; break; \} return r; \}\nint main(void) \{ return f(0) - 101 + f(4294967295u) - 100 + f(7); \}\n")
@@ -2083,18 +2082,18 @@ def p5_lua_review_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p5_lua_review", text)
         // the condition is no stand-in for a label: the goto variable selects it, 0 while none is pending
-        has_text(t, text, "    var _cond = x\n    var _goto = 0\n    while (true) \{\n        label 1:  // re-dispatch\n        var _flag = false\n        if (_cond == 1) \{\n")
+        has_text(t, text, "    var _cond = x\n    var _goto = 0\n    while (true) \{\n        label 2:  // re-dispatch\n        var _flag = false\n        if (_cond == 1) \{\n")
         has_text(t, text, "        if (_goto == 0 && !(_cond == 1 || _cond == 2)) \{\n")
         // a goto to such a label from its own case re-dispatches too
-        has_text(t, text, "            if (_t0 > 0) \{\n                _goto = 1\n                _cond = 0\n                goto label 1\n")
+        has_text(t, text, "            if (_t0 > 0) \{\n                _goto = 1\n                _cond = 0\n                goto label 2\n")
         // a parameter and a local named like a standard stream are the program's
         has_text(t, text, "    while (deref(stdin + n) != 0) \{\n")
         has_text(t, text, "    var stderr : uint8? = reinterpret<uint8?>(\"hello\")\n")
         has_text(t, text, "int(deref(stderr + 1))")
         // setvbuf takes c_exit, which flushes the streams while the program's buffer lives
         has_text(t, text, "require c_runtime/c_exit\n")
-        // a label stands on c_label_end() before a statement the optimizer folds
-        has_text(t, text, "        label 1:  // L\n        c_label_end()\n        if (DEBUG != 0) \{\n")
+        // a label before a statement the optimizer folds stands bare
+        has_text(t, text, "        label 1:  // L\n        if (DEBUG != 0) \{\n")
         // a program record holding `struct tm`, and `mbstate_t` with its anonymous union
         has_text(t, text, "struct stamped \{\n    k : int\n    t : tm\n\}\n")
         has_text(t, text, "    var st : _c___mbstate_t\n")
@@ -2139,12 +2138,25 @@ def p5_lua_review_fixtures(t : T?) {
     p5_lua_review_dumper(t)
 }
 
+// `source`, a program whose `main` returns 0 when a case group holding a plain label and a goto
+// that leaves it computes C's value, converted with the switch re-dispatched and run under the
+// interpreter and the JIT; the earlier daslang lost such a goto, and the emitter refused the shape
+def labelled_group_runs(t : T?; name, source : string) {
+    let text = converts(t, name, source)
+    has_text(t, text, "re-dispatch")
+    for (tier in ["interp", "jit"]) {
+        var out : string
+        let rc = run_tier(converted_path(name), tier, path_join(work_root, "{name}_{tier}"), out, CONVERTED_MODULES)
+        t |> equal(rc, 0, "{name} {tier}: {out}")
+    }
+}
+
 // the review shapes P5.1's conversion refuses, each naming the construct
 def p5_lua_review_refusals(t : T?) {
-    t |> run("a case group of a re-dispatched switch holding a plain label and a goto that leaves the group fails closed, naming both") @(t : T?) {
-        rejects(t, "labelled_loop_group", "int f(int c, int n) \{ int r = 0; switch (c) \{ case 1: while (n > 0) \{ top: r += 1; n--; if (n == 3) goto top; if (n == 1) goto dflt; \} r += 100; break; default: dflt: r += 1000; break; \} return r; \}\nint main(void) \{ return f(1, 5) - 1004; \}\n", "label `top` sits in a case group whose `goto dflt` leaves the group of a switch a goto re-dispatches")
-        rejects(t, "labelled_block_group", "int f(int c, int n) \{ int r = 0; switch (c) \{ case 1: a: r += 1; if (n-- > 0) goto a; goto dflt; case 2: r += 50; break; default: dflt: r += 1000; break; \} return r; \}\nint main(void) \{ return f(1, 2) - 1003; \}\n", "label `a` sits in a case group whose `goto dflt` leaves the group")
-        rejects(t, "labelled_group_outward", "int f(int c) \{ int r = 0; init: r++; switch (c) \{ case 1: goto dflt; case 2: a: r += 10; if (r < 30) goto a; c = 3; goto init; default: dflt: r += 100; \} return r; \}\nint main(void) \{ return f(2) - 133; \}\n", "label `a` sits in a case group whose `goto init` leaves the group")
+    t |> run("a case group of a re-dispatched switch holding a plain label and a goto that leaves the group is lowered, and runs native-equal under the interpreter and the JIT (F60, F63 fixed upstream, P8.10)") @(t : T?) {
+        labelled_group_runs(t, "labelled_loop_group", "int f(int c, int n) \{ int r = 0; switch (c) \{ case 1: while (n > 0) \{ top: r += 1; n--; if (n == 3) goto top; if (n == 1) goto dflt; \} r += 100; break; default: dflt: r += 1000; break; \} return r; \}\nint main(void) \{ return f(1, 5) - 1004; \}\n")
+        labelled_group_runs(t, "labelled_block_group", "int f(int c, int n) \{ int r = 0; switch (c) \{ case 1: a: r += 1; if (n-- > 0) goto a; goto dflt; case 2: r += 50; break; default: dflt: r += 1000; break; \} return r; \}\nint main(void) \{ return f(1, 2) - 1003; \}\n")
+        labelled_group_runs(t, "labelled_group_outward", "int f(int c) \{ int r = 0; init: r++; switch (c) \{ case 1: goto dflt; case 2: a: r += 10; if (r < 30) goto a; c = 3; goto init; default: dflt: r += 100; \} return r; \}\nint main(void) \{ return f(2) - 132; \}\n")
     }
     t |> run("two offsetofs in one macro expansion that clang's dump can pair out of order fail closed") @(t : T?) {
         let head = "#include <stddef.h>\nstruct s \{ int a; char pad[20]; int b; int c; \};\n#define OFF(f) offsetof(struct s, f)\n"
@@ -2158,8 +2170,9 @@ def p5_lua_review_refusals(t : T?) {
     t |> run("a C name das reserves that renames onto another identifier of the program fails closed, naming both") @(t : T?) {
         rejects(t, "reserved_underscores", "int __h;\nstatic int f5(int v) \{ int _c___h = v; __h = 3; return _c___h + __h; \}\nint main(void) \{ return f5(5) - 8; \}\n", "C names `__h` and `_c___h` are both `_c___h` in das")
         rejects(t, "reserved_keyword", "int let;\nstatic int f5(int v) \{ int _c_let = v; let = 3; return _c_let + let; \}\nint main(void) \{ return f5(5) - 8; \}\n", "C names `let` and `_c_let` are both `_c_let` in das")
-        // the label statement's name is the module's
-        rejects(t, "reserved_label_end", "int c_label_end(void) \{ return 1; \}\nint main(void) \{ return c_label_end() - 1; \}\n", "C name `c_label_end` is the statement the lowering puts after a label")
+        // `c_label_end` is a program's own name since the module spells no label statement (P8.10)
+        let text = converts(t, "own_label_end", "int c_label_end(void) \{ return 1; \}\nint main(void) \{ return c_label_end() - 1; \}\n")
+        has_text(t, text, "def c_label_end : int \{\n    return 1\n\}\n")
     }
 }
 
@@ -2745,35 +2758,35 @@ def p7_goto_into_fixtures(t : T?) {
         check_fixture(t, "p7_goto_into", text)
         // Duff's device: the condition once, a goto per case label, the do-while open
         has_text(t, text, "    let _cond = count % 8\n    if (_cond == 0) \{\n        goto label 2\n    \} elif (_cond == 7) \{\n        goto label 3\n")
-        has_text(t, text, "    \} else \{\n        goto label 1\n    \}\n    label 2:  // case 0\n    c_label_end()\n    label 10:  // do\n")
+        has_text(t, text, "    \} else \{\n        goto label 1\n    \}\n    label 2:  // case 0\n    label 10:  // do\n")
         has_text(t, text, "    copied++\n    n--\n    if (n > 0) \{\n        goto label 10\n    \}\n    label 1:  // switch end\n")
         // a for entered mid-body: `continue` a goto to the increment, `break` one to the end
-        has_text(t, text, "    i = 0\n    label 2:  // for\n    c_label_end()\n    if (!(i < 10)) \{\n        goto label 4\n    \}\n    if (i == 2) \{\n        goto label 3\n    \}\n")
-        has_text(t, text, "    if (sum > 600) \{\n        goto label 4\n    \}\n    label 3:  // for next\n    c_label_end()\n    i++\n    goto label 2\n    label 4:  // for end\n")
+        has_text(t, text, "    i = 0\n    label 2:  // for\n    if (!(i < 10)) \{\n        goto label 4\n    \}\n    if (i == 2) \{\n        goto label 3\n    \}\n")
+        has_text(t, text, "    if (sum > 600) \{\n        goto label 4\n    \}\n    label 3:  // for next\n    i++\n    goto label 2\n    label 4:  // for end\n")
         // the arm no goto enters stays a branch that jumps past the entered one
         has_text(t, text, "    if (x > 0) \{\n        r = 1\n        goto label 2\n    \}\n    r = 2\n    label 1:  // other\n")
         // two loops down: both open, the inner one's end the outer one's increment
-        has_text(t, text, "    label 4:  // while\n    c_label_end()\n    if (!(j < 3)) \{\n        goto label 5\n    \}\n    label 1:  // deep\n")
-        has_text(t, text, "    label 5:  // while end\n    c_label_end()\n    i++\n    goto label 2\n")
+        has_text(t, text, "    label 4:  // while\n    if (!(j < 3)) \{\n        goto label 5\n    \}\n    label 1:  // deep\n")
+        has_text(t, text, "    label 5:  // while end\n    i++\n    goto label 2\n")
         // F_CastTicker: two `if` levels open, the arm the goto leaves from keeps its branch
         has_text(t, text, "    if (!(p7_goto_into__attacking != 0)) \{\n        goto label 2\n    \}\n    if (!(p7_goto_into__frames == 5 || p7_goto_into__state == 9)) \{\n        goto label 3\n    \}\n    label 1:  // stopattack\n")
         // P_SlideMove: the entered arm returns, the code after the `if` its end label's
-        has_text(t, text, "    return hits * 100 + v\n    label 3:  // end if\n    c_label_end()\n    v++\n")
+        has_text(t, text, "    return hits * 100 + v\n    label 3:  // end if\n    v++\n")
         // a goto that enters no body leaves every construct structured
         has_text(t, text, "    if (tics == 0) \{\n        p7_goto_into__frames = 0\n    \} else \{\n")
         // a goto into a case body: `default` a label, `break` a goto to the end, the declaration a
         // later case reads declared ahead of the gotos
         has_text(t, text, "    let _cond = x\n    var v : int\n    if (_cond == 1) \{\n        goto label 3\n    \} elif (_cond == 2) \{\n        goto label 4\n    \} else \{\n        goto label 5\n    \}\n")
         has_text(t, text, "    r = 1\n    v = 4\n    goto label 2\n    label 4:  // case 2\n")
-        has_text(t, text, "    label 5:  // default\n    c_label_end()\n    r = 7\n    label 2:  // switch end\n")
+        has_text(t, text, "    label 5:  // default\n    r = 7\n    label 2:  // switch end\n")
         // both arms entered, and an unentered arm that returns or holds a label: all flat
-        has_text(t, text, "    r += 2\n    goto label 3\n    label 4:  // else\n    c_label_end()\n    r = 3\n    label 2:  // b\n")
-        has_text(t, text, "    r += x\n    goto label 2\n    label 3:  // else\n    c_label_end()\n    return -1\n    label 2:  // end if\n")
-        has_text(t, text, "    goto label 3\n    label 4:  // else\n    c_label_end()\n    r = 2\n    label 2:  // again\n")
+        has_text(t, text, "    r += 2\n    goto label 3\n    label 4:  // else\n    r = 3\n    label 2:  // b\n")
+        has_text(t, text, "    r += x\n    goto label 2\n    label 3:  // else\n    return -1\n    label 2:  // end if\n")
+        has_text(t, text, "    goto label 3\n    label 4:  // else\n    r = 2\n    label 2:  // again\n")
         // a for with no test ends only where `break` goes; a do's `continue` reaches its test
-        has_text(t, text, "    goto label 1\n    label 2:  // for\n    c_label_end()\n    n += 2\n")
+        has_text(t, text, "    goto label 1\n    label 2:  // for\n    n += 2\n")
         has_text(t, text, "        i++\n        goto label 3\n    \}\n    n += 10\n")
-        has_text(t, text, "    label 3:  // do next\n    c_label_end()\n    if (i < k) \{\n        goto label 2\n    \}\n    return n\n")
+        has_text(t, text, "    label 3:  // do next\n    if (i < k) \{\n        goto label 2\n    \}\n    return n\n")
         // the open for's counter lands in the function's scope under a name of its own
         has_text(t, text, "    var i1 : int = 0\n    label 2:  // for\n")
         // an arm that is a loop with no block around it: the `if` and the loop both open
@@ -2781,17 +2794,17 @@ def p7_goto_into_fixtures(t : T?) {
         // an `if` that returns, with a label after it a goto from before reaches, keeps an `else`
         // the optimizer cannot fold the label into (lookibed/daScript#8); one with no such goto
         // (Duff's `if (count <= 0)`, its gotos after it) does not
-        has_text(t, text, "    if (i > k) \{\n        return -i\n    \} else \{\n        c_label_end()\n    \}\n    label 1:  // mid\n")
-        has_text(t, text, "    if (c == 2) \{\n        return 5\n    \} else \{\n        c_label_end()\n    \}\n    r = 7\n")
+        has_text(t, text, "    if (i > k) \{\n        return -i\n    \}\n    label 1:  // mid\n")
+        has_text(t, text, "    if (c == 2) \{\n        return 5\n    \}\n    r = 7\n")
         has_text(t, text, "    if (count <= 0) \{\n        return 0\n    \}\n    let _cond = count % 8\n")
         // a goto out of a das loop's body, or an `if`'s arm, holding an open loop opens that loop or
         // `if` too, so no braced block holds the open loop's labels (F60, F63)
-        has_text(t, text, "    var r : int = 0\n    label 3:  // for\n    c_label_end()\n    if (!(r < 3)) \{\n        goto label 4\n    \}\n    var i : int = 0\n")
+        has_text(t, text, "    var r : int = 0\n    label 3:  // for\n    if (!(r < 3)) \{\n        goto label 4\n    \}\n    var i : int = 0\n")
         has_text(t, text, "    if (!(z != 0)) \{\n        goto label 3\n    \}\n    if (k != 0) \{\n        goto label 1\n    \}\n")
         // a branch ending in an `if` whose arms all return is guarded like one ending in `return`
-        has_text(t, text, "            return 7\n        \}\n    \} else \{\n        c_label_end()\n    \}\n    s = 3\n")
+        has_text(t, text, "            return 7\n        \}\n    \}\n    s = 3\n")
         // and one ending in a switch with a `default` whose every case returns
-        has_text(t, text, "        \} else \{\n            return 12\n        \}\n    \} else \{\n        c_label_end()\n    \}\n    label 1:  // out\n")
+        has_text(t, text, "        \} else \{\n            return 12\n        \}\n    \}\n    label 1:  // out\n")
         rejects(t, "goto_into_setjmp", "#include <setjmp.h>\nstatic jmp_buf b;\nint main(void) \{ int n = 0; goto in; if (setjmp(b) == 0) \{ in: n = 5; \} else \{ n = 1; \} return n; \}\n", "a goto into an arm of a setjmp `if` is not lowered")
         rejects(t, "goto_open_redispatch", "int main(void) \{ int x = 1, n = 0; switch (x) \{ case 1: goto two; case 2: do \{ two: n++; case 3: n += 2; \} while (0); \} return n; \}\n", "that a goto from another case re-dispatches is not lowered")
     }
@@ -2901,7 +2914,7 @@ def p7_empty_case_fixtures(t : T?) {
         // an inert group joins the last group
         has_text(t, text, "        r = 1\n    \} elif (_cond == 2 || _cond == 3) \{\n        r = 3\n")
         // a case label in a nested block: the switch spelled open before any grouping
-        has_text(t, text, "    label 2:  // case 1\n    c_label_end()\n    label 3:  // case 2\n")
+        has_text(t, text, "    label 2:  // case 1\n    label 3:  // case 2\n")
         let want = native("p7_empty_case")
         var out : string
         t |> equal(run_tier(path_join(path_join(work_root, "p7_empty_case"), "p7_empty_case.das"), "jit", path_join(work_root, "empty_case_jit"), out, CONVERTED_MODULES), 0, out)
@@ -3026,10 +3039,10 @@ def p7_flat_case_fixtures(t : T?) {
         has_text(t, text, "        label 9:  // no case: switch end\n        if (acc == 12345) \{\n            goto label 3\n")
         // an `if` that returns before a case label keeps an `else`: the jump names every label of
         // its table (lookibed/daScript#35)
-        has_text(t, text, "            return -1\n        \} else \{\n            c_label_end()\n        \}\n        goto label 9\n        label 5:  // case 1\n")
+        has_text(t, text, "            return -1\n        \}\n        goto label 9\n        label 5:  // case 1\n")
         // only the jump reaches the case labels after such an `if` when `default` comes first and
         // returns
-        has_text(t, text, "    return 9\n    label 3:  // case 0\n    c_label_end()\n    if (k != 0) \{\n        return 100\n    \} else \{\n        c_label_end()\n    \}\n")
+        has_text(t, text, "    return 9\n    label 3:  // case 0\n    if (k != 0) \{\n        return 100\n    \}\n")
         // an enum jumps by its value; a value no case holds lands at default
         has_text(t, text, "    goto int(_cond) + 2\n")
         has_text(t, text, "    label 5:  // no case 3\n    label 8:  // default\n")
@@ -3062,7 +3075,7 @@ def p7_flat_case_fixtures(t : T?) {
         // below int: the elif chain
         has_text(t, text, "    if (_cond == -3000000002l) \{\n        goto label 3\n")
         // a nested switch's `continue` epilogue above a case label keeps an `else`
-        has_text(t, text, "        if (_cont2) \{\n            continue\n        \} else \{\n            c_label_end()\n        \}\n")
+        has_text(t, text, "        if (_cont2) \{\n            continue\n        \}\n")
         // no end label where no break reaches the end
         let nb = text |> find("def private p7_flat_cases__no_break(")
         let nb_end = text |> find("switch end", nb)

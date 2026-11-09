@@ -1464,14 +1464,21 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
 - **P8.10 Goto workarounds of fixed daslang findings** (ruling 37 phase 1, repin PR4a). Under
   daScript `abf1d40e35` the seven goto probes of F60, F62 and F63 (lookibed/daScript#8, #19, #21,
   #22 and #35; upstream `41ee7d60b4`, the label-aware `if` fold, and `6394f6046a`, a block
-  resolving only its own labels) are re-pinned to the fixed behaviour, the rows updated. The
-  emitter's three workarounds stay until each is probed against the converter's own output shapes
-  under the interpreter and the JIT, then removed with tests (native-compared fixtures that still
-  pass, a negative control showing the old daslang failure gone), or ledgered on its own if large:
-  (a) `guard_label_folds`' `else { c_label_end() }` after a closing `if` before a label (#8, #35,
-  `FOLD_MARK`); (b) the `c_label_end()` after a label outside a loop body (F62); (c) the
-  re-dispatch and jump-table labels numbered below every C label (F60, #19) and
-  `check_labelled_groups`' refusal of a labelled case group that a goto leaves (F63).
+  resolving only its own labels) are re-pinned to the fixed behaviour, the rows updated. PR4b
+  probed the converter's own output shapes under the interpreter and the JIT (every goto fixture,
+  the three refused shapes, Lua against its oracle) and removed: (a) `guard_label_folds`' `else {
+  c_label_end() }` after a closing `if` before a label (#8, #35, `FOLD_MARK`); (b) the
+  `c_label_end()` after a label outside a loop body, its module definition and the reserved-name
+  refusal (F62); (c) the re-dispatch and jump-table labels numbered below every C label: they
+  number after them (F60, #19); (d) `check_labelled_groups`' refusal of a labelled case group that
+  a goto leaves (F63): the three shapes it refused are native-compared fixtures now.
+- **P8.11 Blocks the goto-into-body lowering opens for F63 and #8** (after P8.10). `open_path`
+  spells an `if` arm flat when it holds a label of its own (F63) or ends in a leaving statement
+  (#8), and `open_left_blocks` opens every braced block an open construct's goto leaves (F60, F63),
+  all for daslang behaviours `abf1d40e35` fixed. Each can keep its braces now, which gives the
+  structured text back; the change touches `converter/tests/fixtures/p7_goto_into.c`'s expected
+  texts and needs each shape run under the interpreter and the JIT against native. Not done in
+  P8.10: the removal reshapes the goto-into-body output, which the readability forms price.
 
 ## P6 — Doom
 

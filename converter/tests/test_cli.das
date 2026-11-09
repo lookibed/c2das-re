@@ -180,7 +180,7 @@ def test_cli_switch_dispatch(t : T?) {
         var out : string
         t |> equal(run_switch_dispatch(dir, "goto", out), 0, out)
         let jumped = fread(path_join(path_join(dir, "dispatch_goto"), "p7_goto_dispatch.das"))
-        t |> success(jumped |> contains("            goto int(_cond) + 1\n"), jumped)
+        t |> success(jumped |> contains("            goto int(_cond) + 2\n"), jumped)
         // the option wins over the sidecar's key
         let sidecar = path_join(dir, "goto.c2das")
         fwrite(sidecar, "\{\"switch_dispatch\": \"goto\"\}\n")
