@@ -6,7 +6,7 @@ var next_cells = fixed_array(0, 0, 0)
 var next_calls = 0
 
 // a call whose pointer result a step and a compound store reach once each
-def next_cell : int ? {
+def next_cell : int? {
     next_calls++
     return unsafe(addr(next_cells[next_calls % 3]))
 }

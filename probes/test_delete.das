@@ -9,7 +9,7 @@ struct Node {
     kids : array<Node?>
 }
 
-def private make_tree : Node ? {
+def private make_tree : Node? {
     var root = new Node(v = 1)
     root.left = new Node(v = 2)
     root.right = new Node(v = 3)
