@@ -66,6 +66,21 @@ def test_pipeline_ret42(t : T?) {
             t |> equal(run_tier(res.das_path, tier, out, output), 42, output)
         }
     }
+    t |> run("the exe build takes the interpreter flags, and its log joins the output only when it fails") @(t : T?) {
+        if (!res.ok) {
+            t |> skip("conversion failed")
+            return
+        }
+        let level = get_env_variable("DAS_LOG_LEVEL")
+        set_env_variable("DAS_LOG_LEVEL", "info")
+        var built : string
+        t |> equal(run_tier(res.das_path, "exe", path_join(out, "flags"), built, CONVERTED_MODULES, 120.0, ["-no-module-cache"]), 42, built)
+        t |> equal(built, "", "the build's info lines joined the output")
+        set_env_variable("DAS_LOG_LEVEL", level)
+        var refused : string
+        t |> equal(run_tier(res.das_path, "exe", path_join(out, "bogus"), refused, CONVERTED_MODULES, 120.0, ["-bogus-flag"]) != 0, true, refused)
+        t |> success(refused |> contains("unknown command line option bogus-flag"), refused)
+    }
     t |> run("the timeout bounds the exe and aot builds as well as the run") @(t : T?) {
         if (!res.ok) {
             t |> skip("conversion failed")
