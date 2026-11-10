@@ -265,6 +265,7 @@ let VA_REST = "va_rest"
 let END_INDEX = "end_index"
 let ENUM_FROM_INT = "enum_from_int"
 let CSTR_ARRAY = "cstr_array"
+let CSTR = "cstr"
 let JMP_TARGET = "c_jmp_target"
 let UNIT_BYTES = "c_unit_bytes"
 let LONG_BITS_GLOBAL = "c_long_bits"
@@ -280,12 +281,12 @@ let DIALECT_INIT = "c2das_dialect"
 let EMPTY_LITERAL = "c2das_empty"
 
 //! Every name the emitter spells bare in a module besides the program's own (`reserved_das_names`).
-let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, JMP_TARGET, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL, "memcpy"]
+let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, CSTR, JMP_TARGET, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL, "memcpy"]
 
 //! The public names of the c_runtime modules a converted module may require, each top-level
 //! function, global, type and call macro of `c_runtime/c_runtime/*.das` (repo root);
 //! `converter/tests/test_link.das` fails when a definition there is missing from it.
-let C_RUNTIME_EXPORTS <- ["BitAccess", "BitStore", "CBitfieldsAnnotation", "CCompare", "CFormatDirective", "CFunctionAnnotation", "CJmpBuf", "CSignalHandler", "CStorage", "CUnionAnnotation", "CVaCursor", "CVaList", "CVal", "CVolatileLoadMacro", "C_EINVAL", "C_EOF", "C_SIGNAL_LIMIT", "C_SIG_ERR_BITS", "C_SIG_IGN_BITS", "C_STORAGES", "CstrArrayMacro", "EnumFromIntMacro", "VaNone", "VariadicAnnotation", "VariadicCallMacro", "add_bit_pair", "bit_getter", "bit_setter", "c_abort", "c_assert_fail", "c_argc", "c_argv", "c_atexit", "c_bsearch", "c_bswap16", "c_bswap32", "c_bswap64", "c_clrsb", "c_clz", "c_ctz", "c_dialect_spec", "c_exit", "c_ffs", "c_is_float_conversion", "c_is_int_conversion", "c_is_wide_length", "c_jmp_target", "c_long_bits", "c_longjmp", "c_parity", "c_parse_directive", "c_popcount", "c_prefetch", "c_qsort", "c_run_atexit", "c_runtime_init", "c_signal", "c_signal_msvc", "c_signbit", "c_unit_bytes", "c_unreachable", "c_vformat", "c_vfprintf", "c_vprintf", "c_vsnprintf", "c_vsprintf", "c_vsscanf", "c_volatile_load", "c_volatile_load_jit", "c_volatile_read", "c_volatile_store", "cstr_array", "end_index", "enum_from_int", "field_index", "fprintf", "printf", "register_llvm_code_generators", "snprintf", "sprintf", "sscanf", "storage_of", "storage_of_bytes", "to_cvalist", "va_args", "va_begin", "va_d", "va_i", "va_p", "va_rest"]
+let C_RUNTIME_EXPORTS <- ["BitAccess", "BitStore", "CBitfieldsAnnotation", "CCompare", "CFormatDirective", "CFunctionAnnotation", "CJmpBuf", "CSignalHandler", "CStorage", "CUnionAnnotation", "CVaCursor", "CVaList", "CVal", "CVolatileLoadMacro", "C_EINVAL", "C_EOF", "C_SIGNAL_LIMIT", "C_SIG_ERR_BITS", "C_SIG_IGN_BITS", "C_STORAGES", "CstrArrayMacro", "CstrMacro", "EnumFromIntMacro", "VaNone", "VariadicAnnotation", "VariadicCallMacro", "add_bit_pair", "bit_getter", "bit_setter", "c_abort", "c_assert_fail", "c_argc", "c_argv", "c_atexit", "c_bsearch", "c_bswap16", "c_bswap32", "c_bswap64", "c_clrsb", "c_clz", "c_ctz", "c_dialect_spec", "c_exit", "c_ffs", "c_is_float_conversion", "c_is_int_conversion", "c_is_wide_length", "c_jmp_target", "c_long_bits", "c_longjmp", "c_parity", "c_parse_directive", "c_popcount", "c_prefetch", "c_qsort", "c_run_atexit", "c_runtime_init", "c_signal", "c_signal_msvc", "c_signbit", "c_unit_bytes", "c_unreachable", "c_vformat", "c_vfprintf", "c_vprintf", "c_vsnprintf", "c_vsprintf", "c_vsscanf", "c_volatile_load", "c_volatile_load_jit", "c_volatile_read", "c_volatile_store", "cstr", "cstr_array", "end_index", "enum_from_int", "field_index", "fprintf", "printf", "register_llvm_code_generators", "snprintf", "sprintf", "sscanf", "storage_of", "storage_of_bytes", "to_cvalist", "va_args", "va_begin", "va_d", "va_i", "va_p", "va_rest"]
 
 let PREC_PRIMARY = 14
 let PREC_UNARY = 13
@@ -1084,7 +1085,9 @@ def private string_literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
         em.empty_literal = true
         return unsafe_value(em, "addr({EMPTY_LITERAL}[0])", PREC_PRIMARY)
     }
-    return unsafe_value(em, "reinterpret<uint8?>({quoted_literal(em, tu, x, loc)})", PREC_PRIMARY)
+    // `cstr` expands in place to the literal's `reinterpret<uint8?>`, safe and no call
+    em.requires |> insert("c_runtime/cstr")
+    return value("{CSTR}({quoted_literal(em, tu, x, loc)})", PREC_PRIMARY)
 }
 
 // one hex digit of a value below 16

@@ -330,10 +330,10 @@ def p8_literal_nul_fixtures(t : T?) {
         check_fixture(t, "p8_literal_nul", text)
         check_compiled_tiers(t, "p8_literal_nul")
         // a NUL is `\0`, `\x00` where an octal digit follows; `\x0` before a hex letter is `\0f`
-        has_text(t, text, "reinterpret<uint8?>(\"ab\\0cd\\0\\0e\")")
-        has_text(t, text, "var joined : uint8? = reinterpret<uint8?>(\"ab\\0cd\")")
-        has_text(t, text, "var octal_split : uint8? = reinterpret<uint8?>(\"\\x0012\")")
-        has_text(t, text, "var hex_split : uint8? = reinterpret<uint8?>(\"\\0f\")")
+        has_text(t, text, "cstr(\"ab\\0cd\\0\\0e\")")
+        has_text(t, text, "var joined : uint8? = cstr(\"ab\\0cd\")")
+        has_text(t, text, "var octal_split : uint8? = cstr(\"\\x0012\")")
+        has_text(t, text, "var hex_split : uint8? = cstr(\"\\0f\")")
         has_text(t, text, "\"\\0\\x01\\x02\\x03\\x04\\x05\\x06\\a\\b\\t\\n\\v\\f\\r\\x0e")
         has_text(t, text, "\\x1f !\\\"#$%&'()*+,-./0123456789:;<=>?@ABC")
         has_text(t, text, "[\\\\]^_`abc")
@@ -404,18 +404,18 @@ def p2_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p2_strings", text)
         has_text(t, text, "var private c2das_empty : uint8[1] = fixed_array(uint8(0))")
-        has_text(t, text, "var private p2_strings__greeting : uint8? = unsafe(reinterpret<uint8?>(\"hello\"))")
+        has_text(t, text, "var private p2_strings__greeting : uint8? = cstr(\"hello\")")
         has_text(t, text, "var private p2_strings__buf : uint8[16] = cstr_array(\"abc\", 16)")
-        has_text(t, text, "unsafe(addr(c2das_empty[0])), unsafe(reinterpret<uint8?>(\"three\"))")
+        has_text(t, text, "unsafe(addr(c2das_empty[0])), cstr(\"three\")")
         has_text(t, text, "var private p2_strings__empty : uint8[1] = cstr_array(\"\", 1)")
         has_text(t, text, "crt::strcpy(addr(local[0]), p2_strings__greeting)")
         has_text(t, text, "crt::strncpy(addr(local[0]) + crt::strlen(addr(local[0])), p2_strings__names[1], 3ul)")
         has_text(t, text, "int64(crt::strchr(addr(local[0]), ',') - addr(local[0]))")
         has_text(t, text, "deref(reinterpret<uint8?>(crt::memchr(reinterpret<void?>(p2_strings__greeting), 'e', 5ul)))")
-        has_text(t, text, "crt::atoi(addr(num[0])) + int(crt::atol(reinterpret<uint8?>(\"100\")))")
-        has_text(t, text, "reinterpret<uint8?>(\"abcdef\")[2]")
+        has_text(t, text, "crt::atoi(addr(num[0])) + int(crt::atol(cstr(\"100\")))")
+        has_text(t, text, "cstr(\"abcdef\")[2]")
         has_text(t, text, "typeinfo sizeof(type<uint8[4]>)")
-        has_text(t, text, "sprintf(addr(local[0]), reinterpret<uint8?>(\"%d-%s\"), 7, addr(p2_strings__buf[0]))")
+        has_text(t, text, "sprintf(addr(local[0]), cstr(\"%d-%s\"), 7, addr(p2_strings__buf[0]))")
         has_text(t, text, "crt::isdigit(int(num[0])) != 0")
         has_text(t, text, "require crt\n")
     }
@@ -584,7 +584,7 @@ def p6_pointer_fixtures(t : T?) {
         has_text(t, text, "addr(p6_commuted_sum__cs[0])[u]")
         // `*(p + i)` and `*(i + p)` are das's pointer index; a marshal-only record's is its reader, a difference the sum
         has_text(t, text, "deref(ip), addr(p6_commuted_sum__ia[0])[i], int(deref(sp))")
-        has_text(t, text, "printf(reinterpret<uint8?>(\"%d %d\\n\"), addr(p6_commuted_sum__ia[0])[i], int(addr(p6_commuted_sum__cs[0])[u]))")
+        has_text(t, text, "printf(cstr(\"%d %d\\n\"), addr(p6_commuted_sum__ia[0])[i], int(addr(p6_commuted_sum__cs[0])[u]))")
         has_text(t, text, "var whole : cell_t = read_cell_t(cp + 2 * 3, 0)")
         has_text(t, text, "deref(addr(p6_commuted_sum__ia[0]) + 5 + -(i))")
         has_text(t, text, "var third : uint8? = cp + 2 * 3\n")
@@ -1149,7 +1149,7 @@ def p4_varargs_fixtures(t : T?) {
         has_text(t, text, "ok = int(va_i(ap)) == 7 || int(va_i(ap)) == 8 ? 1 : 0")
         // `sizeof(va_list)` is clang's size: the cursor is never laid out
         has_text(t, text, "int(uint64(24))")
-        has_text(t, text, "sscanf(reinterpret<uint8?>(\"  12,-7 2.5e1 hello\")")
+        has_text(t, text, "sscanf(cstr(\"  12,-7 2.5e1 hello\")")
         // `va_end` is no statement: the text starts a cursor exactly where C calls `va_start`
         let c_source = fread("{FIXTURES}/p4_varargs.c")
         t |> equal(count(text, "= va_begin("), count(c_source, "va_start("), text)
@@ -1166,7 +1166,7 @@ def p4_varargs_fixtures(t : T?) {
         // the spelled call resolves at inference: above its definition and inside it
         has_text(t, text, "return n > 0 ? n + p4_varargs__countdown`va(n - 1, VaNone()) : 0")
         has_text(t, text, "p4_varargs__ping`va(n - 1, VaNone())")
-        has_text(t, text, "printf(reinterpret<uint8?>(\"pairs %d\\n\"), p4_varargs__pairs`va(1, (4, 2, 9)))")
+        has_text(t, text, "printf(cstr(\"pairs %d\\n\"), p4_varargs__pairs`va(1, (4, 2, 9)))")
         // a `va_list` position is `var` in a function type as in the function
         has_text(t, text, "var t : function<(var a0 : CVaCursor) : int> = @@p4_varargs__take_two")
         has_text(t, text, "first = invoke(t, ap)")
@@ -1388,7 +1388,7 @@ def p4_csmith_more_fixtures(t : T?) {
         has_text(t, far, "return addr(int64_index__a[1000000000000000000l])")
         // a string literal's address is through its pointer, never the decayed array
         let literal = converts(t, "literal_address", "static const char *at(int k) \{ return &\"abcdef\"[k]; \}\nint main(void) \{ return at(6) - at(0) - 6; \}\n")
-        has_text(t, literal, "return addr(reinterpret<uint8?>(\"abcdef\")[k])")
+        has_text(t, literal, "return addr(cstr(\"abcdef\")[k])")
     }
 }
 
@@ -1545,8 +1545,8 @@ def p4_matrix_leftover_fixtures(t : T?) {
         // a struct's value is its literal; an array or an address is an object before the statement
         has_text(t, text, "    p = P(y = 9)\n")
         has_text(t, text, "p4_compound_lit__dot(P(x = 2, y = 3), p)")
-        has_text(t, text, "    var _cl4 : P = P(x = 3, y = 4)\n    printf(reinterpret<uint8?>(\"address %d\\n\"), p4_compound_lit__len2(addr(_cl4)))\n")
-        has_text(t, text, "    var _cl4 : int[3] = fixed_array(1, 2, 3)\n    printf(reinterpret<uint8?>(\"array %d\\n\"), p4_compound_lit__sum(addr(_cl4[0]), 3))\n")
+        has_text(t, text, "    var _cl4 : P = P(x = 3, y = 4)\n    printf(cstr(\"address %d\\n\"), p4_compound_lit__len2(addr(_cl4)))\n")
+        has_text(t, text, "    var _cl4 : int[3] = fixed_array(1, 2, 3)\n    printf(cstr(\"array %d\\n\"), p4_compound_lit__sum(addr(_cl4[0]), 3))\n")
         has_text(t, text, "    var p : P = P(x = p4_compound_lit__note(1), y = p4_compound_lit__note(2))\n")
         // a union's literal is a declaration and its store, a scalar's its value
         has_text(t, text, "    var _cl4 : num\n    _cl4.f = 1.5f\n    var u : num? = addr(_cl4)\n")
@@ -1577,7 +1577,7 @@ def p4_matrix_leftover_fixtures(t : T?) {
         has_text(t, text, "    var r : int = 0\n    if (c == 5) \{\n")
         // an array filled sparsely under an arm starts from its zero
         has_text(t, text, "        _cl12 = default<int[40]>\n        _cl12[30] = 1\n")
-        has_text(t, text, "printf(reinterpret<uint8?>(\"empty %d\\n\"), 0 + 2)")
+        has_text(t, text, "printf(cstr(\"empty %d\\n\"), 0 + 2)")
         // a union's list with effects: every item evaluated first, the literal reading the temporaries
         has_text(t, text, "    let _t0 = p4_compound_lit__note(5)\n    let _t1 = p4_compound_lit__note(6)\n    var _cl4 : tagged = tagged(tag = _t0)\n    _cl4.n.i = _t1\n")
     }
@@ -1596,7 +1596,7 @@ def p4_matrix_leftover_fixtures(t : T?) {
         has_text(t, text, "def c_runtime_init1(var what : uint8?) \{\n")
         has_text(t, text, "def c_main1(x : int) : int \{\n")
         has_text(t, text, "= @@c_argc1\n")
-        has_text(t, text, "    c_runtime_init1(reinterpret<uint8?>(\"own\"))\n")
+        has_text(t, text, "    c_runtime_init1(cstr(\"own\"))\n")
         has_text(t, text, "def main : int \{\n    c_runtime_init(\"p4_main_names\")\n    return c_main(c_argc(), c_argv())\n")
     }
 }
@@ -1648,7 +1648,7 @@ def p4_matrix_leftover_shapes(t : T?) {
     t |> run("the void conditional is an if/else of its arms' statements") @(t : T?) {
         var text : string
         check_fixture(t, "p4_void_cond", text)
-        has_text(t, text, "    if (!(n == 3)) \{\n        printf(reinterpret<uint8?>(\"check failed: %s\\n\"), reinterpret<uint8?>(\"n == 3\"))\n        c_abort()\n    \}\n")
+        has_text(t, text, "    if (!(n == 3)) \{\n        printf(cstr(\"check failed: %s\\n\"), cstr(\"n == 3\"))\n        c_abort()\n    \}\n")
         has_text(t, text, "    if (n > 10) \{\n        p4_void_cond__hit(100)\n    \}\n    if (n > 2) \{\n")
         has_text(t, text, "    \} else \{\n        p4_void_cond__hit(20)\n        p4_void_cond__hit(30)\n    \}\n")
     }
@@ -1795,7 +1795,7 @@ def p5_lua_fixtures(t : T?) {
         has_text(t, text, "    hook : function<(a0 : int) : int>\n")
         has_text(t, text, "    var local : function<(a0 : int) : int> = @@p5_lua_shapes__twice\n")
         // an attribute on an extern declaration is no initializer: the definition's list is
-        has_text(t, text, "var shape_names : uint8? [3] = fixed_array<uint8?>(unsafe(reinterpret<uint8?>(\"nil\")), ")
+        has_text(t, text, "var shape_names : uint8? [3] = fixed_array<uint8?>(cstr(\"nil\"), ")
         // offsetof spelled inside a header's macro, two in one expansion, each its own
         has_text(t, text, "int(0 == 0 ? uint64(typeinfo offsetof < payload > (type<cell0>)) : uint64(typeinfo offsetof < slots > (type<cell>))")
         // das subtracts from a pointer variable only: a computed pointer adds the negated count
@@ -1815,7 +1815,7 @@ def p5_lua_fixtures(t : T?) {
         // a record of a function whose signature spells pointers keeps its layout
         has_text(t, text, "    var probe : cD\n")
         // string.h and ctype.h completions, glibc's errno and HUGE_VAL through the crt module
-        has_text(t, text, "int(int64(crt::strpbrk(s, reinterpret<uint8?>(\"^$*\")) - s)), int(crt::strspn(s, reinterpret<uint8?>(\"abc\"))), crt::strcoll(")
+        has_text(t, text, "int(int64(crt::strpbrk(s, cstr(\"^$*\")) - s)), int(crt::strspn(s, cstr(\"abc\"))), crt::strcoll(")
         has_text(t, text, "crt::isgraph('!')")
         has_text(t, text, "    deref(crt::c_errno_location()) = 0\n")
         has_text(t, text, "crt::HUGE_VAL > 1e+308lf && -crt::HUGE_VAL < -1e+308lf")
@@ -1854,7 +1854,7 @@ def p5_lua_library_fixtures(t : T?) {
         has_text(t, text, "    var c : int = crt::getc(reinterpret<void?>(f))\n")
         has_text(t, text, "s.f = reinterpret<_IO_FILE?>(crt::freopen(")
         // the standard streams are crt accessors, passed on as they are
-        has_text(t, text, "fprintf(crt::c_stderr(), reinterpret<uint8?>(\"to %s\\n\"), reinterpret<uint8?>(\"stderr\"))\n")
+        has_text(t, text, "fprintf(crt::c_stderr(), cstr(\"to %s\\n\"), cstr(\"stderr\"))\n")
         has_text(t, text, "    var out : _IO_FILE? = reinterpret<_IO_FILE?>(crt::c_stdout())\n")
         // struct tm and struct lconv from the system headers, layout-checked like the program's
         // das reserves a name that starts with `__`, as it does a keyword
@@ -1871,7 +1871,7 @@ def p5_lua_library_fixtures(t : T?) {
         // SIG_IGN is the integer sentinel a function value holds and compares, never called
         has_text(t, text, "c_signal(2, reinterpret<function<(a0 : int) : void>>(uint64(1)))")
         // a record pointer among the trailing arguments stays the program's pointer
-        has_text(t, text, "snprintf(addr(p5_lua_stdio__path[0]), uint64(typeinfo sizeof(type<uint8[512]>)), reinterpret<uint8?>(\"%p\"), out)\n")
+        has_text(t, text, "snprintf(addr(p5_lua_stdio__path[0]), uint64(typeinfo sizeof(type<uint8[512]>)), cstr(\"%p\"), out)\n")
     }
     t |> run("a system record the program only points to stays opaque; one it reaches a member of by sizeof is laid out") @(t : T?) {
         let text = converts(t, "system_sizeof", "#include <time.h>\nint main(void) \{ struct tm *p = 0; return (int) sizeof(struct tm) < 36 || p != 0; \}\n")
@@ -1923,7 +1923,7 @@ def p5_lua_expression_fixtures(t : T?) {
         has_text(t, text, "int(int64(top - 1 - (base + k)))")
         has_text(t, text, "int(int64(top - (addr(a[0]) + int(h))))")
         // an interior NUL: `\\0` in a pointer's literal, a byte row in an array
-        has_text(t, text, "reinterpret<uint8?>(\"[\\0-\\x7f\\xc2-\\xfd][\\x80-\\xbf]*\")")
+        has_text(t, text, "cstr(\"[\\0-\\x7f\\xc2-\\xfd][\\x80-\\xbf]*\")")
         has_text(t, text, "var row : uint8[6] = fixed_array(uint8(97), uint8(0), uint8(98), uint8(0), uint8(99), uint8(0))\n")
         // a goto into another case re-dispatches: the label is a case of its number in the
         // switch's goto variable, which `default` requires unset, while the goto stores a value no case
@@ -2094,7 +2094,7 @@ def p5_lua_review_fixtures(t : T?) {
         has_text(t, text, "            if (_t0 > 0) \{\n                _goto = 1\n                _cond = 0\n                goto label 2\n")
         // a parameter and a local named like a standard stream are the program's
         has_text(t, text, "    while (stdin[n] != 0) \{\n")
-        has_text(t, text, "    var stderr : uint8? = reinterpret<uint8?>(\"hello\")\n")
+        has_text(t, text, "    var stderr : uint8? = cstr(\"hello\")\n")
         has_text(t, text, "int(stderr[1])")
         // setvbuf takes c_exit, which flushes the streams while the program's buffer lives
         has_text(t, text, "require c_runtime/c_exit\n")
@@ -2629,8 +2629,8 @@ def p8_input_fixtures(t : T?) {
     t |> run("glibc's `assert` without NDEBUG: `__extension__` dropped, its statement expression a block, `__PRETTY_FUNCTION__` and `__func__` the name's literal") @(t : T?) {
         var text : string
         check_fixture(t, "p8_glibc_assert", text)
-        has_text(t, text, "        if (total == 14) \{\n        \} else \{\n            c_assert_fail(reinterpret<uint8?>(\"total == 14\"), ")
-        has_text(t, text, "reinterpret<uint8?>(\"int main(void)\"))")
+        has_text(t, text, "        if (total == 14) \{\n        \} else \{\n            c_assert_fail(cstr(\"total == 14\"), ")
+        has_text(t, text, "cstr(\"int main(void)\"))")
         has_text(t, text, "require c_runtime/c_exit")
     }
     t |> run("clock_gettime binds to the crt over a timespec the program lays out: both clocks, an unknown one refused") @(t : T?) {
@@ -2713,6 +2713,22 @@ def readability_fixtures(t : T?) {
     p9_paren_fixtures(t)
     p9_literal_fixtures(t)
     p9_compound_define_fixtures(t)
+    p9_cstr_fixtures(t)
+}
+
+// P9.7: a string literal is `cstr("...")`, which expands in place to the literal's reinterpret
+def p9_cstr_fixtures(t : T?) {
+    t |> run("a string literal is cstr(\"...\") in a function and a global initializer, no unsafe around it; a C function named cstr keeps its calls") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_cstr", text)
+        has_text(t, text, "require c_runtime/cstr\n")
+        has_text(t, text, "fixed_array<uint8?>(cstr(\"zero\"), cstr(\"one\"), unsafe(addr(c2das_empty[0])))\n")
+        has_text(t, text, "    var p : uint8? = cstr(\"lit\\tab\")\n")
+        // the program's own `cstr` takes the literal: the macro leaves a call of no literal alone
+        has_text(t, text, "printf(cstr(\"%s %s %s [%s] %d\\n\"), p, cstr(cstr(\"xyz\")), ")
+        has_text(t, text, "int(cstr(\"abc\")[1])")
+        t |> equal(text |> find("reinterpret<uint8?>(\"") < 0, true, text)
+    }
 }
 
 // P9.5: a `#define` constant whose body names other constants is a `let` over their names,
@@ -2824,7 +2840,7 @@ def p7_readable_fixtures(t : T?) {
         has_text(t, text, "            // skip the even ones\n            continue\n")
         has_text(t, text, "        // add the odd one,\n        // over two lines\n        s += i\n")
         has_text(t, text, "    // \"a // inside\" stays one comment\n    return s\n")
-        has_text(t, text, "    var t : uint8? = reinterpret<uint8?>(\"not /* a comment */ here\")\n    // print it\n")
+        has_text(t, text, "    var t : uint8? = cstr(\"not /* a comment */ here\")\n    // print it\n")
         // an apostrophe in `#if 0` prose leaves the later lines' comments on their own lines; a
         // GNU-style header's comment stands above the specifiers' line
         has_text(t, text, "// the sign of n, in GNU style\ndef private p7_comments__sign_of(n : int) : int \{\n")
