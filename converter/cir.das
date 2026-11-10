@@ -97,6 +97,8 @@ struct CirExpr {
     vol : bool
     // an `int_lit` that the C source spelled as a character literal
     is_char : bool
+    // an expression the C source wrote in parentheses of its own
+    paren : bool
     macro : string
 }
 
@@ -609,6 +611,10 @@ def private write_expr(var w : Writer; x : CirExpr) {
         member(w, "char", false)
         w.out |> push("true")
     }
+    if (x.paren) {
+        member(w, "paren", false)
+        w.out |> push("true")
+    }
     if (!empty(x.macro)) {
         member(w, "macro", false)
         w.out |> push(json_str(x.macro))
@@ -1084,6 +1090,7 @@ def private read_expr(js : JsonValue?) : CirExpr? {
     }
     x.vol = js_bool(js, "vol")
     x.is_char = js_bool(js, "char")
+    x.paren = js_bool(js, "paren")
     x.macro = js_str(js, "macro")
     return x
 }
