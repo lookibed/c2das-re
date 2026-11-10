@@ -91,7 +91,7 @@ percent of Doom's JIT samples before (`docs/probe-findings.md` F81, `probes/test
 typed load through `reinterpret` would assume x86-64's unaligned loads, the builtin assumes nothing.
 A copy whose size is the program's (C's own `memcpy`) stays `crt::memcpy`. An array field (C
 reaches one only by decay, `&` or `sizeof`) gets `ptr_T_f(bytes, ofs)`, its decay, the pointer to
-its first element where it lies (a row of a 2-D one): `p->a[i]` is `deref(ptr_T_a(p, 0) + i)` to
+its first element where it lies (a row of a 2-D one): `p->a[i]` is `ptr_T_a(p, 0)[i]` to
 read, store and step, `&p->a[i]` that pointer plus `i`, `&p->a` it reinterpreted; an element is a
 typed load at the packed offset, unchecked as in C. A field holding marshal-only records `R`, one or
 a 1-D array, gets `ptr_T_r(bytes, ofs) : uint8?`, the (first) inner record's bytes, a record in C
