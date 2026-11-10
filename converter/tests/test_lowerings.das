@@ -2781,10 +2781,11 @@ def p7_goto_into_fixtures(t : T?) {
         has_text(t, text, "    let _cond = x\n    var v : int\n    if (_cond == 1) \{\n        goto label 3\n    \} elif (_cond == 2) \{\n        goto label 4\n    \} else \{\n        goto label 5\n    \}\n")
         has_text(t, text, "    r = 1\n    v = 4\n    goto label 2\n    label 4:  // case 2\n")
         has_text(t, text, "    label 5:  // default\n    r = 7\n    label 2:  // switch end\n")
-        // both arms entered, and an unentered arm that returns or holds a label: all flat
+        // both arms entered: both flat; an unentered arm that returns or holds a label keeps its
+        // braces (P8.11: F63 and lookibed/daScript#8 fixed), one that returns jumps nowhere after
         has_text(t, text, "    r += 2\n    goto label 3\n    label 4:  // else\n    r = 3\n    label 2:  // b\n")
-        has_text(t, text, "    r += x\n    goto label 2\n    label 3:  // else\n    return -1\n    label 2:  // end if\n")
-        has_text(t, text, "    goto label 3\n    label 4:  // else\n    r = 2\n    label 2:  // again\n")
+        has_text(t, text, "    if (!(x > 0)) \{\n        return -1\n    \}\n    label 1:  // in\n    r += x\n    return r\n")
+        has_text(t, text, "    if (!(x > 0)) \{\n        r = 2\n        label 2:  // again\n        r++\n        if (r < 5) \{\n            goto label 2\n        \}\n        goto label 3\n    \}\n")
         // a for with no test ends only where `break` goes; a do's `continue` reaches its test
         has_text(t, text, "    goto label 1\n    label 2:  // for\n    n += 2\n")
         has_text(t, text, "        i++\n        goto label 3\n    \}\n    n += 10\n")
@@ -2799,10 +2800,10 @@ def p7_goto_into_fixtures(t : T?) {
         has_text(t, text, "    if (i > k) \{\n        return -i\n    \}\n    label 1:  // mid\n")
         has_text(t, text, "    if (c == 2) \{\n        return 5\n    \}\n    r = 7\n")
         has_text(t, text, "    if (count <= 0) \{\n        return 0\n    \}\n    let _cond = count % 8\n")
-        // a goto out of a das loop's body, or an `if`'s arm, holding an open loop opens that loop or
-        // `if` too, so no braced block holds the open loop's labels (F60, F63)
-        has_text(t, text, "    var r : int = 0\n    label 3:  // for\n    if (!(r < 3)) \{\n        goto label 4\n    \}\n    var i : int = 0\n")
-        has_text(t, text, "    if (!(z != 0)) \{\n        goto label 3\n    \}\n    if (k != 0) \{\n        goto label 1\n    \}\n")
+        // a goto out of a das loop's body, or an `if`'s arm, holding an open loop leaves that loop
+        // or `if` structured: the braced block holds the open loop's labels (P8.11: F60, F63 fixed)
+        has_text(t, text, "    for (r in range(3)) \{\n        var i : int = 0\n        if (k != 0) \{\n            goto label 1\n        \}\n        label 3:  // while\n")
+        has_text(t, text, "    if (z != 0) \{\n        if (k != 0) \{\n            goto label 1\n        \}\n        label 3:  // while\n")
         // a branch ending in an `if` whose arms all return is guarded like one ending in `return`
         has_text(t, text, "            return 7\n        \}\n    \}\n    s = 3\n")
         // and one ending in a switch with a `default` whose every case returns

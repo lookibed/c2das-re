@@ -4854,8 +4854,6 @@ struct LabelPlan {
     labels : table<string; LabelSite>
     gotos : array<CirStmt const?>
     goto_sites : array<LabelSite>
-    // the statement of every path entry
-    nodes : table<uint64; CirStmt const?>
     // the case labels, each with its site
     cases : array<CirStmt const?>
     case_sites : array<LabelSite>
@@ -4898,7 +4896,6 @@ def private plan_labels(var em : Emitter; tu : CirTu; body : CirStmt const?) {
     if (em.prog.goto_dispatch) {
         open_redispatched(em, tu, plan)
     }
-    open_left_blocks(em, plan)
     for (c, at in plan.cases, plan.case_sites) {
         if (key_exists(em.flag_switches, at.switches |> back()) && key_exists(em.flatten, at.switches |> back())) {
             fail(em, "a switch spelled open, for a goto into its body or a case label below its level, that a goto from another case re-dispatches is not lowered", c.loc)
@@ -4931,8 +4928,8 @@ def private open_redispatched(var em : Emitter; tu : CirTu; plan : LabelPlan) {
 }
 
 // every block on `site`'s path from `from` on loses its braces, and every `if`, loop or switch
-// whose arm or body is one is spelled open; an `if` arm holding a label of its own, or ending in
-// a statement that leaves, is spelled flat too (ARCHITECTURE_EMITTER_CONTROL.md, A goto into a body)
+// whose arm or body is one is spelled open; an `if` arm no goto enters keeps its braces
+// (ARCHITECTURE_EMITTER_CONTROL.md, A goto into a body)
 def private open_path(var em : Emitter; site : LabelSite; from, to : int) {
     for (depth in range(from, to)) {
         let owner = site.owners[depth]
@@ -4946,48 +4943,13 @@ def private open_path(var em : Emitter; site : LabelSite; from, to : int) {
                 fail(em, "a goto into an arm of a setjmp `if` is not lowered", owner.loc)
                 return
             }
-            enter_arm(em, owner.then_s, site.path[depth] == intptr(owner.then_s) || holds_label(owner.then_s) || ends_group(owner.then_s))
-            enter_arm(em, owner.else_s, site.path[depth] == intptr(owner.else_s) || holds_label(owner.else_s) || ends_group(owner.else_s))
+            enter_arm(em, owner.then_s, site.path[depth] == intptr(owner.then_s))
+            enter_arm(em, owner.else_s, site.path[depth] == intptr(owner.else_s))
         } else {
             enter_arm(em, owner.body_s, true)
         }
         em.opened |> insert(intptr(owner))
     }
-}
-
-// a block that keeps its braces and holds an open construct holds that construct's labels; every
-// such block a goto leaves is opened too, up to the goto's common block with its label, until no
-// such block is left (ARCHITECTURE_EMITTER_CONTROL.md, A goto into a body)
-def private open_left_blocks(var em : Emitter; plan : LabelPlan) {
-    var changed = true
-    while (changed && empty(em.error)) {
-        changed = false
-        for (g, from in plan.gotos, plan.goto_sites) {
-            var common = 0
-            get(plan.labels, g.label_name) $(target) {
-                while (common < length(target.path) && common < length(from.path) && target.path[common] == from.path[common]) {
-                    common++
-                }
-            }
-            for (depth in range(common, length(from.path))) {
-                let key = from.path[depth]
-                continue if (key_exists(em.flatten, key) || key_exists(em.entered, key))
-                if (holds_open(em, plan.nodes?[key] ?? null)) {
-                    open_path(em, from, depth, depth + 1)
-                    changed = true
-                }
-            }
-        }
-    }
-}
-
-// whether statement tree `st` holds a construct spelled open
-def private holds_open(em : Emitter; st : CirStmt const?) : bool {
-    var found = false
-    each_stmt(st) $(s) {
-        found ||= key_exists(em.opened, intptr(s))
-    }
-    return found
 }
 
 // arm or body `st` of an open statement, when `flat`, spelled at the statement's level
@@ -4998,15 +4960,6 @@ def private enter_arm(var em : Emitter; st : CirStmt const?; flat : bool) {
             em.flatten |> insert(intptr(st))
         }
     }
-}
-
-// whether statement tree `st` holds a C label
-def private holds_label(st : CirStmt const?) : bool {
-    var found = false
-    each_stmt(st) $(s) {
-        found ||= s.s == "label"
-    }
-    return found
 }
 
 // the das label that restarts each switch a cross-group goto re-dispatches, and each jump table's
@@ -5060,7 +5013,6 @@ def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; owne
         site.path |> push(intptr(st))
         site.bare |> push(false)
         site.owners |> push(owner)
-        plan.nodes[intptr(st)] = st
         walk_labels(em, st, true, null, site, plan)
         site.path |> pop()
         site.bare |> pop()
@@ -5086,7 +5038,6 @@ def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; owne
         site.path |> push(intptr(st))
         site.bare |> push(bare)
         site.owners |> push(bare ? null : owner)
-        plan.nodes[intptr(st)] = st
         for (child in st.body) {
             walk_labels(em, child, true, null, site, plan)
         }
@@ -5098,7 +5049,6 @@ def private walk_labels(var em : Emitter; st : CirStmt const?; bare : bool; owne
         site.path |> push(intptr(st.body_s))
         site.bare |> push(false)
         site.owners |> push(st)
-        plan.nodes[intptr(st.body_s)] = st.body_s
         site.switches |> push(intptr(st.body_s))
         site.groups |> push(-1)
         var marker = false
@@ -5956,13 +5906,19 @@ def private emit_open_if(var em : Emitter; tu : CirTu; st : CirStmt const?) {
         }
         return
     }
-    // the arm no goto enters stays a branch, which jumps past the entered one
+    // the arm no goto enters stays a branch, which jumps past the entered one unless it leaves
+    let braced = then_flat ? st.else_s : st.then_s
+    let falls = !ends_group(braced)
     open_block(em, then_flat ? "if (!({c.text}))" : "if ({c.text})")
-    emit_body(em, tu, then_flat ? st.else_s : st.then_s)
-    line(em, "goto label {end_at}")
+    emit_body(em, tu, braced)
+    if (falls) {
+        line(em, "goto label {end_at}")
+    }
     close_block(em)
     emit_body(em, tu, then_flat ? st.then_s : st.else_s)
-    jump_label(em, end_at, "end if")
+    if (falls) {
+        jump_label(em, end_at, "end if")
+    }
 }
 
 // a loop spelled open: the test at its top label, the body flat, C `continue` a goto to the

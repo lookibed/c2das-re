@@ -152,12 +152,12 @@ a scope the goto sees; this is the plan's goto-into-nested-block flattening and 
 (`docs/very-detailed-plan.md` section 3, step 4), and no state variable or dispatch loop is
 involved. Every other construct of the function keeps its structured form. An `if` is
 `if (!(c)) { <the arm no goto enters>; goto label E }`, the entered arm, `label E:  // end if`,
-the test kept as written (`if (c)`) when the entered arm is `else`; both arms flat are
+the test kept as written (`if (c)`) when the entered arm is `else`, and no `goto label E` when the
+arm no goto enters leaves (it ends in `return`, `break`, `continue` or `goto`); both arms flat are
 `if (!(c)) { goto label L }`, the then arm, `goto label E` unless it leaves, `label L:  // else`, the
-else arm, `label E`. An arm no goto enters is flat as well when it holds a label of its own or ends
-in a leaving statement (`open_path`): the form the earlier daslang needed, which lost a goto out of
-a labelled block (F63) and folded a label after such an `if` into an `else` (lookibed/daScript#8);
-`abf1d40e35` fixed both, and keeping such arms braced is P8.11's. A `while` or `for` is
+else arm, `label E`. An arm no goto enters keeps its braces, a label of its own or a leaving last
+statement included: daslang passes a goto out of a labelled block outward (F63) and keeps a label
+after such an `if` (lookibed/daScript#8). A `while` or `for` is
 its initializer, `label T:`, `if (!(c)) { goto label E }`, the body, a `label N:  // for next`
 before the increment when the body holds a `continue` of the loop, `goto label T`, `label E:`; a
 `do` is `label T:`, the body, the `continue` label, `if (c) { goto label T }`, and its end label
@@ -165,12 +165,10 @@ when a `break` needs it. A switch is `let _condN = x` (a declaration a later cas
 one `if`/`elif` per case label to that label's `goto`, `else` to `default` or the end, then the body
 flat with every case label `label K:  // case v`. A C `break` of an open loop or switch is a goto to
 its end and a `continue` of an open loop one to its test or increment (`break_gotos`, `cont_flags`);
-a das loop or matched-flag switch inside keeps das's own. A block left braced that holds an open
-construct holds its labels, and every such block a goto leaves is opened as well
-(`open_left_blocks`: a bare block loses its braces, an arm or body opens its `if`, loop or switch),
-until none is left: the earlier daslang lost a goto out of a labelled block or loop body (F60,
-lookibed/daScript#19, F63), `abf1d40e35` passes it outward, and leaving such blocks braced is
-P8.11's. The labels the lowering adds are numbered
+a das loop or matched-flag switch inside keeps das's own. A block that holds an open construct
+keeps its braces and holds that construct's labels, a goto leaving it included: daslang passes a
+goto out of a labelled block or loop body outward (F60, lookibed/daScript#19, F63). The labels the
+lowering adds are numbered
 after the function's C labels, which keep their numbers, and the comment names the construct. A
 goto into an arm of a setjmp `if` fails closed, as does, under `chain`, an open switch that a goto
 from another case re-dispatches (`switch_dispatch` `goto` lowers it, above). The open form is the C's own jumps made explicit: no flag is tested and no loop
