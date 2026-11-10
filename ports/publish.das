@@ -1240,6 +1240,7 @@ def private finish(args : Args; repo : string; failures : array<string>; publish
 
 //! PureDOOM's directory in the clone and the `doom/` harness's paths the publish reads
 let PUREDOOM = "puredoom"
+let DOOM_HARNESS = "doom/run.das"
 let DOOM_TREE = "doom/work/source"
 let DOOM_SYNC = "doom/work/publish_sync.txt"
 let DOOM_FPS = "doom/results_linux.json"
@@ -1298,8 +1299,13 @@ def private doom_fps_text(gen : Generation) : string {
     return "{note}From c2das-re's `{DOOM_FPS}` (`{c.command}`), the frames per second of each demo's `-timedemo` against the native build:\n\n{render_fps(c)}"
 }
 
-// PureDOOM published, the top-level README after it, and committed with `--commit`
+// PureDOOM published, the top-level README after it, and committed with `--commit`; skipped with a
+// warning in a tree without the `doom/` harness
 def private publish_and_commit_puredoom(args : Args; repo : string; var failures : array<string>; var published : int&) {
+    if (!fexist(DOOM_HARNESS)) {
+        to_log(LOG_WARNING, "{PUREDOOM}: not published: this tree has no {DOOM_HARNESS}\n")
+        return
+    }
     var gen : Generation
     if (!publish_puredoom(args, repo, gen) || !publish_top_readme(repo, failures)) {
         failures |> push("{PUREDOOM}: the publish failed (its log names why)")

@@ -1033,3 +1033,70 @@ def test_stale_capture(t : T?) {
         t |> success(readme |> contains("## Performance\n\nMeasured at c2das-re `{slice(OTHER_SHA, 0, 12)}`, output changed since"), readme)
     }
 }
+
+// the stand-in `doom/` harness of `root`, committed, with its work and fetch trees ignored as the
+// repository ignores them: a converted tree with a C-IR file beside its modules, the verdicts of
+// a publish's runs (`sync`, none when empty) and the conversion's stamp naming the new HEAD; the
+// fetched commit holds a wad, which the publish never copies
+def private stand_in_doom(root, sync : string) {
+    fwrite(path_join(root, "VERSIONS.md"), VERSIONS + "puredoom: 355cfbd16fac (stand-in)\nfreedoom: 0.13.0 (stand-in)\n")
+    mkdir_rec(path_join(root, "doom/patches"))
+    fwrite(path_join(root, "doom/run.das"), "// stand-in\n")
+    fwrite(path_join(root, "doom/doom.c2das"), "\{\"defines\": [\"DOOM\"]\}\n")
+    fwrite(path_join(root, "doom/patches/0001-a.patch"), "first patch.\n\nCopyright.\n\n- a.c: does a.\n\ndiff --git a/a.c b/a.c\n")
+    fwrite(path_join(root, ".gitignore"), fread(path_join(root, ".gitignore")) + "/doom/work/\n/doom/fetch/\n")
+    git(root, ["add", "-A"])
+    git(root, ["commit", "-q", "-m", "doom"])
+    mkdir_rec(path_join(root, "doom/work/source"))
+    fwrite(path_join(root, "doom/work/source/doom_main.das"), "// main\n")
+    fwrite(path_join(root, "doom/work/source/doom_main.cir.json"), "\{\}\n")
+    fwrite(path_join(root, "doom/work/source/program.modules.txt"), "doom_main.das\n")
+    fwrite(path_join(root, "doom/work/source/program.layout.txt"), "doom_main\n")
+    mkdir_rec(path_join(root, "doom/fetch/PureDOOM"))
+    fwrite(path_join(root, "doom/fetch/PureDOOM/LICENSE"), "GNU GENERAL PUBLIC LICENSE Version 2\n")
+    fwrite(path_join(root, "doom/fetch/PureDOOM/doom1.wad"), "IWAD")
+    if (!empty(sync)) {
+        fwrite(path_join(root, "doom/work/publish_sync.txt"), sync)
+    }
+    fwrite(path_join(root, "doom/work/publish.generation"), "{git(root, ["rev-parse", "HEAD"])}\nv9.9.9-1\n{git(root, ["log", "-1", "--format=%cs"])}\n")
+}
+
+[test]
+def test_puredoom(t : T?) {
+    t |> run_stand_in("a tree without doom/ publishes every other program and skips PureDOOM", "c2das_ports_no_doom") @(t : T?; root, clone : string) {
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--program", "puredoom"], out), 0, out)
+        t |> success(out |> contains("puredoom: not published: this tree has no doom/run.das"), out)
+        t |> success(!fexist(path_join(clone, "puredoom")), out)
+    }
+    t |> run_stand_in("puredoom/: the listed tree, the sidecar, the patches, the license, the sync table, no wad", "c2das_ports_doom") @(t : T?; root, clone : string) {
+        stand_in_doom(root, "interp\t1\t2664 tics in sync\njit\t2\tfails: exit 1\n")
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--program", "puredoom", "--commit"], out), 0, out)
+        let dir = path_join(clone, "puredoom")
+        t |> equal(fread(path_join(dir, "doom/doom_main.das")), "// main\n")
+        t |> equal(fread(path_join(dir, "doom/program.layout.txt")), "doom_main\n")
+        t |> success(!fexist(path_join(dir, "doom/doom_main.cir.json")))
+        t |> equal(fread(path_join(dir, "doom.c2das")), "\{\"defines\": [\"DOOM\"]\}\n")
+        t |> equal(fread(path_join(dir, "LICENSE")), "GNU GENERAL PUBLIC LICENSE Version 2\n")
+        t |> success(fexist(path_join(dir, "patches/0001-a.patch")))
+        let readme = fread(path_join(dir, "README.md"))
+        t |> success(readme |> contains("at `355cfbd16fac`, patched"), readme)
+        t |> success(readme |> contains("  - `0001-a.patch` - first patch. a.c: does a.\n"), readme)
+        t |> success(readme |> contains("| interp | 2664 tics in sync | not run       | not run |"), readme)
+        t |> success(readme |> contains("| jit    | not run           | fails: exit 1 | not run |"), readme)
+        t |> success(readme |> contains("## Performance\n\nnot yet: "), readme)
+        t |> equal(git(clone, ["log", "-1", "--format=%s"]), "puredoom: regenerated from c2das-re v9.9.9-1 ({git(root, ["rev-parse", "HEAD"])})")
+        t |> success(!(git(clone, ["ls-files"]) |> contains(".wad")), git(clone, ["ls-files"]))
+        t |> success(fread(path_join(clone, "README.md")) |> contains("- [puredoom](puredoom/)\n"))
+    }
+    t |> run_stand_in("no sync verdicts: refused before the first write", "c2das_ports_doom_refused") @(t : T?; root, clone : string) {
+        stand_in_doom(root, "")
+        let head = git(clone, ["rev-parse", "HEAD"])
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--program", "puredoom", "--commit"], out), 1, out)
+        t |> success(out |> contains("no demo verdicts in doom/work/publish_sync.txt"), out)
+        untouched(t, clone, head, out)
+        t |> success(!fexist(path_join(clone, "puredoom")), out)
+    }
+}
