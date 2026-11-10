@@ -765,7 +765,7 @@ def p3_fixtures(t : T?) {
 }
 
 def p4_fixtures(t : T?) {
-    t |> run("bitfields: [c_bitfields] with clang's units, openers and padding, folded initializers, steps and compound stores spelled `x = x + 1`, F5's alignment") @(t : T?) {
+    t |> run("bitfields: [c_bitfields] with clang's units, openers and padding, folded initializers, steps and compound stores spelled `x += 1`, F5's alignment") @(t : T?) {
         var text : string
         check_fixture(t, "p4_bitfields", text)
         has_text(t, text, "require c_runtime/c_bitfields")
@@ -778,17 +778,17 @@ def p4_fixtures(t : T?) {
         has_text(t, text, "BF(_bits0 = uint8((uint(-1) & 0x1fu) << 3u))")
         has_text(t, text, "var r : BF = BF(_bits0 = uint8((uint(v) & 0x7u) | ((uint(v - 20) & 0x1fu) << 3u)), e = int16(v))")
         has_text(t, text, "Mixed(_bits0 = (uint64(uint8(6)) & 0x7ul) | ((uint64(3) & 0x1ful) << 3ul) | ((uint64(int64(-5)) & 0xfffffffffful) << 8ul))")
-        has_text(t, text, "p.a = p.a + 1u\n    p.b = p.b + 1\n")
-        has_text(t, text, "let _t0 = s.a\n    s.a = s.a + 1u\n")
+        has_text(t, text, "p.a += 1u\n    p.b += 1\n")
+        has_text(t, text, "let _t0 = s.a\n    s.a += 1u\n")
         has_text(t, text, "m.flag = 1 != 0\n")
         has_text(t, text, "[c_bitfields(_bits0 = \"uint16\", a = 8, b = 8)]\nstruct R \{")
         has_text(t, text, "\"W: clang lays it out as size 8, align 4, its das alignment is 2\")")
         has_text(t, text, "\n\nstruct T \{\n    x, y : int\n\}")
         has_text(t, text, "Full(_bits0 = 18364758544493064720ul, _bits1 = (uint64(100) & 0x7ful) | (((1 != 0 ? 1ul : 0ul) & 0x1ul) << 7ul))")
-        has_text(t, text, "f.all = f.all + 1ul\n    f.top = f.top - 1ul\n")
-        has_text(t, text, "ll.q = ll.q - 1l\n")
-        has_text(t, text, "h.bf.b = h.bf.b + 3\n")
-        has_text(t, text, "p.hi = p.hi << 1u\n")
+        has_text(t, text, "f.all += 1ul\n    f.top -= 1ul\n")
+        has_text(t, text, "ll.q -= 1l\n")
+        has_text(t, text, "h.bf.b += 3\n")
+        has_text(t, text, "p.hi <<= 1u\n")
         has_text(t, text, "[c_bitfields(_bits0 = \"uint8\", a = 3)]\nstruct Narrow")
         has_text(t, text, "[c_bitfields(_bits0 = \"uint8\", q = 4)]\nstruct LL")
         has_text(t, text, "[c_bitfields(f = 3)]\nstruct Names \{\n    _1, _bits9 : int\n    f : uint\n\}")
@@ -923,12 +923,12 @@ def p4_layout_leftovers(t : T?) {
         has_text(t, text, "typeinfo alignof(type<Narrow>) == 1, \"Narrow: clang lays it out as size 4, align 4, its bitfield units align 1\")")
         has_text(t, text, "static_assert(typeinfo offsetof < _bits1 > (type<Cramped>) == 5")
         has_text(t, text, "    p4_layout_leftovers__gpun.f0 = -3\n")
-        has_text(t, text, "a.f0 = a.f0 + 1\n    a.f0 = a.f0 + 3\n    a.f0 = a.f0 - 1\n")
-        has_text(t, text, "pin.u.f0 = pin.u.f0 - 1\n")
-        has_text(t, text, "deref(p + 2).bf.a = deref(p + 2).bf.a + 1u\n")
-        has_text(t, text, "deref(p + 2).u.s = deref(p + 2).u.s + 1u\n")
-        has_text(t, text, "deref(p + 2).bf.b = deref(p + 2).bf.b + 3\n")
-        has_text(t, text, "deref(p + 1).u.s = deref(p + 1).u.s | 2\n")
+        has_text(t, text, "a.f0 += 1\n    a.f0 += 3\n    a.f0 -= 1\n")
+        has_text(t, text, "pin.u.f0 -= 1\n")
+        has_text(t, text, "deref(p + 2).bf.a += 1u\n")
+        has_text(t, text, "deref(p + 2).u.s += 1u\n")
+        has_text(t, text, "deref(p + 2).bf.b += 3\n")
+        has_text(t, text, "deref(p + 1).u.s |= 2\n")
         has_text(t, text, "[c_bitfields(_bits0 = \"uint8[6]\", a = 3, b = 40)]\nstruct WideJoin \{")
         has_text(t, text, "[c_bitfields(_bits0 = \"uint8[3]\", a = 12, b = 12, _bits1 = \"uint\", d = 7, e = 20)]\nstruct SplitJoin \{")
         has_text(t, text, "[c_bitfields(_bits0 = \"uint8[2]\", a = 9)]\nstruct ZeroSkip \{\n    c : uint8\n    a : uint\n    _pad0 : uint8[1]\n    d : uint8\n    _pad1 : uint8[3]\n\}")
@@ -1417,7 +1417,7 @@ def p4_scope_fidelity_fixtures(t : T?) {
         has_text(t, text, "        deref(_t0) = deref(_t1)\n        if (!(deref(_t0) != 0)) \{\n            break\n")
         has_text(t, text, "    deref(_t2) = deref(_t3)\n    if (deref(_t2) != 0) \{\n")
         has_text(t, text, "    a[_t6] = 9\n    var got : int = a[_t6]\n")
-        // a bitfield's getter and setter, spelled apart (F52), share the pinned index
+        // a bitfield widened to int, its getter and setter spelled apart, share the pinned index
         has_text(t, text, "    let _t0 = p4_scope_fidelity__pick(1)\n    deref(p + _t0).bf = uint(int(deref(p + _t0).bf) + 5)\n")
         has_text(t, text, "    bytes[_t3] = int8(int(bytes[_t3]) + 7)\n")
         // a target spelled by a variable's own name is pinned too: a call later in the
@@ -2266,9 +2266,9 @@ def p7_fixtures(t : T?) {
         // a truth value is the int C adds; the right side is spelled once
         has_text(t, text, "    x += (a < b ? 1 : 0)\n    x |= (!(a != 0) ? 1 : 0)\n    x *= (a != 0 && b != 0 ? 1 : 0)\n    d += double(a > b ? 1 : 0)\n    var _cl0 : int[2] = fixed_array(7, 8)\n    x += deref(addr(_cl0[0]))\n")
         t |> equal(text |> find("_cl1") < 0, true, text)
-        // a bitfield and a `[c_union]` member keep the plain store (F52)
-        has_text(t, text, "    deref(p + 2).bf.b = uint(int(deref(p + 2).bf.b) + 3)\n    deref(p + 2).bf.c = deref(p + 2).bf.c + uint(3)\n")
-        has_text(t, text, "    deref(pu + 1).i = deref(pu + 1).i + 5\n")
+        // a bitfield and a `[c_union]` member take `op=` too (F52 fixed); a bitfield computing wider keeps the plain store
+        has_text(t, text, "    deref(p + 2).bf.b = uint(int(deref(p + 2).bf.b) + 3)\n    deref(p + 2).bf.c += uint(3)\n")
+        has_text(t, text, "    deref(pu + 1).i += 5\n")
         has_text(t, text, "    var s : int = a + b\n    var t : int = a - b\n    var w : int64 = p + q\n    var m : uint = uint(a) * uint(b)\n")
         has_text(t, text, "    cur += b\n")
         // a small integer's sum is no wrapping pair; a truth value in one is the int

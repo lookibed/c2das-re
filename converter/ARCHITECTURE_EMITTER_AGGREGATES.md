@@ -15,10 +15,10 @@ bitfield of the unit as `name = width`, preceded by a padding argument `_<K> = g
 across the record) when clang leaves bits before it. Under the `msvc` dialect the documents'
 `[c_bitfields(a = 3, b = 5)]` comes out as written; under `linux` the same struct packs into a
 byte, which takes the opener (F25). A member reads and writes as a field, `s.a` and `p.a` alike,
-through the generated property pair; das has no `++` on a property, and a compound store to one
-reached through a field of `deref(p + k)` crashes daslang before `main`
-(`docs/probe-findings.md` F52), so a bitfield step is `s.a = s.a + 1u` and a compound store
-`s.a = s.a + v`, the getter and the setter spelled apart (`probes/test_bitfields.das`). A record
+through the generated property pair; das has no `++` on a property, so a bitfield step is
+`s.a += 1u`, and a compound store is `s.a += v`, through any base, `deref(p + k)` included
+(`docs/probe-findings.md` F52, `probes/test_bitfields.das`); one computing in a wider type than the
+member's spells the getter and the setter apart. A record
 initializer folds each unit's initialized bitfields into one `_bits<N>` item, `U((W(v1) & m1) |
 ((W(v2) & m2) << o2))` with `W` the unit's arithmetic type (`uint`, `uint64` for a unit past 4
 bytes) and `U` its storage, the setter's own conversions, since a global `fixed_array` of struct

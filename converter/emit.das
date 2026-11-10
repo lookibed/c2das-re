@@ -1196,11 +1196,6 @@ def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
     if (narrow != wide) {
         return "{lhs.text} = {narrow}({wide}({lhs.text}) {spelled} {wrap(rhs, prec + 1)})"
     }
-    if (is_bitfield_member(tu, x.a)) {
-        // a compound store to a property through `deref(p + k)` crashes daslang before `main`
-        // (docs/probe-findings.md F52): the setter takes the getter's value combined
-        return "{lhs.text} = {lhs.text} {spelled} {wrap(rhs, prec + 1)}"
-    }
     return "{lhs.text} {spelled}= {rhs.text}"
 }
 
@@ -1304,13 +1299,11 @@ def private self_operation(tu : CirTu; x : CirExpr) : CirExpr const? {
     return read != null && read.e == "cast" && read.cast_kind == "LValueToRValue" && same_lvalue(read.a, x.a) ? op : null
 }
 
-// whether lvalue `a` takes `op=`: a number of 32 or 64 bits or a float that is no bitfield and
-// not volatile, in no `[c_union]` record, whose member is a property, whose compound store
-// crashes daslang through some bases (docs/probe-findings.md F52)
+// whether lvalue `a` takes `op=`: a number of 32 or 64 bits or a float that is not volatile; a
+// bitfield or a `[c_union]` member is a property, which takes it through its getter and setter
 def private self_target(tu : CirTu; a : CirExpr const?) : bool {
     let k = kind_of(tu, a.t)
-    let record = a.e == "member" ? (a.arrow ? tu.types[a.base.t].to : a.base.t) : -1
-    return (k == "int" || k == "float") && !is_small_int(tu, a.t) && !is_c_bool(tu, a.t) && !is_bitfield_member(tu, a) && !a.vol && (record < 0 || kind_of(tu, record) == "struct")
+    return (k == "int" || k == "float") && !is_small_int(tu, a.t) && !is_c_bool(tu, a.t) && !a.vol
 }
 
 let SELF_OPS <- {"add", "sub", "mul", "band", "bor", "bxor"}
@@ -1407,16 +1400,14 @@ def private step_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return ""
     }
     if (is_bitfield_member(tu, x.a)) {
-        // das has no `++` on a property, and a compound store to one through `deref(p + k)`
-        // crashes daslang before `main` (docs/probe-findings.md F52): the setter takes the
-        // getter plus one
+        // das has no `++` on a property: a compound store steps it
         let spelled = das_type(em, tu, x.a.t, loc)
         let one = int_literal(spelled, "1")
         if (empty(one)) {
             fail(em, "a step of a `{spelled}` bitfield is not lowered yet", loc)
             return ""
         }
-        return "{operand.text} = {operand.text} {up ? "+" : "-"} {one}"
+        return "{operand.text} {up ? "+" : "-"}= {one}"
     }
     return "{operand.text}{up ? "++" : "--"}"
 }
