@@ -3,6 +3,7 @@ require c_runtime/c_function
 
 // a cluster module: its own text counts one reinterpret, its fragment's two pointer steps
 include part.das.inc
+include cluster.layout.das.inc
 
 def own(p : int?) : uint8? => unsafe(reinterpret<uint8?>(p))
 

@@ -28,7 +28,8 @@ only as a criterion here, decided per rule by what a human port would write.
   run (no `--filter`, no failed input) writes `criteria_linux.json`. `--report` is the preflight
   gate (section 5).
 - `readability_inputs.das` - one input key converted as both metrics convert it: the C file or
-  the Lua program's files, the sidecar, the emitted modules and fragments; a `project/<name>` key
+  the Lua program's files, the sidecar, the emitted modules and fragments (a module's layout file,
+  `is_layout_file` of `converter/pipeline.das`, neither); a `project/<name>` key
   through `convert_project` of `compare/projects.das`, the conversion the ports publisher
   publishes, over the Rust checkout (`$C2DAS_RUST`, else `/root/c2das`).
 - `criteria_scan.das` - the lexer of C and das text and the facts of one C source and one emitted
@@ -131,7 +132,7 @@ of the denominator free of the defect.
 | `qualified_calls` | `__::` and `<module>::` of a program module; `crt::` and other outside modules are not counted, since `crt` is a real outside module holding the C library and a human port qualifies a call to it too | none | clean share of matched functions |
 | `require_lines` | das `require` lines | one per C `#include` | C includes / das requires, capped |
 | `setjmp` | `try` lines inside a `while (_sj_run)` trampoline | a flat `try`/`recover` | clean share of the `try` lines |
-| `layout_checks` | `static_assert(typeinfo ...)` lines | in a test, not the module | clean share of modules |
+| `layout_checks` | `static_assert(typeinfo ...)` lines of the module and its fragments; a source layout module's layout file (`<module>.layout.das.inc`, `converter/ARCHITECTURE_LAYOUT.md`) is no fragment and is not read | in a test, not the module | clean share of modules |
 | `stray_braces` | a line holding `{` alone | none | clean share of matched functions |
 | `label_stubs` | `label N:` and `goto label N` lines | none | clean share of matched functions |
 | `string_literals` | `reinterpret<T>("...")` | a C string as a string | clean share of the C string literals |
