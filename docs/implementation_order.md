@@ -1634,7 +1634,25 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   node where the conversion of a constant was a cast node over one, unless das folds it already), JIT
   and exe flat (LLVM folds the constant either way).
 - **P9.5 Compound `#define`s as named constants**: an object macro whose body names other macros
-  (`POS_B = (POS_A + SIZE_A)`) is a named constant, recursively.
+  (`POS_B = (POS_A + SIZE_A)`) is a named constant, recursively. Dumper A names a node inside a macro
+  expansion by its spelling, the whole body of an object-like `#define` of the program, so a constant
+  inside another constant's body or a function-like macro's (`GETARG_A`'s `POS_A`) carries its name;
+  the module's `let` of a compound constant spells the names, each declared first (`let private
+  POS_A = POS_OP + SIZE_OP`), and a named shift count keeps its name in a conversion (`~0u <<
+  uint(SIZE_A)`). Probe `test_compound_let_folds` (`probes/test_globals.das`, 2026-11-10): AOT and
+  the JIT fold a `let` over other `let`s' names and a conversion of one to the literal, as P7.0zd's
+  probe found for a single `let`. Counts (2026-11-10, main 32c1e41 against this branch; Doom source
+  layout, 39 of 39 modules compile; Lua source layout), per 1000 lines: a literal, an operator and a
+  literal side by side, Doom 11.2 -> 10.2, lua 27.7 -> 4.0, luac 34.3 -> 2.6; constant `let`s over
+  another constant's name, Doom 0 -> 1.4, lua 0 -> 2.2, luac 0 -> 2.7; constant names in code, Doom
+  49.0 -> 54.4, lua 21.2 -> 87.5, luac 19.0 -> 102.3; lines Doom 30873 -> 30885, lua 28194 -> 28334,
+  luac 21616 -> 21711 (the new `let`s). Density metric (`metrics/criteria_linux.json`, 1610 inputs):
+  `programs` 1315.3 -> 1270.4 (das-side 837.3 -> 797.5), `literal_arithmetic` 132.1 -> 88.7,
+  `unnamed_constants` 11.5 -> 7.7, `casts` 287.6 -> 292.9 (a named shift count's conversion,
+  `uint(SIZE_A)` where the literal took a suffix); Lua 1403.7 -> 1260.5, luac 1583.5 -> 1398.9,
+  doomgeneric 975.4 -> 944.9, the others within 3; old `all` 79.9 -> 80.9. Expected speed effect (phase-end A/B):
+  none on any lane; daslang folds each name to its literal before simulation (the probe), so the
+  interpreter, the JIT and the exe run the same nodes as before.
 - **P9.6 `static_assert` in a file of its own**: the layout checks leave the module body.
 - **P9.7 A named `c_runtime` helper for repeated cast chains** (`uint8(*unsafe(reinterpret<uint8?>(...)))`
   and its like), decided by their count in Doom and Lua output: only where the helper is shorter and
