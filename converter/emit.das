@@ -4379,6 +4379,7 @@ def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (for_range(em, tu, st)) {
         return
     }
+    let opened = length(em.out)
     open_block(em, "")
     if (st.init_s != null) {
         emit_body(em, tu, st.init_s)
@@ -4411,6 +4412,7 @@ def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt const?) {
         close_block(em)
     }
     close_block(em)
+    unbrace_plain(em, opened)
 }
 
 // true when the body holds a C `continue` of this loop: one outside every nested loop, a switch's
@@ -5524,6 +5526,7 @@ def private emit_without_tail_break(var em : Emitter; tu : CirTu; st : CirStmt c
         emit_stmt(em, tu, st)
         return
     }
+    let opened = length(em.out)
     open_block(em, "")
     let n = length(st.body)
     for (idx in range(n)) {
@@ -5534,6 +5537,7 @@ def private emit_without_tail_break(var em : Emitter; tu : CirTu; st : CirStmt c
         }
     }
     close_block(em)
+    unbrace_plain(em, opened)
 }
 
 def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGroup>; cond : string; cond_t : int; body : CirStmt const?; restart : int; sentinel : bool; dispatch : GotoDispatch) {
@@ -5743,13 +5747,41 @@ def private check_group_split(var em : Emitter; g : CaseGroup) : bool {
 // labels"), so the label sits in the scope the goto sees
 def private emit_compound(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     let flat = key_exists(em.flatten, intptr(st))
+    let opened = length(em.out)
     if (!flat) {
         open_block(em, "")
     }
     emit_statements(em, tu, st, 0)
     if (!flat) {
         close_block(em)
+        unbrace_plain(em, opened)
     }
+}
+
+// the braces of the block whose `{` line is `em.out[opened]` go when its own level declares
+// nothing and holds no label: its statements stand in the enclosing block, one level out
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#plain-blocks")]
+def private unbrace_plain(var em : Emitter; opened : int) {
+    let inner = repeat("    ", em.depth + 1)
+    let last = length(em.out) - 1
+    for (k in range(opened + 1, last)) {
+        let text = em.out[k]
+        if (find(text, "\n") != length(text) - 1 || starts_with(text, inner + "var ") || starts_with(text, inner + "let ") || starts_with(text, inner + "label ")) {
+            return
+        }
+    }
+    em.out |> erase(last)
+    em.out |> erase(opened)
+    for (k in range(opened, last - 1)) {
+        em.out[k] = outdented(em.out[k])
+    }
+}
+
+// a one-line entry of `em.out` one level out: four spaces fewer, a blank line kept
+def private outdented(text : string) : string {
+    let rest = strip_left(text)
+    let indent = length(text) - length(rest)
+    return empty(rest) ? "\n" : repeat(" ", max(indent - 4, 0)) + rest
 }
 
 // the initializer of declaration `st` of `name`: the line `head` spells from the initializer's
@@ -6576,6 +6608,113 @@ def private ends_in_return(tu : CirTu; st : CirStmt?) : bool {
     return false
 }
 
+// whether the function body spelled in `em.out` from `body_at` on ends in a statement das itself
+// reads as returning on every path, so a zero `return` after it is dead (probes/test_return_paths.das)
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#plain-blocks")]
+def private text_returns(em : Emitter; body_at : int) : bool {
+    let text = join([for (k in range(body_at, length(em.out))); em.out[k]], "")
+    let lines <- [for (l in split(text, "\n")); Ln(ind = length(l) - length(strip_left(l)), text = strip(l)); where !empty(strip(l))]
+    return block_returns(lines, 0, length(lines), em.depth * 4)
+}
+
+// a line of emitted text: its indentation in spaces and its text without it
+struct private Ln {
+    ind : int
+    text : string
+}
+
+// the statements of `lines[from..to)` at `indent` spaces: whether the last one returns on every
+// path, which das then reads as returning too: a `return`, an `if` chain with an `else` whose arms
+// each return, a bare block that returns, a `while (true)` whose body returns and no `break` of its
+// own leaves (das reads the loop by its body alone, a `break` included: probes/test_return_paths.das)
+def private block_returns(lines : array<Ln>; from, to, indent : int) : bool {
+    var last = -1
+    for (k in range(from, to)) {
+        if (lines[k].ind == indent && !starts_with(lines[k].text, "\}") && !starts_with(lines[k].text, "//")) {
+            last = k
+        }
+    }
+    if (last < 0) {
+        return false
+    }
+    let head = lines[last].text
+    if (head == "return" || starts_with(head, "return ")) {
+        return true
+    }
+    if (head == "\{") {
+        var close = last + 1
+        while (close < to && lines[close].ind != indent) {
+            close++
+        }
+        return close < to && block_returns(lines, last + 1, close, indent + 4)
+    }
+    // the closing `}` of the last statement's arms, each arm's body between two of them
+    let arms <- [for (k in range(last, to)); k; where lines[k].ind == indent]
+    if (lines[arms[length(arms) - 1]].text != "\}" || !ends_with(head, " \{")) {
+        return false
+    }
+    if (head == "while (true) \{") {
+        return length(arms) == 2 && block_returns(lines, arms[0] + 1, arms[1], indent + 4) && !breaks_out(lines, arms[0] + 1, arms[1], indent + 4)
+    }
+    if (!starts_with(head, "if (") || lines[arms[length(arms) - 2]].text != "\} else \{") {
+        return false
+    }
+    for (a in range(length(arms) - 1)) {
+        let arm_head = lines[arms[a]].text
+        if ((a > 0 && !starts_with(arm_head, "\} elif (") && arm_head != "\} else \{") || !block_returns(lines, arms[a] + 1, arms[a + 1], indent + 4)) {
+            return false
+        }
+    }
+    return true
+}
+
+// whether a `break` of the loop whose body is `lines[from..to)` at `indent` can run: one at the
+// body's level or inside its `if` arms, not inside a nested loop, and not right after a `return`
+// or a `break` of the same level; a `goto` anywhere counts, it may leave the loop
+def private breaks_out(lines : array<Ln>; from, to, indent : int) : bool {
+    var dead_after = false
+    var k = from
+    while (k < to) {
+        let head = lines[k].text
+        if (lines[k].ind != indent) {
+            if (find(head, "goto ") >= 0) {
+                return true
+            }
+            k++
+            continue
+        }
+        if (head == "break") {
+            if (!dead_after) {
+                return true
+            }
+        } elif (starts_with(head, "goto ")) {
+            return true
+        } elif (starts_with(head, "if (") || starts_with(head, "\} elif (") || head == "\} else \{" || head == "\{") {
+            var e = k + 1
+            while (e < to && lines[e].ind != indent) {
+                e++
+            }
+            if (breaks_out(lines, k + 1, e, indent + 4)) {
+                return true
+            }
+        } elif (starts_with(head, "while (") || starts_with(head, "for (")) {
+            var e = k + 1
+            while (e < to && lines[e].ind != indent) {
+                if (find(lines[e].text, "goto ") >= 0) {
+                    return true
+                }
+                e++
+            }
+            k = e
+            dead_after = false
+            continue
+        }
+        dead_after = head == "return" || starts_with(head, "return ") || head == "break"
+        k++
+    }
+    return false
+}
+
 def private zero_of(var em : Emitter; tu : CirTu; t : int; spelled : string) : string {
     if (is_record(tu, t)) {
         return "{spelled}()"
@@ -6801,9 +6940,10 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
         line(em, "var _c_aoff = 0")
     }
     em.in_body = true
+    let body_at = length(em.out)
     emit_body(em, tu, d.body)
     em.in_body = false
-    if (ret != "void" && !ends_in_return(tu, d.body)) {
+    if (ret != "void" && !ends_in_return(tu, d.body) && !text_returns(em, body_at)) {
         line(em, "return {zero_of(em, tu, tu.types[d.t].ret, ret)}")
     }
     close_block(em)

@@ -131,8 +131,8 @@ def test_lowerings(t : T?) {
         // with no `continue` the increment as its last statement
         has_text(t, text, "    for (j in range(10)) \{\n        if (j == 1) \{\n            continue\n")
         has_text(t, text, "    for (i1 in range(6)) \{\n        if (i1 == 1) \{\n            continue\n")
-        has_text(t, text, "            \} finally \{\n                i++\n")
-        has_text(t, text, "        while (i < n) \{\n            i += 3\n            n--\n        \}\n")
+        has_text(t, text, "        \} finally \{\n            i++\n")
+        has_text(t, text, "    while (i < n) \{\n        i += 3\n        n--\n")
     }
     t |> run("loops under `--loops while`: the canonical loop keeps the while form") @(t : T?) {
         var text : string
@@ -172,8 +172,7 @@ def test_lowerings(t : T?) {
     p5_skip_audit_fixtures(t)
     p8_input_fixtures(t)
     p8_refusal_fixtures(t)
-    p7_readable_fixtures(t)
-    p7_goto_into_fixtures(t)
+    readability_fixtures(t)
     rmdir_rec(work_root)
 }
 
@@ -730,7 +729,7 @@ def p3_fixtures(t : T?) {
         check_fixture(t, "p3_goto", text)
         has_text(t, text, "label 1:  // retry\n    if (!(p3_goto__try_lock() != 0)) \{\n        n++\n        goto label 1\n    \}")
         has_text(t, text, "return n\n    label 2:  // fail\n    n = -n")
-        has_text(t, text, "found = i * 10 + j\n                        goto label 1\n")
+        has_text(t, text, "found = i * 10 + j\n                goto label 1\n")
         has_text(t, text, "    label 1:  // done\n    return found")
         has_text(t, text, "r += 1\n    r += 10\n    label 1:  // inside\n    r += 100")
         has_text(t, text, "r = 2\n    \{\n        var unused : int = 7\n        r += unused\n    \}\n    label 1:  // skip")
@@ -1330,7 +1329,7 @@ def p4_csmith_more_fixtures(t : T?) {
         has_text(t, text, "var private static_then_local_s : int = 5\nvar private static_then_local_s1 : int = 9")
         has_text(t, text, "var s : int = 1")
         // a block-scope extern declares nothing and binds to the global
-        has_text(t, text, "    \{\n        return x\n    \}")
+        has_text(t, text, "def private p4_csmith_bindings__block_extern : int \{\n    return x\n\}\n")
         // a temporary skips a name the function spells
         has_text(t, text, "var _t0 : int = 7")
         has_text(t, text, "let _t1 = a[0]")
@@ -1366,10 +1365,10 @@ def p4_csmith_more_fixtures(t : T?) {
         // the first declaration is the unit's, before the function; the later definition completes it
         has_text(t, text, "var counter : int = 40\nvar limit : int = 2\nvar squares : int[4] = fixed_array(0, 1, 4, 9)\n")
         // a local and a parameter named like the function's block-scope `extern` take free names
-        has_text(t, text, "def private p6_block_extern__hidden(limit1 : int) : int \{\n    var counter1 : int = 100\n    \{\n        counter += limit\n")
+        has_text(t, text, "def private p6_block_extern__hidden(limit1 : int) : int \{\n    var counter1 : int = 100\n    counter += limit\n")
         has_text(t, text, "    return squares[3] + int(int64(addr(squares[3]) - addr(squares[0])))\n")
         // a prototype hides a local too, and a static after it hoists under the enclosing function
-        has_text(t, text, "    var scale1 : int = 2\n    \{\n        twice_calls++\n        return scale(k) * twice_calls + scale(1)\n")
+        has_text(t, text, "    var scale1 : int = 2\n    twice_calls++\n    return scale(k) * twice_calls + scale(1)\n\}\n")
         // a name declared outside the program binds by its file-scope name
         has_text(t, text, "fprintf(crt::c_stdout(), ")
         // a hoisted static skips the name a block-scope `extern` gives a global
@@ -1932,10 +1931,10 @@ def p5_lua_expression_fixtures(t : T?) {
         has_text(t, text, "        var _cond = int(deref(p))\n        var _goto = 0\n        while (true) \{\n            label 3:  // re-dispatch\n")
         has_text(t, text, "                        _goto = 1\n                        _cond = 35\n                        goto label 3\n")
         has_text(t, text, "            _flag ||= _goto == 0 && !(_cond == '(' || _cond == '$' || _cond == '%')\n            _flag ||= _goto == 1  // dflt\n            if (_flag) \{\n                _goto = 0\n")
-        has_text(t, text, "                _flag ||= _goto == 3  // ret\n")
+        has_text(t, text, "        _flag ||= _goto == 3  // ret\n")
         // an enum condition's sentinel: an int no enumerator of the cases holds, through enum_from_int
-        has_text(t, text, "                        _goto = 1\n                        _cond = enum_from_int(type<OpCode>, -1)\n                        goto label 6\n")
-        has_text(t, text, "                _flag ||= _cond == OpCode.OP_TFORCALL\n                _flag ||= _goto == 1  // l_tforcall\n")
+        has_text(t, text, "                _goto = 1\n                _cond = enum_from_int(type<OpCode>, -1)\n                goto label 6\n")
+        has_text(t, text, "            _flag ||= _cond == OpCode.OP_TFORCALL\n            _flag ||= _goto == 1  // l_tforcall\n")
         // an inner switch's re-dispatch label is numbered below the outer one's, each switch
         // with its own goto variable
         has_text(t, text, "    var _cond = a\n    var _goto = 0\n    while (true) \{\n        label 4:  // re-dispatch\n")
@@ -2252,15 +2251,15 @@ def p7_fixtures(t : T?) {
         has_text(t, text, "        while (j <= n) \{")
         has_text(t, text, "            total += p7_loops__bump(addr(j))\n            j++\n")
         // a body with no `continue` takes the increment last, `break` and `return` skipping it
-        has_text(t, text, "            if (j == 7) \{\n                break\n            \}\n            total += j\n            j++\n")
-        has_text(t, text, "            if (j == 3) \{\n                return total + j * 1000\n            \}\n            total += j\n            j++\n")
+        has_text(t, text, "        if (j == 7) \{\n            break\n        \}\n        total += j\n        j++\n")
+        has_text(t, text, "        if (j == 3) \{\n            return total + j * 1000\n        \}\n        total += j\n        j++\n")
         // a body ending in the jump never reaches the increment, which is then not spelled
-        has_text(t, text, "            total += 5\n            break\n        \}\n")
-        has_text(t, text, "            total += 7\n            goto label 1\n        \}\n")
-        has_text(t, text, "            total += j\n            return total * 10 + j\n        \}\n")
-        has_text(t, text, "                return 2000 + j\n            \}\n        \}\n    \}\n    return j\n")
+        has_text(t, text, "        total += 5\n        break\n")
+        has_text(t, text, "        total += 7\n        goto label 1\n")
+        has_text(t, text, "        total += j\n        return total * 10 + j\n")
+        has_text(t, text, "            return 2000 + j\n        \}\n    \}\n    return j\n")
         // a `continue` of a nested loop is not the outer loop's: the outer takes the increment last
-        has_text(t, text, "            total += j\n            j++\n        \}\n    \}\n    // both counters read after\n    return total + j * 100 + k\n")
+        has_text(t, text, "        total += j\n        j++\n    \}\n    // both counters read after\n    return total + j * 100 + k\n")
         t |> equal(count(text, "finally"), 1, text)
         has_text(t, text, "    x += n\n    x -= 2\n    x *= 3\n    x &= 255\n    x |= 256\n    x ^= 1\n    y *= int64(5)\n    u += 3u\n    d *= 4.0lf\n")
         has_text(t, text, "    a.sum += x\n    a.cells[1] += 7\n    a.mean += d\n")
@@ -2345,31 +2344,31 @@ def p7_fused_loop_fixtures(t : T?) {
         // read after, address taken, a goto out, the next pass reads, a `do` left early by its
         // `break`, a switch's `continue`, an `if` arm: the loop keeps its `while` form
         has_text(t, text, "        i = 0\n        var _f = false\n")
-        has_text(t, text, "        while (i < n) \{\n            t += deref(p)\n")
-        has_text(t, text, "        while (i < n) \{\n            if (a[i] == 2) \{\n")
-        has_text(t, text, "        t += i\n        \{\n            i = 0\n            while (i < n) \{\n                t++\n                i++\n            \}\n        \}\n    \}\n")
-        has_text(t, text, "        while (i < n) \{\n            t++\n            i++\n        \}\n    \}\n    while (true) \{\n        if (t > 2) \{\n")
-        has_text(t, text, "            \}\n        \}\n        let _cond = k\n")
-        has_text(t, text, "        while (i < n) \{\n            t += 2\n")
+        has_text(t, text, "    while (i < n) \{\n        t += deref(p)\n")
+        has_text(t, text, "    while (i < n) \{\n        if (a[i] == 2) \{\n")
+        has_text(t, text, "        t += i\n        i = 0\n        while (i < n) \{\n            t++\n            i++\n        \}\n    \}\n")
+        has_text(t, text, "    while (i < n) \{\n        t++\n        i++\n    \}\n    while (true) \{\n        if (t > 2) \{\n")
+        has_text(t, text, "        \}\n        let _cond = k\n")
+        has_text(t, text, "    while (i < n) \{\n        t += 2\n")
         // a later `do` or `while` whose `continue` skips the store, a volatile counter, an enclosing
         // loop's test or step reading it, a loop under a case label followed by `break`: `while`
-        has_text(t, text, "def do_continue(n : int; x : int) : int \{\n    var i : int = 0\n    \{\n        i = 0\n        while (i < n) \{\n")
-        has_text(t, text, "def while_continue(n : int; x : int) : int \{\n    var i : int = 0\n    var k : int = 0\n    \{\n        i = 0\n        while (i < n) \{\n")
-        has_text(t, text, "        c_volatile_store(i, 0)\n        while (c_volatile_load(i) < n) \{\n")
-        has_text(t, text, "        while (k < 3 + i) \{\n            \{\n                i = 0\n")
-        has_text(t, text, "            k += i + 2\n")
-        has_text(t, text, "    if (_cond == 1) \{\n        \{\n            i = 0\n            while (i < n) \{\n")
+        has_text(t, text, "def do_continue(n : int; x : int) : int \{\n    var i : int = 0\n    i = 0\n    while (i < n) \{\n")
+        has_text(t, text, "def while_continue(n : int; x : int) : int \{\n    var i : int = 0\n    var k : int = 0\n    i = 0\n    while (i < n) \{\n")
+        has_text(t, text, "    c_volatile_store(i, 0)\n    while (c_volatile_load(i) < n) \{\n")
+        has_text(t, text, "    while (k < 3 + i) \{\n        i = 0\n        while (i < n) \{\n")
+        has_text(t, text, "    k += i + 2\n")
+        has_text(t, text, "if (_cond == 1) \{\n        i = 0\n        while (i < n) \{\n")
         // a `break` or `continue` in a statement that never names the counter, a body that writes
         // it, two declarations of the name, a later loop's first pass or a later `do`'s test
         // reading it, a store that reads it or a compound one, Duff's device: `while`
         has_text(t, text, "        if (k == 1) \{\n            break\n        \}\n        i = 0\n    \}\n    return i * 100 + t\n")
-        has_text(t, text, "            while (i < n) \{\n                t++\n                i++\n            \}\n        \}\n        if (k == 1) \{\n            continue\n")
-        has_text(t, text, "            if (i == 1) \{\n                i++\n            \}\n")
-        has_text(t, text, "    \{\n        var i : int\n        \{\n            i = 1\n            while (i < n) \{\n")
-        has_text(t, text, "            t++\n            i++\n        \}\n    \}\n    while (k < 2) \{\n        t += i\n")
+        has_text(t, text, "        while (i < n) \{\n            t++\n            i++\n        \}\n        if (k == 1) \{\n            continue\n")
+        has_text(t, text, "        if (i == 1) \{\n            i++\n")
+        has_text(t, text, "    \{\n        var i : int\n        i = 1\n        while (i < n) \{\n")
+        has_text(t, text, "        t++\n        i++\n    \}\n    while (k < 2) \{\n        t += i\n")
         has_text(t, text, "    \}\n    while (true) \{\n        k++\n        if (!(k < i)) \{\n")
-        has_text(t, text, "def self_store(n : int) : int \{\n    var i : int = 0\n    \{\n        i = 0\n        while (i < n) \{\n")
-        has_text(t, text, "def compound_store(n : int) : int \{\n    var i : int = 0\n    \{\n        i = 0\n        while (i < n) \{\n")
+        has_text(t, text, "def self_store(n : int) : int \{\n    var i : int = 0\n    i = 0\n    while (i < n) \{\n")
+        has_text(t, text, "def compound_store(n : int) : int \{\n    var i : int = 0\n    i = 0\n    while (i < n) \{\n")
         has_text(t, text, "    var i : int = 0\n    var t : int = 0\n    let _cond = c\n    if (_cond == 0) \{\n        goto label 2\n")
         // an initializer with an effect or a switch's carried declaration stays: a free name;
         // a global `i1` is skipped, and each loop of the counter takes the same free name
@@ -2630,7 +2629,7 @@ def p8_input_fixtures(t : T?) {
     t |> run("glibc's `assert` without NDEBUG: `__extension__` dropped, its statement expression a block, `__PRETTY_FUNCTION__` and `__func__` the name's literal") @(t : T?) {
         var text : string
         check_fixture(t, "p8_glibc_assert", text)
-        has_text(t, text, "            if (total == 14) \{\n            \} else \{\n                c_assert_fail(reinterpret<uint8?>(\"total == 14\"), ")
+        has_text(t, text, "        if (total == 14) \{\n        \} else \{\n            c_assert_fail(reinterpret<uint8?>(\"total == 14\"), ")
         has_text(t, text, "reinterpret<uint8?>(\"int main(void)\"))")
         has_text(t, text, "require c_runtime/c_exit")
     }
@@ -2703,6 +2702,35 @@ def p8_refusal_fixtures(t : T?) {
         let text = converts(t, "file_asserts", "static const int tab[3] = \{ 1, 2, 3 \};\n_Static_assert(sizeof(tab) / sizeof(*tab) == 3, \"one entry per type\");\nint main(void) \{\n    _Static_assert(sizeof(int) == 4, \"int\");\n    return tab[2] - 3;\n\}\n")
         has_text(t, text, "def c_main : int \{\n    return file_asserts__tab[2] - 3\n\}\n")
         t |> success(!(text |> contains("one entry")), text)
+    }
+}
+
+// the readable spellings: character literals and comments, gotos into bodies, the P9 forms
+def readability_fixtures(t : T?) {
+    p7_readable_fixtures(t)
+    p7_goto_into_fixtures(t)
+    p9_plain_block_fixtures(t)
+}
+
+// P9.2: a block that declares nothing is its statements, and a zero `return` das reads as dead goes
+def p9_plain_block_fixtures(t : T?) {
+    t |> run("a plain block, a case arm's and a `for`'s scope block lose their braces; one that declares or holds a label keeps them") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_plain_blocks", text)
+        has_text(t, text, "    var s : int = 0\n    s += a\n    s += b\n    \{\n")
+        has_text(t, text, "    \{\n        // a block that declares keeps its braces\n        var t : int = s * 2\n        s += t\n    \}\n")
+        has_text(t, text, "    \} elif (_cond == 1) \{\n        return b\n    \} else \{\n")
+        has_text(t, text, "    i = 1\n    while (i < 50) \{\n")
+        has_text(t, text, "    \{\n        var j : int = 1\n        while (j < 50) \{\n")
+        has_text(t, text, "    var t : int = 0\n    \{\n        label 1:  // again\n")
+    }
+    t |> run("a zero `return` after an `if` chain whose arms return, or a loop whose body returns, goes; after a nested return or a `break` it stays (F101)") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_plain_blocks", text)
+        has_text(t, text, "        return null\n    \}\n\}\n")
+        has_text(t, text, "            return -n\n        \}\n    \}\n\}\n")
+        has_text(t, text, "        n += 3\n    \}\n    return 0\n\}\n")
+        has_text(t, text, "        return 1\n    \}\n    return 0\n\}\n")
     }
 }
 
