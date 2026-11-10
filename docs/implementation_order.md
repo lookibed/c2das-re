@@ -1585,8 +1585,18 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   percent faster, JIT flat. Leftover: `perf/audit_constructs.das`'s `node_index` row counts its Lua
   sites by `addr(deref(`, which the new spelling leaves to a plain `deref(p)`'s address; its site
   text becomes the `addr(<pointer>[` form.
-- **P9.2 Plain blocks and `return null`**: a braced block that declares nothing is its statements, a
-  trailing `return null` that ends a void path goes.
+- **P9.2 Plain blocks and `return null`**: a block that is a statement of its own, a case arm's
+  trailing block or a `for`'s scope block loses its braces when its own level declares nothing and
+  holds no label; a trailing zero `return` (`return null`, `return 0`) goes when the das text's last
+  statement returns on every path by das's own rule (probe F101, `probes/test_return_paths.das`:
+  an `if` chain with an `else`, a `while (true)` whose body returns; das's CLI accepts a `break` out
+  of such a loop and falls off the end, lookibed/daScript#50, so a loop with a live `break` keeps the
+  `return`). Measured on the output (2026-11-10, main e6c029b against this branch, Doom 39 of 39 modules
+  compile): lines holding `{` alone per 1000 lines, Doom 10.0 -> 1.6, lua 29.1 -> 14.5, luac 33.4 -> 17.3 (the rest declare a local
+  or are a `for`'s `finally` block); dead zero returns removed: lua 19, luac 17, Doom 0; lines Doom 31407 -> 30873,
+  lua 29085 -> 28194, luac 22377 -> 21616. Expected speed effect: none to slightly faster under
+  the interpreter (a dropped block is at most one block node fewer, the dropped `return` is
+  unreachable); JIT flat; measured in the phase end's batched A/B (ruling 38 addendum 8).
 - **P9.3 The C author's parentheses**: the C-IR keeps a `ParenExpr`, the emitter prints the author's
   parentheses and adds none das's precedence does not need.
 - **P9.4 Literal suffixes**: a literal converted to its type is the suffixed literal (`0ul` for

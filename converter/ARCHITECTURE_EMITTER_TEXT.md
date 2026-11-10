@@ -47,3 +47,18 @@ in first-use order, after its globals (in a cluster's own module, before its `in
 value is the das text of the first use, and a use whose text differs (the macro redefined, or
 expanded at another type) keeps its value. A global's initializer keeps the value, as does a
 spelling that does not go through `emit_expr` (a case label, a loop's step).
+
+### Plain blocks and dead returns {#plain-blocks}
+
+A C block that is a statement of its own, a case arm's trailing block or a `for`'s scope block is
+spelled in braces and then loses them when its own level holds no `var`, `let` or `label` line
+(`unbrace_plain`): its statements stand one level out. A block that declares keeps its braces, since
+the name's scope ends with it, and so does one holding a label, which the goto lowering places
+(`ARCHITECTURE_EMITTER_CONTROL.md`, Labels and goto); a block of multi-line entries keeps them too.
+A function whose C body does not end in a `return` gets a zero `return` after it, unless the das
+text's last statement already returns on every path by das's own rule (`text_returns`,
+`docs/probe-findings.md` F101): a `return`, an `if` chain with an `else` whose arms each return, a
+bare block that returns, or a `while (true)` whose body returns and which no `break` of its own can
+leave (a `break` right after a `return` or a `break` of the same level is dead; a `goto` anywhere in
+the body counts as leaving). Under that rule the dropped `return` is unreachable, and das accepts
+the function without it.
