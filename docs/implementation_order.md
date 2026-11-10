@@ -1615,8 +1615,24 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   parenthesis (left for the metric's next change). Expected speed effect
   (phase-end A/B): none on any lane, the parentheses are parse-only and leave the AST the same (interp,
   JIT and exe flat within noise on the kernels, Doom and Lua).
-- **P9.4 Literal suffixes**: a literal converted to its type is the suffixed literal (`0ul` for
-  `uint64(0)`) where das needs the type, the bare literal where it does not.
+- **P9.4 Literal suffixes**: an `int` literal C converts to `int64`, `uint64`, `uint`, `uint8`,
+  `double` or `float` is the das literal with its suffix (`0l`, `-1l`, `1ul`, `240u`, `7u8`, `10.0lf`,
+  `3.0f`) in place of the conversion `int64(0)`; a type without a suffix (`int8`, `int16`, `uint16`), a
+  negative value of an unsigned type, a value past `uint8` or a float's exact integers (2^24), a named
+  constant and a character literal keep the conversion. Counts (2026-11-10, main 34b2beb against this
+  branch; Doom source layout, 39 of 39 modules compile; Lua source layout), conversions of a plain
+  literal per 1000 lines: Doom 264.0 -> 9.0 (the rest are `int16`, 243), lua 61.3 -> 0.7, luac 68.0 ->
+  0.6; line counts unchanged. A few literal conversions come from other emitter paths and stay (a
+  folded `sizeof`'s `uint64(4)`, the module's `fixed_array(uint8(0))`). Density metric
+  (`metrics/criteria_linux.json`, 1610 inputs), with P9.3's leftover fixed in the same pull request:
+  `literal_arithmetic` counts a parenthesized constant as a number (`3 | (0 << 4)` two sites); that
+  counter alone, on main's output, raises `programs` 1342.4 -> 1361.7 (`literal_arithmetic` 106.6 ->
+  125.9). This form against it: `programs` 1361.7 -> 1315.3 (das-side 883.8 -> 837.3), `literal_casts`
+  54.7 -> 2.9, `literal_arithmetic` 125.9 -> 132.1 (sums of suffixed literals the conversions hid);
+  Lua 1443.8 -> 1403.7, h264bsd 1360.7 -> 1256.5, plmpeg 1110.0 -> 1065.9, doomgeneric 987.5 -> 975.4.
+  Expected speed effect (phase-end A/B): interpreter flat to slightly faster (a literal is a constant
+  node where the conversion of a constant was a cast node over one, unless das folds it already), JIT
+  and exe flat (LLVM folds the constant either way).
 - **P9.5 Compound `#define`s as named constants**: an object macro whose body names other macros
   (`POS_B = (POS_A + SIZE_A)`) is a named constant, recursively.
 - **P9.6 `static_assert` in a file of its own**: the layout checks leave the module body.
