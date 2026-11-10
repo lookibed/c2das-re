@@ -155,7 +155,7 @@ static int into_both(int x) {
     return r;
 }
 
-/* the arm no goto enters returns: spelled flat as well */
+/* the arm no goto enters returns: it keeps its braces, no jump past the entered arm */
 static int then_or_return(int x) {
     int r = 5;
     if (x > 3)
@@ -168,7 +168,7 @@ static int then_or_return(int x) {
     return r;
 }
 
-/* the arm no goto enters holds a label of its own: spelled flat as well */
+/* the arm no goto enters holds a label of its own: it keeps its braces */
 static int arm_label(int x) {
     int r = 0;
     if (x > 9)
@@ -297,7 +297,7 @@ out:
     return r + 1;
 }
 
-/* an open loop inside a das loop's body, and a goto out of that body: the outer loop opens too */
+/* an open loop inside a das loop's body, and a goto out of that body: the outer loop stays a das loop */
 static int out_of_loop(int k) {
     int s = 0;
     for (int r = 0; r < 3; r++) {
@@ -318,7 +318,7 @@ out:
     return s;
 }
 
-/* an open loop inside an if's arm, and a goto out of the arm: the if opens too */
+/* an open loop inside an if's arm, and a goto out of the arm: the if keeps its braces */
 static int out_of_arm(int k, int z) {
     int s = 0, i = 0;
     if (z) {
