@@ -2053,11 +2053,7 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         if (kind_of(tu, x.a.t) == "enum") {
             return value(enum_to_integer(tu, x.a.t, source.text, target), PREC_PRIMARY)
         }
-        let literal = suffixed_literal(source.text, target)
-        if (!empty(literal)) {
-            return value(literal, PREC_PRIMARY)
-        }
-        return value("{target}({source.text})", PREC_PRIMARY)
+        return value(converted_text(source.text, target), PREC_PRIMARY)
     }
     if (k == "BitCast") {
         return bit_cast(em, tu, x, inner.text, inner.prec, target, loc)
@@ -2089,6 +2085,12 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
 // `10.0lf`); "" for a type without one (`int8`, `int16`, `uint16`), a negative value of an unsigned
 // type, a value past `uint8` or a float's exact integers, or a text that is no literal (a named
 // constant, a character literal)
+// `text` converted to `target`: the suffixed literal where one spells it, else the conversion
+def private converted_text(text, target : string) : string {
+    let literal = suffixed_literal(text, target)
+    return empty(literal) ? "{target}({text})" : literal
+}
+
 [arch(at="ARCHITECTURE_EMITTER_TEXT.md#literal-suffixes")]
 def private suffixed_literal(text, target : string) : string {
     let negative = starts_with(text, "-")

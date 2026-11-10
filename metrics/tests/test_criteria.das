@@ -152,6 +152,16 @@ def test_ratio_criteria(t : T?) {
 }
 
 [test]
+def test_literal_arithmetic_groups(t : T?) {
+    t |> run("a parenthesized constant is an operand like a number; a call's or a cast's parentheses and a group holding a name are not") @(t : T?) {
+        t |> equal(got(in_f("    x = 3 | (0 << 4)"), "literal_arithmetic_sites"), 2)
+        t |> equal(got(in_f("    x = y + (7 * 2)"), "literal_arithmetic_sites"), 1)
+        t |> equal(got(in_f("    x = f(3) + 1"), "literal_arithmetic_sites"), 0)
+        t |> equal(got(in_f("    x = (a + 3) + 1"), "literal_arithmetic_sites"), 0)
+    }
+}
+
+[test]
 def test_function_criteria(t : T?) {
     t |> run("temporaries: `_tN`, `_first`, a discarded `let _tN` and a self-assignment") @(t : T?) {
         let c = in_f("    var _t0 = p\n    var _first = true\n    let _t1 = x\n    L.top = L.top\n    return _t0")
@@ -223,12 +233,6 @@ def test_function_criteria(t : T?) {
     t |> run("literal arithmetic: an operator between two literals, not a literal and a name") @(t : T?) {
         t |> equal(got(in_f("    x = uint(0 + 7 + 8)"), "literal_arithmetic_sites"), 2)
         t |> equal(got(in_f("    x = y + 7"), "literal_arithmetic_sites"), 0)
-        // a parenthesized constant is an operand like a number; a call's or a cast's parentheses
-        // and a group holding a name are not
-        t |> equal(got(in_f("    x = 3 | (0 << 4)"), "literal_arithmetic_sites"), 2)
-        t |> equal(got(in_f("    x = y + (7 * 2)"), "literal_arithmetic_sites"), 1)
-        t |> equal(got(in_f("    x = f(3) + 1"), "literal_arithmetic_sites"), 0)
-        t |> equal(got(in_f("    x = (a + 3) + 1"), "literal_arithmetic_sites"), 0)
     }
     t |> run("lost parentheses: a shift beside an additive or bitwise operator at one level") @(t : T?) {
         t |> equal(got(in_f("    b = 1 << b - 1"), "lost_parens_sites"), 1)
