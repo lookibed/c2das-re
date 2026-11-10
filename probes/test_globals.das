@@ -149,6 +149,35 @@ def test_constant_let_folds(t : T?) {
     }
 }
 
+// the `let private` chain the emitter writes for a compound `#define` (P9.5): a constant over other
+// constants' names, a shift count converted, read by `named`; a `var` read by `kept`, the control
+let private compound_let_source = "options gen2\nlet private POS_OP = 0\nlet private SIZE_OP = 7\nlet private POS_A = POS_OP + SIZE_OP\nlet private SIZE_A = 8\nlet private POS_K = POS_A + SIZE_A\nlet private MASK_A = ~(~0u << uint(SIZE_A))\nvar private VPOS = 15\n[export]\ndef named(i : uint) : int \{\n    return int((i >> uint(POS_A)) & MASK_A) + POS_K\n\}\n[export]\ndef kept(i : uint) : int \{\n    return int(i >> uint(VPOS))\n\}\n[export]\ndef main \{\n    print(\"\{named(0x1234u)\} \{kept(65536u)\}\\n\")\n\}\n"
+
+[test]
+def test_compound_let_folds(t : T?) {
+    t |> run("a module `let` over other `let`s' names, and a conversion of one, fold before simulation: AOT spells the literals where a `var` reads the global (P9.5)") @(t : T?) {
+        let cpp = aot_context_cpp(t, "compound_let", compound_let_source)
+        let named = definition_body(cpp, "inline int32_t named_")
+        t |> success(!(named |> contains("das_global")), named)
+        let kept = definition_body(cpp, "inline int32_t kept_")
+        for (folded in ["BinShr(__i_rename_at_10_0,0x7u,", "& 0xffu)", "+ 15)"]) {
+            t |> success(named |> contains(folded), "{folded}: {named}")
+        }
+        t |> success(kept |> contains("das_global<int32_t,0x"), kept)
+    }
+    t |> run("the JIT compiles the chained constants as immediates and the `var` as a global load (P9.5)") @(t : T?) {
+        let ir = "{temp_directory_result() as value}/c2das_probe_compound_let.ll"
+        let jit = daslang_run("compound_let", compound_let_source, jit_flags(), array<string>(), "c2das_probe", ["--", "--jit-dump={ir}"])
+        t |> equal(jit.out |> ends_with("51 2\n"), true, jit.out)
+        let dump = fread(ir)
+        let named = jit_body(dump, "named")
+        t |> success(!(named |> contains("jit_get_global")) && named |> contains("lshr i32 %arg_value_0, 7") && named |> contains("i32 %4, 15"), named)
+        let kept = jit_body(dump, "kept")
+        t |> success(kept |> contains("jit_get_global"), kept)
+        remove(ir)
+    }
+}
+
 // two menus, each holding a function value and a pointer: `HEAD` is the first menu's initializer,
 // `GO_BODY` the body of the function it holds, `TAIL` what follows the second menu
 let menu_source = "options gen2\nstruct Menu \{\n    go : function<() : void>\n    prev : Menu?\n\}\nvar current : Menu?\nvar first : Menu = HEAD\ndef go_second \{\n    GO_BODY\n\}\nvar second : Menu = Menu(prev = unsafe(addr(first)))\nTAIL\n[export]\ndef main \{\n    invoke(first.go)\n    assert(current == unsafe(addr(second)) && deref(current).prev == unsafe(addr(first)))\n\}\n"
