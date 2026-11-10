@@ -2751,6 +2751,12 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   and `goto label N` since `c_label_end` is gone (P8.10). The "before" for the forms pack: `programs`
   1465.7 per 1000 lines (das-side 980.6, the hand port 79.8); Lua 1571.0, Doom 1080.1, binjgb 1386.8,
   quake 1584.8; the old `all` on the same output 78.3 (77.9 was recorded before P8.10).
+  Re-recorded 2026-11-10 on main 0dded85 (the repin, P9.1 and P9.2 in; 1610 inputs, 0 failed): the
+  pre-form output (main c25fca7, same tool) measures the same "before" (the repin moved no density);
+  P9.1 and P9.2 together: `programs` 1465.7 -> 1395.8 (das-side 980.5 -> 917.9), `deref` 89.4 -> 39.4,
+  stray braces 22.9 -> 10.3, blow-up lines 56.1 -> 48.6; Lua 1570.8 -> 1502.8, luac 1771.6 -> 1694.5,
+  Doom (doomgeneric) 1080.1 -> 1071.7, h264bsd 1533.4 -> 1386.1, plmpeg 1276.0 -> 1135.8, binjgb
+  1386.8 -> 1376.7, quake unchanged; old `all` 78.3 -> 79.1; the hand plmpeg port 79.8.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
