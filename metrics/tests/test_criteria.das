@@ -148,6 +148,10 @@ def test_ratio_criteria(t : T?) {
         t |> equal(got(c, "c_strings"), 1)
         t |> equal(got(c, "das_string_reinterprets"), 1)
         t |> equal(got(c, "reinterpret_casts_sites"), 1)
+        // the converter's `cstr("...")` is the same literal reinterpreted; a call of a name counts not
+        let helper = raw_of("int f(void) \{ return g(\"s\"); \}\n", "def f : int \{\n    return g(cstr(\"s\"), cstr(name))\n\}\n")
+        t |> equal(got(helper, "das_string_reinterprets"), 1)
+        t |> equal(got(helper, "reinterpret_casts_sites"), 0)
     }
 }
 
