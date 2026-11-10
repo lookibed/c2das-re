@@ -285,13 +285,16 @@ pass never saw.
 
 An expression node an object-like macro of the program expands to whole carries the macro's name in
 `macro` (the spec's section 6.2 names the field for a literal; Dumper A writes it on any expression
-node): both ends of the node's range expand from one location, its text an identifier no `(` follows
-(a function-like macro's call is not named), and the begin's spelling lies in a file of the program
-(`in_program`), since a system header's macro may share its name with a das builtin (`INT_MAX`); the
-emitter skips a program macro so named (`PI`). The outermost such node is named, an implicit
-conversion's operand rather than the conversion; a node inside it is not, so `VNUMINT` names
-`makevariant(TNUMBER, 0)` and `TNUMBER` inside it stays its value.
-A node whose parent expression starts or ends in the same expansion is named only when the
-macro's body (its `#define` line, in the file the node's first token is spelled in or the main
-file) is one operand: a token, a parenthesized group or a call; so `#define SUM 1 + 2` names
-nothing in `SUM * 3`, where the `1` is a piece of `1 + 2 * 3`.
+node): both ends of its range expand from one identifier no `(` follows, spelled in a program file
+(`in_program`: a system header's macro may share a das builtin's name, `INT_MAX`; the emitter skips
+a program macro so named, `PI`). The outermost such node is named, a conversion's operand rather
+than the conversion. A node whose parent starts or ends in the same expansion is named only when
+the macro's body (its `#define` line, in the file of the node's first token or the main file) is
+one operand, a token, a parenthesized group or a call: `#define SUM 1 + 2` names nothing in
+`SUM * 3`. Inside an expansion (an object-like macro's body or a function-like one's) a node is
+named by its spelling (`nested_macro`): both ends expand from one location, the first spelled at
+the first token of an object-like `#define`'s body in a program file and the last, at or after
+it, ending the body (comments, blanks and line continuations aside), and no operand spells the
+same range (`A + A` from two expansions of `#define A 1`). So `POS_A` is named inside `#define
+POS_B (POS_A + SIZE_A)`, `TNUMBER` inside `VNUMINT`'s `makevariant(TNUMBER, 0)`, and `POS_A` in
+`GETARG_A(i)`'s expansion; a node keeps a name it already took (`#define ALIAS POS_A`: `ALIAS`).

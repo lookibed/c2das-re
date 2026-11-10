@@ -45,8 +45,14 @@ keyword (`match` is `_c_match`); a name a builtin module holds a global of (`mat
 found through `program_for_each_registered_module`) keeps its value. The module holds `let private NAME = <value>` for each name
 in first-use order, after its globals (in a cluster's own module, before its `include`s): the
 value is the das text of the first use, and a use whose text differs (the macro redefined, or
-expanded at another type) keeps its value. A global's initializer keeps the value, as does a
-spelling that does not go through `emit_expr` (a case label, a loop's step).
+expanded at another type) keeps its value. A constant whose body names other constants is
+spelled over their names (`let private POS_B = POS_A + SIZE_A`), each declared before it, since
+its value's text names them first; daslang folds a `let` over other `let`s' names, and a
+conversion of one, to the constant before simulation (`probes/test_globals.das`,
+`test_compound_let_folds`), so a name costs nothing at run time. A shift count C promotes apart
+from its left side keeps a name in a conversion (`~0u << uint(SIZE_A)`) where a bare literal
+takes the left side's suffix. A global's initializer keeps the value, as does a spelling that
+does not go through `emit_expr` (a case label, a loop's step).
 
 ### Plain blocks and dead returns {#plain-blocks}
 

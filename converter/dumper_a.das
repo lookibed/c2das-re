@@ -2277,6 +2277,144 @@ def private is_one_operand(body : string) : bool {
     return !spaced && closes_at == length(body) - 1
 }
 
+// the name of the object-like macro whose body node `js` spells whole, for a node a macro
+// expansion made inside another (`POS_A` in `#define POS_B (POS_A + SIZE_A)`, or in a
+// function-like macro's body): both ends spelled in one program file, the first at the body's
+// first token and the last ending its last; "" for any other node, and for a node one of whose
+// operands spells the same range (`A + A` spelled from two expansions of `#define A 1`)
+[arch(at="ARCHITECTURE_DUMPER.md#macro-names")]
+def private nested_macro(var d : Dumper; js : JsonValue?) : string {
+    let b = js?["range"]?["begin"]
+    let e = js?["range"]?["end"]
+    if (b?["expansionLoc"] == null || e?["expansionLoc"] == null || (b?["expansionLoc"]?["offset"] ?? -1l) != (e?["expansionLoc"]?["offset"] ?? -2l)) {
+        return ""
+    }
+    let file = b?["spellingLoc"]?["file"] ?? ""
+    let first = b?["spellingLoc"]?["offset"] ?? -1l
+    let last = e?["spellingLoc"]?["offset"] ?? -1l
+    let last_len = e?["spellingLoc"]?["tokLen"] ?? 0l
+    if (empty(file) || file != (e?["spellingLoc"]?["file"] ?? "") || first < 0l || last < first || last_len <= 0l || !in_program(d, file)) {
+        return ""
+    }
+    for (idx in range(child_count(js))) {
+        if (spells_from_to(below_wrappers((js?["inner"] as _array)[idx]), first, last)) {
+            return ""
+        }
+    }
+    if (!key_exists(d.macro_texts, file)) {
+        d.macro_texts[file] = stat(file).is_reg ? fread(file) : ""
+    }
+    var name = ""
+    peek_data(d.macro_texts[file]) $(t) {
+        name = define_spelling(t, int(first), int(last + last_len))
+    }
+    return name
+}
+
+// node `js` below the wrappers clang adds over an operand with its range
+def private below_wrappers(js : JsonValue?) : JsonValue const? {
+    let kind = node_kind(js)
+    if ((kind == "ImplicitCastExpr" || kind == "ConstantExpr") && child_count(js) > 0) {
+        return below_wrappers((js?["inner"] as _array)[0])
+    }
+    return js
+}
+
+// whether node `js`'s range is spelled from offset `first` to `last`
+def private spells_from_to(js : JsonValue const?; first, last : int64) : bool =>
+    (js?["range"]?["begin"]?["spellingLoc"]?["offset"] ?? -1l) == first && (js?["range"]?["end"]?["spellingLoc"]?["offset"] ?? -1l) == last
+
+// the name of the object-like `#define` of text `t` whose body is bytes `first` to `stop`
+// (comments, blanks and line continuations aside); "" when they are no such body
+def private define_spelling(t : array<uint8>#; first, stop : int) : string {
+    if (stop > length(t)) {
+        return ""
+    }
+    var at = first
+    while (at > 0 && int(t[at - 1]) != '\n') {
+        at--
+    }
+    while (continues_line(t, at)) {
+        at--
+        while (at > 0 && int(t[at - 1]) != '\n') {
+            at--
+        }
+    }
+    at = skip_blanks(t, at, first)
+    if (at >= first || int(t[at]) != '#') {
+        return ""
+    }
+    at = skip_blanks(t, at + 1, first)
+    if (!is_word(t, at, "define")) {
+        return ""
+    }
+    let name_at = skip_blanks(t, at + 6, first)
+    var name_end = name_at
+    while (name_end < first && (is_alnum(int(t[name_end])) || int(t[name_end]) == '_')) {
+        name_end++
+    }
+    if (skip_blanks(t, name_end, first) != first) {
+        return ""
+    }
+    let after = skip_blanks(t, stop, length(t))
+    if (after < length(t) && int(t[after]) != '\n') {
+        return ""
+    }
+    return slice(t, name_at, name_end)
+}
+
+// whether the line of `t` starting at `at` continues the line above it (a `\` before the newline)
+def private continues_line(t : array<uint8>#; at : int) : bool {
+    var prev = at - 2
+    if (prev >= 0 && int(t[prev]) == '\r') {
+        prev--
+    }
+    return at >= 1 && prev >= 0 && int(t[prev]) == '\\'
+}
+
+// the first byte of `t` from `at` (below `stop`) that is no blank, comment or line continuation
+def private skip_blanks(t : array<uint8>#; at, stop : int) : int {
+    var i = at
+    while (i < stop) {
+        let c = int(t[i])
+        if (c == ' ' || c == '\t' || c == '\r') {
+            i++
+        } elif (c == '\\' && i + 1 < stop && int(t[i + 1]) == '\n') {
+            i += 2
+        } elif (c == '\\' && i + 2 < stop && int(t[i + 1]) == '\r' && int(t[i + 2]) == '\n') {
+            i += 3
+        } elif (c == '/' && i + 1 < stop && int(t[i + 1]) == '*') {
+            i += 2
+            while (i + 1 < stop && !(int(t[i]) == '*' && int(t[i + 1]) == '/')) {
+                i++
+            }
+            i = min(i + 2, stop)
+        } elif (c == '/' && i + 1 < stop && int(t[i + 1]) == '/') {
+            while (i < stop && int(t[i]) != '\n') {
+                i++
+            }
+        } else {
+            return i
+        }
+    }
+    return stop
+}
+
+// whether `t` spells `word` at `at`, no identifier byte after it
+def private is_word(t : array<uint8>#; at : int; word : string) : bool {
+    let n = length(word)
+    if (at + n > length(t) || (at + n < length(t) && (is_alnum(int(t[at + n])) || int(t[at + n]) == '_'))) {
+        return false
+    }
+    var same = true
+    peek_data(word) $(w) {
+        for (i in range(n)) {
+            same = same && t[at + i] == w[i]
+        }
+    }
+    return same
+}
+
 // one past the offset location `at` expands from, its own where no macro made it
 def private expansion_at(at : JsonValue?) : int64 {
     let e = at?["expansionLoc"]
@@ -2296,6 +2434,8 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
     if (!empty(name) && (d.parent_begin == offset + 1l || d.parent_end == offset + 1l) && !atomic_body(d, js, name)) {
         name = ""
     }
+    // a macro inside another one's expansion names its own node (`#define POS_B (POS_A + 1)`)
+    let nested = wrapper || !empty(name) ? "" : nested_macro(d, js)
     let outer_begin = d.parent_begin
     let outer_end = d.parent_end
     if (!wrapper) {
@@ -2312,6 +2452,8 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
     d.parent_end = outer_end
     if (x != null && !empty(name)) {
         x.macro = name
+    } elif (x != null && !empty(nested)) {
+        x.macro = nested
     }
     return x
 }
