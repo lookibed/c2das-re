@@ -104,11 +104,13 @@ def private slot_casts(text : string; var error : string&) : string {
 }
 
 def private folded_masks(text : string; var error : string&) : string {
-    return replaced_all(text, [(old = "(i >> 0u) & (~(~0u << 7u) << 0u)", by = "i & 127u"),
-                               (old = "(~(~0u << 8u) << 0u)", by = "255u"),
-                               (old = "uint(0 + 7 + 8 + 1 + 8)", by = "24u"),
-                               (old = "uint(0 + 7 + 8 + 1)", by = "16u"),
-                               (old = "uint(0 + 7)", by = "7u")], error)
+    return replaced_all(text, [(old = "(i >> uint(POS_OP)) & (~(~0u << uint(SIZE_OP)) << 0u)", by = "i & 127u"),
+                               (old = "(~(~0u << uint(SIZE_A)) << 0u)", by = "255u"),
+                               (old = "(~(~0u << uint(SIZE_B)) << 0u)", by = "255u"),
+                               (old = "(~(~0u << uint(SIZE_C)) << 0u)", by = "255u"),
+                               (old = "uint(POS_C)", by = "24u"),
+                               (old = "uint(POS_B)", by = "16u"),
+                               (old = "uint(POS_A)", by = "7u")], error)
 }
 
 // the test before P7.0e, the hint's operand widened to `long` and tested against 0: the converter
