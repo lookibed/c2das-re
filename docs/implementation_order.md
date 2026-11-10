@@ -1550,6 +1550,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   written before any timing run: `/root/notes/predictions/2026-11-10-add6.md`, sha256
   `6ded4acf9c4bfe1f1254d61e392510aa0ea24162cb83000a2d42d03d7f3a7a53`: bit_pack interp N/O 0.97, compiled 1.00; Doom
   1.00; blit native 50-65 us, ours JIT 1.2-1.6x, interp 250-330x, Rust JIT 2.6-3.6x.
+  Done 2026-11-10 (box PC, two `heavy --exclusive` jobs, machine quiet 1%, 5 samples interleaved; O = 055ab0c, N = O +
+  P8.9 (c) + P8.11): bit_pack N/O interp 0.994, JIT 1.000, exe 1.001 (134x, 1.21x, 1.17x native). Doom dropped before
+  timing: its text is identical O/N but for the `Z_CT` path strings. blit, the new kernel: native 56.3 us; ours JIT
+  1.05x, exe 1.07x, interp 299x; Rust JIT 3.10x, exe 3.15x, interp 188x. Predictions: 7 of 8 hit; ours JIT 1.05 beats
+  the predicted 1.2-1.6 (the 80 us diagnostic was not exclusive). Geomeans with this blit (15 kernels, the others
+  from bba9010): ours JIT about 1.16, exe 1.14; Rust JIT 1.39, exe 1.46. The compare and perf captures keep the old
+  blit row until their next exclusive capture. Raw: `/root/notes/parallel/add6_ab/` (ab.txt, summary.md).
 ## P6 — Doom
 
 **Goal: the metric.**
