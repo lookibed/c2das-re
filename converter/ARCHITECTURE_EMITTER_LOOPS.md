@@ -80,8 +80,9 @@ to 0.060 s and `primes`'s from 0.363 to 0.135 s on the FX-6300 (`perf/ARCHITECTU
 the same field or element chain over equal bases and literal or variable indexes, compared on
 the C-IR, `same_lvalue`), no call or effect in `x` or `y` and no volatile read in `x` (C reads a
 volatile index or pointer of `x` on both sides), and the operation in `x`'s own type -
-a number of 32 or 64 bits or a float, never a pointer, a small integer, an enum, `_Bool`, a
-bitfield, a member of a `[c_union]` record (a property, F52) or a volatile object - is
+a number of 32 or 64 bits or a float, a bitfield and a `[c_union]` member included (a property,
+whose `op=` goes through its getter and setter, F52), never a pointer, a small integer, an enum,
+`_Bool` or a volatile object - is
 `x op= y` (`self_operation`): the interpreter runs the compound node 1.3 to 1.7 times faster than
 the assignment of the sum, and the text is the one a person writes. `y` is the integer the plain
 form adds, a truth value its 0 or 1 (`x += (a < b ? 1 : 0)`), parenthesized at `op`'s precedence.
