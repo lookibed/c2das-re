@@ -150,7 +150,7 @@ def test_three_files_source(t : T?) {
             t |> failure(res.error)
             return
         }
-        t |> equal(join(res.files, " "), "shape_h.das geo.das.inc parity.das.inc prog.das.inc prog.das")
+        t |> equal(join(res.files, " "), "shape_h.das shape_h.layout.das.inc geo.das.inc parity.das.inc prog.das.inc prog.das")
         t |> success(!fexist(path_join(out_dir, "prog_link.das")))
         var out : string
         t |> equal(run_tier(res.das_path, "interp", out_dir, out, CONVERTED_MODULES), native.rc)
