@@ -19,6 +19,11 @@ as-if-converted fixture test landing first.
   a call macro that expands in place to the one `reinterpret<E>(i)`, flagged safe, so converted
   code carries no `unsafe`, the interpreter makes no call per conversion, and an out-of-range
   value survives by value as C's does.
+- `c_runtime/cstr.das` - `cstr("...")`, a C string literal in a pointer context: a call macro that
+  expands in place to the one `reinterpret<uint8?>("...")`, flagged safe, so a literal needs no
+  `unsafe` (and alone no `[c_function]`) and the interpreter makes no call per literal; a call
+  whose argument is no string literal is left to a program's own `cstr`, which C's `cstr("x")`
+  becomes as `cstr(cstr("x"))`.
 - `c_runtime/c_exit.das` - the process-exit protocol: `c_atexit` registers into a module
   list, `c_run_atexit` walks it once in LIFO order, the `[finalize]` walker runs it after a
   normal return from `main` and then flushes every C stream (`crt::fflush(null)`) while the
