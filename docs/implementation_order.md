@@ -1597,8 +1597,24 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   lua 29085 -> 28194, luac 22377 -> 21616. Expected speed effect: none to slightly faster under
   the interpreter (a dropped block is at most one block node fewer, the dropped `return` is
   unreachable); JIT flat; measured in the phase end's batched A/B (ruling 38 addendum 8).
-- **P9.3 The C author's parentheses**: the C-IR keeps a `ParenExpr`, the emitter prints the author's
-  parentheses and adds none das's precedence does not need.
+- **P9.3 The C author's parentheses**: Dumper A marks the expression inside a `ParenExpr` (`"paren":
+  true` in the C-IR), the source text's pairs all and a macro body's only around a shift or a bitwise
+  operator; the emitter's `wrap` keeps a marked operand's parentheses where das's precedence needs none
+  (`1 << (b - 1)` for C's `1 << (b - 1)`, printed `1 << b - 1` before; `(3 | (1 << 4))` for Lua's
+  `makevariant`). No parentheses are added beyond those: a right-hand side, an argument or a condition
+  stands bare, a lone name is never wrapped. Counts (2026-11-10, main f849a35 against this branch;
+  Doom source layout, 39 of 39 modules compile; Lua source layout): a shift beside `+ - & | ^` with
+  no parentheses between them per 1000 lines, Doom 4.7 -> 0.5, lua 48.7 -> 3.1, luac 63.7 -> 4.1;
+  grouping parentheses per 1000 lines Doom 226.0 -> 235.7, lua 209.0 -> 292.9, luac 229.4 -> 336.6
+  (most of Lua's are `makevariant`'s `(t | (v << 4))`); line counts unchanged. Density metric
+  (`metrics/criteria_linux.json` re-recorded, 1610 inputs): `programs` 1395.8 -> 1342.4 (das-side
+  917.9 -> 864.5), `lost_parens` 39.3 -> 5.5; Lua 1502.8 -> 1388.0, doomgeneric 1071.7 -> 987.5; old
+  `all` 79.1 -> 79.9. Of the drop, `literal_arithmetic` 126.2 -> 106.6 is the counter's artifact (it
+  counts a number, an operator and a number side by side, so `3 | (0 << 4)` is one site where
+  `3 | 0 << 4` was two), not less literal arithmetic: the criterion should count across a
+  parenthesis (left for the metric's next change). Expected speed effect
+  (phase-end A/B): none on any lane, the parentheses are parse-only and leave the AST the same (interp,
+  JIT and exe flat within noise on the kernels, Doom and Lua).
 - **P9.4 Literal suffixes**: a literal converted to its type is the suffixed literal (`0ul` for
   `uint64(0)`) where das needs the type, the bare literal where it does not.
 - **P9.5 Compound `#define`s as named constants**: an object macro whose body names other macros
