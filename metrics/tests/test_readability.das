@@ -381,7 +381,7 @@ def test_worker(t : T?) {
         t |> equal(run_worker("perf/fixed_mandel@inline", counts), 0)
         t |> success(counts |> starts_with("ok\n"), counts)
         let inlined = fread("metrics/work/perf/fixed_mandel@inline/das/fixed_mandel.das")
-        t |> success(!(inlined |> contains("fmul(z.x, z.x)")) && inlined |> contains("int(int64(z.x) * int64(z.x) >> 16l)"), inlined)
+        t |> success(!(inlined |> contains("fmul(z.x, z.x)")) && inlined |> contains("int((int64(z.x) * int64(z.x)) >> 16l)"), inlined)
         t |> equal(run_worker("perf/fixed_mandel", counts), 0)
         let kept = fread("metrics/work/perf/fixed_mandel/das/fixed_mandel.das")
         t |> success(kept |> contains("fmul(z.x, z.x)"), kept)
