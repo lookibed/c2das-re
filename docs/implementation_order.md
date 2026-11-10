@@ -1653,7 +1653,28 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   doomgeneric 975.4 -> 944.9, the others within 3; old `all` 79.9 -> 80.9. Expected speed effect (phase-end A/B):
   none on any lane; daslang folds each name to its literal before simulation (the probe), so the
   interpreter, the JIT and the exe run the same nodes as before.
-- **P9.6 `static_assert` in a file of its own**: the layout checks leave the module body.
+- **P9.6 `static_assert` in a file of its own**: the layout checks leave the module body. A module of
+  a source layout (source, source-cut) keeps its `[init] def private c2das_layout_check` in
+  `<module>.layout.das.inc` beside it and includes it where the check stood, so the check still
+  compiles with the module on every tier (a wrong layout in the file fails the module's compile, the
+  test's control); the pipeline lists the file in `program.modules.txt`, which the ports publisher
+  copies. The metrics read the module and its fragments, not its layout file (`is_layout_file`), as
+  `layout_checks` defines the clean form ("in a test, not the module"). A unit converted alone and
+  the single layout keep the check inline: their one `.das` is what the tiers, the suites and the
+  publisher take, with no module list for a second file (left as is; a row if the owner wants it).
+  Counts (2026-11-10, main 3b5aa7d against this branch; Doom source layout, 39 of 39 modules
+  compile; Lua source layout): `static_assert` lines per 1000 lines of module text, Doom 19.7 -> 0,
+  lua 17.7 -> 0, luac 20.8 -> 0; module text Doom 30885 -> 30240 lines, lua 28334 -> 27807, luac
+  21711 -> 21243, the checks now in 19, 13 and 8 layout files (702, 566, 492 lines).
+  Density metric (`metrics/criteria_linux.json`, 1610 inputs): `layout_checks` lua 29.4 -> 0, luac 34.5
+  -> 0 (compliance 72.9 -> 100, 78.4 -> 100), `programs` 145.1 -> 137.6 (no compare project changes:
+  each converts as a unit alone and keeps its checks inline); the totals rise, `programs` 1270.4 -> 1273.9, Lua 1260.5 ->
+  1269.4, luac 1398.9 -> 1414.3, das-side 797.5 -> 795.7: a check line holds one site against the
+  average 1.26 per line, so the other densities grow as the denominator loses lua's 514 code lines,
+  a property of a per-line density and not more noise (every other site count is unchanged); old
+  `all` 80.9 -> 81.6.
+  Expected speed effect (phase-end A/B): none on any lane; the same `[init]` function of `static_assert`s
+  compiles into the same module, and a `static_assert` costs nothing at run time.
 - **P9.7 A named `c_runtime` helper for repeated cast chains** (`uint8(*unsafe(reinterpret<uint8?>(...)))`
   and its like), decided by their count in Doom and Lua output: only where the helper is shorter and
   no slower.
