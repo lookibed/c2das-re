@@ -1341,7 +1341,9 @@ def private shift_count(var em : Emitter; tu : CirTu; count : CirExpr; rhs : Em;
     if (das_type(em, tu, count.t, loc) == left_type) {
         return rhs
     }
-    let literal = count.e == "int_lit" ? int_literal(left_type, count.v) : ""
+    // a `#define` constant's name stays (`~0u << uint(SIZE_A)`)
+    let named = !empty(count.macro) && rhs.text == reserved_rename(count.macro)
+    let literal = count.e == "int_lit" && !named ? int_literal(left_type, count.v) : ""
     return value(empty(literal) ? "{left_type}({rhs.text})" : literal, PREC_PRIMARY)
 }
 

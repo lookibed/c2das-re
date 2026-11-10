@@ -2712,6 +2712,32 @@ def readability_fixtures(t : T?) {
     p9_plain_block_fixtures(t)
     p9_paren_fixtures(t)
     p9_literal_fixtures(t)
+    p9_compound_define_fixtures(t)
+}
+
+// P9.5: a `#define` constant whose body names other constants is a `let` over their names,
+// recursively, and a constant a function-like macro's body names is its name
+def p9_compound_define_fixtures(t : T?) {
+    t |> run("a compound #define is a let over the names of the constants its body names, each declared before it; one in a function-like macro's body is named; two expansions side by side, a piece of a body, a function-like macro's body and a system header's macro are not") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_compound_defines", text)
+        has_text(t, text, "let private POS_OP = 0\nlet private SIZE_OP = 7\nlet private POS_A = POS_OP + SIZE_OP\nlet private SIZE_A = 8\nlet private MASK_A = ~(~0u << uint(SIZE_A))\nlet private POS_K = POS_A + SIZE_A\n")
+        // a constant inside a function-like macro's expansion is named, a shift count in a conversion
+        has_text(t, text, "    return int((i >> uint(POS_A)) & MASK_A) + POS_K\n")
+        // `#define TWO_ONES (ONE + ONE)`: the sum is two expansions of `ONE`, never `ONE` itself
+        has_text(t, text, "let private ONE = 1\nlet private TWO_ONES = ONE + ONE\nlet private ONES_PLUS = ONE + ONE + 3\nlet private MIX = POS_K + SIZE_OP + 1\n")
+        // the C-IR names the literals alone: `ONE + ONE` and `POS_K + SIZE_OP` (spelled from a later
+        // `#define` to an earlier one) are no macro's body, which the emitter's first-use value hides
+        let cir = fread(path_join(work_root, "p9_compound_defines/p9_compound_defines.cir.json"))
+        t |> equal(length(split(cir, "\"macro\": \"ONE\"")) - 1, 4, "ONE")
+        t |> equal(length(split(cir, "\"macro\": \"POS_K\"")) - 1, 4, "POS_K")
+        // a piece of `#define SUM 1 + 2`, the body of `ZERO()` and stdio's `EOF` keep their values
+        has_text(t, text, "let private SUM_TIMES = 1 + 2 * 3\nlet private AFTER_ZERO = 0 + 5\nlet private BELOW_EOF = -1 - 1\n")
+        // a body on a continued line, before a comment, named inside another body
+        has_text(t, text, "let private SPREAD = POS_K * 2\nlet private SPREAD_PLUS = SPREAD + 1\n")
+        // a global's initializer keeps the value
+        has_text(t, text, "var private p9_compound_defines__start : int = 0 + 7 + 1\n")
+    }
 }
 
 // P9.4: a literal converted to a type das spells with a suffix is the suffixed literal
@@ -2811,14 +2837,13 @@ def p7_readable_fixtures(t : T?) {
     t |> run("a #define constant a function uses is a module let of its name; a function-like macro, a system header's, a das builtin's name and a global's initializer keep the value") @(t : T?) {
         var text : string
         check_fixture(t, "p7_defines", text)
-        has_text(t, text, "let private VNUMINT = 3 | (0 << 4)\nlet private MAXCALLS = 200\nlet private VNUMFLT = 3 | (1 << 4)\nlet private _c_match = 7\nlet private HALF = 0.5lf\n\n")
+        has_text(t, text, "let private TNUMBER = 3\nlet private VNUMINT = TNUMBER | (0 << 4)\nlet private MAXCALLS = 200\nlet private VNUMFLT = TNUMBER | (1 << 4)\nlet private _c_match = 7\nlet private HALF = 0.5lf\n\n")
         has_text(t, text, "    if (tt == VNUMINT) \{\n        return calls >= uint(MAXCALLS) ? 1 : 2\n")
         has_text(t, text, "        return _c_match\n")
         has_text(t, text, "    return 1 | (2 << 4)\n")
         has_text(t, text, "var h : double = HALF * 4.0lf + 3.0lf")
         has_text(t, text, "var private p7_defines__start : int = 11\n")
         has_text(t, text, "return 2147483647 == 2147483647 ? 0 : 1")
-        t |> equal(text |> find("TNUMBER") < 0, true, text)
         // `#define SUM 1 + 2` in `SUM * 3`: no piece of the body takes the name
         has_text(t, text, "        return 1 + 2 * 3 + 1 + 2\n")
         t |> equal(text |> find("SUM") < 0, true, text)
