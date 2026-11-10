@@ -1557,6 +1557,47 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   the predicted 1.2-1.6 (the 80 us diagnostic was not exclusive). Geomeans with this blit (15 kernels, the others
   from bba9010): ours JIT about 1.16, exe 1.14; Rust JIT 1.39, exe 1.46. The compare and perf captures keep the old
   blit row until their next exclusive capture. Raw: `/root/notes/parallel/add6_ab/` (ab.txt, summary.md).
+
+## P9 — Readability forms (owner ruling 38, phase 2)
+
+The emitter forms of `/root/notes/research/readability-architecture.md` step 1, each its own row and
+small pull request, in this order. Each pull request shows before and after on real Doom or Lua output
+and the form's count per 1000 lines of the Doom source-layout speed build (`doom/run.das --convert
+--speed --layout source`) and of Lua's source layout (`lua/run.das --layout source`). The readable
+form is the default; a form that slows the JIT or the interpreter on Doom or Lua beyond noise is a
+`NEEDS RULING` with numbers (ruling 23).
+
+- **P9.1 `p[i]` for `deref(p + i)`** (was P7.0v; reference diff rows 16-17). A pointer subscript and
+  `*(p + i)` / `*(i + p)` of a data pointer are das's pointer index `p[i]`, the default; a marshal-only
+  record's pointee (its reader at the scaled offset) and a difference `*(p - n)` keep their forms.
+  Probe F100 (`probes/test_pointer_index.das`, 2026-11-08, re-run under daScript `abf1d40e35`): `p[i]`
+  reaches the element `deref(p + i)` does for every index type and sign, one `PtrAt` node against an
+  `i_das_ptr_add` call node under a null-checked `Ptr2Ref`; the JIT null-checks `p` once before a
+  `p[i]` loop where the sum is checked per element; under the interpreter a null `p` at index 0 is
+  SIGSEGV for `p[i]` where the sum panics, C's undefined behaviour either way. A scratch micro-kernel
+  (`heavy --low`, indicative, not quoted): 8.5 against 11.4 ns per `int` read, 12.8 against 16.5 per
+  byte copied by index. Measured on the output (2026-11-09, per 1000 lines): `deref` of a sum, Doom
+  28.2 -> 0.1, lua 13.2 -> 0.3, luac 14.3 -> 0.4; every `deref`, Doom 37.1 -> 8.9, lua 28.8 -> 15.9,
+  luac 27.9 -> 14.0; line counts unchanged. Expected before the A/B (box PC, x native; the lead's
+  batched exclusive run, `/root/notes/parallel/pc-p7.0v-ab.sh`): blit and str_copy flat within noise
+  on every lane (blit indexes only its checksum read, str_copy nothing); plmpeg interp a few percent
+  faster (its `deref(_c_block + k)` sites), JIT and exe flat; Doom and Lua interp flat to a few
+  percent faster, JIT flat. Leftover: `perf/audit_constructs.das`'s `node_index` row counts its Lua
+  sites by `addr(deref(`, which the new spelling leaves to a plain `deref(p)`'s address; its site
+  text becomes the `addr(<pointer>[` form.
+- **P9.2 Plain blocks and `return null`**: a braced block that declares nothing is its statements, a
+  trailing `return null` that ends a void path goes.
+- **P9.3 The C author's parentheses**: the C-IR keeps a `ParenExpr`, the emitter prints the author's
+  parentheses and adds none das's precedence does not need.
+- **P9.4 Literal suffixes**: a literal converted to its type is the suffixed literal (`0ul` for
+  `uint64(0)`) where das needs the type, the bare literal where it does not.
+- **P9.5 Compound `#define`s as named constants**: an object macro whose body names other macros
+  (`POS_B = (POS_A + SIZE_A)`) is a named constant, recursively.
+- **P9.6 `static_assert` in a file of its own**: the layout checks leave the module body.
+- **P9.7 A named `c_runtime` helper for repeated cast chains** (`uint8(*unsafe(reinterpret<uint8?>(...)))`
+  and its like), decided by their count in Doom and Lua output: only where the helper is shorter and
+  no slower.
+
 ## P6 — Doom
 
 **Goal: the metric.**
@@ -2091,7 +2132,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   generic native, 1.01x `-march=native`). Clang's remarks refuse every hot Doom renderer loop (gathers
   without bounds, calls, a global counter) and the JIT's dump holds no vector type there: the renderer's
   1.07-1.31x is not a vectorization gap. dasLLVM exposes no remarks (F90, lookibed/daScript#40). Probe
-  `probes/test_jit_tbaa.das`. No converter change follows; `blit`'s 1.23x is a loop-form residual (P7.0v).
+  `probes/test_jit_tbaa.das`. No converter change follows; `blit`'s 1.23x is a loop-form residual (P7.0v2).
 - **P7.0c4 Goto as the JIT default, or a chain order fix** (candidate; from P7.0b2, measured by
   P7.0p place 4): under the JIT LLVM recovers a jump table from P7.0c3's chain for the opcodes up
   to 0x44 only (`cmp $0x44,%eax; jbe; jmp *%rax`, F88): its switch recovery stops at the first
@@ -2495,14 +2536,15 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   measuring: h264bsd (56 memset sites, block clears per macroblock) and plmpeg JIT and exe a few
   percent faster, interp flat (libc does the copy either way); the kernels have no such site, so a
   kernel with a `memset` per block is the measurement. The crt binds stay for the AOT host's widths.
-- **P7.0v A `uint64` mirror for a stepped pointer and `p[i]` for `deref(p + i)`** (reference diff rows
-  16-17, 19 measured beside them): a pointer stepped in a loop is mirrored in a `uint64` local (one
-  fused add per step) and an element access through a pointer is das's pointer index (one node) in
-  place of a pointer-add call node plus a dereference (h264bsd 1240 `_t` temporaries against Rust's
-  294). Expected before measuring (box PC, interp, x native): blit 45 -> about 30, str_copy and Doom
-  interp up, plmpeg interp 37.5 towards 31.6 with P7.0w; JIT flat. Probe the node counts of the two
-  spellings first (one perf kernel, interp lane). The mirror hides the pointer, so readability decides
-  default or opt-in (ruling 23); `p[i]` reads better and is a default candidate.
+- **P7.0v** `p[i]` for `deref(p + i)` moved to the readability phase as P9.1 (owner ruling 38); its
+  `uint64` mirror half stays here as P7.0v2.
+- **P7.0v2 The `uint64` mirror of a stepped pointer, opt-in, and the `p++` step spelling** (split from P7.0v, whose
+  probe measured the step): a local or parameter pointer that is only dereferenced, indexed, compared and stepped by
+  a constant (never addressed, passed or stored, not volatile) is mirrored in a `uint64` local under an opt-in
+  (`--pointer-steps=mirror`, sidecar key), the default staying the pointer; the default's step `p = p + 1` becomes
+  `p++` / `p += n` where the readability re-record agrees. Expected before measuring (box PC, interp, x native): blit
+  45 -> about 30 and str_copy down by a like share under the mirror, about a third of that from `p++` alone; JIT flat
+  or worse under the mirror (the `inttoptr` hides the pointer from alias analysis: check the IR first).
 - **P7.0w Expression inlining of pure `static` helpers** (reference diff row 28): a `static` function
   whose body is `return <expr>` or the clamp shape over scalar parameters is substituted as one
   expression at every direct call site (Rust's inline.rs, on in every mode); daslang's `[inline]` is
