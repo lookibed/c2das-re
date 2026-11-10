@@ -2053,6 +2053,10 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         if (kind_of(tu, x.a.t) == "enum") {
             return value(enum_to_integer(tu, x.a.t, source.text, target), PREC_PRIMARY)
         }
+        let literal = suffixed_literal(source.text, target)
+        if (!empty(literal)) {
+            return value(literal, PREC_PRIMARY)
+        }
         return value("{target}({source.text})", PREC_PRIMARY)
     }
     if (k == "BitCast") {
@@ -2079,6 +2083,39 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     }
     fail(em, "cast `{k}` is not lowered yet", loc)
     return inner
+}
+
+// a decimal `int` literal converted to `target` as das spells it with a suffix (`0l`, `1ul`, `7u8`,
+// `10.0lf`); "" for a type without one (`int8`, `int16`, `uint16`), a negative value of an unsigned
+// type, a value past `uint8` or a float's exact integers, or a text that is no literal (a named
+// constant, a character literal)
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#literal-suffixes")]
+def private suffixed_literal(text, target : string) : string {
+    let negative = starts_with(text, "-")
+    let digits = negative ? slice(text, 1) : text
+    if (!is_digit_run(digits, 0)) {
+        return ""
+    }
+    if (target == "int64") {
+        return "{text}l"
+    }
+    if (target == "double") {
+        return "{text}.0lf"
+    }
+    if (target == "float") {
+        // a float holds every integer to 2^24 exactly; past it the conversion stays explicit
+        return to_int64(digits) <= 16777216l ? "{text}.0f" : ""
+    }
+    if (negative) {
+        return ""
+    }
+    if (target == "uint64") {
+        return "{text}ul"
+    }
+    if (target == "uint") {
+        return "{text}u"
+    }
+    return target == "uint8" && to_int64(digits) <= 255l ? "{text}u8" : ""
 }
 
 // a decay spelled without its array's value: an array field of a marshal-only record in C memory

@@ -104,8 +104,8 @@ def private slot_casts(text : string; var error : string&) : string {
 }
 
 def private folded_masks(text : string; var error : string&) : string {
-    return replaced_all(text, [(old = "(i >> 0u) & (~(~uint(0) << 7u) << 0u)", by = "i & 127u"),
-                               (old = "(~(~uint(0) << 8u) << 0u)", by = "255u"),
+    return replaced_all(text, [(old = "(i >> 0u) & (~(~0u << 7u) << 0u)", by = "i & 127u"),
+                               (old = "(~(~0u << 8u) << 0u)", by = "255u"),
                                (old = "uint(0 + 7 + 8 + 1 + 8)", by = "24u"),
                                (old = "uint(0 + 7 + 8 + 1)", by = "16u"),
                                (old = "uint(0 + 7)", by = "7u")], error)
@@ -164,16 +164,16 @@ def private trampoline(text : string; var error : string&) : string => replaced(
 def private no_try(text : string; var error : string&) : string => replaced(text, FLAT_TRY, NO_TRY, error)
 
 def private inlined_call(text : string; var error : string&) : string {
-    let body = "let key_r = (key + int64(r)) % int64(70)\n                var v : int64? = uint64(key_r) - uint64(1u) < uint64(t.alimit) ? addr(t._c_array[key_r - int64(1)]) : null"
-    return replaced(text, "var v : int64? = small_call__luaH_getint(t, (key + int64(r)) % int64(70))", body, error)
+    let body = "let key_r = (key + int64(r)) % 70l\n                var v : int64? = uint64(key_r) - 1ul < uint64(t.alimit) ? addr(t._c_array[key_r - 1l]) : null"
+    return replaced(text, "var v : int64? = small_call__luaH_getint(t, (key + int64(r)) % 70l)", body, error)
 }
 
-def private byte_read(text : string; var error : string&) : string => replaced(text, "uint(uint8(str[l - uint64(1)]))", "uint(str[l - uint64(1)])", error)
+def private byte_read(text : string; var error : string&) : string => replaced(text, "uint(uint8(str[l - 1ul]))", "uint(str[l - 1ul])", error)
 
 // the pointer subscripts before P7.0v: the converter writes das's pointer index `addr(p[i])` since,
 // so the rewrite restores `addr(deref(p + i))` and the row's factor is the inverse of its cost
 def private deref_sums(text : string; var error : string&) : string {
-    return replaced_all(text, [(old = "addr(t.node[int(h * 2654435761u & (1u << uint(int(t.lsizenode))) - uint(1))])", by = "addr(deref(t.node + int(h * 2654435761u & (1u << uint(int(t.lsizenode))) - uint(1))))"),
+    return replaced_all(text, [(old = "addr(t.node[int(h * 2654435761u & (1u << uint(int(t.lsizenode))) - 1u)])", by = "addr(deref(t.node + int(h * 2654435761u & (1u << uint(int(t.lsizenode))) - 1u)))"),
                                (old = "addr(t._c_array[int64(h) % int64(t.alimit)])", by = "addr(deref(t._c_array + int64(h) % int64(t.alimit)))")], error)
 }
 
@@ -197,7 +197,7 @@ def constructs : array<Construct> {
         Construct(name = "`addr((p + i).f)` on a stack slot", kernel = "stack_ptr", spelling = "slot-cast", sites = "addr((", rewrite = @@slot_casts),
         Construct(name = "`addr(p[i])` against the former `addr(deref(p + i))`", kernel = "node_index", spelling = "deref-sum", sites = ADDR_DEREF, rewrite = @@deref_sums),
         Construct(name = "`enum_from_int` on the opcode", kernel = "enum_cast", spelling = "reinterpret", sites = "enum_from_int(", rewrite = @@enum_reinterpret),
-        Construct(name = "macro mask arithmetic on `uint`", kernel = "instr_decode", spelling = "folded", sites = "~(~uint(0) <<", rewrite = @@folded_masks),
+        Construct(name = "macro mask arithmetic on `uint`", kernel = "instr_decode", spelling = "folded", sites = "~(~0u <<", rewrite = @@folded_masks),
         Construct(name = "`int64(x != 0 ? 1 : 0) != 0` test", kernel = "trap_check", spelling = "expect-roundtrip", sites = "? 1 : 0) != 0", rewrite = @@expect_roundtrip),
         Construct(name = "`c_volatile_load` of a volatile field", kernel = "trap_check", spelling = "plain-load", sites = "c_volatile_load(", rewrite = @@plain_load),
         Construct(name = "`setjmp` trampoline (`while (_sj_run)`)", kernel = "protected_call", spelling = "trampoline", sites = "\} recover \{", rewrite = @@trampoline),

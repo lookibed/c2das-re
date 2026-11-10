@@ -74,3 +74,13 @@ expansion repeats at every use. The emitter carries the mark on the expression's
 parenthesizes a marked operand that is no primary even where das's precedence needs no parentheses
 (`1 << (b - 1)`, `a + (b * c)`). Where no operator takes the expression as an operand (a right-hand
 side, an argument, a condition) it stands bare, and a marked lone name or call is never wrapped.
+
+### Literal suffixes {#literal-suffixes}
+
+A C integer literal the source converts to another arithmetic type (clang's `IntegralCast` or
+`IntegralToFloating` over the literal, as `long x = 0;` or `f(1)` for a `size_t` parameter) is the
+das literal of that type where das spells one with a suffix and the value is in the type's range:
+`0l` and `-1l` for `int64`, `1ul` for `uint64`, `240u` for `uint`, `7u8` for `uint8`, `10.0lf` for
+`double` and `1.0f` for `float`. A negative value takes no unsigned suffix, and a type without one
+(`int8`, `int16`, `uint16`) keeps the conversion `int16(5)`, as does a named constant (`int64(FRACBITS)`)
+and a character literal (`uint8('a')`). A negative literal is a unary minus, so it binds as one.
