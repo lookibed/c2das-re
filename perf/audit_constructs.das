@@ -104,8 +104,8 @@ def private slot_casts(text : string; var error : string&) : string {
 }
 
 def private folded_masks(text : string; var error : string&) : string {
-    return replaced_all(text, [(old = "i >> 0u & ~(~uint(0) << 7u) << 0u", by = "i & 127u"),
-                               (old = "~(~uint(0) << 8u) << 0u", by = "255u"),
+    return replaced_all(text, [(old = "(i >> 0u) & (~(~uint(0) << 7u) << 0u)", by = "i & 127u"),
+                               (old = "(~(~uint(0) << 8u) << 0u)", by = "255u"),
                                (old = "uint(0 + 7 + 8 + 1 + 8)", by = "24u"),
                                (old = "uint(0 + 7 + 8 + 1)", by = "16u"),
                                (old = "uint(0 + 7)", by = "7u")], error)

@@ -62,3 +62,15 @@ bare block that returns, or a `while (true)` whose body returns and which no `br
 leave (a `break` right after a `return` or a `break` of the same level is dead; a `goto` anywhere in
 the body counts as leaving). Under that rule the dropped `return` is unreachable, and das accepts
 the function without it.
+
+### Parentheses {#parentheses}
+
+Clang keeps the C source's parentheses as a `ParenExpr`; Dumper A marks the expression inside it
+`"paren": true`, an optional field `cir.das` writes beside `char` (absent otherwise; Dumper B does not
+write it). A pair the source text spells is marked whatever it holds; a pair from a macro's body only
+around a shift or a bitwise operator (`((t) | ((v) << 4))`), where a reader misreads the precedence
+against the neighbours, not around an argument, a unary or a comparison (`((o) == (t))`), which the
+expansion repeats at every use. The emitter carries the mark on the expression's `Em`, and `wrap`
+parenthesizes a marked operand that is no primary even where das's precedence needs no parentheses
+(`1 << (b - 1)`, `a + (b * c)`). Where no operator takes the expression as an operand (a right-hand
+side, an argument, a condition) it stands bare, and a marked lone name or call is never wrapped.

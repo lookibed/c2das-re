@@ -30,7 +30,7 @@ let TYPE_FIELD = "converter/tests/fixtures/p7_type_edge"
 // (P5.1b1), which the single layout keeps byte for byte, plus the C comments it carries (P7.0j) and
 // `options solid_context` (P7.0m)
 let TREE_SINGLE_SHA = "59c7147fee02ad5e10fdf257272f7e0b2459f96ce4f964d44fed7922c03191a3"
-let TYPES_SINGLE_SHA = "a41aac0cfac7d93c798f966f2dac9b6ab4b27f5f4b39ba2935904704de3ba774"
+let TYPES_SINGLE_SHA = "c19b067a210417429f7c201557d2f5f8017c9315664c30a9dfa67e5d1a40c3a4"
 
 var work_root : string
 

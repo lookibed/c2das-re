@@ -25,6 +25,8 @@ struct Em {
     text : string
     prec : int
     is_bool : bool
+    // the C source wrote the expression in parentheses: an operand keeps them (`wrap`)
+    paren : bool
 }
 
 struct Emitter {
@@ -568,7 +570,8 @@ def private value(text : string; prec : int) : Em => Em(text = text, prec = prec
 
 def private truth(text : string; prec : int) : Em => Em(text = text, prec = prec, is_bool = true)
 
-def private wrap(e : Em; need : int) : string => e.prec < need ? "({e.text})" : e.text
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#parentheses")]
+def private wrap(e : Em; need : int) : string => e.prec < need || (e.paren && e.prec < PREC_PRIMARY) ? "({e.text})" : e.text
 
 def private kind_of(tu : CirTu; t : int) : string => t >= 0 && t < length(tu.types) ? tu.types[t].k : ""
 
@@ -2635,6 +2638,9 @@ def emit_expr(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : 
     }
     if (x != null && is_c_bool(tu, x.t)) {
         e.is_bool = true
+    }
+    if (x != null && x.paren) {
+        e.paren = true
     }
     return e
 }

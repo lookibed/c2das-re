@@ -1564,6 +1564,8 @@ let UNARY_OPS <- {"-" => "neg", "+" => "plus", "!" => "not", "~" => "bnot", "&" 
 
 let BINARY_OPS <- {"+" => "add", "-" => "sub", "*" => "mul", "/" => "div", "%" => "rem", "<<" => "shl", ">>" => "shr", "<" => "lt", ">" => "gt", "<=" => "le", ">=" => "ge", "==" => "eq", "!=" => "ne", "&" => "band", "|" => "bor", "^" => "bxor", "&&" => "land", "||" => "lor"}
 
+// the operators whose macro-body parentheses the C-IR keeps (`dump_expr_node`)
+let private BIT_OPS <- {"shl", "shr", "band", "bor", "bxor"}
 let COMPOUND_OPS <- {"+=" => "add", "-=" => "sub", "*=" => "mul", "/=" => "div", "%=" => "rem", "<<=" => "shl", ">>=" => "shr", "&=" => "band", "|=" => "bor", "^=" => "bxor"}
 
 def private hex_digit(b : int) : int {
@@ -2325,7 +2327,14 @@ def private dump_expr_node(var d : Dumper; js : JsonValue?) : CirExpr? {
             fail(d, "empty parentheses", at)
             return null
         }
-        return child_expr(d, js?["inner"], 0)
+        var inner = child_expr(d, js?["inner"], 0)
+        if (inner != null && kind == "ParenExpr") {
+            // the source's own parentheses all count; a macro body's only around a shift or a
+            // bitwise operator, whose precedence against its neighbours a reader misreads
+            // (`((t) | ((v) << 4))`), not around an argument, a unary or a comparison
+            inner.paren = !is_present(js?["range"]?["begin"]?["expansionLoc"]) || (inner.e == "bin" && key_exists(BIT_OPS, inner.op))
+        }
+        return inner
     }
     let t = node_type(d, js, at)
     if (t < 0) {

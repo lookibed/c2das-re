@@ -1275,8 +1275,8 @@ def p4_csmith_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p4_csmith_shifts", text)
         // das shifts a value only by a count of its own type (F40)
-        has_text(t, text, "int(left) > 127 >> int(right) ? int(left) : int(left) << int(right)")
-        has_text(t, text, "return v << int64(n) >> int64(n / 2)")
+        has_text(t, text, "(int(left) > (127 >> int(right)))) ? int(left) : (int(left) << int(right))")
+        has_text(t, text, "return (v << int64(n)) >> int64(n / 2)")
         has_text(t, text, "return v >> uint64(int(n))")
         has_text(t, text, "    a <<= int(b)\n    u >>= uint(int(uint8(1)))\n    b <<= int64(u)\n    b >>= 1l\n")
         has_text(t, text, "b << 2l")
@@ -1917,7 +1917,7 @@ def p5_lua_expression_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p5_lua_exprs", text)
         // das types `?:` by its first arm: a null one is the conditional's pointer type
-        has_text(t, text, "return et == null ? default<int?> : ((uint(et.flags) & 1u << uint(e)) != 0 ? default<int?> : et.slots + e)\n")
+        has_text(t, text, "return (et == null) ? default<int?> : ((uint(et.flags) & (1u << uint(e))) != 0 ? default<int?> : et.slots + e)\n")
         has_text(t, text, "? et.slots + e : null\n")
         // the subtrahend of a pointer difference keeps its parentheses
         has_text(t, text, "int(int64(top - 1 - (base + k)))")
@@ -2268,7 +2268,7 @@ def p7_fixtures(t : T?) {
         has_text(t, text, "    let _t0 = z\n    z++\n    x = x + _t0\n")
         has_text(t, text, "    deref(pz) += 4\n")
         // a truth value is the int C adds; the right side is spelled once
-        has_text(t, text, "    x += (a < b ? 1 : 0)\n    x |= (!(a != 0) ? 1 : 0)\n    x *= (a != 0 && b != 0 ? 1 : 0)\n    d += double(a > b ? 1 : 0)\n    var _cl0 : int[2] = fixed_array(7, 8)\n    x += deref(addr(_cl0[0]))\n")
+        has_text(t, text, "    x += ((a < b) ? 1 : 0)\n    x |= (!(a != 0) ? 1 : 0)\n    x *= ((a != 0 && b != 0) ? 1 : 0)\n    d += double((a > b) ? 1 : 0)\n    var _cl0 : int[2] = fixed_array(7, 8)\n    x += deref(addr(_cl0[0]))\n")
         t |> equal(text |> find("_cl1") < 0, true, text)
         // a bitfield and a `[c_union]` member take `op=` too (F52 fixed); a bitfield computing wider keeps the plain store
         has_text(t, text, "    p[2].bf.b = uint(int(p[2].bf.b) + 3)\n    p[2].bf.c += uint(3)\n")
@@ -2278,7 +2278,7 @@ def p7_fixtures(t : T?) {
         // a small integer's sum is no wrapping pair; a truth value in one is the int
         has_text(t, text, "    var ss : int16 = int16(int(s1) + int(s2))\n")
         has_text(t, text, "    var cs : uint8 = uint8(int(c1) + int(c2))\n")
-        has_text(t, text, "    var tw : int = (a < b ? 1 : 0) + b\n    var tw2 : int = b - (!(a != 0) ? 1 : 0)\n")
+        has_text(t, text, "    var tw : int = ((a < b) ? 1 : 0) + b\n    var tw2 : int = b - (!(a != 0) ? 1 : 0)\n")
     }
     t |> run("under `--loops while` no loop is a range loop, and the program prints the same") @(t : T?) {
         var text : string
@@ -2710,6 +2710,26 @@ def readability_fixtures(t : T?) {
     p7_readable_fixtures(t)
     p7_goto_into_fixtures(t)
     p9_plain_block_fixtures(t)
+    p9_paren_fixtures(t)
+}
+
+// P9.3: the C author's parentheses around an operand stay; a macro body's only around a shift or a
+// bitwise operator
+def p9_paren_fixtures(t : T?) {
+    t |> run("an operand the C source parenthesizes keeps its parentheses, a lone name and a whole right-hand side do not; a macro body keeps them around a shift or a bitwise operator only") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_parens", text)
+        has_text(t, text, "var s : int = 1 << (b - 1)\n")
+        has_text(t, text, "var v : int = a + (b * c)\n")
+        has_text(t, text, "var q : int = (a < b) ? (a + 1) : (b - 1)\n")
+        has_text(t, text, "var w : int = a\n")
+        has_text(t, text, "var x : int = a + b\n")
+        has_text(t, text, "var r : int = a * c\n")
+        has_text(t, text, "var m : uint = (u & (~(~0u << 4u) << 4u)) >> 4u\n")
+        has_text(t, text, "var y : int = (a + 1) * 2\n")
+        has_text(t, text, "var k : int = a == 3 && b == 4 ? 1 : 0\n")
+        has_text(t, text, "var z : int = (3 | (1 << 4)) + 1\n")
+    }
 }
 
 // P9.2: a block that declares nothing is its statements, and a zero `return` das reads as dead goes
@@ -2773,10 +2793,10 @@ def p7_readable_fixtures(t : T?) {
     t |> run("a #define constant a function uses is a module let of its name; a function-like macro, a system header's, a das builtin's name and a global's initializer keep the value") @(t : T?) {
         var text : string
         check_fixture(t, "p7_defines", text)
-        has_text(t, text, "let private VNUMINT = 3 | 0 << 4\nlet private MAXCALLS = 200\nlet private VNUMFLT = 3 | 1 << 4\nlet private _c_match = 7\nlet private HALF = 0.5lf\n\n")
+        has_text(t, text, "let private VNUMINT = 3 | (0 << 4)\nlet private MAXCALLS = 200\nlet private VNUMFLT = 3 | (1 << 4)\nlet private _c_match = 7\nlet private HALF = 0.5lf\n\n")
         has_text(t, text, "    if (tt == VNUMINT) \{\n        return calls >= uint(MAXCALLS) ? 1 : 2\n")
         has_text(t, text, "        return _c_match\n")
-        has_text(t, text, "    return 1 | 2 << 4\n")
+        has_text(t, text, "    return 1 | (2 << 4)\n")
         has_text(t, text, "var h : double = HALF * double(4) + double(3)")
         has_text(t, text, "var private p7_defines__start : int = 11\n")
         has_text(t, text, "return 2147483647 == 2147483647 ? 0 : 1")
@@ -2992,7 +3012,7 @@ def p7_inline_helpers_fixtures(t : T?) {
         // a bare `else` ends the chain, an enumerator keeps its name
         has_text(t, text, "(k > int(Lim.LIM_HI) ? int(Lim.LIM_HI) : (k < int(Lim.LIM_LO) ? int(Lim.LIM_LO) : k * 2))")
         // `return <expr>` under its own conversions
-        has_text(t, text, "int(int64(int(small)) * int64(k << 16) >> 16l)")
+        has_text(t, text, "int((int64(int(small)) * int64(k << 16)) >> 16l)")
         has_text(t, text, "int(double(small) / double(2))")
         has_text(t, text, "int((4000000000u + 500000000u) % 1000u)")
         // a helper calling a helper: the inner call's argument, a sum the outer one reads as its
