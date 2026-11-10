@@ -2474,6 +2474,10 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     if (!empty(direct.text)) {
         return direct
     }
+    let indexed = pointer_sum_index(em, tu, x, loc)
+    if (!empty(indexed.text)) {
+        return indexed
+    }
     // the arithmetic operators read a number; `&` and `*` take the operand as it is; the address
     // of a compound literal is its object's
     let operand = x.op == "addr" ? address_operand(em, tu, x, loc) : emit_expr(em, tu, x.a, loc)
@@ -3102,8 +3106,9 @@ def private index_value(var em : Emitter; tu : CirTu; i : CirExpr?; loc : CirLoc
 def private index_type(var em : Emitter; tu : CirTu; i : CirExpr?; loc : CirLoc) : string =>
     kind_of(tu, i.t) == "enum" || is_small_int(tu, i.t) ? "int" : das_type(em, tu, i.t, loc)
 
-// `a[i]` of an array is the das index, range-checked; of a pointer it is `deref(p + i)`; of a
-// byte pointer to a marshal-only record it is the record read at the scaled offset
+// `a[i]` of an array is the das index, range-checked; of a pointer it is das's pointer index `p[i]`,
+// unchecked (`docs/probe-findings.md` F100); of a byte pointer to a marshal-only record it is the
+// record read at the scaled offset
 def private emit_index(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     // a flexible, an over-indexed trailing or a padded array is indexed through its decay,
     // unchecked, and so is an array field of a marshal-only record in C memory, whose elements lie
@@ -3121,9 +3126,23 @@ def private emit_index(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     let base = emit_expr(em, tu, x.base, loc)
     let i = index_value(em, tu, x.i, loc)
     if (kind_of(tu, x.base.t) == "ptr") {
-        return unsafe_value(em, "deref({wrap(base, PREC_ADD)} + {wrap(i, PREC_ADD + 1)})", PREC_PRIMARY)
+        return unsafe_value(em, "{wrap(base, PREC_PRIMARY)}[{i.text}]", PREC_PRIMARY)
     }
     return value("{wrap(base, PREC_PRIMARY)}[{i.text}]", PREC_PRIMARY)
+}
+
+// `*(p + i)` and `*(i + p)` of a data pointer, the das pointer index `p[i]` as `p[i]` itself is
+// (`docs/probe-findings.md` F100); an empty text for any other dereference, a marshal-only
+// record's pointee included, which `pointer_arithmetic` scales
+def private pointer_sum_index(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    let sum = x.a
+    if (x.op != "deref" || sum.e != "bin" || sum.op != "add" || marshal_pointee(em, tu, sum.t) >= 0) {
+        return Em()
+    }
+    let pointer_lhs = kind_of(tu, sum.a.t) == "ptr"
+    let base = emit_expr(em, tu, pointer_lhs ? sum.a : sum.b, loc)
+    let i = index_value(em, tu, pointer_lhs ? sum.b : sum.a, loc)
+    return unsafe_value(em, "{wrap(base, PREC_PRIMARY)}[{i.text}]", PREC_PRIMARY)
 }
 
 // `a.f`, and `p.f` for `p->f` and `(*p).f` alike: das reads a field through a pointer

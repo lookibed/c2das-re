@@ -135,8 +135,8 @@ safe-index operator; its initializer is one `fixed_array` holding every element,
 ones as zero literals (`fixed_array<T?>` for an array of pointers, since an all-null literal is
 a `void?` array no pointer array takes, F41), except an array past 32 elements the source fills sparsely, which is the
 bare declaration followed by one store per written element (at module init for a global). A subscript of an array is the das
-index, range-checked (the documents' safety oracle); a subscript of a pointer is `deref(p +
-i)`; an index of a small integer type widens to `int`, since das indexes by `int`, `int64`,
+index, range-checked (the documents' safety oracle); a subscript of a pointer, and `*(p + i)` alike, is das's pointer index `p[i]`, one node that
+reaches the element the sum does for every index type and sign, unchecked (F100: a null `p` is no panic under the interpreter); an index of a small integer type widens to `int`, since das indexes by `int`, `int64`,
 `uint` and `uint64` alone and C does not promote a subscript (F43); `&a[k]` of an array may be the
 address one past the end, as C allows (`ARCHITECTURE_EMITTER_AGGREGATES.md`, One past an array's end). In a global initializer the decay and the sum each wrap themselves, `unsafe(unsafe(addr(a[0]))
 + k)` (F48). A reference C makes before the definition that gives its array a length (`extern int a[];`, the definition later in the unit or in another unit) keeps clang's type of unknown length in the C-IR and takes the type of the global its name binds to before anything is spelled (`complete_extern_arrays`), so it indexes and decays the definition's storage, and its address `&a` (`int (*)[]`) converts to a sized row pointer or an element pointer as C converts it, the conversion spelling the target type; a declarator of a pointer to an array of unknown length (`int (*p)[] = &a;`) fails closed; one no unit defines fails closed naming it; a row pointer is `T[N]?` and reads as `deref(row)[i]`; decay is `addr(a[0])`. A function
@@ -175,7 +175,7 @@ the list leaves out the zero literal), a literal longer than `N` keeping its fir
 as clang initializes the array; one with an interior NUL is the row of its bytes,
 `fixed_array(uint8(97), uint8(0), ...)`, since `cstr_array` reads its literal as a das string,
 which ends at the first NUL; a `signed char` one fails closed, and one in braces filling the whole array (`{ "ab" }`) is the dumper's plain literal. A literal
-indexed in place (`"abcdef"[2]`) is read through its pointer, `deref(p + i)`; a literal under `sizeof` is its
+indexed in place (`"abcdef"[2]`) is read through its pointer, `p[i]`; a literal under `sizeof` is its
 array type. A call to a libc function the C program declares resolves through two tables:
 `C_RUNTIME_CALLS`, the functions a `c_runtime` piece lowers (`printf`, `sprintf`, `snprintf`,
 `vprintf`, `vsprintf`, `vsnprintf`, `fprintf`, `vfprintf`, `sscanf`, `vsscanf`, `exit`, `abort`, `signal`, `qsort`, `bsearch`; `<math.h>`'s surface das math covers, `floor` as `math::floor` and `fabs` as `math::abs`, as `docs/stdlib-examples.md` "math.h" rules; glibc's `__errno_location`, which `errno` expands to, as `crt::c_errno_location`),
@@ -221,7 +221,7 @@ pointer the target goes through, its index or a record value, whichever has an e
 evaluated once, into a temporary unless its text already is one (a variable's own name, `i` of
 `++i` or `p` of `p = q`, changes under a call later in the statement), and every spelling of
 the target reads that (`var _t0 = next()` then `deref(_t0)++`; `let _t0 = pick(1)` then
-`deref(p + _t0).bf = uint(int(deref(p + _t0).bf) + 5)`; `let _t1 = arr[_t0].a` then
+`p[_t0].bf = uint(int(p[_t0].bf) + 5)`; `let _t1 = arr[_t0].a` then
 `arr[_t0].a++` for `arr[k++].a++`). An assignment read as a value is its target read after the
 store through the same temporaries, so `if ((*p++ = *q++))` tests what the store wrote, a
 bitfield's truncation included; a plain `=` statement spells its target once and pins nothing.

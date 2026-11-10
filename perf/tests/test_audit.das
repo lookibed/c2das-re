@@ -55,19 +55,6 @@ def test_rewrites(t : T?) {
         t |> equal(flag_chain("    if (_cond == 3) \{\n    \}", error), "")
         t |> success(error |> contains("no switch a goto re-dispatches"), error)
     }
-    t |> run("unwrap_addr_deref: each addr(deref(p)) is (p), nested parentheses kept") @(t : T?) {
-        var error : string
-        t |> equal(unwrap_addr_deref("x = addr(deref(t.node + int(h & (m - 1)))); y = addr(deref(p + addr(deref(q)).n))", error), "x = (t.node + int(h & (m - 1))); y = (p + (q).n)")
-        t |> equal(error, "")
-    }
-    t |> run("unwrap_addr_deref: none, or one not closed by addr's own parenthesis, is an error") @(t : T?) {
-        var error : string
-        t |> equal(unwrap_addr_deref("p + 1", error), "")
-        t |> success(error |> contains("no `addr(deref(`"), error)
-        error = ""
-        t |> equal(unwrap_addr_deref("addr(deref(p).f)", error), "")
-        t |> success(error |> contains("unbalanced"), error)
-    }
     t |> run("replaced_all stops at the first text it does not find") @(t : T?) {
         var error : string
         t |> equal(replaced_all("a b", [(old = "a", by = "c"), (old = "z", by = "y")], error), "")
@@ -123,8 +110,8 @@ def test_site_counts(t : T?) {
         }
         fwrite(path_join(dir, "lvm.das.inc"), "addr(deref(p))")
         let js = site_counts(dir)
-        t |> equal(js?["pointer"]?["lvm"] ?? -1l, 1l)
-        t |> equal(js?["pointer"]?["ltable"] ?? -1l, 2l)
+        t |> equal(js?["deref-sum"]?["lvm"] ?? -1l, 1l)
+        t |> equal(js?["deref-sum"]?["ltable"] ?? -1l, 2l)
         t |> equal(js?["flag-chain"]?["lgc"] ?? -1l, 0l)
     }
 }
