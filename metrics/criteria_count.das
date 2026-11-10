@@ -165,6 +165,44 @@ def private ident_defects(toks : array<Tok>; i : int; modules : table<string; bo
     }
 }
 
+// one past the constant operand starting at `at`: a number, or a grouping parenthesis holding
+// constants and operators alone (`(0 << 4)`); -1 for any other token
+def private constant_end(toks : array<Tok>; at : int) : int {
+    if (at >= length(toks) || (at > 0 && toks[at - 1].text == ".")) {
+        return -1
+    }
+    if (toks[at].kind == TokKind.number) {
+        return at + 1
+    }
+    let before = at > 0 ? toks[at - 1] : Tok()
+    if (toks[at].text != "(" || (at > 0 && (before.kind == TokKind.ident || before.kind == TokKind.number || before.text == ")" || before.text == "]" || before.text == ">"))) {
+        return -1
+    }
+    var j = at + 1
+    while (true) {
+        j = constant_end(toks, j)
+        if (j < 0 || j >= length(toks)) {
+            return -1
+        }
+        if (toks[j].text == ")") {
+            return j + 1
+        }
+        if (!has_value(ARITH_OPS, toks[j].text)) {
+            return -1
+        }
+        j++
+    }
+    return -1
+}
+
+// whether the constant operand at `at` is the left side of an arithmetic operator whose right side
+// is a constant too: literal arithmetic, counted once per operator, a parenthesized constant
+// (`3 | (0 << 4)`) a number
+def private literal_operation(toks : array<Tok>; at : int) : bool {
+    let op = constant_end(toks, at)
+    return op > 0 && op < length(toks) && has_value(ARITH_OPS, toks[op].text) && constant_end(toks, op + 1) > 0
+}
+
 // the per-function defects of one line, added into `sites` by criterion
 def private line_defects(toks : array<Tok>; modules : table<string; bool>; var sites : table<string; int>) {
     let n = length(toks)
@@ -183,7 +221,7 @@ def private line_defects(toks : array<Tok>; modules : table<string; bool>; var s
         let next = i + 1 < n ? toks[i + 1].text : ""
         if (t.kind == TokKind.ident) {
             ident_defects(toks, i, modules, sites, literal_cast)
-        } elif (t.kind == TokKind.number && i + 2 < n && toks[i + 2].kind == TokKind.number && has_value(ARITH_OPS, next) && !(i > 0 && toks[i - 1].text == ".")) {
+        } elif (literal_operation(toks, i)) {
             sites["literal_arithmetic"]++
         } elif (t.text == "?" && i + 3 < n && next == "1" && toks[i + 2].text == ":" && toks[i + 3].text == "0") {
             sites["bool_roundtrip"]++
