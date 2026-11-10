@@ -159,3 +159,15 @@ cross-module name is spelled bare. The pipeline lists every module and fragment 
 deletes the files an earlier conversion listed there, none other, so no stale module stays beside
 the new ones; it writes every file, formats each, and compile-checks each module no other module
 requires (the entry's, and any the program never reaches), which compiles every module they require.
+
+### The layout file {#layout-file}
+
+A module of a source layout keeps its layout check apart: `emit_layout_check` moves the `[init] def
+private c2das_layout_check` and its `static_assert`s into `<module>.layout.das.inc` beside the
+module, which the module includes where the check stood (after its records, in a cluster after
+the fragments' `include`s). The check still compiles with the module, at every compile of it and
+on every tier, and the module's own text and its fragments hold no `static_assert`; the dot in
+the name keeps it apart from a fragment, whose stem is a C file's. A module with no checked
+record has no layout file. A unit converted alone and the single layout keep the check in the
+module: their one `.das` is the file the tiers, the suites and the ports publisher take, with no
+module list to carry a second file.

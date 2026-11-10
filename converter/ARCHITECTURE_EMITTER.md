@@ -20,7 +20,8 @@ refuses its `sizeof` and a dereference; das reads `struct Name;` as the same emp
 forward declaration, `probes/test_structs.das`); then `[init] def private c2das_layout_check`,
 one `static_assert` per record against clang's size and alignment and one per field against its
 offset, the layout law checked at compile time where it is claimed
-(`docs/implementation_order.md` P2.1); a record holding bitfields asserts its das alignment,
+(`docs/implementation_order.md` P2.1; a source layout's module includes it from a file of its own,
+`ARCHITECTURE_LAYOUT.md`, The layout file); a record holding bitfields asserts its das alignment,
 which can be below clang's (F5), and each unit's offset; a union asserts its storage at 0
 (`ARCHITECTURE_EMITTER_AGGREGATES.md`, Unions). A record clang lays out unnaturally fails closed unless the sidecar lists
 it under `marshal` (`ARCHITECTURE_EMITTER_AGGREGATES.md`, marshal-only records). Globals follow (`var`, `var private` for a C

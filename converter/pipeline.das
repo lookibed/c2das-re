@@ -51,6 +51,10 @@ struct ConvertResult {
     census : array<string>
 }
 
+//! Whether `path` is a source layout module's layout file, which holds its layout check and no
+//! code (`converter/ARCHITECTURE_LAYOUT.md`, The layout file).
+def is_layout_file(path : string) : bool => path |> ends_with(LAYOUT_FILE_SUFFIX)
+
 //! The report of a program's source layout beside its modules: the modules, each cluster's edges,
 //! and the cycle cut's late-bound functions with their edges and weights (`layout_report`).
 let LAYOUT_REPORT = "program.layout.txt"
