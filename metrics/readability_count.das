@@ -334,8 +334,8 @@ class private InstanceScan : AstVisitor {
 //! the emitter's per-module `[init]` that sets the dialect, the same in every module that has it
 let DIALECT_INIT = "c2das_dialect"
 
-// the word that starts the text of each metric a keyword spells: `enum_from_int(type<E>, i)`
-// expands to a reinterpret located at the call, which the text does not spell
+// the word that starts the text of each metric a keyword spells: `enum_from_int(type<E>, i)` and
+// `cstr("...")` expand to a reinterpret located at the call, which the text does not spell
 let private METRIC_KEYWORDS <- {"reinterpret" => "reinterpret", "unsafe_block" => "unsafe", "goto" => "goto", "label" => "label"}
 
 class private Counter : AstVisitor {

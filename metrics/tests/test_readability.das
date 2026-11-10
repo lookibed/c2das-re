@@ -368,11 +368,12 @@ def test_worker(t : T?) {
     t |> run("--one converts a kernel's `@reinterpret` key under --first-member reinterpret, the plain key with addr") @(t : T?) {
         var counts : string
         t |> equal(run_worker("perf/first_member@reinterpret", counts), 0)
-        t |> success(counts |> contains("\nreinterpret 7\n"), counts)
+        // the format literal's `cstr("...")` expands to a reinterpret its text does not spell
+        t |> success(counts |> contains("\nreinterpret 6\n"), counts)
         let reinterpreted = fread("metrics/work/perf/first_member@reinterpret/das/first_member.das")
         t |> success(reinterpreted |> contains("var v : TValue? = reinterpret<TValue?>(base + a)\n"), reinterpreted)
         t |> equal(run_worker("perf/first_member", counts), 0)
-        t |> success(counts |> contains("\nreinterpret 5\n"), counts)
+        t |> success(counts |> contains("\nreinterpret 4\n"), counts)
         let kept = fread("metrics/work/perf/first_member/das/first_member.das")
         t |> success(kept |> contains("var v : TValue? = addr((base + a).val)\n"), kept)
     }
