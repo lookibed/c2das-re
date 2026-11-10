@@ -1543,6 +1543,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   than predicted and spectral_norm interp-single (+12%, inside the 8% run-to-run band of a second run), the startup
   misses the faster cache. The exe test-suite cell still fails (the exe loads `dasCRuntime/` relative to the test
   folder), as on 11-07.
+- **P8.17 The addendum 6 A/B** (ruling 38 addendum 6 item 8; after P8.9 (c), P8.11 and P8.15 (c)). One
+  `heavy --exclusive` job: bit_pack O/N (before and after P8.9 (c)) under interp, JIT and exe; Doom's speed build
+  demo1-3 O/N under the JIT and demo1 under the interpreter (P8.9 (c) and P8.11 together); blit's new kernel (P8.15 (c))
+  natively and under ours and Rust's interp, JIT and exe. Lua is not timed: neither item changes its text. Predictions
+  written before any timing run: `/root/notes/predictions/2026-11-10-add6.md`, sha256
+  `6ded4acf9c4bfe1f1254d61e392510aa0ea24162cb83000a2d42d03d7f3a7a53`: bit_pack interp N/O 0.97, compiled 1.00; Doom
+  1.00; blit native 50-65 us, ours JIT 1.2-1.6x, interp 250-330x, Rust JIT 2.6-3.6x.
 ## P6 — Doom
 
 **Goal: the metric.**
