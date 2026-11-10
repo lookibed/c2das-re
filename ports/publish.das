@@ -1209,16 +1209,7 @@ def main : int {
     }
     publish_projects(args, projects, repo, failures, published)
     if (empty(args.program) || args.program == PUREDOOM) {
-        var gen : Generation
-        if (!publish_puredoom(args, repo, gen) || !publish_top_readme(repo, failures)) {
-            failures |> push("{PUREDOOM}: the publish failed (its log names why)")
-        } else {
-            to_log(LOG_INFO, "{PUREDOOM}: published into {path_join(repo, PUREDOOM)}\n")
-            published++
-            if (args.commit && !commit_program(PUREDOOM, repo, gen)) {
-                failures |> push("{PUREDOOM}: the commit failed")
-            }
-        }
+        publish_and_commit_puredoom(args, repo, failures, published)
     }
     return finish(args, repo, failures, published)
 }
@@ -1273,14 +1264,15 @@ def private run_doom_harness(port : Port) : bool {
     to_log(LOG_INFO, "{PUREDOOM}: " + join(argv, " ") + "\n")
     let rc = run_and_capture(argv, out, 7200.0)
     fwrite(log_of(port), out)
-    if (rc != 0) {
-        to_log(LOG_ERROR, "{PUREDOOM}: the conversion exited {rc}; {log_of(port)} holds its log\n")
+    if (!program_converted(out)) {
+        to_log(LOG_ERROR, "{PUREDOOM}: the program did not convert (exit {rc}); {log_of(port)} holds its log\n")
         return false
     }
     var cells : array<SyncCell>
+    cells |> reserve(length(SYNC_TIERS) * length(SYNC_DEMOS))
     for (tier in SYNC_TIERS) {
         for (demo in SYNC_DEMOS) {
-            var run <- daslang_cmd(CONVERTED_MODULES)
+            var inscope run <- daslang_cmd(CONVERTED_MODULES)
             run |> push_from(["doom/run.das", "--", "--run", "--tier", tier, "--demo", "{demo}"])
             let run_rc = run_and_capture(run, out, 7200.0)
             cells |> push(SyncCell(tier = tier, demo = demo, verdict = sync_verdict(tier, demo, run_rc, out)))
@@ -1304,6 +1296,20 @@ def private doom_fps_text(gen : Generation) : string {
     let date = empty(full) ? "" : git_line(".", ["log", "-1", "--format=%cs", full])
     let note = full == gen.sha ? "" : measured_at_line(empty(full) ? c.commit : full, date, empty(full) || converter_changed(full, gen.sha))
     return "{note}From c2das-re's `{DOOM_FPS}` (`{c.command}`), the frames per second of each demo's `-timedemo` against the native build:\n\n{render_fps(c)}"
+}
+
+// PureDOOM published, the top-level README after it, and committed with `--commit`
+def private publish_and_commit_puredoom(args : Args; repo : string; var failures : array<string>; var published : int&) {
+    var gen : Generation
+    if (!publish_puredoom(args, repo, gen) || !publish_top_readme(repo, failures)) {
+        failures |> push("{PUREDOOM}: the publish failed (its log names why)")
+        return
+    }
+    to_log(LOG_INFO, "{PUREDOOM}: published into {path_join(repo, PUREDOOM)}\n")
+    published++
+    if (args.commit && !commit_program(PUREDOOM, repo, gen)) {
+        failures |> push("{PUREDOOM}: the commit failed")
+    }
 }
 
 // PureDOOM's directory in the clone: the source layout's tree, the sidecar, the patches, the
@@ -1344,6 +1350,7 @@ def private publish_puredoom(args : Args; repo : string; var gen : Generation) :
     ok = ok && write_or_log(path_join(dir, "doom.c2das"), fread("doom/doom.c2das"))
     ok = ok && write_or_log(path_join(dir, "LICENSE"), license)
     var inscope readme = PureDoomReadme(pin = pin, freedoom = versions_line(versions, "freedoom"), sync <- sync, generation = generation_line(gen), command = "scripts/publish_ports.sh --program {PUREDOOM}", fps_text = doom_fps_text(gen))
+    readme.patches |> reserve(length(patches))
     for (name in patches) {
         readme.patches |> push((name = name, note = patch_note(fread(path_join(DOOM_PATCHES, name)))))
     }
