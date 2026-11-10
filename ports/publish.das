@@ -20,13 +20,17 @@ require ../compare/compare_render.das
 require ../metrics/criteria_file.das
 require ../compare/projects.das
 require ../compare/rust_translator.das
+require puredoom
+require ../doom/harness.das
+require ../doom/fps.das
 
 //! The publisher of the ports repository (`lookibed/c2das-ports`): for each program it knows,
 //! the converted modules, the sidecar, the upstream license and a README with the release, the
 //! generating commit, how to run it, which upstream tests pass and the perf tables of a capture it
 //! measures; then the top-level README's projects table, and with `--commit` a commit in the
 //! clone. Run from the repository root through `scripts/publish_ports.sh`. Beside Lua it publishes
-//! every real project of compare's `project_table`, converted as compare converts our side.
+//! every real project of compare's `project_table`, converted as compare converts our side, then
+//! PureDOOM from the `doom/` harness.
 
 //! one workload of a program: its name, its program arguments, the arguments as the README shows
 //! them, whether it runs in the release's test-suite folder (else in the repository root), whether
@@ -96,7 +100,7 @@ def private lua_port : Port => <- Port(
 struct Args {
     @clarg_doc = "the clone of the ports repository (default: $C2DAS_PORTS, else ../c2das-ports beside this repository)"
     repo : string = ""
-    @clarg_doc = "publish only this program (default: every program the publisher knows: lua and the compare projects)"
+    @clarg_doc = "publish only this program (default: every program the publisher knows: lua, the compare projects and puredoom)"
     program : string = ""
     @clarg_name = "no-convert"
     @clarg_doc = "skip the fetch and the conversion: publish what the harness's work/ folder holds"
@@ -1140,6 +1144,7 @@ def main : int {
     var projects <- project_table(rust_checkout())
     var known <- [for (p in ports); p.name]
     known |> push_from([for (p in projects); p.name])
+    known |> push(PUREDOOM)
     if (!empty(args.program) && !has_value(known, args.program)) {
         to_log(LOG_ERROR, "ports: no program `{args.program}`; the publisher knows " + join(known, ", ") + "\n")
         return 1
@@ -1203,6 +1208,18 @@ def main : int {
         }
     }
     publish_projects(args, projects, repo, failures, published)
+    if (empty(args.program) || args.program == PUREDOOM) {
+        var gen : Generation
+        if (!publish_puredoom(args, repo, gen) || !publish_top_readme(repo, failures)) {
+            failures |> push("{PUREDOOM}: the publish failed (its log names why)")
+        } else {
+            to_log(LOG_INFO, "{PUREDOOM}: published into {path_join(repo, PUREDOOM)}\n")
+            published++
+            if (args.commit && !commit_program(PUREDOOM, repo, gen)) {
+                failures |> push("{PUREDOOM}: the commit failed")
+            }
+        }
+    }
     return finish(args, repo, failures, published)
 }
 
@@ -1228,4 +1245,107 @@ def private finish(args : Args; repo : string; failures : array<string>; publish
         to_log(LOG_ERROR, "ports: failed: {f}\n")
     }
     return rc
+}
+
+//! PureDOOM's directory in the clone and the `doom/` harness's paths the publish reads
+let PUREDOOM = "puredoom"
+let DOOM_TREE = "doom/work/source"
+let DOOM_SYNC = "doom/work/publish_sync.txt"
+let DOOM_FPS = "doom/results_linux.json"
+let DOOM_LICENSE = "doom/fetch/PureDOOM/LICENSE"
+let DOOM_PATCHES = "doom/patches"
+
+// the `doom/` harness as a port: its stamp and its log under `doom/work/`
+def private doom_port : Port => <- Port(name = PUREDOOM, title = "PureDOOM", harness = "doom")
+
+// the fetch, the conversion in the source layout, then each demo of `SYNC_DEMOS` under each tier
+// of `SYNC_TIERS` held to its reference log, the verdicts kept in `DOOM_SYNC`; a demo out of sync
+// is a verdict of the README, not a failed publish
+def private run_doom_harness(port : Port) : bool {
+    remove(stamp_of(port))
+    var out : string
+    if (run_and_capture(["bash", "doom/fetch.sh"], out, 3600.0) != 0) {
+        to_log(LOG_ERROR, "{PUREDOOM}: doom/fetch.sh failed: {last_line(out)}\n")
+        return false
+    }
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from(["doom/run.das", "--", "--convert"])
+    to_log(LOG_INFO, "{PUREDOOM}: " + join(argv, " ") + "\n")
+    let rc = run_and_capture(argv, out, 7200.0)
+    fwrite(log_of(port), out)
+    if (rc != 0) {
+        to_log(LOG_ERROR, "{PUREDOOM}: the conversion exited {rc}; {log_of(port)} holds its log\n")
+        return false
+    }
+    var cells : array<SyncCell>
+    for (tier in SYNC_TIERS) {
+        for (demo in SYNC_DEMOS) {
+            var run <- daslang_cmd(CONVERTED_MODULES)
+            run |> push_from(["doom/run.das", "--", "--run", "--tier", tier, "--demo", "{demo}"])
+            let run_rc = run_and_capture(run, out, 7200.0)
+            cells |> push(SyncCell(tier = tier, demo = demo, verdict = sync_verdict(tier, demo, run_rc, out)))
+            to_log(LOG_INFO, "{PUREDOOM}: {tier} demo{demo}: {cells[length(cells) - 1].verdict}\n")
+        }
+    }
+    let gen = tree_generation()
+    return write_or_log(DOOM_SYNC, sync_record(cells)) && write_or_log(stamp_of(port), "{gen.sha}\n{gen.describe}\n{gen.date}\n")
+}
+
+// the frame-rate section: the table of `DOOM_FPS` under the commit it was measured at, the output
+// changed since when the converter changed after it
+def private doom_fps_text(gen : Generation) : string {
+    var error : string
+    let js = read_json_file(DOOM_FPS, error)
+    if (js == null) {
+        return "not yet: {error}\n"
+    }
+    let c <- from_JV(js, type<FpsCapture>)
+    let full = git_line(".", ["rev-parse", "--verify", "-q", trim_suffix(c.commit, "-dirty") + "^\{commit\}"])
+    let date = empty(full) ? "" : git_line(".", ["log", "-1", "--format=%cs", full])
+    let note = full == gen.sha ? "" : measured_at_line(empty(full) ? c.commit : full, date, empty(full) || converter_changed(full, gen.sha))
+    return "{note}From c2das-re's `{DOOM_FPS}` (`{c.command}`), the frames per second of each demo's `-timedemo` against the native build:\n\n{render_fps(c)}"
+}
+
+// PureDOOM's directory in the clone: the source layout's tree, the sidecar, the patches, the
+// license and the README, every input checked before the first write
+def private publish_puredoom(args : Args; repo : string; var gen : Generation) : bool {
+    let port <- doom_port()
+    if ((!args.no_convert && !run_doom_harness(port)) || !generation_for(args, port, gen)) {
+        return false
+    }
+    let versions = fread("VERSIONS.md")
+    let pin = puredoom_pin(versions)
+    let license = fexist(DOOM_LICENSE) ? fread(DOOM_LICENSE) : ""
+    var sync <- read_sync(fexist(DOOM_SYNC) ? fread(DOOM_SYNC) : "")
+    var missing = ""
+    if (empty(pin)) {
+        missing = "VERSIONS.md names no `puredoom:` pin"
+    } elif (!fexist(path_join(DOOM_TREE, "program.modules.txt"))) {
+        missing = "no {DOOM_TREE}/program.modules.txt; run without --no-convert"
+    } elif (empty(sync)) {
+        missing = "no demo verdicts in {DOOM_SYNC}; run without --no-convert"
+    } elif (empty(license)) {
+        missing = "no {DOOM_LICENSE}; doom/fetch.sh fetches it"
+    }
+    if (!empty(missing)) {
+        to_log(LOG_ERROR, "{PUREDOOM}: {missing}\n")
+        return false
+    }
+    var patches : array<string>
+    dir(DOOM_PATCHES) $(name) {
+        if (name |> ends_with(".patch")) {
+            patches |> push(name)
+        }
+    }
+    sort(patches)
+    let dir = path_join(repo, PUREDOOM)
+    var ok = mirror_tree(DOOM_TREE, path_join(dir, "doom"), [for (rel in tree_files(DOOM_TREE)); path_join(DOOM_TREE, rel)])
+    ok = mirror_tree(DOOM_PATCHES, path_join(dir, "patches"), [for (name in patches); path_join(DOOM_PATCHES, name)]) && ok
+    ok = ok && write_or_log(path_join(dir, "doom.c2das"), fread("doom/doom.c2das"))
+    ok = ok && write_or_log(path_join(dir, "LICENSE"), license)
+    var inscope readme = PureDoomReadme(pin = pin, freedoom = versions_line(versions, "freedoom"), sync <- sync, generation = generation_line(gen), command = "scripts/publish_ports.sh --program {PUREDOOM}", fps_text = doom_fps_text(gen))
+    for (name in patches) {
+        readme.patches |> push((name = name, note = patch_note(fread(path_join(DOOM_PATCHES, name)))))
+    }
+    return ok && write_or_log(path_join(dir, "README.md"), puredoom_readme_text(readme))
 }

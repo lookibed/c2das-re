@@ -16,7 +16,7 @@ code; this repository holds only the generator and its inputs.
   `Port` records): the harness folder, the converted modules, the module the workloads run, the
   libraries the native build links, the header holding the license, the upstream-test claims with
   the c2das-re item that recorded them, and the workloads. Beside them it publishes every real
-  project of `compare/projects.das`'s `project_table` (section 5).
+  project of `compare/projects.das`'s `project_table` (section 5), then PureDOOM (`ARCHITECTURE_PUREDOOM.md`).
 - `ports_render.das` - the text: the capture records, the startup, work, times, ratio and not-yet
   text of a capture, the projects table and the top-level README below its marker, the license
   block of a C header, and the `VERSIONS.md` pin of a program. It measures nothing and reads no file.
