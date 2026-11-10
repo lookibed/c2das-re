@@ -537,7 +537,8 @@ def count_program(das_paths : array<string>; var failed : string&) : ModuleCount
     for (path in das_paths) {
         var inscope included : array<string>
         for (ln in split(fread(path), "\n")) {
-            if (ln |> starts_with("include ")) {
+            // a layout file holds the layout check alone, which the criteria count as a test's
+            if (ln |> starts_with("include ") && !is_layout_file(ln)) {
                 included |> push(path_join(dir_name(path), slice(ln, length("include "))))
             }
         }

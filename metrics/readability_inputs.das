@@ -108,7 +108,7 @@ def private convert_project_input(name, dir : string) : ConvertedInput {
         for (f in conv.files) {
             if (f |> ends_with(".das")) {
                 out.das_paths |> push(f)
-            } elif (f |> ends_with(".das.inc")) {
+            } elif (f |> ends_with(".das.inc") && !is_layout_file(f)) {
                 out.fragments |> push(f)
             }
         }
@@ -170,7 +170,7 @@ def convert_input(key, dir : string) : ConvertedInput {
             for (f in res.files) {
                 if (f |> ends_with(".das")) {
                     out.das_paths |> push(path_join(das_dir, f))
-                } elif (f |> ends_with(".das.inc")) {
+                } elif (f |> ends_with(".das.inc") && !is_layout_file(f)) {
                     out.fragments |> push(path_join(das_dir, f))
                 }
             }

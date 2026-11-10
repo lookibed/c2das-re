@@ -49,7 +49,7 @@ def test_cluster_counts(t : T?) {
         let whole <- count_module("{FIXTURES}/cluster/cluster.das", ["{FIXTURES}/cluster/part.das.inc"])
         expect_counts(t, whole, {"c_function" => 1, "unsafe_expr" => 2, "reinterpret" => 1, "pointer_index" => 2})
     }
-    t |> run("a program's modules summed, each with the fragments its include lines name") @(t : T?) {
+    t |> run("a program's modules summed, each with the fragments its include lines name, not its layout file") @(t : T?) {
         var failed : string
         let program <- count_program(["{FIXTURES}/cluster/cluster.das", "{FIXTURES}/pointers.das"], failed)
         let pointers <- count_module("{FIXTURES}/pointers.das")
