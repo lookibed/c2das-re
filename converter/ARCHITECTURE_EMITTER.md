@@ -74,7 +74,7 @@ rule, so every function of one C type fits one das type (F34); a function pointe
 never `var`, since a function value has no pointee. A temporary the emitter hoists holding a
 pointer (an initializer list's item, an alloca's address, a stepped pointer's old value) is
 `var` for the same reason as a parameter. A body that uses an unsafe operation (pointer
-arithmetic, `deref`, `addr`, a `reinterpret`, a string literal) gets `[c_function]`. Under `--checks off` or the sidecar's `checks: "off"` every converted function also carries `unsafe_deref` and `hint(unsafe_range_check)`, after `c_function` (by intent not the marshal accessors, the `[init]` functions or the link module's late-bind wrappers, whose bodies hold no checked dereference and index only in range loops), and a line under the module's banner says so: no null or range check under the interpreter, the JIT and the exe, the AOT host keeping its range checks, so a wrong C program reads its neighbor or dies by SIGSEGV instead of panicking (`docs/probe-findings.md` F84); the default `safe` keeps every check. C `main`
+arithmetic, `deref`, `addr`, a `reinterpret`; a string literal's `cstr` is safe) gets `[c_function]`. Under `--checks off` or the sidecar's `checks: "off"` every converted function also carries `unsafe_deref` and `hint(unsafe_range_check)`, after `c_function` (by intent not the marshal accessors, the `[init]` functions or the link module's late-bind wrappers, whose bodies hold no checked dereference and index only in range loops), and a line under the module's banner says so: no null or range check under the interpreter, the JIT and the exe, the AOT host keeping its range checks, so a wrong C program reads its neighbor or dies by SIGSEGV instead of panicking (`docs/probe-findings.md` F84); the default `safe` keeps every check. C `main`
 becomes `c_main` and the module ends with `[export] def main : int { return c_main() }`, whose
 `return` is the CLI's exit-code contract (`docs/probe-findings.md` F1). `int main(int argc, char
 **argv)` is `c_main(argc : int; var argv : uint8??)`; the wrapper calls `c_runtime_init("<stem>")`
@@ -162,11 +162,11 @@ indexed) fails closed; and
 `_Alignof` is `T(typeinfo alignof(type<S>))` where das aligns the type as clang does and
 clang's value `T(4)` where das aligns it lower (a record whose bitfield units align below
 clang's, F5), for a marshal-only record and for a `va_list` (`docs/probe-findings.md` F54). A string
-literal in a pointer context stays a das literal, `reinterpret<uint8?>("...")`, which is a
-NUL-terminated interned byte array (`probes/test_strings.das`) spelled with C's escapes, which das
-reads (`docs/probe-findings.md` F94): `\n`, `\a` and the other named ones, `\xHH` for any other
-byte outside printable ASCII, an interior NUL `\0`, or `\x00` before an octal digit, which `\0`
-would take into an octal escape; das keeps the bytes after the NUL; the empty literal is the one
+literal in a pointer context is `cstr("...")`, `c_runtime/cstr`'s call macro, which expands in place
+to the das literal's `reinterpret<uint8?>("...")` flagged safe (no call, no `unsafe`), a NUL-terminated
+interned byte array (`probes/test_strings.das`) spelled with C's escapes, which das reads (F94):
+`\n`, `\a` and the other named ones, `\xHH` for any other byte outside printable ASCII, an interior
+NUL `\0`, or `\x00` before an octal digit; das keeps the bytes after the NUL; the empty literal is the one
 exception, since das's `""` is a null pointer (`docs/probe-findings.md` F10): it is
 `addr(c2das_empty[0])`, a one-byte private array the module declares right after its requires,
 before any global whose initializer takes the address. A `char[N]` initialized from a literal
