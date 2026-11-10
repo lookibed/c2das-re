@@ -135,7 +135,7 @@ of the denominator free of the defect.
 | `layout_checks` | `static_assert(typeinfo ...)` lines of the module and its fragments; a source layout module's layout file (`<module>.layout.das.inc`, `converter/ARCHITECTURE_LAYOUT.md`) is no fragment and is not read | in a test, not the module | clean share of modules |
 | `stray_braces` | a line holding `{` alone | none | clean share of matched functions |
 | `label_stubs` | `label N:` and `goto label N` lines | none | clean share of matched functions |
-| `string_literals` | `reinterpret<T>("...")` | a C string as a string | clean share of the C string literals |
+| `string_literals` | `reinterpret<T>("...")` and `cstr("...")`, which expands to it | a C string as a string | clean share of the C string literals |
 | `lost_parens` | a shift beside `+`, `-`, `&`, `\|` or `^` at one parenthesis level | the author's parentheses | clean share of matched functions |
 | `literal_arithmetic` | an arithmetic operator between two number literals (`0 + 7`) | a named value | clean share of matched functions |
 | `bool_roundtrip` | `? 1 : 0` | a plain condition | clean share of matched functions |

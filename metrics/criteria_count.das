@@ -353,7 +353,8 @@ def private module_line(toks : array<Tok>; constants, macros : table<string; boo
         } elif (t.text == "static_assert" && i + 2 < length(toks) && toks[i + 2].text == "typeinfo") {
             layout_check = true
             c["layout_check_lines"]++
-        } elif (t.text == "reinterpret" && string_reinterpret(toks, i)) {
+        } elif ((t.text == "reinterpret" && string_reinterpret(toks, i)) || (t.text == "cstr" && next == "(" && i + 2 < length(toks) && toks[i + 2].kind == TokKind.str)) {
+            // `cstr("...")` expands to the same reinterpret: still a byte pointer, not a das string
             c["das_string_reinterprets"]++
         } elif (is_numbered(t.text, "_flag") && next == "||=") {
             c["flag_lines"]++
