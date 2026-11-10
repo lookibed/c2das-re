@@ -52,6 +52,18 @@ def private first_line_of(text : string) : string {
     return ""
 }
 
+//! Whether the log of `doom/run.das --convert` reports the program converted in the source layout:
+//! its `program (source): N files` line. The run's exit code does not tell, since it also fails
+//! when a unit alone does not convert, which most units cannot without the link.
+def program_converted(log : string) : bool {
+    for (line in split(log, "\n")) {
+        if (line |> contains("doom: program (source): ") && line |> ends_with(" partition lines")) {
+            return true
+        }
+    }
+    return false
+}
+
 //! `cells` as the record a publish keeps: a line per cell, its tier, demo and verdict tab-separated.
 def sync_record(cells : array<SyncCell>) : string => join([for (c in cells); "{c.tier}\t{c.demo}\t{c.verdict}\n"], "")
 
@@ -59,7 +71,7 @@ def sync_record(cells : array<SyncCell>) : string => join([for (c in cells); "{c
 def read_sync(text : string) : array<SyncCell> {
     var cells : array<SyncCell>
     for (line in split(text, "\n")) {
-        let fields <- split(line, "\t")
+        var inscope fields <- split(line, "\t")
         if (length(fields) == 3) {
             cells |> push(SyncCell(tier = fields[0], demo = to_int(fields[1]), verdict = fields[2]))
         }
@@ -84,11 +96,9 @@ def patch_note(text : string) : string {
             items[length(items) - 1] += " " + strip(line)
         }
     }
-    var note = strip(lines[0])
-    for (item in items) {
-        note += " " + item
-    }
-    return note
+    var parts <- [strip(lines[0])]
+    parts |> push_from(items)
+    return join(parts, " ")
 }
 
 //! the inputs of PureDOOM's README: the pinned commit, the `freedoom:` line of `VERSIONS.md`, each
@@ -106,8 +116,10 @@ struct PureDoomReadme {
 
 def private sync_table(cells : array<SyncCell>) : string {
     var rows : array<array<string>>
+    rows |> reserve(length(SYNC_TIERS))
     for (tier in SYNC_TIERS) {
         var inscope row <- [tier]
+        row |> reserve(1 + length(SYNC_DEMOS))
         for (demo in SYNC_DEMOS) {
             var verdict = "not run"
             for (c in cells) {
