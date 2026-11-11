@@ -101,6 +101,28 @@ an `int` already, where the `size_t` value was `int(uint64(typeinfo sizeof(type<
 marshal-only record's size is its literal). A conversion that changes the das type stays, a
 widening of a narrower one included (`uint64(uint(i))` zero-extends a negative `int`).
 
+### Narrow equality {#narrow-equality}
+
+C compares a `uint8`, `int8`, `uint16` or `int16` value promoted, and das's storage integers
+compare only by `==` and `!=`, against a bare literal in their range or a value of their own type
+(`docs/probe-findings.md` F106). So `==`/`!=` of such a value below conversions that keep its
+every value (the promotion to `int`, then `unsigned` beside a `5u`) against an integer literal
+in its range is the narrow compare, `ts.extra == 0`, `t.s == -128`, `*s == 'a'` (a character
+literal stays one), on either side; two values of one storage type compare narrow too, `a.extra
+== b.extra`. Each is exact, since the promotion keeps every value. A literal outside the range
+(`int(t.extra) == -1`, never true), a named constant, two different storage types and an
+ordering (das defines `<` on no storage type) keep C's promoted compare. A literal past the range
+is also a das compile error, so a wrong fold could not wrap silently.
+
+### Enum conversions {#enum-conversions}
+
+das converts an enum to every integer type directly with the bits `int(e)` gives (F106): C's
+`(unsigned)e` is `uint(e)`, `(long long)e` is `int64(e)`, `(unsigned char)e` is `uint8(e)`, where
+the value went through `int(e)` first. A 64-bit target of an enum whose underlying type is
+unsigned (an enumerator past INT_MAX) takes `uint` first, `uint64(uint(m))`, since the direct
+conversion would extend the stored high bit as a sign; a floating target takes the promoted
+integer, `double(int(e))` and `double(uint(m))`, since das has no enum-to-float conversion.
+
 ### Dereferences and pointer steps {#pointer-steps}
 
 A C dereference `*p` is das's `*p`, the node `deref(p)` is (`docs/probe-findings.md` F102: the two

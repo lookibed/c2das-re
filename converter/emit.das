@@ -869,18 +869,17 @@ def private enum_as_int(e : Em; tu : CirTu; t : int) : Em => kind_of(tu, t) == "
 // underlying type (the linux dialect does for an enum without a negative enumerator)
 def private enum_promoted(tu : CirTu; t : int) : string => tu.types[t].is_signed ? "int" : "uint"
 
-// an enum value as the integer type `target`: `int(e)`, the one integer conversion das
-// enums have (bit-exact for every 32-bit target), through `uint` first where a wider or a
-// floating target would otherwise read an unsigned-underlying enum's high bit as a sign
+// an enum value as the number type `target`: das converts an enum to every integer type directly,
+// with the bits `int(e)` gives (`uint(e)`, `int64(e)`, `uint8(e)`; F106), through `uint` first
+// where a wider target would otherwise read an unsigned-underlying enum's high bit as a sign, and
+// to a floating type through its promoted integer, the one way das takes it there
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#enum-conversions")]
 def private enum_to_integer(tu : CirTu; t : int; text : string; target : string) : string {
     let promoted = enum_promoted(tu, t)
-    if (target == "int") {
-        return "int({text})"
+    if (target == "float" || target == "double" || (promoted == "uint" && (target == "int64" || target == "uint64"))) {
+        return "{target}({promoted}({text}))"
     }
-    if (target == "uint" || (promoted == "uint" && (target == "int64" || target == "uint64" || target == "float" || target == "double"))) {
-        return target == "uint" ? "uint(int({text}))" : "{target}(uint(int({text})))"
-    }
-    return "{target}(int({text}))"
+    return "{target}({text})"
 }
 
 // the int view of a C expression das spelled as a bool: `int_of(c)`, c_runtime's call macro that
@@ -2176,6 +2175,10 @@ def private numeric_cast(var em : Emitter; tu : CirTu; x : CirExpr; inner : Em; 
     if (kind_of(tu, x.a.t) == "enum") {
         return value(enum_to_integer(tu, x.a.t, source.text, target), PREC_PRIMARY)
     }
+    if (x.a.e == "enum_ref") {
+        // an enumerator C reads as an integer converts directly, as its enum does
+        return value(enum_to_integer(tu, x.a.enum_t, enum_item(em, tu, x.a.enum_t, x.a.item), target), PREC_PRIMARY)
+    }
     if (!inner.is_bool && das_type(em, tu, x.a.t, CirLoc()) == target) {
         return inner
     }
@@ -2396,6 +2399,112 @@ def private enum_equality(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLo
     return "{enum_operand_text(em, tu, lhs, loc, PREC_EQ + 1).text} {spelled} {enum_operand_text(em, tu, rhs, loc, PREC_EQ + 1).text}"
 }
 
+// das's storage integers: they compare only by `==` and `!=`, against a bare literal in their range
+// or a value of their own type (F106)
+let private STORAGE_INTEGERS <- {"uint8", "int8", "uint16", "int16"}
+
+// whether integer value `v` lies in the range of C integer type `t`
+def private in_range(tu : CirTu; t : int; v : int64) : bool {
+    let w = tu.types[t].w
+    if (w >= 64) {
+        return tu.types[t].is_signed || v >= 0l
+    }
+    let span = 1l << int64(tu.types[t].is_signed ? w - 1 : w)
+    return tu.types[t].is_signed ? v >= -span && v < span : v >= 0l && v < span
+}
+
+// whether the range of C integer type `t` holds every value of integer type `from`
+def private holds_range(tu : CirTu; from, t : int) : bool {
+    let fw = tu.types[from].w
+    let tw = tu.types[t].w
+    return tu.types[from].is_signed ? tu.types[t].is_signed && tw >= fw : tw > fw || (!tu.types[t].is_signed && tw == fw)
+}
+
+// whether `x` is an integer conversion between two integer types, `_Bool` and enums apart
+def private integral_step(tu : CirTu; x : CirExpr const?) : bool =>
+    x.e == "cast" && x.cast_kind == "IntegralCast" && x.a != null && kind_of(tu, x.a.t) == "int" && kind_of(tu, x.t) == "int" && !is_c_bool(tu, x.a.t) && !is_c_bool(tu, x.t)
+
+// the operand of the longest chain of integer conversions atop `x` that keep its every value (the
+// promotion `int(ts.extra)`, then `unsigned` for a `5u` beside it), null when none does
+def private promoted_operand(tu : CirTu; x : CirExpr const?) : CirExpr const? {
+    var kept : CirExpr const?
+    var at = x
+    while (integral_step(tu, at)) {
+        at = at.a
+        var holds = true
+        var step = x
+        while (step != at) {
+            holds = holds && holds_range(tu, at.t, step.t)
+            step = step.a
+        }
+        if (holds) {
+            kept = at
+        }
+    }
+    return kept
+}
+
+struct private BareLiteral {
+    v : int64
+    text : string
+}
+
+// the value and das text of integer literal `x` below conversions that keep it: its digits, `-n`
+// for a negated one, a character's literal; an empty text for anything else
+def private bare_literal(tu : CirTu; x : CirExpr const?) : BareLiteral {
+    var at = x
+    var casts : array<int>
+    while (integral_step(tu, at)) {
+        casts |> push(at.t)
+        at = at.a
+    }
+    let negated = at.e == "un" && at.op == "neg" && at.a != null
+    var lit = at
+    if (negated) {
+        lit = at.a
+    }
+    let digits = lit.e == "int_lit" ? lit.v : ""
+    if (!is_digit_run(digits, 0) || length(digits) > 18) {
+        return BareLiteral()
+    }
+    let v = negated ? -to_int64(digits) : to_int64(digits)
+    for (t in casts) {
+        if (!in_range(tu, t, v)) {
+            return BareLiteral()
+        }
+    }
+    let text = lit.is_char && !negated ? char_literal(int(v)) : "{v}"
+    return BareLiteral(v = v, text = text)
+}
+
+// `==`/`!=` of a promoted storage integer against a literal in its range or a value of its das
+// type, compared narrow (`ts.extra == 0`, `a == b`), exact since the promotion keeps every value;
+// "" for any other
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#narrow-equality")]
+def private narrow_equality(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
+    let lhs = promoted_operand(tu, x.a)
+    let rhs = promoted_operand(tu, x.b)
+    let lhs_type = lhs != null ? das_type(em, tu, lhs.t, loc) : ""
+    let rhs_type = rhs != null ? das_type(em, tu, rhs.t, loc) : ""
+    let spelled = BIN_SPELLING?[x.op] ?? ""
+    if (key_exists(STORAGE_INTEGERS, lhs_type) && lhs_type == rhs_type) {
+        let a = emit_expr(em, tu, lhs, loc)
+        let b = emit_expr(em, tu, rhs, loc)
+        return "{wrap(a, PREC_EQ + 1)} {spelled} {wrap(b, PREC_EQ + 1)}"
+    }
+    let narrow_left = key_exists(STORAGE_INTEGERS, lhs_type)
+    if (!narrow_left && !key_exists(STORAGE_INTEGERS, rhs_type)) {
+        return ""
+    }
+    let narrow = narrow_left ? lhs : rhs
+    let literal = bare_literal(tu, narrow_left ? x.b : x.a)
+    if (empty(literal.text) || !in_range(tu, narrow.t, literal.v)) {
+        return ""
+    }
+    let e = wrap(emit_expr(em, tu, narrow, loc), PREC_EQ + 1)
+    return narrow_left ? "{e} {spelled} {literal.text}" : "{literal.text} {spelled} {e}"
+}
+
 // an enum operand spelled symbolically: `E.X` for an enumerator, the value's own text
 // otherwise, wrapped for precedence `need`
 def private enum_operand_text(var em : Emitter; tu : CirTu; side : CirExpr const?; loc : CirLoc; need : int) : Em {
@@ -2462,6 +2571,10 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
         let direct = enum_equality(em, tu, x, loc)
         if (!empty(direct)) {
             return truth(direct, prec)
+        }
+        let narrow = narrow_equality(em, tu, x, loc)
+        if (!empty(narrow)) {
+            return truth(narrow, prec)
         }
         // a function value compares with `null`, though it is not initialized from one
         if (is_null_function(tu, x.b)) {

@@ -440,7 +440,7 @@ def p2_enum_fixtures(t : T?) {
         t |> equal(text |> find("hits : int[int(color.BLUE)]") >= 0, true, text)
         t |> equal(text |> find("if (t == mobjtype_t.MT_SHOTGUN)") >= 0, true, text)
         t |> equal(text |> find("if (c == color.RED)") >= 0, true, text)
-        t |> equal(text |> find("uint(int(t)) < uint(int(mobjtype_t.MT_SHOTGUN))") >= 0, true, text)
+        t |> equal(text |> find("uint(t) < uint(mobjtype_t.MT_SHOTGUN)") >= 0, true, text)
         t |> equal(text |> find("p2_enums__mobjinfo[int(t)].speed = 3") >= 0, true, text)
         t |> equal(text |> find("p._c_type = mobjtype_t.MT_PLAYER") >= 0, true, text)
         t |> equal(text |> find("t = enum_from_int(type<mobjtype_t>, int(t) + 1)") >= 0, true, text)
@@ -449,16 +449,16 @@ def p2_enum_fixtures(t : T?) {
         t |> equal(text |> find("var inner : anon_") >= 0 && text |> find(".INNER_Y\n") >= 0, true, text)
         t |> equal(text |> find("require c_runtime/enum_from_int") >= 0, true, text)
         has_text(t, text, "var local : anon_")
-        has_text(t, text, "return int(uint(int(local)) + uint(int(anon_")
-        has_text(t, text, "int(uint8(int(w))) == int(wide.W_LOW)")
-        has_text(t, text, "enum_from_int(type<wide>, int(uint8(int(w))))")
+        has_text(t, text, "return int(uint(local) + uint(anon_")
+        has_text(t, text, "int(uint8(w)) == int(wide.W_LOW)")
+        has_text(t, text, "enum_from_int(type<wide>, int(uint8(w)))")
         has_text(t, text, "F_TOP = -2147483647 - 1")
-        has_text(t, text, "var x : uint64 = uint64(uint(int(f)))")
-        has_text(t, text, "var d : double = double(uint(int(f)))")
-        has_text(t, text, "g = enum_from_int(type<flags>, int(uint(int(g)) >> 4u))")
+        has_text(t, text, "var x : uint64 = uint64(uint(f))")
+        has_text(t, text, "var d : double = double(uint(f))")
+        has_text(t, text, "g = enum_from_int(type<flags>, int(uint(g) >> 4u))")
         has_text(t, text, "w >>= 28u")
-        has_text(t, text, "int64(int(c)) == int64(uint(int(color.RED)))")
-        has_text(t, text, "u = wide.W_LOW\n        _t0 = uint(int(u))")
+        has_text(t, text, "int64(c) == int64(uint(color.RED))")
+        has_text(t, text, "u = wide.W_LOW\n        _t0 = uint(u)\n    } else \{\n        _t0 = uint(wide.W_HIGH)")
         has_text(t, text, "enum_from_int(type<wide>, int(uint8(c != 0 ? int(wide.W_LOW) : int(wide.W_HIGH))))")
         has_text(t, text, "var b : int[int(color.BLUE)]")
         has_text(t, text, "var grid : int[int(wide.W_LOW)][int(color.BLUE)]")
@@ -589,7 +589,7 @@ def p6_pointer_fixtures(t : T?) {
         has_text(t, text, "var third : uint8? = cp + 2 * 3\n")
         has_text(t, text, "read_cell_t_v(cp + 1 * 3 + 1 * 3, 0)")
         // p_pspr.c's state offset, an enum plus a pointer less a pointer, converted to the enum
-        has_text(t, text, "enum_from_int(type<st_t>, int(int64(psp.state + uint(int(p6_commuted_sum__info.flash)) - addr(p6_commuted_sum__states[int(st_t.S_A)]))))")
+        has_text(t, text, "enum_from_int(type<st_t>, int(int64(psp.state + uint(p6_commuted_sum__info.flash) - addr(p6_commuted_sum__states[int(st_t.S_A)]))))")
     }
     t |> run("the offset idiom `(integer)&((T *)0)->f[i]` is the offset as an integer, a marshal record's clang's; `offsetof` beside it") @(t : T?) {
         var text : string
@@ -2713,6 +2713,34 @@ def readability_fixtures(t : T?) {
     p9_do_while_fixtures(t)
     p9_switch_fixtures(t)
     p9_conversion_fixtures(t)
+    p9_narrow_fixtures(t)
+}
+
+// P9.14: a promoted storage integer's `==` against a literal in its range or a value of its type is
+// narrow; an enum converts to an integer type directly
+def p9_narrow_fixtures(t : T?) {
+    t |> run("a narrow == against a literal in range or a value of its type compares narrow; out of range, ordering and mixed types stay promoted; an enum converts directly") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_narrow", text)
+        has_text(t, text, "    if (t.extra == 0) \{\n")
+        has_text(t, text, "    if (0 == t.s) \{\n")
+        has_text(t, text, "    if (t.s == -128) \{\n")
+        has_text(t, text, "    if (t.h == -1) \{\n")
+        has_text(t, text, "    if (t.w == 65535) \{\n")
+        has_text(t, text, "    if (*s == 'a') \{\n")
+        has_text(t, text, "    if (t.bits == 5) \{\n")
+        has_text(t, text, "    return int_of(a.extra == b.extra) + 2 * int_of(a.h != b.h)\n")
+        // the literal past the range, an ordering, two storage types: C's promoted compare
+        has_text(t, text, "    if (int(t.extra) == 256) \{\n")
+        has_text(t, text, "    if (int(t.extra) == -1) \{\n")
+        has_text(t, text, "    if (int(t.h) == 65535) \{\n")
+        has_text(t, text, "    if (int(s[1]) == -128) \{\n")
+        has_text(t, text, "    if (int(t.extra) < 5) \{\n")
+        has_text(t, text, "    if (int(t.extra) == int(t.s)) \{\n")
+        has_text(t, text, "uint(d), int64(d), uint64(d), uint(uint8(d)), int(int16(d)), double(int(d)))\n")
+        has_text(t, text, "uint(m), int64(uint(m)), uint64(uint(m)), double(uint(m)))\n")
+        t |> equal(text |> find("uint(int(") < 0, true, text)
+    }
 }
 
 // P9.13: a conversion between types das spells alike is none, a `sizeof` read as an int is das's
@@ -2929,11 +2957,11 @@ def p7_readable_fixtures(t : T?) {
         has_text(t, text, "        case('\\a') \{\n")
         has_text(t, text, "crt::strchr(fmt, '%')")
         has_text(t, text, "var q : uint8 = uint8('\\'')")
-        has_text(t, text, "int(*p) == '\{' || int(*p) == '\}'")
-        has_text(t, text, "int(*p) != '\\0'")
+        has_text(t, text, "*p == '\{' || *p == '\}'")
+        has_text(t, text, "*p != '\\0'")
         has_text(t, text, "'\\t', p7_chars__kind('&'), '\\x7f')")
         has_text(t, text, "'7' - '0'")
-        has_text(t, text, "var digit : int = int(fmt[0]) == 'a' ? '7' - '0' : 0")
+        has_text(t, text, "var digit : int = fmt[0] == 'a' ? '7' - '0' : 0")
         has_text(t, text, "\"), '\\xff', 24930, 'x', digit)")
     }
     t |> run("the C comments land as `//` lines above the statement of their line, a block comment line by line") @(t : T?) {
