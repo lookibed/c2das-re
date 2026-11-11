@@ -156,6 +156,104 @@ def private in_loops(n : int) : int {
     return acc
 }
 
+// C's `switch (x) { default: r += 1; if (stop) break; r += 10; }`: a lone default in the flag loop
+def private only_default(x : int; stop : bool) : int {
+    var r = 0
+    c_switch(x) {
+        case(_) {
+            r += 1
+            if (stop) {
+                break
+            }
+            r += 10
+        }
+    }
+    return r
+}
+
+// a flag loop with an own `continue` whose arm holds a `for` and a `c_do_while`, each continuing
+// itself: their `continue`s are no switch's
+def private inner_loops(n : int) : int {
+    var acc = 0
+    for (i in range(n)) {
+        c_switch(i % 3) {
+            case(0) {
+                for (k in range(4)) {
+                    if (k == 1) {
+                        continue
+                    }
+                    acc += 1
+                }
+                var j = 0
+                c_do_while(j < 3) {
+                    j++
+                    if (j == 2) {
+                        continue
+                    }
+                    acc += 10
+                }
+            }
+            case(1) {
+                if (i == 4) {
+                    continue
+                }
+                acc += 100
+                break
+            }
+            case(_) {
+                acc += 1000
+            }
+        }
+        acc += 10000
+    }
+    return acc
+}
+
+// the variable switched on, changed by the arm that matched, decides no later arm: x = 1 falls
+// through the default and into `case (5)`
+def private retarget(var x : int) : int {
+    var r = 0
+    c_switch(x) {
+        case(1) {
+            x = 5
+            r += 1
+        }
+        case(_) {
+            r += 10
+        }
+        case(5) {
+            r += 100
+            r += 1000
+            break
+        }
+    }
+    return r
+}
+
+// an if-chain switch whose arm continues the loop around it
+def private chain_continue(n : int) : int {
+    var acc = 0
+    for (i in range(n)) {
+        c_switch(i) {
+            case(1) {
+                continue
+            }
+            case(_) {
+                acc += i
+                break
+            }
+        }
+        acc += 100
+    }
+    return acc
+}
+
+// a switch with no arms still reads its value once
+def private empty_switch(var k : int&) {
+    c_switch(k++) {
+    }
+}
+
 [test]
 def test_c_switch(t : T?) {
     t |> run("arms run in C's order: an arm with no break falls into the next, a default in the middle, a mid-arm break") @(t : T?) {
@@ -168,6 +266,14 @@ def test_c_switch(t : T?) {
         t |> equal(empty_first(2), 2)
         t |> equal(empty_first(3), 9)
     }
+    t |> run("a lone default in the flag loop, loops with their own continue in an arm, a value changed in its arm, an if-chain's continue (C's values)") @(t : T?) {
+        t |> equal(only_default(3, false), 11)
+        t |> equal(only_default(3, true), 1)
+        t |> equal(inner_loops(6), 52346)
+        t |> equal(retarget(1), 1111)
+        t |> equal(retarget(5), 1100)
+        t |> equal(chain_continue(5), 409)
+    }
     t |> run("the value is read once") @(t : T?) {
         var k = 0
         t |> equal(once(k, 5), 15)
@@ -175,6 +281,8 @@ def test_c_switch(t : T?) {
         t |> equal(once(k, 5), 5)
         t |> equal(once(k, 5), -1)
         t |> equal(k, 3)
+        empty_switch(k)
+        t |> equal(k, 4)
     }
     t |> run("continue reaches the enclosing loop through nested switches and a c_do_while; break and return keep theirs") @(t : T?) {
         t |> equal(nested(7), 55231)
@@ -215,7 +323,9 @@ def test_c_switch(t : T?) {
         remove(path)
         rmdir(dir)
     }
-    t |> run("a duplicate case value, a second default and a statement that is no arm are compile errors") @(t : T?) {
+    t |> run("a duplicate case value, a second default, a statement that is no arm and a case in a nested block (Duff's device) are compile errors") @(t : T?) {
+        let duff = runtime_child("switch_duff", "options gen2\nrequire c_runtime/c_switch\ndef f(var a : int) \{\n    c_switch (a) \{\n        case (0) \{\n            if (a > 2) \{\n                case (1) \{\n                    a++\n                \}\n            \}\n        \}\n    \}\n\}\n", true)
+        child_rejects(t, "switch_duff", duff, "a case inside a nested block of an arm (Duff's device)")
         for (name, body, needle in ["dup", "default2", "stray"], ["case (1) \{\n        \}\n        case (2, 1) \{\n        \}", "case (_) \{\n        \}\n        case (1, _) \{\n        \}", "case (1) \{\n        \}\n        a++"], ["duplicate case value 1", "duplicate case value _", "c_switch holds only arms"]) {
             let r = runtime_child("switch_{name}", "options gen2\nrequire c_runtime/c_switch\ndef f(var a : int) \{\n    c_switch (a) \{\n        {body}\n    \}\n\}\n", true)
             child_rejects(t, "switch_{name}", r, needle)

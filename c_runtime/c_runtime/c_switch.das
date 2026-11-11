@@ -94,6 +94,19 @@ class private InnerSwitches : AstVisitor {
     }
 }
 
+// finds a `case` call left inside an arm once the inner switches are expanded: a case label in a
+// nested block of an arm, C's Duff's device, which the macro does not take
+class private StrayCase : AstVisitor {
+    found : bool
+    at : LineInfo = LineInfo()
+    def override preVisitExprCall(expr : ExprCall?) {
+        if (!found && expr.name == "case") {
+            found = true
+            at = expr.at
+        }
+    }
+}
+
 // visits each arm's statements as a block of their own, so that an arm's own `continue` is a block's
 def private visit_arms(var arms : array<Arm>; adapter : VisitorAdapter?) {
     for (arm in arms) {
@@ -136,6 +149,7 @@ def private parse_arms(expr : ExprCallMacro?; var arms : array<Arm>) : bool {
         let n = length(call.arguments) - 1
         for (idx in range(n)) {
             let v = call.arguments[idx]
+            // a case value is a constant (C requires it), so comparing its text finds a duplicate
             let is_default = v is ExprVar && (v as ExprVar).name == "_"
             let key = is_default ? "_" : describe(v)
             if (key_exists(seen, key)) {
@@ -163,7 +177,22 @@ def private parse_arms(expr : ExprCallMacro?; var arms : array<Arm>) : bool {
     unsafe {
         delete inner
     }
-    return !failed
+    if (failed) {
+        return false
+    }
+    var stray = new StrayCase()
+    make_visitor(*stray) $(adapter) {
+        visit_arms(arms, adapter)
+    }
+    let found = stray.found
+    let at = stray.at
+    unsafe {
+        delete stray
+    }
+    if (found) {
+        macro_error(compiling_program(), at, "c_switch: a case inside a nested block of an arm (Duff's device) is not supported; the converter spells such a switch open")
+    }
+    return !found
 }
 
 // expression `e` placed at the call's line
