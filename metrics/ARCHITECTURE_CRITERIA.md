@@ -138,7 +138,7 @@ of the denominator free of the defect.
 | `string_literals` | `reinterpret<T>("...")` and `cstr("...")`, which expands to it | a C string as a string | clean share of the C string literals |
 | `lost_parens` | a shift beside `+`, `-`, `&`, `\|` or `^` at one parenthesis level | the author's parentheses | clean share of matched functions |
 | `literal_arithmetic` | an arithmetic operator between two number literals (`0 + 7`) | a named value | clean share of matched functions |
-| `bool_roundtrip` | `? 1 : 0` | a plain condition | clean share of matched functions |
+| `bool_roundtrip` | `? 1 : 0`, and `int_of(`, the c_runtime macro that expands to it | a plain condition | clean share of matched functions |
 | `c_renames` | identifiers starting `_c_` | the C name | clean share of matched functions |
 | `long_lines` | lines over 160 bytes | none | clean share of modules |
 

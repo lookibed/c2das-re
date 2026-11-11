@@ -951,3 +951,11 @@ def test_unary_deref_criteria(t : T?) {
         t |> equal(got(products, "deref_sites"), 1)
     }
 }
+
+[test]
+def test_int_of_criteria(t : T?) {
+    t |> run("`int_of(c)` is a bool round trip, as the `c ? 1 : 0` it expands to; a field or a longer name is none") @(t : T?) {
+        t |> equal(got(in_f("    x = int_of(a < b) + (c ? 1 : 0)"), "bool_roundtrip_sites"), 2)
+        t |> equal(got(in_f("    x = s.int_of + int_of_x(a)"), "bool_roundtrip_sites"), 0)
+    }
+}
