@@ -53,7 +53,7 @@ def private wrapped_line(line : string) : string {
     if (!has_mark(line)) {
         return line
     }
-    var piece <- marked_piece(line)
+    let piece <- marked_piece(line)
     if (length(piece.text) <= LINE_WIDTH) {
         return piece.text
     }
@@ -68,7 +68,8 @@ def private has_mark(text : string) : bool => find(text, LIST_MARK) >= 0 || find
 // the spaces that open `text`
 def private indentation(text : string) : int {
     var n = 0
-    while (n < length(text) && character_at(text, n) == ' ') {
+    for (ch in text) {
+        break if (ch != ' ')
         n++
     }
     return n
@@ -119,9 +120,9 @@ def private marked_piece(line : string) : Piece {
     return <- piece
 }
 
-// `piece` into lines of `out`: whole when it fits or has no mark, else split at its shallowest
-// marks (the lowest rank), the parts filling each line in turn, a continuation line indented to `cont`, and each
-// line still too long split again at its own marks
+// `piece` into lines of `out`: whole when it fits or has no mark, else split at its marks of the
+// lowest rank, the parts filling each line in turn, a continuation line indented to `cont`, and
+// each line still too long split again at its own marks
 def private fill(piece : Piece; cont : int; var out : array<string>) {
     if (length(piece.text) <= LINE_WIDTH || empty(piece.marks)) {
         out |> push(strip_right(piece.text))
@@ -143,10 +144,14 @@ def private fill(piece : Piece; cont : int; var out : array<string>) {
     var current <- parts[0]
     for (k in range(1, length(parts))) {
         if (length(current.text) + length(parts[k].text) <= LINE_WIDTH) {
-            current <- joined(current, parts[k])
+            var both <- joined(current, parts[k])
+            delete current
+            current <- both
         } else {
             fill(current, cont + DEEPER, out)
-            current <- continued(parts[k], cont)
+            var next <- continued(parts[k], cont)
+            delete current
+            current <- next
         }
     }
     fill(current, cont + DEEPER, out)
@@ -169,6 +174,7 @@ def private joined(a, b : Piece) : Piece {
     var both : Piece
     both.text = a.text + b.text
     both.marks := a.marks
+    both.marks |> reserve(length(a.marks) + length(b.marks))
     let shift = length(a.text)
     for (m in b.marks) {
         both.marks |> push(int2(m.x + shift, m.y))
@@ -181,6 +187,7 @@ def private continued(piece : Piece; cont : int) : Piece {
     let skip = indentation(piece.text)
     var line : Piece
     line.text = repeat(" ", cont) + slice(piece.text, skip)
+    line.marks |> reserve(length(piece.marks))
     for (m in piece.marks) {
         line.marks |> push(int2(m.x - skip + cont, m.y))
     }

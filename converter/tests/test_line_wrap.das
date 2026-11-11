@@ -5,9 +5,7 @@ require daslib/strings_boost
 require ../line_wrap.das
 
 // a call of `n` arguments `argument_<k>`, its commas marked
-def private marked_call(name : string; n : int) : string {
-    return "{name}(" + join([for (k in range(n)); "argument_{k}"], ",{LIST_MARK} ") + ")"
-}
+def private marked_call(name : string; n : int) : string => "{name}(" + join([for (k in range(n)); "argument_{k}"], ",{LIST_MARK} ") + ")"
 
 [test]
 def test_line_wrap(t : T?) {
