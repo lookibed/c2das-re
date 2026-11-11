@@ -1744,6 +1744,28 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `i_das_ptr_set_add` node where the sum was an add and a copy), JIT 1.00; Lua interp 0.99 (the fetch's
   `pc++`), JIT 1.00; the kernels 1.00 on every lane but blit interp 0.98; exe 1.00 everywhere (the JIT
   and AOT spell `p += n` as the load, GEP and store `p = p + n` was; `*p` is the same node).
+- **P9.10 Form 8: C truth values as int** (ruling 38 addendum 10, phase 2b item 2;
+  `forms_8_11_estimate.md` section 8). C's `!x` of a value that is no das bool is the inverse zero
+  test, `x == 0`, `p == null`, `f == 0.0f`, `int(e) == 0` (exact for every value, NaN included:
+  `!NaN` is 0, `NaN == 0.0f` false), where `!` over the bool view spelled `!(x != 0)`; `!!x` is
+  `x != 0`, `!(x != 0)` the C text spelled is `x == 0`, and a loop's exit or a flattened branch tests
+  a zero test's inverse (`if (_t0 == 0) break` for `while (n--)`) through `Em.inverse`. A truth C
+  reads as an int is `int_of(c)`, `c_runtime/int_of`'s call macro that expands in place to `c ? 1 :
+  0` once `c` is inferred (the same nodes, no call; `c_runtime/tests/test_int_of.das` compares the
+  node kinds with the spelled ternary's); an argument that is no `bool` is a compile error, and the
+  name is reserved for the converter. A macro named `int` would see every `int(` of a module (the
+  research's probe), so the name is `int_of`. A `doom_boolean`/`Bool` enum as a das `bool` stays out
+  (its own ruling: Doom stores 0..3 into one). The metrics count `int_of(` as the `bool_roundtrip` it
+  expands to. Counts (main 09154dc against this branch, per 1000 lines; Doom source-layout speed
+  build, 39 of 39 modules compile; Lua source layout): `!(x != 0)` Doom 20.2 -> 0.2, lua 6.9 -> 0.8,
+  luac 5.9 -> 0.8 (the rest are `!` over a compound the C text wrote, `!(xmove != 0 || ymove != 0)`);
+  `? 1 : 0` Doom 2.9 -> 0.1, lua 6.4 -> 0.1, luac 6.4 -> 0.1, now `int_of(` 2.8, 6.3, 6.3; lines Doom
+  25697 -> 25698, lua 21700 -> 21710 (the `require c_runtime/int_of` lines). Density metric (`metrics/criteria_linux.json`, 1610 inputs,
+  0 failed): flat by design, `int_of(c)` the same `bool_roundtrip` site; `programs` 1275.4 -> 1275.2,
+  Lua 1274.5 -> 1274.1, luac 1417.0 -> 1416.7, old `all` 81.6 -> 81.5. Expected speed effect (phase-end A/B,
+  B/A): 1.00 on every lane (the `int_of` expansion is the ternary's nodes; `x == 0` is one compare
+  node where `!(x != 0)` was a compare and a not, so the interpreter at most 0.99 on Doom, whose
+  `!` sites are 20 per 1000 lines, and on the kernels 1.00).
 
 ## P6 — Doom
 
