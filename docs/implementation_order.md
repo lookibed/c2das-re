@@ -1697,6 +1697,16 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   1269.4 -> 1275.0 (fewer lines under the same sites); old `all` 81.6 -> 81.6. Expected speed effect (phase-end A/B): none on any lane, the expansion
   is the node the literal was; a function that loses `[c_function]` loses its body's `unsafe` scope,
   a compile-time mark (flat; if anything a block node fewer under the interpreter).
+- **P9.8 The phase 2 A/B** (ruling 38 addendum 8 item 4; after P9.1-P9.7). One `heavy --exclusive` job, A = c25fca7
+  (main before the forms, the repin end) against B = 37a7e0c (forms P9.1-P9.7): the 17 perf kernels (every one's text
+  changed, the harness at least) under interp, JIT and exe; Doom's speed build demos 1-3 under the interpreter and the
+  JIT; Lua's source layout, fib, nbody, spectral_norm and binary_trees through `ports/lua/bench/timed.lua`, under the
+  interpreter and the JIT; binjgb and h264bsd-mp4 under the JIT; a micro-kernel of C string literals for P9.7's `cstr`
+  expansion under the interpreter and the JIT. Predictions written before any timing run:
+  `/root/notes/predictions/2026-11-11-phase2.md`, sha256
+  `1f221e7234fb09f5a8e5cd02a74ed9055f6f2c8620304fbf6c91318d9f422b86`: B/A 1.00 on every compiled cell and on the
+  kernels' interpreter cells but compound_lit's 0.95 (P9.1's five `p[i]`); Doom and Lua interp 0.98 (P9.1), JIT 1.00;
+  binjgb, h264bsd-mp4 and the `cstr` kernel 1.00. A hit is within 0.03 of the predicted ratio.
 
 ## P6 — Doom
 
