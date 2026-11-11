@@ -542,7 +542,7 @@ def p2_marshal_fixtures(t : T?) {
         has_text(t, text, "write_disk_t_width(first + 1 * 7, 0, int16(9))")
         has_text(t, text, "write_disk_t_ofs(first + 2 * 7, 0, read_disk_t_ofs(first + 2 * 7, 0) + 5)")
         has_text(t, text, "var copy : disk_t = read_disk_t(first, 0)")
-        has_text(t, text, "int(uint64(7)), int(uint64(7)), int(uint64(typeinfo sizeof(type<natural_t>)))")
+        has_text(t, text, "7, 7, typeinfo sizeof(type<natural_t>)")
         has_text(t, text, "var end : uint8? = entries + n * 7")
         has_text(t, text, "entries += 7")
         has_text(t, text, "read_disk_t_width(entries, 0)")
@@ -675,12 +675,12 @@ def p6_marshal_fixtures(t : T?) {
         has_text(t, text, "write_mappatch_t(ptr_wrap_t_first(ptr_maptexture_t_outer(t, 0), 0), 0, copy)")
         has_text(t, text, "var held : wrap_t = read_wrap_t(ptr_maptexture_t_outer(t + 3 * 27, 0), 0)")
         has_text(t, text, "var inner : mappatch_t = read_mappatch_t(ptr_wrap_t_first(ptr_maptexture_t_outer(t, 0), 0), 0)")
-        has_text(t, text, "int(uint64(7)), int(uint64(6)), int(uint64(27))")
+        has_text(t, text, "7, 6, 27")
         // an array of records held by value is the das array, indexed directly
         has_text(t, text, "pv.two[1].patch = int16(int(pv.two[1].patch) + 2)")
         has_text(t, text, "var picked : mappatch_t = pv.two[1]")
         has_text(t, text, "pv.two[0] = held.first")
-        has_text(t, text, "int(pv.two[i % 2].originx), int(uint64(6))")
+        has_text(t, text, "int(pv.two[i % 2].originx), 6")
     }
     t |> run("marshal: the shapes the emitter refuses, each naming the record") @(t : T?) {
         let packed = "#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\nint main(void) \{ disk_t d; d.w = 1; return d.w; \}\n"
@@ -1144,7 +1144,7 @@ def p4_varargs_fixtures(t : T?) {
         has_text(t, text, "let _t0 = int(va_i(ap))")
         has_text(t, text, "ok = int_of(int(va_i(ap)) == 7 || int(va_i(ap)) == 8)")
         // `sizeof(va_list)` is clang's size: the cursor is never laid out
-        has_text(t, text, "int(uint64(24))")
+        has_text(t, text, "printf(cstr(\"sizeof %d\\n\"), 24)")
         has_text(t, text, "sscanf(cstr(\"  12,-7 2.5e1 hello\")")
         // `va_end` is no statement: the text starts a cursor exactly where C calls `va_start`
         let c_source = fread("{FIXTURES}/p4_varargs.c")
@@ -1174,7 +1174,7 @@ def p4_varargs_fixtures(t : T?) {
         has_text(t, msvc.das_text, "def private p4_varargs__take_two(var ap : CVaCursor) : int")
         has_text(t, msvc.das_text, "    b = a\n")
         has_text(t, msvc.das_text, "    c_long_bits = 32\n")
-        has_text(t, msvc.das_text, "int(uint64(8))")
+        has_text(t, msvc.das_text, "printf(cstr(\"sizeof %d\\n\"), 8)")
     }
     t |> run("varargs: the converted module runs from a cold module cache under the interpreter and the JIT") @(t : T?) {
         let res <- convert("{FIXTURES}/p4_varargs.c", path_join(work_root, "p4_varargs_cold"), "linux")
@@ -1798,7 +1798,7 @@ def p5_lua_fixtures(t : T?) {
         // GCC's branch hint is its first operand, and a truth test of it the comparison inside
         has_text(t, text, "    if (x > 2) \{\n")
         // <ctype.h> without glibc's table macros: the functions the crt module binds
-        has_text(t, text, "crt::isalnum(int(uint8(*s)))")
+        has_text(t, text, "crt::isalnum(int(*s))")
         // <math.h>: das math for the surface, the crt module for the exotica
         has_text(t, text, "math::floor(x), math::ceil(x), math::abs(-x), math::sqrt(x), math::pow(x, 2.0lf), crt::fmod(x, 2.0lf)")
         has_text(t, text, "    var m : double = crt::frexp(x, addr(e))\n")
@@ -1897,7 +1897,7 @@ def p5_lua_library_fixtures(t : T?) {
                 // a parse or a position C ranges at 32 bits: the crt forwarder of C's range rule
                 has_text(t, res.das_text, "pos = crt::c_ftell32(reinterpret<void?>(f))\n")
                 has_text(t, res.das_text, "var u : uint = crt::c_strtoul32(")
-                has_text(t, res.das_text, "int(crt::clock()) < int(0)")
+                has_text(t, res.das_text, "int(crt::clock()) < 0")
             } else {
                 has_text(t, res.das_text, "crt::fseek(reinterpret<void?>(f), off - 1l, 0)\n")
             }
@@ -2712,6 +2712,21 @@ def readability_fixtures(t : T?) {
     p9_truth_fixtures(t)
     p9_do_while_fixtures(t)
     p9_switch_fixtures(t)
+    p9_conversion_fixtures(t)
+}
+
+// P9.13: a conversion between types das spells alike is none, a `sizeof` read as an int is das's
+def p9_conversion_fixtures(t : T?) {
+    t |> run("a conversion between types das spells alike is none; a sizeof read as an int is typeinfo sizeof; a widening that changes the das type stays") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_conversions", text)
+        has_text(t, text, "        h ^= (h << 5u) + (h >> 2u) + uint(str[l - 1ul])\n")
+        has_text(t, text, "    var a : uint8 = s[0]\n    var b : uint = uint(s[1])\n")
+        has_text(t, text, "    var n : int = typeinfo sizeof(type<rec>)\n    var m : int = typeinfo sizeof(type<int>) * 2\n")
+        has_text(t, text, "    var z : uint64 = uint64(typeinfo sizeof(type<ts>))\n")
+        has_text(t, text, "    return uint64(uint(i))\n")
+        t |> equal(text |> find("uint8(str[") < 0 && text |> find("int(uint64(typeinfo") < 0, true, text)
+    }
 }
 
 // P9.12: a C switch is `c_switch (c) { case (A, B) { ... } case (_) { ... } }`, c_runtime's shape

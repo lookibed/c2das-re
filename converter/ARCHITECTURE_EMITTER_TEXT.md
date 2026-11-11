@@ -91,6 +91,16 @@ das literal of that type where das spells one with a suffix and the value is in 
 (`int8`, `int16`, `uint16`) keeps the conversion `int16(5)`, as does a named constant (`int64(FRACBITS)`)
 and a character literal (`uint8('a')`). A negative literal is a unary minus, so it binds as one.
 
+### Same-type conversions {#same-type-conversions}
+
+A C conversion between two integer or floating types das spells alike is no conversion: C's
+`char` and `unsigned char` are both `uint8`, so `(unsigned char)s[i]` is `s[i]` and
+`(unsigned)(unsigned char)s[i]` is `uint(s[i])`. An enum and a truth value keep their own routes
+(`enum_to_integer`, `int_of`). A `sizeof` C reads as an `int` is das's `typeinfo sizeof(type<T>)`,
+an `int` already, where the `size_t` value was `int(uint64(typeinfo sizeof(type<T>)))` (a
+marshal-only record's size is its literal). A conversion that changes the das type stays, a
+widening of a narrower one included (`uint64(uint(i))` zero-extends a negative `int`).
+
 ### Dereferences and pointer steps {#pointer-steps}
 
 A C dereference `*p` is das's `*p`, the node `deref(p)` is (`docs/probe-findings.md` F102: the two
