@@ -1,6 +1,7 @@
 /* P9.9: a pointer step is das's `p++`/`p--`, a compound store of a pointer `p += n`/`p -= n`, on
    every lvalue kind and count type; a dereference is `*p`, parenthesized under a postfix */
 #include <stdio.h>
+#include <string.h>
 
 struct S {
     int *p;
@@ -13,6 +14,7 @@ union U {
 };
 
 static int g[32];
+static char rows[3][4] = {"ab", "cde", "f"};
 
 static long off(const int *p) {
     return (long)(p - g);
@@ -81,5 +83,6 @@ int main(void) {
     int sum = 0;
     while (*c) sum += *c++;
     printf("copy %s %d\n", dst, sum);
+    printf("rows %d %s\n", (int)strlen(*(&rows[1] - 1)), *(&rows[2] - 1));
     return 0;
 }
