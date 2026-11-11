@@ -1724,6 +1724,26 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   bimodal by position (the first arm of a sample 4.9-5.0 ms, the second 4.2-4.3 ms in each), so position-matched it is
   1.01. No form slows any lane: no NEEDS RULING. Raw: `/root/notes/parallel/p9_ab/` (ab.txt, raw/, summary.md, the
   scripts).
+- **P9.9 Form 10: `p++`, `p += n` and `*p`** (ruling 38 addendum 10, phase 2b item 1;
+  `/root/notes/research/r38/forms_8_11_estimate.md` section 10). A step of a pointer lvalue is das's
+  `p++`/`p--` and a pointer's compound store `p += n`/`p -= n` (a marshal-only pointee's by its C size,
+  `p += 24`), on every lvalue kind; a C dereference is `*p`, parenthesized under a postfix (`(*p)++`,
+  `(*row)[2]`). Probe F102 (`probes/test_pointer_steps.das`, 2026-11-11): `*p` and `deref(p)` compile
+  to the same nodes in the same order; the steps hold for an `int`, `uint`, `int64` and `uint64` count
+  on a variable, field, field through a pointer, element, pointee and `[c_union]` member under the
+  interpreter and the JIT; das reads `*q++` as `(*q)++`. The metrics count a unary `*` as the `deref`
+  site it is. Decay `addr(a[0])` and `addr(local)` stay (no `&` in das). Counts (main c3070b2 against
+  this branch, per 1000 lines; Doom source-layout speed build, 39 of 39 modules compile; Lua source
+  layout): `deref(` Doom 10.9 -> 0, lua 21.3 -> 0, luac 18.7 -> 0 (the same sites as `*`); `x = x +/-
+  n` Doom 11.2 -> 0.04, lua 13.9 -> 0, luac 14.8 -> 0; lines unchanged. Density metric
+  (`metrics/criteria_linux.json`, 1610 inputs, 0 failed): flat by design, `*p` the same `deref` site;
+  `programs` 1275.5 -> 1275.4, Lua 1275.0 -> 1274.5, luac 1417.5 -> 1417.0, old `all` 81.6 -> 81.6. The
+  first criteria run caught `addr(*(...)[0])` (gcc-torture strlen-4, strlen-6), fixed with a fixture
+  line. Expected speed effect
+  (phase-end A/B, B/A): Doom interp 0.98 (`dest += SCREENWIDTH` in the column drawers is one
+  `i_das_ptr_set_add` node where the sum was an add and a copy), JIT 1.00; Lua interp 0.99 (the fetch's
+  `pc++`), JIT 1.00; the kernels 1.00 on every lane but blit interp 0.98; exe 1.00 everywhere (the JIT
+  and AOT spell `p += n` as the load, GEP and store `p = p + n` was; `*p` is the same node).
 
 ## P6 — Doom
 
