@@ -13,6 +13,7 @@ require cir
 require sidecar
 require bit_units
 require layout
+require line_wrap
 require daslib/rtti
 require daslib/ast
 
@@ -492,6 +493,12 @@ def private libc_call(name : string) : string {
     }
     return key_exists(CRT_CALLS, name) ? "crt::{name}" : ""
 }
+
+// the separator of a list's items (arguments, elements, fields): `, ` with the mark a long line breaks at
+let private LIST_SEPARATOR = ",{LIST_MARK} "
+
+// the separator of a function's parameters: `; ` with the mark a long line breaks at
+let private PARAMETER_SEPARATOR = ";{LIST_MARK} "
 
 def private libc_module(name : string) : string => C_RUNTIME_CALLS?[name]?.piece ?? (key_exists(CRT_CALLS, name) ? "crt" : "")
 
@@ -1650,9 +1657,9 @@ def private variadic_call(name : string; fixed : int; args : array<string>) : st
     } elif (trailing == 1) {
         parts |> push("({args[fixed]},)")
     } else {
-        parts |> push("({join([for (idx in range(fixed, length(args))); args[idx]], ", ")})")
+        parts |> push("({join([for (idx in range(fixed, length(args))); args[idx]], LIST_SEPARATOR)})")
     }
-    return "{name}`va({join(parts, ", ")})"
+    return "{name}`va({join(parts, LIST_SEPARATOR)})"
 }
 
 // the spelling of argument `arg` (spelled `text`) of a call, `fixed` when it meets a parameter of
@@ -1721,7 +1728,7 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         args |> push(call_argument(em, tu, arg, text, idx < fixed_count, library, crt))
     }
     if (empty(name)) {
-        return value("invoke({join(args, ", ")})", PREC_PRIMARY)
+        return value("invoke({join(args, LIST_SEPARATOR)})", PREC_PRIMARY)
     }
     let ft = called_type(tu, x.fn)
     if (!library && ft >= 0 && tu.types[ft].variadic) {
@@ -1734,15 +1741,15 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         // a parse or a position C ranges at the dialect's 32 bits clamps or fails there, never wraps
         let ranged = LONG32_CALLS?[libc_name(called_name(x))] ?? ""
         if (!empty(ranged)) {
-            return value("{ranged}({join(args, ", ")})", PREC_PRIMARY)
+            return value("{ranged}({join(args, LIST_SEPARATOR)})", PREC_PRIMARY)
         }
-        return value("{is_unsigned(tu, x.t) ? "uint" : "int"}({name}({join(args, ", ")}))", PREC_PRIMARY)
+        return value("{is_unsigned(tu, x.t) ? "uint" : "int"}({name}({join(args, LIST_SEPARATOR)}))", PREC_PRIMARY)
     }
     if (library && is_record_pointer(tu, x.t)) {
         // `localtime`'s `struct tm *` comes back as `void?`
-        return unsafe_value(em, "reinterpret<{das_type(em, tu, x.t, loc)}>({name}({join(args, ", ")}))", PREC_PRIMARY)
+        return unsafe_value(em, "reinterpret<{das_type(em, tu, x.t, loc)}>({name}({join(args, LIST_SEPARATOR)}))", PREC_PRIMARY)
     }
-    return value("{name}({join(args, ", ")})", PREC_PRIMARY)
+    return value("{name}({join(args, LIST_SEPARATOR)})", PREC_PRIMARY)
 }
 
 // the body of a pure helper (`inline_helper`): `return <result>`, or the clamp shape, an `if`
@@ -2569,7 +2576,7 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
         let rhs = truth_of(em, tu, x.b, loc)
         em.narrow--
         if (length(em.pre) == mark) {
-            return truth("{wrap(lhs, prec)} {spelled} {wrap(rhs, prec + 1)}", prec)
+            return truth("{wrap(lhs, prec)} {spelled}{LOGIC_MARK} {wrap(rhs, prec + 1)}", prec)
         }
         let rhs_pre <- [for (idx in range(mark, length(em.pre))); em.pre[idx]]
         em.pre |> resize(mark)
@@ -2604,7 +2611,7 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
         if (pointer_lhs && pointer_rhs) {
             return truth("intptr({lhs.text}) {spelled} intptr({rhs.text})", prec)
         }
-        return truth("{wrap(lhs, prec + 1)} {spelled} {wrap(rhs, prec + 1)}", prec)
+        return truth("{wrap(lhs, prec + 1)} {spelled}{OPERATOR_MARK} {wrap(rhs, prec + 1)}", prec)
     }
     if (x.op == "eq" || x.op == "ne") {
         if (pointer_lhs && pointer_rhs && is_data_pointer(tu, x.a.t)) {
@@ -2619,7 +2626,7 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
             }
             return truth("intptr({lhs.text}) {spelled} intptr({rhs.text})", prec)
         }
-        return truth("{wrap(lhs, prec + 1)} {spelled} {wrap(rhs, prec + 1)}", prec)
+        return truth("{wrap(lhs, prec + 1)} {spelled}{OPERATOR_MARK} {wrap(rhs, prec + 1)}", prec)
     }
     if (x.op == "shl" || x.op == "shr") {
         rhs = shift_count(em, tu, *x.b, rhs, das_type(em, tu, x.t, loc), loc)
@@ -2627,7 +2634,7 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
     if (pointer_lhs || pointer_rhs) {
         return pointer_arithmetic(em, tu, x, lhs, rhs, loc)
     }
-    return value("{wrap(lhs, prec)} {spelled} {wrap(rhs, prec + 1)}", prec)
+    return value("{wrap(lhs, prec)} {spelled}{OPERATOR_MARK} {wrap(rhs, prec + 1)}", prec)
 }
 
 // `p + n`, `p - n`, `p - q`: das scales a pointer step by the element and gives a difference
@@ -3456,7 +3463,7 @@ let SPARSE_ARRAY_LIMIT = 32
 def private array_literal(var em : Emitter; tu : CirTu; t : int; elems : array<string>; loc : CirLoc) : string {
     let elem = das_type(em, tu, tu.types[t].elem, loc)
     let elem_arg = elem |> ends_with("?") ? "<{elem}>" : ""
-    return "fixed_array{elem_arg}({join(elems, ", ")})"
+    return "fixed_array{elem_arg}({join(elems, LIST_SEPARATOR)})"
 }
 
 // a literal of the type's zero: what C's static zeroing and das's default agree on
@@ -3541,7 +3548,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
             items[idx] += unit_init(tu, x.t, units[n], unit_parts[n])
         }
     }
-    return value("{tag_name(em, tu, x.t)}({join(items, ", ")})", PREC_PRIMARY)
+    return value("{tag_name(em, tu, x.t)}({join(items, LIST_SEPARATOR)})", PREC_PRIMARY)
 }
 
 // the stores of a sparsely filled large array: `name[pos] = value` per written element
@@ -3717,7 +3724,7 @@ def private init_value(var em : Emitter; tu : CirTu; v : CirExpr const?; loc : C
             // `cstr_array` reads its literal as a das string, which ends at the first NUL: the row
             // is the bytes
             let row <- [for (idx in range(count)); "uint8({idx < length(v.bytes) ? int(v.bytes[idx]) : 0})"]
-            return value("fixed_array({join(row, ", ")})", PREC_PRIMARY)
+            return value("fixed_array({join(row, LIST_SEPARATOR)})", PREC_PRIMARY)
         }
         return value("{CSTR_ARRAY}({quoted_literal(em, tu, *v, loc, count)}, {count})", PREC_PRIMARY)
     }
@@ -7331,7 +7338,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     }
     let ret = das_type(em, tu, tu.types[d.t].ret, d.loc)
     em.fn_ret = ret
-    let header = "def {d.is_static ? "private " : ""}{das_func_name(em, d)}" + (empty(params) ? "" : "({join(params, "; ")})") + (ret == "void" ? "" : " : {ret}")
+    let header = "def {d.is_static ? "private " : ""}{das_func_name(em, d)}" + (empty(params) ? "" : "({join(params, PARAMETER_SEPARATOR)})") + (ret == "void" ? "" : " : {ret}")
     carry_comments_above(em, d.loc)
     let header_at = length(em.out)
     open_block(em, header)
@@ -7978,7 +7985,7 @@ def private emit_layout_check(var em : Emitter; tu : CirTu; records : array<int>
         let align = natural_align(tu, em.prog.layout, t)
         let bitfields = has_bitfield_units(tu, t)
         let below = align == tu.types[t].align ? "" : (bitfields ? ", its bitfield units align {align}" : ", its das alignment is {align}")
-        line(em, "static_assert(typeinfo sizeof(type<{name}>) == {tu.types[t].size} && typeinfo alignof(type<{name}>) == {align}, \"{name}: clang lays it out as size {tu.types[t].size}, align {tu.types[t].align}{below}\")")
+        line(em, "static_assert(typeinfo sizeof(type<{name}>) == {tu.types[t].size} &&{LOGIC_MARK} typeinfo alignof(type<{name}>) == {align},{LIST_MARK} \"{name}: clang lays it out as size {tu.types[t].size}, align {tu.types[t].align}{below}\")")
         if (kind_of(tu, t) == "union") {
             line(em, "static_assert(typeinfo offsetof<_storage>(type<{name}>) == 0, \"{name}: every member sits at 0\")")
         }
@@ -8497,7 +8504,7 @@ def private assemble_module(var em : Emitter) {
     let jit_line = jit_pin ? "options jit_split_modules = 0\n" : ""
     let alias_line = em.has_c_main && !em.prog.strict_aliasing ? "options strict_aliasing = false\n" : ""
     let banner = em.prog.unchecked ? "{GENERATED_BANNER}\n{UNCHECKED_BANNER}" : GENERATED_BANNER
-    em.text = banner + "\noptions gen2\noptions indenting = 4\n" + solid_line + stack_line + alias_line + jit_line + header + "\n" + empty + join(em.out, "")
+    em.text = banner + "\noptions gen2\noptions indenting = 4\n" + solid_line + stack_line + alias_line + jit_line + header + "\n" + empty + laid_out(join(em.out, ""))
 }
 
 //! One file of a converted program: its path under the output folder (a module's `.das`, a
@@ -8583,7 +8590,7 @@ def private emit_cluster(var em : Emitter; tu : CirTu; plan : LayoutPlan; owners
         emit_globals(em, tu)
         emit_functions(em, tu)
         let name = "{plan.nodes[node].stem}.das.inc"
-        let text = GENERATED_BANNER + "\n" + join(em.out, "")
+        let text = GENERATED_BANNER + "\n" + laid_out(join(em.out, ""))
         files |> push(ModuleFile(path = in_dir(plan.nodes[node].dir, name), text = text))
         includes |> push("include {relative_to(mod.dir, plan.nodes[node].dir, name)}")
         em.out |> clear()
@@ -8654,7 +8661,7 @@ def private emit_link_module(var em : Emitter; tu : CirTu; plan : LayoutPlan) {
         if (tu.types[fn].variadic) {
             line(em, "[variadic]")
         }
-        open_block(em, "def {function_name(em, name)}({join(wrapper_params, "; ")})" + (ret == "void" ? "" : " : {ret}"))
+        open_block(em, "def {function_name(em, name)}({join(wrapper_params, PARAMETER_SEPARATOR)})" + (ret == "void" ? "" : " : {ret}"))
         open_block(em, "if ({slot} == null)")
         line(em, "panic(\"{name} is late-bound and no module has bound it\")")
         close_block(em)

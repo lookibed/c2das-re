@@ -126,6 +126,23 @@ unsigned (an enumerator past INT_MAX) takes `uint` first, `uint64(uint(m))`, sin
 conversion would extend the stored high bit as a sign; a floating target takes the promoted
 integer, `double(int(e))` and `double(uint(m))`, since das has no enum-to-float conversion.
 
+### Long lines {#long-lines}
+
+A line past `LINE_WIDTH` (160 bytes, the readability criterion's own bound) breaks where the
+emitter marked the expression's structure as it spelled each node: after a list's `,` (a call's
+arguments, a `fixed_array`'s elements, a record's fields), after `&&` and `||`, and after any
+other binary operator. The marks are bytes the emitter writes into the expression's text
+(`converter/line_wrap.das`), and `laid_out` chooses among them when the module's text is
+assembled, dropping every mark of a line that fits. Of a line too long it breaks at the lowest
+rank first, the shallowest parentheses and within them a list's commas, then `&&`/`||`, then the
+other operators, filling each line with the parts that fit and indenting a continuation 8 spaces
+past its statement (4 more per deeper break). A mark breaks only directly inside a `(`, where das
+reads the next line as the same expression (a line opening with `+` or `-` outside parentheses is
+a new statement, `$DASLANG_ROOT/CLAUDE.md`'s "fail silently" list), never inside a string or
+character literal, a comment, a `[` or a `{`. A line no mark can shorten (a long string literal,
+a top-level operator chain with no parentheses around it) stays as it is. The marks are the
+AST's: no text is parsed to find where an expression may break.
+
 ### Dereferences and pointer steps {#pointer-steps}
 
 A C dereference `*p` is das's `*p`, the node `deref(p)` is (`docs/probe-findings.md` F102: the two

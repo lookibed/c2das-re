@@ -607,7 +607,7 @@ def p6_pointer_fixtures(t : T?) {
         // a marshal record: clang's packed offsets, folded where constant
         has_text(t, text, "int(uint64(1)), int(uint64(12)), int(uint64(int64(read_lump_t_count(l, 0)) * 3l + 5l))")
         // `offsetof` of a marshal record is clang's offset, of a natural one das's
-        has_text(t, text, "int(uint64(typeinfo offsetof < n > (type<data_t>))), int(uint64(1)), int(uint64(5))")
+        has_text(t, text, "int(uint64(typeinfo offsetof < n > (type<data_t>))), int(uint64(1)),\n            int(uint64(5))")
     }
     t |> run("a member of a null pointer constant outside the offset idiom is refused, named") @(t : T?) {
         let rec = "typedef struct \{ int a; char c; char *p; \} rec_t;\n"
@@ -820,7 +820,7 @@ def p4_fixtures(t : T?) {
         let seconds = get_time_usec(started) / 1000000
         t |> equal(res.ok, true, res.error)
         t |> equal(seconds < 30, true, "{seconds} s")
-        has_text(t, res.das_text, "typeinfo alignof(type<L11>) == 2, \"L11: clang lays it out as size 8192, align 4, its das alignment is 2\")")
+        has_text(t, res.das_text, "typeinfo alignof(type<L11>) == 2,\n            \"L11: clang lays it out as size 8192, align 4, its das alignment is 2\")")
     }
     t |> run("_Bool: a das bool everywhere, `int_of(b)` where C reads a number, the truth of the result on a compound store") @(t : T?) {
         var text : string
@@ -919,8 +919,8 @@ def p4_layout_leftovers(t : T?) {
         has_text(t, text, "struct CharBF \{\n    c : uint8\n    _pad0 : uint8[3]\n    bf : BF\n\}")
         has_text(t, text, "struct OnlyPad \{\n    a : uint8\n    _pad0 : uint8[3]\n\}")
         has_text(t, text, "_bits1 = c_unit_bytes(4000u & 0xfffu, default<uint8[2]>)")
-        has_text(t, text, "typeinfo alignof(type<HoldBF>) == 2, \"HoldBF: clang lays it out as size 8, align 4, its das alignment is 2\")")
-        has_text(t, text, "typeinfo alignof(type<Narrow>) == 1, \"Narrow: clang lays it out as size 4, align 4, its bitfield units align 1\")")
+        has_text(t, text, "typeinfo alignof(type<HoldBF>) == 2,\n            \"HoldBF: clang lays it out as size 8, align 4, its das alignment is 2\")")
+        has_text(t, text, "typeinfo alignof(type<Narrow>) == 1,\n            \"Narrow: clang lays it out as size 4, align 4, its bitfield units align 1\")")
         has_text(t, text, "static_assert(typeinfo offsetof < _bits1 > (type<Cramped>) == 5")
         has_text(t, text, "    p4_layout_leftovers__gpun.f0 = -3\n")
         has_text(t, text, "a.f0 += 1\n    a.f0 += 3\n    a.f0 -= 1\n")
@@ -946,7 +946,7 @@ def p4_layout_leftovers(t : T?) {
         has_text(t, msvc.das_text, "[c_union(f = 5, size = 8, align = 1)]\nstruct Wide \{")
         has_text(t, msvc.das_text, "[c_union(f0 = 8)]\nstruct Pun \{")
         has_text(t, msvc.das_text, "[c_bitfields(a = 9)]\nstruct ZeroAfterBits \{\n    c : uint8\n    a : uint\n    d : uint8\n    _pad0 : uint8[7]\n\}")
-        has_text(t, msvc.das_text, "typeinfo alignof(type<ZeroAfterBits>) == 4, \"ZeroAfterBits: clang lays it out as size 16, align 8, its bitfield units align 4\")")
+        has_text(t, msvc.das_text, "typeinfo alignof(type<ZeroAfterBits>) == 4,\n            \"ZeroAfterBits: clang lays it out as size 16, align 8, its bitfield units align 4\")")
         has_text(t, msvc.das_text, "[c_bitfields(x = 3)]\nstruct ZeroAfterPlain \{\n    x, y, d : uint8\n\}")
         rejects(t, "pad_name", "struct S \{ char _pad0; struct \{ unsigned a : 3; int b : 5; short e; \} bf; short y; \};\nint main(void) \{ struct S s = \{ 1 \}; return s._pad0 - 1; \}\n", "field `S._pad0` is spelled like a padding field")
     }
@@ -981,7 +981,7 @@ def p4_function_fixtures(t : T?) {
         has_text(t, text, "def private p4_fnptr__cmp_int(var a : void?; var b : void?) : int")
         has_text(t, text, "def private p4_fnptr__cmp_desc(var a : void?; var b : void?) : int")
         has_text(t, text, "c_qsort(reinterpret<void?>(addr(arr[0])), uint64(n), uint64(typeinfo sizeof(type<int>)), @@p4_fnptr__cmp_int)")
-        has_text(t, text, "reinterpret<int?>(c_bsearch(reinterpret<void?>(addr(key)), reinterpret<void?>(addr(arr[0])), uint64(n), uint64(typeinfo sizeof(type<int>)), @@p4_fnptr__cmp_int))")
+        has_text(t, text, "reinterpret<int?>(c_bsearch(reinterpret<void?>(addr(key)), reinterpret<void?>(addr(arr[0])), uint64(n), uint64(typeinfo sizeof(type<int>)),\n            @@p4_fnptr__cmp_int))")
         has_text(t, text, "def private p4_fnptr__apply_to(f : function<(var a0 : Counter?) : void>; var c : Counter?) \{")
         has_text(t, text, "def private p4_fnptr__twice(v : int) : int")
         has_text(t, text, "invoke(pc.step, pc)")
@@ -1000,7 +1000,7 @@ def p4_function_fixtures(t : T?) {
         has_text(t, text, "invoke(p4_fnptr__steps[s].action.h2, reinterpret<void?>(addr(gn)), reinterpret<void?>(addr(fr)))")
         has_text(t, text, "un.task.run.h0 = reinterpret<function<() : void>>(uint64(-1))")
         // a zero function pointer is `default<...>`, in an array's fill and a fall-off return
-        has_text(t, text, "var zeros : function<(a0 : int) : int>[3] = fixed_array(default<function<(a0 : int) : int>>, default<function<(a0 : int) : int>>, default<function<(a0 : int) : int>>)")
+        has_text(t, text, "var zeros : function<(a0 : int) : int>[3] = fixed_array(default<function<(a0 : int) : int>>, default<function<(a0 : int) : int>>,\n            default<function<(a0 : int) : int>>)")
         has_text(t, text, "var sparse : function<(a0 : int) : int>[3] = fixed_array(default<function<(a0 : int) : int>>, default<function<(a0 : int) : int>>, @@p4_fnptr__inc)")
         has_text(t, text, "var pair2 : function<(a0 : int) : int>[2] = fixed_array(@@p4_fnptr__inc, default<function<(a0 : int) : int>>)")
         has_text(t, text, "    return default<function<(a0 : int) : int>>\n")
@@ -1452,11 +1452,11 @@ def p4_matrix_fixtures(t : T?) {
         has_text(t, text, "var slots : opaque? [3]\n")
         has_text(t, text, "def private p4_matrix_shapes__wrap(var r : real?) : opaque? \{\n    return reinterpret<opaque?>(r)\n")
         // `_Alignof` is das's alignment where it is clang's, clang's value where das aligns lower (F5)
-        has_text(t, text, "int(uint64(typeinfo alignof(type<S>))), int(uint64(typeinfo alignof(type<double>))), int(uint64(typeinfo alignof(type<int[4]>))), int(uint64(4)))")
+        has_text(t, text, "int(uint64(typeinfo alignof(type<S>))), int(uint64(typeinfo alignof(type<double>))),\n            int(uint64(typeinfo alignof(type<int[4]>))), int(uint64(4)))")
         // a row of a char array from a string literal is `cstr_array`, a missing row zeros
         has_text(t, text, "var private p4_matrix_shapes__s4_2 : uint8[2][4] = fixed_array(cstr_array(\"1234\", 4), cstr_array(\"5678\", 4))")
-        has_text(t, text, "var part : uint8[3][4] = fixed_array(cstr_array(\"ab\", 4), fixed_array(uint8(0), uint8(0), uint8(0), uint8(0)), fixed_array(uint8(0), uint8(0), uint8(0), uint8(0)))")
-        has_text(t, text, "var cube : uint8[2][2][3] = fixed_array(fixed_array(cstr_array(\"a\", 3), cstr_array(\"bc\", 3)), fixed_array(cstr_array(\"de\", 3), fixed_array(uint8(0), uint8(0), uint8(0))))")
+        has_text(t, text, "var part : uint8[3][4] = fixed_array(cstr_array(\"ab\", 4), fixed_array(uint8(0), uint8(0), uint8(0), uint8(0)),\n            fixed_array(uint8(0), uint8(0), uint8(0), uint8(0)))")
+        has_text(t, text, "var cube : uint8[2][2][3] = fixed_array(fixed_array(cstr_array(\"a\", 3), cstr_array(\"bc\", 3)),\n            fixed_array(cstr_array(\"de\", 3), fixed_array(uint8(0), uint8(0), uint8(0))))")
         has_text(t, text, "var private p4_matrix_shapes__nm : named = named(name = cstr_array(\"abc\", 6), id = 3)")
         // a union's member is stored after the declaration; one evaluated ahead is read back
         has_text(t, text, "    var tx : text4\n    tx.s = cstr_array(\"abc\", 4)\n    let _t0 = cstr_array(\"xy\", 4)\n")
@@ -1809,7 +1809,7 @@ def p5_lua_fixtures(t : T?) {
         // a record of a function whose signature spells pointers keeps its layout
         has_text(t, text, "    var probe : cD\n")
         // string.h and ctype.h completions, glibc's errno and HUGE_VAL through the crt module
-        has_text(t, text, "int(int64(crt::strpbrk(s, cstr(\"^$*\")) - s)), int(crt::strspn(s, cstr(\"abc\"))), int_of(crt::strcoll(")
+        has_text(t, text, "int(int64(crt::strpbrk(s, cstr(\"^$*\")) - s)), int(crt::strspn(s, cstr(\"abc\"))),\n            int_of(crt::strcoll(")
         has_text(t, text, "crt::isgraph('!')")
         has_text(t, text, "    *crt::c_errno_location() = 0\n")
         has_text(t, text, "crt::HUGE_VAL > 1e+308lf && -crt::HUGE_VAL < -1e+308lf")
@@ -2714,6 +2714,7 @@ def readability_fixtures(t : T?) {
     p9_switch_fixtures(t)
     p9_conversion_fixtures(t)
     p9_narrow_fixtures(t)
+    p9_long_line_fixtures(t)
 }
 
 // P9.14: a promoted storage integer's `==` against a literal in its range or a value of its type is
@@ -2749,6 +2750,22 @@ def p9_narrow_fixtures(t : T?) {
         has_text(t, text, "uint(m), int64(uint(m)), uint64(uint(m)), double(uint(m)))\n")
         has_text(t, text, "1ul << uint64(dir.NORTH))\n")
         t |> equal(text |> find("uint(int(d)") < 0 && text |> find("int64(int(") < 0 && text |> find("uint(int(m") < 0, true, text)
+    }
+}
+
+// P9.15: a line past 160 bytes breaks after an argument's comma or a binary operator inside parentheses
+def p9_long_line_fixtures(t : T?) {
+    t |> run("a long line breaks at the marks of its shallowest parentheses, commas before && before the other operators, and runs as natively") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_long_lines", text)
+        has_text(t, text, "fixed_array(101, 202, 303, 404, 505, 606, 707, 808, 909, 1010, 1111, 1212, 1313, 1414, 1515, 1616, 1717,\n        1818, 1919, ")
+        has_text(t, text, "third_argument_value_long : int;\n                                   fourth_argument_value : int) : int \{\n")
+        has_text(t, text, "beta_value + gamma_value > alpha_value &&\n            alpha_value - gamma_value < beta_value) \{\n")
+        has_text(t, text, "beta_value * gamma_value - alpha_value,\n                (alpha_value + beta_value) * (gamma_value - 1),\n                p9_long_lines__table_of_values[")
+        has_text(t, text, "p9_long_lines__check(5, 5, 5),\n            p9_long_lines__check(1, 1, 9), ")
+        for (l in split(text, "\n")) {
+            t |> equal(length(l) <= 160, true, l)
+        }
     }
 }
 
