@@ -1766,6 +1766,24 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   B/A): 1.00 on every lane (the `int_of` expansion is the ternary's nodes; `x == 0` is one compare
   node where `!(x != 0)` was a compare and a not, so the interpreter at most 0.99 on Doom, whose
   `!` sites are 20 per 1000 lines, and on the kernels 1.00).
+- **P9.11 Shape macro `do_while`** (ruling 38 addendum 10, phase 2b item 3;
+  `/root/notes/research/r38/shapes_and_macros.md` section 4.1). A `do` whose test hoists no
+  statement is `do_while (c) { body }`, the call macro of `c_runtime/do_while.das`: it expands in
+  place before its arguments are inferred to `while (true) { body; if (!(c)) { break } }`, or to
+  the first-pass flag `var first = true; while (first || c) { first = false; body }` under a fresh
+  name when the body holds a `continue` of its own loop (outside every nested loop and inner
+  `do_while`, a `match` arm's counted), the body's statements in the loop's own block;
+  `c_runtime/tests/test_do_while.das` compares the expansion's nodes with the spelled loops'. A
+  `while (0)` whose body continues is `do_while (false)`; a test that hoists (`while (j++ < n)`)
+  keeps the spelled bottom test or flag; the count-down range, the `while (0)` block and a body
+  that always leaves are unchanged. Counts (main 8c74d21 against this branch, per 1000 lines; Doom
+  source-layout speed build, Lua source layout): `do_while(` Doom 0 -> 0.48 (15), lua 0 -> 0.78
+  (22), luac 0 -> 0.60 (13); `while (true) {` Doom 2.42 -> 1.94, lua 3.56 -> 2.79, luac 2.80 ->
+  2.21; lines Doom 31036 -> 30993, lua 28368 -> 28309, luac 21754 -> 21718. Density metric
+  (`metrics/criteria_linux.json`, 1610 inputs, 0 failed): flat by design, no counted site goes
+  (the lines do); `programs` 1275.2 -> 1276.0, Lua 1274.1 -> 1275.0, old `all` 81.5 -> 81.5. Expected speed effect
+  (phase-end A/B, B/A): 1.00 on every lane, interp, JIT and exe (the expansion is the bottom test's
+  own nodes; no program has a `do` with a `continue`), compile time unchanged within noise.
 
 ## P6 — Doom
 
