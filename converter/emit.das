@@ -1185,10 +1185,11 @@ def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
     if (kind_of(tu, x.a.t) == "ptr") {
         em.unsafe_used = true
         let scale = marshal_pointee(em, tu, x.a.t)
+        // das's `p += n` and `p -= n` step a pointer lvalue by `n` elements (probe F102)
         if (scale >= 0) {
-            return "{lhs.text} = {lhs.text} {spelled} {wrap(rhs, PREC_MUL)} * {type_size(tu, scale)}"
+            return "{lhs.text} {spelled}= {wrap(rhs, PREC_MUL)} * {type_size(tu, scale)}"
         }
-        return "{lhs.text} = {lhs.text} {spelled} {wrap(rhs, prec + 1)}"
+        return "{lhs.text} {spelled}= {rhs.text}"
     }
     // C computes `a op= b` in the common type of the converted operands, which clang gives
     // the right side; a shift computes in the promoted left side alone
@@ -1384,6 +1385,7 @@ def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     return text
 }
 
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#pointer-steps")]
 def private step_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
     let up = x.op == "preinc" || x.op == "postinc"
     var bytes : Em
@@ -1403,9 +1405,13 @@ def private step_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     }
     if (kind_of(tu, x.a.t) == "ptr") {
         em.unsafe_used = true
-        // a byte pointer to a marshal-only record steps by the record's C size
+        // a byte pointer to a marshal-only record steps by the record's C size; das's `p++` and
+        // `p--` step any other pointer lvalue by one element (probe F102)
         let scale = marshal_pointee(em, tu, x.a.t)
-        return "{operand.text} = {operand.text} {up ? "+" : "-"} {scale >= 0 ? type_size(tu, scale) : 1l}"
+        if (scale >= 0) {
+            return "{operand.text} {up ? "+" : "-"}= {type_size(tu, scale)}"
+        }
+        return "{wrap(operand, PREC_PRIMARY)}{up ? "++" : "--"}"
     }
     if (kind_of(tu, x.a.t) == "enum") {
         let stepped = "int({operand.text}) {up ? "+" : "-"} 1"
@@ -1425,7 +1431,8 @@ def private step_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         }
         return "{operand.text} {up ? "+" : "-"}= {one}"
     }
-    return "{operand.text}{up ? "++" : "--"}"
+    // `(*p)++`: das reads `*p++` so too (probe F102), the parentheses read it as C does
+    return "{wrap(operand, PREC_PRIMARY)}{up ? "++" : "--"}"
 }
 
 // the callee's das spelling: a function of this unit by name, a libc function by its
@@ -2496,6 +2503,7 @@ def private emit_cond(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
 def private address_operand(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em =>
     x.a.e == "compound_lit" ? literal_object(em, tu, *x.a, loc) : emit_expr(em, tu, x.a, loc)
 
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#pointer-steps")]
 def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     if (x.op == "not") {
         let a = truth_of(em, tu, x.a, loc)
@@ -2566,7 +2574,8 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
         if (is_marshal(em, tu, x.t)) {
             return value("{reader_name(em, tu, x.t, -1)}({a.text}, 0)", PREC_PRIMARY)
         }
-        return unsafe_value(em, "deref({a.text})", PREC_PRIMARY)
+        // `*p` is the node `deref(p)` is (probe F102)
+        return unsafe_value(em, "*{wrap(a, PREC_UNARY)}", PREC_UNARY)
     }
     fail(em, "unary `{x.op}` is not lowered yet", loc)
     return a
@@ -3955,9 +3964,9 @@ def private emit_trampoline(var em : Emitter; tu : CirTu; owner : CirStmt const?
     close_block(em)
     line(em, "{JMP_TARGET} = null")
     // the value through the buffer the site named: `buf.val` for a buffer in reach, which
-    // arrives as the decay of the `jmp_buf`, `deref(p).val` for one behind a pointer
+    // arrives as the decay of the `jmp_buf`, `(*p).val` for one behind a pointer
     let direct = buf.e == "cast" && buf.cast_kind == "ArrayToPointerDecay" && !(buf.a.e == "un" && buf.a.op == "deref")
-    let held = direct ? emit_expr(em, tu, buf.a, st.loc).text : "deref({target.text})"
+    let held = direct ? emit_expr(em, tu, buf.a, st.loc).text : "(*{wrap(target, PREC_UNARY)})"
     line(em, "{val} = {held}.val")
     line(em, "{run} = true")
     close_block(em)

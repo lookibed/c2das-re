@@ -140,7 +140,7 @@ index, range-checked (the documents' safety oracle); a subscript of a pointer, a
 reaches the element the sum does for every index type and sign, unchecked (F100: a null `p` is no panic under the interpreter); an index of a small integer type widens to `int`, since das indexes by `int`, `int64`,
 `uint` and `uint64` alone and C does not promote a subscript (F43); `&a[k]` of an array may be the
 address one past the end, as C allows (`ARCHITECTURE_EMITTER_AGGREGATES.md`, One past an array's end). In a global initializer the decay and the sum each wrap themselves, `unsafe(unsafe(addr(a[0]))
-+ k)` (F48). A reference C makes before the definition that gives its array a length (`extern int a[];`, the definition later in the unit or in another unit) keeps clang's type of unknown length in the C-IR and takes the type of the global its name binds to before anything is spelled (`complete_extern_arrays`), so it indexes and decays the definition's storage, and its address `&a` (`int (*)[]`) converts to a sized row pointer or an element pointer as C converts it, the conversion spelling the target type; a declarator of a pointer to an array of unknown length (`int (*p)[] = &a;`) fails closed; one no unit defines fails closed naming it; a row pointer is `T[N]?` and reads as `deref(row)[i]`; decay is `addr(a[0])`. A function
++ k)` (F48). A reference C makes before the definition that gives its array a length (`extern int a[];`, the definition later in the unit or in another unit) keeps clang's type of unknown length in the C-IR and takes the type of the global its name binds to before anything is spelled (`complete_extern_arrays`), so it indexes and decays the definition's storage, and its address `&a` (`int (*)[]`) converts to a sized row pointer or an element pointer as C converts it, the conversion spelling the target type; a declarator of a pointer to an array of unknown length (`int (*p)[] = &a;`) fails closed; one no unit defines fails closed naming it; a row pointer is `T[N]?` and reads as `(*row)[i]`; decay is `addr(a[0])`. A function
 pointer is a das function value, `function<(a0 : T; ...) : R>` with the parameters named by
 position, a function's name decays to `@@name`, and a call through a pointer, `fp(...)` or
 `(*fp)(...)`, is `invoke(fp, ...)` (`ARCHITECTURE_EMITTER_AGGREGATES.md`, Function pointers). A pointer difference is `int64(p - q)`, in elements as C
@@ -221,7 +221,7 @@ and written, `x = x op v`, a marshal record's reader and writer), so they pin it
 pointer the target goes through, its index or a record value, whichever has an effect, is
 evaluated once, into a temporary unless its text already is one (a variable's own name, `i` of
 `++i` or `p` of `p = q`, changes under a call later in the statement), and every spelling of
-the target reads that (`var _t0 = next()` then `deref(_t0)++`; `let _t0 = pick(1)` then
+the target reads that (`var _t0 = next()` then `(*_t0)++`; `let _t0 = pick(1)` then
 `p[_t0].bf = uint(int(p[_t0].bf) + 5)`; `let _t1 = arr[_t0].a` then
 `arr[_t0].a++` for `arr[k++].a++`). An assignment read as a value is its target read after the
 store through the same temporaries, so `if ((*p++ = *q++))` tests what the store wrote, a

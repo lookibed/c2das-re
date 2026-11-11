@@ -11,7 +11,7 @@ A C character literal is an integer to clang, so Dumper A marks the `int_lit` it
 emitter spells a marked value of das type `int` as the das character literal, which is an `int`
 too: `'%'`, `'{'`, the named escapes `'\0' '\a' '\b' '\t' '\n' '\v' '\f' '\r' '\\' '\''`, and
 `'\xHH'` for any other byte, since das reads C's escape set (`docs/probe-findings.md` F94): `*p !=
-'\0'` is `int(deref(p)) != '\0'`, and C's octal `'\033'` is `'\x1b'`. A negative value (a
+'\0'` is `int(*p) != '\0'`, and C's octal `'\033'` is `'\x1b'`. A negative value (a
 `'\xff'` under signed `char`) or one past a byte (a multi-character constant) stays its number,
 and so does a marked value of another das type (a `u'x'`, a `char16_t`).
 A conversion of the literal is a cast around it (a `char` slot's `uint8('\'')`). A case label's
@@ -90,3 +90,15 @@ das literal of that type where das spells one with a suffix and the value is in 
 `double` and `1.0f` for `float`. A negative value takes no unsigned suffix, and a type without one
 (`int8`, `int16`, `uint16`) keeps the conversion `int16(5)`, as does a named constant (`int64(FRACBITS)`)
 and a character literal (`uint8('a')`). A negative literal is a unary minus, so it binds as one.
+
+### Dereferences and pointer steps {#pointer-steps}
+
+A C dereference `*p` is das's `*p`, the node `deref(p)` is (`docs/probe-findings.md` F102: the two
+spellings compile to the same nodes in the same order, no call among them); it is a unary operand,
+so `wrap` parenthesizes it under a postfix (`(*row)[2]`, `(*p)++`, `(*p).val`) and parenthesizes
+its own operand only below a unary (`*(p - 1)`, `**pp`). A step of a pointer lvalue is das's own
+`p++` and `p--`, and a compound store of one is `p += n` and `p -= n`, which das steps by the
+pointee's size for an `int`, `uint`, `int64` or `uint64` count on any lvalue: a variable, a field,
+a field through a pointer, an element, a pointee, a `[c_union]` member (F102). A byte pointer to a
+marshal-only record steps by the record's C size, `p += 24` and `p -= n * 24`; a volatile pointer
+keeps its `c_volatile_store` of the sum.
