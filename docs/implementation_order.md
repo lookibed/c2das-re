@@ -1707,6 +1707,23 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `1f221e7234fb09f5a8e5cd02a74ed9055f6f2c8620304fbf6c91318d9f422b86`: B/A 1.00 on every compiled cell and on the
   kernels' interpreter cells but compound_lit's 0.95 (P9.1's five `p[i]`); Doom and Lua interp 0.98 (P9.1), JIT 1.00;
   binjgb, h264bsd-mp4 and the `cstr` kernel 1.00. A hit is within 0.03 of the predicted ratio.
+  Done 2026-11-11 (box PC, one `heavy --exclusive` job, machine quiet 1%, 5 samples with the arm order alternating per
+  sample, Lua's interpreter 3; the composed kernels are perf/work's of 2026-11-07, so blit is the kernel before P8.15
+  (c), the same C in both arms). B/A medians: the kernels 0.98-1.01 on every lane but compound_lit (interp 0.920, JIT
+  0.940, exe 0.918) and two noise cells; Doom interp 0.909 / 0.907 / 0.922 (50.4 -> 45.8x native on demo1), JIT 1.006
+  / 0.992 / 0.996; Lua interp fib 0.987, nbody 0.985, spectral_norm 0.994, binary_trees 0.999, JIT 1.003-1.019; binjgb
+  JIT 0.959, h264bsd-mp4 JIT 0.886 (1.16 -> 1.03x native); the `cstr` kernel interp 0.926, JIT 1.009, exe 0.998.
+  Predictions: 59 of 70 hit. The misses: Doom interp x3, compound_lit x3, binjgb, h264bsd-mp4 are faster than
+  predicted, from P9.1's `p[i]`. Under the interpreter it is one `PtrAt` node where the sum was a call under a
+  null-checked `Ptr2Ref`, and Doom's column and span drawers index two pointers per pixel. Under the JIT the null
+  check happens once before the loop, not per element (probe F100). The prediction priced only the interpreter.
+  The `cstr` kernel's interpreter gain is not the expansion, which is the same node (JIT and exe flat).
+  Its `pick` loses `[c_function]`'s extra `unsafe` block (P9.7) and its dead `return null` (P9.2), on a call made
+  20000 times a run. primes interp 1.060 is no form: its timed functions are the same text in both arms, only `main`'s
+  harness differs, and B's samples are bimodal (0.065 / 0.069). va_forward JIT 0.884 is an order effect: both arms are
+  bimodal by position (the first arm of a sample 4.9-5.0 ms, the second 4.2-4.3 ms in each), so position-matched it is
+  1.01. No form slows any lane: no NEEDS RULING. Raw: `/root/notes/parallel/p9_ab/` (ab.txt, raw/, summary.md, the
+  scripts).
 
 ## P6 — Doom
 
