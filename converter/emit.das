@@ -836,7 +836,7 @@ def private falsity_of(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : C
 
 // what truth_of tests of C expression `x`: `x` past a `__builtin_expect` hint, an integer
 // conversion that keeps every value's zero and a truth value's `!= 0`
-def private truth_operand(var em : Emitter; tu : CirTu; x : CirExpr const?) : CirExpr const? {
+def private truth_operand(em : Emitter; tu : CirTu; x : CirExpr const?) : CirExpr const? {
     var operand = x
     while (operand != null && !key_exists(em.hoisted, intptr(operand))) {
         if (operand.e == "call" && called_name(*operand) == EXPECT && length(operand.args) == 2) {
@@ -2120,18 +2120,7 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     }
     let target = das_type(em, tu, x.t, loc)
     if (k == "IntegralCast" || k == "IntegralToFloating" || k == "FloatingToIntegral" || k == "FloatingCast") {
-        let source = to_int(em, inner)
-        if (target == "bool") {
-            return to_bool(source, tu, x.a.t)
-        }
-        if (inner.is_bool && target == "int") {
-            // `int_of(b)` is an `int` already
-            return source
-        }
-        if (kind_of(tu, x.a.t) == "enum") {
-            return value(enum_to_integer(tu, x.a.t, source.text, target), PREC_PRIMARY)
-        }
-        return value(converted_text(source.text, target), PREC_PRIMARY)
+        return numeric_cast(em, tu, x, inner, target)
     }
     if (k == "BitCast") {
         return bit_cast(em, tu, x, inner.text, inner.prec, target, loc)
@@ -2167,6 +2156,22 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
 def private converted_text(text, target : string) : string {
     let literal = suffixed_literal(text, target)
     return empty(literal) ? "{target}({text})" : literal
+}
+
+// C's conversion `x` of number `inner` to the das type `target`: a bool read as a number is
+// `int_of(b)`, an `int` already; an enum goes through its integer
+def private numeric_cast(var em : Emitter; tu : CirTu; x : CirExpr; inner : Em; target : string) : Em {
+    let source = to_int(em, inner)
+    if (target == "bool") {
+        return to_bool(source, tu, x.a.t)
+    }
+    if (inner.is_bool && target == "int") {
+        return source
+    }
+    if (kind_of(tu, x.a.t) == "enum") {
+        return value(enum_to_integer(tu, x.a.t, source.text, target), PREC_PRIMARY)
+    }
+    return value(converted_text(source.text, target), PREC_PRIMARY)
 }
 
 [arch(at="ARCHITECTURE_EMITTER_TEXT.md#literal-suffixes")]
