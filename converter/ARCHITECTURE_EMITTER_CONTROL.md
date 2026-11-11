@@ -28,6 +28,22 @@ union's list, a sparse array) fails closed, since the stores rely on a zero a se
 the case would not give again; any other declaration keeps its branch's scope (F53). Computed
 goto (O6) is the opt-in below.
 
+### The switch shape macro {#switch-macro}
+
+A switch that no goto re-dispatches, under no jump table, whose enum values all have an
+enumerator and whose `continue` (if any) reaches a real loop body, prints as c_runtime's
+`c_switch` (`c_runtime/c_switch.das`): `c_switch (c) { case (A, B) { ... } case (_) { ... } }`,
+each group an arm in C's order and as C wrote it, its `break`s included, an arm that does not
+end in a leaving statement falling into the next, `_` the `default` beside or without values.
+The macro expands before inference to the two tiers above under the same choice (`is_if_chain`:
+the if-chain with the tail breaks dropped, else the flag loop with its plain cases and `_cont`
+epilogue), so the nodes are the spelled ones; the value is read in place when it is a variable,
+else through a `let`. Carried declarations come before the `c_switch` line, and in the
+flag-loop case so do group-level compound literals. A function whose last statement is such a
+switch with a default and every arm ending in a `return` needs no trailing zero `return`, as das reads the
+if-chain. `_` joins das's keywords, so a C name `_` is `_c__`. Every other switch, Duff's device
+included (spelled open, below), keeps the spelled lowering.
+
 ### Cases that do nothing {#inert-cases}
 
 A group whose statements do nothing - a `;`, an expression statement with no effect and no volatile

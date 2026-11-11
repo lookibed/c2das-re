@@ -1,5 +1,6 @@
 options gen2
 require dastest/testing_boost public
+require _daslang_child
 
 var calls : array<string>
 
@@ -79,6 +80,15 @@ def test_switch(t : T?) {
             seen |> push(100 + i)
         }
         t |> equal("{seen}", "[ 0, 100, 2, 102, 3, 103]")
+    }
+    t |> run("an arm block's `default \{` is a syntax error and `switch` no module name; `case (_) \{` is an expression, `_` a variable (F105)") @(t : T?) {
+        let arm_default = daslang_child("switch_default_arm", "options gen2\ndef f(a : int) \{\n    g(a) \{\n        default \{\n        \}\n    \}\n\}\n", true)
+        child_rejects(t, "switch_default_arm", arm_default, "30151")
+        let module_name = daslang_child("switch_module", "options gen2\nmodule switch public\n", true)
+        child_rejects(t, "switch_module", module_name, "invalid module name 'switch'")
+        // with no macro to take them, the arms reach inference as expressions, `_` a variable
+        let arms = daslang_child("switch_arms", "options gen2\ndef f(a : int) \{\n    g(a) \{\n        case (1, _) \{\n        \}\n    \}\n\}\n", true)
+        child_rejects(t, "switch_arms", arms, "can't locate variable '_'")
     }
     t |> run("a local declared bare before an if chain is zero and one variable for every branch; a fixed array and a struct take their literals by assignment") @(t : T?) {
         var seen : array<int>
