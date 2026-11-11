@@ -24,6 +24,10 @@ as-if-converted fixture test landing first.
   `unsafe` (and alone no `[c_function]`) and the interpreter makes no call per literal; a call
   whose argument is no string literal is left to a program's own `cstr`, which C's `cstr("x")`
   becomes as `cstr(cstr("x"))`.
+- `c_runtime/int_of.das` - `int_of(a < b)`, C's int value of a truth, 1 or 0: a call macro that
+  expands in place, once its argument is inferred, to the ternary `a < b ? 1 : 0`, so it is the same
+  nodes and no call under any tier (das has no `int(bool)`). An argument that is no `bool` is a
+  compile error; the name is reserved for the converter, so no program's function takes it.
 - `c_runtime/c_exit.das` - the process-exit protocol: `c_atexit` registers into a module
   list, `c_run_atexit` walks it once in LIFO order, the `[finalize]` walker runs it after a
   normal return from `main` and then flushes every C stream (`crt::fflush(null)`) while the
