@@ -85,8 +85,8 @@ c = getch()
 if (c != EOF) {
 }
 
-let _t0 = deref(p)
-p = p + 1
+let _t0 = *p                       // `*p` is the node `deref(p)` is (F102)
+p++                                // a pointer step is das's `p++`, `p += n` (F102)
 a[i] = _t0
 i++                                // das ++ is statement-only ✓ (used throughout probes)
 
@@ -380,7 +380,7 @@ int (*row)[3] = &m[1];
 ```das
 var m : int[2][3] = fixed_array(fixed_array(1, 2, 3), fixed_array(4, 5, 6))  // ✓
 var row : int[3]? = addr(m[1])     // pointer-to-fixed-array is native ✓, row arith strides by 12 ✓
-deref(row)[2]
+(*row)[2]
 ```
 
 ### Decay
@@ -761,15 +761,15 @@ def blit(src_in, dst_in : uint8?; n_in : int) {
     var n = n_in
     while (n != 0) {
         n = n - 1
-        deref(dst) = deref(src)
-        dst = dst + 1
-        src = src + 1
+        *dst = *src
+        dst++
+        src++
     }
 }
 ```
 `[c_function]` emitted ONLY when the body contains unsafe ops — its count is the
 port-progress metric for the follow-up story. Casts: `(T*)v` → `reinterpret<T?>(v)`;
 `(intptr_t)p` → `intptr(p)` ✓; `p < q` → `intptr(p) < intptr(q)`; `NULL` → `null`;
-negative indices `p[-2]` → `deref(p + (-2))` ✓; `void*`↔`T*` → explicit `reinterpret`.
+negative indices `p[-2]` → `p[-2]` ✓ (F100); `void*`↔`T*` → explicit `reinterpret`.
 Allocation model: all C objects live in raw memory (`c_malloc` ✓ / globals / stack) —
 never `new`/`delete`, GC uninvolved, C manages lifetimes.
