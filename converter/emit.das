@@ -27,6 +27,8 @@ struct Em {
     is_bool : bool
     // the C source wrote the expression in parentheses: an operand keeps them (`wrap`)
     paren : bool
+    // a zero test's exact negation (`x == 0` for `x != 0`), "" for any other expression
+    inverse : string
 }
 
 struct Emitter {
@@ -266,6 +268,7 @@ let END_INDEX = "end_index"
 let ENUM_FROM_INT = "enum_from_int"
 let CSTR_ARRAY = "cstr_array"
 let CSTR = "cstr"
+let INT_OF = "int_of"
 let JMP_TARGET = "c_jmp_target"
 let UNIT_BYTES = "c_unit_bytes"
 let LONG_BITS_GLOBAL = "c_long_bits"
@@ -281,12 +284,12 @@ let DIALECT_INIT = "c2das_dialect"
 let EMPTY_LITERAL = "c2das_empty"
 
 //! Every name the emitter spells bare in a module besides the program's own (`reserved_das_names`).
-let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, CSTR, JMP_TARGET, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL, "memcpy"]
+let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, CSTR, INT_OF, JMP_TARGET, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL, "memcpy"]
 
 //! The public names of the c_runtime modules a converted module may require, each top-level
 //! function, global, type and call macro of `c_runtime/c_runtime/*.das` (repo root);
 //! `converter/tests/test_link.das` fails when a definition there is missing from it.
-let C_RUNTIME_EXPORTS <- ["BitAccess", "BitStore", "CBitfieldsAnnotation", "CCompare", "CFormatDirective", "CFunctionAnnotation", "CJmpBuf", "CSignalHandler", "CStorage", "CUnionAnnotation", "CVaCursor", "CVaList", "CVal", "CVolatileLoadMacro", "C_EINVAL", "C_EOF", "C_SIGNAL_LIMIT", "C_SIG_ERR_BITS", "C_SIG_IGN_BITS", "C_STORAGES", "CstrArrayMacro", "CstrMacro", "EnumFromIntMacro", "VaNone", "VariadicAnnotation", "VariadicCallMacro", "add_bit_pair", "bit_getter", "bit_setter", "c_abort", "c_assert_fail", "c_argc", "c_argv", "c_atexit", "c_bsearch", "c_bswap16", "c_bswap32", "c_bswap64", "c_clrsb", "c_clz", "c_ctz", "c_dialect_spec", "c_exit", "c_ffs", "c_is_float_conversion", "c_is_int_conversion", "c_is_wide_length", "c_jmp_target", "c_long_bits", "c_longjmp", "c_parity", "c_parse_directive", "c_popcount", "c_prefetch", "c_qsort", "c_run_atexit", "c_runtime_init", "c_signal", "c_signal_msvc", "c_signbit", "c_unit_bytes", "c_unreachable", "c_vformat", "c_vfprintf", "c_vprintf", "c_vsnprintf", "c_vsprintf", "c_vsscanf", "c_volatile_load", "c_volatile_load_jit", "c_volatile_read", "c_volatile_store", "cstr", "cstr_array", "end_index", "enum_from_int", "field_index", "fprintf", "printf", "register_llvm_code_generators", "snprintf", "sprintf", "sscanf", "storage_of", "storage_of_bytes", "to_cvalist", "va_args", "va_begin", "va_d", "va_i", "va_p", "va_rest"]
+let C_RUNTIME_EXPORTS <- ["BitAccess", "BitStore", "CBitfieldsAnnotation", "CCompare", "CFormatDirective", "CFunctionAnnotation", "CJmpBuf", "CSignalHandler", "CStorage", "CUnionAnnotation", "CVaCursor", "CVaList", "CVal", "CVolatileLoadMacro", "C_EINVAL", "C_EOF", "C_SIGNAL_LIMIT", "C_SIG_ERR_BITS", "C_SIG_IGN_BITS", "C_STORAGES", "CstrArrayMacro", "CstrMacro", "EnumFromIntMacro", "IntOfMacro", "VaNone", "VariadicAnnotation", "VariadicCallMacro", "add_bit_pair", "bit_getter", "bit_setter", "c_abort", "c_assert_fail", "c_argc", "c_argv", "c_atexit", "c_bsearch", "c_bswap16", "c_bswap32", "c_bswap64", "c_clrsb", "c_clz", "c_ctz", "c_dialect_spec", "c_exit", "c_ffs", "c_is_float_conversion", "c_is_int_conversion", "c_is_wide_length", "c_jmp_target", "c_long_bits", "c_longjmp", "c_parity", "c_parse_directive", "c_popcount", "c_prefetch", "c_qsort", "c_run_atexit", "c_runtime_init", "c_signal", "c_signal_msvc", "c_signbit", "c_unit_bytes", "c_unreachable", "c_vformat", "c_vfprintf", "c_vprintf", "c_vsnprintf", "c_vsprintf", "c_vsscanf", "c_volatile_load", "c_volatile_load_jit", "c_volatile_read", "c_volatile_store", "cstr", "cstr_array", "end_index", "enum_from_int", "field_index", "fprintf", "int_of", "printf", "register_llvm_code_generators", "snprintf", "sprintf", "sscanf", "storage_of", "storage_of_bytes", "to_cvalist", "va_args", "va_begin", "va_d", "va_i", "va_p", "va_rest"]
 
 let PREC_PRIMARY = 14
 let PREC_UNARY = 13
@@ -784,10 +787,24 @@ def private to_bool(e_in : Em; tu : CirTu; t : int) : Em {
     if (e_in.is_bool) {
         return e_in
     }
+    return zero_test(e_in, tu, t, "!=")
+}
+
+// C scalar `e_in` of type `t` against its zero by `op` (`!=` or `==`): a pointer against null, a
+// float against its zero, an enum's int, an integer against 0
+def private zero_test(e_in : Em; tu : CirTu; t : int; op : string) : Em {
     let e = enum_as_int(e_in, tu, t)
     let zero = kind_of(tu, t) == "ptr" ? "null" : kind_of(tu, t) == "float" ? (tu.types[t].w == 32 ? "0.0f" : "0.0lf") : "0"
-    return truth("{wrap(e, PREC_EQ + 1)} != {zero}", PREC_EQ)
+    var test = truth("{wrap(e, PREC_EQ + 1)} {op} {zero}", PREC_EQ)
+    test.inverse = "{wrap(e, PREC_EQ + 1)} {op == "!=" ? "==" : "!="} {zero}"
+    return test
 }
+
+// the text of `!c` for truth `c` the emitter tests the other way (a loop's exit, a flattened
+// branch): a zero test's inverse (`x == 0` for `x != 0`, exact for every value, NaN included),
+// `!(c)` for any other
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#truth-tests")]
+def private negation(c : Em) : string => empty(c.inverse) ? "!({c.text})" : c.inverse
 
 // the truth test of C expression `x` (an `if`, a loop, `!`, `&&`, `||`, `?:`): the bool view of
 // what is left past a `__builtin_expect` hint, an integer conversion that keeps every value's
@@ -795,6 +812,31 @@ def private to_bool(e_in : Em; tu : CirTu; t : int) : Em {
 // `(long) (x != 0)` is `x != 0`, `l_likely(a < b)` is `a < b`)
 [arch(at="ARCHITECTURE_EMITTER_CONTROL.md#truth-tests")]
 def private truth_of(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
+    let operand = truth_operand(em, tu, x)
+    return to_bool(emit_expr(em, tu, operand, loc), tu, operand.t)
+}
+
+// the falsity test of C expression `x`, C's `!x`: a das bool negated (`!(a < b)`, `!b`), any other
+// scalar the inverted zero test truth_of would print (`x == 0`, `p == null`, `f == 0.0f`), exact
+// for every value, a float's NaN included (`!NaN` is 0, `NaN == 0.0f` false); `!!x` is the truth of `x`
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#truth-tests")]
+def private falsity_of(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
+    let operand = truth_operand(em, tu, x)
+    if (operand.e == "un" && operand.op == "not") {
+        // `!!x` is the truth of `x`
+        return truth_of(em, tu, operand.a, loc)
+    }
+    if (operand.e == "bin" && operand.op == "ne" && operand.b != null && operand.b.e == "int_lit" && operand.b.v == "0" && kind_of(tu, operand.a.t) == "int") {
+        // `!(x != 0)` the C text spelled (`!l_unlikely(c)`) is `x == 0`
+        return zero_test(emit_expr(em, tu, operand.a, loc), tu, operand.a.t, "==")
+    }
+    let e = emit_expr(em, tu, operand, loc)
+    return e.is_bool ? truth("!{wrap(e, PREC_UNARY)}", PREC_UNARY) : zero_test(e, tu, operand.t, "==")
+}
+
+// what truth_of tests of C expression `x`: `x` past a `__builtin_expect` hint, an integer
+// conversion that keeps every value's zero and a truth value's `!= 0`
+def private truth_operand(var em : Emitter; tu : CirTu; x : CirExpr const?) : CirExpr const? {
     var operand = x
     while (operand != null && !key_exists(em.hoisted, intptr(operand))) {
         if (operand.e == "call" && called_name(*operand) == EXPECT && length(operand.args) == 2) {
@@ -807,7 +849,7 @@ def private truth_of(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : Cir
             break
         }
     }
-    return to_bool(emit_expr(em, tu, operand, loc), tu, operand.t)
+    return operand
 }
 
 // whether C expression `x` is a truth value, 0 or 1: a comparison, `&&`, `||` or `!`
@@ -839,14 +881,22 @@ def private enum_to_integer(tu : CirTu; t : int; text : string; target : string)
     return "{target}(int({text}))"
 }
 
-// the int view of a C expression das spelled as a bool
-def private to_int(e : Em) : Em => e.is_bool ? value("{wrap(e, PREC_COND + 1)} ? 1 : 0", PREC_COND) : e
+// the int view of a C expression das spelled as a bool: `int_of(c)`, c_runtime's call macro that
+// expands in place to `c ? 1 : 0`
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#truth-as-int")]
+def private to_int(var em : Emitter; e : Em) : Em {
+    if (!e.is_bool) {
+        return e
+    }
+    em.requires |> insert("c_runtime/int_of")
+    return value("{INT_OF}({e.text})", PREC_PRIMARY)
+}
 
 def private is_c_bool(tu : CirTu; t : int) : bool => kind_of(tu, t) == "int" && tu.types[t].spell == "_Bool"
 
 // a value stored into a slot of type `t`: a `_Bool` slot is a das `bool` and takes the truth
 // as it is, every other slot its integer
-def private stored(e : Em; tu : CirTu; t : int) : Em => is_c_bool(tu, t) ? e : to_int(e)
+def private stored(var em : Emitter; e : Em; tu : CirTu; t : int) : Em => is_c_bool(tu, t) ? e : to_int(em, e)
 
 def private literal(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let spelled = das_type(em, tu, x.t, loc)
@@ -1167,10 +1217,10 @@ def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
     let compound = empty(x.op) && of_field < 0 && whole < 0 ? self_operation(tu, x) : null
     if (compound != null) {
         // `x = x op y` is das's `x op= y`, `y` the integer it is in the plain form's sum
-        let y = wrap_pair(tu, x.b) != null ? wrap_operand(em, tu, compound.b, x.a.t, loc) : stored(emit_expr(em, tu, compound.b, loc), tu, x.a.t)
+        let y = wrap_pair(tu, x.b) != null ? wrap_operand(em, tu, compound.b, x.a.t, loc) : stored(em, emit_expr(em, tu, compound.b, loc), tu, x.a.t)
         return "{lhs.text} {BIN_SPELLING?[compound.op] ?? ""}= {wrap(y, (BIN_PREC?[compound.op] ?? 0) + 1)}"
     }
-    var rhs = stored(emit_expr(em, tu, x.b, loc), tu, x.a.t)
+    var rhs = stored(em, emit_expr(em, tu, x.b, loc), tu, x.a.t)
     if (of_field >= 0) {
         return marshal_store(em, tu, x, of_field, x.a.field, bytes, rhs, loc)
     }
@@ -1205,7 +1255,7 @@ def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
     }
     if (is_c_bool(tu, x.a.t)) {
         // C computes `b op= v` in the promoted type and stores the truth of the result
-        return "{lhs.text} = ({wide}({to_int(lhs).text}) {spelled} {wrap(rhs, prec + 1)}) != 0"
+        return "{lhs.text} = ({wide}({to_int(em, lhs).text}) {spelled} {wrap(rhs, prec + 1)}) != 0"
     }
     let narrow = das_type(em, tu, x.a.t, loc)
     if (narrow != wide) {
@@ -1239,7 +1289,7 @@ def private lvalue_read(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : 
 // arithmetic in the type the plain form computes in; the target, pinned, is spelled twice
 def private volatile_assignment(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
     let target = emit_expr(em, tu, x.a, loc).text
-    var rhs = stored(emit_expr(em, tu, x.b, loc), tu, x.a.t)
+    var rhs = stored(em, emit_expr(em, tu, x.b, loc), tu, x.a.t)
     if (empty(x.op)) {
         return "{VOLATILE_STORE}({target}, {rhs.text})"
     }
@@ -1488,7 +1538,7 @@ def private emit_alloca(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
         fail(em, "alloca takes one size", loc)
         return value("", PREC_PRIMARY)
     }
-    let n = to_int(emit_expr(em, tu, x.args[0], loc))
+    let n = to_int(em, emit_expr(em, tu, x.args[0], loc))
     let size = das_type(em, tu, x.args[0].t, loc) == "int" ? n.text : "int({n.text})"
     let tmp = temp_name(em)
     em.unsafe_used = true
@@ -1662,7 +1712,7 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     let fixed_count = trailing_from(tu, x)
     let crt = name |> starts_with("crt::")
     for (idx, arg in range(length(x.args)), x.args) {
-        let text = stored(emit_expr(em, tu, arg, loc), tu, arg.t).text
+        let text = stored(em, emit_expr(em, tu, arg, loc), tu, arg.t).text
         args |> push(call_argument(em, tu, arg, text, idx < fixed_count, library, crt))
     }
     if (empty(name)) {
@@ -1961,9 +2011,9 @@ def private clamp_value(var em : Emitter; tu : CirTu; shape : HelperShape; param
     values |> reserve(length(shape.values))
     for (guard, v in shape.guards, shape.values) {
         guards |> push(truth_of(em, tu, guard, loc))
-        values |> push(stored(emit_expr(em, tu, v, loc), tu, param_t))
+        values |> push(stored(em, emit_expr(em, tu, v, loc), tu, param_t))
     }
-    var chain = shape.otherwise != null ? stored(emit_expr(em, tu, shape.otherwise, loc), tu, param_t) : param
+    var chain = shape.otherwise != null ? stored(em, emit_expr(em, tu, shape.otherwise, loc), tu, param_t) : param
     for (idx in range(length(guards))) {
         let at = length(guards) - 1 - idx
         chain = value("{wrap(guards[at], PREC_COND + 1)} ? {wrap(values[at], PREC_COND + 1)} : {wrap(chain, PREC_COND + 1)}", PREC_COND)
@@ -1996,7 +2046,7 @@ def private inline_helper(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLo
     var args : array<Em>
     args |> reserve(length(x.args))
     for (arg, temp in x.args, needs_temp) {
-        var e = stored(emit_expr(em, tu, arg, loc), tu, arg.t)
+        var e = stored(em, emit_expr(em, tu, arg, loc), tu, arg.t)
         if (temp) {
             let tmp = temp_name(em)
             em.pre |> push("let {tmp} = {e.text}")
@@ -2019,7 +2069,7 @@ def private inline_helper(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLo
     if (!empty(shape.param)) {
         bind_parameter(em, shape.result, shape.param, clamp_value(em, tu, shape, chain_param, param_t, loc), keys)
     }
-    out = stored(emit_expr(em, tu, shape.result, loc), tu, shape.result.t)
+    out = stored(em, emit_expr(em, tu, shape.result, loc), tu, shape.result.t)
     unpin(em, keys)
     return true
 }
@@ -2062,7 +2112,7 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return to_bool(inner, tu, x.a.t)
     }
     if (k == "BooleanToSignedIntegral") {
-        return to_int(inner)
+        return to_int(em, inner)
     }
     if (k == "NullToPointer") {
         // a das function value takes no `null`; its zero is `default<T>` (probes/test_globals.das)
@@ -2070,9 +2120,13 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     }
     let target = das_type(em, tu, x.t, loc)
     if (k == "IntegralCast" || k == "IntegralToFloating" || k == "FloatingToIntegral" || k == "FloatingCast") {
-        let source = to_int(inner)
+        let source = to_int(em, inner)
         if (target == "bool") {
             return to_bool(source, tu, x.a.t)
+        }
+        if (inner.is_bool && target == "int") {
+            // `int_of(b)` is an `int` already
+            return source
         }
         if (kind_of(tu, x.a.t) == "enum") {
             return value(enum_to_integer(tu, x.a.t, source.text, target), PREC_PRIMARY)
@@ -2086,7 +2140,7 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return value("{target}(intptr({inner.text}))", PREC_PRIMARY)
     }
     if (k == "IntegralToPointer") {
-        return unsafe_value(em, "reinterpret<{target}>(uint64({to_int(inner).text}))", PREC_PRIMARY)
+        return unsafe_value(em, "reinterpret<{target}>(uint64({to_int(em, inner).text}))", PREC_PRIMARY)
     }
     if (k == "FunctionToPointerDecay") {
         // a function's name decays to its `@@` value; a function designator reached
@@ -2210,7 +2264,7 @@ def private emit_wrap_pair(var em : Emitter; tu : CirTu; sum : CirExpr; t : int;
 
 // one operand `(U) a` of a wrapping operation in signed type `t`: `a`, or `T(a)` for a narrower one
 def private wrap_operand(var em : Emitter; tu : CirTu; side : CirExpr const?; t : int; loc : CirLoc) : Em {
-    let e = to_int(emit_expr(em, tu, side.a, loc))
+    let e = to_int(em, emit_expr(em, tu, side.a, loc))
     return side.a.t == t ? e : value("{das_type(em, tu, t, loc)}({e.text})", PREC_PRIMARY)
 }
 
@@ -2264,7 +2318,7 @@ def private emit_enum_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
             return value(enum_item(em, tu, x.t, named), PREC_PRIMARY)
         }
     }
-    let source = enum_as_int(to_int(emit_expr(em, tu, x.a, loc)), tu, x.a.t)
+    let source = enum_as_int(to_int(em, emit_expr(em, tu, x.a, loc)), tu, x.a.t)
     let i = das_type(em, tu, x.a.t, loc) == "int" || kind_of(tu, x.a.t) == "enum" ? source.text : "int({source.text})"
     return value(int_to_enum(em, tu, x.t, i), PREC_PRIMARY)
 }
@@ -2400,8 +2454,8 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
             return null_compare(emit_expr(em, tu, x.b, loc), spelled, prec)
         }
     }
-    let lhs = to_int(emit_expr(em, tu, x.a, loc))
-    var rhs = to_int(emit_expr(em, tu, x.b, loc))
+    let lhs = to_int(em, emit_expr(em, tu, x.a, loc))
+    var rhs = to_int(em, emit_expr(em, tu, x.b, loc))
     let pointer_lhs = kind_of(tu, x.a.t) == "ptr"
     let pointer_rhs = kind_of(tu, x.b.t) == "ptr"
     if (x.op == "lt" || x.op == "gt" || x.op == "le" || x.op == "ge") {
@@ -2488,7 +2542,7 @@ def private emit_cond(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         if (a.is_bool && b.is_bool) {
             return truth("{wrap(c, PREC_COND + 1)} ? {wrap(a, PREC_COND + 1)} : {wrap(b, PREC_COND + 1)}", PREC_COND)
         }
-        return value("{wrap(c, PREC_COND + 1)} ? {wrap(to_int(a), PREC_COND + 1)} : {wrap(to_int(b), PREC_COND + 1)}", PREC_COND)
+        return value("{wrap(c, PREC_COND + 1)} ? {wrap(to_int(em, a), PREC_COND + 1)} : {wrap(to_int(em, b), PREC_COND + 1)}", PREC_COND)
     }
     let a_pre <- [for (idx in range(mark, a_end)); em.pre[idx]]
     let b_pre <- [for (idx in range(a_end, length(em.pre))); em.pre[idx]]
@@ -2497,9 +2551,9 @@ def private emit_cond(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     let spelled = das_type(em, tu, x.t, loc)
     hoist(em, ["var {tmp} : {spelled}", "if ({c.text}) \{"])
     hoist(em, [for (stmt in a_pre); "    {stmt}"])
-    hoist(em, ["    {tmp} = {stored(a, tu, x.t).text}", "\} else \{"])
+    hoist(em, ["    {tmp} = {stored(em, a, tu, x.t).text}", "\} else \{"])
     hoist(em, [for (stmt in b_pre); "    {stmt}"])
-    hoist(em, ["    {tmp} = {stored(b, tu, x.t).text}", "\}"])
+    hoist(em, ["    {tmp} = {stored(em, b, tu, x.t).text}", "\}"])
     return value(tmp, PREC_PRIMARY)
 }
 
@@ -2510,8 +2564,7 @@ def private address_operand(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
 [arch(at="ARCHITECTURE_EMITTER_TEXT.md#pointer-steps")]
 def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     if (x.op == "not") {
-        let a = truth_of(em, tu, x.a, loc)
-        return truth("!{wrap(a, PREC_UNARY)}", PREC_UNARY)
+        return falsity_of(em, tu, x.a, loc)
     }
     // the step and the read of its value go through one pinned target, so an effect in the
     // target runs once
@@ -2548,7 +2601,7 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     // the arithmetic operators read a number; `&` and `*` take the operand as it is; the address
     // of a compound literal is its object's
     let operand = x.op == "addr" ? address_operand(em, tu, x, loc) : emit_expr(em, tu, x.a, loc)
-    let a = x.op == "addr" || x.op == "deref" ? operand : to_int(operand)
+    let a = x.op == "addr" || x.op == "deref" ? operand : to_int(em, operand)
     if (x.op == "neg") {
         // `--x` is das's pre-decrement: a negated operand that spells a leading `-` is parenthesized
         let inner = wrap(a, PREC_UNARY)
@@ -3088,7 +3141,7 @@ def private marshal_site(var em : Emitter; tu : CirTu; x : CirExpr const?; loc :
     if (x.e == "index" && marshal_pointee(em, tu, x.base.t) >= 0 && !value_array_decay(em, tu, x.base)) {
         let rec = marshal_pointee(em, tu, x.base.t)
         let base = emit_expr(em, tu, x.base, loc)
-        let i = enum_as_int(to_int(emit_expr(em, tu, x.i, loc)), tu, x.i.t)
+        let i = enum_as_int(to_int(em, emit_expr(em, tu, x.i, loc)), tu, x.i.t)
         bytes = unsafe_value(em, "{wrap(base, PREC_ADD)} + {wrap(i, PREC_MUL)} * {type_size(tu, rec)}", PREC_ADD)
         return rec
     }
@@ -3169,7 +3222,7 @@ def private pointer_name(var em : Emitter; tu : CirTu; rec : int; field : int) :
 // indexes by `int`, `int64`, `uint` or `uint64` alone (`docs/probe-findings.md` F43), so an enum
 // goes through `int` and a small integer widens to `int`
 def private index_value(var em : Emitter; tu : CirTu; i : CirExpr?; loc : CirLoc) : Em {
-    let at = enum_as_int(to_int(emit_expr(em, tu, i, loc)), tu, i.t)
+    let at = enum_as_int(to_int(em, emit_expr(em, tu, i, loc)), tu, i.t)
     return is_small_int(tu, i.t) ? value("int({at.text})", PREC_PRIMARY) : at
 }
 
@@ -3301,7 +3354,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
         var elems <- [for (_i in range(tu.types[x.t].count)); ""]
         for (item in x.init_items) {
             continue if (is_union_list(tu, item.v))
-            elems[item.pos] = stored(init_value(em, tu, item.v, loc), tu, tu.types[x.t].elem).text
+            elems[item.pos] = stored(em, init_value(em, tu, item.v, loc), tu, tu.types[x.t].elem).text
         }
         for (e in elems) {
             if (empty(e)) {
@@ -3328,7 +3381,7 @@ def private emit_init_list(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirL
             fail(em, "an initializer of flexible array member `{tag_name(em, tu, x.t)}.{tu.types[x.t].fields[item.pos].name}` (a GNU extension) is not lowered yet", loc)
             return value("", PREC_PRIMARY)
         }
-        let v = stored(init_value(em, tu, item.v, loc), tu, tu.types[x.t].fields[item.pos].t)
+        let v = stored(em, init_value(em, tu, item.v, loc), tu, tu.types[x.t].fields[item.pos].t)
         let n = tu.types[x.t].fields[item.pos].is_bitfield ? unit_of(units, item.pos) : -1
         if (n < 0) {
             items |> push("{field_name(em, tu, x.t, item.pos)} = {v.text}")
@@ -3444,6 +3497,7 @@ def private pin_value(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : Ci
         em.pre |> push("{holds_data_pointer(tu, x.t) ? "var" : "let"} {name} = {e.text}")
         e.text = name
         e.prec = PREC_PRIMARY
+        e.inverse = ""
     }
     em.hoisted[intptr(x)] = e
     keys |> push(intptr(x))
@@ -3482,7 +3536,7 @@ def private is_union_list(tu : CirTu; x : CirExpr const?) : bool => x != null &&
 // of it, then the stores of every union's list `v` holds
 def private init_stores(var em : Emitter; tu : CirTu; path : string; v : CirExpr const?; loc : CirLoc; var out : array<string>) {
     if (!is_union_list(tu, v)) {
-        out |> push("{path} = {stored(init_value(em, tu, v, loc), tu, v.t).text}")
+        out |> push("{path} = {stored(em, init_value(em, tu, v, loc), tu, v.t).text}")
     }
     union_stores(em, tu, path, v, loc, out)
 }
@@ -3577,7 +3631,7 @@ def private emit_compound_literal(var em : Emitter; tu : CirTu; x : CirExpr; loc
     if (empty(x.init.init_items)) {
         return value(zero_literal(em, tu, x.t, loc), PREC_PRIMARY)
     }
-    return stored(emit_expr(em, tu, x.init.init_items[0].v, loc), tu, x.t)
+    return stored(em, emit_expr(em, tu, x.init.init_items[0].v, loc), tu, x.t)
 }
 
 // the object of compound literal `x`, `_cl<N>` (C11 6.5.2.5): inside a function a local declared
@@ -3683,7 +3737,7 @@ def private decl_init_text(var em : Emitter; tu : CirTu; name : string; t : int;
         sparse_stores(em, tu, name, *init, loc, stores)
         return ""
     }
-    let text = stored(init_value(em, tu, init, loc), tu, t).text
+    let text = stored(em, init_value(em, tu, init, loc), tu, t).text
     union_stores(em, tu, name, init, loc, stores)
     return text
 }
@@ -3744,7 +3798,7 @@ def private void_conditional(var em : Emitter; tu : CirTu; x : CirExpr; loc : Ci
         return
     }
     if (empty(a_pre)) {
-        hoist(em, ["if (!({c.text})) \{"])
+        hoist(em, ["if ({negation(c)}) \{"])
         hoist(em, b_pre)
     } else {
         hoist(em, ["if ({c.text}) \{"])
@@ -4065,7 +4119,7 @@ def private close_sj_result(var em : Emitter; returns, declared : bool) {
 def private emit_return(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     let in_arm = em.sj_arms > 0
     if (st.e != null) {
-        let e = stored(emit_expr(em, tu, st.e, st.loc), tu, st.e.t)
+        let e = stored(em, emit_expr(em, tu, st.e, st.loc), tu, st.e.t)
         flush_pre(em)
         line(em, !in_arm ? "return {e.text}" : empty(em.sj_ret) ? e.text : "{em.sj_ret} = {e.text}")
     } elif (!in_arm) {
@@ -4239,7 +4293,7 @@ def private emit_while(var em : Emitter; tu : CirTu; st : CirStmt) {
     for (stmt in cond_pre) {
         line(em, stmt)
     }
-    open_block(em, "if (!({c.text}))")
+    open_block(em, "if ({negation(c)})")
     line(em, "break")
     close_block(em)
     emit_loop_body(em, tu, st.body_s)
@@ -4274,7 +4328,7 @@ def private emit_do(var em : Emitter; tu : CirTu; st : CirStmt const?) {
         } elif (!leaves_at_end(st.body_s)) {
             let c = truth_of(em, tu, st.cond, st.loc)
             flush_pre(em)
-            open_block(em, "if (!({c.text}))")
+            open_block(em, "if ({negation(c)})")
             line(em, "break")
             close_block(em)
         }
@@ -4304,7 +4358,7 @@ def private emit_do(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     for (stmt in cond_pre) {
         line(em, stmt)
     }
-    open_block(em, "if (!({c.text}))")
+    open_block(em, "if ({negation(c)})")
     line(em, "break")
     close_block(em)
     close_block(em)
@@ -4372,7 +4426,7 @@ def private emit_for_flag(var em : Emitter; tu : CirTu; st : CirStmt; inc_lines 
     if (st.cond != null) {
         let c = truth_of(em, tu, st.cond, st.loc)
         flush_pre(em)
-        open_block(em, "if (!({c.text}))")
+        open_block(em, "if ({negation(c)})")
         line(em, "break")
         close_block(em)
     }
@@ -4400,7 +4454,7 @@ def private open_for_head(var em : Emitter; tu : CirTu; st : CirStmt) {
     for (stmt in cond_pre) {
         line(em, stmt)
     }
-    open_block(em, "if (!({c.text}))")
+    open_block(em, "if ({negation(c)})")
     line(em, "break")
     close_block(em)
 }
@@ -5456,7 +5510,7 @@ def private switch_condition(var em : Emitter; tu : CirTu; st : CirStmt; var con
     if (on_enum) {
         c = emit_expr(em, tu, operand, st.loc)
     } else {
-        c = to_int(emit_expr(em, tu, st.cond, st.loc))
+        c = to_int(em, emit_expr(em, tu, st.cond, st.loc))
     }
     flush_pre(em)
     let name = numbered("_cond", em.switch_counter)
@@ -6004,7 +6058,7 @@ def private emit_open_if(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     let end_at = new_label(em)
     if (then_flat && else_flat) {
         let else_at = new_label(em)
-        open_block(em, "if (!({c.text}))")
+        open_block(em, "if ({negation(c)})")
         line(em, "goto label {else_at}")
         close_block(em)
         emit_body(em, tu, st.then_s)
@@ -6022,7 +6076,7 @@ def private emit_open_if(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     // the arm no goto enters stays a branch, which jumps past the entered one unless it leaves
     let braced = then_flat ? st.else_s : st.then_s
     let falls = !ends_group(braced)
-    open_block(em, then_flat ? "if (!({c.text}))" : "if ({c.text})")
+    open_block(em, then_flat ? "if ({negation(c)})" : "if ({c.text})")
     emit_body(em, tu, braced)
     if (falls) {
         line(em, "goto label {end_at}")
@@ -6048,7 +6102,7 @@ def private emit_open_loop(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (tested) {
         let c = truth_of(em, tu, st.cond, st.loc)
         flush_pre(em)
-        open_block(em, "if (!({c.text}))")
+        open_block(em, "if ({negation(c)})")
         line(em, "goto label {end_at}")
         close_block(em)
     }

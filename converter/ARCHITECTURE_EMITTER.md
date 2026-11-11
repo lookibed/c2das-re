@@ -203,12 +203,12 @@ other pointers too (`docs/probe-findings.md` F61); the list holds every pointer 
 pointer argument as it reaches a converted function's. A `size_t` result is `uint64`, so an index or a count it feeds carries the cast C gives
 it. Expressions carry the C-IR casts: `IntegralCast` and the floating casts are the workhorse
 cast, `IntegralToBoolean` is `x != 0` (`!= null` for a pointer), `BooleanToSignedIntegral` is
-`b ? 1 : 0`, a comparison or `!` is spelled as the das bool it is and becomes `? 1 : 0` only
+`int_of(b)`, a comparison or `!` is spelled as the das bool it is and becomes `int_of(...)` only
 where C reads it as an int. Every expression of C type `_Bool` is a das `bool`: a truth test
-takes it as it is (`if (b)`), a number is `b ? 1 : 0` wherever the emitter reads one (a cast,
+takes it as it is (`if (b)`), a number is `int_of(b)` wherever the emitter reads one (a cast,
 an index, a pointer step, an operand of arithmetic), a store, an argument, an initializer and a
 `return` keep the truth when their own C type is `_Bool`, and `b op= v` computes in the
-promoted type and stores the truth of the result, `b = (int(b ? 1 : 0) + 1) != 0`; a `_Bool`
+promoted type and stores the truth of the result, `b = (int(int_of(b)) + 1) != 0`; a `_Bool`
 step fails closed. Literals carry their suffix from the C-IR type (`u`, `l`, `ul`,
 `lf`, `f`), small integers wrap in a cast. A compound assignment whose operand types differ
 expands to `lhs = T_lhs(T_rhs(lhs) op rhs)`, which is C's small-int rule (`b = int8(int(b) +
