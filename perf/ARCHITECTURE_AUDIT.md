@@ -25,8 +25,9 @@ row for a fix.
   line on each, and that row's factor is the inverse of the chain's cost; a truth test past
   `__builtin_expect` is the comparison inside, so `expect-roundtrip` restores the
   `int64(x != 0 ? 1 : 0) != 0` test the same way, `wrap-casts` the casts of C's wrapping
-  arithmetic through the unsigned twin, and `trampoline` the `while (_sj_run)` loop around a
-  single-branch setjmp site the converter writes flat.
+  arithmetic through the unsigned twin, `trampoline` the `while (_sj_run)` loop around a
+  single-branch setjmp site the converter writes flat, and `no-cast` (its key from the first
+  capture) the `uint8` cast of a byte read the converter drops as a same-type conversion.
 - `audit_tables.das` - the construct table and the whole-benchmark table of a capture, and
   `BENCHES`, the startup row and the four Lua benchmarks with the argument each runs with here. It measures nothing
   and reads no file.
