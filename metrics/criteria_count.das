@@ -160,6 +160,9 @@ def private ident_defects(toks : array<Tok>; i : int; modules : table<string; bo
         if (i + 3 < n && toks[i + 2].text == "addr" && toks[i + 3].text == "(") {
             sites["addr_deref"]++
         }
+    } elif (t.text == "int_of" && next == "(") {
+        // `int_of(c)` is the `c ? 1 : 0` it expands to
+        sites["bool_roundtrip"]++
     } elif (t.text == "reinterpret" && !string_reinterpret(toks, i)) {
         sites["reinterpret_casts"]++
     } elif ((t.text == "var" || t.text == "let") && i + 1 < n && (is_temp_name(next) || is_numbered(next, "_first"))) {
