@@ -1385,7 +1385,18 @@ def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     return text
 }
 
+// the step of a pointer lvalue `operand` of type `t`: a byte pointer to a marshal-only record steps
+// by the record's C size; das's `p++` and `p--` step any other by one element (probe F102)
 [arch(at="ARCHITECTURE_EMITTER_TEXT.md#pointer-steps")]
+def private pointer_step(var em : Emitter; tu : CirTu; t : int; operand : Em; up : bool) : string {
+    em.unsafe_used = true
+    let scale = marshal_pointee(em, tu, t)
+    if (scale >= 0) {
+        return "{operand.text} {up ? "+" : "-"}= {type_size(tu, scale)}"
+    }
+    return "{wrap(operand, PREC_PRIMARY)}{up ? "++" : "--"}"
+}
+
 def private step_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
     let up = x.op == "preinc" || x.op == "postinc"
     var bytes : Em
@@ -1404,14 +1415,7 @@ def private step_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return "{operand.text} = {narrow}({wide}({operand.text}) {up ? "+" : "-"} 1)"
     }
     if (kind_of(tu, x.a.t) == "ptr") {
-        em.unsafe_used = true
-        // a byte pointer to a marshal-only record steps by the record's C size; das's `p++` and
-        // `p--` step any other pointer lvalue by one element (probe F102)
-        let scale = marshal_pointee(em, tu, x.a.t)
-        if (scale >= 0) {
-            return "{operand.text} {up ? "+" : "-"}= {type_size(tu, scale)}"
-        }
-        return "{wrap(operand, PREC_PRIMARY)}{up ? "++" : "--"}"
+        return pointer_step(em, tu, x.a.t, operand, up)
     }
     if (kind_of(tu, x.a.t) == "enum") {
         let stepped = "int({operand.text}) {up ? "+" : "-"} 1"

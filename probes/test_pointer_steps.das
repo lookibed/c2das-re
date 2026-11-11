@@ -20,7 +20,7 @@ class private Shapes : AstVisitor {
         current = string(fun.name)
     }
     def override preVisitExpression(expr : ExpressionPtr) {
-        kinds[current] |> push(string(expr.__rtti))
+        kinds[current] |> push(expr.__rtti)
     }
     def override preVisitExprCall(expr : ExprCall?) {
         calls++
@@ -53,7 +53,7 @@ def test_star_is_deref(t : T?) {
                     }
                     let star <- shapes.kinds?["by_star"] ?? default<array<string>>
                     let der <- shapes.kinds?["by_deref"] ?? default<array<string>>
-                    t |> success(length(star) > 0)
+                    t |> success(!empty(star))
                     t |> equal(join(star, " "), join(der, " "))
                     t |> equal(length([for (k in star); k; where k == "ExprPtr2Ref"]), 8)
                     t |> equal(shapes.calls, 0)
