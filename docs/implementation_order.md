@@ -1816,6 +1816,23 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   1.00 on every lane, interp, JIT and exe (the expansion is the tiers' own nodes; a variable value
   saves one `let` per switch run, at most 0.99 on the interpreter where a switch on a local is
   hot), compile time within noise (one macro expansion per switch).
+- **P9.13 Form 11: same-type conversions** (ruling 38 addendum 10, phase 2b item 5, step (a)+(d);
+  `/root/notes/research/r38/forms_8_11_estimate.md` section 11). A C numeric conversion whose
+  operand das already spells as the target type is the operand (C's `char` and `unsigned char`,
+  both `uint8`: `(lu_byte)str[i]` is `str[i]`, `(unsigned)(lu_byte)s[1]` is `uint(s[1])`, so the
+  value-keeping chain (b) folds through it), an enum and a truth value keeping their routes; a
+  `sizeof` C reads as an `int` is `typeinfo sizeof(type<T>)`, an `int` already (a marshal-only
+  record's size its literal). A conversion that changes the das type stays (`uint64(uint(i))`).
+  Fixture `p9_conversions` (bytes past 0x7f, a sizeof in an int and a size_t context, a negative
+  int zero-extended, narrow fields), native-compared under interp and the JIT. Counts (main
+  5696d2f against this branch, per 1000 lines; Doom source-layout speed build, Lua source layout):
+  `int(uint64(typeinfo sizeof` Doom 2.94 -> 0.42, lua 2.30 -> 0.64, luac 1.29 -> 0.23 (the rest
+  convert a product, `sizeof(T) * n`); `uint8(` Doom 16.26 -> 15.91, lua 19.11 -> 16.25, luac
+  21.73 -> 19.34; numeric conversions in all Doom 203.7 -> 198.3, lua 155.2 -> 148.0, luac 174.7
+  -> 170.1; lines unchanged. Steps (c) (narrow `==` against a literal) and (e) (`uint(int(e))`)
+  are the next PR. Expected speed effect (phase-end A/B, B/A): interp 0.99-1.00 on Doom and Lua
+  (fewer conversion nodes: `uint8(uint8)` is a cast node das keeps under the interpreter), JIT and
+  exe 1.00 (LLVM folds them).
 
 ## P6 — Doom
 
