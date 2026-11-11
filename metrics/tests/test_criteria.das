@@ -223,13 +223,6 @@ def test_function_criteria(t : T?) {
         let none = in_f("    x = address.n + dereference(p)")
         t |> equal(got(none, "addr_sites") + got(none, "deref_sites"), 0)
     }
-    t |> run("a unary `*` is a deref site and pairs as `deref(` does; a product is none") @(t : T?) {
-        let c = in_f("    *p = **pp + *q\n    x = addr(*p) + *addr(a[0])\n    return *r")
-        t |> equal(got(c, "deref_sites"), 7)
-        t |> equal(got(c, "addr_deref_sites"), 2)
-        let products = in_f("    x = a * b + (c) * d + f(e) * g + h[0] * *p\n    y *= 2")
-        t |> equal(got(products, "deref_sites"), 1)
-    }
     t |> run("temporary names: every `_tN` spelled, declared or used; the declarations stay the temporaries") @(t : T?) {
         let c = in_f("    var _t0 = p\n    let _t1 = _t0 + 1\n    return _t0 + _t1")
         t |> equal(got(c, "temp_name_sites"), 5)
@@ -945,5 +938,16 @@ def test_base_capture(t : T?) {
         var refused : string
         base_capture_of_text(replace(older, "\"fn_matched\": ", "\"fn_unknown\": "), "main", refused)
         t |> success(refused |> starts_with("main: ") && refused |> contains("fn_unknown"), refused)
+    }
+}
+
+[test]
+def test_unary_deref_criteria(t : T?) {
+    t |> run("a unary `*` is a deref site and pairs as `deref(` does; a product is none") @(t : T?) {
+        let c = in_f("    *p = **pp + *q\n    x = addr(*p) + *addr(a[0])\n    return *r")
+        t |> equal(got(c, "deref_sites"), 7)
+        t |> equal(got(c, "addr_deref_sites"), 2)
+        let products = in_f("    x = a * b + (c) * d + f(e) * g + h[0] * *p\n    y *= 2")
+        t |> equal(got(products, "deref_sites"), 1)
     }
 }
