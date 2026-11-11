@@ -28,11 +28,11 @@ as-if-converted fixture test landing first.
   expands in place, once its argument is inferred, to the ternary `a < b ? 1 : 0`, so it is the same
   nodes and no call under any tier (das has no `int(bool)`). An argument that is no `bool` is a
   compile error; the name is reserved for the converter, so no program's function takes it.
-- `c_runtime/do_while.das` - `do_while (c) { body }`, C's `do { body } while (c);`: a call macro
+- `c_runtime/c_do_while.das` - `c_do_while (c) { body }`, C's `do { body } while (c);`: a call macro
   that expands in place before its arguments are inferred (`canVisitArgument` is false, so the
   block is never typed as a block), splicing the block's statements into `while (true) { body;
   if (!(c)) { break } }`, or, when the body holds a `continue` outside every loop it nests (an
-  inner `do_while` included, a `match` arm's counted), into `var first = true; while (first || c)
+  inner `c_do_while` included, a `match` arm's counted), into `var first = true; while (first || c)
   { first = false; body }` under a fresh name, so a `continue` reaches the test. The loop's own
   nodes take the call's line; a `break`, `return` or `goto` in the body leaves as from the spelled
   loop. The name is reserved for the converter.

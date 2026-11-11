@@ -18,14 +18,14 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
   or `goto` is `{ body }`, in a function with no `goto` (the label plan reads the C loop).
 - **No test**: a body with no `continue` of the loop that always leaves is
   `while (true) { body }`, and `while (0)` with a `break` in the body `while (true) { body; break }`.
-- **`do_while`**: a test that hoists no statement is `do_while (c) { body }`, the call macro of
-  `c_runtime/do_while.das` (`c_runtime/ARCHITECTURE.md`). It expands in place, before its
+- **`c_do_while`**: a test that hoists no statement is `c_do_while (c) { body }`, the call macro of
+  `c_runtime/c_do_while.das` (`c_runtime/ARCHITECTURE.md`). It expands in place, before its
   arguments are inferred, to the loop the emitter would spell: `while (true) { body; if (!(c))
   { break } }` for a body with no `continue` of its own loop, else the first-pass flag below,
-  with the body's statements in the loop's own block; `c_runtime/tests/test_do_while.das`
+  with the body's statements in the loop's own block; `c_runtime/tests/test_c_do_while.das`
   compares the expansion's nodes with the spelled loops'. A `break`, `return` or `goto` in the
   body leaves as it does from the spelled loop, and a `continue` reaches the test. A `while (0)`
-  whose body holds a `continue` is `do_while (false)`.
+  whose body holds a `continue` is `c_do_while (false)`.
 - **The spelled loop** otherwise, for a test that hoists statements (`while (j++ < n)`): with no
   `continue` of the loop, the bottom test `while (true) { body; <hoisted>; if (!(c)) { break } }`;
   else the first-pass flag `_first`, tested on every pass so that a `continue` reaches the

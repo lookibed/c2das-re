@@ -120,10 +120,10 @@ def test_lowerings(t : T?) {
         t |> equal(text |> find("c = next()\n    if (c != 5)") >= 0, true, text)
         t |> equal(text |> find("var _t") >= 0 && text |> find("\} else \{") >= 0, true, text)
     }
-    t |> run("loops: while, do-while as do_while with a continue in the body, for with the finally block and the trailing increment, if chains") @(t : T?) {
+    t |> run("loops: while, do-while as c_do_while with a continue in the body, for with the finally block and the trailing increment, if chains") @(t : T?) {
         var text : string
         check_fixture(t, "p1_loops", text)
-        has_text(t, text, "    do_while(cond(i) != 0) \{\n        i++\n        if (i == 2) \{\n            continue\n")
+        has_text(t, text, "    c_do_while(cond(i) != 0) \{\n        i++\n        if (i == 2) \{\n            continue\n")
         t |> equal(text |> find("} elif (") >= 0, true, text)
         // a canonical counting loop is a range loop, a C89 one whose counter is dead after it in
         // a free name; a body with `continue` that never leaves the loop takes the `finally`, one
@@ -2365,7 +2365,7 @@ def p7_fused_loop_fixtures(t : T?) {
         has_text(t, text, "        if (i == 1) \{\n            i++\n")
         has_text(t, text, "    \{\n        var i : int\n        i = 1\n        while (i < n) \{\n")
         has_text(t, text, "        t++\n        i++\n    \}\n    while (k < 2) \{\n        t += i\n")
-        has_text(t, text, "    \}\n    do_while(k < i) \{\n        k++\n    \}\n")
+        has_text(t, text, "    \}\n    c_do_while(k < i) \{\n        k++\n    \}\n")
         has_text(t, text, "def self_store(n : int) : int \{\n    var i : int = 0\n    i = 0\n    while (i < n) \{\n")
         has_text(t, text, "def compound_store(n : int) : int \{\n    var i : int = 0\n    i = 0\n    while (i < n) \{\n")
         has_text(t, text, "    var i : int = 0\n    var t : int = 0\n    let _cond = c\n    if (_cond == 0) \{\n        goto label 2\n")
@@ -2381,13 +2381,13 @@ def p7_fused_loop_fixtures(t : T?) {
         has_text(t, text, "        n--\n        if (uint8(_t0) == 0) \{\n")
         has_text(t, text, "        t += 2\n        let _t0 = m\n")
         has_text(t, text, "        t += 3\n        let _t0 = g\n")
-        // `do while (0)` with a `continue` is `do_while (false)`, with a `return` the loop
-        has_text(t, text, "    do_while(false) \{\n        t++\n        if (n > 1) \{\n            continue\n")
+        // `do while (0)` with a `continue` is `c_do_while (false)`, with a `return` the loop
+        has_text(t, text, "    c_do_while(false) \{\n        t++\n        if (n > 1) \{\n            continue\n")
         has_text(t, text, "            return t\n        \}\n        t++\n        break\n    \}\n")
-        // `do`: the test at the bottom, `do_while` with a `continue`, `while (0)` a block, a body
+        // `do`: the test at the bottom, `c_do_while` with a `continue`, `while (0)` a block, a body
         // that always leaves no test, a condition's effects before the test
         has_text(t, text, "    while (true) \{\n        t += n\n        n--\n        if (!(n > 0)) \{\n            break\n")
-        has_text(t, text, "    do_while(k < 4) \{\n        k++\n        if (k == 2) \{\n            continue\n")
+        has_text(t, text, "    c_do_while(k < 4) \{\n        k++\n        if (k == 2) \{\n            continue\n")
         has_text(t, text, "    \{\n        i = 7\n    \}\n")
         has_text(t, text, "    \{\n        t++\n    \}\n")
         has_text(t, text, "    while (true) \{\n        n--\n        break\n    \}\n")
@@ -2718,25 +2718,25 @@ def readability_fixtures(t : T?) {
     p9_do_while_fixtures(t)
 }
 
-// P9.11: a `do` whose test hoists nothing is `do_while (c) { body }`, c_runtime's shape macro
+// P9.11: a `do` whose test hoists nothing is `c_do_while (c) { body }`, c_runtime's shape macro
 def p9_do_while_fixtures(t : T?) {
-    t |> run("a do whose test hoists nothing is do_while (c) \{ body \}; break, continue, return and goto in the body keep C's meaning; a test that hoists keeps the spelled loop") @(t : T?) {
+    t |> run("a do whose test hoists nothing is c_do_while (c) \{ body \}; break, continue, return and goto in the body keep C's meaning; a test that hoists keeps the spelled loop") @(t : T?) {
         var text : string
         check_fixture(t, "p9_do_while", text)
-        has_text(t, text, "require c_runtime/do_while\n")
-        has_text(t, text, "    do_while(i < n) \{\n        i++\n        if (i == stop) \{\n            break\n        \}\n        if (i == bail) \{\n            return -1\n")
+        has_text(t, text, "require c_runtime/c_do_while\n")
+        has_text(t, text, "    c_do_while(i < n) \{\n        i++\n        if (i == stop) \{\n            break\n        \}\n        if (i == bail) \{\n            return -1\n")
         // an inner do's continue is its own; the switch's continue reaches the do's test
-        has_text(t, text, "        var j : int = 0\n        do_while(j < 2) \{\n            j++\n            if (j == 1) \{\n                continue\n")
+        has_text(t, text, "        var j : int = 0\n        c_do_while(j < 2) \{\n            j++\n            if (j == 1) \{\n                continue\n")
         has_text(t, text, "        if (_cont) \{\n            continue\n        \}\n        acc += 1000\n    \}\n")
-        has_text(t, text, "    do_while(c != '\\n' && c != 0) \{\n")
-        has_text(t, text, "    do_while(p9_do_while__next(addr(k)) < n) \{\n        passes++\n    \}\n")
+        has_text(t, text, "    c_do_while(c != '\\n' && c != 0) \{\n")
+        has_text(t, text, "    c_do_while(p9_do_while__next(addr(k)) < n) \{\n        passes++\n    \}\n")
         // a test that hoists statements: the bottom test without a continue, the flag with one
         has_text(t, text, "    while (true) \{\n        passes += 2\n        let _t0 = j\n        j++\n        if (!(_t0 < n)) \{\n            break\n")
         has_text(t, text, "    var _first = true\n    while (true) \{\n        if (!_first) \{\n            q--\n")
         // a body that always leaves, and `while (0)`, take no test
         has_text(t, text, "    while (true) \{\n        r = n * 2\n        break\n    \}\n")
         has_text(t, text, "        r += 7\n        break\n    \}\n")
-        has_text(t, text, "    do_while(i < n) \{\n        i++\n        if (i == 3) \{\n            goto label 1\n")
+        has_text(t, text, "    c_do_while(i < n) \{\n        i++\n        if (i == 3) \{\n            goto label 1\n")
     }
 }
 

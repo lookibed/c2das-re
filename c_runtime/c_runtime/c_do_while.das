@@ -1,14 +1,14 @@
 options gen2
 
-module do_while public
+module c_do_while public
 
 require daslib/ast
 require daslib/ast_boost
 require daslib/macro_boost
 require daslib/templates_boost
 
-// finds a `continue` of the do_while's own loop: one outside every loop the body nests, an
-// inner do_while included; a match arm's `continue` is the loop's, so blocks are walked
+// finds a `continue` of the c_do_while's own loop: one outside every loop the body nests, an
+// inner c_do_while included; a match arm's `continue` is the loop's, so blocks are walked
 class private OwnContinue : AstVisitor {
     depth : int
     found : bool
@@ -27,12 +27,12 @@ class private OwnContinue : AstVisitor {
         return expr
     }
     def override preVisitExprCallMacro(expr : ExprCallMacro?) {
-        if (expr.name == "do_while") {
+        if (expr.name == "c_do_while") {
             depth++
         }
     }
     def override visitExprCallMacro(var expr : ExprCallMacro?) : ExpressionPtr {
-        if (expr.name == "do_while") {
+        if (expr.name == "c_do_while") {
             depth--
         }
         return expr
@@ -58,25 +58,25 @@ def private continues_own_loop(body : array<ExpressionPtr>) : bool {
     return found
 }
 
-//! `do_while (c) { body }`: C's `do { body } while (c);`, the body run once before the first test.
+//! `c_do_while (c) { body }`: C's `do { body } while (c);`, the body run once before the first test.
 //! The call expands in place before its arguments are inferred, the block's statements spliced
 //! into the loop, so a `break` leaves the loop, a `return` the function and a `continue` reaches
 //! the test, as in C. A body with no `continue` of its own loop is
 //! `while (true) { body; if (!(c)) { break } }`, otherwise
 //! `var first = true; while (first || c) { first = false; body }` under a fresh name. The test
 //! is a das `bool`, which the `!` or `||` of the expansion checks.
-[call_macro(name = "do_while")]
-class DoWhileMacro : AstCallMacro {
+[call_macro(name = "c_do_while")]
+class CDoWhileMacro : AstCallMacro {
     def override canVisitArgument(expr : ExprCallMacro?; argIndex : int) : bool => false
     def override canFoldReturnResult(expr : ExprCallMacro?) : bool => false
     def override visit(prog : ProgramPtr; mod : Module?; var expr : ExprCallMacro?) : ExpressionPtr {
         if (length(expr.arguments) != 2 || !(expr.arguments[1] is ExprMakeBlock)) {
-            macro_error(prog, expr.at, "do_while takes a condition and a block: do_while (c) \{ ... \}")
+            macro_error(prog, expr.at, "c_do_while takes a condition and a block: c_do_while (c) \{ ... \}")
             return <- default<ExpressionPtr>
         }
         let blk = (expr.arguments[1] as ExprMakeBlock)._block as ExprBlock
         if (length(blk.arguments) != 0 || !empty(blk.finalList)) {
-            macro_error(prog, expr.at, "do_while's block takes no arguments and has no finally section")
+            macro_error(prog, expr.at, "c_do_while's block takes no arguments and has no finally section")
             return <- default<ExpressionPtr>
         }
         var body <- [for (e in blk.list); clone_expression(e)]

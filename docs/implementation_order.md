@@ -1784,6 +1784,8 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   (the lines do); `programs` 1275.2 -> 1276.0, Lua 1274.1 -> 1275.0, old `all` 81.5 -> 81.5. Expected speed effect
   (phase-end A/B, B/A): 1.00 on every lane, interp, JIT and exe (the expansion is the bottom test's
   own nodes; no program has a `do` with a `continue`), compile time unchanged within noise.
+  Renamed `c_do_while` (module `c_runtime/c_do_while`, macro `c_do_while`) by ruling 38 addendum 12:
+  the shape macros carry the `c_` prefix and C's meaning; `c_do_while (false)` is C's `do { } while (0)`.
 
 ## P6 — Doom
 

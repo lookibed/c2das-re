@@ -1,6 +1,6 @@
 options gen2
 require dastest/testing_boost public
-require c_runtime/do_while
+require c_runtime/c_do_while
 require strings
 require daslib/strings_boost
 require daslib/fio
@@ -9,10 +9,10 @@ require daslib/ast_boost
 require daslib/match
 require ../../probes/_daslang_child.das
 
-// pairs of functions whose bodies differ only in `do_while` against the loop it stands for: the
+// pairs of functions whose bodies differ only in `c_do_while` against the loop it stands for: the
 // bottom test, the first-pass flag for a body with a `continue` of its own, and the bottom test
 // again where the only `continue` is an inner loop's
-let DO_WHILE_SOURCE = "options gen2\nrequire c_runtime/do_while\n\ndef bottom_macro(n : int) : int \{\n    var i = 0\n    do_while (i < n) \{\n        i++\n    \}\n    return i\n\}\n\ndef bottom_spelled(n : int) : int \{\n    var i = 0\n    while (true) \{\n        i++\n        if (!(i < n)) \{\n            break\n        \}\n    \}\n    return i\n\}\n\ndef flag_macro(n : int) : int \{\n    var i = 0\n    do_while (i < n) \{\n        i++\n        if (i == 2) \{\n            continue\n        \}\n        i++\n    \}\n    return i\n\}\n\ndef flag_spelled(n : int) : int \{\n    var i = 0\n    \{\n        var first = true\n        while (first || i < n) \{\n            first = false\n            i++\n            if (i == 2) \{\n                continue\n            \}\n            i++\n        \}\n    \}\n    return i\n\}\n\ndef inner_macro(n : int) : int \{\n    var i = 0\n    do_while (i < n) \{\n        for (k in range(3)) \{\n            if (k == 1) \{\n                continue\n            \}\n            i++\n        \}\n    \}\n    return i\n\}\n\ndef inner_spelled(n : int) : int \{\n    var i = 0\n    while (true) \{\n        for (k in range(3)) \{\n            if (k == 1) \{\n                continue\n            \}\n            i++\n        \}\n        if (!(i < n)) \{\n            break\n        \}\n    \}\n    return i\n\}\n"
+let DO_WHILE_SOURCE = "options gen2\nrequire c_runtime/c_do_while\n\ndef bottom_macro(n : int) : int \{\n    var i = 0\n    c_do_while (i < n) \{\n        i++\n    \}\n    return i\n\}\n\ndef bottom_spelled(n : int) : int \{\n    var i = 0\n    while (true) \{\n        i++\n        if (!(i < n)) \{\n            break\n        \}\n    \}\n    return i\n\}\n\ndef flag_macro(n : int) : int \{\n    var i = 0\n    c_do_while (i < n) \{\n        i++\n        if (i == 2) \{\n            continue\n        \}\n        i++\n    \}\n    return i\n\}\n\ndef flag_spelled(n : int) : int \{\n    var i = 0\n    \{\n        var first = true\n        while (first || i < n) \{\n            first = false\n            i++\n            if (i == 2) \{\n                continue\n            \}\n            i++\n        \}\n    \}\n    return i\n\}\n\ndef inner_macro(n : int) : int \{\n    var i = 0\n    c_do_while (i < n) \{\n        for (k in range(3)) \{\n            if (k == 1) \{\n                continue\n            \}\n            i++\n        \}\n    \}\n    return i\n\}\n\ndef inner_spelled(n : int) : int \{\n    var i = 0\n    while (true) \{\n        for (k in range(3)) \{\n            if (k == 1) \{\n                continue\n            \}\n            i++\n        \}\n        if (!(i < n)) \{\n            break\n        \}\n    \}\n    return i\n\}\n"
 
 // the node kinds of each function's body in visit order, and the call macros left in them
 class private Shapes : AstVisitor {
@@ -34,7 +34,7 @@ class private Shapes : AstVisitor {
 def private sum_to(n, stop, bail : int) : int {
     var i = 0
     var acc = 0
-    do_while(i < n) {
+    c_do_while(i < n) {
         i++
         if (i == stop) {
             break
@@ -47,17 +47,17 @@ def private sum_to(n, stop, bail : int) : int {
     return acc
 }
 
-// a `continue` of the do_while's own loop reaches the test; an inner do_while's reaches its own
+// a `continue` of the c_do_while's own loop reaches the test; an inner c_do_while's reaches its own
 def private skip_even(n : int) : int {
     var i = 0
     var acc = 0
-    do_while(i < n) {
+    c_do_while(i < n) {
         i++
         if ((i & 1) == 0) {
             continue
         }
         var j = 0
-        do_while(j < 2) {
+        c_do_while(j < 2) {
             j++
             if (j == 1) {
                 continue
@@ -73,17 +73,17 @@ def private skip_even(n : int) : int {
 def private counted(n : int) : int {
     var k = 0
     var passes = 0
-    do_while(k++ < n) {
+    c_do_while(k++ < n) {
         passes++
     }
     return passes * 100 + k
 }
 
-// a match arm's `continue` is the do_while's, as the converter's switch arms are
+// a match arm's `continue` is the c_do_while's, as the converter's switch arms are
 def private arm_continue(n : int) : int {
     var i = 0
     var acc = 0
-    do_while(i < n) {
+    c_do_while(i < n) {
         i++
         match (i % 3) {
             0 => $ {
@@ -98,11 +98,29 @@ def private arm_continue(n : int) : int {
     return acc
 }
 
+// C's `do { ... } while (0)`: the body runs once, a `continue` meets the false test and leaves,
+// as a `break` does
+def private once(n : int) : int {
+    var acc = 0
+    c_do_while(false) {
+        acc++
+        if (n == 1) {
+            continue
+        }
+        acc += 10
+        if (n == 2) {
+            break
+        }
+        acc += 100
+    }
+    return acc
+}
+
 // a goto out of the body and a label inside it
 def private jumps(n : int) : int {
     var i = 0
     var acc = 0
-    do_while(i < n) {
+    c_do_while(i < n) {
         i++
         if (i == 3) {
             goto label 1
@@ -115,7 +133,7 @@ def private jumps(n : int) : int {
 }
 
 [test]
-def test_do_while(t : T?) {
+def test_c_do_while(t : T?) {
     t |> run("the body runs once before the first test; break leaves the loop, return the function") @(t : T?) {
         t |> equal(sum_to(3, 100, 100), 6)
         t |> equal(sum_to(0, 100, 100), 1)
@@ -132,6 +150,11 @@ def test_do_while(t : T?) {
         t |> equal(arm_continue(3), 2003)
         t |> equal(arm_continue(5), 4012)
     }
+    t |> run("c_do_while (false), C's do \{ \} while (0), runs its body once; continue and break leave it") @(t : T?) {
+        t |> equal(once(0), 111)
+        t |> equal(once(1), 1)
+        t |> equal(once(2), 11)
+    }
     t |> run("a goto leaves the body") @(t : T?) {
         t |> equal(jumps(2), 3)
         t |> equal(jumps(5), -3)
@@ -140,7 +163,7 @@ def test_do_while(t : T?) {
         var dir_error : string
         let dir = create_temp_directory("c2das_do_while", dir_error)
         t |> equal(dir_error, "")
-        let path = path_join(dir, "do_while.das")
+        let path = path_join(dir, "c_do_while.das")
         fwrite(path, DO_WHILE_SOURCE)
         var inscope access <- make_file_access("")
         using() $(var mg : ModuleGroup) {
@@ -170,9 +193,9 @@ def test_do_while(t : T?) {
         rmdir(dir)
     }
     t |> run("a condition that is no bool and an argument that is no block are compile errors") @(t : T?) {
-        let int_cond = runtime_child("do_while_int", "options gen2\nrequire c_runtime/do_while\ndef f(a : int) \{\n    var i = a\n    do_while (i) \{\n        i--\n    \}\n\}\n", true)
+        let int_cond = runtime_child("do_while_int", "options gen2\nrequire c_runtime/c_do_while\ndef f(a : int) \{\n    var i = a\n    c_do_while (i) \{\n        i--\n    \}\n\}\n", true)
         t |> success(int_cond.rc != 0, int_cond.out)
-        let no_block = runtime_child("do_while_no_block", "options gen2\nrequire c_runtime/do_while\ndef f(a : int) \{\n    do_while (a < 3, a)\n\}\n", true)
-        child_rejects(t, "do_while_no_block", no_block, "do_while takes a condition and a block")
+        let no_block = runtime_child("do_while_no_block", "options gen2\nrequire c_runtime/c_do_while\ndef f(a : int) \{\n    c_do_while (a < 3, a)\n\}\n", true)
+        child_rejects(t, "do_while_no_block", no_block, "c_do_while takes a condition and a block")
     }
 }
