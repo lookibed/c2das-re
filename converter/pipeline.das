@@ -15,6 +15,7 @@ require link
 require layout
 require dumper_a
 require emit
+require line_wrap
 require sidecar
 
 //! One C file through the whole chain: clang dump, C-IR (written, read back, rewritten and
@@ -239,6 +240,10 @@ def private emit_unit(var tu : CirTu; side : Sidecar; out_dir, stem : string; va
     }
     res.c_functions = em.c_functions
     res.function_count = em.function_count
+    if (has_mark(em.text)) {
+        res.error = "emitter: a line-layout mark reached the module"
+        return
+    }
     res.das_text = format_source_string(em.text)
     res.emit_seconds = seconds_since(emit_started)
     res.das_path = path_join(out_dir, "{stem}.das")
@@ -273,6 +278,10 @@ def private emit_modules(var tu : CirTu; owners : array<int>; plan : LayoutPlan;
     res.files |> reserve(length(emitted.files))
     for (f in emitted.files) {
         let path = path_join(out_dir, f.path)
+        if (has_mark(f.text)) {
+            res.error = "emitter: a line-layout mark reached {f.path}"
+            return
+        }
         let text = format_source_string(f.text)
         if ((!mkdir_rec(dir_name(path)) && !stat(dir_name(path)).is_dir) || !fwrite(path, text)) {
             res.error = "cannot write {path}"

@@ -8005,7 +8005,7 @@ def private emit_layout_check(var em : Emitter; tu : CirTu; records : array<int>
     close_block(em)
     line(em, "")
     if (!empty(em.layout_file)) {
-        em.layout_text = join([for (idx in range(at, length(em.out))); em.out[idx]], "")
+        em.layout_text = laid_out(join([for (idx in range(at, length(em.out))); em.out[idx]], ""))
         em.out |> resize(at)
         line(em, "include {em.layout_file}")
         line(em, "")

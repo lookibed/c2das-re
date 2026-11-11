@@ -62,8 +62,8 @@ def private wrapped_line(line : string) : string {
     return join(out, "\n")
 }
 
-// whether `text` holds a mark
-def private has_mark(text : string) : bool => find(text, LIST_MARK) >= 0 || find(text, LOGIC_MARK) >= 0 || find(text, OPERATOR_MARK) >= 0
+//! Whether `text` holds a mark, which no written module may.
+def has_mark(text : string) : bool => find(text, LIST_MARK) >= 0 || find(text, LOGIC_MARK) >= 0 || find(text, OPERATOR_MARK) >= 0
 
 // the spaces that open `text`
 def private indentation(text : string) : int {
