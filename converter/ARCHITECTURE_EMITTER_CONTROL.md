@@ -186,6 +186,9 @@ and `!= 0` on a truth value (a comparison, `&&`, `||` or `!`, already 0 or 1). L
 the interpreter runs the `trap_check` kernel 1.75 times faster so
 (`perf/ARCHITECTURE_AUDIT.md`). A narrowing conversion stays (`(char) 256` is zero), and a hint
 read as a number is its operand's value.
+C's `!x` of a value that is no das bool is the inverted zero test, `x == 0`, `p == null`, `f ==
+0.0f`, `int(e) == 0` (`falsity_of`), where `!` over the bool view spelled `!(x != 0)`: exact for
+every value, a float's NaN included; `!` of a das bool stays `!(a < b)`.
 
 ### Pure helpers at the call site {#inline-helpers}
 

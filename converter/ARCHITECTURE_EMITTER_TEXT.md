@@ -104,3 +104,12 @@ which das steps by the pointee's size for an `int`, `uint`, `int64` or `uint64` 
 lvalue: a variable, a field, a field through a pointer, an element, a pointee, a `[c_union]` member
 (F102). A byte pointer to a marshal-only record steps by the record's C size, `p += 24` and `p -=
 n * 24`; a volatile pointer keeps its `c_volatile_store` of the sum.
+
+### Truth values read as int {#truth-as-int}
+
+A C truth value (a comparison, `&&`, `||`, `!`, a `_Bool`) is a das `bool`, and where C reads it as
+an int (a store into an int, a `return`, an operand of arithmetic, a cast) it is `int_of(c)`:
+`return int_of(line.dy > 0)`, `x += int_of(a < b)`. `int_of` is `c_runtime/int_of`'s call macro,
+which expands in place to `c ? 1 : 0` once `c` is inferred, the same nodes the ternary spelled
+before, no call under any tier. das has no `int(bool)`, and a macro named `int` would see every
+`int(` of a module, so the name is the converter's own, reserved against a program's names.

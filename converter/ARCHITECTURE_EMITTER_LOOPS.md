@@ -85,7 +85,7 @@ whose `op=` goes through its getter and setter, F52), never a pointer, a small i
 `_Bool` or a volatile object - is
 `x op= y` (`self_operation`): the interpreter runs the compound node 1.3 to 1.7 times faster than
 the assignment of the sum, and the text is the one a person writes. `y` is the integer the plain
-form adds, a truth value its 0 or 1 (`x += (a < b ? 1 : 0)`), parenthesized at `op`'s precedence.
+form adds, a truth value its 0 or 1 (`x += int_of(a < b)`).
 
 C's wrapping signed arithmetic, `(T) ((U) a op (U) b)` with `op` one of `+ - * & | ^`, `T` a
 signed integer of 32 or 64 bits, `U` its unsigned twin and each operand of type `T` or a narrower
