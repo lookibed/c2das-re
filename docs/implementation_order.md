@@ -1786,6 +1786,36 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   own nodes; no program has a `do` with a `continue`), compile time unchanged within noise.
   Renamed `c_do_while` (module `c_runtime/c_do_while`, macro `c_do_while`) by ruling 38 addendum 12:
   the shape macros carry the `c_` prefix and C's meaning; `c_do_while (false)` is C's `do { } while (0)`.
+- **P9.12 Shape macro `c_switch`** (ruling 38 addenda 10-12, phase 2b item 4;
+  `/root/notes/research/r38/shapes_and_macros.md` sections 4.2, 5, 8.1). A C switch no goto
+  re-dispatches, under no jump table, whose enum values all have an enumerator and whose
+  `continue` reaches a real loop body prints as `c_switch (c) { case (A, B) { ... } case (_) { ... } }`,
+  the call macro of `c_runtime/c_switch.das` with C's meaning (Boris's answer, addendum 12): the
+  arms as C wrote them, `break`s included, an arm not ending in a jump falling into the next, `_`
+  the `default` anywhere, `continue` reaching the enclosing loop through nested switches. It
+  expands before inference, inner switches first, to the converter's two tiers under the same
+  choice (the if-chain with the tail breaks dropped, else the matched-flag loop with its plain arms
+  and `_cont` epilogue); `c_runtime/tests/test_c_switch.das` compares the nodes with the spelled
+  tiers'. The value is read in place when it is a variable (one `let` fewer), else through a
+  `let`. Rejected: daslib `match` with the converter unrolling fallthrough (copies 1-5 lines at
+  10-15 sites per program), and Swift-style arms with an explicit `fallthrough` (the first
+  prototype). Kept spelled: goto re-dispatch (Lua 3), the `goto` jump table, an enum value with
+  no enumerator, Duff's device (spelled open). A function ending in such a switch with a default
+  and every arm ending in `return` drops its zero `return`. `_` joins das's keywords (`_c__`).
+  Probe F105 (`probes/test_switch.das`): `default {` is a syntax error, `switch` no module name,
+  `case (_) {` an expression with `_` a variable. Counts (main 5696d2f against this branch, per
+  1000 lines; Doom source-layout speed build, Lua source layout): `c_switch(` Doom 0 -> 3.09 (98),
+  lua 0 -> 3.08 (89), luac 0 -> 3.35 (75); `_flag ||=` Doom 1.10 -> 0, lua 3.43 -> 0.69, luac 3.32
+  -> 0.40; `let _cond` Doom 3.19 -> 0.03, lua 3.25 -> 0.10, luac 3.50 -> 0.04; `while (true) {`
+  Doom 1.94 -> 1.45, lua 2.79 -> 2.15; lines Doom 30993 -> 31756, lua 28309 -> 28874, luac 21718
+  -> 22403 (C's `break` lines and the arm braces). Density metric (`metrics/criteria_linux.json`,
+  1610 inputs, 0 failed, re-recorded for the gcc-torture compile sweep): `switch_flags` 84.9 ->
+  98.0, old `all` 81.5 -> 82.0; `programs` total 1276.0 -> 1277.9 (`blowup_lines` +3.3, the longer
+  text) with its das side 796.4 -> 794.5 (`switch_machinery` 3.0 -> 0.8), lua 1275.0 -> 1279.7 (das
+  side 748.1 -> 743.2), luac 1416.8 -> 1419.4 (824.1 -> 818.7), doomgeneric 944.2 -> 943.6. Expected speed effect (phase-end A/B, B/A):
+  1.00 on every lane, interp, JIT and exe (the expansion is the tiers' own nodes; a variable value
+  saves one `let` per switch run, at most 0.99 on the interpreter where a switch on a local is
+  hot), compile time within noise (one macro expansion per switch).
 
 ## P6 — Doom
 
