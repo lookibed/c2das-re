@@ -29,8 +29,8 @@ let TYPE_FIELD = "converter/tests/fixtures/p7_type_edge"
 // the single layout's module of each fixture: the multi-TU link's text before the source layout
 // (P5.1b1), which the single layout keeps byte for byte, plus the C comments it carries (P7.0j) and
 // `options solid_context` (P7.0m)
-let TREE_SINGLE_SHA = "8765013aace7506f1ada3588e13af176d21ddeb9813b7e4199f3a3b310a4574c"
-let TYPES_SINGLE_SHA = "ba3eb4173e591120972de748a37f8da78d34fcdae14b424b578b4c0a4c7acd2d"
+let TREE_SINGLE_SHA = "c1cd45571d7492c2d4a3dcf01355c4236e79b30bd01bf99f1bc8c7d6399ffc02"
+let TYPES_SINGLE_SHA = "f50f3351e6ef0c00bf696211a3e1a88e9ed96de4a42b067b4ceeed686521a587"
 
 var work_root : string
 
@@ -153,7 +153,7 @@ def test_source_tree(t : T?) {
     }
     t |> run("a module requires another by name in its folder and by its relative path elsewhere; a cluster includes its fragments, the one holding a global another's initializer takes the address of first, and carries nothing of their text (the module cache sees a fragment change, F72)") @(t : T?) {
         let main = text_of("tree", "main.das")
-        t |> success(main |> contains("require ./sub/shapes_h.das\nrequire ./sub/solo.das\nrequire c_runtime/c_args\nrequire c_runtime/c_function\nrequire c_runtime/cstr\nrequire c_runtime/printf\nrequire c_runtime/variadic\nrequire c_types\nrequire ring_a_cluster\n"), main)
+        t |> success(main |> contains("require ./sub/shapes_h.das\nrequire ./sub/solo.das\nrequire c_runtime/c_args\nrequire c_runtime/c_function\nrequire c_runtime/cstr\nrequire c_runtime/int_of\nrequire c_runtime/printf\nrequire c_runtime/variadic\nrequire c_types\nrequire ring_a_cluster\n"), main)
         let solo = text_of("tree", "sub/solo.das")
         t |> success(solo |> contains("require c_runtime/cstr\nrequire c_runtime/variadic\n\nvar solo_count : int = 5\n"), solo)
         let cluster = text_of("tree", "ring_a_cluster.das")
