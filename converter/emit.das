@@ -2161,7 +2161,10 @@ def private converted_text(text, target : string) : string {
 }
 
 // C's conversion `x` of number `inner` to the das type `target`: a bool read as a number is
-// `int_of(b)`, an `int` already; an enum goes through its integer
+// `int_of(b)`, an `int` already; an enum goes through its integer; a number das already spells as
+// `target` (C's `char` and `unsigned char` both `uint8`) is itself, and a `sizeof` read as an `int`
+// is das's `typeinfo sizeof`, an `int` already
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#same-type-conversions")]
 def private numeric_cast(var em : Emitter; tu : CirTu; x : CirExpr; inner : Em; target : string) : Em {
     let source = to_int(em, inner)
     if (target == "bool") {
@@ -2172,6 +2175,13 @@ def private numeric_cast(var em : Emitter; tu : CirTu; x : CirExpr; inner : Em; 
     }
     if (kind_of(tu, x.a.t) == "enum") {
         return value(enum_to_integer(tu, x.a.t, source.text, target), PREC_PRIMARY)
+    }
+    if (!inner.is_bool && das_type(em, tu, x.a.t, CirLoc()) == target) {
+        return inner
+    }
+    let sized = "{das_type(em, tu, x.a.t, CirLoc())}("
+    if (target == "int" && x.a.e == "sizeof_v" && starts_with(source.text, sized)) {
+        return value(slice(source.text, length(sized), length(source.text) - 1), PREC_PRIMARY)
     }
     return value(converted_text(source.text, target), PREC_PRIMARY)
 }
