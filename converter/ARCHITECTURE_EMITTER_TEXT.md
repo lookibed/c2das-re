@@ -94,11 +94,13 @@ and a character literal (`uint8('a')`). A negative literal is a unary minus, so 
 ### Dereferences and pointer steps {#pointer-steps}
 
 A C dereference `*p` is das's `*p`, the node `deref(p)` is (`docs/probe-findings.md` F102: the two
-spellings compile to the same nodes in the same order, no call among them); it is a unary operand,
-so `wrap` parenthesizes it under a postfix (`(*row)[2]`, `(*p)++`, `(*p).val`) and parenthesizes
-its own operand only below a unary (`*(p - 1)`, `**pp`). A step of a pointer lvalue is das's own
-`p++` and `p--`, and a compound store of one is `p += n` and `p -= n`, which das steps by the
-pointee's size for an `int`, `uint`, `int64` or `uint64` count on any lvalue: a variable, a field,
-a field through a pointer, an element, a pointee, a `[c_union]` member (F102). A byte pointer to a
-marshal-only record steps by the record's C size, `p += 24` and `p -= n * 24`; a volatile pointer
-keeps its `c_volatile_store` of the sum.
+spellings compile to the same nodes in the same order, no call among them). It is a unary operand:
+das binds it below a member and an index as C does (`*s.p` is `*(s.p)`), so `wrap` parenthesizes
+it under a postfix (`(*row)[2]`, `(*p).val`, `(*p)++`; das alone would read `*p++` as `(*p)++`
+too, C as `*(p++)`), beside an operator when C parenthesized it (`(*p) != 0` for the value `if
+((*d++ = *s++))` stored), and its own operand below a unary (`*(p - 1)`, but `**pp`). A step of a
+pointer lvalue is das's own `p++` and `p--`, and a compound store of one is `p += n` and `p -= n`,
+which das steps by the pointee's size for an `int`, `uint`, `int64` or `uint64` count on any
+lvalue: a variable, a field, a field through a pointer, an element, a pointee, a `[c_union]` member
+(F102). A byte pointer to a marshal-only record steps by the record's C size, `p += 24` and `p -=
+n * 24`; a volatile pointer keeps its `c_volatile_store` of the sum.
