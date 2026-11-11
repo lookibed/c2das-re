@@ -4,7 +4,6 @@ require strings
 require daslib/fio
 require daslib/strings_boost
 require ../converter/tiers.das
-require _daslang_child
 
 //! A C function-like macro folded back into an `[inline] def` (the fn-macros research, docs/probe-findings.md
 //! F104): one generic def, its parameters untyped, covers a macro expanded with arguments of different
@@ -40,7 +39,7 @@ def test_generic_inline_tiers(tt : T?) {
             t |> equal(run_tier(entry, tier, path_join(work, tier), out, CONVERTED_MODULES), 0, "{tier}: {out}")
             let lines <- [for (l in split(out, "\n")); strip(l); where !empty(strip(l))]
             // 1+2+4 tags, 20 read back, int(1.5 + 2 + 3 + 4) and 2 + 7; a.value_ set to j + 1
-            t |> equal(length(lines) > 0 ? lines[length(lines) - 1] : "", "46 4 3", "{tier}: {out}")
+            t |> equal(!empty(lines) ? lines[length(lines) - 1] : "", "46 4 3", "{tier}: {out}")
         }
     }
 }
