@@ -2156,7 +2156,7 @@ def private decayed(var em : Emitter; tu : CirTu; x : CirExpr; inner : Em; loc :
         // a value's array of the record has das's layout, which is not what a byte pointer reads
         fail(em, "the decay of an array of the marshal-only record `{tag_name(em, tu, element_under(tu, x.a.t))}` held by value is not lowered yet", loc)
     }
-    return unsafe_value(em, "addr({inner.text}[0])", PREC_PRIMARY)
+    return unsafe_value(em, "addr({wrap(inner, PREC_PRIMARY)}[0])", PREC_PRIMARY)
 }
 
 // C's wrapping signed arithmetic: `(T) ((U) a op (U) b)`, `op` one of `+ - * & | ^`, with `T` a

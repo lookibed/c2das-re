@@ -2733,6 +2733,8 @@ def p9_ptr_step_fixtures(t : T?) {
         has_text(t, text, "    var b : int = *(r - 1) + **pp\n")
         has_text(t, text, "(*row)[2])\n")
         has_text(t, text, "        dst++\n        var _t2 = src\n        src++\n        *_t1 = *_t2\n")
+        // a decayed dereference parenthesizes it under the index
+        has_text(t, text, "addr((*(addr(p9_ptr_steps__rows[1]) + -(1)))[0])")
         t |> equal(text |> find("deref(") < 0, true, text)
     }
 }
