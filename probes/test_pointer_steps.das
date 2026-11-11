@@ -30,7 +30,7 @@ class private Shapes : AstVisitor {
 // a pointer step on every lvalue kind C gives one: a variable, a field, a field through a
 // pointer, an array element, a pointee, a `[c_union]` member; an `int`, `uint`, `int64` or `uint64`
 // count, a literal, a sum and a negated one; each prints its offset in elements from `g[0]`
-let private STEPS_SOURCE = "options gen2\nrequire c_runtime/c_union\n\nstruct S \{\n    p : int?\n\}\n\n[c_union]\nstruct U \{\n    p : int?\n    n : int64\n\}\n\nvar g : int[32]\n\ndef off(p : int?) : int64 \{\n    unsafe \{\n        return int64(intptr(p) - intptr(addr(g[0]))) / 4l\n    \}\n\}\n\n[export]\ndef main \{\n    unsafe \{\n        var p : int? = addr(g[8])\n        let n = 3\n        let k = 2ul\n        let m = 5u\n        let l = -2l\n        p += n\n        p += k\n        p += m\n        p += l\n        p -= n + 1\n        p -= 2\n        p -= k\n        p += -n\n        p++\n        p--\n        var s = S(p = addr(g[0]))\n        s.p += 4\n        s.p++\n        s.p -= 1ul\n        var sp : S? = addr(s)\n        sp.p += 2\n        sp.p--\n        var arr : int? [2]\n        arr[1] = addr(g[0])\n        arr[1] += 6\n        arr[1]--\n        var held : int? = addr(g[0])\n        var pp : int?? = addr(held)\n        *pp += 3\n        (*pp)++\n        var u : U\n        u.p = addr(g[0])\n        u.p += 7\n        u.p++\n        u.p -= 2\n        print(\"\{off(p)\} \{off(s.p)\} \{off(arr[1])\} \{off(held)\} \{off(u.p)\}\\n\")\n        g[9] = 40\n        var q = addr(g[9])\n        print(\"\{80 / *q\} \{3 * *q\} \{-*q\}\\n\")\n        *q++\n        print(\"\{off(q)\} \{g[9]\}\\n\")\n    \}\n\}\n"
+let private STEPS_SOURCE = "options gen2\nrequire c_runtime/c_union\n\nstruct S \{\n    p : int?\n\}\n\n[c_union]\nstruct U \{\n    p : int?\n    n : int64\n\}\n\nvar g : int[32]\n\ndef off(p : int?) : int64 \{\n    unsafe \{\n        return int64(intptr(p) - intptr(addr(g[0]))) / 4l\n    \}\n\}\n\n[export]\ndef main \{\n    unsafe \{\n        var p : int? = addr(g[8])\n        let n = 3\n        let k = 2ul\n        let m = 5u\n        let l = -2l\n        p += n\n        p += k\n        p += m\n        p += l\n        p -= n + 1\n        p -= 2\n        p -= k\n        p += -n\n        p++\n        p--\n        var s = S(p = addr(g[0]))\n        s.p += 4\n        s.p++\n        s.p -= 1ul\n        var sp : S? = addr(s)\n        sp.p += 2\n        sp.p--\n        var arr : int? [2]\n        arr[1] = addr(g[0])\n        arr[1] += 6\n        arr[1]--\n        var held : int? = addr(g[0])\n        var pp : int?? = addr(held)\n        *pp += 3\n        (*pp)++\n        var u : U\n        u.p = addr(g[0])\n        u.p += 7\n        u.p++\n        u.p -= 2\n        print(\"\{off(p)\} \{off(s.p)\} \{off(arr[1])\} \{off(held)\} \{off(u.p)\}\\n\")\n        g[9] = 40\n        g[5] = 55\n        var q = addr(g[9])\n        print(\"\{80 / *q\} \{3 * *q\} \{-*q\} \{*s.p\} \{*sp.p\} \{*arr[1]\}\\n\")\n        *q++\n        print(\"\{off(q)\} \{g[9]\}\\n\")\n    \}\n\}\n"
 
 [test]
 def test_star_is_deref(t : T?) {
@@ -69,8 +69,8 @@ def test_star_is_deref(t : T?) {
 
 [test]
 def test_pointer_steps(t : T?) {
-    t |> run("`+=`, `-=`, `++` and `--` step a pointer on every lvalue kind by any integer count, under the interpreter and the JIT; `*q++` is `(*q)++` (F102)") @(t : T?) {
-        let expected = "5 5 5 4 6\n2 120 -40\n9 41\n"
+    t |> run("`+=`, `-=`, `++` and `--` step a pointer on every lvalue kind by any integer count, under the interpreter and the JIT; `*s.p` and `*a[i]` are `*(s.p)` and `*(a[i])` as in C, but `*q++` is `(*q)++` (F102)") @(t : T?) {
+        let expected = "5 5 5 4 6\n2 120 -40 55 55 55\n9 41\n"
         let interp = runtime_child("steps_interp", STEPS_SOURCE, false)
         t |> equal(interp.rc, 0, interp.out)
         t |> equal(program_output(interp.out), expected, interp.out)

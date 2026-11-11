@@ -1418,8 +1418,8 @@ def p4_scope_fidelity_fixtures(t : T?) {
         has_text(t, text, "    var _t0 = p4_scope_fidelity__next()\n    (*_t0)++\n    var _t1 = p4_scope_fidelity__next()\n    *_t1 += 5\n")
         has_text(t, text, "    var _t5 = p4_scope_fidelity__cell_at()\n    _t5.a += 3\n")
         // an assignment read as a value reads the target the store used
-        has_text(t, text, "        *_t0 = *_t1\n        if (!(*_t0 != 0)) \{\n            break\n")
-        has_text(t, text, "    *_t2 = *_t3\n    if (*_t2 != 0) \{\n")
+        has_text(t, text, "        *_t0 = *_t1\n        if (!((*_t0) != 0)) \{\n            break\n")
+        has_text(t, text, "    *_t2 = *_t3\n    if ((*_t2) != 0) \{\n")
         has_text(t, text, "    a[_t6] = 9\n    var got : int = a[_t6]\n")
         // a bitfield widened to int, its getter and setter spelled apart, share the pinned index
         has_text(t, text, "    let _t0 = p4_scope_fidelity__pick(1)\n    p[_t0].bf = uint(int(p[_t0].bf) + 5)\n")
