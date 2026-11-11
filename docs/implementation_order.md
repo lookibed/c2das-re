@@ -1829,7 +1829,10 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `int(uint64(typeinfo sizeof` Doom 2.94 -> 0.42, lua 2.30 -> 0.64, luac 1.29 -> 0.23 (the rest
   convert a product, `sizeof(T) * n`); `uint8(` Doom 16.26 -> 15.91, lua 19.11 -> 16.25, luac
   21.73 -> 19.34; numeric conversions in all Doom 203.7 -> 198.3, lua 155.2 -> 148.0, luac 174.7
-  -> 170.1; lines unchanged. Steps (c) (narrow `==` against a literal) and (e) (`uint(int(e))`)
+  -> 170.1; lines unchanged. Density metric (`metrics/criteria_linux.json`, 1610 inputs, 0 failed,
+  re-recorded as the compile sweep): `programs` 1277.9 -> 1271.2 (`casts` 296.2 -> 289.5), lua
+  1279.7 -> 1267.1, luac 1419.4 -> 1411.2, doomgeneric 943.6 = (its row reads no `char` cast or
+  int `sizeof`), old `all` 82.0 -> 82.0. Steps (c) (narrow `==` against a literal) and (e) (`uint(int(e))`)
   are the next PR. Expected speed effect (phase-end A/B, B/A): interp 0.99-1.00 on Doom and Lua
   (fewer conversion nodes: `uint8(uint8)` is a cast node das keeps under the interpreter), JIT and
   exe 1.00 (LLVM folds them).
