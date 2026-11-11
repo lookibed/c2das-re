@@ -161,14 +161,14 @@ def private only_default(x : int; stop : bool) : int {
     var r = 0
     c_switch(x) {
         case(_) {
-            r += 1
+            r++
             if (stop) {
                 break
             }
             r += 10
         }
     }
-    return r
+    return r * 10 + x
 }
 
 // a flag loop with an own `continue` whose arm holds a `for` and a `c_do_while`, each continuing
@@ -182,7 +182,7 @@ def private inner_loops(n : int) : int {
                     if (k == 1) {
                         continue
                     }
-                    acc += 1
+                    acc++
                 }
                 var j = 0
                 c_do_while(j < 3) {
@@ -216,7 +216,7 @@ def private retarget(var x : int) : int {
     c_switch(x) {
         case(1) {
             x = 5
-            r += 1
+            r++
         }
         case(_) {
             r += 10
@@ -267,8 +267,8 @@ def test_c_switch(t : T?) {
         t |> equal(empty_first(3), 9)
     }
     t |> run("a lone default in the flag loop, loops with their own continue in an arm, a value changed in its arm, an if-chain's continue (C's values)") @(t : T?) {
-        t |> equal(only_default(3, false), 11)
-        t |> equal(only_default(3, true), 1)
+        t |> equal(only_default(3, false), 113)
+        t |> equal(only_default(3, true), 13)
         t |> equal(inner_loops(6), 52346)
         t |> equal(retarget(1), 1111)
         t |> equal(retarget(5), 1100)

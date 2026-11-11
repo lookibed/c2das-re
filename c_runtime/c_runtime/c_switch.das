@@ -169,6 +169,12 @@ def private parse_arms(expr : ExprCallMacro?; var arms : array<Arm>) : bool {
         }
         arms |> emplace(arm)
     }
+    return expand_inner(arms)
+}
+
+// the arms' inner switches expanded, innermost first; false with the error set, a case left in a
+// nested block of an arm (Duff's device) among the errors
+def private expand_inner(var arms : array<Arm>) : bool {
     var inner = new InnerSwitches()
     make_visitor(*inner) $(adapter) {
         visit_arms(arms, adapter)
