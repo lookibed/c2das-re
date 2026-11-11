@@ -1404,6 +1404,10 @@ def private shift_count(var em : Emitter; tu : CirTu; count : CirExpr; rhs : Em;
     if (das_type(em, tu, count.t, loc) == left_type) {
         return rhs
     }
+    if (count.e == "enum_ref") {
+        // an enumerator count converts directly, as its enum does (`1u << uint(TMS.TM_EQ)`)
+        return value(enum_to_integer(tu, count.enum_t, enum_item(em, tu, count.enum_t, count.item), left_type), PREC_PRIMARY)
+    }
     // a `#define` constant's name stays (`~0u << uint(SIZE_A)`)
     let named = !empty(count.macro) && rhs.text == reserved_rename(count.macro)
     let literal = count.e == "int_lit" && !named ? int_literal(left_type, count.v) : ""

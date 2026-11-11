@@ -43,6 +43,7 @@ static void enums(enum dir d, enum mask m) {
     printf("%u %lld %llu %u %d %.1f\n", (unsigned)d, (long long)d, (unsigned long long)d,
         (unsigned)(unsigned char)d, (int)(short)d, (double)d);
     printf("%u %lld %llu %.1f\n", (unsigned)m, (long long)m, (unsigned long long)m, (double)m);
+    printf("%u %llu\n", 1u << NORTH + 3, 1ull << NORTH);
 }
 
 int main(void) {
