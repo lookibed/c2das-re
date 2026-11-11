@@ -126,7 +126,7 @@ of the denominator free of the defect.
 | `repeated_blocks` | code lines covered by a window of four consecutive non-trivial lines seen twice | the C source's own repetition | das unique share / C unique share, capped |
 | `switch_flags` | `var _flag = false` switches (with `_flag ||=` and `_goto` lines recorded) | a `switch` as `if`/`elif` | clean share of the C `switch` statements |
 | `temporaries` | `var`/`let _tN`, `var _first`, `x = x` (discarded `let _tN` recorded) | none | clean share of matched functions |
-| `addr_deref` | `addr(x).f`, `addr(deref(`, `deref(addr(` | none | clean share of matched functions |
+| `addr_deref` | `addr(x).f`, `addr(deref(`, `deref(addr(`, and with a unary `*` for `deref(` (`addr(*p)`, `*addr(`) | none | clean share of matched functions |
 | `reinterpret_casts` | `reinterpret<T>(...)` of anything but a string literal | none | clean share of matched functions |
 | `late_binding` | a module named `*_link` or spelling a `*_slot` | none | clean share of modules |
 | `qualified_calls` | `__::` and `<module>::` of a program module; `crt::` and other outside modules are not counted, since `crt` is a real outside module holding the C library and a human port qualifies a call to it too | none | clean share of matched functions |
@@ -186,7 +186,7 @@ port is the base shown beside: the densities a human's das has.
 |---|---|---|
 | `casts` | a numeric type, `intptr`, `uintptr` or `enum_from_int` called on anything but a bare number literal (`int(x)`), not after `.` | |
 | `literal_casts` | lines with a cast of a bare number literal (`uint8(7)`, `uint64(0)`): a table of a thousand entries is a few lines a reader skips, and a suffix is what would replace the cast | |
-| `addr`, `deref` | every `addr(` and `deref(` | |
+| `addr`, `deref` | every `addr(` and `deref(`, and every unary `*`: the emitter spells `deref(p)` as `*p`, the same node | |
 | `reinterpret` | `reinterpret<T>(...)` of anything but a string literal | |
 | `string_casts` | `reinterpret<T>("...")` | |
 | `temp_names` | every `_tN` identifier, declared or used | |

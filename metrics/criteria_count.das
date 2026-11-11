@@ -82,6 +82,10 @@ def private is_temp_name(name : string) : bool => length(name) > 2 && is_numbere
 
 def private is_operand(t : Tok) : bool => t.kind != TokKind.punct || t.text == ")" || t.text == "]"
 
+// whether the operator at `at` takes one operand: the line's first token, or one after an
+// operator, an opening bracket or `return`
+def private is_unary_at(toks : array<Tok>; at : int) : bool => at == 0 || !is_operand(toks[at - 1]) || toks[at - 1].text == "return"
+
 let private ADDITIVE <- ["+", "-"]
 let private BITWISE <- ["&", "|", "^"]
 let private SHIFTS <- ["<<", ">>"]
@@ -221,6 +225,13 @@ def private line_defects(toks : array<Tok>; modules : table<string; bool>; var s
         let next = i + 1 < n ? toks[i + 1].text : ""
         if (t.kind == TokKind.ident) {
             ident_defects(toks, i, modules, sites, literal_cast)
+        } elif (t.text == "*" && is_unary_at(toks, i)) {
+            // `*p` is the node `deref(p)` is: the same site, its pairs `addr(*p)` and `*addr(x)`
+            sites["deref"]++
+            let in_addr = i > 1 && toks[i - 1].text == "(" && toks[i - 2].text == "addr"
+            if (in_addr || (next == "addr" && i + 2 < n && toks[i + 2].text == "(")) {
+                sites["addr_deref"]++
+            }
         } elif (literal_operation(toks, i)) {
             sites["literal_arithmetic"]++
         } elif (t.text == "?" && i + 3 < n && next == "1" && toks[i + 2].text == ":" && toks[i + 3].text == "0") {
