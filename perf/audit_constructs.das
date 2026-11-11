@@ -170,7 +170,10 @@ def private inlined_call(text : string; var error : string&) : string {
     return replaced(text, "var v : int64? = small_call__luaH_getint(t, (key + int64(r)) % 70l)", body, error)
 }
 
-def private byte_read(text : string; var error : string&) : string => replaced(text, "uint(uint8(str[l - 1ul]))", "uint(str[l - 1ul])", error)
+// the byte read before P9.13: the converter writes `uint(str[l - 1ul])` since (a conversion to the das
+// type the operand has is none), so the rewrite restores the cast and the row's factor is the inverse
+// of its cost
+def private byte_read(text : string; var error : string&) : string => replaced(text, "uint(str[l - 1ul])", "uint(uint8(str[l - 1ul]))", error)
 
 // the pointer subscripts before P7.0v: the converter writes das's pointer index `addr(p[i])` since,
 // so the rewrite restores `addr(deref(p + i))` and the row's factor is the inverse of its cost
