@@ -127,6 +127,9 @@ def test_do_while(t : T?) {
     t |> run("a continue reaches the test, of its own loop only; a match arm's is the loop's") @(t : T?) {
         t |> equal(skip_even(5), 309)
         t |> equal(skip_even(0), 101)
+        // the last pass's `continue` meets a false test: a skipped test would run on
+        t |> equal(skip_even(4), 204)
+        t |> equal(arm_continue(3), 2003)
         t |> equal(arm_continue(5), 4012)
     }
     t |> run("a goto leaves the body") @(t : T?) {
