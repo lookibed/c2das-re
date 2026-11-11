@@ -112,12 +112,10 @@ with a hoisted statement takes `emit_cond`'s if-chain). C's conversions between 
 those sites are looked through only while they keep the value: its promotion, and a widening
 that keeps its sign; a narrowing or a sign change (`(unsigned) e` of an enum with a negative
 enumerator) stops the look-through, since C compares the converted values. Where C reads the
-enum as an integer the value goes through `int(e)`, bit-exact for every 32-bit type - a
-relational operator, an index, arithmetic, a `printf` argument - the workhorse cast following
-when C computes in another type (`uint(int(e))`), and through `uint(int(e))` before a 64-bit or
-floating target when the enum's underlying type is unsigned, where `int(e)` would read a value
-past INT_MAX as a sign. An enumerator C types `unsigned int` (one of its enum exceeds INT_MAX)
-is spelled `uint(int(E.X))`. A conversion into an enum from anything else is
+enum as an integer the value is das's direct conversion to that type, `int(e)` for a relational
+operator, an index, arithmetic, `uint(e)` where C computes in `unsigned` (section "Enum
+conversions" of `ARCHITECTURE_EMITTER_TEXT.md`). An enumerator C types `unsigned int` (one of its
+enum exceeds INT_MAX) is spelled `uint(E.X)`. A conversion into an enum from anything else is
 `enum_from_int(type<E>, i)` over the `int` value, which `++`, `+= 1` and `t = t + 1` all take
 (`t = enum_from_int(type<E>, int(t) + 1)`); a compound assignment computes in the type clang
 gave its right side, except a shift, which computes in the promoted left side, `uint` for an
