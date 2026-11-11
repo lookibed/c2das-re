@@ -1677,7 +1677,26 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   compiles into the same module, and a `static_assert` costs nothing at run time.
 - **P9.7 A named `c_runtime` helper for repeated cast chains** (`uint8(*unsafe(reinterpret<uint8?>(...)))`
   and its like), decided by their count in Doom and Lua output: only where the helper is shorter and
-  no slower.
+  no slower. Counts on main 4c57c7b (Doom source layout, Lua source layout, per 1000 lines): the named
+  chain, a conversion of a dereferenced reinterpret, is Doom 0.26 (8), lua 0.11 (3), luac 0 after
+  P9.1's `p[i]` and P9.4's suffixes: no helper for it. The chain that repeats is a C string literal,
+  `unsafe(reinterpret<uint8?>("..."))` in an initializer and `reinterpret<uint8?>("...")` in a body,
+  Doom 45.3 (1369), lua 32.3 (897), luac 30.5 (647), so the helper is that one: `c_runtime/cstr`'s
+  call macro `cstr("...")`, which expands in place to the literal's `reinterpret<uint8?>` flagged safe,
+  as `enum_from_int` does, so it is no function and no call node under any tier (the c_runtime test
+  walks the compiled program for a call), never `[inline]` (1.69x slower under the interpreter, the
+  2026-11-02 measurement). Measured on the output (2026-11-11, main 4c57c7b against this branch): every
+  literal is `cstr("...")`; `unsafe(` per 1000 lines Doom 38.1 -> 17.9, lua 10.0 -> 0.1, luac 7.6
+  -> 0.1; `[c_function]` Doom 635 -> 612, lua 775 -> 683, luac 553 -> 519 (a body whose only unsafe
+  operation was a literal); bytes per line Doom 48.8 -> 47.9, lua 36.4 -> 35.9; lines over 160 bytes
+  Doom 161 -> 157, lua 194 -> 173, luac 156 -> 144; lines Doom 30240 -> 30221, lua 27807 -> 27731
+  (the formatter rejoins shortened lines). The metrics count `cstr("...")` as the reinterpreted
+  literal it expands to (`string_literals`, `string_casts`), a C string still bytes and not a das
+  string. Density metric (`metrics/criteria_linux.json`, 1610 inputs): flat by design, the sites
+  the same; `long_lines` `programs` 16.7 -> 16.2 (lua 11.8 -> 10.5); `programs` 1273.9 -> 1275.5, Lua
+  1269.4 -> 1275.0 (fewer lines under the same sites); old `all` 81.6 -> 81.6. Expected speed effect (phase-end A/B): none on any lane, the expansion
+  is the node the literal was; a function that loses `[c_function]` loses its body's `unsafe` scope,
+  a compile-time mark (flat; if anything a block node fewer under the interpreter).
 
 ## P6 — Doom
 
