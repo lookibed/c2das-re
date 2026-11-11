@@ -270,6 +270,7 @@ let CSTR_ARRAY = "cstr_array"
 let CSTR = "cstr"
 let INT_OF = "int_of"
 let DO_WHILE = "c_do_while"
+let C_SWITCH = "c_switch"
 let JMP_TARGET = "c_jmp_target"
 let UNIT_BYTES = "c_unit_bytes"
 let LONG_BITS_GLOBAL = "c_long_bits"
@@ -290,7 +291,7 @@ let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE
 //! The public names of the c_runtime modules a converted module may require, each top-level
 //! function, global, type and call macro of `c_runtime/c_runtime/*.das` (repo root);
 //! `converter/tests/test_link.das` fails when a definition there is missing from it.
-let C_RUNTIME_EXPORTS <- ["BitAccess", "BitStore", "CBitfieldsAnnotation", "CCompare", "CDoWhileMacro", "CFormatDirective", "CFunctionAnnotation", "CJmpBuf", "CSignalHandler", "CStorage", "CUnionAnnotation", "CVaCursor", "CVaList", "CVal", "CVolatileLoadMacro", "C_EINVAL", "C_EOF", "C_SIGNAL_LIMIT", "C_SIG_ERR_BITS", "C_SIG_IGN_BITS", "C_STORAGES", "CstrArrayMacro", "CstrMacro", "EnumFromIntMacro", "IntOfMacro", "VaNone", "VariadicAnnotation", "VariadicCallMacro", "add_bit_pair", "bit_getter", "bit_setter", "c_abort", "c_argc", "c_argv", "c_assert_fail", "c_atexit", "c_bsearch", "c_bswap16", "c_bswap32", "c_bswap64", "c_clrsb", "c_clz", "c_ctz", "c_dialect_spec", "c_do_while", "c_exit", "c_ffs", "c_is_float_conversion", "c_is_int_conversion", "c_is_wide_length", "c_jmp_target", "c_long_bits", "c_longjmp", "c_parity", "c_parse_directive", "c_popcount", "c_prefetch", "c_qsort", "c_run_atexit", "c_runtime_init", "c_signal", "c_signal_msvc", "c_signbit", "c_unit_bytes", "c_unreachable", "c_vformat", "c_vfprintf", "c_volatile_load", "c_volatile_load_jit", "c_volatile_read", "c_volatile_store", "c_vprintf", "c_vsnprintf", "c_vsprintf", "c_vsscanf", "cstr", "cstr_array", "end_index", "enum_from_int", "field_index", "fprintf", "int_of", "printf", "register_llvm_code_generators", "snprintf", "sprintf", "sscanf", "storage_of", "storage_of_bytes", "to_cvalist", "va_args", "va_begin", "va_d", "va_i", "va_p", "va_rest"]
+let C_RUNTIME_EXPORTS <- ["BitAccess", "BitStore", "CBitfieldsAnnotation", "CCompare", "CDoWhileMacro", "CFormatDirective", "CFunctionAnnotation", "CJmpBuf", "CSignalHandler", "CStorage", "CSwitchMacro", "CUnionAnnotation", "CVaCursor", "CVaList", "CVal", "CVolatileLoadMacro", "C_EINVAL", "C_EOF", "C_SIGNAL_LIMIT", "C_SIG_ERR_BITS", "C_SIG_IGN_BITS", "C_STORAGES", "CstrArrayMacro", "CstrMacro", "EnumFromIntMacro", "IntOfMacro", "VaNone", "VariadicAnnotation", "VariadicCallMacro", "add_bit_pair", "bit_getter", "bit_setter", "c_abort", "c_argc", "c_argv", "c_assert_fail", "c_atexit", "c_bsearch", "c_bswap16", "c_bswap32", "c_bswap64", "c_clrsb", "c_clz", "c_ctz", "c_dialect_spec", "c_do_while", "c_exit", "c_ffs", "c_is_float_conversion", "c_is_int_conversion", "c_is_wide_length", "c_jmp_target", "c_long_bits", "c_longjmp", "c_parity", "c_parse_directive", "c_popcount", "c_prefetch", "c_qsort", "c_run_atexit", "c_runtime_init", "c_signal", "c_signal_msvc", "c_signbit", "c_switch", "c_unit_bytes", "c_unreachable", "c_vformat", "c_vfprintf", "c_volatile_load", "c_volatile_load_jit", "c_volatile_read", "c_volatile_store", "c_vprintf", "c_vsnprintf", "c_vsprintf", "c_vsscanf", "cstr", "cstr_array", "end_index", "enum_from_int", "field_index", "fprintf", "int_of", "printf", "register_llvm_code_generators", "snprintf", "sprintf", "sscanf", "storage_of", "storage_of_bytes", "to_cvalist", "va_args", "va_begin", "va_d", "va_i", "va_p", "va_rest"]
 
 let PREC_PRIMARY = 14
 let PREC_UNARY = 13
@@ -5564,6 +5565,11 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
     // a re-dispatch stores a value no case holds into the condition, so the case tests need not
     // test the pending goto; under the jump table it jumps to its label and tests no case
     let sentinel = restart > 0 && dispatch.span == 0 ? restart_sentinel(em, tu, switch_cond_type(tu, st), groups) : ""
+    if (restart == 0 && dispatch.span == 0 && switch_macro_fits(em, tu, st, groups)) {
+        emit_switch_macro(em, tu, st, groups)
+        em.char_cases <- outer_chars
+        return
+    }
     let cond = switch_condition(em, tu, st, cond_t, !empty(sentinel))
     if (restart > 0) {
         label_cases(em, st, empty(sentinel) ? "" : "{cond} = {sentinel}", dispatch)
@@ -5583,6 +5589,75 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
         emit_flag_loop(em, tu, groups, cond, cond_t, st.body_s, restart, !empty(sentinel), dispatch)
     }
     em.char_cases <- outer_chars
+}
+
+// whether switch `st` prints as c_runtime's `c_switch` shape macro: every case value of an enum
+// condition has its enumerator, and a `continue` that reaches the loop around it is that loop's
+// own (the macro rewrites it), not an outer matched-flag switch's or a goto's
+def private switch_macro_fits(em : Emitter; tu : CirTu; st : CirStmt; groups : array<CaseGroup>) : bool {
+    let cond_t = switch_cond_type(tu, st)
+    if (empty(groups) || (continues_out(st.body_s) && !empty(em.cont_flags) && !empty(em.cont_flags |> back()))) {
+        return false
+    }
+    if (kind_of(tu, cond_t) == "enum") {
+        for (g in groups) {
+            for (v in g.values) {
+                if (empty(enumerator_of(tu, cond_t, "{v}"))) {
+                    return false
+                }
+            }
+        }
+    }
+    return true
+}
+
+// `c_switch (c) { case (A, B) { ... } ... case (_) { ... } }`: each group an arm in C's order, as
+// C wrote it, its breaks and falling into the next arm included; the macro
+// (`c_runtime/c_switch.das`) expands to the if-chain or the matched-flag loop, as `is_if_chain`
+// tells, its group-level compound literals declared before it in the loop's case
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#switch-macro")]
+def private emit_switch_macro(var em : Emitter; tu : CirTu; st : CirStmt; groups : array<CaseGroup>) {
+    let cond_t = switch_cond_type(tu, st)
+    let operand = switch_enum_operand(tu, st)
+    let c = operand != null ? emit_expr(em, tu, operand, st.loc) : to_int(em, emit_expr(em, tu, st.cond, st.loc))
+    flush_pre(em)
+    for (g in groups) {
+        for (child in g.stmts) {
+            if (child.s == "decl" && key_exists(em.prog.carried, intptr(child))) {
+                line(em, "var {das_name(em, child.name)} : {das_type_dims(em, tu, child.t, child.loc, child.dims)}")
+            }
+        }
+    }
+    em.requires |> insert("c_runtime/{C_SWITCH}")
+    let looped = !is_if_chain(groups)
+    let decls_at = length(em.out)
+    let decls_depth = em.depth
+    let outer_case_depth = em.case_depth
+    var outer_decls <- em.case_literal_decls
+    if (looped) {
+        em.case_depth = em.stmt_depth + 1
+    }
+    open_block(em, "{C_SWITCH} ({c.text})")
+    em.cont_flags |> push("")
+    em.break_gotos |> push("")
+    let on_enum = kind_of(tu, cond_t) == "enum"
+    for (g in groups) {
+        var inscope values <- [for (v in g.values); on_enum ? enum_item(em, tu, cond_t, enumerator_of(tu, cond_t, "{v}")) : case_literal(em, tu, cond_t, v)]
+        if (g.is_default) {
+            values |> push("_")
+        }
+        open_block(em, "case ({join(values, ", ")})")
+        emit_group(em, tu, g, false)
+        close_block(em)
+    }
+    em.break_gotos |> pop()
+    em.cont_flags |> pop()
+    close_block(em)
+    if (!empty(em.case_literal_decls)) {
+        em.out |> push(join([for (decl in em.case_literal_decls); repeat("    ", decls_depth) + decl + "\n"], ""), decls_at)
+    }
+    em.case_depth = outer_case_depth
+    em.case_literal_decls <- outer_decls
 }
 
 // the case values switch body `body` labels with a character literal
@@ -6807,6 +6882,9 @@ def private block_returns(lines : array<Ln>; from, to, indent : int) : bool {
     if (head == "while (true) \{") {
         return length(arms) == 2 && block_returns(lines, arms[0] + 1, arms[1], indent + 4) && !breaks_out(lines, arms[0] + 1, arms[1], indent + 4)
     }
+    if (starts_with(head, "{C_SWITCH} (")) {
+        return length(arms) == 2 && switch_returns(lines, arms[0] + 1, arms[1], indent + 4)
+    }
     if (!starts_with(head, "if (") || lines[arms[length(arms) - 2]].text != "\} else \{") {
         return false
     }
@@ -6817,6 +6895,46 @@ def private block_returns(lines : array<Ln>; from, to, indent : int) : bool {
         }
     }
     return true
+}
+
+// the `case (...) { }` arms of a `c_switch` in `lines[from..to)` at `indent`: whether one is the
+// default and each ends in a `return` (a bare block's last statement looked into, as the macro
+// reads an arm's end), with no own `break`, so the macro expands to an if-chain with an `else`
+// whose arms each return
+def private switch_returns(lines : array<Ln>; from, to, indent : int) : bool {
+    let heads <- [for (k in range(from, to)); k; where lines[k].ind == indent]
+    var has_default = false
+    for (a in range(length(heads) / 2)) {
+        let open = heads[2 * a]
+        let close = heads[2 * a + 1]
+        has_default ||= ends_with(lines[open].text, "(_) \{") || ends_with(lines[open].text, ", _) \{")
+        if (!ends_in_return_line(lines, open + 1, close, indent + 4) || breaks_out(lines, open + 1, close, indent + 4)) {
+            return false
+        }
+    }
+    return has_default && length(heads) % 2 == 0
+}
+
+// whether the last statement of `lines[from..to)` at `indent` is a `return`, a bare block's looked into
+def private ends_in_return_line(lines : array<Ln>; from, to, indent : int) : bool {
+    var last = -1
+    for (k in range(from, to)) {
+        if (lines[k].ind == indent && !starts_with(lines[k].text, "\}") && !starts_with(lines[k].text, "//")) {
+            last = k
+        }
+    }
+    if (last < 0) {
+        return false
+    }
+    let head = lines[last].text
+    if (head == "\{") {
+        var close = last + 1
+        while (close < to && lines[close].ind != indent) {
+            close++
+        }
+        return close < to && ends_in_return_line(lines, last + 1, close, indent + 4)
+    }
+    return head == "return" || starts_with(head, "return ")
 }
 
 // whether a `break` of the loop whose body is `lines[from..to)` at `indent` can run: one at the

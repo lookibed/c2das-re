@@ -343,8 +343,8 @@ def p8_literal_nul_fixtures(t : T?) {
         has_text(t, text, "\\xfe\\xff\", 256)\n")
         has_text(t, text, "var private p8_literal_nul__exact : uint8[3] = fixed_array(uint8(97), uint8(0), uint8(98))\n")
         // a character constant is its das escape, a case label too
-        has_text(t, text, "    if (_cond == '\\0') \{\n")
-        has_text(t, text, "    \} elif (_cond == '\\x1b') \{\n")
+        has_text(t, text, "    c_switch(c) \{\n        case('\\0') \{\n")
+        has_text(t, text, "        case('\\x1b') \{\n")
         has_text(t, text, "'\\0', '\\a', '\\v', '\\x7f', '\\x1b', '\\xff', '\\x01')")
     }
 }
@@ -705,23 +705,20 @@ def p3_fixtures(t : T?) {
     t |> run("switch: the if-chain where no case falls through and breaks are tail-only, the matched-flag loop otherwise, enum compares, the cont epilogue, nested switches") @(t : T?) {
         var text : string
         check_fixture(t, "p3_switch", text)
-        has_text(t, text, "let _cond = x\n    if (_cond == 1) \{\n        r = 10\n    \} elif (_cond == 2 || _cond == 3) \{\n        r = 20\n    \} elif (_cond == -4) \{")
-        has_text(t, text, "if (_cond == 1u) \{\n        return 1\n    \} elif (_cond == 7u) \{\n        return 7\n    \} else \{\n        return 99")
-        has_text(t, text, "let _cond = t\n    if (_cond == mobjtype_t.MT_PLAYER) \{")
-        has_text(t, text, "_flag ||= _cond == 5\n        if (_flag) \{\n            let _t1 = n\n            n++\n            trace[_t1] = 5\n        \}\n        _flag ||= _cond == 9")
-        // a case neither a fall-through nor a goto enters tests its labels alone
-        has_text(t, text, "        var _flag = false\n        if (_cond == 1) \{\n            let _t0 = n\n            n++\n            trace[_t0] = 1\n            break\n        \}\n        _flag ||= _cond == 5\n")
-        has_text(t, text, "        if (!(_cond == 1 || _cond == 5 || _cond == 9)) \{\n")
-        // a plain `default` between a fall-through pair and a plain case
-        has_text(t, text, "            break\n        \}\n        if (!(_cond == 1 || _cond == 2 || _cond == 3)) \{\n            r += 50\n            break\n        \}\n        if (_cond == 3) \{\n            r += 300\n")
-        has_text(t, text, "    for (i in range(6)) \{\n        let _cond = i % 3\n        var _cont = false\n        while (true) \{")
-        has_text(t, text, "_cont = true\n                break")
-        has_text(t, text, "if (_cont) \{\n            continue\n        \}")
-        has_text(t, text, "let _cond2 = b\n        if (_cond2 == 1) \{")
-        has_text(t, text, "if (_cond == 8589934592l) \{")
-        has_text(t, text, "if (b == 2) \{\n                break\n            \}")
-        // a flag loop whose every case only its own labels enter declares no flag
-        has_text(t, text, "    let _cond = x\n    while (true) \{\n        if (_cond == 1) \{\n            r += 1\n")
+        // c_switch: C's arms, tail breaks and all, the value read in place (P9.12)
+        has_text(t, text, "    c_switch(x) \{\n        case(1) \{\n            r = 10\n            break\n        \}\n        case(2, 3) \{\n            r = 20\n            break\n        \}\n        case(-4) \{\n            \{\n                var k : int = x * 2\n")
+        // every arm returns and one is the default: no trailing zero return
+        has_text(t, text, "    c_switch(u) \{\n        case(_) \{\n            return 99\n        \}\n        case(1u) \{\n            return 1\n        \}\n        case(7u) \{\n            return 7\n        \}\n    \}\n\}\n")
+        has_text(t, text, "    c_switch(t) \{\n        case(mobjtype_t.MT_PLAYER) \{")
+        // falling into the next arm: no break at the arm's end
+        has_text(t, text, "        case(5) \{\n            let _t1 = n\n            n++\n            trace[_t1] = 5\n        \}\n        case(9) \{")
+        has_text(t, text, "        case(1) \{\n            r += 1\n        \}\n        case(2) \{\n            r += 2\n            break\n        \}\n        case(_) \{\n            r += 50\n            break\n        \}\n        case(3) \{\n")
+        has_text(t, text, "            r += 1\n            if (y != 0) \{\n                break\n            \}\n            r += 10\n            break\n")
+        has_text(t, text, "    for (i in range(6)) \{\n        c_switch(i % 3) \{\n            case(1) \{\n                continue\n            \}\n")
+        has_text(t, text, "            c_switch(b) \{\n                case(1) \{\n                    r = 11\n                    break\n")
+        has_text(t, text, "    c_switch(v) \{\n        case(8589934592l) \{")
+        has_text(t, text, "if (b == 2) \{\n                    break\n                \}")
+        t |> equal(text |> find("_flag") < 0 && text |> find("_cond") < 0, true, text)
     }
     t |> run("goto: labels numbered per function with the C name as a comment, forward and backward jumps, a jump out of nested loops, a block flattened for a goto into it") @(t : T?) {
         var text : string
@@ -1401,15 +1398,14 @@ def p4_scope_fidelity_fixtures(t : T?) {
         has_text(t, text, "    var g1 : int = 3\n    n += g1\n    label 1:  // in\n    n += 1\n    return n * 100 + g\n")
         has_text(t, text, "    var t1 : int = 2\n    n += t1\n")
         // a local a later case reaches is declared before the lowered switch
-        has_text(t, text, "    let _cond = k\n    var v : int\n    while (true) \{")
-        has_text(t, text, "        if (_flag) \{\n            v = 1\n            r += v\n        \}")
-        has_text(t, text, "    let _cond = k\n    var w : int\n    if (_cond == 0) \{\n        w = 5\n")
+        has_text(t, text, "    var v : int\n    c_switch(k) \{\n        case(0) \{\n            v = 1\n            r += v\n        \}\n        case(1) \{\n")
+        has_text(t, text, "    var w : int\n    c_switch(k) \{\n        case(0) \{\n            w = 5\n")
         // a later case's block or `for` declaring the name binds its own references: the
         // switch's union stays in its branch, the `int` a later label names is carried
-        has_text(t, text, "    var v1 : int\n    if (_cond == 0) \{\n        var u : un\n        u.i = 5\n        v1 = 1\n")
-        has_text(t, text, "            var u1 : un\n            u1.i = 9\n")
-        has_text(t, text, "        for (v2 in range(3)) \{\n            r += v2\n")
-        has_text(t, text, "        v1 = 7\n        r = v1\n")
+        has_text(t, text, "    var v1 : int\n    c_switch(k) \{\n        case(0) \{\n            var u : un\n            u.i = 5\n            v1 = 1\n")
+        has_text(t, text, "                var u1 : un\n                u1.i = 9\n")
+        has_text(t, text, "            for (v2 in range(3)) \{\n                r += v2\n")
+        has_text(t, text, "            v1 = 7\n            r = v1\n")
         // a step's value reads the index the step used
         has_text(t, text, "    let _t0 = k\n    k++\n    let _t1 = arr[_t0].a\n    arr[_t0].a++\n    var v : int = _t1\n")
         has_text(t, text, "    arr[_t2].a++\n    var w : int = arr[_t2].a\n")
@@ -1438,11 +1434,11 @@ def p4_scope_fidelity_fixtures(t : T?) {
         // a plain `=` statement pins nothing
         has_text(t, text, "    *p4_scope_edges__sink() = 21\n")
         // a carried declaration without an initializer, and one under a nested `if`
-        has_text(t, text, "p4_scope_edges__carried_bare(k : int) : int \{\n    var r : int = 0\n    let _cond = k\n    var v : int\n")
-        has_text(t, text, "p4_scope_edges__nested_use(k : int) : int \{\n    var r : int = 0\n    let _cond = k\n    var v : int\n")
+        has_text(t, text, "p4_scope_edges__carried_bare(k : int) : int \{\n    var r : int = 0\n    var v : int\n    c_switch(k) \{\n")
+        has_text(t, text, "p4_scope_edges__nested_use(k : int) : int \{\n    var r : int = 0\n    var v : int\n    c_switch(k) \{\n")
         // a `for` declaring the name among others binds its own: the union stays in its branch
-        has_text(t, text, "p4_scope_edges__for_declares_two(k : int) : int \{\n    var r : int = 0\n    let _cond = k\n    if (_cond == 0) \{\n        var u : un\n")
-        has_text(t, text, "            var a : int = 1\n            var u1 : int = 0\n")
+        has_text(t, text, "p4_scope_edges__for_declares_two(k : int) : int \{\n    var r : int = 0\n    c_switch(k) \{\n        case(0) \{\n            var u : un\n")
+        has_text(t, text, "                var a : int = 1\n                var u1 : int = 0\n")
     }
 }
 
@@ -1566,8 +1562,7 @@ def p4_matrix_leftover_fixtures(t : T?) {
         // with no `continue` in the body the increment's statements end it
         has_text(t, text, "                _t0 = addr(_cl7[0])\n            \}\n            p = _t0\n            i++\n        \}\n")
         // a case group's object is declared before the matched-flag loop and assigned in its group
-        has_text(t, text, "    let _cond = j\n    var _cl4 : int[3]\n    var _cl5 : int[3]\n    while (true) \{\n")
-        has_text(t, text, "        if (_flag) \{\n            _cl4 = fixed_array(1, 2, 3)\n            q = addr(_cl4[0])\n")
+        has_text(t, text, "    var _cl4 : int[3]\n    var _cl5 : int[3]\n    c_switch(j) \{\n        case(0) \{\n            _cl4 = fixed_array(1, 2, 3)\n            q = addr(_cl4[0])\n        \}\n")
         // the arms of a `for` head, `&&` and a `void` conditional declare their objects before it
         has_text(t, text, "    \{\n        var _cl4 : int[2]\n        var _cl5 : int[2]\n        while (true) \{\n            var _t1 = k < 3\n")
         has_text(t, text, "    var _cl6 : int[2]\n    var _t2 = c != 0\n    if (_t2) \{\n        _cl6 = fixed_array(7, 8)\n")
@@ -1622,7 +1617,7 @@ def p4_matrix_leftover_shapes(t : T?) {
         check_fixture(t, "p4_setjmp_general", text)
         has_text(t, text, "        try \{\n            r = _sj_val\n            p4_setjmp_general__sum += r\n")
         has_text(t, text, "        try \{\n            var r : int = _sj_val\n")
-        has_text(t, text, "        try \{\n            let _cond = _sj_val\n")
+        has_text(t, text, "        try \{\n            c_switch(_sj_val) \{\n                case(0) \{\n")
         has_text(t, text, "        try \{\n            _sj_returned = invoke($() : bool \{\n                if (_sj_val == 4) \{\n")
         has_text(t, text, "        try \{\n            _sj_returned = invoke($() : bool \{\n                if (2 == _sj_val) \{\n")
         has_text(t, text, "        try \{\n            var c : uint8 = uint8(_sj_val)\n")
@@ -1941,7 +1936,7 @@ def p5_lua_expression_fixtures(t : T?) {
         // a label stands bare, at a branch's or the function body's end too: no `c_label_end()`
         // statement, no module no-op (P8.10)
         t |> equal(text |> find("c_label_end") >= 0, false, text)
-        has_text(t, text, "                label 3:  // no_save\n            \}\n")
+        has_text(t, text, "                    label 3:  // no_save\n                    break\n                \}\n")
         has_text(t, text, "    label 1:  // done\n\}\n")
         has_text(t, text, "    label 2:  // returning\n    acc += 1000\n")
         // a `void *` among the trailing arguments stays a `void?`, after tuples of other pointers too (F61 fixed)
@@ -2002,7 +1997,7 @@ def p7_goto_dispatch_fixtures(t : T?) {
         has_text(t, text, "        label 9:  // no case: switch end\n        break\n")
         has_text(t, text, "    label 10:  // case 0\n    label 15:  // do\n")
         // sparse, falling through, under 8 values, past int and Duff's device keep their forms
-        has_text(t, text, "    \} elif (_cond == 2) \{\n        return 3\n")
+        has_text(t, text, "        case(2) \{\n            return 3\n")
         // a label that does not open its case: the branch before it ends in an `else` too
         has_text(t, text, "            r += 1\n            break\n        \}\n        label 11:  // mid\n        _flag ||= _goto == 1  // mid\n")
         // a C label numbers above the table's labels and their goto-target slot, and a goto out of
@@ -2347,7 +2342,7 @@ def p7_fused_loop_fixtures(t : T?) {
         has_text(t, text, "    while (i < n) \{\n        if (a[i] == 2) \{\n")
         has_text(t, text, "        t += i\n        i = 0\n        while (i < n) \{\n            t++\n            i++\n        \}\n    \}\n")
         has_text(t, text, "    while (i < n) \{\n        t++\n        i++\n    \}\n    while (true) \{\n        if (t > 2) \{\n")
-        has_text(t, text, "        \}\n        let _cond = k\n")
+        has_text(t, text, "        \}\n        c_switch(k) \{\n            case(0) \{\n                continue\n")
         has_text(t, text, "    while (i < n) \{\n        t += 2\n")
         // a later `do` or `while` whose `continue` skips the store, a volatile counter, an enclosing
         // loop's test or step reading it, a loop under a case label followed by `break`: `while`
@@ -2356,7 +2351,7 @@ def p7_fused_loop_fixtures(t : T?) {
         has_text(t, text, "    c_volatile_store(i, 0)\n    while (c_volatile_load(i) < n) \{\n")
         has_text(t, text, "    while (k < 3 + i) \{\n        i = 0\n        while (i < n) \{\n")
         has_text(t, text, "    k += i + 2\n")
-        has_text(t, text, "if (_cond == 1) \{\n        i = 0\n        while (i < n) \{\n")
+        has_text(t, text, "        case(1) \{\n            i = 0\n            while (i < n) \{\n")
         // a `break` or `continue` in a statement that never names the counter, a body that writes
         // it, two declarations of the name, a later loop's first pass or a later `do`'s test
         // reading it, a store that reads it or a compound one, Duff's device: `while`
@@ -2372,7 +2367,7 @@ def p7_fused_loop_fixtures(t : T?) {
         // an initializer with an effect or a switch's carried declaration stays: a free name;
         // a global `i1` is skipped, and each loop of the counter takes the same free name
         has_text(t, text, "    var i : int = sink(9)\n    var t : int = 0\n    for (i2 in range(n)) \{\n")
-        has_text(t, text, "        if (_flag) \{\n            for (i2 in range(n)) \{\n                t += i2\n")
+        has_text(t, text, "        case(1) \{\n            for (i2 in range(n)) \{\n                t += i2\n")
         has_text(t, text, "    for (i2 in range(n)) \{\n        t += i2\n    \}\n    for (i2 in range(2, n)) \{\n")
         // count-down kept: a volatile count, a 64-bit count
         has_text(t, text, "        let _t0 = c_volatile_load(v)\n")
@@ -2716,6 +2711,32 @@ def readability_fixtures(t : T?) {
     p9_ptr_step_fixtures(t)
     p9_truth_fixtures(t)
     p9_do_while_fixtures(t)
+    p9_switch_fixtures(t)
+}
+
+// P9.12: a C switch is `c_switch (c) { case (A, B) { ... } case (_) { ... } }`, c_runtime's shape
+// macro with C's meaning
+def p9_switch_fixtures(t : T?) {
+    t |> run("a switch is c_switch with C's arms: falling into the next arm, default anywhere, break, continue through nested switches and a do; the value is read once") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_switch", text)
+        has_text(t, text, "require c_runtime/c_switch\n")
+        has_text(t, text, "    c_switch(p9_switch__next(k)) \{\n        case(0) \{\n            r = 1\n        \}\n        case(1) \{\n            r += 10\n            break\n        \}\n        case(_) \{\n            r = -1\n")
+        has_text(t, text, "    c_switch(s.kind) \{\n        case(3) \{\n            r += 300\n            break\n")
+        // every arm returns and one is the default: das reads the if-chain it expands to as returning
+        has_text(t, text, "        case(_) \{\n            return cstr(\"none\")\n        \}\n    \}\n\}\n")
+        has_text(t, text, "        case(color.GREEN, color.BLUE) \{\n")
+        // an arm ending in an `if` whose arms return falls through for the macro: the zero return stays
+        has_text(t, text, "        case(_) \{\n            return 7\n        \}\n    \}\n    return 0\n\}\n")
+        // an enum value with no enumerator keeps the spelled chain
+        has_text(t, text, "    let _cond = c\n    if (_cond == color.RED) \{\n")
+        has_text(t, text, "                    case(0) \{\n                        continue\n                    \}\n")
+        has_text(t, text, "                acc += 100\n            \}\n            case(_) \{\n                acc += 1000\n")
+        has_text(t, text, "            case(7) \{\n                return acc + i\n")
+        // `_` is the macro's default, so a C name `_` is no das one
+        has_text(t, text, "(var fallthrough : int; var _c__ : int)")
+        t |> equal(text |> find("_flag") < 0, true, text)
+    }
 }
 
 // P9.11: a `do` whose test hoists nothing is `c_do_while (c) { body }`, c_runtime's shape macro
@@ -2727,7 +2748,8 @@ def p9_do_while_fixtures(t : T?) {
         has_text(t, text, "    c_do_while(i < n) \{\n        i++\n        if (i == stop) \{\n            break\n        \}\n        if (i == bail) \{\n            return -1\n")
         // an inner do's continue is its own; the switch's continue reaches the do's test
         has_text(t, text, "        var j : int = 0\n        c_do_while(j < 2) \{\n            j++\n            if (j == 1) \{\n                continue\n")
-        has_text(t, text, "        if (_cont) \{\n            continue\n        \}\n        acc += 1000\n    \}\n")
+        has_text(t, text, "        c_switch(i % 4) \{\n            case(0) \{\n                continue\n            \}\n")
+        has_text(t, text, "                acc += 1\n                break\n            \}\n        \}\n        acc += 1000\n    \}\n")
         has_text(t, text, "    c_do_while(c != '\\n' && c != 0) \{\n")
         has_text(t, text, "    c_do_while(p9_do_while__next(addr(k)) < n) \{\n        passes++\n    \}\n")
         // a test that hoists statements: the bottom test without a continue, the flag with one
@@ -2865,7 +2887,7 @@ def p9_plain_block_fixtures(t : T?) {
         check_fixture(t, "p9_plain_blocks", text)
         has_text(t, text, "    var s : int = 0\n    s += a\n    s += b\n    \{\n")
         has_text(t, text, "    \{\n        // a block that declares keeps its braces\n        var t : int = s * 2\n        s += t\n    \}\n")
-        has_text(t, text, "    \} elif (_cond == 1) \{\n        return b\n    \} else \{\n")
+        has_text(t, text, "        case(1) \{\n            return b\n        \}\n")
         has_text(t, text, "    i = 1\n    while (i < 50) \{\n")
         has_text(t, text, "    \{\n        var j : int = 1\n        while (j < 50) \{\n")
         has_text(t, text, "    var t : int = 0\n    \{\n        label 1:  // again\n")
@@ -2873,7 +2895,7 @@ def p9_plain_block_fixtures(t : T?) {
     t |> run("a zero `return` after an `if` chain whose arms return, or a loop whose body returns, goes; after a nested return or a `break` it stays (F101)") @(t : T?) {
         var text : string
         check_fixture(t, "p9_plain_blocks", text)
-        has_text(t, text, "        return null\n    \}\n\}\n")
+        has_text(t, text, "            return null\n        \}\n    \}\n\}\n")
         has_text(t, text, "            return -n\n        \}\n    \}\n\}\n")
         has_text(t, text, "        n += 3\n    \}\n    return 0\n\}\n")
         has_text(t, text, "        return 1\n    \}\n    return 0\n\}\n")
@@ -2884,12 +2906,12 @@ def p7_readable_fixtures(t : T?) {
     t |> run("a C character literal is a das one, a case label too, escapes included; a case a number labels and a multi-character constant stay numbers") @(t : T?) {
         var text : string
         check_fixture(t, "p7_chars", text)
-        has_text(t, text, "    if (_cond == 's') \{\n        return 1\n    \} elif (_cond == '%') \{\n")
-        has_text(t, text, "    \} elif (_cond == '\\n') \{\n")
-        has_text(t, text, "    \} elif (_cond == '\\\\') \{\n")
-        has_text(t, text, "    \} elif (_cond == '\\'') \{\n")
-        has_text(t, text, "    \} elif (_cond == 38) \{\n")
-        has_text(t, text, "    \} elif (_cond == '\\a') \{\n")
+        has_text(t, text, "    c_switch(c) \{\n        case('s') \{\n            return 1\n        \}\n        case('%') \{\n")
+        has_text(t, text, "        case('\\n') \{\n")
+        has_text(t, text, "        case('\\\\') \{\n")
+        has_text(t, text, "        case('\\'') \{\n")
+        has_text(t, text, "        case(38) \{\n")
+        has_text(t, text, "        case('\\a') \{\n")
         has_text(t, text, "crt::strchr(fmt, '%')")
         has_text(t, text, "var q : uint8 = uint8('\\'')")
         has_text(t, text, "int(*p) == '\{' || int(*p) == '\}'")
@@ -2910,8 +2932,8 @@ def p7_readable_fixtures(t : T?) {
         // an apostrophe in `#if 0` prose leaves the later lines' comments on their own lines; a
         // GNU-style header's comment stands above the specifiers' line
         has_text(t, text, "// the sign of n, in GNU style\ndef private p7_comments__sign_of(n : int) : int \{\n")
-        has_text(t, text, "    if (_cond == 0) \{\n        // zero\n        r = 0\n    \} else \{\n        // the rest\n        if (n > 0) \{\n")
-        has_text(t, text, "        \} else \{\n            // not positive\n            // negative\n            r = -1\n")
+        has_text(t, text, "        case(0) \{\n            // zero\n            r = 0\n            break\n        \}\n        case(_) \{\n            // the rest\n            if (n > 0) \{\n")
+        has_text(t, text, "            \} else \{\n                // not positive\n                // negative\n                r = -1\n")
         has_text(t, text, "    // the sign\n    return r\n")
         t |> equal(text |> find("a global's comment") < 0, true, text)
         t |> equal(text |> find("P7.0j") < 0, true, text)
@@ -2985,7 +3007,7 @@ def p7_goto_into_fixtures(t : T?) {
         // a branch ending in an `if` whose arms all return is guarded like one ending in `return`
         has_text(t, text, "            return 7\n        \}\n    \}\n    s = 3\n")
         // and one ending in a switch with a `default` whose every case returns
-        has_text(t, text, "        \} else \{\n            return 12\n        \}\n    \}\n    label 1:  // out\n")
+        has_text(t, text, "            case(_) \{\n                return 12\n            \}\n        \}\n    \}\n    label 1:  // out\n")
         rejects(t, "goto_into_setjmp", "#include <setjmp.h>\nstatic jmp_buf b;\nint main(void) \{ int n = 0; goto in; if (setjmp(b) == 0) \{ in: n = 5; \} else \{ n = 1; \} return n; \}\n", "a goto into an arm of a setjmp `if` is not lowered")
         rejects(t, "goto_open_redispatch", "int main(void) \{ int x = 1, n = 0; switch (x) \{ case 1: goto two; case 2: do \{ two: n++; case 3: n += 2; \} while (0); \} return n; \}\n", "that a goto from another case re-dispatches is not lowered")
     }
@@ -3077,23 +3099,25 @@ def p7_empty_case_fixtures(t : T?) {
     t |> run("a case whose body does nothing joins the next case's labels; default, a C label, a declaration, a volatile read and a nested case label keep their forms") @(t : T?) {
         var text : string
         check_fixture(t, "p7_empty_case", text)
-        // an NDEBUG assert: the switch is the if-chain
-        has_text(t, text, "    let _cond = s\n    if (_cond == State.NORMAL || _cond == State.STOP) \{\n        r = 1\n    \} elif (_cond == State.IME) \{\n")
+        // an NDEBUG assert: its case joins the next one's labels
+        has_text(t, text, "    c_switch(s) \{\n        case(State.NORMAL, State.STOP) \{\n            r = 1\n            break\n        \}\n        case(State.IME) \{\n")
         // a `;`, a discarded read and an empty block in a run join the first case that acts
-        has_text(t, text, "    let _cond = x\n    if (_cond == 1 || _cond == 2 || _cond == 3 || _cond == 4) \{\n        r = 4\n    \} elif (_cond == 5) \{\n")
-        // a default in either group, a label, a declaration, a volatile read: the flag form
-        has_text(t, text, "        _flag ||= _cond == 1\n        if (_flag) \{\n        \}\n        _flag ||= !(_cond == 1 || _cond == 2)\n")
-        has_text(t, text, "        _flag ||= !(_cond == 2 || _cond == 3)\n        if (_flag) \{\n        \}\n        _flag ||= _cond == 2\n")
+        has_text(t, text, "    c_switch(x) \{\n        case(1, 2, 3, 4) \{\n            r = 4\n            break\n        \}\n        case(5) \{\n")
+        // a default in either group, a declaration, a volatile read: an arm of its own, which falls
+        // into the next (an empty one sets the flag its values match, c_runtime/c_switch.das)
+        has_text(t, text, "        case(1) \{\n        \}\n        case(_) \{\n            r = 9\n            break\n        \}\n")
+        has_text(t, text, "        case(_) \{\n        \}\n        case(2) \{\n            r = 2\n            break\n")
+        has_text(t, text, "        case(1) \{\n            \{\n                var k : int\n            \}\n        \}\n")
+        has_text(t, text, "        case(1) \{\n            let _t0 = c_volatile_load(p7_empty_case__port)\n        \}\n")
+        // a label another case's goto re-dispatches to keeps the flag loop
         has_text(t, text, "        _flag ||= _cond == 1\n        _flag ||= _goto == 1  // here\n")
-        has_text(t, text, "        _flag ||= _cond == 1\n        if (_flag) \{\n            \{\n                var k : int\n")
-        has_text(t, text, "        _flag ||= _cond == 1\n        if (_flag) \{\n            let _t0 = c_volatile_load(p7_empty_case__port)\n")
-        // a `break` alone, a step, a call and a comma act or leave: their groups keep their branches
-        has_text(t, text, "    let _cond = x\n    if (_cond == 1) \{\n    \} elif (_cond == 2) \{\n        r += 10\n")
-        has_text(t, text, "        _flag ||= _cond == 1\n        if (_flag) \{\n            n++\n        \}\n")
-        has_text(t, text, "        _flag ||= _cond == 1\n        if (_flag) \{\n            p7_empty_case__bump()\n        \}\n")
-        has_text(t, text, "    var n : int = 4\n    let _cond = x\n    while (true) \{\n        var _flag = false\n        _flag ||= _cond == 1\n")
+        // a `break` alone, a step, a call and a comma act or leave: their groups keep their arms
+        has_text(t, text, "        case(1) \{\n            break\n        \}\n        case(2) \{\n            r += 10\n")
+        has_text(t, text, "        case(1) \{\n            n++\n        \}\n")
+        has_text(t, text, "        case(1) \{\n            p7_empty_case__bump()\n        \}\n")
+        has_text(t, text, "    var n : int = 4\n    c_switch(x) \{\n        case(1) \{\n        \}\n")
         // an inert group joins the last group
-        has_text(t, text, "        r = 1\n    \} elif (_cond == 2 || _cond == 3) \{\n        r = 3\n")
+        has_text(t, text, "            r = 1\n            break\n        \}\n        case(2, 3) \{\n            r = 3\n")
         // a case label in a nested block: the switch spelled open before any grouping
         has_text(t, text, "    label 2:  // case 1\n    label 3:  // case 2\n")
         let want = native("p7_empty_case")
@@ -3230,7 +3254,7 @@ def p7_flat_case_fixtures(t : T?) {
         // a `continue` is the loop's own
         has_text(t, text, "        if ((i & 1) != 0) \{\n            continue\n")
         // a goto from a nested switch's default to the outer one's label
-        has_text(t, text, "    \} else \{\n        goto label 1\n    \}\n    goto label 2\n    label 5:  // case 2\n")
+        has_text(t, text, "        case(_) \{\n            goto label 1\n        \}\n    \}\n    goto label 2\n    label 5:  // case 2\n")
         // sparse, a single case value, past int: an elif chain to the case labels
         has_text(t, text, "    if (_cond == 1) \{\n        goto label 3\n    \} elif (_cond == 50) \{\n")
         has_text(t, text, "    if (_cond == 7) \{\n        goto label 3\n    \} else \{\n        goto label 4\n")
@@ -3244,19 +3268,19 @@ def p7_flat_case_fixtures(t : T?) {
         has_text(t, text, "    label 9:  // no case 1\n    label 12:  // no case: switch end\n")
         has_text(t, text, "    label 4:  // no case 1\n    label 7:  // no case: switch end\n")
         // an unsigned subject's `case -1` is its largest value, past `int`: no table, the open one's
-        // elif chain and the dense one's if-chain
-        for (fn in ["e1", "udense"]) {
+        // elif chain and the dense one's c_switch
+        for (fn, first in ["e1", "udense"], ["if (_cond == -1u) \{\n", "c_switch(u) \{\n        case(-1u) \{\n"]) {
             let at = text |> find("def private p7_flat_cases__{fn}(")
             let jump = text |> find("goto int(_cond)", at)
-            t |> success(at >= 0 && text |> find("if (_cond == -1u) \{\n", at) > at && (jump < 0 || jump > text |> find("\n\}\n", at)), fn)
+            t |> success(at >= 0 && text |> find(first, at) > at && (jump < 0 || jump > text |> find("\n\}\n", at)), fn)
         }
         // a table from INT_MIN jumps by the value's distance from it, open and dense
         has_text(t, text, "    goto(_cond - (-2147483647 - 1)) + 2\n")
         has_text(t, text, "        goto(_cond - (-2147483647 - 1)) + 1\n")
         // below int: the elif chain
         has_text(t, text, "    if (_cond == -3000000002l) \{\n        goto label 3\n")
-        // a nested switch's `continue` epilogue above a case label keeps an `else`
-        has_text(t, text, "        if (_cont2) \{\n            continue\n        \}\n")
+        // a nested switch's `continue` above a case label: c_switch's own epilogue
+        has_text(t, text, "                if (i > 3) \{\n                    continue\n                \}\n                break\n            \}\n")
         // no end label where no break reaches the end
         let nb = text |> find("def private p7_flat_cases__no_break(")
         let nb_end = text |> find("switch end", nb)
