@@ -15,7 +15,13 @@ static int check(int alpha_value, int beta_value, int gamma_value) {
     return -1;
 }
 
+/* a conditional's arms break after `?` and `:` inside the call's parentheses */
+static int pick(int selector_value_first, int selector_value_second) {
+    return combine(selector_value_first > selector_value_second ? selector_value_first * 3 + selector_value_second * 7 - 11 : selector_value_second * 5 - selector_value_first, 1, 2, 3);
+}
+
 int main(void) {
     printf("first value %d second value %d third value %d fourth value %d fifth value %d\n", check(3, 4, 5), check(5, 5, 5), check(1, 1, 9), combine(1, 2, 3, 4), table_of_values[39] - table_of_values[0] + combine(4, 3, 2, 1));
+    printf("%d %d\n", pick(4, 2), pick(2, 4));
     return 0;
 }

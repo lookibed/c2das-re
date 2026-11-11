@@ -2763,6 +2763,7 @@ def p9_long_line_fixtures(t : T?) {
         has_text(t, text, "beta_value + gamma_value > alpha_value &&\n            alpha_value - gamma_value < beta_value) \{\n")
         has_text(t, text, "beta_value * gamma_value - alpha_value,\n                (alpha_value + beta_value) * (gamma_value - 1),\n                p9_long_lines__table_of_values[")
         has_text(t, text, "p9_long_lines__check(5, 5, 5),\n            p9_long_lines__check(1, 1, 9), ")
+        has_text(t, text, "selector_value_second * 7 - 11 :\n                selector_value_second * 5 - selector_value_first,\n            1, 2, 3)\n")
         for (l in split(text, "\n")) {
             t |> equal(length(l) <= 160, true, l)
         }

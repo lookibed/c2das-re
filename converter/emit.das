@@ -2689,9 +2689,9 @@ def private emit_cond(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     em.narrow--
     if (length(em.pre) == mark) {
         if (a.is_bool && b.is_bool) {
-            return truth("{wrap(c, PREC_COND + 1)} ? {wrap(a, PREC_COND + 1)} : {wrap(b, PREC_COND + 1)}", PREC_COND)
+            return truth("{wrap(c, PREC_COND + 1)} ?{LOGIC_MARK} {wrap(a, PREC_COND + 1)} :{LOGIC_MARK} {wrap(b, PREC_COND + 1)}", PREC_COND)
         }
-        return value("{wrap(c, PREC_COND + 1)} ? {wrap(to_int(em, a), PREC_COND + 1)} : {wrap(to_int(em, b), PREC_COND + 1)}", PREC_COND)
+        return value("{wrap(c, PREC_COND + 1)} ?{LOGIC_MARK} {wrap(to_int(em, a), PREC_COND + 1)} :{LOGIC_MARK} {wrap(to_int(em, b), PREC_COND + 1)}", PREC_COND)
     }
     let a_pre <- [for (idx in range(mark, a_end)); em.pre[idx]]
     let b_pre <- [for (idx in range(a_end, length(em.pre))); em.pre[idx]]
