@@ -5,7 +5,7 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
 ### Loops
 
 `while` is `while`, with a side-effecting condition spelled `while (true)` plus the test and
-`break`. A `do` is one of four shapes, the first that applies (`emit_do`):
+`break`. A `do` is one of five shapes, the first that applies (`emit_do`):
 
 - **The count-down range** (`count_down`): `do { body } while (count--)`, the test uncast (a
   `(unsigned char) n--` tests the low byte), with `count` an `int` or
@@ -16,11 +16,20 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
   C's test does. This is Doom's `R_DrawColumn` and `R_DrawSpan` pixel loop.
 - **The block**: `do { body } while (0)` whose body leaves by no `break`, `continue`, `return`
   or `goto` is `{ body }`, in a function with no `goto` (the label plan reads the C loop).
-- **The bottom test**: a body with no `continue` of the loop is
-  `while (true) { body; if (!(c)) { break } }`, the condition's hoisted statements before the
-  test; a body that always leaves takes no test, and `while (0)` a plain `break`.
-- **The first-pass flag** `_first` otherwise, tested on every pass so that a `continue` reaches
-  the condition.
+- **No test**: a body with no `continue` of the loop that always leaves is
+  `while (true) { body }`, and `while (0)` with a `break` in the body `while (true) { body; break }`.
+- **`do_while`**: a test that hoists no statement is `do_while (c) { body }`, the call macro of
+  `c_runtime/do_while.das` (`c_runtime/ARCHITECTURE.md`). It expands in place, before its
+  arguments are inferred, to the loop the emitter would spell: `while (true) { body; if (!(c))
+  { break } }` for a body with no `continue` of its own loop, else the first-pass flag below,
+  with the body's statements in the loop's own block; `c_runtime/tests/test_do_while.das`
+  compares the expansion's nodes with the spelled loops'. A `break`, `return` or `goto` in the
+  body leaves as it does from the spelled loop, and a `continue` reaches the test. A `while (0)`
+  whose body holds a `continue` is `do_while (false)`.
+- **The spelled loop** otherwise, for a test that hoists statements (`while (j++ < n)`): with no
+  `continue` of the loop, the bottom test `while (true) { body; <hoisted>; if (!(c)) { break } }`;
+  else the first-pass flag `_first`, tested on every pass so that a `continue` reaches the
+  condition, the hoisted statements under `if (!_first)`.
 
 A `for` is one of four shapes, the first that applies:
 
