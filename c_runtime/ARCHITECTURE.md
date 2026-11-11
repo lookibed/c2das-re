@@ -36,6 +36,17 @@ as-if-converted fixture test landing first.
   { first = false; body }` under a fresh name, so a `continue` reaches the test. The loop's own
   nodes take the call's line; a `break`, `return` or `goto` in the body leaves as from the spelled
   loop. The name is reserved for the converter.
+- `c_runtime/c_switch.das` - `c_switch (x) { case (A, B) { body } case (_) { body } }`, C's switch
+  with C's meaning: a call macro expanding in place before its arguments are inferred, inner
+  switches first. An arm not ending in `break`, `return`, `continue` or `goto` falls into the next;
+  `_` is `default`, anywhere. With no arm falling into the next and no `break` of the switch's own
+  level (outside every loop and inner `c_do_while`) but an arm's tail, it is `if (x == A || x ==
+  B) { } elif ... else { }` with the tail breaks dropped, else the matched-flag loop `while (true)
+  { var flag = false; flag ||= x == A; if (flag) { body } ... break }`, an arm neither entered nor
+  entering testing its values in its own `if`, an own `continue` setting a flag, leaving the loop
+  and continuing after it. `x` is read in place when it is a variable (a store into it decides no
+  later test: an arm runs only once matched), else once through a `let`. A duplicate value, a
+  second `_` and a statement that is no arm are compile errors (`switch` is no module name).
 - `c_runtime/c_exit.das` - the process-exit protocol: `c_atexit` registers into a module
   list, `c_run_atexit` walks it once in LIFO order, the `[finalize]` walker runs it after a
   normal return from `main` and then flushes every C stream (`crt::fflush(null)`) while the
