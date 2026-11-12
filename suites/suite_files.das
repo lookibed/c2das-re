@@ -101,12 +101,16 @@ let CHECKS_OFF_KEY_SUFFIX = "@checks-off"
 //! (`perf/blit@past-end-inline`, `lua/lua@past-end-inline`, the source layout).
 let PAST_END_KEY_SUFFIX = "@past-end-inline"
 
+//! The suffix of a kernel's or a Lua program's input key converted under `--fn-macros expand`
+//! (`perf/blit@fn-macros-expand`, `lua/lua@fn-macros-expand`, the source layout).
+let FN_MACROS_EXPAND_KEY_SUFFIX = "@fn-macros-expand"
+
 //! The suffixes of a kernel's input key converted under a non-default option, each kernel's key
 //! once per suffix.
-let KERNEL_MODE_SUFFIXES <- [COPY_KEY_SUFFIX, WHILE_KEY_SUFFIX, REINTERPRET_KEY_SUFFIX, INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX, CHECKS_OFF_KEY_SUFFIX, PAST_END_KEY_SUFFIX]
+let KERNEL_MODE_SUFFIXES <- [COPY_KEY_SUFFIX, WHILE_KEY_SUFFIX, REINTERPRET_KEY_SUFFIX, INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX, CHECKS_OFF_KEY_SUFFIX, PAST_END_KEY_SUFFIX, FN_MACROS_EXPAND_KEY_SUFFIX]
 
 //! The suffixes of a Lua program's input key converted in the source layout under an opt-in.
-let LUA_OPT_IN_SUFFIXES <- [INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX, CHECKS_OFF_KEY_SUFFIX, PAST_END_KEY_SUFFIX]
+let LUA_OPT_IN_SUFFIXES <- [INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX, CHECKS_OFF_KEY_SUFFIX, PAST_END_KEY_SUFFIX, FN_MACROS_EXPAND_KEY_SUFFIX]
 
 //! The suffix of a Lua input key converted in the single layout (`lua/lua@single`), and of one in
 //! the source-cut layout (`lua/lua@source-cut`); the bare key (`lua/lua`) is the source layout, the
@@ -130,9 +134,9 @@ def kernel_of_key(id : string) : string {
 //! Every input key (`<group>/<id>`) the readability metric converts, sorted: each ratchet
 //! suite's listed ids less its ledgered ones, and every kernel converted by default, under
 //! `--param-writes copy`, under `--loops while`, under `--first-member reinterpret`, under
-//! `--inline-helpers`, under `--switch-dispatch goto`, under `--checks off` and under `--past-end
-//! inline`, and each Lua program in the three layouts and, in the source layout, under each of the
-//! last four.
+//! `--inline-helpers`, under `--switch-dispatch goto`, under `--checks off`, under `--past-end
+//! inline` and under `--fn-macros expand`, and each Lua program in the three layouts and, in the
+//! source layout, under each of the last five.
 def expected_input_keys : array<string> {
     let kernels <- c_file_ids(KERNELS, "")
     var keys <- [for (name in kernels); "perf/{name}"]

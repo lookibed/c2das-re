@@ -466,6 +466,31 @@ def test_worker_checks_past_end(t : T?) {
     }
 }
 
+// ruling 38 addendum 14: the `@fn-macros-expand` keys under `--fn-macros expand`
+[test]
+def test_worker_fn_macros(t : T?) {
+    t |> run("--one converts a Lua `@fn-macros-expand` key under --fn-macros expand in the source layout: no macro's def, where the plain key folds") @(t : T?) {
+        var counts : string
+        t |> equal(run_worker("lua/luac@fn-macros-expand", counts), 0)
+        t |> success(counts |> starts_with("ok\n"), counts)
+        let expanded = fread("metrics/work/lua/luac@fn-macros-expand/das/lapi.das")
+        t |> success(!(expanded |> contains("[c_macro]\ndef ")), expanded)
+        t |> equal(run_worker("lua/luac", counts), 0)
+        let folded = fread("metrics/work/lua/luac/das/lapi.das")
+        t |> success(folded |> contains("[c_macro]\ndef private "), folded)
+    }
+    t |> run("a key's suffix names its --fn-macros value, else the default; it is a kernel mode and a Lua opt-in") @(t : T?) {
+        t |> equal(fn_macros_of("lua/lua@fn-macros-expand"), "expand")
+        t |> equal(fn_macros_of("perf/blit@past-end-inline"), "")
+        var layout : string
+        t |> equal(lua_key_parts("lua/luac@fn-macros-expand", layout), "luac")
+        t |> equal(layout, "source")
+        t |> equal(kernel_of_key("blit@fn-macros-expand"), "blit")
+        let keys <- expected_input_keys()
+        t |> success(has_value(keys, "lua/lua@fn-macros-expand") && has_value(keys, "perf/blit@fn-macros-expand"))
+    }
+}
+
 [test]
 def test_gate(t : T?) {
     var dir_error : string
