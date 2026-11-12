@@ -23,7 +23,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `emit.das` - the emitter: `CirTu` in, gen2 text out, fails closed the same way. The
   lowering passes of the plan (type resolve and rename, promotion insertion,
   statement-ification, control flow) happen as it spells nodes (`ARCHITECTURE_EMITTER.md`,
-  section 4); no pass transforms the `CirTu` before emission, and a function-like macro's marked expansion prints as a call of its `[inline] def` where the verdict allows (`ARCHITECTURE_EMITTER_MACROS.md`). `emit_tu` spells one module,
+  section 4); no pass transforms the `CirTu` before emission, and a function-like macro's marked expansion prints as a call of its `[c_macro] def` where the verdict allows (`ARCHITECTURE_EMITTER_MACROS.md`). `emit_tu` spells one module,
   `emit_program` the modules of a source layout over one program state (section 8).
 - `summaries.das` - what each function of a program may store to, whether it may do output or surely returns, and which parameters keep no pointer, read once from the program's C-IR before any module is spelled (`ARCHITECTURE_EMITTER_LOOPS.md`, The program summaries).
 - `bit_units.das` - the layout law over the C-IR (section 2, `packed`): `type_size`,

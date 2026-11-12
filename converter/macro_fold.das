@@ -7,7 +7,7 @@ require daslib/strings_boost
 require cir
 
 //! Whether a whole expansion of a function-like macro (`docs/c-ir-spec.md` section 6.3) may print
-//! as a call of an `[inline] def` (`ARCHITECTURE_EMITTER_MACROS.md#fold-verdict`): read from the
+//! as a call of an `[c_macro] def` (`ARCHITECTURE_EMITTER_MACROS.md#fold-verdict`): read from the
 //! expansion's node alone, where its argument copies are, what the rest of it names, writes and
 //! leaves; nothing here knows das syntax.
 
@@ -461,4 +461,150 @@ def fold_stmt_site(m : CirMacro; use : CirMacroUse; st : CirStmt const?; scope :
     walk_stmt(w, scope, body, false)
     let reason = verdict(m, use, w, scope)
     return <- FoldSite(reason = reason, copies <- w.copies, refs <- w.refs)
+}
+
+// the parameters of expansion `site` whose pointer value `x` carries: a copy, a cast of one (casts
+// are transparent), pointer arithmetic over one, a `?:` arm, a comma's value, an address into the
+// object one points at or a pointer loaded through one; `pointerish` tells a type that can carry one
+def private carried(x : CirExpr const?; site : int; pointerish : block<(t : int) : bool>; var into : array<bool>) {
+    if (x == null || !invoke(pointerish, x.t)) {
+        return
+    }
+    let k = copy_of(x, site)
+    if (k >= 0) {
+        if (k < length(into)) {
+            into[k] = true
+        }
+        return
+    }
+    if (x.e == "cast") {
+        if ((x.cast_kind == "LValueToRValue" || x.cast_kind == "ArrayToPointerDecay") && copy_of(x.a, site) < 0) {
+            rooted(x.a, site, pointerish, into)
+        } else {
+            carried(x.a, site, pointerish, into)
+        }
+    } elif (x.e == "bin" || x.e == "cond") {
+        carried(x.a, site, pointerish, into)
+        carried(x.b, site, pointerish, into)
+    } elif (x.e == "comma" || x.e == "assign") {
+        carried(x.b, site, pointerish, into)
+    } elif (x.e == "un") {
+        if (x.op == "addr") {
+            rooted(x.a, site, pointerish, into)
+        } elif (x.op == "deref") {
+            rooted(x, site, pointerish, into)
+        } else {
+            carried(x.a, site, pointerish, into)
+        }
+    } elif (x.e == "member" || x.e == "index") {
+        rooted(x, site, pointerish, into)
+    }
+}
+
+// the parameters of expansion `site` through whose pointer value lvalue `x` is reached: `p->f`,
+// `*p`, `p[i]` and a field or element of those
+def private rooted(x : CirExpr const?; site : int; pointerish : block<(t : int) : bool>; var into : array<bool>) {
+    if (x == null || copy_of(x, site) >= 0) {
+        return
+    }
+    if (x.e == "member") {
+        if (x.arrow) {
+            carried(x.base, site, pointerish, into)
+        } else {
+            rooted(x.base, site, pointerish, into)
+        }
+    } elif (x.e == "index") {
+        carried(x.base, site, pointerish, into)
+        rooted(x.base, site, pointerish, into)
+    } elif (x.e == "un" && x.op == "deref") {
+        carried(x.a, site, pointerish, into)
+    } elif (x.e == "cast") {
+        rooted(x.a, site, pointerish, into)
+    }
+}
+
+// marks in `needs` the parameters of `site` whose pointer value `x` or an expression below it (the
+// copies excepted) writes through, passes to a call or to a `var` parameter of a nested folded
+// macro (`inner`, by macro index), or stores
+def private var_uses(x : CirExpr const?; site : int; inner : table<int; array<bool>>; pointerish : block<(t : int) : bool>; var needs : array<bool>) {
+    if (x == null || copy_of(x, site) >= 0) {
+        return
+    }
+    if (x.e == "assign") {
+        rooted(x.a, site, pointerish, needs)
+        carried(x.b, site, pointerish, needs)
+    } elif (x.e == "un" && (x.op == "preinc" || x.op == "predec" || x.op == "postinc" || x.op == "postdec")) {
+        rooted(x.a, site, pointerish, needs)
+    } elif (x.e == "call") {
+        for (arg in x.args) {
+            carried(arg, site, pointerish, needs)
+        }
+    }
+    for (item in x.init_items) {
+        carried(item.v, site, pointerish, needs)
+    }
+    for (use in x.fn_macro) {
+        if (use.site != site) {
+            inner |> get(use.m) $(modes) {
+                for (j, is_var in count(), modes) {
+                    if (is_var) {
+                        each_expr(x) $(sub) {
+                            if (copy_of(sub, use.site) == j) {
+                                carried(sub, site, pointerish, needs)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (part in fixed_array<CirExpr const?>(x.a, x.b, x.c, x.fn, x.base, x.i, x.list, x.init)) {
+        var_uses(part, site, inner, pointerish, needs)
+    }
+    for (arg in x.args) {
+        var_uses(arg, site, inner, pointerish, needs)
+    }
+    for (item in x.init_items) {
+        var_uses(item.v, site, inner, pointerish, needs)
+    }
+}
+
+def private var_uses_stmt(st : CirStmt const?; site : int; inner : table<int; array<bool>>; pointerish : block<(t : int) : bool>; var needs : array<bool>) {
+    if (st == null) {
+        return
+    }
+    if (st.s == "decl") {
+        carried(st.init, site, pointerish, needs)
+    }
+    for (x in fixed_array<CirExpr const?>(st.init, st.e, st.cond, st.inc)) {
+        var_uses(x, site, inner, pointerish, needs)
+    }
+    for (child in fixed_array<CirStmt const?>(st.init_s, st.then_s, st.else_s, st.body_s)) {
+        var_uses_stmt(child, site, inner, pointerish, needs)
+    }
+    for (child in st.body) {
+        var_uses_stmt(child, site, inner, pointerish, needs)
+    }
+}
+
+//! Which parameters of expansion `use` of macro `m` (whose whole node is `x`, read for its value
+//! when `value`, or statement `st`) a folded def must take `var` (classification row 9): a value of
+//! the parameter is written through, passed to a call or to a `var` parameter of a nested folded
+//! macro (`inner`: the `var` parameters of each macro's def, innermost decided first), stored, or
+//! is the def's result. `pointerish` tells a type that carries a pointer (a data pointer, or a
+//! record holding one); a value is the parameter, a cast or an offset of it, an address into what it
+//! points at or a pointer loaded through it.
+[arch(at="ARCHITECTURE_EMITTER_MACROS.md#fold-emission")]
+def var_parameters(m : CirMacro; use : CirMacroUse; x : CirExpr const?; value : bool; st : CirStmt const?; inner : table<int; array<bool>>; pointerish : block<(t : int) : bool>) : array<bool> {
+    var needs : array<bool>
+    needs |> resize(length(m.params))
+    if (x != null) {
+        var_uses(x, use.site, inner, pointerish, needs)
+        if (value) {
+            carried(x, use.site, pointerish, needs)
+        }
+    } else {
+        var_uses_stmt(st, use.site, inner, pointerish, needs)
+    }
+    return <- needs
 }
