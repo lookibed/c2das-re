@@ -1,6 +1,8 @@
 /* P9.14: a narrow `==` against a literal in range compares narrow; an enum converts directly */
 #include <stdio.h>
 
+#define STATUS_OK 0
+
 struct ts { unsigned char extra; signed char s; short h; unsigned short w; unsigned char bits : 3; };
 enum dir { WEST = -1, NORTH, BIG = 300 };
 enum mask { M_LOW = 1, M_HIGH = 0x80000000u };
@@ -30,6 +32,7 @@ static int wide(const struct ts *t, const char *s) {
     if (t->extra < 5) r += 16;
     if (t->extra == t->s) r += 32;
     if (t->s == (signed char)-1 + 0) r += 64;
+    if (t->extra == STATUS_OK) r += 128;
     return r;
 }
 

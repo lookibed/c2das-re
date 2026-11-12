@@ -2737,6 +2737,8 @@ def p9_narrow_fixtures(t : T?) {
         has_text(t, text, "    if (int(s[1]) == -128) \{\n")
         has_text(t, text, "    if (int(t.extra) < 5) \{\n")
         has_text(t, text, "    if (int(t.extra) == int(t.s)) \{\n")
+        // a #define's name stays, which das reads as an int
+        has_text(t, text, "    if (int(t.extra) == STATUS_OK) \{\n")
         has_text(t, text, "uint(d), int64(d), uint64(d), uint(uint8(d)), int(int16(d)), double(int(d)))\n")
         has_text(t, text, "uint(m), int64(uint(m)), uint64(uint(m)), double(uint(m)))\n")
         has_text(t, text, "1ul << uint64(dir.NORTH))\n")
