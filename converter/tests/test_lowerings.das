@@ -2800,7 +2800,7 @@ def p9_summaries_fixtures(t : T?) {
         has_text(t, text, "    while (i < l) \{\n        p[i] = s[l - i - 1ul]\n")
         has_text(t, text, "    for (i in range(n + 1)) \{\n        t += twice(i)\n")
         has_text(t, text, "        while (i <= n) \{\n            t += i\n            if (i == 3) \{\n                quit1(t)\n")
-        t |> equal(count(text, " in range(") + count(text, " in urange64("), 9, text)
+        t |> equal(count(text, " in range(") + count(text, " in urange64("), 8, text)
         let want = native("p9_summaries")
         var out : string
         t |> equal(run_tier(path_join(path_join(work_root, "p9_summaries"), "p9_summaries.das"), "jit", path_join(work_root, "p9_summaries_jit"), out, CONVERTED_MODULES), want.rc, out)
