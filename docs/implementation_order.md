@@ -1941,7 +1941,10 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   (a block or `do { } while (0)`) without outward flow; a caller's local the body writes is a
   reference parameter; never-fold shapes (no-op, identity, single cast, one operator with an unread
   argument, the sidecar's `no_fold`); `incomplete`, `capture`, `lvalue`, `shape`, `flow`, `order`
-  (an argument C reads after a store of the body, or effectful arguments das may reorder). No
+  (an argument C reads after a store of the body, an effectful argument after a body action or
+  beside an argument reading what it writes, effectful arguments das may reorder; #184 review:
+  a declaration's initializer is a body action, a faulting argument after a body call stays
+  expanded, a body name a parameter takes is a capture, a volatile copy is effectful). No
   output change: the emitter reads no verdict yet (P9.20). Fixture `p9_fn_fold` (the verdict of
   each outermost site: every class, nested, swapped, typed, a written local, a loop, and a
   negative control per guard); a hand-built two-unit link test. Expected speed effect (phase-end A/B, B/A): 1.00 on

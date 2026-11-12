@@ -42,8 +42,17 @@ struct private SiteWalk {
     refs : array<bool>
     effect_seen : bool
     unstable_after_effect : bool
+    // the body read or wrote state outside its locals, or called, before the walk's point; a copy
+    // C reads after a body call that may exit, which das reads before it
+    state_seen : bool
+    call_seen : bool
+    effect_after_state : bool
+    faulting_after_call : bool
     lvalue : bool
     captures : bool
+    // a body name a parameter takes (`#define ADDOFF(off) ((off) + OFF)` with `#define OFF off`)
+    param_named : bool
+    params : array<string>
     flow : bool
     shape : bool
     declared : table<string>
@@ -169,13 +178,24 @@ def private walk_expr(var w : SiteWalk; scope : FoldScope; x, parent : CirExpr c
             w.refs[k] ||= local
             w.lvalue ||= !local || (parent != null && parent.e == "un" && parent.op == "addr")
         }
+        // a volatile local's load sits on the copy's parent: an access C counts as an effect
+        let vol_load = x.vol && parent != null && parent.e == "cast" && parent.cast_kind == "LValueToRValue"
         // a copy read again on a loop's next turn or after a write sees what that write left
-        w.unstable_after_effect ||= (w.effect_seen || w.loops > 0) && !settled(x, scope, true)
-        if (has_effect(x)) {
+        w.unstable_after_effect ||= (w.effect_seen || w.loops > 0) && (vol_load || !settled(x, scope, true))
+        w.faulting_after_call ||= w.call_seen && (vol_load || !settled(x, scope, false))
+        if (has_effect(x) || vol_load) {
             w.effectful[k] = true
             w.effect_seen = true
+            w.effect_after_state ||= w.state_seen
         }
         return
+    }
+    if (x.e == "ref" && (has_value(w.params, x.name) || has_value(w.params, "_c_{x.name}") || (x.name |> starts_with("_c_") && has_value(w.params, slice(x.name, 3))))) {
+        w.param_named = true
+    }
+    let designator = parent != null && parent.e == "cast" && parent.cast_kind == "FunctionToPointerDecay"
+    if ((x.e == "ref" && !designator && !(key_exists(scope.locals, x.name) && !key_exists(scope.addressed, x.name))) || (x.e == "un" && x.op == "deref") || (x.e == "member" && x.arrow) || x.e == "index") {
+        w.state_seen = true
     }
     if (x.e == "ref" && key_exists(scope.locals, x.name) && !key_exists(w.declared, x.name)) {
         w.captures = true
@@ -208,7 +228,9 @@ def private walk_expr(var w : SiteWalk; scope : FoldScope; x, parent : CirExpr c
     }
     if (is_step_or_store(x) || (x.e == "cast" && x.cast_kind == "LValueToRValue" && x.a != null && x.a.vol)) {
         w.effect_seen = true
+        w.state_seen = true
     }
+    w.call_seen ||= x.e == "call"
 }
 
 def private walk_stmt(var w : SiteWalk; scope : FoldScope; st : CirStmt const?; cond : bool) {
@@ -239,8 +261,13 @@ def private walk_stmt(var w : SiteWalk; scope : FoldScope; st : CirStmt const?; 
     walk_stmt(w, scope, st.then_s, branch)
     walk_stmt(w, scope, st.else_s, branch)
     walk_stmt(w, scope, st.body_s, branch)
+    // a block's declarations leave scope with it
+    var inscope outer := w.declared
     for (child in st.body) {
         walk_stmt(w, scope, child, branch && s != "compound" ? true : cond)
+    }
+    if (s == "compound") {
+        w.declared <- outer
     }
     if (loop) {
         w.loops--
@@ -293,7 +320,7 @@ def private body_reason(m : CirMacro; use : CirMacroUse; w : SiteWalk) : string 
             return "incomplete"
         }
     }
-    return w.captures ? "capture" : w.lvalue ? "lvalue" : ""
+    return w.captures || w.param_named ? "capture" : w.lvalue ? "lvalue" : ""
 }
 
 // class B (a parameter read twice, never or on some paths): no argument with an effect, and every
@@ -326,6 +353,38 @@ def private all_settled(copies : array<CirExpr const?>; scope : FoldScope; stabl
 // a copy C reads later than the call would: after the body writes the local another argument
 // takes by reference, after a store or on a loop's next turn; or arguments with effects das may
 // run in another order: two of them, or one beside an argument whose value can change
+// `x` and every expression below it
+def private each_expr(x : CirExpr const?; blk : block<(sub : CirExpr const?) : void>) {
+    if (x == null) {
+        return
+    }
+    invoke(blk, x)
+    for (part in fixed_array<CirExpr const?>(x.a, x.b, x.c, x.fn, x.base, x.i, x.list, x.init)) {
+        each_expr(part, blk)
+    }
+    for (arg in x.args) {
+        each_expr(arg, blk)
+    }
+}
+
+// whether `x` stores into or steps a local some copy of an argument other than `k` reads
+def private writes_read_by(x : CirExpr const?; w : SiteWalk; k : int) : bool {
+    var found = false
+    each_expr(x) $(sub) {
+        if (sub.e == "assign" || (sub.e == "un" && (sub.op == "preinc" || sub.op == "predec" || sub.op == "postinc" || sub.op == "postdec"))) {
+            let target = below_casts(sub.a)
+            if (target != null && target.e == "ref") {
+                for (j in range(length(w.copies))) {
+                    for (c in w.copies[j]) {
+                        found ||= j != k && reads_name(c, target.name)
+                    }
+                }
+            }
+        }
+    }
+    return found
+}
+
 def private order_reason(m : CirMacro; w : SiteWalk; scope : FoldScope) : string {
     for (k in range(length(m.uses))) {
         if (w.refs[k]) {
@@ -339,8 +398,16 @@ def private order_reason(m : CirMacro; w : SiteWalk; scope : FoldScope) : string
             }
         }
     }
-    if (w.unstable_after_effect) {
+    if (w.unstable_after_effect || w.effect_after_state) {
         return "order"
+    }
+    // a store or step an effectful argument makes into a local another argument reads
+    for (k in range(length(m.uses))) {
+        for (c in w.copies[k]) {
+            if (w.effectful[k] && writes_read_by(c, w, k)) {
+                return "order"
+            }
+        }
     }
     var effects = 0
     for (k in range(length(m.uses))) {
@@ -358,7 +425,10 @@ def private verdict(m : CirMacro; use : CirMacroUse; w : SiteWalk; scope : FoldS
         return body
     }
     let b = class_b_reason(m, use, w, scope)
-    return !empty(b) ? b : order_reason(m, w, scope)
+    if (!empty(b) || w.faulting_after_call) {
+        return !empty(b) ? b : "faulting"
+    }
+    return order_reason(m, w, scope)
 }
 
 def private new_walk(m : CirMacro; use : CirMacroUse) : SiteWalk {
@@ -367,6 +437,7 @@ def private new_walk(m : CirMacro; use : CirMacroUse) : SiteWalk {
     w.conditional |> resize(length(m.params))
     w.effectful |> resize(length(m.params))
     w.refs |> resize(length(m.params))
+    w.params := m.params
     return <- w
 }
 
