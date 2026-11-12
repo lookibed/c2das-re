@@ -9078,7 +9078,7 @@ def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
     em.prog.reinterpret_members = side.first_member == "reinterpret"
     em.prog.goto_dispatch = side.switch_dispatch == "goto"
     em.prog.past_end_inline = side.past_end == "inline"
-    em.prog.fold_off = side.fn_macros == "expand"
+    em.prog.fold_off = (empty(side.fn_macros) ? FN_MACROS_DEFAULT : side.fn_macros) == "expand"
     for (name in side.no_fold) {
         if (!has_value([for (m in tu.macros); m.name == name], true)) {
             fail(em, "the sidecar's `no_fold` names `{name}`, which is no function-like macro the program expands", CirLoc(file = tu.tu))
