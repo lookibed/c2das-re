@@ -16,12 +16,12 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   daslang syntax. A tree is owned through plain pointers and freed by one `delete` of its
   root: the generated finalizer recurses through pointer fields and arrays of pointers
   (`probes/test_delete.das`), so no hand-written walk frees a child.
-- `dumper_a.das` - Dumper A: runs `clang -Xclang -ast-dump=json -fsyntax-only -target
-  <triple>`, with `-D<entry>` per entry of the sidecar's `defines` and `-I<dir>` per entry of its
-  `include_dirs` (`DumpInputs`), on one file and normalizes
-  the JSON into a `CirTu`. Fails closed: the first
-  construct outside what it represents sets `Dumper.error` with `file:line:col`. Layout facts
-  come from a libclang pass over the same file (`ARCHITECTURE_DUMPER.md`, section 3).
+- `dumper_a.das` - Dumper A: runs `clang -Xclang -ast-dump=json -fsyntax-only -target <triple>`,
+  with `-D<entry>` per entry of the sidecar's `defines` and `-I<dir>` per entry of its
+  `include_dirs` (`DumpInputs`), on one file and normalizes the JSON into a `CirTu`. Fails closed:
+  the first construct outside what it represents sets `Dumper.error` with `file:line:col`. Layout
+  facts come from a libclang pass over the same file (`ARCHITECTURE_DUMPER.md`, section 3), and
+  its macro expansions mark nodes through `macro_sites.das` (`ARCHITECTURE_DUMPER_MACROS.md`).
 - `emit.das` - the emitter: `CirTu` in, gen2 text out, fails closed the same way. The
   lowering passes of the plan (type resolve and rename, promotion insertion,
   statement-ification, control flow) happen as it spells nodes (`ARCHITECTURE_EMITTER.md`,
@@ -194,7 +194,7 @@ carries `"vol": true` after the members of its kind and before `macro`, absent o
 type table strips qualifiers and the emitter keeps every access of such an object (F65,
 `ARCHITECTURE_EMITTER_LOOPS.md`), then a character literal's `"char": true` (P7.0i), additive at
 `"cir": "0.1"` with F20, F21 and F65. The macro fields of the spec's section 6.3, each absent when
-empty, are 0.2 (`CIR_VERSION`), and a reader here accepts no other version.
+empty, are 0.2 (`CIR_VERSION`, `ARCHITECTURE_DUMPER_MACROS.md`); a reader here accepts no other.
 A record's `packed` is false exactly when das's natural layout reproduces clang's, by this law
 (`bit_units.das`), which a Dumper B applies to the same facts to write the same byte. Fields go
 in declaration order, each at its offset rounded up to its das alignment (a scalar's size, an

@@ -1911,6 +1911,18 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `CIR_VERSION` 0.2. `cir.das` writes and reads them; `tests/test_cir_macros.das` round-trips a unit
   holding each. No dumper writes them yet (P9.18) and no output changes. Expected speed effect
   (phase-end A/B, B/A): 1.00 on every lane; the C-IR of every unit gains only its version string.
+- **P9.18 Dumper A marks function-like macro expansions** (ruling 38 addendum 14, fn-macros part 2
+  step 2, second PR). Dumper A writes P9.17's fields: definitions and expansions from libclang's
+  preprocessing record on its layout pass, the nodes found by their spellings against the `#define`
+  text (`converter/macro_sites.das`, `converter/ARCHITECTURE_DUMPER_MACROS.md`), nested expansions,
+  the calls an argument writes, chains and a macro of itself included. No output change: the emitter
+  reads none of it yet (step 3). Fixture `p9_fn_macros` (classes A-D, nested, side by side, a called
+  parameter, effectful and faulting arguments, a split argument). Counts (main 17147d3 against this
+  branch, Lua source layout): marked expansions lua 11078 of 507 macros (`lvm`: `ttisinteger` 133,
+  `tonumberns` 43, `op_arith_aux` 10), luac 10586 of 463, Doom 219 of 10; of lua's, 10739 hold each
+  argument as often as the macro uses it; das text byte-identical (Lua, luac, Doom); lua's C-IR 21.6
+  MB -> 25.8 MB. Expected speed effect (phase-end A/B, B/A): 1.00 on every lane (no das text change);
+  dump time within noise (the preprocessing record and one walk over the dump's macro nodes).
 
 ## P6 — Doom
 
