@@ -2722,6 +2722,7 @@ def readability_fixtures(t : T?) {
     p9_counted_for_fixtures(t)
     p9_summaries_fixtures(t)
     p9_fn_fold_fixtures(t)
+    p9_fn_var_fixtures(t)
     p9_fold_review_fixtures(t)
 }
 
@@ -2856,15 +2857,15 @@ def p9_summaries_fixtures(t : T?) {
     }
 }
 
-// P9.19: a function-like macro's expansion is a call of its `[inline] def` where the call means what
-// the expansion means; every guard keeps its expansion expanded
+// P9.19, P9.25: a function-like macro's expansion is a call of its `[c_macro] def` where the call
+// means what the expansion means; every guard keeps its expansion expanded
 def p9_fn_fold_fixtures(t : T?) {
     t |> run("folded macros: classes A, B and D, nested, swapped, typed overloads, a statement with a loop; every guard keeps its site expanded; under interp, jit, exe and aot as natively") @(t : T?) {
         var text : string
         check_fixture(t, "p9_fn_fold", text)
         check_compiled_tiers(t, "p9_fn_fold")
         // A, swapped arguments, a chain whose inner def bakes its literals stays one def, a nested call
-        has_text(t, text, "// p9_fn_fold.c:18: #define ADD1(x) ((x) + 1)\n[inline]\ndef private ADD1(x) => x + 1\n")
+        has_text(t, text, "// p9_fn_fold.c:18: #define ADD1(x) ((x) + 1)\n[c_macro]\ndef private ADD1(x) => x + 1\n")
         has_text(t, text, "var sum : int = ADD1(i) + SUB(i, j) + SUB(j, i) + int(GETA(u)) + OUTER(j)\n")
         has_text(t, text, "def private GETA(i) => (i >> 3u) & ~(~0u << 4u)\n")
         t |> equal(text |> find("def private GETBITS") >= 0, false, text)
@@ -2880,7 +2881,7 @@ def p9_fn_fold_fixtures(t : T?) {
         has_text(t, text, "def private TWICE(x : double) => x * 2.0lf\n")
         has_text(t, text, "def private TWICE(x : bool) => int_of(x) * 2\n")
         // D: the do-while(0) dropped, a loop over a parameter, an expression statement
-        has_text(t, text, "[inline, c_function]\ndef private BUMP(var p; n) \{\n    for (i_ in range(n)) \{\n        p[i_] += 1\n    \}\n\}\n")
+        has_text(t, text, "[c_macro, c_function]\ndef private BUMP(var p; n) \{\n    for (i_ in range(n)) \{\n        p[i_] += 1\n    \}\n\}\n")
         has_text(t, text, "    SETV(p, 30)\n    BUMP(ap, j)\n    SETLEN(p, 6)\n")
         // a store into a field macro stays expanded, its load folds; a pointer result names its type;
         // the arms of a null-armed ?: stay expanded
@@ -2896,11 +2897,13 @@ def p9_fn_fold_fixtures(t : T?) {
         has_text(t, text, "    SWAP(i, j)\n")
         has_text(t, text, "        let t_ : int = m2\n        m2 = m2\n")
         // a name das takes, a macro defined twice
-        has_text(t, text, "def private length_m(var p) => p.len + 0\n")
+        has_text(t, text, "def private length_m(p) => p.len + 0\n")
         has_text(t, text, "printf(cstr(\"k %d\\n\"), TAG_2(i))")
-        // a caller's local the body writes is a reference parameter, unless another argument reads it
-        has_text(t, text, "def private TONUM(var o; var n : auto&) \{\n")
-        has_text(t, text, "    let ok : int = int_of(TONUM(addr(t1), m1) != 0 && TONUM(addr(t2), m2) != 0)\n    INC(m3)\n    m3 = 1\n    let z : int = m3 + m3\n")
+        // a caller's local the body writes is a reference parameter, unless another argument reads it;
+        // a value returned after statements (TONUM's comma arms) has no [c_macro] shape and stays expanded
+        t |> equal(text |> find("def private TONUM") >= 0, false, text)
+        has_text(t, text, "        if (addr(t1).len == 2) \{\n            m1 = -addr(t1).v\n")
+        has_text(t, text, "    let ok : int = int_of(_t4)\n    INC(m3)\n    m3 = 1\n    let z : int = m3 + m3\n")
         // #184 review: an effectful argument after the body's declaration, a global a parameter is
         // named like, a volatile copy and a faulting argument after a body call stay expanded
         has_text(t, text, "        let t_ : int = k\n        k = 10\n        p9_fn_fold__g1 = t_ * 100 + k\n")
@@ -2915,7 +2918,7 @@ def p9_fn_fold_fixtures(t : T?) {
     t |> run("each outermost expansion site counts once: folded, or the reason it stays expanded") @(t : T?) {
         let res <- convert("{FIXTURES}/p9_fn_fold.c", path_join(work_root, "p9_fn_fold_counts"), "linux")
         t |> equal(res.ok, true, res.error)
-        t |> equal(fold_report(res), "folded 31, expanded: capture 3, effects 2, faulting 6, flow 1, incomplete 1, lvalue 1, never 1, order 9, shape 1, ternary 1")
+        t |> equal(fold_report(res), "folded 29, expanded: capture 3, effects 2, faulting 6, flow 1, incomplete 1, lvalue 1, never 1, order 9, shape 1, statements 2, ternary 1")
     }
     t |> run("the sidecar's no_fold keeps a macro expanded; a name no macro of the program takes is refused") @(t : T?) {
         let source = "#define ADD1(x) ((x) + 1)\n#define SQ(x) ((x) * (x))\nint main(void) \{\n    int i = 3;\n    return ADD1(i) + SQ(i) - 13;\n\}\n"
@@ -2923,6 +2926,32 @@ def p9_fn_fold_fixtures(t : T?) {
         has_text(t, text, "return ADD1(i) + i * i - 13\n")
         t |> equal(text |> find("def private SQ") >= 0, false, text)
         rejects(t, "p9_no_fold_unknown", source, "the sidecar's `no_fold` names `SQUARE`, which is no function-like macro the program expands", "\{\"no_fold\": [\"SQUARE\"]\}")
+    }
+}
+
+// P9.25: a pointer parameter of a folded def is `var` only where its body needs it writable
+def p9_fn_var_fixtures(t : T?) {
+    t |> run("a pointer parameter is var only when written through, passed on, stored or the result, through a cast or a nested def too; under interp, jit, exe and aot as natively") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_fn_var", text)
+        check_compiled_tiers(t, "p9_fn_var")
+        // read only: a field, a loaded pointer's field, a null test, through a nested def, after a cast
+        has_text(t, text, "def private RAWTT(o) => o.tt\n")
+        has_text(t, text, "def private CHECKTAG(o; t) => RAWTT(o) == t\n")
+        has_text(t, text, "def private ISINT(o) => CHECKTAG(o, 3)\n")
+        has_text(t, text, "def private NEXTTT(o) => o.next.tt\n")
+        has_text(t, text, "def private ISNULL(o) => o == null\n")
+        has_text(t, text, "def private CASTREAD(o) => reinterpret<sv?>(o).val.v\n")
+        // written through, after a cast too; the result; passed to a C function; stored; copied into
+        // a local written through; passed to a nested def's var parameter, or its result's
+        has_text(t, text, "def private SETTT(var o; t) \{\n")
+        has_text(t, text, "def private CASTWRITE(var o; x) \{\n")
+        has_text(t, text, "def private S2V(var o) : tv? => addr(o.val)\n")
+        has_text(t, text, "def private NOTE(var o) \{\n")
+        has_text(t, text, "def private REMEMBER(var o) \{\n")
+        has_text(t, text, "def private SETV(var obj; x) \{\n")
+        has_text(t, text, "def private MARK(var o) \{\n")
+        has_text(t, text, "def private S2VTT(var o) => S2V(o).tt\n")
     }
 }
 

@@ -5,7 +5,7 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
 ### Which expansions fold {#fold-verdict}
 
 A node Dumper A marks as a whole expansion of a function-like macro (`ARCHITECTURE_DUMPER_MACROS.md`,
-`docs/c-ir-spec.md` section 6.3) may print as a call of an `[inline] def` of the macro when
+`docs/c-ir-spec.md` section 6.3) may print as a call of a `[c_macro] def` of the macro when
 `macro_fold.das` finds, from the node alone, that the call means what the expansion means
 (`fold_expr_site`, `fold_stmt_site`); every other expansion prints expanded. The walk takes the
 copies of each argument in evaluation order, the copies below a `?:` arm or the right side of
@@ -60,17 +60,30 @@ is refused (the site stays expanded, counted `spelling`) when it holds that mark
 caller's local an argument held (unless the parameter of that name takes exactly that local),
 leaves a parameter with copies unnamed (a literal shift count spelled into the body), needs a
 compound literal's declaration ahead of the statement, or fails. An arm of a pointer `?:` whose
-other arm is `null` keeps every expansion inside it expanded (`ternary`): das inlines no
-`[inline]` call there.
+other arm is `null` keeps every expansion inside it expanded (`ternary`), a guard the `[inline]`
+carrier the defs had before needed (das inlines no `[inline]` call there). A def whose text returns
+a value after statements (Lua's `tonumberns`, a `?:` whose arms assign) has no `[c_macro]` shape: its
+sites stay expanded (`statements`).
 
 A macro's defs are private to the module that spells its sites, in first-use order after the
 module's `#define` constants, each under a comment naming the `#define`'s file, line and text: one
 def with untyped parameters when every site spells one text, else one typed overload per signature
 of each text (a parameter's type is its argument's das type, `bool` for a truth value), a site
 whose text differs from the overload of its signature staying expanded (`overload`). A parameter
-whose argument is a data pointer, or a record holding one, is `var` (F3), one the body writes a
-caller's local through is `var x : auto&`; a pointer result names its type (das types a bare
-`null` as `void?`). A body that needs `unsafe` takes `[c_function]`.
+the body writes a caller's local through is `var x : auto&`. A parameter whose argument is a data
+pointer, or a record holding one, is `var` only when some fold's body needs it writable
+(`var_parameters`, classification row 9): a value of it - the parameter, a cast or an offset of it,
+an address into what it points at, a pointer loaded through it - is written through, passed to a
+call (every C function's pointer parameter is `var`, F3) or to a `var` parameter of a nested folded
+def (the inner def is decided first, its fold spelled inside the outer body), stored into a
+variable, a field or an initializer, or is the def's result; one only read through, compared or
+tested is not, so a read-only reinterpret prints no const strip. A later fold needing it makes it
+`var` for every site. A pointer result names its type (das types a bare `null` as `void?`). A
+body that needs `unsafe` takes `[c_function]`. Every def is `[c_macro]`
+(`c_runtime/ARCHITECTURE_MACROS.md`): a call is replaced by the body with the arguments
+substituted as written, C's own expansion, so the interpreter runs the expanded text, where an
+`[inline]` splice bound a copy per `var` parameter per level, a result local per `unsafe` body
+and a flag per `&&` operand (`docs/probe-findings.md` F107).
 The name is the macro's, `<name>_m` where a function, global or type of the program, das or the
 runtime has it, `<name>_2` for a second macro of one name (an `#undef` and a new `#define`).
 Every outermost site counts once per module (`fold_counts`): `folded` or its reason.

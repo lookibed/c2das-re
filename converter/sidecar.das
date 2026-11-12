@@ -85,7 +85,7 @@ struct Sidecar {
     // whether a direct call of a pure `static` helper (`return <expr>` or the clamp shape over
     // integer and floating parameters) is spelled as the helper's expression at the call site
     inline_helpers : bool = false
-    // the function-like macros whose expansions stay expanded, never a call of their `[inline] def`
+    // the function-like macros whose expansions stay expanded, never a call of their `[c_macro] def`
     no_fold : array<string>
 }
 

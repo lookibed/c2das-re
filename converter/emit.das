@@ -189,7 +189,7 @@ struct Emitter {
     // `[init]` binds to their slots, each with its slot
     late_quals : table<string; string>
     late_defs : table<string; string>
-    // the function-like macros the module prints as `[inline] def`s (`fold_macro`): what a
+    // the function-like macros the module prints as `[c_macro] def`s (`fold_macro`): what a
     // verdict reads of the function being spelled, the chain level each expansion node is spelled
     // at while a def body spells it, the defs by das name in first-use order and each macro's das
     // name, how deep in def bodies the spelling is, and per reason how many expansion sites of the
@@ -199,6 +199,9 @@ struct Emitter {
     macro_defs : table<string; MacroDef>
     macro_def_order : array<string>
     macro_names : table<int; string>
+    // per macro index, which parameters its def takes `var` (`var_parameters`), for the macros
+    // folded around it
+    macro_var : table<int; array<bool>>
     def_depth : int
     fold_counts : table<string; int>
     fold_counted : table<int>
@@ -2977,9 +2980,9 @@ struct MacroVariant {
     sigs : array<string>
 }
 
-//! A function-like macro the module prints as `[inline] def`s: its das name, the comment above it,
-//! its parameters (`var` where a copy holds a pointer, `ref` where the body writes a caller's local
-//! through it), whether a body needs `[c_function]`, and its texts.
+//! A function-like macro the module prints as `[c_macro] def`s: its das name, the comment above it,
+//! its parameters (`var` where a copy holds a pointer the body needs writable, `ref` where the body
+//! writes a caller's local through it), whether a body needs `[c_function]`, and its texts.
 struct MacroDef {
     name : string
     comment : string
@@ -3190,7 +3193,7 @@ def private reads_parameters(text : string; site : FoldSite; params : array<stri
 // effect, `spelled` the node read) or `st` (a statement macro): each copy of argument `k` spelled as
 // parameter `params[k]`, the chain's next level free to fold inside; "" when the text reads more
 // than its parameters (`reads_parameters`) or needs a declaration before the statement
-def private spell_macro_body(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?; st : CirStmt const?; level : int; site : FoldSite; params : array<string>; args : array<Em>; kind : string; loc : CirLoc; var is_bool : bool&; var c_function : bool&; var no_op : bool&) : string {
+def private spell_macro_body(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?; st : CirStmt const?; level : int; site : FoldSite; params : array<string>; args : array<Em>; kind : string; loc : CirLoc; var is_bool : bool&; var c_function : bool&; var no_op : bool&; var statements : bool&) : string {
     var inscope saved <- save_spelling(em)
     em.depth = 1
     em.temp_counter = 0
@@ -3214,6 +3217,7 @@ def private spell_macro_body(var em : Emitter; tu : CirTu; x, spelled : CirExpr 
     let result = spell_expansion(em, tu, x, spelled, st, kind, loc, is_bool)
     em.fold_levels[node] = had
     em.def_depth--
+    statements = !empty(em.out) || !empty(em.pre)
     let text = def_text(em, tu, spelled, kind, result, loc)
     no_op = kind != "value" && empty(text)
     let clean = empty(em.error) && empty(em.literal_decls) && reads_parameters(text, site, params, args, caller_names)
@@ -3277,14 +3281,38 @@ def private fold_arguments(var em : Emitter; tu : CirTu; site : FoldSite; use : 
     return <- args
 }
 
-// the def of macro `m` the module prints under `name`, made on its first fold
-def private macro_def_of(var em : Emitter; tu : CirTu; name : string; m : CirMacro; site : FoldSite) {
-    if (key_exists(em.macro_defs, name)) {
-        return
+// the def of macro `m` (index `mi`) the module prints under `name`, made on its first fold: a
+// parameter is `ref` where the body writes a caller's local through it, `var` where its argument
+// carries a pointer and some fold's body needs it writable (`needs`, `var_parameters`), a later
+// fold's need making it `var` too
+def private macro_def_of(var em : Emitter; tu : CirTu; name : string; m : CirMacro; mi : int; site : FoldSite; needs : array<bool>) {
+    var inscope modes <- [for (copies, by_ref, need in site.copies, site.refs, needs); by_ref ? "ref" : need && !empty(copies) && is_var_parameter(tu, copies[0].t) ? "var" : ""]
+    if (!key_exists(em.macro_defs, name)) {
+        em.macro_def_order |> push(name)
+        em.macro_defs[name] = MacroDef(name = name, comment = "// {base_name(m.file)}:{m.line}: {m.text}", params <- [for (p in m.params); reserved_rename(p)], modes <- modes)
+    } else {
+        em.macro_defs |> get(name) $(var md) {
+            for (k, mode in count(), modes) {
+                if (mode == "var" && empty(md.modes[k])) {
+                    md.modes[k] = "var"
+                }
+            }
+        }
     }
-    em.macro_def_order |> push(name)
-    var inscope modes <- [for (copies, by_ref in site.copies, site.refs); by_ref ? "ref" : !empty(copies) && is_var_parameter(tu, copies[0].t) ? "var" : ""]
-    em.macro_defs[name] = MacroDef(name = name, comment = "// {base_name(m.file)}:{m.line}: {m.text}", params <- [for (p in m.params); reserved_rename(p)], modes <- modes)
+    em.macro_defs |> get(name) $(md) {
+        em.macro_var[mi] <- [for (mode in md.modes); mode == "var"]
+    }
+}
+
+// the parameters of macro `m` the fold of `use` needs `var` (`var_parameters`), none for a site
+// whose text is not taken
+def private site_var_needs(em : Emitter; tu : CirTu; m : CirMacro; use : CirMacroUse; x : CirExpr const?; st : CirStmt const?; kind : string; usable : bool) : array<bool> {
+    if (usable) {
+        return <- var_parameters(m, use, x, kind == "value", st, em.macro_var) $(t) => is_var_parameter(tu, t)
+    }
+    var none : array<bool>
+    none |> resize(length(m.params))
+    return <- none
 }
 
 // expansion `use` at `level` of node `x` or `st` folded as a call when its verdict and its body
@@ -3306,13 +3334,17 @@ def private fold_level(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?
     var inscope args <- fold_arguments(em, tu, site, use, loc)
     let name = macro_def_name(em, tu, use.m)
     var inscope params <- [for (p in m.params); reserved_rename(p)]
-    var is_bool, c_function, no_op : bool
-    let text = spell_macro_body(em, tu, x, spelled, st, level, site, params, args, kind, loc, is_bool, c_function, no_op)
+    var is_bool, c_function, no_op, statements : bool
+    let text = spell_macro_body(em, tu, x, spelled, st, level, site, params, args, kind, loc, is_bool, c_function, no_op, statements)
+    // a value returned after statements has no `[c_macro]` shape: the site stays expanded
+    let returns = kind == "value" && statements
+    let usable = !empty(text) && !returns
+    var inscope needs <- site_var_needs(em, tu, m, use, x, st, kind, usable)
+    macro_def_of(em, tu, name, m, use.m, site, needs)
     let sig = join([for (k in range(length(params))); argument_type(em, tu, site, args, k, loc)], "\n")
-    macro_def_of(em, tu, name, m, site)
     var taken = false
     em.macro_defs |> get(name) $(var md) {
-        taken = !empty(text) && take_variant(md, text, sig)
+        taken = usable && take_variant(md, text, sig)
         md.c_function ||= taken && c_function
     }
     if (!taken) {
@@ -3322,16 +3354,17 @@ def private fold_level(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?
         em.hoisted <- hoisted_at
         em.unsafe_used = unsafe_before
         // a body that spells nothing (`lua_assert`'s `((void)0)`) is a no-op, never folded
-        count_fold(em, use.site, no_op ? "never" : empty(text) ? "spelling" : "overload")
+        count_fold(em, use.site, no_op ? "never" : empty(text) ? "spelling" : returns ? "statements" : "overload")
         return false
     }
     count_fold(em, use.site, "")
+    em.requires |> insert("c_runtime/c_macro")
     call = Em(text = "{name}({join([for (a in args); a.text], LIST_SEPARATOR)})", prec = PREC_PRIMARY, is_bool = is_bool)
     return true
 }
 
 // expansion node `x` (an expression read for its value or its effect, `spelled` the node read: its
-// load for an lvalue) or `st` (a statement macro) as a call of its macro's `[inline] def`, at the
+// load for an lvalue) or `st` (a statement macro) as a call of its macro's `[c_macro] def`, at the
 // first level of its chain that folds; false leaves it to the expanded spelling, with the caller's
 // statement state as it was
 [arch(at="ARCHITECTURE_EMITTER_MACROS.md#fold-emission")]
@@ -3364,14 +3397,14 @@ def private fold_macro(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?
     return false
 }
 
-// the module's `[inline]` defs of its folded macros, in first-use order: one generic def per macro
+// the module's `[c_macro]` defs of its folded macros, in first-use order: one generic def per macro
 // spelled one way, else one typed overload per signature of each text
 [arch(at="ARCHITECTURE_EMITTER_MACROS.md#fold-emission")]
 def private macro_def_text(em : Emitter) : string {
     var parts : array<string>
     for (name in em.macro_def_order) {
         em.macro_defs |> get(name) $(md) {
-            var inscope annotations <- ["inline"]
+            var inscope annotations <- ["c_macro"]
             if (md.c_function) {
                 annotations |> push("c_function")
             }
@@ -7996,6 +8029,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     var inscope defs := em.macro_defs
     var inscope def_order := em.macro_def_order
     var inscope names := em.macro_names
+    var inscope var_modes := em.macro_var
     var inscope counts := em.fold_counts
     var inscope counted := em.fold_counted
     let c_functions = em.c_functions
@@ -8008,6 +8042,7 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
         em.macro_defs <- defs
         em.macro_def_order <- def_order
         em.macro_names <- names
+        em.macro_var <- var_modes
         em.fold_counts <- counts
         em.fold_counted <- counted
         em.c_functions = c_functions
