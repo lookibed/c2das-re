@@ -69,6 +69,17 @@ leave (a `break` right after a `return` or a `break` of the same level is dead; 
 the body counts as leaving). Under that rule the dropped `return` is unreachable, and das accepts
 the function without it.
 
+### Never-reassigned locals {#let-locals}
+
+A local declared with an initializer that the function never assigns, steps or takes the address of
+(`em.written`, collected over the whole body before it is spelled) is `let` when its das type is an
+integer, a floating value or an enum: `let i1 : int64 = ivalue(v1)`. A `let` argument is what an
+`[inline]` def's splice substitutes in place, where a `var` one binds a copy per site
+(`docs/probe-findings.md` F104). A pointer, a record holding one and an array stay `var`: a `let`
+pointer reads its pointee as const and passes to no `var` parameter (F3), and a record or an array
+is written through its members, which the store-root walk does not see. A declaration without an
+initializer, one filled by stores and one a lowered switch carries stay `var`.
+
 ### Parentheses {#parentheses}
 
 Clang keeps the C source's parentheses as a `ParenExpr`; Dumper A marks the expression inside it
