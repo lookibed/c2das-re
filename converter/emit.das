@@ -2454,20 +2454,24 @@ struct private BareLiteral {
 }
 
 // the value and das text of integer literal `x` below conversions that keep it: its digits, `-n`
-// for a negated one, a character's literal; an empty text for anything else
+// for a negated one, a character's literal; an empty text for anything else, a literal a `#define`
+// names included, whose name das reads as an `int`
 def private bare_literal(tu : CirTu; x : CirExpr const?) : BareLiteral {
     var at = x
     var casts : array<int>
+    var named = !empty(x.macro)
     while (integral_step(tu, at)) {
         casts |> push(at.t)
         at = at.a
+        named ||= !empty(at.macro)
     }
     let negated = at.e == "un" && at.op == "neg" && at.a != null
     var lit = at
     if (negated) {
         lit = at.a
+        named ||= !empty(lit.macro)
     }
-    let digits = lit.e == "int_lit" ? lit.v : ""
+    let digits = lit.e == "int_lit" && !named ? lit.v : ""
     if (!is_digit_run(digits, 0) || length(digits) > 18) {
         return BareLiteral()
     }
