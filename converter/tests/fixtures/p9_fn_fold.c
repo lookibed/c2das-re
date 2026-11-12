@@ -1,5 +1,6 @@
 /* function-like macros folded into [inline] defs, and the expansions that stay expanded */
 #include <stdio.h>
+#include <stdlib.h>
 #include <stddef.h>
 
 struct node {
@@ -54,6 +55,52 @@ static int ret_if(int c) {
     return 3;
 }
 
+
+/* a body action before an effectful argument: a declaration reading an argument or a global */
+static int g1, cnt = 1;
+int off = 100;
+static int bump(void) { return ++cnt; }
+#define DSEQ(a, b) do { int t_ = (a); g1 = t_ * 100 + (b); } while (0)
+#define BEF(x) do { int c_ = cnt; g1 = c_ * 100 + (x); } while (0)
+/* a faulting argument C evaluates after a body call that may exit */
+static void check(int c) { if (!c) { printf("checked\n"); exit(3); } }
+#define CHECKED(c, v) (check(c), (v))
+/* a global named like a parameter, reached through an object-like macro */
+#define OFF off
+#define ADDOFF(off) ((off) + OFF)
+#define ADDOFF2(x) ((x) + OFF)
+/* a local declared in an inner block leaves scope: the later name is the caller's */
+#define SCOPED(x) do { { int nn = (x); g1 += nn; } g1 += nn; } while (0)
+/* never folded, a type argument, a compound literal, an argument's address */
+#define ID(x) (x)
+#define CASTI(t, e) ((t)(e) + 1)
+#define FIRSTV(a) (((struct node){(a), 0, NULL}).v)
+#define ADDR(x) (&(x))
+
+static int review_cases(void) {
+    int i = 5, j = 1, k = 3, nn = 40, n = 7, d = 0;
+    volatile int vv = 4;
+    DSEQ(i, ++i);
+    printf("m %d", g1);
+    DSEQ(j, j++);
+    printf(" %d", g1);
+    DSEQ(k, k = 10);
+    printf(" %d", g1);
+    BEF(bump());
+    printf(" %d", g1);
+    DSEQ(i, 3);
+    printf(" %d", g1);
+    BEF(7);
+    printf(" %d\n", g1);
+    g1 = 0;
+    SCOPED(2);
+    int *pi = ADDR(n);
+    printf("n %d %d %d %d %d %d", ADDOFF(3), ADDOFF2(3), g1, ID(n), CASTI(int, 2.5), FIRSTV(n));
+    printf(" %d %d\n", SQ(vv), *pi);
+    printf("o %d\n", CHECKED(1, n + d));
+    return CHECKED(d != 0, n / d);
+}
+
 int main(void) {
     struct node n2 = {20, 2, NULL};
     struct node n1 = {10, 1, &n2};
@@ -97,5 +144,5 @@ int main(void) {
     int z = BAD(m3, m3);
     SWAP(m2, m2);
     printf("l %d %d %d %d %d\n", ok, m1, m2, m3, z);
-    return 0;
+    return review_cases();
 }

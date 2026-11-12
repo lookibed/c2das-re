@@ -603,19 +603,7 @@ def private objects(program : CirTu) : string => join([for (d in program.decls);
 def private one_macro(name, file : string) : CirMacro => CirMacro(name = name, params <- ["x"], file = file, line = 1, text = "#define {name}(x) (x)", uses <- [1])
 
 [test]
-def test_binding(t : T?) {
-    t |> run("an object binds to its initialized definition, whichever unit holds it, else to its first definition") @(t : T?) {
-        var tus <- [unit("a.c", target_lp64_linux()), unit("b.c", target_lp64_linux()), unit("c.c", target_lp64_linux())]
-        tus[0].decls <- [object("x", ""), object("y", "")]
-        tus[1].decls <- [object("x", "", true), object("y", ""), object("z", "", true)]
-        tus[2].decls <- [object("x", "5"), object("z", "", true)]
-        var res <- link_tus(tus, "main")
-        t |> equal(res.error, "")
-        // an object declared and defined nowhere keeps its first declaration, and binds no line
-        t |> equal(objects(res.program), "y= z= x=5")
-        t |> equal(join(res.bound, "\n"), "a.c: x -> c.c\nb.c: x -> c.c\nb.c: y -> a.c")
-        delete_tu(res.program)
-    }
+def test_link_macro_marks(t : T?) {
     t |> run("the units' macro tables merge first: one #define once, each expansion's macro index remapped, each unit's ids past the earlier units'") @(t : T?) {
         var tus <- [unit("a.c", target_lp64_linux()), unit("b.c", target_lp64_linux())]
         tus[0].macros <- [one_macro("SQ", "m.h"), one_macro("OWN", "a.c")]
@@ -631,6 +619,37 @@ def test_binding(t : T?) {
         t |> equal(join([for (m in res.program.macros); "{m.name}@{m.file}"], " "), "SQ@m.h OWN@a.c OWN@b.c")
         let marks <- [for (d in res.program.decls); join([for (u in d.init.fn_macro); "{u.m}#{u.site}"], ",") + "=" + join([for (a in d.init.macro_args); "{a.site}"], ",")]
         t |> equal(join(marks, " "), "1#0,0#1=1 0#2,2#3=3")
+        delete_tu(res.program)
+    }
+    t |> run("a header copy's bytes number its expansion ids by first appearance, so two units' copies compare equal") @(t : T?) {
+        var a = object("h", "1")
+        var b = object("h", "1")
+        a.init.fn_macro <- [CirMacroUse(m = 0, site = 7, args <- ["v"])]
+        a.init.macro_args <- [CirMacroArg(site = 7, k = 0)]
+        b.init.fn_macro <- [CirMacroUse(m = 0, site = 3, args <- ["v"])]
+        b.init.macro_args <- [CirMacroArg(site = 3, k = 0)]
+        t |> equal(write_cir_decl(*a, true), write_cir_decl(*b, true))
+        t |> success(write_cir_decl(*a) != write_cir_decl(*b))
+        t |> success(write_cir_decl(*a, true) |> contains("\"site\": 0"))
+        unsafe {
+            delete a
+            delete b
+        }
+    }
+}
+
+[test]
+def test_binding(t : T?) {
+    t |> run("an object binds to its initialized definition, whichever unit holds it, else to its first definition") @(t : T?) {
+        var tus <- [unit("a.c", target_lp64_linux()), unit("b.c", target_lp64_linux()), unit("c.c", target_lp64_linux())]
+        tus[0].decls <- [object("x", ""), object("y", "")]
+        tus[1].decls <- [object("x", "", true), object("y", ""), object("z", "", true)]
+        tus[2].decls <- [object("x", "5"), object("z", "", true)]
+        var res <- link_tus(tus, "main")
+        t |> equal(res.error, "")
+        // an object declared and defined nowhere keeps its first declaration, and binds no line
+        t |> equal(objects(res.program), "y= z= x=5")
+        t |> equal(join(res.bound, "\n"), "a.c: x -> c.c\nb.c: x -> c.c\nb.c: y -> a.c")
         delete_tu(res.program)
     }
     t |> run("a record incomplete in one unit is the record another defines") @(t : T?) {

@@ -254,6 +254,6 @@ def test_fold_verdicts(tt : T?) {
                 verdicts_stmt(fold_unit, d.body, scope, lines)
             }
         }
-        t |> equal(join(lines, " "), "RET_IF:flow ADD1:fold SUB:fold SUB:fold GETA:fold OUTER:fold ADD1:fold SQ:fold SQ:fold SQ:fold KEEP:fold KEEP:fold PICK:fold SQ:faulting SQ:faulting SQ:faulting PICK:faulting KEEP:faulting ADD1:fold SQ:effects ADD2:order TWICE:fold TWICE:fold TWICE:fold SETV:fold BUMP:fold SETLEN:fold FLD:fold FLD:fold FLD:fold NEXT:fold NEXT:fold NEXT:fold ORD:order PLUS_LOCAL:capture SWAP:fold length:fold TAG:fold TAG:fold TONUM:fold TONUM:fold INC:fold BAD:order SWAP:order")
+        t |> equal(join(lines, " "), "RET_IF:flow DSEQ:order DSEQ:order DSEQ:order BEF:order DSEQ:fold BEF:fold SCOPED:capture ADDR:lvalue ADDOFF:capture ADDOFF2:fold ID:never CASTI:incomplete FIRSTV:shape SQ:effects CHECKED:fold CHECKED:faulting ADD1:fold SUB:fold SUB:fold GETA:fold OUTER:fold ADD1:fold SQ:fold SQ:fold SQ:fold KEEP:fold KEEP:fold PICK:fold SQ:faulting SQ:faulting SQ:faulting PICK:faulting KEEP:faulting ADD1:fold SQ:effects ADD2:order TWICE:fold TWICE:fold TWICE:fold SETV:fold BUMP:fold SETLEN:fold FLD:fold FLD:fold FLD:fold NEXT:fold NEXT:fold NEXT:fold ORD:order PLUS_LOCAL:capture SWAP:fold length:fold TAG:fold TAG:fold TONUM:fold TONUM:fold INC:fold BAD:order SWAP:order")
     }
 }
