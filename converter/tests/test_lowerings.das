@@ -2491,23 +2491,23 @@ def p7_volatile_fixtures(t : T?) {
         has_text(t, text, "    c_volatile_store(p7_volatile__walker, c_volatile_load(p7_volatile__walker) + -1)\n    c_volatile_store(p7_volatile__walker, c_volatile_load(p7_volatile__walker) + -(1))\n")
         has_text(t, text, "    c_volatile_store(p7_volatile__seen, (int(c_volatile_load(p7_volatile__seen) ? 1 : 0) | 1) != 0)\n")
         // the value of an assignment read back is a load
-        has_text(t, text, "    c_volatile_store(p7_volatile__a, 4)\n    var u : int = c_volatile_load(p7_volatile__a) + 4\n")
+        has_text(t, text, "    c_volatile_store(p7_volatile__a, 4)\n    let u : int = c_volatile_load(p7_volatile__a) + 4\n")
         // a volatile read in a store's target is made once, into a temporary, and both reads of
         // `x = x + y` are made: as many loads as C makes reads
         has_text(t, text, "    let _t0 = c_volatile_load(p7_volatile__vi)\n    p7_volatile__cb[_t0] = uint8(int(p7_volatile__cb[_t0]) + 1)\n")
-        has_text(t, text, "    let _t2 = c_volatile_load(p7_volatile__vi)\n    p7_volatile__cb[_t2] = 7u8\n    var a2 : int = int(p7_volatile__cb[_t2])\n")
+        has_text(t, text, "    let _t2 = c_volatile_load(p7_volatile__vi)\n    p7_volatile__cb[_t2] = 7u8\n    let a2 : int = int(p7_volatile__cb[_t2])\n")
         has_text(t, text, "    *c_volatile_load(p7_volatile__vbp) = *c_volatile_load(p7_volatile__vbp) + y\n")
         has_text(t, text, "    c_volatile_load(vp).v = c_volatile_load(vp).v + 2\n")
         t |> equal(count(text, "c_volatile_load(p7_volatile__vi)"), 5, text)
         t |> equal(count(text, "c_volatile_load(p7_volatile__vbp)"), 2, text)
         // a used old value is the step's one load
-        has_text(t, text, "    let _t3 = c_volatile_load(p7_volatile__va[5])\n    c_volatile_store(p7_volatile__va[5], _t3 + 1)\n    var x : int = _t3\n")
+        has_text(t, text, "    let _t3 = c_volatile_load(p7_volatile__va[5])\n    c_volatile_store(p7_volatile__va[5], _t3 + 1)\n    let x : int = _t3\n")
         // a shift computes in the promoted left side; a float and a small integer step
         has_text(t, text, "    c_volatile_store(p7_volatile__vbig, c_volatile_load(p7_volatile__vbig) << int64(n))\n")
         has_text(t, text, "    c_volatile_store(p7_volatile__vd, c_volatile_load(p7_volatile__vd) + 1.0lf)\n    c_volatile_store(p7_volatile__vc, uint8(uint(c_volatile_load(p7_volatile__vc)) + 1))\n")
         // a volatile function pointer whose parameters hold a `*` is kept; a plain one whose
         // parameter is a volatile pointer is not
-        has_text(t, text, "    invoke(f, addr(y))\n    var r : int = invoke(c_volatile_load(p7_volatile__hook), null) + invoke(c_volatile_load(p7_volatile__raw), addr(y))\n")
+        has_text(t, text, "    invoke(f, addr(y))\n    let r : int = invoke(c_volatile_load(p7_volatile__hook), null) + invoke(c_volatile_load(p7_volatile__raw), addr(y))\n")
         // a volatile counter or bound keeps the while form
         has_text(t, text, "        while (c_volatile_load(i) < 3) \{")
         has_text(t, text, "        while (i < c_volatile_load(bound)) \{")
