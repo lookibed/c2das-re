@@ -621,7 +621,7 @@ def private convert_layout(stem, main_source : string; input : ProgramInput; bin
             to_log(LOG_INFO, line |> contains(" -> ") ? "partition {stem} ({layout}): {line}\n" : "{head}: module {line}\n")
         }
     }
-    to_log(LOG_INFO, "{head}: emitter {fmt(":.1f", res.emit_seconds)} s, compile check {fmt(":.1f", res.check_seconds)} s, {das_lines(res, dir)} lines of das, [c_function] on {res.c_functions} of {res.function_count} functions\n")
+    to_log(LOG_INFO, "{head}: emitter {fmt(":.1f", res.emit_seconds)} s, compile check {fmt(":.1f", res.check_seconds)} s, {das_lines(res, dir)} lines of das, [c_function] on {res.c_functions} of {res.function_count} functions, macro sites {fold_report(res)}\n")
     if (args.error_check && main_source == "lua" && !error_check(res.das_path, bin, stem, args.tier)) {
         return false
     }

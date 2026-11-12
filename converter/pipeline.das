@@ -33,6 +33,9 @@ struct ConvertResult {
     // function bodies needed [c_function], out of all the unit defines
     c_functions : int
     function_count : int
+    // per reason how many function-like macro expansions folded or stayed expanded
+    // (`ARCHITECTURE_EMITTER_MACROS.md`)
+    fold_counts : table<string; int>
     // the bytes of clang's JSON dump, and the seconds the dumper (clang included), the emitter
     // (the formatter included) and the compile check took
     json_bytes : int64
@@ -50,6 +53,15 @@ struct ConvertResult {
     partition : array<string>
     // the edge census of its cycles, when asked (`edge_census`)
     census : array<string>
+}
+
+//! The function-like macro sites of a conversion on one line: `folded N`, then each reason a site
+//! stayed expanded with its count, by name.
+def fold_report(res : ConvertResult) : string {
+    var reasons <- [for (r in keys(res.fold_counts)); r; where r != "folded"]
+    sort(reasons)
+    let expanded = join([for (r in reasons); "{r} {res.fold_counts?[r] ?? 0}"], ", ")
+    return "folded {res.fold_counts?["folded"] ?? 0}" + (empty(expanded) ? "" : ", expanded: {expanded}")
 }
 
 //! Whether `path` is a source layout module's layout file, which holds its layout check and no
@@ -240,6 +252,7 @@ def private emit_unit(var tu : CirTu; side : Sidecar; out_dir, stem : string; va
     }
     res.c_functions = em.c_functions
     res.function_count = em.function_count
+    res.fold_counts := em.fold_counts
     if (has_mark(em.text)) {
         res.error = "emitter: a line-layout mark reached the module"
         return
@@ -275,6 +288,7 @@ def private emit_modules(var tu : CirTu; owners : array<int>; plan : LayoutPlan;
     }
     res.c_functions = emitted.c_functions
     res.function_count = emitted.function_count
+    res.fold_counts := emitted.fold_counts
     res.files |> reserve(length(emitted.files))
     for (f in emitted.files) {
         let path = path_join(out_dir, f.path)

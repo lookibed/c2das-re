@@ -115,7 +115,7 @@ def private rust_json(c_path, work : string; samples, oracle : int) : JsonValue?
 def measure_kernel(name : string; samples : int) : JsonValue? {
     let work = path_join(AUDIT_WORK, name)
     rmdir_rec(work)
-    let c_path = write_method_composed(AUDIT_KERNELS, name, work)
+    let c_path = write_audit_composed(AUDIT_KERNELS, name, work)
     var inscope native_cells : table<string; Cell>
     var errors : array<string>
     var oracle = 0

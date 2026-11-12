@@ -334,6 +334,40 @@ def test_names(t : T?) {
     rmdir_rec(work_root)
 }
 
+[test]
+def test_link_macros(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_link_macros", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("two units' macros merge into one table: a header macro is one def, a header function using it is kept once, each unit's own macro of one name stays its own") @(t : T?) {
+        let header = "#define TWICE(x) ((x) * 2)\nstatic inline int quad(int v) \{ return TWICE(TWICE(v)); \}\n"
+        let paths <- written("macros", [
+            (name = "m.h", text = header),
+            (name = "a.c", text = "#include \"m.h\"\n#define OWN(x) ((x) + 1)\nint a(int v) \{ return quad(v) + TWICE(v) + OWN(v); \}\n"),
+            (name = "main.c", text = "#include <stdio.h>\n#include \"m.h\"\n#define OWN(x) ((x) + 2)\nint a(int v);\nint main(void) \{ printf(\"%d %d\\n\", a(3), quad(1) + TWICE(5) + OWN(1)); return 0; \}\n")
+        ])
+        let c_paths <- [paths[1], paths[2]]
+        let native = native_run(default_clang(), ["-w", "-funsigned-char", "-lm"], c_paths, path_join(work_root, "macros_native"), 60.0, array<string>())
+        t |> equal(native.built, true, native.output)
+        let out_dir = path_join(work_root, "macros_out")
+        let res <- single_program(c_paths, out_dir)
+        if (!res.ok) {
+            t |> failure(res.error)
+            return
+        }
+        var out : string
+        t |> equal(run_tier(res.das_path, "interp", out_dir, out, CONVERTED_MODULES), native.rc)
+        t |> equal(out, native.output)
+        t |> equal(join(res.deduplicated, "\n"), "quad: a.c, main.c")
+        let text = res.das_text
+        occurs(t, text, "def private TWICE(x) => x * 2\n", 1)
+        occurs(t, text, "return TWICE(TWICE(v))\n", 1)
+        occurs(t, text, "def private OWN(x) => x + 1\n", 1)
+        occurs(t, text, "def private OWN_2(x) => x + 2\n", 1)
+    }
+    rmdir_rec(work_root)
+}
+
 let HOISTED = "converter/tests/fixtures/p5_multi_hoisted"
 
 [test]

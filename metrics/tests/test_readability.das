@@ -369,13 +369,16 @@ def test_worker(t : T?) {
         var counts : string
         t |> equal(run_worker("perf/first_member@reinterpret", counts), 0)
         // the format literal's `cstr("...")` expands to a reinterpret its text does not spell
-        t |> success(counts |> contains("\nreinterpret 6\n"), counts)
+        // `s2v`, `gco2t` and `gco2cl` fold into defs (P9.20): each def's body holds its reinterpret once
+        t |> success(counts |> contains("\nreinterpret 5\n"), counts)
         let reinterpreted = fread("metrics/work/perf/first_member@reinterpret/das/first_member.das")
-        t |> success(reinterpreted |> contains("var v : TValue? = reinterpret<TValue?>(base + a)\n"), reinterpreted)
+        t |> success(reinterpreted |> contains("def private s2v(var o) : TValue? => reinterpret<TValue?>(o)\n"), reinterpreted)
+        t |> success(reinterpreted |> contains("var v : TValue? = s2v(base + a)\n"), reinterpreted)
         t |> equal(run_worker("perf/first_member", counts), 0)
         t |> success(counts |> contains("\nreinterpret 4\n"), counts)
         let kept = fread("metrics/work/perf/first_member/das/first_member.das")
-        t |> success(kept |> contains("var v : TValue? = addr((base + a).val)\n"), kept)
+        t |> success(kept |> contains("def private s2v(var o) : TValue? => addr(o.val)\n"), kept)
+        t |> success(kept |> contains("var v : TValue? = s2v(base + a)\n"), kept)
     }
     t |> run("--one converts a kernel's `@inline` key under --inline-helpers, the plain key with the helper's calls") @(t : T?) {
         var counts : string

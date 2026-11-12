@@ -93,9 +93,11 @@ def test_run_blit_lanes(t : T?) {
         t |> equal(cells?["interp-reinterpret"]?["result"] ?? -1l, cells?["native"]?["result"] ?? -2l, fm_out)
         let kept = fread("perf/work/first_member/first_member.das")
         let reinterpreted = fread("perf/work/first_member/reinterpret/first_member.das")
-        t |> success(kept |> contains("var v : TValue? = addr((base + a).val)\n"), kept)
-        t |> success(reinterpreted |> contains("var v : TValue? = reinterpret<TValue?>(base + a)\n"), reinterpreted)
-        t |> success(reinterpreted |> contains("reinterpret<Table?>(v.value_.gc).size"), reinterpreted)
+        // `s2v` and `gco2t` fold into defs (P9.20), each spelled in its def's body
+        t |> success(kept |> contains("def private s2v(var o) : TValue? => addr(o.val)\n"), kept)
+        t |> success(kept |> contains("var v : TValue? = s2v(base + a)\n"), kept)
+        t |> success(reinterpreted |> contains("def private s2v(var o) : TValue? => reinterpret<TValue?>(o)\n"), reinterpreted)
+        t |> success(reinterpreted |> contains("def private gco2t(var o) : Table? => reinterpret<Table?>(o)\n"), reinterpreted)
     }
     t |> run("a cell of two samples has their spread") @(t : T?) {
         let native = js?["tests"]?["blit"]?["native"]
