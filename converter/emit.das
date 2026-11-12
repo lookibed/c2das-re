@@ -6192,7 +6192,7 @@ def private plan_let_locals(var em : Emitter; body : CirStmt const?) {
     each_stmt(body) $(st) {
         if (st.s == "for" && st.init_s != null) {
             loop_heads |> insert(intptr(st.init_s))
-            var whole <- written_names(st)
+            let whole <- written_names(st)
             for (child in st.init_s.body) {
                 if (child.s == "decl" && !key_exists(whole, child.name)) {
                     em.unwritten_decls |> insert(intptr(child))
