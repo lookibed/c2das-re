@@ -140,7 +140,7 @@ def escape_cases(t : T?; out : string) {
         t |> equal(address_escapes(s, body_of("libc_calls"), "tmp"), false)
     }
     t |> run("a pointer escapes when it is kept, returned, stepped into a global or its own address taken") @(t : T?) {
-        let source = "int *g; int **gg; struct s \{ int *p; \} gs;\nint *ret(int *p) \{ return p + 1; \}\nvoid keep(int *p) \{ gs.p = p; \}\nvoid step(int *p) \{ p++; g = p; \}\nvoid self(int *p) \{ gg = &p; \}\nvoid cond(int *p, int c) \{ g = c ? p : 0; \}\nint cmp(int *p, int *q) \{ return p < q && *p == 1 && p[1] == 2; \}\nint *pass(int *p) \{ return ret(p); \}\nvoid copy(char *d, const char *s) \{ while (*s) *d++ = *s++; \}\nchar *found(char *s) \{ return __builtin_strchr(s, 'a'); \}\nint main(void) \{ return 0; \}\n"
+        let source = "int *g; int **gg; struct s \{ int *p; \} gs;\nint *ret(int *p) \{ return p + 1; \}\nvoid keep(int *p) \{ gs.p = p; \}\nvoid step(int *p) \{ p++; g = p; \}\nvoid self(int *p) \{ gg = &p; \}\nvoid cond(int *p, int c) \{ g = c ? p : 0; \}\nint cmp(int *p, int *q) \{ return p < q && *p == 1 && p[1] == 2; \}\nint *pass(int *p) \{ return ret(p); \}\nvoid copy(char *d, const char *s) \{ while (*s) *d++ = *s++; \}\nchar *found(char *s) \{ return __builtin_strchr(s, 'a'); \}\nint shadow;\nvoid hides(void) \{ \{ int shadow = 0; shadow++; \} \}\nint main(void) \{ return 0; \}\n"
         let c_path = path_join(out, "escapes.c")
         fwrite(c_path, source)
         let small <- convert(c_path, path_join(out, "escapes"), "linux")
@@ -157,6 +157,8 @@ def escape_cases(t : T?; out : string) {
         t |> equal(kept_nothing(es, "pass", 0), false)
         t |> equal(kept_nothing(es, "copy", 0) && kept_nothing(es, "copy", 1), true)
         t |> equal(kept_nothing(es, "found", 0), false)
+        // a local named like a global stores to the global as far as callers know: the C-IR names both alike
+        t |> equal(stores_global(es, es.effects[es.function_index?["hides"] ?? 0], "shadow"), true)
         delete_tu(unit)
     }
     t |> run("under strict aliasing the types of the stores through a pointer are kept, a libc store's as every type") @(t : T?) {

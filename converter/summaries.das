@@ -437,17 +437,9 @@ def access_type(tu : CirTu; x : CirExpr const?) : int {
 
 def private type_kind(tu : CirTu; t : int) : string => t >= 0 && t < length(tu.types) ? tu.types[t].k : ""
 
-// the direct facts of function `d`: its stores by name to globals (a parameter or local of its
-// own is no global) and through pointers, its volatile accesses, its loops and its callees
+// the direct facts of function `d`: its stores by name to globals and through pointers, its volatile accesses, its loops and its callees
 def private body_facts(s : Summaries; tu : CirTu; d : CirDecl; pointed : table<string>; defined_globals : table<string>; strict : bool; var facts : BodyFacts) {
-    var locals : table<string>
-    for (p in d.params) {
-        locals |> insert(p.name)
-    }
     each_stmt(d.body) $(st) {
-        if (st.s == "decl") {
-            locals |> insert(st.name)
-        }
         facts.stops ||= st.s == "goto"
         if (st.s == "while" || st.s == "do" || st.s == "for") {
             facts.stops ||= !reads_object(st.cond) && !false_test(st.cond)
@@ -469,7 +461,8 @@ def private body_facts(s : Summaries; tu : CirTu; d : CirDecl; pointed : table<s
                 if (strict) {
                     facts.effects.through_types |> insert(access_type(tu, target))
                 }
-            } elif (!key_exists(locals, root) && key_exists(s.global_bit, root)) {
+            } elif (key_exists(s.global_bit, root)) {
+                // a local named like a global counts as the global: the C-IR names both alike
                 set_bit(facts.effects.globals, s.global_bit?[root] ?? 0)
                 facts.effects.pointed_global ||= key_exists(pointed, root) || !key_exists(defined_globals, root)
             }

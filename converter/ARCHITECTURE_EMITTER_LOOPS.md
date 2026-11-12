@@ -116,7 +116,8 @@ to 0.060 s and `primes`'s from 0.363 to 0.135 s on the FX-6300 (`perf/ARCHITECTU
 program mode the C-IR holds every unit; a unit converted alone sees only itself.
 
 - **Effects** (`CallEffects`), per function: the globals it stores to by name (a store whose
-  storage root is a global, not a parameter or local of its own; a local static is a global),
+  storage root is named like a global, a local of that name included, since the C-IR spells a
+  local that hides a global by the global's name; a local static is a global),
   whether one of them is a global a pointer may reach or the program does not define
   (`pointed_global`), whether it stores through a pointer (`through`, each store's `access_type`
   kept under the sidecar's `strict_aliasing: true`), whether it may do input or output (a volatile
