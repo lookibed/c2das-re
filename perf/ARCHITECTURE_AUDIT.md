@@ -60,7 +60,7 @@ kernel's work out of the budget loop; a rewritten cell under a tenth of native i
 `SUSPECT`, a different program, not a cost.
 
 `[c_function]` is no construct here: the annotation wraps the body in `unsafe` before inference
-and leaves no runtime form (`c_runtime/ARCHITECTURE.md`), so a module without it is the same
+and leaves no runtime form (`c_runtime/ARCHITECTURE_MACROS.md`), so a module without it is the same
 program; the call it sits on is the construct (`small_call`, the call inlined by hand).
 
 The Rust side is the same composed program through `compare/rust_translator.das`'s

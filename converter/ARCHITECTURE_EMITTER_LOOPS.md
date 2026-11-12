@@ -19,7 +19,7 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
 - **No test**: a body with no `continue` of the loop that always leaves is
   `while (true) { body }`, and `while (0)` with a `break` in the body `while (true) { body; break }`.
 - **`c_do_while`**: a test that hoists no statement is `c_do_while (c) { body }`, the call macro of
-  `c_runtime/c_do_while.das` (`c_runtime/ARCHITECTURE.md`). It expands in place, before its
+  `c_runtime/c_do_while.das` (`c_runtime/ARCHITECTURE_MACROS.md`). It expands in place, before its
   arguments are inferred, to the loop the emitter would spell: `while (true) { body; if (!(c))
   { break } }` for a body with no `continue` of its own loop, else the first-pass flag below,
   with the body's statements in the loop's own block; `c_runtime/tests/test_c_do_while.das`
