@@ -2030,6 +2030,27 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   Expected speed effect (phase-end A/B, B/A): interpreter 0.99-1.00 on Doom and Lua (a few dozen
   more range loops, none in `luaV_execute` or the renderer's column loops), JIT and exe 1.00;
   conversion time: the summaries add one pass over the program, predicted within noise.
+- **P9.25 `[c_macro]`, the carrier of the folded function-like macros** (ruling 38 addendum 18,
+  after the P9.20 speed gate failed: Lua interp B/A nbody 1.51, spectral 1.34, binary_trees 1.22,
+  fib 1.09, root cause the `[inline]` splice's per-level argument copies, `_res` blocks and `_low`
+  flags). Three PRs, landing with P9.20's fold code: (1) `c_runtime/ARCHITECTURE.md` split, the
+  compile-time pieces into `ARCHITECTURE_MACROS.md` (LINT027); (2) `c_runtime/c_macro.das`, a
+  function annotation replacing each inferred call by the def's written body with the parameters
+  substituted by the argument expressions as written (C's expansion), a statement body's locals
+  renamed apart, `[c_function]`'s `unsafe` kept with the body, any other shape a compile error;
+  fixture test under interp, JIT, exe and AOT; (3) the emitter prints `[c_macro]` on a folded def
+  whose text is one expression or a void statement body, the value-returning statement bodies
+  (Lua's `tonumberns` class, 8 defs) stay expanded at their sites, and a pointer parameter of a
+  folded def is `var` only when its value is written through, passed to a `var` parameter
+  (innermost defs first), escapes as a pointer, or the parameter is assigned, casts looked
+  through (classification row 9). Predictions (the lead's exclusive re-gate, A = main without the
+  fold, B = P9.20 with this item): Lua interp B/A 1.00-1.03 on fib, nbody, spectral_norm and
+  binary_trees (prototype M on the real Lua: 1.003 / 1.018 / 1.035 / 1.028, of which the
+  `tonumberns` sites stay expanded here, so spectral and binary_trees should fall to about 1.01);
+  JIT 1.00 within noise; Doom interp and JIT 1.00 (7 folded defs); Lua compile time (`-dry-run`)
+  about A's plus a third (prototype: A 3.3 s, `[inline]` 5.8 s, `[c_macro]` 4.4 s); converted text
+  unchanged against P9.20 but the annotation word, the dropped `var` of read-only pointer
+  parameters and the `tonumberns`-class sites spelled expanded; criteria 1610 inputs, 0 failed.
 
 ## P6 — Doom
 
