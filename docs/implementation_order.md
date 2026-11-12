@@ -1886,6 +1886,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   tables); the basis should not depend on line wrapping (per 1000 statements, or per KB of
   non-blank text), and P9.15's raw counts in its PR are the comparison across this change.
   Expected speed effect (phase-end A/B, B/A): 1.00 on every lane (whitespace only), compile time
+  within noise.
 - **P9.16 `let` for never-reassigned locals** (ruling 38 addendum 14 item 2, fn-macros part 2 step 1;
   `/root/notes/research/r38/fn_macros_part1.md` section 6). A local declared with an initializer that
   nothing in its scope assigns, steps or takes the address of prints as `let` when das spells it as an
