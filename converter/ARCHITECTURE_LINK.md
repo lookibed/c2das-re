@@ -67,3 +67,12 @@ folder; its `defines` reach every unit.
 The merged declarations follow the units' order; the program's `tu` is the file of the unit
 defining `main`, so the module and the wrapper's `argv[0]` carry that unit's stem. A program of one
 file does not pass through the link: its statics keep the dumper's `<stem>__<name>`.
+
+### Function-like macros {#link-macros}
+
+The units' `macros` tables (`docs/c-ir-spec.md` section 6.3) merge first, before anything else,
+into the program's one table, a `#define` of one name, file, line and text once; every `fn_macro`
+takes its index there, and each unit's expansion ids (the `site` of `fn_macro` and of
+`macro_args`) move past the ids of the units before it, so an id names one expansion of the
+program. A header function's copies compare with each copy's ids numbered by first appearance, so
+two units' identical copies stay identical; the kept copy keeps its own ids.

@@ -21,7 +21,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `include_dirs` (`DumpInputs`), on one file and normalizes the JSON into a `CirTu`. Fails closed:
   the first construct outside what it represents sets `Dumper.error` with `file:line:col`. Layout
   facts come from a libclang pass over the same file (`ARCHITECTURE_DUMPER.md`, section 3), and
-  its macro expansions mark nodes through `macro_sites.das` (`ARCHITECTURE_DUMPER_MACROS.md`).
+  its macro expansions mark nodes through `macro_sites.das` (`ARCHITECTURE_DUMPER_MACROS.md`), which `macro_fold.das` judges for folding into defs (`ARCHITECTURE_EMITTER_MACROS.md`).
 - `emit.das` - the emitter: `CirTu` in, gen2 text out, fails closed the same way. The
   lowering passes of the plan (type resolve and rename, promotion insertion,
   statement-ification, control flow) happen as it spells nodes (`ARCHITECTURE_EMITTER.md`,

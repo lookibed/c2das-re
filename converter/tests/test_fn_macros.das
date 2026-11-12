@@ -1,4 +1,6 @@
 options gen2
+// the dump and the C-IR text parse below the test's own frames: a deep tree overflows the default stack
+options stack = 1048576
 require dastest/testing_boost public
 require strings
 require daslib/fio
@@ -7,6 +9,7 @@ require daslib/strings_boost
 require ../pipeline.das
 require ../cir.das
 require ../tiers.das
+require ../macro_fold.das
 
 //! The C-IR's function-like macro fields (`docs/c-ir-spec.md` section 6.3): the unit's `macros`,
 //! `fn_macro` on each whole expansion and `macro_args` on each copy of an argument, over a fixture
@@ -165,5 +168,92 @@ def test_fn_macros(t : T?) {
     }
     t |> run("the writer and the reader keep every field: the rewritten text is the text read") @(t : T?) {
         t |> equal(write_cir(tu), res.cir_text)
+    }
+}
+
+// the verdict of every outermost expansion below expression `x` and statement `st` of a function
+// whose scope is `scope`, `NAME:reason` (`NAME:fold` when it folds) in preorder
+def verdicts_expr(tu : CirTu; x : CirExpr const?; scope : FoldScope; var out : array<string>) {
+    if (x == null) {
+        return
+    }
+    if (!empty(x.fn_macro)) {
+        assume use = x.fn_macro[0]
+        let site <- fold_expr_site(tu.macros[use.m], use, x, scope)
+        out |> push("{tu.macros[use.m].name}:{empty(site.reason) ? "fold" : site.reason}")
+    }
+    for (part in fixed_array<CirExpr const?>(x.fn, x.base, x.i, x.a, x.b, x.c)) {
+        verdicts_expr(tu, part, scope, out)
+    }
+    for (arg in x.args) {
+        verdicts_expr(tu, arg, scope, out)
+    }
+}
+
+def verdicts_stmt(tu : CirTu; st : CirStmt const?; scope : FoldScope; var out : array<string>) {
+    if (st == null) {
+        return
+    }
+    if (!empty(st.fn_macro)) {
+        assume use = st.fn_macro[0]
+        let site <- fold_stmt_site(tu.macros[use.m], use, st, scope)
+        out |> push("{tu.macros[use.m].name}:{empty(site.reason) ? "fold" : site.reason}")
+    }
+    for (x in fixed_array<CirExpr const?>(st.init, st.e, st.cond, st.inc)) {
+        verdicts_expr(tu, x, scope, out)
+    }
+    for (child in fixed_array<CirStmt const?>(st.init_s, st.then_s, st.else_s, st.body_s)) {
+        verdicts_stmt(tu, child, scope, out)
+    }
+    for (child in st.body) {
+        verdicts_stmt(tu, child, scope, out)
+    }
+}
+
+// the names a statement tree declares, and the names it takes the address of
+def scope_names(st : CirStmt const?; var scope : FoldScope) {
+    if (st == null) {
+        return
+    }
+    if (st.s == "decl") {
+        scope.locals |> insert(st.name)
+    }
+    for (child in fixed_array<CirStmt const?>(st.init_s, st.then_s, st.else_s, st.body_s)) {
+        scope_names(child, scope)
+    }
+    for (child in st.body) {
+        scope_names(child, scope)
+    }
+}
+
+var fold_unit : CirTu
+
+[test]
+def test_fold_verdicts(tt : T?) {
+    var dir_error : string
+    let out = create_temp_directory("c2das_fold_verdicts", dir_error)
+    if (!empty(dir_error)) {
+        tt |> failure(dir_error)
+        return
+    }
+    let conv <- convert("converter/tests/fixtures/p9_fn_fold.c", out, "linux")
+    var read_error : string
+    unsafe {
+        delete fold_unit
+    }
+    fold_unit <- read_cir(conv.cir_text, read_error)
+    tt |> run("each outermost expansion of the fold fixture gets the verdict its node allows: A, B and D fold, every guard names its reason") @(t : T?) {
+        t |> equal(read_error, "")
+        var lines : array<string>
+        for (d in fold_unit.decls) {
+            if (d.k == "func" && d.body != null) {
+                var scope = FoldScope(locals <- {for (p in d.params); p.name})
+                scope_names(d.body, scope)
+                // the fixture takes the address of `n1`, `n2`, `arr`, `t1`, `t2` only
+                scope.addressed <- {"n1", "n2", "arr", "t1", "t2"}
+                verdicts_stmt(fold_unit, d.body, scope, lines)
+            }
+        }
+        t |> equal(join(lines, " "), "RET_IF:flow ADD1:fold SUB:fold SUB:fold GETA:fold OUTER:fold ADD1:fold SQ:fold SQ:fold SQ:fold KEEP:fold KEEP:fold PICK:fold SQ:faulting SQ:faulting SQ:faulting PICK:faulting KEEP:faulting ADD1:fold SQ:effects ADD2:order TWICE:fold TWICE:fold TWICE:fold SETV:fold BUMP:fold SETLEN:fold FLD:fold FLD:fold FLD:fold NEXT:fold NEXT:fold NEXT:fold ORD:order PLUS_LOCAL:capture SWAP:fold length:fold TAG:fold TAG:fold TONUM:fold TONUM:fold INC:fold BAD:order SWAP:order")
     }
 }

@@ -301,6 +301,19 @@ def delete_tu(var tu : CirTu) {
 struct private Writer {
     out : array<string>
     depth : int
+    // with `renumber`, each expansion id is written as its order of first appearance (`sites`)
+    renumber : bool
+    sites : table<int; int>
+}
+
+def private site_id(var w : Writer; site : int) : int {
+    if (!w.renumber) {
+        return site
+    }
+    if (!key_exists(w.sites, site)) {
+        w.sites[site] = length(w.sites)
+    }
+    return w.sites?[site] ?? site
 }
 
 def private indent(var w : Writer) {
@@ -465,7 +478,7 @@ def private write_macro_uses(var w : Writer; uses : array<CirMacroUse>) {
         member(w, "m", true)
         w.out |> push("{uses[i].m}")
         member(w, "site", false)
-        w.out |> push("{uses[i].site}")
+        w.out |> push("{site_id(w, uses[i].site)}")
         member(w, "args", false)
         w.out |> push("[" + join([for (a in uses[i].args); json_str(a)], ", ") + "]")
     }
@@ -479,7 +492,7 @@ def private write_macro_args(var w : Writer; args : array<CirMacroArg>) {
     member(w, "macro_args", false)
     write_objects(w, length(args)) $(i) {
         member(w, "site", true)
-        w.out |> push("{args[i].site}")
+        w.out |> push("{site_id(w, args[i].site)}")
         member(w, "k", false)
         w.out |> push("{args[i].k}")
     }
@@ -948,9 +961,10 @@ def private write_target(var w : Writer; target : CirTarget) {
 }
 
 //! The canonical bytes of one declaration, as `write_cir` spells it at depth 0: two declarations
-//! with these bytes equal are the same declaration.
-def write_cir_decl(d : CirDecl) : string {
-    var w : Writer
+//! with these bytes equal are the same declaration. With `renumber_sites` each macro expansion id is
+//! its order of first appearance, so two units' copies of one header function compare equal.
+def write_cir_decl(d : CirDecl; renumber_sites : bool = false) : string {
+    var w = Writer(renumber = renumber_sites)
     write_decl(w, d)
     return join(w.out, "")
 }

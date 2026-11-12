@@ -3,6 +3,7 @@ options gen2
 module link public
 
 require strings
+require math
 require daslib/strings_boost
 require daslib/fio
 require cir
@@ -487,7 +488,7 @@ def private header_groups(var tus : array<CirTu>; units : array<UnitNames>; scop
     for (ti, tu in count(), tus) {
         for (di, d in count(), tu.decls) {
             if (d.k == "func" && d.is_static && d.body != null && from_header(tu, d)) {
-                groups["{scopes[ti]}\n{d.name}\n{write_cir_decl(*d)}"] |> push(DeclRef(tu = ti, at = di))
+                groups["{scopes[ti]}\n{d.name}\n{write_cir_decl(*d, true)}"] |> push(DeclRef(tu = ti, at = di))
             }
         }
     }
@@ -833,6 +834,79 @@ def private gather(var tus : array<CirTu>; b : Binding; var res : LinkResult) {
     }
 }
 
+// the expansion marks of expression `x` and below: each `m` through `remap`, each id past `offset`;
+// `top` the highest id after
+def private remap_macro_expr(var x : CirExpr?; remap : array<int>; offset : int; var top : int&) {
+    if (x == null) {
+        return
+    }
+    for (u in x.fn_macro) {
+        u.m = remap[u.m]
+        u.site += offset
+        top = max(top, u.site)
+    }
+    for (a in x.macro_args) {
+        a.site += offset
+    }
+    for (part in fixed_array(x.a, x.b, x.c, x.fn, x.base, x.i, x.list, x.init)) {
+        remap_macro_expr(part, remap, offset, top)
+    }
+    for (arg in x.args) {
+        remap_macro_expr(arg, remap, offset, top)
+    }
+    for (item in x.init_items) {
+        remap_macro_expr(item.v, remap, offset, top)
+    }
+}
+
+def private remap_macro_stmt(var st : CirStmt?; remap : array<int>; offset : int; var top : int&) {
+    if (st == null) {
+        return
+    }
+    for (u in st.fn_macro) {
+        u.m = remap[u.m]
+        u.site += offset
+        top = max(top, u.site)
+    }
+    for (x in fixed_array(st.init, st.e, st.cond, st.inc)) {
+        remap_macro_expr(x, remap, offset, top)
+    }
+    for (child in fixed_array(st.then_s, st.else_s, st.body_s, st.init_s)) {
+        remap_macro_stmt(child, remap, offset, top)
+    }
+    for (child in st.body) {
+        remap_macro_stmt(child, remap, offset, top)
+    }
+}
+
+// the units' function-like macros into the program's one table, a `#define` (name, file, line,
+// text) once, each unit's expansions renumbered past every earlier unit's so an id names one
+// expansion in the program
+[arch(at="ARCHITECTURE_LINK.md#link-macros")]
+def private merge_macros(var tus : array<CirTu>; var program : CirTu) {
+    var index : table<string; int>
+    var offset = 0
+    for (tu in tus) {
+        var inscope remap : array<int>
+        remap |> reserve(length(tu.macros))
+        for (m in tu.macros) {
+            let key = "{m.name}\n{m.file}\n{m.line}\n{m.text}"
+            if (!key_exists(index, key)) {
+                index[key] = length(program.macros)
+                program.macros |> push_clone(m)
+            }
+            remap |> push(index?[key] ?? 0)
+        }
+        var top = offset - 1
+        for (d in tu.decls) {
+            remap_macro_expr(d.init, remap, offset, top)
+            remap_macro_stmt(d.body, remap, offset, top)
+        }
+        offset = top + 1
+        tu.macros |> clear()
+    }
+}
+
 //! Links the dumper's trees of a program's units, in link order, into one tree: the merged type
 //! table, one declaration per external name (prototypes and `extern` declarations bound to the
 //! definition, tentative definitions merged), every unit's statics, renamed `<stem>_<name>` only
@@ -854,6 +928,7 @@ def link_tus(var tus : array<CirTu>; entry : string; reserved : array<string>; s
     res.program.producer = tus[0].producer
     res.program.target = tus[0].target
     res.program.tu = tus[0].tu
+    merge_macros(tus, res.program)
     res.error = merge_types(tus, res.program)
     if (!empty(res.error)) {
         return <- res
