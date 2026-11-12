@@ -52,6 +52,10 @@ struct MacroDef {
     text : string
     uses : array<int>
     uses_state : int
+    // the parameters in the order the full expansion holds their tokens (`seq_state` 2), through
+    // the macros the body calls; -1 when a call goes through a macro this pass does not follow
+    seq : array<int>
+    seq_state : int
     cir_index : int = -1
 }
 
@@ -92,6 +96,9 @@ struct MacroIndex {
     by_name : table<string; array<int>>
     expansion_at : table<string; int>
     expansion_offsets : table<int64>
+    // the function-like macros of system headers, by name: never marked, and a body calling one is
+    // followed no further
+    system_fn : table<string>
     texts : table<string; string>
     fn_marks : table<uint64; array<CirMacroUse>>
     arg_marks : table<uint64; array<CirMacroArg>>
@@ -121,6 +128,16 @@ def macro_def_index(var ix : MacroIndex; name, file, given_file : string; line, 
     ix.by_name[name] |> push(idx)
     return idx
 }
+
+//! Records that a system header defines function-like macro `name`.
+def system_macro(var ix : MacroIndex; name : string) {
+    ix.system_fn |> insert(name)
+}
+
+// whether token `k` of `toks` before `hi` calls a system header's function-like macro no program
+// macro of the name hides
+def private calls_system(ix : MacroIndex; toks : array<MTok>; k, hi : int) : bool =>
+    toks[k].kind == TOK_IDENT && key_exists(ix.system_fn, toks[k].word) && !key_exists(ix.by_name, toks[k].word) && k + 1 < hi && is_punct(toks[k + 1], "(")
 
 //! Records that the macro at `mac` expands at canonical `file`, offset `at`.
 def macro_expansion_at(var ix : MacroIndex; file : string; at : int; mac : int) {
@@ -436,7 +453,8 @@ def private spelled_close(var ix : MacroIndex; sp : MSpan; depth : int) : SpellP
     }
     let k = open - 1
     let tok = src < 0 ? ix.site_toks[k] : ix.defs[src].body[k]
-    if (src >= 0 && sp.ctx >= 0 && tok.kind == TOK_IDENT && param_index(ix.defs[ix.ctxs[sp.ctx].mac], tok.word) >= 0) {
+    let system = src < 0 ? calls_system(ix, ix.site_toks, k, sp.hi) : calls_system(ix, ix.defs[src].body, k, sp.hi)
+    if (system || (src >= 0 && sp.ctx >= 0 && tok.kind == TOK_IDENT && param_index(ix.defs[ix.ctxs[sp.ctx].mac], tok.word) >= 0)) {
         return SpellPos(at = -1)
     }
     let mac = macro_of(ix, sp, k)
@@ -475,6 +493,9 @@ def private spelled_end(var ix : MacroIndex; sp : MSpan; last : bool; depth : in
             let arg = ix.ctxs[sp.ctx].args[p]
             return spelled_end(ix, arg, last, depth + 1)
         }
+    }
+    if (!last && (src < 0 ? calls_system(ix, ix.site_toks, k, sp.hi) : calls_system(ix, ix.defs[src].body, k, sp.hi))) {
+        return SpellPos(at = -1)
     }
     let mac = macro_of(ix, sp, k)
     if (mac < 0 || !parse_def(ix, mac)) {
@@ -548,6 +569,9 @@ def private occurrences(var ix : MacroIndex; mac, lo, hi, p : int) : int {
             k++
             continue
         }
+        if (calls_system(ix, ix.defs[mac].body, k, hi)) {
+            return -1
+        }
         var callee = -1
         if (tok.kind == TOK_IDENT && param_index(ix.defs[mac], tok.word) < 0 && k + 1 < hi && is_punct(ix.defs[mac].body[k + 1], "(")) {
             get(ix.by_name, tok.word) $(defs) {
@@ -585,6 +609,77 @@ def private occurrences(var ix : MacroIndex; mac, lo, hi, p : int) : int {
     return total
 }
 
+// appends to `seq` the parameters of `mac` in the order the expansion of its body tokens `[lo, hi)`
+// holds their tokens, through the macros the body calls; false where a call goes through a macro
+// this pass does not follow or a parameter is called
+def private param_seq(var ix : MacroIndex; mac, lo, hi, depth : int; var seq : array<int>) : bool {
+    if (depth > MAX_DEPTH) {
+        return false
+    }
+    var k = lo
+    while (k < hi) {
+        let tok = ix.defs[mac].body[k]
+        let called = tok.kind == TOK_IDENT && k + 1 < hi && is_punct(ix.defs[mac].body[k + 1], "(")
+        let p = tok.kind == TOK_IDENT ? param_index(ix.defs[mac], tok.word) : -1
+        if (p >= 0 && called) {
+            return false
+        }
+        if (p >= 0) {
+            seq |> push(p)
+            k++
+            continue
+        }
+        if (calls_system(ix, ix.defs[mac].body, k, hi)) {
+            return false
+        }
+        var callee = -1
+        if (called) {
+            get(ix.by_name, tok.word) $(defs) {
+                callee = length(defs) == 1 ? defs[0] : -2
+            }
+        }
+        if (callee == -1 || (callee >= 0 && !ix.defs[callee].fn_like) || callee == mac) {
+            k++
+            continue
+        }
+        let close = close_of(ix.defs[mac].body, k + 1, hi)
+        if (close < 0) {
+            return false
+        }
+        var inscope args <- split_args(ix.defs[mac].body, mac, k + 1, close, -1)
+        if (callee < 0 || !parse_def(ix, callee) || !macro_seq(ix, callee, depth + 1)) {
+            // a call this pass does not follow keeps the order only when no argument holds a parameter
+            for (a in args) {
+                var inscope inner : array<int>
+                if (!param_seq(ix, mac, a.lo, a.hi, depth + 1, inner) || !empty(inner)) {
+                    return false
+                }
+            }
+        } else {
+            for (q in ix.defs[callee].seq) {
+                if (q >= length(args) || !param_seq(ix, mac, args[q].lo, args[q].hi, depth + 1, seq)) {
+                    return false
+                }
+            }
+        }
+        k = close + 1
+    }
+    return true
+}
+
+// whether the order of the parameters in the expansion of definition `mac` is known, read once
+def private macro_seq(var ix : MacroIndex; mac, depth : int) : bool {
+    if (ix.defs[mac].seq_state == 0) {
+        ix.defs[mac].seq_state = 1
+        var seq : array<int>
+        let ok = param_seq(ix, mac, 0, length(ix.defs[mac].body), depth, seq)
+        delete ix.defs[mac].seq
+        ix.defs[mac].seq <- seq
+        ix.defs[mac].seq_state = ok ? 2 : -1
+    }
+    return ix.defs[mac].seq_state == 2
+}
+
 def private node_key(js : JsonValue const?) : uint64 => unsafe(reinterpret<uint64>(js))
 
 def private kind_of(js : JsonValue const?) : string => js?["kind"] ?? ""
@@ -599,12 +694,17 @@ def private kid(js : JsonValue const?; k : int) : JsonValue const? => (js?["inne
 def private is_expr_kind(kind : string) : bool => kind |> ends_with("Expr") || kind |> ends_with("Operator") || kind |> ends_with("Literal")
 
 // the spelling of one end of a node's range: its own location where no macro made it
-def private end_spelling(var canon : table<string; string>; js : JsonValue const?; which : string) : SpellPos {
-    let at = js?["range"]?[which]
-    let spelled = at?["spellingLoc"] != null ? at?["spellingLoc"] : at
-    let off = int(spelled?["offset"] ?? -1l)
-    return SpellPos(file = canonical_name(canon, spelled?["file"] ?? ""), at = off)
+def private end_spelling(var canon : table<string; string>; js : JsonValue const?; which : string) : SpellPos =>
+    spelling_of(canon, js?["range"]?[which])
+
+// where location `at` is spelled: the location itself where no macro made it
+def private spelling_of(var canon : table<string; string>; at : JsonValue const?) : SpellPos {
+    let spelled = at?["spellingLoc"]
+    return spelled != null ? position(canon, spelled) : position(canon, at)
 }
+
+def private position(var canon : table<string; string>; at : JsonValue const?) : SpellPos =>
+    SpellPos(file = canonical_name(canon, at?["file"] ?? ""), at = int(at?["offset"] ?? -1l))
 
 //! `name` made canonical through the dumper's cache.
 def canonical_name(var canon : table<string; string>; name : string) : string {
@@ -651,16 +751,179 @@ def private is_copy(var canon : table<string; string>; js, whole : JsonValue con
 def private self_spelled(ix : MacroIndex; var canon : table<string; string>; js : JsonValue const?; mac : int; first, last : SpellPos) : JsonValue const? =>
     length(ix.defs[mac].body) > 1 && spells(canon, js, first, last) ? js : null
 
-// how many topmost copies below or at `js` are spelled from `first` to `last`
-def private count_copies(var canon : table<string; string>; js, whole : JsonValue const?; first, last : SpellPos) : int {
-    if (is_copy(canon, js, whole, first, last)) {
-        return 1
+// the topmost copies below or at `js` of the arguments spelled `firsts[a]` to `lasts[a]`, each as
+// its argument's index, in preorder: the order of their tokens
+def private copy_order(var canon : table<string; string>; js, whole : JsonValue const?; firsts, lasts : array<SpellPos>; var order : array<int>) {
+    for (a in range(length(firsts))) {
+        if (firsts[a].at >= 0 && lasts[a].at >= 0 && is_copy(canon, js, whole, firsts[a], lasts[a])) {
+            order |> push(a)
+            return
+        }
     }
-    var n = 0
     for (j in range(kids_of(js))) {
-        n += count_copies(canon, kid(js, j), whole, first, last)
+        copy_order(canon, kid(js, j), whole, firsts, lasts, order)
     }
-    return n
+}
+
+// the tokens the expansion holds whose node, if any, is a leaf (a name or a literal), as a count by
+// `file:offset` of where each is spelled
+struct private Leaves {
+    known : bool
+    counts : table<string; int>
+    // the numbers among them, which always have a node of their own
+    numbers : table<string>
+    budget : int
+}
+
+// a cap on the tokens one expansion's leaves walk visits: past it the leaves are unknown
+let private LEAF_BUDGET = 20000
+
+// adds to `lv` the leaves of span `sp` once every macro and parameter in it is expanded; unknown
+// where a parameter is called, a system header's macro is called, or the budget runs out
+def private span_leaves(var ix : MacroIndex; sp : MSpan; depth : int; var lv : Leaves) {
+    var k = sp.lo
+    while (k < sp.hi && lv.known) {
+        lv.budget--
+        if (lv.budget < 0 || depth > MAX_DEPTH) {
+            lv.known = false
+            return
+        }
+        let src = sp.src
+        let tok = src < 0 ? ix.site_toks[k] : ix.defs[src].body[k]
+        let opens = k + 1 < sp.hi && is_punct(src < 0 ? ix.site_toks[k + 1] : ix.defs[src].body[k + 1], "(")
+        if (src >= 0 && sp.ctx >= 0 && tok.kind == TOK_IDENT && param_index(ix.defs[ix.ctxs[sp.ctx].mac], tok.word) >= 0) {
+            if (opens) {
+                lv.known = false
+                return
+            }
+            span_leaves(ix, ix.ctxs[sp.ctx].args[param_index(ix.defs[ix.ctxs[sp.ctx].mac], tok.word)], depth + 1, lv)
+            k++
+            continue
+        }
+        if (src < 0 ? calls_system(ix, ix.site_toks, k, sp.hi) : calls_system(ix, ix.defs[src].body, k, sp.hi)) {
+            lv.known = false
+            return
+        }
+        let mac = macro_of(ix, sp, k)
+        if (mac >= 0 && !ix.defs[mac].fn_like) {
+            ix.ctxs |> emplace(MCtx(mac = mac, parent = sp.ctx))
+            span_leaves(ix, MSpan(src = mac, lo = 0, hi = length(ix.defs[mac].body), ctx = length(ix.ctxs) - 1), depth + 1, lv)
+            k++
+            continue
+        }
+        if (mac >= 0 && opens) {
+            let ctx = call_ctx(ix, sp, k, mac)
+            let close = src < 0 ? close_of(ix.site_toks, k + 1, sp.hi) : close_of(ix.defs[src].body, k + 1, sp.hi)
+            if (ctx < 0 || close < 0) {
+                lv.known = false
+                return
+            }
+            span_leaves(ix, MSpan(src = mac, lo = 0, hi = length(ix.defs[mac].body), ctx = ctx), depth + 1, lv)
+            k = close + 1
+            continue
+        }
+        if (tok.kind != TOK_PUNCT) {
+            let key = "{src < 0 ? ix.site_file : ix.defs[src].file}:{tok.at}"
+            lv.counts[key] = (lv.counts?[key] ?? 0) + 1
+            if (tok.kind == TOK_NUMBER) {
+                lv.numbers |> insert(key)
+            }
+        }
+        k++
+    }
+}
+
+// the leaves of the expansion of context `ctx`
+def private expansion_leaves(var ix : MacroIndex; ctx : int) : Leaves {
+    var lv = Leaves(known = true, budget = LEAF_BUDGET)
+    let mac = ix.ctxs[ctx].mac
+    span_leaves(ix, MSpan(src = mac, lo = 0, hi = length(ix.defs[mac].body), ctx = ctx), 0, lv)
+    return <- lv
+}
+
+def private is_leaf_kind(kind : string) : bool => kind == "DeclRefExpr" || kind |> ends_with("Literal")
+
+// the leaves below or at `js`, counted by `file:offset` of where each is spelled
+def private node_leaves(var canon : table<string; string>; js : JsonValue const?; var out : table<string; int>) {
+    if (is_leaf_kind(kind_of(js))) {
+        let sp = end_spelling(canon, js, "begin")
+        let key = "{sp.file}:{sp.at}"
+        out[key] = (out?[key] ?? 0) + 1
+    }
+    for (j in range(kids_of(js))) {
+        node_leaves(canon, kid(js, j), out)
+    }
+}
+
+// whether `node` holds the leaves `lv` the expansion holds: each of its leaves as many times as the
+// expansion holds that token, and every number. Two expansions side by side (`ADD1(x) + ADD1(0)`),
+// an expansion inside a body's own (`ADD1(x)` of `S3(x)`), another call of the body
+// (`tonumberns(v2, n2)` for `tonumberns(v1, n1)`) and a body naming another constant (`ttisfloat(o)`
+// for `ttisinteger(o)`) each hold other leaves
+def private holds_leaves(var canon : table<string; string>; node : JsonValue const?; lv : Leaves) : bool {
+    if (!lv.known) {
+        return true
+    }
+    var seen : table<string; int>
+    node_leaves(canon, node, seen)
+    for (key, n in keys(seen), values(seen)) {
+        if ((lv.counts?[key] ?? 0) != n) {
+            return false
+        }
+    }
+    for (key in keys(lv.numbers)) {
+        if ((seen?[key] ?? 0) != (lv.counts?[key] ?? 0)) {
+            return false
+        }
+    }
+    return true
+}
+
+// whether `node` holds the expansion's leaves (`holds_leaves`) and the arguments of context `ctx` as
+// its macro's expansion does: each copied argument's copies in the order the expansion holds the
+// parameters, or, where that order is unknown, as many times as the macro uses it
+def private fits_call(var ix : MacroIndex; var canon : table<string; string>; node : JsonValue const?; ctx : int; lv : Leaves) : bool {
+    let mac = ix.ctxs[ctx].mac
+    let nargs = length(ix.ctxs[ctx].args)
+    var firsts, lasts : array<SpellPos>
+    firsts |> reserve(nargs)
+    lasts |> reserve(nargs)
+    for (a in range(nargs)) {
+        firsts |> push(spelled_end(ix, ix.ctxs[ctx].args[a], false, 0))
+        lasts |> push(spelled_end(ix, ix.ctxs[ctx].args[a], true, 0))
+    }
+    if (!holds_leaves(canon, node, lv)) {
+        return false
+    }
+    var order : array<int>
+    copy_order(canon, node, length(ix.defs[mac].body) > 1 ? node : null, firsts, lasts, order)
+    if (macro_seq(ix, mac, 0)) {
+        // an argument with no copy at all (a type, an operator, one the body's precedence splits)
+        // is left to the backend, which counts the copies against `uses`
+        var copied : table<int>
+        for (o in order) {
+            copied |> insert(o)
+        }
+        let want <- [for (q in ix.defs[mac].seq); q; where key_exists(copied, q)]
+        if (length(want) != length(order)) {
+            return false
+        }
+        for (w, o in want, order) {
+            if (w != o) {
+                return false
+            }
+        }
+        return true
+    }
+    uses_of(ix, mac)
+    for (a in range(nargs)) {
+        let uses = ix.defs[mac].uses_state == 2 ? ix.defs[mac].uses[a] : -1
+        let copies = length([for (o in order); o; where o == a])
+        if (uses >= 0 && copies > 0 && copies != uses) {
+            return false
+        }
+    }
+    return true
 }
 
 // marks every topmost expression below or at `js` spelled from `first` to `last` a copy of
@@ -761,6 +1024,19 @@ def private nested_site(var ix : MacroIndex; var canon : table<string; string>; 
         return
     }
     uses_of(ix, call.mac)
+    // a call whose every argument the expansion holds has no known spelling tells no candidate
+    // apart (`APPLY2(f, x)` of `ADD1(f(x))`)
+    var held, known = 0
+    for (a in range(length(ix.ctxs[ctx].args))) {
+        if (ix.defs[call.mac].uses_state != 2 || ix.defs[call.mac].uses[a] != 0) {
+            held++
+            known += spelled_end(ix, ix.ctxs[ctx].args[a], false, 0).at >= 0 && spelled_end(ix, ix.ctxs[ctx].args[a], true, 0).at >= 0 ? 1 : 0
+        }
+    }
+    if (held > 0 && known == 0) {
+        return
+    }
+    let lv <- expansion_leaves(ix, ctx)
     var nodes : array<JsonValue const?>
     spelled_nodes(canon, scope, first, last, nodes)
     for (node in nodes) {
@@ -768,26 +1044,11 @@ def private nested_site(var ix : MacroIndex; var canon : table<string; string>; 
         if (key_exists(ix.claimed, claim)) {
             continue
         }
-        var holds = true
-        for (a in range(length(ix.ctxs[ctx].args))) {
-            let arg = ix.ctxs[ctx].args[a]
-            let af = spelled_end(ix, arg, false, 0)
-            let al = spelled_end(ix, arg, true, 0)
-            if (af.at < 0 || al.at < 0) {
-                continue
-            }
-            // two expansions side by side can spell one body's first and last token, so the
-            // node must hold each argument as many times as the macro uses it
-            // an argument used an unknown number of times (passed to a parameter the body calls)
-            // may have no node at all, and tells nothing
-            let uses = ix.defs[call.mac].uses_state == 2 ? ix.defs[call.mac].uses[a] : -1
-            if (uses >= 0 && count_copies(canon, node, self_spelled(ix, canon, node, call.mac, af, al), af, al) != uses) {
-                holds = false
-                break
-            }
-        }
-        // a call written once in an argument the enclosing body uses twice expands twice
-        if (holds) {
+        // two expansions side by side can spell one body's first and last token, and one body can
+        // call a macro twice with other arguments: the node holds the body's tokens and the
+        // arguments as the expansion does; a call written once in an argument the enclosing body
+        // uses twice expands twice
+        if (fits_call(ix, canon, node, ctx, lv)) {
             ix.claimed |> insert(claim)
             take_site(ix, canon, node, ctx, depth)
         }
@@ -841,15 +1102,25 @@ def private outermost_site(var ix : MacroIndex; var canon : table<string; string
     if (first.at < 0 || last.at < 0) {
         return
     }
+    let lv <- expansion_leaves(ix, ctx)
     var nodes : array<JsonValue const?>
     spelled_nodes(canon, js, first, last, nodes)
-    if (empty(nodes) || !take_site(ix, canon, nodes[0], ctx, 0)) {
+    // the topmost node that holds the body's tokens and the arguments as the expansion does
+    // (`MUL2(i + 1)` of `x * 2` has none: the body's precedence splits the argument, nor has `S3(i) *
+    // 3` of `ADD1(x) + ADD1(0)`)
+    var whole : JsonValue const?
+    for (node in nodes) {
+        if (whole == null && fits_call(ix, canon, node, ctx, lv)) {
+            whole = node
+        }
+    }
+    if (whole == null || !take_site(ix, canon, whole, ctx, 0)) {
         return
     }
-    ix.claimed |> insert("{node_key(nodes[0])}/{mac}")
+    ix.claimed |> insert("{node_key(whole)}/{mac}")
     var calls <- calls_in(ix, MSpan(src = -1, lo = 2, hi = n - 1, ctx = -1))
     for (call in calls) {
-        nested_site(ix, canon, nodes[0], call, -1, 1)
+        nested_site(ix, canon, whole, call, -1, 1)
     }
 }
 
