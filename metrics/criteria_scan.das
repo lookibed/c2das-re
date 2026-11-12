@@ -420,16 +420,25 @@ def scan_das(text, stem : string; fragment : bool) : DasModule {
     dm.code <- tokens_by_line(lx, false)
     var open = -1
     var name = ""
+    // a `def` whose parameter list the converter's line layout broke ends a line in `;`; its body
+    // opens on the line ending in `{`
+    var header = ""
     for (i, toks in count(), dm.code) {
         if (!empty(toks) && toks[0].text == "require") {
             dm.requires++
         }
-        if (open < 0 && !empty(toks) && toks[0].text == "def" && toks[length(toks) - 1].text == "\{") {
+        let last = empty(toks) ? "" : toks[length(toks) - 1].text
+        if (open < 0 && !empty(toks) && toks[0].text == "def") {
             var inscope named <- [for (t in toks); t.text; where t.kind == TokKind.ident && t.text != "def" && t.text != "private" && t.text != "static"]
-            if (!empty(named)) {
-                open = i
-                name = named[0]
-            }
+            header = empty(named) ? "" : named[0]
+        }
+        if (open < 0 && last != ";" && last != "\{") {
+            header = ""
+        }
+        if (open < 0 && !empty(header) && last == "\{") {
+            open = i
+            name = header
+            header = ""
         } elif (open >= 0 && length(toks) == 1 && toks[0].text == "\}" && lx.lengths[i] == 1) {
             dm.functions |> push(FnExtent(name = name, first = open, last = i))
             open = -1

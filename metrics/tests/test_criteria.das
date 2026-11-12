@@ -86,6 +86,21 @@ def test_das_module(t : T?) {
         t |> equal(dm.functions[0].first, 3)
         t |> equal(dm.functions[0].last, 7)
     }
+    t |> run("a def whose parameter list the line layout broke opens at the line ending in its brace; an expression def before a block is none") @(t : T?) {
+        let dm <- scan_das("def g : int => 1
+struct S \{
+    a : int
+\}
+def private f(x : int;
+        y : int) : int \{
+    return x
+\}
+", "m", false)
+        t |> equal(length(dm.functions), 1)
+        t |> equal(dm.functions[0].name, "f")
+        t |> equal(dm.functions[0].first, 5)
+        t |> equal(dm.functions[0].last, 7)
+    }
 }
 
 [test]
