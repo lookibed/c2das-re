@@ -39,6 +39,10 @@ struct Sidecar {
     // end_index(k, N)`) or `inline` (`k == N ? addr(a[0]) + N : addr(a[k])`, no call per access);
     // "" when the key is absent
     past_end : string
+    // how an expansion of a function-like macro is spelled: `fold` (a call of the macro's
+    // `[c_macro] def` where its verdict allows) or `expand` (the expansion's C, every site); "" when
+    // the key is absent
+    fn_macros : string
     // the macros clang defines for the dump, each `NAME`, `NAME=value` or `NAME(params)=value`,
     // passed as `-D<entry>`
     defines : array<string>
@@ -90,7 +94,7 @@ struct Sidecar {
 }
 
 //! The keys a sidecar may hold; any other is refused naming it.
-let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks", "jit_whole_program", "past_end", "inline_helpers", "strict_aliasing", "no_fold"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks", "jit_whole_program", "past_end", "inline_helpers", "strict_aliasing", "no_fold", "fn_macros"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -127,6 +131,12 @@ let PAST_END <- ["call", "inline"]
 
 //! Whether `mode` is a value of `past_end`.
 def is_past_end(mode : string) : bool => has_value(PAST_END, mode)
+
+//! The values of the `fn_macros` key and of the converter's `--fn-macros`.
+let FN_MACROS <- ["fold", "expand"]
+
+//! Whether `mode` is a value of `fn_macros`.
+def is_fn_macros(mode : string) : bool => has_value(FN_MACROS, mode)
 
 //! The values of the `layout` key and of the converter's `--layout`.
 let LAYOUTS <- ["source", "source-cut", "single"]
@@ -440,6 +450,7 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
     read_mode(js, path, "switch_dispatch", SWITCH_DISPATCH, side.switch_dispatch, error)
     read_mode(js, path, "checks", CHECKS, side.checks, error)
     read_mode(js, path, "past_end", PAST_END, side.past_end, error)
+    read_mode(js, path, "fn_macros", FN_MACROS, side.fn_macros, error)
     if (key_exists(js, "layout")) {
         read_layout(js?["layout"], path, side, error)
     }

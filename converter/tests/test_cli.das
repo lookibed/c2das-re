@@ -232,6 +232,44 @@ def test_cli_past_end(t : T?) {
     rmdir_rec(dir)
 }
 
+let FN_MACROS_FIXTURE = "converter/tests/fixtures/p9_fn_fold.c"
+
+// `converter/main.das -- <FN_MACROS_FIXTURE> --out <dir>/fn_macros_<mode> --target linux
+// --fn-macros <mode>`, with `sidecar` when given, as a child process
+def run_fn_macros(dir, mode : string; var out : string&; sidecar : string = "") : int {
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from(["converter/main.das", "--", FN_MACROS_FIXTURE, "--out", path_join(dir, "fn_macros_{mode}"), "--target", "linux", "--fn-macros", mode])
+    if (!empty(sidecar)) {
+        argv |> push_from(["--sidecar", sidecar])
+    }
+    return run_and_capture(argv, out, 300.0)
+}
+
+[test]
+def test_cli_fn_macros(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_cli_fn_macros", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("--fn-macros expand keeps every expansion expanded, fold wins over the sidecar's expand; any other value is a usage error") @(t : T?) {
+        var out : string
+        t |> equal(run_fn_macros(dir, "expand", out), 0, out)
+        let expanded = fread(path_join(path_join(dir, "fn_macros_expand"), "p9_fn_fold.das"))
+        t |> success(!(expanded |> contains("def private ADD1")), expanded)
+        t |> success(expanded |> contains("var sum : int = i + 1 + "), expanded)
+        let sidecar = path_join(dir, "expand.c2das")
+        fwrite(sidecar, "\{\"fn_macros\": \"expand\"\}\n")
+        t |> equal(run_fn_macros(dir, "fold", out, sidecar), 0, out)
+        let folded = fread(path_join(path_join(dir, "fn_macros_fold"), "p9_fn_fold.das"))
+        t |> success(folded |> contains("[c_macro]\ndef private ADD1(x) => x + 1\n"), folded)
+        t |> equal(run_fn_macros(dir, "inline", out), 2, out)
+        t |> success(out |> contains("--fn-macros is fold or expand, not `inline`"), out)
+    }
+    rmdir_rec(dir)
+}
+
 [test]
 def test_cli_checks(t : T?) {
     var dir_error : string

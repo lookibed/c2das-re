@@ -9,7 +9,7 @@ require pipeline
 require sidecar
 require tiers
 
-//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy] [--loops range|while] [--first-member addr|reinterpret] [--switch-dispatch chain|goto] [--layout source|source-cut|single] [--edge-census] [--no-solid-context] [--checks safe|off] [--past-end call|inline] [--inline-helpers]`.
+//! c2das: `daslang converter/main.das -- <file.c>... | --program <p.json> [--out <dir>] [--target msvc|linux] [--run <tier>] [--arg <a>]... [--sidecar <file>] [--param-writes in-place|copy] [--loops range|while] [--first-member addr|reinterpret] [--switch-dispatch chain|goto] [--layout source|source-cut|single] [--edge-census] [--no-solid-context] [--checks safe|off] [--past-end call|inline] [--inline-helpers] [--fn-macros fold|expand]`.
 //! Converts one C file into `<dir>/<stem>.das` (default `out/`), several or a manifest's as one
 //! program: by default a module per C file under `<dir>` as the files lie under their common
 //! folder, mutually dependent files one module of fragments (`--layout source`), the cycles among
@@ -61,6 +61,9 @@ struct Args {
     @clarg_name = "inline-helpers"
     @clarg_doc = "a direct call of a pure `static` helper (its body `return <expr>` or the clamp shape `if (n > hi) n = hi; else if (n < lo) n = lo; return n;`, its parameters and result integers or floating) spelled as the helper's expression at the call site, an argument with an effect or read twice bound to a temporary first: no call per use under the interpreter, the helper's name gone from the site; by default the call stays; sets the sidecar's inline_helpers"
     inline_helpers : bool
+    @clarg_name = "fn-macros"
+    @clarg_doc = "an expansion of a function-like macro of the program: fold (the default: a call of the macro's private `[c_macro] def`, printed under its `#define`, where every argument is evaluated as C evaluates it and the body reads only its parameters) or expand (the expansion's C spelled at every site); overrides the sidecar's fn_macros"
+    fn_macros : string = ""
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -110,6 +113,10 @@ def main : int {
         to_log(LOG_ERROR, "c2das: --past-end is call or inline, not `{args.past_end}`; -? for help\n")
         return 2
     }
+    if (!empty(args.fn_macros) && !is_fn_macros(args.fn_macros)) {
+        to_log(LOG_ERROR, "c2das: --fn-macros is fold or expand, not `{args.fn_macros}`; -? for help\n")
+        return 2
+    }
     if (!empty(args.layout) && !is_layout(args.layout)) {
         to_log(LOG_ERROR, "c2das: --layout is source, source-cut or single, not `{args.layout}`; -? for help\n")
         return 2
@@ -120,7 +127,7 @@ def main : int {
         to_log(LOG_ERROR, "c2das: {error}\n")
         return 1
     }
-    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry, args.layout, args.edge_census, args.first_member, args.switch_dispatch, args.no_solid_context, args.checks, args.past_end, args.inline_helpers)
+    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry, args.layout, args.edge_census, args.first_member, args.switch_dispatch, args.no_solid_context, args.checks, args.past_end, args.inline_helpers, args.fn_macros)
     if (!res.ok) {
         to_log(LOG_ERROR, "c2das: {res.error}\n")
         return 1

@@ -258,6 +258,8 @@ struct EmitProgram {
     // the sidecar's or the option's `past_end` is `inline`: `&a[k]` of a plain-load index is
     // `k == N ? addr(a[0]) + N : addr(a[k])` (`one_past_end_address`)
     past_end_inline : bool
+    // the sidecar's or the option's `fn_macros` is `expand`: no expansion folds (`fold_macro`)
+    fold_off : bool
     // the sidecar's or the option's `inline_helpers`: each pure `static` helper a direct call
     // spells as its expression, by C name to its index in the unit's declarations
     // (`flag_inline_helpers`)
@@ -3369,7 +3371,7 @@ def private fold_level(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?
 // statement state as it was
 [arch(at="ARCHITECTURE_EMITTER_MACROS.md#fold-emission")]
 def private fold_macro(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?; st : CirStmt const?; kind : string; loc : CirLoc; var call : Em&) : bool {
-    if (!em.in_body || em.in_global_init) {
+    if (!em.in_body || em.in_global_init || em.prog.fold_off) {
         return false
     }
     let node = x != null ? intptr(x) : intptr(st)
@@ -6888,13 +6890,13 @@ def private emit_initialized(var em : Emitter; tu : CirTu; st : CirStmt; name : 
 [arch(at="ARCHITECTURE_EMITTER_TEXT.md#let-locals")]
 def private let_local(tu : CirTu; st : CirStmt; unwritten : bool) : bool {
     let k = kind_of(tu, st.t)
-    return unwritten && (k == "int" || k == "float" || k == "enum") && empty(st.dims)
+    return unwritten && (k == "int" || k == "float" || k == "enum")
 }
 
 // the declarations of every block of `body` that no statement after them in the block writes: a
 // declaration's scope is the rest of its block, and a nested block's own `x` is renamed apart
-// (`unshadow_locals`), so a write after it names it alone. A `for`'s first clause is a block
-// whose scope is the whole loop
+// (`unshadow_locals`), so a write after it names it alone. A `for`'s first clause, one
+// declaration or a block of them, is a block whose scope is the whole loop
 [arch(at="ARCHITECTURE_EMITTER_TEXT.md#let-locals")]
 def private plan_let_locals(var em : Emitter; body : CirStmt const?) {
     em.unwritten_decls |> clear()
@@ -6903,6 +6905,9 @@ def private plan_let_locals(var em : Emitter; body : CirStmt const?) {
         if (st.s == "for" && st.init_s != null) {
             loop_heads |> insert(intptr(st.init_s))
             let whole <- written_names(st)
+            if (st.init_s.s == "decl" && !key_exists(whole, st.init_s.name)) {
+                em.unwritten_decls |> insert(intptr(st.init_s))
+            }
             for (child in st.init_s.body) {
                 if (child.s == "decl" && !key_exists(whole, child.name)) {
                     em.unwritten_decls |> insert(intptr(child))
@@ -9073,6 +9078,7 @@ def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
     em.prog.reinterpret_members = side.first_member == "reinterpret"
     em.prog.goto_dispatch = side.switch_dispatch == "goto"
     em.prog.past_end_inline = side.past_end == "inline"
+    em.prog.fold_off = side.fn_macros == "expand"
     for (name in side.no_fold) {
         if (!has_value([for (m in tu.macros); m.name == name], true)) {
             fail(em, "the sidecar's `no_fold` names `{name}`, which is no function-like macro the program expands", CirLoc(file = tu.tu))

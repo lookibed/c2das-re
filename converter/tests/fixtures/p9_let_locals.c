@@ -23,6 +23,9 @@ static int scalars(int x, const char *s) {
     for (int j = 1, lim = x * 4; j < lim; j *= 2) {
         sum += j;
     }
+    /* a first clause of one declaration, read only */
+    for (int step = x + 1; sum < 100; sum += step) {
+    }
     return fixed + limit + (int)half + (int)c + first + big + sum;
 }
 
