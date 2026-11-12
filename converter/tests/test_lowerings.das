@@ -446,7 +446,7 @@ def p2_enum_fixtures(t : T?) {
         t |> equal(text |> find("t = enum_from_int(type<mobjtype_t>, int(t) + 1)") >= 0, true, text)
         t |> equal(text |> find("return i > 0 ? color.GREEN : color.RED") >= 0, true, text)
         t |> equal(text |> find("mobj(_c_type = mobjtype_t.MT_SHOTGUN, c = color.BLUE, hp = 7)") >= 0, true, text)
-        t |> equal(text |> find("var inner : anon_") >= 0 && text |> find(".INNER_Y\n") >= 0, true, text)
+        t |> equal(text |> find("let inner : anon_") >= 0 && text |> find(".INNER_Y\n") >= 0, true, text)
         t |> equal(text |> find("require c_runtime/enum_from_int") >= 0, true, text)
         has_text(t, text, "let local : anon_")
         has_text(t, text, "return int(uint(local) + uint(anon_")
