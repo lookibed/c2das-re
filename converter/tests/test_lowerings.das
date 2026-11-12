@@ -2722,6 +2722,7 @@ def readability_fixtures(t : T?) {
     p9_counted_for_fixtures(t)
     p9_summaries_fixtures(t)
     p9_fn_fold_fixtures(t)
+    p9_fold_review_fixtures(t)
 }
 
 // P9.23: `<=` counts to `n + 1` where it cannot wrap; a bound over globals and members is invariant
@@ -2922,6 +2923,22 @@ def p9_fn_fold_fixtures(t : T?) {
         has_text(t, text, "return ADD1(i) + i * i - 13\n")
         t |> equal(text |> find("def private SQ") >= 0, false, text)
         rejects(t, "p9_no_fold_unknown", source, "the sidecar's `no_fold` names `SQUARE`, which is no function-like macro the program expands", "\{\"no_fold\": [\"SQUARE\"]\}")
+    }
+}
+
+// #185's criteria sweep: das inlines no call declared in a block with a label, and a def takes
+// the reserved-name rename a macro starting with `__` needs
+def p9_fold_review_fixtures(t : T?) {
+    t |> run("a function declaring a folded call in a block with a label keeps every expansion expanded; the others fold") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_fold_labels", text)
+        has_text(t, text, "    label 1:  // again\n    n++\n    let v : int = n + 8 - 1 & ~(8 - 1)\n")
+        has_text(t, text, "    let v : int = ALIGN_UP(n, 8)\n")
+    }
+    t |> run("a macro named with a leading `__` folds into a def under the reserved-name rename") @(t : T?) {
+        let text = converts(t, "p9_fold_reserved", "#define __swab(x) ((x) + 1)\nint main(void) \{\n    int i = 3;\n    return __swab(i) - 4;\n\}\n")
+        has_text(t, text, "def private _c___swab(x) => x + 1\n")
+        has_text(t, text, "return _c___swab(i) - 4\n")
     }
 }
 
