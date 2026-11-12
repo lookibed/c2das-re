@@ -137,6 +137,31 @@ def test_sidecar_padded(t : T?) {
 }
 
 [test]
+def test_sidecar_no_fold(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_no_fold", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`no_fold` is a list of macro names, kept in order") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "good", "\{\"no_fold\": [\"ttisinteger\", \"setobj2s\"]\}\n", error)
+        t |> equal(error, "")
+        t |> equal(join(side.no_fold, " "), "ttisinteger setobj2s")
+    }
+    t |> run("`no_fold` that is no list, or holds no identifier, is refused naming the key and the value") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "string", "\{\"no_fold\": \"SQ\"\}\n", error)
+        t |> success(error |> ends_with("string.c2das: `no_fold` is a list of macro names, not \"SQ\""), error)
+        t |> equal(length(side.no_fold), 0)
+        let bad <- read_text(dir, "bad", "\{\"no_fold\": [\"SQ\", \"2x\"]\}\n", error)
+        t |> success(error |> ends_with("bad.c2das: `no_fold` holds macro names, not \"2x\""), error)
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_sidecar_loops(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_sidecar_loops", dir_error)

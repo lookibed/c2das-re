@@ -2030,6 +2030,21 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   Expected speed effect (phase-end A/B, B/A): interpreter 0.99-1.00 on Doom and Lua (a few dozen
   more range loops, none in `luaV_execute` or the renderer's column loops), JIT and exe 1.00;
   conversion time: the summaries add one pass over the program, predicted within noise.
+- **P9.20 Function-like macros fold into `[inline] def`s** (ruling 38 addendum 14, fn-macros part 2
+  step 3, second PR; `converter/ARCHITECTURE_EMITTER_MACROS.md#fold-emission`). Every expansion
+  whose P9.19 verdict folds prints as a call of a private `[inline]` def in the module using it
+  (generic, or typed overloads per signature; `var` pointers, `var x : auto&` for a written local;
+  `[c_function]` when the body needs unsafe), the def under a comment with the `#define`; the
+  chain's next level and nested expansions fold inside a def; a def whose text reads more than its
+  parameters stays expanded (`spelling`), as do the arms of a null-armed pointer `?:` (das inlines
+  no call there). Sidecar `no_fold: [names]`, unknown names refused. Folded is the default (ruling
+  23); the global switch is 3b. Counts (main 651d262 against this branch, source layout): lua
+  29237 -> 30182 lines (506 defs, 1951 def lines), `luaV_execute` 2611 -> 1954, luac 22676 ->
+  23093 (400 defs), Doom 35196 -> 35227 (7 defs); lua sites folded 2604, faulting 224, capture
+  352, never 1217. Lua and luac against native (8 error checks, luac -o 33 files) and Doom demo1-3
+  in sync under interp and the JIT. Expected speed effect (phase-end A/B, B/A; F104 prediction):
+  JIT and exe 1.00 within 2% (the splice folds the copies); interp 0.97-1.00 (a `var` argument
+  binds a copy per call, `let` locals of P9.16 do not).
 - **P9.25 `[c_macro]`, the carrier of the folded function-like macros** (ruling 38 addendum 18,
   after the P9.20 speed gate failed: Lua interp B/A nbody 1.51, spectral 1.34, binary_trees 1.22,
   fib 1.09, root cause the `[inline]` splice's per-level argument copies, `_res` blocks and `_low`

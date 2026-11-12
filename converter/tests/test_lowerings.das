@@ -476,7 +476,8 @@ def p2_enum_fixtures(t : T?) {
     }
     t |> run("enumerators reached through a macro bind by their spellings' locations") @(t : T?) {
         let text = converts(t, "macro_constant", "enum E \{ A = 1, B = 2 \};\n#define BOTH (A + B)\n#define TWICE(x) ((x) + (x))\nint main(void) \{ return BOTH + TWICE(B); \}\n")
-        has_text(t, text, "return BOTH + (int(E.B) + int(E.B))")
+        // TWICE folds into its def (P9.19), its argument the enumerator's value
+        has_text(t, text, "return BOTH + TWICE(int(E.B))")
         var out : string
         t |> equal(run_tier(converted_path("macro_constant"), "interp", work_root, out, CONVERTED_MODULES), 7, out)
     }
@@ -2470,7 +2471,9 @@ def p7_expect_fixtures(t : T?) {
         has_text(t, text, "    if (uint8(trap) != 0) \{\n")
         t |> equal(text |> find("? 1 : 0) != 0") < 0, true, text)
         // a hint read as a number is its first operand's value
-        has_text(t, text, "    let hint : int64 = 7l\n    let truth : int64 = int64(int_of(3 != 0))\n")
+        // read as a number, `l_likely` folds into its def (P9.19)
+        has_text(t, text, "def private l_likely(x) => int64(int_of(x != 0))\n")
+        has_text(t, text, "    let hint : int64 = 7l\n    let truth : int64 = l_likely(3)\n")
     }
 }
 
@@ -2718,6 +2721,7 @@ def readability_fixtures(t : T?) {
     p9_let_local_fixtures(t)
     p9_counted_for_fixtures(t)
     p9_summaries_fixtures(t)
+    p9_fn_fold_fixtures(t)
 }
 
 // P9.23: `<=` counts to `n + 1` where it cannot wrap; a bound over globals and members is invariant
@@ -2848,6 +2852,76 @@ def p9_summaries_fixtures(t : T?) {
                 t |> success(out |> ends_with(want.output), "{mode} {tier}: {out}\nnative: {want.output}")
             }
         }
+    }
+}
+
+// P9.19: a function-like macro's expansion is a call of its `[inline] def` where the call means what
+// the expansion means; every guard keeps its expansion expanded
+def p9_fn_fold_fixtures(t : T?) {
+    t |> run("folded macros: classes A, B and D, nested, swapped, typed overloads, a statement with a loop; every guard keeps its site expanded; under interp, jit, exe and aot as natively") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_fn_fold", text)
+        check_compiled_tiers(t, "p9_fn_fold")
+        // A, swapped arguments, a chain whose inner def bakes its literals stays one def, a nested call
+        has_text(t, text, "// p9_fn_fold.c:18: #define ADD1(x) ((x) + 1)\n[inline]\ndef private ADD1(x) => x + 1\n")
+        has_text(t, text, "var sum : int = ADD1(i) + SUB(i, j) + SUB(j, i) + int(GETA(u)) + OUTER(j)\n")
+        has_text(t, text, "def private GETA(i) => (i >> 3u) & ~(~0u << 4u)\n")
+        t |> equal(text |> find("def private GETBITS") >= 0, false, text)
+        has_text(t, text, "def private OUTER(x) => ADD1(x) * 3\n")
+        // B: a local, a field of a local, arithmetic, a never-read argument as its text, an arm
+        has_text(t, text, "sum = SQ(i) + SQ(n1.v) + SQ(i + j) + KEEP(i, 7) + KEEP(i, j) + PICK(k, i, j)\n")
+        // B guards: an element, a field through ->, a division, read twice, on an arm or never
+        has_text(t, text, "sum = arr[1] * arr[1] + p.v * p.v + i / j * (i / j) + (k != 0 ? p.v : j) + (i * 2 + 1)\n")
+        // an effectful argument read once folds; read twice, or beside another, stays
+        has_text(t, text, "sum = ADD1(p9_fn_fold__next()) + p9_fn_fold__next() * p9_fn_fold__next() + (p9_fn_fold__next() + p9_fn_fold__next())\n")
+        // one text per argument type: typed overloads, a truth value a bool
+        has_text(t, text, "def private TWICE(x : int) => x * 2\n")
+        has_text(t, text, "def private TWICE(x : double) => x * 2.0lf\n")
+        has_text(t, text, "def private TWICE(x : bool) => int_of(x) * 2\n")
+        // D: the do-while(0) dropped, a loop over a parameter, an expression statement
+        has_text(t, text, "[inline, c_function]\ndef private BUMP(var p; n) \{\n    for (i_ in range(n)) \{\n        p[i_] += 1\n    \}\n\}\n")
+        has_text(t, text, "    SETV(p, 30)\n    BUMP(ap, j)\n    SETLEN(p, 6)\n")
+        // a store into a field macro stays expanded, its load folds; a pointer result names its type;
+        // the arms of a null-armed ?: stay expanded
+        has_text(t, text, "    p.v += 1\n")
+        has_text(t, text, "def private NEXT(var p) : node? => p.next\n")
+        has_text(t, text, "FLD(p), NEXT(p) != null ? NEXT(p).v : 0)")
+        has_text(t, text, "var q : node? = k != 0 ? p.next : null\n")
+        // an argument read after the body's store, a captured local, a return; a swap of locals
+        has_text(t, text, "    p.v = 1\n")
+        has_text(t, text, "sum = i + local + p9_fn_fold__ret_if(k)")
+        has_text(t, text, "        if (c != 0) \{\n            return 7\n")
+        has_text(t, text, "def private SWAP(var a : auto&; var b : auto&) \{\n    let t_ : int = a\n    a = b\n    b = t_\n\}\n")
+        has_text(t, text, "    SWAP(i, j)\n")
+        has_text(t, text, "        let t_ : int = m2\n        m2 = m2\n")
+        // a name das takes, a macro defined twice
+        has_text(t, text, "def private length_m(var p) => p.len + 0\n")
+        has_text(t, text, "printf(cstr(\"k %d\\n\"), TAG_2(i))")
+        // a caller's local the body writes is a reference parameter, unless another argument reads it
+        has_text(t, text, "def private TONUM(var o; var n : auto&) \{\n")
+        has_text(t, text, "    let ok : int = int_of(TONUM(addr(t1), m1) != 0 && TONUM(addr(t2), m2) != 0)\n    INC(m3)\n    m3 = 1\n    let z : int = m3 + m3\n")
+        // #184 review: an effectful argument after the body's declaration, a global a parameter is
+        // named like, a volatile copy and a faulting argument after a body call stay expanded
+        has_text(t, text, "        let t_ : int = k\n        k = 10\n        p9_fn_fold__g1 = t_ * 100 + k\n")
+        has_text(t, text, "        let c_ : int = p9_fn_fold__cnt\n        p9_fn_fold__g1 = c_ * 100 + p9_fn_fold__bump()\n")
+        has_text(t, text, "    DSEQ(i, 3)\n")
+        has_text(t, text, "    BEF(7)\n")
+        has_text(t, text, "printf(cstr(\"n %d %d %d %d %d %d\"), 3 + off, ADDOFF2(3), ")
+        has_text(t, text, "c_volatile_load(vv) * c_volatile_load(vv)")
+        has_text(t, text, "    p9_fn_fold__check(int_of(d != 0))\n    return n / d\n")
+        has_text(t, text, "            let nn1 : int = 2\n            p9_fn_fold__g1 += nn1\n        \}\n        p9_fn_fold__g1 += nn\n")
+    }
+    t |> run("each outermost expansion site counts once: folded, or the reason it stays expanded") @(t : T?) {
+        let res <- convert("{FIXTURES}/p9_fn_fold.c", path_join(work_root, "p9_fn_fold_counts"), "linux")
+        t |> equal(res.ok, true, res.error)
+        t |> equal(fold_report(res), "folded 31, expanded: capture 3, effects 2, faulting 6, flow 1, incomplete 1, lvalue 1, never 1, order 9, shape 1, ternary 1")
+    }
+    t |> run("the sidecar's no_fold keeps a macro expanded; a name no macro of the program takes is refused") @(t : T?) {
+        let source = "#define ADD1(x) ((x) + 1)\n#define SQ(x) ((x) * (x))\nint main(void) \{\n    int i = 3;\n    return ADD1(i) + SQ(i) - 13;\n\}\n"
+        let text = converts(t, "p9_no_fold", source, "\{\"no_fold\": [\"SQ\"]\}")
+        has_text(t, text, "return ADD1(i) + i * i - 13\n")
+        t |> equal(text |> find("def private SQ") >= 0, false, text)
+        rejects(t, "p9_no_fold_unknown", source, "the sidecar's `no_fold` names `SQUARE`, which is no function-like macro the program expands", "\{\"no_fold\": [\"SQUARE\"]\}")
     }
 }
 
@@ -3051,7 +3125,8 @@ def p9_compound_define_fixtures(t : T?) {
         check_fixture(t, "p9_compound_defines", text)
         has_text(t, text, "let private POS_OP = 0\nlet private SIZE_OP = 7\nlet private POS_A = POS_OP + SIZE_OP\nlet private SIZE_A = 8\nlet private MASK_A = ~(~0u << uint(SIZE_A))\nlet private POS_K = POS_A + SIZE_A\n")
         // a constant inside a function-like macro's expansion is named, a shift count in a conversion
-        has_text(t, text, "    return int((i >> uint(POS_A)) & MASK_A) + POS_K\n")
+        has_text(t, text, "def private GETARG_A(i) => int((i >> uint(POS_A)) & MASK_A)\n")
+        has_text(t, text, "    return GETARG_A(i) + POS_K\n")
         // `#define TWO_ONES (ONE + ONE)`: the sum is two expansions of `ONE`, never `ONE` itself
         has_text(t, text, "let private ONE = 1\nlet private TWO_ONES = ONE + ONE\nlet private ONES_PLUS = ONE + ONE + 3\nlet private MIX = POS_K + SIZE_OP + 1\n")
         // the C-IR names the literals alone: `ONE + ONE` and `POS_K + SIZE_OP` (spelled from a later
@@ -3098,9 +3173,13 @@ def p9_paren_fixtures(t : T?) {
         has_text(t, text, "let x : int = a + b\n")
         has_text(t, text, "let r : int = a * c\n")
         has_text(t, text, "let m : uint = (u & (~(~0u << 4u) << 4u)) >> 4u\n")
-        has_text(t, text, "let y : int = (a + 1) * 2\n")
-        has_text(t, text, "let k : int = int_of(a == 3 && b == 4)\n")
-        has_text(t, text, "let z : int = (3 | (1 << 4)) + 1\n")
+        // the macros fold (P9.19): their defs' bodies keep the parentheses around a shift alone
+        has_text(t, text, "def private TWICE(x) => x * 2\n")
+        has_text(t, text, "def private IS(o; t) => o == t\n")
+        has_text(t, text, "def private VARIANT(t; v) => t | (v << 4)\n")
+        has_text(t, text, "let y : int = TWICE(a + 1)\n")
+        has_text(t, text, "let k : int = int_of(IS(a, 3) && IS(b, 4))\n")
+        has_text(t, text, "let z : int = VARIANT(3, 1) + 1\n")
     }
 }
 
@@ -3168,7 +3247,8 @@ def p7_readable_fixtures(t : T?) {
         has_text(t, text, "let private TNUMBER = 3\nlet private VNUMINT = TNUMBER | (0 << 4)\nlet private MAXCALLS = 200\nlet private VNUMFLT = TNUMBER | (1 << 4)\nlet private _c_match = 7\nlet private HALF = 0.5lf\n\n")
         has_text(t, text, "    if (tt == VNUMINT) \{\n        return calls >= uint(MAXCALLS) ? 1 : 2\n")
         has_text(t, text, "        return _c_match\n")
-        has_text(t, text, "    return 1 | (2 << 4)\n")
+        has_text(t, text, "def private makevariant(t; v) => t | (v << 4)\n")
+        has_text(t, text, "    return makevariant(1, 2)\n")
         has_text(t, text, "let h : double = HALF * 4.0lf + 3.0lf")
         has_text(t, text, "var private p7_defines__start : int = 11\n")
         has_text(t, text, "return 2147483647 == 2147483647 ? 0 : 1")

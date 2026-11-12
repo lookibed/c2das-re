@@ -14,7 +14,7 @@ require ../macro_fold.das
 //! The C-IR's function-like macro fields (`docs/c-ir-spec.md` section 6.3): the unit's `macros`,
 //! `fn_macro` on each whole expansion and `macro_args` on each copy of an argument, over a fixture
 //! with one macro per class, nested and side-by-side expansions, effectful and faulting
-//! arguments; the das text is the one it was before the fields existed.
+//! arguments; the expansions that fold print as calls (`ARCHITECTURE_EMITTER_MACROS.md`).
 
 let FIXTURE = "converter/tests/fixtures/p9_fn_macros.c"
 
@@ -162,9 +162,9 @@ def test_fn_macros(t : T?) {
         let want <- want_marks()
         t |> equal(join(lines, "\n"), join(want, "\n"))
     }
-    t |> run("the marks leave the das text alone: every expansion is printed expanded") @(t : T?) {
-        t |> equal(res.das_text |> find("    var sum : int = i + 1 + p.v + i * i + i + _t0\n") >= 0, true, res.das_text)
-        t |> equal(res.das_text |> find("    sum += i * 2 + 1 + (i + 1 + (i + 1)) + i * i * (i * i) + i + 1 * 2 + int_of(p.tag == 3)\n") >= 0, true)
+    t |> run("the marked expansions that fold print as calls of their defs, a written local by reference; a split argument, an identity and a capture print expanded") @(t : T?) {
+        t |> equal(res.das_text |> find("    var sum : int = ADD1(i) + FIELD(p) + SQ(i) + i + TONUM(p, n)\n") >= 0, true, res.das_text)
+        t |> equal(res.das_text |> find("    sum += TWICE(i) + BOTH(i) + FOURTH(i) + i + 1 * 2 + int_of(IS_INT(p))\n") >= 0, true, res.das_text)
     }
     t |> run("the writer and the reader keep every field: the rewritten text is the text read") @(t : T?) {
         t |> equal(write_cir(tu), res.cir_text)

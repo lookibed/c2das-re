@@ -85,10 +85,12 @@ struct Sidecar {
     // whether a direct call of a pure `static` helper (`return <expr>` or the clamp shape over
     // integer and floating parameters) is spelled as the helper's expression at the call site
     inline_helpers : bool = false
+    // the function-like macros whose expansions stay expanded, never a call of their `[inline] def`
+    no_fold : array<string>
 }
 
 //! The keys a sidecar may hold; any other is refused naming it.
-let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks", "jit_whole_program", "past_end", "inline_helpers", "strict_aliasing"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks", "jit_whole_program", "past_end", "inline_helpers", "strict_aliasing", "no_fold"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -332,6 +334,34 @@ def private read_members(js : JsonValue?; path, key : string; var out : array<st
     }
 }
 
+// the `no_fold` list of macro names into `out`; a value that is no list of identifiers is refused
+// naming the key (a name no macro of the program takes is the emitter's refusal)
+def private read_macro_names(js : JsonValue?; path : string; var out : array<string>; var error : string&) {
+    if (!key_exists(js, "no_fold")) {
+        return
+    }
+    let list = js?["no_fold"]
+    if (!(list is _array)) {
+        error = "{path}: `no_fold` is a list of macro names, not {write_json(list)}"
+        return
+    }
+    out |> reserve(length(out) + length(list as _array))
+    for (entry in list as _array) {
+        let name = entry is _string ? entry ?? "" : ""
+        var ident = !empty(name) && !is_number(first_character(name))
+        peek_data(name) $(b) {
+            for (c in b) {
+                ident = ident && (is_alpha(int(c)) || is_number(int(c)) || int(c) == '_')
+            }
+        }
+        if (!ident) {
+            error = "{path}: `no_fold` holds macro names, not {write_json(entry)}"
+            return
+        }
+        out |> push(name)
+    }
+}
+
 // the `include_dirs`, `include_files` and `program_root` keys, each path read beside the sidecar at
 // `path`
 def private read_inputs(js : JsonValue?; path : string; var side : Sidecar; var error : string&) {
@@ -432,6 +462,7 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
     read_inputs(js, path, side, error)
     read_members(js, path, "over_indexed", side.over_indexed, error)
     read_members(js, path, "padded", side.padded, error)
+    read_macro_names(js, path, side.no_fold, error)
     delete_json(js)
     return <- side
 }

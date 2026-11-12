@@ -22,7 +22,10 @@ and emits the faster one only under a converter option the `.c2das` sidecar can 
 **A diff that adds a converter option, or a new value of one that takes a fixed set of values,
 covers each fixed value, and one setting of an open-valued option, with a test under `tests/`, in
 the same change.** A converter option is a `main.das` flag or a `.c2das` key that changes
-converted text.
+converted text. An open-valued list of the program's own names (`no_fold`'s macro names) changes
+the text of the sites it names alone: its test covers one representative list and the refusal of
+a name the program does not have, and it takes no perf lane and no metrics entry of its own (the
+two rules below).
 
 **A diff that adds a converter option, or a new value of one that takes a fixed set of values,
 adds a lane for each fixed value, and for one setting of an open-valued option, in the same

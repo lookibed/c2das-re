@@ -9,7 +9,6 @@ require daslib/json_boost
 require ../../converter/pipeline.das
 require ../../converter/tiers.das
 require ../../suites/suite_files.das
-require ../perf_compose.das
 require ../audit_constructs.das
 require ../audit_tables.das
 require ../boxes.das
@@ -75,7 +74,7 @@ def test_rewrites_apply_to_the_kernels(t : T?) {
     for (name in c_file_ids(AUDIT_KERNELS, "")) {
         t |> run("{name} converts and each of its constructs rewrites it") @(t : T?) {
             let work = path_join(dir, name)
-            let c_path = write_method_composed(AUDIT_KERNELS, name, work)
+            let c_path = write_audit_composed(AUDIT_KERNELS, name, work)
             let res <- convert(c_path, work, "linux")
             t |> success(res.ok, res.error)
             let text = fread(res.das_path)

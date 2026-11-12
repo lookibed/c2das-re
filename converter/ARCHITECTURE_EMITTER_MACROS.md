@@ -7,10 +7,9 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 4 of `ARCHITEC
 A node Dumper A marks as a whole expansion of a function-like macro (`ARCHITECTURE_DUMPER_MACROS.md`,
 `docs/c-ir-spec.md` section 6.3) may print as a call of an `[inline] def` of the macro when
 `macro_fold.das` finds, from the node alone, that the call means what the expansion means
-(`fold_expr_site`, `fold_stmt_site`). The emitter reads no verdict: every expansion prints
-expanded. The walk takes the copies of each argument in evaluation order, the copies below a `?:`
-arm or the right side of `&&`/`||`, or in a statement body below an `if`, a loop or a `switch`,
-as read on some paths only. The verdict, in this order:
+(`fold_expr_site`, `fold_stmt_site`); every other expansion prints expanded. The walk takes the
+copies of each argument in evaluation order, the copies below a `?:` arm or the right side of
+`&&`/`||`, or in a statement body below an `if`, a loop or a `switch`, as read on some paths only. The verdict, in this order:
 
 - `never`: the sidecar's `no_fold` names the macro, or folding reads worse: a body that is
   `((void)0)`, an argument under casts alone (an identity, a single cast), one operator over its
@@ -36,7 +35,8 @@ as read on some paths only. The verdict, in this order:
   without `/` or `%` (an argument the body never reads is only its text: a decimal literal or a
   local's name). A copy of a volatile local counts as effectful: its load is an access. `faulting`
   also when a copy C reads after a call of the body (which may exit) is not such a value: das
-  evaluates the argument before the call.
+  evaluates the argument before the call. The report counts the faulting sites apart
+  (`fold_counts`).
 - `order`: a copy whose value a store of the body could change by the time C reads it (after a
   store, a call or on a loop's next turn), unless it is a constant or a local whose address is
   never taken; an argument reading the local another argument passes by reference or an effectful
@@ -44,3 +44,33 @@ as read on some paths only. The verdict, in this order:
   outside its locals or called (a declaration's initializer included); two arguments with effects,
   or one beside an argument that is not such a value, since das fixes no order among a call's
   arguments.
+
+### The defs and the calls {#fold-emission}
+
+`fold_macro` tries a node's chain outermost first (`#define GETA(i) GETBITS(i, 3, 4)` marks one node
+with both) and folds at the first level that passes: an expression read for its value
+(`emit_expr`; an lvalue expansion only through its load, so a store into `FLD(p)` stays expanded),
+an expression statement (`emit_effect`), or a statement macro (`emit_stmt_kind`). The arguments
+are spelled in the caller first, each from its first copy (an argument with no copy is its text);
+then the body is spelled as the expanded C reads it, in a fresh statement state (temporaries from
+`_t0`, no C comments, no caller's pending statements), with every copy read as its parameter
+through `hoisted` and every node inside a copy read as a marker that refuses the def; the chain's
+next level may fold inside the body, and so may any other expansion the body holds. A def's text
+is refused (the site stays expanded, counted `spelling`) when it holds that marker, names a
+caller's local an argument held (unless the parameter of that name takes exactly that local),
+leaves a parameter with copies unnamed (a literal shift count spelled into the body), needs a
+compound literal's declaration ahead of the statement, or fails. An arm of a pointer `?:` whose
+other arm is `null` keeps every expansion inside it expanded (`ternary`): das inlines no
+`[inline]` call there.
+
+A macro's defs are private to the module that spells its sites, in first-use order after the
+module's `#define` constants, each under a comment naming the `#define`'s file, line and text: one
+def with untyped parameters when every site spells one text, else one typed overload per signature
+of each text (a parameter's type is its argument's das type, `bool` for a truth value), a site
+whose text differs from the overload of its signature staying expanded (`overload`). A parameter
+whose argument is a data pointer, or a record holding one, is `var` (F3), one the body writes a
+caller's local through is `var x : auto&`; a pointer result names its type (das types a bare
+`null` as `void?`). A body that needs `unsafe` takes `[c_function]`.
+The name is the macro's, `<name>_m` where a function, global or type of the program, das or the
+runtime has it, `<name>_2` for a second macro of one name (an `#undef` and a new `#define`).
+Every outermost site counts once per module (`fold_counts`): `folded` or its reason.

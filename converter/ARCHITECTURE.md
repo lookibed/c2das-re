@@ -23,7 +23,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `emit.das` - the emitter: `CirTu` in, gen2 text out, fails closed the same way. The
   lowering passes of the plan (type resolve and rename, promotion insertion,
   statement-ification, control flow) happen as it spells nodes (`ARCHITECTURE_EMITTER.md`,
-  section 4); no pass transforms the `CirTu` before emission. `emit_tu` spells one module,
+  section 4); no pass transforms the `CirTu` before emission, and a function-like macro's marked expansion prints as a call of its `[inline] def` where the verdict allows (`ARCHITECTURE_EMITTER_MACROS.md`). `emit_tu` spells one module,
   `emit_program` the modules of a source layout over one program state (section 8).
 - `summaries.das` - what each function of a program may store to, whether it may do output or surely returns, and which parameters keep no pointer, read once from the program's C-IR before any module is spelled (`ARCHITECTURE_EMITTER_LOOPS.md`, The program summaries).
 - `bit_units.das` - the layout law over the C-IR (section 2, `packed`): `type_size`,
@@ -50,7 +50,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   and the libclang pass give clang as one `-D<entry>` argument each (a function a host defines
   outside the unit, plmpeg's test hook `c2da_rt_reset`, is nothing under `NAME(...)=`, its prototype
   and its calls alike), a value that is no list or an entry of another shape refused naming the key;
-  `over_indexed`, a list of strings `Record.field`, the trailing arrays the program indexes past
+  `no_fold`, a list of macro names whose expansions stay expanded, a value that is no list of identifiers refused naming the key, a name no function-like macro of the program takes the emitter's error; `over_indexed`, a list of strings `Record.field`, the trailing arrays the program indexes past
   their length, a value that is no list or an entry of another shape refused naming the key, an
   entry naming no record's trailing array the emitter's error; `padded`, the same for the arrays
   indexed one past either end into the members beside them, an entry naming no integer array flanked
@@ -279,7 +279,7 @@ Section 4, what the emitter spells (the das text of every construct), is in
 `ARCHITECTURE_EMITTER.md`, with bitfields, unions, function pointers and variadics in
 `ARCHITECTURE_EMITTER_AGGREGATES.md`, the switch and the labels in
 `ARCHITECTURE_EMITTER_CONTROL.md`, the loops, the compound stores and the volatile access in
-`ARCHITECTURE_EMITTER_LOOPS.md`, and the C spelling it carries in `ARCHITECTURE_EMITTER_TEXT.md`.
+`ARCHITECTURE_EMITTER_LOOPS.md`, the C spelling it carries in `ARCHITECTURE_EMITTER_TEXT.md`, and the folded function-like macros in `ARCHITECTURE_EMITTER_MACROS.md`.
 
 ## 5. The four tiers
 

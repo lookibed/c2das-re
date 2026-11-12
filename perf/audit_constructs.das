@@ -6,6 +6,7 @@ require strings
 require daslib/strings_boost
 require daslib/fio
 require daslib/json_boost
+require perf_compose
 
 //! The constructs of the interpreter audit on Lua (P7.0b): each a kernel under
 //! `perf/kernels/audit/`, the text whose occurrences in Lua's hot modules count its sites, and a
@@ -193,6 +194,22 @@ def private wrap_casts(text : string; var error : string&) : string {
 }
 
 def private literal_sizes(text : string; var error : string&) : string => replaced_all(text, [(old = "typeinfo sizeof(type<Pair>)", by = "16"), (old = "typeinfo sizeof(type<int64>)", by = "8")], error)
+
+// the function-like macros each kernel keeps expanded: a construct is the spelling the converter
+// wrote before P9.20 folded its macros into defs
+let private AUDIT_NO_FOLD <- {"union_access" => "gco2t gco2cl", "stack_ptr" => "s2v", "node_index" => "gnode lmod"}
+
+//! An audit kernel composed as `write_method_composed` composes it, with a `.c2das` beside it whose
+//! `no_fold` keeps the macros its constructs read expanded (`AUDIT_NO_FOLD`).
+def write_audit_composed(kernels, name, work : string) : string {
+    let c_path = write_method_composed(kernels, name, work)
+    let names = AUDIT_NO_FOLD?[name] ?? ""
+    if (!empty(names)) {
+        let quoted = join([for (n in split(names, " ")); "\"{n}\""], ", ")
+        fwrite(path_join(work, "{name}.c2das"), "\{\"no_fold\": [{quoted}]\}\n")
+    }
+    return c_path
+}
 
 //! Every construct the audit measures, in the table's order.
 def constructs : array<Construct> {
