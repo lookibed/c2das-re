@@ -192,9 +192,9 @@ unsigned underlying type (F22); the member is absent for a signed one, which is 
 `msvc` dialect. An lvalue node (`ref`, `member`, `index`, `un` `deref`) of volatile-qualified type
 carries `"vol": true` after the members of its kind and before `macro`, absent otherwise, since the
 type table strips qualifiers and the emitter keeps every access of such an object (F65,
-`ARCHITECTURE_EMITTER_LOOPS.md`), then a character literal's `"char": true` (P7.0i). These keep
-`"cir": "0.1"` (`CIR_VERSION`), where the spec's section 10 bumps the minor for an additive field:
-F20, F21, F65 and P7.0i record each as additive at 0.1; a reader here accepts no other version.
+`ARCHITECTURE_EMITTER_LOOPS.md`), then a character literal's `"char": true` (P7.0i), additive at
+`"cir": "0.1"` with F20, F21 and F65. The macro fields of the spec's section 6.3, each absent when
+empty, are 0.2 (`CIR_VERSION`), and a reader here accepts no other version.
 A record's `packed` is false exactly when das's natural layout reproduces clang's, by this law
 (`bit_units.das`), which a Dumper B applies to the same facts to write the same byte. Fields go
 in declaration order, each at its offset rounded up to its das alignment (a scalar's size, an

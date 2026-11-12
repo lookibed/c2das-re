@@ -1,4 +1,4 @@
-# C-IR — the interchange AST format (spec v0.1)
+# C-IR — the interchange AST format (spec v0.2)
 
 The contract between frontends ("dumpers") and the das backend (plan §4.0). A dumper
 converts one C translation unit into one C-IR file; the backend consumes C-IR only and
@@ -29,15 +29,18 @@ Top level of a TU file, exactly these keys in this order:
 
 ```json
 {
-  "cir": "0.1",
+  "cir": "0.2",
   "producer": "c2das-dumper-a 0.1 / clang 22.1.5",
   "target": { "triple": "x86_64-pc-windows-msvc",
               "int": 32, "long": 32, "llong": 64, "ptr": 64, "char_signed": true },
   "tu": "p_mobj.c",
   "types": [ ... ],
+  "macros": [ ... ],
   "decls": [ ... ]
 }
 ```
+
+`macros` is optional (§6.3): absent when no expansion is marked.
 
 `target` states the dialect the dump was made under (LLP64 default). The backend refuses
 mismatched targets across a program.
@@ -132,10 +135,36 @@ Any literal MAY carry `"macro": "MF_SHOOTABLE"` when the dumper can attribute th
 to an object-like macro expansion at that location. Optional per dumper; byte-diff runs
 compare with `macro` fields stripped (the one sanctioned normalization).
 
+### 6.3 Function-like macro expansions (optional, v0.2)
+
+A dumper MAY mark the expansions of the program's function-like macros, for a backend that
+prints a macro back as a function. The IR records where an expansion is and which nodes are its
+arguments; whether a macro folds (an argument evaluated twice or never, a caller's local
+captured, a statement body's outward flow) is the backend's reading of these nodes (rule 1).
+
+- TU top level, after `types`: `macros`: `[{ "name", "params": ["x", ...], "file", "line",
+  "text", "uses": [n, ...] }]`, one per `#define` a marked expansion uses. `text` is the
+  `#define` on one line (continuations joined, comments dropped, one blank between tokens the
+  source separated); `uses[k]` is how many times the macro's full expansion holds argument `k`'s
+  tokens (through the macros its body calls; -1 when the dumper cannot tell). A variadic macro
+  or one with `#` or `##` is never marked.
+- on an expression or statement node that is one expansion whole: `"fn_macro": [{ "m": <index
+  into macros>, "site": <id unique in the TU>, "args": ["<argument text>", ...] }]`, outermost
+  first when one node is the whole expansion of several macros (`#define GET(i) CAST(int, i)`);
+  `args` is each argument as the call writes it, since an argument the expansion never uses has
+  no node.
+- on each topmost expression that is a copy of an argument: `"macro_args": [{ "site": <id>,
+  "k": <parameter index> }]` (a list: with `#define A(x) B(x)` one node is an argument of both).
+  A backend compares a site's copies of `k` with `uses[k]`: fewer means an argument used as a type,
+  in `sizeof`, or split by the body's precedence.
+
+Every member is absent when empty. The byte-diff strips them with `macro` (Dumper B has no
+argument mapping).
+
 ## 7. Program manifest
 
 ```json
-{ "cir": "0.1", "target": { ... }, "tus": ["d_main.cir.json", ...],
+{ "cir": "0.2", "target": { ... }, "tus": ["d_main.cir.json", ...],
   "entry": "main" }
 ```
 The backend performs the whole-program merge (cross-TU symbol resolution, SCC module

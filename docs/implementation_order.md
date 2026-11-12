@@ -1902,6 +1902,15 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   lane, interp, JIT and exe (a `let` scalar local is the same stack slot as a `var` one under the
   interpreter, and no folded macro exists yet whose splice could skip a copy); compile time unchanged
   within noise.
+- **P9.17 C-IR 0.2: function-like macro fields** (ruling 38 addendum 14, fn-macros part 2 step 2,
+  first of two PRs; `/root/notes/research/r38/fn_macros_part1.md` section 7). `docs/c-ir-spec.md`
+  section 6.3: the unit's `macros` (name, parameters, file, line, the `#define` on one line, and per
+  parameter how many times the full expansion holds the argument, -1 unknown), `fn_macro` on a node
+  that is a whole expansion (outermost first where one node is several, with each argument's text as
+  the call writes it) and `macro_args` on each copy of an argument, each absent when empty;
+  `CIR_VERSION` 0.2. `cir.das` writes and reads them; `tests/test_cir_macros.das` round-trips a unit
+  holding each. No dumper writes them yet (P9.18) and no output changes. Expected speed effect
+  (phase-end A/B, B/A): 1.00 on every lane; the C-IR of every unit gains only its version string.
 
 ## P6 — Doom
 
