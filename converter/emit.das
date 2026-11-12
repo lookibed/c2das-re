@@ -3083,6 +3083,13 @@ def private save_spelling(var em : Emitter) : SavedSpelling {
 }
 
 def private restore_spelling(var em : Emitter; var s : SavedSpelling) {
+    // a move leaves its target's old storage to whoever frees it: the def body's is freed here
+    delete em.pre
+    delete em.out
+    delete em.hoisted
+    delete em.fold_seeds
+    delete em.spelled
+    delete em.literal_decls
     em.pre <- s.pre
     em.out <- s.out
     em.hoisted <- s.hoisted
@@ -3184,7 +3191,7 @@ def private reads_parameters(text : string; site : FoldSite; params : array<stri
 // parameter `params[k]`, the chain's next level free to fold inside; "" when the text reads more
 // than its parameters (`reads_parameters`) or needs a declaration before the statement
 def private spell_macro_body(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?; st : CirStmt const?; level : int; site : FoldSite; params : array<string>; args : array<Em>; kind : string; loc : CirLoc; var is_bool : bool&; var c_function : bool&; var no_op : bool&) : string {
-    var saved <- save_spelling(em)
+    var inscope saved <- save_spelling(em)
     em.depth = 1
     em.temp_counter = 0
     em.unsafe_used = false
@@ -3193,7 +3200,7 @@ def private spell_macro_body(var em : Emitter; tu : CirTu; x, spelled : CirExpr 
     em.narrow = 0
     em.case_depth = 0
     em.def_depth++
-    let caller_names <- seed_parameters(em, site, params, args)
+    var inscope caller_names <- seed_parameters(em, site, params, args)
     if (x != null) {
         each_subexpr(x) $(sub) {
             if (sub.e == "ref") {
@@ -3294,11 +3301,11 @@ def private fold_level(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?
     }
     let pre_at = length(em.pre)
     let temp_at = em.temp_counter
-    var hoisted_at := em.hoisted
+    var inscope hoisted_at := em.hoisted
     let unsafe_before = em.unsafe_used
-    let args <- fold_arguments(em, tu, site, use, loc)
+    var inscope args <- fold_arguments(em, tu, site, use, loc)
     let name = macro_def_name(em, tu, use.m)
-    let params <- [for (p in m.params); reserved_rename(p)]
+    var inscope params <- [for (p in m.params); reserved_rename(p)]
     var is_bool, c_function, no_op : bool
     let text = spell_macro_body(em, tu, x, spelled, st, level, site, params, args, kind, loc, is_bool, c_function, no_op)
     let sig = join([for (k in range(length(params))); argument_type(em, tu, site, args, k, loc)], "\n")
@@ -3311,6 +3318,7 @@ def private fold_level(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?
     if (!taken) {
         em.pre |> resize(pre_at)
         em.temp_counter = temp_at
+        delete em.hoisted
         em.hoisted <- hoisted_at
         em.unsafe_used = unsafe_before
         // a body that spells nothing (`lua_assert`'s `((void)0)`) is a no-op, never folded
@@ -7925,6 +7933,7 @@ def private reset_function_state(var em : Emitter; tu : CirTu; d : CirDecl) {
             }
         }
     }
+    delete em.fold_scope
     em.fold_scope.locals <- {for (p in d.params); p.name}
     each_stmt(d.body) $(s) {
         if (s.s == "decl") {
