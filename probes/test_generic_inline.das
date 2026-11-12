@@ -56,6 +56,7 @@ def test_generic_inline_splice(tt : T?) {
     var plain = 0
     var var_copies = 0
     var let_in_place = 0
+    var let_local_in_place = 0
     for (l in split(out, "\n")) {
         spliced += l |> starts_with("INLINE ") && l |> contains(" into run_all") ? 1 : 0
         declined += l |> contains("DECLINED") ? 1 : 0
@@ -63,6 +64,8 @@ def test_generic_inline_splice(tt : T?) {
         // `p` (a var parameter) is copied for ttisinteger, `q` (a let parameter) is read in place
         var_copies += l |> contains("_arg_o:") && l |> ends_with("TValue? const = p;") ? 1 : 0
         let_in_place += l |> contains("int(q.tt_) == 3") ? 1 : 0
+        // `f`, a `let` local, reaches `luai_numadd`'s body as written (P9.16's `let` locals)
+        let_local_in_place += l |> contains("1.5lf + f") ? 1 : 0
     }
     tt |> run("every call of an [inline] def in the other module is spliced, none declined (F104)") @(t : T?) {
         t |> equal(rc, 0, out)
@@ -75,5 +78,8 @@ def test_generic_inline_splice(tt : T?) {
     tt |> run("a var argument binds a let copy at the splice, a let argument substitutes as written (F104)") @(t : T?) {
         t |> success(var_copies >= 1, out)
         t |> success(let_in_place >= 1, out)
+    }
+    tt |> run("a let local argument substitutes as written, as a let parameter does (F104, P9.16)") @(t : T?) {
+        t |> success(let_local_in_place >= 1, out)
     }
 }
