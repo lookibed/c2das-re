@@ -2051,6 +2051,25 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   about A's plus a third (prototype: A 3.3 s, `[inline]` 5.8 s, `[c_macro]` 4.4 s); converted text
   unchanged against P9.20 but the annotation word, the dropped `var` of read-only pointer
   parameters and the `tonumberns`-class sites spelled expanded; criteria 1610 inputs, 0 failed.
+- **P9.26 Bench method audit** (ruling 38 addendum 12 item 3, Boris's lesson from upstream #4529:
+  a das-vs-clang kernel or repro keeps its C data on the heap or behind an external function and
+  consumes the result, and the loop is shown to run by asm or `-Rpass` before an "Nx of clang" is
+  quoted). Done as an audit, no timing (report `/root/notes/research/r38/bench_method_audit.md`):
+  the 17 `perf/kernels`, the 12 `perf/kernels/audit` and the 3 `perf/kernels/dasprofile`
+  programs composed as the harness composes them and built with the native lane's flags
+  (clang-22 `-O3 -w -funsigned-char`): every timed loop nest is in `main`'s rep loop at the
+  source's depth (scalar, unrolled or vectorized, nothing deleted; the `volatile` parameter and
+  the printed result keep each rep's work), so the perf and audit tables stand. The repros:
+  F80 `global_in_branch.c`, F81 `byte_read_memcpy.c`, F87 `volatile_load.c` and F89's TBAA
+  kernels (malloc arrays, clang's remarks recorded) run their loops and stand; the compare
+  projects' benches hash every decoded frame and stand. One number is void: **F86's "33x, 1.6 ns
+  per difference"** (JIT 0.313 s against C 0.0094 s): `ptr_diff.c` keeps the array on the stack,
+  so clang -O3 folds `&arr[i & 63] - &arr[0]` to `i & 63` and vectorizes the sum, a loop with no
+  pointer difference in it. The ratio is void until the next exclusive capture times the heap
+  form `ptr_diff_heap.c` + `ptr_diff_heap_ext.c` (array and pointer table from another
+  translation unit, the sum consumed; asm: load, `sub`, `shr $4` per difference) against
+  `ptr_diff_heap.das`, all in `/root/notes/research/p7.0p/repro/`. The finding itself (the JIT
+  calls `i_das_ptr_diff` per difference and divides by the stride) is unchanged.
 
 ## P6 — Doom
 
