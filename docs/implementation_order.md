@@ -1949,6 +1949,48 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   each outermost site: every class, nested, swapped, typed, a written local, a loop, and a
   negative control per guard); a hand-built two-unit link test. Expected speed effect (phase-end A/B, B/A): 1.00 on
   every lane (no das text change); link time within noise.
+- **P9.23 Form 9 step A: `<=` and global or member bounds as range loops** (ruling 38 addenda
+  10-14, phase 2b item 7; `/root/notes/research/r38/forms_8_11_estimate.md` section 9, step A).
+  Local analysis inside `counted_for` (`ARCHITECTURE_EMITTER_LOOPS.md`, the range loop). (1) `i <=
+  n` is `range(a, n + 1)` (a literal's successor as one literal) for a constant `n` below its
+  type's maximum, or for a signed counter whose body holds no `break` of the loop, `return`,
+  `goto`, call, volatile access or nested loop without a test or with a constant one: such a run
+  reaching `n == INT_MAX` steps the counter past it, which C leaves undefined, so no defined run
+  meets the wrapped end; an unsigned `<=` over any other bound stays `while` (a defined endless
+  loop at the maximum). The research note's rule (`leaves_loop` false) also excludes a call here,
+  since `exit` or `longjmp` ends the run early as a `break` does. (2) A bound over globals and
+  members (`.` and `->`) is invariant when the body makes no call and every store misses every
+  load of the bound: two variables' storage is apart; a variable no pointer reaches (a local with
+  no `&` or array decay of it in the function, a global the program defines and points at in no
+  function and no initializer: the program's C-IR holds every unit) is apart from every access
+  through a pointer; two pointer accesses are apart only by C's type-based aliasing. Aliasing mode:
+  C11 6.5p7 binds valid ISO C programs, but the converter's default (`strict_aliasing` off, the
+  root `options strict_aliasing = false`, P8.5) declares the program one built with
+  `-fno-strict-aliasing` (Doom, Quake), whose punned stores (an `int` written through a `float *`)
+  are the program's meaning, so the type rule proves nothing there: by default two pointer
+  accesses are never apart, and only the sidecar's `strict_aliasing: true` (C clean under
+  `-fstrict-aliasing`) applies the classes (an integer by width with its twin, `_Bool`, an enum
+  with every integer, a floating type by width, every pointer one class; a character type, a
+  record, an array and any member of a union alias everything). The variable rules hold in both
+  modes, since a pun needs a pointer to the object. Fixture `p9_counted_for` (the ranged loops,
+  and the ones that stay `while`: a callee writing the global bound, a `char *` store into the
+  bound's object, `<=` with a `break` against `INT_MAX`, `<=` with a call, a C89 counter read
+  after, a float store into a member bound by default, a union's other member under strict
+  aliasing), native-compared under interp and the JIT, and again under the sidecar's
+  `strict_aliasing: true`. No probe: the das side (`range` from a start past the end runs no pass,
+  `n + 1` wraps) is `probes/test_loops.das` and F-rows already recorded. Counts (main cf8d361 against this branch; Doom source-layout speed build, Lua
+  source layout; range loops, then `while (c)` loops, per 1000 lines): Doom 166 (4.73) -> 185
+  (5.27), 289 (8.23) -> 270 (7.70); lua 55 (1.88) -> 59 (2.02), 162 (5.54) -> 158 (5.41); luac 53
+  (2.34) -> 57 (2.52), 120 (5.29) -> 116 (5.12); programs (the criteria's ratchet suites
+  and projects but doomgeneric) 7939 (8.94) -> 8062 (9.08), 11312 (12.74) -> 11192 (12.61); the
+  criteria capture re-recorded (densities within +0.2 per 1000, the text being shorter). The research note's estimate
+  (Doom about 29 + 9-20, Lua about 14 + 4) assumed the type rule: under the default aliasing mode
+  the pointer-store bounds stay `while`, and most of what remains has a call in the body (step B).
+  Expected speed
+  effect (phase-end A/B, B/A): interpreter 0.99-1.00 on Doom and Lua (a range loop drops the test
+  node and the step of a `while`, on a few dozen loops, none in `luaV_execute`'s hot path), JIT and
+  exe 1.00 (the JIT compiles both forms to the same code, `benchmarks/bench_for_shapes.das`);
+  compile time unchanged within noise.
 
 ## P6 — Doom
 
