@@ -29,7 +29,7 @@ let TYPE_FIELD = "converter/tests/fixtures/p7_type_edge"
 // the single layout's module of each fixture: the multi-TU link's text before the source layout
 // (P5.1b1), which the single layout keeps byte for byte, plus the C comments it carries (P7.0j) and
 // `options solid_context` (P7.0m)
-let TREE_SINGLE_SHA = "c1cd45571d7492c2d4a3dcf01355c4236e79b30bd01bf99f1bc8c7d6399ffc02"
+let TREE_SINGLE_SHA = "80377704fabcc010f9ed3ab11abf3e02da272d4ea4da8a04139900f41f300c1b"
 let TYPES_SINGLE_SHA = "f50f3351e6ef0c00bf696211a3e1a88e9ed96de4a42b067b4ceeed686521a587"
 
 var work_root : string

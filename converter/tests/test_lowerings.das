@@ -448,13 +448,13 @@ def p2_enum_fixtures(t : T?) {
         t |> equal(text |> find("mobj(_c_type = mobjtype_t.MT_SHOTGUN, c = color.BLUE, hp = 7)") >= 0, true, text)
         t |> equal(text |> find("var inner : anon_") >= 0 && text |> find(".INNER_Y\n") >= 0, true, text)
         t |> equal(text |> find("require c_runtime/enum_from_int") >= 0, true, text)
-        has_text(t, text, "var local : anon_")
+        has_text(t, text, "let local : anon_")
         has_text(t, text, "return int(uint(local) + uint(anon_")
         has_text(t, text, "int(uint8(w)) == int(wide.W_LOW)")
         has_text(t, text, "enum_from_int(type<wide>, int(uint8(w)))")
         has_text(t, text, "F_TOP = -2147483647 - 1")
-        has_text(t, text, "var x : uint64 = uint64(uint(f))")
-        has_text(t, text, "var d : double = double(uint(f))")
+        has_text(t, text, "let x : uint64 = uint64(uint(f))")
+        has_text(t, text, "let d : double = double(uint(f))")
         has_text(t, text, "g = enum_from_int(type<flags>, int(uint(g) >> 4u))")
         has_text(t, text, "w >>= 28u")
         has_text(t, text, "int64(c) == int64(uint(color.RED))")
@@ -464,8 +464,8 @@ def p2_enum_fixtures(t : T?) {
         has_text(t, text, "var grid : int[int(wide.W_LOW)][int(color.BLUE)]")
         has_text(t, text, "var private lines_filled : int[int(color.BLUE)] = fixed_array(5, 0, 0, 0, 0, 0, 0, 0, 0)")
         has_text(t, text, "int(anon_18.L_A)\n}")
-        has_text(t, text, "var same : color = c")
-        has_text(t, text, "var fromd : color = enum_from_int(type<color>, int(d))")
+        has_text(t, text, "let same : color = c")
+        has_text(t, text, "let fromd : color = enum_from_int(type<color>, int(d))")
         has_text(t, text, "p[int(t)]")
         has_text(t, text, "fixed_array(neg.N_HIGH, enum_from_int(type<neg>, 0))")
     }
@@ -706,7 +706,7 @@ def p3_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p3_switch", text)
         // c_switch: C's arms, tail breaks and all, the value read in place (P9.12)
-        has_text(t, text, "    c_switch(x) \{\n        case(1) \{\n            r = 10\n            break\n        \}\n        case(2, 3) \{\n            r = 20\n            break\n        \}\n        case(-4) \{\n            \{\n                var k : int = x * 2\n")
+        has_text(t, text, "    c_switch(x) \{\n        case(1) \{\n            r = 10\n            break\n        \}\n        case(2, 3) \{\n            r = 20\n            break\n        \}\n        case(-4) \{\n            \{\n                let k : int = x * 2\n")
         // every arm returns and one is the default: no trailing zero return
         has_text(t, text, "    c_switch(u) \{\n        case(_) \{\n            return 99\n        \}\n        case(1u) \{\n            return 1\n        \}\n        case(7u) \{\n            return 7\n        \}\n    \}\n\}\n")
         has_text(t, text, "    c_switch(t) \{\n        case(mobjtype_t.MT_PLAYER) \{")
@@ -728,7 +728,7 @@ def p3_fixtures(t : T?) {
         has_text(t, text, "found = i * 10 + j\n                goto label 1\n")
         has_text(t, text, "    label 1:  // done\n    return found")
         has_text(t, text, "r += 1\n    r += 10\n    label 1:  // inside\n    r += 100")
-        has_text(t, text, "r = 2\n    \{\n        var unused : int = 7\n        r += unused\n    \}\n    label 1:  // skip")
+        has_text(t, text, "r = 2\n    \{\n        let unused : int = 7\n        r += unused\n    \}\n    label 1:  // skip")
         has_text(t, text, "label 1:  // again\n    n += 2\n    if (n < 7) \{\n        goto label 1")
     }
     t |> run("setjmp: the contained site as try/recover with the target check, the single-branch site flat when its tail calls nothing and the rerun loop otherwise, longjmp as c_longjmp") @(t : T?) {
@@ -991,7 +991,7 @@ def p4_function_fixtures(t : T?) {
         has_text(t, text, "def private p4_fnptr__field(var s_in : Holder) : int \{\n    var s = s_in\n")
         // a stepped pointer parameter is written in place, whatever names the body spells
         has_text(t, text, "def private p4_fnptr__put(var p : int?; p_in : int) \{\n    var _t0 = p\n")
-        has_text(t, text, "def private p4_fnptr__put_local(var q : int?) : int \{\n    var q_in : int = 4\n")
+        has_text(t, text, "def private p4_fnptr__put_local(var q : int?) : int \{\n    let q_in : int = 4\n")
         has_text(t, text, "var erased : function<() : void> = reinterpret<function<() : void>>(@@p4_fnptr__add3)")
         has_text(t, text, "[c_union]\nstruct handler_t \{\n    h1 : function<(var a0 : void?) : void>\n    h0 : function<() : void>\n    h2 : function<(var a0 : void?; var a1 : void?) : void>\n\}")
         has_text(t, text, "[c_union]\nstruct Slots \{\n    fns : function<(var a0 : Counter?) : void>[2]\n")
@@ -1132,7 +1132,7 @@ def p4_varargs_fixtures(t : T?) {
         has_text(t, text, "acc += va_d(ap)")
         has_text(t, text, "acc += double(uint(va_i(ap)))")
         has_text(t, text, "var s : uint8? = reinterpret<uint8?>(va_p(ap))")
-        has_text(t, text, "var c : color = enum_from_int(type<color>, int(va_i(ap)))")
+        has_text(t, text, "let c : color = enum_from_int(type<color>, int(va_i(ap)))")
         // va_copy is the cursor's assignment, va_end no statement
         has_text(t, text, "    b = a\n")
         has_text(t, text, "def private p4_varargs__take_two(var ap : CVaCursor) : int")
@@ -1197,10 +1197,10 @@ def p4_varargs_fixtures(t : T?) {
 def p4_varargs_shapes(t : T?) {
     t |> run("varargs: the undefined reads of a promoted type pop the promoted class and narrow") @(t : T?) {
         let text = converts(t, "va_narrow", "#include <stdarg.h>\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); char c = va_arg(ap, char); short s = va_arg(ap, short); float x = va_arg(ap, float); _Bool b = va_arg(ap, _Bool); va_end(ap); return c + s + (int) x + b; \}\nint main(void) \{ return f(0, 1, 2, 3.0, 1) - 7; \}\n")
-        has_text(t, text, "var c : uint8 = uint8(va_i(ap))")
-        has_text(t, text, "var s : int16 = int16(va_i(ap))")
-        has_text(t, text, "var x : float = float(va_d(ap))")
-        has_text(t, text, "var b : bool = va_i(ap) != 0l")
+        has_text(t, text, "let c : uint8 = uint8(va_i(ap))")
+        has_text(t, text, "let s : int16 = int16(va_i(ap))")
+        has_text(t, text, "let x : float = float(va_d(ap))")
+        has_text(t, text, "let b : bool = va_i(ap) != 0l")
         // a function pointer pops as a pointer; a body that takes `va` binds the list as `va1`
         let named = converts(t, "va_fn_and_name", "#include <stdarg.h>\nstatic int twice(int v) \{ return 2 * v; \}\nstatic int f(int n, ...) \{ va_list va; va_start(va, n); int (*g)(int) = va_arg(va, int (*)(int)); va_end(va); return g(n); \}\nint main(void) \{ return f(3, twice) - 6; \}\n")
         has_text(t, named, "def private va_fn_and_name__f(n : int; va1 : va_args) : int")
@@ -1209,10 +1209,10 @@ def p4_varargs_shapes(t : T?) {
     }
     t |> run("varargs: a name that is no `va_list` converts as before, under both dialects") @(t : T?) {
         let shapes <- [
-            ("user_va_list_typedef", "typedef int va_list;\nint main(void) \{ va_list v = 3; return v - 3; \}\n", "var v : int = 3"),
+            ("user_va_list_typedef", "typedef int va_list;\nint main(void) \{ va_list v = 3; return v - 3; \}\n", "let v : int = 3"),
             ("user_va_list_tag", "#include <stdarg.h>\nstruct va_list \{ int a, b; \};\nint main(void) \{ struct va_list s = \{ 1, 2 \}; return s.a + s.b - 3; \}\n", "struct va_list \{"),
             ("local_typedef_char", "#include <stdarg.h>\nstatic int f(int n, ...) \{ typedef va_list L; L ap; va_start(ap, n); int v = va_arg(ap, int); va_end(ap); return v; \}\nstatic int g(void) \{ typedef char *L; L x = 0; return x == 0; \}\nint main(void) \{ return f(1, 4) + g() - 5; \}\n", "var x : uint8? = null"),
-            ("local_typedef_shadow", "#include <stdarg.h>\nstatic int f(int n, ...) \{ typedef va_list L; L ap; va_start(ap, n); int v = va_arg(ap, int); va_end(ap); return v; \}\nstatic int g(void) \{ typedef int L; L x = 3; return x; \}\nint main(void) \{ return f(1, 4) + g() - 7; \}\n", "var x : int = 3")
+            ("local_typedef_shadow", "#include <stdarg.h>\nstatic int f(int n, ...) \{ typedef va_list L; L ap; va_start(ap, n); int v = va_arg(ap, int); va_end(ap); return v; \}\nstatic int g(void) \{ typedef int L; L x = 3; return x; \}\nint main(void) \{ return f(1, 4) + g() - 7; \}\n", "let x : int = 3")
         ]
         let dir = path_join(work_root, "converted")
         mkdir(dir)
@@ -1302,11 +1302,11 @@ def p4_csmith_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p4_csmith_scopes", text)
         // das refuses a local that shadows another (F42), `_` included
-        has_text(t, text, "var i1 : int = 5")
-        has_text(t, text, "var i2 : int = 7")
+        has_text(t, text, "let i1 : int = 5")
+        has_text(t, text, "let i2 : int = 7")
         has_text(t, text, "let _t0 = p4_csmith_scopes__g[0]")
-        has_text(t, text, "var p1 : int = 3")
-        has_text(t, text, "var v1 : int = 100")
+        has_text(t, text, "let p1 : int = 3")
+        has_text(t, text, "let v1 : int = 100")
         has_text(t, text, "for (i3 in range(1, 3)) \{")
         // das indexes by `int`, `int64`, `uint` or `uint64` alone (F43)
         has_text(t, text, "p4_csmith_scopes__g[int(k)] + p4_csmith_scopes__g[int(m)] + p4_csmith_scopes__g[int(n)]")
@@ -1320,14 +1320,14 @@ def p4_csmith_more_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p4_csmith_bindings", text)
         // a local hiding a static keeps its own binding (F47)
-        has_text(t, text, "var g1 : int = 5\n            n += g1\n        \}\n    \}\n    return n + p4_csmith_bindings__g")
+        has_text(t, text, "let g1 : int = 5\n            n += g1\n        \}\n    \}\n    return n + p4_csmith_bindings__g")
         // two static locals of one name hoist under two names; a later block's local is its own
         has_text(t, text, "var private static_then_local_s : int = 5\nvar private static_then_local_s1 : int = 9")
-        has_text(t, text, "var s : int = 1")
+        has_text(t, text, "let s : int = 1")
         // a block-scope extern declares nothing and binds to the global
         has_text(t, text, "def private p4_csmith_bindings__block_extern : int \{\n    return x\n\}\n")
         // a temporary skips a name the function spells
-        has_text(t, text, "var _t0 : int = 7")
+        has_text(t, text, "let _t0 : int = 7")
         has_text(t, text, "let _t1 = a[0]")
     }
     t |> run("csmith shapes: every pointer parameter is `var`, a stepped scalar or pointer written in place") @(t : T?) {
@@ -1361,10 +1361,10 @@ def p4_csmith_more_fixtures(t : T?) {
         // the first declaration is the unit's, before the function; the later definition completes it
         has_text(t, text, "var counter : int = 40\nvar limit : int = 2\nvar squares : int[4] = fixed_array(0, 1, 4, 9)\n")
         // a local and a parameter named like the function's block-scope `extern` take free names
-        has_text(t, text, "def private p6_block_extern__hidden(limit1 : int) : int \{\n    var counter1 : int = 100\n    counter += limit\n")
+        has_text(t, text, "def private p6_block_extern__hidden(limit1 : int) : int \{\n    let counter1 : int = 100\n    counter += limit\n")
         has_text(t, text, "    return squares[3] + int(int64(addr(squares[3]) - addr(squares[0])))\n")
         // a prototype hides a local too, and a static after it hoists under the enclosing function
-        has_text(t, text, "    var scale1 : int = 2\n    twice_calls++\n    return scale(k) * twice_calls + scale(1)\n\}\n")
+        has_text(t, text, "    let scale1 : int = 2\n    twice_calls++\n    return scale(k) * twice_calls + scale(1)\n\}\n")
         // a name declared outside the program binds by its file-scope name
         has_text(t, text, "fprintf(crt::c_stdout(), ")
         // a hoisted static skips the name a block-scope `extern` gives a global
@@ -1395,8 +1395,8 @@ def p4_scope_fidelity_fixtures(t : T?) {
         check_fixture(t, "p4_scope_fidelity", text)
         // a block a goto enters loses its braces: its local leaves the global and a later
         // block's local their names
-        has_text(t, text, "    var g1 : int = 3\n    n += g1\n    label 1:  // in\n    n += 1\n    return n * 100 + g\n")
-        has_text(t, text, "    var t1 : int = 2\n    n += t1\n")
+        has_text(t, text, "    let g1 : int = 3\n    n += g1\n    label 1:  // in\n    n += 1\n    return n * 100 + g\n")
+        has_text(t, text, "    let t1 : int = 2\n    n += t1\n")
         // a local a later case reaches is declared before the lowered switch
         has_text(t, text, "    var v : int\n    c_switch(k) \{\n        case(0) \{\n            v = 1\n            r += v\n        \}\n        case(1) \{\n")
         has_text(t, text, "    var w : int\n    c_switch(k) \{\n        case(0) \{\n            w = 5\n")
@@ -1407,15 +1407,15 @@ def p4_scope_fidelity_fixtures(t : T?) {
         has_text(t, text, "            for (v2 in range(3)) \{\n                r += v2\n")
         has_text(t, text, "            v1 = 7\n            r = v1\n")
         // a step's value reads the index the step used
-        has_text(t, text, "    let _t0 = k\n    k++\n    let _t1 = arr[_t0].a\n    arr[_t0].a++\n    var v : int = _t1\n")
-        has_text(t, text, "    arr[_t2].a++\n    var w : int = arr[_t2].a\n")
+        has_text(t, text, "    let _t0 = k\n    k++\n    let _t1 = arr[_t0].a\n    arr[_t0].a++\n    let v : int = _t1\n")
+        has_text(t, text, "    arr[_t2].a++\n    let w : int = arr[_t2].a\n")
         // a target through a call holds the call's pointer
         has_text(t, text, "    var _t0 = p4_scope_fidelity__next()\n    (*_t0)++\n    var _t1 = p4_scope_fidelity__next()\n    *_t1 += 5\n")
         has_text(t, text, "    var _t5 = p4_scope_fidelity__cell_at()\n    _t5.a += 3\n")
         // an assignment read as a value reads the target the store used
         has_text(t, text, "        *_t0 = *_t1\n        if ((*_t0) == 0) \{\n            break\n")
         has_text(t, text, "    *_t2 = *_t3\n    if ((*_t2) != 0) \{\n")
-        has_text(t, text, "    a[_t6] = 9\n    var got : int = a[_t6]\n")
+        has_text(t, text, "    a[_t6] = 9\n    let got : int = a[_t6]\n")
         // a bitfield widened to int, its getter and setter spelled apart, share the pinned index
         has_text(t, text, "    let _t0 = p4_scope_fidelity__pick(1)\n    p[_t0].bf = uint(int(p[_t0].bf) + 5)\n")
         has_text(t, text, "    bytes[_t3] = int8(int(bytes[_t3]) + 7)\n")
@@ -1423,7 +1423,7 @@ def p4_scope_fidelity_fixtures(t : T?) {
         // statement changes the variable
         has_text(t, text, "    p4_scope_fidelity__gi++\n    let _t0 = p4_scope_fidelity__gi\n    uc[_t0] += p4_scope_fidelity__gi_to_one()\n")
         has_text(t, text, "    var _t1 = p4_scope_fidelity__gp\n    *_t1 += p4_scope_fidelity__gp_away()\n")
-        has_text(t, text, "    let _t2 = p4_scope_fidelity__gi\n    uc[_t2] += p4_scope_fidelity__gi_to_zero()\n    var v : int = uc[_t2]\n")
+        has_text(t, text, "    let _t2 = p4_scope_fidelity__gi\n    uc[_t2] += p4_scope_fidelity__gi_to_zero()\n    let v : int = uc[_t2]\n")
         rejects(t, "carried_union_local", "union U \{ int i; float f; \};\nint main(void) \{\n    int r = 0;\n    switch (r) \{\n    case 0:;\n        union U u = \{5\};\n        r = u.i;\n    case 1:\n        u.i = 2;\n        r += u.i;\n    \}\n    return r - 7;\n\}\n", "a declaration under a case label filled by stores (a union or a sparse array) and used under a later label is not lowered yet")
     }
     t |> run("scope fidelity edges: array members and pointer bases with effects, an else-if step, a C name spelled like a temporary, carried declarations of every shape, the names a later label resolves") @(t : T?) {
@@ -1438,7 +1438,7 @@ def p4_scope_fidelity_fixtures(t : T?) {
         has_text(t, text, "p4_scope_edges__nested_use(k : int) : int \{\n    var r : int = 0\n    var v : int\n    c_switch(k) \{\n")
         // a `for` declaring the name among others binds its own: the union stays in its branch
         has_text(t, text, "p4_scope_edges__for_declares_two(k : int) : int \{\n    var r : int = 0\n    c_switch(k) \{\n        case(0) \{\n            var u : un\n")
-        has_text(t, text, "                var a : int = 1\n                var u1 : int = 0\n")
+        has_text(t, text, "                let a : int = 1\n                var u1 : int = 0\n")
     }
 }
 
@@ -1471,7 +1471,7 @@ def p4_matrix_fixtures(t : T?) {
         has_text(t, text, "def private p4_matrix_shapes__half(x : double) : double \{\n    return x / 2.0lf\n")
         has_text(t, text, "struct vol \{\n    ticks, other : int\n\}")
         has_text(t, text, "    c_volatile_store(p4_matrix_shapes__clock_v.ticks, c_volatile_load(p4_matrix_shapes__clock_v.ticks) + 2)\n")
-        has_text(t, text, "    a++\n    var x : int = b + a\n")
+        has_text(t, text, "    a++\n    let x : int = b + a\n")
         has_text(t, text, "        c_exit(3)\n")
     }
     t |> run("matrix shapes: _Alignof of a record das never lays out is clang's value") @(t : T?) {
@@ -1546,7 +1546,7 @@ def p4_matrix_leftover_fixtures(t : T?) {
         // a union's literal is a declaration and its store, a scalar's its value
         has_text(t, text, "    var _cl4 : num\n    _cl4.f = 1.5f\n    var u : num? = addr(_cl4)\n")
         has_text(t, text, "    var _cl5 : tagged = tagged(tag = 7)\n    _cl5.n.i = 9\n    var t : tagged = _cl5\n")
-        has_text(t, text, "    var s : int = 5 + 0\n    var _cl6 : int = 11\n")
+        has_text(t, text, "    let s : int = 5 + 0\n    var _cl6 : int = 11\n")
         // under a conditional arm the object is declared before the statement, assigned in the arm
         has_text(t, text, "    var _cl7 : int[2]\n    var _cl8 : int[2]\n    var _t0 : int?\n    if (c != 0) \{\n        _cl7 = fixed_array(1, 2)\n")
         has_text(t, text, "        _cl9 = num()\n        _cl9.i = 3\n")
@@ -1616,11 +1616,11 @@ def p4_matrix_leftover_shapes(t : T?) {
         var text : string
         check_fixture(t, "p4_setjmp_general", text)
         has_text(t, text, "        try \{\n            r = _sj_val\n            p4_setjmp_general__sum += r\n")
-        has_text(t, text, "        try \{\n            var r : int = _sj_val\n")
+        has_text(t, text, "        try \{\n            let r : int = _sj_val\n")
         has_text(t, text, "        try \{\n            c_switch(_sj_val) \{\n                case(0) \{\n")
         has_text(t, text, "        try \{\n            _sj_returned = invoke($() : bool \{\n                if (_sj_val == 4) \{\n")
         has_text(t, text, "        try \{\n            _sj_returned = invoke($() : bool \{\n                if (2 == _sj_val) \{\n")
-        has_text(t, text, "        try \{\n            var c : uint8 = uint8(_sj_val)\n")
+        has_text(t, text, "        try \{\n            let c : uint8 = uint8(_sj_val)\n")
         has_text(t, text, "        try \{\n            _sj_returned = invoke($() : bool \{\n                if (discarded_stop == 0) \{\n")
         has_text(t, text, "        try \{\n            _sj_returned = invoke($() : bool \{\n                _sj_ret = _sj_val\n                return true\n            \})\n")
     }
@@ -1801,7 +1801,7 @@ def p5_lua_fixtures(t : T?) {
         has_text(t, text, "crt::isalnum(int(*s))")
         // <math.h>: das math for the surface, the crt module for the exotica
         has_text(t, text, "math::floor(x), math::ceil(x), math::abs(-x), math::sqrt(x), math::pow(x, 2.0lf), crt::fmod(x, 2.0lf)")
-        has_text(t, text, "    var m : double = crt::frexp(x, addr(e))\n")
+        has_text(t, text, "    let m : double = crt::frexp(x, addr(e))\n")
         has_text(t, text, "require math\n")
         // an `extern` array of unknown length takes its definition's type; a braced literal is the literal
         has_text(t, text, "var shapes_ident : uint8[15] = cstr_array(\"$Shapes: 5.4 $\", 15)\n")
@@ -1845,7 +1845,7 @@ def p5_lua_library_fixtures(t : T?) {
         rmdir_rec(files)
         // a FILE * is the opaque record, passed to the crt as void?
         has_text(t, text, "struct _IO_FILE \{\}\n")
-        has_text(t, text, "    var c : int = crt::getc(reinterpret<void?>(f))\n")
+        has_text(t, text, "    let c : int = crt::getc(reinterpret<void?>(f))\n")
         has_text(t, text, "s.f = reinterpret<_IO_FILE?>(crt::freopen(")
         // the standard streams are crt accessors, passed on as they are
         has_text(t, text, "fprintf(crt::c_stderr(), cstr(\"to %s\\n\"), cstr(\"stderr\"))\n")
@@ -1896,7 +1896,7 @@ def p5_lua_library_fixtures(t : T?) {
                 has_text(t, res.das_text, "crt::fseek(reinterpret<void?>(f), int64(off - 1), 0)\n")
                 // a parse or a position C ranges at 32 bits: the crt forwarder of C's range rule
                 has_text(t, res.das_text, "pos = crt::c_ftell32(reinterpret<void?>(f))\n")
-                has_text(t, res.das_text, "var u : uint = crt::c_strtoul32(")
+                has_text(t, res.das_text, "let u : uint = crt::c_strtoul32(")
                 has_text(t, res.das_text, "int(crt::clock()) < 0")
             } else {
                 has_text(t, res.das_text, "crt::fseek(reinterpret<void?>(f), off - 1l, 0)\n")
@@ -2184,9 +2184,9 @@ def p5_lua_review_dumper(t : T?) {
         let c_path = written_source("converted", "msvc_long_range", "long strtol(const char *, char **, int);\nunsigned long strtoul(const char *, char **, int);\nlong atol(const char *);\nint *__errno_location(void);\nint printf(const char *, ...);\nint main(void) \{\n    *__errno_location() = 0;\n    long a = strtol(\"3000000000\", 0, 10);\n    int ea = *__errno_location();\n    unsigned long b = strtoul(\"4294967296\", 0, 10);\n    unsigned long c = strtoul(\"-1\", 0, 10);\n    long d = atol(\"3000000000\");\n    long e = strtol(\"-3000000000\", 0, 10);\n    printf(\"%ld %lu %lu %ld %ld %d\\n\", a, b, c, d, e, ea);\n    return 0;\n\}\n", "")
         let res <- convert(c_path, path_join(path_join(work_root, "converted"), "msvc_long_range"), "msvc")
         t |> equal(res.ok, true, res.error)
-        has_text(t, res.das_text, "var a : int = crt::c_strtol32(")
-        has_text(t, res.das_text, "var b : uint = crt::c_strtoul32(")
-        has_text(t, res.das_text, "var d : int = crt::c_atol32(")
+        has_text(t, res.das_text, "let a : int = crt::c_strtol32(")
+        has_text(t, res.das_text, "let b : uint = crt::c_strtoul32(")
+        has_text(t, res.das_text, "let d : int = crt::c_atol32(")
         var out : string
         t |> equal(run_tier(res.das_path, "interp", work_root, out, CONVERTED_MODULES), 0, out)
         // C11 7.22.1.4p8 at a 32-bit `long`, ERANGE 34
@@ -2267,12 +2267,12 @@ def p7_fixtures(t : T?) {
         // a bitfield and a `[c_union]` member take `op=` too (F52 fixed); a bitfield computing wider keeps the plain store
         has_text(t, text, "    p[2].bf.b = uint(int(p[2].bf.b) + 3)\n    p[2].bf.c += 3u\n")
         has_text(t, text, "    pu[1].i += 5\n")
-        has_text(t, text, "    var s : int = a + b\n    var t : int = a - b\n    var w : int64 = p + q\n    var m : uint = uint(a) * uint(b)\n")
+        has_text(t, text, "    let s : int = a + b\n    let t : int = a - b\n    let w : int64 = p + q\n    let m : uint = uint(a) * uint(b)\n")
         has_text(t, text, "    cur += b\n")
         // a small integer's sum is no wrapping pair; a truth value in one is the int
-        has_text(t, text, "    var ss : int16 = int16(int(s1) + int(s2))\n")
-        has_text(t, text, "    var cs : uint8 = uint8(int(c1) + int(c2))\n")
-        has_text(t, text, "    var tw : int = int_of(a < b) + b\n    var tw2 : int = b - int_of(a == 0)\n")
+        has_text(t, text, "    let ss : int16 = int16(int(s1) + int(s2))\n")
+        has_text(t, text, "    let cs : uint8 = uint8(int(c1) + int(c2))\n")
+        has_text(t, text, "    let tw : int = int_of(a < b) + b\n    let tw2 : int = b - int_of(a == 0)\n")
     }
     t |> run("under `--loops while` no loop is a range loop, and the program prints the same") @(t : T?) {
         var text : string
@@ -2302,10 +2302,10 @@ def p7_wrap_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p7_wrap", text)
         has_text(t, text, "    acc += int64(imm)\n    acc ^= p7_wrap__regs[0] * int64(3)\n")
-        has_text(t, text, "    var p : int64 = p7_wrap__regs[2] * p7_wrap__regs[2]\n")
-        has_text(t, text, "    var q : int64 = p - int64(u) + (p7_wrap__regs[1] & int64(s)) + (int64(c) | int64(1))\n")
+        has_text(t, text, "    let p : int64 = p7_wrap__regs[2] * p7_wrap__regs[2]\n")
+        has_text(t, text, "    let q : int64 = p - int64(u) + (p7_wrap__regs[1] & int64(s)) + (int64(c) | int64(1))\n")
         // an operand already unsigned is no wrap pair: the casts stay
-        has_text(t, text, "    var x : int = int(uint(imm) * 2654435761u) + int(uint(s) + 3u)\n")
+        has_text(t, text, "    let x : int = int(uint(imm) * 2654435761u) + int(uint(s) + 3u)\n")
         t |> equal(text |> find("int64(uint64(") < 0, true, text)
     }
 }
@@ -2470,7 +2470,7 @@ def p7_expect_fixtures(t : T?) {
         has_text(t, text, "    if (uint8(trap) != 0) \{\n")
         t |> equal(text |> find("? 1 : 0) != 0") < 0, true, text)
         // a hint read as a number is its first operand's value
-        has_text(t, text, "    var hint : int64 = 7l\n    var truth : int64 = int64(int_of(3 != 0))\n")
+        has_text(t, text, "    let hint : int64 = 7l\n    let truth : int64 = int64(int_of(3 != 0))\n")
     }
 }
 
@@ -2608,7 +2608,7 @@ def p8_input_fixtures(t : T?) {
         check_fixture(t, "p8_braced_scalar", text)
         has_text(t, text, "var private p8_braced_scalar__err_none : uint8? = null\n")
         has_text(t, text, "var private p8_braced_scalar__counter : int = 3\n")
-        has_text(t, text, "    var c : color = color.BLUE\n")
+        has_text(t, text, "    let c : color = color.BLUE\n")
         has_text(t, text, "    var msg : uint8? = null\n")
     }
     t |> run("a C name that is a das builtin type or keyword takes the `_c_` prefix: a record member, a local, a global, a parameter") @(t : T?) {
@@ -2618,7 +2618,7 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "int(o._c_byte3) + o._c_int2")
         has_text(t, text, "var _c_include : int = 4\n")
         has_text(t, text, "def private p8_das_type_names__half2(_c_short8 : int) : int \{")
-        has_text(t, text, "var _c_fixed_array : int = ")
+        has_text(t, text, "let _c_fixed_array : int = ")
     }
     t |> run("glibc's `assert` without NDEBUG: `__extension__` dropped, its statement expression a block, `__PRETTY_FUNCTION__` and `__func__` the name's literal") @(t : T?) {
         var text : string
@@ -2715,6 +2715,23 @@ def readability_fixtures(t : T?) {
     p9_conversion_fixtures(t)
     p9_narrow_fixtures(t)
     p9_long_line_fixtures(t)
+    p9_let_local_fixtures(t)
+}
+
+// P9.16: a scalar local the function never assigns, steps or takes the address of is `let`
+def p9_let_local_fixtures(t : T?) {
+    t |> run("a never-written integer, floating or enum local is let; a written, stepped, addressed, uninitialized, pointer, record or array local stays var") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_let_locals", text)
+        has_text(t, text, "    let fixed : int = p9_let_locals__twice(x) + 1\n    let limit : int = 7\n    let half : double = double(x) / 2.0lf\n")
+        has_text(t, text, "    let c : color = x > 2 ? color.BLUE : color.GREEN\n    let first : uint8 = s[0]\n    let big : bool = x > limit\n    var sum : int = 0\n")
+        has_text(t, text, "        let sq : int = i * i\n")
+        has_text(t, text, "    var stepped : int = x\n    stepped++\n    var stored : int = 1\n    stored = stored * 3 + x\n    var late : int\n")
+        has_text(t, text, "    var seen : int = 4\n    var at : int? = addr(seen)\n")
+        // the inner `n`, renamed past the outer one, is read only; the outer one is written
+        has_text(t, text, "    var n : int = x\n    \{\n        let n1 : int = 5\n")
+        has_text(t, text, "    var arr : int[3] = fixed_array(x, x + 1, x + 2)\n    var p : pair = pair(a = x, b = 2 * x)\n    var row : int? = addr(arr[0])\n")
+    }
 }
 
 // P9.14: a promoted storage integer's `==` against a literal in its range or a value of its type is
@@ -2776,9 +2793,9 @@ def p9_conversion_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p9_conversions", text)
         has_text(t, text, "        h ^= (h << 5u) + (h >> 2u) + uint(str[l - 1ul])\n")
-        has_text(t, text, "    var a : uint8 = s[0]\n    var b : uint = uint(s[1])\n")
-        has_text(t, text, "    var n : int = typeinfo sizeof(type<rec>)\n    var m : int = typeinfo sizeof(type<int>) * 2\n")
-        has_text(t, text, "    var z : uint64 = uint64(typeinfo sizeof(type<ts>))\n")
+        has_text(t, text, "    let a : uint8 = s[0]\n    let b : uint = uint(s[1])\n")
+        has_text(t, text, "    let n : int = typeinfo sizeof(type<rec>)\n    let m : int = typeinfo sizeof(type<int>) * 2\n")
+        has_text(t, text, "    let z : uint64 = uint64(typeinfo sizeof(type<ts>))\n")
         has_text(t, text, "    return uint64(uint(i))\n")
         t |> equal(text |> find("uint8(str[") < 0 && text |> find("int(uint64(typeinfo") < 0, true, text)
     }
@@ -2842,8 +2859,8 @@ def p9_truth_fixtures(t : T?) {
         has_text(t, text, "    if (l.dx == 0) \{\n        return int_of(l.dy > 0)\n    \}\n")
         has_text(t, text, "    return int_of(a == 0) + 2 * int_of(u == 0) + 4 * int_of(p == null) + 8 * int_of(f == 0.0f) + 16 * int_of(d == 0.0lf) + 32 * int_of(int(c) == 0) + 64 * int_of(ch == 0) + 128 * int_of(c_volatile_load(p9_truth__vol) == 0)\n")
         has_text(t, text, "    x += int_of(a < b)\n    x |= int_of(!(a < b))\n    x += int_of(a != 0) * 10\n")
-        has_text(t, text, "var flag : boolean = enum_from_int(type<boolean>, int_of(a > b))\n")
-        has_text(t, text, "    var from_bool : int = int_of(t)\n")
+        has_text(t, text, "let flag : boolean = enum_from_int(type<boolean>, int_of(a > b))\n")
+        has_text(t, text, "    let from_bool : int = int_of(t)\n")
         has_text(t, text, "    return int_of(!t)\n")
         // a loop's exit test is the inverse zero test
         has_text(t, text, "        n--\n        if (_t0 == 0) \{\n            break\n")
@@ -2864,8 +2881,8 @@ def p9_ptr_step_fixtures(t : T?) {
         has_text(t, text, "    arr[1] += 6\n    arr[1]--\n")
         has_text(t, text, "    *pp += 3\n    (*pp)++\n")
         has_text(t, text, "    un.p += 7\n    un.p++\n")
-        has_text(t, text, "    *q = 40\n    (*q)++\n    *q += 2\n    var a : int = 86 / *q + 3 * *q - *q\n")
-        has_text(t, text, "    var b : int = *(r - 1) + **pp\n")
+        has_text(t, text, "    *q = 40\n    (*q)++\n    *q += 2\n    let a : int = 86 / *q + 3 * *q - *q\n")
+        has_text(t, text, "    let b : int = *(r - 1) + **pp\n")
         has_text(t, text, "(*row)[2])\n")
         has_text(t, text, "        dst++\n        var _t2 = src\n        src++\n        *_t1 = *_t2\n")
         // a decayed dereference parenthesizes it under the index
@@ -2919,15 +2936,15 @@ def p9_literal_fixtures(t : T?) {
     t |> run("a literal converted to int64, uint64, uint, uint8, double or float is the suffixed literal; int16, uint16 and int8, a value out of range, a named constant and a character literal keep the conversion") @(t : T?) {
         var text : string
         check_fixture(t, "p9_literals", text)
-        has_text(t, text, "    var a : int64 = 0l\n    var b : int64 = -1l\n    var c : int64 = 4096l\n    var d : uint64 = 1ul\n    var u : uint = 333772u\n    var k : uint8 = 7u8\n")
-        has_text(t, text, "    var ch : uint8 = uint8('a')\n    var s : int16 = int16(5)\n    var us : uint16 = uint16(9)\n    var sc : int8 = int8(-3)\n")
-        has_text(t, text, "    var h : double = p9_literals__half(10.0lf)\n    var f : float = 3.0f\n    var sh : int64 = int64(SHIFT)\n")
-        has_text(t, text, "    var neg : uint = uint(-1)\n    var wide : uint8 = uint8(300)\n")
+        has_text(t, text, "    let a : int64 = 0l\n    let b : int64 = -1l\n    let c : int64 = 4096l\n    let d : uint64 = 1ul\n    let u : uint = 333772u\n    let k : uint8 = 7u8\n")
+        has_text(t, text, "    let ch : uint8 = uint8('a')\n    let s : int16 = int16(5)\n    let us : uint16 = uint16(9)\n    let sc : int8 = int8(-3)\n")
+        has_text(t, text, "    let h : double = p9_literals__half(10.0lf)\n    let f : float = 3.0f\n    let sh : int64 = int64(SHIFT)\n")
+        has_text(t, text, "    let neg : uint = uint(-1)\n    let wide : uint8 = uint8(300)\n")
         has_text(t, text, "int_of(n > 4ul), m - -1l, flip, double(exact), double(past))")
         // a negated negative literal is no decrement
-        has_text(t, text, "    var flip : int64 = -(-1l)\n")
+        has_text(t, text, "    let flip : int64 = -(-1l)\n")
         // a float holds every integer to 2^24 exactly; past it the conversion stays
-        has_text(t, text, "    var exact : float = 16777216.0f\n    var past : float = float(16777217)\n")
+        has_text(t, text, "    let exact : float = 16777216.0f\n    let past : float = float(16777217)\n")
     }
 }
 
@@ -2937,16 +2954,16 @@ def p9_paren_fixtures(t : T?) {
     t |> run("an operand the C source parenthesizes keeps its parentheses, a lone name and a whole right-hand side do not; a macro body keeps them around a shift or a bitwise operator only") @(t : T?) {
         var text : string
         check_fixture(t, "p9_parens", text)
-        has_text(t, text, "var s : int = 1 << (b - 1)\n")
-        has_text(t, text, "var v : int = a + (b * c)\n")
-        has_text(t, text, "var q : int = (a < b) ? (a + 1) : (b - 1)\n")
-        has_text(t, text, "var w : int = a\n")
-        has_text(t, text, "var x : int = a + b\n")
-        has_text(t, text, "var r : int = a * c\n")
-        has_text(t, text, "var m : uint = (u & (~(~0u << 4u) << 4u)) >> 4u\n")
-        has_text(t, text, "var y : int = (a + 1) * 2\n")
-        has_text(t, text, "var k : int = int_of(a == 3 && b == 4)\n")
-        has_text(t, text, "var z : int = (3 | (1 << 4)) + 1\n")
+        has_text(t, text, "let s : int = 1 << (b - 1)\n")
+        has_text(t, text, "let v : int = a + (b * c)\n")
+        has_text(t, text, "let q : int = (a < b) ? (a + 1) : (b - 1)\n")
+        has_text(t, text, "let w : int = a\n")
+        has_text(t, text, "let x : int = a + b\n")
+        has_text(t, text, "let r : int = a * c\n")
+        has_text(t, text, "let m : uint = (u & (~(~0u << 4u) << 4u)) >> 4u\n")
+        has_text(t, text, "let y : int = (a + 1) * 2\n")
+        has_text(t, text, "let k : int = int_of(a == 3 && b == 4)\n")
+        has_text(t, text, "let z : int = (3 | (1 << 4)) + 1\n")
     }
 }
 
@@ -2956,7 +2973,7 @@ def p9_plain_block_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p9_plain_blocks", text)
         has_text(t, text, "    var s : int = 0\n    s += a\n    s += b\n    \{\n")
-        has_text(t, text, "    \{\n        // a block that declares keeps its braces\n        var t : int = s * 2\n        s += t\n    \}\n")
+        has_text(t, text, "    \{\n        // a block that declares keeps its braces\n        let t : int = s * 2\n        s += t\n    \}\n")
         has_text(t, text, "        case(1) \{\n            return b\n        \}\n")
         has_text(t, text, "    i = 1\n    while (i < 50) \{\n")
         has_text(t, text, "    \{\n        var j : int = 1\n        while (j < 50) \{\n")
@@ -2983,12 +3000,12 @@ def p7_readable_fixtures(t : T?) {
         has_text(t, text, "        case(38) \{\n")
         has_text(t, text, "        case('\\a') \{\n")
         has_text(t, text, "crt::strchr(fmt, '%')")
-        has_text(t, text, "var q : uint8 = uint8('\\'')")
+        has_text(t, text, "let q : uint8 = uint8('\\'')")
         has_text(t, text, "*p == '\{' || *p == '\}'")
         has_text(t, text, "*p != '\\0'")
         has_text(t, text, "'\\t', p7_chars__kind('&'), '\\x7f')")
         has_text(t, text, "'7' - '0'")
-        has_text(t, text, "var digit : int = fmt[0] == 'a' ? '7' - '0' : 0")
+        has_text(t, text, "let digit : int = fmt[0] == 'a' ? '7' - '0' : 0")
         has_text(t, text, "\"), '\\xff', 24930, 'x', digit)")
     }
     t |> run("the C comments land as `//` lines above the statement of their line, a block comment line by line") @(t : T?) {
@@ -3015,7 +3032,7 @@ def p7_readable_fixtures(t : T?) {
         has_text(t, text, "    if (tt == VNUMINT) \{\n        return calls >= uint(MAXCALLS) ? 1 : 2\n")
         has_text(t, text, "        return _c_match\n")
         has_text(t, text, "    return 1 | (2 << 4)\n")
-        has_text(t, text, "var h : double = HALF * 4.0lf + 3.0lf")
+        has_text(t, text, "let h : double = HALF * 4.0lf + 3.0lf")
         has_text(t, text, "var private p7_defines__start : int = 11\n")
         has_text(t, text, "return 2147483647 == 2147483647 ? 0 : 1")
         // `#define SUM 1 + 2` in `SUM * 3`: no piece of the body takes the name
@@ -3185,7 +3202,7 @@ def p7_empty_case_fixtures(t : T?) {
         has_text(t, text, "        case(1) \{\n            break\n        \}\n        case(2) \{\n            r += 10\n")
         has_text(t, text, "        case(1) \{\n            n++\n        \}\n")
         has_text(t, text, "        case(1) \{\n            p7_empty_case__bump()\n        \}\n")
-        has_text(t, text, "    var n : int = 4\n    c_switch(x) \{\n        case(1) \{\n        \}\n")
+        has_text(t, text, "    let n : int = 4\n    c_switch(x) \{\n        case(1) \{\n        \}\n")
         // an inert group joins the last group
         has_text(t, text, "            r = 1\n            break\n        \}\n        case(2, 3) \{\n            r = 3\n")
         // a case label in a nested block: the switch spelled open before any grouping
@@ -3356,7 +3373,7 @@ def p7_flat_case_fixtures(t : T?) {
         let nb_end = text |> find("switch end", nb)
         t |> success(nb >= 0 && (nb_end < 0 || nb_end > text |> find("\n\}\n", nb)), "no_break")
         // a case group's declaration moved to the switch's level is renamed past a later block's
-        has_text(t, text, "    var k1 : int = r + 3\n")
+        has_text(t, text, "    let k1 : int = r + 3\n")
         // a switch a goto enters from outside and a goto from another case re-dispatches
         has_text(t, text, "    if (k != 0) \{\n        goto label 1\n    \}\n    let _cond = x\n")
         for (tier in ["interp", "jit"]) {

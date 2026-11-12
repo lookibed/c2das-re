@@ -6168,6 +6168,15 @@ def private emit_initialized(var em : Emitter; tu : CirTu; st : CirStmt; name : 
     }
 }
 
+// a local the function never assigns, steps or takes the address of, whose das type takes `let`
+// as it is: an integer, a floating value or an enum. A `let` pointer reads its pointee as const
+// and passes to no `var` parameter (F3), and a record or an array is written through its members
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#let-locals")]
+def private never_written_scalar(em : Emitter; tu : CirTu; st : CirStmt) : bool {
+    let k = kind_of(tu, st.t)
+    return (k == "int" || k == "float" || k == "enum") && empty(st.dims) && !key_exists(em.written, st.name)
+}
+
 def private emit_decl(var em : Emitter; tu : CirTu; st : CirStmt) {
     let spelled = das_type_dims(em, tu, st.t, st.loc, st.dims)
     let name = das_name(em, st.name)
@@ -6175,8 +6184,9 @@ def private emit_decl(var em : Emitter; tu : CirTu; st : CirStmt) {
         line(em, "var {name} : {spelled}")
         return
     }
+    let fixed = never_written_scalar(em, tu, st)
     emit_initialized(em, tu, st, name) $(init) {
-        return empty(init) ? "var {name} : {spelled}" : "var {name} : {spelled} = {init}"
+        return empty(init) ? "var {name} : {spelled}" : "{fixed ? "let" : "var"} {name} : {spelled} = {init}"
     }
 }
 
