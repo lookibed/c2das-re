@@ -1886,6 +1886,20 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   tables); the basis should not depend on line wrapping (per 1000 statements, or per KB of
   non-blank text), and P9.15's raw counts in its PR are the comparison across this change.
   Expected speed effect (phase-end A/B, B/A): 1.00 on every lane (whitespace only), compile time
+- **P9.16 `let` for never-reassigned locals** (ruling 38 addendum 14 item 2, fn-macros part 2 step 1;
+  `/root/notes/research/r38/fn_macros_part1.md` section 6). A local declared with an initializer that
+  nothing in its scope assigns, steps or takes the address of prints as `let` when das spells it as an
+  integer, a floating value or an enum (`let i1 : int64 = v1.value_.i`); the scope is the rest of the
+  declaring block, so sibling blocks' locals of one name are planned apart. Pointers, records and arrays
+  stay `var` (F3: a `let` pointer reads its pointee as const). The `[inline]` splice of part 2's folded
+  macros substitutes a `let` argument in place where it binds a copy for a `var` one (F104, the probe
+  now checks a `let` local too). Fixture `p9_let_locals`, native-compared under interp and the JIT.
+  Counts (main 116e1c1 against this branch; Doom source-layout speed build, Lua source layout): typed
+  initialized locals that are `let`, of all typed initialized locals, Doom 0 -> 32 of 109, lua 0 -> 497
+  of 1733 (`luaV_execute` 0 -> 87 of 349), luac 0 -> 355 of 1366; the rest are pointers, records and
+  locals their scope writes; lines unchanged. Expected speed effect (phase-end A/B, B/A): 1.00 on every
+  lane, interp, JIT and exe (a `let` scalar local is the same stack slot as a `var` one under the
+  interpreter, and no folded macro exists yet whose splice could skip a copy); compile time unchanged
   within noise.
 
 ## P6 — Doom
