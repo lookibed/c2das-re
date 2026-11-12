@@ -19,6 +19,10 @@ static int scalars(int x, const char *s) {
         int sq = i * i;
         sum += sq;
     }
+    /* a for's first clause: its scope is the loop, where `j` is stepped and `lim` only read */
+    for (int j = 1, lim = x * 4; j < lim; j *= 2) {
+        sum += j;
+    }
     return fixed + limit + (int)half + (int)c + first + big + sum;
 }
 
@@ -41,6 +45,22 @@ static int written(int x) {
     return stepped + stored + late + seen + n;
 }
 
+static void bump(int *p) { *p += 1; }
+
+/* two sibling blocks' `t`: the first is read only, the second's address is taken */
+static int siblings(int x) {
+    int r = 0;
+    if (x > 0) {
+        int t = x * 2;
+        r += t;
+    } else {
+        int t = x;
+        bump(&t);
+        r += t;
+    }
+    return r;
+}
+
 static int aggregates(int x) {
     int arr[3] = { x, x + 1, x + 2 };
     struct pair p = { x, 2 * x };
@@ -51,6 +71,6 @@ static int aggregates(int x) {
 int main(void) {
     printf("%d %d\n", scalars(3, "a"), scalars(9, "z"));
     printf("%d %d\n", written(3), written(-2));
-    printf("%d\n", aggregates(4));
+    printf("%d %d %d\n", aggregates(4), siblings(3), siblings(-3));
     return 0;
 }

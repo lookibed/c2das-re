@@ -71,14 +71,18 @@ the function without it.
 
 ### Never-reassigned locals {#let-locals}
 
-A local declared with an initializer that the function never assigns, steps or takes the address of
-(`em.written`, collected over the whole body before it is spelled) is `let` when its das type is an
-integer, a floating value or an enum: `let i1 : int64 = ivalue(v1)`. A `let` argument is what an
-`[inline]` def's splice substitutes in place, where a `var` one binds a copy per site
+A local declared with an initializer that nothing in its scope assigns, steps or takes the address
+of is `let` when its das type is an integer, a floating value or an enum: `let i1 : int64 =
+v1.value_.i`. The scope of a declaration in a block is the rest of the block (`plan_let_locals`
+scans each block's statements from the end), and a nested block's declaration of the same name is
+renamed apart before (`unshadow_locals`), so a write after the declaration names it alone; two
+sibling blocks' `i1` are planned apart, one `let` and the other, whose address a call takes, `var`.
+A `for`'s first clause is a block whose scope is the whole loop: its condition, step and body. A `let` argument is what
+an `[inline]` def's splice substitutes in place, where a `var` one binds a copy per site
 (`docs/probe-findings.md` F104). A pointer, a record holding one and an array stay `var`: a `let`
 pointer reads its pointee as const and passes to no `var` parameter (F3), and a record or an array
-is written through its members, which the store-root walk does not see. A declaration without an
-initializer, one filled by stores and one a lowered switch carries stay `var`.
+is written through its members, which the store-root walk does not follow. A declaration without
+an initializer, one filled by stores and one a lowered switch carries stay `var`.
 
 ### Parentheses {#parentheses}
 
