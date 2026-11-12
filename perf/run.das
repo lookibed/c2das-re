@@ -73,7 +73,8 @@ struct Args {
 
 //! Every lane of one kernel under the default method: the native build, the four converter tiers,
 //! and the interpreter over the conversions under `--param-writes copy`, `--loops while`,
-//! `--first-member reinterpret`, `--inline-helpers` and `--switch-dispatch goto`.
+//! `--first-member reinterpret`, `--inline-helpers`, `--switch-dispatch goto`, `--checks off`,
+//! `--past-end inline` and `--fn-macros expand`.
 def run_kernel(name : string; samples : int; var errors : array<string>) : table<string; Cell> {
     var cells : table<string; Cell>
     let work = path_join(WORK, name)
@@ -90,9 +91,9 @@ def run_kernel(name : string; samples : int; var errors : array<string>) : table
     }
     measure_lane(cells, errors, name, "interp", das_lane_command(res.das_path, "", CONVERTED_MODULES), samples, oracle)
     // the same lane over the conversions under the non-default options, each in its own folder
-    for (sub, param_writes, loops, first_member, switch_dispatch, checks, past_end, inline_helpers in ["copy", "while", "reinterpret", "inline", "goto", "checks-off", "past-end-inline"], ["copy", "", "", "", "", "", ""], ["", "while", "", "", "", "", ""], ["", "", "reinterpret", "", "", "", ""], ["", "", "", "", "goto", "", ""], ["", "", "", "", "", "off", ""], ["", "", "", "", "", "", "inline"], [false, false, false, true, false, false, false]) {
+    for (sub, param_writes, loops, first_member, switch_dispatch, checks, past_end, inline_helpers, fn_macros in ["copy", "while", "reinterpret", "inline", "goto", "checks-off", "past-end-inline", "fn-macros-expand"], ["copy", "", "", "", "", "", "", ""], ["", "while", "", "", "", "", "", ""], ["", "", "reinterpret", "", "", "", "", ""], ["", "", "", "", "goto", "", "", ""], ["", "", "", "", "", "off", "", ""], ["", "", "", "", "", "", "inline", ""], [false, false, false, true, false, false, false, false], ["", "", "", "", "", "", "", "expand"]) {
         let lane = "interp-{sub}"
-        let other <- convert(c_path, path_join(work, sub), "linux", "", "", param_writes, loops, first_member, switch_dispatch, false, checks, past_end, inline_helpers)
+        let other <- convert(c_path, path_join(work, sub), "linux", "", "", param_writes, loops, first_member, switch_dispatch, false, checks, past_end, inline_helpers, fn_macros)
         if (other.ok) {
             measure_lane(cells, errors, name, lane, das_lane_command(other.das_path, "", CONVERTED_MODULES), samples, oracle)
         } else {
