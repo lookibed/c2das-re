@@ -1841,7 +1841,8 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `uint8`, `int8`, `uint16` or `int16` value against an integer literal in its range, or of two
   values of one such das type, compares narrow (`ts.extra == 0`, `*s == 'a'`, `a.extra ==
   b.extra`), decided by das types below the conversions that keep every value; a literal outside
-  the range, a named constant, mixed types and an ordering keep the promoted compare. An enum, an
+  the range, a `#define`'s name (`int(L.status) == LUA_OK`: das reads the name as an `int`, and the
+  name is the readable part), mixed types and an ordering keep the promoted compare. An enum, an
   enumerator and an enumerator shift count convert straight to the integer target (`uint(e)`,
   `int64(e)`, `1u << uint(TMS.TM_EQ)`), through `uint` first for a 64-bit target of an
   unsigned-underlying enum and through the promoted integer for a floating one. Probe F106
@@ -1852,8 +1853,8 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   per 1000 lines; Doom source-layout speed build, Lua source layout): `uint(int(` Doom 4.28 ->
   0.06, lua 1.77 -> 0.42, luac 2.28 -> 0.54 (the rest convert a computed `int`, `uint(int((i >> uint(POS_B)) & ...))`); `int(x) ==/!= literal` Doom 12.69 -> 10.71 (the
   rest are `doom_boolean` truth tests, `int(e) == 0`, which stay), lua 3.05 -> 0, luac 1.92 -> 0;
-  numeric conversions Doom 193.5 -> 184.8, lua 145.1 -> 139.1, luac 164.9 -> 159.3; lines
-  Doom unchanged, lua and luac 2 fewer. Expected speed effect (phase-end A/B, B/A): interp 0.99-1.00 on Doom and Lua (one
+  numeric conversions Doom 193.5 -> 185.0, lua 145.1 -> 140.2, luac 164.9 -> 160.5; lines
+  unchanged. Expected speed effect (phase-end A/B, B/A): interp 0.99-1.00 on Doom and Lua (one
   conversion node fewer per site; a narrow `==` is one compare of the storage value), JIT and exe
   1.00 (LLVM folds the conversions).
 
