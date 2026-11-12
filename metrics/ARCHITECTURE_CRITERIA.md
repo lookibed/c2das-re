@@ -185,7 +185,7 @@ port is the base shown beside: the densities a human's das has.
 | Density | Sites | Needs C |
 |---|---|---|
 | `casts` | a numeric type, `intptr`, `uintptr` or `enum_from_int` called on anything but a bare number literal (`int(x)`), not after `.` | |
-| `literal_casts` | lines with a cast of a bare number literal (`uint8(7)`, `uint64(0)`): a table of a thousand entries is a few lines a reader skips, and a suffix is what would replace the cast | |
+| `literal_casts` | statements with a cast of a bare number literal (`uint8(7)`, `uint64(0)`), a statement the line layout broke inside its parentheses counted once: a table of a thousand entries is one statement a reader skips, and a suffix is what would replace the cast | |
 | `addr`, `deref` | every `addr(` and `deref(`, and every unary `*`: the emitter spells `deref(p)` as `*p`, the same node | |
 | `reinterpret` | `reinterpret<T>(...)` of anything but a string literal | |
 | `string_casts` | `reinterpret<T>("...")` | |
