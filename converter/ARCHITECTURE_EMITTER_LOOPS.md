@@ -41,11 +41,14 @@ A `for` is one of four shapes, the first that applies:
   `for (i in range(a, n))`: `range`, `range64`, `urange` or `urange64` by `T`, `range(n)` when
   `a` is the literal 0. The test `i <= n` is `range(a, n + 1)` (a literal `n`'s successor spelled
   as one literal, `range(11)`) where `n + 1` cannot wrap (`inclusive_counts`): `n` a constant below
-  its type's maximum, or, for a signed `T`, a body that cannot end the run before `i` steps past
-  the maximum, which C leaves undefined, so a defined run never meets the wrapped end. Such a body
-  holds no `break` of the loop, `return` or `goto`, no call (one may `exit` or `longjmp`), no
-  volatile access and no loop of its own without a test or with a constant one. An unsigned `i <=
-  n` over any other bound stays a `while`, since `n` at the maximum is a defined endless loop.
+  its type's maximum (a constant at it stays a `while`), or, for a signed `T`, a body that cannot
+  end the run before `i` steps past the maximum, which C leaves undefined, so a defined run never
+  meets the wrapped end. Such a body holds no `break` of the loop, `return` or `goto`, no call (one
+  may `exit` or `longjmp`), no volatile access and no loop of its own whose test loads no object:
+  a missing or constant test (`while (!0)`, an enumerator, `sizeof`) may run forever as defined C,
+  while a loop testing an object, with no call or volatile access, C11 6.8.5p6 lets the
+  implementation assume ends. An unsigned `i <= n` over any other bound stays a `while`, since `n`
+  at the maximum is a defined endless loop.
   das evaluates `a` and then `n` once, which is C's order and, with the
   bound invariant, C's every-pass test; `i` dies with the loop as C99's does, `continue` reaches
   the next value as C's increment does, and a start past the bound runs no pass

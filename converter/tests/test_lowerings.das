@@ -2723,7 +2723,7 @@ def readability_fixtures(t : T?) {
 // where no call and no store of the body may change it, C's type-based aliasing proving a store
 // apart only under the sidecar's `strict_aliasing: true`
 def p9_counted_for_fixtures(t : T?) {
-    t |> run("<= is a range to n + 1 for a constant or a body that cannot end early; a global or member bound no call or store reaches is a range; a callee, a char store, a break against INT_MAX, a call, a read after stay while; as natively under interp and jit") @(t : T?) {
+    t |> run("<= is a range to n + 1 for a constant below the maximum or a body that cannot end early; a global or member bound no call or store reaches is a range; a callee, a char store, a pointer from an initializer or a decay, a volatile bound, a break against INT_MAX, a call, an endless inner loop, a read after stay while; as natively under interp and jit") @(t : T?) {
         var text : string
         check_fixture(t, "p9_counted_for", text)
         has_text(t, text, "    for (i in range(p9_counted_for__count)) \{\n        total += i\n")
@@ -2744,13 +2744,26 @@ def p9_counted_for_fixtures(t : T?) {
         has_text(t, text, "        while (i < b.n) \{\n            b.f[i] = 0.5f\n")
         has_text(t, text, "        while (i < b.n) \{\n            total += i\n            b.n--\n")
         has_text(t, text, "        while (i < u.n) \{\n            total += 1000\n")
+        // a call may write a member bound; pointers from initializers and a union member's decay reach
+        // the global bound; a volatile member bound; `<=` over endless inner loops (`while (!0)`, an
+        // enumerator test) and a volatile store; a constant bound at the maximum; `<=` with a call
+        has_text(t, text, "        while (i < b.n) \{\n            p9_counted_for__shrink_b(b)\n")
+        has_text(t, text, "        while (i < p9_counted_for__g1) \{\n")
+        has_text(t, text, "        while (i < p9_counted_for__g2) \{\n")
+        has_text(t, text, "        while (i < p9_counted_for__gu.n) \{\n")
+        has_text(t, text, "        while (i < c_volatile_load(v.n)) \{\n")
+        has_text(t, text, "        while (i <= n) \{\n            t += i\n            if (i == 99) \{\n                while (0 == 0) \{\n")
+        has_text(t, text, "        while (i <= n) \{\n            t += i\n            if (i == 99) \{\n                while (int(color.BLUE) != 0) \{\n")
+        has_text(t, text, "        while (i <= n) \{\n            t += i\n            if (i == 99) \{\n                c_volatile_store(v.n, 1)\n")
+        has_text(t, text, "        while (i <= 2147483647) \{\n")
+        has_text(t, text, "        while (i <= n) \{\n            t += i\n            if (i == 3) \{\n                p9_counted_for__quit(t)\n")
         t |> equal(count(text, " in range(") + count(text, " in range64(") + count(text, " in urange("), 9, text)
         let want = native("p9_counted_for")
         var out : string
         t |> equal(run_tier(path_join(path_join(work_root, "p9_counted_for"), "p9_counted_for.das"), "jit", path_join(work_root, "p9_counted_for_jit"), out, CONVERTED_MODULES), want.rc, out)
         t |> success(out |> ends_with(want.out), "jit: {out}\nnative: {want.out}")
     }
-    t |> run("under the sidecar's strict_aliasing a float store through a pointer misses an int member bound, a char store and an int store do not; as natively under interp and jit") @(t : T?) {
+    t |> run("under the sidecar's strict_aliasing a float store through a pointer misses an int member bound, a char, union or enum store does not; as natively under interp and jit") @(t : T?) {
         let c_path = written_source("counted_for_strict", "p9_counted_for", fread("{FIXTURES}/p9_counted_for.c"), "\{\"strict_aliasing\": true\}\n")
         let res <- convert(c_path, path_join(work_root, "counted_for_strict_out"), "linux", "", path_join(path_join(work_root, "counted_for_strict"), "p9_counted_for.c2das"))
         t |> equal(res.ok, true, res.error)
@@ -2758,6 +2771,8 @@ def p9_counted_for_fixtures(t : T?) {
         has_text(t, res.das_text, "        while (i < p9_counted_for__bytes_n) \{\n")
         has_text(t, res.das_text, "        while (i < b.n) \{\n            total += i\n            b.n--\n")
         has_text(t, res.das_text, "        while (i < u.n) \{\n            total += 1000\n")
+        // an enum store may change an int bound: an enum's compatible type is an integer
+        has_text(t, res.das_text, "        while (i < e.n) \{\n            t += 1\n            *ep = color.GREEN\n")
         let want = native("p9_counted_for")
         for (tier in ["interp", "jit"]) {
             var out : string

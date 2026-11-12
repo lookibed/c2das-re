@@ -5035,27 +5035,38 @@ def private counted_for(var em : Emitter; tu : CirTu; st : CirStmt const?) : Cou
 }
 
 // whether `for (i = a; i <= n; ++i)` counts the passes `range(a, n + 1)` does, which wraps to an
-// empty range where `n` is its type's maximum: a constant `n` below the maximum, or, for a signed
-// `i`, a body that cannot end the run before `i` steps past the maximum, which C leaves undefined,
-// so a defined run never meets `n + 1` wrapped. Such a body holds no `break` of the loop, `return`
-// or `goto` (`leaves_loop`), no call, which may `exit` or `longjmp`, no volatile access and no
-// loop of its own without a test or with a constant one, which may never end
+// empty range where `n` is its type's maximum: a constant `n` below the maximum (a constant at it
+// stays `while`), or, for a signed `i`, a body that cannot end the run before `i` steps past the
+// maximum, which C leaves undefined, so a defined run never meets `n + 1` wrapped. Such a body
+// holds no `break` of the loop, `return` or `goto` (`leaves_loop`), no call, which may `exit` or
+// `longjmp`, no volatile access, and no loop of its own whose test reads no object (`reads_object`):
+// that is a constant test (`while (!0)`, an enumerator, `sizeof`) or none, a loop C lets run
+// forever; a loop testing an object, with no call or volatile access, C11 6.8.5p6 lets the
+// implementation assume ends
 def private inclusive_counts(tu : CirTu; st : CirStmt const?; t : int) : bool {
     if (inclusive_constant(tu, st.cond.b, t) >= 0l) {
         return true
     }
-    if (is_unsigned(tu, t) || leaves_loop(st.body_s, false) || holds_call(st.body_s)) {
+    if (constant_index(tu, st.cond.b) >= 0l || is_unsigned(tu, t) || leaves_loop(st.body_s, false) || holds_call(st.body_s)) {
         return false
     }
     var endless = false
     each_stmt(st.body_s) $(s) {
-        let test = below_casts(s.cond)
-        endless ||= (s.s == "while" || s.s == "do" || s.s == "for") && (test == null || test.e == "int_lit")
+        endless ||= (s.s == "while" || s.s == "do" || s.s == "for") && !reads_object(s.cond)
     }
     each_expr(st.body_s) $(x) {
         endless ||= (x.e == "ref" || x.e == "member" || x.e == "index" || (x.e == "un" && x.op == "deref")) && x.vol
     }
     return !endless
+}
+
+// whether expression `x` loads an object (an lvalue under `LValueToRValue`); false for a missing one
+def private reads_object(x : CirExpr const?) : bool {
+    var found = false
+    each_subexpr(x) $(sub) {
+        found ||= sub.e == "cast" && sub.cast_kind == "LValueToRValue"
+    }
+    return found
 }
 
 // the value of constant loop bound `x` (`constant_index`) where its successor fits counter type
