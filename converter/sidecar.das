@@ -135,6 +135,9 @@ def is_past_end(mode : string) : bool => has_value(PAST_END, mode)
 //! The values of the `fn_macros` key and of the converter's `--fn-macros`.
 let FN_MACROS <- ["fold", "expand"]
 
+//! The `fn_macros` value a conversion takes when neither `--fn-macros` nor the sidecar gives one.
+let FN_MACROS_DEFAULT = "fold"
+
 //! Whether `mode` is a value of `fn_macros`.
 def is_fn_macros(mode : string) : bool => has_value(FN_MACROS, mode)
 
