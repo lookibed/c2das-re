@@ -37,12 +37,16 @@ A `for` is one of four shapes, the first that applies:
   "General for" of `docs/lowering-examples.md` prescribes: `for (T i = a; i < n; ++i)` (or `i++`,
   `i += 1`) with `T` a 32- or 64-bit integer the initializer declares, the test comparing `i`
   with a bound of `i`'s own type, the body never writing `i` or taking its address and the bound
-  invariant - literals, enumerators, `sizeof`, and the function's own locals and parameters that
-  the body never writes and nothing in the function takes the address of, under casts, `+`, `-`
-  and `*`, never `i` itself (the increment writes it), a call, a global, a load through a pointer
-  or a volatile object - is
+  invariant (below) is
   `for (i in range(a, n))`: `range`, `range64`, `urange` or `urange64` by `T`, `range(n)` when
-  `a` is the literal 0. das evaluates `a` and then `n` once, which is C's order and, with the
+  `a` is the literal 0. The test `i <= n` is `range(a, n + 1)` (a literal `n`'s successor spelled
+  as one literal, `range(11)`) where `n + 1` cannot wrap (`inclusive_counts`): `n` a constant below
+  its type's maximum, or, for a signed `T`, a body that cannot end the run before `i` steps past
+  the maximum, which C leaves undefined, so a defined run never meets the wrapped end. Such a body
+  holds no `break` of the loop, `return` or `goto`, no call (one may `exit` or `longjmp`), no
+  volatile access and no loop of its own without a test or with a constant one. An unsigned `i <=
+  n` over any other bound stays a `while`, since `n` at the maximum is a defined endless loop.
+  das evaluates `a` and then `n` once, which is C's order and, with the
   bound invariant, C's every-pass test; `i` dies with the loop as C99's does, `continue` reaches
   the next value as C's increment does, and a start past the bound runs no pass
   (`probes/test_loops.das`). The start's hoisted statements, when it has any, go in a block of
@@ -56,6 +60,25 @@ A `for` is one of four shapes, the first that applies:
 switch's level enters (Duff's device) is spelled open and never counts. Under the `loops` option `while` (the CLI's
   `--loops while`, the sidecar's `"loops": "while"`) no loop takes this shape, and every `do`
   takes the first-pass flag.
+  **The invariant bound** (`invariant_bound`) is built of literals, enumerators, `sizeof`, locals,
+  parameters and globals, and members by `.` and `->`, under casts, `+`, `-` and `*`; never `i`
+  itself (the increment writes it), a call, a volatile object, a name the body stores to or takes
+  the address of, or a local something in the function points at. A bound that reads a global or
+  through a pointer needs a body with no call, since the callee may write it, and every load of
+  the bound must be apart from every store of the body (`store_misses`). The proof is local and
+  uses the C-IR types alone. Two variables' storage is apart (`storage_root`: a variable through
+  members by `.` and elements of an array object). A variable no pointer reaches is apart from
+  every access through a pointer: a local the function takes no `&` of and lets no array of decay,
+  and a global the program defines and points at nowhere, in no function and no initializer
+  (`EmitProgram.pointed`), since the program's C-IR holds every unit. Two accesses through
+  pointers, or one through a pointer and a variable a pointer reaches, are apart only by C's
+  type-based aliasing (C11 6.5p7: an object is accessed only through its own type, its signed or
+  unsigned twin or a character type): under the sidecar's `strict_aliasing: true` two types of
+  different alias classes (`alias_class`: an integer by width, `_Bool`, an enum with every
+  integer, a floating type by width, every pointer one class; a character type, a record and an
+  array alias everything). Without that key the converter takes the program as one built with
+  `-fno-strict-aliasing` (`ARCHITECTURE_TIERS.md` section 9), whose punned stores the type rule
+  does not bind, so such a pair is never apart.
 - **The trailing increment**: a body that holds no `continue` of the loop (one outside every
   nested loop, a switch's included) is `while (cond) { body; inc }`. A `break`, a `return` or a
   `goto` out of the body skips the increment, as C's does, and a body ending in one takes no

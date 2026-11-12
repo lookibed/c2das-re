@@ -2716,6 +2716,55 @@ def readability_fixtures(t : T?) {
     p9_narrow_fixtures(t)
     p9_long_line_fixtures(t)
     p9_let_local_fixtures(t)
+    p9_counted_for_fixtures(t)
+}
+
+// P9.23: `<=` counts to `n + 1` where it cannot wrap; a bound over globals and members is invariant
+// where no call and no store of the body may change it, C's type-based aliasing proving a store
+// apart only under the sidecar's `strict_aliasing: true`
+def p9_counted_for_fixtures(t : T?) {
+    t |> run("<= is a range to n + 1 for a constant or a body that cannot end early; a global or member bound no call or store reaches is a range; a callee, a char store, a break against INT_MAX, a call, a read after stay while; as natively under interp and jit") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_counted_for", text)
+        has_text(t, text, "    for (i in range(p9_counted_for__count)) \{\n        total += i\n")
+        has_text(t, text, "    for (i in range(p9_counted_for__count)) \{\n        out[i] = i * 3\n")
+        has_text(t, text, "    for (i in range(p9_counted_for__count - 1)) \{\n")
+        has_text(t, text, "    for (i in range(b.n)) \{\n        total += i * 10\n")
+        has_text(t, text, "    for (i in range(s.n)) \{\n        total += p9_counted_for__twice(i)\n")
+        has_text(t, text, "    for (i in range(11)) \{\n")
+        has_text(t, text, "    for (i in range(2, n + 1)) \{\n")
+        has_text(t, text, "    for (v in urange(1u, 10u)) \{\n")
+        has_text(t, text, "    for (k in range64(int64(n) + 1l)) \{\n")
+        has_text(t, text, "        while (v <= u) \{\n")
+        has_text(t, text, "        while (i < p9_counted_for__lim) \{\n            p9_counted_for__shrink()\n")
+        has_text(t, text, "        while (i < p9_counted_for__bytes_n) \{\n            total += i\n            cp[0] = 2u8\n")
+        has_text(t, text, "        while (i <= big) \{\n            if (i == 5) \{\n                break\n")
+        has_text(t, text, "        while (i <= b.n) \{\n            total += p9_counted_for__twice(i)\n")
+        has_text(t, text, "    j = 0\n    while (j <= 3) \{\n")
+        has_text(t, text, "        while (i < b.n) \{\n            b.f[i] = 0.5f\n")
+        has_text(t, text, "        while (i < b.n) \{\n            total += i\n            b.n--\n")
+        has_text(t, text, "        while (i < u.n) \{\n            total += 1000\n")
+        t |> equal(count(text, " in range(") + count(text, " in range64(") + count(text, " in urange("), 9, text)
+        let want = native("p9_counted_for")
+        var out : string
+        t |> equal(run_tier(path_join(path_join(work_root, "p9_counted_for"), "p9_counted_for.das"), "jit", path_join(work_root, "p9_counted_for_jit"), out, CONVERTED_MODULES), want.rc, out)
+        t |> success(out |> ends_with(want.out), "jit: {out}\nnative: {want.out}")
+    }
+    t |> run("under the sidecar's strict_aliasing a float store through a pointer misses an int member bound, a char store and an int store do not; as natively under interp and jit") @(t : T?) {
+        let c_path = written_source("counted_for_strict", "p9_counted_for", fread("{FIXTURES}/p9_counted_for.c"), "\{\"strict_aliasing\": true\}\n")
+        let res <- convert(c_path, path_join(work_root, "counted_for_strict_out"), "linux", "", path_join(path_join(work_root, "counted_for_strict"), "p9_counted_for.c2das"))
+        t |> equal(res.ok, true, res.error)
+        has_text(t, res.das_text, "    for (i in range(b.n)) \{\n        b.f[i] = 0.5f\n")
+        has_text(t, res.das_text, "        while (i < p9_counted_for__bytes_n) \{\n")
+        has_text(t, res.das_text, "        while (i < b.n) \{\n            total += i\n            b.n--\n")
+        has_text(t, res.das_text, "        while (i < u.n) \{\n            total += 1000\n")
+        let want = native("p9_counted_for")
+        for (tier in ["interp", "jit"]) {
+            var out : string
+            t |> equal(run_tier(res.das_path, tier, path_join(work_root, "counted_for_strict_{tier}"), out, CONVERTED_MODULES), want.rc, out)
+            t |> success(out |> ends_with(want.out), "{tier}: {out}\nnative: {want.out}")
+        }
+    }
 }
 
 // P9.16: a scalar local the function never assigns, steps or takes the address of is `let`
