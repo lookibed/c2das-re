@@ -299,7 +299,9 @@ def program_constants(c_paths, include_dirs : array<string>; units : array<Prepr
     }
     var inscope found : array<string>
     for (pp in units) {
-        found |> push_from([for (k in keys(constant_names(own, pp.macros))); k])
+        // bound first: a `for` over the keys of a returned table reads freed memory (daScript#55)
+        var inscope names <- constant_names(own, pp.macros)
+        found |> push_from([for (k in keys(names)); k])
     }
     return <- {for (k in found); k => true}
 }
