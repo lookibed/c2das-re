@@ -682,7 +682,7 @@ def private register_external_use(var d : Dumper; var c : CXCursor) {
 def private walk_records(var d : Dumper; var c : CXCursor) {
     clang_visitChildren(c) $(var kid, _parent) {
         let kind = clang_getCursorKind(kid)
-        if (kind != CXCursorKind.TypedefDecl && !in_program(d, cursor_loc(kid).file)) {
+        if (kind != CXCursorKind.TypedefDecl && kind != CXCursorKind.MacroDefinition && !in_program(d, cursor_loc(kid).file)) {
             return CXChildVisitResult.Continue
         }
         if ((kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl) && clang_isCursorDefinition(kid) != 0u) {
@@ -740,7 +740,9 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
     }
 }
 
-// a macro expansion in a program file: where its name stands, keyed to its definition
+// a macro expansion in a program file: where its name stands, keyed to its definition; a system
+// header's function-like macro is none of the program's, and an object-like one is kept only to
+// find where an expansion's tokens are spelled
 [arch(at="ARCHITECTURE_DUMPER_MACROS.md#fn-macros")]
 def private register_macro_expansion(var d : Dumper; var c : CXCursor) {
     var target = clang_getCursorReferenced(c)
@@ -758,11 +760,15 @@ def private register_macro_expansion(var d : Dumper; var c : CXCursor) {
         return
     }
     let fn_like = clang_Cursor_isMacroFunctionLike(target) != 0u
+    if ((fn_like && !in_program(d, given)) || !in_program(d, file_name(file))) {
+        return
+    }
     let idx = macro_def_index(d.fn_macros, string(clang_getCursorSpelling(target)), def_at, given, int(def_line), int(def_offset), fn_like)
     macro_expansion_at(d.fn_macros, at, int(offset), idx)
 }
 
-// a macro definition in a program file, which a body may call by its name
+// a macro definition of a program file, which a body may call by its name; a system header's
+// function-like macro is only named, so a body calling it is followed no further
 [arch(at="ARCHITECTURE_DUMPER_MACROS.md#fn-macros")]
 def private register_macro_definition(var d : Dumper; var c : CXCursor) {
     var file : CXFile
@@ -770,8 +776,15 @@ def private register_macro_definition(var d : Dumper; var c : CXCursor) {
     clang_getSpellingLocation(clang_getCursorLocation(c), safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
     let given = file_name(file)
     let at = canonical_file(d, given)
-    if (!empty(at)) {
-        let fn_like = clang_Cursor_isMacroFunctionLike(c) != 0u
+    if (empty(at)) {
+        return
+    }
+    let fn_like = clang_Cursor_isMacroFunctionLike(c) != 0u
+    if (!in_program(d, given)) {
+        if (fn_like) {
+            system_macro(d.fn_macros, string(clang_getCursorSpelling(c)))
+        }
+    } else {
         macro_def_index(d.fn_macros, string(clang_getCursorSpelling(c)), at, given, int(line), int(offset), fn_like)
     }
 }
@@ -2506,9 +2519,14 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
     if (x != null && !wrapper) {
         let key = unsafe(reinterpret<uint64>(js))
         get(d.fn_macros.fn_marks, key) $(uses) {
-            for (u in uses) {
-                x.fn_macro |> push_clone(u)
+            // a node collapsed through its parentheses already holds its inner node's marks, an
+            // expansion inside this one: this node's go first, outermost first
+            var own := uses
+            for (u in x.fn_macro) {
+                own |> push_clone(u)
             }
+            delete x.fn_macro
+            x.fn_macro <- own
         }
         get(d.fn_macros.arg_marks, key) $(args) {
             x.macro_args |> push_from(args)

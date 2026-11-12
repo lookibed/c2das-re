@@ -70,6 +70,50 @@ def marks_of(js : JsonValue?; macros : array<string>; var out : array<string>) {
 
 def uses_text(m : CirMacro) : string => join([for (u in m.uses); "{u}"], ",")
 
+// the marks of the fixture, one line per marked node in preorder (`marks_of`)
+def want_marks() : array<string> {
+    return <- [
+        // A, B twice, B never (no copy of `9`), B in one branch with a nested expansion
+        "bin ADD1#0(i)", "ref =0.0", "member FIELD#1(p)", "ref =1.0", "bin SQ#2(i)", "ref =2.0", "ref =2.0",
+        "ref FIRST#3(i, 9) =3.0",
+        // C: the caller's local is no copy; the type argument has none
+        "cond TONUM#4(p, n)", "bin IS_INT#5(c)", "member TAG_OF#6(c)", "ref =4.0 =5.0 =6.0", "ref =4.1",
+        "ref =4.0", "bin PLUS_LOCAL#7(i)", "ref =7.0", "cast CAST#8(int, 2.5)", "float_lit =8.1",
+        // D: a do-while(0) and a block
+        "do SETV#9(p, 6)", "ref =9.0", "int_lit =9.1", "compound SWAP#10(j, k)", "ref =10.0", "ref =10.0",
+        "ref =10.1", "ref =10.1",
+        // a body that is one call shares its node; calls side by side; a call inside an argument used twice
+        "bin TWICE#11(i) ADD1#12((x) * 2)", "bin =12.0", "ref =11.0", "bin BOTH#13(i)", "bin ADD1#14(x)",
+        "ref =13.0 =14.0", "bin ADD1#15(x)", "ref =13.0 =15.0", "bin FOURTH#16(i) SQ#17(SQ(x))",
+        "bin SQ#18(x) =17.0", "ref =16.0 =18.0", "ref =16.0 =18.0", "bin SQ#19(x) =17.0", "ref =16.0 =19.0",
+        "ref =16.0 =19.0", "bin IS_INT#20(p)", "member TAG_OF#21(c)", "ref =20.0 =21.0",
+        // effectful arguments, an expansion as an argument, faulting arguments never evaluated
+        "bin SQ#22(next())", "call =22.0", "call =22.0", "bin ADD1#23(ADD1(i))", "bin ADD1#24(i) =23.0",
+        "ref =24.0", "ref FIRST#25(i, arr[3]) =25.0", "ref FIRST#26(i, 8 / j) =26.0",
+        "ref FIRST#27(i, (*p).v) =27.0",
+        // a parameter called: the function is a copy, the rest of the body is followed
+        "bin APPLY#28(twice, i)", "ref =28.0", "ref =28.1", "bin ADD1#29(x)", "ref =28.1 =29.0",
+        // the node of `ADD1(x) + ADD1(0)` is neither call's: it holds ADD1's `1` twice; S3(i) * 3
+        // has no node of its own; SUB(y, x) takes the node holding `j` first; ADDK(K),
+        // MUL2(i + 1), ADD(i ? 1 : 2, 3), offsetof, va_start, va_end and MAX leave no mark
+        "bin S4#30(i)", "bin ADD1#31(x)", "ref =30.0 =31.0", "bin ADD1#32(0)", "int_lit =32.0",
+        "bin ANTI#33(i, j)", "bin SUB#34(x, y)", "ref =33.0 =34.0", "ref =33.1 =34.1", "bin SUB#35(y, x)",
+        "ref =33.1 =35.0", "ref =33.0 =35.1", "bin BIGGER#36(i, j)", "ref =36.0", "ref =36.1", "ref =36.0",
+        "ref =36.1",
+        // parentheses around one call: the node of both, the outer first
+        "bin OUTP#37(i) ADD1#38(x)", "ref =37.0 =38.0",
+        // SQ called twice with arguments of BOTH2's own text, each taking the node holding its
+        // own `1` or `2`; IS_F and IS_V alike but for the constant their CHK names
+        "bin BOTH2#39(i)", "bin SQ#40(x + 1)", "bin =40.0", "ref =39.0", "bin =40.0", "ref =39.0",
+        "bin SQ#41(x + 2)", "bin =41.0", "ref =39.0", "bin =41.0", "ref =39.0",
+        "bin EITHER#42(p)", "bin IS_F#43(c) CHK#44(c, TAGF)", "member TAG_OF#45(c)", "ref =42.0 =43.0 =44.0 =45.0",
+        "int_lit =44.1", "bin IS_V#46(c) CHK#47(c, TAGV)", "member TAG_OF#48(c)", "ref =42.0 =46.0 =47.0 =48.0",
+        "int_lit =47.1",
+        // APPLY3's calls of ADD1 pass only `f(...)`, so no node is told apart and neither is marked
+        "bin APPLY3#49(twice, i)", "ref =49.0", "ref =49.1", "ref =49.0"
+    ]
+}
+
 [test]
 def test_fn_macros(t : T?) {
     var dir_error : string
@@ -84,7 +128,7 @@ def test_fn_macros(t : T?) {
         t |> equal(res.ok, true, res.error)
         var printed : string
         t |> equal(run_tier(res.das_path, "interp", path_join(out, "interp"), printed, CONVERTED_MODULES), 0, printed)
-        t |> equal(printed |> find("57 5 7 2 6") >= 0, true, printed)
+        t |> equal(printed |> find("87 5 7 2 6") >= 0, true, printed)
     }
     unsafe {
         delete tu
@@ -93,13 +137,14 @@ def test_fn_macros(t : T?) {
     t |> run("the unit's macros: each function-like #define a whole expansion uses, with its file, line, text and the times its expansion holds each argument") @(t : T?) {
         t |> equal(error, "")
         let names <- [for (m in tu.macros); m.name]
-        t |> equal(join(names, " "), "ADD1 FIELD SQ FIRST TONUM IS_INT TAG_OF PLUS_LOCAL CAST SETV SWAP TWICE BOTH FOURTH APPLY")
+        t |> equal(join(names, " "), "ADD1 FIELD SQ FIRST TONUM IS_INT TAG_OF PLUS_LOCAL CAST SETV SWAP TWICE BOTH FOURTH APPLY S4 ANTI SUB BIGGER OUTP BOTH2 EITHER IS_F CHK IS_V APPLY3")
         let uses <- [for (m in tu.macros); "{m.name}={uses_text(m)}"]
         // through nested calls: IS_INT's `c` once through TAG_OF, TONUM's `c` twice, FOURTH's `x` four
-        // times; APPLY calls `f`, and `x` passes through it: neither count is known
-        t |> equal(join(uses, " "), "ADD1=1 FIELD=1 SQ=2 FIRST=1,0 TONUM=2,1 IS_INT=1 TAG_OF=1 PLUS_LOCAL=1 CAST=1,1 SETV=1,1 SWAP=2,2 TWICE=1 BOTH=2 FOURTH=4 APPLY=-1,-1")
+        // times; APPLY calls `f`, and `x` passes through it: neither count is known; BIGGER calls a
+        // system header's MAX, which the pass does not follow
+        t |> equal(join(uses, " "), "ADD1=1 FIELD=1 SQ=2 FIRST=1,0 TONUM=2,1 IS_INT=1 TAG_OF=1 PLUS_LOCAL=1 CAST=1,1 SETV=1,1 SWAP=2,2 TWICE=1 BOTH=2 FOURTH=4 APPLY=-1,-1 S4=1 ANTI=2,2 SUB=1,1 BIGGER=-1,-1 OUTP=1 BOTH2=4 EITHER=2 IS_F=1 CHK=1,1 IS_V=1 APPLY3=-1,-1")
         t |> equal(tu.macros[2].text, "#define SQ(x) ((x) * (x))")
-        t |> equal(tu.macros[2].line, 9)
+        t |> equal(tu.macros[2].line, 12)
         t |> equal(tu.macros[5].file |> ends_with("p9_fn_macros.h"), true, tu.macros[5].file)
         t |> equal(tu.macros[5].text, "#define IS_INT(c) (TAG_OF(c) == 3)")
         t |> equal(join(tu.macros[9].params, ","), "p,x")
@@ -111,26 +156,7 @@ def test_fn_macros(t : T?) {
         var lines : array<string>
         marks_of(js?["decls"], macros, lines)
         delete_json(js)
-        let want <- [
-            // A, B twice, B never (no copy of `9`), B in one branch with a nested expansion
-            "bin ADD1#0(i)", "ref =0.0", "member FIELD#1(p)", "ref =1.0", "bin SQ#2(i)", "ref =2.0", "ref =2.0",
-            "ref FIRST#3(i, 9) =3.0", "cond TONUM#4(p, n)", "bin IS_INT#5(c)", "member TAG_OF#6(c)", "ref =4.0 =5.0 =6.0",
-            "ref =4.1", "ref =4.0",
-            // C: the caller's local is no copy; the type argument has none
-            "bin PLUS_LOCAL#7(i)", "ref =7.0", "cast CAST#8(int, 2.5)", "float_lit =8.1",
-            // D: a do-while(0) and a block
-            "do SETV#9(p, 6)", "ref =9.0", "int_lit =9.1", "compound SWAP#10(j, k)", "ref =10.0", "ref =10.0", "ref =10.1", "ref =10.1",
-            // a body that is one call shares its node; calls side by side; a call inside an argument used twice
-            "bin TWICE#11(i) ADD1#12((x) * 2)", "bin =12.0", "ref =11.0",
-            "bin BOTH#13(i)", "bin ADD1#14(x)", "ref =13.0 =14.0", "bin ADD1#15(x)", "ref =13.0 =15.0",
-            "bin FOURTH#16(i) SQ#17(SQ(x))", "bin SQ#18(x) =17.0", "ref =16.0 =18.0", "ref =16.0 =18.0", "bin SQ#19(x) =17.0", "ref =16.0 =19.0", "ref =16.0 =19.0",
-            "bin IS_INT#20(p)", "member TAG_OF#21(c)", "ref =20.0 =21.0",
-            // effectful arguments, an expansion as an argument, faulting arguments never evaluated
-            "bin SQ#22(next())", "call =22.0", "call =22.0", "bin ADD1#23(ADD1(i))", "bin ADD1#24(i) =23.0", "ref =24.0",
-            "ref FIRST#25(i, arr[3]) =25.0", "ref FIRST#26(i, 8 / j) =26.0", "ref FIRST#27(i, (*p).v) =27.0",
-            // a parameter called: the function is a copy, the rest of the body is followed
-            "bin APPLY#28(twice, i)", "ref =28.0", "ref =28.1", "bin ADD1#29(x)", "ref =28.1 =29.0"
-        ]
+        let want <- want_marks()
         t |> equal(join(lines, "\n"), join(want, "\n"))
     }
     t |> run("the marks leave the das text alone: every expansion is printed expanded") @(t : T?) {

@@ -1916,11 +1916,16 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   preprocessing record on its layout pass, the nodes found by their spellings against the `#define`
   text (`converter/macro_sites.das`, `converter/ARCHITECTURE_DUMPER_MACROS.md`), nested expansions,
   the calls an argument writes, chains and a macro of itself included. No output change: the emitter
-  reads none of it yet (step 3). Fixture `p9_fn_macros` (classes A-D, nested, side by side, a called
-  parameter, effectful and faulting arguments, a split argument). Counts (main 17147d3 against this
-  branch, Lua source layout): marked expansions lua 11078 of 507 macros (`lvm`: `ttisinteger` 133,
-  `tonumberns` 43, `op_arith_aux` 10), luac 10586 of 463, Doom 219 of 10; of lua's, 10739 hold each
-  argument as often as the macro uses it; das text byte-identical (Lua, luac, Doom); lua's C-IR 21.6
+  reads none of it yet (step 3). A node is taken as an expansion only when its leaves are the full
+  expansion's and its argument copies follow the parameters' order, and a system header's
+  function-like macro is never marked (#183 review: a node of two side-by-side calls, a body calling
+  one macro twice with the arguments swapped, `offsetof` and `va_start` were marked). Fixture
+  `p9_fn_macros` (classes A-D, nested, side by side, swapped arguments, bodies differing in a
+  constant, a called parameter, effectful and faulting arguments, a split argument, system macros).
+  Counts (main 42573be against this branch, Lua source layout): marked expansions lua 11392 of 490
+  macros (`lvm`: `ttisinteger` 88, `tonumberns` 29, `op_arith_aux` 10), luac 10989 of 450, Doom 217 of
+  9; of lua's, 9860 hold each argument as often as the macro uses it (the rest mostly `cast(t, e)`,
+  whose type argument has no node); das text byte-identical (Lua, luac, Doom); lua's C-IR 21.6
   MB -> 25.8 MB. Expected speed effect (phase-end A/B, B/A): 1.00 on every lane (no das text change);
   dump time within noise (the preprocessing record and one walk over the dump's macro nodes).
 
