@@ -1953,8 +1953,11 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   10-14, phase 2b item 7; `/root/notes/research/r38/forms_8_11_estimate.md` section 9, step A).
   Local analysis inside `counted_for` (`ARCHITECTURE_EMITTER_LOOPS.md`, the range loop). (1) `i <=
   n` is `range(a, n + 1)` (a literal's successor as one literal) for a constant `n` below its
-  type's maximum, or for a signed counter whose body holds no `break` of the loop, `return`,
-  `goto`, call, volatile access or nested loop without a test or with a constant one: such a run
+  type's maximum (a constant at the maximum stays `while`), or for a signed counter whose body
+  holds no `break` of the loop, `return`, `goto`, call, volatile access or nested loop whose test
+  loads no object (none, `while (!0)`, an enumerator, `sizeof`: C lets a constant-test loop run
+  forever, while one testing an object with no call or volatile access may be assumed to end, C11
+  6.8.5p6; the #187 review's `while (!0)` case): such a run
   reaching `n == INT_MAX` steps the counter past it, which C leaves undefined, so no defined run
   meets the wrapped end; an unsigned `<=` over any other bound stays `while` (a defined endless
   loop at the maximum). The research note's rule (`leaves_loop` false) also excludes a call here,
@@ -1976,8 +1979,15 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   and the ones that stay `while`: a callee writing the global bound, a `char *` store into the
   bound's object, `<=` with a `break` against `INT_MAX`, `<=` with a call, a C89 counter read
   after, a float store into a member bound by default, a union's other member under strict
+  aliasing; and from the review: a call writing a member bound, a pointer to the global bound from a
+  global's initializer and from a record initializer's, a union member's array decay, a volatile
+  member bound, `<=` over inner loops tested by `!0` and by an enumerator and with a volatile store,
+  `i <= 2147483647`, `<=` with a call that exits, an enum store into an int bound under strict
   aliasing), native-compared under interp and the JIT, and again under the sidecar's
-  `strict_aliasing: true`. No probe: the das side (`range` from a start past the end runs no pass,
+  `strict_aliasing: true`. The guard for a global the program declares but does not define has no
+  fixture: such a program fails das's compile (`can't locate variable`), and the defined-elsewhere
+  objects the converter maps (`stdin`, `stdout`, `stderr`) are pointers to an opaque record, never
+  an integer bound. No probe: the das side (`range` from a start past the end runs no pass,
   `n + 1` wraps) is `probes/test_loops.das` and F-rows already recorded. Counts (main cf8d361 against this branch; Doom source-layout speed build, Lua
   source layout; range loops, then `while (c)` loops, per 1000 lines): Doom 166 (4.73) -> 185
   (5.27), 289 (8.23) -> 270 (7.70); lua 55 (1.88) -> 59 (2.02), 162 (5.54) -> 158 (5.41); luac 53
