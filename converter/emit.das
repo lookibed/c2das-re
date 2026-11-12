@@ -53,6 +53,9 @@ struct Emitter {
     function_count : int
     // the names the body assigns, steps or takes the address of
     written : table<string>
+    // the declarations of a block that nothing after them in the block assigns, steps or takes
+    // the address of (`plan_let_locals`)
+    unwritten_decls : table<uint64>
     renames : table<string; string>
     unsafe_used : bool
     empty_literal : bool
@@ -6168,23 +6171,60 @@ def private emit_initialized(var em : Emitter; tu : CirTu; st : CirStmt; name : 
     }
 }
 
-// a local the function never assigns, steps or takes the address of, whose das type takes `let`
-// as it is: an integer, a floating value or an enum. A `let` pointer reads its pointee as const
-// and passes to no `var` parameter (F3), and a record or an array is written through its members
+// a local nothing in its scope assigns, steps or takes the address of (`unwritten`), whose das
+// type takes `let` as it is: an integer, a floating value or an enum. A `let` pointer reads its
+// pointee as const and passes to no `var` parameter (F3), and a record or an array is written
+// through its members
 [arch(at="ARCHITECTURE_EMITTER_TEXT.md#let-locals")]
-def private never_written_scalar(em : Emitter; tu : CirTu; st : CirStmt) : bool {
+def private let_local(tu : CirTu; st : CirStmt; unwritten : bool) : bool {
     let k = kind_of(tu, st.t)
-    return (k == "int" || k == "float" || k == "enum") && empty(st.dims) && !key_exists(em.written, st.name)
+    return unwritten && (k == "int" || k == "float" || k == "enum") && empty(st.dims)
 }
 
-def private emit_decl(var em : Emitter; tu : CirTu; st : CirStmt) {
+// the declarations of every block of `body` that no statement after them in the block writes: a
+// declaration's scope is the rest of its block, and a nested block's own `x` is renamed apart
+// (`unshadow_locals`), so a write after it names it alone. A `for`'s first clause is a block
+// whose scope is the whole loop
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#let-locals")]
+def private plan_let_locals(var em : Emitter; body : CirStmt const?) {
+    em.unwritten_decls |> clear()
+    var loop_heads : table<uint64>
+    each_stmt(body) $(st) {
+        if (st.s == "for" && st.init_s != null) {
+            loop_heads |> insert(intptr(st.init_s))
+            var whole <- written_names(st)
+            for (child in st.init_s.body) {
+                if (child.s == "decl" && !key_exists(whole, child.name)) {
+                    em.unwritten_decls |> insert(intptr(child))
+                }
+            }
+        }
+    }
+    each_stmt(body) $(st) {
+        if (key_exists(loop_heads, intptr(st))) {
+            return
+        }
+        var later : table<string>
+        for (idx in range(length(st.body))) {
+            let child = st.body[length(st.body) - 1 - idx]
+            if (child.s == "decl" && !key_exists(later, child.name)) {
+                em.unwritten_decls |> insert(intptr(child))
+            }
+            for (name in keys(written_names(child))) {
+                later |> insert(name)
+            }
+        }
+    }
+}
+
+def private emit_decl(var em : Emitter; tu : CirTu; st : CirStmt; unwritten : bool) {
     let spelled = das_type_dims(em, tu, st.t, st.loc, st.dims)
     let name = das_name(em, st.name)
     if (st.init == null) {
         line(em, "var {name} : {spelled}")
         return
     }
-    let fixed = never_written_scalar(em, tu, st)
+    let fixed = let_local(tu, st, unwritten)
     emit_initialized(em, tu, st, name) $(init) {
         return empty(init) ? "var {name} : {spelled}" : "{fixed ? "let" : "var"} {name} : {spelled} = {init}"
     }
@@ -6546,7 +6586,7 @@ def private emit_stmt_kind(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     } elif (st.s == "decl" && key_exists(em.range_counters, st.name)) {
         pass
     } elif (st.s == "decl") {
-        emit_decl(em, tu, *st)
+        emit_decl(em, tu, *st, key_exists(em.unwritten_decls, intptr(st)))
     } elif (st.s == "expr") {
         emit_effect(em, tu, st.e, st.loc)
         flush_pre(em)
@@ -7258,6 +7298,7 @@ def private reset_function_state(var em : Emitter; tu : CirTu; d : CirDecl) {
     em.label_jumps |> clear()
     em.case_holes |> clear()
     plan_labels(em, tu, d.body)
+    plan_let_locals(em, d.body)
     em.unsafe_used = false
     em.addressed |> clear()
     each_expr(d.body) $(x) {

@@ -2720,17 +2720,21 @@ def readability_fixtures(t : T?) {
 
 // P9.16: a scalar local the function never assigns, steps or takes the address of is `let`
 def p9_let_local_fixtures(t : T?) {
-    t |> run("a never-written integer, floating or enum local is let; a written, stepped, addressed, uninitialized, pointer, record or array local stays var") @(t : T?) {
+    t |> run("a never-written integer, floating or enum local is let; a written, stepped, addressed, uninitialized, pointer, record or array local stays var; sibling blocks plan apart") @(t : T?) {
         var text : string
         check_fixture(t, "p9_let_locals", text)
         has_text(t, text, "    let fixed : int = p9_let_locals__twice(x) + 1\n    let limit : int = 7\n    let half : double = double(x) / 2.0lf\n")
         has_text(t, text, "    let c : color = x > 2 ? color.BLUE : color.GREEN\n    let first : uint8 = s[0]\n    let big : bool = x > limit\n    var sum : int = 0\n")
         has_text(t, text, "        let sq : int = i * i\n")
+        // a for's first clause is planned over the whole loop: the stepped `j` var, the read `lim` let
+        has_text(t, text, "        var j : int = 1\n        let lim : int = x * 4\n        while (j < lim) \{\n")
         has_text(t, text, "    var stepped : int = x\n    stepped++\n    var stored : int = 1\n    stored = stored * 3 + x\n    var late : int\n")
         has_text(t, text, "    var seen : int = 4\n    var at : int? = addr(seen)\n")
         // the inner `n`, renamed past the outer one, is read only; the outer one is written
         has_text(t, text, "    var n : int = x\n    \{\n        let n1 : int = 5\n")
         has_text(t, text, "    var arr : int[3] = fixed_array(x, x + 1, x + 2)\n    var p : pair = pair(a = x, b = 2 * x)\n    var row : int? = addr(arr[0])\n")
+        // two sibling blocks' `t` are planned apart: the read-only one is let, the addressed one var
+        has_text(t, text, "    if (x > 0) \{\n        let t : int = x * 2\n        r += t\n    \} else \{\n        var t : int = x\n")
     }
 }
 
