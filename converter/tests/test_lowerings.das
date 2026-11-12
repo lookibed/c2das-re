@@ -2717,6 +2717,7 @@ def readability_fixtures(t : T?) {
     p9_long_line_fixtures(t)
     p9_let_local_fixtures(t)
     p9_counted_for_fixtures(t)
+    p9_summaries_fixtures(t)
 }
 
 // P9.23: `<=` counts to `n + 1` where it cannot wrap; a bound over globals and members is invariant
@@ -2739,7 +2740,8 @@ def p9_counted_for_fixtures(t : T?) {
         has_text(t, text, "        while (i < p9_counted_for__lim) \{\n            p9_counted_for__shrink()\n")
         has_text(t, text, "        while (i < p9_counted_for__bytes_n) \{\n            total += i\n            cp[0] = 2u8\n")
         has_text(t, text, "        while (i <= big) \{\n            if (i == 5) \{\n                break\n")
-        has_text(t, text, "        while (i <= b.n) \{\n            total += p9_counted_for__twice(i)\n")
+        // twice returns and prints nothing (P9.24): its call cannot end the run early
+        has_text(t, text, "    for (i in range(b.n + 1)) \{\n        total += p9_counted_for__twice(i)\n")
         has_text(t, text, "    j = 0\n    while (j <= 3) \{\n")
         has_text(t, text, "        while (i < b.n) \{\n            b.f[i] = 0.5f\n")
         has_text(t, text, "        while (i < b.n) \{\n            total += i\n            b.n--\n")
@@ -2757,7 +2759,7 @@ def p9_counted_for_fixtures(t : T?) {
         has_text(t, text, "        while (i <= n) \{\n            t += i\n            if (i == 99) \{\n                c_volatile_store(v.n, 1)\n")
         has_text(t, text, "        while (i <= 2147483647) \{\n")
         has_text(t, text, "        while (i <= n) \{\n            t += i\n            if (i == 3) \{\n                p9_counted_for__quit(t)\n")
-        t |> equal(count(text, " in range(") + count(text, " in range64(") + count(text, " in urange("), 9, text)
+        t |> equal(count(text, " in range(") + count(text, " in range64(") + count(text, " in urange("), 10, text)
         let want = native("p9_counted_for")
         var out : string
         t |> equal(run_tier(path_join(path_join(work_root, "p9_counted_for"), "p9_counted_for.das"), "jit", path_join(work_root, "p9_counted_for_jit"), out, CONVERTED_MODULES), want.rc, out)
@@ -2778,6 +2780,65 @@ def p9_counted_for_fixtures(t : T?) {
             var out : string
             t |> equal(run_tier(res.das_path, tier, path_join(work_root, "counted_for_strict_{tier}"), out, CONVERTED_MODULES), want.rc, out)
             t |> success(out |> ends_with(want.out), "{tier}: {out}\nnative: {want.out}")
+        }
+    }
+}
+
+// P9.24: a bound over globals or members with calls in the body is invariant where the program's
+// summaries prove no callee stores to it; `<=` with calls where every callee returns and prints nothing
+def p9_summaries_fixtures(t : T?) {
+    t |> run("a callee two levels down, through a pointer, an out-parameter, libc, a cycle or an unknown libc function storing to the bound keeps while; its control is a range; noescape lets str_reverse's length bound a range; as natively under interp and jit") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_summaries", text)
+        for (kept in ["lim_a", "lim_fp", "lim_out", "gx.n", "r.n", "lim_env", "lim_rec", "b.n"]) {
+            has_text(t, text, "        while (i < {kept}) \{\n")
+        }
+        for (ranged in ["lim_b", "lim_ro", "lim_libc", "lim_norec"]) {
+            has_text(t, text, "    for (i in range({ranged})) \{\n")
+        }
+        has_text(t, text, "    for (i in urange64(l)) \{\n        p[i] = s[l - i - 1ul]\n")
+        has_text(t, text, "    while (i < l) \{\n        p[i] = s[l - i - 1ul]\n")
+        has_text(t, text, "    for (i in range(n + 1)) \{\n        t += twice(i)\n")
+        has_text(t, text, "        while (i <= n) \{\n            t += i\n            if (i == 3) \{\n                quit1(t)\n")
+        t |> equal(count(text, " in range(") + count(text, " in urange64("), 9, text)
+        let want = native("p9_summaries")
+        var out : string
+        t |> equal(run_tier(path_join(path_join(work_root, "p9_summaries"), "p9_summaries.das"), "jit", path_join(work_root, "p9_summaries_jit"), out, CONVERTED_MODULES), want.rc, out)
+        t |> success(out |> ends_with(want.out), "jit: {out}\nnative: {want.out}")
+    }
+    t |> run("under the sidecar's strict_aliasing a callee's float store misses an int member bound, its other stores do not; as natively under interp and jit") @(t : T?) {
+        let c_path = written_source("summaries_strict", "p9_summaries", fread("{FIXTURES}/p9_summaries.c"), "\{\"strict_aliasing\": true\}\n")
+        let res <- convert(c_path, path_join(work_root, "summaries_strict_out"), "linux", "", path_join(path_join(work_root, "summaries_strict"), "p9_summaries.c2das"))
+        t |> equal(res.ok, true, res.error)
+        has_text(t, res.das_text, "    for (i in range(b.n)) \{\n        t += i\n        put_f(addr(b.f[0]) + end_index(i, 8))\n")
+        for (kept in ["lim_a", "lim_fp", "lim_out", "gx.n", "r.n", "lim_env", "lim_rec"]) {
+            has_text(t, res.das_text, "        while (i < {kept}) \{\n")
+        }
+        let want = native("p9_summaries")
+        for (tier in ["interp", "jit"]) {
+            var out : string
+            t |> equal(run_tier(res.das_path, tier, path_join(work_root, "summaries_strict_{tier}"), out, CONVERTED_MODULES), want.rc, out)
+            t |> success(out |> ends_with(want.out), "{tier}: {out}\nnative: {want.out}")
+        }
+    }
+    t |> run("a program of several files: a callee another file defines stores to the bound or only reads it; as natively under interp and jit, by default and under strict_aliasing") @(t : T?) {
+        let main_c = "int printf(const char *, ...);\nint lim = 4, lim2 = 4;\nvoid bump(void);\nint look(void);\nint main(void) \{\n    int t = 0;\n    for (int i = 0; i < lim; i++) \{ t += i; bump(); \}\n    for (int i = 0; i < lim2; i++) t += look();\n    printf(\"%d %d\\n\", t, lim);\n    return 0;\n\}\n"
+        for (mode, sidecar in ["default", "strict"], ["", "\{\"strict_aliasing\": true\}\n"]) {
+            let dir = "summaries_two_{mode}"
+            let first = written_source(dir, "two_main", main_c, sidecar)
+            let second = written_source(dir, "two_callee", "extern int lim, lim2;\nvoid bump(void) \{ lim--; \}\nint look(void) \{ return lim2; \}\n", "")
+            let two <- convert_program([first, second], path_join(work_root, "{dir}_out"), "linux", "", "", "", "", "main", "single")
+            t |> equal(two.ok, true, two.error)
+            has_text(t, two.das_text, "        while (i < lim) \{\n            t += i\n            bump()\n")
+            has_text(t, two.das_text, "    for (i in range(lim2)) \{\n        t += look()\n")
+            t |> equal(two.das_text |> find("options strict_aliasing = false") >= 0, mode == "default", mode)
+            let want = native_run(default_clang(), ["-w"], [first, second], path_join(work_root, "{dir}_native"), 60.0, array<string>())
+            t |> equal(want.built, true, want.output)
+            for (tier in ["interp", "jit"]) {
+                var out : string
+                t |> equal(run_tier(two.das_path, tier, path_join(work_root, "{dir}_{tier}"), out, CONVERTED_MODULES), 0, out)
+                t |> success(out |> ends_with(want.output), "{mode} {tier}: {out}\nnative: {want.output}")
+            }
         }
     }
 }
