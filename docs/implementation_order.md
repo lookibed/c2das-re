@@ -2001,6 +2001,35 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   node and the step of a `while`, on a few dozen loops, none in `luaV_execute`'s hot path), JIT and
   exe 1.00 (the JIT compiles both forms to the same code, `benchmarks/bench_for_shapes.das`);
   compile time unchanged within noise.
+- **P9.24 Form 9 step B: program summaries for range-loop bounds past calls** (ruling 38 addenda
+  10-14, phase 2b item 8; `/root/notes/research/r38/forms_8_11_estimate.md` section 9, step B). Two
+  PRs: `converter/summaries.das` (`ARCHITECTURE_EMITTER_LOOPS.md#summaries`), analysis only, read
+  once from the program's C-IR: per function the globals it stores to by name, stores through a
+  pointer (their types under strict aliasing), output, surely-returns (no exit/longjmp/abort, no
+  recursion, no goto, loops C11 6.8.5p6 lets end), callees merged over the call graph's components;
+  a call through a pointer does what every address-taken function does; libc by table, any other
+  callee stores everything; noescape per parameter (greatest fixpoint). Then `invariant_bound` takes
+  calls whose summaries miss every load of the bound, a local whose `&` reaches only noescape
+  parameters counts as unpointed (str_reverse's `l`), and `<=` takes calls that return and print
+  nothing. Step A's aliasing ruling holds: callee stores through pointers are apart from a load
+  only by type and only under `strict_aliasing: true`. Fixture `p9_summaries` (each kept-`while`
+  case beside its range control: a two-level store, a function pointer, an out-parameter,
+  strcpy/memset/memcpy into the bound, a recursive cycle, a reader, str_reverse's noescape length,
+  a callee keeping the pointer in a global, exit two levels down in `<=`, getenv as a callee no
+  table lists) and a two-file program, native-compared under interp and JIT in both aliasing
+  modes. Counts (main d5bf5d0 against this branch; range loops, then `while (c)`, per 1000 lines):
+  Doom 185 (5.27) -> 199 (5.68), 270 (7.70) -> 256 (7.31); lua 59 (2.02) -> 63 (2.16), 158 (5.41)
+  -> 154 (5.27); luac unchanged 57 (2.52), 116 (5.12); programs (the criteria's ratchet suites and projects but doomgeneric) 8062 (9.08) -> 8066 (9.09),
+  11192 (12.61) -> 11188 (12.61) against P9.23's recorded count; the criteria capture re-recorded
+  (densities within 0.2 per 1000). Doom's 14 are init and setup loops (`numdefaults`, `numlines`,
+  `sector->linecount`, `numtextures`, R_InitBuffer's `viewheight`); Lua's 4 are str_reverse,
+  str_lower, str_upper and a `<=` in liolib. Doom demos 1-3 in sync, Lua 8/8 error checks and
+  luac -o 33/33 under interp and JIT. The estimate (Doom about
+  57, Lua about 14) assumed the type rule; under the default aliasing mode a callee that stores
+  through any pointer reaches every pointer or pointed-global bound, and Doom's callees mostly do.
+  Expected speed effect (phase-end A/B, B/A): interpreter 0.99-1.00 on Doom and Lua (a few dozen
+  more range loops, none in `luaV_execute` or the renderer's column loops), JIT and exe 1.00;
+  conversion time: the summaries add one pass over the program, predicted within noise.
 
 ## P6 — Doom
 
