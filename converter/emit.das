@@ -2454,7 +2454,7 @@ struct private BareLiteral {
 }
 
 // the value and das text of integer literal `x` below conversions that keep it: its digits, `-n`
-// for a negated one, a character's literal; an empty text for anything else, a literal a `#define`
+// for a negated one of a signed type, a character's literal; an empty text for anything else, a literal a `#define`
 // names included, whose name das reads as an `int`
 def private bare_literal(tu : CirTu; x : CirExpr const?) : BareLiteral {
     var at = x
@@ -2470,6 +2470,10 @@ def private bare_literal(tu : CirTu; x : CirExpr const?) : BareLiteral {
     if (negated) {
         lit = at.a
         named ||= !empty(lit.macro)
+        if (kind_of(tu, at.t) != "int" || !tu.types[at.t].is_signed) {
+            // C's `-1u` is UINT_MAX, no negative value
+            return BareLiteral()
+        }
     }
     let digits = lit.e == "int_lit" && !named ? lit.v : ""
     if (!is_digit_run(digits, 0) || length(digits) > 18) {

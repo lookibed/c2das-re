@@ -19,6 +19,7 @@ static int narrow(const struct ts *t, const char *s) {
     if (*s == 'a') r += 64;
     if (s[1] == 0x80) r += 128;
     if (t->bits == 5) r += 256;
+    if ((unsigned char)t->h == 5) r += 512;
     return r;
 }
 
@@ -33,6 +34,9 @@ static int wide(const struct ts *t, const char *s) {
     if (t->extra == t->s) r += 32;
     if (t->s == (signed char)-1 + 0) r += 64;
     if (t->extra == STATUS_OK) r += 128;
+    if ((long)t->s == -1u) r += 256;
+    if (t->s == (long long)-1u) r += 512;
+    if (t->h == (signed char)200) r += 1024;
     return r;
 }
 
@@ -52,9 +56,12 @@ static void enums(enum dir d, enum mask m) {
 int main(void) {
     struct ts t = { 0, -128, -1, 65535, 5 };
     struct ts u = { 255, 0, 7, 0, 1 };
+    struct ts v = { 1, -1, -56, 0, 0 };
+    struct ts w = { 1, 0, 261, 0, 0 };
     const char s[3] = { 'a', (char)0x80, 0 };
     printf("%d %d %d %d\n", narrow(&t, s), narrow(&u, s + 1), wide(&t, s), wide(&u, s));
     printf("%d %d\n", same(&t, &t), same(&t, &u));
+    printf("%d %d %d %d\n", wide(&v, s), wide(&w, s), narrow(&v, s), narrow(&w, s));
     enums(WEST, M_HIGH);
     enums(BIG, M_LOW);
     return 0;
