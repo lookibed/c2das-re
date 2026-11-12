@@ -229,6 +229,9 @@ def test_function_criteria(t : T?) {
         t |> equal(got(c, "literal_cast_lines"), 2)
         t |> equal(got(c, "cast_sites"), 2, "`uint(y)` and `int(0x10 + 1)`: an expression is no bare literal")
         t |> equal(got(in_f("    x = int(y)"), "literal_cast_lines"), 0)
+        // a statement the line layout broke inside its parentheses is one, however many lines
+        let wrapped = in_f("    t = fixed_array(uint8(0), uint8(1),\n            uint8(2), uint8(3),\n            uint8(4))\n    u = uint8(5)")
+        t |> equal(got(wrapped, "literal_cast_lines"), 2)
     }
     t |> run("addr and deref sites, all of them; the pair criterion stays the pairs") @(t : T?) {
         let c = in_f("    x = addr(b).n + addr(deref(p + i)) + deref(addr(a[0]) + i)\n    y = deref(p) + addr(q)")
