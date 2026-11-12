@@ -1836,6 +1836,26 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   are the next PR. Expected speed effect (phase-end A/B, B/A): interp 0.99-1.00 on Doom and Lua
   (fewer conversion nodes: `uint8(uint8)` is a cast node das keeps under the interpreter), JIT and
   exe 1.00 (LLVM folds them).
+- **P9.14 Form 11: narrow equality, direct enum conversions** (ruling 38 addendum 10, phase 2b
+  item 5, steps (c) and (e); `forms_8_11_estimate.md` section 11). C's `==`/`!=` of a promoted
+  `uint8`, `int8`, `uint16` or `int16` value against an integer literal in its range, or of two
+  values of one such das type, compares narrow (`ts.extra == 0`, `*s == 'a'`, `a.extra ==
+  b.extra`), decided by das types below the conversions that keep every value; a literal outside
+  the range, a named constant, mixed types and an ordering keep the promoted compare. An enum, an
+  enumerator and an enumerator shift count convert straight to the integer target (`uint(e)`,
+  `int64(e)`, `1u << uint(TMS.TM_EQ)`), through `uint` first for a 64-bit target of an
+  unsigned-underlying enum and through the promoted integer for a floating one. Probe F106
+  (`probes/test_conversions.das`): storage integers take a bare literal in range on either side
+  (character and `u` literals included), one past the range is a compile error, an enum converts to
+  every integer type directly with `int(e)`'s bits, under the interpreter and the JIT. Fixture
+  `p9_narrow`, native-compared under interp and the JIT. Counts (main 7f65da3 against this branch,
+  per 1000 lines; Doom source-layout speed build, Lua source layout): `uint(int(` Doom 4.28 ->
+  0.06, lua 1.77 -> 0.42, luac 2.28 -> 0.54 (the rest convert a computed `int`, `uint(int((i >> uint(POS_B)) & ...))`); `int(x) ==/!= literal` Doom 12.69 -> 10.71 (the
+  rest are `doom_boolean` truth tests, `int(e) == 0`, which stay), lua 3.05 -> 0, luac 1.92 -> 0;
+  numeric conversions Doom 193.5 -> 184.8, lua 145.1 -> 139.1, luac 164.9 -> 159.3; lines
+  Doom unchanged, lua and luac 2 fewer. Expected speed effect (phase-end A/B, B/A): interp 0.99-1.00 on Doom and Lua (one
+  conversion node fewer per site; a narrow `==` is one compare of the storage value), JIT and exe
+  1.00 (LLVM folds the conversions).
 
 ## P6 — Doom
 
