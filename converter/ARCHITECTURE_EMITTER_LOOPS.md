@@ -43,11 +43,13 @@ A `for` is one of four shapes, the first that applies:
   as one literal, `range(11)`) where `n + 1` cannot wrap (`inclusive_counts`): `n` a constant below
   its type's maximum (a constant at it stays a `while`), or, for a signed `T`, a body that cannot
   end the run before `i` steps past the maximum, which C leaves undefined, so a defined run never
-  meets the wrapped end. Such a body holds no `break` of the loop, `return` or `goto`, no call (one
-  may `exit` or `longjmp`), no volatile access and no loop of its own whose test loads no object:
-  a missing or constant test (`while (!0)`, an enumerator, `sizeof`) may run forever as defined C,
-  while a loop testing an object, with no call or volatile access, C11 6.8.5p6 lets the
-  implementation assume ends. An unsigned `i <= n` over any other bound stays a `while`, since `n`
+  meets the wrapped end. Such a body holds no `break` of the loop, `return` or `goto`, no call but
+  of a function that surely returns and does no input or output by its summary (`calls_return`,
+  the program summaries below: a callee may `exit` or `longjmp`), no volatile access and no loop of
+  its own that may run forever (`may_run_forever`): a missing or constant test (`while (!0)`, an
+  enumerator, `sizeof`) may run forever as defined C, while a loop testing an object, with no
+  volatile access and no call that may print or not return, C11 6.8.5p6 lets the implementation
+  assume ends. An unsigned `i <= n` over any other bound stays a `while`, since `n`
   at the maximum is a defined endless loop.
   das evaluates `a` and then `n` once, which is C's order and, with the
   bound invariant, C's every-pass test; `i` dies with the loop as C99's does, `continue` reaches
@@ -66,13 +68,21 @@ switch's level enters (Duff's device) is spelled open and never counts. Under th
   **The invariant bound** (`invariant_bound`) is built of literals, enumerators, `sizeof`, locals,
   parameters and globals, and members by `.` and `->`, under casts, `+`, `-` and `*`; never `i`
   itself (the increment writes it), a call, a volatile object, a name the body stores to or takes
-  the address of, or a local something in the function points at. A bound that reads a global or
-  through a pointer needs a body with no call, since the callee may write it, and every load of
-  the bound must be apart from every store of the body (`store_misses`). The proof is local and
+  the address of, or a local whose address escapes (`Emitter.escaped`: an `&` of it or its array's
+  decay kept in an object or passed to a parameter that may keep it, `address_escapes`; an address
+  passed only to parameters that keep nothing dies with the call, as `&l` in `str_reverse` does).
+  A bound that reads a global or through a pointer needs every call of the body to miss every load
+  of the bound (`calls_miss`), by the callee's summary (`call_stores`): a call may store to a
+  global it stores to by name, to a variable a pointer reaches or an access through a pointer when
+  it stores through a pointer (apart by type only under `strict_aliasing: true`, below), to any
+  access through a pointer when it stores by name to a global a pointer reaches, and to every
+  object when no summary describes the callee (a function the program does not define and the libc
+  table does not list: a unit converted alone sees only its own functions). Every load of the
+  bound must also be apart from every store of the body (`store_misses`). The proof is local and
   uses the C-IR types alone. Two variables' storage is apart (`storage_root`: a variable through
   members by `.` and elements of an array object). A variable no pointer reaches is apart from
-  every access through a pointer: a local the function takes no `&` of and lets no array of decay,
-  and a global the program defines and points at nowhere, in no function and no initializer
+  every access through a pointer: a local whose address does not escape, and a global the
+  program defines and points at nowhere, in no function and no initializer
   (`EmitProgram.pointed`), since the program's C-IR holds every unit. Two accesses through
   pointers, or one through a pointer and a variable a pointer reaches, are apart only by C's
   type-based aliasing (C11 6.5p7: an object is accessed only through its own type, its signed or
