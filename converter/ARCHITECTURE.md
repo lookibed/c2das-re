@@ -3,8 +3,7 @@
 Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The
 folder is the daslang program that turns C into gen2 daslang: Dumper A, the C-IR model, the
 emitter, the pipeline that chains them, and the tier runner the gate and the suites use. The
-normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expected output is
-`docs/lowering-examples.md`; this document states only what the code here is.
+normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expected output is `docs/lowering-examples.md`; this document states only what the code here is.
 
 ## 1. File charters
 
@@ -12,8 +11,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   `CirStmt`, `CirExpr`, one struct per spec table), the canonical writer `write_cir`, the
   reader `read_cir`, `write_program` (the manifest of `docs/c-ir-spec.md` section 7), `write_cir_decl` (one
   declaration's bytes), `ident_of` (a file stem as an identifier), the pinned `CAST_KINDS`, the two
-  dialects, `is_jmp_buf` (the dumper's opaque `jmp_buf` record, `JMP_BUF`). Nothing here knows clang or
-  daslang syntax. A tree is owned through plain pointers and freed by one `delete` of its
+  dialects, `is_jmp_buf` (the dumper's opaque `jmp_buf` record, `JMP_BUF`), and the walks every pass shares (`each_stmt`, `each_expr`, `each_subexpr`, `below_casts`, `storage_root`). Nothing here knows clang or daslang syntax. A tree is owned through plain pointers and freed by one `delete` of its
   root: the generated finalizer recurses through pointer fields and arrays of pointers
   (`probes/test_delete.das`), so no hand-written walk frees a child.
 - `dumper_a.das` - Dumper A: runs `clang -Xclang -ast-dump=json -fsyntax-only -target <triple>`,
@@ -27,6 +25,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   statement-ification, control flow) happen as it spells nodes (`ARCHITECTURE_EMITTER.md`,
   section 4); no pass transforms the `CirTu` before emission. `emit_tu` spells one module,
   `emit_program` the modules of a source layout over one program state (section 8).
+- `summaries.das` - what each function of a program may store to, whether it may do output or surely returns, and which parameters keep no pointer, read once from the program's C-IR before any module is spelled (`ARCHITECTURE_EMITTER_LOOPS.md`, The program summaries).
 - `bit_units.das` - the layout law over the C-IR (section 2, `packed`): `type_size`,
   `natural_align` (a record's is its das mirror's, which can be below clang's, F5),
   `natural_layout` (the dumper's `packed` verdict), `bit_units` (the allocation units that cover

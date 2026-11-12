@@ -109,6 +109,43 @@ spellings; the interpreter runs the range loop fastest, then the trailing increm
 kernels the range loop and the next two rewrites take `fib_loop`'s interpreter cell from 0.357
 to 0.060 s and `primes`'s from 0.363 to 0.135 s on the FX-6300 (`perf/ARCHITECTURE.md` section 3).
 
+### The program summaries {#summaries}
+
+`summaries.das` reads the program's C-IR once, after `unshadow_locals` and the pointed set
+(`EmitProgram.pointed`), before any module is spelled, and changes nothing in the `CirTu`. In
+program mode the C-IR holds every unit; a unit converted alone sees only itself.
+
+- **Effects** (`CallEffects`), per function: the globals it stores to by name (a store whose
+  storage root is a global, not a parameter or local of its own; a local static is a global),
+  whether one of them is a global a pointer may reach or the program does not define
+  (`pointed_global`), whether it stores through a pointer (`through`, each store's `access_type`
+  kept under the sidecar's `strict_aliasing: true`), whether it may do input or output (a volatile
+  access, a libc call the table marks so) and whether it surely returns. A function's effects hold
+  its callees': the strongly connected components of the call graph (`components_of`) merge
+  callees first, so a cycle shares one set. A call through a pointer does what every function
+  whose address the program takes does (one named anywhere but as a direct callee, in a body or an
+  initializer). A libc function has the effects `LIBC_EFFECTS` gives it; a callee neither the
+  program defines nor the table lists (`getenv`, `qsort` and `bsearch`, which call back into the
+  program, `setjmp`, `strtol`) may store to every object (`all`), do output and not return.
+- **Returns**: no `goto`, no recursion, no call through a pointer, no callee that may not return
+  (`exit`, `abort`, `longjmp`, `__assert_fail`, an unknown one), and every loop one C lets the
+  implementation assume ends (C11 6.8.5p6): its test loads an object (or is the literal 0, `do { }
+  while (0)`), and its test, body and step access no volatile object and call nothing that may do
+  output or not return (`may_run_forever`). A function that may print still returns.
+- **Noescape**, per parameter: the function keeps no pointer derived from it once it returns. A
+  derived pointer (the parameter's value, `p + n`, `&p->f`, `&p[i]`, a step of it, the result of a
+  libc function that points into its first argument, `strchr`, `memcpy`) may be dereferenced,
+  compared, tested, discarded, stored back into the parameter or passed to a parameter that keeps
+  nothing; anything else keeps it: a store into an object, a `return`, a cast to an integer, a
+  pointer difference, the parameter's own address, a call through a pointer, an argument past a
+  defined variadic function's parameters. The rule is a greatest fixpoint, so a recursive call
+  keeps nothing by itself. Every argument of a `LIBC_EFFECTS` function keeps nothing: `printf`'s
+  `%n` panics (`c_runtime/printf.das`), and `strtol`, which stores a pointer into its first argument
+  through its second, and `setvbuf`, which keeps its buffer, are not in the table.
+- **A local's address** (`address_escapes`): the same rule over a function's body for every `&`
+  of a variable or of a part of it and every decay of its array; an address that reaches only
+  parameters that keep nothing dies with the call.
+
 ### Compound stores and the wrapping sum
 
 `x = x op y` with `op` one of `+ - * & | ^`, `x` the same object on both sides (one variable, or

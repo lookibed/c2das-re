@@ -14,6 +14,7 @@ require sidecar
 require bit_units
 require layout
 require line_wrap
+require summaries
 require daslib/rtti
 require daslib/ast
 
@@ -4061,15 +4062,6 @@ def private general_setjmp(st : CirStmt const?) : CirExpr const? {
     return null
 }
 
-// `x` below its casts
-def private below_casts(x : CirExpr const?) : CirExpr const? {
-    var at = x
-    while (at != null && at.e == "cast") {
-        at = at.a
-    }
-    return at
-}
-
 // the setjmp call `x` is below its casts, with a buffer that has no effect; null for any other
 def private setjmp_call(x : CirExpr const?) : CirExpr const? {
     let at = below_casts(x)
@@ -4846,42 +4838,6 @@ struct Access {
     root : string
 }
 
-// the type the aliasing rule sees lvalue `x` accessed as: its own, or -1, which aliases every type
-// (`alias_class`), for a member of a union anywhere in its path, since C reads one union member
-// through another
-def private access_type(tu : CirTu; x : CirExpr const?) : int {
-    var at = x
-    while (at != null && (at.e == "member" || at.e == "index" || at.e == "cast")) {
-        if (at.e == "member") {
-            let rec = at.arrow && kind_of(tu, at.base.t) == "ptr" ? tu.types[at.base.t].to : at.base.t
-            if (kind_of(tu, rec) == "union") {
-                return -1
-            }
-        }
-        at = at.e == "cast" ? at.a : at.base
-    }
-    return x.t
-}
-
-// the variable lvalue `x` lies in, through members by `.` and elements of an array object; ""
-// for an lvalue reached through a pointer (`p->f`, `*p`, `p[i]`)
-def private storage_root(x : CirExpr const?) : string {
-    var at = x
-    while (at != null) {
-        if (at.e == "ref") {
-            return at.name
-        }
-        if (at.e == "member" && !at.arrow) {
-            at = at.base
-        } elif (at.e == "index" && at.base != null && at.base.e == "cast" && at.base.cast_kind == "ArrayToPointerDecay") {
-            at = at.base.a
-        } else {
-            return ""
-        }
-    }
-    return ""
-}
-
 // the variables expression `x` (not its operands) points at: the storage root of an `&` operand
 // or of an array that decays, the only ways C forms a pointer to a variable
 def private mark_pointed(x : CirExpr const?; var names : table<string>) {
@@ -5058,15 +5014,6 @@ def private inclusive_counts(tu : CirTu; st : CirStmt const?; t : int) : bool {
         endless ||= (x.e == "ref" || x.e == "member" || x.e == "index" || (x.e == "un" && x.op == "deref")) && x.vol
     }
     return !endless
-}
-
-// whether expression `x` loads an object (an lvalue under `LValueToRValue`); false for a missing one
-def private reads_object(x : CirExpr const?) : bool {
-    var found = false
-    each_subexpr(x) $(sub) {
-        found ||= sub.e == "cast" && sub.cast_kind == "LValueToRValue"
-    }
-    return found
 }
 
 // the value of constant loop bound `x` (`constant_index`) where its successor fits counter type
@@ -6818,45 +6765,6 @@ def private mark_store_root(var em : Emitter; x : CirExpr const?) {
     }
 }
 
-// statement tree `root` and every statement under it, each before its children (`body`,
-// `then_s`, `else_s`, `body_s`, `init_s`), as a recursive walk visits them; `root` is a `var`
-// `CirStmt const?` or `CirStmt?`, as `walk_subexprs` takes its root
-def private walk_stmts(var root : auto(SP); blk : block<(var st : SP -const) : void>) {
-    var pending : array<SP -const>
-    pending |> push(root)
-    while (!empty(pending)) {
-        var st = pending |> back()
-        pending |> pop()
-        if (st == null) {
-            continue
-        }
-        invoke(blk, st)
-        pending |> reserve(length(pending) + 4 + length(st.body))
-        pending |> push(st.init_s)
-        pending |> push(st.body_s)
-        pending |> push(st.else_s)
-        pending |> push(st.then_s)
-        for (idx in range(length(st.body))) {
-            pending |> push(st.body[length(st.body) - 1 - idx])
-        }
-    }
-}
-
-// statement tree `st` and every statement under it, each before its children
-def private each_stmt(st : CirStmt const?; blk : block<(var st : CirStmt const?) : void>) {
-    var root = st
-    walk_stmts(root, blk)
-}
-
-// every expression of statement tree `st`, each before its operands
-def private each_expr(st : CirStmt const?; blk : block<(var x : CirExpr const?) : void>) {
-    each_stmt(st) $(s) {
-        for (x in fixed_array<CirExpr const?>(s.init, s.e, s.cond, s.inc)) {
-            each_subexpr(x, blk)
-        }
-    }
-}
-
 // `each_expr` over a tree the block may change
 def private each_expr_mut(var st : CirStmt?; blk : block<(var x : CirExpr?) : void>) {
     walk_stmts(st) $(var s : CirStmt?) {
@@ -6864,44 +6772,6 @@ def private each_expr_mut(var st : CirStmt?; blk : block<(var x : CirExpr?) : vo
             each_subexpr_mut(x, blk)
         }
     }
-}
-
-// expression `root` and every expression under it, each before its operands (`args`,
-// `init_items`, `a`, `b`, `c`, `fn`, `base`, `i`, `init`, `list`), as a recursive walk visits
-// them; `root` is a `var` `CirExpr const?` or `CirExpr?`, since a generic's `var` parameter given
-// a `const` argument loops type inference
-def private walk_subexprs(var root : auto(XP); blk : block<(var x : XP -const) : void>) {
-    var pending : array<XP -const>
-    pending |> push(root)
-    while (!empty(pending)) {
-        var x = pending |> back()
-        pending |> pop()
-        if (x == null) {
-            continue
-        }
-        invoke(blk, x)
-        pending |> reserve(length(pending) + 8 + length(x.init_items) + length(x.args))
-        pending |> push(x.list)
-        pending |> push(x.init)
-        pending |> push(x.i)
-        pending |> push(x.base)
-        pending |> push(x.fn)
-        pending |> push(x.c)
-        pending |> push(x.b)
-        pending |> push(x.a)
-        for (idx in range(length(x.init_items))) {
-            pending |> push(x.init_items[length(x.init_items) - 1 - idx].v)
-        }
-        for (idx in range(length(x.args))) {
-            pending |> push(x.args[length(x.args) - 1 - idx])
-        }
-    }
-}
-
-// expression `x` and every expression under it, each before its operands
-def private each_subexpr(x : CirExpr const?; blk : block<(var x : CirExpr const?) : void>) {
-    var root = x
-    walk_subexprs(root, blk)
 }
 
 // `each_subexpr` over a tree the block may change

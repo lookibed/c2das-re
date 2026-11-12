@@ -222,6 +222,111 @@ def called_name(x : CirExpr) : string {
     return target != null && target.e == "ref" ? target.name : ""
 }
 
+//! Expression `x` below its casts.
+def below_casts(x : CirExpr const?) : CirExpr const? {
+    var at = x
+    while (at != null && at.e == "cast") {
+        at = at.a
+    }
+    return at
+}
+
+//! The variable lvalue `x` lies in, through members by `.` and elements of an array object; ""
+//! for an lvalue reached through a pointer (`p->f`, `*p`, `p[i]`).
+def storage_root(x : CirExpr const?) : string {
+    var at = x
+    while (at != null) {
+        if (at.e == "ref") {
+            return at.name
+        }
+        if (at.e == "member" && !at.arrow) {
+            at = at.base
+        } elif (at.e == "index" && at.base != null && at.base.e == "cast" && at.base.cast_kind == "ArrayToPointerDecay") {
+            at = at.base.a
+        } else {
+            return ""
+        }
+    }
+    return ""
+}
+
+//! Statement tree `root` and every statement under it, each before its children (`body`,
+//! `then_s`, `else_s`, `body_s`, `init_s`), as a recursive walk visits them; `root` is a `var`
+//! `CirStmt const?` or `CirStmt?`, as `walk_subexprs` takes its root.
+def walk_stmts(var root : auto(SP); blk : block<(var st : SP -const) : void>) {
+    var pending : array<SP -const>
+    pending |> push(root)
+    while (!empty(pending)) {
+        var st = pending |> back()
+        pending |> pop()
+        if (st == null) {
+            continue
+        }
+        invoke(blk, st)
+        pending |> reserve(length(pending) + 4 + length(st.body))
+        pending |> push(st.init_s)
+        pending |> push(st.body_s)
+        pending |> push(st.else_s)
+        pending |> push(st.then_s)
+        for (idx in range(length(st.body))) {
+            pending |> push(st.body[length(st.body) - 1 - idx])
+        }
+    }
+}
+
+//! Statement tree `st` and every statement under it, each before its children.
+def each_stmt(st : CirStmt const?; blk : block<(var st : CirStmt const?) : void>) {
+    var root = st
+    walk_stmts(root, blk)
+}
+
+//! Every expression of statement tree `st`, each before its operands.
+def each_expr(st : CirStmt const?; blk : block<(var x : CirExpr const?) : void>) {
+    each_stmt(st) $(s) {
+        for (x in fixed_array<CirExpr const?>(s.init, s.e, s.cond, s.inc)) {
+            each_subexpr(x, blk)
+        }
+    }
+}
+
+//! Expression `root` and every expression under it, each before its operands (`args`,
+//! `init_items`, `a`, `b`, `c`, `fn`, `base`, `i`, `init`, `list`), as a recursive walk visits
+//! them; `root` is a `var` `CirExpr const?` or `CirExpr?`, since a generic's `var` parameter given
+//! a `const` argument loops type inference.
+def walk_subexprs(var root : auto(XP); blk : block<(var x : XP -const) : void>) {
+    var pending : array<XP -const>
+    pending |> push(root)
+    while (!empty(pending)) {
+        var x = pending |> back()
+        pending |> pop()
+        if (x == null) {
+            continue
+        }
+        invoke(blk, x)
+        pending |> reserve(length(pending) + 8 + length(x.init_items) + length(x.args))
+        pending |> push(x.list)
+        pending |> push(x.init)
+        pending |> push(x.i)
+        pending |> push(x.base)
+        pending |> push(x.fn)
+        pending |> push(x.c)
+        pending |> push(x.b)
+        pending |> push(x.a)
+        for (idx in range(length(x.init_items))) {
+            pending |> push(x.init_items[length(x.init_items) - 1 - idx].v)
+        }
+        for (idx in range(length(x.args))) {
+            pending |> push(x.args[length(x.args) - 1 - idx])
+        }
+    }
+}
+
+//! Expression `x` and every expression under it, each before its operands.
+def each_subexpr(x : CirExpr const?; blk : block<(var x : CirExpr const?) : void>) {
+    var root = x
+    walk_subexprs(root, blk)
+}
+
 //! The name of the opaque record the dumper gives every spelling of C's `jmp_buf`.
 let JMP_BUF = "jmp_buf"
 
