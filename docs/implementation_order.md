@@ -1928,6 +1928,24 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   whose type argument has no node); das text byte-identical (Lua, luac, Doom); lua's C-IR 21.6
   MB -> 25.8 MB. Expected speed effect (phase-end A/B, B/A): 1.00 on every lane (no das text change);
   dump time within noise (the preprocessing record and one walk over the dump's macro nodes).
+- **P9.19 Link merge and fold verdicts of function-like macros** (ruling 38 addendum 14, fn-macros
+  part 2 step 3, first of two PRs; lead's rulings of 11-12). `link_tus` merges the units' `macros`
+  tables first (a `#define` of one name, file, line and text once), remaps every `fn_macro.m` and
+  renumbers each unit's expansion ids past the earlier units', and compares header function copies
+  with their ids numbered by first appearance (`write_cir_decl(d, true)`), so a header function
+  using a macro stays kept once (`ARCHITECTURE_LINK.md#link-macros`). `converter/macro_fold.das`
+  gives each whole expansion its verdict from the node alone (`ARCHITECTURE_EMITTER_MACROS.md`
+  `#fold-verdict`): class A folds; class B (a parameter read twice, never or on some paths) only
+  without effectful arguments and with every such argument a constant, a local, a field of one
+  through `.`, its address or arithmetic without `/` or `%` (else `faulting`, counted apart); D
+  (a block or `do { } while (0)`) without outward flow; a caller's local the body writes is a
+  reference parameter; never-fold shapes (no-op, identity, single cast, one operator with an unread
+  argument, the sidecar's `no_fold`); `incomplete`, `capture`, `lvalue`, `shape`, `flow`, `order`
+  (an argument C reads after a store of the body, or effectful arguments das may reorder). No
+  output change: the emitter reads no verdict yet (P9.20). Fixture `p9_fn_fold` (the verdict of
+  each outermost site: every class, nested, swapped, typed, a written local, a loop, and a
+  negative control per guard); a hand-built two-unit link test. Expected speed effect (phase-end A/B, B/A): 1.00 on
+  every lane (no das text change); link time within noise.
 
 ## P6 — Doom
 
