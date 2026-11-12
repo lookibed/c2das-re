@@ -206,6 +206,9 @@ struct Emitter {
     fold_seeds : table<uint64>
     // the arms of a pointer `?:` with a `null` arm, which stay expanded (`emit_cond`)
     fold_blocked : table<uint64>
+    // the function being spelled folds no expansion: its first spelling declared a folded call in
+    // a block with a label (`labeled_fold`)
+    fold_function_off : bool
 }
 
 //! The facts of a whole program the emitter reads in each of its modules: the functions it
@@ -3036,7 +3039,8 @@ def private macro_def_name(var em : Emitter; tu : CirTu; m : int) : string {
     if (!empty(have)) {
         return have
     }
-    let base = name_taken(em, tu, tu.macros[m].name) ? "{tu.macros[m].name}_m" : tu.macros[m].name
+    let raw = reserved_rename(tu.macros[m].name)
+    let base = name_taken(em, tu, raw) ? "{raw}_m" : raw
     var name = base
     var n = 2
     while (key_exists(em.macro_defs, name)) {
@@ -3334,6 +3338,12 @@ def private fold_macro(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?
         uses := x.fn_macro
     } else {
         uses := st.fn_macro
+    }
+    if (em.fold_function_off) {
+        if (first < length(uses)) {
+            count_fold(em, uses[first].site, "labels")
+        }
+        return false
     }
     let blocked = x != null && (key_exists(em.fold_blocked, node) || key_exists(em.fold_blocked, intptr(spelled)))
     for (level in range(first, length(uses))) {
@@ -7973,6 +7983,74 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     if (d.body == null) {
         return
     }
+    let out_at = length(em.out)
+    var inscope defs := em.macro_defs
+    var inscope def_order := em.macro_def_order
+    var inscope names := em.macro_names
+    var inscope counts := em.fold_counts
+    var inscope counted := em.fold_counted
+    let c_functions = em.c_functions
+    let function_count = em.function_count
+    spell_function(em, tu, d)
+    if (empty(em.error) && labeled_fold(em, out_at)) {
+        // das inlines no call declared in a block with a label (error 30100): spelled again,
+        // every expansion of the function expanded
+        em.out |> resize(out_at)
+        em.macro_defs <- defs
+        em.macro_def_order <- def_order
+        em.macro_names <- names
+        em.fold_counts <- counts
+        em.fold_counted <- counted
+        em.c_functions = c_functions
+        em.function_count = function_count
+        em.fold_function_off = true
+        spell_function(em, tu, d)
+        em.fold_function_off = false
+    }
+}
+
+// whether the function spelled into `em.out` from `out_at` declares a folded call (`let` or `var`)
+// in a block that holds a label, which das's inliner refuses
+def private labeled_fold(em : Emitter; out_at : int) : bool {
+    if (empty(em.macro_defs)) {
+        return false
+    }
+    var lines : array<string>
+    for (idx in range(out_at, length(em.out))) {
+        lines |> push_from(split(em.out[idx], "\n"))
+    }
+    for (at, head in count(), lines) {
+        let indent = indentation(head)
+        if (!(slice(head, indent) |> starts_with("label "))) {
+            continue
+        }
+        // the label's block: the lines around it at its indent or deeper
+        var lo = at
+        while (lo > 0 && (empty(lines[lo - 1]) || indentation(lines[lo - 1]) >= indent)) {
+            lo--
+        }
+        var hi = at
+        while (hi + 1 < length(lines) && (empty(lines[hi + 1]) || indentation(lines[hi + 1]) >= indent)) {
+            hi++
+        }
+        for (idx in range(lo, hi + 1)) {
+            let text = lines[idx]
+            let own = indentation(text)
+            let stmt = slice(text, own)
+            if (own == indent && (stmt |> starts_with("let ") || stmt |> starts_with("var "))) {
+                for (name in keys(em.macro_defs)) {
+                    if (find(stmt, "{name}(") >= 0) {
+                        return true
+                    }
+                }
+            }
+        }
+    }
+    return false
+}
+
+// function `d` spelled into `em.out`
+def private spell_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     let variadic = tu.types[d.t].variadic
     if (d.c_name == "main" && d.is_static) {
         fail(em, "`main` is static: no entry point is synthesized", d.loc)
