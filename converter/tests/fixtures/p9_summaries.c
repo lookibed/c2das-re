@@ -160,6 +160,29 @@ int waits(volatile int *flag) {
     return n;
 }
 
+/* the body forms the address of the bound's variable: a callee or a store may change it through it */
+struct pairn { int n; int k; int arr[4]; };
+union twin { int n; int m; };
+void dec(int *p) { (*p)--; }
+#define DEC(x) (*&(x) -= 1)
+
+int formed(struct pairn s) {
+    struct pairn b = {10, 0, {0}}, c = {5, 0, {0}}, d = {5, 0, {0}}, e = {10, 0, {0}}, other = {4, 0, {0}};
+    union twin u = {5};
+    int t = 0;
+    for (int i = 0; i < b.n; i++) { t += i; dec(&b.n); }                   /* while: &b.n to a callee */
+    for (int i = 0; i <= e.n; i++) { t += i; dec(&e.n); }                  /* while: the `<=` twin */
+    for (int i = 0; i < c.n; i++) { t += i; DEC(c.n); }                    /* while: *&(c.n) */
+    for (int i = 0; i < d.n; i++) { t += i; (&d.n)[0]--; }                 /* while: (&d.n)[0] */
+    for (int i = 0; i < u.n; i++) { t += i; dec(&u.m); }                   /* while: the union's other member */
+    for (int i = 0; i < s.n; i++) { t += i; dec(&s.n); }                   /* while: a by-value parameter */
+    for (int i = 0; i < other.n; i++) { t += i; if (i == 1) memset(&other.n, 0, sizeof(int)); }  /* while */
+    for (int i = 0; i < b.k + 3; i++) { t += i; dec(&c.k); }               /* range: another variable */
+    for (int i = 0; i < c.n + 4; i++) { t += c.arr[i % 4]; d.arr[i % 4] = i; }  /* range: arrays indexed */
+    printf("%d %d %d %d %d %d %d\n", b.n, e.n, c.n, d.n, u.n, s.n, other.n);
+    return t;
+}
+
 int main(void) {
     char text[16];
     int buf[2] = {7, 7};
@@ -186,6 +209,9 @@ int main(void) {
     printf("%d %d\n", v, (int) (b.f[1] * 10));
     v = inclusive(lim_libc);
     printf("%d %d %d\n", v, calls, waits(&flag));
+    struct pairn sp = {10, 0, {0}};
+    v = formed(sp);
+    printf("%d\n", v);
     inclusive_quit(2147483647);
     return 1;
 }

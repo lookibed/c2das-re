@@ -4793,6 +4793,24 @@ def private written_names(st : CirStmt const?) : table<string> {
     return <- names
 }
 
+// adds to `names` the variable of every address statement tree `st` forms: the storage root
+// (`storage_root`) of each `&` operand and of each array that decays other than to be indexed
+def private addressed_roots(st : CirStmt const?; var names : table<string>) {
+    var indexed : table<uint64>
+    each_expr(st) $(x) {
+        if (x.e == "index") {
+            indexed |> insert(intptr(x.base))
+        }
+        let formed = (x.e == "un" && x.op == "addr") || (x.e == "cast" && x.cast_kind == "ArrayToPointerDecay" && !key_exists(indexed, intptr(x)))
+        if (formed) {
+            let root = storage_root(below_casts(x.a))
+            if (!empty(root)) {
+                names |> insert(root)
+            }
+        }
+    }
+}
+
 // a loop bound C reads before every pass that reads the same value each time (`for_range`):
 // literals, constants, locals, parameters and globals that `body` never names in a store or an
 // `&`, and members by `.` and `->`, under casts and `+`, `-`, `*`, never a call, a volatile object,
@@ -4881,7 +4899,8 @@ def private call_stores(em : Emitter; tu : CirTu; effects : CallEffects; load : 
     var through = effects.through && !em.prog.strict_aliasing
     if (effects.through && em.prog.strict_aliasing) {
         for (t in keys(effects.through_types)) {
-            through ||= t < 0 || load.t < 0 || classes_alias(alias_class(tu, t), alias_class(tu, load.t))
+            // -1, every type, has the class "", which aliases every class
+            through ||= classes_alias(alias_class(tu, t), alias_class(tu, load.t))
         }
     }
     if (empty(load.root)) {
@@ -5020,6 +5039,9 @@ def private counted_for(var em : Emitter; tu : CirTu; st : CirStmt const?) : Cou
         return CountedFor()
     }
     var written <- written_names(st.body_s)
+    // a variable whose address the body forms (`&b.n`, a member array passed on) may change
+    // through it, by a call or a store, whatever the summaries say of the callee
+    addressed_roots(st.body_s, written)
     if (key_exists(written, loop.name) || key_exists(em.addressed, loop.name)) {
         return CountedFor()
     }

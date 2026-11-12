@@ -486,6 +486,35 @@ def private unknown_effects(words : int) : CallEffects {
     return <- effects
 }
 
+// whether an object of type `t` holds a function pointer: one itself, or in an element or a field
+def private holds_function_pointer(tu : CirTu; t : int) : bool {
+    var seen : table<int>
+    var pending <- [t]
+    while (!empty(pending)) {
+        let at = pending |> back()
+        pending |> pop()
+        if (at < 0 || at >= length(tu.types) || key_exists(seen, at)) {
+            continue
+        }
+        seen |> insert(at)
+        let k = tu.types[at].k
+        if (k == "func") {
+            return true
+        }
+        if (k == "ptr" || k == "typedef") {
+            pending |> push(tu.types[at].to)
+        } elif (k == "array") {
+            pending |> push(tu.types[at].elem)
+        } else {
+            pending |> reserve(length(pending) + length(tu.types[at].fields))
+            for (f in tu.types[at].fields) {
+                pending |> push(f.t)
+            }
+        }
+    }
+    return false
+}
+
 // the functions whose address the program takes: a reference to a function anywhere but as a
 // direct call's callee, in a body or a global's initializer
 def private address_taken(tu : CirTu) : table<string> {
@@ -637,6 +666,13 @@ def summarize(tu : CirTu; pointed : table<string>; defined_globals : table<strin
     }
     facts[n].effects := s.effects[n]
     facts[n].stops = true
+    // a function pointer the program reads from an object it does not define (a unit converted
+    // alone, `extern void (*hook)(void);`) may reach a function no summary describes
+    for (d in tu.decls) {
+        if (d.k == "global" && !key_exists(defined_globals, d.name) && holds_function_pointer(tu, d.t)) {
+            facts[n].callees |> insert(s.unknown)
+        }
+    }
     let taken <- address_taken(tu)
     for (name in keys(taken)) {
         let callee = s.function_index?[name] ?? s.libc_index?[libc_key(name)] ?? s.unknown

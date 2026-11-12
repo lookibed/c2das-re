@@ -161,6 +161,41 @@ def escape_cases(t : T?; out : string) {
         t |> equal(stores_global(es, es.effects[es.function_index?["hides"] ?? 0], "shadow"), true)
         delete_tu(unit)
     }
+    t |> run("returns: a goto, a constant test, a loop that prints keep a function from surely returning; do while (0) does not; a stored libc address and a pointed global show") @(t : T?) {
+        let source = "int printf(const char *, ...);\nvoid free(void *);\nint pg; int *pgp = &pg;\nunion u2 \{ int n; float f; \};\nint jumps(int n) \{ again: if (n > 0) \{ n--; goto again; \} return n; \}\nint spins(int n) \{ while (1) \{ if (n) break; \} return n; \}\nint once(int n) \{ do \{ n++; \} while (0); return n; \}\nint prints(int n) \{ for (int i = 0; i < n; i++) printf(\"x\"); return n; \}\nvoid spg(void) \{ pg = 1; \}\nvoid sun(union u2 *p) \{ p->f = 1.0f; \}\nint step_self(int *p, int n) \{ int t = 0; while (n-- > 0) \{ t += *p; p = p + 1; \} return t; \}\nvoid (*rel)(void *) = free;\nvoid calls_rel(void *q) \{ rel(q); \}\nint main(void) \{ return 0; \}\n"
+        let c_path = path_join(out, "returns.c")
+        fwrite(c_path, source)
+        // the emitter refuses a libc function's address (`free` as a value); the C-IR is written first
+        let small <- convert(c_path, path_join(out, "returns"), "linux")
+        t |> equal(small.cir_text |> find("calls_rel") >= 0, true, small.error)
+        var unit <- read_cir(small.cir_text, error)
+        let pg_set <- {"pg"}
+        let none : table<string>
+        let es <- summarize(unit, pg_set, none, true)
+        t |> equal(es.effects[es.function_index?["jumps"] ?? 0].returns, false)
+        t |> equal(es.effects[es.function_index?["spins"] ?? 0].returns, false)
+        t |> equal(es.effects[es.function_index?["once"] ?? 0].returns, true)
+        t |> equal(es.effects[es.function_index?["prints"] ?? 0].returns, false)
+        t |> equal(es.effects[es.function_index?["prints"] ?? 0].io, true)
+        t |> equal(es.effects[es.function_index?["spg"] ?? 0].pointed_global, true)
+        t |> equal(key_exists(es.effects[es.function_index?["sun"] ?? 0].through_types, -1), true)
+        t |> equal(kept_nothing(es, "step_self", 0), true)
+        t |> equal(es.effects[es.indirect].through, true)
+        t |> equal(es.effects[es.function_index?["calls_rel"] ?? 0].through, true)
+        delete_tu(unit)
+    }
+    t |> run("a function pointer read from an object the unit does not define makes a call through a pointer unknown") @(t : T?) {
+        let source = "extern void (*hook)(void);\nvoid calls_hook(void) \{ hook(); \}\n"
+        let c_path = path_join(out, "hook.c")
+        fwrite(c_path, source)
+        let small <- convert(c_path, path_join(out, "hook"), "linux")
+        var unit <- read_cir(small.cir_text, error)
+        let none : table<string>
+        let es <- summarize(unit, none, none, false)
+        t |> equal(es.effects[es.indirect].all, true)
+        t |> equal(es.effects[es.function_index?["calls_hook"] ?? 0].all, true)
+        delete_tu(unit)
+    }
     t |> run("under strict aliasing the types of the stores through a pointer are kept, a libc store's as every type") @(t : T?) {
         let strict <- summarize(tu, pointed, defined, true)
         let put = fx("put_f")
