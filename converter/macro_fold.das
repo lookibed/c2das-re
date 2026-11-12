@@ -69,14 +69,6 @@ def private copy_of(x : CirExpr const?; site : int) : int {
     return -1
 }
 
-def private below_casts(x : CirExpr const?) : CirExpr const? {
-    var at = x
-    while (at != null && at.e == "cast") {
-        at = at.a
-    }
-    return at
-}
-
 def private is_step_or_store(x : CirExpr const?) : bool =>
     x.e == "assign" || x.e == "call" || x.e == "va_arg" || (x.e == "un" && (x.op == "preinc" || x.op == "predec" || x.op == "postinc" || x.op == "postdec"))
 
