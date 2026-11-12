@@ -2088,6 +2088,22 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   translation unit, the sum consumed; asm: load, `sub`, `shr $4` per difference) against
   `ptr_diff_heap.das`, all in `/root/notes/research/p7.0p/repro/`. The finding itself (the JIT
   calls `i_das_ptr_diff` per difference and divides by the stride) is unchanged.
+- **P9.21 The `fn_macros` switch** (ruling 38 addendum 14, fn-macros part 2 step 3b, first PR;
+  `converter/ARCHITECTURE_EMITTER_MACROS.md#fold-emission`). `--fn-macros fold|expand` and the
+  sidecar's `fn_macros`: `fold` (the default, ruling 23) prints the calls of P9.25's `[c_macro]`
+  defs, `expand` folds no site and the module holds no def; any other value refused, a test per value (CLI, sidecar, a
+  fixture run against native under `expand`). Its option duties: the perf lane
+  `interp-fn-macros-expand` (cells at the lead's next capture; no kernel expands a macro of its
+  own, so the lane's text is the default's), the readability keys `<input>@fn-macros-expand` for
+  every kernel and Lua program, the criteria rows `lua/lua@fn-macros-expand` and `luac`'s, kept
+  out of `all`. #181's minors: a `for` whose first clause is one bare declaration (Dumper A always
+  writes a block; another C-IR producer may not) is planned for `let` too; `let_local`'s dead
+  `dims` test dropped. Predictions: no default text change on any input (the bare clause never
+  reaches the emitter from Dumper A), so every default readability key and criteria row stays as
+  recorded; `@fn-macros-expand` keys spell main's text without the fold (Lua lua 30757 lines
+  folded against 29152 expanded, luac 23689 against 22619, `luaV_execute` 2568 against 2611).
+  Expected speed effect (phase-end A/B, B/A): 1.00 on every default lane;
+  `interp-fn-macros-expand` equals `interp` on each kernel within noise.
 
 ## P6 — Doom
 
