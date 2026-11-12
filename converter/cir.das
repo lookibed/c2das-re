@@ -66,6 +66,32 @@ struct CirType {
     items : array<CirEnumItem>
 }
 
+//! A whole expansion of a function-like macro on its node: `m` indexes `CirTu.macros`, `site` is
+//! the expansion's id, unique in the unit, `args` the text of each argument as the call writes it.
+struct CirMacroUse {
+    m : int
+    site : int
+    args : array<string>
+}
+
+//! A node that is a copy of argument `k` of expansion `site`.
+struct CirMacroArg {
+    site : int
+    k : int
+}
+
+//! A function-like `#define` a whole expansion of the unit uses: its name, parameters, file and
+//! line, the `#define` text on one line, and per parameter the times its expansion holds the
+//! argument (-1 when the dumper cannot tell).
+struct CirMacro {
+    name : string
+    params : array<string>
+    file : string
+    line : int
+    text : string
+    uses : array<int>
+}
+
 struct CirExpr {
     e : string
     t : int
@@ -100,6 +126,8 @@ struct CirExpr {
     // an expression the C source wrote in parentheses of its own
     paren : bool
     macro : string
+    fn_macro : array<CirMacroUse>
+    macro_args : array<CirMacroArg>
 }
 
 struct CirInitItem {
@@ -125,6 +153,7 @@ struct CirStmt {
     is_char : bool
     label_name : string
     dims : array<CirDim>
+    fn_macro : array<CirMacroUse>
     loc : CirLoc
 }
 
@@ -154,10 +183,11 @@ struct CirTu {
     target : CirTarget
     tu : string
     types : array<CirType>
+    macros : array<CirMacro>
     decls : array<CirDecl?>
 }
 
-let CIR_VERSION = "0.1"
+let CIR_VERSION = "0.2"
 
 let CAST_KINDS <- {"LValueToRValue", "NoOp", "IntegralCast", "IntegralToFloating", "FloatingToIntegral", "FloatingCast", "IntegralToBoolean", "FloatingToBoolean", "PointerToBoolean", "ArrayToPointerDecay", "FunctionToPointerDecay", "NullToPointer", "BitCast", "PointerToIntegral", "IntegralToPointer", "ToVoid", "BooleanToSignedIntegral"}
 
@@ -402,6 +432,81 @@ def private write_fields(var w : Writer; fields : array<CirField>) {
     w.out |> push("]")
 }
 
+// an array of `count` objects, each opened, written by `body` and closed; `[]` when empty
+def private write_objects(var w : Writer; count : int; body : block<(i : int) : void>) {
+    if (count == 0) {
+        w.out |> push("[]")
+        return
+    }
+    w.out |> push("[\n")
+    w.depth++
+    for (i in range(count)) {
+        if (i > 0) {
+            w.out |> push(",\n")
+        }
+        indent(w)
+        open_object(w)
+        invoke(body, i)
+        close_object(w)
+    }
+    w.depth--
+    w.out |> push("\n")
+    indent(w)
+    w.out |> push("]")
+}
+
+// the `fn_macro` member, present only on a whole expansion of a function-like macro
+def private write_macro_uses(var w : Writer; uses : array<CirMacroUse>) {
+    if (empty(uses)) {
+        return
+    }
+    member(w, "fn_macro", false)
+    write_objects(w, length(uses)) $(i) {
+        member(w, "m", true)
+        w.out |> push("{uses[i].m}")
+        member(w, "site", false)
+        w.out |> push("{uses[i].site}")
+        member(w, "args", false)
+        w.out |> push("[" + join([for (a in uses[i].args); json_str(a)], ", ") + "]")
+    }
+}
+
+// the `macro_args` member, present only on a copy of a macro's argument
+def private write_macro_args(var w : Writer; args : array<CirMacroArg>) {
+    if (empty(args)) {
+        return
+    }
+    member(w, "macro_args", false)
+    write_objects(w, length(args)) $(i) {
+        member(w, "site", true)
+        w.out |> push("{args[i].site}")
+        member(w, "k", false)
+        w.out |> push("{args[i].k}")
+    }
+}
+
+// the `macros` member of a unit, present only when an expansion uses one
+def private write_macros(var w : Writer; macros : array<CirMacro>) {
+    if (empty(macros)) {
+        return
+    }
+    member(w, "macros", false)
+    write_objects(w, length(macros)) $(i) {
+        member(w, "name", true)
+        w.out |> push(json_str(macros[i].name))
+        member(w, "params", false)
+        w.out |> push("[" + join([for (p in macros[i].params); json_str(p)], ", ") + "]")
+        member(w, "file", false)
+        w.out |> push(json_str(macros[i].file))
+        member(w, "line", false)
+        w.out |> push("{macros[i].line}")
+        member(w, "text", false)
+        w.out |> push(json_str(macros[i].text))
+        member(w, "uses", false)
+        w.out |> push("[" + join([for (u in macros[i].uses); "{u}"], ", ") + "]")
+    }
+}
+
 // the `dims` member, present only on a declarator whose dimensions name enum constants
 def private write_dims(var w : Writer; dims : array<CirDim>) {
     if (empty(dims)) {
@@ -620,6 +725,8 @@ def private write_expr(var w : Writer; x : CirExpr) {
         member(w, "macro", false)
         w.out |> push(json_str(x.macro))
     }
+    write_macro_uses(w, x.fn_macro)
+    write_macro_args(w, x.macro_args)
     close_object(w)
 }
 
@@ -745,6 +852,7 @@ def private write_stmt(var w : Writer; x : CirStmt) {
         member(w, x.s == "goto" ? "label" : "name", false)
         w.out |> push(json_str(x.label_name))
     }
+    write_macro_uses(w, x.fn_macro)
     member(w, "loc", false)
     write_loc(w, x.loc)
     close_object(w)
@@ -899,6 +1007,7 @@ def write_cir(tu : CirTu) : string {
         indent(w)
         w.out |> push("]")
     }
+    write_macros(w, tu.macros)
     member(w, "decls", false)
     if (empty(tu.decls)) {
         w.out |> push("[]")
@@ -935,6 +1044,48 @@ def private js_bool(js : JsonValue?; key : string) : bool => js?[key] ?? false
 
 def private read_loc(js : JsonValue?) : CirLoc =>
     CirLoc(file = js_str(js, "file"), line = js_int(js, "line"), col = js_int(js, "col"))
+
+// the strings of array `js`, none when it is no array
+def private js_strings(js : JsonValue?) : array<string> {
+    var out : array<string>
+    if (js != null && js is _array) {
+        out <- [for (v in js as _array); v ?? ""]
+    }
+    return <- out
+}
+
+def private read_macro_uses(js : JsonValue?) : array<CirMacroUse> {
+    var uses : array<CirMacroUse>
+    if (js != null && js is _array) {
+        uses <- [for (u in js as _array); CirMacroUse(m = js_int(u, "m"), site = js_int(u, "site"), args <- js_strings(u?["args"]))]
+    }
+    return <- uses
+}
+
+def private read_macro_args(js : JsonValue?) : array<CirMacroArg> {
+    var args : array<CirMacroArg>
+    if (js != null && js is _array) {
+        args <- [for (a in js as _array); CirMacroArg(site = js_int(a, "site"), k = js_int(a, "k"))]
+    }
+    return <- args
+}
+
+// the unit's `macros` table
+def private read_macros(js : JsonValue?) : array<CirMacro> {
+    var macros : array<CirMacro>
+    if (js != null && js is _array) {
+        macros <- [for (mj in js as _array); CirMacro(name = js_str(mj, "name"), params <- js_strings(mj?["params"]), file = js_str(mj, "file"), line = js_int(mj, "line"), text = js_str(mj, "text"), uses <- read_ints(mj?["uses"]))]
+    }
+    return <- macros
+}
+
+def private read_ints(js : JsonValue?) : array<int> {
+    var out : array<int>
+    if (js != null && js is _array) {
+        out <- [for (v in js as _array); int(v ?? 0l)]
+    }
+    return <- out
+}
 
 def private read_dims(js : JsonValue?) : array<CirDim> {
     var dims : array<CirDim>
@@ -1093,6 +1244,8 @@ def private read_expr(js : JsonValue?) : CirExpr? {
     x.is_char = js_bool(js, "char")
     x.paren = js_bool(js, "paren")
     x.macro = js_str(js, "macro")
+    x.fn_macro <- read_macro_uses(js?["fn_macro"])
+    x.macro_args <- read_macro_args(js?["macro_args"])
     return x
 }
 
@@ -1138,6 +1291,7 @@ def private read_stmt(js : JsonValue?) : CirStmt? {
     } elif (x.s == "label") {
         x.label_name = js_str(js, "name")
     }
+    x.fn_macro <- read_macro_uses(js?["fn_macro"])
     x.loc = read_loc(js?["loc"])
     return x
 }
@@ -1194,6 +1348,7 @@ def read_cir(text : string; var error : string&) : CirTu {
             tu.types |> emplace(read_type(t))
         }
     }
+    tu.macros <- read_macros(js?["macros"])
     let decls = js?["decls"]
     if (decls != null && decls is _array) {
         tu.decls |> reserve(length(decls as _array))

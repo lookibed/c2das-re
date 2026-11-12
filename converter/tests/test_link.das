@@ -114,7 +114,7 @@ def test_three_files(t : T?) {
             t |> success(fexist(path_join(out_dir, "{stem}.cir.json")), stem)
         }
         t |> equal(fread(path_join(out_dir, "program.cir.json")), res.cir_text)
-        t |> equal(res.cir_text, "\{\n \"cir\": \"0.1\",\n \"target\": \{\n  \"triple\": \"x86_64-unknown-linux-gnu\",\n  \"int\": 32,\n  \"long\": 64,\n  \"llong\": 64,\n  \"ptr\": 64,\n  \"char_signed\": false\n \},\n \"tus\": [\"geo.cir.json\", \"parity.cir.json\", \"prog.cir.json\"],\n \"entry\": \"main\"\n\}\n")
+        t |> equal(res.cir_text, "\{\n \"cir\": \"0.2\",\n \"target\": \{\n  \"triple\": \"x86_64-unknown-linux-gnu\",\n  \"int\": 32,\n  \"long\": 64,\n  \"llong\": 64,\n  \"ptr\": 64,\n  \"char_signed\": false\n \},\n \"tus\": [\"geo.cir.json\", \"parity.cir.json\", \"prog.cir.json\"],\n \"entry\": \"main\"\n\}\n")
     }
     t |> run("one file is the one-unit conversion: its own module, no program manifest") @(t : T?) {
         let out_dir = path_join(work_root, "single")

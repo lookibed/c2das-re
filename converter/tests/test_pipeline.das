@@ -10,7 +10,7 @@ require ../dumper_a.das
 require daslib/strings_boost
 
 let FIXTURE = "converter/tests/fixtures/ret42.c"
-let CIR_SHA = "0fc98ecbfd57f8acb5f340ca4b934f85c84b624ec962c1262aaf488bb92e9bca"
+let CIR_SHA = "7f13cda1870244734d24272413ced89edf30ea57681357b3d9bf61746eef793d"
 let DAS_SHA = "56ecb7d9a210e8d789de2f2e3df9c0292c80fefe22f6d416cb7095c833392225"
 
 var res : ConvertResult
@@ -45,7 +45,7 @@ def test_pipeline_ret42(t : T?) {
         t |> equal(res.function_count, 1)
     }
     t |> run("the C-IR carries the target, the interned types and the return") @(t : T?) {
-        t |> equal(res.cir_text |> find("\"cir\": \"0.1\"") >= 0, true)
+        t |> equal(res.cir_text |> find("\"cir\": \"0.2\"") >= 0, true)
         t |> equal(res.cir_text |> find("\"triple\": \"x86_64-pc-windows-msvc\"") >= 0, true)
         t |> equal(res.cir_text |> find("\"k\": \"func\"") >= 0, true)
         t |> equal(res.cir_text |> find("\"e\": \"int_lit\"") >= 0, true)
