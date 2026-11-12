@@ -13,6 +13,7 @@ require daslib/safe_addr
 require daslib/algorithm
 require cir
 require bit_units
+require macro_sites
 
 //! Dumper A: `clang -ast-dump=json` normalized into C-IR. Fails closed: the first construct it
 //! cannot represent exactly stops the dump with a location in `error`.
@@ -150,6 +151,9 @@ struct Dumper {
     convention_macros : table<string>
     // the bytes of clang's JSON dump
     json_bytes : int64
+    // libclang's macro definitions and expansions, and the function-like expansions found in the
+    // dump (`macro_sites.das`)
+    fn_macros : MacroIndex
     // why the conversion refuses each asm statement by its key (`register_asm`), "" for a barrier
     asm_by_loc : table<string; string>
     // the names the program defines (a function with a body, a variable with no `extern` or
@@ -713,6 +717,10 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
             if (is_constant(ref)) {
                 d.enum_ref_by_loc[cursor_key(d, kid)] = ref
             }
+        } elif (kind == CXCursorKind.MacroExpansion) {
+            register_macro_expansion(d, kid)
+        } elif (kind == CXCursorKind.MacroDefinition) {
+            register_macro_definition(d, kid)
         } elif (kind == CXCursorKind.TypedefDecl) {
             var under = clang_getTypedefDeclUnderlyingType(kid)
             var canonical = clang_getCanonicalType(under)
@@ -732,13 +740,53 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
     }
 }
 
+// a macro expansion in a program file: where its name stands, keyed to its definition
+[arch(at="ARCHITECTURE_DUMPER_MACROS.md#fn-macros")]
+def private register_macro_expansion(var d : Dumper; var c : CXCursor) {
+    var target = clang_getCursorReferenced(c)
+    if (clang_Cursor_isNull(target) != 0) {
+        return
+    }
+    var file, def_file : CXFile
+    var line, column, offset, def_line, def_offset : uint
+    clang_getSpellingLocation(clang_getCursorLocation(c), safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
+    clang_getSpellingLocation(clang_getCursorLocation(target), safe_addr(def_file), safe_addr(def_line), safe_addr(column), safe_addr(def_offset))
+    let given = file_name(def_file)
+    let def_at = canonical_file(d, given)
+    let at = canonical_file(d, file_name(file))
+    if (empty(def_at) || empty(at)) {
+        return
+    }
+    let fn_like = clang_Cursor_isMacroFunctionLike(target) != 0u
+    let idx = macro_def_index(d.fn_macros, string(clang_getCursorSpelling(target)), def_at, given, int(def_line), int(def_offset), fn_like)
+    macro_expansion_at(d.fn_macros, at, int(offset), idx)
+}
+
+// a macro definition in a program file, which a body may call by its name
+[arch(at="ARCHITECTURE_DUMPER_MACROS.md#fn-macros")]
+def private register_macro_definition(var d : Dumper; var c : CXCursor) {
+    var file : CXFile
+    var line, column, offset : uint
+    clang_getSpellingLocation(clang_getCursorLocation(c), safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
+    let given = file_name(file)
+    let at = canonical_file(d, given)
+    if (!empty(at)) {
+        let fn_like = clang_Cursor_isMacroFunctionLike(c) != 0u
+        macro_def_index(d.fn_macros, string(clang_getCursorSpelling(c)), at, given, int(line), int(offset), fn_like)
+    }
+}
+
+// libclang's `CXTranslationUnit_DetailedPreprocessingRecord`, which dasClangBind exports only as a type
+let private DETAILED_PREPROCESSING_RECORD = 1u
+
 def private collect_records(var d : Dumper; triple : string; resource_dir : string; inputs : array<string>) {
     // libclang finds no resource directory of its own, so the builtin headers (`stddef.h`, whose
     // `size_t` a libc prototype spells) come from the pinned clang's
     var args <- ["-target", triple, "-funsigned-char", "-w", NO_CTYPE_MACROS, "-resource-dir", resource_dir]
     args |> push_from(inputs)
     var idx = clang_createIndex(0, 0)
-    var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, 0u)
+    // the detailed record lists each macro expansion of a file with its definition
+    var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, DETAILED_PREPROCESSING_RECORD)
     if (unit != null) {
         // an error libclang meets (a header the resource directory lacks) leaves records and
         // typedefs out of what the pass collects
@@ -2455,6 +2503,17 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
     } elif (x != null && !empty(nested)) {
         x.macro = nested
     }
+    if (x != null && !wrapper) {
+        let key = unsafe(reinterpret<uint64>(js))
+        get(d.fn_macros.fn_marks, key) $(uses) {
+            for (u in uses) {
+                x.fn_macro |> push_clone(u)
+            }
+        }
+        get(d.fn_macros.arg_marks, key) $(args) {
+            x.macro_args |> push_from(args)
+        }
+    }
     return x
 }
 
@@ -3225,6 +3284,19 @@ def private dump_case(var d : Dumper; js : JsonValue?; var into : array<CirStmt?
 }
 
 def dump_stmt(var d : Dumper; js : JsonValue?) : CirStmt? {
+    var st = dump_stmt_node(d, js)
+    // an expression statement's marks are its expression's (`dump_expr`)
+    if (st != null && st.s != "expr") {
+        get(d.fn_macros.fn_marks, unsafe(reinterpret<uint64>(js))) $(uses) {
+            for (u in uses) {
+                st.fn_macro |> push_clone(u)
+            }
+        }
+    }
+    return st
+}
+
+def private dump_stmt_node(var d : Dumper; js : JsonValue?) : CirStmt? {
     let at = loc_of(d, js)
     let kind = node_kind(js)
     if (kind == "CompoundStmt") {
@@ -3763,7 +3835,9 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; inputs : DumpIn
     collect_aligned_typedefs(d, js)
     collect_convention_macros(d, js)
     collect_defined_names(d, js)
+    find_macro_sites(d.fn_macros, d.canonical_files, js)
     dump_top_level(d, js)
+    d.tu.macros <- d.fn_macros.macros
     delete_json(js)
     if (empty(d.error)) {
         check_enum_anchors(d)
