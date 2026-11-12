@@ -1791,7 +1791,7 @@ def p5_lua_fixtures(t : T?) {
         // an attribute on an extern declaration is no initializer: the definition's list is
         has_text(t, text, "var shape_names : uint8? [3] = fixed_array<uint8?>(cstr(\"nil\"), ")
         // offsetof spelled inside a header's macro, two in one expansion, each its own
-        has_text(t, text, "int(0 == 0 ? uint64(typeinfo offsetof < payload > (type<cell0>)) : uint64(typeinfo offsetof < slots > (type<cell>))")
+        has_text(t, text, "int(0 == 0 ? uint64(typeinfo offsetof < payload > (type<cell0>)) :\n                uint64(typeinfo offsetof < slots > (type<cell>))")
         // das subtracts from a pointer variable only: a computed pointer adds the negated count
         has_text(t, text, "    var last : uint8? = addr(buff[0]) + DIBS + -(n)\n")
         has_text(t, text, "    var first : uint8? = addr(buff[0]) + DIBS + -int64(k)\n")
