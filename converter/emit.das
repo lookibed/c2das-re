@@ -6394,7 +6394,9 @@ def private plan_let_locals(var em : Emitter; body : CirStmt const?) {
             if (child.s == "decl" && !key_exists(later, child.name)) {
                 em.unwritten_decls |> insert(intptr(child))
             }
-            for (name in keys(written_names(child))) {
+            // bound first: a `for` over the keys of a returned table reads freed memory (daScript#55)
+            var inscope written <- written_names(child)
+            for (name in keys(written)) {
                 later |> insert(name)
             }
         }
