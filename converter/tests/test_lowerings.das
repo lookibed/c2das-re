@@ -2739,6 +2739,12 @@ def p9_narrow_fixtures(t : T?) {
         has_text(t, text, "    if (int(t.extra) == int(t.s)) \{\n")
         // a #define's name stays, which das reads as an int
         has_text(t, text, "    if (int(t.extra) == STATUS_OK) \{\n")
+        // C's `-1u` is UINT_MAX, no negative value; a literal a narrowing changes (`(signed char)200`
+        // is -56) and a narrowing below the promotion stay as C converts them
+        has_text(t, text, "    if (int64(t.s) == int64(-1u)) \{\n        r += 256\n")
+        has_text(t, text, "    if (int64(t.s) == int64(-1u)) \{\n        r += 512\n")
+        has_text(t, text, "    if (int(t.h) == int(int8(200))) \{\n")
+        has_text(t, text, "    if (uint8(t.h) == 5) \{\n")
         has_text(t, text, "uint(d), int64(d), uint64(d), uint(uint8(d)), int(int16(d)), double(int(d)))\n")
         has_text(t, text, "uint(m), int64(uint(m)), uint64(uint(m)), double(uint(m)))\n")
         has_text(t, text, "1ul << uint64(dir.NORTH))\n")

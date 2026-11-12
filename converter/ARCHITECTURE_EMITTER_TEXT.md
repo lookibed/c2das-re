@@ -111,8 +111,11 @@ in its range is the narrow compare, `ts.extra == 0`, `t.s == -128`, `*s == 'a'` 
 literal stays one), on either side; two values of one storage type compare narrow too, `a.extra
 == b.extra`. Each is exact, since the promotion keeps every value. A literal outside the range
 (`int(t.extra) == -1`, never true), a named constant, two different storage types and an
-ordering (das defines `<` on no storage type) keep C's promoted compare. A literal past the range
-is also a das compile error, so a wrong fold could not wrap silently.
+ordering (das defines `<` on no storage type) keep C's promoted compare. The literal's value is
+C's: a negated unsigned literal (`-1u`, UINT_MAX) is no negative value and keeps the promoted
+compare, and so does a literal a conversion on its side changes (`(signed char)200` is -56), since
+das would read the printed digits and compare them in range without an error. A literal past the
+storage type's range is a das compile error, which catches only an out-of-range print.
 
 ### Enum conversions {#enum-conversions}
 
