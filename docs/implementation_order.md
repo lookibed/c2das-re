@@ -1857,6 +1857,36 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   unchanged. Expected speed effect (phase-end A/B, B/A): interp 0.99-1.00 on Doom and Lua (one
   conversion node fewer per site; a narrow `==` is one compare of the storage value), JIT and exe
   1.00 (LLVM folds the conversions).
+- **P9.15 Long lines** (ruling 38 addendum 13 part 3; the `long_lines` criterion,
+  `metrics/ARCHITECTURE_CRITERIA.md`). A line past 160 bytes breaks where the emitter marked the
+  expression as it spelled each node: after a list's `,` (call arguments, `fixed_array` elements,
+  record initializers, function parameters), after `&&`/`||` and `?`/`:`, and after any other
+  binary operator; `converter/line_wrap.das`'s `laid_out` picks the lowest-ranked marks first
+  (the shallowest parentheses, a list before `&&`/`||` before the other operators), fills each line,
+  indents a continuation 8 spaces past its statement, and breaks only directly inside a `(`, where
+  das reads the next line as the same expression (das's continuation-line rule: a line opening with
+  `+`/`-` outside parentheses is a new statement), never in a literal, a comment, a `[ ]` or a
+  `{ }`. No pass parses printed text to find a break; a written file holding a mark is a converter
+  error. Rejected: daslib's `wrap_long_lines` (a token pass over the printed text, against the
+  AST rule). Lines over 160 per 1000 (main 116e1c1 against this branch; Doom source-layout speed
+  build, Lua source layout): Doom 4.77 -> 0.80, lua 5.38 -> 0.75, luac 5.77 -> 0.88; modules with
+  one Doom 43 of 112 -> 7, lua 34 of 61 -> 7, luac 22 of 45 -> 5 (the rest hold a long string
+  literal, a field-name list, or an operator chain outside every parenthesis); lines Doom 31644 ->
+  35019 (data tables and initializers, 2771 of the 3375 in `DOOM_cluster`, `tables`, `info`), lua
+  28813 -> 29176, luac 22358 -> 22631. The metrics read a line at a time in two places the
+  layout broke: a `def` whose parameters wrap is found at its brace (`scan_das`), and a literal
+  cast counts once per statement across its continuation lines. Density metric
+  (`metrics/criteria_linux.json`, 1610 inputs, 0 failed, re-recorded for P9.14 and P9.15 together):
+  `long_lines` clean share lua 33.3 -> 85.4, luac 45.9 -> 86.5, doomgeneric 46.7 -> 86.7, `all` 38.6 ->
+  62.0; old `all` 82.0 -> 83.0; raw long lines lua 154 -> 22, luac 128 -> 20, doomgeneric 20 -> 2;
+  `blowup_lines` raw lua 2546 -> 2603 (the wrapped lines inside functions), `macro_blowup` lua
+  88.7 -> 88.1. Leftover: the
+  densities count sites per 1000 das code lines, so a layout change moves every density without a
+  site changing (P9.15's added lines dilute them: doomgeneric's total mostly by its wrapped data
+  tables); the basis should not depend on line wrapping (per 1000 statements, or per KB of
+  non-blank text), and P9.15's raw counts in its PR are the comparison across this change.
+  Expected speed effect (phase-end A/B, B/A): 1.00 on every lane (whitespace only), compile time
+  within noise.
 
 ## P6 — Doom
 
