@@ -2800,7 +2800,14 @@ def p9_summaries_fixtures(t : T?) {
         has_text(t, text, "    while (i < l) \{\n        p[i] = s[l - i - 1ul]\n")
         has_text(t, text, "    for (i in range(n + 1)) \{\n        t += twice(i)\n")
         has_text(t, text, "        while (i <= n) \{\n            t += i\n            if (i == 3) \{\n                quit1(t)\n")
-        t |> equal(count(text, " in range(") + count(text, " in urange64("), 8, text)
+        // the body forms the address of the bound's variable: kept, whatever the callee
+        for (kept in ["b.n", "c.n", "d.n", "u.n", "s.n", "other.n"]) {
+            has_text(t, text, "        while (i < {kept}) \{\n")
+        }
+        has_text(t, text, "        while (i <= e.n) \{\n")
+        has_text(t, text, "    for (i in range(b.k + 3)) \{\n")
+        has_text(t, text, "    for (i in range(c.n + 4)) \{\n")
+        t |> equal(count(text, " in range(") + count(text, " in urange64("), 10, text)
         let want = native("p9_summaries")
         var out : string
         t |> equal(run_tier(path_join(path_join(work_root, "p9_summaries"), "p9_summaries.das"), "jit", path_join(work_root, "p9_summaries_jit"), out, CONVERTED_MODULES), want.rc, out)
@@ -2811,9 +2818,10 @@ def p9_summaries_fixtures(t : T?) {
         let res <- convert(c_path, path_join(work_root, "summaries_strict_out"), "linux", "", path_join(path_join(work_root, "summaries_strict"), "p9_summaries.c2das"))
         t |> equal(res.ok, true, res.error)
         has_text(t, res.das_text, "    for (i in range(b.n)) \{\n        t += i\n        put_f(addr(b.f[0]) + end_index(i, 8))\n")
-        for (kept in ["lim_a", "lim_fp", "lim_out", "gx.n", "r.n", "lim_env", "lim_rec"]) {
+        for (kept in ["lim_a", "lim_fp", "lim_out", "gx.n", "r.n", "lim_env", "lim_rec", "c.n", "d.n", "u.n", "s.n", "other.n"]) {
             has_text(t, res.das_text, "        while (i < {kept}) \{\n")
         }
+        has_text(t, res.das_text, "        while (i <= e.n) \{\n")
         let want = native("p9_summaries")
         for (tier in ["interp", "jit"]) {
             var out : string
