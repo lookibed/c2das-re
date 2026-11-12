@@ -266,6 +266,32 @@ def test_sidecar_past_end(t : T?) {
 }
 
 [test]
+def test_sidecar_fn_macros(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_sidecar_fn_macros", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("`fn_macros` is \"fold\" or \"expand\"; absent it is empty, the emitter's fold default; any other value is refused") @(t : T?) {
+        for (mode in ["fold", "expand"]) {
+            var error : string
+            let side <- read_text(dir, mode, "\{\"fn_macros\": \"{mode}\"\}\n", error)
+            t |> equal(error, "")
+            t |> equal(side.fn_macros, mode)
+        }
+        var none_error : string
+        let none <- read_text(dir, "no_fn_macros", "\{\}\n", none_error)
+        t |> equal(none.fn_macros, "")
+        var error : string
+        let side <- read_text(dir, "bad_fn_macros", "\{\"fn_macros\": \"inline\"\}\n", error)
+        t |> success(error |> ends_with("bad_fn_macros.c2das: `fn_macros` is \"fold\" or \"expand\", not \"inline\""), error)
+        t |> equal(side.fn_macros, "")
+    }
+    rmdir_rec(dir)
+}
+
+[test]
 def test_sidecar_checks(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_sidecar_checks", dir_error)

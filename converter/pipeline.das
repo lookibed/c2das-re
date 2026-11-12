@@ -140,7 +140,7 @@ def private compile_errors(das_path : string) : string {
 }
 
 // why an option value given to `convert` is refused, "" when each is empty or a mode
-def private option_error(param_writes, loops, layout, first_member : string; switch_dispatch : string = ""; checks : string = ""; past_end : string = "") : string {
+def private option_error(param_writes, loops, layout, first_member : string; switch_dispatch : string = ""; checks : string = ""; past_end : string = ""; fn_macros : string = "") : string {
     if (!empty(param_writes) && !is_param_writes(param_writes)) {
         return "--param-writes is in-place or copy, not `{param_writes}`"
     }
@@ -159,13 +159,16 @@ def private option_error(param_writes, loops, layout, first_member : string; swi
     if (!empty(past_end) && !is_past_end(past_end)) {
         return "--past-end is call or inline, not `{past_end}`"
     }
+    if (!empty(fn_macros) && !is_fn_macros(fn_macros)) {
+        return "--fn-macros is fold or expand, not `{fn_macros}`"
+    }
     return !empty(loops) && !is_loops(loops) ? "--loops is range or while, not `{loops}`" : ""
 }
 
 // the sidecar of a conversion, read from `sidecar` ("" for none), the options' values over its
 // keys; `error` the refusal of the options, the output folder or the sidecar
-def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var error : string&; layout : string = ""; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = ""; past_end : string = ""; inline_helpers : bool = false) : Sidecar {
-    error = option_error(param_writes, loops, layout, first_member, switch_dispatch, checks, past_end)
+def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var error : string&; layout : string = ""; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = ""; past_end : string = ""; inline_helpers : bool = false; fn_macros : string = "") : Sidecar {
+    error = option_error(param_writes, loops, layout, first_member, switch_dispatch, checks, past_end, fn_macros)
     if (empty(error) && !mkdir_rec(out_dir) && !stat(out_dir).is_dir) {
         error = "cannot create {out_dir}"
     }
@@ -200,6 +203,9 @@ def private conversion_setup(out_dir, sidecar, param_writes, loops : string; var
     }
     if (inline_helpers) {
         side.inline_helpers = true
+    }
+    if (!empty(fn_macros)) {
+        side.fn_macros = fn_macros
     }
     return <- side
 }
@@ -333,9 +339,9 @@ def private emit_modules(var tu : CirTu; owners : array<int>; plan : LayoutPlan;
     res.ok = true
 }
 
-def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = ""; past_end : string = ""; inline_helpers : bool = false) : ConvertResult {
+def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = ""; past_end : string = ""; inline_helpers : bool = false; fn_macros : string = "") : ConvertResult {
     var res : ConvertResult
-    let side <- conversion_setup(out_dir, find_sidecar(c_path, sidecar_path), param_writes, loops, res.error, "", first_member, switch_dispatch, no_solid_context, checks, past_end, inline_helpers)
+    let side <- conversion_setup(out_dir, find_sidecar(c_path, sidecar_path), param_writes, loops, res.error, "", first_member, switch_dispatch, no_solid_context, checks, past_end, inline_helpers, fn_macros)
     if (!empty(res.error)) {
         return <- res
     }
@@ -391,15 +397,17 @@ def private program_sidecar(c_paths : array<string>; given : string; var sidecar
 //! With `checks` `off` every converted function drops das's null and range checks (the sidecar's
 //! `checks`). With `past_end` `inline` `&a[k]` of a plain-load index takes no `end_index` call
 //! (the sidecar's `past_end`). With `inline_helpers` a direct call of a pure `static` helper is the
-//! helper's expression at the site (the sidecar's `inline_helpers`).
-def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main"; layout : string = ""; census : bool = false; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = ""; past_end : string = ""; inline_helpers : bool = false) : ConvertResult {
+//! helper's expression at the site (the sidecar's `inline_helpers`). With `fn_macros` `expand` no
+//! function-like macro expansion folds into a call of its `[c_macro] def` (the sidecar's
+//! `fn_macros`).
+def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main"; layout : string = ""; census : bool = false; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = ""; past_end : string = ""; inline_helpers : bool = false; fn_macros : string = "") : ConvertResult {
     if (length(c_paths) == 1 && entry == "main") {
         if (census || (!empty(layout) && !is_layout(layout))) {
             var refused : ConvertResult
             refused.error = census ? "--edge-census reports the cycles among a program's files; one file has none" : option_error("", "", layout, "")
             return <- refused
         }
-        return <- convert(c_paths[0], out_dir, target_name, clang, sidecar_path, param_writes, loops, first_member, switch_dispatch, no_solid_context, checks, past_end, inline_helpers)
+        return <- convert(c_paths[0], out_dir, target_name, clang, sidecar_path, param_writes, loops, first_member, switch_dispatch, no_solid_context, checks, past_end, inline_helpers, fn_macros)
     }
     var res : ConvertResult
     res.error = refused_files(c_paths, out_dir)
@@ -411,7 +419,7 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
     if (!empty(res.error)) {
         return <- res
     }
-    let side <- conversion_setup(out_dir, sidecar, param_writes, loops, res.error, layout, first_member, switch_dispatch, no_solid_context, checks, past_end, inline_helpers)
+    let side <- conversion_setup(out_dir, sidecar, param_writes, loops, res.error, layout, first_member, switch_dispatch, no_solid_context, checks, past_end, inline_helpers, fn_macros)
     if (!empty(res.error)) {
         return <- res
     }

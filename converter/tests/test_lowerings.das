@@ -9,6 +9,9 @@ require daslib/fio
 require ../pipeline.das
 require ../tiers.das
 require ../dumper_a.das
+require ../cir.das
+require ../emit.das
+require ../sidecar.das
 
 //! Every P1 lowering fixture is a C program whose output and exit code the converted module
 //! must reproduce; the expectation is the native build of the same file by the pinned clang
@@ -2724,6 +2727,7 @@ def readability_fixtures(t : T?) {
     p9_fn_fold_fixtures(t)
     p9_fn_var_fixtures(t)
     p9_fold_review_fixtures(t)
+    p9_fn_macros_option_fixtures(t)
 }
 
 // P9.23: `<=` counts to `n + 1` where it cannot wrap; a bound over globals and members is invariant
@@ -2989,6 +2993,64 @@ def p9_let_local_fixtures(t : T?) {
         // two sibling blocks' `t` are planned apart: the read-only one is let, the addressed one var
         has_text(t, text, "    if (x > 0) \{\n        let t : int = x * 2\n        r += t\n    \} else \{\n        var t : int = x\n")
     }
+    t |> run("a for's first clause that is one bare declaration, which another C-IR producer may write, is planned over the loop too") @(t : T?) {
+        let res <- convert("{FIXTURES}/p9_let_locals.c", path_join(work_root, "p9_let_locals_bare"), "linux")
+        t |> equal(res.ok, true, res.error)
+        var error : string
+        var tu <- read_cir(res.cir_text, error)
+        t |> equal(error, "")
+        var bared = 0
+        for (d in tu.decls) {
+            if (d.body != null) {
+                bared += bare_loop_heads(d.body)
+            }
+        }
+        t |> equal(bared, 2)
+        let em <- emit_tu(tu, Sidecar())
+        t |> equal(em.error, "")
+        has_text(t, em.text, "        let step : int = x + 1\n        while (sum < 100) \{\n")
+    }
+}
+
+// the `fn_macros` option: `fold`, the default's text, and `expand`, no def at all
+def p9_fn_macros_option_fixtures(t : T?) {
+    t |> run("fn_macros: fold folds as the default does, expand keeps every site expanded and the program runs as natively") @(t : T?) {
+        let source = "#define ADD1(x) ((x) + 1)\n#define SQ(x) ((x) * (x))\nint main(void) \{\n    int i = 3;\n    return ADD1(i) + SQ(i) - 13;\n\}\n"
+        has_text(t, converts(t, "p9_fn_macros_fold", source, "\{\"fn_macros\": \"fold\"\}"), "return ADD1(i) + SQ(i) - 13\n")
+        let expanded = converts(t, "p9_fn_macros_expand", source, "\{\"fn_macros\": \"expand\"\}")
+        has_text(t, expanded, "return i + 1 + i * i - 13\n")
+        t |> equal(expanded |> find("[c_macro]") >= 0, false, expanded)
+        let want = native("p9_fn_fold")
+        let work = path_join(work_root, "p9_fn_fold_expand")
+        let res <- convert("{FIXTURES}/p9_fn_fold.c", work, "linux", "", "", "", "", "", "", false, "", "", false, "expand")
+        t |> equal(res.ok, true, res.error)
+        t |> equal(res.das_text |> find("[c_macro]") >= 0, false, res.das_text)
+        t |> equal(fold_report(res), "folded 0")
+        var out : string
+        let no_flags : array<string>
+        t |> equal(run_tier(res.das_path, "interp", work, out, CONVERTED_MODULES, 600.0, no_flags), want.rc, out)
+        t |> equal(out, want.out)
+    }
+}
+
+// every `for` under `st` whose first clause is a block of one declaration takes the declaration
+// itself as its first clause; how many did
+def bare_loop_heads(var st : CirStmt?) : int {
+    if (st == null) {
+        return 0
+    }
+    var n = 0
+    if (st.s == "for" && st.init_s != null && st.init_s.s == "compound" && length(st.init_s.body) == 1 && st.init_s.body[0].s == "decl") {
+        st.init_s = st.init_s.body[0]
+        n++
+    }
+    for (child in st.body) {
+        n += bare_loop_heads(child)
+    }
+    for (child in [st.then_s, st.else_s, st.body_s]) {
+        n += bare_loop_heads(child)
+    }
+    return n
 }
 
 // P9.14: a promoted storage integer's `==` against a literal in its range or a value of its type is

@@ -87,3 +87,8 @@ and a flag per `&&` operand (`docs/probe-findings.md` F107).
 The name is the macro's, `<name>_m` where a function, global or type of the program, das or the
 runtime has it, `<name>_2` for a second macro of one name (an `#undef` and a new `#define`).
 Every outermost site counts once per module (`fold_counts`): `folded` or its reason.
+
+The `fn_macros` option `expand` (`--fn-macros expand` or the sidecar's `"fn_macros": "expand"`)
+folds no site: every expansion prints expanded and the module holds no def, the text the readable
+`fold` default replaces, kept for its own perf lane and readability keys; the sidecar's `no_fold`
+names are still checked against the program's macros.
