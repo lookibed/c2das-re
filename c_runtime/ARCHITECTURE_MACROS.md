@@ -92,3 +92,16 @@ interpreter, the JIT and AOT all run the code it produced.
   alignment past 8, a size that is not a positive multiple of the alignment, an argument naming
   no member, a non-integer width and a width that does not fit its member's integer type or the
   storage are compile errors.
+- `c_runtime/c_macro.das` - the `[c_macro]` function annotation, the carrier of a C function-like
+  macro folded back into a def: `transform` replaces every inferred call with the def's written
+  body (a generic instance's is its generic's), each parameter substituted by its argument
+  expression as written, so an argument is evaluated where and as often as the body names it, as
+  C's expansion does, and the interpreter runs no argument copy, result local or lowered condition,
+  which `[inline]`'s splice binds (`docs/probe-findings.md` F104, F107). An expression body becomes
+  the expression, a bare `null` the def's result type's `default`; a void def's statement body
+  becomes a block in the call's place, every local and `for` iterator it declares renamed
+  `_cm<n>_<name>` with `n` counting the expansions, so neither the caller's names nor a nested
+  expansion's are captured or shadowed. `[c_function]`'s `unsafe` stays with the body: each node of
+  an expression is flagged safe before the arguments go in, a block is wrapped in `unsafe`. A body of
+  any other shape, a value returned after a statement or a bare `return`, is a compile error, so
+  the emitter and the macro cannot disagree silently.
