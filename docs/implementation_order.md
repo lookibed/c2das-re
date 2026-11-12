@@ -1895,7 +1895,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   stay `var` (F3: a `let` pointer reads its pointee as const). The `[inline]` splice of part 2's folded
   macros substitutes a `let` argument in place where it binds a copy for a `var` one (F104, the probe
   now checks a `let` local too). Fixture `p9_let_locals`, native-compared under interp and the JIT.
-  Counts (main 116e1c1 against this branch; Doom source-layout speed build, Lua source layout): typed
+  Counts (main ce19ef3 against this branch; Doom source-layout speed build, Lua source layout): typed
   initialized locals that are `let`, of all typed initialized locals, Doom 0 -> 32 of 109, lua 0 -> 497
   of 1733 (`luaV_execute` 0 -> 87 of 349), luac 0 -> 355 of 1366; the rest are pointers, records and
   locals their scope writes; lines unchanged. Expected speed effect (phase-end A/B, B/A): 1.00 on every
