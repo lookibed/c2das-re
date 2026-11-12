@@ -101,7 +101,7 @@ def test_three_files(t : T?) {
         occurs(t, text, "def private parity_flavor1 : int", 1)
         occurs(t, text, "def private prog_flavor_twice : int \{\n    return parity_flavor1() * 2\n", 1)
         // a parameter or local named like a renamed static is no reference to it
-        t |> success(text |> contains("        var counter : int = n * 100\n        sum += counter\n"), text)
+        t |> success(text |> contains("        let counter : int = n * 100\n        sum += counter\n"), text)
         t |> success(text |> contains("    for (counter in range(3)) \{\n        sum += counter\n"), text)
         t |> success(text |> contains("    return sum + prog_counter\n"), text)
         t |> equal(join(res.renamed, "\n"), "geo.c: biased -> geo_biased\ngeo.c: bump -> geo_bump1\ngeo.c: counter -> geo_counter\ngeo.c: flavor -> geo_flavor1\ngeo.c: flavor_twice -> geo_flavor_twice\ngeo.c: header_bias -> geo_header_bias\nparity.c: biased -> parity_biased\nparity.c: flavor -> parity_flavor1\nparity.c: flavor_twice -> parity_flavor_twice\nparity.c: header_bias -> parity_header_bias\nprog.c: biased -> prog_biased\nprog.c: bump -> prog_bump\nprog.c: counter -> prog_counter\nprog.c: flavor_twice -> prog_flavor_twice\nprog.c: header_bias -> prog_header_bias")
@@ -314,7 +314,7 @@ def test_names(t : T?) {
         }
         // the renamed static passes the local that already spells `a_count`
         occurs(t, text, "var private a_count1 : int = 7\n", 1)
-        t |> success(text |> contains("    var a_count : int = 1\n    return a_count1 + a_count + helper(2)"), text)
+        t |> success(text |> contains("    let a_count : int = 1\n    return a_count1 + a_count + helper(2)"), text)
         // a static named like a mapped libc function is renamed, and the other unit's calls reach libc
         for (needle in ["def private a_abs(", "def private a_strlen(", "def private a_rand :"]) {
             occurs(t, text, needle, 1)
