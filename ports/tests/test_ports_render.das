@@ -623,7 +623,7 @@ def test_variants(t : T?) {
         fast.criteria_from = "the row `lua@fn-macros-expand` of metrics/criteria_linux.json"
         fast.speed_fallback["exe"] = 2.8lf
         fast.speed_from = "the latest capture, of another conversion"
-        var columns : array<VariantColumn> <- [<-readable, <-fast]
+        var columns : array<VariantColumn> <- [ <- readable, <- fast]
         let text = render_variants(columns, true)
         t |> success(text |> starts_with("- `readable/` - for reading and changing the code: Boris, and the weak-model add-a-feature check.\n- `fast/` - for running.\n"), text)
         t |> equal(join(row_of(text, "`fn_macros`"), "|"), "`fold`|`expand`")
