@@ -2175,6 +2175,46 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   A hit is within 0.03 of the point, or inside the stated range. A lane where B is slower than A by more than 3%
   is a NEEDS RULING.
 
+  Done 2026-11-13, box PC: one `heavy --exclusive` job, machine quiet (1%), 06:14-07:14Z, 903 runs, none failed.
+  The B/A medians:
+  - Doom interp: 0.948 / 0.945 / 0.944 (demo1 45.8x -> 43.4x native). Doom JIT: 0.983 / 0.990 / 0.997.
+  - Lua interp: fib 0.987, nbody 1.005, spectral_norm 0.984, binary_trees 1.005.
+  - Lua JIT: 1.011 / 1.028 / 1.042 / 1.032.
+  - Kernels interp: sieve 0.782 (`<=` range loops), blit 0.863, str_copy 0.910, compound_lit 0.946,
+    first_member 0.965, switch_local 1.050. Every other kernel cell is 0.99-1.01, but the slower cells
+    listed below and two noise cells (va_forward JIT 0.856, setjmp_general JIT 1.171).
+  - Kernels exe: compound_lit 1.114 and sieve 1.066, steady in every sample.
+  - binjgb JIT 1.033; h264bsd-mp4 JIT 0.995.
+
+  The fold, C/B:
+  - Lua interp: fib 1.009, nbody 0.992, spectral_norm 0.988, binary_trees 0.981. This is the re-gate's band.
+  - Lua JIT: 0.995 / 0.981 / 0.957 / 0.997. The fold carries the JIT cost: C/A is 1.006 / 1.009 / 0.997 / 1.030,
+    and the re-gate measured JIT 1.007-1.041.
+  - Doom: 0.986-1.002 on both lanes.
+
+  `ptr_diff`, heap form: native -O3 0.0477 s and -O2 0.0478 s, das JIT 0.128 s (2.69x), interp 1.995 s (41.8x).
+  This replaces F86's void 33x. The finding stands at 2.7x: a call to `i_das_ptr_diff` and a division per
+  difference.
+
+  Predictions: 68 of 84 hit, plus the `ptr_diff` ratio.
+  - Faster than predicted: five kernels' interp cells, from P9.9's steps and P9.23's ranges under the
+    interpreter.
+  - Slower than predicted: Lua interp fib and nbody (0.95 predicted; the forms barely touch `luaV_execute`), Lua JIT
+    binary_trees and spectral_norm (the fold), and the cells below.
+
+  Two cells are noise:
+  - va_forward JIT has P9.8's position effect: whichever arm runs first takes 4.9-5.1 ms, the second 4.0-4.3 ms.
+  - setjmp_general JIT is bimodal in both arms (1.76-1.79 / 2.08-2.11 ms), and mode-matched it is 1.00.
+
+  NEEDS RULING (B slower than A by more than 3%, steady in every sample and position):
+  - Lua JIT spectral_norm 1.042 and nbody 1.028 from the fold. P9.25 predicted 1.00.
+  - compound_lit exe 1.114 (`row++`, `range(s.n)`) and sieve exe 1.066 (`range(2, n + 1)`): AOT only, with
+    the JIT flat or faster.
+  - switch_local interp 1.050: `c_switch(op & 3)` against the spelled `let _cond` if-chain.
+  - binjgb JIT 1.033, form not isolated.
+
+  Raw: `/root/notes/parallel/ph2b_ab/` (ab.txt, raw/, summary.md, prep.sh, ab.sh, summarize.py).
+
 ## P6 — Doom
 
 **Goal: the metric.**
