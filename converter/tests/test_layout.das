@@ -237,6 +237,57 @@ def test_single_layout(t : T?) {
     rmdir_rec(work_root)
 }
 
+let HEADERS = "converter/tests/fixtures/p9_fn_headers"
+
+// the C files of the header macros fixture, in link order
+def private header_paths : array<string> => <- ["{HEADERS}/main.c", "{HEADERS}/area.c"]
+
+// P9.22: a header macro's one public def in the header's module, or private defs per using module
+[test]
+def test_header_macros(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_layout_header_macros", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("a header macro naming only its header's record and constants is one public def there, after the constants it names; one calling a unit's function is private to each using module") @(t : T?) {
+        let paths <- header_paths()
+        let res <- converted(paths, "headers", "source")
+        if (!res.ok) {
+            t |> failure(res.error)
+            return
+        }
+        let header = text_of("headers", "shape_h.das")
+        t |> success(header |> contains("let private FACTOR = 3\n\n// shape.h:16: #define SETX(p, v) ((p)->x = (v))\n[c_macro]\ndef SETX(var p; v) \{\n"), header)
+        t |> success(header |> contains("[c_macro]\ndef PX(p) => p.x\n"), header)
+        t |> success(header |> contains("[c_macro]\ndef SCALE(v) => v * FACTOR\n"), header)
+        t |> success(header |> contains("[c_macro]\ndef SUM2(p) => PX(p) + p.y\n"), header)
+        t |> success(!(header |> contains("NOTED")) && !(header |> contains("BUMP")), header)
+        for (rel in ["main.das", "area.das"]) {
+            let unit = text_of("headers", rel)
+            occurs(t, unit, "def private NOTED(v) => note(v) + 1\n", 1)
+            t |> success(!(unit |> contains("def private PX")) && !(unit |> contains("def private SCALE")) && !(unit |> contains("def private SETX")), unit)
+            // `[c_macro]` spells SCALE's body at the call: the module calling it holds FACTOR too
+            occurs(t, unit, "let private FACTOR = 3\n", 1)
+        }
+        // BUMP passes its `p` to the header def's `var p` (`hosted_var`): `var` too
+        let area_text = text_of("headers", "area.das")
+        t |> success(area_text |> contains("[c_macro]\ndef private BUMP(var p) \{\n    SETX(p, count + 4)\n\}\n"), area_text)
+        let main_text = text_of("headers", "main.das")
+        t |> success(main_text |> contains("SUM2(addr(q)), SCALE(q.y), NOTED(q.x))"), main_text)
+        agrees(t, paths, res.das_path, "interp", "headers")
+        agrees(t, paths, res.das_path, "jit", "headers")
+    }
+    t |> run("in the single layout every def is private to its one module") @(t : T?) {
+        let paths <- header_paths()
+        let res <- converted(paths, "headers_single", "single")
+        t |> equal(res.ok, true, res.error)
+        for (name in ["PX", "SCALE", "SUM2", "SETX", "BUMP", "NOTED"]) {
+            t |> success(res.das_text |> contains("def private {name}("), res.das_text)
+        }
+        agrees(t, paths, res.das_path, "interp", "headers_single")
+    }
+    rmdir_rec(work_root)
+}
+
 [test]
 def test_type_cluster(t : T?) {
     var dir_error : string

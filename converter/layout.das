@@ -104,9 +104,9 @@ let TYPES_STEM = "c_types"
 def private owned_kind(t : CirType) : bool =>
     (t.k == "struct" || t.k == "union" || t.k == "enum") && t.spell != "va_list" && t.name != JMP_BUF
 
-// the records and enums type `t` spells, through pointers, arrays, functions and typedefs (a
-// record's fields are its own owner's)
-def private spelled_types(types : array<CirType>; t : int; var out : table<int>) {
+//! The records and enums type `t` spells, through pointers, arrays, functions and typedefs (a
+//! record's fields are its own owner's).
+def spelled_types(types : array<CirType>; t : int; var out : table<int>) {
     if (t < 0 || t >= length(types)) {
         return
     }
