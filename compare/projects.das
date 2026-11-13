@@ -13,6 +13,7 @@ require ../suites/suite_files.das
 require ../perf/perf_lanes.das
 require ../perf/perf_measure.das
 require ../metrics/readability_count.das
+require ../ports/variants.das
 require rust_translator
 require suite_compare
 require perf_compare
@@ -44,7 +45,7 @@ let PROJECT_TRANSLATE_TIMEOUT = 600.0
 //! native builds into `native_sources` and `native_bench_sources`; `bench_free_keys` are the keys of the lines the bench unit
 //! prints with a value of its own and the prefixes of the keys it prints beyond the expected
 //! output, `bench_omitted_keys` the keys of the expected lines it does not print
-//! (`bench_disagreement`).
+//! (`bench_disagreement`); `ours_variant` the variant our side converts under (none by default: no knob).
 struct Project {
     name : string
     dir : string
@@ -68,6 +69,7 @@ struct Project {
     functions : array<string>
     bench_free_keys : array<string>
     bench_omitted_keys : array<string>
+    ours_variant : Variant
 }
 
 //! A lane's verdict: `pass`, else `refused`, `compile`, `exit`, `output`, `timeout` or `skipped`,
@@ -584,7 +586,8 @@ def private absolute_include(p : Project; name : string) : string {
 //! Our side of one unit of `p`, or of its units (`units`, a program in the source layout):
 //! converted under `linux` into `out_dir` with a sidecar `<out_dir>/<name>.c2das` of the project's
 //! defines and `ours_defines`, its include folders, its forced includes (`-include` in
-//! `clang_extra`) and the project folder as the program root, each path absolute; the entry module
+//! `clang_extra`) and the project folder as the program root, each path absolute, with the knobs of
+//! `p.ours_variant` set (`ports/ARCHITECTURE_VARIANTS.md`; none by default); the entry module
 //! with every file written into `files`, or "" with `refusal` the converter's first line. The
 //! ports publisher converts a project through it too.
 def ours_module(p : Project; tu, out_dir : string; units : array<string>; var refusal : string&; var files : array<string>) : string {
@@ -594,7 +597,10 @@ def ours_module(p : Project; tu, out_dir : string; units : array<string>; var re
     let include_files <- [for (i, a in range(length(p.clang_extra)), p.clang_extra); absolute_include(p, a); where i > 0 && p.clang_extra[i - 1] == "-include"]
     var defines := p.defines
     defines |> push_from(p.ours_defines)
-    fwrite(sidecar, write_json(JV({"defines" => JV(defines), "include_dirs" => JV(include_dirs), "include_files" => JV(include_files), "program_root" => JV(absolute_path(p.dir))})))
+    var js = JV({"defines" => JV(defines), "include_dirs" => JV(include_dirs), "include_files" => JV(include_files), "program_root" => JV(absolute_path(p.dir))})
+    overlay_knobs(js, p.ours_variant)
+    fwrite(sidecar, write_json(js))
+    delete_json(js)
     var res <- empty(units) ? convert(project_path(p, tu), out_dir, "linux", "", sidecar) : convert_program([for (u in units); project_path(p, u)], out_dir, "linux", "", sidecar)
     refusal = res.ok ? "" : first_line(res.error)
     delete files

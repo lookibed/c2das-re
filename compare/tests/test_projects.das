@@ -13,6 +13,7 @@ require ../../perf/perf_lanes.das
 require ../../perf/perf_measure.das
 require ../perf_compare.das
 require ../projects.das
+require ../../ports/variants.das
 require ../../metrics/criteria_file.das
 require ../compare_render.das
 require _common
@@ -765,6 +766,30 @@ def test_project_run(t : T?) {
 }
 
 [test]
+def test_project_variant(t : T?) {
+    t |> run("--variant: another project's variant, one without --out and a malformed file are refused") @(t : T?) {
+        t |> with_scratch("cmp_projects_variant") $(dir) {
+            let bin = path_join(dir, "rust")
+            write_script(bin, "#!/bin/sh\nexit 0\n")
+            mkdir_rec(path_join(dir, "tests/manual/wasm3/src"))
+            fwrite(path_join(dir, "tests/manual/wasm3/src/all_host.c"), "int main(void) \{ return 0; \}\n")
+            var out : string
+            with_env(bin, dir) {
+                fwrite(path_join(dir, "binjgb.fast.json"), "\{\"knobs\": \{\}\}")
+                t |> equal(run_compare(["--project", "wasm3", "--variant", path_join(dir, "binjgb.fast.json"), "--out", path_join(dir, "r.json")], out), 1, out)
+                t |> success(out |> contains("--variant: {dir}/binjgb.fast.json is a variant of binjgb, not of wasm3"), out)
+                fwrite(path_join(dir, "wasm3.fast.json"), "\{\"knobs\": \{\}\}")
+                t |> equal(run_compare(["--project", "wasm3", "--variant", path_join(dir, "wasm3.fast.json")], out), 1, out)
+                t |> success(out |> contains("--variant needs --out: the committed capture holds the default conversion"), out)
+                fwrite(path_join(dir, "wasm3.readable.json"), "\{\"knobs\": 1\}")
+                t |> equal(run_compare(["--project", "wasm3", "--variant", path_join(dir, "wasm3.readable.json"), "--out", path_join(dir, "r.json")], out), 1, out)
+                t |> success(out |> contains("`knobs` is an object of sidecar keys"), out)
+            }
+        }
+    }
+}
+
+[test]
 def test_project_run_native_sources(t : T?) {
     t |> run("--project h264bsd-mp4 over a stand-in: the native build from the case's own C files, not the unit") @(t : T?) {
         t |> with_scratch("cmp_projects_h264") $(dir) {
@@ -886,6 +911,16 @@ def test_convert_project(t : T?) {
             var whole <- convert_project(p, work)
             t |> equal(whole.refusal, "")
             t |> success(empty(whole.per_file) && length([for (f in whole.files); f; where f |> ends_with(".das")]) == 2, join(whole.files, " "))
+            // under a variant our side's sidecar carries its knobs
+            t |> success(!(fread(path_join(work, "whole/p.c2das")) |> contains("checks")))
+            fwrite(path_join(dir, "p.fast.json"), "\{\"knobs\": \{\"checks\": \{\"value\": \"off\", \"reason\": \"r\"\}\}\}")
+            var error : string
+            p.ours_variant <- read_variant(path_join(dir, "p.fast.json"), error)
+            t |> equal(error, "")
+            var fast <- convert_project(p, work)
+            t |> equal(fast.refusal, "")
+            t |> success(fread(path_join(work, "whole/p.c2das")) |> contains("\"checks\" : \"off\""), fread(path_join(work, "whole/p.c2das")))
+            t |> success(length([for (f in fast.files); f; where f |> ends_with(".das") && fread(f) |> contains("unsafe_deref")]) == 2, join(fast.files, " "))
         }
     }
 }

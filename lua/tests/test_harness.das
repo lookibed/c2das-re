@@ -345,6 +345,35 @@ def test_switch_dispatch(t : T?) {
     }
 }
 
+[test]
+def test_variant(t : T?) {
+    t |> run("--variant converts under lua.c2das with the variant's knobs set, into work/variants/<variant>/, never over the default conversion") @(t : T?) {
+        let cases = join([for (v in range(8)); "case {v}: return {v + 40};"], " ")
+        let root = stand_in_root("c2das_lua_variant", "#include \"lua.h\"\nstatic int pick(int x) \{ switch (x) \{ {cases} \} return 0; \}\nint lua_answer(void) \{ return pick(1); \}\n")
+        t |> success(!empty(root))
+        fwrite(path_join(root, "lua.fast.json"), "\{\"knobs\": \{\"switch_dispatch\": \{\"value\": \"goto\", \"reason\": \"r\"\}\}\}")
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua", "--layout", "single", "--variant", "lua.fast.json"]), out), 0, out)
+        t |> success(fread(path_join(root, "lua/work/variants/fast/single/lua/lua.das")) |> contains("goto _cond + 1\n"), out)
+        t |> success(fread(path_join(root, "lua/work/variants/fast/lua.c2das")) |> contains("\"switch_dispatch\" : \"goto\""), out)
+        t |> success(!fexist(path_join(root, "lua/work/single/lua/lua.das")), out)
+        rmdir_rec(root)
+    }
+    t |> run("a variant of another program, or a value the converter refuses, is refused before any conversion") @(t : T?) {
+        let root = stand_in_root("c2das_lua_variant_refused", LOBJECT)
+        t |> success(!empty(root))
+        fwrite(path_join(root, "doom.fast.json"), "\{\"knobs\": \{\}\}")
+        fwrite(path_join(root, "lua.readable.json"), "\{\"knobs\": \{\"checks\": \{\"value\": \"never\", \"reason\": \"r\"\}\}\}")
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua", "--variant", "doom.fast.json"]), out), 1, out)
+        t |> success(out |> contains("lua: --variant: doom.fast.json is a variant of doom, not of lua"), out)
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua", "--variant", "lua.readable.json"]), out), 1, out)
+        t |> success(out |> contains("lua: --variant: lua.readable: ") && out |> contains("`checks`"), out)
+        t |> success(!fexist(path_join(root, "lua/work/lua")) && !fexist(path_join(root, "lua/work/variants/readable/lua")), out)
+        rmdir_rec(root)
+    }
+}
+
 // a stand-in interpreter whose stream differs from run to run: it appends a byte to the file at
 // `path` and prints its last argument, to stderr on an odd run (the native build's, which runs
 // first) and to stdout on an even one: the merged outputs agree, the streams do not

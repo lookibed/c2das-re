@@ -22,6 +22,7 @@ require ../perf/boxes.das
 require ../perf/perf_lanes.das
 require ../perf/perf_cli.das
 require ../lua/sources.das
+require ../ports/variants.das
 
 //! The head-to-head with the Rust translator from the repository root: `--suites` runs it over
 //! the three suites' inputs and writes the `suites` section of `compare/results_linux.json`,
@@ -56,6 +57,9 @@ struct CompareArgs {
     @clarg_doc = "the GiB of address space each measured run of --project may map (default 6); 0 for no cap"
     @clarg_name = "as"
     address_space : int = 6
+    @clarg_name = "variant"
+    @clarg_doc = "a variant file of the --project (ports/variants/<project>.<variant>.json): our side converts under its knobs; needs --out, since the committed capture holds the default conversion"
+    variant_file : string = ""
     @clarg_doc = "the folder --project writes its work into, one subfolder per project (default compare/work/projects)"
     work : string = ""
     @clarg_doc = "rewrite the comparison rendered from the capture between the compare markers of README.md"
@@ -244,6 +248,19 @@ def run_project(args : CompareArgs; out : string) : int {
     if (!fexist(project_path(p, p.tu))) {
         to_log(LOG_ERROR, "no {project_path(p, p.tu)}: the Rust checkout {checkout} lacks the project\n")
         return 2
+    }
+    if (!empty(args.variant_file)) {
+        var error : string
+        p.ours_variant <- read_variant(args.variant_file, error)
+        if (empty(error) && p.ours_variant.program != p.name) {
+            error = "{args.variant_file} is a variant of {p.ours_variant.program}, not of {p.name}"
+        } elif (empty(error) && empty(args.out)) {
+            error = "--variant needs --out: the committed capture holds the default conversion"
+        }
+        if (!empty(error)) {
+            to_log(LOG_ERROR, "--variant: {error}\n")
+            return 1
+        }
     }
     let expected_error = load_expected(p)
     if (!empty(expected_error)) {

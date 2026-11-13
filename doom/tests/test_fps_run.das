@@ -200,3 +200,28 @@ def test_run_das(t : T?) {
         t |> success(!(out |> contains("demo1")), out)
     }
 }
+
+[test]
+def test_variant(t : T?) {
+    let dir = scratch("doom_run_variant")
+    mkdir_rec(path_join(dir, "doom"))
+    fwrite(path_join(dir, "doom/doom.c2das"), "\{\"defines\": [\"DOOM_TIC_CHECKSUM\"]\}\n")
+    fwrite(path_join(dir, "puredoom.fast.json"), "\{\"knobs\": \{\"checks\": \{\"value\": \"off\", \"reason\": \"r\"\}\}\}")
+    t |> run("--variant writes the variant's sidecar and runs its conversion under work/variants/<variant>/; --fps writes its capture there") @(t : T?) {
+        var out : string
+        t |> equal(run_das(dir, ["--run", "--demo", "1", "--variant", "puredoom.fast.json"], out), 1)
+        t |> success(out |> contains("interp demo1 on freedoom2.wad: no doom/work/variants/fast/source/doom_main.das; run --convert"), out)
+        t |> success(fread(path_join(dir, "doom/work/variants/fast/doom.c2das")) |> contains("\"checks\" : \"off\""), out)
+        t |> equal(run_das(dir, ["--run", "--fps", "--demo", "1", "--tiers", "interp", "--samples", "1", "--variant", "puredoom.fast.json"], out), 1)
+        t |> success(out |> contains("demo1, interp: sync build: no doom/work/variants/fast/source/doom_main.das"), out)
+        t |> success(fexist(path_join(dir, "doom/work/variants/fast/results_linux.json")) && !fexist(path_join(dir, "doom/results_linux.json")), out)
+    }
+    t |> run("a variant of another program is refused before any run") @(t : T?) {
+        fwrite(path_join(dir, "lua.fast.json"), "\{\"knobs\": \{\}\}")
+        var out : string
+        t |> equal(run_das(dir, ["--run", "--demo", "1", "--variant", "lua.fast.json"], out), 1)
+        t |> success(out |> contains("doom: --variant: lua.fast.json is a variant of lua, not of puredoom"), out)
+        t |> success(!(out |> contains("demo1")), out)
+    }
+    rmdir_rec(dir)
+}

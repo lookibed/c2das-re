@@ -18,6 +18,7 @@ require convert_check
 require demo_run
 require fps
 require fps_run
+require ../ports/variants.das
 require ../perf/perf_lanes.das
 
 //! The PureDOOM harness: `--fetch-check` checks `doom/fetch.sh`'s tree and wad against the pins,
@@ -82,6 +83,9 @@ struct Args {
     samples : int = 3
     @clarg_doc = "rewrite README.md's Doom fps section from doom/results_linux.json"
     readme : bool
+    @clarg_name = "variant"
+    @clarg_doc = "a variant file of PureDOOM (ports/variants/puredoom.<variant>.json): convert under doom/doom.c2das with the variant's knobs set, written to doom/work/variants/<variant>/doom.c2das; the conversions, the runs of them and --fps's capture then under doom/work/variants/<variant>/"
+    variant_file : string = ""
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -124,18 +128,18 @@ def private sidecar_defines(form : string; var error : string&) : array<string> 
     return <- defines
 }
 
-// the sidecar a conversion of `form` takes: SIDECAR itself for the sync build, else written into
-// WORK, with TRACE_DEFINE first among its defines for the traced build, without CHECKSUM_DEFINE for
+// the sidecar a conversion of `form` takes: `base` (SIDECAR or the variant's) itself for the sync
+// build, else written into `root`, with TRACE_DEFINE first among its defines for the traced build, without CHECKSUM_DEFINE for
 // the speed build; "" with `error` set when it cannot be written
-def private form_sidecar(form : string; var error : string&) : string {
+def private form_sidecar(root, base, form : string; var error : string&) : string {
     if (empty(form)) {
-        return SIDECAR
+        return base
     }
-    mkdir_rec(WORK)
-    let path = path_join(WORK, "doom-{form}.c2das")
-    let text = form == "trace" ? with_define(fread(SIDECAR), TRACE_DEFINE, error) : without_define(fread(SIDECAR), CHECKSUM_DEFINE, error)
+    mkdir_rec(root)
+    let path = path_join(root, "doom-{form}.c2das")
+    let text = form == "trace" ? with_define(fread(base), TRACE_DEFINE, error) : without_define(fread(base), CHECKSUM_DEFINE, error)
     if (!empty(error)) {
-        error = "{SIDECAR}: {error}"
+        error = "{base}: {error}"
     } elif (!fwrite(path, text)) {
         error = "cannot write {path}"
     }
@@ -209,15 +213,44 @@ def private write_traces(path : string; traces : array<string>) : bool {
     return !empty(traces)
 }
 
-// the folder a conversion of `form` in `layout` writes
-def private layout_dir(layout, form : string) : string => path_join(WORK, empty(form) ? layout : "{layout}-{form}")
+// the folder a conversion of `form` in `layout` writes under `root`
+def private form_dir(root, layout, form : string) : string => path_join(root, empty(form) ? layout : "{layout}-{form}")
+
+// the folder the conversions sit in: WORK, or under `--variant` its `variants/<variant>/`
+def private root_of(args : Args) : string {
+    let stem = trim_suffix(base_name(args.variant_file), ".json")
+    return empty(args.variant_file) ? WORK : path_join(WORK, "variants/{slice(stem, rfind(stem, ".") + 1)}")
+}
+
+// the sidecar the conversions take: SIDECAR, or under `--variant` the variant's, written by `main`
+def private sidecar_of(args : Args) : string => empty(args.variant_file) ? SIDECAR : path_join(root_of(args), "doom.c2das")
+
+// the variant's sidecar written where `sidecar_of` names it; true without `--variant`, false with
+// the refusal logged
+def private write_variant_sidecar(args : Args) : bool {
+    if (empty(args.variant_file)) {
+        return true
+    }
+    var error : string
+    let v <- read_variant(args.variant_file, error)
+    if (empty(error) && v.program != "puredoom") {
+        error = "{args.variant_file} is a variant of {v.program}, not of puredoom"
+    }
+    if (empty(error)) {
+        variant_sidecar(v, SIDECAR, sidecar_of(args), error)
+    }
+    if (!empty(error)) {
+        to_log(LOG_ERROR, "doom: --variant: {error}\n")
+    }
+    return empty(error)
+}
 
 // the converted program of `layout` run under `tier` on `demo` over `wad` and held to its reference
 // log; true when every compared tic is in sync. With `trace` the traced conversion runs, its trace
 // lines written to TRACES and held to the native run's as its tic lines are to the reference: a
 // missing native trace or a traced desync fails the run too.
-def private run_converted_demo(layout, tier : string; demo, tics, timeout : int; wad : string; trace : bool) : bool {
-    let spec <- DemoSpec(entry = path_join(layout_dir(layout, form_of(trace, false)), "doom_main.das"), tier = tier, wad = wad, demo = demo, tics = tics, timeout = float(timeout), work = WORK, ref_dirs <- clone_to_move(REF_DIRS), module_dirs <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)])
+def private run_converted_demo(root, layout, tier : string; demo, tics, timeout : int; wad : string; trace : bool) : bool {
+    let spec <- DemoSpec(entry = path_join(form_dir(root, layout, form_of(trace, false)), "doom_main.das"), tier = tier, wad = wad, demo = demo, tics = tics, timeout = float(timeout), work = WORK, ref_dirs <- clone_to_move(REF_DIRS), module_dirs <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)])
     let run = run_converted(spec)
     for (line in run_report(spec, run)) {
         to_log(LOG_INFO, "doom: {line}\n")
@@ -251,7 +284,7 @@ def private git_line(args : array<string>) : string {
 // `--fps`: the plan of `args` over `demos`, the capture stamped with this tree's commit and this
 // machine, timed by `time_demos` into FPS_CAPTURE
 def private time_flags(args : Args; tiers : array<string>; demos : array<int>; wad : string) : bool {
-    let plan <- FpsPlan(sync_native = NATIVE, sync_entry = path_join(layout_dir(args.layout, ""), "doom_main.das"), native = native_path("speed"), entry = path_join(layout_dir(args.layout, "speed"), "doom_main.das"), wad = wad, work = WORK, ref_dirs <- clone_to_move(REF_DIRS), module_dirs <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)], tiers <- clone_to_move(tiers), demos <- clone_to_move(demos), samples = args.samples, timeout = args.timeout, capture_path = FPS_CAPTURE)
+    let plan <- FpsPlan(sync_native = NATIVE, sync_entry = path_join(form_dir(root_of(args), args.layout, ""), "doom_main.das"), native = native_path("speed"), entry = path_join(form_dir(root_of(args), args.layout, "speed"), "doom_main.das"), wad = wad, work = WORK, ref_dirs <- clone_to_move(REF_DIRS), module_dirs <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)], tiers <- clone_to_move(tiers), demos <- clone_to_move(demos), samples = args.samples, timeout = args.timeout, capture_path = empty(args.variant_file) ? FPS_CAPTURE : path_join(root_of(args), "results_linux.json"))
     var clang, daslang : string
     tool_versions(clang, daslang)
     let platform = "{get_platform_name()} {strip(captured(["uname", "-m"]))}"
@@ -287,21 +320,21 @@ def private report(what : string; verdicts : array<Verdict>) : bool {
 }
 
 // the program staged in `doom/work/src/`, each unit converted alone, then the program in `layout`
-def private convert_doom(layout, form : string) : bool {
+def private convert_doom(root, base, layout, form : string) : bool {
     var error : string
     let c_paths <- stage_program(SOURCES, HOST, path_join(WORK, "src"), UNITS, error)
     if (!empty(error)) {
         to_log(LOG_ERROR, "doom: {error}\n")
         return false
     }
-    let sidecar = form_sidecar(form, error)
+    let sidecar = form_sidecar(root, base, form, error)
     let side <- empty(error) ? read_sidecar(sidecar, error) : Sidecar()
     if (!empty(error)) {
         to_log(LOG_ERROR, "doom: {error}\n")
         return false
     }
     let units_ok = report("unit", convert_units(c_paths, side))
-    let res <- convert_program(c_paths, layout_dir(layout, form), TARGET, "", sidecar, "", "", "main", layout)
+    let res <- convert_program(c_paths, form_dir(root, layout, form), TARGET, "", sidecar, "", "", "main", layout)
     if (!res.ok) {
         to_log(LOG_INFO, "doom: program ({layout}): {first_error_line(res.error)}\n")
         to_log(LOG_INFO, "doom: program ({layout}) blocked by: {classify(first_error_line(res.error))}\n")
@@ -335,8 +368,11 @@ def main : int {
         return 1
     }
     let form = form_of(args.trace, args.speed)
-    let converted = !args.convert || convert_doom(args.layout, form)
-    let compiled = !args.compile_check || report("module", compile_modules(layout_dir(args.layout, form), CONVERTED_MODULES, 600.0))
+    if (!write_variant_sidecar(args)) {
+        return 1
+    }
+    let converted = !args.convert || convert_doom(root_of(args), sidecar_of(args), args.layout, form)
+    let compiled = !args.compile_check || report("module", compile_modules(form_dir(root_of(args), args.layout, form), CONVERTED_MODULES, 600.0))
     let wad = empty(args.wad) ? FREEDOOM2 : args.wad
     let native_failed = (args.fetch_check && !fetch_check()) || (args.native && !build_native(form)) || (args.demo != 0 && !args.run && !run_demo(args.demo, wad, args.trace))
     let tiers <- [for (tier in split(args.tiers, ",")); strip(tier)]
@@ -345,7 +381,7 @@ def main : int {
         to_log(LOG_ERROR, "doom: {refusal}\n")
         return 1
     }
-    let played = !args.run || (args.fps ? time_flags(args, tiers, fps_demos(args.demo), wad) : run_converted_demo(args.layout, args.tier, args.demo == 0 ? 1 : args.demo, args.tics, args.timeout, wad, args.trace))
+    let played = !args.run || (args.fps ? time_flags(args, tiers, fps_demos(args.demo), wad) : run_converted_demo(root_of(args), args.layout, args.tier, args.demo == 0 ? 1 : args.demo, args.tics, args.timeout, wad, args.trace))
     let failed = !converted || !compiled || native_failed || !played || (args.readme && !readme_flag())
     return failed ? 1 : 0
 }
