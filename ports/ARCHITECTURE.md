@@ -19,7 +19,7 @@ code; this repository holds only the generator and its inputs.
   project of `compare/projects.das`'s `project_table` (section 5), then PureDOOM (`ARCHITECTURE_PUREDOOM.md`),
   each program in a process of its own (`ARCHITECTURE_RUN.md`); the variant files, `ARCHITECTURE_VARIANTS.md`.
 - `ports_render.das` - the text: the capture records, the startup, work, times, ratio and not-yet
-  text of a capture, the projects table and the top-level README below its marker, the license
+  text of a capture, the variants table (`ARCHITECTURE_VARIANTS.md`), the projects table and the top-level README below its marker, the license
   block of a C header, and the `VERSIONS.md` pin of a program. It measures nothing and reads no file.
 - `lua/bench/*.lua` - the Lua benchmark workloads (`fib`, `binary_trees`, `nbody`,
   `spectral_norm`): plain scripts that print their result, take their size from `arg[1]` and

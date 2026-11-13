@@ -8,6 +8,7 @@ require daslib/strings_boost
 require daslib/md_boost
 require ../perf/boxes.das
 require ../metrics/criteria_file.das
+require variants
 
 //! The text of the ports repository: a program's perf tables rendered from its capture, the
 //! projects table of the top-level README from every program's latest capture, the license block
@@ -686,6 +687,127 @@ def render_programs(programs : array<string>; failures : array<string>) : string
             for (f in failures) {
                 w |> write("- {f}\n")
             }
+        }
+    }
+}
+
+//! what each variant is for, the line a program's README gives its directory
+let VARIANT_USES <- {"readable" => "for reading and changing the code: Boris, and the weak-model add-a-feature check", "fast" => "for running"}
+
+//! One variant's column of a program's variants table: the variant file read (its knobs and the
+//! search's `results`), the das lines of the tree published for it and of Lua's `luaV_execute` there
+//! (0 for a program without it), and the numbers shown where `results` has none, each with the label
+//! of the capture it comes from: the criteria total (0 for none) and the per-tier x native (a tier
+//! absent for none).
+struct VariantColumn {
+    file : Variant
+    das_lines : int
+    execute_lines : int
+    criteria_fallback : double
+    criteria_from : string
+    speed_fallback : table<string; double>
+    speed_from : string
+}
+
+// a knob's JSON value as the table shows it: a string without its quotes, a list `[]` when empty
+def private knob_text(value : string) : string => value |> starts_with("\"") ? "`{slice(value, 1, length(value) - 1)}`" : "`{value}`"
+
+// the value of knob `key` in `v`, `-` when the variant does not set it
+def private knob_of(v : Variant; key : string) : string {
+    for (k in v.knobs) {
+        if (k.key == key) {
+            return knob_text(k.value)
+        }
+    }
+    return "-"
+}
+
+// `text` with the mark of the capture `source` names, `source` numbered in `labels` at its first use
+def private marked(text, source : string; var labels : array<string>) : string {
+    if (empty(source)) {
+        return text
+    }
+    var at = find_index(labels, source)
+    if (at < 0) {
+        labels |> push(source)
+        at = length(labels) - 1
+    }
+    return "{text} ({at + 1})"
+}
+
+// the cell of a number: `value` when the search recorded its section (not yet for a tier it left
+// out), else `fallback` marked with the capture it is from, else not yet
+def private number_cell(searched : bool; value, fallback : double; from, format : string; var labels : array<string>) : string {
+    if (searched) {
+        return value > 0.0lf ? fmt(format, value) : NOT_YET
+    }
+    return fallback > 0.0lf ? marked(fmt(format, fallback), from, labels) : NOT_YET
+}
+
+//! The variants section of a program's README: what each variant's directory is for, the table of
+//! the variants side by side (each knob, the criteria total, the das time over native per tier, the
+//! das lines of the published tree and with `execute_row` Lua's `luaV_execute`), then where every
+//! number comes from: the search's commit, date and command, and each capture a number falls back to
+//! where the search recorded none, numbered.
+[arch(at="ARCHITECTURE_VARIANTS.md#variant-tables")]
+def render_variants(columns : array<VariantColumn>; execute_row : bool) : string {
+    var labels : array<string>
+    var headers <- [""]
+    headers |> push_from([for (c in columns); "`{c.file.name}/`"])
+    var rows : array<array<string>>
+    for (key in VARIANT_KNOBS) {
+        var inscope row <- ["`{key}`"]
+        row |> push_from([for (c in columns); knob_of(c.file, key)])
+        rows |> emplace(row)
+    }
+    var inscope criteria <- ["Criteria total, %"]
+    for (c in columns) {
+        let r & = c.file.results
+        criteria |> push(number_cell(r.has_criteria, r.criteria.total, c.criteria_fallback, c.criteria_from, ":.1f", labels))
+    }
+    rows |> emplace(criteria)
+    for (tier in SPEED_TIERS) {
+        var inscope row <- ["x native, {lane_title(tier)}"]
+        for (c in columns) {
+            let r & = c.file.results
+            row |> push(number_cell(r.has_speed, r.speed.x_native?[tier] ?? 0.0lf, c.speed_fallback?[tier] ?? 0.0lf, c.speed_from, ":.2f", labels))
+        }
+        rows |> emplace(row)
+    }
+    var inscope das <- ["das lines"]
+    das |> push_from([for (c in columns); "{c.das_lines}"])
+    rows |> emplace(das)
+    if (execute_row) {
+        var inscope execute <- ["`luaV_execute` lines"]
+        execute |> push_from([for (c in columns); c.execute_lines > 0 ? "{c.execute_lines}" : NOT_YET])
+        rows |> emplace(execute)
+    }
+    return build_string() $(var w) {
+        for (c in columns) {
+            w |> write("- `{c.file.name}/` - {VARIANT_USES?[c.file.name] ?? c.file.name}.\n")
+        }
+        w |> write("\nEach variant converts the same program under its own knobs (c2das-re's `ports/variants/`, copied as its `variant.json` with the reason and the numbers behind each knob). ")
+        w |> write("x native is the das time over the native build's, above 1 when slower; the lines are the published tree's.\n\n")
+        w |> write(table_of(headers, rows, 1))
+        var sources : array<string>
+        for (c in columns) {
+            let r & = c.file.results
+            if (r.has_criteria) {
+                let row = empty(r.criteria.row) ? "" : ", row `{r.criteria.row}`"
+                sources |> push("- `{c.file.name}/` criteria: its search{row}, at c2das-re `{slice(r.criteria.commit, 0, 12)}` ({r.criteria.date})" + (empty(r.criteria.command) ? "." : ", `{r.criteria.command}`."))
+            }
+            if (r.has_speed) {
+                sources |> push("- `{c.file.name}/` speed: its search, {r.speed.over}, at c2das-re `{slice(r.speed.commit, 0, 12)}` ({r.speed.date}) on {box_label(r.speed.box, "")}, `{r.speed.command}`, an exclusive run on a quiet machine.")
+            }
+            if (!empty(r.notes)) {
+                sources |> push("- `{c.file.name}/`: {r.notes}")
+            }
+        }
+        for (source, idx in labels, count()) {
+            sources |> push("- ({idx + 1}) not from a search of the variant: {source}")
+        }
+        if (!empty(sources)) {
+            w |> write("\n" + join(sources, "\n") + "\n")
         }
     }
 }

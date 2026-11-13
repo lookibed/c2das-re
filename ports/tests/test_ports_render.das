@@ -5,6 +5,7 @@ require daslib/strings_boost
 require math
 require daslib/json_boost
 require ../ports_render.das
+require ../variants.das
 require ../../metrics/criteria_file.das
 
 //! The renderer over fixed captures: the times, ratio and not-yet text, the geometric means of
@@ -582,5 +583,66 @@ def test_project_criteria(t : T?) {
         t |> equal(project_criteria_text("wasm3", cap, false, "", "", false), "not yet: c2das-re holds no `metrics/criteria_linux.json`, the readability criteria capture.\n")
         t |> equal(project_criteria_text("wasm3", cap, true, "bad: not JSON", "", false), "not yet: bad: not JSON\n")
         t |> equal(project_criteria_text("wasm3", cap, true, "", "0123456789abcdef", false), "not yet: c2das-re's `metrics/criteria_linux.json` holds no row `project/wasm3`; `scripts/run_criteria.sh` records it.\n")
+    }
+}
+
+// a column of the variant `name` of lua with the knobs `knobs` (key, JSON value) and `lines` das lines
+def private column_of(name : string; knobs : array<tuple<string; string>>; lines : int) : VariantColumn {
+    var c = VariantColumn(das_lines = lines, execute_lines = lines / 150)
+    c.file.program = "lua"
+    c.file.name = name
+    for (k in knobs) {
+        c.file.knobs |> push(VariantKnob(key = k._0, value = k._1, reason = "r"))
+    }
+    return <- c
+}
+
+[test]
+def test_variants(t : T?) {
+    t |> run("both variants side by side: the knobs, the search's numbers, each fallback numbered by its capture, and where each comes from") @(t : T?) {
+        var readable <- column_of("readable", [("fn_macros", "\"fold\""), ("forms_off", "[]")], 120000)
+        readable.file.results.has_criteria = true
+        readable.file.results.criteria = CriteriaResult(total = 88.94lf, row = "lua", commit = "0123456789abcdef", date = "2026-11-13", command = "scripts/run_criteria.sh")
+        readable.criteria_from = "unused"
+        readable.speed_fallback["interp"] = 31.0lf
+        readable.speed_fallback["jit"] = 2.6lf
+        readable.speed_from = "the latest capture, of another conversion"
+        var fast <- column_of("fast", [("fn_macros", "\"expand\""), ("checks", "\"off\"")], 130500)
+        fast.file.results.has_speed = true
+        fast.file.results.notes = "the interpreter is faster under fn_macros expand"
+        fast.file.results.speed.over = "the geometric mean of the four benchmarks' work times"
+        fast.file.results.speed.commit = "fedcba9876543210"
+        fast.file.results.speed.date = "2026-11-14"
+        fast.file.results.speed.box = "bench"
+        fast.file.results.speed.command = "heavy --exclusive"
+        fast.file.results.speed.quiet = true
+        fast.file.results.speed.x_native["interp"] = 30.123lf
+        fast.file.results.speed.x_native["jit"] = 2.5lf
+        fast.criteria_fallback = 80.0lf
+        fast.criteria_from = "the row `lua@fn-macros-expand` of metrics/criteria_linux.json"
+        fast.speed_fallback["exe"] = 2.8lf
+        fast.speed_from = "the latest capture, of another conversion"
+        var columns : array<VariantColumn>
+        columns |> emplace(readable)
+        columns |> emplace(fast)
+        let text = render_variants(columns, true)
+        t |> success(text |> starts_with("- `readable/` - for reading and changing the code: Boris, and the weak-model add-a-feature check.\n- `fast/` - for running.\n"), text)
+        t |> equal(join(row_of(text, "`fn_macros`"), "|"), "`fold`|`expand`")
+        t |> equal(join(row_of(text, "`checks`"), "|"), "-|`off`")
+        t |> equal(join(row_of(text, "`forms_off`"), "|"), "`[]`|-")
+        t |> equal(join(row_of(text, "Criteria total, %"), "|"), "88.9|80.0 (1)")
+        t |> equal(join(row_of(text, "x native, interpreter"), "|"), "31.00 (2)|30.12")
+        t |> equal(join(row_of(text, "x native, JIT"), "|"), "2.60 (2)|2.50")
+        t |> equal(join(row_of(text, "x native, exe"), "|"), "not yet|not yet")
+        t |> equal(join(row_of(text, "x native, AOT"), "|"), "not yet|not yet")
+        t |> equal(join(row_of(text, "das lines"), "|"), "120000|130500")
+        t |> equal(join(row_of(text, "`luaV_execute` lines"), "|"), "800|870")
+        t |> success(text |> contains("- `readable/` criteria: its search, row `lua`, at c2das-re `0123456789ab` (2026-11-13), `scripts/run_criteria.sh`.\n"), text)
+        t |> success(text |> contains("- `fast/` speed: its search, the geometric mean of the four benchmarks' work times, at c2das-re `fedcba987654` (2026-11-14) on bench, `heavy --exclusive`, an exclusive run on a quiet machine.\n"), text)
+        t |> success(text |> contains("- `fast/`: the interpreter is faster under fn_macros expand\n"), text)
+        t |> success(text |> contains("- (1) not from a search of the variant: the row `lua@fn-macros-expand` of metrics/criteria_linux.json\n- (2) not from a search of the variant: the latest capture, of another conversion\n"), text)
+        t |> success(!(text |> contains("unused")), text)
+        let no_execute = render_variants(columns, false)
+        t |> equal(length(row_of(no_execute, "`luaV_execute` lines")), 0)
     }
 }
