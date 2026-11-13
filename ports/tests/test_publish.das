@@ -103,9 +103,14 @@ def private stand_in_root(name : string) : string {
     // each variant's conversion in the source layout, the layout of both committed variant files:
     // the source tree holds fragments and folders beside the entry module, and the conversion's
     // C-IR and checks, which stay out of the publish
+    // every committed variant file, the compare projects' and PureDOOM's among them
     mkdir_rec(path_join(root, "ports/variants"))
+    dir("ports/variants") $(file) {
+        if (file |> ends_with(".json")) {
+            fwrite(path_join(root, "ports/variants/{file}"), fread("ports/variants/{file}"))
+        }
+    }
     for (v in ["readable", "fast"]) {
-        fwrite(path_join(root, "ports/variants/lua.{v}.json"), fread("ports/variants/lua.{v}.json"))
         let work = path_join(root, "lua/work/variants/{v}")
         mkdir_rec(path_join(work, "lua"))
         mkdir_rec(path_join(work, "luac/sub"))
@@ -909,11 +914,19 @@ def test_projects(t : T?) {
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--program", "binjgb", "--commit"], out), 0, out)
         let readme = fread(path_join(clone, "binjgb/README.md"))
-        t |> success(readme |> contains("The program converts whole: `binjgb_all/` holds it"), readme)
-        t |> success(fexist(path_join(clone, "binjgb/binjgb_all/binjgb_all.das")), out)
+        for (v in ["readable", "fast"]) {
+            t |> success(readme |> contains("### `{v}/`\n\nThe program converts whole: `{v}/binjgb_all/` holds it"), readme)
+            t |> success(fexist(path_join(clone, "binjgb/{v}/binjgb_all/binjgb_all.das")), out)
+            let sidecar = fread(path_join(clone, "binjgb/{v}/binjgb.c2das"))
+            t |> success(sidecar |> contains("\"<c2das>/tests/manual/binjgb/include\"") && sidecar |> contains("\"fn_macros\"") && !(sidecar |> contains(root)), sidecar)
+            t |> equal(fread(path_join(clone, "binjgb/{v}/variant.json")), fread("ports/variants/binjgb.{v}.json"))
+        }
+        // the variants table: the readable column falls back to the head-to-head's entry, 4.0 s over 0.5 s
+        for (fact in ["## Variants\n\n- `readable/` - for reading", "| x native, interpreter ", " 8.00 (1) | ", "(1) not from a search of the variant: c2das-re's `compare/results_linux.json`, the project's entry measured 2029-01-01 00:00 UTC", "-jit fast/binjgb_all/binjgb_all.das -- "]) {
+            t |> success(readme |> contains(fact), "README lacks {fact}:\n{readme}")
+        }
+        t |> success(!(readme |> contains("luaV_execute")), readme)
         t |> success(fread(path_join(clone, "binjgb/LICENSE")) |> contains("upstream/binjgb/LICENSE:\n\nMIT stand-in for binjgb\n"))
-        let sidecar = fread(path_join(clone, "binjgb/binjgb.c2das"))
-        t |> success(sidecar |> contains("\"<c2das>/tests/manual/binjgb/include\"") && !(sidecar |> contains(root)), sidecar)
         t |> success(fread(path_join(clone, "binjgb/LICENSE")) |> contains("src/ and include/ of tests/manual/binjgb (the files of lookibed/c2das itself, its LICENSE):\n\nBSD stand-in\n"))
         t |> success(readme |> contains("| Ours | clang version 99 | 0.500000 |        8.00 |"), readme)
         t |> success(readme |> contains("## Readability criteria\n\nnot yet: c2das-re's `metrics/criteria_linux.json` holds no row `project/binjgb`; "), readme)
@@ -951,10 +964,11 @@ def test_projects(t : T?) {
         t |> success(wasm3 |> contains("## Readability criteria\n\nFrom c2das-re's `metrics/criteria_linux.json` (`scripts/run_criteria.sh`), its row `project/wasm3`, recorded at c2das-re `{slice(captured_at, 0, 12)}`, output changed since: "), wasm3)
         t |> success(wasm3 |> contains("Measured on the 2 of 3 C files that convert alone"), wasm3)
         t |> success(wasm3 |> contains("| project/wasm3 |"), wasm3)
-        t |> success(fexist(path_join(clone, "wasm3/files/upstream/wasm3/source/m3_add/m3_add.das")), out)
-        t |> success(fexist(path_join(clone, "wasm3/files/src/host/host.das")), out)
-        t |> success(!fexist(path_join(clone, "wasm3/files/upstream/wasm3/source/m3_vla/m3_vla.das")), out)
-        t |> success(!fexist(path_join(clone, "wasm3/all_host")), out)
+        t |> success(fexist(path_join(clone, "wasm3/fast/files/upstream/wasm3/source/m3_add/m3_add.das")), out)
+        t |> success(fexist(path_join(clone, "wasm3/readable/files/src/host/host.das")), out)
+        t |> success(!fexist(path_join(clone, "wasm3/readable/files/upstream/wasm3/source/m3_vla/m3_vla.das")), out)
+        t |> success(!fexist(path_join(clone, "wasm3/readable/all_host")), out)
+        t |> success(wasm3 |> contains("# readable/: not runnable yet"), wasm3)
         // --no-convert publishes no project
         t |> equal(publish(root, ["--repo", clone, "--program", "wasm3", "--no-convert"], out), 0, out)
         t |> success(out |> contains("wasm3: not published: a compare project converts on every publish"), out)
@@ -1056,17 +1070,20 @@ def private stand_in_doom(root, sync : string) {
     fwrite(path_join(root, ".gitignore"), fread(path_join(root, ".gitignore")) + "/doom/work/\n/doom/fetch/\n")
     git(root, ["add", "-A"])
     git(root, ["commit", "-q", "-m", "doom"])
-    mkdir_rec(path_join(root, "doom/work/source"))
-    fwrite(path_join(root, "doom/work/source/doom_main.das"), "// main\n")
-    fwrite(path_join(root, "doom/work/source/doom_main.cir.json"), "\{\}\n")
-    fwrite(path_join(root, "doom/work/source/program.modules.txt"), "doom_main.das\n")
-    fwrite(path_join(root, "doom/work/source/program.layout.txt"), "doom_main\n")
+    for (v in ["readable", "fast"]) {
+        let tree = path_join(root, "doom/work/variants/{v}/source")
+        mkdir_rec(tree)
+        fwrite(path_join(tree, "doom_main.das"), "// main {v}\n")
+        fwrite(path_join(tree, "doom_main.cir.json"), "\{\}\n")
+        fwrite(path_join(tree, "program.modules.txt"), "doom_main.das\n")
+        fwrite(path_join(tree, "program.layout.txt"), "doom_main\n")
+        if (!empty(sync)) {
+            fwrite(path_join(root, "doom/work/variants/{v}/publish_sync.txt"), sync)
+        }
+    }
     mkdir_rec(path_join(root, "doom/fetch/PureDOOM"))
     fwrite(path_join(root, "doom/fetch/PureDOOM/LICENSE"), "GNU GENERAL PUBLIC LICENSE Version 2\n")
     fwrite(path_join(root, "doom/fetch/PureDOOM/doom1.wad"), "IWAD")
-    if (!empty(sync)) {
-        fwrite(path_join(root, "doom/work/publish_sync.txt"), sync)
-    }
     fwrite(path_join(root, "doom/work/publish.generation"), "{git(root, ["rev-parse", "HEAD"])}\nv9.9.9-1\n{git(root, ["log", "-1", "--format=%cs"])}\n")
 }
 
@@ -1083,15 +1100,20 @@ def test_puredoom(t : T?) {
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--program", "puredoom", "--commit"], out), 0, out)
         let dir = path_join(clone, "puredoom")
-        t |> equal(fread(path_join(dir, "doom/doom_main.das")), "// main\n")
-        t |> equal(fread(path_join(dir, "doom/program.layout.txt")), "doom_main\n")
-        t |> success(!fexist(path_join(dir, "doom/doom_main.cir.json")))
-        t |> equal(fread(path_join(dir, "doom.c2das")), "\{\"defines\": [\"DOOM\"]\}\n")
+        for (v in ["readable", "fast"]) {
+            t |> equal(fread(path_join(dir, "{v}/doom/doom_main.das")), "// main {v}\n")
+            t |> equal(fread(path_join(dir, "{v}/doom/program.layout.txt")), "doom_main\n")
+            t |> success(!fexist(path_join(dir, "{v}/doom/doom_main.cir.json")))
+            let sidecar = fread(path_join(dir, "{v}/doom.c2das"))
+            t |> success(sidecar |> contains("\"DOOM\"") && sidecar |> contains("\"fn_macros\" : \"fold\""), sidecar)
+            t |> equal(fread(path_join(dir, "{v}/variant.json")), fread("ports/variants/puredoom.{v}.json"))
+        }
         t |> equal(fread(path_join(dir, "LICENSE")), "GNU GENERAL PUBLIC LICENSE Version 2\n")
         t |> success(fexist(path_join(dir, "patches/0001-a.patch")))
         let readme = fread(path_join(dir, "README.md"))
         t |> success(readme |> contains("at `355cfbd16fac`, patched"), readme)
         t |> success(readme |> contains("  - `0001-a.patch` - first patch. a.c: does a.\n"), readme)
+        t |> success(readme |> contains("`readable/`:\n\n") && readme |> contains("\n`fast/`:\n\n") && readme |> contains("## Variants\n\n- `readable/` - for reading"), readme)
         t |> success(readme |> contains("| interp | 2664 tics in sync | not run       | not run |"), readme)
         t |> success(readme |> contains("| jit    | not run           | fails: exit 1 | not run |"), readme)
         t |> success(readme |> contains("## Performance\n\nnot yet: "), readme)
@@ -1104,7 +1126,7 @@ def test_puredoom(t : T?) {
         let head = git(clone, ["rev-parse", "HEAD"])
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--program", "puredoom", "--commit"], out), 1, out)
-        t |> success(out |> contains("no demo verdicts in doom/work/publish_sync.txt"), out)
+        t |> success(out |> contains("no demo verdicts in doom/work/variants/readable/publish_sync.txt"), out)
         untouched(t, clone, head, out)
         t |> success(!fexist(path_join(clone, "puredoom")), out)
     }
