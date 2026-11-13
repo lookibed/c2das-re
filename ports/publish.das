@@ -14,6 +14,7 @@ require ../converter/tiers.das
 require ../converter/dumper_a.das
 require ../perf/perf_lanes.das
 require ports_render
+require math
 require ../perf/boxes.das
 require ../converter/sidecar.das
 require ../compare/compare_render.das
@@ -711,6 +712,7 @@ def private write_or_log(path, text : string) : bool {
 // its module list outside the single layout; false with the first missing one logged
 def private converted_files_exist(port : Port; variants : array<Variant>) : bool {
     var paths : array<string>
+    paths |> reserve(2 * length(variants) * length(port.modules))
     for (v in variants) {
         for (m in port.modules) {
             paths |> push(module_of(port, v, m.stem))
@@ -731,6 +733,7 @@ def private converted_files_exist(port : Port; variants : array<Variant>) : bool
 // the variant files of `program`, `VARIANT_NAMES` in order, into `into`; false with the first that
 // does not read logged
 def private variants_of(program : string; var into : array<Variant>) : bool {
+    into |> reserve(length(VARIANT_NAMES))
     for (name in VARIANT_NAMES) {
         var error : string
         into |> emplace(read_variant(variant_path(program, name), error))
@@ -778,7 +781,7 @@ def private criteria_total(row : string) : double {
     compliance |> get(row) $(column) {
         total = column_total(column)
     }
-    return total > 0.0lf ? total : 0.0lf
+    return max(total, 0.0lf)
 }
 
 //! the criteria row of a program a variants table falls back to for `readable`: the converter's
@@ -798,6 +801,44 @@ def private capture_speed(c : Capture; name : string; var into : table<string; d
     }
 }
 
+// the variant `v`'s folder `<v>/` of the program's directory `dir` in the clone: each program's tree
+// mirrored from its conversion with the layout report, the variant's sidecar text `sidecar` and its
+// file; `column` takes the line counts and, for `readable`, the criteria row it falls back to
+def private publish_variant(port : Port; v : Variant; sidecar, dir : string; var column : VariantColumn) : bool {
+    var ok = true
+    for (m in port.modules) {
+        let tree = dir_name(module_of(port, v, m.stem))
+        let into = path_join(dir, "{v.name}/{m.stem}")
+        var inscope files <- tree_files(tree, layout_of(v) == "single" ? "{m.stem}.das" : "")
+        var inscope kept := files
+        kept |> push(LAYOUT_REPORT)
+        if (!drop_unlisted(into, kept)) {
+            to_log(LOG_ERROR, "{port.name}: cannot remove a stale file under {into}\n")
+            ok = false
+        }
+        for (rel in files) {
+            let target = path_join(into, rel)
+            mkdir_rec(dir_name(target))
+            ok = ok && write_or_log(target, fread(path_join(tree, rel)))
+        }
+        let report = path_join(tree, LAYOUT_REPORT)
+        if (fexist(report)) {
+            ok = ok && write_or_log(path_join(into, LAYOUT_REPORT), fread(report))
+        }
+        if (m.stem == port.runs) {
+            column.das_lines = lines_of(tree, files)
+            column.execute_lines = function_lines(tree, files, "luaV_execute")
+        }
+    }
+    ok = ok && write_or_log(path_join(dir, "{v.name}/{port.name}.c2das"), sidecar)
+    ok = ok && write_or_log(path_join(dir, "{v.name}/variant.json"), fread(variant_path(port.name, v.name)))
+    if (v.name == "readable") {
+        column.criteria_fallback = criteria_total(LUA_PROGRAM_ROW)
+        column.criteria_from = criteria_fallback_label(LUA_PROGRAM_ROW)
+    }
+    return ok
+}
+
 // the program's directory in the clone: each variant's tree, sidecar and file, and the files
 // beside them replaced whole, every input checked before the first write; `gen` the commit the
 // published conversion ran at
@@ -808,10 +849,7 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
         return false
     }
     var variants : array<Variant>
-    if (!variants_of(port.name, variants)) {
-        return false
-    }
-    if ((!args.no_convert && !run_harness(port, variants)) || !generation_for(args, port, gen) || !converted_files_exist(port, variants)) {
+    if (!variants_of(port.name, variants) || (!args.no_convert && !run_harness(port, variants)) || !generation_for(args, port, gen) || !converted_files_exist(port, variants)) {
         return false
     }
     let license = license_block(fread(path_join(sources_of(port, release), port.license_header)))
@@ -824,6 +862,7 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
         return false
     }
     var sidecars : array<string>
+    sidecars |> reserve(length(variants))
     for (v in variants) {
         var error : string
         sidecars |> push(published_sidecar(v, fread(sidecar_of(port)), error))
@@ -836,38 +875,10 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
     mkdir_rec(path_join(dir, "bench"))
     var ok = true
     var columns : array<VariantColumn>
+    columns |> reserve(length(variants))
     for (v, sidecar in variants, sidecars) {
         var column = VariantColumn(file := v)
-        for (m in port.modules) {
-            let tree = dir_name(module_of(port, v, m.stem))
-            let into = path_join(dir, "{v.name}/{m.stem}")
-            var inscope files <- tree_files(tree, layout_of(v) == "single" ? "{m.stem}.das" : "")
-            var inscope kept := files
-            kept |> push(LAYOUT_REPORT)
-            if (!drop_unlisted(into, kept)) {
-                to_log(LOG_ERROR, "{port.name}: cannot remove a stale file under {into}\n")
-                ok = false
-            }
-            for (rel in files) {
-                let target = path_join(into, rel)
-                mkdir_rec(dir_name(target))
-                ok = ok && write_or_log(target, fread(path_join(tree, rel)))
-            }
-            let report = path_join(tree, LAYOUT_REPORT)
-            if (fexist(report)) {
-                ok = ok && write_or_log(path_join(into, LAYOUT_REPORT), fread(report))
-            }
-            if (m.stem == port.runs) {
-                column.das_lines = lines_of(tree, files)
-                column.execute_lines = function_lines(tree, files, "luaV_execute")
-            }
-        }
-        ok = ok && write_or_log(path_join(dir, "{v.name}/{port.name}.c2das"), sidecar)
-        ok = ok && write_or_log(path_join(dir, "{v.name}/variant.json"), fread(variant_path(port.name, v.name)))
-        if (v.name == "readable") {
-            column.criteria_fallback = criteria_total(LUA_PROGRAM_ROW)
-            column.criteria_from = criteria_fallback_label(LUA_PROGRAM_ROW)
-        }
+        ok = publish_variant(port, v, sidecar, dir, column) && ok
         columns |> emplace(column)
     }
     ok = ok && write_or_log(path_join(dir, "LICENSE"), license)
@@ -886,9 +897,10 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
     var found = false
     ok = ok && latest_capture(dir, latest, found)
     if (found) {
+        let from = "the latest capture of this directory's `perf/`, {latest.timestamp} on {machine_label(latest.machine)}, c2das-re `{slice(latest.commit, 0, 12)}`"
         for (column in columns) {
             capture_speed(latest, column.file.name, column.speed_fallback)
-            column.speed_from = "the latest capture of this directory's `perf/`, {latest.timestamp} on {machine_label(latest.machine)}, c2das-re `{slice(latest.commit, 0, 12)}`" + (column.file.name == "fast" ? ", its `-fast` lanes" : "")
+            column.speed_from = column.file.name == "fast" ? "{from}, its `-fast` lanes" : from
         }
     }
     let perf_text = found ? measured_note(latest.commit, "", gen) + render_perf(latest) : "{PERF_NOT_YET}\n"
