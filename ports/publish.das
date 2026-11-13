@@ -1278,7 +1278,9 @@ def private publish_project(p_row : Project; repo : string; var gen : Generation
     let stem = trim_suffix(base_name(p.tu), ".c")
     var ok = true
     var columns : array<VariantColumn>
+    columns |> reserve(length(variants))
     var conversions : array<ProjectVariant>
+    conversions |> reserve(length(variants))
     for (v in variants) {
         p.ours_variant := v
         let work = path_join(project_work(p.name), v.name)
@@ -1563,7 +1565,7 @@ def private run_doom_harness(port : Port; variants : array<Variant>) : bool {
         return false
     }
     for (v in variants) {
-        let variant_args <- ["--variant", variant_path(PUREDOOM, v.name), "--layout", layout_of(v)]
+        var inscope variant_args <- ["--variant", variant_path(PUREDOOM, v.name), "--layout", layout_of(v)]
         var inscope argv <- daslang_cmd(CONVERTED_MODULES)
         argv |> push_from(["doom/run.das", "--", "--convert"], variant_args)
         to_log(LOG_INFO, "{PUREDOOM}: " + join(argv, " ") + "\n")
@@ -1574,7 +1576,7 @@ def private run_doom_harness(port : Port; variants : array<Variant>) : bool {
             to_log(LOG_ERROR, "{PUREDOOM}: the {v.name} variant did not convert (exit {rc}); {doom_root(v.name)}/publish_run.log holds its log\n")
             return false
         }
-        var cells : array<SyncCell>
+        var inscope cells : array<SyncCell>
         cells |> reserve(length(SYNC_TIERS) * length(SYNC_DEMOS))
         for (tier in SYNC_TIERS) {
             for (demo in SYNC_DEMOS) {
@@ -1600,6 +1602,7 @@ def private read_fps(path : string; var into : FpsCapture) : bool {
     if (js == null) {
         return false
     }
+    delete into
     into <- from_JV(js, type<FpsCapture>)
     return true
 }
@@ -1676,6 +1679,7 @@ def private publish_puredoom(args : Args; repo : string; var gen : Generation) :
         missing = "no {DOOM_LICENSE}; doom/fetch.sh fetches it"
     }
     var sidecars : array<string>
+    sidecars |> reserve(length(variants))
     for (v in variants) {
         var error : string
         sidecars |> push(published_sidecar(v, fread("doom/doom.c2das"), error))
@@ -1703,7 +1707,9 @@ def private publish_puredoom(args : Args; repo : string; var gen : Generation) :
     let dir = path_join(repo, PUREDOOM)
     var ok = true
     var columns : array<VariantColumn>
+    columns |> reserve(length(variants))
     var inscope readme = PureDoomReadme(pin = pin, freedoom = versions_line(versions, "freedoom"), generation = generation_line(gen), command = "scripts/publish_ports.sh --program {PUREDOOM}", fps_text = doom_fps_text(gen))
+    readme.syncs |> reserve(length(variants))
     for (v, sidecar in variants, sidecars) {
         let tree = doom_tree(v)
         var inscope files <- tree_files(tree)

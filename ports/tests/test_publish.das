@@ -973,6 +973,10 @@ def test_projects(t : T?) {
         t |> equal(publish(root, ["--repo", clone, "--program", "wasm3", "--no-convert"], out), 0, out)
         t |> success(out |> contains("wasm3: not published: a compare project converts on every publish"), out)
     }
+}
+
+[test]
+def test_project_refusal(t : T?) {
     t |> run_stand_in("a project without a license refuses before the first write into the clone; the others publish, commit and push, and the top README names the failure", "c2das_ports_project_refusal") @(t : T?; root, clone : string) {
         stand_in_projects(root)
         remove(path_join(root, "rust/tests/manual/binjgb/upstream/binjgb/LICENSE"))
