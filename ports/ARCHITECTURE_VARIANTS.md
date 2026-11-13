@@ -84,6 +84,13 @@ directory's latest capture, per tier the geometric mean of the work time over na
 (`geomean_ratio`), its plain lanes for `readable` and its `-fast` lanes for `fast`, labelled with
 the capture's time, box and commit.
 
+A compare project's README shows the das lines of each variant's whole conversion (of the files
+converted alone when the program refuses) and no `luaV_execute`; its `readable` column falls back
+to the row `project/<name>` of the criteria capture and to the project's entry of
+`compare/results_linux.json`, per tier the geometric mean over its benches of our time over
+native's (`cell_ratio`). PureDOOM's falls back to its frame-rate captures
+(`ARCHITECTURE_PUREDOOM.md` section 2).
+
 ## 4. The sidecar of a variant {#variant-sidecar}
 
 A variant converts under its program's sidecar with its knobs set (`overlay_knobs`): each knob's key

@@ -241,28 +241,32 @@ of `compare/projects.das`'s `project_table` over the Rust checkout (`$C2DAS_RUST
 `/root/c2das`), read in place; a row whose folder the checkout lacks is skipped with a warning, so
 a checkout without `tests/manual` publishes Lua alone. `--program` takes `lua` or a project's name.
 
-A project converts on every publish, in the publisher's process, through `convert_project` of
-`compare/projects.das` (`ours_module`: the row's sidecar, its units in the source layout when the
-case lists them), into `compare/work/ports/<name>/whole/`; under `--no-convert` it is not published.
-A program the converter refuses converts file by file into `compare/work/ports/<name>/files/`: its
+A project converts on every publish, once per variant, in the publisher's process, through
+`convert_project` of `compare/projects.das` with the variant as `ours_variant` (`ours_module`: the
+row's sidecar with the knobs set, its units in the source layout when the case lists them), into
+`compare/work/ports/<name>/<v>/whole/`; under `--no-convert` it is not published. A program the
+converter refuses converts file by file into `compare/work/ports/<name>/<v>/files/`: its
 units, else every `.c` file its unit includes by quotes, followed through the `all.c` graphs that
 include `.c` files themselves.
 The canonical case not read (`load_expected`) and an upstream folder with neither a `LICENSE*` or
 `COPYING*` file nor an SPDX line refuse the project before the first write into the clone.
 
-The project's directory `<name>/` in the clone holds:
+The project's directory `<name>/` in the clone holds, per variant `<v>/`:
 
 - `<stem>/`, the unit's stem: every file of the whole conversion with its `program.layout.txt`, or
   nothing when the program refuses.
 - `files/`: each file that converts alone, its module at its C path under the project folder with
   the `.c` dropped; nothing when the program converts whole.
 - `<name>.c2das`: the sidecar of the whole conversion, the project folder in its paths written
-  `<c2das>/tests/manual/<name>`, the README's name for the Rust checkout.
+  `<c2das>/tests/manual/<name>`, the README's name for the Rust checkout; `variant.json`.
+
+and beside them:
 - `LICENSE`: every license file under the project's `upstream/`, each under its path, else the
   license each upstream file names by an SPDX line (`spdx_notice`; for MIT its full text under the
   notice's author, `spdx_license`), then the Rust checkout's own `LICENSE` for the project's glue
   files under `src/` and `include/`.
-- `README.md`: the conversion's result (whole, or the refusal and a row per file), the files, the
+- `README.md`: the variants section (`ARCHITECTURE_VARIANTS.md` section 3), each variant's
+  conversion result (whole, or the refusal and a row per file), the files, the
   Rust checkout's commit, the generating commit, how to run the module on the fixture in the Rust
   checkout (no fixture is copied: game data and fixtures keep their own licenses there) and the
   native build, the speed and the readability criteria (below).
