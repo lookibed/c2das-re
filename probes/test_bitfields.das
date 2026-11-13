@@ -138,11 +138,10 @@ def test_bitfields(t : T?) {
         arr[1].a += 1u
         t |> equal(arr[1].a, 4u)
     }
-    t |> run("a global fixed_array of struct literals naming a property crashes before main; a local one and a single global literal work") @(t : T?) {
-        let crash = daslang_child("literal_array", "options gen2\n" + PROPERTY_PAIR + "var ga = fixed_array(BF(a = 3u), BF(a = 2u))\n[export]\ndef main : int \{\n    print(\"main\\n\")\n    return int(ga[1].a)\n\}\n", false)
-        t |> equal(crash.rc != 0, true, crash.out)
-        t |> equal(crash.out |> find("SIGSEGV") >= 0 && crash.out |> find("Context::~Context") >= 0, true, crash.out)
-        t |> equal(crash.out |> find("main") < 0, true, crash.out)
+    t |> run("a global fixed_array of struct literals naming a property initializes like a local one and a single global literal (lookibed/daScript#51, fixed upstream by daScript 67fb6beb2f)") @(t : T?) {
+        let global = daslang_child("literal_array", "options gen2\n" + PROPERTY_PAIR + "var ga = fixed_array(BF(a = 3u), BF(a = 2u))\n[export]\ndef main : int \{\n    print(\"main\\n\")\n    return int(ga[1].a)\n\}\n", false)
+        t |> equal(global.rc, 2, global.out)
+        t |> equal(global.out |> find("main") >= 0, true, global.out)
         let local = daslang_child("literal_local", "options gen2\n" + PROPERTY_PAIR + "[export]\ndef main : int \{\n    var la = fixed_array(BF(a = 3u), BF(a = 2u))\n    return int(la[1].a)\n\}\n", false)
         t |> equal(local.rc, 2, local.out)
         let single = daslang_child("literal_single", "options gen2\n" + PROPERTY_PAIR + "var g = BF(a = 2u)\n[export]\ndef main : int \{\n    return int(g.a)\n\}\n", false)

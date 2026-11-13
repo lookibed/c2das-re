@@ -126,7 +126,7 @@ def test_csmith_arrays(t : T?) {
     }
     t |> run("in a global initializer an address under `+` takes its own unsafe") @(t : T?) {
         child_rejects(t, "global_past_end", daslang_child("global_past_end", "options gen2\nvar a : int[3] = fixed_array(1, 2, 3)\nvar e : int? = unsafe(addr(a[0]) + 3)\n[export]\ndef main \{\n    assert(e != null)\n\}\n", true), "31000")
-        let nested = daslang_child("global_past_end_nested", "options gen2\nvar a : int[3] = fixed_array(1, 2, 3)\nvar e : int? = unsafe(unsafe(addr(a[0])) + 3)\n[export]\ndef main \{\n    assert(int(intptr(e) - intptr(unsafe(addr(a[0])))) == 12)\n\}\n", false)
+        let nested = daslang_child("global_past_end_nested", "options gen2\nvar a : int[3] = fixed_array(1, 2, 3)\nvar e : int? = unsafe(unsafe(addr(a[0])) + 3)\n[export]\ndef main \{\n    verify(int(intptr(e) - intptr(unsafe(addr(a[0])))) == 12)\n\}\n", false)
         t |> equal(nested.rc, 0, nested.out)
     }
 }
