@@ -208,6 +208,10 @@ das text alone, the number the hand port's compares with. The pairs `addr(x).f` 
 the densities (the length table) are the das functions' body code lines, the converter's own
 `c2das_*` functions left out: how many, the median, the 90th percentile, the longest and the ones
 past 100 lines, with the matched functions' das-to-C ratio at the median, the 90th percentile and
-the worst; `programs` has no length column, since a pooled percentile needs the functions, which
+the worst, then the `macro_blowup` companions read off the conversion itself (`fold_counts`): the
+outermost function-like macro expansions, the ones printed as a call of their `[c_macro] def`, and
+on a line of their own the ones left expanded because an argument the body evaluates zero times or
+in one branch only may fault (a dereference, an index or a division, ruling 38 addendum 14); a
+compare project's are 0, its conversion keeping no verdicts; `programs` has no length column, since a pooled percentile needs the functions, which
 the capture does not keep. A delta's base recorded before a density's raw key existed gives no
 density delta and says which keys it lacks.

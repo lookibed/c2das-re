@@ -32,6 +32,9 @@ struct ConvertedInput {
     sidecar : string
     das_paths : array<string>
     fragments : array<string>
+    // the outermost function-like macro expansions by verdict: `folded` or why the site stays
+    // expanded (`ConvertResult.fold_counts`); empty for a compare project
+    fold_counts : table<string; int>
 }
 
 //! An error's first line, and when that line only names the stage (`dumper: clang exited 1:`)
@@ -166,6 +169,7 @@ def convert_input(key, dir : string) : ConvertedInput {
         out.c_files = length(out.c_paths)
         out.sidecar = SIDECAR
         let res <- convert_program(out.c_paths, das_dir, "linux", "", SIDECAR, "", "", "main", layout, false, "", key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : "", false, checks_of(key), past_end_of(key), key |> ends_with(INLINE_KEY_SUFFIX), fn_macros_of(key))
+        out.fold_counts := res.fold_counts
         if (!res.ok) {
             out.error = "convert: {headline(res.error)}"
         } elif (layout == "single") {
@@ -191,6 +195,7 @@ def convert_input(key, dir : string) : ConvertedInput {
     out.c_files = 1
     out.sidecar = find_sidecar(c_path, "")
     let res <- convert(c_path, das_dir, "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "", key |> ends_with(REINTERPRET_KEY_SUFFIX) ? "reinterpret" : "", key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : "", false, checks_of(key), past_end_of(key), key |> ends_with(INLINE_KEY_SUFFIX), fn_macros_of(key))
+    out.fold_counts := res.fold_counts
     if (!res.ok) {
         out.error = "convert: {headline(res.error)}"
     } else {
