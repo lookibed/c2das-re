@@ -244,6 +244,12 @@ def test_with_define(t : T?) {
     error = ""
     t |> equal(with_define("\"defines\": [] \"defines\": []", "T", error), "")
     t |> equal(error, "no single `\"defines\": [` to add T to")
+    error = ""
+    t |> equal(with_define("\{\n\t\"defines\" : [\n\t\t\"A\"\n\t]\n\}", "T", error), "\{\n\t\"defines\" : [\"T\", \n\t\t\"A\"\n\t]\n\}", "a variant's written sidecar")
+    t |> equal(with_define("\"defines\": []", "T", error), "\"defines\": [\"T\"]", "an empty list takes no comma")
+    t |> equal(error, "")
+    t |> equal(with_define("\"defines\": 1, \"x\": []", "T", error), "", "a key that opens no array")
+    t |> success(!empty(error))
 }
 
 [test]
@@ -261,6 +267,9 @@ def test_without_define(t : T?) {
     t |> success(!empty(error))
     error = ""
     t |> equal(without_define(fread("doom/doom.c2das"), "DOOM_TIC_CHECKSUM", error) |> find("DOOM_TIC_CHECKSUM"), -1)
+    t |> equal(error, "")
+    t |> equal(without_define("[\n\t\t\"A\",\n\t\t\"B\"\n\t]", "B", error), "[\n\t\t\"A\"\n\t]", "the last of a written sidecar's lines")
+    t |> equal(without_define("[\n\t\t\"B\",\n\t\t\"A\"\n\t]", "B", error), "[\n\t\t\"A\"\n\t]", "the first of them")
     t |> equal(error, "")
 }
 
