@@ -132,6 +132,9 @@ struct Args {
     push : bool
     @clarg_doc = "set by the publisher on the process it runs one program in: the file that process writes its outcome to, a line `published` or `failed <why>` each; the push and the failure line of the top-level README stay with the publisher that ran it"
     results : string = ""
+    @clarg_name = "convert-variant"
+    @clarg_doc = "set by the publisher on the process it converts one variant of the --program project in: the conversion, into the project's work folder, written to --results as JSON"
+    convert_variant : string = ""
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -1285,7 +1288,10 @@ def private publish_project(p_row : Project; repo : string; var gen : Generation
         p.ours_variant := v
         let work = path_join(project_work(p.name), v.name)
         let whole = path_join(work, "whole")
-        var inscope conv <- convert_project(p, work)
+        var inscope conv : ProjectConversion
+        if (!convert_apart(p.name, v.name, conv, why)) {
+            return false
+        }
         let into = path_join(dir, v.name)
         mkdir_rec(into)
         ok = mirror_tree(whole, path_join(into, stem), empty(conv.refusal) ? conv.files : array<string>()) && ok
@@ -1338,6 +1344,58 @@ def private skip_reason(args : Args; name : string; projects : array<Project>) :
         }
     }
     return ""
+}
+
+// the variant `variant_name` of the compare project `name` converted by this script run again in a
+// process of its own with `--program <name> --convert-variant <variant_name> --results <file>` last, so
+// the heaps of its conversion go with it, as a program's do (`publish_apart`); the conversion read
+// back from the file into `into`; false with `why` set when the process wrote none
+[arch(at="ARCHITECTURE_RUN.md#variant-apart")]
+def private convert_apart(name, variant_name : string; var into : ProjectConversion; var why : string&) : bool {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_convert", dir_error)
+    if (!empty(dir_error)) {
+        why = "no folder for the {variant_name} variant's conversion: {dir_error}"
+        return false
+    }
+    let results = path_join(dir, "conversion.json")
+    let command = rerun_command(get_command_line_arguments(), ["--program", name, "--convert-variant", variant_name, "--results", results])
+    to_log(LOG_INFO, "{name}: the {variant_name} variant converts in a process of its own: {command}\n")
+    let how = process_ended(unsafe(system(command)))
+    var error : string
+    var js = fexist(results) ? read_json_file(results, error) : null
+    if (js == null) {
+        why = "the {variant_name} variant's conversion process " + (empty(how) ? "wrote no conversion" : how)
+    } else {
+        delete into
+        into <- from_JV(js, type<ProjectConversion>)
+    }
+    delete_json(js)
+    rmdir_rec(dir)
+    return empty(why)
+}
+
+// the child of `convert_apart`: the variant `args.convert_variant` of the project `args.program`
+// converted into its work folder and written to `args.results`; 1 when the project or the variant
+// file is not found or the file is not written
+def private convert_variant_child(args : Args; projects : array<Project>) : int {
+    for (row in projects) {
+        if (row.name == args.program) {
+            var p := row
+            var error = load_expected(p)
+            if (empty(error)) {
+                p.ours_variant <- read_variant(variant_path(p.name, args.convert_variant), error)
+            }
+            if (!empty(error)) {
+                to_log(LOG_ERROR, "{p.name}: {error}\n")
+                return 1
+            }
+            var inscope conv <- convert_project(p, path_join(project_work(p.name), args.convert_variant))
+            return fwrite(args.results, write_json(JV(conv))) ? 0 : 1
+        }
+    }
+    to_log(LOG_ERROR, "ports: --convert-variant takes a compare project, not `{args.program}`\n")
+    return 1
 }
 
 def private publish_projects(args : Args; projects : array<Project>; repo : string; var failures : array<string>; var published : int&) {
@@ -1446,6 +1504,9 @@ def main : int {
     if (!empty(args.program) && !has_value(known, args.program)) {
         to_log(LOG_ERROR, "ports: no program `{args.program}`; the publisher knows " + join(known, ", ") + "\n")
         return 1
+    }
+    if (!empty(args.convert_variant)) {
+        return convert_variant_child(args, projects)
     }
     var lanes : array<string>
     if (!flags_hold(args, lanes)) {
