@@ -81,23 +81,24 @@ struct Release {
     tarballs : array<tuple<url : string; sha256 : string>>
 }
 
-let LANE_TITLES <- {"native" => "clang -O3", "interp" => "interpreter", "jit" => "JIT", "exe" => "exe", "jit-goto" => "JIT, goto dispatch", "aot" => "AOT", "interp-source-cut" => "interpreter, source-cut layout", "jit-source-cut" => "JIT, source-cut layout", "interp-single" => "interpreter, single module", "jit-single" => "JIT, single module"}
+let LANE_TITLES <- {"native" => "clang -O3", "interp" => "interpreter", "jit" => "JIT", "exe" => "exe", "jit-goto" => "JIT, goto dispatch", "aot" => "AOT", "interp-fast" => "interpreter, fast", "jit-fast" => "JIT, fast", "exe-fast" => "exe, fast", "aot-fast" => "AOT, fast", "interp-source-cut" => "interpreter, source-cut layout", "jit-source-cut" => "JIT, source-cut layout", "interp-single" => "interpreter, single module", "jit-single" => "JIT, single module"}
 //! the das lanes, each a column of every table, with a ratio to native and a column of the
 //! projects table; `not measured` where a capture left one out
-let DAS_LANES <- ["interp", "jit", "exe", "jit-goto"]
+let DAS_LANES <- ["interp", "jit", "exe"]
 //! the lane-to-lane ratios of the ratio table, slower lane first
-let LANE_PAIRS <- [("interp", "jit"), ("interp", "exe"), ("interp", "jit-goto"), ("jit", "jit-goto")]
-//! the lanes over the source-cut layout's modules and the single layout's module, where the others run the
-//! source layout's: a column of the ratio table and of the projects table only where a capture
-//! measured them
-let LAYOUT_LANES <- ["interp-source-cut", "jit-source-cut", "interp-single", "jit-single"]
-//! the AOT lane, asked for only by name: a column only where a capture measured it and its build
+let LANE_PAIRS <- [("interp", "jit"), ("interp", "exe")]
+//! the lanes a column of the ratio table and of the projects table only where a capture measured
+//! them: the goto lane and the layout lanes, which captures made before the variants measured, and
+//! the lanes over the `fast` variant's tree, where the others run the `readable` variant's (the
+//! default conversion's in a capture made before the variants)
+let MEASURED_LANES <- ["jit-goto", "interp-fast", "jit-fast", "exe-fast", "interp-source-cut", "jit-source-cut", "interp-single", "jit-single"]
+//! the AOT lanes, asked for only by name: a column only where a capture measured one and its build
 //! stood, so a lane that does not build is a not-yet line, never a column of `not yet`
-let AOT_LANE = "aot"
-//! the pairs of the lanes a table shows only when a capture has them: the AOT lane under the
-//! interpreter and the JIT, each layout lane over its source-layout twin; a ratio-table column
-//! where both lanes are shown
-let OPTIONAL_PAIRS <- [("interp", "aot"), ("jit", "aot"), ("interp-source-cut", "interp"), ("jit-source-cut", "jit"), ("interp-single", "interp"), ("jit-single", "jit")]
+let AOT_LANES <- ["aot", "aot-fast"]
+//! the pairs of the lanes a table shows only when a capture has them: the goto and AOT lanes under
+//! the interpreter and the JIT, each fast lane over its readable twin, each layout lane over its
+//! source-layout twin; a ratio-table column where both lanes are shown
+let OPTIONAL_PAIRS <- [("interp", "jit-goto"), ("jit", "jit-goto"), ("interp", "aot"), ("jit", "aot"), ("interp-fast", "interp"), ("jit-fast", "jit"), ("exe-fast", "exe"), ("aot-fast", "aot"), ("interp-source-cut", "interp"), ("jit-source-cut", "jit"), ("interp-single", "interp"), ("jit-single", "jit")]
 //! the line above which the top-level README is the charter's; the publisher owns the rest
 let README_MARKER = "<!-- generated below: c2das-re's scripts/publish_ports.sh renders everything under this line from each program's latest capture -->"
 //! the perf section of a program without a capture, and the projects table when no program has one
@@ -345,14 +346,16 @@ def render_work(c : Capture) : string {
     return table_of(headers, rows, 2)
 }
 
-// the das lanes a table shows for `captures`: every one of `DAS_LANES`, the AOT lane when one of
-// them measured it and its build stood, then each layout lane one of them measured
+// the das lanes a table shows for `captures`: every one of `DAS_LANES`, each AOT lane one of them
+// measured whose build stood, then each of `MEASURED_LANES` one of them measured
 def private shown_lanes(captures : array<Capture>) : array<string> {
     var lanes <- clone_to_move(DAS_LANES)
-    if (has_value([for (c in captures); lane_stood(c, AOT_LANE)], true)) {
-        lanes |> push(AOT_LANE)
+    for (lane in AOT_LANES) {
+        if (has_value([for (c in captures); lane_stood(c, lane)], true)) {
+            lanes |> push(lane)
+        }
     }
-    for (lane in LAYOUT_LANES) {
+    for (lane in MEASURED_LANES) {
         if (has_value([for (c in captures); has_lane(c, lane)], true)) {
             lanes |> push(lane)
         }
@@ -444,10 +447,16 @@ def render_perf(c : Capture) : string {
         w |> write("{c.timeout} s fails its cell. A das lane's cell stands only when every run prints what the native ")
         w |> write("build prints and exits as it does (the test-suite row compares the exit code and requires the line the ")
         w |> write("suite prints after its last test passes, not the output: it prints its random seeds and timings). ")
-        w |> write("A lane the run left out is `{NOT_MEASURED}`. The {lane_title("jit-goto")} lane runs the JIT over the source layout ")
-        w |> write("converted with c2das-re's `--switch-dispatch goto`, a dense switch (the interpreter's dispatch among them) as a jump ")
-        w |> write("table; the modules published here are the default conversion, and the lane's command below names the one that ")
-        w |> write("regenerates its tree. The AOT lane is measured only when asked for and has a column only where its build stood.\n\n")
+        w |> write("A lane the run left out is `{NOT_MEASURED}`. ")
+        if (has_lane(c, "jit-goto")) {
+            w |> write("The {lane_title("jit-goto")} lane runs the JIT over the source layout ")
+            w |> write("converted with c2das-re's `--switch-dispatch goto`, a dense switch (the interpreter's dispatch among them) as a jump ")
+            w |> write("table; the lane's command below names the conversion that regenerates its tree. ")
+        }
+        if (has_value([for (l in c.lanes); l.name |> ends_with("-fast")], true)) {
+            w |> write("A lane `, fast` runs the `fast/` variant's modules, the others the `readable/` variant's. ")
+        }
+        w |> write("The AOT lanes are measured only when asked for and have a column only where their build stood.\n\n")
         w |> write("Every speed number is the work alone, timed inside the process: a workload runs under `bench/timed.lua`, ")
         w |> write("which reads `os.clock()` (C `clock()`, the process's CPU time, under every lane) before and after the ")
         w |> write("script and reports the seconds between, and its work time is the median of those, ± half their range as a ")

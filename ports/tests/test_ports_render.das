@@ -129,11 +129,11 @@ def test_tables(t : T?) {
         var c <- fixture()
         c.lanes |> resize(2)
         let ratios = render_ratios(c)
-        t |> success(ratios |> contains("| fib      | `bench/fib.lua`   |               200.00 | not measured | not measured |                not measured |      not measured |      not measured |                     not measured |             not measured |"), ratios)
+        t |> success(ratios |> contains("| fib      | `bench/fib.lua`   |               200.00 | not measured | not measured |      not measured |      not measured |"), ratios)
         var captures : array<Capture>
         captures |> emplace(c)
         let projects = render_projects(captures)
-        t |> success(projects |> contains("| x86_64, CPU |         2 |      100.00 | not measured | not measured |       not measured |"), projects)
+        t |> success(projects |> ends_with("| x86_64, CPU |         2 |      100.00 | not measured | not measured |\n"), projects)
     }
 }
 
@@ -377,40 +377,43 @@ def test_goto_lane(t : T?) {
         captures |> emplace(c)
         t |> equal(row_of(render_projects(captures), "[lua](lua/README.md)")[6], "4.00 (1 of 2)")
     }
-    t |> run("a capture made before the goto lane, its AOT lane a build error: the goto column `not measured` in every table, no AOT column, the AOT not-yet line kept") @(t : T?) {
+    t |> run("a capture without the goto lane, its AOT lane a build error: no goto column and no AOT column in any table, the AOT not-yet line kept") @(t : T?) {
         var c <- with_aot("the build exited 1")
-        t |> equal(render_work(c), "| Workload | Arguments         |    clang -O3 |    interpreter |          JIT |     exe | JIT, goto dispatch |\n| :------- | :---------------- | -----------: | -------------: | -----------: | ------: | -----------------: |\n| fib      | `bench/fib.lua`   | 1.000 s ±2% | 200.000 s ±2% | 8.000 s ±2% | not yet |       not measured |\n| nbody    | `bench/nbody.lua` | 2.000 s ±2% | 100.000 s ±2% |      not yet |     n/a |       not measured |\n")
-        t |> equal(join(row_of(render_startup(c), "JIT, goto dispatch"), ","), "not measured,not measured")
-        t |> equal(row_of(render_times(c), "fib")[5], "not measured")
+        t |> equal(render_work(c), "| Workload | Arguments         |    clang -O3 |    interpreter |          JIT |     exe |\n| :------- | :---------------- | -----------: | -------------: | -----------: | ------: |\n| fib      | `bench/fib.lua`   | 1.000 s ±2% | 200.000 s ±2% | 8.000 s ±2% | not yet |\n| nbody    | `bench/nbody.lua` | 2.000 s ±2% | 100.000 s ±2% |      not yet |     n/a |\n")
+        t |> equal(length(row_of(render_startup(c), "JIT, goto dispatch")), 0)
+        t |> equal(length(row_of(render_times(c), "fib")), 5)
         let ratios = render_ratios(c)
-        t |> equal(join(row_of(ratios, "fib"), ","), "`bench/fib.lua`,200.00,8.00,n/a,not measured,25.00,n/a,not measured,not measured")
+        t |> equal(join(row_of(ratios, "fib"), ","), "`bench/fib.lua`,200.00,8.00,n/a,25.00,n/a")
+        t |> success(!(ratios |> contains("goto")), ratios)
         for (text in [render_work(c), render_startup(c), render_times(c), ratios]) {
             t |> success(!(text |> contains("AOT")), text)
         }
         var captures : array<Capture>
         captures |> push_clone(c)
         let projects = render_projects(captures)
-        t |> success(!(projects |> contains("AOT")) && projects |> ends_with("| not yet |       not measured |\n"), projects)
+        t |> success(!(projects |> contains("AOT")) && projects |> ends_with("| not yet |\n"), projects)
         t |> success(has_value(render_not_yet(c), "- AOT, every workload: not yet: the build exited 1"), join(render_not_yet(c), "\n"))
         t |> success(render_perf(c) |> contains("- AOT: `run aot`\n"), render_perf(c))
     }
-    t |> run("an AOT lane asked for whose build stood: its column after the goto lane's, its ratio to native, the interpreter and the JIT each over it") @(t : T?) {
+    t |> run("an AOT lane asked for whose build stood: its column after exe's, its ratio to native, the interpreter and the JIT each over it") @(t : T?) {
         var c <- with_aot("")
         let ratios = render_ratios(c)
-        t |> success(ratios |> starts_with("| Workload | Arguments         | interpreter / native | JIT / native | exe / native | JIT, goto dispatch / native | AOT / native | interpreter / JIT | interpreter / exe | interpreter / JIT, goto dispatch | JIT / JIT, goto dispatch | interpreter / AOT | JIT / AOT |"), ratios)
-        t |> equal(join(row_of(ratios, "fib"), ","), "`bench/fib.lua`,200.00,8.00,n/a,not measured,2.00,25.00,n/a,not measured,not measured,100.00,4.00")
-        t |> equal(join(row_of(render_work(c), "fib"), ","), "`bench/fib.lua`,1.000 s ±2%,200.000 s ±2%,8.000 s ±2%,not yet,not measured,2.000 s ±2%")
+        t |> success(ratios |> starts_with("| Workload | Arguments         | interpreter / native | JIT / native | exe / native | AOT / native | interpreter / JIT | interpreter / exe | interpreter / AOT | JIT / AOT |"), ratios)
+        t |> equal(join(row_of(ratios, "fib"), ","), "`bench/fib.lua`,200.00,8.00,n/a,2.00,25.00,n/a,100.00,4.00")
+        t |> equal(join(row_of(render_work(c), "fib"), ","), "`bench/fib.lua`,1.000 s ±2%,200.000 s ±2%,8.000 s ±2%,not yet,2.000 s ±2%")
         var captures : array<Capture>
         captures |> emplace(c)
-        t |> equal(row_of(render_projects(captures), "[lua](lua/README.md)")[7], "2.00 (1 of 2)")
+        t |> equal(row_of(render_projects(captures), "[lua](lua/README.md)")[6], "2.00 (1 of 2)")
         // the ratio heading names the pairs the table renders, the AOT ones included
         let text = render_perf(with_aot(""))
-        t |> success(text |> contains("; JIT over JIT, goto dispatch; interpreter over AOT; JIT over AOT):"), text)
+        t |> success(text |> contains("; interpreter over exe; interpreter over AOT; JIT over AOT):"), text)
+        t |> success(!(text |> contains("goto dispatch")), text)
     }
     t |> run("the perf section names the goto lane's conversion and its pairs, and the AOT lane only when asked for") @(t : T?) {
         let text = render_perf(fixture())
         t |> success(text |> contains("The JIT, goto dispatch lane runs the JIT over the source layout converted with c2das-re's `--switch-dispatch goto`"), text)
-        t |> success(text |> contains("The AOT lane is measured only when asked for and has a column only where its build stood."), text)
+        t |> success(text |> contains("The AOT lanes are measured only when asked for and have a column only where their build stood."), text)
+        t |> success(!(text |> contains("A lane `, fast` runs")), text)
         t |> success(text |> contains("(each das lane over native, then interpreter over JIT; interpreter over exe; interpreter over JIT, goto dispatch; JIT over JIT, goto dispatch):"), text)
         t |> success(!(text |> contains("interpreter over AOT")) && !(text |> contains("JIT over AOT")), text)
     }
