@@ -1,8 +1,9 @@
-/* P8.5: the punning shapes the JIT's typed aliasing model misses; each returns the bits it
+/* P8.5: the punning shapes the JIT's typed aliasing model missed; each returns the bits it
    stored last, 1 and 3, natively and under every tier of the converted program */
 #include <stdio.h>
 
-/* two views of one float through void* parameters: a cast from void* is no pun to the model */
+/* two views of one float through void* parameters: a cast from void* is a pun to the model
+   since lookibed/daScript#44 was fixed */
 static float void_views(void *p, void *q) {
     float *f = p;
     unsigned *u = q;

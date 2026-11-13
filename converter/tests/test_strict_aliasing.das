@@ -10,13 +10,14 @@ require ../tiers.das
 require ../dumper_a.das
 
 //! The JIT's and the exe's typed aliasing over converted programs (P8.5, `ARCHITECTURE_TIERS.md`
-//! section 9, docs/probe-findings.md F95). `p8_alias_unsafe.c` holds the shapes the model misses (two
-//! views through `void *`, two views loaded from a record), `p8_alias_safe.c` the shapes it keeps
+//! section 9, docs/probe-findings.md F95). `p8_alias_unsafe.c` holds two views through `void *`, which
+//! the model keeps right since lookibed/daScript#44 was fixed, and the shape it misses (two views
+//! loaded from a record), `p8_alias_safe.c` the shapes it keeps
 //! right (unions, a typed cast, a byte view, `memcpy`, two integer widths); each writes a float, the
 //! same bytes under another type, and reads the float back, through pointers the compiler cannot
 //! prove equal. By default the entry module turns the model off and both print what the native
 //! build prints; the sidecar's `strict_aliasing: true` keeps it, which the safe shapes survive and
-//! the unsafe ones do not.
+//! record views do not.
 
 let FIXTURES = "converter/tests/fixtures"
 let OFF_LINE = "\noptions strict_aliasing = false\n"
@@ -69,12 +70,14 @@ def test_strict_aliasing(t : T?) {
             t |> equal(tier_output(t, res, tier, "unsafe_default"), native_unsafe, tier)
         }
     }
-    t |> run("negative control: under the sidecar's `strict_aliasing: true` no line turns the model off, and the unsafe shapes print clang -O2's 2 and 2 under jit and exe") @(t : T?) {
+    t |> run("under the sidecar's `strict_aliasing: true` no line turns the model off, and the unsafe shapes print what the native build prints under jit and exe too") @(t : T?) {
         let res <- converted(t, "p8_alias_unsafe", "unsafe_kept", "\{\"strict_aliasing\": true\}\n")
         t |> equal(res.das_text |> contains("strict_aliasing"), false, res.das_text)
         t |> equal(tier_output(t, res, "interp", "unsafe_kept"), native_unsafe)
         for (tier in ["jit", "exe"]) {
-            t |> equal(tier_output(t, res, tier, "unsafe_kept"), "2\n2\n", tier)
+            // the record views stay outside the model (the escape modules/dasLLVM/ARCHITECTURE.md names), but
+            // since daScript 6401904cf9 the code generated for them reads back the stored 3, not clang -O2's 2
+            t |> equal(tier_output(t, res, tier, "unsafe_kept"), native_unsafe, tier)
         }
     }
     t |> run("the safe shapes print what the native build prints with the model kept, under interp, jit and exe, and by default") @(t : T?) {
