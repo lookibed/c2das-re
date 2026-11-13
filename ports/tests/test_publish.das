@@ -976,6 +976,27 @@ def test_projects(t : T?) {
 }
 
 [test]
+def test_convert_variant(t : T?) {
+    t |> run_stand_in("a project variant converts in a process of its own: the child writes the conversion as JSON, and refuses a program that is no compare project", "c2das_ports_convert_variant") @(t : T?; root, clone : string) {
+        stand_in_projects(root)
+        var out : string
+        let results = path_join(root, "conversion.json")
+        t |> equal(publish(root, ["--program", "wasm3", "--convert-variant", "fast", "--results", results], out), 0, out)
+        let conversion = fread(results)
+        t |> success(conversion |> contains("variable-length array") && conversion |> contains("upstream/wasm3/source/m3_add.c"), conversion)
+        t |> success(fexist(path_join(root, "compare/work/ports/wasm3/fast/files/upstream/wasm3/source/m3_add/m3_add.das")), out)
+        t |> equal(publish(root, ["--program", "lua", "--convert-variant", "fast", "--results", results], out), 1, out)
+        t |> success(out |> contains("--convert-variant takes a compare project, not `lua`"), out)
+        // the parent's publish refuses a tree with uncommitted files
+        remove(results)
+        git(root, ["add", "-A"])
+        git(root, ["commit", "-q", "-m", "projects"])
+        t |> equal(publish(root, ["--repo", clone, "--program", "binjgb"], out), 0, out)
+        t |> success(out |> contains("binjgb: the fast variant converts in a process of its own: "), out)
+    }
+}
+
+[test]
 def test_project_refusal(t : T?) {
     t |> run_stand_in("a project without a license refuses before the first write into the clone; the others publish, commit and push, and the top README names the failure", "c2das_ports_project_refusal") @(t : T?; root, clone : string) {
         stand_in_projects(root)

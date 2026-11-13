@@ -22,3 +22,15 @@ publisher reads each child's outcome back (a child that ended without one is a f
 it ended, `process_ended`) and ends the publish as section 5 of `ARCHITECTURE.md` states: the
 failures named in the top-level README and committed with `--commit`, then the push with
 `--push`. A publish with `--program` runs that program in its own process, the publisher's.
+
+## 2. A process per project variant {#variant-apart}
+
+A compare project that refuses whole converts file by file, and both of its variants converted in
+one process add up the same way: quakegeneric's two variants together need more than the 8 GB
+scope a publish runs in. Each variant of a compare project therefore converts in a process of its own
+(`convert_apart`): the publisher runs itself again with its own arguments and `--program <name>
+--convert-variant <variant> --results <file>` last. The child reads the project's cases and the
+variant file, converts into the variant's work folder (`compare/work/ports/<name>/<variant>/`,
+`convert_project`), writes the conversion to the file as JSON and exits; the publisher reads it
+back and publishes from the work folder as before. A child that wrote no conversion fails the
+project's publish, naming how the child ended.
