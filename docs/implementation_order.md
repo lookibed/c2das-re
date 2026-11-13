@@ -2129,6 +2129,21 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   demo1-3 in sync under interp and the JIT.
   Expected speed effect (phase-end A/B, B/A): 1.00 within noise on every lane (the call is
   substituted at its site wherever the def lives); compile time within noise.
+- **P9.27 The fold verdicts beside `macro_blowup`** (ruling 38 addendum 14 item 1 and the part 2
+  brief's step 4; `metrics/ARCHITECTURE_CRITERIA.md#criteria`). The criteria worker records the
+  conversion's fold verdicts (`ConvertResult.fold_counts`) as three raw keys: `macro_sites` (every
+  outermost function-like macro expansion, once per module), `macro_folded` (printed as a call of
+  its `[c_macro] def`) and `macro_faulting` (left expanded because an argument the body evaluates
+  zero times or in one branch only may fault: a dereference, an index or a division), each a line
+  of the length table beside `macro_blowup`'s das/C ratios; a compare project's are 0 (its
+  conversion keeps no verdicts), a capture before them reads them as 0 (`LATER_RAW_KEYS`). Under
+  `fn_macros` `expand` every site counts as `expand`, so either value's counts total the
+  program's sites; no das text changes, no criterion or density moves. Counts (criteria
+  re-record, 1612 inputs, 0 failed): lua 6000 sites, 2739 folded, 224 faulting (luac 5624, 2505,
+  221; under `expand` 6504 and 6165 sites, the expansions a folded def holds counted too);
+  c_testsuite 11 / 10 / 0, gcc_torture 93 / 35 / 1, csmith 10192 / 0 / 0; no other raw count of
+  any row moves. Expected speed effect: none (no output change);
+  the criteria run's time within noise.
 
 ## P6 — Doom
 
