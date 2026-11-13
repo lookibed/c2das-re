@@ -4,7 +4,7 @@ require strings
 require daslib/fio
 require daslib/strings_boost
 require ../harness.das
-require ../sources.das
+require ../doom_sources.das
 require ../../converter/sidecar.das
 
 //! The doom harness without the release: the checksum on known values, the pins of

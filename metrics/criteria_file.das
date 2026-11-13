@@ -59,14 +59,18 @@ let PROJECT_PREFIX = "project/"
 //! base the densities are read beside.
 let HAND_PREFIX = "hand/"
 
+//! PureDOOM's input key and row: the program `doom/run.das` converts, from its staged units under
+//! its own sidecar.
+let PUREDOOM_ROW = "doom/puredoom"
+
 //! The hand-written ports: the row, the environment variable naming its folder of `.das` files, and
 //! the folder when the variable is unset.
 let HAND_PORTS <- [(row = "hand/plmpeg-stream", env = "C2DAS_HAND_PLMPEG", dir = "/root/plmpeg-stream/src")]
 
 //! The rows of the capture: each Lua program in each layout and under each opt-in, each ratchet
-//! suite, each compare project of `compare/projects.das`'s `project_table`, in its order, then each
-//! hand-written port.
-let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/lua@inline", "lua/lua@goto", "lua/lua@checks-off", "lua/lua@past-end-inline", "lua/lua@fn-macros-expand", "lua/lua@pointer-steps-off", "lua/lua@ranged-loops-off", "lua/lua@c-switch-off", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "lua/luac@inline", "lua/luac@goto", "lua/luac@checks-off", "lua/luac@past-end-inline", "lua/luac@fn-macros-expand", "lua/luac@pointer-steps-off", "lua/luac@ranged-loops-off", "lua/luac@c-switch-off", "c_testsuite", "csmith", "gcc_torture", "project/wasm3", "project/binjgb", "project/h264bsd-mp4", "project/plmpeg-stream", "project/doomgeneric", "project/quakegeneric", "hand/plmpeg-stream"]
+//! suite, each compare project of `compare/projects.das`'s `project_table`, in its order, PureDOOM,
+//! then each hand-written port.
+let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/lua@inline", "lua/lua@goto", "lua/lua@checks-off", "lua/lua@past-end-inline", "lua/lua@fn-macros-expand", "lua/lua@pointer-steps-off", "lua/lua@ranged-loops-off", "lua/lua@c-switch-off", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "lua/luac@inline", "lua/luac@goto", "lua/luac@checks-off", "lua/luac@past-end-inline", "lua/luac@fn-macros-expand", "lua/luac@pointer-steps-off", "lua/luac@ranged-loops-off", "lua/luac@c-switch-off", "c_testsuite", "csmith", "gcc_torture", "project/wasm3", "project/binjgb", "project/h264bsd-mp4", "project/plmpeg-stream", "project/doomgeneric", "project/quakegeneric", "doom/puredoom", "hand/plmpeg-stream"]
 
 //! The Lua program row the densities' `programs` column pools: the published program in the
 //! default layout; `luac` shares its files and the other layouts and opt-ins its functions.
@@ -120,7 +124,7 @@ let NOT_APPLICABLE = -1.0lf
 
 //! The row an input key counts in: a Lua, project or hand-port key is its own row, a suite key its
 //! suite's.
-def row_of(key : string) : string => key |> starts_with("lua/") || key |> starts_with(PROJECT_PREFIX) || key |> starts_with(HAND_PREFIX) || find(key, "/") < 0 ? key : slice(key, 0, find(key, "/"))
+def row_of(key : string) : string => key |> starts_with("lua/") || key == PUREDOOM_ROW || key |> starts_with(PROJECT_PREFIX) || key |> starts_with(HAND_PREFIX) || find(key, "/") < 0 ? key : slice(key, 0, find(key, "/"))
 
 def private raw(counts : table<string; int>; key : string) : double => double(counts?[key] ?? 0)
 
@@ -258,9 +262,10 @@ struct CriteriaCapture {
 }
 
 //! Whether the row `row` counts in the `all` column: an opt-in's row is its readability price, a
-//! compare project's may cover only the files that convert alone and a hand-written port is no
-//! output, so the `all` column keeps the default output of the Lua programs and the suites.
-def in_all(row : string) : bool => !opt_in_row(row) && !(row |> starts_with(PROJECT_PREFIX)) && !(row |> starts_with(HAND_PREFIX))
+//! compare project's may cover only the files that convert alone, PureDOOM is a program of its own
+//! harness and a hand-written port is no output, so the `all` column keeps the default output of
+//! the Lua programs and the suites.
+def in_all(row : string) : bool => !opt_in_row(row) && row != PUREDOOM_ROW && !(row |> starts_with(PROJECT_PREFIX)) && !(row |> starts_with(HAND_PREFIX))
 
 //! The compliance of every criterion per row, and the `all` column: each criterion's mean over the
 //! rows where it applies.

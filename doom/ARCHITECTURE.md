@@ -19,7 +19,7 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
 - `patches/0003-signed-ticcmd.patch` - `ticcmd_t`'s moves as `signed char` (section 3).
 - `patches/0004-fine-table-overruns.patch` - the fine tables' overruns spelled out (section 3).
 - `host/doom_main.c` - the headless host (section 4), the program's `main`.
-- `sources.das` - the program's sources (section 2): `UNITS`, `program_sources`, the folder of
+- `doom_sources.das` - the program's sources (section 2): `UNITS`, `program_sources`, the folder of
   the fetched units and the sidecar's path.
 - `doom.c2das` - the sidecar (section 5).
 - `harness.das` - the checks and formats `run.das` applies: the pins read from `VERSIONS.md`,

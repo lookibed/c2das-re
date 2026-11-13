@@ -1,6 +1,6 @@
 options gen2
 
-module sources public
+module doom_sources public
 
 require daslib/fio
 
