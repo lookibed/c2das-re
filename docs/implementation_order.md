@@ -2120,8 +2120,13 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   layout and a cluster using its own header's macros are unchanged. Names program-wide (a private
   def takes no public def's name). Fixture `p9_fn_headers` (shared, private, a constant, a nested
   shared macro, a written pointer passed on by a private def) under interp and the JIT, and the
-  single layout. Counts (source layout, against P9.21): COUNTS_PLACEHOLDER. Lua and luac against
-  native (8 error checks, luac -o 33 files) and Doom demo1-3 in sync under interp and the JIT.
+  single layout. Counts (source layout, against P9.21): lua 30757 -> 30542 lines, its 498 private
+  defs (def lines, overloads counted) -> 131 public over 124 header macros plus 305 private; luac
+  23689 -> 23414, 393 -> 126 public over 120 plus 189 private; folded sites lua 2739 -> 2739, luac
+  2506 -> 2505, the expanded sites' reasons shifting (`overload` 184 -> 191 and 184 -> 198: a
+  header def holds one text for the whole program); Doom unchanged (7 private defs, no header
+  macro qualifies). Lua and luac against native (8 error checks, luac -o 33 files) and Doom
+  demo1-3 in sync under interp and the JIT.
   Expected speed effect (phase-end A/B, B/A): 1.00 within noise on every lane (the call is
   substituted at its site wherever the def lives); compile time within noise.
 
