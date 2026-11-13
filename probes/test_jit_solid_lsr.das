@@ -44,14 +44,14 @@ def private machine_code(t : T?; name, source : string; llc_flags : array<string
 
 [test]
 def test_jit_solid_lsr(t : T?) {
-    t |> run("under options solid_context LLVM's loop strength reduction gives the store into a global array at offset 16 of the globals block a pointer of its own per unrolled copy, spilled; so with it the code holds over three times the stack references it holds under `-disable-lsr` (docs/probe-findings.md F93)") @(t : T?) {
+    t |> run("under options solid_context LLVM's loop strength reduction takes the store into a global array at offset 16 of the globals block without a spill: the code holds the stack references it holds under `-disable-lsr` (docs/probe-findings.md F93, lookibed/daScript#43, fixed upstream by daScript 911fa62771)") @(t : T?) {
         let lsr : array<string>
         let no_lsr <- ["-disable-lsr"]
         let with_lsr = machine_code(t, "solid", SIEVE_SOURCE, lsr)
         let without = machine_code(t, "solid_nolsr", SIEVE_SOURCE, no_lsr)
         let stack_with = count(with_lsr, "(%rsp)")
         let stack_without = count(without, "(%rsp)")
-        t |> success(stack_with > 3 * stack_without, "{stack_with} stack references with LSR against {stack_without} without: F93 is stale")
+        t |> equal(stack_with, stack_without, "{stack_with} stack references with LSR against {stack_without} without: F93's spill is back")
     }
     t |> run("the same sieve without solid_context (the base an opaque `jit_get_global_mnh` result) or with the array first, at offset 0, takes LSR without a spill (F93's controls)") @(t : T?) {
         let lsr : array<string>

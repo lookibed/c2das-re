@@ -64,11 +64,11 @@ def test_jit_tbaa(t : T?) {
         remove(module_path)
         t |> success(body |> contains("!tbaa"), body)
     }
-    t |> run("a `reinterpret` from `void?` is no pun to the model: two views of one float through `void?` read the stale `2.0f` under the JIT (clang -O2's answer), a view from `float?` untags its function") @(t : T?) {
+    t |> run("a `reinterpret` from `void?` is a pun to the model like one from `float?`: both views of one float read `1.0f` under the JIT, both functions untagged (lookibed/daScript#44, fixed upstream)") @(t : T?) {
         let interp = daslang_run("tbaa_views", TWO_VIEWS, array<string>(), array<string>(), "c2das_probe")
         t |> equal(program_output(interp.out), "1 1\n")
         let jit = daslang_run("tbaa_views", TWO_VIEWS, jit_flags(), array<string>(), "c2das_probe")
-        t |> equal(program_output(jit.out), "2 1\n", jit.out)
-        t |> success(jit.out |> contains("strict aliasing - 1 of 3 functions untagged (punning 1"), jit.out)
+        t |> equal(program_output(jit.out), "1 1\n", jit.out)
+        t |> success(jit.out |> contains("strict aliasing - 2 of 3 functions untagged (punning 2"), jit.out)
     }
 }

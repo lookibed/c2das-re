@@ -1,13 +1,11 @@
 options gen2
 require dastest/testing_boost public
 require _daslang_child
-require strings
-require daslib/strings_boost
 
 //! The JIT's alignment claim on typed pointer parameters (docs/probe-findings.md F98,
-//! lookibed/daScript#46): a `T?` parameter is emitted `align alignof(T)`, so a pointer value that
-//! is not that aligned is poison to LLVM, which folds every test on it; the interpreter runs the
-//! same program as written. gcc-torture 960116-1 and 20001101 fail under `-jit` by it.
+//! lookibed/daScript#46, fixed upstream): a `T?` parameter carries no `align` attribute, so a pointer
+//! value that is not aligned to its type runs every test on it as the interpreter does. gcc-torture
+//! 960116-1 and 20001101 failed under `-jit` by the old claim.
 
 // a load guarded by an odd-address test, reached with 0xffffffff: the guard keeps the load from
 // running under the interpreter; `g`'s `[sideeffects]` keeps it a function of its own
@@ -19,19 +17,18 @@ let private ODD_COMPARE = "options gen2\n\nstruct S \{\n    bits : uint\n\}\n\nd
 
 [test]
 def test_jit_pointer_align(t : T?) {
-    t |> run("a load guarded by `(intptr(q) & 1) == 0` does not run under the interpreter; the JIT deletes the guard, loads 0xffffffff and faults") @(t : T?) {
+    t |> run("a load guarded by `(intptr(q) & 1) == 0` does not run under the interpreter nor the JIT (F98, fixed upstream)") @(t : T?) {
         let interp = daslang_child_flags("align_guard_interp", GUARDED_LOAD, array<string>())
         t |> equal(interp.rc, 0, interp.out)
         let jit = daslang_child_flags("align_guard_jit", GUARDED_LOAD, jit_flags())
         t |> success(jit_ran(jit.out), jit.out)
-        t |> success(jit.out |> contains("SIGSEGV"), jit.out)
-        t |> success(jit.out |> contains("0xffffffff"), jit.out)
+        t |> equal(jit.rc, 0, jit.out)
     }
-    t |> run("an `S?` parameter equal to the odd pointer 7 compares equal under the interpreter; the JIT folds the comparison to unequal (exit 3)") @(t : T?) {
+    t |> run("an `S?` parameter equal to the odd pointer 7 compares equal under the interpreter and the JIT (F98, fixed upstream)") @(t : T?) {
         let interp = daslang_child_flags("align_compare_interp", ODD_COMPARE, array<string>())
         t |> equal(interp.rc, 0, interp.out)
         let jit = daslang_child_flags("align_compare_jit", ODD_COMPARE, jit_flags())
         t |> success(jit_ran(jit.out), jit.out)
-        t |> equal(jit.rc, 3, jit.out)
+        t |> equal(jit.rc, 0, jit.out)
     }
 }

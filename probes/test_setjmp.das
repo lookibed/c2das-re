@@ -104,8 +104,8 @@ def test_setjmp(t : T?) {
 // the interpreter, each way: `5 6` when both recovers catch
 let MIXED_TIERS = "options gen2\n[no_jit]\ndef interp_thrower \{\n    panic(\"i\")\n\}\ndef jit_thrower \{\n    panic(\"j\")\n\}\ndef jit_catches : int \{\n    var r = 0\n    try \{\n        interp_thrower()\n    \} recover \{\n        r = 5\n    \}\n    return r\n\}\n[no_jit]\ndef interp_catches : int \{\n    var r = 0\n    try \{\n        jit_thrower()\n    \} recover \{\n        r = 6\n    \}\n    return r\n\}\n[export]\ndef main \{\n    print(\"\{jit_catches()\} \{interp_catches()\}\\n\")\n\}\n"
 
-// a `return` inside a try block after a call, with no panic, and inside a recover block, which
-// daslang refuses on every tier (lookibed/daScript#30, upstream #4472)
+// a `return` inside a try block after a call, with no panic, and inside a recover block: `1 7`
+// on every tier since daScript 7bb5b8dcf8 (upstream #4534; refused by #4472 before, lookibed/daScript#30)
 let RETURN_IN_TRY = "options gen2\ndef thrower(n : int) \{\n    if (n > 0) \{\n        panic(\"x\")\n    \}\n\}\ndef in_try : int \{\n    try \{\n        thrower(0)\n        return 1\n    \} recover \{\n        pass\n    \}\n    return 10\n\}\ndef in_recover : int \{\n    try \{\n        thrower(1)\n    \} recover \{\n        return 7\n    \}\n    return 20\n\}\n[export]\ndef main \{\n    print(\"\{in_try()\} \{in_recover()\}\\n\")\n\}\n"
 
 // the lowering of a return inside an arm (F96): the arm is a block invoked for whether it
@@ -126,18 +126,20 @@ def test_setjmp_tiers(t : T?) {
         t |> success(jit_ran(jit.out), jit.out)
         t |> equal(program_output(jit.out), "5 6\n", jit.out)
     }
-    t |> run("a return inside a try or a recover arm is compile error 30299 under the interpreter and the JIT alike (docs/probe-findings.md F75, F96)") @(t : T?) {
-        child_rejects(t, "setjmp_return", daslang_child_flags("setjmp_return", RETURN_IN_TRY, array<string>()), "error[30299]: return inside a try/recover arm")
-        child_rejects(t, "setjmp_return_jit", daslang_child_flags("setjmp_return_jit", RETURN_IN_TRY, jit_flags()), "error[30299]: return inside a try/recover arm")
+    t |> run("a return inside a try or a recover arm returns from the function under the interpreter and the JIT alike (docs/probe-findings.md F75, F96)") @(t : T?) {
+        let interp = daslang_child_flags("setjmp_return", RETURN_IN_TRY, array<string>())
+        t |> equal(program_output(interp.out), "1 7\n", interp.out)
+        let jit = daslang_child_flags("setjmp_return_jit", RETURN_IN_TRY, jit_flags())
+        t |> success(jit_ran(jit.out), jit.out)
+        t |> equal(program_output(jit.out), "1 7\n", jit.out)
     }
-    t |> run("under the JIT a break inside a try in a loop whose recover can panic fails the macro pass on a cold cache and leaves only the try from the cached DLL; a recover that cannot panic breaks the loop (docs/probe-findings.md F97, lookibed/daScript#45)") @(t : T?) {
+    t |> run("under the JIT a break inside a try in a loop whose recover can panic breaks the loop, cold and cached, as a recover that cannot panic does (docs/probe-findings.md F97, lookibed/daScript#45, fixed upstream by daScript 7bb5b8dcf8)") @(t : T?) {
         let rethrows = BREAK_IN_TRY |> replace("RECOVER", "panic(\"again\")")
         let interp = daslang_child_flags("setjmp_break", rethrows, array<string>())
         t |> equal(interp.out, "2\n", interp.out)
-        // cold or cached, the JIT never answers 2: the first run stops in the macro pass, a later one prints 4
         for (attempt in range(2)) {
             let jit = daslang_child_flags("setjmp_break_jit", rethrows, jit_flags())
-            t |> success(jit.out |> contains("back empty array") || program_output(jit.out) == "4\n", "run {attempt}: {jit.out}")
+            t |> equal(program_output(jit.out), "2\n", "run {attempt}: {jit.out}")
         }
         let plain = daslang_child_flags("setjmp_break_plain_jit", BREAK_IN_TRY |> replace("RECOVER", "s = 9"), jit_flags())
         t |> equal(program_output(plain.out), "2\n", plain.out)
