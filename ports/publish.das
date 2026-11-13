@@ -125,6 +125,8 @@ struct Args {
     commit : bool
     @clarg_doc = "push the clone's HEAD to origin after the commit (needs --commit)"
     push : bool
+    @clarg_doc = "set by the publisher on the process it runs one program in: the file that process writes its outcome to, a line `published` or `failed <why>` each; the push and the failure line of the top-level README stay with the publisher that ran it"
+    results : string = ""
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -1100,17 +1102,28 @@ def private repo_of(args : Args) : string {
 
 // every compare project of `projects` that `--program` names (all without it) published, the
 // top-level README after each, and committed with `--commit`; false at the first that fails
+// why the program `name` is not published, "" when it is: a compare project under `--no-convert`
+// or missing from the Rust checkout, PureDOOM in a tree without the `doom/` harness
+def private skip_reason(args : Args; name : string; projects : array<Project>) : string {
+    if (name == PUREDOOM) {
+        return fexist(DOOM_HARNESS) ? "" : "this tree has no {DOOM_HARNESS}"
+    }
+    for (p in projects) {
+        if (p.name == name) {
+            return args.no_convert ? "a compare project converts on every publish, and --no-convert converts nothing" : stat(p.dir).is_dir ? "" : "the Rust checkout has no {p.dir}"
+        }
+    }
+    return ""
+}
+
 def private publish_projects(args : Args; projects : array<Project>; repo : string; var failures : array<string>; var published : int&) {
     for (p in projects) {
         if (!empty(args.program) && args.program != p.name) {
             continue
         }
-        if (args.no_convert) {
-            to_log(LOG_WARNING, "{p.name}: not published: a compare project converts on every publish, and --no-convert converts nothing\n")
-            continue
-        }
-        if (!stat(p.dir).is_dir) {
-            to_log(LOG_WARNING, "{p.name}: not published: the Rust checkout has no {p.dir}\n")
+        let skip = skip_reason(args, p.name, projects)
+        if (!empty(skip)) {
+            to_log(LOG_WARNING, "{p.name}: not published: {skip}\n")
             continue
         }
         var gen : Generation
@@ -1132,6 +1145,67 @@ def private publish_projects(args : Args; projects : array<Project>; repo : stri
     }
 }
 
+// every flag and the trees checked before a publish, `lanes` the lanes `--lanes` names after
+// `native`; false with the refusal logged
+def private flags_hold(args : Args; var lanes : array<string>) : bool {
+    let das_lanes <- split(args.lanes, ",")
+    lanes |> push("native")
+    lanes |> reserve(1 + length(das_lanes))
+    for (lane in das_lanes) {
+        if (lane == "native" || !has_value(ALL_LANES, lane)) {
+            to_log(LOG_ERROR, "ports: no das lane `{lane}`; --lanes takes interp, jit, exe, jit-goto, aot, interp-source-cut, jit-source-cut, interp-single and jit-single\n")
+            return false
+        }
+        lanes |> push(lane)
+    }
+    if (args.push && !args.commit) {
+        to_log(LOG_ERROR, "ports: --push needs --commit\n")
+        return false
+    }
+    if (args.samples < 1) {
+        to_log(LOG_ERROR, "ports: --samples takes a count of 1 or more, not {args.samples}\n")
+        return false
+    }
+    if (args.timeout <= 0) {
+        to_log(LOG_ERROR, "ports: --timeout takes seconds above 0, not {args.timeout}\n")
+        return false
+    }
+    let refusal = box_refusal(args.box, cpu_name())
+    if (!empty(refusal)) {
+        to_log(LOG_ERROR, "ports: {refusal}\n")
+        return false
+    }
+    let repo = repo_of(args)
+    if (!is_clone(repo)) {
+        to_log(LOG_ERROR, "ports: {repo} is no clone of the ports repository (not the top of a git work tree)\n")
+        return false
+    }
+    var status : string
+    if (git_in(".", ["status", "--porcelain"], status) != 0) {
+        to_log(LOG_ERROR, "ports: run from the c2das-re checkout: {strip(status)}\n")
+        return false
+    }
+    if (!empty(strip(status)) && !args.allow_dirty) {
+        to_log(LOG_ERROR, "ports: the c2das-re tree has uncommitted changes; commit them or pass --allow-dirty\n")
+        return false
+    }
+    return true
+}
+
+// the Lua port published, the top-level README after it, and committed with `--commit`
+def private publish_and_commit_port(args : Args; port : Port; lanes : array<string>; repo : string; var failures : array<string>; var published : int&) {
+    var gen : Generation
+    if (!publish_program(args, port, lanes, repo, gen) || !publish_top_readme(repo, failures)) {
+        failures |> push("{port.name}: the publish failed (its log names why)")
+        return
+    }
+    to_log(LOG_INFO, "{port.name}: published into {path_join(repo, port.name)}\n")
+    published++
+    if (args.commit && !commit_program(port.name, repo, gen)) {
+        failures |> push("{port.name}: the commit failed")
+    }
+}
+
 [export]
 def main : int {
     var args = Args()
@@ -1149,69 +1223,71 @@ def main : int {
         to_log(LOG_ERROR, "ports: no program `{args.program}`; the publisher knows " + join(known, ", ") + "\n")
         return 1
     }
-    let das_lanes <- split(args.lanes, ",")
-    var lanes <- ["native"]
-    lanes |> reserve(1 + length(das_lanes))
-    for (lane in das_lanes) {
-        if (lane == "native" || !has_value(ALL_LANES, lane)) {
-            to_log(LOG_ERROR, "ports: no das lane `{lane}`; --lanes takes interp, jit, exe, jit-goto, aot, interp-source-cut, jit-source-cut, interp-single and jit-single\n")
-            return 1
-        }
-        lanes |> push(lane)
-    }
-    if (args.push && !args.commit) {
-        to_log(LOG_ERROR, "ports: --push needs --commit\n")
-        return 1
-    }
-    if (args.samples < 1) {
-        to_log(LOG_ERROR, "ports: --samples takes a count of 1 or more, not {args.samples}\n")
-        return 1
-    }
-    if (args.timeout <= 0) {
-        to_log(LOG_ERROR, "ports: --timeout takes seconds above 0, not {args.timeout}\n")
-        return 1
-    }
-    let refusal = box_refusal(args.box, cpu_name())
-    if (!empty(refusal)) {
-        to_log(LOG_ERROR, "ports: {refusal}\n")
+    var lanes : array<string>
+    if (!flags_hold(args, lanes)) {
         return 1
     }
     let repo = repo_of(args)
-    if (!is_clone(repo)) {
-        to_log(LOG_ERROR, "ports: {repo} is no clone of the ports repository (not the top of a git work tree)\n")
-        return 1
-    }
-    var status : string
-    if (git_in(".", ["status", "--porcelain"], status) != 0) {
-        to_log(LOG_ERROR, "ports: run from the c2das-re checkout: {strip(status)}\n")
-        return 1
-    }
-    if (!empty(strip(status)) && !args.allow_dirty) {
-        to_log(LOG_ERROR, "ports: the c2das-re tree has uncommitted changes; commit them or pass --allow-dirty\n")
-        return 1
-    }
     var failures : array<string>
     var published = 0
+    if (empty(args.program)) {
+        for (name in known) {
+            let skip = skip_reason(args, name, projects)
+            if (empty(skip)) {
+                publish_apart(name, failures, published)
+            } else {
+                to_log(LOG_WARNING, "{name}: not published: {skip}\n")
+            }
+        }
+        return finish(args, repo, failures, published)
+    }
     for (port in ports) {
-        if (!empty(args.program) && args.program != port.name) {
-            continue
-        }
-        var gen : Generation
-        if (!publish_program(args, port, lanes, repo, gen) || !publish_top_readme(repo, failures)) {
-            failures |> push("{port.name}: the publish failed (its log names why)")
-            continue
-        }
-        to_log(LOG_INFO, "{port.name}: published into {path_join(repo, port.name)}\n")
-        published++
-        if (args.commit && !commit_program(port.name, repo, gen)) {
-            failures |> push("{port.name}: the commit failed")
+        if (args.program == port.name) {
+            publish_and_commit_port(args, port, lanes, repo, failures, published)
         }
     }
     publish_projects(args, projects, repo, failures, published)
-    if (empty(args.program) || args.program == PUREDOOM) {
+    if (args.program == PUREDOOM) {
         publish_and_commit_puredoom(args, repo, failures, published)
     }
+    if (!empty(args.results)) {
+        var lines <- [for (_i in range(published)); "published"]
+        lines |> push_from([for (f in failures); "failed {f}"])
+        return fwrite(args.results, join(lines, "\n") + "\n") ? 0 : 1
+    }
     return finish(args, repo, failures, published)
+}
+
+// the program `name` published by this script run again in a process of its own with `--program
+// <name> --results <file>` last (`rerun_command`), so the process's heaps, which hold every string
+// a conversion made until it exits, go with it; its outcome read back from the file into `failures`
+// and `published`, a process that ended without one a failure naming how it ended
+[arch(at="ARCHITECTURE_RUN.md#apart")]
+def private publish_apart(name : string; var failures : array<string>; var published : int&) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_publish", dir_error)
+    if (!empty(dir_error)) {
+        failures |> push("{name}: no folder for the outcome of its process: {dir_error}")
+        return
+    }
+    let results = path_join(dir, "results.txt")
+    let command = rerun_command(get_command_line_arguments(), ["--program", name, "--results", results])
+    to_log(LOG_INFO, "{name}: in a process of its own: {command}\n")
+    let how = process_ended(unsafe(system(command)))
+    var outcome = false
+    for (ln in split(fread(results), "\n")) {
+        if (ln == "published") {
+            published++
+            outcome = true
+        } elif (ln |> starts_with("failed ")) {
+            failures |> push(slice(ln, length("failed ")))
+            outcome = true
+        }
+    }
+    if (!outcome && !empty(how)) {
+        failures |> push("{name}: the publish process {how} without an outcome")
+    }
+    rmdir_rec(dir)
 }
 
 // the end of a publish: when some program published, the failures named in the top-level README
@@ -1302,8 +1378,9 @@ def private doom_fps_text(gen : Generation) : string {
 // PureDOOM published, the top-level README after it, and committed with `--commit`; skipped with a
 // warning in a tree without the `doom/` harness
 def private publish_and_commit_puredoom(args : Args; repo : string; var failures : array<string>; var published : int&) {
-    if (!fexist(DOOM_HARNESS)) {
-        to_log(LOG_WARNING, "{PUREDOOM}: not published: this tree has no {DOOM_HARNESS}\n")
+    let skip = skip_reason(args, PUREDOOM, array<Project>())
+    if (!empty(skip)) {
+        to_log(LOG_WARNING, "{PUREDOOM}: not published: {skip}\n")
         return
     }
     var gen : Generation

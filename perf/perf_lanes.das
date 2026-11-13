@@ -201,6 +201,32 @@ def in_folder(cwd : string; argv : array<string>) : array<string> {
 //! source layout, `<work>/<layout>/<stem>/` for the source-cut and the single ones.
 def layout_dir(work, stem, layout : string) : string => layout == "source" ? path_join(work, stem) : path_join(path_join(work, layout), stem)
 
+//! `text` as one word of a POSIX shell's command line: single-quoted, each quote of its own closed,
+//! escaped and reopened.
+def shell_word(text : string) : string => "'" + replace(text, "'", "'\\''") + "'"
+
+//! The shell command that runs a script again as `argv` (its `get_command_line_arguments`) ran it,
+//! with `extra` last among the script's arguments, so each of them wins; a `--` opens the script's
+//! arguments when `argv` has none. The shell `exec`s it, so a signal that ends the process shows in
+//! the status `system` returns (`process_ended`).
+def rerun_command(argv, extra : array<string>) : string {
+    var words <- [for (word in argv); shell_word(word)]
+    if (!has_value(argv, "--")) {
+        words |> push("--")
+    }
+    words |> push_from([for (word in extra); shell_word(word)])
+    return "exec " + join(words, " ")
+}
+
+//! How a process `system` ran ended, from the wait status it returns: "" when it exited 0.
+def process_ended(status : int) : string {
+    if (status == -1) {
+        return "could not start"
+    }
+    let signal = status & 0x7f
+    return signal != 0 ? "was killed by signal {signal}" : (status >> 8) != 0 ? "exited {status >> 8}" : ""
+}
+
 //! The last line of `text` that is not empty.
 def last_line(text : string) : string {
     let lines <- [for (l in split(text, "\n")); strip(l); where !empty(strip(l))]

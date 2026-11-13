@@ -645,42 +645,17 @@ def private convert_layout(stem, main_source : string; input : ProgramInput; bin
     return true
 }
 
-// `text` as one word of a POSIX shell's command line: single-quoted, each quote of its own closed,
-// escaped and reopened
-def private shell_word(text : string) : string => "'" + replace(text, "'", "'\\''") + "'"
-
-// the shell command that runs this script again as `argv` ran it, with `--filter`, `--layout` and
-// `--oracle-built` last, so each wins; a `--` opens the script's arguments when `argv` has none.
-// The shell `exec`s it, so a signal that ends the process shows in the status `system` returns
-def private apart_command(argv : array<string>; stem, layout : string) : string {
-    var words <- [for (word in argv); shell_word(word)]
-    if (!has_value(argv, "--")) {
-        words |> push("--")
-    }
-    words |> push_from([for (word in ["--filter", stem, "--layout", layout, "--oracle-built"]); shell_word(word)])
-    return "exec " + join(words, " ")
-}
-
 let SIGINT_STATUS = 2
 
-// how a conversion process ended, from the wait status `system` returns: "" when it exited 0
-def private ended(status : int) : string {
-    if (status == -1) {
-        return "could not start"
-    }
-    let signal = status & 0x7f
-    return signal != 0 ? "was killed by signal {signal}" : (status >> 8) != 0 ? "exited {status >> 8}" : ""
-}
-
-// `stem` converted in `layout` by this script run again in a process of its own (`apart_command`):
-// the process's heaps, which hold every string the conversion made until it exits, go with it. The
+// `stem` converted in `layout` by this script run again in a process of its own (`rerun_command`
+// with `--filter`, `--layout` and `--oracle-built`): the process's heaps, which hold every string the conversion made until it exits, go with it. The
 // child shares this run's stdout and stderr, whose lines `to_log` flushes one by one, so the child's
 // follow this run's. A process that does not exit 0 is logged by how it ended; `interrupted` is
 // set when SIGINT ended it, at the shell or the conversion, so the run stops. True when it exits 0
 [arch(at="ARCHITECTURE.md#apart")]
 def private convert_apart(stem, layout : string; var interrupted : bool&) : bool {
-    let status = unsafe(system(apart_command(get_command_line_arguments(), stem, layout)))
-    let how = ended(status)
+    let status = unsafe(system(rerun_command(get_command_line_arguments(), ["--filter", stem, "--layout", layout, "--oracle-built"])))
+    let how = process_ended(status)
     if (!empty(how)) {
         to_log(LOG_ERROR, "lua: {stem} ({layout}): the conversion process {how}\n")
     }

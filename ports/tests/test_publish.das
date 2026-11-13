@@ -988,6 +988,25 @@ def test_projects(t : T?) {
 }
 
 [test]
+def test_apart(t : T?) {
+    t |> run_stand_in("each program in a process of its own, a skipped one in none; a process that ends without an outcome is a failure naming how it ended, and the next program still publishes", "c2das_ports_apart_killed") @(t : T?; root, clone : string) {
+        stand_in_projects(root)
+        // the harness kills the publisher's process that runs it
+        fwrite(path_join(root, "lua/run.das"), "options gen2\nrequire daslib/fio\n[export]\ndef main : int \{\n    unsafe(system(\"kill -KILL $(ps -o ppid= -p $PPID)\"))\n    return 0\n\}\n")
+        git(root, ["add", "-A"])
+        git(root, ["commit", "-q", "-m", "projects"])
+        var out : string
+        t |> equal(publish(root, ["--repo", clone], out), 1, out)
+        t |> success(out |> contains("ports: failed: lua: the publish process was killed by signal 9 without an outcome"), out)
+        t |> success(fexist(path_join(clone, "binjgb/README.md")) && !fexist(path_join(clone, "lua/README.md")), out)
+        for (name in ["lua", "wasm3", "binjgb"]) {
+            t |> success(out |> contains("{name}: in a process of its own: exec "), out)
+        }
+        t |> success(out |> contains("puredoom: not published: this tree has no doom/run.das") && !(out |> contains("puredoom: in a process of its own")), out)
+    }
+}
+
+[test]
 def test_project_criteria_provenance(t : T?) {
     t |> run_stand_in("a project's criteria: a change to the criteria's computation after the capture is a change since, a metrics-only commit is not; a dirty capture names no commit", "c2das_ports_criteria_provenance") @(t : T?; root, clone : string) {
         stand_in_projects(root)
