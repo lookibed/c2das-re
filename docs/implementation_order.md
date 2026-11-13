@@ -2227,6 +2227,11 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   tables with both columns. Then the missing off-switches for the forms the phase 2b end A/B traced
   regressions to (P9.28's compound_lit and sieve exe, switch_local interp). The searches (criteria per
   candidate as normal heavy jobs, timing in exclusive batches) and the publish are the lead's.
+  Step 2 done in PR 4: the sidecar's `forms_off` and `--forms-off` (`pointer_steps`, `ranged_loops`,
+  `c_switch`; `converter/ARCHITECTURE_EMITTER_TEXT.md#forms-off`), each restoring the spelling before
+  P9.9, P9.23/P9.24 and P9.12 alone, the default unchanged; the perf lanes `interp-<form>-off` (cells
+  at the lead's next capture), the metrics keys `@<form>-off` and the criteria rows
+  `lua/<program>@<form>-off`, and the variant knob `forms_off` (`[]` in every file).
 
 ## P6 — Doom
 
