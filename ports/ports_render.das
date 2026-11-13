@@ -755,12 +755,14 @@ def render_variants(columns : array<VariantColumn>; execute_row : bool) : string
     var headers <- [""]
     headers |> push_from([for (c in columns); "`{c.file.name}/`"])
     var rows : array<array<string>>
+    rows |> reserve(length(VARIANT_KNOBS) + length(SPEED_TIERS) + 3)
     for (key in VARIANT_KNOBS) {
         var inscope row <- ["`{key}`"]
         row |> push_from([for (c in columns); knob_of(c.file, key)])
         rows |> emplace(row)
     }
     var inscope criteria <- ["Criteria total, %"]
+    criteria |> reserve(1 + length(columns))
     for (c in columns) {
         let r & = c.file.results
         criteria |> push(number_cell(r.has_criteria, r.criteria.total, c.criteria_fallback, c.criteria_from, ":.1f", labels))
@@ -768,6 +770,7 @@ def render_variants(columns : array<VariantColumn>; execute_row : bool) : string
     rows |> emplace(criteria)
     for (tier in SPEED_TIERS) {
         var inscope row <- ["x native, {lane_title(tier)}"]
+        row |> reserve(1 + length(columns))
         for (c in columns) {
             let r & = c.file.results
             row |> push(number_cell(r.has_speed, r.speed.x_native?[tier] ?? 0.0lf, c.speed_fallback?[tier] ?? 0.0lf, c.speed_from, ":.2f", labels))
