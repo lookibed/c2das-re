@@ -6,7 +6,10 @@ Companion to `ARCHITECTURE.md` in this folder: the real projects comparison.
 
 `run.das --project <name>` runs one real project of the Rust repository's `tests/manual` through
 both translators and writes its entry of the capture's `projects` section, keeping every other
-project and section. A project is a row of `project_table` in `projects.das`, the facts of the
+project and section. With `--variant <file>` (a `ports/variants/<name>.<variant>.json`,
+`ports/ARCHITECTURE_VARIANTS.md`) our side converts under the variant's knobs (`Project.ours_variant`,
+set over the sidecar `ours_module` writes); it takes `--out`, so the committed capture keeps the
+default conversion, and a variant of another project is refused. A project is a row of `project_table` in `projects.das`, the facts of the
 project's README in the Rust checkout (`$C2DAS_RUST`, else `/root/c2das`, read in place, never
 copied or built): the translation unit and the bench unit relative to the project folder (no bench
 unit for a project without one), the include folders, the defines, the defines of our side alone

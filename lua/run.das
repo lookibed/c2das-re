@@ -16,6 +16,7 @@ require ../converter/dumper_a.das
 require ../converter/sidecar.das
 require ../perf/perf_lanes.das
 require sources
+require ../ports/variants.das
 
 //! The Lua harness: `lua/fetch.sh`'s release converted as its Makefile builds it, the interpreter
 //! `lua` and the compiler `luac`, each from its separate C files through a program manifest
@@ -54,11 +55,14 @@ struct Args {
     @clarg_name = "switch-dispatch"
     @clarg_doc = "the converter's --switch-dispatch: chain or goto (a dense switch as a jump table, lvm's dispatch among them, each layout's folder then under lua/work/goto/); default the sidecar's, which is chain"
     switch_dispatch : string = ""
+    @clarg_doc = "a variant file of lua (ports/variants/lua.<variant>.json): convert under lua/lua.c2das with the variant's knobs set, written to lua/work/variants/<variant>/lua.c2das, each layout's folder then under lua/work/variants/<variant>/"
+    @clarg_name = "variant"
+    variant_file : string = ""
     @clarg_name = "luac-check"
     @clarg_doc = "a folder of Lua scripts: the converted luac compiles each with -o under --tier, and its bytes must be the native luac's"
     luac_check : string = ""
     @clarg_name = "suite-check"
-    @clarg_doc = "also run each file of the release's test suite with the converted interpreter under --tier and with the native oracle, each capped, and write the verdicts to lua/work/<layout>/suite.txt"
+    @clarg_doc = "also run each file of the release's test suite with the converted interpreter under --tier and with the native oracle, each capped, and write the verdicts to <layout>/suite.txt in the folder the layouts sit in (lua/work/, its goto/ or variants/<variant>/)"
     suite_check : bool
     @clarg_name = "suite-filter"
     @clarg_doc = "run only this file of the test suite under --suite-check"
@@ -529,12 +533,12 @@ struct Launchers {
 }
 
 // `lua/work/native_bin/lua`, a link named `lua` to the native oracle `bin` (the nested runs look
-// `lua` up on `PATH`), and `lua/work/<layout>/bin/lua`, a script running the converted interpreter
+// `lua` up on `PATH`), and `<work>/<layout>/bin/lua`, a script running the converted interpreter
 // at `das_path` under `tier` with its arguments, each word quoted for `sh`: their folders, empty
 // when one cannot be written
-def private suite_launchers(das_path, bin, tier, layout : string) : Launchers {
+def private suite_launchers(das_path, bin, tier, work, layout : string) : Launchers {
     let native_dir = full_path(path_join(WORK, "native_bin"))
-    let das_dir = full_path(path_join(path_join(WORK, layout), "bin"))
+    let das_dir = full_path(path_join(path_join(work, layout), "bin"))
     mkdir_rec(native_dir)
     mkdir_rec(das_dir)
     let das_lua = path_join(das_dir, "lua")
@@ -547,10 +551,10 @@ def private suite_launchers(das_path, bin, tier, layout : string) : Launchers {
 
 // every file of `SUITE` (the one `--suite-filter` names) run by `suite_file` in `layout` under the
 // cap `choose_cap` finds (probed again here: `Args` stays the command line), its verdicts written
-// to `lua/work/<layout>/suite.txt` and counted: true when every file passes
+// to `<layout>/suite.txt` in the layouts' folder (`work_of`) and counted: true when every file passes
 def private suite_check(das_path, bin, layout : string; args : Args) : bool {
     let files <- empty(args.suite_filter) ? clone_to_move(SUITE) : [args.suite_filter]
-    let launchers = suite_launchers(das_path, bin, args.tier, layout)
+    let launchers = suite_launchers(das_path, bin, args.tier, work_of(args), layout)
     if (empty(launchers.native)) {
         to_log(LOG_ERROR, "lua: cannot write the suite's `lua` launchers under {WORK}\n")
         return false
@@ -570,7 +574,7 @@ def private suite_check(das_path, bin, layout : string; args : Args) : bool {
         lines |> push(line)
         counts[split(line, " ")[1]]++
     }
-    let out_dir = path_join(WORK, layout)
+    let out_dir = path_join(work_of(args), layout)
     mkdir_rec(out_dir)
     fwrite(path_join(out_dir, "suite.txt"), join(lines, "\n") + "\n")
     let totals = join([for (verdict in ["pass", "fail", "timeout", "memory", "oracle", "missing"]); "{counts?[verdict] ?? 0} {verdict}"], ", ")
@@ -595,13 +599,45 @@ def private das_lines(res : ConvertResult; dir : string) : int {
 
 // the folder the layouts' folders sit in: `WORK`, or under `--switch-dispatch goto` its `goto/`, so
 // the goto conversion's trees and module caches stay apart from the default ones
-def private work_of(args : Args) : string => args.switch_dispatch == "goto" ? path_join(WORK, "goto") : WORK
+def private work_of(args : Args) : string {
+    let base = empty(args.variant_file) ? WORK : path_join(WORK, "variants/{variant_of(args)}")
+    return args.switch_dispatch == "goto" ? path_join(base, "goto") : base
+}
+
+// the variant `--variant` names (`<program>.<variant>.json`), "" without one
+def private variant_of(args : Args) : string {
+    let stem = trim_suffix(base_name(args.variant_file), ".json")
+    return empty(args.variant_file) ? "" : slice(stem, rfind(stem, ".") + 1)
+}
+
+// the sidecar the conversions take: SIDECAR, or under `--variant` the variant's, which `main` writes
+def private sidecar_of(args : Args) : string => empty(args.variant_file) ? SIDECAR : path_join(WORK, "variants/{variant_of(args)}/lua.c2das")
+
+// the variant's sidecar written where `sidecar_of` names it; true without `--variant`, false with
+// the refusal logged
+def private write_variant_sidecar(args : Args) : bool {
+    if (empty(args.variant_file)) {
+        return true
+    }
+    var error : string
+    let v <- read_variant(args.variant_file, error)
+    if (empty(error) && v.program != "lua") {
+        error = "{args.variant_file} is a variant of {v.program}, not of lua"
+    }
+    if (empty(error)) {
+        variant_sidecar(v, SIDECAR, sidecar_of(args), error)
+    }
+    if (!empty(error)) {
+        to_log(LOG_ERROR, "lua: --variant: {error}\n")
+    }
+    return empty(error)
+}
 
 // one program converted in `layout` and reported; with `--error-check`, `--suite-check` and `--run`
 // the interpreter run against the native oracle `bin`, with `--luac-check` the compiler over the folder it names
 def private convert_layout(stem, main_source : string; input : ProgramInput; bin, layout : string; args : Args) : bool {
     let dir = layout_dir(work_of(args), stem, layout)
-    let res <- convert_program(input.c_paths, dir, args.target, "", SIDECAR, "", "", input.entry, layout, false, "", args.switch_dispatch)
+    let res <- convert_program(input.c_paths, dir, args.target, "", sidecar_of(args), "", "", input.entry, layout, false, "", args.switch_dispatch)
     let head = "lua: {stem} ({layout})"
     to_log(LOG_INFO, "{head}: {length(input.c_paths)} files, dumper {fmt(":.1f", res.dump_seconds)} s, JSON {res.json_bytes} bytes\n")
     if (!res.ok) {
@@ -729,6 +765,9 @@ def main : int {
     }
     if (!mkdir_rec(WORK) && !stat(WORK).is_dir) {
         to_log(LOG_ERROR, "lua: cannot create {WORK}\n")
+        return 1
+    }
+    if (!write_variant_sidecar(args)) {
         return 1
     }
     // more than one conversion: each in a process of its own, so no conversion's garbage adds to

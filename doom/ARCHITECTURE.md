@@ -63,6 +63,10 @@ committed references under `ref/` are those files copied by hand after a referen
   define added; `--run` runs that conversion, writes its trace lines to
   `work/trace/<wad stem>_demo<N>.<tier>.log` and holds them to the native ones over the same
   `--tics` (a traced desync fails the run), the tic lines still held to the reference log.
+- `run.das --variant <file>` with any of the above: `doom.c2das` with the knobs of
+  `ports/variants/puredoom.<variant>.json` set (`ports/ARCHITECTURE_VARIANTS.md`), written to
+  `work/variants/<variant>/doom.c2das`; every `work/<layout>...` folder, form sidecar and `--fps`
+  capture above then lies under `work/variants/<variant>/`, the native builds staying shared.
 - `demo_run.das` - the demo runs (section 8): `wad_stem`, `wad_dir`, `reference_log`, `DemoSpec`,
   `program_argv`, `run_converted` (the converted program under a tier, or the native build under
   `NATIVE_LANE`), `in_sync` and `run_report`.

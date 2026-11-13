@@ -44,3 +44,15 @@ conversion reads it, the program sidecar's relative paths (`include_dirs`, `incl
 with the converter's `read_sidecar`, so a value the converter refuses is refused naming the variant
 and the key. `published_sidecar` is the same object with the paths as the program's sidecar writes
 them: the sidecar a variant's directory in the clone holds.
+
+## 3. The harnesses
+
+Each harness converts under a variant file it is handed, its own program's only:
+
+- `lua/run.das --variant <file>`: `lua/work/variants/<variant>/`, its sidecar `lua.c2das` there
+  (`lua/ARCHITECTURE.md` section 1).
+- `doom/run.das --variant <file>`: `doom/work/variants/<variant>/`, its sidecar `doom.c2das` and
+  `--fps`'s capture there (`doom/ARCHITECTURE.md` section 1).
+- `compare/run.das --project <name> --variant <file> --out <capture>`: our side of the project
+  (`compare/ARCHITECTURE_PROJECTS.md`); `convert_project`, which the publisher and the criteria
+  call, takes the variant as the project's `ours_variant`.
