@@ -2236,8 +2236,11 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   from an exclusive quiet run, `lines`, `notes`, each with its commit and date;
   `ports/ARCHITECTURE_VARIANTS.md#variant-results`), which the searches fill, and the variants table
   (`render_variants`: both variants side by side, a number the search left out falling back to a
-  labelled capture). PR 6: the publisher converts and publishes `<program>/readable/` and
-  `<program>/fast/` and renders the table in each README.
+  labelled capture). PR 6: Lua's publish converts each variant (`lua/run.das --variant <file>
+  --layout <its layout>`) into `lua/readable/` and `lua/fast/`, each with its sidecar and
+  `variant.json`, and renders the table; the perf lanes are each tier over `readable` and over
+  `fast` (`-fast`), the goto and layout lanes leave new captures (old captures still render them).
+  PR 7: the same for the compare projects and PureDOOM (a sync table per variant).
 
 ## P6 — Doom
 
