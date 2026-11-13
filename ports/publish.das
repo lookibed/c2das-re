@@ -19,6 +19,8 @@ require ../converter/sidecar.das
 require ../compare/compare_render.das
 require ../metrics/criteria_file.das
 require ../compare/projects.das
+require ../compare/quality_compare.das
+require variants
 require ../compare/rust_translator.das
 require puredoom
 require ../doom/harness.das
@@ -65,7 +67,9 @@ struct Port {
     workloads : array<WorkloadSpec>
 }
 
-let ALL_LANES <- ["native", "interp", "jit", "exe", "jit-goto", "aot", "interp-source-cut", "jit-source-cut", "interp-single", "jit-single"]
+//! the lanes: the native build, each tier over the `readable` variant's modules, then each over the
+//! `fast` variant's (`-fast`)
+let ALL_LANES <- ["native", "interp", "jit", "exe", "aot", "interp-fast", "jit-fast", "exe-fast", "aot-fast"]
 let STARTUP_ARGS <- ["-e", "print(1)"]
 let WARM_UP_TIMEOUT = 3600.0
 //! the wrapper that times a workload inside its process, and the line it reports the seconds on
@@ -109,8 +113,8 @@ struct Args {
     perf : bool
     @clarg_doc = "samples per workload and lane, each its own process (default 5)"
     samples : int = 5
-    @clarg_doc = "the das lanes to measure, comma-separated, out of interp,jit,exe,jit-goto,aot,interp-source-cut,jit-source-cut,interp-single,jit-single (default all but aot): the -source-cut and -single lanes run those layouts' modules, jit-goto the source layout converted with --switch-dispatch goto"
-    lanes : string = "interp,jit,exe,jit-goto,interp-source-cut,jit-source-cut,interp-single,jit-single"
+    @clarg_doc = "the das lanes to measure, comma-separated, out of interp,jit,exe,aot,interp-fast,jit-fast,exe-fast,aot-fast (default all but the AOT lanes): a lane runs the readable variant's modules, a -fast lane the fast variant's"
+    lanes : string = "interp,jit,exe,interp-fast,jit-fast,exe-fast"
     @clarg_doc = "seconds one sample may run before its cell fails (default 1800)"
     timeout : int = 1800
     @clarg_name = "allow-stale"
@@ -178,25 +182,51 @@ def private publish_command(args : Args; port : Port) : string {
 def private sources_of(port : Port; release : Release) : string => path_join(port.harness, "fetch/{trim_suffix(base_name(release.tarballs[0].url), ".tar.gz")}/src")
 def private tests_of(port : Port; release : Release) : string => path_join(port.harness, "fetch/{trim_suffix(base_name(release.tarballs[1].url), ".tar.gz")}")
 def private log_of(port : Port) : string => path_join(port.harness, "work/publish_run.log")
-def private goto_log_of(port : Port) : string => path_join(port.harness, "work/publish_goto_run.log")
+// the folder the harness converts the variant `name` in, and the log of that conversion
+def private variant_work(port : Port; name : string) : string => path_join(port.harness, "work/variants/{name}")
+def private variant_log_of(port : Port; name : string) : string => path_join(variant_work(port, name), "publish_run.log")
 def private stamp_of(port : Port) : string => path_join(port.harness, "work/publish.generation")
 // the empty script the warm-up runs under `TIMED_LUA`
 def private empty_script_of(port : Port) : string => get_full_file_name(path_join(port.harness, "work/bench/empty.lua"))
-def private module_of(port : Port; stem, layout : string) : string => path_join(layout_dir(path_join(port.harness, "work"), stem, layout), "{stem}.das")
+// the entry module of `stem` in the variant `v`'s conversion, in the layout its knob names
+def private module_of(port : Port; v : Variant; stem : string) : string => path_join(layout_dir(variant_work(port, v.name), stem, layout_of(v)), "{stem}.das")
 
-// the layout a das lane runs: the -source-cut and -single lanes those layouts' modules, `jit-goto`
-// the source layout's converted with `--switch-dispatch goto` (its folder `work/goto/`), the others
-// the source layout's
-def private lane_layout(lane : string) : string => lane |> ends_with("-single") ? "single" : lane |> ends_with("-source-cut") ? "source-cut" : lane == "jit-goto" ? "goto" : "source"
+// the layout the variant `v` converts in: its `layout` knob, else the converter's default
+def private layout_of(v : Variant) : string {
+    for (k in v.knobs) {
+        if (k.key == "layout") {
+            return trim_suffix(trim_prefix(k.value, "\""), "\"")
+        }
+    }
+    return "source"
+}
+
+// the variant a das lane runs (`fast` for a `-fast` lane, else `readable`) and its tier
+def private lane_variant(lane : string) : string => lane |> ends_with("-fast") ? "fast" : "readable"
+def private lane_tier(lane : string) : string => trim_suffix(lane, "-fast")
+
+// the entry module of the program the workloads run in the conversion of `lane`'s variant
+def private lane_module(port : Port; variants : array<Variant>; lane : string) : string {
+    for (v in variants) {
+        if (v.name == lane_variant(lane)) {
+            return get_full_file_name(module_of(port, v, port.runs))
+        }
+    }
+    return ""
+}
 
 // whether daslang runs `lane` over a converted module, which it caches in the folder it runs in;
 // the exe and AOT lanes run a binary, the native lane the C build
-def private runs_module(lane : string) : bool => lane != "native" && lane != "exe" && lane != "aot"
+def private runs_module(lane : string) : bool => lane != "native" && lane_tier(lane) != "exe" && lane_tier(lane) != "aot"
 
 // the das files of a program's source or source-cut layout under `dir` (its modules and fragments), each
 // relative to `dir`: the ones the conversion's `program.modules.txt` lists, so a file an earlier
-// conversion left there stays out; none when the list is missing
-def private tree_files(dir : string) : array<string> {
+// conversion left there stays out; none when the list is missing, and in the single layout, which
+// writes no list, its one module `single`
+def private tree_files(dir : string; single : string = "") : array<string> {
+    if (!empty(single)) {
+        return <- [single]
+    }
     var files <- [for (ln in split(fread(path_join(dir, "program.modules.txt")), "\n")); strip(ln); where !empty(strip(ln))]
     sort(files)
     return <- files
@@ -250,9 +280,9 @@ def private generation_for(args : Args; port : Port; var gen : Generation) : boo
     return true
 }
 
-// the fetch, the harness's conversion with its native oracle and run, the log kept beside the
-// converted output for the README, then the goto lane's conversion
-def private run_harness(port : Port) : bool {
+// the fetch, then the harness's conversion of each variant in its layout with the native oracle and
+// its run, each log kept beside the converted output for the README
+def private run_harness(port : Port; variants : array<Variant>) : bool {
     // a stamp an earlier conversion left would name this HEAD over a work folder this run leaves
     // half written
     remove(stamp_of(port))
@@ -261,25 +291,17 @@ def private run_harness(port : Port) : bool {
         to_log(LOG_ERROR, "{port.name}: {port.harness}/fetch.sh failed: {last_line(out)}\n")
         return false
     }
-    var argv <- daslang_cmd(CONVERTED_MODULES)
-    argv |> push_from([path_join(port.harness, "run.das"), "--", "--native", "--run"])
-    to_log(LOG_INFO, "{port.name}: " + join(argv, " ") + "\n")
-    let rc = run_and_capture(argv, out, 7200.0)
-    fwrite(log_of(port), out)
-    if (rc != 0) {
-        to_log(LOG_ERROR, "{port.name}: the conversion exited {rc}; {log_of(port)} holds its log\n")
-        return false
-    }
-    // the goto lane's tree: the source layout of the program the workloads run, converted with
-    // the jump-table dispatch into `work/goto/`, its log apart from the one the README quotes
-    var goto_argv <- daslang_cmd(CONVERTED_MODULES)
-    goto_argv |> push_from([path_join(port.harness, "run.das"), "--", "--filter", port.runs, "--layout", "source", "--switch-dispatch", "goto"])
-    to_log(LOG_INFO, "{port.name}: " + join(goto_argv, " ") + "\n")
-    let goto_rc = run_and_capture(goto_argv, out, 7200.0)
-    fwrite(goto_log_of(port), out)
-    if (goto_rc != 0) {
-        to_log(LOG_ERROR, "{port.name}: the goto-dispatch conversion exited {goto_rc}; {goto_log_of(port)} holds its log\n")
-        return false
+    for (v in variants) {
+        var inscope argv <- daslang_cmd(CONVERTED_MODULES)
+        argv |> push_from([path_join(port.harness, "run.das"), "--", "--native", "--run", "--variant", variant_path(port.name, v.name), "--layout", layout_of(v)])
+        to_log(LOG_INFO, "{port.name}: " + join(argv, " ") + "\n")
+        let rc = run_and_capture(argv, out, 7200.0)
+        mkdir_rec(variant_work(port, v.name))
+        fwrite(variant_log_of(port, v.name), out)
+        if (rc != 0) {
+            to_log(LOG_ERROR, "{port.name}: the conversion of the {v.name} variant exited {rc}; {variant_log_of(port, v.name)} holds its log\n")
+            return false
+        }
     }
     let gen = tree_generation()
     return write_or_log(stamp_of(port), "{gen.sha}\n{gen.describe}\n{gen.date}\n")
@@ -418,7 +440,7 @@ struct LaneRun {
 // every lane of `lanes` built once: native from the sources the harness's program manifest lists,
 // the das lanes over the converted module, the program's arguments after `--` for the interpreter
 // and the JIT
-def private build_lanes(port : Port; lanes : array<string>; var into : Capture) : table<string; LaneRun> {
+def private build_lanes(port : Port; variants : array<Variant>; lanes : array<string>; var into : Capture) : table<string; LaneRun> {
     var runs : table<string; LaneRun>
     let work = path_join(port.harness, "work")
     let bench_work = path_join(work, "bench")
@@ -426,7 +448,6 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
     let empty_script = empty_script_of(port)
     fwrite(empty_script, "")
     let manifest = path_join(work, "{port.runs}.program.json")
-    let das_path = get_full_file_name(module_of(port, port.runs, "source"))
     let modules <- [for (dir in CONVERTED_MODULES); get_full_file_name(dir)]
     into.lanes |> reserve(length(lanes))
     for (lane in lanes) {
@@ -446,32 +467,30 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
             var inscope listed <- empty(error) ? [for (c_path in input.c_paths); base_name(c_path)] : ["<the C files of {manifest}>"]
             shown = join(native_build_command(listed, "{port.runs}_native", port.libs), " ")
         } elif (runs_module(lane)) {
-            let layout = lane_layout(lane)
-            let flag = lane |> starts_with("jit") ? "-jit" : ""
-            run.argv <- das_lane_command(get_full_file_name(module_of(port, port.runs, layout)), flag, modules)
+            let flag = lane_tier(lane) == "jit" ? "-jit" : ""
+            run.argv <- das_lane_command(lane_module(port, variants, lane), flag, modules)
             run.argv |> push("--")
-            let shown_module = layout == "single" ? "single/{port.runs}.das" : layout == "goto" ? "{port.runs}/{port.runs}.das" : "{layout_dir("", port.runs, layout)}/{port.runs}.das"
-            shown = join(["daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime", flag, "{shown_module} --"], " ") |> replace("  ", " ")
-            // the goto tree is not published: the command names the conversion that regenerates it
-            if (layout == "goto") {
-                shown += ", {port.runs}/ converted by c2das-re's {port.harness}/run.das -- --filter {port.runs} --layout source --switch-dispatch goto"
-            }
+            shown = join(["daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime", flag, "{lane_variant(lane)}/{port.runs}/{port.runs}.das --"], " ") |> replace("  ", " ")
             run.error = warm_up(run.argv, "", empty_script)
         } else {
             var error : string
-            let bin = lane == "exe" ? build_exe(das_path, bench_work, STARTUP_ARGS, error) : build_aot(das_path, bench_work, STARTUP_ARGS, error)
+            // each variant's binaries in a folder of their own, so the two lanes of a tier do not share one
+            let das_path = lane_module(port, variants, lane)
+            let lane_work = path_join(bench_work, lane_variant(lane))
+            mkdir_rec(lane_work)
+            let bin = lane_tier(lane) == "exe" ? build_exe(das_path, lane_work, STARTUP_ARGS, error) : build_aot(das_path, lane_work, STARTUP_ARGS, error)
             run.error = clipped(error)
             if (!empty(bin)) {
                 run.argv <- [get_full_file_name(bin)]
                 // the AOT host is no standalone exe: the program's arguments follow `--`, as under daslang
-                if (lane == "aot") {
+                if (lane_tier(lane) == "aot") {
                     run.argv |> push("--")
                 }
                 if (empty(run.error)) {
                     run.error = warm_up(run.argv, "", empty_script)
                 }
             }
-            shown = lane == "exe" ? "daslang -exe {port.runs}/{port.runs}.das, the binary run" : "the -ctx context and its host compiled by clang++ -O3 (c2das-re converter/tiers.das), the binary run with `--`"
+            shown = lane_tier(lane) == "exe" ? "daslang -exe {lane_variant(lane)}/{port.runs}/{port.runs}.das, the binary run" : "the -ctx context of {lane_variant(lane)}/{port.runs}/{port.runs}.das and its host compiled by clang++ -O3 (c2das-re converter/tiers.das), the binary run with `--`"
         }
         into.lanes |> push(Lane(name = lane, command = shown, error = run.error))
         let reported = empty(run.error) ? join(run.argv, " ") : "not yet: {run.error}"
@@ -482,12 +501,12 @@ def private build_lanes(port : Port; lanes : array<string>; var into : Capture) 
 }
 
 // a capture of every workload under every lane of `lanes`, written into the clone
-def private measure_program(args : Args; port : Port; release : Release; lanes : array<string>; repo_dir : string; gen : Generation) : bool {
+def private measure_program(args : Args; port : Port; variants : array<Variant>; release : Release; lanes : array<string>; repo_dir : string; gen : Generation) : bool {
     var measured = Capture(program = port.name, commit = gen.sha, command = publish_command(args, port), samples = args.samples, timeout = args.timeout)
     let cpu = cpu_name()
     measured.machine = Machine(arch = strip(captured(["uname", "-m"])), cpu = cpu, box = capture_box(args.box, cpu), clang_path = default_clang())
     tool_versions(measured.machine.clang, measured.machine.daslang)
-    var runs <- build_lanes(port, lanes, measured)
+    var runs <- build_lanes(port, variants, lanes, measured)
     let tests = get_full_file_name(tests_of(port, release))
     measured.workloads |> reserve(length(port.workloads))
     measured.cells |> reserve(length(port.workloads) * length(lanes))
@@ -565,22 +584,19 @@ def private generation_line(gen : Generation) : string {
 }
 
 // the program's README; `captured` when its directory holds a capture the perf section renders
-def private readme_text(port : Port; release : Release; gen : Generation; command, perf_text, harness_log : string; captured : bool) : string {
+def private readme_text(port : Port; variants : array<Variant>; release : Release; gen : Generation; command, variants_text, perf_text, harness_log : string; captured : bool) : string {
     return build_string() $(var w) {
         w |> write("# {port.name}\n\n")
         w |> write("{port.title} {release.version} converted to daslang by [c2das-re](https://github.com/lookibed/c2das-re). ")
         w |> write("Everything in this directory is generated by `{command}` in c2das-re; never edit it, a fix belongs in c2das-re.\n\n")
+        w |> write("## Variants\n\n{variants_text}\n")
         w |> write("## Files\n\n")
-        for (m in port.modules) {
-            w |> write("- `{m.stem}/` - {m.role}, converted as a module per C file, every cycle of files one module of `.das.inc` fragments (c2das-re's source layout, its default; `{m.stem}/program.layout.txt` lists the modules); `{m.stem}/{m.stem}.das` holds `main`.\n")
+        for (v in variants) {
+            for (m in port.modules) {
+                w |> write("- `{v.name}/{m.stem}/` - {m.role}, the {v.name} variant, {LAYOUT_WORDS?[layout_of(v)] ?? layout_of(v)}; `{v.name}/{m.stem}/{m.stem}.das` holds `main`.\n")
+            }
+            w |> write("- `{v.name}/{port.name}.c2das` - the sidecar the {v.name} variant was converted under, `{v.name}/variant.json` - its knobs with the reason and the numbers behind each.\n")
         }
-        for (m in port.modules) {
-            w |> write("- `source-cut/{m.stem}/` - the same program with the cycles among files cut by late binding through `source-cut/{m.stem}/{m.stem}_link.das` (c2das-re's `--layout source-cut`; its `program.layout.txt` lists the cut).\n")
-        }
-        for (m in port.modules) {
-            w |> write("- `single/{m.stem}.das` - the same program as one module (c2das-re's `--layout single`).\n")
-        }
-        w |> write("- `{port.name}.c2das` - the sidecar both were converted under.\n")
         w |> write("- `LICENSE` - {port.title}'s license, from `src/{port.license_header}` of the release; the conversion is a derived work.\n")
         if (captured) {
             w |> write("- `bench/` - the benchmark scripts the tables below run, and `timed.lua`, which runs each and reports its work seconds measured inside the process.\n")
@@ -598,11 +614,10 @@ def private readme_text(port : Port; release : Release; gen : Generation; comman
         w |> write("The modules require c2das-re's `crt` and `c_runtime` modules: a c2das-re checkout at the commit above, ")
         w |> write("with the daScript its `VERSIONS.md` pins built and `scripts/build_crt.sh` run. With `<c2das-re>` that checkout:\n\n```\n")
         let load = "daslang -load_module <c2das-re>/dasCRuntime -load_module <c2das-re>/c_runtime"
-        w |> write("{load} lua/lua.das -- -e \"print(1+1)\"\n")
-        w |> write("{load} -jit lua/lua.das -- bench/fib.lua\n")
-        w |> write("{load} -exe lua/lua.das -output lua && ./lua bench/fib.lua\n")
-        w |> write("{load} luac/luac.das -- -o out.luac script.lua\n")
-        w |> write("{load} single/lua.das -- -e \"print(1+1)\"\n```\n\n")
+        w |> write("{load} readable/lua/lua.das -- -e \"print(1+1)\"\n")
+        w |> write("{load} -jit fast/lua/lua.das -- bench/fib.lua\n")
+        w |> write("{load} -exe fast/lua/lua.das -output lua && ./lua bench/fib.lua\n")
+        w |> write("{load} readable/luac/luac.das -- -o out.luac script.lua\n```\n\n")
         w |> write("Everything after `--` is the program's own command line; daslang writes the `-exe` binary at the `-output` path as given.\n\n")
         w |> write("## Upstream tests\n\n")
         w |> write("The results c2das-re's {port.claims_item} recorded for this program, not results of this publish's run; ")
@@ -613,7 +628,7 @@ def private readme_text(port : Port; release : Release; gen : Generation; comman
         if (empty(harness_log)) {
             w |> write("\nThis publish reused a conversion that left no harness log.\n\n")
         } else {
-            w |> write("\nThe harness's report of this conversion (`{port.harness}/run.das --native --run`: the native binaries' sizes, the JSON bytes, ")
+            w |> write("\nThe harness's report of each variant's conversion (`{port.harness}/run.das --native --run --variant <file> --layout <its layout>`: the native binaries' sizes, the JSON bytes, ")
             w |> write("the das line counts and `[c_function]` counts, and `lua -e \"print(1+1)\"` under the interpreter against the native build; ")
             w |> write("its seconds stay in its log, so an unchanged tree publishes an unchanged README):\n\n```\n{harness_log}```\n\n")
         }
@@ -656,10 +671,10 @@ def private is_seconds(clause : string) : bool {
     return digits > 0
 }
 
-// the lines of the harness's log that report the conversion, without their seconds
-def private harness_report(port : Port) : string {
+// the lines of the harness's log `log` that report the conversion, without their seconds
+def private harness_report(port : Port; log : string) : string {
     var lines : array<string>
-    for (ln in split(fread(log_of(port)), "\n")) {
+    for (ln in split(fread(log), "\n")) {
         let line = clock_free(strip(ln))
         if (ln |> contains("{port.name}: ") && !empty(line)) {
             lines |> push(line)
@@ -667,6 +682,22 @@ def private harness_report(port : Port) : string {
     }
     return empty(lines) ? "" : join(lines, "\n") + "\n"
 }
+
+// the report of each variant's conversion, its lines under a `<variant>:` line; "" when no log
+// reports one
+def private variants_report(port : Port; variants : array<Variant>) : string {
+    var parts : array<string>
+    for (v in variants) {
+        let report = harness_report(port, variant_log_of(port, v.name))
+        if (!empty(report)) {
+            parts |> push("{v.name}:\n{report}")
+        }
+    }
+    return join(parts, "")
+}
+
+//! how the README names each layout a variant converts in
+let LAYOUT_WORDS <- {"source" => "a module per C file, every cycle of files one module of `.das.inc` fragments (c2das-re's source layout; its `program.layout.txt` lists the modules)", "source-cut" => "a module per C file, the cycles among files cut by late binding through `<stem>_link.das` (c2das-re's source-cut layout; its `program.layout.txt` lists the cut)", "single" => "the program as one module (c2das-re's single layout)"}
 
 def private write_or_log(path, text : string) : bool {
     if (!fwrite(path, text)) {
@@ -676,12 +707,17 @@ def private write_or_log(path, text : string) : bool {
     return true
 }
 
-// every file of the conversion the publish reads or the goto lane runs: each module's three layouts
-// with the module lists, and the goto tree's entry module; false with the first missing one logged
-def private converted_files_exist(port : Port) : bool {
-    var paths <- [module_of(port, port.runs, "goto")]
-    for (m in port.modules) {
-        paths |> push_from([module_of(port, m.stem, "source"), module_of(port, m.stem, "source-cut"), module_of(port, m.stem, "single"), path_join(dir_name(module_of(port, m.stem, "source")), "program.modules.txt"), path_join(dir_name(module_of(port, m.stem, "source-cut")), "program.modules.txt")])
+// every file of the conversion the publish reads: each variant's entry module of each program, with
+// its module list outside the single layout; false with the first missing one logged
+def private converted_files_exist(port : Port; variants : array<Variant>) : bool {
+    var paths : array<string>
+    for (v in variants) {
+        for (m in port.modules) {
+            paths |> push(module_of(port, v, m.stem))
+            if (layout_of(v) != "single") {
+                paths |> push(path_join(dir_name(module_of(port, v, m.stem)), "program.modules.txt"))
+            }
+        }
     }
     for (path in paths) {
         if (!fexist(path)) {
@@ -692,15 +728,90 @@ def private converted_files_exist(port : Port) : bool {
     return true
 }
 
-// the program's directory in the clone: every file of the fixed set replaced whole, every input
-// checked before the first write; `gen` the commit the published conversion ran at
+// the variant files of `program`, `VARIANT_NAMES` in order, into `into`; false with the first that
+// does not read logged
+def private variants_of(program : string; var into : array<Variant>) : bool {
+    for (name in VARIANT_NAMES) {
+        var error : string
+        into |> emplace(read_variant(variant_path(program, name), error))
+        if (!empty(error)) {
+            to_log(LOG_ERROR, "{program}: {error}\n")
+            return false
+        }
+    }
+    return true
+}
+
+// the lines of every file of `files` under `dir`
+def private lines_of(dir : string; files : array<string>) : int {
+    var lines = 0
+    for (rel in files) {
+        lines += count(fread(path_join(dir, rel)), "\n")
+    }
+    return lines
+}
+
+// the lines of the C function `c_name` in the first file of `files` under `dir` that defines it, 0
+// when none does
+def private function_lines(dir : string; files : array<string>; c_name : string) : int {
+    for (rel in files) {
+        let text = function_text(fread(path_join(dir, rel)), c_name, "ours")
+        if (!empty(text)) {
+            return length(split(text, "\n"))
+        }
+    }
+    return 0
+}
+
+// the criteria total of the row `row` of `CRITERIA_CAPTURE`, 0 without the capture or the row
+def private criteria_total(row : string) : double {
+    var error : string
+    if (!fexist(CRITERIA_CAPTURE)) {
+        return 0.0lf
+    }
+    let cap <- capture_at(CRITERIA_CAPTURE, error)
+    if (!empty(error)) {
+        return 0.0lf
+    }
+    let compliance <- compliance_table(cap)
+    var total = 0.0lf
+    compliance |> get(row) $(column) {
+        total = column_total(column)
+    }
+    return total > 0.0lf ? total : 0.0lf
+}
+
+//! the criteria row of a program a variants table falls back to for `readable`: the converter's
+//! default conversion of it, which no variant's search measured
+def criteria_fallback_label(row : string) : string => "the row `{row}` of c2das-re's `{CRITERIA_CAPTURE}`, the converter's default flags"
+
+// the fallback speed of the variant `name` from the latest capture `c`: per tier the geometric
+// mean of the lane's work time over native's, the `-fast` lanes for `fast`
+def private capture_speed(c : Capture; name : string; var into : table<string; double>) {
+    for (tier in SPEED_TIERS) {
+        let lane = name == "fast" ? "{tier}-fast" : tier
+        var count = 0
+        let mean = has_lane(c, lane) ? geomean_ratio(c, lane, count) : 0.0lf
+        if (mean > 0.0lf) {
+            into[tier] = mean
+        }
+    }
+}
+
+// the program's directory in the clone: each variant's tree, sidecar and file, and the files
+// beside them replaced whole, every input checked before the first write; `gen` the commit the
+// published conversion ran at
 def private publish_program(args : Args; port : Port; lanes : array<string>; repo : string; var gen : Generation) : bool {
     var release : Release
     if (!release_of(fread("VERSIONS.md"), port.name, release) || length(release.tarballs) != 2) {
         to_log(LOG_ERROR, "{port.name}: VERSIONS.md names no `{port.name}:` line with the release and the test-suite tarballs\n")
         return false
     }
-    if ((!args.no_convert && !run_harness(port)) || !generation_for(args, port, gen) || !converted_files_exist(port)) {
+    var variants : array<Variant>
+    if (!variants_of(port.name, variants)) {
+        return false
+    }
+    if ((!args.no_convert && !run_harness(port, variants)) || !generation_for(args, port, gen) || !converted_files_exist(port, variants)) {
         return false
     }
     let license = license_block(fread(path_join(sources_of(port, release), port.license_header)))
@@ -712,40 +823,54 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
         to_log(LOG_ERROR, "{port.name}: no {sidecar_of(port)}\n")
         return false
     }
+    var sidecars : array<string>
+    for (v in variants) {
+        var error : string
+        sidecars |> push(published_sidecar(v, fread(sidecar_of(port)), error))
+        if (!empty(error)) {
+            to_log(LOG_ERROR, "{port.name}: {sidecar_of(port)}: {error}\n")
+            return false
+        }
+    }
     let dir = path_join(repo, port.name)
     mkdir_rec(path_join(dir, "bench"))
     var ok = true
-    mkdir_rec(path_join(dir, "single"))
-    // the folder the cut layout had under its former name `scc`
-    if (fexist(path_join(dir, "scc"))) {
-        rmdir_rec(path_join(dir, "scc"))
-    }
-    for (m in port.modules) {
-        for (layout in ["source", "source-cut"]) {
-            let tree = dir_name(module_of(port, m.stem, layout))
-            let into = layout_dir(dir, m.stem, layout)
-            var inscope kept <- tree_files(tree)
-            kept |> push("program.layout.txt")
+    var columns : array<VariantColumn>
+    for (v, sidecar in variants, sidecars) {
+        var column = VariantColumn(file := v)
+        for (m in port.modules) {
+            let tree = dir_name(module_of(port, v, m.stem))
+            let into = path_join(dir, "{v.name}/{m.stem}")
+            var inscope files <- tree_files(tree, layout_of(v) == "single" ? "{m.stem}.das" : "")
+            var inscope kept := files
+            kept |> push(LAYOUT_REPORT)
             if (!drop_unlisted(into, kept)) {
                 to_log(LOG_ERROR, "{port.name}: cannot remove a stale file under {into}\n")
                 ok = false
             }
-            for (rel in tree_files(tree)) {
+            for (rel in files) {
                 let target = path_join(into, rel)
                 mkdir_rec(dir_name(target))
                 ok = ok && write_or_log(target, fread(path_join(tree, rel)))
             }
-        }
-        for (layout in ["source", "source-cut"]) {
-            let report = path_join(dir_name(module_of(port, m.stem, layout)), "program.layout.txt")
+            let report = path_join(tree, LAYOUT_REPORT)
             if (fexist(report)) {
-                ok = ok && write_or_log(path_join(layout_dir(dir, m.stem, layout), "program.layout.txt"), fread(report))
+                ok = ok && write_or_log(path_join(into, LAYOUT_REPORT), fread(report))
+            }
+            if (m.stem == port.runs) {
+                column.das_lines = lines_of(tree, files)
+                column.execute_lines = function_lines(tree, files, "luaV_execute")
             }
         }
-        ok = ok && write_or_log(path_join(dir, "single/{m.stem}.das"), fread(module_of(port, m.stem, "single")))
+        ok = ok && write_or_log(path_join(dir, "{v.name}/{port.name}.c2das"), sidecar)
+        ok = ok && write_or_log(path_join(dir, "{v.name}/variant.json"), fread(variant_path(port.name, v.name)))
+        if (v.name == "readable") {
+            column.criteria_fallback = criteria_total(LUA_PROGRAM_ROW)
+            column.criteria_from = criteria_fallback_label(LUA_PROGRAM_ROW)
+        }
+        columns |> emplace(column)
     }
     ok = ok && write_or_log(path_join(dir, "LICENSE"), license)
-    ok = ok && write_or_log(path_join(dir, "{port.name}.c2das"), fread(sidecar_of(port)))
     ok = ok && write_or_log(path_join(dir, "bench/{base_name(TIMED_LUA)}"), fread(TIMED_LUA))
     for (spec in port.workloads) {
         if (!spec.startup && !spec.in_tests) {
@@ -754,14 +879,21 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
         }
     }
     if (ok && args.perf) {
-        ok = measure_program(args, port, release, lanes, dir, gen)
+        ok = measure_program(args, port, variants, release, lanes, dir, gen)
     }
     // the tables render from the latest capture, this publish's or an earlier one's
     var latest : Capture
     var found = false
     ok = ok && latest_capture(dir, latest, found)
+    if (found) {
+        for (column in columns) {
+            capture_speed(latest, column.file.name, column.speed_fallback)
+            column.speed_from = "the latest capture of this directory's `perf/`, {latest.timestamp} on {machine_label(latest.machine)}, c2das-re `{slice(latest.commit, 0, 12)}`" + (column.file.name == "fast" ? ", its `-fast` lanes" : "")
+        }
+    }
     let perf_text = found ? measured_note(latest.commit, "", gen) + render_perf(latest) : "{PERF_NOT_YET}\n"
-    return ok && write_or_log(path_join(dir, "README.md"), readme_text(port, release, gen, publish_command(args, port), perf_text, harness_report(port), found))
+    let variants_text = render_variants(columns, true)
+    return ok && write_or_log(path_join(dir, "README.md"), readme_text(port, variants, release, gen, publish_command(args, port), variants_text, perf_text, variants_report(port, variants), found))
 }
 
 // the top-level README: the charter kept above the marker, the projects table of every program's
@@ -1153,7 +1285,7 @@ def private flags_hold(args : Args; var lanes : array<string>) : bool {
     lanes |> reserve(1 + length(das_lanes))
     for (lane in das_lanes) {
         if (lane == "native" || !has_value(ALL_LANES, lane)) {
-            to_log(LOG_ERROR, "ports: no das lane `{lane}`; --lanes takes interp, jit, exe, jit-goto, aot, interp-source-cut, jit-source-cut, interp-single and jit-single\n")
+            to_log(LOG_ERROR, "ports: no das lane `{lane}`; --lanes takes interp, jit, exe, aot, interp-fast, jit-fast, exe-fast and aot-fast\n")
             return false
         }
         lanes |> push(lane)

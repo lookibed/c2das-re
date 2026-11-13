@@ -76,6 +76,14 @@ number marked `(N)` and the label listed under the table as not from a search of
 without either it is `not yet`. Under the table each recorded section names its commit, date and
 command, the speed its box and that the run was exclusive on a quiet machine, and the notes.
 
+In Lua's README the das lines are those of the `lua` program's tree and `luaV_execute`'s are its
+function there (compare's `function_text`). Its fallbacks: the criteria total of the `readable`
+column is the row `lua/lua` of `metrics/criteria_linux.json`, the converter's default flags, and
+the `fast` column has none, since no row measures its knobs; the speed of each column is the
+directory's latest capture, per tier the geometric mean of the work time over native's
+(`geomean_ratio`), its plain lanes for `readable` and its `-fast` lanes for `fast`, labelled with
+the capture's time, box and commit.
+
 ## 4. The sidecar of a variant {#variant-sidecar}
 
 A variant converts under its program's sidecar with its knobs set (`overlay_knobs`): each knob's key

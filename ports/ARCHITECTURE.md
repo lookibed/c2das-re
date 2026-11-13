@@ -38,21 +38,19 @@ code; this repository holds only the generator and its inputs.
 
 The program's directory in the clone holds a fixed set of files, each replaced whole on every publish:
 
-- the source layout, the converter's default, as the tree of its modules and fragments: every
-  `.das` and `.das.inc` file under `lua/work/<stem>/`, in its folders, into `<stem>/`, with its
-  `program.layout.txt`. The conversion's C-IR and `luac -o` checks stay out.
-- the opt-in layouts beside it: the source-cut layout's tree (`lua/work/source-cut/<stem>/` into
-  `source-cut/<stem>/`, with its `program.layout.txt`)
-  and the single layout's module (`lua/work/single/<stem>/<stem>.das` into `single/<stem>.das`).
-- the sidecar (`lua.c2das`).
+- per variant `<v>` (`ARCHITECTURE_VARIANTS.md`), in `<v>/`: the variant's conversion in the
+  layout its knob names, every `.das` and `.das.inc` file its module list names (the single
+  layout's one module) under `lua/work/variants/<v>/`'s layout folder of `<stem>`, in its folders,
+  into `<v>/<stem>/`, with its `program.layout.txt`; the sidecar the variant converted under
+  (`published_sidecar`, `<v>/lua.c2das`); and the variant file (`<v>/variant.json`). The
+  conversion's C-IR and `luac -o` checks stay out.
 - `LICENSE`: the block of the release's `src/lua.h` from the line `* Copyright (C)` to the line
   ending `DEALINGS IN THE SOFTWARE.`, the leading `* ` stripped.
 - the benchmark scripts under `bench/`.
 - `README.md`.
 
-A layout's folder mirrors its conversion's module list: before copying, the publisher removes
-every file under `<stem>/` and `source-cut/<stem>/` the list does not name (`program.layout.txt`
-excepted), and the `scc/` folder the cut layout had under its former name. Beyond those folders
+A variant's folder mirrors its conversion's module list: before copying, the publisher removes
+every file under `<v>/<stem>/` the list does not name (`program.layout.txt` excepted). Beyond those folders
 the publisher deletes nothing: a file it no longer writes stays until removed by hand in the ports
 repository, which is the only hand edit that repository takes. The captures under `perf/` accumulate, one per
 measuring publish.
@@ -68,13 +66,13 @@ has included (it stays, as above), then renders the readability criteria table f
 head-to-head from `compare/results_linux.json`, each section absent without its file; a file that
 does not read fails the publish before the top-level README and the copies are written.
 
-The README states the release and both tarballs with their sha256 as the `lua:` line of
+The README holds the variants section (`ARCHITECTURE_VARIANTS.md` section 3), states the release and both tarballs with their sha256 as the `lua:` line of
 `VERSIONS.md` names them (the publisher holds no version of its own), the commit the published
 conversion ran at (the stamp's, section 3: `git describe --tags --always --dirty`, the full sha
 and the commit date), the publish command with every flag that shapes the output, how to run the
 modules, the upstream-test claims of the `Port` record as the results the c2das-re item it names
-recorded (not results of the publish), the clock-free lines of the harness's report of the
-conversion (the lines of `lua/work/publish_run.log` naming the program, each clause that is a
+recorded (not results of the publish), the clock-free lines of the harness's report of each
+variant's conversion (the lines of its `publish_run.log` naming the program, each clause that is a
 count of seconds dropped: the binary sizes, JSON bytes, line and `[c_function]` counts and exit
 codes stay), and the perf section rendered from the directory's latest capture. Nothing in it
 depends on the clock of the publish, so a publish of an unchanged tree with the same flags,
@@ -85,25 +83,20 @@ The publisher refuses a `--repo` that is not the top of a git work tree, a c2das
 uncommitted changes unless `--allow-dirty`, an unknown `--program` or lane, `--push` without
 `--commit`, `--samples` below 1, a `--timeout` of 0 seconds or less, a `VERSIONS.md` without the
 program's line naming two tarballs, under `--no-convert` a missing stamp or one naming another
-commit than `HEAD` unless `--allow-stale`, a missing converted module (the goto tree's entry
-module of section 3 among them), a header without its
-license block, and a missing sidecar. Every refusal comes before the first write into the clone,
+commit than `HEAD` unless `--allow-stale`, a variant file that does not read, a missing converted
+module or module list, a header without its license block, and a missing sidecar. Every refusal comes before the first write into the clone,
 which a refused publish leaves as it was. The clone is `--repo`, else `$C2DAS_PORTS`, else
 `../c2das-ports` beside the repository root.
 
 ## 3. The conversion
 
 Without `--no-convert` the publisher removes the stamp an earlier conversion left, so a
-conversion that fails leaves none naming `HEAD`, and runs `lua/fetch.sh` and then `lua/run.das -- --native --run`
-as a child process, its output kept in `lua/work/publish_run.log`. A child rather than a
-`require`: `lua/run.das` is a command-line program whose `main`, `Args` and relative paths make
-it one, and its report reaches the README as the lines it logs. A second run of the harness,
-`lua/run.das -- --filter <runs> --layout source --switch-dispatch goto`, converts the program the
-workloads run with the converter's jump-table dispatch into its own folder `lua/work/goto/<runs>/`,
-which the `jit-goto` lane runs (section 4), its output kept in `lua/work/publish_goto_run.log`,
-which the README does not quote; that tree is not published, the program's directory holding the
-three layouts of section 2. A failed fetch or either failed conversion stops the publish before the
-clone is touched. Both finished, the conversion leaves its stamp,
+conversion that fails leaves none naming `HEAD`, and runs `lua/fetch.sh` and then, per variant,
+`lua/run.das -- --native --run --variant <its file> --layout <its layout>` as a child process, its
+output kept in `lua/work/variants/<v>/publish_run.log`. A child rather than a `require`:
+`lua/run.das` is a command-line program whose `main`, `Args` and relative paths make it one, and
+its report reaches the README as the lines it logs, under the variant's name. A failed fetch or a
+failed conversion stops the publish before the clone is touched. All finished, the conversion leaves its stamp,
 `lua/work/publish.generation`: the sha, the describe and the date of the tree it ran in, one a
 line. `--no-convert` publishes what `lua/work/` holds and reuses the log an earlier conversion
 left, under the stamp's commit, and only when the stamp names `HEAD`: a work folder converted at
@@ -125,19 +118,15 @@ module `perf/run.das` builds its kernels' lanes with:
 - `native`: the C files the harness's program manifest `work/<runs>.program.json` lists, in its
   order, built by the pinned clang at `-O3 -w -funsigned-char` (with `-lm`). A missing or refused
   manifest is the lane's reason.
-- `interp` and `jit`: daslang over the source layout's entry module (`work/<runs>/<runs>.das`)
-  with the module folders loaded.
-- `interp-source-cut` and `jit-source-cut`: the same over the source-cut layout's entry
-  (`work/source-cut/<runs>/<runs>.das`).
-- `interp-single` and `jit-single`: over the single layout's module
-  (`work/single/<runs>/<runs>.das`).
-- `jit-goto`: daslang `-jit` over the goto tree's entry module (`work/goto/<runs>/<runs>.das`,
-  section 3); its command in the README names the harness run that regenerates the tree.
-- `exe`: daslang's `-exe` build.
+- `interp` and `jit`: daslang over the `readable` variant's entry module
+  (`work/variants/readable/<layout folder>/<runs>.das`) with the module folders loaded.
+- `exe`: daslang's `-exe` build of it.
 - `aot`: the `-ctx` context with the host of `converter/tiers.das`, compiled by the pinned
   `clang++ -O3`; measured only when `--lanes` names it, whose default is every other das lane.
+- `interp-fast`, `jit-fast`, `exe-fast` and `aot-fast`: the same over the `fast` variant's
+  module, its binaries under `work/bench/fast/`.
 
-Every layout converts under the harness's sidecar (`lua/lua.c2das` for `lua`), whose `jit_whole_program`
+Every variant converts under the harness's sidecar (`lua/lua.c2das` for `lua`) with its knobs set, whose `jit_whole_program`
 pins the entry module's cached JIT build to one LLVM module (`converter/ARCHITECTURE_EMITTER.md` section 4),
 so the `jit` lanes keep the inlining across the program's modules that the default partition per das module
 loses and that the `exe` lane's one-unit build has; the lane passes no `--jit-split-modules` after `--`, where
@@ -229,16 +218,16 @@ work time whose spread is above 20% is suspect and never a number: it renders `s
 ratios `suspect`, and it leaves the projects table's means as a missing cell does; a suspect
 startup cell makes every work time by subtraction of its lane `suspect (startup)`, since each
 inherits its noise. The tables' das lanes
-are `interp`, `jit`, `exe` and `jit-goto`, each `not measured` where the capture left it out (a
-capture written before the goto lane renders its column so), then an `aot` lane whose build stood
-(a lane that did not build is its not-yet line alone, never a column), then each `-source-cut` or
-`-single` lane the capture measured. The startup table holds native's and each such lane's startup
+are `interp`, `jit` and `exe`, each `not measured` where the capture left it out, then each AOT
+lane whose build stood (a lane that did not build is its not-yet line alone, never a column), then
+each `-fast` lane, and each `jit-goto`, `-source-cut` or `-single` lane of a capture made before the
+variants, the capture measured. The startup table holds native's and each such lane's startup
 cell and its ratio to native's, the only place a startup number appears; the work table holds the
 work times of the other rows; the times table holds the raw medians, the startup row included. The
 ratio table holds work times only, no startup row: each das lane over native and the pairs
-interpreter over JIT, interpreter over exe, interpreter over `jit-goto` and JIT over `jit-goto`;
-an `aot` column adds interpreter over AOT and JIT over AOT, a `-source-cut` or `-single` column its
-pair over its source-layout twin. The projects table has the same das lanes over every capture it
+interpreter over JIT and interpreter over exe; a `jit-goto` or `aot` column adds the interpreter and
+the JIT over it, a `-fast` column its pair over its readable twin, a `-source-cut` or `-single`
+column its pair over its source-layout twin. The projects table has the same das lanes over every capture it
 shows. The top-level README keeps the text above its marker line and holds below it one row per
 program with a capture: its timestamp and machine, and the geometric mean, over the workloads other
 than the startup row, of each das lane's work-time ratio to native, with the count when a lane
