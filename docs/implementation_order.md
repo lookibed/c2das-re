@@ -2214,6 +2214,19 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   - binjgb JIT 1.033, form not isolated.
 
   Raw: `/root/notes/parallel/ph2b_ab/` (ab.txt, raw/, summary.md, prep.sh, ab.sh, summarize.py).
+- **P9.29 Two variants per port, `readable` and `fast`** (ruling 38 addendum 19; plan
+  `/root/notes/parallel/r38_add19_plan.md`). Every program of c2das-ports (Lua with luac, the six compare
+  projects, PureDOOM) is published twice, each variant under its own converter flag set chosen per program:
+  `readable` the set with the highest criteria total, `fast` the set with the best exclusive time on the
+  program's own workload (the JIT set the default, a tier that differs named). Infrastructure, in small PRs:
+  (1) the publisher runs each program in a process of its own (`ports/ARCHITECTURE_RUN.md`; one process
+  publishing every program grew past 10 GB of resident memory on the bench and was OOM-killed at PureDOOM);
+  (2) the variant files `ports/variants/<program>.{readable,fast}.json` (knob -> value, a one-line reason,
+  the numbers that chose it), every knob at the current default, reason "default, search pending";
+  (3) the harnesses convert under a variant; (4) the publisher converts and publishes both side by side, the
+  tables with both columns. Then the missing off-switches for the forms the phase 2b end A/B traced
+  regressions to (P9.28's compound_lit and sieve exe, switch_local interp). The searches (criteria per
+  candidate as normal heavy jobs, timing in exclusive batches) and the publish are the lead's.
 
 ## P6 — Doom
 

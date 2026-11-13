@@ -16,7 +16,8 @@ code; this repository holds only the generator and its inputs.
   `Port` records): the harness folder, the converted modules, the module the workloads run, the
   libraries the native build links, the header holding the license, the upstream-test claims with
   the c2das-re item that recorded them, and the workloads. Beside them it publishes every real
-  project of `compare/projects.das`'s `project_table` (section 5), then PureDOOM (`ARCHITECTURE_PUREDOOM.md`).
+  project of `compare/projects.das`'s `project_table` (section 5), then PureDOOM (`ARCHITECTURE_PUREDOOM.md`),
+  each program in a process of its own (`ARCHITECTURE_RUN.md`).
 - `ports_render.das` - the text: the capture records, the startup, work, times, ratio and not-yet
   text of a capture, the projects table and the top-level README below its marker, the license
   block of a C header, and the `VERSIONS.md` pin of a program. It measures nothing and reads no file.
@@ -35,8 +36,7 @@ code; this repository holds only the generator and its inputs.
 
 ## 2. What a publish writes
 
-The program's directory in the clone holds a fixed set of files, each replaced whole on every
-publish:
+The program's directory in the clone holds a fixed set of files, each replaced whole on every publish:
 
 - the source layout, the converter's default, as the tree of its modules and fragments: every
   `.das` and `.das.inc` file under `lua/work/<stem>/`, in its folders, into `<stem>/`, with its
