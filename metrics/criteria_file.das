@@ -17,7 +17,7 @@ require daslib/functional
 //! the gate print.
 
 //! The raw counts an input records, sorted; `metrics/ARCHITECTURE_CRITERIA.md` defines each.
-let RAW_KEYS <- ["addr_deref_sites", "addr_sites", "blowup_lines", "bool_roundtrip_sites", "c_char_literals", "c_code_lines", "c_comment_lines", "c_constant_uses", "c_files", "c_files_converted", "c_includes", "c_macro_calls", "c_renames_sites", "c_repeated_lines", "c_strings", "c_switches", "cast_sites", "das_char_literals", "das_code_lines", "das_comment_lines", "das_comments_carried", "das_constant_names", "das_macro_calls", "das_repeated_lines", "das_requires", "das_string_reinterprets", "deref_sites", "discarded_temps", "flag_lines", "flag_switches", "fn_addr_deref", "fn_bool_roundtrip", "fn_c_renames", "fn_label_stubs", "fn_lines_max", "fn_lines_median", "fn_lines_p90", "fn_literal_arithmetic", "fn_long", "fn_lost_parens", "fn_matched", "fn_median_x100", "fn_p90_x100", "fn_qualified_calls", "fn_reinterpret_casts", "fn_stray_braces", "fn_temporaries", "fn_total", "fn_within", "fn_worst_x100", "goto_state_lines", "label_stubs_sites", "layout_check_lines", "literal_arithmetic_sites", "literal_cast_lines", "long_lines", "lost_parens_sites", "modules", "modules_late_bound", "modules_layout_check", "modules_long_lines", "qualified_calls_sites", "reinterpret_casts_sites", "self_assignments", "setjmp_loops", "setjmp_sites", "stray_braces_sites", "temp_name_sites", "temporaries_sites"]
+let RAW_KEYS <- ["addr_deref_sites", "addr_sites", "blowup_lines", "bool_roundtrip_sites", "c_char_literals", "c_code_lines", "c_comment_lines", "c_constant_uses", "c_files", "c_files_converted", "c_includes", "c_macro_calls", "c_renames_sites", "c_repeated_lines", "c_strings", "c_switches", "cast_sites", "das_char_literals", "das_code_lines", "das_comment_lines", "das_comments_carried", "das_constant_names", "das_macro_calls", "das_repeated_lines", "das_requires", "das_string_reinterprets", "deref_sites", "discarded_temps", "flag_lines", "flag_switches", "fn_addr_deref", "fn_bool_roundtrip", "fn_c_renames", "fn_label_stubs", "fn_lines_max", "fn_lines_median", "fn_lines_p90", "fn_literal_arithmetic", "fn_long", "fn_lost_parens", "fn_matched", "fn_median_x100", "fn_p90_x100", "fn_qualified_calls", "fn_reinterpret_casts", "fn_stray_braces", "fn_temporaries", "fn_total", "fn_within", "fn_worst_x100", "goto_state_lines", "label_stubs_sites", "layout_check_lines", "literal_arithmetic_sites", "literal_cast_lines", "long_lines", "lost_parens_sites", "macro_faulting", "macro_folded", "macro_sites", "modules", "modules_late_bound", "modules_layout_check", "modules_long_lines", "qualified_calls_sites", "reinterpret_casts_sites", "self_assignments", "setjmp_loops", "setjmp_sites", "stray_braces_sites", "temp_name_sites", "temporaries_sites"]
 
 //! One input's raw counts by name, the das-to-C line ratio of each matched function, x100, and the
 //! body code lines of each das function of the program's own.
@@ -394,9 +394,23 @@ def read_criteria(text : string; var error : string&) : CriteriaCapture {
     return <- cap
 }
 
+//! The macro keys of the converter's fold verdicts (`ConvertResult.fold_counts`, a site counted once
+//! per module) into `counts`: every outermost expansion, the folded ones, and the ones left expanded
+//! because an argument the body does not evaluate unconditionally may fault (ruling 38 addendum 14).
+[arch(at="ARCHITECTURE_CRITERIA.md#criteria")]
+def fold_counts(verdicts : table<string; int>; var counts : table<string; int>) {
+    var sites = 0
+    for (n in values(verdicts)) {
+        sites += n
+    }
+    counts["macro_sites"] = sites
+    counts["macro_folded"] = verdicts?["folded"] ?? 0
+    counts["macro_faulting"] = verdicts?["faulting"] ?? 0
+}
+
 //! The raw keys a capture recorded before they existed lacks: a base the delta reads them as 0,
 //! and the density delta says so when the base lacks a density's key.
-let LATER_RAW_KEYS <- ["c_files", "c_files_converted", "addr_sites", "blowup_lines", "c_macro_calls", "cast_sites", "das_macro_calls", "deref_sites", "fn_lines_max", "fn_lines_median", "fn_lines_p90", "fn_long", "fn_p90_x100", "fn_total", "literal_cast_lines", "temp_name_sites"]
+let LATER_RAW_KEYS <- ["c_files", "c_files_converted", "addr_sites", "blowup_lines", "c_macro_calls", "cast_sites", "das_macro_calls", "deref_sites", "fn_lines_max", "fn_lines_median", "fn_lines_p90", "fn_long", "fn_p90_x100", "fn_total", "literal_cast_lines", "temp_name_sites", "macro_faulting", "macro_folded", "macro_sites"]
 
 //! The top-level keys a capture recorded before the `density` section existed may lack.
 let LATER_SECTIONS <- ["density"]
@@ -596,14 +610,17 @@ def private ratio_cell(c : table<string; int>; key : string) : string => (c?["fn
 
 //! The length table: per column of `density_columns` but `programs` (a pooled percentile needs the
 //! functions, which the capture does not keep), the das functions, their body lines' median, 90th
-//! percentile and longest, the ones past `LONG_FUNCTION` lines, and the matched functions' das-to-C
-//! ratio median, 90th percentile and worst.
+//! percentile and longest, the ones past `LONG_FUNCTION` lines, the matched functions' das-to-C
+//! ratio median, 90th percentile and worst, then the outermost function-like macro expansions, the
+//! ones printed as a call of their def and, on a line of their own, the ones an argument that may
+//! fault keeps expanded (`fold_counts`).
 def render_lengths(cap : CriteriaCapture) : string {
     let columns <- [for (col in density_columns(density_table(cap))); col; where col != PROGRAMS]
     let lines <- [["functions", "fn_total"], ["median lines", "fn_lines_median"], ["p90 lines", "fn_lines_p90"], ["longest", "fn_lines_max"], ["over {LONG_FUNCTION} lines", "fn_long"]]
     let ratios <- [["das/C median", "fn_median_x100"], ["das/C p90", "fn_p90_x100"], ["das/C worst", "fn_worst_x100"]]
+    let macros <- [["macro sites", "macro_sites"], ["macro sites folded", "macro_folded"], ["faulting arguments", "macro_faulting"]]
     var rows : array<array<string>>
-    rows |> reserve(length(lines) + length(ratios))
+    rows |> reserve(length(lines) + length(ratios) + length(macros))
     for (ln in lines) {
         var line <- [ln[0]]
         line |> push_from([for (col in columns); "{cap.rows?[col]?[ln[1]] ?? 0}"])
@@ -612,6 +629,11 @@ def render_lengths(cap : CriteriaCapture) : string {
     for (r in ratios) {
         var line <- [r[0]]
         line |> push_from([for (col in columns); ratio_cell(cap.rows?[col] ?? default<table<string; int>>, r[1])])
+        rows |> emplace(line)
+    }
+    for (m in macros) {
+        var line <- [m[0]]
+        line |> push_from([for (col in columns); "{cap.rows?[col]?[m[1]] ?? 0}"])
         rows |> emplace(line)
     }
     var header <- ["Function lengths"]

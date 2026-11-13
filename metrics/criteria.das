@@ -141,6 +141,7 @@ def measure_input(key, dir : string; var error : string&) : CriteriaRaw {
     var raw <- count_criteria(sources, modules, constants, macros)
     raw.counts["c_files"] = conv.c_files
     raw.counts["c_files_converted"] = length(conv.c_paths)
+    fold_counts(conv.fold_counts, raw.counts)
     return <- raw
 }
 
