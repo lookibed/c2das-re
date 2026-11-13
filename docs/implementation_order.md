@@ -2241,6 +2241,19 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `variant.json`, and renders the table; the perf lanes are each tier over `readable` and over
   `fast` (`-fast`), the goto and layout lanes leave new captures (old captures still render them).
   PR 7: the same for the compare projects and PureDOOM (a sync table per variant).
+- **P9.30 Follow-ups of the repin to daScript `6401904cf9`** (ruling 38 addendum 20 item A; PRs #208 and
+  #209). The pin fixed fork issues the converter still works around. Each line is
+  a later row, resumed from here, none started: (a) the setjmp lowering's invoked-block form for an arm that
+  returns (F96) and the fail-closed refusal of an arm that breaks or continues out of a loop (F97). A `return`,
+  `break` and `continue` inside a try or recover arm now run alike under the interpreter and the JIT (daScript
+  `7bb5b8dcf8`), so both could be written plainly. That needs a probe of the exe and AOT tiers and Lua's
+  `luaD_rawrunprotected` under every tier first. (b) gcc-torture 960116-1, 20001101 (#46) and pr17252 (#47) pass
+  under `-jit` now (checked one by one on the pin), so the `--tier jit` ratchet can take them. (c) F101: a `while (true)` that no `break` leaves
+  ends the function wherever its return stands, so the trailing zero `return` after it can go (P9.2's rule
+  widened, a criteria gain). (d) F93/#43: the solid LSR spill is gone at the IR level. The sieve JIT cell and the
+  `solid_context` S/N need one exclusive run before #43 closes. (e) F95: the fixture's record views no longer
+  miscompile under `strict_aliasing: true`, so whether the root `options strict_aliasing = false` is still worth
+  its line is an exclusive A/B. (f) #49 (primes interp) is not re-measured on this pin.
 
 ## P6 — Doom
 
