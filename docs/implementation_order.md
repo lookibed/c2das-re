@@ -2232,6 +2232,12 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   P9.9, P9.23/P9.24 and P9.12 alone, the default unchanged; the perf lanes `interp-<form>-off` (cells
   at the lead's next capture), the metrics keys `@<form>-off` and the criteria rows
   `lua/<program>@<form>-off`, and the variant knob `forms_off` (`[]` in every file).
+  Step 1's publisher, PR 5: the variant files' `results` (`criteria` total, `speed` x native per tier
+  from an exclusive quiet run, `lines`, `notes`, each with its commit and date;
+  `ports/ARCHITECTURE_VARIANTS.md#variant-results`), which the searches fill, and the variants table
+  (`render_variants`: both variants side by side, a number the search left out falling back to a
+  labelled capture). PR 6: the publisher converts and publishes `<program>/readable/` and
+  `<program>/fast/` and renders the table in each README.
 
 ## P6 — Doom
 
