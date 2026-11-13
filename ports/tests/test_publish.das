@@ -780,7 +780,7 @@ def test_earlier_capture(t : T?) {
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--no-convert"], out), 0, out)
         let readme = fread(path_join(clone, "lua/README.md"))
-        for (fact in ["## Performance\n\nMeasured at c2das-re `{slice(OTHER_SHA, 0, 12)}`, output changed since", "Captured 2026-01-02 03:04 UTC on x86_64, Bench CPU", "- `perf/capture_*.json` - every capture", "| fib      | `bench/fib.lua` | 1.000 s ±0% (by subtraction) | 200.000 s ±0% (by subtraction) |", "| interpreter        | 10.000 s ±0% |        20.00 |", "| JIT, goto dispatch |  not measured | not measured |"]) {
+        for (fact in ["## Performance\n\nMeasured at c2das-re `{slice(OTHER_SHA, 0, 12)}`, output changed since", "Captured 2026-01-02 03:04 UTC on x86_64, Bench CPU", "- `perf/capture_*.json` - every capture", "| fib      | `bench/fib.lua` | 1.000 s ±0% (by subtraction) | 200.000 s ±0% (by subtraction) |", "| interpreter | 10.000 s ±0% |        20.00 |", "| JIT         |  not measured | not measured |"]) {
             t |> success(readme |> contains(fact), "README lacks {fact}:\n{readme}")
         }
         t |> success(!(readme |> contains(PERF_NOT_YET)), readme)
