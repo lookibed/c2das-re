@@ -17,7 +17,7 @@ a variant sets only knobs, never a fact of the program.
 A knob is one of `VARIANT_KNOBS`, the sidecar keys that choose a spelling, a layout or das's checks
 for the whole program (`layout`, `fn_macros`, `inline_helpers`, `switch_dispatch`, `checks`,
 `past_end`, `param_writes`, `loops`, `first_member`, `solid_context`, `jit_whole_program`,
-`strict_aliasing`). Every other key of `SIDECAR_KEYS` is in `PROGRAM_KEYS` (defines, marshal records,
+`strict_aliasing`, `forms_off`). Every other key of `SIDECAR_KEYS` is in `PROGRAM_KEYS` (defines, marshal records,
 include folders and the like), which the program's own sidecar holds and no variant changes; a
 sidecar key the converter adds is in exactly one of the two lists, which `tests/test_variants.das`
 holds.

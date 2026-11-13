@@ -491,6 +491,33 @@ def test_worker_fn_macros(t : T?) {
     }
 }
 
+// ruling 38 addendum 19: the `@<form>-off` keys under `--forms-off <form>`
+[test]
+def test_worker_forms_off(t : T?) {
+    t |> run("--one converts a kernel's `@pointer-steps-off` key under --forms-off pointer_steps: the sum spelled, where the plain key steps") @(t : T?) {
+        var counts : string
+        t |> equal(run_worker("perf/compound_lit@pointer-steps-off", counts), 0)
+        t |> success(counts |> starts_with("ok\n"), counts)
+        t |> success(fread("metrics/work/perf/compound_lit@pointer-steps-off/das/compound_lit.das") |> contains(" = row + 1\n"))
+        t |> equal(run_worker("perf/compound_lit", counts), 0)
+        t |> success(fread("metrics/work/perf/compound_lit/das/compound_lit.das") |> contains("row++\n"))
+    }
+    t |> run("a key's suffix names its --forms-off form, else none; each is a kernel mode and a Lua opt-in") @(t : T?) {
+        t |> equal(forms_off_of("perf/blit@pointer-steps-off"), "pointer_steps")
+        t |> equal(forms_off_of("lua/lua@ranged-loops-off"), "ranged_loops")
+        t |> equal(forms_off_of("lua/luac@c-switch-off"), "c_switch")
+        t |> equal(forms_off_of("perf/blit@fn-macros-expand"), "")
+        var layout : string
+        t |> equal(lua_key_parts("lua/luac@c-switch-off", layout), "luac")
+        t |> equal(layout, "source")
+        t |> equal(kernel_of_key("blit@ranged-loops-off"), "blit")
+        let keys <- expected_input_keys()
+        for (suffix in FORMS_OFF_KEY_SUFFIXES) {
+            t |> success(has_value(keys, "lua/lua{suffix}") && has_value(keys, "perf/blit{suffix}"), suffix)
+        }
+    }
+}
+
 [test]
 def test_gate(t : T?) {
     var dir_error : string

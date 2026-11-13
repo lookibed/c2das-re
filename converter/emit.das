@@ -278,6 +278,12 @@ struct EmitProgram {
     past_end_inline : bool
     // the sidecar's or the option's `fn_macros` is `expand`: no expansion folds (`fold_macro`)
     fold_off : bool
+    // the forms the sidecar's or the option's `forms_off` names: a pointer step `p = p + n`
+    // (`pointer_step`), range loops to `<` over locals and constants (`counted_for`), a switch's
+    // spelled tiers (`switch_macro_fits`)
+    pointer_steps_off : bool
+    ranged_loops_off : bool
+    c_switch_off : bool
     // the sidecar's or the option's `inline_helpers`: each pure `static` helper a direct call
     // spells as its expression, by C name to its index in the unit's declarations
     // (`flag_inline_helpers`)
@@ -1317,7 +1323,11 @@ def private assignment_text(var em : Emitter; tu : CirTu; x : CirExpr; loc : Cir
     if (kind_of(tu, x.a.t) == "ptr") {
         em.unsafe_used = true
         let scale = marshal_pointee(em, tu, x.a.t)
-        // das's `p += n` and `p -= n` step a pointer lvalue by `n` elements (probe F102)
+        // das's `p += n` and `p -= n` step a pointer lvalue by `n` elements (probe F102); under
+        // `forms_off` `pointer_steps` the sum is spelled
+        if (em.prog.pointer_steps_off) {
+            return scale >= 0 ? "{lhs.text} = {lhs.text} {spelled} {wrap(rhs, PREC_MUL)} * {type_size(tu, scale)}" : "{lhs.text} = {lhs.text} {spelled} {wrap(rhs, prec + 1)}"
+        }
         if (scale >= 0) {
             return "{lhs.text} {spelled}= {wrap(rhs, PREC_MUL)} * {type_size(tu, scale)}"
         }
@@ -1527,6 +1537,9 @@ def private step_line(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
 def private pointer_step(var em : Emitter; tu : CirTu; t : int; operand : Em; up : bool) : string {
     em.unsafe_used = true
     let scale = marshal_pointee(em, tu, t)
+    if (em.prog.pointer_steps_off) {
+        return "{operand.text} = {operand.text} {up ? "+" : "-"} {scale >= 0 ? type_size(tu, scale) : 1l}"
+    }
     if (scale >= 0) {
         return "{operand.text} {up ? "+" : "-"}= {type_size(tu, scale)}"
     }
@@ -5492,10 +5505,10 @@ def private invariant_bound(em : Emitter; tu : CirTu; x : CirExpr const?; writte
     each_subexpr(x) $(sub) {
         if (sub.e == "ref") {
             let global = key_exists(em.prog.global_names, sub.name)
-            ok = ok && !sub.vol && !key_exists(written, sub.name) && (global || !key_exists(em.escaped, sub.name))
+            ok = ok && !(global && em.prog.ranged_loops_off) && !sub.vol && !key_exists(written, sub.name) && (global || !key_exists(em.escaped, sub.name))
             memory ||= global
         } elif (sub.e == "member") {
-            ok = ok && !sub.vol
+            ok = ok && !em.prog.ranged_loops_off && !sub.vol
             memory ||= sub.arrow
         } elif (sub.e == "bin") {
             ok = ok && (sub.op == "add" || sub.op == "sub" || sub.op == "mul")
@@ -5688,7 +5701,7 @@ def private name_count(st : CirStmt const?; name : string) : int {
 // `while` no loop is one
 def private counted_for(var em : Emitter; tu : CirTu; st : CirStmt const?) : CountedFor {
     var loop : CountedFor
-    if (!em.prog.range_loops || st.cond == null || st.cond.e != "bin" || (st.cond.op != "lt" && st.cond.op != "le")) {
+    if (!em.prog.range_loops || st.cond == null || st.cond.e != "bin" || (st.cond.op != "lt" && (st.cond.op != "le" || em.prog.ranged_loops_off))) {
         return loop
     }
     let decl = counter_decl(st.init_s)
@@ -6616,7 +6629,7 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
 // own (the macro rewrites it), not an outer matched-flag switch's or a goto's
 def private switch_macro_fits(em : Emitter; tu : CirTu; st : CirStmt; groups : array<CaseGroup>) : bool {
     let cond_t = switch_cond_type(tu, st)
-    if (empty(groups) || (continues_out(st.body_s) && !empty(em.cont_flags) && !empty(em.cont_flags |> back()))) {
+    if (em.prog.c_switch_off || empty(groups) || (continues_out(st.body_s) && !empty(em.cont_flags) && !empty(em.cont_flags |> back()))) {
         return false
     }
     if (kind_of(tu, cond_t) == "enum") {
@@ -9238,6 +9251,7 @@ def private flag_padded(var em : Emitter; tu : CirTu; side : Sidecar) {
 }
 
 // the sidecar's and the options' choices the emitter reads, and the program's global names
+[arch(at="ARCHITECTURE_EMITTER_TEXT.md#forms-off")]
 def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
     em.prog.alloca_limit = side.alloca_limit > 0 ? side.alloca_limit : ALLOCA_LIMIT
     em.prog.stack_option = side.stack
@@ -9251,6 +9265,9 @@ def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
     em.prog.goto_dispatch = side.switch_dispatch == "goto"
     em.prog.past_end_inline = side.past_end == "inline"
     em.prog.fold_off = (empty(side.fn_macros) ? FN_MACROS_DEFAULT : side.fn_macros) == "expand"
+    em.prog.pointer_steps_off = has_value(side.forms_off, "pointer_steps")
+    em.prog.ranged_loops_off = has_value(side.forms_off, "ranged_loops")
+    em.prog.c_switch_off = has_value(side.forms_off, "c_switch")
     for (name in side.no_fold) {
         if (!has_value([for (m in tu.macros); m.name == name], true)) {
             fail(em, "the sidecar's `no_fold` names `{name}`, which is no function-like macro the program expands", CirLoc(file = tu.tu))

@@ -91,10 +91,13 @@ struct Sidecar {
     inline_helpers : bool = false
     // the function-like macros whose expansions stay expanded, never a call of their `[c_macro] def`
     no_fold : array<string>
+    // the forms of `FORMS` spelled as before they were introduced
+    // (`ARCHITECTURE_EMITTER_TEXT.md#forms-off`)
+    forms_off : array<string>
 }
 
 //! The keys a sidecar may hold; any other is refused naming it.
-let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks", "jit_whole_program", "past_end", "inline_helpers", "strict_aliasing", "no_fold", "fn_macros"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks", "jit_whole_program", "past_end", "inline_helpers", "strict_aliasing", "no_fold", "fn_macros", "forms_off"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -140,6 +143,26 @@ let FN_MACROS_DEFAULT = "fold"
 
 //! Whether `mode` is a value of `fn_macros`.
 def is_fn_macros(mode : string) : bool => has_value(FN_MACROS, mode)
+
+//! The forms the `forms_off` key and the converter's `--forms-off` take: `pointer_steps` spells a
+//! pointer's step and compound store `p = p + n` (P9.9's `p++` and `p += n` off), `ranged_loops`
+//! keeps a range loop to `<` over locals and constants (P9.23's `<=` and global or member bounds
+//! off, P9.24's summaries with them), `c_switch` spells a switch's tiers (P9.12's `c_switch` off).
+let FORMS <- ["pointer_steps", "ranged_loops", "c_switch"]
+
+//! Whether `form` is a value of `forms_off`.
+def is_form(form : string) : bool => has_value(FORMS, form)
+
+//! Why the comma-separated `forms` the converter's `--forms-off` takes is refused, "" when each is a
+//! value of `FORMS` (or `forms` is empty).
+def forms_off_error(forms : string) : string {
+    for (form in split(forms, ",")) {
+        if (!empty(forms) && !is_form(form)) {
+            return "--forms-off takes {join(FORMS, ", ")}, comma-separated, not `{form}`"
+        }
+    }
+    return ""
+}
 
 //! The values of the `layout` key and of the converter's `--layout`.
 let LAYOUTS <- ["source", "source-cut", "single"]
@@ -420,6 +443,27 @@ def private read_mode(js : JsonValue?; path, key : string; modes : array<string>
     }
 }
 
+// the `forms_off` list into `out`; a value that is no list of `FORMS` is refused naming the key
+def private read_forms(js : JsonValue?; path : string; var out : array<string>; var error : string&) {
+    if (!key_exists(js, "forms_off")) {
+        return
+    }
+    let list = js?["forms_off"]
+    let quoted = join([for (f in FORMS); "\"{f}\""], ", ")
+    if (!(list is _array)) {
+        error = "{path}: `forms_off` is a list of {quoted}, not {write_json(list)}"
+        return
+    }
+    out |> reserve(length(out) + length(list as _array))
+    for (entry in list as _array) {
+        if (!(entry is _string) || !is_form(entry ?? "")) {
+            error = "{path}: `forms_off` holds {quoted}, not {write_json(entry)}"
+            return
+        }
+        out |> push(entry ?? "")
+    }
+}
+
 //! Reads a sidecar file; `error` names a file that is not JSON, a key it does not know or a key of
 //! the wrong shape.
 def read_sidecar(path : string; var error : string&) : Sidecar {
@@ -477,6 +521,7 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
     read_members(js, path, "over_indexed", side.over_indexed, error)
     read_members(js, path, "padded", side.padded, error)
     read_macro_names(js, path, side.no_fold, error)
+    read_forms(js, path, side.forms_off, error)
     delete_json(js)
     return <- side
 }

@@ -180,3 +180,21 @@ an int (a store into an int, a `return`, an operand of arithmetic, a cast) it is
 which expands in place to `c ? 1 : 0` once `c` is inferred, the same nodes the ternary spelled
 before, no call under any tier. das has no `int(bool)`, and a macro named `int` would see every
 `int(` of a module, so the name is the converter's own, reserved against a program's names.
+
+### Forms switched off {#forms-off}
+
+Three forms whose spelling costs a tier in places (the phase 2b end A/B, ledger row P9.28) can be
+switched back to the spelling before them, each alone, by the sidecar's `forms_off` list or the
+converter's `--forms-off` (comma-separated), for a program's `fast` variant
+(`ports/ARCHITECTURE_VARIANTS.md`); the default keeps all three:
+
+- `pointer_steps`: a pointer's step and compound store are `p = p + 1` and `p = p + n` (a
+  marshal-only pointee's by its C size), not `p++` and `p += n` (section on pointer steps above);
+  `*p` stays, the same node as `deref(p)`. compound_lit's `row++` costs the exe 11%.
+- `ranged_loops`: a range loop takes only `<` over locals, parameters and constants, as before
+  `<=` and global or member bounds (`ARCHITECTURE_EMITTER_LOOPS.md`), so no summary past a call
+  applies either; every other counted loop is the `while` form. sieve's `range(2, n + 1)` costs the
+  exe 7%.
+- `c_switch`: a switch is its spelled tier, the if-chain or the matched-flag loop
+  (`ARCHITECTURE_EMITTER_CONTROL.md`), never the `c_switch` shape macro. switch_local's macro costs
+  the interpreter 5%.
