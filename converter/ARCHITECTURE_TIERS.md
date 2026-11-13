@@ -25,8 +25,8 @@ as sources, where a folder holding `src/*.cpp` (`dasCRuntime`) compiles into the
 its header. The exit code is the program's own on every tier,
 which is why the wrapper returns from `main`. A caller's `wrapper` (perf's sample guard) goes
 before the program's own command line on every tier, `daslang` or the built binary, never before
-a build step. An unhandled exception exits 1 with `EXCEPTION:
-<text>` on every compiled tier: the `-exe` binary's entry runs `main` inside the context's
+a build step. An unhandled exception exits -2 (254, daslang's `DAS_PANIC_EXIT_CODE`) with `EXCEPTION:
+<text>` on every compiled tier, as under `daslang`: the `-exe` binary's entry runs `main` inside the context's
 `runWithCatch`, and the AOT host does the same around `<stem>_main` and prints the text on
 stderr, since a context called with no catch frame reports the exception and raises SIGTRAP,
 which a bare spawn reads as exit code 5 (the generated context class derives from `das::Context` alone, so the host
@@ -38,7 +38,7 @@ The JIT and `-exe` tag every load and store with a `!tbaa` class: `float`, `doub
 class for every integer wider than a byte and every pointer; bytes, bools, vectors and
 aggregates carry no tag and alias everything (`modules/dasLLVM/ARCHITECTURE.md` section 13 in
 `DASLANG_ROOT`). A function whose body holds a punning `reinterpret` - to a pointer other than
-`void?` or a byte pointer, from a typed pointer, an integer or a reference - is left untagged, and
+`void?` or a byte pointer, from a typed pointer, a `void?`, an integer or a reference - is left untagged, and
 so is every function the punned view reaches through a call, a return, an out argument, a
 lambda or a shared global. Two tagged accesses of different classes never alias, so only a
 `float` or `double` view of memory another tagged access sees as an integer or pointer (or as the
@@ -62,20 +62,22 @@ Shapes the model keeps right with its tags on:
   extern CRT call is opaque to the optimizer.
 - **Integer widths and pointers** (`short *` over an `int`, `uintptr_t` round trips, bitfield
   units over `uint` storage): one class, so the views alias even where the model sees no pun.
+- **A cast from `void *`**: `reinterpret<float?>(p)` with `p : void?` is a pun to the model
+  (lookibed/daScript#44, fixed in daScript `67e3515e60`), so a function viewing one object as
+  `float` and as `unsigned` through two `void *` parameters, `malloc` memory or the `alloca`
+  arena is untagged.
 
 Shapes the model misses, where a converted program returns what clang `-O2` returns and not
 what the C program means:
 
-- **A cast from `void *`**: `reinterpret<float?>(p)` with `p : void?` is no pun to the model
-  (lookibed/daScript#44), so a function viewing one object as `float` and as `unsigned` through
-  two `void *` parameters, `malloc` memory or the `alloca` arena keeps its tags. `void *` is
-  how C passes untyped memory, so the shape is in nearly every program.
 - **Views that travel through memory**: a function that loads a `float *` and an `unsigned *`
   to one object from a record, the record filled by a function that shares no call, return or
   global with it, holds no `reinterpret` of its own and keeps its tags (the one escape
-  `modules/dasLLVM/ARCHITECTURE.md` names).
+  `modules/dasLLVM/ARCHITECTURE.md` names). The fixture's `record_views` keeps its tags, yet on
+  daScript `6401904cf9` its JIT and exe code reads back the stored bits (3, not clang `-O2`'s 2):
+  the model allows the reordering, the generated code does not make it there.
 
-Both are strict-aliasing violations in C, which a program compiled with `-fno-strict-aliasing`
+It is a strict-aliasing violation in C, which a program compiled with `-fno-strict-aliasing`
 (Doom, Quake and most game code) is entitled to make; the interpreter never reorders by type,
 and the AOT host is compiled with `-fno-strict-aliasing` (section 5).
 

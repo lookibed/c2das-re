@@ -121,13 +121,13 @@ def test_aot_host_exception(t : T?) {
         t |> failure("no temp directory: {dir_error}")
         return
     }
-    t |> run("an unhandled exception under aot exits 1 with its text on stderr, as under exe, where it would trap") @(t : T?) {
+    t |> run("an unhandled exception under aot exits 254 (`DAS_PANIC_EXIT_CODE`) with its text on stderr, as under exe, where it would trap") @(t : T?) {
         let das_path = path_join(dir, "throws.das")
         fwrite(das_path, "options gen2\n[export]\ndef main() : int \{\n    var a : array<int>\n    a |> resize(2)\n    print(\"before\\n\")\n    return a[length(a) + 3]\n\}\n")
         let no_modules : array<string>
         for (tier in ["exe", "aot"]) {
             var output : string
-            t |> equal(run_tier(das_path, tier, path_join(dir, tier), output, no_modules), 1, "{tier}: {output}")
+            t |> equal(run_tier(das_path, tier, path_join(dir, tier), output, no_modules), 254, "{tier}: {output}")
             t |> success(output |> contains("before\n"), "{tier}: {output}")
             t |> success(output |> contains("EXCEPTION: ") && output |> contains("index out of range"), "{tier}: {output}")
         }

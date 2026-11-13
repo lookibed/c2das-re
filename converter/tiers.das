@@ -104,7 +104,8 @@ def aot_binary(das_path, work_dir : string) : string => path_join(path_join(work
 //! runtime (`das::setCommandLineArguments`, as `daslang` and an `-exe` binary do), so the program
 //! reads its arguments after `--` (`get_user_args`), then creates the context, runs `main` inside
 //! the context's `runWithCatch` and returns its code; an unhandled exception prints `EXCEPTION:
-//! <text>` on stderr and exits 1, as an `-exe` binary does, where it would otherwise trap.
+//! <text>` on stderr and exits -2 (254), daslang's `DAS_PANIC_EXIT_CODE`, as `daslang` and an `-exe`
+//! binary do, where it would otherwise trap.
 def aot_host_source(das_path : string) : string {
     let prefix = bare_ident_of(file_stem(das_path))
     return build_string() $(var w) {
@@ -116,7 +117,7 @@ def aot_host_source(das_path : string) : string {
         w |> write("    das::Context * context = (das::Context *) ctx;\n    int rc = 0;\n")
         w |> write("    if (!context->runWithCatch([&]() \{ rc = {prefix}_main(ctx); \})) \{\n")
         w |> write("        const char * text = context->getException();\n")
-        w |> write("        fprintf(stderr, \"EXCEPTION: %s\\n\", text ? text : \"unknown\");\n        return 1;\n    \}\n")
+        w |> write("        fprintf(stderr, \"EXCEPTION: %s\\n\", text ? text : \"unknown\");\n        return -2;\n    \}\n")
         w |> write("    {prefix}_destroy(ctx);\n    return rc;\n\}\n")
     }
 }
