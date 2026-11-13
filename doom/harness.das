@@ -213,27 +213,39 @@ def tic_sync(expected, got : array<string>; tics : int) : TicSync {
 //! The `trace=` lines of `text` in order, which the `DOOM_TIC_TRACE` build of patch 0002 prints.
 def trace_lines(text : string) : array<string> => <- [for (line in split(text, "\n")); line; where line |> starts_with("trace=")]
 
-//! `sidecar`'s text with `define` first among its defines; "" with `error` set when the text has no
-//! single `"defines": [` to put it after.
+//! `sidecar`'s text with `define` first among its defines, in the spelling of the sidecar's own
+//! file (`"defines": [`) or of a variant's written one (`"defines" : [` over lines); "" with `error`
+//! set when the text has no single `"defines"` key opening an array.
 def with_define(sidecar, define : string; var error : string&) : string {
-    let mark = "\"defines\": ["
-    if (length(split(sidecar, mark)) != 2) {
-        error = "no single `{mark}` to add {define} to"
+    let key = "\"defines\""
+    let at = find(sidecar, key)
+    let open = at < 0 ? -1 : find(sidecar, "[", at)
+    if (length(split(sidecar, key)) != 2 || open < 0 || !empty(strip(replace(slice(sidecar, at + length(key), open), ":", "")))) {
+        error = "no single `\"defines\": [` to add {define} to"
         return ""
     }
-    return replace(sidecar, mark, "{mark}\"{define}\", ")
+    let rest = slice(sidecar, open + 1)
+    let sep = strip_left(rest) |> starts_with("]") ? "" : ", "
+    return "{slice(sidecar, 0, open + 1)}\"{define}\"{sep}{rest}"
 }
 
-//! `sidecar`'s text with `define` gone from its defines; "" with `error` set when the text does not
-//! name `"<define>"` exactly once.
+//! `sidecar`'s text with `define` gone from its defines, the comma after it taken, else the one
+//! before it, with the space between (one line or a written sidecar's lines); "" with `error` set
+//! when the text does not name `"<define>"` exactly once.
 def without_define(sidecar, define : string; var error : string&) : string {
     let quoted = "\"{define}\""
+    let at = find(sidecar, quoted)
     if (length(split(sidecar, quoted)) != 2) {
         error = "no single `{quoted}` to take out"
         return ""
     }
-    let gone = replace(replace(sidecar, ", {quoted}", ""), "{quoted}, ", "")
-    return gone != sidecar ? gone : replace(sidecar, quoted, "")
+    let before = slice(sidecar, 0, at)
+    let after = slice(sidecar, at + length(quoted))
+    if (strip_left(after) |> starts_with(",")) {
+        return before + strip_left(slice(strip_left(after), 1))
+    }
+    let head = strip_right(before)
+    return head |> ends_with(",") ? slice(head, 0, length(head) - 1) + after : before + after
 }
 
 //! The patches a reference log's header names: each path with its sha256, joined by ` + `.
