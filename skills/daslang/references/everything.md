@@ -108,6 +108,7 @@ One section per module: what the module is for, then its public symbols grouped 
 - [remove_call_args](#remove_call_args) - The REMOVE_CALL_ARGS module provides AST transformation macros that remove specific arguments from function calls at compile time.
 - [result](#result) - Monadic `Result<T, E>` — a value (`ok`) or an error (`err`).
 - [rst](#rst) - The RST module implements the documentation generation pipeline for daslang.
+- [rst_label](#rst_label) - The RST_LABEL module spells the RST label of a function and the short type names that label hashes.
 - [rtti](#rtti) - The RTTI module exposes runtime type information and program introspection facilities.
 - [runtime_memory](#runtime_memory) - Context and retained idle-fork memory snapshots for runtime diagnostics.
 - [safe_addr](#safe_addr) - The SAFE_ADDR module provides compile-time checked pointer operations.
@@ -855,7 +856,7 @@ The FIO module implements file input/output and filesystem operations. It provid
 - `ftell` - Returns the current byte offset of the file pointer for the given FILE, equivalent to C ftell.
 - `funbuffered` - Turns off the C stream buffer on the stream, so every read goes to the descriptor and `fpoll` sees every byte the stream holds: nothing waits in a stdio buffer the poll cannot see.
 - `fwrite` - Writes raw binary data from a POD value to a file.
-- `fwrite_if_changed`
+- `fwrite_if_changed` - Writes `text` to `path` unless the file already holds it; returns whether it wrote.
 - `getchar` - Reads and returns the next character from standard input as an integer, equivalent to C getchar.
 - `is_reparse_point` - Returns true if the path is a symbolic link — and on Windows, any reparse point: a junction, a mount point, or a less common flavor such as a cloud-file placeholder.
 - `is_reparse_point_result`
@@ -931,13 +932,13 @@ The FIO module implements file input/output and filesystem operations. It provid
 ### OS specific routines
 
 - `close_process` - Frees the handle.
-- `executable_on_path`
+- `executable_on_path` - True when the shell finds `name` as a command - `where` on Windows, `command -v` elsewhere - so a program on PATH answers, and so does a shell builtin; the exit code decides.
 - `exit` - Terminates the program immediately with the specified integer exit code, equivalent to C exit.
 - `exit_now` - Ends the process at once with the given exit code: stdout and stderr are flushed, and nothing else runs - no `atexit` handler, no module teardown, no leak dump.
 - `get_env_variable` - Returns the string value of the environment variable with the given name, or an empty string if undefined.
 - `has_env_variable` - Returns true if an environment variable with the given name is defined in the current process environment.
 - `is_death_exit_code` - Read as a death by the shell's convention: 128 + N for POSIX signal N (a child's own exit(128+) reads the same), a negative NTSTATUS on Windows; -1, popen_timed_out, process_running are not.
-- `is_spawn_failure` - The exit code of a child that never ran: -1 when the spawn itself failed, 126 and 127 when the child could not exec its program, as a shell reports them; on Windows a child's own exit(-1) reads the same.
+- `is_spawn_failure` - A child that never ran: -1 when the spawn failed, 126 and 127 when the child could not exec its program, as a shell reports them; on Windows a child's own exit(-1) reads the same as a failed spawn.
 - `popen` - Opens a pipe to the given shell command, provides the resulting FILE pointer to the block, and returns the process exit code - on POSIX 128 + N when the shell is killed by signal N.
 - `popen_argv` - Spawns a subprocess directly via argv, bypassing the shell, in the directory `cwd` (empty inherits the caller's) with each `env` entry, `KEY=VALUE`, applied over the inherited environment.
 - `popen_argv_pipe` - Spawns a subprocess with bidirectional pipes connected to its stdin and stdout (child stderr is merged into stdout).
@@ -950,14 +951,14 @@ The FIO module implements file input/output and filesystem operations. It provid
 - `process_poll` - The child's exit code if it has exited, else `process_running`; never waits.
 - `process_terminate` - Asks the child and everything it spawned to stop: `SIGTERM` to its process group on POSIX, `TerminateJobObject` with exit code 15 on Windows, where nothing gentler reaches a console-less process.
 - `process_wait` - Waits up to `timeout` seconds for the child to exit and returns its exit code (on POSIX 128 + N for a child killed by signal N, as `process_poll` reports it), or `process_running` when the timeout passes first.
-- `run_and_capture`
+- `run_and_capture` - Run an external command from `cwd` ("" inherits) with `env` `KEY=VALUE` overrides, capturing its stdout+stderr through `popen_argv`.
 - `sanitize_command_line` - Escapes and sanitizes a command-line argument string to prevent shell injection.
 - `set_env_variable` - Sets an environment variable in the current process (the `setenv`/`_putenv` family).
 - `sleep` - Suspends execution of the current thread for the specified number of milliseconds.
 - `spawn_argv` - Launches a detached subprocess directly from an argument array without invoking a shell.
 - `spawn_process` - Spawns `argv` as a long-lived child and returns its handle.
 - `system` - Runs a shell command via the C runtime `system()` function.
-- `with_process`
+- `with_process` - `with_process` inheriting the parent's directory and environment.
 
 ### Dynamic modules
 
@@ -3178,12 +3179,15 @@ CPU large-language-model inference in pure daslang: load a GGUF model, tokenize,
 
 ### Model loading and sessions
 
+- `attach_block_drafter` - Attach the DFlash / DFlash2 block drafter GGUF at `path` to `model`: "" where it attached, else why not (logged).
 - `attach_mtp_drafter` - Attach the assistant drafter at `path` to `model` for speculative decode on the GPU driver that serves it (Metal or the Vulkan resident driver); false where every driver refused it (a drafter made for another target, a model the driver does not serve whole), each refusal logged.
 - `attach_mtp_sidecar` - Attach the assistant drafter that sits beside the model at `model_path` (`mtp_drafter_sidecar`): the drafter's path where it attached, "" where none sits there or every driver refused it (each refusal logged).
+- `block_drafter_attached` - Whether a block drafter is attached to `model`.
 - `caps` - What `model` honestly supports at the chat layer (see LlmCaps) — e.g.
 - `create_batch_workspace` - Create the caller-owned scratch that `eval_batch` steps through — one per concurrent batch, reused across calls (buffers grow to the largest batch seen).
 - `create_kv_pool` - Create a caller-owned PAGED KV pool over `model`'s cache geometry: sessions over it allocate pages of `page_rows` positions on demand instead of the full `seq_len` slab, so many sessions share one elastic pool; keep it alive as long as sessions live.
 - `create_session` - Create a fresh session (KV cache + scratch) sized to `model.config.seq_len` — one model, many independent conversations.
+- `detach_block_drafter` - Detach the process's block drafter, if one is attached; plain decode serves.
 - `detach_mtp_drafter` - Detach `model`'s assistant drafter, if one is attached; its rounds stop and plain decode serves.
 - `load_model` - Load a model AND its tokenizer from a GGUF file — architecture and tokenizer backend are auto-selected from metadata; `mode` picks the weight quantization.
 - `mtp_capable` - Whether `model` can run a speculative round: a NextN head of its own, or an assistant drafter attached - what a scheduler's `mtp` asks for.
@@ -3248,6 +3252,7 @@ CPU large-language-model inference in pure daslang: load a GGUF model, tokenize,
 ### Generation
 
 - `generate` - Stream-generate up to `max_tokens` from `prompt`, invoking the trailing block per token with `(id, piece)`; return `false` from the block to stop early.
+- `generate_drafted` - `generate` over a model with a block drafter attached (`attach_block_drafter`): after every drawn id a round evals it and hands the block the drafts the model's own verify accepts, so the stream is the model's own.
 - `generate_embd` - `generate`'s embedding-prefill twin: prefill `npos` pre-built embedding rows (the multimodal splice — see `eval_embd`), then stream-sample exactly like `generate`.
 
 ### Embeddings
@@ -3405,10 +3410,13 @@ Text to speech in pure daslang: load a converted StyleTTS2-lineage GGUF (KittenT
 - `caps` - What the loaded model offers: the canonical voice names the front end can drive, each with its language (a voice whose language it does not phonemize is left out; aliases resolve at synthesis), the PCM rate, the languages, whether it clones a voice, whether a speed applies.
 - `finalize` - Free the model's planes, the carrier and both packs; `delete m` runs it.
 - `g2p_pack_path`
-- `load_tts_model` - Load a TTS model: a converted GGUF (KittenTTS, Kokoro or Pocket TTS, picked from its architecture) or its prepared `.dlim` image; the phoneme families read `tts_g2p.bin` and `tts_postag.bin` from the same directory (Pocket needs neither).
-- `tts_finish_styletts2` - A StyleTTS2 carrier in `m.model`, loaded or minted from `path`, made a facade: its family's kind, the phoneme packs its front end reads from the same directory, the voices it cannot speak said once.
-- `tts_has_phonemes` - Whether `tts_phonemize` has an answer for this model: the phoneme families yes, a Pocket model no - it reads text, and its chunks carry no phoneme string.
-- `tts_needs_packs` - Whether the model at `path` reads the front-end packs (`tts_g2p.bin`, `tts_postag.bin`) from its directory: the phoneme families do, a Pocket TTS GGUF reads text and needs neither - decided before any load, by the architecture test `load_tts_model` makes (a `.dlim` is a phoneme family).
+- `load_tts_model` - Load a TTS model: a converted GGUF (KittenTTS, Kokoro or Pocket TTS, picked from its architecture) or its prepared `.dlim` image, on the lane `tts_serves_q8` names (an image: the lane it was baked on); a phoneme family reads the packs its voices' languages ask for from the same directory (`tts_pack_names`; Pocket needs none).
+- `tts_finish_styletts2` - A StyleTTS2 carrier in `m.model`, loaded or minted from `path`, made a facade: its family's kind, the packs its voices' languages ask for from the same directory (the English pair also where it merely sits there, for the Latin words inside another language's text), the voices it cannot speak said once.
+- `tts_front_end_only` - Whether `m` is a front end loaded from a directory: it normalizes, marks stress and phonemizes in the languages `caps().langs` lists, and has no voice - `caps().voices` is empty and a synthesis panics.
+- `tts_has_phonemes` - Whether `tts_phonemize` has an answer for this model: the phoneme families yes, in the languages `caps().langs` lists (the two-argument form's English needs the English packs beside the model), a Pocket model no - it reads text.
+- `tts_needs_packs` - Whether the model at `path` reads any front-end pack from its directory: the phoneme families do (`tts_pack_names` says which), a Pocket TTS GGUF reads text and needs none - decided before any load, by the architecture test `load_tts_model` makes (a `.dlim` is a phoneme family).
+- `tts_pack_names` - The front-end packs the model at `path` reads from its directory, decided from the file's own metadata before any load: the phoneme pack tier the directory holds and `tts_postag.bin` where a voice speaks English, `tts_g2p_ru.bin` where one speaks Russian, none for a Pocket GGUF; a `.dlim` answers for the GGUF beside it, and names the English pair where none is; a directory - a front end with no voice - names the packs it holds.
+- `tts_ru_stress_model_path` - The Russian stress-context model a voice in `dir` reads - `tts_ctx_ru.gguf` there - or "" where the directory has none: the file is optional, and without it the pack alone decides the stress.
 - `tts_voice_lang` - The language the front end reads `voice` in - a canonical name from `caps` or a family alias, resolved the way `synthesize` resolves it.
 
 ### Voices
@@ -3421,8 +3429,9 @@ Text to speech in pure daslang: load a converted StyleTTS2-lineage GGUF (KittenT
 ### Text front end
 
 - `tts_chunks` - The chunks a synthesis on this model takes, by the family's own driver rule: Kitten's appends a comma to a chunk the split left bare, Kokoro's sends the text as it is (its voices render an added mark as a breath), Pocket's splits on its tokenizer's sentence marks under a token budget.
+- `tts_mark_stress` - One already-normalized sentence with `+` before every stressed vowel, as the phonemizer of `lang` reads it: Russian ("ru") marks each stressed word - "в з+амке" - by the stress pack, and by the stress-context model where its file sits beside the voice.
 - `tts_normalize` - The spoken form of `text`: the normalization pass every synthesis runs first (rules alone - it reads no pack), where "Dr." reads "Doctor", "3.5" reads "three point five" and "$12" reads "twelve dollars".
-- `tts_phonemize` - The phonemes one already-normalized sentence becomes, in the front end's own American inventory (the tagger of `tts_postag.bin` labels the tokens, the grapheme-to-phoneme pass of `tts_g2p.bin` reads them); a family wanting other symbols rewrites them.
+- `tts_phonemize` - The phonemes one already-normalized sentence becomes, in the front end's own American inventory (`tts_postag.bin` tags the tokens, `tts_g2p.bin` reads them); a family wanting other symbols rewrites them.
 
 ### Synthesis
 
@@ -3724,23 +3733,13 @@ The RTTI module exposes runtime type information and program introspection facil
 
 ### Compilation and simulation
 
-- `ast_serializer_finalize_usec` - Microseconds the reads through `deserialize_program` on this deserializer spent inside finalizeModule - the annotations, the macro-module re-simulation and the gc_collect of every program it restored; the decode is the read minus this and `ast_serializer_setup_usec`.
-- `ast_serializer_get_data` - Returns content of serializer.
-- `ast_serializer_setup_usec` - Microseconds the reads through `deserialize_program` on this deserializer spent in the program setup that follows the stream - symbol marking and stack allocation - over every program it restored.
-- `create_ast_deserializer` - Creates deserializer.
-- `create_ast_serializer` - Creates serializer object.
-- `delete_ast_serializer` - Frees memory for ast_serializer.
-- `deserialize_program` - Deserializes the next program from the stream and calls `block` with it, the way the three-argument form does, and gives the restored program `access` as its own: a stream carries no file access, and a `require_module_now` issued from the program's macros or `[init]` walks through its program's access, so a reader that restores programs whose code requires modules late passes the access it would have compiled them with.
 - `for_each_expected_error` - Iterates through each expected compilation error declared in the `Program` (via `expect`), yielding the error code for each.
 - `for_each_require_declaration` - Iterates through each `require` declaration of the compiled `Program`, yielding the module name, public/private flag, and source `LineInfo`.
-- `serialize_program` - Serializes program to serializer object.
-- `simulate` - Simulates (links and initializes) a compiled `Program`, returning a `Context` pointer ready for function execution, or null on failure.
 
 ### File access
 
 - `add_extra_module` - Adds extra module to `FileAccess`.
 - `add_file_access_root` - Adds an extra root directory (search path) to the given `FileAccess` object, expanding where `require` resolves files from.
-- `set_file_source` - Registers a source code `string` for the given file name inside the `FileAccess` object, allowing in-memory compilation without disk files.
 
 ### Structure access
 
@@ -4181,6 +4180,19 @@ The AST module provides access to the abstract syntax tree representation of das
 - `parse_file` - Parses a daslang file and stops there — no type inference, no optimization, no simulation.
 - `parse_file_no_prerequisites` - Parses one file alone and stops there: no prerequisite walk, no type inference, no macro run, and the host's module-cache stream is hidden for the duration.
 - `require_module_now` - Compiles `module_name` - a `shared` module, named by its file - and its prerequisites into the process at the point of the call, or answers the module already there, under `codeOfPolicies`; a null `fileAccess` means the compiling program's own.
+- `set_file_source` - Registers a source code `string` for the given file name inside the `FileAccess` object, allowing in-memory compilation without disk files.
+- `simulate` - Simulates (links and initializes) a compiled `Program`, returning a `Context` pointer ready for function execution, or null on failure.
+
+### AST serialization
+
+- `ast_serializer_finalize_usec` - Microseconds the reads through `deserialize_program` on this deserializer spent inside finalizeModule - the annotations, the macro-module re-simulation and the gc_collect of every program it restored; the decode is the read minus this and `ast_serializer_setup_usec`.
+- `ast_serializer_get_data` - Returns content of serializer.
+- `ast_serializer_setup_usec` - Microseconds the reads through `deserialize_program` on this deserializer spent in the program setup that follows the stream - symbol marking and stack allocation - over every program it restored.
+- `create_ast_deserializer` - Creates deserializer.
+- `create_ast_serializer` - Creates serializer object.
+- `delete_ast_serializer` - Frees memory for ast_serializer.
+- `deserialize_program` - Deserializes the next program from the stream and calls `block` with it, the way the three-argument form does, and gives the restored program `access` as its own: a stream carries no file access, and a `require_module_now` issued from the program's macros or `[init]` walks through its program's access, so a reader that restores programs whose code requires modules late passes the access it would have compiled them with.
+- `serialize_program` - Serializes program to serializer object.
 
 ### Building programs from AST nodes
 
@@ -4303,9 +4315,11 @@ The AST module provides access to the abstract syntax tree representation of das
 - `compiling_module` - Returns the module currently being compiled.
 - `compiling_program` - Returns the program currently being compiled.
 - `find_macro_context` - Returns the macro context of `module` - every macro context carries the mutex `invoke_in_context` locks from its creation.
+- `function_hash` - The semantic hash `program` computed for `function` when it simulated, from the nodes it built for the body, so it says how this program calls what the body calls; `0` before simulate.
 - `function_index` - The slot `function` holds in `program`'s context: `-1` when the program never allocated it, `-2` when the allocation found it unused, its function-table index otherwise.
 - `has_macro_context` - Returns true when `module` has a macro context - it declares a macro (a `[_macro]` function is the smallest) and was compiled with one.
 - `is_jit_selected` - True when `program`'s JIT selected `function` - the DLL the program runs holds it, so a call to it from jitted code goes into the DLL rather than through an interpreter slot.
+- `is_typedef_used` - True when `program`'s own module named a typedef that `module` declares.
 - `is_used` - True when `program`'s symbol-use pass reached `function`.
 - `set_jit_selected` - Marks `function` as selected by `program`'s JIT (`selected` true) or drops it from the selection (false).
 - `this_module` - Returns the main module attached to the current context, throwing an error if RTTI is disabled.
@@ -4440,8 +4454,7 @@ The AST module provides access to the abstract syntax tree representation of das
 - `get_field_type` - Returns the type of a field if the target is a structure, variant, tuple, handled type, or pointer to any of those, or null otherwise.
 - `get_file_source_line` - Reads a single source line from a FileInfo and invokes the block with the line text as a temporary string.
 - `get_func_aot_prefix` - Returns the AOT function prefix string for the specified function.
-- `get_function_aot_hash` - Returns the hash of a function used for AOT matching.
-- `get_function_hash_by_id` - Returns the hash of a function given its unique identifier.
+- `get_function_aot_hash` - The hash `program` matches `function` against AOT with: its semantic hash folded with the semantic hashes of every function it depends on.
 - `get_handled_type_field_type` - Returns the runtime type information for a field within a handled (C++-bound) type annotation.
 - `get_handled_type_field_type_declaration` - Returns the type declaration for a field within a handled (C++-bound) type annotation, optionally as const.
 - `get_handled_type_index_type_declaration` - Returns the type declaration of the index operator for a handled type.
@@ -6762,6 +6775,12 @@ The lint_config module loads `{get_das_root()}/.lint_config` (a TOML file with a
 
 - `line_length_policy_for`
 
+### Result cache
+
+- `is_lint_cache_entry`
+- `reset_lint_cache_in`
+- `standalone_lint_version`
+
 ## lint_fixups
 
 The lint_fixups module holds the helpers the lint passes build their `--fix` edits from: the source text of a node or a range, the checks a rewrite must pass, and the shared `LintFix` constructors.
@@ -7425,10 +7444,6 @@ The RST module implements the documentation generation pipeline for daslang. It 
 
 - `describe_short` - Returns a concise one-line description of an expression or type.
 
-### Label makers
-
-- `function_label_file` - Creates a unique, file-name-safe label string for a function.
-
 ### RST section makers
 
 - `make_group` - Creates a named documentation group with a decorative RST section header.
@@ -7439,13 +7454,24 @@ The RST module implements the documentation generation pipeline for daslang. It 
 - `group_by_regex` - Groups module items whose names match the provided regular expression under a documentation section.
 - `hide_group` - Marks the specified documentation group as hidden so it is excluded from output.
 
-### Naming helpers
-
-- `safe_function_name` - Escapes special characters in a function name to produce a safe identifier for RST output.
-
 ### Reference policy
 
 - `mark_module_pageless` - Declares that a module (typically a raw native binding such as `imgui`) gets no generated documentation pages.
+
+## rst_label
+
+The RST_LABEL module spells the RST label of a function and the short type names that label hashes. It is the leaf both `rst` and the `rst_comment` reader share: the reader is a parser macro, and every module parsed before it registers loses its `//!` comments, so this module requires only builtin modules and its reference pages are written by hand.
+
+
+### Label makers
+
+- `function_label_file` - Creates a unique, file-name-safe label string for a function: its safe name and a hash of its argument types.
+- `safe_function_name` - Escapes special characters in a function name to produce a safe identifier for RST output.
+
+### Short type names
+
+- `cleanup_type_short` - Drops the const, ref, implicit and temporary suffixes `describe` spells, keeping the `#` and `[]` marks.
+- `describe_type_short` - Spells a type the way the reference manual does: aliases by name, containers and callables structurally, everything else through `describe` with its qualifiers dropped.
 
 ## safe_addr
 
@@ -7524,11 +7550,11 @@ The CMP module holds comparisons: it writes lexicographic orderings from a list 
 
 ### Call macros
 
-- `cmp_by`
+- `cmp_by` - `cmp_by(key, -key, ...)` - a comparator block ordering by keys over `_`, the element; `-` sorts a key descending.
 
 ### Structure macros
 
-- `ordered`
+- `ordered` - `[ordered]` / `[ordered(field, field = greater, key = fn)]` - generates the structure's `operator <`.
 
 ### Classes
 
