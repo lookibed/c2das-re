@@ -85,7 +85,7 @@ def test_refusals(t : T?) {
         t |> success(refusal_of(dir, "lua.fast.json", "\{\"knobs\": \{\"checks\": \{\"value\": \"off\", \"reason\": 1\}\}\}") |> contains("`knobs.checks.reason` is a string, not 1"))
         t |> success(refusal_of(dir, "lua.fast.json", "\{\"knobs\": \{\"checks\": \{\"value\": \"off\", \"numbers\": \"\"\}\}\}") |> contains("`knobs.checks` has no `reason`"))
         t |> success(refusal_of(dir, "lua.fast.json", "\{\"knobs\": \{\}, \"results\": 3\}") |> contains("`results` is an object, not 3"))
-        t |> equal(refusal_of(dir, "lua.fast.json", "\{\"knobs\": \{\}, \"results\": \{\"commit\": \"abc\"\}\}"), "")
+        t |> equal(refusal_of(dir, "lua.fast.json", "\{\"knobs\": \{\}, \"results\": \{\}\}"), "")
         rmdir_rec(dir)
     }
 }
@@ -139,6 +139,58 @@ def test_variant_sidecar(t : T?) {
         error = ""
         t |> equal(published_sidecar(v, "[1]", error), "")
         t |> success(error |> contains("a sidecar is a JSON object"), error)
+        rmdir_rec(dir)
+    }
+}
+
+// `results` written into a variant file of `dir` and read back; the read's error
+def private results_refusal(dir, results : string) : string => refusal_of(dir, "lua.fast.json", "\{\"knobs\": \{\}, \"results\": {results}\}")
+
+let SPEED = "\"x_native\": \{\"interp\": 31.5, \"jit\": 2.5, \"exe\": null\}, \"over\": \"the four benchmarks\", \"commit\": \"abc\", \"date\": \"2026-11-13\", \"box\": \"bench\", \"command\": \"heavy --exclusive\""
+
+[test]
+def test_results(t : T?) {
+    t |> run("every section of `results` read, each with its provenance; a null tier and a tier left out are not measured") @(t : T?) {
+        let dir = scratch(t, "c2das_variant_results")
+        let path = path_join(dir, "lua.fast.json")
+        fwrite(path, "\{\"knobs\": \{\}, \"results\": \{\"criteria\": \{\"total\": 88.9, \"row\": \"lua\", \"commit\": \"abc\", \"date\": \"2026-11-13\", \"command\": \"scripts/run_criteria.sh\"\}, \"speed\": \{{SPEED}, \"quiet\": true\}, \"lines\": \{\"das\": 1200, \"luaV_execute\": 812, \"commit\": \"abc\"\}, \"notes\": \"the interpreter wants expand\"\}\}")
+        var error : string
+        let v <- read_variant(path, error)
+        t |> equal(error, "")
+        t |> success(v.results.has_criteria && v.results.has_speed && v.results.has_lines)
+        t |> equal(v.results.criteria.total, 88.9lf)
+        t |> equal(v.results.criteria.row, "lua")
+        t |> equal(v.results.criteria.command, "scripts/run_criteria.sh")
+        t |> equal(v.results.speed.x_native?["interp"] ?? 0.0lf, 31.5lf)
+        t |> equal(v.results.speed.x_native?["jit"] ?? 0.0lf, 2.5lf)
+        t |> success(!key_exists(v.results.speed.x_native, "exe") && !key_exists(v.results.speed.x_native, "aot"))
+        t |> equal(v.results.speed.box, "bench")
+        t |> success(v.results.speed.quiet)
+        t |> equal(v.results.lines.das, 1200)
+        t |> equal(v.results.lines.lua_v_execute, 812)
+        t |> equal(v.results.notes, "the interpreter wants expand")
+        let none <- read_variant(variant_path("lua", "readable"), error)
+        t |> success(!none.results.has_criteria && !none.results.has_speed && !none.results.has_lines)
+        rmdir_rec(dir)
+    }
+    t |> run("a malformed `results` is refused naming the key") @(t : T?) {
+        let dir = scratch(t, "c2das_variant_results_refusals")
+        t |> success(results_refusal(dir, "3") |> contains("`results` is an object, not 3"))
+        t |> success(results_refusal(dir, "\{\"commit\": \"abc\"\}") |> contains("`results.commit` is no key here (criteria, speed, lines, notes)"))
+        t |> success(results_refusal(dir, "\{\"notes\": 1\}") |> contains("`results.notes` is a string, not 1"))
+        t |> success(results_refusal(dir, "\{\"criteria\": []\}") |> contains("`results.criteria` is an object"))
+        t |> success(results_refusal(dir, "\{\"criteria\": \{\"total\": 88.9, \"commit\": \"abc\"\}\}") |> contains("`results.criteria` has no `date`"))
+        t |> success(results_refusal(dir, "\{\"criteria\": \{\"total\": -1, \"commit\": \"abc\", \"date\": \"d\"\}\}") |> contains("`results.criteria.total` is a number above 0, not -1"))
+        t |> success(results_refusal(dir, "\{\"criteria\": \{\"total\": null, \"commit\": \"abc\", \"date\": \"d\"\}\}") |> contains("`results.criteria.total` is a number above 0, not null"))
+        t |> success(results_refusal(dir, "\{\"criteria\": \{\"total\": 1, \"commit\": \"abc\", \"date\": \"d\", \"box\": \"bench\"\}\}") |> contains("`results.criteria.box` is no key here"))
+        t |> success(results_refusal(dir, "\{\"speed\": \{{SPEED}\}\}") |> contains("`results.speed` has no `quiet`"))
+        t |> success(results_refusal(dir, "\{\"speed\": \{{SPEED}, \"quiet\": false\}\}") |> contains("`results.speed.quiet` is true, an exclusive run that found the machine quiet, not false"))
+        t |> success(results_refusal(dir, "\{\"speed\": \{\"x_native\": [], \"over\": \"o\", \"commit\": \"c\", \"date\": \"d\", \"box\": \"b\", \"command\": \"x\", \"quiet\": true\}\}") |> contains("`results.speed.x_native` is an object of tiers"))
+        t |> success(results_refusal(dir, "\{\"speed\": \{\"x_native\": \{\"wasm\": 1\}, \"over\": \"o\", \"commit\": \"c\", \"date\": \"d\", \"box\": \"b\", \"command\": \"x\", \"quiet\": true\}\}") |> contains("`results.speed.x_native.wasm` is no key here (interp, jit, exe, aot)"))
+        t |> success(results_refusal(dir, "\{\"speed\": \{\"x_native\": \{\"jit\": \"fast\"\}, \"over\": \"o\", \"commit\": \"c\", \"date\": \"d\", \"box\": \"b\", \"command\": \"x\", \"quiet\": true\}\}") |> contains("`results.speed.x_native.jit` is a number above 0 or null"))
+        t |> success(results_refusal(dir, "\{\"speed\": \{\"x_native\": \{\}, \"over\": 2, \"commit\": \"c\", \"date\": \"d\", \"box\": \"b\", \"command\": \"x\", \"quiet\": true\}\}") |> contains("`results.speed.over` is a string, not 2"))
+        t |> success(results_refusal(dir, "\{\"lines\": \{\"das\": 10\}\}") |> contains("`results.lines` has no `commit`"))
+        t |> success(results_refusal(dir, "\{\"lines\": \{\"das\": 10, \"luaV_execute\": 0, \"commit\": \"c\"\}\}") |> contains("`results.lines.luaV_execute` is a number above 0"))
         rmdir_rec(dir)
     }
 }

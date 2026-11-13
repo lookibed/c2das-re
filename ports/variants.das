@@ -42,21 +42,75 @@ struct VariantKnob {
     numbers : string
 }
 
+//! the tiers a variant's speed is measured on, in the tables' order
+let SPEED_TIERS <- ["interp", "jit", "exe", "aot"]
+
+//! the keys of `results` and of each of its sections
+let RESULTS_KEYS <- ["criteria", "speed", "lines", "notes"]
+let CRITERIA_RESULT_KEYS <- ["total", "row", "commit", "date", "command"]
+let SPEED_RESULT_KEYS <- ["x_native", "over", "commit", "date", "box", "command", "quiet"]
+let LINES_RESULT_KEYS <- ["das", "luaV_execute", "commit"]
+
+//! The criteria total a variant's search measured: the total in percent, the criteria row it is
+//! (`metrics/criteria_linux.json`, "" for a row the capture does not hold), the c2das-re commit and
+//! date it was measured at, and the command that reproduces it.
+struct CriteriaResult {
+    total : double
+    row : string
+    commit : string
+    date : string
+    command : string
+}
+
+//! The speed a variant's search measured: per tier of `SPEED_TIERS` the das time over the native
+//! build's (a tier the search did not measure or that does not run is absent), what the ratio is
+//! over, the commit, date and box, the command, and that the exclusive run found the machine quiet.
+struct SpeedResult {
+    x_native : table<string; double>
+    over : string
+    commit : string
+    date : string
+    box : string
+    command : string
+    quiet : bool
+}
+
+//! The line counts a variant's search recorded: the das lines of the converted tree, Lua's
+//! `luaV_execute` (0 for another program), and the commit converted.
+struct LinesResult {
+    das : int
+    lua_v_execute : int
+    commit : string
+}
+
+//! The numbers a variant's search recorded, each section with its own provenance; a section the
+//! file leaves out has its `has_` false.
+struct VariantResults {
+    has_criteria : bool
+    criteria : CriteriaResult
+    has_speed : bool
+    speed : SpeedResult
+    has_lines : bool
+    lines : LinesResult
+    notes : string
+}
+
 //! A variant read from its file: the program and the variant (`<program>.<variant>.json`), its knobs
-//! in the file's order, and the `results` its search recorded, as JSON text ("" for none).
+//! in the file's order, and the `results` its search recorded.
 struct Variant {
     program : string
     name : string
     knobs : array<VariantKnob>
-    results : string
+    results : VariantResults
 }
 
 //! The path of `program`'s variant `name`.
 def variant_path(program, name : string) : string => path_join(VARIANTS_DIR, "{program}.{name}.json")
 
-// a string member `key` of the object `js` into `out`; an error naming it when present and no string
+// a string member `key` of the object `js` into `out`; an error naming it when present and no
+// string; nothing once `error` is set
 def private string_member(js : JsonValue?; path, scope, key : string; var out : string&; var error : string&) {
-    if (!key_exists(js, key)) {
+    if (!empty(error) || !key_exists(js, key)) {
         return
     }
     let value = js?[key]
@@ -65,6 +119,114 @@ def private string_member(js : JsonValue?; path, scope, key : string; var out : 
         return
     }
     out = value ?? ""
+}
+
+// a number member `key` of the object `js` into `out`; an error naming it when present and no
+// number above 0, unless `null_ok` and it is null (left 0); nothing once `error` is set
+def private number_member(js : JsonValue?; path, scope, key : string; null_ok : bool; var out : double&; var error : string&) {
+    if (!empty(error) || !key_exists(js, key)) {
+        return
+    }
+    let value = js?[key]
+    if (null_ok && value != null && value.value is _null) {
+        return
+    }
+    // an integer reads as a long integer, a number with a point or an exponent as a double
+    let number = value is _longint ? double(value.value as _longint) : value is _number ? value.value as _number : 0.0lf
+    if (number > 0.0lf) {
+        out = number
+    } else {
+        error = "{path}: `{scope}.{key}` is a number above 0{null_ok ? " or null" : ""}, not {write_json(value)}"
+    }
+}
+
+// the members `required` of the object `js`, each named in `error` when missing
+def private required_members(js : JsonValue?; path, scope : string; required : array<string>; var error : string&) {
+    for (key in required) {
+        if (empty(error) && !key_exists(js, key)) {
+            error = "{path}: `{scope}` has no `{key}`"
+        }
+    }
+}
+
+// whether `results` holds the section `key`, an object of `known` keys; false with `error` set when
+// it is present and no such object
+def private has_section(results : JsonValue?; path, key : string; known : array<string>; var error : string&) : bool {
+    if (!empty(error) || !key_exists(results, key)) {
+        return false
+    }
+    let section = results?[key]
+    if (!(section is _object)) {
+        error = "{path}: `results.{key}` is an object, not {write_json(section)}"
+        return false
+    }
+    unknown_key(section, path, "results.{key}.", known, error)
+    return true
+}
+
+//! Reads the `results` object `js` of the variant file `path` into `into`: `criteria` (`total`,
+//! `commit` and `date` required), `speed` (`x_native` over `SPEED_TIERS`, `over`, `commit`, `date`,
+//! `box`, `command` required, `quiet` true, since only an exclusive run that found the machine quiet
+//! is quoted), `lines` (`das` and `commit` required, `luaV_execute` for Lua) and `notes`, each
+//! optional; `error` names a key outside them or a member of the wrong shape.
+[arch(at="ARCHITECTURE_VARIANTS.md#variant-results")]
+def read_results(js : JsonValue?; path : string; var into : VariantResults; var error : string&) {
+    if (!(js is _object)) {
+        error = "{path}: `results` is an object, not {write_json(js)}"
+        return
+    }
+    unknown_key(js, path, "results.", RESULTS_KEYS, error)
+    string_member(js, path, "results", "notes", into.notes, error)
+    if (has_section(js, path, "criteria", CRITERIA_RESULT_KEYS, error)) {
+        let criteria = js?["criteria"]
+        into.has_criteria = true
+        required_members(criteria, path, "results.criteria", ["total", "commit", "date"], error)
+        number_member(criteria, path, "results.criteria", "total", false, into.criteria.total, error)
+        string_member(criteria, path, "results.criteria", "row", into.criteria.row, error)
+        string_member(criteria, path, "results.criteria", "commit", into.criteria.commit, error)
+        string_member(criteria, path, "results.criteria", "date", into.criteria.date, error)
+        string_member(criteria, path, "results.criteria", "command", into.criteria.command, error)
+    }
+    if (has_section(js, path, "speed", SPEED_RESULT_KEYS, error)) {
+        let speed = js?["speed"]
+        into.has_speed = true
+        required_members(speed, path, "results.speed", ["x_native", "over", "commit", "date", "box", "command", "quiet"], error)
+        let tiers = empty(error) ? speed?["x_native"] : null
+        if (empty(error) && !(tiers is _object)) {
+            error = "{path}: `results.speed.x_native` is an object of tiers, not {write_json(tiers)}"
+        }
+        if (empty(error)) {
+            unknown_key(tiers, path, "results.speed.x_native.", SPEED_TIERS, error)
+        }
+        for (tier in SPEED_TIERS) {
+            var ratio = 0.0lf
+            number_member(tiers, path, "results.speed.x_native", tier, true, ratio, error)
+            if (ratio > 0.0lf) {
+                into.speed.x_native[tier] = ratio
+            }
+        }
+        string_member(speed, path, "results.speed", "over", into.speed.over, error)
+        string_member(speed, path, "results.speed", "commit", into.speed.commit, error)
+        string_member(speed, path, "results.speed", "date", into.speed.date, error)
+        string_member(speed, path, "results.speed", "box", into.speed.box, error)
+        string_member(speed, path, "results.speed", "command", into.speed.command, error)
+        let quiet = empty(error) ? speed?["quiet"] : null
+        if (empty(error) && !(quiet is _bool && (quiet ?? false))) {
+            error = "{path}: `results.speed.quiet` is true, an exclusive run that found the machine quiet, not {write_json(quiet)}"
+        }
+        into.speed.quiet = empty(error)
+    }
+    if (has_section(js, path, "lines", LINES_RESULT_KEYS, error)) {
+        let lines = js?["lines"]
+        into.has_lines = true
+        required_members(lines, path, "results.lines", ["das", "commit"], error)
+        var das, execute = 0.0lf
+        number_member(lines, path, "results.lines", "das", false, das, error)
+        number_member(lines, path, "results.lines", "luaV_execute", false, execute, error)
+        string_member(lines, path, "results.lines", "commit", into.lines.commit, error)
+        into.lines.das = int(das)
+        into.lines.lua_v_execute = int(execute)
+    }
 }
 
 // the keys of the object `js` outside `known`, the first named in `error`
@@ -78,7 +240,7 @@ def private unknown_key(js : JsonValue?; path, scope : string; known : array<str
 }
 
 //! Reads the variant file `path`, named `<program>.<variant>.json`: `knobs`, an object of
-//! `VARIANT_KNOBS` keys each `{value, reason, numbers}` with a reason, and `results`, an object;
+//! `VARIANT_KNOBS` keys each `{value, reason, numbers}` with a reason, and `results` (`read_results`);
 //! `error` names a file that is not JSON, a variant outside `VARIANT_NAMES`, a key outside the
 //! knobs or of the wrong shape. A knob's value is checked by the sidecar it makes
 //! (`variant_sidecar`).
@@ -132,11 +294,8 @@ def read_variant(path : string; var error : string&) : Variant {
             v.knobs |> push(k)
         }
     }
-    let results = empty(error) && key_exists(js, "results") ? js?["results"] : null
-    if (results != null && !(results is _object)) {
-        error = "{path}: `results` is an object, not {write_json(results)}"
-    } elif (results != null) {
-        v.results = write_json(results, true)
+    if (empty(error) && key_exists(js, "results")) {
+        read_results(js?["results"], path, v.results, error)
     }
     sort(v.knobs) <| cmp_by(_.key)
     delete_json(js)
