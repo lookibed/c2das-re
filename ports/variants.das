@@ -23,7 +23,7 @@ let VARIANTS_DIR = "ports/variants"
 //! The sidecar keys a variant sets: the converter's program-wide choices of spelling, layout and
 //! checks (`converter/sidecar.das`). Every other key of `SIDECAR_KEYS` is a fact of the program
 //! (`PROGRAM_KEYS`), which the program's own sidecar holds and no variant changes.
-let VARIANT_KNOBS <- ["layout", "fn_macros", "inline_helpers", "switch_dispatch", "checks", "past_end", "param_writes", "loops", "first_member", "solid_context", "jit_whole_program", "strict_aliasing"]
+let VARIANT_KNOBS <- ["layout", "fn_macros", "inline_helpers", "switch_dispatch", "checks", "past_end", "param_writes", "loops", "first_member", "solid_context", "jit_whole_program", "strict_aliasing", "forms_off"]
 
 //! The sidecar keys that are facts of the program: what it must be converted with, never a choice
 //! between two spellings of the same program.

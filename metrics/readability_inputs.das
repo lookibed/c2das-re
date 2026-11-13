@@ -64,7 +64,7 @@ def private c_file_of(key, dir : string; var error : string&) : string {
 }
 
 //! The Lua program stem and layout (`source`, `source-cut` or `single`) a
-//! `lua/<program>[@source-cut|@single|@inline|@goto|@checks-off|@past-end-inline|@fn-macros-expand]` key names (each
+//! `lua/<program>[@source-cut|@single|@inline|@goto|@checks-off|@past-end-inline|@fn-macros-expand|@<form>-off]` key names (each
 //! opt-in's suffix the source layout).
 def lua_key_parts(key : string; var layout : string&) : string {
     let id = slice(key, length("lua/"))
@@ -149,12 +149,23 @@ def past_end_of(key : string) : string => key |> ends_with(PAST_END_KEY_SUFFIX) 
 //! the default.
 def fn_macros_of(key : string) : string => key |> ends_with(FN_MACROS_EXPAND_KEY_SUFFIX) ? "expand" : ""
 
+//! The `--forms-off` value input `key` names: the form of a key ending in one of
+//! `FORMS_OFF_KEY_SUFFIXES`, else none.
+def forms_off_of(key : string) : string {
+    for (suffix, form in FORMS_OFF_KEY_SUFFIXES, FORMS_OFF_KEY_FORMS) {
+        if (key |> ends_with(suffix)) {
+            return form
+        }
+    }
+    return ""
+}
+
 //! Input `key` converted into `<dir>/das/` under the `linux` dialect: a `perf/<kernel>@copy` key
 //! under `--param-writes copy`, a `perf/<kernel>@while` key under `--loops while`, a
 //! `perf/<kernel>@reinterpret` key under `--first-member reinterpret`, a Lua key from
 //! the release's files in the layout it names; a key ending `@inline` under `--inline-helpers`, one
 //! ending `@goto` under `--switch-dispatch goto`, `@checks-off` under `--checks off`,
-//! `@past-end-inline` under `--past-end inline`, `@fn-macros-expand` under `--fn-macros expand`; a
+//! `@past-end-inline` under `--past-end inline`, `@fn-macros-expand` under `--fn-macros expand`, `@<form>-off` under `--forms-off <form>`; a
 //! `project/<name>` key by `convert_project` into `<dir>/` as the ports publisher converts it.
 def convert_input(key, dir : string) : ConvertedInput {
     if (key |> starts_with(PROJECT_PREFIX)) {
@@ -168,7 +179,7 @@ def convert_input(key, dir : string) : ConvertedInput {
         out.c_paths <- program_sources(stem)
         out.c_files = length(out.c_paths)
         out.sidecar = SIDECAR
-        let res <- convert_program(out.c_paths, das_dir, "linux", "", SIDECAR, "", "", "main", layout, false, "", key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : "", false, checks_of(key), past_end_of(key), key |> ends_with(INLINE_KEY_SUFFIX), fn_macros_of(key))
+        let res <- convert_program(out.c_paths, das_dir, "linux", "", SIDECAR, "", "", "main", layout, false, "", key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : "", false, checks_of(key), past_end_of(key), key |> ends_with(INLINE_KEY_SUFFIX), fn_macros_of(key), forms_off_of(key))
         out.fold_counts := res.fold_counts
         if (!res.ok) {
             out.error = "convert: {headline(res.error)}"
@@ -194,7 +205,7 @@ def convert_input(key, dir : string) : ConvertedInput {
     out.c_paths |> push(c_path)
     out.c_files = 1
     out.sidecar = find_sidecar(c_path, "")
-    let res <- convert(c_path, das_dir, "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "", key |> ends_with(REINTERPRET_KEY_SUFFIX) ? "reinterpret" : "", key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : "", false, checks_of(key), past_end_of(key), key |> ends_with(INLINE_KEY_SUFFIX), fn_macros_of(key))
+    let res <- convert(c_path, das_dir, "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "", key |> ends_with(REINTERPRET_KEY_SUFFIX) ? "reinterpret" : "", key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : "", false, checks_of(key), past_end_of(key), key |> ends_with(INLINE_KEY_SUFFIX), fn_macros_of(key), forms_off_of(key))
     out.fold_counts := res.fold_counts
     if (!res.ok) {
         out.error = "convert: {headline(res.error)}"
