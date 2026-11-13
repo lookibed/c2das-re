@@ -33,8 +33,9 @@ A variant file is a JSON object:
 `VARIANT_NAMES`, a file that is not a JSON object, a key outside `knobs` and `results`, a knob
 outside `VARIANT_KNOBS`, a knob that is not an object, a member outside `value`, `reason` and
 `numbers`, a knob without a value or a reason, a reason or numbers that is no string, and `results`
-that is not as section 2 states. A knob's value is checked as the converter checks it: by the
-sidecar it makes.
+that is not as section 2 states, and a `readable` file whose `checks` is not `safe`: the readable
+variant is the one a C bug is debugged in. A knob's value is checked as the converter checks it: by
+the sidecar it makes.
 
 ## 2. The results of a variant {#variant-results}
 
@@ -75,6 +76,10 @@ is missing it falls back to a capture the publisher hands with its label (`Varia
 number marked `(N)` and the label listed under the table as not from a search of the variant;
 without either it is `not yet`. Under the table each recorded section names its commit, date and
 command, the speed its box and that the run was exclusive on a quiet machine, and the notes.
+A variant whose `checks` is `off` carries, under the lines of what each variant is for, what it
+gives up (`CHECKS_OFF_WARNING`): no null or bounds checks, so a C bug is not caught (a null access
+is a SIGSEGV, an out-of-bounds index reads neighbour memory; AOT keeps its range checks), and
+`readable/` is the variant to debug in.
 
 In Lua's README the das lines are those of the `lua` program's tree and `luaV_execute`'s are its
 function there (compare's `function_text`). Its fallbacks: the criteria total of the `readable`

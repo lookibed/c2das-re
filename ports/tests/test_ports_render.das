@@ -644,6 +644,9 @@ def test_variants(t : T?) {
         t |> success(text |> contains("- `fast/`: the interpreter is faster under fn_macros expand\n"), text)
         t |> success(text |> contains("- (1) not from a search of the variant: the row `lua@fn-macros-expand` of metrics/criteria_linux.json\n- (2) not from a search of the variant: the latest capture, of another conversion\n"), text)
         t |> success(!(text |> contains("unused")), text)
+        // the fast column converts with checks off: its README says what that gives up, once
+        t |> success(text |> contains("\n`fast/` is converted with `checks: off`: no null or bounds checks, so C bugs are not caught (a null access is a SIGSEGV; an out-of-bounds index reads neighbour memory; AOT keeps its range checks); use `readable/` to debug.\n"), text)
+        t |> success(!(text |> contains("`readable/` is converted with `checks: off`")), text)
         let no_execute = render_variants(columns, false)
         t |> equal(length(row_of(no_execute, "`luaV_execute` lines")), 0)
     }
