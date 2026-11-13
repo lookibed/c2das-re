@@ -297,6 +297,12 @@ def read_variant(path : string; var error : string&) : Variant {
     if (empty(error) && key_exists(js, "results")) {
         read_results(js?["results"], path, v.results, error)
     }
+    // the readable variant keeps das's checks: it is the one to debug a C bug in
+    for (k in v.knobs) {
+        if (empty(error) && v.name == "readable" && k.key == "checks" && k.value != "\"safe\"") {
+            error = "{path}: the readable variant keeps `checks` safe, not {k.value}: it is the variant to debug in"
+        }
+    }
     sort(v.knobs) <| cmp_by(_.key)
     delete_json(js)
     return <- v

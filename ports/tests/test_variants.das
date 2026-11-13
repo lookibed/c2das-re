@@ -86,6 +86,8 @@ def test_refusals(t : T?) {
         t |> success(refusal_of(dir, "lua.fast.json", "\{\"knobs\": \{\"checks\": \{\"value\": \"off\", \"numbers\": \"\"\}\}\}") |> contains("`knobs.checks` has no `reason`"))
         t |> success(refusal_of(dir, "lua.fast.json", "\{\"knobs\": \{\}, \"results\": 3\}") |> contains("`results` is an object, not 3"))
         t |> equal(refusal_of(dir, "lua.fast.json", "\{\"knobs\": \{\}, \"results\": \{\}\}"), "")
+        t |> success(refusal_of(dir, "lua.readable.json", "\{\"knobs\": \{\"checks\": \{\"value\": \"off\", \"reason\": \"r\"\}\}\}") |> contains("the readable variant keeps `checks` safe, not \"off\""))
+        t |> equal(refusal_of(dir, "lua.fast.json", "\{\"knobs\": \{\"checks\": \{\"value\": \"off\", \"reason\": \"r\"\}\}\}"), "")
         rmdir_rec(dir)
     }
 }

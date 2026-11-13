@@ -703,6 +703,9 @@ def render_programs(programs : array<string>; failures : array<string>) : string
 //! what each variant is for, the line a program's README gives its directory
 let VARIANT_USES <- {"readable" => "for reading and changing the code: Boris, and the weak-model add-a-feature check", "fast" => "for running"}
 
+//! what a variant converted with `checks: off` gives up, the line its README carries
+let CHECKS_OFF_WARNING = "no null or bounds checks, so C bugs are not caught (a null access is a SIGSEGV; an out-of-bounds index reads neighbour memory; AOT keeps its range checks); use `readable/` to debug."
+
 //! One variant's column of a program's variants table: the variant file read (its knobs and the
 //! search's `results`), the das lines of the tree published for it and of Lua's `luaV_execute` there
 //! (0 for a program without it), and the numbers shown where `results` has none, each with the label
@@ -797,6 +800,11 @@ def render_variants(columns : array<VariantColumn>; execute_row : bool) : string
     return build_string() $(var w) {
         for (c in columns) {
             w |> write("- `{c.file.name}/` - {VARIANT_USES?[c.file.name] ?? c.file.name}.\n")
+        }
+        for (c in columns) {
+            if (knob_of(c.file, "checks") == "`off`") {
+                w |> write("\n`{c.file.name}/` is converted with `checks: off`: {CHECKS_OFF_WARNING}\n")
+            }
         }
         w |> write("\nEach variant converts the same program under its own knobs (c2das-re's `ports/variants/`, copied as its `variant.json` with the reason and the numbers behind each knob). ")
         w |> write("x native is the das time over the native build's, above 1 when slower; the lines are the published tree's.\n\n")
