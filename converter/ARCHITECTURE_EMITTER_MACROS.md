@@ -65,8 +65,23 @@ carrier the defs had before needed (das inlines no `[inline]` call there). A def
 a value after statements (Lua's `tonumberns`, a `?:` whose arms assign) has no `[c_macro]` shape: its
 sites stay expanded (`statements`).
 
-A macro's defs are private to the module that spells its sites, in first-use order after the
-module's `#define` constants, each under a comment naming the `#define`'s file, line and text: one
+A macro a header `#define`s has one public def in that header's module (`plan_shared_macros`)
+when the header is a node of the layout (it owns a record or an enum), no expansion of the macro
+names a function, a global or a string literal outside its arguments (a unit owns those), the
+module sees every record and enum the expansions spell (its own or one it requires), and every
+module spelling a site sees the module (it or one it requires), one of them another module (a
+macro only its header's own module uses, a cluster or the single layout's one module, keeps the
+private def): the module is assembled after every
+other one has spelled its sites, its defs after its own, the `#define` constants they name as its
+own private `let`s and the `c_runtime` modules they need required there. `[c_macro]` substitutes
+the body at the call, where its names resolve in the calling module, so each module spelling a
+site keeps those constants and requires as well, as a private def's module does. A def that
+module holds folds only the macros whose def it sees itself and leaves every other expansion
+expanded, and its `var` parameters are decided for the whole program before any module is spelled
+(`hosted_var_parameters`: every expansion's need, a nested header def's `var` parameters closed
+over), so a def in any module passing its parameter on sees the final def. Every other
+macro's defs are private to the module that spells its sites, in first-use order after the
+module's `#define` constants. Each def stands under a comment naming the `#define`'s file, line and text: one
 def with untyped parameters when every site spells one text, else one typed overload per signature
 of each text (a parameter's type is its argument's das type, `bool` for a truth value), a site
 whose text differs from the overload of its signature staying expanded (`overload`). A parameter
@@ -85,7 +100,8 @@ substituted as written, C's own expansion, so the interpreter runs the expanded 
 `[inline]` splice bound a copy per `var` parameter per level, a result local per `unsafe` body
 and a flag per `&&` operand (`docs/probe-findings.md` F107).
 The name is the macro's, `<name>_m` where a function, global or type of the program, das or the
-runtime has it, `<name>_2` for a second macro of one name (an `#undef` and a new `#define`).
+runtime has it, `<name>_2` for a second macro of one name (an `#undef` and a new `#define`); a
+private def takes no name a header's public def has.
 Every outermost site counts once per module (`fold_counts`): `folded` or its reason.
 
 The `fn_macros` option `expand` (`--fn-macros expand` or the sidecar's `"fn_macros": "expand"`)

@@ -2104,6 +2104,26 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   folded against 29152 expanded, luac 23689 against 22619, `luaV_execute` 2568 against 2611).
   Expected speed effect (phase-end A/B, B/A): 1.00 on every default lane;
   `interp-fn-macros-expand` equals `interp` on each kernel within noise.
+- **P9.22 Header macros share one def** (ruling 38 addendum 14, fn-macros part 2 step 3b, second
+  PR; the lead's placement ruling of 2026-11-12; `converter/ARCHITECTURE_EMITTER_MACROS.md#fold-emission`).
+  A macro a header `#define`s whose node is a layout module (a header owning a record or an enum),
+  whose expansions name no function, global or string literal outside their arguments, whose
+  records and enums that module sees, and whose using modules all see that module, one of them
+  another module, has one public `[c_macro] def` there (`plan_shared_macros`): the module is
+  assembled after every other, with the `#define` constants the defs name (and those their values
+  name) as its own private `let`s; a def it holds folds only macros it sees. `[c_macro]` spells the
+  body at the call, so a calling module keeps the constants and requires the body names (a
+  probe: a private `let` of the def's module is refused at the call, error 30283, and a function of
+  a module only the def's module requires is not found); a header def's `var` parameters are
+  decided for the whole program first (`hosted_var_parameters`), so a def passing its parameter on
+  in any module sees the final def. Every other macro stays private per using module; the single
+  layout and a cluster using its own header's macros are unchanged. Names program-wide (a private
+  def takes no public def's name). Fixture `p9_fn_headers` (shared, private, a constant, a nested
+  shared macro, a written pointer passed on by a private def) under interp and the JIT, and the
+  single layout. Counts (source layout, against P9.21): COUNTS_PLACEHOLDER. Lua and luac against
+  native (8 error checks, luac -o 33 files) and Doom demo1-3 in sync under interp and the JIT.
+  Expected speed effect (phase-end A/B, B/A): 1.00 within noise on every lane (the call is
+  substituted at its site wherever the def lives); compile time within noise.
 
 ## P6 — Doom
 
