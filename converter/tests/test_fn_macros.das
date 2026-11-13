@@ -163,7 +163,8 @@ def test_fn_macros(t : T?) {
         t |> equal(join(lines, "\n"), join(want, "\n"))
     }
     t |> run("the marked expansions that fold print as calls of their defs, a written local by reference; a split argument, an identity and a capture print expanded") @(t : T?) {
-        t |> equal(res.das_text |> find("    var sum : int = ADD1(i) + FIELD(p) + SQ(i) + i + TONUM(p, n)\n") >= 0, true, res.das_text)
+        // TONUM returns a value after statements: no [c_macro] shape, its site stays expanded (P9.25)
+        t |> equal(res.das_text |> find("    var sum : int = ADD1(i) + FIELD(p) + SQ(i) + i + _t0\n") >= 0, true, res.das_text)
         t |> equal(res.das_text |> find("    sum += TWICE(i) + BOTH(i) + FOURTH(i) + i + 1 * 2 + int_of(IS_INT(p))\n") >= 0, true, res.das_text)
     }
     t |> run("the writer and the reader keep every field: the rewritten text is the text read") @(t : T?) {
