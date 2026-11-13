@@ -690,6 +690,25 @@ def test_tables(t : T?) {
         t |> success(lengths_text |> contains("| das/C median ") && lengths_text |> contains("n/a"), lengths_text)
         t |> success(!(lengths_text |> contains(" programs ")), lengths_text)
     }
+    t |> run("the fold verdicts: every outermost expansion, the folded ones and the faulting-argument ones, each a line of the length table") @(t : T?) {
+        var counts : table<string; int>
+        fold_counts({"folded" => 7, "faulting" => 2, "effects" => 1}, counts)
+        t |> equal(counts?["macro_sites"] ?? -1, 10)
+        t |> equal(counts?["macro_folded"] ?? -1, 7)
+        t |> equal(counts?["macro_faulting"] ?? -1, 2)
+        var none : table<string; int>
+        fold_counts(default<table<string; int>>, none)
+        t |> equal(none?["macro_sites"] ?? -1, 0)
+        t |> equal(none?["macro_faulting"] ?? -1, 0)
+        var cap <- sample_capture()
+        cap.rows["lua/lua"]["macro_sites"] = 11392
+        cap.rows["lua/lua"]["macro_folded"] = 2604
+        cap.rows["lua/lua"]["macro_faulting"] = 224
+        let lengths_text = render_lengths(cap)
+        t |> success(lengths_text |> contains("| macro sites ") && lengths_text |> contains(" 11392 |"), lengths_text)
+        t |> success(lengths_text |> contains("| macro sites folded ") && lengths_text |> contains(" 2604 |"), lengths_text)
+        t |> success(lengths_text |> contains("| faulting arguments ") && lengths_text |> contains(" 224 |"), lengths_text)
+    }
     t |> run("the density delta: main, now and the signed difference over `programs`; a base before the density keys says so") @(t : T?) {
         var before <- sample_capture()
         before.rows["lua/lua"]["das_code_lines"] = 1000
@@ -790,6 +809,18 @@ def test_failed_sample(t : T?) {
         let lines <- sample_freshness(committed, fresh, failed)
         t |> equal(length(lines), 1)
         t |> success(lines[0] |> starts_with("failed: {SAMPLE_KEYS[0]}: convert: "), lines[0])
+    }
+}
+
+[test]
+def test_fold_worker(t : T?) {
+    t |> run("the worker records the conversion's fold verdicts: FOO's two expansions in 00066 are sites, both folded") @(t : T?) {
+        var result : string
+        t |> equal(run_worker("c_testsuite/00066", result), 0)
+        t |> success(result |> starts_with("ok\n"), result)
+        t |> equal(count_of(result, "macro_sites"), 2)
+        t |> equal(count_of(result, "macro_folded"), 2)
+        t |> equal(count_of(result, "macro_faulting"), 0)
     }
 }
 
