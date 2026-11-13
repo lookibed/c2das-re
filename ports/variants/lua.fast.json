@@ -1,0 +1,17 @@
+{
+    "knobs": {
+        "checks": {"value": "safe", "reason": "default, search pending", "numbers": ""},
+        "first_member": {"value": "addr", "reason": "default, search pending", "numbers": ""},
+        "fn_macros": {"value": "fold", "reason": "default, search pending", "numbers": ""},
+        "inline_helpers": {"value": false, "reason": "default, search pending", "numbers": ""},
+        "jit_whole_program": {"value": true, "reason": "lua/lua.c2das's, search pending", "numbers": ""},
+        "layout": {"value": "source", "reason": "default, search pending", "numbers": ""},
+        "loops": {"value": "range", "reason": "default, search pending", "numbers": ""},
+        "param_writes": {"value": "in-place", "reason": "default, search pending", "numbers": ""},
+        "past_end": {"value": "call", "reason": "default, search pending", "numbers": ""},
+        "solid_context": {"value": true, "reason": "default, search pending", "numbers": ""},
+        "strict_aliasing": {"value": false, "reason": "default, search pending", "numbers": ""},
+        "switch_dispatch": {"value": "chain", "reason": "default, search pending", "numbers": ""}
+    },
+    "results": {}
+}
