@@ -3025,7 +3025,10 @@ def p9_fn_macros_option_fixtures(t : T?) {
         let res <- convert("{FIXTURES}/p9_fn_fold.c", work, "linux", "", "", "", "", "", "", false, "", "", false, "expand")
         t |> equal(res.ok, true, res.error)
         t |> equal(res.das_text |> find("[c_macro]") >= 0, false, res.das_text)
-        t |> equal(fold_report(res), "folded 0")
+        // every site is counted, each under `expand`
+        let sites = res.fold_counts?["expand"] ?? 0
+        t |> success(sites > 0, fold_report(res))
+        t |> equal(fold_report(res), "folded 0, expanded: expand {sites}")
         var out : string
         let no_flags : array<string>
         t |> equal(run_tier(res.das_path, "interp", work, out, CONVERTED_MODULES, 600.0, no_flags), want.rc, out)

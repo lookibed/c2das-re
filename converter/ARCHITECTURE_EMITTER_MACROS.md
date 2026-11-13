@@ -107,4 +107,5 @@ Every outermost site counts once per module (`fold_counts`): `folded` or its rea
 The `fn_macros` option `expand` (`--fn-macros expand` or the sidecar's `"fn_macros": "expand"`)
 folds no site: every expansion prints expanded and the module holds no def, the text the readable
 `fold` default replaces, kept for its own perf lane and readability keys; the sidecar's `no_fold`
-names are still checked against the program's macros.
+names are still checked against the program's macros. Its sites count under the reason `expand`,
+so the fold counts of either value total the program's sites.

@@ -3475,7 +3475,7 @@ def private fold_level(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?
 // statement state as it was
 [arch(at="ARCHITECTURE_EMITTER_MACROS.md#fold-emission")]
 def private fold_macro(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?; st : CirStmt const?; kind : string; loc : CirLoc; var call : Em&) : bool {
-    if (!em.in_body || em.in_global_init || em.prog.fold_off) {
+    if (!em.in_body || em.in_global_init) {
         return false
     }
     let node = x != null ? intptr(x) : intptr(st)
@@ -3486,9 +3486,10 @@ def private fold_macro(var em : Emitter; tu : CirTu; x, spelled : CirExpr const?
     } else {
         uses := st.fn_macro
     }
-    if (em.fold_function_off) {
+    if (em.prog.fold_off || em.fold_function_off) {
+        // `fn_macros` `expand` folds no site; a function holding a labelled fold folds none
         if (first < length(uses)) {
-            count_fold(em, uses[first].site, "labels")
+            count_fold(em, uses[first].site, em.prog.fold_off ? "expand" : "labels")
         }
         return false
     }
