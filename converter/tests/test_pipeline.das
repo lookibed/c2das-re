@@ -266,3 +266,30 @@ def has_wide_program(t : T?; text : string) {
         t |> success(text |> contains(needle), "missing `{needle}` in:\n{text}")
     }
 }
+
+// a function with a goto into a block and a switch beside the loops of a composed perf kernel:
+// the planning of labels, which runs once per function under `unshadow_locals` too
+let STACK_SOURCE = "int printf(const char *, ...);\nstatic volatile int n = 1000;\nstatic int sum;\nstatic void kernel_run(void) \{ sum = 0; for (int i = 0; i < n; i++) sum += i & 3; sum = sum / 375; \}\nstatic int pick(int k) \{\n    int r = 0;\n    if (k > 2) goto inner;\n    switch (k) \{ case 0: r = 5; break; case 1: r = 7; break; default: r = 9; \}\n    \{\n        r += 1;\n    inner:\n        r += k;\n    \}\n    return r;\n\}\nint main(void) \{\n    for (;;) \{\n        kernel_run();\n        if (sum >= 0 || n >= 1000000000) break;\n    \}\n    printf(\"%d %d\\n\", sum, pick(3));\n    return 0;\n\}\n"
+
+// the bytes of das's default 16 KiB context stack a conversion leaves free: a test that runs the
+// converter in its own process without `options stack` (`compare/tests/test_perf_compare.das`)
+// overflows once the converter's deepest frames reach within this many bytes of the stack's end
+let STACK_SPARE = 2048
+
+// `c_path` converted with `STACK_SPARE` bytes of the stack taken by this frame before the converter's
+def private convert_with_spare(c_path, out_dir : string) : string {
+    var spare : uint8[STACK_SPARE]
+    spare[0] = 1u8
+    let converted <- convert(c_path, out_dir, "linux")
+    return converted.ok ? "" : converted.error
+}
+
+[test]
+def test_default_stack(t : T?) {
+    t |> run("a program with labels and a switch converts in das's default stack with STACK_SPARE bytes to spare") @(t : T?) {
+        let dir = test_temp_dir()
+        let c_path = path_join(dir, "stack.c")
+        fwrite(c_path, STACK_SOURCE)
+        t |> equal(convert_with_spare(c_path, path_join(dir, "out")), "")
+    }
+}
