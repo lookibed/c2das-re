@@ -1,6 +1,6 @@
 {
     "knobs": {
-        "checks": {"value": "safe", "reason": "default, search pending", "numbers": ""},
+        "checks": {"value": "off", "reason": "addendum 19 point 6: fast may drop null and bounds checks; the add19 search measured no set yet (addendum 20 point 2)", "numbers": ""},
         "first_member": {"value": "addr", "reason": "default, search pending", "numbers": ""},
         "forms_off": {"value": [], "reason": "default, search pending", "numbers": ""},
         "fn_macros": {"value": "fold", "reason": "default, search pending", "numbers": ""},
@@ -14,5 +14,5 @@
         "strict_aliasing": {"value": false, "reason": "default, search pending", "numbers": ""},
         "switch_dispatch": {"value": "chain", "reason": "default, search pending", "numbers": ""}
     },
-    "results": {}
+    "results": {"notes": "not yet tuned: readable + checks off"}
 }
