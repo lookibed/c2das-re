@@ -2144,6 +2144,36 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   c_testsuite 11 / 10 / 0, gcc_torture 93 / 35 / 1, csmith 10192 / 0 / 0; no other raw count of
   any row moves. Expected speed effect: none (no output change);
   the criteria run's time within noise.
+- **P9.28 The phase 2b end A/B** (ruling 38 addendum 10: batched exclusive A/B at the phase end, the forms and
+  the macros, plus the fold switched on and off; after P9.9-P9.27). One `heavy --exclusive` job, 5 samples with
+  the arm order rotating per sample, Lua's interpreter 3, over three arms:
+  - A = c3070b2, the phase 2 end.
+  - B = 408d198, main after P9.27.
+  - C = B with the sidecar's `fn_macros: expand` in Lua's and Doom's, so the fold is off.
+
+  The lanes:
+  - The 17 perf kernels and P9.8's `cstr` kernel under interp, JIT and exe for A and B. No kernel folds a macro,
+    so C's kernel text is B's.
+  - Doom's speed build, demos 1-3, under the interpreter and the JIT.
+  - Lua's source layout, fib, nbody, spectral_norm and binary_trees, under the interpreter and the JIT.
+  - binjgb and h264bsd-mp4 under the JIT, for A and B.
+  - F86's heap `ptr_diff` repro (P9.26): native clang -O3 and -O2 against das JIT.
+
+  Predictions were written before any timing run: `/root/notes/predictions/2026-11-13-phase2b.md`, sha256
+  `4bdda806c9cffd1b07a3eaa7b641a2ee1d92be7a8a3274403470d58bc2404214`. Each one prices the P9.9-P9.27 rows'
+  expected speed effects per cell, multiplied, with P9.25's re-gate as the fold's measured value. The B/A
+  predictions:
+  - Kernels: 1.00 on every lane, but blit interp 0.98 (P9.9).
+  - Doom: interp 0.95 (range 0.92-0.98: P9.9, P9.10, P9.13, P9.14, P9.23, P9.24), JIT 1.00.
+  - Lua interp: fib 0.95 and nbody 0.95 (range 0.92-0.98); spectral_norm 0.98 and binary_trees 0.98 (range
+    0.95-1.00).
+  - Lua JIT 1.00; binjgb and h264bsd-mp4 JIT 1.00.
+
+  The fold, C/B: Lua interp fib 1.02, nbody 1.02, spectral_norm 0.99, binary_trees 0.99 (the re-gate inverted),
+  JIT 1.00; Doom 1.00 on both lanes. `ptr_diff` JIT/native about 2.5 (range 1.5-4), replacing F86's void 33x.
+
+  A hit is within 0.03 of the point, or inside the stated range. A lane where B is slower than A by more than 3%
+  is a NEEDS RULING.
 
 ## P6 — Doom
 
