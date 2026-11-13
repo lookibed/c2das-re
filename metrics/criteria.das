@@ -18,8 +18,8 @@ require criteria_defines
 require criteria_file
 
 //! The readability criteria (`scripts/run_criteria.sh`, `metrics/ARCHITECTURE_CRITERIA.md`): every
-//! Lua key and every ratchet suite key of `expected_input_keys` and every compare project of `ROWS`
-//! (`project/<name>`), converted by `convert_input` as
+//! Lua key and every ratchet suite key of `expected_input_keys`, every compare project of `ROWS`
+//! (`project/<name>`) and PureDOOM (`PUREDOOM_ROW`), converted by `convert_input` as
 //! the readability metric converts it, one worker process per input, its C sources and emitted
 //! modules scanned into raw counts, and every hand-written port of `HAND_PORTS` scanned as it is;
 //! the rows summed, each criterion's compliance and each density printed, and a
@@ -37,6 +37,9 @@ struct CriteriaArgs {
     filter : string = ""
     @clarg_doc = "inputs converted at once, one worker process each (the Lua inputs go one at a time)"
     jobs : int = 4
+    @clarg_doc = "a variant file (ports/variants/<program>.<variant>.json): every input converts under its knobs, which needs --filter to name inputs of its program only (lua/lua, lua/luac, project/<name>, doom/puredoom); nothing is recorded"
+    @clarg_name = "variant"
+    variant_file : string = ""
     @clarg_doc = "a criteria capture to print the delta against"
     delta : string = ""
     @clarg_doc = "the preflight gate: print the committed capture, its delta against --delta-ref and the sample's freshness"
@@ -104,13 +107,13 @@ def measure_hand(key : string; var error : string&) : CriteriaRaw {
     return <- count_criteria(array<CSource>(), modules, none, none)
 }
 
-//! The raw counts of the input `key`, converted under `dir`; `error` names what failed. A
-//! hand-written port is read where it lies.
-def measure_input(key, dir : string; var error : string&) : CriteriaRaw {
+//! The raw counts of the input `key`, converted under `dir`, under the variant `variant_file` when
+//! it is set; `error` names what failed. A hand-written port is read where it lies.
+def measure_input(key, dir : string; var error : string&; variant_file : string = "") : CriteriaRaw {
     if (key |> starts_with(HAND_PREFIX)) {
         return <- measure_hand(key, error)
     }
-    let conv <- convert_input(key, dir)
+    let conv <- convert_input(key, dir, variant_file)
     if (!empty(conv.error)) {
         error = conv.error
         return <- CriteriaRaw()
@@ -155,16 +158,21 @@ struct Measured {
     failures : array<string>
 }
 
-// the worker of `key` spawned, its stale result file removed first
-def private spawn_worker(key : string) : process {
+// the worker of `key` spawned, its stale result file removed first; it converts under the variant
+// `variant_file` when that is set
+def private spawn_worker(key, variant_file : string) : process {
     let noenv : array<string>
     remove(result_path(key))
-    return unsafe(spawn_process(worker_argv("metrics/criteria.das", key), "", noenv))
+    var argv <- worker_argv("metrics/criteria.das", key)
+    if (!empty(variant_file)) {
+        argv |> push_from(["--variant", variant_file])
+    }
+    return unsafe(spawn_process(argv, "", noenv))
 }
 
-// `keys` through workers, `jobs` at a time, into `m`
-def private run_batch(keys : array<string>; jobs : int; var m : Measured) {
-    run_workers(length(keys), jobs, WORKER_TIMEOUT, $(index) => spawn_worker(keys[index])) $(index, killed, rc, output) {
+// `keys` through workers, `jobs` at a time, into `m`, each under the variant `variant_file` when set
+def private run_batch(keys : array<string>; jobs : int; variant_file : string; var m : Measured) {
+    run_workers(length(keys), jobs, WORKER_TIMEOUT, $(index) => spawn_worker(keys[index], variant_file)) $(index, killed, rc, output) {
         let key = keys[index]
         var error = killed ? "killed past {int(WORKER_TIMEOUT)} s" : ""
         var raw <- read_result_text(fexist(result_path(key)) ? fread(result_path(key)) : "", error)
@@ -245,10 +253,10 @@ def private render_tables(cap : CriteriaCapture) : string => "{render_criteria(c
 def private render_deltas(base, now : CriteriaCapture) : string => "{render_delta(base, now)}\n\nDensity delta over `programs`:\n\n{render_density_delta(base, now)}\n"
 
 // every input the criteria measure whose key holds `filter`: the readability inputs without the
-// `perf` group, then the compare projects and the hand-written ports of `ROWS`
+// `perf` group, then the compare projects, PureDOOM and the hand-written ports of `ROWS`
 def private input_keys(filter : string) : array<string> {
     var every <- [for (k in expected_input_keys()); k; where !(k |> starts_with("perf/"))]
-    every |> push_from([for (row in ROWS); row; where row |> starts_with(PROJECT_PREFIX) || row |> starts_with(HAND_PREFIX)])
+    every |> push_from([for (row in ROWS); row; where row |> starts_with(PROJECT_PREFIX) || row == PUREDOOM_ROW || row |> starts_with(HAND_PREFIX)])
     return <- [for (k in every); k; where empty(filter) || find(k, filter) >= 0]
 }
 
@@ -261,7 +269,7 @@ def main : int {
     }
     if (!empty(args.one)) {
         var error : string
-        let raw <- measure_input(args.one, "{WORK}/{args.one}", error)
+        let raw <- measure_input(args.one, "{WORK}/{args.one}", error, args.variant_file)
         mkdir_rec(dir_name(result_path(args.one)))
         fwrite(result_path(args.one), result_text(raw, empty(error) ? "" : headline(error)))
         return 0
@@ -269,12 +277,16 @@ def main : int {
     if (args.report) {
         return report(args.delta_ref)
     }
+    if (!empty(args.variant_file) && empty(args.filter)) {
+        to_log(LOG_ERROR, "--variant needs --filter: a variant converts the inputs of its own program only\n")
+        return 1
+    }
     let keys <- input_keys(args.filter)
     var m : Measured
-    // a Lua program or a compare project takes up to 3 GB to convert: one at a time
-    let one_by_one <- [for (k in keys); k; where k |> starts_with("lua/") || k |> starts_with(PROJECT_PREFIX)]
-    run_batch(one_by_one, 1, m)
-    run_batch([for (k in keys); k; where !has_value(one_by_one, k)], args.jobs, m)
+    // a Lua program, a compare project or PureDOOM takes up to 3 GB to convert: one at a time
+    let one_by_one <- [for (k in keys); k; where k |> starts_with("lua/") || k |> starts_with(PROJECT_PREFIX) || k == PUREDOOM_ROW]
+    run_batch(one_by_one, 1, args.variant_file, m)
+    run_batch([for (k in keys); k; where !has_value(one_by_one, k)], args.jobs, args.variant_file, m)
     let cap <- capture_of(m)
     print("**Readability criteria**\n\n{length(keys)} inputs attempted, {length(m.failures)} failed\n\n{render_tables(cap)}")
     if (!empty(args.delta)) {

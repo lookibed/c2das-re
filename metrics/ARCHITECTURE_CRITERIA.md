@@ -18,20 +18,26 @@ only as a criterion here, decided per rule by what a human port would write.
 
 - `criteria.das` - the driver (`scripts/run_criteria.sh`): every Lua key and every ratchet suite
   key `expected_input_keys` names (the readability inputs without the `perf` group), every
-  compare project row of `ROWS` (`project/<name>`) and every hand-written port (`hand/<name>`,
+  compare project row of `ROWS` (`project/<name>`), PureDOOM (`doom/puredoom`) and every hand-written port (`hand/<name>`,
   `HAND_PORTS`: the `.das` files of a folder an environment variable names, read where they lie,
   no C side), one worker process per input (`--one <key>`),
-  the Lua and project inputs one at a time and the rest `--jobs` at a time, a project's worker
-  with its soft address-space limit raised to the hard one (`worker_argv`)
+  the Lua, project and PureDOOM inputs one at a time and the rest `--jobs` at a time, a project's
+  and PureDOOM's worker with its soft address-space limit raised to the hard one (`worker_argv`)
   (4 by default), each writing `work/<key>/criteria.txt`; it sums the rows (section 2), prints the
   criteria, density and length tables, with `--delta <capture>` the delta tables, and a complete
-  run (no `--filter`, no failed input) writes `criteria_linux.json`. `--report` is the preflight
-  gate (section 5).
+  run (no `--filter`, no failed input) writes `criteria_linux.json`. `--variant <file>` converts
+  every input under a variant file (`ports/ARCHITECTURE_VARIANTS.md`), each worker handed it; it
+  needs `--filter`, and an input whose program the variant is not of fails: the price of a variant's
+  knobs on one program, the readable search's measure. `--report` is the preflight gate (section 5).
 - `readability_inputs.das` - one input key converted as both metrics convert it: the C file or
   the Lua program's files, the sidecar, the emitted modules and fragments (a module's layout file,
   `is_layout_file` of `converter/pipeline.das`, neither); a `project/<name>` key
   through `convert_project` of `compare/projects.das`, the conversion the ports publisher
-  publishes, over the Rust checkout (`$C2DAS_RUST`, else `/root/c2das`).
+  publishes, over the Rust checkout (`$C2DAS_RUST`, else `/root/c2das`); `doom/puredoom` staged
+  and converted as `doom/run.das --convert` converts it (`doom/doom_sources.das`,
+  `stage_program`). Under a variant (`variant_program` names whose: `lua` for a Lua program, the
+  project, `puredoom`; none for a suite or a key with a suffix) a Lua program and PureDOOM convert
+  under the variant's sidecar in its layout, a project with the variant as its `ours_variant`.
 - `criteria_scan.das` - the lexer of C and das text and the facts of one C source and one emitted
   module.
 - `criteria_defines.das` - a unit preprocessed by the pinned clang (`-E -C -dD`): its macros and
@@ -49,7 +55,7 @@ only as a criterion here, decided per rule by what a human port would write.
   four c-testsuite inputs the gate re-measures) and `totals` (per column).
 - `tests/test_criteria.das` - every counter on small C and das texts, a positive and a negative
   case each, the formulas, the densities, the capture's text and shape check, the tables, the
-  worker file, the hand-port worker and the gate's three outcomes.
+  worker file, the hand-port and variant workers and the gate's three outcomes.
 
 ## 2. Rows, columns and the total {#rows}
 
@@ -59,14 +65,14 @@ A row is one Lua program in one layout (`lua/lua`, `lua/lua@source-cut`, `lua/lu
 price, which the `all` column leaves out), one ratchet suite (`c_testsuite`, `csmith`, `gcc_torture`),
 whose raw counts are the sum over its inputs, or one compare project (`project/wasm3`, `project/binjgb`,
 `project/h264bsd-mp4`, `project/plmpeg-stream`, `project/doomgeneric`, `project/quakegeneric`, the
-order of `project_table`). A project that converts whole is measured over every C file it compiles
+order of `project_table`), or PureDOOM (`doom/puredoom`, the program of `doom/`, its sync form). A project that converts whole is measured over every C file it compiles
 and its modules; one that refuses whole over the files that convert alone and their modules, the
 others in no count. `c_files` and `c_files_converted` record the program's C files and the ones
 measured, the coverage the ports README states; they enter no criterion. A hand-written port
 (`hand/plmpeg-stream`, the plmpeg port a human wrote) is a row with no C side: only the counts read
-off das text apply to it. The `all` column leaves the project and hand rows out as it leaves the
-opt-in rows out (`in_all`): a partly converted project's criteria describe only its converted
-files and a hand port is no output, so `all` stays the default output of the Lua programs and
+off das text apply to it. The `all` column leaves the project, PureDOOM and hand rows out as it
+leaves the opt-in rows out (`in_all`): a partly converted project's criteria describe only its
+converted files, PureDOOM is a program of its own harness and a hand port is no output, so `all` stays the default output of the Lua programs and
 suites; the densities' `programs` column (section 6) is where the projects count. A per-function
 ratio's median, 90th percentile and worst, and a row's function lengths, are taken over the row's
 pooled functions. Each criterion's compliance is computed per row from the row's raw counts; a criterion

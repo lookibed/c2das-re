@@ -573,6 +573,8 @@ def test_compliance(t : T?) {
         t |> equal(row_of("project/h264bsd-mp4"), "project/h264bsd-mp4")
         t |> equal(row_of("csmith/123"), "csmith")
         t |> equal(row_of("bare"), "bare")
+        t |> equal(row_of(PUREDOOM_ROW), PUREDOOM_ROW)
+        t |> success(!in_all(PUREDOOM_ROW) && !in_programs(PUREDOOM_ROW))
     }
 }
 
@@ -776,7 +778,7 @@ def test_worker_file(t : T?) {
 
 // the worker run on one input key, and the result file it wrote; `rust` the Rust checkout it reads
 // the compare projects from, `hand` the folder of the plmpeg hand port, each its default when ""
-def private run_worker(key : string; var result : string&; rust : string = ""; hand : string = "") : int {
+def private run_worker(key : string; var result : string&; rust : string = ""; hand : string = ""; variant_file : string = "") : int {
     var argv <- empty(rust) && empty(hand) ? array<string>() : ["env"]
     if (!empty(rust)) {
         argv |> push("C2DAS_RUST={rust}")
@@ -785,6 +787,9 @@ def private run_worker(key : string; var result : string&; rust : string = ""; h
         argv |> push("C2DAS_HAND_PLMPEG={hand}")
     }
     argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["metrics/criteria.das", "--", "--one", key])
+    if (!empty(variant_file)) {
+        argv |> push_from(["--variant", variant_file])
+    }
     var out : string
     let rc = run_and_capture(argv, out, 300.0)
     let path = "metrics/work/{key}/criteria.txt"
@@ -922,6 +927,45 @@ def test_project_worker(t : T?) {
         t |> equal(result, "error no compare project nethack\n")
         t |> equal(run_worker("project/doomgeneric", result, rust), 0)
         t |> success(result |> starts_with("error the Rust checkout has no "), result)
+    }
+    rmdir_rec(rust)
+}
+
+[test]
+def test_variant_worker(t : T?) {
+    var dir_error : string
+    let rust = create_temp_directory("c2das_criteria_rust", dir_error)
+    t |> equal(dir_error, "")
+    stand_in_rust(rust)
+    let variants = path_join(rust, "variants")
+    mkdir_rec(variants)
+    let checks_off = path_join(variants, "binjgb.readable.json")
+    fwrite(checks_off, replace(fread("ports/variants/binjgb.readable.json"), "\"checks\": \{\"value\": \"safe\"", "\"checks\": \{\"value\": \"off\""))
+    t |> run("a variant's program: lua for a Lua program, the project's name, puredoom; none for a suite, an opt-in or a layout key") @(t : T?) {
+        t |> equal(variant_program("lua/lua"), "lua")
+        t |> equal(variant_program("lua/luac"), "lua")
+        t |> equal(variant_program("project/binjgb"), "binjgb")
+        t |> equal(variant_program(PUREDOOM_ROW), "puredoom")
+        t |> equal(variant_program("lua/lua@goto"), "")
+        t |> equal(variant_program("lua/luac@single"), "")
+        t |> equal(variant_program("lua/lua5"), "")
+        t |> equal(variant_program("csmith/123"), "")
+    }
+    t |> run("a project converts under its variant's knobs: checks off unchecks the publisher's whole tree") @(t : T?) {
+        var result : string
+        t |> equal(run_worker("project/binjgb", result, rust, "", checks_off), 0)
+        t |> success(result |> starts_with("ok\n"), result)
+        let whole = fread("metrics/work/project/binjgb/whole/binjgb_all.das")
+        t |> success(whole |> contains("unsafe_deref"), whole)
+        t |> equal(run_worker("project/binjgb", result, rust), 0)
+        t |> success(!(fread("metrics/work/project/binjgb/whole/binjgb_all.das") |> contains("unsafe_deref")), "the default keeps the checks")
+    }
+    t |> run("a variant of another program, and a variant on a key no variant converts, are errors before any conversion") @(t : T?) {
+        var result : string
+        t |> equal(run_worker("project/wasm3", result, rust, "", checks_off), 0)
+        t |> equal(result, "error {checks_off} is a variant of binjgb, not of wasm3 (project/wasm3)\n")
+        t |> equal(run_worker("csmith/1", result, "", "", checks_off), 0)
+        t |> equal(result, "error {checks_off}: a variant converts lua/<program>, project/<name> or {PUREDOOM_ROW}, not csmith/1\n")
     }
     rmdir_rec(rust)
 }

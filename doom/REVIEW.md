@@ -4,7 +4,7 @@
 doc: `ARCHITECTURE.md`. Planned work: `docs/implementation_order.md` (repo root).
 
 **A diff that changes a patch under `patches/`, the `puredoom:` or `freedoom:` line of
-`VERSIONS.md` (repo root), `host/doom_main.c`, the units `sources.das` lists or the sidecar's
+`VERSIONS.md` (repo root), `host/doom_main.c`, the units `doom_sources.das` lists or the sidecar's
 `defines` reruns `run.das --native --demo N` for each of demo1, demo2 and demo3 and commits the
 logs it writes under `work/ref/`, copied to `ref/`, in the same change.**
 

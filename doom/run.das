@@ -12,7 +12,7 @@ require ../converter/pipeline.das
 require ../converter/dumper_a.das
 require ../converter/sidecar.das
 require ../converter/tiers.das
-require sources
+require doom_sources
 require harness
 require convert_check
 require demo_run
@@ -96,7 +96,7 @@ struct Args {
 def private fetch_check : bool {
     let versions = fexist("VERSIONS.md") ? fread("VERSIONS.md") : ""
     var problems <- fetch_problems("doom/fetch/PureDOOM", puredoom_pin(versions), PATCHES, FREEDOOM2, freedoom2_sha256(versions))
-    problems |> push_from([for (unit in missing_units(SOURCES, UNITS)); "sources.das lists {unit}, which {SOURCES} lacks"])
+    problems |> push_from([for (unit in missing_units(SOURCES, UNITS)); "doom_sources.das lists {unit}, which {SOURCES} lacks"])
     for (problem in problems) {
         to_log(LOG_ERROR, "doom: {problem}\n")
     }
