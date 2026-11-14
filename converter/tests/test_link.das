@@ -13,6 +13,7 @@ require ../tiers.das
 require ../dumper_a.das
 require ../emit.das
 require daslib/rtti
+require daslib/ast
 
 //! The link of several translation units (`converter/link.das`): a three-file program converted
 //! into one module and run against the native build of the same files, a manifest and a file list
@@ -527,6 +528,21 @@ def test_walked_names(t : T?) {
         let bound <- walked_names(get_module("$"), false)
         for (name in bound) {
             t |> success(key_exists(names, name), "`{name}` is missing from the registered names")
+        }
+    }
+    t |> run("the registered names hold every generic of every registered module, each its own copy after later walks reuse the walks' freed storage") @(t : T?) {
+        var names : table<string>
+        registered_function_names(names)
+        var generics : array<string>
+        program_for_each_registered_module() $(mod) {
+            for_each_generic(mod) $(fn) {
+                generics |> push("{fn.name}")
+            }
+        }
+        let churn <- walked_names(get_module("$"), true)
+        t |> success(length(generics) > 100 && !empty(churn), "the registered modules declare generics")
+        for (name in generics) {
+            t |> success(key_exists(names, name), "generic `{name}` is missing from the registered names")
         }
     }
 }

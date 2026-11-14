@@ -3149,7 +3149,9 @@ def private names_token(text, name : string) : bool {
 def registered_function_names(var names : table<string>) {
     program_for_each_registered_module() $(mod) {
         module_for_each_function(mod) $(info) {
-            names |> insert(clone_string(info.name))
+            if (!key_exists(names, info.name)) {
+                names |> insert(clone_string(info.name))
+            }
         }
         for_each_generic(mod) $(fn) {
             names |> insert(string(fn.name))
