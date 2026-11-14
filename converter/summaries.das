@@ -84,7 +84,7 @@ let private LIBC_EFFECTS <- {
     "memset" => FILL, "memcpy" => FILL, "memmove" => FILL, "strcpy" => FILL, "strncpy" => FILL,
     "strcat" => FILL, "strncat" => FILL, "realloc" => FILL,
     "free" => STORE, "sprintf" => STORE, "snprintf" => STORE, "vsprintf" => STORE,
-    "vsnprintf" => STORE, "sscanf" => STORE, "vsscanf" => STORE, "frexp" => STORE, "modf" => STORE,
+    "vsnprintf" => STORE, "sscanf" => STORE, "vsscanf" => STORE, "fscanf" => READ, "vfscanf" => READ, "frexp" => STORE, "modf" => STORE,
     "__builtin_va_start" => STORE, "__builtin_c23_va_start" => STORE, "__builtin_va_end" => STORE,
     "__builtin_va_copy" => STORE,
     "printf" => PRINT, "fprintf" => PRINT, "vprintf" => PRINT, "vfprintf" => PRINT, "fputs" => PRINT,

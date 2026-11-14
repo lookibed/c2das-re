@@ -248,8 +248,8 @@ agree on every defined program); a function type's `va_list` position is `var` a
 `int (*)(va_list)` holds such a function. A library function taking a `va_list` takes
 `va_rest(v)`, the arguments from the cursor on (F36): `vprintf`, `vsprintf`, `vsnprintf`,
 `vfprintf` and `vsscanf` are `c_vprintf`, `c_vsprintf`, `c_vsnprintf`, `c_vfprintf` (the stream
-a `void?`) and `c_vsscanf`, and `sscanf` is the
-`[variadic]` front of `c_runtime/scanf`. A module reaching the printf or the scanf family opens
+a `void?`), `c_vsscanf` and `c_vfscanf` (`vfscanf`), and `sscanf` and `fscanf` are the
+`[variadic]` fronts of `c_runtime/scanf`. A module reaching the printf or the scanf family opens
 with `[init] def private c2das_dialect`, its first `[init]`, setting `c_long_bits` to the
 dialect's `long` width, which every `l` directive then reads. `sizeof(va_list)` is clang's size. Fail closed: `va_arg` of a
 record or of a `va_list`; a record or a `va_list` passed through `...`, naming the argument and
