@@ -13,6 +13,8 @@
 #include <clocale>
 #include <csignal>
 #include <chrono>
+#include <strings.h>
+#include <sys/stat.h>
 
 namespace crt {
 
@@ -38,6 +40,10 @@ inline uint8_t * c_strchr(const uint8_t * s, int32_t c) { return (uint8_t *) ::s
 inline uint8_t * c_strrchr(const uint8_t * s, int32_t c) { return (uint8_t *) ::strrchr((const char *) s, c); }
 inline uint8_t * c_strstr(const uint8_t * s, const uint8_t * needle) { return (uint8_t *) ::strstr((const char *) s, (const char *) needle); }
 inline uint8_t * c_strpbrk(const uint8_t * s, const uint8_t * accept) { return (uint8_t *) ::strpbrk((const char *) s, (const char *) accept); }
+//! POSIX `<strings.h>` and `strdup`: the case-blind compares and the malloc'd copy, which `crt::free` releases
+inline int32_t c_strcasecmp(const uint8_t * a, const uint8_t * b) { return ::strcasecmp((const char *) a, (const char *) b); }
+inline int32_t c_strncasecmp(const uint8_t * a, const uint8_t * b, uint64_t n) { return ::strncasecmp((const char *) a, (const char *) b, size_t(n)); }
+inline uint8_t * c_strdup(const uint8_t * s) { return (uint8_t *) ::strdup((const char *) s); }
 inline uint64_t c_strspn(const uint8_t * s, const uint8_t * accept) { return ::strspn((const char *) s, (const char *) accept); }
 inline int32_t c_strcoll(const uint8_t * a, const uint8_t * b) { return ::strcoll((const char *) a, (const char *) b); }
 inline uint8_t * c_strerror(int32_t errnum) { return (uint8_t *) ::strerror(errnum); }
@@ -158,11 +164,15 @@ inline void * c_stderr() { return stderr; }
 inline void * c_fopen(const uint8_t * name, const uint8_t * mode) { return ::fopen((const char *) name, (const char *) mode); }
 inline void * c_freopen(const uint8_t * name, const uint8_t * mode, void * f) { return ::freopen((const char *) name, (const char *) mode, (FILE *) f); }
 inline int32_t c_fclose(void * f) { return ::fclose((FILE *) f); }
+//! POSIX `mkdir`; `mode_t` is `unsigned int` on Linux
+inline int32_t c_mkdir(const uint8_t * name, uint32_t mode) { return ::mkdir((const char *) name, mode_t(mode)); }
 inline uint64_t c_fread(void * data, uint64_t size, uint64_t n, void * f) { return ::fread(data, size_t(size), size_t(n), (FILE *) f); }
 inline uint64_t c_fwrite(const void * data, uint64_t size, uint64_t n, void * f) { return ::fwrite(data, size_t(size), size_t(n), (FILE *) f); }
 inline uint8_t * c_fgets(uint8_t * buf, int32_t n, void * f) { return (uint8_t *) ::fgets((char *) buf, n, (FILE *) f); }
 inline int32_t c_fputs(const uint8_t * s, void * f) { return ::fputs((const char *) s, (FILE *) f); }
 inline int32_t c_getc(void * f) { return ::getc((FILE *) f); }
+inline int32_t c_fgetc(void * f) { return ::fgetc((FILE *) f); }
+inline int32_t c_fputc(int32_t c, void * f) { return ::fputc(c, (FILE *) f); }
 inline int32_t c_ungetc(int32_t c, void * f) { return ::ungetc(c, (FILE *) f); }
 inline int32_t c_feof(void * f) { return ::feof((FILE *) f); }
 inline int32_t c_ferror(void * f) { return ::ferror((FILE *) f); }

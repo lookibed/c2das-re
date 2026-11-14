@@ -63,6 +63,15 @@ def test_crt_strings(t : T?) {
             t |> equal(crt::strcoll(cstr("abc"), cstr("abd")) < 0, true)
             t |> equal(crt::strcoll(cstr("abc"), cstr("abc")), 0)
             t |> equal(crt::strlen(crt::strerror(crt::ERANGE)) > 0ul, true)
+            // the POSIX case-blind compares and the malloc'd copy
+            t |> equal(crt::strcasecmp(cstr("Abc"), cstr("aBC")), 0)
+            t |> equal(crt::strcasecmp(cstr("abc"), cstr("ABD")) < 0, true)
+            t |> equal(crt::strncasecmp(cstr("Abc"), cstr("aBx"), 2ul), 0)
+            t |> equal(crt::strncasecmp(cstr("Abc"), cstr("aBx"), 3ul) < 0, true)
+            var copy = crt::strdup(cstr("dup"))
+            t |> equal(as_string(copy), "dup")
+            t |> equal(copy != cstr("dup"), true)
+            crt::free(copy)
         }
     }
 }
@@ -374,7 +383,8 @@ def test_crt_stdio(t : T?) {
             var f = crt::tmpfile()
             t |> equal(f != null, true)
             t |> equal(crt::fputs(cstr("ab\n"), f) >= 0, true)
-            t |> equal(crt::fwrite(cstr("cde"), 1ul, 3ul, f), 3ul)
+            t |> equal(crt::fwrite(cstr("cd"), 1ul, 2ul, f), 2ul)
+            t |> equal(crt::fputc('e', f), 'e')
             t |> equal(crt::fflush(f), 0)
             t |> equal(crt::ftell(f), 6l)
             // SEEK_SET, which glibc and every POSIX system spell 0
@@ -385,7 +395,8 @@ def test_crt_stdio(t : T?) {
             t |> equal(crt::fgets(addr(line[0]), 8, f) == addr(line[0]), true)
             t |> equal(as_string(addr(line[0])), "Ab\n")
             var rest : uint8[8]
-            t |> equal(crt::fread(addr<void?>(rest[0]), 1ul, 8ul, f), 3ul)
+            t |> equal(crt::fgetc(f), 'c')
+            t |> equal(crt::fread(addr<void?>(rest[0]), 1ul, 8ul, f), 2ul)
             t |> equal(crt::feof(f) != 0, true)
             t |> equal(crt::ferror(f), 0)
             crt::clearerr(f)
@@ -394,7 +405,7 @@ def test_crt_stdio(t : T?) {
             t |> equal(crt::fclose(f), 0)
         }
     }
-    t |> run("named files: fopen, freopen, rename, remove, tmpnam, system") @(t : T?) {
+    t |> run("named files: fopen, freopen, rename, remove, mkdir, tmpnam, system") @(t : T?) {
         var dir_error : string
         let dir = create_temp_directory("c2das_crt", dir_error)
         t |> equal(dir_error, "")
@@ -411,6 +422,10 @@ def test_crt_stdio(t : T?) {
             t |> equal(crt::fopen(cstr(first), cstr("r")) == null, true)
             t |> equal(crt::remove(cstr(second)), 0)
             t |> equal(crt::remove(cstr(second)) != 0, true)
+            let sub = path_join(dir, "sub")
+            t |> equal(crt::mkdir(cstr(sub), 0x1edu), 0)
+            t |> equal(stat(sub).is_dir, true)
+            t |> equal(crt::mkdir(cstr(sub), 0x1edu), -1)
             var name : uint8[4096]
             t |> equal(crt::tmpnam(addr(name[0])) == addr(name[0]), true)
             // a null command asks whether a command processor exists

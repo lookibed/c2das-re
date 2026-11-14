@@ -41,14 +41,16 @@ no C name covers keep a `c_` name: `c_strtol32`, `c_strtoul32`, `c_atol32` and `
 `c_monotonic_ns()`, the steady clock's nanoseconds (`std::chrono::steady_clock`, CLOCK_MONOTONIC
 on linux), which the perf harness's dasProfile method times by (`perf/ARCHITECTURE.md` section 2).
 
-The binds are the malloc family; `mem*`; string.h; ctype.h; the `strto*` and `ato*` conversions;
+The binds are the malloc family; `mem*`; string.h; POSIX's `strcasecmp`, `strncasecmp` and
+`strdup` (its copy malloc'd, released by `free`); ctype.h; the `strto*` and `ato*` conversions;
 libm's exotica; errno; `getenv`, `rand`, `srand`, `system`; time.h (`time`, `clock`, `difftime`,
 `mktime`, `localtime`, `gmtime`, `strftime`, and POSIX's `clock_gettime` over glibc's
 `CLOCK_REALTIME` (0, the system clock) and `CLOCK_MONOTONIC` (1, the steady clock
 `c_monotonic_ns` reads), any other id -1 with `EINVAL`, its `struct timespec *` a `void *` the
 program lays out as `<time.h>` does); locale.h (`setlocale`, `localeconv`); stdio (`fopen`,
-`freopen`, `fclose`, `fread`, `fwrite`, `fgets`, `fputs`, `getc`, `ungetc`, `feof`, `ferror`,
-`clearerr`, `fflush`, `fseek`, `ftell`, `setvbuf`, `tmpfile`, `tmpnam`, `remove`, `rename`, and
+`freopen`, `fclose`, `fread`, `fwrite`, `fgets`, `fputs`, `getc`, `fgetc`, `fputc`, `ungetc`, `feof`,
+`ferror`, `clearerr`, `fflush`, `fseek`, `ftell`, `setvbuf`, `tmpfile`, `tmpnam`, `remove`, `rename`,
+POSIX's `mkdir` (its `mode_t` the `unsigned int` glibc gives it on linux, `uint32` in das), and
 `fwrite_stdout`/`fflush_stdout` for the printf family); and the per-directive `snprintf` and
 `sscanf` families (section 5). Every stdio entry a program calls binds here, none through daslib
 `fio`: one binding family serves one header.
@@ -89,7 +91,7 @@ daslang's own `memcpy` and `malloc`: converted bodies that use them carry `[c_fu
 which makes the whole body unsafe, and a hand-written caller writes `unsafe`. Pure scalar
 entries (ctype, `abs`, `difftime`, and the libm entries that never set `errno`: `cbrt`, `copysign`,
 `trunc`, `round`) are `SideEffects::none` and safe. A reader through a pointer (`strlen`, `memcmp`,
-`memchr`, `strcmp`, `strncmp`, `strchr`, `strrchr`, `strstr`, `strpbrk`, `strspn`, `atoi`,
+`memchr`, `strcmp`, `strncmp`, `strcasecmp`, `strncasecmp`, `strchr`, `strrchr`, `strstr`, `strpbrk`, `strspn`, `atoi`,
 `atol`, `atof`) is `accessExternal`, which daslang defines as the same bit as `modifyExternal`: bound `none`, daslang's optimizer merged two of its calls on
 the same pointer across a write the program made through another pointer to the same memory, under
 the interpreter and the JIT alike. A bind that may write through a pointer argument (`memcpy`,
