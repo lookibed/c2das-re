@@ -9,6 +9,7 @@ require daslib/md_boost
 require ../perf/boxes.das
 require ../metrics/criteria_file.das
 require variants
+require upstream_cells
 
 //! The text of the ports repository: a program's perf tables rendered from its capture, the
 //! projects table of the top-level README from every program's latest capture, the license block
@@ -780,12 +781,18 @@ def render_variants(columns : array<VariantColumn>; execute_row : bool) : string
         criteria |> push(number_cell(r.has_criteria, r.criteria.total, c.criteria_fallback, c.criteria_from, ":.1f", labels))
     }
     rows |> emplace(criteria)
+    var slowed : array<string>
     for (tier in SPEED_TIERS) {
         var inscope row <- ["x native, {lane_title(tier)}"]
         row |> reserve(1 + length(columns))
         for (c in columns) {
             let r & = c.file.results
-            row |> push(number_cell(r.has_speed, r.speed.x_native?[tier] ?? 0.0lf, c.speed_fallback?[tier] ?? 0.0lf, c.speed_from, ":.2f", labels))
+            let cell = number_cell(r.has_speed, r.speed.x_native?[tier] ?? 0.0lf, c.speed_fallback?[tier] ?? 0.0lf, c.speed_from, ":.2f", labels)
+            let shown = upstream_marked(cell, c.file.program, tier)
+            if (shown != cell && !has_value(slowed, tier)) {
+                slowed |> push(tier)
+            }
+            row |> push(shown)
         }
         rows |> emplace(row)
     }
@@ -825,6 +832,9 @@ def render_variants(columns : array<VariantColumn>; execute_row : bool) : string
         }
         for (source, idx in labels, count()) {
             sources |> push("- ({idx + 1}) not from a search of the variant: {source}")
+        }
+        if (!empty(columns)) {
+            sources |> push_from(upstream_footnotes([columns[0].file.program], slowed))
         }
         if (!empty(sources)) {
             w |> write("\n" + join(sources, "\n") + "\n")

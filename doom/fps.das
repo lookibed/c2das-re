@@ -7,6 +7,7 @@ require daslib/strings_boost
 require ../perf/boxes.das
 require ../perf/perf_lanes.das
 require ../ports/ports_render.das
+require ../ports/upstream_cells.das
 require harness
 require demo_run
 
@@ -176,6 +177,9 @@ def private slowdown_text(c : FpsCapture; workload, lane : string) : string {
     return r > 0.0lf ? "{r:.1f}" : MISSING
 }
 
+// PureDOOM's name in `UPSTREAM_CELLS`, the ports directory's
+let private DOOM_PROGRAM = "puredoom"
+
 //! The fps table: one row per demo, the fps of each lane, then each das lane's native fps over its
 //! own; the provenance line above it and one line per cell that does not stand below it.
 def render_fps(c : FpsCapture) : string {
@@ -186,12 +190,13 @@ def render_fps(c : FpsCapture) : string {
     rows |> reserve(length(c.workloads))
     for (w in c.workloads) {
         var inscope row <- [w]
-        row |> push_from([for (lane in c.lanes); fps_text(c, w, lane.name)], [for (lane in das_lanes); slowdown_text(c, w, lane)])
+        row |> push_from([for (lane in c.lanes); fps_text(c, w, lane.name)], [for (lane in das_lanes); upstream_marked(slowdown_text(c, w, lane), DOOM_PROGRAM, lane)])
         rows |> emplace(row)
     }
     let machine = box_label(capture_box(c.box, c.cpu), c.cpu)
     var text = "Box {machine}, {c.platform}; c2das-re `{c.commit}`, captured {c.timestamp}; {c.clang}; daslang {c.daslang}.\n\n"
     text += "PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over {FPS_CLOCK} in the speed build, which leaves the patch's per-tic checksums and tic lines out: the playback alone, the module load, the JIT compile and `doom_init` outside it. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of {c.samples} speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median; above {int(SUSPECT_SPREAD * 100.0lf)}% it is `{SUSPECT}`, without a ratio. `X / native` is native fps over X's.\n\n"
     let failed <- [for (cell in c.cells); "\n- {cell.workload}, {fps_title(cell.lane)}: {cell.error}"; where !empty(cell.error)]
-    return text + table_of(headers, rows, 1) + join(failed, "") + "\n"
+    let notes <- upstream_footnotes([DOOM_PROGRAM], das_lanes)
+    return text + table_of(headers, rows, 1) + join(failed, "") + "\n" + (empty(notes) ? "" : "\n" + join(notes, "\n") + "\n")
 }
