@@ -7,7 +7,7 @@ require daslib/fio
 //! The runtime a converted program runs on, copied out of the repository so a folder of converted
 //! code runs without a c2das-re checkout: the `c_runtime` das modules and the sources of the native
 //! `crt` module (`dasCRuntime/`), each with its module descriptor, under `<into>/c_runtime/` and
-//! `<into>/dasCRuntime/`, and the commit they came from in `<into>/c2das-re.commit`. The copy builds
+//! `<into>/dasCRuntime/` under the repository's `LICENSE`, and the commit they came from in `<into>/c2das-re.commit`. The copy builds
 //! `crt` with cmake against any built daScript (`-DDASLANG_ROOT=`) and loads both folders with
 //! `-load_module`. Run from the repository root:
 //! `daslang ports/vendor_runtime.das -- <into>`.
@@ -18,10 +18,10 @@ let RUNTIME_STAMP = "c2das-re.commit"
 // the runtime's own folders and the files of each a copy takes: the c_runtime modules, dasCRuntime's
 // C++ sources; tests, documents, build trees, built modules and daslang's manifests stay out
 let private SOURCE_DIRS <- [("c_runtime/c_runtime", ".das"), ("dasCRuntime/src", ".cpp"), ("dasCRuntime/src", ".h")]
-let private FIXED_FILES <- ["c_runtime/.das_module", "dasCRuntime/.das_module", "dasCRuntime/CMakeLists.txt"]
+let private FIXED_FILES <- ["LICENSE", "c_runtime/.das_module", "dasCRuntime/.das_module", "dasCRuntime/CMakeLists.txt"]
 
-//! The runtime's files under `root`, relative to it and sorted: both module descriptors,
-//! dasCRuntime's `CMakeLists.txt`, every `.das` of `c_runtime/c_runtime/` and every `.cpp` and `.h`
+//! The runtime's files under `root`, relative to it and sorted: the repository's `LICENSE` (MIT,
+//! the runtime's), both module descriptors, dasCRuntime's `CMakeLists.txt`, every `.das` of `c_runtime/c_runtime/` and every `.cpp` and `.h`
 //! of `dasCRuntime/src/`.
 def runtime_files(root : string) : array<string> {
     var files := FIXED_FILES
