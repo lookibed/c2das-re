@@ -769,7 +769,7 @@ def private files_text(files : array<string>) : string => join([for (f in files)
 
 // the bench builds of a project: the native bench binary or its build's failure, and each side's
 // bench module or its refusal; `has` false for a project without a bench unit
-struct private BenchModules {
+struct BenchModules {
     has : bool
     native : string
     native_error : string
@@ -851,6 +851,10 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
     let rust_lanes <- side_lanes(rust_das, empty(no_oracle) ? rust_refusal : no_oracle, path_join(work, "rust_run"), no_modules, args, p.expected, limits)
     let speed = project_speed(p, work, bench, modules, args, ours_lanes, rust_lanes, samples, limits)
     chdir(back)
+    if (bench.has) {
+        let plan = BenchPlan(modules = bench, ours_lanes <- {for (lane in DAS_LANES); lane => ours_lanes?[lane]?.status ?? ""}, rust_lanes <- {for (lane in DAS_LANES); lane => rust_lanes?[lane]?.status ?? ""})
+        fwrite(path_join(work, BENCH_PLAN), write_json(JV(plan)) + "\n")
+    }
     let ours_text = empty(ours_refusal) ? files_text(ours_files) : ""
     let rust_text = empty(rust_refusal) ? files_text(rust_files) : ""
     var functions <- [for (name in p.functions); JV({"key" => JV(p.name), "name" => JV(name), "ours" => JV(function_text(ours_text, name, "ours")), "rust" => JV(function_text(rust_text, name, "rust"))})]
@@ -876,6 +880,52 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
         "functions" => JV(functions)
     }
     return JV(entry)
+}
+
+//! the record a timed `project_entry` leaves in its work folder for `project_bench`
+let BENCH_PLAN = "bench_plan.json"
+
+//! What `project_bench` times again: the bench builds of a timed run and each side's verdict per lane.
+struct BenchPlan {
+    modules : BenchModules
+    ours_lanes : table<string; string>
+    rust_lanes : table<string; string>
+}
+
+//! `entry`'s speed section timed again over `work_dir`, the work folder a timed `project_entry` of
+//! `p` left: the bench builds and lane verdicts its `bench_plan.json` records, `samples` runs a
+//! cell, every `exe` and `aot` binary reused while its build key stands, nothing converted or built,
+//! so a timing run after a building one builds nothing; `speed`, `samples`, `date`, `cpu`, `box`,
+//! `daslang` and `address_cap` replaced from `stamps` and `address_space`. "" or why not.
+[arch(at="ARCHITECTURE_PROJECTS.md#speed")]
+def project_bench(p : Project; work_dir : string; samples : int; stamps : Stamps; address_space : int64; var entry : JsonValue?) : string {
+    let work = absolute_path(work_dir)
+    let plan_path = path_join(work, BENCH_PLAN)
+    var error : string
+    let js = fexist(plan_path) ? read_json(fread(plan_path), error) : null
+    if (js == null) {
+        return "no {plan_path}: --bench-only times the work of an earlier --project run that timed its bench"
+    }
+    if (entry == null || !(entry.value is _object)) {
+        return "no entry of {p.name} to time again: run --project first"
+    }
+    let plan <- from_JV(js, type<BenchPlan>)
+    var inscope ours_lanes <- {for (lane, status in keys(plan.ours_lanes), values(plan.ours_lanes)); lane => Verdict(status = status)}
+    var inscope rust_lanes <- {for (lane, status in keys(plan.rust_lanes), values(plan.rust_lanes)); lane => Verdict(status = status)}
+    let limits = LaneLimits(sample = COMPARE_LIMITS.sample, build = COMPARE_LIMITS.build, address_space = address_space)
+    let modules <- [for (d in CONVERTED_MODULES); absolute_path(d)]
+    let args <- [absolute_path(project_path(p, p.fixture))]
+    let back = enter_working_folder(path_join(work, "cwd"))
+    var speed = project_speed(p, work, plan.modules, modules, args, ours_lanes, rust_lanes, samples, limits)
+    chdir(back)
+    (entry.value as _object)["speed"] = speed
+    (entry.value as _object)["samples"] = JV(samples)
+    (entry.value as _object)["date"] = JV(stamps.date)
+    (entry.value as _object)["cpu"] = JV(stamps.cpu)
+    (entry.value as _object)["box"] = JV(stamps.box)
+    (entry.value as _object)["daslang"] = JV(stamps.daslang)
+    (entry.value as _object)["address_cap"] = JV(cap_in_force(address_space, address_cap_of(fexist("/proc/self/limits") ? fread("/proc/self/limits") : "")))
+    return ""
 }
 
 //! The address-space cap of a process whose `/proc/self/limits` reads `limits` (the soft `Max

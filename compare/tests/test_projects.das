@@ -513,6 +513,24 @@ def test_project_units(t : T?) {
     }
 }
 
+// the length of the JSON array `v`, -1 for no array
+def private array_length(v : JsonValue?) : int => v != null && v.value is _array ? length(v.value as _array) : -1
+
+// every file under the exe and AOT lanes' build folders of `work` with its mtime, one a line
+def private binary_stamps(work : string) : string {
+    var lines : array<string>
+    for (side in ["ours_bench_run", "rust_bench_run"]) {
+        let root = path_join(work, side)
+        dir_rec(root) $(name, is_dir) {
+            if (!is_dir) {
+                lines |> push("{name} {stat(path_join(root, name)).mtime}")
+            }
+        }
+    }
+    sort(lines)
+    return join(lines, "\n")
+}
+
 [test]
 def test_working_folder(t : T?) {
     t |> run("a path made absolute, and a working folder made and entered, the one before returned") @(t : T?) {
@@ -550,6 +568,27 @@ def test_working_folder(t : T?) {
             t |> equal(entry?["speed"]?["native"]?["decode"]?["time"] ?? 0.0lf, 0.000006lf)
             t |> success(fexist(path_join(dir, "work/cwd/c_mark")) && fexist(path_join(dir, "work/cwd/das_mark")))
             t |> success(!fexist("c_mark") && !fexist("das_mark"))
+            // --bench-only: the bench timed again over the work folder, nothing converted or built,
+            // with the sources and the translator gone and every binary as the timed run left it
+            let before = binary_stamps(path_join(dir, "work"))
+            for (gone in ["prog.c", "bench.c", "rust"]) {
+                remove(path_join(dir, gone))
+            }
+            sleep(1100u)
+            var copy_error : string
+            var again = read_json(write_json(entry), copy_error)
+            t |> equal(project_bench(p, path_join(dir, "work"), 2, Stamps(date = "later", box = "PC"), 0l, again), "")
+            for (side in ["ours", "rust"]) {
+                for (lane in DAS_LANES) {
+                    t |> equal(array_length(again?["speed"]?[side]?[lane]?["decode"]?["samples"]), 2, "{side} {lane}")
+                }
+            }
+            t |> equal(array_length(again?["speed"]?["native"]?["decode"]?["samples"]), 2)
+            t |> equal("{again?["samples"] ?? 0} {again?["date"] ?? ""} {again?["box"] ?? ""}", "2 later PC")
+            t |> equal(again?["code"]?["ours"]?["status"] ?? "", "ok")
+            t |> equal(binary_stamps(path_join(dir, "work")), before)
+            var none = JV(0)
+            t |> success(project_bench(p, path_join(dir, "nowork"), 1, Stamps(), 0l, none) |> starts_with("no {path_join(dir, "nowork")}/bench_plan.json: "))
         }
     }
 }
