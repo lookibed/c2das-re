@@ -393,7 +393,7 @@ def test_variant(t : T?) {
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua", "--variant", "doom.fast.json"]), out), 1, out)
         t |> success(out |> contains("lua: --variant: doom.fast.json is a variant of doom, not of lua"), out)
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua", "--variant", "lua.readable.json"]), out), 1, out)
-        t |> success(out |> contains("lua: --variant: lua.readable: ") && out |> contains("`checks`"), out)
+        t |> success(out |> contains("lua: --variant: lua.readable.json: ") && out |> contains("`checks`"), out)
         t |> success(!fexist(path_join(root, "lua/work/lua")) && !fexist(path_join(root, "lua/work/variants/readable/lua")), out)
         rmdir_rec(root)
     }
