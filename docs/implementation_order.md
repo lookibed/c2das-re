@@ -1517,6 +1517,15 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   `[hint(noinline)]` on leaf functions holding a returning loop (interp gain against JIT cost), measured both ways.
 - **P8.14 AOT global reads** (from P8.12, lookibed/daScript#48). P7.3's parked AOT cells (sieve, matmul, now
   str_copy) wait on `aot_cpp.das` emitting `das_global_solid` for reads under solid_context; no converter change.
+  Correction (2026-11-14, `/root/notes/research/aot/aot25_root_cause.md`): the probe does not depend on
+  solid_context. `aot_cpp.das` `visitExprVar` spells every global access in a function body `das_global<T, mnh>`
+  with or without it (identical bodies; `probes/test_globals.das` `test_aot_globals`), and the standalone `-ctx`
+  context fixes each offset at generation time, so the fix upstream is `visitExprVar` (or `StandaloneContextGen`)
+  writing `das_global_solid<T, offset>` regardless; P8.12's "under solid_context" reads the same way. The same
+  cause holds switch_local (1.67) and PureDOOM (5.2): with the reads rewritten to fixed offsets in the generated
+  C++, sieve 8.21 -> 1.63, str_copy 3.60 -> 1.40, switch_local 1.65 -> 1.00, matmul 1.59 -> 1.01, PureDOOM demo1
+  5.56 -> 1.14 x native (`TIMING-aot25`, exclusive, machine quiet). No option, flag or annotation reaches that
+  path, so no converter change still holds; lookibed/daScript#48 is reopened with the repro.
 - **P8.15 Harness gaps found by the repin** (from P8.12 step 4 and the capture): (a) `lua/run.das --luac-check`
   refuses `--tier exe` though `luac_check` goes through `run_tier` (exe checked by hand: 33/33); (b) `doom/run.das`
   `without_define` edits the sidecar as text and leaves a trailing comma when the removed define is the last of a
@@ -2312,6 +2321,18 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   - (d) The perf kernels' AOT lane was timed by the capture script over `perf/work` (17 kernels; aot/exe
     geomean 1.01 over the 14 non-exception kernels; sieve 8.1, str_copy 3.6, matmul 1.6, switch_local 1.67 x
     native). `perf/results_linux.json` is not re-recorded, since `perf/run.das` converts inside its run.
+  Correction to step 1 (2026-11-14, ruling 38 addendum 25, `/root/notes/research/aot/aot25_root_cause.md`):
+  fork #48 is not by design. The probe does not come from `solid_context`: `aot_cpp.das` `visitExprVar` spells
+  every global access in a function body `das_global<T, mnh>` with or without it (the bodies are identical), and
+  `options.rst`'s "prohibits AOT" speaks of classic AOT, where a function links into other programs' contexts;
+  the standalone `-ctx` context of the AOT tier is one fixed program whose constructor asserts every global's
+  offset. It is a daslang emitter gap (addendum 16 class: daslang issue), and #48 is reopened with a das-only
+  repro. Open item (a) is answered by it, and so are the sieve, str_copy, switch_local and matmul cells of (d):
+  the same generated C++ with the reads rewritten to `das_global_solid` runs PureDOOM demo1 5.56 -> 1.14, sieve
+  8.21 -> 1.63, str_copy 3.60 -> 1.40, switch_local 1.65 -> 1.00, matmul 1.59 -> 1.01 x native (`TIMING-aot25`,
+  exclusive, machine quiet, 5 samples). No clean workaround exists on our side (no option or annotation reaches
+  the path; hoisting global addresses into locals would put pointers into the shared output for one tier), so
+  those AOT cells carry #48 in the ports tables. `perf/ARCHITECTURE_EXCEPTIONS.md` restates the cause.
 - **P9.32 The whole-program blockers of wasm3, doomgeneric and quakegeneric** (ruling 38 addendum 22 item C;
   the audit `/root/notes/research/aot/blockers.md`, its rows W1-W4, D1-D8, Q1-Q6). Our side fixed in the audit's
   order, a PR each, until each program converts whole and runs under interp, JIT, exe and AOT with the native
