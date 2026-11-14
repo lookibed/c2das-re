@@ -14,8 +14,8 @@ the kernel hands a crash to a pipe handler whatever a limit of 0 says, while at 
 skips the pipe, and a file dump smaller than a page is never written either. `guarded` with an
 address-space size adds `--as=<bytes>` to the same `prlimit`, the cap `compare/run.das --project`
 gives its measured runs (`compare/ARCHITECTURE_PROJECTS.md`). The run an `exe` or `aot` build
-ends with, the program's first, is guarded too (`lane_binary` hands `run_tier` the guard as the
-wrapper of the program's command line), under the same cap. The guard runs before the program
+ends with, the program's first, is guarded too (`lane_binary` runs the binary `build_tier` builds or
+reuses under the guard), under the same cap. The guard runs before the program
 times itself, so it never enters a cell; a timeout kills the whole process group, the shell and
 the program in it.
 

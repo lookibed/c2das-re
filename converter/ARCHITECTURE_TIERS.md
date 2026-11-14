@@ -9,7 +9,7 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 `-exe`; the build's log joins the output only when the build fails) and executes the binary
 (written at the `-output` path as given),
 `aot` runs `daslang utils/aot/main.das -- -ctx <module> <work>/ctx/` and compiles
-the generated context with a C++ host (`aot_host_source`: `das::setCommandLineArguments(argc,
+the generated context with a C++ host (`<work>/ctx/<stem>_host.cpp`, `aot_host_source`: `das::setCommandLineArguments(argc,
 argv)` as `daslang` and an `-exe` binary call it, so the program's arguments, passed after `--`,
 reach `get_user_args`; then `<stem>_create`, `<stem>_main`, `<stem>_destroy` from the generated
 header, `<stem>` spelled as a C++ identifier, which also names the binary `aot_binary` answers) against the static runtime: `liblibDaScript.a`,
@@ -31,6 +31,28 @@ a build step. An unhandled exception exits -2 (254, daslang's `DAS_PANIC_EXIT_CO
 stderr, since a context called with no catch frame reports the exception and raises SIGTRAP,
 which a bare spawn reads as exit code 5 (the generated context class derives from `das::Context` alone, so the host
 reads the handle as one).
+
+### The build and its reuse {#build-reuse}
+
+`exe` and `aot` build first and run the binary after (`build_tier`, then `binary_argv`), and a
+build is skipped when the binary an earlier one left still matches its inputs: `build_key` lists
+the tier; the daslang checkout (the commit `.git/HEAD` names, and the size and mtime of
+`bin/daslang`, the three static libraries and `utils/aot/main.das`, which a rebuild at the same
+commit changes); the build commands (`flags` among them under `exe`) and the AOT host's text; every
+file of the program, found by following each `require` and `include` that names a file from the
+naming file's folder; and every file of the module folders (but a hidden, `tests`, `build` or
+`_build` folder's and daslang's own `.das_module.manifest`), each with its size and its text's hash,
+a native library (`.shared_module`, `.so`) with its mtime. A name that resolves to no file there is
+daslib's, a module folder's or a native module's, which the checkout and the module folders
+already cover. The key goes to `<binary>.key` after a build that leaves the binary, with the
+binary's own size and mtime, so a failed build leaves no key, and a binary replaced since (perf's
+tests plant a stale one) is built again. The key does not cover the system toolchain a command
+names by its bare name (`c++` on `PATH` under daslang's `-exe`), nor daslib files edited without a
+commit; neither changes on this tree's workflow. Each build step's log joins the output only when
+the step fails, so a reused build and a fresh one print the same. A caller that loops over
+inputs (Lua's `--luac-check`, one Doom run per demo, perf's and compare's lanes) builds once; a
+folder per variant of a program keeps each variant's binary (`aot_binary` names the binary by the
+stem alone, so two layouts of one program in one `work_dir` would share one).
 
 ## 9. Typed aliasing under the JIT and exe {#typed-aliasing}
 
