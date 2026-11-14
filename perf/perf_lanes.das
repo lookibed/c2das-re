@@ -6,7 +6,6 @@ require math
 require strings
 require daslib/strings_boost
 require daslib/fio
-require ../converter/cir.das
 require ../converter/tiers.das
 require ../converter/dumper_a.das
 
@@ -81,32 +80,31 @@ def run_error(rc : int; output : string) : string {
 }
 
 //! The `exe` or `aot` binary of `das_path` built in `work` with `module_dirs` loaded and run once
-//! with `program_args`; "" with `error` set when the build leaves none. The tiers return the
-//! build's exit code when the build fails, which passes for a run's, so a lane stands only on the
-//! binary its build left; an earlier run's goes first. The build and the run it ends with each get
+//! with `program_args`; "" with `error` set when the build leaves none. The binary is
+//! `build_tier`'s: an earlier build's while its key stands, else built again; a failed build is the
+//! lane's error, never an earlier binary's run. The build and the run it ends with each get
 //! `timeout` seconds; a timed-out run leaves a binary but no lane. The run is `guarded` under
 //! `address_space` bytes, so a program that crashes there dumps no core either.
 def lane_binary(das_path, tier, work : string; module_dirs, program_args : array<string>; var error : string&; timeout : float; address_space : int64 = 0l) : string {
-    let bin = tier == "aot" ? aot_binary(das_path, work) : path_join(work, "{file_stem(das_path)}_exe")
-    remove(bin)
     var out : string
     let no_flags, no_program : array<string>
-    let rc = run_tier(das_path, tier, work, out, module_dirs, timeout, no_flags, program_args, guarded(no_program, address_space))
-    if (rc == popen_timed_out) {
+    let built = build_tier(das_path, tier, work, out, module_dirs, timeout, no_flags)
+    if (built.rc == popen_timed_out) {
         error = "the build or its run took longer than {int(timeout)} s"
         return ""
     }
-    if (rc >= 0 && fexist(bin)) {
-        return bin
-    }
-    // the tier refused before any build ran: its text is the reason
-    if (rc == -1) {
-        error = first_reported_line(out)
+    if (built.rc != 0 || !fexist(built.bin)) {
+        let line = tier == "exe" ? exe_build_line(out) : aot_build_line(out)
+        error = "the build exited {built.rc} and left no binary: {line}"
         return ""
     }
-    let line = tier == "exe" ? exe_build_line(out) : aot_build_line(out)
-    error = "the build exited {rc} and left no binary: {line}"
-    return ""
+    var argv <- guarded(no_program, address_space)
+    argv |> push_from(binary_argv(tier, built.bin, program_args))
+    if (run_and_capture(argv, out, timeout) == popen_timed_out) {
+        error = "the build or its run took longer than {int(timeout)} s"
+        return ""
+    }
+    return built.bin
 }
 
 //! The line that says why the `aot` build failed: the context generation's `out of heap memory`

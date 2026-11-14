@@ -91,7 +91,8 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   before the script, and a process past `timeout` seconds (600 by default) is killed and
   reported as a failure: the run, and under `exe` and `aot` each build step too. `program_args` are the program's own C `argv` after its name: after `--` under
   `interp`, `jit` and `aot` (whose host hands its command line to the runtime), after the binary
-  under `exe`. `CONVERTED_MODULES` names the module folders a converted program requires and
+  under `exe`. `build_tier` builds the `exe` or `aot` binary or reuses an earlier build's while its
+  `build_key` stands (section 5), `binary_argv` spells the command line that runs it. `CONVERTED_MODULES` names the module folders a converted program requires and
   `daslang_cmd` spells the prefix; `native_run` builds a C file, or a program's files in order,
   with a given compiler and flags and runs it once, with the program's arguments when given, the native side every differential test compares against.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c>... | --program <p.json> [--out] [--target]
