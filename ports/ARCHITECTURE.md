@@ -117,11 +117,10 @@ module `perf/run.das` builds its kernels' lanes with:
 
 - `native`: the C files the harness's program manifest `work/<runs>.program.json` lists, in its
   order, built by the pinned clang at `-O3 -w -funsigned-char` (with `-lm`). A missing or refused
-  manifest is the lane's reason. The binary an earlier publish built is reused while
-  `<binary>.key` holds the command, every `.c` and `.h` file of the C files' folders with its size
-  and its text's hash, and the binary's own size and mtime (`native_build_key`), as the exe and AOT
-  lanes reuse theirs (`converter/ARCHITECTURE_TIERS.md` section 5, "The build and its reuse"), so a capture timed after a
-  publish that built its lanes builds nothing.
+  manifest is the lane's reason. An earlier build is reused while `<binary>.key` holds the command,
+  each `.c` and `.h` file of the C files' folders with its size and text hash, and the binary's
+  size and mtime (`native_build_key`), as the exe and AOT lanes reuse theirs
+  (`converter/ARCHITECTURE_TIERS.md` section 5): a capture after a building publish builds nothing.
 - `interp` and `jit`: daslang over the `readable` variant's entry module
   (`work/variants/readable/<layout folder>/<runs>.das`) with the module folders loaded.
 - `exe`: daslang's `-exe` build of it.
