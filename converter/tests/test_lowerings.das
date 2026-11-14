@@ -1639,6 +1639,12 @@ def p4_matrix_leftover_shapes(t : T?) {
         has_text(t, text, "addr(p.columnofs[0])[x] = 1000 + x")
         has_text(t, text, "var col : int? = addr(addr(p.columnofs[0])[width - 1])")
     }
+    t |> run("a flexible array member in the record's tail padding: the record keeps clang's size, the decay its offset") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_fam_tail", text)
+        has_text(t, text, "var types : uint16? = reinterpret<uint16?>(reinterpret<uint8?>(t) + 14)")
+        has_text(t, text, "reinterpret<uint8?>(reinterpret<uint8?>(g) + 5)")
+    }
     t |> run("a flexible array member of a record value decays from the record's address") @(t : T?) {
         let value = converts(t, "flexible_value", "struct S \{ int n; int d[]; \};\nstatic int first(struct S *p) \{ struct S s = *p; int *q = s.d; return s.n + (q == 0); \}\nint main(void) \{ struct S s = \{ 2 \}; return first(&s) - 2; \}\n")
         has_text(t, value, "var q : int? = reinterpret<int?>(reinterpret<uint8?>(addr(s)) + 4)")
@@ -1716,7 +1722,6 @@ def p4_matrix_leftover_rejects(t : T?) {
         rejects(t, "setjmp_branch_break", sj + "int main(void) \{ int i, n = 0; for (i = 0; i < 2; i++) \{ if (setjmp(b)) break; n++; \} return n; \}\n", "a setjmp site whose tail leaves an enclosing loop is not lowered yet")
         rejects(t, "setjmp_loop_tail", sj + "int main(void) \{ int i; for (i = 0; i < 2; i++) \{ int r = setjmp(b); if (r) break; \} return 0; \}\n", "a setjmp site whose tail leaves an enclosing loop is not lowered yet")
         rejects(t, "flexible_padding", "struct C \{ char c; int d[]; \};\nint main(void) \{ return (int) sizeof(struct C) - 4; \}\n", "flexible array member `C.d`, which pads the record or raises its alignment, is not lowered yet")
-        rejects(t, "flexible_offset", "struct D \{ int n; char c; char d[]; \};\nint main(void) \{ return (int) sizeof(struct D) - 8; \}\n", "flexible array member `D.d`, which pads the record or raises its alignment, is not lowered yet")
         rejects(t, "flexible_marshal", "struct __attribute__((packed)) M \{ char c; int d[]; \};\nint main(void) \{ return (int) sizeof(struct M) - 1; \}\n", "flexible array member `M.d` of a marshal-only record is not lowered yet", "\{\"marshal\": [\"M\"]\}\n")
         rejects(t, "flexible_initializer", "struct S \{ int n; int d[]; \};\nstatic struct S s = \{ 1, \{ 2, 3 \} \};\nint main(void) \{ return s.n - 1; \}\n", "an initializer of flexible array member `S.d` (a GNU extension) is not lowered yet")
         let patch = "struct patch \{ short w; int cols[8]; \};\nstruct holder \{ int cols[8]; int n; \};\nint main(void) \{ struct patch p; struct holder h; p.w = 0; h.n = 0; return p.w + h.n; \}\n"
