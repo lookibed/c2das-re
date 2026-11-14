@@ -12,6 +12,7 @@ require ../pipeline.das
 require ../tiers.das
 require ../dumper_a.das
 require ../emit.das
+require daslib/rtti
 
 //! The link of several translation units (`converter/link.das`): a three-file program converted
 //! into one module and run against the native build of the same files, a manifest and a file list
@@ -508,6 +509,41 @@ def test_reserved(t : T?) {
         }
     }
     rmdir_rec(work_root)
+}
+
+[test(description = "the names the converter reads from a module walk are its own copies: a later walk, reusing the storage an earlier one freed, changes none of them")]
+def test_walked_names(t : T?) {
+    t |> run("the reserved crt names outlive the walk that read them: each is the binding's own name after later walks reuse the walk's freed storage") @(t : T?) {
+        let reserved <- reserved_das_names()
+        let bound <- walked_names(get_module("crt"), true)
+        t |> success(length(bound) > 100, "the crt module binds its calls")
+        for (name in bound) {
+            t |> success(has_value(reserved, name), "`{name}` is missing from the reserved names")
+        }
+    }
+    t |> run("the registered function names outlive the walk that read them: each is a function's own name after later walks reuse the walk's freed storage") @(t : T?) {
+        var names : table<string>
+        registered_function_names(names)
+        let bound <- walked_names(get_module("$"), false)
+        for (name in bound) {
+            t |> success(key_exists(names, name), "`{name}` is missing from the registered names")
+        }
+    }
+}
+
+// the names of `mod`'s functions, with `globals` its globals too, each copied out of its walk; the
+// walks reuse the storage an earlier walk freed
+def private walked_names(mod : Module?; globals : bool) : array<string> {
+    var names : array<string>
+    module_for_each_function(mod) $(info) {
+        names |> push("{info.name}")
+    }
+    if (globals) {
+        module_for_each_global(mod) $(info) {
+            names |> push("{info.name}")
+        }
+    }
+    return <- names
 }
 
 def private leading_identifier(text : string) : string {
