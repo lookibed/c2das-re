@@ -432,20 +432,6 @@ def private settle_cell(spec : WorkloadSpec; var cell : LaneCell) {
     }
 }
 
-// the order the lanes of a workload take their sample of the round `round` (from 0), as indexes
-// into `count` lanes whose first is `native`: native first, whose first sample is the oracle, then
-// the das lanes forward in an even round and backward in an odd one, so a drift of the machine
-// over the rounds weighs on every das lane alike
-[arch(at="ARCHITECTURE.md#measurement")]
-def private sample_order(count, round : int) : array<int> {
-    var order <- [0]
-    order |> reserve(count)
-    for (i in range(1, count)) {
-        order |> push(round % 2 == 0 ? i : count - i)
-    }
-    return <- order
-}
-
 // a key line of `path`: its size, then its mtime when `stamped`, else its text's hash
 def private key_line(path : string; stamped : bool) : string {
     let st = stat(path)

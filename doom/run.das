@@ -77,8 +77,8 @@ struct Args {
     speed : bool
     @clarg_doc = "with --run: for every demo (or --demo's), natively and under each of --tiers, one run of the sync build held to the reference log, then --samples runs of the speed build timed; writes doom/results_linux.json"
     fps : bool
-    @clarg_doc = "the tiers --fps times after native, comma-separated"
-    tiers : string = "interp,jit"
+    @clarg_doc = "the tiers --fps times after native, comma-separated (default all four)"
+    tiers : string = "interp,jit,exe,aot"
     @clarg_doc = "the runs --fps takes per demo and lane, each its own process"
     samples : int = 3
     @clarg_doc = "rewrite README.md's Doom fps section from doom/results_linux.json"

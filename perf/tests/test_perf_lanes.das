@@ -223,3 +223,11 @@ def test_env_gate_prlimit(t : T?) {
         rmdir_rec(shim)
     }
 }
+
+[test]
+def test_sample_order(t : T?) {
+    t |> equal(join([for (i in sample_order(4, 0)); "{i}"], ","), "0,1,2,3")
+    t |> equal(join([for (i in sample_order(4, 1)); "{i}"], ","), "0,3,2,1")
+    t |> equal(join([for (i in sample_order(4, 2)); "{i}"], ","), "0,1,2,3")
+    t |> equal(join([for (i in sample_order(1, 1)); "{i}"], ","), "0")
+}

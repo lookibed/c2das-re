@@ -67,12 +67,15 @@ it: the process start, the module load, the JIT compile, the wad load and `R_Ini
 part in the speed build, the per-tic checksums and the tic lines.
 
 `run.das --run --fps` takes every demo (or `--demo`'s) natively and under each tier of `--tiers`
-(default `interp,jit`), each run its own process through `run_converted`, whose tier `native` runs
+(default `interp,jit,exe,aot`), each run its own process through `run_converted`, whose tier `native` runs
 a native build alone under `prlimit --as` 3 GiB; the converted runs take `--layout`'s conversions.
 `fps_run.das` runs it over an `FpsPlan` `run.das` fills. Per demo and lane one run of the sync build
 comes first, held to every tic of the reference log as section 8 holds a run; a run out of sync
 leaves the cell an error (`desync`) and no speed run follows, since the fps of a wrong replay is
-never published. Then `--samples` runs of the speed build (default 3), each held to the demo's end:
+never published. Then `--samples` runs of the speed build (default 3), each held to the demo's end,
+taken in rounds once every lane's sync run stood: a round runs each lane still standing once,
+native first, the tiers in `--tiers` order in an even round and reversed in an odd one
+(`perf_lanes.das`'s `sample_order`), so a drift of the machine weighs on every tier alike:
 `run_converted` under `DemoSpec.speed` compares no tic line, and `in_sync` passes a speed run only
 when it ends in the demo's `timed N gametics` and prints no tic line. `fps.das`'s `run_problem`
 also refuses a run without the host line, or whose host line times other tics than the reference's
