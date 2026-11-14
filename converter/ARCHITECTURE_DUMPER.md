@@ -75,10 +75,10 @@ expression (`int[n]`) is a variable-length array, which fails closed naming it; 
 spells the declaration (`int a[n]`). A VLA parameter is no array: clang decays it to a pointer. A builtin typedef in a builtin's prototype (`__size_t`, `__ptrdiff_t`) has no
 cursor and is the dialect's pointer-wide integer. Widths follow the selected dialect (`msvc`:
 int 32, long 32, long long 64; `linux`: long 64); plain `char` is unsigned in both
-(`docs/probe-findings.md` F17), which the dumper enforces with `-funsigned-char`. Both
-passes also define `__NO_CTYPE`: glibc's `<ctype.h>` otherwise spells `isalpha(c)` as a macro
-indexing its locale table through `__ctype_b_loc()` and an enum of a system header, and with
-it each is the function the crt module binds. The dump
+(`docs/probe-findings.md` F17), which the dumper enforces with `-funsigned-char`. Both passes
+define `CONVERTER_DEFINES`: `__NO_CTYPE` (else glibc's `isalpha(c)` is a macro indexing a locale
+table; with it the crt function) and `__STDC_NO_VLA__` 1 (C11 6.10.8.3, no VLAs), so a program
+testing it (wasm3's `M3_HAS_VLA`) takes its fixed-size path. The dump
 desugars only the top level of a spelling, so a typedef name inside `P_t *` or `P_t (P_t, int)`
 resolves through the canonical spelling libclang gives the typedef. Records come from a
 libclang pass over the same file under the same flags and the pinned clang's resource directory

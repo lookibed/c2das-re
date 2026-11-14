@@ -2655,6 +2655,11 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "def set_flag(var flag : bool?; value : bool) \{\n")
         has_text(t, text, "def private p8_stdbool__both(a : bool; b : bool) : bool \{\n")
     }
+    t |> run("`__STDC_NO_VLA__` is predefined: a program testing it takes its fixed-size array, the native build its VLA") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_no_vla", text)
+        has_text(t, text, "squares : int[9]")
+    }
     t |> run("a bare statement expression as a statement, and one under `__extension__`, is its block") @(t : T?) {
         let text = converts(t, "bare_stmt_expr", "int main(void) \{ int x = 1; (\{ x += 2; \}); __extension__ (\{ x++; \}); return x - 4; \}\n")
         has_text(t, text, "x += 2")
