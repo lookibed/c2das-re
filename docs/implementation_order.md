@@ -1214,7 +1214,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   Done (branches `p8.1-*`, PRs #31, #32, #36 and `p8.1-report`): the Rust translator at
   `ce4647af` on the three suites, the 19 perf kernels, Lua and the output's readability, all in
   `compare/results_linux.json`, rendered by `compare/run.das --readme` into the report, the root
-  [README](rust-comparison.md#head-to-head-with-the-rust-translator), and into the ports README. Suites
+  README (now [docs/rust-comparison.md](rust-comparison.md#head-to-head-with-the-rust-translator)), and into the ports README. Suites
   pass ours 199 / 1179 / 151 against Rust 202 / 1197 / 47 (c-testsuite, gcc-torture, csmith); perf
   geomean over native, ours against Rust: interp 36.08 / 35.92, JIT 1.61 / 1.55, AOT 1.37 / 1.92;
   Rust lines 1.33x ours without its emitted runtime, 5.10x with it. Lua: the Rust side refuses it
@@ -2678,7 +2678,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   side has. The dasProfile method (`perf/run.das --method dasprofile`: `kernel_run` noinline, a
   volatile sink per run, the steady clock) over `fib_loop`, `fib_recursive` and `primes`, dasProfile
   436d58d run on the same machine (`perf/dasprofile.sh`, the SDK at `/root/daScript-sdk`), the
-  comparison table generated into `README.md`; `scripts/run_perf.sh --from-scratch` and `--check`
+  comparison table generated into `README.md` (now `docs/performance.md`); `scripts/run_perf.sh --from-scratch` and `--check`
   (10% either way), `.github/workflows/perf.yml` running `--check` on release tags. NEEDS RULING
   (owner): `very-detailed-plan.md` section 6 says the optimization tier is "Sidecar-gated, applied
   only after demo-sync is green", O1 among it, while `lowering-examples.md` "General for" says

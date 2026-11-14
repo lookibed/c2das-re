@@ -22,7 +22,7 @@ lane list, the sample count, or the sample arithmetic - re-records each capture 
 diff changes (`results_linux.json`, `results_method_linux.json`) from a `scripts/run_perf.sh` run
 with no `--filter` and no `--samples` in the same change.** `ARCHITECTURE.md` section 7 lists the sites.
 
-**A diff after which the text between the perf-table markers of `README.md` (repo root) differs
+**A diff after which the text between the perf-table markers of `docs/performance.md` differs
 from the results table `scripts/run_perf.sh --table` prints refreshes it with
 `scripts/run_perf.sh --table --readme` in the same change.**
 

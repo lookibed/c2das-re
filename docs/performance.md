@@ -5,11 +5,11 @@
 The comparison `docs/very-detailed-plan.md` section 2 asks for. These are microbenchmarks: small
 C kernels under `perf/kernels/`, each timed alone, which say how the converted code of one kind of
 loop or call runs, not how a program does; the program-level number is Doom's timedemo frame
-rate, which this table gains when P6 lands, and none is published before then.
+rate, in the Doom section below.
 
 **Machine.** Every number below is from one machine, the box `PC`: an AMD Ryzen 7 7435HS (Zen 3+,
 eight cores) under WSL2, Linux x86_64, the clang 22.1.8 of the libclang archive and the daScript
-commit `VERSIONS.md` pins (the captures record daslang 0.6.4, dasProfile's its LLVM 22.1.5), with
+commit `VERSIONS.md` pins (the captures record daslang 0.6.5; dasProfile's records daslang 0.6.4 and its LLVM 22.1.5), with
 no other timing job on it while it runs (the box's `heavy` queue admits one timing job at a time).
 One exception, by owner ruling 34: the dasProfile method's hand-written column
 (`perf/dasprofile_linux.json`) is the bench box's capture (AMD Ryzen 3 1200, 2026-11-03) and is

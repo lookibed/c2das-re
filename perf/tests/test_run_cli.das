@@ -5,6 +5,8 @@ require daslib/fio
 require daslib/strings_boost
 require daslib/json_boost
 require ../boxes.das
+require ../perf_lanes.das
+require ../perf_cli.das
 
 [test]
 def test_run_help(t : T?) {
@@ -15,6 +17,45 @@ def test_run_help(t : T?) {
         t |> success(out |> contains("show this help and exit"), out)
         t |> success(!(out |> contains("Captured on")), out)
     }
+}
+
+// run.das with both module folders loaded, in folder `dir`, under `args`
+def private run_perf_in(dir : string; args : array<string>; var out : string&) : int {
+    var argv <- [get_das_root() + "/bin/daslang", "-load_module", get_full_file_name("c_runtime"), "-load_module", get_full_file_name("dasCRuntime"), get_full_file_name("perf/run.das"), "--"]
+    argv |> push_from(args)
+    return run_and_capture(in_folder(dir, argv), out, 300.0)
+}
+
+[test]
+def test_readme_target(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_perf_doc", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    fwrite(path_join(dir, "results.json"), fread("perf/results_linux.json"))
+    t |> run("--table --readme rewrites the perf-table block of docs/performance.md and leaves README.md alone") @(t : T?) {
+        mkdir_rec(path_join(dir, "docs"))
+        let doc = path_join(dir, "docs/performance.md")
+        fwrite(doc, "# top\n{README_BEGIN}\nstale\n{README_END}\ntail\n")
+        fwrite(path_join(dir, "README.md"), "# readme\n")
+        var out : string
+        t |> equal(run_perf_in(dir, ["--table", "--readme", "--out", "results.json", "--baseline", "results.json"], out), 0, out)
+        let text = fread(doc)
+        t |> success(text |> starts_with("# top\n{README_BEGIN}\nCaptured on "), text)
+        t |> success(!(text |> contains("stale")), text)
+        t |> success(text |> ends_with("{README_END}\ntail\n"), text)
+        t |> equal(fread(path_join(dir, "README.md")), "# readme\n")
+    }
+    t |> run("--table --readme names docs/performance.md when it has no markers") @(t : T?) {
+        fwrite(path_join(dir, "docs/performance.md"), "# top\n")
+        var out : string
+        run_perf_in(dir, ["--table", "--readme", "--out", "results.json", "--baseline", "results.json"], out)
+        t |> success(out |> contains("docs/performance.md has no perf-table markers"), out)
+        t |> equal(fread(path_join(dir, "docs/performance.md")), "# top\n")
+    }
+    rmdir_rec(dir)
 }
 
 // the argv the run logged for `kernel/lane`, "" when it logged none

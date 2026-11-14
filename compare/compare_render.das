@@ -26,7 +26,7 @@ let ALL_GROUPS = "all"
 //! writes, so the Rust side's 0 says nothing of its code
 let UNRANKED_COUNTERS <- ["c_function"]
 
-//! the markers of the generated block in a README
+//! the markers of the generated block in a markdown document (`docs/rust-comparison.md`)
 let COMPARE_BEGIN = "<!-- compare:begin -->"
 let COMPARE_END = "<!-- compare:end -->"
 
