@@ -1,6 +1,8 @@
 options gen2
 require dastest/testing_boost public
 require c_runtime/setjmp
+require daslib/rtti
+require strings
 
 //! The setjmp protocol as the converter emits it: a contained site is `try` around the first
 //! run and `recover` around the longjmp return, which checks the target buffer and rethrows.
@@ -27,7 +29,7 @@ def protected_call(fail_at : int; value : int) : int {
         status = 100
     } recover {
         if (c_jmp_target != unsafe(addr(buf))) {
-            panic("longjmp")
+            c_jmp_rethrow()
         }
         c_jmp_target = null
         status = -1
@@ -46,7 +48,7 @@ def targeted(to_outer : bool) : int {
         log = 999
     } recover {
         if (c_jmp_target != unsafe(addr(inner))) {
-            panic("longjmp")
+            c_jmp_rethrow()
         }
         c_jmp_target = null
         log = 10 + inner.val
@@ -92,5 +94,31 @@ def test_setjmp(t : T?) {
             genuine = c_jmp_target == null
         }
         t |> equal(genuine, true)
+    }
+    t |> run("a genuine panic passing a site goes on with its own message, not as a longjmp") @(t : T?) {
+        var message = ""
+        try {
+            protected_or_panic()
+        } recover {
+            message = this_context().last_exception
+        }
+        t |> success(message |> find("index out of range") >= 0, message)
+        t |> equal(c_jmp_target == null, true)
+    }
+}
+
+var short_row : int[2]
+var row_at = 2
+
+// a site whose body panics on its own (an index past its array), not by longjmp
+def protected_or_panic {
+    var buf : CJmpBuf
+    try {
+        short_row[row_at] = 1
+    } recover {
+        if (c_jmp_target != unsafe(addr(buf))) {
+            c_jmp_rethrow()
+        }
+        c_jmp_target = null
     }
 }

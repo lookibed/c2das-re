@@ -278,8 +278,8 @@ clang's offsets and size through a padding field after it (`converter/ARCHITECTU
 the relaxed search). A setjmp site is an `if` whose condition is `setjmp(buf)` tested against zero,
 below casts, `!` and `== 0` / `!= 0`. With both branches it is the contained site of
 `docs/lowering-examples.md` "setjmp / longjmp": the first run is the `try`, the longjmp return the
-`recover`, which rethrows a longjmp to another buffer or a genuine panic (a null `c_jmp_target`) and
-clears its own. With one branch, the first run's, and a tail calling nothing, it is flat: `try`, an
+`recover`, which rethrows (`c_jmp_rethrow()`) a longjmp to another buffer as one and a genuine
+panic (a null `c_jmp_target`) with its own message, and clears its own. With one branch, the first run's, and a tail calling nothing, it is flat: `try`, an
 empty `recover`, then the tail once: no longjmp from the tail reaches the buffer. Other
 single-branch sites are the trampoline: `_sj_runN`/`_sj_valN`, a `while` that reruns the branch,
 under `if (_sj_val != 0)` (or `== 0` for `!setjmp`), and the rest of the block as its tail once per

@@ -2351,6 +2351,8 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `texinfo_t.vecs`, `mtexinfo_t.vecs`) lists array-of-arrays members whose inner index the program runs past a
   row into the next (C11 6.5.6's undefined behaviour); that index goes through the row's decay, unchecked, the
   row index still checked. `checks: off` is no substitute, since the AOT host keeps its range checks.
+  Step 10 (Q6): a setjmp site's `recover` rethrows through `c_jmp_rethrow()`: a longjmp to another buffer as
+  "longjmp", any other panic with its own message (the context's `last_exception`), where it said "longjmp".
 
 ## P6 — Doom
 
