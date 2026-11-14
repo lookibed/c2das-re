@@ -5,6 +5,7 @@ require daslib/fio
 require daslib/strings_boost
 require ../../perf/perf_lanes.das
 require ../../converter/sidecar.das
+require ../../converter/tiers.das
 
 //! The lua harness without the release: `lua/run.das` over a scratch tree holding a stand-in
 //! `lua/fetch/lua-5.4.8/src` of small C files, `lua/fetch.sh`'s refusals over a scratch
@@ -78,13 +79,13 @@ def test_sidecar_pins_jit(t : T?) {
 
 [test]
 def test_run_refusals(t : T?) {
-    t |> run("run.das refuses a tier other than interp or jit, a layout other than source, source-cut, single or all, and a tree with no fetched sources") @(t : T?) {
+    t |> run("run.das refuses a tier other than interp, jit, exe or aot, a layout other than source, source-cut, single or all, and a tree with no fetched sources") @(t : T?) {
         var dir_error : string
         let empty_root = create_temp_directory("c2das_lua_empty", dir_error)
         t |> equal(dir_error, "")
         var out : string
-        t |> equal(run_in(empty_root, daslang_argv("lua/run.das", ["--tier", "aot"]), out), 1, out)
-        t |> success(out |> contains("--tier is interp or jit, not `aot`"), out)
+        t |> equal(run_in(empty_root, daslang_argv("lua/run.das", ["--tier", "wasm"]), out), 1, out)
+        t |> success(out |> contains("--tier is interp, jit, exe or aot, not `wasm`"), out)
         t |> equal(run_in(empty_root, daslang_argv("lua/run.das", ["--layout", "flat"]), out), 1, out)
         t |> success(out |> contains("--layout is source, source-cut, single or all, not `flat`"), out)
         t |> equal(run_in(empty_root, daslang_argv("lua/run.das", array<string>()), out), 1, out)
@@ -304,6 +305,11 @@ def test_run_stand_in(t : T?) {
         mkdir_rec(path_join(root, "none"))
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "luac", "--layout", "single", "--luac-check", "none"]), out), 1, out)
         t |> success(out |> contains("lua: luac -o: no .lua file in none"), out)
+        // under aot the compiler is built once in its layout's folder for every script
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "luac", "--layout", "source", "--luac-check", "scripts", "--tier", "aot"]), out), 0, out)
+        t |> success(out |> contains("lua: luac -o under aot: 2 of 2 files byte for byte the native compiler's\n"), out)
+        t |> equal(length(split(out, ": aot binary built at lua/work/luac/ctx/luac_aot\n")) - 1, 1, out)
+        t |> success(fexist(path_join(root, "lua/work/luac/luac_check/a.aot.luac")), out)
         rmdir_rec(root)
     }
     t |> run("--luac-check fails when the converted compiler writes other bytes than the native one, its exit code the same") @(t : T?) {
@@ -327,6 +333,25 @@ def test_run_stand_in(t : T?) {
     }
 }
 
+[test(timeout = 1200)]
+def test_run_binaries(t : T?) {
+    t |> run("--run under exe and aot builds one binary per layout, each in its layout's folder, and a second run reuses each") @(t : T?) {
+        let root = stand_in_root("c2das_lua_binaries", LOBJECT)
+        t |> success(!empty(root))
+        for (tier in ["exe", "aot"]) {
+            var out : string
+            for (verdict in ["built", "reused"]) {
+                t |> equal(run_in(root, daslang_argv("lua/run.das", ["--run", "--tier", tier, "--filter", "lua", "--arg", "word"]), out), 0, out)
+                t |> equal(length(split(out, "lua: {tier} exited 0: 43 word\n")) - 1, 3, out)
+                t |> equal(length(split(out, ": {tier} binary {verdict} at ")) - 1, 3, out)
+            }
+            for (dir in ["lua/work/lua", "lua/work/source-cut/lua", "lua/work/single/lua"]) {
+                t |> success(fexist(path_join(root, tier_binary(path_join(dir, "lua.das"), tier, dir))), "{tier}: {dir}")
+            }
+        }
+        rmdir_rec(root)
+    }
+}
 [test]
 def test_switch_dispatch(t : T?) {
     t |> run("--switch-dispatch goto reaches the converter: a dense switch of the program takes the jump table, which the default leaves out") @(t : T?) {
@@ -392,6 +417,9 @@ def test_error_check(t : T?) {
             // a check naming `error` raises the stand-in's; the VM error's and the memory error's do not
             t |> success(out |> contains("lua: {tier} exited 1: caught\n") && out |> contains("lua: {tier} exited 0: 44 print(pcall(string.rep, 'x', 1 << 40))\n"), out)
         }
+        var out : string
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--error-check", "--tier", "aot", "--filter", "lua", "--layout", "single"]), out), 0, out)
+        t |> success(out |> contains("lua: error checks under aot: 8 of 8 agree with the native build\n"), out)
         rmdir_rec(root)
     }
     t |> run("--error-check fails, naming each check, when the converted interpreter's output differs from the native one's") @(t : T?) {
@@ -509,9 +537,9 @@ def test_suite_check(t : T?) {
         t |> success(suite |> starts_with("pm.lua oracle ") && suite |> contains(" native exited 6\n"), suite)
         rmdir_rec(root)
     }
-    t |> run("--suite-filter runs one file under the interpreter and the JIT, passing; a file outside the suite and a cap no tier applies are refused") @(t : T?) {
+    t |> run("--suite-filter runs one file under the interpreter, the JIT and aot, passing; a file outside the suite and a cap no tier applies are refused") @(t : T?) {
         let root = suite_root("c2das_lua_suite_one", [("pm.lua", "hello")])
-        for (tier in ["interp", "jit"]) {
+        for (tier in ["interp", "jit", "aot"]) {
             var out : string
             t |> equal(run_in(root, daslang_argv("lua/run.das", ["--suite-check", "--suite-filter", "pm.lua", "--tier", tier, "--filter", "lua", "--layout", "source"]), out), 0, out)
             t |> success(out |> contains("lua: suite under {tier} (source): 1 pass, 0 fail, 0 timeout, 0 memory, 0 oracle, 0 missing of 1 files in "), out)

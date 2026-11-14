@@ -31,8 +31,11 @@ late binding (the source-cut layout), and one module (the single layout).
   folder, its `goto/` and its test-suite verdicts then under `work/variants/<variant>/`); it reports
   the numbers of section 4 per layout, an error at the Lua source and line the dumper names.
   `--native` builds each native oracle from the same sources into `work/<stem>_native`; `--run` runs
-  the converted interpreter of each layout under the tier `--tier` names (`interp`, the default, or
-  `jit`) with each `--arg` (default `-e "print(1+1)"`; a script is `--arg <path>`) and compares it
+  the converted interpreter of each layout under the tier `--tier` names (`interp`, the default,
+  `jit`, `exe` or `aot`; under `exe` and `aot` the layout's binary is built once, in the layout's
+  own folder, before its first run, or reused from an earlier run while its build key stands,
+  `converter/ARCHITECTURE_TIERS.md`, and each run launches that binary, the `lua` launcher of
+  `--suite-check` too) with each `--arg` (default `-e "print(1+1)"`; a script is `--arg <path>`) and compares it
   with the oracle, which runs under the name `lua`, the `argv[0]` the converted program gets and
   Lua's messages quote; `--luac-check <folder>` compiles every `.lua` file of the folder with the
   converted compiler of each layout under the tier, `-o` into `work/<stem>/luac_check/`
@@ -54,7 +57,7 @@ late binding (the source-cut layout), and one module (the single layout).
   converts that program alone; a run of more than one conversion makes each in a process of its own
   (section 7). Run from the repository root: `daslang -load_module dasCRuntime
   -load_module c_runtime lua/run.das -- [--native] [--run] [--error-check] [--suite-check] [--tier
-  jit] [--luac-check lua/fetch/lua-5.4.8-tests]`.
+  jit|exe|aot] [--luac-check lua/fetch/lua-5.4.8-tests]`.
 - `lua.c2das` - the sidecar both programs convert under (section 3).
 - `REVIEW.das` - the mechanical gate: no file under `fetch/` or `work/` is tracked, and `SOURCES` in
   `sources.das` names the folder of the release the `lua:` line of `VERSIONS.md` pins.
