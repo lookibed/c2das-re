@@ -260,7 +260,8 @@ def private with_scratch(t : T?; name : string; body : block<(dir : string) : vo
 def test_command_line(t : T?) {
     t |> run("--readme replaces the block between the markers and keeps the text around it") @(t : T?) {
         t |> with_scratch("cmp_render_readme") $(dir) {
-            let readme = path_join(dir, "README.md")
+            mkdir_rec(path_join(dir, "docs"))
+            let readme = path_join(dir, "docs/rust-comparison.md")
             fwrite(readme, "# top\n\ncharter\n\n{COMPARE_BEGIN}\nstale\n{COMPARE_END}\n\ntail\n")
             var out : string
             t |> equal(run_compare_in(dir, ["--readme", "--out", "results.json"], out), 0, out)
@@ -270,13 +271,14 @@ def test_command_line(t : T?) {
             t |> success(text |> ends_with("{COMPARE_END}\n\ntail\n"), text)
         }
     }
-    t |> run("--readme refuses a README without the markers and leaves it") @(t : T?) {
+    t |> run("--readme refuses a document without the markers and leaves it") @(t : T?) {
         t |> with_scratch("cmp_render_nomarkers") $(dir) {
-            let readme = path_join(dir, "README.md")
+            mkdir_rec(path_join(dir, "docs"))
+            let readme = path_join(dir, "docs/rust-comparison.md")
             fwrite(readme, "# top\n")
             var out : string
             t |> equal(run_compare_in(dir, ["--readme", "--out", "results.json"], out), 1, out)
-            t |> success(out |> contains("README.md has no compare markers"), out)
+            t |> success(out |> contains("docs/rust-comparison.md has no compare markers"), out)
             t |> equal(fread(readme), "# top\n")
         }
     }

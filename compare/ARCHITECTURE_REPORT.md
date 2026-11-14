@@ -9,9 +9,9 @@ each table and list is a pure function of the parsed capture, and a section the 
 renders as one line saying so (`No suite is captured yet.`), never as an error. Three places print
 the same text, `compare_report`:
 
-- `run.das --readme` rewrites `README.md` (repository root) between `<!-- compare:begin -->` and
+- `run.das --readme` rewrites `docs/rust-comparison.md` between `<!-- compare:begin -->` and
   `<!-- compare:end -->`, keeping the text around them, through `perf/perf_cli.das`'s
-  `update_readme`; a README without both markers is refused and left as it was.
+  `update_readme`; a document without both markers is refused and left as it was.
 - `run.das --report <path>` writes the same text under a title, after the open lines of
   `docs/rulings-pending.md` when that file has any, since every report opens with them.
 - `ports/publish.das` appends it to the ports repository's top-level README as the section

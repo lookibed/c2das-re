@@ -55,7 +55,7 @@ anchor nothing cites. A `REVIEW*.md` or `ARCHITECTURE*.md` past 300 lines splits
 companions (LINT027; the `archivist` agent does architecture-doc splits).
 
 The `docs/` folder is exempt from the mood test: those documents are the normative design,
-authored in their own repository (see `README.md`), dated statements included. A fact that
+authored in their own repository (see `docs/overview.md`), dated statements included. A fact that
 graduates from `docs/` into code is restated in the owning folder's `ARCHITECTURE.md` and
 cited from the code; `docs/` is never edited to match the code.
 

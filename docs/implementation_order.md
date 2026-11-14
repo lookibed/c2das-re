@@ -1214,7 +1214,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   Done (branches `p8.1-*`, PRs #31, #32, #36 and `p8.1-report`): the Rust translator at
   `ce4647af` on the three suites, the 19 perf kernels, Lua and the output's readability, all in
   `compare/results_linux.json`, rendered by `compare/run.das --readme` into the report, the root
-  [README](../README.md#head-to-head-with-the-rust-translator), and into the ports README. Suites
+  [README](rust-comparison.md#head-to-head-with-the-rust-translator), and into the ports README. Suites
   pass ours 199 / 1179 / 151 against Rust 202 / 1197 / 47 (c-testsuite, gcc-torture, csmith); perf
   geomean over native, ours against Rust: interp 36.08 / 35.92, JIT 1.61 / 1.55, AOT 1.37 / 1.92;
   Rust lines 1.33x ours without its emitted runtime, 5.10x with it. Lua: the Rust side refuses it
@@ -1303,7 +1303,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   the ports README, never hand-typed; the `Done` row short (ruling 15).
   Done (branches `p8.2-*`, six PRs): `compare/run.das --project <name>` captures each project into
   `projects` of `compare/results_linux.json`, rendered under
-  [Real projects](../README.md#real-projects). Ours is refused on 6 of 6 (five at an include folder
+  [Real projects](rust-comparison.md#real-projects). Ours is refused on 6 of 6 (five at an include folder
   or an external header, P8.4 (a); quakegeneric at a `///` comment); Rust passes 6 of 6 (interp and
   exe everywhere, JIT on 5: quakegeneric's prints LLVM JIT warnings before the right frames); Rust
   interp 31-71x native, JIT and exe 0.95-2.2x.

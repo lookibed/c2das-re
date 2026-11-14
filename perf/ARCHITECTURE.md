@@ -75,7 +75,7 @@ exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
   the method's committed file at HEAD), and prints the results table,
   `--ratios` adds the ratio table, and the delta table follows whenever a baseline capture
   exists (section 5); `--table` renders the stored file instead of measuring, `--readme`
-  rewrites the method's section between its markers in `README.md` (the results table, or the
+  rewrites the method's section between its markers in `docs/performance.md` (the results table, or the
   comparison with dasProfile's capture) from the run or, under `--table`, the stored file, `--report <path>` writes
   the results, ratio and delta tables as one markdown block to `<path>` and prints it, and
   `--check` exits 1 when a cell drifts from the baseline past `--tolerance` percent (10 by
@@ -117,7 +117,7 @@ exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
   `DIFFERENT_PROGRAMS`). A missing cell is `n/a` in every table. All of them render through daslib's
   `md_boost` `render_md_table`. It measures nothing and reads no file.
 - `perf_cli.das` - the file side of the harness: the baseline capture (section 5), the text a run
-  prints and writes as its report, the `--check` verdict (`check_drift`), and the README section of
+  prints and writes as its report, the `--check` verdict (`check_drift`), and the `docs/performance.md` section of
   either method between its markers (`write_readme`); whole files are read and written through
   daslib `fio`'s `fread(path)` and `fwrite(path, text)`.
 - `boxes.das` - the box names, kept here alone: `BOXES` (a CPU-model substring to `bench`, `PC`,
@@ -275,12 +275,12 @@ whether the JIT inlines a kernel function or not, as dasProfile's own das kernel
 `[sideeffects]` instead, keep theirs. The method runs the kernels of `kernels/dasprofile/`, which
 `SHARED_KERNELS` of `perf_tables.das` maps to dasProfile's test names; `DIFFERENT_PROGRAMS` names
 the rest, the first table's versions of the three among them, never compared (`fixed_mandel` is not
-dasProfile's `mandelbrot`). `README.md` sets the method's capture beside dasProfile's own from the
+dasProfile's `mandelbrot`). `docs/performance.md` sets the method's capture beside dasProfile's own from the
 same machine, `dasprofile_linux.json`, one generated table: each hand-written cell over dasProfile's
 C++, each converted one over the composed C program.
 
 `scripts/run_perf.sh --from-scratch` rebuilds the crt, removes `work/`, reruns dasProfile
-(`dasprofile.sh`), and records both captures and both `README.md` sections. `scripts/run_perf.sh
+(`dasprofile.sh`), and records both captures and both `docs/performance.md` sections. `scripts/run_perf.sh
 --check` reruns both methods into a scratch folder and passes `--check` to each run, so it exits 1
 when a cell drifts from its committed capture past 10 percent or twice its committed spread either
 way (`--tolerance <percent>` sets the 10) or a cell is missing from either side; against a capture

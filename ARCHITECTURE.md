@@ -32,7 +32,9 @@ the continuous integration section 7.
   comparisons over the same inputs, runners and oracles as this repository's own, recorded in
   `compare/results_linux.json` (`compare/ARCHITECTURE.md`).
 - `docs/` - the normative design, authored in its own repository and copied here whole
-  (`README.md`). Never edited to match code.
+  (`docs/overview.md`). Never edited to match code. Beside it, the topic documents the root
+  `README.md` links: `overview.md`, `performance.md` (its tables rewritten by `perf/run.das
+  --readme`) and `rust-comparison.md` (its block rewritten by `compare/run.das --readme`).
 - `skills/` - agent instructions: vendored daScript skills (never edited here) and this
   repository's own under `skills/internal/`.
 - `scripts/` - `env.sh` (the toolchain variables and `das`, daslang with both module folders

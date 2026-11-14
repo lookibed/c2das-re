@@ -245,5 +245,5 @@ the counters, the Rust runtime's lines, the functions side by side), is in
 
 ## 11. The report
 
-The rendering of the capture into this repository's README, a standalone report and the ports
+The rendering of the capture into this repository's `docs/rust-comparison.md`, a standalone report and the ports
 README, and what each table reads, is in `ARCHITECTURE_REPORT.md`.
