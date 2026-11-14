@@ -2333,6 +2333,27 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   exclusive, machine quiet, 5 samples). No clean workaround exists on our side (no option or annotation reaches
   the path; hoisting global addresses into locals would put pointers into the shared output for one tier), so
   those AOT cells carry #48 in the ports tables. `perf/ARCHITECTURE_EXCEPTIONS.md` restates the cause.
+  Step 4 (2026-11-14, addendum 22): the three programs P9.32 made convert whole, captured. A normal `heavy` prebuild
+  (`/root/notes/parallel/aotfinal_capture/prep.sh`, `compare --project` per variant, cb35b34) passed native,
+  interp, JIT, exe and AOT for wasm3, doomgeneric and quakegeneric, both variants, our side and Rust's. Then one
+  `heavy --exclusive --label TIMING-aot-final` job, `machine quiet (cpu busy 1%)`, ran `--bench-only`, 3 samples,
+  with the variants alternating. Predictions were written first (`/root/notes/predictions/2026-11-14-aot-final.md`)
+  and every range held; the hedge that a wasm3 cell might be suspect did not happen (spreads 0.2-10.5%).
+  x native, readable / fast:
+
+  | program | interp | JIT | exe | AOT |
+  |---|---|---|---|---|
+  | wasm3 | 56.9 / 52.2 | 2.79 / 2.63 | 2.61 / 2.57 | 1.59 / 1.62 |
+  | doomgeneric | 43.3 / 42.3 | 1.08 / 1.03 | 1.08 / 1.03 | 3.69 / 3.64 |
+  | quakegeneric | no bench | no bench | no bench | no bench |
+
+  quakegeneric's compare row has no bench unit, so it has correctness only, which passes on every tier. The
+  numbers are in the variant files' `results.speed` and in `compare/results_linux.json`'s three entries.
+  Rust on the same runs: wasm3 64.4 / 2.63 / 2.59 / 1.49; doomgeneric 33.5 / 1.06 / 1.08 / 3.69. Its AOT now
+  builds within the limit.
+  Open: doomgeneric's AOT at 3.7x, against JIT and exe at 1.0-1.1, has the PureDOOM shape and is likely #48.
+  No A/B with fixed-offset reads has been run for it, so its cell is not in `ports/upstream_cells.das` and the
+  variant notes say so.
 - **P9.32 The whole-program blockers of wasm3, doomgeneric and quakegeneric** (ruling 38 addendum 22 item C;
   the audit `/root/notes/research/aot/blockers.md`, its rows W1-W4, D1-D8, Q1-Q6). Our side fixed in the audit's
   order, a PR each, until each program converts whole and runs under interp, JIT, exe and AOT with the native
