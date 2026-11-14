@@ -564,7 +564,8 @@ let CRT_CALLS <- {"fmod", "frexp", "ldexp", "modf", "nextafter", "hypot", "cbrt"
 //! `setjmp`, `alloca`) and their unqualified das names, the names it spells bare
 //! (`EMITTED_NAMES`), the public names of the c_runtime modules (`C_RUNTIME_EXPORTS`) and every
 //! function and global the crt module binds: a program's own function or object of one of these
-//! names would take their calls or make them ambiguous (`converter/link.das`).
+//! names would take their calls or make them ambiguous (`converter/link.das`). A crt name is
+//! copied out of its walk, whose `FuncInfo` and `VarInfo` die with it.
 def reserved_das_names : array<string> {
     var names <- [for (name in keys(C_RUNTIME_CALLS)); name]
     names |> push_from([for (name in keys(CRT_CALLS)); name])
@@ -576,10 +577,10 @@ def reserved_das_names : array<string> {
     names |> push_from(EMITTED_NAMES, C_RUNTIME_EXPORTS)
     let crt = get_module("crt")
     module_for_each_function(crt) $(info) {
-        names |> push(info.name)
+        names |> push(clone_string(info.name))
     }
     module_for_each_global(crt) $(info) {
-        names |> push(info.name)
+        names |> push(clone_string(info.name))
     }
     sort(names)
     return <- names
@@ -3143,6 +3144,19 @@ def private names_token(text, name : string) : bool {
     return found
 }
 
+//! The name of every function and generic of every registered module, into `names`. A walk's
+//! `FuncInfo` and its name die with the walk, so each name is copied onto the context's heap.
+def registered_function_names(var names : table<string>) {
+    program_for_each_registered_module() $(mod) {
+        module_for_each_function(mod) $(info) {
+            names |> insert(clone_string(info.name))
+        }
+        for_each_generic(mod) $(fn) {
+            names |> insert(string(fn.name))
+        }
+    }
+}
+
 // a name the program, das or the runtime already gives a function, global or type, which a def
 // named like it would shadow or overload
 def private name_taken(var em : Emitter; tu : CirTu; name : string) : bool {
@@ -3156,14 +3170,7 @@ def private name_taken(var em : Emitter; tu : CirTu; name : string) : bool {
         for (t in tu.types) {
             em.prog.taken_names |> insert(t.name)
         }
-        program_for_each_registered_module() $(mod) {
-            module_for_each_function(mod) $(info) {
-                em.prog.taken_names |> insert(info.name)
-            }
-            for_each_generic(mod) $(fn) {
-                em.prog.taken_names |> insert(string(fn.name))
-            }
-        }
+        registered_function_names(em.prog.taken_names)
     }
     return key_exists(em.prog.taken_names, name) || key_exists(DAS_KEYWORDS, name) || key_exists(em.constants, name)
 }
