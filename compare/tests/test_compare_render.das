@@ -93,6 +93,14 @@ def test_perf(t : T?) {
         let lines <- perf_errors(json_of(t, "\{{PERF}\}"))
         t |> equal(join(lines, "\n"), "- k1, ours JIT: result 5 differs from the native 6\n- k2, Rust: refused: translation failed: x; cause=unsupported external call: qsort\n- k2, ours interpreter: convert: no")
     }
+    t |> run("our AOT cell of a kernel a fork issue slows carries the issue and the footnote under the table; Rust's cell and other kernels none") @(t : T?) {
+        let md = perf_table(json_of(t, "\{\"perf\": \{\"lanes\": [\"native\", \"jit\", \"aot\"], \"kernels\": \{\"sieve\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"jit\": \{\"time\": 1.0\}, \"aot\": \{\"time\": 8.0\}\}, \"rust\": \{\"status\": \"ran\", \"lanes\": \{\"aot\": \{\"time\": 8.0\}\}\}\}, \"fib_loop\": \{\"native\": \{\"time\": 1.0\}, \"ours\": \{\"aot\": \{\"time\": 2.0\}\}, \"rust\": \{\"status\": \"ran\", \"lanes\": \{\}\}\}\}\}\}"))
+        t |> success(md |> contains("| sieve             |   1.000000 |     1.00 |      n/a | 8.00 (#48) |     8.00 |"), md)
+        t |> success(md |> contains("| fib_loop          |   1.000000 |      n/a |      n/a |       2.00 |      n/a |"), md)
+        t |> success(md |> contains("\nOurs:\n\n- (#48) daslang's AOT generator"), md)
+        t |> success(md |> ends_with(" runs sieve 1.63 x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48).\n"), md)
+        t |> success(!(perf_table(json_of(t, "\{{PERF}\}")) |> contains("#48")))
+    }
     t |> run("no kernel: said so") @(t : T?) {
         t |> equal(perf_table(json_of(t, "\{\}")), "No kernel is timed yet.\n")
     }

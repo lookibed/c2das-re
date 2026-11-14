@@ -7,6 +7,7 @@ require strings
 require daslib/strings_boost
 require daslib/json_boost
 require ../ports/ports_render.das
+require ../ports/upstream_cells.das
 require ../perf/boxes.das
 require ../metrics/readability_file.das
 
@@ -207,7 +208,7 @@ def perf_table(results : JsonValue const?) : string {
         let native = entry?["native"]
         var inscope row <- [name, key_exists(native, "error") ? error_word(native?["error"] ?? "") : suspect_cell(native) ? suspect_text(native?["spread"] ?? 0.0lf) : "{native?["time"] ?? 0.0lf:.6f}"]
         for (lane in lanes) {
-            row |> push_from([side_text(entry, entry?["ours"]?[lane], false), side_text(entry, rust_cell(entry, lane), is_refused(entry))])
+            row |> push_from([upstream_marked(side_text(entry, entry?["ours"]?[lane], false), name, lane), side_text(entry, rust_cell(entry, lane), is_refused(entry))])
         }
         rows |> emplace(row)
     }
@@ -219,7 +220,8 @@ def perf_table(results : JsonValue const?) : string {
         mean_row |> push_from(n == 0 ? ["n/a", "n/a"] : ["{ratio_cell(ours)} ({n})", "{ratio_cell(rust)} ({n})"])
     }
     rows |> emplace(mean_row)
-    return table_of(headers, rows, 1)
+    let notes <- upstream_footnotes(names, lanes)
+    return table_of(headers, rows, 1) + (empty(notes) ? "" : "\nOurs:\n\n" + join(notes, "\n") + "\n")
 }
 
 //! One line per error cell of the perf section: the kernel, the side, the lane and the reason.

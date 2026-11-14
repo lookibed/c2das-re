@@ -136,6 +136,15 @@ def test_render(t : T?) {
         t |> equal(join(cells, ","), ",demo2,500.0 ±0%,suspect (±37.5%),desync,suspect,n/a,")
         t |> success(text |> ends_with("\n- demo2, JIT: desync after 25 tics in sync on cs: expected `tic=25 cs=1`, got `tic=25 cs=2`\n"), text)
     }
+    t |> run("an AOT ratio a fork issue slows carries the issue, the footnote under the table; the other lanes none") @(t : T?) {
+        var c <- stand_in_capture()
+        c.lanes |> push(FpsLane(name = "aot-fast", command = "a"))
+        c.cells |> emplace(cell_of_runs("demo1", "aot-fast", [5.0lf, 5.0lf, 5.0lf]))
+        let text = render_fps(c)
+        t |> equal(row_cells(text, "demo1"), ",demo1,1000.0 ±0%,25.0 ±3%,250.0 ±0%,200.0 ±0%,40.0,4.0,5.0 (#48),")
+        t |> success(text |> ends_with(" runs puredoom 1.14 (readable, demo1) x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48).\n"), text)
+        t |> success(!(render_fps(stand_in_capture()) |> contains("#48")))
+    }
     t |> run("a lane without a cell is n/a") @(t : T?) {
         var c <- stand_in_capture()
         c.workloads |> push("demo3")
