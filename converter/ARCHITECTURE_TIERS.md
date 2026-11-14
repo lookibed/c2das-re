@@ -44,8 +44,9 @@ naming file's folder; and every file of the module folders (but a hidden, `tests
 `_build` folder's and daslang's own `.das_module.manifest`), each with its size and its text's hash,
 a native library (`.shared_module`, `.so`) with its mtime. A name that resolves to no file there is
 daslib's, a module folder's or a native module's, which the checkout and the module folders
-already cover. The key goes to `<binary>.key` after a build that leaves the binary, with the
-binary's own size and mtime, so a failed build leaves no key, and a binary replaced since (perf's
+already cover. A build that does not reuse removes the binary and its key first, and the key goes to
+`<binary>.key` after a build that leaves the binary, with the binary's own size and mtime, so a
+failed build leaves neither, and a binary replaced since (perf's
 tests plant a stale one) is built again. The key does not cover the system toolchain a command
 names by its bare name (`c++` on `PATH` under daslang's `-exe`), nor daslib files edited without a
 commit; neither changes on this tree's workflow. Each build step's log joins the output only when

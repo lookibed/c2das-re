@@ -111,12 +111,13 @@ def test_build_reuse(t : T?) {
             t |> equal(run_tier(das_path, tier, work, out, NO_ARGS), 9, out)
         }
     }
-    t |> run("a failed build leaves no key, so the next run builds again") @(t : T?) {
+    t |> run("a failed build leaves neither the earlier binary nor a key, so the next run builds again") @(t : T?) {
         let work = path_join(dir, "exe")
         let das_path = path_join(work, "main.das")
         var out : string
         t |> success(run_tier(das_path, "exe", work, out, NO_ARGS, 600.0, ["-bogus-flag"]) != 0, out)
         t |> success(!fexist(exe_binary(das_path, work) + ".key"))
+        t |> success(!fexist(exe_binary(das_path, work)))
         let next = build_tier(das_path, "exe", work, out, NO_ARGS, 600.0, NO_ARGS)
         t |> success(!next.reused)
     }

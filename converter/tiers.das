@@ -270,8 +270,8 @@ def private build_binary(das_path, tier, work_dir, bin : string; var output : st
 //! The `exe` or `aot` binary of `das_path` in `work_dir` (`tier_binary`), built with `module_dirs`
 //! and, under `exe`, `flags`: the binary an earlier build left is reused while the key file beside
 //! it (`<binary>.key`) holds this build's `build_key` and the binary's own size and mtime (a binary
-//! replaced since is not the one the key describes), else it is built again and the key written
-//! once the build succeeds. Each build step gets `timeout` seconds; its log joins `output` only
+//! replaced since is not the one the key describes), else the binary is removed, built again and
+//! the key written once the build succeeds, so a failed build leaves neither. Each build step gets `timeout` seconds; its log joins `output` only
 //! when it fails.
 [arch(at="ARCHITECTURE_TIERS.md#build-reuse")]
 def build_tier(das_path, tier, work_dir : string; var output : string&; module_dirs : array<string>; timeout : float; flags : array<string>) : TierBinary {
@@ -282,6 +282,7 @@ def build_tier(das_path, tier, work_dir : string; var output : string&; module_d
         return TierBinary(bin = bin, reused = true)
     }
     remove(key_path)
+    remove(bin)
     let rc = build_binary(das_path, tier, work_dir, bin, output, module_dirs, timeout, flags)
     if (rc == 0 && stat(bin).is_reg) {
         fwrite(key_path, key + file_line(bin, true))
