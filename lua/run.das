@@ -41,7 +41,7 @@ struct Args {
     native : bool
     @clarg_doc = "also run the converted interpreter under --tier with each --arg and compare with the native oracle"
     run : bool
-    @clarg_doc = "the tier --run takes: interp or jit"
+    @clarg_doc = "the tier --run, --error-check, --suite-check and --luac-check take: interp, jit, exe or aot (the binary built once per layout in the layout's folder, reused while its build key stands)"
     tier : string = "interp"
     @clarg_doc = "an argument the interpreter gets under --run, one per --arg, in order (default -e \"print(1+1)\")"
     arg : array<string>
@@ -130,8 +130,12 @@ def private run_split(argv : array<string>; timeout : float; path_dir : string; 
     return rc
 }
 
-// the converted interpreter at `das_path` under `tier`, `interp` or `jit`, with `program_args`
+// the converted interpreter at `das_path` under `tier` with `program_args`: daslang over the module,
+// or under `exe` and `aot` the binary `build_layout_binary` built in the module's folder
 def private das_argv(das_path, tier : string; program_args : array<string>) : array<string> {
+    if (tier == "exe" || tier == "aot") {
+        return <- binary_argv(tier, full_path(tier_binary(das_path, tier, dir_name(das_path))), program_args)
+    }
     var argv <- daslang_cmd([for (m in CONVERTED_MODULES); full_path(m)])
     if (tier == "jit") {
         argv |> push("-jit")
@@ -225,7 +229,8 @@ def private same_bytes(a, b : string) : bool {
 }
 
 // every `.lua` file of `dir` compiled by the native compiler `bin` and by the converted one at
-// `das_path` under `tier`, each with `-o` into its own file under `out_dir`: true when every pair of
+// `das_path` under `tier` (under `exe` and `aot` the binary `build_layout_binary` built in the
+// module's folder), each with `-o` into its own file under `out_dir`: true when every pair of
 // exit codes agrees and every pair of outputs is byte for byte the same
 def private luac_check(das_path, bin, tier, dir, out_dir : string) : bool {
     var scripts : array<string>
@@ -248,7 +253,7 @@ def private luac_check(das_path, bin, tier, dir, out_dir : string) : bool {
         var native_text, das_text : string
         let native_rc = run_and_capture([bin, "-o", native_out, script], native_text, 60.0)
         var inscope no_flags : array<string>
-        let das_rc = run_tier(das_path, tier, WORK, das_text, CONVERTED_MODULES, 600.0, no_flags, ["-o", das_out, script])
+        let das_rc = run_tier(das_path, tier, dir_name(das_path), das_text, CONVERTED_MODULES, 600.0, no_flags, ["-o", das_out, script])
         let agree = native_rc == das_rc && fexist(native_out) && same_bytes(native_out, das_out)
         if (agree) {
             same++
@@ -633,6 +638,28 @@ def private write_variant_sidecar(args : Args) : bool {
     return empty(error)
 }
 
+// the seconds each step of an `exe` or `aot` build gets
+let BINARY_BUILD_TIMEOUT = 3600.0
+
+// under `exe` and `aot`, the binary of the converted program at `das_path` built in the module's
+// own folder, which no other layout or variant shares, or the one an earlier run built reused while
+// its build key stands (`build_tier`), and logged; true under `interp` and `jit`, false with the
+// build's output logged when it fails
+def private build_layout_binary(das_path, tier, head : string) : bool {
+    if (tier != "exe" && tier != "aot") {
+        return true
+    }
+    var out : string
+    let no_flags : array<string>
+    let built = build_tier(das_path, tier, dir_name(das_path), out, CONVERTED_MODULES, BINARY_BUILD_TIMEOUT, no_flags)
+    if (built.rc != 0) {
+        to_log(LOG_ERROR, "{head}: the {tier} build exited {built.rc}:\n{out}\n")
+        return false
+    }
+    to_log(LOG_INFO, "{head}: {tier} binary {built.reused ? "reused" : "built"} at {built.bin}\n")
+    return true
+}
+
 // one program converted in `layout` and reported; with `--error-check`, `--suite-check` and `--run`
 // the interpreter run against the native oracle `bin`, with `--luac-check` the compiler over the folder it names
 def private convert_layout(stem, main_source : string; input : ProgramInput; bin, layout : string; args : Args) : bool {
@@ -658,7 +685,8 @@ def private convert_layout(stem, main_source : string; input : ProgramInput; bin
         }
     }
     to_log(LOG_INFO, "{head}: emitter {fmt(":.1f", res.emit_seconds)} s, compile check {fmt(":.1f", res.check_seconds)} s, {das_lines(res, dir)} lines of das, [c_function] on {res.c_functions} of {res.function_count} functions, macro sites {fold_report(res)}\n")
-    if (args.error_check && main_source == "lua" && !error_check(res.das_path, bin, stem, args.tier)) {
+    let runs = main_source == "lua" ? args.error_check || args.run || args.suite_check : !empty(args.luac_check)
+    if ((runs && !build_layout_binary(res.das_path, args.tier, head)) || (args.error_check && main_source == "lua" && !error_check(res.das_path, bin, stem, args.tier))) {
         return false
     }
     if (args.run && main_source == "lua") {
@@ -739,8 +767,8 @@ def main : int {
     if (early >= 0) {
         return early
     }
-    if (args.tier != "interp" && args.tier != "jit") {
-        to_log(LOG_ERROR, "lua: --tier is interp or jit, not `{args.tier}`\n")
+    if (!(TIERS |> key_exists(args.tier))) {
+        to_log(LOG_ERROR, "lua: --tier is interp, jit, exe or aot, not `{args.tier}`\n")
         return 1
     }
     if (args.layout != "all" && !is_layout(args.layout)) {
