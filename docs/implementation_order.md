@@ -2254,6 +2254,34 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `solid_context` S/N need one exclusive run before #43 closes. (e) F95: the fixture's record views no longer
   miscompile under `strict_aliasing: true`, so whether the root `options strict_aliasing = false` is still worth
   its line is an exclusive A/B. (f) #49 (primes interp) is not re-measured on this pin.
+- **P9.31 Working AOT** (ruling 38 addenda 17 and 20 item 3; AOT as a full tier for every port, on daScript
+  `6401904cf9`). Step 1, the audit (2026-11-14, `/root/notes/research/aot/audit.md`): AOT output equals native
+  on every port that converts (PureDOOM demo1-3, Lua suite, benches, error checks and luac `-o`, plmpeg-stream,
+  binjgb, h264bsd-mp4, the 20 perf kernels; both variants). No daslang defect: fork #18 is fixed on the pin
+  (probe PR #214), and fork #48 (global reads as `das_global<T, mnh>` probes) is by design, since `solid_context`
+  "prohibits AOT". Everything still missing is ours. Step 2, the harness (2026-11-14):
+  PR #215 `run_tier`'s exe and aot build once and reuse the binary while its build key stands
+  (`converter/ARCHITECTURE_TIERS.md#build-reuse`; `lane_binary` too); PR #216 `lua/run.das --tier exe|aot` for
+  `--run`, `--error-check`, `--suite-check` and `--luac-check`, one binary per layout and variant in the layout's
+  folder (this closes P8.15 (a)); this row's PR: `perf/ARCHITECTURE_EXCEPTIONS.md` drops `switch_local` / aot
+  (it has a cell now; result equals native) and records #48 as the contract. Verified on the PC through `heavy`,
+  no timing: Lua under `--tier aot` in source, source-cut and single and both variants (readable, fast with
+  checks off): error checks 8/8, suite 30/30, luac `-o` 33/33 byte for byte, each; a second run says `aot binary
+  reused`; luac-check went from about 17.5 min (33 host builds, audit) to about 1.6 min wall (one build), which is a
+  wall-clock indication from the logs, not a measurement. PureDOOM (source layout) under
+  `doom/run.das --run --tier aot`: demo1-3 in sync, 2664 / 5444 / 2743 tics. The host is built once at demo1, and
+  demo2 and demo3 reuse it (the binary's mtime does not change). The three demos took about 3.5 min wall in all,
+  about 10 min in the audit (a build per demo).
+  Logs: `/root/notes/parallel/aot2_logs/`.
+  This row closes, by reference, these dated notes; their lines stay as written: the Lua AOT lane "not yet" /
+  "neither builds nor runs" in P5.1a, P5.1b2, P5.4 and P5's exit criterion, which is now met for AOT (the lanes compile and
+  run the benchmarks, and the suite passes under AOT); the AOT "goto past an initialized local" gap as open
+  (lookibed/daScript#18) in P4.9, P5.1a, P8.4 (m) and P7.0. Step 3 is not done here and is the lead's: the AOT lanes on in
+  the ports publish (`ports/publish.das` leaves them off by default; `ports_render.das` already has the columns)
+  and in the A/B, both variants. Timing only under `heavy --exclusive`, each binary built before the exclusive
+  job as a normal job (the key makes the timed run reuse it, so no build lands inside the exclusive window).
+  Doom's `run_converted` times the whole `run_tier` call, so its first run includes the build: build first.
+  `sieve`, `matmul` and `str_copy` stay exception cells (#48).
 
 ## P6 — Doom
 

@@ -13,9 +13,7 @@ would take for a defect, each with its reason (`ARCHITECTURE_COMMON.md`, the exc
   hoisting the three lookups by hand in the generated C++ with the bounds checks kept takes the cell
   from 0.864 to 0.599 ms (native 0.600), while keeping the lookups and indexing raw without the
   bounds check leaves it at 0.84 ms; the lookup is the cost, the bounds check is not
-  (`docs/probe-findings.md` F49, lookibed/daScript#5).
-- `switch_local` / `aot`: no cell. daslang's AOT writes the flattened block's `var g1 : int =
-  k * 2` as an initialized C++ local after the `goto` that jumps past it, and clang++ refuses
-  the jump ("jump bypasses variable initialization"); the interpreter, the JIT and the exe
-  take the same module. Every das `goto` past a `var` declaration under AOT meets it, a
-  daScript issue (`docs/implementation_order.md` P4.9).
+  (`docs/probe-findings.md` F49, lookibed/daScript#5). daslang documents the lookup as the
+  contract: every converted module carries `options solid_context`, which "prohibits AOT and
+  patches" (`doc/source/reference/language/options.rst` in `DASLANG_ROOT`), so the AOT context
+  keeps the mangled-name lookup (lookibed/daScript#48, closed as outside the contract).
