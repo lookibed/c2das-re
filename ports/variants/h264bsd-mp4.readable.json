@@ -14,5 +14,5 @@
         "strict_aliasing": {"value": false, "reason": "default, search pending", "numbers": ""},
         "switch_dispatch": {"value": "chain", "reason": "default, search pending", "numbers": ""}
     },
-    "results": {}
+    "results": {"speed": {"x_native": {"interp": 59.643, "jit": 1.051, "exe": 1.048, "aot": 1.134}, "over": "the bench's decode time over native's (compare/run.das --project h264bsd-mp4 --bench-only)", "commit": "accac6c", "date": "2026-11-14", "box": "PC", "command": "heavy --exclusive --label TIMING-aot-all -- /root/notes/parallel/aot3_capture/cap.sh 3", "quiet": true}}
 }

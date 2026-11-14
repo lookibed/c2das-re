@@ -171,7 +171,9 @@ def test_results(t : T?) {
         t |> equal(v.results.lines.das, 1200)
         t |> equal(v.results.lines.lua_v_execute, 812)
         t |> equal(v.results.notes, "the interpreter wants expand")
-        let none <- read_variant(variant_path("lua", "readable"), error)
+        let empty_path = path_join(dir, "lua.readable.json")
+        fwrite(empty_path, "\{\"knobs\": \{\}, \"results\": \{\}\}")
+        let none <- read_variant(empty_path, error)
         t |> success(!none.results.has_criteria && !none.results.has_speed && !none.results.has_lines)
         rmdir_rec(dir)
     }
