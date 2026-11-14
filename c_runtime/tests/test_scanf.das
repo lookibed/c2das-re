@@ -3,6 +3,7 @@ require dastest/testing_boost public
 require strings
 require daslib/strings_boost
 require c_runtime/scanf
+require crt
 require c_runtime/printf
 require ../../probes/_daslang_child.das
 
@@ -222,6 +223,31 @@ def test_scanf(t : T?) {
             caught = true
         }
         t |> equal(caught, true)
+    }
+}
+
+[test]
+def test_fscanf(t : T?) {
+    t |> run("fscanf reads a stream directive by directive as Quake's savegame lines: an int, a word, floats, a literal, and stops at a mismatch or the end") @(t : T?) {
+        unsafe {
+            var f = crt::tmpfile()
+            crt::fputs(cstr("5\nstart\n1.5\n-2.25\nkey=9 tail\n"), f)
+            crt::fseek(f, 0l, 0)
+            var version = 0
+            var word : uint8[16]
+            var a = 0.0
+            var b = 0.0
+            var key = 0
+            t |> equal(fscanf(f, cstr("%i\n"), addr(version)), 1)
+            t |> equal(fscanf(f, cstr("%s\n"), addr(word[0])), 1)
+            t |> equal(fscanf(f, cstr("%f\n%f\n"), addr(a), addr(b)), 2)
+            t |> equal(fscanf(f, cstr("key=%d"), addr(key)), 1)
+            t |> equal("{version} {reinterpret<string>(addr(word[0]))} {a} {b} {key}", "5 start 1.5 -2.25 9")
+            // `t` does not match `x`: nothing assigned; the input then ends before a conversion
+            t |> equal(fscanf(f, cstr(" x%d"), addr(key)), 0)
+            t |> equal(fscanf(f, cstr("tail%d"), addr(key)), C_EOF)
+            crt::fclose(f)
+        }
     }
 }
 

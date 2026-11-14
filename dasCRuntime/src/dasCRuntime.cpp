@@ -169,6 +169,8 @@ public:
         addExtern<DAS_BIND_FUN(c_snprintf_ptr)>(*this, lib, "snprintf_ptr", SideEffects::modifyArgumentAndExternal, "crt::c_snprintf_ptr")->args({"buf", "size", "fmt", "v"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_sscanf_one)>(*this, lib, "sscanf_one", SideEffects::modifyArgumentAndExternal, "crt::c_sscanf_one")->args({"src", "fmt", "out", "consumed"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_sscanf_none)>(*this, lib, "sscanf_none", SideEffects::modifyArgumentAndExternal, "crt::c_sscanf_none")->args({"src", "fmt", "consumed"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_fscanf_one)>(*this, lib, "fscanf_one", SideEffects::modifyArgumentAndExternal, "crt::c_fscanf_one")->args({"f", "fmt", "out", "consumed"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_fscanf_none)>(*this, lib, "fscanf_none", SideEffects::modifyArgumentAndExternal, "crt::c_fscanf_none")->args({"f", "fmt", "consumed"})->unsafeOperation = true;
     }
     virtual ModuleAotType aotRequire(TextWriter & tw) const override {
         tw << "#include \"dasCRuntime.h\"\n";

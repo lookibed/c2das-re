@@ -126,7 +126,8 @@ C `sscanf` is variadic too and binds the same way, one directive per call: `ssca
 fmt, out, consumed)` passes the C program's out-pointer as `void *`, so the CRT writes it at the
 width `fmt`'s directive names, and `sscanf_none(src, fmt, consumed)` serves a directive that
 assigns nothing; `fmt` ends in `%n`, whose `consumed` tells the scanf lowering
-(`c_runtime/c_runtime/scanf.das`) how far the input moved.
+(`c_runtime/c_runtime/scanf.das`) how far the input moved. `fscanf_one(f, fmt, out, consumed)`
+and `fscanf_none(f, fmt, consumed)` are the same over a `FILE *`.
 
 ## 6. Build and loading
 
@@ -152,3 +153,11 @@ without that flag fails with "missing prerequisite 'crt'".
   daslang folds or drops such a call whose arguments are constant or whose result is discarded,
   and the JIT's `sqrt` is an intrinsic: `errno` after such a call is not reliably set
   (`log(0)` leaves `errno` 0 where glibc gives `ERANGE`). A dialect limit, ledgered on P5.1.
+- The charter's "no branch" in a forwarder has one exception: `c_malloc` gives a block of 128 KiB
+  and up (glibc's starting mmap threshold) through `calloc`, zeroed, as a fresh native process's
+  fresh pages give it. Inside daslang the compiler's own frees have raised glibc's dynamic
+  threshold, so the block would come from a used heap, and a C program that reads memory it has
+  not written (C's undefined behaviour Doom's zone relies on: the opening wipe reads the zone first)
+  would read garbage where native reads zeros. Pinning the threshold process-wide instead
+  (`mallopt(M_MMAP_THRESHOLD, 128 KiB)` at module load) makes the converter itself crash on
+  quakegeneric's whole conversion (a SIGSEGV in the host, P9.32), so the zeroing stays the program's.

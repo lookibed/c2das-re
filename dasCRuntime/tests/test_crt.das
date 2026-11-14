@@ -33,6 +33,23 @@ def test_crt_memory(t : T?) {
             crt::free(q)
         }
     }
+    t |> run("a block of 128 KiB and up comes zeroed, as fresh pages give it to a fresh native process, even where the heap has a used one") @(t : T?) {
+        unsafe {
+            let size = 600000ul
+            var used = reinterpret<uint8?>(crt::malloc(size))
+            crt::memset(used, 255, size)
+            crt::free(used)
+            var fresh = reinterpret<uint8?>(crt::malloc(size))
+            var dirty = 0
+            for (i in range(int(size))) {
+                if (deref(fresh + i) != 0u8) {
+                    dirty++
+                }
+            }
+            t |> equal(dirty, 0)
+            crt::free(fresh)
+        }
+    }
 }
 
 [test]
@@ -333,6 +350,20 @@ def test_crt_sscanf(t : T?) {
             consumed = -1
             t |> equal(crt::sscanf_none(cstr(" 77 rest"), cstr("%*d%n"), addr(consumed)), 0)
             t |> equal(consumed, 3)
+            // the same over a stream, which moves by what the CRT consumed
+            var f = crt::tmpfile()
+            crt::fputs(cstr("  -42 77x"), f)
+            crt::fseek(f, 0l, 0)
+            consumed = -1
+            t |> equal(crt::fscanf_one(f, cstr("%d%n"), addr<void?>(n), addr(consumed)), 1)
+            t |> equal(n, -42)
+            t |> equal(consumed, 5)
+            consumed = -1
+            t |> equal(crt::fscanf_none(f, cstr("%*d%n"), addr(consumed)), 0)
+            t |> equal(consumed, 3)
+            t |> equal(crt::fgetc(f), 'x')
+            t |> equal(crt::fscanf_one(f, cstr("%d%n"), addr<void?>(n), addr(consumed)) < 0, true)
+            crt::fclose(f)
         }
     }
 }

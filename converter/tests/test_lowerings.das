@@ -1291,7 +1291,7 @@ def p4_varargs_rejects(t : T?) {
         rejects(t, "va_tuple_param", "#include <stdarg.h>\nstatic int f(int _va_tuple, ...) \{ return _va_tuple; \}\nint main(void) \{ return f(0); \}\n", "a C name `_va_tuple` in variadic function `f`")
         rejects(t, "va_tuple_local", "#include <stdarg.h>\nstatic int f(int n, ...) \{ int _va_tuple = n; return _va_tuple; \}\nint main(void) \{ return f(0); \}\n", "a C name `_va_tuple` in variadic function `f`")
         rejects(t, "scanf_stdin", "int scanf(const char *, ...);\nint main(void) \{ int x = 0; scanf(\"%d\", &x); return x; \}\n", "external function `scanf` has no c_runtime mapping")
-        rejects(t, "fscanf_stream", "typedef struct F F;\nextern F *stdin;\nint fscanf(F *, const char *, ...);\nint main(void) \{ int x = 0; fscanf(stdin, \"%d\", &x); return x; \}\n", "external function `fscanf` has no c_runtime mapping")
+        rejects(t, "fwscanf_stream", "typedef struct F F;\nextern F *stdin;\nint fwscanf(F *, const int *, ...);\nint main(void) \{ int x = 0; fwscanf(stdin, 0, &x); return x; \}\n", "external function `fwscanf` has no c_runtime mapping")
     }
 }
 
@@ -2690,6 +2690,11 @@ def p8_input_fixtures(t : T?) {
         var text : string
         check_fixture(t, "p9_no_vla", text)
         has_text(t, text, "squares : int[9]")
+    }
+    t |> run("fscanf over a stream is c_runtime's `fscanf`, each directive the CRT's own") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_fscanf", text)
+        has_text(t, text, "fscanf(reinterpret<void?>(f), cstr(\"%i\\n\"), addr(version))")
     }
     t |> run("a bare statement expression as a statement, and one under `__extension__`, is its block") @(t : T?) {
         let text = converts(t, "bare_stmt_expr", "int main(void) \{ int x = 1; (\{ x += 2; \}); __extension__ (\{ x++; \}); return x - 4; \}\n")

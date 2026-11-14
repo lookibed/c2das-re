@@ -102,8 +102,10 @@ chartered here.
   names, in das. A directive C's scanf does not define (glibc's `%m`, `%q`, `%1$d`, a `%` ending
   the format) panics before it takes an argument. The scan stops at the first directive that
   does not match and returns the assignments made, or `C_EOF` when the input ends before the
-  first; an out-argument that is no pointer panics. `sscanf` is the `[variadic]` front; a
-  stream scanf is not here. The behavior is the CRT's by construction, which
+  first; an out-argument that is no pointer panics. `sscanf` is the `[variadic]` front.
+  `c_vfscanf` and `fscanf` read a `FILE *` (a `void?`) the same way, each piece (a whitespace
+  run, an ordinary character, a directive) the CRT's `fscanf` with a trailing `%n`
+  (`crt::fscanf_one`, `crt::fscanf_none`), so the stream moves by what the CRT consumed. The behavior is the CRT's by construction, which
   `tests/test_scanf.das` proves against a native battery.
 - `c_runtime/setjmp.das` - the setjmp/longjmp protocol over das's own unwinding
   (`docs/lowering-examples.md` "setjmp / longjmp"): `CJmpBuf` holds the longjmp value,

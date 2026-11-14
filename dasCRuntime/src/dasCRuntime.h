@@ -18,7 +18,12 @@
 
 namespace crt {
 
-inline void * c_malloc(uint64_t size) { return ::malloc(size_t(size)); }
+//! A block of 128 KiB and up (glibc's starting mmap threshold) comes zeroed, as fresh pages give it
+//! to a fresh native process: inside daslang the compiler's own frees have raised glibc's dynamic
+//! threshold, and the block would come from a used heap (a program reading its fresh memory before
+//! writing it, Doom's zone, then reads what native does). The one branch a forwarder holds
+//! (ARCHITECTURE.md section 7).
+inline void * c_malloc(uint64_t size) { return size >= 128 * 1024 ? ::calloc(1, size_t(size)) : ::malloc(size_t(size)); }
 inline void * c_calloc(uint64_t count, uint64_t size) { return ::calloc(size_t(count), size_t(size)); }
 inline void * c_realloc(void * ptr, uint64_t size) { return ::realloc(ptr, size_t(size)); }
 inline void c_free(void * ptr) { ::free(ptr); }
@@ -255,6 +260,9 @@ inline int32_t c_snprintf_ptr(uint8_t * buf, uint64_t size, const uint8_t * fmt,
 //! sscanf, one directive and a trailing `%n` per call, the out-pointer passed as the program gave it.
 inline int32_t c_sscanf_one(const uint8_t * src, const uint8_t * fmt, void * out, int32_t * consumed) { return ::sscanf((const char *) src, (const char *) fmt, out, consumed); }
 inline int32_t c_sscanf_none(const uint8_t * src, const uint8_t * fmt, int32_t * consumed) { return ::sscanf((const char *) src, (const char *) fmt, consumed); }
+//! fscanf the same way over a `FILE *`, the stream moved by what the CRT consumed.
+inline int32_t c_fscanf_one(void * f, const uint8_t * fmt, void * out, int32_t * consumed) { return ::fscanf((FILE *) f, (const char *) fmt, out, consumed); }
+inline int32_t c_fscanf_none(void * f, const uint8_t * fmt, int32_t * consumed) { return ::fscanf((FILE *) f, (const char *) fmt, consumed); }
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif

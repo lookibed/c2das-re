@@ -2336,6 +2336,11 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   without a prototype) is reinterpreted to the site's type; a call with arguments through `T (*)()` calls the
   function the promoted argument types spell; a pointer to a variadic function is
   `function<(fixed...; CVaList) : R>`, its value the function's list-taking adapter `f__va_list`.
+  Step 7 (D8, Q3's `fscanf`): crt's `malloc` gives a block of 128 KiB and up zeroed (`calloc`), as a fresh native
+  process's fresh pages give it, so a program reading memory it has not written (Doom's zone) reads what native
+  does; the audit's process-wide `mallopt(M_MMAP_THRESHOLD)` made the converter itself crash on quakegeneric's
+  whole conversion (a latent host memory bug, not root-caused). `fscanf`/`vfscanf` are c_runtime's, each piece of
+  the format the CRT's own `fscanf` over the stream.
 
 ## P6 — Doom
 
