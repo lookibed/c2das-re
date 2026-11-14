@@ -1473,6 +1473,32 @@ def p4_scope_fidelity_fixtures(t : T?) {
 }
 
 // the c-feature-matrix rows the P4 phase-end audit found without a green fixture
+// P9.32: packed records whose packing changes only clang's alignment are plain structs, and the
+// address of a marshal-only record's scalar field
+def p9_packed_record_fixtures(t : T?) {
+    t |> run("an alignment-only packed record is a plain struct aligned above clang's 1, read at odd addresses under every tier; a record holding one where das would move it, and a union holding one, are refused") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_packed_plain", text)
+        check_compiled_tiers(t, "p9_packed_plain")
+        has_text(t, text, "struct thing_t \{\n    x, y, angle, _c_type, _c_options : int16\n\}\n")
+        has_text(t, text, "typeinfo alignof(type<thing_t>) == 2,")
+        has_text(t, text, "\"thing_t: clang lays it out as size 10, align 1, its das alignment is 2\"")
+        has_text(t, text, "typeinfo alignof(type<holder_t>) == 2, \"holder_t: clang lays it out as size 12, align 2\"")
+        let thing = "typedef struct \{ short x, y; \} __attribute__((packed)) thing_t;\n"
+        rejects(t, "packed_plain_moved", thing + "struct holder \{ char c; thing_t t; \};\nint main(void) \{ struct holder h; h.c = 0; return h.c; \}\n", "record `holder` holds `t`, which das aligns to 2 by an alignment-only packed record, where das cannot place it as clang does; not lowered yet")
+        rejects(t, "packed_plain_size", thing + "struct tail \{ thing_t t; char c; \};\nint main(void) \{ struct tail h; h.c = 0; return h.c; \}\n", "record `tail` holds `t`, which das aligns to 2")
+        rejects(t, "packed_plain_union", thing + "union either \{ thing_t t; char c; \};\nint main(void) \{ union either e; e.c = 0; return e.c; \}\n", "union `either` holds member `t`, a record das cannot lay out as clang does")
+        rejects(t, "packed_plain_union_holder", thing + "struct pair \{ char c, d; thing_t t; \};\nunion either \{ struct pair p; char c; \};\nint main(void) \{ union either e; e.c = 0; return e.c; \}\n", "record `either` holds `p`, which das aligns to 2")
+        rejects(t, "packed_unaligned_field", "struct __attribute__((packed)) odd \{ char c; short s; \};\nint main(void) \{ struct odd o; o.c = 0; return o.c; \}\n", "record `odd` is not laid out naturally: a packed record is marshal-only")
+    }
+    t |> run("marshal: the address of a scalar field is the record's bytes plus the field's offset, never `addr` of its reader") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_marshal_address", text)
+        has_text(t, text, "var pack : uint8? = reinterpret<uint8?>(h + 3)")
+        has_text(t, text, "var w : uint16? = reinterpret<uint16?>(h + 1)")
+    }
+}
+
 def p4_matrix_fixtures(t : T?) {
     t |> run("matrix shapes: an opaque struct pointer, _Alignof, char rows from string literals, _Alignas, ~ and ^, restrict, K&R parameters, inline, long double, volatile, the comma's value, exit from deep") @(t : T?) {
         var text : string
@@ -1550,6 +1576,7 @@ def p4_matrix_fixtures(t : T?) {
         rejects(t, "vla_unnamed_records", "int main(void) \{ int n = 2; struct \{ int x; \} rs[n]; rs[0].x = 0; return rs[0].x; \}\n", ")[n]`: a variable-length array is not lowered (out of scope in v1)")
         rejects(t, "zero_length_local", "int main(void) \{ int a[0]; return 0; \}\n", "a zero-length array (a GNU extension) is not lowered yet")
     }
+    p9_packed_record_fixtures(t)
 }
 
 // the das path `converts` wrote for the source it took under `name`
@@ -2480,7 +2507,9 @@ def p7_first_member_fixtures(t : T?) {
     t |> run("`first_member` reinterpret leaves a marshal-only record and a member of a marshal-only type to the default") @(t : T?) {
         let disk = "#pragma pack(1)\ntypedef struct Disk \{ int first; char c; \} Disk;\n#pragma pack()\n"
         let sidecar = "\{\"marshal\": [\"Disk\"], \"first_member\": \"reinterpret\"\}\n"
-        rejects(t, "first_member_marshal_record", "{disk}int *first_of(Disk *p) \{ return &p->first; \}\nint main(void) \{ return 0; \}\n", "addr(read_Disk_first(p, 0))", sidecar)
+        // a scalar field's address is the record's bytes at its offset, here 0
+        let first = converts(t, "first_member_marshal_record", "{disk}int *first_of(Disk *p) \{ return &p->first; \}\nint main(void) \{ return 0; \}\n", sidecar)
+        has_text(t, first, "return reinterpret<int?>(p)")
         let holder = "typedef struct Holder \{ Disk d; int n; \} Holder;\nDisk *disk_of(Holder *h) \{ return &h->d; \}\nint main(void) \{ return 0; \}\n"
         rejects(t, "first_member_marshal_field", "{disk}{holder}", "the address of a value of the marshal-only record `Disk`", sidecar)
     }
