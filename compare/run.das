@@ -34,8 +34,8 @@ require ../ports/variants.das
 //! writes its entry of the `projects` section; `--readme` and `--report` render the capture as
 //! markdown.
 
-//! the README `--readme` rewrites and the rulings `--report` opens with, from the repository root
-let README = "README.md"
+//! the document `--readme` rewrites and the rulings `--report` opens with, from the repository root
+let README = "docs/rust-comparison.md"
 let RULINGS = "docs/rulings-pending.md"
 
 [CommandLineArgs]
@@ -65,7 +65,7 @@ struct CompareArgs {
     bench_only : bool
     @clarg_doc = "the folder --project writes its work into, one subfolder per project (default compare/work/projects)"
     work : string = ""
-    @clarg_doc = "rewrite the comparison rendered from the capture between the compare markers of README.md"
+    @clarg_doc = "rewrite the comparison rendered from the capture between the compare markers of docs/rust-comparison.md"
     readme : bool
     @clarg_doc = "write the comparison rendered from the capture into this markdown file, the open rulings first"
     report : string = ""
@@ -309,7 +309,7 @@ def private rulings_pending : string {
     return empty(lines) ? "" : "## Rulings pending\n\n" + join(lines, "\n") + "\n\n"
 }
 
-// the comparison rendered from the capture `out`: into README.md between its compare markers under
+// the comparison rendered from the capture `out`: into docs/rust-comparison.md between its compare markers under
 // `--readme`, into the file `--report` names under its heading
 def run_render(args : CompareArgs; out : string) : int {
     var error : string

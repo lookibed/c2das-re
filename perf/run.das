@@ -33,7 +33,8 @@ let RESULTS = "perf/results_linux.json"
 //! the dasProfile method's capture, and dasProfile's own capture from this machine beside it
 let METHOD_RESULTS = "perf/results_method_linux.json"
 let DASPROFILE_RESULTS = "perf/dasprofile_linux.json"
-let README = "README.md"
+//! the document `--readme` rewrites a method's section of, from the repository root
+let README = "docs/performance.md"
 //! the methods a run measures by: this tree's (`composed_source`) and dasProfile's
 //! (`composed_method_source`), over the kernels both repositories share
 let METHODS <- ["default", "dasprofile"]
@@ -47,7 +48,7 @@ struct Args {
     @clarg_name = "table"
     @clarg_doc = "render the table from the stored results instead of measuring"
     show_table : bool
-    @clarg_doc = "rewrite the method's section of README.md from the run, or under --table from the stored capture"
+    @clarg_doc = "rewrite the method's section of docs/performance.md from the run, or under --table from the stored capture"
     readme : bool
     @clarg_doc = "print the lane time / native table after the results"
     ratios : bool
@@ -125,7 +126,7 @@ def run_method_kernel(name : string; samples : int; var errors : array<string>) 
 }
 
 // the stored capture `out` rendered, by `--table`; under the dasProfile method the comparison
-// too; with `--readme` the method's README.md section rewritten from it
+// too; with `--readme` the method's section of docs/performance.md rewritten from it
 def show_stored(args : Args; out : string; baseline : JsonValue?; baseline_name : string) : int {
     var error : string
     let js = read_json_file(out, error)
