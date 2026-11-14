@@ -45,7 +45,9 @@ let PROJECT_TRANSLATE_TIMEOUT = 600.0
 //! native builds into `native_sources` and `native_bench_sources`; `bench_free_keys` are the keys of the lines the bench unit
 //! prints with a value of its own and the prefixes of the keys it prints beyond the expected
 //! output, `bench_omitted_keys` the keys of the expected lines it does not print
-//! (`bench_disagreement`); `ours_variant` the variant our side converts under (none by default: no knob).
+//! (`bench_disagreement`); `ours_variant` the variant our side converts under (none by default: no knob);
+//! `marshal`, `over_indexed` and `padded` the program keys of our side's sidecar
+//! (`converter/sidecar.das`), facts of the program a whole conversion runs with.
 struct Project {
     name : string
     dir : string
@@ -70,6 +72,9 @@ struct Project {
     bench_free_keys : array<string>
     bench_omitted_keys : array<string>
     ours_variant : Variant
+    marshal : array<string>
+    over_indexed : array<string>
+    padded : array<string>
 }
 
 //! A lane's verdict: `pass`, else `refused`, `compile`, `exit`, `output`, `timeout` or `skipped`,
@@ -95,7 +100,8 @@ def project_table(checkout : string) : array<Project> {
         cases = path_join(checkout, CASES_FILE),
         case_id = "wasm3-fib32-std",
         rust_flags <- ["--das-option", "stack = 4194304"],
-        functions <- ["op_Call", "call_fib"]),
+        functions <- ["op_Call", "call_fib"],
+        over_indexed <- ["M3CodePage.code"]),
     Project(
         name = "binjgb",
         dir = path_join(manual_dir, "binjgb"),
@@ -162,7 +168,10 @@ def private engine_rows(manual_dir, cases : string) : array<Project> {
         case_id = "doomgeneric-demo1-std",
         rust_flags <- ["--das-option", "stack = 4194304"],
         functions <- ["R_DrawColumn", "R_DrawSpan"],
-        bench_free_keys <- ["frames", "frame["]),
+        bench_free_keys <- ["frames", "frame["],
+        marshal <- ["pcx_t"],
+        over_indexed <- ["patch_t.columnofs", "maptexture_t.patches", "texture_t.patches"],
+        padded <- ["visplane_t.top", "visplane_t.bottom"]),
     Project(
         name = "quakegeneric",
         dir = path_join(manual_dir, "quakegeneric"),
@@ -176,7 +185,8 @@ def private engine_rows(manual_dir, cases : string) : array<Project> {
         cases = cases,
         case_id = "quakegeneric-demo1-std",
         rust_flags <- ["--das-option", "stack = 4194304"],
-        functions <- ["D_DrawSpans8", "D_DrawZSpans"])]
+        functions <- ["D_DrawSpans8", "D_DrawZSpans"],
+        over_indexed <- ["dmiptexlump_t.dataofs", "surfcache_t.data", "mspriteframe_t.pixels", "mspritegroup_t.frames", "msprite_t.frames", "maliasgroup_t.frames", "maliasskingroup_t.skindescs", "aliashdr_t.frames", "sfxcache_t.data", "qpic_t.data"])]
 }
 
 //! The project `name` of the Rust checkout `checkout` into `p`; false when the table has none.
@@ -583,14 +593,24 @@ def private absolute_include(p : Project; name : string) : string {
     return absolute_path(project_path(p, name))
 }
 
+// the sidecar `js` with `key` set to `names`, unless there are none
+def private program_key(var js : JsonValue?; key : string; names : array<string>) {
+    if (!empty(names)) {
+        (js as _object)[key] = JV(names)
+    }
+}
+
 //! Our side of one unit of `p`, or of its units (`units`, a program in the source layout):
 //! converted under `linux` into `out_dir` with a sidecar `<out_dir>/<name>.c2das` of the project's
 //! defines and `ours_defines`, its include folders, its forced includes (`-include` in
 //! `clang_extra`) and the project folder as the program root, each path absolute, with the knobs of
-//! `p.ours_variant` set (`ports/ARCHITECTURE_VARIANTS.md`; none by default); the entry module
+//! `p.ours_variant` set (`ports/ARCHITECTURE_VARIANTS.md`; none by default) and, when `whole`, the
+//! program keys `marshal`, `over_indexed` and `padded` (a file converted alone leaves them out: the
+//! converter refuses a key naming a record the file does not declare); the entry module
 //! with every file written into `files`, or "" with `refusal` the converter's first line. The
 //! ports publisher converts a project through it too.
-def ours_module(p : Project; tu, out_dir : string; units : array<string>; var refusal : string&; var files : array<string>) : string {
+[arch(at="ARCHITECTURE_PROJECTS.md#projects")]
+def ours_module(p : Project; tu, out_dir : string; units : array<string>; whole : bool; var refusal : string&; var files : array<string>) : string {
     mkdir_rec(out_dir)
     let sidecar = path_join(out_dir, "{p.name}.c2das")
     let include_dirs <- [for (d in p.include_dirs); absolute_path(project_path(p, d))]
@@ -598,6 +618,11 @@ def ours_module(p : Project; tu, out_dir : string; units : array<string>; var re
     var defines := p.defines
     defines |> push_from(p.ours_defines)
     var js = JV({"defines" => JV(defines), "include_dirs" => JV(include_dirs), "include_files" => JV(include_files), "program_root" => JV(absolute_path(p.dir))})
+    if (whole) {
+        program_key(js, "marshal", p.marshal)
+        program_key(js, "over_indexed", p.over_indexed)
+        program_key(js, "padded", p.padded)
+    }
     overlay_knobs(js, p.ours_variant)
     fwrite(sidecar, write_json(js))
     delete_json(js)
@@ -682,7 +707,7 @@ def program_files(p : Project) : array<string> {
 def convert_project(p : Project; work : string) : ProjectConversion {
     var conv : ProjectConversion
     rmdir_rec(work)
-    ours_module(p, p.tu, path_join(work, "whole"), p.units, conv.refusal, conv.files)
+    ours_module(p, p.tu, path_join(work, "whole"), p.units, true, conv.refusal, conv.files)
     to_log(LOG_INFO, "{p.name}: " + (empty(conv.refusal) ? "converted whole" : conv.refusal) + "\n")
     if (empty(conv.refusal)) {
         return <- conv
@@ -693,7 +718,7 @@ def convert_project(p : Project; work : string) : ProjectConversion {
     for (rel in sources) {
         var refusal : string
         var inscope files : array<string>
-        let das_path = ours_module(p, rel, path_join(work, "files/{trim_suffix(rel, ".c")}"), none, refusal, files)
+        let das_path = ours_module(p, rel, path_join(work, "files/{trim_suffix(rel, ".c")}"), none, false, refusal, files)
         to_log(LOG_INFO, "{p.name}: {rel}: " + (empty(refusal) ? "converted" : refusal) + "\n")
         conv.per_file |> push(FileConversion(c_path = rel, das_path = empty(refusal) ? das_path : "", refusal = refusal))
     }
@@ -789,7 +814,7 @@ def private bench_modules(p : Project; bin, work : string) : BenchModules {
     b.native_error = native_build(p, p.native_bench_sources, b.native)
     var inscope ours_files, rust_files : array<string>
     let no_units : array<string>
-    b.ours = ours_module(p, p.bench_tu, path_join(work, "ours_bench"), no_units, b.ours_refusal, ours_files)
+    b.ours = ours_module(p, p.bench_tu, path_join(work, "ours_bench"), no_units, true, b.ours_refusal, ours_files)
     b.rust = rust_module(p, bin, p.bench_tu, path_join(work, "rust_bench"), no_units, b.rust_refusal, rust_files)
     return b
 }
@@ -838,7 +863,7 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
     var native = Verdict(status = "native", reason = native_build(p, p.native_sources, native_bin))
     var ours_refusal, rust_refusal : string
     var ours_files, rust_files : array<string>
-    let ours_das = ours_module(p, p.tu, path_join(work, "ours"), p.units, ours_refusal, ours_files)
+    let ours_das = ours_module(p, p.tu, path_join(work, "ours"), p.units, true, ours_refusal, ours_files)
     let rust_das = rust_module(p, bin, p.tu, path_join(work, "rust"), p.units, rust_refusal, rust_files)
     let bench = samples > 0 ? bench_modules(p, bin, work) : BenchModules()
     let back = enter_working_folder(path_join(work, "cwd"))
