@@ -61,16 +61,25 @@ def test_demos_and_head(t : T?) {
     t |> equal(new_capture("a", "", "cmd", "some other cpu", "p", "c", "d", 1).box, "")
 }
 
+// `samples` speed runs of `cell` after its sync run, the first refused ending them
+def private sampled(plan : FpsPlan; var cell : FpsCell; samples : int) {
+    for (_ in range(samples)) {
+        break if (!empty(cell.error) || !fps_sample(plan, 1, cell))
+    }
+}
+
 [test]
 def test_cell(t : T?) {
-    t |> run("native runs the native builds, a tier the converted entries: one sync run, then every sample of the speed build") @(t : T?) {
+    t |> run("native runs the native builds, a tier the converted entries: one sync run, then each sample a speed run") @(t : T?) {
         let plan <- stand_in_plan(2)
-        let native <- fps_cell(plan, NATIVE_LANE, 1)
+        var native <- fps_sync(plan, NATIVE_LANE, 1)
+        sampled(plan, native, 2)
         t |> equal(native.error, "")
         t |> equal(length(native.samples), 2)
         t |> equal(native.fps, 32.0lf)
         t |> equal(native_runs(plan), 3)
-        let interp <- fps_cell(plan, "interp", 1)
+        var interp <- fps_sync(plan, "interp", 1)
+        sampled(plan, interp, 2)
         t |> equal(interp.error, "")
         t |> equal(interp.fps, 16.0lf)
         t |> equal(native_runs(plan), 3)
@@ -78,7 +87,8 @@ def test_cell(t : T?) {
     t |> run("a sync run out of sync is no cell: no speed run follows") @(t : T?) {
         let plan <- stand_in_plan(3)
         set_env_variable("DOOM_NATIVE_DESYNC", "1")
-        let cell <- fps_cell(plan, NATIVE_LANE, 1)
+        var cell <- fps_sync(plan, NATIVE_LANE, 1)
+        sampled(plan, cell, 3)
         set_env_variable("DOOM_NATIVE_DESYNC", "")
         t |> success(cell.desync)
         t |> success(cell.error |> starts_with("sync build: desync after 2 tics in sync on cs"), cell.error)
@@ -88,7 +98,8 @@ def test_cell(t : T?) {
     t |> run("the first speed run without fps ends the cell, not a desync") @(t : T?) {
         let plan <- stand_in_plan(3)
         set_env_variable("DOOM_NATIVE_SPEED_FAIL", "1")
-        let cell <- fps_cell(plan, NATIVE_LANE, 1)
+        var cell <- fps_sync(plan, NATIVE_LANE, 1)
+        sampled(plan, cell, 3)
         set_env_variable("DOOM_NATIVE_SPEED_FAIL", "")
         t |> success(!cell.desync)
         t |> equal(cell.error, "speed build did not end in `timed 4 gametics` (exit 0)")
@@ -113,6 +124,15 @@ def test_time_demos(t : T?) {
         t |> equal(join([for (lane in back.lanes); lane.name], ","), "native,interp")
         t |> equal(join(back.workloads, ","), "demo1")
         t |> equal(join([for (cell in back.cells); "{cell.lane}={cell.fps}"], ","), "native=32,interp=16")
+    }
+    t |> run("every lane's sync run first, then the speed runs in rounds: native first, the tiers forward, then backward") @(t : T?) {
+        var plan <- stand_in_plan(3)
+        plan.tiers <- ["interp", "jit"]
+        var c <- new_capture("a", "", "cmd", "cpu", "p", "c", "d", 3)
+        t |> success(time_demos(plan, c, "now"))
+        let order = join([for (ln in split(fread(path_join(plan.work, "run/stand/order")), "\n")); ln; where !empty(ln)], ",")
+        t |> equal(order, "native 0,interp 0,jit 0,native 1,interp 1,jit 1,native 1,jit 1,interp 1,native 1,interp 1,jit 1")
+        t |> equal(join([for (cell in c.cells); "{cell.lane}={length(cell.samples)}"], ","), "native=3,interp=3,jit=3")
     }
     t |> run("a cell that does not stand fails the run, the capture still written") @(t : T?) {
         let plan <- stand_in_plan(1)
@@ -186,6 +206,13 @@ def test_run_das(t : T?) {
         t |> equal(run_das(dir, ["--run", "--fps", "--demo", "1", "--tiers", "interp", "--samples", "1"], out), 1)
         t |> success(out |> contains("doom: demo1, native: sync build: no doom/work/native/doom; run --native"), out)
         t |> success(out |> contains("doom: cannot write doom/results_linux.json"), out)
+    }
+    t |> run("--fps without --tiers times all four tiers after native") @(t : T?) {
+        var out : string
+        t |> equal(run_das(dir, ["--run", "--fps", "--demo", "1", "--samples", "1"], out), 1)
+        for (tier in ["interp", "jit", "exe", "aot"]) {
+            t |> success(out |> contains("doom: demo1, {tier}: sync build: "), "{tier}: {out}")
+        }
     }
     t |> run("--run without --fps runs the converted demo alone") @(t : T?) {
         var out : string

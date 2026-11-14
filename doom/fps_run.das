@@ -10,6 +10,7 @@ require ../converter/tiers.das
 require ../converter/sidecar.das
 require ../perf/boxes.das
 require ../perf/perf_cli.das
+require ../perf/perf_lanes.das
 require demo_run
 require fps
 
@@ -71,13 +72,20 @@ def commit_label(sha, status : string) : string => empty(strip(status)) ? sha : 
 //! of `cpu`), the tools' version lines and the runs a cell.
 def new_capture(sha, status, command, cpu, platform, clang, daslang : string; samples : int) : FpsCapture => FpsCapture(commit = commit_label(sha, status), command = command, cpu = cpu, box = box_of(cpu), platform = platform, clang = clang, daslang = daslang, samples = samples, clock = FPS_CLOCK)
 
-//! The cell of `demo` under `lane`: one run of the sync build held to every tic of the reference
-//! log, then `plan.samples` runs of the speed build, each held to the demo's end, the native builds
-//! under the lane `NATIVE_LANE`, the converted entries under the tier `lane`; a sync run out of sync
-//! or the first run without fps ends the cell.
-def fps_cell(plan : FpsPlan; lane : string; demo : int) : FpsCell {
+// the run of `demo` under `lane`: the native build under the lane `NATIVE_LANE` (`sync_native`
+// or `native`), else the converted entry (`sync_entry` or `entry`) under the tier `lane`, the speed
+// build when `speed`
+def private lane_spec(plan : FpsPlan; lane : string; demo : int; speed : bool) : DemoSpec {
     let native = lane == NATIVE_LANE
-    var spec <- DemoSpec(entry = native ? plan.sync_native : plan.sync_entry, tier = lane, wad = plan.wad, demo = demo, timeout = float(plan.timeout), work = plan.work, ref_dirs <- clone_to_move(plan.ref_dirs), module_dirs <- clone_to_move(plan.module_dirs))
+    let entry = speed ? (native ? plan.native : plan.entry) : (native ? plan.sync_native : plan.sync_entry)
+    return <- DemoSpec(entry = entry, tier = lane, wad = plan.wad, demo = demo, timeout = float(plan.timeout), work = plan.work, ref_dirs <- clone_to_move(plan.ref_dirs), module_dirs <- clone_to_move(plan.module_dirs), speed = speed)
+}
+
+//! The cell of `demo` under `lane` before its samples: one run of the sync build held to every tic
+//! of the reference log; a run out of sync or refused leaves the cell its error, and it takes no
+//! speed run.
+def fps_sync(plan : FpsPlan; lane : string; demo : int) : FpsCell {
+    let spec <- lane_spec(plan, lane, demo, false)
     var cell = FpsCell(workload = "demo{demo}", lane = lane)
     let synced = run_converted(spec)
     log_run(spec, synced)
@@ -86,20 +94,22 @@ def fps_cell(plan : FpsPlan; lane : string; demo : int) : FpsCell {
         cell.error = "sync build: {problem}"
         cell.desync = !empty(synced.sync.desync)
         to_log(LOG_ERROR, "doom: {cell.workload}, {lane}: {cell.error}\n")
-        return <- cell
-    }
-    spec.entry = native ? plan.native : plan.entry
-    spec.speed = true
-    for (_ in range(plan.samples)) {
-        let run = run_converted(spec)
-        log_run(spec, run)
-        if (!add_run(cell, run)) {
-            to_log(LOG_ERROR, "doom: {cell.workload}, {lane}: {cell.error}\n")
-            break
-        }
-        to_log(LOG_INFO, "doom: {cell.workload}, {lane}: {run.timing.tics} gametics in {run.timing.seconds} s\n")
     }
     return <- cell
+}
+
+//! One run of the speed build of `cell`'s demo under its lane, held to the demo's end, added to
+//! `cell`; false when the run has no fps, which ends the cell with its error.
+def fps_sample(plan : FpsPlan; demo : int; var cell : FpsCell) : bool {
+    let spec <- lane_spec(plan, cell.lane, demo, true)
+    let run = run_converted(spec)
+    log_run(spec, run)
+    if (!add_run(cell, run)) {
+        to_log(LOG_ERROR, "doom: {cell.workload}, {cell.lane}: {cell.error}\n")
+        return false
+    }
+    to_log(LOG_INFO, "doom: {cell.workload}, {cell.lane}: {run.timing.tics} gametics in {run.timing.seconds} s\n")
+    return true
 }
 
 // `run_report`'s lines on `run`, logged
@@ -109,7 +119,9 @@ def private log_run(spec : DemoSpec; run : DemoRun) {
     }
 }
 
-//! Every demo of `plan` under native and each of its tiers into `c`, stamped `timestamp` and
+//! Every demo of `plan` under native and each of its tiers into `c`: per demo each lane's sync run
+//! (`fps_sync`), then `plan.samples` rounds of speed runs, one of each lane still standing a round in
+//! `sample_order`; stamped `timestamp` and
 //! written to `plan.capture_path`, its table logged; false when a cell does not stand or the capture is
 //! not written.
 def time_demos(plan : FpsPlan; var c : FpsCapture; timestamp : string) : bool {
@@ -121,8 +133,16 @@ def time_demos(plan : FpsPlan; var c : FpsCapture; timestamp : string) : bool {
     c.cells |> reserve(length(plan.demos) * length(lanes))
     for (demo in plan.demos) {
         c.workloads |> push("demo{demo}")
-        for (lane in lanes) {
-            var cell <- fps_cell(plan, lane, demo)
+        var inscope cells <- [for (lane in lanes); fps_sync(plan, lane, demo)]
+        // the speed runs interleave: each round takes one of every lane still standing
+        for (round in range(plan.samples)) {
+            for (i in sample_order(length(lanes), round)) {
+                if (empty(cells[i].error)) {
+                    fps_sample(plan, demo, cells[i])
+                }
+            }
+        }
+        for (cell in cells) {
             ok = ok && empty(cell.error)
             c.cells |> emplace(cell)
         }

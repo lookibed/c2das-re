@@ -275,3 +275,16 @@ def tool_versions(var clang, daslang : string&) {
     clang = first_reported_line(captured([default_clang(), "--version"]))
     daslang = first_reported_line(captured([get_das_root() + "/bin/daslang", "-version"]))
 }
+
+//! The order `count` lanes, the first the native one, take their sample of the round `round` (from 0)
+//! when the samples of a workload interleave, as indexes: native first (its first sample is the
+//! oracle a converted lane is held to), then the other lanes forward in an even round and backward
+//! in an odd one, so a drift of the machine over the rounds weighs on every converted lane alike.
+def sample_order(count, round : int) : array<int> {
+    var order <- [0]
+    order |> reserve(count)
+    for (i in range(1, count)) {
+        order |> push(round % 2 == 0 ? i : count - i)
+    }
+    return <- order
+}
