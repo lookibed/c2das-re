@@ -3,7 +3,7 @@
 
 /* a pointer to a variadic function (Quake's `void (*print)(char *fmt, ...)` set to `Con_Printf` or
    `SV_ClientPrintf`): the value is the function's list-taking adapter, a call through the pointer
-   passes the trailing arguments as one list; two takes of one function compare equal */
+   passes the trailing arguments as one list; two takes of one function compare equal; a cast to another function type and back is the same adapter */
 static int total;
 
 static void to_console(char *fmt, ...) {
@@ -49,6 +49,8 @@ int main(void) {
     report(1);
     report(0);
     int (*add)(int, ...) = sum;
-    printf("%d %d %d\n", add(3, 1, 2, 3), add(0), total);
+    /* a round trip through another function pointer type back to the variadic one */
+    int (*back)(int, ...) = (int (*)(int, ...)) (void (*)(void)) sum;
+    printf("%d %d %d %d\n", add(3, 1, 2, 3), add(0), total, back(2, 4, 5));
     return 0;
 }

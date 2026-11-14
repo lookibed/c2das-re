@@ -2212,18 +2212,53 @@ def private call_value(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     return inline_helper(em, tu, x, loc, inlined) ? inlined : emit_call(em, tu, x, loc)
 }
 
-// a `BitCast` is a `reinterpret`, except between two C function pointer types that spell one
-// das type (they differ in a pointee's `const`), which is the value itself; the operand comes
-// as its text, since a caller returning this result may hold its own operand in the result slot
-def private bit_cast(var em : Emitter; tu : CirTu; x : CirExpr; text : string; prec : int; target : string; loc : CirLoc) : Em {
-    if (is_function_pointer(tu, x.t) && is_function_pointer(tu, x.a.t) && das_type(em, tu, x.a.t, loc) == target) {
-        return value(text, prec)
+// a `BitCast` other than between two function pointer types (`function_bit_cast`) is a
+// `reinterpret`; the operand comes as its text, since a caller returning this result may hold its
+// own operand in the result slot
+def private bit_cast(var em : Emitter; text, target : string) : Em => unsafe_value(em, "reinterpret<{target}>({text})", PREC_PRIMARY)
+
+// the operand of a function pointer `BitCast` `x` below further function pointer `BitCast`s and
+// `NoOp`s
+def private function_cast_source(tu : CirTu; x : CirExpr) : CirExpr const? {
+    var at : CirExpr const? = x.a
+    while (at != null && at.e == "cast" && (at.cast_kind == "BitCast" || at.cast_kind == "NoOp") && is_function_pointer(tu, at.t) && is_function_pointer(tu, at.a.t)) {
+        at = at.a
     }
-    return unsafe_value(em, "reinterpret<{target}>({text})", PREC_PRIMARY)
+    return at
+}
+
+// whether function pointer type `t` points at a variadic function
+def private points_variadic(tu : CirTu; t : int) : bool => tu.types[tu.types[t].to].variadic
+
+// a `BitCast` between function pointer types: one between a variadic and a non-variadic function
+// type fails closed, since the variadic function's value is its list-taking adapter, which a call
+// through the other type would pass the wrong arguments, unless casts below bring it from the
+// target's own kind (a round trip, spelled from where it started); a function's reference
+// reinterpreted to a type other than its site's spells the plain value, one reinterpret
+def private function_bit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
+    let source = function_cast_source(tu, x)
+    var from = x.a
+    if (points_variadic(tu, x.t) != points_variadic(tu, x.a.t)) {
+        if (source == null || points_variadic(tu, source.t) != points_variadic(tu, x.t)) {
+            fail(em, "a cast between pointers to a variadic and a non-variadic function is not lowered yet", loc)
+            return value("", PREC_PRIMARY)
+        }
+        from = source
+    }
+    let target = das_type(em, tu, x.t, loc)
+    let decays_ref = from.e == "cast" && from.cast_kind == "FunctionToPointerDecay" && from.a.e == "ref"
+    let inner = decays_ref && das_type(em, tu, from.t, loc) != target ? function_value(em, tu, *from.a, loc, false) : emit_expr(em, tu, from, loc)
+    if (das_type(em, tu, from.t, loc) == target) {
+        return inner
+    }
+    return unsafe_value(em, "reinterpret<{target}>({inner.text})", PREC_PRIMARY)
 }
 
 def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let k = x.cast_kind
+    if (k == "BitCast" && is_function_pointer(tu, x.t) && is_function_pointer(tu, x.a.t)) {
+        return function_bit_cast(em, tu, x, loc)
+    }
     if (k == "ArrayToPointerDecay" && x.a != null && x.a.e == "str_lit") {
         return string_literal(em, tu, *x.a, loc)
     }
@@ -2255,7 +2290,7 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return numeric_cast(em, tu, x, inner, target)
     }
     if (k == "BitCast") {
-        return bit_cast(em, tu, x, inner.text, inner.prec, target, loc)
+        return bit_cast(em, inner.text, target)
     }
     if (k == "PointerToIntegral") {
         return value("{target}(intptr({inner.text}))", PREC_PRIMARY)
@@ -2661,7 +2696,7 @@ def private target_of(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : str
 // no das value C's type would fit, since a call table spells its calls. A reference whose type
 // is not the definition's (a function declared without a prototype, `void A_Light0();`, named
 // before its definition) is reinterpreted to the type at the site, as a `BitCast` is
-def private function_value(var em : Emitter; tu : CirTu; f : CirExpr; loc : CirLoc) : Em {
+def private function_value(var em : Emitter; tu : CirTu; f : CirExpr; loc : CirLoc; site_cast : bool = true) : Em {
     if (!key_exists(em.prog.functions, f.name)) {
         fail(em, "the value of external function `{f.name}` (a pointer to a function this file does not define) is not lowered yet", loc)
         return value("", PREC_PRIMARY)
@@ -2671,7 +2706,7 @@ def private function_value(var em : Emitter; tu : CirTu; f : CirExpr; loc : CirL
         return value("@@{list_adapter_name(em, f.name)}", PREC_PRIMARY)
     }
     let ref = "@@{function_name(em, f.name)}"
-    if (defined >= 0 && kind_of(tu, f.t) == "func" && !tu.types[f.t].variadic && !tu.types[defined].variadic) {
+    if (site_cast && defined >= 0 && kind_of(tu, f.t) == "func" && !tu.types[f.t].variadic && !tu.types[defined].variadic) {
         let site = function_value_type(em, tu, f.t, loc)
         if (site != function_value_type(em, tu, defined, loc)) {
             return unsafe_value(em, "reinterpret<{site}>({ref})", PREC_PRIMARY)

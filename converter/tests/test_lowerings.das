@@ -988,10 +988,15 @@ def p9_function_pointer_fixtures(t : T?) {
         has_text(t, text, "invoke(_c_print, cstr(\"version: %4.2f %d\\n\"), to_cvalist((1.09lf, 7)))")
         has_text(t, text, "invoke(_c_print, cstr(\"plain\\n\"), to_cvalist(VaNone()))")
         has_text(t, text, "def sum__va_list(a0 : int; a1 : CVaList) : int \{\n    return sum`va(a0, a1)\n\}\n")
+        has_text(t, text, "var back : function<(a0 : int; a1 : CVaList) : int> = @@sum__va_list")
+        let say = "#include <stdarg.h>\nstatic int say(const char *f, ...) \{ va_list a; va_start(a, f); va_end(a); return f[0]; \}\nstatic int plain(const char *f, int x) \{ return f[0] + x; \}\n"
+        rejects(t, "variadic_to_plain", say + "typedef struct \{ int (*fn)(); \} cmd_t;\ncmd_t cmds[] = \{\{(int (*)()) say\}\};\nint main(void) \{ return cmds[0].fn(\"a\", 5) - 'a'; \}\n", "a cast between pointers to a variadic and a non-variadic function is not lowered yet")
+        rejects(t, "plain_to_variadic", say + "int main(void) \{ int (*p)(const char *, ...) = (int (*)(const char *, ...)) plain; return p(\"a\", 1) - 'a' - 1 + say(\"\"); \}\n", "a cast between pointers to a variadic and a non-variadic function is not lowered yet")
     }
     t |> run("unprototyped function pointers: a reference typed `void ()` before its definition is reinterpreted, a call with arguments through `T (*)()` goes through the promoted arguments' type") @(t : T?) {
         var text : string
         check_fixture(t, "p9_unprototyped", text)
+        check_compiled_tiers(t, "p9_unprototyped")
         has_text(t, text, "states[0].action.acv = unsafe(reinterpret<function<() : void>>(@@A_Hurt))")
         has_text(t, text, "invoke(reinterpret<function<(var a0 : int?; a1 : int; a2 : double) : void>>(step), addr(total), int(small), double(half))")
         has_text(t, text, "invoke(reinterpret<function<(var a0 : void?) : void>>(poll.procedure), poll.arg)")
