@@ -2332,6 +2332,10 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   Step 5 (W3): a fold site passing a `void *` where another expansion of the macro passes a typed pointer stays
   expanded (`overload`), decided program-wide (`flag_typed_pointer_arguments`), since das finds a `T?` call
   ambiguous between a `T?` and a `void?` overload (lookibed/daScript#57); wasm3's `m3_Free` sites then fold.
+  Step 6 (D6, Q2, Q1): a reference to a function whose type at the site is not its definition's (declared
+  without a prototype) is reinterpreted to the site's type; a call with arguments through `T (*)()` calls the
+  function the promoted argument types spell; a pointer to a variadic function is
+  `function<(fixed...; CVaList) : R>`, its value the function's list-taking adapter `f__va_list`.
 
 ## P6 — Doom
 

@@ -976,6 +976,28 @@ def p4_union_rejects(t : T?) {
     }
 }
 
+// P9.32: function pointers C types loosely: a function declared without a prototype, a call
+// through `T (*)()`, a pointer to a variadic function
+def p9_function_pointer_fixtures(t : T?) {
+    t |> run("a pointer to a variadic function is its list-taking adapter; a call through it passes the trailing arguments as one list") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_variadic_pointer", text)
+        check_compiled_tiers(t, "p9_variadic_pointer")
+        has_text(t, text, "var _c_print : function<(var a0 : uint8?; a1 : CVaList) : void>")
+        has_text(t, text, "_c_print = @@p9_variadic_pointer__to_console__va_list")
+        has_text(t, text, "invoke(_c_print, cstr(\"version: %4.2f %d\\n\"), to_cvalist((1.09lf, 7)))")
+        has_text(t, text, "invoke(_c_print, cstr(\"plain\\n\"), to_cvalist(VaNone()))")
+        has_text(t, text, "def sum__va_list(a0 : int; a1 : CVaList) : int \{\n    return sum`va(a0, a1)\n\}\n")
+    }
+    t |> run("unprototyped function pointers: a reference typed `void ()` before its definition is reinterpreted, a call with arguments through `T (*)()` goes through the promoted arguments' type") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_unprototyped", text)
+        has_text(t, text, "states[0].action.acv = unsafe(reinterpret<function<() : void>>(@@A_Hurt))")
+        has_text(t, text, "invoke(reinterpret<function<(var a0 : int?; a1 : int; a2 : double) : void>>(step), addr(total), int(small), double(half))")
+        has_text(t, text, "invoke(reinterpret<function<(var a0 : void?) : void>>(poll.procedure), poll.arg)")
+    }
+}
+
 def p4_function_fixtures(t : T?) {
     t |> run("function pointers: qsort and bsearch through c_sort, a type's `var` positions, casts as reinterpret, a union of function pointers as one storage") @(t : T?) {
         var text : string
@@ -1024,8 +1046,6 @@ def p4_function_fixtures(t : T?) {
     t |> run("function pointers: what the lowering refuses, each with its reason") @(t : T?) {
         rejects(t, "external_function_value", "#include <string.h>\nint main(void) \{ int (*c)(const char *, const char *) = strcmp; return c(\"a\", \"a\"); \}\n", "the value of external function `strcmp` (a pointer to a function this file does not define) is not lowered yet")
         rejects(t, "external_function_address", "#include <string.h>\nint main(void) \{ int (*c)(const char *, const char *) = &strcmp; return c(\"a\", \"a\"); \}\n", "the value of external function `strcmp`")
-        rejects(t, "variadic_function_pointer", "int main(void) \{ int (*f)(int, ...) = 0; return f == 0 ? 0 : 1; \}\n", "a pointer to a variadic function is not lowered yet")
-        rejects(t, "unprototyped_call", "static int one(int v) \{ return v; \}\nint main(void) \{ int (*f)() = (int (*)()) one; return f(0); \}\n", "a call with 1 arguments through a function pointer whose type takes 0")
     }
     t |> run("the dumper's libclang pass: a clang reporting no resource directory, and an error libclang meets") @(t : T?) {
         var fake_out : string
@@ -1044,6 +1064,7 @@ def p4_function_fixtures(t : T?) {
     t |> run("a wide string literal fails closed") @(t : T?) {
         rejects(t, "wide_literal", "int main(void) \{ const int *w = (const int *) L\"ab\"; return w[1] == 98 ? 0 : 1; \}\n", "a wide string literal")
     }
+    p9_function_pointer_fixtures(t)
 }
 
 def p4_pointer_policy_fixtures(t : T?) {

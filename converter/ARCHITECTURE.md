@@ -115,7 +115,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   over the sidecar's `loops` and refuses any other value the same way. `--first-member` chooses how
   the address of a member at offset 0 is spelled: `addr`, the default and the idiomatic form,
   `addr(p.f)`; `reinterpret`, the record's pointer reinterpreted, which the interpreter runs faster
-  (`ARCHITECTURE_EMITTER_AGGREGATES.md`); it wins over the sidecar's `first_member` the same way, as `--switch-dispatch` (`chain`, the default, or `goto`, the jump table and the flat case groups of `ARCHITECTURE_EMITTER_CONTROL.md`) over `switch_dispatch`, `--past-end` (`call`, the default, or `inline`, the conditional of `ARCHITECTURE_EMITTER_AGGREGATES.md`, One past an array's end) over `past_end` and `--fn-macros` (`fold`, the default, or `expand`, every expansion spelled in place, `ARCHITECTURE_EMITTER_MACROS.md`) over `fn_macros`.
+  (`ARCHITECTURE_EMITTER_ADDRESSES.md`); it wins over the sidecar's `first_member` the same way, as `--switch-dispatch` (`chain`, the default, or `goto`, the jump table and the flat case groups of `ARCHITECTURE_EMITTER_CONTROL.md`) over `switch_dispatch`, `--past-end` (`call`, the default, or `inline`, the conditional of `ARCHITECTURE_EMITTER_ADDRESSES.md`, One past an array's end) over `past_end` and `--fn-macros` (`fold`, the default, or `expand`, every expansion spelled in place, `ARCHITECTURE_EMITTER_MACROS.md`) over `fn_macros`.
 - `benchmarks/bench_for_shapes.das` - the loop-shape race behind section 4
   (`ARCHITECTURE_EMITTER.md`), run with `dastest -- --bench` under the interpreter and
   under `-jit`.
@@ -280,7 +280,7 @@ Section 4, what the emitter spells (the das text of every construct), is in
 `ARCHITECTURE_EMITTER.md`, with bitfields, unions, function pointers and variadics in
 `ARCHITECTURE_EMITTER_AGGREGATES.md`, the switch and the labels in
 `ARCHITECTURE_EMITTER_CONTROL.md`, the loops, the compound stores and the volatile access in
-`ARCHITECTURE_EMITTER_LOOPS.md`, the C spelling it carries in `ARCHITECTURE_EMITTER_TEXT.md`, and the folded function-like macros in `ARCHITECTURE_EMITTER_MACROS.md`.
+`ARCHITECTURE_EMITTER_LOOPS.md`, the C spelling it carries in `ARCHITECTURE_EMITTER_TEXT.md`, the folded function-like macros in `ARCHITECTURE_EMITTER_MACROS.md`, and member addresses in `ARCHITECTURE_EMITTER_ADDRESSES.md`.
 
 ## 5. The four tiers
 

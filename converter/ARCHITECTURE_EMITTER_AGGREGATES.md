@@ -166,43 +166,6 @@ that is not marshal-only, with an integer member of the element's width, no bitf
 and right after it, which is the storage the index -1 and the length reach; an unlisted member
 keeps `pl.top[i]` and its range check.
 
-### The address of a member at offset 0 {#first-member-address}
-
-The address of a member, `&p->f`, is `addr(p.f)`, and an array member's decay `addr(p.a[0])`. Under
-the `first_member` option `reinterpret` (`--first-member reinterpret` or the sidecar's
-`"first_member": "reinterpret"`; `addr`, the default, is the idiomatic form) a member at clang's
-offset 0 is its record's pointer reinterpreted to the result's type, which the interpreter runs
-without the field access and the `addr`: `reinterpret<TValue?>(base + a)` for `&(base + a)->val`,
-`reinterpret<int?>(p)` for `&p->a.b` when `a` and `b` both sit at offset 0, for `&(*p).a.b` and
-for the decay of `p->cells`, and `reinterpret<Inner?>(p + i)` for `&p[i].a`. Every union member sits
-at offset 0. A pointer `BitCast` under the record's pointer falls away, `reinterpret<Table?>(o)`
-for `&((union GCUnion *) o)->h`, and a pointer that already has the result's das type is itself
-(`ip` for `&((union Cell *) ip)->i` of an `int *ip`). A `const` or volatile member takes the pointer
-type das spells for it, the qualifier dropped as everywhere. The option keeps `addr(...)` for a
-member at another offset, for a chain that ends at a record held by value (`&s.a`, `&arr[i].a`),
-for a member of a marshal-only record and for one of a marshal-only type; C takes no bitfield's
-address. The readability criteria count each such `reinterpret` as noise, which is why it is
-opt-in (`converter/tests/fixtures/p7_first_member.c`).
-
-### One past an array's end
-
-C may form `&a[N]`, the address one past the end of `T a[N]`, and das range-checks
-`addr(a[N])` (`docs/probe-findings.md` F45), so `&a[k]` of an array takes one of three forms. A
-constant index is folded: at the length it is `addr(a[0]) + N` (an enumerator keeps its name,
-`addr(a[0]) + int(E.X)`), below or past it `addr(a[k])`, whose range check stands for C's
-undefined behaviour past the end. A constant is a decimal literal within `int64` or an
-enumerator, under integer casts that each hold its value; a `_Bool` cast holds none, since it
-makes any nonzero value 1. A plain load (a variable or a field under casts, read without a
-volatile access, never a bitfield or a union member, which read through an accessor call) into
-an array without effects is, under the `past_end` option `inline` (`--past-end inline` or the
-sidecar's `"past_end": "inline"`), `k == N ? addr(a[0]) + N : addr(a[k])`: das's own range
-check on every index but the length, with no call per access (`end_index` was 12.6% of binjgb's
-interpreter profile), the length typed as the index (`4u`, `4l`, `4ul`). By default (`call`), and
-for any other index, which that form would spell or evaluate twice, it is `addr(a[0]) +
-end_index(k, N)` (`c_runtime/c_bounds`, an unsigned compare against `N` that panics in das's
-range-check wording): the conditional spells the index, the array and the length twice, and the
-readability capture counts the repeated length (`literal_named` +59 over its inputs).
-
 ### Function pointers
 
 A C function pointer is a das function value, 8 bytes like C's, so a record or union holding
@@ -224,9 +187,14 @@ function pointer is `reinterpret<function<...>>(uint64(n))`, which compares as C
 comparison and is `default<function<...>>` as a value, an array's fill and a function's
 fall-off return included. A call through a pointer whose callee is itself a call goes through
 a temporary (`let _t0 = invoke(getter, 1)`), since the JIT crashes compiling `invoke(invoke(g,
-1), 5)` of a local function value (`probes/test_functions.das`). A call through a pointer type
-with another number of parameters than the call's arguments (an unprototyped `T (*)()`, which
-the C-IR spells as `T (*)(void)`) fails closed.
+1), 5)` of a local function value (`probes/test_functions.das`). A call with arguments through an
+unprototyped `T (*)()` (the C-IR spells it `T (*)(void)`, and a prototyped pointer called with
+another number of arguments is no C) reinterprets the pointer to the function type the arguments'
+own types spell, which clang gave the default promotions, the C call ABI: `invoke(reinterpret<
+function<(var a0 : S?) : void>>(p), addr(s))` (Quake's `pp->procedure(pp->arg)`). A reference to a
+function whose type at the site is not its definition's (declared without a prototype, `void
+A_Light0();`, and named before the definition, Doom's `states` table) is reinterpreted to the
+site's type as a `BitCast` is (`function_value`).
 
 A union whose members are function pointers (Doom's `actionf_t` shape) is the `[c_union]` of
 Unions, above, with function-typed members: one 8-byte storage, every member a reinterpret of
@@ -237,7 +205,10 @@ sidecar entry; an array of function pointers is a member like any other.
 `qsort` and `bsearch` are `c_qsort` and `c_bsearch` (`c_runtime/c_sort`), called with C's
 arguments as C gives them and the converted comparator's `@@` value; the CRT binds neither,
 since its `qsort` cannot call back into das (F33). The value of a function the unit does not
-define (`strcmp` passed as a comparator) and a pointer to a variadic function fail closed.
+define (`strcmp` passed as a comparator) fails closed. A pointer to a variadic function is
+`function<(fixed...; aN : CVaList) : R>`: its value is the function's list-taking adapter
+`f__va_list`, emitted beside `f` when the program takes its value (one per function, so two takes
+compare equal), and a call through it is `invoke(p, fixed..., to_cvalist((t1, t2)))`.
 
 ### Initialization loops {#initialization-loops}
 
@@ -284,4 +255,4 @@ dialect's `long` width, which every `l` directive then reads. `sizeof(va_list)` 
 record or of a `va_list`; a record or a `va_list` passed through `...`, naming the argument and
 the callee; a `va_list` global or field; a pointer to a `va_list` and an array of them (the
 dumper's); `va_start`, `va_end` or `va_copy` read as a value; a C name `_va_tuple` in a
-variadic function, the annotation's own; and a pointer to a variadic function.
+variadic function, the annotation's own.
