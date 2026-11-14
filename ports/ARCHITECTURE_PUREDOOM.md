@@ -11,6 +11,14 @@ Read `ARCHITECTURE.md` (this folder) first. This companion holds how the publish
   (`puredoom_readme_text`). It runs and reads nothing.
 - `tests/test_puredoom.das` - those functions over fixed harness output, patch text and README
   inputs.
+- `vendor_runtime.das` - the runtime a folder of converted code runs on without a c2das-re
+  checkout (the ports repository's `puredoom-readable/`): `c_runtime/` and dasCRuntime's
+  descriptor, `CMakeLists.txt` and `src/`, copied as they are into `<into>/`, with the commit in
+  `<into>/c2das-re.commit` (`runtime_files`, `vendor_runtime`). The copy builds `crt` with cmake
+  against any built daScript, since dasCRuntime's `CMakeLists.txt` takes `DASLANG_ROOT`; it holds
+  no built module, so the folder builds its own against the daslang that runs it (a module and its
+  daslang share one ABI). A runtime file the copy would not write refuses it before the first
+  write; removing it is left to the folder's owner. `tests/test_vendor_runtime.das` covers it.
 
 ## 2. The publish
 
