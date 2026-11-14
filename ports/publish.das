@@ -452,7 +452,7 @@ def private native_build_key(command, c_paths : array<string>) : string {
             continue
         }
         seen = d
-        var names : array<string>
+        var inscope names : array<string>
         dir(d) $(name) {
             if ((name |> ends_with(".c") || name |> ends_with(".h")) && stat(path_join(d, name)).is_reg) {
                 names |> push(name)
@@ -509,6 +509,7 @@ def private ready_cell(run : LaneRun; spec : WorkloadSpec; oracle : Oracle; test
         }
         var inscope full <- clone_to_move(run.argv)
         full |> push_from(spec.args)
+        delete argv
         argv <- in_folder(spec.in_tests ? tests : "", full)
     }
 }
