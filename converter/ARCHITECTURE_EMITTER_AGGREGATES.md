@@ -42,7 +42,8 @@ An alignment-only packed record (`aligned_plain`; owner ruling 38 addendum 23 li
 a C-IR `packed` struct, no bitfield and no flexible member, whose every field sits at its das
 offset and whose size is das's: only clang's alignment, an attribute's 1, tells it from a plain
 struct (Doom's `mapthing_t`, five `short`s; `filelump_t`). It is a plain das struct aligned above
-clang, and the layout check asserts das's alignment (`emitted_align`). C memory holds arrays of
+clang, and the layout check asserts das's alignment (`emitted_align`); `_Alignof` read at run time
+is clang's literal wherever the two differ. C memory holds arrays of
 them at any address, and every tier reads a misaligned one as an aligned one
 (`probes/test_misaligned_records.das`, `docs/probe-findings.md` F110). A record holding one, or a
 record that does, stays plain only where das places it as clang does: each such field at a
