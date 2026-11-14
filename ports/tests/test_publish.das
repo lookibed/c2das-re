@@ -107,7 +107,9 @@ def private stand_in_root(name : string) : string {
     mkdir_rec(path_join(root, "ports/variants"))
     dir("ports/variants") $(file) {
         if (file |> ends_with(".json")) {
-            fwrite(path_join(root, "ports/variants/{file}"), fread("ports/variants/{file}"))
+            // the results a search recorded left out, so the tables take the fallbacks under test
+            let lines <- [for (ln in split(fread("ports/variants/{file}"), "\n")); ln |> starts_with("    \"results\":") ? "    \"results\": \{\}" : ln]
+            fwrite(path_join(root, "ports/variants/{file}"), join(lines, "\n"))
         }
     }
     for (v in ["readable", "fast"]) {
@@ -389,7 +391,7 @@ def test_publish_commit_push(t : T?) {
         for (v in ["readable", "fast"]) {
             let sidecar = fread(path_join(dir, "{v}/lua.c2das"))
             t |> success(sidecar |> contains("\"defines\" : [") && sidecar |> contains("\"STAND_IN=1\"") && sidecar |> contains("\"fn_macros\" : \"fold\""), sidecar)
-            t |> equal(fread(path_join(dir, "{v}/variant.json")), fread("ports/variants/lua.{v}.json"))
+            t |> equal(fread(path_join(dir, "{v}/variant.json")), fread(path_join(root, "ports/variants/lua.{v}.json")))
         }
         published_modules(t, dir)
         t |> equal(fread(path_join(dir, "bench/nbody.lua")), fread("ports/lua/bench/nbody.lua"))
@@ -959,7 +961,7 @@ def test_projects(t : T?) {
             t |> success(fexist(path_join(clone, "binjgb/{v}/binjgb_all/binjgb_all.das")), out)
             let sidecar = fread(path_join(clone, "binjgb/{v}/binjgb.c2das"))
             t |> success(sidecar |> contains("\"<c2das>/tests/manual/binjgb/include\"") && sidecar |> contains("\"fn_macros\"") && !(sidecar |> contains(root)), sidecar)
-            t |> equal(fread(path_join(clone, "binjgb/{v}/variant.json")), fread("ports/variants/binjgb.{v}.json"))
+            t |> equal(fread(path_join(clone, "binjgb/{v}/variant.json")), fread(path_join(root, "ports/variants/binjgb.{v}.json")))
         }
         // the variants table: the readable column falls back to the head-to-head's entry, 4.0 s over 0.5 s
         for (fact in ["## Variants\n\n- `readable/` - for reading", "| x native, interpreter ", " 8.00 (1) | ", "(1) not from a search of the variant: c2das-re's `compare/results_linux.json`, the project's entry measured 2029-01-01 00:00 UTC", "-jit fast/binjgb_all/binjgb_all.das -- "]) {
@@ -1171,7 +1173,7 @@ def test_puredoom(t : T?) {
             t |> success(!fexist(path_join(dir, "{v}/doom/doom_main.cir.json")))
             let sidecar = fread(path_join(dir, "{v}/doom.c2das"))
             t |> success(sidecar |> contains("\"DOOM\"") && sidecar |> contains("\"fn_macros\" : \"fold\""), sidecar)
-            t |> equal(fread(path_join(dir, "{v}/variant.json")), fread("ports/variants/puredoom.{v}.json"))
+            t |> equal(fread(path_join(dir, "{v}/variant.json")), fread(path_join(root, "ports/variants/puredoom.{v}.json")))
         }
         t |> equal(fread(path_join(dir, "LICENSE")), "GNU GENERAL PUBLIC LICENSE Version 2\n")
         t |> success(fexist(path_join(dir, "patches/0001-a.patch")))
