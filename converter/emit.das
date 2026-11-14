@@ -237,6 +237,12 @@ struct SharedDefs {
 //! options, the layout memo, and the scoping facts `unshadow_locals` finds.
 struct EmitProgram {
     functions : table<string>
+    // the function type of each function the program defines, by name: a reference whose type
+    // differs (an unprototyped declaration's) is reinterpreted (`function_value`)
+    function_types : table<string; int>
+    // the variadic functions whose value the program takes (`flag_variadic_values`): each gets a
+    // list-taking adapter beside its definition (`emit_list_adapter`)
+    variadic_values : table<string>
     // a function of the unit named like a mapped libc one or one the `main` wrapper calls, to the
     // free name it takes
     function_renames : table<string; string>
@@ -830,17 +836,24 @@ def das_type_dims(var em : Emitter; tu : CirTu; t : int; loc : CirLoc; dims : ar
 // a parameter of its type is, since das types a parameter's constness (F34)
 def private function_value_type(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string {
     if (tu.types[t].variadic) {
-        fail(em, "a pointer to a variadic function is not lowered yet", loc)
-        return ""
+        // a variadic function's value is its list-taking adapter (`emit_list_adapter`): the fixed
+        // parameters, then the trailing arguments as one `CVaList`
+        em.requires |> insert("c_runtime/variadic")
+        var inscope params <- late_params(em, tu, t, loc, "a{length(tu.types[t].params)} : CVaList")
+        return "function<({join(params, "; ")}) : {das_type(em, tu, tu.types[t].ret, loc)}>"
     }
+    return function_type_text(em, tu, tu.types[t].params, tu.types[t].ret, loc)
+}
+
+// the das function value type of C parameter types `param_types` and result type `ret`
+def private function_type_text(var em : Emitter; tu : CirTu; param_types : array<int>; ret : int; loc : CirLoc) : string {
     var params : array<string>
-    params |> reserve(length(tu.types[t].params))
-    for (idx in range(length(tu.types[t].params))) {
-        let mode = is_var_parameter(tu, tu.types[t].params[idx]) ? "var " : ""
-        params |> push("{mode}a{idx} : {das_type(em, tu, tu.types[t].params[idx], loc)}")
+    params |> reserve(length(param_types))
+    for (idx, pt in count(), param_types) {
+        let mode = is_var_parameter(tu, pt) ? "var " : ""
+        params |> push("{mode}a{idx} : {das_type(em, tu, pt, loc)}")
     }
-    let ret = das_type(em, tu, tu.types[t].ret, loc)
-    return "function<({join(params, "; ")}) : {ret}>"
+    return "function<({join(params, "; ")}) : {das_type(em, tu, ret, loc)}>"
 }
 
 // `E.X`: an enumerator through its enum's das name
@@ -1666,15 +1679,11 @@ def private called_type(tu : CirTu; fn : CirExpr const?) : int {
     return is_function_pointer(tu, fn.t) ? tu.types[fn.t].to : kind_of(tu, fn.t) == "func" ? fn.t : -1
 }
 
-// false with the error set when a call goes through a pointer whose type says another number
-// of arguments (an unprototyped `T (*)()`, which the C-IR spells as `T (*)(void)`)
-def private check_call_arity(var em : Emitter; tu : CirTu; x : CirExpr; through_pointer : bool; loc : CirLoc) : bool {
+// whether call `x` goes with arguments through an unprototyped `T (*)()`, which the C-IR spells as
+// `T (*)(void)`: C passes the arguments after the default promotions, which clang applied
+def private unprototyped_call(tu : CirTu; x : CirExpr; through_pointer : bool) : bool {
     let ft = through_pointer ? called_type(tu, x.fn) : -1
-    if (ft >= 0 && !tu.types[ft].variadic && length(tu.types[ft].params) != length(x.args)) {
-        fail(em, "a call with {length(x.args)} arguments through a function pointer whose type takes {length(tu.types[ft].params)} (an unprototyped `T (*)()`) is not lowered yet", loc)
-        return false
-    }
-    return true
+    return ft >= 0 && !tu.types[ft].variadic && empty(tu.types[ft].params) && !empty(x.args)
 }
 
 // `va_start(v, last)` is `v = va_begin(va)` over the list the `[variadic]` prologue bound,
@@ -1771,6 +1780,40 @@ def private call_argument(var em : Emitter; tu : CirTu; arg : CirExpr const?; te
     return text
 }
 
+// the callee of a call through a pointer: `invoke` takes the function value, which `fp(...)` and
+// `(*fp)(...)` both spell once the casts and the deref fall away; a callee that is itself a call
+// goes through a temporary, since the JIT crashes on `invoke(invoke(...))` of a local function
+// value (probes/test_functions.das); through an unprototyped `T (*)()` the value is reinterpreted to
+// the function the arguments' promoted types and the pointer's result type spell, the C call ABI
+def private pointer_callee(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : string {
+    var callee = emit_expr(em, tu, x.fn, loc)
+    if (unprototyped_call(tu, x, true)) {
+        let site_type = function_type_text(em, tu, [for (a in x.args); a.t], tu.types[called_type(tu, x.fn)].ret, loc)
+        callee = unsafe_value(em, "reinterpret<{site_type}>({callee.text})", PREC_PRIMARY)
+    }
+    if (!is_call_value(x.fn)) {
+        return callee.text
+    }
+    let tmp = temp_name(em)
+    hoist(em, ["let {tmp} = {callee.text}"])
+    return tmp
+}
+
+// `invoke(callee, args...)` of a call through a pointer of function type `ft`, `args` the callee
+// and the arguments; through a pointer to a variadic function, its list-taking adapter, the
+// trailing arguments as one `CVaList`
+def private pointer_invoke(var em : Emitter; tu : CirTu; ft : int; var args : array<string>) : Em {
+    if (ft >= 0 && tu.types[ft].variadic) {
+        em.requires |> insert("c_runtime/variadic")
+        let fixed = length(tu.types[ft].params)
+        let trailing = length(args) - 1 - fixed
+        let tail = trailing == 0 ? "VaNone()" : trailing == 1 ? "({args[fixed + 1]},)" : "({join([for (idx in range(fixed + 1, length(args))); args[idx]], LIST_SEPARATOR)})"
+        args |> resize(fixed + 1)
+        args |> push("to_cvalist({tail})")
+    }
+    return value("invoke({join(args, LIST_SEPARATOR)})", PREC_PRIMARY)
+}
+
 def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     if (key_exists(ALLOCA_NAMES, called_name(x))) {
         return emit_alloca(em, tu, x, loc)
@@ -1792,24 +1835,10 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         return value("", PREC_PRIMARY)
     }
     let name = callee_name(em, tu, x.fn, loc)
-    if (!check_call_arity(em, tu, x, empty(name), loc)) {
-        return value("", PREC_PRIMARY)
-    }
     var args : array<string>
     args |> reserve(length(x.args) + 1)
     if (empty(name)) {
-        // a call through a pointer: `invoke` on the function value, which `fp(...)` and
-        // `(*fp)(...)` both spell once the casts and the deref fall away; a callee that is
-        // itself a call goes through a temporary, since the JIT crashes on `invoke(invoke(...))`
-        // of a local function value (probes/test_functions.das)
-        let callee = emit_expr(em, tu, x.fn, loc)
-        if (is_call_value(x.fn)) {
-            let tmp = temp_name(em)
-            hoist(em, ["let {tmp} = {callee.text}"])
-            args |> push(tmp)
-        } else {
-            args |> push(callee.text)
-        }
+        args |> push(pointer_callee(em, tu, x, loc))
     }
     let library = !empty(name) && !key_exists(em.prog.functions, called_name(x))
     let fixed_count = trailing_from(tu, x)
@@ -1818,10 +1847,10 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         let text = stored(em, emit_expr(em, tu, arg, loc), tu, arg.t).text
         args |> push(call_argument(em, tu, arg, text, idx < fixed_count, library, crt))
     }
-    if (empty(name)) {
-        return value("invoke({join(args, LIST_SEPARATOR)})", PREC_PRIMARY)
-    }
     let ft = called_type(tu, x.fn)
+    if (empty(name)) {
+        return pointer_invoke(em, tu, ft, args)
+    }
     if (!library && ft >= 0 && tu.types[ft].variadic) {
         // the trailing arguments' `VaNone` and tuples are c_runtime/variadic's, which a caller in
         // another module than the function's requires too
@@ -2237,7 +2266,7 @@ def private emit_cast(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
     if (k == "FunctionToPointerDecay") {
         // a function's name decays to its `@@` value; a function designator reached
         // through a pointer (`*fp`) is that pointer's value already
-        return x.a.e == "ref" ? function_value(em, *x.a, loc) : inner
+        return x.a.e == "ref" ? function_value(em, tu, *x.a, loc) : inner
     }
     if (k == "ArrayToPointerDecay" && is_va_list(tu, x.a.t)) {
         // linux's `va_list` is a one-element array whose decay passes it by reference, which a
@@ -2629,13 +2658,26 @@ def private enum_operand_text(var em : Emitter; tu : CirTu; side : CirExpr const
 def private target_of(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : string => das_type(em, tu, t, loc)
 
 // `@@name`: a function of this unit as a value; C `main` is `c_main`; an external function has
-// no das value C's type would fit, since a call table spells its calls
-def private function_value(var em : Emitter; f : CirExpr; loc : CirLoc) : Em {
+// no das value C's type would fit, since a call table spells its calls. A reference whose type
+// is not the definition's (a function declared without a prototype, `void A_Light0();`, named
+// before its definition) is reinterpreted to the type at the site, as a `BitCast` is
+def private function_value(var em : Emitter; tu : CirTu; f : CirExpr; loc : CirLoc) : Em {
     if (!key_exists(em.prog.functions, f.name)) {
         fail(em, "the value of external function `{f.name}` (a pointer to a function this file does not define) is not lowered yet", loc)
         return value("", PREC_PRIMARY)
     }
-    return value("@@{function_name(em, f.name)}", PREC_PRIMARY)
+    let defined = em.prog.function_types?[f.name] ?? -1
+    if (defined >= 0 && tu.types[defined].variadic) {
+        return value("@@{list_adapter_name(em, f.name)}", PREC_PRIMARY)
+    }
+    let ref = "@@{function_name(em, f.name)}"
+    if (defined >= 0 && kind_of(tu, f.t) == "func" && !tu.types[f.t].variadic && !tu.types[defined].variadic) {
+        let site = function_value_type(em, tu, f.t, loc)
+        if (site != function_value_type(em, tu, defined, loc)) {
+            return unsafe_value(em, "reinterpret<{site}>({ref})", PREC_PRIMARY)
+        }
+    }
+    return value(ref, PREC_PRIMARY)
 }
 
 // whether `x` is a null pointer constant below its casts: `0` or `(void *)0` converted
@@ -2864,7 +2906,7 @@ def private emit_unary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) 
     if (x.op == "addr") {
         // `&f` of a function is its value, not an address
         if (x.a.e == "ref" && kind_of(tu, x.a.t) == "func") {
-            return function_value(em, *x.a, loc)
+            return function_value(em, tu, *x.a, loc)
         }
         if (is_marshal(em, tu, x.a.t)) {
             // a value of the record has das's layout, which is not what C memory holds
@@ -8244,6 +8286,66 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
         spell_function(em, tu, d)
         em.fold_function_off = false
     }
+    emit_list_adapter(em, tu, d)
+}
+
+// the name of variadic function `name`'s list-taking adapter
+def private list_adapter_name(em : Emitter; name : string) : string => "{function_name(em, name)}__va_list"
+
+// the list-taking adapter of variadic function `d` when the program takes its value
+// (`EmitProgram.variadic_values`): its fixed parameters and the trailing arguments as one `CVaList`,
+// which `f`va` takes as it is (`to_cvalist`), so a pointer to the function is a plain das function
+// value, one per function, equal wherever the program takes it
+def private emit_list_adapter(var em : Emitter; tu : CirTu; d : CirDecl) {
+    if (!key_exists(em.prog.variadic_values, d.name) || !tu.types[d.t].variadic || !empty(em.error)) {
+        return
+    }
+    let ret = das_type(em, tu, tu.types[d.t].ret, d.loc)
+    var inscope params <- late_params(em, tu, d.t, d.loc, "a{length(tu.types[d.t].params)} : CVaList")
+    let args = join([for (idx in range(length(tu.types[d.t].params) + 1)); "a{idx}"], ", ")
+    let call = "{function_name(em, d.name)}`va({args})"
+    open_block(em, "def {d.is_static ? "private " : ""}{list_adapter_name(em, d.name)}({join(params, "; ")})" + (ret == "void" ? "" : " : {ret}"))
+    line(em, ret == "void" ? call : "return {call}")
+    close_block(em)
+    line(em, "")
+}
+
+// `EmitProgram.variadic_values`: the variadic functions of the program named anywhere but as a
+// call's callee, whose value the program takes
+def private flag_variadic_values(var em : Emitter; tu : CirTu) {
+    var callees : table<uint64>
+    for (d in tu.decls) {
+        if (d.k == "func" && d.body != null) {
+            each_expr(d.body) $(x) {
+                if (x.e == "call") {
+                    var at = x.fn
+                    while (at != null && at.e == "cast") {
+                        at = at.a
+                    }
+                    if (at != null) {
+                        callees |> insert(intptr(at))
+                    }
+                }
+            }
+        }
+    }
+    for (d in tu.decls) {
+        if (d.k == "func" && d.body != null) {
+            each_expr(d.body) $(x) {
+                let defined = x.e == "ref" ? em.prog.function_types?[x.name] ?? -1 : -1
+                if (defined >= 0 && tu.types[defined].variadic && !key_exists(callees, intptr(x))) {
+                    em.prog.variadic_values |> insert(x.name)
+                }
+            }
+        } elif (d.k == "global") {
+            each_subexpr(d.init) $(x) {
+                let defined = x.e == "ref" ? em.prog.function_types?[x.name] ?? -1 : -1
+                if (defined >= 0 && tu.types[defined].variadic) {
+                    em.prog.variadic_values |> insert(x.name)
+                }
+            }
+        }
+    }
 }
 
 // whether the function spelled into `em.out` from `out_at` declares a folded call (`let` or `var`)
@@ -8532,7 +8634,7 @@ def private under_pointer_casts(tu : CirTu; p : CirExpr const?) : CirExpr const?
 // decay of an array member at offset 0 (`x` the cast), as its record's pointer reinterpreted to the
 // result's type: `reinterpret<TValue?>(base + a)` for `&(base + a)->val`, the pointer as it is when
 // it already has that type; an empty text for any other operand, which keeps `addr(...)`
-[arch(at="ARCHITECTURE_EMITTER_AGGREGATES.md#first-member-address")]
+[arch(at="ARCHITECTURE_EMITTER_ADDRESSES.md#first-member-address")]
 def private first_member_address(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let root = em.prog.reinterpret_members ? first_member_root(em, tu, x.a) : null
     if (root == null) {
@@ -9513,6 +9615,7 @@ def private prepare_program(var em : Emitter; var tu : CirTu; side : Sidecar) {
     for (d in tu.decls) {
         if (d.k == "func" && d.body != null) {
             em.prog.functions |> insert(d.name)
+            em.prog.function_types[d.name] = d.t
         }
     }
     rename_taken_names(em, tu)
@@ -9538,6 +9641,7 @@ def private prepare_program(var em : Emitter; var tu : CirTu; side : Sidecar) {
         flag_inline_helpers(em, tu)
     }
     flag_typed_pointer_arguments(em, tu)
+    flag_variadic_values(em, tu)
 }
 
 // whether `t` is a data pointer to a type other than `void`
