@@ -36,10 +36,10 @@ let WORK_LINE_DAS = "def work_line \{\n    for (a in get_command_line_arguments(
 // trailer with exit 2 for `binary_trees.lua`, another first line for `nbody.lua`, and `ALL` with
 // the suite's closing line for `all.lua`, whose row compares the exit code and that line alone;
 // every run counts itself in `runs_<lane>.log` of its working folder (a run of the fast variant's
-// tree or binary as `<tier>-fast`) and reads its arguments as a
+// tree or binary as `<tier>-fast`), a run of `fib.lua` also names its lane in `runs_order_fib.log`, and reads its arguments as a
 // converted program does (get_user_args: after `--` under daslang and the AOT host, all of them
 // under an exe), so a lane that hands them on wrongly fails its cells
-let LUA_DAS = "options gen2\nrequire strings\nrequire daslib/strings_boost\nrequire daslib/fio\nrequire daslib/clargs\ndef count_run(argv : array<string>) \{\n    let tier = has_value(argv, \"-jit\") ? \"jit\" : argv[0] |> ends_with(\"_exe.exe\") || argv[0] |> ends_with(\"_exe\") ? \"exe\" : argv[0] |> ends_with(\"_aot.exe\") || argv[0] |> ends_with(\"_aot\") ? \"aot\" : \"interp\"\n    let lane = join(argv, \" \") |> contains(\"/fast/\") ? \"\{tier\}-fast\" : tier\n    fopen(\"runs_\{lane\}.log\", \"ab\") $(f) \{\n        if (f != null) \{\n            fwrite(f, \"run\\n\")\n        \}\n    \}\n\}\n{WORK_LINE_DAS}[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    count_run(argv)\n    let args <- get_user_args()\n    if (empty(args)) \{\n        print(\"no arguments\\n\")\n        return 3\n    \}\n    let last = args[length(args) - 1]\n    print(\"[I] stand-in\\n\")\n    work_line()\n    if (last |> ends_with(\"binary_trees.lua\")) \{\n        print(\"EXCEPTION: boom\\ntrailer\\n\")\n        return 2\n    \}\n    if (last == \"all.lua\" && !fexist(\"all.lua\")) \{\n        return 1\n    \}\n    if (last |> ends_with(\"nbody.lua\")) \{\n        print(\"drift\\n\{last\}\\n\")\n        return 0\n    \}\n    print(\"\{last == \"all.lua\" ? \"ALL\\nfinal OK !!!\" : last\}\\n\")\n    return 0\n\}\n"
+let LUA_DAS = "options gen2\nrequire strings\nrequire daslib/strings_boost\nrequire daslib/fio\nrequire daslib/clargs\ndef count_run(argv : array<string>) \{\n    let tier = has_value(argv, \"-jit\") ? \"jit\" : argv[0] |> ends_with(\"_exe.exe\") || argv[0] |> ends_with(\"_exe\") ? \"exe\" : argv[0] |> ends_with(\"_aot.exe\") || argv[0] |> ends_with(\"_aot\") ? \"aot\" : \"interp\"\n    let lane = join(argv, \" \") |> contains(\"/fast/\") ? \"\{tier\}-fast\" : tier\n    fopen(\"runs_\{lane\}.log\", \"ab\") $(f) \{\n        if (f != null) \{\n            fwrite(f, \"run\\n\")\n        \}\n    \}\n    if (argv[length(argv) - 1] |> ends_with(\"fib.lua\")) \{\n        fopen(\"runs_order_fib.log\", \"ab\") $(f) \{\n            if (f != null) \{\n                fwrite(f, \"\{lane\}\\n\")\n            \}\n        \}\n    \}\n\}\n{WORK_LINE_DAS}[export]\ndef main : int \{\n    let argv <- get_command_line_arguments()\n    count_run(argv)\n    let args <- get_user_args()\n    if (empty(args)) \{\n        print(\"no arguments\\n\")\n        return 3\n    \}\n    let last = args[length(args) - 1]\n    print(\"[I] stand-in\\n\")\n    work_line()\n    if (last |> ends_with(\"binary_trees.lua\")) \{\n        print(\"EXCEPTION: boom\\ntrailer\\n\")\n        return 2\n    \}\n    if (last == \"all.lua\" && !fexist(\"all.lua\")) \{\n        return 1\n    \}\n    if (last |> ends_with(\"nbody.lua\")) \{\n        print(\"drift\\n\{last\}\\n\")\n        return 0\n    \}\n    print(\"\{last == \"all.lua\" ? \"ALL\\nfinal OK !!!\" : last\}\\n\")\n    return 0\n\}\n"
 
 // the stand-in harness: each run's arguments a line of `lua/work/harness_runs.log`, then its report
 // with seconds that differ on every run, a line of seconds alone, and clauses ending in ` s` that
@@ -567,13 +567,53 @@ def test_bench(t : T?) {
 
 [test]
 def test_default_lanes(t : T?) {
-    t |> run_stand_in("--perf without --lanes measures every das lane but the AOT lanes, the fast variant's among them", "c2das_ports_default_lanes") @(t : T?; root, clone : string) {
+    t |> run_stand_in("--perf without --lanes measures every das lane, the AOT lanes and the fast variant's among them", "c2das_ports_default_lanes") @(t : T?; root, clone : string) {
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--allow-dirty"], out), 0, out)
         var name : string
         let c <- capture_of(clone, name)
-        t |> equal(c.command, "scripts/publish_ports.sh --program lua --no-convert --perf --samples 1 --lanes interp,jit,exe,interp-fast,jit-fast,exe-fast --timeout 1800")
-        t |> equal(join([for (lane in c.lanes); lane.name], ","), "native,interp,jit,exe,interp-fast,jit-fast,exe-fast")
+        t |> equal(c.command, "scripts/publish_ports.sh --program lua --no-convert --perf --samples 1 --lanes interp,jit,exe,aot,interp-fast,jit-fast,exe-fast,aot-fast --timeout 1800")
+        t |> equal(join([for (lane in c.lanes); lane.name], ","), "native,interp,jit,exe,aot,interp-fast,jit-fast,exe-fast,aot-fast")
+        for (lane in ["aot", "aot-fast"]) {
+            let fib <- cell_of(t, c, "fib", lane)
+            t |> success(empty(fib.error) && length(fib.samples) == 1, "{lane}: {fib}")
+        }
+    }
+}
+
+[test]
+def test_sample_order(t : T?) {
+    t |> run_stand_in("the samples interleave: each round one sample of every lane, the das lanes forward, then backward", "c2das_ports_sample_order") @(t : T?; root, clone : string) {
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "3", "--lanes", "interp,jit,jit-fast", "--allow-dirty"], out), 0, out)
+        let order = join([for (ln in split(fread(path_join(root, "runs_order_fib.log")), "\n")); ln; where !empty(ln)], " ")
+        t |> equal(order, "interp jit jit-fast jit-fast jit interp interp jit jit-fast")
+        var name : string
+        let c <- capture_of(clone, name)
+        let fib <- cell_of(t, c, "fib", "jit")
+        t |> success(empty(fib.error) && length(fib.samples) == 3 && length(fib.work_samples) == 3, "{fib}")
+    }
+}
+
+[test]
+def test_native_reuse(t : T?) {
+    t |> run_stand_in("the native lane reuses the binary its key describes and builds again after a C source changes", "c2das_ports_native_reuse") @(t : T?; root, clone : string) {
+        var inscope argv <- ["env", "DAS_LOG_LEVEL=info", "C2DAS_RUST={path_join(root, "rust")}"]
+        argv |> push_from(publish_argv(["--repo", clone, "--no-convert", "--perf", "--samples", "1", "--lanes", "interp", "--allow-dirty"]))
+        var out : string
+        t |> equal(run_in(root, argv, out), 0, out)
+        t |> success(!(out |> contains("native build reused")), out)
+        let key = path_join(root, "lua/work/bench/lua_native.key")
+        t |> success(fread(key) |> contains("lua/work/lua.c "), fread(key))
+        t |> equal(run_in(root, argv, out), 0, out)
+        t |> success(out |> contains("native build reused"), out)
+        fwrite(path_join(root, "lua/work/lua.c"), LUA_C + "/* edited */\n")
+        t |> equal(run_in(root, argv, out), 0, out)
+        t |> success(!(out |> contains("native build reused")), out)
+        var name : string
+        let c <- capture_of(clone, name)
+        let fib <- cell_of(t, c, "fib", "interp")
+        t |> success(empty(fib.error), "{fib}")
     }
 }
 

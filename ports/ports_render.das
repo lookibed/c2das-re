@@ -456,7 +456,7 @@ def render_perf(c : Capture) : string {
         if (has_value([for (l in c.lanes); l.name |> ends_with("-fast")], true)) {
             w |> write("A lane `, fast` runs the `fast/` variant's modules, the others the `readable/` variant's. ")
         }
-        w |> write("The AOT lanes are measured only when asked for and have a column only where their build stood.\n\n")
+        w |> write("An AOT lane has a column only where its build stood.\n\n")
         w |> write("Every speed number is the work alone, timed inside the process: a workload runs under `bench/timed.lua`, ")
         w |> write("which reads `os.clock()` (C `clock()`, the process's CPU time, under every lane) before and after the ")
         w |> write("script and reports the seconds between, and its work time is the median of those, ± half their range as a ")

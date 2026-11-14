@@ -117,12 +117,16 @@ module `perf/run.das` builds its kernels' lanes with:
 
 - `native`: the C files the harness's program manifest `work/<runs>.program.json` lists, in its
   order, built by the pinned clang at `-O3 -w -funsigned-char` (with `-lm`). A missing or refused
-  manifest is the lane's reason.
+  manifest is the lane's reason. The binary an earlier publish built is reused while
+  `<binary>.key` holds the command, every `.c` and `.h` file of the C files' folders with its size
+  and its text's hash, and the binary's own size and mtime (`native_build_key`), as the exe and AOT
+  lanes reuse theirs (`converter/ARCHITECTURE_TIERS.md` section 5, "The build and its reuse"), so a capture timed after a
+  publish that built its lanes builds nothing.
 - `interp` and `jit`: daslang over the `readable` variant's entry module
   (`work/variants/readable/<layout folder>/<runs>.das`) with the module folders loaded.
 - `exe`: daslang's `-exe` build of it.
 - `aot`: the `-ctx` context with the host of `converter/tiers.das`, compiled by the pinned
-  `clang++ -O3`; measured only when `--lanes` names it, whose default is every other das lane.
+  `clang++ -O3`. `--lanes` defaults to every das lane, the AOT ones among them.
 - `interp-fast`, `jit-fast`, `exe-fast` and `aot-fast`: the same over the `fast` variant's
   module, its binaries under `work/bench/fast/`.
 
@@ -168,7 +172,11 @@ row times the program's load and no work: under a das lane that is the load from
 not a compile; with the spawn inside it, the row is an upper bound of the load. A cell is the
 median of `--samples` samples (5 by default), with the spread as half the sample range over the
 median, perf's rule; under the wrapper its work time is the median of the samples' work seconds,
-with their spread by the same rule.
+with their spread by the same rule. The samples of a workload interleave (`sample_order`): round
+`k` takes one sample of every lane still standing, native first, whose first sample is the
+oracle, then the das lanes in `--lanes` order in an even round and in the reverse order in an odd
+one, so a drift of the machine over the run weighs on every das lane alike and two lanes compared
+in an A/B never take their samples in one fixed order.
 
 The native lane's first sample is the oracle. A sample fails the cell when:
 
