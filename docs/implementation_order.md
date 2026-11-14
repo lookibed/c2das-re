@@ -2290,6 +2290,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `over_indexed`, `padded`) into the whole conversion, so the committed capture, the criteria and the ports
   publisher convert with them; a file converted alone leaves them out (the converter refuses a key naming a
   record the file does not declare).
+  Step 2 (W1): the converter predefines `__STDC_NO_VLA__` as 1 (C11 6.10.8.3, an implementation without VLAs;
+  `CONVERTER_DEFINES` of the dumper, the criteria's preprocessing too), so wasm3's `M3_HAS_VLA` takes its
+  fixed-size `argTypes`; VLAs stay out of scope.
 
 ## P6 — Doom
 

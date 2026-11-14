@@ -795,8 +795,8 @@ let private DETAILED_PREPROCESSING_RECORD = 1u
 def private collect_records(var d : Dumper; triple : string; resource_dir : string; inputs : array<string>) {
     // libclang finds no resource directory of its own, so the builtin headers (`stddef.h`, whose
     // `size_t` a libc prototype spells) come from the pinned clang's
-    var args <- ["-target", triple, "-funsigned-char", "-w", NO_CTYPE_MACROS, "-resource-dir", resource_dir]
-    args |> push_from(inputs)
+    var args <- ["-target", triple, "-funsigned-char", "-w", "-resource-dir", resource_dir]
+    args |> push_from(CONVERTER_DEFINES, inputs)
     var idx = clang_createIndex(0, 0)
     // the detailed record lists each macro expansion of a file with its definition
     var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, DETAILED_PREPROCESSING_RECORD)
@@ -3711,9 +3711,12 @@ def private merge_tentative(var d : Dumper; var cd : CirDecl?) : bool {
 def default_clang : string =>
     has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
 
-// glibc's <ctype.h> spells `isalpha(c)` as a macro indexing its locale table (`__ctype_b_loc`)
-// unless `__NO_CTYPE` is defined: with it each is the libc function the crt module binds
-let NO_CTYPE_MACROS = "-D__NO_CTYPE"
+//! The defines every clang run of the converter passes before the sidecar's: glibc's <ctype.h>
+//! spells `isalpha(c)` as a macro indexing its locale table (`__ctype_b_loc`) unless `__NO_CTYPE`
+//! is defined, with it each is the libc function the crt module binds; and `__STDC_NO_VLA__`,
+//! which C11 6.10.8.3 has an implementation without variable-length arrays define, so a program
+//! that tests it takes its fixed-size path (the converter lowers no VLA)
+let CONVERTER_DEFINES <- ["-D__NO_CTYPE", "-D__STDC_NO_VLA__=1"]
 
 // the sidecar's `defines`, `include_dirs` and `include_files` as clang flags, `-D<entry>`, `-I<dir>`
 // and `-include <file>` each
@@ -3830,8 +3833,8 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; inputs : DumpIn
         return <- d
     }
     var out : string
-    var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", NO_CTYPE_MACROS, "-target", target.triple]
-    dump_args |> push_from(flags, [c_path])
+    var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", "-target", target.triple]
+    dump_args |> push_from(CONVERTER_DEFINES, flags, [c_path])
     let rc = run_and_capture(dump_args, out, 120.0)
     if (rc != 0) {
         d.error = "clang exited {rc}:\n{out}"

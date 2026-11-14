@@ -101,8 +101,8 @@ def read_preprocessed(text, main_path : string) : Preprocessed {
 //! `include_dirs` and `-include` for each of `include_files`, as the dumper passes a sidecar's;
 //! `error` names a unit clang refused.
 def preprocess(c_path : string; defines, include_dirs, include_files : array<string>; var error : string&) : Preprocessed {
-    var argv <- [default_clang(), "-E", "-C", "-dD", "-D__NO_CTYPE"]
-    argv |> push_from([for (d in defines); "-D{d}"], [for (d in include_dirs); "-I{d}"])
+    var argv <- [default_clang(), "-E", "-C", "-dD"]
+    argv |> push_from(CONVERTER_DEFINES, [for (d in defines); "-D{d}"], [for (d in include_dirs); "-I{d}"])
     for (f in include_files) {
         argv |> push_from(["-include", f])
     }
