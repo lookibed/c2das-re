@@ -1,7 +1,10 @@
 options gen2
 require dastest/testing_boost public
 require strings
+require daslib/fio
+require daslib/strings_boost
 require _daslang_child
+require ../converter/tiers.das
 
 [test]
 def test_goto(t : T?) {
@@ -180,5 +183,25 @@ def test_goto_dispatch(t : T?) {
         t |> equal(bare.out, "11701 31076 -1 -1\n")
         let jit = daslang_child_flags("goto_flat_cfg_jit", flat_cfg("        \}"), jit_flags())
         t |> equal(jit.out |> ends_with("11701 31076 -1 -1\n"), true, jit.out)
+    }
+}
+
+// a goto past an initialized local, and past a local a constant-true branch always skips: the
+// shapes C's switch and goto lowerings produce (lookibed/daScript#18)
+let private GOTO_PAST_INIT = "options gen2\nvar k = 3\n\ndef skip_init(n : int) : int \{\n    if (n > 1) \{\n        goto label 1\n    \}\n    var g = n * 2\n    label 1:\n    g = n\n    return g\n\}\n\ndef skip_always(n : int) : int \{\n    if (true) \{\n        goto label 1\n    \}\n    var g : int\n    label 1:\n    g = n\n    return g\n\}\n\n[export]\ndef main : int \{\n    print(\"\{skip_init(k)\} \{skip_always(k)\}\\n\")\n    return 0\n\}\n"
+
+[test]
+def test_goto_aot(tt : T?) {
+    let work = test_temp_dir()
+    let entry = path_join(work, "goto_past_init.das")
+    fwrite(entry, GOTO_PAST_INIT)
+    for (tier in fixed_array("interp", "aot")) {
+        tt |> run("a goto past an initialized local, or past one a constant-true branch always skips, builds and runs under {tier} (lookibed/daScript#18, fixed upstream)") @(t : T?) {
+            var out : string
+            let rc = run_tier(entry, tier, path_join(work, tier), out, CONVERTED_MODULES)
+            t |> equal(rc, 0, "{tier}: {out}")
+            let lines <- [for (l in split(out, "\n")); strip(l); where !empty(strip(l))]
+            t |> equal(empty(lines) ? "" : lines[length(lines) - 1], "3 3", "{tier}: {out}")
+        }
     }
 }
