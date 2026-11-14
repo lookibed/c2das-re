@@ -2282,6 +2282,36 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   job as a normal job (the key makes the timed run reuse it, so no build lands inside the exclusive window).
   Doom's `run_converted` times the whole `run_tier` call, so its first run includes the build: build first.
   `sieve`, `matmul` and `str_copy` stay exception cells (#48).
+  Step 3 (2026-11-14): PR #219 turns the AOT lanes on by default in the ports publisher and in doom `--fps`,
+  interleaves samples across lanes (native first, then the das lanes forward and backward in turn) and reuses the
+  native build by a key. PR #218 adds `compare --project --bench-only`, which times the bench over the kept work
+  folder. Capture on box PC, daScript `6401904cf9`, conversion as `accac6c`; every binary was built first as a
+  normal heavy job. Timed in two `heavy --exclusive` jobs, both `machine quiet (cpu busy 1%)`:
+  `TIMING-aot-all` 08:46-09:13Z (kernels, projects, PureDOOM) and `TIMING-aot-lua` 09:17-09:58Z; 3 samples each.
+  x native, readable / fast:
+
+  | program | interp | JIT | exe | AOT |
+  |---|---|---|---|---|
+  | Lua (4 benches + suite) | 110.9 / 111.4 | 1.54 / 1.49 | 1.54 / 1.57 | 1.36 / 1.30 |
+  | PureDOOM demo1-3 | 44.2 / 43.1 | 1.07 / 1.02 | 1.04 / 0.98 | 5.19 / 5.17 |
+  | binjgb | 73.4 / 77.4 | 1.15 / 1.08 | 1.19 / 1.07 | 1.15 / 1.10 |
+  | h264bsd-mp4 | 59.6 / 60.9 | 1.05 / 1.00 | 1.05 / 1.00 | 1.13 / 1.15 |
+  | plmpeg-stream | 29.4 / 29.9 | 0.98 / 0.98 | 1.02 / 1.03 | 1.08 / 1.09 |
+
+  Lua's exe column covers the four benches only: the exe binary does not load the crt module from the
+  test-suite folder (a relative module path). The numbers are in the variant files' `results.speed`,
+  `compare/results_linux.json` and `doom/results_linux.json`. The predictions,
+  `/root/notes/predictions/2026-11-14-aot-capture.md`, scored 18 of 20 readable cells; the misses are
+  PureDOOM AOT (5.2, predicted 1.3-4.0) and Lua AOT (faster than predicted).
+  Open from this capture:
+  - (a) PureDOOM AOT at 5.2x native, against JIT and exe at 1.0-1.1. The suspect is #48 (Doom's globals read
+    through `das_global` probes); it is not yet profiled.
+  - (b) checks off is slower than safe in places: binjgb interp 1.05; the Lua exe lane on nbody 1.05 and on
+    spectral_norm 1.03; h264bsd-mp4 and plmpeg-stream interp 1.02. Every one is outside its spread.
+  - (c) Lua's exe test-suite cell, the module path.
+  - (d) The perf kernels' AOT lane was timed by the capture script over `perf/work` (17 kernels; aot/exe
+    geomean 1.01 over the 14 non-exception kernels; sieve 8.1, str_copy 3.6, matmul 1.6, switch_local 1.67 x
+    native). `perf/results_linux.json` is not re-recorded, since `perf/run.das` converts inside its run.
 - **P9.32 The whole-program blockers of wasm3, doomgeneric and quakegeneric** (ruling 38 addendum 22 item C;
   the audit `/root/notes/research/aot/blockers.md`, its rows W1-W4, D1-D8, Q1-Q6). Our side fixed in the audit's
   order, a PR each, until each program converts whole and runs under interp, JIT, exe and AOT with the native
