@@ -124,8 +124,8 @@ exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
   `fx`), `box_of`, `box_label`, `capture_box`, `box_refusal` (a `--box` the CPU contradicts),
   `same_box`, `two_boxes_line` and `capture_label`, a provenance line's `<box> (<cpu>)` (section 5).
 - `tests/` - the dastest suite over `perf_tables.das`, `perf_cli.das`, `boxes.das` and the method kernels'
-  selection, driven by JSON fixtures and a scratch README, over `perf_lanes.das`'s arithmetic, commands and the AOT tier's refusal of program
-  arguments, and `run.das` itself as a child process: `-?`, one sample of `blit` into an
+  selection, driven by JSON fixtures and a scratch markdown document, over `perf_lanes.das`'s arithmetic, commands and the AOT tier's refusal of program
+  arguments, and `run.das` itself as a child process: `-?`, `--table --readme` into a scratch `docs/performance.md`, one sample of `blit` into an
   `--out` file, whose `interp-copy`, `interp-while`, `interp-reinterpret`, `interp-inline`, `interp-goto`, `interp-checks-off`, `interp-past-end-inline`, `interp-fn-macros-expand` and the three `interp-*-off` cells must time their conversions and match
   the native result, one sample of the dasProfile method over `fib_loop` and `fib_recursive`
   whose five lanes must stand and whose `--check` against a far-off baseline must exit 1 naming

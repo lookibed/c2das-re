@@ -35,7 +35,7 @@ require ../ports/variants.das
 //! markdown.
 
 //! the document `--readme` rewrites and the rulings `--report` opens with, from the repository root
-let README = "docs/rust-comparison.md"
+let COMPARE_DOC = "docs/rust-comparison.md"
 let RULINGS = "docs/rulings-pending.md"
 
 [CommandLineArgs]
@@ -319,8 +319,8 @@ def run_render(args : CompareArgs; out : string) : int {
         return 1
     }
     let body = compare_report(results)
-    if (args.readme && !update_readme(README, body, COMPARE_BEGIN, COMPARE_END)) {
-        to_log(LOG_ERROR, "{README} has no compare markers\n")
+    if (args.readme && !update_readme(COMPARE_DOC, body, COMPARE_BEGIN, COMPARE_END)) {
+        to_log(LOG_ERROR, "{COMPARE_DOC} has no compare markers\n")
         return 1
     }
     if (!empty(args.report)) {

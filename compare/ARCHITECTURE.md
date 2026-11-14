@@ -40,8 +40,8 @@ daslang; this repository never builds it inside a test and never vendors it.
   `--filter`; `--project <name>` runs one real project with `--samples` and `--as`; `--readme`
   and `--report <path>` render the capture `--out` names (section 11), in a run of their own. Exit
   0 when it ran, 2 when the Rust translator or an input (a suite's, a project's, Lua's release) is
-  missing, 1 on a bad command line, an unreadable capture, an unreadable sidecar or a README
-  without the compare markers.
+  missing, 1 on a bad command line, an unreadable capture, an unreadable sidecar or a
+  `docs/rust-comparison.md` without the compare markers.
 - `compare_render.das` - the capture as markdown (section 11, `ARCHITECTURE_REPORT.md`): the
   suites, perf, size and counters tables, the functions side by side, Lua and Doom, the real
   projects, and where the Rust translator is ahead (`compare_report`); it reads and writes no file.

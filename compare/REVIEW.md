@@ -7,7 +7,7 @@
 writes it from the capture the table's generator reads, never by hand.** A hand-typed number goes
 stale with the next capture.
 
-**A diff to the block of `README.md` (repository root) between `<!-- compare:begin -->` and
+**A diff to the block of `docs/rust-comparison.md` between `<!-- compare:begin -->` and
 `<!-- compare:end -->` is the output of `compare/run.das --readme` over the committed capture,
 never a hand edit.** The next `--readme` run overwrites a hand edit without a trace.
 

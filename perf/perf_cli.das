@@ -10,7 +10,7 @@ require perf_tables
 require boxes
 
 //! The file side of the perf harness: the baseline capture a delta compares against, the tables
-//! a run prints and reports, the `--check` verdict, and the README sections a run rewrites.
+//! a run prints and reports, the `--check` verdict, and the `docs/performance.md` sections a run rewrites.
 
 //! The `--baseline` file when given, else `committed` at HEAD; null without error when HEAD has none.
 def baseline_capture(path, committed : string; var name : string&; var error : string&) : JsonValue? {
@@ -66,13 +66,13 @@ def check_drift(js, baseline : JsonValue?; baseline_name : string; tolerance : i
     return empty(drifted)
 }
 
-//! The markers around the README section of each method.
+//! The markers around the `docs/performance.md` section of each method.
 let README_BEGIN = "<!-- perf-table:begin -->"
 let README_END = "<!-- perf-table:end -->"
 let README_METHOD_BEGIN = "<!-- perf-method:begin -->"
 let README_METHOD_END = "<!-- perf-method:end -->"
 
-//! The README section of capture `js`: the results table of the default method, under the
+//! The `docs/performance.md` section of capture `js`: the results table of the default method, under the
 //! dasProfile method the comparison with dasProfile's own capture at `dasprofile_path`; "" with
 //! `error` set when that capture does not read.
 def readme_section(js : JsonValue?; method, dasprofile_path : string; var error : string&) : string {

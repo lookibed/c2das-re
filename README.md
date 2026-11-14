@@ -106,21 +106,23 @@ the median; a spread above 20% is marked `suspect`.
 C is the time per run; every DAS cell is its lane's time over C's. Source: `perf/results_linux.json`
 (captured 2026-11-09 15:59 UTC). The full table, with the `--param-writes copy`, `--loops while`,
 `--checks off` and other interpreter lanes, is in [docs/performance.md](docs/performance.md),
-rendered by `scripts/run_perf.sh --readme`.
+rendered by `scripts/run_perf.sh --table --readme`.
 
 [^dp]: dasProfile's hand-written das over its own C++, from `perf/dasprofile_linux.json`
     (dasProfile `436d58d`, box bench, AMD Ryzen 3 1200, 2026-11-03): a ratio, since times from
-    two boxes do not compare. Matched by name as `perf/perf_tables.das` `SHARED_KERNELS` maps them
-    (`fib_loop` to `fibonacci loop`, `fib_recursive` to `fibonacci recursive`, `primes` to
-    `primes loop`), at the same workload (count 6511134, depth 31, limit 14000). The programs are
-    not the same: dasProfile's kernels are `noinline` and store each result into a `volatile`
-    sink, and its `primes` tests `i < n` differently (`perf/perf_tables.das`
-    `DIFFERENT_PROGRAMS`), so the column sets the two side by side and compares nothing.
+    two boxes do not compare; the capture runs daslang 0.6.4 on the bench box, not on box PC.
+    Matched by name: this table's `fib_loop`, `fib_recursive` and `primes` are this tree's
+    versions of dasProfile's `fibonacci loop`, `fibonacci recursive` and `primes loop`, at the same
+    workload (count 6511134, depth 31, limit 14000), and `perf/perf_tables.das` `DIFFERENT_PROGRAMS`
+    names them different programs: dasProfile's kernels are `noinline` and store each result into
+    a `volatile` sink, and its `primes` tests `i < n` differently. (`SHARED_KERNELS` maps
+    dasProfile's tests to its own kernels in C under `perf/kernels/dasprofile/`, not to these
+    rows.) The column sets the two side by side and compares nothing.
 [^nodp]: dasProfile has no test of this kernel.
 
-### Doom (`PureDOOM -timedemo`, `freedoom2.wad`)
+### Doom
 
-fps = gametics / process CPU time of the host's update loop; one sync build verifies every tic
+PureDOOM `-timedemo` on `freedoom2.wad`. fps = gametics / process CPU time of the host's update loop; one sync build verifies every tic
 against the reference log, then the speed runs per lane. Rendered by `doom/run.das --readme` from
 `doom/results_linux.json`.
 

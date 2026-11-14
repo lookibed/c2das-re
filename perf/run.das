@@ -34,7 +34,7 @@ let RESULTS = "perf/results_linux.json"
 let METHOD_RESULTS = "perf/results_method_linux.json"
 let DASPROFILE_RESULTS = "perf/dasprofile_linux.json"
 //! the document `--readme` rewrites a method's section of, from the repository root
-let README = "docs/performance.md"
+let PERF_DOC = "docs/performance.md"
 //! the methods a run measures by: this tree's (`composed_source`) and dasProfile's
 //! (`composed_method_source`), over the kernels both repositories share
 let METHODS <- ["default", "dasprofile"]
@@ -140,7 +140,7 @@ def show_stored(args : Args; out : string; baseline : JsonValue?; baseline_name 
         print(empty(section) ? "{error}\n" : "\n{section}")
     }
     if (args.readme) {
-        log_error(write_readme(README, DASPROFILE_RESULTS, js, args.method))
+        log_error(write_readme(PERF_DOC, DASPROFILE_RESULTS, js, args.method))
     }
     return 0
 }
@@ -219,7 +219,7 @@ def main : int {
     fwrite(out, write_json(js) + "\n")
     print(show_tables(js, baseline, baseline_name, args.ratios, args.report))
     if (args.readme) {
-        log_error(write_readme(README, DASPROFILE_RESULTS, js, args.method))
+        log_error(write_readme(PERF_DOC, DASPROFILE_RESULTS, js, args.method))
     }
     for (e in errors) {
         to_log(LOG_ERROR, "{e}\n")
