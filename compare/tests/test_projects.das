@@ -147,6 +147,7 @@ def test_project_program_keys(t : T?) {
         t |> success(find_project("/m", "quakegeneric", p))
         t |> equal("{length(p.over_indexed)} {p.over_indexed[0]} {p.over_indexed[9]}", "10 dmiptexlump_t.dataofs qpic_t.data")
         t |> equal("{length(p.marshal)} {length(p.padded)}", "0 0")
+        t |> equal(join(p.flat_indexed, " "), "texinfo_t.vecs mtexinfo_t.vecs")
         t |> success(find_project("/m", "binjgb", p))
         t |> equal("{length(p.marshal)} {length(p.over_indexed)} {length(p.padded)}", "0 0 0")
     }
@@ -675,12 +676,16 @@ struct private StandIn {
     bench_body : string
     guarded : bool
     unit_body : string
+    // the records the row's program keys name (wasm3's `over_indexed` `M3CodePage.code`), which a
+    // whole conversion of the stand-in must declare
+    records : string
 }
 
 // the facts of the stand-in `name`
 def private stand_in_facts(name : string) : StandIn {
     if (name == "wasm3") {
-        return StandIn(unit = "all_host", bench_unit = "all_host_bench", fixture = "fixtures/fib32.wasm", case_id = "wasm3-fib32-std", body = EXPECTED, bench_body = EXPECTED)
+        return StandIn(unit = "all_host", bench_unit = "all_host_bench", fixture = "fixtures/fib32.wasm", case_id = "wasm3-fib32-std", body = EXPECTED, bench_body = EXPECTED,
+            records = "typedef struct M3CodePage \{ int n; int code[1]; \} M3CodePage;\nint code_at(M3CodePage *p, int i) \{ return p->code[i]; \}\n")
     } elif (name == "binjgb") {
         return StandIn(unit = "binjgb_all", bench_unit = "binjgb_bench_all", fixture = "fixtures/cgb-acid2.gbc", case_id = "binjgb-cgb-acid2-std",
             head = "rom=1\n", body = "frame[0]=5\nframes=1\nticks=7\n", bench_body = "frame[0]=5\nframe[1]=5\nframes=2\n", guarded = true)
@@ -706,7 +711,7 @@ def private stand_in_project(dir, name : string) : string {
     fwrite(path_join(root, f.fixture), "")
     var canonical <- {"id" => JV(f.case_id), "expected" => JV({"stdout" => JV(f.head + f.body)})}
     let guarded = f.guarded ? "#ifdef NDEBUG\n    printf(\"{escaped(f.head)}\");\n#endif\n" : ""
-    let c_unit = "#include <stdio.h>\nint call_fib(int n) \{ return n; \}\nint main(void) \{\n{guarded}    printf(\"%s\");\n    return call_fib(0);\n\}\n"
+    let c_unit = "#include <stdio.h>\n{f.records}int call_fib(int n) \{ return n; \}\nint main(void) \{\n{guarded}    printf(\"%s\");\n    return call_fib(0);\n\}\n"
     if (!empty(f.unit_body)) {
         canonical["c_reference"] = JV({"sources" => JV(["src/graph.c", "src/entry.c"])})
         canonical["corpus"] = JV({"bench_c_entry" => JV("src/bench_entry.c")})

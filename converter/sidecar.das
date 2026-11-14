@@ -54,6 +54,11 @@ struct Sidecar {
     // either side of them (Doom's `visplane_t.top[-1]` is its `pad1`), each `Record.field`, by tag or
     // typedef name: their accesses go through a pointer with no range check
     padded : array<string>
+    // the array-of-arrays members whose inner index the program takes past a row's end into the
+    // next row (Quake's `texinfo_t.vecs[0][j]` for `j < 8` over `float vecs[2][4]`), each
+    // `Record.field`, by tag or typedef name: an inner index goes through the row's decay with no
+    // range check
+    flat_indexed : array<string>
     // how a program of several files lays out its modules: `source` (a module per C file, mutually
     // dependent files one module of fragments), `source-cut` (a module per C file, the cycles cut
     // by late binding) or `single` (one module); "" when the key is absent
@@ -97,7 +102,7 @@ struct Sidecar {
 }
 
 //! The keys a sidecar may hold; any other is refused naming it.
-let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "solid_context", "checks", "jit_whole_program", "past_end", "inline_helpers", "strict_aliasing", "no_fold", "fn_macros", "forms_off"]
+let SIDECAR_KEYS <- ["marshal", "stack", "alloca_limit", "param_writes", "loops", "first_member", "switch_dispatch", "layout", "defines", "over_indexed", "padded", "flat_indexed", "include_dirs", "include_files", "program_root", "solid_context", "checks", "jit_whole_program", "past_end", "inline_helpers", "strict_aliasing", "no_fold", "fn_macros", "forms_off"]
 
 //! The values of the `param_writes` key and of the converter's `--param-writes`.
 let PARAM_WRITES <- ["in-place", "copy"]
@@ -520,6 +525,7 @@ def read_sidecar(path : string; var error : string&) : Sidecar {
     read_inputs(js, path, side, error)
     read_members(js, path, "over_indexed", side.over_indexed, error)
     read_members(js, path, "padded", side.padded, error)
+    read_members(js, path, "flat_indexed", side.flat_indexed, error)
     read_macro_names(js, path, side.no_fold, error)
     read_forms(js, path, side.forms_off, error)
     delete_json(js)

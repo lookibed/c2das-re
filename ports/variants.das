@@ -27,7 +27,7 @@ let VARIANT_KNOBS <- ["layout", "fn_macros", "inline_helpers", "switch_dispatch"
 
 //! The sidecar keys that are facts of the program: what it must be converted with, never a choice
 //! between two spellings of the same program.
-let PROGRAM_KEYS <- ["marshal", "stack", "alloca_limit", "defines", "over_indexed", "padded", "include_dirs", "include_files", "program_root", "no_fold"]
+let PROGRAM_KEYS <- ["marshal", "stack", "alloca_limit", "defines", "over_indexed", "padded", "flat_indexed", "include_dirs", "include_files", "program_root", "no_fold"]
 
 //! the keys of a variant file and of each knob
 let VARIANT_FILE_KEYS <- ["knobs", "results"]
