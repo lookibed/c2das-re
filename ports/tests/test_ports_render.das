@@ -412,7 +412,7 @@ def test_goto_lane(t : T?) {
     t |> run("the perf section names the goto lane's conversion and its pairs, and the AOT lane only when asked for") @(t : T?) {
         let text = render_perf(fixture())
         t |> success(text |> contains("The JIT, goto dispatch lane runs the JIT over the source layout converted with c2das-re's `--switch-dispatch goto`"), text)
-        t |> success(text |> contains("The AOT lanes are measured only when asked for and have a column only where their build stood."), text)
+        t |> success(text |> contains("An AOT lane has a column only where its build stood."), text)
         t |> success(!(text |> contains("A lane `, fast` runs")), text)
         t |> success(text |> contains("(each das lane over native, then interpreter over JIT; interpreter over exe; interpreter over JIT, goto dispatch; JIT over JIT, goto dispatch):"), text)
         t |> success(!(text |> contains("interpreter over AOT")) && !(text |> contains("JIT over AOT")), text)

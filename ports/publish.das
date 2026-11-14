@@ -114,8 +114,8 @@ struct Args {
     perf : bool
     @clarg_doc = "samples per workload and lane, each its own process (default 5)"
     samples : int = 5
-    @clarg_doc = "the das lanes to measure, comma-separated, out of interp,jit,exe,aot,interp-fast,jit-fast,exe-fast,aot-fast (default all but the AOT lanes): a lane runs the readable variant's modules, a -fast lane the fast variant's"
-    lanes : string = "interp,jit,exe,interp-fast,jit-fast,exe-fast"
+    @clarg_doc = "the das lanes to measure, comma-separated, out of interp,jit,exe,aot,interp-fast,jit-fast,exe-fast,aot-fast (default all): a lane runs the readable variant's modules, a -fast lane the fast variant's"
+    lanes : string = "interp,jit,exe,aot,interp-fast,jit-fast,exe-fast,aot-fast"
     @clarg_doc = "seconds one sample may run before its cell fails (default 1800)"
     timeout : int = 1800
     @clarg_name = "allow-stale"
@@ -378,61 +378,125 @@ def private output_parting(output, native : string) : string {
     return "line {idx + 1} prints {got} where the native build prints {want}"
 }
 
-// `samples` runs of `argv` in `cwd` ("" for here), each timed as a whole process and, for a
-// workload under `TIMED_LUA`, inside it by the wrapper's line, which the comparison does not see;
-// a run that differs from `oracle` (the native lane's first, when `oracle.rc` is not -1), that
-// leaves out the closing line `spec` names, or that prints no work seconds under the wrapper,
-// fails the cell, which keeps the samples taken, the failing one last
+// one run of the command `full`, timed as a whole process and, for a workload under `TIMED_LUA`,
+// inside it by the wrapper's line, which the comparison does not see, into `cell`; a run that
+// differs from `oracle` (the native lane's first, when `oracle.rc` is not -1), that leaves out the
+// closing line `spec` names, or that prints no work seconds under the wrapper, fails the cell, which
+// keeps the samples taken, the failing one last; false when the cell failed
 [arch(at="ARCHITECTURE.md#measurement")]
-def private measure_cell(argv : array<string>; cwd : string; samples, timeout : int; spec : WorkloadSpec; var oracle : Oracle; var cell : LaneCell) {
-    let full <- in_folder(cwd, argv)
-    cell.samples |> reserve(samples)
-    cell.work_samples |> reserve(spec.timed ? samples : 0)
-    for (_s in range(samples)) {
-        var out : string
-        var seconds = 0.0lf
-        let started = ref_time_ticks()
-        // the clock stops at the end of the child's output, which it closes on exit: popen's
-        // timeout watchdog wakes every 100 ms, so the return itself lags the exit by up to that
-        let rc = unsafe(popen_argv(full, float(timeout), $(f) {
-            if (f != null) {
-                out = fread(f)
-            }
-            seconds = double(get_time_nsec(started)) / 1000000000.0lf
-        }))
-        var rest = out
-        var work = 0.0lf
-        let missing = spec.timed ? take_work_seconds(out, rest, work) : ""
-        if (spec.timed && empty(missing)) {
-            cell.work_samples |> push(work)
+def private measure_sample(full : array<string>; timeout : int; spec : WorkloadSpec; var oracle : Oracle; var cell : LaneCell) : bool {
+    var out : string
+    var seconds = 0.0lf
+    let started = ref_time_ticks()
+    // the clock stops at the end of the child's output, which it closes on exit: popen's
+    // timeout watchdog wakes every 100 ms, so the return itself lags the exit by up to that
+    let rc = unsafe(popen_argv(full, float(timeout), $(f) {
+        if (f != null) {
+            out = fread(f)
         }
-        let output = program_output(rest)
-        cell.samples |> push(seconds)
-        if (rc == popen_timed_out) {
-            cell.error = "timed out after {timeout} s"
-        } elif (oracle.rc == -1 && rc != 0) {
-            cell.error = clipped(with_line("exited {rc}", first_reported_line(output)))
-        } elif (oracle.rc != -1 && rc != oracle.rc) {
-            cell.error = clipped(with_line("exited {rc} where the native build exits {oracle.rc}", first_reported_line(output)))
-        } elif (oracle.rc != -1 && spec.compare_output && output != oracle.output) {
-            cell.error = clipped(output_parting(output, oracle.output))
-        } elif (!empty(spec.closing_line) && !has_value(split(output, "\n"), spec.closing_line)) {
-            cell.error = clipped(with_line("exited {rc} without the line `{spec.closing_line}`; its last line", last_line(output)))
-        } elif (!empty(missing)) {
-            cell.error = clipped(with_line("exited {rc} under bench/timed.lua with {missing}; its last line", last_line(output)))
-        } elif (oracle.rc == -1) {
-            oracle = Oracle(rc = rc, output = output)
-        }
-        if (!empty(cell.error)) {
-            return
-        }
+        seconds = double(get_time_nsec(started)) / 1000000000.0lf
+    }))
+    var rest = out
+    var work = 0.0lf
+    let missing = spec.timed ? take_work_seconds(out, rest, work) : ""
+    if (spec.timed && empty(missing)) {
+        cell.work_samples |> push(work)
     }
+    let output = program_output(rest)
+    cell.samples |> push(seconds)
+    if (rc == popen_timed_out) {
+        cell.error = "timed out after {timeout} s"
+    } elif (oracle.rc == -1 && rc != 0) {
+        cell.error = clipped(with_line("exited {rc}", first_reported_line(output)))
+    } elif (oracle.rc != -1 && rc != oracle.rc) {
+        cell.error = clipped(with_line("exited {rc} where the native build exits {oracle.rc}", first_reported_line(output)))
+    } elif (oracle.rc != -1 && spec.compare_output && output != oracle.output) {
+        cell.error = clipped(output_parting(output, oracle.output))
+    } elif (!empty(spec.closing_line) && !has_value(split(output, "\n"), spec.closing_line)) {
+        cell.error = clipped(with_line("exited {rc} without the line `{spec.closing_line}`; its last line", last_line(output)))
+    } elif (!empty(missing)) {
+        cell.error = clipped(with_line("exited {rc} under bench/timed.lua with {missing}; its last line", last_line(output)))
+    } elif (oracle.rc == -1) {
+        oracle = Oracle(rc = rc, output = output)
+    }
+    return empty(cell.error)
+}
+
+// a standing cell's median and spread over its samples, and under the wrapper its work time's
+def private settle_cell(spec : WorkloadSpec; var cell : LaneCell) {
     cell.time = median_of(cell.samples)
     cell.spread = spread_of(cell.samples, cell.time)
     if (spec.timed) {
         cell.work_time = median_of(cell.work_samples)
         cell.work_time_spread = spread_of(cell.work_samples, cell.work_time)
     }
+}
+
+// the order the lanes of a workload take their sample of the round `round` (from 0), as indexes
+// into `count` lanes whose first is `native`: native first, whose first sample is the oracle, then
+// the das lanes forward in an even round and backward in an odd one, so a drift of the machine
+// over the rounds weighs on every das lane alike
+[arch(at="ARCHITECTURE.md#measurement")]
+def private sample_order(count, round : int) : array<int> {
+    var order <- [0]
+    order |> reserve(count)
+    for (i in range(1, count)) {
+        order |> push(round % 2 == 0 ? i : count - i)
+    }
+    return <- order
+}
+
+// a key line of `path`: its size, then its mtime when `stamped`, else its text's hash
+def private key_line(path : string; stamped : bool) : string {
+    let st = stat(path)
+    let mark = stamped ? "{st.mtime}" : "{hash(fread(path))}"
+    return "{path} {int64(st.size)} {mark}"
+}
+
+// the key of the native build `command` of `c_paths`: the command, then every `.c` and `.h` file of
+// the C files' folders with its size and its text's hash, so an edited source or header builds again
+[arch(at="ARCHITECTURE.md#measurement")]
+def private native_build_key(command, c_paths : array<string>) : string {
+    var lines <- ["command {join(command, " ")}"]
+    var dirs <- [for (c_path in c_paths); dir_name(c_path)]
+    sort(dirs)
+    var seen = ""
+    for (d in dirs) {
+        if (d == seen) {
+            continue
+        }
+        seen = d
+        var names : array<string>
+        dir(d) $(name) {
+            if ((name |> ends_with(".c") || name |> ends_with(".h")) && stat(path_join(d, name)).is_reg) {
+                names |> push(name)
+            }
+        }
+        sort(names)
+        lines |> push_from([for (name in names); key_line(path_join(d, name), false)])
+    }
+    return join(lines, "\n") + "\n"
+}
+
+// the native lane's build of `c_paths` with `libs` into `bin`: the binary an earlier build left is
+// reused while `<bin>.key` holds this build's `native_build_key` and the binary's own size and
+// mtime, else it is built again and the key written once the build succeeds; the build's exit code,
+// 0 for a reused binary, its output into `out`
+def private native_build(c_paths : array<string>; bin : string; libs : array<string>; var out : string&) : int {
+    let command <- native_build_command(c_paths, bin, libs)
+    let key = native_build_key(command, c_paths)
+    let key_path = bin + ".key"
+    if (stat(bin).is_reg && fexist(key_path) && fread(key_path) == key + key_line(bin, true)) {
+        to_log(LOG_INFO, "native build reused: {bin}\n")
+        return 0
+    }
+    remove(key_path)
+    remove(bin)
+    let rc = run_and_capture(command, out, 3600.0)
+    if (rc == 0 && stat(bin).is_reg) {
+        fwrite(key_path, key + key_line(bin, true))
+    }
+    return rc
 }
 
 //! one lane ready to measure: the argv the program's arguments follow, or the reason it is not
@@ -464,7 +528,7 @@ def private build_lanes(port : Port; variants : array<Variant>; lanes : array<st
             var out : string
             if (!empty(error)) {
                 run.error = clipped(error)
-            } elif (run_and_capture(native_build_command(input.c_paths, bin, port.libs), out, 3600.0) != 0) {
+            } elif (native_build(input.c_paths, bin, port.libs, out) != 0) {
                 run.error = clipped(with_line("the build failed", first_reported_line(out)))
             }
             run.argv <- [get_full_file_name(bin)]
@@ -517,13 +581,16 @@ def private measure_program(args : Args; port : Port; variants : array<Variant>;
     for (spec in port.workloads) {
         measured.workloads |> push(Workload(name = spec.name, args = spec.shown, startup = spec.startup))
         var oracle = Oracle(rc = -1)
+        var inscope cells : array<LaneCell>
+        var inscope argvs : array<array<string>>
+        cells |> reserve(length(lanes))
+        argvs |> reserve(length(lanes))
         for (lane in lanes) {
             var cell = LaneCell(workload = spec.name, lane = lane)
+            var inscope full : array<string>
             runs |> get(lane) $(run) {
                 if (!empty(run.error)) {
                     cell.error = run.error
-                } elif (lane != "native" && oracle.rc == -1) {
-                    cell.error = "no native run to compare with"
                 } elif (spec.in_tests && !stat(tests).is_dir) {
                     cell.error = "no {tests_of(port, release)}"
                 } else {
@@ -531,15 +598,35 @@ def private measure_program(args : Args; port : Port; variants : array<Variant>;
                     if (spec.in_tests && runs_module(lane)) {
                         cell.error = warm_up(run.argv, tests, empty_script_of(port))
                     }
-                    if (empty(cell.error)) {
-                        var inscope argv <- clone_to_move(run.argv)
-                        argv |> push_from(spec.args)
-                        measure_cell(argv, spec.in_tests ? tests : "", args.samples, args.timeout, spec, oracle, cell)
-                    }
+                    var inscope argv <- clone_to_move(run.argv)
+                    argv |> push_from(spec.args)
+                    full <- in_folder(spec.in_tests ? tests : "", argv)
                 }
             }
+            cell.samples |> reserve(args.samples)
+            cell.work_samples |> reserve(spec.timed ? args.samples : 0)
+            cells |> emplace(cell)
+            argvs |> emplace(full)
+        }
+        // the samples interleave: each round takes one sample of every standing lane
+        for (round in range(args.samples)) {
+            for (i in sample_order(length(lanes), round)) {
+                if (!empty(cells[i].error)) {
+                    continue
+                }
+                if (i > 0 && oracle.rc == -1) {
+                    cells[i].error = "no native run to compare with"
+                    continue
+                }
+                measure_sample(argvs[i], args.timeout, spec, oracle, cells[i])
+            }
+        }
+        for (cell in cells) {
+            if (empty(cell.error)) {
+                settle_cell(spec, cell)
+            }
             let reported = empty(cell.error) ? "{cell.time:.3f} s" : "not yet: {cell.error}"
-            to_log(LOG_INFO, "{port.name}/{spec.name}/{lane}: {reported}\n")
+            to_log(LOG_INFO, "{port.name}/{spec.name}/{cell.lane}: {reported}\n")
             measured.cells |> emplace(cell)
         }
     }

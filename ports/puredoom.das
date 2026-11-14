@@ -9,7 +9,7 @@ require ports_render
 //! nothing; `publish.das` runs the harness and hands the texts in.
 
 //! the tiers and the demos a publish holds to the reference logs
-let SYNC_TIERS <- ["interp", "jit", "exe"]
+let SYNC_TIERS <- ["interp", "jit", "exe", "aot"]
 let SYNC_DEMOS <- [1, 2, 3]
 
 //! one demo of freedoom2 run by the converted program under one tier: the harness's verdict

@@ -74,6 +74,7 @@ def test_readme(t : T?) {
         t |> success(text |> contains("No WAD is published here. The demos run on `freedoom2.wad` of Freedoom (BSD), 0.13.0 (the release)."), text)
         t |> success(text |> contains("| interp | 2664 tics in sync | not run | not run       |"), text)
         t |> success(text |> contains("| exe    | not run           | not run | fails: exit 1 |"), text)
+        t |> success(text |> contains("| aot    | not run           | not run | not run       |"), text)
         t |> success(text |> ends_with("## Performance\n\nFPS TABLE\n"), text)
     }
 }

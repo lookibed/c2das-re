@@ -20,7 +20,7 @@ Read `ARCHITECTURE.md` (this folder) first. This companion holds how the publish
 run taking `--variant <its file> --layout <its layout>`: `doom/run.das --convert` (the layout into
 `doom/work/variants/<v>/<layout>/`; its log's `program (<layout>): N files` line is the verdict,
 since its exit code also fails on the units alone, `program_converted`), then `doom/run.das --run
---tier <tier> --demo <N>` for each demo 1 to 3 under `interp`, `jit` and `exe`. Each run's verdict is its summary line without the seconds (`N tics in
+--tier <tier> --demo <N>` for each demo 1 to 3 under `interp`, `jit`, `exe` and `aot`. Each run's verdict is its summary line without the seconds (`N tics in
 sync`, or `fails: ` and the desync or the exit), so an unchanged tree writes an unchanged README;
 the verdicts go to `doom/work/variants/<v>/publish_sync.txt`, and the conversion's stamp to
 `doom/work/publish.generation`, which `--no-convert` requires as it does for Lua. A demo out of sync
