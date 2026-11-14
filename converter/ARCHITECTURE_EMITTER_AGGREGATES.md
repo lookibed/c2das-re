@@ -179,7 +179,11 @@ clang's offsets (`ARCHITECTURE_EMITTER.md`, the layout law) and so its members' 
 entry fails closed unless it names an array of integers, in a record
 that is not marshal-only, with an integer member of the element's width, no bitfield, right before
 and right after it, which is the storage the index -1 and the length reach; an unlisted member
-keeps `pl.top[i]` and its range check.
+keeps `pl.top[i]` and its range check. An array of arrays whose inner index the program runs past
+a row into the next (Quake's `in->vecs[0][j]`, `j < 8` over `float vecs[2][4]`, C11 6.5.6's
+undefined behaviour) is listed under `flat_indexed`: its inner index goes through the row's decay,
+`addr(in.vecs[0][0])[j]`, unchecked, the row index still checked. `checks: off` is no substitute,
+since the AOT host keeps its range checks.
 
 ### Function pointers
 

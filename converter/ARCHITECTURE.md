@@ -54,7 +54,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   their length, a value that is no list or an entry of another shape refused naming the key, an
   entry naming no record's trailing array the emitter's error; `padded`, the same for the arrays
   indexed one past either end into the members beside them, an entry naming no integer array flanked
-  by integers of its element's width the emitter's error; `include_dirs`, a list of folders both
+  by integers of its element's width the emitter's error; `flat_indexed`, the same for the arrays of arrays whose inner index runs into the next row, an entry naming no array-of-arrays member of a plain record the emitter's error; `include_dirs`, a list of folders both
   clang passes of the dump search as `-I<dir>` in order, `include_files`, the headers both passes
   read first as `-include <file>` in order, and `program_root`, the folder whose files are the
   program's (`ARCHITECTURE_DUMPER.md`, the file policy), each read beside the sidecar unless

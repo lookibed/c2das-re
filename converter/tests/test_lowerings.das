@@ -1501,6 +1501,17 @@ def p9_packed_record_fixtures(t : T?) {
     }
 }
 
+// P9.32: an inner index the program runs past its row, under the sidecar's `flat_indexed`
+def p9_flat_indexed_fixtures(t : T?) {
+    t |> run("a `flat_indexed` member's inner index runs unchecked into the next row through the row's decay, under every tier (the AOT host's range check included)") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_flat_indexed", text)
+        check_compiled_tiers(t, "p9_flat_indexed")
+        has_text(t, text, "addr(out.vecs[0][0])[j] = addr(_c_in.vecs[0][0])[j] * 2.0f")
+        has_text(t, text, "double(addr(out.vecs[1][0])[3])")
+    }
+}
+
 def p4_matrix_fixtures(t : T?) {
     t |> run("matrix shapes: an opaque struct pointer, _Alignof, char rows from string literals, _Alignas, ~ and ^, restrict, K&R parameters, inline, long double, volatile, the comma's value, exit from deep") @(t : T?) {
         var text : string
@@ -1579,6 +1590,7 @@ def p4_matrix_fixtures(t : T?) {
         rejects(t, "zero_length_local", "int main(void) \{ int a[0]; return 0; \}\n", "a zero-length array (a GNU extension) is not lowered yet")
     }
     p9_packed_record_fixtures(t)
+    p9_flat_indexed_fixtures(t)
 }
 
 // the das path `converts` wrote for the source it took under `name`
@@ -1787,6 +1799,9 @@ def p4_matrix_leftover_rejects(t : T?) {
         rejects(t, "padded_misspelled", plane, "sidecar `padded`: `plane.tops` names no record's array member of integers", "\{\"padded\": [\"plane.tops\"]\}\n")
         rejects(t, "padded_scalar", plane, "sidecar `padded`: `plane.pad1` names no record's array member of integers", "\{\"padded\": [\"plane.pad1\"]\}\n")
         rejects(t, "padded_no_record", plane, "sidecar `padded`: `nothing.top` names no record's array member of integers", "\{\"padded\": [\"nothing.top\"]\}\n")
+        rejects(t, "flat_indexed_one_dimension", plane, "sidecar `flat_indexed`: `plane.top` names no array-of-arrays member of a record that is not marshal-only", "\{\"flat_indexed\": [\"plane.top\"]\}\n")
+        rejects(t, "flat_indexed_marshal", "struct __attribute__((packed)) M \{ char c; short v[2][2]; \};\nint main(void) \{ return (int) sizeof(struct M) - 9; \}\n", "sidecar `flat_indexed`: `M.v` names no array-of-arrays member of a record that is not marshal-only", "\{\"marshal\": [\"M\"], \"flat_indexed\": [\"M.v\"]\}\n")
+        rejects(t, "flat_indexed_no_record", plane, "sidecar `flat_indexed`: `nothing.top` names no array-of-arrays member", "\{\"flat_indexed\": [\"nothing.top\"]\}\n")
         rejects(t, "padded_marshal", plane, "sidecar `padded`: `M.top` is a member of a marshal-only record, which das reads through its readers", "\{\"marshal\": [\"M\"], \"padded\": [\"M.top\"]\}\n")
         rejects(t, "padded_narrow_neighbour", plane, "sidecar `padded`: `plane.wide` has no integer member of its element's width right before and right after it", "\{\"padded\": [\"plane.wide\"]\}\n")
         rejects(t, "padded_last", plane, "sidecar `padded`: `plane.edge` has no integer member of its element's width right before and right after it", "\{\"padded\": [\"plane.edge\"]\}\n")

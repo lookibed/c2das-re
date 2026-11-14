@@ -304,6 +304,8 @@ struct EmitProgram {
     // the trailing array members the sidecar lists under `over_indexed`, by record and field
     // (`member_key`)
     over_indexed : table<int64>
+    // the array-of-arrays members the sidecar lists under `flat_indexed`, by record and field
+    flat_indexed : table<int64>
     // the array members the sidecar lists under `padded`, whose index reaches the members on
     // either side of them, by record and field (`member_key`)
     padded : table<int64>
@@ -8683,9 +8685,15 @@ def private member_of(tu : CirTu; x : CirExpr const?) : tuple<rec : int; field :
 
 // how an array member `x` (a member expression) is reached past its declaration: "flexible" for a
 // flexible array member, which the record leaves out, "over" for a trailing array the sidecar
-// lists under `over_indexed`, "padded" for an array it lists under `padded`, "" for any other
+// lists under `over_indexed`, "padded" for an array it lists under `padded`, "flat" for a row
+// (`a.vecs[r]`) of an array-of-arrays member it lists under `flat_indexed`, "" for any other
 // expression
 def private unchecked_access(em : Emitter; tu : CirTu; x : CirExpr const?) : string {
+    if (x != null && x.e == "index" && x.base.e == "cast" && x.base.cast_kind == "ArrayToPointerDecay" && x.base.a.e == "member") {
+        // a row of a `flat_indexed` member: its inner index reaches the next rows
+        let row_of = member_of(tu, x.base.a)
+        return key_exists(em.prog.flat_indexed, member_key(row_of.rec, row_of.field)) ? "flat" : ""
+    }
     if (x == null || x.e != "member") {
         return ""
     }
@@ -9445,6 +9453,34 @@ def private flag_over_indexed(var em : Emitter; tu : CirTu; side : Sidecar) {
     }
 }
 
+// the sidecar's `flat_indexed` entries, each `Record.field` by tag or typedef name, as record and
+// field keys: an array of arrays whose inner index the program takes past a row's end into the
+// next row (C11 6.5.6's undefined behaviour the native build tolerates); an entry naming no such
+// member, or one of a marshal-only record, is an error
+[arch(at="ARCHITECTURE_EMITTER_AGGREGATES.md#padded-array-members")]
+def private flag_flat_indexed(var em : Emitter; tu : CirTu; side : Sidecar) {
+    for (entry in side.flat_indexed) {
+        let dot = find(entry, ".")
+        let rec = record_named(tu, slice(entry, 0, dot))
+        let field_name = slice(entry, dot + 1)
+        var at = -1
+        if (rec >= 0) {
+            for (i, f in count(), tu.types[rec].fields) {
+                if (f.name == field_name) {
+                    at = i
+                }
+            }
+        }
+        let ft = at >= 0 ? tu.types[rec].fields[at].t : -1
+        // a sidecar's error has no place in the C source
+        if (kind_of(tu, ft) != "array" || kind_of(tu, tu.types[ft].elem) != "array" || is_marshal(em, tu, rec)) {
+            em.error = "sidecar `flat_indexed`: `{entry}` names no array-of-arrays member of a record that is not marshal-only"
+            return
+        }
+        em.prog.flat_indexed |> insert(member_key(rec, at))
+    }
+}
+
 // whether field `at` of record `rec` is an integer member of `elem`'s width, no bitfield, that lies
 // at byte `off`: the pad a padded array's index reaches past one of its ends
 def private pads_at(tu : CirTu; rec, at, elem, off : int) : bool {
@@ -9756,6 +9792,7 @@ def private prepare_program(var em : Emitter; var tu : CirTu; side : Sidecar) {
     flag_marshal(em, tu, side)
     flag_over_indexed(em, tu, side)
     flag_padded(em, tu, side)
+    flag_flat_indexed(em, tu, side)
     take_options(em, tu, side)
     for (d in tu.decls) {
         if (d.k == "func") {

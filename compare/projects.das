@@ -46,7 +46,7 @@ let PROJECT_TRANSLATE_TIMEOUT = 600.0
 //! prints with a value of its own and the prefixes of the keys it prints beyond the expected
 //! output, `bench_omitted_keys` the keys of the expected lines it does not print
 //! (`bench_disagreement`); `ours_variant` the variant our side converts under (none by default: no knob);
-//! `marshal`, `over_indexed` and `padded` the program keys of our side's sidecar
+//! `marshal`, `over_indexed`, `padded` and `flat_indexed` the program keys of our side's sidecar
 //! (`converter/sidecar.das`), facts of the program a whole conversion runs with.
 struct Project {
     name : string
@@ -75,6 +75,7 @@ struct Project {
     marshal : array<string>
     over_indexed : array<string>
     padded : array<string>
+    flat_indexed : array<string>
 }
 
 //! A lane's verdict: `pass`, else `refused`, `compile`, `exit`, `output`, `timeout` or `skipped`,
@@ -186,6 +187,7 @@ def private engine_rows(manual_dir, cases : string) : array<Project> {
         case_id = "quakegeneric-demo1-std",
         rust_flags <- ["--das-option", "stack = 4194304"],
         functions <- ["D_DrawSpans8", "D_DrawZSpans"],
+        flat_indexed <- ["texinfo_t.vecs", "mtexinfo_t.vecs"],
         over_indexed <- ["dmiptexlump_t.dataofs", "surfcache_t.data", "mspriteframe_t.pixels", "mspritegroup_t.frames", "msprite_t.frames", "maliasgroup_t.frames", "maliasskingroup_t.skindescs", "aliashdr_t.frames", "sfxcache_t.data", "qpic_t.data"])]
 }
 
@@ -605,7 +607,7 @@ def private program_key(var js : JsonValue?; key : string; names : array<string>
 //! defines and `ours_defines`, its include folders, its forced includes (`-include` in
 //! `clang_extra`) and the project folder as the program root, each path absolute, with the knobs of
 //! `p.ours_variant` set (`ports/ARCHITECTURE_VARIANTS.md`; none by default) and, when `whole`, the
-//! program keys `marshal`, `over_indexed` and `padded` (a file converted alone leaves them out: the
+//! program keys `marshal`, `over_indexed`, `padded` and `flat_indexed` (a file converted alone leaves them out: the
 //! converter refuses a key naming a record the file does not declare); the entry module
 //! with every file written into `files`, or "" with `refusal` the converter's first line. The
 //! ports publisher converts a project through it too.
@@ -622,6 +624,7 @@ def ours_module(p : Project; tu, out_dir : string; units : array<string>; whole 
         program_key(js, "marshal", p.marshal)
         program_key(js, "over_indexed", p.over_indexed)
         program_key(js, "padded", p.padded)
+        program_key(js, "flat_indexed", p.flat_indexed)
     }
     overlay_knobs(js, p.ours_variant)
     fwrite(sidecar, write_json(js))

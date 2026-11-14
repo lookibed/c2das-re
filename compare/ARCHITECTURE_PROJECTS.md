@@ -25,7 +25,7 @@ native build compiles (else the units, else the unit; the bench's are the same w
 `corpus.bench_c_entry` in place of the last, the entry), that case's
 translator options, the C functions shown side by side, the bench unit's departures from the
 expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed), and the program keys of
-our side's sidecar (`marshal`, `over_indexed`, `padded`: facts of the C program, such as a trailing
+our side's sidecar (`marshal`, `over_indexed`, `padded`, `flat_indexed`: facts of the C program, such as a trailing
 `[1]` array it indexes past its end, `converter/sidecar.das`). The rows:
 
 - wasm3: `src/all_host.c` and `src/all_host_bench.c`, `-std=c11 -Iinclude -Iupstream/wasm3/source
@@ -86,7 +86,8 @@ our side's sidecar (`marshal`, `over_indexed`, `padded`: facts of the C program,
   the project has no bench unit. Its `over_indexed` are the ten trailing arrays the engine indexes
   past their declared length (`dmiptexlump_t.dataofs`, `surfcache_t.data`, `mspriteframe_t.pixels`,
   the `frames` of `mspritegroup_t`, `msprite_t`, `maliasgroup_t` and `aliashdr_t`,
-  `maliasskingroup_t.skindescs`, `sfxcache_t.data`, `qpic_t.data`). The Eden and SDL hosts are GUI programs and are not built; the
+  `maliasskingroup_t.skindescs`, `sfxcache_t.data`, `qpic_t.data`), and its `flat_indexed` the
+  `vecs` of `texinfo_t` and `mtexinfo_t` (`model.c` reads `vecs[0][j]` for `j < 8`). The Eden and SDL hosts are GUI programs and are not built; the
   case under the Eden memory model is not compared.
 
 `convert_project` converts a project as the ports publisher publishes it and the readability

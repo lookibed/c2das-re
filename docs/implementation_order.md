@@ -2347,6 +2347,10 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   stays marshal-only. The owner's condition, a probe of arrays of such records at odd addresses copied and read
   in loops on all four tiers, passes (`probes/test_misaligned_records.das`, F110). A scalar field's address in a marshal-only record
   is the record's bytes plus the field's offset, no longer `addr` of its reader (D4).
+  Step 9 (Q5): the sidecar key `flat_indexed` (a program key, in the compare row of quakegeneric:
+  `texinfo_t.vecs`, `mtexinfo_t.vecs`) lists array-of-arrays members whose inner index the program runs past a
+  row into the next (C11 6.5.6's undefined behaviour); that index goes through the row's decay, unchecked, the
+  row index still checked. `checks: off` is no substitute, since the AOT host keeps its range checks.
 
 ## P6 — Doom
 

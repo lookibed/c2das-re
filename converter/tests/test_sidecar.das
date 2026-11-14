@@ -89,6 +89,14 @@ def test_sidecar_over_indexed(t : T?) {
         t |> equal(side.over_indexed[0], "patch.columnofs")
         t |> equal(side.over_indexed[1], "vis.cols")
     }
+    t |> run("`flat_indexed` is a list of strings `Record.field` as well") @(t : T?) {
+        var error : string
+        let side <- read_text(dir, "flat", "\{\"flat_indexed\": [\"texinfo_t.vecs\"]\}\n", error)
+        t |> equal(error, "")
+        t |> equal(join(side.flat_indexed, " "), "texinfo_t.vecs")
+        let bad <- read_text(dir, "flat_string", "\{\"flat_indexed\": \"texinfo_t.vecs\"\}\n", error)
+        t |> success(error |> ends_with("flat_string.c2das: `flat_indexed` is a list of strings `Record.field`, not \"texinfo_t.vecs\""), error)
+    }
     t |> run("`over_indexed` that is no list is refused, naming the key and the value") @(t : T?) {
         var error : string
         let side <- read_text(dir, "string", "\{\"over_indexed\": \"patch.columnofs\"\}\n", error)
