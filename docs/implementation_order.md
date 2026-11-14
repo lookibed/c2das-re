@@ -2293,6 +2293,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   Step 2 (W1): the converter predefines `__STDC_NO_VLA__` as 1 (C11 6.10.8.3, an implementation without VLAs;
   `CONVERTER_DEFINES` of the dumper, the criteria's preprocessing too), so wasm3's `M3_HAS_VLA` takes its
   fixed-size `argTypes`; VLAs stay out of scope.
+  Step 3 (D5, Q3's `fgetc`): the crt module binds `strcasecmp`, `strncasecmp`, `strdup`, `fputc`, `fgetc` and
+  POSIX `mkdir`, and the emitter maps them (`CRT_CALLS`, their effects in `summaries.das`). `fscanf` follows
+  as its own step.
 
 ## P6 — Doom
 

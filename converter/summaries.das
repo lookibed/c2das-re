@@ -66,6 +66,7 @@ let private STOP = LibcCall(io = true)
 
 let private LIBC_EFFECTS <- {
     "strlen" => PURE, "strcmp" => PURE, "strncmp" => PURE, "memcmp" => PURE, "strspn" => PURE,
+    "strcasecmp" => PURE, "strncasecmp" => PURE, "strdup" => PURE,
     "strcoll" => PURE, "abs" => PURE, "llabs" => PURE, "atoi" => PURE, "atol" => PURE, "atof" => PURE,
     "isalpha" => PURE, "isdigit" => PURE, "isalnum" => PURE, "isspace" => PURE, "isupper" => PURE,
     "islower" => PURE, "isxdigit" => PURE, "ispunct" => PURE, "isprint" => PURE, "iscntrl" => PURE,
@@ -88,8 +89,8 @@ let private LIBC_EFFECTS <- {
     "__builtin_va_copy" => STORE,
     "printf" => PRINT, "fprintf" => PRINT, "vprintf" => PRINT, "vfprintf" => PRINT, "fputs" => PRINT,
     "fwrite" => PRINT, "fflush" => PRINT, "fclose" => PRINT, "fseek" => PRINT, "ftell" => PRINT,
-    "feof" => PRINT, "ferror" => PRINT, "clock" => PRINT,
-    "fread" => READ, "getc" => READ, "ungetc" => READ, "fgets" => LibcCall(writes = true, io = true, returns = true, result_arg = true),
+    "feof" => PRINT, "ferror" => PRINT, "clock" => PRINT, "fputc" => PRINT, "mkdir" => PRINT,
+    "fread" => READ, "getc" => READ, "fgetc" => READ, "ungetc" => READ, "fgets" => LibcCall(writes = true, io = true, returns = true, result_arg = true),
     "exit" => STOP, "abort" => STOP, "__assert_fail" => STOP, "longjmp" => STOP, "_longjmp" => STOP,
     "__builtin_trap" => STOP, "__builtin_unreachable" => STOP
 }

@@ -2685,6 +2685,15 @@ def p8_refusal_fixtures(t : T?) {
         has_text(t, text, "    n = c_vfprintf(reinterpret<void?>(f), fmt, va_rest(ap))\n")
         has_text(t, text, "p8_vfprintf__report`va(reinterpret<_IO_FILE?>(crt::c_stdout()), ")
     }
+    t |> run("the POSIX and stdio calls the crt module binds: strcasecmp, strncasecmp, strdup, fputc, fgetc, mkdir") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_libc_more", text)
+        has_text(t, text, "var d : uint8? = crt::strdup(cstr(\"Abc\"))")
+        has_text(t, text, "crt::strncasecmp(d, cstr(\"abx\"), 2ul)")
+        has_text(t, text, "crt::fputc('\\n', crt::c_stdout())")
+        has_text(t, text, "let first : int = crt::fgetc(reinterpret<void?>(f))")
+        has_text(t, text, "crt::mkdir(cstr(\".\"), 493u)")
+    }
     t |> run("a function the program defines named like a mapped libc one (h264bsd's `malloc`) takes a free name its calls bind to, through a pointer too") @(t : T?) {
         var text : string
         check_fixture(t, "p8_libc_shadow", text)

@@ -33,6 +33,9 @@ public:
         addExtern<DAS_BIND_FUN(c_strrchr)>(*this, lib, "strrchr", SideEffects::accessExternal, "crt::c_strrchr")->args({"s", "c"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_strstr)>(*this, lib, "strstr", SideEffects::accessExternal, "crt::c_strstr")->args({"s", "needle"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_strpbrk)>(*this, lib, "strpbrk", SideEffects::accessExternal, "crt::c_strpbrk")->args({"s", "accept"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_strcasecmp)>(*this, lib, "strcasecmp", SideEffects::accessExternal, "crt::c_strcasecmp")->args({"a", "b"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_strncasecmp)>(*this, lib, "strncasecmp", SideEffects::accessExternal, "crt::c_strncasecmp")->args({"a", "b", "n"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_strdup)>(*this, lib, "strdup", SideEffects::modifyExternal, "crt::c_strdup")->args({"s"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_strspn)>(*this, lib, "strspn", SideEffects::accessExternal, "crt::c_strspn")->args({"s", "accept"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_strcoll)>(*this, lib, "strcoll", SideEffects::modifyExternal, "crt::c_strcoll")->args({"a", "b"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_strerror)>(*this, lib, "strerror", SideEffects::modifyExternal, "crt::c_strerror")->args({"errnum"})->unsafeOperation = true;
@@ -93,11 +96,14 @@ public:
         addExtern<DAS_BIND_FUN(c_fopen)>(*this, lib, "fopen", SideEffects::modifyExternal, "crt::c_fopen")->args({"name", "mode"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_freopen)>(*this, lib, "freopen", SideEffects::modifyExternal, "crt::c_freopen")->args({"name", "mode", "f"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_fclose)>(*this, lib, "fclose", SideEffects::modifyExternal, "crt::c_fclose")->args({"f"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_mkdir)>(*this, lib, "mkdir", SideEffects::modifyExternal, "crt::c_mkdir")->args({"name", "mode"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_fread)>(*this, lib, "fread", SideEffects::modifyArgumentAndExternal, "crt::c_fread")->args({"data", "size", "n", "f"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_fwrite)>(*this, lib, "fwrite", SideEffects::modifyExternal, "crt::c_fwrite")->args({"data", "size", "n", "f"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_fgets)>(*this, lib, "fgets", SideEffects::modifyArgumentAndExternal, "crt::c_fgets")->args({"buf", "n", "f"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_fputs)>(*this, lib, "fputs", SideEffects::modifyExternal, "crt::c_fputs")->args({"s", "f"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_getc)>(*this, lib, "getc", SideEffects::modifyExternal, "crt::c_getc")->args({"f"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_fgetc)>(*this, lib, "fgetc", SideEffects::modifyExternal, "crt::c_fgetc")->args({"f"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(c_fputc)>(*this, lib, "fputc", SideEffects::modifyExternal, "crt::c_fputc")->args({"c", "f"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_ungetc)>(*this, lib, "ungetc", SideEffects::modifyExternal, "crt::c_ungetc")->args({"c", "f"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_feof)>(*this, lib, "feof", SideEffects::modifyExternal, "crt::c_feof")->args({"f"})->unsafeOperation = true;
         addExtern<DAS_BIND_FUN(c_ferror)>(*this, lib, "ferror", SideEffects::modifyExternal, "crt::c_ferror")->args({"f"})->unsafeOperation = true;
