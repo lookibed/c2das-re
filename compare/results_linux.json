@@ -1,7 +1,7 @@
 {
 	"suites" : {
 		"c_testsuite" : {
-			"rust_pass_of_skipped" : 0,
+			"rust_pass_of_ours" : 194,
 			"date" : "2026-11-01 02:54 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 199,
@@ -1560,13 +1560,13 @@
 			],
 			"rust_pass_of_unlisted" : 8,
 			"ids" : 220,
-			"daslang" : "0.6.4",
 			"seconds" : 86.92239379882812,
-			"ours_skipped" : 0,
-			"rust_pass_of_ours" : 194
+			"rust_pass_of_skipped" : 0,
+			"daslang" : "0.6.4",
+			"ours_skipped" : 0
 		},
 		"gcc_torture" : {
-			"rust_pass_of_skipped" : 41,
+			"rust_pass_of_ours" : 1089,
 			"date" : "2026-11-01 03:04 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 1179,
@@ -13177,13 +13177,13 @@
 			],
 			"rust_pass_of_unlisted" : 67,
 			"ids" : 1656,
-			"daslang" : "0.6.4",
 			"seconds" : 645.4718017578125,
-			"ours_skipped" : 321,
-			"rust_pass_of_ours" : 1089
+			"rust_pass_of_skipped" : 41,
+			"daslang" : "0.6.4",
+			"ours_skipped" : 321
 		},
 		"csmith" : {
-			"rust_pass_of_skipped" : 5,
+			"rust_pass_of_ours" : 42,
 			"date" : "2026-11-01 03:12 UTC",
 			"rust_commit_error" : "",
 			"ours_pass" : 151,
@@ -14476,10 +14476,10 @@
 			],
 			"rust_pass_of_unlisted" : 0,
 			"ids" : 182,
-			"daslang" : "0.6.4",
 			"seconds" : 434.8171081542969,
-			"ours_skipped" : 31,
-			"rust_pass_of_ours" : 42
+			"rust_pass_of_skipped" : 5,
+			"daslang" : "0.6.4",
+			"ours_skipped" : 31
 		}
 	},
 	"perf" : {
@@ -17401,48 +17401,6 @@
 					}
 				}
 			},
-			"gcc_torture/990628-1" : {
-				"ours" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 65,
-					"runtime_lines" : 0,
-					"program_c2da_lines" : 0,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 3,
-						"unsafe_expr" : 0,
-						"c_function" : 3,
-						"literal_named" : 0,
-						"pointer_arith" : 1,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 0,
-						"pointer_index" : 2
-					}
-				},
-				"rust" : {
-					"status" : "ok",
-					"error" : "",
-					"files" : 1,
-					"lines" : 391,
-					"runtime_lines" : 290,
-					"program_c2da_lines" : 34,
-					"counts" : {
-						"label" : 0,
-						"reinterpret" : 25,
-						"unsafe_expr" : 47,
-						"c_function" : 0,
-						"literal_named" : 0,
-						"pointer_arith" : 0,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 1,
-						"pointer_index" : 13
-					}
-				}
-			},
 			"gcc_torture/990525-1" : {
 				"ours" : {
 					"status" : "ok",
@@ -17482,6 +17440,48 @@
 						"unsafe_block" : 0,
 						"while_rangeable" : 1,
 						"pointer_index" : 11
+					}
+				}
+			},
+			"gcc_torture/990628-1" : {
+				"ours" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 65,
+					"runtime_lines" : 0,
+					"program_c2da_lines" : 0,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 3,
+						"unsafe_expr" : 0,
+						"c_function" : 3,
+						"literal_named" : 0,
+						"pointer_arith" : 1,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 0,
+						"pointer_index" : 2
+					}
+				},
+				"rust" : {
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 391,
+					"runtime_lines" : 290,
+					"program_c2da_lines" : 34,
+					"counts" : {
+						"label" : 0,
+						"reinterpret" : 25,
+						"unsafe_expr" : 47,
+						"c_function" : 0,
+						"literal_named" : 0,
+						"pointer_arith" : 0,
+						"goto" : 0,
+						"unsafe_block" : 0,
+						"while_rangeable" : 1,
+						"pointer_index" : 13
 					}
 				}
 			},
@@ -74948,13 +74948,24 @@
 		"wasm3" : {
 			"code" : {
 				"ours" : {
-					"status" : "refused",
-					"error" : "dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_parse.c:305:22: `m3type_t argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)",
-					"files" : 0,
-					"lines" : 0,
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 19592,
 					"runtime_lines" : 0,
 					"program_c2da_lines" : 0,
-					"counts" : {}
+					"counts" : {
+						"label" : 131,
+						"reinterpret" : 2299,
+						"unsafe_expr" : 0,
+						"c_function" : 669,
+						"literal_named" : 300,
+						"pointer_arith" : 1965,
+						"goto" : 692,
+						"unsafe_block" : 0,
+						"while_rangeable" : 13,
+						"pointer_index" : 375
+					}
 				},
 				"rust" : {
 					"status" : "ok",
@@ -74983,52 +74994,52 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-09 16:58 UTC",
-			"cpu" : "AMD Ryzen 7 7435HS",
-			"box" : "PC",
-			"rust_commit_error" : "",
-			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
-			"address_cap" : "6442450944",
-			"native" : {
-				"status" : "pass",
-				"reason" : ""
-			},
-			"ours" : {
-				"error" : "dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_parse.c:305:22: `m3type_t argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)",
-				"lanes" : {
-					"interp" : {
-						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_parse.c:305:22: `m3type_t argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)"
-					},
-					"jit" : {
-						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_parse.c:305:22: `m3type_t argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)"
-					},
-					"exe" : {
-						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_parse.c:305:22: `m3type_t argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)"
-					},
-					"aot" : {
-						"status" : "refused",
-						"reason" : "dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_parse.c:305:22: `m3type_t argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)"
-					}
-				},
-				"defines" : []
-			},
 			"functions" : [
 				{
 					"key" : "wasm3",
 					"name" : "op_Call",
-					"ours" : "",
+					"ours" : "[c_function]\ndef private all_host__op_Call(var _pc : void ??; var _sp : uint?; var _mem : M3MemoryHeader?; _r0 : int64) : void? {\n    {\n    }\n    var _t0 = _pc\n    _pc++\n    var callPC : void ?? = *reinterpret<void ???>(_t0)\n    var _t1 = _pc\n    _pc++\n    let stackOffset : int = *reinterpret<int?>(_t1)\n    var memory : M3Memory? = m3MemInfo(_mem)\n    var sp : uint? = _sp + stackOffset\n    var r : void? = all_host__Call(callPC, sp, _mem, int64(d_m3OpDefaultArgs))\n    _mem = memory.mallocated\n    if (r == null) {\n        return invoke(reinterpret<function<(var a0 : void ??; var a1 : uint?; var a2 : M3MemoryHeader?; a3 : int64) : void?>>(*_pc), _pc + 1, _sp, _mem, _r0)\n    } else {\n        {\n        }\n        return r\n    }\n}",
 					"rust" : "[sideeffects]\ndef op_Call(var _pc_224 : pc_t; var _sp_224 : m3stack_t; var _mem_224 : M3MemoryHeader?; var _r0_224 : int64) : m3ret_t {\n    var callPC_0 : pc_t\n    var stackOffset_2 : int\n    var memory_9 : IM3Memory\n    var r_16 : m3ret_t\n    var c2da_postinc_332 : pc_t = _pc_224\n    unsafe {  // nolint:STYLE025\n        _pc_224 += 1\n    }\n    callPC_0 = *unsafe(reinterpret<pc_t?>(c2da_postinc_332))\n    var c2da_postinc_333 : pc_t = _pc_224\n    unsafe {  // nolint:STYLE025\n        _pc_224 += 1\n    }\n    stackOffset_2 = *unsafe(reinterpret<int?>(c2da_postinc_333))\n    memory_9 = _mem_224.memory\n    r_16 = Call(callPC_0, unsafe(_sp_224 + stackOffset_2), _mem_224, 0l)\n    _mem_224 = unsafe(reinterpret<M3MemoryHeader?>(memory_9.mallocated))\n    if ((!(!(r_16 == null)) ? 1l : 0l) != 0) {\n        return invoke(unsafe(reinterpret<IM3Operation>(*_pc_224)), unsafe(_pc_224 + 1), _sp_224, _mem_224, _r0_224)\n    } else {\n        return r_16\n    }\n}"
 				},
 				{
 					"key" : "wasm3",
 					"name" : "call_fib",
-					"ours" : "",
+					"ours" : "[c_function]\ndef private all_host__call_fib(var fib : M3Function?; n : int; var out : int64?) : uint8? {\n    var result : uint8? = m3Err_none\n    if (m3_GetArgType(fib, 0u) == M3ValueType.c_m3Type_i64) {\n        var value : uint64 = 0ul\n        result = m3_CallV`va(fib, (uint64(n),))\n        if (result != null) {\n            return result\n        }\n        result = m3_GetResultsV`va(fib, (addr(value),))\n        *out = int64(value)\n    } else {\n        var value : uint = 0u\n        result = m3_CallV`va(fib, (uint(n),))\n        if (result != null) {\n            return result\n        }\n        result = m3_GetResultsV`va(fib, (addr(value),))\n        *out = int64(value)\n    }\n    return result\n}",
 					"rust" : "[sideeffects]\ndef call_fib(var fib : IM3Function; var n_6 : int; var out_1 : int64?) : M3Result {\n    var result_227 : M3Result\n    var value_81 : uint64\n    var value_82 : uint\n    result_227 = m3Err_none\n    if (uint(m3_GetArgType(fib, 0u)) == 2u) {\n        value_81 = 0ul\n        result_227 = m3_CallV(fib, [C2daVaArg(tag = 1, i64 = int64(uint64(n_6)), f64 = 0.0lf, raw = 0x0)])\n        if (result_227 != null) {\n            return result_227\n        }\n        result_227 = m3_GetResultsV(fib, [C2daVaArg(tag = 3, i64 = 0, f64 = 0.0lf, raw = unsafe(reinterpret<uint64>(unsafe(addr(value_81)))))])\n        *out_1 = int64(value_81)\n    } else {\n        value_82 = 0u\n        result_227 = m3_CallV(fib, [C2daVaArg(tag = 1, i64 = int64(uint(n_6)), f64 = 0.0lf, raw = 0x0)])\n        if (result_227 != null) {\n            return result_227\n        }\n        result_227 = m3_GetResultsV(fib, [C2daVaArg(tag = 3, i64 = 0, f64 = 0.0lf, raw = unsafe(reinterpret<uint64>(unsafe(addr(value_82)))))])\n        *out_1 = int64(value_82)\n    }\n    return result_227\n}"
 				}
 			],
+			"ours" : {
+				"error" : "",
+				"lanes" : {
+					"interp" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"jit" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"exe" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"aot" : {
+						"status" : "pass",
+						"reason" : ""
+					}
+				},
+				"defines" : []
+			},
+			"box" : "PC",
+			"date" : "2026-11-14 17:33 UTC",
+			"cpu" : "AMD Ryzen 7 7435HS",
+			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"native" : {
+				"status" : "pass",
+				"reason" : ""
+			},
+			"rust_commit_error" : "",
+			"address_cap" : "6442450944",
 			"samples" : 3,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
@@ -75055,136 +75066,220 @@
 			"speed" : {
 				"native" : {
 					"setup" : {
-						"time" : 7.1e-05,
-						"spread" : 0.042253521126760535,
+						"time" : 6.8e-05,
+						"spread" : 0.014705882352941135,
 						"count" : 1,
 						"result" : 0,
 						"samples" : [
-							6.9e-05,
-							7.5e-05,
-							7.1e-05
+							6.7e-05,
+							6.8e-05,
+							6.9e-05
 						]
 					},
 					"decode" : {
-						"time" : 0.001818,
-						"spread" : 0.15209020902090212,
+						"time" : 0.001852,
+						"spread" : 0.028617710583153343,
 						"count" : 1,
 						"result" : 0,
 						"samples" : [
-							0.001788,
-							0.002341,
-							0.001818
+							0.001818,
+							0.001924,
+							0.001852
 						]
 					}
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_parse.c:305:22: `m3type_t argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)"
-					},
-					"jit" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_parse.c:305:22: `m3type_t argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)"
-					},
-					"exe" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_parse.c:305:22: `m3type_t argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)"
-					},
-					"aot" : {
-						"error" : "bench: dumper: /root/c2das/tests/manual/wasm3/upstream/wasm3/source/m3_parse.c:305:22: `m3type_t argTypes[numArgs + 1]`: a variable-length array is not lowered (out of scope in v1)"
-					}
-				},
-				"rust" : {
-					"interp" : {
 						"setup" : {
-							"time" : 0.000235,
-							"spread" : 0.19361702127659572,
+							"time" : 0.000236,
+							"spread" : 0.6610169491525424,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.000325,
-								0.000234,
+								0.000547,
+								0.000236,
 								0.000235
 							]
 						},
 						"decode" : {
-							"time" : 0.118309,
-							"spread" : 0.01668512116576082,
+							"time" : 0.105349,
+							"spread" : 0.006165222261245994,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.121655,
-								0.118309,
-								0.117707
+								0.106217,
+								0.105349,
+								0.104918
 							]
 						}
 					},
 					"jit" : {
 						"setup" : {
 							"time" : 7.2e-05,
-							"spread" : 0.24305555555555552,
+							"spread" : 7.284722222222222,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								6.6e-05,
-								0.000101,
+								0.001104,
+								5.5e-05,
 								7.2e-05
 							]
 						},
 						"decode" : {
-							"time" : 0.004899,
-							"spread" : 0.02867932231067565,
+							"time" : 0.00516,
+							"spread" : 0.019864341085271266,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.004815,
-								0.005096,
-								0.004899
+								0.005253,
+								0.00516,
+								0.005048
 							]
 						}
 					},
 					"exe" : {
 						"setup" : {
-							"time" : 4.6e-05,
-							"spread" : 0.05434782608695652,
+							"time" : 8.3e-05,
+							"spread" : 0.02409638554216869,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								4.8e-05,
-								4.6e-05,
-								4.3e-05
+								8.3e-05,
+								8.3e-05,
+								7.9e-05
 							]
 						},
 						"decode" : {
-							"time" : 0.004924,
-							"spread" : 0.058692120227457296,
+							"time" : 0.004839,
+							"spread" : 0.01405249018392228,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.005312,
-								0.004924,
-								0.004734
+								0.004906,
+								0.00477,
+								0.004839
 							]
 						}
 					},
 					"aot" : {
 						"setup" : {
-							"time" : 4.2e-05,
-							"spread" : 0.08333333333333326,
+							"time" : 7.7e-05,
+							"spread" : 0.05194805194805198,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								4.2e-05,
-								4e-05,
-								4.7e-05
+								8.3e-05,
+								7.5e-05,
+								7.7e-05
 							]
 						},
 						"decode" : {
-							"time" : 0.002781,
-							"spread" : 0.023552678892484726,
+							"time" : 0.002946,
+							"spread" : 0.07009504412763072,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.002908,
+								0.002943,
+								0.003356,
+								0.002946
+							]
+						}
+					}
+				},
+				"rust" : {
+					"interp" : {
+						"setup" : {
+							"time" : 0.00028,
+							"spread" : 0.02678571428571426,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.00028,
+								0.000289,
+								0.000274
+							]
+						},
+						"decode" : {
+							"time" : 0.119243,
+							"spread" : 0.011141115201730946,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.118186,
+								0.120843,
+								0.119243
+							]
+						}
+					},
+					"jit" : {
+						"setup" : {
+							"time" : 6.1e-05,
+							"spread" : 9.672131147540982,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.001241,
+								6.1e-05,
+								6.1e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.004862,
+							"spread" : 0.005141916906622847,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.004863,
+								0.004862,
+								0.004813
+							]
+						}
+					},
+					"exe" : {
+						"setup" : {
+							"time" : 4.3e-05,
+							"spread" : 0.03488372093023254,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								4.3e-05,
+								4.3e-05,
+								4e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.004802,
+							"spread" : 0.02353186172428151,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.004802,
+								0.004719,
+								0.004945
+							]
+						}
+					},
+					"aot" : {
+						"setup" : {
+							"time" : 4.6e-05,
+							"spread" : 0.13043478260869565,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								4.6e-05,
+								4.9e-05,
+								3.7e-05
+							]
+						},
+						"decode" : {
+							"time" : 0.002754,
+							"spread" : 0.005809731299927362,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
 								0.002781,
-								0.002777
+								0.002754,
+								0.002749
 							]
 						}
 					}
@@ -75877,53 +75972,6 @@
 			"daslang" : "0.6.5"
 		},
 		"plmpeg-stream" : {
-			"lanes" : [
-				"interp",
-				"jit",
-				"exe",
-				"aot"
-			],
-			"functions" : [
-				{
-					"key" : "plmpeg-stream",
-					"name" : "plm_video_idct",
-					"ours" : "[c_function]\ndef plm_video_idct(var _c_block : int?) {\n    var b1 : int\n    var b3 : int\n    var b4 : int\n    var b6 : int\n    var b7 : int\n    var tmp1 : int\n    var tmp2 : int\n    var m0 : int\n    var x0 : int\n    var x1 : int\n    var x2 : int\n    var x3 : int\n    var x4 : int\n    var y3 : int\n    var y4 : int\n    var y5 : int\n    var y6 : int\n    var y7 : int\n    // Transform columns\n    for (i in range(8)) {\n        b1 = _c_block[4 * 8 + i]\n        b3 = _c_block[2 * 8 + i] + _c_block[6 * 8 + i]\n        b4 = _c_block[5 * 8 + i] - _c_block[3 * 8 + i]\n        tmp1 = _c_block[1 * 8 + i] + _c_block[7 * 8 + i]\n        tmp2 = _c_block[3 * 8 + i] + _c_block[5 * 8 + i]\n        b6 = _c_block[1 * 8 + i] - _c_block[7 * 8 + i]\n        b7 = tmp1 + tmp2\n        m0 = _c_block[0 * 8 + i]\n        x4 = ((b6 * 473 - b4 * 196 + 128) >> 8) - b7\n        x0 = x4 - (((tmp1 - tmp2) * 362 + 128) >> 8)\n        x1 = m0 - b1\n        x2 = (((_c_block[2 * 8 + i] - _c_block[6 * 8 + i]) * 362 + 128) >> 8) - b3\n        x3 = m0 + b1\n        y3 = x1 + x2\n        y4 = x3 + b3\n        y5 = x1 - x2\n        y6 = x3 - b3\n        y7 = -x0 - ((b4 * 473 + b6 * 196 + 128) >> 8)\n        _c_block[0 * 8 + i] = b7 + y4\n        _c_block[1 * 8 + i] = x4 + y3\n        _c_block[2 * 8 + i] = y5 - x0\n        _c_block[3 * 8 + i] = y6 - y7\n        _c_block[4 * 8 + i] = y6 + y7\n        _c_block[5 * 8 + i] = x0 + y5\n        _c_block[6 * 8 + i] = y3 - x4\n        _c_block[7 * 8 + i] = y4 - b7\n    }\n    // Transform rows\n    {\n        var i : int = 0\n        while (i < 64) {\n            b1 = _c_block[4 + i]\n            b3 = _c_block[2 + i] + _c_block[6 + i]\n            b4 = _c_block[5 + i] - _c_block[3 + i]\n            tmp1 = _c_block[1 + i] + _c_block[7 + i]\n            tmp2 = _c_block[3 + i] + _c_block[5 + i]\n            b6 = _c_block[1 + i] - _c_block[7 + i]\n            b7 = tmp1 + tmp2\n            m0 = _c_block[0 + i]\n            x4 = ((b6 * 473 - b4 * 196 + 128) >> 8) - b7\n            x0 = x4 - (((tmp1 - tmp2) * 362 + 128) >> 8)\n            x1 = m0 - b1\n            x2 = (((_c_block[2 + i] - _c_block[6 + i]) * 362 + 128) >> 8) - b3\n            x3 = m0 + b1\n            y3 = x1 + x2\n            y4 = x3 + b3\n            y5 = x1 - x2\n            y6 = x3 - b3\n            y7 = -x0 - ((b4 * 473 + b6 * 196 + 128) >> 8)\n            _c_block[0 + i] = (b7 + y4 + 128) >> 8\n            _c_block[1 + i] = (x4 + y3 + 128) >> 8\n            _c_block[2 + i] = (y5 - x0 + 128) >> 8\n            _c_block[3 + i] = (y6 - y7 + 128) >> 8\n            _c_block[4 + i] = (y6 + y7 + 128) >> 8\n            _c_block[5 + i] = (x0 + y5 + 128) >> 8\n            _c_block[6 + i] = (y3 - x4 + 128) >> 8\n            _c_block[7 + i] = (y4 - b7 + 128) >> 8\n            i += 8\n        }\n    }\n}",
-					"rust" : "[sideeffects]\ndef plm_video_idct(var block_2 : int?) {\n    var b1 : int\n    var b3 : int\n    var b4 : int\n    var b6 : int\n    var b7 : int\n    var tmp1 : int\n    var tmp2 : int\n    var m0 : int\n    var x0 : int\n    var x1 : int\n    var x2 : int\n    var x3 : int\n    var x4 : int\n    var y3 : int\n    var y4 : int\n    var y5 : int\n    var y6 : int\n    var y7 : int\n    var i_6 : int\n    for (i_5 in range(0, 8)) {\n        b1 = unsafe(block_2[4 * 8 + i_5])\n        b3 = unsafe(block_2[2 * 8 + i_5]) + unsafe(block_2[6 * 8 + i_5])\n        b4 = unsafe(block_2[5 * 8 + i_5]) - unsafe(block_2[3 * 8 + i_5])\n        tmp1 = unsafe(block_2[1 * 8 + i_5]) + unsafe(block_2[7 * 8 + i_5])\n        tmp2 = unsafe(block_2[3 * 8 + i_5]) + unsafe(block_2[5 * 8 + i_5])\n        b6 = unsafe(block_2[1 * 8 + i_5]) - unsafe(block_2[7 * 8 + i_5])\n        b7 = tmp1 + tmp2\n        m0 = unsafe(block_2[0 * 8 + i_5])\n        x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7\n        x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)\n        x1 = m0 - b1\n        x2 = ((unsafe(block_2[2 * 8 + i_5]) - unsafe(block_2[6 * 8 + i_5])) * 362 + 128 >> 8) - b3\n        x3 = m0 + b1\n        y3 = x1 + x2\n        y4 = x3 + b3\n        y5 = x1 - x2\n        y6 = x3 - b3\n        y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)\n        unsafe(block_2[0 * 8 + i_5]) = b7 + y4\n        unsafe(block_2[1 * 8 + i_5]) = x4 + y3\n        unsafe(block_2[2 * 8 + i_5]) = y5 - x0\n        unsafe(block_2[3 * 8 + i_5]) = y6 - y7\n        unsafe(block_2[4 * 8 + i_5]) = y6 + y7\n        unsafe(block_2[5 * 8 + i_5]) = x0 + y5\n        unsafe(block_2[6 * 8 + i_5]) = y3 - x4\n        unsafe(block_2[7 * 8 + i_5]) = y4 - b7\n    }\n    i_6 = 0\n    while (i_6 < 64) {\n        b1 = unsafe(block_2[4 + i_6])\n        b3 = unsafe(block_2[2 + i_6]) + unsafe(block_2[6 + i_6])\n        b4 = unsafe(block_2[5 + i_6]) - unsafe(block_2[3 + i_6])\n        tmp1 = unsafe(block_2[1 + i_6]) + unsafe(block_2[7 + i_6])\n        tmp2 = unsafe(block_2[3 + i_6]) + unsafe(block_2[5 + i_6])\n        b6 = unsafe(block_2[1 + i_6]) - unsafe(block_2[7 + i_6])\n        b7 = tmp1 + tmp2\n        m0 = unsafe(block_2[0 + i_6])\n        x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7\n        x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)\n        x1 = m0 - b1\n        x2 = ((unsafe(block_2[2 + i_6]) - unsafe(block_2[6 + i_6])) * 362 + 128 >> 8) - b3\n        x3 = m0 + b1\n        y3 = x1 + x2\n        y4 = x3 + b3\n        y5 = x1 - x2\n        y6 = x3 - b3\n        y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)\n        unsafe(block_2[0 + i_6]) = b7 + y4 + 128 >> 8\n        unsafe(block_2[1 + i_6]) = x4 + y3 + 128 >> 8\n        unsafe(block_2[2 + i_6]) = y5 - x0 + 128 >> 8\n        unsafe(block_2[3 + i_6]) = y6 - y7 + 128 >> 8\n        unsafe(block_2[4 + i_6]) = y6 + y7 + 128 >> 8\n        unsafe(block_2[5 + i_6]) = x0 + y5 + 128 >> 8\n        unsafe(block_2[6 + i_6]) = y3 - x4 + 128 >> 8\n        unsafe(block_2[7 + i_6]) = y4 - b7 + 128 >> 8\n        i_6 += 8\n    }\n    return\n}"
-				},
-				{
-					"key" : "plmpeg-stream",
-					"name" : "plm_video_decode_block",
-					"ours" : "[c_function]\ndef plm_video_decode_block(var self : plm_video_t?; _c_block : int) {\n    var n : int = 0\n    var quant_matrix : uint8?\n    // Decode DC coefficient of intra-coded blocks\n    if (self.macroblock_intra != 0) {\n        var predictor : int\n        var dct_size : int\n        // DC prediction\n        let plane_index : int = _c_block > 3 ? _c_block - 3 : 0\n        predictor = self.dc_predictor[plane_index]\n        dct_size = int(plm_buffer_read_vlc(self.buffer, plmpeg_file_all__PLM_VIDEO_DCT_SIZE[plane_index]))\n        // Read DC coeff\n        if (dct_size > 0) {\n            let differential : int = plm_buffer_read(self.buffer, dct_size)\n            if ((differential & (1 << (dct_size - 1))) != 0) {\n                self.block_data[0] = predictor + differential\n            } else {\n                self.block_data[0] = predictor + (-(1 << dct_size) | (differential + 1))\n            }\n        } else {\n            self.block_data[0] = predictor\n        }\n        // Save predictor value\n        self.dc_predictor[plane_index] = self.block_data[0]\n        // Dequantize + premultiply\n        self.block_data[0] <<= 3 + 5\n        quant_matrix = addr(self.intra_quant_matrix[0])\n        n = 1\n    } else {\n        quant_matrix = addr(self.non_intra_quant_matrix[0])\n    }\n    // Decode AC coefficients (+DC for non-intra)\n    var level : int = 0\n    while (TRUE != 0) {\n        var run : int = 0\n        let coeff : uint16 = plm_buffer_read_vlc_uint(self.buffer, addr(plmpeg_file_all__PLM_VIDEO_DCT_COEFF[0]))\n        if ((coeff == 1) && (n > 0) && (plm_buffer_read(self.buffer, 1) == 0)) {\n            // end_of_block\n            break\n        }\n        if (coeff == 65535) {\n            // escape\n            run = plm_buffer_read(self.buffer, 6)\n            level = plm_buffer_read(self.buffer, 8)\n            if (level == 0) {\n                level = plm_buffer_read(self.buffer, 8)\n            } elif (level == 128) {\n                level = plm_buffer_read(self.buffer, 8) - 256\n            } elif (level > 128) {\n                level -= 256\n            }\n        } else {\n            run = int(coeff) >> 8\n            level = int(coeff) & 255\n            if (plm_buffer_read(self.buffer, 1) != 0) {\n                level = -level\n            }\n        }\n        n += run\n        if (n < 0 || n >= 64) {\n            // invalid\n            return\n        }\n        let de_zig_zagged : int = int(plmpeg_file_all__PLM_VIDEO_ZIG_ZAG[n])\n        n++\n        // Dequantize, oddify, clip\n        level = int(uint(level) << 1u)\n        if (self.macroblock_intra == 0) {\n            level += level < 0 ? -1 : 1\n        }\n        level = (level * self.quantizer_scale * int(quant_matrix[de_zig_zagged])) >> 4\n        if ((level & 1) == 0) {\n            level -= level > 0 ? 1 : -1\n        }\n        if (level > 2047) {\n            level = 2047\n        } elif (level < -2048) {\n            level = -2048\n        }\n        // Save premultiplied coefficient\n        self.block_data[de_zig_zagged] = level * int(plmpeg_file_all__PLM_VIDEO_PREMULTIPLIER_MATRIX[de_zig_zagged])\n    }\n    // Move block to its place\n    var d : uint8?\n    var dw : int\n    var di : int\n    if (_c_block < 4) {\n        d = self.frame_current.y.data\n        dw = self.luma_width\n        di = (self.mb_row * self.luma_width + self.mb_col) << 4\n        if ((_c_block & 1) != 0) {\n            di += 8\n        }\n        if ((_c_block & 2) != 0) {\n            di += self.luma_width << 3\n        }\n    } else {\n        d = (_c_block == 4) ? self.frame_current.cb.data : self.frame_current.cr.data\n        dw = self.chroma_width\n        di = ((self.mb_row * self.luma_width) << 2) + (self.mb_col << 3)\n    }\n    var s : int? = addr(self.block_data[0])\n    var si : int = 0\n    if (self.macroblock_intra != 0) {\n        // Overwrite (no prediction)\n        if (n == 1) {\n            let clamped : int = int(plmpeg_file_all__plm_clamp((s[0] + 128) >> 8))\n            {\n                let dest_scan : int = dw - 8\n                let source_scan : int = 8 - 8\n                for (y in range(8)) {\n                    for (x in range(8)) {\n                        d[di] = uint8(clamped)\n                        si++\n                        di++\n                    }\n                    si += source_scan\n                    di += dest_scan\n                }\n            }\n            s[0] = 0\n        } else {\n            plm_video_idct(s)\n            {\n                let dest_scan : int = dw - 8\n                let source_scan : int = 8 - 8\n                for (y in range(8)) {\n                    for (x in range(8)) {\n                        d[di] = plmpeg_file_all__plm_clamp(s[si])\n                        si++\n                        di++\n                    }\n                    si += source_scan\n                    di += dest_scan\n                }\n            }\n            crt::memset(reinterpret<void?>(addr(self.block_data[0])), 0, uint64(typeinfo sizeof(type<int[64]>)))\n        }\n    } else {\n        // Add data to the predicted macroblock\n        if (n == 1) {\n            let value : int = (s[0] + 128) >> 8\n            {\n                let dest_scan : int = dw - 8\n                let source_scan : int = 8 - 8\n                for (y in range(8)) {\n                    for (x in range(8)) {\n                        d[di] = plmpeg_file_all__plm_clamp(int(d[di]) + value)\n                        si++\n                        di++\n                    }\n                    si += source_scan\n                    di += dest_scan\n                }\n            }\n            s[0] = 0\n        } else {\n            plm_video_idct(s)\n            {\n                let dest_scan : int = dw - 8\n                let source_scan : int = 8 - 8\n                for (y in range(8)) {\n                    for (x in range(8)) {\n                        d[di] = plmpeg_file_all__plm_clamp(int(d[di]) + s[si])\n                        si++\n                        di++\n                    }\n                    si += source_scan\n                    di += dest_scan\n                }\n            }\n            crt::memset(reinterpret<void?>(addr(self.block_data[0])), 0, uint64(typeinfo sizeof(type<int[64]>)))\n        }\n    }\n}",
-					"rust" : "[sideeffects]\ndef plm_video_decode_block(var self_92 : plm_video_t?; var block_1 : int) {\n    var n : int\n    var quant_matrix : uint8?\n    var predictor : int\n    var dct_size : int\n    var plane_index : int\n    var differential : int\n    var level : int\n    var run : int\n    var coeff : uint16\n    var de_zig_zagged : int\n    var d_0 : uint8?\n    var dw : int\n    var di : int\n    var s_0 : int?\n    var si : int\n    var clamped : int\n    var dest_scan : int\n    var source_scan : int\n    var dest_scan_0 : int\n    var source_scan_0 : int\n    var value_1 : int\n    var dest_scan_1 : int\n    var source_scan_1 : int\n    var dest_scan_2 : int\n    var source_scan_2 : int\n    n = 0\n    if (self_92.macroblock_intra != 0) {\n        plane_index = block_1 > 3 ? block_1 - 3 : 0\n        var c2da_fresh93 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 144ul))\n        predictor = unsafe(unsafe(reinterpret<int?>(c2da_fresh93))[plane_index])\n        dct_size = int(plm_buffer_read_vlc(self_92.buffer, unsafe(reinterpret<plm_vlc_t const?>(PLM_VIDEO_DCT_SIZE[plane_index]))))\n        if (dct_size > 0) {\n            differential = plm_buffer_read(self_92.buffer, dct_size)\n            if ((differential & 1 << dct_size - 1) != 0) {\n                var c2da_fresh94 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n                unsafe(unsafe(reinterpret<int?>(c2da_fresh94))[0]) = predictor + differential\n            } else {\n                var c2da_fresh95 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n                unsafe(unsafe(reinterpret<int?>(c2da_fresh95))[0]) = predictor + (-(1 << dct_size) | differential + 1)\n            }\n        } else {\n            var c2da_fresh96 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n            unsafe(unsafe(reinterpret<int?>(c2da_fresh96))[0]) = predictor\n        }\n        var c2da_fresh97 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 144ul))\n        var c2da_fresh98 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(unsafe(reinterpret<int?>(c2da_fresh97))[plane_index]) = int(unsafe(unsafe(reinterpret<int?>(c2da_fresh98))[0]))  // nolint:PERF020\n        var c2da_fresh99 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(unsafe(reinterpret<int?>(c2da_fresh99))[0]) <<= 3 + 5\n        var c2da_fresh100 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(self_92)) + 632ul))\n        quant_matrix = unsafe(reinterpret<uint8?>(c2da_fresh100))\n        n = 1\n    } else {\n        var c2da_fresh101 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(self_92)) + 696ul))\n        quant_matrix = unsafe(reinterpret<uint8?>(c2da_fresh101))\n    }\n    level = 0\n    while (true) {\n        run = 0\n        coeff = plm_buffer_read_vlc_uint(self_92.buffer, unsafe(addr<plm_vlc_uint_t const?>(PLM_VIDEO_DCT_COEFF[0])))\n        if (int(coeff) == 1 && n > 0 && plm_buffer_read(self_92.buffer, 1) == 0) {\n            break\n        }\n        if (int(coeff) == 65535) {\n            run = plm_buffer_read(self_92.buffer, 6)\n            level = plm_buffer_read(self_92.buffer, 8)\n            if (level == 0) {\n                level = plm_buffer_read(self_92.buffer, 8)\n            } elif (level == 128) {\n                level = plm_buffer_read(self_92.buffer, 8) - 256\n            } elif (level > 128) {\n                level -= 256\n            }\n        } else {\n            run = int(coeff) >> 8\n            level = int(coeff) & 255\n            if (plm_buffer_read(self_92.buffer, 1) != 0) {\n                level = -level\n            }\n        }\n        n += run\n        if (n < 0 || n >= 64) {\n            return\n        }\n        de_zig_zagged = int(PLM_VIDEO_ZIG_ZAG[n])\n        n++\n        level = int(uint(level) << 1u)\n        if (self_92.macroblock_intra == 0) {\n            level += level < 0 ? -1 : 1\n        }\n        level = level * self_92.quantizer_scale * int(unsafe(quant_matrix[de_zig_zagged])) >> 4\n        if ((level & 1) == 0) {\n            level -= level > 0 ? 1 : -1\n        }\n        if (level > 2047) {\n            level = 2047\n        } elif (level < -2048) {\n            level = -2048\n        }\n        var c2da_fresh102 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(unsafe(reinterpret<int?>(c2da_fresh102))[de_zig_zagged]) = level * int(PLM_VIDEO_PREMULTIPLIER_MATRIX[de_zig_zagged])\n    }\n    if (block_1 < 4) {\n        d_0 = unsafe(reinterpret<uint8?>(self_92.frame_current.y.data))\n        dw = self_92.luma_width\n        di = self_92.mb_row * self_92.luma_width + self_92.mb_col << 4\n        if ((block_1 & 1) != 0) {\n            di += 8\n        }\n        if ((block_1 & 2) != 0) {\n            di += self_92.luma_width << 3\n        }\n    } else {\n        d_0 = unsafe(reinterpret<uint8?>(block_1 == 4 ? self_92.frame_current.cb.data : self_92.frame_current.cr.data))\n        dw = self_92.chroma_width\n        di = (self_92.mb_row * self_92.luma_width << 2) + (self_92.mb_col << 3)\n    }\n    var c2da_fresh103 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n    s_0 = c2da_fresh103\n    si = 0\n    if (self_92.macroblock_intra != 0) {\n        if (n == 1) {\n            let c2da_fresh104 : int = unsafe(s_0[0]) + 128 >> 8\n            clamped = int(uint8(c2da_fresh104 > 255 ? 255 : c2da_fresh104 < 0 ? 0 : c2da_fresh104))\n            dest_scan = dw - 8\n            source_scan = 8 - 8\n            for (y in range(0, 8)) {\n                for (x in range(0, 8)) {\n                    unsafe(d_0[di]) = uint8(clamped)\n                    si++\n                    di++\n                }\n                si += source_scan\n                di += dest_scan\n            }\n            unsafe(s_0[0]) = 0\n        } else {\n            plm_video_idct(s_0)\n            dest_scan_0 = dw - 8\n            source_scan_0 = 8 - 8\n            for (y_0 in range(0, 8)) {\n                for (x_0 in range(0, 8)) {\n                    let c2da_fresh105 : int = unsafe(s_0[si])\n                    unsafe(d_0[di]) = uint8(c2da_fresh105 > 255 ? 255 : c2da_fresh105 < 0 ? 0 : c2da_fresh105)\n                    si++\n                    di++\n                }\n                si += source_scan_0\n                di += dest_scan_0\n            }\n            var c2da_fresh106 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n            unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(reinterpret<uint8?>(c2da_fresh106)))), 0u8, 256ul)))\n        }\n    } elif (n == 1) {\n        value_1 = unsafe(s_0[0]) + 128 >> 8\n        dest_scan_1 = dw - 8\n        source_scan_1 = 8 - 8\n        for (y_1 in range(0, 8)) {\n            for (x_1 in range(0, 8)) {\n                let c2da_fresh107 : int = int(unsafe(d_0[di])) + value_1\n                unsafe(d_0[di]) = uint8(c2da_fresh107 > 255 ? 255 : c2da_fresh107 < 0 ? 0 : c2da_fresh107)\n                si++\n                di++\n            }\n            si += source_scan_1\n            di += dest_scan_1\n        }\n        unsafe(s_0[0]) = 0\n    } else {\n        plm_video_idct(s_0)\n        dest_scan_2 = dw - 8\n        source_scan_2 = 8 - 8\n        for (y_2 in range(0, 8)) {\n            for (x_2 in range(0, 8)) {\n                let c2da_fresh108 : int = int(unsafe(d_0[di])) + unsafe(s_0[si])\n                unsafe(d_0[di]) = uint8(c2da_fresh108 > 255 ? 255 : c2da_fresh108 < 0 ? 0 : c2da_fresh108)\n                si++\n                di++\n            }\n            si += source_scan_2\n            di += dest_scan_2\n        }\n        var c2da_fresh109 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(reinterpret<uint8?>(c2da_fresh109)))), 0u8, 256ul)))\n    }\n    return\n}"
-				}
-			],
-			"box" : "PC",
-			"native" : {
-				"status" : "pass",
-				"reason" : ""
-			},
-			"rust" : {
-				"error" : "",
-				"lanes" : {
-					"interp" : {
-						"status" : "pass",
-						"reason" : ""
-					},
-					"jit" : {
-						"status" : "pass",
-						"reason" : ""
-					},
-					"exe" : {
-						"status" : "pass",
-						"reason" : ""
-					},
-					"aot" : {
-						"status" : "pass",
-						"reason" : ""
-					}
-				}
-			},
-			"daslang" : "0.6.5",
 			"code" : {
 				"ours" : {
 					"status" : "ok",
@@ -75966,6 +76014,26 @@
 					}
 				}
 			},
+			"lanes" : [
+				"interp",
+				"jit",
+				"exe",
+				"aot"
+			],
+			"functions" : [
+				{
+					"key" : "plmpeg-stream",
+					"name" : "plm_video_idct",
+					"ours" : "[c_function]\ndef plm_video_idct(var _c_block : int?) {\n    var b1 : int\n    var b3 : int\n    var b4 : int\n    var b6 : int\n    var b7 : int\n    var tmp1 : int\n    var tmp2 : int\n    var m0 : int\n    var x0 : int\n    var x1 : int\n    var x2 : int\n    var x3 : int\n    var x4 : int\n    var y3 : int\n    var y4 : int\n    var y5 : int\n    var y6 : int\n    var y7 : int\n    // Transform columns\n    for (i in range(8)) {\n        b1 = _c_block[4 * 8 + i]\n        b3 = _c_block[2 * 8 + i] + _c_block[6 * 8 + i]\n        b4 = _c_block[5 * 8 + i] - _c_block[3 * 8 + i]\n        tmp1 = _c_block[1 * 8 + i] + _c_block[7 * 8 + i]\n        tmp2 = _c_block[3 * 8 + i] + _c_block[5 * 8 + i]\n        b6 = _c_block[1 * 8 + i] - _c_block[7 * 8 + i]\n        b7 = tmp1 + tmp2\n        m0 = _c_block[0 * 8 + i]\n        x4 = ((b6 * 473 - b4 * 196 + 128) >> 8) - b7\n        x0 = x4 - (((tmp1 - tmp2) * 362 + 128) >> 8)\n        x1 = m0 - b1\n        x2 = (((_c_block[2 * 8 + i] - _c_block[6 * 8 + i]) * 362 + 128) >> 8) - b3\n        x3 = m0 + b1\n        y3 = x1 + x2\n        y4 = x3 + b3\n        y5 = x1 - x2\n        y6 = x3 - b3\n        y7 = -x0 - ((b4 * 473 + b6 * 196 + 128) >> 8)\n        _c_block[0 * 8 + i] = b7 + y4\n        _c_block[1 * 8 + i] = x4 + y3\n        _c_block[2 * 8 + i] = y5 - x0\n        _c_block[3 * 8 + i] = y6 - y7\n        _c_block[4 * 8 + i] = y6 + y7\n        _c_block[5 * 8 + i] = x0 + y5\n        _c_block[6 * 8 + i] = y3 - x4\n        _c_block[7 * 8 + i] = y4 - b7\n    }\n    // Transform rows\n    {\n        var i : int = 0\n        while (i < 64) {\n            b1 = _c_block[4 + i]\n            b3 = _c_block[2 + i] + _c_block[6 + i]\n            b4 = _c_block[5 + i] - _c_block[3 + i]\n            tmp1 = _c_block[1 + i] + _c_block[7 + i]\n            tmp2 = _c_block[3 + i] + _c_block[5 + i]\n            b6 = _c_block[1 + i] - _c_block[7 + i]\n            b7 = tmp1 + tmp2\n            m0 = _c_block[0 + i]\n            x4 = ((b6 * 473 - b4 * 196 + 128) >> 8) - b7\n            x0 = x4 - (((tmp1 - tmp2) * 362 + 128) >> 8)\n            x1 = m0 - b1\n            x2 = (((_c_block[2 + i] - _c_block[6 + i]) * 362 + 128) >> 8) - b3\n            x3 = m0 + b1\n            y3 = x1 + x2\n            y4 = x3 + b3\n            y5 = x1 - x2\n            y6 = x3 - b3\n            y7 = -x0 - ((b4 * 473 + b6 * 196 + 128) >> 8)\n            _c_block[0 + i] = (b7 + y4 + 128) >> 8\n            _c_block[1 + i] = (x4 + y3 + 128) >> 8\n            _c_block[2 + i] = (y5 - x0 + 128) >> 8\n            _c_block[3 + i] = (y6 - y7 + 128) >> 8\n            _c_block[4 + i] = (y6 + y7 + 128) >> 8\n            _c_block[5 + i] = (x0 + y5 + 128) >> 8\n            _c_block[6 + i] = (y3 - x4 + 128) >> 8\n            _c_block[7 + i] = (y4 - b7 + 128) >> 8\n            i += 8\n        }\n    }\n}",
+					"rust" : "[sideeffects]\ndef plm_video_idct(var block_2 : int?) {\n    var b1 : int\n    var b3 : int\n    var b4 : int\n    var b6 : int\n    var b7 : int\n    var tmp1 : int\n    var tmp2 : int\n    var m0 : int\n    var x0 : int\n    var x1 : int\n    var x2 : int\n    var x3 : int\n    var x4 : int\n    var y3 : int\n    var y4 : int\n    var y5 : int\n    var y6 : int\n    var y7 : int\n    var i_6 : int\n    for (i_5 in range(0, 8)) {\n        b1 = unsafe(block_2[4 * 8 + i_5])\n        b3 = unsafe(block_2[2 * 8 + i_5]) + unsafe(block_2[6 * 8 + i_5])\n        b4 = unsafe(block_2[5 * 8 + i_5]) - unsafe(block_2[3 * 8 + i_5])\n        tmp1 = unsafe(block_2[1 * 8 + i_5]) + unsafe(block_2[7 * 8 + i_5])\n        tmp2 = unsafe(block_2[3 * 8 + i_5]) + unsafe(block_2[5 * 8 + i_5])\n        b6 = unsafe(block_2[1 * 8 + i_5]) - unsafe(block_2[7 * 8 + i_5])\n        b7 = tmp1 + tmp2\n        m0 = unsafe(block_2[0 * 8 + i_5])\n        x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7\n        x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)\n        x1 = m0 - b1\n        x2 = ((unsafe(block_2[2 * 8 + i_5]) - unsafe(block_2[6 * 8 + i_5])) * 362 + 128 >> 8) - b3\n        x3 = m0 + b1\n        y3 = x1 + x2\n        y4 = x3 + b3\n        y5 = x1 - x2\n        y6 = x3 - b3\n        y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)\n        unsafe(block_2[0 * 8 + i_5]) = b7 + y4\n        unsafe(block_2[1 * 8 + i_5]) = x4 + y3\n        unsafe(block_2[2 * 8 + i_5]) = y5 - x0\n        unsafe(block_2[3 * 8 + i_5]) = y6 - y7\n        unsafe(block_2[4 * 8 + i_5]) = y6 + y7\n        unsafe(block_2[5 * 8 + i_5]) = x0 + y5\n        unsafe(block_2[6 * 8 + i_5]) = y3 - x4\n        unsafe(block_2[7 * 8 + i_5]) = y4 - b7\n    }\n    i_6 = 0\n    while (i_6 < 64) {\n        b1 = unsafe(block_2[4 + i_6])\n        b3 = unsafe(block_2[2 + i_6]) + unsafe(block_2[6 + i_6])\n        b4 = unsafe(block_2[5 + i_6]) - unsafe(block_2[3 + i_6])\n        tmp1 = unsafe(block_2[1 + i_6]) + unsafe(block_2[7 + i_6])\n        tmp2 = unsafe(block_2[3 + i_6]) + unsafe(block_2[5 + i_6])\n        b6 = unsafe(block_2[1 + i_6]) - unsafe(block_2[7 + i_6])\n        b7 = tmp1 + tmp2\n        m0 = unsafe(block_2[0 + i_6])\n        x4 = (b6 * 473 - b4 * 196 + 128 >> 8) - b7\n        x0 = x4 - ((tmp1 - tmp2) * 362 + 128 >> 8)\n        x1 = m0 - b1\n        x2 = ((unsafe(block_2[2 + i_6]) - unsafe(block_2[6 + i_6])) * 362 + 128 >> 8) - b3\n        x3 = m0 + b1\n        y3 = x1 + x2\n        y4 = x3 + b3\n        y5 = x1 - x2\n        y6 = x3 - b3\n        y7 = -x0 - (b4 * 473 + b6 * 196 + 128 >> 8)\n        unsafe(block_2[0 + i_6]) = b7 + y4 + 128 >> 8\n        unsafe(block_2[1 + i_6]) = x4 + y3 + 128 >> 8\n        unsafe(block_2[2 + i_6]) = y5 - x0 + 128 >> 8\n        unsafe(block_2[3 + i_6]) = y6 - y7 + 128 >> 8\n        unsafe(block_2[4 + i_6]) = y6 + y7 + 128 >> 8\n        unsafe(block_2[5 + i_6]) = x0 + y5 + 128 >> 8\n        unsafe(block_2[6 + i_6]) = y3 - x4 + 128 >> 8\n        unsafe(block_2[7 + i_6]) = y4 - b7 + 128 >> 8\n        i_6 += 8\n    }\n    return\n}"
+				},
+				{
+					"key" : "plmpeg-stream",
+					"name" : "plm_video_decode_block",
+					"ours" : "[c_function]\ndef plm_video_decode_block(var self : plm_video_t?; _c_block : int) {\n    var n : int = 0\n    var quant_matrix : uint8?\n    // Decode DC coefficient of intra-coded blocks\n    if (self.macroblock_intra != 0) {\n        var predictor : int\n        var dct_size : int\n        // DC prediction\n        let plane_index : int = _c_block > 3 ? _c_block - 3 : 0\n        predictor = self.dc_predictor[plane_index]\n        dct_size = int(plm_buffer_read_vlc(self.buffer, plmpeg_file_all__PLM_VIDEO_DCT_SIZE[plane_index]))\n        // Read DC coeff\n        if (dct_size > 0) {\n            let differential : int = plm_buffer_read(self.buffer, dct_size)\n            if ((differential & (1 << (dct_size - 1))) != 0) {\n                self.block_data[0] = predictor + differential\n            } else {\n                self.block_data[0] = predictor + (-(1 << dct_size) | (differential + 1))\n            }\n        } else {\n            self.block_data[0] = predictor\n        }\n        // Save predictor value\n        self.dc_predictor[plane_index] = self.block_data[0]\n        // Dequantize + premultiply\n        self.block_data[0] <<= 3 + 5\n        quant_matrix = addr(self.intra_quant_matrix[0])\n        n = 1\n    } else {\n        quant_matrix = addr(self.non_intra_quant_matrix[0])\n    }\n    // Decode AC coefficients (+DC for non-intra)\n    var level : int = 0\n    while (TRUE != 0) {\n        var run : int = 0\n        let coeff : uint16 = plm_buffer_read_vlc_uint(self.buffer, addr(plmpeg_file_all__PLM_VIDEO_DCT_COEFF[0]))\n        if ((coeff == 1) && (n > 0) && (plm_buffer_read(self.buffer, 1) == 0)) {\n            // end_of_block\n            break\n        }\n        if (coeff == 65535) {\n            // escape\n            run = plm_buffer_read(self.buffer, 6)\n            level = plm_buffer_read(self.buffer, 8)\n            if (level == 0) {\n                level = plm_buffer_read(self.buffer, 8)\n            } elif (level == 128) {\n                level = plm_buffer_read(self.buffer, 8) - 256\n            } elif (level > 128) {\n                level -= 256\n            }\n        } else {\n            run = int(coeff) >> 8\n            level = int(coeff) & 255\n            if (plm_buffer_read(self.buffer, 1) != 0) {\n                level = -level\n            }\n        }\n        n += run\n        if (n < 0 || n >= 64) {\n            // invalid\n            return\n        }\n        let de_zig_zagged : int = int(plmpeg_file_all__PLM_VIDEO_ZIG_ZAG[n])\n        n++\n        // Dequantize, oddify, clip\n        level = int(uint(level) << 1u)\n        if (self.macroblock_intra == 0) {\n            level += level < 0 ? -1 : 1\n        }\n        level = (level * self.quantizer_scale * int(quant_matrix[de_zig_zagged])) >> 4\n        if ((level & 1) == 0) {\n            level -= level > 0 ? 1 : -1\n        }\n        if (level > 2047) {\n            level = 2047\n        } elif (level < -2048) {\n            level = -2048\n        }\n        // Save premultiplied coefficient\n        self.block_data[de_zig_zagged] = level * int(plmpeg_file_all__PLM_VIDEO_PREMULTIPLIER_MATRIX[de_zig_zagged])\n    }\n    // Move block to its place\n    var d : uint8?\n    var dw : int\n    var di : int\n    if (_c_block < 4) {\n        d = self.frame_current.y.data\n        dw = self.luma_width\n        di = (self.mb_row * self.luma_width + self.mb_col) << 4\n        if ((_c_block & 1) != 0) {\n            di += 8\n        }\n        if ((_c_block & 2) != 0) {\n            di += self.luma_width << 3\n        }\n    } else {\n        d = (_c_block == 4) ? self.frame_current.cb.data : self.frame_current.cr.data\n        dw = self.chroma_width\n        di = ((self.mb_row * self.luma_width) << 2) + (self.mb_col << 3)\n    }\n    var s : int? = addr(self.block_data[0])\n    var si : int = 0\n    if (self.macroblock_intra != 0) {\n        // Overwrite (no prediction)\n        if (n == 1) {\n            let clamped : int = int(plmpeg_file_all__plm_clamp((s[0] + 128) >> 8))\n            {\n                let dest_scan : int = dw - 8\n                let source_scan : int = 8 - 8\n                for (y in range(8)) {\n                    for (x in range(8)) {\n                        d[di] = uint8(clamped)\n                        si++\n                        di++\n                    }\n                    si += source_scan\n                    di += dest_scan\n                }\n            }\n            s[0] = 0\n        } else {\n            plm_video_idct(s)\n            {\n                let dest_scan : int = dw - 8\n                let source_scan : int = 8 - 8\n                for (y in range(8)) {\n                    for (x in range(8)) {\n                        d[di] = plmpeg_file_all__plm_clamp(s[si])\n                        si++\n                        di++\n                    }\n                    si += source_scan\n                    di += dest_scan\n                }\n            }\n            crt::memset(reinterpret<void?>(addr(self.block_data[0])), 0, uint64(typeinfo sizeof(type<int[64]>)))\n        }\n    } else {\n        // Add data to the predicted macroblock\n        if (n == 1) {\n            let value : int = (s[0] + 128) >> 8\n            {\n                let dest_scan : int = dw - 8\n                let source_scan : int = 8 - 8\n                for (y in range(8)) {\n                    for (x in range(8)) {\n                        d[di] = plmpeg_file_all__plm_clamp(int(d[di]) + value)\n                        si++\n                        di++\n                    }\n                    si += source_scan\n                    di += dest_scan\n                }\n            }\n            s[0] = 0\n        } else {\n            plm_video_idct(s)\n            {\n                let dest_scan : int = dw - 8\n                let source_scan : int = 8 - 8\n                for (y in range(8)) {\n                    for (x in range(8)) {\n                        d[di] = plmpeg_file_all__plm_clamp(int(d[di]) + s[si])\n                        si++\n                        di++\n                    }\n                    si += source_scan\n                    di += dest_scan\n                }\n            }\n            crt::memset(reinterpret<void?>(addr(self.block_data[0])), 0, uint64(typeinfo sizeof(type<int[64]>)))\n        }\n    }\n}",
+					"rust" : "[sideeffects]\ndef plm_video_decode_block(var self_92 : plm_video_t?; var block_1 : int) {\n    var n : int\n    var quant_matrix : uint8?\n    var predictor : int\n    var dct_size : int\n    var plane_index : int\n    var differential : int\n    var level : int\n    var run : int\n    var coeff : uint16\n    var de_zig_zagged : int\n    var d_0 : uint8?\n    var dw : int\n    var di : int\n    var s_0 : int?\n    var si : int\n    var clamped : int\n    var dest_scan : int\n    var source_scan : int\n    var dest_scan_0 : int\n    var source_scan_0 : int\n    var value_1 : int\n    var dest_scan_1 : int\n    var source_scan_1 : int\n    var dest_scan_2 : int\n    var source_scan_2 : int\n    n = 0\n    if (self_92.macroblock_intra != 0) {\n        plane_index = block_1 > 3 ? block_1 - 3 : 0\n        var c2da_fresh93 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 144ul))\n        predictor = unsafe(unsafe(reinterpret<int?>(c2da_fresh93))[plane_index])\n        dct_size = int(plm_buffer_read_vlc(self_92.buffer, unsafe(reinterpret<plm_vlc_t const?>(PLM_VIDEO_DCT_SIZE[plane_index]))))\n        if (dct_size > 0) {\n            differential = plm_buffer_read(self_92.buffer, dct_size)\n            if ((differential & 1 << dct_size - 1) != 0) {\n                var c2da_fresh94 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n                unsafe(unsafe(reinterpret<int?>(c2da_fresh94))[0]) = predictor + differential\n            } else {\n                var c2da_fresh95 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n                unsafe(unsafe(reinterpret<int?>(c2da_fresh95))[0]) = predictor + (-(1 << dct_size) | differential + 1)\n            }\n        } else {\n            var c2da_fresh96 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n            unsafe(unsafe(reinterpret<int?>(c2da_fresh96))[0]) = predictor\n        }\n        var c2da_fresh97 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 144ul))\n        var c2da_fresh98 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(unsafe(reinterpret<int?>(c2da_fresh97))[plane_index]) = int(unsafe(unsafe(reinterpret<int?>(c2da_fresh98))[0]))  // nolint:PERF020\n        var c2da_fresh99 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(unsafe(reinterpret<int?>(c2da_fresh99))[0]) <<= 3 + 5\n        var c2da_fresh100 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(self_92)) + 632ul))\n        quant_matrix = unsafe(reinterpret<uint8?>(c2da_fresh100))\n        n = 1\n    } else {\n        var c2da_fresh101 : uint8? = unsafe(reinterpret<uint8?>(unsafe(reinterpret<uint64>(self_92)) + 696ul))\n        quant_matrix = unsafe(reinterpret<uint8?>(c2da_fresh101))\n    }\n    level = 0\n    while (true) {\n        run = 0\n        coeff = plm_buffer_read_vlc_uint(self_92.buffer, unsafe(addr<plm_vlc_uint_t const?>(PLM_VIDEO_DCT_COEFF[0])))\n        if (int(coeff) == 1 && n > 0 && plm_buffer_read(self_92.buffer, 1) == 0) {\n            break\n        }\n        if (int(coeff) == 65535) {\n            run = plm_buffer_read(self_92.buffer, 6)\n            level = plm_buffer_read(self_92.buffer, 8)\n            if (level == 0) {\n                level = plm_buffer_read(self_92.buffer, 8)\n            } elif (level == 128) {\n                level = plm_buffer_read(self_92.buffer, 8) - 256\n            } elif (level > 128) {\n                level -= 256\n            }\n        } else {\n            run = int(coeff) >> 8\n            level = int(coeff) & 255\n            if (plm_buffer_read(self_92.buffer, 1) != 0) {\n                level = -level\n            }\n        }\n        n += run\n        if (n < 0 || n >= 64) {\n            return\n        }\n        de_zig_zagged = int(PLM_VIDEO_ZIG_ZAG[n])\n        n++\n        level = int(uint(level) << 1u)\n        if (self_92.macroblock_intra == 0) {\n            level += level < 0 ? -1 : 1\n        }\n        level = level * self_92.quantizer_scale * int(unsafe(quant_matrix[de_zig_zagged])) >> 4\n        if ((level & 1) == 0) {\n            level -= level > 0 ? 1 : -1\n        }\n        if (level > 2047) {\n            level = 2047\n        } elif (level < -2048) {\n            level = -2048\n        }\n        var c2da_fresh102 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(unsafe(reinterpret<int?>(c2da_fresh102))[de_zig_zagged]) = level * int(PLM_VIDEO_PREMULTIPLIER_MATRIX[de_zig_zagged])\n    }\n    if (block_1 < 4) {\n        d_0 = unsafe(reinterpret<uint8?>(self_92.frame_current.y.data))\n        dw = self_92.luma_width\n        di = self_92.mb_row * self_92.luma_width + self_92.mb_col << 4\n        if ((block_1 & 1) != 0) {\n            di += 8\n        }\n        if ((block_1 & 2) != 0) {\n            di += self_92.luma_width << 3\n        }\n    } else {\n        d_0 = unsafe(reinterpret<uint8?>(block_1 == 4 ? self_92.frame_current.cb.data : self_92.frame_current.cr.data))\n        dw = self_92.chroma_width\n        di = (self_92.mb_row * self_92.luma_width << 2) + (self_92.mb_col << 3)\n    }\n    var c2da_fresh103 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n    s_0 = c2da_fresh103\n    si = 0\n    if (self_92.macroblock_intra != 0) {\n        if (n == 1) {\n            let c2da_fresh104 : int = unsafe(s_0[0]) + 128 >> 8\n            clamped = int(uint8(c2da_fresh104 > 255 ? 255 : c2da_fresh104 < 0 ? 0 : c2da_fresh104))\n            dest_scan = dw - 8\n            source_scan = 8 - 8\n            for (y in range(0, 8)) {\n                for (x in range(0, 8)) {\n                    unsafe(d_0[di]) = uint8(clamped)\n                    si++\n                    di++\n                }\n                si += source_scan\n                di += dest_scan\n            }\n            unsafe(s_0[0]) = 0\n        } else {\n            plm_video_idct(s_0)\n            dest_scan_0 = dw - 8\n            source_scan_0 = 8 - 8\n            for (y_0 in range(0, 8)) {\n                for (x_0 in range(0, 8)) {\n                    let c2da_fresh105 : int = unsafe(s_0[si])\n                    unsafe(d_0[di]) = uint8(c2da_fresh105 > 255 ? 255 : c2da_fresh105 < 0 ? 0 : c2da_fresh105)\n                    si++\n                    di++\n                }\n                si += source_scan_0\n                di += dest_scan_0\n            }\n            var c2da_fresh106 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n            unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(reinterpret<uint8?>(c2da_fresh106)))), 0u8, 256ul)))\n        }\n    } elif (n == 1) {\n        value_1 = unsafe(s_0[0]) + 128 >> 8\n        dest_scan_1 = dw - 8\n        source_scan_1 = 8 - 8\n        for (y_1 in range(0, 8)) {\n            for (x_1 in range(0, 8)) {\n                let c2da_fresh107 : int = int(unsafe(d_0[di])) + value_1\n                unsafe(d_0[di]) = uint8(c2da_fresh107 > 255 ? 255 : c2da_fresh107 < 0 ? 0 : c2da_fresh107)\n                si++\n                di++\n            }\n            si += source_scan_1\n            di += dest_scan_1\n        }\n        unsafe(s_0[0]) = 0\n    } else {\n        plm_video_idct(s_0)\n        dest_scan_2 = dw - 8\n        source_scan_2 = 8 - 8\n        for (y_2 in range(0, 8)) {\n            for (x_2 in range(0, 8)) {\n                let c2da_fresh108 : int = int(unsafe(d_0[di])) + unsafe(s_0[si])\n                unsafe(d_0[di]) = uint8(c2da_fresh108 > 255 ? 255 : c2da_fresh108 < 0 ? 0 : c2da_fresh108)\n                si++\n                di++\n            }\n            si += source_scan_2\n            di += dest_scan_2\n        }\n        var c2da_fresh109 : int? = unsafe(reinterpret<int?>(unsafe(reinterpret<uint64>(self_92)) + 376ul))\n        unsafe(reinterpret<uint8?>(c2da_rt_memset(unsafe(reinterpret<uint64>(unsafe(reinterpret<uint8?>(c2da_fresh109)))), 0u8, 256ul)))\n    }\n    return\n}"
+				}
+			],
 			"ours" : {
 				"error" : "",
 				"lanes" : {
@@ -75990,13 +76058,39 @@
 					"c2da_rt_reset(...)="
 				]
 			},
+			"box" : "PC",
 			"date" : "2026-11-14 08:54 UTC",
 			"cpu" : "AMD Ryzen 7 7435HS",
 			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"native" : {
+				"status" : "pass",
+				"reason" : ""
+			},
 			"rust_commit_error" : "",
 			"address_cap" : "6442450944",
 			"samples" : 3,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
+			"rust" : {
+				"error" : "",
+				"lanes" : {
+					"interp" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"jit" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"exe" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"aot" : {
+						"status" : "pass",
+						"reason" : ""
+					}
+				}
+			},
 			"speed" : {
 				"native" : {
 					"setup" : {
@@ -76218,18 +76312,77 @@
 						}
 					}
 				}
-			}
+			},
+			"daslang" : "0.6.5"
 		},
 		"doomgeneric" : {
+			"lanes" : [
+				"interp",
+				"jit",
+				"exe",
+				"aot"
+			],
+			"functions" : [
+				{
+					"key" : "doomgeneric",
+					"name" : "R_DrawColumn",
+					"ours" : "[c_function]\ndef R_DrawColumn {\n    var count : int\n    var dest : uint8?\n    var frac : int\n    var fracstep : int\n    count = dc_yh - dc_yl\n    // Zero length, column does not exceed a pixel.\n    if (count < 0) {\n        return\n    }\n    if (uint(dc_x) >= uint(SCREENWIDTH) || dc_yl < 0 || dc_yh >= SCREENHEIGHT) {\n        I_Error`va(cstr(\"R_DrawColumn: %i to %i at %i\"), (dc_yl, dc_yh, dc_x))\n    }\n    // Framebuffer destination address.\n    // Use ylookup LUT to avoid multiply with ScreenWidth.\n    // Use columnofs LUT for subwindows?\n    dest = ylookup[dc_yl] + columnofs[dc_x]\n    // Determine scaling,\n    // which is the only mapping to be done.\n    fracstep = dc_iscale\n    frac = dc_texturemid + (dc_yl - centery) * fracstep\n    // Inner loop that does the actual texture mapping,\n    // e.g. a DDA-lile scaling.\n    // This is as fast as it gets.\n    for (_t0 in urange64(uint64(uint(count)) + 1ul)) {\n        // Re-map color indices from wall texture column\n        // using a lighting/special effects LUT.\n        *dest = dc_colormap[int(dc_source[(frac >> FRACBITS) & 127])]\n        dest += SCREENWIDTH\n        frac += fracstep\n    }\n}",
+					"rust" : "[sideeffects]\ndef R_DrawColumn() {\n    var count_9 : int\n    var dest_8 : uint8?\n    var frac_7 : int\n    var fracstep : int\n    count_9 = dc_yh - dc_yl\n    if (count_9 < 0) {\n        return\n    }\n    if (uint(dc_x) >= 320u || dc_yl < 0 || dc_yh >= 200) {\n        I_Error(unsafe(addr<int8?>(c2da_str_393[0])), [C2daVaArg(tag = 1, i64 = int64(dc_yl), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(dc_yh), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(dc_x), f64 = 0.0lf, raw = 0x0)])\n    }\n    dest_8 = unsafe(reinterpret<uint8?>(unsafe(ylookup[dc_yl] + columnofs[dc_x])))\n    fracstep = dc_iscale\n    frac_7 = dc_texturemid + (dc_yl - centery) * fracstep\n    var c2da_dest_8_addr : uint64 = unsafe(reinterpret<uint64>(dest_8))\n    for (c2da_iter in urange64(0ul, uint64(uint(count_9)) + 1ul)) {\n        *unsafe(reinterpret<uint8?>(c2da_dest_8_addr)) = uint8(unsafe(dc_colormap[int(unsafe(dc_source[frac_7 >> 16 & 127]))]))  // nolint:PERF020\n        c2da_dest_8_addr += 320ul\n        frac_7 += fracstep\n    }\n    return\n}"
+				},
+				{
+					"key" : "doomgeneric",
+					"name" : "R_DrawSpan",
+					"ours" : "[c_function]\ndef R_DrawSpan {\n    var position : uint\n    var step : uint\n    var dest : uint8?\n    var count : int\n    var spot : int\n    var xtemp : uint\n    var ytemp : uint\n    if (ds_x2 < ds_x1 || ds_x1 < 0 || ds_x2 >= SCREENWIDTH || uint(ds_y) > uint(SCREENHEIGHT)) {\n        I_Error`va(cstr(\"R_DrawSpan: %i to %i at %i\"), (ds_x1, ds_x2, ds_y))\n    }\n    // dscount++;\n    // Pack position and step variables into a single 32-bit integer,\n    // with x in the top 16 bits and y in the bottom 16 bits. For\n    // each 16-bit part, the top 6 bits are the integer part and the\n    // bottom 10 bits are the fractional part of the pixel position.\n    position = (uint(ds_xfrac << 10) & 4294901760u) | uint((ds_yfrac >> 6) & 65535)\n    step = (uint(ds_xstep << 10) & 4294901760u) | uint((ds_ystep >> 6) & 65535)\n    dest = ylookup[ds_y] + columnofs[ds_x1]\n    // We do not check for zero spans here?\n    count = ds_x2 - ds_x1\n    for (_t0 in urange64(uint64(uint(count)) + 1ul)) {\n        // Calculate current texture index in u,v.\n        ytemp = (position >> 4u) & 4032u\n        xtemp = position >> 26u\n        spot = int(xtemp | ytemp)\n        // Lookup pixel from flat texture tile,\n        // re-index using light/colormap.\n        var _t1 = dest\n        dest++\n        *_t1 = ds_colormap[int(ds_source[spot])]\n        position += step\n    }\n}",
+					"rust" : "[sideeffects]\ndef R_DrawSpan() {\n    var position_1 : uint\n    var step : uint\n    var dest_14 : uint8?\n    var count_16 : int\n    if (ds_x2 < ds_x1 || ds_x1 < 0 || ds_x2 >= 320 || uint(ds_y) > 200u) {\n        I_Error(unsafe(addr<int8?>(c2da_str_395[0])), [C2daVaArg(tag = 1, i64 = int64(ds_x1), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(ds_x2), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(ds_y), f64 = 0.0lf, raw = 0x0)])\n    }\n    position_1 = uint(ds_xfrac << 10) & 0xffff0000u | uint(ds_yfrac >> 6 & 65535)\n    step = uint(ds_xstep << 10) & 0xffff0000u | uint(ds_ystep >> 6 & 65535)\n    dest_14 = unsafe(reinterpret<uint8?>(unsafe(ylookup[ds_y] + columnofs[ds_x1])))\n    count_16 = ds_x2 - ds_x1\n    var c2da_dest_14_addr : uint64 = unsafe(reinterpret<uint64>(dest_14))\n    for (c2da_iter_5 in urange64(0ul, uint64(uint(count_16)) + 1ul)) {\n        *unsafe(reinterpret<uint8?>(c2da_dest_14_addr)) = uint8(unsafe(ds_colormap[int(unsafe(ds_source[int(position_1 >> 26u | position_1 >> 4u & 0xfc0u)]))]))  // nolint:PERF020\n        c2da_dest_14_addr++\n        position_1 += step\n    }\n    return\n}"
+				}
+			],
+			"box" : "PC",
+			"native" : {
+				"status" : "pass",
+				"reason" : ""
+			},
+			"rust" : {
+				"error" : "",
+				"lanes" : {
+					"interp" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"jit" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"exe" : {
+						"status" : "pass",
+						"reason" : ""
+					},
+					"aot" : {
+						"status" : "pass",
+						"reason" : ""
+					}
+				}
+			},
+			"daslang" : "0.6.5",
 			"code" : {
 				"ours" : {
-					"status" : "refused",
-					"error" : "emitter: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/doomdata.h:57:9: record `mapvertex_t` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar",
-					"files" : 0,
-					"lines" : 0,
+					"status" : "ok",
+					"error" : "",
+					"files" : 1,
+					"lines" : 36658,
 					"runtime_lines" : 0,
 					"program_c2da_lines" : 0,
-					"counts" : {}
+					"counts" : {
+						"label" : 13,
+						"reinterpret" : 1435,
+						"unsafe_expr" : 506,
+						"c_function" : 685,
+						"literal_named" : 6259,
+						"pointer_arith" : 988,
+						"goto" : 24,
+						"unsafe_block" : 0,
+						"while_rangeable" : 81,
+						"pointer_index" : 742
+					}
 				},
 				"rust" : {
 					"status" : "ok",
@@ -76252,61 +76405,7 @@
 					}
 				}
 			},
-			"lanes" : [
-				"interp",
-				"jit",
-				"exe",
-				"aot"
-			],
-			"date" : "2026-11-09 16:48 UTC",
-			"cpu" : "AMD Ryzen 7 7435HS",
-			"box" : "PC",
-			"rust_commit_error" : "",
-			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
-			"address_cap" : "6442450944",
-			"native" : {
-				"status" : "pass",
-				"reason" : ""
-			},
 			"ours" : {
-				"error" : "emitter: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/doomdata.h:57:9: record `mapvertex_t` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar",
-				"lanes" : {
-					"interp" : {
-						"status" : "refused",
-						"reason" : "emitter: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/doomdata.h:57:9: record `mapvertex_t` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar"
-					},
-					"jit" : {
-						"status" : "refused",
-						"reason" : "emitter: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/doomdata.h:57:9: record `mapvertex_t` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar"
-					},
-					"exe" : {
-						"status" : "refused",
-						"reason" : "emitter: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/doomdata.h:57:9: record `mapvertex_t` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar"
-					},
-					"aot" : {
-						"status" : "refused",
-						"reason" : "emitter: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/doomdata.h:57:9: record `mapvertex_t` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar"
-					}
-				},
-				"defines" : []
-			},
-			"functions" : [
-				{
-					"key" : "doomgeneric",
-					"name" : "R_DrawColumn",
-					"ours" : "",
-					"rust" : "[sideeffects]\ndef R_DrawColumn() {\n    var count_9 : int\n    var dest_8 : uint8?\n    var frac_7 : int\n    var fracstep : int\n    count_9 = dc_yh - dc_yl\n    if (count_9 < 0) {\n        return\n    }\n    if (uint(dc_x) >= 320u || dc_yl < 0 || dc_yh >= 200) {\n        I_Error(unsafe(addr<int8?>(c2da_str_393[0])), [C2daVaArg(tag = 1, i64 = int64(dc_yl), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(dc_yh), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(dc_x), f64 = 0.0lf, raw = 0x0)])\n    }\n    dest_8 = unsafe(reinterpret<uint8?>(unsafe(ylookup[dc_yl] + columnofs[dc_x])))\n    fracstep = dc_iscale\n    frac_7 = dc_texturemid + (dc_yl - centery) * fracstep\n    var c2da_dest_8_addr : uint64 = unsafe(reinterpret<uint64>(dest_8))\n    for (c2da_iter in urange64(0ul, uint64(uint(count_9)) + 1ul)) {\n        *unsafe(reinterpret<uint8?>(c2da_dest_8_addr)) = uint8(unsafe(dc_colormap[int(unsafe(dc_source[frac_7 >> 16 & 127]))]))  // nolint:PERF020\n        c2da_dest_8_addr += 320ul\n        frac_7 += fracstep\n    }\n    return\n}"
-				},
-				{
-					"key" : "doomgeneric",
-					"name" : "R_DrawSpan",
-					"ours" : "",
-					"rust" : "[sideeffects]\ndef R_DrawSpan() {\n    var position_1 : uint\n    var step : uint\n    var dest_14 : uint8?\n    var count_16 : int\n    if (ds_x2 < ds_x1 || ds_x1 < 0 || ds_x2 >= 320 || uint(ds_y) > 200u) {\n        I_Error(unsafe(addr<int8?>(c2da_str_395[0])), [C2daVaArg(tag = 1, i64 = int64(ds_x1), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(ds_x2), f64 = 0.0lf, raw = 0x0), C2daVaArg(tag = 1, i64 = int64(ds_y), f64 = 0.0lf, raw = 0x0)])\n    }\n    position_1 = uint(ds_xfrac << 10) & 0xffff0000u | uint(ds_yfrac >> 6 & 65535)\n    step = uint(ds_xstep << 10) & 0xffff0000u | uint(ds_ystep >> 6 & 65535)\n    dest_14 = unsafe(reinterpret<uint8?>(unsafe(ylookup[ds_y] + columnofs[ds_x1])))\n    count_16 = ds_x2 - ds_x1\n    var c2da_dest_14_addr : uint64 = unsafe(reinterpret<uint64>(dest_14))\n    for (c2da_iter_5 in urange64(0ul, uint64(uint(count_16)) + 1ul)) {\n        *unsafe(reinterpret<uint8?>(c2da_dest_14_addr)) = uint8(unsafe(ds_colormap[int(unsafe(ds_source[int(position_1 >> 26u | position_1 >> 4u & 0xfc0u)]))]))  // nolint:PERF020\n        c2da_dest_14_addr++\n        position_1 += step\n    }\n    return\n}"
-				}
-			],
-			"samples" : 3,
-			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
-			"rust" : {
 				"error" : "",
 				"lanes" : {
 					"interp" : {
@@ -76322,159 +76421,282 @@
 						"reason" : ""
 					},
 					"aot" : {
-						"status" : "timeout",
-						"reason" : "the build or its run took longer than 300 s"
+						"status" : "pass",
+						"reason" : ""
 					}
-				}
+				},
+				"defines" : []
 			},
+			"date" : "2026-11-14 17:34 UTC",
+			"cpu" : "AMD Ryzen 7 7435HS",
+			"native_compiler" : "clang version 22.1.8 (https://github.com/llvm/llvm-project ca7933e47d3a3451d81e72ac174dcb5aa28b59d1)",
+			"rust_commit_error" : "",
+			"address_cap" : "6442450944",
+			"samples" : 3,
+			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"speed" : {
 				"native" : {
 					"setup" : {
-						"time" : 0.006542,
-						"spread" : 0.026750229287679644,
+						"time" : 0.006194,
+						"spread" : 0.0021795285760413396,
 						"count" : 1,
 						"result" : 0,
 						"samples" : [
-							0.006534,
-							0.006542,
-							0.006884
+							0.006194,
+							0.006209,
+							0.006182
 						]
 					},
 					"decode" : {
-						"time" : 0.11723,
-						"spread" : 0.004167022093320787,
+						"time" : 0.117362,
+						"spread" : 0.0015124145805286554,
 						"count" : 1,
 						"result" : 0,
 						"samples" : [
-							0.11712,
-							0.118097,
-							0.11723
+							0.117362,
+							0.117086,
+							0.117441
 						]
 					}
 				},
 				"ours" : {
 					"interp" : {
-						"error" : "bench: emitter: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/doomdata.h:57:9: record `mapvertex_t` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar"
+						"setup" : {
+							"time" : 0.126173,
+							"spread" : 0.008147543452244204,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.124815,
+								0.126871,
+								0.126173
+							]
+						},
+						"decode" : {
+							"time" : 5.083132,
+							"spread" : 0.005953219393082909,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								5.03107,
+								5.083132,
+								5.091592
+							]
+						}
 					},
 					"jit" : {
-						"error" : "bench: emitter: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/doomdata.h:57:9: record `mapvertex_t` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar"
+						"setup" : {
+							"time" : 0.006478,
+							"spread" : 0.22931460327261496,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.009281,
+								0.00631,
+								0.006478
+							]
+						},
+						"decode" : {
+							"time" : 0.126146,
+							"spread" : 0.0030004914939831926,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.126728,
+								0.125971,
+								0.126146
+							]
+						}
 					},
 					"exe" : {
-						"error" : "bench: emitter: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/doomdata.h:57:9: record `mapvertex_t` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar"
+						"setup" : {
+							"time" : 0.006681,
+							"spread" : 0.01841041760215534,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.006853,
+								0.006607,
+								0.006681
+							]
+						},
+						"decode" : {
+							"time" : 0.126154,
+							"spread" : 0.006392980008560979,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.127537,
+								0.125924,
+								0.126154
+							]
+						}
 					},
 					"aot" : {
-						"error" : "bench: emitter: /root/c2das/tests/manual/doomgeneric/upstream/doomgeneric/doomgeneric/doomdata.h:57:9: record `mapvertex_t` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar"
+						"setup" : {
+							"time" : 0.007451,
+							"spread" : 0.012884176620587863,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.007384,
+								0.007576,
+								0.007451
+							]
+						},
+						"decode" : {
+							"time" : 0.432972,
+							"spread" : 0.003613397633103351,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.432972,
+								0.431756,
+								0.434885
+							]
+						}
 					}
 				},
 				"rust" : {
 					"interp" : {
 						"setup" : {
-							"time" : 0.10339,
-							"spread" : 0.008695231647161274,
+							"time" : 0.103543,
+							"spread" : 0.005548419497213705,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.104149,
-								0.10339,
-								0.102351
+								0.103543,
+								0.104349,
+								0.1032
 							]
 						},
 						"decode" : {
-							"time" : 3.898489,
-							"spread" : 0.007777628717177358,
+							"time" : 3.930543,
+							"spread" : 0.008313355177643433,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								3.926106,
-								3.898489,
-								3.865464
+								3.930543,
+								3.939922,
+								3.87457
 							]
 						}
 					},
 					"jit" : {
 						"setup" : {
-							"time" : 0.006763,
-							"spread" : 0.5078367588348366,
+							"time" : 0.005524,
+							"spread" : 0.4162744388124548,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.012414,
-								0.005545,
-								0.006763
+								0.010106,
+								0.005507,
+								0.005524
 							]
 						},
 						"decode" : {
-							"time" : 0.125443,
-							"spread" : 0.006337539759093804,
+							"time" : 0.124647,
+							"spread" : 0.0020738565709563952,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.126981,
-								0.125391,
-								0.125443
+								0.124179,
+								0.124647,
+								0.124696
 							]
 						}
 					},
 					"exe" : {
 						"setup" : {
-							"time" : 0.00563,
-							"spread" : 0.017317939609236225,
+							"time" : 0.005608,
+							"spread" : 0.04493580599144081,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.005772,
-								0.00563,
-								0.005577
+								0.005608,
+								0.006096,
+								0.005592
 							]
 						},
 						"decode" : {
-							"time" : 0.126796,
-							"spread" : 0.003040316729234337,
+							"time" : 0.126312,
+							"spread" : 0.002117771866489358,
 							"count" : 1,
 							"result" : 0,
 							"samples" : [
-								0.126796,
-								0.126039,
-								0.12681
+								0.126108,
+								0.126643,
+								0.126312
 							]
 						}
 					},
 					"aot" : {
-						"error" : "the lane does not pass: timeout"
+						"setup" : {
+							"time" : 0.006425,
+							"spread" : 0.0198443579766537,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.006323,
+								0.006425,
+								0.006578
+							]
+						},
+						"decode" : {
+							"time" : 0.433368,
+							"spread" : 0.008196267375533034,
+							"count" : 1,
+							"result" : 0,
+							"samples" : [
+								0.427185,
+								0.433368,
+								0.434289
+							]
+						}
 					}
 				}
-			},
-			"daslang" : "0.6.5"
+			}
 		},
 		"quakegeneric" : {
 			"code" : {
 				"ours" : {
-					"status" : "refused",
-					"error" : "emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/host_cmd.c:63:10: a pointer to a variadic function is not lowered yet",
-					"files" : 0,
-					"lines" : 0,
+					"status" : "ok",
+					"error" : "",
+					"files" : 120,
+					"lines" : 35444,
 					"runtime_lines" : 0,
 					"program_c2da_lines" : 0,
-					"counts" : {}
+					"counts" : {
+						"label" : 24,
+						"reinterpret" : 721,
+						"unsafe_expr" : 59,
+						"c_function" : 702,
+						"literal_named" : 4037,
+						"pointer_arith" : 820,
+						"goto" : 44,
+						"unsafe_block" : 0,
+						"while_rangeable" : 114,
+						"pointer_index" : 1700
+					}
 				},
 				"rust" : {
-					"status" : "compile",
-					"error" : "error[30299]: return inside a try/recover arm; set a variable in the arm and return after the pair",
+					"status" : "ok",
+					"error" : "",
 					"files" : 72,
 					"lines" : 59613,
 					"runtime_lines" : 1781,
 					"program_c2da_lines" : 23660,
 					"counts" : {
-						"label" : 0,
-						"reinterpret" : 0,
-						"unsafe_expr" : 0,
+						"label" : 578,
+						"reinterpret" : 9952,
+						"unsafe_expr" : 20287,
 						"c_function" : 0,
-						"literal_named" : 0,
-						"pointer_arith" : 0,
-						"goto" : 0,
-						"unsafe_block" : 0,
-						"while_rangeable" : 0,
-						"pointer_index" : 0
+						"literal_named" : 2275,
+						"pointer_arith" : 745,
+						"goto" : 461,
+						"unsafe_block" : 219,
+						"while_rangeable" : 203,
+						"pointer_index" : 5761
 					}
 				}
 			},
@@ -76484,7 +76706,7 @@
 				"exe",
 				"aot"
 			],
-			"date" : "2026-11-09 17:02 UTC",
+			"date" : "2026-11-14 17:15 UTC",
 			"cpu" : "AMD Ryzen 7 7435HS",
 			"box" : "PC",
 			"rust_commit_error" : "",
@@ -76495,23 +76717,23 @@
 				"reason" : ""
 			},
 			"ours" : {
-				"error" : "emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/host_cmd.c:63:10: a pointer to a variadic function is not lowered yet",
+				"error" : "",
 				"lanes" : {
 					"interp" : {
-						"status" : "refused",
-						"reason" : "emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/host_cmd.c:63:10: a pointer to a variadic function is not lowered yet"
+						"status" : "pass",
+						"reason" : ""
 					},
 					"jit" : {
-						"status" : "refused",
-						"reason" : "emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/host_cmd.c:63:10: a pointer to a variadic function is not lowered yet"
+						"status" : "pass",
+						"reason" : ""
 					},
 					"exe" : {
-						"status" : "refused",
-						"reason" : "emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/host_cmd.c:63:10: a pointer to a variadic function is not lowered yet"
+						"status" : "pass",
+						"reason" : ""
 					},
 					"aot" : {
-						"status" : "refused",
-						"reason" : "emitter: /root/c2das/tests/manual/quakegeneric/upstream/quakegeneric/source/host_cmd.c:63:10: a pointer to a variadic function is not lowered yet"
+						"status" : "pass",
+						"reason" : ""
 					}
 				},
 				"defines" : []
@@ -76520,36 +76742,36 @@
 				{
 					"key" : "quakegeneric",
 					"name" : "D_DrawSpans8",
-					"ours" : "",
+					"ours" : "[c_function]\ndef D_DrawSpans8(var pspan : espan_s?) {\n    var count : int\n    var spancount : int\n    var pbase : uint8?\n    var pdest : uint8?\n    var s : int\n    var t : int\n    var snext : int\n    var tnext : int\n    var sstep : int\n    var tstep : int\n    var sdivz : float\n    var tdivz : float\n    var zi : float\n    var z : float\n    var du : float\n    var dv : float\n    var spancountminus1 : float\n    var sdivz8stepu : float\n    var tdivz8stepu : float\n    var zi8stepu : float\n    // keep compiler happy\n    sstep = 0\n    // ditto\n    tstep = 0\n    pbase = cacheblock\n    sdivz8stepu = d_sdivzstepu * 8.0f\n    tdivz8stepu = d_tdivzstepu * 8.0f\n    zi8stepu = d_zistepu * 8.0f\n    while (true) {\n        pdest = d_viewbuffer + (screenwidth * pspan.v) + pspan.u\n        count = pspan.count\n        // calculate the initial s/z, t/z, 1/z, s, and t and clamp\n        du = float(pspan.u)\n        dv = float(pspan.v)\n        sdivz = d_sdivzorigin + dv * d_sdivzstepv + du * d_sdivzstepu\n        tdivz = d_tdivzorigin + dv * d_tdivzstepv + du * d_tdivzstepu\n        zi = d_ziorigin + dv * d_zistepv + du * d_zistepu\n        // prescale to 16.16 fixed-point\n        z = 65536.0f / zi\n        s = int(sdivz * z) + sadjust\n        if (s > bbextents) {\n            s = bbextents\n        } elif (s < 0) {\n            s = 0\n        }\n        t = int(tdivz * z) + tadjust\n        if (t > bbextentt) {\n            t = bbextentt\n        } elif (t < 0) {\n            t = 0\n        }\n        c_do_while(count > 0) {\n            // calculate s and t at the far end of the span\n            if (count >= 8) {\n                spancount = 8\n            } else {\n                spancount = count\n            }\n            count -= spancount\n            if (count != 0) {\n                // calculate s/z, t/z, zi->fixed s and t at far end of span,\n                // calculate s and t steps across span by shifting\n                sdivz += sdivz8stepu\n                tdivz += tdivz8stepu\n                zi += zi8stepu\n                // prescale to 16.16 fixed-point\n                z = 65536.0f / zi\n                snext = int(sdivz * z) + sadjust\n                if (snext > bbextents) {\n                    snext = bbextents\n                } elif (snext < 8) {\n                    // prevent round-off error on <0 steps from\n                    snext = 8\n                }\n                // from causing overstepping & running off the\n                // edge of the texture\n                tnext = int(tdivz * z) + tadjust\n                if (tnext > bbextentt) {\n                    tnext = bbextentt\n                } elif (tnext < 8) {\n                    // guard against round-off error on <0 steps\n                    tnext = 8\n                }\n                sstep = (snext - s) >> 3\n                tstep = (tnext - t) >> 3\n            } else {\n                // calculate s/z, t/z, zi->fixed s and t at last pixel in span (so\n                // can't step off polygon), clamp, calculate s and t steps across\n                // span by division, biasing steps low so we don't run off the\n                // texture\n                spancountminus1 = float(spancount - 1)\n                sdivz += d_sdivzstepu * spancountminus1\n                tdivz += d_tdivzstepu * spancountminus1\n                zi += d_zistepu * spancountminus1\n                // prescale to 16.16 fixed-point\n                z = 65536.0f / zi\n                snext = int(sdivz * z) + sadjust\n                if (snext > bbextents) {\n                    snext = bbextents\n                } elif (snext < 8) {\n                    // prevent round-off error on <0 steps from\n                    snext = 8\n                }\n                // from causing overstepping & running off the\n                // edge of the texture\n                tnext = int(tdivz * z) + tadjust\n                if (tnext > bbextentt) {\n                    tnext = bbextentt\n                } elif (tnext < 8) {\n                    // guard against round-off error on <0 steps\n                    tnext = 8\n                }\n                if (spancount > 1) {\n                    sstep = (snext - s) / (spancount - 1)\n                    tstep = (tnext - t) / (spancount - 1)\n                }\n            }\n            while (true) {\n                var _t0 = pdest\n                pdest++\n                *_t0 = (pbase + (s >> 16))[(t >> 16) * cachewidth]\n                s += sstep\n                t += tstep\n                spancount--\n                if (!(spancount > 0)) {\n                    break\n                }\n            }\n            s = snext\n            t = tnext\n        }\n        pspan = pspan.pnext\n        if (!(pspan != null)) {\n            break\n        }\n    }\n}",
 					"rust" : "[export, sideeffects]\ndef D_DrawSpans8(var pspan : espan_s?) {\n    var count : int\n    var spancount : int\n    var pbase : uint8?\n    var pdest : uint8?\n    var s : int\n    var t : int\n    var snext : int\n    var tnext : int\n    var sstep : int\n    var tstep : int\n    var sdivz : float\n    var tdivz : float\n    var zi : float\n    var z : float\n    var du : float\n    var dv : float\n    var spancountminus1 : float\n    var sdivz8stepu : float\n    var tdivz8stepu : float\n    var zi8stepu : float\n    sstep = 0\n    tstep = 0\n    pbase = unsafe(reinterpret<uint8?>(cacheblock))\n    sdivz8stepu = d_sdivzstepu * 8.0\n    tdivz8stepu = d_tdivzstepu * 8.0\n    zi8stepu = d_zistepu * 8.0\n    while (true) {\n        pdest = unsafe(reinterpret<uint8?>(unsafe(unsafe(d_viewbuffer + int64(screenwidth * pspan.v)) + pspan.u)))\n        count = pspan.count\n        du = float(pspan.u)\n        dv = float(pspan.v)\n        sdivz = d_sdivzorigin + dv * d_sdivzstepv + du * d_sdivzstepu\n        tdivz = d_tdivzorigin + dv * d_tdivzstepv + du * d_tdivzstepu\n        zi = d_ziorigin + dv * d_zistepv + du * d_zistepu\n        z = 65536.0 / zi\n        s = int(sdivz * z) + sadjust\n        if (s > bbextents) {\n            s = bbextents\n        } elif (s < 0) {\n            s = 0\n        }\n        t = int(tdivz * z) + tadjust\n        if (t > bbextentt) {\n            t = bbextentt\n        } elif (t < 0) {\n            t = 0\n        }\n        while (true) {\n            if (count >= 8) {\n                spancount = 8\n            } else {\n                spancount = count\n            }\n            count -= spancount\n            if (count != 0) {\n                sdivz += sdivz8stepu\n                tdivz += tdivz8stepu\n                zi += zi8stepu\n                z = 65536.0 / zi\n                snext = int(sdivz * z) + sadjust\n                if (snext > bbextents) {\n                    snext = bbextents\n                } elif (snext < 8) {\n                    snext = 8\n                }\n                tnext = int(tdivz * z) + tadjust\n                if (tnext > bbextentt) {\n                    tnext = bbextentt\n                } elif (tnext < 8) {\n                    tnext = 8\n                }\n                sstep = snext - s >> 3\n                tstep = tnext - t >> 3\n            } else {\n                spancountminus1 = float(spancount - 1)\n                sdivz = sdivz + d_sdivzstepu * spancountminus1\n                tdivz = tdivz + d_tdivzstepu * spancountminus1\n                zi = zi + d_zistepu * spancountminus1\n                z = 65536.0 / zi\n                snext = int(sdivz * z) + sadjust\n                if (snext > bbextents) {\n                    snext = bbextents\n                } elif (snext < 8) {\n                    snext = 8\n                }\n                tnext = int(tdivz * z) + tadjust\n                if (tnext > bbextentt) {\n                    tnext = bbextentt\n                } elif (tnext < 8) {\n                    tnext = 8\n                }\n                if (spancount > 1) {\n                    sstep = (snext - s) / (spancount - 1)\n                    tstep = (tnext - t) / (spancount - 1)\n                }\n            }\n            var c2da_pdest_addr : uint64 = unsafe(reinterpret<uint64>(pdest))\n            while (true) {\n                *unsafe(reinterpret<uint8?>(c2da_pdest_addr)) = uint8(*unsafe(unsafe(pbase + int64(s >> 16)) + int64((t >> 16) * cachewidth)))\n                c2da_pdest_addr++\n                s += sstep\n                t += tstep\n                spancount--\n                if (spancount <= 0) {\n                    break\n                }\n            }\n            pdest = unsafe(reinterpret<uint8?>(c2da_pdest_addr))\n            s = snext\n            t = tnext\n            if (count <= 0) {\n                break\n            }\n        }\n        pspan = unsafe(reinterpret<espan_s?>(pspan.pnext))\n        if (pspan == null) {\n            break\n        }\n    }\n    return\n}"
 				},
 				{
 					"key" : "quakegeneric",
 					"name" : "D_DrawZSpans",
-					"ours" : "",
+					"ours" : "[c_function]\ndef D_DrawZSpans(var pspan : espan_s?) {\n    var count : int\n    var doublecount : int\n    var izistep : int\n    var izi : int\n    var pdest : int16?\n    var ltemp : uint\n    var zi : double\n    var du : float\n    var dv : float\n    // FIXME: check for clamping/range problems\n    // we count on FP exceptions being turned off to avoid range problems\n    izistep = int(d_zistepu * 32768.0f * 65536.0f)\n    while (true) {\n        pdest = d_pzbuffer + (d_zwidth * uint(pspan.v)) + pspan.u\n        count = pspan.count\n        // calculate the initial 1/z\n        du = float(pspan.u)\n        dv = float(pspan.v)\n        zi = double(d_ziorigin + dv * d_zistepv + du * d_zistepu)\n        // we count on FP exceptions being turned off to avoid range problems\n        izi = int(zi * 32768.0lf * 65536.0lf)\n        if ((int64(intptr(pdest)) & 2l) != 0) {\n            var _t0 = pdest\n            pdest++\n            *_t0 = int16(izi >> 16)\n            izi += izistep\n            count--\n        }\n        doublecount = count >> 1\n        if (doublecount > 0) {\n            while (true) {\n                ltemp = uint(izi >> 16)\n                izi += izistep\n                ltemp |= uint(izi) & 4294901760u\n                izi += izistep\n                *reinterpret<int?>(pdest) = int(ltemp)\n                pdest += 2\n                doublecount--\n                if (!(doublecount > 0)) {\n                    break\n                }\n            }\n        }\n        if ((count & 1) != 0) {\n            *pdest = int16(izi >> 16)\n        }\n        pspan = pspan.pnext\n        if (!(pspan != null)) {\n            break\n        }\n    }\n}",
 					"rust" : "[export, sideeffects]\ndef D_DrawZSpans(var pspan_0 : espan_s?) {\n    var count_0 : int\n    var doublecount : int\n    var izistep : int\n    var izi : int\n    var pdest_0 : int16?\n    var ltemp : uint\n    izistep = int(d_zistepu * 32768.0 * 65536.0)\n    while (true) {\n        pdest_0 = unsafe(reinterpret<int16?>(unsafe(unsafe(d_pzbuffer + int64(d_zwidth * uint(pspan_0.v))) + pspan_0.u)))\n        count_0 = pspan_0.count\n        izi = int(double(d_ziorigin + float(pspan_0.v) * d_zistepv + float(pspan_0.u) * d_zistepu) * 32768.0lf * 65536.0lf)\n        if ((int64(unsafe(reinterpret<uint64>(pdest_0))) & 2l) != 0) {\n            *pdest_0 = int16(izi >> 16)\n            unsafe {  // nolint:STYLE025\n                pdest_0 += 1\n            }\n            izi += izistep\n            count_0--\n        }\n        doublecount = count_0 >> 1\n        if (doublecount > 0) {\n            while (true) {\n                ltemp = uint(izi >> 16)\n                izi += izistep\n                ltemp |= uint(izi) & 0xffff0000u\n                izi += izistep\n                *unsafe(reinterpret<int?>(pdest_0)) = int(ltemp)\n                unsafe {  // nolint:STYLE025\n                    pdest_0 += 2\n                }\n                doublecount--\n                if (doublecount <= 0) {\n                    break\n                }\n            }\n        }\n        if ((count_0 & 1) != 0) {\n            *pdest_0 = int16(izi >> 16)\n        }\n        pspan_0 = unsafe(reinterpret<espan_s?>(pspan_0.pnext))\n        if (pspan_0 == null) {\n            break\n        }\n    }\n    return\n}"
 				}
 			],
-			"samples" : 3,
+			"samples" : 1,
 			"rust_commit" : "b1d012eb5d268f9f743168caa962a9218cf275f7",
 			"rust" : {
 				"error" : "",
 				"lanes" : {
 					"interp" : {
-						"status" : "compile",
-						"reason" : "error[30299]: return inside a try/recover arm; set a variable in the arm and return after the pair"
+						"status" : "pass",
+						"reason" : ""
 					},
 					"jit" : {
-						"status" : "compile",
-						"reason" : "error[30299]: return inside a try/recover arm; set a variable in the arm and return after the pair"
+						"status" : "pass",
+						"reason" : ""
 					},
 					"exe" : {
-						"status" : "compile",
-						"reason" : "error[30299]: return inside a try/recover arm; set a variable in the arm and return after the pair"
+						"status" : "pass",
+						"reason" : ""
 					},
 					"aot" : {
-						"status" : "compile",
-						"reason" : "error[30299]: return inside a try/recover arm; set a variable in the arm and return after the pair"
+						"status" : "pass",
+						"reason" : ""
 					}
 				}
 			},

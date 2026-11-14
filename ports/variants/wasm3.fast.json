@@ -14,5 +14,5 @@
         "strict_aliasing": {"value": false, "reason": "default, search pending", "numbers": ""},
         "switch_dispatch": {"value": "chain", "reason": "default, search pending", "numbers": ""}
     },
-    "results": {"notes": "not yet tuned: readable + checks off"}
+    "results": {"notes": "not yet tuned: readable + checks off", "speed": {"x_native": {"interp": 52.194, "jit": 2.634, "exe": 2.574, "aot": 1.623}, "over": "the bench's decode time over native's (compare/run.das --project wasm3 --bench-only)", "commit": "cb35b34", "date": "2026-11-14", "box": "PC", "command": "heavy --exclusive --label TIMING-aot-final --max 8G -- /root/notes/parallel/aotfinal_capture/cap.sh 3", "quiet": true}}
 }

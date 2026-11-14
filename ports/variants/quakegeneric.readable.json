@@ -14,5 +14,5 @@
         "strict_aliasing": {"value": false, "reason": "default, search pending", "numbers": ""},
         "switch_dispatch": {"value": "chain", "reason": "default, search pending", "numbers": ""}
     },
-    "results": {}
+    "results": {"notes": "no speed cells: compare's quakegeneric row has no bench unit; interp, JIT, exe and AOT pass on the native output (compare/run.das --project quakegeneric, cb35b34)"}
 }
