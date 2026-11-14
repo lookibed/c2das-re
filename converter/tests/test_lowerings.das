@@ -1484,6 +1484,8 @@ def p9_packed_record_fixtures(t : T?) {
         has_text(t, text, "typeinfo alignof(type<thing_t>) == 2,")
         has_text(t, text, "\"thing_t: clang lays it out as size 10, align 1, its das alignment is 2\"")
         has_text(t, text, "typeinfo alignof(type<holder_t>) == 2, \"holder_t: clang lays it out as size 12, align 2\"")
+        // `_Alignof` at run time is clang's, not das's higher alignment
+        has_text(t, text, "printf(cstr(\"%d %d %d %d %d %d\\n\"), int(uint64(1)), int(uint64(2)), int(uint64(2)), int(uint64(1)), int(uint64(1)), int(uint64(1)))")
         let thing = "typedef struct \{ short x, y; \} __attribute__((packed)) thing_t;\n"
         rejects(t, "packed_plain_moved", thing + "struct holder \{ char c; thing_t t; \};\nint main(void) \{ struct holder h; h.c = 0; return h.c; \}\n", "record `holder` holds `t`, which das aligns to 2 by an alignment-only packed record, where das cannot place it as clang does; not lowered yet")
         rejects(t, "packed_plain_size", thing + "struct tail \{ thing_t t; char c; \};\nint main(void) \{ struct tail h; h.c = 0; return h.c; \}\n", "record `tail` holds `t`, which das aligns to 2")

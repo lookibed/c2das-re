@@ -32,6 +32,28 @@ typedef struct {
     thing_t thing;
 } holder_t;
 
+#pragma pack(2)
+typedef struct {
+    int a;
+    int b;
+} pair2_t;
+#pragma pack()
+
+typedef struct {
+    int a;
+    int b;
+} __attribute__((packed, aligned(2))) pair_aligned_t;
+
+typedef struct {
+    double d;
+    int a;
+    int b;
+} __attribute__((packed)) wide_t;
+
+typedef struct {
+    thing_t t;
+} wrap_t;
+
 thing_t starts[4];
 
 int main(void) {
@@ -57,6 +79,13 @@ int main(void) {
     printf("%d %d %d %d %d\n", (int) sizeof(thing_t), (int) sizeof(lump_t), (int) sizeof(header_t), (int) sizeof(holder_t), (int) _Alignof(holder_t));
     printf("%ld %d %d %s %d %d\n", sum, starts[2].x, copy.filepos + copy.size, copy.name, header.numlumps, header.infotableofs);
     printf("%.4s %d %d\n", header.id, h.tag, h.thing.options);
+    /* `_Alignof` at run time is C's alignment, not das's */
+    pair2_t p2 = {1, 2};
+    pair_aligned_t pa = {3, 4};
+    wide_t w = {0.5, 5, 6};
+    wrap_t wr = {{7, 8, 9, 10, 11}};
+    printf("%d %d %d %d %d %d\n", (int) _Alignof(thing_t), (int) _Alignof(pair2_t), (int) _Alignof(pair_aligned_t), (int) _Alignof(wide_t), (int) _Alignof(wrap_t), (int) _Alignof(lump_t));
+    printf("%d %d %d %d %d %d\n", (int) sizeof(pair2_t), (int) sizeof(pair_aligned_t), (int) sizeof(wide_t), (int) sizeof(wrap_t), p2.b + pa.b + w.b, wr.t.options);
     free(buf);
     return 0;
 }

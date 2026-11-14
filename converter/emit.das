@@ -3848,8 +3848,10 @@ let TYPE_OPERATORS <- {"sizeof_v", "alignof_v", "offsetof", "va_arg"}
 // the expressions C spells as operators over a type: `sizeof`, `_Alignof`, `offsetof`, `va_arg`
 def private emit_type_operator(var em : Emitter; tu : CirTu; x : CirExpr const?; loc : CirLoc) : Em {
     if (x.e == "alignof_v") {
-        if (is_marshal(em, tu, x.of_t) || is_va_list(tu, x.of_t) || natural_align(tu, em.prog.layout, x.of_t) != int(x.trait_v)) {
-            // das aligns the type below clang (a record's bitfield units, F5), or never lays it out
+        let das_align = kind_of(tu, x.of_t) == "union" ? natural_align(tu, em.prog.layout, x.of_t) : emitted_align(em, tu, x.of_t)
+        if (is_marshal(em, tu, x.of_t) || is_va_list(tu, x.of_t) || das_align != int(x.trait_v)) {
+            // das aligns the type below clang (a record's bitfield units, F5) or above it (an
+            // alignment-only packed record, or a record holding one), or never lays it out
             return value("{das_type(em, tu, x.t, loc)}({int64(x.trait_v)})", PREC_PRIMARY)
         }
         return value("{das_type(em, tu, x.t, loc)}(typeinfo alignof(type<{das_type(em, tu, x.of_t, loc)}>))", PREC_PRIMARY)
