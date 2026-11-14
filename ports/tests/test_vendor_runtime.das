@@ -20,17 +20,17 @@ def private scratch_root(name : string) : string {
     for (folder in ["c_runtime/c_runtime", "c_runtime/tests", "dasCRuntime/src", "dasCRuntime/_build", "dasCRuntime/tests"]) {
         mkdir_rec(path_join(root, folder))
     }
-    for (file in ["c_runtime/.das_module", "c_runtime/c_runtime/printf.das", "c_runtime/c_runtime/notes.txt", "c_runtime/tests/test_printf.das", "c_runtime/ARCHITECTURE.md", "c_runtime/.das_module.manifest", "dasCRuntime/.das_module", "dasCRuntime/CMakeLists.txt", "dasCRuntime/src/dasCRuntime.cpp", "dasCRuntime/src/dasCRuntime.h", "dasCRuntime/_build/CMakeCache.txt", "dasCRuntime/dasModuleCRuntime.shared_module", "dasCRuntime/tests/test_crt.das"]) {
+    for (file in ["LICENSE", "README.md", "c_runtime/.das_module", "c_runtime/c_runtime/printf.das", "c_runtime/c_runtime/notes.txt", "c_runtime/tests/test_printf.das", "c_runtime/ARCHITECTURE.md", "c_runtime/.das_module.manifest", "dasCRuntime/.das_module", "dasCRuntime/CMakeLists.txt", "dasCRuntime/src/dasCRuntime.cpp", "dasCRuntime/src/dasCRuntime.h", "dasCRuntime/_build/CMakeCache.txt", "dasCRuntime/dasModuleCRuntime.shared_module", "dasCRuntime/tests/test_crt.das"]) {
         fwrite(path_join(root, file), "{file}\n")
     }
     return root
 }
 
-let SCRATCH_FILES <- ["c_runtime/.das_module", "c_runtime/c_runtime/printf.das", "dasCRuntime/.das_module", "dasCRuntime/CMakeLists.txt", "dasCRuntime/src/dasCRuntime.cpp", "dasCRuntime/src/dasCRuntime.h"]
+let SCRATCH_FILES <- ["LICENSE", "c_runtime/.das_module", "c_runtime/c_runtime/printf.das", "dasCRuntime/.das_module", "dasCRuntime/CMakeLists.txt", "dasCRuntime/src/dasCRuntime.cpp", "dasCRuntime/src/dasCRuntime.h"]
 
 [test]
 def test_runtime_files(t : T?) {
-    t |> run("the descriptors, the build file, the modules and the sources; tests, documents, build trees and built modules stay out") @(t : T?) {
+    t |> run("the license, the descriptors, the build file, the modules and the sources; tests, documents, build trees and built modules stay out") @(t : T?) {
         let root = scratch_root("vendor_files")
         t |> success(!empty(root))
         t |> equal(runtime_files(root), SCRATCH_FILES)
