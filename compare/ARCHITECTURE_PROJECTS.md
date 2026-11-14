@@ -170,6 +170,15 @@ is `{error: "not measured: the run timed no bench (--samples 0)"}` (`NOT_TIMED`)
 says the capture is not measured. Each side is timed where its
 own lanes pass, whether or not the other side's do.
 
+A timed run leaves `bench_plan.json` in its work folder: the bench builds (`BenchModules`) and each
+side's verdict per lane. `--project <name> --bench-only` (`project_bench`) times the bench again
+over that folder and replaces the project's entry's `speed`, `samples`, `date`, `cpu`, `box`,
+`daslang` and `address_cap`, every other member as the timed run wrote it: it converts, translates
+and builds nothing, the `exe` and `aot` binaries reused while their build key stands
+(`converter/ARCHITECTURE_TIERS.md` section 5, "The build and its reuse"), so the timing of an
+exclusive job follows a building run made as a normal one. Without the record, or without the
+project's entry in the capture, it refuses.
+
 ## The code {#code}
 
 Each side that has a module is measured as the quality comparison measures one (`measure_side`): its

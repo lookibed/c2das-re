@@ -60,6 +60,9 @@ struct CompareArgs {
     @clarg_name = "variant"
     @clarg_doc = "a variant file of the --project (ports/variants/<project>.<variant>.json): our side converts under its knobs; needs --out, since the committed capture holds the default conversion"
     variant_file : string = ""
+    @clarg_name = "bench-only"
+    @clarg_doc = "with --project: time the bench again over the work folder an earlier --project run left, building and converting nothing, into the project's entry of the capture"
+    bench_only : bool
     @clarg_doc = "the folder --project writes its work into, one subfolder per project (default compare/work/projects)"
     work : string = ""
     @clarg_doc = "rewrite the comparison rendered from the capture between the compare markers of README.md"
@@ -223,6 +226,27 @@ def private samples_refused(samples, least : int) : bool {
     return true
 }
 
+// `--bench-only`: the entry of `p` in the capture `out` with its speed timed again over `work`
+// (`project_bench`), its result lines logged and written back
+def private bench_again(args : CompareArgs; out : string; p : Project; work : string; stamps : Stamps) : int {
+    if (args.samples < 1) {
+        to_log(LOG_ERROR, "--bench-only takes --samples of at least 1, not {args.samples}\n")
+        return 1
+    }
+    var error : string
+    var root = fexist(out) ? read_json_file(out, error) : null
+    var entry = root?["projects"]?[p.name]
+    error = project_bench(p, work, args.samples, stamps, int64(args.address_space) * 1073741824l, entry)
+    if (!empty(error)) {
+        to_log(LOG_ERROR, "{error}\n")
+        return 1
+    }
+    for (line in project_lines(p.name, entry)) {
+        to_log(LOG_INFO, "{line}\n")
+    }
+    return record_run(out, args.filter) $(path) => write_project(path, p.name, entry)
+}
+
 // the real project `--project` names through both translators, its result lines logged; its
 // entry of the capture's `projects` section written
 def run_project(args : CompareArgs; out : string) : int {
@@ -268,7 +292,11 @@ def run_project(args : CompareArgs; out : string) : int {
         return 2
     }
     let bin = rust_binary()
-    var entry = project_entry(p, bin, path_join(empty(args.work) ? PROJECTS_WORK : args.work, p.name), args.samples, run_stamps(bin, args.box), int64(args.address_space) * 1073741824l)
+    let work = path_join(empty(args.work) ? PROJECTS_WORK : args.work, p.name)
+    if (args.bench_only) {
+        return bench_again(args, out, p, work, run_stamps(bin, args.box))
+    }
+    var entry = project_entry(p, bin, work, args.samples, run_stamps(bin, args.box), int64(args.address_space) * 1073741824l)
     for (line in project_lines(p.name, entry)) {
         to_log(LOG_INFO, "{line}\n")
     }
