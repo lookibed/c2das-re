@@ -138,9 +138,11 @@ das field: the struct is emitted without it and its `sizeof` stays `typeinfo siz
 size, which the member adds nothing to. Its decay is the record's address plus clang's offset of
 the member as a pointer to the element, `reinterpret<int?>(reinterpret<uint8?>(p) + 4)` for
 `p->data` (`addr(s)` for a value `s`), so `p->data[i]` is `deref(reinterpret<int?>(...) + i)`
-with no range check, as C reads the storage the program allocated past the record. A member
-whose offset is not clang's size or whose element aligns past the other fields (`{ char c; int
-d[]; }`) fails closed, since leaving it out would change the record's size or alignment; so do
+with no range check, as C reads the storage the program allocated past the record. The member
+may start in the record's tail padding (wasm3's `M3FuncType`: `{ next; u16 x3; types[]; }`, the
+member at 14 of 16), its decay at clang's offset 14. A member whose offset, rounded up to the other
+fields' alignment, is not clang's size, or whose element aligns past the other fields (`{ char c;
+int d[]; }`), fails closed, since leaving it out would change the record's size or alignment; so do
 one in a marshal-only record and an initializer of one (a GNU extension). A C89 trailing array
 indexed past its length over a larger allocation (`int columnofs[8]` after `malloc(sizeof(T) + n
 * sizeof(int))`) keeps its declaration and its range check unless the sidecar lists it under

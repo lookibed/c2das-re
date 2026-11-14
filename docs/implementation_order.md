@@ -2296,6 +2296,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   Step 3 (D5, Q3's `fgetc`): the crt module binds `strcasecmp`, `strncasecmp`, `strdup`, `fputc`, `fgetc` and
   POSIX `mkdir`, and the emitter maps them (`CRT_CALLS`, their effects in `summaries.das`). `fscanf` follows
   as its own step.
+  Step 4 (W2): a flexible array member may start in the record's tail padding (wasm3's `M3FuncType`, at 14 of
+  16): the check is now that its offset rounded up to the other fields' alignment is clang's size, so
+  `{ int n; char c; char d[]; }` converts too; its decay keeps clang's offset.
 
 ## P6 — Doom
 

@@ -8413,9 +8413,10 @@ def private record_refusal(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) 
             fail(em, "flexible array member `{name}.{fam.name}` of a marshal-only record is not lowered yet", loc)
             return true
         }
-        if (fam.off != tu.types[t].size || natural_align(tu, em.prog.layout, fam.t) > rest_align) {
-            // the record leaves the member out, so the member may neither pad its end nor raise its
-            // alignment
+        if ((fam.off + rest_align - 1) / rest_align * rest_align != tu.types[t].size || natural_align(tu, em.prog.layout, fam.t) > rest_align) {
+            // the record leaves the member out, so the member may neither grow it past the other
+            // fields' rounded end nor raise its alignment; a member in the tail padding (at 14 of
+            // 16) keeps clang's offset in its decay
             fail(em, "flexible array member `{name}.{fam.name}`, which pads the record or raises its alignment, is not lowered yet", loc)
             return true
         }
