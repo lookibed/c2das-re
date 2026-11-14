@@ -247,7 +247,7 @@ def p8_setjmp_return_fixtures(t : T?) {
         // the idiom: the longjmp return's `return -1` and the tail's `return 7` both in the block
         has_text(t, text, "def private p8_setjmp_return__idiom(fail : int) : int \{\n    var _sj_ret : int\n    var _sj_returned = false\n    var _sj_run = true\n    var _sj_val = 0\n    while (_sj_run) \{\n        _sj_run = false\n        try \{\n            _sj_returned = invoke($() : bool \{\n                if (_sj_val != 0) \{\n                    _sj_ret = -1\n                    return true\n                \}\n")
         // the contained site: each arm its own block, one result after the pair
-        has_text(t, text, "            _sj_ret = 1\n            return true\n        \})\n    \} recover \{\n        if (c_jmp_target != addr(p8_setjmp_return__outer_buf)) \{\n            panic(\"longjmp\")\n        \}\n        c_jmp_target = null\n        _sj_returned = invoke($() : bool \{\n            _sj_ret = 2\n            return true\n        \})\n    \}\n    if (_sj_returned) \{\n        return _sj_ret\n    \}\n")
+        has_text(t, text, "            _sj_ret = 1\n            return true\n        \})\n    \} recover \{\n        if (c_jmp_target != addr(p8_setjmp_return__outer_buf)) \{\n            c_jmp_rethrow()\n        \}\n        c_jmp_target = null\n        _sj_returned = invoke($() : bool \{\n            _sj_ret = 2\n            return true\n        \})\n    \}\n    if (_sj_returned) \{\n        return _sj_ret\n    \}\n")
         // the inner site in the outer block shares the result and answers the outer block
         has_text(t, text, "                        _sj_run2 = true\n                    \}\n                \}\n                if (_sj_returned) \{\n                    return true\n                \}\n                return false\n            \})\n")
         // a void function has no value, and a block falling off its end answers false
@@ -741,13 +741,13 @@ def p3_fixtures(t : T?) {
         has_text(t, text, "require c_runtime/setjmp")
         has_text(t, text, "var private p3_setjmp__outer : CJmpBuf")
         has_text(t, text, "def private p3_setjmp__deep(n : int; var target : CJmpBuf?; v : int) \{\n    p3_setjmp__depth_reached = n\n    if (n == 0) \{\n        c_longjmp(target, v)")
-        has_text(t, text, "    try \{\n        if (fail_at != 0) \{\n            p3_setjmp__deep(fail_at, addr(buf), value)\n        \}\n        status = 100\n    \} recover \{\n        if (c_jmp_target != addr(buf)) \{\n            panic(\"longjmp\")\n        \}\n        c_jmp_target = null\n        status = -1\n    \}")
+        has_text(t, text, "    try \{\n        if (fail_at != 0) \{\n            p3_setjmp__deep(fail_at, addr(buf), value)\n        \}\n        status = 100\n    \} recover \{\n        if (c_jmp_target != addr(buf)) \{\n            c_jmp_rethrow()\n        \}\n        c_jmp_target = null\n        status = -1\n    \}")
         // the tail returns, which das refuses in an arm: the arm is a block answering whether it returned
         has_text(t, text, "    var _sj_ret : int\n    var _sj_returned = false\n    var _sj_run = true\n    var _sj_val = 0\n    while (_sj_run) \{\n        _sj_run = false\n        try \{\n            _sj_returned = invoke($() : bool \{\n                if (_sj_val != 0) \{\n                    _sj_ret = 1\n                    return true\n                \}\n                c_longjmp(addr(buf), 0)\n                _sj_ret = 2\n                return true\n            \})\n        \} recover \{")
         has_text(t, text, "            _sj_run = true\n        \}\n    \}\n    if (_sj_returned) \{\n        return _sj_ret\n    \}\n")
         has_text(t, text, "_sj_val = buf.val\n            _sj_run = true")
         // a single-branch site whose tail calls nothing is flat, the tail once after the `try`
-        has_text(t, text, "    var st : int = 0\n    try \{\n        if (fail != 0) \{\n            p3_setjmp__deep(2, addr(buf), 0)\n        \}\n        c_volatile_store(st, 1)\n    \} recover \{\n        if (c_jmp_target != addr(buf)) \{\n            panic(\"longjmp\")\n        \}\n        c_jmp_target = null\n    \}\n    c_volatile_store(st, c_volatile_load(st) + 20)\n    return c_volatile_load(st) + p3_setjmp__depth_reached\n\}")
+        has_text(t, text, "    var st : int = 0\n    try \{\n        if (fail != 0) \{\n            p3_setjmp__deep(2, addr(buf), 0)\n        \}\n        c_volatile_store(st, 1)\n    \} recover \{\n        if (c_jmp_target != addr(buf)) \{\n            c_jmp_rethrow()\n        \}\n        c_jmp_target = null\n    \}\n    c_volatile_store(st, c_volatile_load(st) + 20)\n    return c_volatile_load(st) + p3_setjmp__depth_reached\n\}")
         // one whose tail longjmps to its own buffer keeps the rerun loop
         has_text(t, text, "    var passes : int = 0\n    var _sj_ret : int\n    var _sj_returned = false\n    var _sj_run = true\n    var _sj_val = 0\n    while (_sj_run) \{\n        _sj_run = false\n        try \{\n            _sj_returned = invoke($() : bool \{\n                if (_sj_val == 0) \{\n")
         rejects(t, "setjmp_value", "#include <setjmp.h>\nint main(void) \{ jmp_buf b; int n = 0; while (setjmp(b) < 2) n++; return n; \}\n", "trampoline form")
@@ -1859,7 +1859,7 @@ def p5_lua_fixtures(t : T?) {
         has_text(t, text, "struct lua_longjmp \{\n    previous : lua_longjmp?\n    b : CJmpBuf\n    _pad0 : uint8[196]\n    status : int\n\}")
         has_text(t, text, "static_assert(typeinfo sizeof(type<lua_longjmp>) == 216")
         has_text(t, text, "        c_volatile_store(L.errorJmp.status, errcode)\n        c_longjmp(addr(L.errorJmp.b), 1)\n")
-        has_text(t, text, "    try \{\n        invoke(f, L, ud)\n    \} recover \{\n        if (c_jmp_target != addr(addr(lj).b)) \{\n            panic(\"longjmp\")\n        \}\n        c_jmp_target = null\n    \}\n    L.errorJmp = lj.previous\n    L.calls = old_calls\n    return c_volatile_load(lj.status)\n\}")
+        has_text(t, text, "    try \{\n        invoke(f, L, ud)\n    \} recover \{\n        if (c_jmp_target != addr(addr(lj).b)) \{\n            c_jmp_rethrow()\n        \}\n        c_jmp_target = null\n    \}\n    L.errorJmp = lj.previous\n    L.calls = old_calls\n    return c_volatile_load(lj.status)\n\}")
     }
     t |> run("lua's shapes: one per defect the conversion of lua 5.4.8 met") @(t : T?) {
         var text : string

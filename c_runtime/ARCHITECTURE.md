@@ -111,8 +111,9 @@ chartered here.
   (`docs/lowering-examples.md` "setjmp / longjmp"): `CJmpBuf` holds the longjmp value,
   `c_jmp_target` the buffer a longjmp in flight targets, and `c_longjmp(buf, v)` records both
   (a zero value as 1, as C says) and panics; the `recover` of every setjmp site the unwind
-  passes compares `c_jmp_target` with its own buffer, rethrows another's or a genuine panic
-  (a null target), and clears its own. das skips `finally` on a panic, which is C's
+  passes compares `c_jmp_target` with its own buffer, rethrows another's (`c_jmp_rethrow`: a
+  longjmp as "longjmp", a genuine panic, a null target, with its own message from the context's
+  `last_exception`), and clears its own. das skips `finally` on a panic, which is C's
   no-cleanup-on-longjmp rule. `c_longjmp` takes the buffer as a `var` pointer and writes
   `buf.val` through it; every converted pointer parameter is `var` (F3), so the buffer arrives
   writable.

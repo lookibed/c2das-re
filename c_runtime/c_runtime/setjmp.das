@@ -2,6 +2,8 @@ options gen2
 
 module setjmp public
 
+require daslib/rtti
+
 //! The setjmp/longjmp protocol over das's own unwinding (docs/lowering-examples.md "setjmp /
 //! longjmp"): `c_longjmp` records the target buffer and its value and panics; the `recover` of
 //! every setjmp site the unwind passes compares `c_jmp_target` with its own buffer, rethrows
@@ -22,4 +24,14 @@ def c_longjmp(var buf : CJmpBuf?; v : int) {
     buf.val = v == 0 ? 1 : v
     c_jmp_target = buf
     panic("longjmp")
+}
+
+//! The `recover` of a setjmp site a panic passes that is not a longjmp to its own buffer: a
+//! longjmp to another buffer goes on as one; any other panic (none in flight) goes on with its own
+//! message, which a bare rethrow of "longjmp" would hide.
+def c_jmp_rethrow {
+    if (c_jmp_target != null) {
+        panic("longjmp")
+    }
+    panic(this_context().last_exception)
 }

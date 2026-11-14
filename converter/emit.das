@@ -369,6 +369,7 @@ let INT_OF = "int_of"
 let DO_WHILE = "c_do_while"
 let C_SWITCH = "c_switch"
 let JMP_TARGET = "c_jmp_target"
+let JMP_RETHROW = "c_jmp_rethrow"
 let UNIT_BYTES = "c_unit_bytes"
 let LONG_BITS_GLOBAL = "c_long_bits"
 let SIGNAL_MSVC = "c_signal_msvc"
@@ -383,12 +384,12 @@ let DIALECT_INIT = "c2das_dialect"
 let EMPTY_LITERAL = "c2das_empty"
 
 //! Every name the emitter spells bare in a module besides the program's own (`reserved_das_names`).
-let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, CSTR, INT_OF, DO_WHILE, JMP_TARGET, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL, "memcpy"]
+let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, CSTR, INT_OF, DO_WHILE, JMP_TARGET, JMP_RETHROW, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL, "memcpy"]
 
 //! The public names of the c_runtime modules a converted module may require, each top-level
 //! function, global, type and call macro of `c_runtime/c_runtime/*.das` (repo root);
 //! `converter/tests/test_link.das` fails when a definition there is missing from it.
-let C_RUNTIME_EXPORTS <- ["BitAccess", "BitStore", "CBitfieldsAnnotation", "CCompare", "CDoWhileMacro", "CFormatDirective", "CFunctionAnnotation", "CJmpBuf", "CMacroAnnotation", "CSignalHandler", "CStorage", "CSwitchMacro", "CUnionAnnotation", "CVaCursor", "CVaList", "CVal", "CVolatileLoadMacro", "C_EINVAL", "C_EOF", "C_SIGNAL_LIMIT", "C_SIG_ERR_BITS", "C_SIG_IGN_BITS", "C_STORAGES", "CstrArrayMacro", "CstrMacro", "EnumFromIntMacro", "IntOfMacro", "VaNone", "VariadicAnnotation", "VariadicCallMacro", "add_bit_pair", "bit_getter", "bit_setter", "c_abort", "c_argc", "c_argv", "c_assert_fail", "c_atexit", "c_bsearch", "c_bswap16", "c_bswap32", "c_bswap64", "c_clrsb", "c_clz", "c_ctz", "c_dialect_spec", "c_do_while", "c_exit", "c_ffs", "c_is_float_conversion", "c_is_int_conversion", "c_is_wide_length", "c_jmp_target", "c_long_bits", "c_longjmp", "c_parity", "c_parse_directive", "c_popcount", "c_prefetch", "c_qsort", "c_run_atexit", "c_runtime_init", "c_signal", "c_signal_msvc", "c_signbit", "c_switch", "c_unit_bytes", "c_unreachable", "c_vformat", "c_vfprintf", "c_volatile_load", "c_volatile_load_jit", "c_volatile_read", "c_volatile_store", "c_vfscanf", "c_vprintf", "c_vsnprintf", "c_vsprintf", "c_vsscanf", "cstr", "cstr_array", "end_index", "enum_from_int", "field_index", "fprintf", "fscanf", "int_of", "printf", "register_llvm_code_generators", "snprintf", "sprintf", "sscanf", "storage_of", "storage_of_bytes", "to_cvalist", "va_args", "va_begin", "va_d", "va_i", "va_p", "va_rest"]
+let C_RUNTIME_EXPORTS <- ["BitAccess", "BitStore", "CBitfieldsAnnotation", "CCompare", "CDoWhileMacro", "CFormatDirective", "CFunctionAnnotation", "CJmpBuf", "CMacroAnnotation", "CSignalHandler", "CStorage", "CSwitchMacro", "CUnionAnnotation", "CVaCursor", "CVaList", "CVal", "CVolatileLoadMacro", "C_EINVAL", "C_EOF", "C_SIGNAL_LIMIT", "C_SIG_ERR_BITS", "C_SIG_IGN_BITS", "C_STORAGES", "CstrArrayMacro", "CstrMacro", "EnumFromIntMacro", "IntOfMacro", "VaNone", "VariadicAnnotation", "VariadicCallMacro", "add_bit_pair", "bit_getter", "bit_setter", "c_abort", "c_argc", "c_argv", "c_assert_fail", "c_atexit", "c_bsearch", "c_bswap16", "c_bswap32", "c_bswap64", "c_clrsb", "c_clz", "c_ctz", "c_dialect_spec", "c_do_while", "c_exit", "c_ffs", "c_is_float_conversion", "c_is_int_conversion", "c_is_wide_length", "c_jmp_rethrow", "c_jmp_target", "c_long_bits", "c_longjmp", "c_parity", "c_parse_directive", "c_popcount", "c_prefetch", "c_qsort", "c_run_atexit", "c_runtime_init", "c_signal", "c_signal_msvc", "c_signbit", "c_switch", "c_unit_bytes", "c_unreachable", "c_vformat", "c_vfprintf", "c_vfscanf", "c_volatile_load", "c_volatile_load_jit", "c_volatile_read", "c_volatile_store", "c_vprintf", "c_vsnprintf", "c_vsprintf", "c_vsscanf", "cstr", "cstr_array", "end_index", "enum_from_int", "field_index", "fprintf", "fscanf", "int_of", "printf", "register_llvm_code_generators", "snprintf", "sprintf", "sscanf", "storage_of", "storage_of_bytes", "to_cvalist", "va_args", "va_begin", "va_d", "va_i", "va_p", "va_rest"]
 
 let PREC_PRIMARY = 14
 let PREC_UNARY = 13
@@ -4959,7 +4960,7 @@ def private emit_trampoline(var em : Emitter; tu : CirTu; owner : CirStmt const?
     em.depth--
     open_block(em, "\} recover")
     open_block(em, "if ({JMP_TARGET} != {target.text})")
-    line(em, "panic(\"longjmp\")")
+    line(em, "{JMP_RETHROW}()")
     close_block(em)
     line(em, "{JMP_TARGET} = null")
     // the value through the buffer the site named: `buf.val` for a buffer in reach, which
@@ -5136,7 +5137,7 @@ def private emit_setjmp_site(var em : Emitter; tu : CirTu; st : CirStmt; buf : C
     em.depth--
     open_block(em, "\} recover")
     open_block(em, "if ({JMP_TARGET} != {target.text})")
-    line(em, "panic(\"longjmp\")")
+    line(em, "{JMP_RETHROW}()")
     close_block(em)
     line(em, "{JMP_TARGET} = null")
     open_sj_arm(em, again_returns)
