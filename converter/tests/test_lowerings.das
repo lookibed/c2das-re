@@ -2883,6 +2883,12 @@ def p9_summaries_fixtures(t : T?) {
 // P9.19, P9.25: a function-like macro's expansion is a call of its `[c_macro] def` where the call
 // means what the expansion means; every guard keeps its expansion expanded
 def p9_fn_fold_fixtures(t : T?) {
+    t |> run("a macro folded over typed pointers keeps a site passing a `void *` expanded: das finds `T?` ambiguous beside a `void?` overload") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_fold_void", text)
+        has_text(t, text, "def private RELEASE(var P : auto&) \{\n    crt::free(reinterpret<void?>(P))\n    P = null\n\}\n")
+        has_text(t, text, "    \{\n        crt::free(raw)\n        raw = null\n    \}\n    RELEASE(n)\n    RELEASE(counts)\n")
+    }
     t |> run("folded macros: classes A, B and D, nested, swapped, typed overloads, a statement with a loop; every guard keeps its site expanded; under interp, jit, exe and aot as natively") @(t : T?) {
         var text : string
         check_fixture(t, "p9_fn_fold", text)

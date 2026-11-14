@@ -2329,6 +2329,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   Step 4 (W2): a flexible array member may start in the record's tail padding (wasm3's `M3FuncType`, at 14 of
   16): the check is now that its offset rounded up to the other fields' alignment is clang's size, so
   `{ int n; char c; char d[]; }` converts too; its decay keeps clang's offset.
+  Step 5 (W3): a fold site passing a `void *` where another expansion of the macro passes a typed pointer stays
+  expanded (`overload`), decided program-wide (`flag_typed_pointer_arguments`), since das finds a `T?` call
+  ambiguous between a `T?` and a `void?` overload (lookibed/daScript#57); wasm3's `m3_Free` sites then fold.
 
 ## P6 — Doom
 
