@@ -226,7 +226,9 @@ def test_lane_verdicts(t : T?) {
             let aot <- lane_argv(das, "aot", path_join(dir, "a"), none, ["f"], 300.0, error)
             t |> equal(join([for (i in range(1, length(aot))); aot[i]], " "), "-- f", error)
             t |> success(length(aot) == 3 && aot[0] == aot_binary(das, path_join(dir, "a")) && fexist(aot[0]), join(aot, " "))
-            let slow <- lane_argv(das, "exe", path_join(dir, "w"), none, ["f"], 1.0, error)
+            // the binary of `w` stands and is reused whatever the limit; a fresh folder builds
+            t |> equal(length(lane_argv(das, "exe", path_join(dir, "w"), none, ["f"], 1.0, error)), 2, error)
+            let slow <- lane_argv(das, "exe", path_join(dir, "w_slow"), none, ["f"], 1.0, error)
             t |> equal("{length(slow)} {error}", "0 timeout: the build or its run took longer than 1 s")
             let lanes <- side_lanes(das, "", path_join(dir, "lanes"), none, ["f"], "", LaneLimits(sample = 60.0, build = 1.0))
             let exe_lane = lanes?["exe"] ?? Verdict()
