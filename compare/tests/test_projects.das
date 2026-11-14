@@ -135,6 +135,24 @@ def test_project_row(t : T?) {
 }
 
 [test]
+def test_project_program_keys(t : T?) {
+    t |> run("the program keys of our side's sidecar: wasm3's, doomgeneric's and quakegeneric's, none for the others") @(t : T?) {
+        var p : Project
+        t |> success(find_project("/m", "wasm3", p))
+        t |> equal("{join(p.over_indexed, " ")} | {length(p.marshal)} {length(p.padded)}", "M3CodePage.code | 0 0")
+        t |> success(find_project("/m", "doomgeneric", p))
+        t |> equal(join(p.marshal, " "), "pcx_t")
+        t |> equal(join(p.over_indexed, " "), "patch_t.columnofs maptexture_t.patches texture_t.patches")
+        t |> equal(join(p.padded, " "), "visplane_t.top visplane_t.bottom")
+        t |> success(find_project("/m", "quakegeneric", p))
+        t |> equal("{length(p.over_indexed)} {p.over_indexed[0]} {p.over_indexed[9]}", "10 dmiptexlump_t.dataofs qpic_t.data")
+        t |> equal("{length(p.marshal)} {length(p.padded)}", "0 0")
+        t |> success(find_project("/m", "binjgb", p))
+        t |> equal("{length(p.marshal)} {length(p.over_indexed)} {length(p.padded)}", "0 0 0")
+    }
+}
+
+[test]
 def test_project_units_row(t : T?) {
     t |> run("quakegeneric with its forced include, libm linked natively, no bench unit") @(t : T?) {
         var p : Project
@@ -936,9 +954,9 @@ def test_convert_project(t : T?) {
             fwrite(path_join(dir, "src/prog_all.c"), "#include \"all.c\"\n#include \"entry.c\"\n")
             fwrite(path_join(dir, "src/all.c"), "#include <stdio.h>\n#include \"add.c\"\n#include \"vla.c\"\n")
             fwrite(path_join(dir, "src/entry.c"), "int main(void) \{ return 0; \}\n")
-            fwrite(path_join(dir, "upstream/lib/add.c"), "int add(int a, int b) \{ return a + b; \}\n")
+            fwrite(path_join(dir, "upstream/lib/add.c"), "struct R \{ int n; int a[1]; \};\nint add(int a, int b) \{ return a + b; \}\n")
             fwrite(path_join(dir, "upstream/lib/vla.c"), "int first(int n) \{ int a[n + 1]; a[0] = n; return a[0]; \}\n")
-            var p = Project(name = "p", dir = dir, tu = "src/prog_all.c", include_dirs <- ["upstream/lib"], c_std = "c11")
+            var p = Project(name = "p", dir = dir, tu = "src/prog_all.c", include_dirs <- ["upstream/lib"], c_std = "c11", over_indexed <- ["R.a"])
             t |> equal(join(program_files(p), " "), "upstream/lib/add.c upstream/lib/vla.c src/entry.c")
             let work = path_join(dir, "work")
             mkdir_rec(path_join(work, "stale"))
@@ -946,6 +964,10 @@ def test_convert_project(t : T?) {
             t |> success(conv.refusal |> contains("variable-length array"), conv.refusal)
             t |> success(!stat(path_join(work, "stale")).is_dir, "the work folder is emptied first")
             t |> equal(join([for (f in conv.per_file); "{f.c_path}={empty(f.refusal) ? relative_to(f.das_path, work) : "refused"}"], " "), "upstream/lib/add.c=files/upstream/lib/add/add.das upstream/lib/vla.c=refused src/entry.c=files/src/entry/entry.das")
+            // the program keys go into the whole conversion's sidecar, not a file's alone: `entry.c`
+            // declares no `R`
+            t |> success(fread(path_join(work, "whole/p.c2das")) |> contains("\"R.a\""), fread(path_join(work, "whole/p.c2das")))
+            t |> success(!(fread(path_join(work, "files/src/entry/p.c2das")) |> contains("over_indexed")))
             // a unit list is the program, in its order
             p.units <- ["upstream/lib/add.c", "src/entry.c"]
             t |> equal(join(program_files(p), " "), "upstream/lib/add.c src/entry.c")

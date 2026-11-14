@@ -23,13 +23,15 @@ output the program must print, whose `translation_units`, when it lists them, ar
 row's unit the one among them defining `main`), and whose `c_reference.sources` are the C files the
 native build compiles (else the units, else the unit; the bench's are the same with
 `corpus.bench_c_entry` in place of the last, the entry), that case's
-translator options, the C functions shown side by side, and the bench unit's departures from the
-expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed). The rows:
+translator options, the C functions shown side by side, the bench unit's departures from the
+expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed), and the program keys of
+our side's sidecar (`marshal`, `over_indexed`, `padded`: facts of the C program, such as a trailing
+`[1]` array it indexes past its end, `converter/sidecar.das`). The rows:
 
 - wasm3: `src/all_host.c` and `src/all_host_bench.c`, `-std=c11 -Iinclude -Iupstream/wasm3/source
   -Isrc`, `-O2`, `fixtures/fib32.wasm`, the case `wasm3-fib32-std`, `--das-option "stack =
-  4194304"`, and `op_Call` (an op that ends in the dispatch to the next op) and `call_fib` (the
-  host's call of the module's `fib`).
+  4194304"`, `op_Call` (an op that ends in the dispatch to the next op) and `call_fib` (the
+  host's call of the module's `fib`), and `over_indexed` `M3CodePage.code`.
 - binjgb: `src/binjgb_all.c` and `src/binjgb_bench_all.c`, `-std=c11 -DNDEBUG -Iinclude
   -Iupstream/binjgb/src -Isrc`, `-O2`, `fixtures/cgb-acid2.gbc`, the case `binjgb-cgb-acid2-std`
   (60 frames: the cartridge header, `frame[i]=` hashes, `frames=60`, `ticks=`), no translator
@@ -65,7 +67,10 @@ expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed). The ro
   rendered frame, `frames=70`), `--das-option "stack = 4194304"`, and `R_DrawColumn` (a wall or
   sprite column) and `R_DrawSpan` (a floor or ceiling span), the renderer's two inner loops. Its
   case names the unit as its reference source and the bench unit as its bench entry. Its bench
-  prints 1000 frames and their count: free keys `frames` and the prefix `frame[`. The engine makes
+  prints 1000 frames and their count: free keys `frames` and the prefix `frame[`. Its program keys
+  are PureDOOM's (`doom/doom.c2das`) for the records the two engines share: `marshal` `pcx_t`,
+  `over_indexed` `patch_t.columnofs`, `maptexture_t.patches` and `texture_t.patches`, `padded`
+  `visplane_t.top` and `visplane_t.bottom`. The engine makes
   `./.savegame/` in its working folder at startup. The Eden and SDL hosts of the project are GUI
   programs and are not built; its other cases (the Eden memory model, the per-file graph) are not
   compared.
@@ -78,7 +83,10 @@ expected output (`bench_free_keys`, `bench_omitted_keys`, see the speed). The ro
   `frames=100`), `--das-option "stack = 4194304"`, and `D_DrawSpans8` (a textured span of a world
   surface) and `D_DrawZSpans` (the same span's depth), which every world pixel of a frame passes
   through. Its case names no reference source and no bench, so the native build is the units and
-  the project has no bench unit. The Eden and SDL hosts are GUI programs and are not built; the
+  the project has no bench unit. Its `over_indexed` are the ten trailing arrays the engine indexes
+  past their declared length (`dmiptexlump_t.dataofs`, `surfcache_t.data`, `mspriteframe_t.pixels`,
+  the `frames` of `mspritegroup_t`, `msprite_t`, `maliasgroup_t` and `aliashdr_t`,
+  `maliasskingroup_t.skindescs`, `sfxcache_t.data`, `qpic_t.data`). The Eden and SDL hosts are GUI programs and are not built; the
   case under the Eden memory model is not compared.
 
 `convert_project` converts a project as the ports publisher publishes it and the readability
@@ -121,8 +129,9 @@ The native build (the case's C files, the pinned clang, the row's flags) runs wi
 is `pass` when it prints the expected output, else `native` with the reason, and then every lane of
 both sides is `refused` with `no native result`. Our side converts the unit under `linux` with a
 sidecar of the project's defines, its include folders and the project folder as the program root,
-every folder absolute, and `ours_defines` (a project of units with `convert_program`, in the source
-layout); the converter takes no further clang argument (`clang_extra`'s forced include). The Rust side
+every folder absolute, `ours_defines` and, for the whole program, the row's program keys (a file
+converted alone leaves them out: the converter refuses a key naming a record the file does not
+declare), a project of units with `convert_program` in the source layout; the converter takes no further clang argument (`clang_extra`'s forced include). The Rust side
 translates it with `translate_file` (`--libc std --strict`, the case's options, the clang arguments of the row) within
 600 s; a project of units through `translate_db` in the source layout over a compilation database
 naming each unit with the row's clang arguments (`write_unit_commands`, as the Rust repository's

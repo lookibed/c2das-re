@@ -2282,6 +2282,14 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   job as a normal job (the key makes the timed run reuse it, so no build lands inside the exclusive window).
   Doom's `run_converted` times the whole `run_tier` call, so its first run includes the build: build first.
   `sieve`, `matmul` and `str_copy` stay exception cells (#48).
+- **P9.32 The whole-program blockers of wasm3, doomgeneric and quakegeneric** (ruling 38 addendum 22 item C;
+  the audit `/root/notes/research/aot/blockers.md`, its rows W1-W4, D1-D8, Q1-Q6). Our side fixed in the audit's
+  order, a PR each, until each program converts whole and runs under interp, JIT, exe and AOT with the native
+  output, in both variants. D1 (doomgeneric's alignment-only packed records, F51) waits for an owner ruling.
+  Step 1 (W4, D7, Q4): a compare project row carries the program keys of our side's sidecar (`marshal`,
+  `over_indexed`, `padded`) into the whole conversion, so the committed capture, the criteria and the ports
+  publisher convert with them; a file converted alone leaves them out (the converter refuses a key naming a
+  record the file does not declare).
 
 ## P6 — Doom
 
