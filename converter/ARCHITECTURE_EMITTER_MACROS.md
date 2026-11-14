@@ -84,7 +84,10 @@ macro's defs are private to the module that spells its sites, in first-use order
 module's `#define` constants. Each def stands under a comment naming the `#define`'s file, line and text: one
 def with untyped parameters when every site spells one text, else one typed overload per signature
 of each text (a parameter's type is its argument's das type, `bool` for a truth value), a site
-whose text differs from the overload of its signature staying expanded (`overload`). A parameter
+whose text differs from the overload of its signature staying expanded (`overload`). A site passing
+a `void *` where another expansion of the macro anywhere in the program passes a pointer to a type
+(`flag_typed_pointer_arguments`) stays expanded too (`overload`): das finds a `T?` call ambiguous
+between a `T?` and a `void?` overload (lookibed/daScript#57; wasm3's `m3_Free`). A parameter
 the body writes a caller's local through is `var x : auto&`. A parameter whose argument is a data
 pointer, or a record holding one, is `var` only when some fold's body needs it writable
 (`var_parameters`, classification row 9): a value of it - the parameter, a cast or an offset of it,
