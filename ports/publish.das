@@ -491,6 +491,28 @@ struct LaneRun {
     error : string
 }
 
+// the cell of `run`'s lane readied for its samples of `spec`: the lane's error, `no native run to
+// compare with` for a das lane once native's first sample left no oracle, `no <shown>` for a suite
+// row without the folder `tests` (`shown` as the README names it), the warm-up's error in that
+// folder for a lane with a module cache; else `argv` the command a sample runs
+def private ready_cell(run : LaneRun; spec : WorkloadSpec; oracle : Oracle; tests, shown, empty_script : string; var cell : LaneCell; var argv : array<string>) {
+    if (!empty(run.error)) {
+        cell.error = run.error
+    } elif (cell.lane != "native" && oracle.rc == -1) {
+        cell.error = "no native run to compare with"
+    } elif (spec.in_tests && !stat(tests).is_dir) {
+        cell.error = "no {shown}"
+    } else {
+        // the test-suite folder has a module cache of its own to warm
+        if (spec.in_tests && runs_module(cell.lane)) {
+            cell.error = warm_up(run.argv, tests, empty_script)
+        }
+        var inscope full <- clone_to_move(run.argv)
+        full |> push_from(spec.args)
+        argv <- in_folder(spec.in_tests ? tests : "", full)
+    }
+}
+
 // every lane of `lanes` built once: native from the sources the harness's program manifest lists,
 // the das lanes over the converted module, the program's arguments after `--` for the interpreter
 // and the JIT
@@ -573,38 +595,23 @@ def private measure_program(args : Args; port : Port; variants : array<Variant>;
         argvs |> reserve(length(lanes))
         for (lane in lanes) {
             var cell = LaneCell(workload = spec.name, lane = lane)
-            var inscope full : array<string>
-            runs |> get(lane) $(run) {
-                if (!empty(run.error)) {
-                    cell.error = run.error
-                } elif (spec.in_tests && !stat(tests).is_dir) {
-                    cell.error = "no {tests_of(port, release)}"
-                } else {
-                    // the test-suite folder has a module cache of its own to warm
-                    if (spec.in_tests && runs_module(lane)) {
-                        cell.error = warm_up(run.argv, tests, empty_script_of(port))
-                    }
-                    var inscope argv <- clone_to_move(run.argv)
-                    argv |> push_from(spec.args)
-                    full <- in_folder(spec.in_tests ? tests : "", argv)
-                }
-            }
             cell.samples |> reserve(args.samples)
             cell.work_samples |> reserve(spec.timed ? args.samples : 0)
             cells |> emplace(cell)
-            argvs |> emplace(full)
+            argvs |> emplace(array<string>())
         }
-        // the samples interleave: each round takes one sample of every standing lane
+        // the samples interleave: each round takes one sample of every standing lane, a lane
+        // readied at its turn in the first round, after native's first sample
         for (round in range(args.samples)) {
             for (i in sample_order(length(lanes), round)) {
-                if (!empty(cells[i].error)) {
-                    continue
+                if (round == 0) {
+                    runs |> get(lanes[i]) $(run) {
+                        ready_cell(run, spec, oracle, tests, tests_of(port, release), empty_script_of(port), cells[i], argvs[i])
+                    }
                 }
-                if (i > 0 && oracle.rc == -1) {
-                    cells[i].error = "no native run to compare with"
-                    continue
+                if (empty(cells[i].error)) {
+                    measure_sample(argvs[i], args.timeout, spec, oracle, cells[i])
                 }
-                measure_sample(argvs[i], args.timeout, spec, oracle, cells[i])
             }
         }
         for (cell in cells) {
