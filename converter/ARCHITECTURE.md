@@ -237,10 +237,10 @@ and the size is clang's, every clang offset of the record, in an array or nested
 of it. The C-IR's `packed` is false for every record the law places, the relaxed search
 included, so Dumper B applies the relaxed search to write the same byte.
 
-The C-IR carries no attribute: a record declared `packed` or under `#pragma pack(n)` whose layout
-the law places converts like any other (`packed { unsigned a : 3; char c; unsigned b : 20; }` takes
-byte units, size 5), and `packed` in the C-IR means a record the law cannot place, not an
-attributed one (`docs/probe-findings.md` F51).
+The C-IR has no attribute: a `packed` or `pack(n)` record the law places converts like any other
+(`packed { unsigned a : 3; char c; unsigned b : 20; }`: byte units, size 5); C-IR `packed` is a record
+the law cannot place (F51), which the emitter still spells as a plain struct when only clang's
+alignment differs (`ARCHITECTURE_EMITTER_AGGREGATES.md`, alignment-only packed records).
 
 A union is natural when it has a member, every member sits at offset 0, clang's alignment is 1, 2,
 4 or 8 and divides its positive size, and every member fits it: a member's das alignment (as this

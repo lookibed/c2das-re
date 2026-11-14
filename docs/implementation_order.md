@@ -2315,7 +2315,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
 - **P9.32 The whole-program blockers of wasm3, doomgeneric and quakegeneric** (ruling 38 addendum 22 item C;
   the audit `/root/notes/research/aot/blockers.md`, its rows W1-W4, D1-D8, Q1-Q6). Our side fixed in the audit's
   order, a PR each, until each program converts whole and runs under interp, JIT, exe and AOT with the native
-  output, in both variants. D1 (doomgeneric's alignment-only packed records, F51) waits for an owner ruling.
+  output, in both variants. D1 (doomgeneric's alignment-only packed records, F51) took the owner's ruling (a), addendum 23.
   Step 1 (W4, D7, Q4): a compare project row carries the program keys of our side's sidecar (`marshal`,
   `over_indexed`, `padded`) into the whole conversion, so the committed capture, the criteria and the ports
   publisher convert with them; a file converted alone leaves them out (the converter refuses a key naming a
@@ -2341,6 +2341,12 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   does; the audit's process-wide `mallopt(M_MMAP_THRESHOLD)` made the converter itself crash on quakegeneric's
   whole conversion (a latent host memory bug, not root-caused). `fscanf`/`vfscanf` are c_runtime's, each piece of
   the format the CRT's own `fscanf` over the stream.
+  Step 8 (D1, owner ruling 38 addendum 23 choice (a), and D4): an alignment-only packed record (every field at its das offset,
+  das's size; `mapthing_t`, `wadinfo_t`, `filelump_t` and Doom's other map records) is a plain das struct aligned
+  above clang's 1; a record holding one where das would move it, and a union holding one, fail closed; `pcx_t`
+  stays marshal-only. The owner's condition, a probe of arrays of such records at odd addresses copied and read
+  in loops on all four tiers, passes (`probes/test_misaligned_records.das`, F110). A scalar field's address in a marshal-only record
+  is the record's bytes plus the field's offset, no longer `addr` of its reader (D4).
 
 ## P6 — Doom
 

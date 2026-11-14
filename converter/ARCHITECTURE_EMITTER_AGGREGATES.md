@@ -38,6 +38,18 @@ a field spelled `_pad<N>` in a record that pads fail closed. The layout check as
 alignment a record ends with, which for a record holding bitfield units, a padded record, or a
 record holding either, can be below clang's.
 
+An alignment-only packed record (`aligned_plain`; owner ruling 38 addendum 23 lifts F51 for it) is
+a C-IR `packed` struct, no bitfield and no flexible member, whose every field sits at its das
+offset and whose size is das's: only clang's alignment, an attribute's 1, tells it from a plain
+struct (Doom's `mapthing_t`, five `short`s; `filelump_t`). It is a plain das struct aligned above
+clang, and the layout check asserts das's alignment (`emitted_align`). C memory holds arrays of
+them at any address, and every tier reads a misaligned one as an aligned one
+(`probes/test_misaligned_records.das`, `docs/probe-findings.md` F110). A record holding one, or a
+record that does, stays plain only where das places it as clang does: each such field at a
+multiple of its das alignment and the record's size a multiple of its own; else it fails closed,
+as does a union holding one. A packed record with a field off its das alignment (`pcx_t`) stays
+marshal-only.
+
 ### Unions
 
 A union is the C-shaped struct under `[c_union]` (`c_runtime/c_union`, `docs/lowering-examples.md`
@@ -93,7 +105,9 @@ A copy whose size is the program's (C's own `memcpy`) stays `crt::memcpy`. An ar
 reaches one only by decay, `&` or `sizeof`) gets `ptr_T_f(bytes, ofs)`, its decay, the pointer to
 its first element where it lies (a row of a 2-D one): `p->a[i]` is `ptr_T_a(p, 0)[i]` to
 read, store and step, `&p->a[i]` that pointer plus `i`, `&p->a` it reinterpreted; an element is a
-typed load at the packed offset, unchecked as in C. A field holding marshal-only records `R`, one or
+typed load at the packed offset, unchecked as in C. The address of a scalar field, `&p->f`, is
+the record's bytes plus the field's offset, `reinterpret<uint8?>(p + 3)` (Doom's `&pcx->data`), since
+its reader's value is no lvalue. A field holding marshal-only records `R`, one or
 a 1-D array, gets `ptr_T_r(bytes, ofs) : uint8?`, the (first) inner record's bytes, a record in C
 memory like `*p`: `p->r.x` is `read_R_x(ptr_T_r(p, 0), 0)` at any depth, `p->a[i]` indexes the
 pointer `ptr_T_a(p, 0)`, `&` takes the bytes (not of a whole array), `sizeof` is clang's,

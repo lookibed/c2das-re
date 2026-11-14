@@ -251,6 +251,10 @@ struct EmitProgram {
     global_names : table<string>
     marshal : table<int>
     layout : LayoutMemo
+    // by type index, the alignment das gives each struct the C-IR calls packed whose fields all sit
+    // at their das offsets and whose size is das's (`aligned_plain`, F51 lifted for them by owner
+    // ruling 38 addendum 23), -1 for a packed record that is not one
+    plain_packed : table<int; int>
     // the alloca arena's bytes per function (the sidecar's `alloca_limit`) and the module's
     // `options stack` (the sidecar's `stack`)
     alloca_limit : int
@@ -4111,8 +4115,8 @@ def private marshal_elements(var em : Emitter; tu : CirTu; x : CirExpr; loc : Ci
 
 // `&` of a marshal-only record in C memory is the bytes it starts at (`&p->r`, `&p->a[i]` of
 // a record field or element, `&p[i]`); `&p->a[i]` of an array field of scalars is its first
-// element's pointer plus `i`, and `&p->a` that pointer as the field's; an empty text for any
-// other operand
+// element's pointer plus `i`, and `&p->a` that pointer as the field's; `&p->f` of a scalar field
+// the record's bytes plus the field's offset; an empty text for any other operand
 def private marshal_element_address(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let at = x.a
     var bytes : Em
@@ -4128,6 +4132,15 @@ def private marshal_element_address(var em : Emitter; tu : CirTu; x : CirExpr; l
         }
         let first = marshal_elements(em, tu, *at, loc)
         return unsafe_value(em, "reinterpret<{das_type(em, tu, x.t, loc)}>({first.text})", PREC_PRIMARY)
+    }
+    var holder_bytes : Em
+    let holder = marshal_field(em, tu, *at, loc, holder_bytes)
+    if (holder >= 0) {
+        // a scalar field is no das lvalue (its reader returns the value): its address is the
+        // record's bytes at clang's offset of the field
+        let off = tu.types[holder].fields[at.field].off
+        let field_at = off == 0 ? holder_bytes.text : "{wrap(holder_bytes, PREC_ADD)} + {off}"
+        return unsafe_value(em, "reinterpret<{das_type(em, tu, x.t, loc)}>({field_at})", PREC_PRIMARY)
     }
     if (at.e != "index" || at.base.e != "cast" || at.base.cast_kind != "ArrayToPointerDecay" || !marshal_array_member(em, tu, at.base.a)) {
         return Em()
@@ -8498,6 +8511,84 @@ def private spell_function(var em : Emitter; tu : CirTu; d : CirDecl) {
     }
 }
 
+// the alignment das gives packed struct `t` when every field sits at its das offset and the size
+// is das's, which only clang's alignment (an attribute's 1) tells from a plain struct: Doom's
+// `mapthing_t`, five `short`s; -1 for any other packed record, a bitfield or a flexible member
+// included (`EmitProgram.plain_packed`)
+def private aligned_plain(var em : Emitter; tu : CirTu; t : int) : int {
+    if (key_exists(em.prog.plain_packed, t)) {
+        return em.prog.plain_packed?[t] ?? -1
+    }
+    em.prog.plain_packed[t] = -1
+    if (kind_of(tu, t) != "struct" || !tu.types[t].packed || is_marshal(em, tu, t) || has_bitfield(tu, t, false) || tu.types[t].size <= 0) {
+        return -1
+    }
+    var off = 0
+    var align = 1
+    for (f in tu.types[t].fields) {
+        let a = emitted_align(em, tu, f.t)
+        let size = type_size(tu, f.t)
+        if (a <= 0 || size < 0l || (off + a - 1) / a * a != f.off) {
+            return -1
+        }
+        off = f.off + int(size)
+        align = max(align, a)
+    }
+    // clang's alignment above das's (an `aligned` attribute) is no packing das can drop
+    if ((off + align - 1) / align * align != tu.types[t].size || align < tu.types[t].align) {
+        return -1
+    }
+    em.prog.plain_packed[t] = align
+    return align
+}
+
+// the alignment das gives a value of type `t` as the emitter spells it: an alignment-only packed
+// struct's (`aligned_plain`), above clang's; a record holding one the larger of the layout law's
+// and its fields'; -1 for a packed record das does not spell as a struct
+def private emitted_align(var em : Emitter; tu : CirTu; t : int) : int {
+    let k = kind_of(tu, t)
+    if (k == "array") {
+        return emitted_align(em, tu, tu.types[t].elem)
+    }
+    if (k == "struct" && tu.types[t].packed) {
+        return aligned_plain(em, tu, t)
+    }
+    var align = natural_align(tu, em.prog.layout, t)
+    if (k == "struct") {
+        // only a field das aligns above the layout law (one holding an alignment-only packed record)
+        // raises it: a bitfield's declared type or an underaligned record's own fields do not (F5)
+        for (f in tu.types[t].fields) {
+            if (!f.is_bitfield) {
+                let field_align = emitted_align(em, tu, f.t)
+                if (field_align > natural_align(tu, em.prog.layout, f.t)) {
+                    align = max(align, field_align)
+                }
+            }
+        }
+    }
+    return align
+}
+
+// false with the error set when record `t` holds an alignment-only packed struct (`aligned_plain`)
+// where das would place it elsewhere than clang: a struct's field at an offset that is no multiple
+// of its das alignment, a struct whose size is not one of its own, any union member
+def private holds_misplaced_plain(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : bool {
+    let name = tag_name(em, tu, t)
+    if (tu.types[t].packed && aligned_plain(em, tu, t) > 0) {
+        return false
+    }
+    for (f in tu.types[t].fields) {
+        let ea = f.is_bitfield ? -1 : emitted_align(em, tu, f.t)
+        if (ea > natural_align(tu, em.prog.layout, f.t)) {
+            if (kind_of(tu, t) == "union" || f.off % ea != 0 || tu.types[t].size % emitted_align(em, tu, t) != 0) {
+                fail(em, "record `{name}` holds `{f.name}`, which das aligns to {ea} by an alignment-only packed record, where das cannot place it as clang does; not lowered yet", loc)
+                return true
+            }
+        }
+    }
+    return false
+}
+
 // whether record `t` is refused, with the error set: a marshal-only record with a bitfield, named
 // or not; a packed record whose alignment an attribute raises past its members', or that has
 // bitfields, or that the sidecar does not list marshal-only; a field spelled like an anonymous
@@ -8528,8 +8619,11 @@ def private record_refusal(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) 
         fail(em, "record `{name}` holds a `jmp_buf` (`{tu.types[t].fields[jmp_buf_at].name}`), which das spells as `CJmpBuf`, not at the C library's size; not lowered yet", loc)
         return true
     }
-    if (tu.types[t].packed && !marshal) {
+    if (tu.types[t].packed && !marshal && aligned_plain(em, tu, t) < 0) {
         fail(em, "record `{name}` is not laid out naturally: a packed record is marshal-only, listed under `marshal` in the .c2das sidecar", loc)
+        return true
+    }
+    if (!marshal && holds_misplaced_plain(em, tu, t, loc)) {
         return true
     }
     if (has_anonymous_member(tu, t)) {
@@ -9103,8 +9197,9 @@ def private emit_layout_check(var em : Emitter; tu : CirTu; records : array<int>
     open_block(em, "def private {LAYOUT_CHECK}")
     for (t in records) {
         let name = tag_name(em, tu, t)
-        // a record holding bitfield units can align below clang (docs/probe-findings.md F5)
-        let align = natural_align(tu, em.prog.layout, t)
+        // a record holding bitfield units can align below clang (docs/probe-findings.md F5), an
+        // alignment-only packed one (or a record holding one) above it
+        let align = kind_of(tu, t) == "union" ? natural_align(tu, em.prog.layout, t) : emitted_align(em, tu, t)
         let bitfields = has_bitfield_units(tu, t)
         let below = align == tu.types[t].align ? "" : (bitfields ? ", its bitfield units align {align}" : ", its das alignment is {align}")
         line(em, "static_assert(typeinfo sizeof(type<{name}>) == {tu.types[t].size} &&{LOGIC_MARK} typeinfo alignof(type<{name}>) == {align},{LIST_MARK} \"{name}: clang lays it out as size {tu.types[t].size}, align {tu.types[t].align}{below}\")")
