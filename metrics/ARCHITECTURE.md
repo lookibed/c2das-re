@@ -6,7 +6,8 @@ counts, per emitted module, `unsafe` scopes and expressions, pointer steps and i
 `reinterpret` casts, `goto` and labels, raw `while` loops and literals a name exists for. The
 counts ratchet like the suite pass lists, in the opposite direction: a total only goes down.
 The readability criteria, compliance percentages against a human port measured over the same
-inputs' text, are `ARCHITECTURE_CRITERIA.md`.
+inputs' text, are `ARCHITECTURE_CRITERIA.md`. The switch census, a count of the C sources' `switch`
+statements read from the C-IR, is `ARCHITECTURE_SWITCH.md`.
 
 ## 1. File charters
 

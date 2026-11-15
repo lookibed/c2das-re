@@ -56,7 +56,7 @@ collide, so every group is one suite. A new suite, or a test that writes a fixed
 | `lua/tests` | a temp stand-in root (`lua/work`, `lua/fetch` inside it) | none |
 | `perf/tests` | `perf/work/` (`audit`, `blit`, `fib_loop`, `fib_recursive`, `first_member`, `lanes_*`) | none; its own files share `perf/work/audit` |
 | `ports/tests` | temp stand-in roots | none |
-| `metrics/tests` | `metrics/work/` (`perf`, `c_testsuite`, `csmith`) | none; its two files share `metrics/work` |
+| `metrics/tests` | `metrics/work/` (`perf`, `c_testsuite`, `csmith`); `test_switch_census.das` a temp folder | none; its criteria and readability files share `metrics/work` |
 | `compare/tests` | `compare/work/` (`perf`, `quality`, `gcc_torture`, `cmp_quality_*`), temp folders | none; `test_quality` and `test_rust_translator` share `compare/work/quality` |
 | `doom/tests` | temp folders (`doom_demo_run_*`, `doom_convert_*`) | none |
 | `tests` | temp stand-in suites | none |
