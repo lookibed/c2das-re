@@ -12,13 +12,19 @@ Read `ARCHITECTURE.md` (this folder) first. This companion holds how the publish
 - `tests/test_puredoom.das` - those functions over fixed harness output, patch text and README
   inputs.
 - `vendor_runtime.das` - the runtime a folder of converted code runs on without a c2das-re
-  checkout (the ports repository's `puredoom-readable/`): `c_runtime/` and dasCRuntime's
-  descriptor, `CMakeLists.txt` and `src/`, with the repository's `LICENSE`, copied as they are into `<into>/`, with the commit in
-  `<into>/c2das-re.commit` (`runtime_files`, `vendor_runtime`). The copy builds `crt` with cmake
-  against any built daScript, since dasCRuntime's `CMakeLists.txt` takes `DASLANG_ROOT`; it holds
-  no built module, so the folder builds its own against the daslang that runs it (a module and its
-  daslang share one ABI). A runtime file the copy would not write refuses it before the first
-  write; removing it is left to the folder's owner. `tests/test_vendor_runtime.das` covers it.
+  checkout (the ports repository's `puredoom-readable/`, section 3): `c_runtime/` and
+  dasCRuntime's descriptor, `CMakeLists.txt` and `src/`, with the repository's `LICENSE`, copied
+  as git tracks them into `<into>/`, with the commit in `<into>/c2das-re.commit`
+  (`runtime_files`, `vendor_runtime`, `vendor_main`). A file git does not track is not copied.
+  The copy builds `crt` with cmake against any built daScript, since dasCRuntime's
+  `CMakeLists.txt` takes `DASLANG_ROOT`; it holds no built module, so the folder builds its own
+  against the daslang that runs it (a module and its daslang share one ABI). The script refuses
+  before the first write: a root git tracks no `converter/main.das` under (not the root of a
+  c2das-re checkout), a fixed file or a source folder git tracks nothing of, a tracked file gone
+  from the working tree, a subfolder or a file of another extension tracked under
+  `c_runtime/c_runtime/` or `dasCRuntime/src/`, and a runtime source under `<into>` the copy
+  would not write, whose removal is left to the folder's owner. `tests/test_vendor_runtime.das`
+  covers it.
 
 ## 2. The publish
 
@@ -53,3 +59,15 @@ falls back, for `readable`, to that capture (the default conversion's) and, for 
 `doom/work/variants/fast/results_linux.json`, `doom/run.das --fps --variant`'s capture, when the
 search left one there: per tier the geometric mean over the demos of the native frame rate over
 the tier's (`slowdown`).
+
+## 3. puredoom-readable
+
+The ports repository's `puredoom-readable/` is kept by hand: the publisher writes none of it, and
+`vendor_runtime.das` writes only its `runtime/` (`daslang ports/vendor_runtime.das --
+<clone>/puredoom-readable/runtime`): the files section 1 names and `c2das-re.commit`. Everything
+else there is written and committed by hand in the ports repository: `check.sh` (the demo-sync
+check, which builds `crt` from `runtime/dasCRuntime/` on first use), `fetch_wad.sh` (the pinned
+`freedoom2.wad`), `README.md`, `TASKS.md`, `tasks/`, `ref/`, `patches/`, `.gitignore`, and the two
+conversions `ugly/` and `processed/`, each converted here at the commit its own `c2das-re.commit`
+names and copied in. A runtime copied again after the repository's runtime changed is committed
+there by hand like any other file of the folder.
