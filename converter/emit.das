@@ -5394,6 +5394,20 @@ def private leaves_loop(st : CirStmt?; nested : bool) : bool {
     return leaves_loop(st.then_s, inner) || leaves_loop(st.else_s, inner) || leaves_loop(st.body_s, inner)
 }
 
+// whether statement `st` of a loop's body (`own`: the body itself) puts a das label at the body's
+// level: a C label or a construct spelled open, there or in a block that loses its braces. The
+// interpreter lands a label of a block with a `finally` section and a local one statement early
+// (lookibed/daScript#63, `probes/test_goto.das`), so such a body takes no `finally`
+def private labels_at_level(em : Emitter; st : CirStmt const?; own : bool) : bool {
+    if (st == null) {
+        return false
+    }
+    if (st.s == "label" || key_exists(em.opened, intptr(st))) {
+        return true
+    }
+    return st.s == "compound" && (own || key_exists(em.flatten, intptr(st))) && has_value([for (child in st.body); labels_at_level(em, child, false)], true)
+}
+
 def private emit_for_flag(var em : Emitter; tu : CirTu; st : CirStmt; inc_lines : array<string>) {
     em.for_counter++
     let flag = numbered("_f", em.for_counter)
@@ -5479,7 +5493,8 @@ def private holds_compound_literal(x : CirExpr const?) : bool {
 // the increment's statements land in: its object is declared ahead, in the `for`'s own block. A
 // canonical counting loop is a das range loop (`for_range`); the increment of any other is the
 // body's last statement when the body holds no `continue` of the loop, else the `finally` block
-// when the body never leaves the loop, else the increment-first flag
+// when the body never leaves the loop and holds no das label at its own level, else the
+// increment-first flag
 def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (for_range(em, tu, st)) {
         return
@@ -5494,7 +5509,7 @@ def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (ahead) {
         flush_literal_decls(em)
     }
-    if (st.inc != null && continues_loop(st.body_s, false) && leaves_loop(st.body_s, false)) {
+    if (st.inc != null && continues_loop(st.body_s, false) && (leaves_loop(st.body_s, false) || labels_at_level(em, st.body_s, true))) {
         emit_for_flag(em, tu, *st, inc_lines)
     } else {
         open_for_head(em, tu, *st)

@@ -97,8 +97,13 @@ switch's level enters (Duff's device) is spelled open and never counts. Under th
   `goto` out of the body skips the increment, as C's does, and a body ending in one takes no
   increment, which no pass would reach.
 - **The `finally` block**: a body with a `continue` that never leaves the loop (no `break` at its
-  level, no `return`, no `goto`) is `while (cond) { { body } finally { inc } }`, since `finally`
-  runs on `continue` and on every pass but also on `break`.
+  level, no `return`, no `goto`) and puts no das label at its own level (`labels_at_level`: a C
+  label or a construct spelled open there, a flat dense switch of `switch_dispatch` `table` among
+  them) is `while (cond) { { body } finally { inc } }`, since `finally` runs on `continue` and on
+  every pass but also on `break`. A body with such a label takes the flag below: the interpreter
+  lands a label of a block with a `finally` section and a local one statement early, and a
+  computed goto to the block's first label then never ends (lookibed/daScript#63,
+  `probes/test_goto.das`).
 - **The increment-first flag** `_f` otherwise.
 
 **Dead after the loop** (`dead_after`): on every path from the loop's end the variable is

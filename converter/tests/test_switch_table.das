@@ -179,6 +179,12 @@ def test_switch_table_shapes(t : T?) {
         has_text(t, looped, "            if (k == 2) \{\n                break\n            \}\n            r += 1000\n        \}\n        goto label 10\n")
         has_text(t, looped, "        label 9:  // default\n        r += 50000\n        label 10:  // switch end\n        r *= 2\n    \}\n    label 1:  // out\n")
     }
+    t |> run("a `for` whose body continues and holds the flat switch at its level steps by the increment-first flag, not in a `finally` block, where the interpreter would land each label one statement early") @(t : T?) {
+        let stepped = function_text(text, "stepped")
+        has_text(t, stepped, "        var _f = false\n        while (true) \{\n            if (_f) \{\n                d -= 4ul\n            \}\n            _f = true\n")
+        has_text(t, stepped, "                continue\n            \}\n            let _cond = (d >> 4ul) & 15ul\n            goto _p9_switch_table__stepped_cases?[_cond] ?? 9\n            label 1:  // case 0, case 3\n")
+        t |> success(!(stepped |> contains("finally")), stepped)
+    }
     t |> run("a declaration a later case reads is declared before the jump, and a case's own, now at the switch's level, is renamed past a later block's") @(t : T?) {
         let scoped = function_text(text, "scoped")
         has_text(t, scoped, "    let _cond = x\n    var carry : int\n    goto _p9_switch_table__scoped_cases?[_cond - 1] ?? 9\n    label 1:  // case 1\n    r += 1\n    carry = 5\n")
