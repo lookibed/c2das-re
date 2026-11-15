@@ -205,3 +205,23 @@ def test_goto_aot(tt : T?) {
         }
     }
 }
+
+// a label in a block that has a `finally` section and declares a local: the shape a `for` whose
+// body continues would give a construct spelled open at the body's level
+let private LABEL_IN_FINALLY = "options gen2\n\ndef early(n : int) : int \{\n    var r = 0\n    var d = n\n    while (d > 0) \{\n        \{\n            let c = d * 2\n            r += c\n            if (d == 8) \{\n                goto label 1\n            \}\n            r += 100\n            label 1:\n            r += 10\n        \} finally \{\n            d -= 4\n        \}\n    \}\n    return r\n\}\n\nvar start = 8\n\n[export]\ndef main : int \{\n    print(\"\{early(start)\}\\n\")\n    return 0\n\}\n"
+
+[test]
+def test_goto_finally(tt : T?) {
+    let work = test_temp_dir()
+    let entry = path_join(work, "label_in_finally.das")
+    fwrite(entry, LABEL_IN_FINALLY)
+    for (tier, printed in ["interp", "jit", "aot"], ["244", "144", "144"]) {
+        tt |> run("a goto to a label in a block with a `finally` section and a local prints {printed} under {tier}: the interpreter lands one statement early and runs the statement the goto skips, the JIT and the AOT host land on the label (lookibed/daScript#63), so the converter keeps das labels out of such a block") @(t : T?) {
+            var out : string
+            let rc = run_tier(entry, tier, path_join(work, tier), out, CONVERTED_MODULES)
+            t |> equal(rc, 0, "{tier}: {out}")
+            let lines <- [for (l in split(out, "\n")); strip(l); where !empty(strip(l)) && !(l |> starts_with("[I] "))]
+            t |> equal(empty(lines) ? "" : lines[length(lines) - 1], printed, "{tier}: {out}")
+        }
+    }
+}
