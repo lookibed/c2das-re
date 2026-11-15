@@ -2100,8 +2100,8 @@ def p7_goto_dispatch_fixtures(t : T?) {
             var out : string
             t |> equal(run_tier(goto_path, tier, path_join(work_root, "goto_dispatch_{tier}"), out, CONVERTED_MODULES), 0, "{tier}: {out}")
         }
-        let refused <- convert("{FIXTURES}/p7_goto_dispatch.c", path_join(work_root, "goto_dispatch_bad"), "linux", "", "", "", "", "", "table")
-        t |> success(refused.error |> contains("--switch-dispatch is chain or goto, not `table`"), refused.error)
+        let refused <- convert("{FIXTURES}/p7_goto_dispatch.c", path_join(work_root, "goto_dispatch_bad"), "linux", "", "", "", "", "", "jump")
+        t |> success(refused.error |> contains("--switch-dispatch is chain, goto or table, not `jump`"), refused.error)
         // a program of several files takes the option to every file
         let cases = join([for (v in range(8)); "case {v}: return {v + 1};"], " ")
         let first = written_source("goto_dispatch_two", "two_main", "int pick(int x);\nstatic int local(int x) \{ switch (x) \{ {cases} \} return 0; \}\nint main(void) \{ return pick(3) + local(4) == 9 ? 0 : 1; \}\n", "")

@@ -123,7 +123,7 @@ let FIRST_MEMBER <- ["addr", "reinterpret"]
 def is_first_member(mode : string) : bool => has_value(FIRST_MEMBER, mode)
 
 //! The values of the `switch_dispatch` key and of the converter's `--switch-dispatch`.
-let SWITCH_DISPATCH <- ["chain", "goto"]
+let SWITCH_DISPATCH <- ["chain", "goto", "table"]
 
 //! Whether `mode` is a value of `switch_dispatch`.
 def is_switch_dispatch(mode : string) : bool => has_value(SWITCH_DISPATCH, mode)

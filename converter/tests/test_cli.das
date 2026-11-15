@@ -176,7 +176,7 @@ def test_cli_switch_dispatch(t : T?) {
         t |> failure("no temp directory: {dir_error}")
         return
     }
-    t |> run("--switch-dispatch goto gives a dense switch its jump table; any other value but chain is a usage error") @(t : T?) {
+    t |> run("--switch-dispatch goto gives a dense switch its jump table, table spells it flat; any other value but chain is a usage error") @(t : T?) {
         var out : string
         t |> equal(run_switch_dispatch(dir, "goto", out), 0, out)
         let jumped = fread(path_join(path_join(dir, "dispatch_goto"), "p7_goto_dispatch.das"))
@@ -189,8 +189,12 @@ def test_cli_switch_dispatch(t : T?) {
         t |> equal(run_and_capture(argv, out, 300.0), 0, out)
         let kept = fread(path_join(path_join(dir, "dispatch_over"), "p7_goto_dispatch.das"))
         t |> success(!(kept |> contains("goto _cond")) && !(kept |> contains("goto int(_cond")), kept)
-        t |> equal(run_switch_dispatch(dir, "table", out), 2, out)
-        t |> success(out |> contains("--switch-dispatch is chain or goto, not `table`"), out)
+        // table: the same switch flat, through a table of label numbers
+        t |> equal(run_switch_dispatch(dir, "table", out), 0, out)
+        let flat = fread(path_join(path_join(dir, "dispatch_table"), "p7_goto_dispatch.das"))
+        t |> success(flat |> contains("        goto _p7_goto_dispatch__run_cases?[int(_cond)] ?? 11\n        label 2:  // case A\n") && !(flat |> contains("var _flag")), flat)
+        t |> equal(run_switch_dispatch(dir, "jump", out), 2, out)
+        t |> success(out |> contains("--switch-dispatch is chain, goto or table, not `jump`"), out)
     }
     rmdir_rec(dir)
 }

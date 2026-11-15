@@ -70,8 +70,8 @@ and the text is the one a person writes.
 
 ### Computed goto dispatch {#goto-dispatch}
 
-Under `switch_dispatch` `goto` (the sidecar key, the converter's `--switch-dispatch`; `chain` is the
-default), a dense switch takes the matched-flag loop with a jump table in front: 8 or more case
+Under `switch_dispatch` `goto` (the sidecar key, the converter's `--switch-dispatch`: `chain`, the
+default, `goto` or `table`), a dense switch takes the matched-flag loop with a jump table in front: 8 or more case
 values in `int`'s range filling at least half of [lo, hi], no group falling into the next (each but
 the last `leaves_at_end`), the switch not spelled open (`dispatch_plan`). The loop body opens with a
 bounds guard, `if (_cond < lo || _cond > hi) { goto label D }`, then `goto _cond + (base - lo)`
@@ -112,6 +112,48 @@ same option, so a case group's declaration that the flat switch moves to its par
 renamed past a later local of its name. The default, `chain`, keeps the re-dispatch below:
 the open form adds a label per case value and a goto per group, which ruling 36 prices as an
 opt-in's.
+
+### The flat dense switch {#table-dispatch}
+
+Under `switch_dispatch` `table` (owner ruling 38 addendum 30; off by default) a dense switch, 8 or
+more case values in `int`'s range filling at least half of [lo, hi] (`case_range`, the jump table's
+rule above without its ban on a case falling into the next), is spelled open at its parent's level
+(`open_dense`): `let _condN`, one jump, then the body flat, each case label a das label, and no
+`while (true)`, no `_flagN`, no `_gotoN` and no case test under a label. A case falls into the next
+label as C's does, a C `break` is `goto label E` to the end label (dropped where it is the last
+line before that label), a goto into another case group is a goto to its C label, and `continue`,
+`return` and the `break` of a loop inside the body stay das's. A declaration a later case reads
+stands before the jump, any other where C wrote it, renamed past a later local of its name. When
+every value of [lo, hi] is a case the jump is the open switch's table above: `if (_cond < lo ||
+_cond > hi) { goto label D }`, `goto _cond + (base - lo)`, a label per value, `D` at `default` or
+at the end. When some value is not (`emit_remap_switch`), each run of case labels shares one das
+label, numbered in the order they stand, the end label after them, and the jump reads the label
+from a table: `let private _<function>_cases = fixed_array<int>(...)`, the label of each value of
+[lo, hi], `default`'s (the end's without one) for a value no case holds, and `goto
+_<function>_cases?[_cond - lo] ?? D`, the same label for every value outside the range, since a
+safe index past a fixed array is null. The index is the condition in its own type when that is
+`int`, `uint`, `int64` or `uint64`, the four daslang indexes a fixed array by, and `int(_cond)` for
+an enum; `lo` is a literal of that type, added when negative, and a value below it wraps or goes
+negative, past the table either way. The table stands at module level right before its function,
+so it lies in that function's module or fragment in every layout, private to it; a second table
+of a function is `_<function>_cases2`, and a name a global, a function or a name of the function
+spells is skipped (`table_name`). The label's comment names the case as the C does, an enumerator,
+a character or the value (`name_cases`): nothing else in the flat form names it. A switch the rule
+refuses (sparse, under 8 values, past `int`) keeps the forms of `chain`. `probes/test_goto_table.das`
+holds the daslang facts: the jump runs alike under the interpreter, the JIT and the AOT host, an
+index of another type and a jump without `??` do not compile, and a table entry that names no
+label fails at run time, since the compiler checks none.
+
+### Duff's device {#duff}
+
+A switch whose body is one loop behind its first case labels, with case labels of the switch at
+the level of that loop's body (`duff_loop`: `switch (n % 8) { case 0: do { ...; case 7: ...; }
+while (--k > 0); }`), is Duff's device: the switch enters the loop's body at the case of the
+count's remainder, and every later pass runs the whole body. It is spelled open in every mode,
+the loop a label, its body flat and a goto back (a goto into a body, below). Under `table` it is
+named by a comment after `_condN`, `// Duff's device: the jump enters the loop's body at its
+case`, and it jumps by its value from two case values on, where any other switch needs 8: its
+dispatch is the whole of the device. Under `chain` and `goto` its text is the open switch's.
 
 ### Labels and goto {#goto-labels}
 
