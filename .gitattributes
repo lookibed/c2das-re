@@ -1,6 +1,7 @@
 # C inputs the converter reads, not the project's code: left out of the language statistics
 converter/tests/fixtures/** linguist-vendored
 perf/kernels/** linguist-vendored
+metrics/tests/fixtures/*.c linguist-vendored
 suites/**/fetch/** linguist-vendored
 suites/**/work/** linguist-generated
 doom/** linguist-vendored

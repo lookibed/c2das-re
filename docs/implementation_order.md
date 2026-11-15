@@ -3545,6 +3545,13 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   stray braces 22.9 -> 10.3, blow-up lines 56.1 -> 48.6; Lua 1570.8 -> 1502.8, luac 1771.6 -> 1694.5,
   Doom (doomgeneric) 1080.1 -> 1071.7, h264bsd 1533.4 -> 1386.1, plmpeg 1276.0 -> 1135.8, binjgb
   1386.8 -> 1376.7, quake unchanged; old `all` 78.3 -> 79.1; the hand plmpeg port 79.8.
+- **P7.0zf The switch census** (owner task 2026-11-15, for the daslang author's decision on a
+  `switch` node) - Done as research (branch `switch-census`; report `docs/switch-census.md`):
+  `metrics/switch_census.das` reads every `switch` of the converted programs from the C-IR and
+  sorts it by what a daslang form must carry (`metrics/ARCHITECTURE_SWITCH.md`). 428 switches in
+  the eight programs: 394 (92%) constants with no real fall-through, 29 (7%) with one, 5 (1%)
+  with a goto between cases (Lua 3, Quake 2), none on a non-integer; of the 10 in hot functions
+  8 are the first kind, `luaV_execute` is the third. The converter's output is unchanged.
 - **P7.1 O1 range-loop rewrite** (unlocks automatic bound-check elision; the canonical form
   landed in P7.0 as the default, owner ruling 2026-11-01 (13)); **O2
   `[unsafe_deref]`** and **O3 `[hint(unsafe_range_check)]`** — these two sidecar-gated, enabled only
