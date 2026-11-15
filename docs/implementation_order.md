@@ -2396,6 +2396,24 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   row index still checked. `checks: off` is no substitute, since the AOT host keeps its range checks.
   Step 10 (Q6): a setjmp site's `recover` rethrows through `c_jmp_rethrow()`: a longjmp to another buffer as
   "longjmp", any other panic with its own message (the context's `last_exception`), where it said "longjmp".
+- **P9.33 `switch_dispatch` `table`: the dense switch flat** (ruling 38 addenda 29 and 30; the research
+  `/root/notes/research/goto_table/report.md`). A third value of the option and the sidecar key, off by
+  default; `chain` and `goto` output byte-identical to main's (Lua's source tree and six switch fixtures).
+  Done, first PR (branch `p9.33-switch-table`): a dense switch (8 or more values in int's range filling half
+  of [lo, hi], fallthrough allowed) is one jump and das labels at its parent's level, with no loop, flag or
+  case test: `goto _cond + base` past a bounds guard when every value of the range is a case, else
+  `goto _<function>_cases?[_cond - lo] ?? D` through a module-level `let private` table of label numbers;
+  Duff's device is recognized by its shape (`converter/ARCHITECTURE_EMITTER_CONTROL.md`, The flat dense
+  switch, Duff's device). Flat switches: Lua 14 (5 by value, 9 by table; `luaV_execute` 2568 -> 2461 lines),
+  PureDOOM 8, binjgb 11. Under `table`: Lua's suite 30 of 30 and luac 33 of 33 (interp, JIT), PureDOOM demos
+  1-3 in sync (interp, JIT), binjgb as native (interp, JIT, exe, AOT), c-testsuite 204 and gcc-torture 1205
+  expected passes held. Found: the interpreter lands a label of a block with a `finally` section and a local
+  one statement early (lookibed/daScript#63; binjgb never ended), so a `for` body with a das label at its
+  level steps by the increment-first flag.
+  Left for the second PR, after the first merges: the REVIEW duties of a new option value that need a
+  capture (the `interp-table` perf lane, the `@table` readability keys, the criteria rows `lua/lua@table` and
+  `lua/luac@table`), with the exclusive A/B of chain, goto and table on Lua, Doom and binjgb (interp, JIT);
+  no time was measured in the first.
 
 ## P6 — Doom
 
