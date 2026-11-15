@@ -24,8 +24,8 @@ late binding (the source-cut layout), and one module (the single layout).
   `source`, `source-cut` or `single`): the source layout into the tree `work/<stem>/`, its entry
   `work/<stem>/<stem>.das`, the source-cut layout into `work/source-cut/<stem>/`, the single layout into
   `work/single/<stem>/<stem>.das`, a folder each so each run's module caches stay apart (`--switch-dispatch` hands the converter's
-  option on, `lua.c2das` leaving it at `chain`; under `goto` each layout's folder sits under `work/goto/`, so
-  the two conversions and their caches stay apart; `--variant <file>` converts under the variant's
+  option on, `lua.c2das` leaving it at `chain`; under `goto` or `table` each layout's folder sits under `work/goto/` or `work/table/`, so
+  the conversions and their caches stay apart; `--variant <file>` converts under the variant's
   sidecar, `lua.c2das` with the knobs of `ports/variants/lua.<variant>.json` set
   (`ports/ARCHITECTURE_VARIANTS.md`), written to `work/variants/<variant>/lua.c2das`, each layout's
   folder, its `goto/` and its test-suite verdicts then under `work/variants/<variant>/`); it reports
