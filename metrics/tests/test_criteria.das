@@ -939,7 +939,8 @@ def test_variant_worker(t : T?) {
     stand_in_rust(rust)
     let variants = path_join(rust, "variants")
     mkdir_rec(variants)
-    let checks_off = path_join(variants, "binjgb.readable.json")
+    // the fast variant is the one that may set checks off: the readable knobs under its name
+    let checks_off = path_join(variants, "binjgb.fast.json")
     fwrite(checks_off, replace(fread("ports/variants/binjgb.readable.json"), "\"checks\": \{\"value\": \"safe\"", "\"checks\": \{\"value\": \"off\""))
     t |> run("a variant's program: lua for a Lua program, the project's name, puredoom; none for a suite, an opt-in or a layout key") @(t : T?) {
         t |> equal(variant_program("lua/lua"), "lua")
