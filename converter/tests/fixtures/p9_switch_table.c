@@ -4,7 +4,8 @@
    module-level table (`holes`: falling through, a goto into the neighbouring case, `default` in
    the middle; `no_default`; a negative low value `negative`; a `long`, an `unsigned` and an
    `unsigned long` subject; an enum; character labels). A switch inside another's case, one in a
-   loop with `continue` and both `break`s, a declaration a later case reads, the same local name
+   loop with `continue` and both `break`s, one in a stepping `for` whose body continues
+   (`stepped`), a declaration a later case reads, the same local name
    in two cases, every case returning, a dense switch in a small one's case (`in_small`), one a
    goto enters from outside and re-dispatches (`entered`), a range from INT_MIN (`from_min`),
    Duff's device, by its value and through a table (`duff_holes`), and the switches that keep the
@@ -256,6 +257,27 @@ out:
     return r;
 }
 
+static int stepped(unsigned long n) {
+    int r = 0;
+    for (unsigned long d = n; d > 0; d -= 4) {
+        r += 1;
+        if (d & 8)
+            continue;
+        switch ((d >> 4) & 15) {
+        case 0: case 3: r += 10; break;
+        case 1: r += 20;
+        case 2: r += 30; break;
+        case 4: if (n & 16) break; r += 40; break;
+        case 5: r += 50; break;
+        case 6: r += 60; break;
+        case 7: r += 70; break;
+        case 9: r += 90; break;
+        }
+        r += 1000;
+    }
+    return r;
+}
+
 static int scoped(int x) {
     int r = 0;
     switch (x) {
@@ -430,6 +452,9 @@ int main(void) {
     printf("%d %d %d\n", letters("abcdefghij"), letters(""), letters("hd`"));
     for (int n = 0; n <= 13; n++)
         printf("%d ", looped(code, n));
+    printf("\n");
+    for (unsigned long n = 0; n < 400; n += 28)
+        printf("%d ", stepped(n));
     printf("\n");
     for (int n = -1; n < 20; n++)
         printf("%d/%d/%d ", duff(n), n > 0 ? duff4(n) : 0, duff_holes(n));
