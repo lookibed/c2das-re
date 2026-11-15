@@ -182,4 +182,34 @@ int to_break(int x) {
   return n;
 }
 
+int to_break_block(int x) {
+  int n = 0;
+  switch (x) {
+  case 1: n = 1;
+  default: { ; break; }
+  }
+  return n;
+}
+
+int default_first(int x) {
+  switch (x) {
+  default: return 0;
+  case 1: return 1;
+  }
+}
+
+int spins(int x) {
+  switch (x) {
+  case 1: while (1) { x++; }
+  case 2: return 2;
+  }
+  return 0;
+}
+
+int bare(int x) {
+  switch (x)
+  case 1: return 1;
+  return 0;
+}
+
 int main(void) { return 0; }

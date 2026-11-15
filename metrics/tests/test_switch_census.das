@@ -44,7 +44,7 @@ def private got(f : SwitchFacts; name : string) : int => f.n?[name] ?? 0
 def test_census(t : T?) {
     t |> run("every switch of the file is a row, a nested one its own") @(t : T?) {
         let rows <- fixture_rows(t)
-        t |> equal(length(rows), 19)
+        t |> equal(length(rows), 23)
         t |> equal([for (f in rows); f.func; where f.line == 157 || f.line == 165], ["stops", "nested"])
     }
     t |> run("the condition's kind is read below the promotion, a character label makes an int a char") @(t : T?) {
@@ -88,6 +88,23 @@ def test_census(t : T?) {
         t |> equal(got(to_break, "shared_labels"), 1)
         t |> equal(to_break.cls, "S1")
         t |> equal(got(of(t, "falls"), "falls_to_break"), 0)
+    }
+    t |> run("a fall into a block whose first acting statement is a break is a fall to a break") @(t : T?) {
+        let braced = of(t, "to_break_block")
+        t |> equal(got(braced, "falls_to_break"), 1)
+        t |> equal(got(braced, "real_falls"), 0)
+        t |> equal(got(braced, "early_breaks"), 0)
+        t |> equal(braced.cls, "S1")
+    }
+    t |> run("a default before every case stands first; a body that is one labelled statement is one group") @(t : T?) {
+        t |> equal(of(t, "default_first").default_at, "first")
+        t |> equal(got(of(t, "bare"), "groups"), 1)
+        t |> equal(got(of(t, "bare"), "values"), 1)
+        t |> equal(of(t, "bare").cls, "S1")
+    }
+    t |> run("a group ending in a loop whose test is a non-zero constant does not fall") @(t : T?) {
+        t |> equal(got(of(t, "spins"), "real_falls"), 0)
+        t |> equal(of(t, "spins").cls, "S1")
     }
     t |> run("a group ending in a noreturn call, an endless loop, an if leaving on both arms or a switch that always leaves does not fall") @(t : T?) {
         t |> equal(got(of(t, "stops"), "real_falls"), 0)
@@ -185,20 +202,20 @@ def test_rows_text(t : T?) {
 def test_tables(t : T?) {
     t |> run("a switch met twice is one row, hot by its function's name") @(t : T?) {
         let ps <- fixture_programs(t, 1)
-        t |> equal(length(ps[0].rows), 19)
+        t |> equal(length(ps[0].rows), 23)
         t |> equal([for (f in ps[0].rows); f.func; where f.hot], ["plain", "falls"])
     }
     t |> run("the class table: each class with its share, the hot switches, a pooled total") @(t : T?) {
         let lines <- split(render_classes(fixture_programs(t, 2), "all"), "\n")
         t |> equal(lines[0], "| program | switch | S1 | S2 | S3 | S4 | hot | hot S1 |")
-        t |> equal(lines[2], "| fixture | 19 | 13 (68%) | 2 (11%) | 4 (21%) | 0 (0%) | 2 | 1 (50%) |")
-        t |> equal(lines[4], "| all | 38 | 26 (68%) | 4 (11%) | 8 (21%) | 0 (0%) | 4 | 2 (50%) |")
+        t |> equal(lines[2], "| fixture | 23 | 17 (74%) | 2 (9%) | 4 (17%) | 0 (0%) | 2 | 1 (50%) |")
+        t |> equal(lines[4], "| all | 46 | 34 (74%) | 4 (9%) | 8 (17%) | 0 (0%) | 4 | 2 (50%) |")
         t |> equal(length(split(render_classes(fixture_programs(t, 1), ""), "\n")), 4)
     }
     t |> run("the feature table counts switches, over the hot ones alone when asked") @(t : T?) {
         let all <- split(split(render_features(fixture_programs(t, 1), "", false), "\n")[2], " | ")
-        t |> equal([for (idx in range(1, 12)); all[idx]], ["19", "16", "1", "1", "1", "7", "1", "16", "2", "1", "1"])
-        t |> equal([for (idx in range(12, 24)); trim_suffix(all[idx], " |")], ["2", "2", "1", "1", "1", "1", "1", "1", "1", "2", "1", "1"])
+        t |> equal([for (idx in range(1, 12)); all[idx]], ["23", "20", "1", "1", "1", "9", "2", "20", "2", "1", "1"])
+        t |> equal([for (idx in range(12, 24)); trim_suffix(all[idx], " |")], ["2", "2", "2", "1", "1", "1", "1", "1", "1", "2", "1", "1"])
         let hot <- split(split(render_features(fixture_programs(t, 1), "", true), "\n")[2], " | ")
         t |> equal([for (idx in range(1, 4)); hot[idx]], ["2", "2", "0"])
     }

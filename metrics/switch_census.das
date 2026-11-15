@@ -32,9 +32,9 @@ let SUITE_CHUNKS = 8
 
 let SUITE_PREFIX = "suite/"
 
-// a row of the tables: its name, the inputs whose switches it pools, and the functions with 1%
-// or more of the self time in a profile of the program under `perf/profiles/` (doomgeneric has
-// none and takes PureDOOM's names; wasm3 and quakegeneric have none)
+// a row of the tables: its name, the inputs whose switches it pools, and the functions that a
+// profile of the program under `perf/profiles/` lists in its ten rows with 1% or more of the lane
+// (doomgeneric has none and takes PureDOOM's names; wasm3 and quakegeneric have none)
 struct private Row {
     name : string
     keys : array<string>
@@ -44,11 +44,11 @@ struct private Row {
 let private DOOM_HOT <- ["R_DrawColumn", "R_DrawSpan", "R_MakeSpans", "R_RenderSegLoop", "R_MapPlane", "FixedMul", "W_CheckNumForName", "R_DrawPlanes", "R_DrawVisSprite", "W_CacheLumpNum", "R_StoreWallRange", "R_AddLine", "R_Subsector", "P_GroupLines", "R_FindPlane"]
 
 def private program_rows : array<Row> {
-    return <- [Row(name = "Lua (lua + luac)", keys <- ["lua/lua", "lua/luac"], hot <- ["luaV_execute", "luaD_precall", "luaH_getshortstr", "math_sqrt", "lua_tonumberx", "prepCallInfo", "forprep", "moveresults"]),
+    return <- [Row(name = "Lua (lua + luac)", keys <- ["lua/lua", "lua/luac"], hot <- ["luaV_execute", "luaD_precall", "luaH_getshortstr", "math_sqrt", "lua_tonumberx", "prepCallInfo", "forprep"]),
         Row(name = "PureDOOM", keys <- [PUREDOOM_ROW], hot := DOOM_HOT),
         Row(name = "doomgeneric", keys <- ["project/doomgeneric"], hot := DOOM_HOT),
         Row(name = "quakegeneric", keys <- ["project/quakegeneric"]),
-        Row(name = "binjgb", keys <- ["project/binjgb"], hot <- ["ppu_mode3_synchronize", "main", "execute_instruction", "ppu_synchronize", "apu_synchronize", "write_audio_frame", "emulator_run_until", "mode3_tick_count", "do_ppu_mode2", "apu_update_channels", "emulator_step_internal", "read_u8"]),
+        Row(name = "binjgb", keys <- ["project/binjgb"], hot <- ["ppu_mode3_synchronize", "main", "execute_instruction", "ppu_synchronize", "apu_synchronize", "write_audio_frame", "emulator_run_until", "mode3_tick_count", "do_ppu_mode2", "apu_update_channels"]),
         Row(name = "wasm3", keys <- ["project/wasm3"]),
         Row(name = "h264bsd-mp4", keys <- ["project/h264bsd-mp4"], hot <- ["h264mp4_frames_next", "h264bsdFilterPicture", "h264bsdDecodeResidualBlockCavlc", "FilterVerLumaEdge", "h264bsdInterPrediction", "FilterHorLumaEdge", "h264bsdInterpolateHorVerQuarter", "h264bsdWriteOutputBlocks", "h264bsdInterpolateVerQuarter", "h264bsdFillBlock", "FilterLuma", "FilterHorLuma", "GetBoundaryStrengths", "h264bsdInterpolateChromaHorVer"]),
         Row(name = "plmpeg-stream", keys <- ["project/plmpeg-stream"], hot <- ["plmpeg_frames_next", "plm_frame_to_rgb", "plm_video_decode_block", "plm_video_process_macroblock", "plm_video_idct", "plm_video_decode_macroblock"])]
