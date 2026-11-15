@@ -360,13 +360,25 @@ def private count_gotos(body : Body; gotos : table<string; int>; var f : SwitchF
     }
 }
 
+// whether `st` is a `break`, or a block whose first statement that does something is one
+def private breaks_at_once(st : CirStmt const?) : bool {
+    if (st.s == "compound") {
+        for (child in st.body) {
+            if (!is_inert(child)) {
+                return breaks_at_once(child)
+            }
+        }
+    }
+    return st.s == "break"
+}
+
 // whether control entering group `from` leaves the switch with nothing done: the groups from it
 // on do nothing up to one that only breaks, or up to the body's end
 def private only_breaks(groups : array<Group>; from : int) : bool {
     for (idx in range(from, length(groups))) {
         for (child in groups[idx].stmts) {
             if (!is_inert(child)) {
-                return child.s == "break"
+                return breaks_at_once(child)
             }
         }
     }

@@ -10,8 +10,7 @@ is counted. It records no capture and has no ratchet: a run prints its tables.
 ## 1. File charters
 
 - `switch_census.das` - the driver: `das metrics/switch_census.das -- [--filter <row>] [--jobs N]`
-  from the repository root, on this box under `heavy --label switch-census --max 8G -- prlimit
-  --as=3221225472:6442450944`. A program row (Lua's two programs, PureDOOM, each compare
+  from the repository root. A program row (Lua's two programs, PureDOOM, each compare
   project) converts through `convert_input` of `readability_inputs.das` in a worker of its own,
   one at a time, and the worker reads every `.cir.json` the conversion wrote under
   `work/switch_census/<key>/`, so a program whose emission fails is still counted from its dump.
@@ -26,11 +25,12 @@ is counted. It records no capture and has no ratchet: a run prints its tables.
 - `tests/test_switch_census.das` over `tests/fixtures/switch_census.c`, a C file with one function
   per counted fact.
 
-The driver names, per program row, the functions that hold 1% or more of the self time in a
-profile under `perf/profiles/` (the native, JIT and interpreter lanes together). A switch is hot
-when its function is one of them, so a cold switch inside a hot function counts as hot.
-doomgeneric has no profile and takes PureDOOM's names; wasm3 and quakegeneric have none and no
-hot switch.
+The driver names, per program row, the functions that a profile of the program under
+`perf/profiles/` (the native, JIT and interpreter lanes) lists with 1% or more of the lane. Each
+profile keeps its ten top rows only, so a function below a profile's tenth row is not seen, and
+"no hot switch" means none in a function of those rows. A switch is hot when its function is one
+of them, so a cold switch inside a hot function counts as hot. doomgeneric has no profile and
+takes PureDOOM's names; wasm3 and quakegeneric have none and no hot switch.
 
 ## 2. The facts of one switch
 
@@ -54,7 +54,8 @@ and the statements up to the next label. A nested switch is a row of its own, an
   program's own fatal call (`I_Error`, `luaD_throw`) counts as falling. `fall_line` is the line
   of the first such group's last statement.
 - `falls_to_break` - groups that would count under `real_falls` but fall into a group that only
-  breaks (`default: break;`), through groups that do nothing or to the body's end: the fall
+  breaks (`default: break;`, `default: { break; }`), through groups that do nothing or to the
+  body's end: the fall
   leaves the switch, as a `break` in its place would.
 - `early_breaks` - `break`s of the switch that are not their group's last statement.
 - `loop_breaks` - `break`s of a loop nested in the switch.
