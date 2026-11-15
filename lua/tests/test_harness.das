@@ -354,7 +354,7 @@ def test_run_binaries(t : T?) {
 }
 [test]
 def test_switch_dispatch(t : T?) {
-    t |> run("--switch-dispatch goto reaches the converter: a dense switch of the program takes the jump table, which the default leaves out") @(t : T?) {
+    t |> run("--switch-dispatch goto and table reach the converter: a dense switch of the program takes the jump table or the flat form, each in a folder of its own, which the default leaves out") @(t : T?) {
         let cases = join([for (v in range(8)); "case {v}: return {v + 40};"], " ")
         let root = stand_in_root("c2das_lua_dispatch", "#include \"lua.h\"\nstatic int pick(int x) \{ switch (x) \{ {cases} \} return 0; \}\nint lua_answer(void) \{ return pick(1); \}\n")
         t |> success(!empty(root))
@@ -366,6 +366,10 @@ def test_switch_dispatch(t : T?) {
         t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua", "--layout", "single"]), out), 0, out)
         t |> success(!(fread(path_join(root, "lua/work/single/lua/lua.das")) |> contains("goto _cond")), out)
         t |> success(fread(path_join(root, "lua/work/goto/single/lua/lua.das")) |> contains("goto _cond + 1\n"), out)
+        // table lands under work/table/, the switch flat: a label per case and no loop around them
+        t |> equal(run_in(root, daslang_argv("lua/run.das", ["--filter", "lua", "--layout", "single", "--switch-dispatch", "table"]), out), 0, out)
+        t |> success(fread(path_join(root, "lua/work/table/single/lua/lua.das")) |> contains("    goto _cond + 1\n    label 1:  // case 0\n    return 40\n"), out)
+        t |> success(fread(path_join(root, "lua/work/goto/single/lua/lua.das")) |> contains("        goto _cond + 1\n"), out)
         rmdir_rec(root)
     }
 }
