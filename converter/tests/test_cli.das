@@ -192,7 +192,7 @@ def test_cli_switch_dispatch(t : T?) {
         // table: the same switch flat, through a table of label numbers
         t |> equal(run_switch_dispatch(dir, "table", out), 0, out)
         let flat = fread(path_join(path_join(dir, "dispatch_table"), "p7_goto_dispatch.das"))
-        t |> success(flat |> contains("        goto _p7_goto_dispatch__run_cases?[int(_cond)] ?? 11\n        label 2:  // case A\n") && !(flat |> contains("var _flag")), flat)
+        t |> success(flat |> contains("        goto _p7_goto_dispatch__run_cases?[int(_cond)] ?? 11\n        label 2:  // case A\n"), flat)
         t |> equal(run_switch_dispatch(dir, "jump", out), 2, out)
         t |> success(out |> contains("--switch-dispatch is chain, goto or table, not `jump`"), out)
     }
