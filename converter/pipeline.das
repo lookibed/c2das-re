@@ -154,7 +154,7 @@ def private option_error(param_writes, loops, layout, first_member : string; swi
         return "--first-member is addr or reinterpret, not `{first_member}`"
     }
     if (!empty(switch_dispatch) && !is_switch_dispatch(switch_dispatch)) {
-        return "--switch-dispatch is chain or goto, not `{switch_dispatch}`"
+        return "--switch-dispatch is chain, goto or table, not `{switch_dispatch}`"
     }
     if (!empty(checks) && !is_checks(checks)) {
         return "--checks is safe or off, not `{checks}`"

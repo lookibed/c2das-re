@@ -138,6 +138,12 @@ struct Emitter {
     // an open switch's jump table under `switch_dispatch` `goto` (`open_table`): the labels of the
     // values no case holds, by the `default` they stand before, else by the switch body
     case_holes : table<uint64; array<string>>
+    // under `switch_dispatch` `table`: what the das label of each case label of an open switch
+    // says after it, "" for one that shares the label before it; the module-level remap tables of
+    // the function being emitted, which precede it; and the function's das name, which names them
+    case_names : table<uint64; string>
+    case_tables : array<string>
+    fn_name : string
     // what a C `continue` spells at the current nesting: "" inside a loop body, the `_cont`
     // flag inside a matched-flag switch loop whose `continue` reaches the loop around it, the
     // `goto` to the test or increment of an open loop
@@ -283,6 +289,9 @@ struct EmitProgram {
     // (`dispatch_plan`), and a switch a goto from another case re-dispatches is spelled open, by a
     // table where it can (`open_redispatched`, `open_table`)
     goto_dispatch : bool
+    // the sidecar's or the option's `switch_dispatch` is `table`: a dense switch is spelled open,
+    // a jump to one das label per case (`open_dense`, `emit_remap_switch`)
+    table_dispatch : bool
     // the sidecar's or the option's `past_end` is `inline`: `&a[k]` of a plain-load index is
     // `k == N ? addr(a[0]) + N : addr(a[k])` (`one_past_end_address`)
     past_end_inline : bool
@@ -6207,6 +6216,9 @@ def private plan_labels(var em : Emitter; tu : CirTu; body : CirStmt const?) {
     if (em.prog.goto_dispatch) {
         open_redispatched(em, tu, plan)
     }
+    if (em.prog.table_dispatch) {
+        open_dense(em, tu, plan)
+    }
     for (c, at in plan.cases, plan.case_sites) {
         if (key_exists(em.flag_switches, at.switches |> back()) && key_exists(em.flatten, at.switches |> back())) {
             fail(em, "a switch spelled open, for a goto into its body or a case label below its level, that a goto from another case re-dispatches is not lowered", c.loc)
@@ -6228,13 +6240,34 @@ def private open_redispatched(var em : Emitter; tu : CirTu; plan : LabelPlan) {
     for (sw in switches) {
         let st = plan.switch_stmts?[sw] ?? null
         continue if (st == null || dispatch_plan(em, tu, st).span > 0)
-        em.opened |> insert(intptr(st))
-        enter_arm(em, st.body_s, true)
-        em.flag_switches |> erase(sw)
-        var inscope names <- [for (name in keys(em.group_labels)); name; where(em.group_labels?[name] ?? 0ul) == sw]
-        for (name in names) {
-            em.group_labels |> erase(name)
+        open_flat(em, st)
+    }
+}
+
+// under `switch_dispatch` `table`, a dense switch (`open_table`) is spelled open: its case labels
+// are das labels at its parent's level, which its jump and a goto from another case group reach
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#table-dispatch")]
+def private open_dense(var em : Emitter; tu : CirTu; plan : LabelPlan) {
+    for (sw in plan.switch_order) {
+        let st = plan.switch_stmts?[sw] ?? null
+        var markers : array<CirStmt const?>
+        case_markers(st.body_s, markers)
+        if (open_table(em, tu, st, switch_cond_type(tu, *st), markers).span > 0) {
+            open_flat(em, st)
         }
+    }
+}
+
+// switch `st` spelled open with its body flat, in place of the matched-flag loop: a label a goto
+// from another case group reaches is then a das label the goto jumps to, no case of a restart
+def private open_flat(var em : Emitter; st : CirStmt const?) {
+    let sw = intptr(st.body_s)
+    em.opened |> insert(intptr(st))
+    enter_arm(em, st.body_s, true)
+    em.flag_switches |> erase(sw)
+    var inscope names <- [for (name in keys(em.group_labels)); name; where(em.group_labels?[name] ?? 0ul) == sw]
+    for (name in names) {
+        em.group_labels |> erase(name)
     }
 }
 
@@ -6410,16 +6443,29 @@ def private dispatch_plan(var em : Emitter; tu : CirTu; st : CirStmt const?) : G
     if (!em.prog.goto_dispatch || st == null || key_exists(em.opened, intptr(st)) || !case_groups(em, st.body_s, st.loc, groups)) {
         return GotoDispatch()
     }
-    var lo = LONG_MAX
-    var hi = LONG_MIN
-    var n = 0
     for (idx, g in range(length(groups)), groups) {
         if (idx < length(groups) - 1 && (empty(g.stmts) || !leaves_at_end(g.stmts |> back()))) {
             return GotoDispatch()
         }
-        for (v in g.values) {
+    }
+    var markers : array<CirStmt const?>
+    case_markers(st.body_s, markers)
+    return case_range(em, tu, switch_cond_type(tu, *st), markers, DENSE_CASES)
+}
+
+// the fewest case values of a dense switch
+let private DENSE_CASES = 8
+
+// the range of the case values of `markers`, each as a condition of type `cond_t` holds it, when
+// `least` or more of them, all in `int`'s range, fill at least half of [lo, hi]; else a zero `span`
+def private case_range(var em : Emitter; tu : CirTu; cond_t : int; markers : array<CirStmt const?>; least : int) : GotoDispatch {
+    var lo = LONG_MAX
+    var hi = LONG_MIN
+    var n = 0
+    for (m in markers) {
+        if (m.s == "case") {
             var held : int64
-            if (!held_value(em, tu, switch_cond_type(tu, *st), v, held)) {
+            if (!held_value(em, tu, cond_t, m.v, held)) {
                 return GotoDispatch()
             }
             n++
@@ -6427,7 +6473,7 @@ def private dispatch_plan(var em : Emitter; tu : CirTu; st : CirStmt const?) : G
             hi = max(hi, held)
         }
     }
-    if (n < 8 || lo < int64(INT_MIN) || hi > int64(INT_MAX) || hi - lo + 1l > 2l * int64(n)) {
+    if (n < least || lo < int64(INT_MIN) || hi > int64(INT_MAX) || hi - lo + 1l > 2l * int64(n)) {
         return GotoDispatch()
     }
     return GotoDispatch(lo = lo, span = int(hi - lo + 1l))
@@ -7330,7 +7376,10 @@ def private emit_case_label(var em : Emitter; st : CirStmt const?) {
         if (st.s == "default") {
             emit_holes(em, intptr(st))
         }
-        jump_label(em, em.case_labels?[intptr(st)] ?? 0, st.s == "case" ? "case {st.v}" : "default")
+        let name = key_exists(em.case_names, intptr(st)) ? em.case_names?[intptr(st)] ?? "" : (st.s == "case" ? "case {st.v}" : "default")
+        if (!empty(name)) {
+            jump_label(em, em.case_labels?[intptr(st)] ?? 0, name)
+        }
     } else {
         fail(em, "a case label of a switch whose body is no block, below that switch's level; not lowered", st.loc)
     }
@@ -7468,7 +7517,18 @@ def private emit_open_switch(var em : Emitter; tu : CirTu; st : CirStmt const?) 
             line(em, "var {das_name(em, child.name)} : {das_type_dims(em, tu, child.t, child.loc, child.dims)}")
         }
     }
-    var jumps = open_table(em, tu, cond_t, markers)
+    var jumps = open_table(em, tu, st, cond_t, markers)
+    if (em.prog.table_dispatch && jumps.span > 0) {
+        if (duff_loop(st) != null) {
+            line(em, "// Duff's device: the jump enters the loop's body at its case")
+        }
+        name_cases(em, tu, cond_t, markers)
+    }
+    if (em.prog.table_dispatch && jumps.span > length([for (m in markers); m; where m.s == "case"])) {
+        emit_remap_switch(em, tu, st, markers, cond, cond_t, jumps)
+        em.char_cases <- outer_chars
+        return
+    }
     if (jumps.span > 0) {
         emit_open_table(em, tu, st, markers, cond, cond_t, jumps)
         em.char_cases <- outer_chars
@@ -7506,31 +7566,31 @@ def private emit_open_switch(var em : Emitter; tu : CirTu; st : CirStmt const?) 
     em.char_cases <- outer_chars
 }
 
-// the jump table of an open switch under `switch_dispatch` `goto`: two or more case values in
-// `int`'s range filling at least half of [lo, hi]; else a zero `span`
+// the jump table of open switch `st`: under `switch_dispatch` `goto`, and for Duff's device under
+// `table`, two or more case values in `int`'s range filling at least half of [lo, hi], for any
+// other switch under `table` 8 or more; else a zero `span`
 [arch(at="ARCHITECTURE_EMITTER_CONTROL.md#flat-cases")]
-def private open_table(var em : Emitter; tu : CirTu; cond_t : int; markers : array<CirStmt const?>) : GotoDispatch {
-    if (!em.prog.goto_dispatch) {
+def private open_table(var em : Emitter; tu : CirTu; st : CirStmt const?; cond_t : int; markers : array<CirStmt const?>) : GotoDispatch {
+    if (!em.prog.goto_dispatch && !em.prog.table_dispatch) {
         return GotoDispatch()
     }
-    var lo = LONG_MAX
-    var hi = LONG_MIN
-    var n = 0
-    for (m in markers) {
-        if (m.s == "case") {
-            var held : int64
-            if (!held_value(em, tu, cond_t, m.v, held)) {
-                return GotoDispatch()
-            }
-            n++
-            lo = min(lo, held)
-            hi = max(hi, held)
+    return case_range(em, tu, cond_t, markers, em.prog.goto_dispatch || duff_loop(st) != null ? 2 : DENSE_CASES)
+}
+
+// the loop of Duff's device: switch `st` whose body is one loop behind its first case labels,
+// with case labels of the switch at the level of that loop's body
+// (`switch (n % 8) { case 0: do { *to++ = *from++; case 7: ... } while (--k > 0); }`); else null
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#duff")]
+def private duff_loop(st : CirStmt const?) : CirStmt const? {
+    var loop : CirStmt const?
+    for (child in st.body_s.body) {
+        continue if (child.s == "case" || child.s == "default" || child.s == "null")
+        if (loop != null || (child.s != "do" && child.s != "while" && child.s != "for") || child.body_s == null) {
+            return null
         }
+        loop = child
     }
-    if (n < 2 || lo < int64(INT_MIN) || hi > int64(INT_MAX) || hi - lo + 1l > 2l * int64(n)) {
-        return GotoDispatch()
-    }
-    return GotoDispatch(lo = lo, span = int(hi - lo + 1l))
+    return loop != null && has_value([for (child in loop.body_s.body); child.s == "case" || child.s == "default"], true) ? loop : null
 }
 
 // an open switch through its jump table: das label `base + v - lo` at case value `v`, `base + span`
@@ -7562,10 +7622,111 @@ def private emit_open_table(var em : Emitter; tu : CirTu; st : CirStmt const?; m
     em.break_gotos |> pop()
     if (default_key == 0ul) {
         emit_holes(em, holes_key)
-        jump_label(em, finish, "no case: switch end")
+        end_label(em, finish, em.prog.table_dispatch ? "switch end" : "no case: switch end")
     } elif (breaks_switch(st.body_s)) {
-        jump_label(em, finish, "switch end")
+        end_label(em, finish, "switch end")
     }
+}
+
+// the end label of an open switch through a jump; under `switch_dispatch` `table` a `break` that
+// ends the last case, a goto to the line after it, is dropped
+def private end_label(var em : Emitter; n : int; comment : string) {
+    if (em.prog.table_dispatch && !empty(em.out) && em.out[length(em.out) - 1] == repeat("    ", em.depth) + "goto label {n}\n") {
+        em.out |> pop()
+    }
+    jump_label(em, n, comment)
+}
+
+// under `switch_dispatch` `table`, what the das label of each case label of `markers` says: the
+// enumerator or the character the C names, else the value
+def private name_cases(var em : Emitter; tu : CirTu; cond_t : int; markers : array<CirStmt const?>) {
+    let on_enum = kind_of(tu, cond_t) == "enum"
+    for (m in markers) {
+        let named = on_enum ? enumerator_of(tu, cond_t, "{m.v}") : (key_exists(em.char_cases, m.v) ? char_literal(int(m.v)) : "")
+        let value = empty(named) ? "{m.v}" : named
+        em.case_names[intptr(m)] = m.s == "default" ? "default" : "case {value}"
+    }
+}
+
+// an open switch whose range [lo, hi] holds values no case does, under `switch_dispatch` `table`:
+// one das label per run of case labels, a module-level table of the label of each value of the
+// range, `default`'s for a value no case holds, or the end's when the switch has none, and
+// `goto <table>?[_cond - lo] ?? <that label>`, which also takes every value outside the range
+[arch(at="ARCHITECTURE_EMITTER_CONTROL.md#table-dispatch")]
+def private emit_remap_switch(var em : Emitter; tu : CirTu; st : CirStmt const?; markers : array<CirStmt const?>; cond : string; cond_t : int; jumps : GotoDispatch) {
+    // a case label right after another shares its das label
+    var followers : table<uint64>
+    each_stmt(st.body_s) $(s) {
+        for (idx in range(1, length(s.body))) {
+            if ((s.body[idx].s == "case" || s.body[idx].s == "default") && (s.body[idx - 1].s == "case" || s.body[idx - 1].s == "default")) {
+                followers |> insert(intptr(s.body[idx]))
+            }
+        }
+    }
+    var targets : table<int64; int>
+    var default_at = 0
+    var leader = 0ul
+    for (m in markers) {
+        let name = em.case_names?[intptr(m)] ?? ""
+        if (key_exists(followers, intptr(m))) {
+            em.case_names[leader] = "{em.case_names?[leader] ?? ""}, {name}"
+            em.case_names[intptr(m)] = ""
+        } else {
+            leader = intptr(m)
+            em.case_labels[leader] = new_label(em)
+        }
+        let at = em.case_labels?[leader] ?? 0
+        em.case_labels[intptr(m)] = at
+        var held : int64
+        if (m.s == "default") {
+            default_at = at
+        } elif (held_value(em, tu, cond_t, m.v, held)) {
+            targets[held] = at
+        }
+    }
+    let end_at = new_label(em)
+    let miss = default_at > 0 ? default_at : end_at
+    let name = table_name(em)
+    let entries = join([for (off in range(jumps.span)); string(targets?[jumps.lo + int64(off)] ?? miss)], LIST_SEPARATOR)
+    em.case_tables |> push("let private {name} = fixed_array<int>({entries})\n")
+    line(em, "goto {name}?[{table_index(em, tu, cond, cond_t, jumps.lo)}] ?? {miss}")
+    em.break_gotos |> push("goto label {end_at}")
+    emit_body(em, tu, st.body_s)
+    em.break_gotos |> pop()
+    if (default_at == 0 || breaks_switch(st.body_s)) {
+        end_label(em, end_at, "switch end")
+    }
+}
+
+// `_<function>_cases<N>`: the next remap table of the function being emitted, a name no function,
+// global or name of the function spells; the function's das name is the program's only one
+def private table_name(var em : Emitter) : string {
+    var n = length(em.case_tables) + 1
+    var name = numbered("_{em.fn_name}_cases", n)
+    while (key_exists(em.spelled, name) || key_exists(em.prog.global_names, name) || key_exists(em.prog.functions, name)) {
+        n++
+        name = numbered("_{em.fn_name}_cases", n)
+    }
+    em.spelled |> insert(name)
+    return name
+}
+
+// a remap table's index, the condition's distance from `lo`: in the condition's own type when
+// that is `int`, `uint`, `int64` or `uint64`, which daslang indexes a fixed array by, else, an
+// enum's included, as `int`; a value below `lo` wraps or goes negative, past the table either way
+def private table_index(var em : Emitter; tu : CirTu; cond : string; cond_t : int; lo : int64) : string {
+    let spelled = kind_of(tu, cond_t) == "enum" ? "" : das_type(em, tu, cond_t, CirLoc())
+    let own = !empty(int_literal(spelled, "0"))
+    let value = own ? cond : "int({cond})"
+    let index_t = own ? spelled : "int"
+    if (lo == 0l) {
+        return value
+    }
+    if (lo == int64(INT_MIN)) {
+        return "{value} - ({int_text(lo)})"
+    }
+    let distance = int_literal(index_t, string(abs(lo)))
+    return "{value} {lo > 0l ? "-" : "+"} {distance}"
 }
 
 // the labels of the values no case of an open switch's jump table holds, before its `default`, by
@@ -7758,7 +7919,7 @@ def private unshadow_stmt(var w : ScopeWalk; var st : CirStmt?) {
 // every function body of the unit with its hiding locals renamed, before anything reads a name;
 // `carried` gets the declarations a lowered switch declares before itself, `bound_objects` the
 // references named like a libc object that a parameter or local binds
-def private unshadow_locals(var tu : CirTu; var carried : table<uint64>; var bound_objects : table<uint64>; goto_dispatch : bool) {
+def private unshadow_locals(var tu : CirTu; var carried : table<uint64>; var bound_objects : table<uint64>; switch_dispatch : string) {
     var globals : table<string>
     for (d in tu.decls) {
         if (d.k == "global") {
@@ -7774,8 +7935,10 @@ def private unshadow_locals(var tu : CirTu; var carried : table<uint64>; var bou
         // the blocks a goto enters lose their braces, which `plan_labels` decides at emission; the
         // planning emitter lives on the heap, since `emit_unit` already holds one on the stack
         var plan = new Emitter()
-        // under `switch_dispatch` `goto` a re-dispatched switch's body is flat too (`open_redispatched`)
-        plan.prog.goto_dispatch = goto_dispatch
+        // under `switch_dispatch` `goto` a re-dispatched switch's body is flat too
+        // (`open_redispatched`), under `table` a dense one's (`open_dense`)
+        plan.prog.goto_dispatch = switch_dispatch == "goto"
+        plan.prog.table_dispatch = switch_dispatch == "table"
         plan_labels(*plan, tu, d.body)
         moved_decls(d.body, *plan, w.moved, carried)
         unsafe {
@@ -8235,6 +8398,9 @@ def private reset_function_state(var em : Emitter; tu : CirTu; d : CirDecl) {
     em.goto_switches |> clear()
     em.label_jumps |> clear()
     em.case_holes |> clear()
+    em.case_names |> clear()
+    em.case_tables |> clear()
+    em.fn_name = function_name(em, d.name)
     plan_labels(em, tu, d.body)
     plan_let_locals(em, d.body)
     em.unsafe_used = false
@@ -8349,6 +8515,9 @@ def private emit_function(var em : Emitter; tu : CirTu; d : CirDecl) {
         em.fold_function_off = true
         spell_function(em, tu, d)
         em.fold_function_off = false
+    }
+    if (empty(em.error) && !empty(em.case_tables)) {
+        em.out |> push(join(em.case_tables, "") + "\n", out_at)
     }
     emit_list_adapter(em, tu, d)
 }
@@ -9554,6 +9723,7 @@ def private take_options(var em : Emitter; tu : CirTu; side : Sidecar) {
     em.prog.range_loops = side.loops != "while"
     em.prog.reinterpret_members = side.first_member == "reinterpret"
     em.prog.goto_dispatch = side.switch_dispatch == "goto"
+    em.prog.table_dispatch = side.switch_dispatch == "table"
     em.prog.past_end_inline = side.past_end == "inline"
     em.prog.fold_off = (empty(side.fn_macros) ? FN_MACROS_DEFAULT : side.fn_macros) == "expand"
     em.prog.pointer_steps_off = has_value(side.forms_off, "pointer_steps")
@@ -9790,7 +9960,7 @@ def private take_hosted_needs(var em : Emitter; tu : CirTu; use : CirMacroUse; x
 // is renamed in `tu` itself first (`unshadow_locals`)
 def private prepare_program(var em : Emitter; var tu : CirTu; side : Sidecar) {
     complete_extern_arrays(em, tu)
-    unshadow_locals(tu, em.prog.carried, em.prog.bound_objects, side.switch_dispatch == "goto")
+    unshadow_locals(tu, em.prog.carried, em.prog.bound_objects, side.switch_dispatch)
     check_reserved_renames(em, tu)
     for (d in tu.decls) {
         if (d.k == "func" && d.body != null) {

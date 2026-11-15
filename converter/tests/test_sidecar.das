@@ -235,16 +235,16 @@ def test_sidecar_switch_dispatch(t : T?) {
         t |> failure("no temp directory: {dir_error}")
         return
     }
-    t |> run("`switch_dispatch` is \"chain\" or \"goto\"; absent it is empty, the emitter's chain default; any other value is refused") @(t : T?) {
-        for (mode in ["chain", "goto"]) {
+    t |> run("`switch_dispatch` is \"chain\", \"goto\" or \"table\"; absent it is empty, the emitter's chain default; any other value is refused") @(t : T?) {
+        for (mode in ["chain", "goto", "table"]) {
             var error : string
             let side <- read_text(dir, mode, "\{\"switch_dispatch\": \"{mode}\"\}\n", error)
             t |> equal(error, "")
             t |> equal(side.switch_dispatch, mode)
         }
         var error : string
-        let side <- read_text(dir, "bad_switch_dispatch", "\{\"switch_dispatch\": \"table\"\}\n", error)
-        t |> success(error |> ends_with("bad_switch_dispatch.c2das: `switch_dispatch` is \"chain\" or \"goto\", not \"table\""), error)
+        let side <- read_text(dir, "bad_switch_dispatch", "\{\"switch_dispatch\": \"jump\"\}\n", error)
+        t |> success(error |> ends_with("bad_switch_dispatch.c2das: `switch_dispatch` is \"chain\" or \"goto\" or \"table\", not \"jump\""), error)
         t |> equal(side.switch_dispatch, "")
     }
     rmdir_rec(dir)
