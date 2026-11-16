@@ -2476,6 +2476,37 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   switch, so a perf kernel with one is owed; the `p9_for_labels` `in_arm_and_loop` case falls into its
   below-level label but never jumps to it (n < 10 never dispatches i = 9); PureDOOM's ratio here is chain's
   fps over the arm's, the predictions file's the inverse (every cell hits either way).
+- **P9.34 Interpreter profiles and pointer comparisons without `intptr`** (ruling 38 addendum 32; branch
+  `p9.34-intptr`). Fresh `--das-profiler` profiles on main ef5b135, normal `heavy` jobs at 4G (no timing):
+  `perf/profiles/doom_demo1_interp.txt` (600 tics; `builtin intptr` 17.3% of self time, 19.0M calls, 12.97M
+  of them `W_CheckNumForName`'s `lump_p-- != lumpinfo`) and binjgb's first, `perf/profiles/binjgb_interp.txt`.
+  doomgeneric is not profiled: its bench prints a fixed 1000 frames, past the profiler's per-call event
+  store under the cap. Why `intptr` costs: it is a daslib generic, and the interpreter's auto-inliner takes no
+  generic instance (`ast_inline.cpp`, `fn->fromGeneric`; by design, F114), so each site is a das call; the
+  JIT inlines it. The probe `probes/test_pointer_compare.das` holds das's `==`/`!=` between two data pointers
+  and a relation over `reinterpret<uint64>` to C's answers on all four tiers. The emitter now writes
+  `p == q` and `reinterpret<uint64>(p) < reinterpret<uint64>(q)`; `(intptr_t)p` keeps `intptr` (PureDOOM 14
+  sites left, Lua 7). Predictions (`/root/notes/predictions/2026-11-16-intptr.md`, before any timing; after
+  over before, fps for PureDOOM, seconds otherwise): PureDOOM interp demo1 1.05-1.12, demos 2 and 3
+  1.04-1.12, JIT 0.98-1.02; binjgb interp and JIT 0.98-1.02; Lua interp fib 0.96-1.00, binary_trees
+  0.93-0.99, nbody and spectral_norm 0.98-1.01, JIT 0.98-1.02.
+  binjgb's HALT path, a proposal (no code): 96.9% of `execute_instruction`'s 5.40M calls are the
+  `CPU_STATE_HALT` case (counted by a copy of the module with counters), one `tick` and a return before the
+  opcode switch, reached through `emulator_run_until` -> `emulator_step_internal` -> `execute_instruction`
+  once per 4 cycles; P9.33's table arm did not move binjgb (0.986) because the switch is not on that path.
+  The interpreter pays per HALT step two das calls (it declines to inline `execute_instruction` into
+  `emulator_step_internal`: "caller frame growth budget exhausted"), the six local declarations C leaves
+  uninitialized (`opcode`, `s`, `u`, `c`, `u16`, `new_pc`, each zeroed by das on entry), the `c_switch` over
+  `INTR.state` with HALT its fifth case, and `should_dispatch`'s `enum_from_int(type<Bool>, int_of(...))`
+  round trip. Candidates, cheapest first, each its own A/B: (a) sink a function-level declaration below
+  every early `return` that precedes its first use (all six here: the HALT path returns before any of them
+  is read or written, so it then declares none); (b) a
+  `c_switch` whose cases are few and sparse tests the hot case first only with profile data, so not without
+  a sidecar knob, left; (c) an opt-in form that outlines a large function's tail (here the opcode switch after the state
+  dispatch) into a second def, so the head left is small enough for the auto-inliner to take into its caller (the
+  frame budget then falls on the cold tail alone): the HALT step becomes zero das calls inside
+  `emulator_run_until`'s loop. (c) is the one that removes the calls, and it is an output change (a new
+  def per split function), so it is an opt-in flag first, measured on binjgb, Lua and PureDOOM.
 - **P9.35 `crt` as a wasm64 package; PureDOOM compiled to wasm** (ruling 38 addendum 31 item 3; plan
   `/root/notes/parallel/r38_add31_wasm_plan.md` steps 2 and 3, toolchain `/root/notes/research/wasm/toolchain.md`).
   Done (branch `p9.35-wasm-crt`; the item converts no C construct, so no perf or readability
