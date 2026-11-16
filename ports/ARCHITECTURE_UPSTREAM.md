@@ -8,8 +8,8 @@ defect slows says so: `upstream_cells.das`, the list of those cells and the text
 
 `UPSTREAM_CELLS` names each program or perf kernel whose cells under one tier a daslang defect
 slows: the program (the ports directory's name, or the kernel's), the tier, the lookibed/daScript
-fork issue, and the x native the same build gives with the defect worked around (by hand or by a patched generator), with what
-that number is over. A cell is listed only when an A/B proves the cause: the cells of #48 (the AOT
+fork issue, and the x native the same build gives with the defect worked around (by hand or by a
+patched generator), with what that number is over. A cell is listed only when an A/B proves the cause: the cells of #48 (the AOT
 generator reads every module global through a hash lookup, `perf/ARCHITECTURE_EXCEPTIONS.md`) are
 PureDOOM's, doomgeneric's and the kernels `sieve`, `str_copy`, `switch_local` and `matmul`, each
 with its time when its AOT reads every global at its fixed offset. `UPSTREAM_ISSUES` holds, per

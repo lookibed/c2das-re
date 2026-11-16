@@ -21,7 +21,7 @@ would take for a defect, each with its reason (`ARCHITECTURE_COMMON.md`, the exc
   builds fixes every global's offset at generation time (its constructor asserts each one, and under
   `solid_context` its initializers already address them as `das_global_solid<T, offset>`). The same
   generated C++ with the reads rewritten to `das_global_solid` runs `sieve` 1.63, `str_copy` 1.40,
-  `switch_local` 1.00 and `matmul` 1.01 times native, PureDOOM demo1 1.14 against 5.56, and doomgeneric 1.13 against 3.66 with
-`aot_cpp.das` patched to emit those reads (exclusive;
+  `switch_local` 1.00 and `matmul` 1.01 times native, PureDOOM demo1 1.14 against 5.56, and
+  doomgeneric 1.13 against 3.66 with `aot_cpp.das` patched to emit those reads (exclusive;
   the A/B, the das-only repro and the generated C++ are in lookibed/daScript#48). No option, flag or
   annotation reaches that emitter path, so the cells wait on that issue (reopened).
