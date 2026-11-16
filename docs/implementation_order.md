@@ -2476,6 +2476,22 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   switch, so a perf kernel with one is owed; the `p9_for_labels` `in_arm_and_loop` case falls into its
   below-level label but never jumps to it (n < 10 never dispatches i = 9); PureDOOM's ratio here is chain's
   fps over the arm's, the predictions file's the inverse (every cell hits either way).
+- **P9.35 `crt` as a wasm64 package; PureDOOM compiled to wasm** (ruling 38 addendum 31 item 3; plan
+  `/root/notes/parallel/r38_add31_wasm_plan.md` steps 2 and 3, toolchain `/root/notes/research/wasm/toolchain.md`).
+  Done (branch `p9.35-wasm-crt`): `dasCRuntime/CMakeLists.txt` builds `liblibDasModuleCRuntime.a` under
+  `emcmake` (memory64, threaded, wasm exceptions, no RTTI), `.das_package` declares it for
+  `daspkg release wasm`, and `scripts/build_crt.sh --libcxx-host` builds the `crt` a libc++ cross-compile
+  host loads (`dasCRuntime/ARCHITECTURE.md` section 8). Off the gates: `tests/test_crt_wasm.das` skips
+  where emscripten is not on PATH (a toolchain no gate installs, so no phase lifts the skip; its arm runs
+  wherever emsdk 5.0.7 is active). Verified with emsdk 5.0.7 and a libc++ host at daScript 6f83af0855:
+  a `crt` app through `daspkg release wasm` (the archive built by the hook) prints the CRT's answers under
+  node; PureDOOM processed cross-compiled, linked with `-sMEMORY64=2`, plays demo1 under node 24 with all
+  2664 tic hashes equal to `ref/freedoom2_demo1.log` (game loop about 0.9 s, indicative, a busy box).
+  Left: the browser host (plan step 4: `init`/`update`, canvas, keys, the WAD by embed or fetch);
+  quakegeneric (plan step 6; glibc `rand` in `crt`); emscripten's `clock()` under `-pthread` can return a
+  negative value (`-75812969` in a three-line C test), which the Doom host's `work_started >= 0` check
+  reads as "not started", so its `host: timed` line was missing in 2 of the 6 full wasm runs whose
+  output was kept.
 
 ## P6 — Doom
 
