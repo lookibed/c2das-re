@@ -1,21 +1,22 @@
-program: Doom demo1 (freedoom2, speed build; -tics 600 of the demo's 2664: the profiler keeps one event per call and the whole demo runs out of the 6G cap)
+program: Doom demo1 (freedoom2, speed build; -tics 600 of the demo's 2664: the profiler keeps one event per call and the whole demo runs out of the cap)
 lane: interp
 box: PC (AMD Ryzen 7 7435HS, WSL2)
-date: 2026-11-06
-commit: main 6d4f7d7 plus the re-capture branch perf/recapture-11-06
-command: DOOMWADDIR=. daslang -load_module dasCRuntime -load_module c_runtime --das-profiler doom/work/source-speed/doom_main.das -- -timedemo demo1 -tics 600 -return-from-main, in doom/work/run/freedoom2
-profiler: daslang --das-profiler (the interpreter's own instrumenting profile, every call counted), inclusive times folded to self time per function (fold.py of the P7.0b2 notes, the total the largest inclusive time); the run leaves through SIGSEGV after the dump (daslang, see the report); the shares are the shape of the run, the seconds carry the profiler's own cost
-total (main, inclusive): 13.138791566 s
-ratio: 59.0x native at the whole demo (the re-capture: 168.4 against 9928.9 fps)
+date: 2026-11-16
+commit: main ef5b135
+command: DOOMWADDIR=. daslang -load_module dasCRuntime -load_module c_runtime --das-profiler doom/work/source-speed/doom_main.das -- -timedemo demo1 -tics 600 -return-from-main, in doom/work/run/freedoom2, as a normal heavy job capped at 4G (heavy --max 4G; not a timing job, so not exclusive)
+profiler: daslang --das-profiler (the interpreter's own instrumenting profile, every call counted), inclusive times folded to self time per function (fold.py of the P7.0b2 notes, the total the largest inclusive time: the host's `play`, since `main` itself records 0 ns); the run is killed by the 4G cap after the dump (the dump is complete); the shares are the shape of the run, the seconds carry the profiler's own cost
+total (play, inclusive): 21.442286448 s
+ratio: 44.0x native at the whole demo (doom/results_linux.json of 2026-11-14: 224.6 against 9881.6 fps)
+intptr callers (calls): W_CheckNumForName 12973928, P_GroupLines 3594058, R_FindPlane 964364, R_DrawSprite 550106, Z_ChangeTag2 321688, P_RunThinkers 198120
 
      self s  share      calls  function
-    2.362 s  18.0%   19023584  @DOOM_cluster::builtin`intptr`423335042520041948
-    2.013 s  15.3%       3314  @DOOM_cluster::W_CheckNumForName
-    1.115 s   8.5%     639982  @DOOM_cluster::R_DrawColumn
-    0.704 s   5.4%      31612  @DOOM_cluster::R_RenderSegLoop
-    0.660 s   5.0%          1  @DOOM_cluster::P_GroupLines
-    0.580 s   4.4%     282141  @DOOM_cluster::R_DrawSpan
-    0.511 s   3.9%      41043  @DOOM_cluster::R_FindPlane
-    0.345 s   2.6%    2240987  @DOOM_cluster::FixedMul
-    0.341 s   2.6%        600  @DOOM_cluster::R_DrawPlanes
-    0.330 s   2.5%    1762930  @DOOM_cluster::R_MakeSpans
+    3.702 s  17.3%   19023584  @DOOM_cluster::builtin`intptr`423335042520041948
+    3.411 s  15.9%       3314  @DOOM_cluster::W_CheckNumForName
+    1.735 s   8.1%    2240987  @DOOM_cluster::FixedMul
+    1.181 s   5.5%      31612  @DOOM_cluster::R_RenderSegLoop
+    1.118 s   5.2%     639982  @DOOM_cluster::R_DrawColumn
+    1.043 s   4.9%          1  @DOOM_cluster::P_GroupLines
+    0.634 s   3.0%     282141  @DOOM_cluster::R_DrawSpan
+    0.560 s   2.6%    1762930  @DOOM_cluster::R_MakeSpans
+    0.558 s   2.6%     282141  @DOOM_cluster::R_MapPlane
+    0.524 s   2.4%        600  @DOOM_cluster::R_DrawPlanes

@@ -1,0 +1,22 @@
+program: compare project binjgb (the bench unit over fixtures/cgb-acid2.gbc, all 300 frames)
+lane: interp
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-16
+commit: main ef5b135
+command: daslang -load_module dasCRuntime -load_module c_runtime --das-profiler compare/work/projects/binjgb/ours_bench/binjgb_bench_all.das -- /root/c2das/tests/manual/binjgb/fixtures/cgb-acid2.gbc, in compare/work/projects/binjgb/cwd, the bench module converted as compare/projects.das's bench_modules converts it, as a normal heavy job capped at 4G (heavy --max 4G; not a timing job, so not exclusive)
+profiler: daslang --das-profiler (the interpreter's own instrumenting profile, every call counted), inclusive times folded to self time per function (fold.py of the P7.0b2 notes, the total the largest inclusive time); the run is killed by the 4G cap after the dump (the dump is complete); the shares are the shape of the run, the seconds carry the profiler's own cost (decode_us=12264105 under it)
+total (main, inclusive): 12.281871091 s
+ratio: 73.4x native (compare/results_linux.json of 2026-11-14, the decode cells: 4.525303 s against 0.061654 s)
+execute_instruction: 5395943 calls, 10110 of them read an opcode through read_u8_tick and 2727 dispatch an interrupt; the rest are the CPU_STATE_HALT case (tick and return), the run loop's emulator_run_until -> emulator_step_internal -> execute_instruction chain once per 4 cycles
+
+     self s  share      calls  function
+    3.410 s  27.8%      48742  binjgb_bench_all__ppu_mode3_synchronize
+    2.799 s  22.8%    5395943  binjgb_bench_all__emulator_step_internal
+    1.727 s  14.1%    5395943  binjgb_bench_all__execute_instruction
+    0.928 s   7.6%    6339801  c_bounds`end_index`1486680700884507019
+    0.703 s   5.7%        431  emulator_run_until
+    0.682 s   5.6%     228485  binjgb_bench_all__ppu_synchronize
+    0.276 s   2.2%        300  gb_frame_hash
+    0.261 s   2.1%     236833  binjgb_bench_all__get_gb_frames_until_next_resampled_frame
+    0.234 s   1.9%      43774  binjgb_bench_all__do_ppu_mode2
+    0.196 s   1.6%       3144  binjgb_bench_all__apu_update_channels
