@@ -7,7 +7,7 @@ command: daslang -load_module dasCRuntime -load_module c_runtime --das-profiler 
 profiler: daslang --das-profiler (the interpreter's own instrumenting profile, every call counted), inclusive times folded to self time per function (fold.py of the P7.0b2 notes, the total the largest inclusive time); the run is killed by the 4G cap after the dump (the dump is complete); the shares are the shape of the run, the seconds carry the profiler's own cost (decode_us=12264105 under it)
 total (main, inclusive): 12.281871091 s
 ratio: 73.4x native (compare/results_linux.json of 2026-11-14, the decode cells: 4.525303 s against 0.061654 s)
-execute_instruction: 5395943 calls, 10110 of them read an opcode through read_u8_tick and 2727 dispatch an interrupt; the rest are the CPU_STATE_HALT case (tick and return), the run loop's emulator_run_until -> emulator_step_internal -> execute_instruction chain once per 4 cycles
+execute_instruction: 5395943 calls, 5228960 of them (96.9%) the CPU_STATE_HALT case (tick, then return before the opcode switch) and 166982 in CPU_STATE_NORMAL, counted by a copy of the module with three counters (one plain run, not committed); the run loop is emulator_run_until -> emulator_step_internal -> execute_instruction once per 4 cycles, and the interpreter declines to inline execute_instruction into emulator_step_internal (log_optimization: "caller frame growth budget exhausted"), while it inlines tick and most read_u8_tick sites, so their call counts are not the opcode count
 
      self s  share      calls  function
     3.410 s  27.8%      48742  binjgb_bench_all__ppu_mode3_synchronize
