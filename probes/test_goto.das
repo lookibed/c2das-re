@@ -215,8 +215,9 @@ def test_goto_finally(tt : T?) {
     let work = test_temp_dir()
     let entry = path_join(work, "label_in_finally.das")
     fwrite(entry, LABEL_IN_FINALLY)
-    for (tier, printed in ["interp", "jit", "aot"], ["244", "144", "144"]) {
-        tt |> run("a goto to a label in a block with a `finally` section and a local prints {printed} under {tier}: the interpreter lands one statement early and runs the statement the goto skips, the JIT and the AOT host land on the label (lookibed/daScript#63), so the converter keeps das labels out of such a block") @(t : T?) {
+    for (tier in ["interp", "jit", "aot"]) {
+        let printed = "144"
+        tt |> run("a goto to a label in a block with a `finally` section and a local lands on the label and prints {printed} under {tier} (lookibed/daScript#63, fixed upstream: the interpreter landed one statement early)") @(t : T?) {
             var out : string
             let rc = run_tier(entry, tier, path_join(work, tier), out, CONVERTED_MODULES)
             t |> equal(rc, 0, "{tier}: {out}")

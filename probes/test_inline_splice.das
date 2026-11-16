@@ -5,10 +5,11 @@ require daslib/strings_boost
 require _daslang_child
 
 //! What the splice of an `[inline] def` leaves in the caller (docs/probe-findings.md F107 to F109):
-//! a local per by-value `var` parameter per nesting level, a result local and a block per body
-//! under `unsafe`, a flag per `&&` operand that needs either; a call under `addr(...)` that is not
-//! spliced at all; and a generic def with a `var` parameter given a `let` pointer, which is a
-//! pass-limit error rather than a mismatch.
+//! an expression body is substituted as written at every nesting level, whether its parameter is
+//! `var` or not, so an `&&` of two spliced calls stays an `&&`; a body under `unsafe` binds one
+//! local for its `var` parameter and nothing else; a call under `addr(...)` is spliced as any
+//! other; and a generic def with a `var` parameter given a `let` pointer is the mismatch error a
+//! typed def reports.
 
 // three defs nested as Lua's ttisfloat -> checktag -> rawtt, once with `var` parameters and once
 // without; s2v's body under `unsafe`; each caller exported so its text stays in the log
@@ -38,56 +39,58 @@ def private function_text(log, name : string) : string {
 
 def private count_of(text, needle : string) : int => length(split(text, needle)) - 1
 
-[test(description = "the splice of an [inline] def binds a local per var parameter per level, a result local per unsafe body and a flag per && operand", timeout = 1200)]
+[test(description = "the splice of an [inline] def with an expression body is the expression as written; a body under unsafe binds its var parameter once", timeout = 1200)]
 def test_inline_splice_shapes(tt : T?) {
     let r = daslang_child_flags("inline_splice", SPLICE_SOURCE, ["-no-module-cache"])
     tt |> run("the program runs and every def is spliced (F107)") @(t : T?) {
         t |> equal(r.rc, 0, r.out)
         t |> success(r.out |> ends_with("1 1 1 1 19\n"), r.out)
     }
-    tt |> run("a by-value var parameter is a copied local at each of the three levels, with a result local per inner level (F107)") @(t : T?) {
+    tt |> run("a by-value var parameter the bodies only read binds no local at any of the three levels (F107)") @(t : T?) {
         let f = function_text(r.out, "var_chain")
-        t |> equal(count_of(f, "_arg_o:TValue? = "), 3, f)
-        t |> equal(count_of(f, "_res:bool;"), 2, f)
+        t |> equal(count_of(f, "_inl"), 0, f)
+        t |> equal(count_of(f, "int(p.tt_) == 19"), 1, f)
     }
-    tt |> run("a non-var parameter given a var variable is one let copy, given a let variable none (F107)") @(t : T?) {
+    tt |> run("a non-var parameter given a var variable or a let one binds no copy (F107)") @(t : T?) {
         let widened = function_text(r.out, "const_var")
-        t |> equal(count_of(widened, "_arg_o:TValue? const = p;"), 1, widened)
-        t |> equal(count_of(widened, "_res"), 0, widened)
+        t |> equal(count_of(widened, "_inl"), 0, widened)
+        t |> equal(count_of(widened, "int(p.tt_) == 19"), 1, widened)
         let as_written = function_text(r.out, "const_let")
         t |> equal(count_of(as_written, "_inl"), 0, as_written)
         t |> equal(count_of(as_written, "int(p.tt_) == 19"), 1, as_written)
     }
-    tt |> run("an && whose operands need statements becomes a flag set under an if (F107)") @(t : T?) {
+    tt |> run("an && of two spliced chains stays an &&, with no flag (F107)") @(t : T?) {
         let f = function_text(r.out, "and_operand")
-        t |> equal(count_of(f, "_low:bool;"), 1, f)
-        t |> equal(count_of(f, "&&"), 0, f)
+        t |> equal(count_of(f, "_low"), 0, f)
+        t |> equal(count_of(f, "(int(p.tt_) == 19) && (int(q.tt_) == 19)"), 1, f)
     }
-    tt |> run("a body under unsafe is a block storing into a result local (F107)") @(t : T?) {
+    tt |> run("a body under unsafe is its expression over one local copy of the var parameter, with no result local (F107)") @(t : T?) {
         let f = function_text(r.out, "unsafe_body")
-        t |> equal(count_of(f, "_res:TValue?;"), 1, f)
+        t |> equal(count_of(f, "_res"), 0, f)
         t |> equal(count_of(f, "_arg_o:StackValue? = b;"), 1, f)
+        t |> equal(count_of(f, "_arg_o.val);"), 1, f)
     }
 }
 
-[test(description = "an [inline] call under addr(...) stays a call, unlogged and unreported", timeout = 1200)]
+[test(description = "an [inline] call under addr(...) is spliced and logged as a plain read is", timeout = 1200)]
 def test_inline_under_addr(tt : T?) {
     let r = daslang_child_flags("inline_addr", ADDR_SOURCE, ["-no-module-cache"])
-    tt |> run("the call under addr is in the optimized text, the plain one is spliced, nothing is declined (F108)") @(t : T?) {
+    tt |> run("the call under addr and the plain one are both spliced, nothing is declined (F108)") @(t : T?) {
         t |> equal(r.rc, 0, r.out)
         t |> success(r.out |> ends_with("7 7\n"), r.out)
-        t |> equal(count_of(function_text(r.out, "under_addr"), "addr(getn(p).arr[k])"), 1, r.out)
+        t |> equal(count_of(function_text(r.out, "under_addr"), "addr(p.arr[k])"), 1, r.out)
+        t |> equal(count_of(function_text(r.out, "under_addr"), "getn("), 0, r.out)
         t |> equal(count_of(function_text(r.out, "plain_read"), "getn("), 0, r.out)
-        t |> equal(count_of(r.out, "INLINE getn into under_addr"), 0, r.out)
+        t |> success(count_of(r.out, "INLINE getn into under_addr") >= 1, r.out)
         t |> success(count_of(r.out, "INLINE getn into plain_read") >= 1, r.out)
         t |> equal(count_of(r.out, " 0 declined in module"), count_of(r.out, " declined in module"), r.out)
     }
 }
 
-[test(description = "a let pointer given to a generic def's var parameter exceeds the inference passes, where a typed def reports the mismatch", timeout = 1200)]
+[test(description = "a let pointer given to a var parameter is the mismatch error, for a generic def as for a typed one", timeout = 1200)]
 def test_generic_var_param_const_pointer(tt : T?) {
-    tt |> run("the generic def: error 30507 (F109)") @(t : T?) {
-        child_rejects(t, "loop_generic", daslang_child("loop_generic", LOOP_SOURCE |> replace("TYPED", ""), true), "30507")
+    tt |> run("the generic def: error 30341, no matching function (F109)") @(t : T?) {
+        child_rejects(t, "loop_generic", daslang_child("loop_generic", LOOP_SOURCE |> replace("TYPED", ""), true), "30341")
     }
     tt |> run("the typed def: error 30341, no matching function (F109)") @(t : T?) {
         child_rejects(t, "loop_typed", daslang_child("loop_typed", LOOP_SOURCE |> replace("TYPED", " : SV?"), true), "30341")
