@@ -57,11 +57,9 @@ def cmp_void(p, q : void?) : int {
 def walk(var start : Node?) : int {
     var n = 0
     var p = start.next
-    unsafe {
-        while (p != addr(g_anchor)) {
-            n += p.v
-            p = p.next
-        }
+    while (p != unsafe(addr(g_anchor))) {
+        n += p.v
+        p = p.next
     }
     return n
 }
@@ -97,7 +95,7 @@ def main : int {
         var n0 : Node? = addr(g_nodes[0])
         var n5 : Node? = addr(g_nodes[5])
         print("nodes {cmp_nodes(n0, n5)} {cmp_nodes(n5, n0)} {cmp_nodes(n5, addr(g_nodes[0]) + 5)}\n")
-        print("void {cmp_void(reinterpret<void?>(a), reinterpret<void?>(b))} {cmp_void(reinterpret<void?>(b), reinterpret<void?>(a))} {cmp_void(reinterpret<void?>(n0), reinterpret<void?>(addr(g_nodes[0])))}\n")
+        print("void {cmp_void(reinterpret<void?>(a), reinterpret<void?>(b))} {cmp_void(reinterpret<void?>(b), reinterpret<void?>(a))} {cmp_void(reinterpret<void?>(n0), addr<void?>(g_nodes[0]))}\n")
         g_anchor.next = addr(g_nodes[0])
         for (i in range(4)) {
             g_nodes[i].v = i + 1
@@ -107,7 +105,7 @@ def main : int {
         print("find {find_slot(a, end, b)} {find_slot(a, end, null)} {find_slot(b, a, b)}\n")
         g_nodes[6].next = n5
         print("let {through_let(addr(g_nodes[6]), n5)} {through_let(addr(g_nodes[6]), n0)}\n")
-        print("diff {int64(b - a)} {int64(a - b)} {int64(n5 - n0)} {int64(end - end)}\n")
+        print("diff {b - a} {a - b} {n5 - n0} {end - end}\n")
     }
     return 0
 }
