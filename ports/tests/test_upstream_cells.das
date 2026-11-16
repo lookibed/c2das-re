@@ -12,6 +12,8 @@ def test_upstream_issue(t : T?) {
     t |> run("an issue marks its program under its tier and the tier's variant lanes only") @(t : T?) {
         t |> equal(upstream_issue("sieve", "aot"), 48)
         t |> equal(upstream_issue("puredoom", "aot-fast"), 48)
+        t |> equal(upstream_issue("doomgeneric", "aot"), 48)
+        t |> equal(upstream_issue("doomgeneric", "jit"), 0)
         t |> equal(upstream_issue("sieve", "jit"), 0)
         t |> equal(upstream_issue("sieve", "aotx"), 0)
         t |> equal(upstream_issue("fib_loop", "aot"), 0)
@@ -38,5 +40,8 @@ def test_upstream_footnotes(t : T?) {
         t |> success(lines[0] |> ends_with(" runs sieve 1.63, matmul 1.01 x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48)."), lines[0])
         t |> equal(length(upstream_footnotes(["sieve"], ["interp", "jit"])), 0)
         t |> equal(length(upstream_footnotes(["fib_loop"], ["aot"])), 0)
+        let doom <- upstream_footnotes(["doomgeneric"], ["aot-fast"])
+        t |> equal(length(doom), 1)
+        t |> success(doom[0] |> ends_with(" runs doomgeneric 1.13 (readable) x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48)."), doom[0])
     }
 }
