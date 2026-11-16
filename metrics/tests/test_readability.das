@@ -451,7 +451,7 @@ def test_worker_table(t : T?) {
         var counts : string
         t |> equal(run_worker("lua/lua@table", counts), 0)
         t |> success(counts |> starts_with("ok\n"), counts)
-        let lvm = fread("metrics/work/lua/lua@table/das/lvm.das")
+        let lvm = fread("metrics/work/lua/lua@table/das/lvm.das.inc")
         t |> success(lvm |> contains("    goto int(_cond) + ") && !(lvm |> contains("_cond == OpCode.")), lvm)
         var layout : string
         t |> equal(lua_key_parts("lua/luac@table", layout), "luac")
