@@ -2466,11 +2466,16 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   native's: the four Lua benches' text, demos 1-3 in sync, binjgb's four lanes pass.
   Against the predictions: Lua interp goto/chain 3 of 4 (binary_trees 0.634, predicted 0.68-0.80: faster);
   Lua interp table/goto 4 of 4 (0.91-0.94: table is 6-9% faster than goto, 1.5-2.2x faster than chain); Lua
-  JIT goto/chain 4 of 4; Lua JIT table/goto 3 of 4 (binary_trees 0.959, predicted 0.97-1.03, its spread 2.9%);
+  interp table/chain 2 of 4 (fib 0.460 against 0.47-0.62 and binary_trees 0.590 against 0.63-0.80: both
+  faster); Lua JIT goto/chain 4 of 4; Lua JIT table/goto 3 of 4 (binary_trees 0.959, predicted 0.97-1.03, its spread 2.9%);
   PureDOOM 12 of 12 (no arm moves a demo by more than 1.2%); binjgb JIT 2 of 2; binjgb interp a miss on both
   arms (0.99 against 0.50-0.80 and 0.55-0.90): both arms take `execute_instruction`'s opcode switch (9 and 11
   computed jumps in the tree) and the decode time does not move, so the chain arm's `c_switch` dispatch is
   not where binjgb's interpreter time goes; not profiled. This table is the "before" for the fused goto node.
+  Left (review of #244): the `interp-table` lane times the default's text until a kernel has a dense
+  switch, so a perf kernel with one is owed; the `p9_for_labels` `in_arm_and_loop` case falls into its
+  below-level label but never jumps to it (n < 10 never dispatches i = 9); PureDOOM's ratio here is chain's
+  fps over the arm's, the predictions file's the inverse (every cell hits either way).
 
 ## P6 — Doom
 
