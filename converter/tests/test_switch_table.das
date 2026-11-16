@@ -254,6 +254,8 @@ def test_switch_table_names(t : T?) {
 }
 
 let LABELS_FIXTURE = "converter/tests/fixtures/p9_for_labels.c"
+// what the fixture prints: n, `below`, `unused`, `unused_in_block`, `in_arm_and_loop`, the steps
+let LABELS_OUTPUT = "0 0 0 0 0 0\n1 1001 1 2 1002 4\n2 2013 4 6 2007 12\n3 3117 4 6 3117 24\n4 4123 11 14 4123 40\n5 5142 20 24 5140 60\n6 5162 31 36 5140 84\n7 6274 44 50 6252 112\n8 7288 59 66 7282 144\n9 8315 76 84 8325 180\n"
 
 [test]
 def test_for_labels(t : T?) {
@@ -265,11 +267,19 @@ def test_for_labels(t : T?) {
     }
     let native = native_run(default_clang(), ["-w", "-funsigned-char"], LABELS_FIXTURE, path_join(dir, "native"), 60.0)
     let want = native.output
+    t |> equal(want, LABELS_OUTPUT)
     for (mode in ["", "goto", "table"]) {
-        t |> run("under `{empty(mode) ? "chain" : mode}` a `for` that continues with a das label in its body's block or a plain block under it, an open switch or an unused C label, steps by the flag, has no `finally` block and prints its native build's output under the interpreter and the JIT") @(t : T?) {
+        t |> run("under `{empty(mode) ? "chain" : mode}` a `for` that continues with a das label in its body's block or a plain block under it, an open switch or an unused C label, steps by the flag with no `finally` block; one whose das labels sit in an `if` arm and in a nested loop keeps its `finally` block; the program prints its native build's output under the interpreter and the JIT") @(t : T?) {
             let res <- convert(LABELS_FIXTURE, path_join(dir, "out_{mode}"), "linux", "", "", "", "", "", mode)
             t |> equal(res.error, "")
-            t |> success(!(res.das_text |> contains("finally")), res.das_text)
+            let kept = res.das_text |> find("def private p9_for_labels__in_arm_and_loop(")
+            t |> success(kept >= 0 && !(slice(res.das_text, 0, kept) |> contains("finally")), res.das_text)
+            let tail = kept < 0 ? "" : slice(res.das_text, kept)
+            has_text(t, tail, "                r += 1000\n            \} finally \{\n                i++\n                p9_for_labels__steps++\n            \}\n")
+            has_text(t, tail, "switch end\n                \}\n                for (j in range(2)) \{\n                    let m : int = j + k\n")
+            if (mode == "table") {
+                has_text(t, res.das_text, "                    goto _cond2 + 6\n                    label 7:  // case 1\n                    r += m\n")
+            }
             t |> equal(length(split(res.das_text, "        var _f = false\n        while (true) \{\n            if (_f) \{\n                i++\n                p9_for_labels__steps++\n")) - 1, 3, res.das_text)
             has_text(t, res.das_text, "                let q : int = k + 1\n                r += q\n                label 1:  // never\n")
             for (tier in ["interp", "jit"]) {
