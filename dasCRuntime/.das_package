@@ -1,0 +1,28 @@
+options gen2
+require daslib/daspkg
+
+// The source folder relative to this file: "." here, ".." in the _wasmhost/ copy CMakeLists.txt writes
+// beside the libc++ host's module (ARCHITECTURE.md section 8).
+let private CRT_SOURCE = "."
+
+[export]
+def package() {
+    package_name("dasCRuntime")
+    package_description("crt: the C runtime library bound into daslang for c2das-re's converted programs")
+    package_license("MIT")
+}
+
+[export]
+def build() {
+    // the native module is built by scripts/build_crt.sh against DASLANG_ROOT
+    no_build()
+}
+
+[export]
+def release() {
+    // `daspkg release wasm` runs this (cwd = the package dir) when a cross-compiled app links crt and
+    // the archive is not staged yet, then stages it into the wasm lib dir. get_das_root() is the SDK
+    // whose headers and wasm64 runtime the app links.
+    release_wasm_build("emcmake cmake -S {CRT_SOURCE} -B {CRT_SOURCE}/_wasm_build -DDASLANG_ROOT={get_das_root()} -DCMAKE_BUILD_TYPE=Release -G Ninja && cmake --build {CRT_SOURCE}/_wasm_build")
+    release_wasm_archive("{CRT_SOURCE}/_wasm/liblibDasModuleCRuntime.a")
+}
