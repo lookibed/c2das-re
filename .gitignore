@@ -22,6 +22,12 @@
 **/compile_commands.json
 *.shared_module
 .das_module.manifest
+# the wasm side: the wasm64 archive and its build, the libc++ host's module, the cross-compile manifest
+/dasCRuntime/_wasm/
+/dasCRuntime/_wasm_build/
+/dasCRuntime/_wasmhost/
+/dasCRuntime/_build_wasmhost/
+.das_module.emscripten.manifest
 
 # machine-local agent wiring (the tracked *.example files are the templates)
 /.codex/*
