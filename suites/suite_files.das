@@ -93,6 +93,10 @@ let INLINE_KEY_SUFFIX = "@inline"
 //! (`perf/switch_goto@goto`, `lua/lua@goto`, the source layout).
 let GOTO_KEY_SUFFIX = "@goto"
 
+//! The suffix of a kernel's input key converted under `--switch-dispatch table`
+//! (`perf/switch_goto@table`); the Lua programs' `@table` keys come with their criteria rows.
+let TABLE_KEY_SUFFIX = "@table"
+
 //! The suffix of a kernel's or a Lua program's input key converted under `--checks off`
 //! (`perf/sieve@checks-off`, `lua/lua@checks-off`, the source layout).
 let CHECKS_OFF_KEY_SUFFIX = "@checks-off"
@@ -113,7 +117,7 @@ let FORMS_OFF_KEY_FORMS <- ["pointer_steps", "ranged_loops", "c_switch"]
 
 //! The suffixes of a kernel's input key converted under a non-default option, each kernel's key
 //! once per suffix.
-let KERNEL_MODE_SUFFIXES <- [COPY_KEY_SUFFIX, WHILE_KEY_SUFFIX, REINTERPRET_KEY_SUFFIX, INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX, CHECKS_OFF_KEY_SUFFIX, PAST_END_KEY_SUFFIX, FN_MACROS_EXPAND_KEY_SUFFIX, "@pointer-steps-off", "@ranged-loops-off", "@c-switch-off"]
+let KERNEL_MODE_SUFFIXES <- [COPY_KEY_SUFFIX, WHILE_KEY_SUFFIX, REINTERPRET_KEY_SUFFIX, INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX, TABLE_KEY_SUFFIX, CHECKS_OFF_KEY_SUFFIX, PAST_END_KEY_SUFFIX, FN_MACROS_EXPAND_KEY_SUFFIX, "@pointer-steps-off", "@ranged-loops-off", "@c-switch-off"]
 
 //! The suffixes of a Lua program's input key converted in the source layout under an opt-in.
 let LUA_OPT_IN_SUFFIXES <- [INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX, CHECKS_OFF_KEY_SUFFIX, PAST_END_KEY_SUFFIX, FN_MACROS_EXPAND_KEY_SUFFIX, "@pointer-steps-off", "@ranged-loops-off", "@c-switch-off"]
@@ -140,7 +144,7 @@ def kernel_of_key(id : string) : string {
 //! Every input key (`<group>/<id>`) the readability metric converts, sorted: each ratchet
 //! suite's listed ids less its ledgered ones, and every kernel converted by default, under
 //! `--param-writes copy`, under `--loops while`, under `--first-member reinterpret`, under
-//! `--inline-helpers`, under `--switch-dispatch goto`, under `--checks off`, under `--past-end
+//! `--inline-helpers`, under `--switch-dispatch goto` and `table`, under `--checks off`, under `--past-end
 //! inline`, under `--fn-macros expand` and under `--forms-off` of each form, and each Lua program
 //! in the three layouts and, in the source layout, under each of the last eight.
 def expected_input_keys : array<string> {

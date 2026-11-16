@@ -142,6 +142,10 @@ def worker_argv(script, key : string) : array<string> {
     return <- argv
 }
 
+//! The `--switch-dispatch` value input `key` names: `goto` for a key ending `@goto`, `table` for
+//! one ending `@table`, else the default.
+def switch_dispatch_of(key : string) : string => key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : (key |> ends_with(TABLE_KEY_SUFFIX) ? "table" : "")
+
 //! The `--checks` value input `key` names: `off` for a key ending `@checks-off`, else the default.
 def checks_of(key : string) : string => key |> ends_with(CHECKS_OFF_KEY_SUFFIX) ? "off" : ""
 
@@ -287,7 +291,7 @@ def convert_input(key, dir : string; variant_file : string = "") : ConvertedInpu
                 return <- out
             }
         }
-        let res <- convert_program(out.c_paths, das_dir, "linux", "", out.sidecar, "", "", "main", empty(v.program) ? layout : "", false, "", key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : "", false, checks_of(key), past_end_of(key), key |> ends_with(INLINE_KEY_SUFFIX), fn_macros_of(key), forms_off_of(key))
+        let res <- convert_program(out.c_paths, das_dir, "linux", "", out.sidecar, "", "", "main", empty(v.program) ? layout : "", false, "", switch_dispatch_of(key), false, checks_of(key), past_end_of(key), key |> ends_with(INLINE_KEY_SUFFIX), fn_macros_of(key), forms_off_of(key))
         take_emitted(res, das_dir, layout, out)
         return <- out
     }
@@ -300,7 +304,7 @@ def convert_input(key, dir : string; variant_file : string = "") : ConvertedInpu
     out.c_paths |> push(c_path)
     out.c_files = 1
     out.sidecar = find_sidecar(c_path, "")
-    let res <- convert(c_path, das_dir, "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "", key |> ends_with(REINTERPRET_KEY_SUFFIX) ? "reinterpret" : "", key |> ends_with(GOTO_KEY_SUFFIX) ? "goto" : "", false, checks_of(key), past_end_of(key), key |> ends_with(INLINE_KEY_SUFFIX), fn_macros_of(key), forms_off_of(key))
+    let res <- convert(c_path, das_dir, "linux", "", "", key |> ends_with(COPY_KEY_SUFFIX) ? "copy" : "", key |> ends_with(WHILE_KEY_SUFFIX) ? "while" : "", key |> ends_with(REINTERPRET_KEY_SUFFIX) ? "reinterpret" : "", switch_dispatch_of(key), false, checks_of(key), past_end_of(key), key |> ends_with(INLINE_KEY_SUFFIX), fn_macros_of(key), forms_off_of(key))
     out.fold_counts := res.fold_counts
     if (!res.ok) {
         out.error = "convert: {headline(res.error)}"

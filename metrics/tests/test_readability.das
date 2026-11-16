@@ -429,6 +429,26 @@ def test_worker_goto(t : T?) {
     }
 }
 
+// ruling 38 addendum 30: a kernel's `@table` key under `--switch-dispatch table`
+[test]
+def test_worker_table(t : T?) {
+    t |> run("--one converts a kernel's `@table` key under --switch-dispatch table: no kernel has a dense switch, so switch_goto's five cases keep the default's re-dispatch loop, where its `@goto` key is flat; the key is a kernel mode and no Lua opt-in") @(t : T?) {
+        var counts : string
+        t |> equal(run_worker("perf/switch_goto@table", counts), 0)
+        t |> success(counts |> starts_with("ok\n"), counts)
+        let kept = fread("metrics/work/perf/switch_goto@table/das/switch_goto.das")
+        t |> equal(run_worker("perf/switch_goto", counts), 0)
+        t |> equal(kept, fread("metrics/work/perf/switch_goto/das/switch_goto.das"))
+        t |> success(kept |> contains("label 4:  // re-dispatch\n"), kept)
+        t |> equal(switch_dispatch_of("perf/switch_local@table"), "table")
+        t |> equal(switch_dispatch_of("perf/switch_goto@goto"), "goto")
+        t |> equal(switch_dispatch_of("perf/switch_local"), "")
+        t |> equal(kernel_of_key("switch_goto@table"), "switch_goto")
+        let keys <- expected_input_keys()
+        t |> success(has_value(keys, "perf/switch_goto@table") && !has_value(keys, "lua/lua@table"))
+    }
+}
+
 // ruling 36 section 2: the `@checks-off` and `@past-end-inline` keys under `--checks off` and
 // `--past-end inline`
 [test]

@@ -19,7 +19,7 @@ require readability_count
 //! The readability metric (`scripts/run_readability.sh`): every input key `expected_input_keys`
 //! names, converted under the `linux` dialect (a `perf/<kernel>@copy` key under `--param-writes
 //! copy`, a `perf/<kernel>@while` key under `--loops while`, a `perf/<kernel>@reinterpret` key under
-//! `--first-member reinterpret`, a `perf/<kernel>@goto` key under `--switch-dispatch goto` and the
+//! `--first-member reinterpret`, a `perf/<kernel>@goto` key under `--switch-dispatch goto`, a `perf/<kernel>@table` key under `table` and the
 //! other mode suffixes of `KERNEL_MODE_SUFFIXES`, a `lua/<program>` key from the
 //! release's files in the source layout, its `@source-cut` and `@single` twins in those layouts, its
 //! opt-in twins of `LUA_OPT_IN_SUFFIXES` in the source layout) and counted by

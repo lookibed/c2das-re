@@ -58,10 +58,10 @@ An input key is `<group>/<id>`, the groups `c_testsuite`, `csmith`, `gcc_torture
 `perf`.
 The expected input keys are `expected_input_keys` of `suites/suite_files.das`: every id a
 suite's `expected_pass.txt` lists that its `skip.txt` does not, and every kernel under
-`perf/kernels/`, twelve times: `perf/<kernel>` converted under the defaults,
+`perf/kernels/`, thirteen times: `perf/<kernel>` converted under the defaults,
 `perf/<kernel>@copy` under `--param-writes copy`, `perf/<kernel>@while` under `--loops while`,
 `perf/<kernel>@reinterpret` under `--first-member reinterpret`, `perf/<kernel>@inline` under
-`--inline-helpers`, `perf/<kernel>@goto` under `--switch-dispatch goto`, `perf/<kernel>@checks-off`
+`--inline-helpers`, `perf/<kernel>@goto` under `--switch-dispatch goto`, `perf/<kernel>@table` under `--switch-dispatch table`, `perf/<kernel>@checks-off`
 under `--checks off`, `perf/<kernel>@past-end-inline` under `--past-end inline` and
 `perf/<kernel>@fn-macros-expand` under `--fn-macros expand`, and `perf/<kernel>@pointer-steps-off`,
 `@ranged-loops-off` and `@c-switch-off` under `--forms-off` of that form
