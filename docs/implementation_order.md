@@ -2422,6 +2422,10 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   kernel has a dense switch), the Lua `@table` readability keys with the criteria rows `lua/lua@table` and
   `lua/luac@table`, a function of `p9_for_labels.c` holding that a das label in an `if` arm or a nested loop
   under a `finally` block runs as native in every mode, and the exclusive A/B below.
+  The captures: readability 1834 inputs, the two new keys alone (no existing key changed; every raised total
+  is their sum: `lua/lua@table` 205 gotos and 248 labels against the default's 39 and 14 and `@goto`'s 93
+  and 266); criteria 1621 inputs, the two new rows alone, totals `lua/lua@table` 88.9 and `lua/luac@table`
+  88.5 against the defaults' 88.9 and 88.5 and `@goto`'s 88.9 and 88.3.
   Predictions for that A/B (2026-11-16, written before any conversion or run of the arms; box PC, one
   exclusive job, 3 samples, every arm the readable knobs with `switch_dispatch` alone differing; arm time
   over chain's, below 1 faster; `/root/notes/predictions/2026-11-16-switch-ab.md`): Lua interp goto/chain
