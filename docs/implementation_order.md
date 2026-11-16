@@ -2418,6 +2418,16 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   "in the same change" for this one: the `interp-table` perf lane, the Lua `@table` readability keys with the
   criteria rows `lua/lua@table` and `lua/luac@table` (a Lua key is a criteria input), and the exclusive A/B
   of chain, goto and table on Lua, Doom and binjgb (interp, JIT); no time was measured in the first.
+  Predictions for that A/B (2026-11-16, written before any conversion or run of the arms; box PC, one
+  exclusive job, 3 samples, every arm the readable knobs with `switch_dispatch` alone differing; arm time
+  over chain's, below 1 faster; `/root/notes/predictions/2026-11-16-switch-ab.md`): Lua interp goto/chain
+  fib 0.50-0.62, binary_trees 0.68-0.80, nbody 0.62-0.74, spectral_norm 0.56-0.68 (P7.0c2's ratios hold)
+  and table/goto 0.90-1.00 on all four (one case test and the loop's restart fewer an opcode); Lua JIT
+  goto/chain 0.72-0.82, 0.88-0.96, 0.76-0.86, 0.74-0.84 and table/goto 0.97-1.03; PureDOOM demos 1-3 fps,
+  both tiers, both arms over chain 0.98-1.02 (no flat switch in the drawers); binjgb decode interp
+  table/chain 0.50-0.80 (the 256-opcode chain becomes one table jump), goto/chain 0.55-0.90 if the goto arm
+  takes the opcode switch, else 0.98-1.02; binjgb JIT table/chain 0.97-1.10, goto/chain 0.97-1.05; every
+  arm's output native's.
 
 ## P6 — Doom
 
