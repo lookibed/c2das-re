@@ -2796,22 +2796,23 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
     let pointer_rhs = kind_of(tu, x.b.t) == "ptr"
     if (x.op == "lt" || x.op == "gt" || x.op == "le" || x.op == "ge") {
         if (pointer_lhs && pointer_rhs) {
-            return truth("intptr({lhs.text}) {spelled} intptr({rhs.text})", prec)
+            // das has no relation between two pointers: their addresses compare as `uint64`
+            // (probes/test_pointer_compare.das)
+            return truth("{address_bits(em, lhs)} {spelled}{OPERATOR_MARK} {address_bits(em, rhs)}", prec)
         }
         return truth("{wrap(lhs, prec + 1)} {spelled}{OPERATOR_MARK} {wrap(rhs, prec + 1)}", prec)
     }
     if (x.op == "eq" || x.op == "ne") {
         if (pointer_lhs && pointer_rhs && is_data_pointer(tu, x.a.t)) {
-            // das compares only pointers of one constness, and a `let` pointer's pointee is
-            // const (`docs/probe-findings.md` F44): a null constant compares with `null`, any
-            // other pair as addresses
+            // a null constant compares with `null`, any other pair with das's own `==`: the
+            // emitter writes no const pointee, and every pointer it declares is `var`
+            // (`docs/probe-findings.md` F44, probes/test_pointer_compare.das)
             if (reaches_null(x.b)) {
                 return null_compare(lhs, spelled, prec)
             }
             if (reaches_null(x.a)) {
                 return null_compare(rhs, spelled, prec)
             }
-            return truth("intptr({lhs.text}) {spelled} intptr({rhs.text})", prec)
         }
         return truth("{wrap(lhs, prec + 1)} {spelled}{OPERATOR_MARK} {wrap(rhs, prec + 1)}", prec)
     }
@@ -2827,6 +2828,9 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
 // `p + n`, `p - n`, `p - q`: das scales a pointer step by the element and gives a difference
 // in elements, as C does, as int64; a byte pointer to a marshal-only record steps and counts
 // in that record's C size
+// pointer `e`'s address as `uint64`, the operand of a pointer relation
+def private address_bits(var em : Emitter; e : Em) : string => unsafe_value(em, "reinterpret<uint64>({e.text})", PREC_PRIMARY).text
+
 def private pointer_arithmetic(var em : Emitter; tu : CirTu; x : CirExpr; lhs, rhs : Em; loc : CirLoc) : Em {
     let prec = BIN_PREC?[x.op] ?? 0
     let spelled = BIN_SPELLING?[x.op] ?? ""
