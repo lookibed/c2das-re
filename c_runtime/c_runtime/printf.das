@@ -194,7 +194,6 @@ def private render_into(d : CFormatDirective; var v : CVaCursor; buf : uint8?; c
         }
     }
     panic("printf: conversion `{d.spec}` is not supported")
-    return -1
 }
 
 // one directive rendered into `out`, retried into a CRT buffer from the same argument when the
