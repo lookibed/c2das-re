@@ -67,7 +67,7 @@ def private c_file_of(key, dir : string; var error : string&) : string {
 }
 
 //! The Lua program stem and layout (`source`, `source-cut` or `single`) a
-//! `lua/<program>[@source-cut|@single|@inline|@goto|@checks-off|@past-end-inline|@fn-macros-expand|@<form>-off]` key names (each
+//! `lua/<program>[@source-cut|@single|@inline|@goto|@table|@checks-off|@past-end-inline|@fn-macros-expand|@<form>-off]` key names (each
 //! opt-in's suffix the source layout).
 def lua_key_parts(key : string; var layout : string&) : string {
     let id = slice(key, length("lua/"))

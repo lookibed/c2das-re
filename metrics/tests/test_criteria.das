@@ -623,7 +623,7 @@ def test_capture_text(t : T?) {
         let with_project = criteria_text(cap)
         t |> success(with_project |> contains("\n    \"project/wasm3\": \{\"comments\": 0.0,"), with_project)
         t |> success(with_project |> contains("\n    \"all\": \{\"comments\": 25.0,"), with_project)
-        t |> success(in_all("lua/lua") && in_all("csmith") && !in_all("lua/luac@inline") && !in_all("project/binjgb"))
+        t |> success(in_all("lua/lua") && in_all("csmith") && !in_all("lua/luac@inline") && !in_all("lua/lua@table") && !in_all("project/binjgb"))
     }
     t |> run("the density section: a column per measured row then `programs`, the totals last, a hand port's C-side densities null") @(t : T?) {
         var cap <- sample_capture()

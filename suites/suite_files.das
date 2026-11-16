@@ -93,8 +93,8 @@ let INLINE_KEY_SUFFIX = "@inline"
 //! (`perf/switch_goto@goto`, `lua/lua@goto`, the source layout).
 let GOTO_KEY_SUFFIX = "@goto"
 
-//! The suffix of a kernel's input key converted under `--switch-dispatch table`
-//! (`perf/switch_goto@table`); the Lua programs' `@table` keys come with their criteria rows.
+//! The suffix of a kernel's or a Lua program's input key converted under `--switch-dispatch table`
+//! (`perf/switch_goto@table`, `lua/lua@table`, the source layout).
 let TABLE_KEY_SUFFIX = "@table"
 
 //! The suffix of a kernel's or a Lua program's input key converted under `--checks off`
@@ -120,7 +120,7 @@ let FORMS_OFF_KEY_FORMS <- ["pointer_steps", "ranged_loops", "c_switch"]
 let KERNEL_MODE_SUFFIXES <- [COPY_KEY_SUFFIX, WHILE_KEY_SUFFIX, REINTERPRET_KEY_SUFFIX, INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX, TABLE_KEY_SUFFIX, CHECKS_OFF_KEY_SUFFIX, PAST_END_KEY_SUFFIX, FN_MACROS_EXPAND_KEY_SUFFIX, "@pointer-steps-off", "@ranged-loops-off", "@c-switch-off"]
 
 //! The suffixes of a Lua program's input key converted in the source layout under an opt-in.
-let LUA_OPT_IN_SUFFIXES <- [INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX, CHECKS_OFF_KEY_SUFFIX, PAST_END_KEY_SUFFIX, FN_MACROS_EXPAND_KEY_SUFFIX, "@pointer-steps-off", "@ranged-loops-off", "@c-switch-off"]
+let LUA_OPT_IN_SUFFIXES <- [INLINE_KEY_SUFFIX, GOTO_KEY_SUFFIX, TABLE_KEY_SUFFIX, CHECKS_OFF_KEY_SUFFIX, PAST_END_KEY_SUFFIX, FN_MACROS_EXPAND_KEY_SUFFIX, "@pointer-steps-off", "@ranged-loops-off", "@c-switch-off"]
 
 //! The suffix of a Lua input key converted in the single layout (`lua/lua@single`), and of one in
 //! the source-cut layout (`lua/lua@source-cut`); the bare key (`lua/lua`) is the source layout, the
@@ -146,7 +146,7 @@ def kernel_of_key(id : string) : string {
 //! `--param-writes copy`, under `--loops while`, under `--first-member reinterpret`, under
 //! `--inline-helpers`, under `--switch-dispatch goto` and `table`, under `--checks off`, under `--past-end
 //! inline`, under `--fn-macros expand` and under `--forms-off` of each form, and each Lua program
-//! in the three layouts and, in the source layout, under each of the last eight.
+//! in the three layouts and, in the source layout, under each of the last nine.
 def expected_input_keys : array<string> {
     let kernels <- c_file_ids(KERNELS, "")
     var keys <- [for (name in kernels); "perf/{name}"]
