@@ -5,7 +5,8 @@
    the middle; `no_default`; a negative low value `negative`; a `long`, an `unsigned` and an
    `unsigned long` subject; an enum; character labels). A switch inside another's case, one in a
    loop with `continue` and both `break`s, one in a stepping `for` whose body continues
-   (`stepped`), a declaration a later case reads, the same local name
+   (`stepped`), there in a block that keeps its braces and two blocks deep (`in_block`,
+   `in_blocks`), a declaration a later case reads, the same local name
    in two cases, every case returning, a dense switch in a small one's case (`in_small`), one a
    goto enters from outside and re-dispatches (`entered`), a range from INT_MIN (`from_min`),
    Duff's device, by its value and through a table (`duff_holes`), and the switches that keep the
@@ -278,6 +279,56 @@ static int stepped(unsigned long n) {
     return r;
 }
 
+static int steps;
+
+static int in_block(int n) {
+    int r = 0;
+    for (int i = 0; i < n; i++, steps += 2) {
+        {
+            int q = i;
+            switch (i) {
+            case 1: r += q; break;
+            case 3: r += 2;
+            case 5: r += 4; break;
+            case 7: r += 6; break;
+            case 9: r += 8; break;
+            case 11: r += 10; break;
+            case 13: r += 12; break;
+            case 15: r += 14; break;
+            }
+        }
+        if (i == 3) continue;
+        r += 1000;
+    }
+    return r;
+}
+
+static int in_blocks(int n) {
+    int r = 0;
+    for (int i = 0; i < n; i++, steps += 2) {
+        int q = i;
+        {
+            int z = q + 1;
+            r += z;
+            {
+                switch (i) {
+                case 1: r += q; break;
+                case 3: r += 2;
+                case 5: r += 4; break;
+                case 7: r += 6; break;
+                case 9: r += 8; break;
+                case 11: r += 10; break;
+                case 13: r += 12; break;
+                case 15: r += 14; break;
+                }
+            }
+        }
+        if (i == 3) continue;
+        r += 1000;
+    }
+    return r;
+}
+
 static int scoped(int x) {
     int r = 0;
     switch (x) {
@@ -455,6 +506,12 @@ int main(void) {
     printf("\n");
     for (unsigned long n = 0; n < 400; n += 28)
         printf("%d ", stepped(n));
+    printf("\n");
+    for (int n = 0; n < 17; n++) {
+        int a = in_block(n);
+        int b = in_blocks(n);
+        printf("%d/%d/%d ", a, b, steps);
+    }
     printf("\n");
     for (int n = -1; n < 20; n++)
         printf("%d/%d/%d ", duff(n), n > 0 ? duff4(n) : 0, duff_holes(n));

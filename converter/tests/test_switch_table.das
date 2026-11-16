@@ -184,6 +184,13 @@ def test_switch_table_shapes(t : T?) {
         has_text(t, stepped, "        var _f = false\n        while (true) \{\n            if (_f) \{\n                d -= 4ul\n            \}\n            _f = true\n")
         has_text(t, stepped, "                continue\n            \}\n            let _cond = (d >> 4ul) & 15ul\n            goto _p9_switch_table__stepped_cases?[_cond] ?? 9\n            label 1:  // case 0, case 3\n")
         t |> success(!(stepped |> contains("finally")), stepped)
+        // the switch in a block that keeps its braces, one and two blocks under the body's
+        for (fn, jump in ["in_block", "in_blocks"], ["                let _cond = i\n                goto _p9_switch_table__in_block_cases?[_cond - 1] ?? 9\n", "                    let _cond = i\n                    goto _p9_switch_table__in_blocks_cases?[_cond - 1] ?? 9\n"]) {
+            let braced = function_text(text, fn)
+            has_text(t, braced, "        var _f = false\n        while (true) \{\n            if (_f) \{\n                i++\n                p9_switch_table__steps += 2\n            \}\n            _f = true\n")
+            has_text(t, braced, jump)
+            t |> success(!(braced |> contains("finally")), braced)
+        }
     }
     t |> run("a declaration a later case reads is declared before the jump, and a case's own, now at the switch's level, is renamed past a later block's") @(t : T?) {
         let scoped = function_text(text, "scoped")
@@ -241,6 +248,36 @@ def test_switch_table_names(t : T?) {
             t |> equal(join(tables, ", "), layout == "single" ? "let private _plain_cases3, let private _tp_main_pick_cases, let private _tp_other_pick_cases" : "let private _pick_cases, let private _pick_cases, let private _plain_cases3")
             var out : string
             t |> equal(run_tier(res.das_path, "interp", path_join(dir, "{layout}_run"), out, CONVERTED_MODULES), 0, out)
+        }
+    }
+    rmdir_rec(dir)
+}
+
+let LABELS_FIXTURE = "converter/tests/fixtures/p9_for_labels.c"
+
+[test]
+def test_for_labels(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_for_labels", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure(dir_error)
+        return
+    }
+    let native = native_run(default_clang(), ["-w", "-funsigned-char"], LABELS_FIXTURE, path_join(dir, "native"), 60.0)
+    let want = native.output
+    for (mode in ["", "goto", "table"]) {
+        t |> run("under `{empty(mode) ? "chain" : mode}` a `for` that continues with a das label in its body's block or a plain block under it, an open switch or an unused C label, steps by the flag, has no `finally` block and prints its native build's output under the interpreter and the JIT") @(t : T?) {
+            let res <- convert(LABELS_FIXTURE, path_join(dir, "out_{mode}"), "linux", "", "", "", "", "", mode)
+            t |> equal(res.error, "")
+            t |> success(!(res.das_text |> contains("finally")), res.das_text)
+            t |> equal(length(split(res.das_text, "        var _f = false\n        while (true) \{\n            if (_f) \{\n                i++\n                p9_for_labels__steps++\n")) - 1, 3, res.das_text)
+            has_text(t, res.das_text, "                let q : int = k + 1\n                r += q\n                label 1:  // never\n")
+            for (tier in ["interp", "jit"]) {
+                var out : string
+                let rc = run_tier(res.das_path, tier, path_join(dir, "{mode}_{tier}"), out, CONVERTED_MODULES, 600.0)
+                t |> equal(rc, 0, "{tier}: {out}")
+                t |> equal(join([for (ln in split(out, "\n")); ln; where !(ln |> starts_with("[I] "))], "\n"), want, tier)
+            }
         }
     }
     rmdir_rec(dir)

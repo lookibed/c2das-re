@@ -5394,18 +5394,19 @@ def private leaves_loop(st : CirStmt?; nested : bool) : bool {
     return leaves_loop(st.then_s, inner) || leaves_loop(st.else_s, inner) || leaves_loop(st.body_s, inner)
 }
 
-// whether statement `st` of a loop's body (`own`: the body itself) puts a das label at the body's
-// level: a C label or a construct spelled open, there or in a block that loses its braces. The
-// interpreter lands a label of a block with a `finally` section and a local one statement early
-// (lookibed/daScript#63, `probes/test_goto.das`), so such a body takes no `finally`
-def private labels_at_level(em : Emitter; st : CirStmt const?; own : bool) : bool {
+// whether statement `st` of a loop's body puts a das label in the body's block or in a plain block
+// under it, braces kept or not: a C label or a construct spelled open. The interpreter lands a
+// label of a block with a `finally` section and a local one statement early, the labels of the
+// plain blocks under it too (lookibed/daScript#63, `probes/test_goto.das`), so such a body takes
+// no `finally`
+def private labels_at_level(em : Emitter; st : CirStmt const?) : bool {
     if (st == null) {
         return false
     }
     if (st.s == "label" || key_exists(em.opened, intptr(st))) {
         return true
     }
-    return st.s == "compound" && (own || key_exists(em.flatten, intptr(st))) && has_value([for (child in st.body); labels_at_level(em, child, false)], true)
+    return st.s == "compound" && has_value([for (child in st.body); labels_at_level(em, child)], true)
 }
 
 def private emit_for_flag(var em : Emitter; tu : CirTu; st : CirStmt; inc_lines : array<string>) {
@@ -5509,7 +5510,7 @@ def private emit_for(var em : Emitter; tu : CirTu; st : CirStmt const?) {
     if (ahead) {
         flush_literal_decls(em)
     }
-    if (st.inc != null && continues_loop(st.body_s, false) && (leaves_loop(st.body_s, false) || labels_at_level(em, st.body_s, true))) {
+    if (st.inc != null && continues_loop(st.body_s, false) && (leaves_loop(st.body_s, false) || labels_at_level(em, st.body_s))) {
         emit_for_flag(em, tu, *st, inc_lines)
     } else {
         open_for_head(em, tu, *st)
@@ -6265,6 +6266,7 @@ def private open_redispatched(var em : Emitter; tu : CirTu; plan : LabelPlan) {
 def private open_dense(var em : Emitter; tu : CirTu; plan : LabelPlan) {
     for (sw in plan.switch_order) {
         let st = plan.switch_stmts?[sw] ?? null
+        continue if (st == null)
         var markers : array<CirStmt const?>
         case_markers(st.body_s, markers)
         if (open_table(em, tu, st, switch_cond_type(tu, *st), markers).span > 0) {
