@@ -1,6 +1,7 @@
 options gen2
 require dastest/testing_boost public
 require _daslang_child
+require strings
 
 var next_cells = fixed_array(0, 0, 0)
 var next_calls = 0
@@ -91,8 +92,7 @@ def test_csmith_pointers(t : T?) {
 // the das facts the conversion of lua found (docs/probe-findings.md F59)
 [test]
 def test_lua_pointers(t : T?) {
-    t |> run("`ptr - n` takes a pointer variable only; a computed pointer steps back by adding the negated count") @(t : T?) {
-        child_rejects(t, "computed_sub", daslang_child("computed_sub", "options gen2\n[export]\ndef main \{\n    var buf : uint8[10]\n    let n = 3\n    unsafe \{\n        let p = addr(buf[0]) + 10 - n\n        assert(p != null)\n    \}\n\}\n", true), "no matching functions or generics: i_das_ptr_sub")
+    t |> run("`ptr - n` steps a computed pointer back as it does a pointer variable, and as adding the negated count does") @(t : T?) {
         var buf : uint8[10]
         let n = 3
         let k = 4ul
@@ -100,19 +100,20 @@ def test_lua_pointers(t : T?) {
             let base = addr(buf[0])
             var held = addr(buf[0]) + 10
             t |> equal(intptr(held - n) - intptr(base), 7ul)
+            t |> equal(intptr(addr(buf[0]) + 10 - n) - intptr(base), 7ul)
             t |> equal(intptr(addr(buf[0]) + 10 + -(n)) - intptr(base), 7ul)
             t |> equal(intptr(addr(buf[0]) + 10 + -int64(k)) - intptr(base), 6ul)
         }
     }
-    t |> run("`?:` takes its type from the first arm: a null second arm is the first's pointer type, a null first arm is no pointer but `default<T?>` is, and a difference keeps a parenthesized subtrahend") @(t : T?) {
-        child_rejects(t, "null_first_arm", daslang_child("null_first_arm", "options gen2\ndef pick(b : bool; var q : int?) : int? \{\n    return b ? null : q\n\}\n", true), "void pointer can't be copied to a non-void pointer")
+    t |> run("a null arm of `?:` takes the other arm's pointer type, first or second, as `default<T?>` does, and a difference keeps a parenthesized subtrahend") @(t : T?) {
         var x = 5
         var buf : int[8]
         unsafe {
             let q = addr(x)
             let second : int? = false ? q : null
             let first : int? = true ? default<int?> : q
-            t |> equal(second == null && first == null, true)
+            let null_first : int? = true ? null : q
+            t |> equal(second == null && first == null && null_first == null, true)
             var top = addr(buf[6])
             var base = addr(buf[1])
             let k = 2l
@@ -126,13 +127,35 @@ let PTR_SUB_SOURCE = "options gen2\nvar cells = fixed_array(1, 2, 3)\ndef at_end
 
 [test]
 def test_pointer_step_back(t : T?) {
-    t |> run("a pointer value that is no variable takes `+` but not `-`; `+ -n` steps it back") @(t : T?) {
-        let refused = daslang_child("ptr_sub_value", PTR_SUB_SOURCE, true)
-        child_rejects(t, "ptr_sub_value", refused, "i_das_ptr_sub")
+    t |> run("a pointer value that is no variable takes `-` as it takes `+`; `+ -n` steps it back alike") @(t : T?) {
+        let stepped = daslang_child("ptr_sub_value", PTR_SUB_SOURCE, false)
+        t |> equal(stepped.rc, 0, stepped.out)
+        t |> equal(program_output(stepped.out), "2\n", stepped.out)
         var cells = fixed_array(1, 2, 3)
         let back = unsafe(unsafe(addr(cells[2])) + -1)
         t |> equal(*back, 2)
         let at_end = unsafe(unsafe(addr(cells[0])) + 2)
         t |> equal(*at_end, 3)
+    }
+}
+
+// a `void?` value and a typed pointer at a call: `ARG` is the argument of `read_leaf`, `CALL` the
+// statement that hands `leaf` to `clear`
+let private VOID_PASS_SOURCE = "options gen2\n\nstruct Leaf \{\n    value : int\n\}\n\ndef read_leaf(p : Leaf?) : int => p != null ? p.value : -1\n\ndef clear(var p : void?&) \{\n    p = null\n\}\n\ndef pick(var p : Leaf?) : int => 1\n\ndef pick(var p : void?) : int => 2\n\n[export]\ndef main \{\n    var leaf = new Leaf(value = 5)\n    var untyped : void? = leaf\n    let read = read_leaf(ARG)\n    let picked = pick(leaf) * 10 + pick(untyped)\n    CALL\n    print(\"\{read\} \{picked\} \{leaf == null\}\\n\")\n\}\n"
+
+def private void_pass_child(name, arg, call : string; compile_only : bool) : tuple<rc : int; out : string> =>
+    daslang_child(name, VOID_PASS_SOURCE |> replace("ARG", arg) |> replace("CALL", call), compile_only)
+
+// the das facts of daScript 2decba91d5 (docs/probe-findings.md F111)
+[test]
+def test_void_pointer_passing(t : T?) {
+    t |> run("a `void?` value given to a typed pointer parameter is error 30107; `reinterpret` passes it, and a `T?` argument picks the `T?` overload beside a `void?` one") @(t : T?) {
+        child_rejects(t, "void_value", void_pass_child("void_value", "untyped", "unsafe(clear(leaf))", true), "30107")
+        let typed = void_pass_child("void_reinterpret", "unsafe(reinterpret<Leaf?>(untyped))", "unsafe(clear(leaf))", false)
+        t |> equal(typed.rc, 0, typed.out)
+        t |> equal(program_output(typed.out), "5 12 true\n", typed.out)
+    }
+    t |> run("a typed pointer variable binds a `var p : void?&` parameter only inside `unsafe`: outside it is error 31013") @(t : T?) {
+        child_rejects(t, "void_ref", void_pass_child("void_ref", "leaf", "clear(leaf)", true), "31013")
     }
 }
