@@ -2478,12 +2478,15 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   fps over the arm's, the predictions file's the inverse (every cell hits either way).
 - **P9.35 `crt` as a wasm64 package; PureDOOM compiled to wasm** (ruling 38 addendum 31 item 3; plan
   `/root/notes/parallel/r38_add31_wasm_plan.md` steps 2 and 3, toolchain `/root/notes/research/wasm/toolchain.md`).
-  Done (branch `p9.35-wasm-crt`): `dasCRuntime/CMakeLists.txt` builds `liblibDasModuleCRuntime.a` under
+  Done (branch `p9.35-wasm-crt`; the item converts no C construct, so no perf or readability
+  re-record applies): `dasCRuntime/CMakeLists.txt` builds `liblibDasModuleCRuntime.a` under
   `emcmake` (memory64, threaded, wasm exceptions, no RTTI), `.das_package` declares it for
   `daspkg release wasm`, and `scripts/build_crt.sh --libcxx-host` builds the `crt` a libc++ cross-compile
   host loads (`dasCRuntime/ARCHITECTURE.md` section 8). Off the gates: `tests/test_crt_wasm.das` skips
-  where emscripten is not on PATH (a toolchain no gate installs, so no phase lifts the skip; its arm runs
-  wherever emsdk 5.0.7 is active). Verified with emsdk 5.0.7 and a libc++ host at daScript 6f83af0855:
+  where emscripten, cmake or ninja is not on PATH (a toolchain no gate installs, so no phase lifts the skip; its arm runs
+  wherever emsdk 5.0.7 is active, and refuses another emscripten than `VERSIONS.md`'s). The test's archive
+  builds against the pin's headers (6401904cf9) and passed there. Verified with emsdk 5.0.7 and a libc++
+  host at daScript 6f83af0855, its archive built against that host's headers:
   a `crt` app through `daspkg release wasm` (the archive built by the hook) prints the CRT's answers under
   node; PureDOOM processed cross-compiled, linked with `-sMEMORY64=2`, plays demo1 under node 24 with all
   2664 tic hashes equal to `ref/freedoom2_demo1.log` (game loop about 0.9 s, indicative, a busy box).
