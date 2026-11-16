@@ -7,7 +7,8 @@ require daslib/strings_boost
 
 //! A table cell a daslang defect slows: the program or kernel, the tier whose lanes it marks (the
 //! tier and its `<tier>-<variant>` lanes), the lookibed/daScript fork issue, and the x native the
-//! same build gives with the defect worked around by hand, with what that number is over.
+//! same build gives with the defect worked around (by hand or by a patched generator), with what
+//! that number is over.
 struct UpstreamCell {
     program : string
     tier : string
