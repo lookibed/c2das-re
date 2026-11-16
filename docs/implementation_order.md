@@ -2409,10 +2409,14 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   expected passes held. Found: the interpreter lands a label of a block with a `finally` section and a local
   one statement early (lookibed/daScript#63; binjgb never ended), so a `for` body with a das label at its
   level steps by the increment-first flag.
-  Left for the second PR, after the first merges: the REVIEW duties of a new option value that need a
-  capture (the `interp-table` perf lane, the `@table` readability keys, the criteria rows `lua/lua@table` and
-  `lua/luac@table`), with the exclusive A/B of chain, goto and table on Lua, Doom and binjgb (interp, JIT);
-  no time was measured in the first.
+  After the review (`/root/notes/research/goto_table/review242.md`): the `finally` rule covers a label in any
+  plain block under the body, in every mode, so chain and goto change for one shape that never ended under
+  the interpreter on main (fixture `p9_for_labels.c`); the 17 `perf/<kernel>@table` readability keys are
+  recorded (each equal to its default key: no kernel has a dense switch).
+  Left for the second PR, after the first merges and pending the owner's waiver of `converter/REVIEW.md`'s
+  "in the same change" for this one: the `interp-table` perf lane, the Lua `@table` readability keys with the
+  criteria rows `lua/lua@table` and `lua/luac@table` (a Lua key is a criteria input), and the exclusive A/B
+  of chain, goto and table on Lua, Doom and binjgb (interp, JIT); no time was measured in the first.
 
 ## P6 — Doom
 
