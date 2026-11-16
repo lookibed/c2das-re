@@ -75,7 +75,7 @@ def upstream_footnotes(programs, lanes : array<string>) : array<string> {
     for (entry in UPSTREAM_ISSUES) {
         var inscope fixed <- [for (c in UPSTREAM_CELLS); "{c.program} {c.fixed:.2f}" + (empty(c.fixed_over) ? "" : " ({c.fixed_over})"); where c.issue == entry.issue && has_value(programs, c.program) && shows_tier(lanes, c.tier)]
         if (!empty(fixed)) {
-            lines |> push("- (#{entry.issue}) {entry.what}; the same generated C++ with each read rewritten to its offset runs " + join(fixed, ", ") + " x native: [lookibed/daScript#{entry.issue}]({ISSUE_URL}{entry.issue}).")
+            lines |> push("- (#{entry.issue}) {entry.what}; the same program's AOT reading each global at its fixed offset runs " + join(fixed, ", ") + " x native: [lookibed/daScript#{entry.issue}]({ISSUE_URL}{entry.issue}).")
         }
     }
     return <- lines

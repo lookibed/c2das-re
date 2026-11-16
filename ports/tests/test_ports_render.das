@@ -667,7 +667,7 @@ def test_variants_upstream(t : T?) {
         t |> equal(join(row_of(text, "x native, AOT"), "|"), "5.19 (1) (#48)|not yet")
         t |> equal(join(row_of(text, "x native, JIT"), "|"), "1.07 (1)|not yet")
         t |> equal(length(split(text, "- (#48) ")) - 1, 1, text)
-        t |> success(text |> contains("- (#48) daslang's AOT generator reads every module global through a hash lookup (`das_global<T, mnh>`), though the AOT context fixes each global's offset when it is generated; the same generated C++ with each read rewritten to its offset runs puredoom 1.14 (readable, demo1) x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48).\n"), text)
+        t |> success(text |> contains("- (#48) daslang's AOT generator reads every module global through a hash lookup (`das_global<T, mnh>`), though the AOT context fixes each global's offset when it is generated; the same program's AOT reading each global at its fixed offset runs puredoom 1.14 (readable, demo1) x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48).\n"), text)
         columns[0].file.program = "lua"
         columns[1].file.program = "lua"
         let lua = render_variants(columns, false)
