@@ -3,7 +3,7 @@
     "c_testsuite": 203,
     "csmith": 182,
     "gcc_torture": 1204,
-    "lua": 22,
+    "lua": 24,
     "perf": 221
   },
   "modules": {
@@ -1607,6 +1607,7 @@
     "lua/lua@ranged-loops-off": {"c_function": 696, "goto": 39, "label": 14, "literal_named": 656, "pointer_arith": 740, "pointer_index": 594, "reinterpret": 375, "unsafe_block": 0, "unsafe_expr": 2, "while_rangeable": 39},
     "lua/lua@single": {"c_function": 691, "goto": 39, "label": 14, "literal_named": 1016, "pointer_arith": 740, "pointer_index": 592, "reinterpret": 363, "unsafe_block": 0, "unsafe_expr": 2, "while_rangeable": 35},
     "lua/lua@source-cut": {"c_function": 709, "goto": 39, "label": 14, "literal_named": 586, "pointer_arith": 749, "pointer_index": 595, "reinterpret": 384, "unsafe_block": 0, "unsafe_expr": 2, "while_rangeable": 35},
+    "lua/lua@table": {"c_function": 696, "goto": 205, "label": 248, "literal_named": 771, "pointer_arith": 740, "pointer_index": 594, "reinterpret": 375, "unsafe_block": 0, "unsafe_expr": 2, "while_rangeable": 35},
     "lua/luac": {"c_function": 525, "goto": 29, "label": 11, "literal_named": 445, "pointer_arith": 588, "pointer_index": 526, "reinterpret": 302, "unsafe_block": 0, "unsafe_expr": 3, "while_rangeable": 19},
     "lua/luac@c-switch-off": {"c_function": 525, "goto": 29, "label": 11, "literal_named": 613, "pointer_arith": 588, "pointer_index": 526, "reinterpret": 314, "unsafe_block": 0, "unsafe_expr": 3, "while_rangeable": 19},
     "lua/luac@checks-off": {"c_function": 525, "goto": 29, "label": 11, "literal_named": 445, "pointer_arith": 588, "pointer_index": 526, "reinterpret": 302, "unsafe_block": 0, "unsafe_expr": 3, "while_rangeable": 19},
@@ -1618,6 +1619,7 @@
     "lua/luac@ranged-loops-off": {"c_function": 525, "goto": 29, "label": 11, "literal_named": 445, "pointer_arith": 588, "pointer_index": 526, "reinterpret": 302, "unsafe_block": 0, "unsafe_expr": 3, "while_rangeable": 22},
     "lua/luac@single": {"c_function": 522, "goto": 29, "label": 11, "literal_named": 646, "pointer_arith": 588, "pointer_index": 526, "reinterpret": 291, "unsafe_block": 0, "unsafe_expr": 3, "while_rangeable": 19},
     "lua/luac@source-cut": {"c_function": 538, "goto": 29, "label": 11, "literal_named": 375, "pointer_arith": 597, "pointer_index": 527, "reinterpret": 310, "unsafe_block": 0, "unsafe_expr": 3, "while_rangeable": 19},
+    "lua/luac@table": {"c_function": 525, "goto": 260, "label": 305, "literal_named": 558, "pointer_arith": 588, "pointer_index": 526, "reinterpret": 302, "unsafe_block": 0, "unsafe_expr": 3, "while_rangeable": 19},
     "perf/bit_pack": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "perf/bit_pack@c-switch-off": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
     "perf/bit_pack@checks-off": {"c_function": 1, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 0},
@@ -1841,15 +1843,15 @@
     "perf/va_forward@while": {"c_function": 2, "goto": 0, "label": 0, "literal_named": 0, "pointer_arith": 0, "pointer_index": 0, "reinterpret": 0, "unsafe_block": 0, "unsafe_expr": 0, "while_rangeable": 2}
   },
   "totals": {
-    "c_function": 16495,
-    "goto": 1516,
-    "label": 1426,
-    "literal_named": 31576,
-    "pointer_arith": 16550,
-    "pointer_index": 13278,
-    "reinterpret": 12300,
+    "c_function": 17716,
+    "goto": 1981,
+    "label": 1979,
+    "literal_named": 32905,
+    "pointer_arith": 17878,
+    "pointer_index": 14398,
+    "reinterpret": 12977,
     "unsafe_block": 0,
-    "unsafe_expr": 67816,
-    "while_rangeable": 4963
+    "unsafe_expr": 67821,
+    "while_rangeable": 5017
   }
 }
