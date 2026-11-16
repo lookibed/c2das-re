@@ -2490,6 +2490,10 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   over before, fps for PureDOOM, seconds otherwise): PureDOOM interp demo1 1.05-1.12, demos 2 and 3
   1.04-1.12, JIT 0.98-1.02; binjgb interp and JIT 0.98-1.02; Lua interp fib 0.96-1.00, binary_trees
   0.93-0.99, nbody and spectral_norm 0.98-1.01, JIT 0.98-1.02.
+  Owed: the exclusive A/B (Doom demos 1-3, binjgb, Lua fib, binary_trees, nbody, spectral_norm; interp and
+  JIT, before and after interleaved). Its first run (`machine quiet (cpu busy 1%)`) was stopped after 19
+  runs for the daScript repin, so no cell is quoted; it reruns on the new pin, the "before" side rebuilt
+  there too (`/root/notes/parallel/a32/handoff.md`).
   binjgb's HALT path, a proposal (no code): 96.9% of `execute_instruction`'s 5.40M calls are the
   `CPU_STATE_HALT` case (counted by a copy of the module with counters), one `tick` and a return before the
   opcode switch, reached through `emulator_run_until` -> `emulator_step_internal` -> `execute_instruction`
