@@ -142,9 +142,11 @@ address one past the end, as C allows (`ARCHITECTURE_EMITTER_ADDRESSES.md`, One 
 pointer is a das function value, `function<(a0 : T; ...) : R>` with the parameters named by
 position, a function's name decays to `@@name`, and a call through a pointer, `fp(...)` or
 `(*fp)(...)`, is `invoke(fp, ...)` (`ARCHITECTURE_EMITTER_AGGREGATES.md`, Function pointers). A pointer difference is `int64(p - q)`, in elements as C
-counts them, the subtrahend parenthesized as the right operand of `-` (`top - 1 - (base + a)`); a pointer less a count whose pointer is no load of an object (a decay, a sum, a cast, a call) is the sum with the negated count, `addr(b[0]) + 10 + -(n)` (`-int64(n)` for an unsigned one), since das subtracts from a pointer variable only (F59); a sum with the count on the left, `n + p`, is commuted, `p + n`, since das adds a count to a pointer only; a pointer relation goes through `intptr`, and so does `==` or `!=` between two
-data pointers, since das compares only pointers of one constness and a `let` pointer's pointee
-is const (F44), while a null constant on either side compares with `null`; `malloc`, `calloc`, `realloc`, `free`
+counts them, the subtrahend parenthesized as the right operand of `-` (`top - 1 - (base + a)`); a pointer less a count whose pointer is no load of an object (a decay, a sum, a cast, a call) is the sum with the negated count, `addr(b[0]) + 10 + -(n)` (`-int64(n)` for an unsigned one), since das subtracts from a pointer variable only (F59); a sum with the count on the left, `n + p`, is commuted, `p + n`, since das adds a count to a pointer only; a pointer relation compares the two addresses as `uint64`,
+`reinterpret<uint64>(p) < reinterpret<uint64>(q)`, since das has no relation between pointers and
+daslib's generic `intptr` stays a call in the interpreter (F114); `==` or `!=` between two data
+pointers is das's own, since the emitter writes no const pointee and declares every pointer `var`,
+so both sides have one constness (F44), while a null constant on either side compares with `null`; `malloc`, `calloc`, `realloc`, `free`
 and the `mem*` family are the CRT's through `crt`, with C's implicit `void *` conversions as
 explicit `reinterpret`. `[c_function]` lands only on a body with an unsafe operation, and the
 emitter counts those bodies against all the unit defines: the port-progress metric `main.das`
