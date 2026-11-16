@@ -113,7 +113,7 @@ PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the
 | demo3    |  9666.4 ±1% | 217.2 ±0% |  9102.6 ±1% |  9269.1 ±0% | 1958.9 ±1% |            44.5 |          1.1 |          1.0 |    4.9 (#48) |
 
 
-- (#48) daslang's AOT generator reads every module global through a hash lookup (`das_global<T, mnh>`), though the AOT context fixes each global's offset when it is generated; the same generated C++ with each read rewritten to its offset runs puredoom 1.14 (readable, demo1) x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48).
+- (#48) daslang's AOT generator reads every module global through a hash lookup (`das_global<T, mnh>`), though the AOT context fixes each global's offset when it is generated; the same program's AOT reading each global at its fixed offset runs puredoom 1.14 (readable, demo1) x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48).
 <!-- doom-fps:end -->
 
 ## Real projects
@@ -121,7 +121,7 @@ PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the
 | Project                                                                          |      Native | interp |  JIT |   exe |        AOT |
 | :------------------------------------------------------------------------------- | ----------: | -----: | ---: | ----: | ---------: |
 | [binjgb](https://github.com/lookibed/c2das-ports/tree/main/binjgb)               |     61.7 ms |  73.40 | 1.15 |  1.19 |       1.15 |
-| [doomgeneric](https://github.com/lookibed/c2das-ports/tree/main/doomgeneric)     |    117.4 ms |  43.31 | 1.08 |  1.08 |       3.69 |
+| [doomgeneric](https://github.com/lookibed/c2das-ports/tree/main/doomgeneric)     |    117.4 ms |  43.31 | 1.08 |  1.08 | 3.69 (#48) |
 | [h264bsd-mp4](https://github.com/lookibed/c2das-ports/tree/main/h264bsd-mp4)     |     78.7 ms |  59.64 | 1.05 |  1.05 |       1.13 |
 | [lua](https://github.com/lookibed/c2das-ports/tree/main/lua)                     |      6.45 s | 110.92 | 1.54 | error |       1.36 |
 | [plmpeg-stream](https://github.com/lookibed/c2das-ports/tree/main/plmpeg-stream) |     40.6 ms |  29.35 | 0.98 |  1.02 |       1.08 |

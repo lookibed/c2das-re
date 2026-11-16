@@ -2351,9 +2351,10 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   numbers are in the variant files' `results.speed` and in `compare/results_linux.json`'s three entries.
   Rust on the same runs: wasm3 64.4 / 2.63 / 2.59 / 1.49; doomgeneric 33.5 / 1.06 / 1.08 / 3.69. Its AOT now
   builds within the limit.
-  Open: doomgeneric's AOT at 3.7x, against JIT and exe at 1.0-1.1, has the PureDOOM shape and is likely #48.
-  No A/B with fixed-offset reads has been run for it, so its cell is not in `ports/upstream_cells.das` and the
-  variant notes say so.
+  doomgeneric's AOT at 3.7x, against JIT and exe at 1.0-1.1, is #48: the exclusive A/B of 2026-11-16 (7
+  samples, medians, c32c329 on the pin, readable) gives native 117.1 ms, AOT 428.4 (3.66x) and, with
+  `aot_cpp.das` patched to read each global at its fixed offset, 132.2 (1.13x); its cell is in
+  `ports/upstream_cells.das` (#243).
 - **P9.32 The whole-program blockers of wasm3, doomgeneric and quakegeneric** (ruling 38 addendum 22 item C;
   the audit `/root/notes/research/aot/blockers.md`, its rows W1-W4, D1-D8, Q1-Q6). Our side fixed in the audit's
   order, a PR each, until each program converts whole and runs under interp, JIT, exe and AOT with the native
