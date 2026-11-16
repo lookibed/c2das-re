@@ -16,7 +16,11 @@ set(DAS_CRT_ABI_DEFS DAS_ENABLE_DYN_INCLUDES=1 DAS_FUSION=2 SIZE_OF_VOID_P=${CMA
 
 if(EMSCRIPTEN)
     # the wasm64 archive a cross-compiled program links (ARCHITECTURE.md section 8): the flags and
-    # defines of the web runtime the checkout's `daspkg build --wasm` builds, memory64 and threaded
+    # defines of the web runtime the checkout's `daspkg build --wasm` builds, memory64 and threaded.
+    # Emscripten.cmake gives 8-byte pointers only when CMAKE_C_FLAGS names memory64
+    if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+        message(FATAL_ERROR "dasCRuntime: the wasm archive is wasm64; configure with -DCMAKE_C_FLAGS=-sMEMORY64=1 -DCMAKE_CXX_FLAGS=-sMEMORY64=1")
+    endif()
     set(DAS_CRT_WASM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/_wasm" CACHE PATH "where the wasm64 archive lands")
     add_library(dasModuleCRuntime STATIC src/dasCRuntime.cpp)
     target_compile_features(dasModuleCRuntime PRIVATE cxx_std_17)
@@ -78,9 +82,13 @@ if(DAS_CRT_LIBCXX_HOST)
     set(DAS_CRT_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/_wasmhost")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/.das_module" "${DAS_CRT_OUTPUT_DIR}/.das_module" COPYONLY)
     # daspkg finds a module's package beside its .shared_module; this copy builds from the folder above
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/.das_package")
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/.das_package" DAS_CRT_PACKAGE)
-    string(REPLACE "CRT_SOURCE = \".\"" "CRT_SOURCE = \"..\"" DAS_CRT_PACKAGE "${DAS_CRT_PACKAGE}")
-    file(WRITE "${DAS_CRT_OUTPUT_DIR}/.das_package" "${DAS_CRT_PACKAGE}")
+    string(REPLACE "CRT_SOURCE = \".\"" "CRT_SOURCE = \"..\"" DAS_CRT_PACKAGE_COPY "${DAS_CRT_PACKAGE}")
+    if(DAS_CRT_PACKAGE_COPY STREQUAL DAS_CRT_PACKAGE)
+        message(FATAL_ERROR "dasCRuntime: .das_package holds no `CRT_SOURCE = \".\"` line to point the _wasmhost/ copy at the folder above")
+    endif()
+    file(WRITE "${DAS_CRT_OUTPUT_DIR}/.das_package" "${DAS_CRT_PACKAGE_COPY}")
 endif()
 
 set_target_properties(dasModuleCRuntime PROPERTIES

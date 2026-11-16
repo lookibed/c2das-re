@@ -19,7 +19,8 @@ let RUNTIME_STAMP = "c2das-re.commit"
 let private ROOT_MARKER = "converter/main.das"
 
 let private FIXED_FILES <- [
-    "LICENSE", "c_runtime/.das_module", "dasCRuntime/.das_module", "dasCRuntime/CMakeLists.txt"
+    "LICENSE", "c_runtime/.das_module", "dasCRuntime/.das_module", "dasCRuntime/.das_package",
+    "dasCRuntime/CMakeLists.txt"
 ]
 
 // a folder of runtime sources and the extensions of its files: the c_runtime modules, dasCRuntime's
@@ -59,7 +60,7 @@ def private tracked_files(root : string; var error : string&) : array<string> {
 }
 
 //! The runtime's files of the c2das-re checkout at `root`, relative to it and sorted: the
-//! repository's `LICENSE` (MIT, the runtime's), both module descriptors, dasCRuntime's
+//! repository's `LICENSE` (MIT, the runtime's), both module descriptors, dasCRuntime's package,
 //! `CMakeLists.txt`, every `.das` of `c_runtime/c_runtime/` and every `.cpp` and `.h` of
 //! `dasCRuntime/src/`, each as git tracks it. Empty with `error` set when `root` is not the root of
 //! a c2das-re checkout, when one of those files is untracked or gone from the working tree, when a

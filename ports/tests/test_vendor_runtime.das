@@ -13,7 +13,8 @@ let GIT_ID <- ["-c", "user.name=test", "-c", "user.email=test@example.invalid"]
 
 let SCRATCH_FILES <- [
     "LICENSE", "c_runtime/.das_module", "c_runtime/c_runtime/printf.das", "dasCRuntime/.das_module",
-    "dasCRuntime/CMakeLists.txt", "dasCRuntime/src/dasCRuntime.cpp", "dasCRuntime/src/dasCRuntime.h"
+    "dasCRuntime/.das_package", "dasCRuntime/CMakeLists.txt", "dasCRuntime/src/dasCRuntime.cpp",
+    "dasCRuntime/src/dasCRuntime.h"
 ]
 
 // what a scratch checkout holds beside the runtime's files: the marker, and the test, document,
