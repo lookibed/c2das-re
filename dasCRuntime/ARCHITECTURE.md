@@ -23,7 +23,8 @@ folder is the native glue module `crt`: the C runtime library bound into daslang
 - `tests/test_crt.das` - the dastest suite: one arm family per header, every bind called at
   least once against a value the C standard fixes.
 - `tests/test_crt_wasm.das` - builds the wasm64 archive with emscripten and checks it defines the
-  module's registration; skipped where emscripten is not on PATH.
+  module's registration; skipped where emscripten, cmake or ninja is not on PATH, failed on an
+  emscripten other than the one `VERSIONS.md` pins.
 - `REVIEW.das` - the mechanical gate: every name `dasCRuntime.cpp` binds appears in the test.
 
 ## 2. Naming and qualification
@@ -174,19 +175,24 @@ A daslang program compiled to wasm (`daslang -exe` with `--jit-target=wasm64-unk
 or `daspkg release wasm`) calls `jit_register_Module_CRT` at startup, so the link needs `crt` as a
 wasm64 static archive. `CMakeLists.txt` builds it when configured by `emcmake`:
 `liblibDasModuleCRuntime.a`, the name daspkg derives from `dasModuleCRuntime.shared_module`, in
-`_wasm/` (`DAS_CRT_WASM_DIR` moves it). It compiles with the flags and defines of the web runtime
+`_wasm/` (`DAS_CRT_WASM_DIR` moves it). The configure passes `-sMEMORY64=1` in `CMAKE_C_FLAGS` and
+`CMAKE_CXX_FLAGS`, since only then does emscripten's toolchain file give 8-byte pointers, and the
+build refuses a configure without it. It compiles with the flags and defines of the web runtime
 `daspkg build --wasm` builds: memory64 (`-sMEMORY64=1`, lowered to a 32-bit memory at the link by
 `-sMEMORY64=2`), `-pthread`, wasm exceptions with `DAS_ENABLE_EXCEPTIONS`, SIMD, no RTTI, and the
 section 6 ABI defines. `.das_package` declares that build (`release_wasm_build`) and the archive
 (`release_wasm_archive`); daspkg runs it once while the archive is missing from its wasm lib dir
-and stages it there.
+and stages it there. A staged archive is never rebuilt, so a change to `src/` deletes
+`liblibDasModuleCRuntime.a` from that lib dir and from `_wasm/` before the next release.
 
 The cross-compile itself runs on a daslang host built against libc++ with C++ exceptions
 (daScript's `web/build_wasm_host.sh`), because the host bakes its own C++ layouts into the wasm
 object. That host loads only a `crt` built the same way: `scripts/build_crt.sh --libcxx-host`, with
-`DASLANG_ROOT` naming the host and clang++ as the compiler, builds into `_build_wasmhost/`, and
+`DASLANG_ROOT` naming the host and clang++ as the compiler (refused when the host's runtime library
+links no libc++), builds into `_build_wasmhost/`, and
 `CMakeLists.txt` puts the module in `_wasmhost/` with a copy of `.das_module` and a copy of
-`.das_package` whose paths lead to the folder above, so the native module of section 6 stays
+`.das_package` whose paths lead to the folder above (rewritten at every configure that follows a
+change to `.das_package`), so the native module of section 6 stays
 beside this file. RTTI stays off there too: such a host is built with RTTI, and a module built
 without it references no `typeinfo`, so it loads into either host, while one built with it would
 need the host's `typeinfo` symbols, which a host without RTTI does not export. daspkg links an

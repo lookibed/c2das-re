@@ -13,7 +13,8 @@ Read `ARCHITECTURE.md` (this folder) first. This companion holds how the publish
   inputs.
 - `vendor_runtime.das` - the runtime a folder of converted code runs on without a c2das-re
   checkout (the ports repository's `puredoom-readable/`, section 3): `c_runtime/` and
-  dasCRuntime's descriptor, `CMakeLists.txt` and `src/`, with the repository's `LICENSE`, copied
+  dasCRuntime's descriptor, `.das_package` (its wasm build, `dasCRuntime/ARCHITECTURE.md` section 8),
+  `CMakeLists.txt` and `src/`, with the repository's `LICENSE`, copied
   as git tracks them into `<into>/`, with the commit in `<into>/c2das-re.commit`
   (`runtime_files`, `vendor_runtime`, `vendor_main`). A file git does not track is not copied.
   The copy builds `crt` with cmake against any built daScript, since dasCRuntime's
