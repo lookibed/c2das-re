@@ -60,7 +60,7 @@ only as a criterion here, decided per rule by what a human port would write.
 ## 2. Rows, columns and the total {#rows}
 
 A row is one Lua program in one layout (`lua/lua`, `lua/lua@source-cut`, `lua/lua@single`, the same for
-`luac`), one Lua program under an opt-in (`lua/lua@inline`, `--inline-helpers`; `lua/lua@goto`, `--switch-dispatch goto`; `lua/lua@checks-off`, `--checks off`;
+`luac`), one Lua program under an opt-in (`lua/lua@inline`, `--inline-helpers`; `lua/lua@goto`, `--switch-dispatch goto`; `lua/lua@table`, `--switch-dispatch table`; `lua/lua@checks-off`, `--checks off`;
 `lua/lua@past-end-inline`, `--past-end inline`; `lua/lua@fn-macros-expand`, `--fn-macros expand`; `lua/lua@pointer-steps-off`, `@ranged-loops-off`, `@c-switch-off`, `--forms-off` of that form; the opt-in's readability
 price, which the `all` column leaves out), one ratchet suite (`c_testsuite`, `csmith`, `gcc_torture`),
 whose raw counts are the sum over its inputs, or one compare project (`project/wasm3`, `project/binjgb`,

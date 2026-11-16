@@ -70,7 +70,7 @@ let HAND_PORTS <- [(row = "hand/plmpeg-stream", env = "C2DAS_HAND_PLMPEG", dir =
 //! The rows of the capture: each Lua program in each layout and under each opt-in, each ratchet
 //! suite, each compare project of `compare/projects.das`'s `project_table`, in its order, PureDOOM,
 //! then each hand-written port.
-let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/lua@inline", "lua/lua@goto", "lua/lua@checks-off", "lua/lua@past-end-inline", "lua/lua@fn-macros-expand", "lua/lua@pointer-steps-off", "lua/lua@ranged-loops-off", "lua/lua@c-switch-off", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "lua/luac@inline", "lua/luac@goto", "lua/luac@checks-off", "lua/luac@past-end-inline", "lua/luac@fn-macros-expand", "lua/luac@pointer-steps-off", "lua/luac@ranged-loops-off", "lua/luac@c-switch-off", "c_testsuite", "csmith", "gcc_torture", "project/wasm3", "project/binjgb", "project/h264bsd-mp4", "project/plmpeg-stream", "project/doomgeneric", "project/quakegeneric", "doom/puredoom", "hand/plmpeg-stream"]
+let ROWS <- ["lua/lua", "lua/lua@source-cut", "lua/lua@single", "lua/lua@inline", "lua/lua@goto", "lua/lua@table", "lua/lua@checks-off", "lua/lua@past-end-inline", "lua/lua@fn-macros-expand", "lua/lua@pointer-steps-off", "lua/lua@ranged-loops-off", "lua/lua@c-switch-off", "lua/luac", "lua/luac@source-cut", "lua/luac@single", "lua/luac@inline", "lua/luac@goto", "lua/luac@table", "lua/luac@checks-off", "lua/luac@past-end-inline", "lua/luac@fn-macros-expand", "lua/luac@pointer-steps-off", "lua/luac@ranged-loops-off", "lua/luac@c-switch-off", "c_testsuite", "csmith", "gcc_torture", "project/wasm3", "project/binjgb", "project/h264bsd-mp4", "project/plmpeg-stream", "project/doomgeneric", "project/quakegeneric", "doom/puredoom", "hand/plmpeg-stream"]
 
 //! The Lua program row the densities' `programs` column pools: the published program in the
 //! default layout; `luac` shares its files and the other layouts and opt-ins its functions.
@@ -90,10 +90,10 @@ def layout_row(row : string) : bool {
     return false
 }
 
-//! The suffixes of a row converted under an opt-in (`--inline-helpers`, `--switch-dispatch goto`,
+//! The suffixes of a row converted under an opt-in (`--inline-helpers`, `--switch-dispatch goto` or `table`,
 //! `--checks off`, `--past-end inline`, `--fn-macros expand`, `--forms-off <form>`): its readability price, which the `all` column leaves out, so the default's total moves only with
 //! the default.
-let OPT_IN_ROW_SUFFIXES <- ["@inline", "@goto", "@checks-off", "@past-end-inline", "@fn-macros-expand", "@pointer-steps-off", "@ranged-loops-off", "@c-switch-off"]
+let OPT_IN_ROW_SUFFIXES <- ["@inline", "@goto", "@table", "@checks-off", "@past-end-inline", "@fn-macros-expand", "@pointer-steps-off", "@ranged-loops-off", "@c-switch-off"]
 
 //! Whether `row` is converted under an opt-in.
 def opt_in_row(row : string) : bool {
