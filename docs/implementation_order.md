@@ -2414,10 +2414,14 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   plain block under the body, in every mode, so chain and goto change for one shape that never ended under
   the interpreter on main (fixture `p9_for_labels.c`); the 17 `perf/<kernel>@table` readability keys are
   recorded (each equal to its default key: no kernel has a dense switch).
-  Left for the second PR, after the first merges and pending the owner's waiver of `converter/REVIEW.md`'s
-  "in the same change" for this one: the `interp-table` perf lane, the Lua `@table` readability keys with the
-  criteria rows `lua/lua@table` and `lua/luac@table` (a Lua key is a criteria input), and the exclusive A/B
-  of chain, goto and table on Lua, Doom and binjgb (interp, JIT); no time was measured in the first.
+  That re-record also lowered `c_function` of the ten `lua/lua` readability keys by one (697 -> 696, single
+  692 -> 691, source-cut 710 -> 709): a drift from main, not from PR #242. The capture was last recorded on
+  11-13, and main's converter at 0b328d4 and the branch's give the same Lua text under chain and goto.
+  Second PR (branch `p9.33b-switch-table-ab`; the owner waived `converter/REVIEW.md`'s "in the same change"
+  for these): the `interp-table` perf lane (its cells come with the next perf re-record, a timing run; no
+  kernel has a dense switch), the Lua `@table` readability keys with the criteria rows `lua/lua@table` and
+  `lua/luac@table`, a function of `p9_for_labels.c` holding that a das label in an `if` arm or a nested loop
+  under a `finally` block runs as native in every mode, and the exclusive A/B below.
   Predictions for that A/B (2026-11-16, written before any conversion or run of the arms; box PC, one
   exclusive job, 3 samples, every arm the readable knobs with `switch_dispatch` alone differing; arm time
   over chain's, below 1 faster; `/root/notes/predictions/2026-11-16-switch-ab.md`): Lua interp goto/chain
@@ -2428,6 +2432,41 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   table/chain 0.50-0.80 (the 256-opcode chain becomes one table jump), goto/chain 0.55-0.90 if the goto arm
   takes the opcode switch, else 0.98-1.02; binjgb JIT table/chain 0.97-1.10, goto/chain 0.97-1.05; every
   arm's output native's.
+  Done (one exclusive job, `machine quiet (cpu busy 2%)`, box PC, main fe269f2, pin 6401904cf9, 3 samples a
+  cell, the arms' order rotating with the sample; `/root/notes/research/goto_table/ab/`: `prep.sh` as normal
+  jobs, then `heavy --exclusive --label TIMING-swab --max 8G -- bash cap.sh 3`, `summarize.py` over `run/`).
+  Arms: the readable knobs with `switch_dispatch` chain, goto or table. Medians, arm time over chain's (for
+  PureDOOM chain's fps over the arm's), below 1 faster; spreads at most 3.7%:
+
+  | workload | tier | chain | goto | table | goto/chain | table/chain | table/goto |
+  |---|---|---:|---:|---:|---:|---:|---:|
+  | Lua fib | interp | 53.73 s | 26.97 s | 24.74 s | 0.502 | 0.460 | 0.917 |
+  | Lua binary_trees | interp | 28.70 s | 18.19 s | 16.95 s | 0.634 | 0.590 | 0.931 |
+  | Lua nbody | interp | 55.66 s | 38.86 s | 36.44 s | 0.698 | 0.655 | 0.938 |
+  | Lua spectral_norm | interp | 72.06 s | 44.28 s | 40.36 s | 0.615 | 0.560 | 0.911 |
+  | Lua fib | JIT | 0.506 s | 0.395 s | 0.387 s | 0.780 | 0.764 | 0.980 |
+  | Lua binary_trees | JIT | 0.515 s | 0.468 s | 0.449 s | 0.909 | 0.872 | 0.959 |
+  | Lua nbody | JIT | 0.440 s | 0.363 s | 0.357 s | 0.825 | 0.812 | 0.983 |
+  | Lua spectral_norm | JIT | 0.613 s | 0.496 s | 0.495 s | 0.808 | 0.806 | 0.998 |
+  | PureDOOM demo1 | interp | 225.2 fps | 224.5 fps | 224.6 fps | 1.003 | 1.003 | 1.000 |
+  | PureDOOM demo2 | interp | 254.2 fps | 254.8 fps | 253.8 fps | 0.998 | 1.002 | 1.004 |
+  | PureDOOM demo3 | interp | 220.2 fps | 220.5 fps | 220.0 fps | 0.999 | 1.001 | 1.002 |
+  | PureDOOM demo1 | JIT | 9352 fps | 9365 fps | 9391 fps | 0.999 | 0.996 | 0.997 |
+  | PureDOOM demo2 | JIT | 10073 fps | 10067 fps | 10189 fps | 1.001 | 0.989 | 0.988 |
+  | PureDOOM demo3 | JIT | 8974 fps | 8998 fps | 9049 fps | 0.997 | 0.992 | 0.994 |
+  | binjgb decode | interp | 4.374 s | 4.323 s | 4.312 s | 0.988 | 0.986 | 0.998 |
+  | binjgb decode | JIT | 0.0715 s | 0.0724 s | 0.0731 s | 1.014 | 1.023 | 1.009 |
+
+  x native: PureDOOM interp 43.5-44.2 and JIT 1.05-1.10 in every arm; binjgb interp 71.1 / 70.3 / 70.1, JIT
+  1.16 / 1.18 / 1.19 (Lua's oracle is an `-O0` build, so no ratio to it is given). Every arm's output is
+  native's: the four Lua benches' text, demos 1-3 in sync, binjgb's four lanes pass.
+  Against the predictions: Lua interp goto/chain 3 of 4 (binary_trees 0.634, predicted 0.68-0.80: faster);
+  Lua interp table/goto 4 of 4 (0.91-0.94: table is 6-9% faster than goto, 1.5-2.2x faster than chain); Lua
+  JIT goto/chain 4 of 4; Lua JIT table/goto 3 of 4 (binary_trees 0.959, predicted 0.97-1.03, its spread 2.9%);
+  PureDOOM 12 of 12 (no arm moves a demo by more than 1.2%); binjgb JIT 2 of 2; binjgb interp a miss on both
+  arms (0.99 against 0.50-0.80 and 0.55-0.90): both arms take `execute_instruction`'s opcode switch (9 and 11
+  computed jumps in the tree) and the decode time does not move, so the chain arm's `c_switch` dispatch is
+  not where binjgb's interpreter time goes; not profiled. This table is the "before" for the fused goto node.
 
 ## P6 — Doom
 
