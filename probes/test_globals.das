@@ -92,12 +92,13 @@ let global_access_source = "options gen2\nOPTIONS_LINE\nvar g : int[4]\n[export]
 
 [test]
 def test_aot_globals(t : T?) {
-    t |> run("the AOT context finds a module global by its mangled-name hash at every access, solid_context or not") @(t : T?) {
+    t |> run("the AOT context finds a module global by its mangled-name hash at every access, under solid_context at its fixed offset") @(t : T?) {
         for (case_name, options_line in ["hashed", "solid"], ["", "options solid_context = true"]) {
             let cpp = aot_context_cpp(t, case_name, global_access_source |> replace("OPTIONS_LINE", options_line))
             let body = definition_body(cpp, "inline int32_t main_")
-            t |> equal(count(body, "das_global<TDim<int32_t,4>,0x"), 2, "{case_name}: {body}")
-            t |> success(!(body |> contains("das_global_solid")), "{case_name}: {body}")
+            let solid = case_name == "solid"
+            t |> equal(count(body, "das_global<TDim<int32_t,4>,0x"), solid ? 0 : 2, "{case_name}: {body}")
+            t |> equal(count(body, "das_global_solid<TDim<int32_t,4>,0>"), solid ? 2 : 0, "{case_name}: {body}")
             t |> equal(cpp |> contains("das_global_zero_solid<TDim<int32_t,4>,"), case_name == "solid", "{case_name}: the initializer")
         }
     }
