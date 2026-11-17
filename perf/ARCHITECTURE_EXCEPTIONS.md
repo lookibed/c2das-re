@@ -15,13 +15,15 @@ would take for a defect, each with its reason (`ARCHITECTURE_COMMON.md`, the exc
   the cell from 0.864 to 0.599 ms (native 0.600), while keeping the lookups and indexing raw without
   the bounds check leaves it at 0.84 ms; the lookup is the cost, the bounds check is not
   (`docs/probe-findings.md` F49, lookibed/daScript#5). The lookup is a daslang emitter gap, not its
-  contract: `daslib/aot_cpp.das` `visitExprVar` spells every global access in a function body as the
-  probe whether or not the module carries `options solid_context` (the bodies are identical either
-  way, `probes/test_globals.das` `test_aot_globals`), while the standalone `-ctx` context the AOT tier
+  contract: without `options solid_context`, `daslib/aot_cpp.das` `visitExprVar` spells every global
+  access in a function body as the probe; under it, since daScript `960cae138a` (upstream #4652, in the
+  pin `b7d8f6f52f`), the `-ctx` body reads `das_global_solid<T, offset>`
+  (`probes/test_globals.das` `test_aot_globals`). The standalone `-ctx` context the AOT tier
   builds fixes every global's offset at generation time (its constructor asserts each one, and under
   `solid_context` its initializers already address them as `das_global_solid<T, offset>`). The same
   generated C++ with the reads rewritten to `das_global_solid` runs `sieve` 1.63, `str_copy` 1.40,
   `switch_local` 1.00 and `matmul` 1.01 times native, PureDOOM demo1 1.14 against 5.56, and
   doomgeneric 1.13 against 3.66 with `aot_cpp.das` patched to emit those reads (exclusive;
   the A/B, the das-only repro and the generated C++ are in lookibed/daScript#48). No option, flag or
-  annotation reaches that emitter path, so the cells wait on that issue (reopened).
+  annotation reached that emitter path before #4652; the cells keep their (#48) marks until an
+  exclusive AOT re-capture on the pin confirms the gain.
