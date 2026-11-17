@@ -18,6 +18,8 @@
   #canvas { width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
   #fps { position: absolute; left: 8px; top: 8px; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,.65); color: #9fe08a; font: 12px/1.4 ui-monospace, Consolas, monospace; pointer-events: none; }
   #fps[hidden] { display: none; }
+  #builds a.active { font-weight: bold; color: var(--fg); text-decoration: none; }
+  #compare { margin-top: 6px; }
   #panel { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; text-align: center; background: var(--panel); }
   #panel[hidden] { display: none; }
   button { font: inherit; padding: 8px 18px; border-radius: 6px; border: 1px solid #444; background: #2a2723; color: var(--fg); cursor: pointer; }
@@ -32,8 +34,13 @@
 </head>
 <body>
 <main>
-  <h1>PureDOOM, translated from C to daslang, compiled to WebAssembly</h1>
-  <p class="dim">The C source of <a href="https://github.com/Daivuk/PureDOOM">PureDOOM</a> was converted to daslang by
+  <h1 id="title">PureDOOM, translated from C to daslang, compiled to WebAssembly</h1>
+  <p id="builds"><a id="link-daslang" href="doom.html">daslang (c2das-re) wasm64</a> · <a id="link-c" href="doom_c.html">C (emscripten) wasm64</a>
+    <span class="dim">: the same game, page and harness; the second is PureDOOM's original C, the baseline</span></p>
+  <p class="dim" id="about-c" hidden>This build is <a href="https://github.com/Daivuk/PureDOOM">PureDOOM</a>'s original C (with
+    <a href="https://github.com/lookibed/c2das-re/tree/main/doom/patches">c2das-re's patches</a>: the per-tic checksums and fixes) compiled by emscripten
+    at -O3 with the daslang build's wasm flags, under the C twin of its browser host: the baseline the daslang build is compared with.</p>
+  <p class="dim" id="about-daslang">The C source of <a href="https://github.com/Daivuk/PureDOOM">PureDOOM</a> was converted to daslang by
     <a href="https://github.com/lookibed/c2das-re">c2das-re</a> (<a href="https://github.com/lookibed/c2das-ports/tree/main/puredoom-readable">puredoom-readable</a>, the processed variant),
     then compiled ahead of time to wasm by daslang's LLVM backend. Nothing here is the original C. Game data: <a href="https://freedoom.github.io/">Freedoom</a> Phase 2 (BSD licence), the official 0.13.0 release, loaded at run time; never id Software's commercial WADs.</p>
   <div id="stage">
@@ -54,6 +61,7 @@
     </div>
   </div>
   <div id="result"></div>
+  <div id="compare" class="dim"></div>
   <p class="dim">Keys: arrows move, <kbd>Ctrl</kbd> or left mouse fires, <kbd>Space</kbd> opens doors, <kbd>Shift</kbd> runs, <kbd>Alt</kbd> strafes,
     <kbd>Enter</kbd>/<kbd>Esc</kbd> menus, <kbd>Y</kbd> confirms, <kbd>1</kbd>-<kbd>7</kbd> weapons, <kbd>Tab</kbd> map. Click the picture first. No sound yet.</p>
   <pre id="log"></pre>
@@ -142,10 +150,43 @@
   }
   fetch(REF_LOG).then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
     .then(function (t) { expected = ticDigest(t); }, function () {});
+  // which of the two builds this page is: doom.html the daslang one, doom_c.html the C baseline
+  var BUILD = /doom_c\.html$/.test(location.pathname) ? 'c' : 'daslang';
+  var BUILD_NAME = { daslang: 'daslang (c2das-re) wasm64', c: 'C (emscripten) wasm64' };
+  (function () {
+    $('link-' + BUILD).className = 'active';
+    ['link-daslang', 'link-c'].forEach(function (id) { $(id).href += location.search; });
+    if (BUILD === 'c') {
+      $('title').textContent = 'PureDOOM, the original C, compiled by emscripten to WebAssembly';
+      $('about-c').hidden = false;
+      $('about-daslang').hidden = true;
+      document.title = 'PureDOOM in C (baseline)';
+    }
+  })();
   fetch('build.json').then(function (r) { return r.json(); }).then(function (b) {
-    $('build').textContent = 'Built from c2das-re ' + b.c2das_re + ' (crt, web host), c2das-ports ' + b.ports +
-      ' (puredoom-readable/processed, converted by c2das-re ' + b.converted_by + '), daScript ' + b.daslang + ', emscripten ' + b.emscripten + '.';
+    $('build').textContent = BUILD === 'c'
+      ? 'Built from PureDOOM ' + b.puredoom + ' with c2das-re ' + b.c2das_re + "'s patches and host, emscripten " + b.emscripten + '.'
+      : 'Built from c2das-re ' + b.c2das_re + ' (crt, web host), c2das-ports ' + b.ports +
+        ' (puredoom-readable/processed, converted by c2das-re ' + b.converted_by + '), daScript ' + b.daslang + ', emscripten ' + b.emscripten + '.';
   }, function () {});
+
+  // the last timedemo of each build in this browser, and the line comparing them
+  function loadRuns() { try { return JSON.parse(localStorage.getItem('doomTimedemo') || '{}'); } catch (e) { return {}; } }
+  function saveRun(r) {
+    var runs = loadRuns();
+    runs[BUILD] = { fps: r.fps, seconds: r.seconds, inSync: r.inSync, at: Date.now() };
+    try { localStorage.setItem('doomTimedemo', JSON.stringify(runs)); } catch (e) {}
+    showCompare(runs);
+  }
+  function showCompare(runs) {
+    var d = runs.daslang, c = runs.c, parts = [];
+    if (d) parts.push(BUILD_NAME.daslang + ': ' + d.fps.toFixed(0) + ' tics/s');
+    if (c) parts.push(BUILD_NAME.c + ': ' + c.fps.toFixed(0) + ' tics/s');
+    if (d && c) parts.push('daslang takes ' + (d.seconds / c.seconds).toFixed(2) + 'x the C time');
+    $('compare').textContent = parts.length ? 'Last timedemo of each build in this browser: ' + parts.join(' · ') +
+      (d && c ? ' (indicative: one run each, in this browser on this machine).' : '. Run the other build\'s timedemo to compare.') : '';
+  }
+  showCompare(loadRuns());
 
   var wadBytes = null, started = false;
   // the deploy put the official release's freedoom2.wad next to this page (never in git); the
@@ -187,7 +228,7 @@
   function showStats(m) {
     var secs = +m[4];
     var el = $('fps');
-    el.textContent = (m[1] / secs).toFixed(0) + ' fps shown · ' + (m[2] / secs).toFixed(0) + ' tics/s · ' +
+    el.textContent = BUILD_NAME[BUILD] + ' · ' + (m[1] / secs).toFixed(0) + ' fps shown · ' + (m[2] / secs).toFixed(0) + ' tics/s · ' +
       (m[3] / secs).toFixed(0) + ' frames rendered/s' + (Module.arguments.indexOf('-uncapped') >= 0 ? ' (uncapped)' : '');
     el.hidden = false;
   }
@@ -206,7 +247,7 @@
       var tics = +m[1], secs = +m[2];
       $('result').innerHTML = 'Timedemo demo1: <b>' + tics + ' tics in ' + secs.toFixed(3) + ' s = ' + (tics / secs).toFixed(0) +
         ' fps</b> (game tics run and rendered per second of update time; the screen shows one of them per display frame).';
-      window.doomResult = { tics: tics, seconds: secs, fps: tics / secs };
+      window.doomResult = { tics: tics, seconds: secs, fps: tics / secs, build: BUILD };
     }
     m = /^host: (\d+) checksum lines, digest ([0-9a-f]+)/.exec(line);
     if (m) {
@@ -219,6 +260,7 @@
         : 'Checksums differ from the native build: ' + m[1] + ' lines, digest ' + m[2] + ', expected ' + expected.tics + ' / ' + expected.digest + '.';
       $('result').appendChild(span);
       if (window.doomResult) window.doomResult.inSync = same;
+      if (window.doomResult) saveRun(window.doomResult);
     }
   }
 

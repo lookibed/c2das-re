@@ -19,3 +19,7 @@ still pins both to the native log's count and digest.**
 
 **A diff to `scripts/build_web.sh` keeps its refusals before its first write: a host at another
 commit than `VERSIONS.md`'s pin, a host without libc++, an emscripten other than 5.0.7.**
+
+**A diff to `puredoom/main_web.das` or `puredoom_c/main_web.c` that changes a clock, a frame budget,
+the key table, the checksum fold, the uncapped mode or an output line changes the other host the
+same way in the same change: the page compares the two builds under one harness.**

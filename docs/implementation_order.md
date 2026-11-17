@@ -2557,6 +2557,11 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   artifact). Edge on box PC, demo1 timedemo: every tic checksum equal to the native log; its time is
   indicative only, not a result (a browser run, not exclusive); the same box, exclusive and quiet:
   native C 0.276 s, daslang JIT 0.448 s. The host reads daslang's clock, not `crt`'s `clock()`.
+  The page's fps line and uncapped rendering (renders between tics; PureDOOM has no interpolation,
+  so a timedemo with a render after every tic keeps every checksum), and the C baseline
+  (`web/puredoom_c/`, PureDOOM's own C by emscripten -O3 with the same flags and host): its demo1
+  matches all 2664 checksums; headless Edge, alternating, indicative: C 0.521-0.525 s, daslang
+  0.614-0.658 s (about 1.2x).
   Left: sound; quakegeneric (plan step 6; glibc `rand` in `crt`); emscripten's `clock()` under `-pthread` can return a
   negative value (`-75812969` in a three-line C test), which the Doom host's `work_started >= 0` check
   reads as "not started", so its `host: timed` line was missing in 2 of the 6 full wasm runs whose
