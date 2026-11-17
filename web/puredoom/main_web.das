@@ -27,6 +27,11 @@ require c_runtime/enum_from_int
 require c_runtime/printf
 require c_runtime/setjmp
 require tic_digest
+require doom_synth
+require doom_midi
+require sounds
+require sounds_h
+require audio/audio_boost
 require glfw/glfw_boost
 require opengl/opengl_boost
 require glsl/glsl_opengl
@@ -303,11 +308,108 @@ def init {
         doom_set_gettime(@@real_gettime)
     }
     running = true
+    if (!timedemo) {
+        start_audio()
+    }
     guarded() {
         doom_init(argc, argv, 0)
     }
     last_frame_usec = usec_now()
     stats_start = last_frame_usec
+}
+
+// sound (section 5): Doom's sfx mix, 512 stereo int16 frames at 11025 a second per
+// `doom_get_sound_buffer`, plus the music synthesizer, streamed to dasAudio a little ahead of the
+// wall clock; not in a timedemo. Music: a MUS lump plays through `doom_tick_midi` (140 ticks a
+// second), a MIDI lump (all of Freedoom's) through the host's own player
+let private SFX_RATE = 11025
+let private SFX_FRAMES = 512
+let private AUDIO_LEAD_FRAMES = 2048
+let private MIDI_RATE = 140
+
+var private audio_on = false
+var private audio_channels : AudioSystemChannels
+var private audio_sid : SID = INVALID_SID
+var private audio_start : int64 = 0l
+var private audio_frames : int64 = 0l
+var private midi_carry = 0.0
+var private synth = make_synth()
+var private song_player = MidiPlayer()
+var private song_index = -1
+
+def private start_audio {
+    audio_channels = audio_system_create()
+    audio_sid = play_sound_from_pcm_stream(SFX_RATE, 2)
+    audio_start = usec_now()
+    audio_on = true
+}
+
+// one MUS tick: every message Doom's music player has for it (it returns 0 when the tick is done)
+def private tick_music {
+    var m = doom_tick_midi()
+    while (m != 0ul) {
+        synth_message(synth, m)
+        m = doom_tick_midi()
+    }
+}
+
+// the song Doom plays: the S_music entry holding data (S_ChangeMusic loads it, S_StopMusic clears it);
+// a MIDI lump starts the host's player, anything else stops it and is left to doom_tick_midi
+def private follow_song {
+    var playing = -1
+    for (i in range(1, int(musicenum_t.NUMMUSIC))) {
+        if (S_music[i].data != null) {
+            playing = i
+            break
+        }
+    }
+    if (playing == song_index) {
+        return
+    }
+    song_index = playing
+    midi_stop(song_player, synth)
+    if (playing < 0) {
+        return
+    }
+    let data = unsafe(reinterpret<uint8?>(S_music[playing].data))
+    let size = W_LumpLength(S_music[playing].lumpnum)
+    var song : MidiSong
+    if (midi_parse(data, size, song)) {
+        midi_start(song_player, song, true)
+    }
+}
+
+// the blocks the stream is owed: produced up to the wall clock plus the lead; after a second or more
+// with no frames (a hidden tab) it skips ahead instead of producing the gap at once
+def private feed_audio {
+    follow_song()
+    synth.gain = float(snd_MusicVolume) / 15.0
+    let due = (usec_now() - audio_start) * int64(SFX_RATE) / 1000000l + int64(AUDIO_LEAD_FRAMES)
+    if (due - audio_frames > int64(SFX_RATE)) {
+        audio_frames = due - int64(AUDIO_LEAD_FRAMES)
+    }
+    while (audio_frames < due) {
+        var chunk : array<float>
+        chunk |> resize(SFX_FRAMES * 2)
+        let pcm = doom_get_sound_buffer()
+        for (i in range(SFX_FRAMES * 2)) {
+            chunk[i] = float(unsafe(pcm[i])) / 32768.0
+        }
+        var at = 0
+        while (at < SFX_FRAMES) {
+            if (midi_carry <= 0.0) {
+                tick_music()
+                midi_carry += float(SFX_RATE) / float(MIDI_RATE)
+            }
+            let n = min(SFX_FRAMES - at, int(ceil(midi_carry)))
+            midi_advance(song_player, synth, double(n) / double(SFX_RATE))
+            synth_render(synth, chunk, at * 2, n)
+            midi_carry -= float(n)
+            at += n
+        }
+        append_to_pcm(audio_sid, chunk)
+        audio_frames += int64(SFX_FRAMES)
+    }
 }
 
 // the counters of the page's fps line, over the second since `stats_start`: animation frames
@@ -371,6 +473,9 @@ def update : bool {
         guarded() {
             doom_update()
         }
+        if (audio_on) {
+            feed_audio()
+        }
         if (uncapped) {
             let budget = min(UNCAPPED_BUDGET_USEC, interval * 6l / 10l)
             while (running && usec_now() - now < budget) {
@@ -388,6 +493,10 @@ def update : bool {
 
 [export]
 def shutdown {
+    if (audio_on) {
+        audio_system_finalize(audio_channels.command, audio_channels.next_sid)
+        audio_on = false
+    }
 
     if (window != null) {
         glfwDestroyWindow(window)

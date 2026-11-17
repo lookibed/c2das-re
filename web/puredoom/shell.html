@@ -64,7 +64,8 @@
   <div id="result"></div>
   <div id="compare" class="dim"></div>
   <p class="dim">Keys: arrows move, <kbd>Ctrl</kbd> or left mouse fires, <kbd>Space</kbd> opens doors, <kbd>Shift</kbd> runs, <kbd>Alt</kbd> strafes,
-    <kbd>Enter</kbd>/<kbd>Esc</kbd> menus, <kbd>Y</kbd> confirms, <kbd>1</kbd>-<kbd>7</kbd> weapons, <kbd>Tab</kbd> map. Click the picture first. No sound yet.</p>
+    <kbd>Enter</kbd>/<kbd>Esc</kbd> menus, <kbd>Y</kbd> confirms, <kbd>1</kbd>-<kbd>7</kbd> weapons, <kbd>Tab</kbd> map. Click the picture first.
+    <button id="mute" type="button">Sound: on</button></p>
   <pre id="log"></pre>
   <p class="dim" id="build"></p>
 </main>
@@ -79,6 +80,36 @@
   var expected = null;             // { tics, digest } of REF_LOG, folded the way the host folds its own lines
 
   var $ = function (id) { return document.getElementById(id); };
+  // Sound: the program's audio (dasAudio over WebAudio) opens AudioContexts; each is tracked so a
+  // gesture can start it (browsers start audio only from one) and the mute button can suspend it
+  var audioContexts = [], muted = false;
+  try { muted = localStorage.getItem('doomMuted') === '1'; } catch (e) {}
+  (function trackAudio() {
+    var Orig = window.AudioContext || window.webkitAudioContext;
+    if (!Orig) return;
+    var Wrapped = function () {
+      var c = new Orig(...arguments);
+      audioContexts.push(c);
+      if (muted) c.suspend().catch(function () {}); else c.resume().catch(function () {});
+      return c;
+    };
+    Wrapped.prototype = Orig.prototype;
+    window.AudioContext = Wrapped;
+    if (window.webkitAudioContext) window.webkitAudioContext = Wrapped;
+    ['pointerdown', 'keydown', 'click', 'touchend'].forEach(function (e) {
+      document.addEventListener(e, function () {
+        if (muted) return;
+        audioContexts.forEach(function (c) { if (c.state !== 'running' && c.state !== 'closed') c.resume().catch(function () {}); });
+      }, true);
+    });
+  })();
+  function setMuted(m) {
+    muted = m;
+    try { localStorage.setItem('doomMuted', m ? '1' : '0'); } catch (e) {}
+    audioContexts.forEach(function (c) { (m ? c.suspend() : c.resume()).catch(function () {}); });
+    document.getElementById('mute').textContent = m ? 'Sound: off' : 'Sound: on';
+  }
+
 
   var logEl = $('log');
   function log(line) { logEl.textContent += line + '\n'; logEl.scrollTop = logEl.scrollHeight; }
@@ -315,6 +346,8 @@
     dasWasmGate.loadProgram(function () { status('The program script did not load.'); $('panel').hidden = false; });
   }
   $('uncapped').checked = new URLSearchParams(location.search).get('uncapped') === '1';
+  $('mute').textContent = muted ? 'Sound: off' : 'Sound: on';
+  $('mute').addEventListener('click', function () { setMuted(!muted); $('canvas').focus(); });
   $('play').addEventListener('click', function () { start(false); });
   $('timedemo').addEventListener('click', function () { start(true); });
 

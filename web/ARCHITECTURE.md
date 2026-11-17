@@ -13,6 +13,9 @@ program runs under in a browser and the page around it.
   `scripts/build_web.sh` stages.
 - `puredoom/tic_digest.das` - the fold of Doom's per-tic checksum lines (section 3), a module of its
   own so `tests/test_web_tic_digest.das` runs it on the pin and checks the page's JS fold against it.
+- `puredoom/doom_synth.das` - the music synthesizer (section 5); it needs only math, so
+  `tests/test_web_doom_synth.das` runs it on the pin.
+- `puredoom/doom_midi.das` - the MIDI file player (section 5), tested by `tests/test_web_doom_midi.das`.
 - `puredoom/shell.html` - the page emscripten fills with its loader (`daspkg`'s
   `release_web_shell`): the WAD (section 4), the play and timedemo buttons, the program's output,
   the timedemo's fps and the check of its checksums against the native build's log.
@@ -108,6 +111,28 @@ cannot fetch the release itself: the release host sends no CORS headers. A file 
 user's own `freedoom2.wad` or release zip, held to the same sha256. Only Freedoom (BSD) is
 served, never a commercial id Software WAD. `scripts/build_web.sh --pages` refuses a site holding a
 `.wad`, `.zip` or `.pak` and checks the checkout again before it commits.
+
+## 5. Sound
+
+The host streams one stereo PCM stream to dasAudio (`play_sound_from_pcm_stream`, `append_to_pcm`),
+which mixes it into the browser's audio through its AudioWorklet backend. Each 512-frame block at
+11025 frames a second is Doom's own sfx mix (`doom_get_sound_buffer`, int16) with the music
+synthesizer added; the host keeps the stream 2048 frames ahead of the wall clock, and after a second
+or more with no frames (a hidden tab) skips ahead instead of producing the gap at once. A timedemo
+streams no sound.
+
+Music: PureDOOM's own player (`doom_tick_midi`, ticked 140 times a second, interleaved with the
+blocks) reads only Doom's MUS format, and every music lump of Freedoom is a MIDI file, so the host
+also plays those: it follows the song Doom plays (the `S_music` entry holding data, which
+`S_ChangeMusic` sets and `S_StopMusic` clears), parses a MIDI lump with `doom_midi.das` into
+messages timed by the file's tempo map, and hands them to the synthesizer as they fall due; every
+song loops (Doom's loop flag is private to its sound module). Both players feed `doom_synth.das`, a
+small General MIDI synthesizer: one waveform and envelope per instrument family, shaped noise and
+pitch sweeps for the percussion channel, 24 voices, scaled by Doom's music volume.
+
+The page starts the browser's audio on the first click or key (browsers start audio only from a
+gesture) and its button suspends and resumes it, remembered in the browser's storage. The C
+baseline (section 6) has no sound: it exists for the timedemo comparison.
 
 ## 6. The C baseline
 
