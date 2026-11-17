@@ -2691,7 +2691,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   | doomgeneric | readable | 1.000 | 42.05 | 1.000 | 1.07 | 1.000 | 1.08 | 1.000 | 1.13 |
   | doomgeneric | k | 0.982 | 41.27 | 0.965 | 1.04 | 0.948 | 1.02 | 0.988 | 1.12 |
 
-  Against the predictions: 39 of 52 cells hit. Misses: PureDOOM's interpreter under D1 and D2 (1.247 and
+  Against the predictions: 31 of 43 cells hit (36 ratio cells, 7 x-native cells). Misses: PureDOOM's interpreter under D1 and D2 (1.247 and
   1.240 against 0.90-1.02: the while loops and the forms off cost the interpreter far more than they give the
   JIT), D1's exe (0.953 against 0.86-0.95), L2's exe (0.828, noisy, against 0.64-0.82); checks off under the
   interpreter on binjgb, h264bsd-mp4, plmpeg-stream and doomgeneric (1.037, 1.016, 1.014, 0.982 against
