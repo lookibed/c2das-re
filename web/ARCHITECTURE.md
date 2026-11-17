@@ -18,6 +18,7 @@ program runs under in a browser and the page around it.
   the timedemo's fps and the check of its checksums against the native build's log.
 - `puredoom/.das_package` - the release of the staged project: the wasm entry, the shell, one link
   flag (`-sMAXIMUM_MEMORY=2GB`).
+- `puredoom_c/main_web.c` - the C twin of `puredoom/main_web.das` for the C baseline (section 6).
 - `site/index.html` - the site's landing page, a list of the demos.
 - `site/coi-serviceworker.js` - cross-origin isolation (section 2).
 - `site/pages.yml` - the deploy workflow the ports repository's `gh-pages` branch carries (section 4).
@@ -82,6 +83,15 @@ there. `main_web.das` keeps a `main` that runs the same three in a loop, for a d
   count (`tic_digest.das`) instead of printing it, and prints both when Doom exits. The page folds the `tic=` lines of the native build's log
   (`puredoom-readable/ref/freedoom2_demo1.log`, shipped as `demo1_ref.log`) the same way and
   compares.
+- Frame rate: once a second the host prints `host: stats <frames> <tics> <renders> <seconds>`: the
+  animation frames it presented, the tics Doom ran and the frames Doom rendered; the page shows them
+  over the picture. Doom renders one frame per tic, so 35 a second, whatever the display rate.
+- Uncapped (`-uncapped`, the page's checkbox or `?uncapped=1`): tics stay at 35 a second and each
+  animation frame spends 10 ms rendering Doom's view again between tics (`D_Display`, skipped during
+  a wipe); in a timedemo, one more render after every tic. PureDOOM has no render interpolation, so
+  such a frame shows the state the last tic left: the rate is the renderer's throughput, and motion
+  stays at 35 steps a second. Rendering touches no game state: a timedemo with a render after every
+  tic keeps every checksum.
 - Exit: Doom's exit callback (the end of a timedemo, the quit menu) prints `host: Doom exited`
   and longjmps out of the update through `c_runtime/setjmp`; that `update` returns false and the page
   says to reload. A das panic that is no longjmp is rethrown with its own message (`c_jmp_rethrow`).
@@ -97,3 +107,17 @@ cannot fetch the release itself: the release host sends no CORS headers. A file 
 user's own `freedoom2.wad` or release zip, held to the same sha256. Only Freedoom (BSD) is
 served, never a commercial id Software WAD. `scripts/build_web.sh --pages` refuses a site holding a
 `.wad`, `.zip` or `.pak` and checks the checkout again before it commits.
+
+## 6. The C baseline
+
+`puredoom/doom_c.html` is the same game built from PureDOOM's own C at the pinned commit with this
+repository's patches (`doom/fetch.sh`), under `puredoom_c/main_web.c`, the C twin of
+`puredoom/main_web.das`: the same clocks, frame budgets, key table, checksum fold, uncapped mode and
+output lines, so the same page (`puredoom/shell.html`, which tells the two builds apart by the page's
+name), the same WAD and the same reference log serve both. The build passes the sidecar's defines
+(`doom/doom.c2das`, the per-tic checksums included, as the converted code has them), `-O3`, and the
+link flags `daspkg release wasm` gives the daslang build (wasm64 lowered by `-sMEMORY64=2`, SIMD,
+wasm exceptions, `-pthread` with the same worker pool, WebGL2 through GLFW); C's `setjmp` takes
+`-sSUPPORT_LONGJMP=wasm`. The page keeps the last timedemo of each build in the browser's storage
+and prints both rates and the daslang build's time over the C build's.
+
