@@ -2490,10 +2490,32 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   over before, fps for PureDOOM, seconds otherwise): PureDOOM interp demo1 1.05-1.12, demos 2 and 3
   1.04-1.12, JIT 0.98-1.02; binjgb interp and JIT 0.98-1.02; Lua interp fib 0.96-1.00, binary_trees
   0.93-0.99, nbody and spectral_norm 0.98-1.01, JIT 0.98-1.02.
-  Owed: the exclusive A/B (Doom demos 1-3, binjgb, Lua fib, binary_trees, nbody, spectral_norm; interp and
-  JIT, before and after interleaved). Its first run (`machine quiet (cpu busy 1%)`) was stopped after 19
-  runs for the daScript repin, so no cell is quoted; it reruns on the new pin, the "before" side rebuilt
-  there too (`/root/notes/parallel/a32/handoff.md`).
+  The exclusive A/B ran on daScript `2decba91d5`, both sides rebuilt there: before = main a936fe6, after =
+  this branch, one `heavy --exclusive` job (`machine quiet (cpu busy 2%)`), before and after interleaved,
+  3 interp and 5 JIT samples a cell, medians, after over before (fps for PureDOOM, above 1 is faster;
+  seconds otherwise, below 1 is faster). The run's first try on `6401904cf9` was stopped for the repin and
+  is not quoted. Correctness on the pin first: test_lowerings 202/202, the probe 7/7, Doom demo1 2664 tics
+  in sync on interp and JIT, Lua error checks 8/8 on interp and JIT.
+
+  | cell | interp | JIT | predicted interp | predicted JIT |
+  |---|---:|---:|---|---|
+  | PureDOOM demo1 | 1.016 | 1.000 | 1.05-1.12 miss | 0.98-1.02 hit |
+  | PureDOOM demo2 | 1.016 | 0.985 | 1.04-1.12 miss | 0.98-1.02 hit |
+  | PureDOOM demo3 | 1.023 | 0.989 | 1.04-1.12 miss | 0.98-1.02 hit |
+  | binjgb decode | 1.000 | 0.996 | 0.98-1.02 hit | 0.98-1.02 hit |
+  | Lua fib | 0.998 | 0.987 | 0.96-1.00 hit | 0.98-1.02 hit |
+  | Lua binary_trees | 0.989 | 0.995 | 0.93-0.99 hit | 0.98-1.02 hit |
+  | Lua nbody | 0.956 | 0.958 | 0.98-1.01 miss | 0.98-1.02 miss |
+  | Lua spectral_norm | 0.988 | 0.957 | 0.98-1.01 hit | 0.98-1.02 miss |
+
+  11 of 16 hit. The PureDOOM interp misses go the predicted way but gain about a tenth of the 17.3% the
+  profile charged to `intptr`: the profiler inflates a small leaf call's cost, as the predictions warned,
+  and the 30-40 ns per call estimate was high. The Lua nbody and spectral_norm misses are gains the
+  predictions did not expect (no pointer compare was thought to be on their path); not profiled here, so
+  the cause is open. Readability (`scripts/run_criteria.sh --filter`, both sides on the pin): PureDOOM
+  `casts` 242.5 -> 235.3, `reinterpret` 71.1 -> 72.2, total 874.2 -> 868.2; binjgb `casts` 565.8 -> 564.5,
+  total 1138.9 -> 1137.5. Prediction 6 holds for the casts and the reinterprets; the `[c_function]` half was
+  not counted.
   binjgb's HALT path, a proposal (no code): 96.9% of `execute_instruction`'s 5.40M calls are the
   `CPU_STATE_HALT` case (counted by a copy of the module with counters), one `tick` and a return before the
   opcode switch, reached through `emulator_run_until` -> `emulator_step_internal` -> `execute_instruction`
