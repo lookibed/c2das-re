@@ -1,7 +1,9 @@
 # c2das-re's crt (dasCRuntime/ of lookibed/c2das-re) linked into daslang_static: an in-tree wrapper for
 # the translator page's Run only (web/ARCHITECTURE.md section 9). build_interp.sh copies it into a
-# daScript checkout as modules/dasCRuntime/CMakeLists.txt, beside c2das-re's dasCRuntime/src; the
-# flags are the ones c2das-re's standalone CMakeLists gives the wasm64 archive.
+# daScript checkout as modules/dasCRuntime/CMakeLists.txt, beside c2das-re's dasCRuntime/src. The
+# three flags below are the ones of c2das-re's standalone wasm archive that daScript's build does not
+# already give; the rest (memory64, threads, wasm exceptions, simd, no RTTI, C++17) are daScript's web
+# build's own, as for every module linked statically into daslang_static.
 IF (NOT DAS_CRT_INCLUDED)
     SET(DAS_CRT_INCLUDED TRUE)
     MESSAGE(STATUS "dasCRuntime (c2das-re crt) module included.")

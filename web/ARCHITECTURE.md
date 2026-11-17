@@ -33,7 +33,8 @@ program runs under in a browser and the page around it.
   examples' C and their manifest; `translator/site/` the page (`run-frame.html` the frame of one Run,
   section 9); `translator/*.das_package` the two releases; `translator/pages.yml` c2das-re's deploy
   workflow; `translator/bundle.das` packs `c_runtime` for Run; `translator/interp/` builds Run's
-  interpreter (`build_interp.sh`, and `crt_module.cmake`, the crt's in-tree wrapper).
+  interpreter (`build_interp.sh`, and `crt_module.cmake`, the crt's in-tree wrapper) and runs the
+  examples in it under node (`run_examples.js`).
 - `scripts/build_translator_site.sh` (repository root) - the translator page's build;
   `scripts/web_common.sh` the checks both builds share (emscripten, the host on the pin, a gh-pages
   checkout of the build's own repository, the commit). `tests/test_web_translator.das` runs
@@ -261,7 +262,15 @@ of another daScript commit (`--interp`).
 `c_runtime/<name>` paths as the desktop `-load_module` does (a `require` inside `c_runtime` resolves
 by that registration, not by the file's folder). A run is one fresh frame (`run-frame.html`), dropped
 when the program exits, as daScript's playground does: a second `callMain` in one runtime can leave
-modules registered. The page compiles the wasm once and hands each frame the compiled module; Stop
-drops the frame. The output tab shows the run's stdout, stderr, exit code and time, above the output
-recorded at build time.
+modules registered. The page compiles the wasm once and hands each frame the compiled module. The
+program runs synchronously in the frame, which shares the page's main thread: Stop drops a run still
+loading, a running one ends on its own and its output arrives at its end. The output tab shows the
+run's stdout, stderr, exit code and time, above the output recorded at build time. The site build
+refuses an interpreter whose crt commit is not one of this repository or whose `dasCRuntime/src`
+differs from this tree's, since `c_runtime.json` is bundled from this tree.
+
+`translator/interp/run_examples.js` runs the examples in the interpreter under node as Run does, one
+runtime per example; `tests/test_web_translator.das` runs it over a converted example when
+`C2DAS_INTERP` names an interpreter folder, and skips otherwise. The page's own frame protocol is
+checked in a browser by hand (headless Edge), not by a committed test.
 

@@ -98,10 +98,16 @@ int main(void) \{ return pick(1); \}
     rmdir_rec(work)
 }
 
+// VERSIONS.md's daScript pin, the 40 digits after "daScript commit: "
+def private find_pin(versions : string) : string {
+    let at = find(versions, "daScript commit: ")
+    return at < 0 ? "" : slice(versions, at + 17, at + 57)
+}
+
 // build_translator_site.sh with `args`, its output in `out`
 def private build_site(args : string; var out : string&) : int => run_and_capture(["sh", "-c", "bash scripts/build_translator_site.sh {args} 2>&1"], out, 120.0)
 
-[test(description = "build_translator_site.sh refuses --commit without --pages, a missing --ports, a ports checkout without Lua, a --pages that is no checkout, c2das-ports' gh-pages, a missing --interp and an --interp without the interpreter")]
+[test(description = "build_translator_site.sh refuses --commit without --pages, a missing --ports, a ports checkout without Lua, a --pages that is no checkout, c2das-ports' gh-pages, a missing --interp, one without the interpreter, one of another daScript and one whose crt is no commit here")]
 def test_build_translator_refusals(t : T?) {
     var dir_error : string
     let work = create_temp_directory("c2das_translator_ref", dir_error)
@@ -135,11 +141,24 @@ def test_build_translator_refusals(t : T?) {
     let rc_empty_interp = build_site("--ports '{fake_ports}' --interp '{work}' --out '{out_dir}'", out)
     t |> equal(rc_empty_interp, 1, out)
     t |> success(find(out, "no daslang_static.js in") >= 0, out)
+    let interp = path_join(work, "interp")
+    mkdir_rec(interp)
+    fwrite(path_join(interp, "daslang_static.js"), "")
+    fwrite(path_join(interp, "daslang_static.wasm"), "")
+    fwrite(path_join(interp, "interp.json"), "\{\"daslang\": \"0000000000\", \"crt\": \"0000000000\"\}")
+    let rc_pin = build_site("--ports '{fake_ports}' --interp '{interp}' --out '{out_dir}'", out)
+    t |> equal(rc_pin, 1, out)
+    t |> success(find(out, "VERSIONS.md pins") >= 0 && find(out, "rebuild it") >= 0, out)
+    let pin = slice(fread("VERSIONS.md") |> find_pin(), 0, 10)
+    fwrite(path_join(interp, "interp.json"), "\{\"daslang\": \"{pin}\", \"crt\": \"0000000000\"\}")
+    let rc_crt = build_site("--ports '{fake_ports}' --interp '{interp}' --out '{out_dir}'", out)
+    t |> equal(rc_crt, 1, out)
+    t |> success(find(out, "names no crt commit of this repository") >= 0, out)
     t |> success(!fexist(out_dir), "no refusal created the --out folder")
     rmdir_rec(work)
 }
 
-[test(description = "bundle.das writes a module folder's .das_module and registered .das files as one JSON object, path to text, and refuses a folder that is no module and a bad call")]
+[test(description = "bundle.das writes a module folder's .das_module and registered .das files as one JSON object, path to text, and refuses a folder that is no module, a module with no .das file, an unwritable output and a bad call")]
 def test_bundle(t : T?) {
     var dir_error : string
     let work = create_temp_directory("c2das_translator_bundle", dir_error)
@@ -161,5 +180,57 @@ def test_bundle(t : T?) {
     t |> equal(rc_empty, 1, out)
     let rc_usage = run_and_capture(["{get_das_root()}/bin/daslang", "web/translator/bundle.das", "--", work], out, 120.0)
     t |> equal(rc_usage, 2, out)
+    let bare = path_join(work, "bare")
+    mkdir_rec(path_join(bare, "bare"))
+    fwrite(path_join(bare, ".das_module"), "")
+    let rc_bare = run_and_capture(["{get_das_root()}/bin/daslang", "web/translator/bundle.das", "--", bare, path_join(work, "y.json")], out, 120.0)
+    t |> equal(rc_bare, 1, out)
+    t |> success(find(out, "no .das file in") >= 0, out)
+    let rc_write = run_and_capture(["{get_das_root()}/bin/daslang", "web/translator/bundle.das", "--", "c_runtime", path_join(work, "missing/dir/z.json")], out, 120.0)
+    t |> equal(rc_write, 1, out)
+    t |> success(find(out, "cannot write") >= 0, out)
     rmdir_rec(work)
 }
+
+[test(description = "build_interp.sh refuses a bad call, and a work folder whose daScript is not the pin, before it writes or fetches anything")]
+def test_build_interp_refusals(t : T?) {
+    var dir_error : string
+    let work = create_temp_directory("c2das_translator_interp", dir_error)
+    t |> equal(dir_error, "")
+    var out : string
+    let rc_usage = run_and_capture(["bash", "web/translator/interp/build_interp.sh"], out, 30.0)
+    t |> equal(rc_usage, 2, out)
+    t |> success(find(out, "usage:") >= 0 && find(out, "set -euo") < 0, out)
+    let other = path_join(work, "daScript")
+    let rc_init = run_and_capture(["sh", "-c", "git init -q '{other}' && git -C '{other}' -c user.name=t -c user.email=t@t commit -q --allow-empty -m other"], out, 30.0)
+    t |> equal(rc_init, 0, out)
+    let rc_pin = run_and_capture(["bash", "web/translator/interp/build_interp.sh", work], out, 30.0)
+    t |> equal(rc_pin, 1, out)
+    t |> success(find(out, "is not at the pin") >= 0, out)
+    t |> success(!fexist(path_join(work, "emsdk")), "nothing fetched")
+    rmdir_rec(work)
+}
+
+[test(description = "with an interpreter named by C2DAS_INTERP, an example converted here runs in it as the page's Run runs it, with the output of the native interpreter")]
+def test_run_in_interpreter(t : T?) {
+    if (!has_env_variable("C2DAS_INTERP")) {
+        t |> skip("no C2DAS_INTERP: the interpreter is built by web/translator/interp/build_interp.sh")
+        return
+    }
+    var dir_error : string
+    let work = create_temp_directory("c2das_translator_run", dir_error)
+    t |> equal(dir_error, "")
+    fwrite(path_join(work, "hi.c"), fread("web/translator/examples/hello.c"))
+    let manifest = path_join(work, "examples.json")
+    fwrite(manifest, "\{\"examples\": [\{\"id\": \"hello\", \"file\": \"hi.c\"\}], \"lua\": []\}")
+    var out : string
+    let rc_pre = precompute([manifest, path_join(work, "out.json"), path_join(work, "w")], out)
+    t |> equal(rc_pre, 0, out)
+    let rc_lib = run_and_capture(["{get_das_root()}/bin/daslang", "web/translator/bundle.das", "--", "c_runtime", path_join(work, "c_runtime.json")], out, 120.0)
+    t |> equal(rc_lib, 0, out)
+    let rc = run_and_capture(["node", "web/translator/interp/run_examples.js", get_env_variable("C2DAS_INTERP"), path_join(work, "out.json"), path_join(work, "c_runtime.json")], out, 600.0)
+    t |> equal(rc, 0, out)
+    t |> success(find(out, "hello ok") >= 0, out)
+    rmdir_rec(work)
+}
+

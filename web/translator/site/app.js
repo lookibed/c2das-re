@@ -126,6 +126,7 @@
     $('tab-cir').textContent = JSON.stringify(JSON.parse(current.cir), null, 1);
     $('recorded').textContent = 'Recorded when the page was built (the default knobs, daslang\'s native interpreter):\n\n' + current.output;
     $('run-out').textContent = '';
+    if (running) runEnd($('run'));
     if (!busy) showModule(current.das);
     convert();
   }
@@ -149,9 +150,11 @@
   $('example').addEventListener('change', function () { selectExample(this.value); });
 
   // Run: the module shown, in daslang_static (daScript's playground interpreter at c2das-re's pin, crt
-  // linked in), with c2das-re's c_runtime module folder in the frame's file system (-load_module). The wasm is compiled
+  // linked in), with c2das-re's c_runtime module folder in the frame's file system (-load_module).
+  // The program runs synchronously in the frame, which shares the page's main thread: Stop drops a
+  // run that is still loading; one already running ends on its own, its output arriving at its end. The wasm is compiled
   // once; each run gets a fresh frame (run-frame.html), dropped when the program ends.
-  var runWasm = null, runLib = null, runFrame = null, running = 0;
+  var runWasm = null, runLib = null, runFrame = null, runListener = null, running = 0, runSeq = 0;
   function runAppend(text, cls) {
     var s = document.createElement('span');
     if (cls) s.className = cls;
@@ -160,6 +163,7 @@
   }
   function runEnd(btn) {
     running = 0;
+    if (runListener) { window.removeEventListener('message', runListener); runListener = null; }
     if (runFrame) { runFrame.remove(); runFrame = null; }
     btn.textContent = '\u25b6 run';
   }
@@ -168,13 +172,16 @@
     if (running) { runAppend('\nstopped\n', 'meta'); runEnd(btn); return; }
     var das = dasView.getValue();
     if (!das) return;
-    var token = running = Date.now();
+    var token = running = ++runSeq;
     document.querySelector('#tabs button[data-tab="output"]').click();
     $('run-out').textContent = '';
     btn.textContent = '\u25a0 stop';
     runAppend('loading daslang (wasm)...\n', 'meta');
     runWasm = runWasm || WebAssembly.compileStreaming(fetch('daslang_static.wasm'));
-    runLib = runLib || fetch('c_runtime.json').then(function (r) { return r.json(); });
+    runLib = runLib || fetch('c_runtime.json').then(function (r) {
+      if (!r.ok) throw new Error('c_runtime.json: HTTP ' + r.status);
+      return r.json();
+    });
     Promise.all([runWasm, runLib]).then(function (res) {
       if (running !== token) return;
       var mod = res[0], lib = res[1], files = { '/run/main.das': das };
@@ -184,7 +191,7 @@
       frame.hidden = true;
       runFrame = frame;
       function onMsg(ev) {
-        if (ev.source !== frame.contentWindow) return;
+        if (running !== token || !ev.data || ev.source !== frame.contentWindow) return;
         var m = ev.data;
         if (m.type === 'need-wasm-module') frame.contentWindow.postMessage({ type: 'wasm-module', module: mod }, location.origin);
         else if (m.type === 'ready') {
@@ -196,10 +203,10 @@
         else if (m.type === 'exit' || m.type === 'aborted') {
           if (m.type === 'exit') runAppend('\nexit ' + m.code + ', compiled and ran in ' + m.ms.toFixed(0) + ' ms (daslang interpreter, wasm)\n', 'meta');
           else runAppend('\nthe interpreter stopped: ' + m.message + '\n', 'err');
-          window.removeEventListener('message', onMsg);
-          if (running === token) runEnd(btn);
+          runEnd(btn);
         }
       }
+      runListener = onMsg;
       window.addEventListener('message', onMsg);
       document.body.appendChild(frame);
     }).catch(function (e) {

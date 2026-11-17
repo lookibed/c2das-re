@@ -14,11 +14,17 @@ check_emcc() {
     case "$emver" in *" 5.0.7 "*) ;; *) die "emcc is not emscripten 5.0.7: $emver" ;; esac
 }
 
+# VERSIONS.md's daScript pin, the 40-digit commit, into `pin`
+read_pin() {
+    pin=$(sed -n 's/^daScript commit: \([0-9a-f]\{40\}\).*/\1/p' VERSIONS.md)
+    [ -n "$pin" ] || die "VERSIONS.md names no daScript commit"
+}
+
 # the wasm host `$1` at VERSIONS.md's pin (one daScript version across the pin and its tools) and
 # linking libc++; sets `pin` to the pinned commit
 check_host() {
     local have
-    pin=$(sed -n 's/^daScript commit: \([0-9a-f]\{40\}\).*/\1/p' VERSIONS.md)
+    read_pin
     have=$(git -C "$1" rev-parse HEAD 2>/dev/null) || die "$1 is not a daScript checkout"
     [ "$have" = "$pin" ] || die "the wasm host $1 is at $have, VERSIONS.md pins $pin; rebuild it with web/build_wasm_host.sh"
     ldd "$1/bin/daslang" | grep -q 'libc++\.so' || die "$1/bin/daslang does not link libc++: not a wasm host"
