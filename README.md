@@ -96,7 +96,7 @@ of 5 samples (3 for Doom and real projects); spread > 20% is marked `suspect`.
 
 C is seconds per run, DAS cells are x C. fib_loop, fib_recursive, primes: dasProfile's programs,
 `perf/results_method_linux.json`; the rest `perf/results_linux.json`. AOT of matmul and sieve:
-the exclusive check of 2026-11-17 on daScript `b7d8f6f52f` (ledger P8.14).
+the exclusive check of 2026-11-17 on daScript `b7d8f6f52f`, 7 runs (ledger P8.14).
 
 ### Doom
 
@@ -131,8 +131,8 @@ Native: `compare/results_linux.json`; PureDOOM `doom/results_linux.json`; Lua, t
 workloads, c2das-ports `lua/perf/capture_2026-11-14T095846Z.json`. Other cells are x native, from
 `ports/variants/<project>.readable.json`. `error`: the lane does not run the whole benchmark.
 
-AOT of doomgeneric and puredoom: the exclusive check of 2026-11-17 on daScript `b7d8f6f52f`
-(ledger P8.14); the Doom section's AOT column is its 2026-11-14 capture, before that fix.
+AOT of doomgeneric and puredoom (demo1): the exclusive check of 2026-11-17 on daScript
+`b7d8f6f52f`, 7 runs (ledger P8.14); the Doom section's AOT column is its 2026-11-14 capture, before that fix.
 
 ## License
 
