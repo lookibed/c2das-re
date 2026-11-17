@@ -35,12 +35,7 @@ def main : int {
             }
         }
     }
-    var lines : array<string>
-    for (line in split(text, "\n")) {
-        if (starts_with(line, "frame[")) {
-            lines |> push(line)
-        }
-    }
+    let lines <- [for (line in split(text, "\n")); line; where starts_with(line, "frame[")]
     if (length(lines) != 100) {
         to_log(LOG_ERROR, "expected_frames: {args[0]} holds {length(lines)} frame lines for quakegeneric-demo1-std, not 100\n")
         return 1

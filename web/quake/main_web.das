@@ -1,5 +1,6 @@
 options gen2
 options indenting = 4
+options solid_context
 options stack = 8388608
 options strict_aliasing = false
 
@@ -11,6 +12,8 @@ options strict_aliasing = false
 //! calls. Shareware Quake's `id1/pak0.pak` sits under the base directory `/q`.
 //!
 //! - play: each frame runs `QG_Tick` with the real time since the last, at most 0.1 s.
+//! - exit: the engine ends through `c_exit` (the menu's Quit, `Sys_Error`); the host's `c_atexit`
+//!   handler prints `host: Quake exited` and unwinds to the frame, which stops the lifecycle.
 //! - timedemo (`-timedemo`): `+timedemo demo1`, each tick 1/64 s as the native entry runs it, as many
 //!   ticks a frame as fit in 12 ms. The host prints the frames the demo took and the seconds spent in
 //!   the ticks, and once the engine has drawn 100 frames without the console, the digest of their
@@ -24,6 +27,7 @@ require ../upstream/quakegeneric/source/client_h.das
 require ../upstream/quakegeneric/source/vid_h.das
 require crt
 require c_runtime/c_args
+require c_runtime/c_exit
 require c_runtime/cstr
 require c_runtime/printf
 require glfw/glfw_boost
@@ -32,6 +36,8 @@ require glsl/glsl_opengl
 require daslib/safe_addr
 require daslib/fio
 require math
+require frame_digest
+require daslib/rtti
 
 var @in @location v_position : float2
 var @in @location v_texcoord : float2
@@ -71,6 +77,7 @@ let private TICK_SECONDS = 1.0lf / 64.0lf          // the native entry's tick
 let private TIMEDEMO_BUDGET_USEC = 12000l
 let private MAX_FRAME_SECONDS = 0.1lf
 let private CHECKED_FRAMES = 100                    // the frames the native entry hashes
+let private TICK_LIMIT = 20000                      // a timedemo that has not ended by then is broken
 
 var private window : GLFWwindow?
 var private program : uint
@@ -89,6 +96,8 @@ var private clock_base : int64 = 0l
 var private last_frame_usec : int64 = 0l
 var private work_usec : int64 = 0l
 var private quake_argv : uint8? [6]
+var private exiting = false
+var private ticks = 0
 
 def private usec_now : int64 => get_time_nsec(clock_base) / 1000l
 
@@ -104,7 +113,8 @@ let private KEYMAP = [
     (GLFW_KEY_INSERT, 147), (GLFW_KEY_DELETE, 148), (GLFW_KEY_PAGE_DOWN, 149), (GLFW_KEY_PAGE_UP, 150),
     (GLFW_KEY_HOME, 151), (GLFW_KEY_END, 152), (GLFW_KEY_PAUSE, 255), (GLFW_KEY_MINUS, 45),
     (GLFW_KEY_EQUAL, 61), (GLFW_KEY_GRAVE_ACCENT, 96), (GLFW_KEY_SLASH, 47), (GLFW_KEY_COMMA, 44),
-    (GLFW_KEY_PERIOD, 46)
+    (GLFW_KEY_PERIOD, 46), (GLFW_KEY_SEMICOLON, 59), (GLFW_KEY_APOSTROPHE, 39), (GLFW_KEY_LEFT_BRACKET, 91),
+    (GLFW_KEY_RIGHT_BRACKET, 93), (GLFW_KEY_BACKSLASH, 92)
 ]
 
 var private quake_down : bool[256]
@@ -205,18 +215,32 @@ def private draw_frame {
     glfwSwapBuffers(window)
 }
 
+// the engine's exit (Sys_Quit, Sys_Error): the page's line, then out of the engine to the frame
+def private on_quake_exit {
+    exiting = true
+    running = false
+    printf(cstr("host: Quake exited\n"))
+    var stdout_file = unsafe(crt::c_stdout())
+    unsafe(crt::fflush(stdout_file))
+    panic("quake exited")
+}
+
+// runs `step` with the engine's exit able to leave it; a panic that is no exit keeps its message
+def private guarded(step : block) {
+    try {
+        invoke(step)
+    } recover {
+        if (!exiting) {
+            panic(this_context().last_exception)
+        }
+    }
+}
+
 // the first 100 frames without the console: their hashes as the native entry prints them, folded
 // with FNV-1a 32 over every `frame[i]=v` line, newline included
 def private report_hashes {
-    var digest = 2166136261u
-    for (i in range(CHECKED_FRAMES)) {
-        let line = "frame[{i}]={qg_frame_hash[i]}\n"
-        for (c in line) {
-            digest ^= uint(c)
-            digest *= 16777619u
-        }
-    }
-    printf(cstr("host: %d frame hashes, digest %08x\n"), CHECKED_FRAMES, digest)
+    let hashes <- [for (i in range(CHECKED_FRAMES)); qg_frame_hash[i]]
+    printf(cstr("host: %d frame hashes, digest %08x\n"), CHECKED_FRAMES, frame_digest(hashes, CHECKED_FRAMES))
 }
 
 // the counters of the page's fps line, as the PureDOOM host prints them: frames presented, frames
@@ -241,23 +265,35 @@ def private timedemo_step {
     let frame_start = usec_now()
     var now = frame_start
     while (running && now - frame_start < TIMEDEMO_BUDGET_USEC) {
-        QG_Tick(TICK_SECONDS)
+        // the engine times its timedemo from the frame after its start frame; so does the host
+        let counted = timedemo_seen && host_framecount > cls.td_startframe
+        guarded() {
+            QG_Tick(TICK_SECONDS)
+        }
+        ticks++
         let after = usec_now()
-        work_usec += after - now
+        if (counted) {
+            work_usec += after - now
+        }
         now = after
+        if (!running) {
+            break
+        }
         if (!hashed && qg_frame_count >= CHECKED_FRAMES) {
             hashed = true
             report_hashes()
         }
         if (cls.timedemo != qboolean._c_false && !timedemo_seen) {
             timedemo_seen = true
-            work_usec = 0l
         }
         if (timedemo_seen && cls.timedemo == qboolean._c_false && !reported) {
             reported = true
             // CL_FinishTimeDemo's own count: from its start frame, the first frame not counted
             printf(cstr("host: timed %d frames in %.6f s\n"), host_framecount - cls.td_startframe - 1, double(work_usec) / 1000000.0lf)
             printf(cstr("host: Quake finished the timedemo\n"))
+            running = false
+        } elif (!reported && ticks >= TICK_LIMIT) {
+            printf(cstr("host: the timedemo did not end within %d ticks\n"), TICK_LIMIT)
             running = false
         }
     }
@@ -293,8 +329,11 @@ def init {
         argc = 5
     }
     quake_argv[argc] = null
-    QG_Create(argc, unsafe(addr(quake_argv[0])))
+    c_atexit(@@on_quake_exit)
     running = true
+    guarded() {
+        QG_Create(argc, unsafe(addr(quake_argv[0])))
+    }
     last_frame_usec = usec_now()
     stats_start = last_frame_usec
 }
@@ -311,8 +350,10 @@ def update : bool {
         let now = usec_now()
         let dt = min(double(now - last_frame_usec) / 1000000.0lf, MAX_FRAME_SECONDS)
         last_frame_usec = now
-        poll_keys()
-        QG_Tick(dt)
+        guarded() {
+            poll_keys()
+            QG_Tick(dt)
+        }
     }
     draw_frame()
     stats_frames++

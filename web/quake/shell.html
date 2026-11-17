@@ -92,7 +92,7 @@
     });
     return { frames: String(n), digest: h.toString(16).padStart(8, '0') };
   }
-  fetch(REF_FRAMES).then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
+  var refLoaded = fetch(REF_FRAMES).then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
     .then(function (t) { expected = frameDigest(t); }, function () {});
   fetch('build.json').then(function (r) { return r.json(); }).then(function (b) {
     $('build').textContent = 'Built from c2das-re ' + b.c2das_re + ' (crt, runtime, web host), c2das-ports ' + b.ports +
@@ -159,7 +159,23 @@
       window.quakeResult = { frames: frames, seconds: s, fps: frames / s };
     }
     m = /^host: (\d+) frame hashes, digest ([0-9a-f]+)/.exec(line);
-    if (m) {
+    if (m) refLoaded.then(function () { showDigest(m); });
+    if (/^host: Quake exited/.test(line)) {
+      status('Quake has exited. Reload the page to play again.');
+      $('play').disabled = $('timedemo').disabled = true;
+      $('panel').hidden = false;
+    }
+    if (/^host: the timedemo did not end/.test(line)) status('The timedemo did not end; reload the page.');
+    if (/^host: Quake finished the timedemo/.test(line)) {
+      status('The timedemo has finished. Reload the page to play.');
+      $('play').disabled = $('timedemo').disabled = true;
+      $('panel').hidden = false;
+    }
+  }
+
+  // the host's digest of its first 100 frames against the reference's, once the reference is in
+  function showDigest(m) {
+    {
       var div = document.createElement('div');
       if (!expected) { div.textContent = 'Frame digest ' + m[2] + ' (no reference here to compare).'; }
       else {
@@ -171,11 +187,6 @@
         window.quakeInSync = same;
       }
       $('result').appendChild(div);
-    }
-    if (/^host: Quake finished the timedemo/.test(line)) {
-      status('The timedemo has finished. Reload the page to play.');
-      $('play').disabled = $('timedemo').disabled = true;
-      $('panel').hidden = false;
     }
   }
 

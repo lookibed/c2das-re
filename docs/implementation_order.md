@@ -2571,7 +2571,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   keys through `Key_Event`, the demo1 timedemo's first 100 frames held to the Rust repository's
   reference; the wasm `crt` archive carries glibc's `rand` (`dasCRuntime/src/glibc_rand.cpp`, held to
   the host's glibc by `tests/test_crt_rand.das`), as the frames depend on its sequence. Headless Edge:
-  968 frames, the first 100 in sync with the native run (indicative).
+  969 frames, the first 100 in sync with the native run (indicative). The Quake host gets no lint:
+  lint compiles the engine under policies the generated code does not meet (a dead write in
+  `pr_cmds`), so it never reaches the host; its formatting is checked.
   Left: emscripten's `clock()` under `-pthread` can return a
   negative value (`-75812969` in a three-line C test), which the Doom host's `work_started >= 0` check
   reads as "not started", so its `host: timed` line was missing in 2 of the 6 full wasm runs whose

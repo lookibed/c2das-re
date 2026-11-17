@@ -25,7 +25,8 @@ program runs under in a browser and the page around it.
   `puredoom_c/tic_digest.h` its checksum fold, the twin of `tic_digest.das`.
 - `quake/main_web.das` - quakegeneric's browser host (section 7), staged beside the generated
   `quake_entry.das`; `quake/shell.html` its page; `quake/.das_package` its release;
-  `quake/expected_frames.das` writes the reference frames out of the Rust repository's cases.
+  `quake/expected_frames.das` writes the reference frames out of the Rust repository's cases;
+  `quake/frame_digest.das` folds the frame hashes (`tests/test_web_quake.das` tests both).
 - `site/index.html` - the site's landing page, a list of the demos.
 - `site/coi-serviceworker.js` - cross-origin isolation (section 2).
 - `site/pages.yml` - the deploy workflow the ports repository's `gh-pages` branch carries (section 4).
@@ -174,10 +175,15 @@ frame `QG_Tick` with the real time since the last (at most 0.1 s), the 320x240 8
 (Quake's key codes, polled through GLFW as the PureDOOM host does). The base directory is `/q`, with
 the shareware `pak0.pak` under `id1/`.
 
+The engine ends through `c_exit` (the menu's Quit, `Sys_Error`); the host registers a `c_atexit`
+handler that prints `host: Quake exited` and unwinds to the frame, whose calls into the engine run
+guarded, so the lifecycle stops and the page says to reload.
+
 The timedemo (`-timedemo`) passes `+timedemo demo1` and ticks 1/64 s, as the native entry does, as
-many ticks a frame as fit in 12 ms. The host prints the frames the demo took (the engine's own count,
-from the first frame of the timedemo to `cls.timedemo` falling, the first frame not counted) over
-the seconds spent in the ticks, and once the platform layer has hashed 100 frames without the
+many ticks a frame as fit in 12 ms, and gives up after 20000 ticks. The host prints the frames the
+demo took (the engine's own count: from `cls.td_startframe` to `cls.timedemo` falling, the first
+frame not counted) over the seconds spent in the ticks after the start frame, as the engine times
+it, and once the platform layer has hashed 100 frames without the
 console, the FNV-1a 32 digest of the `frame[i]=v` lines the native entry prints for them. The page
 folds the same lines of the reference, which `quake/expected_frames.das` writes out of the Rust
 repository's case `quakegeneric-demo1-std` (`--rust`), and compares. The engine draws random numbers
@@ -187,7 +193,8 @@ section 8).
 The data: the deploy workflow downloads Quake 1.06's shareware zip from id Software's release (the
 mirror lookibed/c2das's `get_pak.sh` uses), checks its sha1 and sha256, extracts `pak0.pak` with lhasa,
 checks it the same way and adds it to the Pages artifact only; the page checks its sha256 again and
-offers a picker for the user's own copy. The port's sound layer is null, so the page is silent. The
-lint of the host compiles the engine under lint's stricter policies, which the generated code does
-not meet, so the build fails only on a finding in the host's own file.
+offers a picker for the user's own copy; a failing mirror leaves the page to its picker and the rest
+of the site deployed. The port's sound layer is null, so the page is silent. The build checks the
+host's formatting but runs no lint over it: lint compiles the engine under its own stricter policies,
+which the generated code does not meet, so it never reaches the host.
 
