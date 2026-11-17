@@ -3108,7 +3108,8 @@ def p9_let_local_fixtures(t : T?) {
             }
         }
         t |> equal(bared, 2)
-        let em <- emit_tu(tu, Sidecar())
+        var em : Emitter
+        emit_tu(em, tu, Sidecar())
         t |> equal(em.error, "")
         has_text(t, em.text, "        let step : int = x + 1\n        while (sum < 100) \{\n")
     }

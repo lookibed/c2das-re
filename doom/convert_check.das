@@ -126,7 +126,8 @@ def convert_units(c_paths : array<string>; side : Sidecar) : array<Verdict> {
     verdicts |> reserve(length(c_paths))
     tus |> reserve(length(c_paths))
     for (c_path in c_paths) {
-        var d <- dump_tu(c_path, target_by_name(TARGET), default_clang(), dump_inputs(side))
+        var d : Dumper
+        dump_tu(d, c_path, target_by_name(TARGET), default_clang(), dump_inputs(side))
         verdicts |> push(Verdict(name = file_stem(c_path), error = empty(d.error) ? "" : first_error_line("dumper: {d.error}")))
         for (decl in d.tu.decls) {
             if ((decl.k == "func" && decl.body != null) || (decl.k == "global" && !decl.is_extern)) {
@@ -140,7 +141,8 @@ def convert_units(c_paths : array<string>; side : Sidecar) : array<Verdict> {
             var unit_side := side
             unit_side.over_indexed <- declared_members(tu, side.over_indexed)
             unit_side.padded <- declared_members(tu, side.padded)
-            let em <- emit_tu(tu, unit_side)
+            var em : Emitter
+            emit_tu(em, tu, unit_side)
             if (!empty(em.error)) {
                 let error = first_error_line("emitter: {em.error}")
                 v.error = key_exists(defined, unbound_name(error)) ? LINK_BOUND + error : error

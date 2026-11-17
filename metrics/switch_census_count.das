@@ -608,7 +608,8 @@ def render_sites(p : ProgramCensus) : string => join([for (f in p.rows); site_li
 //! Every `switch` of the C file `c_path`, dumped under the `linux` dialect with no sidecar;
 //! `error` is the dumper's when it refuses the file.
 def census_c_file(c_path : string; var error : string&) : array<SwitchFacts> {
-    var d <- dump_tu(c_path, target_by_name("linux"), default_clang(), DumpInputs())
+    var d : Dumper
+    dump_tu(d, c_path, target_by_name("linux"), default_clang(), DumpInputs())
     error = d.error
     var rows <- empty(error) ? census_tu(d.tu) : array<SwitchFacts>()
     delete_tu(d.tu)

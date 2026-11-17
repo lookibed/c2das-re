@@ -226,7 +226,9 @@ def dump_inputs(side : Sidecar) : DumpInputs => DumpInputs(defines := side.defin
 // seconds, or the error
 def private dump_unit(c_path, out_dir : string; target : CirTarget; clang : string; side : Sidecar; var res : ConvertResult) : CirTu {
     let dump_started = ref_time_ticks()
-    var d <- dump_tu(c_path, target, empty(clang) ? default_clang() : clang, dump_inputs(side))
+    // on the heap: a `Dumper` in this frame would take a fifth of das's default stack from the walk under it
+    var d = new Dumper
+    dump_tu(*d, c_path, target, empty(clang) ? default_clang() : clang, dump_inputs(side))
     res.dump_seconds += seconds_since(dump_started)
     res.json_bytes += d.json_bytes
     if (!empty(d.error)) {
@@ -256,7 +258,9 @@ def private dump_unit(c_path, out_dir : string; target : CirTarget; clang : stri
 // `tu` emitted, formatted, written to `<out_dir>/<stem>.das` and compile-checked; `tu` is deleted
 def private emit_unit(var tu : CirTu; side : Sidecar; out_dir, stem : string; var res : ConvertResult) {
     let emit_started = ref_time_ticks()
-    let em <- emit_tu(tu, side)
+    // on the heap: an `Emitter` in this frame would take a third of das's default stack from the walk under it
+    var em = new Emitter
+    emit_tu(*em, tu, side)
     delete_tu(tu)
     if (!empty(em.error)) {
         res.error = "emitter: {em.error}"

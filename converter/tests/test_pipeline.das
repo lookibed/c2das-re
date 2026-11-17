@@ -274,7 +274,7 @@ let STACK_SOURCE = "int printf(const char *, ...);\nstatic volatile int n = 1000
 // the bytes of das's default 16 KiB context stack a conversion leaves free: a test that runs the
 // converter in its own process without `options stack` (`compare/tests/test_perf_compare.das`)
 // overflows once the converter's deepest frames reach within this many bytes of the stack's end
-let STACK_SPARE = 2048
+let STACK_SPARE = 4096
 
 // `c_path` converted with `STACK_SPARE` bytes of the stack taken by this frame before the converter's
 def private convert_with_spare(c_path, out_dir : string) : string {
