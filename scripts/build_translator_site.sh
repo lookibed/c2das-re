@@ -2,8 +2,10 @@
 # Build the translator page (web/ARCHITECTURE.md section 8): c2das-re's C-IR-to-das path and
 # c2das-ports' Lua, compiled to wasm64 by the libc++ wasm host, with the examples converted by the
 # native pipeline, into a static site for c2das-re's own GitHub Pages.
-# usage: scripts/build_translator_site.sh --ports <c2das-ports checkout> [--host <wasm host daScript>]
-#                                         [--out <dir>] [--pages <gh-pages checkout> [--commit]]
+# usage: scripts/build_translator_site.sh --ports <c2das-ports checkout> --interp <dir>
+#            [--host <wasm host daScript>] [--out <dir>] [--pages <gh-pages checkout> [--commit]]
+#   --interp the Run button's interpreter: the out/ folder of web/translator/interp/build_interp.sh
+#            (daslang_static.js, .wasm and interp.json), built at VERSIONS.md's pin
 #   --host   the libc++ + C++-exceptions daScript build (default $WASM_HOST, else /root/daScript-wasmhost);
 #            its commit must be VERSIONS.md's pin
 #   --out    the build folder (default out/translator); the site lands in <out>/site
@@ -18,15 +20,16 @@ cd "$repo_root"
 WEB_SCRIPT=build_translator_site
 . scripts/web_common.sh
 
-ports="" host="${WASM_HOST:-/root/daScript-wasmhost}" out="out/translator" pages="" commit=0
+ports="" interp="" host="${WASM_HOST:-/root/daScript-wasmhost}" out="out/translator" pages="" commit=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --ports) ports="$2"; shift 2 ;;
+        --interp) interp="$2"; shift 2 ;;
         --host) host="$2"; shift 2 ;;
         --out) out="$2"; shift 2 ;;
         --pages) pages="$2"; shift 2 ;;
         --commit) commit=1; shift ;;
-        *) sed -n '2,15p' "$0" >&2; exit 2 ;;
+        *) sed -n '2,17p' "$0" >&2; exit 2 ;;
     esac
 done
 
@@ -37,8 +40,12 @@ done
 [ -n "$ports" ] || die "--ports <c2das-ports checkout> is required (the Lua console's conversion)"
 lua="$ports/lua/readable/lua"
 [ -f "$lua/lua.das" ] || die "$lua holds no converted Lua"
+[ -n "$interp" ] || die "--interp <dir> is required (web/translator/interp/build_interp.sh's out/ folder)"
+for f in daslang_static.js daslang_static.wasm interp.json; do [ -f "$interp/$f" ] || die "no $f in $interp"; done
 check_emcc
 check_host "$host"
+interp_pin=$(sed -n 's/.*"daslang": "\([0-9a-f]*\)".*/\1/p' "$interp/interp.json")
+[ "$interp_pin" = "${pin:0:10}" ] || die "the interpreter in $interp is daScript ${interp_pin:-?}, VERSIONS.md pins ${pin:0:10}; rebuild it"
 cm="$host/site/files/cm"
 CM_FILES="codemirror.min.js codemirror.min.css simple-mode.js daslang-keywords.js daslang-mode.js cm-forge.css LICENSE"
 for f in $CM_FILES; do [ -f "$cm/$f" ] || die "no $f in the CodeMirror bundle at $cm"; done
@@ -46,7 +53,7 @@ for f in liblibDaScript.a liblibUriParser.a; do
     [ -f "$host/web/output64/lib/$f" ] || die "no $f in $host/web/output64/lib: the translator links the whole compiler"
 done
 # the hosts pass the wasm host's format gate
-for f in web/translator/main_web.das web/translator/lua_web.das web/translator/precompute.das; do
+for f in web/translator/main_web.das web/translator/lua_web.das web/translator/precompute.das web/translator/bundle.das; do
     "$host/bin/daslang" "$host/utils/das-fmt/dasfmt.das" -- --path "$f" --verify >/dev/null \
         || die "$f is not formatted (das-fmt of $host)"
 done
@@ -111,11 +118,14 @@ for app in translator lua; do
 done
 cp web/translator/site/* "$site/"
 cp web/site/coi-serviceworker.js "$site/"
+cp "$interp/daslang_static.js" "$interp/daslang_static.wasm" "$site/"
+das web/translator/bundle.das -- c_runtime "$site/c_runtime.json" || die "c_runtime did not bundle"
 for f in $CM_FILES; do
     cp "$cm/$f" "$site/cm/"
 done
-printf '{"c2das_re": "%s", "ports": "%s", "daslang": "%s", "emscripten": "5.0.7"}\n' \
-    "$c2das" "$portsha" "${pin:0:10}" > "$site/build.json"
+interp_crt=$(sed -n 's/.*"crt": "\([0-9a-f]*\)".*/\1/p' "$interp/interp.json")
+printf '{"c2das_re": "%s", "ports": "%s", "daslang": "%s", "emscripten": "5.0.7", "interp_crt": "%s"}\n' \
+    "$c2das" "$portsha" "${pin:0:10}" "$interp_crt" > "$site/build.json"
 echo "build_translator_site: site in $site (c2das-re $c2das, c2das-ports $portsha, daScript ${pin:0:10})"
 
 [ -n "$pages" ] || exit 0

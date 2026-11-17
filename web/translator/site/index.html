@@ -58,12 +58,12 @@
           <button data-tab="cir">C-IR</button>
           <button data-tab="output">output</button>
         </div>
-        <span id="timing" class="status"></span>
+        <span><span id="timing" class="status"></span> <button class="primary" id="run" title="run this module in daslang's interpreter (wasm), here in the page">&#9654; run</button></span>
       </div>
       <div id="tab-das"></div>
       <pre class="out" id="tab-diff" hidden></pre>
       <pre class="out" id="tab-cir" hidden></pre>
-      <pre class="out" id="tab-output" hidden></pre>
+      <div id="tab-output" hidden><pre class="out" id="run-out"></pre><pre class="out" id="recorded"></pre></div>
     </div>
   </div>
 

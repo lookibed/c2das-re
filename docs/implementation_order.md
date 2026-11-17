@@ -2587,6 +2587,12 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   negative value (`-75812969` in a three-line C test), which the Doom host's `work_started >= 0` check
   reads as "not started", so its `host: timed` line was missing in 2 of the 6 full wasm runs whose
   output was kept.
+- **P9.39 Run on the translator page** (ruling 38 addendum 37, the owner's option b). The page's Run
+  runs the shown module in daScript's playground interpreter `daslang_static`, built once at the pin
+  on HOME-PC (`web/translator/interp/build_interp.sh`, memory64 + threads, this tree's crt linked in
+  as an in-tree module; 47.6 MB wasm), with `c_runtime` loaded by `-load_module` from a bundle; a fresh
+  frame per run. All seven examples' runs match their recorded output. The wasm64 compile-in-app path
+  stays open in lookibed/daScript#65.
 - **P9.38 The translator page** (ruling 38 addendum 37; note `/root/notes/research/wasm/translator_page.md`).
   Phase 1 (branch `p9.38-translator-page`): c2das-re's own GitHub Pages runs the translator's C-IR-to-das
   half in the browser, `converter/cir_emit.das` (the CLI's own path, `pipeline.das` now emits through it)

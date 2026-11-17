@@ -51,3 +51,9 @@ footer a { color: var(--fg-dim); }
 /* cm-forge.css sizes an editor to its container */
 #csrc, #tab-das { height: 560px; }
 #lua-src { height: 260px; }
+#run-out { height: auto; max-height: 360px; border-bottom: 1px solid var(--rule); }
+#run-out:empty { display: none; }
+#run-out .err { color: var(--red); } #run-out .meta { color: var(--fg-faint); }
+#recorded { height: auto; max-height: 300px; color: var(--fg-dim); }
+.tabs button, #run { white-space: nowrap; }
+.pane-head > span { white-space: nowrap; }
