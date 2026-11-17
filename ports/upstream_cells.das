@@ -17,20 +17,14 @@ struct UpstreamCell {
     fixed_over : string
 }
 
-//! What each fork issue does to a cell, the footnote's first half, in the footnotes' order.
-let UPSTREAM_ISSUES : array<tuple<issue : int; what : string>> <- [(issue = 48, what = "daslang's AOT generator reads every module global through a hash lookup (`das_global<T, mnh>`), though the AOT context fixes each global's offset when it is generated")]
+//! What each fork issue does to a cell, the footnote's first half, in the footnotes' order: none
+//! on the pin `b7d8f6f52f`, where #48's fix (upstream #4652) took its AOT cells to the x native
+//! they gave with the defect worked around. A `var`, so a test can stand an issue in.
+var UPSTREAM_ISSUES : array<tuple<issue : int; what : string>>
 
-//! The cells #48 slows, proven by the A/B of the same generated C++ with every global read
-//! rewritten to its fixed offset (`das_global_solid`), exclusive on box PC at daScript `6401904cf9`;
-//! doomgeneric's by the generator patch of `aot_cpp.das` that emits those reads.
-let UPSTREAM_CELLS <- [
-    UpstreamCell(program = "puredoom", tier = "aot", issue = 48, fixed = 1.14lf, fixed_over = "readable, demo1"),
-    UpstreamCell(program = "doomgeneric", tier = "aot", issue = 48, fixed = 1.13lf, fixed_over = "readable"),
-    UpstreamCell(program = "sieve", tier = "aot", issue = 48, fixed = 1.63lf),
-    UpstreamCell(program = "str_copy", tier = "aot", issue = 48, fixed = 1.40lf),
-    UpstreamCell(program = "switch_local", tier = "aot", issue = 48, fixed = 1.00lf),
-    UpstreamCell(program = "matmul", tier = "aot", issue = 48, fixed = 1.01lf)
-]
+//! The cells a fork issue slows (`ARCHITECTURE_UPSTREAM.md`): none on the pin `b7d8f6f52f`. A
+//! `var`, so a test can stand a cell in.
+var UPSTREAM_CELLS : array<UpstreamCell>
 
 let private ISSUE_URL = "https://github.com/lookibed/daScript/issues/"
 

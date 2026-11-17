@@ -5,8 +5,9 @@ would take for a defect, each with its reason (`ARCHITECTURE_COMMON.md`, the exc
 
 ## 1. The ledger
 
-- `sieve`, `str_copy`, `switch_local` and `matmul` / `aot`: 8.1, 3.6, 1.7 and 1.6 times native. The
-  generated C++ finds a module global through the context's mangled-name lookup at every access
+- `sieve`, `str_copy`, `switch_local` and `matmul` / `aot`: 1.62, 1.41, 1.01 and 1.04 times native on
+  the pin `b7d8f6f52f` (exclusive, machine quiet, 2026-11-17), 8.1, 3.6, 1.7 and 1.6 before it. The
+  generated C++ found a module global through the context's mangled-name lookup at every access
   (`das_global<T, mnh>`, a perfect-hash probe), and a C file-scope array is a module global. In
   `sieve` every iteration stores a byte into the array; a `uint8_t` store may alias anything, so clang
   keeps the probe inside the loop (an `int` array built with strict aliasing is as slow, so
@@ -25,5 +26,9 @@ would take for a defect, each with its reason (`ARCHITECTURE_COMMON.md`, the exc
   `switch_local` 1.00 and `matmul` 1.01 times native, PureDOOM demo1 1.14 against 5.56, and
   doomgeneric 1.13 against 3.66 with `aot_cpp.das` patched to emit those reads (exclusive;
   the A/B, the das-only repro and the generated C++ are in lookibed/daScript#48). No option, flag or
-  annotation reached that emitter path before #4652; the cells keep their (#48) marks until an
-  exclusive AOT re-capture on the pin confirms the gain.
+  annotation reached that emitter path before #4652. On the pin the converted programs' AOT bodies
+  hold no `das_global<` (PureDOOM 7779 `das_global_solid<`, doomgeneric 7577), and the exclusive
+  check gave `sieve` 1.62, `str_copy` 1.41, `switch_local` 1.01, `matmul` 1.04, PureDOOM demo1
+  (readable) 1.15 and doomgeneric (readable) 1.13 times native, each within its A/B value, so no
+  cell carries a (#48) mark (`ports/ARCHITECTURE_UPSTREAM.md`). What stays above native in `sieve`
+  and `str_copy` is not the lookup.

@@ -7,6 +7,7 @@ require daslib/json_boost
 require ../ports_render.das
 require ../variants.das
 require ../../metrics/criteria_file.das
+require _standin_upstream
 
 //! The renderer over fixed captures: the times, ratio and not-yet text, the geometric means of
 //! the projects table, the top-level README's marker, the license block and the VERSIONS.md pin.
@@ -655,23 +656,25 @@ def test_variants(t : T?) {
 [test]
 def test_variants_upstream(t : T?) {
     t |> run("an AOT cell a fork issue slows carries the issue, with one footnote; a program it does not slow carries none") @(t : T?) {
-        var readable <- column_of("readable", [("checks", "\"safe\"")], 1000)
-        readable.file.program = "puredoom"
-        readable.speed_fallback["jit"] = 1.07lf
-        readable.speed_fallback["aot"] = 5.189lf
-        readable.speed_from = "a capture"
-        var fast <- column_of("fast", [("checks", "\"off\"")], 1000)
-        fast.file.program = "puredoom"
-        var columns : array<VariantColumn> <- [ <- readable, <- fast]
-        let text = render_variants(columns, false)
-        t |> equal(join(row_of(text, "x native, AOT"), "|"), "5.19 (1) (#48)|not yet")
-        t |> equal(join(row_of(text, "x native, JIT"), "|"), "1.07 (1)|not yet")
-        t |> equal(length(split(text, "- (#48) ")) - 1, 1, text)
-        t |> success(text |> contains("- (#48) daslang's AOT generator reads every module global through a hash lookup (`das_global<T, mnh>`), though the AOT context fixes each global's offset when it is generated; the same program's AOT reading each global at its fixed offset runs puredoom 1.14 (readable, demo1) x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48).\n"), text)
-        columns[0].file.program = "lua"
-        columns[1].file.program = "lua"
-        let lua = render_variants(columns, false)
-        t |> equal(join(row_of(lua, "x native, AOT"), "|"), "5.19 (1)|not yet")
-        t |> success(!(lua |> contains("#48")), lua)
+        with_standin_marks() $ {
+            var readable <- column_of("readable", [("checks", "\"safe\"")], 1000)
+            readable.file.program = "puredoom"
+            readable.speed_fallback["jit"] = 1.07lf
+            readable.speed_fallback["aot"] = 5.189lf
+            readable.speed_from = "a capture"
+            var fast <- column_of("fast", [("checks", "\"off\"")], 1000)
+            fast.file.program = "puredoom"
+            var columns : array<VariantColumn> <- [ <- readable, <- fast]
+            let text = render_variants(columns, false)
+            t |> equal(join(row_of(text, "x native, AOT"), "|"), "5.19 (1) (#48)|not yet")
+            t |> equal(join(row_of(text, "x native, JIT"), "|"), "1.07 (1)|not yet")
+            t |> equal(length(split(text, "- (#48) ")) - 1, 1, text)
+            t |> success(text |> contains("- (#48) daslang's AOT generator reads every module global through a hash lookup (`das_global<T, mnh>`), though the AOT context fixes each global's offset when it is generated; the same program's AOT reading each global at its fixed offset runs puredoom 1.14 (readable, demo1) x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48).\n"), text)
+            columns[0].file.program = "lua"
+            columns[1].file.program = "lua"
+            let lua = render_variants(columns, false)
+            t |> equal(join(row_of(lua, "x native, AOT"), "|"), "5.19 (1)|not yet")
+            t |> success(!(lua |> contains("#48")), lua)
+        }
     }
 }
