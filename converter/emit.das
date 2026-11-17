@@ -2825,11 +2825,12 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
     return value("{wrap(lhs, prec)} {spelled}{OPERATOR_MARK} {wrap(rhs, prec + 1)}", prec)
 }
 
+// pointer `e`'s address as `uint64`, the operand of a pointer relation
+def private address_bits(var em : Emitter; e : Em) : string => unsafe_value(em, "reinterpret<uint64>({e.text})", PREC_PRIMARY).text
+
 // `p + n`, `p - n`, `p - q`: das scales a pointer step by the element and gives a difference
 // in elements, as C does, as int64; a byte pointer to a marshal-only record steps and counts
 // in that record's C size
-// pointer `e`'s address as `uint64`, the operand of a pointer relation
-def private address_bits(var em : Emitter; e : Em) : string => unsafe_value(em, "reinterpret<uint64>({e.text})", PREC_PRIMARY).text
 
 def private pointer_arithmetic(var em : Emitter; tu : CirTu; x : CirExpr; lhs, rhs : Em; loc : CirLoc) : Em {
     let prec = BIN_PREC?[x.op] ?? 0

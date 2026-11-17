@@ -2477,7 +2477,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   below-level label but never jumps to it (n < 10 never dispatches i = 9); PureDOOM's ratio here is chain's
   fps over the arm's, the predictions file's the inverse (every cell hits either way).
 - **P9.34 Interpreter profiles and pointer comparisons without `intptr`** (ruling 38 addendum 32; branch
-  `p9.34-intptr`). Fresh `--das-profiler` profiles on main ef5b135, normal `heavy` jobs at 4G (no timing):
+  `p9.34b-intptr`). Fresh `--das-profiler` profiles on main ef5b135, normal `heavy` jobs at 4G (no timing):
   `perf/profiles/doom_demo1_interp.txt` (600 tics; `builtin intptr` 17.3% of self time, 19.0M calls, 12.97M
   of them `W_CheckNumForName`'s `lump_p-- != lumpinfo`) and binjgb's first, `perf/profiles/binjgb_interp.txt`.
   doomgeneric is not profiled: its bench prints a fixed 1000 frames, past the profiler's per-call event
@@ -2508,7 +2508,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   | Lua nbody | 0.956 | 0.958 | 0.98-1.01 miss | 0.98-1.02 miss |
   | Lua spectral_norm | 0.988 | 0.957 | 0.98-1.01 hit | 0.98-1.02 miss |
 
-  11 of 16 hit. The PureDOOM interp misses go the predicted way but gain about a tenth of the 17.3% the
+  10 of 16 hit. The PureDOOM interp misses go the predicted way but gain about a tenth of the 17.3% the
   profile charged to `intptr`: the profiler inflates a small leaf call's cost, as the predictions warned,
   and the 30-40 ns per call estimate was high. The Lua nbody and spectral_norm misses are gains the
   predictions did not expect (no pointer compare was thought to be on their path); not profiled here, so
