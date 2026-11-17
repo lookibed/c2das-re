@@ -241,6 +241,8 @@ static void update(void)
 {
     if (!running) {
         emscripten_cancel_main_loop();
+        glfwDestroyWindow(window);
+        glfwTerminate();
         return;
     }
     glfwPollEvents();

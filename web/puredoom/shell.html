@@ -159,6 +159,7 @@
     // the other build's link carries this page's query and the uncapped checkbox
     ['link-daslang', 'link-c'].forEach(function (id) {
       $(id).addEventListener('click', function (e) {
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
         var q = new URLSearchParams(location.search);
         if ($('uncapped').checked) q.set('uncapped', '1'); else q.delete('uncapped');
         var qs = q.toString();
