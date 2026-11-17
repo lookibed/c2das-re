@@ -2504,6 +2504,39 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   negative value (`-75812969` in a three-line C test), which the Doom host's `work_started >= 0` check
   reads as "not started", so its `host: timed` line was missing in 2 of the 6 full wasm runs whose
   output was kept.
+- **P9.36 Follow-ups of the repin to daScript `2decba91d5`** (ruling 38, repin 3; PRs #246, #247 and #249;
+  notes `/root/notes/parallel/repin3/notes.md`). The pin fixed fork issues the converter still works around,
+  and the repin's reviews left small items. Each line is a later row, resumed from here, none started:
+  (a) the increment-first flag for a `for` body with a das label at its level
+  (`converter/ARCHITECTURE_EMITTER_LOOPS.md`, `emit.das` `labels_at_level`, `test_switch_table.das`,
+  `p9_for_labels.c`). The interpreter lands such a label right now (daScript `2d4b23b491`,
+  lookibed/daScript#63, F113), so the `finally` form could take the labelled body again. That needs the suites
+  and Lua, PureDOOM and binjgb under every tier and dispatch mode first.
+  (b) the `void *` site of a typed-pointer macro that stays expanded (`flag_typed_pointer_arguments`,
+  `converter/ARCHITECTURE_EMITTER_MACROS.md`): a `T?` argument picks the `T?` overload now (daScript
+  `c5491d404d`, lookibed/daScript#57, F111), so wasm3's `m3_Free` sites could fold.
+  (c) F59 and F111: `ptr - n` on a computed pointer compiles, and a `null` first arm of `?:` takes the other
+  arm's type, so the negated-count spelling and the `default<T?>` first arm could go (a readability gain).
+  (d) F107 and F108: the splice of an expression-body `[inline] def` is the expression as written and a call
+  under `addr(...)` is spliced, so whether the `[c_macro]` function-macro fold (P9.20) is still faster than
+  `[inline]` under the interpreter is one exclusive A/B; F107's timings are those of `abf1d40e35`.
+  (e) `docs/probe-findings.md`: the probe-cell titles of F59, F107, F108 and F109 name runs that were renamed;
+  F112's probe compiles both walks in one child and should use one child per walk.
+  (f) the default-stack fix (#249): `STACK_SPARE` 4096 is not derived from what
+  `compare/tests/test_perf_compare.das` needs (1 to 3 KiB of its slack is unpinned); `dump_tu` and `emit_tu`
+  rely on a fresh struct and reset nothing; `doom/convert_check.das` and `metrics/switch_census_count.das`
+  still hold a `Dumper` or an `Emitter` in a frame (their entries run under a 1 MiB stack).
+  (g) the ratchets on the pin: c-testsuite passes 204 with 00187 newly passing (it writes `fred.txt` into the
+  working folder, so the run leaves an untracked file), gcc-torture passes 1210 with 921019-1, 980605-1,
+  pr15296, pr67037, pr68390 and pure-1 newly passing: one `--update` each records them. csmith does not run on
+  the WSL box (gcc 11.4.0 against the pinned 14.2.0); its 182 seeds are owed to a box with the pinned gcc.
+  (h) an unbounded `dastest --isolated-mode` probes run is OOM-killed under `heavy --max 4G` (32 JIT children
+  at once, exit 137 each, about 50 false reds); the preflight's two workers run clean. A suite `--timeout`
+  ends dastest but leaves the compare suite's never-ending lane child running.
+  (i) Lua's exe test-suite cell is still P9.31 (c): the exe names the crt module by a relative path, so it
+  loads from the repository root (error checks 8 of 8, luac 33 of 33) and not from the test-suite folder
+  (0 of 30). (j) `docs/performance.md` and the ports tables carry the numbers of the `6401904cf9` capture
+  until the re-capture on this pin (step 6, a timing run, not started without a ruling).
 
 ## P6 — Doom
 

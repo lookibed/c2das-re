@@ -225,10 +225,19 @@ def dump_inputs(side : Sidecar) : DumpInputs => DumpInputs(defines := side.defin
 // dumper's tree, which the caller deletes, and `res` carrying the C-IR, the dump's bytes and
 // seconds, or the error
 def private dump_unit(c_path, out_dir : string; target : CirTarget; clang : string; side : Sidecar; var res : ConvertResult) : CirTu {
-    let dump_started = ref_time_ticks()
     // on the heap: a `Dumper` in this frame would take a fifth of das's default stack from the walk under it
     var d = new Dumper
-    dump_tu(*d, c_path, target, empty(clang) ? default_clang() : clang, dump_inputs(side))
+    var tu <- dump_checked(*d, c_path, out_dir, target, clang, side, res)
+    unsafe {
+        delete d
+    }
+    return <- tu
+}
+
+// `dump_unit`'s work over the dumper `d`, whose tree it hands out
+def private dump_checked(var d : Dumper; c_path, out_dir : string; target : CirTarget; clang : string; side : Sidecar; var res : ConvertResult) : CirTu {
+    let dump_started = ref_time_ticks()
+    dump_tu(d, c_path, target, empty(clang) ? default_clang() : clang, dump_inputs(side))
     res.dump_seconds += seconds_since(dump_started)
     res.json_bytes += d.json_bytes
     if (!empty(d.error)) {
@@ -262,18 +271,25 @@ def private emit_unit(var tu : CirTu; side : Sidecar; out_dir, stem : string; va
     var em = new Emitter
     emit_tu(*em, tu, side)
     delete_tu(tu)
-    if (!empty(em.error)) {
-        res.error = "emitter: {em.error}"
+    let emit_error = em.error
+    let text = em.text
+    if (empty(emit_error)) {
+        res.c_functions = em.c_functions
+        res.function_count = em.function_count
+        res.fold_counts := em.fold_counts
+    }
+    unsafe {
+        delete em
+    }
+    if (!empty(emit_error)) {
+        res.error = "emitter: {emit_error}"
         return
     }
-    res.c_functions = em.c_functions
-    res.function_count = em.function_count
-    res.fold_counts := em.fold_counts
-    if (has_mark(em.text)) {
+    if (has_mark(text)) {
         res.error = "emitter: a line-layout mark reached the module"
         return
     }
-    res.das_text = format_source_string(em.text)
+    res.das_text = format_source_string(text)
     res.emit_seconds = seconds_since(emit_started)
     res.das_path = path_join(out_dir, "{stem}.das")
     if (!fwrite(res.das_path, res.das_text)) {

@@ -7950,7 +7950,8 @@ def private unshadow_locals(var tu : CirTu; var carried : table<uint64>; var bou
         w.globals := globals
         count_decls(d.body, w.decl_count)
         // the blocks a goto enters lose their braces, which `plan_labels` decides at emission; the
-        // planning emitter lives on the heap, since `emit_unit` already holds one on the stack
+        // planning emitter lives on the heap, as the module's own does (`emit_unit`), so that neither
+        // takes das's default stack from the walks under it
         var plan = new Emitter()
         // under `switch_dispatch` `goto` a re-dispatched switch's body is flat too
         // (`open_redispatched`), under `table` a dense one's (`open_dense`)
