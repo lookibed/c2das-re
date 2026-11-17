@@ -29,13 +29,14 @@ die() { echo "build_web: $*" >&2; exit 1; }
 doom="$ports/puredoom-readable"
 [ -f "$doom/processed/doom/doom_main.das" ] || die "$doom/processed/doom holds no converted PureDOOM"
 
+emver=$(emcc --version 2>/dev/null | head -1) || die "emcc is not on PATH (source emsdk_env.sh)"
+case "$emver" in *" 5.0.7 "*) ;; *) die "emcc is not emscripten 5.0.7: $emver" ;; esac
+
 # one daScript version across the pin and its tools (VERSIONS.md): the host is built at the pin's commit
 pin=$(sed -n 's/^daScript commit: \([0-9a-f]\{40\}\).*/\1/p' VERSIONS.md)
 have=$(git -C "$host" rev-parse HEAD 2>/dev/null) || die "$host is not a daScript checkout"
 [ "$have" = "$pin" ] || die "the wasm host $host is at $have, VERSIONS.md pins $pin; rebuild it with web/build_wasm_host.sh"
 ldd "$host/bin/daslang" | grep -q 'libc++\.so' || die "$host/bin/daslang does not link libc++: not a wasm host"
-emver=$(emcc --version 2>/dev/null | head -1) || die "emcc is not on PATH (source emsdk_env.sh)"
-case "$emver" in *" 5.0.7 "*) ;; *) die "emcc is not emscripten 5.0.7: $emver" ;; esac
 
 out="$(mkdir -p "$out" && cd "$out" && pwd)"
 stage="$out/stage/puredoom"
