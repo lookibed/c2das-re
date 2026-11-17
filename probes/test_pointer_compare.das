@@ -53,4 +53,12 @@ def test_pointer_compare(tt : T?) {
         t |> equal(taken.rc, 0, taken.out)
         t |> equal(strip(taken.out), "true", taken.out)
     }
+    tt |> run("the interpreter refuses `reinterpret<uint64>` over a `reinterpret<void?>` of a pointer sum (lookibed/daScript#64); over the sum itself it takes it") @(t : T?) {
+        let source = "options gen2\nvar g : int[4]\n[export]\ndef main \{\n    unsafe \{\n        var p : int? = addr(g[0])\n        print(\"\{reinterpret<uint64>(@SUM@) == reinterpret<uint64>(addr(g[1]))\}\\n\")\n    \}\n\}\n"
+        let nested = daslang_child("pointer_sum_nested", replace(source, "@SUM@", "reinterpret<void?>(p + 1)"), false)
+        t |> success(nested.out |> contains("typed eval on wrong extern return kind, i_das_ptr_add"), nested.out)
+        let plain = daslang_child("pointer_sum_plain", replace(source, "@SUM@", "p + 1"), false)
+        t |> equal(plain.rc, 0, plain.out)
+        t |> equal(strip(plain.out), "true", plain.out)
+    }
 }
