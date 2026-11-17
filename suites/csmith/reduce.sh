@@ -33,11 +33,11 @@ cat > "$dir/interesting.sh" <<EOF
 # The interestingness test of seed $seed (written by suites/csmith/reduce.sh): run by the reducer
 # in a folder holding a candidate min.c.
 set -u
-gcc -O1 -Wall -Wextra -funsigned-char -c -o /dev/null min.c 2> warnings.txt || exit 1
+"${CC:-gcc}" -O1 -Wall -Wextra -funsigned-char -c -o /dev/null min.c 2> warnings.txt || exit 1
 grep -qE 'uninitiali[sz]ed|incompatible|without a cast|control reaches end|defaults to|no return statement|implicit declaration|array bounds|may be undefined' warnings.txt && exit 1
-gcc -O0 -fwrapv -funsigned-char -w -fsanitize=address,undefined -fno-sanitize-recover=all -o sanitized min.c || exit 1
+"${CC:-gcc}" -O0 -fwrapv -funsigned-char -w -fsanitize=address,undefined -fno-sanitize-recover=all -o sanitized min.c || exit 1
 timeout 10 ./sanitized > sanitized.out 2>&1 || exit 1
-gcc -O0 -fwrapv -funsigned-char -w -o by_gcc min.c || exit 1
+"${CC:-gcc}" -O0 -fwrapv -funsigned-char -w -o by_gcc min.c || exit 1
 "$PATH_TO_LIBCLANG/bin/clang" -O0 -fwrapv -funsigned-char -w -o by_clang min.c || exit 1
 timeout 10 ./by_gcc > by_gcc.out 2>&1 || exit 1
 timeout 10 ./by_clang > by_clang.out 2>&1 || exit 1
