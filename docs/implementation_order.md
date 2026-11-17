@@ -1526,6 +1526,13 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   C++, sieve 8.21 -> 1.63, str_copy 3.60 -> 1.40, switch_local 1.65 -> 1.00, matmul 1.59 -> 1.01, PureDOOM demo1
   5.56 -> 1.14 x native (`TIMING-aot25`, exclusive, machine quiet). No option, flag or annotation reaches that
   path, so no converter change still holds; lookibed/daScript#48 is reopened with the repro.
+  Closed (2026-11-17, ruling 38 repin 4): upstream #4652 (`960cae138a`, in the pin `b7d8f6f52f`) makes the
+  `-ctx` body read `das_global_solid<T, offset>` under solid_context, so `test_aot_globals` flipped: the bodies
+  are no longer identical (#256). The converted programs' AOT C++ holds no `das_global<` (PureDOOM 7779
+  `das_global_solid<`, doomgeneric 7577). The exclusive check (TIMING-48-repin4, machine quiet, 7 rounds) gave
+  sieve 1.62, str_copy 1.41, switch_local 1.01, matmul 1.04, PureDOOM demo1 (readable) 1.15 and doomgeneric
+  (readable) 1.13 x native, each within its prediction (`/root/notes/predictions/2026-11-17-48-repin.md`). The
+  `UPSTREAM_CELLS` entries and the #48 footnote are gone; the ports tables lose their (#48) marks at the next publish.
 - **P8.15 Harness gaps found by the repin** (from P8.12 step 4 and the capture): (a) `lua/run.das --luac-check`
   refuses `--tier exe` though `luac_check` goes through `run_tier` (exe checked by hand: 33/33); (b) `doom/run.das`
   `without_define` edits the sidecar as text and leaves a trailing comma when the removed define is the last of a

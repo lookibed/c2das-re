@@ -3,45 +3,60 @@ require dastest/testing_boost public
 require strings
 require daslib/strings_boost
 require ../upstream_cells.das
+require _standin_upstream
 
 //! The cells a daslang defect slows: which program and lane a fork issue marks, the marked text,
-//! and the footnote lines.
+//! and the footnote lines, over a stand-in #48; and the committed lists, empty on the pin.
 
 [test]
 def test_upstream_issue(t : T?) {
     t |> run("an issue marks its program under its tier and the tier's variant lanes only") @(t : T?) {
-        t |> equal(upstream_issue("sieve", "aot"), 48)
-        t |> equal(upstream_issue("puredoom", "aot-fast"), 48)
-        t |> equal(upstream_issue("doomgeneric", "aot"), 48)
-        t |> equal(upstream_issue("doomgeneric", "jit"), 0)
-        t |> equal(upstream_issue("sieve", "jit"), 0)
-        t |> equal(upstream_issue("sieve", "aotx"), 0)
-        t |> equal(upstream_issue("fib_loop", "aot"), 0)
+        with_standin_marks() $ {
+            t |> equal(upstream_issue("sieve", "aot"), 48)
+            t |> equal(upstream_issue("puredoom", "aot-fast"), 48)
+            t |> equal(upstream_issue("doomgeneric", "aot"), 48)
+            t |> equal(upstream_issue("doomgeneric", "jit"), 0)
+            t |> equal(upstream_issue("sieve", "jit"), 0)
+            t |> equal(upstream_issue("sieve", "aotx"), 0)
+            t |> equal(upstream_issue("fib_loop", "aot"), 0)
+        }
+    }
+    t |> run("on the pin b7d8f6f52f no cell is marked: #48's AOT cells left the lists with its fix") @(t : T?) {
+        t |> equal(length(UPSTREAM_CELLS), 0)
+        t |> equal(length(UPSTREAM_ISSUES), 0)
+        for (program in ["puredoom", "doomgeneric", "sieve", "str_copy", "switch_local", "matmul"]) {
+            t |> equal(upstream_marked("1.15", program, "aot"), "1.15", program)
+        }
+        t |> equal(length(upstream_footnotes(["sieve", "puredoom"], ["aot"])), 0)
     }
 }
 
 [test]
 def test_upstream_marked(t : T?) {
     t |> run("a number gets the issue after it; a word, an empty cell or an unmarked cell stays") @(t : T?) {
-        t |> equal(upstream_marked("8.07", "sieve", "aot"), "8.07 (#48)")
-        t |> equal(upstream_marked("n/a", "sieve", "aot"), "n/a")
-        t |> equal(upstream_marked("", "sieve", "aot"), "")
-        t |> equal(upstream_marked("8.07", "sieve", "exe"), "8.07")
-        t |> equal(upstream_marked("1.20", "binjgb", "aot"), "1.20")
+        with_standin_marks() $ {
+            t |> equal(upstream_marked("8.07", "sieve", "aot"), "8.07 (#48)")
+            t |> equal(upstream_marked("n/a", "sieve", "aot"), "n/a")
+            t |> equal(upstream_marked("", "sieve", "aot"), "")
+            t |> equal(upstream_marked("8.07", "sieve", "exe"), "8.07")
+            t |> equal(upstream_marked("1.20", "binjgb", "aot"), "1.20")
+        }
     }
 }
 
 [test]
 def test_upstream_footnotes(t : T?) {
     t |> run("one line per issue naming the shown programs it slows in table order, none without a marked lane") @(t : T?) {
-        let lines <- upstream_footnotes(["fib_loop", "matmul", "sieve"], ["interp", "aot"])
-        t |> equal(length(lines), 1)
-        t |> success(lines[0] |> starts_with("- (#48) daslang's AOT generator reads every module global through a hash lookup"), lines[0])
-        t |> success(lines[0] |> ends_with(" runs sieve 1.63, matmul 1.01 x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48)."), lines[0])
-        t |> equal(length(upstream_footnotes(["sieve"], ["interp", "jit"])), 0)
-        t |> equal(length(upstream_footnotes(["fib_loop"], ["aot"])), 0)
-        let doom <- upstream_footnotes(["doomgeneric"], ["aot-fast"])
-        t |> equal(length(doom), 1)
-        t |> success(doom[0] |> ends_with(" runs doomgeneric 1.13 (readable) x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48)."), doom[0])
+        with_standin_marks() $ {
+            let lines <- upstream_footnotes(["fib_loop", "matmul", "sieve"], ["interp", "aot"])
+            t |> equal(length(lines), 1)
+            t |> success(lines[0] |> starts_with("- (#48) daslang's AOT generator reads every module global through a hash lookup"), lines[0])
+            t |> success(lines[0] |> ends_with(" runs sieve 1.63, matmul 1.01 x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48)."), lines[0])
+            t |> equal(length(upstream_footnotes(["sieve"], ["interp", "jit"])), 0)
+            t |> equal(length(upstream_footnotes(["fib_loop"], ["aot"])), 0)
+            let doom <- upstream_footnotes(["doomgeneric"], ["aot-fast"])
+            t |> equal(length(doom), 1)
+            t |> success(doom[0] |> ends_with(" runs doomgeneric 1.13 (readable) x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48)."), doom[0])
+        }
     }
 }
