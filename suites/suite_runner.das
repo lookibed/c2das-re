@@ -141,6 +141,8 @@ struct ConvertedRun {
     output : string
 }
 
+//! The module runs in `work`, so a file the C program writes (c-testsuite 00187's `fred.txt`)
+//! lands beside its conversion, never in the tree.
 //! `flags` go to the interpreter or the JIT before the module (`-no-module-cache`). The run's
 //! children log at `warning`: the JIT and the exe build report themselves at `info`, which
 //! `scripts/env.sh` sets, and those lines would land in the output a verdict judges.
@@ -154,7 +156,8 @@ def convert_and_run(c_path, work, target, tier : string; timeout : float; flags 
     run.converted = true
     let level = get_env_variable("DAS_LOG_LEVEL")
     set_env_variable("DAS_LOG_LEVEL", "warning")
-    run.rc = run_tier(res.das_path, tier, work, run.output, CONVERTED_MODULES, timeout, flags)
+    let no_args : array<string>
+    run.rc = run_tier(res.das_path, tier, work, run.output, CONVERTED_MODULES, timeout, flags, no_args, no_args, work)
     set_env_variable("DAS_LOG_LEVEL", level)
     return run
 }

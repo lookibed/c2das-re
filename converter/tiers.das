@@ -41,9 +41,10 @@ def private bare_ident_of(name : string) : string {
     }
 }
 
-def private run(args : array<string>; var output : string&; timeout : float = 600.0) : int {
+def private run(args : array<string>; var output : string&; timeout : float = 600.0; cwd : string = "") : int {
     var out : string
-    let rc = run_and_capture(args, out, timeout)
+    let noenv : array<string>
+    let rc = run_and_capture(args, cwd, noenv, out, timeout)
     output = "{output}{out}"
     return rc
 }
@@ -334,28 +335,39 @@ def run_tier(das_path : string; tier : string; work_dir : string; var output : s
 //! interpreter's or the JIT's `daslang`, or the binary `exe` and `aot` build (perf's `guarded`
 //! prefix, which keeps a crash from dumping core); the build steps run bare. `exe` and `aot` run
 //! the binary `build_tier` builds or reuses; a failed build's exit code is returned.
-def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>; timeout : float; flags : array<string>; program_args : array<string>; wrapper : array<string>) : int {
+def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>; timeout : float; flags : array<string>; program_args : array<string>; wrapper : array<string>) : int =>
+    run_tier(das_path, tier, work_dir, output, module_dirs, timeout, flags, program_args, wrapper, "")
+
+// `path` made absolute when `cwd` is set, so the run in `cwd` finds what the caller's relative `path` names
+def private from_caller(path, cwd : string) : string => empty(cwd) ? path : get_full_file_name(path)
+
+//! `cwd`, when set, is the folder the program runs in, the files it writes landing there (the
+//! build steps run in the caller's); `das_path`, `module_dirs` and the binary are taken from the
+//! caller's folder, the module folders absolute in the build too, since an `exe` binary loads a
+//! module from the folder its build named.
+def run_tier(das_path : string; tier : string; work_dir : string; var output : string&; module_dirs : array<string>; timeout : float; flags : array<string>; program_args : array<string>; wrapper : array<string>; cwd : string) : int {
+    let dirs <- [for (dir in module_dirs); from_caller(dir, cwd)]
     if (tier == "interp" || tier == "jit") {
         var cmd := wrapper
-        cmd |> push_from(daslang_cmd(module_dirs), flags)
+        cmd |> push_from(daslang_cmd(dirs), flags)
         if (tier == "jit") {
             cmd |> push("-jit")
         }
-        cmd |> push(das_path)
+        cmd |> push(from_caller(das_path, cwd))
         if (!empty(program_args)) {
             cmd |> push("--")
             cmd |> push_from(program_args)
         }
-        return run(cmd, output, timeout)
+        return run(cmd, output, timeout, cwd)
     }
     if (tier == "exe" || tier == "aot") {
-        let built = build_tier(das_path, tier, work_dir, output, module_dirs, timeout, flags)
+        let built = build_tier(das_path, tier, work_dir, output, dirs, timeout, flags)
         if (built.rc != 0) {
             return built.rc
         }
         var argv := wrapper
-        argv |> push_from(binary_argv(tier, built.bin, program_args))
-        return run(argv, output, timeout)
+        argv |> push_from(binary_argv(tier, from_caller(built.bin, cwd), program_args))
+        return run(argv, output, timeout, cwd)
     }
     output += "unknown tier `{tier}`; one of interp, jit, exe, aot\n"
     return -1
