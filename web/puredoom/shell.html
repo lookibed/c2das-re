@@ -89,8 +89,14 @@
     if (!Orig) return;
     var Wrapped = function () {
       var c = new Orig(...arguments);
+      // while muted the context stays suspended, whoever asks to resume it (the program's audio
+      // backend resumes it on its own unlock gesture); the mute button calls the real resume
+      var realResume = c.resume.bind(c);
+      c.resume = function () { return muted ? Promise.resolve() : realResume(); };
+      c.realResume = realResume;
+      audioContexts = audioContexts.filter(function (x) { return x.state !== 'closed'; });
       audioContexts.push(c);
-      if (muted) c.suspend().catch(function () {}); else c.resume().catch(function () {});
+      if (muted) c.suspend().catch(function () {}); else realResume().catch(function () {});
       return c;
     };
     Wrapped.prototype = Orig.prototype;
@@ -99,14 +105,14 @@
     ['pointerdown', 'keydown', 'click', 'touchend'].forEach(function (e) {
       document.addEventListener(e, function () {
         if (muted) return;
-        audioContexts.forEach(function (c) { if (c.state !== 'running' && c.state !== 'closed') c.resume().catch(function () {}); });
+        audioContexts.forEach(function (c) { if (c.state !== 'running' && c.state !== 'closed') c.realResume().catch(function () {}); });
       }, true);
     });
   })();
   function setMuted(m) {
     muted = m;
     try { localStorage.setItem('doomMuted', m ? '1' : '0'); } catch (e) {}
-    audioContexts.forEach(function (c) { (m ? c.suspend() : c.resume()).catch(function () {}); });
+    audioContexts.forEach(function (c) { (m ? c.suspend() : c.realResume()).catch(function () {}); });
     document.getElementById('mute').textContent = m ? 'Sound: off' : 'Sound: on';
   }
 

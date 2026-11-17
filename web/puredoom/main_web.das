@@ -32,6 +32,7 @@ require doom_midi
 require sounds
 require sounds_h
 require audio/audio_boost
+require daslib/jobque_boost
 require glfw/glfw_boost
 require opengl/opengl_boost
 require glsl/glsl_opengl
@@ -319,9 +320,11 @@ def init {
 }
 
 // sound (section 5): Doom's sfx mix, 512 stereo int16 frames at 11025 a second per
-// `doom_get_sound_buffer`, plus the music synthesizer, streamed to dasAudio a little ahead of the
-// wall clock; not in a timedemo. Music: a MUS lump plays through `doom_tick_midi` (140 ticks a
-// second), a MIDI lump (all of Freedoom's) through the host's own player
+// `doom_get_sound_buffer`, plus the music synthesizer, streamed to dasAudio; the host keeps the
+// stream's own queue (dasAudio publishes it) about 2048 frames deep, so the sound never lags further,
+// a stall or a hidden tab only leaves a gap, and a suspended page queues nothing. Not in a timedemo.
+// Music: a MUS lump plays through `doom_tick_midi` (140 ticks a second), a MIDI lump (all of
+// Freedoom's) through the host's own player
 let private SFX_RATE = 11025
 let private SFX_FRAMES = 512
 let private AUDIO_LEAD_FRAMES = 2048
@@ -330,8 +333,7 @@ let private MIDI_RATE = 140
 var private audio_on = false
 var private audio_channels : AudioSystemChannels
 var private audio_sid : SID = INVALID_SID
-var private audio_start : int64 = 0l
-var private audio_frames : int64 = 0l
+var private audio_status : SeqBox?
 var private midi_carry = 0.0
 var private synth = make_synth()
 var private song_player = MidiPlayer()
@@ -340,15 +342,21 @@ var private song_index = -1
 def private start_audio {
     audio_channels = audio_system_create()
     audio_sid = play_sound_from_pcm_stream(SFX_RATE, 2)
-    audio_start = usec_now()
+    audio_status = seq_box_create()
+    set_status_update(audio_sid, audio_status)
     audio_on = true
 }
 
-// one MUS tick: every message Doom's music player has for it (it returns 0 when the tick is done)
-def private tick_music {
+// one MUS tick: every message Doom's music player has for it (it returns 0 when the tick is done).
+// While a MIDI song plays, the engine's volume messages (CC7) are dropped: the song's own mix keeps
+// its channel volumes and the synthesizer's gain carries Doom's music volume
+def private tick_music(var s : Synth) {
     var m = doom_tick_midi()
     while (m != 0ul) {
-        synth_message(synth, m)
+        let volume = (m & 0xf0ul) == 0xb0ul && ((m >> 8ul) & 0x7ful) == 7ul
+        if (!(volume && song_player.playing)) {
+            synth_message(s, m)
+        }
         m = doom_tick_midi()
     }
 }
@@ -363,11 +371,14 @@ def private follow_song {
             break
         }
     }
+    midi_pause(song_player, synth, int(paused) != 0)
     if (playing == song_index) {
         return
     }
     song_index = playing
     midi_stop(song_player, synth)
+    // the engine's own messages for the change (its notes off) go first
+    tick_music(synth)
     if (playing < 0) {
         return
     }
@@ -375,40 +386,52 @@ def private follow_song {
     let size = W_LumpLength(S_music[playing].lumpnum)
     var song : MidiSong
     if (midi_parse(data, size, song)) {
-        midi_start(song_player, song, true)
+        midi_start(song_player, synth, song, true)
     }
 }
 
-// the blocks the stream is owed: produced up to the wall clock plus the lead; after a second or more
-// with no frames (a hidden tab) it skips ahead instead of producing the gap at once
+// the frames appended since the stream's consumed position last moved, and that position: while
+// the device pulls nothing (a suspended page) the mixer publishes no new status, and these keep the
+// host from appending past the lead
+var private appended_since = 0
+var private last_consumed : uint64 = 0xfffffffffffffffful
+
+// the frames the stream holds: as the mixer last published them, plus what the host appended since
+def private queued_frames : int {
+    var queued = 0
+    var consumed = last_consumed
+    audio_status |> read() $(st : AudioChannelStatus) {
+        queued = int(st.stream_queued_frames)
+        consumed = st.consumed_position
+    }
+    if (consumed != last_consumed) {
+        last_consumed = consumed
+        appended_since = 0
+    }
+    return queued + appended_since
+}
+
+// blocks until the stream holds about the lead
 def private feed_audio {
     follow_song()
-    synth.gain = float(snd_MusicVolume) / 15.0
-    let due = (usec_now() - audio_start) * int64(SFX_RATE) / 1000000l + int64(AUDIO_LEAD_FRAMES)
-    if (due - audio_frames > int64(SFX_RATE)) {
-        audio_frames = due - int64(AUDIO_LEAD_FRAMES)
-    }
-    while (audio_frames < due) {
+    synth.gain = song_player.playing ? float(snd_MusicVolume) / 15.0 : 1.0
+    var queued = queued_frames()
+    while (queued < AUDIO_LEAD_FRAMES) {
         var chunk : array<float>
         chunk |> resize(SFX_FRAMES * 2)
         let pcm = doom_get_sound_buffer()
         for (i in range(SFX_FRAMES * 2)) {
             chunk[i] = float(unsafe(pcm[i])) / 32768.0
         }
-        var at = 0
-        while (at < SFX_FRAMES) {
-            if (midi_carry <= 0.0) {
-                tick_music()
-                midi_carry += float(SFX_RATE) / float(MIDI_RATE)
-            }
-            let n = min(SFX_FRAMES - at, int(ceil(midi_carry)))
-            midi_advance(song_player, synth, double(n) / double(SFX_RATE))
-            synth_render(synth, chunk, at * 2, n)
-            midi_carry -= float(n)
-            at += n
+        music_block(synth, song_player, midi_carry, chunk, SFX_FRAMES, SFX_RATE, MIDI_RATE) $(var s : Synth) {
+            tick_music(s)
+        }
+        for (x in chunk) {
+            x = clamp(x, -1.0, 1.0)
         }
         append_to_pcm(audio_sid, chunk)
-        audio_frames += int64(SFX_FRAMES)
+        appended_since += SFX_FRAMES
+        queued += SFX_FRAMES
     }
 }
 
@@ -494,7 +517,9 @@ def update : bool {
 [export]
 def shutdown {
     if (audio_on) {
+        unset_status_update(audio_sid)
         audio_system_finalize(audio_channels.command, audio_channels.next_sid)
+        audio_status |> seq_box_release
         audio_on = false
     }
 

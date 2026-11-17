@@ -61,10 +61,16 @@ struct Synth {
 //! A synthesizer at `rate` frames a second, every channel at its General MIDI defaults.
 def make_synth(rate : float = 11025.0) : Synth {
     var synth = Synth(rate = rate)
+    synth_reset_channels(synth)
+    return <- synth
+}
+
+//! Every channel back to its General MIDI defaults (program 0, volume 100, centre, no bend), as a new
+//! song expects.
+def synth_reset_channels(var synth : Synth) {
     for (ch in synth.channels) {
         ch = Channel()
     }
-    return <- synth
 }
 
 // per-sample factor that takes a level to 1/1000 in `seconds`
@@ -151,20 +157,30 @@ def private shape_drum(var v : Voice; rate : float; note : int) {
     v.decay = fall(rate, decay)
 }
 
+// a free voice, else the one to steal: the quietest released voice, else the quietest one past its
+// attack (a voice still rising has level 0 and would lose every new chord note), else voice 0
 def private find_voice(synth : Synth) : int {
     for (i in range(MAX_VOICES)) {
         if (!synth.voices[i].active) {
             return i
         }
     }
-    // steal the quietest
-    var best = 0
-    for (i in range(1, MAX_VOICES)) {
-        if (synth.voices[i].level * synth.voices[i].peak < synth.voices[best].level * synth.voices[best].peak) {
-            best = i
+    var best = -1
+    for (pass_released in [true, false]) {
+        for (i in range(MAX_VOICES)) {
+            let v = synth.voices[i]
+            if (v.rising || v.released != pass_released) {
+                continue
+            }
+            if (best < 0 || v.level * v.peak < synth.voices[best].level * synth.voices[best].peak) {
+                best = i
+            }
+        }
+        if (best >= 0) {
+            return best
         }
     }
-    return best
+    return 0
 }
 
 def private note_on(var synth : Synth; channel, note, velocity : int) {
@@ -190,7 +206,12 @@ def private note_on(var synth : Synth; channel, note, velocity : int) {
     }
 }
 
+// a note-off on the percussion channel is ignored: a drum sounds out its own decay, as General MIDI
+// players treat it
 def private note_off(var synth : Synth; channel, note : int) {
+    if (channel == PERCUSSION) {
+        return
+    }
     for (v in synth.voices) {
         if (v.active && !v.released && v.channel == channel && v.note == note) {
             v.released = true
@@ -285,7 +306,7 @@ def private step_envelope(var v : Voice) {
 }
 
 //! Adds `frames` stereo frames of every sounding voice into `out` (interleaved left, right) from
-//! index `at`.
+//! index `at`; the caller clamps the sum.
 def synth_render(var synth : Synth; var out : array<float>; at, frames : int) {
     for (v in synth.voices) {
         if (!v.active) {

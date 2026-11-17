@@ -2565,8 +2565,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   0.614-0.658 s (about 1.2x).
   Sound: Doom's sfx mix and music through dasAudio; Freedoom's music lumps are MIDI files, which
   PureDOOM's MUS player cannot read, so the host plays them with `web/puredoom/doom_midi.das` into a
-  small General MIDI synthesizer (`doom_synth.das`); headless Edge: music and sfx stream, 0 underruns.
-  Left: sound; quakegeneric (plan step 6; glibc `rand` in `crt`); emscripten's `clock()` under `-pthread` can return a
+  small General MIDI synthesizer (`doom_synth.das`); headless Edge, a temporary diagnostic line
+  reading dasAudio's playback counters: music and sfx stream, 0 underruns.
+  Left: quakegeneric (plan step 6; glibc `rand` in `crt`); emscripten's `clock()` under `-pthread` can return a
   negative value (`-75812969` in a three-line C test), which the Doom host's `work_started >= 0` check
   reads as "not started", so its `host: timed` line was missing in 2 of the 6 full wasm runs whose
   output was kept.
