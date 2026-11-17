@@ -1,0 +1,53 @@
+/* The translator page, on daslang.io's Forge palette (daScript site/files/forge.css tokens). */
+:root {
+  --bg: #0d0c0a; --bg-2: #15130f; --bg-3: #1c1a14; --fg: #e8e2d2; --fg-dim: #9b9281; --fg-faint: #5b5547;
+  --rule: #2a2620; --amber: #e8a13a; --amber-dim: #a87420; --green: #9bc46a; --red: #d96d4f; --blue: #6aa9c4;
+  --font-sans: "Inter Tight", "Inter", -apple-system, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-sans); }
+a { color: var(--amber); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 20px; }
+nav { border-bottom: 1px solid var(--rule); }
+nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; gap: 16px; flex-wrap: wrap; }
+.mark { font: 600 18px var(--font-mono); color: var(--fg); }
+.mark b { color: var(--amber); }
+nav .links { display: flex; gap: 18px; font: 13px var(--font-mono); flex-wrap: wrap; }
+nav .links a { color: var(--fg-dim); }
+nav .links a:hover { color: var(--fg); }
+.hero { padding: 22px 0 6px; }
+.hero h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+.hero p { margin: 0; color: var(--fg-dim); max-width: 960px; }
+.hero code, p code { font-family: var(--font-mono); font-size: 0.92em; color: var(--fg); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+.toolbar label { font: 12px var(--font-mono); color: var(--fg-dim); display: inline-flex; gap: 6px; align-items: center; }
+select, button, input[type=checkbox] { font: 12px var(--font-mono); }
+select { background: var(--bg-2); color: var(--fg); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 6px; }
+button { background: var(--bg-3); color: var(--fg); border: 1px solid var(--rule); border-radius: 4px; padding: 5px 12px; cursor: pointer; }
+button.primary { background: var(--amber); border-color: var(--amber); color: #1a1408; font-weight: 600; }
+button:disabled { opacity: .5; cursor: default; }
+.about { font-size: 13px; color: var(--fg-dim); padding: 8px 0 0; min-height: 1.5em; }
+.panes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 12px 0; }
+@media (max-width: 900px) { .panes { grid-template-columns: 1fr; } }
+.pane { border: 1px solid var(--rule); border-radius: 6px; background: var(--bg-2); display: flex; flex-direction: column; min-width: 0; }
+.pane-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--rule); font: 12px var(--font-mono); color: var(--fg-dim); }
+.tabs { display: flex; gap: 2px; }
+.tabs button { background: transparent; border: none; color: var(--fg-dim); padding: 4px 10px; border-radius: 4px; }
+.tabs button.on { background: var(--bg-3); color: var(--amber); }
+.pane .CodeMirror { height: 560px; background: var(--bg-2); font: 13px/1.45 var(--font-mono); }
+pre.out { margin: 0; padding: 10px 12px; height: 560px; overflow: auto; font: 13px/1.45 var(--font-mono); color: var(--fg); white-space: pre-wrap; }
+pre.out .add { color: var(--green); } pre.out .del { color: var(--red); } pre.out .ctx { color: var(--fg-faint); }
+.status { font: 12px var(--font-mono); color: var(--fg-dim); }
+.status.err { color: var(--red); }
+h2 { font-size: 18px; margin: 26px 0 6px; }
+.lua { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 8px 0 12px; }
+@media (max-width: 900px) { .lua { grid-template-columns: 1fr; } }
+.lua .CodeMirror { height: 260px; }
+.lua pre.out { height: 260px; }
+footer { border-top: 1px solid var(--rule); margin-top: 22px; padding: 16px 0 30px; font: 12px var(--font-mono); color: var(--fg-faint); }
+footer a { color: var(--fg-dim); }
+/* cm-forge.css sizes an editor to its container */
+#csrc, #tab-das { height: 560px; }
+#lua-src { height: 260px; }
