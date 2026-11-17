@@ -61,11 +61,11 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   absolute, a value of another shape refused naming the key; `solid_context`, `jit_whole_program`, `inline_helpers` and `strict_aliasing`, booleans, the second the entry module's JIT pin of `ARCHITECTURE_EMITTER.md` section 4, the third the pure helpers spelled at their call sites of `ARCHITECTURE_EMITTER_CONTROL.md`; `--inline-helpers` sets it), the fourth keeping the JIT's typed aliasing (`ARCHITECTURE_TIERS.md` section 9). A key outside these is refused naming
   it. A key's presence is `key_exists`, since json_boost's `?[]` of a missing key is a non-null
   sentinel (`probes/test_stdlib.das`). Nothing here knows the C-IR or the emitter.
+- `cir_emit.das` - the steps after the dump: `cir_to_das` reads one unit's C-IR text and `tu_to_das` emits it under a sidecar and formats it, the emitter's or the reader's error otherwise; `pipeline.das` emits through it and the browser page of `web/ARCHITECTURE.md` section 8 runs it in wasm64. It requires neither `dumper_a` nor `cbind`.
 - `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes, loops,
   first_member])`: read the sidecar (a `param_writes`, `loops` or `first_member` argument other than "" overrides
   the sidecar's key, one not a mode refused), dump under its `defines`, write the C-IR, read it back and rewrite it
-  (the bytes must match), emit and format through `cir_emit.das`'s `tu_to_das` (the dumper-free half the
-  browser page of `web/ARCHITECTURE.md` section 8 runs), compile-check with `compile_file`. Every artifact lands under
+  (the bytes must match), emit and format through `cir_emit.das`'s `tu_to_das`, compile-check with `compile_file`. Every artifact lands under
   `out_dir`; `file_stem` is the name every artifact of a C file carries. The result carries the
   bytes of clang's JSON dump and the seconds of the dumper, the emitter (with the formatter) and
   the compile check, which `lua/run.das` (repo root) reports. `convert_program(c_paths, ...[,
@@ -121,6 +121,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `tests/test_lowerings.das` - the P1 fixtures under `tests/fixtures/p1_*.c`, each converted
   and run against the native build of the same file by the pinned clang (output and exit
   code), plus the lowering shapes the text must carry.
+- `tests/test_cir_emit.das` - `cir_to_das` over the C-IR of `tests/fixtures/p1_loops.c` and `p2_arrays.c` gives the pipeline's module byte for byte under the defaults and `goto` dispatch; a C-IR that does not read gives the reader's error, and a call to a function no unit defines the emitter's.
 - `tests/test_cli.das` - `main.das` run as a child process over `tests/fixtures/p4_param_writes.c`:
   `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2; over
   `tests/fixtures/p7_loops.c`: `--loops range` and `while` reach the emitter, and a bad value

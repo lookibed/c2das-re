@@ -2591,7 +2591,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   Phase 1 (branch `p9.38-translator-page`): c2das-re's own GitHub Pages runs the translator's C-IR-to-das
   half in the browser, `converter/cir_emit.das` (the CLI's own path, `pipeline.das` now emits through it)
   compiled to wasm64 (18.0 MB, 2.8 MB gzipped), with the sidecar's knobs live, a diff against the defaults,
-  the C-IR and the recorded output of eight examples converted at build time (`web/translator/`,
+  the C-IR and the recorded output of seven examples of c2das-re's own (MIT) converted at build time (`web/translator/`,
   `scripts/build_translator_site.sh`), and a Lua console on c2das-ports' converted Lua (7.7 MB, 1.2 MB
   gzipped, loaded on first run). Phase 1b (RUN of any converted program): the probe of a wasm64 app that
   compiles and runs das at run time links (the compiler archive and daslib embedded) but traps in

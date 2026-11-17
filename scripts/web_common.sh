@@ -24,12 +24,15 @@ check_host() {
     ldd "$1/bin/daslang" | grep -q 'libc++\.so' || die "$1/bin/daslang does not link libc++: not a wasm host"
 }
 
-# a gh-pages checkout `$1` at its top, on the gh-pages branch
+# a gh-pages checkout `$1` of the repository `$2` (its origin ends in it), at its top, on the
+# gh-pages branch: each build fills its own repository's site and never wipes the other's
 check_pages() {
-    local top
+    local top origin
     top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || die "$1 is not a git checkout"
     [ "$top" = "$(cd "$1" && pwd)" ] || die "$1 is not the top of its checkout ($top is)"
     [ "$(git -C "$1" rev-parse --abbrev-ref HEAD)" = "gh-pages" ] || die "$1 is not on the gh-pages branch"
+    origin=$(git -C "$1" remote get-url origin 2>/dev/null) || die "$1 has no origin remote"
+    case "${origin%.git}" in */"$2") ;; *) die "$1 is a checkout of $origin, not of $2" ;; esac
 }
 
 # commits everything in the gh-pages checkout `$1` with the message `$2`, unless nothing changed
