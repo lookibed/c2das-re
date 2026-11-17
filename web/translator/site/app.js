@@ -2,8 +2,9 @@
 // the C-IR clang gave at build time, the module under the defaults and the converted program's
 // output; translator.wasm (c2das-re's converter/cir_emit.das, compiled to wasm64) spells the module
 // again for the knobs, and lua.wasm (c2das-ports' Lua, compiled to wasm64) runs the console's Lua.
-// Both programs poll a request file in their in-memory file system each animation frame; a request
-// unanswered within DEADLINE_MS, or a program that aborts, is reported and frees the controls.
+// Both programs poll a request file in their in-memory file system each animation frame. A request
+// unanswered within DEADLINE_MS of visible time (a hidden tab runs no frames) is reported and frees
+// the controls for the next one; only a program that aborts stops the page.
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
@@ -89,10 +90,11 @@
       if (dead) { busy = false; return; }
       var done = null;
       try { done = FS.readFile('/io/done', { encoding: 'utf8' }); } catch (e) {
+        if (document.hidden) t0 = performance.now();
         if (performance.now() - t0 > DEADLINE_MS) {
-          dead = 'the translator did not answer in ' + DEADLINE_MS / 1000 + ' s; reload the page';
           busy = false;
-          status(dead, true);
+          pending = false;
+          status('the translator did not answer in ' + DEADLINE_MS / 1000 + ' s; change a knob to try again', true);
           return;
         }
         return void setTimeout(poll, 4);
@@ -175,9 +177,11 @@
       m.FS.writeFile('/io/lua.go', '');
       (function poll() {
         try { m.FS.stat('/io/lua.done'); } catch (e) {
-          var late = performance.now() - t0 > DEADLINE_MS;
-          if (!luaDead && !late) return void setTimeout(poll, 4);
-          $('lua-status').textContent = luaDead || 'Lua did not answer in ' + DEADLINE_MS / 1000 + ' s (a loop without end?); reload the page';
+          if (document.hidden) t0 = performance.now();
+          if (luaDead) { $('lua-status').textContent = luaDead; return; }
+          if (performance.now() - t0 <= DEADLINE_MS) return void setTimeout(poll, 4);
+          $('lua-status').textContent = 'Lua did not answer in ' + DEADLINE_MS / 1000 + ' s (a loop without end?)';
+          btn.disabled = false;
           return;
         }
         $('lua-status').textContent = 'ran in ' + (performance.now() - t0).toFixed(0) + ' ms';
