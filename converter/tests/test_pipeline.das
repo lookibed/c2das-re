@@ -284,6 +284,20 @@ def private convert_with_spare(c_path, out_dir : string) : string {
     return converted.ok ? "" : converted.error
 }
 
+// the two-file `STACK_SOURCE` under `dir`, its kernel and switch in a unit of their own, converted
+// in the source layout (`emit_program`) with `STACK_SPARE` bytes of the stack taken by this frame
+def private convert_program_with_spare(dir : string) : string {
+    var spare : uint8[STACK_SPARE]
+    spare[0] = 1u8
+    var inscope parts <- split(STACK_SOURCE, "int main(void) \{")
+    let lib_path = path_join(dir, "stack_lib.c")
+    let main_path = path_join(dir, "stack_main.c")
+    fwrite(lib_path, replace(parts[0], "static ", ""))
+    fwrite(main_path, "int printf(const char *, ...);\nextern volatile int n;\nextern int sum;\nvoid kernel_run(void);\nint pick(int k);\nint main(void) \{" + parts[1])
+    let converted <- convert_program([lib_path, main_path], path_join(dir, "program"), "linux", "", "", "", "", "main", "source")
+    return converted.ok ? "" : converted.error
+}
+
 [test]
 def test_default_stack(t : T?) {
     t |> run("a program with labels and a switch converts in das's default stack with STACK_SPARE bytes to spare") @(t : T?) {
@@ -291,5 +305,8 @@ def test_default_stack(t : T?) {
         let c_path = path_join(dir, "stack.c")
         fwrite(c_path, STACK_SOURCE)
         t |> equal(convert_with_spare(c_path, path_join(dir, "out")), "")
+    }
+    t |> run("the same program in two files converts in the source layout with STACK_SPARE bytes to spare") @(t : T?) {
+        t |> equal(convert_program_with_spare(test_temp_dir()), "")
     }
 }
