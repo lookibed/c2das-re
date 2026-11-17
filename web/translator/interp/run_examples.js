@@ -8,6 +8,10 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+if (parseInt(process.versions.node, 10) < 22) {
+  console.error('run_examples: node ' + process.versions.node + ' is older than 22 (VERSIONS.md)');
+  process.exit(2);
+}
 const [interp, examplesPath, libPath, only] = process.argv.slice(2);
 if (!interp || !examplesPath || !libPath) {
   console.error('usage: node run_examples.js <interp dir> <examples.json> <c_runtime.json> [<example id>]');
