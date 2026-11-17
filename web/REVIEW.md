@@ -21,9 +21,11 @@ or `ticDigest` in `puredoom/shell.html` changes the other two in the same change
 **A diff to `scripts/build_web.sh` keeps its refusals before its first write: a sidecar without
 defines, an emscripten other than 5.0.7, a host at another commit than `VERSIONS.md`'s pin, a host
 without libc++ or the browser gate, a failed PureDOOM fetch, a `--pages` checkout of another
-repository. `scripts/build_translator_site.sh` likewise: a missing Lua conversion, a CodeMirror file
-or compiler archive missing from the host, an unformatted host, a crt not built, `--pages` of another
-repository than c2das-re.**
+repository.**
+
+**A diff to `scripts/build_translator_site.sh` keeps its refusals before its first write: a missing
+Lua conversion, a CodeMirror file or compiler archive missing from the host, an unformatted host,
+a crt not built, a `--pages` checkout of another repository than c2das-re.**
 
 **A diff that changes which `pak0.pak` the Quake page or the workflow accepts keeps the checks of
 lookibed/c2das's `get_pak.sh` and its fixtures README (sha1 and sha256 of the zip and the pak) in the
