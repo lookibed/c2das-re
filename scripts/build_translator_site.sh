@@ -50,7 +50,7 @@ interp_pin=$(sed -n 's/.*"daslang": "\([0-9a-f]*\)".*/\1/p' "$interp/interp.json
 interp_crt=$(sed -n 's/.*"crt": "\([0-9a-f]*\)".*/\1/p' "$interp/interp.json")
 [ -n "$interp_crt" ] && git cat-file -e "$interp_crt^{commit}" 2>/dev/null \
     || die "the interpreter in $interp names no crt commit of this repository (${interp_crt:-none}); rebuild it"
-git diff --quiet "$interp_crt" HEAD -- dasCRuntime/src \
+git diff --quiet "$interp_crt" -- dasCRuntime/src \
     || die "dasCRuntime/src changed since the interpreter's crt ($interp_crt); rebuild it with web/translator/interp/build_interp.sh"
 check_emcc
 check_host "$host"

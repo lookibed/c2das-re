@@ -107,7 +107,7 @@ def private find_pin(versions : string) : string {
 // build_translator_site.sh with `args`, its output in `out`
 def private build_site(args : string; var out : string&) : int => run_and_capture(["sh", "-c", "bash scripts/build_translator_site.sh {args} 2>&1"], out, 120.0)
 
-[test(description = "build_translator_site.sh refuses --commit without --pages, a missing --ports, a ports checkout without Lua, a --pages that is no checkout, c2das-ports' gh-pages, a missing --interp, one without the interpreter, one of another daScript and one whose crt is no commit here")]
+[test(description = "build_translator_site.sh refuses --commit without --pages, a missing --ports, a ports checkout without Lua, a --pages that is no checkout, c2das-ports' gh-pages, a missing --interp, one without the interpreter, one of another daScript, one whose crt is no commit here and one whose crt is older than this tree's")]
 def test_build_translator_refusals(t : T?) {
     var dir_error : string
     let work = create_temp_directory("c2das_translator_ref", dir_error)
@@ -154,6 +154,11 @@ def test_build_translator_refusals(t : T?) {
     let rc_crt = build_site("--ports '{fake_ports}' --interp '{interp}' --out '{out_dir}'", out)
     t |> equal(rc_crt, 1, out)
     t |> success(find(out, "names no crt commit of this repository") >= 0, out)
+    // 2ca8718 bound functions dasCRuntime/src has kept since: its crt is not this tree's
+    fwrite(path_join(interp, "interp.json"), "\{\"daslang\": \"{pin}\", \"crt\": \"2ca8718\"\}")
+    let rc_old = build_site("--ports '{fake_ports}' --interp '{interp}' --out '{out_dir}'", out)
+    t |> equal(rc_old, 1, out)
+    t |> success(find(out, "dasCRuntime/src changed since the interpreter's crt") >= 0, out)
     t |> success(!fexist(out_dir), "no refusal created the --out folder")
     rmdir_rec(work)
 }
@@ -215,6 +220,10 @@ def test_build_interp_refusals(t : T?) {
 def test_run_in_interpreter(t : T?) {
     if (!has_env_variable("C2DAS_INTERP")) {
         t |> skip("no C2DAS_INTERP: the interpreter is built by web/translator/interp/build_interp.sh")
+        return
+    }
+    if (!executable_on_path("node")) {
+        t |> skip("no node: the run is checked where node runs")
         return
     }
     var dir_error : string
