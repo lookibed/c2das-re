@@ -220,13 +220,13 @@ def test_build_web_pages_baseline(t : T?) {
     rmdir_rec(work)
 }
 
-// a stand-in repository at `dir` holding build_web.sh, a VERSIONS.md pinning `pin`, and the sidecar
+// a stand-in repository at `dir` holding build_web.sh and web_common.sh, a VERSIONS.md pinning `pin`, and the sidecar
 // text `sidecar`; `fetch` is the body of its doom/fetch.sh, none when empty
 def private stand_in_repo(t : T?; dir, pin, sidecar, fetch : string) {
     mkdir_rec(path_join(dir, "scripts"))
     mkdir_rec(path_join(dir, "doom"))
     var out : string
-    let rc = run_and_capture(["cp", "scripts/build_web.sh", path_join(dir, "scripts/build_web.sh")], out, 30.0)
+    let rc = run_and_capture(["cp", "scripts/build_web.sh", "scripts/web_common.sh", path_join(dir, "scripts")], out, 30.0)
     t |> equal(rc, 0, out)
     fwrite(path_join(dir, "VERSIONS.md"), "daScript commit: {pin} (a stand-in)\n")
     fwrite(path_join(dir, "doom/doom.c2das"), sidecar)
