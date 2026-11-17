@@ -10437,6 +10437,35 @@ def private emit_late_binding(var em : Emitter; tu : CirTu) {
     line(em, "")
 }
 
+// module `mi` of the source layout `plan` spelled into `em`: the late-bound names it qualifies or
+// defines, its body (the link module's, a cluster's fragments into `files`, or one node's) and its
+// requires
+def private emit_plan_module(var em : Emitter; tu : CirTu; plan : LayoutPlan; owners : array<int>; mi : int; var files : array<ModuleFile>) {
+    for (name, definer in keys(plan.late), values(plan.late)) {
+        let dm = plan.node_module[definer]
+        // the defining module names its own `__::`, which holds however the module is compiled
+        if (mi == dm) {
+            em.late_quals[name] = "__::"
+        } elif (has_value(plan.modules[mi].requires, dm) && has_value(plan.modules[mi].requires, plan.link)) {
+            em.late_quals[name] = "{plan.modules[dm].name}::"
+        }
+        if (mi == dm) {
+            em.late_defs[name] = plan.slots?[name] ?? ""
+        }
+    }
+    if (mi == plan.link) {
+        emit_link_module(em, tu, plan)
+    } elif (plan.modules[mi].cluster) {
+        emit_cluster(em, tu, plan, owners, mi, files)
+    } else {
+        select_node(em, tu, plan, owners, plan.modules[mi].members[0])
+        emit_module_body(em, tu)
+    }
+    for (r in plan.modules[mi].requires) {
+        em.requires |> insert(require_text(plan, mi, r))
+    }
+}
+
 //! The program `tu` in the source layout `plan` (`converter/layout.das`), `owners` the unit of each
 //! of its declarations (`link_tus`): one module per module of the plan, a single node's as
 //! `emit_tu` spells a unit, a cluster's as `emit_cluster` does, each requiring the modules of the
@@ -10444,45 +10473,32 @@ def private emit_late_binding(var em : Emitter; tu : CirTu) {
 [arch(at="ARCHITECTURE_LAYOUT.md#emission")]
 def emit_program(var tu : CirTu; side : Sidecar; plan : LayoutPlan; owners : array<int>) : ProgramEmission {
     var res : ProgramEmission
-    var first : Emitter
-    prepare_program(first, tu, side)
+    // on the heap, as `emit_unit`'s: an `Emitter` in this frame would take a third of das's default
+    // stack from the walks under it
+    var first = new Emitter
+    prepare_program(*first, tu, side)
     if (!empty(first.error)) {
         res.error = first.error
+        unsafe {
+            delete first
+        }
         return <- res
     }
-    plan_shared_macros(first, tu, plan, owners)
+    plan_shared_macros(*first, tu, plan, owners)
     var prog <- first.prog
+    unsafe {
+        delete first
+    }
     // a module hosting header macros' defs is assembled once every module has spelled its sites
-    var hosts : array<Emitter>
+    var hosts : array<Emitter?>
     var host_files : array<int>
     for (mi, mod in count(), plan.modules) {
-        var em = Emitter(prog <- prog, layout_file = mod.name + LAYOUT_FILE_SUFFIX, module_index = mi)
-        for (name, definer in keys(plan.late), values(plan.late)) {
-            let dm = plan.node_module[definer]
-            // the defining module names its own `__::`, which holds however the module is compiled
-            if (mi == dm) {
-                em.late_quals[name] = "__::"
-            } elif (has_value(mod.requires, dm) && has_value(mod.requires, plan.link)) {
-                em.late_quals[name] = "{plan.modules[dm].name}::"
-            }
-            if (mi == dm) {
-                em.late_defs[name] = plan.slots?[name] ?? ""
-            }
-        }
-        if (mi == plan.link) {
-            emit_link_module(em, tu, plan)
-        } elif (mod.cluster) {
-            emit_cluster(em, tu, plan, owners, mi, res.files)
-        } else {
-            select_node(em, tu, plan, owners, mod.members[0])
-            emit_module_body(em, tu)
-        }
-        for (r in mod.requires) {
-            em.requires |> insert(require_text(plan, mi, r))
-        }
+        // each module's emitter on the heap too, as `first` is
+        var em = new Emitter(prog <- prog, layout_file = mod.name + LAYOUT_FILE_SUFFIX, module_index = mi)
+        emit_plan_module(*em, tu, plan, owners, mi, res.files)
         let hosting = has_value([for (host in values(em.prog.shared_host)); host == mi], true)
         if (!hosting) {
-            assemble_module(em)
+            assemble_module(*em)
         }
         let path = in_dir(mod.dir, "{mod.name}.das")
         res.files |> push(ModuleFile(path = path, text = em.text))
@@ -10500,24 +10516,34 @@ def emit_program(var tu : CirTu; side : Sidecar; plan : LayoutPlan; owners : arr
         // the program state went to the module's emitter and comes back from it
         delete prog
         prog <- em.prog
-        if (!empty(em.error)) {
+        let failed = !empty(em.error)
+        if (failed) {
             res.error = em.error
-            break
         }
-        if (hosting) {
+        if (hosting && !failed) {
             host_files |> push(length(res.files) - 1 - (empty(em.layout_text) ? 0 : 1))
-            hosts |> emplace(em)
+            hosts |> push(em)
+        } else {
+            unsafe {
+                delete em
+            }
         }
+        break if (failed)
     }
     for (em, fi in hosts, host_files) {
         break if (!empty(res.error))
         em.prog <- prog
-        emit_hosted_defs(em)
-        assemble_module(em)
+        emit_hosted_defs(*em)
+        assemble_module(*em)
         res.files[fi].text = em.text
         delete prog
         prog <- em.prog
         res.error = em.error
+    }
+    for (host in hosts) {
+        unsafe {
+            delete host
+        }
     }
     return <- res
 }
