@@ -2531,7 +2531,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   pr15296, pr67037, pr68390 and pure-1 newly passing: one `--update` each records them. csmith does not run on
   the WSL box (gcc 11.4.0 against the pinned 14.2.0); its 182 seeds are owed to a box with the pinned gcc.
   (h) an unbounded `dastest --isolated-mode` probes run is OOM-killed under `heavy --max 4G` (32 JIT children
-  at once, exit 137 each, about 50 false reds); the preflight's two workers run clean. A suite `--timeout`
+  at once, exit 137 each: 50 reds, about 39 of them false); the preflight's two workers run clean. A suite `--timeout`
   ends dastest but leaves the compare suite's never-ending lane child running.
   (i) Lua's exe test-suite cell is still P9.31 (c): the exe names the crt module by a relative path, so it
   loads from the repository root (error checks 8 of 8, luac 33 of 33) and not from the test-suite folder
