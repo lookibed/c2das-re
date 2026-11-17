@@ -63,13 +63,13 @@ def test_crt_wasm_archive(t : T?) {
         // without -sMEMORY64=1 emscripten gives 4-byte pointers, and the configure refuses
         let refused = run_and_capture(["emcmake", "cmake", "-S", get_full_file_name("dasCRuntime"),
             "-B", path_join(work, "build32"), "-DDASLANG_ROOT={get_das_root()}", "-DCMAKE_BUILD_TYPE=Release",
-            "-DDAS_CRT_WASM_DIR={out_dir}", "-G", "Ninja"], out, 300.0)
+            "-DDAS_CRT_WASM_DIR={out_dir}", "-G", "Ninja"], out, 60.0)
         t |> success(refused != 0 && find(out, "the wasm archive is wasm64") >= 0, out)
         // a build type other than Release would mismatch the web runtime's defines, and the configure refuses
         let debug = run_and_capture(["emcmake", "cmake", "-S", get_full_file_name("dasCRuntime"),
             "-B", path_join(work, "build_debug"), "-DDASLANG_ROOT={get_das_root()}", "-DCMAKE_BUILD_TYPE=Debug",
             "-DCMAKE_C_FLAGS=-sMEMORY64=1", "-DCMAKE_CXX_FLAGS=-sMEMORY64=1", "-DDAS_CRT_WASM_DIR={out_dir}",
-            "-G", "Ninja"], out, 300.0)
+            "-G", "Ninja"], out, 60.0)
         t |> success(debug != 0 && find(out, "matches the Release web runtime") >= 0, out)
         rmdir_rec(work)
     }
