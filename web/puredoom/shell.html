@@ -16,6 +16,8 @@
   .dim { color: var(--dim); font-size: 13px; }
   #stage { position: relative; width: min(100%, calc(80vh * 4 / 3)); aspect-ratio: 4 / 3; background: #000; margin: 12px auto; }
   #canvas { width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+  #fps { position: absolute; left: 8px; top: 8px; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,.65); color: #9fe08a; font: 12px/1.4 ui-monospace, Consolas, monospace; pointer-events: none; }
+  #fps[hidden] { display: none; }
   #panel { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; text-align: center; background: var(--panel); }
   #panel[hidden] { display: none; }
   button { font: inherit; padding: 8px 18px; border-radius: 6px; border: 1px solid #444; background: #2a2723; color: var(--fg); cursor: pointer; }
@@ -36,12 +38,14 @@
     then compiled ahead of time to wasm by daslang's LLVM backend. Nothing here is the original C. Game data: <a href="https://freedoom.github.io/">Freedoom</a> Phase 2 (BSD licence), the official 0.13.0 release, loaded at run time; never id Software's commercial WADs.</p>
   <div id="stage">
     <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    <div id="fps" hidden></div>
     <div id="panel">
       <div id="status">Checking the browser...</div>
       <div>
         <button id="play" class="primary" disabled>Play</button>
         <button id="timedemo" disabled>Timedemo demo1 (fps)</button>
       </div>
+      <label class="dim"><input type="checkbox" id="uncapped"> Uncapped rendering: frames drawn as fast as the browser allows, game tics stay at 35 a second (<code>?uncapped=1</code>)</label>
       <div class="dim" id="wadnote"></div>
       <div id="pick" hidden>
         <label class="dim">Or use your own copy (<code>freedoom2.wad</code> 0.13.0 or <code>freedoom-0.13.0.zip</code>):
@@ -66,6 +70,7 @@
   var expected = null;             // { tics, digest } of REF_LOG, folded the way the host folds its own lines
 
   var $ = function (id) { return document.getElementById(id); };
+
   var logEl = $('log');
   function log(line) { logEl.textContent += line + '\n'; logEl.scrollTop = logEl.scrollHeight; }
   function status(text) { $('status').textContent = text; }
@@ -178,7 +183,18 @@
     else if (q.get('autostart') === 'play') start(false);
   }
 
+  // `host: stats <frames> <tics> <renders> <seconds>` once a second: the counter over the picture
+  function showStats(m) {
+    var secs = +m[4];
+    var el = $('fps');
+    el.textContent = (m[1] / secs).toFixed(0) + ' fps shown · ' + (m[2] / secs).toFixed(0) + ' tics/s · ' +
+      (m[3] / secs).toFixed(0) + ' frames rendered/s' + (Module.arguments.indexOf('-uncapped') >= 0 ? ' (uncapped)' : '');
+    el.hidden = false;
+  }
+
   function onLine(line) {
+    var st = /^host: stats (\d+) (\d+) (\d+) ([\d.]+)/.exec(line);
+    if (st) { showStats(st); return; }
     log(line);
     if (/^host: Doom exited/.test(line)) {
       status('Doom has exited. Reload the page to play again.');
@@ -226,12 +242,14 @@
     if (started) return;
     started = true;
     Module.arguments = timedemo ? ['-timedemo', 'demo1'] : [];
-    log('start: ' + (timedemo ? 'timedemo demo1' : 'play'));
+    if ($('uncapped').checked) Module.arguments.push('-uncapped');
+    log('start: ' + (timedemo ? 'timedemo demo1' : 'play') + ($('uncapped').checked ? ', uncapped' : ''));
     $('panel').hidden = true;
     $('canvas').focus();
     $('canvas').addEventListener('pointerdown', function () { $('canvas').focus(); });
     dasWasmGate.loadProgram(function () { status('The program script did not load.'); $('panel').hidden = false; });
   }
+  $('uncapped').checked = new URLSearchParams(location.search).get('uncapped') === '1';
   $('play').addEventListener('click', function () { start(false); });
   $('timedemo').addEventListener('click', function () { start(true); });
 
