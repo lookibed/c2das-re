@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>run</title>
+<!--
+  The translator page's Run (c2das-re web/ARCHITECTURE.md section 9): one converted module, run once by
+  daslang_static (daScript's playground interpreter, built at c2das-re's pin with its crt linked in) in
+  this frame, which the page then drops. A frame runs one program, as daScript's playground run-frame
+  does (site/playground/run-frame.html, BSD-3): a second callMain in one runtime can leave modules
+  registered and poison the next run. The page compiles the wasm once and hands each frame the module.
+-->
+</head>
+<body>
+<script>
+(function () {
+  'use strict';
+  function post(msg) { window.parent.postMessage(msg, window.location.origin); }
+  var didRun = false;
+
+  window.Module = {
+    // the pthread workers load this script by name
+    mainScriptUrlOrBlob: 'daslang_static.js',
+    noInitialRun: true,
+    instantiateWasm: function (imports, done) {
+      window.addEventListener('message', function onModule(ev) {
+        if (ev.origin !== window.location.origin || !ev.data || ev.data.type !== 'wasm-module') return;
+        window.removeEventListener('message', onModule);
+        WebAssembly.instantiate(ev.data.module, imports).then(
+          function (instance) { done(instance, ev.data.module); },
+          function (e) { post({ type: 'aborted', message: 'wasm instantiate failed: ' + e }); });
+      });
+      post({ type: 'need-wasm-module' });
+      return {};
+    },
+    print: function (text) { post({ type: 'stdout', text: String(text) }); },
+    printErr: function (text) { post({ type: 'stderr', text: String(text) }); },
+    onRuntimeInitialized: function () { post({ type: 'ready' }); },
+    onAbort: function (what) { post({ type: 'aborted', message: String(what) }); }
+  };
+
+  // emscripten's TTYs flush on a newline: a last line without one is pushed out here
+  function flushStdio() {
+    var FS = window.Module.FS;
+    [1, 2].forEach(function (fd) {
+      var s = FS && FS.streams && FS.streams[fd];
+      if (s && s.tty && s.tty.output && s.tty.output.length > 0 && s.tty.ops && s.tty.ops.put_char) s.tty.ops.put_char(s.tty, 10);
+    });
+  }
+
+  window.addEventListener('message', function (ev) {
+    if (ev.origin !== window.location.origin || !ev.data || ev.data.type !== 'run' || didRun) return;
+    didRun = true;
+    var FS = window.Module.FS, files = ev.data.files, code = 0;
+    Object.keys(files).forEach(function (path) {
+      var dir = path.slice(0, path.lastIndexOf('/'));
+      if (dir) FS.mkdirTree(dir);
+      FS.writeFile(path, files[path]);
+    });
+    var t0 = performance.now();
+    try {
+      code = window.Module.callMain(ev.data.args) || 0;
+    } catch (e) {
+      // emscripten throws ExitStatus on exit() as well as on a real error
+      if (e && typeof e.status === 'number') code = e.status;
+      else { post({ type: 'stderr', text: String((e && e.message) || e) }); code = -1; }
+    }
+    flushStdio();
+    post({ type: 'exit', code: code, ms: performance.now() - t0 });
+  });
+
+  var s = document.createElement('script');
+  s.src = 'daslang_static.js';
+  s.onerror = function () { post({ type: 'aborted', message: 'daslang_static.js did not load' }); };
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>

@@ -30,8 +30,10 @@ program runs under in a browser and the page around it.
 - `translator/main_web.das` - the translator page's program (section 8): `converter/cir_emit.das`
   behind a request in the in-memory file system; `translator/lua_web.das` the Lua console's program;
   `translator/precompute.das` converts the examples at build time; `translator/examples/` the
-  examples' C and their manifest; `translator/site/` the page; `translator/*.das_package` the two
-  releases; `translator/pages.yml` c2das-re's deploy workflow.
+  examples' C and their manifest; `translator/site/` the page (`run-frame.html` the frame of one Run,
+  section 9); `translator/*.das_package` the two releases; `translator/pages.yml` c2das-re's deploy
+  workflow; `translator/bundle.das` packs `c_runtime` for Run; `translator/interp/` builds Run's
+  interpreter (`build_interp.sh`, and `crt_module.cmake`, the crt's in-tree wrapper).
 - `scripts/build_translator_site.sh` (repository root) - the translator page's build;
   `scripts/web_common.sh` the checks both builds share (emscripten, the host on the pin, a gh-pages
   checkout of the build's own repository, the commit). `tests/test_web_translator.das` runs
@@ -240,4 +242,26 @@ hidden tab runs no frames) and takes the next one; a program that aborts stops t
 `os.exit` raises a Lua error, since an exit would end the console's program with no answer.
 `--pages` refuses a checkout whose origin is not c2das-re, as `scripts/build_web.sh` refuses one
 that is not c2das-ports, so neither build can wipe the other's site.
+
+## 9. Run: the converted module in daslang's interpreter
+
+The page's Run button runs the module it shows, under any knobs, in daScript's playground interpreter,
+`daslang_static`, as wasm in the page (owner, addendum 37: the interpreter for any code, no
+per-example build). `translator/interp/build_interp.sh` builds it once, on a machine with room (the
+owner named HOME-PC): daScript at `VERSIONS.md`'s pin, configured as daScript's own
+`web/build_site_wasm.cmake` configures `web/build64` (memory64, threads; the converted code's layout
+checks need 8-byte pointers), with this tree's `dasCRuntime/src` copied in as the in-tree module
+`modules/dasCRuntime` (`crt_module.cmake`), so `require crt` resolves to the linked module. Its
+`interp.json` names the pin and the c2das-re commit of the crt; the site build refuses an interpreter
+of another daScript commit (`--interp`).
+
+`c_runtime` is pure das: `translator/bundle.das` packs its `.das_module` and `c_runtime/*.das` into
+`c_runtime.json`, and each run writes them under `/lib/c_runtime` and calls
+`daslang_static -load_module /lib/c_runtime /run/main.das`, so the `.das_module` registers the
+`c_runtime/<name>` paths as the desktop `-load_module` does (a `require` inside `c_runtime` resolves
+by that registration, not by the file's folder). A run is one fresh frame (`run-frame.html`), dropped
+when the program exits, as daScript's playground does: a second `callMain` in one runtime can leave
+modules registered. The page compiles the wasm once and hands each frame the compiled module; Stop
+drops the frame. The output tab shows the run's stdout, stderr, exit code and time, above the output
+recorded at build time.
 

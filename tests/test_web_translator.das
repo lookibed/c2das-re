@@ -101,7 +101,7 @@ int main(void) \{ return pick(1); \}
 // build_translator_site.sh with `args`, its output in `out`
 def private build_site(args : string; var out : string&) : int => run_and_capture(["sh", "-c", "bash scripts/build_translator_site.sh {args} 2>&1"], out, 120.0)
 
-[test(description = "build_translator_site.sh refuses --commit without --pages, a missing --ports, a ports checkout without Lua, a --pages that is no checkout, and c2das-ports' gh-pages")]
+[test(description = "build_translator_site.sh refuses --commit without --pages, a missing --ports, a ports checkout without Lua, a --pages that is no checkout, c2das-ports' gh-pages, a missing --interp and an --interp without the interpreter")]
 def test_build_translator_refusals(t : T?) {
     var dir_error : string
     let work = create_temp_directory("c2das_translator_ref", dir_error)
@@ -126,6 +126,40 @@ def test_build_translator_refusals(t : T?) {
     let rc_other = build_site("--ports '{work}' --pages '{ports_pages}' --out '{out_dir}'", out)
     t |> equal(rc_other, 1, out)
     t |> success(find(out, "not of c2das-re") >= 0, out)
+    let fake_ports = path_join(work, "ports")
+    mkdir_rec(path_join(fake_ports, "lua/readable/lua"))
+    fwrite(path_join(fake_ports, "lua/readable/lua/lua.das"), "")
+    let rc_no_interp = build_site("--ports '{fake_ports}' --out '{out_dir}'", out)
+    t |> equal(rc_no_interp, 1, out)
+    t |> success(find(out, "--interp <dir> is required") >= 0, out)
+    let rc_empty_interp = build_site("--ports '{fake_ports}' --interp '{work}' --out '{out_dir}'", out)
+    t |> equal(rc_empty_interp, 1, out)
+    t |> success(find(out, "no daslang_static.js in") >= 0, out)
     t |> success(!fexist(out_dir), "no refusal created the --out folder")
+    rmdir_rec(work)
+}
+
+[test(description = "bundle.das writes a module folder's .das_module and registered .das files as one JSON object, path to text, and refuses a folder that is no module and a bad call")]
+def test_bundle(t : T?) {
+    var dir_error : string
+    let work = create_temp_directory("c2das_translator_bundle", dir_error)
+    t |> equal(dir_error, "")
+    let out_json = path_join(work, "c_runtime.json")
+    var out : string
+    let rc = run_and_capture(["{get_das_root()}/bin/daslang", "web/translator/bundle.das", "--", "c_runtime", out_json], out, 120.0)
+    t |> equal(rc, 0, out)
+    var error : string
+    var bundle = read_json(fread(out_json), error)
+    t |> success(bundle != null, error)
+    if (bundle != null) {
+        t |> equal(bundle?["c_runtime/c_function.das"] ?? "", fread("c_runtime/c_runtime/c_function.das"))
+        t |> equal(bundle?["c_runtime/printf.das"] ?? "", fread("c_runtime/c_runtime/printf.das"))
+        t |> equal(bundle?[".das_module"] ?? "", fread("c_runtime/.das_module"))
+        t |> success(!key_exists(bundle, "REVIEW.das"), "only the registered folder")
+    }
+    let rc_empty = run_and_capture(["{get_das_root()}/bin/daslang", "web/translator/bundle.das", "--", work, path_join(work, "x.json")], out, 120.0)
+    t |> equal(rc_empty, 1, out)
+    let rc_usage = run_and_capture(["{get_das_root()}/bin/daslang", "web/translator/bundle.das", "--", work], out, 120.0)
+    t |> equal(rc_usage, 2, out)
     rmdir_rec(work)
 }
