@@ -2639,6 +2639,34 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   is clean; inline helpers, while loops, macros expanded, the forms off, source-cut and first-member
   reinterpret (over checks off) each within 0.97-1.05. Combined `fast` over readable: Lua 0.68-0.82, PureDOOM
   0.82-0.96, the projects 0.90-0.99.
+  Batch 1 (2026-11-18, `heavy --exclusive --label TIMING-add38-b1`, `machine quiet (cpu busy 1%)`, box PC,
+  branch at a77160d, pin `b7d8f6f52f` (the pin guard green before and after), 7 samples a cell, the arms' order
+  rotating; `/root/notes/parallel/add38/`: `prep.sh` as normal jobs, `cap1.sh`, `summarize.py b1`). Every run's
+  output was native's. JIT only; arm time over the readable arm's, geometric mean over the program's workloads
+  (Lua's four benches, PureDOOM's demos 1-3, a project's bench), below 1 faster; `f` (first-member reinterpret
+  with checks off) over checks off alone; `-` not an arm (its text equal to readable's, or the knob not
+  applicable: one translation unit takes no layout, `strict_aliasing` only for a program clean under it):
+
+  | program | checks off | table | jwp flip | inline | while | expand | forms off | strict al. | source-cut | single | f/k |
+  |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+  | Lua | 0.992 | 0.782 | 2.372 (off) | 0.969 | 1.017 | 0.970 | 0.974 | 0.973 | 0.930 | 1.071 | - |
+  | PureDOOM | 0.946 | 0.993 | 0.955 (on) | - | 0.981 | 0.999 | 0.981 | - | 1.031 | 0.937 | 1.002 |
+  | binjgb | 0.956 | 0.992 | 1.023 | - | 1.026 | 0.998 | 1.020 | 0.998 | - | - | 1.002 |
+  | h264bsd-mp4 | 0.957 | 1.003 | 1.005 | 1.002 | 0.998 | 0.995 | 1.001 | 0.996 | - | - | 1.005 |
+  | plmpeg-stream | 0.997 | 1.006 | 1.005 | 0.997 | 1.004 | 1.007 | 1.006 | 1.005 | - | - | 0.999 |
+  | wasm3 | 0.967 | 0.995 | 0.997 | 0.990 | 0.995 | 0.999 | 0.993 | 1.001 | - | - | 1.007 |
+  | doomgeneric | 0.960 | 0.994 | 0.994 | 0.990 | 0.996 | 0.999 | 0.986 | - | - | - | 0.999 |
+
+  Found: first-member reinterpret does not compile on Lua even with checks off (error[31004] "cast requires
+  unsafe" at `[c_macro]` fold sites such as `obj2gco(...)` in `lparser`), so Lua has no `f` arm; on every
+  other program it changes nothing measurable over checks off. Predictions for batch 2
+  (`/root/notes/predictions/2026-11-18-add38-b2.md`, before its timing; arm over readable on the same tier):
+  Lua L1 (table, source-cut, inline helpers, macros expanded, strict aliasing, the three forms off) interp
+  0.40-0.60, JIT 0.64-0.80, exe 0.66-0.82, AOT 0.75-0.97, and L2 (L1 with checks off) 0.36-0.57, 0.62-0.80,
+  0.64-0.82, 0.75-0.97; PureDOOM D1 (single layout, jwp, checks off, while loops, forms off) interp 0.90-1.02,
+  JIT 0.86-0.94, exe 0.86-0.95, AOT 0.95-1.03, and D2 (D1 in the source layout) 0.90-1.02, 0.88-0.96,
+  0.88-0.96, 0.95-1.03; checks off on binjgb, h264bsd-mp4, wasm3 and doomgeneric interp 0.88-0.97, JIT
+  0.94-0.98, exe 0.94-0.99, AOT 0.97-1.02, on plmpeg-stream 0.90-1.00 interp and 0.98-1.02 elsewhere.
 
 ## P6 — Doom
 
