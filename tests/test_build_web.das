@@ -22,7 +22,7 @@ def private tool_path(t : T?; dir, version_line : string) : string {
     let bin = path_join(dir, "bin")
     mkdir_rec(bin)
     var out : string
-    for (tool in ["bash", "sh", "sed", "git", "ldd", "grep", "head", "dirname"]) {
+    for (tool in ["bash", "sh", "sed", "git", "ldd", "grep", "head", "dirname", "tr", "cut"]) {
         let rc = run_and_capture(["sh", "-c", "ln -sf \"$(command -v {tool})\" {bin}/{tool}"], out, 30.0)
         t |> equal(rc, 0, out)
     }
@@ -184,6 +184,109 @@ def test_build_web_pages(t : T?) {
         let again = build_web("", "--from '{site}' --pages '{pages}' --commit", out)
         t |> equal(again, 0, out)
         t |> success(find(out, "already holds this site") >= 0, out)
+        t |> success(find(readme, "C baseline") < 0, "a site without the C build gets no baseline line")
     }
+    rmdir_rec(work)
+}
+
+[test(description = "build_web.sh --pages names the C baseline and its PureDOOM commit in the README when the site has it")]
+def test_build_web_pages_baseline(t : T?) {
+    var dir_error : string
+    let work = create_temp_directory("c2das_build_web_baseline", dir_error)
+    t |> equal(dir_error, "")
+    let pages = path_join(work, "pages")
+    fake_checkout(t, pages, "gh-pages")
+    t |> run("a site with the C baseline names it and its PureDOOM commit in the README") @(t : T?) {
+        let with_c = path_join(work, "with_c")
+        fake_site(with_c, "3333333333", "2222222222")
+        fwrite(path_join(with_c, "puredoom/build.json"), "\{\"c2das_re\": \"3333333333\", \"ports\": \"2222222222\", \"converted_by\": \"deee3209ce\", \"daslang\": \"2decba91d5\", \"emscripten\": \"5.0.7\", \"puredoom\": \"355cfbd16f\"\}\n")
+        fwrite(path_join(with_c, "puredoom/doom_c.html"), "<p>c</p>\n")
+        var out : string
+        let rc = build_web("", "--from '{with_c}' --pages '{pages}' --commit", out)
+        t |> equal(rc, 0, out)
+        let readme = fread(path_join(pages, "README.md"))
+        t |> success(find(readme, "C baseline") >= 0 && find(readme, "PureDOOM 355cfbd16f") >= 0, readme)
+    }
+    rmdir_rec(work)
+}
+
+// a stand-in repository at `dir` holding build_web.sh, a VERSIONS.md pinning `pin`, and the sidecar
+// text `sidecar`; `fetch` is the body of its doom/fetch.sh, none when empty
+def private stand_in_repo(t : T?; dir, pin, sidecar, fetch : string) {
+    mkdir_rec(path_join(dir, "scripts"))
+    mkdir_rec(path_join(dir, "doom"))
+    var out : string
+    let rc = run_and_capture(["cp", "scripts/build_web.sh", path_join(dir, "scripts/build_web.sh")], out, 30.0)
+    t |> equal(rc, 0, out)
+    fwrite(path_join(dir, "VERSIONS.md"), "daScript commit: {pin} (a stand-in)\n")
+    fwrite(path_join(dir, "doom/doom.c2das"), sidecar)
+    if (!empty(fetch)) {
+        fwrite(path_join(dir, "doom/fetch.sh"), fetch)
+    }
+}
+
+// a stand-in wasm host at `dir`: a git checkout whose bin/daslang links libc++ (a small program
+// built with -stdlib=libc++); its commit, "" where no compiler builds against libc++
+def private stand_in_host(t : T?; dir : string; gate : bool) : string {
+    mkdir_rec(path_join(dir, "bin"))
+    var out : string
+    fwrite(path_join(dir, "probe.cpp"), "#include <string>\nint main() \{ return std::string(\"x\").size() == 1 ? 0 : 1; \}\n")
+    for (cxx in ["clang++-18", "clang++"]) {
+        if (executable_on_path(cxx) && run_and_capture([cxx, "-stdlib=libc++", "-o", path_join(dir, "bin/daslang"), path_join(dir, "probe.cpp")], out, 120.0) == 0) {
+            break
+        }
+    }
+    if (!fexist(path_join(dir, "bin/daslang"))) {
+        return ""
+    }
+    if (gate) {
+        mkdir_rec(path_join(dir, "site/files"))
+        fwrite(path_join(dir, "site/files/wasm-gate.js"), "window.dasWasmGate = 1;\n")
+    }
+    let rc = run_and_capture(["sh", "-c", "cd '{dir}' && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m x && git rev-parse HEAD"], out, 60.0)
+    t |> equal(rc, 0, out)
+    return strip(out)
+}
+
+[test(description = "build_web.sh refuses a sidecar without defines, a host without the browser gate and a failed PureDOOM fetch, before writing")]
+def test_build_web_baseline_refusals(t : T?) {
+    var dir_error : string
+    let work = create_temp_directory("c2das_build_web_c", dir_error)
+    t |> equal(dir_error, "")
+    let out_dir = path_join(work, "out")
+    let ports = path_join(work, "ports")
+    fake_ports(ports)
+    let sidecar = "\{\n    \"defines\": [\"DOOM_TIC_CHECKSUM\"]\n\}\n"
+    t |> run("a sidecar that names no defines") @(t : T?) {
+        let repo = path_join(work, "repo_nodefines")
+        stand_in_repo(t, repo, "0000000000000000000000000000000000000000", "\{\}\n", "")
+        var out : string
+        let rc = run_and_capture(["sh", "-c", "bash '{repo}/scripts/build_web.sh' --ports '{ports}' --out '{out_dir}' 2>&1"], out, 120.0)
+        t |> equal(rc, 1, out)
+        t |> success(find(out, "names no defines") >= 0, out)
+    }
+    let pinned = tool_path(t, path_join(work, "pinned"), "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 5.0.7 (263db4cffa6f9fc2ec514a70abac81362ea41849)")
+    t |> run("a host without the browser gate, then a fetch that fails") @(t : T?) {
+        let bare = path_join(work, "host_bare")
+        let bare_pin = stand_in_host(t, bare, false)
+        if (empty(bare_pin)) {
+            t |> skip("no compiler builds against libc++ here, so no stand-in wasm host")
+            return
+        }
+        let repo = path_join(work, "repo_gate")
+        stand_in_repo(t, repo, bare_pin, sidecar, "")
+        var out : string
+        let rc = run_and_capture(["sh", "-c", "PATH='{pinned}' bash '{repo}/scripts/build_web.sh' --ports '{ports}' --host '{bare}' --out '{out_dir}' 2>&1"], out, 120.0)
+        t |> equal(rc, 1, out)
+        t |> success(find(out, "no browser gate") >= 0, out)
+        let gated = path_join(work, "host_gated")
+        let gated_pin = stand_in_host(t, gated, true)
+        let repo_fetch = path_join(work, "repo_fetch")
+        stand_in_repo(t, repo_fetch, gated_pin, sidecar, "exit 1\n")
+        let rc_fetch = run_and_capture(["sh", "-c", "PATH='{pinned}' bash '{repo_fetch}/scripts/build_web.sh' --ports '{ports}' --host '{gated}' --out '{out_dir}' 2>&1"], out, 120.0)
+        t |> equal(rc_fetch, 1, out)
+        t |> success(find(out, "could not fetch PureDOOM") >= 0, out)
+    }
+    t |> success(!fexist(out_dir), "no refusal created the --out folder")
     rmdir_rec(work)
 }

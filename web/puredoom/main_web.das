@@ -72,7 +72,8 @@ let private TIMEDEMO_BUDGET_USEC = 12000l
 // play mode's game clock advances by the frame's real time, at most this much: a tab the browser
 // hid stops its animation frames, and on return Doom catches up 1/10 s, not every tic it missed
 let private MAX_FRAME_USEC = 100000l
-// under `-uncapped`, the share of an animation frame spent rendering frames beyond the tics' own
+// under `-uncapped`, the time an animation frame spends rendering frames beyond the tics' own: 10 ms,
+// at most 60% of the last frame interval (a display above 100 Hz has shorter frames)
 let private UNCAPPED_BUDGET_USEC = 10000l
 
 var private window : GLFWwindow?
@@ -306,6 +307,7 @@ def init {
         doom_init(argc, argv, 0)
     }
     last_frame_usec = usec_now()
+    stats_start = last_frame_usec
 }
 
 // the counters of the page's fps line, over the second since `stats_start`: animation frames
@@ -315,9 +317,9 @@ var private stats_tic = 0
 var private stats_frames = 0
 var private stats_renders = 0
 
-// one more render of the current state, no tic: PureDOOM has no render interpolation, so the frame
-// shows the state the last tic left (a menu or the automap can still change between tics); skipped
-// during a wipe, which the tics themselves draw
+// one more render of the current state, no tic: PureDOOM has no render interpolation and processes
+// input only in tics, so the frame shows the state the last tic left; skipped during a wipe, which
+// the tics themselves draw
 def private render_between_tics {
     if (int(is_wiping_screen) == 0) {
         D_Display()
@@ -362,14 +364,16 @@ def update : bool {
         }
     } else {
         let now = usec_now()
-        game_usec += min(now - last_frame_usec, MAX_FRAME_USEC)
+        let interval = now - last_frame_usec
+        game_usec += min(interval, MAX_FRAME_USEC)
         last_frame_usec = now
         poll_keys()
         guarded() {
             doom_update()
         }
         if (uncapped) {
-            while (running && usec_now() - now < UNCAPPED_BUDGET_USEC) {
+            let budget = min(UNCAPPED_BUDGET_USEC, interval * 6l / 10l)
+            while (running && usec_now() - now < budget) {
                 guarded() {
                     render_between_tics()
                 }
