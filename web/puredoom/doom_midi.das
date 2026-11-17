@@ -28,15 +28,18 @@ struct MidiPlayer {
     pos : int
     time : double
     playing : bool
+    paused : bool
     loop : bool = true
 }
 
-// one event of one track in ticks, before the tempo map: a channel message, or a tempo when `tempo` > 0
+// one event of one track in ticks, before the tempo map: a channel message, a tempo when `tempo` > 0,
+// or a track's end when `end`
 struct private TickEvent {
     tick : int64
     order : int             // tempo first among events of one tick, then the file's order
     msg : uint64
     tempo : int
+    end : bool
 }
 
 def private be16(data : uint8?; at : int) : int => (int(unsafe(data[at])) << 8) | int(unsafe(data[at + 1]))
@@ -87,13 +90,21 @@ def private parse_track(data : uint8?; start, end : int; var events : array<Tick
             break
         }
         let b = int(unsafe(data[at]))
-        if (b == 0xff) {                        // meta: the tempo matters, the rest is skipped
+        if (b == 0xff) {                        // meta: the tempo and the track's end matter
+            if (at + 1 >= end) {
+                break
+            }
             let kind = int(unsafe(data[at + 1]))
             at += 2
             let len = vlq(data, at, end)
             if (kind == 0x51 && len == 3 && at + 3 <= end) {
                 let tempo = (int(unsafe(data[at])) << 16) | be16(data, at + 1)
-                events |> push(TickEvent(tick = tick, order = -1, tempo = tempo))
+                if (tempo > 0) {
+                    events |> push(TickEvent(tick = tick, order = -1, tempo = tempo))
+                }
+            } elif (kind == 0x2f) {
+                events |> push(TickEvent(tick = tick, order = length(events), end = true))
+                break
             }
             at += len
             continue
@@ -103,6 +114,9 @@ def private parse_track(data : uint8?; start, end : int; var events : array<Tick
             let len = vlq(data, at, end)
             at += len
             continue
+        }
+        if (b >= 0xf1) {
+            break                               // a system message has no place in a file: a broken track
         }
         if ((b & 0x80) != 0) {
             status = b
@@ -133,10 +147,16 @@ def midi_parse(data : uint8?; size : int; var song : MidiSong) : bool {
     let header = be32(data, 4)
     let tracks = be16(data, 10)
     let division = be16(data, 12)
+    if (header < 6 || header > size) {
+        return false
+    }
     var seconds_per_tick = 0.0lf
     var smpte = false
     if ((division & 0x8000) != 0) {             // SMPTE frames a second times ticks a frame
         let fps = 256 - (division >> 8)
+        if ((division & 0xff) == 0) {
+            return false
+        }
         seconds_per_tick = 1.0lf / double(fps * (division & 0xff))
         smpte = true
     } elif (division == 0) {
@@ -149,8 +169,11 @@ def midi_parse(data : uint8?; size : int; var song : MidiSong) : bool {
             break
         }
         let len = be32(data, at + 4)
+        if (len < 0 || len > size - at - 8) {
+            break                               // a length past the lump: a truncated file
+        }
         if (same4(data, at, MTRK)) {
-            parse_track(data, at + 8, min(at + 8 + len, size), events)
+            parse_track(data, at + 8, at + 8 + len, events)
         }
         at += 8 + len
     }
@@ -164,21 +187,32 @@ def midi_parse(data : uint8?; size : int; var song : MidiSong) : bool {
         last_tick = e.tick
         if (e.tempo > 0) {
             tempo = e.tempo
-        } else {
+        } elif (!e.end) {
             song.events |> push(MidiEvent(at = now, msg = e.msg))
         }
     }
+    // the last track's end, so a song that ends on a rest loops after it
     song.length = now
     return !empty(song.events)
 }
 
-//! Starts `song` from its beginning.
-def midi_start(var player : MidiPlayer; var song : MidiSong; loop : bool) {
+//! Starts `song` from its beginning, every channel of `synth` reset.
+def midi_start(var player : MidiPlayer; var synth : Synth; var song : MidiSong; loop : bool) {
     player.song <- song
     player.pos = 0
     player.time = 0.0lf
     player.playing = true
+    player.paused = false
     player.loop = loop
+    synth_reset_channels(synth)
+}
+
+//! Holds or resumes the song: holding releases its notes, as a paused game falls silent.
+def midi_pause(var player : MidiPlayer; var synth : Synth; paused : bool) {
+    if (paused && !player.paused && player.playing) {
+        all_notes_off(synth)
+    }
+    player.paused = paused
 }
 
 // every channel's notes off, at a stop or a loop
@@ -198,7 +232,7 @@ def midi_stop(var player : MidiPlayer; var synth : Synth) {
 
 //! Moves the song on by `seconds`, applying every message that falls due to `synth`.
 def midi_advance(var player : MidiPlayer; var synth : Synth; seconds : double) {
-    if (!player.playing) {
+    if (!player.playing || player.paused) {
         return
     }
     player.time += seconds
@@ -219,3 +253,24 @@ def midi_advance(var player : MidiPlayer; var synth : Synth; seconds : double) {
         player.pos = 0
     }
 }
+
+//! One block of `frames` stereo frames of music added into `out` from index 0, at `rate` frames a
+//! second: `mus_tick` runs `tick_rate` times a second (Doom's MUS player, 140), each tick before the
+//! frames it covers, the MIDI player moves on frame for frame, and the synthesizer renders; `carry`
+//! holds the frames left of the current tick across blocks.
+def music_block(var synth : Synth; var player : MidiPlayer; var carry : float&; var out : array<float>;
+                frames, rate, tick_rate : int; mus_tick : block<(var s : Synth) : void>) {
+    var at = 0
+    while (at < frames) {
+        if (carry <= 0.0) {
+            invoke(mus_tick, synth)
+            carry += float(rate) / float(tick_rate)
+        }
+        let n = min(frames - at, int(ceil(carry)))
+        midi_advance(player, synth, double(n) / double(rate))
+        synth_render(synth, out, at * 2, n)
+        carry -= float(n)
+        at += n
+    }
+}
+

@@ -117,21 +117,29 @@ served, never a commercial id Software WAD. `scripts/build_web.sh --pages` refus
 The host streams one stereo PCM stream to dasAudio (`play_sound_from_pcm_stream`, `append_to_pcm`),
 which mixes it into the browser's audio through its AudioWorklet backend. Each 512-frame block at
 11025 frames a second is Doom's own sfx mix (`doom_get_sound_buffer`, int16) with the music
-synthesizer added; the host keeps the stream 2048 frames ahead of the wall clock, and after a second
-or more with no frames (a hidden tab) skips ahead instead of producing the gap at once. A timedemo
+synthesizer added, clamped to the float range. The host feeds by the stream's own queue, which
+dasAudio publishes into a status box (`set_status_update`): every frame it adds blocks until about
+2048 frames are queued. So the sound never lags further than that; a stall or a hidden tab leaves a
+gap, not a backlog; and a suspended page, whose audio pulls nothing, queues nothing. A timedemo
 streams no sound.
 
-Music: PureDOOM's own player (`doom_tick_midi`, ticked 140 times a second, interleaved with the
-blocks) reads only Doom's MUS format, and every music lump of Freedoom is a MIDI file, so the host
-also plays those: it follows the song Doom plays (the `S_music` entry holding data, which
-`S_ChangeMusic` sets and `S_StopMusic` clears), parses a MIDI lump with `doom_midi.das` into
-messages timed by the file's tempo map, and hands them to the synthesizer as they fall due; every
-song loops (Doom's loop flag is private to its sound module). Both players feed `doom_synth.das`, a
-small General MIDI synthesizer: one waveform and envelope per instrument family, shaped noise and
-pitch sweeps for the percussion channel, 24 voices, scaled by Doom's music volume.
+Music: PureDOOM's own player (`doom_tick_midi`, ticked 140 times a second, each tick before the
+frames it covers: `music_block` in `doom_midi.das`) reads only Doom's MUS format, and every music
+lump of Freedoom is a MIDI file, so the host also plays those: it follows the song Doom plays (the
+`S_music` entry holding data, which `S_ChangeMusic` sets and `S_StopMusic` clears), passes the
+engine's messages for the change first, parses a MIDI lump with `doom_midi.das` into messages timed
+by the file's tempo map, and hands them to the synthesizer as they fall due, every channel reset at a
+song's start; a song loops at its last track's end (Doom's loop flag is private to its sound
+module), and the game's pause holds it with its notes released. Both players feed `doom_synth.das`,
+a small General MIDI synthesizer: one waveform and envelope per instrument family, shaped noise and
+pitch sweeps for the percussion channel, whose note-offs it ignores (a drum sounds out its decay), 24
+voices, a full set stealing a released voice first and never one still rising. Doom's music volume
+reaches a MUS song as the engine's own volume messages and a MIDI song as the synthesizer's gain;
+while a MIDI song plays the engine's volume messages are dropped, so the file keeps its own mix.
 
 The page starts the browser's audio on the first click or key (browsers start audio only from a
-gesture) and its button suspends and resumes it, remembered in the browser's storage. The C
+gesture), and its button suspends and resumes it, remembered in the browser's storage: a muted
+page's audio context ignores every other request to resume, the program's own included. The C
 baseline (section 6) has no sound: it exists for the timedemo comparison.
 
 ## 6. The C baseline
