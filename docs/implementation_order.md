@@ -2484,9 +2484,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `daspkg release wasm`, and `scripts/build_crt.sh --libcxx-host` builds the `crt` a libc++ cross-compile
   host loads (`dasCRuntime/ARCHITECTURE.md` section 8). Off the gates: `tests/test_crt_wasm.das` skips
   where emscripten, cmake or ninja is not on PATH (a toolchain no gate installs, so no phase lifts the skip; its arm runs
-  wherever emsdk 5.0.7 is active, and refuses another emscripten than `VERSIONS.md`'s). The test's archive
-  builds against the pin's headers (6401904cf9) and passed there. Verified with emsdk 5.0.7 and a libc++
-  host at daScript 6f83af0855, its archive built against that host's headers:
+  wherever emsdk 5.0.7 is active, and refuses another emscripten than `VERSIONS.md`'s); `tests/test_build_crt.das`
+  covers `build_crt.sh`'s refusals and the libc++-host configure without emscripten. First verified
+  before the repin (superseded below: the pin then 6401904cf9, a libc++ host at 6f83af0855):
   a `crt` app through `daspkg release wasm` (the archive built by the hook) prints the CRT's answers under
   node; PureDOOM processed cross-compiled, linked with `-sMEMORY64=2`, plays demo1 under node 24 with all
   2664 tic hashes equal to `ref/freedoom2_demo1.log` (game loop about 0.9 s, indicative, a busy box).

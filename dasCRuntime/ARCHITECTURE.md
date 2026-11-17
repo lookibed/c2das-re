@@ -22,6 +22,8 @@ folder is the native glue module `crt`: the C runtime library bound into daslang
   built and where it lands (section 8).
 - `tests/test_crt.das` - the dastest suite: one arm family per header, every bind called at
   least once against a value the C standard fixes.
+- `tests/test_build_crt.das` - `scripts/build_crt.sh`'s refusals and the libc++-host configure,
+  without emscripten and without a build.
 - `tests/test_crt_wasm.das` - builds the wasm64 archive with emscripten and checks it defines the
   module's registration; skipped where emscripten, cmake or ninja is not on PATH, failed on an
   emscripten other than the one `VERSIONS.md` pins.
@@ -182,8 +184,11 @@ build refuses a configure without it. It compiles with the flags and defines of 
 `-sMEMORY64=2`), `-pthread`, wasm exceptions with `DAS_ENABLE_EXCEPTIONS`, SIMD, no RTTI, and the
 section 6 ABI defines. `.das_package` declares that build (`release_wasm_build`) and the archive
 (`release_wasm_archive`); daspkg runs it once while the archive is missing from its wasm lib dir
-and stages it there. A staged archive is never rebuilt, so a change to `src/` deletes
-`liblibDasModuleCRuntime.a` from that lib dir and from `_wasm/` before the next release.
+and stages it there. A staged archive is never rebuilt, and `daspkg build --wasm` leaves it in
+place: after a change to `src/` or a move of the daScript commit, `liblibDasModuleCRuntime.a` is
+deleted from that lib dir, and the next release rebuilds it (the build in `_wasm_build/` is
+incremental). The configure refuses a build type other than Release, whose defines
+(`DAS_NO_ASSERTIONS`, `DAS_FUSION=2`) the web runtime is built with.
 
 The cross-compile itself runs on a daslang host built against libc++ with C++ exceptions
 (daScript's `web/build_wasm_host.sh`), because the host bakes its own C++ layouts into the wasm

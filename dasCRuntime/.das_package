@@ -23,6 +23,6 @@ def release() {
     // `daspkg release wasm` runs this (cwd = the package dir) when a cross-compiled app links crt and
     // the archive is not staged yet, then stages it into the wasm lib dir. get_das_root() is the SDK
     // whose headers and wasm64 runtime the app links.
-    release_wasm_build("emcmake cmake -S {CRT_SOURCE} -B {CRT_SOURCE}/_wasm_build -DDASLANG_ROOT={get_das_root()} -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-sMEMORY64=1 -DCMAKE_CXX_FLAGS=-sMEMORY64=1 -G Ninja && cmake --build {CRT_SOURCE}/_wasm_build")
+    release_wasm_build("emcmake cmake -S {CRT_SOURCE} -B {CRT_SOURCE}/_wasm_build -DDASLANG_ROOT=\"{get_das_root()}\" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-sMEMORY64=1 -DCMAKE_CXX_FLAGS=-sMEMORY64=1 -G Ninja && cmake --build {CRT_SOURCE}/_wasm_build")
     release_wasm_archive("{CRT_SOURCE}/_wasm/liblibDasModuleCRuntime.a")
 }

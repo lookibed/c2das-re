@@ -21,6 +21,10 @@ if(EMSCRIPTEN)
     if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
         message(FATAL_ERROR "dasCRuntime: the wasm archive is wasm64; configure with -DCMAKE_C_FLAGS=-sMEMORY64=1 -DCMAKE_CXX_FLAGS=-sMEMORY64=1")
     endif()
+    # the defines below are the web runtime's Release ones; another configuration would mismatch it
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Release")
+        message(FATAL_ERROR "dasCRuntime: the wasm archive matches the Release web runtime; configure with -DCMAKE_BUILD_TYPE=Release")
+    endif()
     set(DAS_CRT_WASM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/_wasm" CACHE PATH "where the wasm64 archive lands")
     add_library(dasModuleCRuntime STATIC src/dasCRuntime.cpp)
     target_compile_features(dasModuleCRuntime PRIVATE cxx_std_17)
@@ -28,8 +32,8 @@ if(EMSCRIPTEN)
     target_compile_definitions(dasModuleCRuntime PRIVATE ${DAS_CRT_ABI_DEFS}
         DAS_NO_ASSERTIONS DAS_ENABLE_EXCEPTIONS _EMSCRIPTEN_VER)
     target_compile_options(dasModuleCRuntime PRIVATE -fno-rtti -fwrapv -fno-strict-aliasing
-        -Wno-invalid-offsetof -Wall -Wextra -Wno-missing-field-initializers -Werror -msimd128 -mnontrapping-fptoint -fwasm-exceptions
-        -sWASM_LEGACY_EXCEPTIONS=0 -sMEMORY64=1 -pthread)
+        -Wno-invalid-offsetof -Wall -Wextra -Wno-missing-field-initializers -Werror
+        -msimd128 -mnontrapping-fptoint -fwasm-exceptions -sWASM_LEGACY_EXCEPTIONS=0 -sMEMORY64=1 -pthread)
     set_target_properties(dasModuleCRuntime PROPERTIES
         PREFIX "" OUTPUT_NAME "liblibDasModuleCRuntime" SUFFIX ".a"
         ARCHIVE_OUTPUT_DIRECTORY "${DAS_CRT_WASM_DIR}")
