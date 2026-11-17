@@ -1,0 +1,363 @@
+options gen2
+options indenting = 4
+options stack = 8388608
+options strict_aliasing = false
+
+//! PureDOOM's browser host: the converted port (puredoom-readable/processed) driven the way daslang's
+//! web lifecycle drives a cross-compiled program. The browser calls `init` once, then `update` on every
+//! animation frame until it returns false; `main` is the desktop driver of the same three functions.
+//! Each frame draws Doom's 320x200 palettized framebuffer, expanded to RGBA by `doom_get_framebuffer`,
+//! as one texture on a quad; the keyboard and the left mouse button are polled through GLFW and
+//! posted as Doom key and button events.
+//!
+//! Two modes, chosen by the program arguments:
+//! - play (no `-timedemo`): Doom runs on the real clock, `doom_update` catches up to 35 tics a second.
+//! - timedemo (`-timedemo demoN`): Doom runs on a virtual clock that advances one tic per
+//!   `doom_force_update`, exactly as the native host `doom_main.das` does, so the tic checksums are
+//!   the native ones; each frame runs updates for a fixed budget of milliseconds and then draws once.
+//!   When the demo ends Doom exits; the host prints the tics, the seconds spent inside the updates and
+//!   a digest of the checksum lines, and stops.
+
+require DOOM_cluster
+require DOOM_h
+require crt
+require c_runtime/c_args
+require c_runtime/cstr
+require c_runtime/enum_from_int
+require c_runtime/printf
+require c_runtime/setjmp
+require glfw/glfw_boost
+require opengl/opengl_boost
+require glsl/glsl_opengl
+require daslib/safe_addr
+
+var @in @location v_position : float2
+var @in @location v_texcoord : float2
+var @inout f_texcoord : float2
+var @uniform f_tex : sampler2D
+var @out f_FragColor : float4
+
+[vertex_program]
+def vs_main {
+    f_texcoord = v_texcoord
+    gl_Position = float4(v_position, 0.0, 1.0)
+}
+
+[fragment_program]
+def fs_main {
+    f_FragColor = texture(f_tex, f_texcoord)
+}
+
+[vertex_buffer]
+struct Vertex {
+    xy : float2
+    uv : float2
+}
+
+let private QUAD = [Vertex(
+    xy = float2(-1.0, 1.0), uv = float2(0.0, 0.0)), Vertex(
+    xy = float2(1.0, 1.0), uv = float2(1.0, 0.0)), Vertex(
+    xy = float2(1.0, -1.0), uv = float2(1.0, 1.0)), Vertex(
+    xy = float2(-1.0, -1.0), uv = float2(0.0, 1.0)
+)]
+
+let private QUAD_INDICES = fixed_array<int>(0, 1, 2, 2, 3, 0)
+
+let private DOOM_W = 320
+let private DOOM_H = 200
+// the timedemo's share of a 60 Hz frame spent in updates before the frame is drawn
+let private TIMEDEMO_BUDGET_USEC = 12000l
+
+var private window : GLFWwindow?
+var private program : uint
+var private vao : uint
+var private vbo : uint
+var private ebo : uint
+var private screen_tex : uint
+
+var private timedemo = false
+var private running = false
+var private virtual_usec : int64 = 0l
+var private work_usec : int64 = 0l
+var private clock_base : int64 = 0l
+var private exit_code = 0
+var private leave_frame : CJmpBuf
+
+// FNV-1a over the bytes of every `tic=` checksum line, and their count
+var private in_tic_line = false
+var private tic_lines = 0
+var private tic_digest : uint = 2166136261u
+
+// GLFW key, Doom key: the keys Doom's defaults and menus read
+let private KEYMAP = [
+    (GLFW_KEY_LEFT, int(doom_key_t.DOOM_KEY_LEFT_ARROW)), (GLFW_KEY_RIGHT, int(doom_key_t.DOOM_KEY_RIGHT_ARROW)),
+    (GLFW_KEY_UP, int(doom_key_t.DOOM_KEY_UP_ARROW)), (GLFW_KEY_DOWN, int(doom_key_t.DOOM_KEY_DOWN_ARROW)),
+    (GLFW_KEY_ENTER, int(doom_key_t.DOOM_KEY_ENTER)), (GLFW_KEY_ESCAPE, int(doom_key_t.DOOM_KEY_ESCAPE)),
+    (GLFW_KEY_TAB, int(doom_key_t.DOOM_KEY_TAB)), (GLFW_KEY_BACKSPACE, int(doom_key_t.DOOM_KEY_BACKSPACE)),
+    (GLFW_KEY_SPACE, int(doom_key_t.DOOM_KEY_SPACE)), (GLFW_KEY_PAUSE, int(doom_key_t.DOOM_KEY_PAUSE)),
+    (GLFW_KEY_LEFT_CONTROL, int(doom_key_t.DOOM_KEY_CTRL)), (GLFW_KEY_RIGHT_CONTROL, int(doom_key_t.DOOM_KEY_CTRL)),
+    (GLFW_KEY_LEFT_SHIFT, int(doom_key_t.DOOM_KEY_SHIFT)), (GLFW_KEY_RIGHT_SHIFT, int(doom_key_t.DOOM_KEY_SHIFT)),
+    (GLFW_KEY_LEFT_ALT, int(doom_key_t.DOOM_KEY_ALT)), (GLFW_KEY_RIGHT_ALT, int(doom_key_t.DOOM_KEY_ALT)),
+    (GLFW_KEY_MINUS, int(doom_key_t.DOOM_KEY_MINUS)), (GLFW_KEY_EQUAL, int(doom_key_t.DOOM_KEY_EQUALS)),
+    (GLFW_KEY_COMMA, int(doom_key_t.DOOM_KEY_COMMA)), (GLFW_KEY_PERIOD, int(doom_key_t.DOOM_KEY_PERIOD)),
+    (GLFW_KEY_SLASH, int(doom_key_t.DOOM_KEY_SLASH)), (GLFW_KEY_SEMICOLON, int(doom_key_t.DOOM_KEY_SEMICOLON)),
+    (GLFW_KEY_APOSTROPHE, int(doom_key_t.DOOM_KEY_APOSTROPHE)),
+    (GLFW_KEY_LEFT_BRACKET, int(doom_key_t.DOOM_KEY_LEFT_BRACKET)),
+    (GLFW_KEY_RIGHT_BRACKET, int(doom_key_t.DOOM_KEY_RIGHT_BRACKET)),
+    (GLFW_KEY_F1, int(doom_key_t.DOOM_KEY_F1)), (GLFW_KEY_F2, int(doom_key_t.DOOM_KEY_F2)),
+    (GLFW_KEY_F3, int(doom_key_t.DOOM_KEY_F3)), (GLFW_KEY_F4, int(doom_key_t.DOOM_KEY_F4)),
+    (GLFW_KEY_F5, int(doom_key_t.DOOM_KEY_F5)), (GLFW_KEY_F6, int(doom_key_t.DOOM_KEY_F6)),
+    (GLFW_KEY_F7, int(doom_key_t.DOOM_KEY_F7)), (GLFW_KEY_F8, int(doom_key_t.DOOM_KEY_F8)),
+    (GLFW_KEY_F9, int(doom_key_t.DOOM_KEY_F9)), (GLFW_KEY_F10, int(doom_key_t.DOOM_KEY_F10)),
+    (GLFW_KEY_F11, int(doom_key_t.DOOM_KEY_F11)), (GLFW_KEY_F12, int(doom_key_t.DOOM_KEY_F12))
+]
+
+// the pressed state of each KEYMAP row, plus letters, digits and the left mouse button
+var private key_state : array<bool>
+var private letter_down : bool[26]
+var private digit_down : bool[10]
+var private mouse_down = false
+
+def private virtual_gettime(var sec : int?; var usec : int?) {
+    *sec = int(virtual_usec / 1000000l)
+    *usec = int(virtual_usec % 1000000l)
+}
+
+// play mode's clock: the time since `init`, Doom's only time source (PureDOOM's default reads 0)
+def private real_gettime(var sec : int?; var usec : int?) {
+    let now = usec_now() // nolint:LINT021 - the seconds pass 2^31 microseconds after 36 minutes of play
+    *sec = int(now / 1000000l)
+    *usec = int(now % 1000000l)
+}
+
+// Doom's print: checksum lines fold into the digest, everything else goes to stdout
+def private host_print(var str : uint8?) {
+    if (!in_tic_line && unsafe(crt::strcmp(str, cstr("tic="))) == 0) {
+        in_tic_line = true
+    }
+    if (!in_tic_line) {
+        printf(cstr("%s"), str)
+        return
+    }
+    var p = str
+    while (*p != 0u8) {
+        tic_digest ^= uint(*p)
+        tic_digest *= 16777619u
+        if (*p == 10u8) {
+            in_tic_line = false
+            tic_lines++
+        }
+        p = unsafe(p + 1)
+    }
+}
+
+def private report_timedemo {
+    let wall = double(usec_now()) / 1000000.0lf
+    printf(cstr("host: timed %d gametics in %.6f s\n"), gametic, double(work_usec) / 1000000.0lf)
+    printf(cstr("host: %d checksum lines, digest %08x; wall %.3f s\n"), tic_lines, tic_digest, wall)
+}
+
+def private host_exit(code : int) {
+    if (timedemo) {
+        report_timedemo()
+    }
+    var stdout_file = unsafe(crt::c_stdout())
+    unsafe(crt::fflush(stdout_file))
+    exit_code = code
+    running = false
+    c_longjmp(unsafe(addr(leave_frame)), 1)
+}
+
+// runs `step` with Doom's exit callback able to leave it; false once Doom has exited
+def private guarded(step : block) : bool {
+    try {
+        invoke(step)
+    } recover {
+        if (c_jmp_target != unsafe(addr(leave_frame))) {
+            panic("longjmp")
+        }
+        c_jmp_target = null
+    }
+    return running
+}
+
+def private usec_now : int64 => get_time_nsec(clock_base) / 1000l
+
+def private poll_keys {
+    for (row, idx in KEYMAP, count()) {
+        let pressed = glfwGetKey(window, row._0) == GLFW_PRESS
+        if (pressed != key_state[idx]) {
+            key_state[idx] = pressed
+            if (pressed) {
+                doom_key_down(enum_from_int(type<doom_key_t>, row._1))
+            } else {
+                doom_key_up(enum_from_int(type<doom_key_t>, row._1))
+            }
+        }
+    }
+    for (i in range(26)) {
+        let pressed = glfwGetKey(window, GLFW_KEY_A + i) == GLFW_PRESS
+        if (pressed != letter_down[i]) {
+            letter_down[i] = pressed
+            let key = enum_from_int(type<doom_key_t>, int(doom_key_t.DOOM_KEY_A) + i)
+            if (pressed) {
+                doom_key_down(key)
+            } else {
+                doom_key_up(key)
+            }
+        }
+    }
+    for (i in range(10)) {
+        let pressed = glfwGetKey(window, GLFW_KEY_0 + i) == GLFW_PRESS
+        if (pressed != digit_down[i]) {
+            digit_down[i] = pressed
+            let key = enum_from_int(type<doom_key_t>, int(doom_key_t.DOOM_KEY_0) + i)
+            if (pressed) {
+                doom_key_down(key)
+            } else {
+                doom_key_up(key)
+            }
+        }
+    }
+    let pressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS
+    if (pressed != mouse_down) {
+        mouse_down = pressed
+        if (pressed) {
+            doom_button_down(doom_button_t.DOOM_LEFT_BUTTON)
+        } else {
+            doom_button_up(doom_button_t.DOOM_LEFT_BUTTON)
+        }
+    }
+}
+
+def private create_gl_objects {
+    program = create_shader_program(@@vs_main, @@fs_main)
+    glGenVertexArrays(1, safe_addr(vao))
+    glBindVertexArray(vao)
+    glGenBuffers(1, safe_addr(vbo))
+    glBindBuffer(GL_ARRAY_BUFFER, vbo)
+    glBufferData(GL_ARRAY_BUFFER, QUAD, GL_STATIC_DRAW)
+    bind_vertex_buffer(null, type<Vertex>)
+    glGenBuffers(1, safe_addr(ebo))
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, QUAD_INDICES, GL_STATIC_DRAW)
+    glGenTextures(1, safe_addr(screen_tex))
+    glBindTexture(GL_TEXTURE_2D, screen_tex)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, int(GL_NEAREST))
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, int(GL_NEAREST))
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, int(GL_CLAMP_TO_EDGE))
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, int(GL_CLAMP_TO_EDGE))
+    glTexImage2D(GL_TEXTURE_2D, 0, int(GL_RGBA), DOOM_W, DOOM_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, null)
+}
+
+// Doom's frame, letterboxed to 4:3 (the 320x200 screen was shown on 4:3 monitors)
+def private draw_frame {
+    let pixels = doom_get_framebuffer(4)
+    glBindTexture(GL_TEXTURE_2D, screen_tex)
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, DOOM_W, DOOM_H, GL_RGBA, GL_UNSIGNED_BYTE, pixels)
+    var fb_w, fb_h : int
+    glfwGetFramebufferSize(window, fb_w, fb_h)
+    var w = fb_w
+    var h = fb_w * 3 / 4
+    if (h > fb_h) {
+        h = fb_h
+        w = fb_h * 4 / 3
+    }
+    glViewport(0, 0, fb_w, fb_h)
+    glClearColor(0.0, 0.0, 0.0, 1.0)
+    glClear(GL_COLOR_BUFFER_BIT)
+    glViewport((fb_w - w) / 2, (fb_h - h) / 2, w, h)
+    glUseProgram(program)
+    f_tex := screen_tex
+    vs_main_bind_uniform(program)
+    fs_main_bind_uniform(program)
+    glBindVertexArray(vao)
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, null)
+    glfwSwapBuffers(window)
+}
+
+[export]
+def init {
+    c_runtime_init("doom_web")
+    let argc = c_argc()
+    var argv = c_argv()
+    for (i in range(1, argc)) {
+        unsafe {
+            if (crt::strcmp(argv[i], cstr("-timedemo")) == 0) {
+                timedemo = true
+            }
+        }
+    }
+    key_state |> resize(length(KEYMAP))
+    if (glfwInit() == 0) {
+        panic("can't init glfw")
+    }
+    glfwInitOpenGL(3, 3)
+    window = glfwCreateWindow(960, 720, "PureDOOM in daslang", null, null)
+    if (window == null) {
+        panic("can't create window")
+    }
+    glfwMakeContextCurrent(window)
+    create_gl_objects()
+    doom_set_print(@@host_print)
+    doom_set_exit(@@host_exit)
+    clock_base = ref_time_ticks()
+    if (timedemo) {
+        doom_set_gettime(@@virtual_gettime)
+    } else {
+        doom_set_gettime(@@real_gettime)
+    }
+    running = true
+    guarded() {
+        doom_init(argc, argv, 0)
+    }
+}
+
+[export]
+def update : bool {
+    if (!running) {
+        return false
+    }
+    glfwPollEvents()
+    if (timedemo) {
+        let frame_start = usec_now()
+        var now = frame_start
+        while (running && now - frame_start < TIMEDEMO_BUDGET_USEC) {
+            guarded() {
+                doom_force_update()
+                virtual_usec += int64(1000000 / 35)
+            }
+            let after = usec_now()
+            work_usec += after - now
+            now = after
+        }
+    } else {
+        poll_keys()
+        guarded() {
+            doom_update()
+        }
+    }
+    draw_frame()
+    return running
+}
+
+[export]
+def shutdown {
+    if (window != null) {
+        glfwDestroyWindow(window)
+        window = null
+    }
+    glfwTerminate()
+}
+
+// the desktop driver: the same lifecycle in a loop, for a native run of this host
+[export]
+def main : int {
+    init()
+    while (update() && glfwWindowShouldClose(window) == 0) {
+        pass
+    }
+    shutdown()
+    return exit_code
+}

@@ -1,0 +1,17 @@
+options gen2
+require daslib/daspkg
+
+// the release of the staged project scripts/build_web.sh lays out: src/ holds puredoom-readable's
+// processed modules with main_web.das beside them, modules/ the crt and c_runtime it requires
+[export]
+def package() {
+    package_name("doom")
+    package_description("PureDOOM converted to daslang by c2das-re, its browser host")
+}
+
+[export]
+def release() {
+    release_wasm_main("src/main_web.das")
+    release_web_shell("shell.html")
+    release_emcc_arg("-sMAXIMUM_MEMORY=2GB")
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>c2das ports in the browser</title>
+<style>
+  html, body { margin: 0; background: #0d0c0a; color: #d8d2c4; font: 16px/1.6 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+  a { color: #e39a6b; }
+  li { margin: 8px 0; }
+  .dim { color: #8f887a; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>C programs, translated to daslang, running as WebAssembly</h1>
+  <p>Each demo is a real C program converted to <a href="https://github.com/GaijinEntertainment/daScript">daslang</a>
+    by <a href="https://github.com/lookibed/c2das-re">c2das-re</a>, then compiled ahead of time to wasm.
+    The converted sources are in <a href="https://github.com/lookibed/c2das-ports">c2das-ports</a>.</p>
+  <ul id="demos">
+    <li><a href="puredoom/doom.html">PureDOOM</a>: play Freedoom, or run the demo1 timedemo and compare every tic's checksum with the native build.</li>
+  </ul>
+  <p class="dim">A modern desktop browser is needed (WebAssembly threads and exceptions). The first visit reloads once to enable cross-origin isolation.</p>
+</main>
+</body>
+</html>

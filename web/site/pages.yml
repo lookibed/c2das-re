@@ -1,0 +1,36 @@
+# Deploys this branch to GitHub Pages. The game data is not in the repository: the job downloads
+# Freedoom 0.13.0 from its official release, checks both sha256 sums (the ones c2das-re's
+# fetch_wad.sh checks) and puts freedoom2.wad next to the PureDOOM page, so the page can load it
+# from its own origin (the release host sends no CORS headers, so a page cannot fetch it directly).
+name: pages
+on:
+  push:
+    branches: [gh-pages]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Freedoom from the official release
+        run: |
+          curl -fsSL -o freedoom.zip https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
+          echo "3f9b264f3e3ce503b4fb7f6bdcb1f419d93c7b546f4df3e874dd878db9688f59  freedoom.zip" | sha256sum -c -
+          unzip -j freedoom.zip '*/freedoom2.wad' -d puredoom
+          echo "a8772e088847032510d97ba2312406a6998f21cbab44d4ff10696faa9c0ecd4b  puredoom/freedoom2.wad" | sha256sum -c -
+          rm freedoom.zip
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4

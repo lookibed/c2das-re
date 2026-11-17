@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="das-build" content="__DAS_BUILD_STAMP__">
+<title>PureDOOM in daslang</title>
+<script src="../coi-serviceworker.js"></script>
+<style>
+  :root { --bg: #0d0c0a; --fg: #d8d2c4; --dim: #8f887a; --accent: #c8452c; --panel: #1a1815; --ok: #6fae5a; --bad: #d0533c; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 22px; margin: 4px 0 4px; }
+  p { margin: 6px 0; }
+  a { color: #e39a6b; }
+  .dim { color: var(--dim); font-size: 13px; }
+  #stage { position: relative; width: min(100%, calc(80vh * 4 / 3)); aspect-ratio: 4 / 3; background: #000; margin: 12px auto; }
+  #canvas { width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+  #panel { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; text-align: center; background: var(--panel); }
+  #panel[hidden] { display: none; }
+  button { font: inherit; padding: 8px 18px; border-radius: 6px; border: 1px solid #444; background: #2a2723; color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { min-height: 1.5em; }
+  #result { font-size: 17px; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  #log { background: #000; color: #a9a294; font: 12px/1.4 ui-monospace, Consolas, monospace; height: 140px; overflow: auto; padding: 6px 8px; white-space: pre-wrap; margin: 0; }
+  kbd { background: #2a2723; border: 1px solid #444; border-radius: 3px; padding: 0 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>PureDOOM, translated from C to daslang, compiled to WebAssembly</h1>
+  <p class="dim">The C source of <a href="https://github.com/Daivuk/PureDOOM">PureDOOM</a> was converted to daslang by
+    <a href="https://github.com/lookibed/c2das-re">c2das-re</a> (<a href="https://github.com/lookibed/c2das-ports/tree/main/puredoom-readable">puredoom-readable</a>, the processed variant),
+    then compiled ahead of time to wasm by daslang's LLVM backend. Nothing here is the original C. Game data: <a href="https://freedoom.github.io/">Freedoom</a> Phase 2 (BSD licence), the official 0.13.0 release, loaded at run time; never id Software's commercial WADs.</p>
+  <div id="stage">
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    <div id="panel">
+      <div id="status">Checking the browser...</div>
+      <div>
+        <button id="play" class="primary" disabled>Play</button>
+        <button id="timedemo" disabled>Timedemo demo1 (fps)</button>
+      </div>
+      <div class="dim" id="wadnote"></div>
+      <div id="pick" hidden>
+        <label class="dim">Or use your own copy (<code>freedoom2.wad</code> 0.13.0 or <code>freedoom-0.13.0.zip</code>):
+          <input type="file" id="wadfile" accept=".wad,.zip"></label>
+      </div>
+    </div>
+  </div>
+  <div id="result"></div>
+  <p class="dim">Keys: arrows move, <kbd>Ctrl</kbd> or left mouse fires, <kbd>Space</kbd> opens doors, <kbd>Shift</kbd> runs, <kbd>Alt</kbd> strafes,
+    <kbd>Enter</kbd>/<kbd>Esc</kbd> menus, <kbd>Y</kbd> confirms, <kbd>1</kbd>-<kbd>7</kbd> weapons, <kbd>Tab</kbd> map. Click the picture first. No sound yet.</p>
+  <pre id="log"></pre>
+  <p class="dim" id="build"></p>
+</main>
+<template id="loader">{{{ SCRIPT }}}</template>
+<!-- @wasm-gate -->
+<script>
+  var WAD_SHA256 = 'a8772e088847032510d97ba2312406a6998f21cbab44d4ff10696faa9c0ecd4b';
+  var ZIP_SHA256 = '3f9b264f3e3ce503b4fb7f6bdcb1f419d93c7b546f4df3e874dd878db9688f59';
+  var OFFICIAL_ZIP = 'https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip';
+  var SAME_ORIGIN_WAD = 'freedoom2.wad';   // put there by the Pages deploy from the official release, never committed
+  var REF_LOG = 'demo1_ref.log';   // the native build's demo1 log (puredoom-readable/ref), its tic= lines
+  var expected = null;             // { tics, digest } of REF_LOG, folded the way the host folds its own lines
+
+  var $ = function (id) { return document.getElementById(id); };
+  var logEl = $('log');
+  function log(line) { logEl.textContent += line + '\n'; logEl.scrollTop = logEl.scrollHeight; }
+  function status(text) { $('status').textContent = text; }
+
+  var SCROLL_KEYS = { ArrowUp:1, ArrowDown:1, ArrowLeft:1, ArrowRight:1, ' ':1, Tab:1, Alt:1, F1:1, F2:1, F3:1, F4:1, F5:1, F6:1, F7:1, F8:1, F9:1, F10:1, F11:1, F12:1 };
+  window.addEventListener('keydown', function (e) {
+    if (!started) return;
+    if (SCROLL_KEYS[e.key] || e.ctrlKey && /^[a-z]$/i.test(e.key)) e.preventDefault();
+  }, { passive: false, capture: true });
+
+  async function sha256hex(bytes) {
+    var d = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+    return Array.from(d, function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+  }
+
+  // freedoom2.wad out of the release zip: the central directory names it, deflate-raw inflates it
+  async function wadFromZip(zip) {
+    var v = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+    var eocd = -1;
+    for (var i = zip.length - 22; i >= Math.max(0, zip.length - 65557); i--) {
+      if (v.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('not a zip');
+    var count = v.getUint16(eocd + 10, true), p = v.getUint32(eocd + 16, true);
+    for (var n = 0; n < count; n++) {
+      var method = v.getUint16(p + 10, true), csize = v.getUint32(p + 20, true);
+      var nlen = v.getUint16(p + 28, true), xlen = v.getUint16(p + 30, true), clen = v.getUint16(p + 32, true);
+      var local = v.getUint32(p + 42, true);
+      var name = new TextDecoder().decode(zip.subarray(p + 46, p + 46 + nlen));
+      p += 46 + nlen + xlen + clen;
+      if (!/(^|\/)freedoom2\.wad$/.test(name)) continue;
+      var start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
+      var data = zip.subarray(start, start + csize);
+      if (method === 0) return data;
+      if (method !== 8) throw new Error('zip method ' + method);
+      var out = new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw')));
+      return new Uint8Array(await out.arrayBuffer());
+    }
+    throw new Error('no freedoom2.wad in the zip');
+  }
+
+  // a WAD or the release zip, checked against fetch_wad.sh's sha256
+  async function acceptBytes(bytes, from) {
+    var h = await sha256hex(bytes);
+    if (h === ZIP_SHA256) { bytes = await wadFromZip(bytes); h = await sha256hex(bytes); }
+    if (h !== WAD_SHA256) throw new Error(from + ': sha256 ' + h.slice(0, 16) + '... is not freedoom2.wad 0.13.0');
+    log('wad: freedoom2.wad from ' + from + ', sha256 ' + h + ' (matches fetch_wad.sh)');
+    return bytes;
+  }
+
+  async function fetchBytes(url) {
+    var r = await fetch(url);
+    if (!r.ok) throw new Error(url + ': HTTP ' + r.status);
+    return new Uint8Array(await r.arrayBuffer());
+  }
+
+  // FNV-1a 32 over every tic= line with its newline: main_web.das's host_print folds the same bytes
+  function ticDigest(text) {
+    var h = 2166136261, n = 0;
+    text.split('\n').forEach(function (line) {
+      line = line.replace(/\r$/, '');
+      if (line.indexOf('tic=') !== 0) return;
+      line += '\n';
+      for (var i = 0; i < line.length; i++) { h ^= line.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+      n++;
+    });
+    return { tics: String(n), digest: h.toString(16).padStart(8, '0') };
+  }
+  fetch(REF_LOG).then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
+    .then(function (t) { expected = ticDigest(t); }, function () {});
+  fetch('build.json').then(function (r) { return r.json(); }).then(function (b) {
+    $('build').textContent = 'Built from c2das-re ' + b.c2das_re + ' (crt, web host), c2das-ports ' + b.ports +
+      ' (puredoom-readable/processed, converted by c2das-re ' + b.converted_by + '), daScript ' + b.daslang + ', emscripten ' + b.emscripten + '.';
+  }, function () {});
+
+  var wadBytes = null, started = false;
+  // the deploy put the official release's freedoom2.wad next to this page (never in git); the
+  // release host itself sends no CORS headers, so a page cannot fetch it from there
+  async function findWad() {
+    status('Loading freedoom2.wad...');
+    try {
+      wadBytes = await acceptBytes(await fetchBytes(SAME_ORIGIN_WAD), 'the official Freedoom 0.13.0 release (fetched by this site\'s deploy)');
+      $('wadnote').textContent = 'freedoom2.wad from the official Freedoom 0.13.0 release, sha256 ' + WAD_SHA256 + ' (verified in your browser).';
+      ready();
+    } catch (e) {
+      log('wad: ' + e.message);
+      status('freedoom2.wad is not available on this site.');
+      $('wadnote').innerHTML = 'Get it from <a href="' + OFFICIAL_ZIP + '">the Freedoom 0.13.0 release</a>, then pick it below.';
+    }
+    $('pick').hidden = false;
+  }
+
+  $('wadfile').addEventListener('change', async function () {
+    var f = this.files[0];
+    if (!f) return;
+    try {
+      wadBytes = await acceptBytes(new Uint8Array(await f.arrayBuffer()), 'your file ' + f.name);
+      $('wadnote').textContent = 'freedoom2.wad 0.13.0 from your file, sha256 verified.';
+      ready();
+    } catch (e) { status(e.message); }
+  });
+
+  function ready() {
+    status('Ready.');
+    $('play').disabled = false;
+    $('timedemo').disabled = false;
+    var q = new URLSearchParams(location.search);
+    if (q.get('autostart') === 'timedemo') start(true);
+    else if (q.get('autostart') === 'play') start(false);
+  }
+
+  function onLine(line) {
+    log(line);
+    var m = /^host: timed (\d+) gametics in ([\d.]+) s/.exec(line);
+    if (m) {
+      var tics = +m[1], secs = +m[2];
+      $('result').innerHTML = 'Timedemo demo1: <b>' + tics + ' tics in ' + secs.toFixed(3) + ' s = ' + (tics / secs).toFixed(0) +
+        ' fps</b> (game tics run and rendered per second of update time; the screen shows one of them per display frame).';
+      window.doomResult = { tics: tics, seconds: secs, fps: tics / secs };
+    }
+    m = /^host: (\d+) checksum lines, digest ([0-9a-f]+)/.exec(line);
+    if (m) {
+      if (!expected) { $('result').appendChild(document.createTextNode(' Checksum digest ' + m[2] + ' over ' + m[1] + ' tics (no reference log here to compare).')); return; }
+      var same = m[1] === expected.tics && m[2] === expected.digest;
+      var span = document.createElement('div');
+      span.className = same ? 'ok' : 'bad';
+      span.textContent = same
+        ? 'In sync with the native build: all ' + m[1] + ' per-tic game-state and frame checksums match (digest ' + m[2] + ').'
+        : 'Checksums differ from the native build: ' + m[1] + ' lines, digest ' + m[2] + ', expected ' + expected.tics + ' / ' + expected.digest + '.';
+      $('result').appendChild(span);
+      if (window.doomResult) window.doomResult.inSync = same;
+    }
+  }
+
+  var Module = {
+    canvas: $('canvas'),
+    arguments: [],
+    print: onLine,
+    printErr: function (line) { log(line); },
+    preRun: [function () {
+      Module.ENV.DOOMWADDIR = '/';
+      Module.FS.writeFile('/doom2.wad', wadBytes);
+    }],
+    onAbort: function (what) {
+      var x = window.dasWasmGate && dasWasmGate.explain(what);
+      status('The program stopped: ' + what + (x ? '. ' + x : ''));
+      $('panel').hidden = false;
+    },
+  };
+
+  function start(timedemo) {
+    if (started) return;
+    started = true;
+    Module.arguments = timedemo ? ['-timedemo', 'demo1'] : [];
+    log('start: ' + (timedemo ? 'timedemo demo1' : 'play'));
+    $('panel').hidden = true;
+    $('canvas').focus();
+    $('canvas').addEventListener('pointerdown', function () { $('canvas').focus(); });
+    dasWasmGate.loadProgram(function () { status('The program script did not load.'); $('panel').hidden = false; });
+  }
+  $('play').addEventListener('click', function () { start(false); });
+  $('timedemo').addEventListener('click', function () { start(true); });
+
+  var reason = dasWasmGate.reason();
+  if (reason === 'isolation' && window.isSecureContext && 'serviceWorker' in navigator && !sessionStorage.getItem('coiReloaded')) {
+    status('Enabling cross-origin isolation for the threaded wasm (the page reloads once)...');
+  } else if (reason) {
+    var refusal = dasWasmGate.refusal(reason);
+    status(refusal.title + ' ' + refusal.text);
+  } else {
+    findWad();
+  }
+</script>
+</body>
+</html>
