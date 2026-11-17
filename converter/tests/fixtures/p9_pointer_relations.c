@@ -14,5 +14,7 @@ int main(void) {
     printf("%d %d %d %d\n", p > v, v != p, v == q, v <= q);
     printf("%d %d %d %d\n", f <= f, f < f, g >= g, f != g);
     printf("%d %d\n", ordered, f(1) + g(1));
+    /* a pointer sum cast to void * against a void *: the cast keeps the address */
+    printf("%d %d\n", (void *) (p - 1) < v, (void *) (q + 1) >= v);
     return 0;
 }

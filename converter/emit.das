@@ -2790,16 +2790,20 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
             return null_compare(emit_expr(em, tu, x.b, loc), spelled, prec)
         }
     }
-    let lhs = to_int(em, emit_expr(em, tu, x.a, loc))
-    var rhs = to_int(em, emit_expr(em, tu, x.b, loc))
     let pointer_lhs = kind_of(tu, x.a.t) == "ptr"
     let pointer_rhs = kind_of(tu, x.b.t) == "ptr"
-    if (x.op == "lt" || x.op == "gt" || x.op == "le" || x.op == "ge") {
-        if (pointer_lhs && pointer_rhs) {
-            // das has no relation between two pointers: their addresses compare as `uint64`
-            // (probes/test_pointer_compare.das)
-            return truth("{address_bits(em, lhs)} {spelled}{OPERATOR_MARK} {address_bits(em, rhs)}", prec)
-        }
+    let relation = x.op == "lt" || x.op == "gt" || x.op == "le" || x.op == "ge"
+    if (relation && pointer_lhs && pointer_rhs) {
+        // das has no relation between two pointers: their addresses compare as `uint64`
+        // (probes/test_pointer_compare.das), each operand without its pointer-to-pointer casts,
+        // which keep the address
+        let a_bits = address_bits(em, emit_expr(em, tu, address_operand(tu, x.a), loc))
+        let b_bits = address_bits(em, emit_expr(em, tu, address_operand(tu, x.b), loc))
+        return truth("{a_bits} {spelled}{OPERATOR_MARK} {b_bits}", prec)
+    }
+    let lhs = to_int(em, emit_expr(em, tu, x.a, loc))
+    var rhs = to_int(em, emit_expr(em, tu, x.b, loc))
+    if (relation) {
         return truth("{wrap(lhs, prec + 1)} {spelled}{OPERATOR_MARK} {wrap(rhs, prec + 1)}", prec)
     }
     if (x.op == "eq" || x.op == "ne") {
@@ -2823,6 +2827,17 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
         return pointer_arithmetic(em, tu, x, lhs, rhs, loc)
     }
     return value("{wrap(lhs, prec)} {spelled}{OPERATOR_MARK} {wrap(rhs, prec + 1)}", prec)
+}
+
+// pointer `x` without the casts to another pointer type around it, whose address it keeps: the
+// interpreter refuses `reinterpret<uint64>` over a `reinterpret<T?>` of a pointer sum
+// (lookibed/daScript#64: typed eval on wrong extern return kind, i_das_ptr_add)
+def private address_operand(tu : CirTu; x : CirExpr const?) : CirExpr const? {
+    var at = x
+    while (at.e == "cast" && (at.cast_kind == "BitCast" || at.cast_kind == "NoOp") && kind_of(tu, at.a.t) == "ptr") {
+        at = at.a
+    }
+    return at
 }
 
 // pointer `e`'s address as `uint64`, the operand of a pointer relation

@@ -443,12 +443,16 @@ def p9_pointer_relation_fixtures(t : T?) {
         has_text(t, text, "int_of(reinterpret<uint64>(p) <= reinterpret<uint64>(q))")
         has_text(t, text, "int_of(reinterpret<uint64>(p) >= reinterpret<uint64>(q))")
         has_text(t, text, "int_of(p != q)")
-        has_text(t, text, "int_of(reinterpret<uint64>(p) > reinterpret<uint64>(reinterpret<int?>(v)))")
+        has_text(t, text, "int_of(reinterpret<uint64>(p) > reinterpret<uint64>(v))")
         has_text(t, text, "int_of(v != reinterpret<void?>(p))")
-        has_text(t, text, "int_of(reinterpret<uint64>(v) <= reinterpret<uint64>(reinterpret<void?>(q)))")
+        has_text(t, text, "int_of(reinterpret<uint64>(v) <= reinterpret<uint64>(q))")
         has_text(t, text, "int_of(reinterpret<uint64>(f) < reinterpret<uint64>(f))")
         has_text(t, text, "int_of(reinterpret<uint64>(g) >= reinterpret<uint64>(g))")
         has_text(t, text, "int_of(unsafe(reinterpret<uint64>(unsafe(addr(p9_pointer_relations__cells[2])))) >")
+        // a cast between pointer types is not spelled under the relation: the interpreter refuses
+        // `reinterpret<uint64>` over `reinterpret<void?>` of a pointer sum (typed eval, i_das_ptr_add)
+        has_text(t, text, "int_of(reinterpret<uint64>(p - 1) < reinterpret<uint64>(v))")
+        has_text(t, text, "int_of(reinterpret<uint64>(q + 1) >= reinterpret<uint64>(v))")
     }
 }
 
