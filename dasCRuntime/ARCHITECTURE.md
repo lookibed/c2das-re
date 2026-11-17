@@ -22,6 +22,8 @@ folder is the native glue module `crt`: the C runtime library bound into daslang
   built and where it lands (section 8).
 - `tests/test_crt.das` - the dastest suite: one arm family per header, every bind called at
   least once against a value the C standard fixes.
+- `src/glibc_rand.cpp` - glibc's `rand` and `srand`, in the wasm archive only (section 8).
+- `tests/test_crt_rand.das` - holds `glibc_rand.cpp` to the host's glibc.
 - `tests/test_build_crt.das` - `scripts/build_crt.sh`'s refusals and the libc++-host configure,
   without emscripten and without a build.
 - `tests/test_crt_wasm.das` - builds the wasm64 archive with emscripten and checks it defines the
@@ -203,3 +205,10 @@ without it references no `typeinfo`, so it loads into either host, while one bui
 need the host's `typeinfo` symbols, which a host without RTTI does not export. daspkg links an
 external module it finds under the project's `modules/`, never one passed by `-load_module`: a
 project links `crt` through `modules/dasCRuntime`, a link to `_wasmhost/`.
+
+The wasm archive also carries `src/glibc_rand.cpp`, glibc's `rand` and `srand` (random_r's default
+TYPE_3 generator), linked ahead of emscripten's libc. The C standard leaves `rand`'s sequence to the
+implementation, and the converted programs' reference runs are recorded on glibc; emscripten's musl
+draws another sequence, so a program that draws random numbers (quakegeneric) leaves its reference
+frames without it. The native module forwards to the host's own `rand`, glibc on the reference
+boxes.
