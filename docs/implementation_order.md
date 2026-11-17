@@ -2567,7 +2567,12 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   PureDOOM's MUS player cannot read, so the host plays them with `web/puredoom/doom_midi.das` into a
   small General MIDI synthesizer (`doom_synth.das`); headless Edge, a temporary diagnostic line
   reading dasAudio's playback counters: music and sfx stream, 0 underruns.
-  Left: quakegeneric (plan step 6; glibc `rand` in `crt`); emscripten's `clock()` under `-pthread` can return a
+  quakegeneric page (`web/quake/`): the converted engine under a host beside its generated entry,
+  keys through `Key_Event`, the demo1 timedemo's first 100 frames held to the Rust repository's
+  reference; the wasm `crt` archive carries glibc's `rand` (`dasCRuntime/src/glibc_rand.cpp`, held to
+  the host's glibc by `tests/test_crt_rand.das`), as the frames depend on its sequence. Headless Edge:
+  968 frames, the first 100 in sync with the native run (indicative).
+  Left: emscripten's `clock()` under `-pthread` can return a
   negative value (`-75812969` in a three-line C test), which the Doom host's `work_started >= 0` check
   reads as "not started", so its `host: timed` line was missing in 2 of the 6 full wasm runs whose
   output was kept.

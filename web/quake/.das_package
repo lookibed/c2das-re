@@ -1,0 +1,17 @@
+options gen2
+require daslib/daspkg
+
+// the release of the staged project scripts/build_web.sh lays out: game/ holds c2das-ports'
+// quakegeneric/readable/quake_entry with main_web.das in its src/, modules/ the crt and c_runtime
+[export]
+def package() {
+    package_name("quake")
+    package_description("quakegeneric converted to daslang by c2das-re, its browser host")
+}
+
+[export]
+def release() {
+    release_wasm_main("game/src/main_web.das")
+    release_web_shell("shell.html")
+    release_emcc_arg("-sMAXIMUM_MEMORY=2GB")
+}

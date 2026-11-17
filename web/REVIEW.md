@@ -4,7 +4,7 @@
 doc: `ARCHITECTURE.md`. Planned work: `docs/implementation_order.md`. A diff to
 `scripts/build_web.sh` applies this checklist too.
 
-**A diff never adds a game data file (a `.wad`, a release zip, an extract of one) to this folder,
+**A diff never adds a game data file (a `.wad`, a `.pak`, a release zip, an extract of one) to this folder,
 to the site `scripts/build_web.sh` writes, or to the `gh-pages` checkout it fills.** The deploy
 workflow downloads it into the Pages artifact only.
 
