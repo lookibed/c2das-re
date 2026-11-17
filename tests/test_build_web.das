@@ -78,10 +78,112 @@ def test_build_web_refusals(t : T?) {
     }
     t |> run("the pin itself, whose daslang links libstdc++") @(t : T?) {
         var out : string
+        // the arm needs the running daslang at exactly the pin: a later checkout is refused earlier
+        let head_rc = run_and_capture(["git", "-C", get_das_root(), "rev-parse", "HEAD"], out, 30.0)
+        if (head_rc != 0 || find(fread("VERSIONS.md"), "daScript commit: {strip(out)}") < 0) {
+            t |> skip("the running daslang is not at VERSIONS.md's pin")
+            return
+        }
         let rc = build_web("PATH={pinned}", "--ports {ports} --host {get_das_root()} --out {out_dir}", out)
         t |> equal(rc, 1, out)
         t |> success(find(out, "not a wasm host") >= 0, out)
     }
     t |> success(!fexist(out_dir), "no refusal created the --out folder")
+    rmdir_rec(work)
+}
+
+// runs `cmd` in a shell, its stdout and stderr in `out`
+def private sh(cmd : string; var out : string&) : int => run_and_capture(["sh", "-c", "{cmd} 2>&1"], out, 60.0)
+
+// a built site as the script lays it out, its build.json naming `c2das` and `ports`
+def private fake_site(dir, c2das, ports : string) {
+    mkdir_rec(path_join(dir, "puredoom"))
+    fwrite(path_join(dir, "index.html"), "<p>demos</p>\n")
+    fwrite(path_join(dir, "puredoom/doom.html"), "<p>doom</p>\n")
+    fwrite(path_join(dir, "puredoom/build.json"), "\{\"c2das_re\": \"{c2das}\", \"ports\": \"{ports}\", \"converted_by\": \"deee3209ce\", \"daslang\": \"2decba91d5\", \"emscripten\": \"5.0.7\"\}\n")
+}
+
+// a git checkout at `dir` on `branch`, one commit holding a file `stale.txt`
+def private fake_checkout(t : T?; dir, branch : string) {
+    var out : string
+    let rc = sh("git init -q -b '{branch}' '{dir}' && cd '{dir}' && echo old > stale.txt && git add stale.txt && git -c user.name=t -c user.email=t@t commit -q -m old", out)
+    t |> equal(rc, 0, out)
+}
+
+[test(description = "build_web.sh --pages refuses a wrong checkout, a dirty or data-carrying site, and else replaces the checkout's top with the site, the workflow and the README")]
+def test_build_web_pages(t : T?) {
+    var dir_error : string
+    let work = create_temp_directory("c2das_build_web_pages", dir_error)
+    t |> equal(dir_error, "")
+    let pages = path_join(work, "pages")
+    fake_checkout(t, pages, "gh-pages")
+    let site = path_join(work, "site")
+    fake_site(site, "1111111111", "2222222222")
+    t |> run("--commit without --pages") @(t : T?) {
+        var out : string
+        let rc = build_web("", "--from '{site}' --commit", out)
+        t |> equal(rc, 1, out)
+        t |> success(find(out, "there is none") >= 0, out)
+    }
+    t |> run("--pages that is no checkout, below the top of one, or on another branch") @(t : T?) {
+        var out : string
+        let plain = path_join(work, "plain")
+        mkdir_rec(plain)
+        let rc_plain = build_web("", "--from '{site}' --pages '{plain}'", out)
+        t |> equal(rc_plain, 1, out)
+        t |> success(find(out, "is not a git checkout") >= 0, out)
+        let below = path_join(pages, "sub")
+        mkdir_rec(below)
+        let rc_below = build_web("", "--from '{site}' --pages '{below}'", out)
+        t |> equal(rc_below, 1, out)
+        t |> success(find(out, "is not the top of its checkout") >= 0, out)
+        rmdir_rec(below)
+        let main_branch = path_join(work, "main")
+        fake_checkout(t, main_branch, "main")
+        let rc_main = build_web("", "--from '{site}' --pages '{main_branch}'", out)
+        t |> equal(rc_main, 1, out)
+        t |> success(find(out, "is not on the gh-pages branch") >= 0, out)
+    }
+    t |> run("--from a folder that is no built site") @(t : T?) {
+        var out : string
+        let rc = build_web("", "--from '{work}' --pages '{pages}'", out)
+        t |> equal(rc, 1, out)
+        t |> success(find(out, "holds no built site") >= 0, out)
+    }
+    t |> run("--commit of a site built from a tree with changes") @(t : T?) {
+        let dirty = path_join(work, "dirty")
+        fake_site(dirty, "1111111111-dirty", "2222222222")
+        var out : string
+        let rc = build_web("", "--from '{dirty}' --pages '{pages}' --commit", out)
+        t |> equal(rc, 1, out)
+        t |> success(find(out, "names a tree with changes") >= 0, out)
+        t |> success(fexist(path_join(pages, "stale.txt")), "the refusal wrote nothing")
+    }
+    t |> run("a site that holds a WAD") @(t : T?) {
+        let data = path_join(work, "data")
+        fake_site(data, "1111111111", "2222222222")
+        fwrite(path_join(data, "puredoom/freedoom2.wad"), "IWAD")
+        var out : string
+        let rc = build_web("", "--from '{data}' --pages '{pages}' --commit", out)
+        t |> equal(rc, 1, out)
+        t |> success(find(out, "holds game data") >= 0, out)
+        t |> success(fexist(path_join(pages, "stale.txt")), "the refusal wrote nothing")
+    }
+    t |> run("a clean site: the checkout's top replaced and committed, a second run commits nothing") @(t : T?) {
+        var out : string
+        let rc = build_web("", "--from '{site}' --pages '{pages}' --commit", out)
+        t |> equal(rc, 0, out)
+        t |> success(!fexist(path_join(pages, "stale.txt")), "the old top is gone")
+        t |> success(fexist(path_join(pages, "puredoom/doom.html")), "the site is copied")
+        t |> success(fexist(path_join(pages, ".github/workflows/pages.yml")), "the deploy workflow is there")
+        let readme = fread(path_join(pages, "README.md"))
+        t |> success(find(readme, "c2das-ports 2222222222") >= 0 && find(readme, "c2das-re 1111111111") >= 0, readme)
+        let log_rc = sh("git -C '{pages}' log -1 --format=%s", out)
+        t |> equal(log_rc, 0, out)
+        t |> equal(strip(out), "site: c2das-re 1111111111, c2das-ports 2222222222, daScript 2decba91d5")
+        let again = build_web("", "--from '{site}' --pages '{pages}' --commit", out)
+        t |> equal(again, 0, out)
+        t |> success(find(out, "already holds this site") >= 0, out)
+    }
     rmdir_rec(work)
 }
