@@ -35,6 +35,8 @@ jobs:
       - name: Quake 1.06 shareware pak0.pak from id Software's release (the mirror and checks of lookibed/c2das's get_pak.sh)
         continue-on-error: true
         run: |
+          # a failure midway leaves nothing behind for the artifact: only a checked pak is moved out
+          trap 'rm -rf quake106.zip qx' EXIT
           sudo apt-get install -y --no-install-recommends lhasa
           curl -fsSL -o quake106.zip https://ftp.gwdg.de/pub/misc/ftp.idsoftware.com/idstuff/quake/quake106.zip
           echo "f8a1a509b094ccdbed3c54b96f7d9b351c0898f5  quake106.zip" | sha1sum -c -
