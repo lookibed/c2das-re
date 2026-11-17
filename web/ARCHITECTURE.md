@@ -114,8 +114,7 @@ served, never a commercial id Software WAD. `scripts/build_web.sh --pages` refus
 `puredoom/doom_c.html` is the same game built from PureDOOM's own C at the pinned commit with this
 repository's patches (`doom/fetch.sh`), under `puredoom_c/main_web.c`, the C twin of
 `puredoom/main_web.das`: the same clocks, frame budgets, key table, checksum fold, uncapped mode and
-output lines, so the same page (`puredoom/shell.html`, which tells the two builds apart by the page's
-name), the same WAD and the same reference log serve both. The build passes the sidecar's defines
+output lines, so the same page (`puredoom/shell.html`), the same WAD and the same reference log serve both. The build passes the sidecar's defines
 (`doom/doom.c2das`, the per-tic checksums included, as the converted code has them) and the link
 flags `daspkg release wasm` gives the daslang build: wasm64 lowered by `-sMEMORY64=2`, SIMD, wasm
 exceptions, `-pthread` with the same worker pool of 16, WebGL2 through GLFW, the same memory limits.

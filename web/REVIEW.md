@@ -17,8 +17,9 @@ workflow both.**
 or `ticDigest` in `puredoom/shell.html` changes the other two in the same change, so
 `tests/test_web_tic_digest.das` still pins all three to the native log's count and digest.**
 
-**A diff to `scripts/build_web.sh` keeps its refusals before its first write: a host at another
-commit than `VERSIONS.md`'s pin, a host without libc++, an emscripten other than 5.0.7.**
+**A diff to `scripts/build_web.sh` keeps its refusals before its first write: a sidecar without
+defines, an emscripten other than 5.0.7, a host at another commit than `VERSIONS.md`'s pin, a host
+without libc++ or the browser gate, a failed PureDOOM fetch.**
 
 **A diff to `puredoom/main_web.das` or `puredoom_c/main_web.c` that changes a clock, a frame budget,
 the key table, the checksum fold, the uncapped mode or an output line changes the other host the
