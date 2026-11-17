@@ -2,7 +2,7 @@
 
 Read `ARCHITECTURE.md` (this folder) first. This companion holds how a table cell that a daslang
 defect slows says so: `upstream_cells.das`, the list of those cells and the text that marks them;
-`tests/test_upstream_cells.das`, its functions over the committed list.
+`tests/test_upstream_cells.das`, its functions over the committed list and over a test stand-in's.
 
 ## 1. The list {#upstream-cells}
 
@@ -15,8 +15,8 @@ through a hash lookup) is fixed upstream (#4652), and PureDOOM's, doomgeneric's 
 `sieve`, `str_copy`, `switch_local` and `matmul` AOT cells, the cells it slowed, run at the x
 native its worked-around A/B gave (`perf/ARCHITECTURE_EXCEPTIONS.md`). `UPSTREAM_ISSUES` holds, per
 issue, what it does to a cell, in the order the footnotes take. Both lists are `var`s, which
-`tests/_standin_upstream.das` fills with the former #48 entries while a table test runs. The list lives in the code, not in
-a capture or a variant file, since it is a fact of the daslang pin that every capture and variant of
+`tests/_standin_upstream.das` fills with four of the former #48 entries while a table test runs.
+The list lives in the code, not in a capture or a variant file, since it is a fact of the daslang pin that every capture and variant of
 the program shares, and the perf kernels have no variant file.
 
 A tier's cells are the tier's lane and each of its variant lanes (`aot` and `aot-fast`).
