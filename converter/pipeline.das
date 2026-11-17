@@ -15,6 +15,7 @@ require link
 require layout
 require dumper_a
 require emit
+require cir_emit
 require line_wrap
 require sidecar
 
@@ -267,29 +268,15 @@ def private dump_checked(var d : Dumper; c_path, out_dir : string; target : CirT
 // `tu` emitted, formatted, written to `<out_dir>/<stem>.das` and compile-checked; `tu` is deleted
 def private emit_unit(var tu : CirTu; side : Sidecar; out_dir, stem : string; var res : ConvertResult) {
     let emit_started = ref_time_ticks()
-    // on the heap: an `Emitter` in this frame would take a third of das's default stack from the walk under it
-    var em = new Emitter
-    emit_tu(*em, tu, side)
-    delete_tu(tu)
-    let emit_error = em.error
-    let text = em.text
-    if (empty(emit_error)) {
-        res.c_functions = em.c_functions
-        res.function_count = em.function_count
-        res.fold_counts := em.fold_counts
-    }
-    unsafe {
-        delete em
-    }
-    if (!empty(emit_error)) {
-        res.error = "emitter: {emit_error}"
+    var emitted <- tu_to_das(tu, side)
+    if (!empty(emitted.error)) {
+        res.error = emitted.error
         return
     }
-    if (has_mark(text)) {
-        res.error = "emitter: a line-layout mark reached the module"
-        return
-    }
-    res.das_text = format_source_string(text)
+    res.c_functions = emitted.c_functions
+    res.function_count = emitted.function_count
+    res.fold_counts <- emitted.fold_counts
+    res.das_text = emitted.das_text
     res.emit_seconds = seconds_since(emit_started)
     res.das_path = path_join(out_dir, "{stem}.das")
     if (!fwrite(res.das_path, res.das_text)) {
