@@ -75,7 +75,7 @@ das converter/main.das -- input.c --target linux --out out
 ## Toolchain
 
 Binds to one daScript checkout, `DASLANG_ROOT`, built with `dasClangBind`, `dasStdDlg`, `dasHV`,
-`dasLLVM` at the commit pinned in `VERSIONS.md` (`2decba91d5`).
+`dasLLVM` at the commit pinned in `VERSIONS.md` (`b7d8f6f52f`).
 
 ## Performance
 
