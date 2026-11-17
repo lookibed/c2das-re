@@ -59,6 +59,8 @@ def test_crt_wasm_archive(t : T?) {
             let archive = path_join(out_dir, "liblibDasModuleCRuntime.a")
             t |> equal(run_and_capture(["emnm", "--defined-only", archive], out, 60.0), 0, out)
             t |> success(find(out, " T jit_register_Module_CRT") >= 0, "the archive's defined symbols name jit_register_Module_CRT")
+            // glibc's rand sequence (glibc_rand.cpp) is the archive's own, not the libc's
+            t |> success(find(out, " T rand\n") >= 0 && find(out, " T srand\n") >= 0, "the archive defines rand and srand")
         }
         // without -sMEMORY64=1 emscripten gives 4-byte pointers, and the configure refuses
         let refused = run_and_capture(["emcmake", "cmake", "-S", get_full_file_name("dasCRuntime"),

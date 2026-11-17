@@ -31,7 +31,9 @@ jobs:
           unzip -j freedoom.zip '*/freedoom2.wad' -d puredoom
           echo "a8772e088847032510d97ba2312406a6998f21cbab44d4ff10696faa9c0ecd4b  puredoom/freedoom2.wad" | sha256sum -c -
           rm freedoom.zip
+      # a mirror that fails leaves the Quake page to its picker, not the whole site undeployed
       - name: Quake 1.06 shareware pak0.pak from id Software's release (the mirror and checks of lookibed/c2das's get_pak.sh)
+        continue-on-error: true
         run: |
           sudo apt-get install -y --no-install-recommends lhasa
           curl -fsSL -o quake106.zip https://ftp.gwdg.de/pub/misc/ftp.idsoftware.com/idstuff/quake/quake106.zip

@@ -21,6 +21,14 @@ or `ticDigest` in `puredoom/shell.html` changes the other two in the same change
 defines, an emscripten other than 5.0.7, a host at another commit than `VERSIONS.md`'s pin, a host
 without libc++ or the browser gate, a failed PureDOOM fetch.**
 
+**A diff that changes which `pak0.pak` the Quake page or the workflow accepts keeps the checks of
+lookibed/c2das's `get_pak.sh` and its fixtures README (sha1 and sha256 of the zip and the pak) in the
+workflow and the pak's sha256 in the page.**
+
+**A diff to the Quake timedemo keeps its tick 1/64 s, the native entry's, and a diff to
+`quake/frame_digest.das` or `frameDigest` in `quake/shell.html` changes the other in the same change,
+so `tests/test_web_quake.das` still pins both to the same digest.**
+
 **A diff never streams sound during a timedemo: the timed updates stay the game's alone.**
 
 **A diff to `puredoom/main_web.das` or `puredoom_c/main_web.c` that changes a clock, a frame budget,
