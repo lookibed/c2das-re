@@ -18,7 +18,8 @@ program runs under in a browser and the page around it.
   the timedemo's fps and the check of its checksums against the native build's log.
 - `puredoom/.das_package` - the release of the staged project: the wasm entry, the shell, one link
   flag (`-sMAXIMUM_MEMORY=2GB`).
-- `puredoom_c/main_web.c` - the C twin of `puredoom/main_web.das` for the C baseline (section 6).
+- `puredoom_c/main_web.c` - the C twin of `puredoom/main_web.das` for the C baseline (section 6);
+  `puredoom_c/tic_digest.h` its checksum fold, the twin of `tic_digest.das`.
 - `site/index.html` - the site's landing page, a list of the demos.
 - `site/coi-serviceworker.js` - cross-origin isolation (section 2).
 - `site/pages.yml` - the deploy workflow the ports repository's `gh-pages` branch carries (section 4).
@@ -87,7 +88,7 @@ there. `main_web.das` keeps a `main` that runs the same three in a loop, for a d
   animation frames it presented, the tics Doom ran and the frames Doom rendered; the page shows them
   over the picture. Doom renders one frame per tic, so 35 a second, whatever the display rate.
 - Uncapped (`-uncapped`, the page's checkbox or `?uncapped=1`): tics stay at 35 a second and each
-  animation frame spends 10 ms rendering Doom's view again between tics (`D_Display`, skipped during
+  animation frame spends 10 ms (at most 60% of the last frame interval) rendering Doom's view again between tics (`D_Display`, skipped during
   a wipe); in a timedemo, one more render after every tic. PureDOOM has no render interpolation, so
   such a frame shows the state the last tic left: the rate is the renderer's throughput, and motion
   stays at 35 steps a second. Rendering touches no game state: a timedemo with a render after every
@@ -115,9 +116,15 @@ repository's patches (`doom/fetch.sh`), under `puredoom_c/main_web.c`, the C twi
 `puredoom/main_web.das`: the same clocks, frame budgets, key table, checksum fold, uncapped mode and
 output lines, so the same page (`puredoom/shell.html`, which tells the two builds apart by the page's
 name), the same WAD and the same reference log serve both. The build passes the sidecar's defines
-(`doom/doom.c2das`, the per-tic checksums included, as the converted code has them), `-O3`, and the
-link flags `daspkg release wasm` gives the daslang build (wasm64 lowered by `-sMEMORY64=2`, SIMD,
-wasm exceptions, `-pthread` with the same worker pool, WebGL2 through GLFW); C's `setjmp` takes
-`-sSUPPORT_LONGJMP=wasm`. The page keeps the last timedemo of each build in the browser's storage
-and prints both rates and the daslang build's time over the C build's.
+(`doom/doom.c2das`, the per-tic checksums included, as the converted code has them) and the link
+flags `daspkg release wasm` gives the daslang build: wasm64 lowered by `-sMEMORY64=2`, SIMD, wasm
+exceptions, `-pthread` with the same worker pool of 16, WebGL2 through GLFW, the same memory limits.
+The differences, each in the C build's favour or neutral: `-O3` where daspkg links at `-O2` (the
+daslang objects are optimized by daslang's own LLVM pipeline before the link); no
+`-sGL_ENABLE_GET_PROC_ADDRESS`, `-sAUDIO_WORKLET`, `-sWASM_WORKERS` or
+`-Wl,--wrap=emscripten_futex_wait`, which serve daslang's GL binding and audio; and
+`-sSUPPORT_LONGJMP=wasm` for C's `setjmp`. The build writes which build a page is into its
+`doom-build` meta. The page keeps the last timedemo of each build in the browser's storage (rate,
+tics, sync, mode) and prints the daslang build's time over the C build's only for two runs in sync
+over the same tics in the same mode.
 

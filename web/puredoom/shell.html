@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="das-build" content="__DAS_BUILD_STAMP__">
+<meta name="doom-build" content="__DOOM_BUILD__">
 <title>PureDOOM in daslang</title>
 <script src="../coi-serviceworker.js"></script>
 <style>
@@ -52,7 +53,7 @@
         <button id="play" class="primary" disabled>Play</button>
         <button id="timedemo" disabled>Timedemo demo1 (fps)</button>
       </div>
-      <label class="dim"><input type="checkbox" id="uncapped"> Uncapped rendering: frames drawn as fast as the browser allows, game tics stay at 35 a second (<code>?uncapped=1</code>)</label>
+      <label class="dim"><input type="checkbox" id="uncapped"> Uncapped rendering: Doom renders its view again between tics as fast as it can; the game still runs 35 tics a second, so motion keeps 35 steps a second (<code>?uncapped=1</code>)</label>
       <div class="dim" id="wadnote"></div>
       <div id="pick" hidden>
         <label class="dim">Or use your own copy (<code>freedoom2.wad</code> 0.13.0 or <code>freedoom-0.13.0.zip</code>):
@@ -150,12 +151,21 @@
   }
   fetch(REF_LOG).then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
     .then(function (t) { expected = ticDigest(t); }, function () {});
-  // which of the two builds this page is: doom.html the daslang one, doom_c.html the C baseline
-  var BUILD = /doom_c\.html$/.test(location.pathname) ? 'c' : 'daslang';
+  // which of the two builds this page is: scripts/build_web.sh writes it into the doom-build meta
+  var BUILD = document.querySelector('meta[name="doom-build"]').content === 'c' ? 'c' : 'daslang';
   var BUILD_NAME = { daslang: 'daslang (c2das-re) wasm64', c: 'C (emscripten) wasm64' };
   (function () {
     $('link-' + BUILD).className = 'active';
-    ['link-daslang', 'link-c'].forEach(function (id) { $(id).href += location.search; });
+    // the other build's link carries this page's query and the uncapped checkbox
+    ['link-daslang', 'link-c'].forEach(function (id) {
+      $(id).addEventListener('click', function (e) {
+        var q = new URLSearchParams(location.search);
+        if ($('uncapped').checked) q.set('uncapped', '1'); else q.delete('uncapped');
+        var qs = q.toString();
+        e.preventDefault();
+        location.href = this.getAttribute('href') + (qs ? '?' + qs : '');
+      });
+    });
     if (BUILD === 'c') {
       $('title').textContent = 'PureDOOM, the original C, compiled by emscripten to WebAssembly';
       $('about-c').hidden = false;
@@ -171,20 +181,30 @@
   }, function () {});
 
   // the last timedemo of each build in this browser, and the line comparing them
-  function loadRuns() { try { return JSON.parse(localStorage.getItem('doomTimedemo') || '{}'); } catch (e) { return {}; } }
+  function validRun(r) { return r && typeof r.fps === 'number' && typeof r.seconds === 'number' && typeof r.tics === 'number'; }
+  function loadRuns() {
+    var runs = {};
+    try { runs = JSON.parse(localStorage.getItem('doomTimedemo') || '{}') || {}; } catch (e) {}
+    ['daslang', 'c'].forEach(function (b) { if (!validRun(runs[b])) delete runs[b]; });
+    return runs;
+  }
   function saveRun(r) {
     var runs = loadRuns();
-    runs[BUILD] = { fps: r.fps, seconds: r.seconds, inSync: r.inSync, at: Date.now() };
+    runs[BUILD] = { fps: r.fps, seconds: r.seconds, tics: r.tics, inSync: !!r.inSync, uncapped: !!r.uncapped, at: Date.now() };
     try { localStorage.setItem('doomTimedemo', JSON.stringify(runs)); } catch (e) {}
     showCompare(runs);
   }
   function showCompare(runs) {
     var d = runs.daslang, c = runs.c, parts = [];
-    if (d) parts.push(BUILD_NAME.daslang + ': ' + d.fps.toFixed(0) + ' tics/s');
-    if (c) parts.push(BUILD_NAME.c + ': ' + c.fps.toFixed(0) + ' tics/s');
-    if (d && c) parts.push('daslang takes ' + (d.seconds / c.seconds).toFixed(2) + 'x the C time');
+    var label = function (r) { return r.fps.toFixed(0) + ' tics/s' + (r.uncapped ? ', uncapped' : '') + (r.inSync ? '' : ', NOT in sync'); };
+    if (d) parts.push(BUILD_NAME.daslang + ': ' + label(d));
+    if (c) parts.push(BUILD_NAME.c + ': ' + label(c));
+    // a ratio only of like runs: both in sync over the same tics, both capped or both uncapped
+    var alike = d && c && d.inSync && c.inSync && d.tics === c.tics && d.uncapped === c.uncapped;
+    if (alike) parts.push('daslang takes ' + (d.seconds / c.seconds).toFixed(2) + 'x the C time');
     $('compare').textContent = parts.length ? 'Last timedemo of each build in this browser: ' + parts.join(' · ') +
-      (d && c ? ' (indicative: one run each, in this browser on this machine).' : '. Run the other build\'s timedemo to compare.') : '';
+      (alike ? ' (indicative: one run each, in this browser on this machine).'
+        : d && c ? '. No ratio: the two runs differ in mode or sync; run both the same way.' : '. Run the other build\'s timedemo to compare.') : '';
   }
   showCompare(loadRuns());
 
@@ -228,7 +248,8 @@
   function showStats(m) {
     var secs = +m[4];
     var el = $('fps');
-    el.textContent = BUILD_NAME[BUILD] + ' · ' + (m[1] / secs).toFixed(0) + ' fps shown · ' + (m[2] / secs).toFixed(0) + ' tics/s · ' +
+    var demo = Module.arguments.indexOf('-timedemo') >= 0;
+    el.textContent = BUILD_NAME[BUILD] + ' · ' + (m[1] / secs).toFixed(0) + ' fps shown · ' + (m[2] / secs).toFixed(0) + (demo ? ' tics per wall second' : ' tics/s') + ' · ' +
       (m[3] / secs).toFixed(0) + ' frames rendered/s' + (Module.arguments.indexOf('-uncapped') >= 0 ? ' (uncapped)' : '');
     el.hidden = false;
   }
@@ -246,8 +267,9 @@
     if (m) {
       var tics = +m[1], secs = +m[2];
       $('result').innerHTML = 'Timedemo demo1: <b>' + tics + ' tics in ' + secs.toFixed(3) + ' s = ' + (tics / secs).toFixed(0) +
-        ' fps</b> (game tics run and rendered per second of update time; the screen shows one of them per display frame).';
-      window.doomResult = { tics: tics, seconds: secs, fps: tics / secs, build: BUILD };
+        ' tics/s</b> (game tics run per second of update time, each rendered once' +
+        (Module.arguments.indexOf('-uncapped') >= 0 ? ' and once more between tics' : '') + '; the screen shows one frame per display refresh).';
+      window.doomResult = { tics: tics, seconds: secs, fps: tics / secs, build: BUILD, uncapped: Module.arguments.indexOf('-uncapped') >= 0 };
     }
     m = /^host: (\d+) checksum lines, digest ([0-9a-f]+)/.exec(line);
     if (m) {

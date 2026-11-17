@@ -47,6 +47,11 @@ else
     [ -n "$ports" ] || die "--ports <c2das-ports checkout> is required"
     doom="$ports/puredoom-readable"
     [ -f "$doom/processed/doom/doom_main.das" ] || die "$doom/processed/doom holds no converted PureDOOM"
+    # the C baseline's defines: the sidecar's, as the converted code has them
+    defines=$(sed -n 's/.*"defines": \[\(.*\)\],*/\1/p' doom/doom.c2das 2>/dev/null | tr -d '" ' | tr ',' ' ')
+    [ -n "$defines" ] || die "doom/doom.c2das names no defines"
+    dflags=()
+    for d in $defines; do dflags+=("-D$d"); done
 
     emver=$(emcc --version 2>/dev/null | head -1) || die "emcc is not on PATH (source emsdk_env.sh)"
     case "$emver" in *" 5.0.7 "*) ;; *) die "emcc is not emscripten 5.0.7: $emver" ;; esac
@@ -56,13 +61,11 @@ else
     have=$(git -C "$host" rev-parse HEAD 2>/dev/null) || die "$host is not a daScript checkout"
     [ "$have" = "$pin" ] || die "the wasm host $host is at $have, VERSIONS.md pins $pin; rebuild it with web/build_wasm_host.sh"
     ldd "$host/bin/daslang" | grep -q 'libc++\.so' || die "$host/bin/daslang does not link libc++: not a wasm host"
-    # the C baseline's defines (the sidecar's) and the browser gate its page inlines
-    defines=$(sed -n 's/.*"defines": \[\(.*\)\],*/\1/p' doom/doom.c2das | tr -d '" ' | tr ',' ' ')
-    [ -n "$defines" ] || die "doom/doom.c2das names no defines"
-    dflags=()
-    for d in $defines; do dflags+=("-D$d"); done
+    # the browser gate the C baseline's page inlines, then its sources: PureDOOM at the pin with the
+    # patches (fetch.sh refuses a wrong tree), fetched into doom/fetch/, not into the site
     gate="$host/site/files/wasm-gate.js"
     [ -f "$gate" ] || die "no browser gate at $gate"
+    bash doom/fetch.sh >/dev/null || die "doom/fetch.sh could not fetch PureDOOM"
     c2das=$(sha_of .)
     portsha=$(sha_of "$ports")
     [ "$commit" = 0 ] || case "$c2das $portsha" in *-dirty*) die "--commit: c2das-re $c2das or c2das-ports $portsha has uncommitted changes" ;; esac
@@ -103,12 +106,12 @@ else
     [ -z "$lint" ] || echo "$lint" | grep -q " 0 issue(s)" || { echo "$lint"; die "lint findings in the web host"; }
 
     (cd "$host" && bin/daslang utils/daspkg/main.das -- release wasm --root "$stage" --out "$out/release")
-    cp "$out/release/doom/doom.html" "$out/release/doom/doom.js" "$out/release/doom/doom.wasm" "$site/puredoom/"
+    sed 's/__DOOM_BUILD__/daslang/' "$out/release/doom/doom.html" > "$site/puredoom/doom.html"
+    cp "$out/release/doom/doom.js" "$out/release/doom/doom.wasm" "$site/puredoom/"
 
     # the C baseline (web/ARCHITECTURE.md section 6): PureDOOM's own C at the pinned commit with
     # c2das-re's patches (doom/fetch.sh), the sidecar's defines, the C twin of the host, and the link
     # flags daspkg gives the daslang build, -O3; the same shell and browser gate
-    bash doom/fetch.sh >/dev/null
     mkdir -p "$out/c"
     emcc -O3 -w "${dflags[@]}" -Idoom/fetch/PureDOOM/src/DOOM doom/fetch/PureDOOM/src/DOOM/*.c \
         web/puredoom_c/main_web.c -o "$out/c/doom_c.html" --shell-file web/puredoom/shell.html \
@@ -117,7 +120,7 @@ else
         -sSUPPORT_LONGJMP=wasm -sEXIT_RUNTIME=0 -sFORCE_FILESYSTEM=1 -sEXPORTED_RUNTIME_METHODS=FS,ENV,wasmMemory \
         -pthread -sPTHREAD_POOL_SIZE=16
     awk -v gate="$gate" '/<!-- @wasm-gate -->/ { print "<script>"; while ((getline l < gate) > 0) print l; print "</script>"; next } { print }' \
-        "$out/c/doom_c.html" > "$site/puredoom/doom_c.html"
+        "$out/c/doom_c.html" | sed 's/__DOOM_BUILD__/c/' > "$site/puredoom/doom_c.html"
     cp "$out/c/doom_c.js" "$out/c/doom_c.wasm" "$site/puredoom/"
     cp "$doom/ref/freedoom2_demo1.log" "$site/puredoom/demo1_ref.log"
     cp web/site/index.html web/site/coi-serviceworker.js "$site/"
@@ -141,6 +144,12 @@ find "$pages" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 cp -r "$site"/. "$pages/"
 mkdir -p "$pages/.github/workflows"
 cp web/site/pages.yml "$pages/.github/workflows/pages.yml"
+baseline=""
+if [ -n "$puredoom" ] && [ -f "$site/puredoom/doom_c.html" ]; then
+    baseline="- Its C baseline (\`puredoom/doom_c.html\`): PureDOOM $puredoom's own C with c2das-re $c2das's patches and
+  the C twin of the browser host, by emscripten 5.0.7 at -O3 with the daslang build's wasm flags.
+"
+fi
 cat > "$pages/README.md" <<EOF
 # c2das-ports in the browser
 
@@ -151,9 +160,7 @@ to WebAssembly. Generated, never hand-edited: c2das-re's \`scripts/build_web.sh 
 - PureDOOM (\`puredoom/\`): c2das-ports $portsha \`puredoom-readable/processed\` (converted by c2das-re
   $converted), with c2das-re $c2das's \`crt\` and browser host, compiled by daScript $daslang's libc++ wasm
   host with emscripten 5.0.7.
-- Its C baseline (\`puredoom/doom_c.html\`): PureDOOM $puredoom's own C with c2das-re $c2das's patches and
-  the C twin of the browser host, by emscripten 5.0.7 at -O3 with the same wasm flags.
-- No game data is in this branch: the deploy workflow downloads Freedoom 0.13.0 from its official
+$baseline- No game data is in this branch: the deploy workflow downloads Freedoom 0.13.0 from its official
   release and checks its sha256 before it publishes \`puredoom/freedoom2.wad\` into the Pages artifact.
 EOF
 [ "$commit" = 1 ] || exit 0

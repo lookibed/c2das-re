@@ -81,3 +81,36 @@ def test_js_fold(t : T?) {
     t |> equal(strip(out), "{TICS} {DIGEST}")
     rmdir_rec(work)
 }
+
+// a C compiler on PATH, "" when there is none
+def private find_cc : string {
+    for (cc in ["cc", "clang", "gcc"]) {
+        if (executable_on_path(cc)) {
+            return cc
+        }
+    }
+    return ""
+}
+
+[test(description = "the C host's fold (web/puredoom_c/tic_digest.h) over the same log gives the same count and digest")]
+def test_c_fold(t : T?) {
+    let cc = find_cc()
+    if (empty(cc)) {
+        t |> skip("no C compiler: the C fold is checked where one runs")
+        return
+    }
+    var dir_error : string
+    let work = create_temp_directory("c2das_tic_digest_c", dir_error)
+    t |> equal(dir_error, "")
+    let source = path_join(work, "fold.c")
+    let binary = path_join(work, "fold")
+    // the pieces as Doom prints them: `tic=` alone, then the rest of the line
+    fwrite(source, "#include <stdio.h>\n#include \"tic_digest.h\"\nint main(int argc, char** argv) \{\n    FILE* f = fopen(argv[1], \"rb\");\n    char line[256];\n    tic_digest_t d = TIC_DIGEST_INIT;\n    while (f && fgets(line, sizeof line, f)) \{\n        if (strncmp(line, \"tic=\", 4) != 0) continue;\n        line[strcspn(line, \"\\r\\n\")] = 0;\n        char rest[256];\n        snprintf(rest, sizeof rest, \"%s\\n\", line + 4);\n        tic_digest_piece(&d, \"tic=\");\n        tic_digest_piece(&d, rest);\n    \}\n    printf(\"%d %08x\\n\", d.lines, d.hash);\n    return 0;\n\}\n")
+    var out : string
+    let built = run_and_capture([cc, "-Iweb/puredoom_c", "-o", binary, source], out)
+    t |> equal(built, 0, out)
+    let ran = run_and_capture([binary, LOG], out)
+    t |> equal(ran, 0, out)
+    t |> equal(strip(out), "{TICS} {DIGEST}")
+    rmdir_rec(work)
+}

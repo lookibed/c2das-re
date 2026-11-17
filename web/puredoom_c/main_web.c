@@ -19,6 +19,7 @@
 
 #include "DOOM.h"
 #include "doomtype.h"
+#include "tic_digest.h"
 
 extern int gametic;
 extern doom_boolean is_wiping_screen;
@@ -28,6 +29,7 @@ void D_Display(void);
 #define DOOM_H 200
 #define TIMEDEMO_BUDGET_USEC 12000
 #define MAX_FRAME_USEC 100000
+// under -uncapped: 10 ms of renders between tics a frame, at most 60% of the last frame interval
 #define UNCAPPED_BUDGET_USEC 10000
 
 static GLFWwindow* window;
@@ -41,9 +43,8 @@ static int exit_code;
 static jmp_buf leave_frame;
 static int frame_jump_ready;
 
-// the fold of every `tic=` checksum line (web/puredoom/tic_digest.das)
-static int tic_lines, in_tic_line;
-static uint32_t tic_hash = 2166136261u;
+// the fold of every `tic=` checksum line Doom prints (tic_digest.h)
+static tic_digest_t tics = TIC_DIGEST_INIT;
 
 static int64_t usec_now(void) { return (int64_t)((emscripten_get_now() - clock_base_ms) * 1000.0); }
 
@@ -61,26 +62,14 @@ static void real_gettime(int* sec, int* usec)
 
 static void host_print(const char* str)
 {
-    if (!in_tic_line && strcmp(str, "tic=") == 0)
-        in_tic_line = 1;
-    if (!in_tic_line) {
+    if (!tic_digest_piece(&tics, str))
         printf("%s", str);
-        return;
-    }
-    for (const unsigned char* p = (const unsigned char*)str; *p; p++) {
-        tic_hash ^= *p;
-        tic_hash *= 16777619u;
-        if (*p == '\n') {
-            in_tic_line = 0;
-            tic_lines++;
-        }
-    }
 }
 
 static void report_timedemo(void)
 {
     printf("host: timed %d gametics in %.6f s\n", gametic, (double)work_usec / 1000000.0);
-    printf("host: %d checksum lines, digest %08x; wall %.3f s\n", tic_lines, tic_hash, (double)usec_now() / 1000000.0);
+    printf("host: %d checksum lines, digest %08x; wall %.3f s\n", tics.lines, tics.hash, (double)usec_now() / 1000000.0);
 }
 
 static void host_exit(int code)
@@ -269,22 +258,27 @@ static void update(void)
                 now = after;
             }
         } else {
-            int64_t now = usec_now(), step = now - last_frame_usec;
-            game_usec += step < MAX_FRAME_USEC ? step : MAX_FRAME_USEC;
+            int64_t now = usec_now(), interval = now - last_frame_usec;
+            game_usec += interval < MAX_FRAME_USEC ? interval : MAX_FRAME_USEC;
             last_frame_usec = now;
             poll_keys();
             doom_update();
-            if (uncapped)
-                while (running && usec_now() - now < UNCAPPED_BUDGET_USEC)
+            if (uncapped) {
+                int64_t budget = interval * 6 / 10 < UNCAPPED_BUDGET_USEC ? interval * 6 / 10 : UNCAPPED_BUDGET_USEC;
+                while (running && usec_now() - now < budget)
                     render_between_tics();
+            }
         }
     }
     frame_jump_ready = 0;
     draw_frame();
     stats_frames++;
     report_stats();
-    if (!running)
+    if (!running) {
         emscripten_cancel_main_loop();
+        glfwDestroyWindow(window);
+        glfwTerminate();
+    }
 }
 
 int main(int argc, char** argv)
@@ -295,13 +289,17 @@ int main(int argc, char** argv)
         if (strcmp(argv[i], "-uncapped") == 0)
             uncapped = 1;
     }
-    if (!glfwInit())
+    if (!glfwInit()) {
+        fprintf(stderr, "can't init glfw\n");
         return 1;
+    }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     window = glfwCreateWindow(960, 720, "PureDOOM in C", NULL, NULL);
-    if (!window)
+    if (!window) {
+        fprintf(stderr, "can't create window\n");
         return 1;
+    }
     glfwMakeContextCurrent(window);
     create_gl_objects();
     doom_set_print(host_print);
@@ -314,6 +312,7 @@ int main(int argc, char** argv)
         doom_init(argc, argv, 0);
     frame_jump_ready = 0;
     last_frame_usec = usec_now();
+    stats_start = last_frame_usec;
     emscripten_set_main_loop(update, 0, 0);
     return exit_code;
 }
