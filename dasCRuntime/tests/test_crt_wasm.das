@@ -9,11 +9,6 @@ require daslib/strings_boost
 // PATH the test is skipped: no gate installs the toolchain (docs/implementation_order.md, P9.35). An
 // emscripten other than the one VERSIONS.md pins is refused.
 
-def private on_path(tool : string) : bool {
-    var out : string
-    return run_and_capture(["sh", "-c", "command -v {tool}"], out, 30.0) == 0
-}
-
 // the version of the `emscripten:` line of VERSIONS.md, empty when there is none
 def private pinned_emscripten : string {
     let prefix = "emscripten: "
@@ -31,7 +26,7 @@ def private pinned_emscripten : string {
 def test_crt_wasm_archive(t : T?) {
     t |> run("emcmake builds the archive, and it defines jit_register_Module_CRT") @(t : T?) {
         for (tool in ["emcmake", "emcc", "emnm", "cmake", "ninja"]) {
-            if (!on_path(tool)) {
+            if (!executable_on_path(tool)) {
                 t |> skip("{tool} is not on PATH: the wasm toolchain is opt-in, P9.35")
                 return
             }
@@ -39,7 +34,11 @@ def test_crt_wasm_archive(t : T?) {
         let pinned = pinned_emscripten()
         t |> success(!empty(pinned), "VERSIONS.md has an `emscripten:` line")
         var out : string
-        t |> equal(run_and_capture(["emcc", "--version"], out, 30.0), 0, out)
+        let version_rc = run_and_capture(["emcc", "--version"], out, 30.0)
+        t |> equal(version_rc, 0, out)
+        if (version_rc != 0) {
+            return
+        }
         let first_line = split(out, "\n")[0]
         if (find(first_line, ") {pinned} (") < 0) {
             t |> failure("emcc on PATH is not the emscripten {pinned} VERSIONS.md pins: {first_line}")
@@ -61,6 +60,11 @@ def test_crt_wasm_archive(t : T?) {
             t |> equal(run_and_capture(["emnm", "--defined-only", archive], out, 60.0), 0, out)
             t |> success(find(out, " T jit_register_Module_CRT") >= 0, "the archive's defined symbols name jit_register_Module_CRT")
         }
+        // without -sMEMORY64=1 emscripten gives 4-byte pointers, and the configure refuses
+        let refused = run_and_capture(["emcmake", "cmake", "-S", get_full_file_name("dasCRuntime"),
+            "-B", path_join(work, "build32"), "-DDASLANG_ROOT={get_das_root()}", "-DCMAKE_BUILD_TYPE=Release",
+            "-DDAS_CRT_WASM_DIR={out_dir}", "-G", "Ninja"], out, 300.0)
+        t |> success(refused != 0 && find(out, "the wasm archive is wasm64") >= 0, out)
         rmdir_rec(work)
     }
 }
