@@ -18,7 +18,7 @@ def test_cir_to_das_matches_pipeline(t : T?) {
     t |> equal(dir_error, "")
     for (fixture in FIXTURES) {
         for (dispatch in ["", "goto"]) {
-            var res <- convert(fixture, out, "linux", "", "", "", "", "", dispatch)
+            let res <- convert(fixture, out, "linux", "", "", "", "", "", dispatch)
             t |> success(res.ok, "{fixture} converts: {res.error}")
             if (!res.ok) {
                 continue
@@ -29,7 +29,7 @@ def test_cir_to_das_matches_pipeline(t : T?) {
             if (!empty(dispatch)) {
                 side.switch_dispatch = dispatch
             }
-            var emitted <- cir_to_das(res.cir_text, side)
+            let emitted <- cir_to_das(res.cir_text, side)
             t |> equal(emitted.error, "")
             t |> success(emitted.das_text == res.das_text, "{fixture} {dispatch}: the page's module is the pipeline's")
             t |> equal(emitted.function_count, res.function_count)
@@ -41,8 +41,8 @@ def test_cir_to_das_matches_pipeline(t : T?) {
 [test(description = "a C-IR text that does not read gives the reader's error and no module")]
 def test_cir_to_das_bad_cir(t : T?) {
     var side_error : string
-    var side <- read_sidecar("", side_error)
-    var emitted <- cir_to_das("\{ not c-ir", side)
+    let side <- read_sidecar("", side_error)
+    let emitted <- cir_to_das("\{ not c-ir", side)
     t |> success(starts_with(emitted.error, "reader: "), emitted.error)
     t |> equal(emitted.das_text, "")
 }

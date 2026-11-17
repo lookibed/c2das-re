@@ -29,6 +29,9 @@ workflow and the pak's sha256 in the page.**
 `quake/frame_digest.das` or `frameDigest` in `quake/shell.html` changes the other in the same change,
 so `tests/test_web_quake.das` still pins both to the same digest.**
 
+**A diff to the translator page converts through `converter/cir_emit.das`, the path `pipeline.das`
+takes: never a second emitter or a page-side rewrite of the converter's output.**
+
 **A diff never streams sound during a timedemo: the timed updates stay the game's alone.**
 
 **A diff to `puredoom/main_web.das` or `puredoom_c/main_web.c` that changes a clock, a frame budget,
