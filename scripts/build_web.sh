@@ -36,7 +36,7 @@ WEB_SCRIPT=build_web
 
 # every refusal comes before the first write
 [ "$commit" = 0 ] || [ -n "$pages" ] || die "--commit commits into --pages <gh-pages checkout>; there is none"
-[ -z "$pages" ] || check_pages "$pages"
+[ -z "$pages" ] || check_pages "$pages" c2das-ports
 if [ -n "$from" ]; then
     [ -n "$pages" ] || die "--from <site> fills --pages <gh-pages checkout>; there is none"
     [ -z "$ports" ] || die "--from takes a built site, --ports builds one: not both"

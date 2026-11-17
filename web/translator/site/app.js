@@ -2,14 +2,16 @@
 // the C-IR clang gave at build time, the module under the defaults and the converted program's
 // output; translator.wasm (c2das-re's converter/cir_emit.das, compiled to wasm64) spells the module
 // again for the knobs, and lua.wasm (c2das-ports' Lua, compiled to wasm64) runs the console's Lua.
-// Both programs poll a request file in their in-memory file system each animation frame.
+// Both programs poll a request file in their in-memory file system each animation frame; a request
+// unanswered within DEADLINE_MS, or a program that aborts, is reported and frees the controls.
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var KNOBS = ['switch_dispatch', 'checks', 'loops', 'param_writes', 'first_member', 'past_end', 'fn_macros', 'inline_helpers', 'solid_context'];
   var DEFAULTS = { switch_dispatch: 'chain', checks: 'safe', loops: 'range', param_writes: 'in-place', first_member: 'addr', past_end: 'call', fn_macros: 'fold', inline_helpers: false, solid_context: true };
   var PRESETS = { readable: {}, fast: { checks: 'off' } };
-  var data = null, current = null, translator = null, busy = false, pending = false, lastDas = '';
+  var DEADLINE_MS = 20000;
+  var data = null, current = null, translator = null, busy = false, pending = false, dead = null;
 
   var cEditor = CodeMirror($('csrc'), { mode: 'c-lite', theme: 'forge', readOnly: true, lineNumbers: true });
   var dasView = CodeMirror($('tab-das'), { mode: 'daslang', theme: 'forge', readOnly: true, lineNumbers: true });
@@ -65,8 +67,15 @@
     });
   }
 
+  // the module shown: a fresh one, or none with the reason in the diff tab
+  function showModule(text, note) {
+    dasView.setValue(text);
+    if (note) { $('tab-diff').textContent = note; } else { showDiff(text); }
+  }
+
   // one request to translator.wasm: the C-IR and the sidecar into /io, the module or the error back
   function convert() {
+    if (dead) { status(dead, true); return; }
     if (!translator || !current) return;
     if (busy) { pending = true; return; }
     busy = true;
@@ -77,20 +86,33 @@
     FS.writeFile('/io/go', '');
     status('translating...');
     (function poll() {
-      try { FS.stat('/io/done'); } catch (e) { return void setTimeout(poll, 4); }
+      if (dead) { busy = false; return; }
+      var done = null;
+      try { done = FS.readFile('/io/done', { encoding: 'utf8' }); } catch (e) {
+        if (performance.now() - t0 > DEADLINE_MS) {
+          dead = 'the translator did not answer in ' + DEADLINE_MS / 1000 + ' s; reload the page';
+          busy = false;
+          status(dead, true);
+          return;
+        }
+        return void setTimeout(poll, 4);
+      }
       var ms = performance.now() - t0, err = null, text = null;
       try { err = FS.readFile('/io/out.err', { encoding: 'utf8' }); } catch (e) {}
       try { text = FS.readFile('/io/out.das', { encoding: 'utf8' }); } catch (e) {}
       busy = false;
-      if (err) { status(err, true); }
-      else {
-        lastDas = text;
-        dasView.setValue(text);
-        showDiff(text);
+      // a newer request waits: this answer is for knobs or an example no longer shown
+      if (pending) { pending = false; convert(); return; }
+      if (err) {
+        status(err, true);
+        showModule('', 'No module: ' + err);
+        $('timing').textContent = '';
+      } else {
+        showModule(text);
         status('ready');
-        $('timing').textContent = 'translated in ' + ms.toFixed(0) + ' ms, ' + text.split('\n').length + ' lines';
+        $('timing').textContent = 'translated in ' + ms.toFixed(0) + ' ms (' + (parseInt(done, 10) / 1000).toFixed(0) +
+          ' ms in the translator), ' + text.split('\n').length + ' lines';
       }
-      if (pending) { pending = false; convert(); }
     })();
   }
 
@@ -100,11 +122,8 @@
     $('cfile').textContent = '(' + current.file + ')';
     $('about').textContent = current.about;
     $('tab-cir').textContent = JSON.stringify(JSON.parse(current.cir), null, 1);
-    $('tab-output').textContent = current.exit === 0 || current.output.indexOf("'main' not found") < 0
-      ? 'The converted program, run by daslang\'s interpreter when the page was built (exit ' + current.exit + '):\n\n' + current.output
-      : 'This file is part of a program (no main of its own): see the converted program in c2das-ports.';
-    dasView.setValue(current.das);
-    showDiff(current.das);
+    $('tab-output').textContent = 'The converted program, run by daslang\'s interpreter when the page was built:\n\n' + current.output;
+    if (!busy) showModule(current.das);
     convert();
   }
 
@@ -126,8 +145,8 @@
   $('preset').addEventListener('change', function () { applyPreset(this.value); });
   $('example').addEventListener('change', function () { selectExample(this.value); });
 
-  // the Lua console: lua.wasm is loaded on its first run
-  var lua = null, luaLoading = null;
+  // the Lua console: lua.wasm is loaded on its first run; a failed load is tried again on the next
+  var luaLoading = null, luaDead = null;
   function luaOut(line) { $('lua-out').textContent += line + '\n'; }
   function loadLua() {
     if (luaLoading) return luaLoading;
@@ -136,11 +155,13 @@
       var s = document.createElement('script');
       s.src = 'lua.js';
       s.onload = function () {
-        createLua({ print: luaOut, printErr: luaOut }).then(function (m) { m.FS.mkdirTree('/io'); lua = m; resolve(m); }, reject);
+        createLua({ print: luaOut, printErr: luaOut, onAbort: function (what) { luaDead = 'Lua stopped: ' + what + '; reload the page'; } })
+          .then(function (m) { m.FS.mkdirTree('/io'); resolve(m); }, reject);
       };
-      s.onerror = reject;
+      s.onerror = function () { reject(new Error('lua.js did not load')); };
       document.head.appendChild(s);
     });
+    luaLoading.catch(function () { luaLoading = null; });
     return luaLoading;
   }
   $('lua-run').addEventListener('click', function () {
@@ -153,7 +174,12 @@
       m.FS.writeFile('/io/script.lua', luaEditor.getValue());
       m.FS.writeFile('/io/lua.go', '');
       (function poll() {
-        try { m.FS.stat('/io/lua.done'); } catch (e) { return void setTimeout(poll, 4); }
+        try { m.FS.stat('/io/lua.done'); } catch (e) {
+          var late = performance.now() - t0 > DEADLINE_MS;
+          if (!luaDead && !late) return void setTimeout(poll, 4);
+          $('lua-status').textContent = luaDead || 'Lua did not answer in ' + DEADLINE_MS / 1000 + ' s (a loop without end?); reload the page';
+          return;
+        }
         $('lua-status').textContent = 'ran in ' + (performance.now() - t0).toFixed(0) + ' ms';
         btn.disabled = false;
       })();
@@ -165,7 +191,9 @@
   });
 
   // the page's data, the build's commits and the translator
-  Promise.all([fetch('examples.json').then(function (r) { return r.json(); }), fetch('build.json').then(function (r) { return r.json(); }, function () { return null; })])
+  Promise.all([
+    fetch('examples.json').then(function (r) { return r.json(); }).catch(function (e) { throw new Error('the examples did not load: ' + e); }),
+    fetch('build.json').then(function (r) { return r.json(); }).catch(function () { return null; })])
     .then(function (res) {
       data = res[0];
       data.examples.forEach(function (e) { $('example').add(new Option(e.title, e.id)); });
@@ -177,7 +205,11 @@
           ' and emscripten ' + b.emscripten + '; Lua from c2das-ports ' + b.ports + '. '), $('footer').firstChild);
       }
       selectExample(data.examples[0].id);
-      return createTranslator({ print: function (l) { console.log('[translator] ' + l); }, printErr: function (l) { console.warn('[translator] ' + l); } });
+      return createTranslator({
+        print: function (l) { console.log('[translator] ' + l); },
+        printErr: function (l) { console.warn('[translator] ' + l); },
+        onAbort: function (what) { dead = 'the translator stopped: ' + what + '; reload the page'; status(dead, true); }
+      }).catch(function (e) { throw new Error('the translator did not load: ' + e); });
     })
     .then(function (m) {
       m.FS.mkdirTree('/io');
@@ -185,5 +217,5 @@
       window.translator = m;
       status('ready');
       convert();
-    }, function (e) { status('the translator did not load: ' + e, true); });
+    }, function (e) { status(String(e.message || e), true); });
 })();

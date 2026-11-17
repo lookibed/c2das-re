@@ -34,7 +34,9 @@ program runs under in a browser and the page around it.
   releases; `translator/pages.yml` c2das-re's deploy workflow.
 - `scripts/build_translator_site.sh` (repository root) - the translator page's build;
   `scripts/web_common.sh` the checks both builds share (emscripten, the host on the pin, a gh-pages
-  checkout, the commit).
+  checkout of the build's own repository, the commit). `tests/test_web_translator.das` runs
+  `main_web.das` as a desktop program over requests, `precompute.das` over a small manifest, and the
+  script's refusals.
 - `site/index.html` - the site's landing page, a list of the demos.
 - `site/coi-serviceworker.js` - cross-origin isolation (section 2).
 - `site/pages.yml` - the deploy workflow the ports repository's `gh-pages` branch carries (section 4).
@@ -211,8 +213,8 @@ which the generated code does not meet, so it never reaches the host.
 c2das-re's own GitHub Pages site runs the translator in the browser. clang cannot run there (Dumper
 A spawns it and reads libclang through `cbind`, a native module), so the page holds each example's
 C-IR, written at build time by the native pipeline (`translator/precompute.das`, the examples of
-`translator/examples/examples.json`, a Doom file fetched by `doom/fetch.sh` under the program's
-defines only), and runs everything after the C-IR live: `converter/cir_emit.das`, the CLI's own
+`translator/examples/examples.json`, each a whole program whose run must exit 0), and runs
+everything after the C-IR live: `converter/cir_emit.das`, the CLI's own
 path, compiled to wasm64 as `translator.wasm`. Its program has no window; each animation frame it
 looks for `/io/go` in its in-memory file system and converts `/io/in.cir.json` under
 `/io/sidecar.c2das` into `/io/out.das` or `/io/out.err`, then `/io/done`. The page writes the
@@ -230,4 +232,11 @@ daspkg's runtime archive. The page's editor is daScript's CodeMirror bundle and 
 copied from the wasm host's tree at build time, with small C and Lua modes of its own; the palette is
 daslang.io's. Only the translator's host is linted: the Lua console's lint would compile the
 converted Lua under lint's stricter policies, which generated code does not meet.
+
+The examples are c2das-re's own (MIT), so the site carries no third-party C. Their converted modules
+and recorded output reach only the generated `gh-pages` branch, never `main` (root `REVIEW.md`: no
+converted output is committed). The page reports a request unanswered within 20 s, or a program
+that aborts, instead of waiting; Lua's `os.exit` raises a Lua error, since an exit would end the
+console's program with no answer. `--pages` refuses a checkout whose origin is not c2das-re, as
+`scripts/build_web.sh` refuses one that is not c2das-ports, so neither build can wipe the other's site.
 

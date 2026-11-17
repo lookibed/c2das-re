@@ -30,21 +30,28 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# every refusal comes before the first write
+# every refusal comes before the first write (the lint below needs the staged modules, and the
+# release's own failures come after it)
 [ "$commit" = 0 ] || [ -n "$pages" ] || die "--commit commits into --pages <gh-pages checkout>; there is none"
-[ -z "$pages" ] || check_pages "$pages"
+[ -z "$pages" ] || check_pages "$pages" c2das-re
 [ -n "$ports" ] || die "--ports <c2das-ports checkout> is required (the Lua console's conversion)"
 lua="$ports/lua/readable/lua"
 [ -f "$lua/lua.das" ] || die "$lua holds no converted Lua"
-defines=$(sed -n 's/.*"defines": \[\(.*\)\],*/\1/p' doom/doom.c2das 2>/dev/null)
-[ -n "$defines" ] || die "doom/doom.c2das names no defines"
 check_emcc
 check_host "$host"
 cm="$host/site/files/cm"
-[ -f "$cm/codemirror.min.js" ] && [ -f "$cm/daslang-mode.js" ] || die "no CodeMirror bundle at $cm"
+CM_FILES="codemirror.min.js codemirror.min.css simple-mode.js daslang-keywords.js daslang-mode.js cm-forge.css LICENSE"
+for f in $CM_FILES; do [ -f "$cm/$f" ] || die "no $f in the CodeMirror bundle at $cm"; done
+for f in liblibDaScript.a liblibUriParser.a; do
+    [ -f "$host/web/output64/lib/$f" ] || die "no $f in $host/web/output64/lib: the translator links the whole compiler"
+done
+# the hosts pass the wasm host's format gate
+for f in web/translator/main_web.das web/translator/lua_web.das web/translator/precompute.das; do
+    "$host/bin/daslang" "$host/utils/das-fmt/dasfmt.das" -- --path "$f" --verify >/dev/null \
+        || die "$f is not formatted (das-fmt of $host)"
+done
 . scripts/env.sh
 [ -f dasCRuntime/dasModuleCRuntime.shared_module ] || die "build this tree's crt first (scripts/build_crt.sh): the examples convert natively"
-bash doom/fetch.sh >/dev/null || die "doom/fetch.sh could not fetch PureDOOM"
 c2das=$(sha_of .)
 portsha=$(sha_of "$ports")
 [ "$commit" = 0 ] || case "$c2das $portsha" in *-dirty*) die "--commit: c2das-re $c2das or c2das-ports $portsha has uncommitted changes" ;; esac
@@ -54,10 +61,9 @@ site="$out/site"
 rm -rf "$out/stage" "$out/release" "$out/work" "$site"
 mkdir -p "$out/stage" "$out/work" "$site/cm"
 
-# the examples, converted by this tree's native pipeline; a Doom file under the program's defines only
-printf '{"defines": [%s]}\n' "$defines" > "$out/work/doom_defines.c2das"
-das web/translator/precompute.das -- web/translator/examples/examples.json "$out/work/doom_defines.c2das" \
-    "$site/examples.json" "$out/work/examples" || die "the examples did not convert"
+# the examples, converted by this tree's native pipeline
+das web/translator/precompute.das -- web/translator/examples/examples.json "$site/examples.json" "$out/work/examples" \
+    || die "the examples did not convert"
 
 # the host-side crt for the wasm host, and its wasm64 archive rebuilt from this tree
 DASLANG_ROOT="$host" CXX="${CXX:-clang++-18}" bash scripts/build_crt.sh --libcxx-host
@@ -92,12 +98,8 @@ cp c_runtime/.das_module "$lstage/modules/c_runtime/"
 cp -r c_runtime/c_runtime "$lstage/modules/c_runtime/c_runtime"
 crt_module "$lstage"
 
-# the hosts pass the wasm host's format gate, and the translator's its lint (the Lua console's lint
-# would compile the converted Lua under lint's stricter policies, which generated code does not meet)
-for f in web/translator/main_web.das web/translator/lua_web.das web/translator/precompute.das; do
-    "$host/bin/daslang" "$host/utils/das-fmt/dasfmt.das" -- --path "$f" --verify >/dev/null \
-        || die "$f is not formatted (das-fmt of $host)"
-done
+# the translator's host passes the wasm host's lint (the Lua console's lint would compile the
+# converted Lua under lint's stricter policies, which generated code does not meet)
 lint=$("$host/bin/daslang" -load_module "$tstage/modules/dasCRuntime" \
     "$host/utils/lint/main.das" -- "$tstage/src/converter/main_web.das" --quiet 2>&1) \
     || { echo "$lint"; die "lint findings in the translator host"; }
@@ -109,7 +111,7 @@ for app in translator lua; do
 done
 cp web/translator/site/* "$site/"
 cp web/site/coi-serviceworker.js "$site/"
-for f in codemirror.min.js codemirror.min.css simple-mode.js daslang-keywords.js daslang-mode.js cm-forge.css LICENSE; do
+for f in $CM_FILES; do
     cp "$cm/$f" "$site/cm/"
 done
 printf '{"c2das_re": "%s", "ports": "%s", "daslang": "%s", "emscripten": "5.0.7"}\n' \

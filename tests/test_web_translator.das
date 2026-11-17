@@ -3,9 +3,11 @@ require dastest/testing_boost public
 require strings
 require daslib/fio
 require daslib/json_boost
+require ../converter/pipeline.das
 
-//! The translator page's build (web/ARCHITECTURE.md section 8): `web/translator/precompute.das` over a
-//! small manifest, and `scripts/build_translator_site.sh`'s refusals, which come before its first write.
+//! The translator page (web/ARCHITECTURE.md section 8): its program `web/translator/main_web.das` as a
+//! desktop run answering requests, `web/translator/precompute.das` over a small manifest, and
+//! `scripts/build_translator_site.sh`'s refusals, which come before its first write.
 
 // precompute.das run by the daslang running the test, its output in `out`
 def private precompute(args : array<string>; var out : string&) : int {
@@ -14,7 +16,7 @@ def private precompute(args : array<string>; var out : string&) : int {
     return run_and_capture(argv, out, 300.0)
 }
 
-[test(description = "precompute converts each example, records its C, C-IR, module and output, passes the Lua snippets through, and refuses a bad call")]
+[test(description = "precompute converts each example, records its C, C-IR, module and output, passes the Lua snippets through, and refuses a bad call and a program that exits nonzero")]
 def test_precompute(t : T?) {
     var dir_error : string
     let work = create_temp_directory("c2das_translator_pre", dir_error)
@@ -22,10 +24,9 @@ def test_precompute(t : T?) {
     let manifest = path_join(work, "examples.json")
     fwrite(path_join(work, "hi.c"), "#include <stdio.h>\nint main(void) \{ printf(\"hi %d\\n\", 6 * 7); return 0; \}\n")
     fwrite(manifest, "\{\"examples\": [\{\"id\": \"hi\", \"title\": \"hi\", \"file\": \"hi.c\", \"about\": \"a test\"\}], \"lua\": [\{\"id\": \"l\", \"title\": \"l\", \"code\": \"print(1)\"\}]\}")
-    fwrite(path_join(work, "doom.c2das"), "\{\"defines\": []\}")
     let out_json = path_join(work, "out.json")
     var out : string
-    let rc = precompute([manifest, path_join(work, "doom.c2das"), out_json, path_join(work, "w")], out)
+    let rc = precompute([manifest, out_json, path_join(work, "w")], out)
     t |> equal(rc, 0, out)
     var error : string
     var bundle = read_json(fread(out_json), error)
@@ -41,13 +42,66 @@ def test_precompute(t : T?) {
     }
     let usage = precompute([manifest], out)
     t |> equal(usage, 2, out)
+    fwrite(path_join(work, "bad.c"), "int main(void) \{ return 3; \}\n")
+    let bad_manifest = path_join(work, "bad.json")
+    fwrite(bad_manifest, "\{\"examples\": [\{\"id\": \"bad\", \"file\": \"bad.c\"\}], \"lua\": []\}")
+    let rc_bad = precompute([bad_manifest, path_join(work, "bad_out.json"), path_join(work, "w")], out)
+    t |> equal(rc_bad, 1, out)
+    t |> success(find(out, "exits 3") >= 0, out)
+    rmdir_rec(work)
+}
+
+// main_web.das staged beside the converter's modules in `stage`, as the build stages it, answering
+// the request in `io`: what it answered, "out.das:<module>" or "out.err:<error>"
+def private answer(t : T?; stage, io, cir, sidecar : string) : string {
+    for (f in ["go", "done", "out.das", "out.err"]) {
+        remove(path_join(io, f))
+    }
+    fwrite(path_join(io, "in.cir.json"), cir)
+    fwrite(path_join(io, "sidecar.c2das"), sidecar)
+    fwrite(path_join(io, "go"), "")
+    var out : string
+    let rc = run_and_capture(["{get_das_root()}/bin/daslang", "-load_module", "dasCRuntime", "-load_module", "c_runtime", path_join(stage, "main_web.das"), "--", io], out, 300.0)
+    t |> equal(rc, 0, out)
+    t |> success(fexist(path_join(io, "done")), "the request is answered: {out}")
+    t |> success(!fexist(path_join(io, "go")), "the request is taken")
+    if (fexist(path_join(io, "out.err"))) {
+        return "out.err:{fread(path_join(io, "out.err"))}"
+    }
+    return "out.das:{fread(path_join(io, "out.das"))}"
+}
+
+[test(description = "main_web.das answers a request with the pipeline's module under the knobs, a bad sidecar and a bad C-IR with their errors")]
+def test_main_web(t : T?) {
+    var dir_error : string
+    let work = create_temp_directory("c2das_translator_host", dir_error)
+    t |> equal(dir_error, "")
+    let stage = path_join(work, "stage")
+    let io = path_join(work, "io")
+    mkdir_rec(stage)
+    mkdir_rec(io)
+    var out : string
+    let rc_stage = run_and_capture(["sh", "-c", "cp converter/*.das web/translator/main_web.das '{stage}/'"], out, 30.0)
+    t |> equal(rc_stage, 0, out)
+    let c_path = path_join(work, "hi.c")
+    fwrite(c_path, "int pick(int k) \{ switch (k) \{ case 0: return 5; case 1: return 7; case 2: return 9; default: return 0; \} \}
+int main(void) \{ return pick(1); \}
+")
+    let res <- convert(c_path, path_join(work, "native"), "linux", "", "", "", "", "", "goto")
+    t |> success(res.ok, res.error)
+    let good = answer(t, stage, io, res.cir_text, "\{\"switch_dispatch\": \"goto\"\}")
+    t |> equal(good, "out.das:{res.das_text}")
+    let bad_side = answer(t, stage, io, res.cir_text, "\{\"switch_dispatch\": \"sideways\"\}")
+    t |> success(starts_with(bad_side, "out.err:sidecar: "), bad_side)
+    let bad_cir = answer(t, stage, io, "\{ not c-ir", "\{\}")
+    t |> success(starts_with(bad_cir, "out.err:reader: "), bad_cir)
     rmdir_rec(work)
 }
 
 // build_translator_site.sh with `args`, its output in `out`
 def private build_site(args : string; var out : string&) : int => run_and_capture(["sh", "-c", "bash scripts/build_translator_site.sh {args} 2>&1"], out, 120.0)
 
-[test(description = "build_translator_site.sh refuses --commit without --pages, a missing --ports, a ports checkout without Lua, and a --pages that is no gh-pages checkout")]
+[test(description = "build_translator_site.sh refuses --commit without --pages, a missing --ports, a ports checkout without Lua, a --pages that is no checkout, and c2das-ports' gh-pages")]
 def test_build_translator_refusals(t : T?) {
     var dir_error : string
     let work = create_temp_directory("c2das_translator_ref", dir_error)
@@ -66,6 +120,12 @@ def test_build_translator_refusals(t : T?) {
     let rc_pages = build_site("--ports '{work}' --pages '{work}' --out '{out_dir}'", out)
     t |> equal(rc_pages, 1, out)
     t |> success(find(out, "is not a git checkout") >= 0, out)
+    let ports_pages = path_join(work, "ports_pages")
+    let rc_init = run_and_capture(["sh", "-c", "git init -q -b gh-pages '{ports_pages}' && git -C '{ports_pages}' remote add origin https://github.com/lookibed/c2das-ports.git && git -C '{ports_pages}' -c user.name=t -c user.email=t@t commit -q --allow-empty -m old"], out, 30.0)
+    t |> equal(rc_init, 0, out)
+    let rc_other = build_site("--ports '{work}' --pages '{ports_pages}' --out '{out_dir}'", out)
+    t |> equal(rc_other, 1, out)
+    t |> success(find(out, "not of c2das-re") >= 0, out)
     t |> success(!fexist(out_dir), "no refusal created the --out folder")
     rmdir_rec(work)
 }

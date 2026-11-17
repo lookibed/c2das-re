@@ -7,7 +7,8 @@ require ../cir_emit.das
 require ../sidecar.das
 
 //! `cir_emit.das`, the C-IR-to-das half the browser page runs: over a fixture's C-IR it gives the
-//! module the whole pipeline wrote, and a C-IR that does not read gives the reader's error.
+//! module the whole pipeline wrote; a C-IR that does not read gives the reader's error, and one the
+//! emitter refuses the emitter's.
 
 let FIXTURES = ["converter/tests/fixtures/p1_loops.c", "converter/tests/fixtures/p2_arrays.c"]
 
@@ -45,4 +46,22 @@ def test_cir_to_das_bad_cir(t : T?) {
     let emitted <- cir_to_das("\{ not c-ir", side)
     t |> success(starts_with(emitted.error, "reader: "), emitted.error)
     t |> equal(emitted.das_text, "")
+}
+
+[test(description = "a C-IR that reads but the emitter refuses (a call to a function no unit defines) gives the emitter's error and no module")]
+def test_cir_to_das_emitter_error(t : T?) {
+    var dir_error : string
+    let out = create_temp_directory("c2das_cir_emit_ext", dir_error)
+    t |> equal(dir_error, "")
+    let c_path = path_join(out, "ext.c")
+    fwrite(c_path, "extern int no_such_function(int);\nint main(void) \{ return no_such_function(1); \}\n")
+    let res <- convert(c_path, out, "linux")
+    t |> success(!res.ok, "the pipeline refuses it too")
+    t |> success(!empty(res.cir_text), "the C-IR was written before the emitter: {res.error}")
+    var side_error : string
+    let side <- read_sidecar("", side_error)
+    let emitted <- cir_to_das(res.cir_text, side)
+    t |> success(starts_with(emitted.error, "emitter: "), emitted.error)
+    t |> equal(emitted.das_text, "")
+    rmdir_rec(out)
 }

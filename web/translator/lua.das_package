@@ -1,7 +1,7 @@
 options gen2
 require daslib/daspkg
 
-// the Lua console's release (web/ARCHITECTURE.md section 8): scripts/build_web.sh stages
+// the Lua console's release (web/ARCHITECTURE.md section 8): scripts/build_translator_site.sh stages
 // c2das-ports' lua/readable/lua and lua_web.das into src/ and copies this file as the stage's
 // .das_package; the page loads the program through createLua when the console first runs.
 [export]
