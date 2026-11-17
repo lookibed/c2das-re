@@ -235,8 +235,9 @@ converted Lua under lint's stricter policies, which generated code does not meet
 
 The examples are c2das-re's own (MIT), so the site carries no third-party C. Their converted modules
 and recorded output reach only the generated `gh-pages` branch, never `main` (root `REVIEW.md`: no
-converted output is committed). The page reports a request unanswered within 20 s of visible time
-(a hidden tab runs no frames) and takes the next one; a program that aborts stops the page. Lua's `os.exit` raises a Lua error, since an exit would end the
-console's program with no answer. `--pages` refuses a checkout whose origin is not c2das-re, as
-`scripts/build_web.sh` refuses one that is not c2das-ports, so neither build can wipe the other's site.
+converted output is committed). The page reports a request unanswered within 20 s of visible time (a
+hidden tab runs no frames) and takes the next one; a program that aborts stops the page. Lua's
+`os.exit` raises a Lua error, since an exit would end the console's program with no answer.
+`--pages` refuses a checkout whose origin is not c2das-re, as `scripts/build_web.sh` refuses one
+that is not c2das-ports, so neither build can wipe the other's site.
 
