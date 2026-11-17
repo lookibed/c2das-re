@@ -1,4 +1,4 @@
-program: Doom demo1 (freedoom2, speed build; -tics 600 of the demo's 2664, as doom_demo1_interp.txt), after #251: pointer equality with das's own ==, a pointer relation over reinterpret<uint64>, no intptr call
+program: Doom demo1 (freedoom2, speed build; -tics 600 of the demo's 2664, as doom_demo1_interp.txt), after #251: pointer equality with das's own ==, a pointer relation over reinterpret<uint64>, no intptr call in a pointer comparison (the 0.6% left is Z_ChangeTag2's (intptr_t) cast)
 lane: interp
 box: PC (AMD Ryzen 7 7435HS, WSL2)
 date: 2026-11-17
