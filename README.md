@@ -90,12 +90,13 @@ of 5 samples (3 for Doom and real projects); spread > 20% is marked `suspect`.
 | blit          |    0.000358 s |      45.51 |    0.17 |    0.80 |       0.82 |
 | fib_loop      |    0.001457 s |      22.03 |    1.00 |    1.00 |       1.00 |
 | fib_recursive |    0.003241 s |       7.51 |    1.00 |    0.91 |       1.00 |
-| matmul        |    0.000220 s |      40.89 |    0.58 |    0.58 | 1.60 (#48) |
+| matmul        |    0.000220 s |      40.89 |    0.58 |    0.58 |       1.04 |
 | primes        |    0.014585 s |       4.43 |    1.00 |    1.00 |       0.54 |
-| sieve         |    0.001759 s |      20.83 |    1.12 |    1.12 | 8.17 (#48) |
+| sieve         |    0.001759 s |      20.83 |    1.12 |    1.12 |       1.62 |
 
 C is seconds per run, DAS cells are x C. fib_loop, fib_recursive, primes: dasProfile's programs,
-`perf/results_method_linux.json`; the rest `perf/results_linux.json`.
+`perf/results_method_linux.json`; the rest `perf/results_linux.json`. AOT of matmul and sieve:
+the exclusive check of 2026-11-17 on daScript `b7d8f6f52f` (ledger P8.14).
 
 ### Doom
 
@@ -108,12 +109,10 @@ PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the
 
 | Workload |   native fps | interp fps |      JIT fps |      exe fps |     AOT fps | interp / native | JIT / native | exe / native | AOT / native |
 | :------- | -----------: | ---------: | -----------: | -----------: | ----------: | --------------: | -----------: | -----------: | -----------: |
-| demo1    |  9881.6 ±1% | 224.6 ±1% |  9433.8 ±2% |  9614.3 ±2% | 1752.4 ±0% |            44.0 |          1.0 |          1.0 |    5.6 (#48) |
-| demo2    | 11037.4 ±1% | 250.6 ±0% | 10133.6 ±0% | 10384.6 ±0% | 2198.6 ±0% |            44.1 |          1.1 |          1.1 |    5.0 (#48) |
-| demo3    |  9666.4 ±1% | 217.2 ±0% |  9102.6 ±1% |  9269.1 ±0% | 1958.9 ±1% |            44.5 |          1.1 |          1.0 |    4.9 (#48) |
+| demo1    |  9881.6 ±1% | 224.6 ±1% |  9433.8 ±2% |  9614.3 ±2% | 1752.4 ±0% |            44.0 |          1.0 |          1.0 |          5.6 |
+| demo2    | 11037.4 ±1% | 250.6 ±0% | 10133.6 ±0% | 10384.6 ±0% | 2198.6 ±0% |            44.1 |          1.1 |          1.1 |          5.0 |
+| demo3    |  9666.4 ±1% | 217.2 ±0% |  9102.6 ±1% |  9269.1 ±0% | 1958.9 ±1% |            44.5 |          1.1 |          1.0 |          4.9 |
 
-
-- (#48) daslang's AOT generator reads every module global through a hash lookup (`das_global<T, mnh>`), though the AOT context fixes each global's offset when it is generated; the same program's AOT reading each global at its fixed offset runs puredoom 1.14 (readable, demo1) x native: [lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48).
 <!-- doom-fps:end -->
 
 ## Real projects
@@ -121,19 +120,19 @@ PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the
 | Project                                                                          |      Native | interp |  JIT |   exe |        AOT |
 | :------------------------------------------------------------------------------- | ----------: | -----: | ---: | ----: | ---------: |
 | [binjgb](https://github.com/lookibed/c2das-ports/tree/main/binjgb)               |     61.7 ms |  73.40 | 1.15 |  1.19 |       1.15 |
-| [doomgeneric](https://github.com/lookibed/c2das-ports/tree/main/doomgeneric)     |    117.4 ms |  43.31 | 1.08 |  1.08 | 3.69 (#48) |
+| [doomgeneric](https://github.com/lookibed/c2das-ports/tree/main/doomgeneric)     |    117.4 ms |  43.31 | 1.08 |  1.08 |       1.13 |
 | [h264bsd-mp4](https://github.com/lookibed/c2das-ports/tree/main/h264bsd-mp4)     |     78.7 ms |  59.64 | 1.05 |  1.05 |       1.13 |
 | [lua](https://github.com/lookibed/c2das-ports/tree/main/lua)                     |      6.45 s | 110.92 | 1.54 | error |       1.36 |
 | [plmpeg-stream](https://github.com/lookibed/c2das-ports/tree/main/plmpeg-stream) |     40.6 ms |  29.35 | 0.98 |  1.02 |       1.08 |
-| [puredoom](https://github.com/lookibed/c2das-ports/tree/main/puredoom)           | 10177.8 fps |  44.19 | 1.07 |  1.04 | 5.19 (#48) |
+| [puredoom](https://github.com/lookibed/c2das-ports/tree/main/puredoom)           | 10177.8 fps |  44.19 | 1.07 |  1.04 |       1.15 |
 | [wasm3](https://github.com/lookibed/c2das-ports/tree/main/wasm3)                 |     1.85 ms |  56.88 | 2.79 |  2.61 |       1.59 |
 
 Native: `compare/results_linux.json`; PureDOOM `doom/results_linux.json`; Lua, the sum of its 5
 workloads, c2das-ports `lua/perf/capture_2026-11-14T095846Z.json`. Other cells are x native, from
 `ports/variants/<project>.readable.json`. `error`: the lane does not run the whole benchmark.
 
-(#48) AOT reads every global through a hash lookup:
-[lookibed/daScript#48](https://github.com/lookibed/daScript/issues/48).
+AOT of doomgeneric and puredoom: the exclusive check of 2026-11-17 on daScript `b7d8f6f52f`
+(ledger P8.14); the Doom section's AOT column is its 2026-11-14 capture, before that fix.
 
 ## License
 

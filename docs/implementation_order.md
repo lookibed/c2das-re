@@ -1533,6 +1533,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   sieve 1.62, str_copy 1.41, switch_local 1.01, matmul 1.04, PureDOOM demo1 (readable) 1.15 and doomgeneric
   (readable) 1.13 x native, each within its prediction (`/root/notes/predictions/2026-11-17-48-repin.md`). The
   `UPSTREAM_CELLS` entries and the #48 footnote are gone; the ports tables lose their (#48) marks at the next publish.
+  Open: the Rust unit's doomgeneric AOT lane timed out in the check's non-exclusive prep run; its build and
+  run time on `b7d8f6f52f` are looked at before the next compare capture.
 - **P8.15 Harness gaps found by the repin** (from P8.12 step 4 and the capture): (a) `lua/run.das --luac-check`
   refuses `--tier exe` though `luac_check` goes through `run_tier` (exe checked by hand: 33/33); (b) `doom/run.das`
   `without_define` edits the sidecar as text and leaves a trailing comma when the removed define is the last of a
