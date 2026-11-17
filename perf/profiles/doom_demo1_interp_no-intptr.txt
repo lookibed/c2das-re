@@ -1,0 +1,23 @@
+program: Doom demo1 (freedoom2, speed build; -tics 600 of the demo's 2664, as doom_demo1_interp.txt), after #251: pointer equality with das's own ==, a pointer relation over reinterpret<uint64>, no intptr call
+lane: interp
+box: PC (AMD Ryzen 7 7435HS, WSL2)
+date: 2026-11-17
+commit: main 02bfe79 (the conversion from branch fix/review-leftovers on it, whose emitter writes the same text)
+daScript: b7d8f6f52f (the pin; doom_demo1_interp.txt was taken at main ef5b135 on the pin 6401904cf9, so the seconds also carry two repins)
+command: DOOMWADDIR=. DAS_LOG_LEVEL=info daslang -load_module dasCRuntime -load_module c_runtime --das-profiler doom/work/source-speed/doom_main.das -- -timedemo demo1 -tics 600 -return-from-main, in doom/work/run/freedoom2, after doom/run.das --convert --speed, as a normal heavy job capped at 4G (heavy --max 4G; not a timing job, so not exclusive)
+profiler: daslang --das-profiler, inclusive times folded to self time per function (fold.py of the P7.0b2 notes, the total the largest inclusive time: the host's `play`); the run ended by itself (exit 0) under the cap; the shares are the shape of the run, the seconds carry the profiler's own cost
+total (play, inclusive): 7.078780220 s (doom_demo1_interp.txt: 21.442286448 s)
+ratio: none taken (not a timing run)
+intptr: 321690 calls, 0.040 s self, 0.6% (doom_demo1_interp.txt: 19023584 calls, 3.702 s, 17.3%); its callers (calls): Z_ChangeTag2 321688 (the (intptr_t) cast of its alignment check, which keeps intptr), R_InitTranslationTables 1, R_InitColormaps 1. W_CheckNumForName 0.155 s self (was 3.411 s), P_GroupLines 0.017 s (was 1.043 s)
+
+     self s  share      calls  function
+    0.908 s  12.8%      31612  @DOOM_cluster::R_RenderSegLoop
+    0.724 s  10.2%     639982  @DOOM_cluster::R_DrawColumn
+    0.395 s   5.6%     282141  @DOOM_cluster::R_DrawSpan
+    0.319 s   4.5%    2240987  @DOOM_cluster::FixedMul
+    0.313 s   4.4%    1762930  @DOOM_cluster::R_MakeSpans
+    0.298 s   4.2%     282141  @DOOM_cluster::R_MapPlane
+    0.289 s   4.1%        600  @DOOM_cluster::R_DrawPlanes
+    0.277 s   3.9%     588538  @DOOM_cluster::doom_strncasecmp
+    0.221 s   3.1%      22938  @DOOM_cluster::V_DrawPatch
+    0.215 s   3.0%    1562496  @DOOM_cluster::doom_toupper
