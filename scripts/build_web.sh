@@ -84,7 +84,7 @@ else
     # the project daspkg releases; copies, never links: the cross-compile writes a manifest beside
     # every module it loads
     cp "$doom"/processed/doom/* "$stage/src/"
-    cp web/puredoom/main_web.das web/puredoom/tic_digest.das "$stage/src/"
+    cp web/puredoom/main_web.das web/puredoom/tic_digest.das web/puredoom/doom_synth.das web/puredoom/doom_midi.das "$stage/src/"
     cp web/puredoom/.das_package web/puredoom/shell.html "$stage/"
     cp -r "$doom/runtime/c_runtime" "$stage/modules/c_runtime"
     mkdir -p "$stage/modules/dasCRuntime"
@@ -96,12 +96,12 @@ else
 
     # the web host passes the host's own format and lint gates (the pin has no dasGlfw, so the
     # preflight gates do not list web/)
-    for f in web/puredoom/main_web.das web/puredoom/tic_digest.das; do
+    for f in web/puredoom/main_web.das web/puredoom/tic_digest.das web/puredoom/doom_synth.das web/puredoom/doom_midi.das; do
         "$host/bin/daslang" "$host/utils/das-fmt/dasfmt.das" -- --path "$f" --verify >/dev/null \
             || die "$f is not formatted (das-fmt of $host)"
     done
     lint=$("$host/bin/daslang" -load_module "$stage/modules/dasCRuntime" -load_module "$stage/modules/c_runtime" \
-        "$host/utils/lint/main.das" -- "$stage/src/main_web.das" "$stage/src/tic_digest.das" --quiet 2>&1) \
+        "$host/utils/lint/main.das" -- "$stage/src/main_web.das" "$stage/src/tic_digest.das" "$stage/src/doom_synth.das" "$stage/src/doom_midi.das" --quiet 2>&1) \
         || { echo "$lint"; die "lint findings in the web host"; }
     [ -z "$lint" ] || echo "$lint" | grep -q " 0 issue(s)" || { echo "$lint"; die "lint findings in the web host"; }
 

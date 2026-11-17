@@ -21,6 +21,8 @@ or `ticDigest` in `puredoom/shell.html` changes the other two in the same change
 defines, an emscripten other than 5.0.7, a host at another commit than `VERSIONS.md`'s pin, a host
 without libc++ or the browser gate, a failed PureDOOM fetch.**
 
+**A diff never streams sound during a timedemo: the timed updates stay the game's alone.**
+
 **A diff to `puredoom/main_web.das` or `puredoom_c/main_web.c` that changes a clock, a frame budget,
 the key table, the checksum fold, the uncapped mode or an output line changes the other host the
 same way in the same change: the page compares the two builds under one harness.**
