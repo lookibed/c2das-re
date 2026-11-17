@@ -17,6 +17,7 @@
   'use strict';
   function post(msg) { window.parent.postMessage(msg, window.location.origin); }
   var didRun = false;
+  window.onerror = function (message) { post({ type: 'aborted', message: String(message) }); };
 
   window.Module = {
     // the pthread workers load this script by name
@@ -51,14 +52,14 @@
   window.addEventListener('message', function (ev) {
     if (ev.origin !== window.location.origin || !ev.data || ev.data.type !== 'run' || didRun) return;
     didRun = true;
-    var FS = window.Module.FS, files = ev.data.files, code = 0;
-    Object.keys(files).forEach(function (path) {
-      var dir = path.slice(0, path.lastIndexOf('/'));
-      if (dir) FS.mkdirTree(dir);
-      FS.writeFile(path, files[path]);
-    });
-    var t0 = performance.now();
+    var FS = window.Module.FS, files = ev.data.files, code = 0, t0 = performance.now();
     try {
+      Object.keys(files).forEach(function (path) {
+        var dir = path.slice(0, path.lastIndexOf('/'));
+        if (dir) FS.mkdirTree(dir);
+        FS.writeFile(path, files[path]);
+      });
+      t0 = performance.now();
       code = window.Module.callMain(ev.data.args) || 0;
     } catch (e) {
       // emscripten throws ExitStatus on exit() as well as on a real error

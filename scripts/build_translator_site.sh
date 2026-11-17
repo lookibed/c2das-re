@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
         --out) out="$2"; shift 2 ;;
         --pages) pages="$2"; shift 2 ;;
         --commit) commit=1; shift ;;
-        *) sed -n '2,17p' "$0" >&2; exit 2 ;;
+        *) sed -n '2,16p' "$0" >&2; exit 2 ;;
     esac
 done
 
@@ -42,10 +42,18 @@ lua="$ports/lua/readable/lua"
 [ -f "$lua/lua.das" ] || die "$lua holds no converted Lua"
 [ -n "$interp" ] || die "--interp <dir> is required (web/translator/interp/build_interp.sh's out/ folder)"
 for f in daslang_static.js daslang_static.wasm interp.json; do [ -f "$interp/$f" ] || die "no $f in $interp"; done
-check_emcc
-check_host "$host"
+# the interpreter at the pin, its crt this tree's: c_runtime.json is bundled from this tree, so a crt
+# binding added since the interpreter's build would break every Run at its require
+read_pin
 interp_pin=$(sed -n 's/.*"daslang": "\([0-9a-f]*\)".*/\1/p' "$interp/interp.json")
 [ "$interp_pin" = "${pin:0:10}" ] || die "the interpreter in $interp is daScript ${interp_pin:-?}, VERSIONS.md pins ${pin:0:10}; rebuild it"
+interp_crt=$(sed -n 's/.*"crt": "\([0-9a-f]*\)".*/\1/p' "$interp/interp.json")
+[ -n "$interp_crt" ] && git cat-file -e "$interp_crt^{commit}" 2>/dev/null \
+    || die "the interpreter in $interp names no crt commit of this repository (${interp_crt:-none}); rebuild it"
+git diff --quiet "$interp_crt" HEAD -- dasCRuntime/src \
+    || die "dasCRuntime/src changed since the interpreter's crt ($interp_crt); rebuild it with web/translator/interp/build_interp.sh"
+check_emcc
+check_host "$host"
 cm="$host/site/files/cm"
 CM_FILES="codemirror.min.js codemirror.min.css simple-mode.js daslang-keywords.js daslang-mode.js cm-forge.css LICENSE"
 for f in $CM_FILES; do [ -f "$cm/$f" ] || die "no $f in the CodeMirror bundle at $cm"; done
@@ -123,7 +131,6 @@ das web/translator/bundle.das -- c_runtime "$site/c_runtime.json" || die "c_runt
 for f in $CM_FILES; do
     cp "$cm/$f" "$site/cm/"
 done
-interp_crt=$(sed -n 's/.*"crt": "\([0-9a-f]*\)".*/\1/p' "$interp/interp.json")
 printf '{"c2das_re": "%s", "ports": "%s", "daslang": "%s", "emscripten": "5.0.7", "interp_crt": "%s"}\n' \
     "$c2das" "$portsha" "${pin:0:10}" "$interp_crt" > "$site/build.json"
 echo "build_translator_site: site in $site (c2das-re $c2das, c2das-ports $portsha, daScript ${pin:0:10})"
@@ -138,10 +145,11 @@ cat > "$pages/README.md" <<EOF
 
 The GitHub Pages site of [c2das-re](https://github.com/lookibed/c2das-re): its translator's C-IR-to-daslang
 half and c2das-ports' Lua, compiled to WebAssembly. Generated, never hand-edited: c2das-re's
-\`scripts/build_translator_site.sh --ports <c2das-ports> --pages <this checkout>\` writes every file here
-(sources: c2das-re's \`web/translator/\`), from c2das-re $c2das and c2das-ports $portsha, by daScript
-${pin:0:10}'s libc++ wasm host with emscripten 5.0.7. \`cm/\` is daScript's CodeMirror bundle (MIT) and
-daslang mode (BSD-3).
+\`scripts/build_translator_site.sh --ports <c2das-ports> --interp <dir> --pages <this checkout>\` writes every
+file here (sources: c2das-re's \`web/translator/\`), from c2das-re $c2das and c2das-ports $portsha, by daScript
+${pin:0:10}'s libc++ wasm host with emscripten 5.0.7. \`daslang_static.*\` is daScript ${pin:0:10}'s playground
+interpreter with c2das-re $interp_crt's crt, built by \`web/translator/interp/build_interp.sh\`. \`cm/\` is
+daScript's CodeMirror bundle (MIT) and daslang mode (BSD-3).
 EOF
 [ "$commit" = 1 ] || exit 0
 commit_pages "$pages" "site: c2das-re $c2das, c2das-ports $portsha, daScript ${pin:0:10}"
