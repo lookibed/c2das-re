@@ -151,6 +151,7 @@ def test_lowerings(t : T?) {
         t |> equal(text |> find("require c_runtime/c_exit") >= 0, true, text)
     }
     p2_fixtures(t)
+    p9_pointer_relation_fixtures(t)
     p4_csmith_fixtures(t)
     p4_csmith_more_fixtures(t)
     p4_scope_fidelity_fixtures(t)
@@ -431,6 +432,24 @@ def p2_fixtures(t : T?) {
     p4_pointer_policy_fixtures(t)
     p4_varargs_fixtures(t)
     p4_param_writes_fixtures(t)
+}
+
+// the review of #251: every pointer relation over `reinterpret<uint64>`, the operand kinds and the global initializer
+def p9_pointer_relation_fixtures(t : T?) {
+    t |> run("pointer relations: every relation of two data pointers over reinterpret<uint64>, a T* against a void*, two function pointers, and one in a global initializer under unsafe; != stays das's own") @(t : T?) {
+        var text : string
+        check_fixture(t, "p9_pointer_relations", text)
+        has_text(t, text, "int_of(reinterpret<uint64>(p) < reinterpret<uint64>(q))")
+        has_text(t, text, "int_of(reinterpret<uint64>(p) <= reinterpret<uint64>(q))")
+        has_text(t, text, "int_of(reinterpret<uint64>(p) >= reinterpret<uint64>(q))")
+        has_text(t, text, "int_of(p != q)")
+        has_text(t, text, "int_of(reinterpret<uint64>(p) > reinterpret<uint64>(reinterpret<int?>(v)))")
+        has_text(t, text, "int_of(v != reinterpret<void?>(p))")
+        has_text(t, text, "int_of(reinterpret<uint64>(v) <= reinterpret<uint64>(reinterpret<void?>(q)))")
+        has_text(t, text, "int_of(reinterpret<uint64>(f) < reinterpret<uint64>(f))")
+        has_text(t, text, "int_of(reinterpret<uint64>(g) >= reinterpret<uint64>(g))")
+        has_text(t, text, "int_of(unsafe(reinterpret<uint64>(unsafe(addr(p9_pointer_relations__cells[2])))) >")
+    }
 }
 
 def p2_enum_fixtures(t : T?) {
