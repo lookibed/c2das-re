@@ -27,6 +27,14 @@ program runs under in a browser and the page around it.
   `quake_entry.das`; `quake/shell.html` its page; `quake/.das_package` its release;
   `quake/expected_frames.das` writes the reference frames out of the Rust repository's cases;
   `quake/frame_digest.das` folds the frame hashes (`tests/test_web_quake.das` tests both).
+- `translator/main_web.das` - the translator page's program (section 8): `converter/cir_emit.das`
+  behind a request in the in-memory file system; `translator/lua_web.das` the Lua console's program;
+  `translator/precompute.das` converts the examples at build time; `translator/examples/` the
+  examples' C and their manifest; `translator/site/` the page; `translator/*.das_package` the two
+  releases; `translator/pages.yml` c2das-re's deploy workflow.
+- `scripts/build_translator_site.sh` (repository root) - the translator page's build;
+  `scripts/web_common.sh` the checks both builds share (emscripten, the host on the pin, a gh-pages
+  checkout, the commit).
 - `site/index.html` - the site's landing page, a list of the demos.
 - `site/coi-serviceworker.js` - cross-origin isolation (section 2).
 - `site/pages.yml` - the deploy workflow the ports repository's `gh-pages` branch carries (section 4).
@@ -197,4 +205,29 @@ offers a picker for the user's own copy; a failing mirror leaves the page to its
 of the site deployed. The port's sound layer is null, so the page is silent. The build checks the
 host's formatting but runs no lint over it: lint compiles the engine under its own stricter policies,
 which the generated code does not meet, so it never reaches the host.
+
+## 8. The translator page
+
+c2das-re's own GitHub Pages site runs the translator in the browser. clang cannot run there (Dumper
+A spawns it and reads libclang through `cbind`, a native module), so the page holds each example's
+C-IR, written at build time by the native pipeline (`translator/precompute.das`, the examples of
+`translator/examples/examples.json`, a Doom file fetched by `doom/fetch.sh` under the program's
+defines only), and runs everything after the C-IR live: `converter/cir_emit.das`, the CLI's own
+path, compiled to wasm64 as `translator.wasm`. Its program has no window; each animation frame it
+looks for `/io/go` in its in-memory file system and converts `/io/in.cir.json` under
+`/io/sidecar.c2das` into `/io/out.das` or `/io/out.err`, then `/io/done`. The page writes the
+example's own sidecar with every knob over it (switch dispatch, checks, loops, parameter writes,
+first member, past end, function macros, inline helpers, solid context; the presets are the
+defaults and the ports' fast variant, `checks` off) and shows the module, its diff against the
+defaults, the C-IR, and the converted program's output, recorded when the page was built.
+
+The Lua console is `lua.wasm`: c2das-ports' `lua/readable` with `translator/lua_web.das` beside it,
+which runs `/io/script.lua` in a fresh Lua state on `/io/lua.go` and answers `/io/lua.done`; the
+page loads it on the first run. Both programs are built with `-sMODULARIZE` (`createTranslator`,
+`createLua`) so one page holds both. The converter reads `daslib/ast` at run time, so the
+translator's link takes the whole compiler archive (`liblibDaScript.a`) and uriparser beside
+daspkg's runtime archive. The page's editor is daScript's CodeMirror bundle and daslang mode,
+copied from the wasm host's tree at build time, with small C and Lua modes of its own; the palette is
+daslang.io's. Only the translator's host is linted: the Lua console's lint would compile the
+converted Lua under lint's stricter policies, which generated code does not meet.
 

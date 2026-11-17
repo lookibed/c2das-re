@@ -62,11 +62,10 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   it. A key's presence is `key_exists`, since json_boost's `?[]` of a missing key is a non-null
   sentinel (`probes/test_stdlib.das`). Nothing here knows the C-IR or the emitter.
 - `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes, loops,
-  first_member])`: read the sidecar (a `param_writes`, `loops` or `first_member` argument other
-  than "" overrides the sidecar's key, and
-  one that is not a mode is refused), dump under its `defines`, write the C-IR, read it back and rewrite it
-  (the bytes must match), emit, format with
-  `daslib/das_source_formatter`, compile-check with `compile_file`. Every artifact lands under
+  first_member])`: read the sidecar (a `param_writes`, `loops` or `first_member` argument other than "" overrides
+  the sidecar's key, one not a mode refused), dump under its `defines`, write the C-IR, read it back and rewrite it
+  (the bytes must match), emit and format through `cir_emit.das`'s `tu_to_das` (the dumper-free half the
+  browser page of `web/ARCHITECTURE.md` section 8 runs), compile-check with `compile_file`. Every artifact lands under
   `out_dir`; `file_stem` is the name every artifact of a C file carries. The result carries the
   bytes of clang's JSON dump and the seconds of the dumper, the emitter (with the formatter) and
   the compile check, which `lua/run.das` (repo root) reports. `convert_program(c_paths, ...[,

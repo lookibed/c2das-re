@@ -1,0 +1,17 @@
+{
+    "examples": [
+        {"id": "hello", "title": "hello", "file": "hello.c", "about": "printf through c2das-re's printf; main's return is the exit code."},
+        {"id": "fib", "title": "fibonacci", "file": "fib.c", "about": "recursion and a counting loop (the loops knob: range or while)."},
+        {"id": "sieve", "title": "sieve", "file": "sieve.c", "about": "arrays, nested loops, memset."},
+        {"id": "switch_vm", "title": "register machine", "file": "switch_vm.c", "about": "a dense switch: try switch dispatch chain, goto and table."},
+        {"id": "list", "title": "linked list", "file": "list.c", "about": "structs, pointers, malloc and free."},
+        {"id": "macros", "title": "macros", "file": "macros.c", "about": "function-like macros: fn macros fold or expand."},
+        {"id": "strings", "title": "C strings", "file": "strings.c", "about": "bytes and pointer walks: C strings stay uint8, never das strings."},
+        {"id": "m_random", "title": "Doom: m_random.c", "file": "doom/fetch/PureDOOM/src/DOOM/m_random.c", "sidecar": "doom_defines", "about": "PureDOOM's random number table, a file of the Doom conversion (GPL-2, fetched at build time)."}
+    ],
+    "lua": [
+        {"id": "lua_fib", "title": "Lua: fibonacci", "code": "local function fib(n)\n    if n < 2 then return n end\n    return fib(n - 1) + fib(n - 2)\nend\nfor n = 10, 25, 5 do\n    print(\"fib(\" .. n .. \") = \" .. fib(n))\nend\n"},
+        {"id": "lua_strings", "title": "Lua: patterns", "code": "local words = {}\nfor w in (\"the quick brown fox jumps over the lazy dog\"):gmatch(\"%a+\") do\n    words[#words + 1] = w:upper()\nend\nprint(table.concat(words, \" \"))\nprint(string.format(\"%d words, pi = %.6f\", #words, math.pi))\n"},
+        {"id": "lua_closures", "title": "Lua: closures and coroutines", "code": "local function counter()\n    local n = 0\n    return function() n = n + 1; return n end\nend\nlocal c = counter()\nprint(c(), c(), c())\nlocal gen = coroutine.wrap(function()\n    for i = 1, 3 do coroutine.yield(i * i) end\nend)\nprint(gen(), gen(), gen())\n"}
+    ]
+}
