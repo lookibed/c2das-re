@@ -2685,6 +2685,40 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   JIT 0.86-0.94, exe 0.86-0.95, AOT 0.95-1.03, and D2 (D1 in the source layout) 0.90-1.02, 0.88-0.96,
   0.88-0.96, 0.95-1.03; checks off on binjgb, h264bsd-mp4, wasm3 and doomgeneric interp 0.88-0.97, JIT
   0.94-0.98, exe 0.94-0.99, AOT 0.97-1.02, on plmpeg-stream 0.90-1.00 interp and 0.98-1.02 elsewhere.
+  Batch 2 (2026-11-18, `TIMING-add38-b2`, `machine quiet (cpu busy 1%)`, box PC, branch at 8b3db40 (the
+  converter of main 08f8d6f), pin guard green before and after; `cap2.sh`: every run from the repository root,
+  interp 3 samples, JIT, exe and AOT 5; `(n)` marks a cell whose spread passed 10%). Arm over readable on the
+  same tier and the tier's time over native's, geometric means over the workloads; every run's output native's:
+
+  | program | arm | interp /readable | interp x native | jit /readable | jit x native | exe /readable | exe x native | aot /readable | aot x native |
+  |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+  | Lua | readable | 1.000 | 161.77 | 1.000 (n) | 1.60 | 1.000 | 1.60 | 1.000 (n) | 1.35 |
+  | Lua | L1 | 0.584 | 94.41 | 0.743 | 1.19 | 0.800 | 1.28 | 0.892 | 1.20 |
+  | Lua | L2 | 0.561 | 90.73 | 0.734 | 1.17 | 0.828 (n) | 1.33 | 0.818 | 1.10 |
+  | PureDOOM | readable | 1.000 | 42.44 | 1.000 | 1.09 | 1.000 | 1.05 | 1.000 | 1.15 |
+  | PureDOOM | D1 | 1.247 | 52.90 | 0.906 | 0.99 | 0.953 | 1.00 | 0.986 | 1.13 |
+  | PureDOOM | D2 | 1.240 | 52.61 | 0.909 | 0.99 | 0.940 | 0.98 | 0.995 | 1.14 |
+  | binjgb | readable | 1.000 | 72.09 | 1.000 | 1.15 | 1.000 | 1.21 | 1.000 | 1.08 |
+  | binjgb | k | 1.037 | 74.80 | 0.960 | 1.11 | 0.898 | 1.08 | 0.941 | 1.01 |
+  | h264bsd-mp4 | readable | 1.000 | 59.14 | 1.000 | 1.03 | 1.000 | 1.04 | 1.000 | 1.01 |
+  | h264bsd-mp4 | k | 1.016 | 60.08 | 0.965 | 0.99 | 0.949 | 0.99 | 1.008 | 1.01 |
+  | plmpeg-stream | readable | 1.000 | 28.63 | 1.000 | 0.96 | 1.000 | 1.01 | 1.000 | 1.01 |
+  | plmpeg-stream | k | 1.014 | 29.03 | 0.990 | 0.95 | 1.009 | 1.02 | 1.001 | 1.01 |
+  | wasm3 | readable | 1.000 | 57.62 | 1.000 | 2.75 | 1.000 | 2.75 | 1.000 (n) | 1.40 |
+  | wasm3 | k | 0.913 | 52.60 | 0.966 | 2.66 | 0.960 | 2.64 | 1.070 (n) | 1.49 |
+  | doomgeneric | readable | 1.000 | 42.05 | 1.000 | 1.07 | 1.000 | 1.08 | 1.000 | 1.13 |
+  | doomgeneric | k | 0.982 | 41.27 | 0.965 | 1.04 | 0.948 | 1.02 | 0.988 | 1.12 |
+
+  Against the predictions: 39 of 52 cells hit. Misses: PureDOOM's interpreter under D1 and D2 (1.247 and
+  1.240 against 0.90-1.02: the while loops and the forms off cost the interpreter far more than they give the
+  JIT), D1's exe (0.953 against 0.86-0.95), L2's exe (0.828, noisy, against 0.64-0.82); checks off under the
+  interpreter on binjgb, h264bsd-mp4, plmpeg-stream and doomgeneric (1.037, 1.016, 1.014, 0.982 against
+  0.88-0.97: slower or flat), binjgb's exe and AOT (0.898 and 0.941: faster than predicted), wasm3's AOT (1.070,
+  spread 17.5% over a 2 ms bench), and PureDOOM's JIT over native (0.99, faster than 1.00-1.06).
+  Predictions for batch 3 (`/root/notes/predictions/2026-11-18-add38-b3.md`; PureDOOM alone, readable against
+  D2, D3 = jwp and checks off in the source layout, D4 = D3 in the single layout): D2 interp 1.20-1.28, JIT
+  0.88-0.94, exe 0.92-0.97, AOT 0.97-1.03; D3 and D4 interp 0.93-1.00, JIT 0.88-0.95 (D3 0.89-0.95), exe
+  0.92-0.98, AOT 0.97-1.03.
 
 ## P6 — Doom
 
