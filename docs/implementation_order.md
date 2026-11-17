@@ -2642,6 +2642,21 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   loads from the repository root (error checks 8 of 8, luac 33 of 33) and not from the test-suite folder
   (0 of 30). (j) `docs/performance.md` and the ports tables carry the numbers of the `6401904cf9` capture
   until the re-capture on this pin (step 6, a timing run, not started without a ruling).
+- **P9.39 The real `fast` variant per published program** (ruling 38 addendum 38 item 1; resumes the
+  addendum-19 search of P9.29 on daScript `b7d8f6f52f`, its numbers on `6401904cf9` void; work folder
+  `/root/notes/parallel/add38/`). Per program (Lua with luac, binjgb, h264bsd-mp4, plmpeg-stream, wasm3,
+  doomgeneric, PureDOOM) the knobs of `VARIANT_KNOBS` are searched one at a time from the `readable` knobs on
+  the JIT lane (the `fast` default), the winners combined, and the combined set timed on all four tiers;
+  quakegeneric has no bench unit, so its `fast` is `readable` with checks off and the reason. An arm whose
+  converted text equals the readable one is pruned untimed; every timed arm's output is native's.
+  Predictions for batch 1 (2026-11-17, before any timing; `/root/notes/predictions/2026-11-17-add38-b1.md`;
+  arm time over the readable arm's on the JIT, below 1 faster): Lua `switch_dispatch` table fib 0.72-0.82,
+  binary_trees 0.84-0.92, nbody and spectral_norm 0.76-0.86 (P9.33's ratios); checks off 0.88-0.98 on every
+  program (PureDOOM 0.92-0.98); `jit_whole_program` off for Lua 1.05-1.60, on for PureDOOM 0.85-1.00 and for a
+  one-module project 0.95-1.02; PureDOOM single layout 0.85-1.00; `strict_aliasing` 0.94-1.01 where the program
+  is clean; inline helpers, while loops, macros expanded, the forms off, source-cut and first-member
+  reinterpret (over checks off) each within 0.97-1.05. Combined `fast` over readable: Lua 0.68-0.82, PureDOOM
+  0.82-0.96, the projects 0.90-0.99.
 
 ## P6 — Doom
 
