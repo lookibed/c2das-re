@@ -150,7 +150,7 @@ exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
   a kernel is sampled ungated with the daslang host's own files set apart), symbolized against the
   JIT's cached `.dll`; the interpreter lane is daslang's `--das-profiler` over the host's
   `-return-from-main` run, folded to self time, at an argument whose per-call event store fits the
-  memory cap; `doom_demo1_interp_no-intptr.txt` is Doom's after F114 (no `intptr` call).
+  memory cap; `doom_demo1_interp_no-intptr.txt` is Doom's after F114 (no `intptr` call in a pointer comparison).
 - `dasprofile_linux.json` - borisbat/dasProfile's own capture (`profile_results_linux.json`)
   from this machine, with `dasprofile_commit` and `toolchain` stamped on by
   `dasprofile_capture.das`; `dasprofile.sh` makes it (section 6).
