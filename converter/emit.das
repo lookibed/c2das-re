@@ -10178,14 +10178,14 @@ def private emit_module_body(var em : Emitter; tu : CirTu) {
 
 //! The whole module: banner, options, requires, every declaration, and the `main` wrapper
 //! when the C program has one. Empty with `error` set when a node is outside the subset. A
-//! local that hides another is renamed in `tu` itself first (`unshadow_locals`).
-def emit_tu(var tu : CirTu; side : Sidecar) : Emitter {
-    var em : Emitter
+//! local that hides another is renamed in `tu` itself first (`unshadow_locals`). `em` is a fresh
+//! `Emitter` the caller holds (about 6 KiB: on the heap where the caller runs under das's default
+//! stack).
+def emit_tu(var em : Emitter; var tu : CirTu; side : Sidecar) {
     em.whole = true
     prepare_program(em, tu, side)
     emit_module_body(em, tu)
     assemble_module(em)
-    return <- em
 }
 
 // the stem of source file `file`, escaped for a das string literal

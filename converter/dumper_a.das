@@ -3799,10 +3799,11 @@ struct DumpInputs {
     program_root : string
 }
 
-//! Runs clang on `c_path` under the dialect `target` and `inputs`, and normalizes the dump;
-//! `d.error` names the first unsupported construct, and the dump is then partial.
-def dump_tu(c_path : string; target : CirTarget; clang : string; inputs : DumpInputs) : Dumper {
-    var d : Dumper
+//! Runs clang on `c_path` under the dialect `target` and `inputs`, and normalizes the dump into
+//! `d`, a fresh `Dumper` the caller holds (about 3 KiB: on the heap where the caller runs under
+//! das's default stack); `d.error` names the first unsupported construct, and the dump is then
+//! partial.
+def dump_tu(var d : Dumper; c_path : string; target : CirTarget; clang : string; inputs : DumpInputs) {
     d.tu.cir = CIR_VERSION
     d.tu.target = target
     d.tu.tu = base_name(c_path)
@@ -3811,7 +3812,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; inputs : DumpIn
     let root = empty(inputs.program_root) ? dir_name(get_full_file_name(c_path)) : get_full_file_name(inputs.program_root)
     if (empty(root)) {
         d.error = "the program root `{inputs.program_root}` is no folder"
-        return <- d
+        return
     }
     d.program_dir = root |> ends_with("/") ? root : root + "/"
     d.va_names |> insert(VA_BUILTIN)
@@ -3820,17 +3821,17 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; inputs : DumpIn
     let resource_dir = clang_resource_dir(clang)
     if (empty(resource_dir)) {
         d.error = "`{clang} -print-resource-dir` gave no resource directory; libclang needs it for the builtin headers"
-        return <- d
+        return
     }
     d.system_dirs <- system_dirs(clang, target.triple, resource_dir)
     if (!in_program(d, c_path)) {
         d.error = "the main file {get_full_file_name(c_path)} is no file of the program: it lies outside the program root {d.program_dir} or under a folder clang searches for system headers"
-        return <- d
+        return
     }
     let flags <- input_flags(inputs)
     collect_records(d, target.triple, resource_dir, flags)
     if (!empty(d.error)) {
-        return <- d
+        return
     }
     var out : string
     var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", "-target", target.triple]
@@ -3838,7 +3839,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; inputs : DumpIn
     let rc = run_and_capture(dump_args, out, 120.0)
     if (rc != 0) {
         d.error = "clang exited {rc}:\n{out}"
-        return <- d
+        return
     }
     d.json_bytes = long_length(out)
     var err : string
@@ -3848,7 +3849,7 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; inputs : DumpIn
     unsafe(delete_string(out))
     if (js == null) {
         d.error = "clang dump is not JSON: {err}"
-        return <- d
+        return
     }
     var last : LocState
     complete_locs(js, last)
@@ -3864,7 +3865,6 @@ def dump_tu(c_path : string; target : CirTarget; clang : string; inputs : DumpIn
         check_enum_anchors(d)
         check_offsetof_counts(d)
     }
-    return <- d
 }
 
 // a key whose `offsetof`s the dump's walk met a different number of times than libclang's (one in
