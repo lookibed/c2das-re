@@ -2490,6 +2490,10 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   a `crt` app through `daspkg release wasm` (the archive built by the hook) prints the CRT's answers under
   node; PureDOOM processed cross-compiled, linked with `-sMEMORY64=2`, plays demo1 under node 24 with all
   2664 tic hashes equal to `ref/freedoom2_demo1.log` (game loop about 0.9 s, indicative, a busy box).
+  On the pin 2decba91d5, with the wasm host and its wasm64 archives rebuilt at that commit: daScript's
+  wasm64 regression `web/test/fileinfo_constructor.cjs` passes, `dasCRuntime/tests` (with emsdk, so
+  `test_crt_wasm` runs), `c_runtime/tests` and `ports/tests` pass 178 of 178, and the processed
+  PureDOOM released through `daspkg release wasm` plays demo1 in Edge with all 2664 tic checksums equal.
   Left: the browser host (plan step 4: `init`/`update`, canvas, keys, the WAD by embed or fetch);
   quakegeneric (plan step 6; glibc `rand` in `crt`); emscripten's `clock()` under `-pthread` can return a
   negative value (`-75812969` in a three-line C test), which the Doom host's `work_started >= 0` check
