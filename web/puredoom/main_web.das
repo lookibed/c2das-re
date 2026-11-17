@@ -72,6 +72,8 @@ let private TIMEDEMO_BUDGET_USEC = 12000l
 // play mode's game clock advances by the frame's real time, at most this much: a tab the browser
 // hid stops its animation frames, and on return Doom catches up 1/10 s, not every tic it missed
 let private MAX_FRAME_USEC = 100000l
+// under `-uncapped`, the share of an animation frame spent rendering frames beyond the tics' own
+let private UNCAPPED_BUDGET_USEC = 10000l
 
 var private window : GLFWwindow?
 var private program : uint
@@ -81,6 +83,8 @@ var private ebo : uint
 var private screen_tex : uint
 
 var private timedemo = false
+// `-uncapped`: frames rendered as fast as the frame budget allows, tics still 35 a second (section 3)
+var private uncapped = false
 var private running = false
 var private virtual_usec : int64 = 0l
 var private work_usec : int64 = 0l
@@ -274,6 +278,9 @@ def init {
             if (crt::strcmp(argv[i], cstr("-timedemo")) == 0) {
                 timedemo = true
             }
+            if (crt::strcmp(argv[i], cstr("-uncapped")) == 0) {
+                uncapped = true
+            }
         }
     }
     if (glfwInit() == 0) {
@@ -301,6 +308,37 @@ def init {
     last_frame_usec = usec_now()
 }
 
+// the counters of the page's fps line, over the second since `stats_start`: animation frames
+// presented, tics run, and frames Doom rendered (one per tic, plus the uncapped ones)
+var private stats_start : int64 = 0l
+var private stats_tic = 0
+var private stats_frames = 0
+var private stats_renders = 0
+
+// one more render of the current state, no tic: PureDOOM has no render interpolation, so the frame
+// shows the state the last tic left (a menu or the automap can still change between tics); skipped
+// during a wipe, which the tics themselves draw
+def private render_between_tics {
+    if (int(is_wiping_screen) == 0) {
+        D_Display()
+        stats_renders++
+    }
+}
+
+// once a second, the page's fps line: `host: stats <frames> <tics> <renders> <seconds>`
+def private report_stats {
+    let now = usec_now()
+    if (now - stats_start < 1000000l) {
+        return
+    }
+    let tics = gametic - stats_tic
+    printf(cstr("host: stats %d %d %d %.3f\n"), stats_frames, tics, stats_renders + tics, double(now - stats_start) / 1000000.0lf)
+    stats_start = now
+    stats_tic = gametic
+    stats_frames = 0
+    stats_renders = 0
+}
+
 [export]
 def update : bool {
     if (!running) {
@@ -314,6 +352,9 @@ def update : bool {
             guarded() {
                 doom_force_update()
                 virtual_usec += int64(1000000 / 35)
+                if (uncapped) {
+                    render_between_tics()
+                }
             }
             let after = usec_now()
             work_usec += after - now
@@ -327,13 +368,23 @@ def update : bool {
         guarded() {
             doom_update()
         }
+        if (uncapped) {
+            while (running && usec_now() - now < UNCAPPED_BUDGET_USEC) {
+                guarded() {
+                    render_between_tics()
+                }
+            }
+        }
     }
     draw_frame()
+    stats_frames++
+    report_stats()
     return running
 }
 
 [export]
 def shutdown {
+
     if (window != null) {
         glfwDestroyWindow(window)
         window = null
