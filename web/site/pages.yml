@@ -1,7 +1,9 @@
 # Deploys this branch to GitHub Pages. The game data is not in the repository: the job downloads
 # Freedoom 0.13.0 from its official release, checks both sha256 sums (the ones c2das-re's
-# fetch_wad.sh checks) and puts freedoom2.wad next to the PureDOOM page, so the page can load it
-# from its own origin (the release host sends no CORS headers, so a page cannot fetch it directly).
+# fetch_wad.sh checks) and puts freedoom2.wad next to the PureDOOM page, and Quake 1.06's shareware
+# zip from id Software's release (the mirror lookibed/c2das's get_pak.sh uses), checks it and its
+# pak0.pak and puts that under quake/id1/, so each page loads its data from its own origin. They go
+# into the Pages artifact only.
 name: pages
 on:
   push:
@@ -29,6 +31,20 @@ jobs:
           unzip -j freedoom.zip '*/freedoom2.wad' -d puredoom
           echo "a8772e088847032510d97ba2312406a6998f21cbab44d4ff10696faa9c0ecd4b  puredoom/freedoom2.wad" | sha256sum -c -
           rm freedoom.zip
+      - name: Quake 1.06 shareware pak0.pak from id Software's release (the mirror and checks of lookibed/c2das's get_pak.sh)
+        run: |
+          sudo apt-get install -y --no-install-recommends lhasa
+          curl -fsSL -o quake106.zip https://ftp.gwdg.de/pub/misc/ftp.idsoftware.com/idstuff/quake/quake106.zip
+          echo "f8a1a509b094ccdbed3c54b96f7d9b351c0898f5  quake106.zip" | sha1sum -c -
+          echo "ec6c9d34b1ae0252ac0066045b6611a7919c2a0d78a3a66d9387a8f597553239  quake106.zip" | sha256sum -c -
+          mkdir qx
+          unzip -q quake106.zip resource.1 -d qx
+          (cd qx && lhasa xq resource.1 id1/pak0.pak)
+          echo "36b42dc7b6313fd9cabc0be8b9e9864840929735  qx/id1/pak0.pak" | sha1sum -c -
+          echo "35a9c55e5e5a284a159ad2a62e0e8def23d829561fe2f54eb402dbc0a9a946af  qx/id1/pak0.pak" | sha256sum -c -
+          mkdir -p quake/id1
+          mv qx/id1/pak0.pak quake/id1/pak0.pak
+          rm -rf quake106.zip qx
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
