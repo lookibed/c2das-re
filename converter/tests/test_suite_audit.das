@@ -8,7 +8,8 @@ require ../../suites/suite_runner.das
 //! The runner's skip audit (`--audit-skips`) over a stand-in suite: only the ledgered ids run,
 //! each outcome lands in `work/skip_audit.tsv` with its feature, and the ratchet is untouched but
 //! under `--update`, which only adds the ids that passed. The runner's `--tier`: each tier runs
-//! the suite, an unknown tier and `--update` under any but the interpreter are refused.
+//! the suite, an unknown tier and `--update` under any but the interpreter are refused. A module
+//! runs in its work folder: what the C program writes lands there, never in the tree.
 
 def torture_verdict(id : string; _c_path : string; rc : int; output : string) : Outcome =>
     rc != 0 ? Outcome(id = id, status = "exit", reason = "exited {rc}: {first_line(output)}") : Outcome(id = id, status = "pass", reason = "")
@@ -173,10 +174,10 @@ def test_tier_refusal(t : T?) {
     }
 }
 
-// whether a JIT library sits under `root`'s `.cache/daslang`: the interpreter caches only modules there
-def has_jit_library(root : string) : bool {
+// whether a JIT library sits under `dir`'s `.cache/daslang`: the interpreter caches only modules there
+def has_jit_library(dir : string) : bool {
     var out : string
-    run_and_capture(["bash", "-c", "find \"$1/.cache/daslang\" -name '*.dll' 2>/dev/null | head -1", "jit", root], out, 60.0)
+    run_and_capture(["bash", "-c", "find \"$1/.cache/daslang\" -name '*.dll' 2>/dev/null | head -1", "jit", dir], out, 60.0)
     return !empty(strip(out))
 }
 
@@ -206,6 +207,42 @@ def test_tier_output(t : T?) {
     rmdir_rec(dir)
 }
 
+// a program that writes `WRITTEN` into its working folder
+let WRITER_SOURCE = "#include <stdio.h>\nint main(void) \{\n    FILE *f = fopen(\"c2das_written.txt\", \"w\");\n    if (!f) return 1;\n    fputs(\"written\\n\", f);\n    return fclose(f);\n\}\n"
+
+// the tree's `git status --porcelain`, run in the working folder
+def private tree_status() : string {
+    var out : string
+    run_and_capture(["git", "status", "--porcelain"], out, 60.0)
+    return out
+}
+
+[test]
+def test_run_folder(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_run_folder", dir_error)
+    t |> equal(dir_error, "")
+    if (empty(dir)) {
+        return
+    }
+    let c_path = path_join(dir, "writer.c")
+    fwrite(c_path, WRITER_SOURCE)
+    t |> run("under every tier the file a C program writes lands in its work folder, and the tree's git status is unchanged") @(t : T?) {
+        let before = tree_status()
+        let no_flags : array<string>
+        for (tier in SUITE_TIERS) {
+            let work = path_join(dir, tier)
+            let run = convert_and_run(c_path, work, "linux", tier, 120.0, no_flags)
+            t |> equal(run.converted, true, run.error)
+            t |> equal(run.rc, 0, run.output)
+            t |> equal(fread(path_join(work, "c2das_written.txt")), "written\n", tier)
+        }
+        t |> equal(fexist("c2das_written.txt"), false)
+        t |> equal(tree_status(), before)
+    }
+    rmdir_rec(dir)
+}
+
 [test]
 def test_tier_cli(t : T?) {
     var dir_error : string
@@ -215,18 +252,20 @@ def test_tier_cli(t : T?) {
         return
     }
     let ratchet = make_torture_tree(root)
-    let exe = path_join(root, "suites/gcc_torture/work/plain/plain_exe")
+    let plain_work = path_join(root, "suites/gcc_torture/work/plain")
+    let exe = path_join(plain_work, "plain_exe")
     t |> run("--tier interp, the default, runs the ratchet's id in the interpreter: no JIT library, no exe") @(t : T?) {
         var out : string
         t |> equal(run_torture(root, "--tier interp --filter plain", out), 0, out)
         t |> success(fexist(path_join(root, "suites/gcc_torture/work/plain/plain.das")), out)
-        t |> equal(has_jit_library(root), false, out)
+        t |> equal(has_jit_library(plain_work), false, out)
         t |> equal(fexist(exe), false, out)
     }
-    t |> run("--tier jit runs it under the JIT, whose library lands in the working folder's cache") @(t : T?) {
+    t |> run("--tier jit runs it under the JIT, whose library lands in the cache of the test's work folder, where the module runs") @(t : T?) {
         var out : string
         t |> equal(run_torture(root, "--tier jit --filter plain", out), 0, out)
-        t |> success(has_jit_library(root), out)
+        t |> success(has_jit_library(plain_work), out)
+        t |> equal(has_jit_library(root), false, out)
         t |> equal(fexist(exe), false, out)
     }
     t |> run("--tier exe builds the module's executable beside it and runs that") @(t : T?) {

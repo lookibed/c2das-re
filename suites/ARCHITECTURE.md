@@ -12,7 +12,9 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   every `<id>.c` directly under the suite's tests folder into `work/<id>/` through
   `converter/pipeline.das` under the `linux` dialect (the baseline of a differential run is a
   native build on this host), runs the module under `--tier` (`SUITE_TIERS`: `interp`, the
-  default, `jit` or `exe`) with both module folders loaded and a per-suite timeout, and hands
+  default, `jit` or `exe`) with both module folders loaded and a per-suite timeout in
+  `work/<id>/` (a file the C program writes, c-testsuite 00187's `fred.txt`, lands there, never in
+  the tree; the run's JIT and module caches too), and hands
   the exit code and merged output to the suite's verdict. The ratchet is the interpreter's: a
   `jit` or `exe` run judges the same list, so its regressions are the ids that pass under the
   interpreter and fail under that tier, and `tier_refusal` refuses an unknown tier and

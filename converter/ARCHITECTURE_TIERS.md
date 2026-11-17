@@ -25,7 +25,10 @@ as sources, where a folder holding `src/*.cpp` (`dasCRuntime`) compiles into the
 its header. The exit code is the program's own on every tier,
 which is why the wrapper returns from `main`. A caller's `wrapper` (perf's sample guard) goes
 before the program's own command line on every tier, `daslang` or the built binary, never before
-a build step. An unhandled exception exits -2 (254, daslang's `DAS_PANIC_EXIT_CODE`) with `EXCEPTION:
+a build step. A caller's `cwd` is the folder the program runs in on every tier, so the files
+it writes land there; the build steps run in the caller's folder, and the module, the module
+folders and the binary are made absolute for that run, the module folders in the build too (an
+`exe` binary loads a module from the folder its build named). An unhandled exception exits -2 (254, daslang's `DAS_PANIC_EXIT_CODE`) with `EXCEPTION:
 <text>` on every compiled tier, as under `daslang`: the `-exe` binary's entry runs `main` inside the context's
 `runWithCatch`, and the AOT host does the same around `<stem>_main` and prints the text on
 stderr, since a context called with no catch frame reports the exception and raises SIGTRAP,
