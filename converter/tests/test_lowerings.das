@@ -453,6 +453,10 @@ def p9_pointer_relation_fixtures(t : T?) {
         // `reinterpret<uint64>` over `reinterpret<void?>` of a pointer sum (typed eval, i_das_ptr_add)
         has_text(t, text, "int_of(reinterpret<uint64>(p - 1) < reinterpret<uint64>(v))")
         has_text(t, text, "int_of(reinterpret<uint64>(q + 1) >= reinterpret<uint64>(v))")
+        has_text(t, text, "int_of(reinterpret<uint64>(q + n) < reinterpret<uint64>(v))")
+        has_text(t, text, "int_of(reinterpret<uint64>(v) < reinterpret<uint64>(q + n))")
+        // a cast from an integer is no cast between pointers: it stays
+        has_text(t, text, "int_of(reinterpret<uint64>(reinterpret<uint8?>(uint64(x))) < reinterpret<uint64>(p))")
     }
 }
 

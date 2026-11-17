@@ -2797,8 +2797,8 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
         // das has no relation between two pointers: their addresses compare as `uint64`
         // (probes/test_pointer_compare.das), each operand without its pointer-to-pointer casts,
         // which keep the address
-        let a_bits = address_bits(em, emit_expr(em, tu, address_operand(tu, x.a), loc))
-        let b_bits = address_bits(em, emit_expr(em, tu, address_operand(tu, x.b), loc))
+        let a_bits = address_bits(em, emit_expr(em, tu, relation_operand(tu, x.a), loc))
+        let b_bits = address_bits(em, emit_expr(em, tu, relation_operand(tu, x.b), loc))
         return truth("{a_bits} {spelled}{OPERATOR_MARK} {b_bits}", prec)
     }
     let lhs = to_int(em, emit_expr(em, tu, x.a, loc))
@@ -2829,12 +2829,13 @@ def private emit_binary(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
     return value("{wrap(lhs, prec)} {spelled}{OPERATOR_MARK} {wrap(rhs, prec + 1)}", prec)
 }
 
-// pointer `x` without the casts to another pointer type around it, whose address it keeps: the
-// interpreter refuses `reinterpret<uint64>` over a `reinterpret<T?>` of a pointer sum
+// data pointer `x`, an operand of a pointer relation, without the casts to another data pointer type
+// around it, whose address it keeps (a function pointer's cast stays, for `function_bit_cast`'s
+// refusals): the interpreter refuses `reinterpret<uint64>` over a `reinterpret<T?>` of a pointer sum
 // (lookibed/daScript#64: typed eval on wrong extern return kind, i_das_ptr_add)
-def private address_operand(tu : CirTu; x : CirExpr const?) : CirExpr const? {
+def private relation_operand(tu : CirTu; x : CirExpr const?) : CirExpr const? {
     var at = x
-    while (at.e == "cast" && (at.cast_kind == "BitCast" || at.cast_kind == "NoOp") && kind_of(tu, at.a.t) == "ptr") {
+    while (at.e == "cast" && (at.cast_kind == "BitCast" || at.cast_kind == "NoOp") && is_data_pointer(tu, at.t) && is_data_pointer(tu, at.a.t)) {
         at = at.a
     }
     return at
