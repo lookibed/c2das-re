@@ -13,8 +13,9 @@ Freedoom 0.13.0 that the ports repository's `fetch_wad.sh` checks, in the page a
 workflow both.**
 
 **A diff to the timedemo in `puredoom/main_web.das` keeps its clock one tic per
-`doom_force_update` and its checksum fold byte for byte the one `puredoom/shell.html` applies to
-the native log; a change to either side changes the other in the same change.**
+`doom_force_update`, and a diff to the fold in `puredoom/tic_digest.das` or to `ticDigest` in
+`puredoom/shell.html` changes the other side in the same change, so `tests/test_web_tic_digest.das`
+still pins both to the native log's count and digest.**
 
 **A diff to `scripts/build_web.sh` keeps its refusals before its first write: a host at another
 commit than `VERSIONS.md`'s pin, a host without libc++, an emscripten other than 5.0.7.**

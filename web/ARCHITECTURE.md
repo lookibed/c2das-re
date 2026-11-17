@@ -11,6 +11,8 @@ program runs under in a browser and the page around it.
 - `puredoom/main_web.das` - PureDOOM's browser host (section 3). It requires the processed
   variant's modules by bare name, so it compiles only beside them, in the project
   `scripts/build_web.sh` stages.
+- `puredoom/tic_digest.das` - the fold of Doom's per-tic checksum lines (section 3), a module of its
+  own so `tests/test_web_tic_digest.das` runs it on the pin and checks the page's JS fold against it.
 - `puredoom/shell.html` - the page emscripten fills with its loader (`daspkg`'s
   `release_web_shell`): the WAD (section 4), the play and timedemo buttons, the program's output,
   the timedemo's fps and the check of its checksums against the native build's log.
@@ -20,7 +22,8 @@ program runs under in a browser and the page around it.
 - `site/coi-serviceworker.js` - cross-origin isolation (section 2).
 - `site/pages.yml` - the deploy workflow the ports repository's `gh-pages` branch carries (section 4).
 - `scripts/build_web.sh` (repository root) - the build: checks, staging, release, the site, and with
-  `--pages` the `gh-pages` checkout.
+  `--pages` the `gh-pages` checkout (`--from <site>` fills it from a site built before, without a
+  build). `tests/test_build_web.das` holds its refusals and the `--pages` path.
 
 ## 2. The build
 
@@ -60,30 +63,37 @@ there. `main_web.das` keeps a `main` that runs the same three in a loop, for a d
   the wasm build maps to the canvas and WebGL2.
 - Input: the keys Doom's defaults and menus read (arrows, Ctrl, Space, Shift, Alt, Enter, Escape,
   Tab, letters, digits, F1-F12 and a few punctuation keys) and the left mouse button are polled
-  through GLFW each frame and posted as Doom key and button events on a change.
-- Time: PureDOOM's default clock reads 0, so the host always sets one. Play mode gives the time
-  since `init` from daslang's own clock (not `crt`'s `clock()`, which emscripten under `-pthread`
-  can return negative) and calls `doom_update`, which runs the tics due.
+  through GLFW each frame into one state per Doom key (left and right Ctrl are one key, down while
+  either is) and posted as Doom key and button events on a change. Emscripten's GLFW releases every
+  key when the page loses focus, so a held key does not stay down.
+- Time: PureDOOM's default clock reads 0, so the host always sets one. Play mode keeps a game clock
+  that each frame advances by the real time since the last, at most 100 ms (daslang's own clock, not
+  `crt`'s `clock()`, which emscripten under `-pthread` can return negative), and calls `doom_update`,
+  which runs the tics due. A hidden tab gets no animation frames; the cap keeps its return from
+  running every tic it missed in one frame. The clock starts at 1 s: `I_GetTime` takes its base from
+  the first nonzero second it reads.
 - Timedemo (`-timedemo demoN`): the clock is virtual and advances one tic per
   `doom_force_update`, as the native host `doom_main.das` does, so the checksums are the native
   ones. Each frame runs updates for 12 ms, then draws once. The fps the page reports is the tics
   over the seconds spent inside those updates; drawing and the wait for the next frame are outside
   it, as the native host's timed line has no drawing.
-- Checksums: Doom prints a `tic=` line per tic (game-state and frame hash); the host folds every
-  such line, newline included, into an FNV-1a 32 digest and a count instead of printing it, and
-  prints both when Doom exits. The page folds the `tic=` lines of the native build's log
+- Checksums: Doom prints a `tic=` line per tic (game-state and frame hash) in pieces, the first
+  exactly `tic=`; the host folds every such line, newline included, into an FNV-1a 32 digest and a
+  count (`tic_digest.das`) instead of printing it, and prints both when Doom exits. The page folds the `tic=` lines of the native build's log
   (`puredoom-readable/ref/freedoom2_demo1.log`, shipped as `demo1_ref.log`) the same way and
   compares.
-- Exit: Doom's exit callback (the end of a timedemo, the quit menu) longjmps out of the update
-  through `c_runtime/setjmp`; the next `update` returns false.
+- Exit: Doom's exit callback (the end of a timedemo, the quit menu) prints `host: Doom exited`
+  and longjmps out of the update through `c_runtime/setjmp`; that `update` returns false and the page
+  says to reload. A das panic that is no longjmp is rethrown with its own message (`c_jmp_rethrow`).
 
 ## 4. The WAD
 
 No WAD is in any repository or branch. The page loads `puredoom/freedoom2.wad` from its own
 origin; the deploy workflow (`site/pages.yml`, run by the `gh-pages` branch with Pages' source set
-to GitHub Actions) downloads Freedoom 0.13.0 from its official release, checks the zip's and the
+to GitHub Actions and the `github-pages` environment allowing that branch) downloads Freedoom 0.13.0 from its official release, checks the zip's and the
 WAD's sha256 (the sums `fetch_wad.sh` of the ports repository checks) and adds the WAD to the Pages
 artifact only. The page checks the sha256 again in the browser and names the release. A page
 cannot fetch the release itself: the release host sends no CORS headers. A file picker takes the
 user's own `freedoom2.wad` or release zip, held to the same sha256. Only Freedoom (BSD) is
-served, never a commercial id Software WAD.
+served, never a commercial id Software WAD. `scripts/build_web.sh --pages` refuses a site holding a
+`.wad`, `.zip` or `.pak` and checks the checkout again before it commits.

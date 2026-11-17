@@ -26,10 +26,12 @@ require c_runtime/cstr
 require c_runtime/enum_from_int
 require c_runtime/printf
 require c_runtime/setjmp
+require tic_digest
 require glfw/glfw_boost
 require opengl/opengl_boost
 require glsl/glsl_opengl
 require daslib/safe_addr
+require math
 
 var @in @location v_position : float2
 var @in @location v_texcoord : float2
@@ -67,6 +69,9 @@ let private DOOM_W = 320
 let private DOOM_H = 200
 // the timedemo's share of a 60 Hz frame spent in updates before the frame is drawn
 let private TIMEDEMO_BUDGET_USEC = 12000l
+// play mode's game clock advances by the frame's real time, at most this much: a tab the browser
+// hid stops its animation frames, and on return Doom catches up 1/10 s, not every tic it missed
+let private MAX_FRAME_USEC = 100000l
 
 var private window : GLFWwindow?
 var private program : uint
@@ -80,13 +85,15 @@ var private running = false
 var private virtual_usec : int64 = 0l
 var private work_usec : int64 = 0l
 var private clock_base : int64 = 0l
+// play mode's clock; it starts at 1 s because I_GetTime takes its base second from the first
+// nonzero second it reads
+var private game_usec : int64 = 1000000l
+var private last_frame_usec : int64 = 0l
 var private exit_code = 0
 var private leave_frame : CJmpBuf
 
-// FNV-1a over the bytes of every `tic=` checksum line, and their count
-var private in_tic_line = false
-var private tic_lines = 0
-var private tic_digest : uint = 2166136261u
+// the fold of every `tic=` checksum line Doom prints (tic_digest.das)
+var private tics = TicDigest()
 
 // GLFW key, Doom key: the keys Doom's defaults and menus read
 let private KEYMAP = [
@@ -113,9 +120,8 @@ let private KEYMAP = [
 ]
 
 // the pressed state of each KEYMAP row, plus letters, digits and the left mouse button
-var private key_state : array<bool>
-var private letter_down : bool[26]
-var private digit_down : bool[10]
+var private doom_down : bool[256]
+var private doom_now : bool[256]
 var private mouse_down = false
 
 def private virtual_gettime(var sec : int?; var usec : int?) {
@@ -123,44 +129,30 @@ def private virtual_gettime(var sec : int?; var usec : int?) {
     *usec = int(virtual_usec % 1000000l)
 }
 
-// play mode's clock: the time since `init`, Doom's only time source (PureDOOM's default reads 0)
+// play mode's clock, Doom's only time source (PureDOOM's default reads 0): `game_usec`
 def private real_gettime(var sec : int?; var usec : int?) {
-    let now = usec_now() // nolint:LINT021 - the seconds pass 2^31 microseconds after 36 minutes of play
-    *sec = int(now / 1000000l)
-    *usec = int(now % 1000000l)
+    *sec = int(game_usec / 1000000l)
+    *usec = int(game_usec % 1000000l)
 }
 
 // Doom's print: checksum lines fold into the digest, everything else goes to stdout
 def private host_print(var str : uint8?) {
-    if (!in_tic_line && unsafe(crt::strcmp(str, cstr("tic="))) == 0) {
-        in_tic_line = true
-    }
-    if (!in_tic_line) {
+    if (!tic_digest_piece(tics, str)) {
         printf(cstr("%s"), str)
-        return
-    }
-    var p = str
-    while (*p != 0u8) {
-        tic_digest ^= uint(*p)
-        tic_digest *= 16777619u
-        if (*p == 10u8) {
-            in_tic_line = false
-            tic_lines++
-        }
-        p = unsafe(p + 1)
     }
 }
 
 def private report_timedemo {
     let wall = double(usec_now()) / 1000000.0lf
     printf(cstr("host: timed %d gametics in %.6f s\n"), gametic, double(work_usec) / 1000000.0lf)
-    printf(cstr("host: %d checksum lines, digest %08x; wall %.3f s\n"), tic_lines, tic_digest, wall)
+    printf(cstr("host: %d checksum lines, digest %08x; wall %.3f s\n"), tics.lines, tics.hash, wall)
 }
 
 def private host_exit(code : int) {
     if (timedemo) {
         report_timedemo()
     }
+    printf(cstr("host: Doom exited with %d\n"), code)
     var stdout_file = unsafe(crt::c_stdout())
     unsafe(crt::fflush(stdout_file))
     exit_code = code
@@ -174,7 +166,7 @@ def private guarded(step : block) : bool {
         invoke(step)
     } recover {
         if (c_jmp_target != unsafe(addr(leave_frame))) {
-            panic("longjmp")
+            c_jmp_rethrow()
         }
         c_jmp_target = null
     }
@@ -183,39 +175,34 @@ def private guarded(step : block) : bool {
 
 def private usec_now : int64 => get_time_nsec(clock_base) / 1000l
 
+// Doom's key state from GLFW's: a Doom key two keys map to (left and right Ctrl) is down while either
+// is. A key held while the page loses focus reads up: emscripten's GLFW releases every key on blur
 def private poll_keys {
-    for (row, idx in KEYMAP, count()) {
-        let pressed = glfwGetKey(window, row._0) == GLFW_PRESS
-        if (pressed != key_state[idx]) {
-            key_state[idx] = pressed
-            if (pressed) {
-                doom_key_down(enum_from_int(type<doom_key_t>, row._1))
-            } else {
-                doom_key_up(enum_from_int(type<doom_key_t>, row._1))
-            }
+    for (k in range(256)) {
+        doom_now[k] = false
+    }
+    for (row in KEYMAP) {
+        if (glfwGetKey(window, row._0) == GLFW_PRESS) {
+            doom_now[row._1] = true
         }
     }
     for (i in range(26)) {
-        let pressed = glfwGetKey(window, GLFW_KEY_A + i) == GLFW_PRESS
-        if (pressed != letter_down[i]) {
-            letter_down[i] = pressed
-            let key = enum_from_int(type<doom_key_t>, int(doom_key_t.DOOM_KEY_A) + i)
-            if (pressed) {
-                doom_key_down(key)
-            } else {
-                doom_key_up(key)
-            }
+        if (glfwGetKey(window, GLFW_KEY_A + i) == GLFW_PRESS) {
+            doom_now[int(doom_key_t.DOOM_KEY_A) + i] = true
         }
     }
     for (i in range(10)) {
-        let pressed = glfwGetKey(window, GLFW_KEY_0 + i) == GLFW_PRESS
-        if (pressed != digit_down[i]) {
-            digit_down[i] = pressed
-            let key = enum_from_int(type<doom_key_t>, int(doom_key_t.DOOM_KEY_0) + i)
-            if (pressed) {
-                doom_key_down(key)
+        if (glfwGetKey(window, GLFW_KEY_0 + i) == GLFW_PRESS) {
+            doom_now[int(doom_key_t.DOOM_KEY_0) + i] = true
+        }
+    }
+    for (k in range(256)) {
+        if (doom_now[k] != doom_down[k]) {
+            doom_down[k] = doom_now[k]
+            if (doom_now[k]) {
+                doom_key_down(enum_from_int(type<doom_key_t>, k))
             } else {
-                doom_key_up(key)
+                doom_key_up(enum_from_int(type<doom_key_t>, k))
             }
         }
     }
@@ -289,7 +276,6 @@ def init {
             }
         }
     }
-    key_state |> resize(length(KEYMAP))
     if (glfwInit() == 0) {
         panic("can't init glfw")
     }
@@ -312,6 +298,7 @@ def init {
     guarded() {
         doom_init(argc, argv, 0)
     }
+    last_frame_usec = usec_now()
 }
 
 [export]
@@ -333,6 +320,9 @@ def update : bool {
             now = after
         }
     } else {
+        let now = usec_now()
+        game_usec += min(now - last_frame_usec, MAX_FRAME_USEC)
+        last_frame_usec = now
         poll_keys()
         guarded() {
             doom_update()

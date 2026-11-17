@@ -2497,8 +2497,8 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   Browser host (branch `p9.35-wasm-web-2`): `web/puredoom/main_web.das` runs the processed port
   under daslang's web lifecycle (WebGL texture, GLFW keys, play and timedemo), `scripts/build_web.sh`
   builds the site for the ports repository's Pages (`web/ARCHITECTURE.md`; the WAD only in the deploy's
-  artifact). Edge on box PC, demo1 timedemo: 2664 tics in 0.606 and 0.632 s, every tic checksum equal
-  to the native log (indicative: a browser run, not exclusive); the same box, exclusive and quiet:
+  artifact). Edge on box PC, demo1 timedemo: every tic checksum equal to the native log; its time is
+  indicative only, not a result (a browser run, not exclusive); the same box, exclusive and quiet:
   native C 0.276 s, daslang JIT 0.448 s. The host reads daslang's clock, not `crt`'s `clock()`.
   Left: sound; quakegeneric (plan step 6; glibc `rand` in `crt`); emscripten's `clock()` under `-pthread` can return a
   negative value (`-75812969` in a three-line C test), which the Doom host's `work_started >= 0` check
