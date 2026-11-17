@@ -70,6 +70,20 @@ def test_csmith_tier(t : T?) {
             rmdir_rec(dir)
         }
     }
+    t |> run("the reference compiler is CC, gcc when CC is unset or empty") @(t : T?) {
+        let saved = get_env_variable("CC")
+        set_env_variable("CC", "gcc-14")
+        t |> equal(reference_compiler(), "gcc-14")
+        set_env_variable("CC", "")
+        t |> equal(reference_compiler(), "gcc")
+        set_env_variable("CC", saved)
+    }
+    t |> run("the version check runs CC: a CC that is no compiler exits 2 naming it, before any seed") @(t : T?) {
+        var out : string
+        let rc = run_and_capture(["bash", "-c", "CC=c2das_no_such_cc \"$1\" -load_module dasCRuntime -load_module c_runtime suites/csmith/run.das -- --seeds 1", "csmith", get_das_root() + "/bin/daslang"], out, 120.0)
+        t |> equal(rc, 2, out)
+        t |> success(out |> contains("c2das_no_such_cc is ``, VERSIONS.md pins gcc `"), out)
+    }
     t |> run("an unknown tier exits 2 naming the tiers, --update under the exe exits 2, before any seed") @(t : T?) {
         for (flags in fixed_array("--tier aot", "--tier exe --update --seeds 0")) {
             var out : string

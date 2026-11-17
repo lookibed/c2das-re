@@ -111,9 +111,9 @@ def private error_signature(error : string) : string {
 // compared; `t0` is when the worker started
 def private judge(c_path, tier : string; t0 : int64) : Verdict {
     let native_limit = limit_of(NATIVE_TIMEOUT, t0)
-    let native = native_run("gcc", NATIVE_FLAGS, c_path, path_join(dir_name(c_path), "{file_stem(c_path)}_native"), native_limit)
+    let native = native_run(reference_compiler(), NATIVE_FLAGS, c_path, path_join(dir_name(c_path), "{file_stem(c_path)}_native"), native_limit)
     if (!native.built) {
-        return Verdict(status = "native", signature = "native", reason = "gcc refused it: {first_line(native.output)}")
+        return Verdict(status = "native", signature = "native", reason = "{reference_compiler()} refused it: {first_line(native.output)}")
     }
     if (native.rc == popen_timed_out) {
         return timed_out("the native run", native_limit)
@@ -270,7 +270,8 @@ def private audit_seeds(filter : string; jobs : int; tier : string; update : boo
     }
 }
 
-// the gcc version VERSIONS.md pins against `gcc -dumpfullversion`: "" when they agree
+// the gcc version VERSIONS.md pins against the reference compiler's `-dumpfullversion`: "" when
+// they agree
 def private gcc_pin_mismatch : string {
     var pin = ""
     for (line in read_lines("VERSIONS.md")) {
@@ -279,8 +280,9 @@ def private gcc_pin_mismatch : string {
         }
     }
     var version : string
-    run_and_capture(["gcc", "-dumpfullversion"], version, 30.0)
-    return pin == strip(version) ? "" : "gcc is `{strip(version)}`, VERSIONS.md pins `{pin}`"
+    let cc = reference_compiler()
+    run_and_capture([cc, "-dumpfullversion"], version, 30.0)
+    return pin == strip(version) ? "" : "{cc} is `{strip(version)}`, VERSIONS.md pins gcc `{pin}`"
 }
 
 [export]
