@@ -3,7 +3,7 @@
 Every external the pipeline depends on, at an exact version. `scripts/verify_daslang.sh`
 checks the daScript pin; the rest are checked by the tool that needs them.
 
-daScript commit: 6401904cf9189dfc638bcc4ce33d2d65c0610674 (GaijinEntertainment/daScript master of 2026-11-13, the merge of PR #4593; ruling 38 addendum 20: the owner's local build, which carries one local change in `modules/dasClangBind/CMakeLists.txt`; any later master commit satisfies the pin), built at DASLANG_ROOT with `-DDAS_CLANG_BIND_DISABLED=OFF -DDAS_STDDLG_DISABLED=OFF -DDAS_HV_DISABLED=OFF -DDAS_LLVM_DISABLED=OFF -DPATH_TO_LIBCLANG=/root/libclang`
+daScript commit: 2decba91d54f090199017b23a205d50725e1c838 (GaijinEntertainment/daScript master of 2026-11-16, the merge of PR #4650, the 0.6.6 candidate; ruling 38 repin 3: the owner's local build, which carries one local change in `modules/dasClangBind/CMakeLists.txt`; any later master commit satisfies the pin), built at DASLANG_ROOT with `-DDAS_CLANG_BIND_DISABLED=OFF -DDAS_STDDLG_DISABLED=OFF -DDAS_HV_DISABLED=OFF -DDAS_LLVM_DISABLED=OFF -DPATH_TO_LIBCLANG=/root/libclang`
 libclang: LLVM 22.1.8 Linux x86_64 release archive, extracted at PATH_TO_LIBCLANG (`lib/cmake/clang/ClangConfig.cmake` present); `DAS_CLANG_INCLUDE` names its `include/`
 ast-grep: 0.44.1 (`sg` on PATH; sgconfig.yml maps `.das` to daScript's tree-sitter grammar and `.c/.h/.hpp` to C++)
 clang-format: 22.1.8 (the libclang archive's `bin/clang-format`)
