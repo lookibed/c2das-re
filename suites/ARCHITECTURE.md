@@ -153,8 +153,9 @@ which both sides then build. The splice opens with `#define UNSAFE_FLOAT`, which
 `fabsf` calls from the runtime's float wrappers; the wrappers are dead under csmith's default
 `--no-float`, and `fabsf` has no c_runtime mapping.
 
-The reference is the gcc `VERSIONS.md` pins, which the run checks against `gcc
--dumpfullversion` before it starts, at `-O0 -fwrapv -w -funsigned-char`: the dialect's wrapping
+The reference is the gcc `VERSIONS.md` pins, run as the `CC` environment variable (`gcc` when it
+is unset or empty, `reference_compiler` in `csmith/verdict.das`), which the run checks against
+`$CC -dumpfullversion` before it starts, at `-O0 -fwrapv -w -funsigned-char`: the dialect's wrapping
 overflow and unsigned `char` (`converter/ARCHITECTURE_DUMPER.md`). The converter's own fixtures
 build their natives with the pinned clang at its default level and no `-fwrapv`, which suits a
 hand-written fixture with no overflow; a csmith program exercises every integer width and the

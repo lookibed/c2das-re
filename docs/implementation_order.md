@@ -2613,6 +2613,10 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   working folder, so the run leaves an untracked file), gcc-torture passes 1210 with 921019-1, 980605-1,
   pr15296, pr67037, pr68390 and pure-1 newly passing: one `--update` each records them. csmith does not run on
   the WSL box (gcc 11.4.0 against the pinned 14.2.0); its 182 seeds are owed to a box with the pinned gcc.
+  Closed (2026-11-17, owner ruling 38 addendum 36 item 3): the box has gcc-14 14.3.0 (ppa:ubuntu-toolchain-r/test;
+  jammy ships no 14.2.0) beside the system gcc 11.4.0; `VERSIONS.md` pins 14.3.0 and `suites/csmith/run.das` takes
+  the reference compiler from `CC` (default `gcc`). The full run (`CC=gcc-14 --seeds 0 --update`, daScript
+  `b7d8f6f52f`) passed all 182 seeds; `expected_pass.txt` re-recorded byte for byte the same, no seed newly failing.
   (h) an unbounded `dastest --isolated-mode` probes run is OOM-killed under `heavy --max 4G` (32 JIT children
   at once, exit 137 each: 50 reds, about 39 of them false); the preflight's two workers run clean. A suite `--timeout`
   ends dastest but leaves the compare suite's never-ending lane child running.

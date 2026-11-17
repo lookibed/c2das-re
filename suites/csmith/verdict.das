@@ -20,6 +20,13 @@ struct Verdict {
     reason : string
 }
 
+//! The reference compiler of the differential: the `CC` environment variable, `gcc` when it is
+//! unset or empty; the native build and the version check against `VERSIONS.md` both run it.
+def reference_compiler() : string {
+    let cc = get_env_variable("CC")
+    return empty(cc) ? "gcc" : cc
+}
+
 def verdict_path(c_path : string) : string => path_join(dir_name(c_path), "{file_stem(c_path)}.verdict")
 
 def write_verdict(c_path : string; v : Verdict) {
