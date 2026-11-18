@@ -1,18 +1,18 @@
 {
     "knobs": {
-        "checks": {"value": "off", "reason": "addendum 19 point 6: fast may drop null and bounds checks; the add19 search measured no set yet (addendum 20 point 2)", "numbers": ""},
-        "first_member": {"value": "addr", "reason": "default, search pending", "numbers": ""},
-        "forms_off": {"value": [], "reason": "default, search pending", "numbers": ""},
-        "fn_macros": {"value": "fold", "reason": "default, search pending", "numbers": ""},
-        "inline_helpers": {"value": false, "reason": "default, search pending", "numbers": ""},
-        "jit_whole_program": {"value": false, "reason": "default, search pending", "numbers": ""},
-        "layout": {"value": "source", "reason": "default, search pending", "numbers": ""},
-        "loops": {"value": "range", "reason": "default, search pending", "numbers": ""},
-        "param_writes": {"value": "in-place", "reason": "default, search pending", "numbers": ""},
-        "past_end": {"value": "call", "reason": "default, search pending", "numbers": ""},
-        "solid_context": {"value": true, "reason": "default, search pending", "numbers": ""},
-        "strict_aliasing": {"value": false, "reason": "default, search pending", "numbers": ""},
-        "switch_dispatch": {"value": "chain", "reason": "default, search pending", "numbers": ""}
+        "checks": {"value": "off", "reason": "faster on every tier (addendum 19 point 6)", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: 0.960 alone"},
+        "first_member": {"value": "addr", "reason": "readable's: reinterpret over checks off measured no gain on the JIT", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: 0.999 over checks off"},
+        "fn_macros": {"value": "fold", "reason": "readable's: the other value is slower or within noise on the JIT", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 0.999"},
+        "forms_off": {"value": [], "reason": "readable's: the other value is slower or within noise on the JIT", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 0.986"},
+        "inline_helpers": {"value": false, "reason": "readable's: the other value is slower or within noise on the JIT", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 0.990"},
+        "jit_whole_program": {"value": false, "reason": "readable's: the other value is slower or within noise on the JIT", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 0.994"},
+        "layout": {"value": "source", "reason": "readable's: one translation unit, every layout the same module", "numbers": ""},
+        "loops": {"value": "range", "reason": "readable's: the other value is slower or within noise on the JIT", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 0.996"},
+        "param_writes": {"value": "in-place", "reason": "readable's: not searched (copy is an interpreter-only knob; the JIT lane chooses)", "numbers": ""},
+        "past_end": {"value": "call", "reason": "readable's: not searched (addendum 38's knob list leaves it out; an interpreter knob, the JIT inlines end_index)", "numbers": ""},
+        "solid_context": {"value": true, "reason": "readable's: every converted module keeps it (a global or function reached by index)", "numbers": ""},
+        "strict_aliasing": {"value": false, "reason": "readable's: the engine is built with -fno-strict-aliasing, so the knob is not for it", "numbers": ""},
+        "switch_dispatch": {"value": "chain", "reason": "readable's: the other value is slower or within noise on the JIT", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 0.994"}
     },
-    "results": {"notes": "not yet tuned: readable + checks off; AOT 3.7x native is lookibed/daScript#48 (global reads through a hash lookup), A/B-proven on 2026-11-16: the AOT generator patched to read each global at its fixed offset gives 1.13x (readable)", "speed": {"x_native": {"interp": 42.293, "jit": 1.028, "exe": 1.031, "aot": 3.638}, "over": "the bench's decode time over native's (compare/run.das --project doomgeneric --bench-only)", "commit": "cb35b34", "date": "2026-11-14", "box": "PC", "command": "heavy --exclusive --label TIMING-aot-final --max 8G -- /root/notes/parallel/aotfinal_capture/cap.sh 3", "quiet": true}}
+    "results": {"speed": {"x_native": {"interp": 41.271, "jit": 1.036, "exe": 1.025, "aot": 1.119}, "over": "the bench's decode time over the native bench's (-O2), median of 5 runs (interp 3)", "commit": "08f8d6f", "date": "2026-11-18", "box": "PC", "command": "heavy --exclusive --label TIMING-add38-b2 --max 8G -- /root/notes/parallel/add38/cap2.sh (ab2.sh b2 5, the interpreter 3 samples)", "quiet": true}, "notes": "the set over readable on the same tier: interp 0.982, jit 0.965, exe 0.948, aot 0.988 (batch 2); interp, JIT and exe pass; the AOT lane's build passes compare's 300 s limit only on an idle box, its bench output native's"}
 }

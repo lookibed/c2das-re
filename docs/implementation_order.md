@@ -2701,6 +2701,36 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   D2, D3 = jwp and checks off in the source layout, D4 = D3 in the single layout): D2 interp 1.20-1.28, JIT
   0.88-0.94, exe 0.92-0.97, AOT 0.97-1.03; D3 and D4 interp 0.93-1.00, JIT 0.88-0.95 (D3 0.89-0.95), exe
   0.92-0.98, AOT 0.97-1.03.
+  Batch 3 (2026-11-18, `TIMING-add38-b3`, `machine quiet (cpu busy 1%)`, box PC, the converter of 08f8d6f,
+  pin guard green before and after; `cap3.sh`, as batch 2; every run's output native's):
+
+  | program | arm | interp /readable | interp x native | jit /readable | jit x native | exe /readable | exe x native | aot /readable | aot x native |
+  |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+  | PureDOOM | readable | 1.000 | 42.73 | 1.000 | 1.08 | 1.000 | 1.05 | 1.000 | 1.15 |
+  | PureDOOM | D2 | 1.236 | 52.79 | 0.909 | 0.99 | 0.941 | 0.99 | 0.988 | 1.14 |
+  | PureDOOM | D3 | 0.984 | 42.05 | 0.909 | 0.99 | 0.949 | 1.00 | 0.997 | 1.15 |
+  | PureDOOM | D4 | 0.987 | 42.18 | 0.912 | 0.99 | 0.945 | 0.99 | 0.995 | 1.15 |
+
+  Against the predictions: 12 of 12. D3 keeps D2's JIT gain without its interpreter loss, so the while loops
+  and the forms off are the 24%; single adds nothing over jwp.
+  Done: the variant files (`ports/variants/<program>.fast.json`): each knob's value, a reason and batch 1's
+  number for it, `results.speed` of the chosen set on all four tiers from batch 2 (PureDOOM batch 3) and
+  `notes` with the set over readable per tier; each `readable` file's `results.speed` re-measured in the same
+  job (its knobs unchanged). The `fast` sets, JIT the selecting tier:
+  Lua: `switch_dispatch` table, layout source-cut, inline helpers, macros expanded, `strict_aliasing`, the
+  three forms off, checks off (jwp stays on); JIT 1.60x -> 1.17x native, interp 162x -> 91x, exe 1.60x ->
+  1.33x (the exe tier's best is the same set with checks safe, 0.800 of readable), AOT 1.35x -> 1.10x. The
+  test suite 30 of 30, the error checks 8 of 8 and `luac -o` 33 of 33 under interp and JIT.
+  PureDOOM: `jit_whole_program` and checks off; JIT 1.08x -> 0.99x, exe 1.05x -> 1.00x, interp 42.7x ->
+  42.0x, AOT 1.15x both; demos 1-3 in sync on all four tiers.
+  binjgb, h264bsd-mp4, wasm3 and doomgeneric: checks off alone (JIT 0.960, 0.965, 0.966, 0.965 of readable;
+  the interpreter's best stays readable on binjgb and h264bsd-mp4, AOT's on h264bsd-mp4 and wasm3, the
+  latter noise over a 2 ms bench); every compare lane passes. plmpeg-stream: the readable knobs, no knob
+  faster beyond noise. quakegeneric: no bench unit, so readable with checks off, its four lanes passing.
+  Left: doomgeneric's AOT bench build takes longer than compare's 300 s build limit on a loaded box (its
+  lanes time out; built by the converter's `--run aot` here); the ports tables and readmes take these files at
+  the next publish (not run by this row); first-member reinterpret on Lua (the compile error above); Lua's
+  test-suite workload is not in the search's ratio (the publisher's capture adds it).
 
 ## P6 — Doom
 
