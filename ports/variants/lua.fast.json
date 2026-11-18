@@ -1,18 +1,18 @@
 {
     "knobs": {
-        "checks": {"value": "off", "reason": "addendum 19 point 6: fast may drop null and bounds checks; the add19 search measured no set yet (addendum 20 point 2)", "numbers": ""},
-        "first_member": {"value": "addr", "reason": "default, search pending", "numbers": ""},
-        "forms_off": {"value": [], "reason": "default, search pending", "numbers": ""},
-        "fn_macros": {"value": "fold", "reason": "default, search pending", "numbers": ""},
-        "inline_helpers": {"value": false, "reason": "default, search pending", "numbers": ""},
-        "jit_whole_program": {"value": true, "reason": "lua/lua.c2das's, search pending", "numbers": ""},
-        "layout": {"value": "source", "reason": "default, search pending", "numbers": ""},
-        "loops": {"value": "range", "reason": "default, search pending", "numbers": ""},
-        "param_writes": {"value": "in-place", "reason": "default, search pending", "numbers": ""},
-        "past_end": {"value": "call", "reason": "default, search pending", "numbers": ""},
-        "solid_context": {"value": true, "reason": "default, search pending", "numbers": ""},
-        "strict_aliasing": {"value": false, "reason": "default, search pending", "numbers": ""},
-        "switch_dispatch": {"value": "chain", "reason": "default, search pending", "numbers": ""}
+        "checks": {"value": "off", "reason": "the set with checks off (L2) beats it without (L1) on interp, JIT and AOT (addendum 19 point 6)", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: 0.992 alone"},
+        "first_member": {"value": "addr", "reason": "readable's: reinterpret does not compile on Lua even with checks off (error[31004] cast requires unsafe at [c_macro] fold sites such as obj2gco)", "numbers": ""},
+        "fn_macros": {"value": "expand", "reason": "faster on the JIT: macro expansions spelled at each site", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: 0.970 alone"},
+        "forms_off": {"value": ["pointer_steps", "ranged_loops", "c_switch"], "reason": "faster on the JIT: the three readability forms spelled as before", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: 0.974 alone"},
+        "inline_helpers": {"value": true, "reason": "faster on the JIT: pure static helpers spelled at the call site", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: 0.969 alone"},
+        "jit_whole_program": {"value": true, "reason": "readable's: the other value is slower or within noise on the JIT", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 2.372"},
+        "layout": {"value": "source-cut", "reason": "faster on the JIT: the cycles cut by late binding on cold edges", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: 0.930 alone"},
+        "loops": {"value": "range", "reason": "readable's: the other value is slower or within noise on the JIT", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 1.017"},
+        "param_writes": {"value": "in-place", "reason": "readable's: not searched (copy is an interpreter-only knob; the JIT lane chooses)", "numbers": ""},
+        "past_end": {"value": "call", "reason": "readable's: not searched (addendum 38's knob list leaves it out; an interpreter knob, the JIT inlines end_index)", "numbers": ""},
+        "solid_context": {"value": true, "reason": "readable's: every converted module keeps it (a global or function reached by index)", "numbers": ""},
+        "strict_aliasing": {"value": true, "reason": "faster on the JIT: Lua is clean under -fstrict-aliasing, so the TBAA classes apply (suite, error checks and luac pass)", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: 0.973 alone"},
+        "switch_dispatch": {"value": "table", "reason": "faster on every tier: the dense switches (lvm's dispatch among them) one jump each", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: 0.782 alone"}
     },
-    "results": {"notes": "not yet tuned: readable + checks off", "speed": {"x_native": {"interp": 111.412, "jit": 1.494, "exe": 1.568, "aot": 1.301}, "over": "the in-process work time over native's, geometric mean over fib, binary_trees, nbody, spectral_norm and the test suite; exe over the four benches alone, its test-suite cell not yet (the exe binary does not load the crt module from the suite folder) (capture_2026-11-14T095846Z.json)", "commit": "accac6c", "date": "2026-11-14", "box": "PC", "command": "heavy --exclusive --label TIMING-aot-lua -- /root/notes/parallel/aot3_capture/cap_lua.sh 3 (scripts/publish_ports.sh --program lua --no-convert --perf --samples 3)", "quiet": true}}
+    "results": {"speed": {"x_native": {"interp": 90.734, "jit": 1.172, "exe": 1.327, "aot": 1.104}, "over": "the in-process work time over native's (clang -O3 -w -funsigned-char), geometric mean over fib, binary_trees, nbody and spectral_norm (bench/timed.lua, median of 5 runs, interp 3); the test suite is not in this search's ratio", "commit": "08f8d6f", "date": "2026-11-18", "box": "PC", "command": "heavy --exclusive --label TIMING-add38-b2 --max 8G -- /root/notes/parallel/add38/cap2.sh (ab2.sh b2 5, the interpreter 3 samples)", "quiet": true}, "notes": "the set over readable on the same tier: interp 0.561, jit 0.734, exe 0.828, aot 0.818 (batch 2); jit_whole_program stays on (off measured 2.372 on the JIT); the exe tier's best set is L1 (checks safe, 0.800); the test suite, the error checks and luac -o pass under interp and JIT"}
 }
