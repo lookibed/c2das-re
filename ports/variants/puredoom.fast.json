@@ -1,18 +1,18 @@
 {
     "knobs": {
-        "checks": {"value": "off", "reason": "addendum 19 point 6: fast may drop null and bounds checks; the add19 search measured no set yet (addendum 20 point 2)", "numbers": ""},
-        "first_member": {"value": "addr", "reason": "default, search pending", "numbers": ""},
-        "forms_off": {"value": [], "reason": "default, search pending", "numbers": ""},
-        "fn_macros": {"value": "fold", "reason": "default, search pending", "numbers": ""},
-        "inline_helpers": {"value": false, "reason": "default, search pending", "numbers": ""},
-        "jit_whole_program": {"value": false, "reason": "default, search pending", "numbers": ""},
-        "layout": {"value": "source", "reason": "default, search pending", "numbers": ""},
-        "loops": {"value": "range", "reason": "default, search pending", "numbers": ""},
-        "param_writes": {"value": "in-place", "reason": "default, search pending", "numbers": ""},
-        "past_end": {"value": "call", "reason": "default, search pending", "numbers": ""},
-        "solid_context": {"value": true, "reason": "default, search pending", "numbers": ""},
-        "strict_aliasing": {"value": false, "reason": "default, search pending", "numbers": ""},
-        "switch_dispatch": {"value": "chain", "reason": "default, search pending", "numbers": ""}
+        "checks": {"value": "off", "reason": "faster on every tier (addendum 19 point 6)", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: 0.946 alone"},
+        "first_member": {"value": "addr", "reason": "readable's: reinterpret over checks off measured no gain on the JIT", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: 1.002 over checks off"},
+        "fn_macros": {"value": "fold", "reason": "readable's: the other value is slower or within noise on the JIT", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 0.999"},
+        "forms_off": {"value": [], "reason": "readable's: the forms off gain ~2% on the JIT alone but, with while loops, cost the interpreter 24% and nothing on the JIT in the set (batch 2 D2 against batch 3 D3)", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 0.981 alone"},
+        "inline_helpers": {"value": false, "reason": "readable's: inline_helpers changes no text here", "numbers": ""},
+        "jit_whole_program": {"value": true, "reason": "faster on the JIT and exe: one LLVM module, so calls between the engine's modules inline", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: 0.955 alone"},
+        "layout": {"value": "source", "reason": "readable's: single (0.937 alone) adds nothing over jit_whole_program in the set (batch 3: D4 single 0.912 against D3 0.909 on the JIT)", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 0.937 alone"},
+        "loops": {"value": "range", "reason": "readable's: while loops gain ~2% on the JIT alone but, with the forms off, cost the interpreter 24% (batch 2's D2 interp 1.236 against batch 3's D3 0.984, both JIT 0.909)", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 0.981 alone"},
+        "param_writes": {"value": "in-place", "reason": "readable's: not searched (copy is an interpreter-only knob; the JIT lane chooses)", "numbers": ""},
+        "past_end": {"value": "call", "reason": "readable's: not searched (addendum 38's knob list leaves it out; an interpreter knob, the JIT inlines end_index)", "numbers": ""},
+        "solid_context": {"value": true, "reason": "readable's: every converted module keeps it (a global or function reached by index)", "numbers": ""},
+        "strict_aliasing": {"value": false, "reason": "readable's: the engine is built with -fno-strict-aliasing, so the knob is not for it", "numbers": ""},
+        "switch_dispatch": {"value": "chain", "reason": "readable's: the other value is slower or within noise on the JIT", "numbers": "batch 1, TIMING-add38-b1, JIT, 7 samples: the other value 0.993"}
     },
-    "results": {"notes": "not yet tuned: readable + checks off", "speed": {"x_native": {"interp": 43.123, "jit": 1.018, "exe": 0.978, "aot": 5.165}, "over": "native fps over the tier's, geometric mean over demo1-3 of freedoom2 (doom/run.das --run --fps)", "commit": "accac6c", "date": "2026-11-14", "box": "PC", "command": "heavy --exclusive --label TIMING-aot-all -- /root/notes/parallel/aot3_capture/cap.sh 3", "quiet": true}}
+    "results": {"speed": {"x_native": {"interp": 42.045, "jit": 0.985, "exe": 0.995, "aot": 1.151}, "over": "native fps over the tier's, geometric mean over demo1-3 of freedoom2 (the speed builds, -timedemo, median of 5 runs, interp 3)", "commit": "08f8d6f", "date": "2026-11-18", "box": "PC", "command": "heavy --exclusive --label TIMING-add38-b3 --max 8G -- /root/notes/parallel/add38/cap3.sh (ab2.sh b3 5, the interpreter 3 samples)", "quiet": true}, "notes": "the set over readable on the same tier: interp 0.984, jit 0.909, exe 0.949, aot 0.997 (batch 3); while loops and the forms off add nothing on the JIT and cost the interpreter 24% (batch 2's D2: interp 1.236, JIT 0.909), the single layout adds nothing over jwp (D4: JIT 0.912); demos 1-3 in sync on interp, JIT, exe and AOT"}
 }

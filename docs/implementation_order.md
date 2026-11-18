@@ -2642,6 +2642,128 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   loads from the repository root (error checks 8 of 8, luac 33 of 33) and not from the test-suite folder
   (0 of 30). (j) `docs/performance.md` and the ports tables carry the numbers of the `6401904cf9` capture
   until the re-capture on this pin (step 6, a timing run, not started without a ruling).
+- **P9.39 The real `fast` variant per published program** (ruling 38 addendum 38 item 1; resumes the
+  addendum-19 search of P9.29 on daScript `b7d8f6f52f`, its numbers on `6401904cf9` void; work folder
+  `/root/notes/parallel/add38/`). Per program (Lua with luac, binjgb, h264bsd-mp4, plmpeg-stream, wasm3,
+  doomgeneric, PureDOOM) the knobs of `VARIANT_KNOBS` are searched one at a time from the `readable` knobs on
+  the JIT lane (the `fast` default), the winners combined, and the combined set timed on all four tiers;
+  quakegeneric has no bench unit, so its `fast` is `readable` with checks off and the reason. An arm whose
+  converted text equals the readable one is pruned untimed; every timed arm's output is native's.
+  Predictions for batch 1 (2026-11-17, before any timing; `/root/notes/predictions/2026-11-17-add38-b1.md`;
+  arm time over the readable arm's on the JIT, below 1 faster): Lua `switch_dispatch` table fib 0.72-0.82,
+  binary_trees 0.84-0.92, nbody and spectral_norm 0.76-0.86 (P9.33's ratios); checks off 0.88-0.98 on every
+  program (PureDOOM 0.92-0.98); `jit_whole_program` off for Lua 1.05-1.60, on for PureDOOM 0.85-1.00 and for a
+  one-module project 0.95-1.02; PureDOOM single layout 0.85-1.00; `strict_aliasing` 0.94-1.01 where the program
+  is clean; inline helpers, while loops, macros expanded, the forms off, source-cut and first-member
+  reinterpret (over checks off) each within 0.97-1.05. Combined `fast` over readable: Lua 0.68-0.82, PureDOOM
+  0.82-0.96, the projects 0.90-0.99.
+  Batch 1 (2026-11-18, `heavy --exclusive --label TIMING-add38-b1`, `machine quiet (cpu busy 1%)`, box PC,
+  branch at a77160d, pin `b7d8f6f52f` (the pin guard green before and after), 7 samples a cell, the arms' order
+  rotating; `/root/notes/parallel/add38/`: `prep.sh` as normal jobs, `cap1.sh`, `summarize.py b1`). Every run's
+  output was native's. JIT only; arm time over the readable arm's, geometric mean over the program's workloads
+  (Lua's four benches, PureDOOM's demos 1-3, a project's bench), below 1 faster; `f` (first-member reinterpret
+  with checks off) over checks off alone; `-` not an arm (its text equal to readable's, or the knob not
+  applicable: one translation unit takes no layout, `strict_aliasing` only for a program clean under it):
+
+  | program | checks off | table | jwp flip | inline | while | expand | forms off | strict al. | source-cut | single | f/k |
+  |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+  | Lua | 0.992 | 0.782 | 2.372 (off) | 0.969 | 1.017 | 0.970 | 0.974 | 0.973 | 0.930 | 1.071 | - |
+  | PureDOOM | 0.946 | 0.993 | 0.955 (on) | - | 0.981 | 0.999 | 0.981 | - | 1.031 | 0.937 | 1.002 |
+  | binjgb | 0.956 | 0.992 | 1.023 | - | 1.026 | 0.998 | 1.020 | 0.998 | - | - | 1.002 |
+  | h264bsd-mp4 | 0.957 | 1.003 | 1.005 | 1.002 | 0.998 | 0.995 | 1.001 | 0.996 | - | - | 1.005 |
+  | plmpeg-stream | 0.997 | 1.006 | 1.005 | 0.997 | 1.004 | 1.007 | 1.006 | 1.005 | - | - | 0.999 |
+  | wasm3 | 0.967 | 0.995 | 0.997 | 0.990 | 0.995 | 0.999 | 0.993 | 1.001 | - | - | 1.007 |
+  | doomgeneric | 0.960 | 0.994 | 0.994 | 0.990 | 0.996 | 0.999 | 0.986 | - | - | - | 0.999 |
+
+  Found: first-member reinterpret does not compile on Lua even with checks off (error[31004] "cast requires
+  unsafe" at `[c_macro]` fold sites such as `obj2gco(...)` in `lparser`), so Lua has no `f` arm; on every
+  other program it changes nothing measurable over checks off. Batch 1 against its predictions (the ranges
+  above, as committed before the run): 51 of 58 cells hit. Misses: Lua's table on nbody (0.718 against
+  0.76-0.86, faster), checks off on Lua (0.992) and plmpeg-stream (0.997) against 0.88-0.98, `jit_whole_program`
+  off on Lua (2.372 against 1.05-1.60) and on on binjgb (1.023 against 0.95-1.02), Lua's inline helpers (0.969)
+  and source-cut (0.930) against 0.97-1.05. PureDOOM's source-cut (1.031) is inside 0.97-1.05 (the predictions
+  file's narrower 0.98-1.03 would miss it). Predictions for batch 2
+  (`/root/notes/predictions/2026-11-18-add38-b2.md`, before its timing; arm over readable on the same tier):
+  Lua L1 (table, source-cut, inline helpers, macros expanded, strict aliasing, the three forms off) interp
+  0.40-0.60, JIT 0.64-0.80, exe 0.66-0.82, AOT 0.75-0.97, and L2 (L1 with checks off) 0.36-0.57, 0.62-0.80,
+  0.64-0.82, 0.75-0.97; PureDOOM D1 (single layout, jwp, checks off, while loops, forms off) interp 0.90-1.02,
+  JIT 0.86-0.94, exe 0.86-0.95, AOT 0.95-1.03, and D2 (D1 in the source layout) 0.90-1.02, 0.88-0.96,
+  0.88-0.96, 0.95-1.03; checks off on binjgb, h264bsd-mp4, wasm3 and doomgeneric interp 0.88-0.97, JIT
+  0.94-0.98, exe 0.94-0.99, AOT 0.97-1.02, on plmpeg-stream 0.90-1.00 interp and 0.98-1.02 elsewhere.
+  Batch 2 (2026-11-18, `TIMING-add38-b2`, `machine quiet (cpu busy 1%)`, box PC, branch at 8b3db40 (the
+  converter of main 08f8d6f), pin guard green before and after; `cap2.sh`: every run from the repository root,
+  interp 3 samples, JIT, exe and AOT 5; `(n)` marks a cell whose spread passed 10%). Arm over readable on the
+  same tier and the tier's time over native's, geometric means over the workloads; every run's output native's:
+
+  | program | arm | interp /readable | interp x native | jit /readable | jit x native | exe /readable | exe x native | aot /readable | aot x native |
+  |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+  | Lua | readable | 1.000 | 161.77 | 1.000 (n) | 1.60 | 1.000 | 1.60 | 1.000 (n) | 1.35 |
+  | Lua | L1 | 0.584 | 94.41 | 0.743 | 1.19 | 0.800 | 1.28 | 0.892 | 1.20 |
+  | Lua | L2 | 0.561 | 90.73 | 0.734 | 1.17 | 0.828 (n) | 1.33 | 0.818 | 1.10 |
+  | PureDOOM | readable | 1.000 | 42.44 | 1.000 | 1.09 | 1.000 | 1.05 | 1.000 | 1.15 |
+  | PureDOOM | D1 | 1.247 | 52.90 | 0.906 | 0.99 | 0.953 | 1.00 | 0.986 | 1.13 |
+  | PureDOOM | D2 | 1.240 | 52.61 | 0.909 | 0.99 | 0.940 | 0.98 | 0.995 | 1.14 |
+  | binjgb | readable | 1.000 | 72.09 | 1.000 | 1.15 | 1.000 | 1.21 | 1.000 | 1.08 |
+  | binjgb | k | 1.037 | 74.80 | 0.960 | 1.11 | 0.898 | 1.08 | 0.941 | 1.01 |
+  | h264bsd-mp4 | readable | 1.000 | 59.14 | 1.000 | 1.03 | 1.000 | 1.04 | 1.000 | 1.01 |
+  | h264bsd-mp4 | k | 1.016 | 60.08 | 0.965 | 0.99 | 0.949 | 0.99 | 1.008 | 1.01 |
+  | plmpeg-stream | readable | 1.000 | 28.63 | 1.000 | 0.96 | 1.000 | 1.01 | 1.000 | 1.01 |
+  | plmpeg-stream | k | 1.014 | 29.03 | 0.990 | 0.95 | 1.009 | 1.02 | 1.001 | 1.01 |
+  | wasm3 | readable | 1.000 | 57.62 | 1.000 | 2.75 | 1.000 | 2.75 | 1.000 (n) | 1.40 |
+  | wasm3 | k | 0.913 | 52.60 | 0.966 | 2.66 | 0.960 | 2.64 | 1.070 (n) | 1.49 |
+  | doomgeneric | readable | 1.000 | 42.05 | 1.000 | 1.07 | 1.000 | 1.08 | 1.000 | 1.13 |
+  | doomgeneric | k | 0.982 | 41.27 | 0.965 | 1.04 | 0.948 | 1.02 | 0.988 | 1.12 |
+
+  Against the predictions: 31 of 43 cells hit (36 ratio cells, 7 x-native cells). Misses: PureDOOM's interpreter under D1 and D2 (1.247 and
+  1.240 against 0.90-1.02: the while loops and the forms off cost the interpreter far more than they give the
+  JIT), D1's exe (0.953 against 0.86-0.95), L2's exe (0.828, noisy, against 0.64-0.82); checks off under the
+  interpreter on binjgb, h264bsd-mp4, plmpeg-stream and doomgeneric (1.037, 1.016, 1.014, 0.982 against
+  0.88-0.97: slower or flat), binjgb's exe and AOT (0.898 and 0.941: faster than predicted), wasm3's AOT (1.070,
+  spread 17.5% over a 2 ms bench), and PureDOOM's JIT over native (0.99, faster than 1.00-1.06).
+  Predictions for batch 3 (`/root/notes/predictions/2026-11-18-add38-b3.md`; PureDOOM alone, readable against
+  D2, D3 = jwp and checks off in the source layout, D4 = D3 in the single layout): D2 interp 1.20-1.28, JIT
+  0.88-0.94, exe 0.92-0.97, AOT 0.97-1.03; D3 and D4 interp 0.93-1.00, JIT 0.88-0.95 (D3 0.89-0.95), exe
+  0.92-0.98, AOT 0.97-1.03.
+  Batch 3 (2026-11-18, `TIMING-add38-b3`, `machine quiet (cpu busy 1%)`, box PC, the converter of 08f8d6f,
+  pin guard green before and after; `cap3.sh`, as batch 2; every run's output native's):
+
+  | program | arm | interp /readable | interp x native | jit /readable | jit x native | exe /readable | exe x native | aot /readable | aot x native |
+  |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+  | PureDOOM | readable | 1.000 | 42.73 | 1.000 | 1.08 | 1.000 | 1.05 | 1.000 | 1.15 |
+  | PureDOOM | D2 | 1.236 | 52.79 | 0.909 | 0.99 | 0.941 | 0.99 | 0.988 | 1.14 |
+  | PureDOOM | D3 | 0.984 | 42.05 | 0.909 | 0.99 | 0.949 | 1.00 | 0.997 | 1.15 |
+  | PureDOOM | D4 | 0.987 | 42.18 | 0.912 | 0.99 | 0.945 | 0.99 | 0.995 | 1.15 |
+
+  Against the predictions: 12 of 12, four of them D2 cells re-measured from batch 2. D3 keeps D2's JIT gain without its interpreter loss, so the while loops
+  and the forms off are the 24%; single adds nothing over jwp.
+  The review of #264 (blocking): Lua's L1 knobs beyond table and source-cut rest on batch 1's slow readable
+  nbody cell (0.463 s there, 0.420 s in batch 2, every arm 0.42-0.44 whatever it changed); without nbody they
+  are 0.988-0.993, inside the noise; and no arm timed table and source-cut alone. Batch 4 re-times Lua.
+  Predictions (`/root/notes/predictions/2026-11-18-add38-b4.md`, before its timing; the noise rule stated there
+  first: a knob stays only when the set with it beats the set without it by more than s, the largest
+  per-workload spread of the readable arm on that tier in the same batch, for every program): T (table and
+  source-cut) over readable interp 0.55-0.65, JIT 0.70-0.77, exe 0.76-0.88, AOT 0.82-0.95; T with checks off
+  over T 0.90-0.97, 0.97-1.02, 0.96-1.03, 0.88-0.97; L1 over T and L2 over T with checks off 0.95-1.02 interp,
+  0.98-1.02 JIT, 0.97-1.04 exe, 0.97-1.06 AOT; T with each of inline helpers, macros expanded, strict aliasing
+  and the forms off over T 0.98-1.02 on the JIT.
+  Done: the variant files (`ports/variants/<program>.fast.json`): each knob's value, a reason and batch 1's
+  number for it, `results.speed` of the chosen set on all four tiers from batch 2 (PureDOOM batch 3) and
+  `notes` with the set over readable per tier; each `readable` file's `results.speed` re-measured in the same
+  job (its knobs unchanged). The `fast` sets, JIT the selecting tier:
+  Lua: `switch_dispatch` table, layout source-cut, inline helpers, macros expanded, `strict_aliasing`, the
+  three forms off, checks off (jwp stays on); JIT 1.60x -> 1.17x native, interp 162x -> 91x, exe 1.60x ->
+  1.33x (the exe tier's best is the same set with checks safe, 0.800 of readable), AOT 1.35x -> 1.10x. The
+  test suite 30 of 30, the error checks 8 of 8 and `luac -o` 33 of 33 under interp and JIT.
+  PureDOOM: `jit_whole_program` and checks off; JIT 1.08x -> 0.99x, exe 1.05x -> 1.00x, interp 42.7x ->
+  42.0x, AOT 1.15x both; demos 1-3 in sync on all four tiers.
+  binjgb, h264bsd-mp4, wasm3 and doomgeneric: checks off alone (JIT 0.960, 0.965, 0.966, 0.965 of readable;
+  the interpreter's best stays readable on binjgb and h264bsd-mp4, AOT's on h264bsd-mp4 and wasm3, the
+  latter noise over a 2 ms bench); every compare lane passes. plmpeg-stream: the readable knobs, no knob
+  faster beyond noise. quakegeneric: no bench unit, so readable with checks off, its four lanes passing.
+  Left: doomgeneric's AOT bench build takes longer than compare's 300 s build limit on a loaded box (its
+  lanes time out; built by the converter's `--run aot` here); the ports tables and readmes take these files at
+  the next publish (not run by this row); first-member reinterpret on Lua (the compile error above); Lua's
+  test-suite workload is not in the search's ratio (the publisher's capture adds it).
 
 ## P6 — Doom
 

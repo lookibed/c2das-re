@@ -46,6 +46,9 @@ let LUA_DAS = "options gen2\nrequire strings\nrequire daslib/strings_boost\nrequ
 // are no seconds
 let RUN_DAS = "options gen2\nrequire daslib/strings_boost\nrequire daslib/fio\nrequire daslib/clargs\n[export]\ndef main : int \{\n    fopen(\"lua/work/harness_runs.log\", \"ab\") $(f) \{\n        if (f != null) \{\n            fwrite(f, join(get_user_args(), \" \") + \"\\n\")\n        \}\n    \}\n    to_log(LOG_WARNING, \"lua: lua_all: dumper \{ref_time_ticks()\} s, JSON 10 bytes\\n\")\n    to_log(LOG_WARNING, \"lua: lua_all: emitter 0.\{ref_time_ticks() % 10l\} s, compile check 2.5 s, 3 lines of das\\n\")\n    to_log(LOG_WARNING, \"lua: total 7 s\\n\")\n    to_log(LOG_WARNING, \"lua: lua_all: units of s, dots . s\\n\")\n    return 0\n\}\n"
 
+// a variant file's `layout` knob line with its value set to `source`
+def private source_layout(line : string) : string => replace(replace(line, "\"value\": \"source-cut\"", "\"value\": \"source\""), "\"value\": \"single\"", "\"value\": \"source\"")
+
 def private run_in(dir : string; argv : array<string>; var out : string&) : int => run_and_capture(in_folder(dir, argv), out, 1200.0)
 
 def private git(dir : string; argv : array<string>) : string {
@@ -100,15 +103,15 @@ def private stand_in_root(name : string) : string {
     fwrite(path_join(root, "lua/lua.c2das"), "\{\"defines\": [\"STAND_IN=1\"]\}\n")
     fwrite(path_join(root, "lua/fetch.sh"), "echo fetched\n")
     fwrite(path_join(root, "lua/run.das"), RUN_DAS)
-    // each variant's conversion in the source layout, the layout of both committed variant files:
-    // the source tree holds fragments and folders beside the entry module, and the conversion's
-    // C-IR and checks, which stay out of the publish
+    // each variant's conversion in the source layout: the source tree holds fragments and folders
+    // beside the entry module, and the conversion's C-IR and checks, which stay out of the publish
     // every committed variant file, the compare projects' and PureDOOM's among them
     mkdir_rec(path_join(root, "ports/variants"))
     dir("ports/variants") $(file) {
         if (file |> ends_with(".json")) {
-            // the results a search recorded left out, so the tables take the fallbacks under test
-            let lines <- [for (ln in split(fread("ports/variants/{file}"), "\n")); ln |> starts_with("    \"results\":") ? "    \"results\": \{\}" : ln]
+            // the results a search recorded left out, so the tables take the fallbacks under test,
+            // and the layout set to source, the layout the stand-in conversions are staged in
+            let lines <- [for (ln in split(fread("ports/variants/{file}"), "\n")); ln |> starts_with("    \"results\":") ? "    \"results\": \{\}" : ln |> starts_with("        \"layout\":") ? source_layout(ln) : ln]
             fwrite(path_join(root, "ports/variants/{file}"), join(lines, "\n"))
         }
     }
@@ -390,7 +393,10 @@ def test_publish_commit_push(t : T?) {
         // each variant's sidecar is the program's with the variant's knobs set, beside its file
         for (v in ["readable", "fast"]) {
             let sidecar = fread(path_join(dir, "{v}/lua.c2das"))
-            t |> success(sidecar |> contains("\"defines\" : [") && sidecar |> contains("\"STAND_IN=1\"") && sidecar |> contains("\"fn_macros\" : \"fold\""), sidecar)
+            var error : string
+            let knobs = read_json(fread(path_join(root, "ports/variants/lua.{v}.json")), error)
+            let fn_macros = knobs?["knobs"]?["fn_macros"]?["value"] ?? ""
+            t |> success(!empty(fn_macros) && sidecar |> contains("\"defines\" : [") && sidecar |> contains("\"STAND_IN=1\"") && sidecar |> contains("\"fn_macros\" : \"{fn_macros}\""), sidecar)
             t |> equal(fread(path_join(dir, "{v}/variant.json")), fread(path_join(root, "ports/variants/lua.{v}.json")))
         }
         published_modules(t, dir)
@@ -432,6 +438,27 @@ def test_publish_commit_push(t : T?) {
         git(clone, ["remote", "set-url", "origin", path_join(root, "no-such-origin.git")])
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--commit", "--push"], out), 1, out)
         t |> success(out |> contains("ports: git push failed: "), out)
+    }
+}
+
+[test]
+def test_source_cut_variant(t : T?) {
+    t |> run_stand_in("a variant in the source-cut layout publishes the trees of that layout's folder", "c2das_ports_cut") @(t : T?; root, clone : string) {
+        let fast = path_join(root, "ports/variants/lua.fast.json")
+        fwrite(fast, replace(fread(fast), "\"layout\": \{\"value\": \"source\"", "\"layout\": \{\"value\": \"source-cut\""))
+        t |> success(fread(fast) |> contains("\"layout\": \{\"value\": \"source-cut\""))
+        let work = path_join(root, "lua/work/variants/fast")
+        mkdir_rec(path_join(work, "source-cut"))
+        var out : string
+        for (stem in ["lua", "luac"]) {
+            t |> equal(run_and_capture(["mv", path_join(work, stem), path_join(work, "source-cut/{stem}")], out, 60.0), 0, out)
+        }
+        git(root, ["add", "-A"])
+        git(root, ["commit", "-q", "-m", "fast in source-cut"])
+        fwrite(stamp_path(root), "{git(root, ["rev-parse", "HEAD"])}\nv9.9.9\n{git(root, ["log", "-1", "--format=%cs"])}\n")
+        t |> equal(publish(root, ["--repo", clone, "--no-convert"], out), 0, out)
+        published_modules(t, path_join(clone, "lua"))
+        t |> success(fread(path_join(clone, "lua/README.md")) |> contains("the fast variant, a module per C file, the cycles among files cut by late binding"), out)
     }
 }
 
