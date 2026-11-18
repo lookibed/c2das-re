@@ -2677,7 +2677,12 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
 
   Found: first-member reinterpret does not compile on Lua even with checks off (error[31004] "cast requires
   unsafe" at `[c_macro]` fold sites such as `obj2gco(...)` in `lparser`), so Lua has no `f` arm; on every
-  other program it changes nothing measurable over checks off. Predictions for batch 2
+  other program it changes nothing measurable over checks off. Batch 1 against its predictions (the ranges
+  above, as committed before the run): 51 of 58 cells hit. Misses: Lua's table on nbody (0.718 against
+  0.76-0.86, faster), checks off on Lua (0.992) and plmpeg-stream (0.997) against 0.88-0.98, `jit_whole_program`
+  off on Lua (2.372 against 1.05-1.60) and on on binjgb (1.023 against 0.95-1.02), Lua's inline helpers (0.969)
+  and source-cut (0.930) against 0.97-1.05. PureDOOM's source-cut (1.031) is inside 0.97-1.05 (the predictions
+  file's narrower 0.98-1.03 would miss it). Predictions for batch 2
   (`/root/notes/predictions/2026-11-18-add38-b2.md`, before its timing; arm over readable on the same tier):
   Lua L1 (table, source-cut, inline helpers, macros expanded, strict aliasing, the three forms off) interp
   0.40-0.60, JIT 0.64-0.80, exe 0.66-0.82, AOT 0.75-0.97, and L2 (L1 with checks off) 0.36-0.57, 0.62-0.80,
@@ -2729,8 +2734,18 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   | PureDOOM | D3 | 0.984 | 42.05 | 0.909 | 0.99 | 0.949 | 1.00 | 0.997 | 1.15 |
   | PureDOOM | D4 | 0.987 | 42.18 | 0.912 | 0.99 | 0.945 | 0.99 | 0.995 | 1.15 |
 
-  Against the predictions: 12 of 12. D3 keeps D2's JIT gain without its interpreter loss, so the while loops
+  Against the predictions: 12 of 12, four of them D2 cells re-measured from batch 2. D3 keeps D2's JIT gain without its interpreter loss, so the while loops
   and the forms off are the 24%; single adds nothing over jwp.
+  The review of #264 (blocking): Lua's L1 knobs beyond table and source-cut rest on batch 1's slow readable
+  nbody cell (0.463 s there, 0.420 s in batch 2, every arm 0.42-0.44 whatever it changed); without nbody they
+  are 0.988-0.993, inside the noise; and no arm timed table and source-cut alone. Batch 4 re-times Lua.
+  Predictions (`/root/notes/predictions/2026-11-18-add38-b4.md`, before its timing; the noise rule stated there
+  first: a knob stays only when the set with it beats the set without it by more than s, the largest
+  per-workload spread of the readable arm on that tier in the same batch, for every program): T (table and
+  source-cut) over readable interp 0.55-0.65, JIT 0.70-0.77, exe 0.76-0.88, AOT 0.82-0.95; T with checks off
+  over T 0.90-0.97, 0.97-1.02, 0.96-1.03, 0.88-0.97; L1 over T and L2 over T with checks off 0.95-1.02 interp,
+  0.98-1.02 JIT, 0.97-1.04 exe, 0.97-1.06 AOT; T with each of inline helpers, macros expanded, strict aliasing
+  and the forms off over T 0.98-1.02 on the JIT.
   Done: the variant files (`ports/variants/<program>.fast.json`): each knob's value, a reason and batch 1's
   number for it, `results.speed` of the chosen set on all four tiers from batch 2 (PureDOOM batch 3) and
   `notes` with the set over readable per tier; each `readable` file's `results.speed` re-measured in the same
