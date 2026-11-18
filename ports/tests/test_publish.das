@@ -442,6 +442,27 @@ def test_publish_commit_push(t : T?) {
 }
 
 [test]
+def test_source_cut_variant(t : T?) {
+    t |> run_stand_in("a variant in the source-cut layout publishes the trees of that layout's folder", "c2das_ports_cut") @(t : T?; root, clone : string) {
+        let fast = path_join(root, "ports/variants/lua.fast.json")
+        fwrite(fast, replace(fread(fast), "\"layout\": \{\"value\": \"source\"", "\"layout\": \{\"value\": \"source-cut\""))
+        t |> success(fread(fast) |> contains("\"layout\": \{\"value\": \"source-cut\""))
+        let work = path_join(root, "lua/work/variants/fast")
+        mkdir_rec(path_join(work, "source-cut"))
+        var out : string
+        for (stem in ["lua", "luac"]) {
+            t |> equal(run_and_capture(["mv", path_join(work, stem), path_join(work, "source-cut/{stem}")], out, 60.0), 0, out)
+        }
+        git(root, ["add", "-A"])
+        git(root, ["commit", "-q", "-m", "fast in source-cut"])
+        fwrite(stamp_path(root), "{git(root, ["rev-parse", "HEAD"])}\nv9.9.9\n{git(root, ["log", "-1", "--format=%cs"])}\n")
+        t |> equal(publish(root, ["--repo", clone, "--no-convert"], out), 0, out)
+        published_modules(t, path_join(clone, "lua"))
+        t |> success(fread(path_join(clone, "lua/README.md")) |> contains("the fast variant, a module per C file, the cycles among files cut by late binding"), out)
+    }
+}
+
+[test]
 def test_convert(t : T?) {
     t |> run_stand_in("without --no-convert: fetch.sh and the harness run, the stamp names HEAD, the harness's clock-free report in the README; an unchanged tree commits once", "c2das_ports_convert") @(t : T?; root, clone : string) {
         remove(stamp_path(root))
