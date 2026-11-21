@@ -31,16 +31,12 @@ while [ $# -gt 0 ]; do
         *) sed -n '2,16p' "$0" >&2; exit 2 ;;
     esac
 done
-die() { echo "build_web: $*" >&2; exit 1; }
-sha_of() { local s; s=$(git -C "$1" rev-parse --short=10 HEAD); [ -z "$(git -C "$1" status --porcelain)" ] || s="$s-dirty"; echo "$s"; }
+WEB_SCRIPT=build_web
+. scripts/web_common.sh
 
 # every refusal comes before the first write
 [ "$commit" = 0 ] || [ -n "$pages" ] || die "--commit commits into --pages <gh-pages checkout>; there is none"
-if [ -n "$pages" ]; then
-    top=$(git -C "$pages" rev-parse --show-toplevel 2>/dev/null) || die "$pages is not a git checkout"
-    [ "$top" = "$(cd "$pages" && pwd)" ] || die "$pages is not the top of its checkout ($top is)"
-    [ "$(git -C "$pages" rev-parse --abbrev-ref HEAD)" = "gh-pages" ] || die "$pages is not on the gh-pages branch"
-fi
+[ -z "$pages" ] || check_pages "$pages" c2das-ports
 if [ -n "$from" ]; then
     [ -n "$pages" ] || die "--from <site> fills --pages <gh-pages checkout>; there is none"
     [ -z "$ports" ] || die "--from takes a built site, --ports builds one: not both"
@@ -64,14 +60,8 @@ else
     dflags=()
     for d in $defines; do dflags+=("-D$d"); done
 
-    emver=$(emcc --version 2>/dev/null | head -1) || die "emcc is not on PATH (source emsdk_env.sh)"
-    case "$emver" in *" 5.0.7 "*) ;; *) die "emcc is not emscripten 5.0.7: $emver" ;; esac
-
-    # one daScript version across the pin and its tools (VERSIONS.md): the host is built at the pin's commit
-    pin=$(sed -n 's/^daScript commit: \([0-9a-f]\{40\}\).*/\1/p' VERSIONS.md)
-    have=$(git -C "$host" rev-parse HEAD 2>/dev/null) || die "$host is not a daScript checkout"
-    [ "$have" = "$pin" ] || die "the wasm host $host is at $have, VERSIONS.md pins $pin; rebuild it with web/build_wasm_host.sh"
-    ldd "$host/bin/daslang" | grep -q 'libc++\.so' || die "$host/bin/daslang does not link libc++: not a wasm host"
+    check_emcc
+    check_host "$host"
     # the browser gate the C baseline's page inlines, then its sources: PureDOOM at the pin with the
     # patches (fetch.sh refuses a wrong tree), fetched into doom/fetch/, not into the site
     gate="$host/site/files/wasm-gate.js"
@@ -210,10 +200,4 @@ EOF
 [ "$commit" = 1 ] || exit 0
 data=$(find "$pages" -path "$pages/.git" -prune -o \( -iname '*.wad' -o -iname '*.zip' -o -iname '*.pak' \) -print)
 [ -z "$data" ] || die "game data in $pages, not committed: $data"
-git -C "$pages" add -A
-if git -C "$pages" diff --cached --quiet; then
-    echo "build_web: $pages already holds this site"
-else
-    git -C "$pages" commit -q -m "site: c2das-re $c2das, c2das-ports $portsha, daScript $daslang"
-    echo "build_web: committed in $pages (push it to deploy)"
-fi
+commit_pages "$pages" "site: c2das-re $c2das, c2das-ports $portsha, daScript $daslang"

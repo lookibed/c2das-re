@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>c2das-re: C to daslang in the browser</title>
+<script src="coi-serviceworker.js"></script>
+<link rel="stylesheet" href="cm/codemirror.min.css">
+<link rel="stylesheet" href="cm/cm-forge.css">
+<link rel="stylesheet" href="page.css">
+</head>
+<body>
+<nav><div class="wrap">
+  <span class="mark">c2das<b>-re</b></span>
+  <span class="links">
+    <a href="https://github.com/lookibed/c2das-re">github</a>
+    <a href="https://github.com/lookibed/c2das-ports">ports</a>
+    <a href="https://lookibed.github.io/c2das-ports/puredoom/doom.html">doom in the browser</a>
+    <a href="https://lookibed.github.io/c2das-ports/quake/quake.html">quake in the browser</a>
+    <a href="https://daslang.io">daslang</a>
+  </span>
+</div></nav>
+<main class="wrap">
+  <section class="hero">
+    <h1>C to daslang, in your browser</h1>
+    <p>c2das-re translates C into readable <a href="https://daslang.io">daslang</a>. Here its translator runs as WebAssembly:
+      each example's C is read by clang into c2das-re's C-IR when the page is built, and everything after that — the emitter,
+      the layout law, the readability forms, the knobs below — runs live in the page, compiled from c2das-re's own daslang to wasm64.
+      Change a knob and the module is spelled again. The Lua console runs Lua 5.4, translated from C by c2das-re and compiled to wasm.</p>
+  </section>
+
+  <div class="toolbar">
+    <label>example <select id="example"></select></label>
+    <label>preset <select id="preset"><option value="readable">readable (defaults)</option><option value="fast">fast (checks off)</option></select></label>
+    <label>switch <select data-knob="switch_dispatch"><option>chain</option><option>goto</option><option>table</option></select></label>
+    <label>checks <select data-knob="checks"><option>safe</option><option>off</option></select></label>
+    <label>loops <select data-knob="loops"><option>range</option><option>while</option></select></label>
+    <label>params <select data-knob="param_writes"><option>in-place</option><option>copy</option></select></label>
+    <label>first member <select data-knob="first_member"><option>addr</option><option>reinterpret</option></select></label>
+    <label>past end <select data-knob="past_end"><option>call</option><option>inline</option></select></label>
+    <label>fn macros <select data-knob="fn_macros"><option>fold</option><option>expand</option></select></label>
+    <label><input type="checkbox" data-knob="inline_helpers"> inline helpers</label>
+    <label><input type="checkbox" data-knob="solid_context" checked> solid context</label>
+    <span class="status" id="status">loading the translator...</span>
+  </div>
+  <div class="about" id="about"></div>
+
+  <div class="panes">
+    <div class="pane">
+      <div class="pane-head"><span>C <span id="cfile"></span></span><span>read-only: editing your own C needs clang in the page (on the way)</span></div>
+      <div id="csrc"></div>
+    </div>
+    <div class="pane">
+      <div class="pane-head">
+        <div class="tabs" id="tabs">
+          <button data-tab="das" class="on">daslang</button>
+          <button data-tab="diff">diff vs defaults</button>
+          <button data-tab="cir">C-IR</button>
+          <button data-tab="output">output</button>
+        </div>
+        <span><span id="timing" class="status"></span> <button class="primary" id="run" title="run this module in daslang's interpreter (wasm), here in the page">&#9654; run</button></span>
+      </div>
+      <div id="tab-das"></div>
+      <pre class="out" id="tab-diff" hidden></pre>
+      <pre class="out" id="tab-cir" hidden></pre>
+      <div id="tab-output" hidden><pre class="out" id="run-out"></pre><pre class="out" id="recorded"></pre></div>
+    </div>
+  </div>
+
+  <h2>Lua console</h2>
+  <p class="status">Lua 5.4's C, translated by c2das-re (<a href="https://github.com/lookibed/c2das-ports/tree/main/lua">c2das-ports/lua</a>, readable variant), compiled to wasm64: loaded on first run.</p>
+  <div class="toolbar">
+    <label>snippet <select id="lua-example"></select></label>
+    <button class="primary" id="lua-run">▶ run</button>
+    <span class="status" id="lua-status"></span>
+  </div>
+  <div class="lua">
+    <div class="pane"><div id="lua-src"></div></div>
+    <div class="pane"><pre class="out" id="lua-out"></pre></div>
+  </div>
+</main>
+<footer><div class="wrap" id="footer">
+  The page's CodeMirror (MIT) and daslang mode are daScript's (BSD-3). Lua is MIT.
+</div></footer>
+<script src="cm/codemirror.min.js"></script>
+<script src="cm/simple-mode.js"></script>
+<script src="cm/daslang-keywords.js"></script>
+<script src="cm/daslang-mode.js"></script>
+<script src="modes.js"></script>
+<script src="translator.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -2587,6 +2587,24 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   negative value (`-75812969` in a three-line C test), which the Doom host's `work_started >= 0` check
   reads as "not started", so its `host: timed` line was missing in 2 of the 6 full wasm runs whose
   output was kept.
+- **P9.39 Run on the translator page** (ruling 38 addendum 37, the owner's option b). The page's Run
+  runs the shown module in daScript's playground interpreter `daslang_static`, built once at the pin
+  on HOME-PC (`web/translator/interp/build_interp.sh`, memory64 + threads, this tree's crt linked in
+  as an in-tree module; 47.6 MB wasm), with `c_runtime` loaded by `-load_module` from a bundle; a fresh
+  frame per run. All seven examples' runs match their recorded output. The wasm64 compile-in-app path
+  stays open in lookibed/daScript#65.
+- **P9.38 The translator page** (ruling 38 addendum 37; note `/root/notes/research/wasm/translator_page.md`).
+  Phase 1 (branch `p9.38-translator-page`): c2das-re's own GitHub Pages runs the translator's C-IR-to-das
+  half in the browser, `converter/cir_emit.das` (the CLI's own path, `pipeline.das` now emits through it)
+  compiled to wasm64 (18.0 MB, 2.8 MB gzipped), with the sidecar's knobs live, a diff against the defaults,
+  the C-IR and the recorded output of seven examples of c2das-re's own (MIT) converted at build time (`web/translator/`,
+  `scripts/build_translator_site.sh`), and a Lua console on c2das-ports' converted Lua (7.7 MB, 1.2 MB
+  gzipped, loaded on first run). Phase 1b (RUN of any converted program): the probe of a wasm64 app that
+  compiles and runs das at run time links (the compiler archive and daslib embedded) but traps in
+  `Program::simulate` and cannot resolve `require crt` (lookibed/daScript#65); the fallback, daScript's
+  playground `daslang_static`, is not loadable cross-origin from daslang.io (no CORS) and waits for the
+  owner (host a copy, or build one at the pin). Phase 2 (the visitor's own C) and the libclang measurement
+  follow.
 - **P9.36 Follow-ups of the repin to daScript `2decba91d5`** (ruling 38, repin 3; PRs #246, #247 and #249;
   notes `/root/notes/parallel/repin3/notes.md`). The pin fixed fork issues the converter still works around,
   and the repin's reviews left small items. Each line is a later row, resumed from here, none started:

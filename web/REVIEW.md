@@ -2,7 +2,8 @@
 
 **Read `REVIEW_COMMON.md` (repo root) first - its contract binds this checklist.** Architecture
 doc: `ARCHITECTURE.md`. Planned work: `docs/implementation_order.md`. A diff to
-`scripts/build_web.sh` applies this checklist too.
+`scripts/build_web.sh`, `scripts/build_translator_site.sh` or `scripts/web_common.sh` applies this
+checklist too.
 
 **A diff never adds a game data file (a `.wad`, a `.pak`, a release zip, an extract of one) to this folder,
 to the site `scripts/build_web.sh` writes, or to the `gh-pages` checkout it fills.** The deploy
@@ -19,7 +20,13 @@ or `ticDigest` in `puredoom/shell.html` changes the other two in the same change
 
 **A diff to `scripts/build_web.sh` keeps its refusals before its first write: a sidecar without
 defines, an emscripten other than 5.0.7, a host at another commit than `VERSIONS.md`'s pin, a host
-without libc++ or the browser gate, a failed PureDOOM fetch.**
+without libc++ or the browser gate, a failed PureDOOM fetch, a `--pages` checkout of another
+repository.**
+
+**A diff to `scripts/build_translator_site.sh` keeps its refusals before its first write: a missing
+Lua conversion, a CodeMirror file or compiler archive missing from the host, an unformatted host,
+a crt not built, a `--pages` checkout of another repository than c2das-re, a missing `--interp`, one
+built at another daScript commit than the pin, or one whose crt is not this tree's.**
 
 **A diff that changes which `pak0.pak` the Quake page or the workflow accepts keeps the checks of
 lookibed/c2das's `get_pak.sh` and its fixtures README (sha1 and sha256 of the zip and the pak) in the
@@ -28,6 +35,9 @@ workflow and the pak's sha256 in the page.**
 **A diff to the Quake timedemo keeps its tick 1/64 s, the native entry's, and a diff to
 `quake/frame_digest.das` or `frameDigest` in `quake/shell.html` changes the other in the same change,
 so `tests/test_web_quake.das` still pins both to the same digest.**
+
+**A diff to the translator page converts through `converter/cir_emit.das`, the path `pipeline.das`
+takes: never a second emitter or a page-side rewrite of the converter's output.**
 
 **A diff never streams sound during a timedemo: the timed updates stay the game's alone.**
 

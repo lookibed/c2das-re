@@ -1,0 +1,18 @@
+options gen2
+require daslib/daspkg
+
+// the Lua console's release (web/ARCHITECTURE.md section 8): scripts/build_translator_site.sh stages
+// c2das-ports' lua/readable/lua and lua_web.das into src/ and copies this file as the stage's
+// .das_package; the page loads the program through createLua when the console first runs.
+[export]
+def package() {
+    package_name("lua")
+}
+
+[export]
+def release() {
+    release_wasm_main("src/lua_web.das")
+    release_emcc_arg("-sMAXIMUM_MEMORY=2GB")
+    release_emcc_arg("-sMODULARIZE=1")
+    release_emcc_arg("-sEXPORT_NAME=createLua")
+}

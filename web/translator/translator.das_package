@@ -1,0 +1,22 @@
+options gen2
+require daslib/daspkg
+
+// the translator's release (web/ARCHITECTURE.md section 8): scripts/build_translator_site.sh stages
+// converter/*.das and main_web.das into src/converter/ and copies this file as the stage's
+// .das_package. The converter uses daslib/ast at run time, so the link takes the whole compiler
+// archive and uriparser beside daspkg's runtime archive; the page loads the program through
+// createTranslator, beside the Lua console's module.
+[export]
+def package() {
+    package_name("translator")
+}
+
+[export]
+def release() {
+    release_wasm_main("src/converter/main_web.das")
+    release_emcc_arg("{get_das_root()}/web/output64/lib/liblibDaScript.a")
+    release_emcc_arg("{get_das_root()}/web/output64/lib/liblibUriParser.a")
+    release_emcc_arg("-sMAXIMUM_MEMORY=2GB")
+    release_emcc_arg("-sMODULARIZE=1")
+    release_emcc_arg("-sEXPORT_NAME=createTranslator")
+}

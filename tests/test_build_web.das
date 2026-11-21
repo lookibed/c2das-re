@@ -114,9 +114,9 @@ def private fake_site(dir, c2das, ports : string) {
 }
 
 // a git checkout at `dir` on `branch`, one commit holding a file `stale.txt`
-def private fake_checkout(t : T?; dir, branch : string) {
+def private fake_checkout(t : T?; dir, branch : string; repo : string = "c2das-ports") {
     var out : string
-    let rc = sh("git init -q -b '{branch}' '{dir}' && cd '{dir}' && echo old > stale.txt && git add stale.txt && git -c user.name=t -c user.email=t@t commit -q -m old", out)
+    let rc = sh("git init -q -b '{branch}' '{dir}' && cd '{dir}' && git remote add origin 'https://github.com/lookibed/{repo}.git' && echo old > stale.txt && git add stale.txt && git -c user.name=t -c user.email=t@t commit -q -m old", out)
     t |> equal(rc, 0, out)
 }
 
@@ -220,13 +220,13 @@ def test_build_web_pages_baseline(t : T?) {
     rmdir_rec(work)
 }
 
-// a stand-in repository at `dir` holding build_web.sh, a VERSIONS.md pinning `pin`, and the sidecar
+// a stand-in repository at `dir` holding build_web.sh and web_common.sh, a VERSIONS.md pinning `pin`, and the sidecar
 // text `sidecar`; `fetch` is the body of its doom/fetch.sh, none when empty
 def private stand_in_repo(t : T?; dir, pin, sidecar, fetch : string) {
     mkdir_rec(path_join(dir, "scripts"))
     mkdir_rec(path_join(dir, "doom"))
     var out : string
-    let rc = run_and_capture(["cp", "scripts/build_web.sh", path_join(dir, "scripts/build_web.sh")], out, 30.0)
+    let rc = run_and_capture(["cp", "scripts/build_web.sh", "scripts/web_common.sh", path_join(dir, "scripts")], out, 30.0)
     t |> equal(rc, 0, out)
     fwrite(path_join(dir, "VERSIONS.md"), "daScript commit: {pin} (a stand-in)\n")
     fwrite(path_join(dir, "doom/doom.c2das"), sidecar)
@@ -341,3 +341,19 @@ def test_build_web_quake_refusals(t : T?) {
     rmdir_rec(work)
 }
 
+[test(description = "build_web.sh --pages refuses a gh-pages checkout of another repository (c2das-re's own site) and leaves it untouched")]
+def test_build_web_pages_other_repo(t : T?) {
+    var dir_error : string
+    let work = create_temp_directory("c2das_build_web_other", dir_error)
+    t |> equal(dir_error, "")
+    let other_repo = path_join(work, "other")
+    fake_checkout(t, other_repo, "gh-pages", "c2das-re")
+    let site = path_join(work, "site")
+    fake_site(site, "1111111111", "2222222222")
+    var out : string
+    let rc = build_web("", "--from '{site}' --pages '{other_repo}' --commit", out)
+    t |> equal(rc, 1, out)
+    t |> success(find(out, "not of c2das-ports") >= 0, out)
+    t |> success(fexist(path_join(other_repo, "stale.txt")), "c2das-re's site is untouched")
+    rmdir_rec(work)
+}

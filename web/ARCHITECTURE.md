@@ -27,6 +27,19 @@ program runs under in a browser and the page around it.
   `quake_entry.das`; `quake/shell.html` its page; `quake/.das_package` its release;
   `quake/expected_frames.das` writes the reference frames out of the Rust repository's cases;
   `quake/frame_digest.das` folds the frame hashes (`tests/test_web_quake.das` tests both).
+- `translator/main_web.das` - the translator page's program (section 8): `converter/cir_emit.das`
+  behind a request in the in-memory file system; `translator/lua_web.das` the Lua console's program;
+  `translator/precompute.das` converts the examples at build time; `translator/examples/` the
+  examples' C and their manifest; `translator/site/` the page (`run-frame.html` the frame of one Run,
+  section 9); `translator/*.das_package` the two releases; `translator/pages.yml` c2das-re's deploy
+  workflow; `translator/bundle.das` packs `c_runtime` for Run; `translator/interp/` builds Run's
+  interpreter (`build_interp.sh`, and `crt_module.cmake`, the crt's in-tree wrapper) and runs the
+  examples in it under node (`run_examples.js`).
+- `scripts/build_translator_site.sh` (repository root) - the translator page's build;
+  `scripts/web_common.sh` the checks both builds share (emscripten, the host on the pin, a gh-pages
+  checkout of the build's own repository, the commit). `tests/test_web_translator.das` runs
+  `main_web.das` as a desktop program over requests, `precompute.das` over a small manifest, and the
+  script's refusals.
 - `site/index.html` - the site's landing page, a list of the demos.
 - `site/coi-serviceworker.js` - cross-origin isolation (section 2).
 - `site/pages.yml` - the deploy workflow the ports repository's `gh-pages` branch carries (section 4).
@@ -197,4 +210,67 @@ offers a picker for the user's own copy; a failing mirror leaves the page to its
 of the site deployed. The port's sound layer is null, so the page is silent. The build checks the
 host's formatting but runs no lint over it: lint compiles the engine under its own stricter policies,
 which the generated code does not meet, so it never reaches the host.
+
+## 8. The translator page
+
+c2das-re's own GitHub Pages site runs the translator in the browser. clang cannot run there (Dumper
+A spawns it and reads libclang through `cbind`, a native module), so the page holds each example's
+C-IR, written at build time by the native pipeline (`translator/precompute.das`, the examples of
+`translator/examples/examples.json`, each a whole program whose run must exit 0), and runs
+everything after the C-IR live: `converter/cir_emit.das`, the CLI's own
+path, compiled to wasm64 as `translator.wasm`. Its program has no window; each animation frame it
+looks for `/io/go` in its in-memory file system and converts `/io/in.cir.json` under
+`/io/sidecar.c2das` into `/io/out.das` or `/io/out.err`, then `/io/done`. The page writes the
+example's own sidecar with every knob over it (switch dispatch, checks, loops, parameter writes,
+first member, past end, function macros, inline helpers, solid context; the presets are the
+defaults and the ports' fast variant, `checks` off) and shows the module, its diff against the
+defaults, the C-IR, and the converted program's output, recorded when the page was built.
+
+The Lua console is `lua.wasm`: c2das-ports' `lua/readable` with `translator/lua_web.das` beside it,
+which runs `/io/script.lua` in a fresh Lua state on `/io/lua.go` and answers `/io/lua.done`; the
+page loads it on the first run. Both programs are built with `-sMODULARIZE` (`createTranslator`,
+`createLua`) so one page holds both. The converter reads `daslib/ast` at run time, so the
+translator's link takes the whole compiler archive (`liblibDaScript.a`) and uriparser beside
+daspkg's runtime archive. The page's editor is daScript's CodeMirror bundle and daslang mode,
+copied from the wasm host's tree at build time, with small C and Lua modes of its own; the palette is
+daslang.io's. Only the translator's host is linted: the Lua console's lint would compile the
+converted Lua under lint's stricter policies, which generated code does not meet.
+
+The examples are c2das-re's own (MIT), so the site carries no third-party C. Their converted modules
+and recorded output reach only the generated `gh-pages` branch, never `main` (root `REVIEW.md`: no
+converted output is committed). The page reports a request unanswered within 20 s of visible time (a
+hidden tab runs no frames) and takes the next one; a program that aborts stops the page. Lua's
+`os.exit` raises a Lua error, since an exit would end the console's program with no answer.
+`--pages` refuses a checkout whose origin is not c2das-re, as `scripts/build_web.sh` refuses one
+that is not c2das-ports, so neither build can wipe the other's site.
+
+## 9. Run: the converted module in daslang's interpreter
+
+The page's Run button runs the module it shows, under any knobs, in daScript's playground interpreter,
+`daslang_static`, as wasm in the page (owner, addendum 37: the interpreter for any code, no
+per-example build). `translator/interp/build_interp.sh` builds it once, on a machine with room (the
+owner named HOME-PC): daScript at `VERSIONS.md`'s pin, configured as daScript's own
+`web/build_site_wasm.cmake` configures `web/build64` (memory64, threads; the converted code's layout
+checks need 8-byte pointers), with this tree's `dasCRuntime/src` copied in as the in-tree module
+`modules/dasCRuntime` (`crt_module.cmake`), so `require crt` resolves to the linked module. Its
+`interp.json` names the pin and the c2das-re commit of the crt; the site build refuses an interpreter
+of another daScript commit (`--interp`).
+
+`c_runtime` is pure das: `translator/bundle.das` packs its `.das_module` and `c_runtime/*.das` into
+`c_runtime.json`, and each run writes them under `/lib/c_runtime` and calls
+`daslang_static -load_module /lib/c_runtime /run/main.das`, so the `.das_module` registers the
+`c_runtime/<name>` paths as the desktop `-load_module` does (a `require` inside `c_runtime` resolves
+by that registration, not by the file's folder). A run is one fresh frame (`run-frame.html`), dropped
+when the program exits, as daScript's playground does: a second `callMain` in one runtime can leave
+modules registered. The page compiles the wasm once and hands each frame the compiled module. The
+program runs synchronously in the frame, which shares the page's main thread: Stop drops a run still
+loading, a running one ends on its own and its output arrives at its end. The output tab shows the
+run's stdout, stderr, exit code and time, above the output recorded at build time. The site build
+refuses an interpreter whose crt commit is not one of this repository or whose `dasCRuntime/src`
+differs from this tree's, since `c_runtime.json` is bundled from this tree.
+
+`translator/interp/run_examples.js` runs the examples in the interpreter under node as Run does, one
+runtime per example; `tests/test_web_translator.das` runs it over a converted example when
+`C2DAS_INTERP` names an interpreter folder, and skips otherwise. The page's own frame protocol is
+checked in a browser by hand (headless Edge), not by a committed test.
 
