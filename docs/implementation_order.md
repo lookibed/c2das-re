@@ -2642,7 +2642,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   loads from the repository root (error checks 8 of 8, luac 33 of 33) and not from the test-suite folder
   (0 of 30). (j) `docs/performance.md` and the ports tables carry the numbers of the `6401904cf9` capture
   until the re-capture on this pin (step 6, a timing run, not started without a ruling).
-- **P9.39 The real `fast` variant per published program** (ruling 38 addendum 38 item 1; resumes the
+- **P9.40 The real `fast` variant per published program** (ruling 38 addendum 38 item 1; resumes the
   addendum-19 search of P9.29 on daScript `b7d8f6f52f`, its numbers on `6401904cf9` void; work folder
   `/root/notes/parallel/add38/`). Per program (Lua with luac, binjgb, h264bsd-mp4, plmpeg-stream, wasm3,
   doomgeneric, PureDOOM) the knobs of `VARIANT_KNOBS` are searched one at a time from the `readable` knobs on
@@ -2743,9 +2743,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   first: a knob stays only when the set with it beats the set without it by more than s, the largest
   per-workload spread of the readable arm on that tier in the same batch, for every program): T (table and
   source-cut) over readable interp 0.55-0.65, JIT 0.70-0.77, exe 0.76-0.88, AOT 0.82-0.95; T with checks off
-  over T 0.90-0.97, 0.97-1.02, 0.96-1.03, 0.88-0.97; L1 over T and L2 over T with checks off 0.95-1.02 interp,
-  0.98-1.02 JIT, 0.97-1.04 exe, 0.97-1.06 AOT; T with each of inline helpers, macros expanded, strict aliasing
-  and the forms off over T 0.98-1.02 on the JIT.
+  over T 0.90-0.97, 0.97-1.02, 0.96-1.03, 0.88-0.97; L1 over T 0.95-1.02 interp, 0.98-1.02 JIT, 0.97-1.04
+  exe, 0.98-1.06 AOT; L2 over T with checks off 0.95-1.02, 0.98-1.02, 0.97-1.04, 0.97-1.04; T with each of
+  inline helpers, macros expanded, strict aliasing and the forms off over T 0.98-1.02 on the JIT.
   Batch 4 (2026-11-21, `TIMING-add38-b4`, `machine quiet (cpu busy 1%)`, box PC, the branch merged with main
   at 1d01f13 and every arm re-converted there (each JIT run native's before the timing), pin guard green
   before and after; `cap4.sh`: JIT 7 samples over nine arms, then interp 3 samples and exe and AOT 5 over
@@ -2784,6 +2784,18 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   (JIT, exe, AOT), h264bsd-mp4 (exe), wasm3 (interp, JIT) and doomgeneric (interp, JIT, exe); PureDOOM's jwp
   and checks off each alone beyond batch 1's JIT band of 1.9%, and D3 beyond it on interp, JIT and exe;
   plmpeg-stream none; quakegeneric unmeasured (no bench unit).
+  The re-review of #264 (blocking): source-cut was kept on its gain over readable, not on the set with it
+  against the set without it; no batch times table alone beside T, and across batches table alone (batch 1,
+  JIT 1.274x native) and T (batch 4, 1.271x) are equal. The forms off gave about 0.94 over T on the JIT in
+  three arms and were rejected by a band one binary_trees sample set. Batch 5 re-times Lua: readable, t =
+  table alone, T = table and source-cut, Tfo = T with the forms off; JIT 9 samples, interp 3, exe and AOT 5.
+  The rule unchanged: source-cut stays iff T beats t, the forms off iff Tfo beats T, by more than the band s
+  of readable's samples in batch 5 on at least one tier (a median-of-benches band reported as information
+  only). Predictions (`/root/notes/predictions/2026-11-22-add38-b5.md`, before its timing): t over readable
+  interp 0.56-0.66, JIT 0.74-0.82, exe 0.80-0.92, AOT 0.78-0.92; T over readable 0.54-0.62, 0.74-0.81,
+  0.80-0.90, 0.77-0.88; T over t 0.95-1.03, 0.94-1.02, 0.94-1.03, 0.94-1.04; Tfo over T 1.00-1.10, 0.91-0.96,
+  0.93-1.02, 0.95-1.04. Expected: T against t inside every band, so Lua's fast is table alone, and the forms
+  off beyond the JIT band only if that band is under 6%.
   Done: the variant files (`ports/variants/<program>.fast.json`): each knob's value, a reason and the batch's
   number for it, `results.speed` of the chosen set on all four tiers from batch 2 (PureDOOM batch 3, Lua
   batch 4) and `notes` with the set over readable per tier; each `readable` file's `results.speed`
