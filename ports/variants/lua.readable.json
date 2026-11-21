@@ -14,5 +14,5 @@
         "strict_aliasing": {"value": false, "reason": "default, search pending", "numbers": ""},
         "switch_dispatch": {"value": "chain", "reason": "default, search pending", "numbers": ""}
     },
-    "results": {"speed": {"x_native": {"interp": 161.771, "jit": 1.597, "exe": 1.602, "aot": 1.35}, "over": "the in-process work time over native's (clang -O3 -w -funsigned-char), geometric mean over fib, binary_trees, nbody and spectral_norm (bench/timed.lua, median of 5 runs, interp 3); the test suite is not in this search's ratio", "commit": "08f8d6f", "date": "2026-11-18", "box": "PC", "command": "heavy --exclusive --label TIMING-add38-b2 --max 8G -- /root/notes/parallel/add38/cap2.sh (ab2.sh b2 5, the interpreter 3 samples)", "quiet": true}}
+    "results": {"speed": {"x_native": {"interp": 159.665, "jit": 1.625, "exe": 1.596, "aot": 1.358}, "over": "the in-process work time over native's (clang -O3 -w -funsigned-char), geometric mean over fib, binary_trees, nbody and spectral_norm (bench/timed.lua, median of 7 runs on the JIT, 5 on exe and AOT, 3 on interp); the test suite is not in this search's ratio", "commit": "1d01f13", "date": "2026-11-21", "box": "PC", "command": "heavy --exclusive --label TIMING-add38-b4 --max 8G -- /root/notes/parallel/add38/cap4.sh (ab2.sh b4 7 on the JIT, ab2.sh b4 5 on interp (3 samples), exe and AOT)", "quiet": true}}
 }
