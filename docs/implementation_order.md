@@ -4298,6 +4298,18 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   control breaks the hide set and `##`. Take = K1 (no logic difference on real projects) and K2 (every failure
   of the preprocessor test sets classed, fixes <= 400 lines) and K3-K5 met or cheaper than ours (PP.5 record
   <= 150 lines; file provider, dialect macros, error return and column <= 300 lines; JIT within 5x of native).
+  **Probe done 2026-11-23** (report for the owner and Boris, Russian: `/root/notes/research/chibicc_pp/report.md`;
+  the decision is theirs). Answer: take it with a rework X. 2289 units (c-testsuite, PureDOOM, Lua, the port's
+  6 projects, gcc-torture, sqlite 3.46, mcpp, tcc tests/pp, gcc.dg/cpp, the standard's 6.10.3.5 examples):
+  chibicc equals clang on 1876, clang != gcc on 34; the rest classed by cause: 84 units over 17 C11 bugs
+  (~240 lines with the missing diagnostics), 63 extensions, 21 implementation-defined, 16 dropped `#pragma`.
+  Eight point fixes (~43 lines, each measured alone) leave real code with `#pragma` and `__has_extension` only
+  (1910 equal to clang). Translated (JIT) == native dump on 1009 of 1017 units (6 timestamps, 2 `#if` division
+  crashes in both). K1 met after point fixes, K2-K4 met, K5 half: JIT 2.61x of native -O2 (1.89M tok/s;
+  interp 116k, wasm 29.5k, clang in-process 4.1M), but tokens in arrays touches 63 of 86 functions. X = the
+  token representation for PP.7 (a rewrite of ~3/4 of the core) and an `#if` evaluator out of `parse.c`
+  (~150 lines). Predictions: P2, P7, P10 hit; P1, P3 (66% vs 70-85%), P5 range, P8 clang (2.2x, not 3-8x)
+  missed; P4, P6 better than predicted.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
