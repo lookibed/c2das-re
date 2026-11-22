@@ -4099,7 +4099,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   a variadic function (pr68390), a libc function's value (pr54937), `main` with other parameters
   (alias-4, behind P7.6); `vfprintf` and `perror` mappings (fprintf-chk-1, user-printf,
   vfprintf-chk-1, printf-2).
-  Done (branch `p7.5-declarator-groups`): a declarator group clang spells as written is read
+  Progress (PR #268): a declarator group clang spells as written is read
   inside out (`applied_declarator`) ahead of the paths that cut a trailing `[N]` by text: `int
   (*const)` and `int (*const)[3]` (a parenthesized pointer), a function returning a function
   pointer (c-testsuite 00124, whose spelling `int (*(int, int))(int, int)` failed closed) or a
