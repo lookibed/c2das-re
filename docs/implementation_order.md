@@ -4310,6 +4310,12 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   token representation for PP.7 (a rewrite of ~3/4 of the core) and an `#if` evaluator out of `parse.c`
   (~150 lines). Predictions: P2, P7, P10 hit; P1, P3 (66% vs 70-85%), P5 range, P8 clang (2.2x, not 3-8x)
   missed; P4, P6 better than predicted.
+- **P10.2 chibicc's lexer: cheap fixes measured, and the probe's blind spots** (the owner's task of
+  2026-11-23; no preprocessor of ours, no PP.7). A count-only mode (no printing) is the new base; native,
+  exe, JIT (one unit), interp, wasm and clang `-Eonly` on PureDOOM and sqlite3.c, medians with spread; three
+  lexer fixes, each its own commit with numbers before and after; the profile after them and an upper bound
+  for PP.7; memory, `#if` under `intmax_t` on real code, hide-set tests. Predictions written before the
+  fixes are timed: `/root/notes/predictions/2026-11-23-chibicc-lexer.md`, sha256 `cd0a781b2a4deecd27797a815eb456728930a54edec66cd7222eb68686724f5f`.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
