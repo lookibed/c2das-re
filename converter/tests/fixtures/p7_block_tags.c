@@ -1,8 +1,9 @@
 /* P7.5 fixture: a struct or union tag defined again in a block, hiding the outer definition
    (c-testsuite 00044, 00053). The inner record takes the first numbered tag the unit leaves
    free (`T1` is the program's own, so a hiding `T` is `T2`); an expression of the hidden type
-   inside the block (`outer.x`, a call returning it, a pointer to it) keeps the outer record, and
-   a file-scope record first reached inside the block names the file-scope tags. Converted
+   inside the block (`outer.x`, a call returning it, a pointer to it, a macro's argument) keeps
+   the outer record, a tag a `for` declaration defines ends with the statement, and a file-scope
+   record first reached inside the block names the file-scope tags. Converted
    output must match the native build of this file. */
 #include <stdio.h>
 
@@ -29,6 +30,9 @@ struct A {
 
 struct U;
 
+/* a macro's argument of the hidden type keeps its record */
+#define X_OF(s) ((s).x)
+
 static struct T make(int x) {
     struct T t;
     t.x = x;
@@ -38,6 +42,11 @@ static struct T make(int x) {
 
 /* no declaration before `main` names `struct U`: its first use is inside the block */
 static int via_u(void *p);
+
+/* a function's name is no free tag: the second `struct S` is `S2` */
+static int S1(void) {
+    return 1;
+}
 
 static int siblings_one(void) {
     struct S {
@@ -51,7 +60,7 @@ static int siblings_two(void) {
         double d;
         int b;
     } s = {0.5, 4};
-    return s.b + (int)(s.d * 2);
+    return s.b + (int)(s.d * 2) + S1();
 }
 
 int main(void) {
@@ -78,7 +87,8 @@ int main(void) {
         struct B {
             char only;
         } b = {'q'};
-        struct U *nothing = 0;
+        /* an expression is the first to reach `struct U` */
+        int no_u = (struct U *)0 == 0;
         typedef struct T node_t;
         node_t *head = &list[0];
         list[0].w = 2.5;
@@ -88,9 +98,11 @@ int main(void) {
         /* the hidden record through a variable, a pointer, a call and a member */
         total += outer.x + op->x + (int)(head->next->w * 2);
         outer = make(5);
-        total += outer.x;
+        total += outer.x + X_OF(outer) + X_OF(*op);
+        /* a compound literal of the hiding type */
+        total += (int)((struct T){3.5, 0}).w;
         total += (int)sizeof(struct T) + (int)sizeof(outer) + (int)w.wide + b.only;
-        total += a.b.lo + (int)sizeof(a.b) + (int)list[1].w + (nothing == 0);
+        total += a.b.lo + (int)sizeof(a.b) + (int)list[1].w + no_u;
         printf("inner %d %d %d\n", (int)sizeof(inner), (int)sizeof(union V), (int)sizeof(struct B));
         {
             struct T1 {
@@ -99,6 +111,9 @@ int main(void) {
             total += d.deep + (int)sizeof(struct T1);
         }
     }
+    /* a tag a `for` declaration defines ends with the statement */
+    for (struct T { char c; } a = {1}; a.c; a.c = 0)
+        total += a.c + (int)sizeof(struct T);
     total += one.tag + (int)sizeof(struct T) + (int)sizeof(union V) + v.i;
     printf("%d %d %d\n", total, siblings_one(), siblings_two());
     return via_u(0);

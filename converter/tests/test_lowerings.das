@@ -1059,15 +1059,22 @@ def p7_block_tag_fixtures(t : T?) {
         has_text(t, text, "[c_union]\nstruct V1 \{\n    wide : int64\n")
         // `struct B` nests in `struct A` but is file scope, so a block's `struct B` hides it
         has_text(t, text, "struct B1 \{\n    only : uint8\n\}\n")
-        // two functions' `struct S`, neither hiding the other
-        has_text(t, text, "var s : S1 = S1(d = 0.5lf, b = 4)")
+        // two functions' `struct S`, neither hiding the other; the function `S1` takes that name
+        has_text(t, text, "var s : S2 = S2(d = 0.5lf, b = 4)")
         has_text(t, text, "var inner : T2 = T2(w = 1.5lf, next = null)")
         has_text(t, text, "var head : T2? = addr(list[0])")
         has_text(t, text, "total += outer.x + op.x + int(head.next.w * 2.0lf)")
+        has_text(t, text, "total += outer.x + X_OF(outer) + op.x")
+        // a `for`'s tag is `T3` inside the statement; after it `struct T` is the file scope's again
+        has_text(t, text, "        var a1 : T3 = T3(c = 1u8)\n")
+        has_text(t, text, "total += int(a1.c) + typeinfo sizeof(type<T3>)")
+        has_text(t, text, "total += int(one.tag) + typeinfo sizeof(type<T>) + typeinfo sizeof(type<V>) + v.i")
         has_text(t, text, "total += typeinfo sizeof(type<T2>) + typeinfo sizeof(type<T>) + int(w.wide) + int(b.only)")
         // `struct U`, first reached inside the block, names the file-scope `struct T`
         has_text(t, text, "struct U \{\n    t : T?\n")
         rejects(t, "tag_outside_blocks", "static int f(void) \{ struct S \{ int a; \} s = \{1\}; return s.a; \}\nstatic int g(void) \{ struct S \{ int b; \} s = \{2\}; return s.b; \}\nstruct S *h(void) \{ return 0; \}\nint main(void) \{ return f() + g() - 3 + (h() != 0); \}\n", "`struct S` names no definition in scope here, while blocks define it more than once")
+        rejects(t, "tag_block_forward", "struct T \{ int x; \};\nint main(void) \{\n    struct T o = \{1\};\n    \{\n        struct T;\n        struct T *q = 0;\n        return o.x - 1 + (q != 0);\n    \}\n\}\n", "`struct T` declared in a block hides its definition elsewhere in this file with a new incomplete type")
+        rejects(t, "tag_parameter_list", "struct T \{ int x; \};\nstatic int f(struct T \{ int y; \} *p) \{ return p ? p->y : 0; \}\nint main(void) \{ struct T o = \{0\}; return o.x + f(0); \}\n", "`struct T` defined in a parameter list, while the file defines it elsewhere too")
         rejects(t, "tag_two_in_one", "int main(void) \{\n    struct T \{ int x; \} s1 = \{1\};\n    \{\n        struct T \{ int y; \} s2 = \{2\};\n        return (s2.y, &s1)->x - 1;\n    \}\n\}\n", "`struct T` names two of its definitions in one expression")
     }
 }
