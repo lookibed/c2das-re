@@ -4147,7 +4147,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `struct T;` (a new incomplete type) where the file defines the tag, a first `struct T *p` in a
   block or a tag defined in a parameter list where the file defines the tag more than once, and an
   enum tag defined again.
-  Progress (PR #NNN): a record passes through `...` as the trailing tuple's copy, which
+  Progress (PR #273): a record passes through `...` as the trailing tuple's copy, which
   `to_cvalist` lists by address and size (`CVal`'s arm `r : CVaRecord`, `docs/probe-findings.md`
   F116), and `va_arg(v, T)` of a record is `*reinterpret<T?>(va_r(v, typeinfo sizeof(type<T>)))`,
   another size panicking; `ExprWithCleanups` and `MaterializeTemporaryExpr` (clang 22's wrappers
