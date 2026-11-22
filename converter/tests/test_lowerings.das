@@ -3841,3 +3841,21 @@ def p7_flat_case_fixtures(t : T?) {
         }
     }
 }
+
+// a shape chibicc's sources brought (P10.0)
+[test]
+def test_p10_empty_file_scope_literal(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_p10_literal", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure(dir_error)
+        return
+    }
+    t |> run("a file-scope compound literal with an empty list zeroes its record members") @(t : T?) {
+        converts(t, "p10_empty_literal", "typedef struct \{ int cap; int used; \} Map;\nstruct Scope \{ struct Scope *next; Map vars; Map tags; \};\nstatic struct Scope *scope = &(struct Scope)\{\};\nint main(void) \{ return scope->vars.cap + scope->tags.used; \}\n")
+        var out : string
+        let rc = run_tier(converted_path("p10_empty_literal"), "interp", work_root, out, CONVERTED_MODULES)
+        t |> equal(rc, 0, out)
+    }
+    rmdir_rec(work_root)
+}

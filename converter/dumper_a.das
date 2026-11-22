@@ -2048,7 +2048,9 @@ def private dump_init_list(var d : Dumper; js : JsonValue?; t : int; at : CirLoc
     x.init_items |> reserve(count)
     for (idx in range(first, count)) {
         let kid = (entries as _array)[idx]
-        continue if (node_kind(kid) == "ImplicitValueInitExpr")
+        // a file-scope compound literal wraps each left-out slot in a `ConstantExpr`
+        let wrapped = node_kind(kid) == "ConstantExpr" && child_count(kid) == 1 && node_kind((kid?["inner"] as _array)[0]) == "ImplicitValueInitExpr"
+        continue if (node_kind(kid) == "ImplicitValueInitExpr" || wrapped)
         var v = dump_expr(d, kid)
         if (v == null) {
             delete_expr(x)

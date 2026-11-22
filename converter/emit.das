@@ -584,6 +584,8 @@ def reserved_das_names : array<string> {
     names |> push_from([for (name in keys(ALLOCA_NAMES)); name])
     names |> push_from([for (call in values(C_RUNTIME_CALLS)); call.das_name; where find(call.das_name, "::") < 0])
     names |> push_from(EMITTED_NAMES, C_RUNTIME_EXPORTS)
+    // das's builtin `count(start = 0, step = 1)` makes a call `count()` of a program's own ambiguous
+    names |> push("count")
     let crt = get_module("crt")
     module_for_each_function(crt) $(info) {
         names |> push(clone_string(info.name))
