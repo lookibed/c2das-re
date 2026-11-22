@@ -123,7 +123,7 @@ which a later definition in the unit completes as any tentative one does. A para
 named like one of its function's block-scope `extern`s or prototypes, wherever in the function
 their block lies, takes a free name (`<name>1` and up, past what a hoisted static avoids), since
 the reference spells the global's name and das would bind it to the local. Tentative definitions of one object merge into the
-declaration carrying the initializer.
+declaration carrying the initializer. Tags a block defines again: `ARCHITECTURE_DUMPER_TAGS.md`.
 
 Declarations: `FunctionDecl` with `ParmVarDecl` and a `CompoundStmt` body, `VarDecl`.
 Statements: compound, `DeclStmt` (one `decl` per variable), expression statements,

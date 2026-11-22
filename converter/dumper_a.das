@@ -30,9 +30,12 @@ struct ClangField {
 }
 
 // one record definition of the translation unit with clang's size, alignment and fields,
-// keyed by its canonical spelling (`struct X`, `struct (unnamed at f:l:c)`) and its location
+// keyed by its canonical spelling (`struct X`, `struct (unnamed at f:l:c)`) and its location;
+// a tag defined again keeps the dump's spelling in `c_spelling` and takes a numbered one
 struct ClangRecord {
     spelling : string
+    c_spelling : string
+    block_scope : bool
     is_union : bool
     size : int64
     align : int64
@@ -114,6 +117,20 @@ struct Dumper {
     fn_extern_names : table<string>
     records : array<ClangRecord>
     record_by_spelling : table<string; int>
+    // the tags defined more than once (`struct T` at file scope and again in a block), the
+    // file-scope definition of each, and the block scopes the walk is in, innermost last, each
+    // binding such a tag to the record a block defines (`scoped_record`)
+    shared_tags : table<string>
+    file_record_by_tag : table<string; int>
+    tag_scopes : array<table<string; int>>
+    // the scopes below this index are set aside while a file-scope record's fields are read
+    tag_floor : int
+    // after a tag's second definition, the record each expression's type names by that tag, by
+    // the key of the expression's first token (libclang's answer: `s1.x` in a block that hides
+    // `s1`'s tag is the outer record's), -1 where two expressions there disagree; and the key of
+    // the expression whose type is being read
+    expr_records : table<string; table<string; int>>
+    expr_key : string
     record_by_loc : table<string; int>
     record_hash : table<string; uint>
     typedef_spellings : table<string; string>
@@ -287,12 +304,18 @@ def private register_record(var d : Dumper; var c : CXCursor) {
     // JSON dump keeps the tag (`struct thinker_t`); the dump's spelling is the key
     let raw = unscoped_spelling(string(clang_getTypeSpelling(ct)))
     let tagged = raw |> starts_with("struct ") || raw |> starts_with("union ")
-    var rec = ClangRecord(spelling = tagged ? raw : (is_union ? "union " : "struct ") + raw, is_union = is_union, size = clang_Type_getSizeOf(ct), align = clang_Type_getAlignOf(ct))
+    var rec = ClangRecord(spelling = tagged ? raw : (is_union ? "union " : "struct ") + raw, is_union = is_union, size = clang_Type_getSizeOf(ct), align = clang_Type_getAlignOf(ct), block_scope = in_block_scope(c))
+    rec.c_spelling = rec.spelling
+    // an unnamed record is spelled by its expansion location, which a macro shares
+    let unnamed = find(rec.spelling, "(anonymous ") >= 0 || find(rec.spelling, "(unnamed ") >= 0
     if (key_exists(d.record_by_spelling, rec.spelling)) {
-        // an unnamed record is spelled by its expansion location, which a macro shares
-        let unnamed = find(rec.spelling, "(anonymous ") >= 0 || find(rec.spelling, "(unnamed ") >= 0
-        fail(d, unnamed ? "anonymous records from one macro expansion are not dumped yet" : "`{rec.spelling}` is defined more than once in this file; same-tag block-scoped records are not dumped yet", cursor_loc(c))
-        return
+        if (unnamed) {
+            fail(d, "anonymous records from one macro expansion are not dumped yet", cursor_loc(c))
+            return
+        }
+        // a tag defined again in another scope: keyed apart until `name_shared_tags` names it
+        d.shared_tags |> insert(rec.spelling)
+        rec.spelling = "{rec.spelling}#{length(d.records)}"
     }
     if (!tagged) {
         d.anon_spellings[raw] = rec.spelling
@@ -332,10 +355,54 @@ def private register_record(var d : Dumper; var c : CXCursor) {
         return CXChildVisitResult.Continue
     }
     let idx = length(d.records)
+    if (!rec.block_scope && !unnamed) {
+        d.file_record_by_tag[rec.c_spelling] = idx
+    }
     d.record_by_spelling[rec.spelling] = idx
     d.record_by_loc[key] = idx
     d.record_hash[key] = clang_hashCursor(c)
     d.records |> emplace(rec)
+}
+
+// whether a record definition lies in a block: C scopes a record nested in another with the
+// outer one, and libclang's semantic parent of either is then the unit
+def private in_block_scope(var c : CXCursor) : bool => clang_getCursorKind(clang_getCursorSemanticParent(c)) != CXCursorKind.TranslationUnit
+
+// each record whose tag another definition took first gets the first numbered tag no record,
+// enum or typedef of the unit spells (`struct T` again in a block is `struct T1`)
+[arch(at="ARCHITECTURE_DUMPER_TAGS.md#shared-tags")]
+def private name_shared_tags(var d : Dumper) {
+    var taken : table<string>
+    for (rec in d.records) {
+        taken |> insert(tag_of(rec.c_spelling))
+    }
+    for (en in d.enums) {
+        taken |> insert(tag_of(en.spelling))
+    }
+    for (name in keys(d.typedef_spellings)) {
+        taken |> insert(name)
+    }
+    for (ridx in range(length(d.records))) {
+        let temp = d.records[ridx].spelling
+        if (find(temp, "#") < 0) {
+            continue
+        }
+        let tag = tag_of(d.records[ridx].c_spelling)
+        var n = 1
+        while (key_exists(taken, "{tag}{n}")) {
+            n++
+        }
+        taken |> insert("{tag}{n}")
+        d.records[ridx].spelling = "{d.records[ridx].is_union ? "union" : "struct"} {tag}{n}"
+        d.record_by_spelling |> erase(temp)
+        d.record_by_spelling[d.records[ridx].spelling] = ridx
+    }
+}
+
+// the tag of a `struct`, `union` or `enum` spelling
+def private tag_of(spelling : string) : string {
+    let space = find(spelling, " ")
+    return space < 0 ? spelling : slice(spelling, space + 1)
 }
 
 // the bit offset of anonymous member record `inner` inside the record of type `ct`: clang
@@ -442,6 +509,49 @@ def private node_key(var d : Dumper; js : JsonValue?) : string {
     let at = is_present(given?["expansionLoc"]) ? given?["expansionLoc"] : given
     let spelled = is_present(given?["spellingLoc"]) ? given?["spellingLoc"] : given
     return "{canonical_file(d, at?["file"] ?? "")}:{int(at?["offset"] ?? -1l)}:{canonical_file(d, spelled?["file"] ?? "")}:{int(spelled?["offset"] ?? -1l)}"
+}
+
+// the key of a node's first token, as `extent_key` gives a cursor's
+def private begin_key(var d : Dumper; js : JsonValue?) : string {
+    let given = js?["range"]?["begin"]
+    let at = is_present(given?["expansionLoc"]) ? given?["expansionLoc"] : given
+    let spelled = is_present(given?["spellingLoc"]) ? given?["spellingLoc"] : given
+    return "{canonical_file(d, at?["file"] ?? "")}:{int(at?["offset"] ?? -1l)}:{canonical_file(d, spelled?["file"] ?? "")}:{int(spelled?["offset"] ?? -1l)}"
+}
+
+// the key of a cursor's first token, in `cursor_key`'s form
+def private extent_key(var d : Dumper; var c : CXCursor) : string {
+    var file, spelled_file : CXFile
+    var line, column, offset, spelled : uint
+    var loc = clang_getRangeStart(clang_getCursorExtent(c))
+    clang_getExpansionLocation(loc, safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
+    clang_getSpellingLocation(loc, safe_addr(spelled_file), safe_addr(line), safe_addr(column), safe_addr(spelled))
+    return "{canonical_file(d, file_name(file))}:{int(offset)}:{canonical_file(d, file_name(spelled_file))}:{int(spelled)}"
+}
+
+// the record of a tag defined more than once that expression `c`'s type names, through pointers
+// and arrays, noted at the expression's first token for `scoped_record`
+[arch(at="ARCHITECTURE_DUMPER_TAGS.md#shared-tags")]
+def private note_expr_record(var d : Dumper; var c : CXCursor) {
+    var t = clang_getCanonicalType(clang_getCursorType(c))
+    while (t.kind == CXTypeKind.Pointer || t.kind == CXTypeKind.ConstantArray || t.kind == CXTypeKind.IncompleteArray) {
+        t = clang_getCanonicalType(t.kind == CXTypeKind.Pointer ? clang_getPointeeType(t) : clang_getArrayElementType(t))
+    }
+    if (t.kind != CXTypeKind.Record) {
+        return
+    }
+    var definition = clang_getCursorDefinition(clang_getTypeDeclaration(t))
+    if (clang_Cursor_isNull(definition) != 0) {
+        return
+    }
+    let ridx = d.record_by_loc?[cursor_key(d, definition)] ?? -1
+    if (ridx < 0 || !key_exists(d.shared_tags, d.records[ridx].c_spelling)) {
+        return
+    }
+    let key = extent_key(d, c)
+    let tag = d.records[ridx].c_spelling
+    let known = d.expr_records?[key]?[tag] ?? ridx
+    d.expr_records[key][tag] = known == ridx ? ridx : -1
 }
 
 // an enum definition with clang's evaluated values; a typedef-named anonymous enum takes its
@@ -697,6 +807,9 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
         if (kind != CXCursorKind.TypedefDecl && kind != CXCursorKind.MacroDefinition && !in_program(d, cursor_loc(kid).file)) {
             return CXChildVisitResult.Continue
         }
+        if (!empty(d.shared_tags) && clang_isExpression(kind) != 0u) {
+            note_expr_record(d, kid)
+        }
         if ((kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl) && clang_isCursorDefinition(kid) != 0u) {
             register_record(d, kid)
         } elif (kind == CXCursorKind.EnumDecl && clang_isCursorDefinition(kid) != 0u) {
@@ -828,6 +941,7 @@ def private collect_records(var d : Dumper; triple : string; resource_dir : stri
         clang_disposeTranslationUnit(unit)
     }
     clang_disposeIndex(idx)
+    name_shared_tags(d)
     for (ridx in range(length(d.records))) {
         for (fidx in range(length(d.records[ridx].fields))) {
             d.records[ridx].fields[fidx].spelling = tagged_spelling(d, d.records[ridx].fields[fidx].spelling)
@@ -1588,12 +1702,43 @@ def private tagged_type(var d : Dumper; qt : string; at : CirLoc) : int {
     if (qt |> starts_with("struct ") || qt |> starts_with("union ")) {
         // the dump scopes an anonymous member's record by its owner too (`union S::(anonymous
         // at f:l:c)`), and libclang's records are keyed unscoped
-        return record_type(d, unscoped_spelling(qt), at)
+        let spelling = scoped_record(d, unscoped_spelling(qt), at)
+        return empty(spelling) ? -1 : record_type(d, spelling, at)
     }
     if (qt |> starts_with("enum ")) {
         return enum_type(d, qt, at)
     }
     return -2
+}
+
+// the record a dump spelling names where the walk stands: a tag defined more than once is the
+// innermost block's definition the walk has passed, else the file-scope one; "" with the error
+// set for a tag only blocks define, named outside them (C's new incomplete type)
+[arch(at="ARCHITECTURE_DUMPER_TAGS.md#shared-tags")]
+def private scoped_record(var d : Dumper; spelling : string; at : CirLoc) : string {
+    if (!key_exists(d.shared_tags, spelling)) {
+        return spelling
+    }
+    let named = d.expr_records?[d.expr_key]?[spelling] ?? -2
+    if (named == -1) {
+        fail(d, "`{spelling}` names two of its definitions in one expression; not lowered yet", at)
+        return ""
+    }
+    if (named >= 0) {
+        return d.records[named].spelling
+    }
+    for (depth in range(length(d.tag_scopes) - d.tag_floor)) {
+        let ridx = d.tag_scopes[length(d.tag_scopes) - 1 - depth]?[spelling] ?? -1
+        if (ridx >= 0) {
+            return d.records[ridx].spelling
+        }
+    }
+    let ridx = d.file_record_by_tag?[spelling] ?? -1
+    if (ridx < 0) {
+        fail(d, "`{spelling}` names no definition in scope here, while blocks define it more than once; not lowered yet", at)
+        return ""
+    }
+    return d.records[ridx].spelling
 }
 
 // clang spells an unnamed tag by its location, `(unnamed at f:l:c)`
@@ -1621,16 +1766,24 @@ def private record_type(var d : Dumper; qt : string; at : CirLoc) : int {
     }
     var fields : array<CirField>
     fields |> reserve(length(d.records[ridx].fields))
+    // a file-scope record's fields name file-scope tags, whichever block first reaches it
+    let floor = d.tag_floor
+    if (!d.records[ridx].block_scope) {
+        d.tag_floor = length(d.tag_scopes)
+    }
+    var ok = true
     for (f in d.records[ridx].fields) {
         let ft = type_from_qual(d, f.spelling, at)
-        if (ft < 0) {
-            return -1
-        }
         var fld = CirField(name = f.name, t = ft, off = int(f.bit_off / 8l), bit_off = int(f.bit_off), bit_w = f.bit_w, is_bitfield = f.is_bitfield)
-        if (!enum_dims(d, f.loc_key, ft, at, fld.dims)) {
-            return -1
+        if (ft < 0 || !enum_dims(d, f.loc_key, ft, at, fld.dims)) {
+            ok = false
+            break
         }
         fields |> emplace(fld)
+    }
+    d.tag_floor = floor
+    if (!ok) {
+        return -1
     }
     d.tu.types[idx].fields <- fields
     d.tu.types[idx].packed = !natural_layout(d.tu, d.layout, idx)
@@ -2712,7 +2865,9 @@ def private dump_expr_node(var d : Dumper; js : JsonValue?) : CirExpr? {
         }
         return inner
     }
+    d.expr_key = empty(d.shared_tags) ? "" : begin_key(d, js)
     let t = node_type(d, js, at)
+    d.expr_key = ""
     if (t < 0) {
         return null
     }
@@ -3071,7 +3226,15 @@ def private dump_decl_stmt(var d : Dumper; js : JsonValue?; var into : array<Cir
     return true
 }
 
+// a block: its tag scope open while its statements are dumped
 def private dump_compound(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
+    d.tag_scopes |> emplace(table<string; int>())
+    var st = dump_block(d, js, at)
+    d.tag_scopes |> pop()
+    return st
+}
+
+def private dump_block(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
     let kids = js?["inner"]
     let nkids = child_count(js)
     var st = new CirStmt(s = "compound", loc = at)
@@ -3636,6 +3799,10 @@ def private anchor_type(var d : Dumper; js : JsonValue?; at : CirLoc; is_enum : 
     if (idx < 0) {
         fail(d, "libclang reports no {is_enum ? "enum" : "record"} definition at this location", at)
         return false
+    }
+    if (!is_enum && !empty(d.tag_scopes) && key_exists(d.shared_tags, d.records[idx].c_spelling)) {
+        // the block's definition hides an outer one of its tag from here to the block's end
+        d.tag_scopes[length(d.tag_scopes) - 1][d.records[idx].c_spelling] = idx
     }
     let t = is_enum ? enum_type(d, d.enums[idx].spelling, at) : record_type(d, d.records[idx].spelling, at)
     if (t < 0) {
