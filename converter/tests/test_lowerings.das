@@ -2831,25 +2831,41 @@ def p8_refusal_fixtures(t : T?) {
         has_text(t, text, "crt::strcpy(")
         has_text(t, text, "crt::memcpy(")
     }
-    t |> run("the value of a libc function (P7.5): a private wrapper per function the module takes, a variadic one's the list-taking adapter calling its `v` twin") @(t : T?) {
+    t |> run("the value of a libc function (P7.5): a private wrapper per function the module takes, passing and returning as a direct call does; a variadic one's the list-taking adapter calling its `v` twin") @(t : T?) {
         var text : string
         check_fixture(t, "p7_libc_values", text)
         has_text(t, text, "var private p7_libc_values__measure : function<(var a0 : uint8?) : uint64> = @@strlen__fn\n")
         has_text(t, text, "= @@fprintf__va_list\n")
         has_text(t, text, "p7_libc_values__apply(@@toupper__fn, 'q')")
-        has_text(t, text, "def private fprintf__va_list(var a0 : _IO_FILE?; var a1 : uint8?; a2 : CVaList) : int \{\n    return c_vfprintf(a0, a1, a2)\n\}\n")
+        has_text(t, text, "[c_function]\ndef private fprintf__va_list(var a0 : _IO_FILE?; var a1 : uint8?; a2 : CVaList) : int \{\n    return c_vfprintf(reinterpret<void?>(a0), a1, a2)\n\}\n")
+        has_text(t, text, "[c_function]\ndef private fscanf__va_list(var a0 : _IO_FILE?; var a1 : uint8?; a2 : CVaList) : int \{\n    return c_vfscanf(reinterpret<void?>(a0), a1, a2)\n\}\n")
         has_text(t, text, "def private snprintf__va_list(var a0 : uint8?; a1 : uint64; var a2 : uint8?; a3 : CVaList) : int \{\n    return c_vsnprintf(a0, a1, a2, a3)\n\}\n")
+        has_text(t, text, "def private sscanf__va_list(var a0 : uint8?; var a1 : uint8?; a2 : CVaList) : int \{\n    return c_vsscanf(a0, a1, a2)\n\}\n")
         has_text(t, text, "[c_function]\ndef private strlen__fn(var a0 : uint8?) : uint64 \{\n    return crt::strlen(a0)\n\}\n")
-        // a variadic libc function with no list-taking twin has no value
+        has_text(t, text, "def private tmpfile__fn() : _IO_FILE? \{\n    return reinterpret<_IO_FILE?>(crt::tmpfile())\n\}\n")
+        has_text(t, text, "def private fputs__fn(var a0 : uint8?; var a1 : _IO_FILE?) : int \{\n    return crt::fputs(a0, reinterpret<void?>(a1))\n\}\n")
+        // a variadic libc function with no list-taking twin, and an unmapped one, have no value
         rejects(t, "libc_value_unmapped", "#include <stdio.h>\nint main(void) \{ int (*f)(const char *, ...) = scanf; return f == 0; \}\n", "the value of external function `scanf`")
+        // a callback parameter (`qsort`'s comparator) and a c_runtime lowering of its own
+        rejects(t, "libc_value_callback", "#include <stdlib.h>\nint main(void) \{ void (*s)(void *, size_t, size_t, int (*)(const void *, const void *)) = qsort; return s == 0; \}\n", "the value of libc function `qsort` (a callback parameter")
     }
-    t |> run("a libc function declared with another result (P7.5, C99 6.2.7's undefined behaviour): the call keeps the library's result, converted to the declared type") @(t : T?) {
+    t |> run("a libc function declared with another result (P7.5, C99 6.2.7's undefined behaviour): a call and the function's value keep the library's result, converted to the declared type; any other difference fails closed") @(t : T?) {
         var text : string
         check_fixture(t, "p7_libc_redeclared", text)
-        has_text(t, text, "return int(crt::strlen(p)) - 5 + int(int16(crt::strspn(cstr(\"aab\"), cstr(\"a\")))) - 2\n")
-        // a declaration of the library's own type converts nothing
-        let same = converts(t, "libc_same_result", "unsigned long strlen(const char *);\nint main(void) \{ return (int)strlen(\"ab\") - 2; \}\n")
-        has_text(t, same, "return int(crt::strlen(cstr(\"ab\"))) - 2\n")
+        has_text(t, text, "int(crt::strlen(p)) - 5 + int(int16(crt::strspn(cstr(\"aab\"), cstr(\"a\")))) - 2")
+        has_text(t, text, "def private p7_libc_redeclared__strlen__fn(var a0 : uint8?) : int \{\n    return int(crt::strlen(a0))\n\}\n")
+        has_text(t, text, "var measure : function<(var a0 : uint8?) : int> = @@p7_libc_redeclared__strlen__fn\n")
+        // a declaration of the library's own type converts nothing, in a block too
+        let same = converts(t, "libc_same_result", "unsigned long strlen(const char *);\nint main(void) \{ unsigned long strspn(const char *, const char *); return (int)strlen(\"ab\") - 2 + (int)strspn(\"a\", \"a\") - 1; \}\n")
+        has_text(t, same, "return int(crt::strlen(cstr(\"ab\"))) - 2 + int(crt::strspn(cstr(\"a\"), cstr(\"a\"))) - 1\n")
+        // a K&R declaration differing in its result is called as the library's, its value refused
+        let kr = converts(t, "libc_kr_result", "int strlen();\nint main(void) \{ return strlen(\"ab\") - 2; \}\n")
+        has_text(t, kr, "return int(crt::strlen(cstr(\"ab\"))) - 2\n")
+        rejects(t, "libc_kr_value", "int strlen();\nint main(void) \{ int (*f)() = strlen; return f == 0; \}\n", "the value of `strlen`, declared without a prototype and with another result than the C library's, is not lowered")
+        rejects(t, "libc_pointer_result", "char *strlen(char *);\nint main(void) \{ return strlen(\"a\") == 0; \}\n", "`strlen` declared with another result than the C library's `__size_t (const char *)`, other than one integer for another, is not lowered")
+        rejects(t, "libc_bool_result", "_Bool strlen(char *);\nint main(void) \{ return !strlen(\"ab\"); \}\n", "`strlen` declared with another result than the C library's")
+        rejects(t, "libc_other_parameters", "int strlen(int);\nint main(void) \{ return strlen(1) != 1; \}\n", "`strlen` declared with other parameters than the C library's `__size_t (const char *)` is not lowered")
+        rejects(t, "libc_block_redeclared", "int main(void) \{ int strlen(char *); return strlen(\"ab\") - 2; \}\n", "`strlen` redeclared in a block with another type than the C library's is not lowered")
     }
     t |> run("a calling convention in a type (wasm3's `vectorcall` macro over `preserve_none`, the attribute itself) drops: the function type keeps its result and parameters") @(t : T?) {
         var text : string

@@ -1881,17 +1881,24 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         em.requires |> insert("c_runtime/variadic")
         return value(variadic_call(name, length(tu.types[ft].params), args), PREC_PRIMARY)
     }
-    if (crt && is_narrow_long(tu, x.t)) {
+    return library ? library_call(em, tu, name, libc_name(called_name(x)), x.t, args, loc) : value("{name}({join(args, LIST_SEPARATOR)})", PREC_PRIMARY)
+}
+
+// a call of libc function `libc`, mapped to `name`, whose result has C type `ret`, its arguments
+// spelled by `call_argument`: a `long` the crt binds at 64 bits narrowed to the dialect's, a record
+// pointer the library returns as `void?` reinterpreted to its type
+def private library_call(var em : Emitter; tu : CirTu; name, libc : string; ret : int; args : array<string>; loc : CirLoc) : Em {
+    if (name |> starts_with("crt::") && is_narrow_long(tu, ret)) {
         // a parse or a position C ranges at the dialect's 32 bits clamps or fails there, never wraps
-        let ranged = LONG32_CALLS?[libc_name(called_name(x))] ?? ""
+        let ranged = LONG32_CALLS?[libc] ?? ""
         if (!empty(ranged)) {
             return value("{ranged}({join(args, LIST_SEPARATOR)})", PREC_PRIMARY)
         }
-        return value("{is_unsigned(tu, x.t) ? "uint" : "int"}({name}({join(args, LIST_SEPARATOR)}))", PREC_PRIMARY)
+        return value("{is_unsigned(tu, ret) ? "uint" : "int"}({name}({join(args, LIST_SEPARATOR)}))", PREC_PRIMARY)
     }
-    if (library && is_record_pointer(tu, x.t)) {
+    if (is_record_pointer(tu, ret)) {
         // `localtime`'s `struct tm *` comes back as `void?`
-        return unsafe_value(em, "reinterpret<{das_type(em, tu, x.t, loc)}>({name}({join(args, LIST_SEPARATOR)}))", PREC_PRIMARY)
+        return unsafe_value(em, "reinterpret<{das_type(em, tu, ret, loc)}>({name}({join(args, LIST_SEPARATOR)}))", PREC_PRIMARY)
     }
     return value("{name}({join(args, LIST_SEPARATOR)})", PREC_PRIMARY)
 }
@@ -2722,7 +2729,7 @@ def private target_of(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : str
 // before its definition) is reinterpreted to the type at the site, as a `BitCast` is
 def private function_value(var em : Emitter; tu : CirTu; f : CirExpr; loc : CirLoc; site_cast : bool = true) : Em {
     if (!key_exists(em.prog.functions, f.name)) {
-        let wrapper = libc_value_name(em, tu, f)
+        let wrapper = libc_value_name(em, tu, f, loc)
         if (empty(wrapper)) {
             fail(em, "the value of external function `{f.name}` (a pointer to a function this file does not define) is not lowered yet", loc)
         }
@@ -2753,9 +2760,15 @@ def private libc_value_callee(tu : CirTu; libc : string; fn_t : int) : string =>
 // the wrapper standing for libc function `f`'s value, recorded for `emit_libc_values`: a variadic
 // one's is its list-taking adapter (`fprintf__va_list`, the shape of a program function's), any
 // other's `<name>__fn`; "" for a function c_runtime maps neither way
-def private libc_value_name(var em : Emitter; tu : CirTu; f : CirExpr) : string {
+def private libc_value_name(var em : Emitter; tu : CirTu; f : CirExpr; loc : CirLoc) : string {
     let libc = libc_name(f.name)
     if (kind_of(tu, f.t) != "func" || empty(libc_value_callee(tu, libc, f.t))) {
+        return ""
+    }
+    if (has_value([for (p in tu.types[f.t].params); is_function_pointer(tu, p)], true) || key_exists(C_RUNTIME_CALLS, libc) && !tu.types[f.t].variadic) {
+        // a callback (`qsort`'s comparator, `signal`'s handler) and a c_runtime function the
+        // call lowering spells its own way have no plain wrapper
+        fail(em, "the value of libc function `{f.name}` (a callback parameter or a c_runtime lowering of its own) is not lowered yet", loc)
         return ""
     }
     if (!key_exists(em.libc_values, libc)) {
@@ -2776,14 +2789,29 @@ def private emit_libc_values(var em : Emitter; tu : CirTu) {
         em.requires |> insert(libc_module(variadic ? LIBC_LIST_TWINS?[libc] ?? "" : libc))
         let ret = das_type(em, tu, tu.types[fn_t].ret, CirLoc())
         var inscope params <- late_params(em, tu, fn_t, CirLoc(), "a{length(tu.types[fn_t].params)} : CVaList")
-        let args = join([for (idx in range(length(params))); "a{idx}"], ", ")
-        if (libc_module(libc) == "crt") {
+        // each fixed argument as a direct call passes it (`call_argument`), the list as it is; a
+        // reinterpret there makes the wrapper `[c_function]`, as it would a converted function
+        let outer_unsafe = em.unsafe_used
+        em.unsafe_used = false
+        var inscope arg_texts : array<string>
+        arg_texts |> reserve(length(tu.types[fn_t].params) + 1)
+        for (idx, p in count(), tu.types[fn_t].params) {
+            let arg = CirExpr(e = "ref", t = p, name = "a{idx}")
+            arg_texts |> push(call_argument(em, tu, unsafe(addr(arg)), "a{idx}", true, true, callee |> starts_with("crt::")))
+        }
+        if (variadic) {
+            arg_texts |> push("a{length(tu.types[fn_t].params)}")
+        }
+        let call = library_call(em, tu, callee, libc, tu.types[fn_t].ret, arg_texts, CirLoc()).text
+        let unsafe_body = em.unsafe_used || libc_module(libc) == "crt"
+        em.unsafe_used = outer_unsafe
+        if (unsafe_body) {
             // every crt bind is an unsafe operation, as in `callee_name`
             em.requires |> insert("c_runtime/c_function")
             line(em, "[c_function]")
         }
         open_block(em, "def private {libc}{variadic ? "__va_list" : "__fn"}({join(params, "; ")})" + (ret == "void" ? "" : " : {ret}"))
-        line(em, ret == "void" ? "{callee}({args})" : "return {callee}({args})")
+        line(em, ret == "void" ? call : "return {call}")
         close_block(em)
         line(em, "")
     }
