@@ -894,6 +894,8 @@ def project_entry(p : Project; bin, work_dir : string; samples : int; stamps : S
         "cpu" => JV(stamps.cpu),
         "box" => JV(stamps.box),
         "samples" => JV(samples),
+        "spread_rule" => JV(spread_rule_of(samples)),
+        "pinned_core" => JV(pinned_core()),
         "lanes" => JV(DAS_LANES),
         "native" => verdict_json(native, back),
         "native_compiler" => JV(first_line(captured([default_clang(), "--version"]))),
@@ -948,6 +950,8 @@ def project_bench(p : Project; work_dir : string; samples : int; stamps : Stamps
     chdir(back)
     (entry.value as _object)["speed"] = speed
     (entry.value as _object)["samples"] = JV(samples)
+    (entry.value as _object)["spread_rule"] = JV(spread_rule_of(samples))
+    (entry.value as _object)["pinned_core"] = JV(pinned_core())
     (entry.value as _object)["date"] = JV(stamps.date)
     (entry.value as _object)["cpu"] = JV(stamps.cpu)
     (entry.value as _object)["box"] = JV(stamps.box)

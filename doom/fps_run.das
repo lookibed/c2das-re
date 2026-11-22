@@ -70,11 +70,11 @@ def commit_label(sha, status : string) : string => empty(strip(status)) ? sha : 
 
 //! A capture before its runs: the commit of `sha` and `status`, the command, the machine (the box
 //! of `cpu`), the tools' version lines and the runs a cell.
-def new_capture(sha, status, command, cpu, platform, clang, daslang : string; samples : int) : FpsCapture => FpsCapture(commit = commit_label(sha, status), command = command, cpu = cpu, box = box_of(cpu), platform = platform, clang = clang, daslang = daslang, samples = samples, spread_rule = TRIMMED_SPREAD, clock = FPS_CLOCK)
+def new_capture(sha, status, command, cpu, platform, clang, daslang : string; samples : int) : FpsCapture => FpsCapture(commit = commit_label(sha, status), command = command, cpu = cpu, box = box_of(cpu), platform = platform, clang = clang, daslang = daslang, samples = samples, spread_rule = spread_rule_of(samples), pinned_core = pinned_core(), clock = FPS_CLOCK)
 
 // the run of `demo` under `lane`: the native build under the lane `NATIVE_LANE` (`sync_native`
 // or `native`), else the converted entry (`sync_entry` or `entry`) under the tier `lane`, the speed
-// build, pinned (`timing_prefix`), when `speed`
+// build, pinned when asked (`timing_prefix`), when `speed`
 def private lane_spec(plan : FpsPlan; lane : string; demo : int; speed : bool) : DemoSpec {
     let native = lane == NATIVE_LANE
     let entry = speed ? (native ? plan.native : plan.entry) : (native ? plan.sync_native : plan.sync_entry)

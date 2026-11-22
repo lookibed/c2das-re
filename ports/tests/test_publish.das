@@ -517,7 +517,7 @@ def private capture_of(clone : string; var name : string&) : Capture {
     }
     var error : string
     let js = read_json(fread(path_join(clone, "lua/perf/{name}")), error)
-    var c : Capture
+    var c = Capture()
     if (js != null) {
         c <- from_JV(js, type<Capture>)
     }
@@ -629,6 +629,7 @@ def test_sample_order(t : T?) {
         let c <- capture_of(clone, name)
         t |> equal(c.samples, 0)
         t |> equal(c.spread_rule, TRIMMED_SPREAD)
+        t |> equal(c.pinned_core, -1)
         for (lane in ["native", "interp"]) {
             let fib <- cell_of(t, c, "fib", lane)
             t |> success(empty(fib.error) && length(fib.samples) == NOISY_SAMPLES && length(fib.work_samples) == NOISY_SAMPLES, "{lane}: {fib}")

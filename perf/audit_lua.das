@@ -139,7 +139,7 @@ def measure_kernel(name : string; samples : int) : JsonValue? {
     return JV(entry)
 }
 
-// `samples` wall-clock runs of `argv`, each its own process, after one unmeasured run that warms
+// `samples` wall-clock runs of `argv`, each its own `timed` process, after one unmeasured run that warms
 // the module cache; the median, or `error` when a run fails or prints other than `oracle` (unless
 // empty, then the first run's output becomes it)
 def private wall_cell(argv : array<string>; samples : int; var oracle : string&; var error : string&) : double {
@@ -147,7 +147,7 @@ def private wall_cell(argv : array<string>; samples : int; var oracle : string&;
     for (s in range(samples + 1)) {
         var out : string
         let started = ref_time_ticks()
-        let rc = run_and_capture(argv, out, BENCH_TIMEOUT)
+        let rc = run_and_capture(timed(argv, 0l), out, BENCH_TIMEOUT)
         let seconds = double(get_time_nsec(started)) / 1000000000.0lf
         let output = program_output(out)
         if (rc != 0) {
@@ -211,6 +211,8 @@ def private measure_all(args : Args) : JsonValue? {
         "platform" => JV("{get_platform_name()} {strip(captured(["uname", "-m"]))}"),
         "timestamp" => JV(strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))),
         "samples" => JV(args.samples),
+        "spread_rule" => JV(spread_rule_of(args.samples)),
+        "pinned_core" => JV(pinned_core()),
         "versions" => JV({"clang" => JV(clang_version), "daslang" => JV(daslang_version)}),
         "rust_commit" => JV(empty(rust_commit) ? reason : rust_commit),
         "kernels" => JV(kernels),

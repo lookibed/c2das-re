@@ -164,6 +164,11 @@ def test_run_method(t : T?) {
         t |> equal(run_and_capture(["bash", "scripts/run_perf.sh", "--method", "nope"], out, 60.0), 2, out)
         t |> success(out |> contains("--method is default or dasprofile, not `nope`"), out)
     }
+    t |> run("--samples below 0 is a usage error, never read as samples_for's count") @(t : T?) {
+        var out : string
+        t |> equal(run_and_capture(["bash", "scripts/run_perf.sh", "--samples", "-1"], out, 60.0), 2, out)
+        t |> success(out |> contains("--samples takes a count of 1 or more, or 0 for samples_for's, not -1"), out)
+    }
     t |> run("--box takes a box name: another one is a usage error") @(t : T?) {
         var out : string
         t |> equal(run_and_capture(["bash", "scripts/run_perf.sh", "--box", "laptop", "--table"], out, 60.0), 2, out)
