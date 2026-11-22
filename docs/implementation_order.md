@@ -342,7 +342,8 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   type's `var` positions are those of the value-taken functions of its signature (F34).
   Ledger (fail closed today): the value of a libc function c_runtime does not map (`strxfrm`), of
   a variadic one with no list-taking twin (`scanf`, `open`, `ioctl`), of one with a callback
-  parameter (`qsort`, `signal`) or a c_runtime lowering of its own (`vfprintf`, `exit`), and of a
+  parameter (`qsort`, `signal`) or a c_runtime lowering of its own (`vfprintf`, `exit`, and the
+  math functions `sqrt`, `floor`, `fabs` and the `__builtin_*` ones c_runtime lowers), and of a
   K&R redeclaration with another result than the library's; a call
   with arguments through an unprototyped function pointer `T (*)()`, which the C-IR spells as
   `T (*)(void)` until it marks it; a wide string literal (`L"ab"`; the torture filter skips its tests, 20010325-1 among
@@ -4106,13 +4107,33 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   pointer (c-testsuite 00124, whose spelling `int (*(int, int))(int, int)` failed closed) or a
   pointer to an array (`int (*(void))[3]`, which the first cut of this fix typed as a function
   returning `int *`), and pointers to and arrays of those; c-testsuite 00124 and 00162 pass.
-  Progress (PR #269): a libc function's value is a private wrapper the module emits once, its
+  Progress (PR #270, from #269): a libc function's value is a private wrapper the module emits once, its
   arguments and result passed as a direct call passes them, `fopen__fn` calling the crt bind and a
   variadic one's `fprintf__va_list` its list-taking twin (c-testsuite 00189; `sscanf` and `fscanf`
   through their twins too), and a libc function redeclared with another integer result (`int
   strlen(char *)`, C99 6.2.7's undefined behaviour) keeps the library's result on a call and in
   its value's wrapper, cast to the declared type (c-testsuite 00025); another redeclared
   difference fails closed.
+  Progress (c-testsuite, owner addendum 38 item 2; plan section 2's metric, c-testsuite >= 95% of the
+  applicable tests): of the 16 ids not passing on pin b7d8f6f52f, the declarator groups (`int
+  (*const)`, a function returning a function pointer: 00124, 00162) and the libc functions (a
+  libc function's value through a wrapper, `strlen__fn` and `fprintf__va_list`: 00189; a libc
+  function redeclared with another result, C99 6.2.7's undefined behaviour, the call keeping the
+  library's result cast to the declared type: 00025) pass; six are not C99 and carry skip lines
+  under P7.6 (00209, 00210, 00213, 00216, 00218, 00219); six C99 ids stay owed here as ordinary
+  failures: a tag defined again in a block scope (00044, 00053: the dump resolves a record type
+  by its spelling alone, so a block's `struct T` needs a key per declaration through the dumper's
+  type walk, about 300 lines), a record passed through `...` and `va_arg` of a record (00140,
+  00204: `CVaList` holds scalars and pointers, so a record needs a variant of its own in
+  c_runtime and the emitter, about 400 lines; 00204 also needs `ExprWithCleanups`), a
+  variable-length array (00207: section 1 of the plan writes the dialect "C99 minus VLAs", a
+  ruling's matter before code, the arena of `alloca` the likely lowering), and wide string
+  literals (00220, named above). Metric: 208 passing of 214 applicable (220 less the 6 P7.6
+  lines) = 97.2% (`c_testsuite: pass 208, convert 6, skip 6`); the six owed ids close the rest.
+  gcc-torture with both fixes: `gcc_torture: pass 1211, skip 321, convert 110, exit 14`, newly
+  passing 921019-1, 980605-1, pr15296, pr67037, pr68390, pure-1 (P9.36/P9.37's waiting ids) and
+  930526-1, whose `int *(p[25])` decays to clang's spelling `int *(*)`, a declarator group main
+  refused and PR #268 reads; pr54937 still fails.
 - **P7.6 GNU emulations owed by the skip audit** (P5.1c). Skip lines name it under these features:
   `packed or aligned layout` (33: `packed` and `aligned` beyond what the layout law places or a
   typedef carries - a packed record outside the sidecar's `marshal`, an alignment on a variable, a
@@ -4122,7 +4143,12 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   values through the switch re-dispatch), `__int128` (13, through c_runtime), `GNU keywords` (10:
   `typeof`, `__extension__`, `__alignof`), `GCC overflow builtins` (11), `__builtin_setjmp` (4,
   through the setjmp lowering), `__builtin_* calls` (2: `classify_type`, `choose_expr`/
-  `types_compatible_p`), `GNU case range` (1). Ordinary failures: `__extension__` from a macro
+  `types_compatible_p`), `GNU case range` (1); c-testsuite's skip lines (P7.5's classification):
+  `incomplete enum type` (00209, `enum E *` with no definition, which C99 6.7.2.3 forbids),
+  `packed or aligned layout` (00210), `statement expression` (00213, GNU `({ ... })`), and three
+  constructs outside the C99 dialect that clang takes: `anonymous member initializer` (00216, C11),
+  `_Generic` (00219, C11) and `bitfield of enum type` (00218, implementation-defined by C99
+  6.7.2.1p4). Ordinary failures: `__extension__` from a macro
   (pr58831), an alignment on a variable (pr68532), a record the law cannot place (pr41463).
 - **P7.7 goto into a nested body** (P5.1c; P3.3's state-machine lowering, still owed, is owned
   here): the 31 csmith seeds `suites/csmith/skip.txt` lists, and gcc-torture pr38051 and pr43269
