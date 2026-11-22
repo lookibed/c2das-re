@@ -4298,6 +4298,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   lexer fixes, each its own commit with numbers before and after; the profile after them and an upper bound
   for PP.7; memory, `#if` under `intmax_t` on real code, hide-set tests. Predictions written before the
   fixes are timed: `/root/notes/predictions/2026-11-23-chibicc-lexer.md`, sha256 `cd0a781b2a4deecd27797a815eb456728930a54edec66cd7222eb68686724f5f`.
+  A fourth fix the profile after the three named (L4: tokenize's prefix checks behind the first character),
+  predicted before it is timed: `/root/notes/predictions/2026-11-23-chibicc-lexer-L4.md`, sha256
+  `d268cece5620c4ab8f5a5b7cf872bc1c9e507d9daa984500ddc5476944e9a0cd`.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
