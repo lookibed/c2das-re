@@ -164,6 +164,7 @@ def test_lowerings(t : T?) {
     p5_lua_fixtures(t)
     p5_lua_library_fixtures(t)
     p7_fixtures(t)
+    p7_block_tag_fixtures(t)
     p7_volatile_fixtures(t)
     p7_expect_fixtures(t)
     p7_wrap_fixtures(t)
@@ -1044,6 +1045,30 @@ def p9_function_pointer_fixtures(t : T?) {
         has_text(t, text, "var last : int[3]? = addr(p7_declarator_groups__rows[1])")
         // a variable-length dimension inside a group (`int (*(*[n])(int))(int)`) fails closed
         rejects(t, "group_vla", "int f(int n) \{ int (*(*g[n])(int))(int); g[0] = 0; return g[0] == 0; \}\nint main(void) \{ return f(2); \}\n", "`*[n]`: a variable-length array is not lowered")
+    }
+}
+
+// P7.5: a tag defined again in a block hides the outer definition (c-testsuite 00044, 00053)
+def p7_block_tag_fixtures(t : T?) {
+    t |> run("a struct or union tag defined again in a block is its own record, named by the first free numbered tag; an expression of the hidden type keeps the outer record") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_block_tags", text)
+        // the program's own `T1` is taken: the hiding `T` is `T2`, the hiding `T1` is `T11`
+        has_text(t, text, "struct T2 \{\n    w : double\n    next : T2?\n\}\n")
+        has_text(t, text, "struct T11 \{\n    deep : int\n\}\n")
+        has_text(t, text, "[c_union]\nstruct V1 \{\n    wide : int64\n")
+        // `struct B` nests in `struct A` but is file scope, so a block's `struct B` hides it
+        has_text(t, text, "struct B1 \{\n    only : uint8\n\}\n")
+        // two functions' `struct S`, neither hiding the other
+        has_text(t, text, "var s : S1 = S1(d = 0.5lf, b = 4)")
+        has_text(t, text, "var inner : T2 = T2(w = 1.5lf, next = null)")
+        has_text(t, text, "var head : T2? = addr(list[0])")
+        has_text(t, text, "total += outer.x + op.x + int(head.next.w * 2.0lf)")
+        has_text(t, text, "total += typeinfo sizeof(type<T2>) + typeinfo sizeof(type<T>) + int(w.wide) + int(b.only)")
+        // `struct U`, first reached inside the block, names the file-scope `struct T`
+        has_text(t, text, "struct U \{\n    t : T?\n")
+        rejects(t, "tag_outside_blocks", "static int f(void) \{ struct S \{ int a; \} s = \{1\}; return s.a; \}\nstatic int g(void) \{ struct S \{ int b; \} s = \{2\}; return s.b; \}\nstruct S *h(void) \{ return 0; \}\nint main(void) \{ return f() + g() - 3 + (h() != 0); \}\n", "`struct S` names no definition in scope here, while blocks define it more than once")
+        rejects(t, "tag_two_in_one", "int main(void) \{\n    struct T \{ int x; \} s1 = \{1\};\n    \{\n        struct T \{ int y; \} s2 = \{2\};\n        return (s2.y, &s1)->x - 1;\n    \}\n\}\n", "`struct T` names two of its definitions in one expression")
     }
 }
 
