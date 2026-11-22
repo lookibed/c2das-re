@@ -340,9 +340,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   a call through any member or type takes as x86-64 C does, so no sidecar entry; `qsort` is the
   runtime's byte sort and `bsearch` a binary search in `c_runtime/c_sort` (F33); a function
   type's `var` positions are those of the value-taken functions of its signature (F34).
-  Ledger (fail closed today): the value of a function the unit does not define (`strcmp` as a
-  comparator), which needs a das function of C's type per libc function; a pointer to a
-  variadic function (c-testsuite 00189, `fprintf`); a function returning a function pointer,
+  Ledger (fail closed today): a function returning a function pointer,
   whose spelling `int (*(int, int))(int)` the dumper does not parse (c-testsuite 00124); a call
   with arguments through an unprototyped function pointer `T (*)()`, which the C-IR spells as
   `T (*)(void)` until it marks it; a wide string literal (`L"ab"`; the torture filter skips its tests, 20010325-1 among
@@ -4100,6 +4098,11 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   a variadic function (pr68390), a libc function's value (pr54937), `main` with other parameters
   (alias-4, behind P7.6); `vfprintf` and `perror` mappings (fprintf-chk-1, user-printf,
   vfprintf-chk-1, printf-2).
+  Progress (branch `p7.5-libc-functions`): a libc function's value is a private wrapper the module
+  emits once, `strlen__fn` calling the mapping and a variadic one's `fprintf__va_list` calling its
+  list-taking twin (c-testsuite 00189), and a libc function redeclared with another integer result
+  (`int strlen(char *)`, C99 6.2.7's undefined behaviour) keeps the library's result on the call,
+  cast to the declared type (c-testsuite 00025).
 - **P7.6 GNU emulations owed by the skip audit** (P5.1c). Skip lines name it under these features:
   `packed or aligned layout` (33: `packed` and `aligned` beyond what the layout law places or a
   typedef carries - a packed record outside the sidecar's `marshal`, an alignment on a variable, a
