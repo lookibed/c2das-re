@@ -4134,7 +4134,7 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   passing 921019-1, 980605-1, pr15296, pr67037, pr68390, pure-1 (P9.36/P9.37's waiting ids) and
   930526-1, whose `int *(p[25])` decays to clang's spelling `int *(*)`, a declarator group main
   refused and PR #268 reads; pr54937 still fails.
-  Progress (PR #NNN): a struct or union tag a block defines again is its own record, named by the
+  Progress (PR #272): a struct or union tag a block defines again is its own record, named by the
   first numbered tag the unit leaves free (`struct T` again is `T1`; `ARCHITECTURE_DUMPER_TAGS.md`):
   a spelled type takes the innermost block's definition the walk has passed, an expression's type
   the record libclang names at its first token, so `s1.x` in a block hiding `s1`'s tag keeps the
