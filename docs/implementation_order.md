@@ -2854,21 +2854,33 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   changes for every program; Lua's forms off are faster on the JIT and exe and cost interp and AOT, so a
   per-tier set would differ from the one `fast` set.
 - **P9.41 Timing robust to the box's noise** (owner task 2026-11-22; evidence
-  `/root/notes/parallel/noise/RESULT.md`; branch `perf/timing-robustness`). A timed sample runs pinned to one
-  core (`perf_lanes.das` `timed`/`timing_prefix`: `taskset -c $C2DAS_TIMING_CORE`, default 3, `off` or no
-  taskset unpinned with a warning) in perf, compare's bench runs, the ports publisher and Doom's `--fps`
-  speed runs; a cell's spread leaves out the sample farthest from the median from 5 samples on and records
-  its distance as `outlier` (`perf/samples.das`; captures stamp `spread_rule` `trimmed`); `samples_for` gives
-  9 samples to a workload whose native run is under 1 s or that allocates, else 5 (perf kernels: 9; ports:
-  after native's first sample); `perf/ab.das` over `ab_band.das` is the A/B rule: geomean of median ratios,
-  band = widest robust full spread of either arm, `F`/`S` beyond it, a knob stays iff `F` on >= 1 tier and
-  `F` tiers outnumber `S` tiers. Committed captures keep their numbers; the next re-capture of perf, ports
-  and Doom records the trimmed spread, the outlier, the pin and (perf, ports) the new counts, so its spreads
-  and suspect marks are not comparable cell for cell with the earlier whole-range ones, and a perf capture
-  takes about 1.8 times as long. Evidence (2026-11-22, `heavy --exclusive --label TIMING-robust`,
-  `machine quiet (cpu busy 1%)`, box PC; Lua readable variant converted fresh, JIT, `bench/timed.lua` work
-  seconds, 15 samples per arm interleaved; predictions `/root/notes/predictions/2026-11-22-timing-robust.md`,
-  17 of 20 hit; `±` half the range over the median):
+  `/root/notes/parallel/noise/RESULT.md`; branch `perf/timing-robustness`, PR #266). Every timed path takes
+  an opt-in pin (`perf_lanes.das` `timed`/`timing_prefix`: `taskset -c $C2DAS_TIMING_CORE` when the
+  variable names a core, else unpinned; a core not allowed or no taskset warns): perf, compare's bench
+  runs, the Lua audit's whole-run benches, the ports publisher and Doom's `--fps` speed runs. A cell's
+  spread leaves out the sample farthest from the median from 5 samples on and records its distance as
+  `outlier` (`perf/samples.das`); every capture (perf, compare, Lua audit, ports, Doom) stamps the
+  `spread_rule` its cells took (`trimmed` from 5 samples, else `range`) and its `pinned_core` (-1 none),
+  and a compare `--filter` re-run refuses a capture of another rule or pin. `samples_for` gives 9 samples
+  to a workload whose native run is under 1 s or that allocates, else 5 (perf kernels: 9; ports: after
+  native's first sample); `--samples` below 0 is refused. `perf/ab.das` over `ab_band.das` is the A/B
+  rule: geomean of median ratios, band = widest robust full spread of either arm, `F`/`S` beyond it, a
+  knob stays iff `F` on >= 1 tier and `F` tiers outnumber `S` tiers; it refuses a value of 0, below 0,
+  NaN or infinite and names a bench timed under native alone. Committed captures keep their numbers;
+  the next re-capture of perf, ports and Doom records the trimmed spread, the outlier, the rule, the pin
+  and (perf, ports) the new counts, so its spreads and suspect marks are not comparable cell for cell
+  with the earlier whole-range ones, and a perf capture takes about 1.8 times as long.
+  Evidence (2026-11-22 06:19-06:26 MSK, `heavy --exclusive --label TIMING-robust`, `machine quiet (cpu
+  busy 1%)`, box PC): the Lua readable variant converted fresh, JIT, `bench/timed.lua` work seconds, 15
+  samples per arm interleaved, by `/root/notes/parallel/timing/ab_pin.sh`, which pins with a
+  hand-written `taskset -c 3`, not through `timing_prefix`. Two single-process compile checks
+  (`daslang -compile-only` of four perf modules, a few seconds) ran inside the exclusive window in its
+  first minutes, while its first samples ran; the one outlier below (fib, pinned, sample 14
+  of 15, about 06:25) came when nothing else ran. Predictions:
+  `/root/notes/predictions/2026-11-22-timing-robust.md`, 17 of 20 hit; the file was appended to after the
+  run with the measured part, so its mtime proves nothing about the order: its birth time (06:18:47,
+  `stat %w`) precedes the batch's first line (`ab_pin.txt` born 06:19:00), and no commit holds it, so
+  nothing proves its prediction part was not edited after the run. `±` half the range over the median:
 
   | bench | arm | median s | old ± (whole range) | robust ± | outlier |
   |---|---|---:|---:|---:|---:|
@@ -2882,11 +2894,14 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   | spectral_norm | free | 0.5945 | 1.6% | 1.4% | +1.6% |
 
   Pinned over free 0.992 (fib 1.000, binary_trees 0.989, nbody 0.991, spectral_norm 0.990), robust band 8.0%
-  (whole ranges 14.0%): `-`, no speed effect. One rare outlier (fib pinned, 0.565 s among 0.50 s) took the
-  whole-range spread to 7.0% and the robust one leaves it at 1.6%; on this CPU-bound JIT work the pin narrows
-  two benches of four. Left: `compare/run.das` and `doom/run.das --fps` keep their own `--samples`; the
-  `perf/REVIEW.md` duty to re-record captures with a changed sample rule is deferred to the next re-capture
-  by the owner's order (no committed number changes).
+  (whole ranges 14.0%): `-`, no speed effect; the pin narrowed nbody and spectral_norm only and widened the
+  allocating binary_trees (robust 4.0% against 2.9%), so it is opt-in (the lead's ruling R1 on #266). One
+  rare outlier (fib pinned, 0.565 s among 0.50 s) took the whole-range spread to 7.0%; the robust one
+  leaves it at 1.6%. Left: `compare/run.das`, `doom/run.das --fps` and `perf/audit_lua.das` keep their
+  own `--samples`; the `perf/REVIEW.md` duty to re-record the captures whose sample arithmetic a diff
+  changes is deferred to the next phase-end re-capture over main (`/root/notes/owner/2026-11-02_tests-light.md`,
+  `/root/notes/owner/2026-11-02_ruling-24.md`: perf re-records run at phase ends, not per PR);
+  `perf/ARCHITECTURE.md` sits at exactly 300 lines, for the phase-end split.
 
 ## P6 — Doom
 

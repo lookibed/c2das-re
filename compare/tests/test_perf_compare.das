@@ -305,11 +305,17 @@ def test_compare_kernel_refused(t : T?) {
 // a cell as a capture holds it, its spread one the JSON writer must keep digit for digit
 def private fixture_cell() : JsonValue? => JV({"time" => JV(0.5lf), "spread" => JV(0.007192701757091496lf), "samples" => JV([0.5lf])})
 
-// a capture's `perf` section of box `box`, Rust commit `commit`, `samples` and the `clang` and
-// `daslang` version lines, holding `sieve` and an old `dasprofile/fib_loop`
-def private rerun_fixture(box, commit : string; samples : int; clang, daslang : string) : JsonValue? {
+// a capture's `perf` section of box `box`, Rust commit `commit`, `samples`, the `clang` and
+// `daslang` version lines and, unless `stamped` is false (a capture before the rule), the spread rule
+// of `samples` and no pin, holding `sieve` and an old `dasprofile/fib_loop`
+def private rerun_fixture(box, commit : string; samples : int; clang, daslang : string; stamped : bool = true) : JsonValue? {
     var kernels = JV({"sieve" => JV({"native" => fixture_cell(), "ours" => JV({"jit" => fixture_cell()})}), "dasprofile/fib_loop" => JV({"native" => JV({"error" => JV("old")})})})
-    return JV({"box" => JV(box), "rust_commit" => JV(commit), "samples" => JV(samples), "versions" => JV({"clang" => JV(clang), "daslang" => JV(daslang)}), "timestamp" => JV("first"), "kernels" => kernels})
+    var section = JV({"box" => JV(box), "rust_commit" => JV(commit), "samples" => JV(samples), "versions" => JV({"clang" => JV(clang), "daslang" => JV(daslang)}), "timestamp" => JV("first"), "kernels" => kernels})
+    if (stamped) {
+        (section.value as _object)["spread_rule"] = JV(spread_rule_of(samples))
+        (section.value as _object)["pinned_core"] = JV(-1)
+    }
+    return section
 }
 
 [test]
@@ -330,7 +336,7 @@ def test_perf_rerun(t : T?) {
             t |> equal(js?["perf"]?["geomean"]?["jit"]?["kernels"] ?? -1, 0)
         }
     }
-    t |> run("a re-run refuses another box, Rust commit, sample count, clang or daslang, and a capture without perf, the file untouched") @(t : T?) {
+    t |> run("a re-run refuses another box, Rust commit, sample count, spread rule, clang or daslang, and a capture without perf, the file untouched") @(t : T?) {
         t |> with_scratch("cmp_perf_rerun_refused") $(dir) {
             let path = path_join(dir, "results.json")
             let text = write_json(JV({"perf" => rerun_fixture("PC", "abc", 5, "c1", "d1")}))
@@ -338,11 +344,17 @@ def test_perf_rerun(t : T?) {
             var entries : table<string; JsonValue?>
             entries["sieve"] = JV(1)
             let runs = [Stamps(box = "fx", rust_commit = "abc", daslang = "d1"), Stamps(box = "PC", rust_commit = "def", daslang = "d1"), Stamps(box = "PC", rust_commit = "abc", daslang = "d1"), Stamps(box = "PC", rust_commit = "abc", daslang = "d1"), Stamps(box = "PC", rust_commit = "abc", daslang = "d2")]
-            for (stamps, samples, clang, field in runs, [5, 5, 3, 5, 5], ["c1", "c1", "c1", "c2", "c1"], ["box `PC` against this run's `fx`", "rust_commit `abc` against this run's `def`", "samples `5` against this run's `3`", "clang `c1` against this run's `c2`", "daslang `d1` against this run's `d2`"]) {
+            for (stamps, samples, clang, field in runs, [5, 5, 3, 5, 5], ["c1", "c1", "c1", "c2", "c1"], ["box `PC` against this run's `fx`", "rust_commit `abc` against this run's `def`", "samples `5` against this run's `3`, spread_rule `trimmed` against this run's `range`", "clang `c1` against this run's `c2`", "daslang `d1` against this run's `d2`"]) {
                 let error = merge_perf_rerun(path, stamps, samples, clang, entries)
-                t |> equal(error, "{path} holds {field}: a re-run joins only a capture of its own box, translator, toolchain and samples")
+                t |> equal(error, "{path} holds {field}: a re-run joins only a capture of its own box, translator, toolchain, samples, spread rule and pin")
             }
             t |> equal(fread(path), text)
+            let old = path_join(dir, "old.json")
+            let old_text = write_json(JV({"perf" => rerun_fixture("PC", "abc", 5, "c1", "d1", false)}))
+            fwrite(old, old_text)
+            let refused = merge_perf_rerun(old, Stamps(box = "PC", rust_commit = "abc", daslang = "d1"), 5, "c1", entries)
+            t |> equal(refused, "{old} holds spread_rule `range` against this run's `trimmed`: a re-run joins only a capture of its own box, translator, toolchain, samples, spread rule and pin")
+            t |> equal(fread(old), old_text)
             let other = path_join(dir, "other.json")
             fwrite(other, "\{\"suites\": \{\}\}")
             t |> equal(merge_perf_rerun(other, Stamps(), 5, "", entries), "no perf section in {other} to re-measure kernels into")

@@ -62,6 +62,9 @@ def test_counts_and_notes(t : T?) {
         t |> equal(samples_text(0), "5 samples (9 for a workload whose native run takes under 1 s or that allocates heavily)")
         t |> equal(spread_note(""), "")
         t |> success(spread_note(TRIMMED_SPREAD) |> starts_with(", the sample farthest from the median left out from 5 samples on"))
+        t |> equal(spread_note(RANGE_SPREAD), "")
+        t |> equal(spread_rule_of(5), TRIMMED_SPREAD)
+        t |> equal(spread_rule_of(3), RANGE_SPREAD)
     }
 }
 
@@ -73,23 +76,24 @@ def test_pin(t : T?) {
         t |> equal(length(cpu_list("x")), 0)
         t |> equal(length(cpu_list("3-1")), 0)
     }
-    t |> run("the pin: core 3 by default, the variable's core, the last allowed core when 3 is not one") @(t : T?) {
+    t |> run("the pin is opt-in: the core the variable names, none when it is unset, empty or off") @(t : T?) {
         let all <- cpu_list("0-15")
-        t |> equal(join(timing_pin("", "/usr/bin/taskset", all).prefix, " "), "/usr/bin/taskset -c 3")
         t |> equal(join(timing_pin("7", "/usr/bin/taskset", all).prefix, " "), "/usr/bin/taskset -c 7")
-        t |> equal(join(timing_pin("", "/usr/bin/taskset", [0, 1]).prefix, " "), "/usr/bin/taskset -c 1")
+        t |> equal(timing_pin("7", "/usr/bin/taskset", all).core, 7)
         let none : array<int>
         t |> equal(join(timing_pin("9", "/usr/bin/taskset", none).prefix, " "), "/usr/bin/taskset -c 9")
+        for (setting in ["", "off"]) {
+            let unset = timing_pin(setting, "/usr/bin/taskset", all)
+            t |> success(empty(unset.prefix) && unset.core == -1 && !unset.warn && unset.note == "C2DAS_TIMING_CORE is unset: timed samples run unpinned", "{setting}: {unset.note}")
+        }
     }
-    t |> run("no pin under off, without taskset, or for a core the process may not run on; the note says why") @(t : T?) {
+    t |> run("a pin asked for and not taken warns: no taskset, or a core the process may not run on") @(t : T?) {
         let all <- cpu_list("0-15")
-        let off = timing_pin("off", "/usr/bin/taskset", all)
-        t |> success(empty(off.prefix) && off.note == "C2DAS_TIMING_CORE=off: timed samples run unpinned", off.note)
-        let missing = timing_pin("", "", all)
-        t |> success(empty(missing.prefix) && missing.note == "no taskset on PATH: timed samples run unpinned", missing.note)
+        let missing = timing_pin("3", "", all)
+        t |> success(empty(missing.prefix) && missing.warn && missing.note == "C2DAS_TIMING_CORE=3 but no taskset on PATH: timed samples run unpinned", missing.note)
         for (setting in ["99", "abc", "-1"]) {
             let bad = timing_pin(setting, "/usr/bin/taskset", all)
-            t |> success(empty(bad.prefix) && bad.note |> contains("names no core"), "{setting}: {bad.note}")
+            t |> success(empty(bad.prefix) && bad.warn && bad.core == -1 && bad.note |> contains("names no core"), "{setting}: {bad.note}")
         }
     }
     t |> run("a timed sample is the pin before the guard, and runs on the pinned core") @(t : T?) {

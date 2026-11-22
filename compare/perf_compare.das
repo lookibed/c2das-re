@@ -53,7 +53,8 @@ def perf_kernels(filter : string) : array<PerfKernel> {
 
 //! Why the capture `path` takes no re-run of `samples` samples under `stamps` and the clang version
 //! line `clang`: no such capture or `perf` section, or one whose box, Rust commit, sample count,
-//! clang or daslang version is not the re-run's; "" when it takes one.
+//! spread rule (`RANGE_SPREAD` for a capture without one), pinned core (-1 for none), clang or
+//! daslang version is not the re-run's; "" when it takes one.
 [arch(at="ARCHITECTURE_PERF.md#perf")]
 def rerun_refusal(path : string; stamps : Stamps; samples : int; clang : string) : string {
     var error : string
@@ -62,11 +63,11 @@ def rerun_refusal(path : string; stamps : Stamps; samples : int; clang : string)
     if (section == null || !(section.value is _object) || !((section?["kernels"]).value is _object)) {
         return empty(error) ? "no perf section in {path} to re-measure kernels into" : error
     }
-    let fields = ["box", "rust_commit", "samples", "clang", "daslang"]
-    let had = [section?["box"] ?? "", section?["rust_commit"] ?? "", "{section?["samples"] ?? 0}", section?["versions"]?["clang"] ?? "", section?["versions"]?["daslang"] ?? ""]
-    let now = [stamps.box, stamps.rust_commit, "{samples}", clang, stamps.daslang]
+    let fields = ["box", "rust_commit", "samples", "spread_rule", "pinned_core", "clang", "daslang"]
+    let had = [section?["box"] ?? "", section?["rust_commit"] ?? "", "{section?["samples"] ?? 0}", section?["spread_rule"] ?? RANGE_SPREAD, "{section?["pinned_core"] ?? -1}", section?["versions"]?["clang"] ?? "", section?["versions"]?["daslang"] ?? ""]
+    let now = [stamps.box, stamps.rust_commit, "{samples}", spread_rule_of(samples), "{pinned_core()}", clang, stamps.daslang]
     let differ <- [for (field, a, b in fields, had, now); "{field} `{a}` against this run's `{b}`"; where a != b]
-    return empty(differ) ? "" : "{path} holds {join(differ, ", ")}: a re-run joins only a capture of its own box, translator, toolchain and samples"
+    return empty(differ) ? "" : "{path} holds {join(differ, ", ")}: a re-run joins only a capture of its own box, translator, toolchain, samples, spread rule and pin"
 }
 
 //! The capture `path` with the re-measured kernels of `entries` merged into its `perf` section:
@@ -253,6 +254,8 @@ def perf_section(stamps : Stamps; samples : int; var kernels : table<string; Jso
         "rust_commit" => JV(stamps.rust_commit),
         "rust_commit_error" => JV(stamps.rust_commit_error),
         "samples" => JV(samples),
+        "spread_rule" => JV(spread_rule_of(samples)),
+        "pinned_core" => JV(pinned_core()),
         "timestamp" => JV(stamps.date),
         "lanes" => JV(METHOD_LANES),
         "kernels" => kernels_json,

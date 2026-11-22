@@ -6,6 +6,7 @@ require daslib/strings_boost
 require daslib/json_boost
 require ../demo_run.das
 require ../fps.das
+require ../../perf/samples.das
 require ../fps_run.das
 require ../../converter/tiers.das
 require _stand_in
@@ -57,6 +58,9 @@ def test_demos_and_head(t : T?) {
     t |> equal(c.box, "PC")
     t |> equal(c.cpu, "AMD Ryzen 7 7435HS")
     t |> equal(c.samples, 3)
+    t |> equal(c.spread_rule, RANGE_SPREAD)
+    t |> equal(c.pinned_core, -1)
+    t |> equal(new_capture("a", "", "cmd", "cpu", "p", "c", "d", 5).spread_rule, TRIMMED_SPREAD)
     t |> equal(c.clock, FPS_CLOCK)
     t |> equal(new_capture("a", "", "cmd", "some other cpu", "p", "c", "d", 1).box, "")
 }
@@ -163,7 +167,7 @@ def private timed_capture(var c : FpsCapture) : string {
 [test]
 def test_readme(t : T?) {
     t |> run("the section between the markers rewritten, the text around it kept") @(t : T?) {
-        var c : FpsCapture
+        var c = FpsCapture()
         let capture_path = timed_capture(c)
         let readme = path_join(dir_name(capture_path), "README.md")
         fwrite(readme, "# top\n{FPS_BEGIN}\nold\n{FPS_END}\nafter\n")
@@ -171,7 +175,7 @@ def test_readme(t : T?) {
         t |> equal(fread(readme), "# top\n{FPS_BEGIN}\n{render_fps(c)}{FPS_END}\nafter\n")
     }
     t |> run("a README without the markers") @(t : T?) {
-        var c : FpsCapture
+        var c = FpsCapture()
         let capture_path = timed_capture(c)
         let readme = path_join(dir_name(capture_path), "README.md")
         fwrite(readme, "# no markers\n")

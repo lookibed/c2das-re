@@ -11,9 +11,12 @@ require math
 
 //! the fewest samples a spread leaves its outlier out of
 let OUTLIER_MIN_SAMPLES = 5
-//! the `spread_rule` a capture records once its spreads follow `spread_of`; a capture without one
-//! holds half the whole range
+//! the `spread_rule` a capture records when its spreads leave an outlier out (`spread_of` over
+//! `OUTLIER_MIN_SAMPLES` or more samples)
 let TRIMMED_SPREAD = "trimmed"
+//! the `spread_rule` of a capture whose cells take too few samples to leave one out: half the whole
+//! range, as a capture without the field holds
+let RANGE_SPREAD = "range"
 //! the samples a cell takes when the command line names no count
 let DEFAULT_SAMPLES = 5
 //! the samples a noisy cell takes when the command line names no count: a workload whose native run
@@ -78,12 +81,20 @@ def range_spread_of(samples : array<double>; median : double) : double => half_r
 //! names left out; 0 when there are none or the median is 0.
 def spread_of(samples : array<double>; median : double) : double => half_range(samples, median, outlier_index(samples, median))
 
+//! The `spread_rule` a capture of `samples` samples a cell records: `TRIMMED_SPREAD` from
+//! `OUTLIER_MIN_SAMPLES` on, else `RANGE_SPREAD`.
+def spread_rule_of(samples : int) : string => samples >= OUTLIER_MIN_SAMPLES ? TRIMMED_SPREAD : RANGE_SPREAD
+
 //! What a table's header adds after its `±` for a capture of `rule`: "" for one without a rule.
 def spread_note(rule : string) : string => rule == TRIMMED_SPREAD ? ", the sample farthest from the median left out from {OUTLIER_MIN_SAMPLES} samples on (the record keeps its distance as `outlier`)" : ""
 
 //! The samples a cell takes: `asked` when the command line names a count (above 0), else
 //! `NOISY_SAMPLES` for a workload whose native run takes under `SHORT_RUN` seconds or that
-//! `allocates` heavily, else `DEFAULT_SAMPLES`.
+//! `allocates` heavily, else `DEFAULT_SAMPLES`. The perf kernels and the ports publisher take their
+//! count here; `compare/run.das`, `doom/run.das --fps` and `perf/audit_lua.das` keep their own
+//! `--samples`. A ports workload decides on one native sample, so one whose native run lies near
+//! `SHORT_RUN` may take either count from one publish to the next: its cell's samples hold the count
+//! it took.
 def samples_for(asked : int; native_seconds : double; allocates : bool) : int {
     if (asked > 0) {
         return asked

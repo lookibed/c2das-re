@@ -14,7 +14,7 @@ require samples public
 //! kernels and `ports/publish.das` over a ported program's workloads. Each lane is built here
 //! once (perf/ARCHITECTURE.md section 2), so both harnesses time the same native build, the same
 //! daslang invocations and the same exe and AOT builds. A cell is the median of its samples
-//! (`samples.das`), each a `timed` process pinned to one core.
+//! (`samples.das`), each a `timed` process, pinned to one core when `$C2DAS_TIMING_CORE` asks.
 
 //! the native lane's flags: dasProfile's Release build gives its C++ kernels `-O3`
 let NATIVE_FLAGS <- ["-O3", "-w", "-funsigned-char"]
@@ -58,17 +58,18 @@ def guarded(argv : array<string>; address_space : int64) : array<string> {
     return <- full
 }
 
-//! the variable naming the core a timed sample runs on (`ARCHITECTURE_SAMPLES.md` section 4), `off`
-//! for none
+//! the variable naming the core a timed sample runs on (`ARCHITECTURE_SAMPLES.md` section 4); unset,
+//! empty or `off`, the samples run unpinned
 let TIMING_CORE_VARIABLE = "C2DAS_TIMING_CORE"
-//! the core a timed sample runs on when the variable is unset
-let DEFAULT_TIMING_CORE = 3
 
-//! How a timed sample is pinned: the `taskset` prefix its command takes (empty for none) and the
-//! line saying so.
+//! How a timed sample is pinned: the `taskset` prefix its command takes (empty for none), the core
+//! (-1 for none), the line saying so and whether that line is a warning (a pin asked for and not
+//! taken).
 struct TimingPin {
     prefix : array<string>
+    core : int = -1
     note : string
+    warn : bool
 }
 
 //! The cores a `Cpus_allowed_list` value names (`0-3,8`), in order; none for a value it cannot read.
@@ -92,26 +93,21 @@ def cpu_list(list : string) : array<int> {
 }
 
 //! The pin of a timed sample from `setting` (the variable's value), `taskset` (its path, "" when
-//! not on `PATH`) and `allowed` (the cores this process may run on, none when unknown): the core
-//! `setting` names, `DEFAULT_TIMING_CORE` when it is empty, else the last allowed core when that one
-//! is not allowed; no pin under `off`, without taskset, or for a core not allowed.
+//! not on `PATH`) and `allowed` (the cores this process may run on, none when unknown): opt-in, the
+//! core `setting` names; no pin when it is empty or `off`, and, with a warning, without taskset or
+//! for a core not allowed.
 def timing_pin(setting, taskset : string; allowed : array<int>) : TimingPin {
-    if (setting == "off") {
-        return <- TimingPin(note = "{TIMING_CORE_VARIABLE}=off: timed samples run unpinned")
+    if (empty(setting) || setting == "off") {
+        return <- TimingPin(note = "{TIMING_CORE_VARIABLE} is unset: timed samples run unpinned")
     }
     if (empty(taskset)) {
-        return <- TimingPin(note = "no taskset on PATH: timed samples run unpinned")
+        return <- TimingPin(note = "{TIMING_CORE_VARIABLE}={setting} but no taskset on PATH: timed samples run unpinned", warn = true)
     }
-    var core = DEFAULT_TIMING_CORE
-    if (!empty(setting)) {
-        core = try_to_int(setting) ?? -1
-    } elif (!empty(allowed) && !has_value(allowed, core)) {
-        core = allowed[length(allowed) - 1]
-    }
+    let core = try_to_int(setting) ?? -1
     if (core < 0 || (!empty(allowed) && !has_value(allowed, core))) {
-        return <- TimingPin(note = "{TIMING_CORE_VARIABLE}={setting} names no core this process may run on: timed samples run unpinned")
+        return <- TimingPin(note = "{TIMING_CORE_VARIABLE}={setting} names no core this process may run on: timed samples run unpinned", warn = true)
     }
-    return <- TimingPin(prefix <- [taskset, "-c", "{core}"], note = "timed samples run on core {core} (taskset)")
+    return <- TimingPin(prefix <- [taskset, "-c", "{core}"], core = core, note = "timed samples run on core {core} (taskset)")
 }
 
 //! The first folder of `$PATH` holding the program `name`, as its path; "" when none does.
@@ -135,21 +131,33 @@ def private allowed_cores : array<int> {
     return <- array<int>()
 }
 
-// this process's pin, read once and logged, a missing pin as a warning
-var private PROCESS_PIN : TimingPin
+// this process's pin, read once and logged, a pin asked for and not taken as a warning
+var private PROCESS_PIN = TimingPin()
 var private PROCESS_PIN_READ = false
 
-//! The prefix of a timed sample on this machine (`timing_pin` of `$C2DAS_TIMING_CORE`, taskset on
-//! `PATH` and this process's `Cpus_allowed_list`), its note logged on the first call.
-def timing_prefix : array<string> {
+// this process's pin (`timing_pin` of `$C2DAS_TIMING_CORE`, taskset on `PATH` and its
+// `Cpus_allowed_list`), its note logged when first read
+def private read_process_pin {
     if (!PROCESS_PIN_READ) {
         var inscope allowed <- allowed_cores()
         delete PROCESS_PIN
         PROCESS_PIN <- timing_pin(get_env_variable(TIMING_CORE_VARIABLE), on_path("taskset"), allowed)
         PROCESS_PIN_READ = true
-        to_log(empty(PROCESS_PIN.prefix) ? LOG_WARNING : LOG_INFO, "{PROCESS_PIN.note}\n")
+        to_log(PROCESS_PIN.warn ? LOG_WARNING : LOG_INFO, "{PROCESS_PIN.note}\n")
     }
+}
+
+//! The prefix of a timed sample in this process, empty when it is not pinned.
+def timing_prefix : array<string> {
+    read_process_pin()
     return <- clone_to_move(PROCESS_PIN.prefix)
+}
+
+//! The core this process pins its timed samples to, -1 for none: what a capture records as
+//! `pinned_core`.
+def pinned_core : int {
+    read_process_pin()
+    return PROCESS_PIN.core
 }
 
 //! `argv` as a timed sample starts it: `pinned` by `pin`, then `guarded` under `address_space`.

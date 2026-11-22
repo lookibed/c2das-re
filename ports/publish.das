@@ -379,7 +379,7 @@ def private output_parting(output, native : string) : string {
     return "line {idx + 1} prints {got} where the native build prints {want}"
 }
 
-// one run of the command `full`, pinned (`timing_prefix`) and timed as a whole process and, for a workload under `TIMED_LUA`,
+// one run of the command `full`, pinned when asked (`timing_prefix`) and timed as a whole process and, for a workload under `TIMED_LUA`,
 // inside it by the wrapper's line, which the comparison does not see, into `cell`; a run that
 // differs from `oracle` (the native lane's first, when `oracle.rc` is not -1), that leaves out the
 // closing line `spec` names, or that prints no work seconds under the wrapper, fails the cell, which
@@ -592,7 +592,7 @@ def private build_lanes(port : Port; variants : array<Variant>; lanes : array<st
 
 // a capture of every workload under every lane of `lanes`, written into the clone
 def private measure_program(args : Args; port : Port; variants : array<Variant>; release : Release; lanes : array<string>; repo_dir : string; gen : Generation) : bool {
-    var measured = Capture(program = port.name, commit = gen.sha, command = publish_command(args, port), samples = args.samples, spread_rule = TRIMMED_SPREAD, timeout = args.timeout)
+    var measured = Capture(program = port.name, commit = gen.sha, command = publish_command(args, port), samples = args.samples, spread_rule = spread_rule_of(args.samples > 0 ? args.samples : DEFAULT_SAMPLES), pinned_core = pinned_core(), timeout = args.timeout)
     let cpu = cpu_name()
     measured.machine = Machine(arch = strip(captured(["uname", "-m"])), cpu = cpu, box = capture_box(args.box, cpu), clang_path = default_clang())
     tool_versions(measured.machine.clang, measured.machine.daslang)
@@ -994,7 +994,7 @@ def private publish_program(args : Args; port : Port; lanes : array<string>; rep
         ok = measure_program(args, port, variants, release, lanes, dir, gen)
     }
     // the tables render from the latest capture, this publish's or an earlier one's
-    var latest : Capture
+    var latest = Capture()
     var found = false
     ok = ok && latest_capture(dir, latest, found)
     if (found) {
@@ -1022,7 +1022,7 @@ def private publish_top_readme(repo : string; failures : array<string>) : bool {
     }
     names |> sort()
     for (name in names) {
-        var latest : Capture
+        var latest = Capture()
         var found = false
         if (!latest_capture(path_join(repo, name), latest, found)) {
             return false
@@ -1877,7 +1877,7 @@ def private publish_puredoom(args : Args; repo : string; var gen : Generation) :
         ok = ok && write_or_log(path_join(dir, "{v.name}/variant.json"), fread(variant_path(PUREDOOM, v.name)))
         readme.syncs |> emplace((name = v.name, cells <- read_sync(fread(doom_sync(v.name)))))
         var column = VariantColumn(file := v, das_lines = lines_of(tree, files))
-        var fps : FpsCapture
+        var fps = FpsCapture()
         let fps_path = v.name == "readable" ? DOOM_FPS : path_join(doom_root(v.name), "results_linux.json")
         if (read_fps(fps_path, fps)) {
             fps_speed(fps, column.speed_fallback)

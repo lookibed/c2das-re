@@ -40,7 +40,8 @@ struct FpsLane {
 
 //! Every number one `--fps` run measured: the c2das-re commit, the command that reproduces it,
 //! the end of the run, the machine (`perf/boxes.das`) and the tools, the runs per cell, the
-//! `spread_rule` (`perf/samples.das`) and the clock, the lanes, the demos and one cell per demo and lane.
+//! `spread_rule` (`perf/samples.das`), the core its speed runs ran pinned to (-1 for none) and
+//! the clock, the lanes, the demos and one cell per demo and lane.
 struct FpsCapture {
     commit : string
     command : string
@@ -52,6 +53,7 @@ struct FpsCapture {
     daslang : string
     samples : int
     spread_rule : string
+    pinned_core : int = -1
     clock : string
     lanes : array<FpsLane>
     workloads : array<string>

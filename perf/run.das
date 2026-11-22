@@ -175,7 +175,8 @@ def capture_of(args : Args; lanes : array<string>; var tests : table<string; Jso
         "platform" => JV("{get_platform_name()} {strip(captured(["uname", "-m"]))}"),
         "timestamp" => JV(strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))),
         "samples" => JV(kernel_samples(args)),
-        "spread_rule" => JV(TRIMMED_SPREAD),
+        "spread_rule" => JV(spread_rule_of(kernel_samples(args))),
+        "pinned_core" => JV(pinned_core()),
         "method" => JV(args.method),
         "versions" => JV({"clang" => JV(clang_version), "daslang" => JV(daslang_version)}),
         "lanes" => JV(lanes),
@@ -200,6 +201,10 @@ def main : int {
     }
     if (!has_value(METHODS, args.method)) {
         to_log(LOG_ERROR, "--method is default or dasprofile, not `{args.method}`\n")
+        return 2
+    }
+    if (args.samples < 0) {
+        to_log(LOG_ERROR, "--samples takes a count of 1 or more, or 0 for samples_for's, not {args.samples}\n")
         return 2
     }
     let refusal = box_refusal(args.box, cpu_name())

@@ -48,7 +48,7 @@ def test_verdicts(t : T?) {
     t |> run("a tier without one arm's samples has no verdict") @(t : T?) {
         var inscope batch <- fixture()
         let v <- tier_verdict(batch, "jit", "t", "nope")
-        t |> equal(v.missing, "fib")
+        t |> equal(v.missing, "fib has no `nope` samples under jit")
     }
     t |> run("the knob stays only when faster on a tier and on more tiers faster than slower") @(t : T?) {
         t |> success(!knob_stays([TierVerdict(verdict = FASTER), TierVerdict(verdict = SLOWER)]))
@@ -65,6 +65,26 @@ def test_verdicts(t : T?) {
         t |> success(text |> contains("skipped 2 run lines"), text)
         let cells = render_cells(batch)
         t |> success(cells |> contains("| spectral_norm | jit | d | 5 | 0.5150 | ±64.6% | ±1.0% | +128.2% |"), cells)
+    }
+}
+
+[test]
+def test_refusals(t : T?) {
+    t |> run("a value of 0, below 0, NaN or infinite is refused by line; a bench timed under native alone is left out and named") @(t : T?) {
+        var lines <- ["bench=a lane=native arm=- work_s=1.0", "bench=b lane=native arm=- work_s=1.0"]
+        for (arm in ["t", "d"]) {
+            lines |> push_from([for (_s in range(5)); "bench=a lane=jit arm={arm} work_s={arm == "t" ? 0.5 : 1.0}"])
+        }
+        lines |> push_from(["bench=a lane=jit arm=t work_s=0", "bench=a lane=jit arm=t work_s=-1", "bench=a lane=jit arm=t work_s=nan", "bench=a lane=jit arm=t work_s=inf"])
+        var inscope batch <- read_batch(join(lines, "\n"), "work_s")
+        t |> equal(join(batch.refused, "|"), "line 13: `work_s=0` is no time above 0|line 14: `work_s=-1` is no time above 0|line 15: `work_s=nan` is no time above 0|line 16: `work_s=inf` is no time above 0")
+        t |> equal(length(samples_of(batch, "a", "jit", "t")), 5)
+        t |> equal(join(benches_of(batch), ","), "a")
+        t |> equal(join(native_only(batch), ","), "b")
+        let text = render_ab(batch, "t", "d")
+        t |> success(text |> contains("jit: t/d 0.500 [a 0.500] band 0.0% (whole ranges 0.0%) F\n"), text)
+        t |> success(text |> contains("left out, timed under native alone: b\n"), text)
+        t |> success(text |> contains("refused line 15: `work_s=nan` is no time above 0\n"), text)
     }
 }
 

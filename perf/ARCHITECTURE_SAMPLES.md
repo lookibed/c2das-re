@@ -49,21 +49,27 @@ build-only step exists (`docs/implementation_order.md`).
 
 ## 4. The pin
 
-A timed sample runs on one core: `timed` puts `timing_prefix()`, `taskset -c <core>`, before the
-guarded command, and so do `ports/publish.das`'s `measure_sample` and the speed runs of
-`doom/fps_run.das` (`DemoSpec.pin`); `compare/projects.das` times its bench runs through `timed`.
-A build, a warm-up, a sync run or a correctness run is not pinned. The core is
-`$C2DAS_TIMING_CORE`, else `DEFAULT_TIMING_CORE` (3, the core of the noise probe), else the last
-core the process may run on (`Cpus_allowed_list` of `/proc/self/status`) when 3 is not one; `off`,
-a core the process may not run on, or no `taskset` on `PATH` leaves the samples unpinned. The
-process reads the pin once and logs it, a missing pin as a warning. On the box (WSL2) pure CPU work
-spreads 1.4 percent with or without the pin, while allocation-heavy work spreads 20 percent free and
-12.5 percent pinned, with 5 to 6 percent of its runs more than 5 percent slow either way: the pin
-narrows the noise of memory work and does not remove its slow runs. A program timed inside the
-process (a kernel's budget loop, `bench/timed.lua`, a bench's `decode_us`, Doom's host) is
-pinned after its JIT compiles too, so a compile that would use threads takes longer on one core and
-never enters the in-process time; a whole-process time (a ports `startup` cell) includes the
-`taskset` exec.
+The pin is opt-in: with `$C2DAS_TIMING_CORE` set to a core, a timed sample runs on that core alone,
+`taskset -c <core>` before the guarded command (`timing_prefix`); unset, empty or `off`, no sample
+is pinned. Every timed path takes it: `measure` through `timed`, `compare/projects.das`'s bench runs
+and `perf/audit_lua.das`'s whole-run benches (`wall_cell`) through `timed` too, `ports/publish.das`'s
+`measure_sample` and the speed runs of `doom/fps_run.das` (`DemoSpec.pin`) through
+`timing_prefix`. A build, a warm-up, a sync run or a correctness run is not pinned. A core this
+process may not run on (`Cpus_allowed_list` of `/proc/self/status`) or no `taskset` on `PATH` leaves
+the samples unpinned with a warning; the process reads the pin once and logs it. Every capture
+records the core as `pinned_core`, -1 for none (`pinned_core`).
+
+The pin is off by default because it buys nothing measured. On the box (WSL2) pure CPU work spreads
+1.4 percent with or without it; the noise probe's allocation-heavy kernel spread 20.5 percent free
+and 12.5 percent pinned, with as many runs more than 5 percent slow pinned as free (12 and 10 of
+200). On the Lua benches under the JIT (P9.41, 15 samples a side, interleaved) the pinned medians
+were the free ones (0.992, inside an 8.0 percent band), the robust spread narrowed on nbody and
+spectral_norm only, and on the allocating `binary_trees` it was wider pinned, 8.0 percent of the
+median against 5.8 free (full widths). A default pin would also send every timed child of
+concurrent harnesses and parallel test lanes to one core, and confine a JIT's compile threads in a
+cell that times the whole run (a ports `startup` cell, `wall_cell`), whose time includes the
+`taskset` exec as well; a program timed inside the process (a kernel's budget loop,
+`bench/timed.lua`, a bench's `decode_us`, Doom's host) leaves its compile out either way.
 
 ## 5. The cell and its spread
 
@@ -71,9 +77,12 @@ A cell is the median of its samples (`samples.das`). Its spread is half the rang
 as a share of the median, the one sample farthest from the median left out from
 `OUTLIER_MIN_SAMPLES` (5) samples on (`spread_of`), and the cell records that sample's signed
 distance from the median as `outlier` (0 under five samples), so a dropped sample stays in the
-record beside the raw samples; a capture records `spread_rule` `trimmed`, and a table's header says
-so (`spread_note`), while a capture without the field holds half the whole range
-(`range_spread_of`) and renders as before. One slow sample in a batch on the box comes out 1.5 to
+record beside the raw samples. Every capture records the rule its cells took as `spread_rule`
+(`spread_rule_of` of its sample count): `trimmed` from five samples a cell on, `range` under five
+(Doom's default of 3), where nothing is left out; the perf, compare, Lua-audit, ports and Doom
+captures all stamp it, a compare `--filter` re-run joins only a capture of its own rule and pin
+(`rerun_refusal`), and a table's header names the trimming (`spread_note`). A capture without the
+field holds half the whole range (`range_spread_of`) and renders as before. One slow sample in a batch on the box comes out 1.5 to
 2.3 times the others (0.59 against 0.89 s, 0.51 against 1.175 s, 27 against 41 s); the median
 survives it and the whole range does not: a band built on the range widened to 51 to 127 percent.
 The trimmed range keeps the unit and the meaning of the old `±` for a clean cell, so
@@ -88,8 +97,10 @@ command line names, else `NOISY_SAMPLES` (9) for a workload whose native run tak
 sample runs its 0.5 s budget, so every kernel takes 9 (`--samples` 0 by default, the count
 recorded); a ports workload takes its count after the native lane's first sample (the work time
 under `bench/timed.lua`, else the whole run), Lua's `binary_trees` marked as allocating, and the
-capture records `samples` 0 with the header naming both counts (`samples_text`). `compare/run.das`
-and `doom/run.das --fps` keep their own `--samples`.
+capture records `samples` 0 with the header naming both counts (`samples_text`); one sample decides,
+so a workload whose native run lies near 1 s may take either count from one publish to the next,
+its cell's samples holding the count it took. `--samples` below 0 is refused in both harnesses.
+`compare/run.das`, `doom/run.das --fps` and `perf/audit_lua.das` keep their own `--samples`.
 
 ## 6. The A/B decision
 
@@ -101,4 +112,6 @@ spread (twice `spread_of`) of either arm over the benches; the verdict is `F` wh
 under 1 less the band, `S` when it is over 1 plus the band, else `-`. The whole-range band is
 printed beside it. A knob stays when it is `F` on at least one tier and its `F` tiers outnumber its
 `S` tiers (the lead's rule of 2026-11-22). A run line whose value is not a number or that carries
-`OUTPUT_DIFFERS` is skipped and counted.
+`OUTPUT_DIFFERS` is skipped and counted; one whose value is 0, below 0, NaN or infinite is refused
+and named by its line. A bench timed under `native` alone is left out of every tier and named; a
+tier where a bench lacks one arm's samples has no verdict, the line saying which.

@@ -66,7 +66,8 @@ struct Machine {
 
 //! Every number one publish measured, with the c2das-re commit of the conversion it timed, the
 //! command that reproduces it (its `--samples`, 0 for `samples_for`'s, `--timeout` and `--lanes`),
-//! the end of the run as its timestamp and its `spread_rule` (`perf/samples.das`); the cells are
+//! the end of the run as its timestamp, its `spread_rule` (`perf/samples.das`) and the core its
+//! samples ran pinned to (`pinned_core`, -1 for none); the cells are
 //! flat, one per workload and lane.
 struct Capture {
     program : string
@@ -75,6 +76,7 @@ struct Capture {
     timestamp : string
     samples : int
     spread_rule : string
+    pinned_core : int = -1
     timeout : int
     machine : Machine
     lanes : array<Lane>
