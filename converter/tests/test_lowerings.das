@@ -2830,6 +2830,26 @@ def p8_refusal_fixtures(t : T?) {
         has_text(t, text, "crt::strcpy(")
         has_text(t, text, "crt::memcpy(")
     }
+    t |> run("the value of a libc function (P7.5): a private wrapper per function the module takes, a variadic one's the list-taking adapter calling its `v` twin") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_libc_values", text)
+        has_text(t, text, "var private p7_libc_values__measure : function<(var a0 : uint8?) : uint64> = @@strlen__fn\n")
+        has_text(t, text, "= @@fprintf__va_list\n")
+        has_text(t, text, "p7_libc_values__apply(@@toupper__fn, 'q')")
+        has_text(t, text, "def private fprintf__va_list(var a0 : _IO_FILE?; var a1 : uint8?; a2 : CVaList) : int \{\n    return c_vfprintf(a0, a1, a2)\n\}\n")
+        has_text(t, text, "def private snprintf__va_list(var a0 : uint8?; a1 : uint64; var a2 : uint8?; a3 : CVaList) : int \{\n    return c_vsnprintf(a0, a1, a2, a3)\n\}\n")
+        has_text(t, text, "[c_function]\ndef private strlen__fn(var a0 : uint8?) : uint64 \{\n    return crt::strlen(a0)\n\}\n")
+        // a variadic libc function with no list-taking twin has no value
+        rejects(t, "libc_value_unmapped", "#include <stdio.h>\nint main(void) \{ int (*f)(const char *, ...) = scanf; return f == 0; \}\n", "the value of external function `scanf`")
+    }
+    t |> run("a libc function declared with another result (P7.5, C99 6.2.7's undefined behaviour): the call keeps the library's result, converted to the declared type") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_libc_redeclared", text)
+        has_text(t, text, "return int(crt::strlen(p)) - 5 + int(int16(crt::strspn(cstr(\"aab\"), cstr(\"a\")))) - 2\n")
+        // a declaration of the library's own type converts nothing
+        let same = converts(t, "libc_same_result", "unsigned long strlen(const char *);\nint main(void) \{ return (int)strlen(\"ab\") - 2; \}\n")
+        has_text(t, same, "return int(crt::strlen(cstr(\"ab\"))) - 2\n")
+    }
     t |> run("a calling convention in a type (wasm3's `vectorcall` macro over `preserve_none`, the attribute itself) drops: the function type keeps its result and parameters") @(t : T?) {
         var text : string
         check_fixture(t, "p8_vectorcall", text)
