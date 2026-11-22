@@ -70,15 +70,15 @@ def commit_label(sha, status : string) : string => empty(strip(status)) ? sha : 
 
 //! A capture before its runs: the commit of `sha` and `status`, the command, the machine (the box
 //! of `cpu`), the tools' version lines and the runs a cell.
-def new_capture(sha, status, command, cpu, platform, clang, daslang : string; samples : int) : FpsCapture => FpsCapture(commit = commit_label(sha, status), command = command, cpu = cpu, box = box_of(cpu), platform = platform, clang = clang, daslang = daslang, samples = samples, clock = FPS_CLOCK)
+def new_capture(sha, status, command, cpu, platform, clang, daslang : string; samples : int) : FpsCapture => FpsCapture(commit = commit_label(sha, status), command = command, cpu = cpu, box = box_of(cpu), platform = platform, clang = clang, daslang = daslang, samples = samples, spread_rule = TRIMMED_SPREAD, clock = FPS_CLOCK)
 
 // the run of `demo` under `lane`: the native build under the lane `NATIVE_LANE` (`sync_native`
 // or `native`), else the converted entry (`sync_entry` or `entry`) under the tier `lane`, the speed
-// build when `speed`
+// build, pinned (`timing_prefix`), when `speed`
 def private lane_spec(plan : FpsPlan; lane : string; demo : int; speed : bool) : DemoSpec {
     let native = lane == NATIVE_LANE
     let entry = speed ? (native ? plan.native : plan.entry) : (native ? plan.sync_native : plan.sync_entry)
-    return <- DemoSpec(entry = entry, tier = lane, wad = plan.wad, demo = demo, timeout = float(plan.timeout), work = plan.work, ref_dirs <- clone_to_move(plan.ref_dirs), module_dirs <- clone_to_move(plan.module_dirs), speed = speed)
+    return <- DemoSpec(entry = entry, tier = lane, wad = plan.wad, demo = demo, timeout = float(plan.timeout), work = plan.work, ref_dirs <- clone_to_move(plan.ref_dirs), module_dirs <- clone_to_move(plan.module_dirs), speed = speed, pin <- speed ? timing_prefix() : array<string>())
 }
 
 //! The cell of `demo` under `lane` before its samples: one run of the sync build held to every tic

@@ -99,9 +99,6 @@ def merge_perf_rerun(path : string; stamps : Stamps; samples : int; clang : stri
     return write_capture_section(path, "perf", section)
 }
 
-//! A cell as the perf capture writes it.
-def cell_json(cell : Cell) : JsonValue? => JV((time = cell.time, spread = cell.spread, count = cell.count, result = cell.result, samples = JV(cell.samples)))
-
 //! A cell that does not stand: `{error}`.
 def error_json(error : string) : JsonValue? => JV({"error" => JV(error)})
 

@@ -2,18 +2,19 @@ options gen2
 
 module perf_lanes public
 
-require math
 require strings
 require daslib/strings_boost
+require daslib/strings_convert
 require daslib/fio
 require ../converter/tiers.das
 require ../converter/dumper_a.das
+require samples public
 
 //! The lanes and the sample arithmetic every timing harness shares: `perf/run.das` over the
 //! kernels and `ports/publish.das` over a ported program's workloads. Each lane is built here
 //! once (perf/ARCHITECTURE.md section 2), so both harnesses time the same native build, the same
-//! daslang invocations and the same exe and AOT builds. A cell is the median of its samples, with
-//! the spread as half the sample range over that median.
+//! daslang invocations and the same exe and AOT builds. A cell is the median of its samples
+//! (`samples.das`), each a `timed` process pinned to one core.
 
 //! the native lane's flags: dasProfile's Release build gives its C++ kernels `-O3`
 let NATIVE_FLAGS <- ["-O3", "-w", "-funsigned-char"]
@@ -56,6 +57,110 @@ def guarded(argv : array<string>; address_space : int64) : array<string> {
     full |> push_from(argv)
     return <- full
 }
+
+//! the variable naming the core a timed sample runs on (`ARCHITECTURE_SAMPLES.md` section 4), `off`
+//! for none
+let TIMING_CORE_VARIABLE = "C2DAS_TIMING_CORE"
+//! the core a timed sample runs on when the variable is unset
+let DEFAULT_TIMING_CORE = 3
+
+//! How a timed sample is pinned: the `taskset` prefix its command takes (empty for none) and the
+//! line saying so.
+struct TimingPin {
+    prefix : array<string>
+    note : string
+}
+
+//! The cores a `Cpus_allowed_list` value names (`0-3,8`), in order; none for a value it cannot read.
+def cpu_list(list : string) : array<int> {
+    var cores : array<int>
+    var inscope parts <- split(strip(list), ",")
+    for (part in parts) {
+        var inscope bounds <- split(part, "-")
+        let lo = try_to_int(bounds[0]) ?? -1
+        let hi = length(bounds) == 2 ? try_to_int(bounds[1]) ?? -1 : lo
+        if (length(bounds) > 2 || lo < 0 || hi < lo) {
+            delete cores
+            return <- cores
+        }
+        cores |> reserve(length(cores) + hi - lo + 1)
+        for (core in range(lo, hi + 1)) {
+            cores |> push(core)
+        }
+    }
+    return <- cores
+}
+
+//! The pin of a timed sample from `setting` (the variable's value), `taskset` (its path, "" when
+//! not on `PATH`) and `allowed` (the cores this process may run on, none when unknown): the core
+//! `setting` names, `DEFAULT_TIMING_CORE` when it is empty, else the last allowed core when that one
+//! is not allowed; no pin under `off`, without taskset, or for a core not allowed.
+def timing_pin(setting, taskset : string; allowed : array<int>) : TimingPin {
+    if (setting == "off") {
+        return <- TimingPin(note = "{TIMING_CORE_VARIABLE}=off: timed samples run unpinned")
+    }
+    if (empty(taskset)) {
+        return <- TimingPin(note = "no taskset on PATH: timed samples run unpinned")
+    }
+    var core = DEFAULT_TIMING_CORE
+    if (!empty(setting)) {
+        core = try_to_int(setting) ?? -1
+    } elif (!empty(allowed) && !has_value(allowed, core)) {
+        core = allowed[length(allowed) - 1]
+    }
+    if (core < 0 || (!empty(allowed) && !has_value(allowed, core))) {
+        return <- TimingPin(note = "{TIMING_CORE_VARIABLE}={setting} names no core this process may run on: timed samples run unpinned")
+    }
+    return <- TimingPin(prefix <- [taskset, "-c", "{core}"], note = "timed samples run on core {core} (taskset)")
+}
+
+//! The first folder of `$PATH` holding the program `name`, as its path; "" when none does.
+def on_path(name : string) : string {
+    for (dir in split(get_env_variable("PATH"), ":")) {
+        let candidate = path_join(empty(dir) ? "." : dir, name)
+        if (stat(candidate).is_reg) {
+            return candidate
+        }
+    }
+    return ""
+}
+
+// the cores this process may run on, its `Cpus_allowed_list`; none when unread
+def private allowed_cores : array<int> {
+    for (line in split(fread("/proc/self/status"), "\n")) {
+        if (line |> starts_with("Cpus_allowed_list:")) {
+            return <- cpu_list(slice(line, length("Cpus_allowed_list:")))
+        }
+    }
+    return <- array<int>()
+}
+
+// this process's pin, read once and logged, a missing pin as a warning
+var private PROCESS_PIN : TimingPin
+var private PROCESS_PIN_READ = false
+
+//! The prefix of a timed sample on this machine (`timing_pin` of `$C2DAS_TIMING_CORE`, taskset on
+//! `PATH` and this process's `Cpus_allowed_list`), its note logged on the first call.
+def timing_prefix : array<string> {
+    if (!PROCESS_PIN_READ) {
+        var inscope allowed <- allowed_cores()
+        delete PROCESS_PIN
+        PROCESS_PIN <- timing_pin(get_env_variable(TIMING_CORE_VARIABLE), on_path("taskset"), allowed)
+        PROCESS_PIN_READ = true
+        to_log(empty(PROCESS_PIN.prefix) ? LOG_WARNING : LOG_INFO, "{PROCESS_PIN.note}\n")
+    }
+    return <- clone_to_move(PROCESS_PIN.prefix)
+}
+
+//! `argv` as a timed sample starts it: `pinned` by `pin`, then `guarded` under `address_space`.
+def timed(argv : array<string>; address_space : int64; pin : array<string>) : array<string> {
+    var full := pin
+    full |> push_from(guarded(argv, address_space))
+    return <- full
+}
+
+//! `timed` with this process's `timing_prefix`.
+def timed(argv : array<string>; address_space : int64) : array<string> => <- timed(argv, address_space, timing_prefix())
 
 //! The death the exit code `rc` of a guarded run reports: `signal N (<name>)` for a code from 129
 //! to 192, the shell's report of a death by signal N, else "".
@@ -229,28 +334,6 @@ def process_ended(status : int) : string {
 def last_line(text : string) : string {
     let lines <- [for (l in split(text, "\n")); strip(l); where !empty(strip(l))]
     return empty(lines) ? "" : lines[length(lines) - 1]
-}
-
-//! The median of `values`, 0 for none.
-def median_of(values : array<double>) : double {
-    var sorted := values
-    sorted |> sort()
-    let n = length(sorted)
-    return n == 0 ? 0.0lf : (n & 1) == 1 ? sorted[n / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) * 0.5lf
-}
-
-//! Half the range of `samples` as a share of `median`, 0 when there are none or the median is 0.
-def spread_of(samples : array<double>; median : double) : double {
-    if (empty(samples) || median <= 0.0lf) {
-        return 0.0lf
-    }
-    var lo = samples[0]
-    var hi = samples[0]
-    for (s in samples) {
-        lo = min(lo, s)
-        hi = max(hi, s)
-    }
-    return (hi - lo) * 0.5lf / median
 }
 
 //! The CPU model `/proc/cpuinfo` names, "unknown cpu" without one; `$C2DAS_CPU_NAME` when set, a

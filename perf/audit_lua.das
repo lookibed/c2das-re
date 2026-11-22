@@ -62,8 +62,6 @@ struct Args {
     show_help : bool
 }
 
-def private cell_json(cell : Cell) : JsonValue? => JV((time = cell.time, spread = cell.spread, count = cell.count, result = cell.result, samples = JV(cell.samples)))
-
 def private error_json(error : string) : JsonValue? => JV({"error" => JV(error)})
 
 // the cell of `lane` measured over `argv`, or its error

@@ -2853,6 +2853,40 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   (0.894 in batch 4) passes a per-bench band but not this rule's tier band, so it stays out unless the rule
   changes for every program; Lua's forms off are faster on the JIT and exe and cost interp and AOT, so a
   per-tier set would differ from the one `fast` set.
+- **P9.41 Timing robust to the box's noise** (owner task 2026-11-22; evidence
+  `/root/notes/parallel/noise/RESULT.md`; branch `perf/timing-robustness`). A timed sample runs pinned to one
+  core (`perf_lanes.das` `timed`/`timing_prefix`: `taskset -c $C2DAS_TIMING_CORE`, default 3, `off` or no
+  taskset unpinned with a warning) in perf, compare's bench runs, the ports publisher and Doom's `--fps`
+  speed runs; a cell's spread leaves out the sample farthest from the median from 5 samples on and records
+  its distance as `outlier` (`perf/samples.das`; captures stamp `spread_rule` `trimmed`); `samples_for` gives
+  9 samples to a workload whose native run is under 1 s or that allocates, else 5 (perf kernels: 9; ports:
+  after native's first sample); `perf/ab.das` over `ab_band.das` is the A/B rule: geomean of median ratios,
+  band = widest robust full spread of either arm, `F`/`S` beyond it, a knob stays iff `F` on >= 1 tier and
+  `F` tiers outnumber `S` tiers. Committed captures keep their numbers; the next re-capture of perf, ports
+  and Doom records the trimmed spread, the outlier, the pin and (perf, ports) the new counts, so its spreads
+  and suspect marks are not comparable cell for cell with the earlier whole-range ones, and a perf capture
+  takes about 1.8 times as long. Evidence (2026-11-22, `heavy --exclusive --label TIMING-robust`,
+  `machine quiet (cpu busy 1%)`, box PC; Lua readable variant converted fresh, JIT, `bench/timed.lua` work
+  seconds, 15 samples per arm interleaved; predictions `/root/notes/predictions/2026-11-22-timing-robust.md`,
+  17 of 20 hit; `±` half the range over the median):
+
+  | bench | arm | median s | old ± (whole range) | robust ± | outlier |
+  |---|---|---:|---:|---:|---:|
+  | fib | pinned | 0.4981 | 7.0% | 1.6% | +13.4% |
+  | fib | free | 0.4981 | 1.1% | 1.0% | +1.4% |
+  | binary_trees | pinned | 0.5055 | 4.7% | 4.0% | +6.1% |
+  | binary_trees | free | 0.5111 | 4.3% | 2.9% | +6.3% |
+  | nbody | pinned | 0.4224 | 1.7% | 1.5% | +2.1% |
+  | nbody | free | 0.4264 | 2.6% | 1.9% | +3.7% |
+  | spectral_norm | pinned | 0.5884 | 0.8% | 0.8% | +1.3% |
+  | spectral_norm | free | 0.5945 | 1.6% | 1.4% | +1.6% |
+
+  Pinned over free 0.992 (fib 1.000, binary_trees 0.989, nbody 0.991, spectral_norm 0.990), robust band 8.0%
+  (whole ranges 14.0%): `-`, no speed effect. One rare outlier (fib pinned, 0.565 s among 0.50 s) took the
+  whole-range spread to 7.0% and the robust one leaves it at 1.6%; on this CPU-bound JIT work the pin narrows
+  two benches of four. Left: `compare/run.das` and `doom/run.das --fps` keep their own `--samples`; the
+  `perf/REVIEW.md` duty to re-record captures with a changed sample rule is deferred to the next re-capture
+  by the owner's order (no committed number changes).
 
 ## P6 — Doom
 
