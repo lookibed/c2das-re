@@ -1028,6 +1028,17 @@ def p9_function_pointer_fixtures(t : T?) {
         has_text(t, text, "invoke(reinterpret<function<(var a0 : int?; a1 : int; a2 : double) : void>>(step), addr(total), int(small), double(half))")
         has_text(t, text, "invoke(reinterpret<function<(var a0 : void?) : void>>(poll.procedure), poll.arg)")
     }
+    t |> run("declarator groups (P7.5): a parenthesized pointer `int (*const)`, a function returning a function pointer, a pointer to one and an array of those") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_declarator_groups", text)
+        has_text(t, text, "def private p7_declarator_groups__pick(a : int; b : int) : function<(a0 : int; a1 : int) : int> \{")
+        has_text(t, text, "def private p7_declarator_groups__store(var x : int?; v : int) \{")
+        has_text(t, text, "var p : int? = addr(cells[0])")
+        has_text(t, text, "var choose : function<(a0 : int; a1 : int) : function<(a0 : int; a1 : int) : int>> = @@p7_declarator_groups__pick")
+        has_text(t, text, "var _c_table : function<(a0 : int) : function<(a0 : int; a1 : int) : int>> [2]")
+        // a variable-length array behind a declarator group still fails closed
+        rejects(t, "group_vla", "int f(int n) \{ int (*(*g)(int))[n] = 0; return g == 0; \}\nint main(void) \{ return f(2); \}\n", "a variable-length array is not lowered")
+    }
 }
 
 def p4_function_fixtures(t : T?) {
