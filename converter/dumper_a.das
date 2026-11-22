@@ -93,6 +93,12 @@ struct Dumper {
     decl_names : table<string; string>
     // the hoisted names of static locals taken so far
     hoisted_names : table<string>
+    // clang's implicit declaration of a library function by declaration id: its type spelling
+    library_decls : table<string; string>
+    // a library function the unit redeclares with another result (`int strlen(char *)`, C99
+    // 6.2.7's undefined behaviour): the library's result type a call returns before C's
+    // conversion to the declared one
+    library_results : table<string; int>
     // every file-scope name the unit's dump declares (a system header's included, so a libc
     // function the unit calls), and every parameter and local of the function being dumped: a
     // hoisted local static's name passes both
@@ -1863,13 +1869,14 @@ def private dump_call(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : C
     if (callee_name((kids as _array)[0]) == CONSTANT_P) {
         return dump_constant_p(d, js, t, at)
     }
-    var x = new CirExpr(e = "call", t = t)
+    let library_ret = callee_kind((kids as _array)[0]) == "FunctionDecl" ? d.library_results?[callee_name((kids as _array)[0])] ?? -1 : -1
+    var x = new CirExpr(e = "call", t = library_ret >= 0 ? library_ret : t)
     x.fn = child_expr(d, kids, 0)
     if (x.fn == null || !dump_args(d, kids, 1, nkids, x)) {
         delete_expr(x)
         return null
     }
-    return x
+    return library_ret >= 0 ? new CirExpr(e = "cast", t = t, cast_kind = "IntegralCast", a = x) : x
 }
 
 // the name a callee references through its decay and parentheses, "" for any other callee
@@ -1879,6 +1886,15 @@ def private callee_name(js : JsonValue?) : string {
         return callee_name((js?["inner"] as _array)[0])
     }
     return kind == "DeclRefExpr" ? js?["referencedDecl"]?["name"] ?? "" : ""
+}
+
+// the declaration kind a callee references as `callee_name` reads it, "" for any other callee
+def private callee_kind(js : JsonValue?) : string {
+    let kind = node_kind(js)
+    if (child_count(js) > 0 && (kind == "ImplicitCastExpr" || kind == "ParenExpr")) {
+        return callee_kind((js?["inner"] as _array)[0])
+    }
+    return kind == "DeclRefExpr" ? js?["referencedDecl"]?["kind"] ?? "" : ""
 }
 
 // a `__builtin_constant_p` call is the integer literal clang's answer is, so the argument is
@@ -3758,8 +3774,12 @@ def private dump_top_level(var d : Dumper; js : JsonValue?) {
         let decl = (top as _array)[idx]
         let at = loc_of(d, decl)
         if (decl?["isImplicit"] ?? false) {
+            if (node_kind(decl) == "FunctionDecl" && has_child_kind(decl, "BuiltinAttr")) {
+                d.library_decls[decl?["id"] ?? ""] = decl?["type"]?["qualType"] ?? ""
+            }
             continue
         }
+        break if (!note_library_redeclaration(d, decl, at))
         if (!in_program(d, at.file)) {
             if (at.file |> ends_with(".c") && !under_system_dir(d, at.file)) {
                 fail(d, "{at.file} is a C file outside the program root {d.program_dir}: its definitions would stay external; the sidecar's `program_root` widens the root", at)
@@ -3788,6 +3808,35 @@ def private dump_top_level(var d : Dumper; js : JsonValue?) {
         }
         d.tu.decls |> push(cd)
     }
+}
+
+// a declaration of a library function clang knows (`strlen`) whose type is not the library's
+// records the library's result when it differs, so a call converts it as clang's own call does;
+// a definition of the name makes it the program's function
+def private note_library_redeclaration(var d : Dumper; decl : JsonValue?; at : CirLoc) : bool {
+    let name = decl?["name"] ?? ""
+    if (node_kind(decl) != "FunctionDecl") {
+        return true
+    }
+    if (has_child_kind(decl, "CompoundStmt")) {
+        d.library_results |> erase(name)
+        return true
+    }
+    let library = d.library_decls?[decl?["previousDecl"] ?? ""] ?? ""
+    if (empty(library) || has_child_kind(decl, "BuiltinAttr")) {
+        return true
+    }
+    let lib_t = type_from_qual(d, library, at)
+    let own_t = type_from_qual(d, type_spelling(d, decl?["type"]), at)
+    if (lib_t < 0 || own_t < 0) {
+        return false
+    }
+    let lib_ret = d.tu.types[lib_t].ret
+    let own_ret = d.tu.types[own_t].ret
+    if (lib_ret != own_ret && d.tu.types[lib_ret].k == "int" && d.tu.types[own_ret].k == "int") {
+        d.library_results[name] = lib_ret
+    }
+    return true
 }
 
 //! What a unit is dumped under beyond its file and dialect: the sidecar's `defines` (`-D<entry>`

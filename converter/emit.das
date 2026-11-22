@@ -49,6 +49,9 @@ struct Emitter {
     first_counter : int
     for_counter : int
     requires : table<string>
+    // the libc functions whose value the module takes, each with its function type at the first
+    // site: each gets a wrapper (`emit_libc_values`)
+    libc_values : table<string; int>
     global_stores : array<string>
     in_global_init : bool
     c_functions : int
@@ -2719,8 +2722,11 @@ def private target_of(var em : Emitter; tu : CirTu; t : int; loc : CirLoc) : str
 // before its definition) is reinterpreted to the type at the site, as a `BitCast` is
 def private function_value(var em : Emitter; tu : CirTu; f : CirExpr; loc : CirLoc; site_cast : bool = true) : Em {
     if (!key_exists(em.prog.functions, f.name)) {
-        fail(em, "the value of external function `{f.name}` (a pointer to a function this file does not define) is not lowered yet", loc)
-        return value("", PREC_PRIMARY)
+        let wrapper = libc_value_name(em, tu, f)
+        if (empty(wrapper)) {
+            fail(em, "the value of external function `{f.name}` (a pointer to a function this file does not define) is not lowered yet", loc)
+        }
+        return value("@@{wrapper}", PREC_PRIMARY)
     }
     let defined = em.prog.function_types?[f.name] ?? -1
     if (defined >= 0 && tu.types[defined].variadic) {
@@ -2734,6 +2740,53 @@ def private function_value(var em : Emitter; tu : CirTu; f : CirExpr; loc : CirL
         }
     }
     return value(ref, PREC_PRIMARY)
+}
+
+// the list-taking twin of each variadic libc function whose value a program may take
+let private LIBC_LIST_TWINS <- {"printf" => "vprintf", "fprintf" => "vfprintf", "sprintf" => "vsprintf", "snprintf" => "vsnprintf", "fscanf" => "vfscanf", "sscanf" => "vsscanf"}
+
+// the das callee a wrapper of libc function `libc` calls: its mapping, a variadic one's
+// list-taking twin's; "" for a function with neither
+def private libc_value_callee(tu : CirTu; libc : string; fn_t : int) : string =>
+    tu.types[fn_t].variadic ? libc_call(LIBC_LIST_TWINS?[libc] ?? "") : libc_call(libc)
+
+// the wrapper standing for libc function `f`'s value, recorded for `emit_libc_values`: a variadic
+// one's is its list-taking adapter (`fprintf__va_list`, the shape of a program function's), any
+// other's `<name>__fn`; "" for a function c_runtime maps neither way
+def private libc_value_name(var em : Emitter; tu : CirTu; f : CirExpr) : string {
+    let libc = libc_name(f.name)
+    if (kind_of(tu, f.t) != "func" || empty(libc_value_callee(tu, libc, f.t))) {
+        return ""
+    }
+    if (!key_exists(em.libc_values, libc)) {
+        em.libc_values[libc] = f.t
+    }
+    return tu.types[f.t].variadic ? "{libc}__va_list" : "{libc}__fn"
+}
+
+// a private wrapper per libc function whose value the module takes: its parameters `a<N>` (a
+// variadic one's trailing arguments one `CVaList`) passed to its mapping or list-taking twin
+def private emit_libc_values(var em : Emitter; tu : CirTu) {
+    var names <- [for (name in keys(em.libc_values)); name]
+    names |> sort()
+    for (libc in names) {
+        let fn_t = em.libc_values?[libc] ?? -1
+        let variadic = tu.types[fn_t].variadic
+        let callee = libc_value_callee(tu, libc, fn_t)
+        em.requires |> insert(libc_module(variadic ? LIBC_LIST_TWINS?[libc] ?? "" : libc))
+        let ret = das_type(em, tu, tu.types[fn_t].ret, CirLoc())
+        var inscope params <- late_params(em, tu, fn_t, CirLoc(), "a{length(tu.types[fn_t].params)} : CVaList")
+        let args = join([for (idx in range(length(params))); "a{idx}"], ", ")
+        if (libc_module(libc) == "crt") {
+            // every crt bind is an unsafe operation, as in `callee_name`
+            em.requires |> insert("c_runtime/c_function")
+            line(em, "[c_function]")
+        }
+        open_block(em, "def private {libc}{variadic ? "__va_list" : "__fn"}({join(params, "; ")})" + (ret == "void" ? "" : " : {ret}"))
+        line(em, ret == "void" ? "{callee}({args})" : "return {callee}({args})")
+        close_block(em)
+        line(em, "")
+    }
 }
 
 // whether `x` is a null pointer constant below its casts: `0` or `(void *)0` converted
@@ -10227,6 +10280,7 @@ def private emit_module_body(var em : Emitter; tu : CirTu) {
     emit_init_globals(em)
     let constants_at = length(em.out)
     emit_functions(em, tu)
+    emit_libc_values(em, tu)
     let lets = constant_lets(em) + macro_def_text(em)
     if (!empty(lets)) {
         em.out |> push(lets, constants_at)
@@ -10387,6 +10441,7 @@ def private emit_cluster(var em : Emitter; tu : CirTu; plan : LayoutPlan; owners
         line(em, inc)
     }
     line(em, "")
+    emit_libc_values(em, tu)
     if (!empty(records) && empty(em.error)) {
         emit_layout_check(em, tu, records)
     }

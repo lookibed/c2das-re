@@ -36,8 +36,7 @@ its `spellingLoc`, then its `expansionLoc`), its `range.begin` and `range.end`, 
 children (`array_filler` before `inner`); the `file` of an `includedFrom` is no part of that
 state. Before the walk `complete_locs` replays that order over the whole dump and writes every
 omitted `file` and `line` back, so each valid location names its own file and line; a node's
-location is its `loc`, else its `range.begin`, the expansion site for a macro-produced one, and
-an invalid location (`{}`) takes the last valid one's.
+location is its `loc`, else its `range.begin`, the expansion site for a macro-produced one, and an invalid location (`{}`) takes the last valid one's.
 
 An `offsetof` joins its libclang cursor (the type and the member, which the dump does not carry)
 by that key too, and every `offsetof` of one macro expansion shares it: the expansion site, and
@@ -219,11 +218,13 @@ opaque record `va_list` of `ARCHITECTURE.md` section 2 (`struct __va_list_tag[1]
 msvc's builtins' `__builtin_va_list &`), linux's `struct __va_list_tag *` a pointer to it; a
 function type naming one among its parameters parses as usual, a pointer to one or an array of
 them (`va_list *`, `va_list[2]`) fails closed, and so does a spelling the dumper does not know.
-A `VAArgExpr` is the `va_arg` node. A `__builtin_*` reference has no
-prototype in the dump (`<builtin fn type>`), so it is a variadic function type read only
-through its decay, which clang spells `BuiltinFnToFnPtr` and the dumper as the pinned
-`FunctionToPointerDecay` (F23); the emitter resolves the callee by name. Anything else is an
-error naming the node kind and its location.
+A `VAArgExpr` is the `va_arg` node. A `__builtin_*` reference has no prototype in the dump
+(`<builtin fn type>`), so it is a variadic function type read only through its decay, which clang
+spells `BuiltinFnToFnPtr` and the dumper as the pinned `FunctionToPointerDecay` (F23); the emitter
+resolves the callee by name. A library function the unit redeclares with another integer result
+(`int strlen(char *)`, which C99 6.2.7 leaves undefined): the call keeps the library's result, cast
+to the declared type as clang converts it (`note_library_redeclaration`). Anything else is an error
+naming the node kind and its location.
 
 ### Attributes and asm {#attributes-and-asm}
 
@@ -234,8 +235,7 @@ nothing a das run observes: inlining and optimizer hints (`noinline`, `always_in
 `cold`, `const`, `pure`, `leaf`, `nothrow`, `malloc`, `alloc_size`), diagnostics (`unused`,
 `used`, `format`, `nonnull`, `returns_nonnull`, `warn_unused_result`, `deprecated`, `nodebug`,
 `no_instrument_function`, `fallthrough`), a symbol's `visibility` or `section`, `gnu_inline`
-(a definition the unit uses either way), `_Noreturn` and `[[noreturn]]`
-(GNU `noreturn` is part of the function type, not an attribute node), `mode` (clang has already
+(a definition the unit uses either way), `_Noreturn` and `[[noreturn]]` (GNU `noreturn` is part of the function type, not an attribute node), `mode` (clang has already
 given the declaration the type the mode names, `typedef int DI __attribute__((mode(DI)))` dumping
 as `long`; a vector mode leaves a vector type, which fails closed as a type), `weak` on a name the
 unit defines (a function with a body, a variable that is not `extern` or has an initializer), and
