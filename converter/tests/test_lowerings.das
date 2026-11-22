@@ -1036,8 +1036,14 @@ def p9_function_pointer_fixtures(t : T?) {
         has_text(t, text, "var p : int? = addr(cells[0])")
         has_text(t, text, "var choose : function<(a0 : int; a1 : int) : function<(a0 : int; a1 : int) : int>> = @@p7_declarator_groups__pick")
         has_text(t, text, "var _c_table : function<(a0 : int) : function<(a0 : int; a1 : int) : int>> [2]")
-        // a variable-length array behind a declarator group still fails closed
-        rejects(t, "group_vla", "int f(int n) \{ int (*(*g)(int))[n] = 0; return g == 0; \}\nint main(void) \{ return f(2); \}\n", "a variable-length array is not lowered")
+        has_text(t, text, "    let _t1 = p7_declarator_groups__pick(1, 1)\n    let _t2 = invoke(_c_table[1], 0)\n")
+        has_text(t, text, "invoke(_t1, 3, 4), invoke(_t2, 9, 4))")
+        has_text(t, text, "def private p7_declarator_groups__row0 : int[3]? \{")
+        has_text(t, text, "var row_of : function<() : int[3]?> = @@p7_declarator_groups__row1")
+        has_text(t, text, "var row_table : function<() : int[3]?>[2] = fixed_array(@@p7_declarator_groups__row0, @@p7_declarator_groups__row1)")
+        has_text(t, text, "var last : int[3]? = addr(p7_declarator_groups__rows[1])")
+        // a variable-length dimension inside a group (`int (*(*[n])(int))(int)`) fails closed
+        rejects(t, "group_vla", "int f(int n) \{ int (*(*g[n])(int))(int); g[0] = 0; return g[0] == 0; \}\nint main(void) \{ return f(2); \}\n", "`*[n]`: a variable-length array is not lowered")
     }
 }
 
