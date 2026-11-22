@@ -2847,6 +2847,9 @@ def p8_refusal_fixtures(t : T?) {
         rejects(t, "libc_kr_value", "int strlen();\nint main(void) \{ int (*f)() = strlen; return f == 0; \}\n", "the value of `strlen`, declared without a prototype and with another result than the C library's, is not lowered")
         rejects(t, "libc_pointer_result", "char *strlen(char *);\nint main(void) \{ return strlen(\"a\") == 0; \}\n", "`strlen` declared with another result than the C library's `__size_t (const char *)`, other than one integer for another, is not lowered")
         rejects(t, "libc_bool_result", "_Bool strlen(char *);\nint main(void) \{ return !strlen(\"ab\"); \}\n", "`strlen` declared with another result than the C library's")
+        // a data pointer for a data pointer parameter is passed alike (gcc-torture 20050502-2's `memcmp`)
+        let ptr_params = converts(t, "libc_pointer_parameters", "typedef __SIZE_TYPE__ size_t;\nextern int memcmp(const char *, const char *, size_t);\nint main(void) \{ return memcmp(\"ab\", \"ab\", 2); \}\n")
+        has_text(t, ptr_params, "return crt::memcmp(cstr(\"ab\"), cstr(\"ab\"), 2ul)\n")
         rejects(t, "libc_other_parameters", "int strlen(int);\nint main(void) \{ return strlen(1) != 1; \}\n", "`strlen` declared with other parameters than the C library's `__size_t (const char *)` is not lowered")
         rejects(t, "libc_block_redeclared", "int main(void) \{ int strlen(char *); return strlen(\"ab\") - 2; \}\n", "`strlen` redeclared in a block with another type than the C library's is not lowered")
     }
