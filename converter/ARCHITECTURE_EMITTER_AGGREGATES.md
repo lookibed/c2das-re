@@ -223,11 +223,14 @@ sidecar entry; an array of function pointers is a member like any other.
 
 `qsort` and `bsearch` are `c_qsort` and `c_bsearch` (`c_runtime/c_sort`), called with C's
 arguments as C gives them and the converted comparator's `@@` value; the CRT binds neither,
-since its `qsort` cannot call back into das (F33). The value of a function the unit does not
-define (`strcmp` passed as a comparator) fails closed. A pointer to a variadic function is
+since its `qsort` cannot call back into das (F33). A pointer to a variadic function is
 `function<(fixed...; aN : CVaList) : R>`: its value is the function's list-taking adapter
 `f__va_list`, emitted beside `f` when the program takes its value (one per function, so two takes
-compare equal), and a call through it is `invoke(p, fixed..., to_cvalist((t1, t2)))`.
+compare equal), and a call through it is `invoke(p, fixed..., to_cvalist((t1, t2)))`. The value of
+a libc function the unit does not define is a private wrapper the module emits once after its
+functions (`emit_libc_values`), parameters `a<N>` at the site's function type: `strlen__fn`
+calling the mapping, a variadic one's `fprintf__va_list` calling its list-taking twin
+(`c_vfprintf`, `LIBC_LIST_TWINS`); a function with neither (`scanf`) fails closed.
 
 ### Initialization loops {#initialization-loops}
 
