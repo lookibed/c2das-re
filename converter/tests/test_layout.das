@@ -952,3 +952,27 @@ def test_cut_order(t : T?) {
         t |> equal(order_cost(n, w, order), 0l)
     }
 }
+
+// chibicc's shape (P10.0): in a cluster a static keeps its name, and das's builtin
+// `count(start = 0, step = 1)` would make its call ambiguous
+[test]
+def test_static_named_count(t : T?) {
+    var dir_error : string
+    work_root = create_temp_directory("c2das_layout_count", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure(dir_error)
+        return
+    }
+    t |> run("a static `count` of a cluster's unit is renamed past das's builtin and the program runs") @(t : T?) {
+        let dir = path_join(work_root, "p10_count_src")
+        mkdir_rec(dir)
+        fwrite(path_join(dir, "main.c"), "int next(void);\nint twice(int x) \{ return x * 2; \}\nint main(void) \{ return next() + next() - 6; \}\n")
+        fwrite(path_join(dir, "gen.c"), "int twice(int x);\nstatic int count(void) \{ static int i = 1; return i++; \}\nint next(void) \{ return twice(count()); \}\n")
+        let res <- converted([path_join(dir, "main.c"), path_join(dir, "gen.c")], "p10_count", "source")
+        t |> equal(res.error, "")
+        var out : string
+        let rc = run_tier(res.das_path, "interp", path_join(work_root, "p10_count_run"), out, CONVERTED_MODULES)
+        t |> equal(rc, 0, out)
+    }
+    rmdir_rec(work_root)
+}
