@@ -27,7 +27,8 @@ names a wider `program_root`; Lua's sources and headers share one folder. An ext
 variable or a record field of, or names under `sizeof` as a type or an operand's (`sizeof *p`)
 (`struct tm`, `struct lconv`, `mbstate_t`) is laid out with the program's records: the libclang pass registers its definition from the system header, and every external
 record it holds by value, an anonymous one nested in it included, and the walk anchors it where it first interns it, so it converts and is
-layout-checked under its C tag; one the program reaches only through pointers (`FILE`) stays opaque.
+layout-checked under its C tag; one the program reaches only through pointers (`FILE`) stays
+opaque.
 
 clang writes a location's `file` and `line` only where they differ from the last location it
 wrote, over every location of the dump in print order: a node's `loc` (a macro-produced one as
@@ -69,10 +70,7 @@ space), `R (*)(P)` pointers to functions, `R (**)(P)` pointers to those and `R (
 arrays of them, the `(*` read as the pointer only outside every parenthesis (a function whose
 parameter is a function pointer, `void (void (*)(int), int)`, is a function type) and a `const`
 on the pointer (`R (* const)(P)`, a member read through a const record) dropped, since das
-spells none. Any other group, the first parenthesis whose text starts with `*` (a parameter list
-never does), is an abstract declarator read inside out (`applied_declarator`): `int (*const)`, a
-parenthesized pointer clang spells as written, and `R (*(P1))(P2)`, a function returning a
-function pointer, with pointers to and arrays of those. clang spells every constant dimension as its count, so a dimension it leaves as an
+spells none. Any other group (a parenthesis opening with `*`) is read inside out (`applied_declarator`) ahead of the text cuts of a trailing `[N]`: `int (*const)[3]`, `R (*(P1))(P2)`, `int (*(void))[3]`. clang spells every constant dimension as its count, so a dimension it leaves as an
 expression (`int[n]`) is a variable-length array, which fails closed naming it; a local's error
 spells the declaration (`int a[n]`). A VLA parameter is no array: clang decays it to a pointer. A builtin typedef in a builtin's prototype (`__size_t`, `__ptrdiff_t`) has no
 cursor and is the dialect's pointer-wide integer. Widths follow the selected dialect (`msvc`:
@@ -167,7 +165,8 @@ token's) is the empty file on both sides. Two records one expansion still makes
 indistinguishable (one key, or one `(anonymous at f:l:c)` spelling, which is the expansion
 location) fail closed when the second is registered; the same record met twice (a block-scoped
 record under its statement and its variable's type) is recognized by `clang_hashCursor`. Every record, enum, enumerator reference
-and dimensioned declarator the pass records is keyed that way; the location carry (`loc_of`) serves the C-IR's `loc` alone.
+and dimensioned declarator the pass records is keyed that way; the location carry (`loc_of`)
+serves the C-IR's `loc` alone.
 
 Enums come from the same libclang pass as records: every `enum` definition of the program,
 nested and block-scoped ones included, with the enumerator values as C reads them
@@ -279,7 +278,8 @@ is 0) except across a comma operator, whose right operand the generator emits on
 (`__builtin_constant_p(__builtin_constant_p(x))` answers 1): both fail closed
 (`probes/test_toolchain.das`), `(x, x)` with them. So does a key two calls share with different
 answers (one macro expansion spelling both from one token, a nested expansion placing two calls
-at one spelling and one expansion site included: a refusal, never a wrong value), and a call the pass never saw.
+at one spelling and one expansion site included: a refusal, never a wrong value), and a call the
+pass never saw.
 
 ### Macro names {#macro-names}
 

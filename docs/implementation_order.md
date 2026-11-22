@@ -342,8 +342,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   type's `var` positions are those of the value-taken functions of its signature (F34).
   Ledger (fail closed today): the value of a function the unit does not define (`strcmp` as a
   comparator), which needs a das function of C's type per libc function; a pointer to a
-  variadic function (c-testsuite 00189, `fprintf`); a function returning a function pointer,
-  whose spelling `int (*(int, int))(int)` the dumper does not parse (c-testsuite 00124); a call
+  variadic function (c-testsuite 00189, `fprintf`); a call
   with arguments through an unprototyped function pointer `T (*)()`, which the C-IR spells as
   `T (*)(void)` until it marks it; a wide string literal (`L"ab"`; the torture filter skips its tests, 20010325-1 among
   them, which passed only because the narrow bytes indexed alike), whose bytes the dump gives
@@ -4100,6 +4099,12 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   a variadic function (pr68390), a libc function's value (pr54937), `main` with other parameters
   (alias-4, behind P7.6); `vfprintf` and `perror` mappings (fprintf-chk-1, user-printf,
   vfprintf-chk-1, printf-2).
+  Done (branch `p7.5-declarator-groups`): a declarator group clang spells as written is read
+  inside out (`applied_declarator`) ahead of the paths that cut a trailing `[N]` by text: `int
+  (*const)` and `int (*const)[3]` (a parenthesized pointer), a function returning a function
+  pointer (c-testsuite 00124, whose spelling `int (*(int, int))(int, int)` failed closed) or a
+  pointer to an array (`int (*(void))[3]`, which the first cut of this fix typed as a function
+  returning `int *`), and pointers to and arrays of those; c-testsuite 00124 and 00162 pass.
 - **P7.6 GNU emulations owed by the skip audit** (P5.1c). Skip lines name it under these features:
   `packed or aligned layout` (33: `packed` and `aligned` beyond what the layout law places or a
   typedef carries - a packed record outside the sidecar's `marshal`, an alignment on a variable, a

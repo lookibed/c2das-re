@@ -1139,12 +1139,13 @@ def private closing_paren(view : array<uint8>#; open : int) : int {
 }
 
 // `B (D)S`, a declarator group the shapes `function_pointer` reads do not cover: `int (*const)`
-// (a parenthesized pointer, clang's `ParenType`) and `int (*(int, int))(int, int)` (a function
-// returning a function pointer). The group is the first parenthesis whose text starts with `*`,
-// as a parameter list never does; -2 for a spelling with none
+// (a parenthesized pointer, clang's `ParenType`), `int (*(int, int))(int, int)` (a function
+// returning a function pointer), `int (*(void))[3]` (one returning a pointer to an array). The
+// group is the first parenthesis whose text starts with `*`, as a parameter list never does; -2
+// for a spelling with none and for `T (*)[N]`, the row pointer `type_from_qual` cuts by text
 def private declarator_group(var d : Dumper; qt : string; at : CirLoc) : int {
     let open = find(qt, "(*")
-    if (open <= 0 || find(slice(qt, 0, open), "(") >= 0) {
+    if (open <= 0 || find(slice(qt, 0, open), "(") >= 0 || (find(qt, "(*)") == open && !(qt |> ends_with(")")))) {
         return -2
     }
     let base = type_from_qual(d, strip(slice(qt, 0, open)), at)
@@ -1500,9 +1501,11 @@ def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
     if (scalar != -2) {
         return scalar
     }
+    // a group goes before the paths below, which cut a spelling's trailing `[N]` by text
     let fn_ptr = function_pointer(d, qt, at)
-    if (fn_ptr != -2) {
-        return fn_ptr
+    let grouped = fn_ptr != -2 ? fn_ptr : declarator_group(d, qt, at)
+    if (grouped != -2) {
+        return grouped
     }
     if (qt |> ends_with("*")) {
         let to = type_from_qual(d, slice(qt, 0, length(qt) - 1), at)
@@ -1543,8 +1546,7 @@ def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
     // after a `*`
     let paren = find(qt, "(")
     if (paren > 0 && qt |> ends_with(")")) {
-        let grouped = declarator_group(d, qt, at)
-        return grouped != -2 ? grouped : function_type(d, qt, paren, at)
+        return function_type(d, qt, paren, at)
     }
     let tagged = tagged_type(d, qt, at)
     if (tagged != -2) {
