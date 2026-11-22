@@ -54,6 +54,7 @@ collide, so every group is one suite. A new suite, or a test that writes a fixed
 | `c_runtime/tests` | temp folders (its JIT cache under one) | none |
 | `converter/tests` | temp folders (stand-in roots for the suite runners) | none |
 | `lua/tests` | a temp stand-in root (`lua/work`, `lua/fetch` inside it) | none |
+| `chibicc/tests` | a temp folder (the conversion and both compilers' outputs); reads `chibicc/fetch/` | none |
 | `perf/tests` | `perf/work/` (`audit`, `blit`, `fib_loop`, `fib_recursive`, `first_member`, `lanes_*`) | none; its own files share `perf/work/audit` |
 | `ports/tests` | temp stand-in roots | none |
 | `metrics/tests` | `metrics/work/` (`perf`, `c_testsuite`, `csmith`); `test_switch_census.das` a temp folder | none; its criteria and readability files share `metrics/work` |

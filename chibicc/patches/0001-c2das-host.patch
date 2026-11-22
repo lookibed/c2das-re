@@ -1,3 +1,5 @@
+c2das-re's port of chibicc (Copyright (c) 2019 Rui Ueyama, MIT License, `LICENSE` of the checkout); the changes below are under the same license.
+
 diff --git a/chibicc.h b/chibicc.h
 index f73eeec..34f985c 100644
 --- a/chibicc.h
