@@ -96,8 +96,13 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   its pin with its build present is left alone; a failed build shows its log's tail; the venv
   records the package set it installed and installs again when the list differs.
 - `csmith/run.das` - the differential driver (section 3): its own `main` over the shared
-  runner's pieces, one worker process per seed (`--one <seed>`), and the judge of a generated
-  program the reducer calls (`--check <file>`).
+  runner's pieces, one worker process per seed (`--one <seed>`), the judge of a generated
+  program the reducer calls (`--check <file>`), and the nightly run (`--nightly`, section 4).
+- `csmith/nightly.das` - the nightly run's pieces (section 4): `nightly_seeds` (the seeds a
+  start seed draws), `date_start` and `parse_start` (the start a date or `--start` names),
+  `nightly_verdict` and `keeps_files` (a seed's status as the night counts it, and whether its
+  work folder stays), `nightly_report` and `nightly_result_path` (the result file and its name)
+  and `nightly_exit_code`.
 - `csmith/generate.das` - a seed's program (section 3): `csmith_program` runs the pinned csmith
   with `CSMITH_OPTIONS` and splices the runtime headers in; the driver and the readability
   metric generate through it.
@@ -215,3 +220,44 @@ on which both compilers happen to agree passes through, and a reduced program is
 in mind. The reducer is cvise, which is maintained, builds against the pinned LLVM and reduces C
 without a configuration; any reducer that takes `--n <jobs> <test> <file>` (creduce does) can be
 named instead.
+
+## 4. The nightly run
+
+`run.das --nightly` is the V3 schedule (`docs/very-detailed-plan.md`, N=1000 a night). It
+judges `--seeds` fresh seeds (1000 unless given) and nothing else: the ratchet and the skip
+ledger are neither read nor written, a seed either list holds is judged like any other, and a
+timeout is not retried. The seeds come from a start seed through the `daslib/random` generator
+(`nightly_seeds`): the same start draws the same seeds in the same order, and a longer night
+begins with a shorter one's seeds. The start is the UTC date's digits (`20261122`) unless
+`--start` names one, a decimal of at most nine digits; a bad start, or `--nightly` beside
+`--update`, `--audit-skips`, `--seed`, `--from` or `--filter`, exits 2 before any seed.
+
+Each seed runs through the same worker as the ratchet's run (`--one`, under `--tier`, the
+interpreter unless given) and its verdict maps onto the night's: `pass`, `differs` (`output`
+or `exit`), `refused` (`convert`), `native`, `timeout`, `crash`. The result file is
+`work/nightly/<date>-<start>.txt` (`-<tier>` added for a tier but the interpreter), rewritten
+after every seed so a night cut short still reports what it judged: a header naming the start,
+the count, the tier, the reference compiler and the command that replays the night, the judged
+and wall-time lines, a count per verdict, the seeds of each verdict, and for each divergence,
+timeout or crash its first reason line and folder; a divergence also gets its two outputs and
+its `reduce.sh` line. The run exits 1 on any `differs`, else 0.
+
+A seed that diverged, timed out or crashed keeps its `work/<seed>/` folder: the spliced program,
+the conversion, and for a divergence the native and converted outputs `judge` writes beside the
+program (`<seed>.native.out`, `<seed>.das.out`) whenever a converted run does not pass. Every
+other seed's folder is removed as soon as its worker ends, since its program regenerates from
+its number; a seed's folder is about 9 MB, and a thousand of them would fill the disk. No
+reduction runs inside the night: `reduce.sh <seed>` takes a listed divergence afterwards.
+
+To replay a night, run the header's replay line (`--start` and `--seeds` from the file); to
+replay one seed of it, `run_suite.sh csmith --seed <seed>`. The JIT is not part of the
+night: a seed's cost is its conversion, which a second tier repeats (25 s a seed under the
+interpreter, 26 s under the JIT, measured on one ratchet seed), so a JIT night is the same
+replay line with `--tier jit` and doubles the box time.
+
+The night runs on this box as a queued job; no scheduler is installed. A worker holds a seed's
+conversion in memory (clang's dump of a csmith program is about 170 MB), and three workers with
+the driver peak near 3.5 GB, so a 4 GB scope runs three, and a night of 1000 seeds takes
+about 70 minutes:
+
+    heavy --low --label csmith-nightly --max 4G -- env CC=gcc-14 scripts/run_suite.sh csmith --nightly --jobs 3

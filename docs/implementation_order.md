@@ -404,9 +404,20 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   (24, P3.3), union bitfields and F5 layouts (26, P4.7) and a `let` pointer into a `var`
   parameter (2, P4.6). gcc-torture 680 to 732 (strlen-5, the shift family and 960116-1
   among them), c-testsuite 192 to 193 (00129).
-  Open under the P4 exit criterion: the nightly N=1000 schedule, blocked on this box by the
-  dumper's parse of clang's JSON dump (about 170 MB per csmith program, most of a seed's 5 to
-  60 s). A coverage item: csmith's `--binary-constant` (GNU `0b` literals) stays off until the
+  The nightly N=1000 schedule landed as `run.das --nightly` (suites/ARCHITECTURE.md section 4):
+  N fresh seeds (1000 by default) drawn from a recorded start seed (the UTC date's digits unless
+  `--start`), no ratchet read or written, a dated result file `work/nightly/<date>-<start>.txt`
+  with counts and seed lists per verdict and the replay line, the work folder of every seed
+  that neither diverged, timed out nor crashed removed as it ends, exit 1 on any divergence.
+  No scheduler is installed on this box: the lead launches the night as
+  `heavy --low --label csmith-nightly --max 4G -- env CC=gcc-14 scripts/run_suite.sh csmith --nightly --jobs 3`.
+  The first night, 2026-11-22, start seed 20261122, interpreter, gcc 14.3.0, daScript
+  b7d8f6f52f, three workers: 1000 seeds in 4029 s (67 min, scope peak 3.5 GB), 876 pass,
+  0 differs, 0 refused, 0 native, 124 timeout, 0 crash. Every timeout is the native run past
+  its 2 s: csmith programs whose gcc `-O0` build runs for minutes (three of them rebuilt and run
+  past 120 s each), so they are no converter verdict. The JIT is not part of the night: a seed's
+  cost is its conversion (25 s interp, 26 s JIT on one seed), so a JIT night is the replay line
+  with `--tier jit` at the same box time again. A coverage item: csmith's `--binary-constant` (GNU `0b` literals) stays off until the
   dialect reads them.
 - **P4.5a Perf tracking.** `perf/results_linux.json` is re-recorded on the current tree (the
   capture of 2026-10-06 predates every item since P2.4, which `perf/REVIEW.md` already
