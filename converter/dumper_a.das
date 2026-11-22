@@ -2908,13 +2908,18 @@ def private dump_decl_ref(var d : Dumper; js : JsonValue?; t : int; at : CirLoc)
     return new CirExpr(e = "ref", t = t, name = bound_name(d, js?["referencedDecl"]), vol = is_volatile_spelling(js))
 }
 
+// the nodes whose value is their one child's
+let VALUE_WRAPPERS <- {"ParenExpr", "ConstantExpr", "PredefinedExpr", "ExprWithCleanups", "MaterializeTemporaryExpr"}
+
 def private dump_expr_node(var d : Dumper; js : JsonValue?) : CirExpr? {
     let at = loc_of(d, js)
     let kind = node_kind(js)
-    if (kind == "ParenExpr" || kind == "ConstantExpr" || kind == "PredefinedExpr") {
+    if (key_exists(VALUE_WRAPPERS, kind)) {
         // clang wraps a constant item of a file-scope initializer in `ConstantExpr`, whose
         // value is its child's; `__func__` and `__PRETTY_FUNCTION__` are a `PredefinedExpr` over
-        // the string literal of the function's name
+        // the string literal of the function's name; a member of a record a call returns
+        // (`f().a`) reads a `MaterializeTemporaryExpr` of the call under an `ExprWithCleanups`
+        // that ends the full expression, both their child's value in C
         if (child_count(js) == 0) {
             fail(d, "empty parentheses", at)
             return null
@@ -3097,7 +3102,7 @@ def private dump_type_operator(var d : Dumper; js : JsonValue?; kind : string; t
     return new CirExpr(e = "va_arg", t = t, list = list, arg_t = t)
 }
 
-let EXPR_KINDS <- {"IntegerLiteral", "CharacterLiteral", "FloatingLiteral", "StringLiteral", "DeclRefExpr", "ImplicitCastExpr", "CStyleCastExpr", "UnaryOperator", "BinaryOperator", "CompoundAssignOperator", "ConditionalOperator", "CallExpr", "ArraySubscriptExpr", "UnaryExprOrTypeTraitExpr", "ParenExpr", "MemberExpr", "InitListExpr", "OffsetOfExpr", "VAArgExpr", "CompoundLiteralExpr"}
+let EXPR_KINDS <- {"IntegerLiteral", "CharacterLiteral", "FloatingLiteral", "StringLiteral", "DeclRefExpr", "ImplicitCastExpr", "CStyleCastExpr", "UnaryOperator", "BinaryOperator", "CompoundAssignOperator", "ConditionalOperator", "CallExpr", "ArraySubscriptExpr", "UnaryExprOrTypeTraitExpr", "ParenExpr", "MemberExpr", "InitListExpr", "OffsetOfExpr", "VAArgExpr", "CompoundLiteralExpr", "ExprWithCleanups"}
 
 // an optional slot of a statement: clang spells an absent one as `{}`
 def private slot_stmt(var d : Dumper; kids : JsonValue?; idx : int; var ok : bool&) : CirStmt? {

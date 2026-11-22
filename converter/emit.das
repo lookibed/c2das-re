@@ -372,6 +372,7 @@ let VA_BEGIN = "va_begin"
 let VA_INT = "va_i"
 let VA_DOUBLE = "va_d"
 let VA_POINTER = "va_p"
+let VA_RECORD = "va_r"
 let VA_REST = "va_rest"
 let END_INDEX = "end_index"
 let ENUM_FROM_INT = "enum_from_int"
@@ -396,12 +397,12 @@ let DIALECT_INIT = "c2das_dialect"
 let EMPTY_LITERAL = "c2das_empty"
 
 //! Every name the emitter spells bare in a module besides the program's own (`reserved_das_names`).
-let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, CSTR, INT_OF, DO_WHILE, JMP_TARGET, JMP_RETHROW, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL, "memcpy"]
+let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE, VA_POINTER, VA_RECORD, VA_REST, END_INDEX, ENUM_FROM_INT, CSTR_ARRAY, CSTR, INT_OF, DO_WHILE, JMP_TARGET, JMP_RETHROW, UNIT_BYTES, LONG_BITS_GLOBAL, SIGNAL_MSVC, RUNTIME_INIT, ARGC, ARGV, C_MAIN, "main", LAYOUT_CHECK, LATE_BIND, INIT_GLOBALS, DIALECT_INIT, EMPTY_LITERAL, "memcpy"]
 
 //! The public names of the c_runtime modules a converted module may require, each top-level
 //! function, global, type and call macro of `c_runtime/c_runtime/*.das` (repo root);
 //! `converter/tests/test_link.das` fails when a definition there is missing from it.
-let C_RUNTIME_EXPORTS <- ["BitAccess", "BitStore", "CBitfieldsAnnotation", "CCompare", "CDoWhileMacro", "CFormatDirective", "CFunctionAnnotation", "CJmpBuf", "CMacroAnnotation", "CSignalHandler", "CStorage", "CSwitchMacro", "CUnionAnnotation", "CVaCursor", "CVaList", "CVal", "CVolatileLoadMacro", "C_EINVAL", "C_EOF", "C_SIGNAL_LIMIT", "C_SIG_ERR_BITS", "C_SIG_IGN_BITS", "C_STORAGES", "CstrArrayMacro", "CstrMacro", "EnumFromIntMacro", "IntOfMacro", "VaNone", "VariadicAnnotation", "VariadicCallMacro", "add_bit_pair", "bit_getter", "bit_setter", "c_abort", "c_argc", "c_argv", "c_assert_fail", "c_atexit", "c_bsearch", "c_bswap16", "c_bswap32", "c_bswap64", "c_clrsb", "c_clz", "c_ctz", "c_dialect_spec", "c_do_while", "c_exit", "c_ffs", "c_is_float_conversion", "c_is_int_conversion", "c_is_wide_length", "c_jmp_rethrow", "c_jmp_target", "c_long_bits", "c_longjmp", "c_parity", "c_parse_directive", "c_popcount", "c_prefetch", "c_qsort", "c_run_atexit", "c_runtime_init", "c_signal", "c_signal_msvc", "c_signbit", "c_switch", "c_unit_bytes", "c_unreachable", "c_vformat", "c_vfprintf", "c_vfscanf", "c_volatile_load", "c_volatile_load_jit", "c_volatile_read", "c_volatile_store", "c_vprintf", "c_vsnprintf", "c_vsprintf", "c_vsscanf", "cstr", "cstr_array", "end_index", "enum_from_int", "field_index", "fprintf", "fscanf", "int_of", "printf", "register_llvm_code_generators", "snprintf", "sprintf", "sscanf", "storage_of", "storage_of_bytes", "to_cvalist", "va_args", "va_begin", "va_d", "va_i", "va_p", "va_rest"]
+let C_RUNTIME_EXPORTS <- ["BitAccess", "BitStore", "CBitfieldsAnnotation", "CCompare", "CDoWhileMacro", "CFormatDirective", "CFunctionAnnotation", "CJmpBuf", "CMacroAnnotation", "CSignalHandler", "CStorage", "CSwitchMacro", "CUnionAnnotation", "CVaCursor", "CVaList", "CVaRecord", "CVal", "CVolatileLoadMacro", "C_EINVAL", "C_EOF", "C_SIGNAL_LIMIT", "C_SIG_ERR_BITS", "C_SIG_IGN_BITS", "C_STORAGES", "CstrArrayMacro", "CstrMacro", "EnumFromIntMacro", "IntOfMacro", "VaNone", "VariadicAnnotation", "VariadicCallMacro", "add_bit_pair", "bit_getter", "bit_setter", "c_abort", "c_argc", "c_argv", "c_assert_fail", "c_atexit", "c_bsearch", "c_bswap16", "c_bswap32", "c_bswap64", "c_clrsb", "c_clz", "c_ctz", "c_dialect_spec", "c_do_while", "c_exit", "c_ffs", "c_is_float_conversion", "c_is_int_conversion", "c_is_wide_length", "c_jmp_rethrow", "c_jmp_target", "c_long_bits", "c_longjmp", "c_parity", "c_parse_directive", "c_popcount", "c_prefetch", "c_qsort", "c_run_atexit", "c_runtime_init", "c_signal", "c_signal_msvc", "c_signbit", "c_switch", "c_unit_bytes", "c_unreachable", "c_vformat", "c_vfprintf", "c_vfscanf", "c_volatile_load", "c_volatile_load_jit", "c_volatile_read", "c_volatile_store", "c_vprintf", "c_vsnprintf", "c_vsprintf", "c_vsscanf", "cstr", "cstr_array", "end_index", "enum_from_int", "field_index", "fprintf", "fscanf", "int_of", "printf", "register_llvm_code_generators", "snprintf", "sprintf", "sscanf", "storage_of", "storage_of_bytes", "to_cvalist", "va_args", "va_begin", "va_d", "va_i", "va_p", "va_r", "va_rest"]
 
 let PREC_PRIMARY = 14
 let PREC_UNARY = 13
@@ -1740,7 +1741,8 @@ def private c_name_of(tu : CirTu; name : string) : string {
 }
 
 // false with the error set when an argument past a variadic callee's fixed parameters is a
-// record or a `va_list`, which the trailing tuple's promotions do not carry
+// `va_list` or a marshal-only record, which the trailing tuple does not carry; a record travels
+// as the tuple's copy, which `to_cvalist` points the list at
 def private check_trailing_arguments(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : bool {
     let ft = called_type(tu, x.fn)
     if (ft < 0 || !tu.types[ft].variadic) {
@@ -1748,7 +1750,7 @@ def private check_trailing_arguments(var em : Emitter; tu : CirTu; x : CirExpr; 
     }
     let fixed = length(tu.types[ft].params)
     for (idx in range(fixed, length(x.args))) {
-        let what = is_va_list(tu, x.args[idx].t) ? "a `va_list`" : is_record(tu, x.args[idx].t) ? "a record" : ""
+        let what = is_va_list(tu, x.args[idx].t) ? "a `va_list`" : is_marshal(em, tu, x.args[idx].t) ? "a marshal-only record" : ""
         if (!empty(what)) {
             fail(em, "{what} passed through `...` (argument {idx} of `{c_name_of(tu, called_name(x))}`) is not lowered yet", loc)
             return false
@@ -4146,7 +4148,8 @@ def private null_rooted(x : CirExpr const?) : bool {
 // `va_arg(v, T)`: the pop of the class C's default promotions gave the argument, `va_i` for
 // the integers (narrowed to `T`: a `char` or `short` read is undefined in C, since no argument
 // arrives as one, and reads the promoted `int`), `va_d` for `double` (and `float`, undefined
-// alike), `va_p` for a pointer; a record and a `va_list` fail closed
+// alike), `va_p` for a pointer, `va_r` for a record (read through the address of the caller's
+// copy, its size checked); a marshal-only record and a `va_list` fail closed
 def private emit_va_arg(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     let t = x.arg_t
     let k = kind_of(tu, t)
@@ -4154,12 +4157,16 @@ def private emit_va_arg(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc)
         fail(em, "va_arg of a `va_list` is not lowered yet", loc)
         return value("", PREC_PRIMARY)
     }
-    if (is_record(tu, t)) {
-        fail(em, "va_arg of a record type is not lowered yet", loc)
+    if (is_marshal(em, tu, t)) {
+        fail(em, "va_arg of a marshal-only record is not lowered yet", loc)
         return value("", PREC_PRIMARY)
     }
     let list = emit_expr(em, tu, x.list, loc).text
     em.requires |> insert("c_runtime/variadic")
+    if (is_record(tu, t)) {
+        let spelled_record = das_type(em, tu, t, loc)
+        return unsafe_value(em, "*reinterpret<{spelled_record}?>({VA_RECORD}({list}, typeinfo sizeof(type<{spelled_record}>)))", PREC_UNARY)
+    }
     if (k == "enum") {
         return value(int_to_enum(em, tu, t, "int({VA_INT}({list}))"), PREC_PRIMARY)
     }

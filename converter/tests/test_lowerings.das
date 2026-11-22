@@ -165,6 +165,7 @@ def test_lowerings(t : T?) {
     p5_lua_library_fixtures(t)
     p7_fixtures(t)
     p7_block_tag_fixtures(t)
+    p7_va_record_fixtures(t)
     p7_volatile_fixtures(t)
     p7_expect_fixtures(t)
     p7_wrap_fixtures(t)
@@ -1081,6 +1082,21 @@ def p7_block_tag_fixtures(t : T?) {
     }
 }
 
+// P7.5: a record through `...` and `va_arg` of a record (c-testsuite 00140, 00204)
+def p7_va_record_fixtures(t : T?) {
+    t |> run("a record passes through `...` as the tuple's copy and `va_arg` of a record reads it back through `va_r`; `f().a` reads a member of the record a call returns") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_va_records", text)
+        check_compiled_tiers(t, "p7_va_records")
+        has_text(t, text, "var s : s3 = *reinterpret<s3?>(va_r(ap, typeinfo sizeof(type<s3>)))")
+        has_text(t, text, "var w : word = *reinterpret<word?>(va_r(ap, typeinfo sizeof(type<word>)))")
+        has_text(t, text, "total = p7_va_records__sum`va(cstr(\"sps\"), (abc, q, xyz))")
+        has_text(t, text, "total += invoke(fp, cstr(\"s\"), to_cvalist((abc,)))")
+        has_text(t, text, "total += p7_va_records__skip`va(q, 1, (q, abc, w))")
+        has_text(t, text, "double(p7_va_records__get_pt().a), p7_va_records__get_pt().c, total)")
+    }
+}
+
 def p4_function_fixtures(t : T?) {
     t |> run("function pointers: qsort and bsearch through c_sort, a type's `var` positions, casts as reinterpret, a union of function pointers as one storage") @(t : T?) {
         var text : string
@@ -1358,8 +1374,11 @@ def p4_varargs_shapes(t : T?) {
 
 def p4_varargs_rejects(t : T?) {
     t |> run("varargs: what the lowering refuses, each with its reason") @(t : T?) {
-        rejects(t, "va_arg_record", "#include <stdarg.h>\nstruct P \{ int x; \};\nstatic int f(int n, ...) \{ va_list ap; va_start(ap, n); struct P p = va_arg(ap, struct P); va_end(ap); return p.x; \}\nint main(void) \{ struct P p = \{ 0 \}; return f(1, p); \}\n", "va_arg of a record type is not lowered yet")
-        rejects(t, "va_record_argument", "int printf(const char *, ...);\nstruct P \{ int x; \};\nint main(void) \{ struct P p = \{ 0 \}; return printf(\"%d\", p); \}\n", "a record passed through `...` (argument 1 of `printf`) is not lowered yet")
+        // a marshal-only record is bytes at clang's offsets, which no tuple field carries
+        let disk = "#include <stdarg.h>\n#pragma pack(1)\ntypedef struct \{ short w; int o; \} disk_t;\n#pragma pack()\n"
+        let marshal = "\{ \"marshal\": [\"disk_t\"] \}\n"
+        rejects(t, "va_arg_marshal", disk + "static int f(int n, ...) \{ va_list ap; va_start(ap, n); disk_t d = va_arg(ap, disk_t); va_end(ap); return d.w; \}\nint main(void) \{ return f(0); \}\n", "va_arg of a marshal-only record is not lowered yet", marshal)
+        rejects(t, "va_marshal_argument", disk + "static int f(int n, ...) \{ return n; \}\nint main(void) \{ disk_t d; d.w = 0; return f(0, d); \}\n", "a marshal-only record passed through `...` (argument 1 of `f`) is not lowered yet", marshal)
         rejects(t, "va_list_field", "#include <stdarg.h>\nstruct S \{ va_list ap; int n; \};\nint main(void) \{ struct S s; s.n = 0; return s.n; \}\n", "a `va_list` field (`S.ap`) is not lowered yet")
         rejects(t, "va_list_global", "#include <stdarg.h>\nva_list g;\nint main(void) \{ return 0; \}\n", "a `va_list` global (`g`) is not lowered yet")
         rejects(t, "va_list_array", "#include <stdarg.h>\nint main(void) \{ va_list two[2]; (void) two; return 0; \}\n", "a pointer to a `va_list` or an array of them is not lowered yet")

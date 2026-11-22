@@ -149,11 +149,11 @@ initializes named under `field`: one item at that member's index, none for `{}`,
 }`, a record's scalar member braced in its list: the child itself, which clang already converted,
 so the braces leave no trace in the C-IR; a scalar's `{}` fails closed), `CompoundLiteralExpr` (the `compound_lit` node over its
 list; a scalar's list, `(int){5}`, holds its one value at position 0, none for `(int){}`),
-`ConstantExpr` (clang's wrapper of a constant item in a file-scope initializer, its child's
-value), `PredefinedExpr` (`__func__`, `__PRETTY_FUNCTION__`: its string literal child), GNU
-`__extension__` (its operand: it only silences pedantic warnings) and `OffsetOfExpr`,
-whose components the dump omits: the dumper reads `T, f` from the macro's own text at its
-`expansionLoc`, in whichever file of the program that is (F20). A location with an `expansionLoc` is that location.
+`ConstantExpr` (a file-scope initializer's constant item), `ExprWithCleanups` and
+`MaterializeTemporaryExpr` (`f().a`): their child's value, `PredefinedExpr` (`__func__`,
+`__PRETTY_FUNCTION__`: its string literal child), GNU `__extension__` (its operand) and
+`OffsetOfExpr`, whose components the dump omits: the dumper reads `T, f` from the macro's own text
+at its `expansionLoc`, in whichever program file that is (F20); a node's `expansionLoc` is its place.
 
 The libclang pass and the JSON walk meet on one key: the canonical file and byte offset of a
 node's expansion location and of its spelling location (`clang_getExpansionLocation`,
