@@ -1105,7 +1105,11 @@ def private function_type(var d : Dumper; qt : string; paren : int; at : CirLoc)
     if (ret < 0) {
         return -1
     }
-    let inside = strip(slice(qt, paren + 1, length(qt) - 1))
+    return function_returning(d, ret, strip(slice(qt, paren + 1, length(qt) - 1)), at)
+}
+
+// the function type returning `ret` whose parameter list, without its parentheses, is `inside`
+def private function_returning(var d : Dumper; ret : int; inside : string; at : CirLoc) : int {
     var params : array<int>
     var variadic = false
     if (inside != "void" && !empty(inside)) {
@@ -1127,6 +1131,108 @@ def private function_type(var d : Dumper; qt : string; paren : int; at : CirLoc)
     var t = CirType(k = "func", ret = ret, variadic = variadic)
     t.params <- params
     return intern(d, key, t)
+}
+
+// the index of the `)` closing the `(` at `open` of `view` (the `]` of a `[`, which never nests
+// in a spelling), -1 when the text ends first
+def private closing_paren(view : array<uint8>#; open : int) : int {
+    var depth = 0
+    for (idx in range(open, length(view))) {
+        if (view[idx] == uint8('(') || view[idx] == uint8('[')) {
+            depth++
+        } elif (view[idx] == uint8(')') || view[idx] == uint8(']')) {
+            depth--
+            if (depth == 0) {
+                return idx
+            }
+        }
+    }
+    return -1
+}
+
+// `B (D)S`, a declarator group the shapes `function_pointer` reads do not cover: `int (*const)`
+// (a parenthesized pointer, clang's `ParenType`), `int (*(int, int))(int, int)` (a function
+// returning a function pointer), `int (*(void))[3]` (one returning a pointer to an array). The
+// group is the first parenthesis whose text starts with `*`, as a parameter list never does; -2
+// for a spelling with none and for `T (*)[N]`, the row pointer `type_from_qual` cuts by text
+def private declarator_group(var d : Dumper; qt : string; at : CirLoc) : int {
+    let open = find(qt, "(*")
+    if (open <= 0 || find(slice(qt, 0, open), "(") >= 0 || (find(qt, "(*)") == open && !(qt |> ends_with(")")))) {
+        return -2
+    }
+    let base = type_from_qual(d, strip(slice(qt, 0, open)), at)
+    return base < 0 ? -1 : applied_declarator(d, base, slice(qt, open), at)
+}
+
+// the type an abstract declarator gives `base`, C's inside-out reading: its leading `*`s (and
+// their qualifiers) point at `base`, its trailing `[N]` and `(P)` suffixes wrap that from the
+// last one in, and a group the suffixes follow is the declarator of the result
+def private applied_declarator(var d : Dumper; base : int; decl : string; at : CirLoc) : int {
+    var stars = 0
+    var group = ""
+    var inscope suffixes : array<string>
+    var ok = true
+    peek_data(decl) $(view) {
+        let n = length(view)
+        var pos = 0
+        while (pos < n) {
+            if (view[pos] == uint8('*')) {
+                stars++
+                pos++
+            } elif (view[pos] == uint8(' ')) {
+                pos++
+            } else {
+                var word = 0
+                for (q in ["const", "volatile", "restrict"]) {
+                    if (word == 0 && pos + length(q) <= n && slice(view, pos, pos + length(q)) == q) {
+                        word = length(q)
+                    }
+                }
+                break if (word == 0)
+                pos += word
+            }
+        }
+        if (pos + 1 < n && view[pos] == uint8('(') && view[pos + 1] == uint8('*')) {
+            let close = closing_paren(view, pos)
+            ok = close > pos
+            group = ok ? slice(view, pos + 1, close) : ""
+            pos = ok ? close + 1 : n
+        }
+        while (pos < n && ok) {
+            let close = view[pos] == uint8('(') || view[pos] == uint8('[') ? closing_paren(view, pos) : -1
+            ok = close > pos
+            if (ok) {
+                suffixes |> push(slice(view, pos, close + 1))
+                pos = close + 1
+            }
+        }
+    }
+    if (!ok) {
+        fail(d, "unsupported type spelling `{decl}`", at)
+        return -1
+    }
+    var t = base
+    for (_level in range(stars)) {
+        t = pointer_to(d, t)
+    }
+    for (idx in range(length(suffixes))) {
+        let suffix = suffixes[length(suffixes) - 1 - idx]
+        let inside = strip(slice(suffix, 1, length(suffix) - 1))
+        if (suffix |> starts_with("[")) {
+            let count = dimension_count(d, inside, decl, at)
+            if (count == -2) {
+                return -1
+            }
+            var arr = CirType(k = "array", elem = t, count = count)
+            t = intern(d, "array:{t}:{count}", arr)
+        } else {
+            t = function_returning(d, t, inside, at)
+        }
+        if (t < 0) {
+            return -1
+        }
+    }
+    return empty(group) ? t : applied_declarator(d, t, group, at)
 }
 
 // an opaque record of this repository's (`ARCHITECTURE.md` section 2): one field of type
@@ -1407,9 +1513,11 @@ def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
     if (scalar != -2) {
         return scalar
     }
+    // a group goes before the paths below, which cut a spelling's trailing `[N]` by text
     let fn_ptr = function_pointer(d, qt, at)
-    if (fn_ptr != -2) {
-        return fn_ptr
+    let grouped = fn_ptr != -2 ? fn_ptr : declarator_group(d, qt, at)
+    if (grouped != -2) {
+        return grouped
     }
     if (qt |> ends_with("*")) {
         let to = type_from_qual(d, slice(qt, 0, length(qt) - 1), at)

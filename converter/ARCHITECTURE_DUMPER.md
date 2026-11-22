@@ -70,7 +70,7 @@ space), `R (*)(P)` pointers to functions, `R (**)(P)` pointers to those and `R (
 arrays of them, the `(*` read as the pointer only outside every parenthesis (a function whose
 parameter is a function pointer, `void (void (*)(int), int)`, is a function type) and a `const`
 on the pointer (`R (* const)(P)`, a member read through a const record) dropped, since das
-spells none. clang spells every constant dimension as its count, so a dimension it leaves as an
+spells none. Any other group (a parenthesis opening with `*`) is read inside out (`applied_declarator`) ahead of the text cuts of a trailing `[N]`: `int (*const)[3]`, `R (*(P1))(P2)`, `int (*(void))[3]`. clang spells every constant dimension as its count, so a dimension it leaves as an
 expression (`int[n]`) is a variable-length array, which fails closed naming it; a local's error
 spells the declaration (`int a[n]`). A VLA parameter is no array: clang decays it to a pointer. A builtin typedef in a builtin's prototype (`__size_t`, `__ptrdiff_t`) has no
 cursor and is the dialect's pointer-wide integer. Widths follow the selected dialect (`msvc`:

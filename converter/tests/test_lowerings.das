@@ -1028,6 +1028,23 @@ def p9_function_pointer_fixtures(t : T?) {
         has_text(t, text, "invoke(reinterpret<function<(var a0 : int?; a1 : int; a2 : double) : void>>(step), addr(total), int(small), double(half))")
         has_text(t, text, "invoke(reinterpret<function<(var a0 : void?) : void>>(poll.procedure), poll.arg)")
     }
+    t |> run("declarator groups (P7.5): a parenthesized pointer `int (*const)`, a function returning a function pointer, a pointer to one and an array of those") @(t : T?) {
+        var text : string
+        check_fixture(t, "p7_declarator_groups", text)
+        has_text(t, text, "def private p7_declarator_groups__pick(a : int; b : int) : function<(a0 : int; a1 : int) : int> \{")
+        has_text(t, text, "def private p7_declarator_groups__store(var x : int?; v : int) \{")
+        has_text(t, text, "var p : int? = addr(cells[0])")
+        has_text(t, text, "var choose : function<(a0 : int; a1 : int) : function<(a0 : int; a1 : int) : int>> = @@p7_declarator_groups__pick")
+        has_text(t, text, "var _c_table : function<(a0 : int) : function<(a0 : int; a1 : int) : int>> [2]")
+        has_text(t, text, "    let _t1 = p7_declarator_groups__pick(1, 1)\n    let _t2 = invoke(_c_table[1], 0)\n")
+        has_text(t, text, "invoke(_t1, 3, 4), invoke(_t2, 9, 4))")
+        has_text(t, text, "def private p7_declarator_groups__row0 : int[3]? \{")
+        has_text(t, text, "var row_of : function<() : int[3]?> = @@p7_declarator_groups__row1")
+        has_text(t, text, "var row_table : function<() : int[3]?>[2] = fixed_array(@@p7_declarator_groups__row0, @@p7_declarator_groups__row1)")
+        has_text(t, text, "var last : int[3]? = addr(p7_declarator_groups__rows[1])")
+        // a variable-length dimension inside a group (`int (*(*[n])(int))(int)`) fails closed
+        rejects(t, "group_vla", "int f(int n) \{ int (*(*g[n])(int))(int); g[0] = 0; return g[0] == 0; \}\nint main(void) \{ return f(2); \}\n", "`*[n]`: a variable-length array is not lowered")
+    }
 }
 
 def p4_function_fixtures(t : T?) {

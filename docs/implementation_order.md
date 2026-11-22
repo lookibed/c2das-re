@@ -343,8 +343,7 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   Ledger (fail closed today): the value of a libc function c_runtime does not map (`strxfrm`), of
   a variadic one with no list-taking twin (`scanf`, `open`, `ioctl`), of one with a callback
   parameter (`qsort`, `signal`) or a c_runtime lowering of its own (`vfprintf`, `exit`), and of a
-  K&R redeclaration with another result than the library's; a function returning a function pointer,
-  whose spelling `int (*(int, int))(int)` the dumper does not parse (c-testsuite 00124); a call
+  K&R redeclaration with another result than the library's; a call
   with arguments through an unprototyped function pointer `T (*)()`, which the C-IR spells as
   `T (*)(void)` until it marks it; a wide string literal (`L"ab"`; the torture filter skips its tests, 20010325-1 among
   them, which passed only because the narrow bytes indexed alike), whose bytes the dump gives
@@ -4101,6 +4100,12 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   a variadic function (pr68390), a libc function's value (pr54937), `main` with other parameters
   (alias-4, behind P7.6); `vfprintf` and `perror` mappings (fprintf-chk-1, user-printf,
   vfprintf-chk-1, printf-2).
+  Progress (PR #268): a declarator group clang spells as written is read
+  inside out (`applied_declarator`) ahead of the paths that cut a trailing `[N]` by text: `int
+  (*const)` and `int (*const)[3]` (a parenthesized pointer), a function returning a function
+  pointer (c-testsuite 00124, whose spelling `int (*(int, int))(int, int)` failed closed) or a
+  pointer to an array (`int (*(void))[3]`, which the first cut of this fix typed as a function
+  returning `int *`), and pointers to and arrays of those; c-testsuite 00124 and 00162 pass.
   Progress (PR #269): a libc function's value is a private wrapper the module emits once, its
   arguments and result passed as a direct call passes them, `fopen__fn` calling the crt bind and a
   variadic one's `fprintf__va_list` its list-taking twin (c-testsuite 00189; `sscanf` and `fscanf`
