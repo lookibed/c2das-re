@@ -3917,6 +3917,27 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
 - **Exit criterion:** the §2 metric sentence of the plan is true, all four columns
   published.
 
+## P10 - C import (Part 2): probes
+
+- **P10.0 chibicc probe** (owner task 2026-11-22; Part 2's Dumper C, the frontend written in
+  daslang). A C compiler converted by this repository as the candidate frontend: chibicc
+  (rui314/chibicc at the `chibicc:` pin of `VERSIONS.md`, MIT, nine C files) under `chibicc/`
+  (`chibicc/ARCHITECTURE.md`): `fetch.sh`, the port's patch (the compiler proper in the driver's
+  process, the unmapped libc calls as portable C, no `long double` field), the sidecar, and
+  `chibicc/tests/test_chibicc.das` (the converted compiler's `-S` and `-E` of one file equal the
+  native compiler's). Two converter fixes it needed: a file-scope compound literal's left-out
+  slots arrive wrapped in `ConstantExpr` (`dump_init_list`), and a static named `count` of a
+  cluster is renamed past das's builtin `count` (`reserved_das_names`). Result: the converted
+  compiler's output equals the native one's (built from the same sources with `-funsigned-char`
+  and full paths, the converter's dialect) byte for byte under the interpreter and the JIT on
+  c-testsuite (220 of 220 `-S`, 220 of 220 `-E`), on PureDOOM's units (62 of 62 each) and on
+  gcc-torture's 1204 passing tests (`-S`, 1200; the four others segfault natively and panic on a
+  null pointer converted). Ledgered leftovers: the link's reserved names hold c_runtime's and the
+  crt's, not every das builtin (only `count` is added); `open_memstream`, `strndup`, `dirname`,
+  `basename`, `strtok`, `stat`, `glob`, `fork`, `execvp`, `wait`, `mkstemp`, `unlink` have no
+  c_runtime mapping; a record with a `long double` member is refused. The probe's report (speed,
+  the cast comparison with Dumper A, what Part 2 needs past chibicc) is not in the tree.
+
 ---
 
 ## Standing dependencies
