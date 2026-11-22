@@ -3842,19 +3842,33 @@ def p7_flat_case_fixtures(t : T?) {
     }
 }
 
-// a shape chibicc's sources brought (P10.0)
+// the shapes chibicc's sources brought (P10.0)
 [test]
-def test_p10_empty_file_scope_literal(t : T?) {
+def test_p10_chibicc_shapes(t : T?) {
     var dir_error : string
-    work_root = create_temp_directory("c2das_p10_literal", dir_error)
+    work_root = create_temp_directory("c2das_p10_shapes", dir_error)
     if (!empty(dir_error)) {
         t |> failure(dir_error)
         return
     }
-    t |> run("a file-scope compound literal with an empty list zeroes its record members") @(t : T?) {
-        converts(t, "p10_empty_literal", "typedef struct \{ int cap; int used; \} Map;\nstruct Scope \{ struct Scope *next; Map vars; Map tags; \};\nstatic struct Scope *scope = &(struct Scope)\{\};\nint main(void) \{ return scope->vars.cap + scope->tags.used; \}\n")
+    t |> run("a file-scope compound literal zeroes the record members its list leaves out, the list empty or naming one member") @(t : T?) {
+        for (name, source in ["p10_empty_literal", "p10_mixed_literal"], [
+            "typedef struct \{ int cap; int used; \} Map;\nstruct Scope \{ struct Scope *next; Map vars; Map tags; \};\nstatic struct Scope *scope = &(struct Scope)\{\};\nint main(void) \{ return scope->vars.cap + scope->tags.used; \}\n",
+            "typedef struct \{ int cap; int used; \} Map;\nstruct S \{ int n; Map m; double d; struct S *next; \};\nstatic struct S *s = &(struct S)\{.d = 1.5\};\nint main(void) \{ return s->n + s->m.used + (int)(s->d * 2) - 3 + (s->next != 0); \}\n"
+        ]) {
+            converts(t, name, source)
+            var out : string
+            let rc = run_tier(converted_path(name), "interp", work_root, out, CONVERTED_MODULES)
+            t |> equal(rc, 0, "{name}: {out}")
+        }
+    }
+    t |> run("one file's `count()` is renamed past das's `count(start = 0, step = 1)` and runs; `breakpoint(int)` keeps its name") @(t : T?) {
+        let text = converts(t, "p10_no_argument", "int count(void) \{ static int i = 1; return i++; \}\nstatic int terminate(void) \{ return 2; \}\nstatic int ucount = 5;\nint breakpoint(int x) \{ return x; \}\nint main(void) \{ return count() + count() + terminate() + ucount + breakpoint(1) - 11; \}\n")
+        has_text(t, text, "def count1 : int \{")
+        has_text(t, text, "def breakpoint(x : int) : int \{")
+        has_text(t, text, "var private p10_no_argument__ucount : int = 5\n")
         var out : string
-        let rc = run_tier(converted_path("p10_empty_literal"), "interp", work_root, out, CONVERTED_MODULES)
+        let rc = run_tier(converted_path("p10_no_argument"), "interp", work_root, out, CONVERTED_MODULES)
         t |> equal(rc, 0, out)
     }
     rmdir_rec(work_root)

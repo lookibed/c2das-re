@@ -953,25 +953,31 @@ def test_cut_order(t : T?) {
     }
 }
 
-// chibicc's shape (P10.0): in a cluster a static keeps its name, and das's builtin
-// `count(start = 0, step = 1)` would make its call ambiguous
+// chibicc's shape (P10.0): a call with no argument reaches das's `count(start = 0, step = 1)`,
+// `terminate()`, `ucount(...)` and `stackwalk(...)`, so a linked program's own function of no
+// parameter named like one is renamed, static or not; its object and its function with a
+// parameter keep the name
 [test]
-def test_static_named_count(t : T?) {
+def test_no_argument_names(t : T?) {
     var dir_error : string
-    work_root = create_temp_directory("c2das_layout_count", dir_error)
+    work_root = create_temp_directory("c2das_layout_no_argument", dir_error)
     if (!empty(dir_error)) {
         t |> failure(dir_error)
         return
     }
-    t |> run("a static `count` of a cluster's unit is renamed past das's builtin and the program runs") @(t : T?) {
-        let dir = path_join(work_root, "p10_count_src")
+    t |> run("a linked program's `count()` and `terminate()` are renamed and run; a static `ucount` object and `stackwalk(int)` keep their names") @(t : T?) {
+        let dir = path_join(work_root, "src")
         mkdir_rec(dir)
         fwrite(path_join(dir, "main.c"), "int next(void);\nint twice(int x) \{ return x * 2; \}\nint main(void) \{ return next() + next() - 6; \}\n")
-        fwrite(path_join(dir, "gen.c"), "int twice(int x);\nstatic int count(void) \{ static int i = 1; return i++; \}\nint next(void) \{ return twice(count()); \}\n")
-        let res <- converted([path_join(dir, "main.c"), path_join(dir, "gen.c")], "p10_count", "source")
+        fwrite(path_join(dir, "gen.c"), "int twice(int x);\nstatic int count(void) \{ static int i = 1; return i++; \}\nint terminate(void) \{ return 1; \}\nstatic int ucount = 4;\nstatic int stackwalk(int x) \{ return x + 1; \}\nint next(void) \{ return twice(count()) + terminate() + ucount + stackwalk(0) - 6; \}\n")
+        let res <- converted([path_join(dir, "main.c"), path_join(dir, "gen.c")], "no_argument", "source")
         t |> equal(res.error, "")
+        let gen = text_of("no_argument", "gen.das.inc")
+        for (needle in ["def private count1 : int \{", "def terminate1 : int \{", "var private ucount : int = 4\n", "def private stackwalk(x : int) : int \{"]) {
+            t |> success(gen |> contains(needle), "{needle}: {gen}")
+        }
         var out : string
-        let rc = run_tier(res.das_path, "interp", path_join(work_root, "p10_count_run"), out, CONVERTED_MODULES)
+        let rc = run_tier(res.das_path, "interp", path_join(work_root, "run"), out, CONVERTED_MODULES)
         t |> equal(rc, 0, out)
     }
     rmdir_rec(work_root)

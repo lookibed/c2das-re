@@ -82,7 +82,7 @@ becomes `c_main` and the module ends with `[export] def main : int { return c_ma
 native build's name on every tier), then returns `c_main(c_argc(), c_argv())` (F56); a unit's
 function named like one of these four takes the next free name (`c_argc1`), and so does a
 function the program defines named like a libc one c_runtime maps (h264bsd's own `malloc` is
-`malloc1`), since its calls would be ambiguous with the mapped one and das's builtin of the name;
+`malloc1`), since its calls would be ambiguous with the mapped one and das's builtin of the name, and a function of no parameter named like a function or generic of a registered module that a call with no argument reaches, each parameter defaulted or the runtime's context or line (`count(start = 0, step = 1)`, `terminate()`: its `count()` is `count1()`; one with a parameter and an object keep the name);
 C's calls of the name bind to it, as the link binds them to the program's definition. A `main` taking
 `envp` or other parameters, and a `static` one, fail closed. A C name that is a das
 keyword or a name of a das builtin type (every token of the gen2 lexer a C identifier can spell:

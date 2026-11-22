@@ -573,8 +573,10 @@ let CRT_CALLS <- {"fmod", "frexp", "ldexp", "modf", "nextafter", "hypot", "cbrt"
 //! `setjmp`, `alloca`) and their unqualified das names, the names it spells bare
 //! (`EMITTED_NAMES`), the public names of the c_runtime modules (`C_RUNTIME_EXPORTS`) and every
 //! function and global the crt module binds: a program's own function or object of one of these
-//! names would take their calls or make them ambiguous (`converter/link.das`). A crt name is
-//! copied out of its walk, whose `FuncInfo` and `VarInfo` die with it.
+//! names would take their calls or make them ambiguous (`converter/link.das`). A das builtin a
+//! call with no argument reaches (`count`) is not among them: `rename_taken_names` renames the
+//! program's function of no parameter, and its object of that name stays. A crt name is copied
+//! out of its walk, whose `FuncInfo` and `VarInfo` die with it.
 def reserved_das_names : array<string> {
     var names <- [for (name in keys(C_RUNTIME_CALLS)); name]
     names |> push_from([for (name in keys(CRT_CALLS)); name])
@@ -584,8 +586,6 @@ def reserved_das_names : array<string> {
     names |> push_from([for (name in keys(ALLOCA_NAMES)); name])
     names |> push_from([for (call in values(C_RUNTIME_CALLS)); call.das_name; where find(call.das_name, "::") < 0])
     names |> push_from(EMITTED_NAMES, C_RUNTIME_EXPORTS)
-    // das's builtin `count(start = 0, step = 1)` makes a call `count()` of a program's own ambiguous
-    names |> push("count")
     let crt = get_module("crt")
     module_for_each_function(crt) $(info) {
         names |> push(clone_string(info.name))
@@ -3187,6 +3187,36 @@ def registered_function_names(var names : table<string>) {
         }
         for_each_generic(mod) $(fn) {
             names |> insert(string(fn.name))
+        }
+    }
+}
+
+// whether a call with no argument reaches `fn`: each parameter has a default or is the context or
+// the line the runtime passes
+def private takes_no_argument(fn : FunctionPtr) : bool {
+    for (arg in fn.arguments) {
+        let base = arg._type.baseType
+        if (arg.init == null && base != Type.fakeContext && base != Type.fakeLineInfo) {
+            return false
+        }
+    }
+    return true
+}
+
+//! The name of every function and generic of every registered module that a call with no argument
+//! reaches (`count(start = 0, step = 1)`, `terminate()`), into `names`: a program's own function
+//! of no parameter named like one would make its call ambiguous (`rename_taken_names`).
+def no_argument_function_names(var names : table<string>) {
+    program_for_each_registered_module() $(mod) {
+        for_each_function(mod, "") $(fn) {
+            if (takes_no_argument(fn)) {
+                names |> insert(string(fn.name))
+            }
+        }
+        for_each_generic(mod, "") $(fn) {
+            if (takes_no_argument(fn)) {
+                names |> insert(string(fn.name))
+            }
         }
     }
 }
@@ -8367,10 +8397,14 @@ def private function_name(em : Emitter; name : string) : string {
 let WRAPPER_CALLS <- {C_MAIN, RUNTIME_INIT, ARGC, ARGV}
 
 // a function the program defines named like a libc function c_runtime maps (h264bsd's own
-// `malloc`) would make its calls ambiguous with the mapped one and das's builtin of the name, and
-// one of a unit that has a `main` named like one the wrapper calls would make that call ambiguous
-// (or redefine `c_main`): each takes the next free numbered name (`malloc1`, `c_argc1`), and C's
-// calls of the name bind to it, as the link binds them to the program's definition
+// `malloc`) would make its calls ambiguous with the mapped one and das's builtin of the name, one
+// of a unit that has a `main` named like one the wrapper calls would make that call ambiguous
+// (or redefine `c_main`), and one of no parameter named like a function of das or the runtime
+// that a call with no argument reaches (chibicc's `count()` beside das's `count(start = 0, step =
+// 1)`) would make its own call ambiguous: each takes the next free numbered name (`malloc1`,
+// `c_argc1`, `count1`), and C's calls of the name bind to it, as the link binds them to the
+// program's definition. A function with a parameter and an object keep such a name: das tells
+// the call apart by its argument, and an object is no call
 def private rename_taken_names(var em : Emitter; tu : CirTu) {
     let wrapped = key_exists(em.prog.functions, "main")
     var taken : table<string>
@@ -8380,8 +8414,11 @@ def private rename_taken_names(var em : Emitter; tu : CirTu) {
     for (name in keys(WRAPPER_CALLS)) {
         taken |> insert(name)
     }
+    var no_argument : table<string>
+    no_argument_function_names(no_argument)
     for (d in tu.decls) {
-        if (d.k == "func" && d.body != null && ((wrapped && key_exists(WRAPPER_CALLS, d.name)) || !empty(libc_call(d.name)))) {
+        let ambiguous = empty(d.params) && key_exists(no_argument, d.name)
+        if (d.k == "func" && d.body != null && ((wrapped && key_exists(WRAPPER_CALLS, d.name)) || !empty(libc_call(d.name)) || ambiguous)) {
             em.prog.function_renames[d.name] = free_name(taken, d.name)
         }
     }

@@ -48,7 +48,7 @@ folder; its `defines` reach every unit.
   name: an external name of the program, a name a converted module can resolve besides the
   program's own (`reserved_das_names` of `emit.das`: the names mapped to libc, crt or c_runtime and
   their unqualified das names such as `c_exit`, every name the emitter spells bare such as
-  `end_index` or `c2das_dialect`, every public c_runtime definition and every crt binding)
+  `end_index` or `c2das_dialect`, every public c_runtime definition and every crt binding; a das builtin a call with no argument reaches, such as `count`, is not among them: the emitter renames the program's function of no parameter, static or not, `converter/ARCHITECTURE_EMITTER.md`)
   (whether or not a unit calls it), or, in a unit of its own scope, a name that unit's code
   references without a static of its own by that name (a libc function it calls) or that unit's
   static: a `def private` of one name in two modules is no collision, one beside a public name of a
