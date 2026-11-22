@@ -4289,6 +4289,15 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
 
 ---
 
+- **P10.1 chibicc's preprocessor: take it or write ours** (the owner's task of 2026-11-22; a probe, no
+  integration into the frontend, no preprocessor of ours). The criteria K1-K5 and the predictions P1-P11 are
+  written before the first run: `/root/notes/predictions/2026-11-22-chibicc-pp.md`, sha256
+  `a63f3f200287fd79f6d9bb7ef827a5e320b7ee8acc2bf0e5472b048ee9889dc7`. The oracle: chibicc's internal token stream after `preprocess2`
+  against `clang -E -P` and `gcc-14 -E -P` over one header set and one predefined-macro list, cut into
+  pp-tokens by clang's raw lexer; where clang and gcc differ the case is implementation-defined; a negative
+  control breaks the hide set and `##`. Take = K1 (no logic difference on real projects) and K2 (every failure
+  of the preprocessor test sets classed, fixes <= 400 lines) and K3-K5 met or cheaper than ours (PP.5 record
+  <= 150 lines; file provider, dialect macros, error return and column <= 300 lines; JIT within 5x of native).
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
