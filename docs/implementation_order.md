@@ -2796,13 +2796,50 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   0.80-0.90, 0.77-0.88; T over t 0.95-1.03, 0.94-1.02, 0.94-1.03, 0.94-1.04; Tfo over T 1.00-1.10, 0.91-0.96,
   0.93-1.02, 0.95-1.04. Expected: T against t inside every band, so Lua's fast is table alone, and the forms
   off beyond the JIT band only if that band is under 6%.
+  Batch 5 (2026-11-22, `TIMING-add38-b5`, `machine quiet (cpu busy 1%)`, box PC, e96b680, pin guard green
+  before and after; `cap5.sh`, the arms prepared by `chainM.sh` as normal jobs, each JIT run native's first;
+  all 408 runs' output native's). Arm median over the base's, geometric mean over the four benches; `s` the
+  tier's band from readable's own samples; the median of readable's per-bench spreads shown for information
+  only:
+
+  | cell | base | interp | JIT | exe | AOT |
+  |---|---|---:|---:|---:|---:|
+  | band s (readable) | - | 4.7% | 51.6% | 5.2% | 5.5% |
+  | median band (information) | - | 3.0% | 8.4% | 3.9% | 3.3% |
+  | t (table) | readable | 0.543 | 0.800 | 0.859 | 0.878 |
+  | T (table, source-cut) | readable | 0.548 | 0.792 | 0.843 | 0.824 |
+  | Tfo (T, the forms off) | readable | 0.606 | 0.742 | 0.792 | 0.896 |
+  | T | t | 1.009 | 0.990 | 0.982 | 0.938 |
+  | Tfo | T | 1.105 | 0.937 | 0.939 | 1.088 |
+  | readable x native | - | 161.28 | 1.594 | 1.595 | 1.348 |
+  | Tfo x native | - | 97.66 | 1.183 | 1.263 | 1.208 |
+
+  The JIT band is one readable spectral_norm sample (0.892 s against 0.587-0.598 s). Against the
+  predictions: 12 of 16 cells hit. Misses: t over readable interp 0.543 (0.56-0.66, faster); T over t AOT
+  0.938 (0.94-1.04, faster); Tfo over T interp 1.105 (1.00-1.10) and AOT 1.088 (0.95-1.04), both slower. The
+  expected outcome (table alone) missed. Under the committed rule the forms off would stay (Tfo beats T on
+  exe, 0.939 against 5.2%), though they cost the interpreter 10.5% and AOT 8.8%, beyond those tiers' bands.
+  The lead's ruling of 2026-11-22, made after batch 5's data and marked so here, clarifies the rule for every
+  program: a knob stays iff the set with it is faster beyond the band on at least one tier and the tiers where
+  it is faster beyond the band outnumber those where it is slower beyond it. Decision under it: table stays
+  (t over readable faster beyond on interp, exe and AOT, slower on none); source-cut stays (T over t faster
+  beyond on AOT, 0.938 against 5.5%, slower on none: interp 1.009, JIT 0.990, exe 0.982 inside 4.7%, 51.6%,
+  5.2%); the forms off go (faster on exe only, slower on interp and AOT). Lua's `fast` is T. Under the median
+  band (information only) the forms off would also be faster on the JIT, two tiers against two, still out.
+  The clarified test over batches 1-3 (each set against readable, faster/slower beyond the tier's band)
+  changes no other program's set: binjgb checks off faster on JIT, exe and AOT, slower on interp (3 to 1);
+  h264bsd-mp4 faster on exe, interp 1.016 inside 1.64% (1 to 0); wasm3 faster on interp and JIT (2 to 0);
+  doomgeneric faster on interp, JIT and exe (3 to 0); PureDOOM's D3 faster on interp, JIT and exe (3 to 0),
+  its jwp and checks off each alone faster beyond batch 1's JIT band and timed alone on no other tier;
+  plmpeg-stream keeps readable (checks off slower on interp, faster nowhere).
   Done: the variant files (`ports/variants/<program>.fast.json`): each knob's value, a reason and the batch's
   number for it, `results.speed` of the chosen set on all four tiers from batch 2 (PureDOOM batch 3, Lua
-  batch 4) and `notes` with the set over readable per tier; each `readable` file's `results.speed`
+  batch 5) and `notes` with the set over readable per tier; each `readable` file's `results.speed`
   re-measured in the same job (its knobs unchanged). The `fast` sets, JIT the selecting tier:
   Lua: `switch_dispatch` table and layout source-cut, every other knob readable's (jwp on, checks safe); JIT
-  1.63x -> 1.27x native, interp 160x -> 90x, exe 1.60x -> 1.35x, AOT 1.36x -> 1.11x (batch 4). The test
-  suite 30 of 30, the error checks 8 of 8 and `luac -o` 33 of 33 under interp and JIT (T, on 1d01f13).
+  1.59x -> 1.26x native, interp 161x -> 88x, exe 1.60x -> 1.35x, AOT 1.35x -> 1.11x (batch 5). The test suite
+  30 of 30, the error checks 8 of 8 and `luac -o` 33 of 33 under interp and JIT (T, on 1d01f13, the converter
+  of e96b680); the benches' output native's on every tier in batches 4 and 5.
   PureDOOM: `jit_whole_program` and checks off; JIT 1.08x -> 0.99x, exe 1.05x -> 1.00x, interp 42.7x ->
   42.0x, AOT 1.15x both; demos 1-3 in sync on all four tiers.
   binjgb, h264bsd-mp4, wasm3 and doomgeneric: checks off alone (JIT 0.960, 0.965, 0.966, 0.965 of readable;
@@ -2812,9 +2849,10 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   Left: doomgeneric's AOT bench build takes longer than compare's 300 s build limit on a loaded box (its
   lanes time out; built by the converter's `--run aot` here); the ports tables and readmes take these files at
   the next publish (not run by this row); first-member reinterpret on Lua (the compile error above); Lua's
-  test-suite workload is not in the search's ratio (the publisher's capture adds it); Lua's forms off (0.900
-  on nbody and spectral_norm, under a band binary_trees sets) and checks off on exe (0.894) pass a per-bench
-  band but not this rule's tier band, so they stay out unless the rule changes for every program.
+  test-suite workload is not in the search's ratio (the publisher's capture adds it); Lua's checks off on exe
+  (0.894 in batch 4) passes a per-bench band but not this rule's tier band, so it stays out unless the rule
+  changes for every program; Lua's forms off are faster on the JIT and exe and cost interp and AOT, so a
+  per-tier set would differ from the one `fast` set.
 
 ## P6 — Doom
 
