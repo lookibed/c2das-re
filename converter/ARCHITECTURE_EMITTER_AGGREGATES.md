@@ -266,7 +266,9 @@ address and a position (F35): `va_start(v, last)` is `v = va_begin(va)`, `va_cop
 gave the argument: `va_i(v)` narrowed to an integer `T` (`int(va_i(v))`, `va_i(v) != 0l` for
 `_Bool`), `enum_from_int` of its `int` for an enum, `va_d(v)` for `double`,
 `reinterpret<T>(va_p(v))` for a pointer, a function pointer included, which makes the body
-`[c_function]`. A read at `char`, `short`, `_Bool` or `float` is undefined in C, since no
+`[c_function]`, and `*reinterpret<T?>(va_r(v, typeinfo sizeof(type<T>)))` for a record: a
+record passed through `...` is the trailing tuple's copy, and `to_cvalist` lists its address and
+size (`CVaRecord`, `docs/probe-findings.md` F116), valid for the call. A read at `char`, `short`, `_Bool` or `float` is undefined in C, since no
 argument arrives as one, and reads the promoted value (`float(va_d(v))`). A pop is an effect
 for statement-ification. A `va_list` parameter is `var ap : CVaCursor` and never takes the
 callee copy: the callee's pops advance the caller's cursor, as linux's decayed array does
@@ -279,7 +281,7 @@ a `void?`), `c_vsscanf` and `c_vfscanf` (`vfscanf`), and `sscanf` and `fscanf` a
 `[variadic]` fronts of `c_runtime/scanf`. A module reaching the printf or the scanf family opens
 with `[init] def private c2das_dialect`, its first `[init]`, setting `c_long_bits` to the
 dialect's `long` width, which every `l` directive then reads. `sizeof(va_list)` is clang's size. Fail closed: `va_arg` of a
-record or of a `va_list`; a record or a `va_list` passed through `...`, naming the argument and
-the callee; a `va_list` global or field; a pointer to a `va_list` and an array of them (the
+marshal-only record or of a `va_list`; a marshal-only record or a `va_list` passed through
+`...`, naming the argument and the callee; a `va_list` global or field; a pointer to a `va_list` and an array of them (the
 dumper's); `va_start`, `va_end` or `va_copy` read as a value; a C name `_va_tuple` in a
 variadic function, the annotation's own.
