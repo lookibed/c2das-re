@@ -4155,15 +4155,16 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   6`; gcc-torture 920625-1, 920908-1, 931004-2, -4, -6, -8, -10, -12, -14, 950628-1, pr30185,
   pr44575, strct-stdarg-1, strct-varg-1: `gcc_torture: pass 1226, skip 321, convert 95, exit 14`).
   Still refused: a marshal-only record
-  through `...` or read by `va_arg`. Three c-testsuite ids wait for an owner's dialect ruling, and
-  none counts as done or as not applicable until ruled: 00207, a variable-length array
-  (`docs/very-detailed-plan.md` line 33, "C99 minus VLAs"); 00204, which after the records
-  through `...` and `ExprWithCleanups` stops at `struct hfa31 { long double a; }`, a record with a
-  `long double` member not laid out naturally (`docs/c-feature-matrix.md` line 22, `long double`
-  -> `double`; the option: F54's rule extended to records, a record holding one laid out by das
-  with `double`); and 00220, wide string literals (`docs/lowering-examples.md` line 200, "Wide
-  strings: out of scope (dialect)", with `docs/c-ir-spec.md` section 9 and
-  `docs/c-feature-matrix.md` section 8).
+  through `...` or read by `va_arg`. Three c-testsuite ids are outside the dialect the plan
+  writes (the owner's task of 2026-11-23) and are not applicable: 00207, a variable-length array
+  (`docs/very-detailed-plan.md` line 33, "C99 minus VLAs"; `docs/c-feature-matrix.md` line 29,
+  status U); 00204, which after the records through `...` and `ExprWithCleanups` stops at
+  `struct hfa31 { long double a; }` (`docs/c-feature-matrix.md` line 22, "`long double` ->
+  `double` (MSVC-compatible)"); and 00220, wide string literals (`docs/lowering-examples.md` line
+  200, "Wide strings: out of scope (dialect)"). They carry no `skip.txt` line, since a `never`
+  line is only for a construct C99 does not define, and stay ordinary failures of the run.
+  Metric: 211 passing of 211 applicable (220 less the 6 P7.6 lines and these 3) = 100%; P7.5's
+  c-testsuite part is closed.
 - **P7.6 GNU emulations owed by the skip audit** (P5.1c). Skip lines name it under these features:
   `packed or aligned layout` (33: `packed` and `aligned` beyond what the layout law places or a
   typedef carries - a packed record outside the sidecar's `marshal`, an alignment on a variable, a
