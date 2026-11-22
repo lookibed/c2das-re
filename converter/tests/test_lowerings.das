@@ -164,8 +164,7 @@ def test_lowerings(t : T?) {
     p5_lua_fixtures(t)
     p5_lua_library_fixtures(t)
     p7_fixtures(t)
-    p7_block_tag_fixtures(t)
-    p7_va_record_fixtures(t)
+    p7_c99_fixtures(t)
     p7_volatile_fixtures(t)
     p7_expect_fixtures(t)
     p7_wrap_fixtures(t)
@@ -1047,6 +1046,12 @@ def p9_function_pointer_fixtures(t : T?) {
         // a variable-length dimension inside a group (`int (*(*[n])(int))(int)`) fails closed
         rejects(t, "group_vla", "int f(int n) \{ int (*(*g[n])(int))(int); g[0] = 0; return g[0] == 0; \}\nint main(void) \{ return f(2); \}\n", "`*[n]`: a variable-length array is not lowered")
     }
+}
+
+// P7.5's C99 completeness fixtures
+def p7_c99_fixtures(t : T?) {
+    p7_block_tag_fixtures(t)
+    p7_va_record_fixtures(t)
 }
 
 // P7.5: a tag defined again in a block hides the outer definition (c-testsuite 00044, 00053)
