@@ -9,15 +9,16 @@ inside daslang, with no clang.
 
 - `fetch.sh` - clones chibicc at the commit the `chibicc:` line of `VERSIONS.md` pins into
   `fetch/chibicc/`, applies `patches/*.patch`, and builds the native compiler
-  `fetch/chibicc/chibicc` from the patched sources at `-O2`. The checkout is never committed.
+  `fetch/chibicc/chibicc`, the oracle (section 4). The checkout is never committed.
 - `patches/0001-c2das-host.patch` - the port's changes to chibicc's sources (section 3).
 - `sources.das` - the units in link order, the sidecar's and the native compiler's paths, and the
   program manifest's text.
 - `chibicc.c2das` - the sidecar: `jit_whole_program`, nothing else. The program has no packed,
   over-indexed or padded record.
 - `tests/test_chibicc.das` - converts the fetched program and compares the converted compiler's
-  `-S` and `-E` output of one C file with the native compiler's, byte for byte. It passes with a
-  warning when the fetch is absent.
+  `-S` and `-E` output of one C file with the native compiler's, byte for byte. It skips, with
+  the reason, when the fetch is absent or the checkout is at another commit than the pin, and it
+  removes the temp folder it converts in.
 
 ## 2. The program
 
@@ -48,3 +49,28 @@ both sides.
   `host_f80_bits` gives the x87 bytes of a `long double` constant from the `double`, so such a
   constant is exact when a `double` holds it and rounded to a `double` otherwise.
 - `strings.c` is `strarray.c`: a das module named `strings` is taken.
+- `-c2das-time` prints the CPU time of the compiler proper on stderr (`cc1 <n> us`, `clock()`
+  around it). A converted run spends 0.6 s under the interpreter, and 9 s under the wasm one,
+  compiling the das program before `main`; a clock around the process cannot take that out of a
+  unit that compiles in a tenth of a second.
+
+Against upstream the patched compiler differs in four more ways:
+
+- A `double` or `float` literal is rounded once, by `strtod`. Upstream reads it with `strtold`
+  and rounds the `long double` again, so a literal between two doubles can differ in its last
+  bit.
+- The compiler proper keeps its state from one input to the next: with several inputs on one
+  command line the macros, the include folders and the label counter of an earlier file reach a
+  later one. The tests and the oracle runs give one input a run.
+- An error the code generator raises leaves the assembly written so far in the output file;
+  upstream writes the file only after the generator ends.
+- `__TIMESTAMP__` and the x87 constants, as above.
+
+## 4. The oracle
+
+`fetch.sh` compiles the patched sources with `cc -std=c11 -O2 -fno-common -funsigned-char -w`,
+each file by its full path. Both flags are the converter's dialect: its plain `char` is unsigned
+(chibicc prints an initializer's bytes through a `char`, `.byte 215` where a signed `char` gives
+`.byte -41`), and the dumper reads each unit by its full path, which `__FILE__` in chibicc's
+`unreachable()` message carries. The oracle of a comparison is this build, not upstream's
+default one.

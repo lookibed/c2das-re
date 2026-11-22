@@ -3926,14 +3926,17 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   process, the unmapped libc calls as portable C, no `long double` field), the sidecar, and
   `chibicc/tests/test_chibicc.das` (the converted compiler's `-S` and `-E` of one file equal the
   native compiler's). Two converter fixes it needed: a file-scope compound literal's left-out
-  slots arrive wrapped in `ConstantExpr` (`dump_init_list`), and a static named `count` of a
-  cluster is renamed past das's builtin `count` (`reserved_das_names`). Result: the converted
+  slots arrive wrapped in `ConstantExpr` (`dump_init_list`), and a program's function of no
+  parameter named like a das function a call with no argument reaches (chibicc's `count()` beside
+  `count(start = 0, step = 1)`) takes the next free name (`rename_taken_names`). Skip ledger:
+  `chibicc/tests/test_chibicc.das` skips when `chibicc/fetch/` is absent or off the pin (feature:
+  the fetched checkout and its native build; reason: the fetch needs the network and is never
+  committed; unblocked by running `chibicc/fetch.sh`, P10.0). Result: the converted
   compiler's output equals the native one's (built from the same sources with `-funsigned-char`
   and full paths, the converter's dialect) byte for byte under the interpreter and the JIT on
   c-testsuite (220 of 220 `-S`, 220 of 220 `-E`), on PureDOOM's units (62 of 62 each) and on
   gcc-torture's 1204 passing tests (`-S`, 1200; the four others segfault natively and panic on a
-  null pointer converted). Ledgered leftovers: the link's reserved names hold c_runtime's and the
-  crt's, not every das builtin (only `count` is added); `open_memstream`, `strndup`, `dirname`,
+  null pointer converted). Ledgered leftovers: `open_memstream`, `strndup`, `dirname`,
   `basename`, `strtok`, `stat`, `glob`, `fork`, `execvp`, `wait`, `mkstemp`, `unlink` have no
   c_runtime mapping; a record with a `long double` member is refused. The probe's report (speed,
   the cast comparison with Dumper A, what Part 2 needs past chibicc) is not in the tree.
