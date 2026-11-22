@@ -3972,7 +3972,7 @@ def private note_library_redeclaration(var d : Dumper; decl : JsonValue?; at : C
     assume own = d.tu.types[own_t]
     // `int strlen()` declares no parameters, so only the result tells it from the library's
     let prototyped = !(own_spelling |> ends_with("()"))
-    if (prototyped && (own.variadic != lib.variadic || length(own.params) != length(lib.params) || has_value([for (p, q in own.params, lib.params); p != q], true))) {
+    if (prototyped && (own.variadic != lib.variadic || length(own.params) != length(lib.params) || has_value([for (p, q in own.params, lib.params); !library_parameter(d, p, q)], true))) {
         fail(d, "`{name}` declared with other parameters than the C library's `{library}` is not lowered (C99 6.2.7)", at)
         return false
     }
@@ -3987,6 +3987,17 @@ def private note_library_redeclaration(var d : Dumper; decl : JsonValue?; at : C
         }
     }
     return true
+}
+
+// a parameter a redeclaration may give a library function's: its own type, or a data pointer for
+// one (`const char *` for `memcmp`'s `const void *`, gcc-torture 20050502-2), passed alike
+def private library_parameter(d : Dumper; own, lib : int) : bool {
+    if (own == lib) {
+        return true
+    }
+    let own_k = d.tu.types[own].k
+    let lib_k = d.tu.types[lib].k
+    return own_k == "ptr" && lib_k == "ptr" && d.tu.types[d.tu.types[own].to].k != "func" && d.tu.types[d.tu.types[lib].to].k != "func"
 }
 
 // an integer result a redeclared library function converts, `_Bool` excluded
