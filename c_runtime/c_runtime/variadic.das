@@ -15,10 +15,18 @@ require daslib/templates_boost
 //! list, and `va_arg(v, T)` is a typed pop at it; a mismatch panics, which is the C undefined
 //! behavior made visible.
 
+//! A record passed through `...`: the address of its copy in the callee's trailing tuple, which
+//! lives for the call, and its size, which `va_r` checks.
+struct CVaRecord {
+    at : void?
+    size : int
+}
+
 variant CVal {
     i : int64
     d : double
     p : void?
+    r : CVaRecord
 }
 
 typedef CVaList = array<CVal>
@@ -41,12 +49,16 @@ def to_cvalist(va : CVaList) : CVaList => <- clone_to_move(va)
 
 //! The prologue converter: one `CVal` per tuple field, C's default argument promotions applied -
 //! `float` widens to `double`, every integer class including `bool` and enums widens to `int64`,
-//! any pointer or function value travels as `void?`.
+//! any pointer or function value travels as `void?`, and a record by the address of its field.
 def to_cvalist(va : auto) : CVaList {
     var lst : CVaList
     apply(va) $(name, field) {
         static_if (typeinfo is_pointer(field) || typeinfo is_function(field)) {
             lst |> push(CVal(p = unsafe(reinterpret<void?>(field))))
+        } static_elif (typeinfo is_struct(field)) {
+            unsafe {
+                lst |> push(CVal(r = CVaRecord(at = reinterpret<void?>(addr(field)), size = typeinfo sizeof(field))))
+            }
         } static_elif (typeinfo is_float(field)) {
             lst |> push(CVal(d = double(field)))
         } static_elif (typeinfo is_double(field)) {
@@ -72,13 +84,15 @@ struct CVaCursor {
 def va_begin(va : CVaList) : CVaCursor => CVaCursor(list = unsafe(addr(va)), at = 0)
 
 // the arms of `CVal` by variant index, as the pops name them
-let private ARM_NAMES = fixed_array("an integer", "a double", "a pointer")
+let private ARM_NAMES = fixed_array("an integer", "a double", "a pointer", "a record")
 
 let private ARM_I = 0
 
 let private ARM_D = 1
 
 let private ARM_P = 2
+
+let private ARM_R = 3
 
 def private va_take(var v : CVaCursor; arm : int) : CVal {
     if (v.list == null) {
@@ -111,6 +125,16 @@ def va_d(var v : CVaCursor) : double => va_take(v, ARM_D) as d
 def va_p(var v : CVaCursor) : void? {
     let c = va_take(v, ARM_P)
     return c is i ? null : c as p
+}
+
+//! `va_arg` of a record type of `size` bytes: the address of the argument's copy, which the call
+//! reads through; a record of another size is the C undefined behavior made visible.
+def va_r(var v : CVaCursor; size : int) : void? {
+    let c = va_take(v, ARM_R) as r
+    if (c.size != size) {
+        panic("va_arg reads a record of {size} bytes where trailing argument {v.at - 1} is one of {c.size}")
+    }
+    return c.at
 }
 
 //! The arguments from the cursor on, as the list a `CVaList` callee takes (`c_vprintf`): the

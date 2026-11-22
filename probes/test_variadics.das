@@ -93,8 +93,48 @@ def as_void(f : auto) : void? {
     }
 }
 
+struct Rec9 {
+    x : uint8[9]
+    k : int
+}
+
+// the address of each record field of a trailing tuple, as `apply` reaches it
+def record_addrs(va : auto) : array<void?> {
+    var out : array<void?>
+    apply(va) $(name, field) {
+        static_if (typeinfo is_struct(field)) {
+            unsafe {
+                out |> push(reinterpret<void?>(addr(field)))
+            }
+        }
+    }
+    return <- out
+}
+
+// whether `record_addrs` points into the callee's own tuple, and the records read back through it
+def record_reads(tup : auto) : tuple<bool; int> {
+    let at <- record_addrs(tup)
+    var same = false
+    var sum = 0
+    unsafe {
+        same = reinterpret<void?>(addr(tup._0)) == at[0] && reinterpret<void?>(addr(tup._2)) == at[1]
+        for (p in at) {
+            sum += (*reinterpret<Rec9?>(p)).k
+        }
+    }
+    return (same, sum)
+}
+
 [test]
 def test_variadics(t : T?) {
+    t |> run("is_struct folds in static_if; addr of a record field `apply` reaches is the address in the callee's tuple, read back through reinterpret and *") @(t : T?) {
+        var a = Rec9(k = 3)
+        let b = Rec9(k = 4)
+        let r = record_reads((a, 1, b))
+        a.k = 100
+        t |> equal(r._0, true)
+        t |> equal(r._1, 7)
+    }
     t |> run("a tuple literal instantiates the generic per shape and the CVaList pops in order") @(t : T?) {
         t |> equal(sum(4, (10, 2.5, 20, 0.5)), 33.0lf)
         t |> equal(sum(2, (1, 2)), 3.0lf)

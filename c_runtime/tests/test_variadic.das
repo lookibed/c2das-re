@@ -95,6 +95,25 @@ def rest_after(skip : int; va : va_args) : CVaList {
     return <- va_rest(v)
 }
 
+struct Pair {
+    a : int
+    b : double
+}
+
+[variadic]
+def pair_sum(n : int; va : va_args) : double {
+    var v = va_begin(va)
+    var acc = 0.0lf
+    for (_k in range(n)) {
+        var p : Pair
+        unsafe {
+            p = *reinterpret<Pair?>(va_r(v, typeinfo sizeof(type<Pair>)))
+        }
+        acc += double(p.a) + p.b + double(va_i(v))
+    }
+    return acc
+}
+
 [variadic]
 def pop_double(va : va_args) : double {
     var v = va_begin(va)
@@ -124,6 +143,13 @@ def test_variadic(t : T?) {
     }
     t |> run("a [variadic] function declared in another module is callable through its macro") @(t : T?) {
         t |> equal(fixture_sum(3, 1, 2, 3), 6l)
+    }
+    t |> run("a record travels as the address of the tuple's copy and its size; va_r reads it back") @(t : T?) {
+        var p = Pair(a = 1, b = 0.5lf)
+        let q = Pair(a = 2, b = 0.25lf)
+        t |> equal(pair_sum(2, p, 10, q, 20), 33.75lf)
+        p.a = 100
+        t |> equal(pair_sum(1, p, 0), 100.5lf)
     }
     t |> run("a list already built passes as the trailing arguments as it is, a copy (a late-bound variadic call forwarding its list)") @(t : T?) {
         var built <- [CVal(i = 4l), CVal(i = 5l)]
@@ -193,7 +219,10 @@ def test_cursor(t : T?) {
             ("var v : CVaCursor\n    va_p(v)", "va_arg reads a pointer from a va_list no va_start began"),
             ("var v = va_begin([CVal(i = 1l)])\n    va_d(v)", "va_arg reads a double where trailing argument 0 is an integer"),
             ("var v = va_begin([CVal(d = 1.5lf)])\n    va_p(v)", "va_arg reads a pointer where trailing argument 0 is a double"),
-            ("var x = 1\n    var v = va_begin([CVal(p = unsafe(addr<void?>(x)))])\n    va_d(v)", "va_arg reads a double where trailing argument 0 is a pointer")
+            ("var x = 1\n    var v = va_begin([CVal(p = unsafe(addr<void?>(x)))])\n    va_d(v)", "va_arg reads a double where trailing argument 0 is a pointer"),
+            ("var v = va_begin([CVal(r = CVaRecord(size = 8))])\n    va_i(v)", "va_arg reads an integer where trailing argument 0 is a record"),
+            ("var v = va_begin([CVal(i = 1l)])\n    va_r(v, 8)", "va_arg reads a record where trailing argument 0 is an integer"),
+            ("var v = va_begin([CVal(r = CVaRecord(size = 8))])\n    va_r(v, 16)", "va_arg reads a record of 16 bytes where trailing argument 0 is one of 8")
         ]
         for (c in cases) {
             let src = "options gen2\nrequire c_runtime/variadic\n[export]\ndef main \{\n    {c._0}\n\}\n"
