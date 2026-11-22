@@ -137,6 +137,8 @@ struct Dumper {
     // the names of the program's functions and variables, which a numbered tag avoids: das
     // spells a record's constructor as a call of its name
     unit_names : table<string>
+    // the declaration statement being dumped declares a tag and nothing else (`struct T;`)
+    lone_tag_decl : bool
     record_by_loc : table<string; int>
     record_hash : table<string; uint>
     typedef_spellings : table<string; string>
@@ -3259,7 +3261,10 @@ def private dump_decl_stmt(var d : Dumper; js : JsonValue?; var into : array<Cir
     for (vidx in range(child_count(js))) {
         let v = (vars as _array)[vidx]
         if (node_kind(v) == "RecordDecl" || node_kind(v) == "EnumDecl" || node_kind(v) == "TypedefDecl") {
-            if (!dump_type_decl(d, v)) {
+            d.lone_tag_decl = child_count(js) == 1
+            let ok = dump_type_decl(d, v)
+            d.lone_tag_decl = false
+            if (!ok) {
                 return false
             }
             continue
@@ -3847,10 +3852,12 @@ def private dump_record_decl(var d : Dumper; js : JsonValue?) : bool {
     let complete = js?["completeDefinition"] ?? false
     if (!complete && !empty(d.tag_scopes) && !is_present(js?["previousDecl"])) {
         // `struct T;` in a block, or a first `struct T *p`, declares a new incomplete type there,
-        // which a definition elsewhere in the file would be read as
+        // which a definition elsewhere would be read as: refused for `struct T;` alone, and for
+        // a tag defined more than once; a first `struct W *p` of a tag defined once is that
+        // definition, as it always was
         let spelling = "{js?["tagUsed"] ?? "struct"} {js?["name"] ?? ""}"
-        if (key_exists(d.record_by_spelling, spelling) || key_exists(d.shared_tags, spelling)) {
-            fail(d, "`{spelling}` declared in a block hides its definition elsewhere in this file with a new incomplete type; not lowered yet", at)
+        if (key_exists(d.shared_tags, spelling) || (d.lone_tag_decl && key_exists(d.record_by_spelling, spelling))) {
+            fail(d, "`{spelling}` declared in a block hides its definitions elsewhere in this file with a new incomplete type; not lowered yet", at)
             return false
         }
     }

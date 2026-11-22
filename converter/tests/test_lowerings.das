@@ -1072,8 +1072,10 @@ def p7_block_tag_fixtures(t : T?) {
         has_text(t, text, "total += typeinfo sizeof(type<T2>) + typeinfo sizeof(type<T>) + int(w.wide) + int(b.only)")
         // `struct U`, first reached inside the block, names the file-scope `struct T`
         has_text(t, text, "struct U \{\n    t : T?\n")
+        // a block's `struct W *` ahead of W's one definition is that definition
+        has_text(t, text, "    var b : W? = null\n")
         rejects(t, "tag_outside_blocks", "static int f(void) \{ struct S \{ int a; \} s = \{1\}; return s.a; \}\nstatic int g(void) \{ struct S \{ int b; \} s = \{2\}; return s.b; \}\nstruct S *h(void) \{ return 0; \}\nint main(void) \{ return f() + g() - 3 + (h() != 0); \}\n", "`struct S` names no definition in scope here, while blocks define it more than once")
-        rejects(t, "tag_block_forward", "struct T \{ int x; \};\nint main(void) \{\n    struct T o = \{1\};\n    \{\n        struct T;\n        struct T *q = 0;\n        return o.x - 1 + (q != 0);\n    \}\n\}\n", "`struct T` declared in a block hides its definition elsewhere in this file with a new incomplete type")
+        rejects(t, "tag_block_forward", "struct T \{ int x; \};\nint main(void) \{\n    struct T o = \{1\};\n    \{\n        struct T;\n        struct T *q = 0;\n        return o.x - 1 + (q != 0);\n    \}\n\}\n", "`struct T` declared in a block hides its definitions elsewhere in this file with a new incomplete type")
         rejects(t, "tag_parameter_list", "struct T \{ int x; \};\nstatic int f(struct T \{ int y; \} *p) \{ return p ? p->y : 0; \}\nint main(void) \{ struct T o = \{0\}; return o.x + f(0); \}\n", "`struct T` defined in a parameter list, while the file defines it elsewhere too")
         rejects(t, "tag_two_in_one", "int main(void) \{\n    struct T \{ int x; \} s1 = \{1\};\n    \{\n        struct T \{ int y; \} s2 = \{2\};\n        return (s2.y, &s1)->x - 1;\n    \}\n\}\n", "`struct T` names two of its definitions in one expression")
     }

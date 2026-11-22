@@ -63,6 +63,22 @@ static int siblings_two(void) {
     return s.b + (int)(s.d * 2) + S1();
 }
 
+/* `struct W *` in a block before W's one definition names that definition */
+static int ahead(void) {
+    struct W *b = 0;
+    return b == 0;
+}
+
+struct W {
+    int k;
+};
+
+static int after(void) {
+    struct W w = {4};
+    struct W *b = &w;
+    return b->k;
+}
+
 int main(void) {
     struct T outer = make(7);
     struct T *op = &outer;
@@ -115,7 +131,7 @@ int main(void) {
     for (struct T { char c; } a = {1}; a.c; a.c = 0)
         total += a.c + (int)sizeof(struct T);
     total += one.tag + (int)sizeof(struct T) + (int)sizeof(union V) + v.i;
-    printf("%d %d %d\n", total, siblings_one(), siblings_two());
+    printf("%d %d %d %d\n", total, siblings_one(), siblings_two(), ahead() + after());
     return via_u(0);
 }
 

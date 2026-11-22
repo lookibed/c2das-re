@@ -4144,8 +4144,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   numbered names are per unit and the link merges records by spelling, refusing two layouts or
   field lists. Still refused: such a tag spelled outside every block that defines it, an
   expression with no libclang note or two of the tag's records at its first token, a block's
-  `struct T;` (a new incomplete type) or a tag defined in a parameter list where the file defines
-  the tag elsewhere, and an enum tag defined again.
+  `struct T;` (a new incomplete type) where the file defines the tag, a first `struct T *p` in a
+  block or a tag defined in a parameter list where the file defines the tag more than once, and an
+  enum tag defined again.
 - **P7.6 GNU emulations owed by the skip audit** (P5.1c). Skip lines name it under these features:
   `packed or aligned layout` (33: `packed` and `aligned` beyond what the layout law places or a
   typedef carries - a packed record outside the sidecar's `marshal`, an alignment on a variable, a
