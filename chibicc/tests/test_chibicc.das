@@ -1,29 +1,43 @@
 options gen2
 require dastest/testing_boost public
 require daslib/fio
+require daslib/strings_boost
 require ../sources.das
 require ../../converter/tiers.das
 require ../../perf/perf_lanes.das
 
 //! The converted chibicc against the native one over the fetched sources: `-S` and `-E` of one C
-//! file give the same bytes. Without the fetch (`chibicc/fetch.sh`) the test logs that and passes.
+//! file give the same bytes. The test skips without the fetch (`chibicc/fetch.sh`) and with a
+//! checkout at another commit than `VERSIONS.md` pins.
 
 let SAMPLE = "#include <stdarg.h>\n#define TWICE(x) ((x) + (x))\nstruct P \{ int x; char tag[3]; double d; \};\nstatic int total(int n, ...) \{\n    va_list ap;\n    va_start(ap, n);\n    int sum = 0;\n    for (int i = 0; i < n; i++) sum += va_arg(ap, int);\n    va_end(ap);\n    return sum;\n\}\nint main(void) \{\n    struct P p = \{TWICE(2), \"ab\", 1.5\};\n    switch (p.x) \{\n    case 4: return total(2, p.tag[0], (int)p.d) - 'a' - 1;\n    default: return 1;\n    \}\n\}\n"
 
-def private scratch(name : string) : string {
-    var error : string
-    let dir = create_temp_directory(name, error)
-    return empty(error) ? dir : ""
+// the commit the `chibicc:` line of VERSIONS.md pins, "" without the line
+def private pinned_commit : string {
+    for (line in split(fread("VERSIONS.md"), "\n")) {
+        if (line |> starts_with("chibicc: ")) {
+            return split(slice(line, 9), " ")[0]
+        }
+    }
+    return ""
 }
 
-[test]
-def test_converted_equals_native(t : T?) {
+// why the fetched checkout cannot be the oracle, "" when it can
+def private fetch_refusal : string {
     if (!fexist(NATIVE)) {
-        to_log(LOG_WARNING, "test_chibicc: no {NATIVE}; run chibicc/fetch.sh\n")
-        return
+        return "no {NATIVE}: run chibicc/fetch.sh"
     }
-    let root = scratch("chibicc_convert")
-    t |> success(!empty(root))
+    var head : string
+    let rc = run_and_capture(["git", "-C", SOURCES, "rev-parse", "HEAD"], head, 30.0)
+    let pin = pinned_commit()
+    if (rc != 0 || empty(pin) || strip(head) != pin) {
+        return "{SOURCES} is at `{strip(head)}`, VERSIONS.md pins `{pin}`: run chibicc/fetch.sh"
+    }
+    return ""
+}
+
+// the conversion in `root` and both compilers over the sample, mode by mode
+def private compare_in(t : T?; root : string) {
     let manifest = path_join(root, "chibicc.program.json")
     fwrite(manifest, program_manifest())
     fwrite(path_join(root, "sample.c"), SAMPLE)
@@ -33,6 +47,9 @@ def test_converted_equals_native(t : T?) {
     convert |> push_from([get_full_file_name("converter/main.das"), "--", "--program", manifest, "--out", path_join(root, "chibicc"), "--target", "linux", "--sidecar", get_full_file_name(SIDECAR)])
     let converted = run_and_capture(convert, out, 600.0)
     t |> equal(converted, 0, out)
+    if (converted != 0) {
+        return
+    }
     // both run in the checkout, where `./include` holds chibicc's own headers
     let cwd = get_full_file_name(SOURCES)
     for (mode in ["-S", "-E"]) {
@@ -48,4 +65,21 @@ def test_converted_equals_native(t : T?) {
         t |> success(!empty(fread(native_out)), "native {mode} wrote nothing")
         t |> equal(fread(das_out), fread(native_out), "{mode}")
     }
+}
+
+[test]
+def test_converted_equals_native(t : T?) {
+    let refusal = fetch_refusal()
+    if (!empty(refusal)) {
+        t |> skip(refusal)
+        return
+    }
+    var error : string
+    let root = create_temp_directory("chibicc_convert", error)
+    if (!empty(error)) {
+        t |> failure(error)
+        return
+    }
+    compare_in(t, root)
+    rmdir_rec(root)
 }
