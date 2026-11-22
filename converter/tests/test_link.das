@@ -266,6 +266,9 @@ def test_refusals(t : T?) {
     t |> run("two same-size layouts differing in field order or in a dimension's enumerator are refused") @(t : T?) {
         refused(t, "field_order", [(name = "a.c", text = "struct s \{ int x; int y; \};\nint ga(struct s *p) \{ return p->x; \}\nint main(void) \{ return 0; \}\n"), (name = "b.c", text = "struct s \{ int y; int x; \};\nint gb(struct s *p) \{ return p->y; \}\n")], ["link: `struct s` is defined with two different layouts: ", "a.c:1 and ", "b.c:1"])
         refused(t, "dims", [(name = "a.c", text = "enum \{ N = 2 \};\nstruct s \{ int v[N]; \};\nint ga(struct s *p) \{ return p->v[0]; \}\nint main(void) \{ return 0; \}\n"), (name = "b.c", text = "enum \{ M = 2 \};\nstruct s \{ int v[M]; \};\nint gb(struct s *p) \{ return p->v[1]; \}\n")], ["link: `struct s` is defined with two different layouts: ", "a.c:2 and ", "b.c:2"])
+        // a numbered tag (`ARCHITECTURE_DUMPER_TAGS.md`) is per unit: two units' block `T1` of one
+        // layout and other field names are refused alike
+        refused(t, "numbered_tag_fields", [(name = "a.c", text = "struct T \{ int x; \};\nint ga(void) \{ struct T o = \{1\}; \{ struct T \{ int a; \} i = \{2\}; return i.a + o.x; \} \}\nint main(void) \{ return 0; \}\n"), (name = "b.c", text = "struct T \{ int x; \};\nint gb(void) \{ struct T o = \{1\}; \{ struct T \{ int b; \} i = \{2\}; return i.b + o.x; \} \}\n")], ["link: `struct T1` is defined with two different layouts: ", "a.c:2 and ", "b.c:2"])
     }
     t |> run("a function a header defines without `static` in two units names `inline` and both units") @(t : T?) {
         let paths <- written("inline", [(name = "inl.h", text = "inline int sq(int x) \{ return x * x; \}\n"), (name = "i1.c", text = "#include \"inl.h\"\nint u1(void) \{ return sq(3); \}\n"), (name = "i2.c", text = "#include \"inl.h\"\nextern int sq(int);\nint u1(void);\nint main(void) \{ return u1() + sq(4); \}\n")])

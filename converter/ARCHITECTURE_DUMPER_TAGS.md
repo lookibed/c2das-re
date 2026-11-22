@@ -17,7 +17,8 @@ spells both types `struct T`, so its spelling alone cannot tell them apart; libc
   record.
 - **Units.** The free-name set is per unit. The link merges records of several units by
   spelling (`ARCHITECTURE_LINK.md`): two units' `T1` with one layout and the same field names
-  are one das struct, and any difference fails the link, naming both definitions.
+  are one das struct, and any difference, field names included, fails the link, naming both
+  definitions (`converter/tests/test_link.das`, `numbered_tag_fields`).
 - **Declarations.** The walk opens a tag scope for each compound statement and for each `for`
   statement (its declarations through its body). When it meets a definition of a tag defined
   more than once, the tag names that record from the definition to the end of the enclosing
@@ -35,8 +36,10 @@ spells both types `struct T`, so its spelling alone cannot tell them apart; libc
   first reached inside a block (a pointer to it, its definition later in the file) reads its
   fields past the block scopes and past any expression's note, so they name the file-scope tags.
 - **Refused declarations.** A block's `struct T;`, or a first `struct T *p` there, declares a
-  new incomplete type, and so does a tag defined in a parameter list; each fails closed when the
-  file defines the tag elsewhere, since the dump's spelling would read it as that definition.
+  new incomplete type, and so does a tag defined in a parameter list, which the dump's spelling
+  would read as a definition elsewhere. `struct T;` alone fails closed when the file defines the
+  tag; the other two fail closed when the file defines it more than once. A first `struct W *b`
+  of a tag defined once is that definition, as before (W's one file-scope definition later).
 
 An enum tag defined again in a block fails closed: its constants bind by location, its type by
 spelling.
