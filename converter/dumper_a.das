@@ -36,6 +36,9 @@ struct ClangRecord {
     spelling : string
     c_spelling : string
     block_scope : bool
+    // defined in a function's parameter list, a scope that ends with the declarator
+    prototype_scope : bool
+    at : CirLoc
     is_union : bool
     size : int64
     align : int64
@@ -131,6 +134,9 @@ struct Dumper {
     // the expression whose type is being read
     expr_records : table<string; table<string; int>>
     expr_key : string
+    // the names of the program's functions and variables, which a numbered tag avoids: das
+    // spells a record's constructor as a call of its name
+    unit_names : table<string>
     record_by_loc : table<string; int>
     record_hash : table<string; uint>
     typedef_spellings : table<string; string>
@@ -304,7 +310,7 @@ def private register_record(var d : Dumper; var c : CXCursor) {
     // JSON dump keeps the tag (`struct thinker_t`); the dump's spelling is the key
     let raw = unscoped_spelling(string(clang_getTypeSpelling(ct)))
     let tagged = raw |> starts_with("struct ") || raw |> starts_with("union ")
-    var rec = ClangRecord(spelling = tagged ? raw : (is_union ? "union " : "struct ") + raw, is_union = is_union, size = clang_Type_getSizeOf(ct), align = clang_Type_getAlignOf(ct), block_scope = in_block_scope(c))
+    var rec = ClangRecord(spelling = tagged ? raw : (is_union ? "union " : "struct ") + raw, is_union = is_union, size = clang_Type_getSizeOf(ct), align = clang_Type_getAlignOf(ct), block_scope = in_block_scope(c), prototype_scope = in_prototype_scope(c), at = cursor_loc(c))
     rec.c_spelling = rec.spelling
     // an unnamed record is spelled by its expansion location, which a macro shares
     let unnamed = find(rec.spelling, "(anonymous ") >= 0 || find(rec.spelling, "(unnamed ") >= 0
@@ -368,6 +374,30 @@ def private register_record(var d : Dumper; var c : CXCursor) {
 // outer one, and libclang's semantic parent of either is then the unit
 def private in_block_scope(var c : CXCursor) : bool => clang_getCursorKind(clang_getCursorSemanticParent(c)) != CXCursorKind.TranslationUnit
 
+// whether a record definition lies in a function's parameter list: before the function's body
+def private in_prototype_scope(var c : CXCursor) : bool {
+    var owner = clang_getCursorSemanticParent(c)
+    if (clang_getCursorKind(owner) != CXCursorKind.FunctionDecl) {
+        return false
+    }
+    var body_at = -1
+    clang_visitChildren(owner) $(var kid, _parent) {
+        if (clang_getCursorKind(kid) == CXCursorKind.CompoundStmt) {
+            body_at = cursor_offset(kid)
+        }
+        return CXChildVisitResult.Continue
+    }
+    return body_at < 0 || cursor_offset(c) < body_at
+}
+
+// a cursor's expansion offset in its file
+def private cursor_offset(var c : CXCursor) : int {
+    var file : CXFile
+    var line, column, offset : uint
+    clang_getExpansionLocation(clang_getCursorLocation(c), safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
+    return int(offset)
+}
+
 // each record whose tag another definition took first gets the first numbered tag no record,
 // enum or typedef of the unit spells (`struct T` again in a block is `struct T1`)
 [arch(at="ARCHITECTURE_DUMPER_TAGS.md#shared-tags")]
@@ -382,7 +412,14 @@ def private name_shared_tags(var d : Dumper) {
     for (name in keys(d.typedef_spellings)) {
         taken |> insert(name)
     }
+    for (name in keys(d.unit_names)) {
+        taken |> insert(name)
+    }
     for (ridx in range(length(d.records))) {
+        if (d.records[ridx].prototype_scope && key_exists(d.shared_tags, d.records[ridx].c_spelling)) {
+            fail(d, "`{d.records[ridx].c_spelling}` defined in a parameter list, while the file defines it elsewhere too; not lowered yet", d.records[ridx].at)
+            return
+        }
         let temp = d.records[ridx].spelling
         if (find(temp, "#") < 0) {
             continue
@@ -527,6 +564,21 @@ def private extent_key(var d : Dumper; var c : CXCursor) : string {
     clang_getExpansionLocation(loc, safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
     clang_getSpellingLocation(loc, safe_addr(spelled_file), safe_addr(line), safe_addr(column), safe_addr(spelled))
     return "{canonical_file(d, file_name(file))}:{int(offset)}:{canonical_file(d, file_name(spelled_file))}:{int(spelled)}"
+}
+
+// every program expression whose type names a tag defined more than once, noted for
+// `scoped_record`, once every definition is registered
+[arch(at="ARCHITECTURE_DUMPER_TAGS.md#shared-tags")]
+def private note_shared_exprs(var d : Dumper; var c : CXCursor) {
+    clang_visitChildren(c) $(var kid, _parent) {
+        if (!in_program(d, cursor_loc(kid).file)) {
+            return CXChildVisitResult.Continue
+        }
+        if (clang_isExpression(clang_getCursorKind(kid)) != 0u) {
+            note_expr_record(d, kid)
+        }
+        return CXChildVisitResult.Recurse
+    }
 }
 
 // the record of a tag defined more than once that expression `c`'s type names, through pointers
@@ -807,14 +859,15 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
         if (kind != CXCursorKind.TypedefDecl && kind != CXCursorKind.MacroDefinition && !in_program(d, cursor_loc(kid).file)) {
             return CXChildVisitResult.Continue
         }
-        if (!empty(d.shared_tags) && clang_isExpression(kind) != 0u) {
-            note_expr_record(d, kid)
+        if (kind == CXCursorKind.FunctionDecl) {
+            d.unit_names |> insert(string(clang_getCursorSpelling(kid)))
         }
         if ((kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl) && clang_isCursorDefinition(kid) != 0u) {
             register_record(d, kid)
         } elif (kind == CXCursorKind.EnumDecl && clang_isCursorDefinition(kid) != 0u) {
             register_enum(d, kid)
         } elif (kind == CXCursorKind.VarDecl) {
+            d.unit_names |> insert(string(clang_getCursorSpelling(kid)))
             register_dims(d, kid)
             // a variable of an external record (`struct tm ts;`) needs its layout
             register_external_type(d, clang_getCursorType(kid))
@@ -938,6 +991,9 @@ def private collect_records(var d : Dumper; triple : string; resource_dir : stri
         }
         var root = clang_getTranslationUnitCursor(unit)
         walk_records(d, root)
+        if (!empty(d.shared_tags)) {
+            note_shared_exprs(d, root)
+        }
         clang_disposeTranslationUnit(unit)
     }
     clang_disposeIndex(idx)
@@ -1719,12 +1775,13 @@ def private scoped_record(var d : Dumper; spelling : string; at : CirLoc) : stri
     if (!key_exists(d.shared_tags, spelling)) {
         return spelling
     }
-    let named = d.expr_records?[d.expr_key]?[spelling] ?? -2
-    if (named == -1) {
-        fail(d, "`{spelling}` names two of its definitions in one expression; not lowered yet", at)
-        return ""
-    }
-    if (named >= 0) {
+    if (!empty(d.expr_key)) {
+        // an expression's record is libclang's note at its first token, never the scopes'
+        let named = d.expr_records?[d.expr_key]?[spelling] ?? -2
+        if (named < 0) {
+            fail(d, named == -1 ? "`{spelling}` names two of its definitions in one expression; not lowered yet" : "`{spelling}`: libclang names no record of this expression's type at its first token, while the file defines the tag more than once; not lowered yet", at)
+            return ""
+        }
         return d.records[named].spelling
     }
     for (depth in range(length(d.tag_scopes) - d.tag_floor)) {
@@ -1767,7 +1824,10 @@ def private record_type(var d : Dumper; qt : string; at : CirLoc) : int {
     var fields : array<CirField>
     fields |> reserve(length(d.records[ridx].fields))
     // a file-scope record's fields name file-scope tags, whichever block first reaches it
+    // and no expression's note reaches them
     let floor = d.tag_floor
+    let expr_key = d.expr_key
+    d.expr_key = ""
     if (!d.records[ridx].block_scope) {
         d.tag_floor = length(d.tag_scopes)
     }
@@ -1782,6 +1842,7 @@ def private record_type(var d : Dumper; qt : string; at : CirLoc) : int {
         fields |> emplace(fld)
     }
     d.tag_floor = floor
+    d.expr_key = expr_key
     if (!ok) {
         return -1
     }
@@ -3687,7 +3748,11 @@ def private dump_stmt_node(var d : Dumper; js : JsonValue?) : CirStmt? {
         return wrapped
     }
     if (kind == "ForStmt") {
-        return dump_for(d, js, at)
+        // a `for`'s declarations, a tag's definition among them, end with the statement
+        d.tag_scopes |> emplace(table<string; int>())
+        var st = dump_for(d, js, at)
+        d.tag_scopes |> pop()
+        return st
     }
     if (key_exists(EXPR_KINDS, kind) || kind == "StmtExpr") {
         // a bare statement expression `({ ... });` is no expression kind: `dump_expr_stmt` takes it
@@ -3779,7 +3844,17 @@ def private dump_record_decl(var d : Dumper; js : JsonValue?) : bool {
     // a forward declaration adds nothing, and neither does glibc's tag, which a file that includes
     // no header defines itself: every spelling of it is the opaque `jmp_buf` record
     // (`jmp_buf_type`), so its fields name nothing
-    if (!(js?["completeDefinition"] ?? false) || (js?["name"] ?? "") == "__jmp_buf_tag") {
+    let complete = js?["completeDefinition"] ?? false
+    if (!complete && !empty(d.tag_scopes) && !is_present(js?["previousDecl"])) {
+        // `struct T;` in a block, or a first `struct T *p`, declares a new incomplete type there,
+        // which a definition elsewhere in the file would be read as
+        let spelling = "{js?["tagUsed"] ?? "struct"} {js?["name"] ?? ""}"
+        if (key_exists(d.record_by_spelling, spelling) || key_exists(d.shared_tags, spelling)) {
+            fail(d, "`{spelling}` declared in a block hides its definition elsewhere in this file with a new incomplete type; not lowered yet", at)
+            return false
+        }
+    }
+    if (!complete || (js?["name"] ?? "") == "__jmp_buf_tag") {
         return true
     }
     for (idx in range(child_count(js))) {
