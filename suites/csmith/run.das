@@ -67,10 +67,12 @@ struct CsmithArgs {
     tier : string = "interp"
     @clarg_doc = "judge only the seeds skip.txt lists, writing work/skip_audit.tsv; the ratchet is not judged, and only --update writes it, adding the audited seeds that pass"
     audit_skips : bool
-    @clarg_doc = "judge --seeds fresh seeds (default 1000) drawn from --start, with no ratchet, into work/nightly/<date>-<start>.txt; exit 1 on any divergence"
+    @clarg_doc = "judge --seeds fresh seeds (default 1000) drawn from --start, with no ratchet, into work/nightly/<date>-<start>.txt; exit 1 on any divergence or timeout"
     nightly : bool
     @clarg_doc = "the start seed a --nightly run draws its seeds from (default the UTC date's digits, 20261122)"
     start : string = ""
+    @clarg_doc = "run a --nightly night again over the result file of its date and start"
+    force : bool
     @clarg_doc = "worker: generate, build, convert and judge this seed, writing work/<seed>/<seed>.verdict"
     one : string = ""
     @clarg_doc = "judge this generated program as a seed, writing <stem>.verdict beside it"
@@ -122,7 +124,7 @@ def private judge(c_path, tier : string; t0 : int64) : Verdict {
         return Verdict(status = "native", signature = "native", reason = "{reference_compiler()} refused it: {first_line(native.output)}")
     }
     if (native.rc == popen_timed_out) {
-        return timed_out("the native run", native_limit)
+        return timed_out(NATIVE_STAGE, native_limit)
     }
     if (native.rc != 0) {
         return Verdict(status = "native", signature = "native", reason = "the native run exited {native.rc}")
@@ -151,7 +153,7 @@ def private judge_seed(seed, tier : string) : Verdict {
     let csmith_limit = limit_of(CSMITH_TIMEOUT, t0)
     let prog = csmith_program(seed, "{WORK_DIR}/{seed}", csmith_limit)
     if (prog.timed_out) {
-        return timed_out("csmith", csmith_limit)
+        return timed_out(CSMITH_STAGE, csmith_limit)
     }
     if (!empty(prog.error)) {
         return Verdict(status = "native", signature = "native", reason = prog.error)
@@ -281,30 +283,77 @@ def private audit_seeds(filter : string; jobs : int; tier : string; update : boo
     }
 }
 
-// a night: `night.count` fresh seeds drawn from `night.start`, each judged once under
-// `night.tier`, a seed's work folder removed unless `keeps_files`; the result file is rewritten
-// after every seed, so a night cut short still reports what it judged
-def private run_nightly(night : NightlyRun; jobs : int) : int {
-    let seeds <- nightly_seeds(night.start, night.count)
-    let result = nightly_result_path(WORK_DIR, night)
-    mkdir_rec(dir_name(result))
-    to_log(LOG_INFO, "csmith nightly: start seed {night.start}, {night.count} seeds, result {result}\n")
-    let t0 = ref_time_ticks()
-    var outcomes : array<Outcome>
-    run_workers(length(seeds), jobs, WORKER_TIMEOUT, $(index) => spawn_one("suites/csmith/run.das", seeds[index], verdict_path("{WORK_DIR}/{seeds[index]}/{seeds[index]}.c"), ["--tier", night.tier])) $(index, killed, rc, _output) {
-        let seed = seeds[index]
-        let outcome = worker_outcome(seed, killed, rc, WORKER_TIMEOUT, killed ? Verdict() : read_verdict("{WORK_DIR}/{seed}/{seed}.c"))
-        if (outcome.status != "pass") {
-            to_log(LOG_INFO, "{seed}: {outcome.status}: {first_line(outcome.reason)}\n")
-        }
-        if (!keeps_files(outcome.status)) {
-            rmdir_rec("{WORK_DIR}/{seed}")
-        }
-        outcomes |> push(outcome)
-        fwrite(result, nightly_report(night, WORK_DIR, outcomes, seconds_since(t0)))
+// the commit `dir`'s checkout is at, `+dirty` added when a tracked file differs from it
+def private git_head(dir : string) : string {
+    var head, dirt : string
+    run_and_capture(["git", "-C", dir, "rev-parse", "HEAD"], head, 30.0)
+    run_and_capture(["git", "-C", dir, "status", "--porcelain", "--untracked-files=no"], dirt, 30.0)
+    return "{strip(head)}{empty(strip(dirt)) ? "" : "+dirty"}"
+}
+
+// the pid a night's lock file names when that process is a nightly run still alive; "" otherwise
+def private running_pid(lock : string) : string {
+    let pid = strip(fread(lock))
+    if (empty(pid) || parse_start(pid) < 0) {
+        return ""
     }
+    var args : string
+    run_and_capture(["ps", "-o", "args=", "-p", pid], args, 30.0)
+    return args |> contains("--nightly") ? pid : ""
+}
+
+// this process's pid: the parent of a shell it starts
+def private own_pid : string {
+    var pid : string
+    run_and_capture(["bash", "-c", "echo $PPID"], pid, 30.0)
+    return strip(pid)
+}
+
+// a night: fresh seeds drawn from `night.start` in rounds, each seed judged once under
+// `night.tier`, until `night.count` are judged or `draw_cap` seeds are drawn; a seed's work folder
+// is removed unless `keeps_files`, and the result file is rewritten after every seed, so a night
+// cut short still reports what it judged; a lock beside it marks the night running
+def private run_nightly(night : NightlyRun; jobs : int; force : bool) : int {
+    let result = nightly_result_path(WORK_DIR, night)
+    let lock = "{result}.lock"
+    let refusal = night_refusal(result, fexist(result), running_pid(lock), force)
+    if (!empty(refusal)) {
+        to_log(LOG_ERROR, "{refusal}\n")
+        return 2
+    }
+    mkdir_rec(dir_name(result))
+    fwrite(lock, own_pid())
+    let cap = draw_cap(night.count)
+    let sequence <- nightly_seeds(night.start, cap)
+    to_log(LOG_INFO, "csmith nightly: start seed {night.start}, {night.count} seeds, at most {cap} drawn, result {result}\n")
+    let t0 = ref_time_ticks()
+    var drawn : array<string>
+    var finished : table<string; Outcome>
+    var outcomes : array<Outcome>
+    var judged = 0
+    while (judged < night.count && length(drawn) < cap) {
+        var inscope batch <- [for (idx in range(length(drawn), length(drawn) + min(night.count - judged, cap - length(drawn)))); sequence[idx]]
+        drawn |> push_from(batch)
+        run_workers(length(batch), jobs, WORKER_TIMEOUT, $(index) => spawn_one("suites/csmith/run.das", batch[index], verdict_path("{WORK_DIR}/{batch[index]}/{batch[index]}.c"), ["--tier", night.tier])) $(index, killed, rc, _output) {
+            let seed = batch[index]
+            let v = killed ? Verdict() : read_verdict("{WORK_DIR}/{seed}/{seed}.c")
+            var outcome = worker_outcome(seed, killed, rc, WORKER_TIMEOUT, v)
+            outcome.status = killed ? outcome.status : night_status(Verdict(status = outcome.status, signature = v.signature))
+            if (outcome.status != "pass") {
+                to_log(LOG_INFO, "{seed}: {outcome.status}: {first_line(outcome.reason)}\n")
+            }
+            if (!keeps_files(outcome.status)) {
+                rmdir_rec("{WORK_DIR}/{seed}")
+            }
+            judged += is_judged(outcome.status) ? 1 : 0
+            finished[seed] = outcome
+            outcomes |> push(outcome)
+            write_atomically(result, nightly_report(night, WORK_DIR, drawn, finished, seconds_since(t0)))
+        }
+    }
+    remove(lock)
     let rc = nightly_exit_code(outcomes)
-    to_log(rc == 0 ? LOG_INFO : LOG_ERROR, "csmith nightly: {result}{rc == 0 ? "" : ": a converted program diverged from its native build"}\n")
+    to_log(rc == 0 ? LOG_INFO : LOG_ERROR, "csmith nightly: {result}{rc == 0 ? "" : ": a converted program diverged from its native build or ran past its limit"}\n")
     return rc
 }
 
@@ -312,7 +361,11 @@ def private run_nightly(night : NightlyRun; jobs : int) : int {
 // `error` says why there is none
 def private night_of(args : CsmithArgs; var error : string&) : NightlyRun {
     if (args.update || args.audit_skips || !empty(args.seed) || !empty(args.from) || !empty(args.filter) || !empty(args.one) || !empty(args.check)) {
-        error = "--nightly judges fresh seeds alone: it takes --seeds, --start, --jobs and --tier, no other mode"
+        error = "--nightly judges fresh seeds alone: it takes --seeds, --start, --jobs, --tier and --force, no other mode"
+        return NightlyRun()
+    }
+    if (args.seeds == 0 || args.seeds < -1) {
+        error = "--nightly --seeds {args.seeds} judges nothing: name a count of one or more"
         return NightlyRun()
     }
     var date : string
@@ -326,6 +379,7 @@ def private night_of(args : CsmithArgs; var error : string&) : NightlyRun {
     let count = args.seeds >= 0 ? args.seeds : NIGHTLY_SEEDS
     let cc = reference_compiler()
     return NightlyRun(date = date, start = start, count = count, tier = args.tier, compiler = cc,
+        csmith_commit = git_head(CSMITH_DIR), csmith_options = join(CSMITH_OPTIONS, " "), repo_commit = git_head("."), das_commit = git_head(get_das_root()),
         replay = "CC={cc} scripts/run_suite.sh csmith --nightly --start {start} --seeds {count} --tier {args.tier}")
 }
 
@@ -380,7 +434,7 @@ def main : int {
         return 2
     }
     if (args.nightly) {
-        return run_nightly(night, args.jobs)
+        return run_nightly(night, args.jobs, args.force)
     }
     if (args.audit_skips) {
         audit_seeds(args.filter, args.jobs, args.tier, args.update)
