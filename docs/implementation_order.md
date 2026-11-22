@@ -405,19 +405,24 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   parameter (2, P4.6). gcc-torture 680 to 732 (strlen-5, the shift family and 960116-1
   among them), c-testsuite 192 to 193 (00129).
   The nightly N=1000 schedule landed as `run.das --nightly` (suites/ARCHITECTURE.md section 4):
-  N fresh seeds (1000 by default) drawn from a recorded start seed (the UTC date's digits unless
-  `--start`), no ratchet read or written, a dated result file `work/nightly/<date>-<start>.txt`
-  with counts and seed lists per verdict and the replay line, the work folder of every seed
-  that neither diverged, timed out nor crashed removed as it ends, exit 1 on any divergence.
-  No scheduler is installed on this box: the lead launches the night as
+  fresh seeds drawn from a recorded start seed (the UTC date's digits unless `--start`, the
+  generator a hash of the start), no ratchet read or written, a dated result file
+  `work/nightly/<date>-<start>.txt` with the csmith, c2das-re and daScript commits, counts and
+  draw-ordered seed lists per verdict and the replay line, exit 1 on any `differs` or
+  converter-side `timeout`. The criterion counts judged seeds: a seed csmith or the native gcc
+  run cannot finish (`native-timeout`, `native`) is not judged, and the night draws replacement
+  seeds from the same sequence until N are judged, at most 1.5 N draws. No scheduler is
+  installed on this box: the lead launches the night as
   `heavy --low --label csmith-nightly --max 4G -- env CC=gcc-14 scripts/run_suite.sh csmith --nightly --jobs 3`.
-  The first night, 2026-11-22, start seed 20261122, interpreter, gcc 14.3.0, daScript
-  b7d8f6f52f, three workers: 1000 seeds in 4029 s (67 min, scope peak 3.5 GB), 876 pass,
-  0 differs, 0 refused, 0 native, 124 timeout, 0 crash. Every timeout is the native run past
-  its 2 s: csmith programs whose gcc `-O0` build runs for minutes (three of them rebuilt and run
-  past 120 s each), so they are no converter verdict. The JIT is not part of the night: a seed's
-  cost is its conversion (25 s interp, 26 s JIT on one seed), so a JIT night is the replay line
-  with `--tier jit` at the same box time again. A coverage item: csmith's `--binary-constant` (GNU `0b` literals) stays off until the
+  The first night, 2026-11-22, start 20261122 under the first generator: 876 judged of 1000
+  drawn, 124 native-timeout, 876 pass, 0 differs (4029 s). Rerun under the judged-N rules from
+  the same start (the hashed generator draws other seeds), interpreter, gcc 14.3.0, daScript
+  b7d8f6f52f, c2das-re ea29abb, three workers: 1000 judged of 1132 drawn, 132 native-timeout,
+  1000 pass, 0 differs, 0 refused, 0 timeout, 0 crash, 4645 s (77 min, the first half beside a
+  ports publish; scope peak 3.5 GB). The native timeouts are csmith programs whose gcc `-O0`
+  build runs for minutes (three of the first night rebuilt and run past 120 s each). The JIT is
+  not part of the night: a seed's cost is its conversion (25 s interp, 26 s JIT on one seed),
+  so a JIT night is the replay line with `--tier jit` at the same box time again. A coverage item: csmith's `--binary-constant` (GNU `0b` literals) stays off until the
   dialect reads them.
 - **P4.5a Perf tracking.** `perf/results_linux.json` is re-recorded on the current tree (the
   capture of 2026-10-06 predates every item since P2.4, which `perf/REVIEW.md` already

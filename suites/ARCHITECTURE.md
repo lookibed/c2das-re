@@ -98,11 +98,12 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
 - `csmith/run.das` - the differential driver (section 3): its own `main` over the shared
   runner's pieces, one worker process per seed (`--one <seed>`), the judge of a generated
   program the reducer calls (`--check <file>`), and the nightly run (`--nightly`, section 4).
-- `csmith/nightly.das` - the nightly run's pieces (section 4): `nightly_seeds` (the seeds a
-  start seed draws), `date_start` and `parse_start` (the start a date or `--start` names),
-  `nightly_verdict` and `keeps_files` (a seed's status as the night counts it, and whether its
-  work folder stays), `nightly_report` and `nightly_result_path` (the result file and its name)
-  and `nightly_exit_code`.
+- `csmith/nightly.das` - the nightly run's pieces (section 4): `night_generator` and
+  `nightly_seeds` (the seeds a start seed draws), `date_start` and `parse_start` (the start a
+  date or `--start` names), `night_status`, `nightly_verdict`, `is_judged`, `fails_night` and
+  `keeps_files` (a seed's status as the night counts it, whether it counts toward N, fails the
+  night, keeps its work folder), `draw_cap`, `night_refusal`, `nightly_report`,
+  `nightly_result_path`, `write_atomically` and `nightly_exit_code`.
 - `csmith/generate.das` - a seed's program (section 3): `csmith_program` runs the pinned csmith
   with `CSMITH_OPTIONS` and splices the runtime headers in; the driver and the readability
   metric generate through it.
@@ -223,36 +224,58 @@ named instead.
 
 ## 4. The nightly run
 
-`run.das --nightly` is the V3 schedule (`docs/very-detailed-plan.md`, N=1000 a night). It
-judges `--seeds` fresh seeds (1000 unless given) and nothing else: the ratchet and the skip
+`run.das --nightly` is the V3 schedule (`docs/very-detailed-plan.md`, clean at N=1000 a night).
+It judges `--seeds` fresh seeds (1000 unless given) and nothing else: the ratchet and the skip
 ledger are neither read nor written, a seed either list holds is judged like any other, and a
-timeout is not retried. The seeds come from a start seed through the `daslib/random` generator
-(`nightly_seeds`): the same start draws the same seeds in the same order, and a longer night
-begins with a shorter one's seeds. The start is the UTC date's digits (`20261122`) unless
-`--start` names one, a decimal of at most nine digits; a bad start, or `--nightly` beside
-`--update`, `--audit-skips`, `--seed`, `--from` or `--filter`, exits 2 before any seed.
+timeout is not retried. The flags it takes are `--seeds`, `--start`, `--jobs`, `--tier` and
+`--force`; beside `--update`, `--audit-skips`, `--seed`, `--from`, `--filter`, `--one` or
+`--check`, with `--seeds` 0 or below, or with a start that is no decimal of at most nine digits
+it exits 2 before any seed.
+
+The seeds come from one sequence per start (`nightly_seeds`): the `daslib/random` generator
+seeded with a hash of the start in each lane (`night_generator`), so the same start draws the
+same seeds in the same order, a longer night begins with a shorter one's seeds, and consecutive
+starts draw unrelated seeds (`random_seed(start)` would make one night's low bits the previous
+night's high bits). The start is the UTC date's digits (`20261122`) unless `--start` names one.
 
 Each seed runs through the same worker as the ratchet's run (`--one`, under `--tier`, the
-interpreter unless given) and its verdict maps onto the night's: `pass`, `differs` (`output`
-or `exit`), `refused` (`convert`), `native`, `timeout`, `crash`. The result file is
-`work/nightly/<date>-<start>.txt` (`-<tier>` added for a tier but the interpreter), rewritten
-after every seed so a night cut short still reports what it judged: a header naming the start,
-the count, the tier, the reference compiler and the command that replays the night, the judged
-and wall-time lines, a count per verdict, the seeds of each verdict, and for each divergence,
-timeout or crash its first reason line and folder; a divergence also gets its two outputs and
-its `reduce.sh` line. The run exits 1 on any `differs`, else 0.
+interpreter unless given) and its verdict maps onto the night's (`night_status`,
+`nightly_verdict`): `pass`, `differs` (`output` or `exit`), `refused` (`convert`), `timeout`
+(the conversion or the converted run past its limit after the native side passed, or a worker
+the driver killed), `crash`, `native` (gcc refused the program or its run exited non-zero) and
+`native-timeout` (csmith or the native run past its limit: csmith writes programs whose gcc
+`-O0` build runs for minutes). The first five are judged seeds; `native` and `native-timeout`
+are the reference side's and never count. N is a count of judged seeds: the night draws from the
+sequence in rounds, each round the seeds still missing, until N are judged or `draw_cap` (1.5 N)
+seeds are drawn, and the result file says so when the cap stops it.
 
-A seed that diverged, timed out or crashed keeps its `work/<seed>/` folder: the spliced program,
+The result file is `work/nightly/<date>-<start>.txt` (`-<tier>` added for a tier but the
+interpreter), written through a temporary file and a rename after every seed, so a night cut
+short still reports what it judged and a reader never sees half a file. It holds a header
+naming the start, the seeds asked, the tier, the reference compiler, the csmith commit and
+options, the c2das-re and daScript commits (`+dirty` when a tracked file differs) and the
+command that replays the night; the line `judged X of N asked, drew Y, native-timeout Z`; the
+draw cap; the wall time; a count per verdict; the seeds of each verdict in draw order; and for
+each failure or crash its first reason line and folder, a divergence also its two outputs and
+its `reduce.sh` line. Two runs of one night differ in the wall line alone. The run exits 1 when
+any seed `differs` or has a `timeout`, else 0.
+
+A night runs once per date and start: a lock file beside the result names the driver's pid, and
+a second night of that date and start is refused while that process lives; an existing result
+file refuses it too unless `--force` names the rerun.
+
+A seed that differs, timed out or crashed keeps its `work/<seed>/` folder: the spliced program,
 the conversion, and for a divergence the native and converted outputs `judge` writes beside the
 program (`<seed>.native.out`, `<seed>.das.out`) whenever a converted run does not pass. Every
-other seed's folder is removed as soon as its worker ends, since its program regenerates from
-its number; a seed's folder is about 9 MB, and a thousand of them would fill the disk. No
-reduction runs inside the night: `reduce.sh <seed>` takes a listed divergence afterwards.
+other seed's folder, a native timeout's included, is removed as soon as its worker ends, since
+its program regenerates from its number; a seed's folder is about 9 MB, and a thousand of them
+would fill the disk. No reduction runs inside the night: `reduce.sh <seed>` takes a listed
+divergence afterwards.
 
-To replay a night, run the header's replay line (`--start` and `--seeds` from the file); to
-replay one seed of it, `run_suite.sh csmith --seed <seed>`. The JIT is not part of the
-night: a seed's cost is its conversion, which a second tier repeats (25 s a seed under the
-interpreter, 26 s under the JIT, measured on one ratchet seed), so a JIT night is the same
+To replay a night, run the header's replay line with `--force` beside the old file, or move the
+file away; to replay one seed of it, `run_suite.sh csmith --seed <seed>`. The JIT is not part
+of the night: a seed's cost is its conversion, which a second tier repeats (25 s a seed under
+the interpreter, 26 s under the JIT, measured on one ratchet seed), so a JIT night is the same
 replay line with `--tier jit` and doubles the box time.
 
 The night runs on this box as a queued job; no scheduler is installed. A worker holds a seed's
