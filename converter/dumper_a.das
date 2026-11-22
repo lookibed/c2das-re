@@ -99,6 +99,12 @@ struct Dumper {
     // 6.2.7's undefined behaviour): the library's result type a call returns before C's
     // conversion to the declared one
     library_results : table<string; int>
+    // the wrapper standing for each such function's value (`library_value`)
+    library_wrappers : table<string; string>
+    // those declared without a prototype, whose value has no parameters to pass on
+    library_unprototyped : table<string>
+    // the callee of a call is being dumped: a library function's name there is a call, not a value
+    dumping_callee : bool
     // every file-scope name the unit's dump declares (a system header's included, so a libc
     // function the unit calls), and every parameter and local of the function being dumped: a
     // hoisted local static's name passes both
@@ -1979,7 +1985,9 @@ def private dump_call(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : C
     }
     let library_ret = callee_kind((kids as _array)[0]) == "FunctionDecl" ? d.library_results?[callee_name((kids as _array)[0])] ?? -1 : -1
     var x = new CirExpr(e = "call", t = library_ret >= 0 ? library_ret : t)
+    d.dumping_callee = library_ret >= 0
     x.fn = child_expr(d, kids, 0)
+    d.dumping_callee = false
     if (x.fn == null || !dump_args(d, kids, 1, nkids, x)) {
         delete_expr(x)
         return null
@@ -2661,6 +2669,29 @@ def dump_expr(var d : Dumper; js : JsonValue?) : CirExpr? {
     return x
 }
 
+// a reference: an enumerator, a library function's value through its wrapper (`library_value`),
+// or a declaration by the name it is bound to
+def private dump_decl_ref(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
+    if ((js?["referencedDecl"]?["kind"] ?? "") == "EnumConstantDecl") {
+        let item = js?["referencedDecl"]?["name"] ?? ""
+        let ref = d.enum_ref_by_loc?[node_key(d, js)] ?? ClangEnumRef()
+        if (ref.item != item) {
+            fail(d, "enum constant `{item}`: libclang reports no reference at this location", at)
+            return null
+        }
+        let owner = enum_type(d, tagged_spelling(d, ref.enum_spelling), at)
+        if (owner < 0) {
+            return null
+        }
+        return new CirExpr(e = "enum_ref", t = t, enum_t = owner, item = item)
+    }
+    let referenced = js?["referencedDecl"]?["name"] ?? ""
+    if (!d.dumping_callee && (js?["referencedDecl"]?["kind"] ?? "") == "FunctionDecl" && key_exists(d.library_results, referenced)) {
+        return library_value(d, referenced, t, at)
+    }
+    return new CirExpr(e = "ref", t = t, name = bound_name(d, js?["referencedDecl"]), vol = is_volatile_spelling(js))
+}
+
 def private dump_expr_node(var d : Dumper; js : JsonValue?) : CirExpr? {
     let at = loc_of(d, js)
     let kind = node_kind(js)
@@ -2689,20 +2720,7 @@ def private dump_expr_node(var d : Dumper; js : JsonValue?) : CirExpr? {
         return dump_literal(d, js, kind, t, at)
     }
     if (kind == "DeclRefExpr") {
-        if ((js?["referencedDecl"]?["kind"] ?? "") == "EnumConstantDecl") {
-            let item = js?["referencedDecl"]?["name"] ?? ""
-            let ref = d.enum_ref_by_loc?[node_key(d, js)] ?? ClangEnumRef()
-            if (ref.item != item) {
-                fail(d, "enum constant `{item}`: libclang reports no reference at this location", at)
-                return null
-            }
-            let owner = enum_type(d, tagged_spelling(d, ref.enum_spelling), at)
-            if (owner < 0) {
-                return null
-            }
-            return new CirExpr(e = "enum_ref", t = t, enum_t = owner, item = item)
-        }
-        return new CirExpr(e = "ref", t = t, name = bound_name(d, js?["referencedDecl"]), vol = is_volatile_spelling(js))
+        return dump_decl_ref(d, js, t, at)
     }
     if (kind == "ImplicitCastExpr" || kind == "CStyleCastExpr") {
         return dump_cast(d, js, t, at)
@@ -2918,6 +2936,10 @@ def private local_name(var d : Dumper; c_name : string) : string {
 // before the function
 def private dump_block_extern(var d : Dumper; js : JsonValue?) : bool {
     let previous = js?["previousDecl"] ?? ""
+    if (key_exists(d.library_decls, previous) && !has_child_kind(js, "BuiltinAttr")) {
+        fail(d, "`{js?["name"] ?? ""}` redeclared in a block with another type than the C library's is not lowered (C99 6.2.7)", loc_of(d, js))
+        return false
+    }
     if (!empty(previous)) {
         d.decl_names[js?["id"] ?? ""] = d.decl_names?[previous] ?? linkage_name(d, js?["name"] ?? "")
         return true
@@ -3878,16 +3900,20 @@ def private user_path_dirs : array<string> {
 // file outside the program root and the system directories fails the dump naming it
 def private dump_top_level(var d : Dumper; js : JsonValue?) {
     let top = js?["inner"]
+    // clang declares a library function implicitly where the unit first names it, a block-scope
+    // declaration's after the function holding it
+    for (idx in range(child_count(js))) {
+        let decl = (top as _array)[idx]
+        if ((decl?["isImplicit"] ?? false) && node_kind(decl) == "FunctionDecl" && has_child_kind(decl, "BuiltinAttr")) {
+            d.library_decls[decl?["id"] ?? ""] = decl?["type"]?["qualType"] ?? ""
+        }
+    }
     for (idx in range(child_count(js))) {
         let decl = (top as _array)[idx]
         let at = loc_of(d, decl)
         if (decl?["isImplicit"] ?? false) {
-            if (node_kind(decl) == "FunctionDecl" && has_child_kind(decl, "BuiltinAttr")) {
-                d.library_decls[decl?["id"] ?? ""] = decl?["type"]?["qualType"] ?? ""
-            }
             continue
         }
-        break if (!note_library_redeclaration(d, decl, at))
         if (!in_program(d, at.file)) {
             if (at.file |> ends_with(".c") && !under_system_dir(d, at.file)) {
                 fail(d, "{at.file} is a C file outside the program root {d.program_dir}: its definitions would stay external; the sidecar's `program_root` widens the root", at)
@@ -3895,7 +3921,7 @@ def private dump_top_level(var d : Dumper; js : JsonValue?) {
             }
             continue
         }
-        break if (!check_attributes(d, decl))
+        break if (!note_library_redeclaration(d, decl, at) || !check_attributes(d, decl))
         let kind = node_kind(decl)
         if (kind == "RecordDecl" || kind == "EnumDecl" || kind == "TypedefDecl") {
             break if (!dump_type_decl(d, decl))
@@ -3919,8 +3945,10 @@ def private dump_top_level(var d : Dumper; js : JsonValue?) {
 }
 
 // a declaration of a library function clang knows (`strlen`) whose type is not the library's
-// records the library's result when it differs, so a call converts it as clang's own call does;
-// a definition of the name makes it the program's function
+// (C99 6.2.7 leaves it undefined; clang calls the library function): another integer result, not
+// `_Bool`, is recorded, so a call converts the library's result as clang's does; any other
+// difference fails closed, a K&R declaration (`int strlen();`) differing in its result alone. A
+// definition of the name makes it the program's function
 def private note_library_redeclaration(var d : Dumper; decl : JsonValue?; at : CirLoc) : bool {
     let name = decl?["name"] ?? ""
     if (node_kind(decl) != "FunctionDecl") {
@@ -3934,17 +3962,65 @@ def private note_library_redeclaration(var d : Dumper; decl : JsonValue?; at : C
     if (empty(library) || has_child_kind(decl, "BuiltinAttr")) {
         return true
     }
+    let own_spelling = type_spelling(d, decl?["type"])
     let lib_t = type_from_qual(d, library, at)
-    let own_t = type_from_qual(d, type_spelling(d, decl?["type"]), at)
+    let own_t = type_from_qual(d, own_spelling, at)
     if (lib_t < 0 || own_t < 0) {
         return false
     }
-    let lib_ret = d.tu.types[lib_t].ret
-    let own_ret = d.tu.types[own_t].ret
-    if (lib_ret != own_ret && d.tu.types[lib_ret].k == "int" && d.tu.types[own_ret].k == "int") {
-        d.library_results[name] = lib_ret
+    assume lib = d.tu.types[lib_t]
+    assume own = d.tu.types[own_t]
+    // `int strlen()` declares no parameters, so only the result tells it from the library's
+    let prototyped = !(own_spelling |> ends_with("()"))
+    if (prototyped && (own.variadic != lib.variadic || length(own.params) != length(lib.params) || has_value([for (p, q in own.params, lib.params); p != q], true))) {
+        fail(d, "`{name}` declared with other parameters than the C library's `{library}` is not lowered (C99 6.2.7)", at)
+        return false
+    }
+    if (own.ret != lib.ret) {
+        if (!library_integer(d, own.ret) || !library_integer(d, lib.ret)) {
+            fail(d, "`{name}` declared with another result than the C library's `{library}`, other than one integer for another, is not lowered (C99 6.2.7)", at)
+            return false
+        }
+        d.library_results[name] = lib.ret
+        if (!prototyped) {
+            d.library_unprototyped |> insert(name)
+        }
     }
     return true
+}
+
+// an integer result a redeclared library function converts, `_Bool` excluded
+def private library_integer(d : Dumper; t : int) : bool => d.tu.types[t].k == "int" && d.tu.types[t].spell != "_Bool" && d.tu.types[t].spell != "bool"
+
+// the value of a library function the unit redeclares with another result
+// (`note_library_redeclaration`): a static wrapper of the declared type, `<name>__fn`, made once,
+// whose body converts the library's result as a direct call does
+def private library_value(var d : Dumper; name : string; t : int; at : CirLoc) : CirExpr? {
+    if (key_exists(d.library_unprototyped, name)) {
+        fail(d, "the value of `{name}`, declared without a prototype and with another result than the C library's, is not lowered", at)
+        return null
+    }
+    if (!key_exists(d.library_wrappers, name)) {
+        let ret_t = d.tu.types[t].ret
+        let c_name = free_name(d.file_scope_names, "{name}__fn")
+        let wrapper = "{d.tu_prefix}__{c_name}"
+        d.library_wrappers[name] = wrapper
+        var fn = new CirDecl(k = "func", name = wrapper, c_name = c_name, t = t, is_static = true, loc = at)
+        var call = new CirExpr(e = "call", t = d.library_results?[name] ?? -1, fn = new CirExpr(e = "ref", t = t, name = name))
+        fn.params |> reserve(length(d.tu.types[t].params))
+        call.args |> reserve(length(d.tu.types[t].params))
+        for (idx in range(length(d.tu.types[t].params))) {
+            let p = d.tu.types[t].params[idx]
+            fn.params |> push(CirParam(name = "a{idx}", t = p))
+            call.args |> push(new CirExpr(e = "ref", t = p, name = "a{idx}"))
+        }
+        var body = new CirStmt(s = "compound", loc = at)
+        var ret = new CirStmt(s = "return", loc = at, e = new CirExpr(e = "cast", t = ret_t, cast_kind = "IntegralCast", a = call))
+        body.body |> push(ret)
+        fn.body = body
+        d.tu.decls |> push(fn)
+    }
+    return new CirExpr(e = "ref", t = t, name = d.library_wrappers?[name] ?? "")
 }
 
 //! What a unit is dumped under beyond its file and dialect: the sidecar's `defines` (`-D<entry>`
