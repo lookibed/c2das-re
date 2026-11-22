@@ -1093,8 +1093,9 @@ def p4_function_fixtures(t : T?) {
         has_text(t, text, "c_longjmp(addr(")
     }
     t |> run("function pointers: what the lowering refuses, each with its reason") @(t : T?) {
-        rejects(t, "external_function_value", "#include <string.h>\nint main(void) \{ int (*c)(const char *, const char *) = strcmp; return c(\"a\", \"a\"); \}\n", "the value of external function `strcmp` (a pointer to a function this file does not define) is not lowered yet")
-        rejects(t, "external_function_address", "#include <string.h>\nint main(void) \{ int (*c)(const char *, const char *) = &strcmp; return c(\"a\", \"a\"); \}\n", "the value of external function `strcmp`")
+        // a libc function c_runtime does not map has no value (a mapped one's is its wrapper, P7.5)
+        rejects(t, "external_function_value", "#include <string.h>\nint main(void) \{ size_t (*c)(char *, const char *, size_t) = strxfrm; return c(0, \"a\", 0) != 1; \}\n", "the value of external function `strxfrm` (a pointer to a function this file does not define) is not lowered yet")
+        rejects(t, "external_function_address", "#include <string.h>\nint main(void) \{ size_t (*c)(char *, const char *, size_t) = &strxfrm; return c(0, \"a\", 0) != 1; \}\n", "the value of external function `strxfrm`")
     }
     t |> run("the dumper's libclang pass: a clang reporting no resource directory, and an error libclang meets") @(t : T?) {
         var fake_out : string
