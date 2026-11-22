@@ -227,10 +227,15 @@ since its `qsort` cannot call back into das (F33). A pointer to a variadic funct
 `function<(fixed...; aN : CVaList) : R>`: its value is the function's list-taking adapter
 `f__va_list`, emitted beside `f` when the program takes its value (one per function, so two takes
 compare equal), and a call through it is `invoke(p, fixed..., to_cvalist((t1, t2)))`. The value of
-a libc function the unit does not define is a private wrapper the module emits once after its
-functions (`emit_libc_values`), parameters `a<N>` at the site's function type: `strlen__fn`
-calling the mapping, a variadic one's `fprintf__va_list` calling its list-taking twin
-(`c_vfprintf`, `LIBC_LIST_TWINS`); a function with neither (`scanf`) fails closed.
+a function the program does not define fails closed, unless it is a libc function c_runtime maps:
+that one's value is a private wrapper the module emits once after its functions
+(`emit_libc_values`), parameters `a<N>` at the site's function type, passed and returned as a
+direct call passes and returns them (`call_argument`, `library_call`: a `FILE *` as `void?`, a
+record pointer result reinterpreted, a narrow `long` widened): `strlen__fn` and `fopen__fn` call
+the crt bind, a variadic one's `fprintf__va_list` its list-taking twin (`c_vfprintf`,
+`LIBC_LIST_TWINS`: `printf`, `fprintf`, `sprintf`, `snprintf`, `fscanf`, `sscanf`). A variadic
+function with no twin (`scanf`), one with a callback parameter (`qsort`, `signal`) and a c_runtime
+function the call lowering spells its own way (`vfprintf`, `exit`) fail closed.
 
 ### Initialization loops {#initialization-loops}
 

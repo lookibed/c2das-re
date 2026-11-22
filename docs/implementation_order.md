@@ -340,7 +340,10 @@ Order matters: c_runtime first (it's converter-independent — fixtures are hand
   a call through any member or type takes as x86-64 C does, so no sidecar entry; `qsort` is the
   runtime's byte sort and `bsearch` a binary search in `c_runtime/c_sort` (F33); a function
   type's `var` positions are those of the value-taken functions of its signature (F34).
-  Ledger (fail closed today): a function returning a function pointer,
+  Ledger (fail closed today): the value of a libc function c_runtime does not map (`strxfrm`), of
+  a variadic one with no list-taking twin (`scanf`, `open`, `ioctl`), of one with a callback
+  parameter (`qsort`, `signal`) or a c_runtime lowering of its own (`vfprintf`, `exit`), and of a
+  K&R redeclaration with another result than the library's; a function returning a function pointer,
   whose spelling `int (*(int, int))(int)` the dumper does not parse (c-testsuite 00124); a call
   with arguments through an unprototyped function pointer `T (*)()`, which the C-IR spells as
   `T (*)(void)` until it marks it; a wide string literal (`L"ab"`; the torture filter skips its tests, 20010325-1 among
@@ -4098,11 +4101,13 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   a variadic function (pr68390), a libc function's value (pr54937), `main` with other parameters
   (alias-4, behind P7.6); `vfprintf` and `perror` mappings (fprintf-chk-1, user-printf,
   vfprintf-chk-1, printf-2).
-  Progress (branch `p7.5-libc-functions`): a libc function's value is a private wrapper the module
-  emits once, `strlen__fn` calling the mapping and a variadic one's `fprintf__va_list` calling its
-  list-taking twin (c-testsuite 00189), and a libc function redeclared with another integer result
-  (`int strlen(char *)`, C99 6.2.7's undefined behaviour) keeps the library's result on the call,
-  cast to the declared type (c-testsuite 00025).
+  Progress (PR #269): a libc function's value is a private wrapper the module emits once, its
+  arguments and result passed as a direct call passes them, `fopen__fn` calling the crt bind and a
+  variadic one's `fprintf__va_list` its list-taking twin (c-testsuite 00189; `sscanf` and `fscanf`
+  through their twins too), and a libc function redeclared with another integer result (`int
+  strlen(char *)`, C99 6.2.7's undefined behaviour) keeps the library's result on a call and in
+  its value's wrapper, cast to the declared type (c-testsuite 00025); another redeclared
+  difference fails closed.
 - **P7.6 GNU emulations owed by the skip audit** (P5.1c). Skip lines name it under these features:
   `packed or aligned layout` (33: `packed` and `aligned` beyond what the layout law places or a
   typedef carries - a packed record outside the sidecar's `marshal`, an alignment on a variable, a
