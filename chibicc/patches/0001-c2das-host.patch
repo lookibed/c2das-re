@@ -1,0 +1,427 @@
+diff --git a/chibicc.h b/chibicc.h
+index f73eeec..34f985c 100644
+--- a/chibicc.h
++++ b/chibicc.h
+@@ -18,6 +18,18 @@
+ #include <time.h>
+ #include <unistd.h>
+ 
++// c2das-re port: the libc calls c_runtime does not map, as portable C in host.c
++char *host_strndup(char *s, size_t n);
++char *host_dirname(char *path);
++char *host_basename(char *path);
++char *host_strtok(char *s, char *delim);
++void host_f80_bits(double v, uint64_t *out);
++#define strndup host_strndup
++#define dirname host_dirname
++#undef basename
++#define basename host_basename
++#define strtok host_strtok
++
+ #define MAX(x, y) ((x) < (y) ? (y) : (x))
+ #define MIN(x, y) ((x) < (y) ? (x) : (y))
+ 
+@@ -75,7 +87,7 @@ struct Token {
+   TokenKind kind;   // Token kind
+   Token *next;      // Next token
+   int64_t val;      // If kind is TK_NUM, its value
+-  long double fval; // If kind is TK_NUM, its value
++  double fval; // If kind is TK_NUM, its value
+   char *loc;        // Token location
+   int len;          // Token length
+   Type *ty;         // Used if TK_NUM or TK_STR
+@@ -287,7 +299,7 @@ struct Node {
+ 
+   // Numeric literal
+   int64_t val;
+-  long double fval;
++  double fval;
+ };
+ 
+ Node *new_cast(Node *expr, Type *ty);
+diff --git a/codegen.c b/codegen.c
+index da11fd7..cab4bb6 100644
+--- a/codegen.c
++++ b/codegen.c
+@@ -699,23 +699,23 @@ static void gen_expr(Node *node) {
+     switch (node->ty->kind) {
+     case TY_FLOAT: {
+       union { float f32; uint32_t u32; } u = { node->fval };
+-      println("  mov $%u, %%eax  # float %Lf", u.u32, node->fval);
++      println("  mov $%u, %%eax  # float %Lf", u.u32, (long double)node->fval);
+       println("  movq %%rax, %%xmm0");
+       return;
+     }
+     case TY_DOUBLE: {
+       union { double f64; uint64_t u64; } u = { node->fval };
+-      println("  mov $%lu, %%rax  # double %Lf", u.u64, node->fval);
++      println("  mov $%lu, %%rax  # double %Lf", u.u64, (long double)node->fval);
+       println("  movq %%rax, %%xmm0");
+       return;
+     }
+     case TY_LDOUBLE: {
+-      union { long double f80; uint64_t u64[2]; } u;
+-      memset(&u, 0, sizeof(u));
+-      u.f80 = node->fval;
+-      println("  mov $%lu, %%rax  # long double %Lf", u.u64[0], node->fval);
++      // c2das-re port: the x87 bits without a long double
++      uint64_t u64[2];
++      host_f80_bits(node->fval, u64);
++      println("  mov $%lu, %%rax  # long double %Lf", u64[0], (long double)node->fval);
+       println("  mov %%rax, -16(%%rsp)");
+-      println("  mov $%lu, %%rax", u.u64[1]);
++      println("  mov $%lu, %%rax", u64[1]);
+       println("  mov %%rax, -8(%%rsp)");
+       println("  fldt -16(%%rsp)");
+       return;
+diff --git a/host.c b/host.c
+new file mode 100644
+index 0000000..ae58c92
+--- /dev/null
++++ b/host.c
+@@ -0,0 +1,91 @@
++// c2das-re port: the libc calls c_runtime does not map, as portable C.
++#include "chibicc.h"
++
++char *host_strndup(char *s, size_t n) {
++  size_t len = 0;
++  while (len < n && s[len])
++    len++;
++  char *p = calloc(1, len + 1);
++  memcpy(p, s, len);
++  return p;
++}
++
++// POSIX dirname: modifies `path`.
++char *host_dirname(char *path) {
++  if (!path || !*path)
++    return ".";
++  char *end = path + strlen(path) - 1;
++  while (end > path && *end == '/')
++    end--;
++  while (end > path && *end != '/')
++    end--;
++  if (end == path)
++    return *path == '/' ? "/" : ".";
++  while (end > path && *end == '/')
++    end--;
++  end[1] = '\0';
++  return path;
++}
++
++// POSIX basename: modifies `path`.
++char *host_basename(char *path) {
++  if (!path || !*path)
++    return ".";
++  char *end = path + strlen(path) - 1;
++  while (end > path && *end == '/')
++    *end-- = '\0';
++  char *slash = strrchr(path, '/');
++  if (slash && slash[1])
++    return slash + 1;
++  return path;
++}
++
++char *host_strtok(char *s, char *delim) {
++  static char *next;
++  if (s)
++    next = s;
++  if (!next)
++    return NULL;
++  while (*next && strchr(delim, *next))
++    next++;
++  if (!*next) {
++    next = NULL;
++    return NULL;
++  }
++  char *start = next;
++  while (*next && !strchr(delim, *next))
++    next++;
++  if (*next)
++    *next++ = '\0';
++  else
++    next = NULL;
++  return start;
++}
++
++// The x87 80-bit encoding of `v`: out[0] the mantissa with its explicit integer bit, out[1] the
++// sign and the 15-bit exponent.
++void host_f80_bits(double v, uint64_t *out) {
++  uint64_t bits;
++  memcpy(&bits, &v, 8);
++  uint64_t sign = bits >> 63;
++  int exp = (bits >> 52) & 0x7ff;
++  uint64_t frac = bits & 0xfffffffffffffULL;
++  uint64_t mant = 0;
++  int e = 0;
++  if (exp == 0x7ff) {
++    mant = (1ULL << 63) | (frac << 11);
++    e = 0x7fff;
++  } else if (exp != 0) {
++    mant = (1ULL << 63) | (frac << 11);
++    e = exp - 1023 + 16383;
++  } else if (frac != 0) {
++    mant = frac << 11;
++    e = 1 - 1023 + 16383;
++    while (!(mant >> 63)) {
++      mant <<= 1;
++      e--;
++    }
++  }
++  out[0] = mant;
++  out[1] = (sign << 15) | e;
++}
+diff --git a/main.c b/main.c
+index ffaabf4..7d776a7 100644
+--- a/main.c
++++ b/main.c
+@@ -18,6 +18,7 @@ static bool opt_MP;
+ static bool opt_S;
+ static bool opt_c;
+ static bool opt_cc1;
++static bool opt_time;
+ static bool opt_hash_hash_hash;
+ static bool opt_static;
+ static bool opt_shared;
+@@ -271,6 +272,12 @@ static void parse_args(int argc, char **argv) {
+       continue;
+     }
+ 
++    // c2das-re port: report the compiler proper's CPU time on stderr
++    if (!strcmp(argv[i], "-c2das-time")) {
++      opt_time = true;
++      continue;
++    }
++
+     if (!strcmp(argv[i], "-cc1-input")) {
+       base_file = argv[++i];
+       continue;
+@@ -372,20 +379,9 @@ static char *replace_extn(char *tmpl, char *extn) {
+   return format("%s%s", filename, extn);
+ }
+ 
+-static void cleanup(void) {
+-  for (int i = 0; i < tmpfiles.len; i++)
+-    unlink(tmpfiles.data[i]);
+-}
+-
+ static char *create_tmpfile(void) {
+-  char *path = strdup("/tmp/chibicc-XXXXXX");
+-  int fd = mkstemp(path);
+-  if (fd == -1)
+-    error("mkstemp failed: %s", strerror(errno));
+-  close(fd);
+-
+-  strarray_push(&tmpfiles, path);
+-  return path;
++  // c2das-re port: -E and -S only
++  error("the port makes no temporary file: give -E or -S");
+ }
+ 
+ static void run_subprocess(char **argv) {
+@@ -397,36 +393,21 @@ static void run_subprocess(char **argv) {
+     fprintf(stderr, "\n");
+   }
+ 
+-  if (fork() == 0) {
+-    // Child process. Run a new command.
+-    execvp(argv[0], argv);
+-    fprintf(stderr, "exec failed: %s: %s\n", argv[0], strerror(errno));
+-    _exit(1);
+-  }
+-
+-  // Wait for the child process to finish.
+-  int status;
+-  while (wait(&status) > 0);
+-  if (status != 0)
+-    exit(1);
++  // c2das-re port: no fork, exec or wait
++  error("the port runs no subprocess: give -E or -S");
+ }
+ 
+-static void run_cc1(int argc, char **argv, char *input, char *output) {
+-  char **args = calloc(argc + 10, sizeof(char *));
+-  memcpy(args, argv, argc * sizeof(char *));
+-  args[argc++] = "-cc1";
++static void cc1(void);
+ 
+-  if (input) {
+-    args[argc++] = "-cc1-input";
+-    args[argc++] = input;
+-  }
+-
+-  if (output) {
+-    args[argc++] = "-cc1-output";
+-    args[argc++] = output;
+-  }
+-
+-  run_subprocess(args);
++// c2das-re port: the compiler proper runs in this process, not as a child
++static void run_cc1(int argc, char **argv, char *input, char *output) {
++  base_file = input;
++  output_file = output;
++  add_default_include_paths(argv[0]);
++  clock_t start = clock();
++  cc1();
++  if (opt_time)
++    fprintf(stderr, "cc1 %ld us\n", (long)((clock() - start) * 1000000 / CLOCKS_PER_SEC));
+ }
+ 
+ // Print tokens to stdout. Used for -E.
+@@ -552,18 +533,9 @@ static void cc1(void) {
+ 
+   Obj *prog = parse(tok);
+ 
+-  // Open a temporary output buffer.
+-  char *buf;
+-  size_t buflen;
+-  FILE *output_buf = open_memstream(&buf, &buflen);
+-
+-  // Traverse the AST to emit assembly.
+-  codegen(prog, output_buf);
+-  fclose(output_buf);
+-
+-  // Write the asembly text to a file.
++  // Traverse the AST to emit assembly (c2das-re port: straight to the file).
+   FILE *out = open_file(output_file);
+-  fwrite(buf, buflen, 1, out);
++  codegen(prog, out);
+   fclose(out);
+ }
+ 
+@@ -573,19 +545,16 @@ static void assemble(char *input, char *output) {
+ }
+ 
+ static char *find_file(char *pattern) {
+-  char *path = NULL;
+-  glob_t buf = {};
+-  glob(pattern, 0, NULL, &buf);
+-  if (buf.gl_pathc > 0)
+-    path = strdup(buf.gl_pathv[buf.gl_pathc - 1]);
+-  globfree(&buf);
+-  return path;
++  // c2das-re port: no glob
++  return NULL;
+ }
+ 
+ // Returns true if a given file exists.
+ bool file_exists(char *path) {
+-  struct stat st;
+-  return !stat(path, &st);
++  FILE *fp = fopen(path, "r");
++  if (fp)
++    fclose(fp);
++  return fp != NULL;
+ }
+ 
+ static char *find_libpath(void) {
+@@ -698,7 +667,6 @@ static FileType get_file_type(char *filename) {
+ }
+ 
+ int main(int argc, char **argv) {
+-  atexit(cleanup);
+   init_macros();
+   parse_args(argc, argv);
+ 
+diff --git a/preprocess.c b/preprocess.c
+index 2bef487..b9a91bd 100644
+--- a/preprocess.c
++++ b/preprocess.c
+@@ -1028,14 +1028,8 @@ static Token *counter_macro(Token *tmpl) {
+ // modification time of the current file. E.g.
+ // "Fri Jul 24 01:32:50 2020"
+ static Token *timestamp_macro(Token *tmpl) {
+-  struct stat st;
+-  if (stat(tmpl->file->name, &st) != 0)
+-    return new_str_token("??? ??? ?? ??:??:?? ????", tmpl);
+-
+-  char buf[30];
+-  ctime_r(&st.st_mtime, buf);
+-  buf[24] = '\0';
+-  return new_str_token(buf, tmpl);
++  // c2das-re port: no stat
++  return new_str_token("??? ??? ?? ??:??:?? ????", tmpl);
+ }
+ 
+ static Token *base_file_macro(Token *tmpl) {
+diff --git a/strings.c b/strarray.c
+similarity index 79%
+rename from strings.c
+rename to strarray.c
+index 9e67428..4c0f927 100644
+--- a/strings.c
++++ b/strarray.c
+@@ -18,14 +18,14 @@ void strarray_push(StringArray *arr, char *s) {
+ 
+ // Takes a printf-style format string and returns a formatted string.
+ char *format(char *fmt, ...) {
+-  char *buf;
+-  size_t buflen;
+-  FILE *out = open_memstream(&buf, &buflen);
+-
+   va_list ap;
+   va_start(ap, fmt);
+-  vfprintf(out, fmt, ap);
++  int len = vsnprintf(NULL, 0, fmt, ap);
++  va_end(ap);
++
++  char *buf = calloc(1, len + 1);
++  va_start(ap, fmt);
++  vsnprintf(buf, len + 1, fmt, ap);
+   va_end(ap);
+-  fclose(out);
+   return buf;
+ }
+diff --git a/tokenize.c b/tokenize.c
+index 5c49c02..bc666d9 100644
+--- a/tokenize.c
++++ b/tokenize.c
+@@ -431,7 +431,7 @@ static void convert_pp_number(Token *tok) {
+ 
+   // If it's not an integer, it must be a floating point constant.
+   char *end;
+-  long double val = strtold(tok->loc, &end);
++  double val = strtod(tok->loc, &end);
+ 
+   Type *ty;
+   if (*end == 'f' || *end == 'F') {
+@@ -649,9 +649,9 @@ static char *read_file(char *path) {
+       return NULL;
+   }
+ 
+-  char *buf;
+-  size_t buflen;
+-  FILE *out = open_memstream(&buf, &buflen);
++  size_t cap = 4096;
++  size_t buflen = 0;
++  char *buf = malloc(cap + 2);
+ 
+   // Read the entire file.
+   for (;;) {
+@@ -659,18 +659,21 @@ static char *read_file(char *path) {
+     int n = fread(buf2, 1, sizeof(buf2), fp);
+     if (n == 0)
+       break;
+-    fwrite(buf2, 1, n, out);
++    if (buflen + n > cap) {
++      cap = (buflen + n) * 2;
++      buf = realloc(buf, cap + 2);
++    }
++    memcpy(buf + buflen, buf2, n);
++    buflen += n;
+   }
+ 
+   if (fp != stdin)
+     fclose(fp);
+ 
+   // Make sure that the last line is properly terminated with '\n'.
+-  fflush(out);
+   if (buflen == 0 || buf[buflen - 1] != '\n')
+-    fputc('\n', out);
+-  fputc('\0', out);
+-  fclose(out);
++    buf[buflen++] = '\n';
++  buf[buflen] = '\0';
+   return buf;
+ }
+ 
