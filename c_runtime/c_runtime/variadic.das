@@ -57,7 +57,7 @@ def to_cvalist(va : auto) : CVaList {
             lst |> push(CVal(p = unsafe(reinterpret<void?>(field))))
         } static_elif (typeinfo is_struct(field)) {
             unsafe {
-                lst |> push(CVal(r = CVaRecord(at = reinterpret<void?>(addr(field)), size = typeinfo sizeof(field))))
+                lst |> push(CVal(r = CVaRecord(at = addr<void?>(field), size = typeinfo sizeof(field))))
             }
         } static_elif (typeinfo is_float(field)) {
             lst |> push(CVal(d = double(field)))

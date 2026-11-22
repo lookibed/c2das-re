@@ -104,7 +104,7 @@ def record_addrs(va : auto) : array<void?> {
     apply(va) $(name, field) {
         static_if (typeinfo is_struct(field)) {
             unsafe {
-                out |> push(reinterpret<void?>(addr(field)))
+                out |> push(addr<void?>(field))
             }
         }
     }
@@ -117,7 +117,7 @@ def record_reads(tup : auto) : tuple<bool; int> {
     var same = false
     var sum = 0
     unsafe {
-        same = reinterpret<void?>(addr(tup._0)) == at[0] && reinterpret<void?>(addr(tup._2)) == at[1]
+        same = addr<void?>(tup._0) == at[0] && addr<void?>(tup._2) == at[1]
         for (p in at) {
             sum += (*reinterpret<Rec9?>(p)).k
         }
@@ -126,7 +126,7 @@ def record_reads(tup : auto) : tuple<bool; int> {
 }
 
 [test]
-def test_variadics(t : T?) {
+def test_variadic_records(t : T?) {
     t |> run("is_struct folds in static_if; addr of a record field `apply` reaches is the address in the callee's tuple, read back through reinterpret and *") @(t : T?) {
         var a = Rec9(k = 3)
         let b = Rec9(k = 4)
@@ -135,6 +135,10 @@ def test_variadics(t : T?) {
         t |> equal(r._0, true)
         t |> equal(r._1, 7)
     }
+}
+
+[test]
+def test_variadics(t : T?) {
     t |> run("a tuple literal instantiates the generic per shape and the CVaList pops in order") @(t : T?) {
         t |> equal(sum(4, (10, 2.5, 20, 0.5)), 33.0lf)
         t |> equal(sum(2, (1, 2)), 3.0lf)
