@@ -5,7 +5,7 @@ module fps public
 require math
 require daslib/strings_boost
 require ../perf/boxes.das
-require ../perf/perf_lanes.das
+require ../perf/samples.das
 require ../ports/ports_render.das
 require ../ports/upstream_cells.das
 require harness
@@ -15,14 +15,15 @@ require demo_run
 //! cell of a demo under one lane over its runs, the capture `run.das --fps` writes and the table
 //! rendered from it. It runs and reads nothing, so the tests feed it fixed runs and captures.
 
-//! One demo under one lane: the median fps of the runs and their spread (half the range over the
-//! median), each run's fps and host seconds, the tics of the demo; or the error of the run that
+//! One demo under one lane: the median fps of the runs, their spread and the left-out sample's
+//! `outlier` (`perf/samples.das`), each run's fps and host seconds, the tics of the demo; or the error of the run that
 //! kept the cell from standing, `desync` when that run fell out of sync, the runs before it kept.
 struct FpsCell {
     workload : string
     lane : string
     fps : double
     spread : double
+    outlier : double
     tics : int
     samples : array<double>
     seconds : array<double>
@@ -38,8 +39,8 @@ struct FpsLane {
 }
 
 //! Every number one `--fps` run measured: the c2das-re commit, the command that reproduces it,
-//! the end of the run, the machine (`perf/boxes.das`) and the tools, the runs per cell and the
-//! clock, the lanes, the demos and one cell per demo and lane.
+//! the end of the run, the machine (`perf/boxes.das`) and the tools, the runs per cell, the
+//! `spread_rule` (`perf/samples.das`) and the clock, the lanes, the demos and one cell per demo and lane.
 struct FpsCapture {
     commit : string
     command : string
@@ -50,6 +51,7 @@ struct FpsCapture {
     clang : string
     daslang : string
     samples : int
+    spread_rule : string
     clock : string
     lanes : array<FpsLane>
     workloads : array<string>
@@ -102,6 +104,7 @@ def add_run(var cell : FpsCell; run : DemoRun) : bool {
     cell.seconds |> push(run.timing.seconds)
     cell.fps = median_of(cell.samples)
     cell.spread = spread_of(cell.samples, cell.fps)
+    cell.outlier = outlier_of(cell.samples, cell.fps)
     return true
 }
 
@@ -195,7 +198,7 @@ def render_fps(c : FpsCapture) : string {
     }
     let machine = box_label(capture_box(c.box, c.cpu), c.cpu)
     var text = "Box {machine}, {c.platform}; c2das-re `{c.commit}`, captured {c.timestamp}; {c.clang}; daslang {c.daslang}.\n\n"
-    text += "PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over {FPS_CLOCK} in the speed build, which leaves the patch's per-tic checksums and tic lines out: the playback alone, the module load, the JIT compile and `doom_init` outside it. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of {c.samples} speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median; above {int(SUSPECT_SPREAD * 100.0lf)}% it is `{SUSPECT}`, without a ratio. `X / native` is native fps over X's.\n\n"
+    text += "PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over {FPS_CLOCK} in the speed build, which leaves the patch's per-tic checksums and tic lines out: the playback alone, the module load, the JIT compile and `doom_init` outside it. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of {c.samples} speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median{spread_note(c.spread_rule)}; above {int(SUSPECT_SPREAD * 100.0lf)}% it is `{SUSPECT}`, without a ratio. `X / native` is native fps over X's.\n\n"
     let failed <- [for (cell in c.cells); "\n- {cell.workload}, {fps_title(cell.lane)}: {cell.error}"; where !empty(cell.error)]
     let notes <- upstream_footnotes([DOOM_PROGRAM], das_lanes)
     return text + table_of(headers, rows, 1) + join(failed, "") + "\n" + (empty(notes) ? "" : "\n" + join(notes, "\n") + "\n")

@@ -50,6 +50,7 @@ struct WorkloadSpec {
     closing_line : string
     startup : bool
     timed : bool
+    allocates : bool
 }
 
 //! one program the publisher knows: its harness folder, the composed modules it publishes, the
@@ -78,7 +79,7 @@ let TIMED_LUA = "ports/lua/bench/timed.lua"
 let WORK_MARK = "c2das_work_s="
 let IDENTITY <- ["-c", "user.name=lookibed", "-c", "user.email=93531352+lookibed@users.noreply.github.com"]
 
-def private bench(name : string) : WorkloadSpec => <- WorkloadSpec(name = name, args <- [get_full_file_name(TIMED_LUA), get_full_file_name("ports/lua/bench/{name}.lua")], shown = "bench/timed.lua bench/{name}.lua", compare_output = true, timed = true)
+def private bench(name : string; allocates : bool = false) : WorkloadSpec => <- WorkloadSpec(name = name, args <- [get_full_file_name(TIMED_LUA), get_full_file_name("ports/lua/bench/{name}.lua")], shown = "bench/timed.lua bench/{name}.lua", compare_output = true, timed = true, allocates = allocates)
 
 def private lua_port : Port => <- Port(
     name = "lua", title = "Lua", harness = "lua", runs = "lua", license_header = "lua.h", claims_item = "P5.1",
@@ -95,7 +96,7 @@ def private lua_port : Port => <- Port(
     workloads <- [
         WorkloadSpec(name = "startup", args <- clone_to_move(STARTUP_ARGS), shown = "-e \"print(1)\"", compare_output = true, startup = true),
         bench("fib"),
-        bench("binary_trees"),
+        bench("binary_trees", true),
         bench("nbody"),
         bench("spectral_norm"),
         WorkloadSpec(name = "test suite", args <- ["-e", "_port=true", get_full_file_name(TIMED_LUA), "all.lua"], shown = "-e \"_port=true\" bench/timed.lua all.lua", in_tests = true, closing_line = "final OK !!!", timed = true)
@@ -112,8 +113,8 @@ struct Args {
     no_convert : bool
     @clarg_doc = "measure the workloads into a new capture and render the perf tables (default off: the perf method audit comes first)"
     perf : bool
-    @clarg_doc = "samples per workload and lane, each its own process (default 5)"
-    samples : int = 5
+    @clarg_doc = "samples per workload and lane, each its own process (default 0: perf/samples.das's samples_for, from the native lane's first sample)"
+    samples : int = 0
     @clarg_doc = "the das lanes to measure, comma-separated, out of interp,jit,exe,aot,interp-fast,jit-fast,exe-fast,aot-fast (default all): a lane runs the readable variant's modules, a -fast lane the fast variant's"
     lanes : string = "interp,jit,exe,aot,interp-fast,jit-fast,exe-fast,aot-fast"
     @clarg_doc = "seconds one sample may run before its cell fails (default 1800)"
@@ -378,7 +379,7 @@ def private output_parting(output, native : string) : string {
     return "line {idx + 1} prints {got} where the native build prints {want}"
 }
 
-// one run of the command `full`, timed as a whole process and, for a workload under `TIMED_LUA`,
+// one run of the command `full`, pinned (`timing_prefix`) and timed as a whole process and, for a workload under `TIMED_LUA`,
 // inside it by the wrapper's line, which the comparison does not see, into `cell`; a run that
 // differs from `oracle` (the native lane's first, when `oracle.rc` is not -1), that leaves out the
 // closing line `spec` names, or that prints no work seconds under the wrapper, fails the cell, which
@@ -390,7 +391,9 @@ def private measure_sample(full : array<string>; timeout : int; spec : WorkloadS
     let started = ref_time_ticks()
     // the clock stops at the end of the child's output, which it closes on exit: popen's
     // timeout watchdog wakes every 100 ms, so the return itself lags the exit by up to that
-    let rc = unsafe(popen_argv(full, float(timeout), $(f) {
+    var inscope pinned <- timing_prefix()
+    pinned |> push_from(full)
+    let rc = unsafe(popen_argv(pinned, float(timeout), $(f) {
         if (f != null) {
             out = fread(f)
         }
@@ -422,13 +425,23 @@ def private measure_sample(full : array<string>; timeout : int; spec : WorkloadS
     return empty(cell.error)
 }
 
+// the seconds of the native cell's first sample, its work time under the wrapper; 0 for none
+def private first_native_seconds(spec : WorkloadSpec; cell : LaneCell) : double {
+    if (spec.timed) {
+        return empty(cell.work_samples) ? 0.0lf : cell.work_samples[0]
+    }
+    return empty(cell.samples) ? 0.0lf : cell.samples[0]
+}
+
 // a standing cell's median and spread over its samples, and under the wrapper its work time's
 def private settle_cell(spec : WorkloadSpec; var cell : LaneCell) {
     cell.time = median_of(cell.samples)
     cell.spread = spread_of(cell.samples, cell.time)
+    cell.outlier = outlier_of(cell.samples, cell.time)
     if (spec.timed) {
         cell.work_time = median_of(cell.work_samples)
         cell.work_time_spread = spread_of(cell.work_samples, cell.work_time)
+        cell.work_outlier = outlier_of(cell.work_samples, cell.work_time)
     }
 }
 
@@ -579,7 +592,7 @@ def private build_lanes(port : Port; variants : array<Variant>; lanes : array<st
 
 // a capture of every workload under every lane of `lanes`, written into the clone
 def private measure_program(args : Args; port : Port; variants : array<Variant>; release : Release; lanes : array<string>; repo_dir : string; gen : Generation) : bool {
-    var measured = Capture(program = port.name, commit = gen.sha, command = publish_command(args, port), samples = args.samples, timeout = args.timeout)
+    var measured = Capture(program = port.name, commit = gen.sha, command = publish_command(args, port), samples = args.samples, spread_rule = TRIMMED_SPREAD, timeout = args.timeout)
     let cpu = cpu_name()
     measured.machine = Machine(arch = strip(captured(["uname", "-m"])), cpu = cpu, box = capture_box(args.box, cpu), clang_path = default_clang())
     tool_versions(measured.machine.clang, measured.machine.daslang)
@@ -595,15 +608,15 @@ def private measure_program(args : Args; port : Port; variants : array<Variant>;
         cells |> reserve(length(lanes))
         argvs |> reserve(length(lanes))
         for (lane in lanes) {
-            var cell = LaneCell(workload = spec.name, lane = lane)
-            cell.samples |> reserve(args.samples)
-            cell.work_samples |> reserve(spec.timed ? args.samples : 0)
-            cells |> emplace(cell)
+            cells |> emplace(LaneCell(workload = spec.name, lane = lane))
             argvs |> emplace(array<string>())
         }
         // the samples interleave: each round takes one sample of every standing lane, a lane
-        // readied at its turn in the first round, after native's first sample
-        for (round in range(args.samples)) {
+        // readied at its turn in the first round, after native's first sample, which sets the
+        // rounds when the command line names no count
+        var rounds = max(args.samples, 1)
+        var round = 0
+        while (round < rounds) {
             for (i in sample_order(length(lanes), round)) {
                 if (round == 0) {
                     runs |> get(lanes[i]) $(run) {
@@ -614,6 +627,10 @@ def private measure_program(args : Args; port : Port; variants : array<Variant>;
                     measure_sample(argvs[i], args.timeout, spec, oracle, cells[i])
                 }
             }
+            if (round == 0) {
+                rounds = samples_for(args.samples, first_native_seconds(spec, cells[0]), spec.allocates)
+            }
+            round++
         }
         for (cell in cells) {
             if (empty(cell.error)) {
@@ -1525,8 +1542,8 @@ def private flags_hold(args : Args; var lanes : array<string>) : bool {
         to_log(LOG_ERROR, "ports: --push needs --commit\n")
         return false
     }
-    if (args.samples < 1) {
-        to_log(LOG_ERROR, "ports: --samples takes a count of 1 or more, not {args.samples}\n")
+    if (args.samples < 0) {
+        to_log(LOG_ERROR, "ports: --samples takes a count of 1 or more, or 0 for samples_for's, not {args.samples}\n")
         return false
     }
     if (args.timeout <= 0) {

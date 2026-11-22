@@ -26,6 +26,11 @@ with no `--filter` and no `--samples` in the same change.** `ARCHITECTURE.md` se
 from the results table `scripts/run_perf.sh --table` prints refreshes it with
 `scripts/run_perf.sh --table --readme` in the same change.**
 
+**A timed sample a diff adds starts through `perf_lanes.das`'s `timed` or
+`timing_prefix`, takes its count from `samples.das`'s `samples_for`, and becomes a cell through
+`median_of`, `spread_of` and `outlier_of`; an A/B decision a diff quotes comes from `ab.das`.**
+`ARCHITECTURE_SAMPLES.md` sections 4 to 6 state the pin, the cell and the decision.
+
 **A table or report a diff adds never sets the numbers of two boxes side by side as a ratio.**
 `ARCHITECTURE.md` section 5 states the box a capture records.
 

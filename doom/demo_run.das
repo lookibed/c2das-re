@@ -39,7 +39,8 @@ def reference_log(dirs : array<string>; stem : string; demo : int) : string {
 //! A converted program's demo run: `entry` its entry module under `tier`, `-timedemo demo<demo>`
 //! over `wad`, held to the first `tics` tic lines of the reference log (all of them when 0) found
 //! in `ref_dirs`; `work` takes the run folder and the tier's builds, `timeout` bounds each process;
-//! `speed` when `entry` is the speed build, which prints no tic line and is held to the demo's end.
+//! `speed` when `entry` is the speed build, which prints no tic line and is held to the demo's end;
+//! `pin` goes before the program's command line (a timed run's `taskset` prefix).
 struct DemoSpec {
     entry : string
     tier : string
@@ -51,6 +52,7 @@ struct DemoSpec {
     ref_dirs : array<string>
     module_dirs : array<string>
     speed : bool
+    pin : array<string>
 }
 
 //! A run's outcome: `error` why the program did not run; else its exit code (`popen_timed_out` past
@@ -117,13 +119,13 @@ def run_converted(spec : DemoSpec) : DemoRun {
     var output : string
     let started = ref_time_ticks()
     if (spec.tier == NATIVE_LANE) {
-        var argv <- ["prlimit", "--as={NATIVE_MEMORY}", get_full_file_name(spec.entry)]
-        argv |> push_from(program_argv(spec))
+        var argv := spec.pin
+        argv |> push_from(["prlimit", "--as={NATIVE_MEMORY}", get_full_file_name(spec.entry)], program_argv(spec))
         run.rc = run_and_capture(argv, output, spec.timeout)
     } else {
         let build_dir = path_join(dir, base_name(dir_name(spec.entry)))
         mkdir_rec(build_dir)
-        run.rc = run_tier(spec.entry, spec.tier, build_dir, output, spec.module_dirs, spec.timeout, array<string>(), program_argv(spec))
+        run.rc = run_tier(spec.entry, spec.tier, build_dir, output, spec.module_dirs, spec.timeout, array<string>(), program_argv(spec), spec.pin)
     }
     run.seconds = double(get_time_usec(started)) / 1000000.0lf
     let got <- tic_lines(output)

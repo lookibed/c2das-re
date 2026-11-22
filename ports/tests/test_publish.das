@@ -203,7 +203,7 @@ def test_refusals(t : T?) {
         t |> success(out |> contains("show this help and exit"), out)
         t |> success(out |> contains("--allow-stale"), out)
     }
-    t |> run_stand_in("an unknown program or lane, --push without --commit, --samples below 1, --timeout of 0, and a directory that is no clone", "c2das_ports_refusals") @(t : T?; root, clone : string) {
+    t |> run_stand_in("an unknown program or lane, --push without --commit, --samples below 0, --timeout of 0, and a directory that is no clone", "c2das_ports_refusals") @(t : T?; root, clone : string) {
         var out : string
         t |> equal(publish(root, ["--repo", clone, "--program", "doom"], out), 1, out)
         t |> success(out |> contains("no program `doom`; the publisher knows lua"), out)
@@ -215,8 +215,8 @@ def test_refusals(t : T?) {
         t |> success(out |> contains("no das lane `native`"), out)
         t |> equal(publish(root, ["--repo", clone, "--push"], out), 1, out)
         t |> success(out |> contains("--push needs --commit"), out)
-        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "0"], out), 1, out)
-        t |> success(out |> contains("--samples takes a count of 1 or more, not 0"), out)
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--samples", "-1"], out), 1, out)
+        t |> success(out |> contains("--samples takes a count of 1 or more, or 0 for samples_for's, not -1"), out)
         t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--timeout", "0"], out), 1, out)
         t |> success(out |> contains("--timeout takes seconds above 0, not 0"), out)
         t |> equal(publish(root, ["--repo", clone, "--box", "laptop"], out), 1, out)
@@ -621,6 +621,21 @@ def test_sample_order(t : T?) {
         let c <- capture_of(clone, name)
         let fib <- cell_of(t, c, "fib", "jit")
         t |> success(empty(fib.error) && length(fib.samples) == 3 && length(fib.work_samples) == 3, "{fib}")
+    }
+    t |> run_stand_in("no --samples: a short native run gives every lane the noisy count; the capture records 0, the trimmed rule and each cell's outlier", "c2das_ports_sample_rule") @(t : T?; root, clone : string) {
+        var out : string
+        t |> equal(publish(root, ["--repo", clone, "--no-convert", "--perf", "--lanes", "interp", "--allow-dirty"], out), 0, out)
+        var name : string
+        let c <- capture_of(clone, name)
+        t |> equal(c.samples, 0)
+        t |> equal(c.spread_rule, TRIMMED_SPREAD)
+        for (lane in ["native", "interp"]) {
+            let fib <- cell_of(t, c, "fib", lane)
+            t |> success(empty(fib.error) && length(fib.samples) == NOISY_SAMPLES && length(fib.work_samples) == NOISY_SAMPLES, "{lane}: {fib}")
+            t |> success(fib.outlier == outlier_of(fib.samples, fib.time) && fib.spread == spread_of(fib.samples, fib.time), "{lane}: {fib}")
+        }
+        let readme = fread(path_join(clone, "lua/README.md"))
+        t |> success(readme |> contains("a cell is the median of {samples_text(0)}, ± half their range as a share of the median{spread_note(TRIMMED_SPREAD)}"), readme)
     }
 }
 

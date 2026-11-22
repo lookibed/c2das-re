@@ -7,6 +7,7 @@ require strings
 require daslib/strings_boost
 require daslib/md_boost
 require ../perf/boxes.das
+require ../perf/samples.das
 require ../metrics/criteria_file.das
 require variants
 require upstream_cells
@@ -32,19 +33,22 @@ struct Workload {
     startup : bool
 }
 
-//! One workload under one lane: the median of the samples (whole runs) and their spread, the
-//! in-process work seconds each sample reported (`work_samples`, empty for the startup row and in
-//! a capture made before the wrapper) with their median and spread, or the error that kept the
+//! One workload under one lane: the median of the samples (whole runs) and their spread with the
+//! left-out sample's `outlier` (`perf/samples.das`), the in-process work seconds each sample
+//! reported (`work_samples`, empty for the startup row and in a capture made before the wrapper)
+//! with their median, spread and outlier, or the error that kept the
 //! cell from standing; a failed cell keeps the samples it took, the failing one last.
 struct LaneCell {
     workload : string
     lane : string
     time : double
     spread : double
+    outlier : double
     samples : array<double>
     work_samples : array<double>
     work_time : double
     work_time_spread : double
+    work_outlier : double
     error : string
 }
 
@@ -61,14 +65,16 @@ struct Machine {
 }
 
 //! Every number one publish measured, with the c2das-re commit of the conversion it timed, the
-//! command that reproduces it (its `--samples`, `--timeout` and `--lanes`), and the end of the
-//! run as its timestamp; the cells are flat, one per workload and lane.
+//! command that reproduces it (its `--samples`, 0 for `samples_for`'s, `--timeout` and `--lanes`),
+//! the end of the run as its timestamp and its `spread_rule` (`perf/samples.das`); the cells are
+//! flat, one per workload and lane.
 struct Capture {
     program : string
     commit : string
     command : string
     timestamp : string
     samples : int
+    spread_rule : string
     timeout : int
     machine : Machine
     lanes : array<Lane>
@@ -444,7 +450,7 @@ def render_perf(c : Capture) : string {
         w |> write("Captured {c.timestamp} on {c.machine.arch}, {machine_label(c.machine)}; {c.machine.clang} at `{c.machine.clang_path}`, ")
         w |> write("the native lane's compiler; daslang {c.machine.daslang}; c2das-re `{c.commit}`. Reproduced by `{reproduce_command(c)}`. ")
         w |> write("A sample is one run of the whole program, its own process spawned by the publisher (the spawn included); ")
-        w |> write("a cell is the median of {c.samples} samples, ± half their range as a share of the median; a run past ")
+        w |> write("a cell is the median of {samples_text(c.samples)}, ± half their range as a share of the median{spread_note(c.spread_rule)}; a run past ")
         w |> write("{c.timeout} s fails its cell. A das lane's cell stands only when every run prints what the native ")
         w |> write("build prints and exits as it does (the test-suite row compares the exit code and requires the line the ")
         w |> write("suite prints after its last test passes, not the output: it prints its random seeds and timings). ")
@@ -461,7 +467,7 @@ def render_perf(c : Capture) : string {
         w |> write("Every speed number is the work alone, timed inside the process: a workload runs under `bench/timed.lua`, ")
         w |> write("which reads `os.clock()` (C `clock()`, the process's CPU time, under every lane) before and after the ")
         w |> write("script and reports the seconds between, and its work time is the median of those, ± half their range as a ")
-        w |> write("share of it. The work seconds are process CPU time (`clock()`, user plus system), not dasProfile's steady wall clock, ")
+        w |> write("share of it{spread_note(c.spread_rule)}. The work seconds are process CPU time (`clock()`, user plus system), not dasProfile's steady wall clock, ")
         w |> write("since stock Lua has no in-process wall clock finer than `os.time()`'s whole seconds. A cell without them (a capture made before the wrapper) is `{BY_SUBTRACTION}`, its work time ")
         w |> write("the cell less the same lane's `startup` cell, the run that loads the program and does no work, ± the two ")
         w |> write("cells' half ranges as a share of the work time, and the mark follows it into every ratio and mean; one not ")

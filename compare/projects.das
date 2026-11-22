@@ -566,7 +566,7 @@ def side_speed(das_path, refusal, work : string; module_dirs, args : array<strin
         } else {
             var error : string
             var inscope argv <- lane_argv(das_path, lane, path_join(work, lane), module_dirs, args, lane_timeout(lane, limits), error, limits.address_space)
-            cells[lane] = empty(argv) ? error_json(error) : bench_cells(guarded(argv, limits.address_space), expected, samples, lane_timeout(lane, limits))
+            cells[lane] = empty(argv) ? error_json(error) : bench_cells(timed(argv, limits.address_space), expected, samples, lane_timeout(lane, limits))
         }
     }
     return <- cells
@@ -838,7 +838,7 @@ def private project_speed(p : Project; work : string; b : BenchModules; modules,
     let error = empty(b.native_error) ? native_bench_oracle(p, b.native, args[0], oracle, limits) : b.native_error
     let no_oracle = empty(error) ? "" : "no native bench result: {error}"
     let no_modules : array<string>
-    var native = empty(error) ? bench_cells(guarded([b.native, args[0]], limits.address_space), oracle, samples, limits.sample) : error_json(error)
+    var native = empty(error) ? bench_cells(timed([b.native, args[0]], limits.address_space), oracle, samples, limits.sample) : error_json(error)
     var ours <- side_speed(b.ours, empty(b.ours_refusal) ? no_oracle : b.ours_refusal, path_join(work, "ours_bench_run"), modules, args, ours_lanes, oracle, samples, limits)
     var rust <- side_speed(b.rust, empty(b.rust_refusal) ? no_oracle : b.rust_refusal, path_join(work, "rust_bench_run"), no_modules, args, rust_lanes, oracle, samples, limits)
     return JV({

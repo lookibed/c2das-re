@@ -5,6 +5,7 @@ module perf_measure public
 require strings
 require daslib/strings_boost
 require daslib/fio
+require daslib/json_boost
 require crt
 require ../converter/tiers.das
 require ../suites/suite_files.das
@@ -18,6 +19,7 @@ require perf_lanes
 struct Cell {
     time : double
     spread : double
+    outlier : double
     count : int64
     result : int
     samples : array<double>
@@ -53,14 +55,18 @@ def parse_sample(out : string; var seconds : double&; var reps : int64&; var res
 def cell_of(samples : array<double>; count : int64; result : int) : Cell {
     var c = Cell(time = median_of(samples), count = count, result = result)
     c.spread = spread_of(samples, c.time)
+    c.outlier = outlier_of(samples, c.time)
     c.samples := samples
     return <- c
 }
 
+//! A cell as a capture writes it: the spread `spread_of` gives and the left-out sample's `outlier`.
+def cell_json(cell : Cell) : JsonValue? => JV((time = cell.time, spread = cell.spread, outlier = cell.outlier, count = cell.count, result = cell.result, samples = JV(cell.samples)))
+
 //! `samples` launches of `argv`, each a process; the kernel's own line gives the per-run time.
 def measure(argv : array<string>; samples : int; var error : string&) : Cell => measure(argv, samples, error, SAMPLE_TIMEOUT)
 
-//! `measure` with `timeout` seconds per sample, each sample `guarded` with no address-space cap; a
+//! `measure` with `timeout` seconds per sample, each sample `timed` with no address-space cap; a
 //! sample past the timeout is the error, as is one that fails (`run_error`).
 def measure(argv : array<string>; samples : int; var error : string&; timeout : float) : Cell {
     var times : array<double>
@@ -69,7 +75,7 @@ def measure(argv : array<string>; samples : int; var error : string&; timeout : 
     times |> reserve(samples)
     for (_s in range(samples)) {
         var out : string
-        let rc = run_and_capture(guarded(argv, 0l), out, timeout)
+        let rc = run_and_capture(timed(argv, 0l), out, timeout)
         var seconds = 0.0lf
         var sample_result = 0
         if (rc == popen_timed_out) {

@@ -62,8 +62,7 @@ exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
   with the pinned clang at `-O3 -funsigned-char` (dasProfile's Release build gives its C++
   kernels `-O3`, and the lane follows its method), converts the same file through `converter/pipeline.das` (thirteen times: the second under
   `--param-writes copy` for the `interp-copy` lane, the third under `--loops while` for the
-  `interp-while` lane, the fourth under `--first-member reinterpret` for the `interp-reinterpret` lane, the fifth under `--inline-helpers` for the `interp-inline` lane, the sixth under `--switch-dispatch goto` for the `interp-goto` lane, the seventh under `--checks off` for the `interp-checks-off` lane, the eighth under `--past-end inline` for the `interp-past-end-inline` lane, the ninth under `--fn-macros expand` for the `interp-fn-macros-expand` lane, the tenth to twelfth under `--forms-off pointer_steps`, `ranged_loops` and `c_switch` for the `interp-pointer-steps-off`, `interp-ranged-loops-off` and `interp-c-switch-off` lanes, the thirteenth under `--switch-dispatch table` for the `interp-table` lane), and runs each lane as its own process `--samples` times (five by default). A cell is the median, with ±
-  half the sample range as a share of it; startup never enters a cell because the program
+  `interp-while` lane, the fourth under `--first-member reinterpret` for the `interp-reinterpret` lane, the fifth under `--inline-helpers` for the `interp-inline` lane, the sixth under `--switch-dispatch goto` for the `interp-goto` lane, the seventh under `--checks off` for the `interp-checks-off` lane, the eighth under `--past-end inline` for the `interp-past-end-inline` lane, the ninth under `--fn-macros expand` for the `interp-fn-macros-expand` lane, the tenth to twelfth under `--forms-off pointer_steps`, `ranged_loops` and `c_switch` for the `interp-pointer-steps-off`, `interp-ranged-loops-off` and `interp-c-switch-off` lanes, the thirteenth under `--switch-dispatch table` for the `interp-table` lane), and runs each lane as its own process `--samples` times (nine by default, `samples_for`). A cell is the median, ± its spread (`ARCHITECTURE_SAMPLES.md` section 5); startup never enters a cell because the program
   times itself; each das lane logs its argv at `info`. The `exe` and `aot` lanes each stand
   only on the binary their build leaves (an earlier run's removed first), since the tier
   returns the build's exit code when the build fails: a failed build is the lane's error,
@@ -83,13 +82,14 @@ exception ledger in `ARCHITECTURE_EXCEPTIONS.md`.
   capture lacks a cell the other has, each named on an error line, and
   0 otherwise, a lane error the baseline shares included (a cell both lack reproduces it).
 - `perf_measure.das` - the samples and the cell of a timed lane (`measure`, `accept_lane`,
-  `measure_native`, `measure_lane`, `measure_tiers`), shared with `compare/run.das`.
+  `measure_native`, `measure_lane`, `measure_tiers`, `cell_json`), shared with `compare/run.das`.
+- `samples.das`, `ab_band.das`, `ab.das` - the sample count, the median, spread and outlier of a cell, and the A/B decision over a batch with its command line (`ARCHITECTURE_SAMPLES.md` sections 5, 6).
 - `perf_lanes.das` - the lanes and the sample arithmetic `run.das` shares with
   `ports/publish.das`: the native lane's build command (the pinned clang, `NATIVE_FLAGS`
   `-O3 -w -funsigned-char`, a program's C files in order), the interpreter and JIT commands over a converted module, the `exe`
   and `aot` builds through `converter/tiers.das` (each standing only on the binary it leaves,
   named as the tier names it, an earlier run's removed first, with the build's line as the
-  error, the run it ends with `guarded`), the sample guard (`guarded`, `run_error`), the median and the spread of a cell, the CPU model and the clang and daslang version
+  error, the run it ends with `guarded`), the sample guard and pin (`guarded`, `timed`, `run_error`), `samples.das` re-exported, the CPU model and the clang and daslang version
   lines (each the first line past the `info` lines), and the helpers `lua/run.das` shares with
   `ports/publish.das`: `lines_without` (a text's lines not starting with a prefix),
   `program_output` (a run's output without the JIT's `info` lines), `in_folder` (a command run
@@ -295,6 +295,6 @@ A capture's cells change with: a file under `kernels/`; the prologue and epilogu
 puts around a kernel; the argv of a timed lane - the native `clang` command (`native_build_command`
 and `NATIVE_FLAGS` in `perf_lanes.das`), `run.das`'s `convert` calls, the `interp` and `jit` lanes'
 `daslang` argv (`das_lane_command`) and the exe and AOT builds' `build_tier` call (`lane_binary` in
-`perf_lanes.das`); the sample count (the `samples` default of `run.das`'s `Args`); the lane list
+`perf_lanes.das`); the sample count (`samples_for` in `samples.das`, `run.das`'s `--samples`); the pin (`timed`); the lane list
 (`LANES` in `perf_tables.das`); and the sample arithmetic - `measure`, `cell_of` and `accept_lane`
-in `perf_measure.das`, `median_of` and `last_line` in `perf_lanes.das`.
+in `perf_measure.das`, `samples.das` and `last_line` in `perf_lanes.das`.

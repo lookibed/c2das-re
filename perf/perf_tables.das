@@ -9,6 +9,7 @@ require daslib/functional
 require daslib/json_boost
 require daslib/md_boost
 require boxes
+require samples
 
 //! The tables of a perf current, `results_linux.json` read as JSON: the results table, the
 //! ratio of every lane's time to native's, the delta of every cell against a baseline capture
@@ -139,7 +140,7 @@ def render_results(js : JsonValue?) : string {
         return t == best && !cell_suspect(js, kernel, lane) ? md_bold(text) : text
     }
     let versions = js?["versions"]
-    let head = "Captured on {js?["timestamp"] ?? ""}, {js?["platform"] ?? ""}, {capture_label(js)}; {versions?["clang"] ?? ""}, {versions?["daslang"] ?? ""}. A cell is the median of {js?["samples"] ?? 0l} samples, each its own process, ± half the sample range as a share of the median; the fastest lane per row is bold; a cell whose spread is above {int(SUSPECT_SPREAD * 100.0lf)}% is `{SUSPECT}` with its spread, no time, and in no ratio or delta.\n\n"
+    let head = "Captured on {js?["timestamp"] ?? ""}, {js?["platform"] ?? ""}, {capture_label(js)}; {versions?["clang"] ?? ""}, {versions?["daslang"] ?? ""}. A cell is the median of {js?["samples"] ?? 0l} samples, each its own process, ± half the sample range as a share of the median{spread_note(js?["spread_rule"] ?? "")}; the fastest lane per row is bold; a cell whose spread is above {int(SUSPECT_SPREAD * 100.0lf)}% is `{SUSPECT}` with its spread, no time, and in no ratio or delta.\n\n"
     return head + grid + "\n"
 }
 
@@ -306,7 +307,7 @@ def render_method_comparison(method, dp : JsonValue?) : string {
         row |> push_from([for (lane in ["interp", "jit", "aot", "exe"]); method_cell(method, kernel, lane)])
         rows |> emplace(row)
     }
-    let head = "The dasProfile method on {capture_label(method)}, {method?["timestamp"] ?? ""} ({method?["versions"]?["clang"] ?? ""}, daslang {method?["versions"]?["daslang"] ?? ""}) beside borisbat/dasProfile {dp?["dasprofile_commit"] ?? ""} run on {capture_label(dp)}, {dp?["timestamp"] ?? ""} ({dp?["toolchain"] ?? ""}). Seconds per run, median of five samples; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program; a cell of this tree's capture whose spread is above {int(SUSPECT_SPREAD * 100.0lf)}% is `{SUSPECT}` with its spread, and one over a suspect C cell has no ratio. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).\n\n"
+    let head = "The dasProfile method on {capture_label(method)}, {method?["timestamp"] ?? ""} ({method?["versions"]?["clang"] ?? ""}, daslang {method?["versions"]?["daslang"] ?? ""}) beside borisbat/dasProfile {dp?["dasprofile_commit"] ?? ""} run on {capture_label(dp)}, {dp?["timestamp"] ?? ""} ({dp?["toolchain"] ?? ""}). Seconds per run, median of {method?["samples"] ?? 0l} samples{spread_note(method?["spread_rule"] ?? "")}; a hand-written cell's ratio is over dasProfile's C++, a converted cell's over the C program; a cell of this tree's capture whose spread is above {int(SUSPECT_SPREAD * 100.0lf)}% is `{SUSPECT}` with its spread, and one over a suspect C cell has no ratio. dasProfile's hand-written das passes its count as a literal (`fibI(6511134)`, `fibR(31)`, `primes(14000)`) where its C++ and the converted program read a `volatile` one, so a hand-written cell times a program whose count its compiler sees: the JIT unrolls that `fib_loop` and not the converted one (`perf/ARCHITECTURE.md` section 3).\n\n"
     let different = join([for (line in DIFFERENT_PROGRAMS); "- {line}: different programs, not compared\n"], "")
     return head + render_md_table(headers, aligns, rows) + "\n\n" + different
 }

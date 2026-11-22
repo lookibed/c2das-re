@@ -25,8 +25,8 @@ require perf_measure
 //! -O3, the optimization dasProfile's Release build gives its C++ kernels, and converted by the pipeline, and each lane runs it as its own process SAMPLES times;
 //! the program itself runs the kernel as many times as fit the budget and prints the per-run
 //! seconds, so startup never enters a cell, and its result, which the native lane sets as the
-//! oracle every das lane must reproduce. A cell is the median, ± half the range as a share
-//! of it. Run from the repository root through scripts/run_perf.sh.
+//! oracle every das lane must reproduce. A cell is the median, ± `spread_of` (perf/samples.das).
+//! Run from the repository root through scripts/run_perf.sh.
 
 let WORK = "perf/work"
 let RESULTS = "perf/results_linux.json"
@@ -38,13 +38,18 @@ let PERF_DOC = "docs/performance.md"
 //! the methods a run measures by: this tree's (`composed_source`) and dasProfile's
 //! (`composed_method_source`), over the kernels both repositories share
 let METHODS <- ["default", "dasprofile"]
+//! the seconds a kernel's native sample runs: the budget loop's
+let KERNEL_SECONDS = 0.5lf
+
+// the samples a lane of a kernel takes under `args`
+def private kernel_samples(args : Args) : int => samples_for(args.samples, KERNEL_SECONDS, false)
 
 [CommandLineArgs]
 struct Args {
     @clarg_doc = "run only the kernels whose name contains this text"
     filter : string = ""
-    @clarg_doc = "samples per lane, each its own process (default 5)"
-    samples : int = 5
+    @clarg_doc = "samples per lane, each its own process (default 0: samples_for's count for a kernel, whose native run is its 0.5 s budget, so 9)"
+    samples : int = 0
     @clarg_name = "table"
     @clarg_doc = "render the table from the stored results instead of measuring"
     show_table : bool
@@ -151,8 +156,8 @@ def measure_kernels(args : Args; lanes : array<string>; var errors : array<strin
     let names <- kernel_ids(args.method, args.filter)
     var tests : table<string; JsonValue?>
     for (name in names) {
-        var inscope cells <- by_dasprofile ? run_method_kernel(name, args.samples, errors) : run_kernel(name, args.samples, errors)
-        var row <- {for (lane, cell in keys(cells), values(cells)); lane => JV((time = cell.time, spread = cell.spread, count = cell.count, result = cell.result, samples = JV(cell.samples)))}
+        var inscope cells <- by_dasprofile ? run_method_kernel(name, kernel_samples(args), errors) : run_kernel(name, kernel_samples(args), errors)
+        var row <- {for (lane, cell in keys(cells), values(cells)); lane => cell_json(cell)}
         tests[name] = JV(row)
         to_log(LOG_INFO, "{name}: " + join([for (lane in lanes); "{lane} {lane_text(cells, lane)}"], ", ") + "\n")
     }
@@ -169,7 +174,8 @@ def capture_of(args : Args; lanes : array<string>; var tests : table<string; Jso
         "box" => JV(capture_box(args.box, cpu)),
         "platform" => JV("{get_platform_name()} {strip(captured(["uname", "-m"]))}"),
         "timestamp" => JV(strip(captured(["date", "-u", "+%Y-%m-%d %H:%M UTC"]))),
-        "samples" => JV(args.samples),
+        "samples" => JV(kernel_samples(args)),
+        "spread_rule" => JV(TRIMMED_SPREAD),
         "method" => JV(args.method),
         "versions" => JV({"clang" => JV(clang_version), "daslang" => JV(daslang_version)}),
         "lanes" => JV(lanes),
