@@ -48,9 +48,11 @@ def test_torture_filter(t : T?) {
     }
     t |> run("a builtin the emitter maps is no skip; an unmapped one is") @(t : T?) {
         t |> equal(feature_of("int f(unsigned x) \{ if (__builtin_expect(x, 0)) __builtin_abort(); return __builtin_ctz(x) + __builtin_bswap32(x); \}"), "")
-        t |> equal(feature_of("int f(int a, int b, int *r) \{ return __builtin_add_overflow(a, b, r); \}"), "GCC overflow builtins")
+        t |> equal(feature_of("int f(int a, int b, int *r) \{ return __builtin_add_overflow(a, b, r) + __builtin_umulll_overflow(1, 2, 0); \}"), "")
+        t |> equal(feature_of("int f(int a, int b, int *r) \{ return __builtin_mul_overflow_p(a, b, (int) 0); \}"), "GCC builtins clang does not know")
         t |> equal(feature_of("void *f(void) \{ return __builtin_return_address(0); \}"), "return and frame addresses")
-        t |> equal(feature_of("int f(int x) \{ return __builtin_classify_type(x); \}"), "__builtin_* calls")
+        t |> equal(feature_of("int f(int x) \{ return __builtin_choose_expr(__builtin_types_compatible_p(int, long), 1, __builtin_classify_type(x)); \}"), "")
+        t |> equal(feature_of("int f(int x) \{ return __builtin_isinf_sign(x); \}"), "__builtin_* calls")
     }
     t |> run("a 128-bit integer by either spelling is __int128") @(t : T?) {
         t |> equal(feature_of("typedef __uint128_t T;"), "__int128")
