@@ -10,7 +10,8 @@ require ../sidecar.das
 //! module the whole pipeline wrote; a C-IR that does not read gives the reader's error, and one the
 //! emitter refuses the emitter's.
 
-let FIXTURES = ["converter/tests/fixtures/p1_loops.c", "converter/tests/fixtures/p2_arrays.c"]
+// p7_case_ranges: a GNU case range reads back from the C-IR text with its upper end
+let FIXTURES = ["converter/tests/fixtures/p1_loops.c", "converter/tests/fixtures/p2_arrays.c", "converter/tests/fixtures/p7_case_ranges.c"]
 
 [test(description = "cir_to_das over a converted fixture's C-IR gives the pipeline's module, byte for byte, under the defaults and under other knobs")]
 def test_cir_to_das_matches_pipeline(t : T?) {

@@ -1684,7 +1684,6 @@ def p4_matrix_fixtures(t : T?) {
         rejects(t, "signed_char_whole", "int main(void) \{ signed char s[3] = \"ab\"; return s[0]; \}\n", "`s`: a string literal initializing a `signed char` array is not lowered yet")
         rejects(t, "signed_char_literal", "struct F \{ int n; signed char t[3]; \};\nint main(void) \{ return (struct F)\{ 1, \"xy\" \}.t[0]; \}\n", "a compound literal: a string literal initializing a `signed char` array is not lowered yet")
         rejects(t, "alignof_void", "int main(void) \{ return (int) _Alignof(void) - 1; \}\n", "alignof of a type without an alignment")
-        rejects(t, "gnu_alignof", "int main(void) \{ return (int) __alignof__(double) - 8; \}\n", "`__alignof` is not dumped yet")
         rejects(t, "vla", "int main(void) \{ int n = 3; int a[n]; a[0] = 0; return a[0]; \}\n", "`int a[n]`: a variable-length array is not lowered (out of scope in v1)")
         rejects(t, "vla_rows", "int main(void) \{ int n = 3; int a[n][2]; a[0][0] = 0; return a[0][0]; \}\n", "`int a[n][2]`: a variable-length array is not lowered (out of scope in v1)")
         rejects(t, "vla_row_pointer", "int main(void) \{ int n = 2; int (*rp)[n] = 0; return rp != 0; \}\n", "`int[n]`: a variable-length array is not lowered (out of scope in v1)")

@@ -68,6 +68,19 @@ statements (the switch's last) writes nothing. The interpreter runs a VM dispatc
 faster than through the flag chain (`perf/ARCHITECTURE_AUDIT.md`, the `dispatch_switch` kernel),
 and the text is the one a person writes.
 
+### Case ranges
+
+A GNU range `case lo ... hi` is one label whose test is `_cond >= lo && _cond <= hi`, each end a
+literal of the condition's type as a case value is (a `uint64` end past `int64` in decimal, an
+enum's condition compared as `int(_cond)`), so an empty range (`hi` below `lo` in that type)
+matches nothing, as in C. The test stands wherever a case test does: the if-chain, a flag line, a
+plain case, `default`'s match-none test and the goto chain of an open switch, in parentheses
+beside another test of an `||`; an open switch's label comment reads `case lo ... hi`. A switch
+holding a range is never `c_switch` (its arms list values), takes no jump table under any
+`switch_dispatch` (a table holds one label per value), and a goto that re-dispatches it tests the
+goto variable in every case, since the ends order in the condition's type and no one value is
+known to stand outside every range.
+
 ### Computed goto dispatch {#goto-dispatch}
 
 Under `switch_dispatch` `goto` (the sidecar key, the converter's `--switch-dispatch`: `chain`, the

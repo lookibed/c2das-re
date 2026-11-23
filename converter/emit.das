@@ -79,6 +79,8 @@ struct Emitter {
     switch_counter : int
     // the case values the switch being emitted labels with a character literal
     char_cases : table<int64>
+    // the upper end of each GNU case range of the switch being emitted, by its lower end
+    case_highs : table<int64; int64>
     // the C sources' comments by file (`c_comments`), read on first use
     c_comments : table<string; CComments>
     // per C file, the line (from 1) up to which the output carries its comments
@@ -6623,7 +6625,7 @@ def private case_range(var em : Emitter; tu : CirTu; cond_t : int; markers : arr
     for (m in markers) {
         if (m.s == "case") {
             var held : int64
-            if (!held_value(em, tu, cond_t, m.v, held)) {
+            if (m.is_range || !held_value(em, tu, cond_t, m.v, held)) {
                 return GotoDispatch()
             }
             n++
@@ -6815,12 +6817,31 @@ def private is_if_chain(groups : array<CaseGroup>) : bool {
 // a case value against the condition: an enumerator of the condition's enum, else a literal
 // of the condition's integer type
 def private case_compare(var em : Emitter; tu : CirTu; cond : string; cond_t : int; v : int64) : string {
+    if (key_exists(em.case_highs, v)) {
+        // a GNU range holds every value from `v` to its upper end, compared in the condition's type
+        let hi = em.case_highs?[v] ?? v
+        let on_enum = kind_of(tu, cond_t) == "enum"
+        let subject = on_enum ? "int({cond})" : cond
+        let lo_text = on_enum ? int_text(v) : case_literal(em, tu, cond_t, v)
+        let hi_text = on_enum ? int_text(hi) : case_literal(em, tu, cond_t, hi)
+        return "{subject} >= {lo_text} && {subject} <= {hi_text}"
+    }
     if (kind_of(tu, cond_t) == "enum") {
         let named = enumerator_of(tu, cond_t, "{v}")
         return empty(named) ? "int({cond}) == {v}" : "{cond} == {enum_item(em, tu, cond_t, named)}"
     }
     return "{cond} == {case_literal(em, tu, cond_t, v)}"
 }
+
+// `case_compare` as one operand of an `||`: a range's two tests in parentheses
+def private case_term(var em : Emitter; tu : CirTu; cond : string; cond_t : int; v : int64) : string {
+    let test = case_compare(em, tu, cond, cond_t, v)
+    return key_exists(em.case_highs, v) ? "({test})" : test
+}
+
+// the test of group `g`'s case labels: any of them
+def private group_test(var em : Emitter; tu : CirTu; g : CaseGroup; cond : string; cond_t : int) : string =>
+    length(g.values) == 1 ? case_compare(em, tu, cond, cond_t, g.values[0]) : join([for (v in g.values); case_term(em, tu, cond, cond_t, v)], " || ")
 
 // value `v` as a literal of the condition's integer type, a character literal where the switch
 // labels it with one
@@ -6830,7 +6851,8 @@ def private case_literal(var em : Emitter; tu : CirTu; cond_t : int; v : int64) 
     if (!empty(spelling)) {
         return spelling
     }
-    let suffixed = int_literal(spelled, "{v}")
+    // the C-IR holds a `uint64` value past `int64` as its bits: its decimal digits, the last apart
+    let suffixed = int_literal(spelled, spelled == "uint64" && v < 0l ? "{int64(uint64(v) / 10ul)}{int64(uint64(v) % 10ul)}" : "{v}")
     return v == int64(INT_MIN) && spelled == "int" ? "-2147483647 - 1" : (!empty(suffixed) ? suffixed : "{spelled}({v})")
 }
 
@@ -6839,6 +6861,10 @@ def private case_literal(var em : Emitter; tu : CirTu; cond_t : int; v : int64) 
 // `int`, out-of-range values surviving `enum_from_int`); "" when both fall outside the type
 [arch(at="ARCHITECTURE_EMITTER_CONTROL.md#goto-labels")]
 def private restart_sentinel(var em : Emitter; tu : CirTu; cond_t : int; groups : array<CaseGroup>) : string {
+    if (!empty(em.case_highs)) {
+        // a range's ends order in the condition's type, not in `int64`: the goto variable is tested
+        return ""
+    }
     var lo = LONG_MAX
     var hi = LONG_MIN
     for (g in groups) {
@@ -6907,6 +6933,8 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
     em.switch_counter++
     var outer_chars <- em.char_cases
     em.char_cases <- char_cases(st.body_s)
+    var outer_highs <- em.case_highs
+    em.case_highs <- case_highs(st.body_s)
     var cond_t = st.cond.t
     let restart = em.flag_switches?[intptr(st.body_s)] ?? 0
     var dispatch : GotoDispatch
@@ -6919,6 +6947,7 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
     if (restart == 0 && dispatch.span == 0 && switch_macro_fits(em, tu, st, groups)) {
         emit_switch_macro(em, tu, st, groups)
         em.char_cases <- outer_chars
+        em.case_highs <- outer_highs
         return
     }
     let cond = switch_condition(em, tu, st, cond_t, !empty(sentinel))
@@ -6940,6 +6969,7 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
         emit_flag_loop(em, tu, groups, cond, cond_t, st.body_s, restart, !empty(sentinel), dispatch)
     }
     em.char_cases <- outer_chars
+    em.case_highs <- outer_highs
 }
 
 // whether switch `st` prints as c_runtime's `c_switch` shape macro: every case value of an enum
@@ -6947,7 +6977,7 @@ def private emit_switch(var em : Emitter; tu : CirTu; st : CirStmt) {
 // own (the macro rewrites it), not an outer matched-flag switch's or a goto's
 def private switch_macro_fits(em : Emitter; tu : CirTu; st : CirStmt; groups : array<CaseGroup>) : bool {
     let cond_t = switch_cond_type(tu, st)
-    if (em.prog.c_switch_off || empty(groups) || (continues_out(st.body_s) && !empty(em.cont_flags) && !empty(em.cont_flags |> back()))) {
+    if (em.prog.c_switch_off || empty(groups) || !empty(em.case_highs) || (continues_out(st.body_s) && !empty(em.cont_flags) && !empty(em.cont_flags |> back()))) {
         return false
     }
     if (kind_of(tu, cond_t) == "enum") {
@@ -7011,7 +7041,7 @@ def private emit_switch_macro(var em : Emitter; tu : CirTu; st : CirStmt; groups
     em.case_literal_decls <- outer_decls
 }
 
-// the case values switch body `body` labels with a character literal
+// the case values switch body `body` labels with a character literal, a range's both ends
 def private char_cases(body : CirStmt const?) : table<int64> {
     var found : table<int64>
     if (body.s == "case" && body.is_char) {
@@ -7021,7 +7051,23 @@ def private char_cases(body : CirStmt const?) : table<int64> {
         for (st in body.body) {
             if (st.s == "case" && st.is_char) {
                 found |> insert(st.v)
+                if (st.is_range) {
+                    found |> insert(st.hi)
+                }
             }
+        }
+    }
+    return <- found
+}
+
+// the upper end of each GNU case range of switch body `body`, by its lower end
+def private case_highs(body : CirStmt const?) : table<int64; int64> {
+    var found : table<int64; int64>
+    var markers : array<CirStmt const?>
+    case_markers(body, markers)
+    for (m in markers) {
+        if (m.is_range) {
+            found[m.v] = m.hi
         }
     }
     return <- found
@@ -7052,7 +7098,7 @@ def private emit_if_chain(var em : Emitter; tu : CirTu; groups : array<CaseGroup
             default_at = idx
             continue
         }
-        let tests = join([for (v in g.values); case_compare(em, tu, cond, cond_t, v)], " || ")
+        let tests = group_test(em, tu, g, cond, cond_t)
         // a default label shared with a case covers every other value: the else branch
         if (g.is_default) {
             default_at = idx
@@ -7121,7 +7167,7 @@ def private emit_flag_loop(var em : Emitter; tu : CirTu; groups : array<CaseGrou
     let flag = numbered("_flag", em.switch_counter)
     let cont = continues_out(body) ? numbered("_cont", em.switch_counter) : ""
     // every case value of the switch, for `default`'s match-none test
-    let all_values <- [for (g in groups); join([for (v in g.values); case_compare(em, tu, cond, cond_t, v)], " || "); where !empty(g.values)]
+    let all_values <- [for (g in groups); join([for (v in g.values); case_term(em, tu, cond, cond_t, v)], " || "); where !empty(g.values)]
     // a switch a goto re-dispatches matches a case or `default` only while no goto is pending
     let goto_var = restart > 0 ? numbered("_goto", em.switch_counter) : ""
     // a compound literal of a group-level statement lives as long as the switch body (C11
@@ -7201,11 +7247,11 @@ def private emit_loop_group(var em : Emitter; tu : CirTu; g : CaseGroup; plain :
     let pending = empty(goto_var) || jumped || (sentinel && !g.is_default) ? "" : "{goto_var} == 0 && "
     let value_pending = sentinel ? "" : pending
     if (plain) {
-        var inscope tests <- [for (v in g.values); case_compare(em, tu, cond, cond_t, v)]
+        var inscope tests <- [for (v in g.values); case_term(em, tu, cond, cond_t, v)]
         if (g.is_default) {
             tests |> push("!({join(all_values, " || ")})")
         }
-        let test = join(tests, " || ")
+        let test = g.is_default ? join(tests, " || ") : group_test(em, tu, g, cond, cond_t)
         open_block(em, empty(pending) || length(tests) == 1 ? "if ({pending}{test})" : "if ({pending}({test}))")
         emit_group(em, tu, g, false)
         close_block(em)
@@ -7534,7 +7580,7 @@ def private emit_case_label(var em : Emitter; st : CirStmt const?) {
         if (st.s == "default") {
             emit_holes(em, intptr(st))
         }
-        let name = key_exists(em.case_names, intptr(st)) ? em.case_names?[intptr(st)] ?? "" : (st.s == "case" ? "case {st.v}" : "default")
+        let name = key_exists(em.case_names, intptr(st)) ? em.case_names?[intptr(st)] ?? "" : (st.s == "case" ? (st.is_range ? "case {st.v} ... {st.hi}" : "case {st.v}") : "default")
         if (!empty(name)) {
             jump_label(em, em.case_labels?[intptr(st)] ?? 0, name)
         }
@@ -7665,6 +7711,8 @@ def private emit_open_switch(var em : Emitter; tu : CirTu; st : CirStmt const?) 
     em.switch_counter++
     var outer_chars <- em.char_cases
     em.char_cases <- char_cases(st.body_s)
+    var outer_highs <- em.case_highs
+    em.case_highs <- case_highs(st.body_s)
     var cond_t = st.cond.t
     let cond = switch_condition(em, tu, *st, cond_t)
     var markers : array<CirStmt const?>
@@ -7685,11 +7733,13 @@ def private emit_open_switch(var em : Emitter; tu : CirTu; st : CirStmt const?) 
     if (em.prog.table_dispatch && jumps.span > length([for (m in markers); m; where m.s == "case"])) {
         emit_remap_switch(em, tu, st, markers, cond, cond_t, jumps)
         em.char_cases <- outer_chars
+        em.case_highs <- outer_highs
         return
     }
     if (jumps.span > 0) {
         emit_open_table(em, tu, st, markers, cond, cond_t, jumps)
         em.char_cases <- outer_chars
+        em.case_highs <- outer_highs
         return
     }
     let end_at = new_label(em)
@@ -7722,6 +7772,7 @@ def private emit_open_switch(var em : Emitter; tu : CirTu; st : CirStmt const?) 
         jump_label(em, end_at, "switch end")
     }
     em.char_cases <- outer_chars
+    em.case_highs <- outer_highs
 }
 
 // the jump table of open switch `st`: under `switch_dispatch` `goto`, and for Duff's device under

@@ -168,6 +168,14 @@ struct Dumper {
     // clang's answer to each `__builtin_constant_p` call by its key (`register_constant_p`): 1 or
     // 0, or `CONSTANT_P_NESTED` or `CONSTANT_P_SPLIT` for a call the conversion refuses
     constant_p_by_loc : table<string; int>
+    // libclang's canonical spelling of each `typeof (...)` a declaration or a cast of the program
+    // spells, by clang's spelling of it; "" where two of one spelling name different types
+    typeof_spellings : table<string; string>
+    // those naming a function, an array or a pointer to one, whose spelling takes a declarator
+    typeof_declarators : table<string>
+    // clang's value of each `sizeof`-like expression it folds, by its key (`register_trait_value`),
+    // `TRAIT_SPLIT` where two at one key differ: GNU `__alignof` reads it
+    trait_by_loc : table<string; int64>
     // the labels of the function being dumped, by the id a GotoStmt names
     label_names : table<string; string>
     // the typedef names whose declaration reaches clang's implicit `__builtin_va_list`, and the
@@ -771,6 +779,62 @@ def private register_constant_p(var d : Dumper; var c : CXCursor) {
     d.constant_p_by_loc[key] = earlier == v ? v : CONSTANT_P_SPLIT
 }
 
+// clang's spelling of a GNU `typeof`, `__typeof__` included
+let TYPEOF = "typeof"
+
+// the `typeof (...)` types under type `t`, each with the canonical spelling of the type it names:
+// the dump spells a `typeof` by its operand and desugars only a whole spelling, so one inside a
+// pointer, an array or a function type (`typeof (x) *`) resolves by this spelling
+def private register_typeof(var d : Dumper; var t : CXType) {
+    if (find(string(clang_getTypeSpelling(t)), TYPEOF) < 0) {
+        return
+    }
+    if (t.kind == CXTypeKind.Pointer) {
+        register_typeof(d, clang_getPointeeType(t))
+    } elif (t.kind == CXTypeKind.ConstantArray || t.kind == CXTypeKind.IncompleteArray) {
+        register_typeof(d, clang_getArrayElementType(t))
+    } elif (t.kind == CXTypeKind.FunctionProto || t.kind == CXTypeKind.FunctionNoProto) {
+        // a parameter's type is its own declaration's, a cursor under the declarator's
+        register_typeof(d, clang_getResultType(t))
+    } else {
+        var bare = clang_getUnqualifiedType(t)
+        let spelled = string(clang_getTypeSpelling(bare))
+        if (spelled |> starts_with(TYPEOF)) {
+            var named = clang_getCanonicalType(bare)
+            let canonical = string(clang_getTypeSpelling(named))
+            let earlier = d.typeof_spellings?[spelled] ?? canonical
+            d.typeof_spellings[spelled] = earlier == canonical ? canonical : ""
+            while (named.kind == CXTypeKind.Pointer) {
+                named = clang_getCanonicalType(clang_getPointeeType(named))
+            }
+            if (named.kind == CXTypeKind.ConstantArray || named.kind == CXTypeKind.IncompleteArray || named.kind == CXTypeKind.FunctionProto || named.kind == CXTypeKind.FunctionNoProto) {
+                d.typeof_declarators |> insert(spelled)
+            }
+        }
+    }
+}
+
+// two `sizeof`-like expressions at one key (one macro expansion spelling both from one token)
+// that clang values apart
+let TRAIT_SPLIT = -1l
+
+// clang's value of `sizeof`-like expression `c`, where its evaluator folds one: the preferred
+// alignment GNU `__alignof` asks for, a declaration's own (`__alignof__(f)` of an `aligned`
+// function) included, is clang's to give
+def private register_trait_value(var d : Dumper; var c : CXCursor) {
+    var res = clang_Cursor_Evaluate(c)
+    if (res == null) {
+        return
+    }
+    if (clang_EvalResult_getKind(res) == CXEvalResultKind.Int) {
+        let v = clang_EvalResult_getAsLongLong(res)
+        let key = cursor_key(d, c)
+        let earlier = d.trait_by_loc?[key] ?? v
+        d.trait_by_loc[key] = earlier == v ? v : TRAIT_SPLIT
+    }
+    clang_EvalResult_dispose(res)
+}
+
 // whether a `__builtin_constant_p` call sits anywhere under cursor `c`
 def private holds_constant_p(var c : CXCursor) : bool {
     var found = false
@@ -864,6 +928,9 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
         if (kind == CXCursorKind.FunctionDecl) {
             d.unit_names |> insert(string(clang_getCursorSpelling(kid)))
         }
+        if (clang_isDeclaration(kind) != 0u || kind == CXCursorKind.CStyleCastExpr || kind == CXCursorKind.CompoundLiteralExpr) {
+            register_typeof(d, kind == CXCursorKind.TypedefDecl ? clang_getTypedefDeclUnderlyingType(kid) : clang_getCursorType(kid))
+        }
         if ((kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl) && clang_isCursorDefinition(kid) != 0u) {
             register_record(d, kid)
         } elif (kind == CXCursorKind.EnumDecl && clang_isCursorDefinition(kid) != 0u) {
@@ -876,6 +943,9 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
             walk_records(d, kid)
         } elif (kind == CXCursorKind.MemberRefExpr || kind == CXCursorKind.UnaryExpr) {
             register_external_use(d, kid)
+            if (kind == CXCursorKind.UnaryExpr) {
+                register_trait_value(d, kid)
+            }
             walk_records(d, kid)
         } elif (kind == CXCursorKind.UnexposedExpr) {
             register_offsetof(d, kid)
@@ -1008,6 +1078,10 @@ def private collect_records(var d : Dumper; triple : string; resource_dir : stri
     let names <- [for (name in keys(d.typedef_spellings)); name]
     for (name in names) {
         d.typedef_spellings[name] = tagged_spelling(d, d.typedef_spellings[name])
+    }
+    let typeofs <- [for (spelled in keys(d.typeof_spellings)); spelled]
+    for (spelled in typeofs) {
+        d.typeof_spellings[spelled] = tagged_spelling(d, d.typeof_spellings[spelled])
     }
 }
 
@@ -1675,7 +1749,58 @@ def private special_type(var d : Dumper; qual : string; at : CirLoc) : int {
     return -2
 }
 
-def type_from_qual(var d : Dumper; qual : string; at : CirLoc) : int {
+// spelling `qual` with each `typeof (...)` in it replaced by the type libclang resolves it to
+// (`register_typeof`); "" with the error set for one libclang resolves to no one type, or to a
+// function, an array or a pointer to one under a declarator, which no text in its place spells
+def private without_typeof(var d : Dumper; qual : string; at : CirLoc) : string {
+    if (find(qual, TYPEOF) < 0) {
+        return qual
+    }
+    var parts : array<string>
+    var ok = true
+    peek_data(qual) $(view) {
+        // the text before `done` is in `parts`
+        var done = 0
+        var from = find(qual, TYPEOF)
+        while (from >= 0 && ok) {
+            let after = from + length(TYPEOF)
+            let open = after < length(view) && view[after] == uint8(' ') ? after + 1 : after
+            let in_name = from > 0 && (is_alpha(int(view[from - 1])) || is_number(int(view[from - 1])) || view[from - 1] == uint8('_'))
+            let close = !in_name && open < length(view) && view[open] == uint8('(') ? closing_paren(view, open) : -1
+            if (close < 0) {
+                // a name that holds the word (`typeof_unqual`, `my_typeof_t`)
+                from = find(qual, TYPEOF, after)
+                continue
+            }
+            let leaf = slice(view, from, close + 1)
+            let canonical = d.typeof_spellings?[leaf] ?? ""
+            if (empty(canonical)) {
+                fail(d, "`{leaf}`: a `typeof` libclang resolves to no one type (two of this spelling name different types, or it stands where the libclang pass reads no type) is not lowered yet", at)
+                ok = false
+            } elif ((from > 0 || close + 1 < length(view)) && key_exists(d.typeof_declarators, leaf)) {
+                fail(d, "`{qual}`: a `typeof` of a function, an array or a pointer to one (`{canonical}`) under a declarator is not lowered yet", at)
+                ok = false
+            } else {
+                parts |> push(slice(view, done, from))
+                parts |> push(canonical)
+                done = close + 1
+                from = find(qual, TYPEOF, done)
+            }
+        }
+        if (ok) {
+            parts |> push(slice(view, done, length(view)))
+        }
+    }
+    return ok ? join(parts, "") : ""
+}
+
+def type_from_qual(var d : Dumper; spelled : string; at : CirLoc) : int {
+    let qual = without_typeof(d, spelled, at)
+    return empty(qual) ? -1 : type_from_text(d, qual, at)
+}
+
+// the type of spelling `qual`, which holds no `typeof`
+def private type_from_text(var d : Dumper; qual : string; at : CirLoc) : int {
     let special = special_type(d, qual, at)
     if (special != -2) {
         return special
@@ -2268,10 +2393,10 @@ def private dump_subscript(var d : Dumper; js : JsonValue?; t : int; at : CirLoc
 }
 
 // `sizeof` and `_Alignof` (clang's `alignof`, which C23's `alignof` spells too) of a type or
-// an expression's type, with clang's value; GNU `__alignof__` (`__alignof`) is no dialect trait
+// an expression's type, with clang's value; GNU `__alignof__` (clang's `__alignof`) likewise
 def private dump_sizeof(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
     let trait = js?["name"] ?? ""
-    if (trait != "sizeof" && trait != "alignof") {
+    if (trait != "sizeof" && trait != "alignof" && trait != GNU_ALIGNOF) {
         fail(d, "`{trait}` is not dumped yet", at)
         return null
     }
@@ -2289,6 +2414,9 @@ def private dump_sizeof(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
     }
     if (of_t < 0) {
         return null
+    }
+    if (trait == GNU_ALIGNOF) {
+        return dump_gnu_alignof(d, js, t, of_t, at)
     }
     if (trait == "alignof") {
         let aligned = typedef_alignment(d, js, at)
@@ -2308,6 +2436,25 @@ def private dump_sizeof(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
         return null
     }
     return new CirExpr(e = "sizeof_v", t = t, trait_v = uint64(size), of_t = of_t)
+}
+
+let GNU_ALIGNOF = "__alignof"
+
+// GNU `__alignof__` of a type or an expression: the value is clang's (`register_trait_value`),
+// since it is the preferred alignment, and of a declaration its own, neither of which the interned
+// type `of_t` tells; the emitter spells das's alignment of the type where the two agree
+def private dump_gnu_alignof(var d : Dumper; js : JsonValue?; t, of_t : int; at : CirLoc) : CirExpr? {
+    let key = node_key(d, js)
+    if (!key_exists(d.trait_by_loc, key)) {
+        fail(d, "`__alignof__`: libclang gives no value at this location", at)
+        return null
+    }
+    let v = d.trait_by_loc?[key] ?? TRAIT_SPLIT
+    if (v == TRAIT_SPLIT) {
+        fail(d, "two `__alignof__` of one macro expansion that clang values apart are not lowered", at)
+        return null
+    }
+    return new CirExpr(e = "alignof_v", t = t, trait_v = uint64(v), of_t = of_t)
 }
 
 // the JSON type of the operand of trait node `js`: its `argType`, else its expression's
@@ -3655,15 +3802,15 @@ def private dump_case(var d : Dumper; js : JsonValue?; var into : array<CirStmt?
     if (kind == "LabelStmt") {
         into |> push(new CirStmt(s = "label", label_name = js?["name"] ?? "", loc = at))
     } elif (kind == "CaseStmt") {
-        if (js?["isGNURange"] ?? false) {
-            fail(d, "a GNU case range is outside the dialect", at)
-            return false
-        }
+        // a GNU range's children are its two ends, then the statement
+        let is_range = js?["isGNURange"] ?? false
         var v = 0l
-        if (nkids < 1 || !fold_constant(d, (kids as _array)[0], v)) {
+        var hi = 0l
+        if (nkids < 1 || !fold_constant(d, (kids as _array)[0], v) || (is_range && (nkids < 3 || !fold_constant(d, (kids as _array)[1], hi)))) {
             return false
         }
-        into |> push(new CirStmt(s = "case", v = v, is_char = is_char_literal((kids as _array)[0]), loc = at))
+        let is_char = is_char_literal((kids as _array)[0]) && (!is_range || is_char_literal((kids as _array)[1]))
+        into |> push(new CirStmt(s = "case", v = v, is_char = is_char, is_range = is_range, hi = hi, loc = at))
     } else {
         into |> push(new CirStmt(s = "default", loc = at))
     }
