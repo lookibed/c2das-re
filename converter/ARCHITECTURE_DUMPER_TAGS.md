@@ -1,4 +1,4 @@
-# converter Architecture - Dumper A's tags defined again
+# converter Architecture - Dumper A's tags defined again and GNU type keywords
 
 Companion to `ARCHITECTURE.md` in this folder, continuing section 3 of `ARCHITECTURE_DUMPER.md`.
 
@@ -43,3 +43,24 @@ spells both types `struct T`, so its spelling alone cannot tell them apart; libc
 
 An enum tag defined again in a block fails closed: its constants bind by location, its type by
 spelling.
+
+### GNU `typeof` and `__alignof__`
+
+clang resolves a `typeof`, and the dump desugars the whole spelling of a type (`typeof (x)` beside
+`int`), but spells one under a declarator by its operand (`typeof (x) *`, `typeof (big)
+(typeof(int))`). The libclang pass notes the canonical spelling of every `typeof` under the type of
+a declaration, a cast and a compound literal of the program, through pointers, arrays and function
+types, keyed by clang's spelling of the `typeof` (`register_typeof`), and the type reader puts that
+spelling in the place of each `typeof (...)` before it reads the text (`without_typeof`). Two of
+one spelling that name different types (`typeof (x)` in two functions whose `x` differ), and one
+the pass never met, fail closed; so does a `typeof` of a function, an array or a pointer to one
+under a declarator, whose type no text in its place spells. A name that only holds the word
+(`my_typeof_t`, C23's `typeof_unqual`) is no `typeof`.
+
+GNU `__alignof__` (clang's trait `__alignof`) is the preferred alignment, and of an expression
+naming a declaration the declaration's own (`__alignof__(f)` of a function declared
+`aligned(256)`), neither of which the interned type tells: its value is the fold of clang's
+evaluator over the node (`register_trait_value`, keyed like a `__builtin_constant_p` call). It is
+an `alignof_v` with that value, so the emitter spells das's alignment of the type where the two
+agree and the value elsewhere (a function's, an aligned declaration's). Two in one macro expansion
+spelled from one token that clang values apart fail closed.

@@ -94,8 +94,12 @@ def test_torture_filter_rows(t : T?) {
         t |> equal(feature_of("void *f(void) \{ return __builtin_apply_args(); \}"), "__builtin_* calls")
         t |> equal(feature_of("void f(void) \{ __builtin_apply(0, 0, 0); \}"), "GNU argument forwarding builtins")
     }
-    t |> run("the first rule wins: a GNU keyword before an attribute") @(t : T?) {
-        t |> equal(feature_of("__typeof(1) x __attribute__((constructor));"), "GNU keywords")
+    t |> run("the first rule wins: a 128-bit integer before an attribute") @(t : T?) {
+        t |> equal(feature_of("__int128 x __attribute__((constructor));"), "__int128")
+    }
+    t |> run("the GNU keywords and a case range are lowered: no rule names them") @(t : T?) {
+        t |> equal(feature_of("int f(int x) \{ switch (x) \{ case 1 ... 5: return (int) __alignof__(typeof(x)); \} return __extension__ 0; \}"), "")
+        t |> equal(feature_of("__typeof(1) x __attribute__((constructor));"), "__attribute__")
     }
     t |> run("the skip lines leave out every id the ratchet lists, a rule matching it or not") @(t : T?) {
         var compiled <- compile_rules()

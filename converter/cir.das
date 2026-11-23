@@ -151,6 +151,9 @@ struct CirStmt {
     v : int64
     // a `case` whose label the C source spelled as a character literal
     is_char : bool
+    // a GNU `case v ... hi`, both ends held
+    is_range : bool
+    hi : int64
     label_name : string
     dims : array<CirDim>
     fn_macro : array<CirMacroUse>
@@ -959,6 +962,10 @@ def private write_stmt(var w : Writer; x : CirStmt) {
     } elif (x.s == "case") {
         member(w, "v", false)
         w.out |> push("{x.v}")
+        if (x.is_range) {
+            member(w, "hi", false)
+            w.out |> push("{x.hi}")
+        }
         if (x.is_char) {
             member(w, "char", false)
             w.out |> push("true")
@@ -1402,6 +1409,8 @@ def private read_stmt(js : JsonValue?) : CirStmt? {
         x.body_s = read_stmt(js?["body"])
     } elif (x.s == "case") {
         x.v = js?["v"] ?? 0l
+        x.is_range = key_exists(js, "hi")
+        x.hi = js?["hi"] ?? 0l
         x.is_char = js_bool(js, "char")
     } elif (x.s == "return") {
         x.e = read_expr(js?["e"])

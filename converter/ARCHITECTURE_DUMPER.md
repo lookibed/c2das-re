@@ -138,7 +138,7 @@ hex-float through the CRT) and string literals (C escapes decoded, the NUL appen
 comma operators, calls, subscripts, `sizeof` and `_Alignof` (clang's `alignof`, with clang's
 alignment of the type as its value, the `AlignedAttr` value when a typedef's `aligned` attribute
 sets it, its own or one down its chain, which the interned type has lost; an aligned typedef as
-an array's element, or one with no value, and GNU `__alignof` fail closed), `MemberExpr` (the field by index into the
+an array's element, or one with no value, fails closed; GNU `__alignof__` is in `ARCHITECTURE_DUMPER_TAGS.md`), `MemberExpr` (the field by index into the
 record's fields, `arrow` kept; a member named `""` is the anonymous member whose record is the
 node's type), `InitListExpr` of a record or an array (clang's semantic form,
 one child per field or element, an `ImplicitValueInitExpr` left to the positional zero;
@@ -195,7 +195,7 @@ under the other, which the dumper flattens into `case` and `default` marker stat
 by the statement, wherever in the body they sit (Duff's device keeps its nesting). A case value
 is folded here, since the JSON writes a `ConstantExpr` without its value: literals, characters,
 the arithmetic and bitwise operators, parentheses, casts and enumerators; a GNU case range (`case
-1 ... 3`) fails closed. A function's labels are read before its body (a `GotoStmt` names its
+1 ... 3`) is a `case` with its upper end `hi`, folded the same way. A function's labels are read before its body (a `GotoStmt` names its
 label by declaration id, and the label may follow the goto): a `LabelStmt` is a `label` marker
 followed by its statement, flattened like a case, a `GotoStmt` is a `goto` naming the label, and
 an `IndirectGotoStmt` (a computed goto through a label address) is outside the dialect.

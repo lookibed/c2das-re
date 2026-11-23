@@ -182,7 +182,7 @@ One node is this repository's addition to the spec's table: `offsetof` with `of_
 record type and the field index), since the lowering spells `offsetof` as `typeinfo offsetof` and
 the spec has no node for it (`docs/probe-findings.md` F20); `alignof_v` is `_Alignof` in the shape
 of `sizeof_v`, `v` clang's alignment and `of_t` the type, which the spec has no node for either
-(F54). Another addition is `dims` on a `global`, a `decl` statement and a record field: one
+(F54); a `case` carries `hi`, the upper end of a GNU range `case v ... hi`, absent on any other case. Another addition is `dims` on a `global`, a `decl` statement and a record field: one
 `{enum_t, item}` per array dimension of the declarator, outermost first, the item empty for a
 dimension not spelled as one enum constant, the member absent when none is, since the lowering
 keeps the constant as the dimension and the spec's `count` is the folded integer (F21). The
