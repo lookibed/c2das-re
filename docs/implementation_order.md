@@ -4303,8 +4303,8 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   6 projects, gcc-torture, sqlite 3.46, mcpp, tcc tests/pp, gcc.dg/cpp, the standard's 6.10.3.5 examples):
   chibicc equals clang on 1876, clang != gcc on 34; the rest classed by cause: 84 units over 17 C11 bugs
   (~240 lines with the missing diagnostics), 63 extensions, 21 implementation-defined, 16 dropped `#pragma`.
-  Eight point fixes (~43 lines, each measured alone) leave real code with `#pragma` and `__has_extension` only
-  (1910 equal to clang). Translated (JIT) == native dump on 1009 of 1017 units (6 timestamps, 2 `#if` division
+  Seven point fixes (patches 0002-0003 and 0005-0009, 29 lines added and 8 removed, each measured alone) leave
+  real code with `#pragma` and `__has_extension` only (1910 of the 2285 units rerun equal to clang). Translated (JIT) == native dump on 1009 of 1017 units (6 timestamps, 2 `#if` division
   crashes in both). K1 met after point fixes, K2-K4 met, K5 half: JIT 2.61x of native -O2 (1.89M tok/s;
   interp 116k, wasm 29.5k, clang in-process 4.1M), but tokens in arrays touches 63 of 86 functions. X = the
   token representation for PP.7 (a rewrite of ~3/4 of the core) and an `#if` evaluator out of `parse.c`
@@ -4358,20 +4358,26 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   **Probe done 2026-11-23** (report for the owner and Boris, Russian: `/root/notes/research/chibicc_pp/report2.md`;
   the decisions are theirs). Count mode (the stream counted and checksummed, not printed), two exclusive jobs,
   medians of warm passes, PureDOOM / sqlite3.c: chibicc as is - JIT 1.18 / 1.27 of native -O2, interp 12.3 / 10.8,
-  AOT 0.95 / 0.96; the earlier probe's 2.61 was `-E` printing through c_runtime's printf (JIT `-E` 2.39 of native
+  AOT 0.95 / 0.96 (the first job, against that job's native); the earlier probe's 2.61 was `-E` printing through c_runtime's printf (JIT `-E` 2.39 of native
   `-E` in the same job). L1-L4 (49+/19- lines): native 0.77, JIT 0.59-0.74, interp 0.61-0.67 of the base. The fast
   tree (six more fixes, 88+/23-): native 0.81-0.84, JIT 0.65-0.90, interp 0.63-0.86 of L4. PP.7 is not a speed
   item: the arena H1 (32 lines), an upper bound of its allocation part, gives native 0.84-0.87, JIT 0.77-0.87,
-  interp 0.97-0.99, and the interp profile after L4 is lexer 48%, hash table 16%, token allocation and copy 6%.
-  Every chibicc bug has a measured fix (44 patches: C11 +346/-46, extensions +225/-28, `-E` printing +38/-16);
+  interp 0.97-0.99, and the interp profile after L4 (one unit, p_tick.c) is lexer 48%, hash table 21%, token allocation and copy 6%.
+  The chibicc bugs fixed in the prototype are measured in lines (36 of the 44 exported patches: C11 24 patches
+  +346/-46, extensions 8 +225/-28, `-E` printing 4 +38/-16; the other 8 are the speed fixes and probe commits); left
+  unfixed: an `intmax_t` `#if` evaluator, directives inside macro arguments, and in the final tree's oracle run
+  gcc.dg/cpp 33 differing and 21 refused units, 11 missing diagnostics;
   the final tree equals clang and gcc on c-testsuite 220, PureDOOM 62, Lua 34, sqlite 2, gcc-torture 1208 (4 refused
-  by all three) and all 25 hide-set tests, at a cost of +3% to +17% in time. Found: Prosser's hide sets break
-  map-macro, Cloak, metalang99 and exhaust memory on Boost.PP (the gcc/clang model is 41 lines). `#if` under
-  `intmax_t`: 0 differences on 40 961 real-code expressions after a 5-line fix. Prototypes measured: PP.5 ~71
+  by all three) and all 25 hide-set tests, at a cost of +2% to +17% in time (the JIT on
+  PureDOOM +10% inside a spread of 0.89-1.36). Found: Prosser's hide sets break
+  map-macro, Cloak, metalang99, and Boost.PP is refused (the base ran out of memory there, 3.5-4.8 GB by the
+  kernel log of the night; the gcc/clang model is 41 lines). `#if` under
+  `intmax_t`: 103 differences on 40 961 real-code expressions as is (0 predicted: a miss), 0 after a 5-line fix. Prototypes measured: PP.5 ~71
   lines, PP.2 and dialect ~215, the lexer seam 54, unit isolation and freeing ~70. The JIT's remaining gap is libc
   calls LLVM cannot fold (own code 1.02-1.05 of native by samples). Not done (a low-memory reap of background
   jobs at 05:54): the interpreter's node profile, H12's memory under the JIT, H7's translation, the JIT
-  equivalence of the final trees. Predictions against results: `lex/hyp/verdicts.md` beside the report.
+  equivalence of the final trees, the interp profiles of the fast trees, the oracle of H5 alone, wasm memory beyond
+  one line (6.56 GB for one pass of sqlite3.c). Predictions against results: `lex/hyp/verdicts.md` beside the report.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
