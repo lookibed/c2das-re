@@ -80,7 +80,7 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   thread-local storage) with the phase `never`, then the rules naming a ledger row (a test asking
   gcc for `-std=gnu89` or `-fpermissive`, or calling `__builtin_exit`, which only the permissive
   flags declare, under P7.8; `_Complex`, wide literals and a block-scope function declaration
-  under P7.5; `__int128`, vectors, labels as values, case ranges, the GNU keywords, an attribute
+  under P7.5; `__int128`, vectors, labels as values, an attribute
   outside the dumper's dropped list (`attribute_names`), `packed` or `aligned` alone, the overflow
   and setjmp builtins and any `__builtin_*` the emitter does not map (`unmapped_builtins`) under
   P7.6). A test that fails for a reason no rule can read is an ordinary failure the run counts.
