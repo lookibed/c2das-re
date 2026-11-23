@@ -4163,8 +4163,8 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `double` (MSVC-compatible)"); and 00220, wide string literals (`docs/lowering-examples.md` line
   200, "Wide strings: out of scope (dialect)"). They carry no `skip.txt` line, since a `never`
   line is only for a construct C99 does not define, and stay ordinary failures of the run.
-  Metric: 211 passing of 211 applicable (220 less the 6 P7.6 lines and these 3) = 100%; P7.5's
-  c-testsuite part is closed.
+  Metric: 215 passing of 215 applicable (220 less the 2 P7.6 lines left, 00210 and 00216, and
+  these 3) = 100%; P7.5's c-testsuite part is closed.
 - **P7.6 GNU emulations owed by the skip audit** (P5.1c). Skip lines name it under these features:
   `packed or aligned layout` (33: `packed` and `aligned` beyond what the layout law places or a
   typedef carries - a packed record outside the sidecar's `marshal`, an alignment on a variable, a
@@ -4230,6 +4230,30 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `__builtin_types_compatible_p` spelled by token pasting (the libclang pass knows the trait by
   its file's text, so it gets no value and is refused), a type trait in a `case` label (`case
   __builtin_types_compatible_p(int, int) + 4:` is refused), and every other feature of this row.
+  Progress (PR #279): four of c-testsuite's six lines are gone. `_Generic` (00219) is the result
+  expression of the association clang's dump marks `selected`; the controlling expression and the
+  other associations are not dumped. `incomplete enum type` (00209): an enum the unit never
+  defines is the dialect's `int` behind its pointers, which is all clang lets a program hold of
+  it. `bitfield of enum type` (00218): the field is the integer type clang gave the enum, laid out
+  as that integer's bitfield, and the dumper writes the conversions at each read, store and
+  initializer item as `IntegralCast`s; a step (`s.e++`) is refused. `statement expression`
+  (00213): two more expression statements are statements, `x = ({ ...; v; })` as the block ending
+  in `x = v` and a `void` conditional with a statement expression as an arm as an `if`; its gotos
+  into loop bodies P7.7 had lowered. An initializer of an anonymous member of a union (C11
+  6.7.2.1p13) is the member of its value's record type, so 00216 gets past its old line and stops
+  at a `zero-length array` (`int r[0]` ending a struct, GNU), its line now; it also uses GNU empty
+  structs and range designators and initializes a flexible array member. 00210 keeps its line:
+  the union aligned below its member needs `[c_union]` to take a member aligned past its storage
+  and the layout law to place it, and `stdcall` a dropped attribute, more than this slice.
+  `c_testsuite: pass 215, convert 3, skip 2` (was 211, 3, 6); `gcc_torture: pass 1251, convert 82,
+  skip 309, exit 14` (was 1248, 85), newly passing 20000914-1, 20030714-1 (bitfields of enum
+  type) and pr87053 (an anonymous member's initializer), ordinary failures before; the filter and
+  gcc-torture's skip.txt are unchanged. Owed here still: a statement
+  expression used as a value anywhere else (an operand, an initializer, a `return`, a conditional
+  with a value), one assigned to an object named like a variable its block declares or to a
+  bitfield of enum type; a zero-length array, an empty struct and a range designator (00216); the
+  packed union and `stdcall` (00210); the enum bitfield's step; and every other feature of this
+  row.
 - **P7.7 goto into a nested body** (P5.1c; P3.3's state-machine lowering, still owed, is owned
   here): the 31 csmith seeds `suites/csmith/skip.txt` lists, and gcc-torture pr38051 and pr43269
   (ordinary failures).
